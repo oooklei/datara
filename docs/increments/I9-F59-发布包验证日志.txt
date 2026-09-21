@@ -1,0 +1,365 @@
+=== 0. 全新空目录 ===
+=== 1. 隔离配置 infra/.env ===
+COMPOSE_PROJECT_NAME=datara-pkgtest
+CTN_PREFIX=dpkg
+BACKEND_IMAGE=datara-backend:pkgtest
+WEB_PORT=18090
+API_PORT=18000
+ZK_PORT=12181
+REDIS_PORT=16380
+META_PORT=13307
+SRC_PORT=13310
+DW_PORT=13309
+=== 2. 一条命令部署（bash bin/install.sh）===
+[datara] 步骤 1/3：环境检查 + 全栈拉起 + 健康等待（infra/bin/install.sh ）
+[install] 前置检查通过（docker / compose / 端口 8090 8000 2181 6380 3307 3310 3309 / 磁盘）
+[install] docker compose up -d --build（首次构建拉取镜像可能较慢）
+#0 building with "default" instance using docker driver
+
+#1 [datara-worker internal] load build definition from Dockerfile
+#1 ...
+
+#2 [datara-api internal] load build definition from Dockerfile
+#2 transferring dockerfile: 1.02kB done
+#2 DONE 1.3s
+
+#3 [datara-api internal] load metadata for docker.io/library/python:3.11-slim
+#3 DONE 0.0s
+
+#4 [datara-logger internal] load build definition from Dockerfile
+#4 transferring dockerfile: 1.02kB done
+#4 DONE 1.6s
+
+#5 [datara-api internal] load .dockerignore
+#5 ...
+
+#3 [datara-logger internal] load metadata for docker.io/library/python:3.11-slim
+#3 DONE 0.0s
+
+#6 [datara-alert internal] load build definition from Dockerfile
+#6 transferring dockerfile: 1.02kB done
+#6 DONE 1.8s
+
+#7 [datara-master internal] load build definition from Dockerfile
+#7 transferring dockerfile: 1.02kB done
+#7 DONE 1.9s
+
+#3 [datara-alert internal] load metadata for docker.io/library/python:3.11-slim
+#3 DONE 0.0s
+
+#8 [datara-alert internal] load .dockerignore
+#8 DONE 0.0s
+
+#1 [datara-worker internal] load build definition from Dockerfile
+#1 ...
+
+#3 [datara-master internal] load metadata for docker.io/library/python:3.11-slim
+#3 DONE 0.0s
+
+#1 [datara-worker internal] load build definition from Dockerfile
+#1 transferring dockerfile: 1.02kB done
+#1 DONE 2.5s
+
+#5 [datara-api internal] load .dockerignore
+#5 transferring context: 2B done
+#5 DONE 1.4s
+
+#3 [datara-worker internal] load metadata for docker.io/library/python:3.11-slim
+#3 DONE 0.0s
+
+#9 [datara-worker internal] load .dockerignore
+#9 ...
+
+#10 [datara-api 1/6] FROM docker.io/library/python:3.11-slim
+#10 DONE 0.0s
+
+#11 [datara-logger internal] load .dockerignore
+#11 transferring context: 2B done
+#11 DONE 1.5s
+
+#12 [datara-api internal] load build context
+#12 ...
+
+#8 [datara-alert internal] load .dockerignore
+#8 transferring context: 2B done
+#8 DONE 1.3s
+
+#12 [datara-api internal] load build context
+#12 ...
+
+#10 [datara-logger 1/6] FROM docker.io/library/python:3.11-slim
+#10 DONE 0.0s
+
+#12 [datara-api internal] load build context
+#12 transferring context: 586.18kB 0.0s done
+#12 ...
+
+#10 [datara-alert 1/6] FROM docker.io/library/python:3.11-slim
+#10 DONE 0.0s
+
+#13 [datara-master internal] load .dockerignore
+#13 transferring context: 2B done
+#13 DONE 1.8s
+
+#9 [datara-worker internal] load .dockerignore
+#9 transferring context: 2B done
+#9 ...
+
+#14 [datara-logger internal] load build context
+#14 DONE 0.0s
+
+#10 [datara-master 1/6] FROM docker.io/library/python:3.11-slim
+#10 DONE 0.0s
+
+#12 [datara-api internal] load build context
+#12 DONE 1.3s
+
+#15 [datara-master internal] load build context
+#15 ...
+
+#9 [datara-worker internal] load .dockerignore
+#9 DONE 1.7s
+
+#16 [datara-alert internal] load build context
+#16 transferring context: 66.17kB done
+#16 ...
+
+#14 [datara-logger internal] load build context
+#14 transferring context: 66.17kB done
+#14 DONE 1.8s
+
+#10 [datara-worker 1/6] FROM docker.io/library/python:3.11-slim
+#10 DONE 0.0s
+
+#15 [datara-master internal] load build context
+#15 transferring context: 66.17kB done
+#15 DONE 2.0s
+
+#16 [datara-alert internal] load build context
+#16 DONE 2.2s
+
+#17 [datara-worker internal] load build context
+#17 DONE 0.0s
+
+#18 [datara-api 2/6] WORKDIR /app
+#18 CACHED
+
+#19 [datara-api 3/6] RUN apt-get update     && apt-get install -y --no-install-recommends curl tzdata     && rm -rf /var/lib/apt/lists/*
+#19 CACHED
+
+#20 [datara-api 4/6] COPY requirements.txt ./
+#20 CACHED
+
+#21 [datara-api 5/6] RUN pip install --no-cache-dir -i https://mirrors.aliyun.com/pypi/simple/ -r requirements.txt
+#21 CACHED
+
+#22 [datara-logger 6/6] COPY . .
+#22 ...
+
+#21 [datara-alert 5/6] RUN pip install --no-cache-dir -i https://mirrors.aliyun.com/pypi/simple/ -r requirements.txt
+#21 CACHED
+
+#22 [datara-alert 6/6] COPY . .
+#22 ...
+
+#17 [datara-worker internal] load build context
+#17 transferring context: 66.17kB 0.0s done
+#17 DONE 0.7s
+
+#21 [datara-worker 5/6] RUN pip install --no-cache-dir -i https://mirrors.aliyun.com/pypi/simple/ -r requirements.txt
+#21 CACHED
+
+#22 [datara-worker 6/6] COPY . .
+#22 DONE 3.9s
+
+#23 [datara-logger] exporting to image
+#23 exporting layers
+#23 exporting layers 0.3s done
+#23 writing image sha256:93e77686daed63b6da91c2f5d1e6c60649680bd3b377b51f3c937e4deb319584 0.1s done
+#23 naming to docker.io/library/datara-backend:pkgtest
+#23 ...
+
+#24 [datara-alert] exporting to image
+#24 exporting layers 0.3s done
+#24 writing image sha256:d0f54a19a4f13c69c03f3c58ab575d597964a804a7d79324a8e6c1ed959e414f done
+#24 naming to docker.io/library/datara-backend:pkgtest 0.1s done
+#24 DONE 0.6s
+
+#23 [datara-logger] exporting to image
+#23 naming to docker.io/library/datara-backend:pkgtest 0.1s done
+#23 ...
+
+#25 [datara-master] exporting to image
+#25 exporting layers 0.3s done
+#25 writing image sha256:a910e9d0d667d0d149808777e678810bfe32abe1dabc7ef9d0195601e07acafb 0.0s done
+#25 naming to docker.io/library/datara-backend:pkgtest 0.1s done
+#25 DONE 0.8s
+
+#26 [datara-worker] exporting to image
+#26 exporting layers 0.3s done
+#26 writing image sha256:a69d2eea88f13e6ce22be39285265212befbeca48bdc5ff4c0360c8626a8ad8e 0.0s done
+#26 naming to docker.io/library/datara-backend:pkgtest 0.1s done
+#26 DONE 0.8s
+
+#27 [datara-api] exporting to image
+#27 exporting layers 0.3s done
+#27 writing image sha256:1b78e54d81c55b665ebaac49228e253714cfbbfde785fc06ab8f58c534ea20e8 0.1s done
+#27 naming to docker.io/library/datara-backend:pkgtest 0.1s done
+#27 DONE 0.8s
+
+#23 [datara-logger] exporting to image
+#23 DONE 0.9s
+ Network datara-pkgtest_default  Creating
+ Network datara-pkgtest_default  Created
+ Volume "datara-pkgtest_datara-logs"  Creating
+ Volume "datara-pkgtest_datara-logs"  Created
+ Volume "datara-pkgtest_mysql-dw-data"  Creating
+ Volume "datara-pkgtest_mysql-dw-data"  Created
+ Volume "datara-pkgtest_redis-data"  Creating
+ Volume "datara-pkgtest_redis-data"  Created
+ Volume "datara-pkgtest_mysql-src-data"  Creating
+ Volume "datara-pkgtest_mysql-src-data"  Created
+ Volume "datara-pkgtest_zookeeper-data"  Creating
+ Volume "datara-pkgtest_zookeeper-data"  Created
+ Volume "datara-pkgtest_mysql-meta-data"  Creating
+ Volume "datara-pkgtest_mysql-meta-data"  Created
+ Container dpkg-mysql-src  Creating
+ Container dpkg-mysql-dw  Creating
+ Container dpkg-zookeeper  Creating
+ Container dpkg-redis  Creating
+ Container dpkg-mysql-meta  Creating
+ Container dpkg-redis  Created
+ Container dpkg-mysql-src  Created
+ Container dpkg-mysql-meta  Created
+ Container dpkg-mysql-dw  Created
+ Container dpkg-zookeeper  Created
+ Container dpkg-logger  Creating
+ Container dpkg-api  Creating
+ Container dpkg-alert  Creating
+ Container dpkg-worker  Creating
+ Container dpkg-master  Creating
+ Container dpkg-master  Created
+ Container dpkg-worker  Created
+ Container dpkg-alert  Created
+ Container dpkg-api  Created
+ Container dpkg-logger  Created
+ Container dpkg-web  Creating
+ Container dpkg-web  Created
+ Container dpkg-mysql-src  Starting
+ Container dpkg-zookeeper  Starting
+ Container dpkg-redis  Starting
+ Container dpkg-mysql-meta  Starting
+ Container dpkg-mysql-dw  Starting
+ Container dpkg-mysql-meta  Started
+ Container dpkg-redis  Started
+ Container dpkg-mysql-src  Started
+ Container dpkg-mysql-dw  Started
+ Container dpkg-zookeeper  Started
+ Container dpkg-mysql-meta  Waiting
+ Container dpkg-redis  Waiting
+ Container dpkg-zookeeper  Waiting
+ Container dpkg-mysql-meta  Waiting
+ Container dpkg-redis  Waiting
+ Container dpkg-zookeeper  Waiting
+ Container dpkg-zookeeper  Waiting
+ Container dpkg-mysql-meta  Waiting
+ Container dpkg-redis  Waiting
+ Container dpkg-redis  Waiting
+ Container dpkg-zookeeper  Waiting
+ Container dpkg-mysql-meta  Waiting
+ Container dpkg-redis  Waiting
+ Container dpkg-zookeeper  Waiting
+ Container dpkg-mysql-meta  Waiting
+ Container dpkg-redis  Healthy
+ Container dpkg-redis  Healthy
+ Container dpkg-redis  Healthy
+ Container dpkg-redis  Healthy
+ Container dpkg-redis  Healthy
+ Container dpkg-zookeeper  Healthy
+ Container dpkg-zookeeper  Healthy
+ Container dpkg-zookeeper  Healthy
+ Container dpkg-zookeeper  Healthy
+ Container dpkg-zookeeper  Healthy
+ Container dpkg-mysql-meta  Healthy
+ Container dpkg-mysql-meta  Healthy
+ Container dpkg-master  Starting
+ Container dpkg-api  Starting
+ Container dpkg-mysql-meta  Healthy
+ Container dpkg-worker  Starting
+ Container dpkg-mysql-meta  Healthy
+ Container dpkg-logger  Starting
+ Container dpkg-mysql-meta  Healthy
+ Container dpkg-alert  Starting
+ Container dpkg-master  Started
+ Container dpkg-worker  Started
+ Container dpkg-api  Started
+ Container dpkg-web  Starting
+ Container dpkg-alert  Started
+ Container dpkg-logger  Started
+ Container dpkg-web  Started
+[install] 等待容器 healthy（最长 180s）...
+[install] 全部容器 healthy
+[install] 执行 01_meta.sql（幂等建表）
+mysql: [Warning] Using a password on the command line interface can be insecure.
+[install] 执行 02_meta_i3.sql（I3：t_wf_schedule + 加列 + 内置数据源/节点 seed，幂等）
+mysql: [Warning] Using a password on the command line interface can be insecure.
+1
+1
+1
+1
+1
+1
+1
+1
+1
+1
+[install] 执行 src/dw init SQL（ec_retail 14+3 表 / datara_dw 派生表，幂等）
+mysql: [Warning] Using a password on the command line interface can be insecure.
+mysql: [Warning] Using a password on the command line interface can be insecure.
+[install] 写入初始账号（python -m common.init_accounts）
+2026-09-19 23:56:36 [INFO] [common.db] [instance:-] create_all 完成（meta 表兜底建表，幂等）
+2026-09-19 23:56:36 [INFO] [init_accounts] [instance:-] 初始账号写入: admin（角色 admin）
+2026-09-19 23:56:37 [INFO] [init_accounts] [instance:-] 初始账号写入: dev（角色 dev）
+2026-09-19 23:56:37 [INFO] [init_accounts] [instance:-] 初始账号写入: analyst（角色 analyst）
+2026-09-19 23:56:37 [INFO] [init_accounts] [instance:-] 初始账号写入: viewer（角色 viewer）
+2026-09-19 23:56:37 [INFO] [init_accounts] [instance:-] 初始账号初始化完成（共 4 个）
+[install] datara-mysql-src TCP 3306 就绪
+[install] datara-mysql-dw TCP 3306 就绪
+[install] 提示：日志清理脚本未自动注册定时，建议 crontab 每日 02:00 执行： 0 2 * * * cd /mnt/lei/datara-pkgtest && bash infra/bin/clean_logs.sh --retain-days 30
+[install] 未灌演示数据（需要时追加 --with-demo-data；或重跑 install.sh --with-demo-data）
+
+==================== Datara 部署完成 ====================
+访问地址：http://192.168.1.9:18090
+初始账号（密码可用 DATARA_*_PWD 环境变量覆盖）：
+  admin    / Admin@123     （管理员）
+  dev      / Dev@123       （开发者）
+  analyst  / Analyst@123   （分析师）
+  viewer   / Viewer@123    （观察者）
+常用命令：
+  docker compose ps              # 容器状态
+  docker compose logs -f datara-api
+  bash infra/bin/reset.sh --refill          # 数据重置 + 重灌演示数据
+  bash infra/bin/import.sh --type csv-dir --path <目录>   # 导入客户数据
+=========================================================
+[datara] 步骤 2/3：前端探活 http://localhost:18090/
+[datara] 步骤 3/3：API 冒烟（worker 容器内执行）
+[smoke] commandId=1 终态=done
+[smoke] zkAvailable=True nodes=[None, None, None, None, None]
+[smoke] VERDICT {"login": "PASS", "smoke_command": "PASS", "registry": "PASS", "api_datasources": "PASS", "api_wf_definitions": "PASS", "api_stream_jobs": "PASS"}
+
+==================== Datara 部署完成（含冒烟全过） ====================
+访问地址：http://192.168.1.9:18090
+初始账号（密码经 infra/.env DATARA_*_PWD 可覆盖）：
+  admin    / Admin@123     （管理员）
+  dev      / Dev@123       （开发者）
+  analyst  / Analyst@123   （分析师）
+  viewer   / Viewer@123    （观察者）
+常用命令：
+  docker compose ps                          # 容器状态
+  docker compose logs -f datara-api          # API 日志
+  bash infra/bin/reset.sh --refill           # 数据重置 + 重灌演示数据
+  bash infra/bin/import.sh --type csv-dir --path <目录>   # 导入客户数据
+  bash infra/bin/uninstall.sh                # 卸载（删除全部数据卷，不可恢复）
+详见 README.md（SSH 节点注册 / GreatDB 接入 / 升级说明）
+=======================================================================
+INSTALL_RC=0

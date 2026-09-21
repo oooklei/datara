@@ -1,0 +1,261 @@
+# Datara 平台部署全套编排（I1 平台基座）
+# 部署根 = 本文件所在目录（远端复制至 /mnt/lei/datara/ 布局一致）
+# 五模块（api/master/worker/alert/logger）共用 datara-backend 镜像，以不同 command 启动
+# 密码等敏感配置可从同目录 .env 覆盖（MYSQL_ROOT_PASSWORD / DATARA_ADMIN_PWD 等）
+name: datara
+
+# 后端五模块共享环境变量（YAML 锚点合并）
+x-backend-env: &backend-env
+  TZ: Asia/Shanghai
+  DB_HOST: mysql-meta
+  DB_PORT: "3306"
+  DB_USER: root
+  DB_PWD: ${MYSQL_ROOT_PASSWORD:-datara_2026}
+  DB_NAME: datara_meta
+  REDIS_URL: redis://redis:6379/0
+  ZK_HOSTS: zookeeper:2181
+  LOG_DIR: /datara/logs
+  TOKEN_TTL: "86400"
+  DATARA_ADMIN_PWD: ${DATARA_ADMIN_PWD:-Admin@123}
+  DATARA_DEV_PWD: ${DATARA_DEV_PWD:-Dev@123}
+  DATARA_ANALYST_PWD: ${DATARA_ANALYST_PWD:-Analyst@123}
+  DATARA_VIEWER_PWD: ${DATARA_VIEWER_PWD:-Viewer@123}
+  # 业务库连接（I2 测试数据基座：生成器经 datara-api 容器访问 src/dw）
+  SRC_DB_HOST: datara-mysql-src
+  SRC_DB_PORT: "3306"
+  SRC_DB_USER: root
+  SRC_DB_PWD: ${MYSQL_ROOT_PASSWORD:-datara_2026}
+  SRC_DB_NAME: ec_retail
+  DW_DB_HOST: datara-mysql-dw
+  DW_DB_PORT: "3306"
+  DW_DB_USER: root
+  DW_DB_PWD: ${MYSQL_ROOT_PASSWORD:-datara_2026}
+  DW_DB_NAME: datara_dw
+
+# 后端五模块共享依赖（基础组件健康后才启动）
+x-backend-depends: &backend-depends
+  mysql-meta:
+    condition: service_healthy
+  redis:
+    condition: service_healthy
+  zookeeper:
+    condition: service_healthy
+
+services:
+  # ---------- 注册中心 ----------
+  zookeeper:
+    image: zookeeper:3.9
+    container_name: datara-zookeeper
+    restart: unless-stopped
+    environment:
+      TZ: Asia/Shanghai
+    ports:
+      - "2181:2181"
+    volumes:
+      - zookeeper-data:/data
+    healthcheck:
+      test: ["CMD-SHELL", "echo ruok | nc localhost 2181 || zkServer.sh status || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 15s
+
+  # ---------- 任务队列 / 会话（I3 精化 Stream） ----------
+  redis:
+    image: redis:7
+    container_name: datara-redis
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes"]
+    environment:
+      TZ: Asia/Shanghai
+    ports:
+      - "6380:6379"
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  # ---------- 平台 meta 库（datara_meta，13 张表 init SQL 幂等建表） ----------
+  mysql-meta:
+    image: mysql:8.0
+    container_name: datara-mysql-meta
+    restart: unless-stopped
+    environment:
+      TZ: Asia/Shanghai
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-datara_2026}
+      MYSQL_DATABASE: datara_meta
+    command:
+      - --character-set-server=utf8mb4
+      - --collation-server=utf8mb4_unicode_ci
+    ports:
+      - "3307:3306"
+    volumes:
+      - mysql-meta-data:/var/lib/mysql
+      - ./infra/mysql/init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "mysqladmin ping -uroot -p$$MYSQL_ROOT_PASSWORD --silent"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+      start_period: 30s
+
+  # ---------- 后端五模块（同一镜像，不同 command） ----------
+  datara-api:
+    build: ./datara-backend
+    image: datara-backend:latest
+    container_name: datara-api
+    restart: unless-stopped
+    command: ["uvicorn", "api.main:app", "--host", "0.0.0.0", "--port", "8000"]
+    environment: *backend-env
+    ports:
+      - "8000:8000"
+    depends_on: *backend-depends
+    volumes:
+      - datara-logs:/datara/logs   # datagen 对账报告 reconcile.json 落盘（install/reset/import 可读取）
+      - ./files:/datara/files      # I4 共享文件卷（C22 文件源 /datasources/files 清单）
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:8000/api/v1/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 20s
+
+  datara-master:
+    build: ./datara-backend
+    image: datara-backend:latest
+    container_name: datara-master
+    restart: unless-stopped
+    command: ["python", "-m", "master.main"]
+    environment: *backend-env
+    depends_on: *backend-depends
+    volumes:
+      - datara-logs:/datara/logs   # master 逻辑节点日志（条件/延时/重试/收口）与 worker 同卷，日志 API 才可读（09-18 实测）
+      - ./files:/datara/files      # I4 共享文件卷（C22 kind=file 登记路径解析）
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:18001/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 20s
+
+  datara-worker:
+    build: ./datara-backend
+    image: datara-backend:latest
+    container_name: datara-worker
+    restart: unless-stopped
+    command: ["python", "-m", "worker.main"]
+    environment: *backend-env
+    depends_on: *backend-depends
+    volumes:
+      - datara-logs:/datara/logs
+      - ./files:/datara/files      # I4 共享文件卷（C22 文件读取/物化数据源）
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:18002/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 20s
+
+  datara-alert:
+    build: ./datara-backend
+    image: datara-backend:latest
+    container_name: datara-alert
+    restart: unless-stopped
+    command: ["python", "-m", "alert.main"]
+    environment: *backend-env
+    depends_on: *backend-depends
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:18003/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 20s
+
+  datara-logger:
+    build: ./datara-backend
+    image: datara-backend:latest
+    container_name: datara-logger
+    restart: unless-stopped
+    command: ["python", "-m", "logger.main"]
+    environment: *backend-env
+    depends_on: *backend-depends
+    volumes:
+      - datara-logs:/datara/logs
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:18004/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 20s
+
+  # ---------- 前端（静态 dist + /api 反代到 datara-api） ----------
+  datara-web:
+    image: nginx:1.27-alpine
+    container_name: datara-web
+    restart: unless-stopped
+    ports:
+      - "8090:80"
+    volumes:
+      - ./datara-web/dist:/usr/share/nginx/html:ro
+      - ./datara-web/deploy/nginx.conf:/etc/nginx/conf.d/default.conf:ro
+    depends_on:
+      - datara-api
+
+  # ---------- 业务源库（I2 测试数据集 ec_retail，4 域 14 表 + 3 机密表） ----------
+  datara-mysql-src:
+    image: mysql:8.0
+    container_name: datara-mysql-src
+    restart: unless-stopped
+    environment:
+      TZ: Asia/Shanghai
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-datara_2026}
+      MYSQL_DATABASE: ec_retail
+    command:
+      - --character-set-server=utf8mb4
+      - --collation-server=utf8mb4_unicode_ci
+    ports:
+      - "3310:3306"   # 3308 已被同宿主机 genieppt-mysql 占用（裁定 09-18），src 改绑 3310
+    volumes:
+      - mysql-src-data:/var/lib/mysql
+      - ./infra/mysql/src/init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "mysqladmin ping -uroot -p$$MYSQL_ROOT_PASSWORD --silent"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+      start_period: 30s
+
+  # ---------- 目标数仓（派生态 datara_dw：dwd_order_detail 派生种子表） ----------
+  datara-mysql-dw:
+    image: mysql:8.0
+    container_name: datara-mysql-dw
+    restart: unless-stopped
+    environment:
+      TZ: Asia/Shanghai
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-datara_2026}
+      MYSQL_DATABASE: datara_dw
+    command:
+      - --character-set-server=utf8mb4
+      - --collation-server=utf8mb4_unicode_ci
+    ports:
+      - "3309:3306"
+    volumes:
+      - mysql-dw-data:/var/lib/mysql
+      - ./infra/mysql/dw/init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "mysqladmin ping -uroot -p$$MYSQL_ROOT_PASSWORD --silent"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+      start_period: 30s
+
+volumes:
+  zookeeper-data:
+  redis-data:
+  mysql-meta-data:
+  mysql-src-data:
+  mysql-dw-data:
+  datara-logs:

@@ -1,0 +1,304 @@
+# ============================================================
+# I2 测试数据基座 · 表清单与生成策略（I2 设计文档 §4/§6.2）
+# 生成器：datara-backend/tools/datagen（Python+Faker，全局 seed 可复现）
+# 口径：4 域 14 业务表 = 1,077,200 行；3 机密表 143,000 行另计；
+#       dw 派生种子表 dwd_order_detail 400,000 行（seed 物化）
+# 约束：逻辑外键不建物理 FK（孤儿行脏样本需入库）；外键关系见 relations
+#
+# 列生成策略（strategy）小语言：
+#   seq              主键自增 1..N（唯一 seq 列=主键，且必须是首列）
+#   const:<值>       常量（如密级标记）
+#   null             常量 NULL
+#   int:<min>:<max>  闭区间随机整数
+#   dec:<min>:<max>:<scale>  随机小数（scale 位）
+#   choice:<v1>|<v2> 均匀随机选择（重复值=加权）
+#   faker:<method>   Faker zh_CN 提供器（name/ssn/city_name/province/
+#                    district/street_address/word）；按「表:列」命名空间独立播种，
+#                    保证同 seed 逐行一致（跨列/跨表互不干扰）
+#   ref:<表>.<列>    外键抽样：父表主键为 seq → 等价 [1, 父表行数] 均匀抽样
+#   phone:<前缀>     唯一手机号（按行位派生，11 位合法格式）
+#   randphone        随机手机号（不保证唯一）
+#   calc:<名>        gen.py 内置命名计算器（跨列/时间一致性逻辑）
+#
+# I6 扩展位（裁定 09-18）：届时在 schemas 下追加 east_china/south_china 两
+# schema 的同名表配置，生成器零改动（schema 分组即为此预留）。
+# ============================================================
+
+global:
+  seed: 20260918            # 全局种子：同 seed 重跑逐行一致（同环境）
+  window_days: 90           # 交易窗口：T-89 ~ T（T=运行日），分区滚动基准
+  batch_size: 5000          # executemany 批大小（内存优化：分批生成即释放）
+  target_rows_total: 1077200  # 业务表行数主口径（机密表另计）
+  dsn_env:                  # DSN 环境变量声明：[环境变量名, 默认值]
+    src:
+      host: [SRC_DB_HOST, datara-mysql-src]
+      port: [SRC_DB_PORT, 3306]
+      user: [SRC_DB_USER, root]
+      pwd: [SRC_DB_PWD, datara_2026]
+      db: [SRC_DB_NAME, ec_retail]
+    dw:
+      host: [DW_DB_HOST, datara-mysql-dw]
+      port: [DW_DB_PORT, 3306]
+      user: [DW_DB_USER, root]
+      pwd: [DW_DB_PWD, datara_2026]
+      db: [DW_DB_NAME, datara_dw]
+
+schemas:
+  ec_retail:
+    db: src
+    tables:
+      # ============ 商品域 ============
+      - name: dim_category
+        rows: 500
+        comment: 商品类目（自关联；前 24 行为一级类目）
+        columns:
+          - {name: id, type: INT, strategy: seq, comment: 类目ID}
+          - {name: category_name, type: VARCHAR(64), strategy: "calc:cat_name", comment: 类目名（脏字符样本）}
+          - {name: parent_id, type: INT, nullable: true, strategy: "calc:cat_parent", comment: 父类目}
+          - {name: level, type: TINYINT, strategy: "calc:cat_level", comment: 层级}
+          - {name: sort_order, type: INT, strategy: "int:1:1000", comment: 排序}
+
+      - name: dim_supplier
+        rows: 1500
+        comment: 供应商（三规则实证位：企业信用代码）
+        columns:
+          - {name: id, type: INT, strategy: seq}
+          - {name: supplier_name, type: VARCHAR(128), strategy: "calc:supplier_name"}
+          - {name: credit_code, type: VARCHAR(18), strategy: "calc:credit_unique", comment: 统一社会信用代码（三规则实证位）}
+          - {name: contact_person, type: VARCHAR(64), strategy: "faker:name"}
+          - {name: contact_phone, type: VARCHAR(20), strategy: randphone}
+          - {name: address, type: VARCHAR(255), strategy: "faker:street_address"}
+          - {name: status, type: TINYINT, strategy: "int:0:1"}
+
+      - name: dim_goods
+        rows: 15000
+        comment: 商品维表
+        columns:
+          - {name: id, type: INT, strategy: seq}
+          - {name: goods_name, type: VARCHAR(128), strategy: "calc:goods_name", comment: 商品名（脏字符样本）}
+          - {name: category_id, type: INT, strategy: "int:1:500", comment: FK dim_category.id}
+          - {name: supplier_id, type: INT, strategy: "ref:dim_supplier.id", comment: FK dim_supplier.id}
+          - {name: price, type: DECIMAL(10,2), strategy: "dec:10:5000:2", comment: 售价（越界样本）}
+          - {name: cost_price, type: DECIMAL(10,2), strategy: "calc:cost_price"}
+          - {name: status, type: TINYINT, strategy: "choice:1|1|1|0", comment: 1在售/0下架}
+          - {name: shelf_time, type: DATETIME, strategy: "calc:window_dt"}
+
+      - name: dim_inventory
+        rows: 20000
+        comment: 库存快照（snapshot_date=运行日 T）
+        columns:
+          - {name: id, type: INT, strategy: seq}
+          - {name: goods_id, type: INT, strategy: "ref:dim_goods.id"}
+          - {name: warehouse_code, type: VARCHAR(16), strategy: "choice:WH01|WH02|WH03|WH04|WH05"}
+          - {name: qty, type: INT, strategy: "int:0:5000", comment: 库存量（越界样本）}
+          - {name: snapshot_date, type: DATE, strategy: "calc:snapshot_today"}
+
+      # ============ 用户域 ============
+      - name: dim_user
+        rows: 60000
+        comment: 用户维表（敏感明文植入位：phone/id_card）
+        columns:
+          - {name: id, type: INT, strategy: seq}
+          - {name: username, type: VARCHAR(64), strategy: "calc:username"}
+          - {name: real_name, type: VARCHAR(64), strategy: "faker:name"}
+          - {name: phone, type: VARCHAR(20), strategy: "phone:139", comment: 敏感明文；含格式错样本}
+          - {name: id_card, type: VARCHAR(18), strategy: "faker:ssn", comment: 敏感明文}
+          - {name: nickname, type: VARCHAR(64), nullable: true, strategy: "calc:nickname", comment: 空值样本}
+          - {name: age, type: INT, nullable: true, strategy: "int:16:65", comment: 越界样本 255}
+          - {name: gender, type: CHAR(1), strategy: "choice:M|F"}
+          - {name: city, type: VARCHAR(64), strategy: "faker:city_name"}
+          - {name: user_level, type: TINYINT, strategy: "int:1:5"}
+          - {name: register_time, type: DATETIME, strategy: "calc:register_time"}
+
+      - name: dim_user_address
+        rows: 70000
+        comment: 收货地址
+        columns:
+          - {name: id, type: INT, strategy: seq}
+          - {name: user_id, type: INT, strategy: "ref:dim_user.id"}
+          - {name: province, type: VARCHAR(32), strategy: "faker:province"}
+          - {name: city, type: VARCHAR(32), strategy: "faker:city_name"}
+          - {name: district, type: VARCHAR(32), strategy: "faker:district"}
+          - {name: detail, type: VARCHAR(255), strategy: "faker:street_address", comment: 脏字符样本}
+          - {name: receiver_name, type: VARCHAR(64), strategy: "faker:name"}
+          - {name: receiver_phone, type: VARCHAR(20), strategy: randphone, comment: 格式错样本}
+          - {name: is_default, type: TINYINT, strategy: "int:0:1"}
+
+      - name: ods_cart
+        rows: 10000
+        comment: 购物车流水（重复记录脏样本）
+        columns:
+          - {name: id, type: INT, strategy: seq}
+          - {name: user_id, type: INT, strategy: "ref:dim_user.id"}
+          - {name: goods_id, type: INT, strategy: "ref:dim_goods.id"}
+          - {name: qty, type: INT, strategy: "int:1:5"}
+          - {name: add_time, type: DATETIME, strategy: "calc:cart_time", comment: 时间异常样本}
+          - {name: status, type: TINYINT, strategy: "int:0:3", comment: 枚举外样本 9}
+
+      # ============ 交易域 ============
+      - name: ods_order
+        rows: 250000
+        partition: {column: order_date, days: 90}
+        comment: 订单主表（按天分区 90 天；孤儿/越界/枚举外/空值/格式错样本密集位）
+        columns:
+          - {name: id, type: BIGINT, strategy: seq}
+          - {name: order_no, type: VARCHAR(32), strategy: "calc:order_no"}
+          - {name: user_id, type: INT, strategy: "ref:dim_user.id", comment: 孤儿行样本}
+          - {name: status, type: VARCHAR(8), strategy: "choice:CREATED|PAID|PAID|SHIPPED|DONE|CANCELED", comment: 枚举外样本 X9}
+          - {name: amount, type: DECIMAL(12,2), strategy: "dec:50:20000:2", comment: 越界样本}
+          - {name: receiver_name, type: VARCHAR(64), strategy: "faker:name"}
+          - {name: receiver_phone, type: VARCHAR(20), strategy: randphone, comment: 格式错样本}
+          - {name: remark, type: VARCHAR(255), nullable: true, strategy: "calc:remark", comment: 空值样本}
+          - {name: create_time, type: DATETIME, strategy: "calc:order_ctime", comment: 由行位确定性推导}
+          - {name: order_date, type: DATE, strategy: "calc:order_date_self", comment: 分区键}
+
+      - name: ods_order_item
+        rows: 400000
+        partition: {column: order_date, days: 90}
+        comment: 订单明细（分区键冗余自父单）
+        columns:
+          - {name: id, type: BIGINT, strategy: seq}
+          - {name: order_id, type: BIGINT, strategy: "ref:ods_order.id", comment: 孤儿行样本}
+          - {name: goods_id, type: INT, strategy: "ref:dim_goods.id"}
+          - {name: qty, type: INT, strategy: "int:1:10"}
+          - {name: unit_price, type: DECIMAL(10,2), strategy: "dec:5:2000:2"}
+          - {name: item_amount, type: DECIMAL(12,2), strategy: "calc:item_amount", comment: qty*unit_price}
+          - {name: order_date, type: DATE, strategy: "calc:item_order_date", comment: 分区键=父单日期}
+
+      - name: ods_payment
+        rows: 200000
+        partition: {column: pay_date, days: 90}
+        comment: 支付流水（时间异常样本：早于下单/未来时间）
+        columns:
+          - {name: id, type: BIGINT, strategy: seq}
+          - {name: order_id, type: BIGINT, strategy: "ref:ods_order.id"}
+          - {name: pay_channel, type: VARCHAR(16), strategy: "choice:alipay|alipay|wechat|wechat|unionpay|cash", comment: 枚举外样本 bitcoin}
+          - {name: pay_amount, type: DECIMAL(12,2), strategy: "dec:20:20000:2", comment: 越界样本}
+          - {name: pay_time, type: DATETIME, strategy: "calc:pay_time", comment: 时间异常样本}
+          - {name: pay_date, type: DATE, strategy: "calc:date_of_pay", comment: 分区键}
+
+      - name: ods_refund
+        rows: 15000
+        comment: 退款流水（时间异常样本：早于下单）
+        columns:
+          - {name: id, type: BIGINT, strategy: seq}
+          - {name: order_id, type: BIGINT, strategy: "ref:ods_order.id"}
+          - {name: refund_amount, type: DECIMAL(12,2), strategy: "dec:10:5000:2", comment: 越界样本}
+          - {name: reason, type: VARCHAR(128), strategy: "choice:七天无理由|质量问题|物流损坏|拍错商品|不想要了|缺货"}
+          - {name: refund_time, type: DATETIME, strategy: "calc:refund_time"}
+
+      # ============ 营销域 ============
+      - name: ods_coupon
+        rows: 5000
+        comment: 优惠券定义
+        columns:
+          - {name: id, type: INT, strategy: seq}
+          - {name: coupon_name, type: VARCHAR(64), strategy: "calc:coupon_name"}
+          - {name: discount, type: DECIMAL(8,2), strategy: "dec:5:200:2"}
+          - {name: min_spend, type: DECIMAL(8,2), strategy: "calc:min_spend", comment: 门槛=面额*2+10}
+          - {name: total_cnt, type: INT, strategy: "int:100:10000"}
+          - {name: valid_from, type: DATE, strategy: "calc:coupon_from"}
+          - {name: valid_to, type: DATE, strategy: "calc:coupon_to"}
+
+      - name: ods_coupon_usage
+        rows: 30000
+        comment: 用券流水（时间异常样本：早于生效日）
+        columns:
+          - {name: id, type: INT, strategy: seq}
+          - {name: coupon_id, type: INT, strategy: "ref:ods_coupon.id"}
+          - {name: user_id, type: INT, strategy: "ref:dim_user.id"}
+          - {name: order_id, type: BIGINT, strategy: "ref:ods_order.id"}
+          - {name: used_time, type: DATETIME, strategy: "calc:usage_time"}
+
+      - name: dim_promotion_activity
+        rows: 200
+        comment: 促销活动
+        columns:
+          - {name: id, type: INT, strategy: seq}
+          - {name: activity_name, type: VARCHAR(128), strategy: "calc:activity_name"}
+          - {name: channel, type: VARCHAR(32), strategy: "choice:app|wechat|weibo|douyin|offline"}
+          - {name: budget, type: DECIMAL(12,2), strategy: "dec:10000:500000:2"}
+          - {name: start_time, type: DATETIME, strategy: "calc:window_dt"}
+          - {name: end_time, type: DATETIME, strategy: "calc:act_end"}
+
+      # ============ 机密表（安全权限实证位，密级标记；行数另计） ============
+      - name: sec_user_identity
+        rows: 60000
+        sec_level: 机密
+        comment: 用户实名信息（三规则实证位：身份证+手机号）
+        columns:
+          - {name: id, type: INT, strategy: seq}
+          - {name: user_id, type: INT, strategy: "ref:dim_user.id"}
+          - {name: real_name, type: VARCHAR(64), strategy: "faker:name", comment: 敏感明文}
+          - {name: id_card, type: VARCHAR(18), strategy: "faker:ssn", comment: 三规则实证位；含校验位错样本}
+          - {name: phone, type: VARCHAR(20), strategy: "phone:158", comment: 敏感明文；含格式错样本}
+          - {name: sec_level, type: VARCHAR(8), strategy: "const:机密"}
+
+      - name: sec_bank_card
+        rows: 80000
+        sec_level: 绝密
+        comment: 银行卡（明文卡号，供 I8 脱敏样例）
+        columns:
+          - {name: id, type: INT, strategy: seq}
+          - {name: user_id, type: INT, strategy: "ref:dim_user.id"}
+          - {name: card_no, type: VARCHAR(24), strategy: "calc:card_no", comment: 明文卡号}
+          - {name: bank_name, type: VARCHAR(64), strategy: "choice:工商银行|建设银行|农业银行|中国银行|交通银行|招商银行|邮储银行|浦发银行|中信银行|民生银行"}
+          - {name: expire_date, type: CHAR(7), strategy: "calc:expire_date", comment: MM/YYYY}
+          - {name: sec_level, type: VARCHAR(8), strategy: "const:绝密"}
+
+      - name: sec_supplier_contract
+        rows: 3000
+        sec_level: 机密
+        comment: 供应商合同（三规则实证位：信用代码）
+        columns:
+          - {name: id, type: INT, strategy: seq}
+          - {name: supplier_id, type: INT, strategy: "ref:dim_supplier.id"}
+          - {name: contract_no, type: VARCHAR(32), strategy: "calc:contract_no"}
+          - {name: credit_code, type: VARCHAR(18), strategy: "calc:credit_unique", comment: 三规则实证位}
+          - {name: contract_amount, type: DECIMAL(14,2), strategy: "dec:10000:2000000:2"}
+          - {name: contact_person, type: VARCHAR(64), strategy: "faker:name"}
+          - {name: sec_level, type: VARCHAR(8), strategy: "const:机密"}
+
+  datara_dw:
+    db: dw
+    tables:
+      - name: dwd_order_detail
+        rows: 400000
+        derived: true
+        comment: 订单明细宽表（派生种子：item 驱动 LEFT JOIN order/goods/payment 聚合）
+        columns:
+          - {name: item_id, type: BIGINT, strategy: seq}
+          - {name: order_id, type: BIGINT, nullable: true, strategy: null}
+          - {name: order_no, type: VARCHAR(32), nullable: true, strategy: null}
+          - {name: user_id, type: INT, nullable: true, strategy: null}
+          - {name: goods_id, type: INT, nullable: true, strategy: null}
+          - {name: goods_name, type: VARCHAR(128), nullable: true, strategy: null}
+          - {name: category_id, type: INT, nullable: true, strategy: null}
+          - {name: qty, type: INT, nullable: true, strategy: null}
+          - {name: unit_price, type: DECIMAL(10,2), nullable: true, strategy: null}
+          - {name: item_amount, type: DECIMAL(12,2), nullable: true, strategy: null}
+          - {name: order_status, type: VARCHAR(8), nullable: true, strategy: null}
+          - {name: pay_channel, type: VARCHAR(16), nullable: true, strategy: null}
+          - {name: pay_amount, type: DECIMAL(12,2), nullable: true, strategy: null}
+          - {name: order_date, type: DATE, nullable: true, strategy: null}
+
+# 逻辑外键关系（不建物理 FK；血缘/同步/ER 的数据依据，I5 血缘对账基准）
+relations:
+  - {from: dim_user.id, to: dim_user_address.user_id, type: 1:N}
+  - {from: dim_user.id, to: ods_cart.user_id, type: 1:N}
+  - {from: dim_user.id, to: ods_order.user_id, type: 1:N}
+  - {from: dim_user.id, to: ods_coupon_usage.user_id, type: 1:N}
+  - {from: dim_user.id, to: sec_user_identity.user_id, type: 1:1}
+  - {from: dim_user.id, to: sec_bank_card.user_id, type: 1:N}
+  - {from: dim_category.id, to: dim_goods.category_id, type: 1:N}
+  - {from: dim_category.id, to: dim_category.parent_id, type: 自关联}
+  - {from: dim_supplier.id, to: dim_goods.supplier_id, type: 1:N}
+  - {from: dim_supplier.id, to: sec_supplier_contract.supplier_id, type: 1:N}
+  - {from: dim_goods.id, to: ods_cart.goods_id, type: 1:N}
+  - {from: dim_goods.id, to: dim_inventory.goods_id, type: 1:N}
+  - {from: dim_goods.id, to: ods_order_item.goods_id, type: 1:N}
+  - {from: ods_order.id, to: ods_order_item.order_id, type: 1:N}
+  - {from: ods_order.id, to: ods_payment.order_id, type: 1:N}
+  - {from: ods_order.id, to: ods_refund.order_id, type: 1:N}
+  - {from: ods_order.id, to: ods_coupon_usage.order_id, type: 1:N}
+  - {from: ods_coupon.id, to: ods_coupon_usage.coupon_id, type: 1:N}

@@ -1,0 +1,16 @@
+[project]
+name = "datara-backend"
+version = "0.1.0"
+description = "Datara 数据治理平台 · 后端五模块（api/master/worker/alert/logger）"
+requires-python = ">=3.11"
+
+[tool.ruff]
+target-version = "py311"
+line-length = 120
+
+[tool.ruff.lint]
+# 与 I1 验证门一致：默认规则（E/F），禁用 3.12 容忍语法的检查不额外放宽
+select = ["E", "F", "W"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["common", "api", "master", "worker", "alert", "logger"]

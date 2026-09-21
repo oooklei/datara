@@ -1,0 +1,228 @@
+# ============================================================
+# I2 测试数据基座 · 脏数据矩阵（I2 设计文档 §5，9 类）
+#
+# 注入机制（裁定：可复现、可对账）：
+#   - 计数驱动：expected = count 或 round(rows*ratio)，锚定行含在 expected 内
+#     （expected = 随机注入 + 锚定行），生成器产出精确条数 → reconcile 严格相等
+#   - 锚定段：每条值型规则在表尾占互不重叠的锚定块（anchor 条，确定性主键段），
+#     1.9 核对 SQL 用锚定段断言，不受 seed 漂移影响
+#   - 结构型规则（duplicate_row 同内容重复对 / phone_pair 同号不同户对）不占
+#     锚定块，按对数采样，锚定对固定在表尾
+#   - 变换值全部唯一化设计（如 1X+行位、行位补齐+Q），避免跨规则计数串扰
+#
+# 敏感明文植入（规则 9，全量）不在此声明——它是 dim_user.phone/id_card、
+# sec_* 表的默认生成策略本身；三规则实证位核对见 verify_queries.sql。
+# ============================================================
+
+rules:
+  # ---- 1 空值/缺失 ----
+  - id: r_user_nick_null
+    table: dim_user
+    column: nickname
+    kind: null_value
+    ratio: 0.05      # 3,000
+    anchor: 10
+  - id: r_order_remark_null
+    table: ods_order
+    column: remark
+    kind: null_value
+    ratio: 0.08      # 20,000
+    anchor: 10
+
+  # ---- 2 重复记录 ----
+  - id: r_cart_dup
+    table: ods_cart
+    kind: duplicate_row
+    ratio: 0.005     # 50 对（含表尾 1 对锚定重复对）
+    anchor: 1
+  - id: r_user_phone_pair
+    table: dim_user
+    column: phone
+    kind: phone_pair
+    count: 500       # 500 对同号不同户（1,000 行受累）
+
+  # ---- 3 格式错误 ----
+  - id: r_user_phone_fmt
+    table: dim_user
+    column: phone
+    kind: format_phone
+    ratio: 0.02      # 1,200
+    anchor: 10
+  - id: r_addr_phone_fmt
+    table: dim_user_address
+    column: receiver_phone
+    kind: format_phone
+    ratio: 0.02      # 1,400
+    anchor: 10
+  - id: r_order_recvphone_fmt
+    table: ods_order
+    column: receiver_phone
+    kind: format_phone
+    ratio: 0.02      # 5,000
+    anchor: 10
+  - id: r_sui_idcard_fmt
+    table: sec_user_identity
+    column: id_card
+    kind: format_idcard
+    ratio: 0.02      # 1,200（校验位错）
+    anchor: 10
+  - id: r_sui_phone_fmt
+    table: sec_user_identity
+    column: phone
+    kind: format_phone
+    ratio: 0.02      # 1,200
+    anchor: 10
+
+  # ---- 4 越界值 ----
+  - id: r_user_age_range
+    table: dim_user
+    column: age
+    kind: out_of_range
+    ratio: 0.001     # 60
+    anchor: 10
+    bounds: [0, 120]
+    values: [255]
+  - id: r_goods_price_range
+    table: dim_goods
+    column: price
+    kind: out_of_range
+    ratio: 0.005     # 75
+    anchor: 3
+    bounds: [0, 100000]
+    values: [-1.0, 999999.99]
+  - id: r_inv_qty_range
+    table: dim_inventory
+    column: qty
+    kind: out_of_range
+    ratio: 0.01      # 200
+    anchor: 5
+    bounds: [0, 1000000]
+    values: [-5]
+  - id: r_order_amount_range
+    table: ods_order
+    column: amount
+    kind: out_of_range
+    ratio: 0.003     # 750
+    anchor: 10
+    bounds: [0, 100000]
+    values: [-999.99, 9999999.99]
+  - id: r_pay_amount_range
+    table: ods_payment
+    column: pay_amount
+    kind: out_of_range
+    ratio: 0.005     # 1,000
+    anchor: 10
+    bounds: [0, 1000000]
+    values: [-99.99, 9999999.99]
+  - id: r_refund_amount_range
+    table: ods_refund
+    column: refund_amount
+    kind: out_of_range
+    ratio: 0.01      # 150
+    anchor: 5
+    bounds: [0, 1000000]
+    values: [-1.0, 9999999.99]
+
+  # ---- 5 枚举外值 ----
+  - id: r_cart_status_enum
+    table: ods_cart
+    column: status
+    kind: enum_out
+    ratio: 0.005     # 50
+    anchor: 5
+    value: 9
+    allowed: [0, 1, 2, 3]
+  - id: r_order_status_enum
+    table: ods_order
+    column: status
+    kind: enum_out
+    ratio: 0.002     # 500
+    anchor: 10
+    value: X9
+    allowed: [CREATED, PAID, SHIPPED, DONE, CANCELED]
+  - id: r_pay_channel_enum
+    table: ods_payment
+    column: pay_channel
+    kind: enum_out
+    ratio: 0.003     # 600
+    anchor: 10
+    value: bitcoin
+    allowed: [alipay, wechat, unionpay, cash]
+
+  # ---- 6 引用断裂（孤儿行） ----
+  - id: r_order_user_orphan
+    table: ods_order
+    column: user_id
+    kind: orphan
+    ratio: 0.003     # 750
+    anchor: 10
+    parent: dim_user.id
+    anchor_from: 999999001   # 锚定 user_id=999999001~999999010（设计文档 §5.2 样例）
+  - id: r_item_order_orphan
+    table: ods_order_item
+    column: order_id
+    kind: orphan
+    ratio: 0.001     # 400
+    anchor: 10
+    parent: ods_order.id
+    anchor_from: 899999001
+
+  # ---- 7 时间异常 ----
+  - id: r_cart_addtime_invalid
+    table: ods_cart
+    column: add_time
+    kind: time_invalid
+    ratio: 0.01      # 100（远过去/未来）
+    anchor: 5
+    values: ["2019-01-01 00:00:00", "2099-12-31 00:00:00"]
+  - id: r_pay_time_before
+    table: ods_payment
+    column: pay_time
+    kind: time_before_order
+    ratio: 0.005     # 1,000（早于下单）
+    anchor: 10
+    offset: 7200
+  - id: r_pay_time_future
+    table: ods_payment
+    column: pay_time
+    kind: time_future
+    ratio: 0.001     # 200（未来时间戳）
+    anchor: 10
+    value: "2099-12-31 00:00:00"
+  - id: r_refund_time_before
+    table: ods_refund
+    column: refund_time
+    kind: time_before_order
+    ratio: 0.01      # 150（退款早于下单）
+    anchor: 5
+    offset: 86400
+  - id: r_usage_time_before
+    table: ods_coupon_usage
+    column: used_time
+    kind: time_before_coupon
+    ratio: 0.01      # 300（早于券生效日）
+    anchor: 5
+    offset_days: 5
+
+  # ---- 8 编码/脏字符（前后空格、emoji、控制字符；标记 😀 计数） ----
+  - id: r_cat_name_dirty
+    table: dim_category
+    column: category_name
+    kind: dirty_chars
+    ratio: 0.01      # 5
+    anchor: 3
+    marker: "😀"
+  - id: r_goods_name_dirty
+    table: dim_goods
+    column: goods_name
+    kind: dirty_chars
+    ratio: 0.01      # 150
+    anchor: 3
+    marker: "😀"
+  - id: r_addr_detail_dirty
+    table: dim_user_address
+    column: detail
+    kind: dirty_chars
+    ratio: 0.01      # 700
+    anchor: 5
+    marker: "😀"

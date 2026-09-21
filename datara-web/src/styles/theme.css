@@ -1,0 +1,310 @@
+/* ============================================================
+   Datara Beta · BAT 风格 Design Tokens（迁移自原型 main.css）
+   v2 · 现代化精修：色阶 / 阴影阶梯 / 圆角阶梯 / 动效令牌 / EP 覆盖
+   ============================================================ */
+:root{
+  --primary:#1668dc; --primary-hover:#3c86f7; --primary-light:#e8f1ff; --primary-dark:#0e4bb0; --primary-active:#0f5ec4;
+  --bg:#f5f6f8; --bg-deep:#eef0f4; --card:#ffffff; --border:#e7eaf0; --border-strong:#d3d9e3;
+  --text:#1f2430; --text-2:#5b6478; --text-3:#8c94a6;
+  --sidebar:#001529; --sidebar-2:#0c2135; --sidebar-text:#b7c2d1;
+  --success:#16a34a; --success-bg:#e8f8ef;
+  --danger:#e5484d; --danger-bg:#fdecec;
+  --warn:#d97706; --warn-bg:#fdf3e0;
+  --info:#1668dc; --info-bg:#e8f1ff;
+  --purple:#7c3aed; --cyan:#0891b2;
+  /* 阴影阶梯（elevation scale） */
+  --shadow:0 1px 2px rgba(16,24,40,.05),0 1px 3px rgba(16,24,40,.08);
+  --shadow-md:0 2px 6px rgba(16,24,40,.06),0 4px 12px rgba(16,24,40,.08);
+  --shadow-lg:0 8px 24px rgba(16,24,40,.14);
+  --shadow-xl:0 12px 40px rgba(16,24,40,.18);
+  --shadow-primary:0 4px 12px rgba(22,104,220,.28);
+  /* 圆角阶梯 */
+  --radius:8px; --radius-sm:6px; --radius-lg:10px; --radius-xl:14px;
+  /* 动效令牌 */
+  --ease:cubic-bezier(.4,0,.2,1);
+  --dur-fast:.15s; --dur-base:.2s; --dur-slow:.3s;
+  /* 图内核专属 token */
+  --wb-header-h:44px;
+  --node-w:180px; --node-h:48px; --node-radius:8px;
+  /* ---- Element Plus 品牌化覆盖（全局统一主色/圆角/边框） ---- */
+  --el-color-primary:#1668dc;
+  --el-color-primary-light-3:#4a8ae4;
+  --el-color-primary-light-5:#7aa9ec;
+  --el-color-primary-light-7:#b4cff5;
+  --el-color-primary-light-8:#d0e2f8;
+  --el-color-primary-light-9:#e8f1ff;
+  --el-color-primary-dark-2:#0e4bb0;
+  --el-border-radius-base:6px;
+  --el-border-radius-small:4px;
+  --el-border-color:#e7eaf0;
+  --el-border-color-light:#e7eaf0;
+  --el-border-color-lighter:#edf0f5;
+  --el-text-color-primary:#1f2430;
+  --el-text-color-regular:#5b6478;
+  --el-text-color-secondary:#8c94a6;
+  --el-fill-color-light:#f5f6f8;
+  --el-fill-color-lighter:#f8f9fb;
+  --el-box-shadow:0 2px 6px rgba(16,24,40,.06),0 4px 12px rgba(16,24,40,.08);
+  --el-box-shadow-light:0 1px 2px rgba(16,24,40,.05),0 1px 3px rgba(16,24,40,.08);
+  --el-font-size-base:13px;
+}
+*{margin:0;padding:0;box-sizing:border-box}
+html,body,#app{height:100%}
+body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Hiragino Sans GB","Microsoft YaHei",sans-serif;background:var(--bg);color:var(--text);font-size:13px;line-height:1.6}
+a{color:var(--primary);text-decoration:none;cursor:pointer}
+a:hover{color:var(--primary-hover)}
+::-webkit-scrollbar{width:8px;height:8px}
+::-webkit-scrollbar-thumb{background:#c9cfdb;border-radius:4px}
+::-webkit-scrollbar-thumb:hover{background:#aeb6c6}
+::-webkit-scrollbar-track{background:transparent}
+*{scrollbar-width:thin;scrollbar-color:#c3cbd9 transparent}
+.mono{font-family:ui-monospace,SFMono-Regular,Consolas,Menlo,monospace}
+
+/* ---------- 全局现代化增强（a11y / motion / EP 精修） ---------- */
+/* 可见焦点环（可达性 P1：键盘导航不可去掉焦点态） */
+:focus-visible{outline:2px solid var(--primary);outline-offset:2px;border-radius:4px}
+button:focus:not(:focus-visible),input:focus:not(:focus-visible),select:focus:not(:focus-visible),textarea:focus:not(:focus-visible){outline:none}
+::selection{background:rgba(22,104,220,.18)}
+/* 动效降级：尊重系统减弱动效设置 */
+@media (prefers-reduced-motion:reduce){
+  *,*::before,*::after{animation-duration:.01ms !important;animation-iteration-count:1 !important;transition-duration:.01ms !important}
+}
+/* 通用交互元素统一过渡手感 */
+button,.btn,.el-button,a,.menu-item,.card,.stat{transition:all var(--dur-base) var(--ease)}
+/* 行内操作/新建按钮全局兜底：与 43 处 scoped 标准态同文本（scoped 优先级更高，内容一致互不冲突）；
+   页面未定义 scoped 版本时（如数据安全组）自动获得标准按钮，避免浏览器裸按钮 */
+.op-btn{border:1px solid var(--border-strong);background:#fff;border-radius:var(--radius-sm);padding:4px 9px;font-size:11.5px;cursor:pointer;color:var(--text-2);transition:all var(--dur-fast) var(--ease)}
+.op-btn:hover{border-color:var(--primary);color:var(--primary);background:var(--primary-light)}
+.op-btn.primary{color:var(--primary);border-color:rgba(22,104,220,.4);font-weight:600}
+.op-btn:disabled{opacity:.45;cursor:not-allowed}
+.tb-new{border:none;background:var(--primary);color:#fff;border-radius:var(--radius-sm);padding:7px 14px;font-size:12.5px;font-weight:500;cursor:pointer;transition:all var(--dur-base) var(--ease)}
+.tb-new:hover{background:var(--primary-hover);box-shadow:var(--shadow-primary)}
+/* 通用小输入控件兜底（搜索框/弹层表单）：与 scoped 标准态同文本，width 由各页自定 */
+.kw{border:1px solid var(--border-strong);border-radius:6px;padding:6px 10px;font-size:12.5px;outline:none;color:var(--text);font-family:inherit;box-sizing:border-box}
+.kw:focus{border-color:var(--primary)}
+/* 区块标题兜底（包豪斯几何竖条记忆点）：inline-flex 保证非 flex 容器内不断行；scoped 同名定义优先 */
+.sec-head{display:inline-flex;align-items:center;gap:8px;font-weight:700;font-size:14px}
+.sec-head::before{content:'';width:3px;height:14px;border-radius:2px;background:linear-gradient(180deg,var(--primary),var(--purple));flex-shrink:0}
+/* 卡片悬浮增强（仅悬停微妙上浮，静态卡片无副作用） */
+.card:hover{box-shadow:var(--shadow-md)}
+/* Element Plus 组件品牌化精修 */
+.el-button{font-weight:500}
+.el-button--primary:not(.is-disabled):hover{box-shadow:var(--shadow-primary)}
+.el-table th.el-table__cell{background:var(--bg) !important;color:var(--text-2);font-weight:600}
+.el-table td.el-table__cell,.el-table th.el-table__cell.is-leaf{border-color:var(--border)}
+.el-table--enable-row-hover .el-table__body tr:hover>td.el-table__cell{background:var(--primary-light) !important}
+.el-dialog{border-radius:var(--radius-lg)}
+.el-card{border-color:var(--border);border-radius:var(--radius-lg)}
+.el-tabs__item{font-size:13px}
+.el-tag{border-radius:4px}
+/* 路由切换过渡（空间连续性：轻微上移淡入，200ms） */
+.route-fade-enter-active{transition:opacity var(--dur-base) var(--ease),transform var(--dur-base) var(--ease)}
+.route-fade-leave-active{transition:opacity var(--dur-fast) var(--ease)}
+.route-fade-enter-from{opacity:0;transform:translateY(6px)}
+.route-fade-leave-to{opacity:0}
+
+/* ---------- 全局壳布局 ---------- */
+.layout{display:flex;height:100vh;overflow:hidden}
+.sidebar{width:228px;background:linear-gradient(180deg,#0b1c33 0%,#0a1930 60%,#0c2135 100%);color:var(--sidebar-text);display:flex;flex-direction:column;flex-shrink:0;position:relative}
+.sidebar::after{content:'';position:absolute;top:0;left:0;right:0;height:180px;background:radial-gradient(600px 180px at 20% 0,rgba(22,104,220,.18),transparent 70%);pointer-events:none}
+.logo{height:56px;display:flex;align-items:center;gap:10px;padding:0 18px;color:#fff;font-size:15px;font-weight:600;letter-spacing:.5px;border-bottom:1px solid rgba(255,255,255,.06)}
+.logo .mark{width:28px;height:28px;border-radius:8px;background:linear-gradient(135deg,#1668dc,#7c3aed);display:flex;align-items:center;justify-content:center;font-size:14px;color:#fff;box-shadow:0 2px 8px rgba(22,104,220,.4)}
+.menu{flex:1;overflow-y:auto;padding:8px 0 16px;position:relative;z-index:1}
+.menu-group-title{padding:14px 26px 6px;font-size:11px;color:#54718f;text-transform:uppercase;letter-spacing:1.2px;font-weight:600}
+.menu-item{display:flex;align-items:center;gap:10px;margin:2px 10px;padding:8px 12px;cursor:pointer;color:var(--sidebar-text);font-size:13px;border-radius:8px;position:relative}
+.menu-item:hover{background:rgba(255,255,255,.06);color:#fff}
+.menu-item.active{background:linear-gradient(90deg,rgba(22,104,220,.9),rgba(60,134,247,.55));color:#fff;box-shadow:0 2px 8px rgba(22,104,220,.35)}
+.menu-item .ico{width:18px;text-align:center;font-size:14px;opacity:.85}
+.menu-item.active .ico{opacity:1}
+.menu-item .caret{margin-left:auto;font-size:10px;color:#5a7396;transition:transform var(--dur-base) var(--ease);cursor:pointer;padding:2px 4px;border-radius:4px}
+.menu-item .caret:hover{background:rgba(255,255,255,.1);color:#fff}
+.menu-item .caret.open{transform:rotate(180deg)}
+.submenu{position:relative}
+.submenu::before{content:'';position:absolute;left:19px;top:2px;bottom:2px;width:1px;background:rgba(255,255,255,.08);pointer-events:none}
+.menu-item.sub{margin:1px 10px 1px 26px;padding:7px 12px;font-size:12.5px}
+.menu-item.sub::before{content:'';width:4px;height:4px;border-radius:50%;background:currentColor;opacity:.4;flex-shrink:0;margin-right:2px}
+.menu-item.sub.active::before{opacity:1}
+.menu-item.sub .lbl{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.layout > .main{flex:1;display:flex;flex-direction:column;min-width:0}
+.topbar{height:48px;background:var(--card);border-bottom:1px solid var(--border);display:flex;align-items:center;gap:12px;padding:0 16px;flex-shrink:0;box-shadow:0 1px 2px rgba(16,24,40,.03)}
+.topbar .crumb{color:var(--text-3);font-size:12.5px;display:flex;align-items:center;gap:6px}
+.topbar .crumb::before{content:'';width:3px;height:14px;border-radius:2px;background:linear-gradient(180deg,var(--primary),var(--purple))}
+.topbar .crumb b{color:var(--text);font-weight:600}
+.topbar .spacer{flex:1}
+.avatar{width:26px;height:26px;border-radius:50%;background:linear-gradient(135deg,#1668dc,#0891b2);color:#fff;display:flex;align-items:center;justify-content:center;font-size:12px}
+/* 顶栏用户徽章 + 身份切换弹层（M15 演示态） */
+.user-chip{position:relative;display:flex;align-items:center;gap:8px;padding:3px 10px;border:1px solid var(--border);border-radius:8px;cursor:pointer;user-select:none}
+.user-chip:hover{border-color:var(--primary)}
+.user-meta{display:flex;flex-direction:column;line-height:1.25}
+.user-meta b{font-size:12.5px;color:var(--text-1)}
+.user-meta span{font-size:10.5px;color:var(--text-3)}
+.user-chip .caret{font-size:10px;color:var(--text-3);transition:transform .15s}
+.user-chip .caret.open{transform:rotate(180deg)}
+.user-pop{position:absolute;top:calc(100% + 8px);right:0;width:232px;background:#fff;border:1px solid var(--border);border-radius:10px;box-shadow:0 10px 32px rgba(15,23,42,.16);padding:8px;z-index:60}
+.pop-title{font-size:11px;color:var(--text-3);padding:4px 8px 8px;border-bottom:1px dashed var(--border);margin-bottom:6px}
+.pop-item{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:7px 8px;border-radius:7px;cursor:pointer;font-size:12.5px}
+.pop-item:hover{background:var(--bg)}
+.pop-item.on{background:rgba(22,104,220,.08);color:var(--primary)}
+.pop-item span{font-size:10.5px;color:var(--text-3)}
+/* ---------- 顶栏消息中心（notifications） ---------- */
+.bell{position:relative;display:flex;align-items:center;justify-content:center;width:30px;height:30px;border:1px solid var(--border);border-radius:8px;cursor:pointer;user-select:none}
+.bell:hover{border-color:var(--primary)}
+.bell-ico{color:var(--text-2)}
+.bell-badge{position:absolute;top:-3px;right:-3px;min-width:15px;height:15px;padding:0 3px;border-radius:8px;background:#dc2626;color:#fff;font-size:9.5px;font-weight:700;display:flex;align-items:center;justify-content:center}
+.notif-pop{position:absolute;top:calc(100% + 8px);right:-8px;width:340px;max-height:420px;overflow:auto;background:#fff;border:1px solid var(--border);border-radius:10px;box-shadow:0 10px 32px rgba(15,23,42,.16);padding:8px;z-index:60}
+.notif-item{display:flex;gap:8px;align-items:flex-start;padding:8px;border-radius:7px;cursor:pointer;font-size:12px}
+.notif-item:hover{background:var(--bg)}
+.notif-item .n-ico{flex-shrink:0;width:22px;height:22px;border-radius:6px;display:flex;align-items:center;justify-content:center;font-size:12px;background:var(--bg)}
+.notif-item.err .n-ico{background:rgba(220,38,38,.12)}
+.notif-item.ok .n-ico{background:rgba(22,163,74,.12)}
+.notif-item.warn .n-ico{background:rgba(217,119,6,.12)}
+.notif-item.info .n-ico{background:rgba(22,104,220,.1)}
+.notif-item .n-meta{display:flex;flex-direction:column;gap:2px;min-width:0}
+.notif-item .n-meta b{font-size:12px;color:var(--text-1);font-weight:600}
+.notif-item .n-meta span{font-size:10.5px;color:var(--text-3)}
+.notif-item .n-time{margin-left:auto;flex-shrink:0;font-size:10px;color:var(--text-3)}
+.notif-item.read{opacity:.5}
+.notif-empty{text-align:center;color:var(--text-3);font-size:12px;padding:18px 0}
+.page{flex:1;overflow:auto;padding:16px}
+
+/* ---------- 卡片 / 统计 ---------- */
+.card{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);box-shadow:var(--shadow)}
+.stat-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:14px}
+.stat{padding:14px 16px}
+.stat .k{color:var(--text-3);font-size:12px}
+.stat .v{font-size:24px;font-weight:700;margin-top:2px}
+.stat .d{font-size:11.5px;margin-top:2px}
+
+/* ---------- 图工作台（GraphWorkbench） ---------- */
+.wb{display:flex;flex-direction:column;height:100%;background:var(--bg)}
+.wb-header{height:var(--wb-header-h);background:var(--card);border-bottom:1px solid var(--border);display:flex;align-items:center;gap:8px;padding:0 12px;flex-shrink:0}
+.wb-title{font-weight:600;font-size:13.5px;display:flex;align-items:center;gap:8px}
+.wb-title .badge{font-size:10.5px;padding:1px 8px;border-radius:10px;background:var(--primary-light);color:var(--primary);font-weight:500}
+.wb-body{flex:1;display:flex;min-height:0;position:relative}
+.wb-palette{width:232px;background:var(--card);border-right:1px solid var(--border);display:flex;flex-direction:column;flex-shrink:0}
+.wb-canvas{flex:1;position:relative;min-width:0}
+.wb-inspector{width:288px;background:var(--card);border-left:1px solid var(--border);overflow-y:auto;flex-shrink:0}
+
+/* 元件库 */
+.pal-search{padding:10px;border-bottom:1px solid var(--border)}
+.pal-list{flex:1;overflow-y:auto;padding:6px}
+.pal-cat{margin-bottom:2px}
+.pal-cat-head{display:flex;align-items:center;gap:6px;padding:7px 8px;cursor:pointer;color:var(--text-2);font-size:12.5px;font-weight:600;border-radius:6px;user-select:none}
+.pal-cat-head:hover{background:var(--bg)}
+.pal-cat-head .cnt{margin-left:auto;font-size:10.5px;color:var(--text-3);background:var(--bg);border-radius:8px;padding:0 7px}
+.pal-cat-head .arrow{transition:transform .15s;font-size:10px}
+.pal-cat.fold .pal-cat-head .arrow{transform:rotate(-90deg)}
+.pal-cat.fold .pal-items{display:none}
+.pal-item{display:flex;align-items:center;gap:9px;padding:5px 8px;border-radius:6px;cursor:grab;border:1px solid transparent;user-select:none}
+.pal-item:hover{background:var(--primary-light);border-color:rgba(22,104,220,.25)}
+.pal-item .p-ico{width:26px;height:26px;border-radius:6px;display:flex;align-items:center;justify-content:center;color:#fff;font-size:13px;flex-shrink:0}
+.pal-item .p-name{font-size:12.5px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.pal-item .p-desc{font-size:10.5px;color:var(--text-3);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+/* 未注册组件灰置（I1 palette 重构）：不可拖拽、降低饱和度 */
+.pal-item.disabled{opacity:.55;cursor:not-allowed}
+.pal-item.disabled:hover{background:transparent;border-color:transparent}
+.pal-item.disabled .p-ico{filter:grayscale(.9)}
+.pal-item .p-code{font-size:9.5px;font-weight:700;color:var(--text-3);background:var(--bg);border-radius:4px;padding:0 4px;margin-left:2px}
+
+/* 画布节点 */
+.gnode{width:var(--node-w);height:var(--node-h);background:var(--card);border:1.5px solid var(--border-strong);border-radius:var(--node-radius);box-shadow:var(--shadow);display:flex;align-items:center;gap:9px;padding:0 10px;cursor:pointer;transition:box-shadow .15s,border-color .15s;position:relative}
+.gnode:hover{border-color:var(--primary);box-shadow:var(--shadow-lg)}
+.gnode.selected{border-color:var(--primary);box-shadow:0 0 0 2px rgba(22,104,220,.18)}
+.gnode .n-ico{width:26px;height:26px;border-radius:6px;display:flex;align-items:center;justify-content:center;color:#fff;font-size:13px;flex-shrink:0}
+.gnode .n-name{font-size:13px;font-weight:600;line-height:1.3;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.gnode .n-sub{font-size:10.5px;color:var(--text-3);line-height:1.3;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.gnode .n-status{position:absolute;top:-7px;right:-7px;width:14px;height:14px;border-radius:50%;border:2px solid #fff;display:none}
+.gnode.st-queued .n-status{display:block;background:#8c94a6}
+.gnode.st-running .n-status{display:block;background:var(--warn);animation:pulse 1s infinite}
+.gnode.st-success .n-status{display:block;background:var(--success)}
+.gnode.st-fail .n-status{display:block;background:var(--danger)}
+.gnode.st-fail{border-color:var(--danger)}
+.gnode.st-running{border-color:var(--warn)}
+/* I3 实例染色扩展：终止（橙红）/跳过（灰）——02 §1.1 状态集 → 色 */
+.gnode.st-kill .n-status{display:block;background:#f97316}
+.gnode.st-kill{border-color:#f97316}
+.gnode.st-skip .n-status{display:block;background:#94a3b8}
+/* I3 attempt 徽标（实例详情 DAG：重试/容错次数 > 1 时展示） */
+.gnode .n-attempt{position:absolute;top:-8px;left:-8px;background:#f97316;color:#fff;font-size:9.5px;font-weight:700;border-radius:999px;padding:1px 5px;border:2px solid #fff;box-shadow:0 1px 3px rgba(15,23,42,.25);z-index:2}
+.gnode.blind{border-style:dashed;border-color:var(--danger);border-width:2px}
+@keyframes pulse{0%,100%{box-shadow:0 0 0 0 rgba(217,119,6,.5)}50%{box-shadow:0 0 0 5px rgba(217,119,6,0)}}
+
+/* 画布上的泳道背景标注 */
+.lane-label{position:absolute;font-size:10.5px;color:var(--text-3);letter-spacing:2px;pointer-events:none}
+
+/* 右键菜单 */
+.ctx-menu{position:fixed;z-index:3000;background:var(--card);border:1px solid var(--border);border-radius:8px;box-shadow:var(--shadow-lg);padding:4px;min-width:150px}
+.ctx-item{display:flex;align-items:center;gap:8px;padding:7px 10px;border-radius:6px;font-size:12.5px;cursor:pointer;color:var(--text)}
+.ctx-item:hover{background:var(--primary-light);color:var(--primary)}
+.ctx-item.danger{color:var(--danger)}
+.ctx-item.danger:hover{background:var(--danger-bg)}
+
+/* ---------- 浮窗（FloatLayer） ---------- */
+.float-win{position:fixed;z-index:2500;background:var(--card);border:1px solid var(--border);border-radius:10px;box-shadow:var(--shadow-lg);display:flex;flex-direction:column;min-width:260px;overflow:hidden}
+.float-head{height:34px;display:flex;align-items:center;gap:8px;padding:0 10px;background:linear-gradient(90deg,var(--primary-light),transparent);border-bottom:1px solid var(--border);cursor:move;user-select:none}
+.float-head .f-title{font-size:12.5px;font-weight:600;flex:1}
+.float-head .f-act{display:flex;gap:4px}
+.float-head .f-btn{width:20px;height:20px;border-radius:var(--radius-sm);border:none;background:transparent;color:var(--text-2);cursor:pointer;font-size:11px;display:flex;align-items:center;justify-content:center}
+.float-head .f-btn:hover{background:rgba(22,104,220,.12);color:var(--primary)}
+.float-body{flex:1;overflow:auto;padding:10px;font-size:12px}
+.float-win.min .float-body{display:none}
+.float-win.min{height:34px !important}
+
+/* 校验面板 / 日志 */
+.issue-item{display:flex;gap:8px;padding:6px 8px;border-radius:6px;font-size:12px;align-items:flex-start}
+.issue-item .lv{flex-shrink:0;font-size:10.5px;padding:0 6px;border-radius:4px;font-weight:600}
+.issue-item.err{background:var(--danger-bg);color:var(--danger)}
+.issue-item.err .lv{background:var(--danger);color:#fff}
+.issue-item.warn{background:var(--warn-bg);color:var(--warn)}
+.issue-item.warn .lv{background:var(--warn);color:#fff}
+.log-line{font-family:ui-monospace,Consolas,monospace;font-size:11px;padding:2px 0;color:var(--text-2)}
+.log-line .t{color:var(--text-3)}
+.log-line.ok{color:var(--success)}
+.log-line.fail{color:var(--danger)}
+
+/* 表单（Inspector） */
+.insp-empty{padding:44px 16px;text-align:center;color:var(--text-3);font-size:12px}
+.insp-empty .ia-art{display:flex;align-items:center;justify-content:center;margin:0 auto 16px;width:132px}
+.insp-empty .ia-node{width:30px;height:20px;border-radius:6px;border:1.5px solid var(--border-strong);background:#fff;box-shadow:0 1px 2px rgba(15,23,42,.07);flex-shrink:0}
+.insp-empty .ia-node.ia-b{border-color:var(--primary);background:var(--primary-light)}
+.insp-empty .ia-line{flex:1;border-top:2px dashed var(--border-strong);margin:0 7px}
+.insp-empty .ia-title{font-size:13px;font-weight:600;color:var(--text);margin-bottom:3px}
+.insp-empty .ia-sub{font-size:12px}
+.insp-empty .ia-hint{margin-top:5px;font-size:11px;color:var(--text-3)}
+.insp-empty .ia-keys{display:flex;justify-content:center;gap:12px;margin-top:16px;font-size:11px;color:var(--text-3)}
+.insp-empty .ia-keys kbd{padding:1px 5px;border:1px solid var(--border-strong);border-bottom-width:2px;border-radius:4px;background:#fff;font-size:10px;font-family:ui-monospace,Consolas,monospace;color:var(--text-2)}
+.insp-title{padding:12px 14px 8px;font-size:13px;font-weight:700;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:8px}
+.insp-form{padding:12px 14px}
+.field{margin-bottom:11px}
+.field label{display:block;font-size:11.5px;color:var(--text-2);margin-bottom:4px}
+.field input,.field select,.field textarea{width:100%;border:1px solid var(--border-strong);border-radius:6px;padding:6px 9px;font-size:12.5px;font-family:inherit;color:var(--text);background:#fff;outline:none;transition:border-color .15s}
+.field input:focus,.field select:focus,.field textarea:focus{border-color:var(--primary);box-shadow:0 0 0 2px rgba(22,104,220,.1)}
+
+/* 列表页 */
+.tbl-toolbar{display:flex;align-items:center;gap:10px;margin-bottom:12px}
+.tbl-toolbar .spacer{flex:1}
+/* 标准数据表全局兜底：未在 scoped 内自定义 .tbl 的页面（如数据安全组）自动获得标准表格；
+   各页 scoped 内的同名定义优先级更高、内容一致，互不冲突 */
+.tbl{width:100%;border-collapse:collapse;font-size:12.5px}
+.tbl th{text-align:left;padding:9px 10px;background:var(--bg);color:var(--text-2);font-weight:600;border-bottom:1px solid var(--border)}
+.tbl td{padding:9px 10px;border-bottom:1px solid var(--border)}
+.tbl tbody tr{transition:background var(--dur-fast) var(--ease)}
+.tbl tr:hover td{background:var(--primary-light)}
+.tbl .empty{padding:18px;text-align:center;color:var(--text-3)}
+.pill{display:inline-flex;align-items:center;gap:5px;padding:1px 9px;border-radius:10px;font-size:11px;font-weight:500}
+.pill.ok{background:var(--success-bg);color:var(--success)}
+.pill.err{background:var(--danger-bg);color:var(--danger)}
+.pill.warn{background:var(--warn-bg);color:var(--warn)}
+.pill.off{background:#eef1f6;color:var(--text-3)}
+.pill.info{background:var(--info-bg);color:var(--info)}
+.pill.purple{background:#f1e9ff;color:var(--purple)}
+
+/* ST 状态徽标（M05 同步/批处理等，对齐 prototype main.css L130-135） */
+.st{display:inline-flex;align-items:center;gap:5px;font-size:11.5px;font-weight:500}
+.st .dot{width:7px;height:7px;border-radius:50%}
+.st-blue{color:var(--primary)} .st-blue .dot{background:var(--primary);animation:pulse 1.6s infinite}
+.st-green{color:var(--success)} .st-green .dot{background:var(--success)}
+.st-red{color:var(--danger)} .st-red .dot{background:var(--danger)}
+.st-orange{color:var(--warn)} .st-orange .dot{background:var(--warn)}
+.st-gray{color:var(--text-3)} .st-gray .dot{background:#b6bdcc}
+.st-purple{color:var(--purple)} .st-purple .dot{background:var(--purple)}

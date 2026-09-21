@@ -1,0 +1,36 @@
+# 依赖与构建产物
+node_modules/
+dist/
+dist-ssr/
+*.local
+
+# 打包产物（历史部署包）
+*.tgz
+*.tar.gz
+release/
+
+# 日志
+logs/
+*.log
+npm-debug.log*
+
+# Python 缓存
+__pycache__/
+*.pyc
+.pytest_cache/
+.ruff_cache/
+
+# 工具/Agent 缓存
+.codegraph/
+.gstack/
+.omo/
+.playwright-mcp/
+
+# 调试截图与临时文件
+*.png
+p0_dump.txt
+
+# 编辑器 / 系统
+.vscode/
+.idea/
+.DS_Store

@@ -1,0 +1,10 @@
+services:
+  datara:
+    build:
+      context: ./datara-web
+      dockerfile: deploy/Dockerfile
+    image: datara:latest
+    container_name: datara
+    restart: unless-stopped
+    ports:
+      - "8090:80"

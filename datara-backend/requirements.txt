@@ -1,0 +1,30 @@
+# Datara 后端依赖（容器内 python:3.11-slim 安装）
+fastapi>=0.110
+uvicorn[standard]>=0.29
+sqlalchemy>=2.0
+pymysql>=1.1
+cryptography>=42.0
+kazoo>=2.9
+redis>=5.0
+passlib[bcrypt]==1.7.4
+bcrypt==4.0.1
+pydantic>=2.6
+pydantic-settings>=2.2
+# ---- I2 测试数据基座（tools/datagen） ----
+Faker>=24.0
+PyYAML>=6.0
+openpyxl>=3.1
+# ---- I3 调度执行引擎 ----
+croniter>=2.0          # 定时调度 next_fire_time 计算（不用 Quartz，设计文档 §2）
+simpleeval>=0.9.13     # 条件/分支表达式安全求值
+paramiko>=3.4          # C14 SSH 执行器
+psutil>=5.9            # I7 F55 节点监控指标采集（CPU/内存/磁盘）
+# ---- I4 数据源中心 + IDE ----
+requests>=2.31         # C16 HTTP 执行器（openpyxl/pymysql 既有复用）
+# ---- I10 可视化 IDE 完整版 ----
+python-multipart>=0.0.9   # G24 CSV 导入 multipart 上传（FastAPI File/Form 必需）
+# ---- I5 血缘关系 ----
+sqlglot>=25.0          # SQL 血缘解析（mysql 方言，F20 解析器基座）
+# ---- I8 实时数据接入（流引擎 F36~F38 源接入） ----
+kafka-python>=2.0.2        # C18 Kafka 消费者 / C20 Kafka 生产者
+mysql-replication>=1.0.9   # C18 CDC binlog 订阅（mysql-replication BinLogStreamReader）

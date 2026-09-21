@@ -1,0 +1,362 @@
+"""工作流定义路由：列表分页 / 新建 / 读取 / 保存 / 删除 / 版本列表 / 回滚。
+
+契约对齐前端 IGraphService（src/services/types.ts）：
+- get(id) → GET  /{id}                返回 graph_json 原样 JSON
+- save(doc, remark) → PUT /{id}/save  version+1 + 追加版本快照 → {version}
+- listVersions(id) → GET /{id}/versions  [{version, updatedAt, operator, remark}]
+- rollback(id, version) → POST /{id}/rollback  恢复快照内容并再追加新版本
+"""
+
+import json
+import uuid
+from datetime import datetime
+from typing import List, Optional
+
+from fastapi import APIRouter, Depends
+from pydantic import BaseModel
+from sqlalchemy import func
+from sqlalchemy.orm import Session
+
+from api.auth import ApiError, require_perm
+from api.commands import submit_command
+from api.streamjob import STREAM_TYPES, extract_stream_spec, register_stream_job
+from common.db import get_db
+from common.log import get_logger
+from common.models import User, WfDefinition, WfDefinitionLog, WfSchedule
+from common.resp import (
+    WF_NOT_FOUND,
+    WF_PARAM_INVALID,
+    WF_VERSION_NOT_FOUND,
+    PageQuery,
+    fail,
+    fmt_dt,
+    ok,
+    page_result,
+)
+
+logger = get_logger("api.wf_definition")
+
+router = APIRouter(prefix="/workflow-definitions", tags=["wf-definition"])
+
+
+class CreateBody(BaseModel):
+    name: str
+
+
+class SaveBody(BaseModel):
+    doc: dict
+    remark: Optional[str] = None
+    tags: Optional[List[str]] = None  # I6：C23 保存自动打「同步」标签通道（缺省不改动既有标签）
+
+
+class RollbackBody(BaseModel):
+    version: int
+
+
+def _empty_doc(wf_id: str, name: str) -> dict:
+    """最小空 GraphDocument（形状对齐 datara-web/src/graph/model 的 GraphDocument）。"""
+    return {"id": wf_id, "name": name, "version": 1, "meta": {"profile": "dag"}, "nodes": [], "edges": []}
+
+
+def _next_code(db: Session) -> int:
+    """雪花式数字编码：max(code)+1（I1 单实例写入，I3 再精化为真雪花）。"""
+    max_code = db.query(func.max(WfDefinition.code)).scalar()
+    return (max_code or 0) + 1
+
+
+def _get_or_404(db: Session, wf_id: str) -> WfDefinition:
+    definition = db.get(WfDefinition, wf_id)
+    if definition is None:
+        raise ApiError(WF_NOT_FOUND, status=404)
+    return definition
+
+
+def _append_log(db: Session, definition: WfDefinition, operator: str, remark: Optional[str]) -> None:
+    """追加版本快照（save/回滚共用）。"""
+    db.add(
+        WfDefinitionLog(
+            wf_code=definition.code,
+            version=definition.version,
+            graph_json=definition.graph_json,
+            operator=operator,
+            remark=remark,
+        )
+    )
+
+
+def _node_count(graph_json: Optional[str]) -> int:
+    """graph_json 节点数（I1 遗留回填 §12；解析失败计 0）。"""
+    if not graph_json:
+        return 0
+    try:
+        doc = json.loads(graph_json)
+        return len(doc.get("nodes") or [])
+    except (ValueError, TypeError):
+        return 0
+
+
+@router.get("")
+def list_definitions(page: PageQuery = Depends(), search: Optional[str] = None, db: Session = Depends(get_db)):
+    """定义列表（分页 + name 模糊），倒序按更新时间；回填 cron/nodeCount（I3 §12）。"""
+    query = db.query(WfDefinition)
+    if search:
+        query = query.filter(WfDefinition.name.like("%" + search + "%"))
+    total = query.count()
+    rows = (
+        query.order_by(WfDefinition.update_time.desc(), WfDefinition.code.desc())
+        .offset(page.offset)
+        .limit(page.page_size)
+        .all()
+    )
+    # owner 批量取用户名（避免 N+1 查询）
+    owner_ids = {row.owner_id for row in rows if row.owner_id}
+    owners = {}
+    if owner_ids:
+        for user in db.query(User).filter(User.id.in_(owner_ids)).all():
+            owners[user.id] = user.user_name
+    # cron 回填：各 code 最新 online schedule 的 crontab（单查询避免 N+1）
+    cron_map = {}
+    codes = {row.code for row in rows}
+    if codes:
+        schedules = (
+            db.query(WfSchedule)
+            .filter(WfSchedule.wf_code.in_(codes), WfSchedule.state == "online")
+            .order_by(WfSchedule.id.desc())
+            .all()
+        )
+        for schedule in schedules:
+            cron_map.setdefault(schedule.wf_code, schedule.crontab)
+    items = [
+        {
+            "id": row.id,
+            "name": row.name,
+            "version": row.version,
+            "releaseState": row.release_state,
+            "owner": owners.get(row.owner_id, ""),
+            "updatedAt": fmt_dt(row.update_time),
+            "tags": row.tags or [],
+            "cron": cron_map.get(row.code),
+            "nodeCount": _node_count(row.graph_json),
+        }
+        for row in rows
+    ]
+    return ok(page_result(total, items))
+
+
+@router.post("")
+def create_definition(
+    body: CreateBody,
+    user: User = Depends(require_perm("edit_definition")),
+    db: Session = Depends(get_db),
+):
+    """新建定义：id='wf_'+uuid8、code 自增、version=1、空 GraphDocument + v1 快照。"""
+    if not body.name or not body.name.strip():
+        return fail(WF_PARAM_INVALID, "工作流名称不能为空")
+    wf_id = "wf_" + uuid.uuid4().hex[:8]
+    definition = WfDefinition(
+        id=wf_id,
+        code=_next_code(db),
+        name=body.name.strip(),
+        version=1,
+        release_state="offline",
+        flag="yes",
+        project_code="default",
+        tags=[],
+        graph_json=json.dumps(_empty_doc(wf_id, body.name.strip()), ensure_ascii=False),
+        owner_id=user.id,
+    )
+    db.add(definition)
+    db.flush()
+    _append_log(db, definition, user.user_name, "创建")
+    db.commit()
+    logger.info("新建工作流定义: %s %s", definition.id, definition.name)
+    return ok({"id": definition.id, "code": definition.code, "version": definition.version})
+
+
+@router.get("/{wf_id}")
+def get_definition(wf_id: str, db: Session = Depends(get_db)):
+    """读取：返回当前版本 graph_json 原样 JSON（GraphDocument）。"""
+    definition = _get_or_404(db, wf_id)
+    doc = json.loads(definition.graph_json) if definition.graph_json else _empty_doc(definition.id, definition.name)
+    return ok(doc)
+
+
+@router.put("/{wf_id}/save")
+def save_definition(
+    wf_id: str,
+    body: SaveBody,
+    user: User = Depends(require_perm("edit_definition")),
+    db: Session = Depends(get_db),
+):
+    """保存：version+1 → 更新 definition + 追加版本快照 → 返回 {version}。"""
+    definition = _get_or_404(db, wf_id)
+    doc = body.doc
+    if not isinstance(doc, dict) or doc.get("id") != wf_id:
+        raise ApiError(WF_PARAM_INVALID, "doc.id 与路径不一致")
+    definition.version = definition.version + 1
+    doc["version"] = definition.version
+    definition.name = doc.get("name") or definition.name
+    definition.graph_json = json.dumps(doc, ensure_ascii=False)
+    if body.tags is not None:
+        definition.tags = body.tags
+    _append_log(db, definition, user.user_name, body.remark)
+    db.commit()
+    logger.info("保存工作流定义: %s → v%s", wf_id, definition.version)
+    return ok({"version": definition.version})
+
+
+@router.delete("/{wf_id}")
+def delete_definition(
+    wf_id: str,
+    user: User = Depends(require_perm("edit_definition")),
+    db: Session = Depends(get_db),
+):
+    """删除：definition + 版本快照同删。"""
+    definition = _get_or_404(db, wf_id)
+    db.query(WfDefinitionLog).filter(WfDefinitionLog.wf_code == definition.code).delete()
+    db.delete(definition)
+    db.commit()
+    logger.info("删除工作流定义: %s（操作人 %s）", wf_id, user.user_name)
+    return ok(True)
+
+
+@router.get("/{wf_id}/versions")
+def list_versions(wf_id: str, db: Session = Depends(get_db)):
+    """版本列表：快照倒序 [{version, updatedAt, operator, remark}]。"""
+    definition = _get_or_404(db, wf_id)
+    rows = (
+        db.query(WfDefinitionLog)
+        .filter(WfDefinitionLog.wf_code == definition.code)
+        .order_by(WfDefinitionLog.version.desc())
+        .all()
+    )
+    items = [
+        {
+            "version": row.version,
+            "updatedAt": fmt_dt(row.operate_time),
+            "operator": row.operator or "",
+            "remark": row.remark,
+        }
+        for row in rows
+    ]
+    return ok(items)
+
+
+@router.post("/{wf_id}/rollback")
+def rollback(
+    wf_id: str,
+    body: RollbackBody,
+    user: User = Depends(require_perm("edit_definition")),
+    db: Session = Depends(get_db),
+):
+    """回滚：取指定版本快照 graph_json 覆盖 definition，并再追加新版本（历史不丢）。"""
+    definition = _get_or_404(db, wf_id)
+    snapshot = (
+        db.query(WfDefinitionLog)
+        .filter(WfDefinitionLog.wf_code == definition.code, WfDefinitionLog.version == body.version)
+        .first()
+    )
+    if snapshot is None or not snapshot.graph_json:
+        raise ApiError(WF_VERSION_NOT_FOUND, status=404)
+    definition.version = definition.version + 1
+    definition.graph_json = snapshot.graph_json
+    doc = json.loads(snapshot.graph_json)
+    doc["version"] = definition.version
+    definition.graph_json = json.dumps(doc, ensure_ascii=False)
+    _append_log(db, definition, user.user_name, "回滚自 v%s" % body.version)
+    db.commit()
+    logger.info("回滚工作流定义: %s → 恢复 v%s 快照，新版本 v%s", wf_id, body.version, definition.version)
+    return ok(doc)
+
+
+# ---------------- 运行 / 补数（I3 §3.1/§9.2：api 只写 t_command，master 消费） ----------------
+
+def _resolve_wf(db: Session, wf: str) -> WfDefinition:
+    """路径参数兼容定义 id（wf_xxx）与数字 code（§12 路由按 code）。"""
+    definition = db.get(WfDefinition, wf)
+    if definition is None and wf.isdigit():
+        definition = db.query(WfDefinition).filter(WfDefinition.code == int(wf)).first()
+    if definition is None:
+        raise ApiError(WF_NOT_FOUND, status=404)
+    return definition
+
+
+class RunBody(BaseModel):
+    env_group_id: Optional[int] = None
+    priority: int = 3
+
+
+@router.post("/{wf}/run")
+def run_workflow(
+    wf: str,
+    body: RunBody,
+    user: User = Depends(require_perm("run_instance")),
+    db: Session = Depends(get_db),
+):
+    """手工启动实例：写 START_PROCESS（run_mode=manual）命令，master 2s 内消费建实例。
+
+    I8 流分支：画布全部为流组件（C18/C19/C20）→ 启动/重启常驻流任务（幂等先停再起，
+    无发布流程，裁定①），返回 {mode:'stream', streamJobId,...}；混编拒绝。
+    """
+    definition = _resolve_wf(db, wf)
+    doc = json.loads(definition.graph_json) if definition.graph_json else {}
+    if not (doc.get("nodes") or []):
+        raise ApiError(WF_PARAM_INVALID, "画布为空，无法运行", status=400)
+    stream_nodes = [n for n in doc.get("nodes") or [] if isinstance(n, dict) and n.get("type") in STREAM_TYPES]
+    if stream_nodes:
+        spec = extract_stream_spec(definition, doc)  # 含混编/缺源汇/join/游离校验
+        row, restarted = register_stream_job(db, definition, spec)
+        logger.info("流任务启动（试运行入口）: job=%s wf=%s（用户 %s）", row.id, wf, user.user_name)
+        return ok({
+            "mode": "stream",
+            "streamJobId": row.id,
+            "name": row.name,
+            "restarted": restarted,
+        })
+    command = submit_command(db, "START_PROCESS", {
+        "wfCode": definition.code,
+        "wfVersion": definition.version,
+        "runMode": "manual",
+        "envGroupId": body.env_group_id,
+    }, priority=body.priority)
+    logger.info("运行命令已提交: wf=%s commandId=%s（用户 %s）", definition.code, command.id, user.user_name)
+    return ok({"commandId": command.id})
+
+
+class ComplementBody(BaseModel):
+    date_from: str
+    date_to: str
+    parallel: bool = False
+    env_group_id: Optional[int] = None
+    priority: int = 3
+
+
+@router.post("/{wf}/complement")
+def complement_workflow(
+    wf: str,
+    body: ComplementBody,
+    user: User = Depends(require_perm("run_instance")),
+    db: Session = Depends(get_db),
+):
+    """补数提交（§9.2）：写 COMPLEMENT_DATA 命令，master 按日期展开 N 条 START_PROCESS。"""
+    definition = _resolve_wf(db, wf)
+    try:
+        start = datetime.strptime(body.date_from, "%Y-%m-%d")
+        end = datetime.strptime(body.date_to, "%Y-%m-%d")
+    except ValueError:
+        raise ApiError(WF_PARAM_INVALID, "补数日期格式应为 YYYY-MM-DD", status=400)
+    if end < start:
+        raise ApiError(WF_PARAM_INVALID, "date_to 早于 date_from", status=400)
+    command = submit_command(db, "COMPLEMENT_DATA", {
+        "wfCode": definition.code,
+        "wfVersion": definition.version,
+        "dateFrom": body.date_from,
+        "dateTo": body.date_to,
+        "parallel": body.parallel,
+        "envGroupId": body.env_group_id,
+    }, priority=body.priority)
+    days = (end - start).days + 1
+    logger.info("补数命令已提交: wf=%s %s ~ %s 共 %d 实例（%s）",
+                definition.code, body.date_from, body.date_to, days,
+                "并行" if body.parallel else "串行")
+    return ok({"commandId": command.id, "instances": days})

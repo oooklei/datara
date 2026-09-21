@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Datara · 数据治理平台 - 系统原型</title>
+<link rel="stylesheet" href="assets/main.css">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='7' fill='%231668dc'/><text x='16' y='22' font-size='16' font-weight='bold' fill='white' text-anchor='middle' font-family='Arial'>D</text></svg>">
+</head>
+<body>
+<div id="app"></div>
+<!-- 弹层挂载点 -->
+<div id="layer-root"></div>
+
+<script src="assets/data.js"></script>
+<script src="assets/core.js"></script>
+<script src="assets/canvas.js"></script>
+<script src="assets/ai.js"></script>
+<script src="assets/pages/m03-datasource.js"></script>
+<script src="assets/pages/m05-batch.js"></script>
+<script src="assets/pages/m06-stream.js"></script>
+<script src="assets/pages/m04-model.js"></script>
+<script src="assets/pages/m11-ide.js"></script>
+<script src="assets/pages/m13-dag.js"></script>
+<script src="assets/pages/m14-script.js"></script>
+<script src="assets/pages/m12-param.js"></script>
+<script src="assets/pages/m07-quality.js"></script>
+<script src="assets/pages/m09-meta.js"></script>
+<script src="assets/pages/m10-standard.js"></script>
+<script src="assets/pages/m16-deploy.js"></script>
+<script src="assets/pages/dashboard.js"></script>
+<script>
+/* 启动：等所有页面模块注册完成后渲染框架 */
+document.addEventListener('DOMContentLoaded', function(){
+  App.boot();
+});
+</script>
+</body>
+</html>
