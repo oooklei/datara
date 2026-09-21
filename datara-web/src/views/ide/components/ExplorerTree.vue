@@ -163,12 +163,27 @@ function refreshTree(): void {
 /* ================= 字段 Tooltip 复制（G9） ================= */
 
 async function copyText(text: string): Promise<void> {
-  try {
-    await navigator.clipboard.writeText(text)
-    ElMessage.success(`已复制: ${text}`)
-  } catch {
-    ElMessage.error('剪贴板不可用')
+  const show = () => ElMessage.success(`已复制: ${text}`)
+  // http 非安全源下 navigator.clipboard 为 undefined（同步抛 TypeError），降级 execCommand
+  if (navigator.clipboard?.writeText) {
+    navigator.clipboard.writeText(text).then(show).catch(() => fallbackCopy(text, show))
+  } else {
+    fallbackCopy(text, show)
   }
+}
+
+function fallbackCopy(val: string, ok: () => void): void {
+  const ta = document.createElement('textarea')
+  ta.value = val
+  ta.style.position = 'fixed'
+  ta.style.opacity = '0'
+  document.body.appendChild(ta)
+  ta.select()
+  let done = false
+  try { done = document.execCommand('copy') } catch { done = false }
+  document.body.removeChild(ta)
+  if (done) ok()
+  else ElMessage.warning(`复制失败：${val}`)
 }
 
 /* ================= 表/视图悬浮菜单（G10，11 项全部只生成 SQL） ================= */
@@ -674,6 +689,7 @@ const currentDbLabel = computed(() => store.currentDb || '未选择 Schema')
       <div
         v-if="hover"
         class="hover-menu"
+        :class="store.theme === 'datara-light' ? 'hm-light' : 'hm-dark'"
         :style="{ left: hover.x + 'px', top: hover.y + 'px' }"
         @mouseenter="keepMenu"
         @mouseleave="scheduleHide"
@@ -833,11 +849,16 @@ const currentDbLabel = computed(() => store.currentDb || '未选择 Schema')
 .col-t{font-style:normal;font-size:10px;color:var(--ide-text-3);margin-left:5px}
 .col-tip{font-size:12px;line-height:1.7}
 .ct-row{word-break:break-all}
-.hover-menu{position:fixed;z-index:3000;display:flex;flex-direction:column;min-width:212px;background:var(--ide-card);border:1px solid var(--ide-border);border-radius:var(--radius-sm);box-shadow:var(--shadow-lg);padding:6px}
-.hm-title{font-size:11.5px;color:var(--ide-text-3);padding:2px 6px 6px;border-bottom:1px solid var(--ide-border);margin-bottom:4px}
-.hm-item{border:none;background:transparent;text-align:left;padding:5px 8px;font-size:12px;border-radius:4px;cursor:pointer;color:var(--ide-text-2)}
+/* 悬浮菜单（teleport 到 body，脱离 .ide-root，故用显式颜色而非 --ide-* 变量） */
+.hover-menu{position:fixed;z-index:3000;display:flex;flex-direction:column;min-width:212px;background:#12161d;border:1px solid #333d4e;border-radius:var(--radius-sm);box-shadow:var(--shadow-lg);padding:6px}
+.hover-menu.hm-light{background:#ffffff;border-color:#d3d9e3}
+.hm-title{font-size:11.5px;color:#7e889d;padding:2px 6px 6px;border-bottom:1px solid #242b37;margin-bottom:4px}
+.hover-menu.hm-light .hm-title{color:#8c94a6;border-bottom-color:#e7eaf0}
+.hm-item{border:none;background:transparent;text-align:left;padding:5px 8px;font-size:12px;border-radius:4px;cursor:pointer;color:#b8c2d4}
+.hover-menu.hm-light .hm-item{color:#5b6478}
 .hm-item:hover{background:var(--primary-light);color:var(--primary)}
-.hm-foot{font-size:10px;color:var(--ide-text-3);padding:5px 6px 2px;border-top:1px solid var(--ide-border);margin-top:4px}
+.hm-foot{font-size:10px;color:#7e889d;padding:5px 6px 2px;border-top:1px solid #242b37;margin-top:4px}
+.hover-menu.hm-light .hm-foot{color:#8c94a6;border-top-color:#e7eaf0}
 /* 表单 */
 .form-grid{display:grid;grid-template-columns:82px 1fr;gap:8px 10px;align-items:center;font-size:12.5px}
 .fg-k{color:var(--ide-text-3)}

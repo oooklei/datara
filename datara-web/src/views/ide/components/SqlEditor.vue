@@ -147,6 +147,31 @@ const THEMES: Record<string, monaco.editor.IStandaloneThemeData> = {
 
 let monacoSingletonReady = false
 
+/* ================= 建议行悬停富提示（自绘 tooltip） =================
+ * Monaco 0.56 原生 details 面板默认不随 hover 显示：详情依赖存储开关 `expandSuggestionDocs`（默认 false），
+ * 且 suggest 列表 `mouseSupport:false` 导致鼠标悬停不改变焦点 → 原生 hover 详情不可用。
+ * 方案：在补全 provider 中同步维护 label→markdown 文档表（suggestDocMap），DOM 层以事件委托监听
+ * `.suggest-widget .monaco-list-row` 的 mouseover，自绘定位 tooltip 展示（样式对齐资源树 hover-menu 色系）。
+ * 键盘上下箭头 / 行内右侧 detail / Ctrl+Space 原生 details 开关均保留不动。
+ */
+const suggestDocMap = new Map<string, string>() // 建议行 label（如 ${biz_date}）→ 富文档 markdown
+const SUGGEST_TIP_ID = 'datara-suggest-tip'
+
+/** 受控 markdown → 安全 HTML（先 HTML 转义，再替换加粗/行内代码/段落分隔），供 tooltip innerHTML 使用 */
+function mdToSafeHtml(md: string): string {
+  return md
+    .split(/\n\s*\n/)
+    .map((block) => {
+      const esc = block
+        .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+        .replace(/\*\*([^*]+)\*\*/g, '<b>$1</b>')
+        .replace(/`([^`]+)`/g, '<code>$1</code>')
+        .replace(/\*([^*]+)\*/g, '<i>$1</i>')
+      return `<div class="ds-tip-block">${esc}</div>`
+    })
+    .join('')
+}
+
 function ensureMonacoSetup(): void {
   if (monacoSingletonReady) return
   ;(globalThis as { MonacoEnvironment?: monaco.Environment }).MonacoEnvironment = {
@@ -186,20 +211,44 @@ function ensureMonacoSetup(): void {
           startColumn: Math.max(1, position.column - 1), endColumn: position.column,
         }
         for (const p of store.globalParams[store.env]) {
+          const docValue = [
+            `全局参数 · 环境 **${p.env}**`,
+            `**功能/用法**：${p.desc?.trim() || '自定义全局参数，SQL 中直接引用，提交执行时由后端替换为对应值。'}`,
+            p.value ? `**当前值**：\`${p.value}\`` : `**当前值**：*（未配置）*`,
+            `**数据来源**：后端全局参数表（\`GET /params/global\`，按环境分组下发），由「全局参数」管理维护；取得逻辑为提交执行时后端渲染替换，非前端本地计算。`,
+          ].join('\n\n')
+          suggestDocMap.set(`\${${p.name}}`, docValue)
           suggestions.push({
             label: `\${${p.name}}`, kind: monaco.languages.CompletionItemKind.Variable,
             detail: `全局参数（${p.env}）`, insertText: `\${${p.name}}`, range: varRange,
+            documentation: { value: docValue, isTrusted: true, supportHtml: false },
           })
         }
         for (const b of store.builtinPreview) {
+          const docValue = [
+            `内置时间参数`,
+            `**功能/用法**：${b.desc}。SQL 中直接引用，执行时后端按运行时刻计算。`,
+            `**当前值**：\`${b.value}\`（前端实时预览）`,
+            `**计算逻辑**：按当前时刻由前端实时计算（与后端 vars_render.py 的 builtin_vars 同口径），如 biz_date=T-1、year=当年、month_start=当月首日等。`,
+          ].join('\n\n')
+          suggestDocMap.set(`\${${b.name}}`, docValue)
           suggestions.push({
             label: `\${${b.name}}`, kind: monaco.languages.CompletionItemKind.Variable,
             detail: `内置时间参数 · ${b.desc}`, insertText: `\${${b.name}}`, range: varRange,
+            documentation: { value: docValue, isTrusted: true, supportHtml: false },
           })
         }
+        const dateNDoc = [
+          `函数式日期`,
+          `**功能/用法**：将 \`N\` 替换为整数偏移（负=历史、正=未来），如 \`\${date(-1)}\`=T-1、\`\${date(7)}\`=T+7。`,
+          `**当前值示例**：\`\${date(-1)}\` = \`${store.builtinPreview.find((x) => x.name === 'biz_date')?.value ?? '—'}\`（前端实时计算）`,
+          `**计算逻辑**：以执行时刻为基准按 \`N\` 平移天数，返回 \`YYYY-MM-DD\`；与后端 vars_render.py 的 date(N) 同口径。`,
+        ].join('\n\n')
+        suggestDocMap.set('${date(N)}', dateNDoc)
         suggestions.push({
           label: '${date(N)}', kind: monaco.languages.CompletionItemKind.Function,
           detail: '函数式日期（N 可为负，如 date(-1)=T-1）', insertText: '${date(0)}', range: varRange,
+          documentation: { value: dateNDoc, isTrusted: true, supportHtml: false },
         })
         return { suggestions }
       }
@@ -606,6 +655,105 @@ function newScript(): void {
   } catch { /* 上限拦截已在 store 提示 */ }
 }
 
+/* ================= 建议行悬停富提示（自绘 tooltip，需求G12b） ================= */
+/* Monaco 0.56 原生 details 面板不随 hover 显示（expandSuggestionDocs 存储开关默认 false，且列表 mouseSupport=false
+ * 使鼠标悬停不改变焦点），故改为 DOM 事件委托：监听 .suggest-widget 内行的 mouseover/mouseout，按行 label 查
+ * suggestDocMap（补全 provider 写入的富文档），自绘 fixed 定位 tooltip。保留：上下箭头键盘导航、行内右侧 detail、
+ * Ctrl+Space 原生 details 开关。样式对齐资源树 hover-menu（深色不透明底）。
+ */
+let suggestTipEl: HTMLElement | null = null
+let suggestTipTimer: number | undefined
+
+function ensureSuggestTipEl(): HTMLElement {
+  if (suggestTipEl) return suggestTipEl
+  const el = document.createElement('div')
+  el.id = SUGGEST_TIP_ID
+  el.style.cssText = 'position:fixed;z-index:20000;display:none;pointer-events:none;max-width:360px;'
+  document.body.appendChild(el)
+  suggestTipEl = el
+  applySuggestTipTheme()
+  return el
+}
+
+/** 主题联动：与资源树 hover-menu 同色系（深色 #12161d / 浅色 #fff，显式定色不受 .ide-root 作用域影响） */
+function applySuggestTipTheme(): void {
+  if (!suggestTipEl) return
+  const dark = store.theme !== 'datara-light'
+  suggestTipEl.className = dark ? 'ds-tip ds-tip-dark' : 'ds-tip ds-tip-light'
+}
+
+function hideSuggestTip(): void {
+  if (suggestTipTimer !== undefined) {
+    window.clearTimeout(suggestTipTimer)
+    suggestTipTimer = undefined
+  }
+  if (suggestTipEl) suggestTipEl.style.display = 'none'
+}
+
+function onSuggestRowMouseOver(ev: MouseEvent): void {
+  const target = ev.target as HTMLElement | null
+  if (!target || !target.closest) return
+  const row = target.closest<HTMLElement>('.suggest-widget .monaco-list-row')
+  if (!row) return
+  const labelEl = row.querySelector('.label-name') ?? row.querySelector('.monaco-highlighted-label')
+  if (!labelEl) return
+  const label = (labelEl.textContent ?? '').trim()
+  const doc = label ? suggestDocMap.get(label) : undefined
+  if (!doc) {
+    hideSuggestTip()
+    return
+  }
+  if (suggestTipTimer !== undefined) {
+    window.clearTimeout(suggestTipTimer)
+    suggestTipTimer = undefined
+  }
+  const el = ensureSuggestTipEl()
+  el.innerHTML = `<div class="ds-tip-title">${mdToSafeHtml(label)}</div>${mdToSafeHtml(doc)}`
+  // 定位：优先行右侧，视口不足则行左侧；垂直随行，底部越界上移
+  const r = row.getBoundingClientRect()
+  const gap = 8
+  const tipW = Math.min(360, window.innerWidth - 16)
+  let left = r.right + gap
+  if (left + tipW > window.innerWidth - 8) left = Math.max(8, r.left - tipW - gap)
+  let top = r.top - 4
+  if (top < 8) top = 8
+  el.style.maxWidth = `${tipW}px`
+  el.style.left = `${left}px`
+  el.style.top = `${top}px`
+  el.style.display = 'block'
+}
+
+function onSuggestRowMouseOut(ev: MouseEvent): void {
+  const rel = ev.relatedTarget as HTMLElement | null
+  if (rel && rel.closest && rel.closest('.suggest-widget')) return // 仍在列表内：不隐藏（mouseover 会刷新内容）
+  suggestTipTimer = window.setTimeout(hideSuggestTip, 120)
+}
+
+/** 监听 suggest widget 移除（Esc/接受补全等）→ 隐藏 tooltip */
+let suggestWidgetObserver: MutationObserver | null = null
+
+function wireSuggestTip(editorMonaco: monaco.editor.IStandaloneCodeEditor): void {
+  const dom = editorMonaco.getDomNode()
+  if (!dom) return
+  dom.addEventListener('mouseover', onSuggestRowMouseOver)
+  dom.addEventListener('mouseout', onSuggestRowMouseOut)
+  // suggestions widget 挂载为 editor DOM 子节点；移除/重建时清理 tooltip
+  suggestWidgetObserver = new MutationObserver(() => {
+    if (!dom.querySelector('.suggest-widget.visible')) hideSuggestTip()
+  })
+  suggestWidgetObserver.observe(dom, { childList: true, subtree: true })
+}
+
+function unwireSuggestTip(): void {
+  suggestWidgetObserver?.disconnect()
+  suggestWidgetObserver = null
+  if (suggestTipEl) {
+    suggestTipEl.remove()
+    suggestTipEl = null
+  }
+  hideSuggestTip()
+}
+
 /* ================= 生命周期 / 同步 ================= */
 
 onMounted(() => {
@@ -640,6 +788,8 @@ onMounted(() => {
   if (!tab.content) store.updateScriptContent(tab.id, DEFAULT_SQL)
   // 挂载即跑一次本地风控（未定义参数提示条 / SELECT 无 LIMIT 风险警告首屏生效）
   lintDebounced(currentText())
+  // 建议行悬停富提示（自绘 tooltip）接线
+  wireSuggestTip(editor)
 })
 
 /** Tab 切换 / 回显 → 编辑器内容隔离切换 */
@@ -658,10 +808,12 @@ watch(() => store.fillRequest.n, () => {
 
 watch(() => store.theme, (t) => {
   monaco.editor.setTheme(t)
+  applySuggestTipTheme()
 })
 
 onBeforeUnmount(() => {
   lintDebounced.cancel()
+  unwireSuggestTip()
   modelRef = null
   editor?.dispose()
   editor = null
@@ -782,4 +934,28 @@ function onTabClose(id: string): void {
 .ld-meta{margin-left:auto;font-size:11px;color:var(--ide-text-3)}
 .ld-empty{padding:20px;text-align:center;color:var(--ide-text-3);font-size:12.5px}
 .op-btn.danger{color:var(--danger)}
+</style>
+
+<style>
+/* 建议行悬停富提示（自绘 tooltip，动态挂载至 body，非 scoped）
+   显式定色：与资源树 hover-menu 同色系（深色 #12161d 不透明底 / 浅色 #fff） */
+.ds-tip{
+  border-radius:8px;padding:10px 12px;font-size:12px;line-height:1.65;
+  box-shadow:0 6px 18px rgba(0,0,0,.28);max-height:320px;overflow-y:auto;
+}
+.ds-tip-dark{background:#12161d;color:#c9d3e0;border:1px solid #333d4e}
+.ds-tip-light{background:#ffffff;color:#3a4354;border:1px solid #d3d9e3;box-shadow:0 6px 18px rgba(60,80,120,.16)}
+.ds-tip-title{font-weight:700;margin-bottom:6px;padding-bottom:6px;border-bottom:1px dashed currentColor;opacity:.92}
+.ds-tip-dark .ds-tip-title{color:#4da3ff;border-color:#333d4e}
+.ds-tip-light .ds-tip-title{color:#0f62d0;border-color:#d3d9e3}
+.ds-tip-block{margin-bottom:4px}
+.ds-tip-block:last-child{margin-bottom:0}
+.ds-tip b{font-weight:700}
+.ds-tip i{opacity:.82}
+.ds-tip code{
+  font-family:var(--font-mono, ui-monospace, Menlo, Consolas, monospace);
+  font-size:11px;padding:0 4px;border-radius:4px;
+}
+.ds-tip-dark code{background:#1d2530;color:#e5c07b;border:1px solid #2a3442}
+.ds-tip-light code{background:#f2f5f9;color:#9a6700;border:1px solid #dde4ee}
 </style>
