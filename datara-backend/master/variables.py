@@ -221,7 +221,9 @@ class VarResolver:
                     value = self.levels[level][name]
                     self._snap(snapshot, name, value, source, True)
                     # 低层值可能仍含占位/时间变量，递归解析
-                    return self.resolve_text(str(value), node_params, loop_iter, snapshot, depth + 1)
+                    # I12-D5 补漏：此处原为 str(value)，None 值经 workflow/env/global 层仍渲染字面量
+                    # "None"，与 run./节点参数/注入层路径（_to_text → 空串）口径不一致
+                    return self.resolve_text(_to_text(value), node_params, loop_iter, snapshot, depth + 1)
             self._snap(snapshot, match.group(0), match.group(0), "unresolved", False)
             return match.group(0)  # 未解析保留原样
 
