@@ -3,7 +3,7 @@
 用法：python tools/vars_render_probe.py
 边界断言（I12 缺陷排查 D5），全部通过打印 PROBE_OK：
 - 空值变量：None → 渲染为空串（修复前 str(None)="None"）
-- VarResolver workflow 层 None 值 → 空串（I12-D5 补漏：levels 分支与引擎口径统一）
+- VarResolver workflow/env 层 None 值 → 空串（I12-D5 补漏：levels 分支与引擎口径统一）
 - 空串变量 → 空串
 - 嵌套占位 ${a${b}} → 不递归、原样保留
 - 含引号值进入 SQL → 渲染层原样透传（不转义；SQL 拼接安全归使用方/执行口径）
@@ -70,16 +70,18 @@ check("日期命名模式", out == "20260922_103000", repr(out))
 out, _ = render_text("${biz_date}", {}, BASE)
 check("内置 biz_date=T-1", out == "2026-09-21", repr(out))
 
-# ---- VarResolver 四级链 workflow 层 None 值（I12-D5 补漏：levels 分支 str(None)="None"） ----
+# ---- VarResolver 四级链 workflow/env 层 None 值（I12-D5 补漏：levels 分支 str(None)="None"） ----
 from master.variables import VarResolver  # noqa: E402
 
 resolver = VarResolver(
     "inst-probe", 1,
-    {"workflow": {"wv": None}, "env": {}, "global": {}},
+    {"workflow": {"wv": None}, "env": {"envv": None}, "global": {}},
     BASE,
 )
 out = resolver.resolve_text("A=${wv}", {}, 0, {})
 check("workflow 级 None 渲染为空串", out == "A=", repr(out))
+out = resolver.resolve_text("B=${envv}", {}, 0, {})
+check("env 级 None 渲染为空串", out == "B=", repr(out))
 
 # ---- 递归上限语义（全局参数值再含占位） ----
 out, _ = render_text("${a}", {"a": "${b}", "b": "ok"}, BASE)

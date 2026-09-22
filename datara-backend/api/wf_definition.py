@@ -31,6 +31,7 @@ from common.models import (
     WfDefinitionLog,
     WfSchedule,
     WorkflowInstance,
+    now,
 )
 from common.resp import (
     WF_NOT_FOUND,
@@ -43,7 +44,7 @@ from common.resp import (
     ok,
     page_result,
 )
-from master.state import INSTANCE_RUNNING_STATES
+from master.state import ACTIVE_STATES
 
 logger = get_logger("api.wf_definition")
 
@@ -286,27 +287,60 @@ def save_definition(
     """保存：version+1 → 更新 definition + 追加版本快照 → 返回 {version}。
 
     I12-D2 乐观锁：base_version 非缺省时与库内 version 比对，不一致返回 409（CAS）。
+    I12-M1（评审）：写库改 CAS 条件更新（WHERE version=base_version），消除读-写间隙的
+    TOCTOU 双过窗口；base_version 缺省（旧客户端）保持原无条件更新路径，行为不变。
     """
     definition = _get_or_404(db, wf_id)
     doc = body.doc
     if not isinstance(doc, dict) or doc.get("id") != wf_id:
         raise ApiError(WF_PARAM_INVALID, "doc.id 与路径不一致")
-    if body.base_version is not None and body.base_version != definition.version:
+    base_version = body.base_version
+    if base_version is not None and base_version != definition.version:
+        logger.warning("保存版本冲突: wf=%s 库内 v%s，提交基于 v%s（操作人 %s）",
+                       wf_id, definition.version, base_version, user.user_name)
         raise ApiError(
             WF_VERSION_CONFLICT,
-            "定义已被他人更新（当前 v%s，提交基于 v%s），请刷新后重试" % (definition.version, body.base_version),
+            "定义已被他人更新（当前 v%s，提交基于 v%s），请刷新后重试" % (definition.version, base_version),
             status=409,
         )
-    definition.version = definition.version + 1
-    doc["version"] = definition.version
-    definition.name = doc.get("name") or definition.name
-    definition.graph_json = json.dumps(doc, ensure_ascii=False)
+    next_version = definition.version + 1
+    doc["version"] = next_version
+    graph_json = json.dumps(doc, ensure_ascii=False)
+    values = {
+        "version": next_version,
+        "name": doc.get("name") or definition.name,
+        "graph_json": graph_json,
+        "update_time": now(),
+    }
     if body.tags is not None:
-        definition.tags = body.tags
+        values["tags"] = body.tags
+    if base_version is not None:
+        # CAS 条件更新：并发窗口内他人已 bump version 时 rowcount=0，拒绝而非覆盖
+        matched = (
+            db.query(WfDefinition)
+            .filter(WfDefinition.id == wf_id, WfDefinition.version == base_version)
+            .update(values, synchronize_session=False)
+        )
+        if matched == 0:
+            logger.warning("保存 CAS 失败: wf=%s 库内 v%s，提交基于 v%s（操作人 %s）",
+                           wf_id, definition.version, base_version, user.user_name)
+            raise ApiError(
+                WF_VERSION_CONFLICT,
+                "定义已被他人更新（当前 v%s，提交基于 v%s），请刷新后重试" % (definition.version, base_version),
+                status=409,
+            )
+        db.refresh(definition)  # 同步内存对象（_append_log 需读新 version/graph_json）
+    else:
+        # 旧客户端：无条件更新（原路径），行为不变
+        definition.version = next_version
+        definition.name = values["name"]
+        definition.graph_json = graph_json
+        if body.tags is not None:
+            definition.tags = body.tags
     _append_log(db, definition, user.user_name, body.remark)
     db.commit()
-    logger.info("保存工作流定义: %s → v%s", wf_id, definition.version)
-    return ok({"version": definition.version})
+    logger.info("保存工作流定义: %s → v%s", wf_id, next_version)
+    return ok({"version": next_version})
 
 
 # 流任务活跃状态（宿主 worker 常驻线程在跑，阻塞删除；对齐 api/streamjob.py 状态注释）
@@ -321,7 +355,8 @@ def delete_definition(
 ):
     """删除（I12-D3 级联口径）：
 
-    - 运行中实例（t_workflow_instance，submitted/running）→ 拒绝 409
+    - 活跃实例（t_workflow_instance，ACTIVE_STATES：submitted/waiting_dependency/running/
+      retry/fault_tolerance）→ 拒绝 409
     - 活跃流任务（t_stream_job.doc_id，starting/running/reconnecting）→ 拒绝 409 提示先停
     - 无阻塞 → 级联删除：调度（t_wf_schedule）、停止态流任务行及其位点（t_stream_offset）、
       版本快照（t_wf_definition_log）、定义行
@@ -329,14 +364,20 @@ def delete_definition(
     definition = _get_or_404(db, wf_id)
     running = (
         db.query(WorkflowInstance)
-        .filter(WorkflowInstance.wf_code == definition.code, WorkflowInstance.state.in_(INSTANCE_RUNNING_STATES))
+        .filter(WorkflowInstance.wf_code == definition.code, WorkflowInstance.state.in_(ACTIVE_STATES))
         .count()
     )
     if running:
-        raise ApiError(WF_PARAM_INVALID, "该工作流存在 %d 个运行中实例，请先停止实例后再删除" % running, status=409)
+        logger.warning("删除被拒（存在活跃实例）: wf=%s id=%s 活跃实例数=%d（操作人 %s）",
+                       definition.code, wf_id, running, user.user_name)
+        raise ApiError(WF_PARAM_INVALID, "该工作流存在 %d 个活跃（未终态）实例，请先停止实例后再删除" % running,
+                       status=409)
     stream_jobs = db.query(StreamJob).filter(StreamJob.doc_id == definition.id).all()
     active = [j for j in stream_jobs if (j.status or "") in STREAM_ACTIVE_STATUS]
     if active:
+        logger.warning("删除被拒（存在活跃流任务）: wf=%s id=%s job=%s（操作人 %s）",
+                       definition.code, wf_id,
+                       "、".join("#%s %s" % (j.id, j.name or j.wf_name) for j in active[:3]), user.user_name)
         raise ApiError(WF_PARAM_INVALID, "该画布存在未停止的流任务（%s），请先在流任务列表停止后再删除"
                        % "、".join("#%s %s" % (j.id, j.name or j.wf_name) for j in active[:3]), status=409)
     for job in stream_jobs:

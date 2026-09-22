@@ -80,7 +80,8 @@ def load_levels(session, wf_code: int, env_group_id: Optional[int] = None) -> di
     if env_group_id:
         group = session.get(EnvGroup, int(env_group_id))
         if group is not None and isinstance(group.config, dict):
-            env = {k: str(v) for k, v in group.config.items() if isinstance(k, str)}
+            # I12-m1（评审）：None 值渲染空串（与全链 None→空串口径统一；workflow/global 层由 `or ""` 兜底）
+            env = {k: ("" if v is None else str(v)) for k, v in group.config.items() if isinstance(k, str)}
     glob = {
         g.name: (g.value or "")
         for g in session.query(GlobalParam).all()
