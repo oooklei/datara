@@ -69,7 +69,7 @@ if not _base_ip:
     raise RuntimeError("缺少 API_IP 环境变量（bash 侧未注入容器 IP），拒绝误打其他后端")
 BASE = "http://%s:8000/api/v1" % _base_ip
 ADMIN_USER = "admin"
-ADMIN_PWD = "Admin@123"
+ADMIN_PWD = os.environ.get("DATARA_ADMIN_PWD") or "Admin@123"  # 容器 env（compose DATARA_ADMIN_PWD）可覆盖，默认不变
 SYNC_TAG = "同步"
 PROTECT_NAME = "demo_pipeline"
 PAGE_SIZE = 200
@@ -77,7 +77,7 @@ PAGE_SIZE = 200
 ACTIVE_STATES = {"submitted", "waiting_dependency", "running", "retry", "fault_tolerance"}
 # master/state.py INSTANCE_RUNNING_STATES（stop API 唯一接受的实例态）
 API_STOPPABLE = {"submitted", "running"}
-# api/streamjob.py 流任务活跃态
+# 流任务活跃态（出处：api/wf_definition.py STREAM_ACTIVE_STATUS / worker/stream/engine.py ACTIVE_STATUSES）
 STREAM_ACTIVE = {"starting", "running", "reconnecting"}
 
 
@@ -100,6 +100,10 @@ def http(method, path, token="", body=None, timeout=30):
         except Exception:
             payload = {}
         return exc.code, payload
+    except (urllib.error.URLError, TimeoutError) as exc:
+        # 网络异常（连接拒绝/socket 超时，URLError 为 OSError 子类一并覆盖）：
+        # 降级为可记录的错误响应（st=0 会被调用方归入 errors），不让进程崩退
+        return 0, {"msg": "网络异常: %s" % getattr(exc, "reason", exc)}
 
 
 def login():
@@ -111,30 +115,36 @@ def login():
 
 
 def list_definitions(token):
-    rows, page = [], 1
+    rows, page, seen = [], 1, set()
     while True:
-        st, body = http("GET", "/workflow-definitions?page=%d&page_size=%d" % (page, PAGE_SIZE), token)
+        # 分页参数双兼容：仓库 common/resp.py PageQuery 认 page_no，旧版认 page（多余参数彼此忽略）
+        st, body = http("GET", "/workflow-definitions?page=%d&page_no=%d&page_size=%d" % (page, page, PAGE_SIZE), token)
         if st != 200:
             raise RuntimeError("definitions list failed: %s %s" % (st, body))
         data = body.get("data") or {}
-        items = data.get("items") or data.get("list") or []  # 分页 data 键双兼容：仓库版 items / 1.9 部署版 list（09-23 实测）
-        rows.extend(items)
-        if not items or len(rows) >= int(data.get("total") or 0):
+        items = data.get("items") or data.get("list") or []  # 分页 data 键双兼容：仓库 common/resp.py page_result 返回 list，1.9 部署旧版返回 items（09-23 实测）
+        new = [it for it in items if it.get("id") not in seen]  # 按 id 去重，防新旧翻页参数口径差异下重复行污染
+        seen.update(it.get("id") for it in new)
+        rows.extend(new)
+        if not items or not new or len(items) < PAGE_SIZE or len(rows) >= int(data.get("total") or 0):
             break
         page += 1
     return rows
 
 
 def list_instances(token):
-    rows, page = [], 1
+    rows, page, seen = [], 1, set()
     while True:
-        st, body = http("GET", "/instances?page=%d&page_size=%d" % (page, PAGE_SIZE), token)
+        # 分页参数双兼容：仓库 common/resp.py PageQuery 认 page_no，旧版认 page（多余参数彼此忽略）
+        st, body = http("GET", "/instances?page=%d&page_no=%d&page_size=%d" % (page, page, PAGE_SIZE), token)
         if st != 200:
             raise RuntimeError("instances list failed: %s %s" % (st, body))
         data = body.get("data") or {}
-        items = data.get("items") or data.get("list") or []  # 分页 data 键双兼容：仓库版 items / 1.9 部署版 list（09-23 实测）
-        rows.extend(items)
-        if not items or len(rows) >= int(data.get("total") or 0):
+        items = data.get("items") or data.get("list") or []  # 分页 data 键双兼容：仓库 common/resp.py page_result 返回 list，1.9 部署旧版返回 items（09-23 实测）
+        new = [it for it in items if it.get("instanceId") not in seen]  # 按 instanceId 去重，防新旧翻页参数口径差异下重复行污染
+        seen.update(it.get("instanceId") for it in new)
+        rows.extend(new)
+        if not items or not new or len(items) < PAGE_SIZE or len(rows) >= int(data.get("total") or 0):
             break
         page += 1
     return rows
@@ -366,7 +376,10 @@ case "$MODE" in
     run_py snapshot | tee "$BEFORE_JSON"
     if [ "${PIPESTATUS[0]}" -ne 0 ]; then echo "[WARN] before 快照执行异常，请检查上方输出"; fi
     echo "== [2/3] 执行清理 =="
-    run_py cleanup
+    if ! run_py cleanup; then
+      echo "[FATAL] 清理执行失败（run_py cleanup 返回非 0），中止后续 after 快照" >&2
+      exit 4
+    fi
     echo "== [3/3] after 基线快照 =="
     run_py snapshot | tee "$AFTER_JSON"
     if [ "${PIPESTATUS[0]}" -ne 0 ]; then echo "[WARN] after 快照执行异常，请检查上方输出"; fi
