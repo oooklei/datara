@@ -12,8 +12,8 @@ from typing import Optional
 LOGICAL_TYPES = frozenset({
     "start", "end", "conditions", "switch", "fork", "join", "merge", "delay", "dependent", "loop",
 })
-# 本期可派发 worker 的数据节点（i3-3 执行器注册后生效；I6 +sync）
-WORKER_TYPES = frozenset({"sql", "shell", "python", "ssh", "smoke", "sync"})
+# 本期可派发 worker 的数据节点（i3-3 执行器注册后生效；I6 +sync；I12-D1 补齐 procedure/http/file，与 engine.py 对齐）
+WORKER_TYPES = frozenset({"sql", "shell", "python", "ssh", "smoke", "procedure", "http", "file", "sync"})
 
 
 class Graph:

@@ -131,7 +131,8 @@ def render_text(
         name = match.group(1).strip()
         raw = match.group(0)
         if name in params:
-            value = str(params[name])
+            # I12-D5：空值（None）渲染为空串（str(None)="None" 会把字面量 None 拼进 SQL/参数）
+            value = "" if params[name] is None else str(params[name])
             snapshot.append({"name": name, "value": value, "source": "全局参数", "resolved": True})
             return render_text(value, params, now, snapshot, depth + 1)[0]
         if name in builtins:

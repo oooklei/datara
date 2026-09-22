@@ -53,12 +53,12 @@ mapfile -t EXPIRED < <(docker compose exec -T datara-worker bash -c \
   | tr -d '\r')
 DIR_COUNT=${#EXPIRED[@]}
 
-# ---------- ③a 过期 {instance_id}_ 临时文件统计 ----------
+# ---------- ③a 过期 {instance_id}_ 临时文件统计（I12-D4：含脚本运行目录 {tmp_dir}/{instance_id}） ----------
 TMP_FILE_COUNT=0
 if [ "$DIR_COUNT" -gt 0 ]; then
   for iid in "${EXPIRED[@]}"; do
     n=$(docker compose exec -T datara-worker bash -c \
-      "find /datara/tmp -maxdepth 1 -name '${iid}_*' 2>/dev/null | wc -l" 2>/dev/null | tr -d '\r')
+      "find /datara/tmp -maxdepth 1 \( -name '${iid}_*' -o -name '${iid}' \) 2>/dev/null | wc -l" 2>/dev/null | tr -d '\r')
     TMP_FILE_COUNT=$((TMP_FILE_COUNT + ${n:-0}))
   done
 fi
@@ -114,10 +114,10 @@ if [ "$DRY_RUN" = "1" ]; then
 fi
 
 if [ "$DIR_COUNT" -gt 0 ]; then
-  # ① 日志目录 + ③a 临时文件（容器内）
+  # ① 日志目录 + ③a 临时文件（容器内；I12-D4：连 {tmp_dir}/{instance_id} 脚本运行目录一并清）
   for iid in "${EXPIRED[@]}"; do
     docker compose exec -T datara-worker bash -c \
-      "rm -rf '/datara/logs/${iid}'; find /datara/tmp -maxdepth 1 -name '${iid}_*' -exec rm -rf {} + 2>/dev/null" \
+      "rm -rf '/datara/logs/${iid}' '/datara/tmp/${iid}'; find /datara/tmp -maxdepth 1 -name '${iid}_*' -exec rm -rf {} + 2>/dev/null" \
       >/dev/null 2>&1
   done
   # ② t_task_log 过期行

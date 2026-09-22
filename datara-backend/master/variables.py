@@ -197,22 +197,25 @@ class VarResolver:
 
         def _var(match: re.Match) -> str:
             name = match.group(1).strip()
+            # I12-D5：空值（None）统一渲染为空串（str(None)="None" 会把字面量 None 拼进 SQL/参数）
+            def _to_text(v) -> str:
+                return "" if v is None else str(v)
             if name.startswith("run."):
                 value = self.runtime_scope(loop_iter).get(name)
                 self._snap(snapshot, name, value, RUNTIME_SOURCE, True)
-                return str(value)
+                return _to_text(value)
             if name.startswith("tmp."):
                 return self._resolve_tmp(name[4:].strip(), match, snapshot)
             if name in node_params:
                 value = node_params[name]
                 self._snap(snapshot, name, value, "节点参数", True)
-                return str(value)
+                return _to_text(value)
             # I7 C21 注入层：节点参数之后、定义级工作流变量之前（覆盖开关语义在注入时落地）
             run_cache = self._run_cache if self._run_cache is not None else {}
             if name in run_cache:
                 value = run_cache[name]
                 self._snap(snapshot, name, value, RUN_VARS_SOURCE, True)
-                return str(value)
+                return _to_text(value)
             for level, source in (("workflow", "工作流变量"), ("env", "环境组"), ("global", "全局")):
                 if name in self.levels[level]:
                     value = self.levels[level][name]

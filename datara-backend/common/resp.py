@@ -21,6 +21,7 @@ WF_NOT_FOUND = 2001
 WF_DUPLICATE = 2002
 WF_PARAM_INVALID = 2003
 WF_VERSION_NOT_FOUND = 2004
+WF_VERSION_CONFLICT = 2005  # I12-D2 保存并发冲突（乐观锁 base_version 不匹配，HTTP 409）
 
 INSTANCE_NOT_FOUND = 3001
 COMMAND_FAIL = 3002
@@ -45,6 +46,7 @@ _MSGS = {
     WF_DUPLICATE: "工作流定义已存在",
     WF_PARAM_INVALID: "工作流定义参数错误",
     WF_VERSION_NOT_FOUND: "版本快照不存在",
+    WF_VERSION_CONFLICT: "定义已被他人更新，请刷新后重试",
     INSTANCE_NOT_FOUND: "运行实例不存在",
     COMMAND_FAIL: "命令提交失败",
     DS_NOT_FOUND: "数据源不存在",

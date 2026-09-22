@@ -27,6 +27,8 @@ interface DefRow {
   id: string
   name: string
   version: number
+  /** I11：数字编码（列表原样回传，前端标题 #code / 目录 / 名称 与 Palette code 徽标用） */
+  code?: number
   releaseState?: string
   owner?: string
   updatedAt?: string
@@ -79,9 +81,16 @@ export const realGraphService: IGraphService = {
     if (doc.meta?.profile === 'etl') tags.add(ETL_TAG)
     if (doc.meta?.profile === 'stream') tags.add(STREAM_TAG)
     if ((doc.nodes ?? []).some((n) => n.type === 'sync' || n.type === 'sync_template')) tags.add(SYNC_TAG)
+    /* I12-D2 乐观锁：base_version = 加载/上次保存后的版本号（后端 get/save 均回写 doc.version）；
+       null = 不校验（兼容无版本来源的调用方）。后端比对不一致返回 409（code 2005）。 */
     const r = await http.put<{ version: number }>(
       `/workflow-definitions/${encodeURIComponent(doc.id)}/save`,
-      { doc, remark: remark ?? '', ...(tags.size ? { tags: [...tags] } : {}) },
+      {
+        doc,
+        remark: remark ?? '',
+        base_version: doc.version ?? null,
+        ...(tags.size ? { tags: [...tags] } : {}),
+      },
     )
     return { version: r.version }
   },
@@ -125,6 +134,7 @@ export async function listDefinitions(params?: { pageNo?: number; pageSize?: num
     id: r.id,
     name: r.name,
     version: r.version,
+    code: r.code,
     owner: r.owner,
     status: r.releaseState,
     cron: r.cron ?? '-',
@@ -226,13 +236,14 @@ export interface InstanceRow {
   }[]
 }
 
-/** 实例分页列表（含 total，分页条用） */
+/** 实例分页列表（含 total，分页条用）；syncLogs=true 时同步后端日志状态（终态无日志实例不展示） */
 export async function listInstancesPage(params?: {
   pageNo?: number
   pageSize?: number
   wfCode?: string
   runMode?: string
   state?: string
+  syncLogs?: boolean
 }): Promise<PageData<InstanceRow>> {
   const q = new URLSearchParams()
   q.set('page_no', String(params?.pageNo ?? 1))
@@ -240,6 +251,7 @@ export async function listInstancesPage(params?: {
   if (params?.wfCode) q.set('wf_code', params.wfCode)
   if (params?.runMode) q.set('run_mode', params.runMode)
   if (params?.state) q.set('state', params.state)
+  if (params?.syncLogs) q.set('sync_logs', '1')
   return http.get<PageData<InstanceRow>>(`/instances?${q.toString()}`)
 }
 
@@ -249,6 +261,7 @@ export async function listInstances(params?: {
   wfCode?: string
   runMode?: string
   state?: string
+  syncLogs?: boolean
 }): Promise<InstanceRow[]> {
   const q = new URLSearchParams()
   q.set('page_no', String(params?.pageNo ?? 1))
@@ -256,6 +269,7 @@ export async function listInstances(params?: {
   if (params?.wfCode) q.set('wf_code', params.wfCode)
   if (params?.runMode) q.set('run_mode', params.runMode)
   if (params?.state) q.set('state', params.state)
+  if (params?.syncLogs) q.set('sync_logs', '1')
   const page = await http.get<PageData<InstanceRow>>(`/instances?${q.toString()}`)
   return page.list
 }
@@ -446,4 +460,46 @@ export interface MonitorNodeRow {
 
 export async function fetchMonitorNodes(): Promise<{ zkAvailable: boolean; nodes: MonitorNodeRow[] }> {
   return http.get<{ zkAvailable: boolean; nodes: MonitorNodeRow[] }>('/monitor/nodes')
+}
+
+/* ---- 工作流分类目录（I11：Palette 分组 + 新建/删除/移动；内置 同步/ETL/流 + 自定义 t_wf_category） ---- */
+
+/** 后端分类行：id 形如 builtin:同步 / custom:5 */
+export interface CategoryRow {
+  id: string
+  name: string
+  builtin: boolean
+}
+
+export async function listCategories(): Promise<CategoryRow[]> {
+  return http.get<CategoryRow[]>('/workflow-definitions/categories')
+}
+
+export async function createCategory(name: string): Promise<CategoryRow> {
+  return http.post<CategoryRow>('/workflow-definitions/categories', { name })
+}
+
+/** 删除自定义分类目录（分类 id 形如 custom:N，后端只接受数字部分） */
+export async function deleteCategory(id: string): Promise<void> {
+  const numeric = id.replace(/^custom:/, '')
+  if (!/^\d+$/.test(numeric)) return
+  await http.delete<void>(`/workflow-definitions/categories/${numeric}`)
+}
+
+/** 设置工作流分类标签（不 bump version；移动分类落地） */
+export async function setWfTags(wfId: string, tags: string[]): Promise<{ tags: string[] }> {
+  return http.put<{ tags: string[] }>(`/workflow-definitions/${encodeURIComponent(wfId)}/tags`, { tags })
+}
+
+/* ---- 实例日志删除（I11：运行监控行操作「删除日志」；I14：批量多选删除。白名单内物理删文件+删索引） ---- */
+
+export async function deleteInstanceLogs(instanceId: string): Promise<{ deleted: number; files: number; skipped: number }> {
+  return http.delete<{ deleted: number; files: number; skipped: number }>(`/logs?instance_id=${encodeURIComponent(instanceId)}`)
+}
+
+export interface DeleteLogsResult { deleted: number; files: number; skipped: number; instances: number }
+
+/** I14：批量删除多个实例的日志（逗号拼接 instance_ids） */
+export async function deleteInstanceLogsBatch(instanceIds: string[]): Promise<DeleteLogsResult> {
+  return http.delete<DeleteLogsResult>(`/logs?instance_ids=${encodeURIComponent(instanceIds.join(','))}`)
 }

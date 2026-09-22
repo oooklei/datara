@@ -22,10 +22,20 @@ from api.commands import submit_command
 from api.streamjob import STREAM_TYPES, extract_stream_spec, register_stream_job
 from common.db import get_db
 from common.log import get_logger
-from common.models import User, WfDefinition, WfDefinitionLog, WfSchedule
+from common.models import (
+    StreamJob,
+    StreamOffset,
+    User,
+    WfCategory,
+    WfDefinition,
+    WfDefinitionLog,
+    WfSchedule,
+    WorkflowInstance,
+)
 from common.resp import (
     WF_NOT_FOUND,
     WF_PARAM_INVALID,
+    WF_VERSION_CONFLICT,
     WF_VERSION_NOT_FOUND,
     PageQuery,
     fail,
@@ -33,6 +43,7 @@ from common.resp import (
     ok,
     page_result,
 )
+from master.state import INSTANCE_RUNNING_STATES
 
 logger = get_logger("api.wf_definition")
 
@@ -47,6 +58,7 @@ class SaveBody(BaseModel):
     doc: dict
     remark: Optional[str] = None
     tags: Optional[List[str]] = None  # I6：C23 保存自动打「同步」标签通道（缺省不改动既有标签）
+    base_version: Optional[int] = None  # I12-D2 并发保护：加载时的版本号；缺省=不校验（兼容旧客户端）
 
 
 class RollbackBody(BaseModel):
@@ -129,6 +141,7 @@ def list_definitions(page: PageQuery = Depends(), search: Optional[str] = None, 
     items = [
         {
             "id": row.id,
+            "code": row.code,
             "name": row.name,
             "version": row.version,
             "releaseState": row.release_state,
@@ -173,11 +186,93 @@ def create_definition(
     return ok({"id": definition.id, "code": definition.code, "version": definition.version})
 
 
+# ---------------- 分类目录（I11：Palette 工作流分组；内置 同步/ETL/流 + 自定义 t_wf_category） ----------------
+
+BUILTIN_CATEGORIES = ("同步", "ETL", "流")
+
+
+class CategoryBody(BaseModel):
+    name: str
+
+
+class TagsBody(BaseModel):
+    tags: Optional[List[str]] = None
+
+
+@router.get("/categories")
+def list_categories(db: Session = Depends(get_db)):
+    """分类目录清单：内置三组 + 自定义目录（t_wf_category，全用户可见）。"""
+    items = [{"id": "builtin:%s" % c, "name": c, "builtin": True} for c in BUILTIN_CATEGORIES]
+    for row in db.query(WfCategory).order_by(WfCategory.id).all():
+        items.append({"id": "custom:%s" % row.id, "name": row.name, "builtin": False})
+    return ok(items)
+
+
+@router.post("/categories")
+def create_category(
+    body: CategoryBody,
+    user: User = Depends(require_perm("edit_definition")),
+    db: Session = Depends(get_db),
+):
+    """新建自定义分类目录（重名拒绝：内置名/已有自定义名）。"""
+    name = (body.name or "").strip()
+    if not name:
+        return fail(WF_PARAM_INVALID, "分类目录名不能为空")
+    if name in BUILTIN_CATEGORIES:
+        return fail(WF_PARAM_INVALID, "「%s」为内置分类目录，无需新建" % name)
+    exists = db.query(WfCategory).filter(WfCategory.name == name).first()
+    if exists is not None:
+        return fail(WF_PARAM_INVALID, "分类目录「%s」已存在" % name)
+    row = WfCategory(name=name)
+    db.add(row)
+    db.commit()
+    logger.info("新建分类目录: %s（操作人 %s）", name, user.user_name)
+    return ok({"id": "custom:%s" % row.id, "name": row.name, "builtin": False})
+
+
+@router.delete("/categories/{cat_id}")
+def delete_category(
+    cat_id: int,
+    user: User = Depends(require_perm("edit_definition")),
+    db: Session = Depends(get_db),
+):
+    """删除自定义分类目录：同时摘除各工作流定义上的同名标签（回归普通）。"""
+    row = db.get(WfCategory, cat_id)
+    if row is None:
+        raise ApiError(WF_NOT_FOUND, status=404)
+    for definition in db.query(WfDefinition).filter(WfDefinition.tags.isnot(None)).all():
+        if row.name in (definition.tags or []):
+            definition.tags = [t for t in definition.tags if t != row.name]
+    db.delete(row)
+    db.commit()
+    logger.info("删除分类目录: %s（操作人 %s）", row.name, user.user_name)
+    return ok(True)
+
+
+@router.put("/{wf_id}/tags")
+def set_definition_tags(
+    wf_id: str,
+    body: TagsBody,
+    user: User = Depends(require_perm("edit_definition")),
+    db: Session = Depends(get_db),
+):
+    """设置工作流分类标签（不 bump version、不动 graph_json；Palette 移动分类落地）。"""
+    definition = _get_or_404(db, wf_id)
+    definition.tags = [t for t in (body.tags or []) if t.strip()]
+    db.commit()
+    logger.info("设置分类标签: %s → %s（操作人 %s）", wf_id, definition.tags, user.user_name)
+    return ok({"tags": definition.tags})
+
+
 @router.get("/{wf_id}")
 def get_definition(wf_id: str, db: Session = Depends(get_db)):
-    """读取：返回当前版本 graph_json 原样 JSON（GraphDocument）。"""
+    """读取：返回当前版本 graph_json 原样 JSON（GraphDocument）。
+
+    I12-D2：doc.version 显式回写库内权威版本号（前端保存时作 base_version 参与乐观锁）。
+    """
     definition = _get_or_404(db, wf_id)
     doc = json.loads(definition.graph_json) if definition.graph_json else _empty_doc(definition.id, definition.name)
+    doc["version"] = definition.version
     return ok(doc)
 
 
@@ -188,11 +283,20 @@ def save_definition(
     user: User = Depends(require_perm("edit_definition")),
     db: Session = Depends(get_db),
 ):
-    """保存：version+1 → 更新 definition + 追加版本快照 → 返回 {version}。"""
+    """保存：version+1 → 更新 definition + 追加版本快照 → 返回 {version}。
+
+    I12-D2 乐观锁：base_version 非缺省时与库内 version 比对，不一致返回 409（CAS）。
+    """
     definition = _get_or_404(db, wf_id)
     doc = body.doc
     if not isinstance(doc, dict) or doc.get("id") != wf_id:
         raise ApiError(WF_PARAM_INVALID, "doc.id 与路径不一致")
+    if body.base_version is not None and body.base_version != definition.version:
+        raise ApiError(
+            WF_VERSION_CONFLICT,
+            "定义已被他人更新（当前 v%s，提交基于 v%s），请刷新后重试" % (definition.version, body.base_version),
+            status=409,
+        )
     definition.version = definition.version + 1
     doc["version"] = definition.version
     definition.name = doc.get("name") or definition.name
@@ -205,18 +309,44 @@ def save_definition(
     return ok({"version": definition.version})
 
 
+# 流任务活跃状态（宿主 worker 常驻线程在跑，阻塞删除；对齐 api/streamjob.py 状态注释）
+STREAM_ACTIVE_STATUS = ("starting", "running", "reconnecting")
+
+
 @router.delete("/{wf_id}")
 def delete_definition(
     wf_id: str,
     user: User = Depends(require_perm("edit_definition")),
     db: Session = Depends(get_db),
 ):
-    """删除：definition + 版本快照同删。"""
+    """删除（I12-D3 级联口径）：
+
+    - 运行中实例（t_workflow_instance，submitted/running）→ 拒绝 409
+    - 活跃流任务（t_stream_job.doc_id，starting/running/reconnecting）→ 拒绝 409 提示先停
+    - 无阻塞 → 级联删除：调度（t_wf_schedule）、停止态流任务行及其位点（t_stream_offset）、
+      版本快照（t_wf_definition_log）、定义行
+    """
     definition = _get_or_404(db, wf_id)
+    running = (
+        db.query(WorkflowInstance)
+        .filter(WorkflowInstance.wf_code == definition.code, WorkflowInstance.state.in_(INSTANCE_RUNNING_STATES))
+        .count()
+    )
+    if running:
+        raise ApiError(WF_PARAM_INVALID, "该工作流存在 %d 个运行中实例，请先停止实例后再删除" % running, status=409)
+    stream_jobs = db.query(StreamJob).filter(StreamJob.doc_id == definition.id).all()
+    active = [j for j in stream_jobs if (j.status or "") in STREAM_ACTIVE_STATUS]
+    if active:
+        raise ApiError(WF_PARAM_INVALID, "该画布存在未停止的流任务（%s），请先在流任务列表停止后再删除"
+                       % "、".join("#%s %s" % (j.id, j.name or j.wf_name) for j in active[:3]), status=409)
+    for job in stream_jobs:
+        db.query(StreamOffset).filter(StreamOffset.job_id == job.id).delete()
+        db.delete(job)
+    db.query(WfSchedule).filter(WfSchedule.wf_code == definition.code).delete()
     db.query(WfDefinitionLog).filter(WfDefinitionLog.wf_code == definition.code).delete()
     db.delete(definition)
     db.commit()
-    logger.info("删除工作流定义: %s（操作人 %s）", wf_id, user.user_name)
+    logger.info("删除工作流定义: %s（操作人 %s；级联调度/停止态流任务/快照）", wf_id, user.user_name)
     return ok(True)
 
 

@@ -23,7 +23,8 @@ import { useGraphStore } from '../../stores/graph'
 import { useAuthStore } from '../../stores/auth'
 import { useRunStore } from '../../stores/run'
 import { useFloatStore } from '../../stores/float'
-import { isMock } from '../../services'
+import { graphService, isMock } from '../../services'
+import type { DagPickItem } from '../../stores/dagTabs'
 
 import DataNode from './DataNode.vue'
 import Palette from './Palette.vue'
@@ -31,13 +32,28 @@ import Inspector from './Inspector.vue'
 import FloatLayer from './FloatLayer.vue'
 import IssuePanel from './panels/IssuePanel.vue'
 import LogPanel from './panels/LogPanel.vue'
+import WfVarPanel from './panels/WfVarPanel.vue'
 import AiPanel from './panels/AiPanel.vue'
 import VersionPanel from './panels/VersionPanel.vue'
 import RunDialog from './RunDialog.vue'
 import { Search, FullScreen, RefreshLeft, RefreshRight, Operation } from '@element-plus/icons-vue'
 
-const props = defineProps<{ profile: ViewProfile; docId: string; doc?: GraphDocument | null }>()
-const emit = defineEmits<{ select: [id: string | null] }>()
+const props = defineProps<{
+  profile: ViewProfile
+  docId: string
+  doc?: GraphDocument | null
+  snapKey?: string
+  /** I11：画布标题副元数据（#code / 目录 / 名称）；宿主由 dagTabs 激活项推导 */
+  docMeta?: { code?: number; category?: string }
+  /** 宿主托管载入（任务中心统一画布）：Palette 载入请求上抛宿主，由宿主决定视角/文档，本组件不自行合并 */
+  hostManaged?: boolean
+  /** 宿主切换文档后要并入的其余选中任务 id（首屏合并一次，配合 :key 强刷） */
+  mergeIds?: string[]
+}>()
+const emit = defineEmits<{
+  select: [id: string | null]
+  'pick-tasks': [{ items: DagPickItem[] }]
+}>()
 
 const graphStore = useGraphStore()
 const run = useRunStore()
@@ -45,14 +61,20 @@ const floatStore = useFloatStore()
 const auth = useAuthStore()
 /** 系统权限降级（M15）：只读角色（analyst/viewer）强制进入 view 模式 */
 const effMode = computed(() => (props.profile.mode === 'edit' && !auth.canEdit ? 'view' : props.profile.mode))
-const { screenToFlowCoordinate, fitView, fitViewOnInitDone } = useVueFlow()
+const { screenToFlowCoordinate, fitView, fitViewOnInitDone, viewport, setViewport } = useVueFlow()
+
+/** N15 快照恢复的视口（首屏 fit 完成后回放；无快照时为 null → 走 0.8 收敛） */
+const restoredViewport = ref<{ x: number; y: number; zoom: number } | null>(null)
 
 /* F56c：首屏构图——vue-flow 内部 fit-view-on-init 是无参调用（默认 padding），在节点尺寸测量后
    触发，晚于 onMounted 里的任何 fitView 并将其覆盖（实测 0.8 被打回 0.57）。因此等 fitViewOnInitDone
-   翻转（init fit 完成）后再执行：maxZoom 0.8 只封顶不抬底——大屏把过大的自然适配统一收敛到 0.8
-   可读档位并居中；窄画布保持自然适配，绝不裁切节点。 */
+   翻转（init fit 完成）后再执行：有快照视口则回放（N15，保证还原上次编辑位置），否则 maxZoom 0.8
+   只封顶不抬底——大屏把过大的自然适配统一收敛到 0.8 可读档位并居中；窄画布保持自然适配，绝不裁切节点。 */
 watch(fitViewOnInitDone, (done) => {
-  if (done) nextTick(() => fitView({ padding: 0, maxZoom: 0.8 }))
+  if (done) nextTick(() => {
+    if (restoredViewport.value) setViewport({ ...restoredViewport.value })
+    else fitView({ padding: 0, maxZoom: 0.8 })
+  })
 })
 
 const FALLBACK_SCHEMA: NodeSchema = { type: 'unknown', label: '未知', icon: '?', color: '#94a3b8', form: [] }
@@ -72,6 +94,44 @@ const selectedEdgeIds = ref<Set<string>>(new Set())
 /** N12 面板收放（持久化 datara.wb.panels） */
 const leftOpen = ref(true)
 const rightOpen = ref(true)
+/** I11 侧窗拖拽调宽：初始宽度随面板样式（Palette 232 / wb-right 288），拖拽期间实时更新并持久化 */
+const leftWidth = ref(232)
+const rightWidth = ref(288)
+const PANEL_MIN_W = 140
+const PANEL_MAX_W = 520
+let resizeSide: 'left' | 'right' | null = null
+let resizeStartX = 0
+let resizeStartW = 0
+function startResize(side: 'left' | 'right', e: MouseEvent) {
+  resizeSide = side
+  resizeStartX = e.clientX
+  resizeStartW = side === 'left' ? leftWidth.value : rightWidth.value
+  document.body.style.userSelect = 'none'
+  document.body.style.cursor = 'col-resize'
+  window.addEventListener('mousemove', onResizeMove)
+  window.addEventListener('mouseup', stopResize)
+  e.preventDefault()
+}
+function onResizeMove(e: MouseEvent) {
+  if (!resizeSide) return
+  const dx = e.clientX - resizeStartX
+  const w = Math.min(PANEL_MAX_W, Math.max(PANEL_MIN_W, resizeStartW + (resizeSide === 'left' ? dx : -dx)))
+  if (resizeSide === 'left') leftWidth.value = w
+  else rightWidth.value = w
+}
+function stopResize() {
+  resizeSide = null
+  document.body.style.userSelect = ''
+  document.body.style.cursor = ''
+  window.removeEventListener('mousemove', onResizeMove)
+  window.removeEventListener('mouseup', stopResize)
+}
+/** N15 右侧边窗双 Tab：属性(Inspector) / 变量（日志已按 I11 移入「更多」浮窗，LogPanel 仍由更多菜单复用） */
+const rightTab = ref<'inspector' | 'vars'>('inspector')
+const rightTabs: { k: 'inspector' | 'vars'; label: string; icon: string }[] = [
+  { k: 'inspector', label: '属性', icon: '☰' },
+  { k: 'vars', label: '变量', icon: '$' },
+]
 /** N7 类型过滤（视图态，不落 doc） */
 const hiddenTypes = ref<Set<string>>(new Set())
 /** N6 折叠组（视图态；组元数据存 doc.groups 随版本保存） */
@@ -186,20 +246,32 @@ function pruneSelection() {
 onMounted(async () => {
   /* N12 面板收放持久化恢复 */
   try {
-    const p = JSON.parse(localStorage.getItem('datara.wb.panels') ?? '{}') as { left?: boolean; right?: boolean }
+    const p = JSON.parse(localStorage.getItem('datara.wb.panels') ?? '{}') as { left?: boolean; right?: boolean; rightTab?: string; leftW?: number; rightW?: number }
     if (typeof p.left === 'boolean') leftOpen.value = p.left
     if (typeof p.right === 'boolean') rightOpen.value = p.right
+    if (p.rightTab === 'inspector' || p.rightTab === 'vars') rightTab.value = p.rightTab
+    if (typeof p.leftW === 'number' && p.leftW >= PANEL_MIN_W && p.leftW <= PANEL_MAX_W) leftWidth.value = p.leftW
+    if (typeof p.rightW === 'number' && p.rightW >= PANEL_MIN_W && p.rightW <= PANEL_MAX_W) rightWidth.value = p.rightW
   } catch { /* 忽略隐私模式 */ }
   window.addEventListener('keydown', onKeydown)
   if (!props.doc) await graphStore.load(props.docId)
   syncFromDoc()
-  /* 首屏构图见 setup 顶部 fitViewOnInitDone watch（等内部 init fit 完成后再收敛到 0.8 上限） */
+  /* N15 快照恢复（面板/视口/未保存草稿）；须在首屏 fit 前设置 restoredViewport 供上方 watch 回放 */
+  restoreSnap()
+  /* 宿主切换视角后要并入的其余选中任务（首个已在 :key 中作为画布文档加载） */
+  if (props.mergeIds?.length) await onLoadTasks(props.mergeIds)
+  /* 首屏构图见 setup 顶部 fitViewOnInitDone watch（等内部 init fit 完成后再收敛/回放视口） */
 })
 
-onBeforeUnmount(() => { window.removeEventListener('keydown', onKeydown) })
+onBeforeUnmount(() => {
+  window.removeEventListener('keydown', onKeydown)
+  stopResize()
+  /* N15 离开时落快照（面板收展/右Tab + 视口 + 未保存草稿） */
+  saveSnap()
+})
 
-watch([leftOpen, rightOpen], ([l, r]) => {
-  try { localStorage.setItem('datara.wb.panels', JSON.stringify({ left: l, right: r })) } catch { /* 忽略隐私模式 */ }
+watch([leftOpen, rightOpen, rightTab, leftWidth, rightWidth], ([l, r, t, lw, rw]) => {
+  try { localStorage.setItem('datara.wb.panels', JSON.stringify({ left: l, right: r, rightTab: t, leftW: lw, rightW: rw })) } catch { /* 忽略隐私模式 */ }
 })
 
 /* 外部注入文档（血缘等只读视图）：重建渲染数组 + 复位失效选中 + 适配视图 */
@@ -217,16 +289,79 @@ watch(() => graphStore.doc, (d) => {
   pruneSelection()
 })
 
+/* ---------- N15 快照四合一：docId + 面板收展/右Tab + 未保存草稿 + 视口 ---------- */
+
+/** 快照命名空间（按 snapKey 隔离；未传则按 profile.id，独立路由天然按视角隔离） */
+const snapNs = computed(() => `datara.dag.snap.${props.snapKey ?? props.profile.id}`)
+
+/** 离开工作台时落快照：外部注入 doc（血缘等只读视图）不保存；无文档不保存 */
+function saveSnap() {
+  if (props.doc || !doc.value) return
+  try {
+    localStorage.setItem(snapNs.value, JSON.stringify({
+      docId: doc.value.id,
+      panels: { left: leftOpen.value, right: rightOpen.value, rightTab: rightTab.value, leftW: leftWidth.value, rightW: rightWidth.value },
+      draft: graphStore.dirty ? cloneDoc(doc.value) : null, // 仅未保存草稿（已保存版本无需快照）
+      viewport: { x: viewport.value.x, y: viewport.value.y, zoom: viewport.value.zoom },
+    }))
+  } catch { /* 忽略隐私模式 */ }
+}
+
+/** 打开工作台时恢复快照：面板收展/右Tab、视口（交首屏 watch 回放）、未保存草稿 */
+function restoreSnap() {
+  if (props.doc) return
+  try {
+    const s = JSON.parse(localStorage.getItem(snapNs.value) ?? 'null') as
+      | { docId?: string; panels?: { left?: boolean; right?: boolean; rightTab?: string; leftW?: number; rightW?: number }; draft?: GraphDocument | null; viewport?: { x: number; y: number; zoom: number } }
+      | null
+    if (!s || s.docId !== props.docId) return
+    if (typeof s.panels?.left === 'boolean') leftOpen.value = s.panels.left
+    if (typeof s.panels?.right === 'boolean') rightOpen.value = s.panels.right
+    if (s.panels?.rightTab === 'inspector' || s.panels?.rightTab === 'vars') rightTab.value = s.panels.rightTab
+    if (typeof s.panels?.leftW === 'number' && s.panels.leftW >= PANEL_MIN_W && s.panels.leftW <= PANEL_MAX_W) leftWidth.value = s.panels.leftW
+    if (typeof s.panels?.rightW === 'number' && s.panels.rightW >= PANEL_MIN_W && s.panels.rightW <= PANEL_MAX_W) rightWidth.value = s.panels.rightW
+    if (s.viewport && Number.isFinite(s.viewport.x) && Number.isFinite(s.viewport.y) && Number.isFinite(s.viewport.zoom)) {
+      restoredViewport.value = { x: s.viewport.x, y: s.viewport.y, zoom: s.viewport.zoom }
+    }
+    /* 未保存草稿恢复：仅同文档且含节点数组（覆盖已落库版本，续编不丢改动） */
+    if (s.draft && s.draft.id === props.docId && Array.isArray(s.draft.nodes)) {
+      graphStore.replace(s.draft)
+      syncFromDoc()
+    }
+  } catch { /* 忽略损坏快照 */ }
+}
+
 /* ---------- 工具栏动作 ---------- */
 
 async function onSave() {
   if (!doc.value) return
+  /* W1 保存闸门：先跑视角校验器；存在 error（成环/缺源缺汇/混编等）时确认后才保存（warn 不阻断，保持草稿语义） */
+  const pre: Issue[] = []
+  props.profile.validators.forEach((v) => pre.push(...v(doc.value!)))
+  const errs = pre.filter((i) => i.level === 'error')
+  if (errs.length) {
+    try {
+      await ElMessageBox.confirm(
+        `当前画布存在 ${errs.length} 个校验错误，如「${errs[0]!.msg}」。仍要保存吗？（可先点「校验」查看全部问题）`,
+        '保存前校验',
+        { confirmButtonText: '仍要保存', cancelButtonText: '返回修改', type: 'warning' },
+      )
+    } catch { return }
+  }
   try {
     const { value } = await ElMessageBox.prompt('版本备注（可选）', '保存新版本', {
       confirmButtonText: '保存', cancelButtonText: '取消', inputPlaceholder: '如：新增质检节点',
     })
-    const version = await graphStore.save(value || undefined)
-    ElMessage.success(`已保存 v${version}（已落库，刷新后仍在）`)
+    try {
+      const version = await graphStore.save(value || undefined)
+      ElMessage.success(`已保存 v${version}（已落库，刷新后仍在）`)
+    } catch (e) {
+      /* I12-D2 保存并发冲突（后端 409/code 2005）：提示刷新加载最新版本；其余错误原样透出 */
+      const code = (e as { code?: number }).code
+      const msg = e instanceof Error ? e.message : String(e)
+      if (code === 2005) ElMessage.error(`${msg}（请刷新画布，以最新版本为基础重新编辑保存）`)
+      else ElMessage.error(`保存失败: ${msg}`)
+    }
   } catch { /* 取消 */ }
 }
 
@@ -255,6 +390,45 @@ function onLayout() {
 function onUndo() { graphStore.undo() }
 function onRedo() { graphStore.redo() }
 function onFit() { fitView({ padding: 0.15, duration: 220 }) }
+
+/* ---------- N15 任务载入（B 复制合并）：勾选任务 → 复制其节点/边原样合并进当前画布 ---------- */
+
+/** Palette 载入请求：宿主托管时上抛（宿主切换视角/文档），否则本地合并（独立路由/只读视图用法） */
+function onPaletteLoad(p: { items: DagPickItem[] }) {
+  if (props.hostManaged) { emit('pick-tasks', p); return }
+  void onLoadTasks(p.items.map((i) => i.id))
+}
+
+async function onLoadTasks(ids: string[]) {
+  if (!ids.length || !doc.value || props.doc || effMode.value !== 'edit') return
+  let added = 0
+  for (const [idx, id] of ids.entries()) {
+    let src: GraphDocument | null = null
+    try { src = await graphService.get(id) } catch { /* 单个任务失败不中断其余载入 */ }
+    if (!src || !src.nodes.length) continue
+    /* B 语义：节点/边原样复制，全部重映射新 uid（节点 id + 边两端同步替换），并按序级联偏移错开 */
+    const idMap = new Map<string, string>()
+    src.nodes.forEach((n) => idMap.set(n.id, uid('nd')))
+    const ox = 80 + idx * 60
+    const oy = 120 + idx * 120
+    src.nodes.forEach((n) => {
+      const g: GNode = { ...n, id: idMap.get(n.id)!, position: { x: n.position.x + ox, y: n.position.y + oy } }
+      doc.value!.nodes.push(g)
+    })
+    src.edges.forEach((e) => {
+      if (!idMap.has(e.source) || !idMap.has(e.target)) return
+      const g: GEdge = { ...e, id: uid('e'), source: idMap.get(e.source)!, target: idMap.get(e.target)! }
+      doc.value!.edges.push(g)
+    })
+    added += src.nodes.length
+  }
+  if (!added) { ElMessage.warning('所选任务暂无可载入的节点'); return }
+  /* 必须整档重同步渲染数组：Vue Flow 的 v-model:nodes 按引用同步，原地 push 不会写入其内部 store（新节点不渲染） */
+  syncFromDoc()
+  graphStore.markDirty()
+  ElMessage.success(`已载入 ${ids.length} 个任务（复制合并 ${added} 个节点）`)
+  nextTick(() => fitView({ padding: 0.15, duration: 250 }))
+}
 
 /** N11 MiniMap 节点着色（按类型色） */
 function miniColor(n: any): string {
@@ -660,6 +834,16 @@ function onNodeClick(ev: NodeMouseEvent) {
   emit('select', ev.node.id)
 }
 
+/** W1 查询增强：双击节点直接打开页面化浮窗（运行详情/实时数据/看板），免先选中再点「页面」 */
+function onNodeDblClick(ev: NodeMouseEvent) {
+  if (ev.node.id.startsWith('grp:')) return
+  const n = doc.value?.nodes.find((x) => x.id === ev.node.id)
+  const p = n ? props.profile.nodeTypes[n.type]?.page : undefined
+  if (!n || !p) return
+  if (p.mode && p.mode !== effMode.value) return
+  openFloat(`page_${n.id}`, p.title, p.comp, p.w ?? 540, p.h ?? 400, { node: n, doc: graphStore.doc })
+}
+
 function onPaneClick() {
   selectedId.value = null
   selectedIds.value = new Set()
@@ -806,6 +990,11 @@ function ctxLayout() { onLayout(); closeCtx() }
     <!-- 顶部工具栏 -->
     <div class="wb-header">
       <div class="wb-title">
+        <template v-if="docMeta?.code != null || docMeta?.category">
+          <span v-if="docMeta?.code != null" class="mono wb-code">#{{ docMeta.code }}</span>
+          <span v-if="docMeta?.category" class="wb-cat">{{ docMeta.category }}</span>
+          <span class="wb-sep">/</span>
+        </template>
         {{ doc?.name ?? '加载中…' }}
         <span class="badge">{{ profile.name }}</span>
         <span v-if="doc" class="mono" style="font-size:11px;color:var(--text-3)">v{{ doc.version }}</span>
@@ -870,9 +1059,10 @@ function ctxLayout() { onLayout(); closeCtx() }
     </div>
 
     <div class="wb-body">
-      <!-- 左侧元件库（可收放，状态持久化） -->
+      <!-- 左侧元件库（可收放，状态持久化）：组件 + 任务候选池多 Tab 勾选载入 -->
       <template v-if="effMode === 'edit' && profile.palette.length">
-        <Palette v-show="leftOpen" :profile="profile" />
+        <Palette v-show="leftOpen" :style="{ width: leftWidth + 'px' }" :profile="profile" @load-tasks="onPaletteLoad" />
+        <div v-if="leftOpen" class="wb-split wb-split-l" title="拖拽调整宽度" @mousedown="startResize('left', $event)" />
         <div v-if="!leftOpen" class="wb-rail" title="展开组件库" @click="leftOpen = true">»</div>
       </template>
 
@@ -916,7 +1106,7 @@ function ctxLayout() { onLayout(); closeCtx() }
       <!-- 中央画布 -->
       <div
         class="wb-canvas"
-        :class="{ 'drop-hot': dropHot }"
+        :class="{ 'drop-hot': dropHot, 'has-lanes': !!profile.lanes }"
         @dragenter.prevent="onDragEnter"
         @dragover.prevent
         @dragleave="onDragLeave"
@@ -943,13 +1133,14 @@ function ctxLayout() { onLayout(); closeCtx() }
           @nodes-change="onNodesChange"
           @edges-change="onEdgesChange"
           @node-click="onNodeClick"
+          @node-double-click="onNodeDblClick"
           @node-contextmenu="onNodeCtx"
           @edge-click="onEdgeClick"
           @edge-contextmenu="onEdgeCtx"
           @pane-click="onPaneClick"
         >
           <Background :gap="18" />
-          <Controls />
+          <Controls position="top-left" />
           <MiniMap pannable zoomable :node-color="miniColor" node-stroke-color="#ffffff" :node-border-radius="2" mask-color="rgba(203,213,225,.5)" />
           <template #node-gn="nodeProps">
             <div :class="{ 'gn-hit': nodeProps.id === searchHit }">
@@ -973,8 +1164,20 @@ function ctxLayout() { onLayout(); closeCtx() }
         </VueFlow>
       </div>
 
-      <!-- 右侧属性面板（可收放，状态持久化） -->
-      <Inspector v-show="rightOpen" :node="selectedNode" :profile="profile" @delete="deleteOne" />
+      <!-- 右侧边窗（可收放，状态持久化）：属性 / 日志 / 变量 三 Tab 同级（N15） -->
+      <div v-if="rightOpen" class="wb-split wb-split-r" title="拖拽调整宽度" @mousedown="startResize('right', $event)" />
+      <div v-show="rightOpen" class="wb-right" :style="{ width: rightWidth + 'px' }">
+        <div class="wb-right-head">
+          <button
+            v-for="t in rightTabs" :key="t.k"
+            class="wb-right-tab" :class="{ on: rightTab === t.k }"
+            @click="rightTab = t.k"
+          ><span class="wbt-ic">{{ t.icon }}</span>{{ t.label }}</button>
+          <span class="wb-right-fold" title="折叠面板" @click="rightOpen = false">»</span>
+        </div>
+        <Inspector v-show="rightTab === 'inspector'" :node="selectedNode" :profile="profile" @delete="deleteOne" />
+        <div v-show="rightTab === 'vars'" class="wb-right-body"><WfVarPanel :doc-id="docId" /></div>
+      </div>
       <div v-if="!rightOpen" class="wb-rail wb-rail-r" title="展开属性面板" @click="rightOpen = true">«</div>
     </div>
 
@@ -1076,11 +1279,27 @@ label.nav-row{cursor:pointer}
 .wb-rail{width:16px;background:var(--bg);border-right:1px solid var(--border);display:flex;align-items:center;justify-content:center;cursor:pointer;color:var(--text-3);font-size:11px;flex-shrink:0}
 .wb-rail:hover{color:var(--primary);background:var(--primary-light)}
 .wb-rail-r{border-right:none;border-left:1px solid var(--border)}
+/* I11 侧窗拖拽调宽：分隔把手（5px 热区，hover/拖拽高亮） */
+.wb-split{width:5px;flex-shrink:0;cursor:col-resize;background:transparent;transition:background .12s;position:relative;z-index:30}
+.wb-split:hover,.wb-split.drag{background:var(--primary);opacity:.55}
+.wb-split-l{border-right:1px solid transparent}
+.wb-split-r{border-left:1px solid transparent}
 /* 拖入高亮（N1） */
 .wb-canvas.drop-hot{outline:2px dashed var(--primary);outline-offset:-3px;background:var(--primary-light)}
 .tpl-mode{border:1px solid var(--border);border-radius:var(--radius-sm);padding:9px 11px;cursor:pointer;transition:all .15s}
 .tpl-mode:hover{border-color:var(--primary)}
 .tpl-mode.on{border-color:var(--primary);background:var(--primary-light)}
+/* N15 右侧边窗三 Tab（属性/日志/变量）：面板头 + 显式折叠按钮 */
+.wb-right{width:288px;background:var(--card);border-left:1px solid var(--border);display:flex;flex-direction:column;flex-shrink:0;min-width:0}
+.wb-right .wb-inspector{width:100%;border-left:none;flex:1;min-height:0}
+.wb-right-head{display:flex;align-items:center;gap:2px;padding:6px 8px 0;border-bottom:1px solid var(--border);flex-shrink:0}
+.wb-right-tab{border:none;background:none;padding:6px 10px;font-size:12.5px;color:var(--text-2);cursor:pointer;border-bottom:2px solid transparent;display:flex;align-items:center;gap:5px;margin-bottom:-1px}
+.wb-right-tab:hover{color:var(--primary)}
+.wb-right-tab.on{color:var(--primary);border-bottom-color:var(--primary);font-weight:600}
+.wb-right-tab .wbt-ic{font-size:11px}
+.wb-right-fold{margin-left:auto;padding:2px 7px;font-size:12px;color:var(--text-3);cursor:pointer;line-height:1}
+.wb-right-fold:hover{color:var(--primary)}
+.wb-right-body{flex:1;min-height:0;overflow:auto}
 </style>
 
 <style>
@@ -1093,9 +1312,12 @@ label.nav-row{cursor:pointer}
 .vue-flow__edge:hover .vue-flow__edge-path{stroke-width:3}
 .vue-flow__edge.selected .vue-flow__edge-path{stroke:#e11d48 !important;stroke-width:2.6 !important}
 .vue-flow__edge.selected .vue-flow__edge-textbg{stroke:#e11d48}
-/* N10 Controls / N11 MiniMap 观感 */
-.vue-flow__controls{border-radius:8px;overflow:hidden;border:1px solid var(--border);box-shadow:0 2px 10px rgba(15,23,42,.12)}
-.vue-flow__controls-button{border-bottom:1px solid var(--border);background:#fff}
+/* N10 Controls / N11 MiniMap 观感；N15 控件移顶（横向排布，置于画布左上） */
+.wb-canvas .vue-flow__controls{border-radius:8px;overflow:hidden;border:1px solid var(--border);box-shadow:0 2px 10px rgba(15,23,42,.12);display:flex;flex-direction:row;margin:8px 0 0 10px}
+.wb-canvas .vue-flow__controls-button{border-bottom:none;border-right:1px solid var(--border);background:#fff}
+.wb-canvas .vue-flow__controls-button:last-child{border-right:none}
+/* N15 泳道图例占左上（topo 等分层视角）时 Controls 让位右上 */
+.wb-canvas.has-lanes .vue-flow__controls{left:auto;right:12px;margin:8px 12px 0 0}
 .vue-flow__minimap{border:1px solid var(--border);border-radius:8px;overflow:hidden;box-shadow:0 2px 10px rgba(15,23,42,.12);background:rgba(255,255,255,.92)}
 /* N8 搜索命中脉冲 */
 .gn-hit{animation:gnPulse 1.1s ease-in-out 2}

@@ -18,7 +18,8 @@ from master.engine import WorkflowExecuteRunnable, register_runnable
 
 logger = get_logger("master.failover")
 
-WORKER_TYPES = ("sql", "shell", "python", "ssh", "smoke", "sync")  # I6 +sync
+# I12-D1 补齐 procedure/http/file（与 engine.py 对齐）：均为 worker 任务，故障转移时 running → fault_tolerance 后重派
+WORKER_TYPES = ("sql", "shell", "python", "ssh", "smoke", "procedure", "http", "file", "sync")
 
 
 def recover_running_instances() -> int:
