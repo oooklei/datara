@@ -322,6 +322,8 @@ def save_definition(
             .update(values, synchronize_session=False)
         )
         if matched == 0:
+            # CAS 失败即他人已提交 bump：refresh 读真实库内版本（文案/日志精准，session 无脏写安全）
+            db.refresh(definition)
             logger.warning("保存 CAS 失败: wf=%s 库内 v%s，提交基于 v%s（操作人 %s）",
                            wf_id, definition.version, base_version, user.user_name)
             raise ApiError(
