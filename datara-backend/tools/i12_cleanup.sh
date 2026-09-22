@@ -122,7 +122,7 @@ def list_definitions(token):
         if st != 200:
             raise RuntimeError("definitions list failed: %s %s" % (st, body))
         data = body.get("data") or {}
-        items = data.get("items") or data.get("list") or []  # 分页 data 键双兼容：仓库 common/resp.py page_result 返回 list，1.9 部署旧版返回 items（09-23 实测）
+        items = data.get("items") or data.get("list") or []  # 分页 data 键双兼容：仓库 resp.py 与 1.9 部署版实测均返回 list，items 键仅为更早版本兜底
         new = [it for it in items if it.get("id") not in seen]  # 按 id 去重，防新旧翻页参数口径差异下重复行污染
         seen.update(it.get("id") for it in new)
         rows.extend(new)
@@ -140,7 +140,7 @@ def list_instances(token):
         if st != 200:
             raise RuntimeError("instances list failed: %s %s" % (st, body))
         data = body.get("data") or {}
-        items = data.get("items") or data.get("list") or []  # 分页 data 键双兼容：仓库 common/resp.py page_result 返回 list，1.9 部署旧版返回 items（09-23 实测）
+        items = data.get("items") or data.get("list") or []  # 分页 data 键双兼容：仓库 resp.py 与 1.9 部署版实测均返回 list，items 键仅为更早版本兜底
         new = [it for it in items if it.get("instanceId") not in seen]  # 按 instanceId 去重，防新旧翻页参数口径差异下重复行污染
         seen.update(it.get("instanceId") for it in new)
         rows.extend(new)
