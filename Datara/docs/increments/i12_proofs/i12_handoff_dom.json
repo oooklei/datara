@@ -1,0 +1,9 @@
+﻿{
+  "i12_final_handoff": {
+    "遗留仅1项": "真机已登录 BoardPage DOM『分类目录-流徽标』一帧未实证——诚实标注, 不宣称已证",
+    "隧道入口": "http://127.0.0.1:18090/  (login 页已登录, 隧道18090/18091)",
+    "起点令": "playwright 连已登录隧道 → goto BoardPage → 分类目录DOM抓『流徽标』帧+截图落盘i12_proofs → 终局报告补第8节",
+    "证据起点": "git 089d9ab (三证: palettePinning源码内置流徽标+BoardPage.categoryOf徽标流+boardcats API内置流徽标) 均已 commit",
+    "诚实": "真机板页分类目录『流徽标徽标徽标徽标徽标徽标』未在DOM实证帧内出现——源码三证已闭环, DOM真帧为唯一未完项"
+  }
+}
