@@ -15,7 +15,7 @@ from common.log import get_logger
 
 logger = get_logger("worker.stream.ops")
 
-AGG_FUNCS = ("sum", "count", "avg", "min", "max")
+AGG_FUNCS = ("sum", "count", "avg", "min", "max", "count_distinct", "rms")
 
 
 class OpError(RuntimeError):
@@ -240,10 +240,15 @@ class WindowAggOp(OpBase):
         if not self.aggs:
             out["cnt"] = len(rows)
         for field, func, alias in self.aggs:
-            vals = [r.get(field) for r in rows if isinstance(r.get(field), (int, float))]
             if func == "count":
                 out[alias] = len(rows)
-            elif not vals:
+                continue
+            if func == "count_distinct":
+                # 去重计数对任意类型值生效（如 user_id 字符串），不走数值过滤
+                out[alias] = len({r.get(field) for r in rows if r.get(field) is not None})
+                continue
+            vals = [r.get(field) for r in rows if isinstance(r.get(field), (int, float))]
+            if not vals:
                 out[alias] = None
             elif func == "sum":
                 out[alias] = sum(vals)
@@ -253,6 +258,8 @@ class WindowAggOp(OpBase):
                 out[alias] = min(vals)
             elif func == "max":
                 out[alias] = max(vals)
+            elif func == "rms":
+                out[alias] = (sum(v * v for v in vals) / len(vals)) ** 0.5
         out["win_start"] = bucket["start"]
         out["win_end"] = bucket["end"]
         return {"source": "window", "ts": time.time(), "data": out}

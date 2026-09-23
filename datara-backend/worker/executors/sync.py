@@ -72,7 +72,8 @@ def _source_columns(conn, schema: str, table: str) -> list:
 
 def _resolve_schemas(conn, param, table: str, log) -> list:
     """参与 schema 集（裁定②运行时探测）：已选集 + autoSchema 差集纳入 + 同名表校验。"""
-    raw_schemas = param.get("readerSchemas") or []
+    # 前端表单键 readerSchemasText（逗号分隔文本）优先；API/旧契约 readerSchemas（list）兜底
+    raw_schemas = param.get("readerSchemasText") or param.get("readerSchemas") or []
     if isinstance(raw_schemas, str):  # 前端逗号分隔文本输入兼容（中英文逗号）
         raw_schemas = raw_schemas.replace("，", ",").split(",")
     picked = [str(s).strip() for s in raw_schemas if str(s).strip()]
@@ -317,23 +318,21 @@ def execute(ctx) -> ExecResult:
         plan = _plan_targets(schemas, strategy, writer_table)
         src_cols, dst_cols = _column_pairs(first_cols, field_map, flag_column, strategy)
         for target_table, _s in plan:
-            if param.get("truncate"):
+            with writer_conn.cursor() as cur:
+                cur.execute("SHOW TABLES LIKE %s", (target_table,))
+                exists = cur.fetchone() is not None
+            if not exists:
+                if param.get("autoCreate", True):
+                    _create_target(writer_conn, target_table, first_cols, dst_cols,
+                                   flag_column, strategy, is_file)
+                    log("[sync] 已自动建表: %s（%d 列）" % (target_table, len(dst_cols)))
+                else:
+                    raise FileSourceError("目标表不存在且未开启自动建表: %s" % target_table)
+            elif param.get("truncate"):
                 with writer_conn.cursor() as cur:
                     cur.execute("TRUNCATE TABLE `%s`" % target_table)
                 writer_conn.commit()
                 log("[sync] 已清空目标表: %s" % target_table)
-            elif param.get("autoCreate", True):
-                with writer_conn.cursor() as cur:
-                    cur.execute("SHOW TABLES LIKE %s", (target_table,))
-                    if cur.fetchone() is None:
-                        _create_target(writer_conn, target_table, first_cols, dst_cols,
-                                       flag_column, strategy, is_file)
-                        log("[sync] 已自动建表: %s（%d 列）" % (target_table, len(dst_cols)))
-            else:
-                with writer_conn.cursor() as cur:
-                    cur.execute("SHOW TABLES LIKE %s", (target_table,))
-                    if cur.fetchone() is None:
-                        raise FileSourceError("目标表不存在且未开启自动建表: %s" % target_table)
 
         # ---- 搬运 ----
         try:

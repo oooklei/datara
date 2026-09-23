@@ -3,13 +3,18 @@
 - Source 契约：open(offset) → poll(max_rows) → offset → close()；
 - 行事件统一内部格式 {source, ts, data}（ts=事件时间，供窗口/水位线）；
 - 连接类故障抛 SourceError，由引擎统一重连（指数退避，连续 10 次失败转 failed）；
-- 依赖包（kafka-python / mysql-replication）缺失时在 open() 报可读错误（镜像构建后可用）。
+- 依赖包（kafka-python / mysql-replication）缺失时在 open() 报可读错误（镜像构建后可用）；
+- 连接性注册化（09-21）：kafka/redis/mqtt/http 四分型支持 dsRef 引用数据源中心注册源
+  （连接层=注册源，业务语义=节点参数；无 dsRef 走内联高级模式，存量画布零改动）。
 """
 
 import json
+import queue as pyqueue
+import random
 import socket
 import time
 from typing import Optional
+from urllib.parse import quote as _urlquote
 
 from common.dsconn import resolve_file_path
 from common.db import new_session
@@ -35,6 +40,19 @@ def lookup_datasource(ref) -> Optional[DataSource]:
         return ds
     finally:
         session.close()
+
+
+def resolve_ds_ref(params: dict, expect_types: tuple, what: str) -> Optional[DataSource]:
+    """解析节点 dsRef 引用（09-21 连接性注册化）：未配置返回 None；配置了则查存在+类型匹配。"""
+    ref = str((params or {}).get("dsRef") or "").strip()
+    if not ref:
+        return None
+    ds = lookup_datasource(ref)
+    if ds is None:
+        raise SourceError(f"{what} 引用的数据源不存在: {ref}（数据源中心已改名或删除）")
+    if ds.type not in expect_types:
+        raise SourceError(f"{what} 引用数据源类型不匹配: {ds.name} 为 {ds.type}，需要 {'/'.join(expect_types)}")
+    return ds
 
 
 def _dot_get(payload, path: str):
@@ -89,7 +107,7 @@ class SourceBase:
 
 
 def build_source(node_id: str, params: dict) -> SourceBase:
-    """分型工厂（C18 四源）。"""
+    """分型工厂（C18 七源）。"""
     src_type = str((params or {}).get("srcType") or "kafka")
     if src_type == "kafka":
         return KafkaSource(node_id, params)
@@ -99,6 +117,12 @@ def build_source(node_id: str, params: dict) -> SourceBase:
         return HttpSource(node_id, params)
     if src_type == "file":
         return FileSource(node_id, params)
+    if src_type == "simulate":
+        return SimulateSource(node_id, params)
+    if src_type == "redis":
+        return RedisStreamSource(node_id, params)
+    if src_type == "mqtt":
+        return MqttSource(node_id, params)
     raise SourceError(f"未知流输入分型: {src_type}")
 
 
@@ -123,6 +147,12 @@ class KafkaSource(SourceBase):
         self._bad = 0
         self._idle = 0
         self._resolved_ip: Optional[str] = None  # open 成功时缓存的 broker IP（DNS 抖动时探测兜底）
+        # 连接性注册化（09-21）：dsRef 引用注册源时 brokers 一律来自注册层（连接层归一）
+        ds = resolve_ds_ref(p, ("kafka",), "Kafka")
+        if ds is not None:
+            self.brokers = [b.strip() for b in str((ds.params or {}).get("brokers") or "").split(",") if b.strip()]
+            if not self.brokers:
+                raise SourceError(f"Kafka 数据源 {ds.name} 未配置 brokers，请先在数据源中心补全并测试")
 
     def open(self, offset: Optional[dict]) -> None:
         if not self.brokers or not self.topic:
@@ -372,14 +402,34 @@ class HttpSource(SourceBase):
         self.cursor_path = str(p.get("cursorPath") or "")
         self._cursor = None
         self._next_poll = 0.0
+        # 连接性注册化（09-21）：dsRef 时注册层供 baseUrl+基础鉴权头，节点配业务路径/头（覆盖注册头）
+        ds = resolve_ds_ref(p, ("http",), "HTTP")
+        self._reg_base = ""
+        self._reg_headers: dict = {}
+        if ds is not None:
+            self._reg_base = str((ds.params or {}).get("baseUrl") or "").strip()
+            if not self._reg_base.lower().startswith(("http://", "https://")):
+                raise SourceError(f"HTTP 数据源 {ds.name} baseUrl 非法（需 http(s):// 开头）")
+            raw_h = (ds.params or {}).get("headers") or {}
+            if isinstance(raw_h, dict):
+                self._reg_headers = {str(k): str(v) for k, v in raw_h.items() if str(k).strip()}
+
+    def _effective_url(self) -> str:
+        """dsRef 模式 URL 拼接：节点 httpUrl 空=直打 baseUrl；相对路径=base+path；完整 URL=节点优先（高级覆盖）。"""
+        if not self._reg_base:
+            return self.url
+        u = self.url.strip()
+        if not u or u.lower().startswith(("http://", "https://")):
+            return u or self._reg_base
+        return self._reg_base.rstrip("/") + "/" + u.lstrip("/")
 
     def open(self, offset: Optional[dict]) -> None:
-        if not self.url:
-            raise SourceError("HTTP URL 未配置")
+        if not self._effective_url():
+            raise SourceError("HTTP URL 未配置（或引用数据源 baseUrl 为空）")
         self._cursor = (offset or {}).get("cursor")
         self._next_poll = 0.0
         logger.info("HTTP 源打开: %s url=%s interval=%ss cursor=%r",
-                    self.source_key, self.url, self.interval, self._cursor)
+                    self.source_key, self._effective_url(), self.interval, self._cursor)
 
     def poll(self, max_rows: int) -> list:
         if time.time() < self._next_poll:
@@ -389,7 +439,9 @@ class HttpSource(SourceBase):
 
         try:
             params = {self.cursor_param: self._cursor} if (self.cursor_param and self._cursor is not None) else None
-            resp = requests.request(self.method, self.url, headers=self.headers or None, params=params, timeout=10)
+            merged = {**self._reg_headers, **self.headers}  # 注册层基础头 + 节点业务头（同名覆盖）
+            resp = requests.request(self.method, self._effective_url(), headers=merged or None,
+                                    params=params, timeout=10)
         except requests.RequestException as exc:
             raise SourceError(f"HTTP 请求失败: {exc}") from exc
         if resp.status_code >= 400:
@@ -513,3 +565,301 @@ class FileSource(SourceBase):
             except Exception:  # noqa: BLE001 关闭容错
                 pass
             self._fh = None
+
+
+# ---------- C18 分型五：内置模拟流（对齐 stream-realtime-demos 默认模式，零外部依赖） ----------
+
+SIM_GOODS = ["SKU_1001", "SKU_1002", "SKU_1003", "SKU_1004", "SKU_1005"]
+SIM_USERS = [f"u_{i:04d}" for i in range(200)]
+SIM_DEVICES = [f"dev_{i:03d}" for i in range(10)]
+SIM_PAGES = ["/home", "/list", "/detail", "/cart", "/pay", "/order"]
+
+
+class SimulateSource(SourceBase):
+    """内置模拟流源：ecommerce（订单/点击/加购）/ iot（温压振/告警）/ visit（订单/访问）三数据集。
+
+    - 事件 schema 与 stream-realtime-demos 三个 use_case 逐一对应，data 内含 event 字段标记事件名
+      （供 filter 条件如 event == 'cart_event'）；
+    - simEvents 过滤本源只产生指定事件（逗号分隔，空 = 全部），供多源分路；
+    - simEps 控制每秒事件数（poll 每 200ms 被引擎调一次，按速率摊派）。
+    """
+
+    def __init__(self, node_id: str, params: dict):
+        super().__init__(node_id, "simulate", params)
+        p = self.params
+        self.dataset = str(p.get("simDataset") or "ecommerce")
+        raw = str(p.get("simEvents") or "").strip()
+        self.events = {e.strip() for e in raw.split(",") if e.strip()} or None
+        try:
+            self.eps = min(200.0, max(0.5, float(p.get("simEps") or 5)))
+        except (TypeError, ValueError):
+            self.eps = 5.0
+        self._quota = 0.0
+
+    def open(self, offset: Optional[dict]) -> None:
+        self._quota = 0.0
+        logger.info("模拟源打开: %s dataset=%s events=%s eps=%s",
+                    self.source_key, self.dataset, sorted(self.events) if self.events else "*", self.eps)
+
+    def _emit_ok(self, name: str) -> bool:
+        return self.events is None or name in self.events
+
+    def _gen(self) -> Optional[tuple[str, dict]]:
+        """产出一个 (事件名, data)；不在过滤集时跳过重抽（最多 8 次防死循环）。"""
+        now = time.time()
+        for _ in range(8):
+            if self.dataset == "iot":
+                name, data = self._gen_iot(now)
+            elif self.dataset == "visit":
+                name, data = self._gen_visit(now)
+            else:
+                name, data = self._gen_ecommerce(now)
+            if self._emit_ok(name):
+                data["event"] = name
+                return name, data
+        return None
+
+    def _gen_ecommerce(self, now: float) -> tuple[str, dict]:
+        r = random.random()
+        if r < 0.2:  # 订单（demo 比例 1:3:1）
+            return "order_pay", {
+                "order_id": f"ord_{random.randrange(10 ** 8):08d}",
+                "user_id": random.choice(SIM_USERS),
+                "goods_id": random.choice(SIM_GOODS),
+                "amount": round(random.uniform(9.9, 999.0), 2),
+                "ts": now,
+            }
+        if r < 0.8:
+            return "user_click", {
+                "user_id": random.choice(SIM_USERS),
+                "goods_id": random.choice(SIM_GOODS),
+                "ts": now,
+            }
+        return "cart_event", {
+            "user_id": random.choice(SIM_USERS),
+            "goods_id": random.choice(SIM_GOODS),
+            "action": random.choice(["add", "add", "remove"]),
+            "ts": now,
+        }
+
+    def _gen_iot(self, now: float) -> tuple[str, dict]:
+        dev = random.choice(SIM_DEVICES)
+        r = random.random()
+        if r < 0.32:
+            return "temp", {"device": dev, "value": round(random.gauss(45, 5), 2), "ts": now}
+        if r < 0.64:
+            return "press", {"device": dev, "value": round(random.gauss(3.5, 0.5), 3), "ts": now}
+        if r < 0.98:
+            return "vib", {"device": dev, "value": round(abs(random.gauss(0, 2)), 3), "ts": now}
+        kind = random.choice(["OVERHEAT", "PRESSURE_HIGH", "VIBRATION_HIGH"])
+        return "alert", {"device": dev, "type": kind, "ts": now}
+
+    def _gen_visit(self, now: float) -> tuple[str, dict]:
+        if random.random() < 0.2:
+            return "order", {
+                "order_id": f"o_{random.randrange(10 ** 8):08d}",
+                "user_id": random.choice(SIM_USERS),
+                "amount": round(random.uniform(20, 800), 2),
+                "ts": now,
+            }
+        return "visit", {
+            "user_id": random.choice(SIM_USERS),
+            "page": random.choice(SIM_PAGES),
+            "ts": now,
+        }
+
+    def poll(self, max_rows: int) -> list:
+        # 速率摊派：每轮 (eps * poll周期) 个事件配额，空闲期结余累加（突发上限单轮 max_rows）
+        now = time.time()
+        self._quota = min(self._quota + self.eps * 0.2, max_rows * 2.0)
+        rows: list = []
+        while len(rows) < max_rows and self._quota >= 1.0:
+            item = self._gen()
+            if item is None:
+                break
+            _, data = item
+            self._quota -= 1.0
+            rows.append({"source": self.source_key, "ts": float(data.get("ts") or now), "data": data})
+        return rows
+
+    @property
+    def offset(self) -> dict:
+        return {"quota": round(self._quota, 1)}
+
+
+# ---------- C18 分型六：Redis Stream（XREADGROUP 消费组，位点由 group 天然续跑） ----------
+
+class RedisStreamSource(SourceBase):
+    """Redis Stream 消费源：直连 URL（redis://host:port/db），consumer group 消费。
+
+    - 位点：XREADGROUP '>' 由 Redis group last-delivered-id 维护，重启重连自动续跑，
+      t_stream_offset 仅存 stream/group 映射做装配核对；
+    - 消息体兼容两种形态：field 'data' = JSON 串（demo 灌数形态）或整 fields 即数据。
+    """
+
+    def __init__(self, node_id: str, params: dict):
+        super().__init__(node_id, "redis", params)
+        p = self.params
+        self.redis_url = str(p.get("redisUrl") or "").strip()
+        self.streams = [s.strip() for s in str(p.get("streamsText") or "").split(",") if s.strip()]
+        self.group = str(p.get("redisGroup") or "datara-flink")
+        self.consumer = str(p.get("redisConsumer") or "c1")
+        self._r = None
+        # 连接性注册化（09-21）：dsRef 时由注册层 host/port/pwd/params.db 组装 URL（业务 Stream 键仍在节点）
+        ds = resolve_ds_ref(p, ("redis",), "Redis")
+        if ds is not None:
+            if not (ds.host or "").strip() or not ds.port:
+                raise SourceError(f"Redis 数据源 {ds.name} host/port 未配置，请先在数据源中心补全并测试")
+            pwd_part = f":{_urlquote(ds.pwd, safe='')}@" if ds.pwd else ""
+            self.redis_url = f"redis://{pwd_part}{ds.host}:{ds.port}/{int((ds.params or {}).get('db') or 0)}"
+
+    def open(self, offset: Optional[dict]) -> None:
+        if not self.redis_url or not self.streams:
+            raise SourceError("Redis URL / Stream 键未配置")
+        try:
+            import redis.asyncio  # noqa: F401 确认 redis 包可用（同步客户端足够）
+            import redis as redis_sync
+        except ImportError as exc:
+            raise SourceError("redis 包未安装（重建镜像后可用）") from exc
+        self._r = redis_sync.Redis.from_url(self.redis_url, decode_responses=True, socket_timeout=2)
+        try:
+            self._r.ping()
+        except Exception as exc:
+            self._r = None
+            raise SourceError(f"Redis 连接失败: {exc}") from exc
+        for s in self.streams:
+            try:
+                self._r.xgroup_create(s, self.group, id="$", mkstream=True)
+            except Exception as exc:  # noqa: BLE001 BUSYGROUP = 已存在（续跑）
+                if "BUSYGROUP" not in str(exc):
+                    logger.warning("Redis 消费组创建异常: %s/%s %r", s, self.group, exc)
+        logger.info("Redis Stream 源打开: %s url=%s streams=%s group=%s",
+                    self.source_key, self.redis_url, self.streams, self.group)
+
+    def poll(self, max_rows: int) -> list:
+        if self._r is None:
+            return []
+        resp = self._r.xreadgroup(
+            self.group, self.consumer,
+            streams={s: ">" for s in self.streams},
+            count=max_rows, block=400,
+        )
+        rows = []
+        now = time.time()
+        for stream_name, messages in resp or []:
+            sname = stream_name if isinstance(stream_name, str) else stream_name.decode()
+            for _msg_id, fields in messages:
+                data = self._decode(fields)
+                if data is None:
+                    continue
+                ts = float(data.pop("ts", None) or now)
+                rows.append({"source": f"{self.source_key}:{sname}", "ts": ts, "data": data})
+        return rows
+
+    def _decode(self, fields: dict) -> Optional[dict]:
+        try:
+            if isinstance(fields, dict):
+                raw = fields.get("data")
+                if raw is not None:
+                    obj = json.loads(raw if isinstance(raw, str) else str(raw))
+                    return obj if isinstance(obj, dict) else {"value": obj}
+                return {k: v for k, v in fields.items()}
+        except (ValueError, TypeError):
+            return None
+        return None
+
+    @property
+    def offset(self) -> dict:
+        return {"streams": list(self.streams), "group": self.group}
+
+    def close(self) -> None:
+        if self._r is not None:
+            try:
+                self._r.close()
+            except Exception:  # noqa: BLE001
+                pass
+            self._r = None
+
+
+# ---------- C18 分型七：MQTT 订阅（paho-mqtt，回调线程 → 队列桥接） ----------
+
+class MqttSource(SourceBase):
+    """MQTT 订阅源：paho-mqtt 回调线程收包入队，poll 线程出队（无位点，QoS0 至少送达）。"""
+
+    def __init__(self, node_id: str, params: dict):
+        super().__init__(node_id, "mqtt", params)
+        p = self.params
+        self.host = str(p.get("mqttHost") or "").strip()
+        self.port = int(p.get("mqttPort") or 1883)
+        self.topics = [t.strip() for t in str(p.get("mqttTopics") or "").split(",") if t.strip()]
+        self._queue: pyqueue.Queue = pyqueue.Queue(maxsize=10000)
+        self._client = None
+        self._reg_user = ""
+        self._reg_pwd = ""
+        # 连接性注册化（09-21）：dsRef 时 host/port/认证来自注册层（订阅 Topic 仍在节点）
+        ds = resolve_ds_ref(p, ("mqtt",), "MQTT")
+        if ds is not None:
+            if not (ds.host or "").strip() or not ds.port:
+                raise SourceError(f"MQTT 数据源 {ds.name} host/port 未配置，请先在数据源中心补全并测试")
+            self.host = ds.host
+            self.port = int(ds.port)
+            self._reg_user = ds.user or ""
+            self._reg_pwd = ds.pwd or ""
+
+    def open(self, offset: Optional[dict]) -> None:
+        if not self.host or not self.topics:
+            raise SourceError("MQTT host/topics 未配置")
+        try:
+            import paho.mqtt.client as mqtt
+        except ImportError as exc:
+            raise SourceError("paho-mqtt 未安装（重建镜像后可用）") from exc
+        q = self._queue
+
+        def _on_message(_c, _u, msg) -> None:  # noqa: ANN001 paho 回调
+            try:
+                data = json.loads(msg.payload.decode())
+            except (ValueError, UnicodeDecodeError):
+                data = {"value": msg.payload.decode("utf-8", errors="replace")}
+            try:
+                q.put_nowait((msg.topic, data))
+            except pyqueue.Full:
+                pass  # 背压：队满丢新包（QoS0 语义）
+
+        try:
+            self._client = mqtt.Client(mqtt.CallbackAPIVersion.VERSION2)
+            self._client.on_message = _on_message
+            if self._reg_user or self._reg_pwd:
+                self._client.username_pw_set(self._reg_user, self._reg_pwd)
+            self._client.connect(self.host, self.port, keepalive=60)
+            for t in self.topics:
+                self._client.subscribe(t, qos=0)
+            self._client.loop_start()
+        except Exception as exc:
+            self._client = None
+            raise SourceError(f"MQTT 连接失败: {exc}") from exc
+        logger.info("MQTT 源打开: %s %s:%s topics=%s", self.source_key, self.host, self.port, self.topics)
+
+    def poll(self, max_rows: int) -> list:
+        rows = []
+        now = time.time()
+        while len(rows) < max_rows:
+            try:
+                topic, data = self._queue.get(timeout=0.2)
+            except pyqueue.Empty:
+                break
+            ts = float(data.pop("ts", None) or now)
+            rows.append({"source": f"{self.source_key}:{topic}", "ts": ts, "data": data})
+        return rows
+
+    @property
+    def offset(self) -> dict:
+        return {"topics": list(self.topics)}
+
+    def close(self) -> None:
+        if self._client is not None:
+            try:
+                self._client.loop_stop()
+                self._client.disconnect()
+            except Exception:  # noqa: BLE001
+                pass
+            self._client = None

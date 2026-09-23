@@ -211,6 +211,7 @@ class StreamEngine:
             self._join_job(job_id)
         claimed = self._claim(job_id, generation)
         if not claimed:
+            logger.warning("流任务认领失败（代际/状态/宿主不匹配）: job=%s gen=%s", job_id, generation)
             return
         session = new_session()
         try:
@@ -309,7 +310,7 @@ class StreamEngine:
         backoff = 1.0
         consecutive = 0
         try:
-            self._db_update(rt.job_id, status="starting", last_error=None)
+            self._db_update(rt.job_id, rt.generation, status="starting", last_error=None)
             rt.status = "starting"
             self._log(rt.job_id, "INFO", f"流任务线程启动（gen={rt.generation}）")
             while not rt.stop_event.is_set():
@@ -321,7 +322,7 @@ class StreamEngine:
                         break
                     consecutive += 1
                     rt.status = "reconnecting"
-                    self._db_update(rt.job_id, status="reconnecting", last_error=str(exc)[:2000])
+                    self._db_update(rt.job_id, rt.generation, status="reconnecting", last_error=str(exc)[:2000])
                     self._log(rt.job_id, "ERROR", f"管道异常（连续第 {consecutive} 次）: {exc}")
                     if consecutive >= MAX_RETRIES:
                         self._mark_failed(rt, str(exc))
@@ -330,7 +331,7 @@ class StreamEngine:
                     backoff = min(backoff * 2, 30.0)
             if rt.stop_event.is_set():
                 rt.status = "stopped"
-                self._db_update(rt.job_id, status="stopped")
+                self._db_update(rt.job_id, rt.generation, status="stopped")
                 self._log(rt.job_id, "INFO", "流任务已停止")
         finally:
             with self._lock:
@@ -338,7 +339,7 @@ class StreamEngine:
 
     def _mark_failed(self, rt: JobRuntime, err: str) -> None:
         rt.status = "failed"
-        self._db_update(rt.job_id, status="failed", last_error=err[:2000])
+        self._db_update(rt.job_id, rt.generation, status="failed", last_error=err[:2000])
         self._log(rt.job_id, "ERROR", f"连续 {MAX_RETRIES} 次重连失败，转 failed: {err}")
         session = new_session()
         try:
@@ -425,7 +426,7 @@ class StreamEngine:
         for t in threads:
             t.start()
         rt.status = "running"
-        self._db_update(rt.job_id, status="running", started_at=datetime.now())
+        self._db_update(rt.job_id, rt.generation, status="running", started_at=datetime.now())
         self._log(rt.job_id, "INFO", f"管道装配完成并开始消费（源 {len(sources)} / 算子 {len(ops)} / 汇 {len(sinks)}）")
 
         try:
@@ -608,14 +609,18 @@ class StreamEngine:
         except Exception as exc:  # noqa: BLE001 指标上报失败不阻断
             logger.warning("流指标上报失败: %r", exc)
 
-    def _db_update(self, job_id: int, **fields) -> None:
+    def _db_update(self, job_id: int, generation: Optional[int] = None, **fields) -> None:
+        """状态更新；传 generation 时原子代际守卫——代号不匹配（已被重启接管）放弃写入，
+        防止旧代号线程退出终态覆盖 API 为新代号预置的 starting（重启竞态 → 认领 0 行 → 任务卡死）。"""
         session = new_session()
         try:
-            row = session.get(StreamJob, job_id)
-            if row is not None:
-                for k, v in fields.items():
-                    setattr(row, k, v)
-                session.commit()
+            q = session.query(StreamJob).filter(StreamJob.id == job_id)
+            if generation is not None:
+                q = q.filter(StreamJob.generation == generation)
+            updated = q.update(fields, synchronize_session=False)
+            session.commit()
+            if generation is not None and not updated:
+                logger.warning("状态写入放弃（代际已变化）: job=%s gen=%s fields=%s", job_id, generation, fields)
         except Exception:  # noqa: BLE001
             session.rollback()
         finally:
