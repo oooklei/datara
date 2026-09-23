@@ -47,6 +47,11 @@ export async function stopStreamJob(id: number): Promise<true> {
   return http.post(`/stream-jobs/${id}/stop`)
 }
 
+/** 删除流任务（默认连带删除工作流定义与画布；运行中任务先广播停止） */
+export async function deleteStreamJob(id: number, withDef = true): Promise<true> {
+  return http.delete(`/stream-jobs/${id}?with_def=${withDef}`)
+}
+
 /** 流任务日志尾（Redis List Last-500 中取尾部 lines 条，时间倒序返回） */
 export async function getStreamLogs(id: number, lines = 60): Promise<string[]> {
   return http.get(`/stream-jobs/${id}/logs?lines=${lines}`)
@@ -57,9 +62,10 @@ export async function pollStreamData(id: number, limit = 100): Promise<StreamDat
   return http.get(`/stream-jobs/${id}/data?mode=poll&limit=${limit}`)
 }
 
-/** SSE 端点（EventSource 只支持 GET，token 走查询参数） */
+/** SSE 端点（EventSource 只支持 GET，token 走查询参数）。
+ *  limit=600：窗口行按窗口周期突发（每 10s 一批），单帧过小会大概率错过突发 → 看板空态闪烁。 */
 export function streamSseUrl(id: number): string {
-  return `/api/v1/stream-jobs/${id}/data?mode=sse&token=${encodeURIComponent(getToken())}`
+  return `/api/v1/stream-jobs/${id}/data?mode=sse&limit=600&token=${encodeURIComponent(getToken())}`
 }
 
 /** WebSocket 端点（token 查询参数鉴权） */

@@ -17,7 +17,7 @@ from sqlalchemy.orm import Session
 from common import queue
 from common.db import get_db
 from common.log import get_logger
-from common.models import StreamJob, WfDefinition
+from common.models import DataSource, StreamJob, WfDefinition
 from common.resp import (
     INSTANCE_NOT_FOUND,
     WF_NOT_FOUND,
@@ -32,6 +32,30 @@ logger = get_logger("api.streamjob")
 router = APIRouter(prefix="/stream-jobs", tags=["stream-job"])
 
 STREAM_TYPES = ("stream_input", "stream_fuse", "stream_output")
+DISPLAY_TYPES = ("page_board",)  # 展示型节点（C2x 页面组件）：不参与管道装配，仅画布看板语义
+
+# 源分型 → 引用数据源合法类型（09-21 连接性注册化预检；连接性在注册层验证，启动只校验引用与状态）
+_REF_EXPECT = {
+    "kafka": ("kafka",),
+    "redis": ("redis",),
+    "mqtt": ("mqtt",),
+    "http": ("http",),
+    "cdc": ("mysql", "greatdb"),
+}
+# 无引用（内联高级模式）时连接参数必填项
+_CONN_INLINE = {
+    "kafka": (("brokers", "Broker 地址"),),
+    "redis": (("redisUrl", "Redis 地址"),),
+    "mqtt": (("mqttHost", "Broker 地址"),),
+    "http": (("httpUrl", "URL"),),
+    "cdc": (("cdcDs", "数据源引用"),),
+}
+# 业务参数必填项（业务语义属于节点层，无论引用/内联均必填）
+_BIZ_REQUIRED = {
+    "kafka": (("topic", "Topic"),),
+    "redis": (("streamsText", "Stream 键"),),
+    "mqtt": (("mqttTopics", "订阅 Topic"),),
+}
 
 
 class StartBody(BaseModel):
@@ -57,8 +81,13 @@ def extract_stream_spec(definition: WfDefinition, doc: dict) -> dict:
     nodes = [n for n in raw_nodes if isinstance(n, dict) and n.get("type") in STREAM_TYPES]
     if not nodes:
         raise ApiError(WF_PARAM_INVALID, "画布无流组件（需 stream_input/stream_fuse/stream_output）", status=400)
-    if len(nodes) != len(raw_nodes):
-        raise ApiError(WF_PARAM_INVALID, "流任务画布不允许混编批处理组件", status=400)
+    # 展示型节点（page_board）合法放行，其余一律视为批处理混编
+    stray = sorted({
+        str(n.get("type")) for n in raw_nodes
+        if isinstance(n, dict) and n.get("type") not in STREAM_TYPES and n.get("type") not in DISPLAY_TYPES
+    })
+    if stray:
+        raise ApiError(WF_PARAM_INVALID, f"流任务画布不允许混编批处理组件: {','.join(stray)}", status=400)
     ids = {str(n["id"]) for n in nodes}
     edges = [
         {"source": str(e["source"]), "target": str(e["target"])}
@@ -88,6 +117,53 @@ def extract_stream_spec(definition: WfDefinition, doc: dict) -> dict:
         "nodes": [{"id": str(n["id"]), "type": n["type"], "params": dict(n.get("data") or {})} for n in nodes],
         "edges": edges,
     }
+
+
+def _lookup_ds(db: Session, ref: str) -> Optional[DataSource]:
+    """数据源引用解析：名称优先、纯数字兜底 id（与 worker/stream/sources.lookup_datasource 同口径）。"""
+    ref = str(ref or "")
+    ds = db.query(DataSource).filter(DataSource.name == ref).first()
+    if ds is None and ref.isdigit():
+        ds = db.get(DataSource, int(ref))
+    return ds
+
+
+def preflight_stream(db: Session, spec: dict) -> None:
+    """启动预检（09-21 业务可靠性）：注册源引用校验 + 业务参数齐备。
+
+    - 引用模式（dsRef/cdcDs）：存在 → 类型匹配 → status=online（连接性测试归注册层，此处不重测）
+    - 内联模式：仅校验连接参数与业务参数齐备（存量画布兼容）
+    - 错误聚合一次返回可读清单
+    """
+    problems: list[str] = []
+    for n in spec["nodes"]:
+        if n["type"] != "stream_input":
+            continue
+        p = dict(n.get("params") or {})
+        st = str(p.get("srcType") or "")
+        if st not in _REF_EXPECT:
+            continue  # file/simulate 无连接性与业务必填概念
+        where = f"节点 {n['id']}"
+        ref_key = "cdcDs" if st == "cdc" else "dsRef"
+        ref = str(p.get(ref_key) or "").strip()
+        if ref:
+            ds = _lookup_ds(db, ref)
+            if ds is None:
+                problems.append(f"{where}: 引用的数据源不存在: {ref}（数据源中心已改名或删除）")
+            elif ds.type not in _REF_EXPECT[st]:
+                problems.append(f"{where}: 数据源 {ds.name} 类型为 {ds.type}，与源分型 {st} 不匹配")
+            elif ds.status != "online":
+                problems.append(f"{where}: 数据源 {ds.name} 未连通（状态: {ds.status or '未测试'}），"
+                                "请先在数据源中心测试连接")
+        else:
+            for key, label in _CONN_INLINE[st]:
+                if not str(p.get(key) or "").strip():
+                    problems.append(f"{where}: {label}（{key}）未配置（未引用数据源时必填，或在数据源中心注册后引用）")
+        for key, label in _BIZ_REQUIRED.get(st, ()):
+            if not str(p.get(key) or "").strip():
+                problems.append(f"{where}: {label}（{key}）未配置")
+    if problems:
+        raise ApiError(WF_PARAM_INVALID, "流任务预检未通过: " + "；".join(problems), status=400)
 
 
 def register_stream_job(db: Session, definition: WfDefinition, spec: dict) -> tuple[StreamJob, bool]:
@@ -122,6 +198,7 @@ def start_stream_job(
     """启动/重启流任务（同画布唯一；已有任务先停再起，幂等）。"""
     definition, doc = _load_doc(db, body.doc_id)
     spec = extract_stream_spec(definition, doc)
+    preflight_stream(db, spec)
     row, restarted = register_stream_job(db, definition, spec)
     logger.info("流任务启动请求: job=%s doc=%s（用户 %s）", row.id, body.doc_id, user.user_name)
     return ok({"id": row.id, "name": row.name, "restarted": restarted})
@@ -143,6 +220,31 @@ def stop_stream_job(
     queue.get_client().publish("datara:flink:ctl", json.dumps(
         {"action": "stop", "jobId": job_id, "generation": int(row.generation or 0)}))
     logger.info("流任务停止广播: job=%s（用户 %s）", job_id, user.user_name)
+    return ok(True)
+
+
+@router.delete("/{job_id}")
+def delete_stream_job(
+    job_id: int,
+    with_def: bool = Query(default=True),
+    user=Depends(require_perm("run_instance")),
+    db: Session = Depends(get_db),
+):
+    """删除流任务：先广播停止（worker 本地命中即停线程），再删任务行；
+    with_def=true（默认）连带删除关联工作流定义与画布。"""
+    row = db.get(StreamJob, job_id)
+    if row is None:
+        raise ApiError(INSTANCE_NOT_FOUND, status=404)
+    doc_id = row.doc_id
+    queue.get_client().publish("datara:flink:ctl", json.dumps(
+        {"action": "stop", "jobId": job_id, "generation": int(row.generation or 0)}))
+    db.delete(row)
+    if with_def and doc_id:
+        definition = db.get(WfDefinition, doc_id)
+        if definition is not None:
+            db.delete(definition)
+    db.commit()
+    logger.info("流任务删除: job=%s doc=%s with_def=%s（用户 %s）", job_id, doc_id, with_def, user.user_name)
     return ok(True)
 
 

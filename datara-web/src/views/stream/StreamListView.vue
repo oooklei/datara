@@ -13,7 +13,7 @@ import { ref, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { dataStore, ST } from '../../services/mock/dataStore'
-import { isMock, listStreamJobs, startStreamJob, stopStreamJob } from '../../services'
+import { isMock, listStreamJobs, startStreamJob, stopStreamJob, deleteStreamJob, createDefinition } from '../../services'
 import ListFilterPanel from '../../components/ListFilterPanel.vue'
 import type { DbUser, StreamJob, StreamWindow, TimeSemantics } from '../../services/types'
 
@@ -133,6 +133,25 @@ function goDetail(j: Row) {
   /* F56d：详情路由参数 = 流任务 id（数字），详情页 GET /stream-jobs/{id} 同口径 */
   router.push(`/stream/detail/${j.id}`)
 }
+/** 删除流任务（I11 W3 增删改查补齐）：二次确认 → real 调后端（连带删定义与画布）→ mock 删本地 */
+async function delJob(j: Row) {
+  try {
+    await ElMessageBox.confirm(
+      `确认删除流任务「${j.name}」？${isMock ? '' : '将连带删除其工作流定义与画布，'}删除后不可恢复。`,
+      '删除流任务',
+      { confirmButtonText: '删除', cancelButtonText: '取消', type: 'warning' },
+    )
+  } catch { return /* 用户取消 */ }
+  try {
+    if (!isMock) await deleteStreamJob(Number(j.id))
+    else await dataStore.remove('streamJobs', j.id)
+    ElMessage.success('流任务已删除')
+  } catch (e) {
+    ElMessage.error('删除失败：' + errMsg(e))
+    return
+  }
+  await reload()
+}
 async function pauseJob(j: Row) {
   if (!isMock) { ElMessage.info('流引擎不支持暂停，请使用「停止」'); return }
   j.status = 'paused'
@@ -227,9 +246,36 @@ const sinkOptions = ['Doris: dwd_order_pay_rt', 'Kafka: topic_inventory_cdc', '�
 const paraOptions = [1, 2, 4, 8]
 const ckOptions = ['30s', '60s', '120s']
 
-function openCreate() {
-  /* F56d：流任务由流设计器画布「启动」生成（一画布一流任务），real 不提供本地新建 */
-  if (!isMock) { ElMessage.info('流任务由流设计器画布「启动」生成（一画布一流任务），real 模式不提供本地新建'); return }
+async function openCreate() {
+  /* I11 W3：real 新建 = 创建工作流定义（POST /workflow-definitions）→ 进流设计器画布编排；
+     流任务本身仍由画布「启动」生成（一画布一流任务） */
+  if (!isMock) {
+    let name = ''
+    try {
+      const { value } = await ElMessageBox.prompt(
+        '输入工作流名称，创建后进入流设计器画布编排节点；画布配置完成后点「启动」即生成流任务。',
+        '新建流任务',
+        {
+          confirmButtonText: '创建并编排',
+          cancelButtonText: '取消',
+          inputPlaceholder: '如：订单支付实时大屏',
+          inputValidator: (v: string) => (v && v.trim() ? true : '请输入名称'),
+        },
+      )
+      name = value.trim()
+    } catch {
+      return /* 用户取消 */
+    }
+    try {
+      const def = await createDefinition(name)
+      ElMessage.success(`工作流定义已创建（${def.id}），正在进入流设计器`)
+      if (props.embed) { emit('open', def.id); return }
+      router.push(`/stream/design/${def.id}`)
+    } catch (e) {
+      ElMessage.error('创建失败：' + errMsg(e))
+    }
+    return
+  }
   jName.value = ''
   jType.value = 'Flink SQL'
   jSrc.value = 'Kafka: topic_order_pay'
@@ -301,7 +347,7 @@ async function saveCreate() {
       <table class="tbl">
         <thead>
           <tr>
-            <th>作业</th><th>数据链路</th><th>吞吐/延迟</th><th>Checkpoint</th><th>状态</th><th style="width:250px">操作</th>
+            <th>作业</th><th>数据链路</th><th>吞吐/延迟</th><th>Checkpoint</th><th>状态</th><th style="width:290px">操作</th>
           </tr>
         </thead>
         <tbody>
@@ -334,6 +380,7 @@ async function saveCreate() {
                 <button v-else-if="r.status === 'paused'" class="op-btn" @click="resumeJob(r)">恢复</button>
                 <button v-else class="op-btn" @click="startJob(r)">启动</button>
                 <button v-if="r.status !== 'stopped'" class="op-btn danger" @click="stopJob(r)">停止</button>
+                <button class="op-btn danger" @click="delJob(r)">删除</button>
               </div>
             </td>
           </tr>

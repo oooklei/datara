@@ -28,3 +28,5 @@ sqlglot>=25.0          # SQL 血缘解析（mysql 方言，F20 解析器基座�
 # ---- I8 实时数据接入（流引擎 F36~F38 源接入） ----
 kafka-python>=2.0.2        # C18 Kafka 消费者 / C20 Kafka 生产者
 mysql-replication>=1.0.9   # C18 CDC binlog 订阅（mysql-replication BinLogStreamReader）
+# ---- I11 流处理组件（模拟源/Redis Stream/MQTT 源） ----
+paho-mqtt>=2.0             # C18 MQTT 订阅源（CallbackAPIVersion.VERSION2 需 2.x）
