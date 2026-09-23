@@ -13,6 +13,7 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import {
   listDefinitions, listInstancesPage, getInstanceDetail,
   stopInstance, rerunInstance, rerunFailedTasks, getTaskLog, graphService,
+  deleteInstanceLogs, deleteInstanceLogsBatch,
 } from '../../services'
 import type { InstanceRow, DefinitionMeta } from '../../services'
 import { listTmpData } from '../../services/datasourceApi'
@@ -105,17 +106,25 @@ const pageSize = 20
 const loading = ref(false)
 const fRunMode = ref('')
 const fState = ref('')
+/** I15：删除日志后 reload 且列表为空 → 空态展示「已无更多历史实例」，避免误判删除失败 */
+const justCleared = ref(false)
 
-async function reload() {
+/** cleared=true 表示本次 reload 由删除日志触发（列表为空时走「已清理」空态文案） */
+async function reload(cleared = false) {
+  justCleared.value = cleared
   loading.value = true
   try {
     const page = await listInstancesPage({
       pageNo: pageNo.value, pageSize,
       runMode: fRunMode.value || undefined,
       state: fState.value || undefined,
+      syncLogs: true, // I12：同步后端日志状态，终态无日志实例（已清理）不悬空展示
     })
     rows.value = page.list
     total.value = page.total ?? page.list.length
+    // I14：翻页/刷新后仅保留当前页仍存在的选中（避免残留已删除/已翻页项）
+    const alive = new Set(page.list.map((r) => r.instanceId))
+    selected.value = new Set([...selected.value].filter((id) => alive.has(id)))
   } catch (e) {
     ElMessage.error('实例列表加载失败：' + errMsg(e))
   } finally {
@@ -165,6 +174,64 @@ async function onRerunFailed(r: InstanceRow) {
     ElMessage.success('失败重跑命令已提交')
     await reload()
   } catch (e) { ElMessage.error(errMsg(e)) }
+}
+/** I11 R5：删除实例全部节点日志（含水印，物理删除；不重建实例） */
+async function onDeleteLogs(r: InstanceRow) {
+  try {
+    await ElMessageBox.confirm(
+      `确认删除实例 ${r.instanceId} 的全部节点日志？日志文件将被删除且不可恢复（不影响实例状态与结果）。`,
+      '删除日志', { type: 'warning', confirmButtonText: '删除日志', cancelButtonText: '取消' },
+    )
+  } catch { return }
+  try {
+    const res = await deleteInstanceLogs(r.instanceId)
+    if ((res.deleted ?? 0) === 0 && (res.skipped ?? 0) === 0) {
+      ElMessage.info(`实例 ${r.instanceId} 无日志可删（可能已被清理）`)
+    } else {
+      ElMessage.success(`已删除 ${res.deleted ?? 0} 个日志文件${res.skipped ? `（${res.skipped} 个跳过）` : ''}`)
+    }
+    await reload(true)
+  } catch (e) { ElMessage.error(errMsg(e)) }
+}
+
+/* ---------- I14：多选 / 全选 / 批量删除日志 ---------- */
+const selected = ref<Set<string>>(new Set())
+/** 当前页可勾选（仅终态）行 */
+const selectable = computed<InstanceRow[]>(() => rows.value.filter((r) => TERMINAL.has(r.state ?? '')))
+const allChecked = computed(() => selectable.value.length > 0 && selectable.value.every((r) => selected.value.has(r.instanceId)))
+const someChecked = computed(() => selectable.value.some((r) => selected.value.has(r.instanceId)))
+function toggleRow(r: InstanceRow) {
+  if (!TERMINAL.has(r.state ?? '')) return
+  const s = new Set(selected.value)
+  if (s.has(r.instanceId)) s.delete(r.instanceId)
+  else s.add(r.instanceId)
+  selected.value = s
+}
+function toggleAll() {
+  selected.value = allChecked.value
+    ? new Set()
+    : new Set(selectable.value.map((r) => r.instanceId))
+}
+/** 批量删除选中实例日志（仅终态可勾选，再次确认；每个实例无日志时不阻塞） */
+async function onDeleteSelectedLogs() {
+  const ids = [...selected.value]
+  if (!ids.length) return
+  try {
+    await ElMessageBox.confirm(
+      `确认删除选中的 ${ids.length} 个实例（${ids.length <= 3 ? ids.join('、') : ids.slice(0, 3).join('、') + ' 等'}）的全部节点日志？日志文件将被删除且不可恢复（不影响实例状态与结果）。`,
+      '批量删除日志', { type: 'warning', confirmButtonText: '删除', cancelButtonText: '取消' },
+    )
+  } catch { return }
+  try {
+    const res = await deleteInstanceLogsBatch(ids)
+    if ((res.deleted ?? 0) === 0 && (res.skipped ?? 0) === 0) {
+      ElMessage.info(`所选 ${res.instances ?? ids.length} 个实例均无日志可删（可能已被清理）`)
+    } else {
+      ElMessage.success(`已处理 ${res.instances ?? ids.length} 个实例：删除 ${res.deleted ?? 0} 个日志文件${res.skipped ? `（${res.skipped} 个跳过）` : ''}`)
+    }
+    selected.value = new Set()
+    await reload(true)
+  } catch (e) { ElMessage.error('批量删除日志失败：' + errMsg(e)) }
 }
 
 /* ---------- 详情抽屉：DAG + 任务表 + 变量快照 ---------- */
@@ -287,6 +354,29 @@ async function pollLog() {
 }
 watch(logVisible, (v) => { if (!v) { stopLogTimer(); logTask.value = null } })
 
+/* ---------- I11 Log4j2 行解析渲染（后端 common/log.py _FMT，前端不改格式） ----------
+ * 格式：%(asctime)s [%(levelname)s] [%(name)s] [instance:%(instance_id)s] %(message)s
+ * 级别着色：DEBUG 灰 / INFO 蓝 / WARN 橙 / ERROR 红；不可解析行原样展示。
+ */
+const LOG_RE = /^(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}) \[(\w+)\] \[([^\]]*)\] \[instance:([^\]]*)\] (.*)$/
+const LOG_LEVELS: Record<string, string> = {
+  TRACE: 'trace', DEBUG: 'debug', INFO: 'info', WARN: 'warn', ERROR: 'error', FATAL: 'fatal',
+}
+interface LogLine { key: number; lvl: string; ts: string; text: string }
+const logLines = computed<LogLine[]>(() => {
+  let key = 0
+  const out: LogLine[] = []
+  for (const raw of logContent.value.split('\n')) {
+    const m = LOG_RE.exec(raw)
+    if (m && LOG_LEVELS[m[2]!]) {
+      out.push({ key: key++, lvl: LOG_LEVELS[m[2]!]!, ts: m[1]!, text: m[5]! })
+    } else {
+      out.push({ key: key++, lvl: '', ts: '', text: raw })
+    }
+  }
+  return out
+})
+
 /* ---------- C22 数据预览（设计 §5.1 第二入口：日志抽屉「数据预览」按钮） ---------- */
 const tmpVisible = ref(false)
 const tmpRows = ref<TmpRow[]>([])
@@ -348,18 +438,39 @@ function dur(s?: string | null, e?: string | null): string {
           <option value="">全部状态</option>
           <option v-for="s in INSTANCE_STATES" :key="s.v" :value="s.v">{{ s.t }}</option>
         </select>
-        <button class="tb-refresh" @click="reload">刷新</button>
+        <button class="tb-refresh" @click="reload()">刷新</button>
+        <!-- I14：多选批量删除日志（仅终态可勾选） -->
+        <button
+          class="tb-refresh" :disabled="selected.size === 0"
+          style="margin-left:6px;color:var(--danger)"
+          @click="onDeleteSelectedLogs"
+        >删除选中日志（{{ selected.size }}）</button>
       </div>
       <table class="tbl">
         <thead>
           <tr>
+            <th style="width:36px">
+              <input
+                type="checkbox" :checked="allChecked" :indeterminate="someChecked && !allChecked"
+                :disabled="selectable.length === 0" title="全选本页终态实例" @change="toggleAll"
+              />
+            </th>
             <th>实例 ID</th><th>工作流</th><th>模式</th><th>计划时间</th><th>状态</th>
             <th>开始</th><th>结束</th><th>主机</th><th style="width:250px">操作</th>
           </tr>
         </thead>
         <tbody>
-          <tr v-if="loading"><td colspan="9" style="text-align:center;color:var(--text-3);padding:18px">加载中…</td></tr>
-          <tr v-for="r in rows" :key="r.instanceId">
+          <tr v-if="loading"><td colspan="10" style="text-align:center;color:var(--text-3);padding:18px">加载中…</td></tr>
+          <tr v-for="r in rows" :key="r.instanceId" :class="{ 'row-sel': selected.has(r.instanceId) }">
+            <td>
+              <input
+                type="checkbox"
+                :checked="selected.has(r.instanceId)"
+                :disabled="!TERMINAL.has(r.state ?? '')"
+                :title="TERMINAL.has(r.state ?? '') ? '勾选删除日志' : '仅终态实例可删除日志'"
+                @change="toggleRow(r)"
+              />
+            </td>
             <td class="mono" style="font-size:11px" :title="r.instanceId">{{ r.instanceId.slice(0, 18) }}</td>
             <td style="font-weight:600">{{ wfName(r.wfCode) }}</td>
             <td>
@@ -378,10 +489,18 @@ function dur(s?: string | null, e?: string | null): string {
                 <button v-if="TERMINAL.has(r.state ?? '')" class="op-btn" @click="onRerun(r)">整体重跑</button>
                 <button v-if="r.state === 'failure'" class="op-btn" @click="onRerunFailed(r)">失败重跑</button>
               </template>
+              <!-- I11 R5：终止态实例追加「删除日志」（删除该实例全部节点日志） -->
+              <button
+                v-if="TERMINAL.has(r.state ?? '')"
+                class="op-btn" title="删除该实例全部节点日志" @click="onDeleteLogs(r)"
+              >删除日志</button>
             </td>
           </tr>
           <tr v-if="!loading && rows.length === 0">
-            <td colspan="9" style="text-align:center;color:var(--text-3);padding:18px">暂无实例（在工作流定义页「运行」或定时/补数产生）</td>
+            <td colspan="10" style="text-align:center;color:var(--text-3);padding:18px">
+              <template v-if="justCleared">已无更多历史实例（已清理日志的终态实例不再展示，可刷新或在工作流定义页重新运行）</template>
+              <template v-else>暂无实例（在工作流定义页「运行」或定时/补数产生）</template>
+            </td>
           </tr>
         </tbody>
       </table>
@@ -520,13 +639,27 @@ function dur(s?: string | null, e?: string | null): string {
             </table>
           </div>
         </div>
-        <pre class="log-pre mono">{{ logContent || '（暂无日志内容）' }}</pre>
+        <div class="log-pre mono">
+          <template v-if="logLines.length">
+            <div v-for="l in logLines" :key="l.key" class="log-line">
+              <span v-if="l.lvl" class="log-lvl" :class="`lvl-${l.lvl}`">{{ l.lvl }}</span>
+              <span v-if="l.ts" class="log-ts">{{ l.ts }}</span>
+              <span class="log-msg">{{ l.text }}</span>
+            </div>
+          </template>
+          <template v-else>{{ logContent || '（暂无日志内容）' }}</template>
+        </div>
       </div>
     </el-drawer>
   </div>
 </template>
 
 <style scoped>
+/* I14：多选删除——选中行高亮 */
+.row-sel{background:var(--primary-light)}
+.row-sel:hover{background:var(--primary-light)}
+.tbl input[type="checkbox"]{accent-color:var(--primary);cursor:pointer;width:14px;height:14px;vertical-align:middle}
+.tbl input[type="checkbox"]:disabled{cursor:not-allowed;opacity:.4}
 .f-sel{border:1px solid var(--border-strong);border-radius:var(--radius-sm);padding:5px 8px;font-size:12px;margin-right:6px;background:#fff}
 /* C22 临时数据预览面板（日志抽屉内） */
 .tmp-panel{display:flex;flex-direction:column;gap:8px;border:1px solid var(--border);border-radius:var(--radius-sm);padding:8px;margin-bottom:8px;max-height:45%;overflow:auto}
@@ -559,4 +692,16 @@ function dur(s?: string | null, e?: string | null): string {
 .log-wrap{display:flex;flex-direction:column;height:100%}
 .log-bar{display:flex;align-items:center;gap:8px;margin-bottom:8px}
 .log-pre{flex:1;background:#0b1020;color:#c8d3f5;border-radius:var(--radius-sm);padding:12px;font-size:11.5px;line-height:1.65;overflow:auto;white-space:pre-wrap;word-break:break-all;margin:0}
+/* I11 R5：Log4j2 行渲染（级别着色：DEBUG 灰 / INFO 蓝 / WARN 橙 / ERROR 红） */
+.log-line{display:flex;gap:8px;padding:0 2px}
+.log-line:hover{background:rgba(255,255,255,.04)}
+.log-lvl{flex-shrink:0;min-width:48px;font-weight:700;text-align:center;border-radius:3px;font-size:10px;padding:1px 0}
+.log-ts{flex-shrink:0;color:#5b6b93}
+.log-msg{white-space:pre-wrap;word-break:break-all}
+.lvl-trace{color:#59637c}
+.lvl-debug{color:#8b93a8}
+.lvl-info{color:#58b4ff}
+.lvl-warn{color:#ffb454;background:rgba(255,180,84,.12)}
+.lvl-error{color:#ff6b6b;background:rgba(255,107,107,.14)}
+.lvl-fatal{color:#ff5b5b;background:rgba(255,91,91,.2);font-weight:700}
 </style>

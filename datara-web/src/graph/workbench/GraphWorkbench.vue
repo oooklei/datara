@@ -19,6 +19,7 @@ import type { DocGroup, GraphDocument, GEdge, GNode, Issue } from '../model'
 import { cloneDoc, detectCycle, uid } from '../model'
 import { applyLayout } from '../layout'
 import type { NodeSchema, ViewProfile } from '../profiles'
+import type { ComponentCategory } from '../profiles/types' // I12 R1：doc 推导组件库置顶标签用
 import { useGraphStore } from '../../stores/graph'
 import { useAuthStore } from '../../stores/auth'
 import { useRunStore } from '../../stores/run'
@@ -153,6 +154,28 @@ let dragDepth = 0
 const doc = computed(() => props.doc ?? graphStore.doc)
 const selectedNode = computed<GNode | null>(() =>
   doc.value?.nodes.find((n) => n.id === selectedId.value) ?? null)
+
+/** I12 R1：由当前 doc 节点分类推导组件库置顶标签（仅决定分组置顶，不过滤组件）：
+ *  含专属 etl 类节点→['ETL']、含 stream→['流']、含专属 sync→['同步']、否则 ['普通']。
+ *  「专属」= 节点分类只含此任务类与 general——控制类节点同时归属 sync+etl 不作判据，
+ *  以免任何 dag 文档都误判为 ETL；优先序沿用任务书：etl → stream → sync → 普通。 */
+const paletteActiveTags = computed<string[]>(() => {
+  const nodes = doc.value?.nodes
+  if (!nodes?.length) return ['普通']
+  /* I12 R1（Nit 修复）：单次遍历收集各专属类存在性，替代 has() 三次全量遍历 + kindOf 重复推导 */
+  const seen: Partial<Record<ComponentCategory, true>> = {}
+  for (const n of nodes) {
+    const cs = props.profile.nodeTypes[n.type]?.categories
+    if (!cs) continue
+    const kinds = cs.filter((c) => c !== 'general')
+    // 「专属」= 分类只含单一任务类与 general——控制类节点同时归属 sync+etl 不作判据
+    if (kinds.length === 1) seen[kinds[0]] = true
+  }
+  if (seen.etl) return ['ETL']
+  if (seen.stream) return ['流']
+  if (seen.sync) return ['同步']
+  return ['普通']
+})
 
 /* ---------- doc ↔ flow 同步 ---------- */
 
@@ -1061,9 +1084,9 @@ function ctxLayout() { onLayout(); closeCtx() }
     <div class="wb-body">
       <!-- 左侧元件库（可收放，状态持久化）：组件 + 任务候选池多 Tab 勾选载入 -->
       <template v-if="effMode === 'edit' && profile.palette.length">
-        <Palette v-show="leftOpen" :style="{ width: leftWidth + 'px' }" :profile="profile" @load-tasks="onPaletteLoad" />
+        <Palette v-show="leftOpen" :style="{ width: leftWidth + 'px' }" :profile="profile" :active-tags="paletteActiveTags" @load-tasks="onPaletteLoad" />
         <div v-if="leftOpen" class="wb-split wb-split-l" title="拖拽调整宽度" @mousedown="startResize('left', $event)" />
-        <div v-if="!leftOpen" class="wb-rail" title="展开组件库" @click="leftOpen = true">»</div>
+
       </template>
 
       <!-- 导航面板（图例过滤 / 大纲 / 节点组） -->
@@ -1173,12 +1196,10 @@ function ctxLayout() { onLayout(); closeCtx() }
             class="wb-right-tab" :class="{ on: rightTab === t.k }"
             @click="rightTab = t.k"
           ><span class="wbt-ic">{{ t.icon }}</span>{{ t.label }}</button>
-          <span class="wb-right-fold" title="折叠面板" @click="rightOpen = false">»</span>
         </div>
         <Inspector v-show="rightTab === 'inspector'" :node="selectedNode" :profile="profile" @delete="deleteOne" />
         <div v-show="rightTab === 'vars'" class="wb-right-body"><WfVarPanel :doc-id="docId" /></div>
       </div>
-      <div v-if="!rightOpen" class="wb-rail wb-rail-r" title="展开属性面板" @click="rightOpen = true">«</div>
     </div>
 
     <!-- 右键菜单（节点 / 连线 / 画布） -->
@@ -1275,10 +1296,6 @@ label.nav-row{cursor:pointer}
 .nav-gname:hover{color:var(--primary)}
 .nav-mini{border:1px solid var(--border-strong);background:#fff;border-radius:4px;font-size:10px;padding:1.5px 5px;cursor:pointer;color:var(--text-2);flex-shrink:0}
 .nav-mini:hover{border-color:var(--primary);color:var(--primary)}
-/* 面板收放 rail（N12） */
-.wb-rail{width:16px;background:var(--bg);border-right:1px solid var(--border);display:flex;align-items:center;justify-content:center;cursor:pointer;color:var(--text-3);font-size:11px;flex-shrink:0}
-.wb-rail:hover{color:var(--primary);background:var(--primary-light)}
-.wb-rail-r{border-right:none;border-left:1px solid var(--border)}
 /* I11 侧窗拖拽调宽：分隔把手（5px 热区，hover/拖拽高亮） */
 .wb-split{width:5px;flex-shrink:0;cursor:col-resize;background:transparent;transition:background .12s;position:relative;z-index:30}
 .wb-split:hover,.wb-split.drag{background:var(--primary);opacity:.55}
@@ -1297,8 +1314,6 @@ label.nav-row{cursor:pointer}
 .wb-right-tab:hover{color:var(--primary)}
 .wb-right-tab.on{color:var(--primary);border-bottom-color:var(--primary);font-weight:600}
 .wb-right-tab .wbt-ic{font-size:11px}
-.wb-right-fold{margin-left:auto;padding:2px 7px;font-size:12px;color:var(--text-3);cursor:pointer;line-height:1}
-.wb-right-fold:hover{color:var(--primary)}
 .wb-right-body{flex:1;min-height:0;overflow:auto}
 </style>
 

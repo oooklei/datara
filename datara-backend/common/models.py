@@ -83,6 +83,16 @@ class WfDefinitionLog(Base):
     __table_args__ = (Index("idx_wfdlog_code_ver", "wf_code", "version"),)
 
 
+# ---------- 3.5 t_wf_category 工作流分类目录（Palette 分组，自定义分类，I11） ----------
+class WfCategory(Base):
+    __tablename__ = "t_wf_category"
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    name: Mapped[str] = mapped_column(String(128), unique=True, comment="分类目录名")
+    create_time: Mapped[datetime] = mapped_column(DateTime, default=now)
+    update_time: Mapped[datetime] = mapped_column(DateTime, default=now, onupdate=now)
+
+
 # ---------- 4. t_workflow_instance 工作流运行实例 ----------
 class WorkflowInstance(Base):
     __tablename__ = "t_workflow_instance"

@@ -42,12 +42,7 @@ export const MENUS: MenuGroup[] = [
     {id:'dashboard', icon:'◆', label:'工作台', path:'#/dashboard'}
   ]},
   {group:'数据集成', items:[
-    {id:'m03', icon:'⛁', label:'数据源管理', path:'#/ds/list'},
-    {id:'m05', icon:'⇄', label:'批处理与同步', path:'#/sync/list', children:[
-      {label:'同步任务', path:'#/sync/list'},
-      {label:'ETL任务', path:'#/etl/list'}
-    ]},
-    {id:'m06', icon:'≈', label:'流数据处理', path:'#/stream/list'}
+    {id:'m03', icon:'⛁', label:'数据源管理', path:'#/ds/list'}
   ]},
   {group:'数据开发', items:[
     {id:'m04', icon:'▤', label:'数仓建模', path:'#/model/list'},

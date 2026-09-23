@@ -3,6 +3,7 @@ import { computed } from 'vue'
 import { Handle, Position } from '@vue-flow/core'
 import type { GNode } from '../model'
 import type { NodeSchema } from '../profiles/types'
+import { requiredMissing } from '../profiles/formLinkage'
 import { NODE_ART, NODE_ART_FALLBACK } from './arts'
 import { useRunStore } from '../../stores/run'
 
@@ -25,6 +26,8 @@ const healthColor = computed(() =>
 const blind = computed(() => props.gnode.data.blind === true)
 /** 动态分支端点（条件分支/Switch 等）：每分支独立输出 Handle */
 const ports = computed(() => props.schema.ports?.(props.gnode.data) ?? [])
+/** W1 必填完整性：required 字段在当前分型下为空 → 画布「未配置」角标（title 列缺失项，与校验面板/保存闸门共用判定） */
+const missing = computed(() => requiredMissing(props.schema, props.gnode.data))
 /** 设备形态：拓扑视角专用（主机/交换机/服务器/中间件 logo 图标卡片） */
 const isDevice = computed(() => props.schema.shape === 'device')
 const art = computed(() => NODE_ART[props.schema.type] ?? NODE_ART_FALLBACK)
@@ -57,6 +60,7 @@ const art = computed(() => NODE_ART[props.schema.type] ?? NODE_ART_FALLBACK)
       <div v-if="health" class="n-health" :style="{ background: healthColor }" :title="'健康状态: ' + health" />
       <div class="n-status" />
       <span v-if="attempt > 1" class="n-attempt">#{{ attempt }}</span>
+      <span v-if="missing.length" class="n-miss" :title="'未配置：' + missing.join('、')">!</span>
     </div>
     <div v-for="p in ports" :key="p.id" class="nb-row">
       <span class="nb-label" :title="p.label">{{ p.label }}</span>
@@ -79,6 +83,7 @@ const art = computed(() => NODE_ART[props.schema.type] ?? NODE_ART_FALLBACK)
     />
     <div class="n-status" />
     <span v-if="attempt > 1" class="n-attempt">#{{ attempt }}</span>
+    <span v-if="missing.length" class="n-miss" :title="'未配置：' + missing.join('、')">!</span>
     <Handle type="source" :position="Position.Right" />
   </div>
 </template>
@@ -98,4 +103,6 @@ const art = computed(() => NODE_ART[props.schema.type] ?? NODE_ART_FALLBACK)
 .nb-row{position:relative;display:flex;align-items:center;justify-content:flex-end;min-height:22px;padding:2px 16px 2px 8px;background:rgba(217,119,6,.07);border:1px dashed rgba(217,119,6,.35);border-radius:var(--radius-sm)}
 .nb-label{font-size:11px;color:#b45309;line-height:1.3;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:calc(var(--node-w) - 44px)}
 .gnode .n-health{width:10px;height:10px;border-radius:50%;flex-shrink:0}
+/* W1 必填未配置角标（右上角悬浮，与 n-health 行内圆点不冲突；hover title 列缺失项） */
+.gnode .n-miss{position:absolute;top:-7px;right:-7px;z-index:2;width:15px;height:15px;border-radius:50%;background:var(--warn,#d97706);color:#fff;font-size:10px;font-weight:700;line-height:15px;text-align:center;border:2px solid #fff;box-shadow:0 1px 3px rgba(15,23,42,.25);cursor:help;pointer-events:auto}
 </style>

@@ -23,6 +23,10 @@ def _load_pkey(content: str):
     raise ValueError("私钥解析失败: %r" % last)
 
 
+# 公开别名（I12 T12）：api/runtime_node.py 等外部模块经 load_pkey 复用，_load_pkey 保留内部名
+load_pkey = _load_pkey
+
+
 def probe(host: str, port: int, user: str, cred: str) -> tuple:
     """SSH 执行 `echo ok` 探活。"""
     try:

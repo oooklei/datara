@@ -7,7 +7,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { realGraphService } from '../graphApi'
 import type { GraphDocument } from '../../graph/model'
-import { TOKEN_KEY } from '../http'
 
 const fetchMock = vi.fn()
 

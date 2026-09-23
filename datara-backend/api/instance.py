@@ -11,13 +11,14 @@ from typing import Optional
 
 from fastapi import APIRouter, Depends
 from pydantic import BaseModel
+from sqlalchemy import or_
 from sqlalchemy.orm import Session
 
 from api.auth import ApiError, get_current_user, require_perm
 from api.commands import submit_command
 from common.db import get_db
 from common.log import get_logger
-from common.models import TaskInstance, User, WorkflowInstance
+from common.models import TaskInstance, TaskLog, User, WorkflowInstance
 from common.resp import INSTANCE_NOT_FOUND, COMMAND_FAIL, PageQuery, fmt_dt, ok, page_result
 from master.state import INSTANCE_RUNNING_STATES, TERMINAL_STATES
 
@@ -43,10 +44,16 @@ def list_instances(
     run_mode: Optional[str] = None,
     state: Optional[str] = None,
     wf_code: Optional[int] = None,
+    sync_logs: Optional[bool] = None,
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    """实例列表（分页倒序；run_mode=manual/schedule/complement、state、wf_code 筛选）。"""
+    """实例列表（分页倒序；run_mode=manual/schedule/complement、state、wf_code 筛选）。
+
+    sync_logs=True（I12 运行监控页）：终态实例若无任何 t_task_log 索引行（日志已被清理），
+    视为悬空实例不展示，保证前端与后端日志真实状态同步；运行中/已提交实例始终展示
+    （日志可能尚未落盘）。其他调用方不带该参数，行为不变。
+    """
     query = db.query(WorkflowInstance)
     if run_mode:
         query = query.filter(WorkflowInstance.run_mode == run_mode)
@@ -54,6 +61,14 @@ def list_instances(
         query = query.filter(WorkflowInstance.state == state)
     if wf_code is not None:
         query = query.filter(WorkflowInstance.wf_code == wf_code)
+    if sync_logs:
+        # 终态且无日志索引 → 悬空实例，过滤（保证前端与后端日志真实状态同步）
+        log_exists = (
+            db.query(TaskLog.id)
+            .filter(TaskLog.instance_id == WorkflowInstance.instance_id)
+            .exists()
+        )
+        query = query.filter(or_(WorkflowInstance.state.notin_(TERMINAL_STATES), log_exists))
     total = query.count()
     rows = query.order_by(WorkflowInstance.id.desc()).offset(page.offset).limit(page.page_size).all()
     items = [

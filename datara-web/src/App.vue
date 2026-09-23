@@ -67,9 +67,6 @@ const menus: MenuGroup[] = [
   ]},
   { group: '数据集成', items: [
     { label: '数据源管理', path: '/ds/list', icon: '⛁' },
-    { label: '同步任务', path: '/sync/list', icon: '⇄' },
-    { label: 'ETL任务', path: '/etl/list', icon: '⚙' },
-    { label: '流数据处理', path: '/stream/list', icon: '≈' },
   ]},
   { group: '数据开发', items: [
     { label: '数据开发IDE', path: '/ide', icon: '⌨' },

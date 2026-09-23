@@ -30,15 +30,19 @@ export {
   listSshNodes,
   /* F56d 任务标签（保存打标与候选池过滤共用） */
   SYNC_TAG, ETL_TAG, STREAM_TAG,
+  /* I11 分类目录 + 删除实例日志（I14：批量删除） */
+  listCategories, createCategory, deleteCategory, setWfTags, deleteInstanceLogs, deleteInstanceLogsBatch,
 } from './graphApi'
 export type {
   DefinitionMeta, InstanceRow,
   ScheduleRow, ScheduleBody, RuntimeNodeRow,
   SshNodeRow,
+  CategoryRow,
+  DeleteLogsResult,
 } from './graphApi'
 /* I8 流任务（F40/F41） */
 export {
-  listStreamJobs, getStreamJob, startStreamJob, stopStreamJob, getStreamLogs, pollStreamData,
+  listStreamJobs, getStreamJob, startStreamJob, stopStreamJob, deleteStreamJob, getStreamLogs, pollStreamData,
   streamSseUrl, streamWsUrl,
 } from './streamApi'
 export type { StreamJobRow, StreamDataPage } from './streamApi'

@@ -45,18 +45,18 @@ describe('${tmp.*} 引用提示（前端侧判定）', () => {
   })
 
   it('未勾选注册 → 不可用并提示', () => {
-    expect(tmpRefUsable({ register: false, name: 'orders' })).toBe(false)
-    expect(tmpRefHint({ register: false, name: 'orders' })).toContain('未注册临时数据')
+    expect(tmpRefUsable({ register: false, tmpName: 'orders' })).toBe(false)
+    expect(tmpRefHint({ register: false, tmpName: 'orders' })).toContain('未注册临时数据')
   })
 
   it('命名缺失/非法 → 提示不可用', () => {
-    expect(tmpRefUsable({ register: true, name: '' })).toBe(false)
-    expect(tmpRefHint({ register: true, name: 'X1' })).toContain('不合法')
+    expect(tmpRefUsable({ register: true, tmpName: '' })).toBe(false)
+    expect(tmpRefHint({ register: true, tmpName: 'X1' })).toContain('不合法')
   })
 
   it('注册且命名合法 → 可用、提示为空', () => {
-    expect(tmpRefUsable({ register: true, name: 'orders_2026' })).toBe(true)
-    expect(tmpRefHint({ register: true, name: 'orders_2026' })).toBe('')
+    expect(tmpRefUsable({ register: true, tmpName: 'orders_2026' })).toBe(true)
+    expect(tmpRefHint({ register: true, tmpName: 'orders_2026' })).toBe('')
   })
 })
 
@@ -86,7 +86,7 @@ describe('dag profile C15/C16/C22 注册断言', () => {
     modeF!.onChange!(d, 'manual')
     expect(d.datasource).toBe('')
     // 条件字段均声明 showIf（来源模式/保留策略分支展示）
-    for (const key of ['datasource', 'path', 'name', 'kind', 'retention', 'keepDays']) {
+    for (const key of ['datasource', 'path', 'tmpName', 'kind', 'retention', 'keepDays']) {
       expect(typeof form.find((f) => f.key === key)?.showIf).toBe('function')
     }
     // ${tmp.*} 提示字段：text 动态产出
@@ -160,7 +160,8 @@ describe('dag profile C17/C23 I6 注册断言', () => {
     expect(nt.sync_template?.code).toBe('C23')
     const group = dagProfile.palette.find((c) => c.name === '数据同步')
     const items = (group?.items ?? []).map((i) => i.type)
-    expect(items).toEqual(['sync', 'sync_template'])
+    /* I12 T11：同组新增 C24 file_sync（文件同步入仓） */
+    expect(items).toEqual(['sync', 'sync_template', 'file_sync'])
     for (const it of group?.items ?? []) expect(it.disabled).toBeFalsy()
   })
 

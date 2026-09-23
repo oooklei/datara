@@ -6,19 +6,22 @@
  * 六区块数据存 node.data.inputs/outputs/params/condition/constraints/exclude；
  * 老节点无字段时显示默认空值（缺省懒初始化：首次编辑才落键），向后兼容既有裁定。
  */
-import { computed, onMounted, ref, watch } from 'vue'
+import { computed, nextTick, onMounted, ref, watch } from 'vue'
 import { ElMessage } from 'element-plus'
 import type { GNode } from '../model'
 import { uid } from '../model'
 import type { BranchDef, FieldSchema, NodeSchema, ViewProfile } from '../profiles/types'
+import { requiredMissing } from '../profiles/formLinkage'
 import { useGraphStore } from '../../stores/graph'
 import { useAuthStore } from '../../stores/auth'
 import { useFloatStore } from '../../stores/float'
 import { dataStore } from '../../services/mock/dataStore'
 import { localTime } from '../../services/mock/timeUtil'
 import { isMock, listRuntimeNodes, listSshNodes, listVariables } from '../../services'
-import { listDataSources, getDataSourceTree } from '../../services/datasourceApi'
-import type { DsRow } from '../../services/datasourceApi'
+import { getDataSourceTree, listDataSources, listKafkaTopics, listNodeDir } from '../../services/datasourceApi'
+import type { DsRow, DsTree } from '../../services/datasourceApi'
+import { columnsOf, dirCrumbs, dirJoin, pickCfg, resolveDsId, sortByCanvasX, tableOptions, tablePickPath, writeTablePick } from '../profiles/pickerLogic'
+import type { PickOption } from '../profiles/pickerLogic'
 import type { Script } from '../../services/types'
 import RowsField from './fields/RowsField.vue'
 import DepsField from './fields/DepsField.vue'
@@ -230,10 +233,11 @@ function formRows(key: string): { [k: string]: unknown }[] {
   if (!Array.isArray(d[key])) d[key] = []
   return d[key] as { [k: string]: unknown }[]
 }
-function updBool(key: string, ev: Event) {
+function updBool(f: FieldSchema, ev: Event) {
   if (!props.node) return
-  props.node.data[key] = (ev.target as HTMLInputElement).checked
+  props.node.data[f.key] = (ev.target as HTMLInputElement).checked
   markDirty()
+  if (f.onChange) f.onChange(props.node.data, props.node.data[f.key]) // 与 select updF 同口径（C22 清值先例；现仅 groupOverride 用）
 }
 
 /** 条件展示字段过滤（I4 表单联动：showIf 按当前 node.data 判定，响应式） */
@@ -243,6 +247,10 @@ const visibleForm = computed<FieldSchema[]>(() => {
   if (!d) return form.filter((f) => !f.showIf)
   return form.filter((f) => !f.showIf || f.showIf(d))
 })
+
+/** W1 必填完整性：当前分型下缺失的必填项（与画布角标/校验面板/保存闸门共用判定） */
+const missingLabels = computed(() =>
+  props.node && schema.value ? requiredMissing(schema.value, props.node.data) : [])
 
 /** select 值变更：写值 + 触发 onChange 联动钩子（如 C22 来源模式切换清空对方参数） */
 function updF(f: FieldSchema, ev: Event) {
@@ -351,6 +359,313 @@ const tagOptions = computed(() => {
   for (const n of sshNodes.value) for (const t of n.tags) if (t.trim()) seen.add(t.trim())
   return [...seen]
 })
+
+/* ---------- I12 T10 动态控件（选择代替填空）：table-picker / field-select / topic-select / dir-select ---------- */
+type DirNav = { path: string; dirs: { name: string }[]; err: string; seq: number }
+const EMPTY_DIR: DirNav = { path: '', dirs: [], err: '', seq: 0 }
+
+/** 库表树缓存（ds 名 → 树；table-picker 与 field-select 共用一次请求，columns 内联免列枚举调用） */
+const pickTrees = ref<Record<string, DsTree>>({})
+const pickTreeErr = ref<Record<string, string>>({})
+const pickTreeBusy = ref<Record<string, boolean>>({})
+/** topic 枚举缓存（ds 名 → topics，失败不缓存；「刷新」钮强制重拉） */
+const topicOpts = ref<Record<string, string[]>>({})
+const topicErr = ref<Record<string, string>>({})
+const topicBusy = ref<Record<string, boolean>>({})
+/** 目录浏览导航状态（字段 key → 当前路径/子目录/错误；节点或依赖切换时整体重置） */
+const dirNavs = ref<Record<string, DirNav>>({})
+/** Inspector 根元素（token-insert 插入后聚焦目标 textarea；查询限定组件内，不污染全局） */
+const rootEl = ref<HTMLElement | null>(null)
+
+function pickErrMsg(e: unknown): string {
+  return e instanceof Error ? e.message : String(e)
+}
+
+function nodeData(): Record<string, unknown> {
+  return props.node?.data ?? {}
+}
+
+/** 依赖字段展示名（提示文案用；form 中无该字段时回退字段名） */
+function depLabel(key: string): string {
+  return schema.value?.form.find((x) => x.key === key)?.label ?? key
+}
+
+/** 按需拉取库表树（按 ds 名缓存、并发去重；失败置行内错误不抛出，不阻塞表单其余字段） */
+async function ensureTree(dsName: string): Promise<DsTree | null> {
+  const hit = pickTrees.value[dsName]
+  if (hit) return hit
+  const id = resolveDsId(dsName, dsRows.value)
+  if (id == null) {
+    if (dsName) pickTreeErr.value[dsName] = `数据源「${dsName}」未加载或已删除`
+    return null
+  }
+  if (pickTreeBusy.value[dsName]) return null
+  pickTreeBusy.value[dsName] = true
+  pickTreeErr.value[dsName] = ''
+  try {
+    const t = await getDataSourceTree(id)
+    pickTrees.value[dsName] = t
+    return t
+  } catch (e) {
+    pickTreeErr.value[dsName] = `库表加载失败：${pickErrMsg(e)}`
+    return null
+  } finally {
+    pickTreeBusy.value[dsName] = false
+  }
+}
+
+/* table-picker / field-select 派生数据 computed 化（Nit3）：模板每次渲染重复调
+   tableOptions/tablePickPath/columnsOf（全树遍历）与 pickCfg 分配，收敛为依赖变化时一次计算，
+   options/cols 数组引用跨渲染稳定，避免 cascader 内部因换数组引用而重算 */
+type TpD = { opts: PickOption[]; path: string[]; err: string; depEmpty: boolean; loading: boolean; dsLabel: string }
+type FsD = { cols: string[]; val: string[]; val1: string; multi: boolean; noTable: boolean; err: string; loading: boolean; tableLabel: string }
+const NO_PATH: string[] = []
+const NO_OPTS: PickOption[] = []
+const NO_COLS: string[] = []
+const tpDerived = computed<Record<string, TpD>>(() => {
+  const d = nodeData()
+  const out: Record<string, TpD> = {}
+  for (const f of visibleForm.value) {
+    if (f.type !== 'table-picker' && f.type !== 'token-insert') continue
+    const cfg = pickCfg(f)
+    const dsName = String(d[cfg.dsKey] ?? '')
+    const tree = pickTrees.value[dsName] ?? null
+    out[f.key] = {
+      opts: tableOptions(tree),
+      path: tablePickPath(d[f.key], tree),
+      err: pickTreeErr.value[dsName] ?? '',
+      depEmpty: !dsName,
+      loading: !!pickTreeBusy.value[dsName],
+      dsLabel: depLabel(cfg.dsKey),
+    }
+  }
+  return out
+})
+const fsDerived = computed<Record<string, FsD>>(() => {
+  const d = nodeData()
+  const out: Record<string, FsD> = {}
+  for (const f of visibleForm.value) {
+    if (f.type !== 'field-select') continue
+    const multi = f.pick?.multiple ?? true
+    const v = d[f.key]
+    const val1 = Array.isArray(v) ? String(v[0] ?? '') : String(v ?? '')
+    /* I12 T12 join 键升级（C19）：src='upstream' 列枚举自直接上游流输入节点（cdcDs + tablesText 首表）；
+       非 CDC 上游时候选为空但保持可输入（allow-create 降级），单选写回字符串对齐 ops.py 单键契约 */
+    if (f.pick?.src === 'upstream') {
+      const up = sortByCanvasX(upstream.value)[f.pick.upstreamIndex ?? 0]
+      const dsName = String(up?.data.cdcDs ?? '')
+      const table = String(up?.data.tablesText ?? '').split(',')[0]?.trim() ?? ''
+      out[f.key] = {
+        cols: columnsOf(pickTrees.value[dsName] ?? null, table),
+        val: Array.isArray(v) ? v.map(String) : [],
+        val1,
+        multi,
+        noTable: !table,
+        err: pickTreeErr.value[dsName] ?? '',
+        loading: !!pickTreeBusy.value[dsName],
+        tableLabel: '上游流输入表',
+      }
+      continue
+    }
+    const cfg = pickCfg(f)
+    const dsName = String(d[cfg.dsKey] ?? '')
+    const tv = d[cfg.tableKey]
+    out[f.key] = {
+      cols: columnsOf(pickTrees.value[dsName] ?? null, tv),
+      val: Array.isArray(v) ? v.map(String) : [],
+      val1,
+      multi,
+      noTable: !String(tv ?? ''),
+      err: pickTreeErr.value[dsName] ?? '',
+      loading: !!pickTreeBusy.value[dsName],
+      tableLabel: depLabel(cfg.tableKey),
+    }
+  }
+  return out
+})
+function tpD(f: FieldSchema): TpD | undefined { return tpDerived.value[f.key] }
+function fsD(f: FieldSchema): FsD | undefined { return fsDerived.value[f.key] }
+
+/** 依赖数据源字段是否为空（tp/fs 由派生 computed 判定；topic-select 分支复用此轻量判定） */
+function tpDepEmpty(f: FieldSchema): boolean {
+  return !String(nodeData()[pickCfg(f).dsKey] ?? '')
+}
+/* table-picker：数据源→库→表两级级联；写回纯表名（缺省）或 {schema, table}（writeAs 可配）。
+   el-cascader 清空时 change payload 为 null（非数组）→ writeTablePick 内规整为空路径写回 '' */
+function onTablePick(f: FieldSchema, path: unknown) {
+  if (!props.node) return
+  props.node.data[f.key] = writeTablePick(pickCfg(f).writeAs, path)
+  markDirty()
+}
+
+/* field-select：列枚举来自已缓存的库表树（免二次列请求）；multiple 缺省多选写回数组，
+   pick.multiple=false 单选写回字符串（C19 join 键对齐 worker ops.py 单键契约） */
+function onFieldsPick(f: FieldSchema, vals: unknown) {
+  if (!props.node) return
+  props.node.data[f.key] = (f.pick?.multiple ?? true)
+    ? (Array.isArray(vals) ? vals.map(String) : [])
+    : (vals == null ? '' : String(vals))
+  markDirty()
+}
+
+/* token-insert（I12 T12 C11 库/表侧栏选择器）：点选表把 SELECT 骨架插入 pick.insertKey 目标字段
+   （缺省 sql），追加不覆盖手写内容；不写自身字段值，级联选中态常驻 NO_PATH 复位以便重复点选 */
+function onTokenInsert(f: FieldSchema, path: unknown) {
+  if (!props.node) return
+  const arr = Array.isArray(path) ? path : []
+  const schema = String(arr[0] ?? '')
+  const table = String(arr[1] ?? '')
+  if (!table) return
+  const token = `SELECT * FROM \`${schema}\`.\`${table}\` LIMIT 100`
+  const target = f.pick?.insertKey ?? 'sql'
+  const cur = String(props.node.data[target] ?? '').replace(/\s*$/, '')
+  props.node.data[target] = cur ? `${cur}\n${token}` : token
+  markDirty()
+  // 插入点聚焦 + 光标置末尾（I12 评审修）：连续点选免手动定位；nextTick 等 Vue patch 完 textarea :value 再定位
+  void nextTick(() => {
+    const el = rootEl.value?.querySelector<HTMLTextAreaElement>(`textarea[data-fkey="${target}"]`)
+    if (!el) return
+    el.focus()
+    const end = el.value.length
+    el.setSelectionRange(end, end)
+  })
+}
+
+/* topic-select：经 dsRef 字段值解析 ds_id → 枚举 topic；失败候选置空 + 行内错误 */
+async function ensureTopics(dsName: string, force = false): Promise<void> {
+  if (!dsName) return
+  if (!force && (topicOpts.value[dsName] || topicBusy.value[dsName])) return
+  const id = resolveDsId(dsName, dsRows.value)
+  if (id == null) {
+    topicOpts.value[dsName] = []
+    topicErr.value[dsName] = `流源「${dsName}」未加载或已删除`
+    return
+  }
+  if (topicBusy.value[dsName]) return
+  topicBusy.value[dsName] = true
+  topicErr.value[dsName] = ''
+  try {
+    topicOpts.value[dsName] = await listKafkaTopics(id)
+  } catch (e) {
+    delete topicOpts.value[dsName]
+    topicErr.value[dsName] = `topic 枚举失败：${pickErrMsg(e)}`
+  } finally {
+    topicBusy.value[dsName] = false
+  }
+}
+function topicRefresh(f: FieldSchema): void {
+  void ensureTopics(String(nodeData()[pickCfg(f).dsKey] ?? ''), true)
+}
+function topicOptsOf(f: FieldSchema): string[] {
+  return topicOpts.value[String(nodeData()[pickCfg(f).dsKey] ?? '')] ?? []
+}
+function topicErrOf(f: FieldSchema): string {
+  return topicErr.value[String(nodeData()[pickCfg(f).dsKey] ?? '')] ?? ''
+}
+function topicBusyOf(f: FieldSchema): boolean {
+  return !!topicBusy.value[String(nodeData()[pickCfg(f).dsKey] ?? '')]
+}
+
+/* dir-select：运行时节点（节点名解析 id）→ SFTP 目录懒加载（面包屑导航），选中写回完整路径 */
+function dirNodeIdOf(f: FieldSchema): number | string | null {
+  const nodeName = String(nodeData()[pickCfg(f).nodeKey] ?? '')
+  if (!nodeName) return null
+  const hit = runtimeNodes.value.find((r) => r.name === nodeName)
+  return hit ? hit.id : null
+}
+let dirSeq = 0 // 目录浏览请求序号（全局单调递增）
+/** 目录浏览懒加载：seq 防护——快速连点面包屑/子目录响应乱序、或 watcher 重置 dirNavs
+ *  后 in-flight 落为孤儿对象时，await 后校验失败一律丢弃，不覆盖新状态、不写孤儿 */
+async function lsDir(fKey: string, nodeId: number | string, path: string): Promise<void> {
+  const st: DirNav = dirNavs.value[fKey] ?? { path: '', dirs: [], err: '', seq: 0 }
+  dirNavs.value[fKey] = st
+  const mySeq = ++dirSeq
+  st.seq = mySeq
+  const stale = () => dirNavs.value[fKey] !== st || st.seq !== mySeq
+  try {
+    const r = await listNodeDir(nodeId, path)
+    if (stale()) return
+    st.path = r.path
+    st.dirs = r.entries.filter((e) => e.dir).map((e) => ({ name: e.name }))
+    st.err = ''
+  } catch (e) {
+    if (stale()) return
+    st.dirs = []
+    st.err = `目录浏览失败：${pickErrMsg(e)}`
+  }
+}
+function dirNavOf(f: FieldSchema): DirNav {
+  return dirNavs.value[f.key] ?? EMPTY_DIR
+}
+function dirEnter(f: FieldSchema, name: string): void {
+  const id = dirNodeIdOf(f)
+  const st = dirNavs.value[f.key]
+  if (id == null || !st) return
+  void lsDir(f.key, id, dirJoin(st.path, name))
+}
+function dirTo(f: FieldSchema, path: string): void {
+  const id = dirNodeIdOf(f)
+  if (id == null) return
+  void lsDir(f.key, id, path)
+}
+function pickDir(f: FieldSchema): void {
+  if (!props.node) return
+  const st = dirNavs.value[f.key]
+  if (!st?.path) return
+  props.node.data[f.key] = st.path
+  markDirty()
+}
+
+/** 按需拉取动态控件候选（全部带缓存/去重，重复触发为空操作；失败态行内提示不抛出） */
+function syncDynamicOptions(): void {
+  const d = nodeData()
+  for (const f of visibleForm.value) {
+    if (f.type === 'table-picker' || f.type === 'token-insert') {
+      const dsName = String(d[pickCfg(f).dsKey] ?? '')
+      if (dsName) void ensureTree(dsName)
+    } else if (f.type === 'field-select') {
+      if (f.pick?.src === 'upstream') {
+        const up = sortByCanvasX(upstream.value)[f.pick.upstreamIndex ?? 0]
+        const dsName = String(up?.data.cdcDs ?? '')
+        if (dsName) void ensureTree(dsName)
+      } else {
+        const dsName = String(d[pickCfg(f).dsKey] ?? '')
+        if (dsName) void ensureTree(dsName)
+      }
+    } else if (f.type === 'topic-select') {
+      void ensureTopics(String(d[pickCfg(f).dsKey] ?? ''))
+    } else if (f.type === 'dir-select') {
+      const id = dirNodeIdOf(f)
+      if (id != null && !dirNavs.value[f.key]) void lsDir(f.key, id, '')
+    }
+  }
+}
+
+/** 依赖值签名：节点切换 / 依赖字段值 / 候选行数（dsRows/runtimeNodes 异步就绪）变化时重新按需加载 */
+watch(
+  () => [
+    props.node?.id ?? '',
+    dsRows.value.length,
+    runtimeNodes.value.length,
+    ...visibleForm.value.flatMap((f) => {
+      const d = nodeData()
+      if (f.type === 'field-select' && f.pick?.src === 'upstream') {
+        const up = sortByCanvasX(upstream.value)[f.pick.upstreamIndex ?? 0]
+        return [String(up?.data.cdcDs ?? ''), String(up?.data.tablesText ?? '')]
+      }
+      if (f.type === 'table-picker' || f.type === 'field-select' || f.type === 'topic-select' || f.type === 'token-insert') {
+        return [String(d[pickCfg(f).dsKey] ?? '')]
+      }
+      if (f.type === 'dir-select') return ['@' + String(d[pickCfg(f).nodeKey] ?? '')]
+      return []
+    }),
+  ].join('\u0000'),
+  () => {
+    dirNavs.value = {} // 导航状态整体重置（及时释放旧节点残留）
+    syncDynamicOptions()
+  },
+  { immediate: true },
+)
 
 onMounted(async () => {
   // 必须展开为新数组：dataStore 内部数组原地修改，直接赋值不会触发 ref 更新（对齐 ScriptListView）
@@ -524,7 +839,7 @@ const exclSummary = computed(() =>
 </script>
 
 <template>
-  <aside class="wb-inspector">
+  <aside ref="rootEl" class="wb-inspector">
     <template v-if="node && schema">
       <div class="insp-title">
         <span class="p-ico" :style="{ background: schema.color, width: '22px', height: '22px', borderRadius: '5px', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontSize: '11px' }">{{ schema.icon }}</span>
@@ -532,7 +847,9 @@ const exclSummary = computed(() =>
         <span v-if="schema.code" class="insp-code">{{ schema.code }}</span>
         <span class="insp-spacer" />
         <button v-if="pageVisible" class="pg-btn" title="打开页面化展示（F61）" @click="openPage">页面</button>
+        <button v-if="effMode === 'edit'" class="pg-btn pg-del" title="删除该节点" @click="emit('delete', node.id)">删除</button>
       </div>
+      <div v-if="missingLabels.length" class="insp-miss">必填未配置：{{ missingLabels.join('、') }}</div>
       <div class="insp-form">
         <div class="field">
           <label>节点名称</label>
@@ -663,14 +980,14 @@ const exclSummary = computed(() =>
 
         <!-- 业务配置（schema.form 按 type 渲染，既有机制 + F60/I4 新类型；showIf 条件展示联动） -->
         <div v-for="f in visibleForm" :key="f.key" class="field">
-          <label v-if="f.type !== 'hint'">{{ f.label }}</label>
+          <label v-if="f.type !== 'hint'">{{ f.label }}<span v-if="f.required" class="req-star" title="必填">*</span></label>
           <select v-if="f.type === 'select'" :value="String(node.data[f.key] ?? '')" :disabled="effMode === 'view'" @change="updF(f, $event)">
             <option v-for="o in f.options ?? []" :key="o.value" :value="o.value">{{ o.label }}</option>
           </select>
           <textarea
             v-else-if="f.type === 'textarea'" rows="4"
             :value="String(node.data[f.key] ?? '')" :placeholder="f.placeholder"
-            :disabled="effMode === 'view'" class="mono"
+            :disabled="effMode === 'view'" class="mono" :data-fkey="f.key"
             @change="upd(f.key, $event)"
           />
           <!-- 脚本库脚本：select + 载入/回存/另存（与脚本任务模块互通） -->
@@ -777,7 +1094,7 @@ const exclSummary = computed(() =>
           </select>
           <!-- F60 新类型：bool（开关） -->
           <label v-else-if="f.type === 'bool'" class="bool-row">
-            <input type="checkbox" :checked="!!node.data[f.key]" :disabled="effMode === 'view'" @change="updBool(f.key, $event)" />
+            <input type="checkbox" :checked="!!node.data[f.key]" :disabled="effMode === 'view'" @change="updBool(f, $event)" />
             <span>{{ f.placeholder ?? '启用' }}</span>
           </label>
           <!-- I3：runtime-node（C14 SSH 运行时节点下拉，取值 = 节点名，worker 按名称解析） -->
@@ -790,6 +1107,104 @@ const exclSummary = computed(() =>
             <option value="">不使用标签（按运行时节点直连）</option>
             <option v-for="t in tagOptions" :key="t" :value="t">{{ t }}</option>
           </select>
+          <!-- I12 T11：upstream-ref（C25 上游节点引用，选项=画布直接上游节点；空=自动扫描直接上游目标表） -->
+          <select v-else-if="f.type === 'upstream-ref'" :value="String(node.data[f.key] ?? '')" :disabled="effMode === 'view'" @change="upd(f.key, $event)">
+            <option value="">（自动扫描直接上游目标表）</option>
+            <option v-for="u in upstream" :key="u.id" :value="u.id">{{ String(u.data.name ?? u.id) }}（{{ upSchema(u).label }}）</option>
+          </select>
+          <!-- I12 T10 动态控件：table-picker（数据源→库→表两级级联；写回纯表名或 {schema,table}；清空 payload=null 写回 ''） -->
+          <template v-else-if="f.type === 'table-picker'">
+            <el-cascader
+              class="pick-casc"
+              :model-value="tpD(f)?.path ?? NO_PATH"
+              :options="tpD(f)?.opts ?? NO_OPTS"
+              :disabled="effMode === 'view' || !!tpD(f)?.depEmpty"
+              placeholder="选择库 / 表…" clearable filterable
+              @change="onTablePick(f, $event)"
+            />
+            <div v-if="tpD(f)?.depEmpty" class="blk-hint">请先在「{{ tpD(f)?.dsLabel }}」选择数据源</div>
+            <div v-else-if="tpD(f)?.loading" class="blk-hint">库表加载中…</div>
+            <div v-else-if="tpD(f)?.err" class="pick-err">{{ tpD(f)?.err }}</div>
+          </template>
+          <!-- I12 T12：token-insert（C11 库/表侧栏选择器：点选表把 SELECT 骨架插入 SQL 编辑器，追加不覆盖手写；选中态复位便于重复点选） -->
+          <template v-else-if="f.type === 'token-insert'">
+            <el-cascader
+              class="pick-casc"
+              :model-value="NO_PATH"
+              :options="tpD(f)?.opts ?? NO_OPTS"
+              :disabled="effMode === 'view' || !!tpD(f)?.depEmpty"
+              placeholder="点选库 / 表插入 SELECT 骨架…" filterable
+              @change="onTokenInsert(f, $event)"
+            />
+            <div v-if="tpD(f)?.depEmpty" class="blk-hint">请先在「{{ tpD(f)?.dsLabel }}」选择数据源</div>
+            <div v-else-if="tpD(f)?.loading" class="blk-hint">库表加载中…</div>
+            <div v-else-if="tpD(f)?.err" class="pick-err">{{ tpD(f)?.err }}</div>
+          </template>
+          <!-- I12 T10 动态控件：field-select（列枚举多选写回数组；列来自已缓存库表树，免二次请求；
+               pick.multiple=false 单选写回字符串（C19 join 键）；src='upstream' 时无候选降级为可直接输入） -->
+          <template v-else-if="f.type === 'field-select'">
+            <el-select
+              v-if="!fsD(f)?.multi"
+              class="pick-multi"
+              :model-value="fsD(f)?.val1 ?? ''"
+              filterable allow-create default-first-option clearable
+              placeholder="选择 / 输入字段…"
+              :disabled="effMode === 'view'"
+              @change="onFieldsPick(f, $event)"
+            >
+              <el-option v-for="c in fsD(f)?.cols ?? NO_COLS" :key="c" :label="c" :value="c" />
+            </el-select>
+            <el-select
+              v-else
+              class="pick-multi"
+              :model-value="fsD(f)?.val ?? NO_COLS" multiple filterable collapse-tags collapse-tags-tooltip
+              placeholder="选择字段…" clearable
+              :disabled="effMode === 'view' || !fsD(f)?.cols.length"
+              @change="onFieldsPick(f, $event)"
+            >
+              <el-option v-for="c in fsD(f)?.cols ?? NO_COLS" :key="c" :label="c" :value="c" />
+            </el-select>
+            <div v-if="fsD(f)?.noTable" class="blk-hint">{{ fsD(f)?.multi ? `请先在「${fsD(f)?.tableLabel}」选择表` : '上游流输入未声明 CDC 源表，可直接输入字段名' }}</div>
+            <div v-else-if="fsD(f)?.loading" class="blk-hint">库表加载中…</div>
+            <div v-else-if="fsD(f)?.err" class="pick-err">{{ fsD(f)?.err }}</div>
+            <div v-else-if="!fsD(f)?.cols.length" class="blk-hint">未获取到字段（表不在该数据源库表树中）</div>
+          </template>
+          <!-- I12 T10 动态控件：topic-select（经 dsRef 解析 ds_id 枚举 Kafka topic + 刷新钮） -->
+          <template v-else-if="f.type === 'topic-select'">
+            <div class="expr-row">
+              <select :value="String(node.data[f.key] ?? '')" :disabled="effMode === 'view'" @change="upd(f.key, $event)">
+                <option value="">{{ topicBusyOf(f) ? 'topic 枚举中…' : (topicOptsOf(f).length ? '请选择 topic…' : '暂无可选 topic') }}</option>
+                <option v-for="t in topicOptsOf(f)" :key="t" :value="t">{{ t }}</option>
+              </select>
+              <button class="var-btn" :disabled="effMode === 'view'" title="重新枚举 topic" @click="topicRefresh(f)">⟳</button>
+            </div>
+            <div v-if="tpDepEmpty(f)" class="blk-hint">请先在「{{ depLabel(pickCfg(f).dsKey) }}」选择数据流源</div>
+            <div v-else-if="topicBusyOf(f)" class="blk-hint">topic 枚举中…</div>
+            <div v-else-if="topicErrOf(f)" class="pick-err">{{ topicErrOf(f) }}</div>
+          </template>
+          <!-- I12 T10 动态控件：dir-select（运行时节点目录懒加载浏览，选中写回完整路径） -->
+          <template v-else-if="f.type === 'dir-select'">
+            <div class="dir-crumbs">
+              <button
+                v-for="c in dirCrumbs(dirNavOf(f).path)" :key="c.path" class="dir-crumb"
+                :disabled="effMode === 'view'" @click="dirTo(f, c.path)"
+              >{{ c.name }}</button>
+              <span v-if="!dirNavOf(f).path && !dirNavOf(f).err" class="blk-hint">目录加载中…</span>
+            </div>
+            <div class="dir-list">
+              <button
+                v-for="sub in dirNavOf(f).dirs" :key="sub.name" class="dir-item"
+                :disabled="effMode === 'view'" @click="dirEnter(f, sub.name)"
+              >📁 {{ sub.name }}</button>
+              <div v-if="dirNavOf(f).path && !dirNavOf(f).dirs.length && !dirNavOf(f).err" class="blk-empty">无子目录</div>
+            </div>
+            <div class="dir-actions">
+              <button class="dir-ok" :disabled="effMode === 'view' || !dirNavOf(f).path" @click="pickDir(f)">选中当前目录</button>
+              <span class="dir-cur mono">{{ String(node.data[f.key] ?? '') || '未选择' }}</span>
+            </div>
+            <div v-if="!String(node.data[pickCfg(f).nodeKey] ?? '')" class="blk-hint">请先在「{{ depLabel(pickCfg(f).nodeKey) }}」选择运行时节点</div>
+            <div v-else-if="dirNavOf(f).err" class="pick-err">{{ dirNavOf(f).err }}</div>
+          </template>
           <input
             v-else :type="f.type === 'number' ? 'number' : 'text'"
             :value="String(node.data[f.key] ?? '')" :placeholder="f.placeholder"
@@ -806,10 +1221,7 @@ const exclSummary = computed(() =>
             </div>
           </div>
         </div>
-        <div class="field" style="display:flex;gap:8px;margin-top:14px">
-          <button v-if="effMode === 'edit'" class="btn-danger" @click="emit('delete', node.id)">删除节点</button>
-        </div>
-        <div style="font-size:10.5px;color:var(--text-3);margin-top:10px">
+        <div style="font-size:10.5px;color:var(--text-3);margin-top:14px">
           ID: <span class="mono">{{ node.id }}</span> · 类型: <span class="mono">{{ node.type }}</span>
         </div>
       </div>
@@ -851,10 +1263,13 @@ const exclSummary = computed(() =>
 </template>
 
 <style scoped>
-.btn-danger{flex:1;border:1px solid var(--danger);background:var(--danger-bg);color:var(--danger);border-radius:var(--radius-sm);padding:6px;font-size:12.5px;cursor:pointer}
-.btn-danger:hover{background:var(--danger);color:#fff}
+.pg-del{border-color:var(--danger);color:var(--danger)}
+.pg-del:hover{border-color:var(--danger);color:#fff;background:var(--danger)}
 /* C 编号徽标 + 页面按钮（F61） */
 .insp-code{font-size:9.5px;font-weight:700;color:var(--primary);background:var(--primary-light);border-radius:4px;padding:1px 5px;margin-left:4px}
+/* W1 必填完整性：缺失提示条 + 必填红星 */
+.insp-miss{margin:0 12px;padding:5px 9px;background:rgba(217,119,6,.08);border:1px solid rgba(217,119,6,.35);border-radius:var(--radius-sm);font-size:11px;color:#b45309}
+.req-star{color:var(--danger);margin-left:2px;font-weight:700}
 .insp-spacer{flex:1}
 .pg-btn{border:1px solid var(--border-strong);background:#fff;border-radius:var(--radius-sm);padding:2px 8px;font-size:11px;cursor:pointer;color:var(--text-2)}
 .pg-btn:hover{border-color:var(--primary);color:var(--primary);background:var(--primary-light)}
@@ -928,4 +1343,19 @@ const exclSummary = computed(() =>
 .probe-ok:hover:not(:disabled){opacity:.85}
 .probe-ok:disabled{opacity:.5;cursor:not-allowed}
 .probe-tip{font-size:10px;color:var(--text-3)}
+/* I12 T10 动态控件（选择代替填空） */
+.pick-err{font-size:10.5px;color:var(--danger);word-break:break-all}
+.pick-casc,.pick-multi{width:100%}
+.dir-crumbs{display:flex;flex-wrap:wrap;gap:2px;align-items:center}
+.dir-crumb{border:1px solid var(--border-strong);background:var(--bg);border-radius:var(--radius-sm);padding:2px 6px;font-size:10.5px;color:var(--text-2);cursor:pointer}
+.dir-crumb:hover:not(:disabled){border-color:var(--primary);color:var(--primary)}
+.dir-crumb:last-child{border-color:var(--primary);color:var(--primary);font-weight:600}
+.dir-list{display:flex;flex-wrap:wrap;gap:4px;border:1px solid var(--border);border-radius:var(--radius-sm);padding:6px;background:var(--bg);max-height:140px;overflow:auto}
+.dir-item{border:none;background:transparent;border-radius:var(--radius-sm);padding:3px 6px;font-size:11.5px;color:var(--text-2);cursor:pointer;text-align:left}
+.dir-item:hover:not(:disabled){background:var(--primary-light);color:var(--primary)}
+.dir-actions{display:flex;align-items:center;gap:8px}
+.dir-ok{border:1px solid var(--primary);background:var(--primary);color:#fff;border-radius:var(--radius-sm);padding:4px 10px;font-size:11.5px;cursor:pointer}
+.dir-ok:hover:not(:disabled){opacity:.85}
+.dir-ok:disabled{opacity:.5;cursor:not-allowed}
+.dir-cur{font-size:10.5px;color:var(--text-3);word-break:break-all}
 </style>

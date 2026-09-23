@@ -1,14 +1,14 @@
 /**
  * stream profile：U3 流数据处理 · 流设计器（dagre LR 管道方向）。
- * 数据源（Kafka/CDC/日志，含时间语义与 Watermark 配置）→ 处理算子（窗口/维表 Join/过滤/CEP）→ 输出（Doris/Kafka/告警）。
- * 校验：分区键必选（窗口聚合与 Doris 输出）；指标卡浮窗。
+ * I11 收敛：装饰性节点（s_kafka/p_window/op_cep 等）自 palette 隐藏（nodeTypes 保留供
+ * 历史 mock 文档渲染），画布只暴露可执行组件 C18~C20 + 页面组件（C24 看板）；
+ * 混编批处理组件由后端 extract_stream_spec 校验拦截（同口径）。
  */
 import { detectCycle, findBrokenEdges, findIsolated } from '../model'
 import type { ViewProfile } from './types'
-import { dagProfile } from './dag'
+import { dagProfile, streamSubgraphIssues } from './dag'
+import { requiredMissing } from './formLinkage'
 import StreamMetricsPanel from '../workbench/panels/StreamMetricsPanel.vue'
-
-const PARTITION_REQUIRED = new Set(['p_window', 'o_doris'])
 
 export const streamProfile: ViewProfile = {
   id: 'stream',
@@ -153,11 +153,10 @@ export const streamProfile: ViewProfile = {
     lag: { kind: 'lag', label: '反压/积压', color: '#e5484d', dashed: true, animated: true },
   },
   palette: [
-    { name: '数据源', types: ['s_kafka', 's_cdc'] },
-    { name: '处理算子', types: ['p_window', 'p_join', 'p_filter', 'op_cep', 'op_script'] },
-    { name: '输出', types: ['o_doris', 'o_kafka', 'o_alert'] },
-    /* 可视化编排组件分组原样可用：逻辑关系 / 数据开发 / 数据集成 / 其他组件 */
-    ...dagProfile.palette,
+    /* I11 收敛：只暴露可执行流组件 + 页面组件（旧装饰节点不再可拖入） */
+    { name: '流处理', items: [
+      { type: 'stream_input' }, { type: 'stream_fuse' }, { type: 'stream_output' }, { type: 'page_board' },
+    ] },
   ],
   floats: [
     { id: 'stream-metrics', label: '指标卡', comp: StreamMetricsPanel, w: 400, h: 330 },
@@ -166,13 +165,6 @@ export const streamProfile: ViewProfile = {
     (doc) => detectCycle(doc).length
       ? [{ level: 'error', msg: '流链路存在环（Flink DAG 不允许成环）' }]
       : [],
-    (doc) => doc.nodes
-      .filter((n) => PARTITION_REQUIRED.has(n.type) && !String(n.data.pkey ?? '').trim())
-      .map((n) => ({
-        level: 'error' as const,
-        msg: `「${n.data.name}」未配置分区键（窗口聚合 / Doris 分桶必需）`,
-        nodeId: n.id,
-      })),
     (doc) => findBrokenEdges(doc).map((eid) => ({
       level: 'error' as const, msg: '边引用了不存在的节点（断链）', edgeId: eid,
     })),
@@ -181,5 +173,17 @@ export const streamProfile: ViewProfile = {
       msg: `孤立节点「${doc.nodes.find((n) => n.id === id)?.data.name}」未接入流链路`,
       nodeId: id,
     })),
+    /* W1 补齐：流子图结构校验（缺源/缺汇/join 双路/游离），与 dag 视角同口径 */
+    (doc) => streamSubgraphIssues(doc),
+    /* W1 必填完整性：画布角标/校验面板/保存闸门共用 requiredMissing 判定 */
+    (doc) => doc.nodes.flatMap((n) => {
+      const s = streamProfile.nodeTypes[n.type]
+      if (!s) return []
+      return requiredMissing(s, n.data).map((lb) => ({
+        level: 'warn' as const,
+        msg: `「${String(n.data.name ?? n.id)}」必填项未配置：${lb}`,
+        nodeId: n.id,
+      }))
+    }),
   ],
 }

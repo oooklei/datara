@@ -227,7 +227,8 @@ def execute(ctx) -> ExecResult:
         return ExecResult(SUCCESS, outputs, [])
 
     # 3. 注册参数校验
-    name = str(param.get("name") or "").strip()
+    # I12 T15 修 F3：表单键 tmpName 优先（避免与节点显示名 data.name 冲突）；旧契约 name 兼容
+    name = str(param.get("tmpName") or param.get("name") or "").strip()
     kind = str(param.get("kind") or "table")
     retention = str(param.get("retention") or "immediate")
     if not TMP_NAME_RE.match(name):

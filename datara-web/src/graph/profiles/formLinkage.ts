@@ -3,6 +3,7 @@
  * 与组件解耦（不引 .vue），供 dag.ts 表单 schema 与 vitest 直接复用；
  * TMP_NAME_OK 对齐 worker 侧 common/tmpdata.TMP_NAME_RE（^[a-z][a-z0-9_]{2,31}$）。
  */
+import type { NodeSchema } from './types'
 
 /** 临时数据名合法规则（与后端 TMP_NAME_RE 同口径） */
 export const TMP_NAME_OK = /^[a-z][a-z0-9_]{2,31}$/
@@ -25,17 +26,33 @@ export function c22OnModeChange(data: Record<string, unknown>, mode: unknown): v
   }
 }
 
-/** ${tmp.<name>} 引用是否可用：已勾选注册且命名合法 */
+/** ${tmp.<name>} 引用是否可用：已勾选注册且命名合法（键为 tmpName，避免与节点显示名 data.name 冲突） */
 export function tmpRefUsable(data: Record<string, unknown>): boolean {
-  return !!data.register && TMP_NAME_OK.test(String(data.name ?? ''))
+  return !!data.register && TMP_NAME_OK.test(String(data.tmpName ?? ''))
 }
 
 /** ${tmp.*} 引用提示文案：可用返回空串，否则给出不可用原因 */
 export function tmpRefHint(data: Record<string, unknown>): string {
   if (!data.register) return '未注册临时数据：下游 ${tmp.*} 引用不可用，仅产出行数统计'
-  const name = String(data.name ?? '')
+  const name = String(data.tmpName ?? '')
   if (!TMP_NAME_OK.test(name)) return '临时数据名未配置或不合法（需小写字母开头，3~32 位 a-z0-9_）：${tmp.*} 引用暂不可用'
   return ''
+}
+
+/**
+ * 必填完整性检查（W1 流节点配置闭环）：返回当前分型下缺失的必填字段 label 清单。
+ * 判定口径：required 且 showIf(data) 通过且值为空（''/null/undefined/空数组）。
+ * 三处共用同一判定：画布节点「未配置」角标 / 校验面板 / Inspector 必填红星。
+ */
+export function requiredMissing(schema: NodeSchema, data: Record<string, unknown>): string[] {
+  return (schema.form ?? [])
+    .filter((f) => f.required && f.type !== 'hint' && (!f.showIf || f.showIf(data)))
+    .filter((f) => {
+      const v = data[f.key]
+      if (Array.isArray(v)) return v.length === 0
+      return v === undefined || v === null || v === ''
+    })
+    .map((f) => f.label || f.key)
 }
 
 /* ================= I6 C17 数据同步联动（设计 §9：读端类型切换 + SQL 预览） ================= */

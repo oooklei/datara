@@ -26,10 +26,38 @@ export interface FieldSchema {
     | 'deps-list'     // C9 依赖项列表编辑器（工作流+节点级联+可选变量条件）
     | 'exec-node-tag' // C14 执行节点标签下拉（F53：选项=ssh-nodes 标签并集）
     | 'probe'         // C17 反选探测：按钮调 GET /datasources/{id}/tree 探测源库与目标表同名/前缀匹配的表，勾选回填 schemas
+    /* I12 T10 动态控件扩展（「选择代替填空」：元数据/路径选择，依赖字段联动复用 showIf/onChange 既有机制） */
+    | 'table-picker'  // 表级联选择：依赖 datasource 字段（pick.dsKey），数据源→库→表两级级联
+    | 'field-select'  // 字段多选：依赖 datasource+table 字段（pick.dsKey/pick.tableKey），列枚举写回数组
+    | 'topic-select'  // Kafka topic 下拉：依赖流源引用字段（pick.dsKey 缺省 dsRef），经 ds_id 枚举 topic
+    | 'dir-select'    // 目录浏览：依赖 runtimeNode 字段（pick.nodeKey），懒加载子目录写回完整路径
+    | 'token-insert'  // I12 T12 库/表侧栏选择器（C11）：点选表把 SELECT 骨架插入 pick.insertKey 目标字段，不替代手写
+    | 'upstream-ref'  // I12 T11 C25 上游节点引用：选项=画布直接上游节点（label+类型），选中写回节点 id
   options?: { value: string; label: string }[]
   /** probe 探测配置：dsKey=源数据源字段（缺省 readerDs），tableKey=目标表字段（缺省 writerTable），excludeDsKey=排除其默认库的数据源（缺省 writerDs，防目标表自写） */
   probe?: { dsKey?: string; tableKey?: string; excludeDsKey?: string }
+  /** I12 T10 动态控件依赖声明（依赖字段为空时控件禁用+行内提示；失败态=候选置空+行内错误，不阻塞表单其余字段） */
+  pick?: {
+    /** 依赖的数据源字段名（table-picker/field-select 缺省 'datasource'；topic-select 缺省 'dsRef'；取值为数据源名） */
+    dsKey?: string
+    /** field-select 依赖的表字段名（缺省 'table'；值可为纯表名或 {schema, table}） */
+    tableKey?: string
+    /** dir-select 依赖的运行时节点字段名（缺省 'runtimeNode'，取值为节点名） */
+    nodeKey?: string
+    /** table-picker 写回形态：'table'=纯表名（缺省）；'schemaTable'=写回 {schema, table} 对象 */
+    writeAs?: 'table' | 'schemaTable'
+    /** field-select 候选来源：'dsTable'=本节点数据源+表字段（缺省，C25 ruleColumns）；'upstream'=直接上游流输入节点（C19 join 键：取上游 cdcDs+tablesText 首表列枚举，无 CDC 上游降级为可直接输入） */
+    src?: 'dsTable' | 'upstream'
+    /** src='upstream' 时取第 N 个直接上游（按画布位置左→右排序：0=左流/1=右流，缺省 0；位置缺失回退连线序） */
+    upstreamIndex?: number
+    /** field-select 多选开关：true=写回字符串数组（缺省）；false=单选写回字符串（C19 joinKeyLeft/Right 对齐 worker ops.py 单键契约） */
+    multiple?: boolean
+    /** token-insert 点选插入目标字段（缺省 'sql'） */
+    insertKey?: string
+  }
   placeholder?: string
+  /** 必填（在 showIf 通过的分型下值为空即「未配置」；requiredMissing 统一判定，画布角标/校验面板/保存闸门共用） */
+  required?: boolean
   /** datasource 类型过滤（如 ['mysql','greatdb'] / ['file']；mock 种子无类型码时不过滤） */
   dsTypes?: string[]
   /** 条件展示（表单联动，如 C22 来源模式/保留策略分支；缺省恒显示） */
@@ -107,6 +135,9 @@ export interface TemplateDef {
   modes: TemplateModeDef[]
 }
 
+/** I12 R1 组件分类（可多类归属）：T7 CAT_LABEL / T11 新组件复用此别名，获得键穷尽编译检查 */
+export type ComponentCategory = 'sync' | 'etl' | 'stream' | 'general'
+
 /** 节点类型定义：图元 + 元件库条目 + 属性表单 */
 export interface NodeSchema {
   type: string
@@ -115,8 +146,10 @@ export interface NodeSchema {
   icon: string
   color: string
   desc?: string
-  /** 组件编号（02 文档 C1~C23），palette 与 Inspector 显示编号徽标 */
+  /** 组件编号（02 文档 C1~C26），palette 与 Inspector 显示编号徽标 */
   code?: string
+  /** I12 R1：组件分类归属（可多类）；palette 基本盘全域可用，仅决定优先展示与徽标 */
+  categories?: ComponentCategory[]
   /** 落地阶段提示（灰置组件 tooltip，如「I3/I4 注册」） */
   phase?: string
   /** F61 页面化展示声明 */

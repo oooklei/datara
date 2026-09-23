@@ -28,8 +28,8 @@ from master.failover import recover_running_instances
 
 logger = get_logger("master.scheduler")
 
-# I12-D1 补齐对齐 engine.py 全集（当前模块内未直接引用，保留导出以防外部引用旧全集）
-WORKER_TYPES = ("sql", "shell", "python", "ssh", "smoke", "procedure", "http", "file", "sync")
+# I12-D1 补齐对齐 engine.py 全集（当前模块内未直接引用，保留导出以防外部引用旧全集）；I12 +file_sync/notify C24/C26
+WORKER_TYPES = ("sql", "shell", "python", "ssh", "smoke", "procedure", "http", "file", "sync", "file_sync", "notify")
 
 
 def generate_instance_id(wf_code: int) -> str:

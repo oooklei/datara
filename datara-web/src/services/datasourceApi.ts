@@ -148,3 +148,45 @@ export async function listTmpData(instanceId: string): Promise<TmpRow[]> {
 export async function deleteTmpData(tmpId: number): Promise<void> {
   await http.delete<void>(`/tmp-data/${tmpId}`)
 }
+
+/** 拉取数据源的 schema 清单（源端/目标端面板共用；只读探表，不写库） */
+export async function listSchemas(dsId: number | string): Promise<DatasourceSchema[]> {
+  return http.get<DatasourceSchema[]>(`/datasources/${encodeURIComponent(dsId)}/schemas`)
+}
+
+/* ---- schema 清单（C7.4: source_base / target_base 面板共用的只读探表清单） ---- */
+
+export interface SchemaTableColumn {
+  name: string
+  type: string
+}
+
+export interface SchemaTable {
+  name: string
+  columns: SchemaTableColumn[]
+}
+
+export interface DatasourceSchema {
+  db: string
+  tables: SchemaTable[]
+}
+
+/* ---- I12 T10 动态控件（「选择代替填空」）：Kafka topic 枚举 / 运行时节点目录浏览 ---- */
+
+/** 运行时节点目录项（GET /runtime-nodes/{id}/ls 返回 entries；dir=是否目录） */
+export interface NodeDirEntry { name: string; dir: boolean; size: number; mtime: number }
+
+export interface NodeDir { path: string; entries: NodeDirEntry[] }
+
+/** Kafka topic 枚举（仅 kafka 数据源；非 kafka / 上游不可用 → http 层 throw Error(msg)） */
+export async function listKafkaTopics(dsId: number | string): Promise<string[]> {
+  const r = await http.get<{ topics: string[] }>(`/datasources/${encodeURIComponent(dsId)}/topics`)
+  return r?.topics ?? []
+}
+
+/** 运行时节点目录浏览（SFTP 列目录；path 缺省=节点 runtime_dir，显式传入必须绝对路径） */
+export async function listNodeDir(nodeId: number | string, path = ''): Promise<NodeDir> {
+  const q = path ? `?path=${encodeURIComponent(path)}` : ''
+  return http.get<NodeDir>(`/runtime-nodes/${encodeURIComponent(nodeId)}/ls${q}`)
+}
+

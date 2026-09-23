@@ -286,7 +286,9 @@ def run_loop(stop) -> None:
 # 导入执行器实现，触发 @register 注册
 from worker.executors import (  # noqa: E402,F401  注册副作用
     file,
+    file_sync,  # I12 C24 文件同步执行器
     http,
+    notify,  # I12 C26 通知执行器
     procedure,
     python,
     shell,

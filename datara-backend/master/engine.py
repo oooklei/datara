@@ -2,6 +2,7 @@
 
 - 每实例一个 WorkflowExecuteRunnable 线程：事件驱动拓扑推进 + 定时器轮询（延时/依赖/重试）
 - 逻辑节点 C1~C10 master 内联执行（不占 worker）；数据节点 sql/shell/python/ssh 派发 worker
+- C25 数据校验（I12）同为 master 内联：规则集执行 + success/failure 双出口路由（分支机制复用）
 - 全部状态写库以 DB 为准；线程间经 Runnable 私有事件队列通信（状态消费线程路由）
 - constraints 随消息从 graph_json 下发不入库（设计 §4）；重试/超时/失败策略 §8
 """
@@ -16,7 +17,7 @@ from common import queue
 from common.config import get_settings
 from common.db import new_session
 from common.log import get_logger, set_instance_id
-from common.models import TaskInstance, TaskLog, WorkflowInstance, now
+from common.models import DataSource, TaskInstance, TaskLog, WorkflowInstance, now
 from master import state
 from master.dag import Graph, loop_bodies
 from master.variables import (
@@ -30,9 +31,9 @@ POLL_INTERVAL_SEC = 10  # 定时器/kill 自查轮询周期
 DEPENDENT_POLL_SEC = 10  # C9 依赖轮询周期
 DEFAULT_MAX_ITERATIONS = 100  # C10 防死循环上限
 
-# worker 派发类节点全集（I4 扩容：+procedure/http/file C15/C16/C22；I6 扩容：+sync F28）
+# worker 派发类节点全集（I4 +procedure/http/file；I6 +sync；I12 +file_sync/notify C24/C26）
 # 超时扫描（check_timeouts）/容错重派（_resume_sweep）/执行器分派（_execute_node）共用
-WORKER_TYPES = ("sql", "shell", "python", "ssh", "smoke", "procedure", "http", "file", "sync")
+WORKER_TYPES = ("sql", "shell", "python", "ssh", "smoke", "procedure", "http", "file", "sync", "file_sync", "notify")
 
 
 # ---------------- Runnable 注册表（状态消费/命令消费/超时扫描 共享） ----------------
@@ -384,7 +385,8 @@ class WorkflowExecuteRunnable(threading.Thread):
         row = self._row(source_id, loop_iter)
         source_state = row["state"] if row else state.SUCCESS
         # 分支节点仅在自身 success 时决策；skip 级联不做决策（出边全 skipped）
-        is_branch = node_type in ("conditions", "switch") and source_state == state.SUCCESS
+        # C25（I12）：assert 通过/告警放行时同样按出口路由（failure 终态时下游走失败策略，不决策）
+        is_branch = node_type in ("conditions", "switch", "assert") and source_state == state.SUCCESS
         branch = None
         if is_branch:
             bkey = (source_id, loop_iter)
@@ -530,7 +532,7 @@ class WorkflowExecuteRunnable(threading.Thread):
             "fork": self._exec_fork, "join": self._exec_join,
             "merge": self._exec_merge, "delay": self._exec_delay,
             "dependent": self._exec_dependent, "loop": self._exec_loop,
-            "variable": self._exec_variable,
+            "variable": self._exec_variable, "assert": self._exec_assert,  # assert=C25（I12）
         }.get(node_type)
         if handler is not None:
             handler(key, resolved)
@@ -584,6 +586,19 @@ class WorkflowExecuteRunnable(threading.Thread):
 
     def _decide_branch(self, node_id: str, loop_iter: int) -> Optional[dict]:
         """C3 条件分支（按序首个命中）/ C4 切换（值匹配唯一分支，默认兜底）。"""
+        if self._node_type(node_id) == "assert":
+            # C25（I12）恢复重建：按落库 outputs 复原出口（不重跑规则，防重启后断言重复执行）
+            row = self._row(node_id, loop_iter)
+            outputs = {}
+            if row is not None:
+                session = new_session()
+                try:
+                    task = session.get(TaskInstance, row["id"])
+                    outputs = task.outputs if task is not None and isinstance(task.outputs, dict) else {}
+                finally:
+                    session.close()
+            ok = bool(outputs.get("assert_ok"))
+            return {"id": "success" if ok else "failure", "name": "通过" if ok else "不通过"}
         data = self._node_data(node_id)
         branches = data.get("branches") if isinstance(data.get("branches"), list) else []
         scope = self._expr_scope(loop_iter, data)
@@ -723,6 +738,197 @@ class WorkflowExecuteRunnable(threading.Thread):
         self._set_state(key, state.SUCCESS, outputs={"injected": items},
                         log_lines=log_lines + _snapshot_lines(snapshot, self.instance_id, self._node_name(node_id)))
         self._advance_downstream(node_id, loop_iter)
+
+    def _exec_assert(self, key: tuple, resolved: dict) -> None:
+        """C25 数据校验（I12，设计 §3.2）：master 内联执行规则集（行数区间/主键唯一/非空率/自定义 SQL）。
+
+        - 校验对象：手选 ds.table 优先；上游模式显式「上游节点引用」优先，未选则自动扫描直接上游
+          （C17 写端目标表 / C24 目标表 / SQL 声明结果表）
+        - 通过 → success 出口；不达标 on_fail=warn → failure 出口（告警放行）；on_fail=fail → 节点 FAILURE
+        - 出口路由复用 conditions/switch 分支机制（chosen 缓存 + sourceHandle 匹配）
+        """
+        node_id, loop_iter = key
+        data = self._node_data(node_id)
+        rules = [r for r in (data.get("rules") if isinstance(data.get("rules"), list) else [])
+                 if isinstance(r, dict) and str(r.get("key") or "").strip()]
+        target = self._assert_target(node_id, loop_iter)
+        if target is None:
+            self._set_state(key, state.FAILURE, outputs={"error": "assert_target_unresolved"},
+                            log_lines=["[master] 校验对象未解析（手选 ds.table 为空 / "
+                                       "显式上游引用无目标表 / 上游无可校验目标表）"])
+            self._advance_downstream(node_id, loop_iter)
+            return
+        from common.dsconn import open_connection, quote_ident  # 惰性导入（校验节点低频，不占 master 启动路径）
+        ds = self._assert_lookup_ds(target["ds_ref"])
+        if ds is None:
+            self._set_state(key, state.FAILURE, outputs={"error": "assert_ds_not_found"},
+                            log_lines=["[master] 校验数据源不存在: %s" % target["ds_ref"]])
+            self._advance_downstream(node_id, loop_iter)
+            return
+        try:
+            conn = open_connection(ds, db=target["schema"] or None)
+        except Exception as exc:  # noqa: BLE001 连接失败 → failure
+            self._set_state(key, state.FAILURE, outputs={"error": str(exc)},
+                            log_lines=["[master] 校验数据源连接失败: %r" % exc])
+            self._advance_downstream(node_id, loop_iter)
+            return
+        try:
+            with conn.cursor() as cur:
+                failed = self._assert_rules(cur, quote_ident(target["table"]), rules)
+        except Exception as exc:  # noqa: BLE001 规则执行异常 → failure
+            self._set_state(key, state.FAILURE, outputs={"error": str(exc)},
+                            log_lines=["[master] 校验规则执行异常: %r" % exc])
+            self._advance_downstream(node_id, loop_iter)
+            return
+        finally:
+            conn.close()
+        full_table = "%s.%s" % (target["schema"], target["table"]) if target["schema"] else target["table"]
+        log_lines = ["[master] 校验目标: %s @ %s" % (full_table, target["ds_ref"]),
+                     "[master] 规则 %d 项，不通过 %d 项" % (len(rules), len(failed))]
+        log_lines += ["[master] 不通过: %s" % f for f in failed]
+        if failed and str(data.get("onFail") or "fail") != "warn":
+            self._set_state(key, state.FAILURE, outputs={"error": "assert_failed", "failed": failed},
+                            log_lines=log_lines)
+            self._advance_downstream(node_id, loop_iter)
+            return
+        self.chosen[key] = {"id": "success" if not failed else "failure",
+                            "name": "通过" if not failed else "不通过"}
+        self._set_state(key, state.SUCCESS, outputs={"assert_ok": not failed, "failed": failed},
+                        log_lines=log_lines)
+        self._advance_downstream(node_id, loop_iter)
+
+    def _assert_target(self, node_id: str, loop_iter: int) -> Optional[dict]:
+        """C25 校验对象解析（I12）：手选 ds.table 优先；上游模式显式「上游节点引用」优先，
+        未选时自动扫直接上游目标表。
+
+        - 显式选中（data.assertUpstream=节点 id，Inspector 画布直接上游下拉写入）：优先按选中
+          节点解析，不可解析（节点已删/非 C17/C24/SQL）即视为未解析，不静默回退自动扫描
+        - C17 sync → 写端 writerDs/writerTable；C24 file_sync → targetDs/targetTable/targetSchema
+          （table 兼容 table-picker 的 {schema,table} 对象与 str 双形态；I12 T11 修：键名统一 camelCase）
+        - SQL → 节点声明的结果表注册表（data.outputs.tables [{k,v}]，v=实体表）+ datasource
+        返回 {"ds_ref", "schema", "table"}；无可解析目标返回 None。
+        """
+        data = self._node_data(node_id)
+        if str(data.get("assertSrc") or "manual") != "upstream":
+            ds_ref = str(data.get("assertDs") or "").strip()
+            raw = data.get("assertTable")
+            schema, table = "", ""
+            if isinstance(raw, dict):  # table-picker schemaTable 写回形态
+                schema = str(raw.get("schema") or "").strip()
+                table = str(raw.get("table") or "").strip()
+            else:
+                table = str(raw or "").strip()
+            if ds_ref and table:
+                return {"ds_ref": ds_ref, "schema": schema, "table": table}
+            return None
+        picked = str(data.get("assertUpstream") or "").strip()  # I12 T11 修：显式上游节点引用
+        if picked:
+            try:
+                return self._assert_upstream_target(picked)
+            except Exception:  # noqa: BLE001 选中节点已不存在等 → 按未解析处理（_exec_assert 留痕）
+                return None
+        for edge in self.graph.preds[node_id]:  # 未选 → 自动扫描直接上游兜底
+            target = self._assert_upstream_target(edge["source"])
+            if target is not None:
+                return target
+        return None
+
+    def _assert_upstream_target(self, src: str) -> Optional[dict]:
+        """单一直接上游的校验对象解析（I12 T11 抽出：显式选中与自动扫描共用）。"""
+        stype = self._node_type(src)
+        sdata = self._node_data(src)
+        if stype == "sync":  # C17 跨源同步：写端目标表
+            ds_ref = str(sdata.get("writerDs") or "").strip()
+            table = str(sdata.get("writerTable") or "").strip()
+            if ds_ref and table:
+                return {"ds_ref": ds_ref, "schema": "", "table": table}
+        elif stype == "file_sync":  # C24 文件同步：目标表（dict/str 双形态；键 camelCase 对齐 I12 T11）
+            ds_ref = str(sdata.get("targetDs") or "").strip()
+            raw = sdata.get("targetTable")
+            schema = str(sdata.get("targetSchema") or "").strip()
+            if isinstance(raw, dict):
+                schema = str(raw.get("schema") or schema).strip()
+                table = str(raw.get("table") or "").strip()
+            else:
+                table = str(raw or "").strip()
+            if ds_ref and table:
+                return {"ds_ref": ds_ref, "schema": schema, "table": table}
+        elif stype == "sql":  # SQL：声明的结果表（outputs.tables 首个非空 v）
+            ds_ref = str(sdata.get("datasource") or "").strip()
+            outs = sdata.get("outputs") if isinstance(sdata.get("outputs"), dict) else {}
+            for t in outs.get("tables") or []:
+                if isinstance(t, dict) and str(t.get("v") or "").strip():
+                    return {"ds_ref": ds_ref, "schema": "", "table": str(t["v"]).strip()}
+        return None
+
+    def _assert_lookup_ds(self, ref: str):
+        """按名称查数据源行，纯数字兜底按 id（与 worker 各执行器同口径）。"""
+        session = new_session()
+        try:
+            ds = session.query(DataSource).filter(DataSource.name == ref).first()
+            if ds is None and str(ref).isdigit():
+                ds = session.get(DataSource, int(ref))
+            return ds
+        finally:
+            session.close()
+
+    def _assert_rules(self, cur, table: str, rules: list) -> list:
+        """逐条执行校验规则（I12）：返回不通过描述列表（空=全通过）。
+
+        - rows: 行数区间 "min=1,max=1000"（缺省侧不设限）
+        - unique: 主键唯一，值=列名（逗号分隔，联合唯一）
+        - not_null: 非空率，值="列名,阈值%"（阈值缺省 100）
+        - sql: 自定义断言，首行首列=1 视为通过；单条规则异常按不通过留痕（不阻断其余规则）
+        """
+        from common.dsconn import quote_ident
+
+        failed: list = []
+        for r in rules:
+            key = str(r.get("key") or "").strip().lower()
+            val = str(r.get("value") or "").strip()
+            try:
+                if key == "rows":
+                    bounds: dict = {}
+                    for part in val.replace("，", ",").split(","):
+                        if "=" in part:
+                            k, _, v = part.partition("=")
+                            bounds[k.strip()] = int(v.strip())
+                    cur.execute("SELECT COUNT(*) FROM %s" % table)
+                    cnt = int(cur.fetchone()[0])
+                    lo, hi = bounds.get("min"), bounds.get("max")
+                    if (lo is not None and cnt < lo) or (hi is not None and cnt > hi):
+                        failed.append("行数 %d 不在区间 [%s, %s]" % (
+                            cnt, lo if lo is not None else 0, hi if hi is not None else "∞"))
+                elif key == "unique":
+                    cols = ", ".join(quote_ident(c) for c in val.replace("，", ",").split(",") if c.strip())
+                    if cols:
+                        cur.execute(
+                            "SELECT COUNT(*) FROM (SELECT 1 FROM %s GROUP BY %s HAVING COUNT(*) > 1) t"
+                            % (table, cols))
+                        dup = int(cur.fetchone()[0])
+                        if dup:
+                            failed.append("唯一性不满足（%s，重复组 %d 个）" % (val, dup))
+                elif key == "not_null":
+                    parts = [p.strip() for p in val.replace("，", ",").split(",") if p.strip()]
+                    if not parts:
+                        continue
+                    col = quote_ident(parts[0])
+                    rate = float(parts[1]) if len(parts) > 1 and parts[1] else 100.0
+                    cur.execute("SELECT COUNT(*), SUM(%s IS NULL) FROM %s" % (col, table))
+                    total, nulls = cur.fetchone()
+                    total, nulls = int(total or 0), int(nulls or 0)
+                    ok_rate = (total - nulls) * 100.0 / total if total else 0.0
+                    if ok_rate < rate:
+                        failed.append("非空率 %s 低于阈值 %s%%（实际 %.1f%%）" % (parts[0], rate, ok_rate))
+                elif key == "sql":
+                    cur.execute(val)
+                    row = cur.fetchone()
+                    v = row[0] if row else None
+                    if not (v == 1 or str(v).strip() == "1"):
+                        failed.append("自定义 SQL 断言不通过（首行首列=%r，期望 1）" % v)
+            except Exception as exc:  # noqa: BLE001 单条规则异常 = 不通过
+                failed.append("规则 %s 执行异常: %s" % (key, exc))
+        return failed
 
     def _exec_delay(self, key: tuple, resolved: dict) -> None:
         """C8 延时：duration+unit 或 until（时间变量到点）；到期 success。"""
