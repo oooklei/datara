@@ -1,0 +1,315 @@
+{
+  "ok": true,
+  "flow_els": [
+    {
+      "text": "流输入 C18流",
+      "cls": "",
+      "pcls": "pal-item",
+      "gpcls": "pal-items"
+    },
+    {
+      "text": "流输入",
+      "cls": "p-name",
+      "pcls": "",
+      "gpcls": "pal-item"
+    },
+    {
+      "text": "流",
+      "cls": "p-cat",
+      "pcls": "p-name",
+      "gpcls": ""
+    },
+    {
+      "text": "流融合 C19流",
+      "cls": "",
+      "pcls": "pal-item",
+      "gpcls": "pal-items"
+    },
+    {
+      "text": "流融合",
+      "cls": "p-name",
+      "pcls": "",
+      "gpcls": "pal-item"
+    },
+    {
+      "text": "流",
+      "cls": "p-cat",
+      "pcls": "p-name",
+      "gpcls": ""
+    },
+    {
+      "text": "流输出 C20流",
+      "cls": "",
+      "pcls": "pal-item",
+      "gpcls": "pal-items"
+    },
+    {
+      "text": "流输出",
+      "cls": "p-name",
+      "pcls": "",
+      "gpcls": "pal-item"
+    },
+    {
+      "text": "流",
+      "cls": "p-cat",
+      "pcls": "p-name",
+      "gpcls": ""
+    },
+    {
+      "text": "流",
+      "cls": "p-cat",
+      "pcls": "p-name",
+      "gpcls": ""
+    },
+    {
+      "text": "流",
+      "cls": "p-cat",
+      "pcls": "p-name",
+      "gpcls": ""
+    }
+  ],
+  "group_els": [
+    {
+      "text": "同步",
+      "cls": "p-cat",
+      "pcls": "p-name",
+      "gpcls": ""
+    },
+    {
+      "text": "ETL",
+      "cls": "p-cat",
+      "pcls": "p-name",
+      "gpcls": ""
+    },
+    {
+      "text": "同步",
+      "cls": "p-cat",
+      "pcls": "p-name",
+      "gpcls": ""
+    },
+    {
+      "text": "ETL",
+      "cls": "p-cat",
+      "pcls": "p-name",
+      "gpcls": ""
+    },
+    {
+      "text": "同步",
+      "cls": "p-cat",
+      "pcls": "p-name",
+      "gpcls": ""
+    },
+    {
+      "text": "ETL",
+      "cls": "p-cat",
+      "pcls": "p-name",
+      "gpcls": ""
+    },
+    {
+      "text": "同步",
+      "cls": "p-cat",
+      "pcls": "p-name",
+      "gpcls": ""
+    },
+    {
+      "text": "ETL",
+      "cls": "p-cat",
+      "pcls": "p-name",
+      "gpcls": ""
+    },
+    {
+      "text": "同步",
+      "cls": "p-cat",
+      "pcls": "p-name",
+      "gpcls": ""
+    },
+    {
+      "text": "ETL",
+      "cls": "p-cat",
+      "pcls": "p-name",
+      "gpcls": ""
+    },
+    {
+      "text": "同步",
+      "cls": "p-cat",
+      "pcls": "p-name",
+      "gpcls": ""
+    },
+    {
+      "text": "ETL",
+      "cls": "p-cat",
+      "pcls": "p-name",
+      "gpcls": ""
+    },
+    {
+      "text": "同步",
+      "cls": "p-cat",
+      "pcls": "p-name",
+      "gpcls": ""
+    },
+    {
+      "text": "ETL",
+      "cls": "p-cat",
+      "pcls": "p-name",
+      "gpcls": ""
+    },
+    {
+      "text": "同步",
+      "cls": "p-cat",
+      "pcls": "p-name",
+      "gpcls": ""
+    },
+    {
+      "text": "ETL",
+      "cls": "p-cat",
+      "pcls": "p-name",
+      "gpcls": ""
+    },
+    {
+      "text": "同步",
+      "cls": "p-cat",
+      "pcls": "p-name",
+      "gpcls": ""
+    },
+    {
+      "text": "ETL",
+      "cls": "p-cat",
+      "pcls": "p-name",
+      "gpcls": ""
+    },
+    {
+      "text": "同步",
+      "cls": "p-cat",
+      "pcls": "p-name",
+      "gpcls": ""
+    },
+    {
+      "text": "ETL",
+      "cls": "p-cat",
+      "pcls": "p-name",
+      "gpcls": ""
+    },
+    {
+      "text": "同步",
+      "cls": "p-cat",
+      "pcls": "p-name",
+      "gpcls": ""
+    },
+    {
+      "text": "ETL",
+      "cls": "p-cat",
+      "pcls": "p-name",
+      "gpcls": ""
+    },
+    {
+      "text": "ETL",
+      "cls": "p-cat",
+      "pcls": "p-name",
+      "gpcls": ""
+    },
+    {
+      "text": "ETL",
+      "cls": "p-cat",
+      "pcls": "p-name",
+      "gpcls": ""
+    },
+    {
+      "text": "ETL",
+      "cls": "p-cat",
+      "pcls": "p-name",
+      "gpcls": ""
+    },
+    {
+      "text": "ETL",
+      "cls": "p-cat",
+      "pcls": "p-name",
+      "gpcls": ""
+    },
+    {
+      "text": "ETL",
+      "cls": "p-cat",
+      "pcls": "p-name",
+      "gpcls": ""
+    },
+    {
+      "text": "ETL",
+      "cls": "p-cat",
+      "pcls": "p-name",
+      "gpcls": ""
+    },
+    {
+      "text": "ETL",
+      "cls": "p-cat",
+      "pcls": "p-name",
+      "gpcls": ""
+    },
+    {
+      "text": "同步",
+      "cls": "p-cat",
+      "pcls": "p-name",
+      "gpcls": ""
+    },
+    {
+      "text": "ETL",
+      "cls": "p-cat",
+      "pcls": "p-name",
+      "gpcls": ""
+    },
+    {
+      "text": "同步",
+      "cls": "p-cat",
+      "pcls": "p-name",
+      "gpcls": ""
+    },
+    {
+      "text": "同步",
+      "cls": "p-cat",
+      "pcls": "p-name",
+      "gpcls": ""
+    },
+    {
+      "text": "同步",
+      "cls": "p-cat",
+      "pcls": "p-name",
+      "gpcls": ""
+    },
+    {
+      "text": "流",
+      "cls": "p-cat",
+      "pcls": "p-name",
+      "gpcls": ""
+    },
+    {
+      "text": "流",
+      "cls": "p-cat",
+      "pcls": "p-name",
+      "gpcls": ""
+    },
+    {
+      "text": "流",
+      "cls": "p-cat",
+      "pcls": "p-name",
+      "gpcls": ""
+    },
+    {
+      "text": "流",
+      "cls": "p-cat",
+      "pcls": "p-name",
+      "gpcls": ""
+    },
+    {
+      "text": "ETL",
+      "cls": "p-cat",
+      "pcls": "p-name",
+      "gpcls": ""
+    },
+    {
+      "text": "流",
+      "cls": "p-cat",
+      "pcls": "p-name",
+      "gpcls": ""
+    }
+  ],
+  "shot": "D:\\需求\\数据治理工具\\Datara\\Datara\\docs\\increments\\i12_proofs\\i12_board_cat_sidebar.png",
+  "shot_bytes": 125274
+}

@@ -1,0 +1,27 @@
+{
+  "ok": true,
+  "steps": [
+    {
+      "name": "logged",
+      "ok": true,
+      "url": "http://127.0.0.1:18090/#/"
+    }
+  ],
+  "body_len": 788,
+  "has_flow": true,
+  "has_board": false,
+  "snippet": "D\nDatara\n总览\n◆\n工作台\n⑃\n任务中心\n数据集成\n⛁\n数据源管理\n数据开发\n⌨\n数据开发IDE\n数据治理\n⇶\n血缘分析\n部署运维\n⌂\n运行时节点\n◈\n集群监控\n扩展（演示） 演示▾\nDatara /\n任务中心\n3\na\nadmin\n管理员\n▾\n⑃\n任务编排\n▶\n运行监控\n🖂\n告警与SLA\nDAG 编排\n80\n工作流\n×\n1/5\n普通\n/\n加载中…\nDAG 编排\n保存\n试运行\n校验\n自动布局\nAI\n更多 ⋯\n组件\n工作流\n▼\n逻辑控制\n10\n▶\n开始 C1同步ETL普通\n■\n结束 C2同步ETL普通\n⑃\n条件分支 C3同步ETL普通\n⑄\n切换 C4同步ETL普通\n⋔\n并行分叉 C5同步ETL普通\n⨝\n汇合（AND） C6同步ETL普通\n∪\n合并（OR） C7同步ETL普通\n⏱\n延时执行 C8同步ETL普通\n⧉\n依赖 C9同步ETL普通\n↻\n循环迭代 C10同步ETL普通\n▼\n数据计算\n8\n⌨\nSQL C11同步ETL普通\n❯\nShell C12ETL普通\nPy\nPython C13ETL普通\n⌖\nSSH 脚本 C14ETL普通\n⚙\n存储过程 C15ETL普通\n⊕\nHTTP C16ETL普通\n▦\n文件读取 C22ETL普通\n⚑\n数据校验 C25ETL普通\n▼\n变量\n1\n$\n变量组件 C21同步ETL普通\n▼\n数据同步\n3\n⇄\n数据同步 C17同步普通\n⇉\n同步编排 C23同步\n",
+  "flow_texts": [
+    "工作流",
+    "▼\n流处理\n4",
+    "流",
+    "从左侧组件库拖入节点，开始编排任务流",
+    "工作流变量",
+    "节点参数中以 ${var} 引用；优先级",
+    "⧉ 复制到其他工作流",
+    "当前工作流暂无变量，点击「+ 新建变量」"
+  ],
+  "shot": "D:\\需求\\数据治理工具\\Datara\\Datara\\docs\\increments\\i12_proofs\\i12_board_cat_dom.png",
+  "shot_bytes": 125274,
+  "dom_len": 31470
+}

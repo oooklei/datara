@@ -1,0 +1,57 @@
+{
+  "ok": true,
+  "steps": [
+    {
+      "name": "loc",
+      "ok": true,
+      "usr_ph": "如 admin",
+      "pwd_ph": "请输入密码"
+    },
+    {
+      "name": "btn",
+      "ok": true
+    },
+    {
+      "name": "after_login",
+      "ok": true,
+      "url": "http://127.0.0.1:18090/#/"
+    }
+  ],
+  "inputs": [
+    {
+      "idx": 0,
+      "type": null,
+      "ph": "如 admin",
+      "cls": "lg-input"
+    },
+    {
+      "idx": 1,
+      "type": "password",
+      "ph": "请输入密码",
+      "cls": "lg-input"
+    }
+  ],
+  "body_len": 582,
+  "has_flow": true,
+  "has_board": false,
+  "snippet": "D\nDatara\n总览\n◆\n工作台\n⑃\n任务中心\n数据集成\n⛁\n数据源管理\n数据开发\n⌨\n数据开发IDE\n数据治理\n⇶\n血缘分析\n部署运维\n⌂\n运行时节点\n◈\n集群监控\n扩展（演示） 演示▾\nDatara /\n任务中心\n3\na\nadmin\n管理员\n▾\n⑃\n任务编排\n▶\n运行监控\n🖂\n告警与SLA\nDAG 编排\n组件\n工作流\n＋ 新建分类\n已选 0\n载入选中 (0)\n▼\n同步\n15\n全选\n▼\nETL\n5\n全选\n▼\n根目录\n8\n全选\n#80i12_F5_kafka_table_agg\n同步\nETL\n流\n根目录\n✕\n#79i12_F4_notify\n同步\nETL\n流\n根目录\n✕\n#78i12_F4_http_threshold\n同步\nETL\n流\n根目录\n✕\n#77i12_F3_kafka_join_dim\n同步\nETL\n流\n根目录\n✕\n#76i12_F2_kafka2_union_board\n同步\nETL\n流\n根目录\n✕\n#75i12_F1_kafka_window_api\n同步\nETL\n流\n根目录\n✕\n#64i12_t12_stream_01\n同步\nETL\n流\n根目录\n✕\n#63i12_t",
+  "shot": "D:\\需求\\数据治理工具\\Datara\\Datara\\docs\\increments\\i12_proofs\\i12_board_cat_dom.png",
+  "shot_bytes": 91718,
+  "flow_texts": [
+    "工作流",
+    "流",
+    "流",
+    "流",
+    "流",
+    "流",
+    "流",
+    "流",
+    "流",
+    "流",
+    "流",
+    "流",
+    "流",
+    "流",
+    "流"
+  ]
+}
