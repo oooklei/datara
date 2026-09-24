@@ -16,6 +16,8 @@ import subprocess
 import time
 import urllib.error
 import urllib.request
+from datetime import datetime
+from typing import Optional
 
 BASE = "http://127.0.0.1:8000/api/v1"
 USER = ("admin", "Admin@123")
@@ -142,6 +144,19 @@ def run_instance(wf_id, case, wf_code, timeout=60):
     raise AssertionError("等待实例超时 %ds" % timeout)
 
 
+def _duration_ms(row: dict) -> Optional[int]:
+    """从实例详情的 startTime/endTime（fmt_dt → %Y-%m-%d %H:%M:%S）计算执行毫秒。"""
+    s, e = row.get("startTime"), row.get("endTime")
+    if not s or not e:
+        return None
+    try:
+        fmt = "%Y-%m-%d %H:%M:%S"
+        delta = datetime.strptime(e, fmt) - datetime.strptime(s, fmt)
+        return int(delta.total_seconds() * 1000)
+    except (ValueError, TypeError):
+        return None
+
+
 def wait_terminal(inst_id, case, timeout=300):
     t0 = time.time()
     while time.time() - t0 < timeout:
@@ -150,7 +165,7 @@ def wait_terminal(inst_id, case, timeout=300):
         status = row.get("state")
         if status in TERMINAL:
             print("EVIDENCE|%s|instance_status|%s duration_ms=%s" % (
-                case, status, row.get("duration")))
+                case, status, _duration_ms(row)))
             return status, row
         time.sleep(5)
     print("EVIDENCE|%s|instance_timeout|%d" % (case, timeout))
