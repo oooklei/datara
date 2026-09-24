@@ -26,7 +26,6 @@ import sys
 import time
 import urllib.error
 import urllib.request
-from datetime import datetime
 
 BASE = "http://127.0.0.1:8000/api/v1"
 USER = ("admin", "Admin@123")
@@ -692,7 +691,7 @@ def run_e5():
     ok &= check("e5", "run2_dws_untouched", dws2 == dws1, "%d vs run1 %d" % (dws2, dws1))
     g1 = task_by_name(detail2, "闸门一")
     g1_outs = outputs_of(g1) if g1 else {}
-    # onFail=fail（默认）时闸门节点 FAILURE，outputs={"error":"assert_failed","failed":[...]}（engine.py L790），无 assert_ok 键
+    # onFail=fail（默认）时闸门节点 FAILURE，outputs={"error","failed"}（engine.py L790），无 assert_ok 键
     ok &= check("e5", "run2_g1_assert_failed",
                 bool(g1) and g1.get("state") == "failure"
                 and g1_outs.get("error") == "assert_failed"
