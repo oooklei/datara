@@ -76,7 +76,7 @@ def detect_mysql_containers():
 
 
 def mysql_dbs(container):
-    rc, out = sh("docker exec %s mysql -uroot -pDatara@123 -e 'SHOW DATABASES' -N 2>/dev/null" % container)
+    rc, out = sh("docker exec %s mysql -uroot -pdatara_2026 -e 'SHOW DATABASES' -N 2>/dev/null" % container)
     if rc != 0:
         return []
     skip = ("information_schema", "mysql", "performance_schema", "sys")
@@ -84,7 +84,7 @@ def mysql_dbs(container):
 
 
 def mysql_exec(container, sql, db=None):
-    cmd = "docker exec %s mysql -uroot -pDatara@123 %s -e %s -N 2>/dev/null" % (
+    cmd = "docker exec %s mysql -uroot -pdatara_2026 %s -e %s -N 2>/dev/null" % (
         container, ("-D " + db) if db else "", _sql_quote(sql))
     rc, out = sh(cmd)
     return rc, out
@@ -117,18 +117,29 @@ def ensure_wf(name):
 
 
 def save_wf(wf_id, doc):
-    resp = http("PUT", "/workflow-definitions/%s" % wf_id, {"doc": doc, "remark": "i12 general batch"})
+    doc = dict(doc)
+    doc["id"] = wf_id
+    resp = http("PUT", "/workflow-definitions/%s/save" % wf_id, {"doc": doc, "remark": "i12 general batch"})
     assert resp.get("code") == 0, "保存工作流失败: %s" % resp
     print("EVIDENCE|wf|save|%s version=%s" % (wf_id, resp["data"]))
     return resp["data"]
 
 
-def run_instance(wf_id, case):
+def run_instance(wf_id, case, wf_code, timeout=60):
     resp = http("POST", "/workflow-definitions/%s/run" % wf_id, {})
-    assert resp.get("code") == 0, "运行实例失败: %s" % resp
-    inst = resp["data"]
-    print("EVIDENCE|%s|instance|%s" % (case, inst["id"]))
-    return inst["id"]
+    assert resp.get("code") == 0, "运行命令提交失败: %s" % resp
+    print("EVIDENCE|%s|command|%s" % (case, resp["data"]))
+    # 命令异步消费：master 建实例后按 wf_code 过滤取出（批处理模式无直接实例 id）
+    time.sleep(3)
+    t0 = time.time()
+    while time.time() - t0 < timeout:
+        path = "/instances?wf_code=%s&page_no=1&page_size=5" % wf_code
+        lst = http("GET", path)
+        rows = ((lst.get("data") or {}).get("list")) or []
+        if rows:
+            return rows[0]["instanceId"]
+        time.sleep(3)
+    raise AssertionError("等待实例超时 %ds" % timeout)
 
 
 def wait_terminal(inst_id, case, timeout=300):
@@ -136,10 +147,10 @@ def wait_terminal(inst_id, case, timeout=300):
     while time.time() - t0 < timeout:
         resp = http("GET", "/instances/%s" % inst_id)
         row = resp.get("data") or {}
-        status = row.get("status")
+        status = row.get("state")
         if status in TERMINAL:
             print("EVIDENCE|%s|instance_status|%s duration_ms=%s" % (
-                case, status, row.get("duration_ms")))
+                case, status, row.get("duration")))
             return status, row
         time.sleep(5)
     print("EVIDENCE|%s|instance_timeout|%d" % (case, timeout))
@@ -147,13 +158,22 @@ def wait_terminal(inst_id, case, timeout=300):
 
 
 def instance_logs(inst_id, tail=80):
-    resp = http("GET", "/instances/%s/logs?tail=%d" % (inst_id, tail))
-    return (resp.get("data") or "") if resp.get("code") == 0 else ""
+    """实例 t_task_log 索引 → task 级日志合并（logger 服务 /logs/task/{id}）。"""
+    resp = http("GET", "/instances/%s" % inst_id)
+    detail = resp.get("data") or {}
+    chunks = []
+    for task in detail.get("taskInstances") or []:
+        lr = http("GET", "/logs/task/%s" % task["id"])
+        content = ((lr.get("data") or {}).get("content")) or ""
+        if content:
+            chunks.append(content)
+    return "\n".join(chunks)[-tail * 200:]
 
 
 # ---------- 节点构建 helpers ----------
 def _n(nid, ntype, name, x, y, data=None):
-    return {"id": nid, "type": ntype, "name": name, "x": x, "y": y, "data": data or {}}
+    return {"id": nid, "type": ntype, "position": {"x": x, "y": y},
+            "data": dict(data or {}, name=name)}
 
 
 def _e(s, t):
@@ -206,8 +226,8 @@ def check_g1(inst_id, case, status):
 # ---------- G2 python 清洗 ----------
 _G2_SCRIPT = (
     'import csv, os\n'
-    'SRC="/mnt/lei/datara/i12files/raw_orders.csv"\n'
-    'DST="/mnt/lei/datara/i12files/cleaned_orders.csv"\n'
+    'SRC="/datara/files/i12_raw_orders.csv"\n'
+    'DST="/datara/files/i12_cleaned_orders.csv"\n'
     'read=written=skipped=0\n'
     'with open(SRC,"r",encoding="utf-8-sig",newline="") as f:\n'
     '    reader=csv.reader(f)\n'
@@ -229,9 +249,11 @@ def build_g2():
     nodes = [
         _n("s", "start", "开始", 80, 120),
         _n("k1", "python", "CSV清洗", 260, 120, {"script": _G2_SCRIPT}),
-        _n("k2", "file_read", "注册预览", 460, 120, {
-            "filePath": "/mnt/lei/datara/i12files/cleaned_orders.csv",
-            "fileType": "csv", "delimiter": ",", "encoding": "utf-8", "headerRows": 1,
+        _n("k2", "file", "注册预览", 460, 120, {
+            "mode": "manual", "path": "/datara/files/i12_cleaned_orders.csv",
+            "format": "csv", "encoding": "utf-8", "delimiter": ",", "header": True, "sheet": "",
+            "register": True, "tmpName": "cleaned_orders", "kind": "table",
+            "targetDs": DW_DS, "retention": "immediate", "keepDays": 7,
         }),
         _n("e", "end", "结束", 660, 120),
     ]
@@ -247,7 +269,7 @@ def check_g2(inst_id, case, status):
         has_clean = "[clean]" in logs
         check(case, "clean_output", has_clean, "[clean]关键字")
         # 文件行数核对
-        _f = "/mnt/lei/datara/i12files/cleaned_orders.csv"
+        _f = "/datara/files/i12_cleaned_orders.csv"
         rc, out = sh("docker exec datara-worker bash -c 'wc -l < %s 2>/dev/null'" % _f)
         file_rows = int(out) if out and out.strip().isdigit() else 0
         check(case, "file_exists", file_rows > 0, "csv rows=%d" % file_rows)
@@ -331,14 +353,14 @@ def check_g4(inst_id, case, status):
 # ---------- G5 数据出仓 ----------
 _G5_SCRIPT = (
     'import csv, os\n'
-    'from common.dsconn import open_connection, _lookup_datasource\n'
-    'ds=_lookup_datasource("datara_dw")\n'
-    'conn=open_connection(ds,db="datara_dw")\n'
+    'import pymysql\n'
+    'conn=pymysql.connect(host="datara-mysql-dw",port=3306,user="root",'
+    'password="datara_2026",db="datara_dw",charset="utf8mb4")\n'
     'cur=conn.cursor()\n'
-    'cur.execute("SELECT order_id,user_id,amount,pay_time FROM ods_order ORDER BY order_id")\n'
-    'os.makedirs("/mnt/lei/datara/i12files/export",exist_ok=True)\n'
+    'cur.execute("SELECT order_no,user_id,amount,create_time FROM ods_order ORDER BY id")\n'
+    'os.makedirs("/datara/files/export",exist_ok=True)\n'
     'rows=0\n'
-    'with open("/mnt/lei/datara/i12files/export/ods_order_archive.csv",'
+    'with open("/datara/files/export/ods_order_archive.csv",'
     '"w",encoding="utf-8",newline="") as f:\n'
     '    w=csv.writer(f)\n'
     '    w.writerow([d[0] for d in cur.description])\n'
@@ -354,8 +376,8 @@ def build_g5():
         _n("s", "start", "开始", 80, 120),
         _n("k1", "sql", "查询源表", 250, 120, {
             "datasource": DW_DS,
-            "sql": "SELECT order_id, user_id, amount, pay_time "
-                   "FROM datara_dw.ods_order ORDER BY order_id",
+            "sql": "SELECT order_no, user_id, amount, create_time "
+                   "FROM datara_dw.ods_order ORDER BY id",
         }),
         _n("k2", "python", "导出CSV", 440, 120, {"script": _G5_SCRIPT}),
         _n("k3", "notify", "webhook通知", 630, 120, {
@@ -379,7 +401,7 @@ def check_g5(inst_id, case, status):
         check(case, "export_output", has_export, "[export]关键字")
         check(case, "notify_log", has_notify, "[notify]关键字")
         # 文件行数
-        _f = "/mnt/lei/datara/i12files/export/ods_order_archive.csv"
+        _f = "/datara/files/export/ods_order_archive.csv"
         rc, out = sh("docker exec datara-worker bash -c 'wc -l < %s 2>/dev/null'" % _f)
         file_rows = int(out) if out and out.strip().isdigit() else 0
         check(case, "file_exists", file_rows > 0, "csv rows=%d" % file_rows)
@@ -398,18 +420,19 @@ def run_one(case):
     wf_name, doc = build()
     wf_id, code = ensure_wf(wf_name)
     save_wf(wf_id, doc)
-    inst_id = run_instance(wf_id, case)
+    inst_id = run_instance(wf_id, case, code)
     status, row = wait_terminal(inst_id, case, timeout=TIMEOUT.get(case, 300))
     check_fn(inst_id, case, status)
 
 
 def main():
+    global BASE
     parser = argparse.ArgumentParser(description="I12 普通类 G1~G5 批跑取证")
     parser.add_argument("--cases", default="g1,g2,g3,g4,g5", help="逗号分隔用例编号")
-    parser.add_argument("--base", default=BASE, help="API base URL")
+    parser.add_argument("--base", default=None, help="API base URL")
     args = parser.parse_args()
-    global BASE
-    BASE = args.base.rstrip("/")
+    if args.base:
+        BASE = args.base.rstrip("/")
     login()
     detect_mysql_containers()
     cases = [c.strip() for c in args.cases.split(",") if c.strip()]
