@@ -36,7 +36,7 @@ import urllib.request
 BASE = "http://127.0.0.1:8000/api/v1"
 USER = ("admin", "Admin@123")
 DW_DS = "内置数仓-datara_dw"     # id=4（默认库 datara_dw，F5 落库目标）
-TAGS = ["STREAM"]
+TAGS = ["流"]
 TERMINAL = {"success", "failure", "kill"}
 TIMEOUT = {"f1": 240, "f2": 120, "f3": 180, "f4": 240, "f5": 240}
 
