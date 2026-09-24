@@ -21,6 +21,8 @@ import TmpPreviewPage from '../workbench/pages/TmpPreviewPage.vue'
 import StreamNodePage from '../workbench/pages/StreamNodePage.vue'
 import StreamDataPage from '../workbench/pages/StreamDataPage.vue'
 import BoardPage from '../workbench/pages/BoardPage.vue'
+import SourceBasePanel from '../workbench/panels/SourceBasePanel.vue'
+import TargetBasePanel from '../workbench/panels/TargetBasePanel.vue'
 
 /** 读取节点分支列表（老数据无 branches 时回退空数组） */
 export function branchListOf(data: Record<string, unknown>): BranchDef[] {
@@ -916,6 +918,12 @@ export const dagProfile: ViewProfile = {
   defaultEdge: 'flow',
   layout: 'dagre',
   layoutDir: 'TB',
+  floats: [
+    /* C7：中心数据源表单浮窗（源端可开拓新表 / 目标端表必须存在），经工具栏「更多」打开；
+       propsOf 只传 selectedId，面板自行按选中节点解析活跃 node（与 Inspector 同契约） */
+    { id: 'source_base', label: '源表基准', comp: SourceBasePanel, w: 420, h: 460, propsOf: ({ selectedId }) => ({ selectedId }) },
+    { id: 'target_base', label: '目标表基准', comp: TargetBasePanel, w: 420, h: 460, propsOf: ({ selectedId }) => ({ selectedId }) },
+  ],
   edgeKinds: {
     flow: { kind: 'flow', label: '流程依赖', color: '#64748b' },
     branch: { kind: 'branch', label: '条件分支', color: '#d97706' },
