@@ -5,7 +5,7 @@
 
 ## 0. 实测口径注记（2026-09-28 执行首日复核）
 
-设计定稿统计「37 个 DAG type」，执行首日实测目录快照（`datara-backend/common/dag_catalog.json`，catalogHash=6d15aab4b46cf221，随代码演进）：
+设计定稿统计「37 个 DAG type」，执行首日实测目录快照（`datara-backend/common/dag_catalog.json`，catalogHash=83929cf7c3c5c660，随代码演进）：
 
 - dag profile 全量 **35 type** = 33 可拖（paletteVisible=true）+ 2 runtimeOnly（`sync`/`file_sync`，运行态物化消费）
 - **同步类恰好 9 个**，与设计「同步类 9 组件」完全一致，M-B1 范围不受影响
