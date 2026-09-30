@@ -13,7 +13,9 @@
 - GET  /components/baseline/{type}/draft        读取底稿（无进度行视为空态）
 - PUT  /components/baseline/{type}/draft        保存底稿（乐观锁 draft_rev；纯数据 422）
 - POST /components/baseline/{type}/check        体检（run_baseline_checks 10 项，只报告不拦截）
-- POST /components/{type}/baseline/publish      认可发 v1（publish_component 权限）
+- POST /components/{type}/baseline/publish      认可发版（首发 v1 / 修订发 vN，publish_component 权限）
+- POST /components/{type}/baseline/redraft      复制最新已发版 spec 开修订轮（published→designing）
+- POST /components/{type}/baseline/discard_draft 放弃修订（底稿重置为最新已发版，designing→published）
 - GET  /components/{type}/lineage-decl          声明级血缘读取（未基线化返回空态不报错）
 - GET  /lineage/graph                           声明级血缘图 stub（lineage.py 未占用该路径，
                                                 故挂本模块 lineage_router；运行时字段级血缘
@@ -56,7 +58,6 @@ from common.models import (
     now,
 )
 from common.resp import (
-    COMP_DUPLICATE_TYPE,
     COMP_LOCK_CONFLICT,
     COMP_NOT_FOUND,
     COMP_SPEC_INVALID,
@@ -360,11 +361,13 @@ def baseline_progress(
 ):
     """以目录快照 profile=dag 的 35 type 为准，左联 t_baseline_progress（无行视为 pending）。"""
     rows = {r.type: r for r in db.query(BaselineProgress).all()}
+    comp_rows = {c.type: c for c in db.query(Component).filter(Component.scope == "builtin").all()}
     items: list = []
     for c in _load_catalog().get("components", []):
         if c.get("profile") != "dag":
             continue
         r = rows.get(c.get("type"))
+        comp = comp_rows.get(c.get("type"))
         items.append({
             # 目录元数据（只读真源，不落库）
             "type": c.get("type"), "code": c.get("code"), "label": c.get("label"),
@@ -375,6 +378,7 @@ def baseline_progress(
             # 推进状态（无进度行视为 pending）
             "status": r.status if r else "pending",
             "draftRev": r.draft_rev if r else 0,
+            "publishedVersion": (comp.published_version or 0) if comp else 0,
             "hasDraft": bool(r and r.draft_spec),
             "confirmedBy": r.confirmed_by if r else None,
             "confirmedAt": fmt_dt(r.confirmed_at) if r else None,
@@ -429,9 +433,9 @@ def save_baseline_draft(
     row = db.query(BaselineProgress).filter(BaselineProgress.type == type_name).first()
     current_rev = row.draft_rev if row else 0
     if row is not None and row.status == "published":
-        # 基线一次性：已发版底稿不可直接改写（修订走 redraft 端点，第二批上线）
+        # 基线一次性：已发版底稿不可直接改写（修订请走 redraft 端点开轮）
         raise ApiError(COMP_STATE_CONFLICT, status=409,
-                       msg="type「%s」已发版，底稿不可直接修改（修订能力即将上线）" % type_name)
+                       msg="type「%s」已发版，底稿不可直接修改（请先开修订轮）" % type_name)
     if body.draft_rev != current_rev:
         raise ApiError(COMP_LOCK_CONFLICT, status=409, data={"currentRev": current_rev})
     violations = validate_spec_pure_data(body.spec)
@@ -450,6 +454,98 @@ def save_baseline_draft(
     db.commit()
     logger.info("保存基线底稿: %s rev=%d（操作人 %s）", type_name, row.draft_rev, user.user_name)
     return ok({"draftRev": row.draft_rev, "specHash": _spec_hash(body.spec), "status": row.status})
+
+
+class BaselineRedraftBody(BaseModel):
+    remark: Optional[str] = None
+
+
+@router.post("/{type_name}/baseline/redraft", summary="复制最新已发版 spec 开修订轮（published→designing）")
+def redraft_baseline(
+    type_name: str,
+    body: BaselineRedraftBody,
+    user: User = Depends(require_perm("design_component")),
+    db: Session = Depends(get_db),
+):
+    """修订开轮：取最新 published 版 spec 写回底稿（复制上版），rev+1，status 回 designing；log 记 redraft。
+
+    - 目录外 / 无进度行 404；非 published（designing/pending）409；
+    - confirmed_by/confirmed_at 保留不清（认可记录是历史事实，不因开轮抹除）。
+    """
+    if type_name not in _dag_types():
+        raise ApiError(COMP_NOT_FOUND, status=404, msg="type「%s」不在基线化目录内" % type_name)
+    row = db.query(BaselineProgress).filter(BaselineProgress.type == type_name).first()
+    if row is None:
+        raise ApiError(COMP_NOT_FOUND, status=404, msg="type「%s」无基线化进度行" % type_name)
+    if row.status != "published":
+        raise ApiError(COMP_STATE_CONFLICT, status=409,
+                       msg="type「%s」当前状态 %s，仅已发版可开修订" % (type_name, row.status))
+    comp = db.query(Component).filter(Component.type == type_name).first()
+    if comp is None:
+        raise ApiError(COMP_STATE_CONFLICT, status=409, msg="type「%s」无已发版组件行" % type_name)
+    ver = (db.query(ComponentVersion)
+           .filter(ComponentVersion.component_id == comp.id, ComponentVersion.state == "published")
+           .order_by(ComponentVersion.version.desc()).first())
+    if ver is None:
+        raise ApiError(COMP_STATE_CONFLICT, status=409, msg="type「%s」无已发布版本可复制" % type_name)
+    row.draft_spec = ver.spec_json
+    row.draft_rev = (row.draft_rev or 0) + 1
+    row.status = "designing"
+    db.add(ComponentLog(
+        component_id=comp.id, type=type_name, version=ver.version, action="redraft",
+        spec_hash=ver.spec_hash, operator=user.user_name,
+        remark=body.remark or "复制 v%d 开修订轮" % ver.version,
+    ))
+    db.commit()
+    logger.info("开修订轮: %s（复制 v%d，rev=%d，操作人 %s）",
+                type_name, ver.version, row.draft_rev, user.user_name)
+    return ok({"draftRev": row.draft_rev, "status": row.status, "fromVersion": ver.version,
+               "specHash": ver.spec_hash})
+
+
+@router.post("/{type_name}/baseline/discard_draft", summary="放弃修订（底稿重置为最新已发版，status 回 published）")
+def discard_baseline_revision(
+    type_name: str,
+    user: User = Depends(require_perm("design_component")),
+    db: Session = Depends(get_db),
+):
+    """修订中放弃：底稿重置为最新 published 版 spec（以 t_component_version 为准），rev 连续递增，status 回 published；log 记 discard。
+
+    - 目录外 / 无进度行 404；非 designing（published/pending）409；
+    - 首发型 designing（无组件行 / 无已发布版本）409——无已发版本可回，放弃无语义；
+      user 组件占用目录 type（组件行存在但 published_version=NULL）时版本查询自然为空，
+      走同一 409 分支，无需额外判断。
+    """
+    if type_name not in _dag_types():
+        raise ApiError(COMP_NOT_FOUND, status=404, msg="type「%s」不在基线化目录内" % type_name)
+    row = db.query(BaselineProgress).filter(BaselineProgress.type == type_name).first()
+    if row is None:
+        raise ApiError(COMP_NOT_FOUND, status=404, msg="type「%s」无基线化进度行" % type_name)
+    if row.status != "designing":
+        raise ApiError(COMP_STATE_CONFLICT, status=409,
+                       msg="type「%s」当前状态 %s，仅修订中可放弃" % (type_name, row.status))
+    comp = db.query(Component).filter(Component.type == type_name).first()
+    if comp is None:
+        raise ApiError(COMP_STATE_CONFLICT, status=409,
+                       msg="type「%s」无已发版组件行（首发未发版），无可放弃修订" % type_name)
+    ver = (db.query(ComponentVersion)
+           .filter(ComponentVersion.component_id == comp.id, ComponentVersion.state == "published")
+           .order_by(ComponentVersion.version.desc()).first())
+    if ver is None:
+        raise ApiError(COMP_STATE_CONFLICT, status=409, msg="type「%s」无已发布版本，无可回滚底稿" % type_name)
+    row.draft_spec = ver.spec_json
+    row.draft_rev = (row.draft_rev or 0) + 1
+    row.status = "published"
+    db.add(ComponentLog(
+        component_id=comp.id, type=type_name, version=ver.version, action="discard",
+        spec_hash=ver.spec_hash, operator=user.user_name,
+        remark="放弃修订，回滚底稿至 v%d" % ver.version,
+    ))
+    db.commit()
+    logger.info("放弃修订: %s（底稿重置至 v%d，rev=%d，操作人 %s）",
+                type_name, ver.version, row.draft_rev, user.user_name)
+    return ok({"draftRev": row.draft_rev, "status": row.status, "fromVersion": ver.version,
+               "specHash": ver.spec_hash})
 
 
 @router.post("/baseline/{type_name}/check", summary="基线底稿体检（10 项，只报告不拦截）")
@@ -486,19 +582,25 @@ class BaselinePublishBody(BaseModel):
     remark: Optional[str] = None
 
 
-@router.post("/{type_name}/baseline/publish", summary="基线化认可，发 v1")
+@router.post("/{type_name}/baseline/publish", summary="基线化认可发版（首发 v1 / 修订发 vN）")
 def publish_baseline(
     type_name: str,
     body: BaselinePublishBody,
     user: User = Depends(require_perm("publish_component")),
     db: Session = Depends(get_db),
 ):
-    """认可目录定义发 v1：跑体检全项落 check_report（不拦截），四处写入一个事务。
+    """认可目录定义发版（分型：首发 / 修订）：跑体检全项落 check_report（不拦截），四处写入一个事务。
 
-    - 进度行不存在 404；status=published 409（已认可发过，基线化一次性）；
-    - t_component（scope=builtin, state=published, published_version=1）+
-      t_component_version（v1 published，spec_json=底稿全文）+ t_component_log
-      （action=publish）+ 进度行（status=published + confirmed_by/at）。
+    - 进度行不存在 404；
+    - 首发型（t_component 无目录行，status=designing）：发 v1，写 t_component
+      （scope=builtin, state=published, published_version=1）；
+    - 修订型（t_component 已有行且已发版 + status=designing，redraft 开轮后）：发 vN = published_version+1，
+      新增 t_component_version（vN published，spec_json=底稿全文）并更新主表版本指针，v1..vN-1 留档；
+    - published 态重复认可 409（治理一次性，修订请先开修订轮）；有组件行但进度行非 designing、
+      或组件行未发版（published_version=NULL，如 user 组件占用目录 type）视为数据漂移，409 拒绝发版。
+
+    公共写入：t_component_version + t_component_log（action=publish）+ 进度行
+    （status=published + confirmed_by/at 刷新）；体检、spec_hash、check_report 落库两型一致。
     """
     meta = _dag_meta(type_name)
     if meta is None:
@@ -507,46 +609,63 @@ def publish_baseline(
     if row is None:
         raise ApiError(COMP_NOT_FOUND, status=404,
                        msg="type「%s」无基线化进度行（先保存底稿）" % type_name)
+    comp = db.query(Component).filter(Component.type == type_name).first()
     if row.status == "published":
+        # published 态重复认可（未开修订）→ 治理一次性
         raise ApiError(COMP_STATE_CONFLICT, status=409,
-                       msg="type「%s」已认可发过 v1" % type_name)
-    if db.query(Component).filter(Component.type == type_name).first() is not None:
-        # 不应发生（认可发版前 t_component 无目录行；出现即数据漂移，拒绝覆盖）
-        raise ApiError(COMP_DUPLICATE_TYPE, status=409,
-                       msg="组件 type「%s」已被占用" % type_name)
+                       msg="type「%s」已认可发过 v%s（修订请先开修订轮）"
+                           % (type_name, comp.published_version if comp else "?"))
+    is_revision = comp is not None
+    if is_revision and (row.status != "designing" or comp.published_version is None):
+        # 数据漂移防御：修订发版前提 = 组件行已发版（published_version 非空）+ 进度 designing
+        # （redraft 开轮后）。user 组件占用目录 type（create_component 未拦目录内 type 的
+        # 现实漏洞，其行 published_version=NULL）或进度状态漂移均拒绝发版，
+        # 避免对未发版行做 published_version+1 的 TypeError 500。
+        if comp.published_version is None:
+            raise ApiError(COMP_STATE_CONFLICT, status=409,
+                           msg="type「%s」组件行未发版（可能被用户组件占用），不允许发版" % type_name)
+        raise ApiError(COMP_STATE_CONFLICT, status=409,
+                       msg="type「%s」进度状态 %s 不允许发版" % (type_name, row.status))
 
     spec = _load_spec(row)
     items = run_baseline_checks(spec, _comp_meta(meta))
     row.check_report = {"checkedAt": fmt_dt(now()), "items": items}  # 全项落库，不拦截
     spec_hash = _spec_hash(spec)
 
-    comp = Component(
-        type=type_name, name=meta.get("label") or type_name,
-        category=(meta.get("categories") or [None])[0],
-        profile="dag", scope="builtin", execution_model=meta.get("executionModel") or "dag-engine",
-        executor=meta.get("executor"), executable=True, state="published",
-        published_version=1, draft_rev=0, description=meta.get("desc"),
-    )
-    db.add(comp)
-    db.flush()  # 取 comp.id
+    next_version = (comp.published_version + 1) if is_revision else 1
+    if not is_revision:
+        comp = Component(
+            type=type_name, name=meta.get("label") or type_name,
+            category=(meta.get("categories") or [None])[0],
+            profile="dag", scope="builtin", execution_model=meta.get("executionModel") or "dag-engine",
+            executor=meta.get("executor"), executable=True, state="published",
+            published_version=1, draft_rev=0, description=meta.get("desc"),
+        )
+        db.add(comp)
+        db.flush()  # 取 comp.id
+    else:
+        # 修订发布：主表版本指针推进（draft_rev 不重置，底稿修订轮连续递增）
+        comp.published_version = next_version
+        db.flush()
     db.add(ComponentVersion(
-        component_id=comp.id, type=type_name, version=1, state="published",
+        component_id=comp.id, type=type_name, version=next_version, state="published",
         spec_json=json.dumps(spec, ensure_ascii=False), spec_hash=spec_hash,
         remark=body.remark, published_by=user.user_name, published_time=now(),
     ))
     db.add(ComponentLog(
-        component_id=comp.id, type=type_name, version=1, action="publish",
+        component_id=comp.id, type=type_name, version=next_version, action="publish",
         spec_hash=spec_hash, operator=user.user_name,
-        remark=body.remark or "基线化认可，发 v1",
+        remark=body.remark or ("基线化认可，发 v%d" % next_version),
     ))
     row.status = "published"
     row.confirmed_by = user.user_name
     row.confirmed_at = now()
     db.commit()
-    logger.info("基线化认可发版: %s v1（操作人 %s，体检 %d 项 %d 项未过）",
-                type_name, user.user_name, len(items), sum(1 for i in items if not i["ok"]))
+    logger.info("基线化认可发版: %s v%d（操作人 %s，体检 %d 项 %d 项未过）",
+                type_name, next_version, user.user_name, len(items),
+                sum(1 for i in items if not i["ok"]))
     return ok({
-        "type": type_name, "publishedVersion": 1, "specHash": spec_hash,
+        "type": type_name, "publishedVersion": next_version, "specHash": spec_hash,
         "checkItems": items, "confirmedAt": fmt_dt(row.confirmed_at),
     })
 

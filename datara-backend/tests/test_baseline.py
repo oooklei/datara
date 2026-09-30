@@ -294,3 +294,151 @@ def test_save_draft_rejected_on_published(client):
     # 且底稿未被改写：draft_rev 仍为 1、status 仍 published
     d = client.get("/api/v1/components/baseline/sql/draft").json()["data"]
     assert d["status"] == "published" and d["draftRev"] == 1
+
+
+# ---------------- 进度行下发 publishedVersion（修订轮次地基） ----------------
+
+
+def test_progress_contains_published_version(client):
+    """published 类型进度行带 publishedVersion；未发为 0。"""
+    set_role(client, "admin")
+    client.put("/api/v1/components/baseline/sql/draft", json={"draft_rev": 0, "spec": _legal_spec()})
+    client.post("/api/v1/components/sql/baseline/publish", json={})
+    r = client.get("/api/v1/components/baseline/progress")
+    items = {i["type"]: i for i in r.json()["data"]["items"]}
+    assert items["sql"]["publishedVersion"] == 1
+    assert items["start"]["publishedVersion"] == 0
+
+
+# ---------------- 修订轮次：redraft（复制上版开修订） ----------------
+
+
+def test_redraft_copies_published_spec(client, db_session):
+    """published → redraft：复制最新 published spec 为底稿，rev+1，status=designing，log 记 redraft。"""
+    set_role(client, "admin")
+    client.put("/api/v1/components/baseline/sql/draft", json={"draft_rev": 0, "spec": _legal_spec()})
+    client.post("/api/v1/components/sql/baseline/publish", json={})
+    published_spec = client.get("/api/v1/components/baseline/sql/draft").json()["data"]["spec"]
+    # 模拟底稿与版本表漂移（防御未来实现误从进度行复制）：redraft 必须以版本表为准
+    _row = db_session.query(BaselineProgress).filter_by(type="sql").one()
+    _row.draft_spec = json.dumps({"drifted": True}, ensure_ascii=False)
+    db_session.commit()
+    # 开修订
+    r = client.post("/api/v1/components/sql/baseline/redraft", json={"remark": "修订第一轮"})
+    assert r.status_code == 200, r.text
+    d = r.json()["data"]
+    assert d["status"] == "designing"
+    assert d["fromVersion"] == 1
+    assert d["draftRev"] == 2  # published 时 rev=1，redraft +1
+    # 底稿 = 上版内容（从 t_component_version 复制，不受 publish 后底稿字段影响）
+    cur = client.get("/api/v1/components/baseline/sql/draft").json()["data"]
+    assert cur["spec"] == published_spec
+    # log 记 redraft（审计）
+    comp = db_session.query(Component).filter_by(type="sql").one()
+    log = db_session.query(ComponentLog).filter_by(component_id=comp.id, action="redraft").one()
+    assert log.version == 1 and log.remark == "修订第一轮"
+    # 修订中可正常保存（rev=2 → 3）
+    r = client.put("/api/v1/components/baseline/sql/draft", json={"draft_rev": 2, "spec": _legal_spec()})
+    assert r.status_code == 200
+
+
+def test_redraft_requires_published(client):
+    """designing（未发版）redraft → 409；无进度行 → 404。"""
+    set_role(client, "admin")
+    r = client.post("/api/v1/components/start/baseline/redraft", json={})
+    assert r.status_code == 404  # 无进度行
+    client.put("/api/v1/components/baseline/notify/draft", json={"draft_rev": 0, "spec": _legal_spec()})
+    r = client.post("/api/v1/components/notify/baseline/redraft", json={})
+    assert r.status_code == 409  # designing 且未发版
+
+
+# ---------------- 修订轮次：publish vN（修订发布） ----------------
+
+
+def test_publish_revision_creates_v2(client, db_session):
+    """修订中（designing + 已发 v1）认可 → v2：新版本行 + published_version 更新 + v1 留档。"""
+    set_role(client, "admin")
+    client.put("/api/v1/components/baseline/sql/draft", json={"draft_rev": 0, "spec": _legal_spec()})
+    client.post("/api/v1/components/sql/baseline/publish", json={})
+    client.post("/api/v1/components/sql/baseline/redraft", json={})
+    # 改底稿（rev=2 → 3）再发布
+    client.put("/api/v1/components/baseline/sql/draft", json={"draft_rev": 2, "spec": _legal_spec()})
+    r = client.post("/api/v1/components/sql/baseline/publish", json={"remark": "修订发布"})
+    assert r.status_code == 200, r.text
+    d = r.json()["data"]
+    assert d["publishedVersion"] == 2
+    # 版本行两枚且均 published（v1 留档）
+    r = client.get("/api/v1/components/sql/versions")
+    vers = r.json()["data"]["items"]
+    assert [v["version"] for v in vers] == [2, 1]
+    assert all(v["state"] == "published" for v in vers)
+    # DB 层：主表版本指针推进 v2；修订 log（action=publish, version=2，带 remark/hash）
+    comp = db_session.query(Component).filter_by(type="sql").one()
+    assert comp.published_version == 2
+    log = db_session.query(ComponentLog).filter_by(
+        component_id=comp.id, action="publish", version=2).one()
+    assert log.remark == "修订发布" and log.spec_hash == d["specHash"]
+    # 进度行 draft_rev 不重置（1→redraft 2→保存 3，修订轮连续递增）
+    assert db_session.query(BaselineProgress).filter_by(type="sql").one().draft_rev == 3
+    # 进度行回 published；重复认可仍 409
+    assert client.get("/api/v1/components/baseline/sql/draft").json()["data"]["status"] == "published"
+    assert client.post("/api/v1/components/sql/baseline/publish", json={}).status_code == 409
+
+
+def test_publish_still_rejected_when_published_no_revision(client):
+    """status=published（未开修订）直接再认可 → 409 不变。"""
+    set_role(client, "admin")
+    client.put("/api/v1/components/baseline/sql/draft", json={"draft_rev": 0, "spec": _legal_spec()})
+    client.post("/api/v1/components/sql/baseline/publish", json={})
+    assert client.post("/api/v1/components/sql/baseline/publish", json={}).status_code == 409
+
+
+def test_publish_rejected_when_user_component_occupies_type(client, db_session):
+    """数据漂移防御：user 组件占用目录 type（published_version=None）→ 409 而非 500。
+
+    create_component 不拦目录内 type（现实漏洞）：user 自建组件可占 type=sql，
+    该 type 进度 designing 时认可发版若误判为修订型会对未发版行做 published_version+1。
+    """
+    set_role(client, "admin")
+    db_session.add(Component(type="sql", name="冒名 sql", profile="dag", scope="user",
+                             execution_model="dag-engine", state="draft", published_version=None))
+    db_session.commit()
+    assert _save_draft(client, "sql", _legal_spec()).status_code == 200
+    r = _publish(client, "sql")
+    assert r.status_code == 409, r.text
+    assert r.json()["code"] == 6002  # COMP_STATE_CONFLICT
+    assert "未发版" in r.json()["msg"]
+
+
+# ---------------- 修订轮次：discard_draft（放弃修订） ----------------
+
+
+def test_discard_revision_restores_published(client, db_session):
+    """修订中放弃：底稿重置为最新 published 版，status 回 published，log 记 discard。"""
+    set_role(client, "admin")
+    client.put("/api/v1/components/baseline/sql/draft", json={"draft_rev": 0, "spec": _legal_spec()})
+    client.post("/api/v1/components/sql/baseline/publish", json={})
+    published_spec = client.get("/api/v1/components/baseline/sql/draft").json()["data"]["spec"]
+    client.post("/api/v1/components/sql/baseline/redraft", json={})
+    client.put("/api/v1/components/baseline/sql/draft", json={"draft_rev": 2, "spec": _legal_spec()})
+    # 模拟修订稿与版本表漂移（防御未来实现误从进度行复制）：discard 必须以版本表为准
+    _row = db_session.query(BaselineProgress).filter_by(type="sql").one()
+    _row.draft_spec = json.dumps({"drifted": True}, ensure_ascii=False)
+    db_session.commit()
+    r = client.post("/api/v1/components/sql/baseline/discard_draft", json={})
+    assert r.status_code == 200, r.text
+    d = client.get("/api/v1/components/baseline/sql/draft").json()["data"]
+    assert d["status"] == "published"
+    assert d["spec"] == published_spec  # 重置为上版内容（漂移值被丢弃）
+    assert d["draftRev"] == 4  # redraft 2 → 保存 3 → discard 4（连续递增）
+    # log 记 discard（审计）
+    comp = db_session.query(Component).filter_by(type="sql").one()
+    log = db_session.query(ComponentLog).filter_by(component_id=comp.id, action="discard").one()
+    assert log.version == 1 and "放弃修订" in log.remark
+
+
+def test_discard_rejected_when_not_revision(client):
+    """首发型 designing（未发版）无放弃语义（无已发版本可回）→ 409。"""
+    set_role(client, "admin")
+    client.put("/api/v1/components/baseline/notify/draft", json={"draft_rev": 0, "spec": _legal_spec()})
+    assert client.post("/api/v1/components/notify/baseline/discard_draft", json={}).status_code == 409

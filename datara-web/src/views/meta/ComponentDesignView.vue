@@ -601,7 +601,7 @@ function uiTypeLabel(v: SpecUiType): string {
     </header>
 
     <el-alert v-if="builtinGuide" type="warning" :closable="false" show-icon class="err-alert"
-      title="内置组件请到基线化工作台修订">
+      title="内置组件请到基线化工作台修订（支持复制上版开修订轮）">
       <template #default>
         「{{ builtinGuide.type }}」为基线化内置组件（已发版留档，无用户草稿链）。
         <el-button link type="primary"
