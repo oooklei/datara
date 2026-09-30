@@ -52,9 +52,11 @@ async function request<T>(method: string, path: string, body?: unknown): Promise
     if (json.code !== 0) {
       // 1xxx 段 = 用户/鉴权错误（§6.3 错误码分段）
       if (json.code >= 1000 && json.code < 2000) redirectToLogin()
-      /* I12-D2：挂 code 供调用方识别业务错误类型（如 2005 保存并发冲突） */
-      const err = new Error(json.msg || `请求失败（code=${json.code}）`) as Error & { code?: number }
+      /* I12-D2：挂 code 供调用方识别业务错误类型（如 2005 保存并发冲突）；
+         D3：透传 data（如 6003 闸门逐项 items）供面板渲染 */
+      const err = new Error(json.msg || `响应格式异常（HTTP ${res.status}）`) as Error & { code?: number; data?: unknown }
       err.code = json.code
+      err.data = json.data
       throw err
     }
     return json.data

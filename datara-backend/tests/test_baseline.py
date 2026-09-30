@@ -276,3 +276,21 @@ def test_lineage_graph_declaration_nodes(client):
     assert {n["role"] for n in nodes} == {"source", "target"}
     assert all(n["pick"] and n["assetType"] == "table" for n in nodes)
     assert not [n for n in d["nodes"] if n["type"] == "start"]  # 空 assets 不产节点
+
+
+# ---------------- 修订前置：published 底稿不可直接改（R3） ----------------
+
+
+def test_save_draft_rejected_on_published(client):
+    """已认可发版的 type：PUT draft 必须 409/6002，底稿不被改写。"""
+    set_role(client, "admin")
+    # 造已发版：保存底稿 → 认可发 v1
+    assert _save_draft(client, "sql", _legal_spec(), draft_rev=0).status_code == 200
+    assert _publish(client, "sql").status_code == 200
+    # 发版后再保存（rev 匹配）→ 409 COMP_STATE_CONFLICT，不得静默改写
+    r = _save_draft(client, "sql", _legal_spec(), draft_rev=1)
+    assert r.status_code == 409
+    assert r.json()["code"] == 6002  # COMP_STATE_CONFLICT
+    # 且底稿未被改写：draft_rev 仍为 1、status 仍 published
+    d = client.get("/api/v1/components/baseline/sql/draft").json()["data"]
+    assert d["status"] == "published" and d["draftRev"] == 1

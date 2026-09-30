@@ -428,6 +428,10 @@ def save_baseline_draft(
         raise ApiError(COMP_NOT_FOUND, status=404, msg="type「%s」不在基线化目录内" % type_name)
     row = db.query(BaselineProgress).filter(BaselineProgress.type == type_name).first()
     current_rev = row.draft_rev if row else 0
+    if row is not None and row.status == "published":
+        # 基线一次性：已发版底稿不可直接改写（修订走 redraft 端点，第二批上线）
+        raise ApiError(COMP_STATE_CONFLICT, status=409,
+                       msg="type「%s」已发版，底稿不可直接修改（修订能力即将上线）" % type_name)
     if body.draft_rev != current_rev:
         raise ApiError(COMP_LOCK_CONFLICT, status=409, data={"currentRev": current_rev})
     violations = validate_spec_pure_data(body.spec)
