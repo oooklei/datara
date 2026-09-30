@@ -17,9 +17,7 @@
 - POST /components/{type}/baseline/redraft      复制最新已发版 spec 开修订轮（published→designing）
 - POST /components/{type}/baseline/discard_draft 放弃修订（底稿重置为最新已发版，designing→published）
 - GET  /components/{type}/lineage-decl          声明级血缘读取（未基线化返回空态不报错）
-- GET  /lineage/graph                           声明级血缘图 stub（lineage.py 未占用该路径，
-                                                故挂本模块 lineage_router；运行时字段级血缘
-                                                仍由既有 t_lineage_edge/t_lineage_field 承载）
+  （GET /lineage/graph 声明级 stub 已由 Task 4 的 api/lineage.py 运行时血缘聚合图取代）
 
 设计要点：
 - 体检只报告不拦截：基线化对象是既有运行系统（目录快照），存量定义允许带红推进，
@@ -70,9 +68,6 @@ logger = get_logger("api.baseline")
 
 # 主路由：与 component.py / component_design.py 同挂 /components 前缀
 router = APIRouter(prefix="/components", tags=["component-baseline"])
-# 声明级血缘图：api/lineage.py 只占用 /tables /fields /stats /trace，
-# /lineage/graph 空闲，故直接挂本模块（免前端改路径）
-lineage_router = APIRouter(prefix="/lineage", tags=["lineage"])
 
 # 八段 DSL 的 form 键白名单（M-B0 底稿契约）
 FORM_KEYS = frozenset({
@@ -670,7 +665,7 @@ def publish_baseline(
     })
 
 
-# ---------------- 声明级血缘（读取端点 + 声明级血缘图 stub） ----------------
+# ---------------- 声明级血缘（读取端点） ----------------
 
 
 @router.get("/{type_name}/lineage-decl", summary="读取声明级血缘（未基线化空态）")
@@ -698,34 +693,3 @@ def get_lineage_decl(
         "type": type_name, "baselineState": "published",
         "lineage": spec.get("lineage") if isinstance(spec, dict) else None,
     })
-
-
-@lineage_router.get("/graph", summary="声明级血缘图（stub）")
-def lineage_graph(
-    user: User = Depends(require_perm("view_all")),
-    db: Session = Depends(get_db),
-):
-    """声明级静态读写关系：扫全部 published 版本行，解析 spec.lineage.assets 平铺为节点。
-
-    与既有运行时血缘（t_lineage_edge/t_lineage_field，api/lineage.py）互补：本端点
-    只表达「组件声明了什么读写」，不做字段级解析；空库返回空数组。edges 留空——
-    声明级节点间连线（DAG 拓扑）属运行时事实，后续按需扩展。
-    """
-    nodes: list = []
-    for ver in db.query(ComponentVersion).filter(ComponentVersion.state == "published").all():
-        try:
-            spec = json.loads(ver.spec_json) if ver.spec_json else {}
-        except (TypeError, ValueError):
-            continue
-        lineage = spec.get("lineage") if isinstance(spec, dict) else None
-        assets = lineage.get("assets") if isinstance(lineage, dict) else None
-        if not isinstance(assets, list):
-            continue
-        for a in assets:
-            if not isinstance(a, dict):
-                continue
-            nodes.append({
-                "type": ver.type, "role": a.get("role"),
-                "pick": a.get("pick"), "assetType": a.get("assetType"),
-            })
-    return ok({"mode": "declaration", "nodes": nodes, "edges": []})

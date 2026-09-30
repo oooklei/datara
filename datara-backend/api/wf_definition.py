@@ -17,12 +17,16 @@ from pydantic import BaseModel
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
+from api.graph_rules import validate_graph
 from api.auth import ApiError, require_perm
 from api.commands import submit_command
+from api.lineage import delete_design_lineage, redesign_wf_lineage
 from api.streamjob import STREAM_TYPES, extract_stream_spec, register_stream_job
 from common.db import get_db
 from common.log import get_logger
 from common.models import (
+    Component,
+    GlobalParam,
     StreamJob,
     StreamOffset,
     User,
@@ -30,12 +34,15 @@ from common.models import (
     WfDefinition,
     WfDefinitionLog,
     WfSchedule,
+    WfVariable,
     WorkflowInstance,
     now,
 )
 from common.resp import (
+    WF_GRAPH_RULE_FAILED,
     WF_NOT_FOUND,
     WF_PARAM_INVALID,
+    WF_RELEASED_LOCKED,
     WF_VERSION_CONFLICT,
     WF_VERSION_NOT_FOUND,
     PageQuery,
@@ -277,6 +284,39 @@ def get_definition(wf_id: str, db: Session = Depends(get_db)):
     return ok(doc)
 
 
+def _assert_editable(definition: WfDefinition, action: str) -> None:
+    """online 定义内容不可变更（实施计划 20260926 Task A2：发布态只读闸门）。
+
+    保存/回滚均拦；运行/补数不拦（offline 不阻断既有流的治理语义）。
+    """
+    if definition.release_state == "online":
+        raise ApiError(
+            WF_RELEASED_LOCKED,
+            "工作流已发布(online)不可%s，请先下线" % action,
+            status=409,
+        )
+
+
+def _vars_supply(db: Session, wf_code: int) -> dict:
+    """R5 引用校验的变量供给（Task F4）：工作流变量 + 全局参数名字全集。
+
+    环境组层（实例绑定）/C21 注入层（运行时写入）保存时不可知，不进供给——
+    校验端跳过不算违规（graph_rules._ref_resolvable 口径一致）。
+    """
+    return {
+        "workflow": {name for (name,) in db.query(WfVariable.name).filter(WfVariable.wf_code == wf_code)},
+        "global": {name for (name,) in db.query(GlobalParam.name)},
+    }
+
+
+def _comp_versions(db: Session) -> dict:
+    """R6 版本供给（Task D2 §9）：t_component type→published_version（None=无生效版本）。
+
+    系统目录组件（37 type）不在治理库 → 不进供给，R6 对其仅做结构校验。
+    """
+    return {c.type: c.published_version for c in db.query(Component).all()}
+
+
 @router.put("/{wf_id}/save")
 def save_definition(
     wf_id: str,
@@ -291,9 +331,19 @@ def save_definition(
     TOCTOU 双过窗口；base_version 缺省（旧客户端）保持原无条件更新路径，行为不变。
     """
     definition = _get_or_404(db, wf_id)
+    _assert_editable(definition, "保存")
     doc = body.doc
     if not isinstance(doc, dict) or doc.get("id") != wf_id:
         raise ApiError(WF_PARAM_INVALID, "doc.id 与路径不一致")
+    # A1 服务端图校验（实施计划 20260926）：结构/环/类型/无条件必填/悬边，
+    # 违规 422 逐条返回——与前端 W1 互补，服务端此前零校验的收口
+    # F4 R5 引用有效性：save 查库组装变量供给（工作流变量 + 全局参数）
+    # D2 R6 componentRef：save 宽松模式——缺 ref 兼容存量未回填文档（§9.5 部署先跑
+    # scripts/backfill_component_ref.py）；有 ref 则结构合法 + 版本存在性/漂移校验
+    violations = validate_graph(doc, _vars_supply(db, definition.code),
+                                comp_versions=_comp_versions(db))
+    if violations:
+        raise ApiError(WF_GRAPH_RULE_FAILED, _gate_violations_msg(violations), status=422)
     base_version = body.base_version
     if base_version is not None and base_version != definition.version:
         logger.warning("保存版本冲突: wf=%s 库内 v%s，提交基于 v%s（操作人 %s）",
@@ -342,6 +392,7 @@ def save_definition(
     _append_log(db, definition, user.user_name, body.remark)
     db.commit()
     logger.info("保存工作流定义: %s → v%s", wf_id, next_version)
+    redesign_wf_lineage(db, definition)  # 保存成功 → 设计态血缘重算（旁路，失败不阻断保存）
     return ok({"version": next_version})
 
 
@@ -361,7 +412,7 @@ def delete_definition(
       retry/fault_tolerance）→ 拒绝 409
     - 活跃流任务（t_stream_job.doc_id，starting/running/reconnecting）→ 拒绝 409 提示先停
     - 无阻塞 → 级联删除：调度（t_wf_schedule）、停止态流任务行及其位点（t_stream_offset）、
-      版本快照（t_wf_definition_log）、定义行
+      版本快照（t_wf_definition_log）、设计态血缘行（t_lineage_edge/field 的 design 行）、定义行
     """
     definition = _get_or_404(db, wf_id)
     running = (
@@ -387,9 +438,11 @@ def delete_definition(
         db.delete(job)
     db.query(WfSchedule).filter(WfSchedule.wf_code == definition.code).delete()
     db.query(WfDefinitionLog).filter(WfDefinitionLog.wf_code == definition.code).delete()
+    design_purged = delete_design_lineage(db, definition.code)  # 级联：设计态血缘行（先 field 后 edge）
     db.delete(definition)
     db.commit()
-    logger.info("删除工作流定义: %s（操作人 %s；级联调度/停止态流任务/快照）", wf_id, user.user_name)
+    logger.info("删除工作流定义: %s（操作人 %s；级联调度/停止态流任务/快照/设计态血缘 %d 行）",
+                wf_id, user.user_name, design_purged)
     return ok(True)
 
 
@@ -424,6 +477,7 @@ def rollback(
 ):
     """回滚：取指定版本快照 graph_json 覆盖 definition，并再追加新版本（历史不丢）。"""
     definition = _get_or_404(db, wf_id)
+    _assert_editable(definition, "回滚")
     snapshot = (
         db.query(WfDefinitionLog)
         .filter(WfDefinitionLog.wf_code == definition.code, WfDefinitionLog.version == body.version)
@@ -439,7 +493,65 @@ def rollback(
     _append_log(db, definition, user.user_name, "回滚自 v%s" % body.version)
     db.commit()
     logger.info("回滚工作流定义: %s → 恢复 v%s 快照，新版本 v%s", wf_id, body.version, definition.version)
+    redesign_wf_lineage(db, definition)  # 回滚覆写 graph_json 语义等同保存 → 设计态血缘重算（旁路）
     return ok(doc)
+
+
+# ---------------- 发布 / 下线（实施计划 20260926 Task A2：release_state 消费闭环） ----------------
+
+def _gate_violations_msg(violations: list) -> str:
+    """图校验违规清单 → 前 5 条拼接的提示文本（与保存闸门同格式）。"""
+    detail = "；".join("%s:%s" % (v.get("nodeId") or "-", v["message"]) for v in violations[:5])
+    if len(violations) > 5:
+        detail += "；…共 %d 条" % len(violations)
+    return detail
+
+
+@router.post("/{wf}/publish")
+def publish_workflow(
+    wf: str,
+    user: User = Depends(require_perm("edit_definition")),
+    db: Session = Depends(get_db),
+):
+    """发布上线：graph_rules 全过 → release_state=online（幂等）。
+
+    D2 R6：发布走严格模式——缺 componentRef 拒绝（存量画布请先跑
+    scripts/backfill_component_ref.py 回填，§9.5），引用版本必须等于组件当前
+    published（漂移走显式升级 §9.3）。
+    """
+    definition = _resolve_wf(db, wf)
+    if definition.release_state != "online":
+        doc = json.loads(definition.graph_json or "{}")
+        # F4 R5：发布闸门同样带变量供给（引用有效性进发布链）
+        # D2 R6：发布闸门带版本供给 + 严格模式（缺 ref 拒）
+        violations = validate_graph(doc, _vars_supply(db, definition.code),
+                                    comp_versions=_comp_versions(db),
+                                    require_component_ref=True)
+        if violations:
+            raise ApiError(WF_GRAPH_RULE_FAILED, _gate_violations_msg(violations), status=422)
+        definition.release_state = "online"
+        _append_log(db, definition, user.user_name, "发布上线")
+        db.commit()
+        logger.info("工作流发布上线: %s v%s（操作人 %s）",
+                    definition.id, definition.version, user.user_name)
+        redesign_wf_lineage(db, definition)  # 发布成功 → 设计态血缘重算（旁路，失败不阻断发布）
+    return ok({"id": definition.id, "release_state": definition.release_state})
+
+
+@router.post("/{wf}/offline")
+def offline_workflow(
+    wf: str,
+    user: User = Depends(require_perm("edit_definition")),
+    db: Session = Depends(get_db),
+):
+    """下线：release_state → offline（幂等）。offline 不阻断既有运行流（治理语义）。"""
+    definition = _resolve_wf(db, wf)
+    if definition.release_state != "offline":
+        definition.release_state = "offline"
+        _append_log(db, definition, user.user_name, "下线")
+        db.commit()
+        logger.info("工作流下线: %s（操作人 %s）", definition.id, user.user_name)
+    return ok({"id": definition.id, "release_state": definition.release_state})
 
 
 # ---------------- 运行 / 补数（I3 §3.1/§9.2：api 只写 t_command，master 消费） ----------------

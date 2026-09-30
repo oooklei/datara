@@ -7,8 +7,8 @@
    逻辑控制类豁免；
 4. 认可发版：四处写入（t_component scope=builtin + t_component_version v1 published +
    t_component_log + 进度行 published）、重复 409、无权限 403、无进度行 404；
-5. lineage-decl：发布后可读、未基线化 unbaseline 空态；
-6. /lineage/graph：声明级节点组装、无 assets 不产节点。
+5. lineage-decl：发布后可读、未基线化 unbaseline 空态。
+   （/lineage/graph 旧 stub 用例已随 stub 删除迁移至 test_lineage_graph.py 新契约，Task 4）
 
 DB：sqlite 内存库（conftest compiles 补丁），零外部依赖；造底稿直接 PUT 保存最小合法 spec。
 """
@@ -256,26 +256,6 @@ def test_lineage_decl_after_publish(client, db_session):
 def test_lineage_decl_unbaseline(client):
     d = client.get("/api/v1/components/never_published/lineage-decl").json()["data"]
     assert d == {"type": "never_published", "baselineState": "unbaseline", "lineage": None}
-
-
-def test_lineage_graph_declaration_nodes(client):
-    """发布带血缘组件后 /lineage/graph 返回声明级节点；空 assets 不产节点。"""
-    # 空库：空数组
-    empty = client.get("/api/v1/lineage/graph").json()["data"]
-    assert empty == {"mode": "declaration", "nodes": [], "edges": []}
-    # 发布 sql（2 assets）+ start（空 assets）
-    assert _save_draft(client, "sql", _legal_spec()).status_code == 200
-    assert _save_draft(client, "start", _logic_spec()).status_code == 200
-    set_role(client, "admin")
-    assert _publish(client, "sql").status_code == 200
-    assert _publish(client, "start").status_code == 200
-    d = client.get("/api/v1/lineage/graph").json()["data"]
-    assert d["mode"] == "declaration"
-    nodes = [n for n in d["nodes"] if n["type"] == "sql"]
-    assert len(nodes) == 2 and d["edges"] == []
-    assert {n["role"] for n in nodes} == {"source", "target"}
-    assert all(n["pick"] and n["assetType"] == "table" for n in nodes)
-    assert not [n for n in d["nodes"] if n["type"] == "start"]  # 空 assets 不产节点
 
 
 # ---------------- 修订前置：published 底稿不可直接改（R3） ----------------

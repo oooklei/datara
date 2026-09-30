@@ -47,11 +47,14 @@ def create_app() -> FastAPI:
     # 业务异常 → 统一响应包
     @app.exception_handler(ApiError)
     async def api_error_handler(request, exc: ApiError):  # noqa: ANN001 FastAPI 回调签名
-        return JSONResponse(status_code=exc.status, content=fail(exc.code, exc.msg))
+        return JSONResponse(status_code=exc.status, content=fail(exc.code, exc.msg, exc.data))
 
     # 路由前缀统一 /api/v1
     from api import (
         auth,
+        baseline,
+        component,
+        component_design,
         datasource,
         health,
         ide,
@@ -72,6 +75,10 @@ def create_app() -> FastAPI:
     )
 
     app.include_router(auth.router, prefix="/api/v1")
+    app.include_router(component.router, prefix="/api/v1")
+    app.include_router(component_design.router, prefix="/api/v1")
+    # 组件基线化（M-B0）：进度/底稿/体检/认可发版（component_design 之后注册）
+    app.include_router(baseline.router, prefix="/api/v1")
     app.include_router(datasource.router, prefix="/api/v1")
     app.include_router(ide.router, prefix="/api/v1")
     app.include_router(health.router, prefix="/api/v1")

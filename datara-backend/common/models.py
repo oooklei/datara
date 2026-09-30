@@ -1,6 +1,6 @@
-"""ORM 模型：meta 库 22 张表（I1 十三表 + I3 t_wf_schedule + I4 t_ide_history/t_tmp_data
+"""ORM 模型：meta 库 25 张表（I1 十三表 + I3 t_wf_schedule + I4 t_ide_history/t_tmp_data
 + I5 t_lineage_edge/t_lineage_field + I7 t_ssh_node + I8 t_stream_job/t_stream_offset
-+ I10 t_ide_script）。
++ I10 t_ide_script + M1 t_component/t_component_version/t_component_log）。
 
 - 所有表含 create_time/update_time（datetime，本地时区写入 datetime.now()）
 - t_wf_definition.id = 前端 GraphDocument 的 doc.id（形如 'wf_xxx'），code 为雪花式数字
@@ -392,6 +392,11 @@ class LineageEdge(Base):
     to_table: Mapped[str] = mapped_column(String(255), comment="输出表 db.table")
     # 任一侧 ${tmp.*} 映射为注册名 → 1（门 #10：C22 临时表作来源时同样置 1）
     tmp_flag: Mapped[bool] = mapped_column(Boolean, default=False, comment="边涉及临时注册名 0/1")
+    # 血缘来源层：runtime=运行时采集（存量默认）/ design=设计态推导（instance_id=0 标识，uk 不变）
+    src_type: Mapped[str] = mapped_column(
+        String(16), default="runtime", server_default="runtime",
+        comment="血缘来源 runtime/design",
+    )
     create_time: Mapped[datetime] = mapped_column(DateTime, default=now)
 
     __table_args__ = (
@@ -418,6 +423,11 @@ class LineageField(Base):
     )
     transform: Mapped[Optional[str]] = mapped_column(
         String(1000), nullable=True, comment="加工表达式（mysql 方言回写）",
+    )
+    # 血缘来源层：runtime=运行时采集（存量默认）/ design=设计态推导（instance_id=0 标识，uk 不变）
+    src_type: Mapped[str] = mapped_column(
+        String(16), default="runtime", server_default="runtime",
+        comment="血缘来源 runtime/design",
     )
     create_time: Mapped[datetime] = mapped_column(DateTime, default=now)
 
@@ -506,3 +516,116 @@ class IdeScript(Base):
         UniqueConstraint("user_id", "name", name="uk_script"),
         Index("idx_script_user", "user_id"),
     )
+
+
+# ---------- 23. t_component 组件主表（M1，治理设计 §7.1：逻辑身份，不存 spec_json） ----------
+class Component(Base):
+    __tablename__ = "t_component"
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    type: Mapped[str] = mapped_column(String(64), unique=True, comment="全局类型标识（§15 唯一性策略）")
+    name: Mapped[str] = mapped_column(String(128), comment="展示名")
+    category: Mapped[Optional[str]] = mapped_column(String(64), nullable=True, comment="分组/分类")
+    profile: Mapped[str] = mapped_column(String(32), comment="归属 ViewProfile：dag/etl/stream/topo")
+    scope: Mapped[str] = mapped_column(String(16), default="builtin", comment="builtin/user")
+    execution_model: Mapped[str] = mapped_column(
+        String(32),
+        comment="dag-engine/canvas-device/demo-only/runtime-only（sync·file_sync 物化消费专用）",
+    )
+    executor: Mapped[Optional[str]] = mapped_column(
+        String(64), nullable=True, comment="绑定的既有 executor handler（红线 1）"
+    )
+    executable: Mapped[bool] = mapped_column(Boolean, default=True, comment="canvas-device 必须为 false")
+    state: Mapped[str] = mapped_column(String(16), default="draft", comment="draft/published/offline（§8 状态机）")
+    published_version: Mapped[Optional[int]] = mapped_column(
+        Integer, nullable=True, comment="当前生效版本号；NULL=未发布"
+    )
+    draft_rev: Mapped[int] = mapped_column(Integer, default=0, comment="草稿修订号（乐观锁，§16）")
+    description: Mapped[Optional[str]] = mapped_column(String(512), nullable=True)
+    tags: Mapped[Optional[list]] = mapped_column(JSON, nullable=True)
+    owner_id: Mapped[Optional[int]] = mapped_column(Integer, nullable=True, comment="设计者")
+    create_time: Mapped[datetime] = mapped_column(DateTime, default=now)
+    update_time: Mapped[datetime] = mapped_column(DateTime, default=now, onupdate=now)
+
+    __table_args__ = (Index("idx_comp_profile_state", "profile", "state"),)
+
+
+# ---------- 24. t_component_version 不可变版本快照（M1，治理设计 §7.2） ----------
+class ComponentVersion(Base):
+    __tablename__ = "t_component_version"
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    component_id: Mapped[int] = mapped_column(BigInteger, comment="→ t_component.id")
+    type: Mapped[str] = mapped_column(String(64), comment="冗余，便于 type+version 直查")
+    version: Mapped[int] = mapped_column(Integer, comment="从 1 递增")
+    state: Mapped[str] = mapped_column(
+        String(16), default="draft",
+        comment="draft/frozen/published/offline（§8 状态机；frozen=B5 冻结不可变，M2 publish→published）",
+    )
+    spec_json: Mapped[str] = mapped_column(
+        LONGTEXT, comment="完整声明：NodeSpec + dropPolicy + executor 绑定（纯数据，内联不拆列）"
+    )
+    spec_hash: Mapped[str] = mapped_column(String(64), comment="规范化内容哈希（§15 一致性校验依据）")
+    remark: Mapped[Optional[str]] = mapped_column(String(512), nullable=True, comment="版本说明")
+    published_by: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
+    published_time: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    create_time: Mapped[datetime] = mapped_column(DateTime, default=now)
+    update_time: Mapped[datetime] = mapped_column(DateTime, default=now, onupdate=now)
+
+    __table_args__ = (
+        UniqueConstraint("type", "version", name="uk_comp_type_ver"),
+        Index("idx_compver_comp", "component_id", "version"),
+    )
+
+
+# ---------- 25. t_component_log 组件审计表（M1，治理设计 §7.3：只追加，不更新不删除） ----------
+class ComponentLog(Base):
+    __tablename__ = "t_component_log"
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    component_id: Mapped[int] = mapped_column(BigInteger, comment="→ t_component.id")
+    type: Mapped[str] = mapped_column(String(64), comment="冗余")
+    version: Mapped[int] = mapped_column(Integer, comment="操作涉及的版本")
+    action: Mapped[str] = mapped_column(
+        String(32), comment="create/update_draft/freeze_version/publish/offline/rollback"
+    )
+    spec_hash: Mapped[Optional[str]] = mapped_column(String(64), nullable=True, comment="操作时的内容哈希")
+    operator: Mapped[Optional[str]] = mapped_column(String(64), nullable=True, comment="操作人")
+    remark: Mapped[Optional[str]] = mapped_column(String(512), nullable=True, comment="备注")
+    operate_time: Mapped[datetime] = mapped_column(DateTime, default=now, comment="操作时间")
+    create_time: Mapped[datetime] = mapped_column(DateTime, default=now)
+    update_time: Mapped[datetime] = mapped_column(DateTime, default=now, onupdate=now)
+
+    __table_args__ = (Index("idx_complog_comp", "component_id", "version"),)
+
+
+# ---------- 26. t_baseline_progress 组件基线化进度（M-B0，八段 DSL 声明底稿承载） ----------
+#
+# v1 发出前 t_component 无内置目录行：35 个 dag profile type 的基线化进度独立成表，
+# 与用户自建组件（scope=user）的草稿/发布链路互不干扰。认可发版（publish）后
+# 目录定义才进入 t_component/t_component_version（scope=builtin），本表转为留痕。
+class BaselineProgress(Base):
+    __tablename__ = "t_baseline_progress"
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    type: Mapped[str] = mapped_column(String(64), unique=True, comment="组件类型（目录快照 profile=dag 的 35 type）")
+    status: Mapped[str] = mapped_column(
+        String(16), default="pending",
+        comment="pending/designing/testing/confirming/published（基线化推进状态）",
+    )
+    draft_spec: Mapped[Optional[str]] = mapped_column(
+        LONGTEXT, nullable=True, comment="声明底稿 JSON（八段 DSL：form/lineage/render/dropPolicy/paletteVisible/meta）"
+    )
+    draft_rev: Mapped[int] = mapped_column(Integer, default=0, comment="底稿乐观锁修订号")
+    check_report: Mapped[Optional[list]] = mapped_column(
+        JSON, nullable=True, comment="体检逐项结果 {checkedAt, items: [{check, ok, msg}]}（只报告不拦截）"
+    )
+    test_records: Mapped[Optional[list]] = mapped_column(
+        JSON, nullable=True, comment="1.9 实测记录数组 [{batch, dataflow, result, note, at}]"
+    )
+    confirmed_by: Mapped[Optional[str]] = mapped_column(String(64), nullable=True, comment="认可发 v1 操作人")
+    confirmed_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True, comment="认可时间")
+    create_time: Mapped[datetime] = mapped_column(DateTime, default=now)
+    update_time: Mapped[datetime] = mapped_column(DateTime, default=now, onupdate=now)
+
+    __table_args__ = (Index("idx_baseline_status", "status"),)

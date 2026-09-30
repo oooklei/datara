@@ -1,0 +1,129 @@
+# 血缘关系三层汇总与前端呈现设计（表级 + 字段级）
+
+* 日期：2026-09-30
+
+* 状态：已经用户确认（设计态存储=现表加 src\_type；SELECT\*/全列映射=设计态只落表级；非 SQL 执行器/流处理=P1 声明 opaque；前端按 A-D 分期）
+
+* 关联：组件基线化 spec（2026-09-30-baseline-revision-design.md）、DAG与组件综合优化实施计划 §11
+
+## 1. 背景与目标
+
+血缘需求两个深度：**表级**（`{ds}.{db}.{table} → {ds}.{db}.{table}`）与**字段级**（`to_field ← from_field` + transform）。血缘连接定义在 DAG 工作流各类组件（同步编排 / ETL / 流处理 / 逻辑控制）的配置里。目标：
+
+1. 设计态：从工作流定义的节点 config 静态解析血缘（发布即得，无需运行）；
+2. 运行态：沿用既有执行期采集（已建成）；
+3. 汇总：design ∪ runtime 统一去重、来源标记，形成全量血缘图谱；
+4. 呈现：前端表级图谱增强 + 字段级图上可视化 + 实例追溯模式化。
+
+## 2. 现状（已核实）
+
+### 2.1 三套血缘资产并存
+
+| 资产       | 载体                                                                                                        | 双深度       | 状态                    |
+| -------- | --------------------------------------------------------------------------------------------------------- | --------- | --------------------- |
+| S1 运行态采集 | worker/executors/sql.py:172→collect\_sql\_lineage；sync.py:514→collect\_sync\_lineage；worker/lineage.py 落库 | 表级+字段级均建成 | ✅ 在跑                  |
+| S2 声明级   | spec.lineage.assets（role/pick/assetType）+ baseline.py:676-731 lineage-decl 与 /lineage/graph               | 仅节点无边     | stub（定位=组件能力画像，不参与汇总） |
+| S3 设计态配置 | 节点 config（src/tgt 表 key、columnMap、sql\_text）                                                              | 天然可到字段级   | ❌ 从未解析（主缺口）           |
+
+### 2.2 既有运行态能力（不重建）
+
+* 模型 models.py:375-427：t\_lineage\_edge（uk：wf\_code/instance\_id/node\_id/stmt\_no/from\_table/to\_table/tmp\_flag）+ t\_lineage\_field（edge\_id/to\_field/from\_table/from\_field/transform）
+
+* sqlparser.py：sqlglot MySQL 纯函数，INSERT..SELECT / INSERT..VALUES / CTAS / UPDATE；SELECT \* 不产字段级
+
+* api/lineage.py：/lineage/tables、/lineage/fields、/lineage/stats、/lineage/trace
+
+* 前端 LineageView\.vue（/meta/lineage）：双 level 切换、direction/depth 前端过滤、字段级侧栏弹层、?table= / ?instance=\&node= 深链
+
+### 2.3 组件解析能力矩阵（35 组件）
+
+| 组件类    | 组件                                                                               | 表级来源                               | 字段级来源                                        |
+| ------ | -------------------------------------------------------------------------------- | ---------------------------------- | -------------------------------------------- |
+| 同步编排   | sync / src\_base\_orch / tgt\_base\_orch / endpoint\_select / condition\_set     | config src/tgt 表 key 直读            | columnMap 非空→映射；留空→只落表级                      |
+| 同步编排   | field\_map / field\_map\_union                                                   | 拓扑前驱输入表                            | columnMap（fmSrcIndex/fmTgtIndex 定向，union 反向） |
+| 文件同步   | file\_sync\_orch                                                                 | 文件↔表边（assetType=file）              | 无                                            |
+| ETL    | sql                                                                              | sql\_text → 复用 parse\_sql\_lineage | 非星号投影+transform；SELECT \* 降级表级               |
+| ETL/外部 | python / shell / ssh / http / procedure / file / notify                          | opaque（不产边）                        | opaque                                       |
+| 流处理    | stream\_input / stream\_fuse / stream\_output / page\_board                      | P1 opaque（topic↔表契约后置）             | 无                                            |
+| 逻辑控制   | start/end/fork/join/merge/switch/conditions/delay/loop/dependent/variable/assert | 血缘穿透（拓扑自然连通）                       | 无                                            |
+
+### 2.4 前端短板（五项）
+
+F1 全量拉取+前端裁剪（depth 硬编码≤3，无全链）；F2 字段级无图上呈现（仅侧栏弹层）；F3 无面包屑/以此为中心/一键全链高亮；F4 实例追溯无独立 UI；F5 tmp 表与来源边无视觉区分。
+
+## 3. 方案
+
+### 3.1 口径
+
+* 表级边：`{ds}.{db}.{table} → {ds}.{db}.{table}`；字段级边挂在表级边下（to\_field ← from\_field + transform）
+
+* 来源维度 `src_type ∈ {runtime, design}`：runtime=执行事实（最准），design=配置静态解析（发布即得）；设计态行约定 instance\_id=0、node\_id=物理节点 id、stmt\_no=0
+
+### 3.2 P1 后端：设计态解析器与落库
+
+* 新增 `datara-backend/common/lineage_extract.py`（纯函数，风格对齐 sqlparser.py）：
+  `extract_wf_lineage(nodes, edges, wf_code) -> {table_edges, field_edges, opaques}`，按上矩阵分派：
+
+  * sql：取 config.sql\_text → parse\_sql\_lineage（设计/运行同解析器，口径天然一致）
+
+  * 同步编排：ResourcePick（srcDsKey/srcTableKey/tgtDsKey/tgtTableKey）→ 表级；columnMap 非空 → 字段级
+
+  * field\_map/union：沿 DAG 拓扑回溯前驱输入表 + columnMap（含 union 反向）→ 字段级
+
+  * file\_sync\_orch：文件↔表边；控制流：跳过；python/shell/流处理：记 opaque
+
+* 触发：工作流定义保存与发布时重算该定义血缘（delete-then-reinsert，幂等：先删该 wf\_code 的 design 行再插）；提供按需重算端点 `POST /lineage/redesign/{wfCode}`
+
+### 3.3 P2 后端：汇总与聚合端点
+
+* 迁移：t\_lineage\_edge / t\_lineage\_field 各加 `src_type VARCHAR(16) NOT NULL DEFAULT 'runtime'`；uk 不变（instance\_id=0 即设计态）；既有查询端点全部语义不变（默认只看 runtime 或全量，行为向后兼容）
+
+* `GET /lineage/graph` 重写（替换 baseline.py 中 stub）：
+
+  * 入参：`level=table|field`、`source=all|design|runtime`、`wfCode`、`table`（中心表）、`direction=upstream|downstream|both`、`depth`（0/空=全链，环检测）、`limit`
+
+  * 逻辑：design ∪ runtime 边按 fq 表聚合去重；中心表给定时做图扩散截取；返回：
+    `{nodes:[{fq, ds, table, tmpFlag, sources:[...], wfs:[...]}], edges:[{from, to, level, sources, refs:[{wfCode, nodeId, stmtNo?, transform?}]}], opaques:[{wfCode, nodeId, type}], truncated}`
+
+  * lineage-decl 端点保留不动（单组件能力画像）
+
+### 3.4 P3 前端：呈现改进（A-D）
+
+* **A 表级图谱增强**：图数据改走 /lineage/graph 服务端扩散（去全量裁剪）；depth 支持 ∞ 全链；节点双击/右键「以此为中心」；顶栏面包屑（最近浏览表）；「影响分析」「源头追踪」一键全链展开+路径高亮；tmp 表虚线节点；详情抽屉升级（数据源、tmp 标记、上下游计数、最近采集、参与工作流）
+
+* **B 字段级图上呈现**：选中表→切字段级渲染字段映射图（左来源表字段 / 右目标表字段 / field\_dep 连线 + transform 悬浮标签），数据复用 fieldLineage；现有弹层保留为「映射明细」页签；深链 `?level=field&table=x&field=y`
+
+* **C 实例追溯模式化**：?instance=\&node= 进入时顶部实例上下文条（工作流/节点/状态/时间 + 回到全量切换），边标注 stmt\_no 次序
+
+* **D 来源视觉体系**：运行态=实线、设计态=虚线、双源=实线+徽标；图例常驻；筛选器 design/runtime/all；仅设计态可达的表打「未验证」标记
+
+* **E 性能兜底**：服务端 limit + 前端折叠提示（「已折叠 N 个，点击展开」）
+
+### 3.5 分期
+
+| 期   | 内容                                                                                                 |
+| --- | -------------------------------------------------------------------------------------------------- |
+| 批次一 | Task1 迁移加列 → Task2 lineage\_extract 解析器 → Task3 保存/发布触发落库 → Task4 /lineage/graph 聚合 + 第一批 1.9 部署冒烟 |
+| 批次二 | Task5 前端 API+来源视觉 → Task6 字段级图上呈现 → Task7 表级交互增强 → Task8 实例追溯模式 → Task9 测试收口 + 第二批 1.9 部署实测 + 文档回写 |
+
+## 4. 决策记录
+
+* D1 设计态存储：**现表加 src\_type 列、instance\_id=0**（改动最小、查询兼容；否决独立表 UNION 方案）
+
+* D2 SELECT \* / 同名全列映射：**设计态只落表级**，字段级诚实降级「待运行确认」（否决 information\_schema 实时补全）
+
+* D3 非 SQL 执行器与流处理：**P1 声明 opaque 不采边**，P3+ 视需要尝试正则提取 SQL 字符串（否决本期强行采集）
+
+* D4 声明级 spec.lineage 定位：保留为组件能力画像，不参与图谱汇总（lineage-decl 不动，/lineage/graph 从 stub 升级为聚合实现）
+
+* D5 血缘解析器复用 parse\_sql\_lineage，设计态与运行态同一口径
+
+## 5. 验收标准
+
+1. 设计态：保存含 sql / 同步编排 / field\_map 节点的工作流后，无需运行即可在 /lineage/graph（source=design）看到表级边与 columnMap 字段级映射；重复保存幂等（无重复行）
+2. 汇总：同一表既有 design 又有 runtime 边时，edges.sources 含双来源且去重；?source=runtime/ 筛选正确；?direction/depth 扩散正确（含 ∞ 全链不进环）
+3. 兼容：既有 /lineage/tables、/fields、/stats、/trace 行为不变（回归通过）；LineageView 现有功能不回退
+4. 前端：字段级图上呈现可用（连线+transform）；来源筛选与虚实线样式正确；实例追溯上下文条正确；vitest + vue-tsc 全绿
+5. 1.9 实测：两批部署后 Playwright 全链回归（表级扩散→字段级图→来源筛选→实例追溯）+ API 探针（设计态落库→graph 聚合→幂等）全绿
+6. 后端 pytest 全绿（解析器单测矩阵 + 聚合契约测试 + 迁移回归）
+
