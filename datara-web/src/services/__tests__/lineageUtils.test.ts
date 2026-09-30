@@ -1,16 +1,23 @@
 /**
  * lineageUtils 纯函数单测（todo 10）
- * 覆盖：分层推导、表级/字段级图构建（dep_unlinked 与元数据富化）、N 层上下游过滤、影响分析（精确/通用/叶子空态）。
+ * 覆盖：分层推导、表级/字段级图构建（dep_unlinked 与元数据富化）、影响分析（精确/通用/叶子空态）、
+ * Task 7 数据面富化（ds/tmp/wfs/sources）与一键聚焦边高亮（focusAllEdges）、
+ * Task 8 实例追溯边标注（annotateStmtNo 升序去重 / 无命中不动 / 原文档不变）。
  */
 import { describe, it, expect } from 'vitest'
 import {
+  annotateStmtNo,
   buildFieldLineageDoc,
+  buildLineageGraphDoc,
   buildTableLineageDoc,
   deriveImpact,
-  filterByDepth,
+  focusAllEdges,
+  graphEdgesToRows,
   impactSummary,
   layerOf,
+  matchCenter,
 } from '../mock/lineageUtils'
+import type { LineageGraphResult } from '../lineageApi'
 import type { FieldLineage, ImpactExample, MetaTable, TableLineage } from '../types'
 
 const tableLineage: TableLineage[] = [
@@ -110,31 +117,6 @@ describe('buildFieldLineageDoc', () => {
   })
 })
 
-describe('filterByDepth', () => {
-  const doc = buildTableLineageDoc(tableLineage, metaTables)
-
-  it('下游 1 层：仅直接下游', () => {
-    const out = filterByDepth(doc, 'dwd_order_pay_detail', 'down', 1)
-    expect(out.nodes.map((n) => n.id).sort()).toEqual(['dwd_order_pay_detail', 'dws_pay_summary_daily'])
-  })
-
-  it('下游 2 层：含间接下游', () => {
-    const out = filterByDepth(doc, 'dwd_order_pay_detail', 'down', 2)
-    expect(out.nodes.map((n) => n.id).sort()).toEqual(['ads_kpi_report', 'dwd_order_pay_detail', 'dws_pay_summary_daily'])
-  })
-
-  it('上游 1 层：仅直接上游', () => {
-    const out = filterByDepth(doc, 'dwd_order_pay_detail', 'up', 1)
-    expect(out.nodes.map((n) => n.id).sort()).toEqual(['dwd_order_pay_detail', 'ods_gdb_biz_trade_order'])
-  })
-
-  it('叶子表下游为空（仅自身）', () => {
-    const out = filterByDepth(doc, 'ads_kpi_report', 'down', 3)
-    expect(out.nodes).toHaveLength(1)
-    expect(out.edges).toHaveLength(0)
-  })
-})
-
 describe('deriveImpact', () => {
   it('命中 impactExample 精确 shape', () => {
     const imp = deriveImpact('dwd_order_pay_detail', tableLineage, example)
@@ -170,5 +152,235 @@ describe('impactSummary', () => {
   it('空态文案', () => {
     const imp = deriveImpact('ads_kpi_report', tableLineage, example)
     expect(impactSummary(imp)).toBe('暂无血缘（该表无下游影响对象）')
+  })
+})
+
+/* ---------- Task 5：GET /lineage/graph 聚合结果 → 图文档（来源视觉体系） ---------- */
+
+const graphRes: LineageGraphResult = {
+  nodes: [
+    { fq: 'ods_order', ds: '', table: 'ods_order', tmpFlag: 0, sources: ['runtime'], wfs: [101] },
+    { fq: 'dwd_order_pay_detail', ds: '', table: 'dwd_order_pay_detail', tmpFlag: 0,
+      sources: ['design', 'runtime'], wfs: [101, 102] },
+    { fq: 'dim_user', ds: '', table: 'dim_user', tmpFlag: 0, sources: ['design'], wfs: [102] },
+  ],
+  // 契约：同 (from,to) 一条聚合边 —— ods→dwd 合并为单条双源边（refs 两条溯源）
+  edges: [
+    { from: 'ods_order', to: 'dwd_order_pay_detail', level: 'table',
+      sources: ['design', 'runtime'],
+      refs: [{ wfCode: 101, nodeId: 'n_sql_1', stmtNo: 0 }, { wfCode: 102, nodeId: 'n_sql_3', stmtNo: 1 }] },
+    { from: 'ods_order', to: 'dim_user', level: 'table',
+      sources: ['design'], refs: [{ wfCode: 102, nodeId: 'n_sql_2', stmtNo: 0 }] },
+  ],
+  opaques: [],
+  truncated: false,
+}
+
+describe('buildLineageGraphDoc（Task 5 三态样式 + 未验证标记）', () => {
+  it('双源聚边 → dep 实线 + label「（双源）」；仅 design → dep_design 虚线', () => {
+    const doc = buildLineageGraphDoc(graphRes)
+    // ods→dwd 单条双源聚边：dep 实线，label = refs 合成 + （双源）徽标
+    const dual = doc.edges.find((e) => e.id === 'gle1')
+    expect(dual).toBeTruthy()
+    expect(dual!.kind).toBe('dep')
+    expect(dual!.label).toBe('wf101·n_sql_1 / wf102·n_sql_3（双源）')
+    // ods_order → dim_user（sources=design）虚线 dep_design
+    const dg = doc.edges.find((e) => e.target === 'dim_user')
+    expect(dg).toBeTruthy()
+    expect(dg!.kind).toBe('dep_design')
+    expect(dg!.label).toBe('wf102·n_sql_2')
+  })
+
+  it('runtime 独占 → dep 实线（无双源徽标）；双源 + 空 refs 徽标仍保留（M-3）', () => {
+    const doc = buildLineageGraphDoc({
+      nodes: [
+        { fq: 'ods_order', ds: '', table: 'ods_order', tmpFlag: 0, sources: ['runtime'], wfs: [101] },
+        { fq: 'ads_order_daily', ds: '', table: 'ads_order_daily', tmpFlag: 0, sources: ['runtime'], wfs: [101] },
+      ],
+      edges: [
+        { from: 'ods_order', to: 'ads_order_daily', level: 'table',
+          sources: ['runtime'], refs: [{ wfCode: 101, nodeId: 'n_sql_4', stmtNo: 0 }] },
+        { from: 'ods_b', to: 'ads_b', level: 'table',
+          sources: ['design', 'runtime'], refs: [] },
+      ],
+      opaques: [],
+      truncated: false,
+    })
+    const rt = doc.edges.find((e) => e.kind === 'dep' && e.label === 'wf101·n_sql_4')
+    expect(rt).toBeTruthy()
+    // 双源 + 空 refs：base 空时徽标不丢（旧实现兜底「设计推导」会吞掉「（双源）」）
+    const dualBare = doc.edges.find((e) => e.id === 'gle2')
+    expect(dualBare!.kind).toBe('dep')
+    expect(dualBare!.label).toBe('（双源）')
+  })
+
+  it('节点 sources 仅 design → data.unverified=true（「未验」角标输入）；双源/运行节点不标', () => {
+    const doc = buildLineageGraphDoc(graphRes)
+    const byId = Object.fromEntries(doc.nodes.map((n) => [n.id, n]))
+    expect(byId['dim_user']!.data.unverified).toBe(true)
+    expect(byId['ods_order']!.data.unverified).toBe(false)
+    expect(byId['dwd_order_pay_detail']!.data.unverified).toBe(false)
+  })
+
+  it('Task 7 数据面富化：ds/tmp/wfs/sources 注入节点 data（tmpFlag=0 → tmp=false；空 ds 不落键）', () => {
+    const doc = buildLineageGraphDoc({
+      nodes: [
+        { fq: 'mysql_biz.dwd_tmp_1', ds: 'mysql_biz', table: 'dwd_tmp_1', tmpFlag: 1,
+          sources: ['runtime'], wfs: [201, 202] },
+        { fq: 'mysql_biz.dwd_t2', ds: '', table: 'dwd_t2', tmpFlag: 0, sources: ['design'], wfs: [] },
+      ],
+      edges: [{
+        from: 'mysql_biz.dwd_tmp_1', to: 'mysql_biz.dwd_t2', level: 'table',
+        sources: ['runtime'], refs: [{ wfCode: 201, nodeId: 'n1', stmtNo: 0 }],
+      }],
+      opaques: [],
+      truncated: false,
+    })
+    const byId = Object.fromEntries(doc.nodes.map((n) => [n.id, n]))
+    expect(byId['mysql_biz.dwd_tmp_1']!.data.tmp).toBe(true)
+    expect(byId['mysql_biz.dwd_tmp_1']!.data.ds).toBe('mysql_biz')
+    expect(byId['mysql_biz.dwd_tmp_1']!.data.wfs).toEqual([201, 202])
+    expect(byId['mysql_biz.dwd_tmp_1']!.data.sources).toEqual(['runtime'])
+    expect(byId['mysql_biz.dwd_t2']!.data.tmp).toBe(false)
+    expect(byId['mysql_biz.dwd_t2']!.data.ds).toBeUndefined()
+    expect(byId['mysql_biz.dwd_t2']!.data.wfs).toEqual([])
+  })
+
+  it('field 级边 → field_dep + transform label；元数据富化 domain/rows/core', () => {
+    const doc = buildLineageGraphDoc({
+      nodes: [
+        { fq: 'dwd_order_pay_detail.pay_amount', ds: '', table: '', tmpFlag: 0,
+          sources: ['runtime'], wfs: [101] },
+        { fq: 'ods_order.amount', ds: '', table: '', tmpFlag: 0,
+          sources: ['runtime'], wfs: [101] },
+      ],
+      edges: [{
+        from: 'ods_order.amount', to: 'dwd_order_pay_detail.pay_amount', level: 'field',
+        sources: ['runtime'],
+        refs: [{ wfCode: 101, nodeId: 'n_sql_1', stmtNo: 0, transform: 'amount * 0.9' }],
+      }],
+      opaques: [],
+      truncated: false,
+    })
+    expect(doc.edges[0]!.kind).toBe('field_dep')
+    expect(doc.edges[0]!.label).toBe('amount * 0.9')
+  })
+
+  it('metaTables 按表名富化（domain/rows/core 透传）', () => {
+    const meta: MetaTable[] = [{
+      id: 'T9', name: 'ods_order', layer: 'ODS', domain: '交易域', rows: 4100000,
+      size: '1.2GB', owner: '王工', tags: ['核心'], yesterdayOk: true, desc: '', sample: [],
+    }]
+    const doc = buildLineageGraphDoc(graphRes, meta)
+    const n = doc.nodes.find((x) => x.id === 'ods_order')!
+    expect(n.data.domain).toBe('交易域')
+    expect(n.data.rows).toBe(4100000)
+    expect(n.data.core).toBe(true)
+    // 未命中元数据的节点安全兜底（不富化也不炸）
+    const bare = doc.nodes.find((x) => x.id === 'dim_user')!
+    expect(bare.data.domain).toBe('')
+  })
+})
+
+describe('graphEdgesToRows（影响分析 BFS 输入）', () => {
+  it('table 级聚边 → TableLineage 四键行（task/wf 用 refs 合成）', () => {
+    const rows = graphEdgesToRows(graphRes)
+    expect(rows).toHaveLength(2)
+    expect(rows[0]).toEqual({
+      from: 'ods_order', to: 'dwd_order_pay_detail', task: 'wf101·n_sql_1', wf: '101',
+    })
+  })
+
+  it('field 级边不入影响分析行；空 refs 兜底「设计推导」', () => {
+    const rows = graphEdgesToRows({
+      nodes: [], opaques: [], truncated: false,
+      edges: [
+        { from: 'a', to: 'b', level: 'field', sources: ['runtime'], refs: [] },
+        { from: 'a', to: 'b', level: 'table', sources: ['design'], refs: [] },
+      ],
+    })
+    expect(rows).toHaveLength(1)
+    expect(rows[0]!.task).toBe('设计推导')
+    expect(rows[0]!.wf).toBe('-')
+  })
+})
+
+describe('matchCenter（深链 ?table= 裸表名归一）', () => {
+  // real 模式 graph 文档：节点 id = 数据源点分 fq（ds.table），入口深链传裸表名
+  const fqRes: LineageGraphResult = {
+    nodes: [
+      { fq: 'mysql_biz.dwd_order', ds: 'mysql_biz', table: 'dwd_order', tmpFlag: 0,
+        sources: ['runtime'], wfs: [101] },
+      { fq: 'mysql_biz.ads_order_daily', ds: 'mysql_biz', table: 'ads_order_daily', tmpFlag: 0,
+        sources: ['runtime'], wfs: [101] },
+    ],
+    edges: [{
+      from: 'mysql_biz.dwd_order', to: 'mysql_biz.ads_order_daily', level: 'table',
+      sources: ['runtime'], refs: [{ wfCode: 101, nodeId: 'n_sql_1', stmtNo: 0 }],
+    }],
+    opaques: [],
+    truncated: false,
+  }
+
+  it('裸表名命中 fq 节点并归一为全名（中心表下推重拉前提）', () => {
+    const doc = buildLineageGraphDoc(fqRes)
+    expect(doc.nodes.some((n) => n.id === 'dwd_order')).toBe(false)
+    const hit = doc.nodes.find((n) => matchCenter(n.id, 'dwd_order'))
+    expect(hit).toBeTruthy()
+    expect(hit!.id).toBe('mysql_biz.dwd_order')
+  })
+
+  it('fq 反查与全名精确命中（追溯旧路径裸名 id 场景不回退）', () => {
+    expect(matchCenter('dwd_order', 'mysql_biz.dwd_order')).toBe(true)
+    expect(matchCenter('mysql_biz.dwd_order', 'mysql_biz.dwd_order')).toBe(true)
+    expect(matchCenter('mysql_biz.ads_order_daily', 'dwd_order')).toBe(false)
+  })
+})
+
+describe('focusAllEdges（Task 7 一键聚焦高亮）', () => {
+  it('dep/dep_design → dep_focus（label 保留）；field_dep/dep_unlinked 不动；不改原文档', () => {
+    const doc = buildLineageGraphDoc({
+      ...graphRes,
+      edges: [
+        ...graphRes.edges,
+        { from: 'x', to: 'y', level: 'field', sources: ['runtime'], refs: [] },
+      ],
+      nodes: [
+        ...graphRes.nodes,
+        { fq: 'x', ds: '', table: 'x', tmpFlag: 0, sources: ['runtime'], wfs: [] },
+        { fq: 'y', ds: '', table: 'y', tmpFlag: 0, sources: ['runtime'], wfs: [] },
+      ],
+    })
+    const snap = JSON.stringify(doc.edges)
+    const out = focusAllEdges(doc)
+    expect(out.edges.filter((e) => e.kind === 'dep_focus')).toHaveLength(2)  // 双源 dep + design dep_design
+    expect(out.edges.find((e) => e.id === 'gle3')!.kind).toBe('field_dep')  // field 边语义不动
+    expect(out.edges.find((e) => e.kind === 'dep_focus')!.label).toBe('wf101·n_sql_1 / wf102·n_sql_3（双源）')
+    expect(JSON.stringify(doc.edges)).toBe(snap)  // 原文档未被修改（computed 层浅拷贝语义）
+  })
+})
+
+describe('annotateStmtNo（Task 8 实例追溯边标注）', () => {
+  const doc = buildTableLineageDoc([
+    { from: 'a', to: 'b', task: 'etl_ab (E1)', wf: 'W' },
+    { from: 'b', to: 'c', task: 'etl_bc (E1)', wf: 'W' },
+  ])
+
+  it('同 (from,to) 多语句升序去重追加 #n；无命中边不动；不改原文档', () => {
+    const snap = JSON.stringify(doc.edges)
+    const out = annotateStmtNo(doc, [
+      { from: 'a', to: 'b', stmtNo: 2 },
+      { from: 'a', to: 'b', stmtNo: 1 },
+      { from: 'a', to: 'b', stmtNo: 1 },  // 重复去重
+      { from: 'x', to: 'y', stmtNo: 5 },  // 图中无此边 → 忽略
+    ])
+    expect(out.edges.find((e) => e.source === 'a')!.label).toBe('etl_ab (E1) #1 #2')
+    expect(out.edges.find((e) => e.source === 'b')!.label).toBe('etl_bc (E1)')  // 无 stmt 命中不改
+    expect(JSON.stringify(doc.edges)).toBe(snap)  // 原文档未被修改（浅拷贝语义）
+  })
+
+  it('空追溯行（mock 样例无实例维度）→ 边 label 原样', () => {
+    const out = annotateStmtNo(doc, [])
+    expect(out.edges.map((e) => e.label)).toEqual(['etl_ab (E1)', 'etl_bc (E1)'])
   })
 })

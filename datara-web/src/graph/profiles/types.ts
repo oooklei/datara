@@ -249,4 +249,6 @@ export interface ViewProfile {
   onRunCheck?: (doc: GraphDocument) => Promise<string | void>
   /** 边点击（如 QC fail 边 → 异常单联动浮窗） */
   onEdgeClick?: (edge: GEdge, doc: GraphDocument) => void
+  /** Task 7 血缘交互：声明本视角支持「以此为中心」——节点双击/右键菜单上抛 center-node 事件（宿主重拉） */
+  nodeCenter?: boolean
 }

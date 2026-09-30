@@ -14,7 +14,9 @@
 trace 接口按 instance_id 过滤呈现实例快照原貌。
 
 表名输出剥 db 前缀（对齐前端 MetaTable.name 裸表名契约与 tables.yaml 对账口径；
-临时表注册名 raw_txt 本无前缀不受影响）。
+临时表注册名 raw_txt 本无前缀不受影响）。graph 聚合键/节点 fq 同口径 _bare 归一
+（1.9 实测：design 落数据源 ID 前缀、runtime 落数据源名前缀或裸名，原值聚合会裂边
+致双源永不命中；归一后节点 ds 保留该端点首个出现形态，file:{path} 原样不剥）。
 """
 
 import json
@@ -268,12 +270,11 @@ def lineage_graph(
 ):
     """聚合 t_lineage_edge / t_lineage_field 为图（标准响应包 data 内）：
 
-    - 聚边：同 (from,to) 一条边（field 级按字段行自身 from/to 表对分组），
-      sources=全量行 src_type 去重，refs=同 (wf,node,stmt) 多实例保留最新的明细；
+    - 聚边：同 (from,to) 一条边（键 _bare 裸表名归一，field 级按字段行自身 from/to
+      表对分组），sources=全量行 src_type 去重，refs=同 (wf,node,stmt) 多实例保留最新
+      的明细；边端点/节点 fq 输出裸表名（ds 保留首见原形态），file:{path} 原样保留；
     - 中心表扩散：_bare 归一化精确匹配优先、endsWith 兜底，BFS 沿 direction 方向
-      （visited 防环），depth 截跳数，limit 截节点数（超出 truncated=true）；
-    - 归一化防护：from/to 输出保留落库原值（file:{path} 完整保留），_bare 仅用于
-      中心表匹配与节点拆分，不改写边端点。
+      （visited 防环），depth 截跳数，limit 截节点数（超出 truncated=true）。
     """
     table = (table or "").strip() or None
 
@@ -300,19 +301,22 @@ def lineage_graph(
             field_query = field_query.filter(LineageEdge.src_type == source)
         groups: dict = {}
         for f, e in field_query.all():
+            # 分组键表部 _bare 归一（同表级口径：design ds-ID 前缀 / runtime ds 名前缀合一）
             groups.setdefault(
-                (f.from_table, f.from_field, e.to_table, f.to_field), []).append((f, e))
+                (_bare(f.from_table), f.from_field, _bare(e.to_table), f.to_field), []).append((f, e))
         for (ft, ff, tt, tf), grp in groups.items():
             best: dict = {}  # 同 (wf,node,stmt) 多实例保留最新（edge.id 最大）
-            fq_from, fq_to = _field_fq(ft, ff), _field_fq(tt, tf)
+            fq_from, fq_to = _field_fq(ft, ff), _field_fq(tt, tf)  # 表部已归一的裸表名
             for f, e in grp:
                 key = (e.wf_code, e.node_id, e.stmt_no)
                 if key not in best or e.id > best[key].id:
                     best[key] = (f, e)
-                for fq in (fq_from, fq_to):
+                # 节点 ds/表部取首个出现原形态（raw），键用归一 fq 与边端点一致
+                for raw, fq in ((_field_fq(f.from_table, f.from_field), fq_from),
+                                (_field_fq(e.to_table, f.to_field), fq_to)):
                     acc = node_acc.get(fq)
                     if acc is None:
-                        ds, tbl = _split_fq(fq)
+                        ds, tbl = _split_fq(raw)
                         acc = node_acc[fq] = {"ds": ds, "table": tbl, "tmp": False,
                                               "sources": set(), "wfs": set()}
                     acc["sources"].add(f.src_type)
@@ -326,24 +330,33 @@ def lineage_graph(
                          for f, e in sorted(best.values(), key=lambda fe: fe[1].id)],
             })
     else:
-        # table 级：同 (from,to) 聚一条边；sources 取全量行（多实例去重不丢 src_type）
+        # table 级：同 (from,to) 聚一条边；聚合键 _bare 归一（1.9 实测：design 落数据源
+        # ID 前缀 9.x、runtime 落数据源名前缀 ec.x 或裸名，同物理血缘原值聚合会裂边、
+        # 双源 sources 永不命中）；sources 取全量行（多实例去重不丢 src_type）；
+        # 节点 fq=裸表名（全局一致），ds 取该端点首个出现形态（ID/名前缀均可，不硬造）
         groups = {}
         for r in edge_query.all():
-            groups.setdefault((r.from_table, r.to_table), []).append(r)
+            groups.setdefault((_bare(r.from_table), _bare(r.to_table)), []).append(r)
         for (frm, to), grp in groups.items():
+            best: dict = {}  # refs：组内裸端点恒定，同 (wf,node,stmt) 归一保留最新
+            for r in grp:
+                key = (r.wf_code, r.node_id, r.stmt_no)
+                if key not in best or r.id > best[key].id:
+                    best[key] = r
             edges_out.append({
                 "from": frm, "to": to, "level": "table",
                 "sources": sorted({r.src_type for r in grp}),
                 "refs": [{"wfCode": r.wf_code, "nodeId": r.node_id, "stmtNo": r.stmt_no}
-                         for r in sorted(_latest_edges(grp), key=lambda x: x.id)],
+                         for r in sorted(best.values(), key=lambda x: x.id)],
             })
             for r in grp:
-                for fq in (frm, to):
-                    if not fq:
+                for raw in (r.from_table, r.to_table):
+                    if not raw:
                         continue  # 空来源（INSERT..VALUES 单边）不产 from 节点
+                    fq = _bare(raw)  # 与聚合键同口径（file: 原样保留）
                     acc = node_acc.get(fq)
                     if acc is None:
-                        ds, tbl = _split_fq(fq)
+                        ds, tbl = _split_fq(raw)
                         acc = node_acc[fq] = {"ds": ds, "table": tbl, "tmp": False,
                                               "sources": set(), "wfs": set()}
                     acc["sources"].add(r.src_type)

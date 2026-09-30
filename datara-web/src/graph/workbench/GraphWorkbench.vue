@@ -54,6 +54,8 @@ const props = defineProps<{
 const emit = defineEmits<{
   select: [id: string | null]
   'pick-tasks': [{ items: DagPickItem[] }]
+  /** Task 7 血缘交互：profile.nodeCenter 视角下，节点双击/右键「以此为中心」上抛宿主重拉 */
+  'center-node': [id: string]
 }>()
 
 const graphStore = useGraphStore()
@@ -857,12 +859,16 @@ function onNodeClick(ev: NodeMouseEvent) {
   emit('select', ev.node.id)
 }
 
-/** W1 查询增强：双击节点直接打开页面化浮窗（运行详情/实时数据/看板），免先选中再点「页面」 */
+/** W1 查询增强：双击节点直接打开页面化浮窗（运行详情/实时数据/看板），免先选中再点「页面」；
+ * Task 7：无页面且 profile.nodeCenter（血缘分析）→ 上抛 center-node 宿主以此节点为中心重拉 */
 function onNodeDblClick(ev: NodeMouseEvent) {
   if (ev.node.id.startsWith('grp:')) return
   const n = doc.value?.nodes.find((x) => x.id === ev.node.id)
   const p = n ? props.profile.nodeTypes[n.type]?.page : undefined
-  if (!n || !p) return
+  if (!n || !p) {
+    if (n && props.profile.nodeCenter) emit('center-node', n.id)
+    return
+  }
   if (p.mode && p.mode !== effMode.value) return
   openFloat(`page_${n.id}`, p.title, p.comp, p.w ?? 540, p.h ?? 400, { node: n, doc: graphStore.doc })
 }
@@ -992,6 +998,12 @@ function ctxRename() {
   }).catch(() => { /* 取消 */ })
 }
 function ctxGroup() { groupSelected(); closeCtx() }
+/** Task 7 血缘「以此为中心」（profile.nodeCenter 视角右键菜单项） */
+function ctxCenter() {
+  const id = ctx.value.nodeId
+  closeCtx()
+  if (id) emit('center-node', id)
+}
 function ctxDelete() {
   if (ctx.value.nodeId) void removeNodes([ctx.value.nodeId])
   closeCtx()
@@ -1209,6 +1221,7 @@ function ctxLayout() { onLayout(); closeCtx() }
       </template>
       <template v-else-if="ctx.nodeId">
         <div class="ctx-item" @click="selectedId = ctx.nodeId; closeCtx()">属性面板</div>
+        <div v-if="profile.nodeCenter" class="ctx-item" @click="ctxCenter">以此为中心</div>
         <template v-if="effMode === 'edit'">
           <div v-if="selectedIds.size > 1 && selectedIds.has(ctx.nodeId)" class="ctx-item" @click="ctxGroup">成组（{{ selectedIds.size }} 个节点）</div>
           <div class="ctx-item" @click="ctxRename">重命名</div>

@@ -5,6 +5,8 @@
 
 export interface GNodeData {
   name: string
+  /** Task 7 血缘临时表标记（buildLineageGraphDoc 注入自 tmpFlag；DataNode 虚线边框） */
+  tmp?: boolean
   [k: string]: unknown
 }
 
@@ -21,7 +23,9 @@ export interface GNode {
  * 边语义闭合联合（各 profile.edgeKinds 全集 + 后续 wave 追加类型）。
  * 来源映射：
  * - dag/topo/etl/stream: flow / branch（条件分支）/ branch_true / branch_false / dep / lag
- * - lineage: dep / dep_unlinked / field_dep（M09 字段级血缘，对齐 data.js fieldLineage）
+ * - lineage: dep（运行事实·实线）/ dep_design（设计推导·虚线，Task 5 来源视觉体系）/
+ *   dep_unlinked / field_dep（M09 字段级血缘，对齐 data.js fieldLineage）/
+ *   dep_focus（Task 7 一键影响分析/源头追踪的全链聚焦高亮态）
  * - relation: produce / refer / call / tag
  * - er: rel_1n / rel_n1 / rel_11 / rel_nm
  * - quality: bind_pass / bind_fail / bind_disabled
@@ -33,7 +37,9 @@ export type GEdgeKind =
   | 'branch_false'
   | 'dep'
   | 'lag'
+  | 'dep_design'
   | 'dep_unlinked'
+  | 'dep_focus'
   | 'field_dep'
   | 'produce'
   | 'refer'

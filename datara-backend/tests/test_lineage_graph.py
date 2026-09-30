@@ -4,7 +4,11 @@
 1. 空库空图；2. design+runtime 同表对聚合（sources 双值去重 + refs 多实例去重）；
 3. source 筛选；4. wfCode 过滤；5. 中心表扩散 direction/depth；6. limit 截断
 （扩散 + 全图两形态）；7. 环图不进环；8. field 级边带 transform + 表部匹配；
-9. file: 边 _bare 特判（不误剥路径、输出保留原值）；10. tmpFlag 节点聚合 + opaque 重算。
+9. file: 边 _bare 特判（不误剥路径、file: 端点原样保留）；10. tmpFlag 节点聚合 + opaque 重算；
+11. 三形态聚合一（design ds-ID 前缀 / runtime ds 名前缀或裸名 → 双源命中，1.9 实测回归）；
+12. 归一防误伤（字段级两形态聚合一不串行、file: 边不受归一影响）。
+
+口径：聚合键/边端点/节点 fq 均 _bare 裸表名归一（对齐展示层），节点 ds 保留首见原形态。
 
 造数：design 行走真实 API（保存含 sql 节点的工作流，同 test_wf_design_lineage）；
 runtime 行/独立定义直插 sqlite（conftest 内存库），零外部依赖。
@@ -79,17 +83,17 @@ def test_graph_design_runtime_same_pair_dedup_sources(client, db_session):
     d = _graph(client)
     assert len(d["edges"]) == 1, "同 (from,to) 聚合为一条边"
     e = d["edges"][0]
-    assert (e["from"], e["to"], e["level"]) == ("ods.a", "dw.t", "table")
+    assert (e["from"], e["to"], e["level"]) == ("a", "t", "table"), "端点输出裸表名"
     assert e["sources"] == ["design", "runtime"], "src_type 去重双值"
     assert {(r["wfCode"], r["nodeId"], r["stmtNo"]) for r in e["refs"]} == {
         (wf["code"], "n1", 1), (wf["code"], "r1", 1)}
     assert all(set(r) == {"wfCode", "nodeId", "stmtNo"} for r in e["refs"])
 
     nodes = {n["fq"]: n for n in d["nodes"]}
-    assert set(nodes) == {"ods.a", "dw.t"}
-    assert nodes["ods.a"]["sources"] == ["design", "runtime"]
-    assert nodes["ods.a"]["wfs"] == [wf["code"]]
-    assert nodes["dw.t"]["ds"] == "dw" and nodes["dw.t"]["table"] == "t"
+    assert set(nodes) == {"a", "t"}
+    assert nodes["a"]["sources"] == ["design", "runtime"]
+    assert nodes["a"]["wfs"] == [wf["code"]]
+    assert nodes["t"]["ds"] == "dw" and nodes["t"]["table"] == "t"
 
 
 # ---------------- source 筛选 ----------------
@@ -100,10 +104,10 @@ def test_graph_source_filter(client, db_session):
     _rt_edge(db_session, wf["code"], "rt.b", "dw.t2")
 
     d = _graph(client, source="design")
-    assert [(e["from"], e["to"]) for e in d["edges"]] == [("ods.a", "dw.t")]
+    assert [(e["from"], e["to"]) for e in d["edges"]] == [("a", "t")]
     assert all(e["sources"] == ["design"] for e in d["edges"])
     d = _graph(client, source="runtime")
-    assert [(e["from"], e["to"]) for e in d["edges"]] == [("rt.b", "dw.t2")]
+    assert [(e["from"], e["to"]) for e in d["edges"]] == [("b", "t2")]
 
 
 # ---------------- wfCode 过滤 ----------------
@@ -115,7 +119,7 @@ def test_graph_wfcode_filter(client):
     _save(client, wf2, [_sql_node("n1", "INSERT INTO dw.t2 SELECT x FROM ods.a2")])
 
     d = _graph(client, wfCode=wf1["code"])
-    assert [(e["from"], e["to"]) for e in d["edges"]] == [("ods.a1", "dw.t1")]
+    assert [(e["from"], e["to"]) for e in d["edges"]] == [("a1", "t1")]
     assert all(n["wfs"] == [wf1["code"]] for n in d["nodes"])
     assert {r["wfCode"] for e in d["edges"] for r in e["refs"]} == {wf1["code"]}
 
@@ -134,17 +138,17 @@ def test_graph_diffusion_direction_and_depth(client):
     _chain_wf(client, "扩散链", 3)
 
     d = _graph(client, table="dw.c1")
-    assert _fqs(d) == {"dw.c0", "dw.c1", "dw.c2", "dw.c3"}
+    assert _fqs(d) == {"c0", "c1", "c2", "c3"}
     assert d["truncated"] is False
 
     d = _graph(client, table="c1", direction="upstream")  # 裸表名精确匹配
-    assert _fqs(d) == {"dw.c0", "dw.c1"}
+    assert _fqs(d) == {"c0", "c1"}
 
     d = _graph(client, table="c1", direction="downstream")
-    assert _fqs(d) == {"dw.c1", "dw.c2", "dw.c3"}
+    assert _fqs(d) == {"c1", "c2", "c3"}
 
     d = _graph(client, table="dw.c1", depth=1)
-    assert _fqs(d) == {"dw.c0", "dw.c1", "dw.c2"}, "depth=1 只扩一跳"
+    assert _fqs(d) == {"c0", "c1", "c2"}, "depth=1 只扩一跳"
 
 
 def test_graph_diffusion_diamond_converge(client):
@@ -157,7 +161,7 @@ def test_graph_diffusion_diamond_converge(client):
         _sql_node("n4", "INSERT INTO dw.D SELECT x FROM dw.C"),
     ])
     d = _graph(client, table="dw.A", direction="both")
-    assert _fqs(d) == {"dw.A", "dw.B", "dw.C", "dw.D"}, "分叉经 B/C 汇聚到 D"
+    assert _fqs(d) == {"A", "B", "C", "D"}, "分叉经 B/C 汇聚到 D"
     assert d["truncated"] is False
     pairs = [(e["from"], e["to"]) for e in d["edges"]]
     assert len(pairs) == 4 and len(set(pairs)) == 4, "汇聚点 visited 防重，聚边不重复"
@@ -177,9 +181,9 @@ def test_graph_seeds_over_limit_truncated(client):
 def test_graph_limit_truncated_diffusion(client):
     _chain_wf(client, "扩散截断", 4)  # c0→c1→c2→c3→c4
     d = _graph(client, table="dw.c0", direction="downstream", limit=2)
-    assert _fqs(d) == {"dw.c0", "dw.c1"}
+    assert _fqs(d) == {"c0", "c1"}
     assert d["truncated"] is True
-    assert [(e["from"], e["to"]) for e in d["edges"]] == [("dw.c0", "dw.c1")]
+    assert [(e["from"], e["to"]) for e in d["edges"]] == [("c0", "c1")]
 
 
 def test_graph_limit_truncated_full_graph(client):
@@ -206,7 +210,7 @@ def test_graph_cycle_no_revisit(client):
         _sql_node("n3", "INSERT INTO dw.a SELECT x FROM dw.c"),
     ])
     d = _graph(client, table="dw.a")
-    assert _fqs(d) == {"dw.a", "dw.b", "dw.c"}, "visited 防环，不重入不爆炸"
+    assert _fqs(d) == {"a", "b", "c"}, "visited 防环，不重入不爆炸"
     assert len(d["edges"]) == 3 and d["truncated"] is False
 
 
@@ -220,17 +224,17 @@ def test_graph_field_level_transform(client):
     d = _graph(client, level="field")
     assert len(d["edges"]) == 1
     e = d["edges"][0]
-    assert (e["from"], e["to"], e["level"]) == ("ods.orders.amount", "dw.t.amt", "field")
+    assert (e["from"], e["to"], e["level"]) == ("orders.amount", "t.amt", "field")
     assert e["sources"] == ["design"]
     assert len(e["refs"]) == 1
     ref = e["refs"][0]
     assert (ref["wfCode"], ref["nodeId"], ref["stmtNo"]) == (wf["code"], "n1", 1)
     assert "0.9" in ref["transform"]
-    assert _fqs(d) == {"ods.orders.amount", "dw.t.amt"}
+    assert _fqs(d) == {"orders.amount", "t.amt"}
 
     # 中心表按字段节点表部匹配（field 级节点名含字段段，裸表名/带前缀均可命中）
     d = _graph(client, level="field", table="dw.t")
-    assert _fqs(d) == {"ods.orders.amount", "dw.t.amt"}
+    assert _fqs(d) == {"orders.amount", "t.amt"}
 
 
 # ---------------- file: 边 _bare 特判 ----------------
@@ -247,13 +251,13 @@ def test_graph_file_edge_original_fq_and_center_match(client, db_session):
 
     d = _graph(client)
     nodes = {n["fq"]: n for n in d["nodes"]}
-    assert set(nodes) == {"file:x/y.csv", "dw.t9"}, "边端点输出保留原值不剥前缀"
+    assert set(nodes) == {"file:x/y.csv", "t9"}, "file: 端点原样保留，db 前缀端点归一剥前缀"
     assert nodes["file:x/y.csv"]["table"] == "file:x/y.csv" and nodes["file:x/y.csv"]["ds"] == ""
-    assert nodes["dw.t9"]["ds"] == "dw" and nodes["dw.t9"]["table"] == "t9"
+    assert nodes["t9"]["ds"] == "dw" and nodes["t9"]["table"] == "t9"
 
     # 中心表匹配：全名精确 + endswith 兜底（裸路径传入）
-    assert _fqs(_graph(client, table="file:x/y.csv")) == {"file:x/y.csv", "dw.t9"}
-    assert _fqs(_graph(client, table="x/y.csv")) == {"file:x/y.csv", "dw.t9"}
+    assert _fqs(_graph(client, table="file:x/y.csv")) == {"file:x/y.csv", "t9"}
+    assert _fqs(_graph(client, table="x/y.csv")) == {"file:x/y.csv", "t9"}
 
 
 # ---------------- tmpFlag 节点聚合 + opaque 重算 ----------------
@@ -271,10 +275,67 @@ def test_graph_tmp_flag_and_opaques(client, db_session):
 
     d = _graph(client)
     nodes = {n["fq"]: n for n in d["nodes"]}
-    assert nodes["ods.tmp1"]["tmpFlag"] == 1 and nodes["dw.h"]["tmpFlag"] == 1
-    assert nodes["dw.t"]["tmpFlag"] == 0
+    assert nodes["tmp1"]["tmpFlag"] == 1 and nodes["h"]["tmpFlag"] == 1
+    assert nodes["t"]["tmpFlag"] == 0
     assert d["opaques"] == [{"wfCode": 99001, "nodeId": "p1", "type": "python"}]
 
     # wfCode 过滤 / 中心表扩散：opaque 随工作流范围收窄
     assert _graph(client, wfCode=wf["code"])["opaques"] == []
     assert _graph(client, table="dw.t")["opaques"] == []
+
+
+# ---------------- 三形态聚合一（1.9 实测缺陷回归） ----------------
+
+def test_graph_mixed_prefix_forms_merge_dual_source(client, db_session):
+    """design 落数据源 ID 前缀（9.a→4.b）/ runtime 落数据源名前缀（ec.a）或裸名（b）：
+    同一物理血缘按 _bare 归一聚成一条边，sources 双值命中（1.9 实测：原值聚合裂边
+    design 1 条 + runtime N 条零合并，双源永不命中）。"""
+    wf_d = _mk_wf(client, "设计态ID前缀")
+    _save(client, wf_d, [_sql_node("n1", "INSERT INTO 4.b SELECT x FROM 9.a")])
+    _rt_edge(db_session, 97, "ec.a", "b", node_id="r1")
+
+    d = _graph(client)
+    assert len(d["edges"]) == 1, "两形态同一物理血缘不裂边"
+    e = d["edges"][0]
+    assert (e["from"], e["to"]) == ("a", "b")
+    assert e["sources"] == ["design", "runtime"], "双源归一命中（本缺陷核心断言）"
+    assert {(r["wfCode"], r["nodeId"]) for r in e["refs"]} == {
+        (wf_d["code"], "n1"), (97, "r1")}, "refs 两来源明细合并收集"
+    nodes = {n["fq"]: n for n in d["nodes"]}
+    assert set(nodes) == {"a", "b"}, "多形态同表聚为单节点（fq 全局一致）"
+    assert nodes["a"]["sources"] == ["design", "runtime"]
+    # design SQL 解析落库实形态 dw.9.a（datasource 配置名 + ds-ID + 表名三段），
+    # ds=_split_fq 首段保留原形态不硬造（"dw.9"/"9"/"ec" 取决于首见行）
+    assert nodes["a"]["ds"] in ("9", "ec", "dw.9"), "ds 取首见原形态（不硬造）"
+    assert nodes["b"]["table"] == "b"
+
+
+# ---------------- 归一防误伤（字段级 + file:） ----------------
+
+def test_graph_field_mixed_prefix_and_file_guard(client, db_session):
+    """①file: 路径端点不受 _bare 归一影响（不剥不并）；②design（ds-ID 前缀）与
+    runtime（ds 名前缀）同表同字段归一为一条字段边、双源命中，不同字段不串行。"""
+    wf = _mk_wf(client, "字段归一防误伤")
+    _save(client, wf, [
+        _sql_node("n1", "INSERT INTO 4.pay SELECT o.amount * 0.9 AS amt FROM 9.orders o")])
+    _rt_edge(db_session, wf["code"], "ec.orders", "pay", node_id="r1",
+             fields=[("ec.orders", "amount", "amt", "amount")])
+    _rt_edge(db_session, wf["code"], "file:x/y.csv", "dw.ext", node_id="r2")
+
+    d = _graph(client, level="field")
+    fe = [e for e in d["edges"] if e["to"] == "pay.amt"]
+    assert len(fe) == 1, "两形态同字段聚合为一条字段边（不串不裂）"
+    assert (fe[0]["from"], fe[0]["to"]) == ("orders.amount", "pay.amt")
+    assert fe[0]["sources"] == ["design", "runtime"], "字段级双源归一命中"
+    assert {(r["wfCode"], r["nodeId"]) for r in fe[0]["refs"]} == {
+        (wf["code"], "n1"), (wf["code"], "r1")}
+    design_ref = next(r for r in fe[0]["refs"] if r["nodeId"] == "n1")
+    assert "0.9" in design_ref["transform"]
+    # field 级图只聚合字段行；file 边仅表级行无字段行，不出现于 field 图（表级段验证）
+    assert _fqs(d) >= {"orders.amount", "pay.amt"}
+
+    # 表级同口径：orders→pay 一条双源边 + file: 边独立保留
+    dt = _graph(client)
+    by_pair = {(e["from"], e["to"]): e for e in dt["edges"]}
+    assert by_pair[("orders", "pay")]["sources"] == ["design", "runtime"]
+    assert by_pair[("file:x/y.csv", "ext")]["sources"] == ["runtime"], "file: 边不剥不并"

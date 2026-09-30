@@ -28,6 +28,10 @@ const blind = computed(() => props.gnode.data.blind === true)
 const ports = computed(() => props.schema.ports?.(props.gnode.data) ?? [])
 /** W1 必填完整性：required 字段在当前分型下为空 → 画布「未配置」角标（title 列缺失项，与校验面板/保存闸门共用判定） */
 const missing = computed(() => requiredMissing(props.schema, props.gnode.data))
+/** Task 5 血缘来源体系：sources 仅 design（无运行佐证）→「未验」角标（注入自 unverified） */
+const unverified = computed(() => props.gnode.data.unverified === true)
+/** Task 7 血缘临时表标记：tmpFlag=true（注入自 tmp）→ 虚线边框（对齐 dep_design 虚线语义） */
+const tmpNode = computed(() => props.gnode.data.tmp === true)
 /** 设备形态：拓扑视角专用（主机/交换机/服务器/中间件 logo 图标卡片） */
 const isDevice = computed(() => props.schema.shape === 'device')
 const art = computed(() => NODE_ART[props.schema.type] ?? NODE_ART_FALLBACK)
@@ -69,7 +73,7 @@ const art = computed(() => NODE_ART[props.schema.type] ?? NODE_ART_FALLBACK)
   </div>
 
   <!-- 普通节点：单输入单输出 -->
-  <div v-else class="gnode" :class="[stClass, { selected, blind }]">
+  <div v-else class="gnode" :class="[stClass, { selected, blind, tmp: tmpNode }]">
     <Handle type="target" :position="Position.Left" />
     <div class="n-ico" :style="{ background: schema.color }">{{ schema.icon }}</div>
     <div style="min-width:0;flex:1">
@@ -84,6 +88,7 @@ const art = computed(() => NODE_ART[props.schema.type] ?? NODE_ART_FALLBACK)
     <div class="n-status" />
     <span v-if="attempt > 1" class="n-attempt">#{{ attempt }}</span>
     <span v-if="missing.length" class="n-miss" :title="'未配置：' + missing.join('、')">!</span>
+    <span v-if="unverified" class="n-unv" title="未验证：仅设计态血缘，暂无运行实例佐证">未验</span>
     <Handle type="source" :position="Position.Right" />
   </div>
 </template>
@@ -105,4 +110,8 @@ const art = computed(() => NODE_ART[props.schema.type] ?? NODE_ART_FALLBACK)
 .gnode .n-health{width:10px;height:10px;border-radius:50%;flex-shrink:0}
 /* W1 必填未配置角标（右上角悬浮，与 n-health 行内圆点不冲突；hover title 列缺失项） */
 .gnode .n-miss{position:absolute;top:-7px;right:-7px;z-index:2;width:15px;height:15px;border-radius:50%;background:var(--warn,#d97706);color:#fff;font-size:10px;font-weight:700;line-height:15px;text-align:center;border:2px solid #fff;box-shadow:0 1px 3px rgba(15,23,42,.25);cursor:help;pointer-events:auto}
+/* Task 5 血缘「未验证」角标（右下角悬浮，避开左下 n-ref / 右上 n-miss；琥珀色对齐 dep_design 边） */
+.gnode .n-unv{position:absolute;bottom:-8px;right:-8px;z-index:2;background:#d97706;color:#fff;font-size:9.5px;font-weight:700;border-radius:999px;padding:1px 5px;border:2px solid #fff;box-shadow:0 1px 3px rgba(15,23,42,.25);pointer-events:auto;cursor:help}
+/* Task 7 血缘临时表：虚线边框（对齐 dep_design 虚线语义；0,2,0 特异性覆盖 theme.css .gnode 实线边框） */
+.gnode.tmp{border-style:dashed}
 </style>

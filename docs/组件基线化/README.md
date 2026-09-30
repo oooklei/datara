@@ -176,3 +176,31 @@
 | 1.9 实测 | 浏览器回归 15/15 + API 全链探针 11/11（redraft→改底稿→体检→publish v2→versions [2,1] 双留档→discard 回滚）；sql 组件实测发至 v2，其余 17 组件 v1 不变 |
 
 设计全文：`docs/superpowers/specs/2026-09-30-baseline-revision-design.md`（含 R1/R2/R3 缺陷修复与决策记录 D1-D4）。
+
+## 8. 血缘关系三层汇总实施记录（2026-09-30）
+
+> 上游设计：[2026-09-30-lineage-design.md](../superpowers/specs/2026-09-30-lineage-design.md)；批次一 commit 39fa045（后端），批次二（前端 Task 5-8）待 commit。
+
+**三层架构**：设计态解析（`datara-backend/common/lineage_extract.py` 的 `extract_wf_lineage` 纯函数，按 35 组件分派矩阵静态解析节点 config，信封层异常隔离）→ 汇总（`GET /lineage/graph` 聚合端点：design∪runtime 按 fq 去重聚合 + 中心表 BFS 扩散 + 环检测 + 截断）→ 消费（前端 LineageView 表级图谱增强 / 字段级映射图 / 实例追溯模式化）。存储复用 t_lineage_edge / t_lineage_field 加 `src_type` 列（design/runtime，instance_id=0 即设计态行，存量零迁移）；工作流保存/发布/删除/回滚四处触发 delete-then-reinsert 重算，另设 `POST /lineage/redesign/{wfCode}` 按需重算。
+
+**35 组件解析矩阵结论**：
+
+| 产边方式 | 组件 | 说明 |
+|---|---|---|
+| 表级直读（+字段级） | sync / src_base_orch / tgt_base_orch / endpoint_select / condition_set | config src/tgt 表 key 直读；columnMap 非空→字段映射 |
+| SQL 解析（+字段级） | sql | sql_text → 复用 parse_sql_lineage（设计/运行同口径）；SELECT * 降级只落表级 |
+| 拓扑回溯（+字段级） | field_map / field_map_union | 沿 DAG 回溯前驱输入表 + columnMap（union 反向） |
+| file: 边特判 | file_sync_orch | 文件↔表边（assetType=file） |
+| 穿透不产边 | 模板链 / 逻辑控制 13 组件（start/end/fork/join/merge/switch/conditions/delay/loop/dependent/variable/assert） | 拓扑自然连通 |
+| opaque 记不透明节点 | python / shell / ssh / http / procedure / file / notify（外部组件）；stream_input / stream_fuse / stream_output / page_board（流处理） | P1 声明不采边（流处理 topic↔表契约后置） |
+
+**两批次交付与验收**：
+
+| 批次 | 交付 | 验收 |
+|---|---|---|
+| 批次一（后端，commit 39fa045，14 文件 +2165/-71） | src_type 加列；lineage_extract 解析器；四处触发重算 + redesign 端点；/lineage/graph 聚合重写（替换 M-B0 的 stub） | pytest 269→327 passed（+58：解析矩阵 34 + 设计态触发 11 + 聚合 14 等）；1.9 部署冒烟 graph 200（nodes=51 / edges=46 / opaques=35） |
+| 批次二（前端 Task 5-8，待 commit） | fetchLineageGraph API + 三态边视觉（runtime 实线蓝 / design 虚线琥珀 / 双源徽标）+「未验」角标 + 来源筛选/图例/截断提示 + ?table= 深链归一；FieldLineageMap.vue 字段级映射图（SVG 连线 + transform 悬浮标签 + ?level=field 深链）；方向/深度下推服务端 + 以此为中心 + 面包屑栈 + ⚡影响分析/源头追踪 + tmp 虚线节点 + 详情抽屉升级；trace 实例上下文条 + stmt_no 边序号 + 竞态守卫（graphLoadSeq/impactSeq/traceDetailSeq） | vitest 368→415 全绿 + vue-tsc 0 错 |
+
+**遗留取舍**：详情抽屉「最近采集」未实现（后端 graph 节点契约无时间元数据，遵循不改后端约束）；field 挂靠仅首边（trace 展示可能错位，后端既有行为）；边 kind magic string 未常量化；全图模式 opaques 每请求重算（`_collect_opaques` 为缓存缝）；rebuild 部分写库失败路径未测；deriveImpact O(V×E)（200 边规模可接受，量大建议预建邻接 Map）；dep_focus 以 edge kind 承载瞬态高亮（后续叠加高亮建议 overlay 标记）。
+
+**1.9 实测修复（2026-10-01）**：①端点形态差异致双源不命中——design 落数据源 ID 前缀（`9.ods_order→4.dwd_order_sync_test`，SQL 解析另含 datasource 配置名成三段）/ runtime 落数据源名前缀或裸名（`ec_retail.ods_order→dwd_order_sync_test`），graph 原值聚合裂边（design 1 条 + runtime 16 条零合并）致双源永不命中；已改聚合层 `_bare()` 裸表名归一（file: 特判保留、节点 fq=裸表名、ds 取首见原形态、refs/wfs/sources 归一合并），存量零迁移，1.9 复验双源命中（`ods_order→dwd_order_sync_test` sources=design+runtime、双源节点 2 个、来源筛选三态 12/1/12）。②wf97 存量文档 PUT save 触发新图校验闸门 422，设计态重算走 `POST /lineage/redesign/{wfCode}` 兜底正常。

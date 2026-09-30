@@ -5,7 +5,7 @@
  */
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import {
-  lineageStats, lineageTrace, listFieldLineage, listTableLineage,
+  fetchLineageGraph, lineageStats, lineageTrace, listFieldLineage, listTableLineage,
 } from '../lineageApi'
 
 const fetchMock = vi.fn()
@@ -91,5 +91,51 @@ describe('/lineage/stats 与 /lineage/trace 契约', () => {
   it('code!==0 → 抛 Error(msg)（http 统一语义）', async () => {
     stubRes(null, 5100, '实例不存在')
     await expect(lineageTrace('nope')).rejects.toThrow('实例不存在')
+  })
+})
+
+describe('/lineage/graph 契约（Task 5 血缘图聚合）', () => {
+  it('最小参 → GET /lineage/graph?level=table（level 必传）', async () => {
+    stubRes({ nodes: [], edges: [], opaques: [], truncated: false })
+    const res = await fetchLineageGraph({ level: 'table' })
+    const [url, init] = fetchMock.mock.calls[0]
+    expect(url).toBe('/api/v1/lineage/graph?level=table')
+    expect(init.method).toBe('GET')
+    expect(init.headers.token).toBe('tok-i5')
+    expect(res.truncated).toBe(false)
+  })
+
+  it('全参 → 查询串按序拼接（source/wfCode/table/direction/depth/limit）', async () => {
+    stubRes({ nodes: [], edges: [], opaques: [], truncated: false })
+    await fetchLineageGraph({
+      level: 'table', source: 'design', wfCode: 101, table: 'dwd_order_pay_detail',
+      direction: 'downstream', depth: 0, limit: 50,
+    })
+    expect(fetchMock.mock.calls[0][0]).toBe(
+      '/api/v1/lineage/graph?level=table&source=design&wfCode=101'
+      + '&table=dwd_order_pay_detail&direction=downstream&depth=0&limit=50',
+    )
+  })
+
+  it('返回 data 直出（nodes/edges/opaques/truncated 形状）', async () => {
+    stubRes({
+      nodes: [{
+        fq: 'dwd_order_pay_detail', ds: 'dw', table: 'dwd_order_pay_detail', tmpFlag: 0,
+        sources: ['design', 'runtime'], wfs: [101],
+      }],
+      edges: [{
+        from: 'ods_order', to: 'dwd_order_pay_detail', level: 'table',
+        sources: ['runtime'],
+        refs: [{ wfCode: 101, nodeId: 'n_sql_1', stmtNo: 0 }],
+      }],
+      opaques: [{ wfCode: 101, nodeId: 'n_x', type: 'notify', reason: '不产边' }],
+      truncated: true,
+    })
+    const res = await fetchLineageGraph({ level: 'field', source: 'all' })
+    expect(fetchMock.mock.calls[0][0]).toBe('/api/v1/lineage/graph?level=field&source=all')
+    expect(res.nodes[0]!.sources).toEqual(['design', 'runtime'])
+    expect(res.edges[0]!.refs[0]!.nodeId).toBe('n_sql_1')
+    expect(res.opaques[0]!.type).toBe('notify')
+    expect(res.truncated).toBe(true)
   })
 })

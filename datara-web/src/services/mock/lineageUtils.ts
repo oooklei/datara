@@ -4,8 +4,9 @@
  * 数据源 = dataStore.tableLineage / fieldLineage（图文档 lineageGraph 不动）。
  */
 import { dagreLayout } from '../../graph/layout/dagre'
-import type { GEdge, GNode, GraphDocument, ImpactSubgraph } from '../../graph/model'
+import type { GEdge, GEdgeKind, GNode, GraphDocument, ImpactSubgraph } from '../../graph/model'
 import type { FieldLineage, ImpactExample, MetaTable, TableLineage } from '../types'
+import type { LineageGraphEdge, LineageGraphResult } from '../lineageApi'
 
 const LAYER_KEYS = ['ODS', 'DIM', 'DWD', 'DWS', 'ADS'] as const
 
@@ -14,6 +15,12 @@ export function layerOf(name: string): string {
   const base = name.split('.')[0]
   const prefix = base.split('_')[0].toUpperCase()
   return (LAYER_KEYS as readonly string[]).includes(prefix) ? prefix : 'ODS'
+}
+
+/** 中心表命中判定（id 全名 / id 裸表名尾段 / kw 带前缀反查）：
+ * graph 文档节点 id 为数据源点分 fq，深链 ?table= 传裸表名时据此归一为命中节点的 fq。 */
+export function matchCenter(id: string, kw: string): boolean {
+  return id === kw || id.endsWith(`.${kw}`) || kw.endsWith(`.${id}`)
 }
 
 /** 表级血缘图：节点 = 边端点去重（元数据富化），边 = 加工流向（未入工作流 → dep_unlinked） */
@@ -94,31 +101,117 @@ export function buildFieldLineageDoc(fieldLineage: FieldLineage): GraphDocument 
   return dagreLayout(doc, { dir: 'LR' })
 }
 
-/** N 层上下游过滤：BFS 保留 center 及 depth 跳内可达节点与其间边 */
-export function filterByDepth(
-  doc: GraphDocument,
-  center: string,
-  dir: 'up' | 'down',
-  depth: number,
-): GraphDocument {
-  const reach = new Set<string>([center])
-  let frontier = new Set<string>([center])
-  for (let hop = 0; hop < depth; hop++) {
-    const next = new Set<string>()
-    doc.edges.forEach((e) => {
-      if (dir === 'down' && frontier.has(e.source) && !reach.has(e.target)) {
-        reach.add(e.target); next.add(e.target)
-      } else if (dir === 'up' && frontier.has(e.target) && !reach.has(e.source)) {
-        reach.add(e.source); next.add(e.source)
-      }
-    })
-    frontier = next
-    if (frontier.size === 0) break
+/* ---------- Task 5：GET /lineage/graph 聚合结果 → 图文档（来源视觉体系） ---------- */
+
+/** 聚边 → 边 kind + 基础 label：runtime 参与即实线 dep；仅 design → 虚线 dep_design。
+ * label 用 refs 合成（graph 契约无任务名，取 wfCode·nodeId；field 级取转换表达式）。 */
+function graphEdgeKindOf(e: LineageGraphEdge): { kind: GEdgeKind; base: string } {
+  if (e.level === 'field') {
+    return { kind: 'field_dep', base: e.refs.find((r) => r.transform)?.transform ?? '字段映射' }
   }
+  const parts = e.refs.slice(0, 2).map((r) => `wf${r.wfCode}·${r.nodeId}`)
+  if (e.refs.length > 2) parts.push(`等 ${e.refs.length} 处`)
+  const dual = e.sources.includes('design') && e.sources.includes('runtime')
+  return { kind: dual || e.sources.includes('runtime') ? 'dep' : 'dep_design', base: parts.join(' / ') }
+}
+
+/** graph 聚合结果 → 血缘图文档：
+ * 边三态 = 运行事实（dep 实线）/ 设计推导（dep_design 虚线）/ 双源（dep 实线 + label「（双源）」徽标）；
+ * 节点 sources 仅 design（无运行佐证）→ data.unverified=true（DataNode「未验」角标）；
+ * Task 7 数据面富化：ds（数据源）/ tmp（临时表→DataNode 虚线边框）/ wfs（参与工作流）/ sources
+ * → 详情抽屉 lineageRelated 展示。 */
+export function buildLineageGraphDoc(res: LineageGraphResult, metaTables?: MetaTable[]): GraphDocument {
+  const metaByName = new Map((metaTables ?? []).map((t) => [t.name, t]))
+  const nodes: GNode[] = res.nodes.map((n) => {
+    const layer = layerOf(n.table || n.fq)
+    const meta = metaByName.get(n.table || n.fq)
+    return {
+      id: n.fq,
+      type: `ln_${layer.toLowerCase()}`,
+      position: { x: 0, y: 0 },
+      data: {
+        name: n.fq,
+        layer,
+        domain: meta?.domain ?? '',
+        rows: meta?.rows ?? 0,
+        core: meta?.tags?.includes('核心') ?? false,
+        unverified: n.sources.length === 1 && n.sources[0] === 'design',
+        ds: n.ds || undefined,
+        tmp: !!n.tmpFlag,
+        wfs: [...n.wfs],
+        sources: [...n.sources],
+      },
+    }
+  })
+  const edges: GEdge[] = res.edges.map((e, i) => {
+    const { kind, base } = graphEdgeKindOf(e)
+    const dual = e.sources.includes('design') && e.sources.includes('runtime')
+    return {
+      id: `gle${i + 1}`,
+      source: e.from,
+      target: e.to,
+      kind,
+      // 双源标记优先于空 refs 兜底（双源佐证徽标不可丢），base 空 → 仅「（双源）」
+      label: dual ? `${base}（双源）` : (base || '设计推导'),
+    }
+  })
+  const isField = res.edges.some((e) => e.level === 'field')
+  const doc: GraphDocument = {
+    id: isField ? 'lineage_field' : 'lineage_table',
+    name: isField ? '字段级血缘' : '全域血缘（表级）',
+    version: 1,
+    meta: { profile: 'lineage', updatedAt: '2026-09-12 07:35' },
+    nodes,
+    edges,
+  }
+  return dagreLayout(doc, { dir: 'LR' })
+}
+
+/** graph 聚边 → TableLineage 行（影响分析 deriveImpact 的 BFS 输入；
+ * task/wf 契约无名称字段，以 refs 首个 wfCode·nodeId 合成展示名）。 */
+export function graphEdgesToRows(res: LineageGraphResult): TableLineage[] {
+  return res.edges.filter((e) => e.level === 'table').map((e) => {
+    const ref = e.refs[0]
+    return {
+      from: e.from,
+      to: e.to,
+      task: ref ? `wf${ref.wfCode}·${ref.nodeId}` : '设计推导',
+      wf: ref ? String(ref.wfCode) : '-',
+    }
+  })
+}
+
+/** Task 7 一键聚焦高亮：dep/dep_design 边 → dep_focus（lineage profile 高亮色 + 流动动画），
+ * 其余语义（field_dep / dep_unlinked）保持原样；浅拷贝不改原文档（computed 层消费）。 */
+export function focusAllEdges(doc: GraphDocument): GraphDocument {
   return {
     ...doc,
-    nodes: doc.nodes.filter((n) => reach.has(n.id)),
-    edges: doc.edges.filter((e) => reach.has(e.source) && reach.has(e.target)),
+    edges: doc.edges.map((e) => (e.kind === 'dep' || e.kind === 'dep_design'
+      ? { ...e, kind: 'dep_focus' as const }
+      : e)),
+  }
+}
+
+/** Task 8 实例追溯边标注：按 (from,to) 命中追溯边行的 stmt_no 次序，label 追加「#1 #2」（升序去重）。
+ * 数据源 = /lineage/tables（instance_id 过滤）行自带的 stmtNo；无命中（mock 样例无实例维度）不改边。
+ * 浅拷贝不改原文档（computed 层消费，与 focusAllEdges 同模式）。 */
+export function annotateStmtNo(
+  doc: GraphDocument,
+  rows: { from: string; to: string; stmtNo: number }[],
+): GraphDocument {
+  const nosByEdge = new Map<string, number[]>()
+  rows.forEach((r) => {
+    const arr = nosByEdge.get(`${r.from}\n${r.to}`)
+    if (arr) { if (!arr.includes(r.stmtNo)) arr.push(r.stmtNo) }
+    else nosByEdge.set(`${r.from}\n${r.to}`, [r.stmtNo])
+  })
+  nosByEdge.forEach((arr) => arr.sort((a, b) => a - b))
+  return {
+    ...doc,
+    edges: doc.edges.map((e) => {
+      const nos = nosByEdge.get(`${e.source}\n${e.target}`)
+      return nos?.length ? { ...e, label: `${e.label} #${nos.join(' #')}` } : e
+    }),
   }
 }
 

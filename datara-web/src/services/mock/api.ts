@@ -11,6 +11,7 @@ import type { DsRow } from '../datasourceApi'
 import type { GlobalParamRow } from '../ideApi'
 import type { BaselineProgressResult, BaselineDraft, BaselineSaveResult, BaselineCheckResult, BaselinePublishResult, LineageDeclResult, BaselineStatus } from '../baselineApi'
 import type { ComponentDetail, ComponentDraft, ComponentVersionsResult } from '../componentApi'
+import type { LineageGraphEdge, LineageGraphParams, LineageGraphResult } from '../lineageApi'
 import { dataStore } from './dataStore'
 import { listSeedTaskDocs, seedWorkflows } from './seed'
 
@@ -299,4 +300,93 @@ export async function mockListGlobalParams(_env?: string): Promise<GlobalParamRo
     { id: 1, name: 'dw_host', value: 'greatdb-dw:3306', type: '文本', env: 'dev', desc: '数仓地址（示例）', createTime: MOCK_TS, updateTime: MOCK_TS },
     { id: 2, name: 'alarm_webhook', value: 'https://hooks.example.com/x', type: '加密', env: 'prod', desc: '告警 webhook（示例）', createTime: MOCK_TS, updateTime: MOCK_TS },
   ]
+}
+
+/* ================= Task 5 血缘图聚合 mock（GET /lineage/graph） =================
+ * design+runtime 双源样例（表名对齐 dataStore.tableLineage 链路，影响分析/元数据富化可复用）：
+ * 三态边齐全 —— 双源（实线+徽标）/ 纯运行（实线）/ 纯设计（虚线，端点节点「未验证」）。 */
+
+const MOCK_GRAPH_EDGES: LineageGraphEdge[] = [
+  { from: 'ods_gdb_biz_trade_order', to: 'dwd_order_pay_detail', level: 'table',
+    sources: ['design', 'runtime'], refs: [{ wfCode: 101, nodeId: 'n_sql_1', stmtNo: 0 }] },
+  { from: 'ods_gdb_biz_pay_record', to: 'dwd_order_pay_detail', level: 'table',
+    sources: ['runtime'], refs: [{ wfCode: 101, nodeId: 'n_sql_1', stmtNo: 1 }] },
+  { from: 'ods_gdb_biz_user_info', to: 'dim_user', level: 'table',
+    sources: ['design'], refs: [{ wfCode: 102, nodeId: 'n_sql_2', stmtNo: 0 }] },
+  { from: 'dim_user', to: 'dwd_order_pay_detail', level: 'table',
+    sources: ['runtime'], refs: [{ wfCode: 101, nodeId: 'n_sql_1', stmtNo: 2 }] },
+  { from: 'dwd_order_pay_detail', to: 'dws_pay_summary_daily', level: 'table',
+    sources: ['design', 'runtime'], refs: [{ wfCode: 103, nodeId: 'n_sql_3', stmtNo: 0 }] },
+  { from: 'dws_pay_summary_daily', to: 'ads_kpi_report', level: 'table',
+    sources: ['runtime'], refs: [{ wfCode: 104, nodeId: 'n_sql_4', stmtNo: 0 }] },
+  { from: 'ods_oracle_gl_voucher', to: 'dwd_gl_voucher_detail', level: 'table',
+    sources: ['design'], refs: [{ wfCode: 105, nodeId: 'n_sql_5', stmtNo: 0 }] },
+]
+
+/** 按 params 过滤聚合：source 行级过滤 → 中心表（_bare/endsWith）BFS 扩散（direction/depth）
+ * → limit 截断置位；语义对齐后端 lineage_graph 的可观测子集。 */
+export async function mockLineageGraph(params: LineageGraphParams): Promise<LineageGraphResult> {
+  const src = params.source ?? 'all'
+  const edges = MOCK_GRAPH_EDGES.filter(
+    (e) => src === 'all' || e.sources.includes(src as 'design' | 'runtime'),
+  )
+  const sources = new Map<string, Set<string>>()
+  edges.forEach((e) => {
+    // source 过滤后节点 sources 只聚合剩余行来源（对齐后端行级过滤再聚合口径）
+    const ss = src === 'all' ? e.sources : [src as 'design' | 'runtime']
+    for (const fq of [e.from, e.to]) {
+      if (!sources.has(fq)) sources.set(fq, new Set())
+      ss.forEach((s) => sources.get(fq)!.add(s))
+    }
+  })
+  let nodes = [...sources.keys()].sort()
+  let truncated = false
+
+  const table = (params.table ?? '').trim()
+  if (table) {
+    const bare = table.includes('.') ? table.split('.').pop()! : table
+    let seeds = nodes.filter((fq) => (fq.includes('.') ? fq.split('.').pop()! : fq) === bare)
+    if (!seeds.length) seeds = nodes.filter((fq) => fq.includes(table))
+    const kept = new Set(seeds)
+    const adjOut = new Map<string, string[]>()
+    const adjIn = new Map<string, string[]>()
+    edges.forEach((e) => {
+      if (!adjOut.has(e.from)) adjOut.set(e.from, [])
+      adjOut.get(e.from)!.push(e.to)
+      if (!adjIn.has(e.to)) adjIn.set(e.to, [])
+      adjIn.get(e.to)!.push(e.from)
+    })
+    const queue: [string, number][] = seeds.map((s) => [s, 0])
+    while (queue.length) {
+      const [cur, hops] = queue.shift()!
+      if (params.depth && hops >= params.depth) continue
+      const nexts = [
+        ...(params.direction === 'upstream' ? [] : adjOut.get(cur) ?? []),
+        ...(params.direction === 'downstream' ? [] : adjIn.get(cur) ?? []),
+      ]
+      for (const nxt of nexts) {
+        if (kept.has(nxt)) continue
+        if (params.limit && kept.size >= params.limit) { truncated = true; queue.length = 0; break }
+        kept.add(nxt)
+        queue.push([nxt, hops + 1])
+      }
+    }
+    nodes = nodes.filter((fq) => kept.has(fq))
+  } else if (params.limit && nodes.length > params.limit) {
+    truncated = true
+    nodes = nodes.slice(0, params.limit)
+  }
+  const keptSet = new Set(nodes)
+  return {
+    nodes: nodes.map((fq) => ({
+      fq, ds: fq.split('.').length > 1 ? fq.split('.')[0] : '', table: fq,
+      tmpFlag: 0,
+      sources: [...sources.get(fq)!].sort() as ('design' | 'runtime')[],
+      wfs: [...new Set(edges.filter((e) => e.from === fq || e.to === fq)
+        .flatMap((e) => e.refs.map((r) => r.wfCode)))].sort((a, b) => a - b),
+    })),
+    edges: edges.filter((e) => keptSet.has(e.from) && keptSet.has(e.to)),
+    opaques: [],
+    truncated,
+  }
 }
