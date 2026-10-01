@@ -464,7 +464,8 @@ def rebuild_design_lineage(db: Session, definition: WfDefinition) -> dict:
     """重算工作流定义的设计态血缘（幂等 delete-then-reinsert，随调用方会话提交）。
 
     - 解析：common/lineage_extract.extract_wf_lineage（纯函数，不抛不触库）
-    - 表级边批量 add → flush 取自增 id → 字段行按 from/to 找同键表级边挂靠
+    - 表级边批量 add → flush 取自增 id → 字段行按 (node_id,stmt_no,from,to) 精确挂靠
+      同键表级边（同 wf 同表对多语句/多节点各归各边），未命中回落同表对兜底
     - 字段行找不到归属表级边（sql CTE/常量列等）跳过记日志，不炸
     - 批内按 uk 去重防御（design 行免逐行查旧，uk_lineage/uk_field 兜重复产出）
     - 返回 {tableEdges, fieldEdges, opaqueNodes}；异常向上抛，旁路由调用方定
@@ -500,13 +501,21 @@ def rebuild_design_lineage(db: Session, definition: WfDefinition) -> dict:
     db.add_all(edges)
     db.flush()  # 取自增 edge.id 供字段行挂靠
 
+    # 字段行挂靠索引：精确键 (node_id,stmt_no,from,to) 优先；同表对兜底覆盖解析器
+    # 未携带精确归属或表对存在而 node/stmt 对不上的字段行（防孤儿跳过）
+    edge_by_key: dict = {}
     edge_by_pair: dict = {}
     for edge in edges:
+        edge_by_key.setdefault(
+            (edge.node_id, edge.stmt_no, edge.from_table, edge.to_table), edge)
         edge_by_pair.setdefault((edge.from_table, edge.to_table), edge)
     fields: list = []
     seen_field = set()
     for fe in parsed["field_edges"]:
-        edge = edge_by_pair.get((fe["from_table"], fe["to_table"]))
+        edge = edge_by_key.get(
+            (fe["node_id"], fe["stmt_no"], fe["from_table"], fe["to_table"]))
+        if edge is None:
+            edge = edge_by_pair.get((fe["from_table"], fe["to_table"]))
         if edge is None:
             logger.warning("设计态字段行无归属表级边，跳过: wf_code=%s %s.%s → %s.%s",
                            wf_code, fe["from_table"], fe["from_field"],

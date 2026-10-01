@@ -86,6 +86,28 @@ class TestSqlNode:
                  for e in out["table_edges"]}
         assert pairs == {(1, "b.t2", "a.t1"), (2, "b.t4", "a.t3")}
 
+    def test_same_pair_multi_stmt_fields_carry_stmt_no(self):
+        """同节点同 (from,to) 表对多语句：字段边携带各自 stmt_no（挂靠键前提）。"""
+        node = _sql_node(
+            "n1",
+            "INSERT INTO a.t SELECT x AS c1 FROM b.s; INSERT INTO a.t SELECT y AS c1 FROM b.s")
+        out = extract_wf_lineage([node], [], 1)
+        tes = sorted(out["table_edges"], key=_tkey)
+        assert [(e["stmt_no"], e["from_table"], e["to_table"]) for e in tes] == [
+            (1, "b.s", "a.t"), (2, "b.s", "a.t")]
+        fes = sorted(out["field_edges"], key=lambda f: f["stmt_no"])
+        assert [(f["node_id"], f["stmt_no"], f["from_field"]) for f in fes] == [
+            ("n1", 1, "x"), ("n1", 2, "y")]
+
+    def test_same_pair_multi_node_fields_carry_node_id(self):
+        """两节点产同 (from,to) 表对：字段边携带各自 node_id，不被跨节点去重。"""
+        n1 = _sql_node("n1", "INSERT INTO a.t SELECT x AS c1 FROM b.s")
+        n2 = _sql_node("n2", "INSERT INTO a.t SELECT y AS c1 FROM b.s")
+        out = extract_wf_lineage([n1, n2], [], 1)
+        fes = sorted(out["field_edges"], key=lambda f: f["node_id"])
+        assert [(f["node_id"], f["stmt_no"], f["from_field"]) for f in fes] == [
+            ("n1", 1, "x"), ("n2", 1, "y")]
+
     def test_pre_sql_post_stmt_no_alignment(self):
         """pre+sql+post 合并解析：stmt_no 与运行态「全语句顺序拆分序」对齐（pre 占 1）。"""
         node = _sql_node("n1", "INSERT INTO a.t1 SELECT x FROM b.t2",
@@ -179,6 +201,7 @@ class TestSyncFamily:
             "fieldMap": [{"key": "a", "value": "b"}]}}
         out = extract_wf_lineage([node], [], 1)
         assert out["field_edges"] == [{
+            "node_id": "s1", "stmt_no": 0,
             "to_table": "w.t", "to_field": "b", "from_table": "s.r",
             "from_field": "a", "transform": "", "src_type": "design"}]
 
@@ -203,6 +226,7 @@ class TestFieldMap:
                 for e in out["table_edges"] if e["node_id"] == "fm1"] == \
             [("fm1", "mysql_src.orders", "dw.dwd_order")]
         assert out["field_edges"] == [{
+            "node_id": "fm1", "stmt_no": 0,
             "to_table": "dw.dwd_order", "to_field": "b",
             "from_table": "mysql_src.orders", "from_field": "a",
             "transform": "", "src_type": "design"}]
@@ -222,6 +246,7 @@ class TestFieldMap:
                 for e in out["table_edges"] if e["node_id"] == "fu1"] == \
             [("fu1", "mysql_src.orders", "dw2.dwd_b")]
         assert out["field_edges"] == [{
+            "node_id": "fu1", "stmt_no": 0,
             "to_table": "dw2.dwd_b", "to_field": "d",
             "from_table": "mysql_src.orders", "from_field": "c",
             "transform": "", "src_type": "design"}]
@@ -397,6 +422,7 @@ class TestRealChainShape:
         assert all(e["wf_code"] == 97 and e["instance_id"] == 0 and e["stmt_no"] == 0
                    and e["tmp_flag"] == 0 and e["src_type"] == "design" for e in tes)
         fes = sorted(out["field_edges"], key=lambda f: f["from_field"])
+        assert [(f["node_id"], f["stmt_no"]) for f in fes] == [("fm1", 0), ("fm1", 0)]
         assert [(f["from_table"], f["from_field"], f["to_table"], f["to_field"])
                 for f in fes] == [
             ("ec_retail.ods_order", "amount", "datara_dw.dwd_order_sync_test", "pay_amount"),

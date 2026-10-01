@@ -162,15 +162,18 @@ def _t_edge(wf_code: int, node_id: str, from_table: str, to_table: str,
             "tmp_flag": 0, "src_type": SRC_TYPE_DESIGN}
 
 
-def _f_edge(to_table: str, to_field: str, from_table: str, from_field: str,
-            transform: str = "") -> dict:
-    return {"to_table": to_table, "to_field": to_field, "from_table": from_table,
+def _f_edge(node_id: str, stmt_no: int, to_table: str, to_field: str,
+            from_table: str, from_field: str, transform: str = "") -> dict:
+    return {"node_id": node_id, "stmt_no": stmt_no, "to_table": to_table,
+            "to_field": to_field, "from_table": from_table,
             "from_field": from_field, "transform": transform, "src_type": SRC_TYPE_DESIGN}
 
 
 def _fkey(edge: dict) -> tuple:
-    """字段边去重键（对齐 t_lineage_field uk：edge 关联由 Task 3 落库时建立）。"""
-    return (edge["to_table"], edge["to_field"], edge["from_table"], edge["from_field"])
+    """字段边去重键：node/stmt 参与去重（同字段映射出自不同语句/节点时各保留，
+    落库分别挂靠各自表级边）；edge 关联由落库时按 (node_id,stmt_no,from,to) 建立。"""
+    return (edge["node_id"], edge["stmt_no"], edge["to_table"], edge["to_field"],
+            edge["from_table"], edge["from_field"])
 
 
 def _dedup(items: list, key) -> list:
@@ -246,7 +249,8 @@ def _sync_family_edges(node_id: str, data: dict, node_type: str, wf_code: int) -
     else:
         table_edges = [_t_edge(wf_code, node_id, src, tgt) for src in src_tables]
     field_edges = [
-        _f_edge(edge["to_table"], dst, edge["from_table"], src)
+        _f_edge(edge["node_id"], edge["stmt_no"], edge["to_table"], dst,
+                edge["from_table"], src)
         for edge in table_edges
         for src, dst in _field_map_pairs(data)
     ]
@@ -322,9 +326,9 @@ def _field_map_edges(node_id: str, data: dict, node_type: str, wf_code: int,
         [_t_edge(wf_code, node_id, src, tgt_table) for src in src_tables],
         lambda e: (e["stmt_no"], e["from_table"], e["to_table"]))
     field_edges = [
-        _f_edge(tgt_table, dst, src, src_field)
+        _f_edge(e["node_id"], e["stmt_no"], tgt_table, dst, e["from_table"], src_field)
         for src_field, dst in _field_map_pairs(data)
-        for src in (e["from_table"] for e in table_edges)
+        for e in table_edges
     ]
     return table_edges, _dedup(field_edges, _fkey)
 
@@ -363,7 +367,8 @@ def _sql_edges(node_id: str, data: dict, wf_code: int) -> tuple:
             for fm in parsed.fields:
                 if fm.to_table == to_table:
                     field_edges.append(_f_edge(
-                        fm.to_table, fm.to_field, fm.from_table, fm.from_field, fm.transform))
+                        node_id, parsed.stmt_no, fm.to_table, fm.to_field,
+                        fm.from_table, fm.from_field, fm.transform))
     return table_edges, field_edges
 
 
