@@ -1,6 +1,7 @@
 # 血缘遗留项收尾批次设计（2026-10-01）
 
 状态：已实施（2026-10-01，Task 1-6 全部落地；两级审查 APPROVED；后端 pytest 334 passed / 前端 vitest 419 + vue-tsc 0 错；Task 5 评估结论见 §5）
+后续：§1 非目标四项已于同日全部处置（见 §7）；field 挂靠修复已落地（commit 30ede08，见 §5 回写）。
 
 ## 1. 背景与目标
 
@@ -53,9 +54,24 @@ adjOut/adjIn 邻接 Map + visited Set 遍历，O(V+E)。对外 ImpactSubgraph �
 > ④ 建议：**建议修复（零迁移、低成本），优先级低**。影响面仅 design /trace 与 graph refs 的归属展示（无 /fields 丢数、无拓扑影响），触发条件（同 wf 同表对多语句/多节点 + 字段解析）概率低；若近期不动，维持现状风险可控。
 > 未验证：存量库中同表对多语句工作流实际占比；修复后同字段挂多边对 /stats fieldCount 口径的影响。
 
+> **修复已落地（2026-10-01，commit 30ede08）**：`_f_edge` 增携带 node_id/stmt_no（endpoint/field_map/sql 三族调用点同步，`_fkey` 去重键含 node/stmt）；rebuild 挂靠键改 `(node_id,stmt_no,from,to)` 精确四元组，未命中回落同表对兜底（CTE/常量来源防孤儿跳过）。零 schema 迁移；查询面（/fields、/trace、graph refs）走 edge_id join 自动正确。后端 pytest 339 passed（334 基线 + 新增 5：解析层同表对多语句/多节点字段携带归属 2 项，rebuild 层各归各边 2 项 + 同表对兜底 1 项）。存量 design 行经 save/publish 或 POST /lineage/redesign 重算自然收敛。
+
 ## 6. 验收与执行约定
 
 - 后端 pytest 全绿（基线 329 + 新增）；前端 vitest 全绿（基线 415 + 新增）+ vue-tsc 0 错。
 - 执行方式：子代理驱动（implementer → spec 审查 → 质量审查 → 修复回环）；并行分派后端/前端/评估三路（文件面无交叠）。
 - 收口：两级审查通过 → 全量回归 → commit（严格只 add 本任务组文件，均为干净文件，无外科手术需要）→ 文档回写（本 spec 状态、§6.3 遗留表勾销）→ 1.9 部署复验（涉及聚合端点：docker cp + py_compile + 五后端重启 + graph 探针验 lastCollected）。
 - 工作区纪律：大量 M-B2/I12 历史未提交改动，绝不整体 add；PowerShell 5.1（禁 &&、grep 用 Select-String、多行 python -c 改脚本文件）。
+
+## 7. 非目标消化记录（2026-10-01，后续批次）
+
+§1 非目标四项经用户裁定「全部处置」，当日全部落地：
+
+| 非目标 | 处置结论 | 依据/commit |
+| --- | --- | --- |
+| 前端边 kind 常量化 | ✅ 落地：`graph/model/index.ts` 增 `EDGE_KIND` 常量对象（21 键与 `GEdgeKind` 联合逐项对应，`as const satisfies Record<string, GEdgeKind>` 编译期防漂移）；lineageUtils.ts 6 处生产字面量替换。profiles 的 edgeKinds 声明点、seed.ts mock、测试真值锚不动 | bb9f338；vitest 419 + vue-tsc 0 错 |
+| _collect_opaques 缓存化 | ✅ 落地：`api/lineage.py` 模块级 `_opaques_cache`（wf_code → (graph_json md5, items)）内容寻址——保存/发布/回滚改写 graph_json 即换戳自动重算，免显式失效钩子；坏文档不缓存；全图模式顺手清理已删 wf 残留。补缓存命中/失效回归测试 1 项 | 0934f11；pytest 340 passed（339 基线 + 1） |
+| dep_focus overlay 化 | ⛔ 维持现状（YAGNI）：README L204 原文为「后续叠加高亮时建议 overlay 标记」的条件性建议，叠加高亮场景至今未出现；现实现（computed 浅拷贝 + edge kind 置换）行为正确成本为零，投机性设计不做。留待真实场景出现再立项 | 调研裁定，README L206 已回写理由 |
+| wf97 存量 save 422 | ✅ 根治：1.9 拉 v5 文档本地复现 → 5 条 R3 全为必填缺失（n_fmap/n_cond 直通 inputs + n_assert 三项）→ 根因是直通组件 inputs required 声明与引擎拍平语义矛盾 → dag.ts 三处放宽 + catalog 重导出（ca020afa）+ 规格册同步 → 1.9 部署探针 PASS（违规 5→3，直通误拦清零，n_assert 为真未配置属校验正确拦截） | 23d04d9；详见组件基线化 README「wf97 save 422 根治」 |
+
+**e2e19 补测说明**：经核查，e2e19 已于 2026-09-29 收口（见《DAG与组件综合优化实施计划-20260926.md》§11：API 探针 17/17 + wf92/93/94 同步回归 + 前端 Playwright 10/10），无需重做，本批次不再安排。
