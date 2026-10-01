@@ -138,6 +138,49 @@ describe('deriveImpact', () => {
     expect(imp.downTasks).toHaveLength(0)
     expect(imp.downIndicators).toHaveLength(0)
   })
+
+  // 行为锚定（O(V+E) 重构不变量）：BFS 发现序 / 菱形首路径胜出 / 重复边忽略 /
+  // 回环·自环安全 / 不可达子图排除 / 同名任务跨边去重 / task 取 split(' ')[0]。
+  it('分支/菱形/重复边/回环下 BFS 发现序与字段取值', () => {
+    const rows: TableLineage[] = [
+      { from: 'a', to: 'b', task: 'etl_b (E1)', wf: 'W1' },
+      { from: 'a', to: 'c', task: 'etl_c (E2)', wf: 'W1' },
+      { from: 'b', to: 'd', task: 'etl_d (E3)', wf: 'W2' },
+      { from: 'c', to: 'd', task: 'etl_d2 (E4)', wf: 'W3' },  // 菱形：d 已发现 → 跳过
+      { from: 'a', to: 'b', task: 'etl_b2 (E9)', wf: 'W9' },  // 重复边：b 已发现 → 跳过
+      { from: 'b', to: 'a', task: 'etl_a (EB)', wf: 'WB' },   // 回环：a 已 visited → 跳过
+      { from: 'a', to: 'a', task: 'etl_self (EA)', wf: 'WA' },  // 自环：跳过
+      { from: 'd', to: 'g', task: 'etl_c (E5)', wf: 'W5' },   // 任务名 etl_c 跨边复用 → downTasks 不新增
+      { from: 'e', to: 'f', task: 'etl_f (EX)', wf: 'WX' },   // 不可达子图：不入结果
+    ]
+    const imp = deriveImpact('a', rows, null)
+    expect(imp).toEqual({
+      table: 'a',
+      downTables: [
+        { name: 'b', task: 'etl_b (E1)' },
+        { name: 'c', task: 'etl_c (E2)' },
+        { name: 'd', task: 'etl_d (E3)' },
+        { name: 'g', task: 'etl_c (E5)' },
+      ],
+      downTasks: [
+        { name: 'etl_b', wf: 'W1', type: 'SQL任务' },
+        { name: 'etl_c', wf: 'W1', type: 'SQL任务' },
+        { name: 'etl_d', wf: 'W2', type: 'SQL任务' },
+      ],
+      downIndicators: [],
+      reports: [],
+    })
+  })
+
+  it('重复同 (from,to) 行：首条任务名胜出（发现序即行序）', () => {
+    const rows: TableLineage[] = [
+      { from: 'a', to: 'b', task: 'etl_first (F1)', wf: 'WF1' },
+      { from: 'a', to: 'b', task: 'etl_second (F2)', wf: 'WF2' },
+    ]
+    const imp = deriveImpact('a', rows, null)
+    expect(imp.downTables).toEqual([{ name: 'b', task: 'etl_first (F1)' }])
+    expect(imp.downTasks).toEqual([{ name: 'etl_first', wf: 'WF1', type: 'SQL任务' }])
+  })
 })
 
 describe('impactSummary', () => {
@@ -244,6 +287,23 @@ describe('buildLineageGraphDoc（Task 5 三态样式 + 未验证标记）', () =
     expect(byId['mysql_biz.dwd_t2']!.data.tmp).toBe(false)
     expect(byId['mysql_biz.dwd_t2']!.data.ds).toBeUndefined()
     expect(byId['mysql_biz.dwd_t2']!.data.wfs).toEqual([])
+  })
+
+  it('lastCollected 透传到 node.data（graph 节点 → 图文档）；null 缺数据不落键', () => {
+    const doc = buildLineageGraphDoc({
+      nodes: [
+        { fq: 'ods_order', ds: '', table: 'ods_order', tmpFlag: 0, sources: ['runtime'], wfs: [101],
+          lastCollected: '2026-09-30 10:00:00' },
+        { fq: 'dwd_order_pay_detail', ds: '', table: 'dwd_order_pay_detail', tmpFlag: 0,
+          sources: ['runtime'], wfs: [101], lastCollected: null },
+      ],
+      edges: [],
+      opaques: [],
+      truncated: false,
+    })
+    const byId = Object.fromEntries(doc.nodes.map((n) => [n.id, n]))
+    expect(byId['ods_order']!.data.lastCollected).toBe('2026-09-30 10:00:00')
+    expect(byId['dwd_order_pay_detail']!.data.lastCollected).toBeUndefined()
   })
 
   it('field 级边 → field_dep + transform label；元数据富化 domain/rows/core', () => {

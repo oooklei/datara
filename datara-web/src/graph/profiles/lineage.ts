@@ -17,8 +17,8 @@ const LAYERS = [
 
 /* ---------- 详情抽屉关联信息（Task 7 升级：数据面 + 上下游计数 + 明细列表） ---------- */
 
-/** lineageRelated 导出（Task 7，便于单测直测）：先数据面（数据源/临时表/来源/参与工作流/上下游计数），
- * 后上游/下游明细列表；ds/tmp/wfs/sources 仅 graph 聚合路径注入（buildLineageGraphDoc），旧路径不显示。 */
+/** lineageRelated 导出（Task 7，便于单测直测）：先数据面（数据源/临时表/来源/参与工作流/最近采集/上下游计数），
+ * 后上游/下游明细列表；ds/tmp/wfs/sources/lastCollected 仅 graph 聚合路径注入（buildLineageGraphDoc），旧路径不显示。 */
 export function lineageRelated(node: GNode, doc: GraphDocument): RelatedItem[] {
   const items: RelatedItem[] = []
   const nameOf = (id: string) => doc.nodes.find((n) => n.id === id)?.data.name ?? id
@@ -34,6 +34,8 @@ export function lineageRelated(node: GNode, doc: GraphDocument): RelatedItem[] {
   }
   const wfs = Array.isArray(node.data.wfs) ? node.data.wfs as unknown[] : []
   if (wfs.length) items.push({ text: `参与工作流：${wfs.map((w) => `wf${w}`).join('、')}`, color: '#7c3aed' })
+  const lastCollected = typeof node.data.lastCollected === 'string' ? node.data.lastCollected : ''
+  if (lastCollected) items.push({ text: `最近采集 ${lastCollected}`, color: '#16a34a' })
   const ups = doc.edges.filter((e) => e.target === node.id)
   const downs = doc.edges.filter((e) => e.source === node.id)
   items.push({ text: `上游 ${ups.length} 条 · 下游 ${downs.length} 条`, color: '#334155' })

@@ -10,6 +10,8 @@
 import json
 from types import SimpleNamespace
 
+import pytest
+
 from api.auth import get_current_user  # noqa: E402
 from common.models import LineageEdge, LineageField  # noqa: E402
 
@@ -254,3 +256,83 @@ def test_batch_internal_dedup(client, db_session):
     assert _save(client, wf, [dict(dup), dict(dup)]).status_code == 200
     edges = _design_edges(db_session, wf["code"])
     assert [(e.from_table, e.to_table) for e in edges] == [("ods.t1", "dw.t1")]
+
+
+# ---------------- 部分写库失败：flush 抛错 → rollback 完整恢复旧行 ----------------
+
+def _fake_parsed(frm, to):
+    """extract_wf_lineage 替身：一条表级边 + 一条可挂靠字段行。"""
+    return {
+        "table_edges": [{"wf_code": 7, "instance_id": 0, "node_id": "n1", "stmt_no": 1,
+                         "from_table": frm, "to_table": to, "tmp_flag": 0,
+                         "src_type": "design"}],
+        "field_edges": [{"to_table": to, "to_field": "amt", "from_table": frm,
+                         "from_field": "amount", "transform": "amount",
+                         "src_type": "design"}],
+        "opaques": [],
+    }
+
+
+def _snap(db, code):
+    """该 wf_code 全部 design 行内容快照（边 + 字段），供失败前后比对。"""
+    return (
+        [(e.from_table, e.to_table, e.node_id, e.stmt_no)
+         for e in _design_edges(db, code)],
+        sorted((f.to_field, f.from_table, f.from_field)
+               for f in _design_fields(db, code)),
+    )
+
+
+def _flush_boom(session, monkeypatch):
+    """flush 在存在待写新行时抛错（delete 前的 autoflush 空转透传，精准模拟落库中途失败）。"""
+    real_flush = session.flush
+
+    def flaky(*args, **kwargs):
+        if session.new:
+            raise RuntimeError("flush boom")
+        return real_flush(*args, **kwargs)
+
+    monkeypatch.setattr(session, "flush", flaky)
+
+
+def test_rebuild_flush_failure_rolls_back_to_old_rows(db_session, monkeypatch):
+    """重算中途 flush 抛错：异常上抛；rollback 后旧 design 行完整保留、无半写行
+    （delete-then-reinsert 同事务语义：未提交整体作废，不丢旧图）。"""
+    import api.lineage as lineage_mod
+
+    definition = SimpleNamespace(
+        id="wf_x", code=7, name="回滚", graph_json=json.dumps({"nodes": [], "edges": []}))
+    monkeypatch.setattr(lineage_mod, "extract_wf_lineage",
+                        lambda nodes, edges, code: _fake_parsed("ods.a1", "dw.a"))
+    lineage_mod.rebuild_design_lineage(db_session, definition)
+    old_snap = _snap(db_session, 7)
+    assert old_snap == ([("ods.a1", "dw.a", "n1", 1)], [("amt", "ods.a1", "amount")])
+
+    monkeypatch.setattr(lineage_mod, "extract_wf_lineage",
+                        lambda nodes, edges, code: _fake_parsed("ods.b1", "dw.b"))
+    _flush_boom(db_session, monkeypatch)
+    with pytest.raises(RuntimeError, match="flush boom"):
+        lineage_mod.rebuild_design_lineage(db_session, definition)
+    db_session.rollback()
+
+    assert _snap(db_session, 7) == old_snap, "rollback 后旧 design 行完整保留、无半写行"
+
+
+def test_redesign_flush_failure_swallows_and_keeps_old_rows(db_session, monkeypatch):
+    """旁路入口 redesign_wf_lineage 遇中途失败：不向调用方抛异常，rollback 后旧行保留
+    （保存/发布主流程不受血缘重算失败影响）。"""
+    import api.lineage as lineage_mod
+
+    definition = SimpleNamespace(
+        id="wf_x", code=7, name="旁路回滚", graph_json=json.dumps({"nodes": [], "edges": []}))
+    monkeypatch.setattr(lineage_mod, "extract_wf_lineage",
+                        lambda nodes, edges, code: _fake_parsed("ods.a1", "dw.a"))
+    lineage_mod.rebuild_design_lineage(db_session, definition)
+    old_snap = _snap(db_session, 7)
+
+    monkeypatch.setattr(lineage_mod, "extract_wf_lineage",
+                        lambda nodes, edges, code: _fake_parsed("ods.b1", "dw.b"))
+    _flush_boom(db_session, monkeypatch)
+    lineage_mod.redesign_wf_lineage(db_session, definition)  # 内部吞异常，不得上抛
+
+    assert _snap(db_session, 7) == old_snap, "旁路回滚后旧 design 行完整保留"

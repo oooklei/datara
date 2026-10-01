@@ -105,6 +105,8 @@ export interface LineageGraphNode {
   sources: LineageSrcType[]
   /** 涉及的工作流编码（去重升序） */
   wfs: number[]
+  /** 该表血缘最近采集时间（缺数据为 null） */
+  lastCollected?: string | null
 }
 
 /** graph 边明细引用（同 (wf,node,stmt) 多实例保留最新） */

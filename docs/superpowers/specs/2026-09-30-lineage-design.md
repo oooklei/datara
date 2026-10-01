@@ -151,11 +151,11 @@ F1 全量拉取+前端裁剪（depth 硬编码≤3，无全链）；F2 字段级
 
 | 项 | 说明 |
 | --- | --- |
-| 详情抽屉「最近采集」 | 未实现（后端 graph 节点契约无时间元数据，遵循不改后端约束；后续可补 createTime） |
-| field 挂靠 | 仅首边（trace 展示可能错位，后端既有行为） |
-| 常量化 | 边 kind magic string 未常量化 |
-| 性能 | 全图模式 opaques 每请求重算（`_collect_opaques` 为缓存缝）；deriveImpact O(V×E)，200 边规模可接受、量大时建议预建邻接 Map |
-| 测试缝 | rebuild 部分写库失败路径未测 |
+| 详情抽屉「最近采集」 | ~~未实现~~ 已实现（2026-10-01 收尾批次：graph nodes 增 `lastCollected`=节点全聚合行 create_time max，与 /stats lastTime 同口径，缺数据 null 不硬造；前端抽屉「最近采集」关联项） |
+| field 挂靠 | 仅首边（后端既有行为）。评估完成（2026-10-01）：错位仅 design 侧成立（/trace 字段全归首边、graph field 级 refs 受累），/fields 与 runtime 侧免疫；修复成本 0.5-1 人日，建议低优先级，详见 2026-10-01-lineage-followup.md §5 |
+| 常量化 | ~~边 kind magic string 未常量化~~ 后端已常量化（2026-10-01 收尾批次：SRC_TYPE_DESIGN/SRC_TYPE_RUNTIME/FILE_NAME_PREFIX 统一定义于 common/lineage_extract.py；前端边 kind 字面量维持现状） |
+| 性能 | 全图模式 opaques 每请求重算（`_collect_opaques` 为缓存缝，保留）；~~deriveImpact O(V×E)~~ 已优化为预建邻接 Map O(V+E)（2026-10-01 收尾批次，行为不变） |
+| 测试缝 | ~~rebuild 部分写库失败路径未测~~ 已补测（2026-10-01 收尾批次：test_wf_design_lineage.py 回滚上抛/旁路吞异常两路径） |
 | dep\_focus | 以 edge kind 承载瞬态高亮（后续叠加高亮需求建议 overlay 标记） |
 | 端点形态归一（1.9 实测修复） | design 落数据源 **ID** 前缀（`9.ods_order→4.dwd_order_sync_test`，SQL 解析另含 datasource 配置名前缀成 `dw.9.a` 三段）/ runtime 落数据源**名**前缀或裸名（`ec_retail.ods_order→dwd_order_sync_test`），graph 原值聚合裂边（design 1 条 + runtime 16 条零合并）致双源永不命中——批次一测试全绿因夹具用了同形态 fq。已改聚合层 `_bare()` 裸表名归一（file: 特判保留、节点 fq=裸表名、ds 取首见原形态、refs/wfs/sources 归一合并），存量零迁移；1.9 复验双源命中（`ods_order→dwd_order_sync_test` sources=design+runtime，双源节点 2 个，筛选三态 12/1/12） |
 | wf97 存量 save 422 | 存量文档 PUT save 触发新图校验闸门 422；设计态重算改走 `POST /lineage/redesign/{wfCode}` 兜底（功能正常） |

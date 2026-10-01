@@ -48,6 +48,17 @@ describe('lineageRelated（Task 7 详情抽屉升级）', () => {
     ])
     expect(items[1]!.color).toBe('#e5484d')
   })
+
+  it('lastCollected 存在 → 数据面追加「最近采集」项（参与工作流后、计数前）；缺失时不加', () => {
+    const withT = node('with_t', { sources: ['runtime'], wfs: [101], lastCollected: '2026-09-30 10:00:00' })
+    const texts = lineageRelated(withT, doc).map((i) => i.text)
+    expect(texts).toContain('最近采集 2026-09-30 10:00:00')
+    // 数据面块内序：参与工作流 → 最近采集 → 上下游计数
+    expect(texts.indexOf('最近采集 2026-09-30 10:00:00')).toBe(texts.indexOf('参与工作流：wf101') + 1)
+    // 缺数据节点（dwd_b 无 lastCollected）不产出该项（缺数据不硬造）
+    const bareTexts = lineageRelated(doc.nodes[1]!, doc).map((i) => i.text)
+    expect(bareTexts.some((t) => t.startsWith('最近采集'))).toBe(false)
+  })
 })
 
 describe('lineageProfile Task 7 注册', () => {

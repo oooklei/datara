@@ -119,7 +119,7 @@ function graphEdgeKindOf(e: LineageGraphEdge): { kind: GEdgeKind; base: string }
  * 边三态 = 运行事实（dep 实线）/ 设计推导（dep_design 虚线）/ 双源（dep 实线 + label「（双源）」徽标）；
  * 节点 sources 仅 design（无运行佐证）→ data.unverified=true（DataNode「未验」角标）；
  * Task 7 数据面富化：ds（数据源）/ tmp（临时表→DataNode 虚线边框）/ wfs（参与工作流）/ sources
- * → 详情抽屉 lineageRelated 展示。 */
+ * → 详情抽屉 lineageRelated 展示；lastCollected（血缘最近采集时间）同理注入，null/空不落键。 */
 export function buildLineageGraphDoc(res: LineageGraphResult, metaTables?: MetaTable[]): GraphDocument {
   const metaByName = new Map((metaTables ?? []).map((t) => [t.name, t]))
   const nodes: GNode[] = res.nodes.map((n) => {
@@ -140,6 +140,7 @@ export function buildLineageGraphDoc(res: LineageGraphResult, metaTables?: MetaT
         tmp: !!n.tmpFlag,
         wfs: [...n.wfs],
         sources: [...n.sources],
+        lastCollected: n.lastCollected || undefined,
       },
     }
   })
@@ -215,7 +216,10 @@ export function annotateStmtNo(
   }
 }
 
-/** 影响分析：命中 impactExample 精确 shape，否则通用 BFS 推导下游表/任务 */
+/** 影响分析：命中 impactExample 精确 shape，否则通用 BFS 推导下游表/任务。
+ * 性能：一次遍历预建 adjOut 邻接表（O(E)，存行引用不拷贝对象）+ visited Set 指针队列 BFS（O(V+E)），
+ * 取代旧「每节点全行扫描 + shift 消费」的 O(V×E)；下游推导不消费入边，故不建 adjIn（无效分配）。
+ * 行为不变量：FIFO 指针队列 + 每节点行序保持 → downTables/downTasks 发现序与逐字段取值同旧实现。 */
 export function deriveImpact(
   table: string,
   tableLineage: TableLineage[],
@@ -230,21 +234,23 @@ export function deriveImpact(
       reports: example.reports,
     }
   }
+  const adjOut = new Map<string, TableLineage[]>()
+  tableLineage.forEach((r) => {
+    const arr = adjOut.get(r.from)
+    if (arr) arr.push(r)
+    else adjOut.set(r.from, [r])
+  })
   const downTables: { name: string; task: string }[] = []
   const downTasks: { name: string; wf: string; type: string }[] = []
-  const seenTables = new Set<string>()
   const seenTasks = new Set<string>()
   const visited = new Set<string>([table])
   const queue = [table]
-  while (queue.length) {
-    const cur = queue.shift()!
-    tableLineage.forEach((r) => {
-      if (r.from !== cur || visited.has(r.to)) return
+  for (let head = 0; head < queue.length; head += 1) {
+    adjOut.get(queue[head]!)?.forEach((r) => {
+      if (visited.has(r.to)) return
       visited.add(r.to)
-      if (!seenTables.has(r.to)) {
-        seenTables.add(r.to)
-        downTables.push({ name: r.to, task: r.task })
-      }
+      // visited 先标记后消费 → 同一 r.to 仅发现一次（旧实现 seenTables ⊆ visited，天然去重）
+      downTables.push({ name: r.to, task: r.task })
       const taskName = r.task.split(' ')[0]
       if (!seenTasks.has(taskName)) {
         seenTasks.add(taskName)

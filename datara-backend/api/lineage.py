@@ -28,7 +28,7 @@ from sqlalchemy.orm import Session
 
 from api.auth import ApiError, get_current_user, require_perm
 from common.db import get_db
-from common.lineage_extract import extract_wf_lineage
+from common.lineage_extract import FILE_NAME_PREFIX, SRC_TYPE_DESIGN, extract_wf_lineage
 from common.log import get_logger
 from common.models import LineageEdge, LineageField, User, WfDefinition
 from common.resp import WF_NOT_FOUND, fmt_dt, ok
@@ -42,7 +42,7 @@ def _bare(name: str) -> str:
     """db.table → table（临时注册名无前缀原样；file:{path} 路径含点号，原样保留防误剥）。"""
     if not name:
         return name
-    if name.startswith("file:"):
+    if name.startswith(FILE_NAME_PREFIX):
         return name
     return name.rsplit(".", 1)[-1]
 
@@ -205,7 +205,7 @@ GRAPH_DEFAULT_LIMIT = 200
 
 def _split_fq(name: str) -> tuple:
     """fq → (ds, table)：file: 边 ds 置空保留原串（路径含点号不可按点拆）；db.table 按末段拆。"""
-    if name.startswith("file:"):
+    if name.startswith(FILE_NAME_PREFIX):
         return "", name
     if "." in name:
         db_name, tbl = name.rsplit(".", 1)
@@ -273,6 +273,8 @@ def lineage_graph(
     - 聚边：同 (from,to) 一条边（键 _bare 裸表名归一，field 级按字段行自身 from/to
       表对分组），sources=全量行 src_type 去重，refs=同 (wf,node,stmt) 多实例保留最新
       的明细；边端点/节点 fq 输出裸表名（ds 保留首见原形态），file:{path} 原样保留；
+      节点 lastCollected=该节点全部聚合行 create_time max（design+runtime 合计，
+      与 /stats lastTime 同口径；缺数据输出 null）；
     - 中心表扩散：_bare 归一化精确匹配优先、endsWith 兜底，BFS 沿 direction 方向
       （visited 防环），depth 截跳数，limit 截节点数（超出 truncated=true）。
     """
@@ -285,7 +287,7 @@ def lineage_graph(
     if source != "all":
         edge_query = edge_query.filter(LineageEdge.src_type == source)
 
-    node_acc: dict = {}  # fq -> {ds, table, tmp, sources:set, wfs:set}
+    node_acc: dict = {}  # fq -> {ds, table, tmp, sources:set, wfs:set, last:最大create_time}
     edges_out: list = []
 
     if level == "field":
@@ -318,10 +320,13 @@ def lineage_graph(
                     if acc is None:
                         ds, tbl = _split_fq(raw)
                         acc = node_acc[fq] = {"ds": ds, "table": tbl, "tmp": False,
-                                              "sources": set(), "wfs": set()}
+                                              "sources": set(), "wfs": set(), "last": None}
                     acc["sources"].add(f.src_type)
                     acc["wfs"].add(e.wf_code)
                     acc["tmp"] = acc["tmp"] or bool(e.tmp_flag)
+                    ct = e.create_time  # lastCollected：父边采集时间（与 /stats lastTime 同口径）
+                    if ct is not None and (acc["last"] is None or ct > acc["last"]):
+                        acc["last"] = ct
             edges_out.append({
                 "from": fq_from, "to": fq_to, "level": "field",
                 "sources": sorted({f.src_type for f, _e in grp}),
@@ -358,10 +363,13 @@ def lineage_graph(
                     if acc is None:
                         ds, tbl = _split_fq(raw)
                         acc = node_acc[fq] = {"ds": ds, "table": tbl, "tmp": False,
-                                              "sources": set(), "wfs": set()}
+                                              "sources": set(), "wfs": set(), "last": None}
                     acc["sources"].add(r.src_type)
                     acc["wfs"].add(r.wf_code)
                     acc["tmp"] = acc["tmp"] or bool(r.tmp_flag)
+                    ct = r.create_time  # lastCollected：聚合行 create_time max（None 安全比较）
+                    if ct is not None and (acc["last"] is None or ct > acc["last"]):
+                        acc["last"] = ct
     edges_out.sort(key=lambda e: (e["from"], e["to"]))
 
     # ---- 中心表扩散 / 全图节点上限 ----
@@ -427,6 +435,7 @@ def lineage_graph(
         "tmpFlag": 1 if node_acc[fq]["tmp"] else 0,
         "sources": sorted(node_acc[fq]["sources"]),
         "wfs": sorted(node_acc[fq]["wfs"]),
+        "lastCollected": fmt_dt(node_acc[fq]["last"]),
     } for fq in sorted(kept)]
     return ok({"nodes": nodes, "edges": edges_out, "opaques": opaques,
                "truncated": truncated})
@@ -442,7 +451,7 @@ def delete_design_lineage(db: Session, wf_code: int) -> int:
     """
     old_ids = [
         rid for (rid,) in db.query(LineageEdge.id).filter(
-            LineageEdge.src_type == "design", LineageEdge.wf_code == wf_code).all()
+            LineageEdge.src_type == SRC_TYPE_DESIGN, LineageEdge.wf_code == wf_code).all()
     ]
     if not old_ids:
         return 0
@@ -486,7 +495,7 @@ def rebuild_design_lineage(db: Session, definition: WfDefinition) -> dict:
             instance_id=str(te.get("instance_id") or 0),  # 设计态 instance_id=0 标识
             node_id=te["node_id"], node_name=name_of.get(te["node_id"], ""),
             stmt_no=te["stmt_no"], from_table=te["from_table"], to_table=te["to_table"],
-            tmp_flag=bool(te.get("tmp_flag")), src_type="design",
+            tmp_flag=bool(te.get("tmp_flag")), src_type=SRC_TYPE_DESIGN,
         ))
     db.add_all(edges)
     db.flush()  # 取自增 edge.id 供字段行挂靠
@@ -510,7 +519,7 @@ def rebuild_design_lineage(db: Session, definition: WfDefinition) -> dict:
         fields.append(LineageField(
             edge_id=edge.id, to_field=fe["to_field"], from_table=fe["from_table"],
             from_field=fe["from_field"], transform=fe.get("transform") or "",
-            src_type="design",
+            src_type=SRC_TYPE_DESIGN,
         ))
     db.add_all(fields)
     db.commit()

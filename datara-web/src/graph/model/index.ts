@@ -7,6 +7,8 @@ export interface GNodeData {
   name: string
   /** Task 7 血缘临时表标记（buildLineageGraphDoc 注入自 tmpFlag；DataNode 虚线边框） */
   tmp?: boolean
+  /** 血缘最近采集时间（buildLineageGraphDoc 注入自 graph 节点 lastCollected；null/空不落键） */
+  lastCollected?: string
   [k: string]: unknown
 }
 

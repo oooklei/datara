@@ -15,6 +15,8 @@ runtime 行/独立定义直插 sqlite（conftest 内存库），零外部依赖�
 """
 
 import json
+from datetime import datetime
+from types import SimpleNamespace
 
 from api.lineage import _bare  # noqa: E402
 from common.models import LineageEdge, LineageField, WfDefinition  # noqa: E402
@@ -41,11 +43,11 @@ def _save(client, wf, nodes):
 
 
 def _rt_edge(db, wf_code, frm, to, node_id="r1", stmt_no=1, tmp=False,
-             instance="inst-1", fields=()):
-    """直插 runtime 血缘边（+可选字段行），src_type 默认 runtime。"""
+             instance="inst-1", fields=(), create_time=None):
+    """直插 runtime 血缘边（+可选字段行），src_type 默认 runtime；create_time 可显式定值。"""
     edge = LineageEdge(wf_code=wf_code, wf_name="rt", instance_id=instance,
                        node_id=node_id, stmt_no=stmt_no, from_table=frm, to_table=to,
-                       tmp_flag=tmp, src_type="runtime")
+                       tmp_flag=tmp, src_type="runtime", create_time=create_time)
     db.add(edge)
     db.flush()
     for ft, ff, tf, tr in fields:
@@ -339,3 +341,78 @@ def test_graph_field_mixed_prefix_and_file_guard(client, db_session):
     by_pair = {(e["from"], e["to"]): e for e in dt["edges"]}
     assert by_pair[("orders", "pay")]["sources"] == ["design", "runtime"]
     assert by_pair[("file:x/y.csv", "ext")]["sources"] == ["runtime"], "file: 边不剥不并"
+
+
+# ---------------- 节点 lastCollected（聚合行 create_time max，/stats lastTime 同口径） ----------------
+
+def test_graph_last_collected_max_per_node(client, db_session):
+    """同表多条边取最大 create_time，序列化 'YYYY-MM-DD HH:mm:ss'；各节点独立。"""
+    wf = _mk_wf(client, "最近采集")
+    _rt_edge(db_session, wf["code"], "ods.a", "dw.t", node_id="r1",
+             create_time=datetime(2026, 9, 30, 10, 0, 0))
+    _rt_edge(db_session, wf["code"], "ods.a", "dw.t", node_id="r2",
+             create_time=datetime(2026, 9, 30, 11, 30, 5))
+    _rt_edge(db_session, wf["code"], "ods.b", "dw.u", node_id="r3",
+             create_time=datetime(2026, 9, 1, 8, 0, 0))
+
+    d = _graph(client)
+    nodes = {n["fq"]: n for n in d["nodes"]}
+    assert nodes["a"]["lastCollected"] == "2026-09-30 11:30:05", "同节点多行取 max"
+    assert nodes["t"]["lastCollected"] == "2026-09-30 11:30:05"
+    assert nodes["b"]["lastCollected"] == "2026-09-01 08:00:00", "各节点独立取各自 max"
+    assert nodes["u"]["lastCollected"] == "2026-09-01 08:00:00"
+
+
+def test_graph_last_collected_field_level_from_parent_edge(client, db_session):
+    """field 级节点 lastCollected 取组内父边 create_time max（字段行自身无独立时间口径）。"""
+    wf = _mk_wf(client, "字段最近采集")
+    _rt_edge(db_session, wf["code"], "ec.orders", "pay", node_id="r1",
+             create_time=datetime(2026, 9, 30, 12, 0, 0),
+             fields=[("ec.orders", "amount", "amt", "amount")])
+    _rt_edge(db_session, wf["code"], "ec.orders", "pay", node_id="r2",
+             create_time=datetime(2026, 9, 30, 15, 0, 0),
+             fields=[("ec.orders", "amount", "amt", "amount")])
+
+    d = _graph(client, level="field")
+    nodes = {n["fq"]: n for n in d["nodes"]}
+    assert nodes["orders.amount"]["lastCollected"] == "2026-09-30 15:00:00"
+    assert nodes["pay.amt"]["lastCollected"] == "2026-09-30 15:00:00"
+
+
+def test_graph_last_collected_null_when_missing(client, db_session, monkeypatch):
+    """create_time 缺失（存量可空列防御）：聚合行 create_time=None → lastCollected=null
+    不硬造不炸；None 行不参与同节点有值行的 max。库结构该列 NOT NULL（default 兜底），
+    集成无法造 NULL 行，故以查询行替身直测 graph 聚合分支。"""
+    import api.lineage as mod
+
+    rows = [
+        SimpleNamespace(id=1, wf_code=1, wf_name="rt", instance_id="inst-1",
+                        node_id="r1", stmt_no=1, from_table="ods.x", to_table="dw.y",
+                        tmp_flag=0, src_type="runtime",
+                        create_time=datetime(2026, 9, 30, 9, 0, 0)),
+        SimpleNamespace(id=2, wf_code=1, wf_name="rt", instance_id="inst-1",
+                        node_id="r2", stmt_no=1, from_table="ods.x", to_table="dw.y",
+                        tmp_flag=0, src_type="runtime", create_time=None),
+        SimpleNamespace(id=3, wf_code=1, wf_name="rt", instance_id="inst-1",
+                        node_id="r3", stmt_no=1, from_table="ods.z", to_table="dw.w",
+                        tmp_flag=0, src_type="runtime", create_time=None),
+    ]
+
+    class _FakeQuery:
+        def __init__(self, data):
+            self._data = data
+
+        def filter(self, *args, **kwargs):
+            return self  # 故意透传：本用例只验聚合分支的 None 防御，过滤条件变化不需同步替身
+
+        def all(self):
+            return self._data
+
+    monkeypatch.setattr(mod, "_base_query", lambda db: _FakeQuery(rows))
+
+    d = _graph(client)
+    nodes = {n["fq"]: n for n in d["nodes"]}
+    assert nodes["x"]["lastCollected"] == "2026-09-30 09:00:00", "None 行不参与 max"
+    assert nodes["y"]["lastCollected"] == "2026-09-30 09:00:00"
+    assert nodes["z"]["lastCollected"] is None, "全 None 节点输出 null"
+    assert nodes["w"]["lastCollected"] is None

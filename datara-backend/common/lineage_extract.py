@@ -50,6 +50,12 @@ from collections import deque
 
 from common.sqlparser import parse_sql_lineage
 
+# 血缘来源层/文件源前缀常量（api/lineage.py 共用同一口径；common/db.py 迁移默认值与
+# worker/ 侧字面量不动）
+SRC_TYPE_DESIGN = "design"
+SRC_TYPE_RUNTIME = "runtime"
+FILE_NAME_PREFIX = "file:"
+
 # 跳过组：逻辑控制 + 直通无表配置 + 模板类型（components/catalog.py 口径 + condition_set 已核实无表语义；
 # page_board 虽为 passthrough，按任务裁定 D3 归 opaque 展示组件）
 SKIP_TYPES = frozenset({
@@ -153,13 +159,13 @@ def _t_edge(wf_code: int, node_id: str, from_table: str, to_table: str,
             stmt_no: int = 0) -> dict:
     return {"wf_code": wf_code, "instance_id": 0, "node_id": node_id,
             "stmt_no": stmt_no, "from_table": from_table, "to_table": to_table,
-            "tmp_flag": 0, "src_type": "design"}
+            "tmp_flag": 0, "src_type": SRC_TYPE_DESIGN}
 
 
 def _f_edge(to_table: str, to_field: str, from_table: str, from_field: str,
             transform: str = "") -> dict:
     return {"to_table": to_table, "to_field": to_field, "from_table": from_table,
-            "from_field": from_field, "transform": transform, "src_type": "design"}
+            "from_field": from_field, "transform": transform, "src_type": SRC_TYPE_DESIGN}
 
 
 def _fkey(edge: dict) -> tuple:
@@ -236,7 +242,7 @@ def _sync_family_edges(node_id: str, data: dict, node_type: str, wf_code: int) -
     src_tables = _endpoint_src_tables(data, node_type)
     file_path = "" if src_tables else _file_src_path(data)  # 连接型优先；无表才惰性取文件路径
     if file_path:
-        table_edges = [_t_edge(wf_code, node_id, "file:%s" % file_path, tgt)]
+        table_edges = [_t_edge(wf_code, node_id, FILE_NAME_PREFIX + file_path, tgt)]
     else:
         table_edges = [_t_edge(wf_code, node_id, src, tgt) for src in src_tables]
     field_edges = [
