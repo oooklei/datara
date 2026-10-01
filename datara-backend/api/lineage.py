@@ -19,6 +19,7 @@ trace 接口按 instance_id 过滤呈现实例快照原貌。
 致双源永不命中；归一后节点 ds 保留该端点首个出现形态，file:{path} 原样不剥）。
 """
 
+import hashlib
 import json
 from collections import deque
 from typing import Optional
@@ -226,17 +227,32 @@ def _field_node_table(name: str) -> str:
     return head if sep and head else ""
 
 
+# opaque 重算缓存：wf_code → (graph_json 摘要, items)。内容寻址（哈希做戳）免显式
+# 失效钩子：保存/发布/回滚改写 graph_json 即换戳自动重算；全图模式顺手清理已删 wf 的
+# 残留条目。进程内缓存，重启自然冷启动，单条目 = 该 wf 一份 opaque 清单，内存可忽略。
+_opaques_cache: dict = {}
+
+
 def _collect_opaques(db: Session, wf_codes) -> list:
     """opaque 节点重算（解析期不产边的组件，未落库故查询端从定义图重算）。
 
     wf_codes=None 取全部定义；给定集合时只解析相关工作流（扩散子图按需收窄，避免全量解析）。
+    图全模式每请求重复解析全部定义的成本由内容寻址缓存摊平：定义未变直接复用解析结果，
+    坏文档（json 解析失败）不缓存——修复保存后内容变化自然重算。
     """
     query = db.query(WfDefinition)
     if wf_codes is not None:
         query = query.filter(WfDefinition.code.in_(wf_codes))
+    definitions = query.all()
     out: list = []
-    for definition in query.all():
+    for definition in definitions:
         if not definition.graph_json:
+            continue
+        code = int(definition.code or 0)
+        digest = hashlib.md5(definition.graph_json.encode("utf-8")).hexdigest()
+        cached = _opaques_cache.get(code)
+        if cached is not None and cached[0] == digest:
+            out.extend(cached[1])
             continue
         try:
             doc = json.loads(definition.graph_json)
@@ -245,13 +261,20 @@ def _collect_opaques(db: Session, wf_codes) -> list:
         if not isinstance(doc, dict):
             continue
         parsed = extract_wf_lineage(
-            doc.get("nodes") or [], doc.get("edges") or [], int(definition.code or 0))
+            doc.get("nodes") or [], doc.get("edges") or [], code)
+        items = []
         for op in parsed.get("opaques") or []:
             item = {"wfCode": op.get("wf_code"), "nodeId": op.get("node_id"),
                     "type": op.get("type")}
             if op.get("reason"):
                 item["reason"] = op["reason"]
-            out.append(item)
+            items.append(item)
+        _opaques_cache[code] = (digest, items)
+        out.extend(items)
+    if wf_codes is None and len(_opaques_cache) > len(definitions) * 2 + 64:
+        alive = {int(d.code or 0) for d in definitions}
+        for stale in [k for k in _opaques_cache if k not in alive]:
+            _opaques_cache.pop(stale, None)
     out.sort(key=lambda o: (o["wfCode"] or 0, o["nodeId"]))
     return out
 

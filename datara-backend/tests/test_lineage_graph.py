@@ -416,3 +416,48 @@ def test_graph_last_collected_null_when_missing(client, db_session, monkeypatch)
     assert nodes["y"]["lastCollected"] == "2026-09-30 09:00:00"
     assert nodes["z"]["lastCollected"] is None, "全 None 节点输出 null"
     assert nodes["w"]["lastCollected"] is None
+
+
+# ---------------- opaque 内容寻址缓存 ----------------
+
+def test_opaques_cache_hit_and_invalidate(client, db_session, monkeypatch):
+    """_collect_opaques 内容寻址缓存：graph_json 摘要未变直接复用解析结果（不重复调
+    extract_wf_lineage），改写定义换戳自动重算（免显式失效钩子）。save 端点自身经
+    redesign 也会解析，计数快照围住每次 graph 调用前后，不与 rebuild 耦合。"""
+    import api.lineage as lineage_mod
+    real_extract = lineage_mod.extract_wf_lineage
+    calls = {"n": 0}
+
+    def _counting(nodes, edges, code):
+        calls["n"] += 1
+        return real_extract(nodes, edges, code)
+
+    monkeypatch.setattr(lineage_mod, "extract_wf_lineage", _counting)
+    lineage_mod._opaques_cache.clear()  # 隔离同进程其他用例的缓存残留
+
+    _mk_wf(client, "opaque缓存")
+    db_session.add(WfDefinition(
+        id="wf_cache", code=99002, name="py流缓存",
+        graph_json=json.dumps({"nodes": [{"id": "p1", "type": "python", "data": {}}],
+                               "edges": []})))
+    db_session.commit()
+
+    before = calls["n"]
+    d1 = _graph(client)
+    assert calls["n"] > before, "首查解析并写入缓存"
+    assert d1["opaques"] == [{"wfCode": 99002, "nodeId": "p1", "type": "python"}]
+
+    before = calls["n"]
+    d2 = _graph(client)
+    assert calls["n"] == before, "定义未变（摘要同）命中缓存不再解析"
+    assert d2["opaques"] == d1["opaques"]
+
+    row = db_session.query(WfDefinition).filter(WfDefinition.code == 99002).one()
+    row.graph_json = json.dumps({"nodes": [{"id": "p2", "type": "shell", "data": {}}],
+                                 "edges": []})
+    db_session.commit()
+
+    before = calls["n"]
+    d3 = _graph(client)
+    assert calls["n"] == before + 1, "内容变化换戳自动重算"
+    assert d3["opaques"] == [{"wfCode": 99002, "nodeId": "p2", "type": "shell"}]
