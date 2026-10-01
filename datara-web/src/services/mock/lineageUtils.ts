@@ -4,6 +4,7 @@
  * 数据源 = dataStore.tableLineage / fieldLineage（图文档 lineageGraph 不动）。
  */
 import { dagreLayout } from '../../graph/layout/dagre'
+import { EDGE_KIND } from '../../graph/model'
 import type { GEdge, GEdgeKind, GNode, GraphDocument, ImpactSubgraph } from '../../graph/model'
 import type { FieldLineage, ImpactExample, MetaTable, TableLineage } from '../types'
 import type { LineageGraphEdge, LineageGraphResult } from '../lineageApi'
@@ -48,7 +49,7 @@ export function buildTableLineageDoc(rows: TableLineage[], metaTables?: MetaTabl
     id: `tle${i + 1}`,
     source: r.from,
     target: r.to,
-    kind: r.wf === '未入工作流' ? 'dep_unlinked' : 'dep',
+    kind: r.wf === '未入工作流' ? EDGE_KIND.depUnlinked : EDGE_KIND.dep,
     label: r.task,
   }))
   const doc: GraphDocument = {
@@ -85,7 +86,7 @@ export function buildFieldLineageDoc(fieldLineage: FieldLineage): GraphDocument 
         id: `fle${edges.length + 1}`,
         source: it.from,
         target,
-        kind: 'field_dep',
+        kind: EDGE_KIND.fieldDep,
         label: it.transform,
       })
     })
@@ -107,12 +108,12 @@ export function buildFieldLineageDoc(fieldLineage: FieldLineage): GraphDocument 
  * label 用 refs 合成（graph 契约无任务名，取 wfCode·nodeId；field 级取转换表达式）。 */
 function graphEdgeKindOf(e: LineageGraphEdge): { kind: GEdgeKind; base: string } {
   if (e.level === 'field') {
-    return { kind: 'field_dep', base: e.refs.find((r) => r.transform)?.transform ?? '字段映射' }
+    return { kind: EDGE_KIND.fieldDep, base: e.refs.find((r) => r.transform)?.transform ?? '字段映射' }
   }
   const parts = e.refs.slice(0, 2).map((r) => `wf${r.wfCode}·${r.nodeId}`)
   if (e.refs.length > 2) parts.push(`等 ${e.refs.length} 处`)
   const dual = e.sources.includes('design') && e.sources.includes('runtime')
-  return { kind: dual || e.sources.includes('runtime') ? 'dep' : 'dep_design', base: parts.join(' / ') }
+  return { kind: dual || e.sources.includes('runtime') ? EDGE_KIND.dep : EDGE_KIND.depDesign, base: parts.join(' / ') }
 }
 
 /** graph 聚合结果 → 血缘图文档：
@@ -187,8 +188,8 @@ export function graphEdgesToRows(res: LineageGraphResult): TableLineage[] {
 export function focusAllEdges(doc: GraphDocument): GraphDocument {
   return {
     ...doc,
-    edges: doc.edges.map((e) => (e.kind === 'dep' || e.kind === 'dep_design'
-      ? { ...e, kind: 'dep_focus' as const }
+    edges: doc.edges.map((e) => (e.kind === EDGE_KIND.dep || e.kind === EDGE_KIND.depDesign
+      ? { ...e, kind: EDGE_KIND.depFocus }
       : e)),
   }
 }

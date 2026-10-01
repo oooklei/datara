@@ -55,6 +55,34 @@ export type GEdgeKind =
   | 'bind_fail'
   | 'bind_disabled'
 
+/**
+ * 边语义 kind 常量（键驼峰 ↔ GEdgeKind 联合逐项对应，satisfies 保证不漂移）。
+ * 生产代码（图文档构建/比较）引用常量，避免 magic string 与联合类型脱钩。
+ */
+export const EDGE_KIND = {
+  flow: 'flow',
+  branch: 'branch',
+  branchTrue: 'branch_true',
+  branchFalse: 'branch_false',
+  dep: 'dep',
+  lag: 'lag',
+  depDesign: 'dep_design',
+  depUnlinked: 'dep_unlinked',
+  depFocus: 'dep_focus',
+  fieldDep: 'field_dep',
+  produce: 'produce',
+  refer: 'refer',
+  call: 'call',
+  tag: 'tag',
+  rel1n: 'rel_1n',
+  relN1: 'rel_n1',
+  rel11: 'rel_11',
+  relNm: 'rel_nm',
+  bindPass: 'bind_pass',
+  bindFail: 'bind_fail',
+  bindDisabled: 'bind_disabled',
+} as const satisfies Record<string, GEdgeKind>
+
 export interface GEdge {
   id: string
   source: string
