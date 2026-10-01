@@ -5,24 +5,28 @@
  * - 移除 sub_process（意见③ 不设）与全部 ETL 算子节点类型（spark/flink/cdc/datax/dq/qgate 等）；
  * - I3：数据计算 C11~C14（SQL/Shell/Python/SSH）转可用；
  * - I4：C15/C16/C22（存储过程/HTTP/文件读取）转可用，表单对齐 worker 执行器参数键；
- * - I6：C17 数据同步/C23 同步编排模板转可用（业务表单 + 两套模板 build，palette 解禁）；
+ * - I6：同步组件族注册（历史，原 C17 数据同步/C23 同步编排已被同步编排重构取代）；
  * - I7：C21 变量组件注册（var-table 业务表单+示例行+palette 解禁）；C9 dependent 表单升级（deps-list 依赖项编辑器）；
  * - I8：C18~C20 流处理注册转可用（四源/五算子/四通道分型表单 + 页面化运行浮窗/实时数据展示页）+ 流子图校验；
- * - I12 T11：C24 文件同步 / C25 数据校验（master 内联 success/failure 双出口）/ C26 通知注册转可用（page_board 让出 C24 编号）；
+ * - I12 T11：C24 文件同步（后演进为「文件入仓执行」）/ C25 数据校验（master 内联 success/failure 双出口）/ C26 通知注册转可用；
+ * - 同步编排重构：删除「数据同步/同步编排/文件同步/源表基准/目标表基准」5 个旧专业组件，
+ *   新增 3 个编排组件（C29 源表基准编排 / C30 目标表基准编排 / C31 文件同步编排，拖入即物化细项节点链）；
+ * - 同步编排端点合一与设计态/运行态分离（docs/同步编排端点合一与设计态分离设计.md）：
+ *   删除 C32 源端选择/C33 目标端选择，合一为 C37 端点选择（baseMode 分拣表单，具名输出 sourceRef/targetRef）；
+ *   C17/C24 标记 runtimeOnly（运行态执行组件：palette/画布/校验排除，schema 保留供运行实例详情渲染）；
+ *   编排链新拓扑：开始→前置清理(sql)→端点选择→字段映射→条件设定→对账校验→结束，对账「不通过」→消息通知。
  * - F63 模板：demo_pipeline（拖入 → 模式选择 → 设计时物化展开为普通节点链）。
  */
 import { detectCycle, findBrokenEdges, findDuplicateEdges, findIsolated, uid } from '../model'
 import type { GraphDocument, GEdge, GNode } from '../model'
 import type { BranchDef, DependentDef, NodeSchema, VarDef, ViewProfile } from './types'
-import { c17IsConnReader, c17IsFileReader, c17OnReaderTypeChange, c17SqlPreview, c22OnModeChange, requiredMissing, tmpRefHint } from './formLinkage'
+import { onEdgeCreated, requiredMissing } from './formLinkage'
 import NodeRunDetailPage from '../workbench/pages/NodeRunDetailPage.vue'
 import SqlPreviewPage from '../workbench/pages/SqlPreviewPage.vue'
 import TmpPreviewPage from '../workbench/pages/TmpPreviewPage.vue'
 import StreamNodePage from '../workbench/pages/StreamNodePage.vue'
 import StreamDataPage from '../workbench/pages/StreamDataPage.vue'
 import BoardPage from '../workbench/pages/BoardPage.vue'
-import SourceBasePanel from '../workbench/panels/SourceBasePanel.vue'
-import TargetBasePanel from '../workbench/panels/TargetBasePanel.vue'
 
 /** 读取节点分支列表（老数据无 branches 时回退空数组） */
 export function branchListOf(data: Record<string, unknown>): BranchDef[] {
@@ -131,35 +135,117 @@ const numOr = (v: unknown, dft: number): number => {
   return Number.isFinite(n) && n > 0 ? n : dft
 }
 
-/** C17 节点 data 默认值（键名对齐 worker/executors/sync.py 参数契约；文件参数/增量条件平铺键） */
-const syncDefaults = (strategy: 'union' | 'src_flag'): Record<string, unknown> => ({
-  readerType: 'mysql', readerDs: '', readerTable: '',
-  readerFormat: 'csv', readerPath: '', readerEncoding: 'utf-8', readerDelimiter: ',', readerHeader: true, readerSheet: '',
-  readerSchemasText: '', autoSchema: true,
-  incrementalColumn: '', incrementalExpr: '',
-  writerType: 'mysql', writerDs: '', writerTable: '',
-  autoCreate: true, truncate: false,
-  strategy, flagColumn: 'src_schema',
-  fieldMap: [] as Record<string, string>[],
-  batchSize: 1000, errorThreshold: 0,
+/** C17 同步执行节点 data 默认值（运行态兜底参数；业务主配置由 master 运行时合并自 endpoint_select） */
+const syncExecDefaults = (): Record<string, unknown> => ({
+  readerType: 'mysql', writerType: 'mysql',
+  batchSize: 1000, errorThreshold: 0, truncate: false,
 })
 
-/** C23 模板链构造（设计 §3.2）：开始 → 数据同步 → 对账校验 → 结束，差异仅 C17 defaults 策略 */
-const buildSyncChain = (strategy: 'union' | 'src_flag') =>
-  (ctx: { doc: GraphDocument; pos: { x: number; y: number } }): { nodes: GNode[]; edges: GEdge[] } => {
-    const base = ctx.pos
-    const nStart: GNode = { id: uid('nd'), type: 'start', position: { x: base.x, y: base.y }, data: { name: '开始' } }
-    const nSync: GNode = { id: uid('nd'), type: 'sync', position: { x: base.x + 200, y: base.y }, data: { name: '数据同步', ...syncDefaults(strategy) } }
-    const nSql: GNode = {
-      id: uid('nd'), type: 'sql', position: { x: base.x + 400, y: base.y },
-      data: { name: '对账校验', datasource: '', pre: '', post: '', sql: '-- 对账校验：比对源与目标行数（数据源与目标表名请替换）\nSELECT COUNT(*) AS target_rows FROM 目标表' },
-    }
-    const nEnd: GNode = { id: uid('nd'), type: 'end', position: { x: base.x + 600, y: base.y }, data: { name: '结束' } }
-    const e1: GEdge = { id: uid('e'), source: nStart.id, target: nSync.id, kind: 'flow' }
-    const e2: GEdge = { id: uid('e'), source: nSync.id, target: nSql.id, kind: 'flow' }
-    const e3: GEdge = { id: uid('e'), source: nSql.id, target: nEnd.id, kind: 'flow' }
-    return { nodes: [nStart, nSync, nSql, nEnd], edges: [e1, e2, e3] }
+/** 同步编排链节点快速构造（统一 data.name + 展开坐标步进 200px） */
+function chainNode(type: string, name: string, data: Record<string, unknown>, x: number, y: number): GNode {
+  return { id: uid('nd'), type, position: { x, y }, data: { name, ...data } }
+}
+
+/**
+ * 同步编排链新拓扑（端点合一 + 设计态/运行态分离）：
+ * 开始 → 前置清理(sql) → 端点选择 → 字段映射 → 条件设定 → 对账校验 → 结束，对账校验「不通过」→ 消息通知。
+ * 设计态画布不含执行组件（sync/file_sync 运行态由 master 引擎在 assert 入边处物化插入）。
+ * 三链共用尾部：assert「通过」出口直连结束、「不通过」出口接通知（onFail=warn 告警继续，覆盖"写前清理 + 不达标告警"完整业务）。
+ */
+function chainEdgesWithNotify(nodes: GNode[]): GEdge[] {
+  /* 锚点按 type 定位（不与 build 函数数组顺序隐式耦合）：assert 之前沿数组顺序线性连线，
+     assert「通过」出口标注 success 端口（branch_true/通过→end），「不通过」出口接通知（branch_false/failure/不通过→notify） */
+  const assertIdx = nodes.findIndex((n) => n.type === 'assert')
+  const assertNode = nodes[assertIdx]!
+  const endNode = nodes.find((n) => n.type === 'end')!
+  const notifyNode = nodes.find((n) => n.type === 'notify')!
+  const main: GEdge[] = []
+  for (let i = 0; i < assertIdx; i++) {
+    const src = nodes[i]!
+    /* 端点选择双输出口（§3.2）：链内出边取源端表口 sourceRef（与用户从源端表口拖边同形态） */
+    const epPort = src.type === 'endpoint_select' ? { sourceHandle: 'sourceRef' } : {}
+    main.push({ id: uid('e'), source: src.id, target: nodes[i + 1]!.id, kind: 'flow', ...epPort })
   }
+  main.push({ id: uid('e'), source: assertNode.id, target: endNode.id, kind: 'branch_true', label: '通过', sourceHandle: 'success' })
+  const failEdge: GEdge = { id: uid('e'), source: assertNode.id, target: notifyNode.id, kind: 'branch_false', label: '不通过', sourceHandle: 'failure' }
+  return [...main, failEdge]
+}
+
+/** C25 对账校验基础默认值（schema defaults 与编排链共用单一来源；工厂每次调用产生新 rules 数组，避免多节点共享可变数组） */
+const ASSERT_BASE = (): Record<string, unknown> => ({
+  assertSrc: 'upstream', assertUpstream: '', assertDs: '', assertTable: '',
+  rules: [{ key: 'rows', value: 'min=1,max=1000000', note: '行数区间' }],
+  ruleColumns: [],
+  onFail: 'fail',
+})
+
+/** C26 消息通知基础默认值（schema defaults 与编排链共用单一来源；全为原始值可安全共享） */
+const NOTIFY_BASE: Record<string, unknown> = {
+  channel: 'log', url: '', template: '', trigger: 'on_success', failHard: false,
+}
+
+/** 对账校验链侧 data（基础默认值 + onFail=warn：不达标走「不通过」出口触发通知，不断流；schema 缺省仍为 fail 断流） */
+const assertChainDefaults = (): Record<string, unknown> => ({ ...ASSERT_BASE(), onFail: 'warn' })
+
+/** 消息通知链侧 data（沿基础默认值，仅日志通道兜底） */
+const notifyChainDefaults = (): Record<string, unknown> => ({ ...NOTIFY_BASE })
+
+/** C29 源表基准编排链：开始 → 前置清理 → 端点选择(src_base) → 字段映射-复制 → 条件设定 → 对账校验 → 结束（不通过→通知） */
+const buildSrcBaseChain = (ctx: { pos: { x: number; y: number } }): { nodes: GNode[]; edges: GEdge[] } => {
+  const { x, y } = ctx.pos
+  const nodes = [
+    chainNode('start', '开始', {}, x, y),
+    chainNode('sql', '前置清理', { datasource: '', sql: '', pre: '', post: '' }, x + 200, y),
+    chainNode('endpoint_select', '端点选择', { baseMode: 'src_base' }, x + 400, y),
+    chainNode('field_map', '字段映射-复制', { inputs: [], fieldMap: [], outputs: [] }, x + 600, y),
+    chainNode('condition_set', '条件设定', { inputs: [], outputs: [], filterExpr: '', incrementalColumn: '', incrementalExpr: '' }, x + 800, y),
+    chainNode('assert', '对账校验', assertChainDefaults(), x + 1000, y),
+    chainNode('end', '结束', {}, x + 1200, y),
+    chainNode('notify', '消息通知', notifyChainDefaults(), x + 1200, y + 160),
+  ]
+  const edges = chainEdgesWithNotify(nodes)
+  /* 拖边即引用（§3.3）：程序化建边与 onEdgeCreated 产生同一不变量（map/cond 的 data.inputs 引用） */
+  edges.forEach((e) => onEdgeCreated({ nodes, edges }, e))
+  return { nodes, edges }
+}
+
+/** C30 目标表基准编排链：开始 → 前置清理 → 端点选择(tgt_base) → 字段映射-联合 → 条件设定 → 对账校验 → 结束（不通过→通知） */
+const buildTgtBaseChain = (ctx: { pos: { x: number; y: number } }): { nodes: GNode[]; edges: GEdge[] } => {
+  const { x, y } = ctx.pos
+  const nodes = [
+    chainNode('start', '开始', {}, x, y),
+    chainNode('sql', '前置清理', { datasource: '', sql: '', pre: '', post: '' }, x + 200, y),
+    chainNode('endpoint_select', '端点选择', { baseMode: 'tgt_base' }, x + 400, y),
+    chainNode('field_map_union', '字段映射-联合', { inputs: [], fieldMap: [], outputs: [], addSchemaFlag: true, srcSchemaField: 'src_schema', aggOperator: 'union_all' }, x + 600, y),
+    chainNode('condition_set', '条件设定', { inputs: [], outputs: [], filterExpr: '', incrementalColumn: '', incrementalExpr: '' }, x + 800, y),
+    chainNode('assert', '对账校验', assertChainDefaults(), x + 1000, y),
+    chainNode('end', '结束', {}, x + 1200, y),
+    chainNode('notify', '消息通知', notifyChainDefaults(), x + 1200, y + 160),
+  ]
+  const edges = chainEdgesWithNotify(nodes)
+  /* 拖边即引用（§3.3）：程序化建边与 onEdgeCreated 产生同一不变量（map/cond 的 data.inputs 引用） */
+  edges.forEach((e) => onEdgeCreated({ nodes, edges }, e))
+  return { nodes, edges }
+}
+
+/** C31 文件同步编排链：开始 → 前置清理 → 端点选择(file_sync 文件源) → 字段映射-复制 → 条件设定 → 对账校验 → 结束（不通过→通知） */
+const buildFileSyncChain = (ctx: { pos: { x: number; y: number } }): { nodes: GNode[]; edges: GEdge[] } => {
+  const { x, y } = ctx.pos
+  const nodes = [
+    chainNode('start', '开始', {}, x, y),
+    chainNode('sql', '前置清理', { datasource: '', sql: '', pre: '', post: '' }, x + 200, y),
+    chainNode('endpoint_select', '端点选择', { baseMode: 'file_sync', filePath: 'samples/orders_part.csv' }, x + 400, y),
+    chainNode('field_map', '字段映射-复制', { inputs: [], fieldMap: [], outputs: [] }, x + 600, y),
+    chainNode('condition_set', '条件设定', { inputs: [], outputs: [], filterExpr: '', incrementalColumn: '', incrementalExpr: '' }, x + 800, y),
+    chainNode('assert', '对账校验', assertChainDefaults(), x + 1000, y),
+    chainNode('end', '结束', {}, x + 1200, y),
+    chainNode('notify', '消息通知', notifyChainDefaults(), x + 1200, y + 160),
+  ]
+  const edges = chainEdgesWithNotify(nodes)
+  /* 拖边即引用（§3.3）：程序化建边与 onEdgeCreated 产生同一不变量（map/cond 的 data.inputs 引用） */
+  edges.forEach((e) => onEdgeCreated({ nodes, edges }, e))
+  return { nodes, edges }
+}
 
 const portsOf = (data: Record<string, unknown>) =>
   branchListOf(data).map((b) => ({ id: b.id, label: b.name }))
@@ -177,7 +263,7 @@ const nodeTypes: Record<string, NodeSchema> = {
   },
   end: {
     type: 'end', label: '结束', icon: '■', color: '#64748b', code: 'C2', categories: ['general', 'sync', 'etl'], desc: '工作流结束节点',
-    form: [], defaults: {},
+    form: [], defaults: {}, maxOut: 0,  // G-22：maxOut=0 → 禁止出边（与 G-25 validator 双保险）
     summary: () => '工作流出口',
   },
   conditions: {
@@ -189,7 +275,7 @@ const nodeTypes: Record<string, NodeSchema> = {
         { id: 'br_no', name: '不满足', expr: '' },
       ] as BranchDef[],
     },
-    form: [{ key: 'branches', label: '条件分支（每分支独立端点）', type: 'branches' }],
+    form: [{ key: 'branches', label: '条件分支（每分支独立端点）', type: 'rows', rowsKind: 'branches' }],
     ports: portsOf,
     summary: (d) => branchListOf(d).map((b) => b.name).join(' / ') || '未配置分支',
   },
@@ -203,23 +289,37 @@ const nodeTypes: Record<string, NodeSchema> = {
         { id: 'sw_d', name: '默认', expr: '*' },
       ] as BranchDef[],
     },
-    form: [{ key: 'branches', label: '分发分支（匹配值）', type: 'branches' }],
+    form: [{ key: 'branches', label: '分发分支（匹配值）', type: 'rows', rowsKind: 'branches' }],
     ports: portsOf,
     summary: (d) => `${branchListOf(d).length} 路分发`,
   },
   fork: {
     type: 'fork', label: '并行分叉', icon: '⋔', color: '#ca8a04', code: 'C5', categories: ['general', 'sync', 'etl'],
-    desc: '单输入多路并行下发（下游同时触发）',
-    defaults: { parallel: 2 },
-    form: [{ key: 'parallel', label: '并行度', type: 'number' }],
-    summary: (d) => `并行度 ${d.parallel ?? 2}`,
+    desc: '单输入多路并行下发（下游同时触发；并行度 = 出边数）',
+    // G-03 修复：删除 parallel 幽灵字段——前端不据此生成端口，后端不据此限制/复制出边，
+    // 并行度由出边数天然表达。摘要由 GraphWorkbench 运行时按实际出边数渲染（见 forkSummary）。
+    defaults: {},
+    form: [],
+    summary: () => '并行分发（出边数 = 并行度）',
   },
   join: {
     type: 'join', label: '汇合（AND）', icon: '⨝', color: '#0f766e', code: 'C6', categories: ['general', 'sync', 'etl'],
-    desc: '等待全部上游分支完成后触发',
-    defaults: {},
-    form: [],
-    summary: () => '全部上游完成（AND）',
+    desc: '等待上游分支完成后触发（默认 all_terminal：全部终态即放行，不要求全成功）',
+    // G-05 修复：摘要随实际 policy 动态生成，消除"全部成功才触发"的语义误导；补 policy 表单（后端已支持三值）
+    defaults: { policy: 'all_terminal' },
+    form: [{
+      key: 'policy', label: '汇聚策略', type: 'select',
+      options: [
+        { label: '全部完成（含跳过/失败）', value: 'all_terminal' },
+        { label: '全部成功', value: 'all_success' },
+        { label: '任一成功', value: 'any_success' },
+      ],
+    }],
+    summary: (d) => {
+      const p = d.policy || 'all_terminal'
+      const label = { all_terminal: '全部完成（AND）', all_success: '全部成功（AND）', any_success: '任一成功' }
+      return `${label[p as keyof typeof label] || '全部完成（AND）'}（可配策略）`
+    },
   },
   merge: {
     type: 'merge', label: '合并（OR）', icon: '∪', color: '#0284c7', code: 'C7', categories: ['general', 'sync', 'etl'],
@@ -237,84 +337,142 @@ const nodeTypes: Record<string, NodeSchema> = {
       { key: 'unit', label: '单位', type: 'select', options: [
         { value: '秒', label: '秒' }, { value: '分', label: '分' }, { value: '时', label: '时' },
       ] },
+      /* G-06 修复：补 until 字段（后端已支持 4 种时间格式） */
+      { key: 'until', label: '到点时间（留空 = 按延时时长计算）', type: 'text',
+        placeholder: '支持：2026-12-31 23:59:59 / 2026-12-31 23:59 / 20261231 23:59:59 / 20261231235959（可含 ${var}）' },
+      { key: 'untilHint', label: '', type: 'hint',
+        text: () => '到点时间优先于延时时长；支持变量引用（如 ${yyyyMMdd} 23:59:59）；后端按 4 种格式依次尝试解析' },
     ],
-    summary: (d) => `延时 ${d.duration ?? 0}${String(d.unit ?? '秒')}`,
+    summary: (d) => d.until ? `到点 ${String(d.until).slice(0, 19)}` : `延时 ${d.duration ?? 0}${String(d.unit ?? '秒')}`,
   },
   dependent: {
     type: 'dependent', label: '依赖', icon: '⧉', color: '#7c3aed', code: 'C9', categories: ['general', 'sync', 'etl'],
     desc: '依赖其他工作流/节点产出：所配依赖各自最近一次实例中节点终态=success 即通过（I7 简化语义，周期/批次走变量条件）',
     defaults: { deps: [] as DependentDef[] },
-    form: [{ key: 'deps', label: '依赖项列表', type: 'deps-list' }],
+    form: [{ key: 'deps', label: '依赖项列表', type: 'rows', rowsKind: 'deps' }],
     summary: (d) => depSummary(d),
   },
   loop: {
     type: 'loop', label: '循环迭代', icon: '↻', color: '#c2410c', code: 'C10', categories: ['general', 'sync', 'etl'],
     desc: '按批次/条件循环执行子链路（自创，海豚无原生）',
-    defaults: { collection: '', batchSize: 100 },
+    // G-08 修复：暴露 maxIterations——防死循环的唯一硬保护（后端 DEFAULT_MAX_ITERATIONS=100）
+    defaults: { collection: '', batchSize: 100, maxIterations: 100 },
     form: [
       { key: 'collection', label: '迭代集合/参数', type: 'text', placeholder: '${loop_items}' },
       { key: 'batchSize', label: '批大小', type: 'number' },
+      { key: 'maxIterations', label: '最大迭代次数', type: 'number', placeholder: '100（超出即 FAILURE）' },
     ],
-    summary: (d) => `批次 ${d.batchSize ?? 0}`,
+    summary: (d) => `批次 ${d.batchSize ?? 0} · 上限 ${d.maxIterations ?? 100}`,
   },
 
   /* ================= B 数据计算（C11~C14 I3；C15/C16/C22 I4 注册转可用） ================= */
   sql: {
     type: 'sql', label: 'SQL', icon: '⌨', color: '#334155', code: 'C11', categories: ['etl', 'general', 'sync'],
     desc: '选择数据源执行 SQL（查询/非查询/DDL），页面化浮窗展示查询结果前 200 行',
+    /* F1 载体：连续 SQL 步骤同源场景——拖入时从逻辑上游快照预填数据源（§11 划界语义） */
+    dropPolicy: { prefillFromUpstream: ['datasource'] },
     defaults: { datasource: '', sql: '', pre: '', post: '' },
+    /* M-B2 八段 DSL 迁移：showIf → conditions；summary 函数 → render.summary */
     form: [
-      { key: 'datasource', label: '数据源', type: 'datasource', dsTypes: ['mysql', 'greatdb'] },
+      { key: 'datasource', label: '数据源', type: 'resource', cap: { mode: 'datasource', dsTypes: ['mysql', 'greatdb'] },
+        group: '执行目标', groupHint: 'SQL 在哪个库上执行' },
       /* I12 T12：库/表侧栏选择器——经 GET /datasources/{id}/tree 点选库/表，把 SELECT 骨架插入 SQL 编辑器（追加不覆盖手写） */
-      { key: 'sqlInsert', label: '库/表侧栏选择器（点选插入，不替代手写）', type: 'token-insert',
-        pick: { dsKey: 'datasource', insertKey: 'sql' }, showIf: (d) => !!d.datasource },
-      { key: 'sql', label: 'SQL 语句', type: 'textarea', placeholder: "INSERT INTO ... SELECT ..." },
-      { key: 'pre', label: '前置 SQL', type: 'textarea' },
-      { key: 'post', label: '后置 SQL', type: 'textarea' },
+      { key: 'sqlInsert', label: '库/表侧栏选择器（点选插入，不替代手写）', type: 'mapEditor', mapMode: 'insert',
+        cap: { mode: 'columnInsert', dsKey: 'datasource', insertKey: 'sql' } },
+      { key: 'sql', label: 'SQL 语句', type: 'text', multiline: true, group: 'SQL 脚本', groupHint: '主语句 + 可选前后置钩子',
+        placeholder: 'INSERT INTO ... SELECT ...' },
+      { key: 'pre', label: '前置 SQL', type: 'text', multiline: true, placeholder: '主语句前执行，如 TRUNCATE / 建临时表' },
+      { key: 'post', label: '后置 SQL', type: 'text', multiline: true, placeholder: '主语句后执行，如 UPDATE 统计 / 校验' },
     ],
-    summary: (d) => String(d.datasource ?? ''),
+    conditions: [
+      { id: 'c-sql-insert', when: { field: 'datasource', op: 'notEmpty' }, show: ['sqlInsert'] },
+    ],
+    render: { summary: 'SQL（查询/非查询/DDL，多语句顺序执行）' },
     /* F61 页面化：SQL 结果预览（worker result_preview 前 200 行，real 走实例详情） */
     page: { title: 'SQL 结果预览', comp: SqlPreviewPage, w: 620, h: 380 },
   },
   shell: {
     type: 'shell', label: 'Shell', icon: '❯', color: '#7c3aed', code: 'C12', categories: ['general', 'etl'],
     desc: '在运行时节点执行 Shell 脚本',
-    defaults: { script: '' },
-    form: [{ key: 'script', label: '脚本内容', type: 'textarea', placeholder: '#!/bin/bash ...' }],
-    summary: () => 'Shell 脚本',
+    defaults: { script: '', env: [] },
+    /* M-B2 八段 DSL 迁移：summary 函数 → render.summary */
+    form: [
+      { key: 'script', label: '脚本内容', type: 'text', multiline: true, placeholder: '#!/bin/bash ...' },
+      /* G-10 修复：补 env 环境变量表（后端 build_env 已消费） */
+      { key: 'env', label: '环境变量（键值表，注入子进程）', type: 'rows', rowsKind: 'kv',
+        group: '运行环境', groupHint: '传递给 shell 子进程的环境变量（如 DEPLOY_ENV=prod）' },
+    ],
+    conditions: [],
+    render: { summary: 'Shell（bash 脚本执行）' },
   },
   python: {
     type: 'python', label: 'Python', icon: 'Py', color: '#2563eb', code: 'C13', categories: ['general', 'etl'],
     desc: '在运行时节点执行 Python 脚本',
-    defaults: { script: '' },
-    form: [{ key: 'script', label: '脚本内容', type: 'textarea' }],
-    summary: () => 'Python 脚本',
+    defaults: { script: '', env: [], requirements: '' },
+    /* M-B2 八段 DSL 迁移：summary 函数 → render.summary；空 label hint → 固定文案 */
+    form: [
+      { key: 'script', label: '脚本内容', type: 'text', multiline: true },
+      /* G-10 修复：补 env 环境变量表 + requirements 依赖清单（后端已消费） */
+      { key: 'env', label: '环境变量（键值表，注入子进程）', type: 'rows', rowsKind: 'kv',
+        group: '运行环境', groupHint: '传递给 python 子进程的环境变量（如 PYTHONPATH=/app）' },
+      { key: 'requirements', label: '依赖清单（requirements.txt 格式，仅校验/留痕）', type: 'text', multiline: true, rows: 4,
+        placeholder: 'requests>=2.28\npandas==1.5.0  # 依赖需预装镜像层，本期不运行时安装' },
+      /* 决策 5：空 label hint → 固定文案 */
+      { key: 'requirementsHint', label: '依赖需预装镜像层', type: 'hint',
+        text: '依赖需预装镜像层，本期仅校验格式并打印日志提示' },
+    ],
+    conditions: [],
+    render: { summary: 'Python（subprocess 执行）' },
+  },
+  /* G-12 修复：smoke 补 nodeTypes 条目（已在 WORKER_TYPES + 有 executor，但原无 palette 入口） */
+  smoke: {
+    type: 'smoke', label: '冒烟', icon: '☁', color: '#64748b', code: 'C38', categories: ['general'],
+    desc: '冒烟测试节点：echo hello + 分片 sleep（用于链路连通性验证）',
+    defaults: { name: '冒烟', delaySec: 1 },
+    form: [
+      { key: 'name', label: '任务名', type: 'text', placeholder: '冒烟' },
+      { key: 'delaySec', label: '延时（秒，分片 1s 支持中断）', type: 'number', placeholder: '1' },
+    ],
+    summary: (d) => `冒烟 ${d.name || '未命名'}（${d.delaySec ?? 1}s）`,
   },
   ssh: {
     type: 'ssh', label: 'SSH 脚本', icon: '⌖', color: '#475569', code: 'C14', categories: ['general', 'etl'],
     desc: '依托运行时节点 SSH 执行远程脚本；I7 支持按执行节点标签多主机路由（F53）',
     defaults: { runtimeNode: '', execNodeTag: '', script: '' },
+    /* M-B2 八段 DSL 迁移：showIf → conditions；summary 函数 → render.summary */
     form: [
-      { key: 'execNodeTag', label: '执行节点标签', type: 'exec-node-tag', placeholder: '留空则按下方运行时节点直连' },
-      {
-        key: 'runtimeNode', label: '运行时节点', type: 'runtime-node',
-        showIf: (d) => !String(d.execNodeTag ?? '').trim(),
-      },
-      { key: 'script', label: '脚本内容', type: 'textarea', placeholder: '远端 bash 执行的脚本（经 stdin 下发）' },
+      { key: 'execNodeTag', label: '执行节点标签', type: 'select', selectFrom: 'exec-node-tags', placeholder: '留空则按下方运行时节点直连' },
+      { key: 'runtimeNode', label: '运行时节点', type: 'resource', cap: { mode: 'runtimeNode' } },
+      { key: 'script', label: '脚本内容', type: 'text', multiline: true, placeholder: '远端 bash 执行的脚本（经 stdin 下发）' },
     ],
-    summary: (d) => (d.execNodeTag ? `SSH @ 标签:${d.execNodeTag}` : d.runtimeNode ? `SSH @ ${d.runtimeNode}` : 'SSH 远程脚本'),
+    conditions: [
+      { id: 'c-runtime-node', when: { field: 'execNodeTag', op: 'empty' }, show: ['runtimeNode'] },
+    ],
+    render: {
+      summary: 'SSH 远程脚本',
+      /* M-B2：执行节点分型副标题（标签 → 运行时节点 → 通用兜底，声明序首条命中） */
+      summaryRules: [
+        { when: { field: 'execNodeTag', op: 'notEmpty' }, template: '标签 ${execNodeTag}' },
+        { when: { field: 'runtimeNode', op: 'notEmpty' }, template: '节点 ${runtimeNode}' },
+        { when: null, template: 'SSH 远程脚本' },
+      ],
+    },
   },
   procedure: {
     type: 'procedure', label: '存储过程', icon: '⚙', color: '#6d28d9', code: 'C15', categories: ['general', 'etl'],
     desc: '调用数据源存储过程（CALL），OUT 参数注册为输出参数 out_{key} 供下游引用',
+    /* F1 载体：存储过程常接在 SQL 步骤之后同源执行——拖入时快照预填数据源 */
+    dropPolicy: { prefillFromUpstream: ['datasource'] },
     defaults: { datasource: '', db: '', procedure: '', args: [] },
+    /* M-B2 八段 DSL 迁移：summary 函数 → render.summary */
     form: [
-      { key: 'datasource', label: '数据源', type: 'datasource', dsTypes: ['mysql', 'greatdb'] },
+      { key: 'datasource', label: '数据源', type: 'resource', cap: { mode: 'datasource', dsTypes: ['mysql', 'greatdb'] } },
       { key: 'db', label: '目标库（留空 = 数据源默认库）', type: 'text' },
       { key: 'procedure', label: '过程名', type: 'text', placeholder: '如 sp_i4_demo' },
-      { key: 'args', label: '过程参数（IN 传值 / OUT 回读）', type: 'args-table' },
+      { key: 'args', label: '过程参数（IN 传值 / OUT 回读）', type: 'rows', rowsKind: 'args' },
     ],
-    summary: (d) => `${d.procedure || '未配置过程'} @ ${d.datasource || '未选数据源'}`,
+    conditions: [],
+    render: { summary: '存储过程（CALL）' },
   },
   http: {
     type: 'http', label: 'HTTP', icon: '⊕', color: '#4f46e5', code: 'C16', categories: ['general', 'etl'],
@@ -323,6 +481,7 @@ const nodeTypes: Record<string, NodeSchema> = {
       url: '', method: 'GET', headers: [], body: '', bodyType: 'json',
       successCodes: '2xx', extract: [], timeout: 30,
     },
+    /* M-B2 八段 DSL 迁移：showIf → conditions；summary 函数 → render.summary */
     form: [
       { key: 'url', label: 'URL', type: 'text', placeholder: 'http://…' },
       { key: 'method', label: '方法', type: 'select', options: [
@@ -330,17 +489,19 @@ const nodeTypes: Record<string, NodeSchema> = {
         { value: 'POST', label: 'POST' }, { value: 'PUT', label: 'PUT' },
         { value: 'DELETE', label: 'DELETE' }, { value: 'PATCH', label: 'PATCH' },
       ] },
-      { key: 'headers', label: '请求头（键值表）', type: 'kv-table' },
+      { key: 'headers', label: '请求头（键值表）', type: 'rows', rowsKind: 'kv' },
       { key: 'bodyType', label: '请求体类型', type: 'select',
-        showIf: (d) => !['GET', 'HEAD'].includes(String(d.method ?? 'GET')),
         options: [{ value: 'json', label: 'JSON' }, { value: 'form', label: 'FORM' }] },
-      { key: 'body', label: '请求体', type: 'textarea', placeholder: 'JSON 串或表单文本',
-        showIf: (d) => !['GET', 'HEAD'].includes(String(d.method ?? 'GET')) },
+      { key: 'body', label: '请求体', type: 'text', multiline: true, placeholder: 'JSON 串或表单文本' },
       { key: 'successCodes', label: '成功状态码', type: 'text', placeholder: '逗号分隔，如 2xx,200（空 = 2xx）' },
-      { key: 'extract', label: '响应提取（输出名 → 点路径）', type: 'kv-table' },
+      { key: 'extract', label: '响应提取（输出名 → 点路径）', type: 'rows', rowsKind: 'kv' },
       { key: 'timeout', label: '超时（秒）', type: 'number' },
     ],
-    summary: (d) => `${d.method ?? 'GET'} ${d.url || ''}`,
+    conditions: [
+      { id: 'c-body-type', when: { field: 'method', op: 'notIn', value: ['GET', 'HEAD'] }, show: ['bodyType'] },
+      { id: 'c-body', when: { field: 'method', op: 'notIn', value: ['GET', 'HEAD'] }, show: ['body'] },
+    ],
+    render: { summary: 'HTTP 调用' },
   },
   file: {
     type: 'file', label: '文件读取', icon: '▦', color: '#0e7490', code: 'C22', categories: ['general', 'etl'],
@@ -351,138 +512,268 @@ const nodeTypes: Record<string, NodeSchema> = {
       register: true, tmpName: '', kind: 'table', targetDs: '内置数仓-datara_dw',
       retention: 'immediate', keepDays: 7,
     },
+    /* M-B2 八段 DSL 迁移：showIf/onChange → conditions；summary 函数 → render.summary；hint 函数字面量化 */
     form: [
       { key: 'mode', label: '来源模式', type: 'select', options: [
         { value: 'datasource', label: '数据源中心文件源' },
         { value: 'manual', label: '手动参数' },
-      ], onChange: c22OnModeChange },
-      { key: 'datasource', label: '文件源数据源', type: 'datasource', dsTypes: ['file'],
-        showIf: (d) => d.mode === 'datasource' },
-      { key: 'path', label: '文件路径（/datara/files 相对）', type: 'text',
-        placeholder: '如 samples/orders.csv', showIf: (d) => d.mode === 'manual' },
+      ] },
+      { key: 'datasource', label: '文件源数据源', type: 'resource', cap: { mode: 'datasource', dsTypes: ['file'] } },
+      { key: 'path', label: '文件路径（/datara/files 相对）', type: 'text', placeholder: '如 samples/orders.csv' },
       { key: 'format', label: '格式', type: 'select', options: [
         { value: 'csv', label: 'CSV' }, { value: 'txt', label: 'TXT' }, { value: 'excel', label: 'Excel' },
-      ], showIf: (d) => d.mode === 'manual' },
+      ] },
       { key: 'encoding', label: '编码', type: 'select', options: [
         { value: 'utf-8', label: 'UTF-8' }, { value: 'gbk', label: 'GBK' }, { value: 'gb18030', label: 'GB18030' },
-      ], showIf: (d) => d.mode === 'manual' },
-      { key: 'delimiter', label: '分隔符', type: 'text', placeholder: ',',
-        showIf: (d) => d.mode === 'manual' && String(d.format) !== 'excel' },
-      { key: 'header', label: '首行表头', type: 'bool', placeholder: '首行为列名',
-        showIf: (d) => d.mode === 'manual' && String(d.format) !== 'excel' },
-      { key: 'sheet', label: 'Sheet 名称（留空 = 首个）', type: 'text',
-        showIf: (d) => d.mode === 'manual' && String(d.format) === 'excel' },
+      ] },
+      { key: 'delimiter', label: '分隔符', type: 'text', placeholder: ',' },
+      { key: 'header', label: '首行表头', type: 'bool', placeholder: '首行为列名' },
+      { key: 'sheet', label: 'Sheet 名称（留空 = 首个）', type: 'text' },
       { key: 'register', label: '注册临时数据', type: 'bool', placeholder: '勾选后下游可用 ${tmp.<名>} 引用' },
-      { key: 'tmpName', label: '临时数据名', type: 'text', placeholder: '小写字母开头 3~32 位 a-z0-9_',
-        showIf: (d) => !!d.register },
+      { key: 'tmpName', label: '临时数据名', type: 'text', placeholder: '小写字母开头 3~32 位 a-z0-9_' },
       { key: 'kind', label: '临时数据形态', type: 'select', options: [
         { value: 'table', label: '临时表（全量物化）' },
         { value: 'resultset', label: '结果集引用（抽样 JSON）' },
         { value: 'file', label: '文件登记（仅路径+schema）' },
-      ], showIf: (d) => !!d.register },
-      { key: 'targetDs', label: '物化目标数据源', type: 'datasource', dsTypes: ['mysql', 'greatdb'],
-        showIf: (d) => !!d.register && String(d.kind) === 'table' },
+      ] },
+      { key: 'targetDs', label: '物化目标数据源', type: 'resource', cap: { mode: 'datasource', dsTypes: ['mysql', 'greatdb'] } },
       { key: 'retention', label: '保留策略', type: 'select', options: [
         { value: 'immediate', label: '立即清理（实例终态清扫）' },
         { value: 'days', label: '保留 N 天' },
         { value: 'keep', label: '转正式表（实例成功后 RENAME）' },
-      ], showIf: (d) => !!d.register },
-      { key: 'keepDays', label: '保留天数', type: 'number',
-        showIf: (d) => !!d.register && String(d.retention) === 'days' },
-      { key: 'keepHint', label: '', type: 'hint',
-        text: (d) => `转正式表：实例成功后临时表 RENAME 去前缀，正式表名 = 临时数据名 ${String(d.tmpName || '?')}（仅 table 形态生效）`,
-        showIf: (d) => !!d.register && String(d.retention) === 'keep' },
-      { key: 'tmpHint', label: '', type: 'hint', text: tmpRefHint, showIf: (d) => !!tmpRefHint(d) },
+      ] },
+      { key: 'keepDays', label: '保留天数', type: 'number' },
+      /* 决策 5：空 label hint → 固定文案 */
+      { key: 'keepHint', label: '转正式表说明', type: 'hint',
+        text: '转正式表：实例成功后临时表 RENAME 去前缀，正式表名 = 临时数据名（仅 table 形态生效）' },
+      { key: 'tmpHint', label: '临时数据引用', type: 'hint',
+        text: '下游以 ${tmp.<名>} 引用本节点注册的临时数据' },
     ],
-    summary: (d) => {
-      const src = d.mode === 'manual' ? String(d.path || '未配置路径') : String(d.datasource || '未选数据源')
-      return d.register ? `${src} → ${d.tmpName || '?'}（${String(d.kind ?? 'table')}）` : `${src}（不注册）`
-    },
+    conditions: [
+      { id: 'c-datasource', when: { field: 'mode', op: 'eq', value: 'datasource' }, show: ['datasource'] },
+      { id: 'c-manual', when: { field: 'mode', op: 'eq', value: 'manual' }, show: ['path', 'format', 'encoding', 'delimiter', 'header', 'sheet'] },
+      { id: 'c-delimiter', when: { field: 'format', op: 'notEq', value: 'excel' }, show: ['delimiter', 'header'] },
+      { id: 'c-sheet', when: { field: 'format', op: 'eq', value: 'excel' }, show: ['sheet'] },
+      { id: 'c-register', when: { field: 'register', op: 'eq', value: true }, show: ['tmpName', 'kind', 'targetDs', 'retention', 'keepDays', 'keepHint', 'tmpHint'] },
+      { id: 'c-target-ds', when: { field: 'kind', op: 'eq', value: 'table' }, show: ['targetDs'] },
+      { id: 'c-keep-days', when: { field: 'retention', op: 'eq', value: 'days' }, show: ['keepDays'] },
+      { id: 'c-keep-hint', when: { field: 'retention', op: 'eq', value: 'keep' }, show: ['keepHint'] },
+    ],
+    render: { summary: '文件读取' },
     /* F61 页面化：数据预览检验网格（t_tmp_data 抽样 + schema 推断 + 空值统计） */
     page: { title: '数据预览检验', comp: TmpPreviewPage, w: 680, h: 440 },
   },
 
-  /* ================= C 数据同步（C17 I6 注册；C23 模板聚合） ================= */
+  /* ================= C 同步编排重构（C29~C31 编排组件；C37 端点选择等细项组件；C17/C24 运行态执行组件） ================= */
   sync: {
-    type: 'sync', label: '数据同步', icon: '⇄', color: '#0891b2', code: 'C17', categories: ['sync', 'general'],
-    desc: '读写器分离的异构数据源同步（MySQL/GreatDB/文件 → MySQL/GreatDB；动态 schema 返选 + union/标识列/分区三策略）',
-    defaults: syncDefaults('union'),
+    type: 'sync', label: '同步执行', icon: '⇄', color: '#0891b2', code: 'C17', categories: ['sync'],
+    /* 同步编排端点合一：sync 降级为运行态执行组件——设计态画布/palette/校验均排除，schema 保留供运行实例详情渲染；
+       运行图由 master 引擎按 endpoint_select.baseMode 物化插入（id 前缀 sys_exec_） */
+    runtimeOnly: true,
+    desc: '运行态执行组件（runtimeOnly，设计态画布不出现）：读端/写端/字段映射/过滤条件由 master 引擎运行时合并自 endpoint_select（按 baseMode 分拣），此处仅保留运行兜底参数',
+    defaults: syncExecDefaults(),
     form: [
-      /* —— 读端 —— */
-      { key: 'readerType', label: '读端类型', type: 'select', options: [
-        { value: 'mysql', label: 'MySQL' }, { value: 'greatdb', label: 'GreatDB' },
-        { value: 'csv', label: 'CSV 文件' }, { value: 'txt', label: 'TXT 文件' }, { value: 'excel', label: 'Excel 文件' },
-      ], onChange: c17OnReaderTypeChange },
-      { key: 'readerDs', label: '读端数据源', type: 'datasource', dsTypes: ['mysql', 'greatdb'], showIf: c17IsConnReader },
-      { key: 'readerTable', label: '读端表名', type: 'table-picker', showIf: c17IsConnReader,
-        pick: { dsKey: 'readerDs', writeAs: 'table' } },
-      { key: 'readerSchemasText', label: '参与 schema（逗号分隔，留空 = 数据源默认库）', type: 'text',
-        placeholder: '如 ec_retail_east,ec_retail_south', showIf: c17IsConnReader },
-      { key: 'autoSchema', label: '新增 schema 自动纳入', type: 'bool',
-        placeholder: '运行时 SHOW DATABASES 差集探测同名表自动加入分支', showIf: c17IsConnReader },
-      { key: 'incrementalColumn', label: '增量列（可选）', type: 'text', placeholder: '如 create_time', showIf: c17IsConnReader },
-      { key: 'incrementalExpr', label: '增量条件表达式', type: 'text', placeholder: '如 ${yyyyMMdd-1}（运行时变量替换后 > 比较）',
-        showIf: (d) => c17IsConnReader(d) && !!d.incrementalColumn },
-      { key: 'readerPath', label: '文件路径（/datara/files 相对）', type: 'text', placeholder: '如 samples/orders.csv', showIf: c17IsFileReader },
-      { key: 'readerEncoding', label: '编码', type: 'select', options: [
-        { value: 'utf-8', label: 'UTF-8' }, { value: 'gbk', label: 'GBK' }, { value: 'gb18030', label: 'GB18030' },
-      ], showIf: c17IsFileReader },
-      { key: 'readerDelimiter', label: '分隔符', type: 'text', placeholder: ',',
-        showIf: (d) => c17IsFileReader(d) && String(d.readerType) !== 'excel' },
-      { key: 'readerHeader', label: '首行表头', type: 'bool', placeholder: '首行为列名',
-        showIf: (d) => c17IsFileReader(d) && String(d.readerType) !== 'excel' },
-      { key: 'readerSheet', label: 'Sheet 名称（留空 = 首个）', type: 'text',
-        showIf: (d) => c17IsFileReader(d) && String(d.readerType) === 'excel' },
-      /* —— 写端 —— */
-      { key: 'writerType', label: '写端类型', type: 'select', options: [
-        { value: 'mysql', label: 'MySQL' }, { value: 'greatdb', label: 'GreatDB' },
-      ] },
-      { key: 'writerDs', label: '写端数据源', type: 'datasource', dsTypes: ['mysql', 'greatdb'] },
-      { key: 'writerTable', label: '目标表名', type: 'table-picker',
-        pick: { dsKey: 'writerDs', writeAs: 'table' } },
-      { key: 'autoCreate', label: '自动建表', type: 'bool', placeholder: '目标表不存在时按源结构创建' },
+      { key: 'chainHint', label: '', type: 'hint', text: () =>
+        '业务配置在端点选择节点完成（基准类型分拣源端/目标端表单）→ 字段映射（复制或联合）→ 条件设定（WHERE 过滤/增量列）；本节点仅以下兜底参数生效（合并配置优先）' },
+      { key: 'batchSize', label: '批大小', type: 'number', placeholder: '缺省 1000' },
+      { key: 'errorThreshold', label: '错误阈值（坏行容忍条数）', type: 'number', placeholder: '缺省 0' },
       { key: 'truncate', label: '写入前清空目标（TRUNCATE）', type: 'bool' },
-      /* —— I8 反选探测：目标表为基准，探测源库同名/前缀匹配表并回填（见 Inspector probe 控件） —— */
-      { key: 'probe', label: '反选探测（目标表 → 源库匹配）', type: 'probe', showIf: c17IsConnReader,
-        probe: { dsKey: 'readerDs', tableKey: 'writerTable' } },
-      /* —— 合并策略 —— */
-      { key: 'strategy', label: '合并策略', type: 'select', options: [
-        { value: 'union', label: 'union 合并（追加，不带来源标识）' },
-        { value: 'src_flag', label: '标识列（每行落源 schema 标识）' },
-        { value: 'partition', label: '分区隔离（按 schema 拆独立目标表）' },
-      ] },
-      { key: 'flagColumn', label: '标识列名', type: 'text', showIf: (d) => d.strategy === 'src_flag' },
-      { key: 'sqlPreview', label: '', type: 'hint', text: c17SqlPreview,
-        showIf: (d) => c17IsConnReader(d) && !!d.readerTable && ['union', 'src_flag'].includes(String(d.strategy)) },
-      /* —— 字段映射 / 运行参数 —— */
-      { key: 'fieldMap', label: '字段映射（源 → 目标，留空 = 同名全列）', type: 'kv-table' },
-      { key: 'batchSize', label: '批大小', type: 'number' },
-      { key: 'errorThreshold', label: '错误阈值（坏行容忍条数）', type: 'number' },
     ],
-    summary: (d) => {
-      const src = c17IsConnReader(d) ? `${d.readerDs || '未选源'}:${d.readerTable || '?'}` : `${d.readerType || '?'}:${d.readerPath || '未配置路径'}`
-      return `${src} → ${d.writerTable || '未配置目标表'}（${String(d.strategy ?? 'union')}）`
-    },
+    summary: () => '同步执行（运行态，配置经 master 合并）',
     /* F61 页面化：同步运行详情（读写行数/速率/坏行数/参与 schema，复用节点运行详情数据通道） */
     page: { title: '同步运行详情', comp: NodeRunDetailPage, w: 620, h: 420 },
   },
-  sync_template: {
-    type: 'sync_template', label: '同步编排', icon: '⇉', color: '#0369a1', code: 'C23', categories: ['sync'],
-    desc: '同步编排模板：拖入选择模式展开为 开始 → 数据同步 → 对账校验 → 结束 节点链（设计时物化，保存自动打「同步」标签）',
+  /* ================= C34~C37 同步编排细项组件（编排展开链的配置节点） ================= */
+  /* C37 端点选择（合一组件，取代原 C32 源端选择/C33 目标端选择）：按基准类型分拣源端/目标端表单，
+     具名输出端口 sourceRef/targetRef 供下游按端口语义引用（field_map/field_map_union 输入） */
+  endpoint_select: {
+    type: 'endpoint_select', label: '端点选择', icon: '⇤', color: '#0369a1', code: 'C37', categories: ['sync'],
+    desc: '同步端点选择（合一组件）：按基准类型分拣源端/目标端表单；源表基准=源端选表+目标端选实例（表可新建）；目标表基准=目标端选表+源端选实例联动探测各 schema 匹配表；文件同步=文件源+目标端',
+    outputs: [
+      { id: 'sourceRef', label: '源端表' },
+      { id: 'targetRef', label: '目标端表' },
+    ],
+    defaults: {
+      baseMode: 'src_base',
+      srcDs: '', srcTable: '', probe: false, matchType: 'exact', matchPrefix: '', probeResult: '',
+      tgtDs: '', tgtTable: '', autoCreate: true,
+      filePath: '', fileType: 'csv', fileDelimiter: ',', fileEncoding: 'utf-8', fileHeaderRows: 1, fileSheet: '',
+    },
+    form: [
+      { key: 'baseMode', label: '基准类型', type: 'select', group: '同步基准', groupHint: '决定源端形态与目标表是否必选',
+        options: [
+        { value: 'src_base', label: '源表基准（源端选表）' },
+        { value: 'tgt_base', label: '目标表基准（目标端选表，源端探测）' },
+        { value: 'file_sync', label: '文件同步（文件源）' },
+      ] },
+      /* —— 源端区 —— */
+      { key: 'srcDs', label: '源数据源', type: 'resource', cap: { mode: 'datasource', dsTypes: ['mysql', 'greatdb'] }, required: true,
+        group: '源端', groupHint: '待同步的数据从哪来',
+        showIf: (d) => String(d.baseMode ?? 'src_base') !== 'file_sync' },
+      { key: 'srcTable', label: '源表', type: 'resource', cap: { mode: 'table', dsKey: 'srcDs', writeAs: 'schemaTable' }, required: true,
+        showIf: (d) => String(d.baseMode ?? 'src_base') === 'src_base' },
+      { key: 'probe', label: '联动探测匹配表', type: 'bool',
+        placeholder: '选定目标表后探测该源实例各 schema 匹配表',
+        showIf: (d) => String(d.baseMode ?? 'src_base') === 'tgt_base' },
+      { key: 'matchType', label: '匹配规则', type: 'select', options: [
+        { value: 'exact', label: '完全同名（默认）' }, { value: 'prefix', label: '前部分命名相同（目标表名为前缀）' },
+      ], showIf: (d) => String(d.baseMode ?? 'src_base') === 'tgt_base' && !!d.probe },
+      { key: 'matchPrefix', label: '匹配前缀（留空 = 目标表名）', type: 'text',
+        placeholder: '如 ods_order',
+        showIf: (d) => String(d.baseMode ?? 'src_base') === 'tgt_base' && !!d.probe && String(d.matchType) === 'prefix' },
+      /* 探测候选确认：逗号分隔 schema.table 清单（留空 = 探测全部匹配）；探测回填联动由 Inspector 层演进 */
+      { key: 'probeResult', label: '参与 schema/表（逗号分隔，留空 = 探测全部匹配）', type: 'text',
+        placeholder: '如 ec_retail.order_detail, ec_retail_east.order_detail',
+        showIf: (d) => String(d.baseMode ?? 'src_base') === 'tgt_base' && !!d.probe },
+      /* —— 文件源区 —— */
+      { key: 'filePath', label: '文件路径（/datara/files 相对）', type: 'text', required: true,
+        group: '文件源', groupHint: '仅文件同步：路径与解析规则',
+        placeholder: '如 samples/orders.csv', showIf: (d) => String(d.baseMode ?? 'src_base') === 'file_sync' },
+      { key: 'fileType', label: '文件类型', type: 'select', options: [
+        { value: 'csv', label: 'CSV' }, { value: 'txt', label: 'TXT' }, { value: 'excel', label: 'Excel' },
+      ], showIf: (d) => String(d.baseMode ?? 'src_base') === 'file_sync' },
+      { key: 'fileDelimiter', label: '分隔符', type: 'text', placeholder: ',',
+        showIf: (d) => String(d.baseMode ?? 'src_base') === 'file_sync' && String(d.fileType) !== 'excel' },
+      { key: 'fileEncoding', label: '编码', type: 'select', options: [
+        { value: 'utf-8', label: 'UTF-8' }, { value: 'gbk', label: 'GBK' }, { value: 'gb18030', label: 'GB18030' },
+      ], showIf: (d) => String(d.baseMode ?? 'src_base') === 'file_sync' && String(d.fileType) !== 'excel' },
+      { key: 'fileHeaderRows', label: '表头行数', type: 'number', placeholder: '缺省 1（0 = 无表头）',
+        showIf: (d) => String(d.baseMode ?? 'src_base') === 'file_sync' },
+      { key: 'fileSheet', label: 'Sheet 名称（留空 = 首个）', type: 'text',
+        placeholder: '如 Sheet1', showIf: (d) => String(d.baseMode ?? 'src_base') === 'file_sync' && String(d.fileType) === 'excel' },
+      /* —— 目标端区 —— */
+      { key: 'tgtDs', label: '目标数据源', type: 'resource', cap: { mode: 'datasource', dsTypes: ['mysql', 'greatdb'] }, required: true,
+        group: '目标端', groupHint: '数据落到哪；表不存在可按源结构新建' },
+      /* 目标表双分型（required 契约为 boolean，保留两条 showIf 互斥渲染）：tgt_base 必选；src_base/file_sync 分型可留空（按源表同名/文件表头新建） */
+      { key: 'tgtTable', label: '目标表', type: 'resource', cap: { mode: 'table', dsKey: 'tgtDs', writeAs: 'schemaTable' }, required: true,
+        showIf: (d) => String(d.baseMode ?? 'src_base') === 'tgt_base' },
+      { key: 'tgtTable', label: '目标表（留空 = 按源表同名/文件表头新建）', type: 'resource', cap: { mode: 'table', dsKey: 'tgtDs', writeAs: 'schemaTable' },
+        showIf: (d) => String(d.baseMode ?? 'src_base') !== 'tgt_base' },
+      { key: 'autoCreate', label: '目标表不存在则新建', type: 'bool',
+        placeholder: '按源表/文件表头结构创建', showIf: (d) => String(d.baseMode ?? 'src_base') !== 'tgt_base' },
+    ],
+    summary: (d) => {
+      const m = String(d.baseMode ?? 'src_base')
+      const name = { src_base: '源表基准', tgt_base: '目标表基准', file_sync: '文件同步' }[m] ?? m
+      const src = m === 'file_sync'
+        ? String(d.filePath || '未配置路径')
+        : `${d.srcDs || '未选源'}:${d.srcTable || d.probeResult || (d.probe ? '探测匹配表' : '未选表')}`
+      return `${name}：${src} → ${d.tgtDs || '未选目标'}:${d.tgtTable || '(同名新建)'}`
+    },
+  },
+  field_map: {
+    type: 'field_map', label: '字段映射-复制', icon: '⇄', color: '#0369a1', code: 'C34', categories: ['sync'],
+    desc: '源表→目标表字段映射（2 输入 + flex 布局字段对照 + 输入/输出选择）',
+    defaults: { inputs: [], fieldMap: [], outputs: [] },
+    form: [
+      /* —— 输入选择（多选上游节点输出：[0]=源端表, [1]=目标端表） —— */
+      /* 直通节点 inputs 非必填（wf97 422 根治 2026-10-01）：引擎 PASSTHROUGH 拍平容忍空
+         inputs（留空=全量拍平，wf97 v5 250K 行实测），required 声明曾致存量文档重存 422 */
+      { key: 'inputs', label: '输入（上游节点输出，前两个为源端表/目标端表）', type: 'resource', cap: { mode: 'upstreamOutputs', upstreamMax: 2 },
+        group: '映射输入', groupHint: '源/目标两端表，顺序决定映射方向；留空=拍平直通' },
+      /* —— 字段映射（flex布局，源字段→目标字段） —— */
+      /* 端点合一：源/目标列枚举均取自 endpoint_select 节点（srcDs/srcTable 与 tgtDs/tgtTable 字段） */
+      { key: 'fieldMap', label: '字段映射（源字段 → 目标字段）', type: 'mapEditor', mapMode: 'map',
+        cap: { mode: 'columnMap', srcNodeType: 'endpoint_select', tgtNodeType: 'endpoint_select', srcDsKey: 'srcDs', srcTableKey: 'srcTable', tgtDsKey: 'tgtDs', tgtTableKey: 'tgtTable', fmSrcIndex: 0, fmTgtIndex: 1 } },
+      /* —— 输出选择（默认为映射表全字段，可添加上游输出或选择字段） —— */
+      { key: 'outputs', label: '输出（默认为映射后全字段）', type: 'resource', group: '映射输出', cap: { mode: 'upstreamOutputs', upstreamMax: 5 } },
+    ],
+    summary: (d) => {
+      const n = Array.isArray(d.fieldMap) ? d.fieldMap.length : 0
+      const ins = Array.isArray(d.inputs) ? d.inputs.length : 0
+      return `${ins} 输入 → ${n ? `${n} 条字段映射` : '同名全列映射'}`
+    },
+  },
+  field_map_union: {
+    type: 'field_map_union', label: '字段映射-联合', icon: '⇉', color: '#0369a1', code: 'C36', categories: ['sync'],
+    desc: '目标表基准专用：多 schema 源表 → 目标表字段联合映射，可增删列/数值转换；选择记录来源时自动追加来源 schema 标识列；聚合算子 union all（当前唯一）',
+    defaults: { inputs: [], fieldMap: [], outputs: [], addSchemaFlag: true, srcSchemaField: 'src_schema', aggOperator: 'union_all' },
+    form: [
+      /* —— 输入选择（多选上游节点输出：[0]=目标端表, [1]=源端探测表） —— */
+      /* 直通节点 inputs 非必填（同 field_map：引擎拍平容忍空 inputs，存量兼容） */
+      { key: 'inputs', label: '输入（上游节点输出，前两个为目标端表/源端探测表）', type: 'resource', cap: { mode: 'upstreamOutputs', upstreamMax: 2 },
+        group: '联合输入', groupHint: '多 schema 源表与目标表的配对顺序；留空=拍平直通' },
+      /* —— 字段映射（flex布局，源字段→目标字段） —— */
+      /* 端点合一：源/目标列枚举均取自 endpoint_select 节点（srcDs/srcTable 与 tgtDs/tgtTable 字段） */
+      { key: 'fieldMap', label: '字段映射（源字段 → 目标字段，留空 = 同名全列）', type: 'mapEditor', mapMode: 'map',
+        cap: { mode: 'columnMap', srcNodeType: 'endpoint_select', tgtNodeType: 'endpoint_select', srcDsKey: 'srcDs', srcTableKey: 'srcTable', tgtDsKey: 'tgtDs', tgtTableKey: 'tgtTable', fmSrcIndex: 1, fmTgtIndex: 0 } },
+      /* —— 记录来源标识（需求：用户选择记录来源时系统必须增加来源 schema 字段） —— */
+      { key: 'addSchemaFlag', label: '记录来源标识列', type: 'bool', group: '来源标识', groupHint: '多源合并后区分每行来自哪个 schema',
+        placeholder: '开启后每行落来源 schema 标识（如 src_schema=ec_retail_east）' },
+      /* dataScope: 标识列是系统追加列，不在上游列域内，故不声明 dataScope（避免误伤合法配置） */
+      { key: 'srcSchemaField', label: '标识列名', type: 'text', placeholder: '缺省 src_schema',
+        showIf: (d) => !!d.addSchemaFlag },
+      /* —— 聚合算子（目标表基准第 4 步，G-13 修复：补 union_distinct 选项） —— */
+      { key: 'aggOperator', label: '聚合算子', type: 'select', group: '合并与输出', options: [
+        { value: 'union_all', label: 'union all（追加合并，默认）' },
+        { value: 'union_distinct', label: 'union distinct（合并去重）' },
+      ] },
+      /* —— 输出选择 —— */
+      { key: 'outputs', label: '输出（默认为映射后全字段 + 标识列）', type: 'resource', cap: { mode: 'upstreamOutputs', upstreamMax: 5 } },
+    ],
+    summary: (d) => {
+      const n = Array.isArray(d.fieldMap) ? d.fieldMap.length : 0
+      const flag = d.addSchemaFlag ? ` + 来源标识(${d.srcSchemaField || 'src_schema'})` : ''
+      return `union all 联合${n ? ` ${n} 条映射` : '（同名全列）'}${flag}`
+    },
+  },
+  condition_set: {
+    type: 'condition_set', label: '条件设定', icon: '⚿', color: '#0369a1', code: 'C35', categories: ['sync'],
+    desc: '源表数据筛选条件（默认全量）+ 增量列 + 输入/输出选择',
+    defaults: { inputs: [], outputs: [], filterExpr: '', incrementalColumn: '', incrementalExpr: '' },
+    form: [
+      /* —— 输入选择（多选上游节点输出） —— */
+      /* 直通节点 inputs 非必填（同 field_map：引擎拍平容忍空 inputs，存量兼容） */
+      { key: 'inputs', label: '输入（上游节点输出）', type: 'resource',
+        group: '数据流', groupHint: '筛选对象与下游可见的输出登记；留空=拍平直通',
+        cap: { mode: 'upstreamOutputs', upstreamMax: 3 } },
+      /* —— 输出选择（多选上游节点输出） —— */
+      { key: 'outputs', label: '输出（上游节点输出）', type: 'resource', cap: { mode: 'upstreamOutputs', upstreamMax: 3 } },
+      /* —— WHERE 条件 —— */
+      { key: 'filterExpr', label: '筛选条件（WHERE，留空 = 全量同步）', type: 'text', multiline: true,
+        group: '筛选与增量', groupHint: '留空即全量；增量列须是上游真实存在的列',
+        placeholder: '如 create_time > ${last_sync_time} AND status = 1' },
+      /* —— 增量列（dataScope: 增量列必须是上游真实存在的列，F3 值域闸门由此生效）—— */
+      { key: 'incrementalColumn', label: '增量列名', type: 'text', dataScope: 'upstream-columns',
+        placeholder: '如 create_time（留空 = 全量同步）' },
+      { key: 'incrementalExpr', label: '增量条件表达式', type: 'text',
+        placeholder: '如 ${yyyyMMdd-1}（运行时变量替换后 > 比较）',
+        showIf: (d) => !!d.incrementalColumn },
+    ],
+    summary: (d) => {
+      const ins = Array.isArray(d.inputs) ? d.inputs.length : 0
+      const outs = Array.isArray(d.outputs) ? d.outputs.length : 0
+      const cond = d.filterExpr ? `WHERE ${String(d.filterExpr).slice(0, 30)}...` : '全量同步'
+      return `${ins} 输入 → ${outs} 输出，${cond}`
+    },
+  },
+  /* ================= C29~C31 同步编排组件（拖入即物化对应细项节点链，设计时物化引擎零改动） ================= */
+  src_base_orch: {
+    type: 'src_base_orch', label: '源表基准编排', icon: '⇉', color: '#0891b2', code: 'C29', categories: ['sync'],
+    desc: '源表基准同步场景：拖入物化为 开始 → 前置清理 → 端点选择(源表基准) → 字段映射-复制 → 条件设定 → 对账校验 → 结束 节点链（对账不通过 → 消息通知）',
     form: [],
     template: {
-      modes: [
-        {
-          key: 'source_base', label: '源表基准', desc: '已知源库表，配置读写端一次到位（union 追加合并）',
-          build: buildSyncChain('union'),
-        },
-        {
-          key: 'target_base', label: '目标表基准', desc: '以目标表为基准动态返选多 schema 源（标识列 + 新增 schema 自动纳入）',
-          build: buildSyncChain('src_flag'),
-        },
-      ],
+      modes: [{ key: 'src_base', label: '源表基准', desc: '已知源库表 → 目标表（可新建），字段复制映射 + 筛选条件', build: buildSrcBaseChain }],
     },
-    summary: () => '同步编排模板',
+    summary: () => '源表基准编排模板',
+  },
+  tgt_base_orch: {
+    type: 'tgt_base_orch', label: '目标表基准编排', icon: '⇉', color: '#0891b2', code: 'C30', categories: ['sync'],
+    desc: '目标表基准同步场景：拖入物化为 开始 → 前置清理 → 端点选择(目标表基准，源端探测) → 字段映射-联合（union all + 来源 schema 标识列）→ 条件设定 → 对账校验 → 结束 节点链（对账不通过 → 消息通知）',
+    form: [],
+    template: {
+      modes: [{ key: 'tgt_base', label: '目标表基准', desc: '以目标表为基准探测多 schema 源表，union all 联合 + 来源标识', build: buildTgtBaseChain }],
+    },
+    summary: () => '目标表基准编排模板',
+  },
+  file_sync_orch: {
+    type: 'file_sync_orch', label: '文件同步编排', icon: '⇉', color: '#0891b2', code: 'C31', categories: ['sync'],
+    desc: '文件同步场景（参考源表基准）：拖入物化为 开始 → 前置清理 → 端点选择(文件源) → 字段映射-复制 → 条件设定 → 对账校验 → 结束 节点链（对账不通过 → 消息通知）',
+    form: [],
+    template: {
+      modes: [{ key: 'file_sync', label: '文件同步', desc: 'CSV/TXT/Excel 文件 → 库表入仓，字段复制映射 + 筛选条件', build: buildFileSyncChain }],
+    },
+    summary: () => '文件同步编排模板',
   },
 
   /* ================= D 流处理（C18~C20：I8 注册转可用，四源/五算子/四通道） ================= */
@@ -492,8 +783,8 @@ const nodeTypes: Record<string, NodeSchema> = {
     defaults: {
       srcType: 'kafka',
       dsRef: '',  // 连接性注册化（09-21）：kafka/redis/mqtt/http 引用数据源中心注册源；空 = 内联高级模式
-      /* kafka 分型（groupOverride：I12 T12 引用注册源时覆盖默认消费组开关） */
-      brokers: '', topic: '', group: 'datara-flink', groupOverride: false, startFrom: 'earliest',
+      /* kafka 分型（G-15 修复：group 默认值改为后端下发；前端不再硬编码 'datara-flink'） */
+      brokers: '', topic: '', group: '', groupOverride: false, startFrom: 'earliest',
       format: 'json', delimiter: ',',
       /* cdc 分型（引用 I4 注册数据源） */
       cdcDs: '', schemasText: '', tablesText: '', posMode: 'latest', posFile: '', posPos: 0,
@@ -517,13 +808,13 @@ const nodeTypes: Record<string, NodeSchema> = {
         { value: 'redis', label: 'Redis Stream' }, { value: 'mqtt', label: 'MQTT 订阅' },
       ] },
       /* —— kafka —— */
-      { key: 'dsRef', label: '数据源引用（Kafka 注册源）', type: 'datasource', dsTypes: ['kafka'], showIf: (d) => d.srcType === 'kafka' },
+      { key: 'dsRef', label: '数据源引用（Kafka 注册源）', type: 'resource', cap: { mode: 'datasource', dsTypes: ['kafka'] }, showIf: (d) => d.srcType === 'kafka' },
       { key: 'dsRefHint', label: '', type: 'hint',
         text: () => '引用在数据源中心注册并测试通过的 Kafka 源（连接性由注册层保证，启动预检只校验引用与状态）；不选则下方手动填写连接参数（内联高级模式）。引用后 brokers 由注册源固定带出只读（连接层归一），topic 从注册源枚举选择，消费组默认 datara-flink（开「覆盖默认消费组」才可改）',
         showIf: (d) => d.srcType === 'kafka' },
       { key: 'brokers', label: 'Broker 地址（高级内联）', type: 'text', placeholder: 'host:9092（逗号分隔多个）', showIf: (d) => d.srcType === 'kafka' && !d.dsRef },
       /* I12 T12：引用注册源后 topic 升级 topic-select（注册源枚举带出）；内联模式保留手填 */
-      { key: 'topic', label: 'Topic（注册源枚举）', type: 'topic-select', required: true,
+      { key: 'topic', label: 'Topic（注册源枚举）', type: 'resource', cap: { mode: 'topic' }, required: true,
         showIf: (d) => d.srcType === 'kafka' && !!d.dsRef },
       { key: 'topic', label: 'Topic', type: 'text', placeholder: '如 orders', required: true,
         showIf: (d) => d.srcType === 'kafka' && !d.dsRef },
@@ -542,7 +833,7 @@ const nodeTypes: Record<string, NodeSchema> = {
       { key: 'delimiter', label: 'CSV 分隔符', type: 'text', placeholder: ',',
         showIf: (d) => d.srcType === 'kafka' && d.format === 'csv' },
       /* —— cdc —— */
-      { key: 'cdcDs', label: 'CDC 数据源（引用 I4 注册）', type: 'datasource', dsTypes: ['mysql', 'greatdb'], required: true, showIf: (d) => d.srcType === 'cdc' },
+      { key: 'cdcDs', label: 'CDC 数据源（引用 I4 注册）', type: 'resource', cap: { mode: 'datasource', dsTypes: ['mysql', 'greatdb'] }, required: true, showIf: (d) => d.srcType === 'cdc' },
       { key: 'schemasText', label: '库白名单（逗号分隔，留空 = 全库）', type: 'text', showIf: (d) => d.srcType === 'cdc' },
       { key: 'tablesText', label: '表白名单（逗号分隔，留空 = 全表）', type: 'text', showIf: (d) => d.srcType === 'cdc' },
       { key: 'posMode', label: 'binlog 位点', type: 'select', options: [
@@ -552,7 +843,7 @@ const nodeTypes: Record<string, NodeSchema> = {
       { key: 'posFile', label: 'binlog 文件', type: 'text', placeholder: '如 binlog.000003', showIf: (d) => d.srcType === 'cdc' && d.posMode === 'custom' },
       { key: 'posPos', label: '位点偏移', type: 'number', showIf: (d) => d.srcType === 'cdc' && d.posMode === 'custom' },
       /* —— http —— */
-      { key: 'dsRef', label: '数据源引用（HTTP 注册源）', type: 'datasource', dsTypes: ['http'], showIf: (d) => d.srcType === 'http' },
+      { key: 'dsRef', label: '数据源引用（HTTP 注册源）', type: 'resource', cap: { mode: 'datasource', dsTypes: ['http'] }, showIf: (d) => d.srcType === 'http' },
       { key: 'dsRefHint', label: '', type: 'hint',
         text: () => '引用在数据源中心注册并测试通过的 HTTP 服务（baseUrl 与鉴权头由注册层提供）；URL 可填相对业务路径（如 /api/v1/orders）与 baseUrl 拼接，留空直打 baseUrl，完整 http(s) URL 则覆盖',
         showIf: (d) => d.srcType === 'http' },
@@ -561,7 +852,7 @@ const nodeTypes: Record<string, NodeSchema> = {
         { value: 'GET', label: 'GET' }, { value: 'POST', label: 'POST' },
       ], showIf: (d) => d.srcType === 'http' },
       { key: 'intervalSec', label: '轮询间隔（秒）', type: 'number', showIf: (d) => d.srcType === 'http' },
-      { key: 'headers', label: '请求头（键值表）', type: 'kv-table', showIf: (d) => d.srcType === 'http' },
+      { key: 'headers', label: '请求头（键值表）', type: 'rows', rowsKind: 'kv', showIf: (d) => d.srcType === 'http' },
       { key: 'dataPath', label: '数据点路径（响应内数组，如 data.list，留空 = 整响应）', type: 'text', showIf: (d) => d.srcType === 'http' },
       { key: 'cursorParam', label: '游标请求参数名（留空 = 无游标）', type: 'text', showIf: (d) => d.srcType === 'http' },
       { key: 'cursorPath', label: '游标提取点路径（响应内，如 data.cursor）', type: 'text',
@@ -584,7 +875,7 @@ const nodeTypes: Record<string, NodeSchema> = {
       { key: 'simEps', label: '事件速率（条/秒，0.5~200）', type: 'number', showIf: (d) => d.srcType === 'simulate' },
       { key: 'simHint', label: '', type: 'hint', text: () => '按内置 schema 与速率生成行事件，无需外部依赖；联调窗口聚合/看板链路用', showIf: (d) => d.srcType === 'simulate' },
       /* —— redis（Redis Stream 源）—— */
-      { key: 'dsRef', label: '数据源引用（Redis 注册源）', type: 'datasource', dsTypes: ['redis'], showIf: (d) => d.srcType === 'redis' },
+      { key: 'dsRef', label: '数据源引用（Redis 注册源）', type: 'resource', cap: { mode: 'datasource', dsTypes: ['redis'] }, showIf: (d) => d.srcType === 'redis' },
       { key: 'dsRefHint', label: '', type: 'hint',
         text: () => '引用在数据源中心注册并测试通过的 Redis 实例（地址/密码由注册层提供）；不选则下方手动填写地址（内联高级模式）',
         showIf: (d) => d.srcType === 'redis' },
@@ -593,7 +884,7 @@ const nodeTypes: Record<string, NodeSchema> = {
       { key: 'redisGroup', label: '消费组（XREADGROUP，位点由组管理）', type: 'text', showIf: (d) => d.srcType === 'redis' },
       { key: 'redisConsumer', label: '消费者名', type: 'text', showIf: (d) => d.srcType === 'redis' },
       /* —— mqtt（MQTT 订阅源）—— */
-      { key: 'dsRef', label: '数据源引用（MQTT 注册源）', type: 'datasource', dsTypes: ['mqtt'], showIf: (d) => d.srcType === 'mqtt' },
+      { key: 'dsRef', label: '数据源引用（MQTT 注册源）', type: 'resource', cap: { mode: 'datasource', dsTypes: ['mqtt'] }, showIf: (d) => d.srcType === 'mqtt' },
       { key: 'dsRefHint', label: '', type: 'hint',
         text: () => '引用在数据源中心注册并测试通过的 MQTT Broker（地址/认证由注册层提供）；不选则下方手动填写（内联高级模式）',
         showIf: (d) => d.srcType === 'mqtt' },
@@ -631,24 +922,24 @@ const nodeTypes: Record<string, NodeSchema> = {
         { value: 'window', label: '窗口聚合（单流：窗口+分组+聚合函数）' }, { value: 'filter', label: 'filter 过滤' },
         { value: 'map', label: 'map 字段映射' },
       ] },
-      { key: 'alignMap', label: '字段对齐映射（目标 ← 来源，留空 = 同名透传）', type: 'kv-table',
+      { key: 'alignMap', label: '字段对齐映射（目标 ← 来源，留空 = 同名透传）', type: 'rows', rowsKind: 'kv',
         showIf: (d) => d.fuseType === 'union' },
       /* I12 T12：join 键升级 field-select（列枚举自直接上游流输入的 CDC 源表；非 CDC 上游降级为可直接输入），
          单选写回字符串对齐 worker ops.py joinKeyLeft/Right 单键契约；union 对齐映射维持 kv-table（W1 语义标注不变） */
-      { key: 'joinKeyLeft', label: '左流关联键', type: 'field-select', required: true, showIf: (d) => d.fuseType === 'join',
-        pick: { src: 'upstream', upstreamIndex: 0, multiple: false } },
-      { key: 'joinKeyRight', label: '右流关联键', type: 'field-select', required: true, showIf: (d) => d.fuseType === 'join',
-        pick: { src: 'upstream', upstreamIndex: 1, multiple: false } },
+      { key: 'joinKeyLeft', label: '左流关联键', type: 'resource', cap: { mode: 'column', src: 'upstream', upstreamIndex: 0, multi: false }, required: true, showIf: (d) => d.fuseType === 'join' },
+      { key: 'joinKeyRight', label: '右流关联键', type: 'resource', cap: { mode: 'column', src: 'upstream', upstreamIndex: 1, multi: false }, required: true, showIf: (d) => d.fuseType === 'join' },
       { key: 'joinWindowSec', label: '关联窗口（秒，窗口内缓存匹配）', type: 'number', showIf: (d) => d.fuseType === 'join' },
+      /* G-16 修复：补 right / full 关联类型（CDC 场景常用） */
       { key: 'joinType', label: '关联类型', type: 'select', options: [
         { value: 'inner', label: 'inner（交集）' }, { value: 'left', label: 'left（保留左流未匹配）' },
+        { value: 'right', label: 'right（保留右流未匹配）' }, { value: 'full', label: 'full（全外保留双侧）' },
       ], showIf: (d) => d.fuseType === 'join' },
-      { key: 'filterExpr', label: '过滤条件表达式', type: 'textarea', placeholder: '如 amount > 0 && status == \'paid\'',
+      { key: 'filterExpr', label: '过滤条件表达式', type: 'text', multiline: true, placeholder: '如 amount > 0 && status == \'paid\'',
         required: true, showIf: (d) => d.fuseType === 'filter' },
-      { key: 'fieldMap', label: '字段转换表达式表（目标字段 ← 表达式，如 upper(name)）', type: 'kv-table',
+      { key: 'fieldMap', label: '字段转换表达式表（目标字段 ← 表达式，如 upper(name)）', type: 'rows', rowsKind: 'kv',
         showIf: (d) => d.fuseType === 'map' },
       { key: 'groupKeys', label: '分组键（逗号分隔，留空 = 全局聚合）', type: 'text', showIf: (d) => d.fuseType === 'window' },
-      { key: 'aggs', label: '聚合函数表（键=字段，值=函数:别名，如 amount:sum:amt_total）', type: 'kv-table',
+      { key: 'aggs', label: '聚合函数表（键=字段，值=函数:别名，如 amount:sum:amt_total）', type: 'rows', rowsKind: 'kv',
         required: true, showIf: (d) => d.fuseType === 'window' },
       { key: 'windowType', label: '窗口类型', type: 'select', options: [
         { value: 'tumbling', label: '滚动窗口' }, { value: 'sliding', label: '滑动窗口' },
@@ -696,11 +987,11 @@ const nodeTypes: Record<string, NodeSchema> = {
         text: () => '端点：GET /api/v1/stream-jobs/{id}/data?mode=poll|sse（+ /ws WebSocket）；鉴权沿用平台 token；页面化展示即大屏联调形态',
         showIf: (d) => d.outType === 'api' },
       /* —— table —— */
-      { key: 'outDs', label: '目标数据源', type: 'datasource', dsTypes: ['mysql', 'greatdb'], required: true, showIf: (d) => d.outType === 'table' },
-      { key: 'outTable', label: '目标表名', type: 'table-picker', required: true, showIf: (d) => d.outType === 'table',
-        pick: { dsKey: 'outDs', writeAs: 'table' } },
-      { key: 'outFieldMap', label: '字段映射（目标 ← 流字段，留空 = 同名全列）', type: 'kv-table', showIf: (d) => d.outType === 'table' },
-      { key: 'uniqueKey', label: '唯一键列（填则 upsert，留空 = 追加插入）', type: 'text', showIf: (d) => d.outType === 'table' },
+      { key: 'outDs', label: '目标数据源', type: 'resource', cap: { mode: 'datasource', dsTypes: ['mysql', 'greatdb'] }, required: true, showIf: (d) => d.outType === 'table' },
+      { key: 'outTable', label: '目标表名', type: 'resource', cap: { mode: 'table', dsKey: 'outDs', writeAs: 'table' }, required: true, showIf: (d) => d.outType === 'table' },
+      { key: 'outFieldMap', label: '字段映射（目标 ← 流字段，留空 = 同名全列）', type: 'rows', rowsKind: 'kv', showIf: (d) => d.outType === 'table' },
+      /* dataScope: 唯一键列必须在上游流表真实存在，否则 upsert 运行时才炸（配置期即拦） */
+      { key: 'uniqueKey', label: '唯一键列（填则 upsert，留空 = 追加插入）', type: 'text', dataScope: 'upstream-columns', showIf: (d) => d.outType === 'table' },
       { key: 'outBatchSize', label: '批量触发（条数，另 1s 定时兜底）', type: 'number', showIf: (d) => d.outType === 'table' },
       /* —— kafka —— */
       { key: 'kafkaBrokers', label: 'Broker 地址', type: 'text', placeholder: 'host:9092', required: true, showIf: (d) => d.outType === 'kafka' },
@@ -726,11 +1017,19 @@ const nodeTypes: Record<string, NodeSchema> = {
   page_board: {
     type: 'page_board', label: '页面组件', icon: '▤', color: '#0e7490', categories: ['stream'],
     desc: '实时看板页面组件：消费本画布流任务 API 输出通道数据，指标卡/趋势曲线/分布/告警/明细按字段特征自适应渲染（不参与管道装配）',
-    defaults: { preset: 'ecommerce' },
+    nonExecutable: true,  // G-22：第三渲染分类——不产生任务实例、不参与 _execute_node
+    defaults: { preset: 'ecommerce', boardLayout: 'auto' },  // G-18：boardLayout 抽到 data 层（可版本化）
     form: [
       { key: 'preset', label: '看板模板', type: 'select', options: [
         { value: 'ecommerce', label: '电商实时大盘' }, { value: 'iot', label: 'IoT 设备监控' },
         { value: 'visit', label: '站点访问分析' }, { value: 'custom', label: '自定义（按字段自适应）' },
+      ] },
+      /* G-18 修复：boardLayout 抽到 data 层——布局可版本化/迁移（不再硬编码在 BoardPage 内） */
+      { key: 'boardLayout', label: '布局模式', type: 'select', options: [
+        { value: 'auto', label: '自适应（按字段特征自动选卡片+图表）' },
+        { value: 'metrics', label: '仅指标卡' },
+        { value: 'trend', label: '仅趋势曲线' },
+        { value: 'full', label: '指标卡+趋势+分布' },
       ] },
       { key: 'boardHint', label: '', type: 'hint',
         text: () => '数据源 = 本画布流任务的 API 输出通道（SSE/轮询）；窗口行按 win_start 分桶：最新窗口渲染指标卡/分布，历史窗口渲染趋势曲线；告警等事件行单独列出' },
@@ -752,139 +1051,101 @@ const nodeTypes: Record<string, NodeSchema> = {
       ] as VarDef[],
     },
     form: [
-      { key: 'vars', label: '变量表（名/值/类型/覆盖）', type: 'var-table' },
+      { key: 'vars', label: '变量表（名/值/类型/覆盖）', type: 'rows', rowsKind: 'var' },
       { key: 'varHint', label: '', type: 'hint',
         text: () => '下游以 $[wf.变量名] 引用；类型=字面量原样注入 / 表达式运行时求值 / 时间变量按 F49 模板（如 yyyyMMdd-1）；覆盖开关控制同名定义级变量取值；引用优先级：节点参数>工作流变量>环境组>全局' },
     ],
     summary: (d) => varSummary(d),
   },
 
-  /* ================= G I12 新组件（C24 文件同步 / C25 数据校验 / C26 通知） ================= */
+  /* ================= G I12 组件（C24 文件入仓执行 / C25 数据校验 / C26 通知） ================= */
   file_sync: {
-    type: 'file_sync', label: '文件同步', icon: '⇥', color: '#0d9488', code: 'C24', categories: ['sync', 'general'],
-    desc: 'Excel/CSV/TXT 文件 → 库表入仓：共享卷直读或运行时节点 SFTP 拉取暂存，自动建表 + 三种写入模式，日志输出读/写/忽略三行数（批次号=instance_id）',
+    type: 'file_sync', label: '文件入仓执行', icon: '⇥', color: '#0d9488', code: 'C24', categories: ['sync'],
+    /* 同步编排端点合一：file_sync 降级为运行态执行组件——设计态画布/palette/校验均排除，schema 保留供运行实例详情渲染；
+       运行图由 master 引擎按 endpoint_select.baseMode=file_sync 物化插入（id 前缀 sys_exec_） */
+    runtimeOnly: true,
+    desc: '运行态执行组件（runtimeOnly，设计态画布不出现）：文件路径/类型/目标端由 master 引擎运行时合并自 endpoint_select（baseMode=file_sync），此处仅保留写入模式等兜底参数；Excel/CSV/TXT 共享卷直读或运行时节点 SFTP 拉取暂存，自动建表，日志输出读/写/忽略三行数（批次号=instance_id）',
     defaults: {
-      runtimeNode: '', filePath: '', fileName: '', stagedPath: '',
       fileType: 'csv', delimiter: ',', encoding: 'utf-8', headerRows: 1,
-      targetDs: '', targetSchema: '', targetTable: '',
-      autoCreate: true, ddl: '', writeMode: 'append', flagColumn: 'src_schema',
+      autoCreate: true, writeMode: 'append', flagColumn: 'src_schema',
       fieldMap: [] as Record<string, string>[],
     },
     form: [
-      /* —— 文件来源（目录/路径 与 上传暂存 二选一：均非必填，showIf 互斥切必填，I12 T11 修） —— */
-      { key: 'runtimeNode', label: '运行时节点（SFTP 取文件）', type: 'runtime-node',
-        placeholder: '文件不在 /datara/files 共享卷时必配', showIf: (d) => !d.stagedPath },
-      { key: 'filePath', label: '文件来源目录/路径', type: 'dir-select',
-        pick: { nodeKey: 'runtimeNode' }, required: true, showIf: (d) => !d.stagedPath,
-        placeholder: '共享卷相对路径（如 samples/orders.csv）或经节点浏览的远端目录' },
-      { key: 'fileName', label: '文件名（来源为目录时）', type: 'text', placeholder: '如 orders_2026.csv',
-        showIf: (d) => !d.stagedPath },
-      { key: 'stagedPath', label: '上传暂存路径（/datara/files 相对）', type: 'text',
-        required: true, showIf: (d) => !d.filePath,
-        placeholder: '如 staging/orders_20260922.csv（先经文件管理上传，与来源目录二选一）' },
-      /* —— 文件解析 —— */
-      { key: 'fileType', label: '文件类型', type: 'select', options: [
-        { value: 'csv', label: 'CSV' }, { value: 'txt', label: 'TXT' }, { value: 'excel', label: 'Excel' },
-      ] },
-      { key: 'delimiter', label: '分隔符', type: 'text', placeholder: ',',
-        showIf: (d) => String(d.fileType) !== 'excel' },
-      { key: 'encoding', label: '编码', type: 'select', options: [
-        { value: 'utf-8', label: 'UTF-8' }, { value: 'gbk', label: 'GBK' }, { value: 'gb18030', label: 'GB18030' },
-      ], showIf: (d) => String(d.fileType) !== 'excel' },
-      { key: 'headerRows', label: '表头行数', type: 'number', placeholder: '缺省 1（0 = 无表头）' },
-      /* —— 目标端 —— */
-      { key: 'targetDs', label: '目标数据源', type: 'datasource', dsTypes: ['mysql', 'greatdb'], required: true },
-      { key: 'targetTable', label: '目标 schema → 表', type: 'table-picker', required: true,
-        pick: { dsKey: 'targetDs', writeAs: 'schemaTable' } },
-      { key: 'autoCreate', label: '自动建表', type: 'bool',
-        placeholder: '目标表不存在时按自定义 DDL（可编辑）或文件表头推断创建' },
-      { key: 'ddl', label: 'DDL 预览（留空按文件头自动推断）', type: 'textarea',
-        showIf: (d) => !!d.autoCreate,
-        placeholder: '目标表不存在时执行，如 CREATE TABLE `ods_orders` (`id` BIGINT NULL, `name` TEXT NULL)；留空则运行时按文件表头推断类型建表' },
+      { key: 'chainHint', label: '', type: 'hint', text: () =>
+        '业务配置在端点选择节点完成（基准类型=文件同步：文件路径/类型/编码 + 目标端数据源/表/自动建表）；本节点仅以下兜底参数生效（合并配置优先）' },
       { key: 'writeMode', label: '写入模式', type: 'select', options: [
         { value: 'append', label: '追加（union 合并）' },
         { value: 'overwrite', label: '覆盖（先 TRUNCATE）' },
         { value: 'src_flag', label: '标识列（每行落来源文件标识）' },
       ] },
       { key: 'flagColumn', label: '标识列名', type: 'text', showIf: (d) => d.writeMode === 'src_flag' },
-      /* —— 字段映射 —— */
-      { key: 'fieldMap', label: '字段映射（文件列 → 目标列，留空 = 按表头同名对齐）', type: 'kv-table' },
+      { key: 'autoCreate', label: '目标表不存在时自动建表（按文件表头推断类型）', type: 'bool' },
     ],
-    summary: (d) => {
-      const t = d.targetTable
-      const tbl = t && typeof t === 'object'
-        ? `${(t as Record<string, string>).schema ?? ''}.${(t as Record<string, string>).table ?? ''}`
-        : String(t ?? '')
-      return `${String(d.filePath || d.stagedPath || '未配置文件')} → ${tbl || '未配置目标表'} @ ${String(d.targetDs || '未选数据源')}`
-    },
+    summary: (d) => `文件入仓（${String(d.writeMode ?? 'append')}，运行态，配置经 master 合并）`,
   },
   assert: {
     type: 'assert', label: '数据校验', icon: '⚑', color: '#dc2626', code: 'C25', categories: ['etl', 'general'],
     desc: '数据校验闸门（master 内联）：行数区间/主键唯一/非空率/自定义 SQL 断言；通过走「通过」出口，不达标走「不通过」出口或断流失败（onFail）',
-    defaults: {
-      assertSrc: 'upstream', assertUpstream: '', assertDs: '', assertTable: '',
-      rules: [{ key: 'rows', value: 'min=1,max=1000000', note: '行数区间' }] as Record<string, string>[],
-      ruleColumns: [] as string[],
-      onFail: 'fail',
-    },
+    defaults: ASSERT_BASE(),
     ports: () => [{ id: 'success', label: '通过' }, { id: 'failure', label: '不通过' }],
+    /* M-B2 八段 DSL 迁移：showIf → conditions；summary 函数 → render.summary；hint 函数字面量化 */
     form: [
-      { key: 'assertSrc', label: '校验对象', type: 'select', options: [
+      { key: 'assertSrc', label: '校验对象', type: 'select', group: '校验对象', groupHint: '校验上游产出的表，还是手选一张表',
+        options: [
         { value: 'upstream', label: '上游节点（自动取目标表）' },
         { value: 'manual', label: '手选数据源与表' },
       ] },
       /* I12 T11 修：上游节点引用下拉（Inspector 取画布直接上游，选中写回节点 id；空=自动扫描兜底） */
-      { key: 'assertUpstream', label: '上游节点引用（可选）', type: 'upstream-ref',
-        showIf: (d) => d.assertSrc !== 'manual' },
-      { key: 'assertDs', label: '校验数据源', type: 'datasource', dsTypes: ['mysql', 'greatdb'],
-        required: true, showIf: (d) => d.assertSrc === 'manual' },
-      { key: 'assertTable', label: '校验表（schema → 表）', type: 'table-picker', required: true,
-        pick: { dsKey: 'assertDs', writeAs: 'schemaTable' }, showIf: (d) => d.assertSrc === 'manual' },
-      { key: 'rules', label: '规则集（key=规则，value=参数）', type: 'kv-table', required: true },
+      { key: 'assertUpstream', label: '上游节点引用（可选）', type: 'resource', cap: { mode: 'upstreamNodes' } },
+      { key: 'assertDs', label: '校验数据源', type: 'resource', cap: { mode: 'datasource', dsTypes: ['mysql', 'greatdb'] }, required: true },
+      { key: 'assertTable', label: '校验表（schema → 表）', type: 'resource', cap: { mode: 'table', dsKey: 'assertDs', writeAs: 'schemaTable' }, required: true },
+      { key: 'rules', label: '规则集（key=规则，value=参数）', type: 'rows', rowsKind: 'kv', required: true,
+        group: '校验规则', groupHint: '行数/唯一/非空/自定义 SQL，按 key 逐行配置' },
       /* I12 T11 修：规则列参考——仅手选模式（表已定）可勾选列名辅助填参；上游模式对象表运行时才定，参数手填 */
-      { key: 'ruleColumns', label: '规则列参考（手选表字段，可选）', type: 'field-select',
-        pick: { dsKey: 'assertDs', tableKey: 'assertTable' }, showIf: (d) => d.assertSrc === 'manual' },
-      { key: 'rulesHint', label: '', type: 'hint', text: () =>
-        '规则 key 与参数：rows（min=1,max=1000 行数区间）/ unique（列名，逗号分隔联合唯一）/ not_null（列名,阈值%，如 name,95）/ sql（断言语句，首行首列=1 通过）；'
-        + '校验对象=上游时可显式指定「上游节点引用」（未选则自动解析 C17 写端表 / C24 目标表 / SQL 声明结果表）；'
-        + '手选模式可先在「规则列参考」勾选列名再填入 unique/not_null 参数；上游引用模式对象表运行时才定，规则参数手填' },
-      { key: 'onFail', label: '不达标动作', type: 'select', options: [
+      { key: 'ruleColumns', label: '规则列参考（手选表字段，可选）', type: 'resource',
+        cap: { mode: 'column', dsKey: 'assertDs', tableKey: 'assertTable' } },
+      /* 决策 5：空 label hint → 固定文案 */
+      { key: 'rulesHint', label: '规则说明', type: 'hint', group: '校验规则',
+        text: '规则 key 与参数：rows（min=1,max=1000 行数区间）/ unique（列名，逗号分隔联合唯一）/ not_null（列名,阈值%，如 name,95）/ sql（断言语句，首行首列=1 通过）；校验对象=上游时可显式指定「上游节点引用」（未选则自动解析 同步执行写端表 / 文件入仓目标表 / SQL 声明结果表）；手选模式可先在「规则列参考」勾选列名再填入 unique/not_null 参数；上游引用模式对象表运行时才定，规则参数手填' },
+      { key: 'onFail', label: '不达标动作', type: 'select', group: '不达标处理', groupHint: '决定走「不通过」出口还是直接断流',
+        options: [
         { value: 'fail', label: '断流失败（节点 failure）' },
         { value: 'warn', label: '告警继续（走「不通过」出口）' },
       ] },
     ],
-    summary: (d) => {
-      const n = Array.isArray(d.rules) ? (d.rules as unknown[]).length : 0
-      if (String(d.assertSrc ?? 'upstream') !== 'manual') return `校验上游目标表（${n} 项规则）`
-      const t = d.assertTable
-      const tbl = t && typeof t === 'object'
-        ? `${(t as Record<string, string>).schema ?? ''}.${(t as Record<string, string>).table ?? ''}`
-        : String(t ?? '')
-      return `校验 ${tbl || '未选表'} @ ${String(d.assertDs || '未选数据源')}（${n} 项规则）`
-    },
+    conditions: [
+      { id: 'c-upstream', when: { field: 'assertSrc', op: 'eq', value: 'upstream' }, show: ['assertUpstream'] },
+      { id: 'c-manual', when: { field: 'assertSrc', op: 'eq', value: 'manual' }, show: ['assertDs', 'assertTable', 'ruleColumns'] },
+    ],
+    render: { summary: '数据校验' },
   },
   notify: {
     type: 'notify', label: '通知', icon: '✉', color: '#7c3aed', code: 'C26', categories: ['general', 'stream', 'etl'],
     desc: '工作流/分支收尾通知：webhook POST 或仅日志（触发时机留痕；webhook 失败默认仅告警不断流，可开断流开关）',
-    defaults: { channel: 'log', url: '', template: '', trigger: 'on_success', failHard: false },
+    defaults: { ...NOTIFY_BASE },
+    /* M-B2 八段 DSL 迁移：showIf → conditions；summary 函数 → render.summary；hint 函数字面量化 */
     form: [
-      { key: 'channel', label: '通道', type: 'select', options: [
+      { key: 'channel', label: '通道', type: 'select', group: '通知通道', groupHint: '仅留痕日志或推送到外部系统',
+        options: [
         { value: 'log', label: '仅日志' }, { value: 'webhook', label: 'Webhook' },
       ] },
-      { key: 'url', label: 'Webhook URL', type: 'text', placeholder: 'http://…（支持 ${var} 变量引用）',
-        required: true, showIf: (d) => d.channel === 'webhook' },
-      { key: 'trigger', label: '触发时机', type: 'select', options: [
+      { key: 'url', label: 'Webhook URL', type: 'text', placeholder: 'http://…（支持 ${var} 变量引用）', required: true },
+      { key: 'trigger', label: '触发时机', type: 'select', group: '触发与内容', options: [
         { value: 'on_success', label: '上游成功' }, { value: 'on_failure', label: '上游失败' },
         { value: 'always', label: '无论成败' },
       ] },
-      { key: 'template', label: '消息模板', type: 'textarea',
+      { key: 'template', label: '消息模板', type: 'text', multiline: true,
         placeholder: '${wf.name} 实例 ${instance_id} 节点 ${node.name} ${node.status} @ ${sys.now}' },
-      { key: 'notifyHint', label: '', type: 'hint', text: () =>
-        'webhook 以 {"text": 消息} JSON POST（超时 10s，失败不重试）；消息经四级变量链解析：${wf.name} ${instance_id} ${node.name} ${node.status} ${sys.now}' },
-      { key: 'failHard', label: '通知失败断流', type: 'bool',
+      /* 决策 5：空 label hint → 固定文案 */
+      { key: 'notifyHint', label: '消息模板说明', type: 'hint', group: '触发与内容',
+        text: 'webhook 以 {"text": 消息} JSON POST（超时 10s，失败不重试）；消息经四级变量链解析：${wf.name} ${instance_id} ${node.name} ${node.status} ${sys.now}' },
+      { key: 'failHard', label: '通知失败断流', type: 'bool', group: '失败策略',
         placeholder: '开启后 webhook 发送失败将节点置 failure（缺省仅告警）' },
     ],
-    summary: (d) => (d.channel === 'webhook' ? `webhook → ${String(d.url || '未配置 URL')}` : '仅日志'),
+    conditions: [
+      { id: 'c-webhook-url', when: { field: 'channel', op: 'eq', value: 'webhook' }, show: ['url'] },
+    ],
+    render: { summary: '通知' },
   },
 
   /* ================= F63 模板（demo_pipeline，可拖；展开后不保留占位节点） ================= */
@@ -919,10 +1180,8 @@ export const dagProfile: ViewProfile = {
   layout: 'dagre',
   layoutDir: 'TB',
   floats: [
-    /* C7：中心数据源表单浮窗（源端可开拓新表 / 目标端表必须存在），经工具栏「更多」打开；
-       propsOf 只传 selectedId，面板自行按选中节点解析活跃 node（与 Inspector 同契约） */
-    { id: 'source_base', label: '源表基准', comp: SourceBasePanel, w: 420, h: 460, propsOf: ({ selectedId }) => ({ selectedId }) },
-    { id: 'target_base', label: '目标表基准', comp: TargetBasePanel, w: 420, h: 460, propsOf: ({ selectedId }) => ({ selectedId }) },
+    /* 同步编排重构：原「源表基准/目标表基准」中心数据源浮窗（SourceBasePanel/TargetBasePanel）已删除，
+       业务配置统一由 C29~C31 编排组件展开的细项节点表单承载 */
   ],
   edgeKinds: {
     flow: { kind: 'flow', label: '流程依赖', color: '#64748b' },
@@ -941,9 +1200,13 @@ export const dagProfile: ViewProfile = {
       { type: 'procedure' }, { type: 'http' }, { type: 'file' }, { type: 'assert' },
     ] },
     { name: '数据同步', items: [
-      { type: 'sync' },
-      { type: 'sync_template' },
-      { type: 'file_sync' },
+      { type: 'src_base_orch' },
+      { type: 'tgt_base_orch' },
+      { type: 'file_sync_orch' },
+      { type: 'endpoint_select' },
+      { type: 'field_map' },
+      { type: 'field_map_union' },
+      { type: 'condition_set' },
     ] },
     { name: '流处理', items: [
       { type: 'stream_input' }, { type: 'stream_fuse' }, { type: 'stream_output' }, { type: 'page_board' },
@@ -953,6 +1216,9 @@ export const dagProfile: ViewProfile = {
     ] },
     { name: '通用', items: [
       { type: 'notify' },
+    ] },
+    { name: '运维/自检', items: [
+      { type: 'smoke' },
     ] },
     { name: '模板', items: [
       { type: 'demo_pipeline' },
@@ -987,22 +1253,41 @@ export const dagProfile: ViewProfile = {
     })),
     /* I8 流子图校验（混编/源汇缺失/join 入边/游离，保存与试运行共用语义） */
     (doc) => streamSubgraphIssues(doc),
-    /* W1 必填完整性：required 字段在当前分型下为空即「未配置」（画布角标/校验面板/保存闸门共用判定） */
+    /* W1 必填完整性：required 字段在当前分型下为空即「未配置」（画布角标/校验面板/保存闸门共用判定）；
+       端点合一：runtimeOnly 执行组件（sync/file_sync）不参与设计态画布校验 */
     (doc) => doc.nodes.flatMap((n) => {
       const s = nodeTypes[n.type]
-      if (!s) return []
+      if (!s || s.runtimeOnly) return []
       return requiredMissing(s, n.data).map((lb) => ({
         level: 'warn' as const,
         msg: `「${String(n.data.name ?? n.id)}」必填项未配置：${lb}`,
         nodeId: n.id,
       }))
     }),
-    /* 分支完整性：条件/多路分支须配置分支，且每个分支端点应连接下游 */
+    /* G-25：「结束」节点出度必须为 0（语义：流程出口后不得再连出边）——G-22 统一为 maxOut 校验 */
+    (doc) => doc.nodes.filter((n) => {
+      const schema = nodeTypes[n.type]
+      return schema && schema.maxOut === 0
+    }).flatMap((n) => {
+      const out = doc.edges.filter((e) => e.source === n.id)
+      return out.length ? [{
+        level: 'error' as const,
+        msg: `「${String(n.data.name ?? n.id)}」是结束节点，后禁止连出边（当前 ${out.length} 条出边）`,
+        nodeId: n.id,
+      }] : []
+    }),
+    /* G-22：逐组件自定义 validators 执行（schema.validators 非空时追加） */
+    (doc) => doc.nodes.flatMap((n) => {
+      const schema = nodeTypes[n.type]
+      if (!schema || !schema.validators) return []
+      return schema.validators(n, doc).map((v) => ({ ...v, nodeId: n.id }))
+    }),
+    /* 分支完整性：条件/多路分支须配置分支，且每个分支端点应连接下游；runtimeOnly 执行组件同口径排除 */
     (doc: GraphDocument) => {
       const issues: { level: 'error' | 'warn'; msg: string; nodeId?: string }[] = []
       doc.nodes.forEach((n) => {
         const schema = nodeTypes[n.type]
-        if (!schema?.ports) return
+        if (!schema || schema.runtimeOnly || !schema.ports) return
         const ports = schema.ports(n.data)
         if (ports.length === 0) {
           issues.push({ level: 'error', msg: `「${n.data.name}」未配置分支条件`, nodeId: n.id })
