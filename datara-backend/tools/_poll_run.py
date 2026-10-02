@@ -1,4 +1,4 @@
-import urllib.request, json, sys, time
+import urllib.request, json, time
 
 API = "http://192.168.1.9:8000/api/v1"
 r = urllib.request.urlopen(urllib.request.Request(API + '/login',

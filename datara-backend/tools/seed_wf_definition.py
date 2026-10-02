@@ -14,7 +14,6 @@
 
 import argparse
 import json
-import random
 import uuid
 
 from sqlalchemy import func

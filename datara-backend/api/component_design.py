@@ -52,7 +52,7 @@ from common.resp import (
     fmt_dt,
     ok,
 )
-from components.catalog import WORKER_TYPES, DISPATCHABLE_EXECUTORS as _CATALOG_DISPATCHABLE
+from components.catalog import DISPATCHABLE_EXECUTORS as _CATALOG_DISPATCHABLE
 
 logger = get_logger("api.component_design")
 

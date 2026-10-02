@@ -12,13 +12,14 @@ from pathlib import Path
 
 import pytest
 
-# 4 个后端模块应全部 import 自 components.catalog
+# 使用 WORKER_TYPES 的后端模块应全部 import 自 components.catalog
+# （dag.py 现仅 import STREAM_TYPES，scheduler.py 重构后不再使用，均已移出清单）
 _BACKEND_IMPORTS = [
     "master/engine.py",
     "master/failover.py",
-    "master/scheduler.py",
-    "master/dag.py",
 ]
+# dag.py 从 catalog 导入 STREAM_TYPES（不再用 WORKER_TYPES）；守卫同口径覆盖
+_DAG_STREAM_IMPORT = "master/dag.py"
 
 
 def test_catalog_canonical_definitions():
@@ -67,6 +68,11 @@ def test_backend_files_import_from_catalog():
         # 必须 import 自 catalog（G-14：dag.py 额外导入 STREAM_TYPES，允许同行）
         assert "from components.catalog import" in text and "WORKER_TYPES" in text, \
             f"{rel} 未从 components.catalog 导入 WORKER_TYPES"
+    # dag.py 同口径：类型集合必须 import 自真源（当前仅 STREAM_TYPES）
+    dag_text = (repo_root / _DAG_STREAM_IMPORT).read_text(encoding="utf-8")
+    assert "WORKER_TYPES = " not in dag_text, "dag.py 不得内联 WORKER_TYPES 字面量副本"
+    assert "from components.catalog import STREAM_TYPES" in dag_text, \
+        "dag.py 的 STREAM_TYPES 必须从 components.catalog 导入"
 
 
 def test_engine_handler_covers_master_types():

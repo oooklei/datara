@@ -31,9 +31,6 @@ from master.failover import recover_running_instances
 
 logger = get_logger("master.scheduler")
 
-# G-19 单一真源：当前模块内未直接引用，保留导出以防外部引用旧全集
-from components.catalog import WORKER_TYPES  # noqa: E402
-
 
 def generate_instance_id(wf_code: int) -> str:
     """运行实例编号：{yyyyMMddHHmmss}-{wf_code}-{4位随机}。"""

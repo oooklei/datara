@@ -23,7 +23,7 @@ from common import queue as rq
 from common.config import get_settings
 from common.db import new_session
 from common.log import get_logger
-from common.models import AlertRecord, StreamJob, StreamOffset, TaskInstance, TaskLog, WorkflowInstance
+from common.models import AlertRecord, StreamJob, StreamOffset, TaskLog, WorkflowInstance
 from worker.stream.ops import JoinOp, WindowAggOp, build_op
 from worker.stream.sinks import build_sink
 from worker.stream.sources import SourceBase, build_source

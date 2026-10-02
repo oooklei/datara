@@ -10,7 +10,7 @@ from typing import Optional
 
 # G-19 单一真源：由 components.catalog 统一定义，消除 4 处字面量副本
 # 注：scripts/check_dag_route_completeness.py 依赖本 frozenset 做键集解析 — 改 import 不改结构
-from components.catalog import STREAM_TYPES, WORKER_TYPES
+from components.catalog import STREAM_TYPES
 
 
 class Graph:

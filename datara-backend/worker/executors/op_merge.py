@@ -5,7 +5,7 @@
 """
 
 from worker.executor import ExecResult, register
-from worker.state import FAILURE, SUCCESS
+from worker.state import SUCCESS
 
 
 @register("op_merge")
