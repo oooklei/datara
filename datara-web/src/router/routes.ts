@@ -29,6 +29,8 @@ export const routes: RouteRecordRaw[] = [
   { path: '/meta/components/design/:type?', name: 'meta-component-design', component: () => import('../views/meta/ComponentDesignView.vue'), meta: { title: '组件设计器' } },
   /* M-B0 组件基线化工作台：九系统组件八段 DSL 底稿编辑/10 项体检/认可发 v1（三区布局） */
   { path: '/meta/baseline', name: 'meta-baseline', component: () => import('../views/meta/BaselineWorkbenchView.vue'), meta: { title: '基线化工作台' } },
+  /* Task 13 页面设计器：三区域拼装页壳（palette/canvas/inspector）+ 工具条 + 发布链；:type 缺省 = 新建页面草稿 */
+  { path: '/meta/components/page-designer/:type?', name: 'meta-page-designer', component: () => import('../views/meta/pageDesigner/PageDesignerView.vue'), meta: { title: '页面设计器' } },
 
   // ---- 新增 45 条模块路由 ----
   // 数据集成

@@ -212,7 +212,8 @@ export interface ComponentCreateBody {
   type: string
   name: string
   profile: 'dag' | 'etl' | 'stream' | 'topo'
-  executionModel: 'dag-engine' | 'canvas-device' | 'demo-only' | 'runtime-only'
+  /* 'page'：页面设计器产出的 UI 组件（后端 ComponentCreateBody execution_model 同名枚举成员） */
+  executionModel: 'dag-engine' | 'canvas-device' | 'demo-only' | 'runtime-only' | 'page'
   category?: string
   executor?: string
   executable?: boolean
@@ -244,6 +245,26 @@ export async function createComponentDraft(
 export async function getComponentDraft(type: string): Promise<ComponentDraft> {
   if (isMock) return mockComponentDraft(type)
   return http.get<ComponentDraft>(`/components/${encodeURIComponent(type)}/draft`)
+}
+
+/** 创建页面组件草稿（页面设计器 Task 13）：execution_model=page 红线 executable=false，
+ *  spec 仅含 { page }（page DSL 结构由后端 _validate_page_spec 校验）。
+ *  profile 暂挂 dag（四选一约束下最通用归属，页面组件不参与任何执行视角）。 */
+export async function createPageDraft(body: {
+  type: string
+  name: string
+  page: unknown
+  description?: string
+}): Promise<{ type: string; draftRev: number; draftVersion: number }> {
+  return http.post('/components', {
+    type: body.type,
+    name: body.name,
+    profile: 'dag',
+    execution_model: 'page',
+    executable: false,
+    description: body.description,
+    spec: { page: body.page },
+  })
 }
 
 /** 保存草稿（乐观锁：rev 不匹配 409/6007，data.currentRev 随错误码丢失 → 调用方重拉草稿） */
@@ -281,12 +302,21 @@ export interface GateItem {
   msg: string
 }
 
+/** §9 发布即刷新结果（publish 成功后端自动执行并挂载在响应 data.refresh） */
+export interface PublishRefresh {
+  refreshed: number
+  publishedVersion: number
+  items: { wfId: string; wfName: string }[]
+}
+
 export interface PublishResult {
   type: string
   publishedVersion: number
   specHash: string
   supersededVersion: number | null
   publishedAt: string
+  /* 旧后端响应无此字段 → 客户端须判空并兜底调 refresh-refs（页面设计器 §9 发布链） */
+  refresh?: PublishRefresh
 }
 
 /** 发布指定 frozen 版本（跑 §13 八项闸门；422/6003 data.items 逐项结果，409/6007 乐观锁）。
