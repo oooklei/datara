@@ -63,6 +63,7 @@ def create_app() -> FastAPI:
         lineage,
         meta_ops,
         monitor,
+        page_designer,
         params,
         runtime_node,
         smoke,
@@ -98,6 +99,8 @@ def create_app() -> FastAPI:
     app.include_router(wf_definition.router, prefix="/api/v1")
     app.include_router(wf_schedule.router, prefix="/api/v1")
     app.include_router(wf_variable.router, prefix="/api/v1")
+    # 页面设计器（资源目录/数据预览）
+    app.include_router(page_designer.router, prefix="/api/v1")
 
     # 日志查询（I3 §11.1：api 网关挂载 logger 路由，共享卷读文件；logger 容器保留健康职责）
     from logger.log_api import router as log_router
