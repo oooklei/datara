@@ -103,13 +103,77 @@ def _scan_pure_data(node, path: str, violations: list) -> None:
                 break
 
 
+# 页面设计器 page DSL（execution_model=page）：widget kind 白名单 / 绑定 kind 与
+# 必填字段（手动输入兜底 placeholder 即默认值）/ 画布尺寸钳制（设计器画布上限）
+_WIDGET_KINDS = frozenset({
+    # 布局容器
+    "grid-row", "card", "tabs", "collapse", "divider", "spacer",
+    # 基础元素
+    "text", "heading", "rich-text", "image", "icon", "button", "badge", "link",
+    # 表单输入
+    "input", "number", "select", "date", "date-range", "switch", "slider",
+    "radio", "checkbox", "cascader", "textarea", "upload",
+    # 数据展示
+    "table", "list", "descriptions", "statistic", "progress", "timeline", "tree",
+    # 图表
+    "chart-bar", "chart-line", "chart-pie", "chart-area", "chart-gauge", "chart-scatter",
+    # 绑定元素
+    "meta-field", "var-label", "query-result", "sys-status",
+})
+_BINDING_KINDS = frozenset({"metadata", "variable", "query", "static"})
+_BINDING_KIND_FIELDS = {"metadata": "path", "variable": "path", "query": "query", "static": "fallback"}
+
+
+def _validate_page_spec(spec, violations: list) -> None:
+    """page 声明结构校验：非 page 声明（无 page 键）不介入，行为零影响。"""
+    page = spec.get("page") if isinstance(spec, dict) else None
+    if page is None:
+        return
+    if not isinstance(page, dict) or page.get("version") != 1 or not isinstance(page.get("widgets"), list):
+        violations.append("page: 结构非法（需 version=1 与 widgets 数组）")
+        return
+    canvas = page.get("canvas")
+    width = canvas.get("width") if isinstance(canvas, dict) else None
+    height = canvas.get("height") if isinstance(canvas, dict) else None
+    if not (isinstance(width, (int, float)) and not isinstance(width, bool)
+            and isinstance(height, (int, float)) and not isinstance(height, bool)
+            and 140 <= width <= 1920 and 160 <= height <= 2160):
+        violations.append("page.canvas: 尺寸越界（宽 140-1920 / 高 160-2160）")
+
+    def walk(widgets, prefix):
+        for i, w in enumerate(widgets):
+            p = "%swidgets[%d]" % (prefix, i)
+            if not isinstance(w, dict):
+                violations.append("%s: 非对象" % p)
+                continue
+            if not w.get("id"):
+                violations.append("%s.widget.id: 缺失" % p)
+            if w.get("kind") not in _WIDGET_KINDS:
+                violations.append("%s.widget.kind: 未知 kind=%r" % (p, w.get("kind")))
+            rect = w.get("rect")
+            if not isinstance(rect, dict):
+                violations.append("%s.widget.rect: 缺失" % p)
+            for key, b in (w.get("bindings") or {}).items():
+                bp = "%s.bindings.%s" % (p, key)
+                if not isinstance(b, dict) or b.get("kind") not in _BINDING_KINDS:
+                    violations.append("%s.kind: 非法" % bp)
+                    continue
+                field = _BINDING_KIND_FIELDS[b["kind"]]
+                if not b.get(field):
+                    violations.append("%s.%s: 缺失（手动输入兜底 placeholder 即默认值）" % (bp, field))
+            walk(w.get("children") or [], p + ".")
+
+    walk(page["widgets"], "")
+
+
 def validate_spec_pure_data(spec) -> list:
     """纯数据校验（红线 2，实施计划 Task B2）：返回违规描述清单（空=通过）。
 
     1) 严格 JSON 往返：NaN/Infinity/不可序列化对象即违规（pydantic 已保 dict，
        此处防 json.loads 放进来的非严格字面量）；
     2) 递归扫描函数/代码片段；
-    3) dropPolicy.autoName 占位符白名单（仅 {type}/{n}）。
+    3) dropPolicy.autoName 占位符白名单（仅 {type}/{n}）；
+    4) page 声明结构校验（widget kind 白名单/绑定必填字段/画布尺寸钳制）。
     纯函数，可独立单测。
     """
     violations: list = []
@@ -127,6 +191,7 @@ def validate_spec_pure_data(spec) -> list:
             if ph not in _ALLOWED_PLACEHOLDERS:
                 violations.append(
                     "dropPolicy.autoName 占位符 {%s} 不在白名单（仅允许 {type}/{n}）" % ph)
+    _validate_page_spec(spec, violations)
     return violations
 
 

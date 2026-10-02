@@ -183,6 +183,30 @@ def test_page_model_executable_forbidden(client):
     assert r.json()["code"] == 6008  # COMP_SPEC_INVALID
 
 
+def _page_spec(widgets):
+    return {"page": {"version": 1, "name": "看板", "icon": "bar", "color": "#1677ff",
+                     "canvas": {"width": 288, "height": 520, "background": {"fill": "#ffffff"}},
+                     "widgets": widgets}}
+
+
+def test_page_spec_structural_violations():
+    from api.component_design import validate_spec_pure_data
+    # widget 缺 id；binding（static）缺 fallback
+    bad = _page_spec([{"kind": "text", "rect": {"x": 0, "y": 0, "w": 100, "h": 24},
+                       "bindings": {"value": {"kind": "static"}}}])
+    violations = validate_spec_pure_data(bad)
+    assert any("widget.id" in v or "widget.kind" in v for v in violations)
+    assert any("fallback" in v for v in violations)
+
+
+def test_page_spec_valid_passes():
+    from api.component_design import validate_spec_pure_data
+    ok = _page_spec([{"id": "w1", "kind": "text", "rect": {"x": 8, "y": 8, "w": 120, "h": 24},
+                      "props": {"text": "销售"},
+                      "style": {}, "bindings": {"value": {"kind": "static", "fallback": "销售"}}}])
+    assert validate_spec_pure_data(ok) == []
+
+
 # ---------------------------------------------------------------- 读/保存草稿
 
 
