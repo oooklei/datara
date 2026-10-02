@@ -27,7 +27,7 @@ from api.component_design import (  # noqa: E402
     _spec_hash,
     validate_spec_pure_data,
 )
-from common.models import Component, ComponentLog, ComponentVersion  # noqa: E402
+from common.models import Component, ComponentLog, ComponentVersion, WfDefinitionLog  # noqa: E402
 
 
 def set_role(app, role: str) -> None:
@@ -936,6 +936,12 @@ def test_refresh_refs_manual_bumps_stale_refs(client, db_session):
     assert row[0] == 2  # wf.version bump（v1 → v2）
     r2 = client.post("/api/v1/components/page_board_b/refresh-refs")
     assert r2.json()["data"]["refreshed"] == 0  # 幂等
+    # 版本快照对齐保存/回滚日志链：回滚可取到刷新后的图（且幂等不重复追加）
+    snaps = db_session.query(WfDefinitionLog).filter_by(wf_code=902, version=2).all()
+    assert len(snaps) == 1 and snaps[0].operator == "tester"
+    assert "刷新" in (snaps[0].remark or "")
+    assert json.loads(snaps[0].graph_json)["nodes"][0]["data"]["componentRef"] == {
+        "type": "page_board_b", "version": 2}
 
 
 def test_refresh_refs_draft_conflict_409(client):

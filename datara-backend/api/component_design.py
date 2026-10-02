@@ -41,7 +41,7 @@ from api.auth import ApiError, require_perm
 from api.graph_rules import _catalog as _load_catalog
 from common.db import get_db
 from common.log import get_logger
-from common.models import Component, ComponentLog, ComponentVersion, User, WfDefinition, now
+from common.models import Component, ComponentLog, ComponentVersion, User, WfDefinition, WfDefinitionLog, now
 from common.resp import (
     COMP_DUPLICATE_TYPE,
     COMP_GATE_FAILED,
@@ -671,7 +671,7 @@ def publish_version(
         "specHash": ver.spec_hash, "supersededVersion": superseded or None,
         "publishedAt": fmt_dt(ver.published_time),
     }
-    payload["refresh"] = _refresh_refs(db, comp)  # §9 发布即刷新
+    payload["refresh"] = _refresh_refs(db, comp, user.user_name)  # §9 发布即刷新
     return ok(payload)
 
 
@@ -848,11 +848,10 @@ def impacted_workflows(
 # - POST /{type_name}/refresh-refs：手动触发（存量回填/补偿场景）；
 # - publish_version 成功后自动挂载 refresh 结果（响应 data.refresh，见上）。
 
-def _refresh_refs(db: Session, comp: Component) -> dict:
-    """发布即刷新：批量升级落后引用（幂等）。命中即 bump wf.version 并刷 update_time。
-
-    不追版本快照（WfDefinitionLog 链由保存/回滚路径维护）；单次 commit 收口全部
-    命中行，无命中零写入。
+def _refresh_refs(db: Session, comp: Component, operator: str) -> dict:
+    """发布即刷新：批量升级落后引用（幂等）。命中即 bump wf.version 并刷 update_time，
+    追加 WfDefinitionLog 版本快照（对齐保存/回滚日志链，回滚可取到刷新后的图）；
+    快照与定义变更同一事务收口，无命中零写入。
     """
     published = comp.published_version or 0
     items: list = []
@@ -879,6 +878,10 @@ def _refresh_refs(db: Session, comp: Component) -> dict:
             wf.graph_json = json.dumps(doc, ensure_ascii=False, separators=(",", ":"))
             wf.version = (wf.version or 1) + 1
             wf.update_time = now()
+            db.add(WfDefinitionLog(
+                wf_code=wf.code, version=wf.version, graph_json=wf.graph_json,
+                operator=operator, remark="组件 %s 发布即刷新引用至 v%d" % (comp.type, published),
+            ))
             refreshed += 1
             items.append({"wfId": wf.id, "wfName": wf.name})
     if refreshed:
@@ -896,7 +899,7 @@ def refresh_refs(
     comp = _get_or_404(db, type_name)
     if comp.state != "published":
         raise ApiError(COMP_STATE_CONFLICT, status=409, msg="仅 published 组件可刷新引用")
-    result = _refresh_refs(db, comp)
+    result = _refresh_refs(db, comp, user.user_name)
     logger.info("刷新组件引用: %s（命中 %d 个图，操作人 %s）",
                 type_name, result["refreshed"], user.user_name)
     return ok(result)
