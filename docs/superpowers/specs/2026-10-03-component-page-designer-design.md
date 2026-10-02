@@ -132,6 +132,8 @@ interface BindingRef {
 ## 11. 模板系统
 
 - `templates.ts`：每个 palette 组件一个初始化模板（默认 props/style/示例数据/推荐绑定槽）；新建页面组件时提供页面级模板（空白 / 数据看板 / 表单页 / 列表页）。
+- **存量 DAG 系统组件全量创作模板**：现有全部系统组件（profiles 内 35 个，含 18 个已基线化）逐一创作初始化模板页——在 profile 源码的组件 NodeSpec 上新增 `template` 字段（PageDSL 片段：默认 props/style/推荐绑定/示例数据）；`export_dag_catalog.py` pick 键扩展携带 template。
+- **创作后刷新**：重跑导出脚本刷新 `common/dag_catalog.json`（catalogHash 更新）→ `/components` 只读目录实时生效；已发布引用按 §9 refresh-refs 机制同步刷新。
 - 模板纯数据、随 DSL 版本演进；发布闸门校验模板引用的资源存在。
 
 ## 12. aoci 索引管理
