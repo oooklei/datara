@@ -14,12 +14,12 @@ from common.log import get_logger, set_instance_id
 from common.models import TaskInstance, WorkflowInstance, WfDefinition, now
 from master import state
 from master.dag import parse_graph
-from master.engine import WorkflowExecuteRunnable, register_runnable
+from master.engine import WorkflowExecuteRunnable, comp_published_versions, register_runnable
 
 logger = get_logger("master.failover")
 
-# I12-D1 补齐 procedure/http/file；I12 +file_sync/notify（与 engine.py 对齐）：均为 worker 任务，故障转移时重派
-WORKER_TYPES = ("sql", "shell", "python", "ssh", "smoke", "procedure", "http", "file", "sync", "file_sync", "notify")
+# G-19 单一真源：worker 任务全集（故障转移时重派口径）— 由 components.catalog 统一定义
+from components.catalog import WORKER_TYPES  # noqa: E402
 
 
 def recover_running_instances() -> int:
@@ -75,7 +75,11 @@ def _recover_one(instance_id: str) -> bool:
             )
         if definition is not None and definition.graph_json:
             try:
-                graph = parse_graph(json.loads(definition.graph_json))
+                # D2 §9.6：物化器按源组件 published 版本注入 sys_exec 节点 componentRef
+                # G-14：parse_graph 同时提取流子图（stream_spec），failover 恢复路径不注册
+                # 流作业（流作业由 API 显式启停，不随批实例恢复自动拉起）。
+                graph, _stream_spec = parse_graph(json.loads(definition.graph_json),
+                                                  comp_versions=comp_published_versions(session))
             except ValueError as exc:
                 logger.warning("实例 %s 图解析失败（按无图恢复）: %s", instance_id, exc)
         tasks = (

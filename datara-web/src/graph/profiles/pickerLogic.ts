@@ -7,29 +7,29 @@
 import type { DsRow, DsTree } from '../../services/datasourceApi'
 import type { FieldSchema } from './types'
 
-/** 依赖字段名缺省约定（FieldSchema.pick 可覆盖；取值均存于 node.data 对应字段） */
+/** 依赖字段名缺省约定（FieldSchema.cap 可覆盖；取值均存于 node.data 对应字段） */
 export const PICK_DEF = {
-  /** table-picker / field-select 依赖的数据源字段 */
+  /** table / column 依赖的数据源字段 */
   dsKey: 'datasource',
-  /** field-select 依赖的表字段 */
+  /** column 依赖的表字段 */
   tableKey: 'table',
-  /** topic-select 依赖的流源引用字段（存数据源名，解析成 ds_id 枚举 topic） */
+  /** topic 依赖的流源引用字段（存数据源名，解析成 ds_id 枚举 topic） */
   topicDsKey: 'dsRef',
-  /** dir-select 依赖的运行时节点字段（存节点名，解析成节点 id 浏览目录） */
+  /** dir 依赖的运行时节点字段（存节点名，解析成节点 id 浏览目录） */
   nodeKey: 'runtimeNode',
 } as const
 
 export type PickWriteAs = 'table' | 'schemaTable'
 
-/** 解析字段 pick 配置（缺省兜底；topic-select 的 dsKey 缺省走 dsRef） */
-export function pickCfg(f: Pick<FieldSchema, 'type' | 'pick'>): {
+/** 解析字段 cap 配置（缺省兜底；topic 的 dsKey 缺省走 dsRef） */
+export function pickCfg(f: Pick<FieldSchema, 'type' | 'cap'>): {
   dsKey: string; tableKey: string; nodeKey: string; writeAs: PickWriteAs
 } {
   return {
-    dsKey: f.pick?.dsKey ?? (f.type === 'topic-select' ? PICK_DEF.topicDsKey : PICK_DEF.dsKey),
-    tableKey: f.pick?.tableKey ?? PICK_DEF.tableKey,
-    nodeKey: f.pick?.nodeKey ?? PICK_DEF.nodeKey,
-    writeAs: f.pick?.writeAs ?? 'table',
+    dsKey: f.cap?.dsKey ?? (f.cap?.mode === 'topic' ? PICK_DEF.topicDsKey : PICK_DEF.dsKey),
+    tableKey: f.cap?.tableKey ?? PICK_DEF.tableKey,
+    nodeKey: f.cap?.nodeKey ?? PICK_DEF.nodeKey,
+    writeAs: f.cap?.writeAs ?? 'table',
   }
 }
 

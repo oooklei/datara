@@ -74,7 +74,7 @@ const entTypes: Record<string, import('./types').NodeSchema> = Object.fromEntrie
       defaults: { layer: l.key, domain: '', comment: '', fields: [] },
       form: [
         { key: 'domain', label: '所属业务域', type: 'text', placeholder: '如：交易域' },
-        { key: 'comment', label: '模型说明', type: 'textarea', placeholder: '建模口径、来源说明' },
+        { key: 'comment', label: '模型说明', type: 'text', multiline: true, placeholder: '建模口径、来源说明' },
       ],
       summary: (d) => {
         const fs = Array.isArray(d.fields) ? (d.fields as unknown[]).length : 0

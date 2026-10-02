@@ -8,6 +8,9 @@
 """
 
 import json
+import os
+import socket
+from datetime import datetime
 from typing import Optional
 
 from fastapi import APIRouter, Depends, Query
@@ -15,9 +18,10 @@ from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from common import queue
+from common.config import get_settings
 from common.db import get_db
 from common.log import get_logger
-from common.models import DataSource, StreamJob, WfDefinition
+from common.models import DataSource, StreamJob, TaskInstance, TaskLog, WfDefinition, WorkflowInstance
 from common.resp import (
     INSTANCE_NOT_FOUND,
     WF_NOT_FOUND,
@@ -167,7 +171,10 @@ def preflight_stream(db: Session, spec: dict) -> None:
 
 
 def register_stream_job(db: Session, definition: WfDefinition, spec: dict) -> tuple[StreamJob, bool]:
-    """upsert t_stream_job（一画布一流任务，先停再起语义）+ Redis 广播；返回 (任务行, 是否重启)。"""
+    """upsert t_stream_job（一画布一流任务，先停再起语义）+ Redis 广播；返回 (任务行, 是否重启)。
+
+    同时创建 WorkflowInstance 记录（run_mode='stream'），使流任务出现在运行监控 tab。
+    """
     row = db.query(StreamJob).filter(StreamJob.doc_id == definition.id).first()
     restarted = row is not None
     if row is None:
@@ -183,9 +190,51 @@ def register_stream_job(db: Session, definition: WfDefinition, spec: dict) -> tu
     row.spec_json = json.dumps(spec, ensure_ascii=False)
     db.commit()
 
+    # 创建 WorkflowInstance 记录（run_mode='stream'），使流任务出现在运行监控
+    instance_id = f"stream-{row.id}-{int(datetime.now().timestamp())}"
+    inst = WorkflowInstance(
+        instance_id=instance_id,
+        wf_code=int(definition.code) if definition.code else 0,
+        wf_version=definition.version,
+        state="submitted",
+        run_mode="stream",
+        start_time=datetime.now(),
+        host=None,
+        command_type="manual",
+    )
+    db.add(inst)
+
+    # 创建 TaskInstance（node_type='stream'），与批处理工作流一致的日志机制
+    task = TaskInstance(
+        instance_id=instance_id,
+        node_id=f"stream-{row.id}",
+        node_type="stream",
+        name=definition.name,
+        state="submitted",
+        attempt=1,
+        start_time=datetime.now(),
+        host=socket.gethostname(),
+    )
+    db.add(task)
+    db.flush()
+
+    # 创建 TaskLog 索引，指向共享卷日志文件
+    log_dir = os.path.join(get_settings().log_dir, instance_id)
+    os.makedirs(log_dir, exist_ok=True)
+    log_path = os.path.join(log_dir, "%s.log" % task.id)
+    log_row = TaskLog(
+        instance_id=instance_id,
+        task_instance_id=task.id,
+        log_path=log_path,
+        host=socket.gethostname(),
+    )
+    db.add(log_row)
+    task.log_path = log_path
+    db.commit()
+
     queue.get_client().publish("datara:flink:ctl", json.dumps(
         {"action": "start", "jobId": row.id, "generation": int(row.generation)}))
-    logger.info("流任务启动广播: job=%s doc=%s gen=%s", row.id, definition.id, row.generation)
+    logger.info("流任务启动广播: job=%s doc=%s gen=%s inst=%s task=%s", row.id, definition.id, row.generation, instance_id, task.id)
     return row, restarted
 
 

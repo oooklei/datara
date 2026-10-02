@@ -51,6 +51,11 @@ _spec.loader.exec_module(_mod)
 _PASSTHROUGH_TYPES = _mod.PASSTHROUGH_TYPES
 
 DAG_TS = "datara-web/src/graph/profiles/dag.ts"
+# op_script 的 NodeSchema 已去重到 shared.ts（etl/stream 经 `...opScriptSchema` 展开复用）。
+# 本导出器按字面量提取、不追踪跨文件 spread，扫描引用它的 profile 时必须把 shared 源码
+# 并入扫描文本，否则 op_script 会从目录消失——表现为 backendOnlyTypes 误报 +
+# 发布闸门「同名一致」碰撞漏检（M-B1 期间实测，2026-09-29 修复）。
+SHARED_TS = "datara-web/src/graph/profiles/shared.ts"
 MASTER_ENGINE = "datara-backend/master/engine.py"
 MASTER_DAG = "datara-backend/master/dag.py"
 WORKER_EXEC_DIR = "datara-backend/worker/executors"
@@ -254,6 +259,10 @@ EXECUTION_MODEL = {
     "stream": ("demo-only",     "无执行实现；F56a 演示态（未接 stream 引擎）"),
     "topo":   ("canvas-device", "画布拓扑元件（shape=device, form=[]），设计上不执行"),
 }
+# 2026-09-29 executionModel 口径修正：M-B2 已为 etl/stream 演示组件注册 worker
+# 执行器（WORKER_TYPES + worker/executors/*），故 etl/stream 的 profile 级 demo-only
+# 仅是 route=UNROUTED 时的兜底口径——route=worker 且 executor 已落盘的组件在
+# 下方按 route/executor 推导为 dag-engine（见 build_catalog 内细化分支）。
 
 PROFILE_FILES = [
     ("dag", DAG_TS),
@@ -279,12 +288,17 @@ def build_catalog(root: Path) -> dict:
     workers = parse_worker_types(catalog_py)
     executors = parse_executors(root / WORKER_EXEC_DIR)
 
+    shared_path = root / SHARED_TS
+    shared_ts = shared_path.read_text(encoding="utf-8") if shared_path.is_file() else ""
+
     components: list[dict] = []
     profiles: list[dict] = []
     all_dupes: dict[str, list[str]] = {}
 
     for prof, rel in PROFILE_FILES:
         ts = (root / rel).read_text(encoding="utf-8")
+        if shared_ts and "opScriptSchema" in ts:
+            ts += "\n" + shared_ts
         entries, dupes = extract_entries(ts)
         if dupes:
             all_dupes[prof] = sorted(set(dupes))
@@ -333,6 +347,12 @@ def build_catalog(root: Path) -> dict:
                 emodel, ereason = "template", "编排模板（落图即展开为节点链，无独立运行时路由）"
             elif t in NON_EXECUTABLE_TYPES:
                 emodel, ereason = "nonExecutable", "展示型节点（不产生任务实例）"
+            elif route == "worker" and t in executors:
+                # 2026-09-29 executionModel 口径修正：M-B2 执行器注册后，凡
+                # route=worker 且 executor 已落盘即真实执行（Master 派发点派发到
+                # Worker executor），推导为 dag-engine；仅仍 UNROUTED（无任何实现）
+                # 的组件才落 profile 级 demo-only 兜底口径。
+                emodel, ereason = "dag-engine", "Master 派发点 / Worker executor"
             else:
                 emodel, ereason = emodel_profile, ereason_profile
             fields = parse_form_fields(entry)

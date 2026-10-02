@@ -22,6 +22,8 @@ WF_DUPLICATE = 2002
 WF_PARAM_INVALID = 2003
 WF_VERSION_NOT_FOUND = 2004
 WF_VERSION_CONFLICT = 2005  # I12-D2 保存并发冲突（乐观锁 base_version 不匹配，HTTP 409）
+WF_GRAPH_RULE_FAILED = 2006  # 服务端图校验未通过（api/graph_rules.py，HTTP 422）
+WF_RELEASED_LOCKED = 2007  # 已发布(online)定义的内容变更被拒（先下线再改，HTTP 409）
 
 INSTANCE_NOT_FOUND = 3001
 COMMAND_FAIL = 3002
@@ -36,6 +38,16 @@ TASK_NOT_FOUND = 4006  # IDE 异步执行任务不存在（I10）
 SYSTEM_ERROR = 5001
 DEP_UNAVAILABLE = 5002
 
+# 组件治理段（M1/M2，治理设计 §18.4）
+COMP_NOT_FOUND = 6001  # 组件不存在（404）
+COMP_STATE_CONFLICT = 6002  # 状态机不允许该操作（409）
+COMP_GATE_FAILED = 6003  # 发布闸门未通过，逐项结果（422）
+COMP_REF_FROZEN = 6004  # 试图修改已发布版本（409）
+COMP_DUPLICATE_TYPE = 6005  # type 已被占用（409）
+COMP_HASH_MISMATCH = 6006  # 同名定义 spec_hash 不一致（409）
+COMP_LOCK_CONFLICT = 6007  # 草稿乐观锁冲突（409，data 带 currentRev）
+COMP_SPEC_INVALID = 6008  # 声明非纯数据：函数/代码片段/非严格 JSON（422）
+
 _MSGS = {
     USER_NOT_FOUND: "用户不存在",
     USER_PWD_WRONG: "密码错误",
@@ -47,6 +59,8 @@ _MSGS = {
     WF_PARAM_INVALID: "工作流定义参数错误",
     WF_VERSION_NOT_FOUND: "版本快照不存在",
     WF_VERSION_CONFLICT: "定义已被他人更新，请刷新后重试",
+    WF_GRAPH_RULE_FAILED: "图校验未通过，请检查画布配置",
+    WF_RELEASED_LOCKED: "已发布定义不可修改，请先下线",
     INSTANCE_NOT_FOUND: "运行实例不存在",
     COMMAND_FAIL: "命令提交失败",
     DS_NOT_FOUND: "数据源不存在",
@@ -57,6 +71,14 @@ _MSGS = {
     TASK_NOT_FOUND: "执行任务不存在（已过期或已完成清理）",
     SYSTEM_ERROR: "系统内部错误",
     DEP_UNAVAILABLE: "依赖组件不可用",
+    COMP_NOT_FOUND: "组件不存在",
+    COMP_STATE_CONFLICT: "组件状态不允许该操作",
+    COMP_GATE_FAILED: "发布闸门未通过",
+    COMP_REF_FROZEN: "已发布版本不可修改",
+    COMP_DUPLICATE_TYPE: "组件 type 已被占用",
+    COMP_HASH_MISMATCH: "同名定义内容哈希不一致",
+    COMP_LOCK_CONFLICT: "草稿已被他人更新，请刷新后重试",
+    COMP_SPEC_INVALID: "组件声明包含非纯数据内容",
 }
 
 
@@ -72,9 +94,9 @@ def ok(data: Any = None) -> dict:
     return {"code": 0, "msg": "success", "data": data}
 
 
-def fail(code: int, msg: Optional[str] = None) -> dict:
-    """失败响应包（code≠0；msg 缺省时取错误码内置文案）。"""
-    return {"code": code, "msg": msg or _MSGS.get(code, "未知错误"), "data": None}
+def fail(code: int, msg: Optional[str] = None, data: Any = None) -> dict:
+    """失败响应包（code≠0；msg 缺省时取错误码内置文案；data 供冲突详情等载荷）。"""
+    return {"code": code, "msg": msg or _MSGS.get(code, "未知错误"), "data": data}
 
 
 class PageQuery(BaseModel):

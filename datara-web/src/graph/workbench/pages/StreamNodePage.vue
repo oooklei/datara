@@ -150,7 +150,7 @@ onBeforeUnmount(() => window.clearInterval(timer))
 .snp-offset{background:var(--bg);border:1px solid var(--border);border-radius:var(--radius-sm);padding:6px 8px;font-size:11px;max-height:72px;overflow:auto;white-space:pre-wrap}
 .snp-err{margin-top:4px;font-size:11px;color:var(--danger)}
 .snp-logwrap{flex:1;min-height:0;display:flex;flex-direction:column}
-.snp-log{flex:1;min-height:0;overflow:auto;background:#0b1021;color:#c7d2fe;border-radius:var(--radius-sm);padding:6px 8px;font-size:11px;line-height:1.7}
+.snp-log{flex:1;min-height:0;overflow:auto;background:#f5f5f5;color:#1a1a2e;border-radius:var(--radius-sm);padding:6px 8px;font-size:11px;line-height:1.7}
 .snp-log .warn{color:#fbbf24}
 .snp-log .err{color:#f87171}
 </style>

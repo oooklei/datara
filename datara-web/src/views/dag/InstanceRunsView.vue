@@ -13,9 +13,9 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import {
   listDefinitions, listInstancesPage, getInstanceDetail,
   stopInstance, rerunInstance, rerunFailedTasks, getTaskLog, graphService,
-  deleteInstanceLogs, deleteInstanceLogsBatch,
+  deleteInstanceLogs, deleteInstanceLogsBatch, streamInstanceEvents,
 } from '../../services'
-import type { InstanceRow, DefinitionMeta } from '../../services'
+import type { InstanceRow, DefinitionMeta, TaskStateEvent, InstanceFinishedEvent } from '../../services'
 import { listTmpData } from '../../services/datasourceApi'
 import type { TmpRow } from '../../services/datasourceApi'
 import { cloneDoc } from '../../graph/model'
@@ -241,10 +241,56 @@ const detailLoading = ref(false)
 const detailDoc = ref<GraphDocument | null>(null)
 const viewProfile: ViewProfile = { ...dagProfile, mode: 'view', palette: [], floats: [] }
 
-/** 详情轮询（实例运行中 3s 刷新状态染色） */
+/** 详情轮询（E1 降级通道：SSE 断线后 3s 刷新状态染色；SSE 正常时不启用） */
 let detailTimer: number | null = null
 function stopDetailTimer() {
   if (detailTimer) { window.clearInterval(detailTimer); detailTimer = null }
+}
+
+/* ---------- E1：实例状态 SSE 流（task_state_changed/instance_finished） ---------- */
+let streamEs: EventSource | null = null
+function stopStream() {
+  if (streamEs) { streamEs.close(); streamEs = null }
+}
+
+/** 单节点 patch：DAG 染色（run.nodeStatus）+ attempt 徽标 + 任务表行；新任务行（循环扩行）全量补一次 */
+function patchFromStream(e: TaskStateEvent) {
+  run.nodeStatus[e.nodeId] = taskSt(e.state)
+  const node = detailDoc.value?.nodes.find((n) => n.id === e.nodeId)
+  if (node && e.attempt > Number(node.data._attempt ?? 0)) node.data._attempt = e.attempt
+  const row = detail.value?.taskInstances?.find((t) => t.id === e.taskId)
+  if (row) {
+    row.state = e.state
+    row.attempt = e.attempt
+    row.loopIter = e.loopIter
+    if (e.startTime) row.startTime = e.startTime
+    if (e.endTime) row.endTime = e.endTime
+  } else {
+    loadDetail()
+  }
+}
+
+/** 订阅实例状态流；onerror 关流降级 3s 轮询（EventSource 原生重连随之关闭，避免双通道） */
+function startStream(instanceId: string) {
+  stopStream()
+  streamEs = streamInstanceEvents(instanceId, {
+    onTaskChanged: patchFromStream,
+    onFinished: (e: InstanceFinishedEvent) => {
+      stopStream()
+      if (detail.value) {
+        detail.value.state = e.state
+        if (e.endTime) detail.value.endTime = e.endTime
+      }
+      loadDetail() // 终态一次性全量收口（时长/变量快照/outputs），不再轮询
+    },
+    onError: () => {
+      stopStream()
+      if (detail.value && RUNNING.has(detail.value.state ?? '')) {
+        stopDetailTimer()
+        detailTimer = window.setInterval(loadDetail, 3000)
+      }
+    },
+  })
 }
 
 async function openDetail(r: InstanceRow) {
@@ -252,11 +298,10 @@ async function openDetail(r: InstanceRow) {
   detailVisible.value = true
   await loadDetail()
   stopDetailTimer()
-  if (RUNNING.has(detail.value?.state ?? '')) {
-    detailTimer = window.setInterval(loadDetail, 3000)
-  }
+  if (RUNNING.has(detail.value?.state ?? '')) startStream(r.instanceId)
 }
 function closeDetail() {
+  stopStream()
   stopDetailTimer()
   run.nodeStatus = {}
   detailDoc.value = null
@@ -411,7 +456,7 @@ function goLineage() {
   router.push({ path: '/meta/lineage', query: { instance: iid, node: nid } })
 }
 
-onBeforeUnmount(() => { stopDetailTimer(); stopLogTimer() })
+onBeforeUnmount(() => { stopStream(); stopDetailTimer(); stopLogTimer() })
 
 function dur(s?: string | null, e?: string | null): string {
   if (!s || !e) return '-'
@@ -691,12 +736,12 @@ function dur(s?: string | null, e?: string | null): string {
 .snap-raw{background:var(--bg);border:1px solid var(--border);border-radius:var(--radius-sm);padding:8px;font-size:11px;max-height:220px;overflow:auto;white-space:pre-wrap;word-break:break-all}
 .log-wrap{display:flex;flex-direction:column;height:100%}
 .log-bar{display:flex;align-items:center;gap:8px;margin-bottom:8px}
-.log-pre{flex:1;background:#0b1020;color:#c8d3f5;border-radius:var(--radius-sm);padding:12px;font-size:11.5px;line-height:1.65;overflow:auto;white-space:pre-wrap;word-break:break-all;margin:0}
+.log-pre{flex:1;background:#f5f5f5;color:#1a1a2e;border-radius:var(--radius-sm);padding:12px;font-size:11.5px;line-height:1.65;overflow:auto;white-space:pre-wrap;word-break:break-all;margin:0}
 /* I11 R5：Log4j2 行渲染（级别着色：DEBUG 灰 / INFO 蓝 / WARN 橙 / ERROR 红） */
 .log-line{display:flex;gap:8px;padding:0 2px}
-.log-line:hover{background:rgba(255,255,255,.04)}
+.log-line:hover{background:rgba(0,0,0,.04)}
 .log-lvl{flex-shrink:0;min-width:48px;font-weight:700;text-align:center;border-radius:3px;font-size:10px;padding:1px 0}
-.log-ts{flex-shrink:0;color:#5b6b93}
+.log-ts{flex-shrink:0;color:#6b7a99}
 .log-msg{white-space:pre-wrap;word-break:break-all}
 .lvl-trace{color:#59637c}
 .lvl-debug{color:#8b93a8}

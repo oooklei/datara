@@ -5,9 +5,10 @@
  * 混编批处理组件由后端 extract_stream_spec 校验拦截（同口径）。
  */
 import { detectCycle, findBrokenEdges, findIsolated } from '../model'
-import type { ViewProfile } from './types'
+import type { ViewProfile, NodeSchema } from './types'
 import { dagProfile, streamSubgraphIssues } from './dag'
 import { requiredMissing } from './formLinkage'
+import { opScriptSchema } from './shared'
 import StreamMetricsPanel from '../workbench/panels/StreamMetricsPanel.vue'
 
 export const streamProfile: ViewProfile = {
@@ -40,7 +41,7 @@ export const streamProfile: ViewProfile = {
         },
         { key: 'watermarkDelay', label: 'Watermark 延迟', type: 'text', placeholder: '5 s（乱序容忍）' },
       ],
-      summary: (d) => String(d.topic || '未配置 Topic'),
+      summary: (d: Record<string, unknown>) => String(d.topic || '未配置 Topic'),
     },
     s_cdc: {
       type: 's_cdc', label: 'CDC 采集', icon: '⎘', color: '#0891b2',
@@ -56,7 +57,7 @@ export const streamProfile: ViewProfile = {
         },
         { key: 'watermarkDelay', label: 'Watermark 延迟', type: 'text', placeholder: '5 s（乱序容忍）' },
       ],
-      summary: (d) => `Binlog: ${d.dbName || '?'}.${d.tableName || '?'}`,
+      summary: (d: Record<string, unknown>) => `Binlog: ${d.dbName || '?'}.${d.tableName || '?'}`,
     },
     p_window: {
       type: 'p_window', label: '窗口聚合', icon: '⊞', color: '#7c3aed',
@@ -68,24 +69,25 @@ export const streamProfile: ViewProfile = {
           options: [{ value: 'TUMBLE', label: '滚动 TUMBLE' }, { value: 'HOP', label: '滑动 HOP' }, { value: 'SESSION', label: '会话 SESSION' }],
         },
         { key: 'size', label: '窗口大小', type: 'text', placeholder: "INTERVAL '1' MINUTE" },
-        { key: 'pkey', label: '分区键（必填）', type: 'text', placeholder: 'device_id' },
+        /* dataScope: 分区键必须是上游流表真实存在的列，否则 Flink 提交阶段才报错（配置期即拦） */
+        { key: 'pkey', label: '分区键（必填）', type: 'text', dataScope: 'upstream-columns', placeholder: 'device_id' },
         { key: 'agg', label: '聚合表达式', type: 'text', placeholder: 'COUNT(1), AVG(cpu_usage)' },
       ],
-      summary: (d) => `${d.windowType}(${d.size}) BY ${d.pkey || '⚠未设分区键'}`,
+      summary: (d: Record<string, unknown>) => `${d.windowType}(${d.size}) BY ${d.pkey || '⚠未设分区键'}`,
     },
     p_join: {
       type: 'p_join', label: '维表 Join', icon: '⋈', color: '#7c3aed',
       desc: '关联维表补全字段',
       defaults: { dimTable: '' },
       form: [{ key: 'dimTable', label: '维表', type: 'text', placeholder: 'dim_user' }],
-      summary: (d) => `JOIN ${d.dimTable || '?'}`,
+      summary: (d: Record<string, unknown>) => `JOIN ${d.dimTable || '?'}`,
     },
     p_filter: {
       type: 'p_filter', label: '过滤', icon: '⑂', color: '#7c3aed',
       desc: '条件过滤 / 脏数据剔除',
       defaults: { condition: '' },
       form: [{ key: 'condition', label: '条件', type: 'text', placeholder: 'pay_amount IS NOT NULL' }],
-      summary: (d) => String(d.condition || '未配置条件'),
+      summary: (d: Record<string, unknown>) => String(d.condition || '未配置条件'),
     },
     /* CEP 复杂事件处理（第6章流处理：在数据流中匹配特定事件序列，如风控规则、异常检测） */
     op_cep: {
@@ -93,29 +95,16 @@ export const streamProfile: ViewProfile = {
       desc: '模式检测：在数据流中匹配特定事件序列，适用于实时风控、异常检测、漏斗分析',
       defaults: { pattern: '', scene: '实时风控', within: '' },
       form: [
-        { key: 'pattern', label: '模式表达式', type: 'textarea', placeholder: 'e1 e2 within(5 min) WHERE e1.card = e2.card' },
+        { key: 'pattern', label: '模式表达式', type: 'text', multiline: true, placeholder: 'e1 e2 within(5 min) WHERE e1.card = e2.card' },
         {
           key: 'scene', label: '场景', type: 'select',
           options: [{ value: '实时风控', label: '实时风控' }, { value: '异常检测', label: '异常检测' }, { value: '漏斗分析', label: '漏斗分析' }],
         },
         { key: 'within', label: '时间窗', type: 'text', placeholder: '5 min' },
       ],
-      summary: (d) => `${String(d.scene || 'CEP')} · ${String(d.pattern || '未配置模式')}`,
+      summary: (d: Record<string, unknown>) => `${String(d.scene || 'CEP')} · ${String(d.pattern || '未配置模式')}`,
     },
-    op_script: {
-      type: 'op_script', label: '脚本', icon: '⌘', color: '#7c3aed',
-      desc: '引用脚本库脚本或内联代码（SQL/Python/Shell），可与脚本库互通保存',
-      defaults: { scriptId: '', lang: 'SQL', code: '' },
-      form: [
-        {
-          key: 'lang', label: '语言', type: 'select',
-          options: [{ value: 'SQL', label: 'SQL' }, { value: 'Python', label: 'Python' }, { value: 'Shell', label: 'Shell' }],
-        },
-        { key: 'scriptId', label: '脚本库脚本', type: 'script' },
-        { key: 'code', label: '脚本内容', type: 'textarea', placeholder: '-- 内联脚本；引用库脚本后可载入/回存' },
-      ],
-      summary: (d) => d.scriptId ? `脚本库:${String(d.scriptId)}` : (d.code ? '内联脚本' : '未配置脚本'),
-    },
+    ...opScriptSchema,
     o_doris: {
       type: 'o_doris', label: 'Doris 输出', icon: '⛁', color: '#16a34a',
       desc: '写入 Doris 实时表（分桶键必填）',
@@ -124,14 +113,14 @@ export const streamProfile: ViewProfile = {
         { key: 'table', label: '目标表', type: 'text', placeholder: 'dwd_order_pay_rt' },
         { key: 'pkey', label: '分桶键（必填）', type: 'text', placeholder: 'pay_id' },
       ],
-      summary: (d) => String(d.table || '未配置目标表'),
+      summary: (d: Record<string, unknown>) => String(d.table || '未配置目标表'),
     },
     o_kafka: {
       type: 'o_kafka', label: 'Kafka 输出', icon: '⇉', color: '#16a34a',
       desc: '写回 Kafka Topic（下游再消费）',
       defaults: { topic: '' },
       form: [{ key: 'topic', label: 'Topic', type: 'text', placeholder: 'topic_inventory_cdc' }],
-      summary: (d) => String(d.topic || '未配置 Topic'),
+      summary: (d: Record<string, unknown>) => String(d.topic || '未配置 Topic'),
     },
     o_alert: {
       type: 'o_alert', label: '实时告警', icon: '⚠', color: '#c2410c',
@@ -141,12 +130,12 @@ export const streamProfile: ViewProfile = {
         { key: 'rule', label: '告警规则', type: 'text', placeholder: '1 分钟失败率 > 5%' },
         { key: 'channel', label: '通知渠道', type: 'select', options: [{ value: '短信+飞书', label: '短信+飞书' }, { value: '邮件', label: '邮件' }, { value: '电话', label: '电话' }] },
       ],
-      summary: (d) => String(d.rule || '未配置规则'),
+      summary: (d: Record<string, unknown>) => String(d.rule || '未配置规则'),
     },
 
     /* 可视化编排（DAG）组件全量并入流设计器：逻辑关系 / 数据开发 / 数据集成 / 其他组件 */
     ...dagProfile.nodeTypes,
-  },
+  } as unknown as Record<string, NodeSchema>,
   edgeKinds: {
     flow: { kind: 'flow', label: '数据流', color: '#1668dc' },
     branch: { kind: 'branch', label: '条件分支', color: '#d97706' },

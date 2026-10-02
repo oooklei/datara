@@ -35,6 +35,15 @@ def _load_sources():
     if name in sys.modules:
         return sys.modules[name]
 
+    stubs = {
+        "common": {},
+        "common.dsconn": {"resolve_file_path": lambda p: p},
+        "common.db": {"new_session": lambda: None},
+        "common.log": {"get_logger": logging.getLogger},
+        "common.models": {"DataSource": type("DataSource", (), {})},
+    }
+    installed = [(n, sys.modules.get(n)) for n in stubs]
+
     def stub(mod_name, **attrs):
         mod = types.ModuleType(mod_name)
         for k, v in attrs.items():
@@ -42,16 +51,20 @@ def _load_sources():
         sys.modules[mod_name] = mod
         return mod
 
-    if "common" not in sys.modules:
-        stub("common")
-    stub("common.dsconn", resolve_file_path=lambda p: p)
-    stub("common.db", new_session=lambda: None)
-    stub("common.log", get_logger=logging.getLogger)
-    stub("common.models", DataSource=type("DataSource", (), {}))
-
-    spec = importlib.util.spec_from_file_location(name, ROOT / "worker" / "stream" / "sources.py")
-    mod = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(mod)
+    for n, attrs in stubs.items():
+        stub(n, **attrs)
+    try:
+        spec = importlib.util.spec_from_file_location(name, ROOT / "worker" / "stream" / "sources.py")
+        mod = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(mod)
+    finally:
+        # 导入期桩用完即撤（C2 污染修复，同 test_stream_i11）：属性绑定已完成，
+        # 撤回仅恢复 sys.modules 真实视图，避免跨文件 common.* 拿到空壳桩
+        for n, original in installed:
+            if original is None:
+                sys.modules.pop(n, None)
+            else:
+                sys.modules[n] = original
     sys.modules[name] = mod
     return mod
 

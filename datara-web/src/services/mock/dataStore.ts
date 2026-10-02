@@ -194,6 +194,58 @@ export const DB = {
      env:'生产', group:'消息', tags:['缓存','实时'], pool:{max:10,minIdle:1,idle:300,timeout:10}, status:'enabled', owner:'刘工', createdAt:'2026-09-05 11:20', latency:2, health:'健康'}
   ],
 
+  /* ===== 数据源库表树（mock 模式库/表/列真实候选；dataScope upstream-tables/columns 的供给源）===== */
+  dsTrees: [
+    { id: 'DS001', kind: 'connection', databases: [
+      { name: 'gdb_biz', tables: [
+        { name: 'ods_order', columns: [{ name: 'order_id', type: 'bigint' }, { name: 'user_id', type: 'bigint' }, { name: 'pay_amount', type: 'decimal(18,2)' }, { name: 'status', type: 'varchar(16)' }, { name: 'create_time', type: 'datetime' }] },
+        { name: 'ods_pay_detail', columns: [{ name: 'pay_id', type: 'bigint' }, { name: 'order_id', type: 'bigint' }, { name: 'pay_amount', type: 'decimal(18,2)' }, { name: 'create_time', type: 'datetime' }] },
+        { name: 'ods_user', columns: [{ name: 'user_id', type: 'bigint' }, { name: 'user_name', type: 'varchar(64)' }, { name: 'city', type: 'varchar(32)' }] },
+      ] },
+      { name: 'gdb_biz_dim', tables: [
+        { name: 'dim_city', columns: [{ name: 'city_code', type: 'varchar(16)' }, { name: 'city_name', type: 'varchar(64)' }, { name: 'province', type: 'varchar(64)' }] },
+      ] },
+    ] },
+    { id: 'DS003', kind: 'connection', databases: [
+      { name: 'biz_test', tables: [
+        { name: 'ods_order', columns: [{ name: 'order_id', type: 'bigint' }, { name: 'user_id', type: 'bigint' }, { name: 'pay_amount', type: 'decimal(18,2)' }, { name: 'status', type: 'varchar(16)' }, { name: 'create_time', type: 'datetime' }] },
+        { name: 'ods_pay_detail', columns: [{ name: 'pay_id', type: 'bigint' }, { name: 'order_id', type: 'bigint' }, { name: 'pay_amount', type: 'decimal(18,2)' }, { name: 'create_time', type: 'datetime' }] },
+        { name: 'dim_user', columns: [{ name: 'user_id', type: 'bigint' }, { name: 'user_name', type: 'varchar(64)' }, { name: 'city', type: 'varchar(32)' }] },
+      ] },
+    ] },
+    { id: 'DS005', kind: 'connection', databases: [
+      { name: 'gdb_dw', tables: [
+        { name: 'dwd_order_pay_detail', columns: [{ name: 'order_id', type: 'bigint' }, { name: 'user_id', type: 'bigint' }, { name: 'pay_amount', type: 'decimal(18,2)' }, { name: 'city', type: 'varchar(32)' }, { name: 'create_time', type: 'datetime' }] },
+        { name: 'dws_pay_summary', columns: [{ name: 'stat_date', type: 'date' }, { name: 'city', type: 'varchar(32)' }, { name: 'pay_amt', type: 'decimal(18,2)' }] },
+      ] },
+    ] },
+    { id: 'DS006', kind: 'connection', databases: [
+      { name: 'dw_olap', tables: [
+        { name: 'ads_pay_rank', columns: [{ name: 'stat_date', type: 'date' }, { name: 'rank_no', type: 'int' }, { name: 'pay_amt', type: 'decimal(18,2)' }] },
+      ] },
+    ] },
+    { id: 'DS009', kind: 'connection', databases: [
+      { name: 'log_analysis', tables: [
+        { name: 'app_access_log', columns: [{ name: 'log_id', type: 'bigint' }, { name: 'uri', type: 'varchar(255)' }, { name: 'device_id', type: 'varchar(64)' }, { name: 'log_time', type: 'datetime' }] },
+      ] },
+    ] },
+    { id: 'DS002', kind: 'connection', databases: [
+      { name: 'DM_MGMT', tables: [
+        { name: 'T_ORDER', columns: [{ name: 'ORDER_ID', type: 'BIGINT' }, { name: 'AMOUNT', type: 'DECIMAL(18,2)' }, { name: 'ORDER_TIME', type: 'TIMESTAMP' }] },
+      ] },
+    ] },
+    { id: 'DS004', kind: 'connection', databases: [
+      { name: 'ORCL', tables: [
+        { name: 'GL_VOUCHER', columns: [{ name: 'VOUCHER_ID', type: 'NUMBER' }, { name: 'ACCOUNT', type: 'VARCHAR2(32)' }, { name: 'AMOUNT', type: 'NUMBER(18,2)' }] },
+      ] },
+    ] },
+    { id: 'DS008', kind: 'connection', databases: [
+      { name: 'gdb_dev', tables: [
+        { name: 'ods_order_dev', columns: [{ name: 'order_id', type: 'bigint' }, { name: 'user_id', type: 'bigint' }, { name: 'pay_amount', type: 'decimal(18,2)' }] },
+      ] },
+    ] },
+  ],
+
   /* ===== M04 数仓模型 ===== */
   dwLayers: [
     {code:'ODS', name:'原始数据层', desc:'从数据源原样同步，不做加工', color:'#0891b2', rule:'ods_源库名_源表名，保留原始字段'},

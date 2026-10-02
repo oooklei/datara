@@ -31,10 +31,12 @@ logger = get_logger("api.auth")
 
 router = APIRouter(tags=["auth"])
 
-# 角色权限点静态映射（设计文档 §6.1）
+# 角色权限点静态映射（设计文档 §6.1 + 组件治理 §14.2：dev 可设计不可发布，
+# publish_component 由 admin 独占——执行契约绑定决策须对执行引擎负责的角色）
 ROLE_PERMS = {
-    "admin": ["manage_user", "edit_definition", "run_instance", "view_all"],
-    "dev": ["edit_definition", "run_instance", "view_all"],
+    "admin": ["manage_user", "edit_definition", "run_instance", "view_all",
+              "design_component", "publish_component"],
+    "dev": ["edit_definition", "run_instance", "view_all", "design_component"],
     "analyst": ["run_instance", "view_all"],
     "viewer": ["view_all"],
 }
@@ -44,12 +46,17 @@ ROLE_NAMES = {"admin": "管理员", "dev": "开发者", "analyst": "分析师", 
 
 
 class ApiError(Exception):
-    """业务异常：转统一响应包（main.py 注册 exception_handler）。"""
+    """业务异常：转统一响应包（main.py 注册 exception_handler）。
 
-    def __init__(self, code: int, msg: Optional[str] = None, status: int = 400):
+    data 可选载荷：冲突详情（如乐观锁 409 的 currentRev、校验 422 的逐条违规）。
+    """
+
+    def __init__(self, code: int, msg: Optional[str] = None, status: int = 400,
+                 data: Optional[dict] = None):
         self.code = code
         self.msg = msg
         self.status = status
+        self.data = data
         super().__init__(msg or code)
 
 

@@ -3,7 +3,7 @@ import { computed } from 'vue'
 import { Handle, Position } from '@vue-flow/core'
 import type { GNode } from '../model'
 import type { NodeSchema } from '../profiles/types'
-import { requiredMissing } from '../profiles/formLinkage'
+import { renderSummary, requiredMissing } from '../profiles/formLinkage'
 import { NODE_ART, NODE_ART_FALLBACK } from './arts'
 import { useRunStore } from '../../stores/run'
 
@@ -17,17 +17,25 @@ const props = defineProps<{
 const run = useRunStore()
 const status = computed<string>(() => run.nodeStatus[props.id] ?? 'idle')
 const stClass = computed(() => (status.value === 'idle' ? '' : `st-${status.value}`))
-const sub = computed(() => (props.schema.summary ? props.schema.summary(props.gnode.data) : ''))
+/** 副标题（M-B2 迁移收口）：render.summaryRules 分型模板 → render.summary 常量 → 旧 schema.summary（字符串/函数）回退链 */
+const sub = computed(() => renderSummary(props.schema, props.gnode.data))
 const health = computed(() => String(props.gnode.data.health ?? ''))
 /** I3：实例详情 DAG 的 attempt 徽标（>1 时展示，注入自 _attempt） */
 const attempt = computed(() => Number(props.gnode.data._attempt ?? 0))
 const healthColor = computed(() =>
   health.value === 'fail' ? 'var(--danger)' : health.value === 'warn' ? 'var(--warn)' : 'var(--success)')
 const blind = computed(() => props.gnode.data.blind === true)
-/** 动态分支端点（条件分支/Switch 等）：每分支独立输出 Handle */
-const ports = computed(() => props.schema.ports?.(props.gnode.data) ?? [])
+/** 动态分支端点（条件分支/Switch 等）：每分支独立输出 Handle；
+ * 端点合一：静态具名输出口（schema.outputs，如 endpoint_select 的 sourceRef/targetRef）归一走同一渲染路径 */
+const ports = computed(() => props.schema.ports?.(props.gnode.data) ?? props.schema.outputs ?? [])
 /** W1 必填完整性：required 字段在当前分型下为空 → 画布「未配置」角标（title 列缺失项，与校验面板/保存闸门共用判定） */
 const missing = computed(() => requiredMissing(props.schema, props.gnode.data))
+/** D3 版本角标：componentRef.version（存量未回填/未注入文档无 ref 则不显示） */
+const refVersion = computed(() => {
+  const ref = props.gnode.data.componentRef as { version?: unknown } | undefined
+  const v = ref?.version
+  return typeof v === 'number' && Number.isInteger(v) && v > 0 ? v : 0
+})
 /** Task 5 血缘来源体系：sources 仅 design（无运行佐证）→「未验」角标（注入自 unverified） */
 const unverified = computed(() => props.gnode.data.unverified === true)
 /** Task 7 血缘临时表标记：tmpFlag=true（注入自 tmp）→ 虚线边框（对齐 dep_design 虚线语义） */
@@ -65,6 +73,7 @@ const art = computed(() => NODE_ART[props.schema.type] ?? NODE_ART_FALLBACK)
       <div class="n-status" />
       <span v-if="attempt > 1" class="n-attempt">#{{ attempt }}</span>
       <span v-if="missing.length" class="n-miss" :title="'未配置：' + missing.join('、')">!</span>
+      <span v-if="refVersion" class="n-ref" :title="'组件版本 v' + refVersion + '（componentRef）'">v{{ refVersion }}</span>
     </div>
     <div v-for="p in ports" :key="p.id" class="nb-row">
       <span class="nb-label" :title="p.label">{{ p.label }}</span>
@@ -88,6 +97,7 @@ const art = computed(() => NODE_ART[props.schema.type] ?? NODE_ART_FALLBACK)
     <div class="n-status" />
     <span v-if="attempt > 1" class="n-attempt">#{{ attempt }}</span>
     <span v-if="missing.length" class="n-miss" :title="'未配置：' + missing.join('、')">!</span>
+    <span v-if="refVersion" class="n-ref" :title="'组件版本 v' + refVersion + '（componentRef）'">v{{ refVersion }}</span>
     <span v-if="unverified" class="n-unv" title="未验证：仅设计态血缘，暂无运行实例佐证">未验</span>
     <Handle type="source" :position="Position.Right" />
   </div>
@@ -110,6 +120,8 @@ const art = computed(() => NODE_ART[props.schema.type] ?? NODE_ART_FALLBACK)
 .gnode .n-health{width:10px;height:10px;border-radius:50%;flex-shrink:0}
 /* W1 必填未配置角标（右上角悬浮，与 n-health 行内圆点不冲突；hover title 列缺失项） */
 .gnode .n-miss{position:absolute;top:-7px;right:-7px;z-index:2;width:15px;height:15px;border-radius:50%;background:var(--warn,#d97706);color:#fff;font-size:10px;font-weight:700;line-height:15px;text-align:center;border:2px solid #fff;box-shadow:0 1px 3px rgba(15,23,42,.25);cursor:help;pointer-events:auto}
+/* D3 版本角标（左下角悬浮，避开左上 n-attempt / 右上 n-miss；复用 n-attempt 视觉语言） */
+.gnode .n-ref{position:absolute;bottom:-8px;left:-8px;z-index:2;background:var(--primary,#2563eb);color:#fff;font-size:9.5px;font-weight:700;border-radius:999px;padding:1px 5px;border:2px solid #fff;box-shadow:0 1px 3px rgba(15,23,42,.25);pointer-events:auto}
 /* Task 5 血缘「未验证」角标（右下角悬浮，避开左下 n-ref / 右上 n-miss；琥珀色对齐 dep_design 边） */
 .gnode .n-unv{position:absolute;bottom:-8px;right:-8px;z-index:2;background:#d97706;color:#fff;font-size:9.5px;font-weight:700;border-radius:999px;padding:1px 5px;border:2px solid #fff;box-shadow:0 1px 3px rgba(15,23,42,.25);pointer-events:auto;cursor:help}
 /* Task 7 血缘临时表：虚线边框（对齐 dep_design 虚线语义；0,2,0 特异性覆盖 theme.css .gnode 实线边框） */

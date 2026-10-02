@@ -8,12 +8,9 @@
 import type { IGraphService } from './types'
 import { realGraphService } from './graphApi'
 import { graphService as mockGraphService } from './mock/graphService'
+import { isMock } from './apiMode'
 
-/** 'real'（默认）| 'mock' */
-export const apiMode: 'real' | 'mock' =
-  (import.meta.env.VITE_API_MODE as 'real' | 'mock' | undefined) ?? 'real'
-
-export const isMock = apiMode === 'mock'
+export { apiMode, isMock } from './apiMode'
 
 export const graphService: IGraphService = isMock ? mockGraphService : realGraphService
 
@@ -23,7 +20,8 @@ export {
   /* I3 调度执行（§13） */
   listSchedules, createSchedule, updateSchedule, deleteSchedule,
   onlineSchedule, offlineSchedule, previewCrontab,
-  runWorkflow, complementWorkflow,
+  runWorkflow, complementWorkflow, publishWorkflow, offlineWorkflow,
+  /* 实例/任务操作 */
   getInstanceDetail, stopInstance, rerunInstance, rerunFailedTasks,
   getTaskLog, listRuntimeNodes,
   /* I7 F53 SSH 运行节点 */
@@ -32,17 +30,23 @@ export {
   SYNC_TAG, ETL_TAG, STREAM_TAG,
   /* I11 分类目录 + 删除实例日志（I14：批量删除） */
   listCategories, createCategory, deleteCategory, setWfTags, deleteInstanceLogs, deleteInstanceLogsBatch,
+  /* 实例状态 SSE 流 */
+  streamInstanceEvents,
 } from './graphApi'
+
+export {
+  /* I8 流任务（F40/F41） */
+  listStreamJobs, getStreamJob, startStreamJob, stopStreamJob, deleteStreamJob, getStreamLogs, pollStreamData,
+  streamSseUrl, streamWsUrl,
+} from './streamApi'
+
+export type { StreamJobRow, StreamDataPage } from './streamApi'
+
 export type {
   DefinitionMeta, InstanceRow,
   ScheduleRow, ScheduleBody, RuntimeNodeRow,
   SshNodeRow,
   CategoryRow,
   DeleteLogsResult,
+  TaskStateEvent, InstanceFinishedEvent, InstanceStreamHandlers,
 } from './graphApi'
-/* I8 流任务（F40/F41） */
-export {
-  listStreamJobs, getStreamJob, startStreamJob, stopStreamJob, deleteStreamJob, getStreamLogs, pollStreamData,
-  streamSseUrl, streamWsUrl,
-} from './streamApi'
-export type { StreamJobRow, StreamDataPage } from './streamApi'

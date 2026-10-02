@@ -5,6 +5,7 @@
  * 视角差异全部由注入的 ViewProfile 决定（菜单即视角）。
  */
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { VueFlow, useVueFlow, MarkerType } from '@vue-flow/core'
 import type { Connection, EdgeChange, EdgeMouseEvent, NodeChange, NodeMouseEvent } from '@vue-flow/core'
@@ -20,6 +21,9 @@ import { cloneDoc, detectCycle, uid } from '../model'
 import { applyLayout } from '../layout'
 import type { NodeSchema, ViewProfile } from '../profiles'
 import type { ComponentCategory } from '../profiles/types' // I12 R1：doc 推导组件库置顶标签用
+import { onEdgeCreated, onEdgeRemoved, decideDrop, prefillFromUpstream } from '../profiles/formLinkage' // 拖边即引用（端点合一 §3.3）+ F1 拖入闸门
+import { createTemplateStage, selectTemplateSteps, stagedUpstreamOf } from '../profiles/templateStaging'
+import type { TemplateStage } from '../profiles/templateStaging'
 import { useGraphStore } from '../../stores/graph'
 import { useAuthStore } from '../../stores/auth'
 import { useRunStore } from '../../stores/run'
@@ -30,6 +34,7 @@ import type { DagPickItem } from '../../stores/dagTabs'
 import DataNode from './DataNode.vue'
 import Palette from './Palette.vue'
 import Inspector from './Inspector.vue'
+import DropConfigDialog from './DropConfigDialog.vue'
 import FloatLayer from './FloatLayer.vue'
 import IssuePanel from './panels/IssuePanel.vue'
 import LogPanel from './panels/LogPanel.vue'
@@ -37,7 +42,7 @@ import WfVarPanel from './panels/WfVarPanel.vue'
 import AiPanel from './panels/AiPanel.vue'
 import VersionPanel from './panels/VersionPanel.vue'
 import RunDialog from './RunDialog.vue'
-import { Search, FullScreen, RefreshLeft, RefreshRight, Operation } from '@element-plus/icons-vue'
+import { Search, FullScreen, RefreshLeft, RefreshRight, Operation, Grid } from '@element-plus/icons-vue'
 
 const props = defineProps<{
   profile: ViewProfile
@@ -62,6 +67,11 @@ const graphStore = useGraphStore()
 const run = useRunStore()
 const floatStore = useFloatStore()
 const auth = useAuthStore()
+const router = useRouter()
+/** 组件治理入口（M0 目录 / M1 设计器）：顶栏按钮进入，不占用左侧导航 */
+function gotoCatalog() { void router.push('/meta/components') }
+/** 基线化工作台（M-B0 组件基线化）：顶栏按钮进入，与组件目录并列 */
+function gotoBaseline() { void router.push('/meta/baseline') }
 /** 系统权限降级（M15）：只读角色（analyst/viewer）强制进入 view 模式 */
 const effMode = computed(() => (props.profile.mode === 'edit' && !auth.canEdit ? 'view' : props.profile.mode))
 const { screenToFlowCoordinate, fitView, fitViewOnInitDone, viewport, setViewport } = useVueFlow()
@@ -183,31 +193,41 @@ const paletteActiveTags = computed<string[]>(() => {
 
 function toFlowNode(g: GNode): any {
   return {
-    id: g.id,
+    id: g?.id ?? `node_fallback_${Math.random().toString(36).slice(2, 8)}`,
     type: 'gn',
-    position: { ...g.position },
-    data: { gnode: g, schema: props.profile.nodeTypes[g.type] ?? FALLBACK_SCHEMA },
+    position: g?.position ?? { x: 0, y: 0 },
+    data: { gnode: g, schema: props.profile.nodeTypes[g?.type ?? ''] ?? FALLBACK_SCHEMA },
   }
 }
 
 function toFlowEdge(e: GEdge): any {
-  const k = props.profile.edgeKinds[e.kind ?? props.profile.defaultEdge]
-    ?? Object.values(props.profile.edgeKinds)[0]!
+  // 防御：边数据缺少 id/source/target 时生成占位边（避免 VueFlow setEdges 内部 toString() 崩溃）
+  // VueFlow setEdges 内部会对 edge 的多个字段调用 toString()，undefined/null 会抛 TypeError
+  const rawId = e?.id ?? `edge_fallback_${Math.random().toString(36).slice(2, 8)}`
+  const rawSource = e?.source ?? 'node_unknown'
+  const rawTarget = e?.target ?? 'node_unknown'
+  const k = props.profile.edgeKinds[e?.kind ?? props.profile.defaultEdge]
+    ?? Object.values(props.profile.edgeKinds)[0]
+  // 防御：edgeKinds 配置缺失时提供默认样式
+  const color = k?.color ?? '#64748b'
+  const edgeType = k?.edgeType ?? 'default'
+  const dashed = k?.dashed ?? false
+  const animated = k?.animated ?? false
   return {
-    id: e.id,
-    source: e.source,
-    target: e.target,
-    sourceHandle: e.sourceHandle ?? null,
-    targetHandle: e.targetHandle ?? null,
-    type: k.edgeType ?? 'default',
-    label: e.label,
-    labelStyle: { fill: k.color, fontSize: 9.5 },
+    id: String(rawId),
+    source: String(rawSource),
+    target: String(rawTarget),
+    sourceHandle: e?.sourceHandle != null ? String(e.sourceHandle) : '',
+    targetHandle: e?.targetHandle != null ? String(e.targetHandle) : '',
+    type: edgeType,
+    label: e?.label != null ? String(e.label) : '',
+    labelStyle: { fill: color, fontSize: 9.5 },
     labelBgPadding: [4, 2],
     labelBgBorderRadius: 3,
-    labelBgStyle: { fill: '#fff', fillOpacity: 0.85, stroke: k.color, strokeWidth: 0.5 },
-    style: { stroke: k.color, strokeWidth: 1.6, strokeDasharray: k.dashed ? '6 4' : undefined },
-    markerEnd: { type: MarkerType.ArrowClosed, color: k.color },
-    animated: k.animated,
+    labelBgStyle: { fill: '#fff', fillOpacity: 0.85, stroke: color, strokeWidth: 0.5 },
+    style: { stroke: color, strokeWidth: 1.6, strokeDasharray: dashed ? '6 4' : '' },
+    markerEnd: { type: MarkerType.ArrowClosed, color },
+    animated,
   }
 }
 
@@ -743,10 +763,12 @@ function onConnect(conn: Connection) {
   const dup = (sh: string) => doc.value!.edges.some(
     (e) => e.source === conn.source && e.target === conn.target && (e.sourceHandle ?? '') === sh)
   if (dup(conn.sourceHandle ?? '')) { ElMessage.warning('依赖边已存在'); return }
-  /* 分支端点连线：边标注分支名并使用 branch 语义（不同分支可指向同一目标） */
+  /* 分支/具名输出口连线：边标注端口名并使用 branch 语义（不同分支可指向同一目标；
+     端点合一：endpoint_select 静态 outputs（sourceRef/targetRef）与动态 ports 归一按端口解析） */
   const srcNode = doc.value.nodes.find((n) => n.id === conn.source)
+  const srcSchema = srcNode ? props.profile.nodeTypes[srcNode.type] : undefined
   const port = (srcNode && conn.sourceHandle)
-    ? props.profile.nodeTypes[srcNode.type]?.ports?.(srcNode.data)?.find((p) => p.id === conn.sourceHandle)
+    ? (srcSchema?.ports?.(srcNode.data) ?? srcSchema?.outputs)?.find((p) => p.id === conn.sourceHandle)
     : undefined
   const edge: GEdge = {
     id: uid('e'),
@@ -763,6 +785,7 @@ function onConnect(conn: Connection) {
     return
   }
   doc.value.edges.push(edge)
+  onEdgeCreated(doc.value, edge) // 拖边即引用（§3.3）：同步向目标节点 inputs 追加 `${source}:${sourceHandle ?? ''}` 引用
   flowEdges.value.push(toFlowEdge(edge))
   applyVisibility()
   graphStore.markDirty()
@@ -810,7 +833,8 @@ async function removeNodes(ids: string[], opts?: { silent?: boolean }) {
   const set = new Set(ids)
   const targets = d.nodes.filter((n) => set.has(n.id))
   if (!targets.length) return
-  const linked = d.edges.filter((e) => set.has(e.source) || set.has(e.target)).length
+  const cutEdges = d.edges.filter((e) => set.has(e.source) || set.has(e.target))
+  const linked = cutEdges.length
   if (!opts?.silent && linked > 0) {
     const label = targets.length === 1 ? `「${String(targets[0]!.data.name ?? targets[0]!.id)}」` : `${targets.length} 个节点`
     try {
@@ -821,6 +845,7 @@ async function removeNodes(ids: string[], opts?: { silent?: boolean }) {
       )
     } catch { return }
   }
+  cutEdges.forEach((e) => onEdgeRemoved(d, e)) // 拖边即引用（§3.3）：被断开的边同步从目标节点 inputs 移除引用（目标节点已删时为空操作）
   d.nodes = d.nodes.filter((n) => !set.has(n.id))
   d.edges = d.edges.filter((e) => !set.has(e.source) && !set.has(e.target))
   if (d.groups?.length) {
@@ -845,6 +870,7 @@ function removeEdges(ids: string[]) {
   const d = doc.value
   if (!d || !ids.length) return
   const set = new Set(ids)
+  d.edges.filter((e) => set.has(e.id)).forEach((e) => onEdgeRemoved(d, e)) // 拖边即引用（§3.3）：同步从目标节点 inputs 移除引用
   d.edges = d.edges.filter((e) => !set.has(e.id))
   flowEdges.value = flowEdges.value.filter((e) => !set.has(e.id))
   selectedEdgeIds.value = new Set([...selectedEdgeIds.value].filter((x) => !set.has(x)))
@@ -894,19 +920,94 @@ function onDrop(e: DragEvent) {
     materializeTemplate(schema, pos)
     return
   }
+  /* F1 configure-first（§12.1）：前置裁决（灰置/runtimeOnly/maxInstances 拦截）→ 一律必弹配置弹窗
+     （含 form: [] 的 C1/C2/C6/C7——六区块即其配置面；无 direct-add 旁路） */
+  const decision = decideDrop(schema, { sameTypeCount: doc.value.nodes.filter((n) => n.type === type).length, paletteDisabled: paletteDisabledOf(type) })
+  if (decision.action === 'intercept') { ElMessage.warning(decision.reason); return }
   const g: GNode = {
     id: uid('nd'),
     type,
     position: pos,
     data: { name: schema.label, ...(schema.defaults ?? {}) },
   }
+  /* §11 划界语义：逻辑上游 = 当前选中节点优先，否则 drop 点最近节点。
+     同一取法两处消费：prefill 一次性快照预填 + dropUpstream 传弹窗（虚拟节点无 doc.edges 入边，
+     弹窗期 ①输入候选 / dataScope 上游两域 / 悬空引用判定均需它才能与落画布后同源） */
+  const up = pickPrefillUpstream(pos)
+  prefillFromUpstream(g.data, up?.data ?? null, schema.dropPolicy?.prefillFromUpstream)
+  dropSchema.value = schema
+  dropNode.value = g
+  dropUpstream.value = up ? [up] : []
+  dropDlg.value = true
+}
+
+/** F1：确认弹窗 → 节点落画布（「已配置」态）；取消/ESC → dropNode 丢弃，画布无痕。
+ *  模板展开期（tplStage 激活）：确认 = 下一步 / 末步原子提交，取消 = 整链放弃。 */
+function confirmDrop() {
+  if (tplStage.value) { advanceTplStep(); return }
+  const g = dropNode.value
+  dropDlg.value = false
+  dropNode.value = null
+  dropSchema.value = null
+  dropUpstream.value = []
+  if (!g) return
+  addNodeToCanvas(g)
+  ElMessage.success(`已添加「${props.profile.nodeTypes[g.type]?.label ?? g.type}」`)
+}
+function cancelDrop() {
+  if (tplStage.value) { abortTemplate(); return }
+  dropDlg.value = false
+  dropNode.value = null
+  dropSchema.value = null
+  dropUpstream.value = []
+}
+
+/** F1：预填逻辑上游——当前选中节点优先（显式接续意图）；否则取 drop 点欧氏距离最近节点 */
+function pickPrefillUpstream(pos: { x: number; y: number }): GNode | null {
+  const d = doc.value
+  if (!d) return null
+  if (selectedId.value) {
+    const sel = d.nodes.find((n) => n.id === selectedId.value)
+    if (sel) return sel
+  }
+  let best: GNode | null = null
+  let bd = Infinity
+  for (const n of d.nodes) {
+    const dx = n.position.x - pos.x
+    const dy = n.position.y - pos.y
+    const dist = dx * dx + dy * dy
+    if (dist < bd) { bd = dist; best = n }
+  }
+  return best
+}
+
+/** F1：palette 灰置态查询（灰置行 draggable=false 正常拖不出，此处为 dataTransfer 伪造的防御层） */
+function paletteDisabledOf(type: string): boolean {
+  for (const c of props.profile.palette) {
+    if (c.items) {
+      const it = c.items.find((i) => i.type === type)
+      if (it) return !!it.disabled
+    } else if (c.types?.includes(type)) return false
+  }
+  return false
+}
+
+/** F1：节点落画布公共尾（弹窗确认后统一收口） */
+function addNodeToCanvas(g: GNode) {
+  if (!doc.value) return
   doc.value.nodes.push(g)
   flowNodes.value.push(toFlowNode(g))
   selectedId.value = g.id
   applyVisibility()
   graphStore.markDirty()
-  ElMessage.success(`已添加「${schema.label}」，在右侧面板配置属性`)
 }
+
+/* ---------- F1 拖入配置弹窗状态 ---------- */
+const dropDlg = ref(false)
+const dropNode = ref<GNode | null>(null)
+const dropSchema = ref<NodeSchema | null>(null)
+/** 本次拖入的逻辑上游快照（虚拟节点无 doc.edges 入边，弹窗期配置上下文唯一来源；确认/取消均清空） */
+const dropUpstream = ref<GNode[]>([])
 
 /* ---------- F63 模板物化（§10.1） ---------- */
 
@@ -935,19 +1036,90 @@ function confirmTemplate() {
 function applyTemplate(schema: NodeSchema, modeKey: string, pos: { x: number; y: number }) {
   const mode = schema.template?.modes.find((m) => m.key === modeKey)
   if (!mode || !doc.value) return
+  let built: { nodes: GNode[]; edges: GEdge[] }
   try {
-    const built = mode.build({ doc: doc.value, pos })
-    if (!built.nodes.length) return
-    built.nodes.forEach((n) => { doc.value!.nodes.push(n); flowNodes.value.push(toFlowNode(n)) })
-    built.edges.forEach((e2) => { doc.value!.edges.push(e2); flowEdges.value.push(toFlowEdge(e2)) })
-    selectedId.value = built.nodes[0]!.id
-    applyVisibility()
-    graphStore.markDirty()
-    ElMessage.success(`模板「${mode.label}」已展开为 ${built.nodes.length} 个普通节点（可再编辑/增删插节点）`)
+    built = mode.build({ doc: doc.value, pos })
   } catch (err) {
     ElMessage.error(`模板展开失败：${err instanceof Error ? err.message : String(err)}`)
+    return
   }
+  if (!built.nodes.length) return
+  /* configure-first（§12.1）：模板不再直接物化——先暂存（不写画布），再逐节点过配置闸门，
+     全部通过后原子提交；任一步取消则整链丢弃，画布无痕。
+     纯装饰节点（form 空且六区块无值，如 C1 开始 / C2 结束）自动跳过，不索取无意义输入。 */
+  const steps = selectTemplateSteps(built.nodes, (t) => props.profile.nodeTypes[t])
+  if (!steps.length) { commitTemplate(mode.label, built.nodes, built.edges); return }
+  tplStage.value = { ...createTemplateStage(mode.label, built.nodes, built.edges), steps }
+  openTplStep()
 }
+
+/** 模板暂存区（未落画布） */
+const tplStage = ref<TemplateStage | null>(null)
+
+/** 弹窗步骤态（普通拖入为 null → 弹窗标题/按钮走缺省文案） */
+const dropStep = computed(() => {
+  const st = tplStage.value
+  return st ? { index: st.step, total: st.steps.length, chainLabel: st.chainLabel } : null
+})
+const dropConfirmText = computed(() => {
+  const st = tplStage.value
+  if (!st) return undefined
+  return st.step === st.steps.length - 1 ? '完成展开' : '下一步'
+})
+
+/** 打开当前步骤的配置弹窗（复用普通拖入的同一弹窗实例，虚拟节点不落画布） */
+function openTplStep() {
+  const st = tplStage.value
+  if (!st) return
+  const g = st.steps[st.step]
+  const s = g ? props.profile.nodeTypes[g.type] ?? null : null
+  if (!g || !s) { abortTemplate(); return }
+  dropNode.value = g
+  dropSchema.value = s
+  dropUpstream.value = stagedUpstreamOf(st, g.id)
+  dropDlg.value = true
+}
+
+/** 步骤确认 → 下一步；末步确认 → 原子提交整链（一次性写 doc，画布不会出现半成品） */
+function advanceTplStep() {
+  const st = tplStage.value
+  if (!st) return
+  if (st.step < st.steps.length - 1) {
+    st.step += 1
+    openTplStep()
+    return
+  }
+  const done = tplStage.value
+  tplStage.value = null
+  clearDropState()
+  if (done) commitTemplate(done.chainLabel, done.nodes, done.edges)
+}
+
+/** 放弃展开：整链丢弃（staged 本就未写 doc，故画布无痕） */
+function abortTemplate() {
+  const label = tplStage.value?.chainLabel
+  tplStage.value = null
+  clearDropState()
+  if (label) ElMessage.info(`已放弃模板「${label}」展开，画布未变更`)
+}
+
+function clearDropState() {
+  dropDlg.value = false
+  dropNode.value = null
+  dropSchema.value = null
+  dropUpstream.value = []
+}
+
+/** 原子提交：整链一次写入 doc + 画布，随后统一标脏/选中/可见性 */
+function commitTemplate(chainLabel: string, nodes: GNode[], edges: GEdge[]) {
+  if (!doc.value) return
+  nodes.forEach((n) => { doc.value!.nodes.push(n); flowNodes.value.push(toFlowNode(n)) })
+  edges.forEach((e2) => { doc.value!.edges.push(e2); flowEdges.value.push(toFlowEdge(e2)) })
+  selectedId.value = nodes[0]!.id
+  applyVisibility()
+  graphStore.markDirty()
+  const total = nodes.length
+  ElMessage.success(`模板「${chainLabel}」已展开为 ${total} 个普通节点（配置已通过，可再编辑/增删插节点）`)}
 
 /* ---------- 右键菜单（节点 / 连线 / 画布） ---------- */
 
@@ -1043,6 +1215,12 @@ function ctxLayout() { onLayout(); closeCtx() }
         <button class="tb-btn" @click="onValidate">校验</button>
         <button class="tb-btn" @click="onLayout">自动布局</button>
         <span class="tb-sep" />
+        <button class="tb-btn tb-catalog" title="打开组件目录：查看内置/用户组件、新建设计、版本与发布治理" @click="gotoCatalog">
+          <el-icon><Grid /></el-icon><span>组件目录</span>
+        </button>
+        <button class="tb-btn tb-catalog" title="打开基线化工作台：组件八段 DSL 底稿编辑/体检/认可发 v1" @click="gotoBaseline">
+          <el-icon><Grid /></el-icon><span>基线化工作台</span>
+        </button>
         <button class="tb-ico" title="适配视图（全部节点居中）" @click="onFit"><el-icon><FullScreen /></el-icon></button>
         <button class="tb-ico" :class="{ on: searchOpen }" title="搜索节点（Ctrl+F）" @click="toggleSearch"><el-icon><Search /></el-icon></button>
         <button class="tb-ico" :disabled="!graphStore.canUndo" title="撤销（Ctrl+Z）" @click="onUndo"><el-icon><RefreshLeft /></el-icon></button>
@@ -1068,6 +1246,12 @@ function ctxLayout() { onLayout(); closeCtx() }
         <label v-if="profile.onTick" style="display:flex;align-items:center;gap:5px;font-size:12px;color:var(--text-2);cursor:pointer">
           <input v-model="autoRefresh" type="checkbox" /> {{ profile.tickLabel ?? '健康状态自动刷新(3s)' }}
         </label>
+        <button class="tb-btn tb-catalog" title="打开组件目录：查看内置/用户组件、新建设计、版本与发布治理" @click="gotoCatalog">
+          <el-icon><Grid /></el-icon><span>组件目录</span>
+        </button>
+        <button class="tb-btn tb-catalog" title="打开基线化工作台：组件八段 DSL 底稿编辑/体检/认可发 v1" @click="gotoBaseline">
+          <el-icon><Grid /></el-icon><span>基线化工作台</span>
+        </button>
         <button class="tb-ico" title="适配视图（全部节点居中）" @click="onFit"><el-icon><FullScreen /></el-icon></button>
         <button class="tb-ico" :class="{ on: searchOpen }" title="搜索节点（Ctrl+F）" @click="toggleSearch"><el-icon><Search /></el-icon></button>
         <button class="tb-ico" :class="{ on: navOpen }" title="图例过滤 / 大纲" @click="navOpen = !navOpen"><el-icon><Operation /></el-icon></button>
@@ -1260,6 +1444,9 @@ function ctxLayout() { onLayout(); closeCtx() }
         <el-button type="primary" @click="confirmTemplate">展开</el-button>
       </template>
     </el-dialog>
+
+    <!-- F1 configure-first 拖入配置弹窗（§12.1 三段式；确认落画布，取消不落） -->
+    <DropConfigDialog :visible="dropDlg" :node="dropNode" :schema="dropSchema" :profile="profile" :upstream="dropUpstream" :step="dropStep" :confirm-text="dropConfirmText" @confirm="confirmDrop" @cancel="cancelDrop" />
   </div>
 </template>
 
@@ -1278,6 +1465,9 @@ function ctxLayout() { onLayout(); closeCtx() }
 .wb-header .tb-btn.run:hover{border-color:var(--primary);background:var(--primary-light);color:var(--primary)}
 .wb-header .tb-btn.run.running{border-color:var(--danger);color:var(--danger);background:var(--danger-bg)}
 .wb-header .tb-btn.on:not(.primary):not(.run){border-color:var(--primary);background:var(--primary-light);color:var(--primary)}
+/* 组件治理入口：常驻带文字按钮（不用纯图标，避免与布局/搜索等 tb-ico 混淆而"看不见"） */
+.wb-header .tb-catalog{display:inline-flex;align-items:center;gap:5px;border-color:var(--primary)!important;background:var(--primary-light)!important;color:var(--primary)!important;font-weight:600}
+.wb-header .tb-catalog:hover{background:var(--primary)!important;color:#fff!important;border-color:var(--primary)!important}
 .tb-btn:hover{border-color:var(--primary);color:var(--primary);background:var(--primary-light)}
 .tb-btn.running{border-color:var(--danger);color:var(--danger);background:var(--danger-bg)}
 .tb-btn.primary{background:var(--primary);border-color:var(--primary);color:#fff;font-weight:600}

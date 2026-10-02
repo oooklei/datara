@@ -39,11 +39,22 @@ def _stub(mod_name, **attrs):
 def _load(mod_name, rel_path, stubs):
     if mod_name in sys.modules:
         return sys.modules[mod_name]
+    installed = [(name, sys.modules.get(name)) for name in stubs]
     for name, attrs in stubs.items():
         _stub(name, **attrs)
-    spec = importlib.util.spec_from_file_location(mod_name, ROOT / rel_path)
-    mod = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(mod)
+    try:
+        spec = importlib.util.spec_from_file_location(mod_name, ROOT / rel_path)
+        mod = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(mod)
+    finally:
+        # 导入期桩用完即撤（C2 污染修复）：被加载模块的属性绑定已完成，
+        # 撤回仅恢复 sys.modules 的真实视图——否则同名测试进程内后续
+        # import common.* 拿到空壳桩，跨文件污染（治理文档 §6.4）
+        for name, original in installed:
+            if original is None:
+                sys.modules.pop(name, None)
+            else:
+                sys.modules[name] = original
     sys.modules[mod_name] = mod
     return mod
 

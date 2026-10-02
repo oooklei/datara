@@ -6,7 +6,9 @@ Vue bundle —— 后端无法校验、无法版本化、无法服务给其他�
 经 `GET /api/v1/components` 只读下发。
 
 覆盖：
-1. 目录自洽：各 profile 的 route 分布合计 == nodeTypes；dag 34 + backendOnly 3 == 37；
+1. 目录自洽：各 profile 的 route 分布合计 == nodeTypes；dag 35 + backendOnly 2 == 37
+   （2026-09-29 基线化目录对账更新：op_script 经 shared.ts 去重后仍属前端组件，
+   不再误报 backend-only）；
 2. 无派发缺口与 CI 脚本一致：dag 画布 UNROUTED 恰为 stream_input/fuse/output；
 3. 只读 API 契约：清单/统计/详情/原始快照/过滤；backendOnly 类型返回 409，未知 404；
 4. 漂移守卫：篡改快照内容（**不动自述 hash**）必须被 --check 检出。
@@ -94,30 +96,36 @@ def test_dag_unrouted_closed_by_g1(catalog):
 
 
 def test_unrouted_total_does_not_hide_etl_and_stream(catalog):
-    """回归：全系统口径必须同时报 etl/stream 的缺口（27 = 17 + 10），
-    防止「dag 已清零」掩盖其它 profile 的缺实现。"""
+    """回归：全系统口径必须如实上报各 profile 的执行缺口，防止「dag 已清零」掩盖其它 profile。
+
+    2026-09-29 基线化目录对账更新：M-B2 已为 etl 17 + stream 10 个演示组件注册
+    worker 执行器（components/catalog.py WORKER_TYPES + worker/executors/*），
+    全系统 UNROUTED 清零；「凡派发必有执行器」的缺口守卫由 test_catalog_consistency.py
+    的 WORKER_TYPES ⊆ EXECUTORS 门禁承接，本用例保留「全系统口径如实上报」语义。
+    """
     s = catalog["stats"]
-    assert s["unroutedTotal"] == 27, "全系统口径应为 0(dag) + 17(etl) + 10(stream)"
-    by = s["unroutedByProfile"]
-    assert by.get("dag", []) == []
-    assert len(by["etl"]) == 17
-    assert len(by["stream"]) == 10
-    assert "topo" not in by, "topo 是画布元件，不属执行缺口"
-    assert s["unroutedTotal"] > s["unrouted"]
+    assert s["unroutedTotal"] == 0
+    assert s["unroutedByProfile"] == {}
+    assert s["unrouted"] == 0
 
 
 def test_execution_model_is_declared_per_profile(catalog):
-    """executionModel 是 M1「发布必须绑定执行契约」的依据，不能由 route 反推。
+    """executionModel 是 M1「发布必须绑定执行契约」的依据。
 
     dag profile 内按 type 细化：dag-engine（默认）/ passthrough（直通配置节点）/
-    template（编排模板）。etl/stream 全 demo-only，topo 全 canvas-device。"""
+    template（编排模板）。2026-09-29 executionModel 口径修正：M-B2 为 etl/stream
+    演示组件注册 worker 执行器后，导出器按 route=worker 且 executor 已落盘推导为
+    dag-engine，etl/stream 全量 dag-engine（旧口径 demo-only 已失效）；topo 全
+    canvas-device。"""
     by_prof: dict[str, set[str]] = {}
     for c in catalog["components"]:
         by_prof.setdefault(c["profile"], set()).add(c["executionModel"])
     # dag profile 包含三种执行模型（按 type 细化，覆盖 profile 级粗分类）
     assert by_prof["dag"] == {"dag-engine", "passthrough", "template"}
-    assert by_prof["etl"] == {"demo-only"}
-    assert by_prof["stream"] == {"demo-only"}
+    # 2026-09-29 executionModel 口径修正：M-B2 执行器注册后 etl/stream 全量
+    # route=worker → dag-engine
+    assert by_prof["etl"] == {"dag-engine"}
+    assert by_prof["stream"] == {"dag-engine"}
     assert by_prof["topo"] == {"canvas-device"}
 
     # 逐 type 校验：passthrough 集 = 直通配置节点（自身不执行，配置被下游拍平消费）
@@ -158,12 +166,16 @@ def test_topo_devices_are_non_executable_not_unrouted(catalog):
     assert all(c["formFieldCount"] == 0 for c in topo)
 
 
-def test_demo_only_components_have_no_executor(catalog):
-    """demo-only 组件不得声称绑定 executor，否则等于给 M1 的发布闸门开后门。"""
+def test_worker_routed_components_bind_executor(catalog):
+    """凡 worker 路由组件必须绑定 executor，防止发布闸门被无实现组件绕过。
+
+    2026-09-29 基线化目录对账更新：M-B2 为 etl/stream 演示组件注册执行器后，
+    旧断言「demo-only 组件不得绑定 executor」的前提已失效（目录中不再有
+    route=UNROUTED 的前端组件），守卫反转为同目的的新不变量：worker 路由 ⇔ executor。
+    """
     for c in catalog["components"]:
-        if c["executionModel"] == "demo-only":
-            assert c["executor"] is None, c["type"]
-            assert c["route"] == "UNROUTED", c["type"]
+        if c["route"] == "worker":
+            assert c["executor"], c["type"]
 
 
 def test_cross_profile_duplicate_is_surfaced(catalog):
@@ -204,7 +216,9 @@ def test_list_filters(client):
     assert client.get("/api/v1/components?profile=dag").json()["data"]["total"] == 35
     assert client.get("/api/v1/components?profile=topo").json()["data"]["total"] == 13
     assert client.get("/api/v1/components?route=master").json()["data"]["total"] == 20
-    assert client.get("/api/v1/components?route=worker").json()["data"]["total"] == 11
+    # 2026-09-29 基线化目录对账更新：M-B2 执行器注册后 etl/stream 全量 worker 路由
+    # （11 dag + 17 etl + 10 stream），旧基线 11 仅为 dag 口径。
+    assert client.get("/api/v1/components?route=worker").json()["data"]["total"] == 38
     # paletteVisible=true 跨 profile 合计
     vis = client.get("/api/v1/components?paletteVisible=true").json()["data"]["total"]
     assert vis == 50
@@ -216,7 +230,8 @@ def test_stats_exposes_drift_signals(client):
     d = client.get("/api/v1/components/stats").json()["data"]
     st = d["stats"]
     assert st["unrouted"] == 0
-    assert st["unroutedTotal"] == 27
+    # 2026-09-29 基线化目录对账更新：M-B2 执行器注册后全系统 UNROUTED 清零（旧基线 27）。
+    assert st["unroutedTotal"] == 0
     assert st["consistencyErrors"] == []
     assert st["crossProfileDuplicateTypes"] == ["op_script"]
     assert d["profiles"] and len(d["profiles"]) == 7, "应覆盖全部 7 个 ViewProfile"
@@ -228,9 +243,11 @@ def test_stats_exposes_drift_signals(client):
 
 
 def test_list_exposes_execution_model(client):
-    """列表必须带 executionModel/executionNote —— M1 发布闸门要据此拒绝 demo-only。"""
+    """列表必须带 executionModel/executionNote —— 发布闸门据此裁定执行契约。"""
     items = client.get("/api/v1/components?profile=etl").json()["data"]["items"]
-    assert items and all(i["executionModel"] == "demo-only" for i in items)
+    # 2026-09-29 executionModel 口径修正：M-B2 执行器注册后 etl 全量 route=worker
+    # 且 executor 已落盘 → 导出器推导为 dag-engine（旧口径 demo-only 已失效）。
+    assert items and all(i["executionModel"] == "dag-engine" for i in items)
     assert all(i["executionNote"] for i in items)
     topo = client.get("/api/v1/components?profile=topo").json()["data"]["items"]
     assert all(i["executionModel"] == "canvas-device" for i in topo)

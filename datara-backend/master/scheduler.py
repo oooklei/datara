@@ -23,13 +23,16 @@ from common.log import get_logger, set_instance_id
 from common.models import Command, TaskInstance, WorkflowInstance, now
 from master import state
 from master.dag import loop_bodies, parse_graph
-from master.engine import WorkflowExecuteRunnable, all_runnables, get_runnable, register_runnable, remove_runnable
+from master.engine import (
+    WorkflowExecuteRunnable, all_runnables, comp_published_versions,
+    get_runnable, register_runnable, remove_runnable,
+)
 from master.failover import recover_running_instances
 
 logger = get_logger("master.scheduler")
 
-# I12-D1 补齐对齐 engine.py 全集（当前模块内未直接引用，保留导出以防外部引用旧全集）；I12 +file_sync/notify C24/C26
-WORKER_TYPES = ("sql", "shell", "python", "ssh", "smoke", "procedure", "http", "file", "sync", "file_sync", "notify")
+# G-19 单一真源：当前模块内未直接引用，保留导出以防外部引用旧全集
+from components.catalog import WORKER_TYPES  # noqa: E402
 
 
 def generate_instance_id(wf_code: int) -> str:
@@ -172,14 +175,21 @@ def _parse_schedule_time(param: dict) -> Optional[datetime]:
 
 
 def _load_graph(session, wf_code: int):
-    """定义 → Graph（无定义/解析失败抛 ValueError，命令置 fail）。"""
+    """定义 → (Graph, stream_spec | None)（无定义/解析失败抛 ValueError，命令置 fail）。
+
+    G-14 完整方案：parse_graph 同时返回提取的流子图 spec。scheduler 在实例启动时
+    将其注册为 stream_job（常驻作业），使流节点不进入 Master 任务状态机。
+    """
     from common.models import WfDefinition
 
     definition = session.query(WfDefinition).filter(WfDefinition.code == wf_code).first()
     if definition is None or not definition.graph_json:
         raise ValueError("工作流定义不存在或画布为空: wfCode=%s" % wf_code)
-    graph = parse_graph(json.loads(definition.graph_json))
-    return definition, graph
+    # D2 §9.6：物化器按源组件 published 版本注入 sys_exec 节点 componentRef
+    # G-14：parse_graph 同时提取流子图（stream_spec 供注册 stream_job）
+    graph, stream_spec = parse_graph(json.loads(definition.graph_json),
+                                     comp_versions=comp_published_versions(session))
+    return definition, graph, stream_spec
 
 
 def _create_instance(session, command: Command, param: dict, wf_code: int, wf_version: int,
@@ -234,11 +244,23 @@ def _cmd_start(command: Command, param: dict) -> None:
     wf_code = int(param.get("wfCode") or 0)
     session = new_session()
     try:
-        definition, graph = _load_graph(session, wf_code)
+        definition, graph, stream_spec = _load_graph(session, wf_code)
         instance = _create_instance(
             session, command, param, wf_code,
             int(param.get("wfVersion") or definition.version or 0), graph,
         )
+        # G-14 完整方案：流子图在批实例启动时注册为常驻 stream_job
+        # （流节点不进入 Master 任务状态机，数据面由 worker/stream 承载）。
+        # 注册失败不阻断批实例启动（流作业可独立启停），仅 warning 留痕。
+        if stream_spec is not None:
+            try:
+                from api.streamjob import register_stream_job, preflight_stream
+                preflight_stream(session, stream_spec)
+                job, restarted = register_stream_job(session, definition, stream_spec)
+                logger.info("G-14 流作业随批实例启动注册: job=%s wf=%s restarted=%s",
+                            job.id, wf_code, restarted)
+            except Exception as exc:  # noqa: BLE001
+                logger.warning("G-14 流作业注册失败（不影响批实例）: wf=%s %r", wf_code, exc)
         session.commit()
         instance_id = instance.instance_id
     except Exception:

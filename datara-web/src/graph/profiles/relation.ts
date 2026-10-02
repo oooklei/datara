@@ -42,7 +42,7 @@ const asTypes: Record<string, import('./types').NodeSchema> = Object.fromEntries
       defaults: a.t === 'as_table' ? { domain: '', rows: 0 } : { owner: '', desc2: '' },
       form: a.t === 'as_table'
         ? [{ key: 'domain', label: '业务域', type: 'text' }, { key: 'rows', label: '行数', type: 'number' }]
-        : [{ key: 'owner', label: '负责人', type: 'text' }, { key: 'desc2', label: '说明', type: 'textarea' }],
+        : [{ key: 'owner', label: '负责人', type: 'text' }, { key: 'desc2', label: '说明', type: 'text', multiline: true }],
       summary: (d) => String(d.owner || d.domain || ''),
       related: assetRelated,
     } satisfies import('./types').NodeSchema,

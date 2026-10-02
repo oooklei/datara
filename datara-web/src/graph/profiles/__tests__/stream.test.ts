@@ -89,10 +89,10 @@ describe('I8 C18~C20 palette 解禁与分型表单', () => {
     const schema = dagProfile.nodeTypes.stream_input
     expect(schema.defaults).toHaveProperty('dsRef')
     expect(schema.defaults?.dsRef).toBe('')
-    // 四分型各有一个 dsRef 下拉（type=datasource 且按 srcType 显隐、按注册类型过滤）
-    const refFields = schema.form.filter((f) => f.key === 'dsRef' && f.type === 'datasource')
+    // 四分型各有一个 dsRef 下拉（resource·datasource 且按 srcType 显隐、按注册类型过滤）
+    const refFields = schema.form.filter((f) => f.key === 'dsRef' && f.type === 'resource' && f.cap?.mode === 'datasource')
     expect(refFields).toHaveLength(4)
-    expect(refFields.map((f) => f.dsTypes?.[0]).sort()).toEqual(['http', 'kafka', 'mqtt', 'redis'])
+    expect(refFields.map((f) => f.cap?.dsTypes?.[0]).sort()).toEqual(['http', 'kafka', 'mqtt', 'redis'])
     // 引用模式（dsRef 非空）：内联连接字段隐藏；业务字段（topic/streams/mqtt 订阅）始终显示
     const referenced = { srcType: 'kafka', dsRef: 'kafka-prod' }
     const visible = (f: { key?: string; showIf?: (d: Record<string, unknown>) => boolean }, d: Record<string, unknown>) =>

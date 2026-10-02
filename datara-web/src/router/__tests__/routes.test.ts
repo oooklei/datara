@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import { routes } from '../routes'
 
-// todo 5 (W0-5) 应用外壳：43 条新增路由 + 8 条现有路由 + 兜底 catch-all（qc/bind、meta/collect、ind/approval 已下线；/dag/depend 跨流依赖删除，/dep/runtime 运行时节点新增；I1：/sync/wizard 与 /etl/design/:id 移除，/login 新增；I6：/batch/board 同步进度看板删除，监控统一走 /sync/list 与 /sync/detail/:id）
+// todo 5 (W0-5) 应用外壳：44 条新增路由 + 8 条现有路由 + 兜底 catch-all（qc/bind、meta/collect、ind/approval 已下线；/dag/depend 跨流依赖删除，/dep/runtime 运行时节点新增；I1：/sync/wizard 与 /etl/design/:id 移除，/login 新增；I6：/batch/board 同步进度看板删除，监控统一走 /sync/list 与 /sync/detail/:id；M-B0：/meta/baseline 组件基线化工作台新增）
 describe('router shell (todo 5)', () => {
   const newPaths = [
     '/login',
@@ -15,15 +15,16 @@ describe('router shell (todo 5)', () => {
     '/std/mapping', '/std/approval', '/ind/list', '/ind/board', '/ind/consistency',
     '/dep/center', '/dep/monitor', '/dep/log', '/dep/alarm', '/dep/ops', '/dep/runtime',
     '/dag/instances', // I3：调度执行引擎真实运行实例视图
+    '/meta/baseline', // M-B0：组件基线化工作台（八段 DSL 底稿/体检/认可发 v1）
   ]
   const existingPaths = ['/', '/dag', '/dag/design/:id', '/deploy', '/stream/design/:id', '/model/er', '/meta/lineage', '/meta/map']
 
-  it('registers all 43 new module routes', () => {
+  it('registers all 44 new module routes', () => {
     const registered = new Set(routes.map((r) => r.path))
     for (const p of newPaths) {
       expect(registered.has(p), `route ${p} should be registered`).toBe(true)
     }
-    expect(newPaths.length).toBe(43)
+    expect(newPaths.length).toBe(44)
   })
 
   it('keeps the 8 existing routes unchanged', () => {
@@ -64,5 +65,13 @@ describe('router shell (todo 5)', () => {
     for (const keep of ['/script/list', '/param/global', '/qc/report', '/std/element']) {
       expect(byPath.get(keep)!.redirect, `${keep} should be canonical (no redirect)`).toBeFalsy()
     }
+  })
+
+  /* M-B0：基线化工作台路由元信息（标题 + 独立 name，挂在 meta 组件族） */
+  it('registers the M-B0 baseline workbench route with meta title', () => {
+    const rec = routes.find((r) => r.path === '/meta/baseline')
+    expect(rec, 'route /meta/baseline should be registered').toBeTruthy()
+    expect(rec!.name).toBe('meta-baseline')
+    expect((rec!.meta as { title?: string }).title).toBe('基线化工作台')
   })
 })

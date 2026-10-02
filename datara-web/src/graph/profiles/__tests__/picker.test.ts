@@ -10,7 +10,6 @@ import {
 } from '../pickerLogic'
 import { getDataSourceTree, listKafkaTopics, listNodeDir } from '../../../services/datasourceApi'
 import type { DsTree } from '../../../services/datasourceApi'
-import type { FieldSchema } from '../types'
 
 const CONN_TREE: DsTree = {
   kind: 'connection',
@@ -20,19 +19,18 @@ const CONN_TREE: DsTree = {
   ],
 }
 
-describe('pickCfg 依赖字段约定（FieldSchema.pick 缺省兜底）', () => {
-  it('table-picker/field-select 缺省 datasource+table；topic-select 缺省 dsRef；dir-select 缺省 runtimeNode', () => {
-    expect(pickCfg({ type: 'table-picker' })).toEqual({
+describe('pickCfg 依赖字段约定（FieldSchema.cap 缺省兜底）', () => {
+  it('table/column 缺省 datasource+table；topic 缺省 dsRef；dir 缺省 runtimeNode', () => {
+    expect(pickCfg({ type: 'resource', cap: { mode: 'table' } })).toEqual({
       dsKey: 'datasource', tableKey: 'table', nodeKey: 'runtimeNode', writeAs: 'table',
     })
-    expect(pickCfg({ type: 'field-select' }).tableKey).toBe('table')
-    expect(pickCfg({ type: 'topic-select' }).dsKey).toBe('dsRef')
-    expect(pickCfg({ type: 'dir-select' }).nodeKey).toBe('runtimeNode')
+    expect(pickCfg({ type: 'resource', cap: { mode: 'column' } }).tableKey).toBe('table')
+    expect(pickCfg({ type: 'resource', cap: { mode: 'topic' } }).dsKey).toBe('dsRef')
+    expect(pickCfg({ type: 'resource', cap: { mode: 'dir' } }).nodeKey).toBe('runtimeNode')
   })
 
-  it('schema.pick 显式覆盖缺省（dsKey/writeAs）', () => {
-    const f = { type: 'table-picker', pick: { dsKey: 'writerDs', writeAs: 'schemaTable' } } as unknown as FieldSchema
-    const c = pickCfg(f)
+  it('cap 显式覆盖缺省（dsKey/writeAs）', () => {
+    const c = pickCfg({ type: 'resource', cap: { mode: 'table', dsKey: 'writerDs', writeAs: 'schemaTable' } })
     expect(c.dsKey).toBe('writerDs')
     expect(c.writeAs).toBe('schemaTable')
   })

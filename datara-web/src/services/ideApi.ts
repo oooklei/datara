@@ -6,6 +6,8 @@
  */
 import { http, getToken } from './http'
 import type { DsRow } from './datasourceApi'
+import { isMock } from './apiMode'
+import { mockListGlobalParams } from './mock/api'
 
 /* ---------- 执行（异步任务 + SSE，api/ide.py §4.2） ---------- */
 
@@ -437,6 +439,7 @@ export interface GlobalParamBody {
 }
 
 export async function listGlobalParams(env?: string): Promise<GlobalParamRow[]> {
+  if (isMock) return mockListGlobalParams(env)
   const q = env ? `?env=${encodeURIComponent(env)}` : ''
   return http.get<GlobalParamRow[]>(`/params/global${q}`)
 }

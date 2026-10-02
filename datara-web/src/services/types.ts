@@ -841,7 +841,7 @@ export interface AccessLog {
 
 /* ---------- 集合标识 union（覆盖 data.js DB 全部顶层键） ---------- */
 export type CollectionKey =
-  | 'dsTypes' | 'datasources'
+  | 'dsTypes' | 'datasources' | 'dsTrees'
   | 'dwLayers' | 'models' | 'engineTypes'
   | 'syncBatches' | 'etlTasks' | 'syncHistory'
   | 'streamJobs' | 'windows' | 'timeSemantics'

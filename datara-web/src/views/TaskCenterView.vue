@@ -288,6 +288,7 @@ onMounted(async () => {
 
       <template v-else-if="tab === 'runs'">
         <!-- F56d：运行实例接引擎真数据（InstanceRunsView），纯 mock 演示页 DagRunsView 已删除 -->
+        <!-- 运行监控展示所有工作流的运行实例（业务要求：不按画布当前工作流筛选） -->
         <InstanceRunsView />
       </template>
 

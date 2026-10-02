@@ -1,0 +1,61 @@
+{
+  "ok": true,
+  "pages": {
+    "baseline_workbench": {
+      "final_url": "http://localhost:5175/#/meta/baseline",
+      "分组_同步类": true,
+      "分组_ETL计算类": true,
+      "状态_待认可": true,
+      "状态_设计中": true,
+      "状态_未开始": true,
+      "组件_endpoint_select": true,
+      "组件_sql": true,
+      "证据区_体检": true,
+      "body_chars": 1154,
+      "crow_rows": 35,
+      "八段_输入": true,
+      "八段_输出": true,
+      "八段_参数": true,
+      "八段_条件": true,
+      "八段_约束": true,
+      "八段_排除": true,
+      "八段_引用变量": true,
+      "八段_输出变量": true,
+      "选中后_体检": true
+    },
+    "component_designer_ssh": {
+      "final_url": "http://localhost:5175/#/meta/components/design/ssh",
+      "设计器Tab_基本信息": true,
+      "设计器Tab_端口": true,
+      "设计器Tab_表单字段": true,
+      "设计器Tab_dropPolicy": true,
+      "实时预览": true,
+      "版本区": true,
+      "body_chars": 537
+    },
+    "dag_canvas": {
+      "final_url": "http://localhost:5175/#/dag?tab=edit&type=wf&doc=wf_order_daily",
+      "palette_数据计算": true,
+      "palette_通用": true,
+      "palette_逻辑控制": true,
+      "palette_数据同步": true,
+      "palette_流处理": true,
+      "palette_变量": true,
+      "palette_运维": true,
+      "palette_模板": true,
+      "组件_SQL": true,
+      "组件_通知": true,
+      "组件_开始": true,
+      "组件_源表基准编排": true,
+      "组件_流输入": true,
+      "组件_变量组件": true,
+      "组件_冒烟": true,
+      "组件_示例管道模板": true,
+      "body_chars": 981
+    }
+  },
+  "console_errors": [],
+  "failed_requests": [],
+  "key_checks_passed": 8,
+  "key_checks_total": 8
+}

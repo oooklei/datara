@@ -20,6 +20,12 @@ export const routes: RouteRecordRaw[] = [
   { path: '/model/er', name: 'model-er', component: () => import('../views/ErCanvasView.vue'), meta: { title: 'ER画布', demo: true } },
   { path: '/meta/lineage', name: 'meta-lineage', component: () => import('../views/LineageView.vue'), meta: { title: '血缘分析' } },
   { path: '/meta/map', name: 'meta-map', component: () => import('../views/AssetMapView.vue'), meta: { title: '资产地图', demo: true } },
+  /* M0 组件目录：系统内置组件只读清单（组件管理第一步；设计/发布属 M1+，本页无写入口） */
+  { path: '/meta/components', name: 'meta-components', component: () => import('../views/meta/ComponentCatalogView.vue'), meta: { title: '组件目录' } },
+  /* M1 B4 组件设计器：草稿编辑/实时预览/冻结（五端点）；:type 缺省 = 新建组件草稿 */
+  { path: '/meta/components/design/:type?', name: 'meta-component-design', component: () => import('../views/meta/ComponentDesignView.vue'), meta: { title: '组件设计器' } },
+  /* M-B0 组件基线化工作台：九系统组件八段 DSL 底稿编辑/10 项体检/认可发 v1（三区布局） */
+  { path: '/meta/baseline', name: 'meta-baseline', component: () => import('../views/meta/BaselineWorkbenchView.vue'), meta: { title: '基线化工作台' } },
 
   // ---- 新增 45 条模块路由 ----
   // 数据集成

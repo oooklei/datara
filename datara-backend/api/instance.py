@@ -2,21 +2,25 @@
 
 - GET  /instances                          列表（分页倒序，run_mode/state/wf_code 筛选）
 - GET  /instances/{instance_id}            详情（补 runMode/scheduleTime；任务行补 loopIter/delayUntil）
+- GET  /instances/{instance_id}/stream     状态 SSE 流（E1：task_state_changed/instance_finished + 心跳）
 - POST /instances/{instance_id}/stop       停止 → STOP 命令（运行中实例方可停止）
 - POST /instances/{instance_id}/rerun      整实例重跑 → REPEAT_RUNNING（终态实例方可重跑）
 - POST /instances/{instance_id}/rerun-failed 失败节点重跑 → START_FAILURE_TASKS（同一实例内续跑）
 """
 
+import json
+import time
 from typing import Optional
 
 from fastapi import APIRouter, Depends
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from sqlalchemy import or_
 from sqlalchemy.orm import Session
 
 from api.auth import ApiError, get_current_user, require_perm
 from api.commands import submit_command
-from common.db import get_db
+from common.db import get_db, new_session
 from common.log import get_logger
 from common.models import TaskInstance, TaskLog, User, WorkflowInstance
 from common.resp import INSTANCE_NOT_FOUND, COMMAND_FAIL, PageQuery, fmt_dt, ok, page_result
@@ -185,3 +189,92 @@ def rerun_failed(
     command = submit_command(db, "START_FAILURE_TASKS", {"instanceId": instance_id}, priority=body.priority)
     logger.info("失败节点重跑已提交: instance=%s commandId=%s（用户 %s）", instance_id, command.id, user.user_name)
     return ok({"commandId": command.id})
+
+
+# E1 SSE 节奏（模块常量：测试 monkeypatch 调速；生产 1s diff / 15s 心跳）
+SSE_POLL_SEC = 1.0
+SSE_HEARTBEAT_SEC = 15.0
+
+
+def _stream_session() -> Session:
+    """SSE 流内每轮独立短会话：长连接不占用请求级会话，轮询完即还连接池（及时释放）。"""
+    return new_session()
+
+
+@router.get("/{instance_id}/stream")
+def stream_instance(
+    instance_id: str,
+    user: User = Depends(require_perm("view_all")),
+    db: Session = Depends(get_db),
+):
+    """实例状态 SSE 流（E1）：event=task_state_changed / instance_finished + 心跳注释行。
+
+    - 连接即推一轮基线快照（幂等 patch，闭合 loadDetail→订阅 窗口的状态漏推）；
+    - 之后每 SSE_POLL_SEC 查库做 diff，仅推状态变更的任务行（前端只 patch 单节点，不整幅重画）；
+    - 实例转终态推 instance_finished 后服务端主动关流（EventSource 不再重连）；
+    - 已终态实例：基线 + instance_finished 立即关流；实例中途被清理（悬空）则静默收流；
+    - 鉴权 ?token= 兜底（EventSource 无法携带 header，api/auth 口径）；断线由前端降级 3s 轮询。
+    """
+    row = _get_instance(db, instance_id)  # 404 闸门（存在性校验后请求级会话即还池）
+
+    def gen():
+        baseline: dict[int, str] = {}  # task_id -> state（diff 基线）
+        last_state: Optional[str] = None
+        first = True
+        idle = 0.0
+        while True:
+            events: list[tuple[str, dict]] = []
+            finished = False
+            session = _stream_session()
+            try:
+                inst = (
+                    session.query(WorkflowInstance)
+                    .filter(WorkflowInstance.instance_id == instance_id)
+                    .first()
+                )
+                if inst is None:  # 实例被清理（悬空）→ 收流，前端 onError 降级轮询兜底
+                    return
+                tasks = (
+                    session.query(TaskInstance)
+                    .filter(TaskInstance.instance_id == instance_id)
+                    .order_by(TaskInstance.id)
+                    .all()
+                )
+                for t in tasks:
+                    if first or t.state != baseline.get(t.id):
+                        events.append(("task_state_changed", {
+                            "taskId": t.id, "nodeId": t.node_id, "nodeType": t.node_type,
+                            "name": t.name, "state": t.state, "attempt": t.attempt,
+                            "loopIter": t.loop_iter or 0,
+                            "startTime": fmt_dt(t.start_time), "endTime": fmt_dt(t.end_time),
+                        }))
+                    baseline[t.id] = t.state
+                if inst.state in TERMINAL_STATES and (first or inst.state != last_state):
+                    events.append(("instance_finished", {
+                        "instanceId": instance_id, "state": inst.state,
+                        "endTime": fmt_dt(inst.end_time),
+                    }))
+                    finished = True
+                last_state = inst.state
+                first = False
+            finally:
+                session.close()
+            if events:
+                idle = 0.0
+                for name, payload in events:
+                    yield f"event: {name}\ndata: {json.dumps(payload, ensure_ascii=False, default=str)}\n\n"
+                if finished:
+                    return
+            else:
+                idle += SSE_POLL_SEC
+                if idle >= SSE_HEARTBEAT_SEC:
+                    yield ": heartbeat\n\n"
+                    idle = 0.0
+            time.sleep(SSE_POLL_SEC)
+
+    logger.info("实例状态流开启: instance=%s state=%s（用户 %s）", instance_id, row.state, user.user_name)
+    return StreamingResponse(
+        gen(),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )

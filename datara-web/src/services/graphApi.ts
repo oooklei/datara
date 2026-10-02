@@ -12,7 +12,10 @@
  */
 import type { GraphDocument } from '../graph/model'
 import type { IGraphService, WfVariable } from './types'
-import { http, toLocalMinute } from './http'
+import { getToken, http, toLocalMinute } from './http'
+import { getComponentRegistry } from './componentApi'
+import { isMock } from './apiMode'
+import { mockListCategories, mockListDefinitions, mockListRuntimeNodes, mockListVariables } from './mock/api'
 
 /** I6 同步任务标签（对齐 datara-backend/api/sync.py SYNC_TAG，C23 保存打标与 F34 列表过滤共用） */
 export const SYNC_TAG = '同步'
@@ -67,6 +70,36 @@ export interface DefinitionMeta {
 
 /* ---------- IGraphService 真实实现 ---------- */
 
+/**
+ * D2 延后项（D3 落地）：保存序列化注入 componentRef（§9.5 前端镜像，与
+ * scripts/backfill_component_ref.py 同口径）。
+ * - sys_exec_* 物化产物豁免（ref 由物化器运行时注入，§9.6）；
+ * - version 取治理库 published（registry 实时拉取不缓存——组件发布/回滚后供给即变，
+ *   缓存会注入过期版本被 R6 拒）；未发布组件（published=null）不注入（save 宽松放行）；
+ * - registry 拉取失败静默跳过注入（后端 R6 宽松模式兜底，不阻断保存）；
+ * - 就地写入 doc（非副本）：保存后本地文档即带 ref，画布版本角标立即可见。
+ */
+async function injectComponentRefs(doc: GraphDocument): Promise<void> {
+  const nodes = doc.nodes ?? []
+  if (!nodes.length) return
+  let supply: Record<string, number | null> | null = null
+  try {
+    supply = Object.fromEntries(
+      (await getComponentRegistry()).map((r) => [r.type, r.publishedVersion]))
+  } catch {
+    return
+  }
+  for (const n of nodes) {
+    if (typeof n.id === 'string' && n.id.startsWith('sys_exec_')) continue
+    const data = (n.data ?? {}) as Record<string, unknown>
+    if (data.componentRef) continue // 幂等：已有 ref 一律不动
+    const v = supply[n.type]
+    if (typeof v !== 'number' || v < 1) continue
+    data.componentRef = { type: n.type, version: v }
+    n.data = data as typeof n.data
+  }
+}
+
 export const realGraphService: IGraphService = {
   async get(id) {
     const doc = await http.get<GraphDocument | null>(`/workflow-definitions/${encodeURIComponent(id)}`)
@@ -74,13 +107,16 @@ export const realGraphService: IGraphService = {
   },
 
   async save(doc, remark) {
-    /* I6/F56d：保存自动打标 —— 含同步节点（C17 直拖 / C23 模板展开）打「同步」；
+    await injectComponentRefs(doc)
+    /* I6/F56d：保存自动打标 —— 含同步组件（编排组件/细项组件/执行节点，同步编排重构后族谱）打「同步」；
        ETL/流画布按 meta.profile 打「ETL」/「流」；合并去重。
        集合非空才传 tags 字段（后端语义：缺省不改动既有标签）。 */
     const tags = new Set<string>()
     if (doc.meta?.profile === 'etl') tags.add(ETL_TAG)
     if (doc.meta?.profile === 'stream') tags.add(STREAM_TAG)
-    if ((doc.nodes ?? []).some((n) => n.type === 'sync' || n.type === 'sync_template')) tags.add(SYNC_TAG)
+    const SYNC_TYPES = ['sync', 'file_sync', 'src_base_orch', 'tgt_base_orch', 'file_sync_orch',
+      'endpoint_select', 'field_map', 'field_map_union', 'condition_set']
+    if ((doc.nodes ?? []).some((n) => SYNC_TYPES.includes(n.type))) tags.add(SYNC_TAG)
     /* I12-D2 乐观锁：base_version = 加载/上次保存后的版本号（后端 get/save 均回写 doc.version）；
        null = 不校验（兼容无版本来源的调用方）。后端比对不一致返回 409（code 2005）。 */
     const r = await http.put<{ version: number }>(
@@ -117,6 +153,10 @@ export const realGraphService: IGraphService = {
 /* ---------- 定义列表 / 变量 / 实例（列表页与变量面板用） ---------- */
 
 export async function listDefinitions(params?: { pageNo?: number; pageSize?: number; search?: string; tag?: string }): Promise<DefinitionMeta[]> {
+  /* mock 模式：走内存 seed，不打 /workflow-definitions（否则无后端时 502，任务中心组件池空） */
+  if (isMock) {
+    return mockListDefinitions(params)
+  }
   const q = new URLSearchParams()
   const tag = params?.tag
   /* 后端 PageQuery 上限 200（传大页 422）：定义量几十级，钳制 200 后客户端过滤足够 */
@@ -186,6 +226,7 @@ function mapVar(v: VarRow, wf: string): WfVariable {
 }
 
 export async function listVariables(wf: string): Promise<WfVariable[]> {
+  if (isMock) return mockListVariables(wf)
   const rows = await http.get<VarRow[]>(`/workflow-variables?wf=${encodeURIComponent(wf)}`)
   return rows.map((v) => mapVar(v, wf))
 }
@@ -355,6 +396,17 @@ export async function complementWorkflow(
   return http.post(`/workflow-definitions/${encodeURIComponent(wf)}/complement`, body)
 }
 
+/** 工作流发布上线（A2：graph_rules 全过 + componentRef 严格校验 → release_state=online）。
+ * 供 D3 批量升级向导使用：online 定义不可保存，升级前先下线、保存后重新发布。 */
+export async function publishWorkflow(wf: string): Promise<{ release_state: string }> {
+  return http.post(`/workflow-definitions/${encodeURIComponent(wf)}/publish`, {})
+}
+
+/** 工作流下线（A2：release_state→offline；不阻断既有运行流）。 */
+export async function offlineWorkflow(wf: string): Promise<{ release_state: string }> {
+  return http.post(`/workflow-definitions/${encodeURIComponent(wf)}/offline`, {})
+}
+
 /* ---- 实例操作（停止/重跑/失败重跑） ---- */
 
 export async function getInstanceDetail(instanceId: string): Promise<InstanceRow> {
@@ -379,6 +431,54 @@ export async function getTaskLog(taskId: number): Promise<{ taskInstanceId: numb
   return http.get(`/logs/task/${taskId}`)
 }
 
+/* ---- E1：实例状态 SSE 流（task_state_changed/instance_finished；断线由调用方降级 3s 轮询） ---- */
+
+/** task_state_changed 载荷（单节点 patch 源：DAG 染色 + attempt 徽标 + 任务表行） */
+export interface TaskStateEvent {
+  taskId: number
+  nodeId: string
+  nodeType: string
+  name: string
+  state: string
+  attempt: number
+  loopIter: number
+  startTime?: string | null
+  endTime?: string | null
+}
+
+/** instance_finished 载荷（终态信号：patch 状态后一次性全量刷新收口） */
+export interface InstanceFinishedEvent {
+  instanceId: string
+  state: string
+  endTime?: string | null
+}
+
+export interface InstanceStreamHandlers {
+  onOpen?: () => void
+  onTaskChanged?: (e: TaskStateEvent) => void
+  onFinished?: (e: InstanceFinishedEvent) => void
+  onError?: () => void
+}
+
+/** 构造 SSE 订阅地址（EventSource 无法带 header，token 走 query——api/auth.py 兜底口径） */
+export function buildInstanceStreamUrl(instanceId: string): string {
+  return `/api/v1/instances/${encodeURIComponent(instanceId)}/stream?token=${encodeURIComponent(getToken())}`
+}
+
+/** 订阅实例状态流；返回 EventSource 句柄由调用方 close（抽屉关闭/降级轮询时及时释放）。 */
+export function streamInstanceEvents(instanceId: string, h: InstanceStreamHandlers): EventSource {
+  const es = new EventSource(buildInstanceStreamUrl(instanceId))
+  es.onopen = () => h.onOpen?.()
+  es.addEventListener('task_state_changed', (ev) => {
+    try { h.onTaskChanged?.(JSON.parse((ev as MessageEvent).data as string)) } catch { /* 脏载荷忽略 */ }
+  })
+  es.addEventListener('instance_finished', (ev) => {
+    try { h.onFinished?.(JSON.parse((ev as MessageEvent).data as string)) } catch { /* 脏载荷忽略 */ }
+  })
+  es.onerror = () => h.onError?.()
+  return es
+}
+
 /* ---- 运行时节点（C14 SSH 表单下拉，只读） ---- */
 
 export interface RuntimeNodeRow {
@@ -394,6 +494,9 @@ export interface RuntimeNodeRow {
 }
 
 export async function listRuntimeNodes(): Promise<RuntimeNodeRow[]> {
+  if (isMock) {
+    return mockListRuntimeNodes()
+  }
   return http.get<RuntimeNodeRow[]>('/runtime-nodes')
 }
 
@@ -472,6 +575,9 @@ export interface CategoryRow {
 }
 
 export async function listCategories(): Promise<CategoryRow[]> {
+  if (isMock) {
+    return mockListCategories()
+  }
   return http.get<CategoryRow[]>('/workflow-definitions/categories')
 }
 

@@ -23,12 +23,21 @@ from common import queue as rq
 from common.config import get_settings
 from common.db import new_session
 from common.log import get_logger
-from common.models import AlertRecord, StreamJob, StreamOffset
+from common.models import AlertRecord, StreamJob, StreamOffset, TaskInstance, TaskLog, WorkflowInstance
 from worker.stream.ops import JoinOp, WindowAggOp, build_op
 from worker.stream.sinks import build_sink
 from worker.stream.sources import SourceBase, build_source
 
 logger = get_logger("worker.stream.engine")
+
+# StreamJob 状态 → WorkflowInstance 状态映射
+_STREAM_TO_WI_STATE = {
+    "starting": "submitted",
+    "running": "running",
+    "reconnecting": "running",
+    "stopped": "kill",
+    "failed": "failure",
+}
 
 CTL_CHANNEL = "datara:flink:ctl"
 METRICS_PREFIX = "datara:flink:metrics:"
@@ -44,10 +53,13 @@ OFFSET_INTERVAL = 5       # 位点提交周期（秒）
 class JobRuntime:
     """单流任务运行时：共享停止/失败信号、计数与位点。"""
 
-    def __init__(self, job_id: int, generation: int, spec: dict):
+    def __init__(self, job_id: int, generation: int, spec: dict, log_path: str = ""):
         self.job_id = job_id
         self.generation = generation
         self.spec = spec
+        self.log_path = log_path  # 共享卷日志文件路径（与批处理工作流一致）
+        self._log_fh = None  # 文件句柄（延迟打开）
+        self._log_lock = threading.Lock()
         self.stop_event = threading.Event()
         self.fail_event = threading.Event()
         self.fail_msg = ""
@@ -127,10 +139,32 @@ class StreamEngine:
         if old is not None:
             old.request_stop()
             self._join_job(job_id)
-        rt = JobRuntime(job_id, generation, spec)
+        # 查询 TaskLog 获取 log文件路径（与批处理工作流一致的日志机制）
+        log_path = self._query_task_log_path(job_id)
+        rt = JobRuntime(job_id, generation, spec, log_path=log_path)
         with self._lock:
             self._jobs[job_id] = rt
         threading.Thread(target=self._job_main, args=(rt,), name=f"flink-job-{job_id}", daemon=True).start()
+
+    def _query_task_log_path(self, job_id: int) -> str:
+        """查询流任务对应的 TaskLog 日志文件路径（instance_id 前缀 stream-{job_id}-）。"""
+        session = new_session()
+        try:
+            inst = session.query(WorkflowInstance).filter(
+                WorkflowInstance.instance_id.like(f"stream-{job_id}-%"),
+                WorkflowInstance.run_mode == "stream",
+            ).first()
+            if inst:
+                log_row = session.query(TaskLog).filter(
+                    TaskLog.instance_id == inst.instance_id,
+                ).first()
+                if log_row:
+                    return log_row.log_path
+        except Exception:  # noqa: BLE001
+            logger.warning("查询流任务日志路径失败: job=%s", job_id)
+        finally:
+            session.close()
+        return ""
 
     def stop_job(self, job_id: int) -> None:
         with self._lock:
@@ -611,7 +645,10 @@ class StreamEngine:
 
     def _db_update(self, job_id: int, generation: Optional[int] = None, **fields) -> None:
         """状态更新；传 generation 时原子代际守卫——代号不匹配（已被重启接管）放弃写入，
-        防止旧代号线程退出终态覆盖 API 为新代号预置的 starting（重启竞态 → 认领 0 行 → 任务卡死）。"""
+        防止旧代号线程退出终态覆盖 API 为新代号预置的 starting（重启竞态 → 认领 0 行 → 任务卡死）。
+
+        同时同步更新 WorkflowInstance 状态（run_mode='stream'），使流任务出现在运行监控 tab。
+        """
         session = new_session()
         try:
             q = session.query(StreamJob).filter(StreamJob.id == job_id)
@@ -621,6 +658,20 @@ class StreamEngine:
             session.commit()
             if generation is not None and not updated:
                 logger.warning("状态写入放弃（代际已变化）: job=%s gen=%s fields=%s", job_id, generation, fields)
+            # 同步更新 WorkflowInstance 状态（映射 StreamJob 状态 → WorkflowInstance 状态）
+            if "status" in fields:
+                stream_status = fields["status"]
+                wi_state = _STREAM_TO_WI_STATE.get(stream_status)
+                if wi_state:
+                    inst = session.query(WorkflowInstance).filter(
+                        WorkflowInstance.instance_id.like(f"stream-{job_id}-%"),
+                        WorkflowInstance.run_mode == "stream",
+                    ).first()
+                    if inst:
+                        inst.state = wi_state
+                        if wi_state in ("kill", "failure") and not inst.end_time:
+                            inst.end_time = datetime.now()
+                        session.commit()
         except Exception:  # noqa: BLE001
             session.rollback()
         finally:
@@ -629,6 +680,18 @@ class StreamEngine:
     def _log(self, job_id: int, level: str, msg: str) -> None:
         line = f"{datetime.now().strftime('%Y-%m-%d %H:%M:%S')} [{level}] {msg}"
         logger.info("flink job=%s %s", job_id, msg)
+        # 写入共享卷文件（与批处理工作流一致的日志机制）
+        rt = self._jobs.get(job_id)
+        if rt and rt.log_path:
+            try:
+                with rt._log_lock:
+                    if rt._log_fh is None:
+                        rt._log_fh = open(rt.log_path, "a", encoding="utf-8")
+                    rt._log_fh.write(line + "\n")
+                    rt._log_fh.flush()
+            except Exception:  # noqa: BLE001
+                pass
+        # 写入 Redis（保留原有机制，供实时监控/日志尾查询）
         try:
             client = rq.get_client()
             client.lpush(LOGS_PREFIX + str(job_id), line)

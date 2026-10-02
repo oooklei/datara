@@ -8,6 +8,9 @@
  * 密码明文存储与回显（09-18 裁定：内部系统）。
  */
 import { http } from './http'
+import { isMock } from './apiMode'
+import { mockListDataSources } from './mock/api'
+import { dataStore } from './mock/dataStore'
 
 /* ---------- 数据源 ---------- */
 
@@ -102,6 +105,9 @@ export async function listDataSources(params?: {
   group?: string
   type?: string
 }): Promise<DsRow[]> {
+  if (isMock) {
+    return mockListDataSources(params)
+  }
   const q = new URLSearchParams()
   if (params?.keyword) q.set('keyword', params.keyword)
   if (params?.env) q.set('env', params.env)
@@ -129,6 +135,16 @@ export async function testDataSource(id: number | string): Promise<DsTestResult>
 }
 
 export async function getDataSourceTree(id: number | string, dbFilter?: string): Promise<DsTree> {
+  /* mock 模式读内存种子库表树（演示/开发模式下库/表/列候选必须真实可得，
+     否则 dataScope 的 upstream-tables/columns 两域与字段映射取列在 mock 下结构性为空） */
+  if (isMock) {
+    const hit = (await dataStore.list<DsTree>('dsTrees')).find((t) => String(t && (t as unknown as { id: string }).id) === String(id))
+    if (!hit) throw new Error('数据源不存在')
+    if (dbFilter && hit.kind === 'connection') {
+      return { kind: 'connection', databases: hit.databases.filter((d) => d.name === dbFilter) }
+    }
+    return hit
+  }
   const q = dbFilter ? `?db=${encodeURIComponent(dbFilter)}` : ''
   return http.get<DsTree>(`/datasources/${encodeURIComponent(id)}/tree${q}`)
 }

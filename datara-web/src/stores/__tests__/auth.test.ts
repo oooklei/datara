@@ -43,7 +43,13 @@ describe('任务中心组件栏显隐机制（角色权限降级）', () => {
     expect(dagProfile.mode).toBe('edit')
     expect(dagProfile.palette.length).toBeGreaterThan(0)
     const types = dagProfile.palette.flatMap((g) => (g.items ?? []).map((i) => i.type))
-    expect(types).toContain('sync') // I6 C17 解禁在列（数据同步分组）
+    // 同步编排端点合一：C17/C24 降级链内执行（runtimeOnly）不再入 palette；3 个编排组件 + C37 端点选择在列（数据同步分组）
+    expect(types).toContain('src_base_orch')
+    expect(types).toContain('tgt_base_orch')
+    expect(types).toContain('file_sync_orch')
+    expect(types).toContain('endpoint_select')
+    expect(types).not.toContain('src_select')
+    expect(types).not.toContain('tgt_select')
   })
 })
 

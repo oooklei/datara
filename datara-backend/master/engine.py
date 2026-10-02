@@ -7,6 +7,7 @@
 - constraints 随消息从 graph_json 下发不入库（设计 §4）；重试/超时/失败策略 §8
 """
 
+import hashlib
 import os
 import threading
 from datetime import datetime, timedelta
@@ -17,7 +18,7 @@ from common import queue
 from common.config import get_settings
 from common.db import new_session
 from common.log import get_logger, set_instance_id
-from common.models import DataSource, TaskInstance, TaskLog, WorkflowInstance, now
+from common.models import Component, DataSource, StreamJob, TaskInstance, TaskLog, WorkflowInstance, now
 from master import state
 from master.dag import Graph, loop_bodies
 from master.variables import (
@@ -31,9 +32,96 @@ POLL_INTERVAL_SEC = 10  # 定时器/kill 自查轮询周期
 DEPENDENT_POLL_SEC = 10  # C9 依赖轮询周期
 DEFAULT_MAX_ITERATIONS = 100  # C10 防死循环上限
 
-# worker 派发类节点全集（I4 +procedure/http/file；I6 +sync；I12 +file_sync/notify C24/C26）
+# worker 派发类节点全集（G-19 单一真源：由 components.catalog 统一定义，消除 4 处字面量副本）
 # 超时扫描（check_timeouts）/容错重派（_resume_sweep）/执行器分派（_execute_node）共用
-WORKER_TYPES = ("sql", "shell", "python", "ssh", "smoke", "procedure", "http", "file", "sync", "file_sync", "notify")
+from components.catalog import WORKER_TYPES  # noqa: E402 — 必须在 common 导入之后
+# 流任务活跃状态（与 t_stream_job.status 注释同口径；stopped/failed 不算承载中）
+STREAM_ACTIVE_STATES = ("starting", "running", "reconnecting")
+
+# 同步编排链配置组件类型（编排链配置收集范围；sync/file_sync 派发前合并其 outputs.config）
+# C32-C35 细项 + 端点合一 endpoint_select（§3.2；运行图由 materialize_sync_exec 物化 sys_exec 执行节点）
+CHAIN_DETAIL_TYPES = frozenset({"src_select", "tgt_select", "field_map", "field_map_union",
+                                "condition_set", "endpoint_select"})
+
+# 运行态物化节点 id 前缀（同步编排端点合一 §3.2：设计态画布不含执行节点，装载时物化）
+SYS_EXEC_PREFIX = "sys_exec_"
+
+
+def materialize_sync_exec(graph_json: dict, comp_versions: Optional[dict] = None) -> dict:
+    """设计态 → 运行态物化（同步编排端点合一 §3.2）：画布存在 endpoint_select 时，在 assert
+    入边处物化执行节点（id 前缀 sys_exec_），assert 的非 assert 来源入边改连执行节点
+    （串联的对账校验间依赖保留）、执行节点 → assert；
+    执行类型按 endpoint_select.baseMode 分拣（src_base/tgt_base → sync，file_sync → file_sync）。
+
+    - 在 parse_graph 解析节点之前调用（scheduler 启动/补数/重跑与 failover 恢复共用该入口，
+      一处物化全覆盖；存储原件 definition.graph_json 不落物化结果）
+    - 物化幂等：id 由首个 endpoint_select 节点 id 哈希派生（同一画布每次解析 id 稳定，
+      failover 重建图与存量任务行 node_id 对齐）；图内已含 sys_exec_ 前缀且 type 为
+      sync/file_sync 的执行节点则直接返回（type 收紧防同名前缀节点误判已物化）
+    - 多 endpoint_select（多链）画布不支持物化：跳过并 warning（assert 走既有
+      assert_target_unresolved 明确失败留痕），避免多链配置混写同一执行节点数据错乱
+    - 浅两层拷贝后改写（节点/边字典级拷贝，data 不动），不污染调用方原件
+    - D2 §9.6：物化节点 data 注入 componentRef {type: endpoint_select, version: 源组件
+      published 版本（comp_versions 供给，缺省兜底 v1）}；节点 id 带 sys_exec_ 前缀
+      天然豁免 R6 校验（graph_rules），ref 仅作运行态治理留痕
+    """
+    if not isinstance(graph_json, dict):
+        return graph_json
+    raw_nodes = graph_json.get("nodes")
+    raw_edges = graph_json.get("edges")
+    if not isinstance(raw_nodes, list) or not isinstance(raw_edges, list):
+        return graph_json
+    if any(isinstance(n, dict) and str(n.get("id") or "").startswith(SYS_EXEC_PREFIX)
+           and n.get("type") in ("sync", "file_sync")
+           for n in raw_nodes):
+        return graph_json  # 已物化（防御：重复物化会令旧执行节点悬空）
+    ep_nodes = [n for n in raw_nodes if isinstance(n, dict) and n.get("type") == "endpoint_select"]
+    asserts = [n for n in raw_nodes if isinstance(n, dict) and n.get("type") == "assert"]
+    if not ep_nodes or not asserts:
+        return graph_json
+    if len(ep_nodes) > 1:
+        logger.warning("画布含 %d 个端点选择组件，多链场景暂不支持物化，跳过"
+                       "（assert 将按未解析对账目标明确失败留痕）", len(ep_nodes))
+        return graph_json
+    base_mode = str((ep_nodes[0].get("data") or {}).get("baseMode") or "src_base")
+    exec_type = "file_sync" if base_mode == "file_sync" else "sync"
+    nid = SYS_EXEC_PREFIX + hashlib.md5(
+        str(ep_nodes[0].get("id") or "").encode("utf-8")).hexdigest()[:8]
+    doc = dict(graph_json)
+    doc["nodes"] = [dict(n) if isinstance(n, dict) else n for n in raw_nodes]
+    doc["edges"] = [dict(e) for e in raw_edges if isinstance(e, dict)]
+    doc["nodes"].append({
+        "id": nid, "type": exec_type,
+        "data": {
+            "name": "文件入仓" if exec_type == "file_sync" else "同步执行",
+            "type": exec_type,
+            # §9.6：按源组件（endpoint_select）published 版本注入，缺省兜底 v1
+            "componentRef": {"type": "endpoint_select",
+                             "version": (comp_versions or {}).get("endpoint_select") or 1},
+        },
+    })
+    edges = doc["edges"]
+    assert_ids = {str(a.get("id") or "") for a in asserts}
+    rewritten = 0
+    for e in edges:  # assert→assert 串联边（source 为 assert）保留原依赖语义，不改写
+        if e.get("target") in assert_ids and e.get("source") not in assert_ids:
+            e["target"] = nid
+            rewritten += 1
+    for a in asserts:  # 按文档序追加 sys_exec → assert（确定性顺序，failover 解析对齐）
+        aid = str(a.get("id") or "")
+        edges.append({"id": "e_%s_%s" % (nid, aid), "source": nid, "target": aid,
+                      "sourceHandle": "", "label": ""})
+    logger.info("运行态物化: sys_exec 节点 %s（type=%s, baseMode=%s）改写 assert 入边 %d 条",
+                nid, exec_type, base_mode, rewritten)
+    return doc
+
+
+def comp_published_versions(session) -> dict:
+    """t_component type→published_version 供给（D2：R6 版本校验/物化器 ref 注入共用）。
+
+    无 published 的组件值为 None（R6 据此拒绝发布「无生效版本」组件的引用）。
+    """
+    return {row.type: row.published_version for row in session.query(Component).all()}
 
 
 # ---------------- Runnable 注册表（状态消费/命令消费/超时扫描 共享） ----------------
@@ -533,12 +621,33 @@ class WorkflowExecuteRunnable(threading.Thread):
             "merge": self._exec_merge, "delay": self._exec_delay,
             "dependent": self._exec_dependent, "loop": self._exec_loop,
             "variable": self._exec_variable, "assert": self._exec_assert,  # assert=C25（I12）
+            # C32-C35 同步编排细项组件 + 端点合一 endpoint_select：配置节点（直通，不执行实际操作）
+            "src_select": self._exec_passthrough, "tgt_select": self._exec_passthrough,
+            "field_map": self._exec_passthrough, "field_map_union": self._exec_passthrough,
+            "condition_set": self._exec_passthrough, "endpoint_select": self._exec_passthrough,
+            # G1 流节点接线（Task C1）：批引擎状态占位，数据面由常驻流任务承载（I8 裁定②）
+            "stream_input": self._exec_stream, "stream_fuse": self._exec_stream,
+            "stream_output": self._exec_stream,
+            # G-17 修复：page_board 是页面宿主/渲染型节点（非执行节点），直通 SUCCESS，
+            # 不落 executor_not_implemented FAILURE。正解（nonExecutor 第三类别）见 G-22 路线。
+            "page_board": self._exec_passthrough,
         }.get(node_type)
         if handler is not None:
             handler(key, resolved)
             return
         if node_type in WORKER_TYPES:
-            self._dispatch_worker(key, resolved, snapshot)
+            # G-11 修复：notify.trigger 真正驱动投递——触发时机与上游实际状态不符则跳过（SUCCESS 不落 worker）
+            if node_type == "notify" and not self._notify_trigger_matches(node_id, loop_iter):
+                self._set_state(key, state.SUCCESS,
+                                outputs={"notified": False, "reason": "trigger_not_matched"},
+                                log_lines=["[master] 通知触发时机与上游状态不符，跳过（trigger=%s)"
+                                           % str(self._node_data(node_id).get("trigger") or "on_success")])
+                self._advance_downstream(node_id, loop_iter)
+                return
+            merge_logs = None
+            if node_type in ("sync", "file_sync"):  # 派发前合并编排链细项配置（C32-C35）
+                resolved, merge_logs = self._merge_sync_chain_config(node_id, loop_iter, resolved)
+            self._dispatch_worker(key, resolved, snapshot, extra_logs=merge_logs)
             return
         self._set_state(key, state.FAILURE, outputs={"error": "executor_not_implemented"},
                         log_lines=["[master] 执行器未实现（后续增量注册）: %s" % node_type])
@@ -559,6 +668,55 @@ class WorkflowExecuteRunnable(threading.Thread):
         return scope
 
     # ---- 逻辑节点内联执行（§6） ----
+
+    def _exec_passthrough(self, key: tuple, resolved: dict) -> None:
+        """配置节点直通（C32-C35 细项组件 + endpoint_select：src_select/tgt_select/field_map/
+        field_map_union/condition_set/endpoint_select）。
+        这些节点仅存储配置数据，不执行实际操作，直接置 SUCCESS 并推进下游。"""
+        self._set_state(key, state.SUCCESS,
+                        outputs={"config": resolved},
+                        log_lines=["[master] 配置节点直通: %s" % self._node_name(key[0])])
+        self._advance_downstream(key[0], key[1])
+
+    def _exec_stream(self, key: tuple, resolved: dict) -> None:
+        """流节点接线（G1，实施计划 Task C1）：stream_input/stream_fuse/stream_output。
+
+        I8 裁定②：master 只注册/透传，不持有流引擎——数据面由 worker 常驻流任务
+        （t_stream_job + worker/stream）承载，批引擎只做编排面上的状态占位：
+        - 同工作流已有活跃流任务（starting/running/reconnecting）→ 节点 SUCCESS，
+          日志指向承载的流任务；
+        - 无 → FAILURE 提示先启动流任务（POST /stream-jobs/start），不再落
+          executor_not_implemented 的内部错误。
+        """
+        node_id, loop_iter = key
+        session = new_session()
+        try:
+            instance = (
+                session.query(WorkflowInstance)
+                .filter(WorkflowInstance.instance_id == self.instance_id)
+                .first()
+            )
+            wf_code = int(instance.wf_code or 0) if instance else 0
+            job = (
+                session.query(StreamJob)
+                .filter(StreamJob.wf_code == wf_code,
+                        StreamJob.status.in_(STREAM_ACTIVE_STATES))
+                .first()
+            ) if wf_code else None
+        finally:
+            session.close()
+        name = self._node_name(node_id)
+        if job is not None:
+            self._set_state(key, state.SUCCESS,
+                            outputs={"streamJobId": job.id, "streamStatus": job.status},
+                            log_lines=["[master] 流节点由常驻流任务 #%s 承载（status=%s）: %s"
+                                       % (job.id, job.status, name)])
+        else:
+            self._set_state(key, state.FAILURE,
+                            outputs={"error": "stream_job_not_started"},
+                            log_lines=["[master] 流节点无运行中的流任务: %s"
+                                       "（请先在画布启动流任务: POST /stream-jobs/start）" % name])
+        self._advance_downstream(node_id, loop_iter)
 
     def _exec_start(self, key: tuple, resolved: dict) -> None:
         self._set_state(key, state.SUCCESS,
@@ -633,9 +791,16 @@ class WorkflowExecuteRunnable(threading.Thread):
         branch = self._decide_branch(key[0], key[1])
         self.chosen[key] = branch
         name = branch.get("name") if branch else None
-        self._set_state(key, state.SUCCESS,
-                        outputs={"hitBranch": name},
-                        log_lines=["[master] 条件分支命中: %s" % (name or "（无命中，下游全部跳过）")])
+        # G-01 修复：无命中且无兜底 → FAILURE（而非 SUCCESS + 全部出边 skipped → 实例挂起）。
+        # 有兜底（空 expr 分支）时命中兜底，行为不变。
+        if branch is None:
+            self._set_state(key, state.FAILURE,
+                            outputs={"hitBranch": None, "error": "conditions_no_match"},
+                            log_lines=["[master] 条件分支无命中且无兜底 → failure"])
+        else:
+            self._set_state(key, state.SUCCESS,
+                            outputs={"hitBranch": name},
+                            log_lines=["[master] 条件分支命中: %s" % name])
         self._advance_downstream(key[0], key[1])
 
     def _exec_switch(self, key: tuple, resolved: dict) -> None:
@@ -824,16 +989,16 @@ class WorkflowExecuteRunnable(threading.Thread):
         picked = str(data.get("assertUpstream") or "").strip()  # I12 T11 修：显式上游节点引用
         if picked:
             try:
-                return self._assert_upstream_target(picked)
+                return self._assert_upstream_target(picked, loop_iter)
             except Exception:  # noqa: BLE001 选中节点已不存在等 → 按未解析处理（_exec_assert 留痕）
                 return None
         for edge in self.graph.preds[node_id]:  # 未选 → 自动扫描直接上游兜底
-            target = self._assert_upstream_target(edge["source"])
+            target = self._assert_upstream_target(edge["source"], loop_iter)
             if target is not None:
                 return target
         return None
 
-    def _assert_upstream_target(self, src: str) -> Optional[dict]:
+    def _assert_upstream_target(self, src: str, loop_iter: int = 0) -> Optional[dict]:
         """单一直接上游的校验对象解析（I12 T11 抽出：显式选中与自动扫描共用）。"""
         stype = self._node_type(src)
         sdata = self._node_data(src)
@@ -842,6 +1007,7 @@ class WorkflowExecuteRunnable(threading.Thread):
             table = str(sdata.get("writerTable") or "").strip()
             if ds_ref and table:
                 return {"ds_ref": ds_ref, "schema": "", "table": table}
+            return self._assert_chain_target(src, loop_iter)  # 编排链：目标在 tgt_select 细项
         elif stype == "file_sync":  # C24 文件同步：目标表（dict/str 双形态；键 camelCase 对齐 I12 T11）
             ds_ref = str(sdata.get("targetDs") or "").strip()
             raw = sdata.get("targetTable")
@@ -853,12 +1019,44 @@ class WorkflowExecuteRunnable(threading.Thread):
                 table = str(raw or "").strip()
             if ds_ref and table:
                 return {"ds_ref": ds_ref, "schema": schema, "table": table}
+            return self._assert_chain_target(src, loop_iter)  # 编排链：目标在 tgt_select 细项
         elif stype == "sql":  # SQL：声明的结果表（outputs.tables 首个非空 v）
             ds_ref = str(sdata.get("datasource") or "").strip()
             outs = sdata.get("outputs") if isinstance(sdata.get("outputs"), dict) else {}
             for t in outs.get("tables") or []:
                 if isinstance(t, dict) and str(t.get("v") or "").strip():
                     return {"ds_ref": ds_ref, "schema": "", "table": str(t["v"]).strip()}
+        return None
+
+    def _assert_chain_target(self, nid: str, loop_iter: int) -> Optional[dict]:
+        """编排链兜底（同步编排重构）：执行节点静态写端键缺失时，沿入边递归找
+        「目标端选择」细项的运行时 outputs.config 解析目标表（与派发链合并同源）；
+        table 兼容 table-picker {schema,table} 对象与 str 双形态。"""
+        for edge in self.graph.preds[nid]:
+            src = edge["source"]
+            stype = self._node_type(src)
+            if stype == "tgt_select":
+                cfg = self._chain_upstream_config(src, loop_iter) or {}
+                ds_ref = str(cfg.get("ds") or "").strip()
+                raw = cfg.get("table")
+                schema, table = "", ""
+                if isinstance(raw, dict):
+                    schema = str(raw.get("schema") or "").strip()
+                    table = str(raw.get("table") or "").strip()
+                else:
+                    table = str(raw or "").strip()
+                if ds_ref and table:
+                    return {"ds_ref": ds_ref, "schema": schema, "table": table}
+            elif stype == "endpoint_select":  # 端点合一（§3.2）：对账目标 = 端点目标侧 tgtDs/tgtTable
+                cfg = self._chain_upstream_config(src, loop_iter) or {}
+                ds_ref = str(cfg.get("tgtDs") or "").strip()
+                table = str(cfg.get("tgtTable") or "").strip()
+                if ds_ref and table:
+                    return {"ds_ref": ds_ref, "schema": "", "table": table}
+            elif stype in CHAIN_DETAIL_TYPES:  # 细项中转（映射/条件）继续上溯
+                found = self._assert_chain_target(src, loop_iter)
+                if found is not None:
+                    return found
         return None
 
     def _assert_lookup_ds(self, ref: str):
@@ -953,8 +1151,52 @@ class WorkflowExecuteRunnable(threading.Thread):
         self.timers_delay[key] = until
         self._save_row(key, log_lines=["[master] 延时至 %s" % until.strftime("%Y-%m-%d %H:%M:%S")])
 
+    def _notify_trigger_matches(self, node_id: str, loop_iter: int) -> bool:
+        """G-11 修复：判断 notify.trigger 是否匹配上游实际状态。
+
+        - on_success：上游（predecessor）全部终态为 success → 匹配
+        - on_failure：上游任一终态为 failure → 匹配
+        - always：恒匹配
+        无上游（如孤立节点）→ 视为匹配（兜底，避免通知永远发不出）。
+        """
+        data = self._node_data(node_id)
+        trigger = str(data.get("trigger") or "on_success").strip()
+        if trigger == "always":
+            return True
+        preds = self.graph.preds.get(node_id, [])
+        if not preds:
+            return True  # 无上游：兜底匹配
+        # 取各上游当前迭代状态
+        states = []
+        for edge in preds:
+            src = edge["source"]
+            row = self._row(src, loop_iter)
+            if row is not None:
+                states.append(row["state"])
+        if not states:
+            return True  # 上游尚未落行：兜底匹配
+        if trigger == "on_success":
+            return all(s in (state.SUCCESS, state.SKIP) for s in states)
+        if trigger == "on_failure":
+            return any(s == state.FAILURE for s in states)
+        return True
+
     def _exec_dependent(self, key: tuple, resolved: dict) -> None:
-        """C9 依赖：置 waiting_dependency，周期轮询被依赖工作流+节点状态（§6）。"""
+        """C9 依赖：置 waiting_dependency，周期轮询被依赖工作流+节点状态（§6）。
+
+        G-07 修复：解析依赖时若发现 wfCode==0（工作流不存在），立即 FAILURE 而非进入
+        WAITING_DEPENDENCY 永久等待——把 P0 从"运行期挂起"提前为"执行期明确失败"。
+        """
+        # 预检：wfCode==0 → 目标工作流不存在，立即 failure
+        missing = [d for d in self._parse_deps(key[0]) if int(d.get("wfCode") or 0) == 0
+                   and str(d.get("wfRef") or "").strip()]
+        if missing:
+            refs = ", ".join(str(d.get("wfRef")) for d in missing)
+            self._set_state(key, state.FAILURE,
+                            outputs={"error": "dependency_workflow_not_found", "missingRefs": refs},
+                            log_lines=["[master] 依赖目标工作流不存在: %s → failure（G-07 守卫）" % refs])
+            self._advance_downstream(key[0], key[1])
+            return
         row = self.rows[key]
         row["state"] = state.WAITING_DEPENDENCY
         self.timers_dep[key] = now()
@@ -1179,15 +1421,50 @@ class WorkflowExecuteRunnable(threading.Thread):
                 self.edge_status[(0, edge["_idx"])] = "ready"
                 self._try_activate(edge["target"], 0)
 
+    def _loop_batch_info(self, loop_node_id: str, iteration: int) -> dict:
+        """G-09 修复：计算当前迭代的批次信息——batchItems（当前批物品清单）+ batchIndex（第几批，从 0 开始）。
+
+        供 body 节点经 ${loop.batchItems} / ${loop.batchIndex} 引用，实现按批切片下发
+        （collection 按 batchSize 切片，每批独立处理；非 collection 模式返回空，不影响既有单轮语义）。
+        """
+        data = self._node_data(loop_node_id)
+        collection = str(data.get("collection") or "").strip()
+        if not collection:
+            return {}
+        scope = self._expr_scope(iteration, data)
+        resolved = self.resolver.resolve_text(collection, scope, iteration, {})
+        items = [x for x in resolved.split(",") if x.strip()] if "," in resolved else None
+        if items is None:
+            return {}
+        batch = max(1, int(data.get("batchSize") or 1))
+        idx = iteration - 1  # 迭代从 1 开始，批索引从 0 开始
+        batch_items = items[idx * batch:(idx + 1) * batch]
+        return {"batchItems": ",".join(batch_items), "batchIndex": idx, "batchTotal": -(-len(items) // batch)}
+
     def _loop_dispatch_body(self, loop_node_id: str, iteration: int) -> None:
         """新迭代：为循环体全体节点建 loop_iter=iteration 行，仅入口节点尝试激活（§6.8）。
 
         体节点不预建 iter0 行；Loop→入口边标记 ready@iteration，体内链路随推进激活。
+        G-09：每迭代刷新 loop 输出的 batchItems/batchIndex，body 节点可按批引用。
         """
         body = self.loop_members.get(loop_node_id) or set()
         if not body:
             self._loop_finish(loop_node_id, iteration - 1)
             return
+        # G-09：刷新当前批次信息到 loop 节点输出（body 节点经变量引用）
+        batch_info = self._loop_batch_info(loop_node_id, iteration)
+        if batch_info:
+            key = (loop_node_id, 0)
+            row = self.rows.get(key)
+            if row is not None:
+                session = new_session()
+                try:
+                    task = session.get(TaskInstance, row["id"])
+                    if task is not None and isinstance(task.outputs, dict):
+                        task.outputs.update(batch_info)
+                        session.commit()
+                finally:
+                    session.close()
         entries: list = []
         for edge in self.graph.succs[loop_node_id]:
             if edge["target"] in body:
@@ -1264,7 +1541,171 @@ class WorkflowExecuteRunnable(threading.Thread):
             })
         return items
 
-    def _dispatch_worker(self, key: tuple, resolved: dict, snapshot: dict) -> None:
+    def _chain_upstream_config(self, src: str, loop_iter: int) -> Optional[dict]:
+        """细项上游节点当前迭代任务实例 outputs 中的 config（passthrough 落库）。"""
+        row = self._row(src, loop_iter)
+        if row is None:
+            return None
+        session = new_session()
+        try:
+            task = session.get(TaskInstance, row["id"])
+            outputs = task.outputs if task is not None and isinstance(task.outputs, dict) else {}
+        finally:
+            session.close()
+        cfg = outputs.get("config")
+        return cfg if isinstance(cfg, dict) else None
+
+    @staticmethod
+    def _detail_value(v) -> bool:
+        """细项配置值有效性：''/None/空数组 视为空（不覆盖执行节点参数）。"""
+        return v is not None and v != "" and v != []
+
+    def _apply_detail_config(self, merged: dict, exec_type: str, stype: str, cfg: dict) -> list:
+        """单细项节点 config → 执行参数键映射（仅非空值写入且覆盖；返回已合并键描述）。"""
+        items: list = []
+
+        def put(key, val):
+            if self._detail_value(val):
+                merged[key] = val
+                items.append("%s=%s" % (key, val))
+
+        if stype == "src_select":
+            if exec_type == "file_sync" and (cfg.get("fileSync") or cfg.get("filePath")):
+                # 文件源端：细项文件键 → file_sync 契约键
+                for sk, dk in (("filePath", "filePath"), ("fileType", "fileType"),
+                               ("fileDelimiter", "delimiter"), ("fileEncoding", "encoding"),
+                               ("fileHeaderRows", "headerRows")):
+                    put(dk, cfg.get(sk))
+            else:  # 连接型源端
+                for sk, dk in (("ds", "readerDs"), ("table", "readerTable"),
+                               ("schemasText", "readerSchemasText"), ("matchType", "readerMatchType"),
+                               ("matchPrefix", "readerMatchPrefix"), ("autoSchema", "autoSchema")):
+                    put(dk, cfg.get(sk))
+        elif stype == "tgt_select":
+            if exec_type == "file_sync":
+                put("targetDs", cfg.get("ds"))
+                put("targetTable", cfg.get("table"))
+            else:
+                put("writerDs", cfg.get("ds"))
+                put("writerTable", cfg.get("table"))
+            put("autoCreate", cfg.get("autoCreate"))
+        elif stype == "field_map":
+            put("fieldMap", cfg.get("fieldMap"))
+        elif stype == "field_map_union":
+            put("fieldMap", cfg.get("fieldMap"))
+            if cfg.get("addSchemaFlag"):  # schema 标识列 → src_flag 策略
+                flag = str(cfg.get("srcSchemaField") or "").strip() or "src_schema"
+                merged["flagColumn"] = flag
+                merged["strategy"] = "src_flag"
+                items.append("flagColumn=%s" % flag)
+                items.append("strategy=src_flag")
+            # aggOperator=union_all 即默认 union 语义，strategy 不动
+        elif stype == "condition_set":
+            put("readerWhere", cfg.get("filterExpr"))
+            put("incrementalColumn", cfg.get("incrementalColumn"))
+            put("incrementalExpr", cfg.get("incrementalExpr"))
+        elif stype == "endpoint_select":
+            # 端点合一（§3.2）：单一端点节点按 baseMode 分拣源/目标两侧执行契约键
+            mode = str(cfg.get("baseMode") or "src_base")
+            if mode == "file_sync":
+                # 文件入仓：文件键 → file_sync 契约键（与 src_select 文件模式同映射）
+                for sk, dk in (("filePath", "filePath"), ("fileType", "fileType"),
+                               ("fileDelimiter", "delimiter"), ("fileEncoding", "encoding"),
+                               ("fileHeaderRows", "headerRows")):
+                    put(dk, cfg.get(sk))
+                put("targetDs", cfg.get("tgtDs"))
+                put("targetTable", cfg.get("tgtTable"))
+                # 仅显式 False 才 False；显式 None/缺省均兜底 True（堵住 put 对 None 跳写的缺口）
+                put("autoCreate", False if cfg.get("autoCreate") is False else True)
+            else:
+                put("readerDs", cfg.get("srcDs"))
+                if mode == "src_base":  # 源表基准：精确单表，不开运行时探测（worker autoSchema 缺省 True）
+                    put("readerTable", cfg.get("srcTable"))
+                    put("autoSchema", False)
+                else:  # tgt_base：探测结果（双形态）→ 参与库枚举 + 精确/前缀匹配
+                    put("readerSchemasText", self._probe_schemas_text(cfg.get("probeResult")))
+                    put("readerMatchType", str(cfg.get("matchType") or "exact"))
+                    put("readerMatchPrefix", cfg.get("matchPrefix"))
+                    put("readerTable", self._probe_reader_table(cfg.get("probeResult"), cfg.get("tgtTable")))
+                put("writerDs", cfg.get("tgtDs"))
+                put("writerTable", cfg.get("tgtTable"))
+                # 仅显式 False 才 False；显式 None/缺省均兜底 True（堵住 put 对 None 跳写的缺口）
+                put("autoCreate", False if cfg.get("autoCreate") is False else True)
+        return items
+
+    @staticmethod
+    def _probe_schemas_text(raw) -> str:
+        """endpoint_select.probeResult 双形态 → 去重排序 schema 逗号文本（§3.2）。
+
+        - 数组形态 [{schema,table}]（seed 直写）
+        - 文本形态 "schema.table,…"（前端手填，兼容全角逗号；逐段取点号前 schema）
+        """
+        schemas: set = set()
+        if isinstance(raw, str):
+            for part in raw.replace("，", ",").split(","):
+                part = part.strip()
+                if part:
+                    schemas.add(part.split(".")[0].strip())
+        elif isinstance(raw, list):
+            for item in raw:
+                if isinstance(item, dict):
+                    schema = str(item.get("schema") or "").strip()
+                    if schema:
+                        schemas.add(schema)
+        schemas.discard("")
+        return ",".join(sorted(schemas))
+
+    @staticmethod
+    def _probe_reader_table(raw, tgt_table) -> str:
+        """tgt_base 读端表名裁定（§3.2）：probeResult 唯一表名优先（候选确认）；
+        空/多表名回落目标表名（exact=完全同名探测基准；prefix 时 pattern 优先取
+        readerMatchPrefix，该值仅兜底满足 sync 执行器非空校验）。双形态同 _probe_schemas_text。"""
+        tables: set = set()
+        if isinstance(raw, str):
+            for part in raw.replace("，", ",").split(","):
+                part = part.strip()
+                if part:
+                    tables.add(part.split(".", 1)[1].strip() if "." in part else part)
+        elif isinstance(raw, list):
+            for item in raw:
+                if isinstance(item, dict):
+                    tables.add(str(item.get("table") or "").strip())
+                elif isinstance(item, str) and item.strip():
+                    p = item.strip()
+                    tables.add(p.split(".", 1)[1].strip() if "." in p else p)
+        tables.discard("")
+        return next(iter(tables)) if len(tables) == 1 else str(tgt_table or "").strip()
+
+    def _merge_sync_chain_config(self, node_id: str, loop_iter: int, data: dict) -> tuple:
+        """sync/file_sync 派发前，沿入边向上递归收集细项节点配置并合并进执行参数（C32-C35 链 + 端点合一 endpoint_select）。
+
+        - 细项值非空才写入且优先覆盖执行节点 data 同键（细项是业务主配置位，执行节点 data 仅兜底）
+        - 同节点多 loop_iter 按当前迭代取；上游为 start/非细项即停止该分支
+        - 返回 (合并后的 data, 日志行)
+        """
+        merged = dict(data)
+        exec_type = self._node_type(node_id)
+        logs: list = []
+
+        def collect(nid: str) -> None:
+            for edge in self.graph.preds[nid]:
+                src = edge["source"]
+                stype = self._node_type(src)
+                if stype not in CHAIN_DETAIL_TYPES:
+                    continue
+                cfg = self._chain_upstream_config(src, loop_iter)
+                if cfg is not None:
+                    keys = self._apply_detail_config(merged, exec_type, stype, cfg)
+                    if keys:
+                        logs.append("[master] 编排链配置合并: %s → %s, 共合并 %d 键"
+                                    % (self._node_name(src), ", ".join(keys), len(keys)))
+                collect(src)
+
+        collect(node_id)
+        return merged, logs
+
+    def _dispatch_worker(self, key: tuple, resolved: dict, snapshot: dict,
+                         extra_logs: Optional[list] = None) -> None:
         node_id, _loop_iter = key
         data = self._node_data(node_id)
         cons = self._constraints(node_id)
@@ -1282,7 +1723,8 @@ class WorkflowExecuteRunnable(threading.Thread):
             "var_snapshot": snapshot,
             "constraints": cons,
         }
-        log_lines = ["[master] 任务已派发 worker（priority=%s）" % cons["priority"]]
+        log_lines = list(extra_logs or [])
+        log_lines.append("[master] 任务已派发 worker（priority=%s）" % cons["priority"])
         # I7 partial 消费闭环：声明注入下游输入参数，worker 侧可读 param.partialInputs
         partial_inputs = self._collect_partial_inputs(node_id, key[1])
         if partial_inputs:

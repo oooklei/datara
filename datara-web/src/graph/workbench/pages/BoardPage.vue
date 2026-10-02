@@ -41,6 +41,12 @@ const PRESET_LABEL: Record<string, string> = {
 }
 const presetLabel = computed(() => PRESET_LABEL[String(props.node.data.preset ?? 'custom')] ?? '自定义看板')
 
+/* G-18：boardLayout 抽到 data 层——布局可配置（不再硬编码在组件内） */
+const boardLayout = computed(() => String(props.node.data.boardLayout ?? 'auto'))
+const showMetrics = computed(() => boardLayout.value === 'auto' || boardLayout.value === 'metrics' || boardLayout.value === 'full')
+const showTrend = computed(() => boardLayout.value === 'auto' || boardLayout.value === 'trend' || boardLayout.value === 'full')
+const showPie = computed(() => boardLayout.value === 'auto' || boardLayout.value === 'full')
+
 /* ---------- 通用工具 ---------- */
 const numOf = (v: unknown): number => {
   const n = Number(v)
@@ -278,20 +284,20 @@ onBeforeUnmount(() => {
     <template v-else>
       <div v-if="loadErr" class="bdp-empty err">{{ loadErr }}</div>
 
-      <div class="bdp-cards">
+      <div v-if="showMetrics" class="bdp-cards">
         <div v-for="c in cards" :key="c.label" class="m-card">
           <b :style="c.accent ? 'color:var(--primary)' : ''">{{ c.value }}</b>
           <span>{{ c.label }}</span>
         </div>
       </div>
 
-      <div class="bdp-charts">
-        <div class="chart-box" :style="{ flex: pieData.length ? '2' : '1' }">
+      <div v-if="showTrend || showPie" class="bdp-charts">
+        <div v-if="showTrend" class="chart-box" :style="{ flex: pieData.length && showPie ? '2' : '1' }">
           <div class="chart-title">窗口趋势</div>
           <div v-show="lineSeries.series.length" ref="lineEl" class="chart-canvas" />
           <div v-if="!lineSeries.series.length" class="bdp-empty">暂无窗口数据（等待窗口触发…）</div>
         </div>
-        <div v-if="pieData.length" class="chart-box">
+        <div v-if="pieData.length && showPie" class="chart-box">
           <div class="chart-title">{{ latest.some((r) => r.page_pv !== undefined) ? '页面访问分布' : '商品热度排行' }}</div>
           <div ref="pieEl" class="chart-canvas" />
         </div>
