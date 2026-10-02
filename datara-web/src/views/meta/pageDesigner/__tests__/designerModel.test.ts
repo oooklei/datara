@@ -25,6 +25,15 @@ describe('designerModel', () => {
     expect(vs.some((v) => v.includes('fallback'))).toBe(true)
     expect(vs.some((v) => v.includes('canvas'))).toBe(true)
   })
+  it('validatePage：query 绑定 datasourceId 或 query 二者有其一即合法，皆缺才违规（镜像后端形状）', () => {
+    const mk = (b: Record<string, unknown>) => validatePage(normalizePage({ page: { version: 1, widgets: [
+      { kind: 'table', bindings: { data: b } },
+    ] } }))
+    expect(mk({ kind: 'query', datasourceId: 1, fallback: '数据集' })).toEqual([])
+    expect(mk({ kind: 'query', query: 'SELECT 1', fallback: '数据集' })).toEqual([])
+    const vs = mk({ kind: 'query', fallback: '数据集' })
+    expect(vs.some((v) => v.includes('datasourceId 或 query'))).toBe(true)
+  })
   it('newWidget 套模板：rect/props/style 来自模板', () => {
     const w = newWidget('text', { x: 10, y: 10 })
     expect(w.props.text).toBeTruthy()

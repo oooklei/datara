@@ -263,11 +263,12 @@ async function onPreview(): Promise<void> {
     previewing.value = false
     return
   }
-  // 收集 query 绑定（bindings 中 kind='query' 项 → {id, datasourceId, sql}，children 递归）
+  // 收集 query 绑定（bindings 中 kind='query' 项 → {id, datasourceId, sql}，children 递归）；
+  // 仅 datasourceId 无 SQL 的数据源引用型绑定跳过（预览渲染模板样例数据）
   const queries: PreviewQuery[] = []
   const walk = (ws: WidgetNode[]): void => ws.forEach((w) => {
     Object.values(w.bindings ?? {}).forEach((b) => {
-      if (b && b.kind === 'query' && b.datasourceId != null) {
+      if (b && b.kind === 'query' && b.datasourceId != null && b.query) {
         queries.push({
           id: w.id,
           datasourceId: b.datasourceId,

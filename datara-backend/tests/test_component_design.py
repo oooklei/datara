@@ -207,6 +207,29 @@ def test_page_spec_valid_passes():
     assert validate_spec_pure_data(ok) == []
 
 
+def test_page_spec_query_binding_datasource_only_valid():
+    """数据集绑定形状：kind=query 仅 datasourceId（无 SQL）即合法——数据源引用型绑定，
+    SQL 后续在数据集钻取中补；显式 SQL 型（query 字段）同合法；二者皆缺才违规。
+    metadata 缺 path 仍违规（原必填字段不放宽）。"""
+    from api.component_design import validate_spec_pure_data
+    ref_only = _page_spec([{"id": "w1", "kind": "table", "rect": {"x": 8, "y": 8, "w": 264, "h": 160},
+                            "props": {}, "style": {},
+                            "bindings": {"data": {"kind": "query", "datasourceId": 1, "fallback": "数据集"}}}])
+    assert validate_spec_pure_data(ref_only) == []
+    sql_only = _page_spec([{"id": "w2", "kind": "table", "rect": {"x": 8, "y": 8, "w": 264, "h": 160},
+                            "props": {}, "style": {},
+                            "bindings": {"data": {"kind": "query", "query": "SELECT 1", "fallback": "数据集"}}}])
+    assert validate_spec_pure_data(sql_only) == []
+    both_missing = _page_spec([{"id": "w3", "kind": "table", "rect": {"x": 8, "y": 8, "w": 264, "h": 160},
+                                "props": {}, "style": {},
+                                "bindings": {"data": {"kind": "query", "fallback": "数据集"}}}])
+    assert any("datasourceId 或 query" in v for v in validate_spec_pure_data(both_missing))
+    no_path = _page_spec([{"id": "w4", "kind": "meta-field", "rect": {"x": 8, "y": 8, "w": 80, "h": 24},
+                           "props": {}, "style": {},
+                           "bindings": {"value": {"kind": "metadata", "fallback": "-"}}}])
+    assert any("path" in v for v in validate_spec_pure_data(no_path))
+
+
 # ---------------------------------------------------------------- 读/保存草稿
 
 

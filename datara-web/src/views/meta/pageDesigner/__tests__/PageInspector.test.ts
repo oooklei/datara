@@ -95,8 +95,9 @@ describe('PageInspector', () => {
     expect(opts[0].attributes('value')).toBe('ds:1')
   })
 
-  it('绑定 kind 映射：ds:→query / $wf.$param.$system→variable（fallback 恒为槽默认文案）', () => {
-    expect(bindingOf('ds:1', '默认')).toMatchObject({ kind: 'query', datasourceId: 1, fallback: '默认' })
+  it('绑定 kind 映射：ds:→query（形状=datasourceId 无 query 字段）/ $wf.$param.$system→variable（fallback 恒为槽默认文案）', () => {
+    // 新形状（后端 _validate_page_spec 同口径）：数据源引用型绑定仅 datasourceId，SQL 后续在数据集钻取中补
+    expect(bindingOf('ds:1', '默认')).toEqual({ kind: 'query', datasourceId: 1, fallback: '默认' })
     for (const v of ['$wf.a.b', '$param.a', '$system.date']) {
       const b = bindingOf(v, '默认')
       expect(b.kind).toBe('variable')

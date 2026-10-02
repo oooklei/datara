@@ -83,6 +83,8 @@ export function validatePage(p: PageDSL): string[] {
       if (w.rect.w <= 0 || w.rect.h <= 0) vs.push(`widget.rect: 尺寸非法 ${w.id}`)
       Object.entries(w.bindings).forEach(([k, b]) => {
         if (!b?.fallback) vs.push(`bindings.${k}.fallback: 缺失（placeholder 即默认值）`)
+        // 数据集绑定形状镜像后端：kind=query 允许 数据源引用（datasourceId）或显式 SQL（query）二者有其一
+        if (b?.kind === 'query' && !b.query && b.datasourceId == null) vs.push(`bindings.${k}.query: 需 datasourceId 或 query 其一`)
       })
       walk(w.children ?? [])
     })

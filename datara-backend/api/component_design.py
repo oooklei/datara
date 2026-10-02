@@ -122,7 +122,9 @@ _WIDGET_KINDS = frozenset({
     "meta-field", "var-label", "query-result", "sys-status",
 })
 _BINDING_KINDS = frozenset({"metadata", "variable", "query", "static"})
-_BINDING_KIND_FIELDS = {"metadata": "path", "variable": "path", "query": "query", "static": "fallback"}
+# 必填字段表（§9.1 绑定形状）：query 特判——数据源引用型（datasourceId）与显式 SQL 型
+# （query）二者有其一即合法（数据源引用型绑定 SQL 后续在数据集钻取中补），见 _validate_page_spec
+_BINDING_KIND_FIELDS = {"metadata": "path", "variable": "path", "static": "fallback"}
 
 
 def _validate_page_spec(spec, violations: list) -> None:
@@ -158,6 +160,10 @@ def _validate_page_spec(spec, violations: list) -> None:
                 bp = "%s.bindings.%s" % (p, key)
                 if not isinstance(b, dict) or b.get("kind") not in _BINDING_KINDS:
                     violations.append("%s.kind: 非法" % bp)
+                    continue
+                if b["kind"] == "query":
+                    if not b.get("query") and b.get("datasourceId") is None:
+                        violations.append("%s.query: 需 datasourceId 或 query 其一" % bp)
                     continue
                 field = _BINDING_KIND_FIELDS[b["kind"]]
                 if not b.get(field):

@@ -79,7 +79,7 @@ const DRAFT = {
         {
           id: 'wq', kind: 'table', rect: { x: 8, y: 40, w: 264, h: 160 },
           props: { columns: [{ title: '名称', dataIndex: 'name' }], emptyText: '暂无数据' }, style: {},
-          bindings: { data: { kind: 'query', datasourceId: 1, fallback: '数据集' } },
+          bindings: { data: { kind: 'query', datasourceId: 1, query: 'SELECT name FROM t_user', fallback: '数据集' } },
         },
       ],
     },
@@ -171,6 +171,19 @@ describe('PageDesignerView（Task 13 页壳）', () => {
     expect(qs).toHaveLength(1)
     expect(qs[0].id).toBe('wq')
     expect(qs[0].datasourceId).toBe(1)
+    expect(w.find('.stub-canvas').attributes('data-preview')).toBe('on')
+  })
+
+  it('预览收集：query 绑定仅 datasourceId 无 SQL → 不进 preview（渲染模板样例数据）', async () => {
+    const draft = structuredClone(DRAFT)
+    draft.spec.page.widgets[0].bindings.data = { kind: 'query', datasourceId: 1, fallback: '数据集' }
+    getDraftSpy.mockResolvedValue(draft)
+    const w = mountView()
+    await flushPromises()
+    await tb(w, 'preview').trigger('click')
+    await flushPromises()
+    expect(previewSpy).not.toHaveBeenCalled()
+    // 无查询绑定仍进入预览态（样例数据渲染）
     expect(w.find('.stub-canvas').attributes('data-preview')).toBe('on')
   })
 
