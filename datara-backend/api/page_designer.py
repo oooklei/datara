@@ -5,13 +5,16 @@
 - POST /page-designer/preview 数据预览：仅 SELECT/WITH，每查询硬编码 LIMIT 100（§8 不配置化）
 """
 
+import re
+
 from fastapi import APIRouter, Depends
+from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
-from api.auth import require_perm
+from api.auth import ApiError, require_perm
 from common.db import get_db
 from common.models import Component, DataSource, GlobalParam, WfDefinition, WfVariable
-from common.resp import ok
+from common.resp import PAGE_PREVIEW_SQL_FORBIDDEN, ok
 
 router = APIRouter(prefix="/page-designer", tags=["page-designer"])
 
@@ -43,3 +46,66 @@ def resources(db: Session = Depends(get_db), _user=Depends(require_perm("design_
              "publishedVersion": c.published_version}
             for c in db.query(Component).order_by(Component.type).all()],
     })
+
+
+# ---------------------------------------------------------------- 数据预览
+
+PREVIEW_ROW_CAP = 100  # 设计文档 §8：硬编码上限，不配置化
+SELECT_RE = re.compile(r"\s*(WITH|SELECT)\b", re.IGNORECASE)
+
+
+class PreviewQuery(BaseModel):
+    id: str
+    datasourceId: int
+    sql: str
+    db: str | None = None
+
+
+class PreviewBody(BaseModel):
+    queries: list[PreviewQuery] = Field(default_factory=list)
+
+
+def _run_readonly(ds: DataSource, sql: str, cap: int) -> dict:
+    """只读连接执行单查询，最多取 cap 行（复用 common.dsconn 连接工厂，IDE 同口径）。
+
+    - 短连接 + read_timeout 缺省 60s（IDE 口径）；fetchmany 分批取行防大结果集驻留
+    - 仅连接型数据源（mysql/greatdb）可执行；其它类型/连接失败均入 error 不抛
+    """
+    from common.dsconn import open_connection
+
+    result = {"id": "", "columns": [], "rows": [], "truncated": False, "error": ""}
+    try:
+        conn = open_connection(ds)
+        try:
+            with conn.cursor() as cur:
+                cur.execute(sql)
+                result["columns"] = [c[0] for c in cur.description or []]
+                while len(result["rows"]) < cap:
+                    batch = cur.fetchmany(min(200, cap - len(result["rows"])))
+                    if not batch:
+                        break
+                    result["rows"] += [[str(v) for v in row] for row in batch]
+                result["truncated"] = cur.fetchone() is not None or len(result["rows"]) >= cap
+        finally:
+            conn.close()
+    except Exception as exc:  # noqa: BLE001
+        result["error"] = str(exc)
+    return result
+
+
+@router.post("/preview", summary="数据预览（每查询 LIMIT 100，只读）")
+def preview(body: PreviewBody, db: Session = Depends(get_db), _user=Depends(require_perm("design_component"))):
+    results = {}
+    for q in body.queries:
+        sql = (q.sql or "").strip().rstrip(";")
+        if not SELECT_RE.match(sql):
+            raise ApiError(PAGE_PREVIEW_SQL_FORBIDDEN, status=422)
+        ds = db.get(DataSource, q.datasourceId)
+        if ds is None:
+            results[q.id] = {"columns": [], "rows": [], "truncated": False,
+                             "error": f"数据源 {q.datasourceId} 不存在"}
+            continue
+        item = _run_readonly(ds, f"SELECT * FROM ({sql}) _pv LIMIT {PREVIEW_ROW_CAP}", PREVIEW_ROW_CAP)
+        item["id"] = q.id
+        results[q.id] = item
+    return ok({"results": results, "rowCap": PREVIEW_ROW_CAP})
