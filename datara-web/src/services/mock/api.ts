@@ -334,6 +334,37 @@ export async function mockComponentVersions(type: string): Promise<ComponentVers
   return { type, publishedVersion: null, items: [] }
 }
 
+/* ---- 页面设计器资源目录（pageApi.getResources mock 读路径；与后端 /page-designer/resources 同形） ---- */
+
+/** 返回结构=views/meta/pageDesigner/bindingCatalog.ts 的 ResourceCatalog（此处内联同形，避免 services→views 依赖） */
+export async function mockPageDesignerResources(): Promise<{
+  datasources: { id: number; name: string; type: string; db: string }[]
+  workflows: { code: number; name: string; vars: { path: string; label: string; type: string }[] }[]
+  globalParams: { path: string; label: string }[]
+  timeParams: { path: string; label: string; sample: string }[]
+  components: { type: string; name: string; state: string; publishedVersion: number | null }[]
+}> {
+  return {
+    datasources: [
+      { id: 1, name: '演示主库', type: 'greatdb', db: 'datara' },
+      { id: 2, name: '报表库', type: 'mysql', db: 'report' },
+    ],
+    workflows: [
+      { code: 100, name: '日批汇总', vars: [{ path: '$wf.batch', label: 'batch', type: '文本' }] },
+    ],
+    globalParams: [{ path: '$param.env', label: 'env' }],
+    /* 与后端 api/page_designer.py TIME_PARAMS 同款 $ 路径 */
+    timeParams: [
+      { path: '$system.date', label: '当前日期', sample: '2026-10-03' },
+      { path: '$system.datetime', label: '当前时间', sample: '2026-10-03 00:00:00' },
+      { path: '$system.month', label: '当前月份', sample: '2026-10' },
+    ],
+    components: [
+      { type: 'page_board_demo', name: '演示页面组件', state: 'published', publishedVersion: 1 },
+    ],
+  }
+}
+
 /* ---- 变量读路径（画布「引用变量」面板数据源；此前 mock 模式穿透 502） ---- */
 
 /** 工作流变量（GET /workflow-variables?wf=）：mock 每个工作流给两条示例（${var} 下拉可引用） */
