@@ -140,7 +140,7 @@ describe('PageDesignerView（Task 13 页壳）', () => {
     expect(w.find('[data-testid="pd-canvas-stage"]').exists()).toBe(true)
     expect(w.find('[data-testid="pd-inspector"]').exists()).toBe(true)
     expect(w.find('.stub-canvas').exists()).toBe(true)
-    for (const id of ['undo', 'redo', 'copy', 'delete', 'align-left', 'align-top', 'zoom', 'refresh', 'save', 'preview', 'publish']) {
+    for (const id of ['undo', 'redo', 'copy', 'paste', 'delete', 'align-left', 'align-top', 'zoom', 'refresh', 'save', 'preview', 'publish']) {
       expect(tb(w, id).exists(), `工具条按钮 tb-${id} 应存在`).toBe(true)
       expect(tb(w, id).text().length).toBeGreaterThan(0)
     }
@@ -176,7 +176,9 @@ describe('PageDesignerView（Task 13 页壳）', () => {
 
   it('预览收集：query 绑定仅 datasourceId 无 SQL → 不进 preview（渲染模板样例数据）', async () => {
     const draft = structuredClone(DRAFT)
-    draft.spec.page.widgets[0].bindings.data = { kind: 'query', datasourceId: 1, fallback: '数据集' }
+    // 数据源引用型绑定新形状：仅 datasourceId 无 SQL（query 字段缺省）
+    const data = draft.spec.page.widgets[0].bindings.data as unknown as Record<string, unknown>
+    delete data.query
     getDraftSpy.mockResolvedValue(draft)
     const w = mountView()
     await flushPromises()
@@ -198,6 +200,22 @@ describe('PageDesignerView（Task 13 页壳）', () => {
     expect(type).toBe('page_demo')
     expect(body.draftRev).toBe(3)
     expect((body.spec.page as { name: string }).name).toBe('演示页面')
+  })
+
+  it('粘贴：缓冲为空禁用；复制后点粘贴 widgets 数 +1', async () => {
+    const w = mountView()
+    await flushPromises()
+    // 缓冲为空 → 粘贴禁用
+    expect(tb(w, 'paste').attributes('disabled')).toBeDefined()
+    // 选中 wq（stub canvas emit select）→ 复制 → widgets 1→2
+    w.findComponent({ name: 'PageCanvasStub' }).vm.$emit('select', 'wq')
+    await flushPromises()
+    await tb(w, 'copy').trigger('click')
+    expect(w.find('.stub-canvas').attributes('data-count')).toBe('2')
+    expect(tb(w, 'paste').attributes('disabled')).toBeUndefined()
+    // 粘贴 → widgets 2→3（深拷贝缓冲 + 新 id + 12px 偏移）
+    await tb(w, 'paste').trigger('click')
+    expect(w.find('.stub-canvas').attributes('data-count')).toBe('3')
   })
 
   it('发布主路径：确认 → freeze → publish → toast「已刷新 2 个图引用」', async () => {

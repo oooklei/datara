@@ -94,3 +94,47 @@ describe('PageCanvas 画布', () => {
     expect(w.emitted('select')?.[0]).toEqual(['wt'])
   })
 })
+
+describe('WidgetRenderer 拖拽移动 + v-html 消毒', () => {
+  it('拖拽移动：根元素 mousedown → window mousemove emit move（增量）→ mouseup 解绑', async () => {
+    const w = mountCanvas()
+    await w.findAll('.pd-w-root')[0].trigger('mousedown', { clientX: 100, clientY: 100, button: 0 })
+    window.dispatchEvent(new MouseEvent('mousemove', { clientX: 130, clientY: 115 }))
+    expect(w.emitted('move')?.[0]).toEqual(['wt', 30, 15])
+    window.dispatchEvent(new MouseEvent('mousemove', { clientX: 150, clientY: 135 }))
+    expect(w.emitted('move')?.[1]).toEqual(['wt', 20, 20])
+    window.dispatchEvent(new MouseEvent('mouseup'))
+    const n = w.emitted('move')!.length
+    window.dispatchEvent(new MouseEvent('mousemove', { clientX: 300, clientY: 300 }))
+    expect(w.emitted('move')!.length).toBe(n)
+  })
+
+  it('交互后代（input/button/select/textarea/[data-nodrag]）不启动拖移', async () => {
+    const page = normalizePage({ page: { version: 1, widgets: [
+      { id: 'wr', kind: 'radio', rect: { x: 8, y: 8, w: 120, h: 32 }, props: { options: ['a'] }, style: {}, bindings: {} },
+    ] } })
+    const w = mountCanvas({ page })
+    await w.find('.pd-w-root input').trigger('mousedown', { clientX: 100, clientY: 100 })
+    window.dispatchEvent(new MouseEvent('mousemove', { clientX: 200, clientY: 200 }))
+    expect(w.emitted('move')).toBeUndefined()
+    window.dispatchEvent(new MouseEvent('mouseup'))
+  })
+
+  it('rich-text 消毒：渲染后 DOM 无 onclick/onerror 属性、无 script 元素、无 javascript: 协议', () => {
+    const page = normalizePage({ page: { version: 1, widgets: [
+      {
+        id: 'wrich', kind: 'rich-text', rect: { x: 8, y: 8, w: 200, h: 80 },
+        props: { html: '<p onclick="evil()">你好</p><img src="a.png" onerror="alert(1)"><script>alert(2)</script><a href="javascript:alert(3)">x</a>' },
+        style: {}, bindings: {},
+      },
+    ] } })
+    const w = mountCanvas({ page })
+    const rich = w.find('.pd-w-rich')
+    expect(rich.exists()).toBe(true)
+    expect(rich.element.querySelector('script')).toBeNull()
+    expect(rich.element.querySelector('[onclick]')).toBeNull()
+    expect(rich.element.querySelector('[onerror]')).toBeNull()
+    expect(rich.element.innerHTML).not.toContain('javascript:')
+    expect(rich.element.innerHTML).toContain('你好')
+  })
+})

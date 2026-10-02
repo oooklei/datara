@@ -192,20 +192,29 @@ function onUpdateCanvas(patch: Record<string, unknown>): void {
   }
 }
 
-/* ================= 工具条：复制 / 删除 / 对齐 / 缩放 / 刷新 ================= */
+/* ================= 工具条：复制 / 粘贴 / 删除 / 对齐 / 缩放 / 刷新 ================= */
 const selWidget = (): WidgetNode | null => page.value.widgets.find((w) => w.id === selectedId.value) ?? null
 
-function onCopy(): void {
-  const w = selWidget()
-  if (!w) return
+/** 内部复制缓冲（复制时快照入缓冲，后续编辑不影响粘贴源；空缓冲粘贴禁用） */
+const copyBuf = ref<WidgetNode | null>(null)
+/** 深拷贝 + id 重生成（children 递归）+ 12px 偏移入画布（复制/粘贴共用） */
+function pushClone(src: WidgetNode): void {
   pushUndo()
-  // 深拷贝 props/style/bindings/children（newWidget 同 kind 基底语义的等价实现：内容克隆 + 新 id）
-  const clone = JSON.parse(JSON.stringify(w)) as WidgetNode
+  const clone = JSON.parse(JSON.stringify(src)) as WidgetNode
   const reid = (n: WidgetNode): WidgetNode => ({ ...n, id: genId(n.kind), ...(n.children ? { children: n.children.map(reid) } : {}) })
   const c = reid(clone)
   c.rect = { ...c.rect, x: c.rect.x + 12, y: c.rect.y + 12 }
   page.value.widgets.push(c)
   selectedId.value = c.id
+}
+function onCopy(): void {
+  const w = selWidget()
+  if (!w) return
+  copyBuf.value = JSON.parse(JSON.stringify(w)) as WidgetNode
+  pushClone(copyBuf.value)
+}
+function onPaste(): void {
+  if (copyBuf.value) pushClone(copyBuf.value)
 }
 function onDelete(): void {
   const w = selWidget()
@@ -416,12 +425,13 @@ async function onCreate(): Promise<void> {
         <el-tag v-if="draft" size="small" :type="stateTagType">{{ stateText }}</el-tag>
         <span v-if="draft?.publishedVersion" class="pd-pubv">v{{ draft.publishedVersion }}</span>
       </div>
-      <!-- 工具条（按钮置顶）：撤销 重做 | 复制 删除 | 左对齐 上对齐 | 缩放 | 刷新 | 保存 预览 发布 -->
+      <!-- 工具条（按钮置顶）：撤销 重做 | 复制 粘贴 删除 | 左对齐 上对齐 | 缩放 | 刷新 | 保存 预览 发布 -->
       <div v-if="!isCreate" class="pd-toolbar">
         <el-button size="small" data-testid="tb-undo" :disabled="undoDepth <= 0" @click="undo">撤销</el-button>
         <el-button size="small" data-testid="tb-redo" :disabled="redoDepth <= 0" @click="redo">重做</el-button>
         <span class="pd-sep" />
         <el-button size="small" data-testid="tb-copy" :disabled="!selectedId" @click="onCopy">复制</el-button>
+        <el-button size="small" data-testid="tb-paste" :disabled="!copyBuf" @click="onPaste">粘贴</el-button>
         <el-button size="small" data-testid="tb-delete" :disabled="!selectedId" @click="onDelete">删除</el-button>
         <span class="pd-sep" />
         <el-button size="small" data-testid="tb-align-left" :disabled="!selectedId" @click="onAlignLeft">左对齐</el-button>

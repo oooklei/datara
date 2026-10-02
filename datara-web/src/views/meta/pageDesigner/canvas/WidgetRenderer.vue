@@ -1,3 +1,16 @@
+<script lang="ts">
+/**
+ * rich-text 最小消毒（导出供测试复用）：去 script 标签块、去 on\w+= 事件属性、
+ * 去 javascript: 协议；纯正则实现不引依赖（设计态骨架预览兜底，非完整 HTML 净化器）。
+ */
+export function sanitizeHtml(src: unknown): string {
+  return String(src ?? '')
+    .replace(/<script[\s\S]*?<\/script\s*>/gi, '')
+    .replace(/\bon\w+\s*=\s*("[^"]*"|'[^']*'|[^\s>]+)/gi, '')
+    .replace(/javascript:/gi, '')
+}
+</script>
+
 <script setup lang="ts">
 /**
  * 组件页面设计器 Task 11：widget 只读渲染分派（设计态骨架预览）。
@@ -5,9 +18,10 @@
  * - 绝对定位 + style 映射（fill/radius/border/shadow/fontSize/color…），选中态主色描边
  * - 预览优先：preview 无 error 且有数据时 table/statistic/progress/绑定元素等吃真实数据，否则模板默认/空态
  * - 渲染异常兜底：onErrorCaptured 捕获 children 递归错误输出兜底卡片，不拖垮画布
+ * - 根元素 mousedown 拖拽移动（emit 增量 move，mouseup/onBeforeUnmount 解绑；交互后代不启动）
  * 实现取原生元素 + SVG（零 UI 库依赖）：设计态只读骨架无需重型表格组件，jsdom/生产渲染均轻量稳定。
  */
-import { computed, onErrorCaptured, ref } from 'vue'
+import { computed, onErrorCaptured, onBeforeUnmount, ref } from 'vue'
 import type { WidgetNode } from '../designerModel'
 import type { PreviewResult } from '../pageApi'
 
@@ -186,6 +200,35 @@ const scatterPts = computed(() => {
   }))
 })
 
+/* ---------- rich-text 消毒（props 变化才重算，避免重复消毒计算） ---------- */
+const richHtml = computed(() => sanitizeHtml(props.widget.props.html))
+
+/* ---------- widget 级拖拽移动（根元素手势，emit 相对位移增量） ---------- */
+let mvx = 0
+let mvy = 0
+function onMoveMove(e: MouseEvent) {
+  emit('move', e.clientX - mvx, e.clientY - mvy)
+  mvx = e.clientX
+  mvy = e.clientY
+}
+function stopMove() {
+  window.removeEventListener('mousemove', onMoveMove)
+  window.removeEventListener('mouseup', stopMove)
+}
+function startMove(e: MouseEvent) {
+  // 交互元素（输入/按钮/下拉/文本域与 data-nodrag 标记）不启动拖移；拖尺寸手柄自带 stopPropagation
+  if (e.button !== 0) return
+  const t = e.target
+  if (t instanceof Element && t.closest('input,button,select,textarea,[data-nodrag]')) return
+  mvx = e.clientX
+  mvy = e.clientY
+  window.addEventListener('mousemove', onMoveMove)
+  window.addEventListener('mouseup', stopMove)
+  e.preventDefault()
+  e.stopPropagation() // 容器嵌套时仅最内层 widget 响应拖移
+}
+onBeforeUnmount(stopMove)
+
 /* ---------- widget 级 resize 手柄（右下 grip，emit 相对位移） ---------- */
 let rsx = 0
 let rsy = 0
@@ -211,7 +254,7 @@ function stopResize() {
 <template>
   <div
     class="pd-w-root" :class="{ 'is-selected': selected, [`pd-wk-${widget.kind}`]: true }" :style="rootStyle"
-    :data-kind="widget.kind" @click.stop="$emit('select')"
+    :data-kind="widget.kind" @click.stop="$emit('select')" @mousedown="startMove"
   >
     <div v-if="broken" class="pd-w-broken">渲染异常：{{ widget.kind }}</div>
 
@@ -252,7 +295,7 @@ function stopResize() {
     <button v-else-if="kind === 'button'" class="pd-w-btn" type="button" disabled>{{ textVal }}</button>
     <span v-else-if="kind === 'icon'" class="pd-w-ico">◆</span>
     <img v-else-if="kind === 'image'" class="pd-w-img" :src="String(widget.props.src ?? '')" alt="插图" />
-    <div v-else-if="kind === 'rich-text'" class="pd-w-rich" v-html="String(widget.props.html ?? '')" />
+    <div v-else-if="kind === 'rich-text'" class="pd-w-rich" v-html="richHtml" />
     <div v-else-if="kind === 'divider'" class="pd-w-divider" :style="{ background: String(widget.style?.color ?? '#f0f0f0') }" />
     <div v-else-if="kind === 'spacer'" class="pd-w-spacer" />
 
