@@ -9,6 +9,7 @@ import type { NodeSchema } from './types'
 /** 脚本组件（ETL/Stream 共享） */
 export const opScriptSchema: NodeSchema = {
   type: 'op_script',
+  initTemplate: { rect: { w: 180, h: 56 }, props: { scriptId: '', lang: 'SQL', code: '' }, bindings: { output: { kind: 'static', fallback: '脚本输出' } }, sample: {} },
   label: '脚本',
   icon: '⌘',
   color: '#7c3aed',

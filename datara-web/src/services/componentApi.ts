@@ -12,6 +12,7 @@
 import { http } from './http'
 import { isMock } from './apiMode'
 import { mockComponentDetail, mockComponentDraft, mockComponentVersions } from './mock/api'
+import type { ComponentInitTemplate } from '../graph/profiles/types'
 
 /** 组件派发方式（与后端 master.py 派发点、dag.py WORKER_TYPES 一一对应） */
 export type ComponentRoute =
@@ -77,6 +78,8 @@ export interface ComponentRow {
   executor: string | null
   paletteVisible: boolean
   paletteGroup: string | null
+  /** §11 初始化模板（页面设计器拖入默认形态，纯数据；经 catalog 只读下发） */
+  initTemplate?: ComponentInitTemplate
   formFieldCount: number
   requiredFieldCount: number
   flags: FormFieldFlags

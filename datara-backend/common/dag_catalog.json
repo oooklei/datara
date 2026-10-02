@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "generatedAt": "2026-10-01T03:03:15+00:00",
+  "generatedAt": "2026-10-02T22:18:11+00:00",
   "source": [
     "datara-web/src/graph/profiles/dag.ts",
     "datara-web/src/graph/profiles/etl.ts",
@@ -104,7 +104,9 @@
       "paletteFormat": "items",
       "paletteGroups": 1,
       "paletteItems": 4,
-      "paletteSpreads": [],
+      "paletteSpreads": [
+        "dagProfile.palette.filter"
+      ],
       "hidden": 10
     },
     {
@@ -177,6 +179,14 @@
       "paletteVisible": true,
       "paletteGroup": "逻辑控制",
       "paletteIndex": 0,
+      "initTemplate": {
+        "rect": {
+          "w": 160,
+          "h": 48
+        },
+        "props": {},
+        "sample": {}
+      },
       "formFieldCount": 0,
       "formFields": [],
       "defaultKeys": [],
@@ -211,6 +221,14 @@
       "paletteVisible": true,
       "paletteGroup": "逻辑控制",
       "paletteIndex": 1,
+      "initTemplate": {
+        "rect": {
+          "w": 160,
+          "h": 48
+        },
+        "props": {},
+        "sample": {}
+      },
       "formFieldCount": 0,
       "formFields": [],
       "defaultKeys": [],
@@ -245,6 +263,26 @@
       "paletteVisible": true,
       "paletteGroup": "逻辑控制",
       "paletteIndex": 2,
+      "initTemplate": {
+        "rect": {
+          "w": 180,
+          "h": 56
+        },
+        "props": {
+          "branches": [
+            {
+              "id": "br_yes",
+              "name": "满足",
+              "expr": "var.amount > 0"
+            },
+            {
+              "id": "br_no",
+              "name": "不满足",
+              "expr": ""
+            }
+          ]
+        }
+      },
       "formFieldCount": 1,
       "formFields": [
         {
@@ -295,6 +333,31 @@
       "paletteVisible": true,
       "paletteGroup": "逻辑控制",
       "paletteIndex": 3,
+      "initTemplate": {
+        "rect": {
+          "w": 180,
+          "h": 56
+        },
+        "props": {
+          "branches": [
+            {
+              "id": "sw_a",
+              "name": "A",
+              "expr": "A"
+            },
+            {
+              "id": "sw_b",
+              "name": "B",
+              "expr": "B"
+            },
+            {
+              "id": "sw_d",
+              "name": "默认",
+              "expr": "*"
+            }
+          ]
+        }
+      },
       "formFieldCount": 1,
       "formFields": [
         {
@@ -345,6 +408,14 @@
       "paletteVisible": true,
       "paletteGroup": "逻辑控制",
       "paletteIndex": 4,
+      "initTemplate": {
+        "rect": {
+          "w": 160,
+          "h": 48
+        },
+        "props": {},
+        "sample": {}
+      },
       "formFieldCount": 0,
       "formFields": [],
       "defaultKeys": [],
@@ -379,6 +450,15 @@
       "paletteVisible": true,
       "paletteGroup": "逻辑控制",
       "paletteIndex": 5,
+      "initTemplate": {
+        "rect": {
+          "w": 160,
+          "h": 48
+        },
+        "props": {
+          "policy": "all_terminal"
+        }
+      },
       "formFieldCount": 1,
       "formFields": [
         {
@@ -426,6 +506,14 @@
       "paletteVisible": true,
       "paletteGroup": "逻辑控制",
       "paletteIndex": 6,
+      "initTemplate": {
+        "rect": {
+          "w": 160,
+          "h": 48
+        },
+        "props": {},
+        "sample": {}
+      },
       "formFieldCount": 0,
       "formFields": [],
       "defaultKeys": [],
@@ -460,6 +548,16 @@
       "paletteVisible": true,
       "paletteGroup": "逻辑控制",
       "paletteIndex": 7,
+      "initTemplate": {
+        "rect": {
+          "w": 160,
+          "h": 56
+        },
+        "props": {
+          "duration": 60,
+          "unit": "秒"
+        }
+      },
       "formFieldCount": 4,
       "formFields": [
         {
@@ -538,6 +636,15 @@
       "paletteVisible": true,
       "paletteGroup": "逻辑控制",
       "paletteIndex": 8,
+      "initTemplate": {
+        "rect": {
+          "w": 160,
+          "h": 48
+        },
+        "props": {
+          "deps": []
+        }
+      },
       "formFieldCount": 1,
       "formFields": [
         {
@@ -585,6 +692,17 @@
       "paletteVisible": true,
       "paletteGroup": "逻辑控制",
       "paletteIndex": 9,
+      "initTemplate": {
+        "rect": {
+          "w": 180,
+          "h": 56
+        },
+        "props": {
+          "collection": "",
+          "batchSize": 100,
+          "maxIterations": 100
+        }
+      },
       "formFieldCount": 3,
       "formFields": [
         {
@@ -654,6 +772,27 @@
       "paletteVisible": true,
       "paletteGroup": "数据计算",
       "paletteIndex": 10,
+      "initTemplate": {
+        "rect": {
+          "w": 200,
+          "h": 64
+        },
+        "props": {
+          "datasource": "",
+          "sql": "SELECT 1",
+          "pre": "",
+          "post": ""
+        },
+        "bindings": {
+          "result": {
+            "kind": "query",
+            "fallback": "查询结果集"
+          }
+        },
+        "sample": {
+          "rows": []
+        }
+      },
       "formFieldCount": 5,
       "formFields": [
         {
@@ -746,6 +885,23 @@
       "paletteVisible": true,
       "paletteGroup": "数据计算",
       "paletteIndex": 11,
+      "initTemplate": {
+        "rect": {
+          "w": 200,
+          "h": 64
+        },
+        "props": {
+          "script": "echo hello",
+          "env": []
+        },
+        "bindings": {
+          "output": {
+            "kind": "static",
+            "fallback": "脚本输出"
+          }
+        },
+        "sample": {}
+      },
       "formFieldCount": 2,
       "formFields": [
         {
@@ -803,6 +959,24 @@
       "paletteVisible": true,
       "paletteGroup": "数据计算",
       "paletteIndex": 12,
+      "initTemplate": {
+        "rect": {
+          "w": 200,
+          "h": 64
+        },
+        "props": {
+          "script": "print(1)",
+          "env": [],
+          "requirements": ""
+        },
+        "bindings": {
+          "output": {
+            "kind": "static",
+            "fallback": "脚本输出"
+          }
+        },
+        "sample": {}
+      },
       "formFieldCount": 4,
       "formFields": [
         {
@@ -881,6 +1055,24 @@
       "paletteVisible": true,
       "paletteGroup": "数据计算",
       "paletteIndex": 13,
+      "initTemplate": {
+        "rect": {
+          "w": 200,
+          "h": 64
+        },
+        "props": {
+          "runtimeNode": "",
+          "execNodeTag": "",
+          "script": "echo hello"
+        },
+        "bindings": {
+          "output": {
+            "kind": "static",
+            "fallback": "脚本输出"
+          }
+        },
+        "sample": {}
+      },
       "formFieldCount": 3,
       "formFields": [
         {
@@ -949,6 +1141,25 @@
       "paletteVisible": true,
       "paletteGroup": "数据计算",
       "paletteIndex": 14,
+      "initTemplate": {
+        "rect": {
+          "w": 200,
+          "h": 64
+        },
+        "props": {
+          "datasource": "",
+          "db": "",
+          "procedure": "",
+          "args": []
+        },
+        "bindings": {
+          "outParams": {
+            "kind": "static",
+            "fallback": "OUT 参数回读"
+          }
+        },
+        "sample": {}
+      },
       "formFieldCount": 4,
       "formFields": [
         {
@@ -1031,6 +1242,24 @@
       "paletteVisible": true,
       "paletteGroup": "数据计算",
       "paletteIndex": 15,
+      "initTemplate": {
+        "rect": {
+          "w": 160,
+          "h": 56
+        },
+        "props": {
+          "method": "GET",
+          "url": "https://",
+          "timeout": 30
+        },
+        "bindings": {
+          "response": {
+            "kind": "static",
+            "fallback": "响应体"
+          }
+        },
+        "sample": {}
+      },
       "formFieldCount": 8,
       "formFields": [
         {
@@ -1154,6 +1383,37 @@
       "paletteVisible": true,
       "paletteGroup": "数据计算",
       "paletteIndex": 16,
+      "initTemplate": {
+        "rect": {
+          "w": 200,
+          "h": 64
+        },
+        "props": {
+          "mode": "datasource",
+          "datasource": "",
+          "path": "",
+          "format": "csv",
+          "encoding": "utf-8",
+          "delimiter": ",",
+          "header": true,
+          "sheet": "",
+          "register": true,
+          "tmpName": "",
+          "kind": "table",
+          "targetDs": "内置数仓-datara_dw",
+          "retention": "immediate",
+          "keepDays": 7
+        },
+        "bindings": {
+          "rows": {
+            "kind": "query",
+            "fallback": "文件数据"
+          }
+        },
+        "sample": {
+          "rows": []
+        }
+      },
       "formFieldCount": 16,
       "formFields": [
         {
@@ -1368,6 +1628,27 @@
       "paletteVisible": true,
       "paletteGroup": "数据计算",
       "paletteIndex": 17,
+      "initTemplate": {
+        "rect": {
+          "w": 180,
+          "h": 56
+        },
+        "props": {
+          "assertSrc": "upstream",
+          "assertUpstream": "",
+          "assertDs": "",
+          "assertTable": "",
+          "rules": [
+            {
+              "key": "rows",
+              "value": "min=1,max=1000000",
+              "note": "行数区间"
+            }
+          ],
+          "ruleColumns": [],
+          "onFail": "fail"
+        }
+      },
       "formFieldCount": 8,
       "formFields": [
         {
@@ -1484,6 +1765,14 @@
       "paletteVisible": true,
       "paletteGroup": "数据同步",
       "paletteIndex": 18,
+      "initTemplate": {
+        "rect": {
+          "w": 200,
+          "h": 64
+        },
+        "props": {},
+        "sample": {}
+      },
       "formFieldCount": 0,
       "formFields": [],
       "defaultKeys": [],
@@ -1516,6 +1805,14 @@
       "paletteVisible": true,
       "paletteGroup": "数据同步",
       "paletteIndex": 19,
+      "initTemplate": {
+        "rect": {
+          "w": 200,
+          "h": 64
+        },
+        "props": {},
+        "sample": {}
+      },
       "formFieldCount": 0,
       "formFields": [],
       "defaultKeys": [],
@@ -1548,6 +1845,14 @@
       "paletteVisible": true,
       "paletteGroup": "数据同步",
       "paletteIndex": 20,
+      "initTemplate": {
+        "rect": {
+          "w": 200,
+          "h": 64
+        },
+        "props": {},
+        "sample": {}
+      },
       "formFieldCount": 0,
       "formFields": [],
       "defaultKeys": [],
@@ -1580,6 +1885,24 @@
       "paletteVisible": true,
       "paletteGroup": "数据同步",
       "paletteIndex": 21,
+      "initTemplate": {
+        "rect": {
+          "w": 200,
+          "h": 64
+        },
+        "props": {
+          "baseMode": "src_base",
+          "srcDs": "",
+          "srcTable": "",
+          "probe": false,
+          "matchType": "exact",
+          "matchPrefix": "",
+          "probeResult": "",
+          "tgtDs": "",
+          "tgtTable": "",
+          "autoCreate": true
+        }
+      },
       "formFieldCount": 17,
       "formFields": [
         {
@@ -1806,6 +2129,17 @@
       "paletteVisible": true,
       "paletteGroup": "数据同步",
       "paletteIndex": 22,
+      "initTemplate": {
+        "rect": {
+          "w": 200,
+          "h": 64
+        },
+        "props": {
+          "inputs": [],
+          "fieldMap": [],
+          "outputs": []
+        }
+      },
       "formFieldCount": 3,
       "formFields": [
         {
@@ -1873,6 +2207,20 @@
       "paletteVisible": true,
       "paletteGroup": "数据同步",
       "paletteIndex": 23,
+      "initTemplate": {
+        "rect": {
+          "w": 200,
+          "h": 64
+        },
+        "props": {
+          "inputs": [],
+          "fieldMap": [],
+          "outputs": [],
+          "addSchemaFlag": true,
+          "srcSchemaField": "src_schema",
+          "aggOperator": "union_all"
+        }
+      },
       "formFieldCount": 6,
       "formFields": [
         {
@@ -1973,6 +2321,19 @@
       "paletteVisible": true,
       "paletteGroup": "数据同步",
       "paletteIndex": 24,
+      "initTemplate": {
+        "rect": {
+          "w": 200,
+          "h": 64
+        },
+        "props": {
+          "inputs": [],
+          "outputs": [],
+          "filterExpr": "",
+          "incrementalColumn": "",
+          "incrementalExpr": ""
+        }
+      },
       "formFieldCount": 5,
       "formFields": [
         {
@@ -2062,6 +2423,25 @@
       "paletteVisible": true,
       "paletteGroup": "流处理",
       "paletteIndex": 25,
+      "initTemplate": {
+        "rect": {
+          "w": 200,
+          "h": 64
+        },
+        "props": {
+          "srcType": "kafka",
+          "dsRef": ""
+        },
+        "bindings": {
+          "events": {
+            "kind": "query",
+            "fallback": "流事件"
+          }
+        },
+        "sample": {
+          "events": []
+        }
+      },
       "formFieldCount": 47,
       "formFields": [
         {
@@ -2613,6 +2993,16 @@
       "paletteVisible": true,
       "paletteGroup": "流处理",
       "paletteIndex": 26,
+      "initTemplate": {
+        "rect": {
+          "w": 200,
+          "h": 64
+        },
+        "props": {
+          "fuseType": "union",
+          "alignMap": []
+        }
+      },
       "formFieldCount": 15,
       "formFields": [
         {
@@ -2811,6 +3201,17 @@
       "paletteVisible": true,
       "paletteGroup": "流处理",
       "paletteIndex": 27,
+      "initTemplate": {
+        "rect": {
+          "w": 200,
+          "h": 64
+        },
+        "props": {
+          "outType": "api",
+          "keepLast": 100,
+          "schemaText": ""
+        }
+      },
       "formFieldCount": 15,
       "formFields": [
         {
@@ -3012,6 +3413,17 @@
       "paletteVisible": true,
       "paletteGroup": "流处理",
       "paletteIndex": 28,
+      "initTemplate": {
+        "rect": {
+          "w": 200,
+          "h": 64
+        },
+        "props": {
+          "preset": "ecommerce",
+          "boardLayout": "auto"
+        },
+        "sample": {}
+      },
       "formFieldCount": 3,
       "formFields": [
         {
@@ -3080,6 +3492,29 @@
       "paletteVisible": true,
       "paletteGroup": "变量",
       "paletteIndex": 29,
+      "initTemplate": {
+        "rect": {
+          "w": 160,
+          "h": 48
+        },
+        "props": {
+          "vars": [
+            {
+              "name": "wf.period",
+              "value": "20261001",
+              "type": "literal",
+              "override": false
+            }
+          ]
+        },
+        "bindings": {
+          "body": {
+            "kind": "variable",
+            "fallback": "变量值"
+          }
+        },
+        "sample": {}
+      },
       "formFieldCount": 2,
       "formFields": [
         {
@@ -3141,6 +3576,26 @@
       "paletteVisible": true,
       "paletteGroup": "通用",
       "paletteIndex": 30,
+      "initTemplate": {
+        "rect": {
+          "w": 160,
+          "h": 48
+        },
+        "props": {
+          "channel": "log",
+          "url": "",
+          "template": "",
+          "trigger": "on_success",
+          "failHard": false
+        },
+        "bindings": {
+          "body": {
+            "kind": "variable",
+            "fallback": "通知内容"
+          }
+        },
+        "sample": {}
+      },
       "formFieldCount": 6,
       "formFields": [
         {
@@ -3234,6 +3689,17 @@
       "paletteVisible": true,
       "paletteGroup": "运维/自检",
       "paletteIndex": 31,
+      "initTemplate": {
+        "rect": {
+          "w": 160,
+          "h": 48
+        },
+        "props": {
+          "name": "冒烟",
+          "delaySec": 1
+        },
+        "sample": {}
+      },
       "formFieldCount": 2,
       "formFields": [
         {
@@ -3290,6 +3756,14 @@
       "paletteVisible": true,
       "paletteGroup": "模板",
       "paletteIndex": 32,
+      "initTemplate": {
+        "rect": {
+          "w": 200,
+          "h": 64
+        },
+        "props": {},
+        "sample": {}
+      },
       "formFieldCount": 0,
       "formFields": [],
       "defaultKeys": [],
@@ -3322,6 +3796,22 @@
       "paletteVisible": false,
       "paletteGroup": null,
       "paletteIndex": null,
+      "initTemplate": {
+        "rect": {
+          "w": 200,
+          "h": 64
+        },
+        "props": {
+          "fileType": "csv",
+          "delimiter": ",",
+          "encoding": "utf-8",
+          "headerRows": 1,
+          "autoCreate": true,
+          "writeMode": "append",
+          "flagColumn": "src_schema",
+          "fieldMap": []
+        }
+      },
       "formFieldCount": 4,
       "formFields": [
         {
@@ -3404,6 +3894,19 @@
       "paletteVisible": false,
       "paletteGroup": null,
       "paletteIndex": null,
+      "initTemplate": {
+        "rect": {
+          "w": 200,
+          "h": 64
+        },
+        "props": {
+          "readerType": "mysql",
+          "writerType": "mysql",
+          "batchSize": 1000,
+          "errorThreshold": 0,
+          "truncate": false
+        }
+      },
       "formFieldCount": 4,
       "formFields": [
         {
@@ -3475,6 +3978,25 @@
       "paletteVisible": true,
       "paletteGroup": "输入 / 输出",
       "paletteIndex": 0,
+      "initTemplate": {
+        "rect": {
+          "w": 160,
+          "h": 56
+        },
+        "props": {
+          "sourceTable": "",
+          "where": ""
+        },
+        "bindings": {
+          "rows": {
+            "kind": "query",
+            "fallback": "源表数据"
+          }
+        },
+        "sample": {
+          "rows": []
+        }
+      },
       "formFieldCount": 2,
       "formFields": [
         {
@@ -3529,6 +4051,25 @@
       "paletteVisible": true,
       "paletteGroup": "输入 / 输出",
       "paletteIndex": 1,
+      "initTemplate": {
+        "rect": {
+          "w": 160,
+          "h": 56
+        },
+        "props": {
+          "filePath": "",
+          "format": "CSV"
+        },
+        "bindings": {
+          "rows": {
+            "kind": "query",
+            "fallback": "文件数据"
+          }
+        },
+        "sample": {
+          "rows": []
+        }
+      },
       "formFieldCount": 2,
       "formFields": [
         {
@@ -3583,6 +4124,17 @@
       "paletteVisible": true,
       "paletteGroup": "输入 / 输出",
       "paletteIndex": 2,
+      "initTemplate": {
+        "rect": {
+          "w": 160,
+          "h": 56
+        },
+        "props": {
+          "targetTable": "",
+          "writeMode": "覆盖分区",
+          "partition": ""
+        }
+      },
       "formFieldCount": 3,
       "formFields": [
         {
@@ -3648,6 +4200,15 @@
       "paletteVisible": true,
       "paletteGroup": "输入 / 输出",
       "paletteIndex": 3,
+      "initTemplate": {
+        "rect": {
+          "w": 160,
+          "h": 56
+        },
+        "props": {
+          "filePath": ""
+        }
+      },
       "formFieldCount": 1,
       "formFields": [
         {
@@ -3691,6 +4252,15 @@
       "paletteVisible": true,
       "paletteGroup": "转换算子",
       "paletteIndex": 4,
+      "initTemplate": {
+        "rect": {
+          "w": 160,
+          "h": 56
+        },
+        "props": {
+          "condition": ""
+        }
+      },
       "formFieldCount": 1,
       "formFields": [
         {
@@ -3734,6 +4304,17 @@
       "paletteVisible": true,
       "paletteGroup": "转换算子",
       "paletteIndex": 5,
+      "initTemplate": {
+        "rect": {
+          "w": 180,
+          "h": 56
+        },
+        "props": {
+          "joinType": "LEFT JOIN",
+          "joinKeys": "",
+          "mapping": []
+        }
+      },
       "formFieldCount": 2,
       "formFields": [
         {
@@ -3789,6 +4370,15 @@
       "paletteVisible": true,
       "paletteGroup": "转换算子",
       "paletteIndex": 6,
+      "initTemplate": {
+        "rect": {
+          "w": 160,
+          "h": 56
+        },
+        "props": {
+          "expr": ""
+        }
+      },
       "formFieldCount": 1,
       "formFields": [
         {
@@ -3832,6 +4422,16 @@
       "paletteVisible": true,
       "paletteGroup": "转换算子",
       "paletteIndex": 7,
+      "initTemplate": {
+        "rect": {
+          "w": 160,
+          "h": 56
+        },
+        "props": {
+          "groupKeys": "",
+          "aggs": ""
+        }
+      },
       "formFieldCount": 2,
       "formFields": [
         {
@@ -3886,6 +4486,15 @@
       "paletteVisible": true,
       "paletteGroup": "转换算子",
       "paletteIndex": 8,
+      "initTemplate": {
+        "rect": {
+          "w": 160,
+          "h": 56
+        },
+        "props": {
+          "dedupKeys": ""
+        }
+      },
       "formFieldCount": 1,
       "formFields": [
         {
@@ -3929,6 +4538,16 @@
       "paletteVisible": true,
       "paletteGroup": "转换算子",
       "paletteIndex": 9,
+      "initTemplate": {
+        "rect": {
+          "w": 160,
+          "h": 56
+        },
+        "props": {
+          "keepFields": "",
+          "dropFields": ""
+        }
+      },
       "formFieldCount": 2,
       "formFields": [
         {
@@ -3983,6 +4602,15 @@
       "paletteVisible": true,
       "paletteGroup": "转换算子",
       "paletteIndex": 10,
+      "initTemplate": {
+        "rect": {
+          "w": 160,
+          "h": 56
+        },
+        "props": {
+          "sortKeys": ""
+        }
+      },
       "formFieldCount": 1,
       "formFields": [
         {
@@ -4026,6 +4654,16 @@
       "paletteVisible": true,
       "paletteGroup": "转换算子",
       "paletteIndex": 11,
+      "initTemplate": {
+        "rect": {
+          "w": 180,
+          "h": 56
+        },
+        "props": {
+          "rule": "",
+          "outCount": "2"
+        }
+      },
       "formFieldCount": 2,
       "formFields": [
         {
@@ -4080,6 +4718,15 @@
       "paletteVisible": true,
       "paletteGroup": "转换算子",
       "paletteIndex": 12,
+      "initTemplate": {
+        "rect": {
+          "w": 160,
+          "h": 56
+        },
+        "props": {
+          "mergeMode": "追加 UNION ALL"
+        }
+      },
       "formFieldCount": 1,
       "formFields": [
         {
@@ -4123,6 +4770,16 @@
       "paletteVisible": true,
       "paletteGroup": "转换算子",
       "paletteIndex": 13,
+      "initTemplate": {
+        "rect": {
+          "w": 160,
+          "h": 56
+        },
+        "props": {
+          "mapping": "",
+          "targetField": ""
+        }
+      },
       "formFieldCount": 2,
       "formFields": [
         {
@@ -4177,6 +4834,16 @@
       "paletteVisible": true,
       "paletteGroup": "转换算子",
       "paletteIndex": 14,
+      "initTemplate": {
+        "rect": {
+          "w": 160,
+          "h": 56
+        },
+        "props": {
+          "rate": "10%",
+          "method": "随机采样"
+        }
+      },
       "formFieldCount": 2,
       "formFields": [
         {
@@ -4231,6 +4898,17 @@
       "paletteVisible": true,
       "paletteGroup": "转换算子",
       "paletteIndex": 15,
+      "initTemplate": {
+        "rect": {
+          "w": 180,
+          "h": 56
+        },
+        "props": {
+          "funcName": "",
+          "lang": "Python",
+          "inputFields": ""
+        }
+      },
       "formFieldCount": 3,
       "formFields": [
         {
@@ -4296,6 +4974,24 @@
       "paletteVisible": true,
       "paletteGroup": "脚本",
       "paletteIndex": 16,
+      "initTemplate": {
+        "rect": {
+          "w": 180,
+          "h": 56
+        },
+        "props": {
+          "scriptId": "",
+          "lang": "SQL",
+          "code": ""
+        },
+        "bindings": {
+          "output": {
+            "kind": "static",
+            "fallback": "脚本输出"
+          }
+        },
+        "sample": {}
+      },
       "formFieldCount": 3,
       "formFields": [
         {
@@ -4361,6 +5057,16 @@
       "paletteVisible": false,
       "paletteGroup": null,
       "paletteIndex": null,
+      "initTemplate": {
+        "rect": {
+          "w": 160,
+          "h": 56
+        },
+        "props": {
+          "channel": "短信+飞书",
+          "rule": ""
+        }
+      },
       "formFieldCount": 2,
       "formFields": [
         {
@@ -4415,6 +5121,16 @@
       "paletteVisible": false,
       "paletteGroup": null,
       "paletteIndex": null,
+      "initTemplate": {
+        "rect": {
+          "w": 160,
+          "h": 56
+        },
+        "props": {
+          "table": "",
+          "pkey": ""
+        }
+      },
       "formFieldCount": 2,
       "formFields": [
         {
@@ -4469,6 +5185,15 @@
       "paletteVisible": false,
       "paletteGroup": null,
       "paletteIndex": null,
+      "initTemplate": {
+        "rect": {
+          "w": 160,
+          "h": 56
+        },
+        "props": {
+          "topic": ""
+        }
+      },
       "formFieldCount": 1,
       "formFields": [
         {
@@ -4512,6 +5237,17 @@
       "paletteVisible": false,
       "paletteGroup": null,
       "paletteIndex": null,
+      "initTemplate": {
+        "rect": {
+          "w": 180,
+          "h": 56
+        },
+        "props": {
+          "pattern": "",
+          "scene": "实时风控",
+          "within": ""
+        }
+      },
       "formFieldCount": 3,
       "formFields": [
         {
@@ -4577,6 +5313,24 @@
       "paletteVisible": false,
       "paletteGroup": null,
       "paletteIndex": null,
+      "initTemplate": {
+        "rect": {
+          "w": 180,
+          "h": 56
+        },
+        "props": {
+          "scriptId": "",
+          "lang": "SQL",
+          "code": ""
+        },
+        "bindings": {
+          "output": {
+            "kind": "static",
+            "fallback": "脚本输出"
+          }
+        },
+        "sample": {}
+      },
       "formFieldCount": 3,
       "formFields": [
         {
@@ -4642,6 +5396,15 @@
       "paletteVisible": false,
       "paletteGroup": null,
       "paletteIndex": null,
+      "initTemplate": {
+        "rect": {
+          "w": 160,
+          "h": 56
+        },
+        "props": {
+          "condition": ""
+        }
+      },
       "formFieldCount": 1,
       "formFields": [
         {
@@ -4685,6 +5448,15 @@
       "paletteVisible": false,
       "paletteGroup": null,
       "paletteIndex": null,
+      "initTemplate": {
+        "rect": {
+          "w": 160,
+          "h": 56
+        },
+        "props": {
+          "dimTable": ""
+        }
+      },
       "formFieldCount": 1,
       "formFields": [
         {
@@ -4728,6 +5500,18 @@
       "paletteVisible": false,
       "paletteGroup": null,
       "paletteIndex": null,
+      "initTemplate": {
+        "rect": {
+          "w": 180,
+          "h": 56
+        },
+        "props": {
+          "windowType": "TUMBLE",
+          "size": "1 MINUTE",
+          "pkey": "",
+          "agg": "COUNT(1)"
+        }
+      },
       "formFieldCount": 4,
       "formFields": [
         {
@@ -4804,6 +5588,27 @@
       "paletteVisible": false,
       "paletteGroup": null,
       "paletteIndex": null,
+      "initTemplate": {
+        "rect": {
+          "w": 180,
+          "h": 56
+        },
+        "props": {
+          "dbName": "",
+          "tableName": "",
+          "timeSemantics": "事件时间",
+          "watermarkDelay": "5 s"
+        },
+        "bindings": {
+          "events": {
+            "kind": "query",
+            "fallback": "变更事件"
+          }
+        },
+        "sample": {
+          "events": []
+        }
+      },
       "formFieldCount": 4,
       "formFields": [
         {
@@ -4880,6 +5685,28 @@
       "paletteVisible": false,
       "paletteGroup": null,
       "paletteIndex": null,
+      "initTemplate": {
+        "rect": {
+          "w": 180,
+          "h": 56
+        },
+        "props": {
+          "topic": "",
+          "format": "JSON",
+          "startup": "latest-offset",
+          "timeSemantics": "事件时间",
+          "watermarkDelay": "5 s"
+        },
+        "bindings": {
+          "events": {
+            "kind": "query",
+            "fallback": "流事件"
+          }
+        },
+        "sample": {
+          "events": []
+        }
+      },
       "formFieldCount": 5,
       "formFields": [
         {
@@ -4967,6 +5794,16 @@
       "paletteVisible": false,
       "paletteGroup": null,
       "paletteIndex": null,
+      "initTemplate": {
+        "rect": {
+          "w": 80,
+          "h": 80
+        },
+        "props": {
+          "comp": "datara-web",
+          "addr": "10.0.0.4:5173"
+        }
+      },
       "formFieldCount": 0,
       "formFields": [],
       "defaultKeys": [],
@@ -4997,6 +5834,16 @@
       "paletteVisible": false,
       "paletteGroup": null,
       "paletteIndex": null,
+      "initTemplate": {
+        "rect": {
+          "w": 80,
+          "h": 80
+        },
+        "props": {
+          "comp": "Doris",
+          "addr": "10.0.0.14:9030"
+        }
+      },
       "formFieldCount": 0,
       "formFields": [],
       "defaultKeys": [],
@@ -5027,6 +5874,16 @@
       "paletteVisible": false,
       "paletteGroup": null,
       "paletteIndex": null,
+      "initTemplate": {
+        "rect": {
+          "w": 80,
+          "h": 80
+        },
+        "props": {
+          "comp": "Master",
+          "addr": "10.0.0.5:8000"
+        }
+      },
       "formFieldCount": 0,
       "formFields": [],
       "defaultKeys": [],
@@ -5057,6 +5914,16 @@
       "paletteVisible": false,
       "paletteGroup": null,
       "paletteIndex": null,
+      "initTemplate": {
+        "rect": {
+          "w": 80,
+          "h": 80
+        },
+        "props": {
+          "comp": "Worker",
+          "addr": "10.0.0.6:8001"
+        }
+      },
       "formFieldCount": 0,
       "formFields": [],
       "defaultKeys": [],
@@ -5087,6 +5954,16 @@
       "paletteVisible": false,
       "paletteGroup": null,
       "paletteIndex": null,
+      "initTemplate": {
+        "rect": {
+          "w": 80,
+          "h": 80
+        },
+        "props": {
+          "comp": "Flink",
+          "addr": "10.0.0.11:8081"
+        }
+      },
       "formFieldCount": 0,
       "formFields": [],
       "defaultKeys": [],
@@ -5117,6 +5994,16 @@
       "paletteVisible": false,
       "paletteGroup": null,
       "paletteIndex": null,
+      "initTemplate": {
+        "rect": {
+          "w": 80,
+          "h": 80
+        },
+        "props": {
+          "comp": "Kong",
+          "addr": "10.0.0.3:8000"
+        }
+      },
       "formFieldCount": 0,
       "formFields": [],
       "defaultKeys": [],
@@ -5147,6 +6034,16 @@
       "paletteVisible": false,
       "paletteGroup": null,
       "paletteIndex": null,
+      "initTemplate": {
+        "rect": {
+          "w": 80,
+          "h": 80
+        },
+        "props": {
+          "comp": "HDFS",
+          "addr": "10.0.0.13:9000"
+        }
+      },
       "formFieldCount": 0,
       "formFields": [],
       "defaultKeys": [],
@@ -5177,6 +6074,16 @@
       "paletteVisible": false,
       "paletteGroup": null,
       "paletteIndex": null,
+      "initTemplate": {
+        "rect": {
+          "w": 80,
+          "h": 80
+        },
+        "props": {
+          "comp": "Kafka",
+          "addr": "10.0.0.8:9092"
+        }
+      },
       "formFieldCount": 0,
       "formFields": [],
       "defaultKeys": [],
@@ -5207,6 +6114,16 @@
       "paletteVisible": false,
       "paletteGroup": null,
       "paletteIndex": null,
+      "initTemplate": {
+        "rect": {
+          "w": 80,
+          "h": 80
+        },
+        "props": {
+          "comp": "Nginx",
+          "addr": "10.0.0.2:80"
+        }
+      },
       "formFieldCount": 0,
       "formFields": [],
       "defaultKeys": [],
@@ -5237,6 +6154,16 @@
       "paletteVisible": false,
       "paletteGroup": null,
       "paletteIndex": null,
+      "initTemplate": {
+        "rect": {
+          "w": 80,
+          "h": 80
+        },
+        "props": {
+          "comp": "MySQL",
+          "addr": "10.0.0.12:3306"
+        }
+      },
       "formFieldCount": 0,
       "formFields": [],
       "defaultKeys": [],
@@ -5267,6 +6194,16 @@
       "paletteVisible": false,
       "paletteGroup": null,
       "paletteIndex": null,
+      "initTemplate": {
+        "rect": {
+          "w": 80,
+          "h": 80
+        },
+        "props": {
+          "comp": "Redis",
+          "addr": "10.0.0.9:6379"
+        }
+      },
       "formFieldCount": 0,
       "formFields": [],
       "defaultKeys": [],
@@ -5297,6 +6234,16 @@
       "paletteVisible": false,
       "paletteGroup": null,
       "paletteIndex": null,
+      "initTemplate": {
+        "rect": {
+          "w": 80,
+          "h": 80
+        },
+        "props": {
+          "comp": "Spark",
+          "addr": "10.0.0.10:7077"
+        }
+      },
       "formFieldCount": 0,
       "formFields": [],
       "defaultKeys": [],
@@ -5327,6 +6274,16 @@
       "paletteVisible": false,
       "paletteGroup": null,
       "paletteIndex": null,
+      "initTemplate": {
+        "rect": {
+          "w": 80,
+          "h": 80
+        },
+        "props": {
+          "comp": "ZooKeeper",
+          "addr": "10.0.0.7:2181"
+        }
+      },
       "formFieldCount": 0,
       "formFields": [],
       "defaultKeys": [],
@@ -5338,5 +6295,5 @@
       }
     }
   ],
-  "catalogHash": "ca020afa196b9118"
+  "catalogHash": "03b0f5267c14a95f"
 }

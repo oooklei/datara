@@ -255,19 +255,25 @@ const portsOf = (data: Record<string, unknown>) =>
 const nodeTypes: Record<string, NodeSchema> = {
   /* ================= A 逻辑控制（C1~C10，全可用） ================= */
   start: {
-    type: 'start', label: '开始', icon: '▶', color: '#16a34a', code: 'C1', categories: ['general', 'sync', 'etl'], desc: '工作流启动节点（运行实例编号 instance_id 由此生成）',
+    type: 'start',
+    initTemplate: { rect: { w: 160, h: 48 }, props: {}, sample: {} },
+    label: '开始', icon: '▶', color: '#16a34a', code: 'C1', categories: ['general', 'sync', 'etl'], desc: '工作流启动节点（运行实例编号 instance_id 由此生成）',
     form: [], defaults: {},
     summary: () => '工作流入口',
     /* F61 页面化演示位：节点运行详情（real 走 /api/v1/instances，mock 空态） */
     page: { title: '节点运行详情', comp: NodeRunDetailPage, w: 560, h: 340 },
   },
   end: {
-    type: 'end', label: '结束', icon: '■', color: '#64748b', code: 'C2', categories: ['general', 'sync', 'etl'], desc: '工作流结束节点',
+    type: 'end',
+    initTemplate: { rect: { w: 160, h: 48 }, props: {}, sample: {} },
+    label: '结束', icon: '■', color: '#64748b', code: 'C2', categories: ['general', 'sync', 'etl'], desc: '工作流结束节点',
     form: [], defaults: {}, maxOut: 0,  // G-22：maxOut=0 → 禁止出边（与 G-25 validator 双保险）
     summary: () => '工作流出口',
   },
   conditions: {
-    type: 'conditions', label: '条件分支', icon: '⑃', color: '#d97706', code: 'C3', categories: ['general', 'sync', 'etl'],
+    type: 'conditions',
+    initTemplate: { rect: { w: 180, h: 56 }, props: { branches: [ { id: 'br_yes', name: '满足', expr: 'var.amount > 0' }, { id: 'br_no', name: '不满足', expr: '' } ] } },
+    label: '条件分支', icon: '⑃', color: '#d97706', code: 'C3', categories: ['general', 'sync', 'etl'],
     desc: '按条件走向不同分支（对齐 DS 条件分支 / n8n IF）',
     defaults: {
       branches: [
@@ -280,7 +286,9 @@ const nodeTypes: Record<string, NodeSchema> = {
     summary: (d) => branchListOf(d).map((b) => b.name).join(' / ') || '未配置分支',
   },
   switch: {
-    type: 'switch', label: '切换', icon: '⑄', color: '#b45309', code: 'C4', categories: ['general', 'sync', 'etl'],
+    type: 'switch',
+    initTemplate: { rect: { w: 180, h: 56 }, props: { branches: [ { id: 'sw_a', name: 'A', expr: 'A' }, { id: 'sw_b', name: 'B', expr: 'B' }, { id: 'sw_d', name: '默认', expr: '*' } ] } },
+    label: '切换', icon: '⑄', color: '#b45309', code: 'C4', categories: ['general', 'sync', 'etl'],
     desc: '按变量值匹配多路分发（对齐 DS Switch）',
     defaults: {
       branches: [
@@ -294,7 +302,9 @@ const nodeTypes: Record<string, NodeSchema> = {
     summary: (d) => `${branchListOf(d).length} 路分发`,
   },
   fork: {
-    type: 'fork', label: '并行分叉', icon: '⋔', color: '#ca8a04', code: 'C5', categories: ['general', 'sync', 'etl'],
+    type: 'fork',
+    initTemplate: { rect: { w: 160, h: 48 }, props: {}, sample: {} },
+    label: '并行分叉', icon: '⋔', color: '#ca8a04', code: 'C5', categories: ['general', 'sync', 'etl'],
     desc: '单输入多路并行下发（下游同时触发；并行度 = 出边数）',
     // G-03 修复：删除 parallel 幽灵字段——前端不据此生成端口，后端不据此限制/复制出边，
     // 并行度由出边数天然表达。摘要由 GraphWorkbench 运行时按实际出边数渲染（见 forkSummary）。
@@ -303,7 +313,9 @@ const nodeTypes: Record<string, NodeSchema> = {
     summary: () => '并行分发（出边数 = 并行度）',
   },
   join: {
-    type: 'join', label: '汇合（AND）', icon: '⨝', color: '#0f766e', code: 'C6', categories: ['general', 'sync', 'etl'],
+    type: 'join',
+    initTemplate: { rect: { w: 160, h: 48 }, props: { policy: 'all_terminal' } },
+    label: '汇合（AND）', icon: '⨝', color: '#0f766e', code: 'C6', categories: ['general', 'sync', 'etl'],
     desc: '等待上游分支完成后触发（默认 all_terminal：全部终态即放行，不要求全成功）',
     // G-05 修复：摘要随实际 policy 动态生成，消除"全部成功才触发"的语义误导；补 policy 表单（后端已支持三值）
     defaults: { policy: 'all_terminal' },
@@ -322,14 +334,18 @@ const nodeTypes: Record<string, NodeSchema> = {
     },
   },
   merge: {
-    type: 'merge', label: '合并（OR）', icon: '∪', color: '#0284c7', code: 'C7', categories: ['general', 'sync', 'etl'],
+    type: 'merge',
+    initTemplate: { rect: { w: 160, h: 48 }, props: {}, sample: {} },
+    label: '合并（OR）', icon: '∪', color: '#0284c7', code: 'C7', categories: ['general', 'sync', 'etl'],
     desc: '任一上游完成即触发（抢先合并）',
     defaults: {},
     form: [],
     summary: () => '任一上游完成（OR）',
   },
   delay: {
-    type: 'delay', label: '延时执行', icon: '⏱', color: '#57534e', code: 'C8', categories: ['general', 'sync', 'etl'],
+    type: 'delay',
+    initTemplate: { rect: { w: 160, h: 56 }, props: { duration: 60, unit: '秒' } },
+    label: '延时执行', icon: '⏱', color: '#57534e', code: 'C8', categories: ['general', 'sync', 'etl'],
     desc: '延时/定时后再执行下游（支持时间变量到点延时）',
     defaults: { duration: 60, unit: '秒' },
     form: [
@@ -346,14 +362,18 @@ const nodeTypes: Record<string, NodeSchema> = {
     summary: (d) => d.until ? `到点 ${String(d.until).slice(0, 19)}` : `延时 ${d.duration ?? 0}${String(d.unit ?? '秒')}`,
   },
   dependent: {
-    type: 'dependent', label: '依赖', icon: '⧉', color: '#7c3aed', code: 'C9', categories: ['general', 'sync', 'etl'],
+    type: 'dependent',
+    initTemplate: { rect: { w: 160, h: 48 }, props: { deps: [] } },
+    label: '依赖', icon: '⧉', color: '#7c3aed', code: 'C9', categories: ['general', 'sync', 'etl'],
     desc: '依赖其他工作流/节点产出：所配依赖各自最近一次实例中节点终态=success 即通过（I7 简化语义，周期/批次走变量条件）',
     defaults: { deps: [] as DependentDef[] },
     form: [{ key: 'deps', label: '依赖项列表', type: 'rows', rowsKind: 'deps' }],
     summary: (d) => depSummary(d),
   },
   loop: {
-    type: 'loop', label: '循环迭代', icon: '↻', color: '#c2410c', code: 'C10', categories: ['general', 'sync', 'etl'],
+    type: 'loop',
+    initTemplate: { rect: { w: 180, h: 56 }, props: { collection: '', batchSize: 100, maxIterations: 100 } },
+    label: '循环迭代', icon: '↻', color: '#c2410c', code: 'C10', categories: ['general', 'sync', 'etl'],
     desc: '按批次/条件循环执行子链路（自创，海豚无原生）',
     // G-08 修复：暴露 maxIterations——防死循环的唯一硬保护（后端 DEFAULT_MAX_ITERATIONS=100）
     defaults: { collection: '', batchSize: 100, maxIterations: 100 },
@@ -367,7 +387,9 @@ const nodeTypes: Record<string, NodeSchema> = {
 
   /* ================= B 数据计算（C11~C14 I3；C15/C16/C22 I4 注册转可用） ================= */
   sql: {
-    type: 'sql', label: 'SQL', icon: '⌨', color: '#334155', code: 'C11', categories: ['etl', 'general', 'sync'],
+    type: 'sql',
+    initTemplate: { rect: { w: 200, h: 64 }, props: { datasource: '', sql: 'SELECT 1', pre: '', post: '' }, bindings: { result: { kind: 'query', fallback: '查询结果集' } }, sample: { rows: [] } },
+    label: 'SQL', icon: '⌨', color: '#334155', code: 'C11', categories: ['etl', 'general', 'sync'],
     desc: '选择数据源执行 SQL（查询/非查询/DDL），页面化浮窗展示查询结果前 200 行',
     /* F1 载体：连续 SQL 步骤同源场景——拖入时从逻辑上游快照预填数据源（§11 划界语义） */
     dropPolicy: { prefillFromUpstream: ['datasource'] },
@@ -392,7 +414,9 @@ const nodeTypes: Record<string, NodeSchema> = {
     page: { title: 'SQL 结果预览', comp: SqlPreviewPage, w: 620, h: 380 },
   },
   shell: {
-    type: 'shell', label: 'Shell', icon: '❯', color: '#7c3aed', code: 'C12', categories: ['general', 'etl'],
+    type: 'shell',
+    initTemplate: { rect: { w: 200, h: 64 }, props: { script: 'echo hello', env: [] }, bindings: { output: { kind: 'static', fallback: '脚本输出' } }, sample: {} },
+    label: 'Shell', icon: '❯', color: '#7c3aed', code: 'C12', categories: ['general', 'etl'],
     desc: '在运行时节点执行 Shell 脚本',
     defaults: { script: '', env: [] },
     /* M-B2 八段 DSL 迁移：summary 函数 → render.summary */
@@ -406,7 +430,9 @@ const nodeTypes: Record<string, NodeSchema> = {
     render: { summary: 'Shell（bash 脚本执行）' },
   },
   python: {
-    type: 'python', label: 'Python', icon: 'Py', color: '#2563eb', code: 'C13', categories: ['general', 'etl'],
+    type: 'python',
+    initTemplate: { rect: { w: 200, h: 64 }, props: { script: 'print(1)', env: [], requirements: '' }, bindings: { output: { kind: 'static', fallback: '脚本输出' } }, sample: {} },
+    label: 'Python', icon: 'Py', color: '#2563eb', code: 'C13', categories: ['general', 'etl'],
     desc: '在运行时节点执行 Python 脚本',
     defaults: { script: '', env: [], requirements: '' },
     /* M-B2 八段 DSL 迁移：summary 函数 → render.summary；空 label hint → 固定文案 */
@@ -426,7 +452,9 @@ const nodeTypes: Record<string, NodeSchema> = {
   },
   /* G-12 修复：smoke 补 nodeTypes 条目（已在 WORKER_TYPES + 有 executor，但原无 palette 入口） */
   smoke: {
-    type: 'smoke', label: '冒烟', icon: '☁', color: '#64748b', code: 'C38', categories: ['general'],
+    type: 'smoke',
+    initTemplate: { rect: { w: 160, h: 48 }, props: { name: '冒烟', delaySec: 1 }, sample: {} },
+    label: '冒烟', icon: '☁', color: '#64748b', code: 'C38', categories: ['general'],
     desc: '冒烟测试节点：echo hello + 分片 sleep（用于链路连通性验证）',
     defaults: { name: '冒烟', delaySec: 1 },
     form: [
@@ -436,7 +464,9 @@ const nodeTypes: Record<string, NodeSchema> = {
     summary: (d) => `冒烟 ${d.name || '未命名'}（${d.delaySec ?? 1}s）`,
   },
   ssh: {
-    type: 'ssh', label: 'SSH 脚本', icon: '⌖', color: '#475569', code: 'C14', categories: ['general', 'etl'],
+    type: 'ssh',
+    initTemplate: { rect: { w: 200, h: 64 }, props: { runtimeNode: '', execNodeTag: '', script: 'echo hello' }, bindings: { output: { kind: 'static', fallback: '脚本输出' } }, sample: {} },
+    label: 'SSH 脚本', icon: '⌖', color: '#475569', code: 'C14', categories: ['general', 'etl'],
     desc: '依托运行时节点 SSH 执行远程脚本；I7 支持按执行节点标签多主机路由（F53）',
     defaults: { runtimeNode: '', execNodeTag: '', script: '' },
     /* M-B2 八段 DSL 迁移：showIf → conditions；summary 函数 → render.summary */
@@ -459,7 +489,9 @@ const nodeTypes: Record<string, NodeSchema> = {
     },
   },
   procedure: {
-    type: 'procedure', label: '存储过程', icon: '⚙', color: '#6d28d9', code: 'C15', categories: ['general', 'etl'],
+    type: 'procedure',
+    initTemplate: { rect: { w: 200, h: 64 }, props: { datasource: '', db: '', procedure: '', args: [] }, bindings: { outParams: { kind: 'static', fallback: 'OUT 参数回读' } }, sample: {} },
+    label: '存储过程', icon: '⚙', color: '#6d28d9', code: 'C15', categories: ['general', 'etl'],
     desc: '调用数据源存储过程（CALL），OUT 参数注册为输出参数 out_{key} 供下游引用',
     /* F1 载体：存储过程常接在 SQL 步骤之后同源执行——拖入时快照预填数据源 */
     dropPolicy: { prefillFromUpstream: ['datasource'] },
@@ -475,7 +507,9 @@ const nodeTypes: Record<string, NodeSchema> = {
     render: { summary: '存储过程（CALL）' },
   },
   http: {
-    type: 'http', label: 'HTTP', icon: '⊕', color: '#4f46e5', code: 'C16', categories: ['general', 'etl'],
+    type: 'http',
+    initTemplate: { rect: { w: 160, h: 56 }, props: { method: 'GET', url: 'https://', timeout: 30 }, bindings: { response: { kind: 'static', fallback: '响应体' } }, sample: {} },
+    label: 'HTTP', icon: '⊕', color: '#4f46e5', code: 'C16', categories: ['general', 'etl'],
     desc: '调用外部 HTTP 接口：成功码校验 + 点路径提取响应子集为输出参数',
     defaults: {
       url: '', method: 'GET', headers: [], body: '', bodyType: 'json',
@@ -504,7 +538,9 @@ const nodeTypes: Record<string, NodeSchema> = {
     render: { summary: 'HTTP 调用' },
   },
   file: {
-    type: 'file', label: '文件读取', icon: '▦', color: '#0e7490', code: 'C22', categories: ['general', 'etl'],
+    type: 'file',
+    initTemplate: { rect: { w: 200, h: 64 }, props: { mode: 'datasource', datasource: '', path: '', format: 'csv', encoding: 'utf-8', delimiter: ',', header: true, sheet: '', register: true, tmpName: '', kind: 'table', targetDs: '内置数仓-datara_dw', retention: 'immediate', keepDays: 7 }, bindings: { rows: { kind: 'query', fallback: '文件数据' } }, sample: { rows: [] } },
+    label: '文件读取', icon: '▦', color: '#0e7490', code: 'C22', categories: ['general', 'etl'],
     desc: '读取 CSV/TXT/Excel 注册为临时工作数据，下游以 ${tmp.<名>} 引用；页面化预览检验网格',
     defaults: {
       mode: 'datasource', datasource: '',
@@ -566,7 +602,9 @@ const nodeTypes: Record<string, NodeSchema> = {
 
   /* ================= C 同步编排重构（C29~C31 编排组件；C37 端点选择等细项组件；C17/C24 运行态执行组件） ================= */
   sync: {
-    type: 'sync', label: '同步执行', icon: '⇄', color: '#0891b2', code: 'C17', categories: ['sync'],
+    type: 'sync',
+    initTemplate: { rect: { w: 200, h: 64 }, props: { readerType: 'mysql', writerType: 'mysql', batchSize: 1000, errorThreshold: 0, truncate: false } },
+    label: '同步执行', icon: '⇄', color: '#0891b2', code: 'C17', categories: ['sync'],
     /* 同步编排端点合一：sync 降级为运行态执行组件——设计态画布/palette/校验均排除，schema 保留供运行实例详情渲染；
        运行图由 master 引擎按 endpoint_select.baseMode 物化插入（id 前缀 sys_exec_） */
     runtimeOnly: true,
@@ -587,7 +625,9 @@ const nodeTypes: Record<string, NodeSchema> = {
   /* C37 端点选择（合一组件，取代原 C32 源端选择/C33 目标端选择）：按基准类型分拣源端/目标端表单，
      具名输出端口 sourceRef/targetRef 供下游按端口语义引用（field_map/field_map_union 输入） */
   endpoint_select: {
-    type: 'endpoint_select', label: '端点选择', icon: '⇤', color: '#0369a1', code: 'C37', categories: ['sync'],
+    type: 'endpoint_select',
+    initTemplate: { rect: { w: 200, h: 64 }, props: { baseMode: 'src_base', srcDs: '', srcTable: '', probe: false, matchType: 'exact', matchPrefix: '', probeResult: '', tgtDs: '', tgtTable: '', autoCreate: true } },
+    label: '端点选择', icon: '⇤', color: '#0369a1', code: 'C37', categories: ['sync'],
     desc: '同步端点选择（合一组件）：按基准类型分拣源端/目标端表单；源表基准=源端选表+目标端选实例（表可新建）；目标表基准=目标端选表+源端选实例联动探测各 schema 匹配表；文件同步=文件源+目标端',
     outputs: [
       { id: 'sourceRef', label: '源端表' },
@@ -662,7 +702,9 @@ const nodeTypes: Record<string, NodeSchema> = {
     },
   },
   field_map: {
-    type: 'field_map', label: '字段映射-复制', icon: '⇄', color: '#0369a1', code: 'C34', categories: ['sync'],
+    type: 'field_map',
+    initTemplate: { rect: { w: 200, h: 64 }, props: { inputs: [], fieldMap: [], outputs: [] } },
+    label: '字段映射-复制', icon: '⇄', color: '#0369a1', code: 'C34', categories: ['sync'],
     desc: '源表→目标表字段映射（2 输入 + flex 布局字段对照 + 输入/输出选择）',
     defaults: { inputs: [], fieldMap: [], outputs: [] },
     form: [
@@ -685,7 +727,9 @@ const nodeTypes: Record<string, NodeSchema> = {
     },
   },
   field_map_union: {
-    type: 'field_map_union', label: '字段映射-联合', icon: '⇉', color: '#0369a1', code: 'C36', categories: ['sync'],
+    type: 'field_map_union',
+    initTemplate: { rect: { w: 200, h: 64 }, props: { inputs: [], fieldMap: [], outputs: [], addSchemaFlag: true, srcSchemaField: 'src_schema', aggOperator: 'union_all' } },
+    label: '字段映射-联合', icon: '⇉', color: '#0369a1', code: 'C36', categories: ['sync'],
     desc: '目标表基准专用：多 schema 源表 → 目标表字段联合映射，可增删列/数值转换；选择记录来源时自动追加来源 schema 标识列；聚合算子 union all（当前唯一）',
     defaults: { inputs: [], fieldMap: [], outputs: [], addSchemaFlag: true, srcSchemaField: 'src_schema', aggOperator: 'union_all' },
     form: [
@@ -718,7 +762,9 @@ const nodeTypes: Record<string, NodeSchema> = {
     },
   },
   condition_set: {
-    type: 'condition_set', label: '条件设定', icon: '⚿', color: '#0369a1', code: 'C35', categories: ['sync'],
+    type: 'condition_set',
+    initTemplate: { rect: { w: 200, h: 64 }, props: { inputs: [], outputs: [], filterExpr: '', incrementalColumn: '', incrementalExpr: '' } },
+    label: '条件设定', icon: '⚿', color: '#0369a1', code: 'C35', categories: ['sync'],
     desc: '源表数据筛选条件（默认全量）+ 增量列 + 输入/输出选择',
     defaults: { inputs: [], outputs: [], filterExpr: '', incrementalColumn: '', incrementalExpr: '' },
     form: [
@@ -749,7 +795,9 @@ const nodeTypes: Record<string, NodeSchema> = {
   },
   /* ================= C29~C31 同步编排组件（拖入即物化对应细项节点链，设计时物化引擎零改动） ================= */
   src_base_orch: {
-    type: 'src_base_orch', label: '源表基准编排', icon: '⇉', color: '#0891b2', code: 'C29', categories: ['sync'],
+    type: 'src_base_orch',
+    initTemplate: { rect: { w: 200, h: 64 }, props: {}, sample: {} },
+    label: '源表基准编排', icon: '⇉', color: '#0891b2', code: 'C29', categories: ['sync'],
     desc: '源表基准同步场景：拖入物化为 开始 → 前置清理 → 端点选择(源表基准) → 字段映射-复制 → 条件设定 → 对账校验 → 结束 节点链（对账不通过 → 消息通知）',
     form: [],
     template: {
@@ -758,7 +806,9 @@ const nodeTypes: Record<string, NodeSchema> = {
     summary: () => '源表基准编排模板',
   },
   tgt_base_orch: {
-    type: 'tgt_base_orch', label: '目标表基准编排', icon: '⇉', color: '#0891b2', code: 'C30', categories: ['sync'],
+    type: 'tgt_base_orch',
+    initTemplate: { rect: { w: 200, h: 64 }, props: {}, sample: {} },
+    label: '目标表基准编排', icon: '⇉', color: '#0891b2', code: 'C30', categories: ['sync'],
     desc: '目标表基准同步场景：拖入物化为 开始 → 前置清理 → 端点选择(目标表基准，源端探测) → 字段映射-联合（union all + 来源 schema 标识列）→ 条件设定 → 对账校验 → 结束 节点链（对账不通过 → 消息通知）',
     form: [],
     template: {
@@ -767,7 +817,9 @@ const nodeTypes: Record<string, NodeSchema> = {
     summary: () => '目标表基准编排模板',
   },
   file_sync_orch: {
-    type: 'file_sync_orch', label: '文件同步编排', icon: '⇉', color: '#0891b2', code: 'C31', categories: ['sync'],
+    type: 'file_sync_orch',
+    initTemplate: { rect: { w: 200, h: 64 }, props: {}, sample: {} },
+    label: '文件同步编排', icon: '⇉', color: '#0891b2', code: 'C31', categories: ['sync'],
     desc: '文件同步场景（参考源表基准）：拖入物化为 开始 → 前置清理 → 端点选择(文件源) → 字段映射-复制 → 条件设定 → 对账校验 → 结束 节点链（对账不通过 → 消息通知）',
     form: [],
     template: {
@@ -778,7 +830,9 @@ const nodeTypes: Record<string, NodeSchema> = {
 
   /* ================= D 流处理（C18~C20：I8 注册转可用，四源/五算子/四通道） ================= */
   stream_input: {
-    type: 'stream_input', label: '流输入', icon: '⇥', color: '#0d9488', code: 'C18', categories: ['stream'],
+    type: 'stream_input',
+    initTemplate: { rect: { w: 200, h: 64 }, props: { srcType: 'kafka', dsRef: '' }, bindings: { events: { kind: 'query', fallback: '流事件' } }, sample: { events: [] } },
+    label: '流输入', icon: '⇥', color: '#0d9488', code: 'C18', categories: ['stream'],
     desc: '流输入源（Source）：Kafka 消费 / CDC binlog / HTTP 拉取 / 文件尾随 / 模拟数据 / Redis Stream / MQTT（分型表单，行事件统一 {source, ts, data}）',
     defaults: {
       srcType: 'kafka',
@@ -900,7 +954,9 @@ const nodeTypes: Record<string, NodeSchema> = {
     page: { title: '流输入运行详情', comp: StreamNodePage, w: 620, h: 460 },
   },
   stream_fuse: {
-    type: 'stream_fuse', label: '流融合', icon: '⊞', color: '#0f766e', code: 'C19', categories: ['stream'],
+    type: 'stream_fuse',
+    initTemplate: { rect: { w: 200, h: 64 }, props: { fuseType: 'union', alignMap: [] } },
+    label: '流融合', icon: '⊞', color: '#0f766e', code: 'C19', categories: ['stream'],
     desc: '流融合算子：union 对齐 / join 关联 / 窗口聚合 / filter 过滤 / map 字段映射（分型表单）',
     defaults: {
       fuseType: 'union',
@@ -961,7 +1017,9 @@ const nodeTypes: Record<string, NodeSchema> = {
     page: { title: '流融合运行详情', comp: StreamNodePage, w: 620, h: 460 },
   },
   stream_output: {
-    type: 'stream_output', label: '流输出', icon: '⇨', color: '#059669', code: 'C20', categories: ['stream'],
+    type: 'stream_output',
+    initTemplate: { rect: { w: 200, h: 64 }, props: { outType: 'api', keepLast: 100, schemaText: '' } },
+    label: '流输出', icon: '⇨', color: '#059669', code: 'C20', categories: ['stream'],
     desc: '流输出汇：API 订阅（SSE/WS/轮询）/ 目标库表 / Kafka topic / 文件滚动（四通道）',
     defaults: {
       outType: 'api',
@@ -1015,7 +1073,9 @@ const nodeTypes: Record<string, NodeSchema> = {
     page: { title: '实时数据展示', comp: StreamDataPage, w: 680, h: 460 },
   },
   page_board: {
-    type: 'page_board', label: '页面组件', icon: '▤', color: '#0e7490', categories: ['stream'],
+    type: 'page_board',
+    initTemplate: { rect: { w: 200, h: 64 }, props: { preset: 'ecommerce', boardLayout: 'auto' }, sample: {} },
+    label: '页面组件', icon: '▤', color: '#0e7490', categories: ['stream'],
     desc: '实时看板页面组件：消费本画布流任务 API 输出通道数据，指标卡/趋势曲线/分布/告警/明细按字段特征自适应渲染（不参与管道装配）',
     nonExecutable: true,  // G-22：第三渲染分类——不产生任务实例、不参与 _execute_node
     defaults: { preset: 'ecommerce', boardLayout: 'auto' },  // G-18：boardLayout 抽到 data 层（可版本化）
@@ -1043,7 +1103,9 @@ const nodeTypes: Record<string, NodeSchema> = {
 
   /* ================= E 变量（C21：I7 注册转可用） ================= */
   variable: {
-    type: 'variable', label: '变量组件', icon: '$', color: '#7c2d12', code: 'C21', categories: ['general', 'sync', 'etl'],
+    type: 'variable',
+    initTemplate: { rect: { w: 160, h: 48 }, props: { vars: [ { name: 'wf.period', value: '20261001', type: 'literal', override: false } ] }, bindings: { body: { kind: 'variable', fallback: '变量值' } }, sample: {} },
+    label: '变量组件', icon: '$', color: '#7c2d12', code: 'C21', categories: ['general', 'sync', 'etl'],
     desc: '运行至本节点时将变量表注入实例运行时变量存储（工作流级层），供下游与条件区块引用',
     defaults: {
       vars: [
@@ -1060,7 +1122,9 @@ const nodeTypes: Record<string, NodeSchema> = {
 
   /* ================= G I12 组件（C24 文件入仓执行 / C25 数据校验 / C26 通知） ================= */
   file_sync: {
-    type: 'file_sync', label: '文件入仓执行', icon: '⇥', color: '#0d9488', code: 'C24', categories: ['sync'],
+    type: 'file_sync',
+    initTemplate: { rect: { w: 200, h: 64 }, props: { fileType: 'csv', delimiter: ',', encoding: 'utf-8', headerRows: 1, autoCreate: true, writeMode: 'append', flagColumn: 'src_schema', fieldMap: [] } },
+    label: '文件入仓执行', icon: '⇥', color: '#0d9488', code: 'C24', categories: ['sync'],
     /* 同步编排端点合一：file_sync 降级为运行态执行组件——设计态画布/palette/校验均排除，schema 保留供运行实例详情渲染；
        运行图由 master 引擎按 endpoint_select.baseMode=file_sync 物化插入（id 前缀 sys_exec_） */
     runtimeOnly: true,
@@ -1084,7 +1148,9 @@ const nodeTypes: Record<string, NodeSchema> = {
     summary: (d) => `文件入仓（${String(d.writeMode ?? 'append')}，运行态，配置经 master 合并）`,
   },
   assert: {
-    type: 'assert', label: '数据校验', icon: '⚑', color: '#dc2626', code: 'C25', categories: ['etl', 'general'],
+    type: 'assert',
+    initTemplate: { rect: { w: 180, h: 56 }, props: { assertSrc: 'upstream', assertUpstream: '', assertDs: '', assertTable: '', rules: [ { key: 'rows', value: 'min=1,max=1000000', note: '行数区间' } ], ruleColumns: [], onFail: 'fail' } },
+    label: '数据校验', icon: '⚑', color: '#dc2626', code: 'C25', categories: ['etl', 'general'],
     desc: '数据校验闸门（master 内联）：行数区间/主键唯一/非空率/自定义 SQL 断言；通过走「通过」出口，不达标走「不通过」出口或断流失败（onFail）',
     defaults: ASSERT_BASE(),
     ports: () => [{ id: 'success', label: '通过' }, { id: 'failure', label: '不通过' }],
@@ -1120,7 +1186,9 @@ const nodeTypes: Record<string, NodeSchema> = {
     render: { summary: '数据校验' },
   },
   notify: {
-    type: 'notify', label: '通知', icon: '✉', color: '#7c3aed', code: 'C26', categories: ['general', 'stream', 'etl'],
+    type: 'notify',
+    initTemplate: { rect: { w: 160, h: 48 }, props: { channel: 'log', url: '', template: '', trigger: 'on_success', failHard: false }, bindings: { body: { kind: 'variable', fallback: '通知内容' } }, sample: {} },
+    label: '通知', icon: '✉', color: '#7c3aed', code: 'C26', categories: ['general', 'stream', 'etl'],
     desc: '工作流/分支收尾通知：webhook POST 或仅日志（触发时机留痕；webhook 失败默认仅告警不断流，可开断流开关）',
     defaults: { ...NOTIFY_BASE },
     /* M-B2 八段 DSL 迁移：showIf → conditions；summary 函数 → render.summary；hint 函数字面量化 */
@@ -1150,7 +1218,9 @@ const nodeTypes: Record<string, NodeSchema> = {
 
   /* ================= F63 模板（demo_pipeline，可拖；展开后不保留占位节点） ================= */
   demo_pipeline: {
-    type: 'demo_pipeline', label: '示例管道模板', icon: '✦', color: '#16a34a', code: '', categories: ['general'],
+    type: 'demo_pipeline',
+    initTemplate: { rect: { w: 200, h: 64 }, props: {}, sample: {} },
+    label: '示例管道模板', icon: '✦', color: '#16a34a', code: '', categories: ['general'],
     desc: '演示模板：展开为 开始 → SQL 占位 → 结束 三节点链（设计时物化，引擎零改动）',
     form: [],
     template: {

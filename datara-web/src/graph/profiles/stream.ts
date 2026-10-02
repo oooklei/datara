@@ -21,7 +21,9 @@ export const streamProfile: ViewProfile = {
   nodeTypes: {
     /* 流专属节点（源/算子/输出）… */
     s_kafka: {
-      type: 's_kafka', label: 'Kafka 源', icon: '⇉', color: '#0891b2',
+      type: 's_kafka',
+      initTemplate: { rect: { w: 180, h: 56 }, props: { topic: '', format: 'JSON', startup: 'latest-offset', timeSemantics: '事件时间', watermarkDelay: '5 s' }, bindings: { events: { kind: 'query', fallback: '流事件' } }, sample: { events: [] } },
+      label: 'Kafka 源', icon: '⇉', color: '#0891b2',
       desc: 'Kafka Topic 消费（JSON/Canal/Avro）',
       defaults: { topic: '', format: 'JSON', startup: 'latest-offset', timeSemantics: '事件时间', watermarkDelay: '5 s' },
       form: [
@@ -44,7 +46,9 @@ export const streamProfile: ViewProfile = {
       summary: (d: Record<string, unknown>) => String(d.topic || '未配置 Topic'),
     },
     s_cdc: {
-      type: 's_cdc', label: 'CDC 采集', icon: '⎘', color: '#0891b2',
+      type: 's_cdc',
+      initTemplate: { rect: { w: 180, h: 56 }, props: { dbName: '', tableName: '', timeSemantics: '事件时间', watermarkDelay: '5 s' }, bindings: { events: { kind: 'query', fallback: '变更事件' } }, sample: { events: [] } },
+      label: 'CDC 采集', icon: '⎘', color: '#0891b2',
       desc: 'MySQL Binlog 实时捕获',
       defaults: { dbName: '', tableName: '', timeSemantics: '事件时间', watermarkDelay: '5 s' },
       form: [
@@ -60,7 +64,9 @@ export const streamProfile: ViewProfile = {
       summary: (d: Record<string, unknown>) => `Binlog: ${d.dbName || '?'}.${d.tableName || '?'}`,
     },
     p_window: {
-      type: 'p_window', label: '窗口聚合', icon: '⊞', color: '#7c3aed',
+      type: 'p_window',
+      initTemplate: { rect: { w: 180, h: 56 }, props: { windowType: 'TUMBLE', size: '1 MINUTE', pkey: '', agg: 'COUNT(1)' } },
+      label: '窗口聚合', icon: '⊞', color: '#7c3aed',
       desc: 'TUMBLE / HOP / SESSION 滚动聚合',
       defaults: { windowType: 'TUMBLE', size: '1 MINUTE', pkey: '', agg: 'COUNT(1)' },
       form: [
@@ -76,14 +82,18 @@ export const streamProfile: ViewProfile = {
       summary: (d: Record<string, unknown>) => `${d.windowType}(${d.size}) BY ${d.pkey || '⚠未设分区键'}`,
     },
     p_join: {
-      type: 'p_join', label: '维表 Join', icon: '⋈', color: '#7c3aed',
+      type: 'p_join',
+      initTemplate: { rect: { w: 160, h: 56 }, props: { dimTable: '' } },
+      label: '维表 Join', icon: '⋈', color: '#7c3aed',
       desc: '关联维表补全字段',
       defaults: { dimTable: '' },
       form: [{ key: 'dimTable', label: '维表', type: 'text', placeholder: 'dim_user' }],
       summary: (d: Record<string, unknown>) => `JOIN ${d.dimTable || '?'}`,
     },
     p_filter: {
-      type: 'p_filter', label: '过滤', icon: '⑂', color: '#7c3aed',
+      type: 'p_filter',
+      initTemplate: { rect: { w: 160, h: 56 }, props: { condition: '' } },
+      label: '过滤', icon: '⑂', color: '#7c3aed',
       desc: '条件过滤 / 脏数据剔除',
       defaults: { condition: '' },
       form: [{ key: 'condition', label: '条件', type: 'text', placeholder: 'pay_amount IS NOT NULL' }],
@@ -91,7 +101,9 @@ export const streamProfile: ViewProfile = {
     },
     /* CEP 复杂事件处理（第6章流处理：在数据流中匹配特定事件序列，如风控规则、异常检测） */
     op_cep: {
-      type: 'op_cep', label: 'CEP复杂事件', icon: '◈', color: '#dc2626',
+      type: 'op_cep',
+      initTemplate: { rect: { w: 180, h: 56 }, props: { pattern: '', scene: '实时风控', within: '' } },
+      label: 'CEP复杂事件', icon: '◈', color: '#dc2626',
       desc: '模式检测：在数据流中匹配特定事件序列，适用于实时风控、异常检测、漏斗分析',
       defaults: { pattern: '', scene: '实时风控', within: '' },
       form: [
@@ -106,7 +118,9 @@ export const streamProfile: ViewProfile = {
     },
     ...opScriptSchema,
     o_doris: {
-      type: 'o_doris', label: 'Doris 输出', icon: '⛁', color: '#16a34a',
+      type: 'o_doris',
+      initTemplate: { rect: { w: 160, h: 56 }, props: { table: '', pkey: '' } },
+      label: 'Doris 输出', icon: '⛁', color: '#16a34a',
       desc: '写入 Doris 实时表（分桶键必填）',
       defaults: { table: '', pkey: '' },
       form: [
@@ -116,14 +130,18 @@ export const streamProfile: ViewProfile = {
       summary: (d: Record<string, unknown>) => String(d.table || '未配置目标表'),
     },
     o_kafka: {
-      type: 'o_kafka', label: 'Kafka 输出', icon: '⇉', color: '#16a34a',
+      type: 'o_kafka',
+      initTemplate: { rect: { w: 160, h: 56 }, props: { topic: '' } },
+      label: 'Kafka 输出', icon: '⇉', color: '#16a34a',
       desc: '写回 Kafka Topic（下游再消费）',
       defaults: { topic: '' },
       form: [{ key: 'topic', label: 'Topic', type: 'text', placeholder: 'topic_inventory_cdc' }],
       summary: (d: Record<string, unknown>) => String(d.topic || '未配置 Topic'),
     },
     o_alert: {
-      type: 'o_alert', label: '实时告警', icon: '⚠', color: '#c2410c',
+      type: 'o_alert',
+      initTemplate: { rect: { w: 160, h: 56 }, props: { channel: '短信+飞书', rule: '' } },
+      label: '实时告警', icon: '⚠', color: '#c2410c',
       desc: 'CEP 规则命中后推送告警',
       defaults: { channel: '短信+飞书', rule: '' },
       form: [

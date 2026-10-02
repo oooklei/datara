@@ -36,7 +36,9 @@ export const etlProfile: ViewProfile = {
   defaultEdge: 'flow',
   nodeTypes: {
     src_db: {
-      type: 'src_db', label: '数据库输入', icon: '⛁', color: '#0891b2',
+      type: 'src_db',
+      initTemplate: { rect: { w: 160, h: 56 }, props: { sourceTable: '', where: '' }, bindings: { rows: { kind: 'query', fallback: '源表数据' } }, sample: { rows: [] } },
+      label: '数据库输入', icon: '⛁', color: '#0891b2',
       desc: '读取库表（JDBC/ODBC）',
       defaults: { sourceTable: '', where: '' },
       form: [
@@ -46,7 +48,9 @@ export const etlProfile: ViewProfile = {
       summary: (d: Record<string, unknown>) => String(d.sourceTable || '未配置源表'),
     },
     src_file: {
-      type: 'src_file', label: '文件输入', icon: '▦', color: '#0891b2',
+      type: 'src_file',
+      initTemplate: { rect: { w: 160, h: 56 }, props: { filePath: '', format: 'CSV' }, bindings: { rows: { kind: 'query', fallback: '文件数据' } }, sample: { rows: [] } },
+      label: '文件输入', icon: '▦', color: '#0891b2',
       desc: '读取 CSV/Excel/JSON 文件',
       defaults: { filePath: '', format: 'CSV' },
       form: [
@@ -56,14 +60,18 @@ export const etlProfile: ViewProfile = {
       summary: (d: Record<string, unknown>) => String(d.filePath || '未配置文件'),
     },
     op_filter: {
-      type: 'op_filter', label: '过滤', icon: '⑂', color: '#1668dc',
+      type: 'op_filter',
+      initTemplate: { rect: { w: 160, h: 56 }, props: { condition: '' } },
+      label: '过滤', icon: '⑂', color: '#1668dc',
       desc: '按条件过滤行',
       defaults: { condition: '' },
       form: [{ key: 'condition', label: '过滤条件', type: 'text', placeholder: 'amount > 0' }],
       summary: (d: Record<string, unknown>) => String(d.condition || '未配置条件'),
     },
     op_join: {
-      type: 'op_join', label: 'Join', icon: '⋈', color: '#1668dc',
+      type: 'op_join',
+      initTemplate: { rect: { w: 180, h: 56 }, props: { joinType: 'LEFT JOIN', joinKeys: '', mapping: [] } },
+      label: 'Join', icon: '⋈', color: '#1668dc',
       desc: '关联另一输入（维表/事实表）',
       defaults: { joinType: 'LEFT JOIN', joinKeys: '', mapping: [] },
       form: [
@@ -76,14 +84,18 @@ export const etlProfile: ViewProfile = {
       summary: (d: Record<string, unknown>) => `${d.joinType} ON ${d.joinKeys || '?'}`,
     },
     op_expr: {
-      type: 'op_expr', label: '表达式', icon: 'ƒ', color: '#1668dc',
+      type: 'op_expr',
+      initTemplate: { rect: { w: 160, h: 56 }, props: { expr: '' } },
+      label: '表达式', icon: 'ƒ', color: '#1668dc',
       desc: '派生列 / 字段计算',
       defaults: { expr: '' },
       form: [{ key: 'expr', label: '计算表达式', type: 'text', placeholder: 'pay_amount = amount - discount' }],
       summary: (d: Record<string, unknown>) => String(d.expr || '未配置表达式'),
     },
     op_agg: {
-      type: 'op_agg', label: '聚合', icon: 'Σ', color: '#1668dc',
+      type: 'op_agg',
+      initTemplate: { rect: { w: 160, h: 56 }, props: { groupKeys: '', aggs: '' } },
+      label: '聚合', icon: 'Σ', color: '#1668dc',
       desc: '分组聚合（count/sum/avg）',
       defaults: { groupKeys: '', aggs: '' },
       form: [
@@ -93,7 +105,9 @@ export const etlProfile: ViewProfile = {
       summary: (d: Record<string, unknown>) => `GROUP BY ${d.groupKeys || '?'}`,
     },
     op_dedup: {
-      type: 'op_dedup', label: '去重', icon: '①', color: '#1668dc',
+      type: 'op_dedup',
+      initTemplate: { rect: { w: 160, h: 56 }, props: { dedupKeys: '' } },
+      label: '去重', icon: '①', color: '#1668dc',
       desc: '按主键去重',
       defaults: { dedupKeys: '' },
       form: [{ key: 'dedupKeys', label: '去重键', type: 'text', placeholder: 'pay_id' }],
@@ -101,7 +115,9 @@ export const etlProfile: ViewProfile = {
     },
     /* ---- 常用转换算子补充（第5章：共 12 种，此处补齐后 7 种）---- */
     op_select: {
-      type: 'op_select', label: '字段选择', icon: '⊟', color: '#1668dc',
+      type: 'op_select',
+      initTemplate: { rect: { w: 160, h: 56 }, props: { keepFields: '', dropFields: '' } },
+      label: '字段选择', icon: '⊟', color: '#1668dc',
       desc: '按列裁剪行：仅保留或排除指定字段，常用于宽表瘦身',
       defaults: { keepFields: '', dropFields: '' },
       form: [
@@ -111,14 +127,18 @@ export const etlProfile: ViewProfile = {
       summary: (d: Record<string, unknown>) => String(d.keepFields || (d.dropFields ? `排除 ${d.dropFields}` : '未配置字段')),
     },
     op_sort: {
-      type: 'op_sort', label: '排序', icon: '↕', color: '#1668dc',
+      type: 'op_sort',
+      initTemplate: { rect: { w: 160, h: 56 }, props: { sortKeys: '' } },
+      label: '排序', icon: '↕', color: '#1668dc',
       desc: '按字段全局排序，多字段可用逗号分隔并带 ASC/DESC 方向',
       defaults: { sortKeys: '' },
       form: [{ key: 'sortKeys', label: '排序字段', type: 'text', placeholder: 'create_time DESC' }],
       summary: (d: Record<string, unknown>) => `ORDER BY ${String(d.sortKeys || '?')}`,
     },
     op_split: {
-      type: 'op_split', label: '拆分', icon: '⋔', color: '#1668dc',
+      type: 'op_split',
+      initTemplate: { rect: { w: 180, h: 56 }, props: { rule: '', outCount: '2' } },
+      label: '拆分', icon: '⋔', color: '#1668dc',
       desc: '按条件把数据流拆成多路分支，供下游分别处理',
       defaults: { rule: '', outCount: '2' },
       form: [
@@ -131,7 +151,9 @@ export const etlProfile: ViewProfile = {
       summary: (d: Record<string, unknown>) => `${String(d.outCount || '2')} 路 · ${String(d.rule || '未配置规则')}`,
     },
     op_merge: {
-      type: 'op_merge', label: '合并', icon: '⊕', color: '#1668dc',
+      type: 'op_merge',
+      initTemplate: { rect: { w: 160, h: 56 }, props: { mergeMode: '追加 UNION ALL' } },
+      label: '合并', icon: '⊕', color: '#1668dc',
       desc: '将多路输入合并为一路：追加不去重，或按键去重后合并',
       defaults: { mergeMode: '追加 UNION ALL' },
       form: [
@@ -143,7 +165,9 @@ export const etlProfile: ViewProfile = {
       summary: (d: Record<string, unknown>) => String(d.mergeMode || '未配置合并方式'),
     },
     op_replace: {
-      type: 'op_replace', label: '查找替换', icon: '⇄', color: '#1668dc',
+      type: 'op_replace',
+      initTemplate: { rect: { w: 160, h: 56 }, props: { mapping: '', targetField: '' } },
+      label: '查找替换', icon: '⇄', color: '#1668dc',
       desc: '按映射表替换字段取值（如编码转文案），多组映射用分号分隔',
       defaults: { mapping: '', targetField: '' },
       form: [
@@ -153,7 +177,9 @@ export const etlProfile: ViewProfile = {
       summary: (d: Record<string, unknown>) => String(d.targetField || '未配置目标字段'),
     },
     op_sample: {
-      type: 'op_sample', label: '采样', icon: '⁂', color: '#1668dc',
+      type: 'op_sample',
+      initTemplate: { rect: { w: 160, h: 56 }, props: { rate: '10%', method: '随机采样' } },
+      label: '采样', icon: '⁂', color: '#1668dc',
       desc: '按比例抽取部分数据，用于开发调试与统计分析',
       defaults: { rate: '10%', method: '随机采样' },
       form: [
@@ -166,7 +192,9 @@ export const etlProfile: ViewProfile = {
       summary: (d: Record<string, unknown>) => `${String(d.method || '随机采样')} ${String(d.rate || '?')}`,
     },
     op_udf: {
-      type: 'op_udf', label: 'UDF', icon: 'λ', color: '#1668dc',
+      type: 'op_udf',
+      initTemplate: { rect: { w: 180, h: 56 }, props: { funcName: '', lang: 'Python', inputFields: '' } },
+      label: 'UDF', icon: 'λ', color: '#1668dc',
       desc: '注册自定义函数对行级字段加工，适合内置算子覆盖不了的业务逻辑',
       defaults: { funcName: '', lang: 'Python', inputFields: '' },
       form: [
@@ -178,7 +206,9 @@ export const etlProfile: ViewProfile = {
     },
     ...opScriptSchema,
     out_db: {
-      type: 'out_db', label: '数据库输出', icon: '⛁', color: '#16a34a',
+      type: 'out_db',
+      initTemplate: { rect: { w: 160, h: 56 }, props: { targetTable: '', writeMode: '覆盖分区', partition: '' } },
+      label: '数据库输出', icon: '⛁', color: '#16a34a',
       desc: '写入目标表（覆盖/追加分区）',
       defaults: { targetTable: '', writeMode: '覆盖分区', partition: '' },
       form: [
@@ -192,7 +222,9 @@ export const etlProfile: ViewProfile = {
       summary: (d: Record<string, unknown>) => `${d.writeMode} ${d.targetTable || '未配置目标表'}`,
     },
     out_file: {
-      type: 'out_file', label: '文件输出', icon: '▦', color: '#16a34a',
+      type: 'out_file',
+      initTemplate: { rect: { w: 160, h: 56 }, props: { filePath: '' } },
+      label: '文件输出', icon: '▦', color: '#16a34a',
       desc: '导出文件（CSV/Excel）',
       defaults: { filePath: '' },
       form: [{ key: 'filePath', label: '导出路径', type: 'text', placeholder: '/data/export/kpi.csv' }],

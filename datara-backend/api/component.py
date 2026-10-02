@@ -100,6 +100,7 @@ def list_components(
         "executor": c["executor"],
         "paletteVisible": c["paletteVisible"],
         "paletteGroup": c["paletteGroup"],
+        "initTemplate": c.get("initTemplate"),
         "formFieldCount": c["formFieldCount"],
         "requiredFieldCount": sum(1 for f in c["formFields"] if f["required"]),
         "flags": c["flags"],

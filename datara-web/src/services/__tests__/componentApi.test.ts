@@ -158,3 +158,30 @@ describe('D3 发布治理契约（offline/rollback/impacted/registry/publish）'
     expect(err.data?.items?.[0].gate).toBe('pure_data')
   })
 })
+
+describe('组件初始化模板（页面设计器 §11 · Task 14）', () => {
+  it('catalog: 全量系统组件携带初始化模板（initTemplate 纯数据）', async () => {
+    /* 直读仓库内权威快照喂给 listComponents 消费链：断言 catalog 全量（75 组件）
+       每条携带 initTemplate，且为纯数据（PageDSL 片段禁函数/表达式字符串，
+       与后端 FORBIDDEN_SNIPPETS 红线同口径）。 */
+    const { readFileSync } = await import('node:fs')
+    const catPath = new URL('../../../../datara-backend/common/dag_catalog.json', import.meta.url)
+    const cat = JSON.parse(readFileSync(catPath, 'utf-8')) as {
+      components: Record<string, unknown>[]
+      catalogHash: string
+      schemaVersion: number
+    }
+    stubRes({
+      total: cat.components.length, catalogHash: cat.catalogHash,
+      schemaVersion: cat.schemaVersion, items: cat.components,
+    })
+    const { listComponents } = await import('../componentApi')
+    const res = await listComponents()
+    expect(res.items.length).toBeGreaterThan(0)
+    res.items.forEach((it) => {
+      const tpl = (it as unknown as { initTemplate?: unknown }).initTemplate
+      expect(tpl, `${it.type} 缺 initTemplate`).toBeTruthy()
+      expect(JSON.stringify(tpl)).not.toMatch(/=>|function|eval\(|\bimport\b|\$\{/)
+    })
+  })
+})

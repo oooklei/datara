@@ -191,6 +191,22 @@ export interface TemplateDef {
   modes: TemplateModeDef[]
 }
 
+/** §11 组件初始化模板（页面设计器 Task 14）：拖入设计器的单节点默认形态。
+ *  PageDSL 风格**纯数据**片段（禁函数/表达式字符串，后端 FORBIDDEN_SNIPPETS 红线同口径），
+ *  经 scripts/export_dag_catalog.py 导入 common/dag_catalog.json 只读下发。
+ *  与 F63 template（聚合展开模板，含 build 函数、落图即展开为节点链）正交：
+ *  本字段描述单节点落图默认值，template 描述多节点链展开。 */
+export interface ComponentInitTemplate {
+  /** 节点默认尺寸（设计器画布坐标） */
+  rect: { w: number; h: number }
+  /** 默认 props（节点 data 同名键：取 defaults 值或 label 语义的安全中文示例） */
+  props: Record<string, unknown>
+  /** 推荐绑定（主数据槽 → 绑定声明：kind=query/static/variable + fallback 空态文案） */
+  bindings?: Record<string, unknown>
+  /** 空态示例数据（可选） */
+  sample?: unknown
+}
+
 /** F1 configure-first 拖入策略（治理设计 §11，纯数据——禁函数/表达式字符串） */
 export interface DropPolicy {
   /** drop 时一次性快照预填的字段 key 列表（§11 划界语义：取逻辑上游节点 data 同名非空值写入；与 Inspector pick 实时联动并存、语义不同） */
@@ -235,6 +251,8 @@ export interface NodeSchema {
   page?: PageDef
   /** F63 聚合模板声明 */
   template?: TemplateDef
+  /** §11 初始化模板（页面设计器拖入默认形态，纯数据可导出） */
+  initTemplate?: ComponentInitTemplate
   /** F1 拖入策略（缺省 = 默认策略：必弹配置弹窗、不限实例） */
   dropPolicy?: DropPolicy
   /** 新建节点 data 默认值 */

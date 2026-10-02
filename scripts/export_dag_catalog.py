@@ -164,6 +164,185 @@ def parse_palette(ts: str) -> tuple[dict[str, dict], dict]:
     }
 
 
+# --------------------------------------------------------------- initTemplate（§11 初始化模板，Task 14）
+
+class _TsLiteralError(ValueError):
+    """initTemplate 字面量解析失败（含函数/展开等非数据记号时抛出）。"""
+
+
+def _strip_ts_comments(text: str) -> str:
+    """字符串感知地剥离 // 与 /* */ 注释（保留字符串字面量内的 /，如 'https://'）。"""
+    out: list[str] = []
+    i, n = 0, len(text)
+    in_str: str | None = None
+    while i < n:
+        c = text[i]
+        if in_str:
+            out.append(c)
+            if c == "\\" and i + 1 < n:
+                out.append(text[i + 1])
+                i += 2
+                continue
+            if c == in_str:
+                in_str = None
+            i += 1
+            continue
+        if c in ("'", '"', "`"):
+            in_str = c
+            out.append(c)
+            i += 1
+            continue
+        if c == "/" and i + 1 < n and text[i + 1] == "/":
+            while i < n and text[i] != "\n":
+                i += 1
+            continue
+        if c == "/" and i + 1 < n and text[i + 1] == "*":
+            j = text.find("*/", i + 2)
+            i = (j + 2) if j >= 0 else n
+            continue
+        out.append(c)
+        i += 1
+    return "".join(out)
+
+
+def _split_top_level(s: str) -> list[str]:
+    """按顶层逗号切分（字符串/嵌套深度感知）。"""
+    parts: list[str] = []
+    depth = 0
+    in_str: str | None = None
+    cur: list[str] = []
+    i, n = 0, len(s)
+    while i < n:
+        c = s[i]
+        if in_str:
+            cur.append(c)
+            if c == "\\" and i + 1 < n:
+                cur.append(s[i + 1])
+                i += 2
+                continue
+            if c == in_str:
+                in_str = None
+        elif c in ("'", '"', "`"):
+            in_str = c
+            cur.append(c)
+        elif c in "{[":
+            depth += 1
+            cur.append(c)
+        elif c in "}]":
+            depth -= 1
+            cur.append(c)
+        elif c == "," and depth == 0:
+            parts.append("".join(cur))
+            cur = []
+        else:
+            cur.append(c)
+        i += 1
+    tail = "".join(cur)
+    if tail.strip():
+        parts.append(tail)
+    return parts
+
+
+_KEY_RE = re.compile(
+    r"^(?:'([^']*)'|\"([^\"]*)\"|([A-Za-z_$][\w$]*))\s*:\s*(.+)$", re.S)
+
+
+def _parse_ts_literal(text: str):
+    """TS 字面量 → python 值（纯数据子集：对象/数组/字符串/数字/布尔/null）。
+
+    仅服务于 initTemplate（§11 纯数据红线）：遇函数/展开/无法识别的记号即抛
+    _TsLiteralError，由调用方降级为 None（不导出），保证 catalog 不出现函数文本。
+    """
+    s = text.strip()
+    if not s:
+        raise _TsLiteralError("空字面量")
+    if s[0] == "{":
+        if not s.endswith("}"):
+            raise _TsLiteralError("对象不配平")
+        obj: dict = {}
+        for part in _split_top_level(_strip_ts_comments(s[1:-1])):
+            part = part.strip()
+            if not part:
+                continue
+            m = _KEY_RE.match(part)
+            if not m:
+                raise _TsLiteralError(f"无法解析键值对: {part[:60]}")
+            key = next(g for g in m.groups()[:3] if g is not None)
+            obj[key] = _parse_ts_literal(m.group(4))
+        return obj
+    if s[0] == "[":
+        if not s.endswith("]"):
+            raise _TsLiteralError("数组不配平")
+        return [_parse_ts_literal(p) for p in _split_top_level(_strip_ts_comments(s[1:-1]))
+                if p.strip()]
+    if len(s) >= 2 and s[0] == s[-1] and s[0] in ("'", '"', "`"):
+        return s[1:-1]
+    if s == "true":
+        return True
+    if s == "false":
+        return False
+    if s == "null":
+        return None
+    try:
+        return int(s)
+    except ValueError:
+        pass
+    try:
+        return float(s)
+    except ValueError:
+        raise _TsLiteralError(f"不支持的字面量: {s[:40]}")
+
+
+def parse_init_template(entry: str) -> dict | None:
+    """提取条目内 `initTemplate: { ... }`（§11 组件初始化模板，Task 14）。
+
+    - 花括号配平采用字符串感知扫描（'https://' 等字符串内容不参与深度计数）；
+    - 结构校验：rect.w/h 为数值 + props 为对象，否则视为无效返回 None
+      （防 F63 聚合模板等其他形态误入 —— F63 的 template 是函数性质，本函数不碰）。
+    """
+    m = re.search(r"\binitTemplate:\s*\{", entry)
+    if not m:
+        return None
+    open_at = entry.index("{", m.start())
+    depth = 0
+    in_str: str | None = None
+    i, n = open_at, len(entry)
+    end = -1
+    while i < n:
+        c = entry[i]
+        if in_str:
+            if c == "\\":
+                i += 2
+                continue
+            if c == in_str:
+                in_str = None
+        elif c in ("'", '"', "`"):
+            in_str = c
+        elif c == "{":
+            depth += 1
+        elif c == "}":
+            depth -= 1
+            if depth == 0:
+                end = i
+                break
+        i += 1
+    if end < 0:
+        return None
+    try:
+        parsed = _parse_ts_literal(entry[open_at:end + 1])
+    except _TsLiteralError:
+        return None
+    if not isinstance(parsed, dict):
+        return None
+    rect = parsed.get("rect")
+    if not (isinstance(rect, dict)
+            and isinstance(rect.get("w"), (int, float))
+            and isinstance(rect.get("h"), (int, float))
+            and isinstance(parsed.get("props"), dict)):
+        return None
+    return parsed
+
+
 # --------------------------------------------------------------- nodeTypes 详情
 
 def parse_form_fields(entry: str) -> list[dict]:
@@ -376,6 +555,7 @@ def build_catalog(root: Path) -> dict:
                 "paletteVisible": p is not None,
                 "paletteGroup": p["group"] if p else None,
                 "paletteIndex": p["paletteIndex"] if p else None,
+                "initTemplate": parse_init_template(entry),
                 "formFieldCount": len(fields),
                 "formFields": fields,
                 "defaultKeys": d["defaultKeys"],
@@ -621,7 +801,9 @@ def main() -> int:
 #            formFieldTypeCount, formFieldTypes[], nonSerializable{} },
 #   components: [ { type, code, label, icon, color, desc, phase, categories[],
 #                   shape, runtimeOnly, route, executor, paletteVisible,
-#                   paletteGroup, paletteIndex, formFieldCount,
+#                   paletteGroup, paletteIndex, initTemplate|null (§11 纯数据
+#                               { rect{w,h}, props, bindings?, sample? }),
+#                   formFieldCount,
 #                   formFields[{key,label,type,required,dsTypes[],
 #                               hasWhen,hasOnChange,hasPick}],
 #                   defaultKeys[], flags{...} } ]
