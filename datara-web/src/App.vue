@@ -78,9 +78,6 @@ const menus: MenuGroup[] = [
   ]},
   { group: '数据治理', items: [
     { label: '血缘分析', path: '/meta/lineage', icon: '⇶' },
-    { label: '组件目录', path: '/meta/components', icon: '▦' },
-    { label: '基线化工作台', path: '/meta/components/baseline', icon: '◎' },
-    { label: '组件设计器', path: '/meta/components/design', icon: '✎' },
   ]},
   { group: '部署运维', items: [
     { label: '运行时节点', path: '/dep/runtime', icon: '⌂' },

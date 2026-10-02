@@ -142,10 +142,11 @@ export const streamProfile: ViewProfile = {
     lag: { kind: 'lag', label: '反压/积压', color: '#e5484d', dashed: true, animated: true },
   },
   palette: [
-    /* I11 收敛：只暴露可执行流组件 + 页面组件（旧装饰节点不再可拖入） */
+    /* 用户裁定：所有工作流可引用任何类别组件，紧密度=分组顺序。流处理置顶，其余全类别可达 */
     { name: '流处理', items: [
       { type: 'stream_input' }, { type: 'stream_fuse' }, { type: 'stream_output' }, { type: 'page_board' },
     ] },
+    ...dagProfile.palette.filter((g) => g.name !== '流处理'),
   ],
   floats: [
     { id: 'stream-metrics', label: '指标卡', comp: StreamMetricsPanel, w: 400, h: 330 },

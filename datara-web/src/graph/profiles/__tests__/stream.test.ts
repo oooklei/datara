@@ -27,10 +27,14 @@ describe('I8 C18~C20 palette 解禁与分型表单', () => {
     })
   })
 
-  it('I11 stream palette 收敛：只暴露 C18~C20+page_board，旧装饰节点不可拖入', () => {
+  it('stream palette 全类别可达：流处理置顶（紧密度最高），其余分组与 dag 同源', () => {
+    const groups = streamProfile.palette.map((g) => g.name)
+    expect(groups[0]).toBe('流处理')
     const exposed = streamProfile.palette.flatMap((g) => g.items?.map((i) => i.type) ?? g.types ?? [])
-    expect(exposed).toEqual(['stream_input', 'stream_fuse', 'stream_output', 'page_board'])
-    // 装饰节点定义保留（历史 mock 文档渲染），但不在 palette
+    expect(exposed).toContain('stream_input')
+    expect(exposed).toContain('sql')
+    expect(exposed).toContain('endpoint_select')
+    // 装饰节点定义保留（历史 mock 文档渲染），任何分组下仍不可拖入
     expect(streamProfile.nodeTypes.s_kafka).toBeTruthy()
     expect(exposed).not.toContain('s_kafka')
     expect(exposed).not.toContain('p_window')
