@@ -31,6 +31,16 @@ class Settings(BaseSettings):
     datara_dev_pwd: str = "Dev@123"
     datara_analyst_pwd: str = "Analyst@123"
     datara_viewer_pwd: str = "Viewer@123"
+    # ---- 告警投递（未配置的外部通道必须失败，不能误标 sent） ----
+    alert_webhook_url: str = ""
+    alert_email_to: str = ""
+    alert_delivery_timeout: int = 10
+    smtp_host: str = ""
+    smtp_port: int = 25
+    smtp_user: str = ""
+    smtp_pwd: str = ""
+    smtp_from: str = "datara@localhost"
+    smtp_use_tls: bool = False
 
     model_config = SettingsConfigDict(case_sensitive=False, extra="ignore")
 

@@ -41,6 +41,8 @@ export {
 } from './streamApi'
 
 export type { StreamJobRow, StreamDataPage } from './streamApi'
+export { listAlertNotifications } from './alertApi'
+export type { AlertNotification } from './alertApi'
 
 export type {
   DefinitionMeta, InstanceRow,

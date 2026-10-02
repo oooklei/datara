@@ -445,7 +445,7 @@ async function loadImpacted(): Promise<void> {
   try {
     const r = await getImpactedWorkflows(d.type)
     impacted.value = r.items
-    impactedMeta.value = { publishedVersion: r.publishedVersion, state: r.state }
+    impactedMeta.value = { publishedVersion: r.publishedVersion ?? null, state: r.state ?? '' }
     impactedLoaded.value = true
     // 落后行默认勾选（upgrade 向导目标集；nextTick 等表格渲染后回填勾选态）
     await nextTick()

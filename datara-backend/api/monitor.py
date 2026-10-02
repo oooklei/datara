@@ -6,13 +6,15 @@
 - ZK 不可用降级：live 为空列表，ssh 节点照常返回（监控页不阻断）
 """
 
+from datetime import datetime
+
 from fastapi import APIRouter, Depends, Request
 from sqlalchemy.orm import Session
 
 from api.auth import get_current_user
 from common.db import get_db
 from common.models import SshNode, User
-from common.monitor import read_metrics
+from common.monitor import METRICS_TTL_SEC, read_known_nodes, read_metrics
 from common.registry import list_live_nodes
 from common.resp import fmt_dt, ok
 
@@ -33,23 +35,34 @@ def monitor_nodes(
     zk_ok, live = list_live_nodes(registry.zk if registry is not None else None)
 
     rows = []
-    for item in live:
-        module, node = item["module"], item["node"]
-        if module not in MONITOR_MODULES:
-            continue
-        m = read_metrics(module, node) or {}
-        rows.append({
-            "module": module,
-            "node": node,
-            "cpu": m.get("cpu"),
-            "mem": m.get("mem"),
-            "memUsedMb": m.get("memUsedMb"),
-            "memTotalMb": m.get("memTotalMb"),
-            "disk": m.get("disk"),
-            "heartbeat": "online" if zk_ok else "unknown",  # ZK 临时节点在=活
-            "lastSeen": None,
-            "tags": [],
-        })
+    live_by_module = {
+        module: {item["node"] for item in live if item["module"] == module}
+        for module in MONITOR_MODULES
+    }
+    current_ts = datetime.now().timestamp()
+    for module in MONITOR_MODULES:
+        known = read_known_nodes(module)
+        for node in sorted(live_by_module[module] | set(known)):
+            m = read_metrics(module, node) or {}
+            reported_at = float(m.get("reportedAt") or known.get(node) or 0)
+            age = current_ts - reported_at if reported_at else None
+            metric_state = "fresh" if age is not None and age <= METRICS_TTL_SEC else "stale"
+            heartbeat = (
+                "online" if node in live_by_module[module] else "offline"
+            ) if zk_ok else "unknown"
+            rows.append({
+                "module": module,
+                "node": node,
+                "cpu": m.get("cpu"),
+                "mem": m.get("mem"),
+                "memUsedMb": m.get("memUsedMb"),
+                "memTotalMb": m.get("memTotalMb"),
+                "disk": m.get("disk"),
+                "heartbeat": heartbeat,
+                "metricState": metric_state,
+                "lastSeen": fmt_dt(datetime.fromtimestamp(reported_at)) if reported_at else None,
+                "tags": [],
+            })
 
     for node_row in db.query(SshNode).order_by(SshNode.id).all():
         rows.append({
@@ -61,8 +74,9 @@ def monitor_nodes(
             "memTotalMb": None,
             "disk": None,
             "heartbeat": node_row.heartbeat_state,
+            "metricState": "unsupported",
             "lastSeen": fmt_dt(node_row.last_seen),
             "tags": node_row.tags or [],
         })
 
-    return ok({"zkAvailable": zk_ok, "nodes": rows})
+    return ok({"zkAvailable": zk_ok, "generatedAt": fmt_dt(datetime.now()), "nodes": rows})

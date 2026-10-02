@@ -55,6 +55,8 @@ const props = defineProps<{
   hostManaged?: boolean
   /** 宿主切换文档后要并入的其余选中任务 id（首屏合并一次，配合 :key 强刷） */
   mergeIds?: string[]
+  /** Analysis-only canvases, such as lineage, do not have a workflow-definition context. */
+  hideVars?: boolean
 }>()
 const emit = defineEmits<{
   select: [id: string | null]
@@ -141,10 +143,16 @@ function stopResize() {
 }
 /** N15 右侧边窗双 Tab：属性(Inspector) / 变量（日志已按 I11 移入「更多」浮窗，LogPanel 仍由更多菜单复用） */
 const rightTab = ref<'inspector' | 'vars'>('inspector')
-const rightTabs: { k: 'inspector' | 'vars'; label: string; icon: string }[] = [
-  { k: 'inspector', label: '属性', icon: '☰' },
-  { k: 'vars', label: '变量', icon: '$' },
-]
+const rightTabs = computed<{ k: 'inspector' | 'vars'; label: string; icon: string }[]>(() => {
+  const tabs: { k: 'inspector' | 'vars'; label: string; icon: string }[] = [
+    { k: 'inspector', label: '属性', icon: '☰' },
+  ]
+  if (!props.hideVars) tabs.push({ k: 'vars', label: '变量', icon: '$' })
+  return tabs
+})
+watch(() => props.hideVars, (hide) => {
+  if (hide && rightTab.value === 'vars') rightTab.value = 'inspector'
+}, { immediate: true })
 /** N7 类型过滤（视图态，不落 doc） */
 const hiddenTypes = ref<Set<string>>(new Set())
 /** N6 折叠组（视图态；组元数据存 doc.groups 随版本保存） */
@@ -294,7 +302,7 @@ onMounted(async () => {
     const p = JSON.parse(localStorage.getItem('datara.wb.panels') ?? '{}') as { left?: boolean; right?: boolean; rightTab?: string; leftW?: number; rightW?: number }
     if (typeof p.left === 'boolean') leftOpen.value = p.left
     if (typeof p.right === 'boolean') rightOpen.value = p.right
-    if (p.rightTab === 'inspector' || p.rightTab === 'vars') rightTab.value = p.rightTab
+    if (p.rightTab === 'inspector' || (!props.hideVars && p.rightTab === 'vars')) rightTab.value = p.rightTab
     if (typeof p.leftW === 'number' && p.leftW >= PANEL_MIN_W && p.leftW <= PANEL_MAX_W) leftWidth.value = p.leftW
     if (typeof p.rightW === 'number' && p.rightW >= PANEL_MIN_W && p.rightW <= PANEL_MAX_W) rightWidth.value = p.rightW
   } catch { /* 忽略隐私模式 */ }
@@ -362,7 +370,7 @@ function restoreSnap() {
     if (!s || s.docId !== props.docId) return
     if (typeof s.panels?.left === 'boolean') leftOpen.value = s.panels.left
     if (typeof s.panels?.right === 'boolean') rightOpen.value = s.panels.right
-    if (s.panels?.rightTab === 'inspector' || s.panels?.rightTab === 'vars') rightTab.value = s.panels.rightTab
+    if (s.panels?.rightTab === 'inspector' || (!props.hideVars && s.panels?.rightTab === 'vars')) rightTab.value = s.panels.rightTab
     if (typeof s.panels?.leftW === 'number' && s.panels.leftW >= PANEL_MIN_W && s.panels.leftW <= PANEL_MAX_W) leftWidth.value = s.panels.leftW
     if (typeof s.panels?.rightW === 'number' && s.panels.rightW >= PANEL_MIN_W && s.panels.rightW <= PANEL_MAX_W) rightWidth.value = s.panels.rightW
     if (s.viewport && Number.isFinite(s.viewport.x) && Number.isFinite(s.viewport.y) && Number.isFinite(s.viewport.zoom)) {
@@ -1394,7 +1402,7 @@ function ctxLayout() { onLayout(); closeCtx() }
           ><span class="wbt-ic">{{ t.icon }}</span>{{ t.label }}</button>
         </div>
         <Inspector v-show="rightTab === 'inspector'" :node="selectedNode" :profile="profile" @delete="deleteOne" />
-        <div v-show="rightTab === 'vars'" class="wb-right-body"><WfVarPanel :doc-id="docId" /></div>
+        <div v-if="!hideVars && rightTab === 'vars'" class="wb-right-body"><WfVarPanel :doc-id="docId" /></div>
       </div>
     </div>
 

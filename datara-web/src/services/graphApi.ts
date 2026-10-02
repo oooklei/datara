@@ -549,6 +549,7 @@ export async function probeSshNode(id: number): Promise<{ ok: boolean; message: 
 /* ---- 节点监控聚合（I7 F55：master/worker ZK live + Redis 指标 + ssh 注册表） ---- */
 
 export interface MonitorNodeRow {
+  metricState: 'fresh' | 'stale' | 'unsupported'
   module: 'master' | 'worker' | 'ssh'
   node: string
   cpu: number | null
@@ -561,8 +562,8 @@ export interface MonitorNodeRow {
   tags: string[]
 }
 
-export async function fetchMonitorNodes(): Promise<{ zkAvailable: boolean; nodes: MonitorNodeRow[] }> {
-  return http.get<{ zkAvailable: boolean; nodes: MonitorNodeRow[] }>('/monitor/nodes')
+export async function fetchMonitorNodes(): Promise<{ zkAvailable: boolean; generatedAt: string; nodes: MonitorNodeRow[] }> {
+  return http.get<{ zkAvailable: boolean; generatedAt: string; nodes: MonitorNodeRow[] }>('/monitor/nodes')
 }
 
 /* ---- 工作流分类目录（I11：Palette 分组 + 新建/删除/移动；内置 同步/ETL/流 + 自定义 t_wf_category） ---- */

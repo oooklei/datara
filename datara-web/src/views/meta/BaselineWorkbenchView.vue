@@ -123,7 +123,7 @@ async function loadDraft(t: string): Promise<void> {
     draft.value = d
     spec.value = normalizeBaselineSpec(d.spec)
     // 实测草稿回填（暂存 spec.meta.testDrafts 随底稿保存，见 baselineSpec.ts 注释）
-    testDrafts.value = (spec.value.meta?.testDrafts ?? []).map((x) => ({ ...x }))
+    testDrafts.value = ((spec.value.meta?.testDrafts ?? []) as BaselineTestRecord[]).map((x: BaselineTestRecord) => ({ ...x }))
     void loadOldDetail(t)
     void loadLineage(t)
   } catch (e) {

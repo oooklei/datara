@@ -2,7 +2,7 @@
 
 - 内部健康 HTTP（18003，compose healthcheck 用）
 - ZK 注册（/datara/live/alert/{ip:18003}）
-- 循环 5s 扫 t_alert_record(state='wait') → 记日志"发送（占位）"→ 置 sent
+- 循环 5s 扫 t_alert_record(state='wait') → 通道确认成功后置 sent，失败置 fail
 """
 
 import threading
@@ -10,6 +10,7 @@ import threading
 import uvicorn
 from fastapi import FastAPI
 
+from alert.channels import DeliveryError, deliver
 from common.db import new_session
 from common.log import get_logger, setup_logging
 from common.models import AlertRecord, now
@@ -29,8 +30,21 @@ def create_health_app() -> FastAPI:
     return app
 
 
+def _deliver_record(record: AlertRecord) -> None:
+    """独立收口一条告警，避免单条失败阻塞同批其他记录。"""
+    try:
+        deliver(record.channel, record.title, record.content)
+    except DeliveryError as exc:
+        record.state = "fail"
+        logger.error("告警投递失败 alertId=%s channel=%s error=%s", record.id, record.channel, exc)
+    else:
+        record.state = "sent"
+        logger.info("告警投递成功 alertId=%s channel=%s", record.id, record.channel or "system")
+    record.update_time = now()
+
+
 def alert_loop(stop) -> None:
-    """5s 一轮扫描待发送告警（占位发送：记日志后置 sent）。"""
+    """5s 一轮扫描并投递待发送告警。"""
     logger.info("alert 轮询循环启动（5s/轮）")
     while not stop.is_set():
         try:
@@ -44,17 +58,8 @@ def alert_loop(stop) -> None:
                     .all()
                 )
                 for record in records:
-                    # 占位发送：通道/规则后续增量实现，这里仅记日志留痕
-                    logger.info(
-                        "发送（占位）alertId=%s title=%s channel=%s content=%s",
-                        record.id,
-                        record.title,
-                        record.channel,
-                        record.content,
-                    )
-                    record.state = "sent"
-                    record.update_time = now()
-                session.commit()
+                    _deliver_record(record)
+                    session.commit()
             finally:
                 session.close()
         except Exception as exc:  # noqa: BLE001 服务循环防崩

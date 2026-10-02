@@ -19,6 +19,9 @@ const auth = useAuthStore()
 
 const nodes = ref<MonitorNodeRow[]>([])
 const zkAvailable = ref(true)
+const generatedAt = ref('')
+const loadError = ref('')
+const loading = ref(false)
 const keyword = ref('')
 const filters = ref<Record<string, string>>({ module: '', heartbeat: '' })
 const facets = [
@@ -40,15 +43,26 @@ onBeforeUnmount(() => {
   timers.clear()
 })
 
+function scheduleReload() {
+  for (const id of timers) window.clearTimeout(id)
+  timers.clear()
+  later(reload, 30_000)
+}
 async function reload() {
+  if (loading.value) return
+  loading.value = true
   try {
     const r = await fetchMonitorNodes()
     nodes.value = r.nodes
     zkAvailable.value = r.zkAvailable
-  } catch {
-    /* 后端未就绪保留上次数据，下轮重试 */
+    generatedAt.value = r.generatedAt
+    loadError.value = ''
+  } catch (e) {
+    loadError.value = e instanceof Error ? e.message : String(e)
+  } finally {
+    loading.value = false
+    scheduleReload()
   }
-  later(reload, 30_000)
 }
 onMounted(reload)
 
@@ -180,6 +194,8 @@ onMounted(loadSshRows)
           master/worker 经 ZK 注册 + psutil 指标（10s 上报 / 90s 过期）；SSH 节点经注册表 + 探活线程（30s/节点，连续 3 次失败离线）。
           SSH 节点标签供画布 SSH 脚本节点「执行节点标签」路由（健康匹配 → 轮转 → 失败策略）。
         </div>
+        <div v-if="generatedAt" class="ph-desc">最近采集：{{ generatedAt }}</div>
+        <div v-if="loadError" class="ph-desc" style="color:var(--danger)">刷新失败：{{ loadError }}（保留上次成功数据）</div>
       </div>
       <span class="spacer" />
       <button v-if="auth.canEdit" class="tb-new" @click="openCreate">＋ 注册 SSH 节点</button>
