@@ -835,17 +835,25 @@ def test_impacted_lists_referencing_workflows(client, db_session):
 
 
 def test_impacted_behind_marks_upgrade_targets(client, db_session):
-    """组件升版后引用旧版本的工作流标记 behind=True（批量升级向导目标集，§9.3）。"""
+    """引用落后于 published_version 的工作流标记 behind=True（升级向导目标集，§9.3）。
+
+    §9 发布即刷新落地后，publish 链路上的落后引用已被自动升级（behind 清零），
+    behind 目标集来自发布后新增/回填的存量落后引用——手动 refresh-refs 闭环清零。
+    """
     _make_frozen(client)
     assert _publish(client, version=1).status_code == 200
-    _insert_wf(db_session, "wf_old", 201, {"nodes": [_node("gate_demo", 1)]})
     client.put("/api/v1/components/gate_demo/draft", json={"draft_rev": 0, "spec": _publishable_spec()})
     client.post("/api/v1/components/gate_demo/versions", json={})
-    assert _publish(client, version=2, draft_rev=1).status_code == 200
+    assert _publish(client, version=2, draft_rev=1).status_code == 200  # 无引用，自动刷新空转
+    _insert_wf(db_session, "wf_old", 201, {"nodes": [_node("gate_demo", 1)]})
     d = client.get("/api/v1/components/gate_demo/impacted").json()["data"]
     assert d["items"][0]["behind"] is True and d["items"][0]["aligned"] is False
     # 排序：behind 在前（向导目标集置顶）
     assert d["items"][0]["id"] == "wf_old"
+    # 手动刷新后 behind 清零（引用对齐 v2）
+    client.post("/api/v1/components/gate_demo/refresh-refs")
+    d2 = client.get("/api/v1/components/gate_demo/impacted").json()["data"]
+    assert d2["items"][0]["behind"] is False and d2["items"][0]["aligned"] is True
 
 
 def test_impacted_after_offline_still_visible(client, db_session):
@@ -875,3 +883,64 @@ def test_registry_lists_governance_rows(client, db_session):
     assert row["state"] == "published" and row["publishedVersion"] == 1
     assert row["scope"] == "user" and row["executionModel"] == "dag-engine"
     assert "spec" not in row and "fields" not in row  # 轻量：不暴露声明全文
+
+
+# ---------------------------------------------------------------- 发布即刷新（Task 3，§9：refresh-refs）
+
+def test_refresh_refs_publish_auto_and_idempotent(client, db_session):
+    """§9 发布即刷新：publish v2 自动升级落后引用（响应挂 data.refresh）→ 手动再刷幂等 0。
+
+    落后引用的图无法经 save 端点写入（R6 拒漂移引用），直插模拟存量——与 impacted 分节同模式。
+    """
+    set_role(client.app, "dev")
+    _make_frozen(client, type_name="page_board_a", execution_model="page",
+                 executor=None, executable=False, spec=_page_spec([]))
+    assert _publish(client, type_name="page_board_a").status_code == 200
+    _insert_wf(db_session, "wf_ref_1", 901, {"nodes": [_node("page_board_a", 1)]})
+    client.put("/api/v1/components/page_board_a/draft",
+               json={"draft_rev": 0, "spec": _page_spec([])})
+    client.post("/api/v1/components/page_board_a/versions", json={})
+    r = _publish(client, type_name="page_board_a", version=2, draft_rev=1)
+    assert r.status_code == 200, r.text
+    refresh = r.json()["data"]["refresh"]
+    assert refresh["refreshed"] == 1 and refresh["publishedVersion"] == 2
+    assert refresh["items"][0]["wfId"] == "wf_ref_1"
+    # 引用已被升级至 v2（经 impacted 端点复核：aligned）
+    d = client.get("/api/v1/components/page_board_a/impacted").json()["data"]
+    assert d["items"][0]["refVersions"] == [2] and d["items"][0]["aligned"] is True
+    # 幂等：手动再刷一次 refreshed=0
+    set_role(client.app, "dev")
+    r2 = client.post("/api/v1/components/page_board_a/refresh-refs")
+    assert r2.status_code == 200 and r2.json()["data"]["refreshed"] == 0
+
+
+def test_refresh_refs_manual_bumps_stale_refs(client, db_session):
+    """手动刷新：发布后新出现的落后引用（存量回填/补偿场景）显式升级 + wf.version bump。"""
+    set_role(client.app, "dev")
+    _make_frozen(client, type_name="page_board_b", execution_model="page",
+                 executor=None, executable=False, spec=_page_spec([]))
+    assert _publish(client, type_name="page_board_b").status_code == 200
+    client.put("/api/v1/components/page_board_b/draft",
+               json={"draft_rev": 0, "spec": _page_spec([])})
+    client.post("/api/v1/components/page_board_b/versions", json={})
+    assert _publish(client, type_name="page_board_b", version=2, draft_rev=1).status_code == 200
+    _insert_wf(db_session, "wf_ref_2", 902, {"nodes": [_node("page_board_b", 1)]})
+    r = client.post("/api/v1/components/page_board_b/refresh-refs")
+    assert r.status_code == 200, r.text
+    body = r.json()["data"]
+    assert body["refreshed"] == 1 and body["publishedVersion"] == 2
+    assert body["items"][0] == {"wfId": "wf_ref_2", "wfName": "wf_ref_2"}
+    db_session.expire_all()
+    row = db_session.execute(text(
+        "SELECT version FROM t_wf_definition WHERE id = 'wf_ref_2'")).one()
+    assert row[0] == 2  # wf.version bump（v1 → v2）
+    r2 = client.post("/api/v1/components/page_board_b/refresh-refs")
+    assert r2.json()["data"]["refreshed"] == 0  # 幂等
+
+
+def test_refresh_refs_draft_conflict_409(client):
+    """仅 published 组件可刷新引用：draft → 409 COMP_STATE_CONFLICT。"""
+    set_role(client.app, "dev")
+    _created(client)
+    r = client.post("/api/v1/components/user_demo/refresh-refs")
+    assert r.status_code == 409 and r.json()["code"] == 6002

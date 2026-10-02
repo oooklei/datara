@@ -13,6 +13,7 @@
 - POST /components/{type}/offline     下线组件（M2 D3，§8：published→offline）
 - POST /components/{type}/rollback    回滚到历史发布版本（M2 D3，§8：offline→published）
 - GET  /components/{type}/impacted    影响面查询（M2 D3，§9.4：引用该组件的工作流清单）
+- POST /components/{type}/refresh-refs 刷新引用（页面设计器 §9 发布即刷新，幂等）
 
 设计要点（对齐治理文档）：
 - 草稿内容不进主表：存 t_component_version 中 state=draft 的行（§16 设计决策），
@@ -456,7 +457,13 @@ AUTO_CONNECT_VALUES = frozenset({"nearest", "none"})
 
 
 def _gate_whitelist(spec: dict) -> list:
-    """§13-3：fields 结构 + uiType 9 基元 + pick 键白名单。"""
+    """§13-3：fields 结构 + uiType 9 基元 + pick 键白名单。
+
+    page DSL 声明（page 根节点）不适用 fields 白名单——结构合法性由
+    _validate_page_spec（纯数据闸门内嵌，Task 2）承担（设计文档 §9.1 page 分支闸门）。
+    """
+    if isinstance(spec, dict) and "page" in spec:
+        return []
     fields = spec.get("fields")
     if not isinstance(fields, list):
         return ["fields 必须为数组"]
@@ -539,6 +546,11 @@ def _gate_contract(comp: Component, spec: dict, executor_registry: frozenset) ->
     if em == "runtime-only":
         if spec.get("paletteVisible") is not False:
             return ["runtime-only 组件必须声明 paletteVisible=false（仅装载期物化消费，不出设计态 palette）"]
+        return []
+    if em == "page":
+        # 页面设计器产出的 UI 组件不可执行（Task 1 创建红线同款，发布侧闭环）
+        if comp.executable:
+            return ["page 组件必须 executable=false（页面设计器产出的 UI 组件不可执行）"]
         return []
     return ["execution_model「%s」不在执行契约范围" % em]
 
@@ -654,11 +666,13 @@ def publish_version(
     db.commit()
     logger.info("发布组件版本: %s v%d（操作人 %s%s）", type_name, ver.version,
                 user.user_name, "，取代 v%d" % superseded if superseded else "")
-    return ok({
+    payload = {
         "type": comp.type, "publishedVersion": ver.version,
         "specHash": ver.spec_hash, "supersededVersion": superseded or None,
         "publishedAt": fmt_dt(ver.published_time),
-    })
+    }
+    payload["refresh"] = _refresh_refs(db, comp)  # §9 发布即刷新
+    return ok(payload)
 
 
 def _catalog_types() -> set:
@@ -822,3 +836,67 @@ def impacted_workflows(
     items.sort(key=lambda x: (not x["behind"], str(x["code"] or x["id"])))
     return ok({"type": comp.type, "publishedVersion": comp.published_version,
                "state": comp.state, "items": items})
+
+
+# ---------------- 发布即刷新（实施计划 2026-10-03 Task 3；设计文档 §9） ----------------
+#
+# §9 发布即刷新：发布成功后服务端自动批量升级所有引用图的 componentRef 版本，
+# 替代手动逐个 upgradeOne（M1 声明组件同样受益）。落点三处：
+# - _refresh_refs：扫描 t_wf_definition.graph_json（口径与 R6 校验/影响面查询一致——
+#   node.data.componentRef），ref.type 匹配且 version < published_version 的节点
+#   批量升级至 published_version（幂等：已对齐的图零写入零提交）；
+# - POST /{type_name}/refresh-refs：手动触发（存量回填/补偿场景）；
+# - publish_version 成功后自动挂载 refresh 结果（响应 data.refresh，见上）。
+
+def _refresh_refs(db: Session, comp: Component) -> dict:
+    """发布即刷新：批量升级落后引用（幂等）。命中即 bump wf.version 并刷 update_time。
+
+    不追版本快照（WfDefinitionLog 链由保存/回滚路径维护）；单次 commit 收口全部
+    命中行，无命中零写入。
+    """
+    published = comp.published_version or 0
+    items: list = []
+    refreshed = 0
+    for wf in db.query(WfDefinition).filter(WfDefinition.graph_json.isnot(None)).all():
+        try:
+            doc = json.loads(wf.graph_json or "{}")
+        except (TypeError, ValueError):
+            continue
+        changed = False
+        for node in doc.get("nodes") or []:
+            if not isinstance(node, dict):
+                continue
+            data = node.get("data")
+            if not isinstance(data, dict):
+                continue
+            ref = data.get("componentRef")
+            if (isinstance(ref, dict) and ref.get("type") == comp.type
+                    and isinstance(ref.get("version"), int) and not isinstance(ref["version"], bool)
+                    and ref["version"] < published):
+                ref["version"] = published
+                changed = True
+        if changed:
+            wf.graph_json = json.dumps(doc, ensure_ascii=False, separators=(",", ":"))
+            wf.version = (wf.version or 1) + 1
+            wf.update_time = now()
+            refreshed += 1
+            items.append({"wfId": wf.id, "wfName": wf.name})
+    if refreshed:
+        db.commit()
+    return {"refreshed": refreshed, "publishedVersion": published, "items": items}
+
+
+@router.post("/{type_name}/refresh-refs", summary="刷新引用（发布即刷新，幂等）")
+def refresh_refs(
+    type_name: str,
+    user: User = Depends(require_perm("design_component")),
+    db: Session = Depends(get_db),
+):
+    """手动触发引用刷新：仅 published 组件；publish 成功已自动执行（data.refresh）。"""
+    comp = _get_or_404(db, type_name)
+    if comp.state != "published":
+        raise ApiError(COMP_STATE_CONFLICT, status=409, msg="仅 published 组件可刷新引用")
+    result = _refresh_refs(db, comp)
+    logger.info("刷新组件引用: %s（命中 %d 个图，操作人 %s）",
+                type_name, result["refreshed"], user.user_name)
+    return ok(result)
