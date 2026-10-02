@@ -592,6 +592,7 @@ onMounted(reload)
       :profile="lineageProfile"
       doc-id="lineage_global"
       :doc="doc"
+      hide-vars
       @select="onSelect"
       @center-node="centerOn"
     />

@@ -66,6 +66,7 @@ const WorkbenchStub = defineComponent({
     profile: { type: Object, default: null },
     docId: { type: String, default: '' },
     doc: { type: Object, default: null },
+    hideVars: { type: Boolean, default: false },
   },
   emits: ['select', 'center-node'],
   setup(_, { emit }) {
@@ -127,6 +128,13 @@ function mountView() {
 }
 
 describe('LineageView 表级图加载（Task 5）', () => {
+  it('血缘分析画布隐藏变量页签，避免请求不存在的 workflow-variables', async () => {
+    const wrapper = mountView()
+    await tick()
+    expect(wrapper.findComponent(WorkbenchStub).props('hideVars')).toBe(true)
+    wrapper.unmount()
+  })
+
   it('M-1：无中心表初始态显式传 direction=both / depth=0（拉全连通域）', async () => {
     const wrapper = mountView()
     await tick()
