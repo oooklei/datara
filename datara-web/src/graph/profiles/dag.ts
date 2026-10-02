@@ -20,7 +20,7 @@
 import { detectCycle, findBrokenEdges, findDuplicateEdges, findIsolated, uid } from '../model'
 import type { GraphDocument, GEdge, GNode } from '../model'
 import type { BranchDef, DependentDef, NodeSchema, VarDef, ViewProfile } from './types'
-import { onEdgeCreated, requiredMissing } from './formLinkage'
+import { c22OnModeChange, onEdgeCreated, requiredMissing } from './formLinkage'
 import NodeRunDetailPage from '../workbench/pages/NodeRunDetailPage.vue'
 import SqlPreviewPage from '../workbench/pages/SqlPreviewPage.vue'
 import TmpPreviewPage from '../workbench/pages/TmpPreviewPage.vue'
@@ -349,7 +349,7 @@ const nodeTypes: Record<string, NodeSchema> = {
     type: 'dependent', label: '依赖', icon: '⧉', color: '#7c3aed', code: 'C9', categories: ['general', 'sync', 'etl'],
     desc: '依赖其他工作流/节点产出：所配依赖各自最近一次实例中节点终态=success 即通过（I7 简化语义，周期/批次走变量条件）',
     defaults: { deps: [] as DependentDef[] },
-    form: [{ key: 'deps', label: '依赖项列表', type: 'rows', rowsKind: 'deps' }],
+    form: [{ key: 'deps', label: '依赖项列表', type: 'deps-list', rowsKind: 'deps' }],
     summary: (d) => depSummary(d),
   },
   loop: {
@@ -419,7 +419,7 @@ const nodeTypes: Record<string, NodeSchema> = {
         placeholder: 'requests>=2.28\npandas==1.5.0  # 依赖需预装镜像层，本期不运行时安装' },
       /* 决策 5：空 label hint → 固定文案 */
       { key: 'requirementsHint', label: '依赖需预装镜像层', type: 'hint',
-        text: '依赖需预装镜像层，本期仅校验格式并打印日志提示' },
+        text: () => '依赖需预装镜像层，本期仅校验格式并打印日志提示' },
     ],
     conditions: [],
     render: { summary: 'Python（subprocess 执行）' },
@@ -441,10 +441,11 @@ const nodeTypes: Record<string, NodeSchema> = {
     defaults: { runtimeNode: '', execNodeTag: '', script: '' },
     /* M-B2 八段 DSL 迁移：showIf → conditions；summary 函数 → render.summary */
     form: [
-      { key: 'execNodeTag', label: '执行节点标签', type: 'select', selectFrom: 'exec-node-tags', placeholder: '留空则按下方运行时节点直连' },
-      { key: 'runtimeNode', label: '运行时节点', type: 'resource', cap: { mode: 'runtimeNode' } },
+      { key: 'execNodeTag', label: '执行节点标签', type: 'exec-node-tag', selectFrom: 'exec-node-tags', placeholder: '留空则按下方运行时节点直连' },
+      { key: 'runtimeNode', label: '运行时节点', type: 'runtime-node', cap: { mode: 'runtimeNode' }, showIf: (d) => !d.execNodeTag },
       { key: 'script', label: '脚本内容', type: 'text', multiline: true, placeholder: '远端 bash 执行的脚本（经 stdin 下发）' },
     ],
+    summary: (d) => d.execNodeTag ? `SSH @ 标签:${d.execNodeTag}` : d.runtimeNode ? `SSH @ ${d.runtimeNode}` : 'SSH 远程脚本',
     conditions: [
       { id: 'c-runtime-node', when: { field: 'execNodeTag', op: 'empty' }, show: ['runtimeNode'] },
     ],
@@ -469,7 +470,7 @@ const nodeTypes: Record<string, NodeSchema> = {
       { key: 'datasource', label: '数据源', type: 'resource', cap: { mode: 'datasource', dsTypes: ['mysql', 'greatdb'] } },
       { key: 'db', label: '目标库（留空 = 数据源默认库）', type: 'text' },
       { key: 'procedure', label: '过程名', type: 'text', placeholder: '如 sp_i4_demo' },
-      { key: 'args', label: '过程参数（IN 传值 / OUT 回读）', type: 'rows', rowsKind: 'args' },
+      { key: 'args', label: '过程参数（IN 传值 / OUT 回读）', type: 'args-table', rowsKind: 'args' },
     ],
     conditions: [],
     render: { summary: '存储过程（CALL）' },
@@ -489,12 +490,13 @@ const nodeTypes: Record<string, NodeSchema> = {
         { value: 'POST', label: 'POST' }, { value: 'PUT', label: 'PUT' },
         { value: 'DELETE', label: 'DELETE' }, { value: 'PATCH', label: 'PATCH' },
       ] },
-      { key: 'headers', label: '请求头（键值表）', type: 'rows', rowsKind: 'kv' },
+      { key: 'headers', label: '请求头（键值表）', type: 'kv-table', rowsKind: 'kv' },
       { key: 'bodyType', label: '请求体类型', type: 'select',
         options: [{ value: 'json', label: 'JSON' }, { value: 'form', label: 'FORM' }] },
-      { key: 'body', label: '请求体', type: 'text', multiline: true, placeholder: 'JSON 串或表单文本' },
+      { key: 'body', label: '请求体', type: 'text', multiline: true, placeholder: 'JSON 串或表单文本',
+        showIf: (d) => !['GET', 'HEAD'].includes(String(d.method ?? 'GET')) },
       { key: 'successCodes', label: '成功状态码', type: 'text', placeholder: '逗号分隔，如 2xx,200（空 = 2xx）' },
-      { key: 'extract', label: '响应提取（输出名 → 点路径）', type: 'rows', rowsKind: 'kv' },
+      { key: 'extract', label: '响应提取（输出名 → 点路径）', type: 'kv-table', rowsKind: 'kv' },
       { key: 'timeout', label: '超时（秒）', type: 'number' },
     ],
     conditions: [
@@ -514,40 +516,48 @@ const nodeTypes: Record<string, NodeSchema> = {
     },
     /* M-B2 八段 DSL 迁移：showIf/onChange → conditions；summary 函数 → render.summary；hint 函数字面量化 */
     form: [
-      { key: 'mode', label: '来源模式', type: 'select', options: [
+      { key: 'mode', label: '来源模式', type: 'select', onChange: c22OnModeChange, options: [
         { value: 'datasource', label: '数据源中心文件源' },
         { value: 'manual', label: '手动参数' },
       ] },
-      { key: 'datasource', label: '文件源数据源', type: 'resource', cap: { mode: 'datasource', dsTypes: ['file'] } },
-      { key: 'path', label: '文件路径（/datara/files 相对）', type: 'text', placeholder: '如 samples/orders.csv' },
-      { key: 'format', label: '格式', type: 'select', options: [
+      { key: 'datasource', label: '文件源数据源', type: 'datasource', dsTypes: ['file'], cap: { mode: 'datasource', dsTypes: ['file'] },
+        showIf: (d) => String(d.mode ?? 'datasource') === 'datasource' },
+      { key: 'path', label: '文件路径（/datara/files 相对）', type: 'text', placeholder: '如 samples/orders.csv',
+        showIf: (d) => String(d.mode ?? 'datasource') === 'manual' },
+      { key: 'format', label: '格式', type: 'select', showIf: (d) => String(d.mode ?? 'datasource') === 'manual', options: [
         { value: 'csv', label: 'CSV' }, { value: 'txt', label: 'TXT' }, { value: 'excel', label: 'Excel' },
       ] },
-      { key: 'encoding', label: '编码', type: 'select', options: [
+      { key: 'encoding', label: '编码', type: 'select', showIf: (d) => String(d.mode ?? 'datasource') === 'manual', options: [
         { value: 'utf-8', label: 'UTF-8' }, { value: 'gbk', label: 'GBK' }, { value: 'gb18030', label: 'GB18030' },
       ] },
-      { key: 'delimiter', label: '分隔符', type: 'text', placeholder: ',' },
-      { key: 'header', label: '首行表头', type: 'bool', placeholder: '首行为列名' },
-      { key: 'sheet', label: 'Sheet 名称（留空 = 首个）', type: 'text' },
+      { key: 'delimiter', label: '分隔符', type: 'text', placeholder: ',',
+        showIf: (d) => String(d.mode ?? 'datasource') === 'manual' && String(d.format ?? 'csv') !== 'excel' },
+      { key: 'header', label: '首行表头', type: 'bool', placeholder: '首行为列名',
+        showIf: (d) => String(d.mode ?? 'datasource') === 'manual' && String(d.format ?? 'csv') !== 'excel' },
+      { key: 'sheet', label: 'Sheet 名称（留空 = 首个）', type: 'text',
+        showIf: (d) => String(d.mode ?? 'datasource') === 'manual' && String(d.format ?? 'csv') === 'excel' },
       { key: 'register', label: '注册临时数据', type: 'bool', placeholder: '勾选后下游可用 ${tmp.<名>} 引用' },
-      { key: 'tmpName', label: '临时数据名', type: 'text', placeholder: '小写字母开头 3~32 位 a-z0-9_' },
-      { key: 'kind', label: '临时数据形态', type: 'select', options: [
+      { key: 'tmpName', label: '临时数据名', type: 'text', placeholder: '小写字母开头 3~32 位 a-z0-9_',
+        showIf: (d) => d.register === true },
+      { key: 'kind', label: '临时数据形态', type: 'select', showIf: (d) => d.register === true, options: [
         { value: 'table', label: '临时表（全量物化）' },
         { value: 'resultset', label: '结果集引用（抽样 JSON）' },
         { value: 'file', label: '文件登记（仅路径+schema）' },
       ] },
-      { key: 'targetDs', label: '物化目标数据源', type: 'resource', cap: { mode: 'datasource', dsTypes: ['mysql', 'greatdb'] } },
-      { key: 'retention', label: '保留策略', type: 'select', options: [
+      { key: 'targetDs', label: '物化目标数据源', type: 'datasource', dsTypes: ['mysql', 'greatdb'], cap: { mode: 'datasource', dsTypes: ['mysql', 'greatdb'] },
+        showIf: (d) => d.register === true && String(d.kind ?? 'table') === 'table' },
+      { key: 'retention', label: '保留策略', type: 'select', showIf: (d) => d.register === true, options: [
         { value: 'immediate', label: '立即清理（实例终态清扫）' },
         { value: 'days', label: '保留 N 天' },
         { value: 'keep', label: '转正式表（实例成功后 RENAME）' },
       ] },
-      { key: 'keepDays', label: '保留天数', type: 'number' },
+      { key: 'keepDays', label: '保留天数', type: 'number',
+        showIf: (d) => d.register === true && String(d.retention ?? 'immediate') === 'days' },
       /* 决策 5：空 label hint → 固定文案 */
       { key: 'keepHint', label: '转正式表说明', type: 'hint',
-        text: '转正式表：实例成功后临时表 RENAME 去前缀，正式表名 = 临时数据名（仅 table 形态生效）' },
+        text: () => '转正式表：实例成功后临时表 RENAME 去前缀，正式表名 = 临时数据名（仅 table 形态生效）' },
       { key: 'tmpHint', label: '临时数据引用', type: 'hint',
-        text: '下游以 ${tmp.<名>} 引用本节点注册的临时数据' },
+        text: () => '下游以 ${tmp.*} 引用本节点注册的临时数据，例如 ${tmp.orders_stage}' },
     ],
     conditions: [
       { id: 'c-datasource', when: { field: 'mode', op: 'eq', value: 'datasource' }, show: ['datasource'] },
@@ -808,7 +818,7 @@ const nodeTypes: Record<string, NodeSchema> = {
         { value: 'redis', label: 'Redis Stream' }, { value: 'mqtt', label: 'MQTT 订阅' },
       ] },
       /* —— kafka —— */
-      { key: 'dsRef', label: '数据源引用（Kafka 注册源）', type: 'resource', cap: { mode: 'datasource', dsTypes: ['kafka'] }, showIf: (d) => d.srcType === 'kafka' },
+      { key: 'dsRef', label: '数据源引用（Kafka 注册源）', type: 'datasource', dsTypes: ['kafka'], cap: { mode: 'datasource', dsTypes: ['kafka'] }, showIf: (d) => d.srcType === 'kafka' },
       { key: 'dsRefHint', label: '', type: 'hint',
         text: () => '引用在数据源中心注册并测试通过的 Kafka 源（连接性由注册层保证，启动预检只校验引用与状态）；不选则下方手动填写连接参数（内联高级模式）。引用后 brokers 由注册源固定带出只读（连接层归一），topic 从注册源枚举选择，消费组默认 datara-flink（开「覆盖默认消费组」才可改）',
         showIf: (d) => d.srcType === 'kafka' },
@@ -843,7 +853,7 @@ const nodeTypes: Record<string, NodeSchema> = {
       { key: 'posFile', label: 'binlog 文件', type: 'text', placeholder: '如 binlog.000003', showIf: (d) => d.srcType === 'cdc' && d.posMode === 'custom' },
       { key: 'posPos', label: '位点偏移', type: 'number', showIf: (d) => d.srcType === 'cdc' && d.posMode === 'custom' },
       /* —— http —— */
-      { key: 'dsRef', label: '数据源引用（HTTP 注册源）', type: 'resource', cap: { mode: 'datasource', dsTypes: ['http'] }, showIf: (d) => d.srcType === 'http' },
+      { key: 'dsRef', label: '数据源引用（HTTP 注册源）', type: 'datasource', dsTypes: ['http'], cap: { mode: 'datasource', dsTypes: ['http'] }, showIf: (d) => d.srcType === 'http' },
       { key: 'dsRefHint', label: '', type: 'hint',
         text: () => '引用在数据源中心注册并测试通过的 HTTP 服务（baseUrl 与鉴权头由注册层提供）；URL 可填相对业务路径（如 /api/v1/orders）与 baseUrl 拼接，留空直打 baseUrl，完整 http(s) URL 则覆盖',
         showIf: (d) => d.srcType === 'http' },
@@ -875,7 +885,7 @@ const nodeTypes: Record<string, NodeSchema> = {
       { key: 'simEps', label: '事件速率（条/秒，0.5~200）', type: 'number', showIf: (d) => d.srcType === 'simulate' },
       { key: 'simHint', label: '', type: 'hint', text: () => '按内置 schema 与速率生成行事件，无需外部依赖；联调窗口聚合/看板链路用', showIf: (d) => d.srcType === 'simulate' },
       /* —— redis（Redis Stream 源）—— */
-      { key: 'dsRef', label: '数据源引用（Redis 注册源）', type: 'resource', cap: { mode: 'datasource', dsTypes: ['redis'] }, showIf: (d) => d.srcType === 'redis' },
+      { key: 'dsRef', label: '数据源引用（Redis 注册源）', type: 'datasource', dsTypes: ['redis'], cap: { mode: 'datasource', dsTypes: ['redis'] }, showIf: (d) => d.srcType === 'redis' },
       { key: 'dsRefHint', label: '', type: 'hint',
         text: () => '引用在数据源中心注册并测试通过的 Redis 实例（地址/密码由注册层提供）；不选则下方手动填写地址（内联高级模式）',
         showIf: (d) => d.srcType === 'redis' },
@@ -884,7 +894,7 @@ const nodeTypes: Record<string, NodeSchema> = {
       { key: 'redisGroup', label: '消费组（XREADGROUP，位点由组管理）', type: 'text', showIf: (d) => d.srcType === 'redis' },
       { key: 'redisConsumer', label: '消费者名', type: 'text', showIf: (d) => d.srcType === 'redis' },
       /* —— mqtt（MQTT 订阅源）—— */
-      { key: 'dsRef', label: '数据源引用（MQTT 注册源）', type: 'resource', cap: { mode: 'datasource', dsTypes: ['mqtt'] }, showIf: (d) => d.srcType === 'mqtt' },
+      { key: 'dsRef', label: '数据源引用（MQTT 注册源）', type: 'datasource', dsTypes: ['mqtt'], cap: { mode: 'datasource', dsTypes: ['mqtt'] }, showIf: (d) => d.srcType === 'mqtt' },
       { key: 'dsRefHint', label: '', type: 'hint',
         text: () => '引用在数据源中心注册并测试通过的 MQTT Broker（地址/认证由注册层提供）；不选则下方手动填写（内联高级模式）',
         showIf: (d) => d.srcType === 'mqtt' },
@@ -1051,7 +1061,7 @@ const nodeTypes: Record<string, NodeSchema> = {
       ] as VarDef[],
     },
     form: [
-      { key: 'vars', label: '变量表（名/值/类型/覆盖）', type: 'rows', rowsKind: 'var' },
+      { key: 'vars', label: '变量表（名/值/类型/覆盖）', type: 'var-table', rowsKind: 'var' },
       { key: 'varHint', label: '', type: 'hint',
         text: () => '下游以 $[wf.变量名] 引用；类型=字面量原样注入 / 表达式运行时求值 / 时间变量按 F49 模板（如 yyyyMMdd-1）；覆盖开关控制同名定义级变量取值；引用优先级：节点参数>工作流变量>环境组>全局' },
     ],
@@ -1096,17 +1106,21 @@ const nodeTypes: Record<string, NodeSchema> = {
         { value: 'manual', label: '手选数据源与表' },
       ] },
       /* I12 T11 修：上游节点引用下拉（Inspector 取画布直接上游，选中写回节点 id；空=自动扫描兜底） */
-      { key: 'assertUpstream', label: '上游节点引用（可选）', type: 'resource', cap: { mode: 'upstreamNodes' } },
-      { key: 'assertDs', label: '校验数据源', type: 'resource', cap: { mode: 'datasource', dsTypes: ['mysql', 'greatdb'] }, required: true },
-      { key: 'assertTable', label: '校验表（schema → 表）', type: 'resource', cap: { mode: 'table', dsKey: 'assertDs', writeAs: 'schemaTable' }, required: true },
+      { key: 'assertUpstream', label: '上游节点引用（可选）', type: 'upstream-ref', cap: { mode: 'upstreamNodes' },
+        showIf: (d) => String(d.assertSrc ?? 'upstream') === 'upstream' },
+      { key: 'assertDs', label: '校验数据源', type: 'datasource', dsTypes: ['mysql', 'greatdb'], cap: { mode: 'datasource', dsTypes: ['mysql', 'greatdb'] }, required: true,
+        showIf: (d) => String(d.assertSrc ?? 'upstream') === 'manual' },
+      { key: 'assertTable', label: '校验表（schema → 表）', type: 'table-picker', cap: { mode: 'table', dsKey: 'assertDs', writeAs: 'schemaTable' }, pick: { dsKey: 'assertDs', writeAs: 'schemaTable' }, required: true,
+        showIf: (d) => String(d.assertSrc ?? 'upstream') === 'manual' },
       { key: 'rules', label: '规则集（key=规则，value=参数）', type: 'rows', rowsKind: 'kv', required: true,
         group: '校验规则', groupHint: '行数/唯一/非空/自定义 SQL，按 key 逐行配置' },
       /* I12 T11 修：规则列参考——仅手选模式（表已定）可勾选列名辅助填参；上游模式对象表运行时才定，参数手填 */
-      { key: 'ruleColumns', label: '规则列参考（手选表字段，可选）', type: 'resource',
-        cap: { mode: 'column', dsKey: 'assertDs', tableKey: 'assertTable' } },
+      { key: 'ruleColumns', label: '规则列参考（手选表字段，可选）', type: 'field-select',
+        cap: { mode: 'column', dsKey: 'assertDs', tableKey: 'assertTable' }, pick: { dsKey: 'assertDs', tableKey: 'assertTable' },
+        showIf: (d) => String(d.assertSrc ?? 'upstream') === 'manual' },
       /* 决策 5：空 label hint → 固定文案 */
       { key: 'rulesHint', label: '规则说明', type: 'hint', group: '校验规则',
-        text: '规则 key 与参数：rows（min=1,max=1000 行数区间）/ unique（列名，逗号分隔联合唯一）/ not_null（列名,阈值%，如 name,95）/ sql（断言语句，首行首列=1 通过）；校验对象=上游时可显式指定「上游节点引用」（未选则自动解析 同步执行写端表 / 文件入仓目标表 / SQL 声明结果表）；手选模式可先在「规则列参考」勾选列名再填入 unique/not_null 参数；上游引用模式对象表运行时才定，规则参数手填' },
+        text: () => '规则 key 与参数：rows（min=1,max=1000 行数区间）/ unique（列名，逗号分隔联合唯一）/ not_null（列名,阈值%，如 name,95）/ sql（断言语句，首行首列=1 通过）；校验对象=上游时可显式指定「上游节点引用」（未选则自动解析 同步执行写端表 / 文件入仓目标表 / SQL 声明结果表）；手选模式可先在「规则列参考」勾选列名再填入 unique/not_null 参数；上游引用模式对象表运行时才定，规则参数手填' },
       { key: 'onFail', label: '不达标动作', type: 'select', group: '不达标处理', groupHint: '决定走「不通过」出口还是直接断流',
         options: [
         { value: 'fail', label: '断流失败（节点 failure）' },
@@ -1129,7 +1143,8 @@ const nodeTypes: Record<string, NodeSchema> = {
         options: [
         { value: 'log', label: '仅日志' }, { value: 'webhook', label: 'Webhook' },
       ] },
-      { key: 'url', label: 'Webhook URL', type: 'text', placeholder: 'http://…（支持 ${var} 变量引用）', required: true },
+      { key: 'url', label: 'Webhook URL', type: 'text', placeholder: 'http://…（支持 ${var} 变量引用）', required: true,
+        showIf: (d) => String(d.channel ?? 'log') === 'webhook' },
       { key: 'trigger', label: '触发时机', type: 'select', group: '触发与内容', options: [
         { value: 'on_success', label: '上游成功' }, { value: 'on_failure', label: '上游失败' },
         { value: 'always', label: '无论成败' },
@@ -1138,7 +1153,7 @@ const nodeTypes: Record<string, NodeSchema> = {
         placeholder: '${wf.name} 实例 ${instance_id} 节点 ${node.name} ${node.status} @ ${sys.now}' },
       /* 决策 5：空 label hint → 固定文案 */
       { key: 'notifyHint', label: '消息模板说明', type: 'hint', group: '触发与内容',
-        text: 'webhook 以 {"text": 消息} JSON POST（超时 10s，失败不重试）；消息经四级变量链解析：${wf.name} ${instance_id} ${node.name} ${node.status} ${sys.now}' },
+        text: () => 'webhook 以 {"text": 消息} JSON POST（超时 10s，失败不重试）；消息经四级变量链解析：${wf.name} ${instance_id} ${node.name} ${node.status} ${sys.now}' },
       { key: 'failHard', label: '通知失败断流', type: 'bool', group: '失败策略',
         placeholder: '开启后 webhook 发送失败将节点置 failure（缺省仅告警）' },
     ],

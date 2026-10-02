@@ -51,6 +51,7 @@ def create_app() -> FastAPI:
 
     # 路由前缀统一 /api/v1
     from api import (
+        alerts,
         auth,
         baseline,
         component,
@@ -74,6 +75,7 @@ def create_app() -> FastAPI:
         wf_variable,
     )
 
+    app.include_router(alerts.router, prefix="/api/v1")
     app.include_router(auth.router, prefix="/api/v1")
     app.include_router(component.router, prefix="/api/v1")
     app.include_router(component_design.router, prefix="/api/v1")

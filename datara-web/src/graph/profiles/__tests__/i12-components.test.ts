@@ -1,11 +1,12 @@
 /**
- * I12 T11（C24/C25/C26）新组件注册留痕：
- * - file_sync/assert/notify 三组件 schema 存在、编号与分类归属锁定（R1 归属约定）；
+ * I12 T11（C24/C25/C26）组件注册留痕：
+ * - file_sync/assert/notify 三组件 schema 存在、编号与分类归属锁定；
+ * - 同步编排端点合一后，file_sync(C24) 为 runtimeOnly 执行节点，不再进入设计态 palette/必填校验；
  * - required 必填在各分型下的缺失口径（W1 requiredMissing 共用判定）；
  * - C25 assert 双出口（success/failure 固定 ports，复用 conditions/switch 分支边机制）；
  * - page_board 让号：不再占用 C24 编号（Inspector 编号徽标 v-if 容忍无 code）；
- * - palette 可拖：三组件分别落位 数据同步/数据计算/通用 组，无灰置。
- * 防回归锁点：编号回填漂移（page_board 重占 C24）、分类漂移、required/showIf 分型漂移。
+ * - palette 可拖：assert→数据计算、notify→通用；file_sync 只供运行图/实例详情渲染。
+ * 防回归锁点：编号回填漂移（page_board 重占 C24）、分类/runtimeOnly 漂移、required/showIf 分型漂移。
  */
 import { describe, it, expect } from 'vitest'
 import { dagProfile } from '../dag'
@@ -20,7 +21,8 @@ const schemaOf = (type: string) => {
 describe('I12 T11 C24/C25/C26 组件注册', () => {
   it('三组件已注册且编号/分类锁定（R1 归属约定）', () => {
     expect(schemaOf('file_sync').code).toBe('C24')
-    expect(schemaOf('file_sync').categories).toEqual(['sync', 'general'])
+    expect(schemaOf('file_sync').categories).toEqual(['sync'])
+    expect(schemaOf('file_sync').runtimeOnly).toBe(true)
     expect(schemaOf('assert').code).toBe('C25')
     expect(schemaOf('assert').categories).toEqual(['etl', 'general'])
     expect(schemaOf('notify').code).toBe('C26')
@@ -37,13 +39,13 @@ describe('I12 T11 C24/C25/C26 组件注册', () => {
     expect(ports.map((p) => p.label)).toEqual(['通过', '不通过'])
   })
 
-  it('palette 三组可拖：file_sync→数据同步、assert→数据计算、notify→通用（无灰置）', () => {
+  it('palette 只暴露设计态组件：assert→数据计算、notify→通用；file_sync runtimeOnly 不可拖', () => {
     const groupOf = (type: string) =>
       dagProfile.palette.find((g) => (g.items ?? []).some((i) => i.type === type))
-    expect(groupOf('file_sync')?.name).toBe('数据同步')
+    expect(groupOf('file_sync')).toBeUndefined()
     expect(groupOf('assert')?.name).toBe('数据计算')
     expect(groupOf('notify')?.name).toBe('通用')
-    for (const t of ['file_sync', 'assert', 'notify']) {
+    for (const t of ['assert', 'notify']) {
       const item = groupOf(t)!.items!.find((i) => i.type === t)!
       expect(item.disabled, `${t} 不应灰置`).toBeFalsy()
     }
@@ -55,35 +57,19 @@ describe('I12 T11 C24/C25/C26 组件注册', () => {
 })
 
 describe('I12 T11 required 必填分型口径（requiredMissing 共用判定）', () => {
-  it('file_sync 缺省全空 → 来源目录与上传暂存二选一均缺失 + 目标端两项；补齐任一来源后清零', () => {
+  it('file_sync 为运行态执行组件：设计态不承担业务必填，兜底参数不阻断保存', () => {
     const s = schemaOf('file_sync')
-    expect(requiredMissing(s, { ...(s.defaults ?? {}) }))
-      .toEqual(['文件来源目录/路径', '上传暂存路径（/datara/files 相对）', '目标数据源', '目标 schema → 表'])
-    // 补齐文件路径来源（targetTable 为 table-picker schemaTable 对象形态；键 camelCase 对齐 I12 T11 修）
-    expect(requiredMissing(s, {
-      ...(s.defaults ?? {}),
-      filePath: 'samples/orders', fileName: 'orders.csv',
-      targetDs: '内置数仓-datara_dw', targetTable: { schema: 'ods', table: 'orders' },
-    })).toEqual([])
-    // 仅填上传暂存（I12 T11 修：二选一备选来源）→ 来源侧不再缺失
-    expect(requiredMissing(s, {
-      ...(s.defaults ?? {}),
-      stagedPath: 'staging/orders.csv',
-      targetDs: '内置数仓-datara_dw', targetTable: { schema: 'ods', table: 'orders' },
-    })).toEqual([])
+    expect(s.runtimeOnly).toBe(true)
+    expect(requiredMissing(s, { ...(s.defaults ?? {}) })).toEqual([])
   })
 
-  it('file_sync 来源互斥 showIf 与 DDL 预览（I12 T11 修）', () => {
-    const form = schemaOf('file_sync').form
+  it('文件同步业务表单集中在 C37 端点选择 file_sync 分型，C24 仅保留运行兜底', () => {
+    const form = schemaOf('endpoint_select').form
     const byKey = (k: string) => form.find((f) => f.key === k)!
-    // 二选一：任一来源已填 → 另一侧字段隐藏（showIf 互斥）
-    expect(byKey('filePath').showIf!({ stagedPath: 'a.csv' })).toBe(false)
-    expect(byKey('filePath').showIf!({ stagedPath: '' })).toBe(true)
-    expect(byKey('stagedPath').showIf!({ filePath: 'samples' })).toBe(false)
-    expect(byKey('stagedPath').showIf!({ filePath: '' })).toBe(true)
-    // DDL 预览：仅在 autoCreate 开启时展示
-    expect(byKey('ddl').showIf!({ autoCreate: true })).toBe(true)
-    expect(byKey('ddl').showIf!({ autoCreate: false })).toBe(false)
+    expect(byKey('filePath').showIf!({ baseMode: 'file_sync' })).toBe(true)
+    expect(byKey('filePath').showIf!({ baseMode: 'src_base' })).toBe(false)
+    expect(byKey('tgtDs').showIf).toBeUndefined()
+    expect(form.filter((f) => f.key === 'tgtTable').some((f) => f.showIf?.({ baseMode: 'file_sync' }))).toBe(true)
     // 键名统一 camelCase（I12 T11 修）：无 snake_case 表单键残留
     for (const f of form) expect(f.key).not.toMatch(/_[a-z]/)
   })

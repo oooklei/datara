@@ -4,6 +4,7 @@ import { useRoute, useRouter } from 'vue-router'
 import { useAuthStore } from './stores/auth'
 import { dataStore } from './services/mock/dataStore'
 import { isMock } from './services'
+import { listAlertNotifications } from './services/alertApi'
 import { ROLE_LABELS } from './stores/auth'
 import type { User } from './services/types'
 
@@ -33,13 +34,17 @@ function pick(u: User) {
 /* ---------- 站内消息中心（notifications 集合） ----------
  * 消息形成：任务/质量/部署告警规则触发、审批待办、渠道测试回执（DeployAlarmView 测试发送写入）
  * 消息流转：铃铛下拉展示 → 点击置为已读（localStorage 持久化）并跳转关联页面 */
-interface NotifRow { id: number; icon: string; cls: string; title: string; desc: string; time: string }
+interface NotifRow { id: number; icon: string; cls: string; title: string; desc: string; time: string; target?: string }
 const notifOpen = ref(false)
 const notifs = ref<NotifRow[]>([])
 const readIds = ref<Set<number>>(new Set(JSON.parse(localStorage.getItem('datara_read_notif') || '[]') as number[]))
 const unread = computed(() => notifs.value.filter((n) => !readIds.value.has(n.id)).length)
 async function loadNotifs() {
-  try { notifs.value = await dataStore.list<NotifRow>('notifications') } catch { notifs.value = [] }
+  try {
+    notifs.value = isMock
+      ? await dataStore.list<NotifRow>('notifications')
+      : await listAlertNotifications()
+  } catch { notifs.value = [] }
 }
 /* 消息 → 关联页面跳转映射（I6：同步进度看板下线，类型 2 落同步任务列表；F56d：类型 1 落真实运行实例页，/dag/runs 已删除） */
 const NOTIF_ROUTE: Record<number, string> = { 1: '/dag/instances', 2: '/sync/list', 3: '/qc/exception' }
@@ -48,7 +53,7 @@ function openNotif(n: NotifRow) {
     readIds.value = new Set(readIds.value).add(n.id)
     localStorage.setItem('datara_read_notif', JSON.stringify([...readIds.value]))
   }
-  const target = NOTIF_ROUTE[n.id]
+  const target = n.target || NOTIF_ROUTE[n.id]
   if (target) { notifOpen.value = false; router.push(target) }
 }
 

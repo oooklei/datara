@@ -22,6 +22,8 @@ WF_DUPLICATE = 2002
 WF_PARAM_INVALID = 2003
 WF_VERSION_NOT_FOUND = 2004
 WF_VERSION_CONFLICT = 2005  # I12-D2 保存并发冲突（乐观锁 base_version 不匹配，HTTP 409）
+WF_GRAPH_RULE_FAILED = 2006
+WF_RELEASED_LOCKED = 2007
 
 INSTANCE_NOT_FOUND = 3001
 COMMAND_FAIL = 3002
@@ -36,6 +38,12 @@ TASK_NOT_FOUND = 4006  # IDE 异步执行任务不存在（I10）
 SYSTEM_ERROR = 5001
 DEP_UNAVAILABLE = 5002
 
+COMP_NOT_FOUND = 6001
+COMP_STATE_CONFLICT = 6002
+COMP_GATE_FAILED = 6003
+COMP_LOCK_CONFLICT = 6007
+COMP_SPEC_INVALID = 6008
+
 _MSGS = {
     USER_NOT_FOUND: "用户不存在",
     USER_PWD_WRONG: "密码错误",
@@ -47,6 +55,8 @@ _MSGS = {
     WF_PARAM_INVALID: "工作流定义参数错误",
     WF_VERSION_NOT_FOUND: "版本快照不存在",
     WF_VERSION_CONFLICT: "定义已被他人更新，请刷新后重试",
+    WF_GRAPH_RULE_FAILED: "工作流图规则校验失败",
+    WF_RELEASED_LOCKED: "已发布定义不可直接修改",
     INSTANCE_NOT_FOUND: "运行实例不存在",
     COMMAND_FAIL: "命令提交失败",
     DS_NOT_FOUND: "数据源不存在",
@@ -57,6 +67,11 @@ _MSGS = {
     TASK_NOT_FOUND: "执行任务不存在（已过期或已完成清理）",
     SYSTEM_ERROR: "系统内部错误",
     DEP_UNAVAILABLE: "依赖组件不可用",
+    COMP_NOT_FOUND: "组件不存在",
+    COMP_STATE_CONFLICT: "组件状态冲突",
+    COMP_GATE_FAILED: "组件发布闸门未通过",
+    COMP_LOCK_CONFLICT: "组件草稿已被更新",
+    COMP_SPEC_INVALID: "组件规格不合法",
 }
 
 
@@ -72,9 +87,9 @@ def ok(data: Any = None) -> dict:
     return {"code": 0, "msg": "success", "data": data}
 
 
-def fail(code: int, msg: Optional[str] = None) -> dict:
+def fail(code: int, msg: Optional[str] = None, data: Any = None) -> dict:
     """失败响应包（code≠0；msg 缺省时取错误码内置文案）。"""
-    return {"code": code, "msg": msg or _MSGS.get(code, "未知错误"), "data": None}
+    return {"code": code, "msg": msg or _MSGS.get(code, "未知错误"), "data": data}
 
 
 class PageQuery(BaseModel):

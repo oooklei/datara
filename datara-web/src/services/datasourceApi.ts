@@ -8,6 +8,8 @@
  * 密码明文存储与回显（09-18 裁定：内部系统）。
  */
 import { http } from './http'
+import { isMock } from './apiMode'
+import { mockGetDataSourceTree, mockListDataSources } from './mock/api'
 
 /* ---------- 数据源 ---------- */
 
@@ -102,6 +104,7 @@ export async function listDataSources(params?: {
   group?: string
   type?: string
 }): Promise<DsRow[]> {
+  if (isMock) return mockListDataSources(params)
   const q = new URLSearchParams()
   if (params?.keyword) q.set('keyword', params.keyword)
   if (params?.env) q.set('env', params.env)
@@ -129,6 +132,7 @@ export async function testDataSource(id: number | string): Promise<DsTestResult>
 }
 
 export async function getDataSourceTree(id: number | string, dbFilter?: string): Promise<DsTree> {
+  if (isMock) return mockGetDataSourceTree(id, dbFilter)
   const q = dbFilter ? `?db=${encodeURIComponent(dbFilter)}` : ''
   return http.get<DsTree>(`/datasources/${encodeURIComponent(id)}/tree${q}`)
 }

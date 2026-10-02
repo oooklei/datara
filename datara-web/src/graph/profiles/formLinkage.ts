@@ -3,7 +3,16 @@
  * 与组件解耦（不引 .vue），供 dag.ts 表单 schema 与 vitest 直接复用；
  * TMP_NAME_OK 对齐 worker 侧 common/tmpdata.TMP_NAME_RE（^[a-z][a-z0-9_]{2,31}$）。
  */
+import type { GEdge, GNode, GraphDocument } from '../model'
 import type { NodeSchema } from './types'
+
+export interface DataContext {
+  upstreamColumns: string[]
+  upstreamTables: string[]
+  vars: string[]
+  timeParams: string[]
+  downstreamNeeds: string[]
+}
 
 /** 临时数据名合法规则（与后端 TMP_NAME_RE 同口径） */
 export const TMP_NAME_OK = /^[a-z][a-z0-9_]{2,31}$/
@@ -53,6 +62,24 @@ export function requiredMissing(schema: NodeSchema, data: Record<string, unknown
       return v === undefined || v === null || v === ''
     })
     .map((f) => f.label || f.key)
+}
+
+/**
+ * 同步编排拖边即引用：field_map / condition_set 等节点以 data.inputs 记录上游节点引用。
+ * 对没有 inputs 数组的普通节点保持零副作用。
+ */
+export function onEdgeCreated(doc: Pick<GraphDocument, 'nodes' | 'edges'>, edge: GEdge): void {
+  const source = doc.nodes.find((n: GNode) => n.id === edge.source)
+  const target = doc.nodes.find((n: GNode) => n.id === edge.target)
+  if (!source || !target || !Array.isArray(target.data.inputs)) return
+  const inputs = target.data.inputs as Array<Record<string, unknown>>
+  if (inputs.some((x) => x.nodeId === source.id && x.port === edge.sourceHandle)) return
+  inputs.push({
+    nodeId: source.id,
+    type: source.type,
+    name: String(source.data.name ?? source.id),
+    port: edge.sourceHandle ?? '',
+  })
 }
 
 /* ================= I6 C17 数据同步联动（设计 §9：读端类型切换 + SQL 预览） ================= */

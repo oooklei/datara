@@ -43,7 +43,8 @@ describe('任务中心组件栏显隐机制（角色权限降级）', () => {
     expect(dagProfile.mode).toBe('edit')
     expect(dagProfile.palette.length).toBeGreaterThan(0)
     const types = dagProfile.palette.flatMap((g) => (g.items ?? []).map((i) => i.type))
-    expect(types).toContain('sync') // I6 C17 解禁在列（数据同步分组）
+    expect(types).toContain('src_base_orch') // 同步编排重构后，设计态暴露 C29~C31 编排组件
+    expect(types).not.toContain('sync') // C17 保留为 runtimeOnly 运行态执行组件，不进入设计态 palette
   })
 })
 

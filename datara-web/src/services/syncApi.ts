@@ -6,6 +6,8 @@
  * 端点前缀 /api/v1 由 http.ts 统一拼接。
  */
 import { http } from './http'
+import { isMock } from './apiMode'
+import { mockListSyncTasks } from './mock/api'
 
 interface PageData<T> { total: number; list: T[] }
 
@@ -45,6 +47,7 @@ export async function listSyncTasks(params?: {
   keyword?: string
   state?: string
 }): Promise<PageData<SyncTaskRow>> {
+  if (isMock) return mockListSyncTasks(params)
   const q = new URLSearchParams()
   q.set('page_no', String(params?.pageNo ?? 1))
   q.set('page_size', String(params?.pageSize ?? 50))

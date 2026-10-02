@@ -8,12 +8,11 @@
 import type { IGraphService } from './types'
 import { realGraphService } from './graphApi'
 import { graphService as mockGraphService } from './mock/graphService'
+import { isMock } from './apiMode'
+import { http } from './http'
 
 /** 'real'（默认）| 'mock' */
-export const apiMode: 'real' | 'mock' =
-  (import.meta.env.VITE_API_MODE as 'real' | 'mock' | undefined) ?? 'real'
-
-export const isMock = apiMode === 'mock'
+export { apiMode, isMock } from './apiMode'
 
 export const graphService: IGraphService = isMock ? mockGraphService : realGraphService
 
@@ -46,3 +45,14 @@ export {
   streamSseUrl, streamWsUrl,
 } from './streamApi'
 export type { StreamJobRow, StreamDataPage } from './streamApi'
+export { listAlertNotifications } from './alertApi'
+export type { AlertNotification } from './alertApi'
+export * from './componentApi'
+
+export function publishWorkflow(id: string | number): Promise<unknown> {
+  return http.post(`/workflow-definitions/${encodeURIComponent(String(id))}/publish`, {})
+}
+
+export function offlineWorkflow(id: string | number): Promise<unknown> {
+  return http.post(`/workflow-definitions/${encodeURIComponent(String(id))}/offline`, {})
+}

@@ -7,6 +7,7 @@
 """
 
 import json
+import time
 from typing import Optional
 
 from common import queue as redis_queue
@@ -15,10 +16,15 @@ from common.log import get_logger
 logger = get_logger("common.monitor")
 
 METRICS_TTL_SEC = 90
+KNOWN_NODE_TTL_SEC = 7 * 24 * 60 * 60
 
 
 def metrics_key(module: str, node: str) -> str:
     return "monitor:%s:%s" % (module, node)
+
+
+def known_nodes_key(module: str) -> str:
+    return "monitor:known:%s" % module
 
 
 def collect_metrics() -> Optional[dict]:
@@ -48,8 +54,12 @@ def report_metrics(module: str, node: str) -> None:
     if data is None:
         return
     try:
-        redis_queue.get_client().set(
-            metrics_key(module, node), json.dumps(data), ex=METRICS_TTL_SEC)
+        reported_at = time.time()
+        data["reportedAt"] = reported_at
+        client = redis_queue.get_client()
+        client.set(metrics_key(module, node), json.dumps(data), ex=METRICS_TTL_SEC)
+        client.hset(known_nodes_key(module), node, str(reported_at))
+        client.expire(known_nodes_key(module), KNOWN_NODE_TTL_SEC)
     except Exception as exc:  # noqa: BLE001 上报失败不影响心跳主流程
         logger.warning("指标上报失败: %s/%s %r", module, node, exc)
 
@@ -62,3 +72,13 @@ def read_metrics(module: str, node: str) -> Optional[dict]:
     except Exception as exc:  # noqa: BLE001 读取失败按无指标
         logger.warning("指标读取失败: %s/%s %r", module, node, exc)
         return None
+
+
+def read_known_nodes(module: str) -> dict[str, float]:
+    """读取近期上报过的节点；短期指标过期后仍可呈现其离线状态。"""
+    try:
+        raw = redis_queue.get_client().hgetall(known_nodes_key(module))
+        return {str(node): float(ts) for node, ts in raw.items()}
+    except Exception as exc:  # noqa: BLE001 监控降级不能影响 API 主流程
+        logger.warning("已知节点读取失败: %s %r", module, exc)
+        return {}

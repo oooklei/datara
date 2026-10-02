@@ -5,11 +5,13 @@
 import type { Component } from 'vue'
 import type { GEdge, GEdgeKind, GNode, GraphDocument, Validator } from '../model'
 
+export type FieldKind = FieldSchema['type']
+
 /** Inspector 属性表单字段 schema */
 export interface FieldSchema {
   key: string
   label: string
-  type: 'text' | 'number' | 'select' | 'textarea' | 'script' | 'branches'
+  type: 'text' | 'number' | 'select' | 'textarea' | 'script' | 'branches' | 'rows' | 'resource' | 'mapEditor' | string
     /* F60 六区块扩展类型（§8.1） */
     | 'params-table'  // 键/值/来源（全局变量|工作流变量|环境组|字面量|时间变量）行编辑表
     | 'kv-table'      // 键/值/说明 通用行编辑表
@@ -66,6 +68,7 @@ export interface FieldSchema {
   onChange?: (data: Record<string, unknown>, value: unknown) => void
   /** hint 动态文案（如 ${tmp.*} 可用性提示；缺省用 placeholder） */
   text?: (data: Record<string, unknown>) => string
+  [key: string]: unknown
 }
 
 /** I7 C21 变量组件行（设计 §0①）：type=字面量|表达式(运行时求值)|时间变量(F49 模板)；override=覆盖开关 */
@@ -168,6 +171,16 @@ export interface NodeSchema {
   ports?: (data: Record<string, unknown>) => NodePort[]
   /** Inspector 关联信息（表→已绑规则 / 规则→绑定表等视角语义） */
   related?: (node: GNode, doc: GraphDocument) => RelatedItem[]
+  /** 运行态物化节点：保留 schema 供运行详情渲染，但不进入设计态 palette/校验 */
+  runtimeOnly?: boolean
+  /** 画布辅助/展示节点：不生成任务实例 */
+  nonExecutable?: boolean
+  /** 组件级最大出边数；0 表示禁止出边 */
+  maxOut?: number
+  /** 组件级校验器 */
+  validators?: (node: GNode, doc: GraphDocument) => ReturnType<Validator>
+  /** 兼容历史 profile 中的 render/dropPolicy 等扩展声明 */
+  [key: string]: unknown
 }
 
 /** Profile 预置浮窗按钮（工具栏按 mode 过滤渲染） */

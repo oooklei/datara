@@ -13,6 +13,8 @@
 import type { GraphDocument } from '../graph/model'
 import type { IGraphService, WfVariable } from './types'
 import { http, toLocalMinute } from './http'
+import { isMock } from './apiMode'
+import { mockListCategories, mockListDefinitions, mockListRuntimeNodes } from './mock/api'
 
 /** I6 同步任务标签（对齐 datara-backend/api/sync.py SYNC_TAG，C23 保存打标与 F34 列表过滤共用） */
 export const SYNC_TAG = '同步'
@@ -117,6 +119,7 @@ export const realGraphService: IGraphService = {
 /* ---------- 定义列表 / 变量 / 实例（列表页与变量面板用） ---------- */
 
 export async function listDefinitions(params?: { pageNo?: number; pageSize?: number; search?: string; tag?: string }): Promise<DefinitionMeta[]> {
+  if (isMock) return mockListDefinitions(params)
   const q = new URLSearchParams()
   const tag = params?.tag
   /* 后端 PageQuery 上限 200（传大页 422）：定义量几十级，钳制 200 后客户端过滤足够 */
@@ -394,6 +397,7 @@ export interface RuntimeNodeRow {
 }
 
 export async function listRuntimeNodes(): Promise<RuntimeNodeRow[]> {
+  if (isMock) return mockListRuntimeNodes()
   return http.get<RuntimeNodeRow[]>('/runtime-nodes')
 }
 
@@ -454,12 +458,13 @@ export interface MonitorNodeRow {
   memTotalMb: number | null
   disk: number | null
   heartbeat: string
+  metricState: 'fresh' | 'stale' | 'unsupported'
   lastSeen: string | null
   tags: string[]
 }
 
-export async function fetchMonitorNodes(): Promise<{ zkAvailable: boolean; nodes: MonitorNodeRow[] }> {
-  return http.get<{ zkAvailable: boolean; nodes: MonitorNodeRow[] }>('/monitor/nodes')
+export async function fetchMonitorNodes(): Promise<{ zkAvailable: boolean; generatedAt: string; nodes: MonitorNodeRow[] }> {
+  return http.get<{ zkAvailable: boolean; generatedAt: string; nodes: MonitorNodeRow[] }>('/monitor/nodes')
 }
 
 /* ---- 工作流分类目录（I11：Palette 分组 + 新建/删除/移动；内置 同步/ETL/流 + 自定义 t_wf_category） ---- */
@@ -472,6 +477,7 @@ export interface CategoryRow {
 }
 
 export async function listCategories(): Promise<CategoryRow[]> {
+  if (isMock) return mockListCategories()
   return http.get<CategoryRow[]>('/workflow-definitions/categories')
 }
 

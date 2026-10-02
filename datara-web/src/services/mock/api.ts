@@ -7,7 +7,7 @@
 import type { DefinitionMeta, RuntimeNodeRow, CategoryRow } from '../graphApi'
 import type { WfVariable } from '../types'
 import type { SyncTaskRow } from '../syncApi'
-import type { DsRow } from '../datasourceApi'
+import type { DsRow, DsTree } from '../datasourceApi'
 import type { GlobalParamRow } from '../ideApi'
 import type { BaselineProgressResult, BaselineDraft, BaselineSaveResult, BaselineCheckResult, BaselinePublishResult, LineageDeclResult, BaselineStatus } from '../baselineApi'
 import type { ComponentDetail, ComponentDraft, ComponentVersionsResult } from '../componentApi'
@@ -97,6 +97,56 @@ export async function mockListDataSources(params?: {
   if (params?.group) rows = rows.filter((r) => r.group === params.group)
   if (params?.type) rows = rows.filter((r) => r.type === params.type)
   return rows
+}
+
+/** 数据源树：mock 模式下给出稳定、非空、可被选择器消费的库表/文件结构，避免穿透真实后端。 */
+export async function mockGetDataSourceTree(id: number | string, dbFilter?: string): Promise<DsTree> {
+  const all = await mockListDataSources()
+  const ds = all.find((r) => String(r.id) === String(id)) ?? all[0]
+  if (!ds) {
+    return { kind: 'connection', databases: [] }
+  }
+  if (String(ds.type).toLowerCase().includes('file')) {
+    return {
+      kind: 'file',
+      file: String(ds.name ?? 'mock.csv'),
+      schema: {
+        sampledRows: 2,
+        columns: [
+          { name: 'id', type: 'string', nullRate: 0 },
+          { name: 'amount', type: 'decimal', nullRate: 0 },
+        ],
+      },
+      sample: [
+        ['id', 'amount'],
+        ['1001', '98.50'],
+      ],
+    }
+  }
+  const db = dbFilter || ds.db || 'mock_db'
+  return {
+    kind: 'connection',
+    databases: [{
+      name: db,
+      tables: [
+        {
+          name: 'ods_order',
+          columns: [
+            { name: 'order_id', type: 'varchar' },
+            { name: 'pay_amount', type: 'decimal' },
+            { name: 'biz_date', type: 'date' },
+          ],
+        },
+        {
+          name: 'dim_user',
+          columns: [
+            { name: 'user_id', type: 'varchar' },
+            { name: 'user_name', type: 'varchar' },
+          ],
+        },
+      ],
+    }],
+  }
 }
 
 /** 运行时节点：内存库 runtimeNodes 的 id 是字符串 → 转为 number（RuntimeNodeRow 要求 number） */

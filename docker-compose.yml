@@ -14,6 +14,7 @@ x-backend-env: &backend-env
   DB_NAME: datara_meta
   REDIS_URL: redis://redis:6379/0
   ZK_HOSTS: zookeeper:2181
+  KAFKA_BOOTSTRAP_SERVERS: datara-kafka:9092
   LOG_DIR: /datara/logs
   TOKEN_TTL: "86400"
   DATARA_ADMIN_PWD: ${DATARA_ADMIN_PWD:-Admin@123}
@@ -59,6 +60,33 @@ services:
       timeout: 5s
       retries: 12
       start_period: 15s
+
+  # ---------- 流数据总线（I11/I12 Kafka 源、窗口与落仓用例的正式依赖） ----------
+  kafka:
+    image: bitnami/kafka:3.7
+    container_name: datara-kafka
+    restart: unless-stopped
+    environment:
+      KAFKA_CFG_NODE_ID: "1"
+      KAFKA_CFG_PROCESS_ROLES: broker,controller
+      KAFKA_CFG_CONTROLLER_QUORUM_VOTERS: 1@kafka:9093
+      KAFKA_CFG_LISTENERS: PLAINTEXT://:9092,CONTROLLER://:9093
+      KAFKA_CFG_ADVERTISED_LISTENERS: PLAINTEXT://datara-kafka:9092
+      KAFKA_CFG_LISTENER_SECURITY_PROTOCOL_MAP: CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT
+      KAFKA_CFG_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      KAFKA_CFG_AUTO_CREATE_TOPICS_ENABLE: "true"
+      ALLOW_PLAINTEXT_LISTENER: "yes"
+      TZ: Asia/Shanghai
+    ports:
+      - "9092:9092"
+    volumes:
+      - kafka-data:/bitnami/kafka
+    healthcheck:
+      test: ["CMD-SHELL", "/opt/bitnami/kafka/bin/kafka-topics.sh --bootstrap-server localhost:9092 --list >/dev/null 2>&1"]
+      interval: 10s
+      timeout: 5s
+      retries: 18
+      start_period: 30s
 
   # ---------- 任务队列 / 会话（I3 精化 Stream） ----------
   redis:
@@ -112,7 +140,10 @@ services:
     environment: *backend-env
     ports:
       - "8000:8000"
-    depends_on: *backend-depends
+    depends_on:
+      <<: *backend-depends
+      kafka:
+        condition: service_healthy
     volumes:
       - datara-logs:/datara/logs   # datagen 对账报告 reconcile.json 落盘（install/reset/import 可读取）
       - ./files:/datara/files      # I4 共享文件卷（C22 文件源 /datasources/files 清单）
@@ -148,7 +179,10 @@ services:
     restart: unless-stopped
     command: ["python", "-m", "worker.main"]
     environment: *backend-env
-    depends_on: *backend-depends
+    depends_on:
+      <<: *backend-depends
+      kafka:
+        condition: service_healthy
     volumes:
       - datara-logs:/datara/logs
       - ./files:/datara/files      # I4 共享文件卷（C22 文件读取/物化数据源）
@@ -254,6 +288,7 @@ services:
 
 volumes:
   zookeeper-data:
+  kafka-data:
   redis-data:
   mysql-meta-data:
   mysql-src-data:

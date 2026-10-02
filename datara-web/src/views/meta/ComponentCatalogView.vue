@@ -113,7 +113,7 @@ const drift = computed(() => {
     out.push(`DAG 引擎口径 ${st.unrouted} 个无派发实现：${st.unroutedTypes.join('、')}`)
   }
   if (st.unroutedTotal > st.unrouted) {
-    const per = Object.entries(st.unroutedByProfile ?? {})
+    const per = (Object.entries(st.unroutedByProfile ?? {}) as Array<[string, string[]]>)
       .filter(([k]) => k !== 'dag')
       .map(([k, v]) => `${k} ${v.length} 个`)
       .join('、')

@@ -1,21 +1,9 @@
 /**
- * topo profile：部署运行拓扑视角（五层泳道，只读监控 + mock 健康刷新）
+ * topo profile：部署运行拓扑视角（五层泳道，只读监控）
  * 接入层 → 运行时 → 中间件 → 计算引擎 → 存储
  */
 import { findIsolated } from '../model'
 import type { ViewProfile } from './types'
-import type { GraphDocument } from '../model'
-
-/** 周期刷新：确定性翻转个别组件健康状态（mock execService 异步推送语义） */
-function tickHealth(doc: GraphDocument): void {
-  const pool = doc.nodes.filter((n) => 'health' in n.data)
-  if (!pool.length) return
-  const n = pool[Math.floor(Math.random() * pool.length)]
-  const cur = String(n.data.health ?? 'healthy')
-  // 每次必产生状态变化：健康 → (告警|故障)，非健康 → 恢复
-  const next = cur === 'healthy' ? (Math.random() < 0.4 ? 'fail' : 'warn') : 'healthy'
-  n.data = { ...n.data, health: next }
-}
 
 export const topoProfile: ViewProfile = {
   id: 'topo',
@@ -70,5 +58,4 @@ export const topoProfile: ViewProfile = {
       nodeId: id,
     })),
   ],
-  onTick: tickHealth,
 }

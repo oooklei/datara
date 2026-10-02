@@ -152,55 +152,46 @@ describe('I6 C17 读端类型联动与 SQL 预览', () => {
   })
 })
 
-describe('dag profile C17/C23 I6 注册断言', () => {
+describe('dag profile 同步编排重构注册断言', () => {
   const nt = dagProfile.nodeTypes
 
-  it('C17/C23 已注册且「数据同步」palette 组可拖（无灰置）', () => {
+  it('C17 保留为 runtimeOnly；C23 旧模板入口退役，palette 只暴露 C29~C31 与细项组件', () => {
     expect(nt.sync?.code).toBe('C17')
-    expect(nt.sync_template?.code).toBe('C23')
+    expect(nt.sync?.runtimeOnly).toBe(true)
+    expect(nt.sync_template).toBeUndefined()
     const group = dagProfile.palette.find((c) => c.name === '数据同步')
     const items = (group?.items ?? []).map((i) => i.type)
-    /* I12 T11：同组新增 C24 file_sync（文件同步入仓） */
-    expect(items).toEqual(['sync', 'sync_template', 'file_sync'])
+    expect(items).toEqual(['src_base_orch', 'tgt_base_orch', 'file_sync_orch', 'endpoint_select', 'field_map', 'field_map_union', 'condition_set'])
     for (const it of group?.items ?? []) expect(it.disabled).toBeFalsy()
+    expect(items).not.toContain('sync')
+    expect(items).not.toContain('file_sync')
   })
 
-  it('C17 表单/defaults 键对齐 worker sync.py 参数契约', () => {
+  it('C17 runtimeOnly 表单只暴露运行兜底参数，业务配置由端点选择/映射/条件节点承载', () => {
     const keys = nt.sync!.form.map((f) => f.key)
-    for (const k of [
-      'readerType', 'readerDs', 'readerTable', 'readerSchemasText', 'autoSchema',
-      'incrementalColumn', 'readerPath', 'readerHeader', 'readerSheet',
-      'writerType', 'writerDs', 'writerTable', 'autoCreate', 'truncate',
-      'strategy', 'flagColumn', 'fieldMap', 'batchSize', 'errorThreshold',
-    ]) expect(keys).toContain(k)
-    expect(nt.sync!.form.find((f) => f.key === 'fieldMap')?.type).toBe('kv-table')
-    // defaults：strategy=union 缺省、autoSchema=true（裁定②）、批大小 1000
-    expect(nt.sync!.defaults?.strategy).toBe('union')
-    expect(nt.sync!.defaults?.autoSchema).toBe(true)
+    expect(keys).toEqual(['chainHint', 'batchSize', 'errorThreshold', 'truncate'])
     expect(nt.sync!.defaults?.batchSize).toBe(1000)
-    // 标识列仅在 src_flag 显示；SQL 预览 hint 动态产出
-    expect(nt.sync!.form.find((f) => f.key === 'flagColumn')?.showIf?.({ strategy: 'union' })).toBe(false)
-    expect(nt.sync!.form.find((f) => f.key === 'flagColumn')?.showIf?.({ strategy: 'src_flag' })).toBe(true)
-    const previewF = nt.sync!.form.find((f) => f.key === 'sqlPreview')
-    expect(previewF?.type).toBe('hint')
-    expect(previewF!.text!({ readerType: 'mysql', readerTable: 't', strategy: 'src_flag', readerSchemasText: 'a' })).toContain('src_schema')
+    expect(nt.endpoint_select?.code).toBe('C37')
+    expect(nt.field_map?.code).toBe('C34')
+    expect(nt.field_map_union?.code).toBe('C36')
+    expect(nt.condition_set?.code).toBe('C35')
   })
 
-  it('C23 两套模板 build 展开：开始→同步→对账→结束，差异仅 C17 defaults 策略', () => {
-    const modes = nt.sync_template!.template!.modes
-    expect(modes.map((m) => m.key)).toEqual(['source_base', 'target_base'])
+  it('C29~C31 三个编排模板展开为端点选择→映射→条件→对账校验链路', () => {
     const doc = { id: 'wf_x', name: 'x', version: 1, meta: {}, nodes: [], edges: [] } as unknown as GraphDocument
-    const a = modes[0].build({ doc, pos: { x: 0, y: 0 } })
-    expect(a.nodes.map((n) => n.type)).toEqual(['start', 'sync', 'sql', 'end'])
-    expect(a.edges).toHaveLength(3)
-    expect(a.nodes.find((n) => n.type === 'sync')!.data.strategy).toBe('union')
-    const b = modes[1].build({ doc, pos: { x: 0, y: 0 } })
-    const syncB = b.nodes.find((n) => n.type === 'sync')!
-    expect(syncB.data.strategy).toBe('src_flag')
-    expect(syncB.data.autoSchema).toBe(true)
-    expect(syncB.data.flagColumn).toBe('src_schema')
-    // 展开产物均为标准组件节点（引擎零改动）；对账节点预置 SQL 模板
-    for (const n of [...a.nodes, ...b.nodes]) expect(dagProfile.nodeTypes[n.type]).toBeTruthy()
-    expect(String(a.nodes.find((n) => n.type === 'sql')!.data.sql)).toContain('COUNT(*)')
+    const src = nt.src_base_orch!.template!.modes[0].build({ doc, pos: { x: 0, y: 0 } })
+    const tgt = nt.tgt_base_orch!.template!.modes[0].build({ doc, pos: { x: 0, y: 0 } })
+    const file = nt.file_sync_orch!.template!.modes[0].build({ doc, pos: { x: 0, y: 0 } })
+    expect(src.nodes.map((n) => n.type)).toEqual(['start', 'sql', 'endpoint_select', 'field_map', 'condition_set', 'assert', 'end', 'notify'])
+    expect(tgt.nodes.map((n) => n.type)).toEqual(['start', 'sql', 'endpoint_select', 'field_map_union', 'condition_set', 'assert', 'end', 'notify'])
+    expect(file.nodes.map((n) => n.type)).toEqual(['start', 'sql', 'endpoint_select', 'field_map', 'condition_set', 'assert', 'end', 'notify'])
+    for (const built of [src, tgt, file]) {
+      expect(built.edges.length).toBeGreaterThanOrEqual(7)
+      for (const n of built.nodes) expect(dagProfile.nodeTypes[n.type]).toBeTruthy()
+      expect(String(built.nodes.find((n) => n.type === 'sql')!.data.name)).toContain('前置清理')
+    }
+    expect(src.nodes.find((n) => n.type === 'endpoint_select')!.data.baseMode).toBe('src_base')
+    expect(tgt.nodes.find((n) => n.type === 'endpoint_select')!.data.baseMode).toBe('tgt_base')
+    expect(file.nodes.find((n) => n.type === 'endpoint_select')!.data.baseMode).toBe('file_sync')
   })
 })

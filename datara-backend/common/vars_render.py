@@ -20,7 +20,7 @@ TIME_RE = re.compile(r"\$\[([^\]]+)\]")
 MAX_DEPTH = 5  # 嵌套引用递归上限（防循环引用）
 
 # date(N) 函数式：${date(3)} → T+3、${date(-1)} → T-1（yyyy-MM-dd）
-_DATE_FUNC_RE = re.compile(r"^date\(\s*([+-]?\d+)\s*\)$")
+DATE_FUNC_RE = re.compile(r"^date\(\s*([+-]?\d+)\s*\)$")
 
 # 日期命名模式 token（先长后短替换，避免 mm 抢占 MM 语义）
 _PATTERN_TOKENS = (("yyyy", "%Y"), ("MM", "%m"), ("dd", "%d"), ("HH", "%H"), ("mm", "%M"), ("ss", "%S"))
@@ -81,6 +81,10 @@ def builtin_vars(now: Optional[datetime] = None) -> dict:
     }
 
 
+# 名字全集（键集合与求值基准无关，模块级固化一次；供图校验等存在性判定复用）
+BUILTIN_VAR_NAMES = frozenset(builtin_vars())
+
+
 def render_pattern(name: str, now: datetime) -> Optional[str]:
     """日期命名模式：${yyyyMMdd_HHmmss} 等纯日期模板变量名 → 按模板求值。
 
@@ -139,7 +143,7 @@ def render_text(
             value = builtins[name]
             snapshot.append({"name": name, "value": value, "source": "内置时间参数", "resolved": True})
             return value
-        func = _DATE_FUNC_RE.match(name)
+        func = DATE_FUNC_RE.match(name)
         if func is not None:
             value = (now + timedelta(days=int(func.group(1)))).strftime("%Y-%m-%d")
             snapshot.append({"name": name, "value": value, "source": "date(N)", "resolved": True})
