@@ -41,7 +41,10 @@ from api.auth import ApiError, require_perm
 from api.graph_rules import _catalog as _load_catalog
 from common.db import get_db
 from common.log import get_logger
-from common.models import Component, ComponentLog, ComponentVersion, User, WfDefinition, WfDefinitionLog, now
+from common.models import (
+    Component, ComponentLog, ComponentVersion, DataSource, GlobalParam, User,
+    WfDefinition, WfDefinitionLog, WfVariable, now,
+)
 from common.resp import (
     COMP_DUPLICATE_TYPE,
     COMP_GATE_FAILED,
@@ -580,19 +583,75 @@ def _gate_references(spec: dict) -> list:
     ]
 
 
+def _gate_page_bindings(db: Session, spec: dict) -> list:
+    """§9.1 page 分支发布闸门：绑定引用资源存在性（结构合法性由纯数据闸门承担）。
+
+    - variable：$wf.x → 存在任一 WfVariable.name == 'x'（wf 维度最小实现：全局按 name 匹配）；
+      $param.x → GlobalParam.name；$system.* 内置时间参数直接通过；
+    - query：datasourceId 必须存在（db.get(DataSource, id) 非 None）；显式 SQL 内容不做校验；
+    - metadata：path 三段结构（ds/库/表.字段）非空且末段含点号（不做 DB 连通验证）；
+    - static：字面量兜底无引用，跳过。
+    违规逐条返回：bindings.<槽>: 引用资源不存在（<引用>）。
+    """
+    page = spec.get("page") if isinstance(spec, dict) else None
+    if not isinstance(page, dict):
+        return []
+    violations: list = []
+
+    def walk(widgets) -> None:
+        for w in widgets or []:
+            if not isinstance(w, dict):
+                continue
+            for key, b in (w.get("bindings") or {}).items():
+                if not isinstance(b, dict):
+                    continue
+                kind = b.get("kind")
+                if kind == "variable":
+                    path = b.get("path")
+                    if not isinstance(path, str):
+                        continue
+                    if path.startswith("$system."):
+                        continue  # 内置时间参数
+                    model, name = None, ""
+                    if path.startswith("$wf."):
+                        model, name = WfVariable, path[len("$wf."):]
+                    elif path.startswith("$param."):
+                        model, name = GlobalParam, path[len("$param."):]
+                    if model is not None and (
+                            not name or db.query(model).filter(model.name == name).first() is None):
+                        violations.append("bindings.%s: 引用资源不存在（%s）" % (key, path))
+                elif kind == "query":
+                    ds_id = b.get("datasourceId")
+                    if isinstance(ds_id, bool) or not isinstance(ds_id, int) \
+                            or db.get(DataSource, ds_id) is None:
+                        violations.append("bindings.%s: 引用资源不存在（ds:%s）" % (key, ds_id))
+                elif kind == "metadata":
+                    path = b.get("path")
+                    segs = path.split("/") if isinstance(path, str) else []
+                    if len(segs) != 3 or not all(s.strip() for s in segs) or "." not in segs[2]:
+                        violations.append("bindings.%s: 引用资源不存在（%s）" % (key, path))
+                # static：字面量兜底，无引用，跳过
+            walk(w.get("children"))
+
+    walk(page.get("widgets"))
+    return violations
+
+
 def run_publish_gates(
     comp: Component,
     spec: dict,
     *,
+    db: Optional[Session] = None,
     catalog_types: frozenset = frozenset(),
     executor_registry: frozenset = DISPATCHABLE_EXECUTORS,
 ) -> list:
-    """发布闸门（§13 第 2/3/4/5/6/8 项）：返回逐项结果 [{gate, ok, msg}]。
+    """发布闸门（§13 第 2/3/4/5/6/8 项 + §9.1 page 分支）：返回逐项结果 [{gate, ok, msg}]。
 
-    纯函数（目录类型集/注册表注入）；第 1 项权限由路由依赖承载、第 7 项乐观锁由
-    端点前置校验（409）——均不在本函数清单内。全项评估不短路，一次返回全部违规。
+    纯函数为主（目录类型集/注册表注入；db 仅 §9.1 page 绑定存在性闸门使用，未注入时跳过）；
+    第 1 项权限由路由依赖承载、第 7 项乐观锁由端点前置校验（409）——均不在本函数清单内。
+    全项评估不短路，一次返回全部违规。
     """
-    checks = (
+    checks = [
         ("pure_data", validate_spec_pure_data(spec)),
         ("whitelist", _gate_whitelist(spec)),
         ("drop_policy", _gate_drop_policy(spec)),
@@ -601,7 +660,10 @@ def run_publish_gates(
          ["type「%s」与系统内置目录同名，同名定义一致性无法证明，拒绝发布（§13 第 6 项/§15）" % comp.type]
          if comp.type in catalog_types else []),
         ("references", _gate_references(spec)),
-    )
+    ]
+    if isinstance(spec, dict) and isinstance(spec.get("page"), dict):
+        # §9.1 page 分支闸门：绑定资源存在性。仅 page 根节点介入，非 page 声明闸门清单零变化
+        checks.append(("page_bindings", _gate_page_bindings(db, spec) if db is not None else []))
     return [
         {"gate": name, "ok": not msgs, "msg": "；".join(msgs)}
         for name, msgs in checks
@@ -645,7 +707,7 @@ def publish_version(
                        msg="仅 frozen 版本可发布（当前 %s）" % ver.state)
     spec = json.loads(ver.spec_json) if ver.spec_json else {}
     items = run_publish_gates(
-        comp, spec, catalog_types=frozenset(_catalog_types()))
+        comp, spec, db=db, catalog_types=frozenset(_catalog_types()))
     failed = [i for i in items if not i["ok"]]
     if failed:
         logger.info("发布闸门拦截: %s v%d（%d 项未过，操作人 %s）",

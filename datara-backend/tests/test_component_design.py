@@ -27,7 +27,7 @@ from api.component_design import (  # noqa: E402
     _spec_hash,
     validate_spec_pure_data,
 )
-from common.models import Component, ComponentLog, ComponentVersion, WfDefinitionLog  # noqa: E402
+from common.models import Component, ComponentLog, ComponentVersion, DataSource, WfDefinitionLog, WfVariable  # noqa: E402
 
 
 def set_role(app, role: str) -> None:
@@ -659,6 +659,41 @@ def test_publish_gate_no_force_bypass(client):
     _make_frozen(client, execution_model="demo-only", executor=None)
     r = _publish(client, force=True, skipGates=True)
     assert r.status_code == 422 and r.json()["code"] == 6003
+
+
+def test_publish_gate_page_bindings_missing_resource(client):
+    """§9.1 page 分支发布闸门：绑定引用不存在的 $wf.novar → 422 闸门失败，含「引用资源不存在」。"""
+    widgets = [{"id": "w1", "kind": "var-label", "rect": {"x": 0, "y": 0, "w": 80, "h": 24},
+                "props": {}, "style": {},
+                "bindings": {"value": {"kind": "variable", "path": "$wf.novar", "fallback": "-"}}}]
+    _make_frozen(client, type_name="page_gate_bad", execution_model="page",
+                 executor=None, executable=False, spec=_page_spec(widgets))
+    r = _publish(client, type_name="page_gate_bad")
+    assert r.status_code == 422 and r.json()["code"] == 6003
+    item = _gate_item(r.json(), "page_bindings")
+    assert not item["ok"]
+    assert "引用资源不存在" in item["msg"] and "$wf.novar" in item["msg"]
+
+
+def test_publish_gate_page_bindings_existing_resources_ok(client, db_session):
+    """§9.1：绑定引用存在的资源（$wf 变量 / 数据源 / metadata 三段 path / static 兜底）→ publish 200。"""
+    db_session.add(WfVariable(wf_code=1, name="sales", value="0"))
+    db_session.add(DataSource(id=1, name="dw", type="mysql"))
+    db_session.commit()
+    widgets = [
+        {"id": "w1", "kind": "var-label", "rect": {"x": 0, "y": 0, "w": 80, "h": 24}, "props": {}, "style": {},
+         "bindings": {"value": {"kind": "variable", "path": "$wf.sales", "fallback": "-"}}},
+        {"id": "w2", "kind": "table", "rect": {"x": 0, "y": 30, "w": 200, "h": 100}, "props": {}, "style": {},
+         "bindings": {"data": {"kind": "query", "datasourceId": 1, "fallback": "数据集"}}},
+        {"id": "w3", "kind": "meta-field", "rect": {"x": 0, "y": 140, "w": 80, "h": 24}, "props": {}, "style": {},
+         "bindings": {"value": {"kind": "metadata", "path": "ds/dw/t_user.name", "fallback": "-"}}},
+        {"id": "w4", "kind": "text", "rect": {"x": 0, "y": 170, "w": 80, "h": 24}, "props": {}, "style": {},
+         "bindings": {"value": {"kind": "static", "fallback": "文本"}}},
+    ]
+    _make_frozen(client, type_name="page_gate_ok", execution_model="page",
+                 executor=None, executable=False, spec=_page_spec(widgets))
+    r = _publish(client, type_name="page_gate_ok")
+    assert r.status_code == 200, r.text
 
 
 def test_run_publish_gates_returns_all_items_in_order():
