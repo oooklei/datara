@@ -158,6 +158,31 @@ def test_create_rejects_impure_spec(client):
     assert body["code"] == 6008 and body["data"]["violations"]
 
 
+# ---------------------------------------------------------------- 页面设计器（execution_model=page）
+
+def test_create_page_component_ok(client):
+    """page 组件可创建：executable 显式 false（页面设计器产出的 UI 组件不可执行）。"""
+    set_role(client.app, "dev")
+    r = client.post("/api/v1/components", json={
+        "type": "page_sales_board", "name": "销售看板", "profile": "dag",
+        "execution_model": "page", "executable": False,
+        "spec": {"page": {"version": 1, "canvas": {"width": 288, "height": 520}, "widgets": []}},
+    })
+    assert r.status_code == 200, r.text
+
+
+def test_page_model_executable_forbidden(client):
+    """page + executable=true → 422 COMP_SPEC_INVALID（断言业务码，区别于 Literal 的 FastAPI 422）。"""
+    set_role(client.app, "dev")
+    r = client.post("/api/v1/components", json={
+        "type": "page_bad_exec", "name": "x", "profile": "dag",
+        "execution_model": "page", "executable": True,
+        "spec": {"page": {"version": 1, "canvas": {}, "widgets": []}},
+    })
+    assert r.status_code == 422
+    assert r.json()["code"] == 6008  # COMP_SPEC_INVALID
+
+
 # ---------------------------------------------------------------- 读/保存草稿
 
 

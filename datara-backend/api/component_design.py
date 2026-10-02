@@ -59,7 +59,7 @@ logger = get_logger("api.component_design")
 router = APIRouter(prefix="/components", tags=["component-design"])
 
 PROFILES = ("dag", "etl", "stream", "topo")
-EXECUTION_MODELS = ("dag-engine", "canvas-device", "demo-only", "runtime-only")
+EXECUTION_MODELS = ("dag-engine", "canvas-device", "demo-only", "runtime-only", "page")
 
 # 红线 2：声明中禁止出现的函数/代码片段（大小写敏感子串，设计器产出为结构化 UI
 # 文本，出现这些模式即异常；宁可误伤也不放行——B4 白名单校验是主闸门，此为兜底）
@@ -134,7 +134,7 @@ class ComponentCreateBody(BaseModel):
     type: str
     name: str
     profile: Literal["dag", "etl", "stream", "topo"]
-    execution_model: Literal["dag-engine", "canvas-device", "demo-only", "runtime-only"]
+    execution_model: Literal["dag-engine", "canvas-device", "demo-only", "runtime-only", "page"]
     category: Optional[str] = None
     executor: Optional[str] = None
     executable: bool = True
@@ -196,6 +196,10 @@ def create_component(
     if violations:
         raise ApiError(COMP_SPEC_INVALID, status=422,
                        msg="初始声明非纯数据", data={"violations": violations})
+    # 页面设计器产出的 UI 组件不可执行（page 模型红线）
+    if body.execution_model == "page" and body.executable:
+        raise ApiError(COMP_SPEC_INVALID, status=422,
+                       msg="execution_model=page 组件 executable 必须为 false")
 
     comp = Component(
         type=type_name, name=body.name.strip(), category=body.category,

@@ -51,6 +51,7 @@ export type ExecutionModel =
   | 'dag-engine'     // Master 派发点 / Worker executor
   | 'demo-only'      // **无任何执行实现**（后端全文检索无该 type）
   | 'canvas-device'  // 画布装饰元件（shape=device, form=[]），设计上不执行
+  | 'page'           // 页面设计器产出的 UI 组件（不可执行）
 
 export interface ComponentRow {
   type: string
