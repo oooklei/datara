@@ -11,6 +11,7 @@ describe('router shell (todo 5)', () => {
     '/script/list', '/script/env', '/script/remote', '/param/global', '/param/builtin',
     '/param/env', '/param/tools',
     '/qc/score', '/qc/rule', '/qc/task', '/qc/exception', '/qc/report', '/qc/alarm',
+    '/meta/components', '/meta/components/baseline', '/meta/components/design/:type?',
     '/meta/catalog', '/meta/tag', '/std/element', '/std/code', '/std/naming',
     '/std/mapping', '/std/approval', '/ind/list', '/ind/board', '/ind/consistency',
     '/dep/center', '/dep/monitor', '/dep/log', '/dep/alarm', '/dep/ops', '/dep/runtime',
@@ -23,7 +24,7 @@ describe('router shell (todo 5)', () => {
     for (const p of newPaths) {
       expect(registered.has(p), `route ${p} should be registered`).toBe(true)
     }
-    expect(newPaths.length).toBe(43)
+    expect(newPaths.length).toBe(46)
   })
 
   it('keeps the 8 existing routes unchanged', () => {

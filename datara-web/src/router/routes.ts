@@ -19,6 +19,9 @@ export const routes: RouteRecordRaw[] = [
   { path: '/stream/design/:id', name: 'stream-design', redirect: (to) => ({ path: '/dag', query: { ...to.query, tab: 'edit', type: 'stream', doc: String(to.params.id) } }), meta: { title: '流设计器' } },
   { path: '/model/er', name: 'model-er', component: () => import('../views/ErCanvasView.vue'), meta: { title: 'ER画布', demo: true } },
   { path: '/meta/lineage', name: 'meta-lineage', component: () => import('../views/LineageView.vue'), meta: { title: '血缘分析' } },
+  { path: '/meta/components', name: 'meta-components', component: () => import('../views/meta/ComponentCatalogView.vue'), meta: { title: '组件目录' } },
+  { path: '/meta/components/baseline', name: 'meta-components-baseline', component: () => import('../views/meta/BaselineWorkbenchView.vue'), meta: { title: '基线化工作台' } },
+  { path: '/meta/components/design/:type?', name: 'meta-components-design', component: () => import('../views/meta/ComponentDesignView.vue'), meta: { title: '组件设计器' } },
   { path: '/meta/map', name: 'meta-map', component: () => import('../views/AssetMapView.vue'), meta: { title: '资产地图', demo: true } },
 
   // ---- 新增 45 条模块路由 ----
