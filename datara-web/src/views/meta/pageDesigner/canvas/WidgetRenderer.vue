@@ -7,7 +7,7 @@
  * - 渲染异常兜底：onErrorCaptured 捕获 children 递归错误输出兜底卡片，不拖垮画布
  * 实现取原生元素 + SVG（零 UI 库依赖）：设计态只读骨架无需重型表格组件，jsdom/生产渲染均轻量稳定。
  */
-import { computed, ref } from 'vue'
+import { computed, onErrorCaptured, ref } from 'vue'
 import type { WidgetNode } from '../designerModel'
 import type { PreviewResult } from '../pageApi'
 
@@ -19,10 +19,12 @@ const emit = defineEmits<{
 }>()
 
 const broken = ref(false)
+/** children 递归渲染异常兜底：拦截并降级为兜底卡片，不拖垮画布 */
 function onDescErr(): boolean {
   broken.value = true
   return false
 }
+onErrorCaptured(onDescErr)
 
 const kind = computed(() => props.widget.kind)
 const isContainer = computed(() => ['grid-row', 'card', 'tabs', 'collapse'].includes(kind.value))
