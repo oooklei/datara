@@ -16,12 +16,12 @@ import { MiniMap } from '@vue-flow/minimap'
 import '@vue-flow/core/dist/style.css'
 import '@vue-flow/core/dist/theme-default.css'
 
-import type { DocGroup, GraphDocument, GEdge, GNode, Issue } from '../model'
+import type { DocGroup, GraphDocument, GEdge, GNode, GNodeData, Issue } from '../model'
 import { cloneDoc, detectCycle, uid } from '../model'
 import { applyLayout } from '../layout'
 import type { NodeSchema, ViewProfile } from '../profiles'
 import type { ComponentCategory } from '../profiles/types' // I12 R1：doc 推导组件库置顶标签用
-import { onEdgeCreated, onEdgeRemoved, decideDrop, prefillFromUpstream } from '../profiles/formLinkage' // 拖边即引用（端点合一 §3.3）+ F1 拖入闸门
+import { onEdgeCreated, onEdgeRemoved, decideDrop, prefillFromUpstream, applyInitTemplate } from '../profiles/formLinkage' // 拖边即引用（端点合一 §3.3）+ F1 拖入闸门 + M5 initTemplate 落图合入
 import { createTemplateStage, selectTemplateSteps, stagedUpstreamOf } from '../profiles/templateStaging'
 import type { TemplateStage } from '../profiles/templateStaging'
 import { useGraphStore } from '../../stores/graph'
@@ -936,11 +936,15 @@ function onDrop(e: DragEvent) {
     id: uid('nd'),
     type,
     position: pos,
-    data: { name: schema.label, ...(schema.defaults ?? {}) },
+    /* M5：initTemplate.props 浅合入（defaults < 模板）；applyInitTemplate 返回等价副本，
+       name 恒保留 → 收窄回 GNodeData 安全（extra 键由 GNodeData 索引签名承载） */
+    data: applyInitTemplate({ name: schema.label, ...(schema.defaults ?? {}) }, schema) as GNodeData,
   }
   /* §11 划界语义：逻辑上游 = 当前选中节点优先，否则 drop 点最近节点。
      同一取法两处消费：prefill 一次性快照预填 + dropUpstream 传弹窗（虚拟节点无 doc.edges 入边，
-     弹窗期 ①输入候选 / dataScope 上游两域 / 悬空引用判定均需它才能与落画布后同源） */
+     弹窗期 ①输入候选 / dataScope 上游两域 / 悬空引用判定均需它才能与落画布后同源）
+     落图默认值优先级（低 → 高）：defaults < initTemplate.props（applyInitTemplate 已合入）
+     < 上游快照 prefillFromUpstream —— 上游非空同名值最后落笔，覆盖模板与通用默认 */
   const up = pickPrefillUpstream(pos)
   prefillFromUpstream(g.data, up?.data ?? null, schema.dropPolicy?.prefillFromUpstream)
   dropSchema.value = schema

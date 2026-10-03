@@ -5,11 +5,12 @@
  * - dag profile C15/C16/C22 注册断言（type 对齐 worker EXECUTORS 键，表单含联动钩子）
  * - 同步编排端点合一：旧专业组件下线断言 + 3 编排组件新拓扑展开链（assert 双出口）+ C37 端点选择表单契约 + C17/C24 执行节点精简
  * - 拖边即引用纯函数（onEdgeCreated / onEdgeRemoved）+ 目标表基准探测（probeMatchTables）
+ * - M5 组件 initTemplate 落图默认形态合入（applyInitTemplate，优先级链 defaults < 模板 < 上游快照）
  */
 import { describe, expect, it } from 'vitest'
 import type { GraphDocument } from '../../model'
 import type { ConditionDef, NodeSchema } from '../types'
-import { TMP_NAME_OK, c22OnModeChange, clearOnConditionHide, condVisible as condVisibleProd, dataScopeState, decideDrop, domainViolations, onEdgeCreated, onEdgeRemoved, prefillFromUpstream, probeMatchTables, renderSummary, requiredMissing, resolveDataContext, tmpRefHint, tmpRefUsable } from '../formLinkage'
+import { TMP_NAME_OK, applyInitTemplate, c22OnModeChange, clearOnConditionHide, condVisible as condVisibleProd, dataScopeState, decideDrop, domainViolations, onEdgeCreated, onEdgeRemoved, prefillFromUpstream, probeMatchTables, renderSummary, requiredMissing, resolveDataContext, tmpRefHint, tmpRefUsable } from '../formLinkage'
 import type { DataContext, EdgeLike, GNodeLike } from '../formLinkage'
 import type { FieldSchema } from '../types'
 import { dagProfile } from '../dag'
@@ -493,6 +494,62 @@ describe('prefillFromUpstream 快照预填（§11 划界语义）', () => {
     prefillFromUpstream(data, { datasource: 'x' }, undefined)
     prefillFromUpstream(data, { datasource: 'x' }, [])
     expect(data.datasource).toBe('默认源')
+  })
+})
+
+/* ================= M5 组件 initTemplate 落图消费（applyInitTemplate 纯函数，页面设计器 Task 14 消费点） ================= */
+
+describe('applyInitTemplate 组件初始化模板合入（M5）', () => {
+  const mkSchema = (over: Partial<NodeSchema> = {}): NodeSchema => ({
+    type: 'sql', label: 'SQL', icon: '?', color: '#000', form: [{ key: 'a', label: 'A', type: 'text' }],
+    ...over,
+  })
+
+  it('无 initTemplate → 等价副本返回：不新增键、不改 name，且不改传入对象', () => {
+    const schema = mkSchema()
+    const data = { name: 'SQL', ds: 'd1' }
+    const out = applyInitTemplate(data, schema)
+    expect(out).toEqual({ name: 'SQL', ds: 'd1' })
+    expect(out).not.toBe(data) // 副本而非原引用
+    expect(data).toEqual({ name: 'SQL', ds: 'd1' }) // 入参未被原地修改
+  })
+
+  it('有 initTemplate.props → props 键合入 data（name 等既有键不动）', () => {
+    const schema = mkSchema({ initTemplate: { rect: { w: 240, h: 120 }, props: { mode: 'manual', limit: 100 } } })
+    const out = applyInitTemplate({ name: 'SQL' }, schema)
+    expect(out.mode).toBe('manual')
+    expect(out.limit).toBe(100)
+    expect(out.name).toBe('SQL')
+  })
+
+  it('与 defaults 同名键 → initTemplate.props 覆盖 defaults（组件创作模板更具体）', () => {
+    const schema = mkSchema({
+      defaults: { mode: 'datasource', path: 'a.csv' },
+      initTemplate: { rect: { w: 240, h: 120 }, props: { mode: 'manual' } },
+    })
+    const out = applyInitTemplate({ name: 'SQL', mode: 'datasource', path: 'a.csv' }, schema)
+    expect(out.mode).toBe('manual') // 模板覆盖通用默认
+    expect(out.path).toBe('a.csv') // 未声明的键保持 defaults
+  })
+
+  it('优先级链完整：applyInitTemplate 之后 prefillFromUpstream 上游同名值仍覆盖 initTemplate 值', () => {
+    const schema = mkSchema({
+      defaults: { datasource: '默认源' },
+      initTemplate: { rect: { w: 240, h: 120 }, props: { datasource: '模板源' } },
+    })
+    const g = applyInitTemplate({ name: 'SQL', datasource: '默认源' }, schema)
+    expect(g.datasource).toBe('模板源') // 模板先压过 defaults
+    prefillFromUpstream(g, { datasource: '上游库' }, ['datasource'])
+    expect(g.datasource).toBe('上游库') // 上游快照最具体，最后落笔
+  })
+
+  it('不可变性：不原地修改传入 data，也不反向污染 schema.initTemplate.props', () => {
+    const props = { mode: 'manual' }
+    const schema = mkSchema({ initTemplate: { rect: { w: 240, h: 120 }, props } })
+    const out = applyInitTemplate({ mode: 'datasource' }, schema)
+    expect(out.mode).toBe('manual')
+    expect(schema.initTemplate!.props).toEqual({ mode: 'manual' }) // 模板源对象未被改写
+    expect(schema.initTemplate!.props).toBe(props)
   })
 })
 

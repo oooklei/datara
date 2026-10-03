@@ -123,6 +123,20 @@ export function decideDrop(
 }
 
 /**
+ * M5 组件 initTemplate 落图消费（页面设计器 Task 14 的 UI 消费点）：拖入设计器时把组件创作的
+ * 单节点默认形态 props 浅合入节点 data（types.ComponentInitTemplate：「拖入设计器的单节点默认形态」）。
+ * 落图默认值优先级链（低 → 高）：defaults（通用默认）< initTemplate.props（组件创作模板，更具体）
+ * < prefillFromUpstream（上游快照，最具体）——本函数只承载前两级，调用点先以 defaults 构造初始 data，
+ * 经本函数合入模板后，再交 prefillFromUpstream 应用上游快照完成整链。
+ * 纯函数：浅合并、不修改传入 data（恒返回新对象）；initTemplate 缺省时返回等价副本（行为零变化）。
+ * 与 F63 template（聚合多节点链展开，含 build 函数）正交：模板组件在 onDrop 先行 materializeTemplate
+ * 分流，不进入本链路。
+ */
+export function applyInitTemplate(data: Record<string, unknown>, schema: NodeSchema): Record<string, unknown> {
+  return { ...data, ...schema.initTemplate?.props }
+}
+
+/**
  * prefillFromUpstream 快照预填（§11）：取逻辑上游节点 data 中同名**非空**值写入本节点 data。
  * - 快照语义：drop 时一次性取值，之后上游变化不回写（与 Inspector pick 实时联动划界）
  * - 上游值与 defaults 同为空时保持 defaults；上游非空才覆盖（''/null/undefined/空数组视为空）
