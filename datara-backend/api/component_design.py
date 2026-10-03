@@ -143,8 +143,8 @@ def _validate_page_spec(spec, violations: list) -> None:
     height = canvas.get("height") if isinstance(canvas, dict) else None
     if not (isinstance(width, (int, float)) and not isinstance(width, bool)
             and isinstance(height, (int, float)) and not isinstance(height, bool)
-            and 140 <= width <= 1920 and 160 <= height <= 2160):
-        violations.append("page.canvas: 尺寸越界（宽 140-1920 / 高 160-2160）")
+            and 140 <= width <= 520 and 320 <= height <= 1200):
+        violations.append("page.canvas: 尺寸越界（宽 140-520 / 高 320-1200）")
 
     def walk(widgets, prefix):
         for i, w in enumerate(widgets):

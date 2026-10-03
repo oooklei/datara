@@ -1,7 +1,7 @@
 /**
  * 组件页面设计器 Task 6 + Task 7：PageDSL 模型/归一化/校验 + 模板单测。
  * 与后端 api/component_design.py _validate_page_spec 同口径
- * （kind 白名单 43 项 / 绑定 fallback 必填 / 画布钳制 140-1920 / 160-2160）。
+ * （kind 白名单 43 项 / 绑定 fallback 必填 / 画布钳制 宽 140-520 / 高 320-1200）。
  * 纯函数用例，无需 DOM。导入 templates.ts 即完成 bindTemplates 注入（模块顶层侧效应）。
  */
 import { describe, expect, it } from 'vitest'
@@ -17,9 +17,10 @@ describe('designerModel', () => {
     expect(p.widgets[0].style).toEqual({})
   })
   it('validatePage：未知 kind / 绑定缺 fallback / 尺寸越界', () => {
-    const p = normalizePage({ page: { version: 1, canvas: { width: 10, height: 520 }, widgets: [
+    const p = normalizePage({ page: { version: 1, widgets: [
       { kind: 'nope', bindings: { value: { kind: 'metadata' } } },
     ] } })
+    p.canvas.width = 10 // 越界值直改 DSL（normalizePage 钳制在先，钳制行为另测）
     const vs = validatePage(p)
     expect(vs.some((v) => v.includes('kind'))).toBe(true)
     expect(vs.some((v) => v.includes('fallback'))).toBe(true)
@@ -33,6 +34,26 @@ describe('designerModel', () => {
     expect(mk({ kind: 'query', query: 'SELECT 1', fallback: '数据集' })).toEqual([])
     const vs = mk({ kind: 'query', fallback: '数据集' })
     expect(vs.some((v) => v.includes('datasourceId 或 query'))).toBe(true)
+  })
+  it('validatePage：画布尺寸边界（设计口径 宽 140-520 / 高 320-1200）', () => {
+    // normalizePage 会钳制画布值，边界校验直改 DSL 绕开钳制，单测 validatePage 分支
+    const mk = (width: number, height: number) => {
+      const p = normalizePage({ page: { version: 1, widgets: [] } })
+      p.canvas.width = width
+      p.canvas.height = height
+      return validatePage(p)
+    }
+    expect(mk(140, 320)).toEqual([])
+    expect(mk(520, 1200)).toEqual([])
+    expect(mk(139, 520).some((v) => v.includes('canvas'))).toBe(true)
+    expect(mk(521, 520).some((v) => v.includes('canvas'))).toBe(true)
+    expect(mk(288, 319).some((v) => v.includes('canvas'))).toBe(true)
+    expect(mk(288, 1201).some((v) => v.includes('canvas'))).toBe(true)
+  })
+  it('normalizePage 钳制旧草稿越界尺寸（旧口径 宽 1920 / 高 2000 → 新口径合法）', () => {
+    const p = normalizePage({ page: { version: 1, canvas: { width: 1920, height: 2000 }, widgets: [] } })
+    expect(p.canvas.width).toBe(520)
+    expect(p.canvas.height).toBe(1200)
   })
   it('newWidget 套模板：rect/props/style 来自模板', () => {
     const w = newWidget('text', { x: 10, y: 10 })

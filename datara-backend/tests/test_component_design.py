@@ -207,6 +207,24 @@ def test_page_spec_valid_passes():
     assert validate_spec_pure_data(ok) == []
 
 
+def test_page_spec_canvas_size_bounds():
+    """画布尺寸钳制（设计文档 §4：同 DAG 面板约束）：宽 140-520 / 高 320-1200。
+    边界值合法；越界（139/319/521/1201）违规并提示新口径文案。"""
+    from api.component_design import validate_spec_pure_data
+
+    def spec(w, h):
+        s = _page_spec([])
+        s["page"]["canvas"]["width"] = w
+        s["page"]["canvas"]["height"] = h
+        return s
+
+    assert validate_spec_pure_data(spec(140, 320)) == []
+    assert validate_spec_pure_data(spec(520, 1200)) == []
+    for w, h in [(139, 520), (521, 520), (288, 319), (288, 1201)]:
+        violations = validate_spec_pure_data(spec(w, h))
+        assert any("page.canvas" in v and "140-520" in v and "320-1200" in v for v in violations), (w, h, violations)
+
+
 def test_page_spec_query_binding_datasource_only_valid():
     """数据集绑定形状：kind=query 仅 datasourceId（无 SQL）即合法——数据源引用型绑定，
     SQL 后续在数据集钻取中补；显式 SQL 型（query 字段）同合法；二者皆缺才违规。

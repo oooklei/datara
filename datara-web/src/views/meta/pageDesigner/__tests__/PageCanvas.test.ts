@@ -3,7 +3,7 @@
  * Task 11 画布 + widget 渲染分派用例（happy-dom）：
  * - 画布卡居中（stage 内联 flex）+ 初始 288×520（CANVAS_DEFAULT 规格）+ box-shadow 非空
  * - drop 拖入：dataTransfer stub 返回 kind → emit add {kind,x,y}（getBoundingClientRect stub 卡内相对坐标）
- * - 拖尺寸：grip mousedown → window mousemove → emit canvasSize 且宽度钳制 [140,1920]；mouseup 解绑
+ * - 拖尺寸：grip mousedown → window mousemove → emit canvasSize 且宽度钳制 [140,520]；mouseup 解绑
  * - 预览态：table widget 渲染 preview 2 行真实数据；无预览渲染模板列 + 空态文案
  * - 选中：点击 widget 根元素 emit select（携带 id）
  * WidgetRenderer 为零 UI 库依赖的只读骨架渲染（原生元素 + SVG），测试直接轻量 DOM 断言。
@@ -56,19 +56,31 @@ describe('PageCanvas 画布', () => {
     expect(w.emitted('add')?.[0]).toEqual(['text', 50, 80])
   })
 
-  it('拖尺寸：mousemove emit canvasSize 且宽度钳制 [140,1920]；mouseup 解绑', async () => {
+  it('拖尺寸：mousemove emit canvasSize 且宽度钳制 [140,520]；mouseup 解绑', async () => {
     const w = mountCanvas()
     await w.find('.pd-grip-e').trigger('mousedown', { clientX: 100 })
     window.dispatchEvent(new MouseEvent('mousemove', { clientX: 3000 }))
     const evts = w.emitted('canvasSize')
     expect(evts).toBeTruthy()
     const [ew] = evts![evts!.length - 1] as [number, number]
-    expect(ew).toBe(1920) // 288+(3000-100) 远超上限 → 钳到 1920
+    expect(ew).toBe(520) // 288+(3000-100) 远超上限 → 钳到 520
     expect(ew).toBeGreaterThanOrEqual(140)
     window.dispatchEvent(new MouseEvent('mouseup'))
     const n = w.emitted('canvasSize')!.length
     window.dispatchEvent(new MouseEvent('mousemove', { clientX: 4000 }))
     expect(w.emitted('canvasSize')!.length).toBe(n)
+  })
+
+  it('拖尺寸：高度钳制 [320,1200]', async () => {
+    const w = mountCanvas()
+    await w.find('.pd-grip-s').trigger('mousedown', { clientY: 100 })
+    window.dispatchEvent(new MouseEvent('mousemove', { clientY: 3000 }))
+    const evts = w.emitted('canvasSize')
+    expect(evts).toBeTruthy()
+    const [, eh] = evts![evts!.length - 1] as [number, number]
+    expect(eh).toBe(1200) // 520+(3000-100) 远超上限 → 钳到 1200
+    expect(eh).toBeGreaterThanOrEqual(320)
+    window.dispatchEvent(new MouseEvent('mouseup'))
   })
 
   it('预览态：table widget 渲染 preview 2 行真实数据', () => {

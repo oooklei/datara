@@ -2,7 +2,7 @@
  * 组件页面设计器 Task 6：PageDSL 类型 + 归一化 + 校验。
  * 红线 2 前端镜像，与后端 api/component_design.py _validate_page_spec 同口径：
  * widget kind 白名单 43 项 / 绑定 fallback 必填（placeholder 即默认值）/
- * 画布尺寸钳制 宽 140-1920 / 高 160-2160。
+ * 画布尺寸钳制 宽 140-520 / 高 320-1200（设计文档 §4，同 DAG 面板约束）。
  */
 export interface Rect { x: number; y: number; w: number; h: number }
 export interface BackgroundStyle { fill: string; image?: string; size?: string }
@@ -24,8 +24,8 @@ export interface PageDSL {
 }
 
 export const CANVAS_DEFAULT = { width: 288, height: 520 }   // GraphWorkbench Inspector 规格
-export const CANVAS_W = { min: 140, max: 1920 }
-export const CANVAS_H = { min: 160, max: 2160 }
+export const CANVAS_W = { min: 140, max: 520 }
+export const CANVAS_H = { min: 320, max: 1200 }
 
 let seq = 0
 export function genId(_kind: string): string {
@@ -43,8 +43,9 @@ export function normalizePage(raw: unknown): PageDSL {
     icon: (p.icon as string) ?? 'block',
     color: (p.color as string) ?? '#1677ff',
     canvas: {
-      width: Number(canvas.width) || CANVAS_DEFAULT.width,
-      height: Number(canvas.height) || CANVAS_DEFAULT.height,
+      // 钳制式回退：缺省/非法值回退默认规格，旧草稿越界值钳入新口径，保证加载后合法
+      width: Math.min(CANVAS_W.max, Math.max(CANVAS_W.min, Number(canvas.width) || CANVAS_DEFAULT.width)),
+      height: Math.min(CANVAS_H.max, Math.max(CANVAS_H.min, Number(canvas.height) || CANVAS_DEFAULT.height)),
       background: { fill: bg.fill ?? '#ffffff', image: bg.image, size: bg.size ?? 'cover' },
     },
     widgets: ((p.widgets as Record<string, unknown>[]) ?? []).map((w) => ({

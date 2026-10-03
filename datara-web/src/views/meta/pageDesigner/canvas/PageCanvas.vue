@@ -3,7 +3,7 @@
  * 组件页面设计器 Task 11：画布。
  * - 手机规格画布卡在 .pd-stage 内 flex 居中，柔和阴影；背景填充/图片随 page.canvas
  * - 拖入落点：drop 读 dataTransfer（专用 MIME → text/plain 兜底），emit add(kind, 卡内相对坐标)
- * - 拖尺寸：e/s/se grip mousedown 记起点 → window mousemove 实时 emit canvasSize（钳制 宽140-1920/高160-2160）
+ * - 拖尺寸：e/s/se grip mousedown 记起点 → window mousemove 实时 emit canvasSize（钳制 宽140-520/高320-1200）
  *   → mouseup 解绑（GraphWorkbench 面板拖宽同款模式）；持久化由宿主 PageDesignerView 统一承担，本组件只 emit
  */
 import { computed, onBeforeUnmount } from 'vue'

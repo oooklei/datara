@@ -23,7 +23,7 @@ import {
   publishComponentVersion, saveComponentDraft,
   type ComponentDraft, type ComponentVersionRow,
 } from '../../../services/componentApi'
-import { normalizePage, genId, newWidget, type BackgroundStyle, type PageDSL, type WidgetNode } from './designerModel'
+import { normalizePage, genId, newWidget, CANVAS_H, CANVAS_W, type BackgroundStyle, type PageDSL, type WidgetNode } from './designerModel'
 import { pageTemplates } from './templates'
 import type { ResourceCatalog } from './bindingCatalog'
 import { pageApi, type PreviewQuery, type PreviewResult } from './pageApi'
@@ -74,7 +74,11 @@ async function loadAll(t: string): Promise<void> {
     versions.value = v.items
     const p = normalizePage(d.spec)
     const saved = readCanvasStore(t)
-    if (saved) { p.canvas.width = saved.w; p.canvas.height = saved.h }
+    if (saved) {
+      // localStorage 旧持久化值可能落在旧口径（如高 2000），按 CANVAS_W/H 钳制后再赋值
+      p.canvas.width = Math.min(CANVAS_W.max, Math.max(CANVAS_W.min, saved.w))
+      p.canvas.height = Math.min(CANVAS_H.max, Math.max(CANVAS_H.min, saved.h))
+    }
     page.value = p
     catalog.value = res
     selectedId.value = undefined
