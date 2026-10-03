@@ -24,13 +24,18 @@ export function bindingOf(value: string, fallback: string): BindingRef {
  * - 选中 → 布局（rect x/y/w/h）/ 样式（填充/圆角/字号/字色）→ updateWidget patch；
  *   数据绑定段按 SLOTS 槽位清单（dataset=数据集入口 / scalar=值与默认值语义），
  *   每槽：候选下拉（candidatesFor，allowClear）+「手动输入」开关；
- *   手动输入确认/blur → resolveFallback(placeholder, input) 落 fallback（空值落 placeholder 文案）。
+ *   手动输入确认/blur → resolveFallback(placeholder, input) 落 fallback（空值落 placeholder 文案）；
+ *   dataset 槽回显 ds:{id} 时附库表钻取区（D3/M3）：库→表→字段懒加载（库列表按 dsId 组件内缓存），
+ *   选表生成只读查询绑定 SELECT * FROM db.table（免手写 SQL，可直接预览）；换数据源保留已生成 query；
+ *   钻取是辅助器，不改变绑定回显。
  * 布局/样式输入为受控合成 patch（以当前值合成完整对象，合并归宿主），无本地镜像状态。
  */
-import { computed, ref } from 'vue'
+import { computed, ref, watch } from 'vue'
+import { ElMessage } from 'element-plus'
 import { CANVAS_H, CANVAS_W, type PageDSL, type Rect, type WidgetNode } from '../designerModel'
 import { candidatesFor, resolveFallback, type ResourceCatalog, type SlotType } from '../bindingCatalog'
 import { widgetTemplate } from '../templates'
+import { pdColumns, pdDatabases, pdTables, type DsColumnMeta, type DsTableItem } from '../pageApi'
 
 interface SlotSpec { key: string; label: string; slot: SlotType }
 
@@ -97,12 +102,20 @@ function currentBindValue(s: SlotSpec): string {
   return ''
 }
 
-/* 下拉选择：kind 由候选来源映射（bindingOf）；清空（allowClear）→ 静态默认值 */
+/* 下拉选择：kind 由候选来源映射（bindingOf）；清空（allowClear）→ 静态默认值；
+   ds: 选择保留既有 query SQL（D3：换数据源不自动清除已生成绑定，显式重选表才覆盖） */
 function onPick(s: SlotSpec, value: unknown) {
   const w = sel.value
   if (!w) return
   const fb = slotPlaceholder(w, s)
   const v = value == null || value === '' ? undefined : String(value)
+  if (v?.startsWith('ds:')) {
+    const prev = w.bindings[s.key]
+    const query = prev?.kind === 'query' && prev.query ? prev.query : undefined
+    const b = bindingOf(v, fb)
+    emit('updateWidget', w.id, { bindings: { [s.key]: query ? { ...b, query } : b } })
+    return
+  }
   emit('updateWidget', w.id, { bindings: { [s.key]: v ? bindingOf(v, fb) : { kind: 'static', fallback: fb } } })
 }
 
@@ -125,6 +138,108 @@ function confirmManual(s: SlotSpec) {
   emit('updateWidget', w.id, { bindings: { [s.key]: { kind: 'static', fallback: fb } } })
   manualText.value = ''
 }
+
+/* ================= dataset 槽库表钻取（D3/M3）：库→表→字段，选表生成只读查询绑定 ================= */
+const ddDbCache = new Map<number, string[]>() // dsId → 库列表（组件内缓存，避免重复请求）
+const ddDbs = ref<string[]>([])
+const ddDb = ref('')
+const ddTables = ref<DsTableItem[]>([])
+const ddTable = ref('')
+const ddCols = ref<DsColumnMeta[]>([])
+const ddLoadingDb = ref(false)
+const ddLoadingTable = ref(false)
+const ddLoadingCols = ref(false)
+
+/** 钻取条件：dataset 槽且当前回显为 ds:{id}（辅助器不改变绑定回显） */
+const ddDsId = computed<number | null>(() => {
+  const s = slots.value.find((x) => x.slot === 'dataset')
+  if (!s || !sel.value) return null
+  const v = currentBindValue(s)
+  if (!v.startsWith('ds:')) return null
+  const id = Number(v.slice(3))
+  return Number.isFinite(id) ? id : null
+})
+
+/* dsId 变化（含钻取区首次出现）→ 重置库/表/字段并懒拉库列表（命中缓存不重复请求） */
+watch(ddDsId, (id) => {
+  ddDb.value = ''
+  ddTable.value = ''
+  ddDbs.value = []
+  ddTables.value = []
+  ddCols.value = []
+  if (id != null) void ensureDbs(id)
+}, { immediate: true })
+
+async function ensureDbs(id: number): Promise<void> {
+  const hit = ddDbCache.get(id)
+  if (hit) {
+    ddDbs.value = hit
+    return
+  }
+  ddLoadingDb.value = true
+  try {
+    const dbs = await pdDatabases(id)
+    ddDbCache.set(id, dbs)
+    ddDbs.value = dbs
+  } catch (e) {
+    ElMessage.error(`库列表加载失败：${e instanceof Error ? e.message : String(e)}`)
+  } finally {
+    ddLoadingDb.value = false
+  }
+}
+
+/* 选库：懒拉表清单；已生成 query 绑定不自动清除（显式重选表才覆盖），仅重置表/字段选择器 */
+async function onDdDb(db: unknown): Promise<void> {
+  ddDb.value = db == null || db === '' ? '' : String(db)
+  ddTable.value = ''
+  ddTables.value = []
+  ddCols.value = []
+  const id = ddDsId.value
+  if (ddDb.value === '' || id == null) return
+  ddLoadingTable.value = true
+  try {
+    ddTables.value = await pdTables(id, ddDb.value)
+  } catch (e) {
+    ElMessage.error(`表清单加载失败：${e instanceof Error ? e.message : String(e)}`)
+  } finally {
+    ddLoadingTable.value = false
+  }
+}
+
+/** 表选项摘要：name (kind · rows)，rows 缺省省略 */
+const ddTableLabel = (t: DsTableItem): string => (t.rows != null ? `${t.name} (${t.kind} · ${t.rows})` : `${t.name} (${t.kind})`)
+
+/* 选表：生成只读查询绑定（SELECT * FROM db.table，免手写 SQL 可直接预览）+ 懒拉字段展示 */
+function onDdTable(name: unknown): void {
+  const w = sel.value
+  const s = slots.value.find((x) => x.slot === 'dataset')
+  const id = ddDsId.value
+  const t = name == null || name === '' ? '' : String(name)
+  ddTable.value = t
+  ddCols.value = []
+  if (t === '' || id == null || !w || !s) return
+  void loadCols(id, ddDb.value, t)
+  emit('updateWidget', w.id, {
+    bindings: {
+      [s.key]: { kind: 'query', datasourceId: id, query: `SELECT * FROM ${ddDb.value}.${t}`, fallback: slotPlaceholder(w, s) },
+    },
+  })
+}
+
+async function loadCols(id: number, db: string, table: string): Promise<void> {
+  ddLoadingCols.value = true
+  try {
+    ddCols.value = await pdColumns(id, db, table)
+  } catch (e) {
+    ElMessage.error(`字段加载失败：${e instanceof Error ? e.message : String(e)}`)
+  } finally {
+    ddLoadingCols.value = false
+  }
+}
+
+/** 字段标签最多 12 个，溢出聚合 …N more */
+const ddShownCols = computed(() => ddCols.value.slice(0, 12))
+const ddMoreCols = computed(() => Math.max(0, ddCols.value.length - 12))
 
 /* 布局/样式/画布受控 patch（handler 显式 unknown 入参，模板零内联箭头） */
 function patchRect(part: Partial<Rect>) {
@@ -193,6 +308,29 @@ const onStyleColor = (key: string) => (e: Event) => patchStyle({ [key]: (e.targe
           </el-select>
           <div v-else class="pd-insp-manual">
             <el-input v-model="manualText" :placeholder="slotPlaceholder(sel, s)" @blur="confirmManual(s)" @keyup.enter="confirmManual(s)" />
+          </div>
+          <!-- 数据集槽库表钻取（D3/M3）：库→表→字段，选表生成只读查询绑定；辅助器不改变绑定回显 -->
+          <div v-if="s.slot === 'dataset' && currentBindValue(s).startsWith('ds:')" class="pd-insp-dd">
+            <label class="pd-insp-field"><span>库</span>
+              <el-select
+                class="pd-insp-dd-db" :model-value="ddDb" :loading="ddLoadingDb" clearable
+                placeholder="选择库" @update:model-value="onDdDb"
+              >
+                <el-option v-for="d in ddDbs" :key="d" :label="d" :value="d" />
+              </el-select>
+            </label>
+            <label class="pd-insp-field"><span>表</span>
+              <el-select
+                class="pd-insp-dd-tb" :model-value="ddTable" :loading="ddLoadingTable" :disabled="ddDb === ''" clearable
+                placeholder="选择表" @update:model-value="onDdTable"
+              >
+                <el-option v-for="t in ddTables" :key="t.name" :label="ddTableLabel(t)" :value="t.name" />
+              </el-select>
+            </label>
+            <div v-if="ddShownCols.length > 0" class="pd-insp-dd-cols">
+              <el-tag v-for="c in ddShownCols" :key="c.name" size="small" class="pd-insp-dd-col">{{ c.name }}:{{ c.dataType }}</el-tag>
+              <span v-if="ddMoreCols > 0" class="pd-insp-dd-more">…{{ ddMoreCols }} more</span>
+            </div>
           </div>
         </div>
       </el-tab-pane>
@@ -269,5 +407,24 @@ const onStyleColor = (key: string) => (e: Event) => patchStyle({ [key]: (e.targe
 }
 .pd-insp-manual {
   margin-top: 4px;
+}
+.pd-insp-dd {
+  display: grid;
+  gap: 6px;
+  margin-top: 6px;
+}
+.pd-insp-dd :deep(.el-select) {
+  flex: 1;
+  min-width: 0;
+}
+.pd-insp-dd-cols {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+}
+.pd-insp-dd-more {
+  font-size: 11px;
+  color: var(--text-2);
 }
 </style>

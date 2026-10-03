@@ -6,13 +6,27 @@
  *   （placeholder=模板默认值文案）；blur 空值 → updateWidget patch bindings.value.fallback === placeholder（resolveFallback 语义）
  * - table widget：dataset 槽候选首项 value 为 ds:1（catalog 桩）
  * - kind 映射：ds:→query / $wf.$param.$system→variable（fallback 恒为槽默认文案）
+ * - dataset 槽库表钻取（D3/M3）：回显 ds:{id} → 库→表→字段懒加载（库列表按 dsId 缓存），
+ *   选表 → updateWidget 生成只读查询绑定 SELECT * FROM db.table；换数据源保留已生成 query；
+ *   钻取是辅助器不改变绑定回显；失败 ElMessage.error 不打断绑定
  * el-* 桩为原生元素（与既有组件用例同法）。
  */
-import { describe, expect, it } from 'vitest'
-import { mount } from '@vue/test-utils'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { flushPromises, mount } from '@vue/test-utils'
+import { ElMessage } from 'element-plus'
 import PageInspector, { bindingOf } from '../inspector/PageInspector.vue'
 import { normalizePage, type PageDSL } from '../designerModel'
 import type { ResourceCatalog } from '../bindingCatalog'
+
+/* pd* 库表钻取服务 mock（D3）：PageInspector 经 ../pageApi 拉库/表/字段 */
+const pdDatabasesSpy = vi.hoisted(() => vi.fn())
+const pdTablesSpy = vi.hoisted(() => vi.fn())
+const pdColumnsSpy = vi.hoisted(() => vi.fn())
+vi.mock('../pageApi', () => ({
+  pdDatabases: pdDatabasesSpy,
+  pdTables: pdTablesSpy,
+  pdColumns: pdColumnsSpy,
+}))
 
 const CATALOG: ResourceCatalog = {
   datasources: [{ id: 1, name: '主库', type: 'mysql', db: 'mysql' }],
@@ -25,7 +39,8 @@ const CATALOG: ResourceCatalog = {
 const stubs = {
   ElTabs: { template: '<div class="stub-tabs"><slot /></div>' },
   ElTabPane: { props: ['label', 'name'], template: '<div class="stub-pane"><div class="stub-pane-label">{{ label }}</div><slot /></div>' },
-  ElSelect: { props: ['modelValue'], template: '<div class="stub-select"><slot /></div>' },
+  ElSelect: { name: 'ElSelect', props: ['modelValue'], emits: ['update:modelValue'], template: '<div class="stub-select"><slot /></div>' },
+  ElTag: { template: '<span class="stub-tag"><slot /></span>' },
   ElOption: { props: ['label', 'value'], template: '<div class="stub-option" :value="value">{{ label }}</div>' },
   ElSwitch: {
     props: ['modelValue'],
@@ -59,6 +74,24 @@ function mountInspector(props: Record<string, unknown> = {}) {
     props: { page: makePage(['text']), catalog: CATALOG, ...props },
     global: { components: stubs },
   })
+}
+
+beforeEach(() => {
+  vi.clearAllMocks()
+})
+
+type InspWrap = ReturnType<typeof mountInspector>
+
+/** 模拟宿主：最近一次 updateWidget patch 应用回 page props（绑定回显依赖宿主落值，同宿主 onUpdateWidget 的 Object.assign 口径） */
+async function syncLastPatch(w: InspWrap): Promise<void> {
+  const evts = w.emitted('updateWidget')
+  if (!evts?.length) return
+  const [id, patch] = evts[evts.length - 1] as [string, Record<string, unknown>]
+  // props 为响应式代理（structuredClone 不可克隆），JSON 深拷贝同宿主 pushClone 口径
+  const page = JSON.parse(JSON.stringify(w.props('page'))) as PageDSL
+  const widget = page.widgets.find((x) => x.id === id)
+  if (widget) Object.assign(widget, patch)
+  await w.setProps({ page })
 }
 
 describe('PageInspector', () => {
@@ -112,5 +145,134 @@ describe('PageInspector', () => {
     expect(w.text()).toContain('宽度')
     expect(w.text()).toContain('高度')
     expect(w.text()).toContain('背景填充')
+  })
+})
+
+describe('PageInspector dataset 槽库表钻取（D3/M3）', () => {
+  it('选择 ds:1 → 钻取区出现并拉取库列表（mock pdDatabases）', async () => {
+    pdDatabasesSpy.mockResolvedValue(['datara_dw', 'ods'])
+    const w = mountInspector({ page: makePage(['table']), selectedId: 'w1' })
+    await flushPromises()
+    expect(w.find('.pd-insp-dd').exists()).toBe(false)
+    expect(pdDatabasesSpy).not.toHaveBeenCalled()
+    await w.findComponent({ name: 'ElSelect' }).vm.$emit('update:modelValue', 'ds:1')
+    await syncLastPatch(w)
+    expect(w.find('.pd-insp-dd').exists()).toBe(true)
+    expect(pdDatabasesSpy).toHaveBeenCalledWith(1)
+    await flushPromises()
+    const dbOpts = w.findAll('.pd-insp-dd .stub-option').map((o) => o.attributes('value'))
+    expect(dbOpts).toEqual(['datara_dw', 'ods'])
+  })
+
+  it('选库→选表 → updateWidget 生成只读查询绑定 + 字段标签（12 上限溢出 …N more）', async () => {
+    pdDatabasesSpy.mockResolvedValue(['datara_dw'])
+    pdTablesSpy.mockResolvedValue([
+      { name: 't1', kind: 'table', rows: 128, comment: '' },
+      { name: 'v_dim', kind: 'view', rows: null, comment: '' },
+    ])
+    pdColumnsSpy.mockResolvedValue(
+      Array.from({ length: 14 }, (_, i) => ({
+        name: `c${i}`, dataType: 'varchar', columnType: 'varchar(64)', length: 64,
+        nullable: true, key: '', comment: '', extra: '', defaultValue: null,
+      })),
+    )
+    const w = mountInspector({ page: makePage(['table']), selectedId: 'w1' })
+    await w.findComponent({ name: 'ElSelect' }).vm.$emit('update:modelValue', 'ds:1')
+    await syncLastPatch(w)
+    await flushPromises()
+    // 选库 → 懒拉表清单（选项 label 带 kind/rows 摘要）
+    const dbSel = w.findAllComponents({ name: 'ElSelect' }).find((c) => c.classes().includes('pd-insp-dd-db'))
+    await dbSel!.vm.$emit('update:modelValue', 'datara_dw')
+    await flushPromises()
+    expect(pdTablesSpy).toHaveBeenCalledWith(1, 'datara_dw')
+    const tbOpts = w.findAll('.pd-insp-dd .stub-option').map((o) => o.text())
+    expect(tbOpts.some((t) => t.includes('t1 (table'))).toBe(true)
+    expect(tbOpts.some((t) => t.includes('v_dim (view'))).toBe(true)
+    // 选表 → 生成只读查询绑定（免手写 SQL）
+    const tbSel = w.findAllComponents({ name: 'ElSelect' }).find((c) => c.classes().includes('pd-insp-dd-tb'))
+    await tbSel!.vm.$emit('update:modelValue', 't1')
+    await flushPromises()
+    const evts = w.emitted('updateWidget')!
+    const [, patch] = evts[evts.length - 1] as [string, { bindings: Record<string, { kind: string; datasourceId: number; query: string; fallback: string }> }]
+    expect(patch.bindings.data).toEqual({ kind: 'query', datasourceId: 1, query: 'SELECT * FROM datara_dw.t1', fallback: '暂无数据' })
+    expect(pdColumnsSpy).toHaveBeenCalledWith(1, 'datara_dw', 't1')
+    // 字段只读标签：最多 12 个 + 溢出文案
+    expect(w.findAll('.pd-insp-dd .stub-tag')).toHaveLength(12)
+    expect(w.find('.pd-insp-dd-more').text()).toBe('…2 more')
+    // 钻取是辅助器：绑定回显仍是 ds:1
+    expect(w.findComponent({ name: 'ElSelect' }).props('modelValue')).toBe('ds:1')
+  })
+
+  it('非 dataset 槽 / 非 ds: 回显 → 不渲染钻取区', async () => {
+    // text widget scalar 槽绑变量 → 不渲染
+    const w1 = mountInspector({ selectedId: 'w1' })
+    await w1.findComponent({ name: 'ElSelect' }).vm.$emit('update:modelValue', '$wf.demo.v')
+    await syncLastPatch(w1)
+    expect(w1.find('.pd-insp-dd').exists()).toBe(false)
+    expect(pdDatabasesSpy).not.toHaveBeenCalled()
+    // table widget dataset 槽 static 绑定（回显空）→ 不渲染
+    const page = makePage(['table'])
+    page.widgets[0].bindings = { data: { kind: 'static', fallback: 'x' } }
+    const w2 = mountInspector({ page, selectedId: 'w1' })
+    await flushPromises()
+    expect(w2.find('.pd-insp-dd').exists()).toBe(false)
+    expect(pdDatabasesSpy).not.toHaveBeenCalled()
+  })
+
+  it('库列表按 dsId 缓存：切走再切回同数据源不重复请求', async () => {
+    pdDatabasesSpy.mockResolvedValue(['datara_dw'])
+    const page = makePage(['table', 'table'])
+    page.widgets[0].bindings = { data: { kind: 'query', datasourceId: 1, fallback: '暂无数据' } }
+    page.widgets[1].bindings = { data: { kind: 'query', datasourceId: 1, fallback: '暂无数据' } }
+    const w = mountInspector({ page, selectedId: 'w1' })
+    await flushPromises()
+    expect(pdDatabasesSpy).toHaveBeenCalledTimes(1)
+    await w.setProps({ selectedId: 'w2' })
+    await flushPromises()
+    await w.setProps({ selectedId: 'w1' })
+    await flushPromises()
+    expect(pdDatabasesSpy).toHaveBeenCalledTimes(1)
+  })
+
+  it('库列表失败：ElMessage.error 且绑定回显不打断', async () => {
+    pdDatabasesSpy.mockRejectedValue(new Error('连接超时'))
+    const errSpy = vi.spyOn(ElMessage, 'error').mockImplementation((() => ({})) as never)
+    const w = mountInspector({ page: makePage(['table']), selectedId: 'w1' })
+    await w.findComponent({ name: 'ElSelect' }).vm.$emit('update:modelValue', 'ds:1')
+    await syncLastPatch(w)
+    await flushPromises()
+    expect(errSpy).toHaveBeenCalledTimes(1)
+    expect(String(errSpy.mock.calls[0][0])).toContain('库列表加载失败')
+    expect(w.findComponent({ name: 'ElSelect' }).props('modelValue')).toBe('ds:1')
+    vi.restoreAllMocks()
+  })
+
+  it('换数据源：已生成 query 保留（显式重选表才覆盖）且钻取选择器重置', async () => {
+    pdDatabasesSpy.mockResolvedValue(['datara_dw'])
+    pdTablesSpy.mockResolvedValue([{ name: 't1', kind: 'table', rows: 128, comment: '' }])
+    pdColumnsSpy.mockResolvedValue([])
+    const w = mountInspector({ page: makePage(['table']), selectedId: 'w1' })
+    // ds:1 → 选库选表生成 query
+    await w.findComponent({ name: 'ElSelect' }).vm.$emit('update:modelValue', 'ds:1')
+    await syncLastPatch(w)
+    await flushPromises()
+    const dbSel = () => w.findAllComponents({ name: 'ElSelect' }).find((c) => c.classes().includes('pd-insp-dd-db'))!
+    const tbSel = () => w.findAllComponents({ name: 'ElSelect' }).find((c) => c.classes().includes('pd-insp-dd-tb'))!
+    await dbSel().vm.$emit('update:modelValue', 'datara_dw')
+    await flushPromises()
+    await tbSel().vm.$emit('update:modelValue', 't1')
+    await syncLastPatch(w)
+    await flushPromises()
+    // 换数据源 ds:2：query 保留
+    await w.findComponent({ name: 'ElSelect' }).vm.$emit('update:modelValue', 'ds:2')
+    await syncLastPatch(w)
+    const evts = w.emitted('updateWidget')!
+    const [, patch] = evts[evts.length - 1] as [string, { bindings: Record<string, { kind: string; datasourceId: number; query?: string; fallback: string }> }]
+    expect(patch.bindings.data.datasourceId).toBe(2)
+    expect(patch.bindings.data.query).toBe('SELECT * FROM datara_dw.t1')
+    // 钻取选择器重置（库/表清空）
+    await flushPromises()
+    expect(dbSel().props('modelValue')).toBe('')
+    expect(tbSel().props('modelValue')).toBe('')
   })
 })

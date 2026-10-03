@@ -48,4 +48,54 @@ describe('pageApi (mock 模式)', () => {
     expect(Array.isArray(r.items)).toBe(true)
     expect(fetchMock).not.toHaveBeenCalled()
   })
+
+  it('pdDatabases/pdTables/pdColumns 返回样例且不发请求（D3 库表钻取）', async () => {
+    vi.stubEnv('VITE_API_MODE', 'mock')
+    vi.resetModules()
+    const mod = await import('../pageApi')
+    expect(await mod.pdDatabases(1)).toEqual(['datara_dw', 'ods'])
+    expect((await mod.pdTables(1, 'datara_dw')).map((t) => `${t.name}:${t.kind}`)).toEqual(['t1:table', 'v_dim_user:view'])
+    const cols = await mod.pdColumns(1, 'datara_dw', 't1')
+    expect(cols).toHaveLength(3)
+    expect(cols[0]).toMatchObject({ name: 'id', dataType: 'bigint' })
+    expect(fetchMock).not.toHaveBeenCalled()
+  })
+})
+
+describe('pageApi (real 模式：pd* 委托 ideApi 端点，D3)', () => {
+  async function loadRealMode() {
+    vi.stubEnv('VITE_API_MODE', 'real')
+    vi.resetModules()
+    return import('../pageApi')
+  }
+
+  it('pdDatabases → GET /datasources/{id}/databases', async () => {
+    const mod = await loadRealMode()
+    fetchMock.mockResolvedValue({ json: async () => ({ code: 0, msg: '', data: ['datara_dw', 'ods'] }) })
+    expect(await mod.pdDatabases(7)).toEqual(['datara_dw', 'ods'])
+    expect(String(fetchMock.mock.calls[0][0])).toBe('/api/v1/datasources/7/databases')
+  })
+
+  it('pdTables → GET /datasources/{id}/databases/{db}/tables?limit=200', async () => {
+    const mod = await loadRealMode()
+    fetchMock.mockResolvedValue({
+      json: async () => ({ code: 0, msg: '', data: [{ name: 't1', kind: 'table', rows: 128, comment: '' }] }),
+    })
+    const r = await mod.pdTables(7, 'datara_dw')
+    expect(r[0]).toMatchObject({ name: 't1', kind: 'table', rows: 128 })
+    expect(String(fetchMock.mock.calls[0][0])).toBe('/api/v1/datasources/7/databases/datara_dw/tables?limit=200')
+  })
+
+  it('pdColumns → GET /datasources/{id}/databases/{db}/tables/{table}/columns', async () => {
+    const mod = await loadRealMode()
+    fetchMock.mockResolvedValue({
+      json: async () => ({
+        code: 0, msg: '',
+        data: [{ name: 'id', dataType: 'bigint', columnType: 'bigint', length: null, nullable: false, key: 'PRI', comment: '', extra: '', defaultValue: null }],
+      }),
+    })
+    const r = await mod.pdColumns(7, 'datara_dw', 't1')
+    expect(r[0]).toMatchObject({ name: 'id', dataType: 'bigint' })
+    expect(String(fetchMock.mock.calls[0][0])).toBe('/api/v1/datasources/7/databases/datara_dw/tables/t1/columns')
+  })
 })
