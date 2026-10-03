@@ -26,6 +26,7 @@ const getCompSpy = vi.hoisted(() => vi.fn())
 const routeState = vi.hoisted(() => ({ params: {} as Record<string, unknown>, query: {} as Record<string, unknown> }))
 vi.mock('vue-router', () => ({
   useRoute: () => ({ params: routeState.params, query: routeState.query }),
+  useRouter: () => ({ push: vi.fn() }),
 }))
 vi.mock('../../../services/baselineApi', () => ({
   progress: progressSpy,

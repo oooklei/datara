@@ -10,7 +10,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import {
   getComponent, getComponentCatalog, getComponentStats, listComponents,
   getComponentRegistry, offlineComponent, rollbackComponent,
-  getImpactedWorkflows, publishComponentVersion,
+  getImpactedWorkflows, publishComponentVersion, deleteComponent,
 } from '../componentApi'
 import { TOKEN_KEY } from '../http'
 
@@ -156,6 +156,18 @@ describe('D3 发布治理契约（offline/rollback/impacted/registry/publish）'
     )
     expect(err.code).toBe(6003)
     expect(err.data?.items?.[0].gate).toBe('pure_data')
+  })
+})
+
+describe('删除组件契约（Task 15 CRUD 补齐 · 仅草稿可删）', () => {
+  it('deleteComponent → DELETE /components/{type}，type 需转义', async () => {
+    stubRes({ type: 'user/demo', deleted: true })
+    const r = await deleteComponent('user/demo')
+    expect(fetchMock.mock.calls[0]).toEqual([
+      '/api/v1/components/user%2Fdemo',
+      { method: 'DELETE', headers: expect.any(Object), signal: expect.anything() },
+    ])
+    expect(r.deleted).toBe(true)
   })
 })
 

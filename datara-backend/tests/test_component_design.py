@@ -1026,3 +1026,61 @@ def test_refresh_refs_draft_conflict_409(client):
     _created(client)
     r = client.post("/api/v1/components/user_demo/refresh-refs")
     assert r.status_code == 409 and r.json()["code"] == 6002
+
+
+# ---------------------------------------------------------------- Task 15 删除（CRUD 补齐，仅草稿可删）
+
+def test_delete_draft_success(client, db_session):
+    """仅草稿可删：主表行 + draft 版本行删除；log 只追加，delete 留痕行保留（type 冗余列可读）。"""
+    _created(client)
+    r = client.delete("/api/v1/components/user_demo")
+    assert r.status_code == 200, r.text
+    assert r.json()["data"] == {"type": "user_demo", "deleted": True}
+    assert db_session.query(Component).filter_by(type="user_demo").count() == 0
+    assert db_session.query(ComponentVersion).filter_by(type="user_demo").count() == 0
+    logs = db_session.query(ComponentLog).filter_by(type="user_demo").all()
+    assert [lg.action for lg in logs] == ["create", "delete"]
+    assert logs[-1].operator == "tester"
+
+
+def test_delete_unknown_type_404(client):
+    r = client.delete("/api/v1/components/__nope__")
+    assert r.status_code == 404 and r.json()["code"] == 6001
+
+
+def test_delete_with_frozen_history_409(client, db_session):
+    """存在任一 frozen/published/offline 版本行即不可删（历史留档保障既有引用可复现）。"""
+    _make_frozen(client, type_name="del_frozen")  # v1 frozen + v2 draft
+    r = client.delete("/api/v1/components/del_frozen")
+    assert r.status_code == 409 and r.json()["code"] == 6002
+    assert "历史版本" in r.json()["msg"]
+    assert db_session.query(Component).filter_by(type="del_frozen").count() == 1
+    assert db_session.query(ComponentVersion).filter_by(type="del_frozen").count() == 2
+
+
+def test_delete_published_409(client):
+    _make_frozen(client, type_name="del_published")
+    assert _publish(client, type_name="del_published").status_code == 200
+    r = client.delete("/api/v1/components/del_published")
+    assert r.status_code == 409 and r.json()["code"] == 6002
+
+
+def test_delete_builtin_scope_409(client, db_session):
+    """系统目录组件（scope=builtin）不可删。"""
+    db_session.add(Component(type="builtin_x", name="系统组件", profile="dag",
+                             scope="builtin", execution_model="dag-engine",
+                             executor="demo_handler", state="published",
+                             published_version=1))
+    db_session.commit()
+    r = client.delete("/api/v1/components/builtin_x")
+    assert r.status_code == 409 and r.json()["code"] == 6002
+    assert "系统目录组件" in r.json()["msg"]
+
+
+def test_delete_rbac(client):
+    """删除属 design_component：dev 可删草稿；analyst/viewer 403。"""
+    _created(client)
+    set_role(client.app, "analyst")
+    assert client.delete("/api/v1/components/user_demo").status_code == 403
+    set_role(client.app, "dev")
+    assert client.delete("/api/v1/components/user_demo").status_code == 200

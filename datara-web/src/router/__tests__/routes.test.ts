@@ -75,4 +75,22 @@ describe('router shell (todo 5)', () => {
     expect(rec!.name).toBe('meta-baseline')
     expect((rec!.meta as { title?: string }).title).toBe('基线化工作台')
   })
+
+  /* 组件设计器统一入口：旧 B4 声明编辑器下线，design 路径 redirect 到 page-designer（保书签，:type 透传） */
+  it('redirects the legacy component design route to the unified page-designer', () => {
+    const rec = routes.find((r) => r.path === '/meta/components/design/:type?')
+    expect(rec, 'legacy design route should be registered').toBeTruthy()
+    expect(rec!.redirect, 'legacy design route should redirect').toBeTruthy()
+    const fn = rec!.redirect as (t: { params: Record<string, string> }) => { path: string }
+    expect(fn({ params: { type: 'op_filter' } }).path).toBe('/meta/components/page-designer/op_filter')
+    expect(fn({ params: {} }).path).toBe('/meta/components/page-designer')
+  })
+
+  /* 组件设计器：page-designer 为设计器唯一权威路由，标题统一为「组件设计器」 */
+  it('registers the page-designer as the canonical component designer route', () => {
+    const rec = routes.find((r) => r.path === '/meta/components/page-designer/:type?')
+    expect(rec, 'page-designer route should be registered').toBeTruthy()
+    expect(rec!.redirect, 'page-designer should be canonical (no redirect)').toBeFalsy()
+    expect((rec!.meta as { title?: string }).title).toBe('组件设计器')
+  })
 })

@@ -21,7 +21,7 @@
  * 页面挂载拉一次 progress，保存/发布后刷新。
  */
 import { computed, onMounted, ref } from 'vue'
-import { useRoute } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import {
   progress, getDraft, saveDraft, runCheck, publishBaseline, lineageDecl,
@@ -91,6 +91,7 @@ async function refreshProgress(): Promise<void> {
 /* ---------------- 设计区（底稿 + 八段编辑器 + diff） ---------------- */
 
 const route = useRoute()
+const router = useRouter()
 const selectedType = ref('')
 const draft = ref<BaselineDraft | null>(null)
 const spec = ref<BaselineSpec>(normalizeBaselineSpec({}))
@@ -397,6 +398,11 @@ onMounted(async () => {
             <span class="badge" :class="STATUS_META[draft?.status as BaselineStatus]?.cls">{{ statusText(draft?.status ?? '', publishedVersion) }}</span>
             <span v-if="isRevising" class="badge st-revising">修订中（当前供给 v{{ publishedVersion }}）</span>
             <span class="muted">rev {{ draft?.draftRev ?? 0 }}</span>
+            <!-- 组件设计器统一入口（Task 15）：跳转组件页面设计器并深链当前组件 -->
+            <el-button
+              link type="primary" size="small" style="margin-left: auto"
+              @click="router.push(`/meta/components/page-designer/${selectedType}`)"
+            >组件设计器</el-button>
           </div>
 
           <!-- 与旧声明 diff（dag_catalog.formFields → 八段 DSL） -->

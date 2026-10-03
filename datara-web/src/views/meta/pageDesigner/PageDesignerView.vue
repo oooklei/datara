@@ -21,12 +21,12 @@ import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import {
-  createPageDraft, freezeComponentVersion, getComponentDraft, listComponentVersions,
+  createPageDraft, deleteComponent, freezeComponentVersion, getComponent, getComponentDraft, listComponentVersions,
   publishComponentVersion, saveComponentDraft,
   type ComponentDraft, type ComponentVersionRow,
 } from '../../../services/componentApi'
 import { alignRects, distributeRects, normalizePage, genId, newWidget, reorderWidget, CANVAS_H, CANVAS_W, type BackgroundStyle, type PageDSL, type ReorderAction, type WidgetNode } from './designerModel'
-import { pageTemplates } from './templates'
+import { componentSeedPage, pageTemplates } from './templates'
 import type { ResourceCatalog } from './bindingCatalog'
 import { pageApi, type PreviewQuery, type PreviewResult } from './pageApi'
 import PagePalette from './palette/PagePalette.vue'
@@ -61,6 +61,28 @@ const stateText = computed(() => (draft.value ? STATE_TEXT[draft.value.state] ??
 const stateTagType = computed<'success' | 'warning' | 'info'>(() =>
   draft.value?.state === 'published' ? 'success' : draft.value?.state === 'offline' ? 'info' : 'warning')
 
+/** 组件级删除（Task 15 CRUD 补齐）：仅用户草稿组件可删（builtin 后端 409、按钮亦隐藏；有历史版本后端 409，按钮亦隐藏），删除后回目录 */
+const canDeleteComponent = computed(() =>
+  !!draft.value && draft.value.scope === 'user' && draft.value.state === 'draft' && !draft.value.publishedVersion)
+async function onDeleteComponent(): Promise<void> {
+  const d = draft.value
+  if (!d) return
+  try {
+    await ElMessageBox.confirm(
+      `确定删除组件「${d.name}」（${d.type}）？草稿及其全部未冻结版本将被清理，不可恢复。`,
+      '删除确认',
+      { type: 'warning', confirmButtonText: '删除', cancelButtonText: '取消', confirmButtonClass: 'el-button--danger' },
+    )
+  } catch { return }
+  try {
+    await deleteComponent(d.type)
+    ElMessage.success(`组件 ${d.type} 已删除`)
+    router.push('/meta/components')
+  } catch (e) {
+    ElMessage.error(e instanceof Error ? e.message : String(e))
+  }
+}
+
 function readCanvasStore(t: string): { w: number; h: number } | null {
   try {
     const s = JSON.parse(localStorage.getItem('datara.pd.canvas') ?? 'null') as { type?: string; w?: number; h?: number } | null
@@ -69,11 +91,48 @@ function readCanvasStore(t: string): { w: number; h: number } | null {
   return null
 }
 
+/**
+ * 深链自动建稿（Task 15 统一入口）：目录存在的组件首次进入设计器（草稿 404/6001）时，
+ * 以目录 label/desc 物化初始模板页自动创建 page 草稿，用户直接进入修改态。
+ * 并发他端已建（409/6005）视为成功走重载；目录也无此 type（乱路径）不建稿，保持报错。
+ */
+async function autoCreateDraft(t: string): Promise<boolean> {
+  let label = ''
+  let desc = ''
+  try {
+    const c = await getComponent(t)
+    label = c.label || t
+    desc = c.desc || ''
+  } catch {
+    return false
+  }
+  try {
+    await createPageDraft({ type: t, name: label, page: componentSeedPage(label, desc), description: desc || undefined })
+  } catch (err) {
+    if ((err as { code?: number })?.code !== 6005) throw err
+  }
+  ElMessage.success(`已为组件「${label}」创建设计草稿`)
+  return true
+}
+
 async function loadAll(t: string): Promise<void> {
   loading.value = true
   loadErr.value = ''
+  /* 立即清空上一组件的残留态（hash 路由同实例复用）：否则加载期间/失败后，
+     删除/保存等 draft 守卫操作会落在旧组件上（实测踩坑：深链 B 误删 A） */
+  draft.value = null
+  versions.value = []
+  page.value = normalizePage(null)
   try {
-    const [d, v, res] = await Promise.all([getComponentDraft(t), listComponentVersions(t), pageApi.getResources()])
+    let d: ComponentDraft
+    try {
+      d = await getComponentDraft(t)
+    } catch (err) {
+      /* 6001（type 无草稿）→ 自动建稿后重载；6002（无进行中草稿）等其余错误原样抛出 */
+      if ((err as { code?: number })?.code !== 6001 || !(await autoCreateDraft(t))) throw err
+      d = await getComponentDraft(t)
+    }
+    const [v, res] = await Promise.all([listComponentVersions(t), pageApi.getResources()])
     draft.value = d
     versions.value = v.items
     const p = normalizePage(d.spec)
@@ -490,6 +549,11 @@ async function onCreate(): Promise<void> {
         <h2>{{ isCreate ? '新建页面组件' : (draft ? draft.name : typeParam) }}</h2>
         <el-tag v-if="draft" size="small" :type="stateTagType">{{ stateText }}</el-tag>
         <span v-if="draft?.publishedVersion" class="pd-pubv">v{{ draft.publishedVersion }}</span>
+        <!-- 组件级删除（Task 15 CRUD）：仅纯草稿可删；widget 级删除在工具条 tb-delete，语义不同 -->
+        <el-button
+          v-if="canDeleteComponent" link type="danger" size="small"
+          data-testid="tb-comp-delete" @click="onDeleteComponent"
+        >删除组件</el-button>
       </div>
       <!-- 工具条（按钮置顶）：撤销 重做 | 复制 粘贴 删除 | 左对齐 上对齐 横分布 纵分布 | 缩放 | 刷新 | 保存 预览 发布 -->
       <div v-if="!isCreate" class="pd-toolbar">

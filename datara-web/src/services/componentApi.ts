@@ -356,6 +356,13 @@ export async function rollbackComponent(
   })
 }
 
+/** 删除组件（Task 15 CRUD 补齐，仅草稿态可删）：
+ *  存在冻结/发布/下线历史版本 409；scope=builtin 系统目录组件 409；type 不存在 404/6001。 */
+export async function deleteComponent(type: string): Promise<{ type: string; deleted: boolean }> {
+  if (isMock) return { type, deleted: true }
+  return http.delete(`/components/${encodeURIComponent(type)}`)
+}
+
 /** 影响面行（§9.4：引用该组件的工作流 + 版本对齐标记） */
 export interface ImpactedWorkflow {
   id: string

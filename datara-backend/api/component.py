@@ -178,50 +178,8 @@ def get_component(type_name: str) -> dict:
     raise HTTPException(status_code=404, detail=f"组件不存在: {type_name}")
 
 
-@router.delete("/{type_name}", summary="删除组件（彻底删除）")
-def delete_component(type_name: str, db: Session = Depends(get_db)) -> dict:
-    """彻底删除组件：代码 + 快照 + 引用。
-
-    删除时生成清理清单（md 文件），列出所有受影响的文件。
-    """
-    cat = _load()
-
-    # 检查组件是否存在
-    component = None
-    for c in cat["components"]:
-        if c["type"] == type_name:
-            component = c
-            break
-
-    if component is None:
-        raise HTTPException(status_code=404, detail=f"组件不存在: {type_name}")
-
-    # 检查是否为系统内置组件（不可删除）
-    if component.get("profile") in ("dag", "etl", "stream", "topo"):
-        raise HTTPException(
-            status_code=403,
-            detail=f"系统内置组件不可删除: {type_name}")
-
-    # TODO: 删除前端代码（NodeSchema 定义）
-    # TODO: 删除后端执行器（如有）
-    # TODO: 更新 dag_catalog.json
-    # TODO: 生成清理清单
-
-    # 删除 t_component 表中的记录
-    db.query(Component).filter(Component.type == type_name).delete()
-    db.commit()
-
-    logger.info("组件已删除: %s", type_name)
-
-    return ok({
-        "type": type_name,
-        "message": f"组件 {type_name} 已删除",
-        "cleanup": [
-            f"前端 NodeSchema: datara-web/src/graph/profiles/{component.get('profile')}.ts",
-            f"后端执行器: datara-backend/worker/executors/{type_name}.py（如有）",
-            f"目录快照: datara-backend/common/dag_catalog.json",
-        ],
-    })
+# 删除组件（DELETE /components/{type}）由 M1 治理设计端点承载（api/component_design.py）：
+# 仅草稿可删 + scope=builtin 保护 + 审计留痕。M0 目录保持只读，不接受写操作。
 
 
 __all__ = ["router"]

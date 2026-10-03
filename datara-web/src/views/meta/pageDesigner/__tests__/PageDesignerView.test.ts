@@ -37,6 +37,8 @@ const saveDraftSpy = vi.hoisted(() => vi.fn())
 const freezeSpy = vi.hoisted(() => vi.fn())
 const publishSpy = vi.hoisted(() => vi.fn())
 const createPageDraftSpy = vi.hoisted(() => vi.fn())
+const getComponentSpy = vi.hoisted(() => vi.fn())
+const deleteComponentSpy = vi.hoisted(() => vi.fn())
 vi.mock('../../../../services/componentApi', () => ({
   getComponentDraft: getDraftSpy,
   listComponentVersions: listVersionsSpy,
@@ -44,6 +46,8 @@ vi.mock('../../../../services/componentApi', () => ({
   freezeComponentVersion: freezeSpy,
   publishComponentVersion: publishSpy,
   createPageDraft: createPageDraftSpy,
+  getComponent: getComponentSpy,
+  deleteComponent: deleteComponentSpy,
 }))
 
 /* 子组件桩：容器 testid 由宿主承担，这里只验证宿主给画布的 props（preview 透传） */
@@ -129,10 +133,10 @@ beforeEach(() => {
 })
 
 describe('PageDesignerView（Task 13 页壳）', () => {
-  it('路由表：/meta/components/page-designer/:type? 条目（懒加载 + title 页面设计器）', () => {
+  it('路由表：/meta/components/page-designer/:type? 条目（懒加载 + title 组件设计器）', () => {
     const r = routes.find((x) => x.path === '/meta/components/page-designer/:type?')
     expect(r).toBeTruthy()
-    expect(r?.meta?.title).toBe('页面设计器')
+    expect(r?.meta?.title).toBe('组件设计器')
     expect(typeof r?.component).toBe('function')
   })
 
@@ -435,5 +439,70 @@ describe('PageDesignerView 多选等距分布与快捷键（I3，对齐 GraphWor
     window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }))
     await flushPromises()
     expect(w.find('.stub-canvas').attributes('data-preview')).toBe('off')
+  })
+})
+
+describe('PageDesignerView 深链自动建稿（Task 15 统一入口）', () => {
+  it('草稿 6001 + 目录存在 → 取 label/desc 物化种子页建稿 → 重载草稿进入编辑态', async () => {
+    routeState.params.type = 'user_demo'
+    const e6001 = Object.assign(new Error('组件不存在'), { code: 6001 })
+    getDraftSpy.mockRejectedValueOnce(e6001).mockResolvedValueOnce(structuredClone(DRAFT))
+    getComponentSpy.mockResolvedValue({ type: 'user_demo', label: '演示组件', desc: '测试用组件' })
+    createPageDraftSpy.mockResolvedValue({ type: 'user_demo', draftRev: 0, draftVersion: 1 })
+    listVersionsSpy.mockResolvedValue(structuredClone(VERSIONS))
+    getResourcesSpy.mockResolvedValue(structuredClone(CATALOG))
+    const w = mountView()
+    await flushPromises()
+    expect(getComponentSpy).toHaveBeenCalledWith('user_demo')
+    expect(createPageDraftSpy).toHaveBeenCalledTimes(1)
+    const body = createPageDraftSpy.mock.calls[0][0] as {
+      type: string; name: string
+      page: { name: string; widgets: { kind: string; props: Record<string, unknown> }[] }
+    }
+    expect(body.type).toBe('user_demo')
+    expect(body.name).toBe('演示组件')
+    /* 种子页：heading = 组件名 + text = 目录描述（componentSeedPage 真实函数产出） */
+    expect(body.page.name).toBe('演示组件')
+    expect(body.page.widgets.map((x) => x.kind)).toEqual(['heading', 'text'])
+    expect(body.page.widgets[0].props.text).toBe('演示组件')
+    expect(body.page.widgets[1].props.text).toBe('测试用组件')
+    /* 建稿后重载草稿 + 版本 + 目录，进入编辑态 */
+    expect(getDraftSpy).toHaveBeenCalledTimes(2)
+    expect(listVersionsSpy).toHaveBeenCalledWith('user_demo')
+    expect(w.find('.stub-canvas').exists()).toBe(true)
+  })
+
+  it('目录也无此 type（乱路径）→ 不建稿，落加载错误态', async () => {
+    routeState.params.type = '__ghost__'
+    const e6001 = Object.assign(new Error('组件不存在'), { code: 6001 })
+    getDraftSpy.mockRejectedValue(e6001)
+    getComponentSpy.mockRejectedValue(new Error('组件不存在: __ghost__'))
+    const w = mountView()
+    await flushPromises()
+    expect(createPageDraftSpy).not.toHaveBeenCalled()
+    expect(w.find('.pd-err').exists()).toBe(true)
+  })
+})
+
+describe('PageDesignerView 组件级删除（Task 15 CRUD 补齐）', () => {
+  it('纯草稿组件显示删除按钮：确认 → deleteComponent → 回组件目录', async () => {
+    const confirmSpy = vi.spyOn(ElMessageBox, 'confirm').mockResolvedValue('confirm' as never)
+    deleteComponentSpy.mockResolvedValue({ type: 'page_demo', deleted: true })
+    const w = mountView()
+    await flushPromises()
+    const btn = w.find('[data-testid="tb-comp-delete"]')
+    expect(btn.exists()).toBe(true)
+    await btn.trigger('click')
+    await flushPromises()
+    expect(confirmSpy).toHaveBeenCalled()
+    expect(deleteComponentSpy).toHaveBeenCalledWith('page_demo')
+    expect(pushSpy).toHaveBeenCalledWith('/meta/components')
+  })
+
+  it('builtin 草稿不显示组件级删除按钮（后端 409，按钮前置隐藏）', async () => {
+    getDraftSpy.mockResolvedValue({ ...DRAFT, type: 'sql', name: 'SQL', scope: 'builtin' })
+    const w = mountView()
+    await flushPromises()
+    expect(w.find('[data-testid="tb-comp-delete"]').exists()).toBe(false)
   })
 })

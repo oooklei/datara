@@ -855,6 +855,45 @@ def rollback_component(
                "supersededVersion": superseded or None})
 
 
+@router.delete("/{type_name}", summary="删除组件（仅草稿态可删，Task 15 CRUD 补齐）")
+def delete_component(
+    type_name: str,
+    user: User = Depends(require_perm("design_component")),
+    db: Session = Depends(get_db),
+):
+    """删除用户组件：清理主表行 + 全部 draft 版本行；审计追加 delete（log 只追加，行保留）。
+
+    语义边界（Task 15 决策）：
+    - 仅「从未冻结过」的组件可删（存在任一 frozen/published/offline 版本行即 409
+      ——历史版本留档不可删，保障既有工作流引用可复现；下线不改变可删性）；
+    - scope=builtin（认可发版进入目录的系统组件）不可删；
+    - t_component 三表无数据库级外键，component_id 引用随主行删除自然失效，
+      t_component_log 保留 delete 留痕（type 冗余列仍可读）。
+    """
+    comp = _get_or_404(db, type_name)
+    if comp.scope != "user":
+        raise ApiError(COMP_STATE_CONFLICT, status=409,
+                       msg="系统目录组件（scope=builtin）不可删除")
+    non_draft = (
+        db.query(ComponentVersion)
+        .filter(ComponentVersion.component_id == comp.id,
+                ComponentVersion.state != "draft")
+        .count()
+    )
+    if non_draft > 0:
+        raise ApiError(COMP_STATE_CONFLICT, status=409,
+                       msg="组件存在冻结/发布/下线历史版本（%d 条），不可删除" % non_draft)
+    _append_log(db, comp, 0, "delete", "", user.user_name, "删除草稿组件（全部 draft 版本随删）")
+    db.query(ComponentVersion).filter(
+        ComponentVersion.component_id == comp.id,
+        ComponentVersion.state == "draft",
+    ).delete()
+    db.delete(comp)
+    db.commit()
+    logger.info("删除组件草稿: %s（操作人 %s）", type_name, user.user_name)
+    return ok({"type": type_name, "deleted": True})
+
+
 @router.get("/{type_name}/impacted", summary="影响面查询（§9.4：引用该组件的工作流清单）")
 def impacted_workflows(
     type_name: str,

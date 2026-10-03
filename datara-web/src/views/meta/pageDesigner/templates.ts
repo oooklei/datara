@@ -135,3 +135,16 @@ export const pageTemplates = [
   { name: '表单页', page: (): PageDSL => fromWidgets(['heading', 'input', 'select', 'date', 'textarea', 'button']) },
   { name: '列表页', page: (): PageDSL => fromWidgets(['heading', 'table', 'progress']) },
 ]
+
+/** 组件设计器深链自动建稿的初始模板页（Task 15 统一入口）：
+ *  标题 = 组件名、说明文本 = 目录描述（缺省给引导文案），从左侧组件库继续设计。 */
+export function componentSeedPage(label: string, desc = ''): PageDSL {
+  const page = blank()
+  page.name = label
+  const h = newWidget('heading', { x: 12, y: 8 })
+  h.props.text = label
+  const t = newWidget('text', { x: 12, y: 8 + h.rect.h + 8 })
+  t.props.text = desc || '组件设计画布：从左侧组件库拖入元素开始设计'
+  page.widgets.push(h, t)
+  return page
+}

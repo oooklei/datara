@@ -15,8 +15,9 @@
  * - palette 容器格式不统一：dag/stream 用 items，etl 用 types 且展开 dagProfile.palette。
  * 这些是 M1 收敛组件注册表的一手证据，不能被"列表看起来正常"掩盖。
  *
- * M0 只读：系统内置组件无新建/编辑入口。B4：本页提供「组件设计器」入口
- * （/meta/components/design/:type?，用户自建组件草稿编辑/预览/冻结，t_component 三表）。
+ * M0 只读：系统内置组件无新建/编辑入口。组件设计器统一入口（Task 15）：本页所有调用
+ * 设计器的操作统一指向 /meta/components/page-designer（:type 深链自动加载/建稿；
+ * 旧 B4 声明编辑器已下线，/meta/components/design redirect 保书签）。
  * 发布（admin）权限与闸门属 M2。路由：/meta/components
  *
  * M-B0：组件条目挂基线化徽标（baselineApi.progress，失败静默降级）——
@@ -27,7 +28,7 @@ import { ref, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import {
-  listComponents, getComponentStats, getComponent, getComponentRegistry,
+  listComponents, getComponentStats, getComponent, getComponentRegistry, deleteComponent,
   type ComponentRow, type ComponentStats, type ComponentDetail, type ComponentRoute,
   type CompRegistryRow,
 } from '../../services/componentApi'
@@ -165,10 +166,12 @@ async function load(): Promise<void> {
   }
 }
 
-/** D3：用户组件治理库注册表（§8 生命周期标签区）。失败静默——mock 模式无此端点，不阻塞系统组件清单 */
+/** D3：用户组件治理库注册表（§8 生命周期标签区）。失败静默——mock 模式无此端点，不阻塞系统组件清单。
+ *  仅保留 scope=user 行：registry 含基线化产出的 builtin 行（Task 15 实测发现混入本区，
+ *  对系统组件误渲染「组件设计器/删除」入口，删除虽被后端 409 拦截但属界面误导） */
 async function loadRegistry(): Promise<void> {
   try {
-    userComps.value = await getComponentRegistry()
+    userComps.value = (await getComponentRegistry()).filter((r) => r.scope === 'user')
   } catch {
     userComps.value = []
   }
@@ -206,11 +209,11 @@ async function openDetail(r: ComponentRow): Promise<void> {
   }
 }
 
-/** 删除组件（二次确认后调用删除 API） */
-async function handleDelete(r: ComponentRow): Promise<void> {
+/** 删除用户组件（Task 15 CRUD 补齐：仅草稿可删；历史版本/系统目录组件由后端 409 拒绝） */
+async function handleDelete(u: CompRegistryRow): Promise<void> {
   try {
     await ElMessageBox.confirm(
-      `确定删除组件「${r.label}」（${r.type}）？此操作将清理对应的构建代码和资源。`,
+      `确定删除组件「${u.name}」（${u.type}）？草稿及其全部未冻结版本将被清理，不可恢复。`,
       '删除确认',
       { type: 'warning', confirmButtonText: '删除', cancelButtonText: '取消', confirmButtonClass: 'el-button--danger' }
     )
@@ -219,9 +222,8 @@ async function handleDelete(r: ComponentRow): Promise<void> {
   }
 
   try {
-    // TODO: 调用删除 API
-    // await deleteComponent(r.type)
-    ElMessage.success(`组件 ${r.type} 已删除`)
+    await deleteComponent(u.type)
+    ElMessage.success(`组件 ${u.type} 已删除`)
     await load() // 刷新列表
   } catch (e) {
     ElMessage.error(e instanceof Error ? e.message : String(e))
@@ -256,7 +258,7 @@ onMounted(load)
         </p>
       </div>
       <div class="head-actions">
-        <el-button type="primary" @click="router.push('/meta/components/design')">组件设计器</el-button>
+        <el-button type="primary" @click="router.push('/meta/components/page-designer')">组件设计器</el-button>
         <el-button :loading="loading" @click="load">刷新</el-button>
       </div>
     </header>
@@ -292,8 +294,11 @@ onMounted(load)
             <template v-if="u.publishedVersion"> · 供给 v{{ u.publishedVersion }}</template>
             <template v-else> · 未发布</template>
           </div>
-          <el-button link type="primary" size="small" @click="router.push(`/meta/components/design/${u.type}`)">
-            设计
+          <el-button link type="primary" size="small" @click="router.push(`/meta/components/page-designer/${u.type}`)">
+            组件设计器
+          </el-button>
+          <el-button v-if="u.state !== 'offline'" link type="danger" size="small" @click="handleDelete(u)">
+            删除
           </el-button>
         </div>
       </div>
@@ -410,9 +415,8 @@ onMounted(load)
         <template #default="{ row }">
           <el-button link type="primary" size="small" @click="openDetail(row)">详情</el-button>
           <!-- 内置目录组件走基线化治理链（t_baseline_progress），编辑入口在基线化工作台设计区；
-               已发 v1 的底稿锁定（一次性认可）故显示「查看」。M1 设计器仅服务用户自建组件。 -->
+               已发 v1 的底稿锁定（一次性认可）故显示「查看」。系统组件不可删（快照真源在 git）。 -->
           <el-button link type="primary" size="small" @click="router.push({ path: '/meta/baseline', query: { type: row.type } })">{{ baselineMap[row.type] === 'published' ? '查看' : '修改' }}</el-button>
-          <el-button link type="danger" size="small" @click="handleDelete(row)">删除</el-button>
         </template>
       </el-table-column>
     </el-table>

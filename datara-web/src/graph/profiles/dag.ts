@@ -256,6 +256,8 @@ const nodeTypes: Record<string, NodeSchema> = {
   /* ================= A 逻辑控制（C1~C10，全可用） ================= */
   start: {
     type: 'start',
+    /* §11 模板初始化核查：form=[] 无业务 props 可创作（props 键须与 form/defaults 同名，
+       G-03 禁幽灵字段），模板仅落图尺寸默认；sample={} 为无数据槽组件惯例 */
     initTemplate: { rect: { w: 160, h: 48 }, props: {}, sample: {} },
     label: '开始', icon: '▶', color: '#16a34a', code: 'C1', categories: ['general', 'sync', 'etl'], desc: '工作流启动节点（运行实例编号 instance_id 由此生成）',
     form: [], defaults: {},
@@ -265,6 +267,7 @@ const nodeTypes: Record<string, NodeSchema> = {
   },
   end: {
     type: 'end',
+    /* §11 模板初始化核查：form=[] 无业务 props 可创作（G-03 禁幽灵字段），模板仅落图尺寸默认 */
     initTemplate: { rect: { w: 160, h: 48 }, props: {}, sample: {} },
     label: '结束', icon: '■', color: '#64748b', code: 'C2', categories: ['general', 'sync', 'etl'], desc: '工作流结束节点',
     form: [], defaults: {}, maxOut: 0,  // G-22：maxOut=0 → 禁止出边（与 G-25 validator 双保险）
@@ -303,6 +306,8 @@ const nodeTypes: Record<string, NodeSchema> = {
   },
   fork: {
     type: 'fork',
+    /* §11 模板初始化核查：form=[] 无业务 props 可创作（G-03 禁幽灵字段）；
+       并行度由出边数天然表达（G-03 修复），无默认值可预置 */
     initTemplate: { rect: { w: 160, h: 48 }, props: {}, sample: {} },
     label: '并行分叉', icon: '⋔', color: '#ca8a04', code: 'C5', categories: ['general', 'sync', 'etl'],
     desc: '单输入多路并行下发（下游同时触发；并行度 = 出边数）',
@@ -335,6 +340,7 @@ const nodeTypes: Record<string, NodeSchema> = {
   },
   merge: {
     type: 'merge',
+    /* §11 模板初始化核查：form=[] 无业务 props 可创作（G-03 禁幽灵字段），模板仅落图尺寸默认 */
     initTemplate: { rect: { w: 160, h: 48 }, props: {}, sample: {} },
     label: '合并（OR）', icon: '∪', color: '#0284c7', code: 'C7', categories: ['general', 'sync', 'etl'],
     desc: '任一上游完成即触发（抢先合并）',
@@ -796,6 +802,8 @@ const nodeTypes: Record<string, NodeSchema> = {
   /* ================= C29~C31 同步编排组件（拖入即物化对应细项节点链，设计时物化引擎零改动） ================= */
   src_base_orch: {
     type: 'src_base_orch',
+    /* §11 模板初始化核查：F63 聚合模板组件，拖入即 materializeTemplate 展开节点链
+       （不走 applyInitTemplate 链），form=[] 无业务 props 可创作（G-03 禁幽灵字段） */
     initTemplate: { rect: { w: 200, h: 64 }, props: {}, sample: {} },
     label: '源表基准编排', icon: '⇉', color: '#0891b2', code: 'C29', categories: ['sync'],
     desc: '源表基准同步场景：拖入物化为 开始 → 前置清理 → 端点选择(源表基准) → 字段映射-复制 → 条件设定 → 对账校验 → 结束 节点链（对账不通过 → 消息通知）',
@@ -807,6 +815,8 @@ const nodeTypes: Record<string, NodeSchema> = {
   },
   tgt_base_orch: {
     type: 'tgt_base_orch',
+    /* §11 模板初始化核查：F63 聚合模板组件，拖入即 materializeTemplate 展开节点链
+       （不走 applyInitTemplate 链），form=[] 无业务 props 可创作（G-03 禁幽灵字段） */
     initTemplate: { rect: { w: 200, h: 64 }, props: {}, sample: {} },
     label: '目标表基准编排', icon: '⇉', color: '#0891b2', code: 'C30', categories: ['sync'],
     desc: '目标表基准同步场景：拖入物化为 开始 → 前置清理 → 端点选择(目标表基准，源端探测) → 字段映射-联合（union all + 来源 schema 标识列）→ 条件设定 → 对账校验 → 结束 节点链（对账不通过 → 消息通知）',
@@ -818,6 +828,8 @@ const nodeTypes: Record<string, NodeSchema> = {
   },
   file_sync_orch: {
     type: 'file_sync_orch',
+    /* §11 模板初始化核查：F63 聚合模板组件，拖入即 materializeTemplate 展开节点链
+       （不走 applyInitTemplate 链），form=[] 无业务 props 可创作（G-03 禁幽灵字段） */
     initTemplate: { rect: { w: 200, h: 64 }, props: {}, sample: {} },
     label: '文件同步编排', icon: '⇉', color: '#0891b2', code: 'C31', categories: ['sync'],
     desc: '文件同步场景（参考源表基准）：拖入物化为 开始 → 前置清理 → 端点选择(文件源) → 字段映射-复制 → 条件设定 → 对账校验 → 结束 节点链（对账不通过 → 消息通知）',
@@ -1219,6 +1231,8 @@ const nodeTypes: Record<string, NodeSchema> = {
   /* ================= F63 模板（demo_pipeline，可拖；展开后不保留占位节点） ================= */
   demo_pipeline: {
     type: 'demo_pipeline',
+    /* §11 模板初始化核查：F63 聚合模板组件，拖入即 materializeTemplate 展开节点链
+       （不走 applyInitTemplate 链），form=[] 无业务 props 可创作（G-03 禁幽灵字段） */
     initTemplate: { rect: { w: 200, h: 64 }, props: {}, sample: {} },
     label: '示例管道模板', icon: '✦', color: '#16a34a', code: '', categories: ['general'],
     desc: '演示模板：展开为 开始 → SQL 占位 → 结束 三节点链（设计时物化，引擎零改动）',

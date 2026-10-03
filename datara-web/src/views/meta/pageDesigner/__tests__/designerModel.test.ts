@@ -6,7 +6,7 @@
  */
 import { describe, expect, it } from 'vitest'
 import { alignRects, distributeRects, newWidget, normalizePage, reorderWidget, validatePage, WIDGET_KINDS, type WidgetNode } from '../designerModel'
-import { widgetGroups, widgetTemplate, pageTemplates } from '../templates'
+import { widgetGroups, widgetTemplate, pageTemplates, componentSeedPage } from '../templates'
 
 describe('designerModel', () => {
   it('normalizePage 补齐缺省（画布 288×520、widget id）', () => {
@@ -166,5 +166,27 @@ describe('templates', () => {
     const w = newWidget('table', { x: 4, y: 4 })
     expect((w.props as Record<string, unknown>).columns).toBeTruthy()
     expect(w.rect.w).toBeGreaterThan(0)
+  })
+})
+
+describe('componentSeedPage（Task 15 统一入口 · 深链自动建稿种子页）', () => {
+  it('页面名 = 组件名；标题文本 = 组件名；说明文本 = 目录描述', () => {
+    const p = componentSeedPage('SQL 转换', '对数据集执行 SQL 加工')
+    expect(p.version).toBe(1)
+    expect(p.name).toBe('SQL 转换')
+    expect(p.widgets).toHaveLength(2)
+    const [h, t] = p.widgets
+    expect(h.kind).toBe('heading')
+    expect((h.props as Record<string, unknown>).text).toBe('SQL 转换')
+    expect(t.kind).toBe('text')
+    expect((t.props as Record<string, unknown>).text).toBe('对数据集执行 SQL 加工')
+  })
+  it('描述缺省 → 引导文案兜底（用户可直接从组件库继续设计）', () => {
+    const p = componentSeedPage('某组件')
+    expect((p.widgets[1].props as Record<string, unknown>).text)
+      .toBe('组件设计画布：从左侧组件库拖入元素开始设计')
+  })
+  it('种子页过 validatePage 纯数据校验（与后端红线同口径）', () => {
+    expect(validatePage(normalizePage(componentSeedPage('演示', '说明')))).toEqual([])
   })
 })
