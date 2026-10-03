@@ -41,6 +41,7 @@ const stubs = {
   ElTabPane: { props: ['label', 'name'], template: '<div class="stub-pane"><div class="stub-pane-label">{{ label }}</div><slot /></div>' },
   ElSelect: { name: 'ElSelect', props: ['modelValue'], emits: ['update:modelValue'], template: '<div class="stub-select"><slot /></div>' },
   ElTag: { template: '<span class="stub-tag"><slot /></span>' },
+  ElButton: { name: 'ElButton', emits: ['click'], template: '<button class="stub-btn" @click="$emit(\'click\')"><slot /></button>' },
   ElOption: { props: ['label', 'value'], template: '<div class="stub-option" :value="value">{{ label }}</div>' },
   ElSwitch: {
     props: ['modelValue'],
@@ -274,5 +275,20 @@ describe('PageInspector dataset 槽库表钻取（D3/M3）', () => {
     await flushPromises()
     expect(dbSel().props('modelValue')).toBe('')
     expect(tbSel().props('modelValue')).toBe('')
+  })
+})
+
+describe('PageInspector 布局 tab 层级控制（D5/M6）', () => {
+  it('层级行四按钮（置顶/上移/下移/置底）点击 → emit reorder [id, action]', async () => {
+    const w = mountInspector({ page: makePage(['text']), selectedId: 'w1' })
+    const btns = w.findAll('.stub-btn')
+    expect(btns.map((b) => b.text())).toEqual(['置顶', '上移', '下移', '置底'])
+    const want: [string, string][] = [['置顶', 'top'], ['上移', 'up'], ['下移', 'down'], ['置底', 'bottom']]
+    for (const [label] of want) {
+      await btns.find((b) => b.text() === label)!.trigger('click')
+    }
+    expect(w.emitted('reorder')).toEqual([
+      ['w1', 'top'], ['w1', 'up'], ['w1', 'down'], ['w1', 'bottom'],
+    ])
   })
 })

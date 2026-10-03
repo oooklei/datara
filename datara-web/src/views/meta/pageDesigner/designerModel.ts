@@ -94,6 +94,25 @@ export function validatePage(p: PageDSL): string[] {
   return vs
 }
 
+/** 层级动作（D5/M6）：数组序 = z 序，靠后者在上层渲染 */
+export type ReorderAction = 'top' | 'up' | 'down' | 'bottom'
+
+/** 层级重排（纯函数）：恒返回新数组（不可变，不改入参）；找不到 id 或动作无位移返回等价副本。
+ * top=移到末尾 / bottom=移到开头 / up=与后一位交换 / down=与前一位交换。 */
+export function reorderWidget(widgets: WidgetNode[], id: string, action: ReorderAction): WidgetNode[] {
+  const i = widgets.findIndex((w) => w.id === id)
+  if (i < 0) return [...widgets]
+  const j = action === 'top' ? widgets.length - 1
+    : action === 'bottom' ? 0
+    : action === 'up' ? Math.min(widgets.length - 1, i + 1)
+    : Math.max(0, i - 1)
+  if (j === i) return [...widgets]
+  const next = [...widgets]
+  const [w] = next.splice(i, 1)
+  next.splice(j, 0, w)
+  return next
+}
+
 /** 工厂：由模板创建 widget（templates.ts 注册，避免循环依赖用注入）。 */
 export type TemplateOf = (kind: string) => { props: Record<string, unknown>; style: Record<string, string | number>; rect: Rect; bindings?: Record<string, BindingRef> } | undefined
 let _templateOf: TemplateOf | undefined

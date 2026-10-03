@@ -5,7 +5,7 @@
  * 纯函数用例，无需 DOM。导入 templates.ts 即完成 bindTemplates 注入（模块顶层侧效应）。
  */
 import { describe, expect, it } from 'vitest'
-import { newWidget, normalizePage, validatePage, WIDGET_KINDS } from '../designerModel'
+import { newWidget, normalizePage, reorderWidget, validatePage, WIDGET_KINDS, type WidgetNode } from '../designerModel'
 import { widgetGroups, widgetTemplate, pageTemplates } from '../templates'
 
 describe('designerModel', () => {
@@ -59,6 +59,38 @@ describe('designerModel', () => {
     const w = newWidget('text', { x: 10, y: 10 })
     expect(w.props.text).toBeTruthy()
     expect(w.rect.w).toBeGreaterThan(0)
+  })
+})
+
+describe('reorderWidget（D5/M6 层级控制，数组序 = z 序，靠后者在上层渲染）', () => {
+  const mk = (ids: string[]): WidgetNode[] =>
+    ids.map((id) => ({ id, kind: 'text', rect: { x: 0, y: 0, w: 10, h: 10 }, props: {}, style: {}, bindings: {} }))
+
+  it('四动作：top 移末尾 / bottom 移开头 / up 与后一位交换 / down 与前一位交换', () => {
+    expect(reorderWidget(mk(['a', 'b', 'c']), 'a', 'top').map((w) => w.id)).toEqual(['b', 'c', 'a'])
+    expect(reorderWidget(mk(['a', 'b', 'c']), 'c', 'bottom').map((w) => w.id)).toEqual(['c', 'a', 'b'])
+    expect(reorderWidget(mk(['a', 'b', 'c']), 'b', 'up').map((w) => w.id)).toEqual(['a', 'c', 'b'])
+    expect(reorderWidget(mk(['a', 'b', 'c']), 'b', 'down').map((w) => w.id)).toEqual(['b', 'a', 'c'])
+  })
+
+  it('边界：单元素 / 找不到 id / 已到界 → 等价副本；恒新数组不改入参', () => {
+    const src = mk(['a', 'b'])
+    const ids = () => src.map((w) => w.id)
+    // 单元素
+    expect(reorderWidget([src[0]], 'a', 'top').map((w) => w.id)).toEqual(['a'])
+    // 找不到 id
+    expect(reorderWidget(src, 'zz', 'top').map((w) => w.id)).toEqual(['a', 'b'])
+    // 已到界（b 已在顶：再 top / 再 up 无位移；a 已在底：再 bottom / 再 down 无位移）
+    expect(reorderWidget(src, 'b', 'top').map((w) => w.id)).toEqual(['a', 'b'])
+    expect(reorderWidget(src, 'a', 'bottom').map((w) => w.id)).toEqual(['a', 'b'])
+    expect(reorderWidget(src, 'b', 'up').map((w) => w.id)).toEqual(['a', 'b'])
+    expect(reorderWidget(src, 'a', 'down').map((w) => w.id)).toEqual(['a', 'b'])
+    // up/down 有位移（a 在底层 up 与后一位交换；b 在顶层 down 与前一位交换）
+    expect(reorderWidget(src, 'a', 'up').map((w) => w.id)).toEqual(['b', 'a'])
+    expect(reorderWidget(src, 'b', 'down').map((w) => w.id)).toEqual(['b', 'a'])
+    // 入参不被修改 + 返回新数组（不可变）
+    expect(ids()).toEqual(['a', 'b'])
+    expect(reorderWidget(src, 'a', 'top')).not.toBe(src)
   })
 })
 

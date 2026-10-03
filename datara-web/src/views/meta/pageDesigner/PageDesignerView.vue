@@ -23,7 +23,7 @@ import {
   publishComponentVersion, saveComponentDraft,
   type ComponentDraft, type ComponentVersionRow,
 } from '../../../services/componentApi'
-import { normalizePage, genId, newWidget, CANVAS_H, CANVAS_W, type BackgroundStyle, type PageDSL, type WidgetNode } from './designerModel'
+import { normalizePage, genId, newWidget, reorderWidget, CANVAS_H, CANVAS_W, type BackgroundStyle, type PageDSL, type ReorderAction, type WidgetNode } from './designerModel'
 import { pageTemplates } from './templates'
 import type { ResourceCatalog } from './bindingCatalog'
 import { pageApi, type PreviewQuery, type PreviewResult } from './pageApi'
@@ -186,6 +186,11 @@ function onUpdateWidget(id: string, patch: Record<string, unknown>): void {
   if (!w) return
   pushUndo()
   Object.assign(w, patch)
+}
+/** 层级调整（D5/M6）：数组序 = z 序，靠后者在上层渲染（重排为纯函数，替换 widgets 数组） */
+function onReorder(id: string, action: ReorderAction): void {
+  pushUndo()
+  page.value.widgets = reorderWidget(page.value.widgets, id, action)
 }
 function onUpdateCanvas(patch: Record<string, unknown>): void {
   pushUndo()
@@ -510,7 +515,7 @@ async function onCreate(): Promise<void> {
       <aside v-show="rightOpen" class="pd-right" :style="{ width: `${rightWidth}px` }" data-testid="pd-inspector">
         <PageInspector
           :page="page" :selected-id="selectedId" :catalog="catalog"
-          @update-widget="onUpdateWidget" @update-canvas="onUpdateCanvas"
+          @update-widget="onUpdateWidget" @update-canvas="onUpdateCanvas" @reorder="onReorder"
         />
       </aside>
     </div>

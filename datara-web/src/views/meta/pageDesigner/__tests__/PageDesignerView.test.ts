@@ -60,7 +60,7 @@ vi.mock('../inspector/PageInspector.vue', () => ({
   default: {
     name: 'PageInspectorStub',
     props: ['page', 'selectedId', 'catalog'],
-    emits: ['updateWidget', 'updateCanvas'],
+    emits: ['updateWidget', 'updateCanvas', 'reorder'],
     template: '<aside class="stub-inspector" />',
   },
 }))
@@ -236,6 +236,27 @@ describe('PageDesignerView（Task 13 页壳）', () => {
     // 粘贴 → widgets 2→3（深拷贝缓冲 + 新 id + 12px 偏移）
     await tb(w, 'paste').trigger('click')
     expect(w.find('.stub-canvas').attributes('data-count')).toBe('3')
+  })
+
+  it('层级：inspector emit reorder → 宿主按数组序调整 widgets（top 移末尾 / down 交换）', async () => {
+    const w = mountView()
+    await flushPromises()
+    // 复制一个 widget 使数组有 2 项（wq 在前，克隆在后）
+    w.findComponent({ name: 'PageCanvasStub' }).vm.$emit('select', 'wq')
+    await flushPromises()
+    await tb(w, 'copy').trigger('click')
+    await flushPromises()
+    const idsOf = () =>
+      (w.findComponent({ name: 'PageCanvasStub' }).props('page') as { widgets: { id: string }[] }).widgets.map((x) => x.id)
+    expect(idsOf()).toHaveLength(2)
+    // wq（首位）top → 移到末尾（靠后者上层渲染）
+    w.findComponent({ name: 'PageInspectorStub' }).vm.$emit('reorder', 'wq', 'top')
+    await flushPromises()
+    expect(idsOf()[1]).toBe('wq')
+    // wq（末位）down → 与前一位交换回首位
+    w.findComponent({ name: 'PageInspectorStub' }).vm.$emit('reorder', 'wq', 'down')
+    await flushPromises()
+    expect(idsOf()[0]).toBe('wq')
   })
 
   it('发布主路径：确认 → freeze → publish → toast「已刷新 2 个图引用」', async () => {

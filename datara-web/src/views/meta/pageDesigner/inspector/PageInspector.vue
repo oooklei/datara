@@ -32,7 +32,7 @@ export function bindingOf(value: string, fallback: string): BindingRef {
  */
 import { computed, ref, watch } from 'vue'
 import { ElMessage } from 'element-plus'
-import { CANVAS_H, CANVAS_W, type PageDSL, type Rect, type WidgetNode } from '../designerModel'
+import { CANVAS_H, CANVAS_W, type PageDSL, type ReorderAction, type Rect, type WidgetNode } from '../designerModel'
 import { candidatesFor, resolveFallback, type ResourceCatalog, type SlotType } from '../bindingCatalog'
 import { widgetTemplate } from '../templates'
 import { pdColumns, pdDatabases, pdTables, type DsColumnMeta, type DsTableItem } from '../pageApi'
@@ -73,6 +73,7 @@ const props = defineProps<{ page: PageDSL; selectedId?: string; catalog: Resourc
 const emit = defineEmits<{
   updateWidget: [id: string, patch: Record<string, unknown>]
   updateCanvas: [patch: Record<string, unknown>]
+  reorder: [id: string, action: ReorderAction]
 }>()
 
 const sel = computed<WidgetNode | null>(() => props.page.widgets.find((w) => w.id === props.selectedId) ?? null)
@@ -251,6 +252,17 @@ function patchStyle(part: Record<string, string | number>) {
   if (w) emit('updateWidget', w.id, { style: { ...w.style, ...part } })
 }
 const patchCanvas = (part: Record<string, unknown>) => emit('updateCanvas', part)
+
+/* 层级控制（D5/M6）：数组序 = z 序，靠后者在上层渲染；实际重排由宿主 reorderWidget 承担 */
+const REORDER_ACTIONS: { action: ReorderAction; label: string }[] = [
+  { action: 'top', label: '置顶' },
+  { action: 'up', label: '上移' },
+  { action: 'down', label: '下移' },
+  { action: 'bottom', label: '置底' },
+]
+const onReorder = (action: ReorderAction) => {
+  if (sel.value) emit('reorder', sel.value.id, action)
+}
 const clampW = (v: number) => Math.min(CANVAS_W.max, Math.max(CANVAS_W.min, v))
 const clampH = (v: number) => Math.min(CANVAS_H.max, Math.max(CANVAS_H.min, v))
 const num = (v: unknown) => Number(v)
@@ -284,6 +296,13 @@ const onStyleColor = (key: string) => (e: Event) => patchStyle({ [key]: (e.targe
           <label class="pd-insp-field"><span>Y</span><el-input-number :model-value="sel.rect.y" @update:model-value="setRectKey('y')" /></label>
           <label class="pd-insp-field"><span>宽</span><el-input-number :model-value="sel.rect.w" :min="1" @update:model-value="setRectKey('w')" /></label>
           <label class="pd-insp-field"><span>高</span><el-input-number :model-value="sel.rect.h" :min="1" @update:model-value="setRectKey('h')" /></label>
+        </div>
+        <!-- 层级控制（D5/M6）：置顶 / 上移一层 / 下移一层 / 置底 -->
+        <div class="pd-insp-field pd-insp-field-wide">
+          <span>层级</span>
+          <div class="pd-insp-z-btns">
+            <el-button v-for="a in REORDER_ACTIONS" :key="a.action" size="small" @click="onReorder(a.action)">{{ a.label }}</el-button>
+          </div>
         </div>
       </el-tab-pane>
       <el-tab-pane label="样式" name="style">
@@ -426,5 +445,11 @@ const onStyleColor = (key: string) => (e: Event) => patchStyle({ [key]: (e.targe
 .pd-insp-dd-more {
   font-size: 11px;
   color: var(--text-2);
+}
+.pd-insp-z-btns {
+  display: flex;
+  flex: 1;
+  min-width: 0;
+  gap: 6px;
 }
 </style>
