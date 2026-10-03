@@ -19,17 +19,18 @@ export const routes: RouteRecordRaw[] = [
   { path: '/stream/design/:id', name: 'stream-design', redirect: (to) => ({ path: '/dag', query: { ...to.query, tab: 'edit', type: 'stream', doc: String(to.params.id) } }), meta: { title: '流设计器' } },
   { path: '/model/er', name: 'model-er', component: () => import('../views/ErCanvasView.vue'), meta: { title: 'ER画布', demo: true } },
   { path: '/meta/lineage', name: 'meta-lineage', component: () => import('../views/LineageView.vue'), meta: { title: '血缘分析' } },
-  /* 组件目录：系统内置只读清单 + 用户组件（t_component）生命周期区 */
-  { path: '/meta/components', name: 'meta-components', component: () => import('../views/meta/ComponentCatalogView.vue'), meta: { title: '组件目录' } },
-  /* 基线化工作台（M-B0）：双路径并存（/meta/baseline 与 /meta/components/baseline），旧链接均有效 */
-  { path: '/meta/components/baseline', name: 'meta-components-baseline', component: () => import('../views/meta/BaselineWorkbenchView.vue'), meta: { title: '基线化工作台' } },
-  { path: '/meta/baseline', name: 'meta-baseline', component: () => import('../views/meta/BaselineWorkbenchView.vue'), meta: { title: '基线化工作台' } },
-  /* 组件设计器统一入口：所有调用设计器的操作统一指向 page-designer（深链 :type 自动加载/建稿）；
+  /* 组件治理三页整合（ComponentHub）：组件目录 / 基线化工作台 / 组件设计器同壳页签，
+     query.tab + query.designType/query.type 承载页签与深链（任务中心同款单向 replace 同步） */
+  { path: '/meta/components', name: 'meta-components', component: () => import('../views/meta/ComponentHubView.vue'), meta: { title: '组件目录' } },
+  /* 基线化工作台：双旧路径 redirect 落宿主页签（原 query 透传，保 ?type=xxx 深链定位） */
+  { path: '/meta/components/baseline', name: 'meta-components-baseline', redirect: (to) => ({ path: '/meta/components', query: { ...to.query, tab: 'baseline' } }), meta: { title: '基线化工作台' } },
+  { path: '/meta/baseline', name: 'meta-baseline', redirect: (to) => ({ path: '/meta/components', query: { ...to.query, tab: 'baseline' } }), meta: { title: '基线化工作台' } },
+  /* 组件设计器统一入口：所有调用设计器的操作统一指向宿主设计器页签（designType 深链自动加载/建稿/开修订）；
      旧 B4 声明编辑器 /meta/components/design 已下线，redirect 保书签（声明编辑能力待并入设计器） */
-  { path: '/meta/components/design/:type?', name: 'meta-components-design', redirect: (to) => ({ path: to.params.type ? `/meta/components/page-designer/${String(to.params.type)}` : '/meta/components/page-designer', query: to.query }), meta: { title: '组件设计器' } },
-  /* 组件页面设计器（:type 缺省 = 新建组件草稿）：三区域布局（palette/canvas/inspector）+ 工具条 + 发布链；
-     专用于 DAG 组件的设计/管理/测试/发布（任务中心 DAG 用于工作流编排，本设计器用于组件全生命周期） */
-  { path: '/meta/components/page-designer/:type?', name: 'meta-page-designer', component: () => import('../views/meta/pageDesigner/PageDesignerView.vue'), meta: { title: '组件设计器' } },
+  { path: '/meta/components/design/:type?', name: 'meta-components-design', redirect: (to) => ({ path: '/meta/components', query: { tab: 'designer', ...(to.params.type ? { designType: String(to.params.type) } : {}) } }), meta: { title: '组件设计器' } },
+  /* 组件页面设计器：原独立路由 redirect 落宿主设计器页签（深链 :type → designType，保 Task 15 建稿链）；
+     设计器本体由 ComponentHubView 内嵌 PageDesignerView 承载 */
+  { path: '/meta/components/page-designer/:type?', name: 'meta-page-designer', redirect: (to) => ({ path: '/meta/components', query: { tab: 'designer', ...(to.params.type ? { designType: String(to.params.type) } : {}) } }), meta: { title: '组件设计器' } },
   { path: '/meta/map', name: 'meta-map', component: () => import('../views/AssetMapView.vue'), meta: { title: '资产地图', demo: true } },
 
   // ---- 新增 45 条模块路由 ----

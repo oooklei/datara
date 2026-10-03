@@ -18,6 +18,9 @@
  * M0 只读：系统内置组件无新建/编辑入口。组件设计器统一入口（Task 15）：本页所有调用
  * 设计器的操作统一指向 /meta/components/page-designer（:type 深链自动加载/建稿；
  * 旧 B4 声明编辑器已下线，/meta/components/design redirect 保书签）。
+ * 三页整合（ComponentHub 宿主）：openDesigner 回调优先页签流转，独立路由深链兜底。
+ * 语义修正（目录所有组件可修改）：操作列「修改」=调用组件设计器（不再跳基线化工作台），
+ * 加载组件既有页面（无草稿自动初始化 / 已发版自动开修订）后供用户修改。
  * 发布（admin）权限与闸门属 M2。路由：/meta/components
  *
  * M-B0：组件条目挂基线化徽标（baselineApi.progress，失败静默降级）——
@@ -34,9 +37,19 @@ import {
 } from '../../services/componentApi'
 import { progress } from '../../services/baselineApi'
 
+/* 组件治理三页整合（ComponentHub 宿主）：openDesigner 回调优先（页签流转），
+ * 缺省回退独立路由深链（/meta/components/page-designer/:type?，保书签直改）。 */
+const props = defineProps<{ openDesigner?: (type?: string) => void }>()
+
 const rows = ref<ComponentRow[]>([])
 const stats = ref<ComponentStats | null>(null)
 const router = useRouter()
+
+/** 调用组件设计器（等同头部「组件设计器」按钮）：type 缺省 = 新建态 */
+function openDesigner_(type?: string): void {
+  if (props.openDesigner) props.openDesigner(type)
+  else void router.push(type ? `/meta/components/page-designer/${type}` : '/meta/components/page-designer')
+}
 const detail = ref<ComponentDetail | null>(null)
 const detailOpen = ref(false)
 const loading = ref(false)
@@ -258,7 +271,7 @@ onMounted(load)
         </p>
       </div>
       <div class="head-actions">
-        <el-button type="primary" @click="router.push('/meta/components/page-designer')">组件设计器</el-button>
+        <el-button type="primary" @click="openDesigner_()">组件设计器</el-button>
         <el-button :loading="loading" @click="load">刷新</el-button>
       </div>
     </header>
@@ -294,7 +307,7 @@ onMounted(load)
             <template v-if="u.publishedVersion"> · 供给 v{{ u.publishedVersion }}</template>
             <template v-else> · 未发布</template>
           </div>
-          <el-button link type="primary" size="small" @click="router.push(`/meta/components/page-designer/${u.type}`)">
+          <el-button link type="primary" size="small" @click="openDesigner_(u.type)">
             组件设计器
           </el-button>
           <el-button v-if="u.state !== 'offline'" link type="danger" size="small" @click="handleDelete(u)">
@@ -414,9 +427,10 @@ onMounted(load)
       <el-table-column label="操作" width="140" fixed="right">
         <template #default="{ row }">
           <el-button link type="primary" size="small" @click="openDetail(row)">详情</el-button>
-          <!-- 内置目录组件走基线化治理链（t_baseline_progress），编辑入口在基线化工作台设计区；
-               已发 v1 的底稿锁定（一次性认可）故显示「查看」。系统组件不可删（快照真源在 git）。 -->
-          <el-button link type="primary" size="small" @click="router.push({ path: '/meta/baseline', query: { type: row.type } })">{{ baselineMap[row.type] === 'published' ? '查看' : '修改' }}</el-button>
+          <!-- 语义修正（目录所有组件可修改，只有发版不发布）：「修改」=调用组件设计器（等同头部按钮），
+               深链加载该组件既有页面（无草稿自动初始化/已发版自动开修订）后供用户修改。
+               八段基线化治理链仍在「基线化工作台」页签。 -->
+          <el-button link type="primary" size="small" @click="openDesigner_(row.type)">修改</el-button>
         </template>
       </el-table-column>
     </el-table>

@@ -76,21 +76,39 @@ describe('router shell (todo 5)', () => {
     expect((rec!.meta as { title?: string }).title).toBe('基线化工作台')
   })
 
-  /* 组件设计器统一入口：旧 B4 声明编辑器下线，design 路径 redirect 到 page-designer（保书签，:type 透传） */
-  it('redirects the legacy component design route to the unified page-designer', () => {
+  /* 组件设计器统一入口：旧 B4 声明编辑器下线，design 路径 redirect 落宿主设计器页签（保书签，:type → designType） */
+  it('redirects the legacy component design route to the hub designer tab', () => {
     const rec = routes.find((r) => r.path === '/meta/components/design/:type?')
     expect(rec, 'legacy design route should be registered').toBeTruthy()
     expect(rec!.redirect, 'legacy design route should redirect').toBeTruthy()
-    const fn = rec!.redirect as (t: { params: Record<string, string> }) => { path: string }
-    expect(fn({ params: { type: 'op_filter' } }).path).toBe('/meta/components/page-designer/op_filter')
-    expect(fn({ params: {} }).path).toBe('/meta/components/page-designer')
+    const fn = rec!.redirect as (t: { params: Record<string, string> }) => { path: string; query: Record<string, string> }
+    const withType = fn({ params: { type: 'op_filter' } })
+    expect(withType.path).toBe('/meta/components')
+    expect(withType.query).toMatchObject({ tab: 'designer', designType: 'op_filter' })
+    expect(fn({ params: {} }).query).toMatchObject({ tab: 'designer' })
   })
 
-  /* 组件设计器：page-designer 为设计器唯一权威路由，标题统一为「组件设计器」 */
-  it('registers the page-designer as the canonical component designer route', () => {
+  /* 三页整合：page-designer 独立路由 redirect 落宿主设计器页签（深链 :type → designType，保建稿链） */
+  it('redirects the page-designer route into the hub designer tab', () => {
     const rec = routes.find((r) => r.path === '/meta/components/page-designer/:type?')
     expect(rec, 'page-designer route should be registered').toBeTruthy()
-    expect(rec!.redirect, 'page-designer should be canonical (no redirect)').toBeFalsy()
+    expect(rec!.redirect, 'page-designer should redirect into hub').toBeTruthy()
     expect((rec!.meta as { title?: string }).title).toBe('组件设计器')
+    const fn = rec!.redirect as (t: { params: Record<string, string> }) => { path: string; query: Record<string, string> }
+    const withType = fn({ params: { type: 'page_demo' } })
+    expect(withType.path).toBe('/meta/components')
+    expect(withType.query).toMatchObject({ tab: 'designer', designType: 'page_demo' })
+  })
+
+  /* 三页整合：基线化双旧路径 redirect 落宿主页签（query.type 透传保深链定位） */
+  it('redirects the baseline workbench routes into the hub baseline tab', () => {
+    for (const p of ['/meta/baseline', '/meta/components/baseline']) {
+      const rec = routes.find((r) => r.path === p)
+      expect(rec, `route ${p} should be registered`).toBeTruthy()
+      expect(rec!.redirect, `route ${p} should redirect`).toBeTruthy()
+      const target = (rec!.redirect as (t: { query: Record<string, unknown> }) => { path: string; query: Record<string, unknown> })({ query: { type: 'op_filter' } })
+      expect(target.path).toBe('/meta/components')
+      expect(target.query).toMatchObject({ tab: 'baseline', type: 'op_filter' })
+    }
   })
 })

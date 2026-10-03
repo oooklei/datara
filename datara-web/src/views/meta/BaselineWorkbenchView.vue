@@ -33,6 +33,10 @@ import { getComponent } from '../../services/componentApi'
 import { normalizeBaselineSpec, diffSummary, type BaselineSpec } from '../../services/baselineSpec'
 import EightSectionEditor from '../../components/baseline/EightSectionEditor.vue'
 
+/* 组件治理三页整合（ComponentHub 宿主）：openDesigner 回调优先（页签流转），
+ * 缺省回退独立路由深链（/meta/components/page-designer/:type）。 */
+const props = defineProps<{ openDesigner?: (type: string) => void }>()
+
 /* ---------------- 清单看板（progress 分组） ---------------- */
 
 const progressRows = ref<BaselineProgressRow[]>([])
@@ -345,6 +349,12 @@ async function onPublish(): Promise<void> {
   }
 }
 
+/** 调用组件设计器（统一入口语义不变，三页整合下走页签流转） */
+function openDesigner_(t: string): void {
+  if (props.openDesigner) props.openDesigner(t)
+  else void router.push(`/meta/components/page-designer/${t}`)
+}
+
 onMounted(async () => {
   await refreshProgress()
   // 组件目录「修改/查看」经 /meta/baseline?type=xxx 深链定位设计区（清单加载完成后再选中）
@@ -401,7 +411,7 @@ onMounted(async () => {
             <!-- 组件设计器统一入口（Task 15）：跳转组件页面设计器并深链当前组件 -->
             <el-button
               link type="primary" size="small" style="margin-left: auto"
-              @click="router.push(`/meta/components/page-designer/${selectedType}`)"
+              @click="openDesigner_(selectedType)"
             >组件设计器</el-button>
           </div>
 

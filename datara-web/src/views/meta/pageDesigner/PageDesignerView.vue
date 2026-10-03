@@ -33,12 +33,24 @@ import PagePalette from './palette/PagePalette.vue'
 import PageCanvas from './canvas/PageCanvas.vue'
 import PageInspector from './inspector/PageInspector.vue'
 
+/* 组件治理三页整合（ComponentHub 宿主）：designType 入参 + goCatalog/designTypeChange
+ * 回调优先（页签流转），缺省回退独立路由（route.params.type + router.replace 深链）。 */
+const props = defineProps<{
+  /** 嵌入态组件 type；undefined = 独立路由态（读 route.params.type） */
+  designType?: string
+  /** 返回目录（嵌入态=切回目录页签，独立态=router.push） */
+  goCatalog?: () => void
+}>()
+const emit = defineEmits<{ (e: 'designTypeChange', type: string): void }>()
+
 const route = useRoute()
 const router = useRouter()
 
 /* ================= 路由态与加载 ================= */
-const typeParam = computed(() => (typeof route.params.type === 'string' && route.params.type ? route.params.type : ''))
-const isCreate = computed(() => !typeParam.value)
+const routeType = computed(() => (typeof route.params.type === 'string' && route.params.type ? route.params.type : ''))
+/** 生效组件 type：嵌入态取 props.designType（'' = 新建态），独立态取路由 :type */
+const activeType = computed(() => (props.designType !== undefined ? props.designType : routeType.value))
+const isCreate = computed(() => !activeType.value)
 
 const draft = ref<ComponentDraft | null>(null)
 const versions = ref<ComponentVersionRow[]>([])
@@ -64,6 +76,12 @@ const stateTagType = computed<'success' | 'warning' | 'info'>(() =>
 /** 组件级删除（Task 15 CRUD 补齐）：仅用户草稿组件可删（builtin 后端 409、按钮亦隐藏；有历史版本后端 409，按钮亦隐藏），删除后回目录 */
 const canDeleteComponent = computed(() =>
   !!draft.value && draft.value.scope === 'user' && draft.value.state === 'draft' && !draft.value.publishedVersion)
+/** 回目录（嵌入态=宿主回调切页签；独立态=路由跳转） */
+function exitToCatalog(): void {
+  if (props.goCatalog) props.goCatalog()
+  else void router.push('/meta/components')
+}
+
 async function onDeleteComponent(): Promise<void> {
   const d = draft.value
   if (!d) return
@@ -77,7 +95,7 @@ async function onDeleteComponent(): Promise<void> {
   try {
     await deleteComponent(d.type)
     ElMessage.success(`组件 ${d.type} 已删除`)
-    router.push('/meta/components')
+    exitToCatalog()
   } catch (e) {
     ElMessage.error(e instanceof Error ? e.message : String(e))
   }
@@ -128,8 +146,15 @@ async function loadAll(t: string): Promise<void> {
     try {
       d = await getComponentDraft(t)
     } catch (err) {
-      /* 6001（type 无草稿）→ 自动建稿后重载；6002（无进行中草稿）等其余错误原样抛出 */
-      if ((err as { code?: number })?.code !== 6001 || !(await autoCreateDraft(t))) throw err
+      /* 6001（type 无草稿行）→ 自动建稿后重载；
+         6002（有历史版本无进行中草稿）→ 后端 get_draft 已自动开修订草稿（复制已发版内容），重拉一次；
+         其余错误原样抛出 */
+      const code = (err as { code?: number })?.code
+      if (code === 6001) {
+        if (!(await autoCreateDraft(t))) throw err
+      } else if (code !== 6002) {
+        throw err
+      }
       d = await getComponentDraft(t)
     }
     const [v, res] = await Promise.all([listComponentVersions(t), pageApi.getResources()])
@@ -155,9 +180,8 @@ async function loadAll(t: string): Promise<void> {
   }
 }
 
-watch(() => route.params.type, (t) => {
-  const s = typeof t === 'string' ? t : ''
-  if (s) void loadAll(s)
+watch(activeType, (t) => {
+  if (t) void loadAll(t)
 }, { immediate: true })
 
 /* ================= undo/redo（本地 JSON 快照，上限 50） ================= */
@@ -248,7 +272,7 @@ function onCanvasSize(w: number, h: number): void {
   pushUndoThrottled()
   page.value.canvas.width = w
   page.value.canvas.height = h
-  try { localStorage.setItem('datara.pd.canvas', JSON.stringify({ type: typeParam.value, w, h })) } catch { /* 忽略隐私模式 */ }
+  try { localStorage.setItem('datara.pd.canvas', JSON.stringify({ type: activeType.value, w, h })) } catch { /* 忽略隐私模式 */ }
 }
 
 /* ================= Inspector 受控 patch ================= */
@@ -343,7 +367,7 @@ const zoomStyle = computed<Record<string, string>>(() => ({
 }))
 
 async function onRefresh(): Promise<void> {
-  const t = typeParam.value
+  const t = activeType.value
   if (t) await loadAll(t)
 }
 
@@ -532,7 +556,9 @@ async function onCreate(): Promise<void> {
   try {
     await createPageDraft({ type, name, page: tpl })
     ElMessage.success('页面草稿已创建')
-    void router.replace(`/meta/components/page-designer/${type}`)
+    /* 嵌入态：宿主切深链 query（designType）；独立态：router.replace 保书签深链 */
+    if (props.designType !== undefined) emit('designTypeChange', type)
+    else void router.replace(`/meta/components/page-designer/${type}`)
   } catch (e) {
     ElMessage.error(e instanceof Error ? e.message : String(e))
   } finally {
@@ -545,8 +571,8 @@ async function onCreate(): Promise<void> {
   <div class="pd-view">
     <header class="pd-head">
       <div class="pd-head-l">
-        <el-button size="small" @click="router.push('/meta/components')">← 目录</el-button>
-        <h2>{{ isCreate ? '新建页面组件' : (draft ? draft.name : typeParam) }}</h2>
+        <el-button size="small" @click="exitToCatalog">← 目录</el-button>
+        <h2>{{ isCreate ? '新建页面组件' : (draft ? draft.name : activeType) }}</h2>
         <el-tag v-if="draft" size="small" :type="stateTagType">{{ stateText }}</el-tag>
         <span v-if="draft?.publishedVersion" class="pd-pubv">v{{ draft.publishedVersion }}</span>
         <!-- 组件级删除（Task 15 CRUD）：仅纯草稿可删；widget 级删除在工具条 tb-delete，语义不同 -->

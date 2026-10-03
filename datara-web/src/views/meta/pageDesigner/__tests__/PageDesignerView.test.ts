@@ -133,11 +133,55 @@ beforeEach(() => {
 })
 
 describe('PageDesignerView（Task 13 页壳）', () => {
-  it('路由表：/meta/components/page-designer/:type? 条目（懒加载 + title 组件设计器）', () => {
+  it('路由表：/meta/components/page-designer/:type? redirect 落宿主设计器页签（title 组件设计器）', () => {
     const r = routes.find((x) => x.path === '/meta/components/page-designer/:type?')
     expect(r).toBeTruthy()
     expect(r?.meta?.title).toBe('组件设计器')
-    expect(typeof r?.component).toBe('function')
+    expect(typeof r?.redirect).toBe('function')
+    const fn = r!.redirect as (t: { params: Record<string, string> }) => { path: string; query: Record<string, string> }
+    const withType = fn({ params: { type: 'page_demo' } })
+    expect(withType.path).toBe('/meta/components')
+    expect(withType.query).toMatchObject({ tab: 'designer', designType: 'page_demo' })
+    const noType = fn({ params: {} })
+    expect(noType.query).toMatchObject({ tab: 'designer' })
+    expect(noType.query.designType).toBeUndefined()
+  })
+
+  it('嵌入态（ComponentHub）：designType prop 优先于 route.params；新建成功 emit designTypeChange', async () => {
+    routeState.params.type = 'page_route_other' // 路由残留不应生效
+    mount(PageDesignerView, {
+      props: { designType: 'page_demo' },
+      global: { components: stubs, directives: { loading: {} } },
+    })
+    await flushPromises()
+    expect(getDraftSpy).toHaveBeenCalledTimes(1)
+    expect(getDraftSpy).toHaveBeenCalledWith('page_demo')
+    // 嵌入新建态：designType='' → emit 回调而非 router.replace
+    const w2 = mount(PageDesignerView, {
+      props: { designType: '' },
+      global: { components: stubs, directives: { loading: {} } },
+    })
+    await flushPromises()
+    expect(getDraftSpy).toHaveBeenCalledTimes(1) // 新建态不加载草稿
+    createPageDraftSpy.mockResolvedValue({ type: 'page_new_x', draftRev: 0, draftVersion: 1 })
+    await w2.find('input').setValue('宿主新页')
+    const createBtn = w2.findAll('button').find((b) => b.text() === '创建')
+    await createBtn!.trigger('click')
+    await flushPromises()
+    /* type 由客户端生成（中文 slug 为空 → page_ui_ + 时间戳36进制），emit 生成值而非响应值 */
+    const emittedType = w2.emitted('designTypeChange')?.[0]?.[0] as string
+    expect(emittedType).toMatch(/^page_ui_[0-9a-z]+$/)
+    expect(createPageDraftSpy).toHaveBeenCalledWith(expect.objectContaining({ type: emittedType, name: '宿主新页' }))
+    expect(replaceSpy).not.toHaveBeenCalled()
+  })
+
+  it('6002（有历史版本无进行中草稿）：后端已自动开修订 → 重拉一次成功加载', async () => {
+    getDraftSpy.mockRejectedValueOnce(Object.assign(new Error('无进行中的草稿'), { code: 6002 }))
+    const w = mountView()
+    await flushPromises()
+    expect(getDraftSpy).toHaveBeenCalledTimes(2)
+    expect(w.find('[data-testid="pd-canvas-stage"]').exists()).toBe(true)
+    expect(w.find('.stub-alert').exists()).toBe(false)
   })
 
   it('编辑态挂载：三区域容器 + 工具条按钮齐全 + 加载草稿/目录', async () => {

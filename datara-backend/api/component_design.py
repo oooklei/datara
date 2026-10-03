@@ -244,6 +244,49 @@ def _draft_version(db: Session, component_id: int) -> ComponentVersion:
     return row
 
 
+def _reopen_draft(db: Session, comp: Component, operator: str) -> ComponentVersion:
+    """无进行中草稿时自动开修订草稿（语义修正：目录所有组件可修改，只有发版不发版）。
+
+    读侧自愈（GET /draft 触达）：复制最新已发版 spec 优先，其次最新冻结/下线行；
+    零历史版本行（异常态兜底）物化空声明。新草稿 version = 现存最大版本 + 1，
+    draft_rev 不动（草稿内容对用户而言即上版内容，乐观锁基线不变），审计 reopen_draft。
+    """
+    latest_any = (
+        db.query(ComponentVersion)
+        .filter(ComponentVersion.component_id == comp.id)
+        .order_by(ComponentVersion.version.desc())
+        .first()
+    )
+    src = (
+        db.query(ComponentVersion)
+        .filter(ComponentVersion.component_id == comp.id,
+                ComponentVersion.state == "published")
+        .order_by(ComponentVersion.version.desc())
+        .first()
+    )
+    if src is None:
+        src = (
+            db.query(ComponentVersion)
+            .filter(ComponentVersion.component_id == comp.id,
+                    ComponentVersion.state != "draft")
+            .order_by(ComponentVersion.version.desc())
+            .first()
+        )
+    spec = json.loads(src.spec_json) if (src is not None and src.spec_json) else {}
+    row = ComponentVersion(
+        component_id=comp.id, type=comp.type,
+        version=(latest_any.version + 1) if latest_any is not None else 1,
+        state="draft", spec_json=json.dumps(spec, ensure_ascii=False),
+        spec_hash=_spec_hash(spec), remark="自动开修订草稿（复制已发版内容）",
+    )
+    db.add(row)
+    _append_log(db, comp, row.version, "reopen_draft", row.spec_hash, operator,
+                "无进行中草稿，自动复制%s内容开修订" % (f"v{src.version}" if src is not None else "空声明"))
+    db.commit()
+    logger.info("自动开修订草稿: %s v%d（操作人 %s）", comp.type, row.version, operator)
+    return row
+
+
 def _append_log(db: Session, comp: Component, version: int, action: str,
                 spec_hash: str, operator: str, remark: Optional[str]) -> None:
     db.add(ComponentLog(
@@ -302,8 +345,20 @@ def get_draft(
     user: User = Depends(require_perm("design_component")),
     db: Session = Depends(get_db),
 ):
+    """读取草稿；无进行中草稿（6002，有历史版本）时**自动开修订草稿**并返回（读侧自愈）。
+
+    语义修正（目录所有组件可修改）：已发版/已冻结组件打开设计器不再报「无进行中的草稿」，
+    而是复制最新已发版内容开新草稿（_reopen_draft），加载既有页面后供用户修改。
+    """
     comp = _get_or_404(db, type_name)
-    draft = _draft_version(db, comp.id)
+    draft = (
+        db.query(ComponentVersion)
+        .filter(ComponentVersion.component_id == comp.id,
+                ComponentVersion.state == "draft")
+        .first()
+    )
+    if draft is None:
+        draft = _reopen_draft(db, comp, user.user_name)
     return ok({
         "type": comp.type, "name": comp.name, "category": comp.category,
         "profile": comp.profile, "scope": comp.scope,

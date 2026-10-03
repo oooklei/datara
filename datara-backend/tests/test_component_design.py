@@ -314,6 +314,77 @@ def test_save_draft_unknown_type_404(client):
     assert r.status_code == 404 and r.json()["code"] == 6001
 
 
+# ---------------------------------------------------------------- 读侧自愈（6002 自动开修订草稿）
+
+def _drop_draft_rows(db_session, type_name: str) -> None:
+    """删除 draft 版本行（模拟基线化产物：有历史版本、无进行中草稿 → 原 6002 场景）。"""
+    comp = db_session.query(Component).filter_by(type=type_name).one()
+    db_session.query(ComponentVersion).filter(
+        ComponentVersion.component_id == comp.id,
+        ComponentVersion.state == "draft").delete()
+    db_session.commit()
+    db_session.expire_all()
+
+
+def test_get_draft_auto_reopens_from_published(client, db_session):
+    """已发版组件打开设计器不再 6002：复制已发版内容自动开修订草稿（读侧自愈）。
+
+    语义修正（目录所有组件可修改）：草稿内容 = 已发版 spec，version = 最大版本 + 1，
+    draft_rev 不动（乐观锁基线不变），审计落 reopen_draft；冻结/已发版行不可变。
+    """
+    _make_frozen(client)  # v1 frozen + v2 空 draft
+    assert _publish(client).status_code == 200  # v1 published（v2 draft 仍在）
+    _drop_draft_rows(db_session, "gate_demo")  # 删 v2 空草稿后 reopen 复用 v2 槽位（max+1）
+    r = client.get("/api/v1/components/gate_demo/draft")
+    assert r.status_code == 200, r.text
+    d = r.json()["data"]
+    assert d["draftVersion"] == 2 and d["spec"] == _publishable_spec()
+    assert d["draftRev"] == 0 and d["state"] == "published" and d["publishedVersion"] == 1
+    # 新草稿行落地 + 源 published 行未被触碰
+    comp = db_session.query(Component).filter_by(type="gate_demo").one()
+    v2 = db_session.query(ComponentVersion).filter_by(component_id=comp.id, version=2).one()
+    assert v2.state == "draft" and v2.spec_hash == _spec_hash(_publishable_spec())
+    v1 = db_session.query(ComponentVersion).filter_by(component_id=comp.id, version=1).one()
+    assert v1.state == "published" and json.loads(v1.spec_json) == _publishable_spec()
+    logs = db_session.query(ComponentLog).filter_by(component_id=comp.id).all()
+    assert logs[-1].action == "reopen_draft" and "v1" in logs[-1].remark
+    # 修订草稿可直接编辑保存（乐观锁基线 draft_rev 不变，save 正常 bump）
+    r2 = client.put("/api/v1/components/gate_demo/draft",
+                    json={"draft_rev": 0, "spec": dict(_publishable_spec(), summary="改")})
+    assert r2.status_code == 200 and r2.json()["data"]["draftRev"] == 1
+
+
+def test_get_draft_auto_reopens_from_frozen_when_no_published(client, db_session):
+    """无已发版、仅有冻结历史（基线化发 v1 前修订）：回退复制最新冻结行内容开稿。"""
+    _make_frozen(client, type_name="reopen_frozen",
+                 spec={"fields": [{"key": "a", "label": "A", "uiType": "text"}]})
+    _drop_draft_rows(db_session, "reopen_frozen")
+    r = client.get("/api/v1/components/reopen_frozen/draft")
+    assert r.status_code == 200, r.text
+    d = r.json()["data"]
+    assert d["draftVersion"] == 2 and d["spec"] == {"fields": [{"key": "a", "label": "A", "uiType": "text"}]}
+    comp = db_session.query(Component).filter_by(type="reopen_frozen").one()
+    v1 = db_session.query(ComponentVersion).filter_by(component_id=comp.id, version=1).one()
+    assert v1.state == "frozen"  # 冻结行不可变
+    logs = db_session.query(ComponentLog).filter_by(component_id=comp.id).all()
+    assert logs[-1].action == "reopen_draft"
+
+
+def test_get_draft_reopen_zero_history_materializes_empty(client, db_session):
+    """零历史版本行（异常态兜底）：物化空声明 v1，不再 409 卡死读侧。"""
+    _created(client)
+    comp = db_session.query(Component).filter_by(type="user_demo").one()
+    db_session.query(ComponentVersion).filter_by(component_id=comp.id).delete()
+    db_session.commit()
+    db_session.expire_all()
+    r = client.get("/api/v1/components/user_demo/draft")
+    assert r.status_code == 200, r.text
+    d = r.json()["data"]
+    assert d["draftVersion"] == 1 and d["spec"] == {}
+    logs = db_session.query(ComponentLog).filter_by(component_id=comp.id).all()
+    assert logs[-1].action == "reopen_draft" and "空声明" in logs[-1].remark
+
+
 # ---------------------------------------------------------------- B5 冻结版本
 
 def _freeze(client, remark=None):

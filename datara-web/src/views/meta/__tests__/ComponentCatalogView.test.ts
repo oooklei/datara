@@ -64,8 +64,8 @@ const stubs = {
   ElDescriptionsItem: { template: '<div><slot /></div>' },
 }
 
-function mountView() {
-  return mount(ComponentCatalogView, { global: { components: stubs, directives: { loading: {} } } })
+function mountView(props?: { openDesigner?: (type?: string) => void }) {
+  return mount(ComponentCatalogView, { props, global: { components: stubs, directives: { loading: {} } } })
 }
 
 beforeEach(() => {
@@ -127,5 +127,17 @@ describe('ComponentCatalogView 统一入口（Task 15）', () => {
     expect(deleteCompSpy).toHaveBeenCalledWith('user_demo')
     expect(msgSpy).toHaveBeenCalled()
     expect(listSpy).toHaveBeenCalledTimes(2) // 挂载 1 次 + 删除后刷新 1 次
+  })
+
+  it('嵌入态（ComponentHub）：openDesigner 回调优先，头按钮/用户卡均走页签流转不走路由', async () => {
+    const cb = vi.fn()
+    const w = mountView({ openDesigner: cb })
+    await flushPromises()
+    await w.find('.head-actions button').trigger('click')
+    expect(cb).toHaveBeenCalledWith(undefined)
+    const btn = w.findAll('.ucard')[0].findAll('button').find((b) => b.text() === '组件设计器')
+    await btn!.trigger('click')
+    expect(cb).toHaveBeenCalledWith('user_demo')
+    expect(pushSpy).not.toHaveBeenCalled()
   })
 })
