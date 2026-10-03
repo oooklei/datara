@@ -1,6 +1,7 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
+import { bus } from '../../services/eventBus'
 import type { NodeSchema, ViewProfile } from '../profiles/types'
 import { catLabelsOf, pinnedRank } from './palettePinning' // I12 R1：分类徽标 + 分组置顶纯逻辑
 import {
@@ -236,7 +237,17 @@ function onLoad() {
   picked.value = new Set()
 }
 
-onMounted(buildPool)
+/** 工作流目录外部变更广播（新建/移动分类等）：宿主 emit bus，本组件即时重拉，不等重挂载 */
+function onWfDefinitionsChanged() { buildPool() }
+
+onMounted(() => {
+  buildPool()
+  bus.on('wf-definitions-changed', onWfDefinitionsChanged)
+})
+
+onBeforeUnmount(() => {
+  bus.off('wf-definitions-changed', onWfDefinitionsChanged)
+})
 </script>
 
 <template>

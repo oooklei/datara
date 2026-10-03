@@ -5,7 +5,7 @@
  * stub fetch 方案沿用 datasourceApi.test.ts 先例。
  */
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { buildInstanceStreamUrl, realGraphService, streamInstanceEvents } from '../graphApi'
+import { buildInstanceStreamUrl, createDefinition, realGraphService, streamInstanceEvents } from '../graphApi'
 import type { GraphDocument } from '../../graph/model'
 import type { InstanceStreamHandlers } from '../graphApi'
 
@@ -50,6 +50,30 @@ describe('graphApi 保存并发保护（I12-D2）', () => {
     )
     expect(err.code).toBe(2005)
     expect(err.message).toContain('请刷新后重试')
+  })
+})
+
+/* ================= 新建工作流扩展载荷（GraphWorkbench 创建对话框） ================= */
+
+describe('createDefinition 请求体（name/tags/remark）', () => {
+  it('仅 name：不携带 tags/remark 键（后端兼容旧客户端）', async () => {
+    fetchMock.mockResolvedValueOnce({ json: async () => ({ code: 0, msg: 'success', data: { id: 'wf_new1', code: 12, version: 1 } }) })
+    const r = await createDefinition('新工作流')
+    expect(r).toEqual({ id: 'wf_new1', code: 12, version: 1 })
+    const [url, init] = fetchMock.mock.calls[0]
+    expect(url).toBe('/api/v1/workflow-definitions')
+    expect(init.method).toBe('POST')
+    expect(JSON.parse(init.body)).toEqual({ name: '新工作流' })
+  })
+
+  it('携带 tags/remark：空白项过滤、首尾裁剪；全空集合不传对应键', async () => {
+    fetchMock.mockResolvedValueOnce({ json: async () => ({ code: 0, msg: 'success', data: { id: 'wf_new2', code: 13 } }) })
+    await createDefinition(' 带分类流 ', { tags: ['', '  ', 'ETL'], remark: '  备注说明  ' })
+    expect(JSON.parse(fetchMock.mock.calls[0][1].body)).toEqual({ name: '带分类流', tags: ['ETL'], remark: '备注说明' })
+
+    fetchMock.mockResolvedValueOnce({ json: async () => ({ code: 0, msg: 'success', data: { id: 'wf_new3', code: 14 } }) })
+    await createDefinition('全空扩展', { tags: ['   '], remark: ' ' })
+    expect(JSON.parse(fetchMock.mock.calls[1][1].body)).toEqual({ name: '全空扩展' })
   })
 })
 

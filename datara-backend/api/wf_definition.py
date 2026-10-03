@@ -60,6 +60,8 @@ router = APIRouter(prefix="/workflow-definitions", tags=["wf-definition"])
 
 class CreateBody(BaseModel):
     name: str
+    tags: Optional[List[str]] = None  # GraphWorkbench 新建对话框：所属分类（缺省=根目录普通工作流）
+    remark: Optional[str] = None  # 创建说明，落 v1 版本快照 remark（缺省="创建"）
 
 
 class SaveBody(BaseModel):
@@ -182,13 +184,13 @@ def create_definition(
         release_state="offline",
         flag="yes",
         project_code="default",
-        tags=[],
+        tags=[t for t in (body.tags or []) if t and t.strip()],
         graph_json=json.dumps(_empty_doc(wf_id, body.name.strip()), ensure_ascii=False),
         owner_id=user.id,
     )
     db.add(definition)
     db.flush()
-    _append_log(db, definition, user.user_name, "创建")
+    _append_log(db, definition, user.user_name, body.remark.strip() if body.remark and body.remark.strip() else "创建")
     db.commit()
     logger.info("新建工作流定义: %s %s", definition.id, definition.name)
     return ok({"id": definition.id, "code": definition.code, "version": definition.version})

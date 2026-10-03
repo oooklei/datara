@@ -18,15 +18,18 @@ import { computed, nextTick, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { isMock, listDefinitions, listCategories, SYNC_TAG, ETL_TAG, STREAM_TAG } from '../services'
+import { bus } from '../services/eventBus'
 import { listSeedTaskDocs } from '../services/mock/seed'
 import { dagProfile, etlProfile, streamProfile } from '../graph/profiles'
 import GraphWorkbench from '../graph/workbench/GraphWorkbench.vue'
 import Palette from '../graph/workbench/Palette.vue'
 import InstanceRunsView from './dag/InstanceRunsView.vue'
 import DagAlarmView from './dag/DagAlarmView.vue'
+import WfCreateDialog from './dag/WfCreateDialog.vue'
 import { useDagTabsStore, MAX_DAG_TABS } from '../stores/dagTabs'
 import type { DagPickItem, DagProfileType, DagTab } from '../stores/dagTabs'
 import { useGraphStore } from '../stores/graph'
+import { useAuthStore } from '../stores/auth'
 
 const route = useRoute()
 const router = useRouter()
@@ -49,6 +52,7 @@ function switchTab(k: TabKey) {
 /* ---- 画布多 Tab（I11）—— 宿主接 dagTabs store ---- */
 const dagTabs = useDagTabsStore()
 const graphStore = useGraphStore()
+const auth = useAuthStore()
 const activeTab = computed(() => dagTabs.activeTab)
 
 /** 画布 Profile：由当前激活 Tab 类型决定（工作流/同步共用 DAG 编排；ETL / 流 各自专用节点库） */
@@ -147,6 +151,27 @@ function onPickTasks(p: { items: DagPickItem[] }) {
     }
   }
   switchTab('edit')
+}
+
+/* ---- 新建工作流（GraphWorkbench 工具栏 / 空态入口）：对话框创建 → 开画布 Tab → 刷新候选池 ---- */
+const wfCreateVisible = ref(false)
+const TYPE_TAG: Record<DagProfileType, string[]> = { wf: [], sync: [SYNC_TAG], etl: [ETL_TAG], stream: [STREAM_TAG] }
+
+function onOpenCreateWf() {
+  if (!auth.canEdit) { ElMessage.warning('当前角色为只读，无权创建工作流'); return }
+  wfCreateVisible.value = true
+}
+
+/** 创建成功：刷新候选池（取回 code/分类）→ 开新画布 Tab → 落「上次打开」→ 广播目录刷新 */
+async function onWfCreated(p: { id: string; name: string; type: DagProfileType; code?: number }) {
+  await loadDefPool()
+  const meta = defPool.value.find((d) => d.id === p.id)
+  const r = openTab(p.id, meta ?? { id: p.id, name: p.name, tags: TYPE_TAG[p.type], code: p.code })
+  if (r === 'full') { ElMessage.warning(`最多同时打开 ${MAX_DAG_TABS} 个画布 Tab，新工作流未打开`); return }
+  lsSet(p.type === 'wf' ? 'datara.dag.last' : `datara.dag.last.${p.type}`, p.id)
+  lsSet('datara.dag.lastType', p.type)
+  switchTab('edit')
+  bus.emit('wf-definitions-changed', { id: p.id }) // Palette 工作流目录即时刷新
 }
 
 /** 快照草稿是否存在（关闭非激活 Tab 时确认丢弃的依据） */
@@ -274,6 +299,7 @@ onMounted(async () => {
             :doc-meta="docMetaOf(activeTab)"
             :host-managed="true"
             @pick-tasks="onPickTasks"
+            @create-wf="onOpenCreateWf"
           />
         </div>
         <div v-else class="tc-empty">
@@ -282,6 +308,7 @@ onMounted(async () => {
           <div class="tc-empty-hint">
             <div>暂无打开的画布</div>
             <div>在左侧 Palette「工作流」中勾选任务后点「载入选中」，每个任务开一个画布 Tab。</div>
+            <button class="tc-newbtn" @click="onOpenCreateWf">＋ 新建工作流</button>
           </div>
         </div>
       </template>
@@ -298,6 +325,9 @@ onMounted(async () => {
         <DagAlarmView />
       </div>
     </div>
+
+    <!-- 新建工作流对话框（GraphWorkbench 工具栏 / 空态按钮共用）：创建成功后由宿主开画布 Tab -->
+    <WfCreateDialog v-model="wfCreateVisible" @created="onWfCreated" />
   </div>
 </template>
 
@@ -329,6 +359,9 @@ onMounted(async () => {
 .tc-empty{flex:1;min-height:0;display:flex;align-items:stretch;overflow:hidden}
 /* I12b：空态右侧提示（Palette 占左侧 232px，全局 .wb-palette 已定宽高由父容器撑满） */
 .tc-empty-hint{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;padding:24px;color:var(--text-3);font-size:13px;text-align:center}
+/* 新建工作流空态入口（与 GraphWorkbench 工具栏按钮同一样式口径） */
+.tc-newbtn{border:none;background:var(--primary);color:#fff;border-radius:var(--radius-sm);padding:7px 16px;font-size:12.5px;font-weight:500;cursor:pointer;margin-top:6px}
+.tc-newbtn:hover{background:var(--primary-hover)}
 /* F56e：演示页签顶部提示条（低饱和描边，不做警告色） */
 .tc-alarm-wrap{display:flex;flex-direction:column;min-height:0}
 .tc-demo-tip{margin:10px 14px 0;padding:6px 12px;border:1px solid var(--border);border-radius:var(--radius-lg);font-size:12px;color:var(--text-3);background:var(--bg)}

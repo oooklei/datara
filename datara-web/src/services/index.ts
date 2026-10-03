@@ -49,6 +49,7 @@ export type {
   ScheduleRow, ScheduleBody, RuntimeNodeRow,
   SshNodeRow,
   CategoryRow,
+  CreateDefinitionOpts,
   DeleteLogsResult,
   TaskStateEvent, InstanceFinishedEvent, InstanceStreamHandlers,
 } from './graphApi'

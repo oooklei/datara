@@ -185,8 +185,22 @@ export async function listDefinitions(params?: { pageNo?: number; pageSize?: num
   return tag ? rows.filter((r) => (r.tags ?? []).includes(tag)) : rows
 }
 
-export async function createDefinition(name: string): Promise<{ id: string }> {
-  return http.post<{ id: string }>('/workflow-definitions', { name })
+/** 新建工作流扩展信息（GraphWorkbench 创建对话框）：分类标签与创建说明，均可缺省 */
+export interface CreateDefinitionOpts {
+  tags?: string[]
+  remark?: string
+}
+
+/** 新建定义：后端落库（id/code/version），tags/remark 缺省字段不传（后端兼容仅 name 旧客户端） */
+export async function createDefinition(name: string, opts?: CreateDefinitionOpts): Promise<{ id: string; code?: number; version?: number }> {
+  const nameTrimmed = name.trim()
+  const tags = (opts?.tags ?? []).map((t) => t.trim()).filter(Boolean)
+  const remark = (opts?.remark ?? '').trim()
+  return http.post<{ id: string; code?: number; version?: number }>('/workflow-definitions', {
+    name: nameTrimmed,
+    ...(tags.length ? { tags } : {}),
+    ...(remark ? { remark } : {}),
+  })
 }
 
 export async function deleteDefinition(id: string): Promise<void> {
