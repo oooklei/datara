@@ -55,14 +55,14 @@ function onDragStart(item: WidgetTemplate, e: DragEvent) {
   height: 100%;
   display: flex;
   flex-direction: column;
-  background: #f7f8fa;
-  border-right: 1px solid #e5e6eb;
+  background: var(--bg);
+  border-right: 1px solid var(--border);
   overflow: hidden;
 }
 .pd-pal-search {
   padding: 8px;
-  border-bottom: 1px solid #e5e6eb;
-  background: #ffffff;
+  border-bottom: 1px solid var(--border);
+  background: var(--card);
 }
 .pd-pal-body {
   flex: 1;
@@ -74,7 +74,7 @@ function onDragStart(item: WidgetTemplate, e: DragEvent) {
 }
 .pd-pal-group-title {
   font-size: 12px;
-  color: #86909c;
+  color: var(--text-3);
   margin: 4px 2px 6px;
 }
 .pd-pal-grid {
@@ -88,15 +88,15 @@ function onDragStart(item: WidgetTemplate, e: DragEvent) {
   gap: 6px;
   padding: 6px 8px;
   border: 1px solid transparent;
-  border-radius: 8px;
-  background: #ffffff;
-  box-shadow: 0 1px 2px rgba(31, 35, 41, 0.06);
+  border-radius: var(--radius);
+  background: var(--card);
+  box-shadow: var(--shadow);
   cursor: grab;
   user-select: none;
 }
 .pd-pal-item:hover {
-  border-color: #1677ff;
-  color: #1677ff;
+  border-color: var(--primary);
+  color: var(--primary);
 }
 .pd-pal-ico {
   display: inline-flex;
@@ -104,10 +104,10 @@ function onDragStart(item: WidgetTemplate, e: DragEvent) {
   justify-content: center;
   width: 20px;
   height: 20px;
-  border-radius: 6px;
-  background: #f2f3f5;
+  border-radius: var(--radius-sm);
+  background: var(--bg-deep);
   font-size: 12px;
-  color: #4e5969;
+  color: var(--text-2);
   flex: none;
 }
 .pd-pal-label {
@@ -121,6 +121,6 @@ function onDragStart(item: WidgetTemplate, e: DragEvent) {
   padding: 24px 0;
   text-align: center;
   font-size: 12px;
-  color: #86909c;
+  color: var(--text-3);
 }
 </style>

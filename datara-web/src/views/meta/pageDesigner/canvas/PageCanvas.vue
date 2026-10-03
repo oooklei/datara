@@ -41,8 +41,8 @@ const canvasStyle = computed<Record<string, string>>(() => {
   const out: Record<string, string> = {
     width: `${c.width}px`,
     height: `${c.height}px`,
-    background: c.background?.fill ?? '#ffffff',
-    boxShadow: '0 8px 32px rgba(31, 35, 41, 0.12)',
+    background: c.background?.fill ?? 'var(--card)',
+    boxShadow: 'var(--shadow-lg)',
   }
   if (c.background?.image) {
     out.backgroundImage = `url(${c.background.image})`
@@ -118,21 +118,21 @@ onBeforeUnmount(stopResize)
 .pd-stage {
   min-height: 100%;
   padding: 24px;
-  background: #f2f3f5;
+  background: var(--bg-deep);
 }
 .pd-canvas {
   position: relative;
   flex: none;
-  border-radius: 12px;
+  border-radius: var(--radius-xl);
   overflow: hidden;
 }
 /* 画布卡拖尺寸手柄 */
 .pd-grip {
   position: absolute;
-  background: #1677ff;
+  background: var(--primary);
   opacity: 0;
   z-index: 10;
-  transition: opacity 0.15s;
+  transition: opacity var(--dur-fast) var(--ease);
 }
 .pd-canvas:hover .pd-grip {
   opacity: 0.9;
@@ -143,7 +143,7 @@ onBeforeUnmount(stopResize)
   width: 6px;
   height: 32px;
   margin-top: -16px;
-  border-radius: 3px;
+  border-radius: var(--radius-sm);
   cursor: ew-resize;
 }
 .pd-grip-s {
@@ -152,7 +152,7 @@ onBeforeUnmount(stopResize)
   width: 32px;
   height: 6px;
   margin-left: -16px;
-  border-radius: 3px;
+  border-radius: var(--radius-sm);
   cursor: ns-resize;
 }
 .pd-grip-se {
@@ -160,7 +160,7 @@ onBeforeUnmount(stopResize)
   bottom: -3px;
   width: 12px;
   height: 12px;
-  border-radius: 3px;
+  border-radius: var(--radius-sm);
   cursor: nwse-resize;
 }
 </style>

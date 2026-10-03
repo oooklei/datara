@@ -397,7 +397,7 @@ function stopResize() {
 
     <!-- 绑定元素 -->
     <span v-else-if="isBinding" class="pd-w-bind" :style="kind === 'sys-status' ? { color: bindColor, borderColor: bindColor } : undefined">
-      <i class="pd-w-bind-dot" :style="{ background: kind === 'sys-status' ? bindColor : '#1677ff' }" />{{ bindVal }}
+      <i class="pd-w-bind-dot" :style="{ background: kind === 'sys-status' ? bindColor : 'var(--primary)' }" />{{ bindVal }}
     </span>
 
     <span v-else class="pd-w-unknown">{{ widget.kind }}</span>
@@ -412,18 +412,18 @@ function stopResize() {
   box-sizing: border-box;
   overflow: hidden;
   border: 1px solid transparent;
-  border-radius: 6px;
+  border-radius: var(--radius-sm);
   font-size: 13px;
   line-height: 1.4;
-  color: #1f2329;
+  color: var(--text);
   cursor: default;
 }
 .pd-w-root.is-selected {
-  border-color: #1677ff;
-  box-shadow: 0 0 0 2px rgba(22, 119, 255, 0.18);
+  border-color: var(--primary);
+  box-shadow: var(--shadow-primary);
 }
 .pd-w-root:hover {
-  border-color: rgba(22, 119, 255, 0.45);
+  border-color: var(--primary);
 }
 .pd-w-broken {
   display: flex;
@@ -432,10 +432,10 @@ function stopResize() {
   height: 100%;
   padding: 4px;
   font-size: 12px;
-  color: #f54a45;
-  background: #fff2f0;
-  border: 1px dashed #f54a45;
-  border-radius: 6px;
+  color: var(--danger);
+  background: var(--danger-bg);
+  border: 1px dashed var(--danger);
+  border-radius: var(--radius-sm);
 }
 .pd-w-grip {
   position: absolute;
@@ -443,8 +443,8 @@ function stopResize() {
   bottom: -4px;
   width: 10px;
   height: 10px;
-  border-radius: 3px;
-  background: #1677ff;
+  border-radius: var(--radius-sm);
+  background: var(--primary);
   opacity: 0;
   cursor: se-resize;
 }
@@ -464,9 +464,9 @@ function stopResize() {
   flex-direction: column;
   height: 100%;
   padding: 8px;
-  background: #ffffff;
-  border: 1px solid #e5e6eb;
-  border-radius: 12px;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-xl);
 }
 .pd-w-card-title {
   margin-bottom: 6px;
@@ -489,25 +489,25 @@ function stopResize() {
   gap: 12px;
   padding-bottom: 4px;
   margin-bottom: 6px;
-  border-bottom: 1px solid #e5e6eb;
+  border-bottom: 1px solid var(--border);
 }
 .pd-w-tab {
   font-size: 12px;
-  color: #86909c;
+  color: var(--text-3);
 }
 .pd-w-tab.is-active {
-  color: #1677ff;
-  border-bottom: 2px solid #1677ff;
+  color: var(--primary);
+  border-bottom: 2px solid var(--primary);
 }
 .pd-w-collapse-item {
   margin-bottom: 6px;
-  border: 1px solid #e5e6eb;
-  border-radius: 8px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
 }
 .pd-w-collapse-title {
   padding: 4px 8px;
   font-size: 12px;
-  background: #f7f8fa;
+  background: var(--bg);
 }
 
 /* 基础元素 */
@@ -525,36 +525,36 @@ function stopResize() {
   text-overflow: ellipsis;
 }
 .pd-w-link {
-  color: #1677ff;
+  color: var(--primary);
   text-decoration: underline;
 }
 .pd-w-badge {
   display: inline-block;
   padding: 1px 8px;
-  border-radius: 10px;
-  color: #ffffff;
+  border-radius: var(--radius-lg);
+  color: var(--card);
   font-size: 11px;
   line-height: 18px;
 }
 .pd-w-btn {
   padding: 4px 14px;
-  color: #ffffff;
-  background: #1677ff;
+  color: var(--card);
+  background: var(--primary);
   border: none;
-  border-radius: 8px;
+  border-radius: var(--radius);
   font-size: 13px;
   cursor: not-allowed;
   opacity: 0.85;
 }
 .pd-w-ico {
-  color: #1677ff;
+  color: var(--primary);
 }
 .pd-w-img {
   width: 100%;
   height: 100%;
   object-fit: cover;
-  border-radius: 8px;
-  background: #f2f3f5;
+  border-radius: var(--radius);
+  background: var(--bg-deep);
 }
 .pd-w-rich {
   overflow: hidden;
@@ -578,7 +578,7 @@ function stopResize() {
 .pd-w-field-label {
   flex: none;
   font-size: 12px;
-  color: #4e5969;
+  color: var(--text-2);
 }
 .pd-w-input,
 .pd-w-textarea {
@@ -586,10 +586,10 @@ function stopResize() {
   min-width: 0;
   height: 26px;
   padding: 2px 8px;
-  color: #86909c;
-  background: #ffffff;
-  border: 1px solid #e5e6eb;
-  border-radius: 6px;
+  color: var(--text-3);
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
   font-size: 12px;
   cursor: not-allowed;
 }
@@ -604,14 +604,14 @@ function stopResize() {
   justify-content: space-between;
   height: 26px;
   padding: 0 8px;
-  background: #ffffff;
-  border: 1px solid #e5e6eb;
-  border-radius: 6px;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
   font-size: 12px;
-  color: #86909c;
+  color: var(--text-3);
 }
 .pd-w-caret {
-  color: #86909c;
+  color: var(--text-3);
   font-style: normal;
 }
 .pd-w-switch {
@@ -619,9 +619,9 @@ function stopResize() {
   flex: none;
   width: 32px;
   height: 18px;
-  border-radius: 9px;
-  background: #c9cdd4;
-  transition: background 0.2s;
+  border-radius: var(--radius);
+  background: var(--border-strong);
+  transition: background var(--dur-base) var(--ease);
 }
 .pd-w-switch::after {
   content: '';
@@ -631,10 +631,10 @@ function stopResize() {
   width: 14px;
   height: 14px;
   border-radius: 50%;
-  background: #ffffff;
+  background: var(--card);
 }
 .pd-w-switch.is-on {
-  background: #1677ff;
+  background: var(--primary);
 }
 .pd-w-switch.is-on::after {
   left: 16px;
@@ -643,13 +643,13 @@ function stopResize() {
   position: relative;
   width: 100%;
   height: 4px;
-  border-radius: 2px;
-  background: #e5e6eb;
+  border-radius: var(--radius-sm);
+  background: var(--border);
 }
 .pd-w-slider-fill {
   height: 100%;
-  border-radius: 2px;
-  background: #1677ff;
+  border-radius: var(--radius-sm);
+  background: var(--primary);
 }
 .pd-w-opts {
   display: inline-flex;
@@ -669,10 +669,10 @@ function stopResize() {
   width: 100%;
   height: 26px;
   font-size: 12px;
-  color: #4e5969;
-  background: #f7f8fa;
-  border: 1px dashed #c9cdd4;
-  border-radius: 6px;
+  color: var(--text-2);
+  background: var(--bg);
+  border: 1px dashed var(--border-strong);
+  border-radius: var(--radius-sm);
 }
 
 /* table */
@@ -681,61 +681,61 @@ function stopResize() {
   height: 100%;
   border-collapse: collapse;
   font-size: 12px;
-  background: #ffffff;
+  background: var(--card);
 }
 .pd-w-table th,
 .pd-w-table td {
   padding: 4px 8px;
   text-align: left;
-  border-bottom: 1px solid #f2f3f5;
+  border-bottom: 1px solid var(--border);
 }
 .pd-w-table th {
-  color: #4e5969;
+  color: var(--text-2);
   font-weight: 600;
-  background: #f7f8fa;
+  background: var(--bg);
 }
 .pd-w-table-empty {
-  color: #86909c;
+  color: var(--text-3);
   text-align: center;
 }
 
 /* 数据展示 */
 .pd-w-stat-title {
   font-size: 12px;
-  color: #86909c;
+  color: var(--text-3);
 }
 .pd-w-stat-value {
   font-size: 20px;
   font-weight: 600;
-  color: #1d2129;
+  color: var(--text);
 }
 .pd-w-progress {
   width: 100%;
   height: 8px;
-  border-radius: 4px;
-  background: #e5e6eb;
+  border-radius: var(--radius-sm);
+  background: var(--border);
   overflow: hidden;
 }
 .pd-w-progress-fill {
   height: 100%;
-  border-radius: 4px;
-  background: #1677ff;
-  transition: width 0.2s;
+  border-radius: var(--radius-sm);
+  background: var(--primary);
+  transition: width var(--dur-base) var(--ease);
 }
 .pd-w-desc-row {
   display: flex;
   gap: 8px;
   font-size: 12px;
   padding: 2px 0;
-  border-bottom: 1px dashed #f2f3f5;
+  border-bottom: 1px dashed var(--border);
 }
 .pd-w-desc-label {
   flex: none;
   width: 64px;
-  color: #86909c;
+  color: var(--text-3);
 }
 .pd-w-desc-value {
-  color: #1f2329;
+  color: var(--text);
   overflow: hidden;
   white-space: nowrap;
   text-overflow: ellipsis;
@@ -758,12 +758,12 @@ function stopResize() {
   width: 6px;
   height: 6px;
   border-radius: 50%;
-  background: #1677ff;
+  background: var(--primary);
 }
 .pd-w-list-item {
   padding: 3px 0;
   font-size: 12px;
-  border-bottom: 1px solid #f2f3f5;
+  border-bottom: 1px solid var(--border);
   overflow: hidden;
   white-space: nowrap;
   text-overflow: ellipsis;
@@ -771,7 +771,7 @@ function stopResize() {
 .pd-w-list-empty {
   padding: 12px 0;
   font-size: 12px;
-  color: #86909c;
+  color: var(--text-3);
   text-align: center;
 }
 .pd-w-tree {
@@ -788,7 +788,7 @@ function stopResize() {
 .pd-w-chart {
   width: 100%;
   height: 100%;
-  background: #ffffff;
+  background: var(--card);
 }
 .pd-w-svg {
   width: 100%;
@@ -808,7 +808,7 @@ function stopResize() {
   fill: rgba(22, 119, 255, 0.18);
 }
 .pd-w-pie {
-  stroke: #f2f3f5;
+  stroke: var(--bg-deep);
 }
 .pd-w-pie-0 {
   stroke: #1677ff;
@@ -823,14 +823,14 @@ function stopResize() {
   stroke: #722ed1;
 }
 .pd-w-gauge-bg {
-  stroke: #e5e6eb;
+  stroke: var(--border);
 }
 .pd-w-gauge-fg {
   stroke: #1677ff;
 }
 .pd-w-svg-text {
   font-size: 9px;
-  fill: #86909c;
+  fill: var(--text-3);
 }
 
 /* 绑定元素 */
@@ -844,10 +844,10 @@ function stopResize() {
   overflow: hidden;
   white-space: nowrap;
   text-overflow: ellipsis;
-  background: #f2f7ff;
+  background: var(--primary-light);
   border: 1px solid rgba(22, 119, 255, 0.35);
-  border-radius: 10px;
-  color: #1677ff;
+  border-radius: var(--radius-lg);
+  color: var(--primary);
 }
 .pd-w-bind-dot {
   flex: none;
@@ -857,6 +857,6 @@ function stopResize() {
 }
 .pd-w-unknown {
   font-size: 12px;
-  color: #86909c;
+  color: var(--text-3);
 }
 </style>

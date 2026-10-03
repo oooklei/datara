@@ -363,15 +363,15 @@ const onStyleColor = (key: string) => (e: Event) => patchStyle({ [key]: (e.targe
   height: 100%;
   overflow-y: auto;
   padding: 12px;
-  background: #ffffff;
-  border-left: 1px solid #e5e6eb;
+  background: var(--card);
+  border-left: 1px solid var(--border);
   box-sizing: border-box;
 }
 .pd-insp-title {
   margin: 4px 2px 12px;
   font-size: 14px;
   font-weight: 600;
-  color: #1f2329;
+  color: var(--text);
 }
 .pd-insp-grid {
   display: grid;
@@ -383,7 +383,7 @@ const onStyleColor = (key: string) => (e: Event) => patchStyle({ [key]: (e.targe
   align-items: center;
   gap: 6px;
   font-size: 12px;
-  color: #4e5969;
+  color: var(--text-2);
 }
 .pd-insp-field > span {
   flex: none;
@@ -402,9 +402,9 @@ const onStyleColor = (key: string) => (e: Event) => patchStyle({ [key]: (e.targe
   min-width: 0;
   height: 26px;
   padding: 0;
-  border: 1px solid #e5e6eb;
-  border-radius: 6px;
-  background: #ffffff;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--card);
   cursor: pointer;
 }
 .pd-insp-slot {
@@ -416,13 +416,13 @@ const onStyleColor = (key: string) => (e: Event) => patchStyle({ [key]: (e.targe
   justify-content: space-between;
   margin-bottom: 4px;
   font-size: 12px;
-  color: #1f2329;
+  color: var(--text);
 }
 .pd-insp-slot-manual {
   display: inline-flex;
   gap: 4px;
   align-items: center;
-  color: #86909c;
+  color: var(--text-3);
 }
 .pd-insp-manual {
   margin-top: 4px;

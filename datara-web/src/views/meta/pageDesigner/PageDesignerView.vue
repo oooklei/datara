@@ -591,8 +591,8 @@ async function onCreate(): Promise<void> {
   justify-content: space-between;
   gap: 12px;
   padding: 8px 14px;
-  background: #ffffff;
-  border-bottom: 1px solid #e5e6eb;
+  background: var(--card);
+  border-bottom: 1px solid var(--border);
   flex-wrap: wrap;
 }
 .pd-head-l {
@@ -610,9 +610,9 @@ async function onCreate(): Promise<void> {
 }
 .pd-pubv {
   font-size: 11px;
-  color: #15803d;
-  background: #dcfce7;
-  border-radius: 3px;
+  color: var(--success);
+  background: var(--success-bg);
+  border-radius: var(--radius-sm);
   padding: 0 5px;
 }
 .pd-toolbar {
@@ -624,7 +624,7 @@ async function onCreate(): Promise<void> {
 .pd-sep {
   width: 1px;
   height: 16px;
-  background: #e5e6eb;
+  background: var(--border);
   margin: 0 2px;
 }
 .pd-toolbar :deep(.el-button + .el-button) {
@@ -658,10 +658,10 @@ async function onCreate(): Promise<void> {
   width: 5px;
   cursor: col-resize;
   background: transparent;
-  transition: background 0.15s;
+  transition: background var(--dur-fast) var(--ease);
 }
 .pd-grip:hover {
-  background: #1677ff33;
+  background: var(--primary-light);
 }
 .pd-zoom {
   padding: 24px;
@@ -677,7 +677,7 @@ async function onCreate(): Promise<void> {
 .pd-create-title {
   font-size: 16px;
   font-weight: 600;
-  color: #1f2329;
+  color: var(--text);
   margin-bottom: 14px;
 }
 .pd-create-row {
@@ -689,7 +689,7 @@ async function onCreate(): Promise<void> {
   flex: none;
   width: 72px;
   font-size: 13px;
-  color: #4e5969;
+  color: var(--text-2);
 }
 .pd-create-name {
   max-width: 420px;
@@ -706,26 +706,26 @@ async function onCreate(): Promise<void> {
   align-items: center;
   gap: 4px;
   padding: 16px 8px;
-  background: #ffffff;
-  border: 1px solid #e5e6eb;
-  border-radius: 10px;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
   cursor: pointer;
-  transition: border-color 0.15s, box-shadow 0.15s;
+  transition: border-color var(--dur-fast) var(--ease), box-shadow var(--dur-fast) var(--ease);
 }
 .pd-tpl-card:hover {
-  border-color: #1677ff;
+  border-color: var(--primary);
 }
 .pd-tpl-card.is-cur {
-  border-color: #1677ff;
-  box-shadow: 0 0 0 2px rgba(22, 119, 255, 0.18);
+  border-color: var(--primary);
+  box-shadow: var(--shadow-primary);
 }
 .pd-tpl-name {
   font-size: 13px;
-  color: #1f2329;
+  color: var(--text);
 }
 .pd-tpl-sub {
   font-size: 11px;
-  color: #86909c;
+  color: var(--text-3);
 }
 .pd-create-btn {
   margin-top: 18px;
