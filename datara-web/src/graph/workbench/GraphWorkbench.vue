@@ -42,7 +42,7 @@ import WfVarPanel from './panels/WfVarPanel.vue'
 import AiPanel from './panels/AiPanel.vue'
 import VersionPanel from './panels/VersionPanel.vue'
 import RunDialog from './RunDialog.vue'
-import { Search, FullScreen, RefreshLeft, RefreshRight, Operation, Grid } from '@element-plus/icons-vue'
+import { Search, FullScreen, RefreshLeft, RefreshRight, Operation, Grid, Refresh } from '@element-plus/icons-vue'
 
 const props = defineProps<{
   profile: ViewProfile
@@ -690,6 +690,25 @@ function onRunSubmitted() {
   run.log('运行命令已提交（real：实例在 /dag/instances 跟踪）', 'ok')
 }
 
+/** 工作台工具条「刷新」（P2 欠账补齐）：重拉当前画布文档，同步他人改动/后端数据变更。
+ *  仅自管加载模式（宿主未传 doc prop）显示；有未保存改动先确认丢弃。 */
+const isManaged = computed(() => !!props.doc)
+async function onRefreshDoc() {
+  if (graphStore.dirty) {
+    try {
+      await ElMessageBox.confirm('画布有未保存改动，刷新将丢弃这些改动。确定刷新？', '刷新画布', {
+        type: 'warning', confirmButtonText: '丢弃并刷新', cancelButtonText: '取消',
+      })
+    } catch { return }
+  }
+  try {
+    await graphStore.load(props.docId)
+    ElMessage.success('画布已刷新')
+  } catch (e) {
+    ElMessage.error(e instanceof Error ? `刷新失败：${e.message}` : '刷新失败')
+  }
+}
+
 /** 质检类视角：运行检查（提交即返回，边结果异步翻转后重渲染） */
 const checking = ref(false)
 async function onRunCheck() {
@@ -1233,6 +1252,7 @@ function ctxLayout() { onLayout(); closeCtx() }
         <button class="tb-btn tb-catalog" title="打开基线化工作台：组件八段 DSL 底稿编辑/体检/认可发 v1" @click="gotoBaseline">
           <el-icon><Grid /></el-icon><span>基线化工作台</span>
         </button>
+        <button v-if="!isManaged" class="tb-ico" title="刷新（重新加载当前画布）" @click="onRefreshDoc"><el-icon><Refresh /></el-icon></button>
         <button class="tb-ico" title="适配视图（全部节点居中）" @click="onFit"><el-icon><FullScreen /></el-icon></button>
         <button class="tb-ico" :class="{ on: searchOpen }" title="搜索节点（Ctrl+F）" @click="toggleSearch"><el-icon><Search /></el-icon></button>
         <button class="tb-ico" :disabled="!graphStore.canUndo" title="撤销（Ctrl+Z）" @click="onUndo"><el-icon><RefreshLeft /></el-icon></button>
@@ -1264,6 +1284,7 @@ function ctxLayout() { onLayout(); closeCtx() }
         <button class="tb-btn tb-catalog" title="打开基线化工作台：组件八段 DSL 底稿编辑/体检/认可发 v1" @click="gotoBaseline">
           <el-icon><Grid /></el-icon><span>基线化工作台</span>
         </button>
+        <button v-if="!isManaged" class="tb-ico" title="刷新（重新加载当前画布）" @click="onRefreshDoc"><el-icon><Refresh /></el-icon></button>
         <button class="tb-ico" title="适配视图（全部节点居中）" @click="onFit"><el-icon><FullScreen /></el-icon></button>
         <button class="tb-ico" :class="{ on: searchOpen }" title="搜索节点（Ctrl+F）" @click="toggleSearch"><el-icon><Search /></el-icon></button>
         <button class="tb-ico" :class="{ on: navOpen }" title="图例过滤 / 大纲" @click="navOpen = !navOpen"><el-icon><Operation /></el-icon></button>
