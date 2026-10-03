@@ -127,3 +127,26 @@ export function newWidget(kind: string, at: { x: number; y: number }): WidgetNod
     bindings: {},
   }
 }
+
+/** 多选对齐（纯函数）：有效 ids ≥ 2 时全体 axis 坐标 = 最小值；否则等价副本。
+ * 恒返回新数组（不可变，不改入参）；ids 中不存在于 widgets 的忽略；只改 axis 值其余字段保真。 */
+export function alignRects(widgets: WidgetNode[], ids: string[], axis: 'x' | 'y'): WidgetNode[] {
+  const posOf = new Map(widgets.map((w) => [w.id, w.rect[axis]]))
+  const picked = ids.filter((id) => posOf.has(id))
+  if (picked.length < 2) return [...widgets]
+  const min = Math.min(...picked.map((id) => posOf.get(id)!))
+  const hit = new Set(picked)
+  return widgets.map((w) => (hit.has(w.id) ? { ...w, rect: { ...w.rect, [axis]: min } } : w))
+}
+
+/** 多选等距分布（纯函数）：按 axis 坐标升序，首尾不动，中间均匀分布 pos_i = round(first + i*(last-first)/(n-1))。
+ * ids 中不存在于 widgets 的忽略；有效数 < 3 返回等价副本；恒返回新数组（不可变），只改 axis 值其余字段保真。 */
+export function distributeRects(widgets: WidgetNode[], ids: string[], axis: 'x' | 'y'): WidgetNode[] {
+  const posOf = new Map(widgets.map((w) => [w.id, w.rect[axis]]))
+  const picked = ids.filter((id) => posOf.has(id)).sort((a, b) => posOf.get(a)! - posOf.get(b)!)
+  if (picked.length < 3) return [...widgets]
+  const first = posOf.get(picked[0])!
+  const last = posOf.get(picked[picked.length - 1])!
+  const target = new Map(picked.map((id, i) => [id, Math.round(first + (i * (last - first)) / (picked.length - 1))]))
+  return widgets.map((w) => (target.has(w.id) ? { ...w, rect: { ...w.rect, [axis]: target.get(w.id)! } } : w))
+}

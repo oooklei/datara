@@ -5,7 +5,7 @@
  * 纯函数用例，无需 DOM。导入 templates.ts 即完成 bindTemplates 注入（模块顶层侧效应）。
  */
 import { describe, expect, it } from 'vitest'
-import { newWidget, normalizePage, reorderWidget, validatePage, WIDGET_KINDS, type WidgetNode } from '../designerModel'
+import { alignRects, distributeRects, newWidget, normalizePage, reorderWidget, validatePage, WIDGET_KINDS, type WidgetNode } from '../designerModel'
 import { widgetGroups, widgetTemplate, pageTemplates } from '../templates'
 
 describe('designerModel', () => {
@@ -91,6 +91,59 @@ describe('reorderWidget（D5/M6 层级控制，数组序 = z 序，靠后者在�
     // 入参不被修改 + 返回新数组（不可变）
     expect(ids()).toEqual(['a', 'b'])
     expect(reorderWidget(src, 'a', 'top')).not.toBe(src)
+  })
+})
+
+describe('distributeRects / alignRects（多选等距分布与对齐，纯函数）', () => {
+  const mk = (id: string, x: number, y: number): WidgetNode => ({
+    id, kind: 'text', rect: { x, y, w: 10, h: 10 }, props: { t: id }, style: { fill: '#fff' }, bindings: {},
+  })
+
+  it('distributeRects：3 元素 x 轴等距（首尾不动，中间 round(first+i*(last-first)/(n-1))）', () => {
+    const ws = [mk('a', 0, 0), mk('b', 20, 5), mk('c', 100, 10)]
+    const out = distributeRects(ws, ['a', 'b', 'c'], 'x')
+    expect(out.map((w) => w.rect.x)).toEqual([0, 50, 100])
+    // 只改 x：y/w/h 与其余字段深保真
+    expect(out.map((w) => w.rect.y)).toEqual([0, 5, 10])
+    expect(out[1]).toEqual({ ...ws[1], rect: { ...ws[1].rect, x: 50 } })
+  })
+
+  it('distributeRects：顺序无关（ids 乱序仍按坐标升序分布）', () => {
+    const ws = [mk('a', 0, 0), mk('b', 20, 0), mk('c', 100, 0)]
+    const out = distributeRects(ws, ['c', 'a', 'b'], 'x')
+    expect(out.map((w) => w.rect.x)).toEqual([0, 50, 100])
+  })
+
+  it('distributeRects：y 轴分布 + 负坐标 round 取整（x 不动）', () => {
+    const ws = [mk('a', 5, -100), mk('b', 7, 0), mk('c', 9, 60)]
+    const out = distributeRects(ws, ['a', 'b', 'c'], 'y')
+    expect(out.map((w) => w.rect.y)).toEqual([-100, -20, 60])
+    expect(out.map((w) => w.rect.x)).toEqual([5, 7, 9])
+  })
+
+  it('distributeRects：有效 ids < 3 返回等价副本；不存在 id 忽略；恒新数组不改入参', () => {
+    const ws = [mk('a', 10, 0), mk('b', 40, 0), mk('c', 90, 0)]
+    // 2 个 → 等价副本
+    const two = distributeRects(ws, ['a', 'b'], 'x')
+    expect(two).toEqual(ws)
+    expect(two).not.toBe(ws)
+    // 含不存在 id（过滤后仅 2 个有效）→ 等价副本
+    expect(distributeRects(ws, ['a', 'zz', 'b'], 'x')).toEqual(ws)
+    // 3 个分布：入参不被修改 + 返回新数组（不可变）
+    const out = distributeRects(ws, ['a', 'b', 'c'], 'x')
+    expect(out).not.toBe(ws)
+    expect(ws.map((w) => w.rect.x)).toEqual([10, 40, 90])
+  })
+
+  it('alignRects：多选（≥2）全体 axis = min；y 不动；不存在 id 忽略；单元素等价副本', () => {
+    const ws = [mk('a', 30, 5), mk('b', 10, 6), mk('c', 20, 7)]
+    const out = alignRects(ws, ['a', 'b', 'c'], 'x')
+    expect(out.map((w) => w.rect.x)).toEqual([10, 10, 10])
+    expect(out.map((w) => w.rect.y)).toEqual([5, 6, 7])
+    expect(alignRects(ws, ['a', 'zz'], 'x')).toEqual(ws)
+    const one = alignRects(ws, ['a'], 'x')
+    expect(one).toEqual(ws)
+    expect(one).not.toBe(ws)
   })
 })
 

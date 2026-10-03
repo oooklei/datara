@@ -50,7 +50,12 @@ vi.mock('../../../../services/componentApi', () => ({
 vi.mock('../canvas/PageCanvas.vue', () => ({
   default: {
     name: 'PageCanvasStub',
-    props: { page: { type: Object, required: true }, selectedId: { type: String, default: undefined }, preview: { type: Object, default: undefined } },
+    props: {
+      page: { type: Object, required: true },
+      selectedId: { type: String, default: undefined },
+      selectedIds: { type: Array, default: undefined },
+      preview: { type: Object, default: undefined },
+    },
     emits: ['add', 'select', 'move', 'resize', 'canvasSize'],
     template: '<div class="stub-canvas" :data-preview="preview ? \'on\' : \'off\'" :data-count="page.widgets.length" />',
   },
@@ -140,7 +145,7 @@ describe('PageDesignerView（Task 13 页壳）', () => {
     expect(w.find('[data-testid="pd-canvas-stage"]').exists()).toBe(true)
     expect(w.find('[data-testid="pd-inspector"]').exists()).toBe(true)
     expect(w.find('.stub-canvas').exists()).toBe(true)
-    for (const id of ['undo', 'redo', 'copy', 'paste', 'delete', 'align-left', 'align-top', 'zoom', 'refresh', 'save', 'preview', 'publish']) {
+    for (const id of ['undo', 'redo', 'copy', 'paste', 'delete', 'align-left', 'align-top', 'dist-h', 'dist-v', 'zoom', 'refresh', 'save', 'preview', 'publish']) {
       expect(tb(w, id).exists(), `工具条按钮 tb-${id} 应存在`).toBe(true)
       expect(tb(w, id).text().length).toBeGreaterThan(0)
     }
@@ -353,5 +358,82 @@ describe('PageDesignerView 新建态（无 :type）', () => {
     expect(createPageDraftSpy).not.toHaveBeenCalled()
     expect(warnSpy).toHaveBeenCalled()
     vi.restoreAllMocks()
+  })
+})
+
+describe('PageDesignerView 多选等距分布与快捷键（I3，对齐 GraphWorkbench 规格）', () => {
+  it('多选横分布：3 个选中 → tb-dist-h → 中间 widget x 等距；不足 3 个按钮禁用', async () => {
+    const w = mountView()
+    await flushPromises()
+    // 初始仅 1 个 widget → 分布按钮禁用
+    expect(tb(w, 'dist-h').attributes('disabled')).toBeDefined()
+    // 直接往宿主 page 对象补 2 个 widget（布局值给定便于断言）
+    const pageObj = w.findComponent({ name: 'PageCanvasStub' }).props('page') as {
+      widgets: { id: string; kind: string; rect: { x: number; y: number; w: number; h: number }; props: Record<string, never>; style: Record<string, never>; bindings: Record<string, never> }[]
+    }
+    pageObj.widgets.push(
+      { id: 'wa', kind: 'text', rect: { x: 0, y: 0, w: 40, h: 20 }, props: {}, style: {}, bindings: {} },
+      { id: 'wb', kind: 'text', rect: { x: 100, y: 30, w: 40, h: 20 }, props: {}, style: {}, bindings: {} },
+    )
+    const stub = w.findComponent({ name: 'PageCanvasStub' })
+    // 单选 wa → additive 追加 wq、wb（shift 多选，emit 载荷 (id, true)）
+    stub.vm.$emit('select', 'wa')
+    await flushPromises()
+    stub.vm.$emit('select', 'wq', true)
+    stub.vm.$emit('select', 'wb', true)
+    await flushPromises()
+    expect(tb(w, 'dist-h').attributes('disabled')).toBeUndefined()
+    await tb(w, 'dist-h').trigger('click')
+    await flushPromises()
+    // 按 x 升序 [0, 8, 100] → 中间 round(0 + 100/2) = 50；首尾不动
+    const xs = Object.fromEntries(pageObj.widgets.map((x) => [x.id, x.rect.x]))
+    expect(xs).toEqual({ wa: 0, wq: 50, wb: 100 })
+  })
+
+  it('快捷键 Ctrl+Z 撤销：复制后 Ctrl+Z 回到 1 个 widget（撤销栈清空后按钮禁用）', async () => {
+    const w = mountView()
+    await flushPromises()
+    expect(tb(w, 'undo').attributes('disabled')).toBeDefined()
+    w.findComponent({ name: 'PageCanvasStub' }).vm.$emit('select', 'wq')
+    await flushPromises()
+    await tb(w, 'copy').trigger('click')
+    expect(w.find('.stub-canvas').attributes('data-count')).toBe('2')
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'z', ctrlKey: true }))
+    await flushPromises()
+    expect(w.find('.stub-canvas').attributes('data-count')).toBe('1')
+    expect(tb(w, 'undo').attributes('disabled')).toBeDefined()
+  })
+
+  it('快捷键 Delete 删除选中；焦点在 input（typing target）时不删除', async () => {
+    const w = mountView()
+    await flushPromises()
+    w.findComponent({ name: 'PageCanvasStub' }).vm.$emit('select', 'wq')
+    await flushPromises()
+    // 焦点在输入元素 → 快捷键跳过（keydown 自 input 冒泡，target=input）
+    const input = document.createElement('input')
+    document.body.appendChild(input)
+    input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Delete', bubbles: true }))
+    await flushPromises()
+    expect(w.find('.stub-canvas').attributes('data-count')).toBe('1')
+    // window 派发 Delete → 删除主选中
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Delete' }))
+    await flushPromises()
+    expect(w.find('.stub-canvas').attributes('data-count')).toBe('0')
+    input.remove()
+  })
+
+  it('快捷键 Escape：非预览态无效果；预览态退出预览', async () => {
+    previewSpy.mockResolvedValue({ results: {}, rowCap: 100 })
+    const w = mountView()
+    await flushPromises()
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }))
+    await flushPromises()
+    expect(w.find('.stub-canvas').attributes('data-preview')).toBe('off')
+    await tb(w, 'preview').trigger('click')
+    await flushPromises()
+    expect(w.find('.stub-canvas').attributes('data-preview')).toBe('on')
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }))
+    await flushPromises()
+    expect(w.find('.stub-canvas').attributes('data-preview')).toBe('off')
   })
 })

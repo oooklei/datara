@@ -7,9 +7,11 @@
  * 面板拖宽与收放持久化同 GraphWorkbench（mousedown→window mousemove→mouseup 解绑，
  * localStorage datara.pd.panels）；画布尺寸持久化 datara.pd.canvas（canvasSize 事件落值 + 存档优先）。
  *
- * 状态：page（load 时 normalizePage）/ selectedId / catalog（getResources）/
+ * 状态：page（load 时 normalizePage）/ selectedIds 多选（主选中 = 首个）/ catalog（getResources）/
  * previewMap（preview 结果透传 PageCanvas）/ undo/redo 本地 JSON 快照栈（上限 50）。
  * 拖拽类高频事件（move/resize/canvasSize）合并撤销点（800ms 窗口），避免快照栈被单次拖拽挤爆。
+ * 快捷键（GraphWorkbench 同款）：Ctrl/Cmd+Z 撤销、Ctrl+Y/Shift+Z 重做、Ctrl+C/V 复制粘贴、
+ * Delete/Backspace 删除、Esc 退出预览；输入焦点（INPUT/TEXTAREA/SELECT/contentEditable）跳过。
  *
  * 发布链（§9 发布即刷新）：确认 → freeze 当前草稿 → publish 该 frozen 版本 →
  * 响应 data.refresh 存在则按 refreshed 出 toast；缺失（旧响应）兜底调 pageApi.refreshRefs。
@@ -23,7 +25,7 @@ import {
   publishComponentVersion, saveComponentDraft,
   type ComponentDraft, type ComponentVersionRow,
 } from '../../../services/componentApi'
-import { normalizePage, genId, newWidget, reorderWidget, CANVAS_H, CANVAS_W, type BackgroundStyle, type PageDSL, type ReorderAction, type WidgetNode } from './designerModel'
+import { alignRects, distributeRects, normalizePage, genId, newWidget, reorderWidget, CANVAS_H, CANVAS_W, type BackgroundStyle, type PageDSL, type ReorderAction, type WidgetNode } from './designerModel'
 import { pageTemplates } from './templates'
 import type { ResourceCatalog } from './bindingCatalog'
 import { pageApi, type PreviewQuery, type PreviewResult } from './pageApi'
@@ -41,7 +43,9 @@ const isCreate = computed(() => !typeParam.value)
 const draft = ref<ComponentDraft | null>(null)
 const versions = ref<ComponentVersionRow[]>([])
 const page = ref<PageDSL>(normalizePage(null))
-const selectedId = ref<string>()
+/** 多选集合（shift+点击累积）；主选中 = 首个（Inspector 与工具条 disabled 沿用单选语义，零改动） */
+const selectedIds = ref<string[]>([])
+const selectedId = computed<string | undefined>(() => selectedIds.value[0])
 const EMPTY_CATALOG: ResourceCatalog = { datasources: [], workflows: [], globalParams: [], timeParams: [], components: [] }
 const catalog = ref<ResourceCatalog>(EMPTY_CATALOG)
 const previewMap = ref<Record<string, PreviewResult>>({})
@@ -81,7 +85,7 @@ async function loadAll(t: string): Promise<void> {
     }
     page.value = p
     catalog.value = res
-    selectedId.value = undefined
+    selectedIds.value = []
     previewing.value = false
     previewMap.value = {}
     resetUndo()
@@ -131,7 +135,7 @@ function restore(s: string): void {
   try {
     page.value = JSON.parse(s) as PageDSL
   } catch { return }
-  if (selectedId.value && !page.value.widgets.some((w) => w.id === selectedId.value)) selectedId.value = undefined
+  if (selectedId.value && !page.value.widgets.some((w) => w.id === selectedId.value)) selectedIds.value = []
 }
 function undo(): void {
   if (undoStack.length <= 1) return
@@ -154,17 +158,25 @@ function onAdd(kind: string, x: number, y: number): void {
   pushUndo()
   const w = newWidget(kind, { x, y })
   page.value.widgets.push(w)
-  selectedId.value = w.id
+  selectedIds.value = [w.id]
 }
-function onSelect(id: string): void {
-  selectedId.value = id
+/** 选中：additive（shift+点击）且未含 → 追加多选；否则重置单选 */
+function onSelect(id: string, additive?: boolean): void {
+  if (additive && !selectedIds.value.includes(id)) selectedIds.value = [...selectedIds.value, id]
+  else selectedIds.value = [id]
 }
+/** 拖移：多选集内成员拖动时全体同步位移（同一撤销点）；否则单动 */
 function onMove(id: string, dx: number, dy: number): void {
-  const w = page.value.widgets.find((x) => x.id === id)
-  if (!w) return
+  const ids = selectedIds.value.includes(id) ? selectedIds.value : [id]
+  const ws = ids
+    .map((tid) => page.value.widgets.find((x) => x.id === tid))
+    .filter((x): x is WidgetNode => !!x)
+  if (ws.length === 0) return
   pushUndoThrottled()
-  w.rect.x += dx
-  w.rect.y += dy
+  ws.forEach((w) => {
+    w.rect.x += dx
+    w.rect.y += dy
+  })
 }
 function onResize(id: string, dw: number, dh: number): void {
   const w = page.value.widgets.find((x) => x.id === id)
@@ -214,7 +226,7 @@ function pushClone(src: WidgetNode): void {
   const c = reid(clone)
   c.rect = { ...c.rect, x: c.rect.x + 12, y: c.rect.y + 12 }
   page.value.widgets.push(c)
-  selectedId.value = c.id
+  selectedIds.value = [c.id]
 }
 function onCopy(): void {
   const w = selWidget()
@@ -230,20 +242,36 @@ function onDelete(): void {
   if (!w) return
   pushUndo()
   page.value.widgets = page.value.widgets.filter((x) => x.id !== w.id)
-  selectedId.value = undefined
+  selectedIds.value = []
 }
-/** P1 简化对齐：左/上对齐 = 选中项 x/y 吸附到 8（不做相邻最小值对齐） */
+/** 对齐：多选（≥2）取最小坐标对齐；单选保持吸附 8 原语义 */
 function onAlignLeft(): void {
+  if (selectedIds.value.length >= 2) {
+    pushUndo()
+    page.value.widgets = alignRects(page.value.widgets, selectedIds.value, 'x')
+    return
+  }
   const w = selWidget()
   if (!w) return
   pushUndo()
   w.rect.x = 8
 }
 function onAlignTop(): void {
+  if (selectedIds.value.length >= 2) {
+    pushUndo()
+    page.value.widgets = alignRects(page.value.widgets, selectedIds.value, 'y')
+    return
+  }
   const w = selWidget()
   if (!w) return
   pushUndo()
   w.rect.y = 8
+}
+/** 等距分布（≥3）：按轴升序首尾不动中间均匀（distributeRects 纯函数，替换 widgets 数组） */
+function onDistribute(axis: 'x' | 'y'): void {
+  if (selectedIds.value.length < 3) return
+  pushUndo()
+  page.value.widgets = distributeRects(page.value.widgets, selectedIds.value, axis)
 }
 const ZOOMS = [50, 75, 100, 125]
 function onZoom(v: string | number | object): void {
@@ -383,6 +411,27 @@ function stopPanelResize(): void {
   window.removeEventListener('mousemove', onPanelResizeMove)
   window.removeEventListener('mouseup', stopPanelResize)
 }
+
+/* ================= 快捷键（GraphWorkbench 同款规格） ================= */
+/** 输入焦点跳过（同 GraphWorkbench isTypingTarget） */
+function isTypingTarget(t: EventTarget | null): boolean {
+  const el = t as HTMLElement | null
+  if (!el) return false
+  return el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.tagName === 'SELECT' || el.isContentEditable
+}
+/** 键位：Ctrl/Cmd+Z 撤销 / Ctrl+Y 或 Ctrl+Shift+Z 重做 / Ctrl+C 复制 / Ctrl+V 粘贴 / Delete 或 Backspace 删除 / Esc 退出预览 */
+function onKeydown(e: KeyboardEvent): void {
+  if (isCreate.value || loading.value) return
+  if (isTypingTarget(e.target)) return
+  const k = e.key.toLowerCase()
+  const mod = e.ctrlKey || e.metaKey
+  if (mod && k === 'z' && !e.shiftKey) { e.preventDefault(); undo(); return }
+  if (mod && (k === 'y' || (k === 'z' && e.shiftKey))) { e.preventDefault(); redo(); return }
+  if (mod && k === 'c') { e.preventDefault(); onCopy(); return }
+  if (mod && k === 'v') { e.preventDefault(); onPaste(); return }
+  if (e.key === 'Delete' || e.key === 'Backspace') { e.preventDefault(); onDelete(); return }
+  if (e.key === 'Escape' && previewing.value) { e.preventDefault(); previewing.value = false }
+}
 onMounted(() => {
   try {
     const p = JSON.parse(localStorage.getItem('datara.pd.panels') ?? '{}') as { left?: boolean; right?: boolean; leftW?: number; rightW?: number }
@@ -391,8 +440,12 @@ onMounted(() => {
     if (typeof p.leftW === 'number' && p.leftW >= PANEL_MIN_W && p.leftW <= PANEL_MAX_W) leftWidth.value = p.leftW
     if (typeof p.rightW === 'number' && p.rightW >= PANEL_MIN_W && p.rightW <= PANEL_MAX_W) rightWidth.value = p.rightW
   } catch { /* 忽略隐私模式 */ }
+  window.addEventListener('keydown', onKeydown)
 })
-onBeforeUnmount(stopPanelResize)
+onBeforeUnmount(() => {
+  stopPanelResize()
+  window.removeEventListener('keydown', onKeydown)
+})
 watch([leftOpen, rightOpen, leftWidth, rightWidth], ([l, r, lw, rw]) => {
   try { localStorage.setItem('datara.pd.panels', JSON.stringify({ left: l, right: r, leftW: lw, rightW: rw })) } catch { /* 忽略隐私模式 */ }
 })
@@ -438,17 +491,19 @@ async function onCreate(): Promise<void> {
         <el-tag v-if="draft" size="small" :type="stateTagType">{{ stateText }}</el-tag>
         <span v-if="draft?.publishedVersion" class="pd-pubv">v{{ draft.publishedVersion }}</span>
       </div>
-      <!-- 工具条（按钮置顶）：撤销 重做 | 复制 粘贴 删除 | 左对齐 上对齐 | 缩放 | 刷新 | 保存 预览 发布 -->
+      <!-- 工具条（按钮置顶）：撤销 重做 | 复制 粘贴 删除 | 左对齐 上对齐 横分布 纵分布 | 缩放 | 刷新 | 保存 预览 发布 -->
       <div v-if="!isCreate" class="pd-toolbar">
-        <el-button size="small" data-testid="tb-undo" :disabled="undoDepth <= 0" @click="undo">撤销</el-button>
-        <el-button size="small" data-testid="tb-redo" :disabled="redoDepth <= 0" @click="redo">重做</el-button>
+        <el-button size="small" data-testid="tb-undo" title="撤销 Ctrl+Z" :disabled="undoDepth <= 0" @click="undo">撤销</el-button>
+        <el-button size="small" data-testid="tb-redo" title="重做 Ctrl+Y" :disabled="redoDepth <= 0" @click="redo">重做</el-button>
         <span class="pd-sep" />
-        <el-button size="small" data-testid="tb-copy" :disabled="!selectedId" @click="onCopy">复制</el-button>
-        <el-button size="small" data-testid="tb-paste" :disabled="!copyBuf" @click="onPaste">粘贴</el-button>
-        <el-button size="small" data-testid="tb-delete" :disabled="!selectedId" @click="onDelete">删除</el-button>
+        <el-button size="small" data-testid="tb-copy" title="复制 Ctrl+C" :disabled="!selectedId" @click="onCopy">复制</el-button>
+        <el-button size="small" data-testid="tb-paste" title="粘贴 Ctrl+V" :disabled="!copyBuf" @click="onPaste">粘贴</el-button>
+        <el-button size="small" data-testid="tb-delete" title="删除 Delete" :disabled="!selectedId" @click="onDelete">删除</el-button>
         <span class="pd-sep" />
         <el-button size="small" data-testid="tb-align-left" :disabled="!selectedId" @click="onAlignLeft">左对齐</el-button>
         <el-button size="small" data-testid="tb-align-top" :disabled="!selectedId" @click="onAlignTop">上对齐</el-button>
+        <el-button size="small" data-testid="tb-dist-h" title="横向等距分布（选中 ≥3）" :disabled="selectedIds.length < 3" @click="onDistribute('x')">横分布</el-button>
+        <el-button size="small" data-testid="tb-dist-v" title="纵向等距分布（选中 ≥3）" :disabled="selectedIds.length < 3" @click="onDistribute('y')">纵分布</el-button>
         <span class="pd-sep" />
         <el-dropdown data-testid="tb-zoom" trigger="click" @command="onZoom">
           <el-button size="small">缩放 {{ zoom }}% ▾</el-button>
@@ -503,7 +558,7 @@ async function onCreate(): Promise<void> {
       <main class="pd-mid">
         <div class="pd-zoom" :style="zoomStyle" data-testid="pd-canvas-stage">
           <PageCanvas
-            :page="page" :selected-id="selectedId" :preview="previewing ? previewMap : undefined"
+            :page="page" :selected-id="selectedId" :selected-ids="selectedIds" :preview="previewing ? previewMap : undefined"
             @add="onAdd" @select="onSelect" @move="onMove" @resize="onResize" @canvas-size="onCanvasSize"
           />
         </div>

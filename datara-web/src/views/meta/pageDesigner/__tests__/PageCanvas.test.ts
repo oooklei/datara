@@ -100,10 +100,28 @@ describe('PageCanvas 画布', () => {
     expect(w.find('.pd-w-table').text()).toContain('暂无数据')
   })
 
-  it('点击 widget 根元素 emit select（带 id）', async () => {
+  it('点击 widget 根元素 emit select(id, false)；shift+点击 emit (id, true)', async () => {
     const w = mountCanvas()
-    await w.findAll('.pd-w-root')[0].trigger('click')
-    expect(w.emitted('select')?.[0]).toEqual(['wt'])
+    const roots = w.findAll('.pd-w-root')
+    await roots[0].trigger('click')
+    expect(w.emitted('select')?.[0]).toEqual(['wt', false])
+    await roots[0].trigger('click', { shiftKey: true })
+    expect(w.emitted('select')?.[1]).toEqual(['wt', true])
+    await roots[1].trigger('click')
+    expect(w.emitted('select')?.[2]).toEqual(['w1', false])
+  })
+
+  it('selectedIds 多高亮：数组内 widget 均 is-selected；selectedIds 缺省回退 selectedId 判断', () => {
+    const multi = mountCanvas({ selectedIds: ['wt', 'w1'] })
+    const roots = multi.findAll('.pd-w-root')
+    expect(roots[0].classes()).toContain('is-selected')
+    expect(roots[1].classes()).toContain('is-selected')
+    const partial = mountCanvas({ selectedIds: ['w1'] })
+    expect(partial.findAll('.pd-w-root')[0].classes()).not.toContain('is-selected')
+    expect(partial.findAll('.pd-w-root')[1].classes()).toContain('is-selected')
+    const legacy = mountCanvas({ selectedId: 'wt' })
+    expect(legacy.findAll('.pd-w-root')[0].classes()).toContain('is-selected')
+    expect(legacy.findAll('.pd-w-root')[1].classes()).not.toContain('is-selected')
   })
 })
 

@@ -27,7 +27,7 @@ import type { PreviewResult } from '../pageApi'
 
 const props = defineProps<{ widget: WidgetNode; selected?: boolean; preview?: PreviewResult }>()
 const emit = defineEmits<{
-  select: []
+  select: [additive: boolean]
   move: [dx: number, dy: number]
   resize: [dw: number, dh: number]
 }>()
@@ -254,7 +254,7 @@ function stopResize() {
 <template>
   <div
     class="pd-w-root" :class="{ 'is-selected': selected, [`pd-wk-${widget.kind}`]: true }" :style="rootStyle"
-    :data-kind="widget.kind" @click.stop="$emit('select')" @mousedown="startMove"
+    :data-kind="widget.kind" @click.stop="$emit('select', $event?.shiftKey === true)" @mousedown="startMove"
   >
     <div v-if="broken" class="pd-w-broken">渲染异常：{{ widget.kind }}</div>
 
@@ -263,25 +263,25 @@ function stopResize() {
       <div v-if="widget.kind === 'card'" class="pd-w-card">
         <div class="pd-w-card-title">{{ widget.props.title }}</div>
         <div class="pd-w-kids">
-          <WidgetRenderer v-for="c in widget.children ?? []" :key="c.id" :widget="c" :selected="false" @select="$emit('select')" />
+          <WidgetRenderer v-for="c in widget.children ?? []" :key="c.id" :widget="c" :selected="false" @select="$emit('select', $event === true)" />
         </div>
       </div>
       <div v-else-if="widget.kind === 'grid-row'" class="pd-w-grid" :style="{ gridTemplateColumns: `repeat(${gridCols}, 1fr)` }">
-        <WidgetRenderer v-for="c in widget.children ?? []" :key="c.id" :widget="c" :selected="false" @select="$emit('select')" />
+        <WidgetRenderer v-for="c in widget.children ?? []" :key="c.id" :widget="c" :selected="false" @select="$emit('select', $event === true)" />
       </div>
       <div v-else-if="widget.kind === 'tabs'" class="pd-w-tabs">
         <div class="pd-w-tabs-head">
           <span v-for="(t, i) in tabList" :key="t" class="pd-w-tab" :class="{ 'is-active': i === 0 }">{{ t }}</span>
         </div>
         <div class="pd-w-kids">
-          <WidgetRenderer v-for="c in widget.children ?? []" :key="c.id" :widget="c" :selected="false" @select="$emit('select')" />
+          <WidgetRenderer v-for="c in widget.children ?? []" :key="c.id" :widget="c" :selected="false" @select="$emit('select', $event === true)" />
         </div>
       </div>
       <div v-else class="pd-w-collapse">
         <div v-for="p in panelList" :key="p.title" class="pd-w-collapse-item">
           <div class="pd-w-collapse-title">{{ p.title }}</div>
           <div class="pd-w-kids">
-            <WidgetRenderer v-for="c in widget.children ?? []" :key="c.id" :widget="c" :selected="false" @select="$emit('select')" />
+            <WidgetRenderer v-for="c in widget.children ?? []" :key="c.id" :widget="c" :selected="false" @select="$emit('select', $event === true)" />
           </div>
         </div>
       </div>

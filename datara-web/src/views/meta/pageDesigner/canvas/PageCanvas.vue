@@ -14,11 +14,13 @@ import WidgetRenderer from './WidgetRenderer.vue'
 const props = defineProps<{
   page: PageDSL
   selectedId?: string
+  /** 多选集合（shift+点击累积）：提供时按集合高亮，缺省回退 selectedId 单选判断（兼容） */
+  selectedIds?: string[]
   preview?: Record<string, PreviewResult>
 }>()
 const emit = defineEmits<{
   add: [kind: string, x: number, y: number]
-  select: [id: string]
+  select: [id: string, additive: boolean]
   move: [id: string, dx: number, dy: number]
   resize: [id: string, dw: number, dh: number]
   canvasSize: [w: number, h: number]
@@ -100,7 +102,8 @@ onBeforeUnmount(stopResize)
     <div class="pd-canvas" :style="canvasStyle" @drop.prevent="onDrop" @dragover.prevent>
       <WidgetRenderer
         v-for="wd in page.widgets" :key="wd.id" :widget="wd" :preview="preview?.[wd.id]"
-        :selected="wd.id === selectedId" @select="$emit('select', wd.id)"
+        :selected="selectedIds ? selectedIds.includes(wd.id) : wd.id === selectedId"
+        @select="(additive) => $emit('select', wd.id, additive)"
         @move="(dx, dy) => $emit('move', wd.id, dx, dy)"
         @resize="(dw, dh) => $emit('resize', wd.id, dw, dh)"
       />
