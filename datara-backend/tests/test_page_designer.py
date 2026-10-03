@@ -57,3 +57,41 @@ def test_preview_caps_rows(monkeypatch, client, db_session):
     assert r.status_code == 200
     assert called["cap"] == 100
     assert len(r.json()["data"]["results"]["q1"]["rows"]) == 100
+
+
+def test_preview_widget_errors_aggregated(monkeypatch, client, db_session):
+    """失败组件聚合进 widgetErrors（按 body.queries 顺序），成功项不进；results 既有形状不变。"""
+    db_session.add(DataSource(id=1, name="dw", type="mysql"))
+    db_session.commit()
+    set_role(client.app, "dev")
+    monkeypatch.setattr(
+        "api.page_designer._run_readonly",
+        lambda ds, sql, cap: {"id": "", "columns": ["a"], "rows": [["1"]],
+                              "truncated": False, "error": ""})
+    r = client.post("/api/v1/page-designer/preview", json={
+        "queries": [
+            {"id": "ok1", "datasourceId": 1, "sql": "SELECT a FROM t"},
+            {"id": "bad1", "datasourceId": 999, "sql": "SELECT a FROM t"},
+            {"id": "ok2", "datasourceId": 1, "sql": "SELECT b FROM t"},
+        ]})
+    assert r.status_code == 200
+    data = r.json()["data"]
+    assert data["widgetErrors"] == [{"id": "bad1", "error": "数据源 999 不存在"}]
+    # 向后兼容：error 仍落在各自 result 内
+    assert data["results"]["bad1"]["error"] == "数据源 999 不存在"
+    assert data["results"]["ok1"]["error"] == ""
+
+
+def test_preview_all_success_widget_errors_empty(monkeypatch, client, db_session):
+    """全部成功时 widgetErrors 为空数组。"""
+    db_session.add(DataSource(id=1, name="dw", type="mysql"))
+    db_session.commit()
+    set_role(client.app, "dev")
+    monkeypatch.setattr(
+        "api.page_designer._run_readonly",
+        lambda ds, sql, cap: {"id": "", "columns": ["a"], "rows": [["1"]],
+                              "truncated": False, "error": ""})
+    r = client.post("/api/v1/page-designer/preview", json={
+        "queries": [{"id": "q1", "datasourceId": 1, "sql": "SELECT a FROM t"}]})
+    assert r.status_code == 200
+    assert r.json()["data"]["widgetErrors"] == []

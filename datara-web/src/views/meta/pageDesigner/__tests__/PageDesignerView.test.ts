@@ -189,6 +189,26 @@ describe('PageDesignerView（Task 13 页壳）', () => {
     expect(w.find('.stub-canvas').attributes('data-preview')).toBe('on')
   })
 
+  it('预览失败汇总：响应含 widgetErrors → 弹 warning 且仍进入预览态', async () => {
+    previewSpy.mockResolvedValue({
+      results: { wq: { columns: [], rows: [], truncated: false, error: '数据源 999 不存在' } },
+      rowCap: 100,
+      widgetErrors: [{ id: 'wq', error: '数据源 999 不存在' }],
+    })
+    const warnSpy = vi.spyOn(ElMessage, 'warning').mockImplementation((() => ({})) as never)
+    const w = mountView()
+    await flushPromises()
+    await tb(w, 'preview').trigger('click')
+    await flushPromises()
+    expect(warnSpy).toHaveBeenCalledTimes(1)
+    const toast = String(warnSpy.mock.calls[0][0])
+    expect(toast).toContain('1 个组件预览失败')
+    expect(toast).toContain('数据源 999 不存在')
+    // 汇总提示不中断预览态
+    expect(w.find('.stub-canvas').attributes('data-preview')).toBe('on')
+    vi.restoreAllMocks()
+  })
+
   it('保存：携带 draftRev 乐观锁 + spec={page}', async () => {
     saveDraftSpy.mockResolvedValue({ draftRev: 4, specHash: 'd'.repeat(64), savedAt: '2026-10-03 11:00:00' })
     const w = mountView()

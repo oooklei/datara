@@ -108,4 +108,7 @@ def preview(body: PreviewBody, db: Session = Depends(get_db), _user=Depends(requ
         item = _run_readonly(ds, f"SELECT * FROM ({sql}) _pv LIMIT {PREVIEW_ROW_CAP}", PREVIEW_ROW_CAP)
         item["id"] = q.id
         results[q.id] = item
-    return ok({"results": results, "rowCap": PREVIEW_ROW_CAP})
+    # 失败组件聚合（按 queries 顺序而非 dict 序，保证稳定；成功项不进，前端汇总提示用）
+    widget_errors = [{"id": q.id, "error": results[q.id]["error"]}
+                     for q in body.queries if results[q.id].get("error")]
+    return ok({"results": results, "rowCap": PREVIEW_ROW_CAP, "widgetErrors": widget_errors})

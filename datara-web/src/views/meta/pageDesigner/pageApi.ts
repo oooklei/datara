@@ -21,6 +21,13 @@ export interface ResourcesResp {
 /** 单查询预览结果（后端 _run_readonly 每项四字段；id 以 results 键承载不重复进字段） */
 export interface PreviewResult { columns: string[]; rows: string[][]; truncated: boolean; error: string }
 
+/** POST /page-designer/preview 响应（widgetErrors：失败组件聚合 [{id,error}]，按 queries 顺序，成功项不进） */
+export interface PreviewResp {
+  results: Record<string, PreviewResult>
+  rowCap: number
+  widgetErrors: { id: string; error: string }[]
+}
+
 /** POST /components/{type}/refresh-refs 响应（§9：命中图批量升级至 published_version） */
 export interface RefreshRefsResult {
   refreshed: number
@@ -37,14 +44,14 @@ export const pageApi = {
     return http.get<ResourcesResp>('/page-designer/resources')
   },
 
-  /** 数据预览（SELECT/WITH 校验由后端 422 承载；仅连接型数据源可执行，其余入 error 不抛） */
-  async preview(queries: PreviewQuery[]): Promise<{ results: Record<string, PreviewResult>; rowCap: number }> {
+  /** 数据预览（SELECT/WITH 校验由后端 422 承载；仅连接型数据源可执行，其余入 error 不抛；widgetErrors 汇总失败组件） */
+  async preview(queries: PreviewQuery[]): Promise<PreviewResp> {
     if (isMock) {
       const results: Record<string, PreviewResult> = {}
       for (const q of queries) results[q.id] = { columns: [], rows: [], truncated: false, error: '' }
-      return { results, rowCap: 100 }
+      return { results, rowCap: 100, widgetErrors: [] }
     }
-    return http.post<{ results: Record<string, PreviewResult>; rowCap: number }>('/page-designer/preview', { queries })
+    return http.post<PreviewResp>('/page-designer/preview', { queries })
   },
 
   /** 刷新引用（仅 published 组件，draft 409 由后端承载）；publish 成功后端已自动执行 */

@@ -36,6 +36,7 @@ describe('pageApi (mock 模式)', () => {
     const r = await pageApi.preview([{ id: 'q1', datasourceId: 1, sql: 'SELECT 1' }])
     expect(r.rowCap).toBe(100)
     expect(r.results.q1).toEqual({ columns: [], rows: [], truncated: false, error: '' })
+    expect(r.widgetErrors).toEqual([])
     expect(fetchMock).not.toHaveBeenCalled()
   })
 

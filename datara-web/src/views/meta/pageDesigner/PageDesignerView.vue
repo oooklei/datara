@@ -300,6 +300,10 @@ async function onPreview(): Promise<void> {
     try {
       const r = await pageApi.preview(queries)
       previewMap.value = r.results
+      // 失败组件汇总提示（首条 error 摘要 + 数量；不中断预览态，逐组件错误态仍由画布渲染）
+      if (r.widgetErrors?.length) {
+        ElMessage.warning(`${r.widgetErrors.length} 个组件预览失败：${r.widgetErrors[0].error}`)
+      }
     } catch (e) {
       ElMessage.error(`预览失败：${e instanceof Error ? e.message : String(e)}`)
       return
