@@ -520,21 +520,42 @@ DROP_POLICY_KEYS = frozenset({"snapToGrid", "autoName", "prefillFromUpstream", "
 AUTO_CONNECT_VALUES = frozenset({"nearest", "none"})
 
 
+def _gate_fields_rows(spec: dict):
+    """声明字段行提取（双源）：spec.fields 数组优先，其次八段底稿 spec.form.params 数组。
+
+    6002 重开的内置组件草稿复制的是八段 BaselineSpec（参数表单承载于 form.params），
+    设计器 fields 模式保存写回原源——发布闸门必须双源同口径校验。
+    返回 (路径前缀, 行数组)；两者皆非数组时返回 (None, None)，由调用方报错。
+    """
+    if not isinstance(spec, dict):
+        return None, None
+    f = spec.get("fields")
+    if isinstance(f, list):
+        return "fields", f
+    form = spec.get("form")
+    if isinstance(form, dict):
+        p = form.get("params")
+        if isinstance(p, list):
+            return "form.params", p
+    return None, None
+
+
 def _gate_whitelist(spec: dict) -> list:
     """§13-3：fields 结构 + uiType 9 基元 + pick 键白名单。
 
     page DSL 声明（page 根节点）不适用 fields 白名单——结构合法性由
     _validate_page_spec（纯数据闸门内嵌，Task 2）承担（设计文档 §9.1 page 分支闸门）。
+    字段行双源（spec.fields / 八段 form.params，见 _gate_fields_rows）。
     """
     if isinstance(spec, dict) and "page" in spec:
         return []
-    fields = spec.get("fields")
-    if not isinstance(fields, list):
-        return ["fields 必须为数组"]
+    src, rows = _gate_fields_rows(spec)
+    if rows is None:
+        return ["fields 必须为数组（或八段底稿 form.params）"]
     msgs: list = []
     seen: set = set()
-    for i, f in enumerate(fields):
-        path = "fields[%d]" % i
+    for i, f in enumerate(rows):
+        path = "%s[%d]" % (src, i)
         if not isinstance(f, dict):
             msgs.append("%s 必须为对象" % path)
             continue
@@ -622,7 +643,8 @@ def _gate_contract(comp: Component, spec: dict, executor_registry: frozenset) ->
 def _gate_references(spec: dict) -> list:
     """§13-8 引用完整性：声明内引用必须可解析。
 
-    M1 声明契约的引用位只有 dropPolicy.prefillFromUpstream（目标=fields[].key）；
+    M1 声明契约的引用位只有 dropPolicy.prefillFromUpstream（目标=字段行 key，
+    双源 spec.fields / 八段 form.params，见 _gate_fields_rows）；
     脚本库脚本等外部实体引用位 M1 未定义（设计器不产出），扩展时在此函数加 db
     注入的实体存在性校验即可（函数保持纯数据入参）。
     """
@@ -630,7 +652,8 @@ def _gate_references(spec: dict) -> list:
     pfu = dp.get("prefillFromUpstream") if isinstance(dp, dict) else None
     if not pfu or not isinstance(pfu, list):
         return []
-    field_keys = {f.get("key") for f in spec.get("fields") or [] if isinstance(f, dict)}
+    _, rows = _gate_fields_rows(spec)
+    field_keys = {f.get("key") for f in rows or [] if isinstance(f, dict)}
     return [
         "dropPolicy.prefillFromUpstream 引用不存在的字段 key: %s" % k
         for k in pfu

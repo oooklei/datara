@@ -800,6 +800,48 @@ def test_run_publish_gates_returns_all_items_in_order():
     assert by["drop_policy"] and by["references"]  # 无 dropPolicy 时两项自然通过
 
 
+# ---- 组件初始化（fields 模式）：八段底稿 form.params 双源闸门 ----
+# 6002 重开的内置组件草稿复制 BaselineSpec（参数表单承载于 form.params），
+# 设计器 fields 模式保存写回原源；发布闸门 whitelist/references 必须同口径双源校验。
+
+def test_gate_whitelist_form_params_source():
+    from api.component_design import _gate_whitelist
+    # form.params 合法 → 通过
+    spec = {"form": {"params": [{"key": "sql", "label": "SQL", "uiType": "text"}]}}
+    assert _gate_whitelist(spec) == []
+    # form.params uiType 越界 → 违规路径携带 form.params 段名
+    spec_bad = {"form": {"params": [{"key": "a", "label": "A", "uiType": "magic"}]}}
+    msgs = _gate_whitelist(spec_bad)
+    assert any("form.params[0]" in m and "uiType" in m for m in msgs)
+    # 双源并存 → fields 优先（form.params 不参与校验）
+    spec_both = {"fields": [{"key": "a", "label": "A", "uiType": "text"}],
+                 "form": {"params": [{"key": "b", "uiType": "magic"}]}}
+    assert _gate_whitelist(spec_both) == []
+    # 两者皆非数组 → 报错（提示兼容双源）
+    assert _gate_whitelist({"fields": "bad"}) != []
+
+
+def test_gate_references_form_params_source():
+    from api.component_design import _gate_references
+    spec_ok = {"form": {"params": [{"key": "sql", "label": "SQL", "uiType": "text"}]},
+               "dropPolicy": {"prefillFromUpstream": ["sql"]}}
+    assert _gate_references(spec_ok) == []
+    spec_bad = {"form": {"params": [{"key": "sql", "label": "SQL", "uiType": "text"}]},
+                "dropPolicy": {"prefillFromUpstream": ["ghost"]}}
+    assert "ghost" in _gate_references(spec_bad)[0]
+
+
+def test_publish_gate_form_params_end_to_end(client, db_session):
+    """八段底稿形态（form.params + dropPolicy）走完整发布链 → 闸门双源全过，publish 200。"""
+    spec = {"form": {"title": "参数", "params": [{"key": "sql", "label": "SQL", "uiType": "text", "visible": True}]},
+            "dropPolicy": {"prefillFromUpstream": ["sql"], "autoName": "{type}_{n}"}}
+    _make_frozen(client, type_name="gate_form_params", execution_model="canvas-device",
+                 executor=None, executable=False, spec=spec)
+    r = _publish(client, type_name="gate_form_params")
+    assert r.status_code == 200, r.text
+    assert r.json()["data"]["publishedVersion"] == 1
+
+
 # ---- §19.2 回归：无执行实现（demo-only）组件若尝试发布 → 闸门第 5 项强制拦截 ----
 # 2026-09-29 基线化目录对账更新：M-B2 执行器注册后目录 unroutedByProfile 已清零，
 # 原「从目录 stats.unroutedByProfile 实名派生」会静默缩水为 0 个用例，故 27 个

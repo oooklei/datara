@@ -37,6 +37,7 @@ const saveDraftSpy = vi.hoisted(() => vi.fn())
 const freezeSpy = vi.hoisted(() => vi.fn())
 const publishSpy = vi.hoisted(() => vi.fn())
 const createPageDraftSpy = vi.hoisted(() => vi.fn())
+const createComponentDraftSpy = vi.hoisted(() => vi.fn())
 const getComponentSpy = vi.hoisted(() => vi.fn())
 const deleteComponentSpy = vi.hoisted(() => vi.fn())
 vi.mock('../../../../services/componentApi', () => ({
@@ -46,6 +47,7 @@ vi.mock('../../../../services/componentApi', () => ({
   freezeComponentVersion: freezeSpy,
   publishComponentVersion: publishSpy,
   createPageDraft: createPageDraftSpy,
+  createComponentDraft: createComponentDraftSpy,
   getComponent: getComponentSpy,
   deleteComponent: deleteComponentSpy,
 }))
@@ -71,6 +73,23 @@ vi.mock('../inspector/PageInspector.vue', () => ({
     props: ['page', 'selectedId', 'catalog'],
     emits: ['updateWidget', 'updateCanvas', 'reorder'],
     template: '<aside class="stub-inspector" />',
+  },
+}))
+/* fields 模式子组件桩：验证宿主透传（行数/来源）与受控事件回抛 */
+vi.mock('../fields/FieldsCanvas.vue', () => ({
+  default: {
+    name: 'FieldsCanvasStub',
+    props: ['rows', 'selectedIdx'],
+    emits: ['select'],
+    template: '<div class="stub-fcanvas" :data-count="rows.length" />',
+  },
+}))
+vi.mock('../fields/FieldsInspector.vue', () => ({
+  default: {
+    name: 'FieldsInspectorStub',
+    props: ['rows', 'dropPolicy', 'selectedIdx', 'source'],
+    emits: ['select', 'patchRow', 'addRow', 'removeRow', 'moveRow', 'patchDropPolicy'],
+    template: '<aside class="stub-finspector" />',
   },
 }))
 
@@ -491,7 +510,8 @@ describe('PageDesignerView 深链自动建稿（Task 15 统一入口）', () => 
     routeState.params.type = 'user_demo'
     const e6001 = Object.assign(new Error('组件不存在'), { code: 6001 })
     getDraftSpy.mockRejectedValueOnce(e6001).mockResolvedValueOnce(structuredClone(DRAFT))
-    getComponentSpy.mockResolvedValue({ type: 'user_demo', label: '演示组件', desc: '测试用组件' })
+    /* executionModel='page' → 走 page 种子页建稿分支（声明式组件走 createComponentDraft，另有专测） */
+    getComponentSpy.mockResolvedValue({ type: 'user_demo', label: '演示组件', desc: '测试用组件', executionModel: 'page' })
     createPageDraftSpy.mockResolvedValue({ type: 'user_demo', draftRev: 0, draftVersion: 1 })
     listVersionsSpy.mockResolvedValue(structuredClone(VERSIONS))
     getResourcesSpy.mockResolvedValue(structuredClone(CATALOG))
@@ -548,5 +568,139 @@ describe('PageDesignerView 组件级删除（Task 15 CRUD 补齐）', () => {
     const w = mountView()
     await flushPromises()
     expect(w.find('[data-testid="tb-comp-delete"]').exists()).toBe(false)
+  })
+})
+
+describe('PageDesignerView fields 模式（组件初始化落地）', () => {
+  /* 声明式组件（spec.fields 双源之一）草稿 fixture */
+  const FIELDS_DRAFT = {
+    type: 'op_demo', name: '演示算子', category: null, profile: 'dag', scope: 'user',
+    executionModel: 'dag-engine', executor: 'sql', executable: true, state: 'draft',
+    publishedVersion: null, draftRev: 1, draftVersion: 1, description: null, tags: [],
+    spec: {
+      fields: [
+        { key: 'sql', label: 'SQL', uiType: 'text', required: true, desc: '语句' },
+        { key: 'ds', label: '数据源', uiType: 'resource', required: false },
+      ],
+      dropPolicy: {
+        snapToGrid: false, autoName: '{type}_{n}', prefillFromUpstream: ['ds'],
+        autoConnect: { upstream: 'nearest', downstream: 'nearest' }, maxInstances: 0,
+      },
+    },
+    specHash: 'a'.repeat(64), updatedAt: '2026-10-03 10:00:00',
+  }
+  /* 八段底稿（form.params）草稿 fixture：6002 重开的内置组件复制的就是它 */
+  const BASELINE_DRAFT = {
+    type: 'sql', name: 'SQL', category: null, profile: 'dag', scope: 'builtin',
+    executionModel: 'dag-engine', executor: 'sql', executable: true, state: 'draft',
+    publishedVersion: 1, draftRev: 1, draftVersion: 2, description: null, tags: [],
+    spec: {
+      form: { title: 'SQL 参数', group: '基础', params: [{ key: 'sql', label: 'SQL', uiType: 'text', required: true, visible: true }] },
+      dropPolicy: { autoName: '{type}_{n}' },
+      other: { keep: true },
+    },
+    specHash: 'a'.repeat(64), updatedAt: '2026-10-03 10:00:00',
+  }
+
+  it('spec.fields 草稿 → fields 模式渲染：FieldsCanvas 行非空 + Inspector 挂载，palette/页面专属按钮隐藏', async () => {
+    routeState.params.type = 'op_demo'
+    getDraftSpy.mockResolvedValue(structuredClone(FIELDS_DRAFT))
+    const w = mountView()
+    await flushPromises()
+    expect(w.find('.stub-fcanvas').attributes('data-count')).toBe('2')
+    expect(w.find('.stub-finspector').exists()).toBe(true)
+    expect(w.find('.stub-canvas').exists()).toBe(false)
+    expect(w.find('[data-testid="pd-palette"]').exists()).toBe(false)
+    expect(w.find('[data-testid="tb-fields-tag"]').exists()).toBe(true)
+    /* page 专属按钮不渲染；双模式按钮（删除/刷新/保存/发布）仍在 */
+    for (const id of ['copy', 'paste', 'align-left', 'align-top', 'dist-h', 'dist-v', 'zoom', 'preview']) {
+      expect(tb(w, id).exists(), `page 专属按钮 tb-${id} 应隐藏`).toBe(false)
+    }
+    for (const id of ['undo', 'redo', 'delete', 'refresh', 'save', 'publish']) {
+      expect(tb(w, id).exists(), `双模式按钮 tb-${id} 应保留`).toBe(true)
+    }
+  })
+
+  it('patchRow 编辑 + 保存：写回 spec.fields 原位 + dropPolicy 保留', async () => {
+    routeState.params.type = 'op_demo'
+    getDraftSpy.mockResolvedValue(structuredClone(FIELDS_DRAFT))
+    saveDraftSpy.mockResolvedValue({ draftRev: 2, specHash: 'f'.repeat(64), savedAt: '2026-10-03 11:00:00' })
+    const w = mountView()
+    await flushPromises()
+    w.findComponent({ name: 'FieldsInspectorStub' }).vm.$emit('select', 0)
+    await flushPromises()
+    w.findComponent({ name: 'FieldsInspectorStub' }).vm.$emit('patchRow', 0, { label: 'SQL 语句' })
+    await flushPromises()
+    await tb(w, 'save').trigger('click')
+    await flushPromises()
+    expect(saveDraftSpy).toHaveBeenCalledTimes(1)
+    const body = saveDraftSpy.mock.calls[0][1] as { draftRev: number; spec: Record<string, unknown> }
+    expect(body.draftRev).toBe(1)
+    const rows = body.spec.fields as { key: string; label: string }[]
+    expect(rows[0].label).toBe('SQL 语句')
+    expect(rows[0].key).toBe('sql')
+    expect(rows[1].key).toBe('ds')
+    const dp = body.spec.dropPolicy as Record<string, unknown>
+    expect(dp.autoName).toBe('{type}_{n}')
+    expect(dp.prefillFromUpstream).toEqual(['ds'])
+  })
+
+  it('八段底稿（form.params）源：保存写回 form.params，form 其余段/其他 spec 段原样保留，不新增顶层 fields', async () => {
+    routeState.params.type = 'sql'
+    getDraftSpy.mockResolvedValue(structuredClone(BASELINE_DRAFT))
+    saveDraftSpy.mockResolvedValue({ draftRev: 2, specHash: 'f'.repeat(64), savedAt: '2026-10-03 11:00:00' })
+    const w = mountView()
+    await flushPromises()
+    w.findComponent({ name: 'FieldsInspectorStub' }).vm.$emit('addRow')
+    await flushPromises()
+    await tb(w, 'save').trigger('click')
+    await flushPromises()
+    const body = saveDraftSpy.mock.calls[0][1] as { spec: Record<string, unknown> }
+    const form = body.spec.form as { title: string; group: string; params: Record<string, unknown>[] }
+    expect(form.title).toBe('SQL 参数')
+    expect(form.group).toBe('基础')
+    expect(form.params).toHaveLength(2)
+    expect(form.params[0]).toMatchObject({ key: 'sql', visible: true })
+    expect(form.params[1]).toMatchObject({ visible: true }) // makeFieldRow 八段源补 visible
+    expect(body.spec.other).toEqual({ keep: true })
+    expect(body.spec.fields).toBeUndefined()
+  })
+
+  it('空声明 {}：从目录 formFields 物化初始表单（getComponent 触达，行非空）', async () => {
+    routeState.params.type = 'op_blank'
+    getDraftSpy.mockResolvedValue({ ...structuredClone(FIELDS_DRAFT), type: 'op_blank', spec: {} })
+    getComponentSpy.mockResolvedValue({
+      type: 'op_blank', label: '空白算子', desc: '', executionModel: 'dag-engine', profile: 'dag',
+      formFields: [
+        { key: 'srcDs', label: '源数据源', type: 'resource', required: true },
+        { key: 'threshold', label: '阈值', type: 'number', defaultValue: 10 },
+      ],
+    })
+    const w = mountView()
+    await flushPromises()
+    expect(getComponentSpy).toHaveBeenCalledWith('op_blank')
+    expect(w.find('.stub-fcanvas').attributes('data-count')).toBe('2')
+    expect(w.find('.stub-finspector').exists()).toBe(true)
+  })
+
+  it('6001 + 声明式目录组件 → createComponentDraft 物化 fields（不走 createPageDraft）', async () => {
+    routeState.params.type = 'user_op'
+    const e6001 = Object.assign(new Error('组件不存在'), { code: 6001 })
+    getDraftSpy.mockRejectedValueOnce(e6001).mockResolvedValueOnce(structuredClone(FIELDS_DRAFT))
+    getComponentSpy.mockResolvedValue({
+      type: 'user_op', label: '自定义算子', desc: '目录物化', executionModel: 'dag-engine', profile: 'etl',
+      formFields: [{ key: 'src', label: '源', type: 'text', required: true }],
+    })
+    createComponentDraftSpy.mockResolvedValue({ type: 'user_op', draftRev: 0, draftVersion: 1 })
+    const w = mountView()
+    await flushPromises()
+    expect(createPageDraftSpy).not.toHaveBeenCalled()
+    expect(createComponentDraftSpy).toHaveBeenCalledTimes(1)
+    const body = createComponentDraftSpy.mock.calls[0][0] as Record<string, unknown>
+    expect(body).toMatchObject({ type: 'user_op', name: '自定义算子', profile: 'etl', executionModel: 'dag-engine', executable: true })
+    expect(body.spec).toEqual({ fields: [{ key: 'src', label: '源', uiType: 'text', required: true }] })
+    /* 建稿后重载草稿进入编辑态 */
+    expect(getDraftSpy).toHaveBeenCalledTimes(2)
+    expect(w.find('.stub-fcanvas').exists()).toBe(true)
   })
 })

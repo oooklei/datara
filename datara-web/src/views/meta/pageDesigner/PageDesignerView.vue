@@ -2,36 +2,50 @@
 /**
  * 组件页面设计器 Task 13：页壳（三区域拼装 + 工具条 + 发布链）。
  *
+ * 双模式（组件初始化落地）：
+ * - page 模式：spec.page 页面 DSL——左 PagePalette / 中 PageCanvas / 右 PageInspector 三区域编辑；
+ * - fields 模式：声明式组件参数表单（spec.fields 或八段 form.params 双源）——
+ *   FieldsCanvas 表单预览 + FieldsInspector 字段编辑（含拖入策略 dropPolicy），
+ *   保存写回原源（toFieldsSpec 保留 baseSpec 其余段），无左侧组件面板，工具条收敛。
+ * 模式判定见 fieldsModel.detectPageMode（'page' in spec → page；fields/form 存在 → fields）。
+ *
  * 布局：顶栏（返回 + 名称 + 状态徽标 + 工具条，按钮置顶不滚动）+ 三区域
  * （左 PagePalette 232 可拖宽 140-520 / 中 PageCanvas flex + zoom 缩放壳 / 右 PageInspector 288 可拖宽）。
  * 面板拖宽与收放持久化同 GraphWorkbench（mousedown→window mousemove→mouseup 解绑，
  * localStorage datara.pd.panels）；画布尺寸持久化 datara.pd.canvas（canvasSize 事件落值 + 存档优先）。
  *
  * 状态：page（load 时 normalizePage）/ selectedIds 多选（主选中 = 首个）/ catalog（getResources）/
- * previewMap（preview 结果透传 PageCanvas）/ undo/redo 本地 JSON 快照栈（上限 50）。
+ * previewMap（preview 结果透传 PageCanvas）/ undo/redo 本地 JSON 快照栈（上限 50，快照对象按模式分派）。
  * 拖拽类高频事件（move/resize/canvasSize）合并撤销点（800ms 窗口），避免快照栈被单次拖拽挤爆。
- * 快捷键（GraphWorkbench 同款）：Ctrl/Cmd+Z 撤销、Ctrl+Y/Shift+Z 重做、Ctrl+C/V 复制粘贴、
- * Delete/Backspace 删除、Esc 退出预览；输入焦点（INPUT/TEXTAREA/SELECT/contentEditable）跳过。
+ * 快捷键（GraphWorkbench 同款）：Ctrl/Cmd+Z 撤销、Ctrl+Y/Shift+Z 重做、Ctrl+C/V 复制粘贴（仅 page）、
+ * Delete/Backspace 删除（page=widget / fields=字段行）、Esc 退出预览；输入焦点跳过。
  *
  * 发布链（§9 发布即刷新）：确认 → freeze 当前草稿 → publish 该 frozen 版本 →
  * 响应 data.refresh 存在则按 refreshed 出 toast；缺失（旧响应）兜底调 pageApi.refreshRefs。
  * 新建态（:type 缺省）：名称 + 4 页面模板卡 → createPageDraft（execution_model=page）→ replace 深链。
+ * 深链自动建稿（autoCreateDraft）：page 组件物化种子页；声明式组件以目录 formFields 物化 fields 草稿。
  */
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import {
-  createPageDraft, deleteComponent, freezeComponentVersion, getComponent, getComponentDraft, listComponentVersions,
-  publishComponentVersion, saveComponentDraft,
-  type ComponentDraft, type ComponentVersionRow,
+  createComponentDraft, createPageDraft, deleteComponent, freezeComponentVersion, getComponent, getComponentDraft,
+  listComponentVersions, publishComponentVersion, saveComponentDraft,
+  type ComponentDetail, type ComponentDraft, type ComponentVersionRow,
 } from '../../../services/componentApi'
 import { alignRects, distributeRects, normalizePage, genId, newWidget, reorderWidget, CANVAS_H, CANVAS_W, type BackgroundStyle, type PageDSL, type ReorderAction, type WidgetNode } from './designerModel'
 import { componentSeedPage, pageTemplates } from './templates'
 import type { ResourceCatalog } from './bindingCatalog'
 import { pageApi, type PreviewQuery, type PreviewResult } from './pageApi'
+import {
+  detectPageMode, initWithCatalogRows, loadFieldsState, makeFieldRow, rowsFromCatalogFormFields, toFieldsSpec,
+  type FieldsState,
+} from './fields/fieldsModel'
 import PagePalette from './palette/PagePalette.vue'
 import PageCanvas from './canvas/PageCanvas.vue'
 import PageInspector from './inspector/PageInspector.vue'
+import FieldsCanvas from './fields/FieldsCanvas.vue'
+import FieldsInspector from './fields/FieldsInspector.vue'
 
 /* 组件治理三页整合（ComponentHub 宿主）：designType 入参 + goCatalog/designTypeChange
  * 回调优先（页签流转），缺省回退独立路由（route.params.type + router.replace 深链）。 */
@@ -55,6 +69,10 @@ const isCreate = computed(() => !activeType.value)
 const draft = ref<ComponentDraft | null>(null)
 const versions = ref<ComponentVersionRow[]>([])
 const page = ref<PageDSL>(normalizePage(null))
+/** fields 声明式模式（表单定义编辑）：非 null = 表单定义模式（spec.fields / 八段 form.params 双源） */
+const fieldsState = ref<FieldsState | null>(null)
+const selectedFieldIdx = ref(-1)
+const isFieldsMode = computed(() => fieldsState.value !== null)
 /** 多选集合（shift+点击累积）；主选中 = 首个（Inspector 与工具条 disabled 沿用单选语义，零改动） */
 const selectedIds = ref<string[]>([])
 const selectedId = computed<string | undefined>(() => selectedIds.value[0])
@@ -110,22 +128,43 @@ function readCanvasStore(t: string): { w: number; h: number } | null {
 }
 
 /**
- * 深链自动建稿（Task 15 统一入口）：目录存在的组件首次进入设计器（草稿 404/6001）时，
- * 以目录 label/desc 物化初始模板页自动创建 page 草稿，用户直接进入修改态。
+ * 深链自动建稿（Task 15 统一入口 + 组件初始化）：目录存在的组件首次进入设计器
+ * （草稿 404/6001）时按组件类型初始化草稿——
+ * - page 组件：物化种子页建 page 草稿（原语义）；
+ * - 声明式组件（绝大多数 DAG/ETL 组件）：以目录 formFields（已是 9 基元控件）
+ *   物化 fields 声明草稿，executionModel/profile 沿用目录口径（目录私有的
+ *   template/passthrough 兜底 demo-only；canvas-device 红线 executable=false），
+ *   打开设计器即见该组件的参数表单而非空白。
  * 并发他端已建（409/6005）视为成功走重载；目录也无此 type（乱路径）不建稿，保持报错。
  */
 async function autoCreateDraft(t: string): Promise<boolean> {
   let label = ''
   let desc = ''
+  let detail: ComponentDetail | null = null
   try {
-    const c = await getComponent(t)
-    label = c.label || t
-    desc = c.desc || ''
+    detail = await getComponent(t)
+    label = detail.label || t
+    desc = detail.desc || ''
   } catch {
     return false
   }
   try {
-    await createPageDraft({ type: t, name: label, page: componentSeedPage(label, desc), description: desc || undefined })
+    if (detail.executionModel === 'page') {
+      await createPageDraft({ type: t, name: label, page: componentSeedPage(label, desc), description: desc || undefined })
+    } else {
+      const emOk = ['dag-engine', 'canvas-device', 'demo-only', 'runtime-only'].includes(detail.executionModel)
+      const profileOk = ['dag', 'etl', 'stream', 'topo'].includes(detail.profile)
+      const fields = rowsFromCatalogFormFields(detail.formFields)
+      await createComponentDraft({
+        type: t,
+        name: label,
+        profile: (profileOk ? detail.profile : 'dag') as 'dag' | 'etl' | 'stream' | 'topo',
+        executionModel: (emOk ? detail.executionModel : 'demo-only') as ComponentDetail['executionModel'],
+        executable: detail.executionModel !== 'canvas-device',
+        description: desc || undefined,
+        spec: fields.length ? { fields } : {},
+      })
+    }
   } catch (err) {
     if ((err as { code?: number })?.code !== 6005) throw err
   }
@@ -141,6 +180,8 @@ async function loadAll(t: string): Promise<void> {
   draft.value = null
   versions.value = []
   page.value = normalizePage(null)
+  fieldsState.value = null
+  selectedFieldIdx.value = -1
   try {
     let d: ComponentDraft
     try {
@@ -160,18 +201,35 @@ async function loadAll(t: string): Promise<void> {
     const [v, res] = await Promise.all([listComponentVersions(t), pageApi.getResources()])
     draft.value = d
     versions.value = v.items
-    const p = normalizePage(d.spec)
-    const saved = readCanvasStore(t)
-    if (saved) {
-      // localStorage 旧持久化值可能落在旧口径（如高 2000），按 CANVAS_W/H 钳制后再赋值
-      p.canvas.width = Math.min(CANVAS_W.max, Math.max(CANVAS_W.min, saved.w))
-      p.canvas.height = Math.min(CANVAS_H.max, Math.max(CANVAS_H.min, saved.h))
-    }
-    page.value = p
     catalog.value = res
     selectedIds.value = []
+    selectedFieldIdx.value = -1
     previewing.value = false
     previewMap.value = {}
+    /* spec 判型：page 模式（页面 DSL）/ fields 模式（表单定义——spec.fields 或八段
+       form.params；6002 重开的内置组件复制的就是八段底稿）。fields 模式下空声明从
+       目录 formFields 物化初始表单（组件初始化），用户保存后落草稿。 */
+    if (detectPageMode(d.spec, d.executionModel)) {
+      fieldsState.value = null
+      const p = normalizePage(d.spec)
+      const saved = readCanvasStore(t)
+      if (saved) {
+        // localStorage 旧持久化值可能落在旧口径（如高 2000），按 CANVAS_W/H 钳制后再赋值
+        p.canvas.width = Math.min(CANVAS_W.max, Math.max(CANVAS_W.min, saved.w))
+        p.canvas.height = Math.min(CANVAS_H.max, Math.max(CANVAS_H.min, saved.h))
+      }
+      page.value = p
+    } else {
+      page.value = normalizePage(null)
+      let st = loadFieldsState(d.spec)
+      if (st.rows.length === 0) {
+        try {
+          const c = await getComponent(t)
+          st = initWithCatalogRows(st, rowsFromCatalogFormFields(c.formFields))
+        } catch { /* 目录无此组件（用户自建）→ 保持空清单 */ }
+      }
+      fieldsState.value = st
+    }
     resetUndo()
   } catch (e) {
     loadErr.value = e instanceof Error ? e.message : String(e)
@@ -192,7 +250,8 @@ let redoStack: string[] = []
 const undoDepth = ref(0)
 const redoDepth = ref(0)
 let lastDragPushAt = 0
-const snapshot = (): string => JSON.stringify(page.value)
+/** 快照对象按模式分派：fields 模式快照 fieldsState，page 模式快照 page */
+const snapshot = (): string => JSON.stringify(fieldsState.value ?? page.value)
 function resetUndo(): void {
   undoStack = [snapshot()]
   redoStack = []
@@ -215,6 +274,18 @@ function pushUndoThrottled(): void {
   }
 }
 function restore(s: string): void {
+  if (fieldsState.value) {
+    let st: FieldsState
+    try {
+      st = JSON.parse(s) as FieldsState
+    } catch {
+      return
+    }
+    if (!st || !Array.isArray(st.rows)) return
+    fieldsState.value = st
+    if (selectedFieldIdx.value >= st.rows.length) selectedFieldIdx.value = -1
+    return
+  }
   try {
     page.value = JSON.parse(s) as PageDSL
   } catch { return }
@@ -296,6 +367,50 @@ function onUpdateCanvas(patch: Record<string, unknown>): void {
   }
 }
 
+/* ================= fields 模式事件（表单定义编辑，fieldsState 单一状态源） ================= */
+function onFieldsSelect(idx: number): void {
+  selectedFieldIdx.value = idx
+}
+function onPatchRow(idx: number, patch: Record<string, unknown>): void {
+  const st = fieldsState.value
+  if (!st || idx < 0 || idx >= st.rows.length) return
+  pushUndo()
+  st.rows[idx] = { ...st.rows[idx], ...patch }
+}
+function onAddRow(): void {
+  const st = fieldsState.value
+  if (!st) return
+  pushUndo()
+  st.rows.push(makeFieldRow(st.source))
+  selectedFieldIdx.value = st.rows.length - 1
+}
+function onRemoveRow(idx: number): void {
+  const st = fieldsState.value
+  if (!st || idx < 0 || idx >= st.rows.length) return
+  pushUndo()
+  st.rows.splice(idx, 1)
+  if (selectedFieldIdx.value >= st.rows.length) selectedFieldIdx.value = -1
+  else if (selectedFieldIdx.value > idx) selectedFieldIdx.value -= 1
+}
+function onMoveRow(idx: number, dir: -1 | 1): void {
+  const st = fieldsState.value
+  if (!st) return
+  const to = idx + dir
+  if (idx < 0 || idx >= st.rows.length || to < 0 || to >= st.rows.length) return
+  pushUndo()
+  const [row] = st.rows.splice(idx, 1)
+  st.rows.splice(to, 0, row)
+  /* 选中行跟随移动（交换序） */
+  if (selectedFieldIdx.value === idx) selectedFieldIdx.value = to
+  else if (selectedFieldIdx.value === to) selectedFieldIdx.value = idx
+}
+function onPatchDropPolicy(patch: Record<string, unknown>): void {
+  const st = fieldsState.value
+  if (!st) return
+  pushUndo()
+  st.dropPolicy = { ...st.dropPolicy, ...patch }
+}
+
 /* ================= 工具条：复制 / 粘贴 / 删除 / 对齐 / 缩放 / 刷新 ================= */
 const selWidget = (): WidgetNode | null => page.value.widgets.find((w) => w.id === selectedId.value) ?? null
 
@@ -312,15 +427,22 @@ function pushClone(src: WidgetNode): void {
   selectedIds.value = [c.id]
 }
 function onCopy(): void {
+  if (isFieldsMode.value) return
   const w = selWidget()
   if (!w) return
   copyBuf.value = JSON.parse(JSON.stringify(w)) as WidgetNode
   pushClone(copyBuf.value)
 }
 function onPaste(): void {
+  if (isFieldsMode.value) return
   if (copyBuf.value) pushClone(copyBuf.value)
 }
 function onDelete(): void {
+  /* fields 模式：删除选中字段行（Inspector mini 按钮同款语义） */
+  if (fieldsState.value) {
+    if (selectedFieldIdx.value >= 0) onRemoveRow(selectedFieldIdx.value)
+    return
+  }
   const w = selWidget()
   if (!w) return
   pushUndo()
@@ -377,7 +499,10 @@ async function onSave(): Promise<void> {
   if (!d || saving.value) return
   saving.value = true
   try {
-    const r = await saveComponentDraft(d.type, { draftRev: d.draftRev, spec: { page: page.value } })
+    /* 模式分派：fields 模式写回声明 spec（fields / form.params 双源 + dropPolicy）；
+       page 模式写回页面 DSL */
+    const spec = fieldsState.value ? toFieldsSpec(fieldsState.value) : { page: page.value }
+    const r = await saveComponentDraft(d.type, { draftRev: d.draftRev, spec })
     d.draftRev = r.draftRev
     ElMessage.success(`已保存（rev ${r.draftRev}）`)
   } catch (e) {
@@ -435,7 +560,7 @@ async function onPublish(): Promise<void> {
   try {
     await ElMessageBox.confirm(
       '发布以服务器已保存草稿为准（建议先保存），冻结为不可变版本并跑发布闸门，成功后自动刷新引用该组件的图。确认发布？',
-      '发布页面组件',
+      '发布组件',
       { type: 'warning', confirmButtonText: '发布', cancelButtonText: '取消' },
     )
   } catch { return }
@@ -581,33 +706,39 @@ async function onCreate(): Promise<void> {
           data-testid="tb-comp-delete" @click="onDeleteComponent"
         >删除组件</el-button>
       </div>
-      <!-- 工具条（按钮置顶）：撤销 重做 | 复制 粘贴 删除 | 左对齐 上对齐 横分布 纵分布 | 缩放 | 刷新 | 保存 预览 发布 -->
+      <!-- 工具条（按钮置顶）：撤销 重做 | [表单定义tag] fields模式 | page模式: 复制 粘贴 删除 对齐 分布 缩放 预览 | 刷新 保存 发布 -->
       <div v-if="!isCreate" class="pd-toolbar">
         <el-button size="small" data-testid="tb-undo" title="撤销 Ctrl+Z" :disabled="undoDepth <= 0" @click="undo">撤销</el-button>
         <el-button size="small" data-testid="tb-redo" title="重做 Ctrl+Y" :disabled="redoDepth <= 0" @click="redo">重做</el-button>
+        <el-tag v-if="isFieldsMode" size="small" type="info" data-testid="tb-fields-tag" class="pd-mode-tag">表单定义</el-tag>
         <span class="pd-sep" />
-        <el-button size="small" data-testid="tb-copy" title="复制 Ctrl+C" :disabled="!selectedId" @click="onCopy">复制</el-button>
-        <el-button size="small" data-testid="tb-paste" title="粘贴 Ctrl+V" :disabled="!copyBuf" @click="onPaste">粘贴</el-button>
-        <el-button size="small" data-testid="tb-delete" title="删除 Delete" :disabled="!selectedId" @click="onDelete">删除</el-button>
-        <span class="pd-sep" />
-        <el-button size="small" data-testid="tb-align-left" :disabled="!selectedId" @click="onAlignLeft">左对齐</el-button>
-        <el-button size="small" data-testid="tb-align-top" :disabled="!selectedId" @click="onAlignTop">上对齐</el-button>
-        <el-button size="small" data-testid="tb-dist-h" title="横向等距分布（选中 ≥3）" :disabled="selectedIds.length < 3" @click="onDistribute('x')">横分布</el-button>
-        <el-button size="small" data-testid="tb-dist-v" title="纵向等距分布（选中 ≥3）" :disabled="selectedIds.length < 3" @click="onDistribute('y')">纵分布</el-button>
-        <span class="pd-sep" />
-        <el-dropdown data-testid="tb-zoom" trigger="click" @command="onZoom">
-          <el-button size="small">缩放 {{ zoom }}% ▾</el-button>
-          <template #dropdown>
-            <el-dropdown-menu>
-              <el-dropdown-item v-for="z in ZOOMS" :key="z" :command="z" :class="{ 'is-cur': z === zoom }">{{ z }}%</el-dropdown-item>
-            </el-dropdown-menu>
-          </template>
-        </el-dropdown>
-        <span class="pd-sep" />
+        <template v-if="!isFieldsMode">
+          <el-button size="small" data-testid="tb-copy" title="复制 Ctrl+C" :disabled="!selectedId" @click="onCopy">复制</el-button>
+          <el-button size="small" data-testid="tb-paste" title="粘贴 Ctrl+V" :disabled="!copyBuf" @click="onPaste">粘贴</el-button>
+        </template>
+        <!-- 删除两种模式均可用：page=删选中 widget，fields=删选中字段行 -->
+        <el-button size="small" data-testid="tb-delete" title="删除 Delete" :disabled="isFieldsMode ? selectedFieldIdx < 0 : !selectedId" @click="onDelete">删除</el-button>
+        <template v-if="!isFieldsMode">
+          <span class="pd-sep" />
+          <el-button size="small" data-testid="tb-align-left" :disabled="!selectedId" @click="onAlignLeft">左对齐</el-button>
+          <el-button size="small" data-testid="tb-align-top" :disabled="!selectedId" @click="onAlignTop">上对齐</el-button>
+          <el-button size="small" data-testid="tb-dist-h" title="横向等距分布（选中 ≥3）" :disabled="selectedIds.length < 3" @click="onDistribute('x')">横分布</el-button>
+          <el-button size="small" data-testid="tb-dist-v" title="纵向等距分布（选中 ≥3）" :disabled="selectedIds.length < 3" @click="onDistribute('y')">纵分布</el-button>
+          <span class="pd-sep" />
+          <el-dropdown data-testid="tb-zoom" trigger="click" @command="onZoom">
+            <el-button size="small">缩放 {{ zoom }}% ▾</el-button>
+            <template #dropdown>
+              <el-dropdown-menu>
+                <el-dropdown-item v-for="z in ZOOMS" :key="z" :command="z" :class="{ 'is-cur': z === zoom }">{{ z }}%</el-dropdown-item>
+              </el-dropdown-menu>
+            </template>
+          </el-dropdown>
+          <span class="pd-sep" />
+        </template>
         <el-button size="small" data-testid="tb-refresh" :loading="loading" @click="onRefresh">刷新</el-button>
         <span class="pd-sep" />
         <el-button size="small" type="primary" plain data-testid="tb-save" :loading="saving" :disabled="!draft" @click="onSave">保存</el-button>
-        <el-button size="small" :type="previewing ? 'success' : 'default'" data-testid="tb-preview" @click="onPreview">
+        <el-button v-if="!isFieldsMode" size="small" :type="previewing ? 'success' : 'default'" data-testid="tb-preview" @click="onPreview">
           {{ previewing ? '退出预览' : '预览' }}
         </el-button>
         <el-button size="small" type="primary" data-testid="tb-publish" :loading="publishing" :disabled="!draft" @click="onPublish">发布</el-button>
@@ -636,18 +767,25 @@ async function onCreate(): Promise<void> {
       <el-button type="primary" :loading="creating" class="pd-create-btn" @click="onCreate">创建</el-button>
     </section>
 
-    <!-- 编辑态三区域 -->
+    <!-- 编辑态三区域：page 模式（左组件面板 + 画布 DSL + 属性面板）/ fields 模式（表单预览 + 字段编辑，无组件面板） -->
     <div v-else class="pd-body" v-loading="loading">
-      <aside v-show="leftOpen" class="pd-left" :style="{ width: `${leftWidth}px` }" data-testid="pd-palette">
-        <PagePalette />
-      </aside>
-      <div
-        class="pd-grip" title="拖拽调宽，双击收放" @mousedown="startPanelResize('left', $event)"
-        @dblclick="leftOpen = !leftOpen"
-      />
+      <template v-if="!isFieldsMode">
+        <aside v-show="leftOpen" class="pd-left" :style="{ width: `${leftWidth}px` }" data-testid="pd-palette">
+          <PagePalette />
+        </aside>
+        <div
+          class="pd-grip" title="拖拽调宽，双击收放" @mousedown="startPanelResize('left', $event)"
+          @dblclick="leftOpen = !leftOpen"
+        />
+      </template>
       <main class="pd-mid">
-        <div class="pd-zoom" :style="zoomStyle" data-testid="pd-canvas-stage">
+        <div class="pd-zoom" :style="isFieldsMode ? undefined : zoomStyle" data-testid="pd-canvas-stage">
+          <FieldsCanvas
+            v-if="fieldsState" :rows="fieldsState.rows" :selected-idx="selectedFieldIdx"
+            @select="onFieldsSelect"
+          />
           <PageCanvas
+            v-else
             :page="page" :selected-id="selectedId" :selected-ids="selectedIds" :preview="previewing ? previewMap : undefined"
             @add="onAdd" @select="onSelect" @move="onMove" @resize="onResize" @canvas-size="onCanvasSize"
           />
@@ -658,7 +796,14 @@ async function onCreate(): Promise<void> {
         @dblclick="rightOpen = !rightOpen"
       />
       <aside v-show="rightOpen" class="pd-right" :style="{ width: `${rightWidth}px` }" data-testid="pd-inspector">
+        <FieldsInspector
+          v-if="fieldsState"
+          :rows="fieldsState.rows" :drop-policy="fieldsState.dropPolicy" :selected-idx="selectedFieldIdx" :source="fieldsState.source"
+          @select="onFieldsSelect" @patch-row="onPatchRow" @add-row="onAddRow" @remove-row="onRemoveRow"
+          @move-row="onMoveRow" @patch-drop-policy="onPatchDropPolicy"
+        />
         <PageInspector
+          v-else
           :page="page" :selected-id="selectedId" :catalog="catalog"
           @update-widget="onUpdateWidget" @update-canvas="onUpdateCanvas" @reorder="onReorder"
         />
@@ -716,6 +861,9 @@ async function onCreate(): Promise<void> {
   height: 16px;
   background: var(--border);
   margin: 0 2px;
+}
+.pd-mode-tag {
+  flex: none;
 }
 .pd-toolbar :deep(.el-button + .el-button) {
   margin-left: 0;
