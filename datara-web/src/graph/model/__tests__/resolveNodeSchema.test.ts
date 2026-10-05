@@ -133,3 +133,46 @@ describe('specToSchema（ComponentSpec → NodeSchema 视图适配）', () => {
     expect('shape' in s).toBe(false)
   })
 })
+
+describe('审查修复（dropPolicy/initTemplate 映射 + memo）', () => {
+  it('dropPolicy：只映射被消费键（maxInstances>0、prefillFromUpstream 非空），全空整键省略', () => {
+    const full = specToSchema('t1', specOf({
+      dropPolicy: {
+        snapToGrid: true, autoName: '{type}-{n}',
+        prefillFromUpstream: ['ds', 'table'],
+        autoConnect: { upstream: 'none', downstream: 'nearest' },
+        maxInstances: 3,
+      },
+    }))
+    // snapToGrid/autoName/autoConnect 无 NodeSchema.dropPolicy 对应位与消费点，不映射
+    expect(full.dropPolicy).toEqual({ maxInstances: 3, prefillFromUpstream: ['ds', 'table'] })
+
+    const empty = specToSchema('t2', specOf()) // maxInstances=0 + prefill 空 → 整键省略
+    expect('dropPolicy' in empty).toBe(false)
+  })
+
+  it('initTemplate：扁平初值表归一为 {props}；空对象不落键', () => {
+    const s = specToSchema('t1', specOf({ initTemplate: { ds: 'ds_a', count: 5 } }))
+    expect(s.initTemplate).toEqual({ props: { ds: 'ds_a', count: 5 } })
+    expect('initTemplate' in specToSchema('t2', specOf({ initTemplate: {} }))).toBe(false)
+  })
+
+  it('select 且 options 为空数组：options 落空数组（与 normField 产物一致），不抛错', () => {
+    const s = specToSchema('t1', specOf({
+      fields: [{ key: 'mode', label: '模式', uiType: 'select', required: false, desc: '', layer: 'required', options: [] }],
+    }))
+    expect(s.form).toHaveLength(1)
+    expect(s.form[0]!.options).toEqual([])
+  })
+
+  it('memo：同一 spec 恒返回同一视图对象（WeakMap 弱引用缓存），不同 spec 各自独立', () => {
+    const spec = specOf()
+    expect(specToSchema('t1', spec)).toBe(specToSchema('t1', spec))
+    const specMap = new Map([['t1', spec]])
+    const profile = profileOf({})
+    expect(resolveNodeSchema('t1', profile, specMap, true)).toBe(resolveNodeSchema('t1', profile, specMap, true))
+    // spec 整体替换（200 重建）→ 新 spec 生成新视图
+    const spec2 = specOf()
+    expect(specToSchema('t1', spec2)).not.toBe(specToSchema('t1', spec))
+  })
+})
