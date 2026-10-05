@@ -6,6 +6,7 @@ F4 R5 引用有效性：纯函数级（supply 注入）+ save/publish 端点集�
 """
 
 import importlib.util
+import json
 import pathlib
 import sys
 
@@ -459,3 +460,123 @@ def test_publish_endpoint_r5_gate(client, db_session, monkeypatch):
     assert client.put(save_url, json={"doc": _doc([good], [], wf["id"])}).status_code == 200
     r = client.post("/api/v1/workflow-definitions/%s/publish" % wf["id"])
     assert r.status_code == 200 and r.json()["data"]["release_state"] == "online"
+
+
+# ---------------- R14 边端口类型交集（工作台优化 Task 9，方案 §3.1/§11.2） ----------------
+
+# 前后端共享用例表（Task 1 权威产物，唯一真源；跨目录定位到 datara-web 侧）
+_CASES_FILE = (ROOT.parent / "datara-web" / "src" / "graph" / "model"
+               / "__tests__" / "portTypeCases.json")
+_CASES = json.loads(_CASES_FILE.read_text(encoding="utf-8"))["cases"]
+
+port_types_match_py = _rules.port_types_match_py
+
+
+def test_r14_shared_case_table():
+    """与前端 vitest 跑同一份用例表（§11.2 校验规则一致性）：22 条逐条对表。"""
+    assert len(_CASES) == 22, "共享用例表条数变更须两侧同步复核（§11.2）"
+    for c in _CASES:
+        assert port_types_match_py(c["src"], c["dst"]) is c["expected"], c
+
+
+def test_r14_pin_string_to_json_false():
+    """钉子用例（防计划草案旧矩阵回归）：string→json 必须为 False（portTypes.ts 契约）。"""
+    assert port_types_match_py("string", "json") is False
+
+
+def test_r14_pin_none_to_any_true():
+    """钉子用例：none→any 必须 True（any 优先于 none 判定，草案矩阵亦曾写反）。"""
+    assert port_types_match_py("none", "any") is True
+    assert port_types_match_py("any", "none") is True
+
+
+def test_r14_pin_any_or_blank_always_true():
+    """钉子用例：any/缺省恒 True（存量旧组件未声明 type 不误拦）。"""
+    for src in ("any", "", None):
+        for dst in ("table", "none", "any", "", None):
+            assert port_types_match_py(src, dst) is True, (src, dst)
+    for dst in ("any", "", None):
+        for src in ("table", "none"):
+            assert port_types_match_py(src, dst) is True, (src, dst)
+
+
+def test_r14_pin_unknown_src_as_any():
+    """钉子用例：「未知类型视为 any」仅作用于矩阵查找阶段（前端 portTypesMatch 同构）：
+    未知源类型对具体目标恒放行；none 闸门优先于未知回退，未知源对 none 恒假。"""
+    assert port_types_match_py("no_such_type", "table") is True
+    assert port_types_match_py("no_such_type", "none") is False
+
+
+def test_r14_mismatched_edge_rejected():
+    """R14：端口类型不匹配的边 → 违规，文案与前端逐字一致，nodeId 落在源节点。"""
+    supply = {
+        "comp_a": {"inputs": [{"name": "in", "type": "stream"}],
+                   "outputs": [{"name": "out", "type": "table"}]},
+        "comp_b": {"inputs": [{"name": "in", "type": "stream"}],
+                   "outputs": [{"name": "out", "type": "table"}]},
+    }
+    doc = _doc(
+        [_node("a", "comp_a"), _node("b", "comp_b")],
+        [{"id": "e1", "source": "a", "target": "b",
+          "sourceHandle": "out", "targetHandle": "in"}])
+    v = [x for x in validate_graph(doc, port_types=supply) if x["rule"] == "R14"]
+    assert v == [{"rule": "R14", "nodeId": "a", "message": "类型不匹配：源 table → 目标 stream"}]
+
+
+def test_r14_matched_edge_passes():
+    """R14：table→table 同型与 dataset→table 兼容边均放行。"""
+    supply = {
+        "comp_a": {"outputs": [{"name": "out", "type": "dataset"}]},
+        "comp_b": {"inputs": [{"name": "in", "type": "table"}]},
+    }
+    doc = _doc(
+        [_node("a", "comp_a"), _node("b", "comp_b")],
+        [{"id": "e1", "source": "a", "target": "b",
+          "sourceHandle": "out", "targetHandle": "in"}])
+    assert [x for x in validate_graph(doc, port_types=supply) if x["rule"] == "R14"] == []
+
+
+def test_r14_skipped_without_supply():
+    """port_types 缺省（None）→ R14 整体跳过（纯函数兼容：vars_supply/comp_versions 同先例）。"""
+    doc = _doc(
+        [_node("a", "comp_b"), _node("b", "comp_b")],
+        [{"id": "e1", "source": "a", "target": "b",
+          "sourceHandle": "out", "targetHandle": "in"}])
+    assert [x for x in validate_graph(doc) if x["rule"] == "R14"] == []
+
+
+def test_r14_unresolvable_port_treated_as_any():
+    """R14 宽进口径（前端 connPortType 同构）：供给外 type / handle 未命中 / 缺省
+    handle / 端口未声明 type，任一端解析不到即视为 any——不误拦。"""
+    base = [{"id": "e1", "source": "a", "target": "b"}]
+    nodes = [_node("a", "comp_a"), _node("b", "comp_b")]
+    # ① 两端 type 均不在供给
+    doc = _doc([_node("a", "ghost_x"), _node("b", "ghost_y")], base)
+    assert [x for x in validate_graph(doc, port_types={}) if x["rule"] == "R14"] == []
+    # ② handle 未命中端口名
+    supply = {"comp_a": {"outputs": [{"name": "out", "type": "table"}]},
+              "comp_b": {"inputs": [{"name": "in", "type": "stream"}]}}
+    doc = _doc(nodes, [{"id": "e1", "source": "a", "target": "b",
+                        "sourceHandle": "nope", "targetHandle": "in"}])
+    assert [x for x in validate_graph(doc, port_types=supply) if x["rule"] == "R14"] == []
+    # ③ 边缺省 handle（存量旧画布形态）
+    doc = _doc(nodes, base)
+    assert [x for x in validate_graph(doc, port_types=supply) if x["rule"] == "R14"] == []
+    # ④ 命中端口但未声明 type
+    supply = {"comp_a": {"outputs": [{"name": "out"}]},
+              "comp_b": {"inputs": [{"name": "in", "type": "stream"}]}}
+    doc = _doc(nodes, [{"id": "e1", "source": "a", "target": "b",
+                        "sourceHandle": "out", "targetHandle": "in"}])
+    assert [x for x in validate_graph(doc, port_types=supply) if x["rule"] == "R14"] == []
+
+
+def test_r14_dangling_edge_skips_type_check():
+    """端点缺失的边走 R4，R14 不重复报（前端 edgeTypeIssues 同口径跳过悬挂边）。"""
+    supply = {"comp_a": {"outputs": [{"name": "out", "type": "table"}]},
+              "comp_b": {"inputs": [{"name": "in", "type": "stream"}]}}
+    doc = _doc([_node("a", "comp_a")],
+               [{"id": "e1", "source": "a", "target": "ghost",
+                 "sourceHandle": "out", "targetHandle": "in"}])
+    v = validate_graph(doc, port_types=supply)
+    assert any(x["rule"] == "R4" for x in v)
+    assert [x for x in v if x["rule"] == "R14"] == []

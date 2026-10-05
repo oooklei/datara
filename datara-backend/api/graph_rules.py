@@ -32,6 +32,11 @@
   供给中对应值为 None（t_component 查无 published_version），即该组件当前无生效版本
   ——保存时 warning 留痕（§8/§18.3：无 published 版本的组件其工作流不可发布），
   发布时 R6 已升级为 error 拒绝。
+- R14 边端口类型交集（工作台优化 Task 9，方案 §3.1/§11.2 前后端同规则）：port_types
+  供给存在时逐边判 port_types_match_py——矩阵镜像前端 portTypes.ts（唯一真源在原侧，
+  本侧禁止单独演进，portTypeCases.json 22 条用例表做行为等价证明）；端口类型解析不到
+  （供给外 type/handle 未命中/缺省 handle/端口无 type）视为 any 不误拦；任一边不匹配
+  → 「类型不匹配：源 X → 目标 Y」（与前端连线四道闸同一文案）。
 
 降级策略：catalog 快照缺失/损坏时 R2/R3 跳过并 error 日志（部署事故另查），
 R0/R1/R4 不依赖目录照常执行——校验引擎不可用不卡死保存主链路。
@@ -62,6 +67,59 @@ CATALOG_FILE = Path(__file__).resolve().parent.parent / "common" / "dag_catalog.
 RUN_VARS = frozenset({"run.instanceId", "run.loopIter"})
 # 日期命名模式判定的求值基准（纯格式判定，任意时刻结果一致）
 _PATTERN_PROBE = datetime(2000, 1, 1)
+
+# ---- R14 端口类型兼容矩阵（工作台优化 Task 9，方案 §3.1/§11.2）----
+# 唯一真源：datara-web/src/graph/model/portTypes.ts 的 TYPE_COMPAT——本字典为其逐行
+# 镜像（键=源类型，值=可流入的目标类型集合），两侧由共享用例表 portTypeCases.json
+# （22 条，两侧测试各跑同一份）做行为等价锁定；§11.2 一致性契约：禁止单侧单独演进，
+# 改矩阵必须先改 portTypes.ts 并同步用例表。
+TYPE_COMPAT = {
+    "string": ["string"],
+    "number": ["number", "string"],
+    "boolean": ["boolean"],
+    "json": ["json", "string"],
+    "table": ["table", "dataset", "json"],
+    "dataset": ["dataset", "table", "json"],
+    "file": ["file", "json"],
+    "stream": ["stream"],
+}
+
+
+def port_types_match_py(src, dst) -> bool:
+    """端口类型交集匹配（R14 纯函数，前端 portTypesMatch 逐行同构）：
+
+    任一端为 any（或空值/未知类型）恒真，优先于 none 判定；无 any 时任一端为 none
+    恒假；其余查兼容矩阵（未知源类型视为 any——存量旧组件未声明 type 不误拦）。
+    """
+    if not src or not dst or src == "any" or dst == "any":
+        return True
+    if src == "none" or dst == "none":
+        return False
+    row = TYPE_COMPAT.get(src)
+    return True if row is None else dst in row
+
+
+def _port_type(port_types: dict, node_map: dict, node_id, handle, side: str):
+    """单端端口类型解析（R14，前端 GraphWorkbench.connPortType 逐行同构）：
+
+    供给按组件 type → {inputs:[{name,type}], outputs:[{name,type}]}（spec ports 形态）。
+    节点/组件 type 不在供给、side 端口清单缺失、handle 缺省或未命中端口名、命中但未
+    声明 type——任一情形返回 None（=any），与前端宽进口径一致不误拦。
+    """
+    n = node_map.get(node_id)
+    if not isinstance(n, dict):
+        return None
+    spec = port_types.get(str(n.get("type") or ""))
+    if not isinstance(spec, dict):
+        return None
+    ports = spec.get(side)
+    if not isinstance(ports, list) or not handle:
+        return None
+    for p in ports:
+        if isinstance(p, dict) and p.get("name") == handle:
+            t = p.get("type")
+            return str(t) if t else None
+    return None
 
 
 @lru_cache(maxsize=1)
@@ -136,7 +194,7 @@ def _ref_resolvable(name: str, vars_supply: dict, node_param_keys: set) -> bool:
 
 
 def validate_graph(doc: dict, vars_supply: dict = None, comp_versions: dict = None,
-                   require_component_ref: bool = False) -> list:
+                   port_types: dict = None, require_component_ref: bool = False) -> list:
     """校验 GraphDocument，返回违规清单 [{rule, nodeId, message}]（空=通过）。
 
     vars_supply（Task F4 R5）：{"workflow": set[str], "global": set[str]}，调用方
@@ -144,6 +202,10 @@ def validate_graph(doc: dict, vars_supply: dict = None, comp_versions: dict = No
     跳过。纯函数（除目录缓存），可测试注入：测试直接 monkeypatch _catalog / 传 supply。
     comp_versions / require_component_ref（Task D2 R6）：t_component type→published_version
     供给与严格模式开关（发布路径传 True；save 宽松兼容存量），None 跳过版本存在性。
+    port_types（Task 9 R14，方案 §3.1/§11.2）：组件 type→{"inputs"/"outputs":
+    [{name, type}]}（spec ports 形态），调用方查治理库 spec_json 组装（机制同
+    vars_supply/comp_versions）；None 时 R14 整体跳过（纯函数兼容），端口类型解析
+    不到的边视为 any 不误拦。
     """
     violations: list = []
 
@@ -292,7 +354,8 @@ def validate_graph(doc: dict, vars_supply: dict = None, comp_versions: dict = No
                         bad("R6", "组件「%s」引用 v%s，当前 published 为 v%s（升级走显式升级 §9.3）"
                             % (ntype, ver, published), nid)
 
-    # ---- R1 环检测（Kahn） + R4 悬挂边 ----
+    # ---- R1 环检测（Kahn） + R4 悬挂边 + R14 边端口类型交集 ----
+    node_map = {str(n.get("id") or ""): n for n in nodes if isinstance(n, dict)}
     indeg = {nid: 0 for nid in node_ids}
     adj: dict = {nid: [] for nid in node_ids}
     for e in edges:
@@ -309,6 +372,14 @@ def validate_graph(doc: dict, vars_supply: dict = None, comp_versions: dict = No
         if tgt not in node_ids:
             bad("R4", "边终点节点不存在: %s" % tgt)
             continue
+        # ---- R14 边端口类型交集（Task 9，§3.1/§11.2 前后端同规则）----
+        # 仅校验两端点均在画布内的边（悬挂边归 R4，前端 edgeTypeIssues 同口径跳过）；
+        # 端口类型解析不到视为 any（_port_type 宽进口径），不匹配即拒绝。
+        if port_types is not None:
+            src_t = _port_type(port_types, node_map, src, e.get("sourceHandle"), "outputs")
+            dst_t = _port_type(port_types, node_map, tgt, e.get("targetHandle"), "inputs")
+            if not port_types_match_py(src_t, dst_t):
+                bad("R14", "类型不匹配：源 %s → 目标 %s" % (src_t, dst_t), src)
         adj[src].append(tgt)
         indeg[tgt] += 1
 
@@ -328,7 +399,6 @@ def validate_graph(doc: dict, vars_supply: dict = None, comp_versions: dict = No
     # ---- R13 物化锚点：含 endpoint_select 的同步链必须挂 assert（G-10 服务端收口）----
     # 对齐 engine.py materialize_sync_exec：无 assert 的同步链不会被物化 → sync 配置无处落地。
     # 保存闸门直接报 error，避免用户画完链才发现运行不了。
-    node_map = {str(n.get("id") or ""): n for n in nodes if isinstance(n, dict)}
     ep_ids = [nid for nid, n in node_map.items()
               if isinstance(n, dict) and n.get("type") == "endpoint_select"]
     if ep_ids:
