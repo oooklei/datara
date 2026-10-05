@@ -99,6 +99,17 @@ def test_spec_etag_304(client):
     assert r2.headers["etag"] == etag
 
 
+def test_spec_etag_changes_after_offline(client):
+    """内容变化 → ETag 变化：下线组件后带旧 ETag 条件请求得 200（缓存正确失效）。"""
+    _make_frozen(client)
+    assert _publish(client).status_code == 200
+    etag = client.get("/api/v1/components/spec").headers["etag"]
+    assert _offline(client, "spec_demo").status_code == 200
+    r = client.get("/api/v1/components/spec", headers={"If-None-Match": etag})
+    assert r.status_code == 200, "内容已变化，不得命中旧 ETag 返回 304"
+    assert "spec_demo" not in [i["type"] for i in r.json()["items"]]
+
+
 def test_spec_offline_component_excluded(client):
     """下线组件不在 spec 清单中（仅 state=published 进下发范围）。"""
     _make_frozen(client)

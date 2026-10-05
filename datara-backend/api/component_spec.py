@@ -9,7 +9,9 @@ GET /components/spec：一次请求下发全部已发布组件的 8 要素规格
 - 8 要素骨架（identity/description/inputs/outputs/visual/behaviors/dropPolicy/
   extensions）缺失项显式 None 而非缺键——前端可稳定按键取值；
 - 不走统一响应包：直接返回 {"items": [...]}，ETag 需确定性（统一包的时间戳等
-  附加元数据会破坏缓存语义）；ETag 取 SHA-256(body) 前 32 位；
+  附加元数据会破坏缓存语义）；ETag 取 SHA-256(body) 前 32 位，清单按 Component.id
+  确定性排序（顺序依赖 DB 返回序会使同内容产出不同 ETag，侵蚀 304 缓存价值），
+  且响应体即哈希所依据的原始字节；
 - 挂载顺序约束：main.py 中必须先于 component.router 注册，否则本路径会被
   api/component.py 的 GET /{type_name} 动态路由吞掉（返回 404 组件不存在）。
 """
@@ -18,7 +20,6 @@ import hashlib
 import json
 
 from fastapi import APIRouter, Depends, Request, Response
-from fastapi.responses import JSONResponse
 from sqlalchemy import and_
 from sqlalchemy.orm import Session
 
@@ -30,6 +31,8 @@ router = APIRouter(prefix="/components", tags=["component-spec"])
 
 def _spec_item(comp: Component, ver: ComponentVersion) -> dict:
     """单组件 8 要素骨架映射：spec 未声明的要素显式 None（§2.3 契约）。"""
+    # published 行经发布闸门校验、损坏仅可能源于外部改库——解析失败直接抛错快速失败，
+    # 不静默兜底，避免把半成品规格下发到前端
     spec = json.loads(ver.spec_json or "{}")
     return {
         "type": comp.type,
@@ -74,6 +77,8 @@ def get_components_spec(request: Request, db: Session = Depends(get_db)):
             ),
         )
         .filter(Component.state == "published")
+        # 确定性排序：同内容必须产出同 ETag，否则 304 缓存失效被顺序漂移侵蚀
+        .order_by(Component.id)
         .all()
     )
     payload = [_spec_item(comp, ver) for comp, ver in rows]
@@ -82,5 +87,5 @@ def get_components_spec(request: Request, db: Session = Depends(get_db)):
     if request.headers.get("if-none-match") == etag:
         # 304 无 body（RFC 7232：仅回 ETag 供缓存续用）
         return Response(status_code=304, headers={"ETag": etag})
-    return JSONResponse(status_code=200, headers={"ETag": etag},
-                        content=json.loads(body))
+    # 直接以哈希所依据的字节作为响应体：ETag 与响应字节精确对应，且免去二次序列化
+    return Response(content=body, media_type="application/json", headers={"ETag": etag})
