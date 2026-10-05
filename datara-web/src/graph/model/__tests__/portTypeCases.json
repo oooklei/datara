@@ -1,8 +1,11 @@
 {
-  "comment": "src/dst/expected 三元组；any 恒匹配，none 恒不匹配，其余查兼容矩阵",
+  "comment": "src/dst/expected 三元组；any 恒匹配（优先于 none 判定），none 恒不匹配除非对端为 any，其余查兼容矩阵",
   "cases": [
     { "src": "any",      "dst": "stream", "expected": true },
     { "src": "stream",   "dst": "any",    "expected": true },
+    { "src": "none",     "dst": "any",    "expected": true },
+    { "src": "any",      "dst": "none",   "expected": true },
+    { "src": "none",     "dst": "none",   "expected": false },
     { "src": "none",     "dst": "table",  "expected": false },
     { "src": "table",    "dst": "none",   "expected": false },
     { "src": "table",    "dst": "table",  "expected": true },
@@ -14,6 +17,11 @@
     { "src": "number",   "dst": "string", "expected": true },
     { "src": "file",     "dst": "table",  "expected": false },
     { "src": "stream",   "dst": "stream", "expected": true },
-    { "src": "boolean",  "dst": "number", "expected": false }
+    { "src": "boolean",  "dst": "number", "expected": false },
+    { "src": "string",   "dst": "string", "expected": true },
+    { "src": "number",   "dst": "number", "expected": true },
+    { "src": "boolean",  "dst": "boolean", "expected": true },
+    { "src": "json",     "dst": "json",   "expected": true },
+    { "src": "file",     "dst": "file",   "expected": true }
   ]
 }
