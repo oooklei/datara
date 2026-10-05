@@ -211,10 +211,18 @@ function normField(v: unknown): SpecField {
 
 /** DataType 运行时白名单（由 TYPE_COMPAT 键 + any/none 派生，与 portTypes 枚举保持同源不双写） */
 const DATA_TYPE_SET = new Set<string>(['any', 'none', ...Object.keys(TYPE_COMPAT)])
-const ONCHANGE_ACTIONS = new Set(['refreshOptions', 'resetFields', 'prefill'])
-const PREFILL_FROMS = new Set(['input.table', 'input.columns', 'input.datasource'])
-const PICKERS = new Set(['table', 'column', 'cron', 'sshHost'])
-const HIDDEN_INPUT_KEYS = new Set(['tenantId', 'runId', 'nodeId', 'workflowId'])
+
+/* 枚举值集单一源（Task 6 审查修复）：normalizeSpec 白名单与前端编辑器下拉共用同一数组，
+ * 消灭「componentSpec Set vs SpecFormVisual/Extension 本地枚举」两处同步漂移风险。
+ * fieldsModel.loadDeclState 宽进提取亦按此收敛（脏值丢弃，不透传保存）。 */
+export const ONCHANGE_ACTION_VALUES = ['refreshOptions', 'resetFields', 'prefill'] as const
+export const PREFILL_FROM_VALUES = ['input.table', 'input.columns', 'input.datasource'] as const
+export const PICKER_VALUES = ['table', 'column', 'cron', 'sshHost'] as const
+export const HIDDEN_INPUT_KEY_VALUES = ['tenantId', 'runId', 'nodeId', 'workflowId'] as const
+const ONCHANGE_ACTIONS = new Set<string>(ONCHANGE_ACTION_VALUES)
+const PREFILL_FROMS = new Set<string>(PREFILL_FROM_VALUES)
+const PICKERS = new Set<string>(PICKER_VALUES)
+const HIDDEN_INPUT_KEYS = new Set<string>(HIDDEN_INPUT_KEY_VALUES)
 
 /** 松散 JSON 对象守卫（后端 spec 本就是松散 JSON，入参一律按 unknown 兜底） */
 function isPlainObj(v: unknown): v is Record<string, unknown> {

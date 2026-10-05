@@ -11,6 +11,7 @@
  */
 import { computed } from 'vue'
 import type { SpecViolation } from '../../services/componentSpec'
+import { ONCHANGE_ACTION_VALUES, PREFILL_FROM_VALUES, PICKER_VALUES } from '../../services/componentSpec'
 import type { DeclBadge, DeclBehaviors } from '../../views/meta/pageDesigner/fields/fieldsModel'
 
 const props = defineProps<{
@@ -22,22 +23,24 @@ const props = defineProps<{
 }>()
 const emit = defineEmits<{ (e: 'patch', p: Partial<{ icon: string; color: string; badge?: DeclBadge; behaviors?: DeclBehaviors }>): void }>()
 
-const ONCHANGE_ACTIONS = [
-  { value: 'refreshOptions', label: '刷新候选 refreshOptions' },
-  { value: 'resetFields', label: '重置字段 resetFields' },
-  { value: 'prefill', label: '预填 prefill' },
-] as const
-const PREFILL_FROMS = [
-  { value: 'input.table', label: '上游表 input.table' },
-  { value: 'input.columns', label: '上游列 input.columns' },
-  { value: 'input.datasource', label: '上游数据源 input.datasource' },
-] as const
-const PICKERS = [
-  { value: 'table', label: '选表 table' },
-  { value: 'column', label: '选列 column' },
-  { value: 'cron', label: 'Cron 表达式' },
-  { value: 'sshHost', label: 'SSH 主机' },
-] as const
+/* 行为枚举值域单一源（审查修复）：值集来自 componentSpec 导出数组（与 normalizeSpec.normBehaviors
+ * 白名单同源），本组件只维护中文 label 映射——消灭「白名单 Set vs 本地下拉枚举」两处同步漂移 */
+const ACTION_LABEL: Record<string, string> = {
+  refreshOptions: '刷新候选 refreshOptions',
+  resetFields: '重置字段 resetFields',
+  prefill: '预填 prefill',
+}
+const FROM_LABEL: Record<string, string> = {
+  'input.table': '上游表 input.table',
+  'input.columns': '上游列 input.columns',
+  'input.datasource': '上游数据源 input.datasource',
+}
+const PICKER_LABEL: Record<string, string> = {
+  table: '选表 table', column: '选列 column', cron: 'Cron 表达式', sshHost: 'SSH 主机',
+}
+const ONCHANGE_ACTIONS = ONCHANGE_ACTION_VALUES.map((value) => ({ value, label: ACTION_LABEL[value] ?? value }))
+const PREFILL_FROMS = PREFILL_FROM_VALUES.map((value) => ({ value, label: FROM_LABEL[value] ?? value }))
+const PICKERS = PICKER_VALUES.map((value) => ({ value, label: PICKER_LABEL[value] ?? value }))
 
 const badge = computed<DeclBadge | null>(() => props.badge ?? null)
 const colorEntries = computed<[string, string][]>(() => Object.entries(badge.value?.colorMap ?? {}))
@@ -56,8 +59,10 @@ function patchBadge(p: Partial<DeclBadge>): void {
   const next = key || Object.keys(colorMap).length ? { key, colorMap } : undefined
   emit('patch', { badge: next })
 }
+/** colorMap 编辑（审查修复）：改键时原值随行迁移（v 为该行现值），新键允许空串中间态（不回退旧键，
+ * 否则清空键准备输入新键时会被旧键顶回无法续输）；重复键经 Object.fromEntries 静默合并——后写覆盖先写 */
 function setMapValue(i: number, k: string, v: string): void {
-  const entries = colorEntries.value.map(([ek, ev], xi) => (xi === i ? ([k || ek, v] as [string, string]) : [ek, ev]))
+  const entries = colorEntries.value.map(([ek, ev], xi) => (xi === i ? ([k, v] as [string, string]) : [ek, ev]))
   patchBadge({ colorMap: Object.fromEntries(entries) })
 }
 function addMapValue(): void {

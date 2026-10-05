@@ -703,4 +703,45 @@ describe('PageDesignerView fields 模式（组件初始化落地）', () => {
     expect(getDraftSpy).toHaveBeenCalledTimes(2)
     expect(w.find('.stub-fcanvas').exists()).toBe(true)
   })
+
+  it('decl 页签编辑 + 保存：summary 写回 spec + icon/color 恒写 + 未编辑 V2 键不落 JSON', async () => {
+    routeState.params.type = 'op_demo'
+    getDraftSpy.mockResolvedValue(structuredClone(FIELDS_DRAFT))
+    saveDraftSpy.mockResolvedValue({ draftRev: 2, specHash: 'f'.repeat(64), savedAt: '2026-10-03 11:00:00' })
+    const w = mountView()
+    await flushPromises()
+    /* 身份页签 summary 输入（data-testid 经 attrs 透传到 el-input stub 根 input） */
+    const summaryInput = w.find('input[data-testid="sf-id-summary"]')
+    expect(summaryInput.exists()).toBe(true)
+    await summaryInput.setValue('演示算子简介')
+    await tb(w, 'save').trigger('click')
+    await flushPromises()
+    const body = saveDraftSpy.mock.calls[0][1] as { spec: Record<string, unknown> }
+    expect(body.spec.summary).toBe('演示算子简介')
+    /* 一级必有键恒写（空串也落，页面骨架依赖） */
+    expect(body.spec.icon).toBe('')
+    expect(body.spec.color).toBe('')
+    /* 未编辑的 V2 optional 键不落 JSON（缺位键契约） */
+    expect(body.spec.displayName).toBeUndefined()
+    expect(body.spec.outputs).toBeUndefined()
+    expect(body.spec.behaviors).toBeUndefined()
+    /* fields/dropPolicy 原链路不回归 */
+    expect(Array.isArray(body.spec.fields)).toBe(true)
+    expect((body.spec.dropPolicy as Record<string, unknown>).autoName).toBe('{type}_{n}')
+  })
+
+  it('outputs 缺项豁免口径：dag-engine 记缺项 chip，demo-only 豁免（ExecutionModel 语义对齐）', async () => {
+    /* dag-engine（真实执行）：outputs 未声明 → 徽标记缺项 */
+    routeState.params.type = 'op_demo'
+    getDraftSpy.mockResolvedValue(structuredClone(FIELDS_DRAFT))
+    let w = mountView()
+    await flushPromises()
+    expect(w.find('[data-testid="scb-chip-outputs"]').exists()).toBe(true)
+    w.unmount()
+    /* demo-only（无任何执行实现）：无数据输出语义 → outputs 缺项豁免，chip 消失 */
+    getDraftSpy.mockResolvedValue({ ...structuredClone(FIELDS_DRAFT), executionModel: 'demo-only' })
+    w = mountView()
+    await flushPromises()
+    expect(w.find('[data-testid="scb-chip-outputs"]').exists()).toBe(false)
+  })
 })

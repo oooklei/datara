@@ -289,8 +289,8 @@ function restore(s: string): void {
       return
     }
     if (!st || !Array.isArray(st.rows)) return
-    /* 旧快照（Task 6 前/异常序列化）无 decl 分片时兜底空骨架，避免页签组件 undefined 访问 */
-    if (!st.decl || typeof st.decl !== 'object') st.decl = { summary: '', icon: '', color: '' }
+    /* 旧快照（Task 6 前/异常序列化）无 decl 分片或 decl 非普通对象（含数组）时兜底空骨架，避免页签组件 undefined 访问 */
+    if (!st.decl || typeof st.decl !== 'object' || Array.isArray(st.decl)) st.decl = { summary: '', icon: '', color: '' }
     fieldsState.value = st
     if (selectedFieldIdx.value >= st.rows.length) selectedFieldIdx.value = -1
     return
@@ -450,7 +450,10 @@ const completeness = computed<CompletenessResult | null>(() => {
       layer: typeof r.layer === 'string' ? r.layer : 'required',
     })),
     outputs: st.decl.outputs,
-    logical: em === 'page' || em === 'canvas-device',
+    /* outputs 缺项豁免口径（审查修复，对齐 componentApi.ExecutionModel 语义）：page（UI 组件不可执行）/
+     * canvas-device（画布装饰设计上不执行）/ demo-only（后端全文检索无该 type，无任何执行实现）——
+     * 三者均无执行/数据输出语义；dag-engine（真实执行，含 runtime-only 运行时节点）保持需 outputs */
+    logical: em === 'page' || em === 'canvas-device' || em === 'demo-only',
   })
 })
 /** 打字即校验（红线 2 前端镜像）：对当前编辑态组装的完整 spec 跑纯数据校验，违规下发各页签行内红标 */

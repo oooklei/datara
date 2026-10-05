@@ -8,8 +8,8 @@
  */
 import { describe, expect, it } from 'vitest'
 import {
-  detectFieldsSource, detectPageMode, initWithCatalogRows, loadFieldsState, makeFieldRow,
-  normDropPolicy, normFieldRow, rowsFromCatalogFormFields, toFieldsSpec,
+  applyDeclSpec, detectFieldsSource, detectPageMode, initWithCatalogRows, loadDeclState, loadFieldsState,
+  makeFieldRow, normDropPolicy, normFieldRow, rowsFromCatalogFormFields, toFieldsSpec,
 } from '../fieldsModel'
 
 describe('detectPageMode / detectFieldsSource（spec 判型）', () => {
@@ -147,5 +147,77 @@ describe('normFieldRow / normDropPolicy / makeFieldRow（规范化）', () => {
   it('makeFieldRow：fields 源无 visible；form.params 源补 visible:true', () => {
     expect(makeFieldRow('fields')).toEqual({ key: '', label: '', uiType: 'text', required: false })
     expect(makeFieldRow('form.params')).toEqual({ key: '', label: '', uiType: 'text', required: false, visible: true })
+  })
+})
+
+describe('loadDeclState / applyDeclSpec（decl 分片往返）', () => {
+  it('V2 缺位键不落 JSON：optional 全 undefined → delete 旧键；summary/icon/color 恒写', () => {
+    const d = loadDeclState({ summary: '简介', icon: '⬢', color: '#1677ff' })
+    expect(d).toEqual({ summary: '简介', icon: '⬢', color: '#1677ff' })
+    const out: Record<string, unknown> = {
+      summary: '旧', icon: '旧', color: '旧',
+      displayName: '旧显示名', outputs: [{ name: 'x', type: 'table' }], specVersion: '2.0',
+    }
+    applyDeclSpec(out, JSON.parse(JSON.stringify(d)) as ReturnType<typeof loadDeclState>)
+    /* 一级必有键始终覆写；V2 optional 键 undefined 即删除（缺位键不落 JSON 契约） */
+    expect(out).toEqual({ summary: '简介', icon: '⬢', color: '#1677ff' })
+  })
+
+  it('合法声明往返一致：load → apply → load 深度相等（含 outputs/badge/behaviors/extensions/initTemplate）', () => {
+    const spec = {
+      summary: '汇总算子', displayName: '汇总', aliases: ['agg', '汇总'], description: '描述', category: '转换', docUrl: 'https://x',
+      icon: 'Σ', color: '#409eff',
+      outputs: [{ name: 'out', type: 'table', desc: '结果表' }],
+      badge: { key: 'state', colorMap: { ok: '#67c23a', fail: '#f56c6c' } },
+      behaviors: {
+        onChange: [{ field: 'ds', action: 'refreshOptions', target: ['t1', 't2'], remote: 'r1' }],
+        prefillFromUpstream: [{ field: 'sql', from: 'input.table' }],
+        pick: [{ field: 'cron', picker: 'cron' }],
+      },
+      extensions: { hiddenInputs: ['tenantId', 'runId'], capabilities: { testable: true, previewLimit: 50 } },
+      initTemplate: { srcDs: 1, nested: { a: [1, 2] } },
+      specVersion: '2.0',
+    }
+    const out: Record<string, unknown> = {}
+    applyDeclSpec(out, loadDeclState(spec as Record<string, unknown>))
+    expect(loadDeclState(out)).toEqual(loadDeclState(spec as Record<string, unknown>))
+  })
+
+  it('非法形状缺位兜底：outputs 元素/badge/behaviors/extensions/initTemplate 形状非法 → 不炸且键缺位', () => {
+    const d = loadDeclState({
+      summary: 's', icon: 'i', color: 'c',
+      outputs: ['scalar', null, 42, { name: 'x', type: 'table' }],
+      badge: { key: 7, colorMap: 'no' },
+      behaviors: { onChange: 'no', pick: [{ field: 'f', picker: 'table' }] },
+      extensions: { hiddenInputs: 'no', capabilities: 'no' },
+      initTemplate: 'no',
+      aliases: 'no',
+    })
+    expect(d.outputs).toEqual([{ name: 'x', type: 'table' }])
+    expect(d.badge).toBeUndefined()
+    expect(d.behaviors).toEqual({ pick: [{ field: 'f', picker: 'table' }] })
+    expect(d.extensions).toBeUndefined()
+    expect(d.initTemplate).toBeUndefined()
+    expect(d.aliases).toBeUndefined()
+  })
+
+  it('枚举白名单收敛：outputs.type 非法整行丢弃（全灭不落键）；action/from/picker 非法行丢弃；hiddenInputs 脏值过滤', () => {
+    const d = loadDeclState({
+      summary: 's', icon: 'i', color: 'c',
+      outputs: [{ name: 'bad', type: 'bogus' }, { name: 'noType' }],
+      behaviors: {
+        onChange: [{ field: 'f', action: 'bogus' }, { field: 'f', action: 'resetFields' }],
+        prefillFromUpstream: [{ field: 'f', from: 'bogus' }, { field: 'f', from: 'input.columns' }],
+        pick: [{ field: 'f', picker: 'bogus' }, { field: 'f', picker: 'sshHost' }],
+      },
+      extensions: { hiddenInputs: ['tenantId', 'hacker', 42, null, 'nodeId'] },
+    })
+    expect(d.outputs).toBeUndefined() // 全部被收敛 → 不落键（避免 outputs:[] 落 JSON）
+    expect(d.behaviors).toEqual({
+      onChange: [{ field: 'f', action: 'resetFields' }],
+      prefillFromUpstream: [{ field: 'f', from: 'input.columns' }],
+      pick: [{ field: 'f', picker: 'sshHost' }],
+    })
+    expect(d.extensions).toEqual({ hiddenInputs: ['tenantId', 'nodeId'] })
   })
 })

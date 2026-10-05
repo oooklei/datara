@@ -16,7 +16,15 @@
  * 纯数据、无副作用，可独立单测。
  */
 import type { ComponentSpec } from '../../../../services/componentSpec'
-import type { DataType } from '../../../../graph/model/portTypes'
+import { ONCHANGE_ACTION_VALUES, PREFILL_FROM_VALUES, PICKER_VALUES, HIDDEN_INPUT_KEY_VALUES } from '../../../../services/componentSpec'
+import { TYPE_COMPAT, type DataType } from '../../../../graph/model/portTypes'
+
+/** outputs.type 合法域（DataType 枚举 = any/none + TYPE_COMPAT 键；与 normalizeSpec DATA_TYPE_SET 同派生口径） */
+const DECL_DATA_TYPES = new Set<string>(['any', 'none', ...Object.keys(TYPE_COMPAT)])
+const DECL_ONCHANGE_ACTIONS = new Set<string>(ONCHANGE_ACTION_VALUES)
+const DECL_PREFILL_FROMS = new Set<string>(PREFILL_FROM_VALUES)
+const DECL_PICKERS = new Set<string>(PICKER_VALUES)
+const DECL_HIDDEN_INPUTS = new Set<string>(HIDDEN_INPUT_KEY_VALUES)
 
 /** 字段行（已知键受控编辑 + 未知键原样保留；uiType 允许越界值透传显示，发布闸门兜底） */
 export type FieldRow = Record<string, unknown> & {
@@ -104,15 +112,19 @@ export function loadDeclState(s: Record<string, unknown>): DeclState {
   const docUrl = optStr(s.docUrl)
   if (docUrl !== undefined) d.docUrl = docUrl
   if (Array.isArray(s.outputs)) {
-    d.outputs = s.outputs.flatMap((x): DeclOutput[] => {
+    const outs = s.outputs.flatMap((x): DeclOutput[] => {
       if (x === null || typeof x !== 'object' || Array.isArray(x)) return []
       const o = x as Record<string, unknown>
+      /* 白名单收敛：type 非法（脏值）整行丢弃，不透传保存（与 normBehaviors 非法枚举丢弃先例同口径） */
       const t = String(o.type ?? '')
-      const item: DeclOutput = { name: String(o.name ?? ''), type: (t || 'any') as DataType }
+      if (!DECL_DATA_TYPES.has(t)) return []
+      const item: DeclOutput = { name: String(o.name ?? ''), type: t as DataType }
       const desc = optStr(o.desc)
       if (desc !== undefined) item.desc = desc
       return [item]
     })
+    /* 全部被收敛丢弃 → 不落键（与 behaviors 空判定一致，避免 outputs:[] 落 JSON） */
+    if (outs.length > 0) d.outputs = outs
   }
   if (s.badge !== null && typeof s.badge === 'object' && !Array.isArray(s.badge)) {
     const b = s.badge as Record<string, unknown>
@@ -131,7 +143,8 @@ export function loadDeclState(s: Record<string, unknown>): DeclState {
       bh.onChange = raw.onChange.flatMap((x): NonNullable<DeclBehaviors['onChange']> => {
         if (x === null || typeof x !== 'object' || Array.isArray(x)) return []
         const o = x as Record<string, unknown>
-        if (typeof o.field !== 'string' || typeof o.action !== 'string') return []
+        /* 白名单收敛：action 非法整行丢弃（与 normalizeSpec.normBehaviors 同口径，脏值不透传保存） */
+        if (typeof o.field !== 'string' || typeof o.action !== 'string' || !DECL_ONCHANGE_ACTIONS.has(o.action)) return []
         const item: NonNullable<DeclBehaviors['onChange']>[number] = { field: o.field, action: o.action as 'refreshOptions' }
         if (Array.isArray(o.target)) item.target = o.target.filter((t): t is string => typeof t === 'string')
         const remote = optStr(o.remote)
@@ -143,7 +156,7 @@ export function loadDeclState(s: Record<string, unknown>): DeclState {
       bh.prefillFromUpstream = raw.prefillFromUpstream.flatMap((x): NonNullable<DeclBehaviors['prefillFromUpstream']> => {
         if (x === null || typeof x !== 'object' || Array.isArray(x)) return []
         const o = x as Record<string, unknown>
-        if (typeof o.field !== 'string' || typeof o.from !== 'string') return []
+        if (typeof o.field !== 'string' || typeof o.from !== 'string' || !DECL_PREFILL_FROMS.has(o.from)) return []
         return [{ field: o.field, from: o.from as 'input.table' }]
       })
     }
@@ -151,7 +164,7 @@ export function loadDeclState(s: Record<string, unknown>): DeclState {
       bh.pick = raw.pick.flatMap((x): NonNullable<DeclBehaviors['pick']> => {
         if (x === null || typeof x !== 'object' || Array.isArray(x)) return []
         const o = x as Record<string, unknown>
-        if (typeof o.field !== 'string' || typeof o.picker !== 'string') return []
+        if (typeof o.field !== 'string' || typeof o.picker !== 'string' || !DECL_PICKERS.has(o.picker)) return []
         return [{ field: o.field, picker: o.picker as 'table' }]
       })
     }
@@ -160,7 +173,7 @@ export function loadDeclState(s: Record<string, unknown>): DeclState {
   if (s.extensions !== null && typeof s.extensions === 'object' && !Array.isArray(s.extensions)) {
     const raw = s.extensions as Record<string, unknown>
     const ext: DeclExtensions = {}
-    if (Array.isArray(raw.hiddenInputs)) ext.hiddenInputs = raw.hiddenInputs.filter((x): x is string => typeof x === 'string')
+    if (Array.isArray(raw.hiddenInputs)) ext.hiddenInputs = raw.hiddenInputs.filter((x): x is string => typeof x === 'string' && DECL_HIDDEN_INPUTS.has(x))
     if (raw.capabilities !== null && typeof raw.capabilities === 'object' && !Array.isArray(raw.capabilities)) {
       const c = raw.capabilities as Record<string, unknown>
       const caps: NonNullable<DeclExtensions['capabilities']> = {}

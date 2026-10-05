@@ -13,6 +13,7 @@
  */
 import { computed, ref, watch } from 'vue'
 import type { SpecViolation } from '../../services/componentSpec'
+import { HIDDEN_INPUT_KEY_VALUES } from '../../services/componentSpec'
 import type { FieldRow, DeclExtensions } from '../../views/meta/pageDesigner/fields/fieldsModel'
 
 const props = defineProps<{
@@ -29,12 +30,11 @@ const emit = defineEmits<{
   (e: 'patch', p: Partial<{ extensions?: DeclExtensions; initTemplate?: Record<string, unknown>; specVersion?: string }>): void
 }>()
 
-const HIDDEN_INPUTS = [
-  { value: 'tenantId', label: 'tenantId 租户' },
-  { value: 'runId', label: 'runId 运行' },
-  { value: 'nodeId', label: 'nodeId 节点' },
-  { value: 'workflowId', label: 'workflowId 工作流' },
-] as const
+/* hiddenInputs 值域单一源：白名单数组来自 componentSpec 导出集（与 normalizeSpec.normExtensions 同源），label 仅展示层 */
+const HIDDEN_INPUT_LABEL: Record<string, string> = {
+  tenantId: 'tenantId 租户', runId: 'runId 运行', nodeId: 'nodeId 节点', workflowId: 'workflowId 工作流',
+}
+const HIDDEN_INPUTS = HIDDEN_INPUT_KEY_VALUES.map((value) => ({ value, label: HIDDEN_INPUT_LABEL[value] ?? value }))
 
 interface DpShape {
   snapToGrid?: boolean
@@ -60,23 +60,49 @@ function patchAC(side: 'upstream' | 'downstream', v: unknown): void {
   patchDP({ autoConnect: { ...(dp.value.autoConnect ?? {}), [side]: v } })
 }
 
-/** extensions 编辑：三项皆空 = 未声明（缺位键不落 JSON） */
+/** extensions 编辑：三项皆空 = 未声明（缺位键不落 JSON）；
+ * capabilities 语义级判定——testable===true 或 previewLimit 为有效正数才落键，
+ * 避免 { testable:false, previewLimit:undefined } 这类「有键无义」的 {"capabilities":{}} 落 JSON */
 function emitExt(p: Partial<DeclExtensions>): void {
   const next: DeclExtensions = { ...ext.value, ...p }
   const cleaned: DeclExtensions = {}
   if (next.hiddenInputs?.length) cleaned.hiddenInputs = next.hiddenInputs
-  if (next.capabilities && Object.keys(next.capabilities).length) cleaned.capabilities = next.capabilities
+  if (next.capabilities) {
+    const c = next.capabilities
+    const caps: NonNullable<DeclExtensions['capabilities']> = {}
+    if (c.testable === true) caps.testable = true
+    const limit = Number(c.previewLimit)
+    if (Number.isFinite(limit) && limit > 0) caps.previewLimit = Math.min(Math.floor(limit), 100)
+    if (Object.keys(caps).length > 0) cleaned.capabilities = caps
+  }
   emit('patch', { extensions: Object.keys(cleaned).length ? cleaned : undefined })
 }
 function patchCaps(p: Partial<NonNullable<DeclExtensions['capabilities']>>): void {
   emitExt({ capabilities: { ...(ext.value.capabilities ?? {}), ...p } })
 }
 
-/* initTemplate JSON 文本编辑：切换编辑对象时回填格式化文本；解析成功才上抛 */
+/* initTemplate JSON 文本编辑：切换编辑对象时回填格式化文本；解析成功才上抛。
+ * 回声抑制（审查修复）：自身 emit 的声明经宿主回流（decl 引用变更触发 watch）时，
+ * 若当前文本解析结果与新值深度相等则跳过回填——避免 JSON.stringify(v,null,2) 重排
+ * 文本/光标跳末尾破坏续输；采用「值相等跳过」而非自写标记，undo/redo/切换组件等
+ * 外部值真实变化的场景仍能正确回填，不依赖事件时序。 */
 const tplText = ref('')
 const tplBad = ref(false)
 watch(() => props.initTemplate, (v) => {
-  tplText.value = v === undefined ? '' : JSON.stringify(v, null, 2)
+  if (v === undefined) {
+    /* 仅当文本本就为空时跳过（避免误清用户正在编辑的非法 JSON 草稿）；undefined = 已清空声明 */
+    if (tplText.value.trim() === '') { tplBad.value = false; return }
+    tplText.value = ''
+    tplBad.value = false
+    return
+  }
+  const s = tplText.value.trim()
+  if (s !== '') {
+    try {
+      if (JSON.stringify(JSON.parse(s)) === JSON.stringify(v)) return
+    } catch { /* 当前文本非法 JSON（红标态）：外部值真实变化，继续回填 */ }
+  }
+  tplText.value = JSON.stringify(v, null, 2)
   tplBad.value = false
 }, { immediate: true })
 function onTplInput(v: string): void {
