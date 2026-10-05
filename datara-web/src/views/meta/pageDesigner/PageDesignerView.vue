@@ -20,18 +20,20 @@
  * 快捷键（GraphWorkbench 同款）：Ctrl/Cmd+Z 撤销、Ctrl+Y/Shift+Z 重做、Ctrl+C/V 复制粘贴（仅 page）、
  * Delete/Backspace 删除（page=widget / fields=字段行）、Esc 退出预览；输入焦点跳过。
  *
- * 发布链（§9 发布即刷新）：确认 → freeze 当前草稿 → publish 该 frozen 版本 →
- * 响应 data.refresh 存在则按 refreshed 出 toast；缺失（旧响应）兜底调 pageApi.refreshRefs。
+ * 发布链（§9 发布即刷新 + §2.4 破坏性变更闸门）：确认 → freeze 当前草稿 → publish 该 frozen 版本 →
+ * 响应 data.refresh 存在则按 refreshed 出 toast；缺失（旧响应）兜底调 pageApi.refreshRefs；
+ * 422/6009（破坏性变更未确认）→ 弹四类变更清单对话框，确认后带 breaking_confirmed=true 重发。
  * 新建态（:type 缺省）：名称 + 4 页面模板卡 → createPageDraft（execution_model=page）→ replace 深链。
  * 深链自动建稿（autoCreateDraft）：page 组件物化种子页；声明式组件以目录 formFields 物化 fields 草稿。
  */
-import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { computed, h, onBeforeUnmount, onMounted, ref, watch, type VNode } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import {
   createComponentDraft, createPageDraft, deleteComponent, freezeComponentVersion, getComponent, getComponentDraft,
   listComponentVersions, publishComponentVersion, saveComponentDraft,
-  type ComponentDetail, type ComponentDraft, type ComponentVersionRow,
+  type BreakingChangePayload, type BreakingChanges, type ComponentDetail, type ComponentDraft,
+  type ComponentVersionRow, type PublishResult,
 } from '../../../services/componentApi'
 import { alignRects, distributeRects, normalizePage, genId, newWidget, reorderWidget, CANVAS_H, CANVAS_W, type BackgroundStyle, type PageDSL, type ReorderAction, type WidgetNode } from './designerModel'
 import { componentSeedPage, pageTemplates } from './templates'
@@ -605,7 +607,47 @@ async function onPreview(): Promise<void> {
   previewing.value = true
 }
 
-/* ================= 发布链（§9 发布即刷新） ================= */
+/* ================= 发布链（§9 发布即刷新 + §2.4 破坏性变更闸门） ================= */
+
+/** 破坏性变更四类空清单（6009 载荷缺失时兜底，避免清单渲染 undefined） */
+const EMPTY_BREAKING: BreakingChanges = {
+  removed: [], uiChanged: [], requiredTightened: [], outputsRemoved: [],
+}
+
+/** 四类破坏性变更 → ElMessageBox VNode（仅渲染非空类目；全空时兜底提示） */
+function breakingListVNode(changes: BreakingChanges): VNode {
+  const rows: Array<[string, string[]]> = [
+    ['移除字段', changes.removed ?? []],
+    ['控件类型变化', changes.uiChanged ?? []],
+    ['必填收紧', changes.requiredTightened ?? []],
+    ['移除输出', changes.outputsRemoved ?? []],
+  ]
+  const items = rows
+    .filter(([, v]) => v.length > 0)
+    .map(([label, v]) => h('li', null, [h('strong', null, `${label}：`), v.join('、')]))
+  return h('div', null, [
+    h('p', null, '本次发布相对已发布版本存在破坏性变更，存量实例将受影响：'),
+    items.length > 0
+      ? h('ul', { style: 'margin:4px 0 8px 18px' }, items)
+      : h('p', null, '（服务端未返回明细）'),
+    h('p', { style: 'color:var(--el-color-warning)' }, '字段映射等升级迁移由后续升级流程提供，此处确认仅作发布放行。'),
+  ])
+}
+
+/** 破坏性变更确认对话框：true = 用户确认继续发布 */
+async function confirmBreaking(changes: BreakingChanges): Promise<boolean> {
+  try {
+    await ElMessageBox.confirm(breakingListVNode(changes), '检测到破坏性变更', {
+      type: 'warning',
+      confirmButtonText: '确认发布',
+      cancelButtonText: '取消',
+    })
+    return true
+  } catch {
+    return false
+  }
+}
+
 async function onPublish(): Promise<void> {
   const d = draft.value
   if (!d || publishing.value) return
@@ -619,7 +661,20 @@ async function onPublish(): Promise<void> {
   publishing.value = true
   try {
     const fr = await freezeComponentVersion(d.type)
-    const pub = await publishComponentVersion(d.type, { version: fr.frozenVersion, draftRev: fr.draftRev })
+    let pub: PublishResult
+    try {
+      pub = await publishComponentVersion(d.type, { version: fr.frozenVersion, draftRev: fr.draftRev })
+    } catch (e) {
+      /* §2.4 破坏性变更闸门：6009 + data.code='breaking_change' → 弹四类清单，
+         用户确认后带 breaking_confirmed=true 重发同一 frozen 版本（不重复 freeze）；
+         其余错误原样上抛走统一错误提示 */
+      const err = e as Error & { code?: number; data?: Partial<BreakingChangePayload> }
+      if (err.code !== 6009 || err.data?.code !== 'breaking_change') throw err
+      if (!(await confirmBreaking(err.data.changes ?? EMPTY_BREAKING))) return
+      pub = await publishComponentVersion(d.type, {
+        version: fr.frozenVersion, draftRev: fr.draftRev, breakingConfirmed: true,
+      })
+    }
     let tail: string
     if (pub.refresh) {
       tail = pub.refresh.refreshed > 0 ? `已刷新 ${pub.refresh.refreshed} 个图引用` : '无引用需要刷新'
