@@ -97,6 +97,9 @@ export const SPEC_UI_TYPES = [
 export type SpecUiType = (typeof SPEC_UI_TYPES)[number]['value']
 const SPEC_UI_TYPE_SET = new Set<string>(SPEC_UI_TYPES.map((t) => t.value))
 
+/** 字段三层归属白名单（V1 normField 即消费；缺省视为 required，向后兼容） */
+const FIELD_LAYERS = new Set(['required', 'optional', 'hidden'])
+
 export interface SpecPort {
   name: string
   type: string
@@ -208,7 +211,6 @@ function normField(v: unknown): SpecField {
 
 /** DataType 运行时白名单（由 TYPE_COMPAT 键 + any/none 派生，与 portTypes 枚举保持同源不双写） */
 const DATA_TYPE_SET = new Set<string>(['any', 'none', ...Object.keys(TYPE_COMPAT)])
-const FIELD_LAYERS = new Set(['required', 'optional', 'hidden'])
 const ONCHANGE_ACTIONS = new Set(['refreshOptions', 'resetFields', 'prefill'])
 const PREFILL_FROMS = new Set(['input.table', 'input.columns', 'input.datasource'])
 const PICKERS = new Set(['table', 'column', 'cron', 'sshHost'])
@@ -236,15 +238,15 @@ function normAliases(v: unknown): string[] | undefined {
   return v.filter((x): x is string => typeof x === 'string')
 }
 
-/** 声明式输出：type 不在 DataType 枚举 → 归一为 any（不炸渲染） */
+/** 声明式输出：非对象元素整项丢弃（对齐 normBehaviors 策略）；type 不在 DataType 枚举 → 归一为 any（不炸渲染） */
 function normOutputs(v: unknown): ComponentSpec['outputs'] {
   if (!Array.isArray(v)) return undefined
-  return v.map((x) => {
-    const o = isPlainObj(x) ? x : {}
-    const t = String(o.type ?? '')
-    const item: SpecOutputDecl = { name: String(o.name ?? ''), type: (DATA_TYPE_SET.has(t) ? t : 'any') as DataType }
-    if (typeof o.desc === 'string') item.desc = o.desc
-    return item
+  return v.flatMap((x): SpecOutputDecl[] => {
+    if (!isPlainObj(x)) return []
+    const t = String(x.type ?? '')
+    const item: SpecOutputDecl = { name: String(x.name ?? ''), type: (DATA_TYPE_SET.has(t) ? t : 'any') as DataType }
+    if (typeof x.desc === 'string') item.desc = x.desc
+    return [item]
   })
 }
 
@@ -258,7 +260,7 @@ function normBadge(v: unknown): ComponentSpec['badge'] {
   return { key: v.key, colorMap }
 }
 
-/** 声明式行为：逐项枚举校验，非法项丢弃 */
+/** 声明式行为：逐项枚举校验，非法项丢弃；空对象不落键（对齐 normOptionsEx 收敛模式） */
 function normBehaviors(v: unknown): ComponentSpec['behaviors'] {
   if (!isPlainObj(v)) return undefined
   const out: NonNullable<ComponentSpec['behaviors']> = {}
@@ -286,10 +288,10 @@ function normBehaviors(v: unknown): ComponentSpec['behaviors'] {
       return [{ field: o.field, picker: o.picker as BehaviorPickDecl['picker'] }]
     })
   }
-  return out
+  return Object.keys(out).length > 0 ? out : undefined
 }
 
-/** 扩展能力：hiddenInputs 只保留 4 个合法枚举；previewLimit 硬约束 ≤100（Math.min 兜底） */
+/** 扩展能力：hiddenInputs 只保留 4 个合法枚举；previewLimit 仅接受 >0 有限数，floor 后钳制 ≤100；空对象不落键 */
 function normExtensions(v: unknown): ComponentSpec['extensions'] {
   if (!isPlainObj(v)) return undefined
   const out: NonNullable<ComponentSpec['extensions']> = {}
@@ -302,10 +304,10 @@ function normExtensions(v: unknown): ComponentSpec['extensions'] {
     const caps: NonNullable<NonNullable<ComponentSpec['extensions']>['capabilities']> = {}
     if (typeof c.testable === 'boolean') caps.testable = c.testable
     const limit = Number(c.previewLimit)
-    if (Number.isFinite(limit)) caps.previewLimit = Math.min(limit, 100)
-    out.capabilities = caps
+    if (Number.isFinite(limit) && limit > 0) caps.previewLimit = Math.min(Math.floor(limit), 100)
+    if (Object.keys(caps).length > 0) out.capabilities = caps
   }
-  return out
+  return Object.keys(out).length > 0 ? out : undefined
 }
 
 /** 声明式控件选项：数值域 Number 兜底，全部非法 → 缺位 */
