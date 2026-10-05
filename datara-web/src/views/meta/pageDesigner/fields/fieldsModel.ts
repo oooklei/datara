@@ -15,6 +15,8 @@
  * 参数表单，而非空白。
  * 纯数据、无副作用，可独立单测。
  */
+import type { ComponentSpec } from '../../../../services/componentSpec'
+import type { DataType } from '../../../../graph/model/portTypes'
 
 /** 字段行（已知键受控编辑 + 未知键原样保留；uiType 允许越界值透传显示，发布闸门兜底） */
 export type FieldRow = Record<string, unknown> & {
@@ -32,12 +34,163 @@ export interface FieldsState {
   source: FieldsSource
   rows: FieldRow[]
   dropPolicy: Record<string, unknown>
-  /** 原 spec 深拷贝底板（保存时仅替换来源键 + dropPolicy，其余原样保留） */
+  /** Task 6：8 要素声明分片（身份/表现/outputs/扩展；undo 快照随 FieldsState 一并序列化） */
+  decl: DeclState
+  /** 原 spec 深拷贝底板（保存时仅替换来源键 + dropPolicy + decl，其余原样保留） */
   baseSpec: Record<string, unknown>
 }
 
 /** uiType 9 基元（与 componentSpec.SPEC_UI_TYPES 同口径；此处放宽为 string 白名单便于透传） */
 export const FIELD_UI_TYPES = ['text', 'number', 'bool', 'select', 'expr', 'hint', 'rows', 'mapEditor', 'resource']
+
+/* ── Task 6（方案§2.1/§2.6）：8 要素 4 组声明分片编辑态 ──
+ * fields/dropPolicy 之外的可编辑声明（身份/表现/契约 outputs/扩展）统一进 decl 分片，
+ * 与 rows/dropPolicy 同受 undo 快照与 toFieldsSpec 写回管理。
+ * 类型严格取自 ComponentSpec（不双写结构定义），保证与 normalizeSpec/normBehaviors 枚举同源。 */
+
+/** 声明式输出行（ComponentSpec.outputs 元素；type 为 DataType 枚举字符串） */
+export type DeclOutput = NonNullable<ComponentSpec['outputs']>[number]
+/** 状态徽标（ComponentSpec.badge） */
+export type DeclBadge = NonNullable<ComponentSpec['badge']>
+/** 声明式行为（ComponentSpec.behaviors；枚举值经编辑器下拉限定为合法值） */
+export type DeclBehaviors = NonNullable<ComponentSpec['behaviors']>
+/** 扩展能力（ComponentSpec.extensions；hiddenInputs 放宽为 string 便于透传显示） */
+export interface DeclExtensions {
+  hiddenInputs?: string[]
+  capabilities?: { testable?: boolean; previewLimit?: number }
+}
+
+/** 8 要素 4 组声明分片（身份/表现/契约 outputs/扩展；fields 与 dropPolicy 走 FieldsState 原字段） */
+export interface DeclState {
+  /* 身份组（summary/icon/color 为 ComponentSpec 一级必有字段；type 只读展示由宿主传 draft.type） */
+  summary: string
+  displayName?: string
+  aliases?: string[]
+  description?: string
+  category?: string
+  docUrl?: string
+  /* 表现组 */
+  icon: string
+  color: string
+  badge?: DeclBadge
+  behaviors?: DeclBehaviors
+  /* 契约组 outputs（fields 在 FieldsState.rows） */
+  outputs?: DeclOutput[]
+  /* 扩展组（dropPolicy 在 FieldsState.dropPolicy） */
+  extensions?: DeclExtensions
+  initTemplate?: Record<string, unknown>
+  specVersion?: string
+}
+
+/** 宽松提取字符串（非字符串缺位，对齐 normOptString） */
+function optStr(v: unknown): string | undefined {
+  return typeof v === 'string' ? v : undefined
+}
+
+/** spec → decl 分片编辑态（宽进：宽松 JSON 逐键提取，非法形状缺位，编辑器内再收敛） */
+export function loadDeclState(s: Record<string, unknown>): DeclState {
+  const d: DeclState = {
+    summary: String(s.summary ?? ''),
+    icon: String(s.icon ?? ''),
+    color: String(s.color ?? ''),
+  }
+  const displayName = optStr(s.displayName)
+  if (displayName !== undefined) d.displayName = displayName
+  if (Array.isArray(s.aliases)) d.aliases = s.aliases.filter((x): x is string => typeof x === 'string')
+  const description = optStr(s.description)
+  if (description !== undefined) d.description = description
+  const category = optStr(s.category)
+  if (category !== undefined) d.category = category
+  const docUrl = optStr(s.docUrl)
+  if (docUrl !== undefined) d.docUrl = docUrl
+  if (Array.isArray(s.outputs)) {
+    d.outputs = s.outputs.flatMap((x): DeclOutput[] => {
+      if (x === null || typeof x !== 'object' || Array.isArray(x)) return []
+      const o = x as Record<string, unknown>
+      const t = String(o.type ?? '')
+      const item: DeclOutput = { name: String(o.name ?? ''), type: (t || 'any') as DataType }
+      const desc = optStr(o.desc)
+      if (desc !== undefined) item.desc = desc
+      return [item]
+    })
+  }
+  if (s.badge !== null && typeof s.badge === 'object' && !Array.isArray(s.badge)) {
+    const b = s.badge as Record<string, unknown>
+    if (typeof b.key === 'string' && b.colorMap !== null && typeof b.colorMap === 'object' && !Array.isArray(b.colorMap)) {
+      const colorMap: Record<string, string> = {}
+      for (const [k, v] of Object.entries(b.colorMap as Record<string, unknown>)) {
+        if (typeof v === 'string') colorMap[k] = v
+      }
+      d.badge = { key: b.key, colorMap }
+    }
+  }
+  if (s.behaviors !== null && typeof s.behaviors === 'object' && !Array.isArray(s.behaviors)) {
+    const raw = s.behaviors as Record<string, unknown>
+    const bh: DeclBehaviors = {}
+    if (Array.isArray(raw.onChange)) {
+      bh.onChange = raw.onChange.flatMap((x): NonNullable<DeclBehaviors['onChange']> => {
+        if (x === null || typeof x !== 'object' || Array.isArray(x)) return []
+        const o = x as Record<string, unknown>
+        if (typeof o.field !== 'string' || typeof o.action !== 'string') return []
+        const item: NonNullable<DeclBehaviors['onChange']>[number] = { field: o.field, action: o.action as 'refreshOptions' }
+        if (Array.isArray(o.target)) item.target = o.target.filter((t): t is string => typeof t === 'string')
+        const remote = optStr(o.remote)
+        if (remote !== undefined) item.remote = remote
+        return [item]
+      })
+    }
+    if (Array.isArray(raw.prefillFromUpstream)) {
+      bh.prefillFromUpstream = raw.prefillFromUpstream.flatMap((x): NonNullable<DeclBehaviors['prefillFromUpstream']> => {
+        if (x === null || typeof x !== 'object' || Array.isArray(x)) return []
+        const o = x as Record<string, unknown>
+        if (typeof o.field !== 'string' || typeof o.from !== 'string') return []
+        return [{ field: o.field, from: o.from as 'input.table' }]
+      })
+    }
+    if (Array.isArray(raw.pick)) {
+      bh.pick = raw.pick.flatMap((x): NonNullable<DeclBehaviors['pick']> => {
+        if (x === null || typeof x !== 'object' || Array.isArray(x)) return []
+        const o = x as Record<string, unknown>
+        if (typeof o.field !== 'string' || typeof o.picker !== 'string') return []
+        return [{ field: o.field, picker: o.picker as 'table' }]
+      })
+    }
+    if (Object.keys(bh).length > 0) d.behaviors = bh
+  }
+  if (s.extensions !== null && typeof s.extensions === 'object' && !Array.isArray(s.extensions)) {
+    const raw = s.extensions as Record<string, unknown>
+    const ext: DeclExtensions = {}
+    if (Array.isArray(raw.hiddenInputs)) ext.hiddenInputs = raw.hiddenInputs.filter((x): x is string => typeof x === 'string')
+    if (raw.capabilities !== null && typeof raw.capabilities === 'object' && !Array.isArray(raw.capabilities)) {
+      const c = raw.capabilities as Record<string, unknown>
+      const caps: NonNullable<DeclExtensions['capabilities']> = {}
+      if (typeof c.testable === 'boolean') caps.testable = c.testable
+      const limit = Number(c.previewLimit)
+      if (Number.isFinite(limit) && limit > 0) caps.previewLimit = Math.min(Math.floor(limit), 100)
+      if (Object.keys(caps).length > 0) ext.capabilities = caps
+    }
+    if (Object.keys(ext).length > 0) d.extensions = ext
+  }
+  if (s.initTemplate !== null && typeof s.initTemplate === 'object' && !Array.isArray(s.initTemplate)) {
+    d.initTemplate = JSON.parse(JSON.stringify(s.initTemplate)) as Record<string, unknown>
+  }
+  const specVersion = optStr(s.specVersion)
+  if (specVersion !== undefined) d.specVersion = specVersion
+  return d
+}
+
+/** decl 分片写回 spec 底板：summary/icon/color 必有键始终写；V2 optional 键 undefined 即删除（缺位键不落 JSON，与 normalizeSpec 向后兼容契约一致） */
+export function applyDeclSpec(out: Record<string, unknown>, d: DeclState): void {
+  out.summary = d.summary
+  out.icon = d.icon
+  out.color = d.color
+  const v2Keys = ['displayName', 'aliases', 'description', 'category', 'docUrl', 'outputs', 'badge', 'behaviors', 'extensions', 'initTemplate', 'specVersion'] as const
+  for (const k of v2Keys) {
+    const v = d[k]
+    if (v === undefined) delete out[k]
+    else out[k] = JSON.parse(JSON.stringify(v))
+  }
+}
 
 function isObj(v: unknown): v is Record<string, unknown> {
   return v !== null && typeof v === 'object' && !Array.isArray(v)
@@ -137,6 +290,7 @@ export function loadFieldsState(spec: unknown): FieldsState {
     source,
     rows: normFieldRows(rawRows),
     dropPolicy: normDropPolicy(s.dropPolicy),
+    decl: loadDeclState(s),
     baseSpec: isObj(spec) ? (JSON.parse(JSON.stringify(spec)) as Record<string, unknown>) : {},
   }
 }
@@ -163,6 +317,8 @@ export function toFieldsSpec(st: FieldsState): Record<string, unknown> {
     out.form = form
   }
   out.dropPolicy = JSON.parse(JSON.stringify(st.dropPolicy)) as Record<string, unknown>
+  /* Task 6：8 要素声明分片原位写回（summary/icon/color 必有键；V2 optional 缺位删键） */
+  applyDeclSpec(out, JSON.parse(JSON.stringify(st.decl)) as DeclState)
   return out
 }
 

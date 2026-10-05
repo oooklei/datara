@@ -39,8 +39,15 @@ import type { ResourceCatalog } from './bindingCatalog'
 import { pageApi, type PreviewQuery, type PreviewResult } from './pageApi'
 import {
   detectPageMode, initWithCatalogRows, loadFieldsState, makeFieldRow, rowsFromCatalogFormFields, toFieldsSpec,
-  type FieldsState,
+  type DeclOutput, type DeclState, type FieldsState,
 } from './fields/fieldsModel'
+import { validateSpecPureData, type SpecViolation } from '../../../services/componentSpec'
+import { specCompleteness, type CompletenessResult } from '../../../components/designer/specCompleteness'
+import SpecCompletenessBadge from '../../../components/designer/SpecCompletenessBadge.vue'
+import SpecFormIdentity from '../../../components/designer/SpecFormIdentity.vue'
+import SpecFormContract from '../../../components/designer/SpecFormContract.vue'
+import SpecFormVisual from '../../../components/designer/SpecFormVisual.vue'
+import SpecFormExtension from '../../../components/designer/SpecFormExtension.vue'
 import PagePalette from './palette/PagePalette.vue'
 import PageCanvas from './canvas/PageCanvas.vue'
 import PageInspector from './inspector/PageInspector.vue'
@@ -282,6 +289,8 @@ function restore(s: string): void {
       return
     }
     if (!st || !Array.isArray(st.rows)) return
+    /* 旧快照（Task 6 前/异常序列化）无 decl 分片时兜底空骨架，避免页签组件 undefined 访问 */
+    if (!st.decl || typeof st.decl !== 'object') st.decl = { summary: '', icon: '', color: '' }
     fieldsState.value = st
     if (selectedFieldIdx.value >= st.rows.length) selectedFieldIdx.value = -1
     return
@@ -410,6 +419,46 @@ function onPatchDropPolicy(patch: Record<string, unknown>): void {
   pushUndo()
   st.dropPolicy = { ...st.dropPolicy, ...patch }
 }
+
+/* ================= 8 要素 4 组页签（Task 6，方案§2.1/§2.6） ================= */
+/** 激活页签（identity/contract/visual/extension；徽标缺项 chip 点击直达改写此值） */
+const specTab = ref('identity')
+/** decl 分片受控上抛（SpecForm* 单向数据流：宿主持 FieldsState.decl 单一状态源） */
+function onPatchDecl(patch: Partial<DeclState>): void {
+  const st = fieldsState.value
+  if (!st) return
+  pushUndo()
+  st.decl = { ...st.decl, ...patch }
+}
+/** outputs 行编辑整组上抛（SpecFormContract） */
+function onUpdateOutputs(list: DeclOutput[] | undefined): void {
+  onPatchDecl({ outputs: list })
+}
+/** 4 组完整度（logical：page/canvas-device 等无数据输出语义组件豁免 outputs 缺项） */
+const completeness = computed<CompletenessResult | null>(() => {
+  const st = fieldsState.value
+  if (!st) return null
+  const em = draft.value?.executionModel
+  return specCompleteness({
+    type: draft.value?.type ?? '',
+    summary: st.decl.summary,
+    icon: st.decl.icon,
+    color: st.decl.color,
+    fields: st.rows.map((r) => ({
+      required: r.required === true,
+      // Task 2 既定语义：layer 缺省视为 required（normField 归一口径），在此归一后再交完整度判定
+      layer: typeof r.layer === 'string' ? r.layer : 'required',
+    })),
+    outputs: st.decl.outputs,
+    logical: em === 'page' || em === 'canvas-device',
+  })
+})
+/** 打字即校验（红线 2 前端镜像）：对当前编辑态组装的完整 spec 跑纯数据校验，违规下发各页签行内红标 */
+const specViolations = computed<SpecViolation[]>(() => {
+  const st = fieldsState.value
+  if (!st) return []
+  return validateSpecPureData(toFieldsSpec(st))
+})
 
 /* ================= 工具条：复制 / 粘贴 / 删除 / 对齐 / 缩放 / 刷新 ================= */
 const selWidget = (): WidgetNode | null => page.value.widgets.find((w) => w.id === selectedId.value) ?? null
@@ -779,13 +828,64 @@ async function onCreate(): Promise<void> {
         />
       </template>
       <main class="pd-mid">
-        <div class="pd-zoom" :style="isFieldsMode ? undefined : zoomStyle" data-testid="pd-canvas-stage">
-          <FieldsCanvas
-            v-if="fieldsState" :rows="fieldsState.rows" :selected-idx="selectedFieldIdx"
-            @select="onFieldsSelect"
-          />
+        <!-- fields 模式：8 要素 4 组页签表单（Task 6，方案§2.1/§2.6）+ 表单预览（契约页签内），
+             每页签底部固定完整度徽标（缺项 chip 点击直达对应页签） -->
+        <el-tabs
+          v-if="fieldsState" v-model="specTab" class="pd-spec-tabs"
+          data-testid="pd-spec-tabs"
+        >
+          <el-tab-pane label="身份" name="identity">
+            <SpecFormIdentity
+              :type="draft?.type ?? activeType" :summary="fieldsState.decl.summary"
+              :display-name="fieldsState.decl.displayName" :aliases="fieldsState.decl.aliases"
+              :description="fieldsState.decl.description" :category="fieldsState.decl.category"
+              :doc-url="fieldsState.decl.docUrl" :violations="specViolations"
+              @patch="onPatchDecl"
+            />
+            <div class="pd-spec-badge">
+              <SpecCompletenessBadge v-if="completeness" :result="completeness" @goto="specTab = $event" />
+            </div>
+          </el-tab-pane>
+          <el-tab-pane label="契约" name="contract">
+            <SpecFormContract
+              :rows="fieldsState.rows" :source="fieldsState.source" :outputs="fieldsState.decl.outputs"
+              :violations="specViolations"
+              @patch-row="onPatchRow" @add-row="onAddRow" @remove-row="onRemoveRow" @move-row="onMoveRow"
+              @update-outputs="onUpdateOutputs"
+            />
+            <!-- 表单预览（原中央区 FieldsCanvas 并入契约页签；点击行选中联动右侧 FieldsInspector 详编） -->
+            <FieldsCanvas
+              :rows="fieldsState.rows" :selected-idx="selectedFieldIdx" class="pd-spec-preview"
+              @select="onFieldsSelect"
+            />
+            <div class="pd-spec-badge">
+              <SpecCompletenessBadge v-if="completeness" :result="completeness" @goto="specTab = $event" />
+            </div>
+          </el-tab-pane>
+          <el-tab-pane label="表现" name="visual">
+            <SpecFormVisual
+              :icon="fieldsState.decl.icon" :color="fieldsState.decl.color"
+              :badge="fieldsState.decl.badge" :behaviors="fieldsState.decl.behaviors"
+              :violations="specViolations" @patch="onPatchDecl"
+            />
+            <div class="pd-spec-badge">
+              <SpecCompletenessBadge v-if="completeness" :result="completeness" @goto="specTab = $event" />
+            </div>
+          </el-tab-pane>
+          <el-tab-pane label="扩展" name="extension">
+            <SpecFormExtension
+              :rows="fieldsState.rows" :drop-policy="fieldsState.dropPolicy"
+              :extensions="fieldsState.decl.extensions" :init-template="fieldsState.decl.initTemplate"
+              :spec-version="fieldsState.decl.specVersion" :violations="specViolations"
+              @patch-drop-policy="onPatchDropPolicy" @patch="onPatchDecl"
+            />
+            <div class="pd-spec-badge">
+              <SpecCompletenessBadge v-if="completeness" :result="completeness" @goto="specTab = $event" />
+            </div>
+          </el-tab-pane>
+        </el-tabs>
+        <div v-else class="pd-zoom" :style="zoomStyle" data-testid="pd-canvas-stage">
           <PageCanvas
-            v-else
             :page="page" :selected-id="selectedId" :selected-ids="selectedIds" :preview="previewing ? previewMap : undefined"
             @add="onAdd" @select="onSelect" @move="onMove" @resize="onResize" @canvas-size="onCanvasSize"
           />
@@ -903,6 +1003,22 @@ async function onCreate(): Promise<void> {
 }
 .pd-zoom {
   padding: 24px;
+}
+/* Task 6：8 要素 4 组页签（fields 模式中央区） */
+.pd-spec-tabs {
+  padding: 8px 16px 16px;
+  min-height: 100%;
+  box-sizing: border-box;
+}
+.pd-spec-tabs :deep(.el-tabs__content) {
+  overflow: visible;
+}
+.pd-spec-preview {
+  margin-top: 12px;
+  border-top: 1px dashed var(--border);
+}
+.pd-spec-badge {
+  margin-top: 12px;
 }
 
 /* 新建态 */
