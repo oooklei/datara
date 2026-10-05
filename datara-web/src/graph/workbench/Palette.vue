@@ -11,8 +11,15 @@ import {
 import type { DagPickItem, DagProfileType } from '../../stores/dagTabs'
 import { listSeedTaskDocs } from '../../services/mock/seed'
 
-/** I12 R1：activeTags = 当前文档推导的分类标签（如 ['同步']），仅决定分组置顶，不过滤组件 */
-const props = defineProps<{ profile: ViewProfile; activeTags?: string[]; defaultTab?: 'palette' | 'wf' }>()
+/** I12 R1：activeTags = 当前文档推导的分类标签（如 ['同步']），仅决定分组置顶，不过滤组件。
+ *  Task 5（§2.3）：resolveSchema = 两源并存 schema 解析（spec 命中 → spec 视图，否则 profile），
+ *  宿主传 schemaFor；缺省行为不变（直接 profile.nodeTypes）。 */
+const props = defineProps<{
+  profile: ViewProfile
+  activeTags?: string[]
+  defaultTab?: 'palette' | 'wf'
+  resolveSchema?: (type: string) => NodeSchema | undefined
+}>()
 /** 载入请求带逐项明细（id/name/type/code）：任务中心据此逐项开画布 Tab（B 语义合并已移除，I11 多 Tab） */
 const emit = defineEmits<{ 'load-tasks': [{ items: DagPickItem[] }] }>()
 
@@ -49,7 +56,7 @@ const cats = computed(() => {
     for (const it of [...fromItems, ...fromTypes]) {
       if (seen.has(it.type)) continue
       seen.add(it.type)
-      const s = props.profile.nodeTypes[it.type]
+      const s = props.resolveSchema?.(it.type) ?? props.profile.nodeTypes[it.type] // Task 5：spec 命中 → spec 视图，否则 profile
       if (s && match(s)) rows.push({ schema: s, disabled: it.disabled, phase: it.phase, cats: catLabelsOf(s.categories) }) // I12 R1：行级分类徽标
     }
     return { name: c.name, rows }

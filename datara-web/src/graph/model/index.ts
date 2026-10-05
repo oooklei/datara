@@ -238,3 +238,7 @@ export function findDuplicateEdges(doc: GraphDocument): string[] {
 export function cloneDoc(doc: GraphDocument): GraphDocument {
   return JSON.parse(JSON.stringify(doc)) as GraphDocument
 }
+
+/* spec 驱动渲染的视图适配（工作台优化 Task 5，方案 §2.3）：独立模块承载，
+   此处仅 re-export——specSchema 对 profiles/services 均为 import type，运行时零依赖，无循环 */
+export { resolveNodeSchema, specToSchema } from './specSchema'
