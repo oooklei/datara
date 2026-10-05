@@ -10,8 +10,11 @@
  * - 304 沿用现有缓存（specMap/etag 均不动），200 重建；
  * - 异常时 degraded=true、loaded 保持原值——loaded=false 的失败不计入首次加载，
  *   下次 ensureSpecs 自动重试；已加载过的失败不清缓存（旧规格继续可用）；
- * - invalidate() 等价 force 重拉，供事件广播与消费方主动失效使用。
+ * - invalidate() 等价 force 重拉，供事件广播与消费方主动失效使用；
+ * - loading 中收到的 force 不被并发去重吞掉：记 pendingForce，在飞请求落地后补拉一次
+ *   （否则本次发布要等下一次广播才可见）。
  */
+import { markRaw } from 'vue'
 import { defineStore } from 'pinia'
 import { fetchComponentSpec, type ComponentSpecItem } from '../services/componentApi'
 import { normalizeSpec, type ComponentSpec } from '../services/componentSpec'
@@ -52,32 +55,47 @@ export const useComponentStore = defineStore('component', {
     loaded: false,
     /** 拉取进行中（并发去重） */
     loading: false,
+    /** 内部标记：loading 中收到 force → 记账，在飞请求落地后补拉一次（防失效被去重吞掉） */
+    pendingForce: false,
     /** 服务不可用降级标记：true → 消费方走 profile 兜底 */
     degraded: false,
   }),
   actions: {
     async ensureSpecs(force = false): Promise<void> {
       if (this.loaded && !force) return
-      if (this.loading) return
+      if (this.loading) {
+        // force 撞上在飞请求：记待补拉标记而非直接吞掉——否则本次发布要等下一次广播才可见
+        if (force) this.pendingForce = true
+        return
+      }
       this.loading = true
       try {
         const res = await fetchComponentSpec(this.etag || undefined)
         if (res === null) {
           // 304：服务端清单未变，specMap/etag 原样沿用（缓存价值所在）
         } else {
-          // 200：整体重建（避免逐项 diff 的复杂度；清单规模 = 已发布组件数）
+          // 200：整体重建（避免逐项 diff 的复杂度；清单规模 = 已发布组件数）。
+          // markRaw：纯数据只读 + 整体替换，免去深 reactive 代理开销（float.ts 同模式先例）
           const map = new Map<string, ComponentSpec>()
-          for (const it of res.items) map.set(it.type, normalizeSpec(flattenSpecItem(it)))
+          for (const it of res.items) map.set(it.type, markRaw(normalizeSpec(flattenSpecItem(it))))
           this.specMap = map
           this.etag = res.etag
         }
         this.degraded = false
         this.loaded = true
-      } catch {
+      } catch (err) {
         // 服务不可用 → 降级：loaded 保持原值（false 时下次自动重试），已缓存规格不清
+        console.warn('[componentStore] 规格拉取失败，降级 profile 兜底', err)
         this.degraded = true
       } finally {
         this.loading = false
+        if (this.pendingForce) {
+          // 补拉一次失效重拉：此刻 loading 已 false；若补拉期间又被 force，
+          // 该调用同样被 loading 拦截并再记账，机制自然收敛、无递归死循环。
+          // 内联 await：首个调用方（如广播触发的 invalidate）拿到补拉完成后的最终状态
+          this.pendingForce = false
+          await this.ensureSpecs(true)
+        }
       }
     },
     /** 强制失效重拉（事件广播 / 消费方主动失效入口） */
@@ -92,8 +110,13 @@ export const useComponentStore = defineStore('component', {
 
 /** 失效广播订阅：组件发布 / 回滚 / 下线 → 强制重拉规格（§2.3 缓存失效链路）。
  *  事件发射方（组件管理操作链路）由后续任务接线；本函数只负责订阅侧，
- *  供应用入口（main.ts 安装 pinia 之后）一次性调用。 */
+ *  供应用入口（main.ts 安装 pinia 之后）一次性调用。
+ *  busWired 幂等保护：HMR / 重复调用时不重复入队（bus.on 无自动去重）。 */
+let busWired = false
+
 export function setupComponentStoreBus(): void {
+  if (busWired) return
+  busWired = true
   const refresh = () => { void useComponentStore().invalidate() }
   bus.on('component:published', refresh)
   bus.on('component:rolled-back', refresh)

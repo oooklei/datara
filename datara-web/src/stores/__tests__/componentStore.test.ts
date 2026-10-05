@@ -121,6 +121,40 @@ describe('异常降级（profile 兜底路径）', () => {
   })
 })
 
+describe('审查修复回归（失败保留缓存 / pendingForce 补拉）', () => {
+  it('已加载后 force 重拉失败 → degraded=true，旧缓存沿用、loaded 仍 true', async () => {
+    mockedFetch
+      .mockResolvedValueOnce({ etag: ETAG, items: [specItem('sql_exec', 'SQL 执行')] })
+      .mockRejectedValueOnce(new Error('网络不可达'))
+    const s = useComponentStore()
+    await s.ensureSpecs()
+    await s.ensureSpecs(true)
+    expect(s.degraded).toBe(true)
+    expect(s.loaded).toBe(true)                     // 失败不清 loaded → 旧缓存继续可用
+    expect(s.specMap.get('sql_exec')).toBeDefined() // 旧规格沿用
+    expect(s.etag).toBe(ETAG)
+  })
+
+  it('loading 中的 invalidate 不被吞：pendingForce 记账，首请求落地后自动补拉最新清单', async () => {
+    let resolveFetch!: (v: ComponentSpecResult | null) => void
+    mockedFetch
+      .mockImplementationOnce(() => new Promise<ComponentSpecResult | null>((resolve) => { resolveFetch = resolve }))
+      .mockResolvedValueOnce({ etag: '"ef01"', items: [specItem('sql_exec2', 'SQL 执行 V2')] })
+    const s = useComponentStore()
+    const p1 = s.ensureSpecs() // 请求 #1 在飞（不 await）
+    await s.invalidate()       // 被 loading 拦截 → pendingForce 记账，立即返回
+    expect(mockedFetch).toHaveBeenCalledTimes(1) // 补拉未提前发出
+    resolveFetch({ etag: ETAG, items: [specItem('sql_exec', 'SQL 执行')] })
+    await p1                   // 实现：finally 内联补拉 → p1 在补拉完成后才 resolve
+    expect(mockedFetch).toHaveBeenCalledTimes(2)
+    expect(mockedFetch).toHaveBeenLastCalledWith(ETAG) // 补拉条件请求携带首请求落地的 etag
+    expect(s.specMap.get('sql_exec2')).toBeDefined()   // 补拉以最新清单覆盖缓存
+    expect(s.etag).toBe('"ef01"')
+    expect(s.loaded).toBe(true)
+    expect(s.degraded).toBe(false)
+  })
+})
+
 describe('失效广播（setupComponentStoreBus）', () => {
   it('published / rolled-back / offline 三事件均触发 force 重拉', async () => {
     mockedFetch.mockResolvedValue({ etag: ETAG, items: [specItem('sql_exec', 'SQL 执行')] })
