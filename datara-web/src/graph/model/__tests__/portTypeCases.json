@@ -1,0 +1,19 @@
+{
+  "comment": "src/dst/expected 三元组；any 恒匹配，none 恒不匹配，其余查兼容矩阵",
+  "cases": [
+    { "src": "any",      "dst": "stream", "expected": true },
+    { "src": "stream",   "dst": "any",    "expected": true },
+    { "src": "none",     "dst": "table",  "expected": false },
+    { "src": "table",    "dst": "none",   "expected": false },
+    { "src": "table",    "dst": "table",  "expected": true },
+    { "src": "dataset",  "dst": "table",  "expected": true },
+    { "src": "dataset",  "dst": "dataset", "expected": true },
+    { "src": "stream",   "dst": "dataset", "expected": false },
+    { "src": "json",     "dst": "string", "expected": true },
+    { "src": "string",   "dst": "json",   "expected": false },
+    { "src": "number",   "dst": "string", "expected": true },
+    { "src": "file",     "dst": "table",  "expected": false },
+    { "src": "stream",   "dst": "stream", "expected": true },
+    { "src": "boolean",  "dst": "number", "expected": false }
+  ]
+}
