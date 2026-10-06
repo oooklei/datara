@@ -580,3 +580,68 @@ def test_r14_dangling_edge_skips_type_check():
     v = validate_graph(doc, port_types=supply)
     assert any(x["rule"] == "R4" for x in v)
     assert [x for x in v if x["rule"] == "R14"] == []
+
+
+# ---------------- R14 端点激活（Task 9 补齐：save/publish 传 port_types 供给） ----------------
+
+def _insert_published_comp_with_ports(db_session, spec_json_str):
+    """插一条 published 组件 comp_b + published 版本行（原生 SQL 手法同 R6 用例——
+    test_component_catalog 收集期 pop sys.modules['common.*'] 导致模型模块分裂，
+    ORM 写库绕过端点侧 identity map，原生 SQL + expire_all 免疫）。"""
+    from sqlalchemy import text
+    db_session.execute(text(
+        "INSERT INTO t_component (type, name, profile, scope, execution_model, executor,"
+        " executable, state, published_version, draft_rev, create_time, update_time)"
+        " VALUES ('comp_b', 'B组件', 'dag', 'builtin', 'dag-engine', NULL, 1, 'published',"
+        " 1, 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)"))
+    cid = db_session.execute(text("SELECT id FROM t_component WHERE type='comp_b'")).scalar()
+    db_session.execute(text(
+        "INSERT INTO t_component_version (component_id, type, version, state, spec_json,"
+        " spec_hash, create_time, update_time)"
+        " VALUES (:cid, 'comp_b', 1, 'published', :spec, 'testhash',"
+        " CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)"),
+        {"cid": cid, "spec": spec_json_str})
+    db_session.commit()
+    db_session.expire_all()
+
+
+def test_save_endpoint_r14_gate(client, db_session, monkeypatch):
+    """R14 端点激活：published 组件 spec ports 声明类型 → 保存含类型不匹配边的图
+    422(2006) 拦截，文案与前端逐字一致；缺省 handle 解析不到 → any 放行（宽进口径）。"""
+    _patch_real_catalog(monkeypatch)
+    _insert_published_comp_with_ports(db_session, json.dumps({
+        "ports": {"inputs": [{"name": "in", "type": "stream"}],
+                  "outputs": [{"name": "out", "type": "table"}]}}))
+    r = client.post("/api/v1/workflow-definitions", json={"name": "R14类型闸门"})
+    assert r.status_code == 200, r.text
+    wf = r.json()["data"]
+    save_url = "/api/v1/workflow-definitions/%s/save" % wf["id"]
+
+    # a.out(table) → b.in(stream)：不匹配 → 拒
+    bad = _doc([_node("a", "comp_b"), _node("b", "comp_b")],
+               [{"id": "e1", "source": "a", "target": "b",
+                 "sourceHandle": "out", "targetHandle": "in"}], wf["id"])
+    r = client.put(save_url, json={"doc": bad})
+    assert r.status_code == 422
+    body = r.json()
+    assert body["code"] == 2006
+    assert "类型不匹配：源 table → 目标 stream" in body["msg"]
+
+    # 缺省 handle → 任一端视为 any → 放行（不误拦存量旧画布边）
+    loose = _doc([_node("a", "comp_b"), _node("b", "comp_b")],
+                 [{"id": "e1", "source": "a", "target": "b"}], wf["id"])
+    assert client.put(save_url, json={"doc": loose}).status_code == 200
+
+
+def test_save_endpoint_r14_no_ports_supply_lenient(client, db_session, monkeypatch):
+    """无有效 ports 供给（spec_json 解析失败的组件不进映射）→ 端口解析不到视为 any，
+    带具名 handle 的边不误拦——行为与供给机制上线前一致。"""
+    _patch_real_catalog(monkeypatch)
+    _insert_published_comp_with_ports(db_session, "{corrupted")  # 解析失败 → 不进供给
+    r = client.post("/api/v1/workflow-definitions", json={"name": "R14宽松口径"})
+    wf = r.json()["data"]
+    save_url = "/api/v1/workflow-definitions/%s/save" % wf["id"]
+    doc = _doc([_node("a", "comp_b"), _node("b", "comp_b")],
+               [{"id": "e1", "source": "a", "target": "b",
+                 "sourceHandle": "out", "targetHandle": "in"}], wf["id"])
+    assert client.put(save_url, json={"doc": doc}).status_code == 200

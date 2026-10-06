@@ -14,7 +14,7 @@ from typing import List, Optional
 
 from fastapi import APIRouter, Depends
 from pydantic import BaseModel
-from sqlalchemy import func
+from sqlalchemy import and_, func
 from sqlalchemy.orm import Session
 
 from api.graph_rules import validate_graph
@@ -26,6 +26,7 @@ from common.db import get_db
 from common.log import get_logger
 from common.models import (
     Component,
+    ComponentVersion,
     GlobalParam,
     StreamJob,
     StreamOffset,
@@ -319,6 +320,47 @@ def _comp_versions(db: Session) -> dict:
     return {c.type: c.published_version for c in db.query(Component).all()}
 
 
+def _port_types(db: Session) -> dict:
+    """R14 端口类型供给（工作台优化 Task 9，方案 §3.1/§11.2）：type→spec ports 形态。
+
+    join 口径与 api/component_spec.get_components_spec 相同：主表 state=published，
+    精确 join published_version 对应的 state=published 版本行——单查询 + 内存解析
+    （组件量级=已发布组件数，随 save/publish 现查不缓存：组件发布须即时生效）。
+    spec_json 解析失败/缺 ports/缺端口清单的组件不进映射（graph_rules._port_type
+    宽进口径 → any 不误拦）；与 component_spec 端点的快速失败不同——此处为校验
+    旁路供给，坏行降级跳过，不卡保存/发布主链路。
+    """
+    rows = (
+        db.query(Component, ComponentVersion)
+        .join(
+            ComponentVersion,
+            and_(
+                ComponentVersion.component_id == Component.id,
+                ComponentVersion.version == Component.published_version,
+                ComponentVersion.state == "published",
+            ),
+        )
+        .filter(Component.state == "published")
+        .all()
+    )
+    supply: dict = {}
+    for comp, ver in rows:
+        try:
+            ports = (json.loads(ver.spec_json or "{}") or {}).get("ports")
+        except ValueError:
+            continue
+        if not isinstance(ports, dict):
+            continue
+        ins, outs = ports.get("inputs"), ports.get("outputs")
+        if not isinstance(ins, list) and not isinstance(outs, list):
+            continue
+        supply[comp.type] = {
+            "inputs": ins if isinstance(ins, list) else [],
+            "outputs": outs if isinstance(outs, list) else [],
+        }
+    return supply
+
+
 @router.put("/{wf_id}/save")
 def save_definition(
     wf_id: str,
@@ -342,8 +384,10 @@ def save_definition(
     # F4 R5 引用有效性：save 查库组装变量供给（工作流变量 + 全局参数）
     # D2 R6 componentRef：save 宽松模式——缺 ref 兼容存量未回填文档（§9.5 部署先跑
     # scripts/backfill_component_ref.py）；有 ref 则结构合法 + 版本存在性/漂移校验
+    # Task 9 R14：边端口类型交集复检（published 组件 spec ports 供给，§3.1/§11.2）
     violations = validate_graph(doc, _vars_supply(db, definition.code),
-                                comp_versions=_comp_versions(db))
+                                comp_versions=_comp_versions(db),
+                                port_types=_port_types(db))
     if violations:
         raise ApiError(WF_GRAPH_RULE_FAILED, _gate_violations_msg(violations), status=422)
     base_version = body.base_version
@@ -526,8 +570,10 @@ def publish_workflow(
         doc = json.loads(definition.graph_json or "{}")
         # F4 R5：发布闸门同样带变量供给（引用有效性进发布链）
         # D2 R6：发布闸门带版本供给 + 严格模式（缺 ref 拒）
+        # Task 9 R14：发布闸门带端口类型供给（同规则复检，§3.1/§11.2）
         violations = validate_graph(doc, _vars_supply(db, definition.code),
                                     comp_versions=_comp_versions(db),
+                                    port_types=_port_types(db),
                                     require_component_ref=True)
         if violations:
             raise ApiError(WF_GRAPH_RULE_FAILED, _gate_violations_msg(violations), status=422)
