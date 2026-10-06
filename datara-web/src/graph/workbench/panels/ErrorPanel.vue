@@ -46,7 +46,7 @@ function canLocate(e: DocError): boolean {
       <el-tab-pane v-for="t in tabs" :key="t.k">
         <template #label>{{ t.label }}（{{ grouped[t.k].length }}）</template>
         <div v-if="!grouped[t.k].length" class="ep-empty">✓ 无{{ t.label }}错误</div>
-        <div v-for="(e, i) in grouped[t.k]" :key="t.k + i" class="ep-item" :class="e.level">
+        <div v-for="(e, i) in grouped[t.k]" :key="`${t.k}-${e.code}-${e.nodeId ?? e.edgeId ?? ''}-${i}`" class="ep-item" :class="e.level">
           <span class="ep-code">{{ e.code }}</span>
           <span class="ep-msg" :title="e.message">{{ e.message }}</span>
           <button v-if="canLocate(e)" class="ep-loc" title="居中定位到问题位置" @click="emit('locate', e)">定位</button>
