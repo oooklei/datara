@@ -46,7 +46,7 @@ function canLocate(e: DocError): boolean {
       <el-tab-pane v-for="t in tabs" :key="t.k">
         <template #label>{{ t.label }}（{{ grouped[t.k].length }}）</template>
         <div v-if="!grouped[t.k].length" class="ep-empty">✓ 无{{ t.label }}错误</div>
-        <div v-for="(e, i) in grouped[t.k]" :key="t.k + i" class="ep-item">
+        <div v-for="(e, i) in grouped[t.k]" :key="t.k + i" class="ep-item" :class="e.level">
           <span class="ep-code">{{ e.code }}</span>
           <span class="ep-msg" :title="e.message">{{ e.message }}</span>
           <button v-if="canLocate(e)" class="ep-loc" title="居中定位到问题位置" @click="emit('locate', e)">定位</button>
@@ -59,7 +59,11 @@ function canLocate(e: DocError): boolean {
 <style scoped>
 .ep-tabs :deep(.el-tabs__header){margin-bottom:8px}
 .ep-empty{padding:18px 0;text-align:center;color:var(--success,#16a34a);font-size:12.5px}
-.ep-item{display:flex;align-items:center;gap:8px;padding:5px 8px;border-radius:var(--radius-sm,6px);font-size:12px}
+.ep-item{display:flex;align-items:center;gap:8px;padding:5px 8px;border-radius:var(--radius-sm,6px);font-size:12px;border-left:3px solid transparent}
+/* level 配色区分（收口修复）：error 红 #dc2626 系（默认）/ warn 琥珀 #d97706 系（色条+徽章同源） */
+.ep-item.error{border-left-color:#dc2626}
+.ep-item.warn{border-left-color:#d97706}
+.ep-item.warn .ep-code{color:#d97706;background:rgba(217,119,6,.08);border-color:rgba(217,119,6,.35)}
 .ep-item:hover{background:var(--bg,#f5f7fa)}
 .ep-item+.ep-item{margin-top:2px}
 .ep-code{flex:none;font-size:10px;font-weight:700;color:#dc2626;background:rgba(220,38,38,.08);border:1px solid rgba(220,38,38,.3);border-radius:4px;padding:1px 5px;font-family:var(--mono,monospace)}
