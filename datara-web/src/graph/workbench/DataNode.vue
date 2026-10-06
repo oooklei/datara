@@ -5,6 +5,7 @@ import type { GNode } from '../model'
 import type { NodeSchema } from '../profiles/types'
 import { renderSummary, requiredMissing } from '../profiles/formLinkage'
 import { NODE_ART, NODE_ART_FALLBACK } from './arts'
+import { memoPorts } from './portsMemo' // Task 12（§3.6）：动态端口结果 memo，拖拽帧不逐帧重算
 import { useRunStore } from '../../stores/run'
 
 const props = defineProps<{
@@ -31,7 +32,13 @@ const healthColor = computed(() =>
 const blind = computed(() => props.gnode.data.blind === true)
 /** 动态分支端点（条件分支/Switch 等）：每分支独立输出 Handle；
  * 端点合一：静态具名输出口（schema.outputs，如 endpoint_select 的 sourceRef/targetRef）归一走同一渲染路径 */
-const ports = computed(() => props.schema.ports?.(props.gnode.data) ?? props.schema.outputs ?? [])
+/* Task 12（§3.6）ports memo：memo 实例随 schema 引用重建（schema 双源切换后不残留陈旧缓存），
+ * 同 schema 下按 schema type + data JSON 摘要命中；缓存随组件实例创建/卸载回收，无全局泄漏 */
+const portsOf = computed(() => {
+  const s = props.schema
+  return s.ports ? memoPorts((_sid, data) => s.ports!(data)) : null
+})
+const ports = computed(() => portsOf.value?.(props.schema.type, props.gnode.data) ?? props.schema.outputs ?? [])
 /** W1 必填完整性：required 字段在当前分型下为空 → 画布「未配置」角标（title 列缺失项，与校验面板/保存闸门共用判定） */
 const missing = computed(() => requiredMissing(props.schema, props.gnode.data))
 /** D3 版本角标：componentRef.version（存量未回填/未注入文档无 ref 则不显示） */
