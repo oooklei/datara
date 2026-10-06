@@ -8,7 +8,8 @@
     "build": "vue-tsc -b && vite build",
     "preview": "vite preview",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "bench:canvas": "vitest run --root tests/perf"
   },
   "dependencies": {
     "@codemirror/lang-sql": "^6.10.0",
