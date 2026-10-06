@@ -645,3 +645,17 @@ def test_save_endpoint_r14_no_ports_supply_lenient(client, db_session, monkeypat
                [{"id": "e1", "source": "a", "target": "b",
                  "sourceHandle": "out", "targetHandle": "in"}], wf["id"])
     assert client.put(save_url, json={"doc": doc}).status_code == 200
+
+
+def test_save_endpoint_r14_non_dict_spec_json_degrades(client, db_session, monkeypatch):
+    """spec_json 为合法 JSON 但顶层非对象（数组/标量）→ 同样降级跳过不进供给，
+    保存不 500 且行为与缺供给一致（坏行不卡保存主链路承诺收口）。"""
+    _patch_real_catalog(monkeypatch)
+    _insert_published_comp_with_ports(db_session, "[1, 2]")  # 合法 JSON，顶层非对象
+    r = client.post("/api/v1/workflow-definitions", json={"name": "R14坏行降级"})
+    wf = r.json()["data"]
+    save_url = "/api/v1/workflow-definitions/%s/save" % wf["id"]
+    doc = _doc([_node("a", "comp_b"), _node("b", "comp_b")],
+               [{"id": "e1", "source": "a", "target": "b",
+                 "sourceHandle": "out", "targetHandle": "in"}], wf["id"])
+    assert client.put(save_url, json={"doc": doc}).status_code == 200

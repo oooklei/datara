@@ -346,9 +346,11 @@ def _port_types(db: Session) -> dict:
     supply: dict = {}
     for comp, ver in rows:
         try:
-            ports = (json.loads(ver.spec_json or "{}") or {}).get("ports")
+            spec = json.loads(ver.spec_json or "{}")
         except ValueError:
             continue
+        # 合法 JSON 但顶层非对象（数组/标量）同样降级跳过——坏行不卡保存/发布主链路
+        ports = spec.get("ports") if isinstance(spec, dict) else None
         if not isinstance(ports, dict):
             continue
         ins, outs = ports.get("inputs"), ports.get("outputs")
