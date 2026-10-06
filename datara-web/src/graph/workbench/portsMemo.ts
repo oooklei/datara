@@ -1,6 +1,7 @@
 /**
  * Task 12（方案§3.6）ports 结果 memo：按 schemaId + data JSON 摘要作键缓存工厂结果，
- * 杜绝拖拽/缩放每一帧对每个节点重算动态端口（如条件分支的每分支 Handle 列表）。
+ * 避免 Inspector 编辑等 data 引用换新但深相等场景重复构建端口数组（如条件分支的每分支
+ * Handle 列表）；拖拽帧不经过此路径（position 变更不触发该 computed）。
  *
  * 生命周期：memo 实例由 DataNode 按当前 schema 引用创建（组件实例级缓存），
  * schema 引用切换或组件卸载时整体回收，无全局泄漏。
@@ -14,8 +15,9 @@ export function memoPorts<T>(factory: (schemaId: string, data: Record<string, un
   const cache = new Map<string, T>()
   return (schemaId: string, data: Record<string, unknown>): T => {
     const key = `${schemaId}:${JSON.stringify(data)}`
-    const hit = cache.get(key)
-    if (hit !== undefined) return hit
+    /* 命中判据用 has 而非 get !== undefined：工厂理论上可返回 undefined，
+     * 以 get 结果判命中会把「缓存值为 undefined」误判为未命中而反复重算 */
+    if (cache.has(key)) return cache.get(key) as T
     const value = factory(schemaId, data)
     if (cache.size >= MEMO_CAP) cache.clear()
     cache.set(key, value)
