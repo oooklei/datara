@@ -1,10 +1,18 @@
 <script setup lang="ts">
-import { onBeforeUnmount } from 'vue'
+import { computed, onBeforeUnmount } from 'vue'
 import { useFloatStore, type FloatWin } from '../../stores/float'
 import { useGraphStore } from '../../stores/graph'
 
+const props = defineProps<{
+  /** Task 14：所属画布 docId——keep-alive 多画布共存时只渲染本画布（owner 匹配）与无主浮窗 */
+  owner?: string
+}>()
+
 const store = useFloatStore()
 const graphStore = useGraphStore()
+
+/** 浮窗按所属画布过滤：带 owner 的浮窗仅在其归属画布层渲染（后台 Tab 浮窗不泄漏到前台） */
+const visibleFloats = computed(() => store.floats.filter((f) => !f.owner || f.owner === props.owner))
 
 /**
  * C7：面板 emit('update', patch) → 写回当前文档选中节点 data 并置脏。
@@ -48,7 +56,7 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <template v-for="f in store.floats" :key="f.id">
+  <template v-for="f in visibleFloats" :key="f.id">
     <div
       class="float-win" :class="{ min: f.minimized }"
       :style="{ left: f.x + 'px', top: f.y + 'px', width: f.w + 'px', height: f.h + 'px', zIndex: f.z ?? 2500 }"

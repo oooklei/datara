@@ -23,6 +23,10 @@ const props = defineProps<{
   profile: ViewProfile
   /** Task 10（§3.3）：选中节点的校验错误 message 列表（optional，向后兼容；非空时顶部红卡展示） */
   nodeErrors?: string[]
+  /** Task 14 审查修复：宿主画布 docId——浮窗 owner 归属唯一依据（注入宿主传其 docId，如 lineage_global）。
+   *  不读 graphStore 单例：keep-alive 多画布共存时单例常持他人文档，会把本画布浮窗标错归属，
+   *  被宿主 FloatLayer 的 owner 过滤误杀不渲染。唯一调用点 GraphWorkbench 已必传。 */
+  docId: string
 }>()
 
 const auth = useAuthStore()
@@ -60,6 +64,7 @@ function openPage() {
   if (!p || !props.node || !graphStore.doc) return
   floatStore.open({
     id: `page_${props.node.id}`,
+    owner: props.docId, // Task 14 审查修复：owner 用宿主下传的 docId（原读 graphStore 单例——注入宿主下单例常持他人文档，浮窗被 FloatLayer owner 过滤误杀不渲染）
     title: p.title,
     x: 300 + (floatStore.floats.length % 3) * 30,
     y: 80 + (floatStore.floats.length % 3) * 30,

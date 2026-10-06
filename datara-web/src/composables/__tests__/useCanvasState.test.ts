@@ -8,9 +8,9 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { loadCanvasState, saveCanvasState } from '../useCanvasState'
 
-/** 最小可用状态构造器（视口 x/y 固定，zoom 作区分位） */
+/** 最小可用状态构造器（视口 x/y 固定，zoom 作区分位；version 随写入恒为 1） */
 function st(zoom: number, selectedIds: string[] = [], activeTab = '', floats: Record<string, boolean> = {}) {
-  return { viewport: { x: 1, y: 2, zoom }, selectedIds, activeTab, floats }
+  return { version: 1 as const, viewport: { x: 1, y: 2, zoom }, selectedIds, activeTab, floats }
 }
 
 describe('useCanvasState（方案§3.7 localStorage canvas-state:{docId}）', () => {
@@ -19,7 +19,7 @@ describe('useCanvasState（方案§3.7 localStorage canvas-state:{docId}）', ()
 
   it('保存后可恢复视口/选中/Tab/浮窗（500ms 防抖落盘）', () => {
     vi.useFakeTimers()
-    saveCanvasState('doc1', { viewport: { x: 1, y: 2, zoom: 0.8 }, selectedIds: ['n1'], activeTab: '依赖', floats: { legend: true } })
+    saveCanvasState('doc1', { version: 1, viewport: { x: 1, y: 2, zoom: 0.8 }, selectedIds: ['n1'], activeTab: '依赖', floats: { legend: true } })
     vi.advanceTimersByTime(500)
     expect(loadCanvasState('doc1')).toMatchObject({
       viewport: { x: 1, y: 2, zoom: 0.8 },
@@ -53,12 +53,14 @@ describe('useCanvasState（方案§3.7 localStorage canvas-state:{docId}）', ()
     expect(loadCanvasState('docB')).toMatchObject({ viewport: { zoom: 1.2 } })
   })
 
-  it('load 取消该 docId 未落盘 pending（恢复后旧定时器不回写覆盖刚恢复的状态）', () => {
+  it('load 先 flush 再读：未满 500ms 的最新值立即可读，且旧定时器已清不再回写', () => {
     vi.useFakeTimers()
     saveCanvasState('doc3', st(0.9))
-    expect(loadCanvasState('doc3')).toBeNull() // 防抖窗口内未落盘
+    expect(loadCanvasState('doc3')).toMatchObject({ viewport: { zoom: 0.9 } }) // Task 14 审查修复：防抖窗口内先 flush 落盘再读，不再丢 ≤500ms 增量
+    const setItemSpy = vi.spyOn(Storage.prototype, 'setItem')
     vi.advanceTimersByTime(500)
-    expect(localStorage.getItem('canvas-state:doc3')).toBeNull() // pending 已被 load 取消
+    expect(setItemSpy).not.toHaveBeenCalled() // flush 已清掉旧定时器：恢复后无回写覆盖
+    expect(loadCanvasState('doc3')).toMatchObject({ viewport: { zoom: 0.9 } })
   })
 
   it('隐私模式写失败不抛错（落盘触发时同样静默）', () => {

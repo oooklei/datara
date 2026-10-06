@@ -13,6 +13,8 @@ export interface FloatWin {
   props?: Record<string, unknown>
   /** 渲染层级（open 时自动分配） */
   z?: number
+  /** Task 14：所属画布 docId（可选）——keep-alive 多画布共存时 FloatLayer 只渲染本画布浮窗，防后台 Tab 浮窗泄漏到前台 */
+  owner?: string
 }
 
 /** 浮窗框架状态：可拖动/收起/单例（同 id 复用并置顶） */

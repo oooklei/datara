@@ -6,6 +6,9 @@ import { graphService } from '../services'
 /** F56b N14：历史栈容量（快照步数上限，防大图内存膨胀） */
 const HISTORY_CAP = 50
 
+/** Task 14 审查修复：load 时序序号（模块级计数——graphStore 为全局单例，keep-alive 下多画布实例共用） */
+let loadSeq = 0
+
 /**
  * 图文档 store：load/save + 脏标记 + F56b N14 撤销/重做。
  * Task 12（§3.6）双轨历史：JSON.stringify 快照串（lastSnap）仅作幂等对比基线，
@@ -39,9 +42,18 @@ export const useGraphStore = defineStore('graph', {
   },
   actions: {
     async load(id: string) {
-      this.doc = await graphService.get(id)
+      /* Task 14 审查修复：时序守卫——keep-alive 下多画布实例共存且 store 为全局单例，
+       * 快速 A→B→A 切 Tab 时两次 load 并发在途，先发出的旧响应可能晚到，把 doc 覆盖回旧档
+       * （后续读写全落在错误文档上）。发号后比对：await 期间已有更新的 load 发起（seq !== loadSeq）
+       * 则本次响应整体丢弃——不写 doc、不置 dirty、不动 lastSnap/历史栈，终态由最新一次 load 负责。
+       * 返回是否真正落档（旧响应丢弃返回 false），调用方均 await 忽略返回值，向后兼容。 */
+      const seq = ++loadSeq
+      const doc = await graphService.get(id)
+      if (seq !== loadSeq) return false
+      this.doc = doc
       this.dirty = false
       this.resetHistory()
+      return true
     },
     async save(remark?: string) {
       if (!this.doc) return 0
