@@ -12,6 +12,10 @@ const props = defineProps<{
   gnode: GNode
   schema: NodeSchema
   selected?: boolean
+  /** Task 10（§3.3）：校验错误红描边（st-error）——独立于运行时 st-* 状态类，不占用 status 语义 */
+  hasError?: boolean
+  /** Task 10（§3.3）：一键定位高亮（error-focus，宿主 2s 后移除） */
+  focus?: boolean
 }>()
 
 const run = useRunStore()
@@ -47,7 +51,7 @@ const art = computed(() => NODE_ART[props.schema.type] ?? NODE_ART_FALLBACK)
 
 <template>
   <!-- 设备形态：图标卡片（图标在上 SVG currentColor，名称/组件地址在下） -->
-  <div v-if="isDevice" class="gnode gnode-device" :class="[stClass, { selected, blind }]">
+  <div v-if="isDevice" class="gnode gnode-device" :class="[stClass, { selected, blind, 'st-error': hasError, 'error-focus': focus }]">
     <Handle type="target" :position="Position.Left" />
     <div class="dev-art-wrap" :style="{ borderColor: schema.color, color: schema.color }">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" class="dev-art" v-html="art" />
@@ -61,7 +65,7 @@ const art = computed(() => NODE_ART[props.schema.type] ?? NODE_ART_FALLBACK)
   </div>
 
   <!-- 分支节点：头部 + 每分支一行（右侧独立端点，Handle 锚定行内） -->
-  <div v-else-if="ports.length" class="gnode gnode-branch" :class="[stClass, { selected, blind }]">
+  <div v-else-if="ports.length" class="gnode gnode-branch" :class="[stClass, { selected, blind, 'st-error': hasError, 'error-focus': focus }]">
     <Handle type="target" :position="Position.Left" />
     <div class="nb-head">
       <div class="n-ico" :style="{ background: schema.color }">{{ schema.icon }}</div>
@@ -82,7 +86,7 @@ const art = computed(() => NODE_ART[props.schema.type] ?? NODE_ART_FALLBACK)
   </div>
 
   <!-- 普通节点：单输入单输出 -->
-  <div v-else class="gnode" :class="[stClass, { selected, blind, tmp: tmpNode }]">
+  <div v-else class="gnode" :class="[stClass, { selected, blind, tmp: tmpNode, 'st-error': hasError, 'error-focus': focus }]">
     <Handle type="target" :position="Position.Left" />
     <div class="n-ico" :style="{ background: schema.color }">{{ schema.icon }}</div>
     <div style="min-width:0;flex:1">
@@ -126,4 +130,11 @@ const art = computed(() => NODE_ART[props.schema.type] ?? NODE_ART_FALLBACK)
 .gnode .n-unv{position:absolute;bottom:-8px;right:-8px;z-index:2;background:#d97706;color:#fff;font-size:9.5px;font-weight:700;border-radius:999px;padding:1px 5px;border:2px solid #fff;box-shadow:0 1px 3px rgba(15,23,42,.25);pointer-events:auto;cursor:help}
 /* Task 7 血缘临时表：虚线边框（对齐 dep_design 虚线语义；0,2,0 特异性覆盖 theme.css .gnode 实线边框） */
 .gnode.tmp{border-style:dashed}
+/* Task 10（§3.3）：校验错误红描边（!important 压过 theme.css .gnode / .st-fail 同特异性边框） */
+.gnode.st-error{border-color:#dc2626!important;box-shadow:0 0 0 1.5px rgba(220,38,38,.28)}
+/* Task 10：一键定位高亮——outline + 右上角感叹角标（脉冲 2s，宿主 setTimeout 移除类） */
+.gnode.error-focus{outline:2.5px solid #dc2626;outline-offset:3px}
+.gnode.error-focus::after{content:'!';position:absolute;top:-9px;right:-9px;z-index:4;width:17px;height:17px;border-radius:50%;background:#dc2626;color:#fff;font-size:11px;font-weight:700;line-height:17px;text-align:center;border:2px solid #fff;box-shadow:0 1px 4px rgba(15,23,42,.3);animation:ef-pulse .9s ease-in-out infinite;pointer-events:none}
+@keyframes ef-pulse{0%,100%{transform:scale(1)}50%{transform:scale(1.18)}}
+
 </style>

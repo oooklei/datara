@@ -18,7 +18,12 @@ import FormSections from './fields/FormSections.vue'
 import SixBlocks from './fields/SixBlocks.vue'
 import { createFieldCtx } from './fields/fieldCtxFactory'
 
-const props = defineProps<{ node: GNode | null; profile: ViewProfile }>()
+const props = defineProps<{
+  node: GNode | null
+  profile: ViewProfile
+  /** Task 10（§3.3）：选中节点的校验错误 message 列表（optional，向后兼容；非空时顶部红卡展示） */
+  nodeErrors?: string[]
+}>()
 
 const auth = useAuthStore()
 const floatStore = useFloatStore()
@@ -102,6 +107,11 @@ const related = computed(() =>
         <button v-if="pageVisible" class="pg-btn" title="打开页面化展示（F61）" @click="openPage">页面</button>
         <button v-if="effMode === 'edit'" class="pg-btn pg-del" title="删除该节点" @click="emit('delete', node.id)">删除</button>
       </div>
+      <!-- Task 10（§3.3）：校验错误卡片——选中节点在错误模型中有 node 类错误时列出全部 message -->
+      <div v-if="nodeErrors?.length" class="insp-errs">
+        <div class="insp-errs-cap">校验错误（{{ nodeErrors.length }}）</div>
+        <div v-for="(m, i) in nodeErrors" :key="i" class="insp-errs-item">{{ m }}</div>
+      </div>
       <div v-if="missingLabels.length" class="insp-miss">必填未配置：{{ missingLabels.join('、') }}</div>
       <div class="insp-form">
         <div class="field">
@@ -164,6 +174,10 @@ const related = computed(() =>
 .insp-code{font-size:9.5px;font-weight:700;color:var(--primary);background:var(--primary-light);border-radius:4px;padding:1px 5px;margin-left:4px}
 /* W1 必填完整性：缺失提示条 + 必填红星 */
 .insp-miss{margin:0 12px;padding:5px 9px;background:rgba(217,119,6,.08);border:1px solid rgba(217,119,6,.35);border-radius:var(--radius-sm);font-size:11px;color:#b45309}
+/* Task 10（§3.3）：顶部校验错误卡片（红色系，与画布 st-error 同源配色） */
+.insp-errs{margin:0 12px 8px;padding:6px 9px;background:rgba(220,38,38,.07);border:1px solid rgba(220,38,38,.4);border-radius:var(--radius-sm)}
+.insp-errs-cap{font-size:11px;font-weight:700;color:#dc2626;margin-bottom:3px}
+.insp-errs-item{font-size:11.5px;color:#b91c1c;line-height:1.5}
 .req-star{color:var(--danger);margin-left:2px;font-weight:700}
 .insp-spacer{flex:1}
 .pg-btn{border:1px solid var(--border-strong);background:#fff;border-radius:var(--radius-sm);padding:2px 8px;font-size:11px;cursor:pointer;color:var(--text-2)}
