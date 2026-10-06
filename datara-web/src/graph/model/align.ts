@@ -49,6 +49,8 @@ export function alignNodes<N extends AlignNode>(
  * 分布选中节点（axis 轴按坐标排序后，相邻节点之间隙相等）：
  * gap = (lastLeft - firstLeft - Σsize) / (n-1)，x_i = 前一节点坐标 + 前一节点尺寸 + gap。
  * 首节点坐标固定；尺寸回调缺省按 0 处理（等距分布）。少于 3 个节点时原样返回传入数组引用。
+ * 取舍说明：等间隙分布仅首节点坐标固定，末节点左坐标将移至 lastLeft − 末尺寸（计划测试值 [0,25,50] 口径）；
+ * 与 Figma「首末均固定」语义有别，取计划口径。
  * 纯函数：≥3 时返回与入参同序的新数组（节点浅拷贝 + 新 position），不改传入数组。
  */
 export function distributeNodes<N extends AlignNode>(
