@@ -28,6 +28,7 @@ const mockedFetch = vi.mocked(fetchComponentSpec)
 function specItem(type: string, name: string) {
   return {
     type,
+    publishedVersion: null,
     identity: { type, displayName: name, aliases: [`${type}-alias`] },
     description: { summary: `${name}摘要`, description: null, category: '数据同步', docUrl: null },
     inputs: [
@@ -71,6 +72,8 @@ describe('ensureSpecs 拉取与缓存', () => {
     expect(spec?.fields[0]?.key).toBe('sql')
     expect(spec?.outputs).toEqual([{ name: 'rows', type: 'any', desc: '结果集' }])
     expect(spec?.specVersion).toBe('2.0')
+    /* Task 15：publishedVersion 经 normalizeSpec 归一——null 非正整数 → 键不落（缺位键契约） */
+    expect(spec?.publishedVersion).toBeUndefined()
     expect(s.etag).toBe(ETAG)
     expect(s.loaded).toBe(true)
     expect(s.degraded).toBe(false)

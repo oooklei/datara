@@ -41,6 +41,7 @@ function flattenSpecItem(it: ComponentSpecItem): Record<string, unknown> {
     dropPolicy: it.dropPolicy,
     extensions: it.extensions,
     specVersion: it.specVersion,
+    publishedVersion: it.publishedVersion,
     ports: it.ports,
   }
 }

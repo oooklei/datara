@@ -151,9 +151,10 @@ def test_major_confirmed_publishes_and_audits(client, db_session):
     assert comp.published_version == 2
     logs = db_session.query(ComponentLog).filter_by(component_id=comp.id).order_by(
         ComponentLog.id).all()
-    last = logs[-1]
-    assert last.action == "breaking_confirmed" and last.version == 2
-    decision = json.loads(last.remark)
+    # Task 15：publish 末尾的策略分派审计行（upgrade_strategy）后于 breaking_confirmed 落库
+    conf = next(lg for lg in logs if lg.action == "breaking_confirmed")
+    assert conf.version == 2
+    decision = json.loads(conf.remark)
     assert decision["upgradeStrategy"] == "manual"
     assert decision["fieldMapping"] == {"table": "sql"}
     assert decision["changes"]["removed"] == ["table"]

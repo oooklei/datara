@@ -26,9 +26,9 @@
  * 新建态（:type 缺省）：名称 + 4 页面模板卡 → createPageDraft（execution_model=page）→ replace 深链。
  * 深链自动建稿（autoCreateDraft）：page 组件物化种子页；声明式组件以目录 formFields 物化 fields 草稿。
  */
-import { computed, h, onBeforeUnmount, onMounted, ref, watch, type VNode } from 'vue'
+import { computed, h, onBeforeUnmount, onMounted, ref, watch, type Ref, type VNode } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { ElMessage, ElMessageBox } from 'element-plus'
+import { ElMessage, ElMessageBox, ElRadio, ElRadioGroup } from 'element-plus'
 import {
   createComponentDraft, createPageDraft, deleteComponent, freezeComponentVersion, getComponent, getComponentDraft,
   listComponentVersions, publishComponentVersion, saveComponentDraft,
@@ -648,40 +648,75 @@ async function confirmBreaking(changes: BreakingChanges): Promise<boolean> {
   }
 }
 
+/* ================= 升级策略三档（Task 15，方案 §4.3） ================= */
+
+type UpgradeStrategy = 'auto' | 'manual' | 'pin'
+
+/** 三档策略选项（value 对齐后端 PublishBody.upgrade_strategy 枚举） */
+const STRATEGY_OPTS: Array<{ value: UpgradeStrategy; label: string; desc: string }> = [
+  { value: 'auto', label: '自动升级', desc: '发布后自动把引用图的组件版本升到新版（常规迭代推荐）' },
+  { value: 'manual', label: '手动升级', desc: '仅记录待升级清单，后续经批量升级向导逐个处理' },
+  { value: 'pin', label: '钉住旧版', desc: '引用钉住当前版本继续可运行，不自动升级' },
+]
+
+/** 发布弹窗内容 VNode：说明 + 升级策略单选（绑定外层 ref，确认后读取所选值） */
+function publishDialogVNode(strategy: Ref<UpgradeStrategy>): VNode {
+  return h('div', null, [
+    h('p', { style: 'margin:0 0 8px' },
+      '发布以服务器已保存草稿为准（建议先保存），冻结为不可变版本并跑发布闸门。请选择引用升级策略：'),
+    h(ElRadioGroup, {
+      modelValue: strategy.value,
+      // ElRadioGroup 泛型回调签名是宽类型（string|number|boolean|undefined），窄化回三档枚举
+      'onUpdate:modelValue': (v: string | number | boolean | undefined) => { strategy.value = v as UpgradeStrategy },
+    }, () => STRATEGY_OPTS.map((o) =>
+      h(ElRadio, { key: o.value, value: o.value }, () => `${o.label}（${o.desc}）`))),
+  ])
+}
+
+/** 发布结果 → toast 尾巴（按三档计数分派；pin/manual 优先于 refreshed 展示） */
+function refreshTail(r: NonNullable<PublishResult['refresh']>): string {
+  if (r.pinned) return `已钉住 ${r.pinned} 个图引用（版本不自动升）`
+  if (r.pending) return `已记录 ${r.pending} 个待升级工作流（后续向导处理）`
+  return r.refreshed > 0 ? `已刷新 ${r.refreshed} 个图引用` : '无引用需要刷新'
+}
+
 async function onPublish(): Promise<void> {
   const d = draft.value
   if (!d || publishing.value) return
+  const strategy = ref<UpgradeStrategy>('auto')
   try {
-    await ElMessageBox.confirm(
-      '发布以服务器已保存草稿为准（建议先保存），冻结为不可变版本并跑发布闸门，成功后自动刷新引用该组件的图。确认发布？',
-      '发布组件',
-      { type: 'warning', confirmButtonText: '发布', cancelButtonText: '取消' },
-    )
+    await ElMessageBox.confirm(publishDialogVNode(strategy), '发布组件', {
+      type: 'warning', confirmButtonText: '发布', cancelButtonText: '取消',
+    })
   } catch { return }
   publishing.value = true
   try {
     const fr = await freezeComponentVersion(d.type)
     let pub: PublishResult
     try {
-      pub = await publishComponentVersion(d.type, { version: fr.frozenVersion, draftRev: fr.draftRev })
+      pub = await publishComponentVersion(d.type, {
+        version: fr.frozenVersion, draftRev: fr.draftRev, upgradeStrategy: strategy.value,
+      })
     } catch (e) {
       /* §2.4 破坏性变更闸门：6009 + data.code='breaking_change' → 弹四类清单，
          用户确认后带 breaking_confirmed=true 重发同一 frozen 版本（不重复 freeze）；
+         升级策略沿用用户所选（§4.3：major 变更策略随确认一并生效）；
          其余错误原样上抛走统一错误提示 */
       const err = e as Error & { code?: number; data?: Partial<BreakingChangePayload> }
       if (err.code !== 6009 || err.data?.code !== 'breaking_change') throw err
       if (!(await confirmBreaking(err.data.changes ?? EMPTY_BREAKING))) return
       pub = await publishComponentVersion(d.type, {
         version: fr.frozenVersion, draftRev: fr.draftRev, breakingConfirmed: true,
+        upgradeStrategy: strategy.value,
       })
     }
     let tail: string
     if (pub.refresh) {
-      tail = pub.refresh.refreshed > 0 ? `已刷新 ${pub.refresh.refreshed} 个图引用` : '无引用需要刷新'
+      tail = refreshTail(pub.refresh)
     } else {
-      // 旧响应无 data.refresh → 兜底手动刷新引用（幂等）
+      // 旧响应无 data.refresh → 兜底手动刷新引用（幂等；结果形状与 refresh 载荷同构）
       const r = await pageApi.refreshRefs(d.type)
-      tail = r.refreshed > 0 ? `已刷新 ${r.refreshed} 个图引用` : '无引用需要刷新'
+      tail = refreshTail(r)
     }
     ElMessage.success(`已发布 v${pub.publishedVersion}，${tail}`)
     await loadAll(d.type)

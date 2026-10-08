@@ -143,6 +143,20 @@ function mountView() {
 
 const tb = (w: ReturnType<typeof mountView>, id: string) => w.find(`[data-testid="tb-${id}"]`)
 
+/* 沿 MessageBox message VNode 树找策略单选 radio group 的 onUpdate:modelValue 回调并触发
+ * （模拟用户在发布弹窗里点选「自动升级/手动/钉住旧版」单选项；Task 15 §4.3） */
+function pickStrategyFromVNode(msg: unknown, value: 'auto' | 'manual' | 'pin'): void {
+  const visit = (v: unknown) => {
+    const vn = v as { props?: Record<string, unknown>; children?: unknown } | null
+    if (!vn || typeof vn !== 'object') return
+    if (vn.props && typeof vn.props['onUpdate:modelValue'] === 'function') {
+      ;(vn.props['onUpdate:modelValue'] as (v: string) => void)(value)
+    }
+    if (Array.isArray(vn.children)) vn.children.forEach(visit)
+  }
+  visit(msg)
+}
+
 beforeEach(() => {
   vi.clearAllMocks()
   routeState.params.type = 'page_demo'
@@ -347,7 +361,8 @@ describe('PageDesignerView（Task 13 页壳）', () => {
     await flushPromises()
     expect(confirmSpy).toHaveBeenCalled()
     expect(freezeSpy).toHaveBeenCalledWith('page_demo')
-    expect(publishSpy).toHaveBeenCalledWith('page_demo', { version: 2, draftRev: 0 })
+    // Task 15：默认策略 auto 随发布请求上行（后端按三档分派）
+    expect(publishSpy).toHaveBeenCalledWith('page_demo', { version: 2, draftRev: 0, upgradeStrategy: 'auto' })
     const toasts = successSpy.mock.calls.map((c) => String(c[0])).join('｜')
     expect(toasts).toContain('已刷新 2 个图引用')
     expect(errorSpy).not.toHaveBeenCalled()
@@ -370,9 +385,55 @@ describe('PageDesignerView（Task 13 页壳）', () => {
     await flushPromises()
     await tb(w, 'publish').trigger('click')
     await flushPromises()
-    expect(refreshRefsSpy).toHaveBeenCalledWith('page_demo')
+    expect(refreshRefsSpy).toHaveBeenCalledTimes(1)
     const toasts = successSpy.mock.calls.map((c) => String(c[0])).join('｜')
     expect(toasts).toContain('无引用需要刷新')
+    vi.restoreAllMocks()
+  })
+
+  it('发布策略 pin：弹窗单选钉住 → upgradeStrategy=pin 上行，toast 出「已钉住」', async () => {
+    freezeSpy.mockResolvedValue({ frozenVersion: 2, draftVersion: 3, draftRev: 0 })
+    publishSpy.mockResolvedValue({
+      type: 'page_demo', publishedVersion: 2, specHash: 'f'.repeat(64),
+      supersededVersion: 1, publishedAt: '2026-10-09 10:00:00',
+      refresh: { refreshed: 0, pinned: 3, publishedVersion: 2, items: [] },
+    })
+    /* 模拟用户在弹窗里点选「钉住旧版」：confirm 收到的是 VNode（策略单选），
+       沿树找 radio group 的 onUpdate:modelValue 回调以 'pin' 触发 */
+    vi.spyOn(ElMessageBox, 'confirm').mockImplementation(async (msg?: unknown) => {
+      pickStrategyFromVNode(msg, 'pin')
+      return 'confirm' as never
+    })
+    const successSpy = vi.spyOn(ElMessage, 'success').mockImplementation((() => ({})) as never)
+    const w = mountView()
+    await flushPromises()
+    await tb(w, 'publish').trigger('click')
+    await flushPromises()
+    expect(publishSpy).toHaveBeenCalledWith('page_demo', { version: 2, draftRev: 0, upgradeStrategy: 'pin' })
+    const toasts = successSpy.mock.calls.map((c) => String(c[0])).join('｜')
+    expect(toasts).toContain('已钉住 3 个图引用')
+    vi.restoreAllMocks()
+  })
+
+  it('发布策略 manual：响应 pending 计数 → toast 出「已记录待升级」', async () => {
+    freezeSpy.mockResolvedValue({ frozenVersion: 2, draftVersion: 3, draftRev: 0 })
+    publishSpy.mockResolvedValue({
+      type: 'page_demo', publishedVersion: 2, specHash: 'f'.repeat(64),
+      supersededVersion: 1, publishedAt: '2026-10-09 10:00:00',
+      refresh: { refreshed: 0, pending: 2, publishedVersion: 2, items: [] },
+    })
+    vi.spyOn(ElMessageBox, 'confirm').mockImplementation(async (msg?: unknown) => {
+      pickStrategyFromVNode(msg, 'manual')
+      return 'confirm' as never
+    })
+    const successSpy = vi.spyOn(ElMessage, 'success').mockImplementation((() => ({})) as never)
+    const w = mountView()
+    await flushPromises()
+    await tb(w, 'publish').trigger('click')
+    await flushPromises()
+    expect(publishSpy).toHaveBeenCalledWith('page_demo', { version: 2, draftRev: 0, upgradeStrategy: 'manual' })
+    const toasts = successSpy.mock.calls.map((c) => String(c[0])).join('｜')
+    expect(toasts).toContain('已记录 2 个待升级工作流')
     vi.restoreAllMocks()
   })
 })

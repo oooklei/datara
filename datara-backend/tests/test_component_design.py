@@ -572,7 +572,8 @@ def test_publish_success_frozen_to_published(client, db_session):
     ver = db_session.query(ComponentVersion).filter_by(component_id=comp.id, version=1).one()
     assert ver.state == "published" and ver.published_by == "tester" and ver.published_time
     logs = db_session.query(ComponentLog).filter_by(component_id=comp.id).all()
-    assert [lg.action for lg in logs] == ["create", "freeze_version", "publish"]
+    # Task 15：发布成功后按升级策略分派，策略决策审计行（默认 auto）随行落库
+    assert [lg.action for lg in logs] == ["create", "freeze_version", "publish", "upgrade_strategy"]
 
 
 def test_publish_rbac_dev_403(client):
@@ -904,7 +905,8 @@ def test_offline_success_keeps_published_version(client, db_session):
     ver = db_session.query(ComponentVersion).filter_by(component_id=comp.id, version=1).one()
     assert ver.state == "offline" and ver.published_time
     logs = db_session.query(ComponentLog).filter_by(component_id=comp.id).all()
-    assert [lg.action for lg in logs] == ["create", "freeze_version", "publish", "offline"]
+    assert [lg.action for lg in logs] == [
+        "create", "freeze_version", "publish", "upgrade_strategy", "offline"]
     assert logs[-1].remark == "停用观察"
 
 
@@ -947,7 +949,7 @@ def test_rollback_reactivates_offline_version(client, db_session):
     assert ver.state == "published"
     logs = db_session.query(ComponentLog).filter_by(component_id=comp.id).all()
     assert [lg.action for lg in logs] == [
-        "create", "freeze_version", "publish", "offline", "rollback"]
+        "create", "freeze_version", "publish", "upgrade_strategy", "offline", "rollback"]
     assert logs[-1].remark == "恢复上线"
 
 

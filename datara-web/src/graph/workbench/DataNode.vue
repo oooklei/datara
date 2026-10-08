@@ -7,6 +7,7 @@ import { renderSummary, requiredMissing } from '../profiles/formLinkage'
 import { NODE_ART, NODE_ART_FALLBACK } from './arts'
 import { memoPorts } from './portsMemo' // Task 12（§3.6）：动态端口结果 memo（收益与边界见 portsOf 处注释）
 import { useRunStore } from '../../stores/run'
+import { useComponentStore } from '../../stores/componentStore' // Task 15（§4.3/§4.4）：spec 缓存源
 
 const props = defineProps<{
   id: string
@@ -49,6 +50,27 @@ const refVersion = computed(() => {
   const v = ref?.version
   return typeof v === 'number' && Number.isInteger(v) && v > 0 ? v : 0
 })
+/** Task 15（§4.3/§4.4）引用角标实时刷新：spec 源已发布版本号高于引用版本 → 黄色角标。
+ *  比对基准是 spec 骨架下发的 publishedVersion（发布版本号），非 specVersion（声明格式版本字符串）。
+ *  服务降级/未加载/旧骨架（缺 publishedVersion）一律不亮黄标，避免脏缓存误导。
+ *  component:published 广播 → componentStore.invalidate 重建 specMap → 本 computed 随引用
+ *  自动重算，无需画布重挂载（§4.4 失效闭环）。 */
+const compStore = useComponentStore()
+const publishedVersion = computed(() => {
+  if (!compStore.loaded || compStore.degraded) return 0
+  const pv = compStore.getSpec(props.schema.type)?.publishedVersion
+  return typeof pv === 'number' && Number.isInteger(pv) && pv > 0 ? pv : 0
+})
+const refBehind = computed(() => publishedVersion.value > refVersion.value)
+/** pin 档钉住标记（后端写 ref.pinned=true）：角标 title 提示，不改配色（钉住属版本决策展示） */
+const refPinned = computed(
+  () => (props.gnode.data.componentRef as { pinned?: unknown } | undefined)?.pinned === true)
+const refTitle = computed(() => {
+  const base = `组件版本 v${refVersion.value}（componentRef）`
+  if (!refBehind.value) return refPinned.value ? `${base}，已钉住` : base
+  const behind = `，有新版本 v${publishedVersion.value} 可用${refPinned.value ? '（已钉住）' : ''}`
+  return base + behind
+})
 /** Task 5 血缘来源体系：sources 仅 design（无运行佐证）→「未验」角标（注入自 unverified） */
 const unverified = computed(() => props.gnode.data.unverified === true)
 /** Task 7 血缘临时表标记：tmpFlag=true（注入自 tmp）→ 虚线边框（对齐 dep_design 虚线语义） */
@@ -86,7 +108,7 @@ const art = computed(() => NODE_ART[props.schema.type] ?? NODE_ART_FALLBACK)
       <div class="n-status" />
       <span v-if="attempt > 1" class="n-attempt">#{{ attempt }}</span>
       <span v-if="missing.length" class="n-miss" :title="'未配置：' + missing.join('、')">!</span>
-      <span v-if="refVersion" class="n-ref" :title="'组件版本 v' + refVersion + '（componentRef）'">v{{ refVersion }}</span>
+      <span v-if="refVersion" class="n-ref" :class="{ 'n-ref-behind': refBehind }" :title="refTitle">v{{ refVersion }}</span>
     </div>
     <div v-for="p in ports" :key="p.id" class="nb-row">
       <span class="nb-label" :title="p.label">{{ p.label }}</span>
@@ -110,7 +132,7 @@ const art = computed(() => NODE_ART[props.schema.type] ?? NODE_ART_FALLBACK)
     <div class="n-status" />
     <span v-if="attempt > 1" class="n-attempt">#{{ attempt }}</span>
     <span v-if="missing.length" class="n-miss" :title="'未配置：' + missing.join('、')">!</span>
-    <span v-if="refVersion" class="n-ref" :title="'组件版本 v' + refVersion + '（componentRef）'">v{{ refVersion }}</span>
+    <span v-if="refVersion" class="n-ref" :class="{ 'n-ref-behind': refBehind }" :title="refTitle">v{{ refVersion }}</span>
     <span v-if="unverified" class="n-unv" title="未验证：仅设计态血缘，暂无运行实例佐证">未验</span>
     <Handle type="source" :position="Position.Right" />
   </div>
@@ -135,6 +157,8 @@ const art = computed(() => NODE_ART[props.schema.type] ?? NODE_ART_FALLBACK)
 .gnode .n-miss{position:absolute;top:-7px;right:-7px;z-index:2;width:15px;height:15px;border-radius:50%;background:var(--warn,#d97706);color:#fff;font-size:10px;font-weight:700;line-height:15px;text-align:center;border:2px solid #fff;box-shadow:0 1px 3px rgba(15,23,42,.25);cursor:help;pointer-events:auto}
 /* D3 版本角标（左下角悬浮，避开左上 n-attempt / 右上 n-miss；复用 n-attempt 视觉语言） */
 .gnode .n-ref{position:absolute;bottom:-8px;left:-8px;z-index:2;background:var(--primary,#2563eb);color:#fff;font-size:9.5px;font-weight:700;border-radius:999px;padding:1px 5px;border:2px solid #fff;box-shadow:0 1px 3px rgba(15,23,42,.25);pointer-events:auto}
+/* Task 15（§4.3）：spec 源发布版本高于引用版本 → 黄色角标（有新版本可用；琥珀对齐 n-unv） */
+.gnode .n-ref.n-ref-behind{background:var(--warn,#d97706)}
 /* Task 5 血缘「未验证」角标（右下角悬浮，避开左下 n-ref / 右上 n-miss；琥珀色对齐 dep_design 边） */
 .gnode .n-unv{position:absolute;bottom:-8px;right:-8px;z-index:2;background:#d97706;color:#fff;font-size:9.5px;font-weight:700;border-radius:999px;padding:1px 5px;border:2px solid #fff;box-shadow:0 1px 3px rgba(15,23,42,.25);pointer-events:auto;cursor:help}
 /* Task 7 血缘临时表：虚线边框（对齐 dep_design 虚线语义；0,2,0 特异性覆盖 theme.css .gnode 实线边框） */

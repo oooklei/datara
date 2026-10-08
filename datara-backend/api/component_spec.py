@@ -36,6 +36,9 @@ def _spec_item(comp: Component, ver: ComponentVersion) -> dict:
     spec = json.loads(ver.spec_json or "{}")
     return {
         "type": comp.type,
+        # Task 15（方案 §4.3）：发布版本号随骨架下发——前端引用角标以 published_version
+        # 对比 componentRef.version 判定「有新版本可用」（specVersion 是声明格式版本，非此语义）
+        "publishedVersion": comp.published_version,
         "identity": {
             "type": comp.type,
             "displayName": comp.name,

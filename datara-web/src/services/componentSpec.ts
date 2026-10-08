@@ -172,6 +172,9 @@ export interface ComponentSpec {
   }
   /** 声明 schema 版本（缺省视为 1.0 旧格式） */
   specVersion?: string
+  /** 已发布版本号（Task 15 §4.3：spec 骨架随行下发；引用角标「有新版本可用」比对基准。
+   *  注意区别于 specVersion——后者是声明格式版本字符串；undefined=旧骨架/服务降级） */
+  publishedVersion?: number
   /** 实例初始化模板（drop 时合并进字段初值） */
   initTemplate?: Record<string, unknown>
 }
@@ -355,6 +358,9 @@ export function normalizeSpec(raw: unknown): ComponentSpec {
   const behaviors = normBehaviors(s.behaviors)
   const extensions = normExtensions(s.extensions)
   const specVersion = normOptString(s.specVersion)
+  // Task 15（§4.3）：发布版本号透传（非法值/缺省不落键，引用角标按 undefined 兜底不显示）
+  const pv = Number(s.publishedVersion)
+  const publishedVersion = Number.isInteger(pv) && pv > 0 ? pv : undefined
   const initTemplate = isPlainObj(s.initTemplate) ? s.initTemplate : undefined
   return {
     icon: String(s.icon ?? ''),
@@ -387,6 +393,7 @@ export function normalizeSpec(raw: unknown): ComponentSpec {
     ...(behaviors !== undefined ? { behaviors } : {}),
     ...(extensions !== undefined ? { extensions } : {}),
     ...(specVersion !== undefined ? { specVersion } : {}),
+    ...(publishedVersion !== undefined ? { publishedVersion } : {}),
     ...(initTemplate !== undefined ? { initTemplate } : {}),
   }
 }
