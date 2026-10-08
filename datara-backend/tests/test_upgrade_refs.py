@@ -257,3 +257,65 @@ def test_upgrade_refs_requires_published(client):
     r = client.post("/api/v1/components/upg_draft_only/upgrade-refs",
                     json={"targets": [{"wf_id": "wf_x", "strategy": "auto"}]})
     assert r.status_code == 409 and r.json()["code"] == 6002  # COMP_STATE_CONFLICT
+
+
+# ---------------------------------------------------------------- 审查修复回归（Major-2/3）
+
+
+def test_upgrade_refs_infra_exception_isolated(client, db_session, monkeypatch):
+    """Major-2 逐项异常隔离：单目标写路径抛基础设施异常 → 该项 ok:false 不 500，
+    其余目标照常成功落库（逐目标 commit，异常项 rollback 不拖垮同批）。"""
+    import api.component_design as cd_mod
+
+    _make_published_v1(client)
+    wf_a = _seed_wf(client, db_session, "异常A", 1, "n_a")
+    wf_b = _seed_wf(client, db_session, "异常B", 1, "n_b")
+    set_role(client.app, "admin")
+    assert _publish_minor(client, COMP, ["sql", "table", "extra"],
+                          upgrade_strategy="manual").status_code == 200
+
+    real_log = cd_mod.WfDefinitionLog
+    state = {"n": 0}
+
+    def boom_once(*args, **kwargs):
+        """日志写路径替身：仅首次构造抛异常（模拟 wf_a 的 DB 约束/连接故障），
+        其余调用透传真实类——wf_b 必须照常落库。"""
+        state["n"] += 1
+        if state["n"] == 1:
+            raise RuntimeError("db boom")
+        return real_log(*args, **kwargs)
+
+    monkeypatch.setattr(cd_mod, "WfDefinitionLog", boom_once)
+    r = client.post("/api/v1/components/%s/upgrade-refs" % COMP, json={"targets": [
+        {"wf_id": wf_a, "strategy": "auto"},   # 写日志抛异常
+        {"wf_id": wf_b, "strategy": "auto"},   # 异常后的目标必须照常成功
+    ]})
+    monkeypatch.undo()
+    assert r.status_code == 200, r.text
+    res = {x["wfId"]: x for x in r.json()["data"]["results"]}
+    assert res[wf_a]["ok"] is False and "处理异常" in res[wf_a]["reason"]
+    assert res[wf_b]["ok"] is True and res[wf_b]["newVersion"] == 2
+    # 异常项回滚（图未动）；异常后的目标已持久（裸 SQL 读回，绕过身份映射）
+    assert _ref_of(db_session, wf_a)["version"] == 1
+    assert _ref_of(db_session, wf_b)["version"] == 2
+
+
+def test_upgrade_refs_dedup_targets(client, db_session):
+    """Major-3 目标去重：同一 wf_id 重复出现 → results 与 targets 一一对应，
+    重复项标注原因不重复处理（图只 bump 一次，version=2 而非 3）。"""
+    _make_published_v1(client)
+    wf_a = _seed_wf(client, db_session, "重复A", 1, "n_a")
+    set_role(client.app, "admin")
+    assert _publish_minor(client, COMP, ["sql", "table", "extra"],
+                          upgrade_strategy="manual").status_code == 200
+    r = client.post("/api/v1/components/%s/upgrade-refs" % COMP, json={"targets": [
+        {"wf_id": wf_a, "strategy": "auto"},
+        {"wf_id": wf_a, "strategy": "auto"},  # 重复目标
+    ]})
+    assert r.status_code == 200, r.text
+    results = r.json()["data"]["results"]
+    assert len(results) == 2
+    assert results[0]["ok"] is True and results[0]["newVersion"] == 2
+    assert results[1]["ok"] is False and "重复" in results[1]["reason"]
+    # 首个生效且只 bump 一次（裸 SQL 读回：非 CAS 直写路径不连 bump 两次）
+    assert _ref_of(db_session, wf_a)["version"] == 2

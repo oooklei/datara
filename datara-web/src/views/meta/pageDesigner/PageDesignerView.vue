@@ -44,6 +44,7 @@ import {
   type DeclOutput, type DeclState, type FieldsState,
 } from './fields/fieldsModel'
 import { validateSpecPureData, type SpecViolation } from '../../../services/componentSpec'
+import { bus } from '../../../services/eventBus'
 import { specCompleteness, type CompletenessResult } from '../../../components/designer/specCompleteness'
 import SpecCompletenessBadge from '../../../components/designer/SpecCompletenessBadge.vue'
 import SpecFormIdentity from '../../../components/designer/SpecFormIdentity.vue'
@@ -719,6 +720,10 @@ async function onPublish(): Promise<void> {
       tail = refreshTail(r)
     }
     ElMessage.success(`已发布 v${pub.publishedVersion}，${tail}`)
+    /* Task 15 审查修复（Major-1）：生产发射方——spec 骨架已随发布更新（body 变 → ETag 变），
+       广播订阅方（componentStore.invalidate 等）重拉必得 200 新清单，
+       画布引用角标随 specMap 重建自动刷新（§4.4 失效闭环）。 */
+    bus.emit('component:published')
     await loadAll(d.type)
   } catch (e) {
     ElMessage.error(e instanceof Error ? e.message : String(e))

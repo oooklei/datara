@@ -15,6 +15,7 @@ import { describe, expect, it, vi, beforeEach } from 'vitest'
 import { mount, flushPromises } from '@vue/test-utils'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { routes } from '../../../../router/routes'
+import { bus } from '../../../../services/eventBus'
 
 const routeState = vi.hoisted(() => ({ params: { type: 'page_demo' as string | undefined } }))
 const pushSpy = vi.hoisted(() => vi.fn())
@@ -368,6 +369,29 @@ describe('PageDesignerView（Task 13 页壳）', () => {
     expect(errorSpy).not.toHaveBeenCalled()
     // 发布后重拉本地状态（草稿 + 版本）
     expect(getDraftSpy).toHaveBeenCalledTimes(2)
+    vi.restoreAllMocks()
+  })
+
+  it('发布成功 → 广播 component:published（Major-1：生产发射方，订阅方 invalidate 重拉规格）', async () => {
+    freezeSpy.mockResolvedValue({ frozenVersion: 2, draftVersion: 3, draftRev: 0 })
+    publishSpy.mockResolvedValue({
+      type: 'page_demo', publishedVersion: 1, specHash: 'e'.repeat(64),
+      supersededVersion: null, publishedAt: '2026-10-03 12:00:00',
+      refresh: { refreshed: 1, publishedVersion: 1, items: [] },
+    })
+    vi.spyOn(ElMessageBox, 'confirm').mockResolvedValue('confirm' as never)
+    vi.spyOn(ElMessage, 'success').mockImplementation((() => ({})) as never)
+    vi.spyOn(ElMessage, 'error').mockImplementation((() => ({})) as never)
+    /* 订阅侧收集：组件发布事件必须从生产代码发出（Task 15 审查修复前全仓库无发射方） */
+    const seen: unknown[] = []
+    const handler = (p: unknown) => seen.push(p)
+    bus.on('component:published', handler)
+    const w = mountView()
+    await flushPromises()
+    await tb(w, 'publish').trigger('click')
+    await flushPromises()
+    expect(seen).toHaveLength(1)
+    bus.off('component:published', handler)
     vi.restoreAllMocks()
   })
 
