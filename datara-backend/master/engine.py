@@ -19,7 +19,7 @@ from common import queue
 from common.config import get_settings
 from common.db import new_session
 from common.log import get_logger, set_instance_id
-from common.models import Component, DataSource, StreamJob, TaskInstance, TaskLog, TRunNodeArtifact, WorkflowInstance, now
+from common.models import Component, ComponentVersion, DataSource, StreamJob, TaskInstance, TaskLog, TRunNodeArtifact, WorkflowInstance, now
 from master import state
 from master.retry_classifier import classify_error, retry_decision
 from master.signature import node_signature
@@ -219,6 +219,7 @@ class WorkflowExecuteRunnable(threading.Thread):
         self.resolver: Optional[VarResolver] = None
         self.fail_defaults: dict = {}  # 定时/补数下发的任务缺省重试参数
         self.checkpoint_enabled = False
+        self.wf_code = 0
 
     def _event(self, event_type: str, node_id: str = "", payload: Optional[dict] = None) -> None:
         """Best-effort event delivery; never changes scheduling outcomes."""
@@ -280,6 +281,7 @@ class WorkflowExecuteRunnable(threading.Thread):
             variables = instance.variables if isinstance(instance.variables, dict) else {}
             env_group_id = variables.get("envGroupId")
             base = instance.schedule_time or instance.create_time or now()
+            self.wf_code = int(instance.wf_code or 0)
             self.resolver = VarResolver(
                 self.instance_id, instance.wf_code,
                 load_levels(session, instance.wf_code, env_group_id), base,
@@ -321,6 +323,29 @@ class WorkflowExecuteRunnable(threading.Thread):
 
     def _node_name(self, node_id: str) -> str:
         return str(self._node_data(node_id).get("name") or node_id)
+
+    def _hidden_inputs(self, node_id: str) -> dict:
+        """Resolve only the system keys explicitly declared by the frozen ref."""
+        ref = self._node_data(node_id).get("componentRef")
+        if not isinstance(ref, dict) or not isinstance(ref.get("type"), str):
+            return {}
+        try:
+            version = int(ref.get("version"))
+        except (TypeError, ValueError):
+            return {}
+        session = new_session()
+        try:
+            row = session.query(ComponentVersion).filter(
+                ComponentVersion.type == ref["type"], ComponentVersion.version == version
+            ).first()
+            spec = json.loads(row.spec_json) if row and row.spec_json else {}
+        except (TypeError, ValueError):
+            return {}
+        finally:
+            session.close()
+        keys = spec.get("extensions", {}).get("hiddenInputs", []) if isinstance(spec, dict) else []
+        values = {"runId": self.instance_id, "nodeId": node_id, "workflowId": self.wf_code}
+        return {key: values[key] for key in keys if key in values}
 
     def _record_artifact(self, node_id: str, outputs: Optional[dict]) -> None:
         """Persist a successful node result as a future resume checkpoint."""
@@ -1824,6 +1849,7 @@ class WorkflowExecuteRunnable(threading.Thread):
             "attempt": row["attempt"],
             "param": param,
             "param_resolved": resolved,
+            "hidden_inputs": self._hidden_inputs(node_id),
             "var_snapshot": snapshot,
             "constraints": cons,
         }
