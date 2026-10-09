@@ -249,10 +249,13 @@ const DATA_TYPE_SET = new Set<string>(['any', 'none', ...Object.keys(TYPE_COMPAT
  * 消灭「componentSpec Set vs SpecFormVisual/Extension 本地枚举」两处同步漂移风险。
  * fieldsModel.loadDeclState 宽进提取亦按此收敛（脏值丢弃，不透传保存）。 */
 export const ONCHANGE_ACTION_VALUES = ['refreshOptions', 'resetFields', 'prefill'] as const
+/** 仅允许映射到平台已鉴权的候选资源接口，禁止声明任意浏览器 URL。 */
+export const REMOTE_OPTION_SOURCE_VALUES = ['datasource.tree', 'datasource.topics', 'runtime.nodes'] as const
 export const PREFILL_FROM_VALUES = ['input.table', 'input.columns', 'input.datasource'] as const
 export const PICKER_VALUES = ['table', 'column', 'cron', 'sshHost'] as const
 export const HIDDEN_INPUT_KEY_VALUES = ['tenantId', 'runId', 'nodeId', 'workflowId'] as const
 const ONCHANGE_ACTIONS = new Set<string>(ONCHANGE_ACTION_VALUES)
+const REMOTE_OPTION_SOURCES = new Set<string>(REMOTE_OPTION_SOURCE_VALUES)
 const PREFILL_FROMS = new Set<string>(PREFILL_FROM_VALUES)
 const PICKERS = new Set<string>(PICKER_VALUES)
 const HIDDEN_INPUT_KEYS = new Set<string>(HIDDEN_INPUT_KEY_VALUES)
@@ -311,7 +314,7 @@ function normBehaviors(v: unknown): ComponentSpec['behaviors'] {
       if (typeof o.field !== 'string' || typeof o.action !== 'string' || !ONCHANGE_ACTIONS.has(o.action)) return []
       const item: BehaviorOnChangeDecl = { field: o.field, action: o.action as BehaviorOnChangeDecl['action'] }
       if (Array.isArray(o.target)) item.target = o.target.filter((t): t is string => typeof t === 'string')
-      if (typeof o.remote === 'string') item.remote = o.remote
+      if (typeof o.remote === 'string' && REMOTE_OPTION_SOURCES.has(o.remote)) item.remote = o.remote
       return [item]
     })
   }

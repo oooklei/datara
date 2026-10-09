@@ -10,7 +10,7 @@
 import { describe, expect, it } from 'vitest'
 import type { GraphDocument } from '../../model'
 import type { ConditionDef, NodeSchema } from '../types'
-import { TMP_NAME_OK, applyInitTemplate, c22OnModeChange, clearOnConditionHide, condVisible as condVisibleProd, dataScopeState, decideDrop, domainViolations, onEdgeCreated, onEdgeRemoved, prefillFromUpstream, probeMatchTables, renderSummary, requiredMissing, resolveDataContext, tmpRefHint, tmpRefUsable } from '../formLinkage'
+import { TMP_NAME_OK, applyDeclaredOnChange, applyInitTemplate, c22OnModeChange, clearOnConditionHide, condVisible as condVisibleProd, dataScopeState, decideDrop, domainViolations, onEdgeCreated, onEdgeRemoved, prefillDeclaredFromUpstream, prefillFromUpstream, probeMatchTables, renderSummary, requiredMissing, resolveDataContext, tmpRefHint, tmpRefUsable } from '../formLinkage'
 import type { DataContext, EdgeLike, GNodeLike } from '../formLinkage'
 import type { FieldSchema } from '../types'
 import { dagProfile } from '../dag'
@@ -61,6 +61,36 @@ describe('C22 来源模式切换联动 c22OnModeChange', () => {
     expect(d.delimiter).toBe('')
     expect(d.header).toBe(false)
     expect(d.sheet).toBe('')
+  })
+})
+
+describe('声明式 behaviors 消费', () => {
+  it('按 input.* 来源在拖入时预填，且不会覆盖空上游值', () => {
+    const data: Record<string, unknown> = { table: 'keep' }
+    prefillDeclaredFromUpstream(data, { table: 'orders', columns: ['id'], datasource: '' }, [
+      { field: 'targetTable', from: 'input.table' },
+      { field: 'targetColumns', from: 'input.columns' },
+      { field: 'targetDs', from: 'input.datasource' },
+    ])
+    expect(data).toMatchObject({ targetTable: 'orders', targetColumns: ['id'] })
+    expect(data.targetDs).toBeUndefined()
+  })
+
+  it('resetFields 与 prefill 仅消费被声明的目标字段', () => {
+    const data: Record<string, unknown> = { mode: 'new', oldText: 'x', oldBool: true, table: 'local' }
+    applyDeclaredOnChange({
+      form: [
+        { key: 'mode', label: '模式', type: 'select' },
+        { key: 'oldText', label: '旧文本', type: 'text' },
+        { key: 'oldBool', label: '旧开关', type: 'bool' },
+        { key: 'table', label: '表', type: 'text' },
+      ],
+      behaviors: { onChange: [
+        { field: 'mode', action: 'resetFields', target: ['oldText', 'oldBool'] },
+        { field: 'mode', action: 'prefill', target: ['table'] },
+      ] },
+    }, data, 'mode', { table: 'upstream_orders' })
+    expect(data).toMatchObject({ oldText: '', oldBool: false, table: 'upstream_orders' })
   })
 })
 

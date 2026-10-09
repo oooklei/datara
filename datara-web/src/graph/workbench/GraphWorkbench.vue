@@ -26,7 +26,7 @@ import { portTypesMatch } from '../model/portTypes'
 import { applyLayout } from '../layout'
 import type { NodeSchema, ViewProfile } from '../profiles'
 import type { ComponentCategory } from '../profiles/types' // I12 R1：doc 推导组件库置顶标签用
-import { onEdgeCreated, onEdgeRemoved, decideDrop, prefillFromUpstream, applyInitTemplate } from '../profiles/formLinkage' // 拖边即引用（端点合一 §3.3）+ F1 拖入闸门 + M5 initTemplate 落图合入
+import { onEdgeCreated, onEdgeRemoved, decideDrop, prefillFromUpstream, prefillDeclaredFromUpstream, applyInitTemplate } from '../profiles/formLinkage' // 拖边即引用（端点合一 §3.3）+ F1 拖入闸门 + M5 initTemplate 落图合入
 import { createTemplateStage, selectTemplateSteps, stagedUpstreamOf } from '../profiles/templateStaging'
 import type { TemplateStage } from '../profiles/templateStaging'
 import { useGraphStore } from '../../stores/graph'
@@ -1464,6 +1464,7 @@ function onDrop(e: DragEvent) {
      < 上游快照 prefillFromUpstream —— 上游非空同名值最后落笔，覆盖模板与通用默认 */
   const up = pickPrefillUpstream(pos)
   prefillFromUpstream(g.data, up?.data ?? null, schema.dropPolicy?.prefillFromUpstream)
+  prefillDeclaredFromUpstream(g.data, up?.data ?? null, schema.behaviors?.prefillFromUpstream)
   dropSchema.value = schema
   dropNode.value = g
   dropUpstream.value = up ? [up] : []
