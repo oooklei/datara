@@ -662,6 +662,18 @@ const STRATEGY_OPTS: Array<{ value: UpgradeStrategy; label: string; desc: string
 ]
 const upgradeOpen = ref(false)
 
+/**
+ * The wizard keeps its result report open until the user acknowledges it.  Only
+ * then refresh the designer/catalog snapshot, so a failed CAS target remains
+ * inspectable and the next open shows the current impacted-reference state.
+ */
+async function onUpgradeDone(): Promise<void> {
+  upgradeOpen.value = false
+  const type = activeType.value
+  if (type) await loadAll(type)
+  bus.emit('component:published')
+}
+
 /** 发布弹窗内容 VNode：说明 + 升级策略单选（绑定外层 ref，确认后读取所选值） */
 function publishDialogVNode(strategy: Ref<UpgradeStrategy>): VNode {
   return h('div', null, [
@@ -1016,7 +1028,7 @@ async function onCreate(): Promise<void> {
       v-if="draft"
       :component-type="draft.type"
       @cancel="upgradeOpen = false"
-      @done="upgradeOpen = false"
+      @done="onUpgradeDone"
     />
   </el-dialog>
 </template>
