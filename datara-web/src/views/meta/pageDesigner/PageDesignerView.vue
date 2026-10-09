@@ -37,6 +37,7 @@ import {
 } from '../../../services/componentApi'
 import { alignRects, distributeRects, normalizePage, genId, newWidget, reorderWidget, CANVAS_H, CANVAS_W, type BackgroundStyle, type PageDSL, type ReorderAction, type WidgetNode } from './designerModel'
 import { componentSeedPage, pageTemplates } from './templates'
+import UpgradeWizard from '../../../components/designer/UpgradeWizard.vue'
 import type { ResourceCatalog } from './bindingCatalog'
 import { pageApi, type PreviewQuery, type PreviewResult } from './pageApi'
 import {
@@ -659,6 +660,7 @@ const STRATEGY_OPTS: Array<{ value: UpgradeStrategy; label: string; desc: string
   { value: 'manual', label: '手动升级', desc: '仅记录待升级清单，后续经批量升级向导逐个处理' },
   { value: 'pin', label: '钉住旧版', desc: '引用钉住当前版本继续可运行，不自动升级' },
 ]
+const upgradeOpen = ref(false)
 
 /** 发布弹窗内容 VNode：说明 + 升级策略单选（绑定外层 ref，确认后读取所选值） */
 function publishDialogVNode(strategy: Ref<UpgradeStrategy>): VNode {
@@ -720,6 +722,7 @@ async function onPublish(): Promise<void> {
       tail = refreshTail(r)
     }
     ElMessage.success(`已发布 v${pub.publishedVersion}，${tail}`)
+    if (strategy.value === 'manual' && (pub.refresh?.pending ?? 0) > 0) upgradeOpen.value = true
     /* Task 15 审查修复（Major-1）：生产发射方——spec 骨架已随发布更新（body 变 → ETag 变），
        广播订阅方（componentStore.invalidate 等）重拉必得 200 新清单，
        画布引用角标随 specMap 重建自动刷新（§4.4 失效闭环）。 */
@@ -1008,6 +1011,14 @@ async function onCreate(): Promise<void> {
       </aside>
     </div>
   </div>
+  <el-dialog v-model="upgradeOpen" title="批量升级组件引用" width="560px" append-to-body>
+    <UpgradeWizard
+      v-if="draft"
+      :component-type="draft.type"
+      @cancel="upgradeOpen = false"
+      @done="upgradeOpen = false"
+    />
+  </el-dialog>
 </template>
 
 <style scoped>
