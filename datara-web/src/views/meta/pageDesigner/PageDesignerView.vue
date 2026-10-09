@@ -99,6 +99,7 @@ const publishing = ref(false)
 const hasUnsavedChanges = ref(false)
 const autoSaveNotice = ref('')
 const saveConflict = ref(false)
+const remoteConflictSnapshot = ref('')
 let savedSpecSnapshot = ''
 let autoSaveTimer: ReturnType<typeof setTimeout> | undefined
 
@@ -570,6 +571,14 @@ function cancelAutoSave(): void {
   autoSaveTimer = undefined
 }
 
+async function enterSaveConflict(type: string): Promise<void> {
+  saveConflict.value = true
+  cancelAutoSave()
+  try { remoteConflictSnapshot.value = JSON.stringify((await getComponentDraft(type)).spec, null, 2) }
+  catch { remoteConflictSnapshot.value = '' }
+  ElMessage.warning('草稿已被其他会话修改；本地内容已保留，自动保存已暂停')
+}
+
 async function saveAutomatically(): Promise<void> {
   const d = draft.value
   if (!d || saving.value || saveConflict.value || !hasUnsavedChanges.value) return
@@ -583,9 +592,7 @@ async function saveAutomatically(): Promise<void> {
     autoSaveNotice.value = `已自动保存（rev ${r.draftRev}）`
   } catch (e) {
     if ((e as { code?: number }).code === 409) {
-      saveConflict.value = true
-      cancelAutoSave()
-      ElMessage.warning('草稿已被其他会话修改；本地内容已保留，自动保存已暂停')
+      await enterSaveConflict(d.type)
     }
   } finally {
     saving.value = false
@@ -619,6 +626,17 @@ async function reloadRemoteAfterConflict(): Promise<void> {
   await loadAll(type)
 }
 
+async function overwriteRemoteAfterConflict(): Promise<void> {
+  const d = draft.value
+  if (!d || !saveConflict.value) return
+  try {
+    const remote = await getComponentDraft(d.type)
+    d.draftRev = remote.draftRev
+    saveConflict.value = false
+    await onSave()
+  } catch (e) { ElMessage.error(e instanceof Error ? e.message : String(e)) }
+}
+
 async function onSave(): Promise<void> {
   const d = draft.value
   if (!d || saving.value) return
@@ -635,9 +653,7 @@ async function onSave(): Promise<void> {
     ElMessage.success(`已保存（rev ${r.draftRev}）`)
   } catch (e) {
     if ((e as { code?: number }).code === 409) {
-      saveConflict.value = true
-      cancelAutoSave()
-      ElMessage.warning('草稿已被其他会话修改；本地内容已保留，自动保存已暂停')
+      await enterSaveConflict(d.type)
       return
     }
     ElMessage.error(e instanceof Error ? e.message : String(e))
@@ -993,6 +1009,8 @@ async function onCreate(): Promise<void> {
     <!-- 新建态：名称 + 4 页面模板卡 + 创建 -->
     <div v-if="saveConflict" class="pd-save-conflict" role="alert">
       <span>草稿发生并发冲突：本地编辑仍在当前页面，自动保存已暂停。</span>
+      <details><summary>查看基线 / 本地 / 远端内容</summary><pre>基线：{{ savedSpecSnapshot }}\n本地：{{ JSON.stringify(currentSpec(), null, 2) }}\n远端：{{ remoteConflictSnapshot || '未能读取远端快照' }}</pre></details>
+      <el-button size="small" type="warning" @click="overwriteRemoteAfterConflict">以本地内容覆盖远端</el-button>
       <el-button size="small" @click="reloadRemoteAfterConflict">放弃本地并载入远端</el-button>
     </div>
     <span v-else-if="autoSaveNotice" class="pd-autosave-note">{{ autoSaveNotice }}</span>
