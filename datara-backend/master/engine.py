@@ -21,6 +21,7 @@ from common.log import get_logger, set_instance_id
 from common.models import Component, DataSource, StreamJob, TaskInstance, TaskLog, WorkflowInstance, now
 from master import state
 from master.dag import Graph, loop_bodies
+from master.event_bus import publish_run_event
 from master.variables import (
     VarResolver, clear_run_vars, eval_expr, get_run_vars,
     load_levels, set_run_vars, time_var,
@@ -214,6 +215,10 @@ class WorkflowExecuteRunnable(threading.Thread):
         self.resolver: Optional[VarResolver] = None
         self.fail_defaults: dict = {}  # 定时/补数下发的任务缺省重试参数
 
+    def _event(self, event_type: str, node_id: str = "", payload: Optional[dict] = None) -> None:
+        """Best-effort event delivery; never changes scheduling outcomes."""
+        publish_run_event(self.instance_id, node_id, event_type, payload)
+
     # ---- 生命周期 ----
 
     def notify_kill(self) -> None:
@@ -233,6 +238,7 @@ class WorkflowExecuteRunnable(threading.Thread):
                 self._resume_sweep()
             else:
                 self._mark_instance_running()
+                self._event("execution_start")
                 for node_id in self.graph.start_nodes():
                     self._try_activate(node_id, 0)
             logger.info("Runnable 启动: instance=%s resume=%s", self.instance_id, self.resume)
@@ -407,6 +413,7 @@ class WorkflowExecuteRunnable(threading.Thread):
             raise
         finally:
             session.close()
+        self._event("node_error" if st == state.FAILURE else "node_executed", key[0], {"state": st})
         if st == state.FAILURE and self._schedule_retry(key):
             return
         self._advance_downstream(key[0], key[1])
@@ -443,6 +450,7 @@ class WorkflowExecuteRunnable(threading.Thread):
         self.timers_retry[key] = now() + timedelta(seconds=cons["retryIntervalSec"])
         self._save_row(key, log_lines=[
             "[master] 第 %s 次重试将于 %s 秒后派发" % (row["attempt"] - 1, cons["retryIntervalSec"])])
+        self._event("node_retry", node_id, {"attempt": row["attempt"], "max": cons["retryTimes"] + 1})
         logger.info("任务重试安排: task=%s attempt=%s", row["id"], row["attempt"])
         return True
 
@@ -590,6 +598,7 @@ class WorkflowExecuteRunnable(threading.Thread):
         row = self.rows[key]
         row["state"] = state.RUNNING
         row["start_time"] = now()
+        self._event("node_executing", node_id, {"attempt": row["attempt"]})
 
         # ④ 运行条件 / ⑥ 排除区块（§5.2 激活动作）
         scope = self._expr_scope(loop_iter, data)
@@ -1840,6 +1849,7 @@ class WorkflowExecuteRunnable(threading.Thread):
             raise
         finally:
             session.close()
+        self._event("execution_success" if instance_state == state.SUCCESS else "execution_interrupted", payload={"state": instance_state})
         logger.info("实例终态: %s → %s（任务 %d 个）", self.instance_id, instance_state, len(self.rows))
 
         # I4 临时数据收口（设计 §5.4）：immediate → 清扫置 cleaned；keep+成功 → RENAME 转正式表

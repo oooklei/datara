@@ -120,6 +120,21 @@ class WorkflowInstance(Base):
     __table_args__ = (Index("idx_wfinst_code", "wf_code"),)
 
 
+
+# ---------- 5.5 t_run_event（运行节点事件，SSE/回放的持久化基座） ----------
+class TRunEvent(Base):
+    __tablename__ = "t_run_event"
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    run_id: Mapped[str] = mapped_column(String(64), nullable=False)
+    node_id: Mapped[str] = mapped_column(String(128), nullable=False, default="")
+    event_type: Mapped[str] = mapped_column(String(32), nullable=False)
+    payload_json: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    ts: Mapped[datetime] = mapped_column(DateTime, default=now, nullable=False)
+
+    __table_args__ = (Index("idx_run_event_run_id", "run_id", "id"),)
+
+
 # ---------- 5. t_task_instance 任务实例 ----------
 class TaskInstance(Base):
     __tablename__ = "t_task_instance"
