@@ -20,6 +20,7 @@ from common.db import new_session
 from common.log import get_logger, set_instance_id
 from common.models import Component, DataSource, StreamJob, TaskInstance, TaskLog, WorkflowInstance, now
 from master import state
+from master.retry_classifier import classify_error, retry_decision
 from master.dag import Graph, loop_bodies
 from master.event_bus import publish_run_event
 from master.variables import (
@@ -414,7 +415,7 @@ class WorkflowExecuteRunnable(threading.Thread):
         finally:
             session.close()
         self._event("node_error" if st == state.FAILURE else "node_executed", key[0], {"state": st})
-        if st == state.FAILURE and self._schedule_retry(key):
+        if st == state.FAILURE and self._schedule_retry(key, payload.get("outputs")):
             return
         self._advance_downstream(key[0], key[1])
 
@@ -438,19 +439,31 @@ class WorkflowExecuteRunnable(threading.Thread):
             "workerGroup": str(cons.get("workerGroup") or ""),
         }
 
-    def _schedule_retry(self, key: tuple) -> bool:
+    def _schedule_retry(self, key: tuple, outputs: Optional[dict] = None) -> bool:
         """失败重试：仍有余额 → 置 retry 延迟重派（返回 True 表示已安排）。"""
         node_id, loop_iter = key
         cons = self._constraints(node_id)
         row = self.rows[key]
+        details = outputs if isinstance(outputs, dict) else {}
+        kind = classify_error(
+            str(details.get("exceptionType") or ""),
+            str(details.get("error") or details.get("message") or ""),
+            details.get("exitCode") if isinstance(details.get("exitCode"), int) else None,
+        )
+        decision = retry_decision(kind, row["attempt"], cons["retryIntervalSec"])
+        if not decision.retryable:
+            return False
         if row["attempt"] > cons["retryTimes"]:
             return False
         row["attempt"] += 1
         row["state"] = state.RETRY
-        self.timers_retry[key] = now() + timedelta(seconds=cons["retryIntervalSec"])
+        self.timers_retry[key] = now() + timedelta(seconds=decision.delay_seconds)
         self._save_row(key, log_lines=[
-            "[master] 第 %s 次重试将于 %s 秒后派发" % (row["attempt"] - 1, cons["retryIntervalSec"])])
-        self._event("node_retry", node_id, {"attempt": row["attempt"], "max": cons["retryTimes"] + 1})
+            "[master] 第 %s 次重试（%s）将于 %s 秒后派发" % (row["attempt"] - 1, decision.strategy, decision.delay_seconds)])
+        self._event("node_retry", node_id, {
+            "attempt": row["attempt"], "max": cons["retryTimes"] + 1,
+            "strategy": decision.strategy, "delaySeconds": decision.delay_seconds,
+        })
         logger.info("任务重试安排: task=%s attempt=%s", row["id"], row["attempt"])
         return True
 
