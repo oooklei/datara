@@ -127,6 +127,7 @@ def _handle_command(command: Command, param: dict) -> None:
             "COMPLEMENT_DATA": _cmd_complement,
             "REPEAT_RUNNING": _cmd_repeat_running,
             "START_FAILURE_TASKS": _cmd_failure_tasks,
+            "RESUME_FROM": _cmd_resume_from,
             "STOP": _cmd_stop,
         }.get(command.command_type, _cmd_unknown)
         handler(command, param)
@@ -448,6 +449,55 @@ def _cmd_failure_tasks(command: Command, param: dict) -> None:
         remove_runnable(instance_id)
     _spawn_runnable(instance_id, graph)
     logger.info("失败节点重跑: %s（重置 %s 个节点链路）", instance_id, len(reset_ids))
+
+
+def _cmd_resume_from(command: Command, param: dict) -> None:
+    """Resume a selected checkpoint boundary and all of its downstream nodes."""
+    instance_id = str(param.get("instanceId") or "")
+    requested = {str(node_id) for node_id in (param.get("fromNodeIds") or []) if str(node_id)}
+    if not requested:
+        raise ValueError("fromNodeIds 不能为空")
+    session = new_session()
+    try:
+        instance = session.query(WorkflowInstance).filter(WorkflowInstance.instance_id == instance_id).first()
+        if instance is None:
+            raise ValueError("实例不存在: %s" % instance_id)
+        _definition, graph = _load_graph(session, instance.wf_code)
+        graph_nodes = set(graph.nodes)
+        unknown = requested - graph_nodes
+        if unknown:
+            raise ValueError("续跑节点不属于工作流: %s" % ",".join(sorted(unknown)))
+        reset_ids = set(requested)
+        frontier = list(requested)
+        while frontier:
+            node_id = frontier.pop()
+            for edge in graph.succs.get(node_id, []):
+                target = edge["target"]
+                if target not in reset_ids:
+                    reset_ids.add(target)
+                    frontier.append(target)
+        tasks = session.query(TaskInstance).filter(TaskInstance.instance_id == instance_id).all()
+        for task in tasks:
+            if task.node_id in reset_ids:
+                task.state = state.SUBMITTED
+                task.attempt = 1
+                task.end_time = None
+                task.delay_until = None
+                task.outputs = None
+        instance.state = state.RUNNING
+        instance.end_time = None
+        session.commit()
+    except Exception:
+        session.rollback()
+        raise
+    finally:
+        session.close()
+    old = get_runnable(instance_id)
+    if old is not None:
+        old.stop_flag = True
+        remove_runnable(instance_id)
+    _spawn_runnable(instance_id, graph)
+    logger.info("指定节点续跑: %s（起点=%s，重置=%s）", instance_id, sorted(requested), len(reset_ids))
 
 
 def _cmd_stop(command: Command, param: dict) -> None:
