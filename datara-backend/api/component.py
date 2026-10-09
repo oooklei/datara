@@ -17,15 +17,13 @@ profile 源码生成并提交（git 内唯一真源，可 diff、可评审）。
 M0 为只读，不接受任何写操作。发布/草稿/版本治理属 M2。
 """
 
-import json
 import re
-from functools import lru_cache
-from pathlib import Path
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 
+from common.component_catalog import catalog_payload
 from common.db import get_db
 from common.log import get_logger
 from common.models import Component
@@ -35,21 +33,9 @@ logger = get_logger("api.component")
 
 router = APIRouter(prefix="/components", tags=["component"])
 
-CATALOG_FILE = Path(__file__).resolve().parent.parent / "common" / "dag_catalog.json"
-
-
-@lru_cache(maxsize=1)
 def _load() -> dict:
-    """读目录快照。进程内缓存 —— 快照随代码发布，不会在运行期变化。"""
-    if not CATALOG_FILE.is_file():
-        logger.error("组件目录快照缺失: %s（请运行 python scripts/export_dag_catalog.py）",
-                     CATALOG_FILE)
-        raise HTTPException(status_code=503, detail="组件目录快照缺失")
-    try:
-        return json.loads(CATALOG_FILE.read_text(encoding="utf-8"))
-    except json.JSONDecodeError as exc:  # pragma: no cover
-        logger.error("组件目录快照解析失败: %s", exc)
-        raise HTTPException(status_code=500, detail="组件目录快照损坏")
+    """读取共享适配器提供的、随代码发布的目录快照。"""
+    return catalog_payload()
 
 
 @router.get("", summary="组件清单")
