@@ -604,6 +604,14 @@ watch([page, fieldsState], () => {
   if (hasUnsavedChanges.value) scheduleAutoSave()
 }, { deep: true })
 
+/** Browser teardown cannot reliably complete the authenticated draft PUT.  Ask
+ * for confirmation instead of claiming a best-effort request was persisted. */
+function onBeforeUnload(event: BeforeUnloadEvent): void {
+  if (!hasUnsavedChanges.value) return
+  event.preventDefault()
+  event.returnValue = ''
+}
+
 async function reloadRemoteAfterConflict(): Promise<void> {
   const type = activeType.value
   if (!type) return
@@ -881,11 +889,13 @@ onMounted(() => {
     if (typeof p.rightW === 'number' && p.rightW >= PANEL_MIN_W && p.rightW <= PANEL_MAX_W) rightWidth.value = p.rightW
   } catch { /* 忽略隐私模式 */ }
   window.addEventListener('keydown', onKeydown)
+  window.addEventListener('beforeunload', onBeforeUnload)
 })
 onBeforeUnmount(() => {
   cancelAutoSave()
   stopPanelResize()
   window.removeEventListener('keydown', onKeydown)
+  window.removeEventListener('beforeunload', onBeforeUnload)
 })
 watch([leftOpen, rightOpen, leftWidth, rightWidth], ([l, r, lw, rw]) => {
   try { localStorage.setItem('datara.pd.panels', JSON.stringify({ left: l, right: r, leftW: lw, rightW: rw })) } catch { /* 忽略隐私模式 */ }
