@@ -8,8 +8,10 @@
  * I11 多 Tab（用户裁定）：同一个画布同时只能编辑一个工作流；多个工作流用 tab 切换（VueFlow 页），
  * 每个 tab 可关闭（点 X 时若有未保存修改 → 三选：保存并关闭 / 放弃修改 / 取消），同时最多打开 5 个；
  * 每载入一个工作流增加 1 个画布 Tab（Palette「载入选中」逐项 open，同一工作流重复载入仅激活现有 Tab）。
- * 画布切换实现：GraphWorkbench 单实例以 :key="activeTab.key"（=docId）重挂载；旧实例 onBeforeUnmount
- * 把草稿存 snap（I11 起 snapKey 由任务类型改为 docId：datara.dag.snap.{docId}），新实例 load 后 restoreSnap。
+ * 画布切换实现（Task 14 起）：GraphWorkbench 以 :key="activeTab.key"（=docId）包在 <KeepAlive> 内，
+ * 切 Tab 不再销毁/重建（消除闪白与重复初始化）：旧实例 onDeactivated 落草稿快照（I11 起 snapKey 为
+ * docId：datara.dag.snap.{docId}）+ canvas-state，新实例 onActivated 按 docId 归位 graphStore 单例后
+ * restoreSnap + restoreCanvasState。
  *
  * 顶部仅保留「任务编排 / 运行监控 / 告警与SLA」三个视角页签（运行监控、告警与SLA 非任务画布）。
  * 旧路径 /dag/design/:id、/stream/design/:id 由路由 redirect 落回本页（?tab=edit&type=…&doc=…）保书签。
@@ -291,16 +293,21 @@ onMounted(async () => {
           <span class="tc-daghint">{{ dagTabs.count }}/{{ MAX_DAG_TABS }}</span>
         </div>
         <div v-if="activeTab" class="tc-canvas">
-          <GraphWorkbench
-            :key="activeTab.key"
-            :profile="profileOf"
-            :doc-id="activeTab.docId"
-            :snap-key="activeTab.docId"
-            :doc-meta="docMetaOf(activeTab)"
-            :host-managed="true"
-            @pick-tasks="onPickTasks"
-            @create-wf="onOpenCreateWf"
-          />
+          <!-- Task 14（§4.5/§3.7）：KeepAlive 缓存画布实例——切换 Tab 不再销毁/重建，消除闪白与重复初始化。
+               跨 Tab 隔离由 GraphWorkbench 的 onActivated/onDeactivated 承担：休眠落草稿快照 + canvas-state，
+               复活按 docId 归位 graphStore 单例 + 重挂 keydown 监听；浮窗按 owner（docId）过滤防后台泄漏。 -->
+          <KeepAlive>
+            <GraphWorkbench
+              :key="activeTab.key"
+              :profile="profileOf"
+              :doc-id="activeTab.docId"
+              :snap-key="activeTab.docId"
+              :doc-meta="docMetaOf(activeTab)"
+              :host-managed="true"
+              @pick-tasks="onPickTasks"
+              @create-wf="onOpenCreateWf"
+            />
+          </KeepAlive>
         </div>
         <div v-else class="tc-empty">
           <!-- I12b：空态也渲染 Palette（默认「工作流」目录）：无 last/无 ?doc 时用户仍可勾选任务载入，不再无入口死路 -->

@@ -242,3 +242,8 @@ export function cloneDoc(doc: GraphDocument): GraphDocument {
 /* spec 驱动渲染的视图适配（工作台优化 Task 5，方案 §2.3）：独立模块承载，
    此处仅 re-export——specSchema 对 profiles/services 均为 import type，运行时零依赖，无循环 */
 export { resolveNodeSchema, specToSchema } from './specSchema'
+
+/* Task 11（§3.5）：批量对齐/分布 + 多选复制粘贴纯函数 re-export。
+   两新模块零内部依赖（align 无 import、clipboard 不 import 本文件，边 id 自实现），无循环 */
+export * from './align'
+export * from './clipboard'
