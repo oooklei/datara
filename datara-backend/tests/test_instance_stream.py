@@ -26,7 +26,7 @@ from types import SimpleNamespace
 import pytest
 
 import api.instance as instance_mod
-from common.models import TaskInstance, WorkflowInstance
+from common.models import TRunEvent, TaskInstance, WorkflowInstance
 
 IID = "20260927-stream-0001"
 USER = SimpleNamespace(id=1, user_name="tester", user_role="dev")
@@ -57,6 +57,19 @@ def _mk_task(db, node_id, state, attempt=1):
     db.add(t)
     db.commit()
     return t
+
+
+def _mk_run_event(db, event_id, event_type="node_executed", payload='{"state": "success"}'):
+    row = TRunEvent(
+        id=event_id,
+        run_id=IID,
+        node_id="n1",
+        event_type=event_type,
+        payload_json=payload,
+    )
+    db.add(row)
+    db.commit()
+    return row
 
 
 class SSESession:
@@ -138,6 +151,41 @@ def test_stream_terminal_instance_snapshot_then_close(db_session):
         fin = events[2][1]
         assert fin["instanceId"] == IID and fin["state"] == "success"
         await s.assert_closed()
+
+    asyncio.run(main())
+
+
+def test_list_run_events_paginates_and_supports_resume_cursor(client, db_session):
+    _mk_instance(db_session, state="running")
+    _mk_run_event(db_session, 1, "node_executing")
+    _mk_run_event(db_session, 2, "node_executed")
+    _mk_run_event(db_session, 3, "execution_success")
+
+    latest = client.get(f"/api/v1/instances/{IID}/events?page_size=2")
+    assert latest.status_code == 200
+    body = latest.json()["data"]
+    assert body["total"] == 3
+    assert [item["id"] for item in body["list"]] == [3, 2]
+    assert body["list"][1]["payload"] == {"state": "success"}
+
+    resumed = client.get(f"/api/v1/instances/{IID}/events?after_id=1")
+    assert [item["id"] for item in resumed.json()["data"]["list"]] == [2, 3]
+
+
+def test_stream_replays_run_events_and_honors_last_event_id(db_session):
+    _mk_instance(db_session, state="running")
+    _mk_run_event(db_session, 1, "node_executing")
+    _mk_run_event(db_session, 2, "node_executed")
+
+    async def main():
+        s = SSESession(instance_mod.stream_instance(
+            IID, last_event_id="1", user=USER, db=db_session,
+        ).body_iterator)
+        events = await s.events(1)
+        assert events[0][0] == "node_event"
+        payload = events[0][1]
+        assert payload["id"] == 2 and payload["type"] == "node_executed"
+        assert payload["payload"] == {"state": "success"} and payload["ts"]
 
     asyncio.run(main())
 
