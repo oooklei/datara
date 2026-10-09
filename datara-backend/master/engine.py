@@ -8,6 +8,7 @@
 """
 
 import hashlib
+import json
 import os
 import threading
 from datetime import datetime, timedelta
@@ -18,9 +19,10 @@ from common import queue
 from common.config import get_settings
 from common.db import new_session
 from common.log import get_logger, set_instance_id
-from common.models import Component, DataSource, StreamJob, TaskInstance, TaskLog, WorkflowInstance, now
+from common.models import Component, DataSource, StreamJob, TaskInstance, TaskLog, TRunNodeArtifact, WorkflowInstance, now
 from master import state
 from master.retry_classifier import classify_error, retry_decision
+from master.signature import node_signature
 from master.dag import Graph, loop_bodies
 from master.event_bus import publish_run_event
 from master.variables import (
@@ -317,6 +319,44 @@ class WorkflowExecuteRunnable(threading.Thread):
     def _node_name(self, node_id: str) -> str:
         return str(self._node_data(node_id).get("name") or node_id)
 
+    def _record_artifact(self, node_id: str, outputs: Optional[dict]) -> None:
+        """Persist a successful node result as a future resume checkpoint."""
+        data = self._node_data(node_id)
+        ref = data.get("componentRef") if isinstance(data.get("componentRef"), dict) else {}
+        upstream: dict[str, str] = {}
+        session = new_session()
+        try:
+            for edge in self.graph.preds.get(node_id, []):
+                artifact = (session.query(TRunNodeArtifact)
+                            .filter(TRunNodeArtifact.run_id == self.instance_id,
+                                    TRunNodeArtifact.node_id == edge["source"])
+                            .first())
+                if artifact is not None:
+                    upstream[edge["source"]] = artifact.node_signature
+            signature = node_signature(
+                self._node_type(node_id), ref.get("version"), data, upstream)
+            body = outputs if isinstance(outputs, dict) else {}
+            fingerprint = hashlib.sha256(
+                json.dumps(body, sort_keys=True, separators=(",", ":"), default=str).encode("utf-8")).hexdigest()
+            current = (session.query(TRunNodeArtifact)
+                       .filter(TRunNodeArtifact.run_id == self.instance_id,
+                               TRunNodeArtifact.node_id == node_id).first())
+            if current is None:
+                current = TRunNodeArtifact(run_id=self.instance_id, node_id=node_id,
+                                           node_signature=signature, artifact_fingerprint=fingerprint,
+                                           refs=body.get("refs") if isinstance(body.get("refs"), dict) else None)
+                session.add(current)
+            else:
+                current.node_signature = signature
+                current.artifact_fingerprint = fingerprint
+                current.refs = body.get("refs") if isinstance(body.get("refs"), dict) else None
+            session.commit()
+        except Exception as exc:  # checkpointing is best effort, never changes execution result
+            session.rollback()
+            logger.warning("node artifact persistence failed: run=%s node=%s error=%r", self.instance_id, node_id, exc)
+        finally:
+            session.close()
+
     # ---- DB 写 ----
 
     def _save_row(self, key: tuple, outputs: Optional[dict] = None, log_lines: Optional[list] = None) -> None:
@@ -414,6 +454,8 @@ class WorkflowExecuteRunnable(threading.Thread):
             raise
         finally:
             session.close()
+        if st == state.SUCCESS:
+            self._record_artifact(key[0], payload.get("outputs"))
         self._event("node_error" if st == state.FAILURE else "node_executed", key[0], {"state": st})
         if st == state.FAILURE and self._schedule_retry(key, payload.get("outputs")):
             return
