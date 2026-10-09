@@ -32,14 +32,19 @@ def eliminate_reroutes(graph_json: dict) -> dict:
         edges = [edge for edge in edges
                  if str(edge.get("source") or "") != reroute_id
                  and str(edge.get("target") or "") != reroute_id]
-        existing = {(str(edge.get("source") or ""), str(edge.get("target") or ""))
-                    for edge in edges}
+        existing = {
+            (
+                str(edge.get("source") or ""),
+                str(edge.get("target") or ""),
+                str(edge.get("sourceHandle") or ""),
+                str(edge.get("targetHandle") or ""),
+            )
+            for edge in edges
+        }
         for before in incoming:
             for after in outgoing:
                 source = str(before.get("source") or "")
                 target = str(after.get("target") or "")
-                if not source or not target or source == target or (source, target) in existing:
-                    continue
                 bridged = {"source": source, "target": target}
                 for key in ("sourceHandle", "kind"):
                     if before.get(key) is not None:
@@ -47,8 +52,16 @@ def eliminate_reroutes(graph_json: dict) -> dict:
                 for key in ("targetHandle", "label", "partial"):
                     if after.get(key) is not None:
                         bridged[key] = after[key]
+                identity = (
+                    source,
+                    target,
+                    str(bridged.get("sourceHandle") or ""),
+                    str(bridged.get("targetHandle") or ""),
+                )
+                if not source or not target or source == target or identity in existing:
+                    continue
                 edges.append(bridged)
-                existing.add((source, target))
+                existing.add(identity)
 
     out = dict(graph_json)
     out["nodes"] = [node for node in nodes if str(node.get("id") or "") not in reroute_ids]

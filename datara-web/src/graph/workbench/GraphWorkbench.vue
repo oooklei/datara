@@ -1177,6 +1177,7 @@ function onEdgeClick(e: { edge?: { id: string } }) {
   openFloat(`edge-data:${g.id}`, `边数据 · ${upstream.data.name || upstream.id}`, EdgeDataFloat, 680, 430, {
     doc: doc.value, edge: g, upstream, outputs, dataType,
     previewLimit: spec?.extensions?.capabilities?.previewLimit ?? 100,
+    workflowCode: props.docMeta?.code,
   })
 }
 

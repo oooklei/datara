@@ -13,6 +13,7 @@ const props = defineProps<{
   outputs: OutputDecl[]
   dataType: EdgeDataType
   previewLimit?: number
+  workflowCode?: number
 }>()
 
 const loading = ref(false)
@@ -44,8 +45,8 @@ onMounted(async () => {
   if (isMock) return
   loading.value = true
   try {
-    const defs = await listDefinitions({ pageSize: 200 })
-    const code = defs.find((definition) => definition.id === props.doc.id)?.code
+    const code = props.workflowCode ?? (await listDefinitions({ pageSize: 200 }))
+      .find((definition) => definition.id === props.doc.id)?.code
     if (!code) return
     const page = await listInstancesPage({ wfCode: String(code), pageSize: 1 })
     const latest = page.list[0]
@@ -87,11 +88,10 @@ onMounted(async () => {
       <div v-else class="empty">上游组件未声明输出 Schema；按 <code>{{ dataType }}</code> 类型连接。</div>
     </section>
 
-    <section class="sample-section">
+    <section v-if="loading || loadError || hasRunRecord" class="sample-section">
       <div class="section-title">最近运行样例 <small v-if="runId">{{ runId }} · 最多 {{ limit }} 行</small></div>
       <div v-if="loading" class="empty">正在读取最近运行记录…</div>
       <div v-else-if="loadError" class="empty error">样例读取失败：{{ loadError }}</div>
-      <div v-else-if="!hasRunRecord" class="empty">暂无运行记录，仅展示 Schema / 类型。</div>
       <div v-else-if="!columns.length" class="empty">最近运行没有可预览的样例数据。</div>
       <div v-else class="sample-grid">
         <table class="tbl">
@@ -117,4 +117,3 @@ onMounted(async () => {
 .sample-section{min-height:0;display:flex;flex:1;flex-direction:column}.sample-grid{min-height:0;overflow:auto;border:1px solid var(--border);border-radius:4px}.empty{padding:18px;text-align:center;color:var(--text-3);border:1px dashed var(--border);border-radius:4px}.empty.error{color:var(--danger)}
 .sample-grid th,.sample-grid td{white-space:nowrap}.sample-grid th:first-child,.sample-grid td:first-child{width:34px;text-align:right;color:var(--text-3)}
 </style>
-
