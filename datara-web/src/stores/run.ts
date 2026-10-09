@@ -3,6 +3,20 @@ import type { GraphDocument, GNode } from '../graph/model'
 import type { NodeRunStatus, RunOptions } from '../services/types'
 import { execService } from '../services/mock/execService'
 import { bus } from '../services/eventBus'
+import { openRunEventSource } from '../services/runEventSource'
+
+export interface NodeRunEvent {
+  id?: number
+  runId: string
+  nodeId: string
+  type: string
+  ts: number | string
+  payload?: Record<string, unknown>
+}
+
+type NodeState = { state: string; color: string; attempt?: number; message?: string; ts: number | string }
+
+let activeNodeEventSource: EventSource | null = null
 
 export const useRunStore = defineStore('run', {
   state: () => ({
@@ -11,6 +25,8 @@ export const useRunStore = defineStore('run', {
     result: '' as '' | 'success' | 'fail' | 'stopped',
     /** 节点运行状态（key=节点 id）：NodeRunStatus | I3 实例染色的 'kill'/'skip' 等（DataNode 按 st- 前缀渲染） */
     nodeStatus: {} as Record<string, string>,
+    /** Durable node-event projection for the run monitor and canvas coloring. */
+    nodeStateMap: {} as Record<string, NodeState>,
     logs: [] as { ts: number; text: string; cls: string }[],
   }),
   actions: {
@@ -19,11 +35,41 @@ export const useRunStore = defineStore('run', {
       this.running = false
       this.result = ''
       this.nodeStatus = {}
+      this.nodeStateMap = {}
       this.logs = []
     },
     log(text: string, cls = '') {
       this.logs.push({ ts: Date.now(), text, cls })
       if (this.logs.length > 200) this.logs.splice(0, this.logs.length - 200)
+    },
+    applyNodeEvent(ev: NodeRunEvent) {
+      if (this.runId && ev.runId !== this.runId) return
+      const states: Record<string, { state: string; color: string }> = {
+        node_executing: { state: 'executing', color: 'amber' },
+        node_executed: { state: 'executed', color: 'green' },
+        node_cached: { state: 'cached', color: 'gray' },
+        node_error: { state: 'error', color: 'red' },
+        node_retry: { state: 'retrying', color: 'amber' },
+      }
+      const hit = states[ev.type]
+      if (!hit || !ev.nodeId) return
+      this.nodeStatus[ev.nodeId] = hit.state
+      this.nodeStateMap[ev.nodeId] = {
+        ...hit,
+        attempt: typeof ev.payload?.attempt === 'number' ? ev.payload.attempt : undefined,
+        message: typeof ev.payload?.message === 'string' ? ev.payload.message : undefined,
+        ts: ev.ts,
+      }
+      if (ev.type === 'node_error') this.log(`[error] ${ev.nodeId} · ${String(ev.payload?.message ?? '')}`, 'fail')
+    },
+    subscribeNodeEvents(instanceId: string) {
+      this.stopNodeEvents()
+      this.runId = instanceId
+      activeNodeEventSource = openRunEventSource(instanceId, (event) => this.applyNodeEvent(event))
+    },
+    stopNodeEvents() {
+      activeNodeEventSource?.close()
+      activeNodeEventSource = null
     },
     async start(doc: GraphDocument, opts?: RunOptions) {
       if (this.running) return

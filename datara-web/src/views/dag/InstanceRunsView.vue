@@ -273,10 +273,12 @@ function patchFromStream(e: TaskStateEvent) {
 /** 订阅实例状态流；onerror 关流降级 3s 轮询（EventSource 原生重连随之关闭，避免双通道） */
 function startStream(instanceId: string) {
   stopStream()
+  run.subscribeNodeEvents(instanceId)
   streamEs = streamInstanceEvents(instanceId, {
     onTaskChanged: patchFromStream,
     onFinished: (e: InstanceFinishedEvent) => {
       stopStream()
+      run.stopNodeEvents()
       if (detail.value) {
         detail.value.state = e.state
         if (e.endTime) detail.value.endTime = e.endTime
@@ -302,6 +304,7 @@ async function openDetail(r: InstanceRow) {
 }
 function closeDetail() {
   stopStream()
+  run.stopNodeEvents()
   stopDetailTimer()
   run.nodeStatus = {}
   detailDoc.value = null

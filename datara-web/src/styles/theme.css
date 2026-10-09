@@ -223,6 +223,16 @@ button,.btn,.el-button,a,.menu-item,.card,.stat{transition:all var(--dur-base) v
 .gnode.st-fail .n-status{display:block;background:var(--danger)}
 .gnode.st-fail{border-color:var(--danger)}
 .gnode.st-running{border-color:var(--warn)}
+/* Durable node_event colors: executing/retrying amber, executed green,
+   checkpoint cache gray, and engine errors red. */
+.gnode.st-executing .n-status,.gnode.st-retrying .n-status{display:block;background:var(--warn);animation:pulse 1s infinite}
+.gnode.st-executing,.gnode.st-retrying{border-color:var(--warn)}
+.gnode.st-executed .n-status{display:block;background:var(--success)}
+.gnode.st-executed{border-color:var(--success)}
+.gnode.st-cached .n-status{display:block;background:#94a3b8}
+.gnode.st-cached{border-color:#94a3b8}
+.gnode.st-error .n-status{display:block;background:var(--danger)}
+.gnode.st-error{border-color:var(--danger)}
 /* I3 实例染色扩展：终止（橙红）/跳过（灰）——02 §1.1 状态集 → 色 */
 .gnode.st-kill .n-status{display:block;background:#f97316}
 .gnode.st-kill{border-color:#f97316}

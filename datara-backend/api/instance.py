@@ -12,7 +12,7 @@ import json
 import time
 from typing import Optional
 
-from fastapi import APIRouter, Depends, Header
+from fastapi import APIRouter, Depends, Header, Query
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from sqlalchemy import or_
@@ -242,6 +242,7 @@ def _stream_session() -> Session:
 def stream_instance(
     instance_id: str,
     last_event_id: Optional[str] = Header(None, alias="Last-Event-ID"),
+    last_event_id_query: Optional[int] = Query(None, alias="lastEventId"),
     user: User = Depends(require_perm("view_all")),
     db: Session = Depends(get_db),
 ):
@@ -256,7 +257,9 @@ def stream_instance(
     row = _get_instance(db, instance_id)  # 404 闸门（存在性校验后请求级会话即还池）
 
     try:
-        event_cursor = max(0, int(last_event_id or 0)) if isinstance(last_event_id, (str, int)) else 0
+        event_cursor = last_event_id_query if isinstance(last_event_id_query, int) else (
+            max(0, int(last_event_id or 0)) if isinstance(last_event_id, (str, int)) else 0
+        )
     except ValueError:
         event_cursor = 0
 
@@ -316,7 +319,8 @@ def stream_instance(
             if events:
                 idle = 0.0
                 for name, payload in events:
-                    yield f"event: {name}\ndata: {json.dumps(payload, ensure_ascii=False, default=str)}\n\n"
+                    event_id = f"id: {payload['id']}\n" if name == "node_event" else ""
+                    yield f"{event_id}event: {name}\ndata: {json.dumps(payload, ensure_ascii=False, default=str)}\n\n"
                 if finished:
                     return
             else:
