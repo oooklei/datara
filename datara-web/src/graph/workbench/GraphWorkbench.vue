@@ -30,6 +30,7 @@ import { onEdgeCreated, onEdgeRemoved, decideDrop, prefillFromUpstream, applyIni
 import { createTemplateStage, selectTemplateSteps, stagedUpstreamOf } from '../profiles/templateStaging'
 import type { TemplateStage } from '../profiles/templateStaging'
 import { useGraphStore } from '../../stores/graph'
+import { patchById } from './syncFromDoc'
 import { useAuthStore } from '../../stores/auth'
 import { useRunStore } from '../../stores/run'
 import { useFloatStore } from '../../stores/float'
@@ -268,10 +269,23 @@ function toFlowEdge(e: GEdge): any {
   }
 }
 
+/**
+ * Prefer an id-based patch so routine draft updates keep Vue Flow's transient
+ * state.  The complete rebuild is deliberately retained as a safe P0 fallback
+ * for malformed legacy documents or an unexpected projector failure.
+ */
 function syncFromDoc() {
   if (!doc.value) return
-  flowNodes.value = doc.value.nodes.map(toFlowNode)
-  flowEdges.value = doc.value.edges.map(toFlowEdge)
+  try {
+    flowNodes.value = patchById(flowNodes.value, doc.value.nodes, toFlowNode)
+      .items
+      .filter((node) => node.type !== 'gbadge')
+    flowEdges.value = patchById(flowEdges.value, doc.value.edges, toFlowEdge).items
+  } catch (error) {
+    console.warn('Incremental graph sync failed; rebuilding canvas state.', error)
+    flowNodes.value = doc.value.nodes.map(toFlowNode)
+    flowEdges.value = doc.value.edges.map(toFlowEdge)
+  }
   applyVisibility()
 }
 
