@@ -47,6 +47,7 @@ COMP_DUPLICATE_TYPE = 6005  # type 已被占用（409）
 COMP_HASH_MISMATCH = 6006  # 同名定义 spec_hash 不一致（409）
 COMP_LOCK_CONFLICT = 6007  # 草稿乐观锁冲突（409，data 带 currentRev）
 COMP_SPEC_INVALID = 6008  # 声明非纯数据：函数/代码片段/非严格 JSON（422）
+COMP_BREAKING_CHANGE = 6009  # 破坏性变更未确认拦截（422，data 带 changes 四类清单 + hint）
 
 # 页面设计器段（页面设计器设计文档 §8）
 PAGE_PREVIEW_SQL_FORBIDDEN = 7001  # 预览 SQL 非 SELECT/WITH 只读（422）
@@ -82,6 +83,7 @@ _MSGS = {
     COMP_HASH_MISMATCH: "同名定义内容哈希不一致",
     COMP_LOCK_CONFLICT: "草稿已被他人更新，请刷新后重试",
     COMP_SPEC_INVALID: "组件声明包含非纯数据内容",
+    COMP_BREAKING_CHANGE: "发布存在破坏性变更，需确认后重发",
     PAGE_PREVIEW_SQL_FORBIDDEN: "预览仅允许 SELECT/WITH 只读查询",
 }
 

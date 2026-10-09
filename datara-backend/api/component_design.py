@@ -14,6 +14,7 @@
 - POST /components/{type}/rollback    回滚到历史发布版本（M2 D3，§8：offline→published）
 - GET  /components/{type}/impacted    影响面查询（M2 D3，§9.4：引用该组件的工作流清单）
 - POST /components/{type}/refresh-refs 刷新引用（页面设计器 §9 发布即刷新，幂等）
+- POST /components/{type}/upgrade-refs 批量升级引用（Task 15 §4.3 自动档，逐项结果不中断）
 
 设计要点（对齐治理文档）：
 - 草稿内容不进主表：存 t_component_version 中 state=draft 的行（§16 设计决策），
@@ -46,6 +47,7 @@ from common.models import (
     WfDefinition, WfDefinitionLog, WfVariable, now,
 )
 from common.resp import (
+    COMP_BREAKING_CHANGE,
     COMP_DUPLICATE_TYPE,
     COMP_GATE_FAILED,
     COMP_LOCK_CONFLICT,
@@ -748,10 +750,59 @@ def run_publish_gates(
     ]
 
 
+def _classify_spec_change(old: dict, new: dict) -> dict:
+    """spec 破坏性变更分类（方案 §2.4，纯函数）：发布闸门第 9 项的判定依据。
+
+    四类破坏性变更（任一非空 → major）：
+    - removed：旧 fields 有而新 fields 无的 key（存量实例传参失去落点）；
+    - uiChanged：同 key 但 uiType 变化（前端渲染契约破坏）；
+    - requiredTightened：旧 optional 新 required（语义裁定：optional→required 是破坏性
+      收紧——存量实例缺值将校验失败；required→optional 是安全放松，不计）；
+    - outputsRemoved：旧 outputs 有而新无的 name（下游按输出名取数将断链）。
+
+    非 dict/缺键宽容处理（spec 形态异常时不误判，交由既有八项闸门兜底）。
+    """
+    def _fields(spec: dict) -> dict:
+        result = {}
+        for f in (spec.get("fields") or []):
+            if isinstance(f, dict) and isinstance(f.get("key"), str):
+                result[f["key"]] = f
+        return result
+
+    old_fields, new_fields = _fields(old), _fields(new)
+    removed = sorted(k for k in old_fields if k not in new_fields)
+    ui_changed = sorted(
+        k for k, f in old_fields.items()
+        if k in new_fields and f.get("uiType") != new_fields[k].get("uiType"))
+    required_tightened = sorted(
+        k for k, f in old_fields.items()
+        if k in new_fields and not f.get("required") and new_fields[k].get("required"))
+
+    def _outputs(spec: dict) -> set:
+        return {
+            o["name"] for o in (spec.get("outputs") or [])
+            if isinstance(o, dict) and isinstance(o.get("name"), str)
+        }
+
+    outputs_removed = sorted(_outputs(old) - _outputs(new))
+    changes = {
+        "removed": removed,
+        "uiChanged": ui_changed,
+        "requiredTightened": required_tightened,
+        "outputsRemoved": outputs_removed,
+    }
+    return {"major": any(changes.values()), "changes": changes}
+
+
 class PublishBody(BaseModel):
     version: int
     draft_rev: int
     remark: Optional[str] = None
+    # 方案 §2.4 破坏性变更闸门随行决策（全部向后兼容缺省；本任务只接收与记录，
+    # 升级迁移的执行由后续 Task 16 实现，field_mapping 仅落审计不留存生效）
+    upgrade_strategy: Literal["auto", "manual", "pin"] = "auto"
+    field_mapping: Optional[dict] = None
+    breaking_confirmed: bool = False
 
 
 @router.post("/{type_name}/publish", summary="发布组件版本（§13 闸门）")
@@ -761,12 +812,18 @@ def publish_version(
     user: User = Depends(require_perm("publish_component")),
     db: Session = Depends(get_db),
 ):
-    """发布指定 frozen 版本：跑 §13 八项闸门，通过后 frozen→published。
+    """发布指定 frozen 版本：跑 §13 八项闸门 + §2.4 破坏性变更闸门（第 9 项），通过后 frozen→published。
 
     - 仅 frozen 可发布（draft 需先冻结；published/offline 走 D3 rollback/offline 语义）；
       发布 vN 时已 published 的旧版本行自动转 offline 让位（既有工作流引用不受阻，§8）。
     - 乐观锁（§16）：draft_rev 与服务端不一致 → 409 COMP_LOCK_CONFLICT。
     - 闸门失败 → 422 COMP_GATE_FAILED，data.items 为逐项结果；失败不落任何状态变更。
+    - 破坏性变更（方案 §2.4）：组件已有 published 版本时对 spec 分类，major 且未带
+      breaking_confirmed → 422 COMP_BREAKING_CHANGE（data 带 changes 四类清单）；
+      已确认放行并将 major 决策（含 field_mapping）落 t_component_log。首次发布不分类。
+    - 升级策略三档（方案 §4.3，Task 15）：发布成功后按 upgrade_strategy 分派——auto
+      自动注入新版本 / pin 钉住旧版 / manual 只记待升级清单，响应带平铺计数
+      （refs_refreshed/pinned/manual_pending）与 data.refresh 载荷。
     """
     comp = _get_or_404(db, type_name)
     if body.draft_rev != comp.draft_rev:
@@ -792,6 +849,29 @@ def publish_version(
                     type_name, body.version, len(failed), user.user_name)
         raise ApiError(COMP_GATE_FAILED, status=422, data={"items": items})
 
+    # 第 9 项闸门（方案 §2.4）：破坏性变更分类——仅对已有 published 版本的组件生效
+    # （首次发布 v1 无 old spec 不分类）。major 且未确认 → 422 拦截；确认后放行并落审计。
+    prev_pub = (
+        db.query(ComponentVersion)
+        .filter(ComponentVersion.component_id == comp.id,
+                ComponentVersion.state == "published")
+        .order_by(ComponentVersion.version.desc())
+        .first()
+    )
+    breaking = None
+    if prev_pub is not None and prev_pub.version != ver.version:
+        old_spec = json.loads(prev_pub.spec_json) if prev_pub.spec_json else {}
+        breaking = _classify_spec_change(old_spec, spec)
+        if breaking["major"] and not body.breaking_confirmed:
+            logger.info("发布破坏性变更拦截: %s v%d（操作人 %s）",
+                        type_name, body.version, user.user_name)
+            raise ApiError(COMP_BREAKING_CHANGE, status=422, data={
+                "code": "breaking_change",
+                "changes": breaking["changes"],
+                "hint": "存在破坏性变更，确认后随发布请求带 breaking_confirmed=true 重发；"
+                        "field_mapping 仅记录，迁移执行由后续升级动作提供",
+            })
+
     superseded = 0
     for prev in (
         db.query(ComponentVersion)
@@ -809,6 +889,16 @@ def publish_version(
     comp.published_version = ver.version
     _append_log(db, comp, ver.version, "publish", ver.spec_hash, user.user_name,
                 body.remark if body.remark else ("取代 v%d" % superseded if superseded else None))
+    if breaking is not None and breaking["major"]:
+        # 破坏性变更已确认：major 决策（升级策略 + field_mapping 内容 + 四类清单）落审计；
+        # remark 列 String(512)，序列化结果超长截断保护（sqlite 不 enforce、MySQL 严格模式会拒）
+        decision = json.dumps({
+            "upgradeStrategy": body.upgrade_strategy,
+            "fieldMapping": body.field_mapping or {},
+            "changes": breaking["changes"],
+        }, ensure_ascii=False)
+        _append_log(db, comp, ver.version, "breaking_confirmed", ver.spec_hash,
+                    user.user_name, decision[:500])
     db.commit()
     logger.info("发布组件版本: %s v%d（操作人 %s%s）", type_name, ver.version,
                 user.user_name, "，取代 v%d" % superseded if superseded else "")
@@ -817,7 +907,15 @@ def publish_version(
         "specHash": ver.spec_hash, "supersededVersion": superseded or None,
         "publishedAt": fmt_dt(ver.published_time),
     }
-    payload["refresh"] = _refresh_refs(db, comp, user.user_name)  # §9 发布即刷新
+    # 方案 §4.3 升级策略三档：auto=发布即刷新（既有 §9）；pin=钉住旧版（版本不动）；
+    # manual=只记待升级清单。策略决策统一落 t_component_log（action=upgrade_strategy）。
+    # 平铺计数 + refresh 载荷并存：refs_refreshed/pinned/manual_pending 供新前端消费，
+    # data.refresh 保持旧形状（refreshed 恒有值，PageDesignerView 等旧消费方兼容）。
+    strategy = _apply_upgrade_strategy(db, comp, body.upgrade_strategy, user.user_name)
+    payload["refresh"] = strategy
+    payload["refs_refreshed"] = strategy.get("refreshed", 0)
+    payload["pinned"] = strategy.get("pinned", 0)
+    payload["manual_pending"] = strategy.get("pending", 0)
     return ok(payload)
 
 
@@ -1033,10 +1131,25 @@ def impacted_workflows(
 # - POST /{type_name}/refresh-refs：手动触发（存量回填/补偿场景）；
 # - publish_version 成功后自动挂载 refresh 结果（响应 data.refresh，见上）。
 
+def _iter_component_refs(doc: dict, type_name: str):
+    """产出图中匹配 type 的 componentRef dict（口径与 _refresh_refs/影响面查询一致——
+    node.data.componentRef）。Task 15 起为三档策略/批量升级共用扫描入口。"""
+    for node in doc.get("nodes") or []:
+        if not isinstance(node, dict):
+            continue
+        data = node.get("data")
+        if not isinstance(data, dict):
+            continue
+        ref = data.get("componentRef")
+        if isinstance(ref, dict) and ref.get("type") == type_name:
+            yield ref
+
+
 def _refresh_refs(db: Session, comp: Component, operator: str) -> dict:
-    """发布即刷新：批量升级落后引用（幂等）。命中即 bump wf.version 并刷 update_time，
-    追加 WfDefinitionLog 版本快照（对齐保存/回滚日志链，回滚可取到刷新后的图）；
-    快照与定义变更同一事务收口，无命中零写入。
+    """发布即刷新（auto 档）：批量升级落后引用（幂等）。命中即 bump wf.version 并刷
+    update_time，追加 WfDefinitionLog 版本快照（对齐保存/回滚日志链，回滚可取到刷新后
+    的图）；快照与定义变更同一事务收口，无命中零写入。
+    Task 15（方案 §4.4）：pinned=true 的引用跳过——「钉住即不自动升级」。
     """
     published = comp.published_version or 0
     items: list = []
@@ -1047,16 +1160,10 @@ def _refresh_refs(db: Session, comp: Component, operator: str) -> dict:
         except (TypeError, ValueError):
             continue
         changed = False
-        for node in doc.get("nodes") or []:
-            if not isinstance(node, dict):
-                continue
-            data = node.get("data")
-            if not isinstance(data, dict):
-                continue
-            ref = data.get("componentRef")
-            if (isinstance(ref, dict) and ref.get("type") == comp.type
-                    and isinstance(ref.get("version"), int) and not isinstance(ref["version"], bool)
-                    and ref["version"] < published):
+        for ref in _iter_component_refs(doc, comp.type):
+            v = ref.get("version")
+            if (isinstance(v, int) and not isinstance(v, bool) and v < published
+                    and not ref.get("pinned")):
                 ref["version"] = published
                 changed = True
         if changed:
@@ -1088,3 +1195,229 @@ def refresh_refs(
     logger.info("刷新组件引用: %s（命中 %d 个图，操作人 %s）",
                 type_name, result["refreshed"], user.user_name)
     return ok(result)
+
+
+# ---------------- 升级策略三档 + upgrade-refs 批量端点（实施计划 Task 15；方案 §4.3/§4.4） ----------------
+#
+# §4.3：发布弹窗三档升级策略——auto（patch 自动注入新版本）/ manual（只记待升级清单，
+# 供 P1 批量升级向导消费）/ pin（工作流钉住旧版本继续可运行）。§4.4：componentRef 记录
+# pinned: boolean，钉住即不自动升级（_refresh_refs 对 pinned 引用跳过）。
+# 全部策略决策落 t_component_log（只追加审计；publish 每次发布一条 upgrade_strategy，
+# 批量升级每次一条 upgrade_refs 携带逐项结果）。
+
+def _pin_refs(db: Session, comp: Component, operator: str) -> dict:
+    """pin 档：落后引用写 pinned=true，版本不动。幂等：已钉住/已对齐的图零写入；
+    命中即 bump wf.version 并追加 WfDefinitionLog 快照（对齐 _refresh_refs 收口口径）。"""
+    published = comp.published_version or 0
+    items: list = []
+    pinned = 0
+    for wf in db.query(WfDefinition).filter(WfDefinition.graph_json.isnot(None)).all():
+        try:
+            doc = json.loads(wf.graph_json or "{}")
+        except (TypeError, ValueError):
+            continue
+        changed = False
+        for ref in _iter_component_refs(doc, comp.type):
+            v = ref.get("version")
+            if (isinstance(v, int) and not isinstance(v, bool) and v < published
+                    and not ref.get("pinned")):
+                ref["pinned"] = True
+                changed = True
+        if changed:
+            wf.graph_json = json.dumps(doc, ensure_ascii=False, separators=(",", ":"))
+            wf.version = (wf.version or 1) + 1
+            wf.update_time = now()
+            db.add(WfDefinitionLog(
+                wf_code=wf.code, version=wf.version, graph_json=wf.graph_json,
+                operator=operator,
+                remark="组件 %s 发布钉住引用于 v%d（版本不自动升）" % (comp.type, published),
+            ))
+            pinned += 1
+            items.append({"wfId": wf.id, "wfName": wf.name})
+    if pinned:
+        db.commit()
+    return {"refreshed": 0, "pinned": pinned, "publishedVersion": published, "items": items}
+
+
+def _record_pending_refs(db: Session, comp: Component) -> dict:
+    """manual 档：只盘点待升级清单，不改任何图。清单随策略决策落 t_component_log，
+    供 P1 批量升级向导（Task 21）消费。"""
+    published = comp.published_version or 0
+    items: list = []
+    for wf in db.query(WfDefinition).filter(WfDefinition.graph_json.isnot(None)).all():
+        try:
+            doc = json.loads(wf.graph_json or "{}")
+        except (TypeError, ValueError):
+            continue
+        versions = {
+            ref.get("version") for ref in _iter_component_refs(doc, comp.type)
+            if isinstance(ref.get("version"), int) and not isinstance(ref["version"], bool)
+            and ref["version"] < published and not ref.get("pinned")
+        }
+        if versions:
+            items.append({"wfId": wf.id, "wfName": wf.name, "refVersions": sorted(versions)})
+    return {"refreshed": 0, "pending": len(items), "publishedVersion": published, "items": items}
+
+
+def _apply_upgrade_strategy(db: Session, comp: Component, strategy: str, operator: str) -> dict:
+    """发布末尾按升级策略分派（方案 §4.3 三档），策略决策统一落 t_component_log。
+
+    - auto：既有发布即刷新 _refresh_refs（落后引用注入新版本）；
+    - pin：_pin_refs（引用写 pinned=true，版本不动）；
+    - manual：_record_pending_refs（只记待升级清单，不改图）。
+    refreshed/published 之外的策略档命中零写入时，本函数仍落一条 upgrade_strategy 审计
+    （决策本身即审计对象）；publish 主流程已 commit，此处审计独立事务收口。
+    """
+    published = comp.published_version or 0
+    if strategy == "pin":
+        result = _pin_refs(db, comp, operator)
+    elif strategy == "manual":
+        result = _record_pending_refs(db, comp)
+    else:  # auto（PublishBody 缺省档）
+        result = _refresh_refs(db, comp, operator)
+    # remark 列 String(512)：序列化结果超长截断保护（对齐 breaking_confirmed 审计）
+    summary = json.dumps({
+        "strategy": strategy, "publishedVersion": published,
+        "refreshed": result.get("refreshed", 0), "pinned": result.get("pinned", 0),
+        "pending": result.get("pending", 0), "items": result.get("items", []),
+    }, ensure_ascii=False)
+    _append_log(db, comp, published, "upgrade_strategy", None, operator, summary[:500])
+    db.commit()
+    return result
+
+
+class UpgradeRefTarget(BaseModel):
+    """批量升级单目标：wf_id 定位工作流；strategy 逐目标分派（auto=注入新版本 /
+    pin=写 pinned=true 不动版本）；base_version 为 §4.4 第三层乐观锁凭证
+    （缺省=服务端扫描口径，与 _refresh_refs 同；提供时走 CAS 条件更新）。"""
+    wf_id: str
+    strategy: Literal["auto", "pin"] = "auto"
+    base_version: Optional[int] = None
+
+
+class UpgradeRefsBody(BaseModel):
+    targets: list[UpgradeRefTarget]
+
+
+def _upgrade_one_ref(db: Session, comp: Component, target: UpgradeRefTarget,
+                     operator: str) -> dict:
+    """批量升级单目标：读图 → 注入新版本/钉住 → base_version 乐观锁保存。
+    失败记 reason 返回 {"ok": False}，不抛出（不中断同批其余目标）。"""
+    published = comp.published_version or 0
+    out: dict = {"wfId": target.wf_id, "ok": False, "reason": None, "newVersion": None}
+    wf = db.query(WfDefinition).filter(WfDefinition.id == target.wf_id).first()
+    if wf is None:
+        out["reason"] = "工作流不存在"
+        return out
+    if target.base_version is not None and wf.version != target.base_version:
+        out["reason"] = "定义已被他人更新（库内 v%s，提交基于 v%s）" % (wf.version, target.base_version)
+        return out
+    if not wf.graph_json:
+        out["reason"] = "图内容为空"
+        return out
+    try:
+        doc = json.loads(wf.graph_json)
+    except (TypeError, ValueError):
+        out["reason"] = "graph_json 非法 JSON"
+        return out
+    if not isinstance(doc, dict):
+        out["reason"] = "graph_json 顶层非对象"
+        return out
+    changed = False
+    for ref in _iter_component_refs(doc, comp.type):
+        v = ref.get("version")
+        if not (isinstance(v, int) and not isinstance(v, bool) and v < published
+                and not ref.get("pinned")):
+            continue
+        if target.strategy == "pin":
+            ref["pinned"] = True
+        else:  # auto
+            ref["version"] = published
+        changed = True
+    if not changed:
+        out["ok"] = True
+        out["reason"] = "无待升级引用（已对齐或已钉住）"
+        return out
+    graph_json = json.dumps(doc, ensure_ascii=False, separators=(",", ":"))
+    next_version = (wf.version or 1) + 1
+    values = {"graph_json": graph_json, "version": next_version, "update_time": now()}
+    if target.base_version is not None:
+        # CAS 条件更新（对齐 save_definition I12-M1）：并发窗口内他人已 bump → rowcount=0
+        # 记失败而非覆盖；Core 级 update 不触碰身份映射，成功后无需回写内存对象
+        matched = (
+            db.query(WfDefinition)
+            .filter(WfDefinition.id == wf.id, WfDefinition.version == target.base_version)
+            .update(values, synchronize_session=False)
+        )
+        if matched == 0:
+            out["reason"] = "定义已被他人更新（乐观锁 CAS 失败）"
+            return out
+    else:
+        wf.graph_json = graph_json
+        wf.version = next_version
+        wf.update_time = values["update_time"]
+    db.add(WfDefinitionLog(
+        wf_code=wf.code, version=next_version, graph_json=graph_json,
+        operator=operator,
+        remark=("组件 %s 引用钉住于 v%d" if target.strategy == "pin"
+                else "组件 %s 引用升级至 v%d") % (comp.type, published),
+    ))
+    if target.base_version is not None:
+        # Task 15 审查修复（Major-3）：Core 级 update 不触碰身份映射，成功后 wf 内存对象
+        # 仍是旧值——expunge 移出 session，防同 session 后续读到 stale graph_json/version
+        db.expunge(wf)
+    out["ok"] = True
+    if target.strategy != "pin":
+        out["newVersion"] = published
+    return out
+
+
+@router.post("/{type_name}/upgrade-refs", summary="批量升级引用（方案 §4.3 自动档，逐项结果不中断）")
+def upgrade_refs(
+    type_name: str,
+    body: UpgradeRefsBody,
+    user: User = Depends(require_perm("design_component")),
+    db: Session = Depends(get_db),
+):
+    """批量升级向导后端（自动档）：逐 wf 读 graph_json → 注入 published 新版本 →
+    base_version 乐观锁保存（对齐方案 §4.4 三层锁之第三层）。
+
+    - 失败项 {"ok": false, "reason": ...} 不中断其余目标（结果报告供向导渲染成功/失败/跳过）；
+    - pin 项只写 pinned=true 不动版本（钉住即不自动升级）；
+    - 仅 published 组件可批量升级（409/6002）；批量决策落 t_component_log。
+    """
+    comp = _get_or_404(db, type_name)
+    if comp.state != "published" or comp.published_version is None:
+        raise ApiError(COMP_STATE_CONFLICT, status=409, msg="仅 published 组件可批量升级引用")
+    results: list[dict] = []
+    seen_wf: set[str] = set()
+    for t in body.targets:
+        # Task 15 审查修复（Major-3）：按 wf_id 去重保序——重复目标不重复 bump，
+        # results 与 targets 一一对应并标注原因，向导逐项展示不丢项
+        if t.wf_id in seen_wf:
+            results.append({"wfId": t.wf_id, "ok": False,
+                            "reason": "重复目标（同批已处理首个）", "newVersion": None})
+            continue
+        seen_wf.add(t.wf_id)
+        try:
+            r = _upgrade_one_ref(db, comp, t, user.user_name)
+            # Task 15 审查修复（Major-2）：逐目标提交——单目标异常只回滚自身，
+            # 已成功目标保持持久（部分成功语义）；失败目标 ok:false 不抛出
+            db.commit()
+        except Exception as e:  # noqa: BLE001——基础设施异常兜底（DB 约束/连接等）
+            db.rollback()
+            logger.warning("批量升级单目标异常: wf=%s 组件=%s err=%s", t.wf_id, type_name, e)
+            r = {"wfId": t.wf_id, "ok": False, "reason": "处理异常: %s" % e, "newVersion": None}
+        results.append(r)
+    # remark 列 String(512)：截断保护（对齐 _apply_upgrade_strategy 审计口径）
+    summary = json.dumps({
+        "publishedVersion": comp.published_version,
+        "results": [{k: r[k] for k in ("wfId", "ok", "reason", "newVersion")} for r in results],
+    }, ensure_ascii=False)
+    _append_log(db, comp, comp.published_version, "upgrade_refs", None,
+                user.user_name, summary[:500])
+    db.commit()
+    logger.info("批量升级组件引用: %s（%d 项目标，成功 %d，操作人 %s）",
+                type_name, len(results), sum(1 for r in results if r["ok"]), user.user_name)
+    return ok({"type": comp.type, "publishedVersion": comp.published_version,
+               "results": results})

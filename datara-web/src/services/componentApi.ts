@@ -9,7 +9,7 @@
  * M0 只读：不接受任何写操作。用户自建组件（草稿/发布/版本）属 M1+，
  * 届时新增 `t_component` 表与 POST/PUT 接口。
  */
-import { http } from './http'
+import { http, getToken } from './http'
 import { isMock } from './apiMode'
 import { mockComponentDetail, mockComponentDraft, mockComponentVersions } from './mock/api'
 import type { ComponentInitTemplate } from '../graph/profiles/types'
@@ -305,11 +305,17 @@ export interface GateItem {
   msg: string
 }
 
-/** §9 发布即刷新结果（publish 成功后端自动执行并挂载在响应 data.refresh） */
+/** §9 发布即刷新结果（publish 成功后端自动执行并挂载在响应 data.refresh）。
+ *  Task 15（§4.3）：pin 档命中写 pinned 计数、manual 档命中写 pending 计数
+ *  （auto 档两者缺省/为 0；refreshed 三档恒有值，旧消费方兼容）。 */
 export interface PublishRefresh {
   refreshed: number
   publishedVersion: number
   items: { wfId: string; wfName: string }[]
+  /** pin 档：钉住的图引用数（版本不自动升） */
+  pinned?: number
+  /** manual 档：待升级工作流数（供批量升级向导消费） */
+  pending?: number
 }
 
 export interface PublishResult {
@@ -322,16 +328,49 @@ export interface PublishResult {
   refresh?: PublishRefresh
 }
 
-/** 发布指定 frozen 版本（跑 §13 八项闸门；422/6003 data.items 逐项结果，409/6007 乐观锁）。
- * 闸门不可绕过：无 force / 无豁免（§13 设计决策）。 */
+/** 破坏性变更四类清单（方案 §2.4，422/6009 data.changes） */
+export interface BreakingChanges {
+  removed: string[]
+  uiChanged: string[]
+  requiredTightened: string[]
+  outputsRemoved: string[]
+}
+
+/** 破坏性变更拦截载荷（422/6009 data） */
+export interface BreakingChangePayload {
+  code: 'breaking_change'
+  changes: BreakingChanges
+  hint: string
+}
+
+/** 发布请求体：upgradeStrategy/fieldMapping/breakingConfirmed 为方案 §2.4 破坏性变更
+ *  闸门随行决策（缺省由 API 层补齐；field_mapping 仅随请求上行落审计，迁移执行由后续任务提供） */
+export interface PublishBody {
+  version: number
+  draftRev: number
+  remark?: string
+  /** 升级策略：auto 自动 / manual 人工映射 / pin 锁定旧版 */
+  upgradeStrategy?: 'auto' | 'manual' | 'pin'
+  /** 字段映射（manual 升级时的 oldKey→newKey） */
+  fieldMapping?: Record<string, string> | null
+  /** 破坏性变更已确认（6009 拦截后用户确认重发时置 true） */
+  breakingConfirmed?: boolean
+}
+
+/** 发布指定 frozen 版本（§13 八项闸门 + §2.4 破坏性变更闸门；
+ *  422/6003 data.items 逐项结果，422/6009 data.changes 破坏性清单，409/6007 乐观锁）。
+ *  闸门不可绕过：无 force / 无豁免（§13 设计决策；破坏性变更需显式 breakingConfirmed）。 */
 export async function publishComponentVersion(
   type: string,
-  body: { version: number; draftRev: number; remark?: string },
+  body: PublishBody,
 ): Promise<PublishResult> {
   return http.post<PublishResult>(`/components/${encodeURIComponent(type)}/publish`, {
     version: body.version,
     draft_rev: body.draftRev,
     remark: body.remark,
+    upgrade_strategy: body.upgradeStrategy ?? 'auto',
+    field_mapping: body.fieldMapping ?? null,
+    breaking_confirmed: body.breakingConfirmed ?? false,
   })
 }
 
@@ -408,4 +447,75 @@ export interface CompRegistryRow {
 export async function getComponentRegistry(): Promise<CompRegistryRow[]> {
   const r = await http.get<{ items: CompRegistryRow[] }>('/components/registry')
   return r.items
+}
+
+/* ================= 统一规格下发（工作台优化 Task 4，方案 §2.3） ================= */
+
+/**
+ * 规格接口单条 item：后端 api/component_spec.py `_spec_item` 的 8 要素骨架
+ * （identity/description/inputs/outputs/visual/behaviors/dropPolicy/extensions）。
+ * 这是网络传输形态，**不是** ComponentSpec 编辑形态——identity/description/visual
+ * 为嵌套容器（后端恒为对象），其余要素缺失时显式 null（§2.3 契约），归一化交给
+ * componentSpec.normalizeSpec。可归一要素一律 unknown 透传（后端已过发布闸门，前端不再复检）。
+ */
+export interface ComponentSpecItem {
+  type: string
+  /** Task 15（§4.3）：published 版本号（引用角标判定「有新版本可用」的比对基准） */
+  publishedVersion: number | null
+  identity: { type: string; displayName: string; aliases: unknown }
+  description: { summary: string; description: unknown; category: unknown; docUrl: unknown }
+  /** 即编辑形态 spec.fields */
+  inputs: unknown
+  /** 声明式输出（V2） */
+  outputs: unknown
+  visual: { icon: string; color: unknown; shape: unknown; badge: unknown }
+  behaviors: unknown
+  dropPolicy: unknown
+  extensions: unknown
+  specVersion: unknown
+  ports: unknown
+}
+
+export interface ComponentSpecResult {
+  /** 响应 ETag（含引号的原始值，回传时原样作 If-None-Match 凭证） */
+  etag: string
+  items: ComponentSpecItem[]
+}
+
+/**
+ * 拉取全部已发布组件规格骨架（GET /components/spec，ETag/304 条件请求）。
+ *
+ * **刻意不走 http.ts 统一封装**（http.get 仅 get<T>(path) 签名，既不能携带
+ * If-None-Match 自定义头，也拿不到 status/headers，且会按 {code,msg,data} 统一包
+ * 解包——本接口返回裸 JSON、304 无 body，两相冲突）。故此处独立 fetch，仅复刻
+ * http.ts 的 15s AbortController 超时与 header token 约定（header 名即 'token'）。
+ *
+ * **刻意不加 isMock 分支**：mock 模式下后端规格服务不存在，fetch 失败 → store
+ * 置 degraded=true → 消费方回落 profile 兜底，正是方案设计的降级路径，无需伪造数据。
+ *
+ * 返回 null 表示 304（缓存沿用，调用方不得清空既有数据）；非 304 且 !res.ok
+ * （如 500）视为失败抛出，避免错误响应被误解析成空清单而清掉本地缓存。
+ */
+export async function fetchComponentSpec(ifNoneMatch?: string): Promise<ComponentSpecResult | null> {
+  const ctrl = new AbortController()
+  const timer = setTimeout(() => ctrl.abort(), 15000)
+  try {
+    const headers: Record<string, string> = {}
+    const token = getToken()
+    if (token) headers.token = token
+    if (ifNoneMatch) headers['If-None-Match'] = ifNoneMatch
+    /* '/api/v1' 前缀与 http.ts BASE 同源（该常量未导出，此处按路径字面量对齐） */
+    const res = await fetch('/api/v1/components/spec', { headers, signal: ctrl.signal })
+    if (res.status === 304) return null
+    if (!res.ok) throw new Error(`规格服务异常（HTTP ${res.status}）`)
+    const body = (await res.json()) as { items?: ComponentSpecItem[] }
+    return { etag: res.headers.get('etag') ?? '', items: Array.isArray(body?.items) ? body.items : [] }
+  } catch (err) {
+    if (err instanceof DOMException && err.name === 'AbortError') {
+      throw new Error('请求超时（15s），请检查后端服务')
+    }
+    throw err
+  } finally {
+    clearTimeout(timer)
+  }
 }

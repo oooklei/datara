@@ -56,6 +56,7 @@ def create_app() -> FastAPI:
         baseline,
         component,
         component_design,
+        component_spec,
         datasource,
         health,
         ide,
@@ -78,6 +79,8 @@ def create_app() -> FastAPI:
 
     app.include_router(alerts.router, prefix="/api/v1")
     app.include_router(auth.router, prefix="/api/v1")
+    # 统一规格下发（方案 §2.3）：须先于 component.router 挂载，/spec 不被 /{type_name} 吞掉
+    app.include_router(component_spec.router, prefix="/api/v1")
     app.include_router(component.router, prefix="/api/v1")
     app.include_router(component_design.router, prefix="/api/v1")
     # 组件基线化（M-B0）：进度/底稿/体检/认可发版（component_design 之后注册）
