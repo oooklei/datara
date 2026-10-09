@@ -35,6 +35,7 @@ logger = get_logger("master.engine")
 POLL_INTERVAL_SEC = 10  # 定时器/kill 自查轮询周期
 DEPENDENT_POLL_SEC = 10  # C9 依赖轮询周期
 DEFAULT_MAX_ITERATIONS = 100  # C10 防死循环上限
+CHECKPOINTABLE_TYPES = frozenset({"sql"})  # conservative: only idempotent SQL nodes opt in initially
 
 # worker 派发类节点全集（G-19 单一真源：由 components.catalog 统一定义，消除 4 处字面量副本）
 # 超时扫描（check_timeouts）/容错重派（_resume_sweep）/执行器分派（_execute_node）共用
@@ -217,6 +218,7 @@ class WorkflowExecuteRunnable(threading.Thread):
         self.snapshots: dict = {}      # {node_name: snapshot} 实例级汇总
         self.resolver: Optional[VarResolver] = None
         self.fail_defaults: dict = {}  # 定时/补数下发的任务缺省重试参数
+        self.checkpoint_enabled = False
 
     def _event(self, event_type: str, node_id: str = "", payload: Optional[dict] = None) -> None:
         """Best-effort event delivery; never changes scheduling outcomes."""
@@ -286,6 +288,7 @@ class WorkflowExecuteRunnable(threading.Thread):
                 "retryTimes": int(variables.get("failRetryTimes") or 0),
                 "retryIntervalSec": int(variables.get("failRetryInterval") or 60) ,
             }
+            self.checkpoint_enabled = variables.get("checkpointEnabled") is True
         finally:
             session.close()
 
@@ -356,6 +359,41 @@ class WorkflowExecuteRunnable(threading.Thread):
             logger.warning("node artifact persistence failed: run=%s node=%s error=%r", self.instance_id, node_id, exc)
         finally:
             session.close()
+
+    def _restore_cached_artifact(self, key: tuple) -> bool:
+        """Restore a matching prior artifact during an explicit checkpoint resume."""
+        node_id, loop_iter = key
+        if not self.checkpoint_enabled or self._node_type(node_id) not in CHECKPOINTABLE_TYPES:
+            return False
+        session = new_session()
+        try:
+            current = (session.query(TRunNodeArtifact)
+                       .filter(TRunNodeArtifact.run_id == self.instance_id,
+                               TRunNodeArtifact.node_id == node_id).first())
+            if current is None:
+                return False
+            upstream: dict[str, str] = {}
+            for edge in self.graph.preds.get(node_id, []):
+                parent = (session.query(TRunNodeArtifact)
+                          .filter(TRunNodeArtifact.run_id == self.instance_id,
+                                  TRunNodeArtifact.node_id == edge["source"]).first())
+                if parent is not None:
+                    upstream[edge["source"]] = parent.node_signature
+            data = self._node_data(node_id)
+            ref = data.get("componentRef") if isinstance(data.get("componentRef"), dict) else {}
+            expected = node_signature(self._node_type(node_id), ref.get("version"), data, upstream)
+            if current.node_signature != expected:
+                return False
+        finally:
+            session.close()
+        row = self.rows[key]
+        row["state"] = state.SUCCESS
+        row["end_time"] = now()
+        self._save_row(key, outputs={"cached": True, "artifactFingerprint": current.artifact_fingerprint},
+                       log_lines=["[master] checkpoint signature matched; worker dispatch skipped"])
+        self._event("node_cached", node_id, {"artifactFingerprint": current.artifact_fingerprint})
+        self._advance_downstream(node_id, loop_iter)
+        return True
 
     # ---- DB 写 ----
 
@@ -700,6 +738,8 @@ class WorkflowExecuteRunnable(threading.Thread):
             handler(key, resolved)
             return
         if node_type in WORKER_TYPES:
+            if self._restore_cached_artifact(key):
+                return
             # G-11 修复：notify.trigger 真正驱动投递——触发时机与上游实际状态不符则跳过（SUCCESS 不落 worker）
             if node_type == "notify" and not self._notify_trigger_matches(node_id, loop_iter):
                 self._set_state(key, state.SUCCESS,

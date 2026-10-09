@@ -484,6 +484,9 @@ def _cmd_resume_from(command: Command, param: dict) -> None:
                 task.end_time = None
                 task.delay_until = None
                 task.outputs = None
+        variables = dict(instance.variables) if isinstance(instance.variables, dict) else {}
+        variables["checkpointEnabled"] = True
+        instance.variables = variables
         instance.state = state.RUNNING
         instance.end_time = None
         session.commit()
