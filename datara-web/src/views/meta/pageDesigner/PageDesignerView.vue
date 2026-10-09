@@ -96,6 +96,11 @@ const loading = ref(false)
 const loadErr = ref('')
 const saving = ref(false)
 const publishing = ref(false)
+const hasUnsavedChanges = ref(false)
+const autoSaveNotice = ref('')
+const saveConflict = ref(false)
+let savedSpecSnapshot = ''
+let autoSaveTimer: ReturnType<typeof setTimeout> | undefined
 
 const STATE_TEXT: Record<string, string> = { draft: '草稿', frozen: '冻结', published: '已发布', offline: '已下线' }
 const stateText = computed(() => (draft.value ? STATE_TEXT[draft.value.state] ?? draft.value.state : ''))
@@ -242,6 +247,10 @@ async function loadAll(t: string): Promise<void> {
       fieldsState.value = st
     }
     resetUndo()
+    savedSpecSnapshot = JSON.stringify(currentSpec())
+    hasUnsavedChanges.value = false
+    autoSaveNotice.value = ''
+    saveConflict.value = false
   } catch (e) {
     loadErr.value = e instanceof Error ? e.message : String(e)
   } finally {
@@ -550,6 +559,58 @@ async function onRefresh(): Promise<void> {
 }
 
 /* ================= 保存 / 预览 ================= */
+function currentSpec(): Record<string, unknown> {
+  return fieldsState.value
+    ? toFieldsSpec(fieldsState.value) as unknown as Record<string, unknown>
+    : { page: page.value }
+}
+
+function cancelAutoSave(): void {
+  if (autoSaveTimer !== undefined) clearTimeout(autoSaveTimer)
+  autoSaveTimer = undefined
+}
+
+async function saveAutomatically(): Promise<void> {
+  const d = draft.value
+  if (!d || saving.value || saveConflict.value || !hasUnsavedChanges.value) return
+  saving.value = true
+  try {
+    const spec = currentSpec()
+    const r = await saveComponentDraft(d.type, { draftRev: d.draftRev, spec })
+    d.draftRev = r.draftRev
+    savedSpecSnapshot = JSON.stringify(spec)
+    hasUnsavedChanges.value = false
+    autoSaveNotice.value = `已自动保存（rev ${r.draftRev}）`
+  } catch (e) {
+    if ((e as { code?: number }).code === 409) {
+      saveConflict.value = true
+      cancelAutoSave()
+      ElMessage.warning('草稿已被其他会话修改；本地内容已保留，自动保存已暂停')
+    }
+  } finally {
+    saving.value = false
+  }
+}
+
+function scheduleAutoSave(): void {
+  cancelAutoSave()
+  if (!hasUnsavedChanges.value || saveConflict.value || !draft.value) return
+  autoSaveTimer = setTimeout(() => { void saveAutomatically() }, 30_000)
+}
+
+watch([page, fieldsState], () => {
+  if (loading.value || !draft.value || saveConflict.value) return
+  hasUnsavedChanges.value = JSON.stringify(currentSpec()) !== savedSpecSnapshot
+  if (hasUnsavedChanges.value) scheduleAutoSave()
+}, { deep: true })
+
+async function reloadRemoteAfterConflict(): Promise<void> {
+  const type = activeType.value
+  if (!type) return
+  cancelAutoSave()
+  await loadAll(type)
+}
+
 async function onSave(): Promise<void> {
   const d = draft.value
   if (!d || saving.value) return
@@ -557,11 +618,20 @@ async function onSave(): Promise<void> {
   try {
     /* 模式分派：fields 模式写回声明 spec（fields / form.params 双源 + dropPolicy）；
        page 模式写回页面 DSL */
-    const spec = fieldsState.value ? toFieldsSpec(fieldsState.value) : { page: page.value }
+    const spec = currentSpec()
     const r = await saveComponentDraft(d.type, { draftRev: d.draftRev, spec })
     d.draftRev = r.draftRev
+    savedSpecSnapshot = JSON.stringify(spec)
+    hasUnsavedChanges.value = false
+    autoSaveNotice.value = ''
     ElMessage.success(`已保存（rev ${r.draftRev}）`)
   } catch (e) {
+    if ((e as { code?: number }).code === 409) {
+      saveConflict.value = true
+      cancelAutoSave()
+      ElMessage.warning('草稿已被其他会话修改；本地内容已保留，自动保存已暂停')
+      return
+    }
     ElMessage.error(e instanceof Error ? e.message : String(e))
   } finally {
     saving.value = false
@@ -813,6 +883,7 @@ onMounted(() => {
   window.addEventListener('keydown', onKeydown)
 })
 onBeforeUnmount(() => {
+  cancelAutoSave()
   stopPanelResize()
   window.removeEventListener('keydown', onKeydown)
 })
@@ -910,6 +981,12 @@ async function onCreate(): Promise<void> {
     <el-alert v-if="loadErr" type="error" :closable="false" :title="`页面草稿加载失败：${loadErr}`" show-icon class="pd-err" />
 
     <!-- 新建态：名称 + 4 页面模板卡 + 创建 -->
+    <div v-if="saveConflict" class="pd-save-conflict" role="alert">
+      <span>草稿发生并发冲突：本地编辑仍在当前页面，自动保存已暂停。</span>
+      <el-button size="small" @click="reloadRemoteAfterConflict">放弃本地并载入远端</el-button>
+    </div>
+    <span v-else-if="autoSaveNotice" class="pd-autosave-note">{{ autoSaveNotice }}</span>
+
     <section v-if="isCreate" class="pd-create">
       <div class="pd-create-title">新建页面组件</div>
       <div class="pd-create-row">
