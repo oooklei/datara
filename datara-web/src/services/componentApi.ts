@@ -211,6 +211,15 @@ export interface ComponentVersionsResult {
   items: ComponentVersionRow[]
 }
 
+/** Immutable version content, loaded on demand by the manual-upgrade review. */
+export interface ComponentVersionSnapshot {
+  type: string
+  version: number
+  state: string
+  spec: Record<string, unknown>
+  specHash: string
+}
+
 export interface ComponentCreateBody {
   type: string
   name: string
@@ -295,6 +304,12 @@ export async function freezeComponentVersion(
 export async function listComponentVersions(type: string): Promise<ComponentVersionsResult> {
   if (isMock) return mockComponentVersions(type)
   return http.get<ComponentVersionsResult>(`/components/${encodeURIComponent(type)}/versions`)
+}
+
+export async function getComponentVersionSnapshot(type: string, version: number): Promise<ComponentVersionSnapshot> {
+  return http.get<ComponentVersionSnapshot>(
+    `/components/${encodeURIComponent(type)}/versions/${encodeURIComponent(String(version))}`,
+  )
 }
 
 /* ================= M2 发布治理（治理设计 §18.3；D1 发布闸门） ================= */

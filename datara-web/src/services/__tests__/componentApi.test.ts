@@ -9,7 +9,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import {
   getComponent, getComponentCatalog, getComponentStats, listComponents,
-  getComponentRegistry, offlineComponent, rollbackComponent,
+  getComponentRegistry, getComponentVersionSnapshot, offlineComponent, rollbackComponent,
   getImpactedWorkflows, publishComponentVersion, deleteComponent, upgradeComponentRefs,
 } from '../componentApi'
 import { TOKEN_KEY } from '../http'
@@ -134,6 +134,13 @@ describe('D3 发布治理契约（offline/rollback/impacted/registry/publish）'
     const r = await getImpactedWorkflows('comp_demo')
     expect(fetchMock.mock.calls[0][0]).toBe('/api/v1/components/comp_demo/impacted')
     expect(r.items[0].behind).toBe(true)
+  })
+
+  it('getComponentVersionSnapshot reads one immutable version instead of the summary list', async () => {
+    stubRes({ type: 'comp_demo', version: 2, state: 'published', spec: { fields: [] }, specHash: 'abc' })
+    const snapshot = await getComponentVersionSnapshot('comp_demo', 2)
+    expect(fetchMock.mock.calls[0][0]).toBe('/api/v1/components/comp_demo/versions/2')
+    expect(snapshot.spec).toEqual({ fields: [] })
   })
 
   it('upgradeComponentRefs serializes targets with the API snake_case contract', async () => {

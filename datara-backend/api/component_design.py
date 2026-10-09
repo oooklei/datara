@@ -9,6 +9,7 @@
 - PUT  /components/{type}/draft       保存草稿（乐观锁 draft_rev；纯数据校验 422）
 - POST /components/{type}/versions    冻结草稿为不可变版本（B5）
 - GET  /components/{type}/versions    版本列表（B5）
+- GET  /components/{type}/versions/{version} 不可变版本快照（升级字段映射审阅）
 - POST /components/{type}/publish     发布指定 frozen 版本（M2 D1，跑 §13 八项闸门）
 - POST /components/{type}/offline     下线组件（M2 D3，§8：published→offline）
 - POST /components/{type}/rollback    回滚到历史发布版本（M2 D3，§8：offline→published）
@@ -476,6 +477,39 @@ def list_versions(
             }
             for r in rows
         ],
+    })
+
+
+@router.get("/{type_name}/versions/{version}", summary="读取不可变版本快照")
+def get_version_snapshot(
+    type_name: str,
+    version: int,
+    user: User = Depends(require_perm("design_component")),
+    db: Session = Depends(get_db),
+):
+    """返回单个版本的不可变 spec，供升级向导比较旧引用与当前发布契约。
+
+    列表端点仍只给摘要，避免常规设计器加载全部 spec；本端点按需读取单个
+    version 行，不修改草稿、发布状态或审计链。
+    """
+    comp = _get_or_404(db, type_name)
+    row = (
+        db.query(ComponentVersion)
+        .filter(ComponentVersion.component_id == comp.id,
+                ComponentVersion.version == version)
+        .first()
+    )
+    if row is None:
+        raise ApiError(COMP_STATE_CONFLICT, status=404, msg="版本不存在")
+    try:
+        spec = json.loads(row.spec_json) if row.spec_json else {}
+    except (TypeError, ValueError):
+        # version rows normally pass pure-data gates; fail closed for historical
+        # corrupted rows instead of returning an invented comparison input.
+        raise ApiError(COMP_STATE_CONFLICT, status=409, msg="版本声明损坏，无法用于升级比对")
+    return ok({
+        "type": comp.type, "version": row.version, "state": row.state,
+        "spec": spec, "specHash": row.spec_hash,
     })
 
 

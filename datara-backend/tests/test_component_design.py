@@ -477,6 +477,23 @@ def test_versions_unknown_type_404(client):
     assert client.get("/api/v1/components/__nope__/versions").status_code == 404
 
 
+def test_version_snapshot_returns_immutable_spec_for_upgrade_review(client):
+    """升级向导须比较真实的旧/新不可变版本，列表端点不能以摘要替代快照。"""
+    _created(client)
+    spec = {"fields": [{"key": "legacy_table", "label": "旧表", "uiType": "text"}]}
+    assert client.put("/api/v1/components/user_demo/draft",
+                      json={"draft_rev": 0, "spec": spec}).status_code == 200
+    assert _freeze(client).status_code == 200
+
+    r = client.get("/api/v1/components/user_demo/versions/1")
+
+    assert r.status_code == 200, r.text
+    assert r.json()["data"] == {
+        "type": "user_demo", "version": 1, "state": "frozen",
+        "spec": spec, "specHash": _spec_hash(spec),
+    }
+
+
 def test_freeze_rbac(client):
     """B5 权限位：dev 可冻结（design_component），analyst/viewer 403。"""
     _created(client)
