@@ -41,6 +41,9 @@ import { canvasOnlyRenderVisible } from './canvasFlags' // Task 12（§3.6）：
 import { loadCanvasState, saveCanvasState, type CanvasState } from '../../composables/useCanvasState' // Task 14（§3.7）：画布状态持久化（canvas-state:{docId}）
 
 import DataNode from './DataNode.vue'
+import RerouteNode from './RerouteNode.vue'
+import EdgeDataFloat from './EdgeDataFloat.vue'
+import { edgeDataClass, EDGE_DATA_TYPE_VISUALS, resolveEdgeDataType } from './edgeData'
 import Palette from './Palette.vue'
 import Inspector from './Inspector.vue'
 import DropConfigDialog from './DropConfigDialog.vue'
@@ -247,7 +250,10 @@ function toFlowEdge(e: GEdge): any {
   const k = props.profile.edgeKinds[e?.kind ?? props.profile.defaultEdge]
     ?? Object.values(props.profile.edgeKinds)[0]
   // 防御：edgeKinds 配置缺失时提供默认样式
-  const color = k?.color ?? '#64748b'
+  const sourceNode = doc.value?.nodes.find((node) => node.id === e?.source)
+  const sourceSpec = sourceNode && specEnabled.value ? componentStore.specMap.get(sourceNode.type) : undefined
+  const dataType = resolveEdgeDataType(e?.sourceHandle, sourceSpec)
+  const color = EDGE_DATA_TYPE_VISUALS[dataType].color
   const edgeType = k?.edgeType ?? 'default'
   const dashed = k?.dashed ?? false
   const animated = k?.animated ?? false
@@ -258,6 +264,8 @@ function toFlowEdge(e: GEdge): any {
     sourceHandle: e?.sourceHandle != null ? String(e.sourceHandle) : '',
     targetHandle: e?.targetHandle != null ? String(e.targetHandle) : '',
     type: edgeType,
+    class: edgeDataClass(dataType),
+    data: { dataType },
     label: e?.label != null ? String(e.label) : '',
     labelStyle: { fill: color, fontSize: 9.5 },
     labelBgPadding: [4, 2],
@@ -1159,7 +1167,17 @@ async function onRunCheck() {
 function onEdgeClick(e: { edge?: { id: string } }) {
   if (!doc.value || !e.edge) return
   const g = doc.value.edges.find((x) => x.id === e.edge!.id)
-  if (g) props.profile.onEdgeClick?.(g, doc.value)
+  if (!g) return
+  props.profile.onEdgeClick?.(g, doc.value)
+  const upstream = doc.value.nodes.find((node) => node.id === g.source)
+  if (!upstream) return
+  const spec = specEnabled.value ? componentStore.specMap.get(upstream.type) : undefined
+  const dataType = resolveEdgeDataType(g.sourceHandle, spec)
+  const outputs = spec?.outputs ?? spec?.ports.outputs.map((port) => ({ name: port.name, type: port.type })) ?? []
+  openFloat(`edge-data:${g.id}`, `边数据 · ${upstream.data.name || upstream.id}`, EdgeDataFloat, 680, 430, {
+    doc: doc.value, edge: g, upstream, outputs, dataType,
+    previewLimit: spec?.extensions?.capabilities?.previewLimit ?? 100,
+  })
 }
 
 /** 节点渲染组件：profile 可注入自定义（如 ER 实体卡片），缺省 DataNode */
@@ -1917,7 +1935,7 @@ function ctxLayout() { onLayout(); closeCtx() }
           <template #node-gn="nodeProps">
             <div :class="{ 'gn-hit': nodeProps.id === searchHit }">
               <component
-                :is="nodeComp"
+                :is="nodeProps.data.gnode.type === 'reroute' ? RerouteNode : nodeComp"
                 :id="nodeProps.id"
                 :gnode="nodeProps.data.gnode"
                 :schema="nodeProps.data.schema"
