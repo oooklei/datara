@@ -207,6 +207,33 @@ def test_upgrade_refs_batch(client, db_session):
     assert len(logs) == 1
 
 
+def test_upgrade_refs_persists_mapping_or_explicit_skip(client, db_session):
+    """升级决策必须随引用持久化：字段映射与明确跳过可在后续审计/运行中区分。"""
+    _make_published_v1(client)
+    wf_map = _seed_wf(client, db_session, "映射升级", 1, "n_map")
+    wf_skip = _seed_wf(client, db_session, "跳过迁移", 1, "n_skip")
+    set_role(client.app, "admin")
+    assert _publish_minor(client, COMP, ["sql", "table", "extra"],
+                          upgrade_strategy="manual").status_code == 200
+
+    r = client.post("/api/v1/components/%s/upgrade-refs" % COMP, json={"targets": [
+        {"wf_id": wf_map, "base_version": 1,
+         "field_mapping": {"old_table": "source_table"}},
+        {"wf_id": wf_skip, "base_version": 1, "migration": "skip"},
+    ]})
+
+    assert r.status_code == 200, r.text
+    results = {item["wfId"]: item for item in r.json()["data"]["results"]}
+    assert results[wf_map]["migration"] == "map"
+    assert results[wf_skip]["migration"] == "skip"
+    assert _ref_of(db_session, wf_map) == {
+        "type": COMP, "version": 2, "fieldMapping": {"old_table": "source_table"},
+    }
+    assert _ref_of(db_session, wf_skip) == {
+        "type": COMP, "version": 2, "migration": "skip",
+    }
+
+
 def test_upgrade_refs_failure_isolated(client, db_session):
     """失败项不中断：不存在 / CAS 冲突 → ok=false + reason，其余目标照常注入。"""
     _make_published_v1(client)

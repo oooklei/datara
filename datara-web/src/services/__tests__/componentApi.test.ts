@@ -146,6 +146,23 @@ describe('D3 发布治理契约（offline/rollback/impacted/registry/publish）'
     expect(result.results[0].ok).toBe(true)
   })
 
+  it('upgradeComponentRefs sends an explicit mapping or skip only when chosen', async () => {
+    stubRes({ type: 'comp_demo', publishedVersion: 3, results: [] })
+    await upgradeComponentRefs('comp_demo', [
+      { wfId: 'wf-map', fieldMapping: { old_table: 'source_table' } },
+      { wfId: 'wf-skip', migration: 'skip' },
+      { wfId: 'wf-default', fieldMapping: {} },
+    ])
+
+    expect(JSON.parse(fetchMock.mock.calls[0][1].body)).toEqual({
+      targets: [
+        { wf_id: 'wf-map', strategy: 'auto', field_mapping: { old_table: 'source_table' } },
+        { wf_id: 'wf-skip', strategy: 'auto', migration: 'skip' },
+        { wf_id: 'wf-default', strategy: 'auto' },
+      ],
+    })
+  })
+
   it('getComponentRegistry → GET /components/registry，返回 items 数组', async () => {
     stubRes({ items: [{ type: 'comp_demo', name: '演示', profile: 'dag', scope: 'user', state: 'published', publishedVersion: 2, executionModel: 'dag-engine', category: null }] })
     const rows = await getComponentRegistry()

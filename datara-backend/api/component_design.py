@@ -35,7 +35,7 @@ import re
 from typing import Literal, Optional
 
 from fastapi import APIRouter, Depends
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
 from api.auth import ApiError, require_perm
@@ -1293,6 +1293,11 @@ class UpgradeRefTarget(BaseModel):
     wf_id: str
     strategy: Literal["auto", "pin"] = "auto"
     base_version: Optional[int] = None
+    # Field-level compatibility decision authored by the manual-upgrade wizard.
+    # It belongs to each workflow reference rather than the component version:
+    # separate workflows can intentionally make different migration choices.
+    field_mapping: dict[str, str] = Field(default_factory=dict)
+    migration: Literal["map", "skip"] = "map"
 
 
 class UpgradeRefsBody(BaseModel):
@@ -1304,7 +1309,8 @@ def _upgrade_one_ref(db: Session, comp: Component, target: UpgradeRefTarget,
     """批量升级单目标：读图 → 注入新版本/钉住 → base_version 乐观锁保存。
     失败记 reason 返回 {"ok": False}，不抛出（不中断同批其余目标）。"""
     published = comp.published_version or 0
-    out: dict = {"wfId": target.wf_id, "ok": False, "reason": None, "newVersion": None}
+    out: dict = {"wfId": target.wf_id, "ok": False, "reason": None,
+                 "newVersion": None, "migration": target.migration}
     wf = db.query(WfDefinition).filter(WfDefinition.id == target.wf_id).first()
     if wf is None:
         out["reason"] = "工作流不存在"
@@ -1323,6 +1329,10 @@ def _upgrade_one_ref(db: Session, comp: Component, target: UpgradeRefTarget,
     if not isinstance(doc, dict):
         out["reason"] = "graph_json 顶层非对象"
         return out
+    # Pydantic enforces a string-to-string shape; keep only meaningful keys so
+    # a stale/empty browser form never writes ambiguous graph metadata.
+    mapping = {key: value for key, value in target.field_mapping.items()
+               if key.strip() and value.strip()}
     changed = False
     for ref in _iter_component_refs(doc, comp.type):
         v = ref.get("version")
@@ -1333,6 +1343,15 @@ def _upgrade_one_ref(db: Session, comp: Component, target: UpgradeRefTarget,
             ref["pinned"] = True
         else:  # auto
             ref["version"] = published
+            if target.migration == "skip":
+                ref["migration"] = "skip"
+                ref.pop("fieldMapping", None)
+            else:
+                ref.pop("migration", None)
+                if mapping:
+                    ref["fieldMapping"] = mapping
+                else:
+                    ref.pop("fieldMapping", None)
         changed = True
     if not changed:
         out["ok"] = True
@@ -1412,7 +1431,7 @@ def upgrade_refs(
     # remark 列 String(512)：截断保护（对齐 _apply_upgrade_strategy 审计口径）
     summary = json.dumps({
         "publishedVersion": comp.published_version,
-        "results": [{k: r[k] for k in ("wfId", "ok", "reason", "newVersion")} for r in results],
+        "results": [{k: r.get(k) for k in ("wfId", "ok", "reason", "newVersion", "migration")} for r in results],
     }, ensure_ascii=False)
     _append_log(db, comp, comp.published_version, "upgrade_refs", None,
                 user.user_name, summary[:500])

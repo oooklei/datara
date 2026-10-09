@@ -434,6 +434,10 @@ export interface UpgradeRefTarget {
   wfId: string
   strategy?: 'auto' | 'pin'
   baseVersion?: number
+  /** Per-workflow old-input → new-input decision from the manual upgrade review. */
+  fieldMapping?: Record<string, string>
+  /** Explicitly preserve compatibility risk rather than guessing a mapping. */
+  migration?: 'map' | 'skip'
 }
 
 export interface UpgradeRefResult {
@@ -441,6 +445,7 @@ export interface UpgradeRefResult {
   ok: boolean
   reason?: string
   newVersion?: number | null
+  migration?: 'map' | 'skip'
 }
 
 export async function upgradeComponentRefs(type: string, targets: UpgradeRefTarget[]): Promise<{
@@ -453,6 +458,10 @@ export async function upgradeComponentRefs(type: string, targets: UpgradeRefTarg
       wf_id: target.wfId,
       strategy: target.strategy ?? 'auto',
       base_version: target.baseVersion,
+      ...(target.fieldMapping && Object.keys(target.fieldMapping).length
+        ? { field_mapping: target.fieldMapping }
+        : {}),
+      ...(target.migration ? { migration: target.migration } : {}),
     })),
   })
 }
