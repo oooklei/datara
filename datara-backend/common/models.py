@@ -135,6 +135,24 @@ class TRunEvent(Base):
     __table_args__ = (Index("idx_run_event_run_id", "run_id", "id"),)
 
 
+class TRunNodeArtifact(Base):
+    """Reusable successful-node checkpoint metadata; payload data stays in its owner system."""
+    __tablename__ = "t_run_node_artifact"
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    run_id: Mapped[str] = mapped_column(String(64), nullable=False)
+    node_id: Mapped[str] = mapped_column(String(128), nullable=False)
+    node_signature: Mapped[str] = mapped_column(String(64), nullable=False)
+    artifact_fingerprint: Mapped[str] = mapped_column(String(64), nullable=False)
+    refs: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
+    create_time: Mapped[datetime] = mapped_column(DateTime, default=now, nullable=False)
+
+    __table_args__ = (
+        UniqueConstraint("run_id", "node_id", name="uq_run_node_artifact"),
+        Index("idx_run_node_artifact_signature", "node_signature"),
+    )
+
+
 # ---------- 5. t_task_instance 任务实例 ----------
 class TaskInstance(Base):
     __tablename__ = "t_task_instance"
