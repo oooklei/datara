@@ -430,6 +430,33 @@ export async function getImpactedWorkflows(type: string): Promise<ImpactedResult
   return http.get<ImpactedResult>(`/components/${encodeURIComponent(type)}/impacted`)
 }
 
+export interface UpgradeRefTarget {
+  wfId: string
+  strategy?: 'auto' | 'pin'
+  baseVersion?: number
+}
+
+export interface UpgradeRefResult {
+  wfId: string
+  ok: boolean
+  reason?: string
+  newVersion?: number | null
+}
+
+export async function upgradeComponentRefs(type: string, targets: UpgradeRefTarget[]): Promise<{
+  type: string
+  publishedVersion: number
+  results: UpgradeRefResult[]
+}> {
+  return http.post(`/components/${encodeURIComponent(type)}/upgrade-refs`, {
+    targets: targets.map((target) => ({
+      wf_id: target.wfId,
+      strategy: target.strategy ?? 'auto',
+      base_version: target.baseVersion,
+    })),
+  })
+}
+
 /** 用户组件注册表行（t_component 轻量元数据，不含 spec 全文） */
 export interface CompRegistryRow {
   type: string

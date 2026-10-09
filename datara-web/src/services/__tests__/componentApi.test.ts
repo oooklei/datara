@@ -10,7 +10,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import {
   getComponent, getComponentCatalog, getComponentStats, listComponents,
   getComponentRegistry, offlineComponent, rollbackComponent,
-  getImpactedWorkflows, publishComponentVersion, deleteComponent,
+  getImpactedWorkflows, publishComponentVersion, deleteComponent, upgradeComponentRefs,
 } from '../componentApi'
 import { TOKEN_KEY } from '../http'
 
@@ -134,6 +134,16 @@ describe('D3 发布治理契约（offline/rollback/impacted/registry/publish）'
     const r = await getImpactedWorkflows('comp_demo')
     expect(fetchMock.mock.calls[0][0]).toBe('/api/v1/components/comp_demo/impacted')
     expect(r.items[0].behind).toBe(true)
+  })
+
+  it('upgradeComponentRefs serializes targets with the API snake_case contract', async () => {
+    stubRes({ type: 'comp_demo', publishedVersion: 3, results: [{ wfId: 'wf-a', ok: true, newVersion: 3 }] })
+    const result = await upgradeComponentRefs('comp_demo', [{ wfId: 'wf-a', baseVersion: 2 }])
+    expect(fetchMock.mock.calls[0][0]).toBe('/api/v1/components/comp_demo/upgrade-refs')
+    expect(JSON.parse(fetchMock.mock.calls[0][1].body)).toEqual({
+      targets: [{ wf_id: 'wf-a', strategy: 'auto', base_version: 2 }],
+    })
+    expect(result.results[0].ok).toBe(true)
   })
 
   it('getComponentRegistry → GET /components/registry，返回 items 数组', async () => {
