@@ -647,9 +647,61 @@ function onValidate() {
   else ElMessage.warning(`发现 ${n} 个问题`)
 }
 
-function onLayout() {
+const WORKER_LAYOUT_THRESHOLD = 200
+let layoutWorker: Worker | null = null
+let layoutRequestId = 0
+
+function terminateLayoutWorker() {
+  layoutWorker?.terminate()
+  layoutWorker = null
+}
+
+function layoutInWorker(doc: GraphDocument): Promise<GraphDocument> {
+  const requestId = ++layoutRequestId
+  if (!layoutWorker) layoutWorker = new Worker(new URL('./layoutWorker.ts', import.meta.url), { type: 'module' })
+  return new Promise((resolve, reject) => {
+    const worker = layoutWorker!
+    const onMessage = (event: MessageEvent<{ id: number; doc?: GraphDocument; error?: string }>) => {
+      if (event.data.id !== requestId) return
+      cleanup()
+      if (event.data.error || !event.data.doc) reject(new Error(event.data.error ?? '布局 Worker 未返回结果'))
+      else resolve(event.data.doc)
+    }
+    const onError = () => { cleanup(); reject(new Error('布局 Worker 异常退出')) }
+    const cleanup = () => {
+      worker.removeEventListener('message', onMessage)
+      worker.removeEventListener('error', onError)
+    }
+    worker.addEventListener('message', onMessage)
+    worker.addEventListener('error', onError)
+    worker.postMessage({ id: requestId, doc, dir: props.profile.layoutDir ?? 'TB' })
+  })
+}
+
+onBeforeUnmount(terminateLayoutWorker)
+
+async function onLayout() {
   if (!doc.value) return
-  graphStore.replace(applyLayout(cloneDoc(doc.value), props.profile))
+  const before = cloneDoc(doc.value)
+  const beforeJson = JSON.stringify(before)
+  let laidOut: GraphDocument
+  if (before.nodes.length > WORKER_LAYOUT_THRESHOLD && props.profile.layout !== 'lane' && props.profile.layout !== 'force' && props.profile.layout !== 'er') {
+    ElMessage.info(`正在后台布局 ${before.nodes.length} 个节点…`)
+    try {
+      laidOut = await layoutInWorker(before)
+    } catch (error) {
+      console.warn('Worker layout failed; falling back to main thread.', error)
+      laidOut = applyLayout(before, props.profile)
+    }
+  } else {
+    laidOut = applyLayout(before, props.profile)
+  }
+  // Never replace edits made while a large graph was being calculated.
+  if (!doc.value || JSON.stringify(doc.value) !== beforeJson) {
+    ElMessage.warning('布局期间画布已更新，已保留最新编辑')
+    return
+  }
+  graphStore.replace(laidOut)
   syncFromDoc()
   ElMessage.success('已自动布局')
 }
