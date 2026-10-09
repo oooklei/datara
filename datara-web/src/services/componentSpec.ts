@@ -179,6 +179,36 @@ export interface ComponentSpec {
   initTemplate?: Record<string, unknown>
 }
 
+export interface SpecChangeSummary {
+  removed: string[]
+  uiChanged: string[]
+  requiredTightened: string[]
+  outputsRemoved: string[]
+  breaking: boolean
+}
+
+/** Frontend mirror of the publish gate's breaking-change classification. */
+export function classifySpecChange(before: Partial<ComponentSpec>, after: Partial<ComponentSpec>): SpecChangeSummary {
+  const oldFields = new Map((before.fields ?? []).map((field) => [field.key, field]))
+  const newFields = new Map((after.fields ?? []).map((field) => [field.key, field]))
+  const removed = [...oldFields.keys()].filter((key) => !newFields.has(key)).sort()
+  const uiChanged = [...oldFields.keys()].filter((key) => {
+    const next = newFields.get(key)
+    return next !== undefined && oldFields.get(key)?.uiType !== next.uiType
+  }).sort()
+  const requiredTightened = [...newFields.keys()].filter((key) => {
+    const previous = oldFields.get(key)
+    return previous !== undefined && previous.required !== true && newFields.get(key)?.required === true
+  }).sort()
+  const oldOutputs = new Set((before.outputs ?? []).map((item) => item.name))
+  const newOutputs = new Set((after.outputs ?? []).map((item) => item.name))
+  const outputsRemoved = [...oldOutputs].filter((name) => !newOutputs.has(name)).sort()
+  return {
+    removed, uiChanged, requiredTightened, outputsRemoved,
+    breaking: !!(removed.length || uiChanged.length || requiredTightened.length || outputsRemoved.length),
+  }
+}
+
 function normPort(v: unknown): SpecPort {
   const o = (v !== null && typeof v === 'object' ? v : {}) as Record<string, unknown>
   return { name: String(o.name ?? ''), type: String(o.type ?? '') }
