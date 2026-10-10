@@ -2,10 +2,12 @@
 import { onMounted, watch } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { useTemplateStore } from '../../stores/templateStore'
+import { useGraphStore } from '../../stores/graph'
 
 const props = defineProps<{ workflowId?: string }>()
 const emit = defineEmits<{ (e: 'created', payload: { id: string; name: string; code?: number }): void }>()
 const store = useTemplateStore()
+const graph = useGraphStore()
 onMounted(async () => { await store.load(); if (props.workflowId) await store.checkUpgrade(props.workflowId) })
 watch(() => props.workflowId, async (id) => { if (id) await store.checkUpgrade(id) })
 async function instantiate(id: number, fallbackName: string) {
@@ -19,7 +21,8 @@ async function instantiate(id: number, fallbackName: string) {
 async function confirmUpgrade() {
   if (!props.workflowId) return
   await ElMessageBox.confirm('确认用最新模板覆盖当前工作流草稿？该升级为可选操作。', '确认升级', { type: 'warning' })
-  await store.confirmUpgrade(props.workflowId)
+  const doc = await store.confirmUpgrade(props.workflowId)
+  if (doc) graph.setDoc(doc) // 升级产物回写活动画布（替换整档，脏标清零）
   ElMessage.success('模板升级完成')
 }
 </script>
@@ -28,7 +31,7 @@ async function confirmUpgrade() {
   <div class="template-center">
     <div v-if="store.upgradeNotice?.upgradeAvailable" class="upgrade-notice">
       <strong>可选升级</strong><span>当前模板 v{{ store.upgradeNotice.currentVersion }}，最新 v{{ store.upgradeNotice.latestVersion }}；不会自动覆盖工作流。</span>
-      <button @click="workflowId && store.previewUpgrade(workflowId)">diff 预览</button><button class="primary" @click="confirmUpgrade">确认升级</button>
+      <button data-testid="preview-upgrade" @click="workflowId && store.previewUpgrade(workflowId)">diff 预览</button><button class="primary" data-testid="confirm-upgrade" @click="confirmUpgrade">确认升级</button>
     </div>
     <div v-if="store.upgradePreview" class="diff-preview">
       <div v-for="item in store.upgradePreview.diff" :key="item.path" class="diff-row"><code>{{ item.path }}</code><span>{{ item.before }}</span><b>→</b><span>{{ item.after }}</span></div>

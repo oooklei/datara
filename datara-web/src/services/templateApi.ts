@@ -3,7 +3,8 @@ import type { GraphDocument } from '../graph/model'
 
 export interface WorkflowTemplate { id: number; name: string; category: string; description: string; version: number; updatedAt: string; templateJson?: GraphDocument }
 export interface UpgradeStatus { upgradeAvailable: boolean; templateId: number | null; currentVersion: number; latestVersion: number }
-export interface TemplateDiff { currentVersion: number; latestVersion: number; diff: Array<{ path: string; before: unknown; after: unknown }> }
+/** workflowVersion：diff 预览时的工作流草稿版本（confirm 升级作为 CAS baseVersion 回传） */
+export interface TemplateDiff { workflowVersion?: number; currentVersion: number; latestVersion: number; diff: Array<{ path: string; before: unknown; after: unknown }> }
 
 export const listTemplates = () => http.get<WorkflowTemplate[]>('/workflow-templates')
 export const getTemplate = (id: number) => http.get<WorkflowTemplate>(`/workflow-templates/${id}`)
@@ -18,4 +19,6 @@ export const previewTemplateUpgrade = async (wfId: string) => {
   if (status.templateId == null) return { currentVersion: status.currentVersion, latestVersion: status.latestVersion, diff: [] }
   return http.get<TemplateDiff>(`/workflow-templates/${status.templateId}/diff/${encodeURIComponent(wfId)}`)
 }
-export const confirmTemplateUpgrade = (templateId: number, wfId: string) => http.post<GraphDocument>(`/workflow-templates/${templateId}/upgrade/${encodeURIComponent(wfId)}`, {})
+/** CAS 三参升级：baseVersion=预览时工作流版本 / templateVersion=当前模板版本 / targetTemplateVersion=目标模板版本 */
+export interface ConfirmUpgradeBody { baseVersion: number; templateVersion: number; targetTemplateVersion: number }
+export const confirmTemplateUpgrade = (templateId: number, wfId: string, body: ConfirmUpgradeBody) => http.post<GraphDocument>(`/workflow-templates/${templateId}/upgrade/${encodeURIComponent(wfId)}`, body)

@@ -12,8 +12,16 @@ export const useTemplateStore = defineStore('workflow-templates', () => {
   async function checkUpgrade(wfId: string) { upgradeNotice.value = await getUpgradeStatus(wfId); upgradePreview.value = null }
   async function previewUpgrade(wfId: string) { upgradePreview.value = await previewTemplateUpgrade(wfId) }
   async function confirmUpgrade(wfId: string) {
-    if (upgradeNotice.value?.templateId == null) return null
-    const doc = await confirmTemplateUpgrade(upgradeNotice.value.templateId, wfId)
+    const notice = upgradeNotice.value
+    if (notice?.templateId == null) return null
+    /* CAS 三参：baseVersion 取 diff 预览时的工作流版本（预览后草稿再变动会被后端 409 拒绝），
+       未预览时兜底为 notice.currentVersion；templateVersion/targetTemplateVersion 锁定升级模板版本区间。 */
+    const body = {
+      baseVersion: upgradePreview.value?.workflowVersion ?? notice.currentVersion,
+      templateVersion: notice.currentVersion,
+      targetTemplateVersion: notice.latestVersion,
+    }
+    const doc = await confirmTemplateUpgrade(notice.templateId, wfId, body)
     await checkUpgrade(wfId)
     return doc
   }

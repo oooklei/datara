@@ -152,8 +152,14 @@ export async function listComponents(params: {
   paletteVisible?: boolean
   q?: string
 } = {}): Promise<ComponentListResult> {
-  return http.get<ComponentListResult>(
+  const res = await http.get<ComponentListResult>(
     `/components${qs({ ...params, paletteVisible: params.paletteVisible })}`)
+  /* §11 消费契约：目录全量组件须携带初始化模板（拖入默认形态）。后端快照个别组件
+     （如 reroute 展示型节点）initTemplate 缺位时补通用空白模板，保持纯数据形状一致。 */
+  res.items = res.items.map((it) => it.initTemplate
+    ? it
+    : { ...it, initTemplate: { rect: { w: 160, h: 48 }, props: {}, sample: {} } })
+  return res
 }
 
 /** 组件目录统计（含注册表漂移指标） */

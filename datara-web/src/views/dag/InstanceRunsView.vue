@@ -473,7 +473,7 @@ function goLineage() {
   router.push({ path: '/meta/lineage', query: { instance: iid, node: nid } })
 }
 
-onBeforeUnmount(() => { stopStream(); stopDetailTimer(); stopLogTimer() })
+onBeforeUnmount(() => { stopStream(); run.stopNodeEvents(); stopDetailTimer(); stopLogTimer() })
 
 function dur(s?: string | null, e?: string | null): string {
   if (!s || !e) return '-'

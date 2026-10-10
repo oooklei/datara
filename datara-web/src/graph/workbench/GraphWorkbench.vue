@@ -241,7 +241,7 @@ function toFlowNode(g: GNode): any {
   }
 }
 
-function toFlowEdge(e: GEdge): any {
+function toFlowEdge(e: GEdge, nodeMap?: Map<string, GNode>): any {
   // 防御：边数据缺少 id/source/target 时生成占位边（避免 VueFlow setEdges 内部 toString() 崩溃）
   // VueFlow setEdges 内部会对 edge 的多个字段调用 toString()，undefined/null 会抛 TypeError
   const rawId = e?.id ?? `edge_fallback_${Math.random().toString(36).slice(2, 8)}`
@@ -250,7 +250,10 @@ function toFlowEdge(e: GEdge): any {
   const k = props.profile.edgeKinds[e?.kind ?? props.profile.defaultEdge]
     ?? Object.values(props.profile.edgeKinds)[0]
   // 防御：edgeKinds 配置缺失时提供默认样式
-  const sourceNode = doc.value?.nodes.find((node) => node.id === e?.source)
+  // 全量同步传 nodeMap（O(1) 查找，避免 O(E×N)）；单边增量调用点缺省时退回线性查找，行为一致
+  const sourceNode = nodeMap
+    ? (e?.source != null ? nodeMap.get(e.source) : undefined)
+    : doc.value?.nodes.find((node) => node.id === e?.source)
   const sourceSpec = sourceNode && specEnabled.value ? componentStore.specMap.get(sourceNode.type) : undefined
   const dataType = resolveEdgeDataType(e?.sourceHandle, sourceSpec)
   const color = EDGE_DATA_TYPE_VISUALS[dataType].color
@@ -284,15 +287,16 @@ function toFlowEdge(e: GEdge): any {
  */
 function syncFromDoc() {
   if (!doc.value) return
+  const nodeMap = new Map(doc.value.nodes.map((n) => [n.id, n])) // 一次建 Map，全量边同步 O(1) 查节点
   try {
     flowNodes.value = patchById(flowNodes.value, doc.value.nodes, toFlowNode)
       .items
       .filter((node) => node.type !== 'gbadge')
-    flowEdges.value = patchById(flowEdges.value, doc.value.edges, toFlowEdge).items
+    flowEdges.value = patchById(flowEdges.value, doc.value.edges, (e) => toFlowEdge(e, nodeMap)).items
   } catch (error) {
     console.warn('Incremental graph sync failed; rebuilding canvas state.', error)
     flowNodes.value = doc.value.nodes.map(toFlowNode)
-    flowEdges.value = doc.value.edges.map(toFlowEdge)
+    flowEdges.value = doc.value.edges.map((e) => toFlowEdge(e, nodeMap))
   }
   applyVisibility()
 }
