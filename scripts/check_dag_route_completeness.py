@@ -44,6 +44,7 @@ TEMPLATE_TYPES = {
 
 # 声明为"非可执行宿主"的类型：运行期不产生任务实例（需在 nodeTypes 显式标注）
 NON_EXECUTABLE_TYPES = {
+    "reroute",
     "page_board",      # 页面宿主，需后端 SSE/看板 API（G-15/G-17）
 }
 

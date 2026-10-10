@@ -278,7 +278,7 @@ const nodeTypes: Record<string, NodeSchema> = {
     type: 'reroute',
     label: '转接节点', icon: '•', color: '#64748b', categories: ['general', 'sync', 'etl'],
     desc: '整理长连线的设计态转接点；运行编译时自动消除并直连前后节点',
-    form: [], defaults: {}, runtimeOnly: false,
+    form: [], defaults: {}, runtimeOnly: false, nonExecutable: true,
     summary: () => '仅设计态',
   },
   conditions: {

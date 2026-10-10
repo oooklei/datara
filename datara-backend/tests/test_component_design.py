@@ -541,7 +541,7 @@ def test_m1_has_no_publish_entry(client):
 def test_m0_readonly_catalog_still_works(client):
     """共存校验：M0 目录只读端点不受本模块挂载影响。"""
     r = client.get("/api/v1/components")
-    assert r.status_code == 200 and r.json()["data"]["total"] == 75
+    assert r.status_code == 200 and r.json()["data"]["total"] == 76
 
 
 # ---------------------------------------------------------------- M2 发布闸门（Task D1，§13 八项）

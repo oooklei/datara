@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "generatedAt": "2026-10-02T22:18:11+00:00",
+  "generatedAt": "2026-10-09T18:16:26+00:00",
   "source": [
     "datara-web/src/graph/profiles/dag.ts",
     "datara-web/src/graph/profiles/etl.ts",
@@ -12,11 +12,11 @@
   "stats": {
     "profiles": 7,
     "profilesWithNodeTypes": 4,
-    "total": 75,
-    "paletteVisible": 50,
+    "total": 76,
+    "paletteVisible": 51,
     "hidden": 25,
     "routable": 58,
-    "dagTotal": 35,
+    "dagTotal": 36,
     "dagRoutable": 31,
     "backendOnlyTypes": [
       "src_select",
@@ -24,7 +24,7 @@
     ],
     "backendOnlyCount": 2,
     "template": 4,
-    "nonExecutable": 13,
+    "nonExecutable": 14,
     "unrouted": 0,
     "unroutedTypes": [],
     "unroutedTotal": 0,
@@ -43,7 +43,7 @@
       "text"
     ],
     "nonSerializable": {
-      "summary": 64,
+      "summary": 65,
       "ports": 1,
       "form.showIf": 90,
       "form.onChange": 1,
@@ -52,6 +52,7 @@
     "routeByProfile": {
       "dag": {
         "master": 20,
+        "nonExecutable": 1,
         "worker": 11,
         "template": 4
       },
@@ -75,11 +76,11 @@
     {
       "profile": "dag",
       "source": "datara-web/src/graph/profiles/dag.ts",
-      "nodeTypes": 35,
+      "nodeTypes": 36,
       "dagRelevant": true,
       "paletteFormat": "items",
       "paletteGroups": 8,
-      "paletteItems": 33,
+      "paletteItems": 34,
       "paletteSpreads": [],
       "hidden": 2
     },
@@ -749,6 +750,41 @@
       }
     },
     {
+      "type": "reroute",
+      "profile": "dag",
+      "dagRelevant": true,
+      "executionModel": "nonExecutable",
+      "executionNote": "展示型节点（不产生任务实例）",
+      "code": null,
+      "label": "转接节点",
+      "icon": "•",
+      "color": "#64748b",
+      "desc": "整理长连线的设计态转接点；运行编译时自动消除并直连前后节点",
+      "phase": null,
+      "categories": [
+        "general",
+        "sync",
+        "etl"
+      ],
+      "shape": null,
+      "runtimeOnly": false,
+      "route": "nonExecutable",
+      "executor": null,
+      "paletteVisible": true,
+      "paletteGroup": "逻辑控制",
+      "paletteIndex": 10,
+      "initTemplate": null,
+      "formFieldCount": 0,
+      "formFields": [],
+      "defaultKeys": [],
+      "flags": {
+        "hasSummaryFn": true,
+        "hasPage": false,
+        "hasTemplate": false,
+        "hasPortsFn": false
+      }
+    },
+    {
       "type": "sql",
       "profile": "dag",
       "dagRelevant": true,
@@ -771,7 +807,7 @@
       "executor": "sql",
       "paletteVisible": true,
       "paletteGroup": "数据计算",
-      "paletteIndex": 10,
+      "paletteIndex": 11,
       "initTemplate": {
         "rect": {
           "w": 200,
@@ -884,7 +920,7 @@
       "executor": "shell",
       "paletteVisible": true,
       "paletteGroup": "数据计算",
-      "paletteIndex": 11,
+      "paletteIndex": 12,
       "initTemplate": {
         "rect": {
           "w": 200,
@@ -958,7 +994,7 @@
       "executor": "python",
       "paletteVisible": true,
       "paletteGroup": "数据计算",
-      "paletteIndex": 12,
+      "paletteIndex": 13,
       "initTemplate": {
         "rect": {
           "w": 200,
@@ -1054,7 +1090,7 @@
       "executor": "ssh",
       "paletteVisible": true,
       "paletteGroup": "数据计算",
-      "paletteIndex": 13,
+      "paletteIndex": 14,
       "initTemplate": {
         "rect": {
           "w": 200,
@@ -1140,7 +1176,7 @@
       "executor": "procedure",
       "paletteVisible": true,
       "paletteGroup": "数据计算",
-      "paletteIndex": 14,
+      "paletteIndex": 15,
       "initTemplate": {
         "rect": {
           "w": 200,
@@ -1241,7 +1277,7 @@
       "executor": "http",
       "paletteVisible": true,
       "paletteGroup": "数据计算",
-      "paletteIndex": 15,
+      "paletteIndex": 16,
       "initTemplate": {
         "rect": {
           "w": 160,
@@ -1382,7 +1418,7 @@
       "executor": "file",
       "paletteVisible": true,
       "paletteGroup": "数据计算",
-      "paletteIndex": 16,
+      "paletteIndex": 17,
       "initTemplate": {
         "rect": {
           "w": 200,
@@ -1627,7 +1663,7 @@
       "executor": null,
       "paletteVisible": true,
       "paletteGroup": "数据计算",
-      "paletteIndex": 17,
+      "paletteIndex": 18,
       "initTemplate": {
         "rect": {
           "w": 180,
@@ -1764,7 +1800,7 @@
       "executor": null,
       "paletteVisible": true,
       "paletteGroup": "数据同步",
-      "paletteIndex": 18,
+      "paletteIndex": 19,
       "initTemplate": {
         "rect": {
           "w": 200,
@@ -1804,7 +1840,7 @@
       "executor": null,
       "paletteVisible": true,
       "paletteGroup": "数据同步",
-      "paletteIndex": 19,
+      "paletteIndex": 20,
       "initTemplate": {
         "rect": {
           "w": 200,
@@ -1844,7 +1880,7 @@
       "executor": null,
       "paletteVisible": true,
       "paletteGroup": "数据同步",
-      "paletteIndex": 20,
+      "paletteIndex": 21,
       "initTemplate": {
         "rect": {
           "w": 200,
@@ -1884,7 +1920,7 @@
       "executor": null,
       "paletteVisible": true,
       "paletteGroup": "数据同步",
-      "paletteIndex": 21,
+      "paletteIndex": 22,
       "initTemplate": {
         "rect": {
           "w": 200,
@@ -2128,7 +2164,7 @@
       "executor": null,
       "paletteVisible": true,
       "paletteGroup": "数据同步",
-      "paletteIndex": 22,
+      "paletteIndex": 23,
       "initTemplate": {
         "rect": {
           "w": 200,
@@ -2206,7 +2242,7 @@
       "executor": null,
       "paletteVisible": true,
       "paletteGroup": "数据同步",
-      "paletteIndex": 23,
+      "paletteIndex": 24,
       "initTemplate": {
         "rect": {
           "w": 200,
@@ -2320,7 +2356,7 @@
       "executor": null,
       "paletteVisible": true,
       "paletteGroup": "数据同步",
-      "paletteIndex": 24,
+      "paletteIndex": 25,
       "initTemplate": {
         "rect": {
           "w": 200,
@@ -2422,7 +2458,7 @@
       "executor": null,
       "paletteVisible": true,
       "paletteGroup": "流处理",
-      "paletteIndex": 25,
+      "paletteIndex": 26,
       "initTemplate": {
         "rect": {
           "w": 200,
@@ -2992,7 +3028,7 @@
       "executor": null,
       "paletteVisible": true,
       "paletteGroup": "流处理",
-      "paletteIndex": 26,
+      "paletteIndex": 27,
       "initTemplate": {
         "rect": {
           "w": 200,
@@ -3200,7 +3236,7 @@
       "executor": null,
       "paletteVisible": true,
       "paletteGroup": "流处理",
-      "paletteIndex": 27,
+      "paletteIndex": 28,
       "initTemplate": {
         "rect": {
           "w": 200,
@@ -3412,7 +3448,7 @@
       "executor": null,
       "paletteVisible": true,
       "paletteGroup": "流处理",
-      "paletteIndex": 28,
+      "paletteIndex": 29,
       "initTemplate": {
         "rect": {
           "w": 200,
@@ -3491,7 +3527,7 @@
       "executor": null,
       "paletteVisible": true,
       "paletteGroup": "变量",
-      "paletteIndex": 29,
+      "paletteIndex": 30,
       "initTemplate": {
         "rect": {
           "w": 160,
@@ -3575,7 +3611,7 @@
       "executor": "notify",
       "paletteVisible": true,
       "paletteGroup": "通用",
-      "paletteIndex": 30,
+      "paletteIndex": 31,
       "initTemplate": {
         "rect": {
           "w": 160,
@@ -3688,7 +3724,7 @@
       "executor": "smoke",
       "paletteVisible": true,
       "paletteGroup": "运维/自检",
-      "paletteIndex": 31,
+      "paletteIndex": 32,
       "initTemplate": {
         "rect": {
           "w": 160,
@@ -3755,7 +3791,7 @@
       "executor": null,
       "paletteVisible": true,
       "paletteGroup": "模板",
-      "paletteIndex": 32,
+      "paletteIndex": 33,
       "initTemplate": {
         "rect": {
           "w": 200,
@@ -6295,5 +6331,5 @@
       }
     }
   ],
-  "catalogHash": "03b0f5267c14a95f"
+  "catalogHash": "627723417535476d"
 }

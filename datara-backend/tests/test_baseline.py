@@ -1,7 +1,7 @@
 """组件基线化 API 单测（M-B0）。
 
 覆盖：
-1. 进度清单：目录 35 type 全量返回、stats 正确、无进度行视为 pending；
+1. 进度清单：目录 36 type 全量返回、stats 正确、无进度行视为 pending；
 2. 底稿保存：乐观锁 409（带 currentRev）、纯数据 422、pending→designing、draft_rev 递增；
 3. 体检：合法底稿全项过、违规只报告不拦截（HTTP 仍 200）、lineage_decl 执行类报红 /
    逻辑控制类豁免；
@@ -69,14 +69,14 @@ def _save_draft(client, type_name: str, spec: dict, draft_rev: int = 0):
 # ---------------- 进度清单 ----------------
 
 
-def test_progress_lists_all_35_types(client):
+def test_progress_lists_all_36_types(client):
     r = client.get("/api/v1/components/baseline/progress")
     assert r.status_code == 200
     d = r.json()["data"]
-    assert d["stats"]["total"] == 35
-    assert len(d["items"]) == 35
+    assert d["stats"]["total"] == 36
+    assert len(d["items"]) == 36
     # 无进度行：全部视为 pending、无底稿
-    assert d["stats"]["byStatus"] == {"pending": 35}
+    assert d["stats"]["byStatus"] == {"pending": 36}
     for item in d["items"]:
         assert item["status"] == "pending" and item["draftRev"] == 0
         assert item["hasDraft"] is False and item["confirmedBy"] is None
@@ -88,7 +88,7 @@ def test_progress_lists_all_35_types(client):
 def test_progress_stats_reflect_saving(client):
     assert _save_draft(client, "sql", _legal_spec()).status_code == 200
     d = client.get("/api/v1/components/baseline/progress").json()["data"]
-    assert d["stats"]["byStatus"] == {"designing": 1, "pending": 34}
+    assert d["stats"]["byStatus"] == {"designing": 1, "pending": 35}
     row = next(i for i in d["items"] if i["type"] == "sql")
     assert row["status"] == "designing" and row["hasDraft"] is True and row["draftRev"] == 1
 

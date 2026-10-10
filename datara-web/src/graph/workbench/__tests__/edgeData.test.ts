@@ -16,7 +16,11 @@ describe('edge data presentation', () => {
   })
 
   it('registers reroute as an editing-only DAG node', () => {
-    expect(dagProfile.nodeTypes.reroute).toMatchObject({ type: 'reroute', runtimeOnly: false })
+    expect(dagProfile.nodeTypes.reroute).toMatchObject({
+      type: 'reroute',
+      runtimeOnly: false,
+      nonExecutable: true,
+    })
     expect(dagProfile.palette.flatMap((group) => group.items).some((item) => item?.type === 'reroute')).toBe(true)
   })
 })

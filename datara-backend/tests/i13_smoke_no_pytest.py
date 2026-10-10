@@ -89,7 +89,7 @@ def _route_probe() -> dict:
     comp_stats = _assert_ok(client.get("/api/v1/components/stats"), "/api/v1/components/stats")
     assert comp_stats["stats"]["total"] >= 35
     baseline = _assert_ok(client.get("/api/v1/components/baseline/progress"), "/api/v1/components/baseline/progress")
-    assert baseline["stats"]["total"] == 35
+    assert baseline["stats"]["total"] == 36
     lin_stats = _assert_ok(client.get("/api/v1/lineage/stats"), "/api/v1/lineage/stats")
     assert {"edgeCount", "fieldCount", "tableCount", "wfCount", "lastTime"}.issubset(lin_stats)
     lin_graph = _assert_ok(client.get("/api/v1/lineage/graph"), "/api/v1/lineage/graph")
@@ -111,7 +111,7 @@ def _direct_probe() -> dict:
         comp_stats = component_stats()["data"]
         assert comp_stats["stats"]["total"] >= 35
         baseline = baseline_progress(user=fake_user, db=db)["data"]
-        assert baseline["stats"]["total"] == 35
+        assert baseline["stats"]["total"] == 36
         lin_stats = lineage_stats(user=fake_user, db=db)["data"]
         assert {"edgeCount", "fieldCount", "tableCount", "wfCount", "lastTime"}.issubset(lin_stats)
         lin_graph = lineage_graph(
