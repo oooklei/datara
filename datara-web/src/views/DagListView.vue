@@ -14,7 +14,8 @@ import { graphService, isMock, listDefinitions, createDefinition, deleteDefiniti
 import { localTime } from '../services/mock/timeUtil'
 import { useAuthStore } from '../stores/auth'
 import ScheduleDialog from './dag/ScheduleDialog.vue'
-import { createTemplate } from '../services/templateApi'
+import WorkflowUpgradeActions from './dag/WorkflowUpgradeActions.vue'
+import { createTemplate, getUpgradeStatus, type UpgradeStatus } from '../services/templateApi'
 
 /** 统一行形状（mock WorkflowMeta 与 real DefinitionMeta 归一化） */
 interface Row {
@@ -27,6 +28,7 @@ const emit = defineEmits<{ (e: 'open', id: string): void }>()
 const router = useRouter()
 const auth = useAuthStore()
 const rows = ref<Row[]>([])
+const upgradeStatuses = ref<Record<string, UpgradeStatus>>({})
 const loading = ref(false)
 
 function errMsg(e: unknown): string {
@@ -45,6 +47,14 @@ onMounted(async () => {
       id: d.id, name: d.name, cron: d.cron ?? '-', nodes: d.nodeCount ?? 0,
       owner: d.owner ?? '-', status: d.status ?? 'offline', version: d.version, updatedAt: d.updatedAt,
     }))
+    const statuses = await Promise.all(rows.value.map(async (row) => {
+      try {
+        return [row.id, await getUpgradeStatus(row.id)] as const
+      } catch {
+        return null
+      }
+    }))
+    upgradeStatuses.value = Object.fromEntries(statuses.filter((item) => item !== null))
   } catch (e) {
     ElMessage.error('工作流列表加载失败：' + errMsg(e) + '（检查后端服务与登录态）')
   } finally {
@@ -160,6 +170,11 @@ function open(id: string) {
             <td>
               <button class="op-btn primary" @click="design(r)">可视化编排</button>
               <button class="op-btn" @click="saveAsTemplate(r)">另存为模板</button>
+              <WorkflowUpgradeActions
+                v-if="upgradeStatuses[r.id]"
+                :workflow-id="r.id"
+                :status="upgradeStatuses[r.id]"
+              />
               <button class="op-btn" @click="openRuns">运行实例</button>
               <button v-if="!isMock" class="op-btn" @click="openSchedule(r)">定时</button>
               <button v-if="!isMock" class="op-btn" @click="onDelete(r)">删除</button>

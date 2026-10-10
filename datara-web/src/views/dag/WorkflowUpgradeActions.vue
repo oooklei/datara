@@ -5,18 +5,26 @@
  * （点击拉取 diff；差异渲染复用 store.upgradePreview，无本地状态镜像）。
  */
 import { useTemplateStore } from '../../stores/templateStore'
+import type { UpgradeStatus } from '../../services/templateApi'
+import { ref } from 'vue'
 
-const props = defineProps<{ workflowId: string }>()
+const props = defineProps<{ workflowId: string; status: UpgradeStatus }>()
 const store = useTemplateStore()
+const showPreview = ref(false)
+
+async function preview() {
+  await store.previewUpgrade(props.workflowId)
+  showPreview.value = true
+}
 </script>
 
 <template>
-  <span v-if="store.upgradeNotice?.upgradeAvailable" class="wf-upgrade-actions">
+  <span v-if="status.upgradeAvailable" class="wf-upgrade-actions">
     <span class="notice-tag">可选升级</span>
-    <span class="ver">v{{ store.upgradeNotice.currentVersion }} → v{{ store.upgradeNotice.latestVersion }}</span>
-    <button data-testid="list-preview-upgrade" @click="store.previewUpgrade(props.workflowId)">查看差异</button>
+    <span class="ver">v{{ status.currentVersion }} → v{{ status.latestVersion }}</span>
+    <button data-testid="list-preview-upgrade" @click="preview">查看差异</button>
   </span>
-  <div v-if="store.upgradePreview" class="wf-upgrade-diff">
+  <div v-if="showPreview && store.upgradePreview" class="wf-upgrade-diff">
     <div v-for="item in store.upgradePreview.diff" :key="item.path" class="diff-row">
       <code>{{ item.path }}</code><span>{{ item.before }}</span><b>→</b><span>{{ item.after }}</span>
     </div>
