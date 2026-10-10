@@ -34,4 +34,23 @@ describe('TemplateCenter upgrade interaction', () => {
     expect(graph.doc).toEqual(upgraded)
     expect(graph.dirty).toBe(false)
   })
+
+  it('does not replace a different workflow that is active in the graph store', async () => {
+    const store = useTemplateStore()
+    const graph = useGraphStore()
+    const active = { id: 'wf_active', name: 'Active', version: 2, meta: { profile: 'dag' }, nodes: [], edges: [] }
+    graph.setDoc(active)
+    store.upgradeNotice = { upgradeAvailable: true, templateId: 7, currentVersion: 1, latestVersion: 2 }
+    store.upgradePreview = { workflowVersion: 3, currentVersion: 1, latestVersion: 2, diff: [] }
+    store.confirmUpgrade = vi.fn().mockResolvedValue({
+      id: 'wf_other', name: 'Other', version: 4,
+      meta: { profile: 'dag', templateId: 7, templateVersion: 2 }, nodes: [], edges: [],
+    })
+    const wrapper = mount(TemplateCenter, { props: { workflowId: 'wf_other' } })
+
+    await wrapper.get('[data-testid="confirm-upgrade"]').trigger('click')
+    await Promise.resolve()
+
+    expect(graph.doc).toEqual(active)
+  })
 })

@@ -190,6 +190,31 @@ def test_stream_replays_run_events_and_honors_last_event_id(db_session):
     asyncio.run(main())
 
 
+def test_terminal_stream_replays_every_durable_event_before_closing(db_session):
+    _mk_instance(db_session, state="success")
+    db_session.add_all([
+        TRunEvent(
+            id=event_id,
+            run_id=IID,
+            node_id="n1",
+            event_type="progress",
+            payload_json=json.dumps({"value": event_id}),
+        )
+        for event_id in range(1, 202)
+    ])
+    db_session.commit()
+
+    async def main():
+        s = _open_stream(db_session)
+        events = await s.events(202)
+        node_events = [payload for name, payload in events if name == "node_event"]
+        assert [item["id"] for item in node_events] == list(range(1, 202))
+        assert events[-1][0] == "instance_finished"
+        await s.assert_closed()
+
+    asyncio.run(main())
+
+
 def test_stream_running_diff_then_finish(db_session):
     """运行中实例：基线 → 无变更不重推 → DB 变更推增量（含 attempt）→ 终态 finished 关流。"""
     _mk_instance(db_session)

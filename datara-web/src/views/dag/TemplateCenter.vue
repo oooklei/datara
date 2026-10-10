@@ -7,7 +7,7 @@ import { useGraphStore } from '../../stores/graph'
 const props = defineProps<{ workflowId?: string }>()
 const emit = defineEmits<{ (e: 'created', payload: { id: string; name: string; code?: number }): void }>()
 const store = useTemplateStore()
-const graph = useGraphStore()
+const graphStore = useGraphStore()
 onMounted(async () => { await store.load(); if (props.workflowId) await store.checkUpgrade(props.workflowId) })
 watch(() => props.workflowId, async (id) => { if (id) await store.checkUpgrade(id) })
 async function instantiate(id: number, fallbackName: string) {
@@ -22,7 +22,7 @@ async function confirmUpgrade() {
   if (!props.workflowId) return
   await ElMessageBox.confirm('确认用最新模板覆盖当前工作流草稿？该升级为可选操作。', '确认升级', { type: 'warning' })
   const doc = await store.confirmUpgrade(props.workflowId)
-  if (doc) graph.setDoc(doc) // 升级产物回写活动画布（替换整档，脏标清零）
+  if (doc && graphStore.doc?.id === props.workflowId) graphStore.setDoc(doc)
   ElMessage.success('模板升级完成')
 }
 </script>

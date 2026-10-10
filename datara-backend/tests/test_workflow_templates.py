@@ -80,20 +80,35 @@ def test_instantiate_creates_draft_with_all_graph_ids_regenerated(client, db_ses
 
 
 def test_old_instance_reports_optional_upgrade_after_template_update(client):
-    template = client.post("/api/v1/workflow-templates", json={"name": "Base", "templateJson": _doc()}).json()["data"]
-    instance = client.post(f"/api/v1/workflow-templates/{template['id']}/instantiate", json={}).json()["data"]
-    client.put(f"/api/v1/workflow-templates/{template['id']}", json={"name": "Base", "templateJson": _doc(), "baseVersion": 1})
+    template = client.post(
+        "/api/v1/workflow-templates", json={"name": "Base", "templateJson": _doc()}
+    ).json()["data"]
+    instance = client.post(
+        f"/api/v1/workflow-templates/{template['id']}/instantiate", json={}
+    ).json()["data"]
+    client.put(
+        f"/api/v1/workflow-templates/{template['id']}",
+        json={"name": "Base", "templateJson": _doc(), "baseVersion": 1},
+    )
 
     status = client.get(f"/api/v1/workflow-templates/upgrade-status/{instance['id']}").json()["data"]
     assert status == {"upgradeAvailable": True, "templateId": template["id"], "currentVersion": 1, "latestVersion": 2}
 
 
 def test_upgrade_preview_is_normalized_and_confirm_is_cas_guarded(client, db_session):
-    template = client.post("/api/v1/workflow-templates", json={"name": "Base", "templateJson": _doc()}).json()["data"]
-    instance = client.post(f"/api/v1/workflow-templates/{template['id']}/instantiate", json={"name": "Custom name"}).json()["data"]
+    template = client.post(
+        "/api/v1/workflow-templates", json={"name": "Base", "templateJson": _doc()}
+    ).json()["data"]
+    instance = client.post(
+        f"/api/v1/workflow-templates/{template['id']}/instantiate",
+        json={"name": "Custom name"},
+    ).json()["data"]
     changed = _doc()
     changed["nodes"][1]["data"]["name"] = "Finish"
-    client.put(f"/api/v1/workflow-templates/{template['id']}", json={"name": "Base", "templateJson": changed, "baseVersion": 1})
+    client.put(
+        f"/api/v1/workflow-templates/{template['id']}",
+        json={"name": "Base", "templateJson": changed, "baseVersion": 1},
+    )
     preview = client.get(f"/api/v1/workflow-templates/{template['id']}/diff/{instance['id']}").json()["data"]
     assert preview["workflowVersion"] == 1
     assert preview["currentVersion"] == 1
@@ -133,6 +148,64 @@ def test_upgrade_rejects_wrong_template_and_stale_instance_template_version(clie
     assert stale.status_code == 409
 
 
+def test_upgrade_rejects_template_changed_after_preview(client):
+    template = client.post(
+        "/api/v1/workflow-templates",
+        json={"name": "Base", "templateJson": _doc()},
+    ).json()["data"]
+    instance = client.post(
+        f"/api/v1/workflow-templates/{template['id']}/instantiate",
+        json={},
+    ).json()["data"]
+    client.put(
+        f"/api/v1/workflow-templates/{template['id']}",
+        json={"name": "Base v2", "templateJson": _doc(), "baseVersion": 1},
+    )
+    preview = client.get(
+        f"/api/v1/workflow-templates/{template['id']}/diff/{instance['id']}"
+    ).json()["data"]
+    client.put(
+        f"/api/v1/workflow-templates/{template['id']}",
+        json={"name": "Base v3", "templateJson": _doc(), "baseVersion": 2},
+    )
+
+    response = client.post(
+        f"/api/v1/workflow-templates/{template['id']}/upgrade/{instance['id']}",
+        json={
+            "baseVersion": preview["workflowVersion"],
+            "templateVersion": preview["currentVersion"],
+            "targetTemplateVersion": preview["latestVersion"],
+        },
+    )
+
+    assert response.status_code == 409
+
+
+def test_upgrade_preview_includes_non_collection_graph_settings(client):
+    source = _doc()
+    source["meta"]["canvasMode"] = "compact"
+    template = client.post(
+        "/api/v1/workflow-templates",
+        json={"name": "Base", "templateJson": source},
+    ).json()["data"]
+    instance = client.post(
+        f"/api/v1/workflow-templates/{template['id']}/instantiate",
+        json={},
+    ).json()["data"]
+    changed = _doc()
+    changed["meta"]["canvasMode"] = "comfortable"
+    client.put(
+        f"/api/v1/workflow-templates/{template['id']}",
+        json={"name": "Base", "templateJson": changed, "baseVersion": 1},
+    )
+
+    preview = client.get(
+        f"/api/v1/workflow-templates/{template['id']}/diff/{instance['id']}"
+    ).json()["data"]
+
+    assert {item["path"] for item in preview["diff"]} == {"meta.canvasMode"}
+
+
 def test_template_update_requires_matching_base_version_and_preserves_creator(client):
     template = client.post("/api/v1/workflow-templates", json={"name": "Base", "templateJson": _doc()}).json()["data"]
     stale = client.put(f"/api/v1/workflow-templates/{template['id']}", json={
@@ -142,3 +215,17 @@ def test_template_update_requires_matching_base_version_and_preserves_creator(cl
     current = client.get(f"/api/v1/workflow-templates/{template['id']}").json()["data"]
     assert current["version"] == 1
     assert current["createdBy"] == template["createdBy"]
+
+
+def test_template_update_requires_base_version(client):
+    template = client.post(
+        "/api/v1/workflow-templates",
+        json={"name": "Base", "templateJson": _doc()},
+    ).json()["data"]
+
+    response = client.put(
+        f"/api/v1/workflow-templates/{template['id']}",
+        json={"name": "Changed", "templateJson": _doc()},
+    )
+
+    assert response.status_code == 422

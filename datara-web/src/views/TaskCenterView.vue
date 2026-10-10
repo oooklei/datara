@@ -34,6 +34,7 @@ import type { DagPickItem, DagProfileType, DagTab } from '../stores/dagTabs'
 import { useGraphStore } from '../stores/graph'
 import { useAuthStore } from '../stores/auth'
 import { createTemplate } from '../services/templateApi'
+import { resolveTemplateSourceDoc } from './templateSource'
 
 const route = useRoute()
 const router = useRouter()
@@ -170,7 +171,7 @@ function onOpenCreateWf() {
 async function saveActiveAsTemplate() {
   if (!activeTab.value) return
   try {
-    const doc = await graphService.get(activeTab.value.docId)
+    const doc = await resolveTemplateSourceDoc(graphStore.doc, activeTab.value.docId, graphService.get)
     if (!doc) throw new Error('工作流图不存在')
     const { value } = await ElMessageBox.prompt('模板名称', '另存为模板', { inputValue: activeTab.value.name, inputPattern: /\S+/ })
     await createTemplate({ name: value.trim(), templateJson: doc })

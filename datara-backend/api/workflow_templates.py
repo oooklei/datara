@@ -12,7 +12,7 @@ from sqlalchemy.orm import Session
 
 from api.auth import ApiError, get_current_user, require_perm
 from common.db import get_db
-from common.models import WfDefinition, WfDefinitionLog, WfTemplate, WfTemplateVersion, WorkflowInstance
+from common.models import WfDefinition, WfDefinitionLog, WfTemplate, WfTemplateVersion, WorkflowInstance, now
 from common.resp import WF_NOT_FOUND, WF_PARAM_INVALID, WF_RELEASED_LOCKED, WF_VERSION_CONFLICT, fmt_dt, ok
 from master.state import INSTANCE_RUNNING_STATES
 from api.wf_definition import _next_code
@@ -25,7 +25,10 @@ class TemplateBody(BaseModel):
     category: str = ""
     description: Optional[str] = None
     template_json: dict = Field(alias="templateJson")
-    base_version: Optional[int] = Field(None, alias="baseVersion")
+
+
+class TemplateUpdateBody(TemplateBody):
+    base_version: int = Field(alias="baseVersion")
 
 
 class InstantiateBody(BaseModel):
@@ -33,9 +36,9 @@ class InstantiateBody(BaseModel):
 
 
 class UpgradeBody(BaseModel):
-    base_version: Optional[int] = Field(None, alias="baseVersion")
-    template_version: Optional[int] = Field(None, alias="templateVersion")
-    target_template_version: Optional[int] = Field(None, alias="targetTemplateVersion")
+    base_version: int = Field(alias="baseVersion")
+    template_version: int = Field(alias="templateVersion")
+    target_template_version: int = Field(alias="targetTemplateVersion")
 
 
 def _template_or_404(db: Session, template_id: int) -> WfTemplate:
@@ -139,7 +142,7 @@ def _fresh_graph(source: dict, wf_id: str, name: str, template_id: int, template
 
 
 def _normalized_graph(doc: dict) -> dict:
-    """归一化图文档供跨版本 diff：仅保留四集合，身份按位置重编（模板/实例 ID 体系不同）。"""
+    """归一化图文档供跨版本 diff，同时保留所有业务配置。"""
     counters: dict[str, int] = {}
     mappings: dict[str, str] = {}
 
@@ -152,12 +155,17 @@ def _normalized_graph(doc: dict) -> dict:
             mappings[old] = fresh
         return fresh
 
-    norm: dict[str, Any] = {}
+    norm = copy.deepcopy(doc)
     for collection in ("nodes", "edges", "variables", "groups"):
         for item in doc.get(collection) or []:
             if isinstance(item, dict) and isinstance(item.get("id"), str) and _ID_RE.match(item["id"]):
                 allocate(item["id"])  # 先按集合顺序登记 旧→新；重写统一在 walk 阶段完成
-        norm[collection] = list(doc.get(collection) or [])
+    for key in ("id", "name", "version"):
+        norm.pop(key, None)
+    meta = dict(norm.get("meta") or {})
+    for key in ("templateId", "templateVersion", "updatedAt"):
+        meta.pop(key, None)
+    norm["meta"] = meta
     return _rewrite_graph_ids(norm, allocate)
 
 
@@ -241,10 +249,11 @@ def confirm_upgrade(template_id: int, wf_id: str, body: UpgradeBody,
     meta = current.get("meta") or {}
     if meta.get("templateId") != template.id:
         raise ApiError(WF_PARAM_INVALID, "实例并非从该模板创建", status=409)
-    if body.base_version is not None and body.base_version != wf.version:
+    if body.base_version != wf.version:
         raise ApiError(WF_VERSION_CONFLICT, "工作流已被他人更新，请刷新后重试", status=409)
-    if body.template_version is not None and body.template_version != int(meta.get("templateVersion") or 0):
-        raise ApiError(WF_VERSION_CONFLICT, "实例模板版本已过期，请刷新后重试", status=409)
+    if (body.template_version != int(meta.get("templateVersion") or 0)
+            or body.target_template_version != template.version):
+        raise ApiError(WF_VERSION_CONFLICT, "模板版本已变化，请重新预览", status=409)
     if wf.release_state == "online":
         raise ApiError(WF_RELEASED_LOCKED, status=409)
     running = (db.query(WorkflowInstance)
@@ -253,11 +262,19 @@ def confirm_upgrade(template_id: int, wf_id: str, body: UpgradeBody,
                .count())
     if running:
         raise ApiError(WF_RELEASED_LOCKED, "实例运行中，禁止升级模板", status=409)
+    next_version = wf.version + 1
     doc = _fresh_graph(json.loads(template.template_json), wf.id, wf.name, template.id, template.version)
-    wf.version += 1
-    doc["version"] = wf.version
-    wf.graph_json = json.dumps(doc, ensure_ascii=False)
-    db.add(WfDefinitionLog(wf_code=wf.code, version=wf.version, graph_json=wf.graph_json,
+    doc["version"] = next_version
+    graph_json = json.dumps(doc, ensure_ascii=False)
+    matched = (
+        db.query(WfDefinition)
+        .filter(WfDefinition.id == wf.id, WfDefinition.version == body.base_version)
+        .update({"version": next_version, "graph_json": graph_json, "update_time": now()},
+                synchronize_session=False)
+    )
+    if matched == 0:
+        raise ApiError(WF_VERSION_CONFLICT, "工作流已被他人更新，请重新预览", status=409)
+    db.add(WfDefinitionLog(wf_code=wf.code, version=next_version, graph_json=graph_json,
                            operator=user.user_name, remark=f"升级模板至 v{template.version}"))
     db.commit()
     return ok(doc)
@@ -269,16 +286,28 @@ def get_template(template_id: int, user=Depends(get_current_user), db: Session =
 
 
 @router.put("/{template_id}")
-def update_template(template_id: int, body: TemplateBody, user=Depends(require_perm("edit_definition")), db: Session = Depends(get_db)):
+def update_template(template_id: int, body: TemplateUpdateBody,
+                    user=Depends(require_perm("edit_definition")), db: Session = Depends(get_db)):
     row = _template_or_404(db, template_id)
     name = body.name.strip()
     if not name:
         raise ApiError(WF_PARAM_INVALID, "模板名称不能为空", status=400)
-    if body.base_version is not None and body.base_version != row.version:
+    next_version = body.base_version + 1
+    matched = (
+        db.query(WfTemplate)
+        .filter(WfTemplate.id == template_id, WfTemplate.version == body.base_version)
+        .update({
+            "name": name,
+            "category": body.category.strip(),
+            "description": body.description,
+            "template_json": json.dumps(body.template_json, ensure_ascii=False),
+            "version": next_version,
+            "updated_at": now(),
+        }, synchronize_session=False)
+    )
+    if matched == 0:
         raise ApiError(WF_VERSION_CONFLICT, "模板已被他人更新，请刷新后重试", status=409)
-    row.name, row.category, row.description = name, body.category.strip(), body.description
-    row.template_json = json.dumps(body.template_json, ensure_ascii=False)
-    row.version += 1
+    db.refresh(row)
     _snapshot(db, row)
     db.commit()
     return ok(_item(row, True))
@@ -296,14 +325,24 @@ def delete_template(template_id: int, user=Depends(require_perm("edit_definition
 @router.get("/{template_id}/versions")
 def list_versions(template_id: int, user=Depends(get_current_user), db: Session = Depends(get_db)):
     _template_or_404(db, template_id)
-    rows = db.query(WfTemplateVersion).filter(WfTemplateVersion.template_id == template_id).order_by(WfTemplateVersion.version.desc()).all()
+    rows = (
+        db.query(WfTemplateVersion)
+        .filter(WfTemplateVersion.template_id == template_id)
+        .order_by(WfTemplateVersion.version.desc())
+        .all()
+    )
     return ok([{"version": row.version, "name": row.name, "category": row.category,
                 "description": row.description or "", "templateJson": json.loads(row.template_json),
                 "createdBy": row.created_by or "", "updatedAt": fmt_dt(row.created_at)} for row in rows])
 
 
 @router.post("/{template_id}/instantiate")
-def instantiate(template_id: int, body: InstantiateBody, user=Depends(require_perm("edit_definition")), db: Session = Depends(get_db)):
+def instantiate(
+    template_id: int,
+    body: InstantiateBody,
+    user=Depends(require_perm("edit_definition")),
+    db: Session = Depends(get_db),
+):
     template = _template_or_404(db, template_id)
     wf_id = "wf_" + uuid.uuid4().hex[:8]
     name = (body.name or template.name).strip() or template.name

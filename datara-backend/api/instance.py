@@ -306,13 +306,16 @@ def stream_instance(
                             "startTime": fmt_dt(t.start_time), "endTime": fmt_dt(t.end_time),
                         }))
                     baseline[t.id] = t.state
-                if inst.state in TERMINAL_STATES and (first or inst.state != last_state):
+                replay_batch_full = len(run_events) == 200
+                if (inst.state in TERMINAL_STATES and not replay_batch_full
+                        and (first or inst.state != last_state)):
                     events.append(("instance_finished", {
                         "instanceId": instance_id, "state": inst.state,
                         "endTime": fmt_dt(inst.end_time),
                     }))
                     finished = True
-                last_state = inst.state
+                if not (inst.state in TERMINAL_STATES and replay_batch_full):
+                    last_state = inst.state
                 first = False
             finally:
                 session.close()

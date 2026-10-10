@@ -45,4 +45,24 @@ describe('workflow template store', () => {
       baseVersion: 3, templateVersion: 1, targetTemplateVersion: 2,
     })
   })
+
+  it('requires a fresh preview before confirming an upgrade', async () => {
+    vi.mocked(api.getUpgradeStatus).mockResolvedValue({ upgradeAvailable: true, templateId: 7, currentVersion: 1, latestVersion: 2 })
+    const store = useTemplateStore()
+    await store.checkUpgrade('wf_old')
+
+    await expect(store.confirmUpgrade('wf_old')).resolves.toBeNull()
+    expect(api.confirmTemplateUpgrade).not.toHaveBeenCalled()
+  })
+
+  it('refreshes upgrade status when preview starts', async () => {
+    vi.mocked(api.getUpgradeStatus).mockResolvedValue({ upgradeAvailable: true, templateId: 7, currentVersion: 1, latestVersion: 2 })
+    vi.mocked(api.previewTemplateUpgrade).mockResolvedValue({ workflowVersion: 3, currentVersion: 1, latestVersion: 2, diff: [] })
+    const store = useTemplateStore()
+
+    await store.previewUpgrade('wf_old')
+
+    expect(api.getUpgradeStatus).toHaveBeenCalledWith('wf_old')
+    expect(store.upgradePreview?.workflowVersion).toBe(3)
+  })
 })
