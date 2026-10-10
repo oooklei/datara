@@ -124,6 +124,17 @@ export interface FieldSchema {
   text?: string | ((data: Record<string, unknown>) => string)
 }
 
+/** ComponentSpec.behaviors 适配到工作台后的纯数据运行时声明。 */
+export interface DeclaredBehaviors {
+  onChange?: {
+    field: string
+    action: 'refreshOptions' | 'resetFields' | 'prefill'
+    target?: string[]
+    remote?: 'datasource.tree' | 'datasource.topics' | 'runtime.nodes'
+  }[]
+  prefillFromUpstream?: { field: string; from: 'input.table' | 'input.columns' | 'input.datasource' }[]
+}
+
 /** I7 C21 变量组件行（设计 §0①）：type=字面量|表达式(运行时求值)|时间变量(F49 模板)；override=覆盖开关 */
 export interface VarDef {
   name: string
@@ -259,6 +270,8 @@ export interface NodeSchema {
   defaults?: Record<string, unknown>
   /** 属性表单 schema（节点名称固定渲染，不入 schema） */
   form: FieldSchema[]
+  /** 来自已发布 ComponentSpec 的声明式行为；profile 未声明时保持旧逻辑。 */
+  behaviors?: DeclaredBehaviors
   /** 节点副标题（摘要渲染）：字符串或函数 */
   summary?: string | ((data: Record<string, unknown>) => string)
   /** 条件显示控制（M-B2 迁移：showIf → conditions） */

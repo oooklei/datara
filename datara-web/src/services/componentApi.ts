@@ -211,6 +211,15 @@ export interface ComponentVersionsResult {
   items: ComponentVersionRow[]
 }
 
+/** Immutable version content, loaded on demand by the manual-upgrade review. */
+export interface ComponentVersionSnapshot {
+  type: string
+  version: number
+  state: string
+  spec: Record<string, unknown>
+  specHash: string
+}
+
 export interface ComponentCreateBody {
   type: string
   name: string
@@ -295,6 +304,12 @@ export async function freezeComponentVersion(
 export async function listComponentVersions(type: string): Promise<ComponentVersionsResult> {
   if (isMock) return mockComponentVersions(type)
   return http.get<ComponentVersionsResult>(`/components/${encodeURIComponent(type)}/versions`)
+}
+
+export async function getComponentVersionSnapshot(type: string, version: number): Promise<ComponentVersionSnapshot> {
+  return http.get<ComponentVersionSnapshot>(
+    `/components/${encodeURIComponent(type)}/versions/${encodeURIComponent(String(version))}`,
+  )
 }
 
 /* ================= M2 发布治理（治理设计 §18.3；D1 发布闸门） ================= */
@@ -428,6 +443,42 @@ export interface ImpactedResult {
 /** 影响面查询（§9.4）：扫描全部工作流 graph_json 的 componentRef.type 命中清单。 */
 export async function getImpactedWorkflows(type: string): Promise<ImpactedResult> {
   return http.get<ImpactedResult>(`/components/${encodeURIComponent(type)}/impacted`)
+}
+
+export interface UpgradeRefTarget {
+  wfId: string
+  strategy?: 'auto' | 'pin'
+  baseVersion?: number
+  /** Per-workflow old-input → new-input decision from the manual upgrade review. */
+  fieldMapping?: Record<string, string>
+  /** Explicitly preserve compatibility risk rather than guessing a mapping. */
+  migration?: 'map' | 'skip'
+}
+
+export interface UpgradeRefResult {
+  wfId: string
+  ok: boolean
+  reason?: string
+  newVersion?: number | null
+  migration?: 'map' | 'skip'
+}
+
+export async function upgradeComponentRefs(type: string, targets: UpgradeRefTarget[]): Promise<{
+  type: string
+  publishedVersion: number
+  results: UpgradeRefResult[]
+}> {
+  return http.post(`/components/${encodeURIComponent(type)}/upgrade-refs`, {
+    targets: targets.map((target) => ({
+      wf_id: target.wfId,
+      strategy: target.strategy ?? 'auto',
+      base_version: target.baseVersion,
+      ...(target.fieldMapping && Object.keys(target.fieldMapping).length
+        ? { field_mapping: target.fieldMapping }
+        : {}),
+      ...(target.migration ? { migration: target.migration } : {}),
+    })),
+  })
 }
 
 /** 用户组件注册表行（t_component 轻量元数据，不含 spec 全文） */

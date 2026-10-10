@@ -27,6 +27,7 @@ import TmpPreviewPage from '../workbench/pages/TmpPreviewPage.vue'
 import StreamNodePage from '../workbench/pages/StreamNodePage.vue'
 import StreamDataPage from '../workbench/pages/StreamDataPage.vue'
 import BoardPage from '../workbench/pages/BoardPage.vue'
+import EdgeLegend from '../workbench/EdgeLegend.vue'
 
 /** 读取节点分支列表（老数据无 branches 时回退空数组） */
 export function branchListOf(data: Record<string, unknown>): BranchDef[] {
@@ -272,6 +273,13 @@ const nodeTypes: Record<string, NodeSchema> = {
     label: '结束', icon: '■', color: '#64748b', code: 'C2', categories: ['general', 'sync', 'etl'], desc: '工作流结束节点',
     form: [], defaults: {}, maxOut: 0,  // G-22：maxOut=0 → 禁止出边（与 G-25 validator 双保险）
     summary: () => '工作流出口',
+  },
+  reroute: {
+    type: 'reroute',
+    label: '转接节点', icon: '•', color: '#64748b', categories: ['general', 'sync', 'etl'],
+    desc: '整理长连线的设计态转接点；运行编译时自动消除并直连前后节点',
+    form: [], defaults: {}, runtimeOnly: false, nonExecutable: true,
+    summary: () => '仅设计态',
   },
   conditions: {
     type: 'conditions',
@@ -1264,6 +1272,7 @@ export const dagProfile: ViewProfile = {
   layout: 'dagre',
   layoutDir: 'TB',
   floats: [
+    { id: 'edge-legend', label: '连线类型图例', comp: EdgeLegend, w: 330, h: 250 },
     /* 同步编排重构：原「源表基准/目标表基准」中心数据源浮窗（SourceBasePanel/TargetBasePanel）已删除，
        业务配置统一由 C29~C31 编排组件展开的细项节点表单承载 */
   ],
@@ -1278,6 +1287,7 @@ export const dagProfile: ViewProfile = {
     { name: '逻辑控制', items: [
       { type: 'start' }, { type: 'end' }, { type: 'conditions' }, { type: 'switch' }, { type: 'fork' },
       { type: 'join' }, { type: 'merge' }, { type: 'delay' }, { type: 'dependent' }, { type: 'loop' },
+      { type: 'reroute' },
     ] },
     { name: '数据计算', items: [
       { type: 'sql' }, { type: 'shell' }, { type: 'python' }, { type: 'ssh' },

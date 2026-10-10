@@ -13,6 +13,62 @@ from typing import Optional
 from components.catalog import STREAM_TYPES
 
 
+def eliminate_reroutes(graph_json: dict) -> dict:
+    """Remove editing-only reroute nodes and bridge every predecessor to successor."""
+    if not isinstance(graph_json, dict):
+        return graph_json
+    raw_nodes = graph_json.get("nodes")
+    raw_edges = graph_json.get("edges")
+    if not isinstance(raw_nodes, list) or not isinstance(raw_edges, list):
+        return graph_json
+
+    nodes = [dict(node) for node in raw_nodes if isinstance(node, dict)]
+    edges = [dict(edge) for edge in raw_edges if isinstance(edge, dict)]
+    reroute_ids = [str(node.get("id")) for node in nodes
+                   if node.get("id") and node.get("type") == "reroute"]
+    for reroute_id in reroute_ids:
+        incoming = [edge for edge in edges if str(edge.get("target") or "") == reroute_id]
+        outgoing = [edge for edge in edges if str(edge.get("source") or "") == reroute_id]
+        edges = [edge for edge in edges
+                 if str(edge.get("source") or "") != reroute_id
+                 and str(edge.get("target") or "") != reroute_id]
+        existing = {
+            (
+                str(edge.get("source") or ""),
+                str(edge.get("target") or ""),
+                str(edge.get("sourceHandle") or ""),
+                str(edge.get("targetHandle") or ""),
+            )
+            for edge in edges
+        }
+        for before in incoming:
+            for after in outgoing:
+                source = str(before.get("source") or "")
+                target = str(after.get("target") or "")
+                bridged = {"source": source, "target": target}
+                for key in ("sourceHandle", "kind"):
+                    if before.get(key) is not None:
+                        bridged[key] = before[key]
+                for key in ("targetHandle", "label", "partial"):
+                    if after.get(key) is not None:
+                        bridged[key] = after[key]
+                identity = (
+                    source,
+                    target,
+                    str(bridged.get("sourceHandle") or ""),
+                    str(bridged.get("targetHandle") or ""),
+                )
+                if not source or not target or source == target or identity in existing:
+                    continue
+                edges.append(bridged)
+                existing.add(identity)
+
+    out = dict(graph_json)
+    out["nodes"] = [node for node in nodes if str(node.get("id") or "") not in reroute_ids]
+    out["edges"] = edges
+    return out
+
+
 class Graph:
     """执行图：节点/边/邻接/入度（回环边单独归档）。"""
 
@@ -169,6 +225,10 @@ def parse_graph(graph_json: dict, comp_versions: Optional[dict] = None) -> tuple
     # 设计态 → 运行态物化（同步编排端点合一 §3.2）：assert 入边处物化 sys_exec 执行节点。
     # 函数体在 engine.py；延迟导入避免循环依赖（engine 顶层依赖本模块的 Graph/loop_bodies）。
     from master.engine import materialize_sync_exec
+
+    # Reroute is an editing-graph affordance only.  Eliminate it before stream
+    # extraction/materialization so every execution path sees the same graph.
+    graph_json = eliminate_reroutes(graph_json)
 
     # G-14 完整方案：先提取流子图（流节点不进入 Master 任务状态机）。
     # 函数体在本模块；延迟调用避免模块级循环（extract_stream_subgraph 内含 api 延迟导入）。

@@ -12,7 +12,7 @@ import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import {
   listDefinitions, listInstancesPage, getInstanceDetail,
-  stopInstance, rerunInstance, rerunFailedTasks, getTaskLog, graphService,
+  stopInstance, rerunInstance, rerunFailedTasks, resumeFromNodes, getTaskLog, graphService,
   deleteInstanceLogs, deleteInstanceLogsBatch, streamInstanceEvents,
 } from '../../services'
 import type { InstanceRow, DefinitionMeta, TaskStateEvent, InstanceFinishedEvent } from '../../services'
@@ -175,6 +175,20 @@ async function onRerunFailed(r: InstanceRow) {
     await reload()
   } catch (e) { ElMessage.error(errMsg(e)) }
 }
+
+async function onResumeFromFailure(r: InstanceRow) {
+  const wfId = defMap.value.get(r.wfCode ?? -1)?.id
+  const nodeIds = [...new Set((r.taskInstances ?? []).filter((task) => task.state === 'failure').map((task) => task.nodeId))]
+  if (!wfId || !nodeIds.length) { ElMessage.warning('没有可续跑的失败节点'); return }
+  try {
+    await ElMessageBox.confirm(`从失败节点续跑并尝试复用未变更产物？（${nodeIds.join('、')}）`, '从失败节点续跑', { type: 'info' })
+  } catch { return }
+  try {
+    await resumeFromNodes(wfId, r.instanceId, nodeIds)
+    ElMessage.success('续跑命令已提交')
+    await reload()
+  } catch (e) { ElMessage.error(errMsg(e)) }
+}
 /** I11 R5：删除实例全部节点日志（含水印，物理删除；不重建实例） */
 async function onDeleteLogs(r: InstanceRow) {
   try {
@@ -273,10 +287,12 @@ function patchFromStream(e: TaskStateEvent) {
 /** 订阅实例状态流；onerror 关流降级 3s 轮询（EventSource 原生重连随之关闭，避免双通道） */
 function startStream(instanceId: string) {
   stopStream()
+  run.subscribeNodeEvents(instanceId)
   streamEs = streamInstanceEvents(instanceId, {
     onTaskChanged: patchFromStream,
     onFinished: (e: InstanceFinishedEvent) => {
       stopStream()
+      run.stopNodeEvents()
       if (detail.value) {
         detail.value.state = e.state
         if (e.endTime) detail.value.endTime = e.endTime
@@ -302,6 +318,7 @@ async function openDetail(r: InstanceRow) {
 }
 function closeDetail() {
   stopStream()
+  run.stopNodeEvents()
   stopDetailTimer()
   run.nodeStatus = {}
   detailDoc.value = null
@@ -570,6 +587,7 @@ function dur(s?: string | null, e?: string | null): string {
           <span v-if="canRun && TERMINAL.has(detail.state ?? '')" style="margin-left:auto">
             <button class="op-btn" @click="onRerun(detail)">整体重跑</button>
             <button v-if="detail.state === 'failure'" class="op-btn" @click="onRerunFailed(detail)">失败重跑</button>
+            <button v-if="detail.state === 'failure'" class="op-btn" @click="onResumeFromFailure(detail)">从失败点续跑</button>
           </span>
           <span v-else-if="canRun && RUNNING.has(detail.state ?? '')" style="margin-left:auto">
             <button class="op-btn" style="color:var(--danger)" @click="onStop(detail)">停止</button>

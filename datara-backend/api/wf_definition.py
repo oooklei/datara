@@ -13,7 +13,7 @@ from datetime import datetime
 from typing import List, Optional
 
 from fastapi import APIRouter, Depends
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from sqlalchemy import and_, func
 from sqlalchemy.orm import Session
 
@@ -664,6 +664,33 @@ class ComplementBody(BaseModel):
     parallel: bool = False
     env_group_id: Optional[int] = None
     priority: int = 3
+
+
+class ResumeFromBody(BaseModel):
+    from_node_ids: List[str] = Field(alias="fromNodeIds")
+    priority: int = 3
+
+
+@router.post("/{wf}/runs/{run_id}/resume-from")
+def resume_from(
+    wf: str,
+    run_id: str,
+    body: ResumeFromBody,
+    user: User = Depends(require_perm("run_instance")),
+    db: Session = Depends(get_db),
+):
+    """Queue a checkpoint resume; the scheduler resets only the requested downstream closure."""
+    definition = _resolve_wf(db, wf)
+    instance = db.query(WorkflowInstance).filter(WorkflowInstance.instance_id == run_id).first()
+    if instance is None or instance.wf_code != definition.code:
+        raise ApiError(WF_NOT_FOUND, "运行实例不属于该工作流", status=404)
+    node_ids = sorted({node_id.strip() for node_id in body.from_node_ids if node_id.strip()})
+    if not node_ids:
+        raise ApiError(WF_PARAM_INVALID, "fromNodeIds 不能为空", status=400)
+    command = submit_command(db, "RESUME_FROM", {
+        "instanceId": run_id, "fromNodeIds": node_ids,
+    }, priority=body.priority)
+    return ok({"commandId": command.id})
 
 
 @router.post("/{wf}/complement")

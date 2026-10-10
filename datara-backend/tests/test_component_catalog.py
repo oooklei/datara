@@ -6,7 +6,7 @@ Vue bundle —— 后端无法校验、无法版本化、无法服务给其他�
 经 `GET /api/v1/components` 只读下发。
 
 覆盖：
-1. 目录自洽：各 profile 的 route 分布合计 == nodeTypes；dag 35 + backendOnly 2 == 37
+1. 目录自洽：各 profile 的 route 分布合计 == nodeTypes；dag 36 + backendOnly 2 == 38
    （2026-09-29 基线化目录对账更新：op_script 经 shared.ts 去重后仍属前端组件，
    不再误报 backend-only）；
 2. 无派发缺口与 CI 脚本一致：dag 画布 UNROUTED 恰为 stream_input/fuse/output；
@@ -75,11 +75,11 @@ def test_route_breakdown_sums_to_nodetypes(catalog):
 
 
 def test_dag_totals_match_documented_baseline(catalog):
-    """DAG 基线：35 个前端 NodeSchema（含 G-12 smoke）+ 2 个仅后端类型 = 37 需建档 type。"""
+    """DAG 基线：36 个前端 NodeSchema（含编辑态 reroute）+ 2 个仅后端类型 = 38 需建档 type。"""
     s = catalog["stats"]
     # G-12：smoke 已补前端 NodeSchema → 不再是 backend-only
     assert s["backendOnlyTypes"] == ["src_select", "tgt_select"]
-    assert s["dagTotal"] + s["backendOnlyCount"] == 37
+    assert s["dagTotal"] + s["backendOnlyCount"] == 38
     # 31 个 dag 前端组件有派发实现（20 master = 16 编排 + 1 页面 + 3 流编排接线 G1，11 worker 含 smoke）；
     # 另 2 个仅后端类型也可路由
     assert s["dagRoutable"] == 31
@@ -121,7 +121,7 @@ def test_execution_model_is_declared_per_profile(catalog):
     for c in catalog["components"]:
         by_prof.setdefault(c["profile"], set()).add(c["executionModel"])
     # dag profile 包含三种执行模型（按 type 细化，覆盖 profile 级粗分类）
-    assert by_prof["dag"] == {"dag-engine", "passthrough", "template"}
+    assert by_prof["dag"] == {"dag-engine", "passthrough", "template", "nonExecutable"}
     # 2026-09-29 executionModel 口径修正：M-B2 执行器注册后 etl/stream 全量
     # route=worker → dag-engine
     assert by_prof["etl"] == {"dag-engine"}
@@ -207,13 +207,13 @@ def test_list_components(client):
     r = client.get("/api/v1/components")
     assert r.status_code == 200
     d = r.json()["data"]
-    assert d["total"] == 75
+    assert d["total"] == 76
     assert d["catalogHash"]
     assert d["items"]
 
 
 def test_list_filters(client):
-    assert client.get("/api/v1/components?profile=dag").json()["data"]["total"] == 35
+    assert client.get("/api/v1/components?profile=dag").json()["data"]["total"] == 36
     assert client.get("/api/v1/components?profile=topo").json()["data"]["total"] == 13
     assert client.get("/api/v1/components?route=master").json()["data"]["total"] == 20
     # 2026-09-29 基线化目录对账更新：M-B2 执行器注册后 etl/stream 全量 worker 路由
@@ -221,7 +221,7 @@ def test_list_filters(client):
     assert client.get("/api/v1/components?route=worker").json()["data"]["total"] == 38
     # paletteVisible=true 跨 profile 合计
     vis = client.get("/api/v1/components?paletteVisible=true").json()["data"]["total"]
-    assert vis == 50
+    assert vis == 51
     assert client.get("/api/v1/components?q=join").json()["data"]["total"] > 0
     assert client.get("/api/v1/components?q=__no_such__").json()["data"]["total"] == 0
 
@@ -282,7 +282,7 @@ def test_unknown_component_returns_404(client):
 def test_raw_catalog(client):
     d = client.get("/api/v1/components/catalog").json()["data"]
     assert d["schemaVersion"] == 1
-    assert d["stats"]["total"] == 75
+    assert d["stats"]["total"] == 76
 
 
 def test_api_is_read_only(client):

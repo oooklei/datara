@@ -26,10 +26,11 @@ import { portTypesMatch } from '../model/portTypes'
 import { applyLayout } from '../layout'
 import type { NodeSchema, ViewProfile } from '../profiles'
 import type { ComponentCategory } from '../profiles/types' // I12 R1：doc 推导组件库置顶标签用
-import { onEdgeCreated, onEdgeRemoved, decideDrop, prefillFromUpstream, applyInitTemplate } from '../profiles/formLinkage' // 拖边即引用（端点合一 §3.3）+ F1 拖入闸门 + M5 initTemplate 落图合入
+import { onEdgeCreated, onEdgeRemoved, decideDrop, prefillFromUpstream, prefillDeclaredFromUpstream, applyInitTemplate } from '../profiles/formLinkage' // 拖边即引用（端点合一 §3.3）+ F1 拖入闸门 + M5 initTemplate 落图合入
 import { createTemplateStage, selectTemplateSteps, stagedUpstreamOf } from '../profiles/templateStaging'
 import type { TemplateStage } from '../profiles/templateStaging'
 import { useGraphStore } from '../../stores/graph'
+import { patchById } from './syncFromDoc'
 import { useAuthStore } from '../../stores/auth'
 import { useRunStore } from '../../stores/run'
 import { useFloatStore } from '../../stores/float'
@@ -40,6 +41,9 @@ import { canvasOnlyRenderVisible } from './canvasFlags' // Task 12（§3.6）：
 import { loadCanvasState, saveCanvasState, type CanvasState } from '../../composables/useCanvasState' // Task 14（§3.7）：画布状态持久化（canvas-state:{docId}）
 
 import DataNode from './DataNode.vue'
+import RerouteNode from './RerouteNode.vue'
+import EdgeDataFloat from './EdgeDataFloat.vue'
+import { edgeDataClass, EDGE_DATA_TYPE_VISUALS, resolveEdgeDataType } from './edgeData'
 import Palette from './Palette.vue'
 import Inspector from './Inspector.vue'
 import DropConfigDialog from './DropConfigDialog.vue'
@@ -246,7 +250,10 @@ function toFlowEdge(e: GEdge): any {
   const k = props.profile.edgeKinds[e?.kind ?? props.profile.defaultEdge]
     ?? Object.values(props.profile.edgeKinds)[0]
   // 防御：edgeKinds 配置缺失时提供默认样式
-  const color = k?.color ?? '#64748b'
+  const sourceNode = doc.value?.nodes.find((node) => node.id === e?.source)
+  const sourceSpec = sourceNode && specEnabled.value ? componentStore.specMap.get(sourceNode.type) : undefined
+  const dataType = resolveEdgeDataType(e?.sourceHandle, sourceSpec)
+  const color = EDGE_DATA_TYPE_VISUALS[dataType].color
   const edgeType = k?.edgeType ?? 'default'
   const dashed = k?.dashed ?? false
   const animated = k?.animated ?? false
@@ -257,6 +264,8 @@ function toFlowEdge(e: GEdge): any {
     sourceHandle: e?.sourceHandle != null ? String(e.sourceHandle) : '',
     targetHandle: e?.targetHandle != null ? String(e.targetHandle) : '',
     type: edgeType,
+    class: edgeDataClass(dataType),
+    data: { dataType },
     label: e?.label != null ? String(e.label) : '',
     labelStyle: { fill: color, fontSize: 9.5 },
     labelBgPadding: [4, 2],
@@ -268,10 +277,23 @@ function toFlowEdge(e: GEdge): any {
   }
 }
 
+/**
+ * Prefer an id-based patch so routine draft updates keep Vue Flow's transient
+ * state.  The complete rebuild is deliberately retained as a safe P0 fallback
+ * for malformed legacy documents or an unexpected projector failure.
+ */
 function syncFromDoc() {
   if (!doc.value) return
-  flowNodes.value = doc.value.nodes.map(toFlowNode)
-  flowEdges.value = doc.value.edges.map(toFlowEdge)
+  try {
+    flowNodes.value = patchById(flowNodes.value, doc.value.nodes, toFlowNode)
+      .items
+      .filter((node) => node.type !== 'gbadge')
+    flowEdges.value = patchById(flowEdges.value, doc.value.edges, toFlowEdge).items
+  } catch (error) {
+    console.warn('Incremental graph sync failed; rebuilding canvas state.', error)
+    flowNodes.value = doc.value.nodes.map(toFlowNode)
+    flowEdges.value = doc.value.edges.map(toFlowEdge)
+  }
   applyVisibility()
 }
 
@@ -633,9 +655,61 @@ function onValidate() {
   else ElMessage.warning(`发现 ${n} 个问题`)
 }
 
-function onLayout() {
+const WORKER_LAYOUT_THRESHOLD = 200
+let layoutWorker: Worker | null = null
+let layoutRequestId = 0
+
+function terminateLayoutWorker() {
+  layoutWorker?.terminate()
+  layoutWorker = null
+}
+
+function layoutInWorker(doc: GraphDocument): Promise<GraphDocument> {
+  const requestId = ++layoutRequestId
+  if (!layoutWorker) layoutWorker = new Worker(new URL('./layoutWorker.ts', import.meta.url), { type: 'module' })
+  return new Promise((resolve, reject) => {
+    const worker = layoutWorker!
+    const onMessage = (event: MessageEvent<{ id: number; doc?: GraphDocument; error?: string }>) => {
+      if (event.data.id !== requestId) return
+      cleanup()
+      if (event.data.error || !event.data.doc) reject(new Error(event.data.error ?? '布局 Worker 未返回结果'))
+      else resolve(event.data.doc)
+    }
+    const onError = () => { cleanup(); reject(new Error('布局 Worker 异常退出')) }
+    const cleanup = () => {
+      worker.removeEventListener('message', onMessage)
+      worker.removeEventListener('error', onError)
+    }
+    worker.addEventListener('message', onMessage)
+    worker.addEventListener('error', onError)
+    worker.postMessage({ id: requestId, doc, dir: props.profile.layoutDir ?? 'TB' })
+  })
+}
+
+onBeforeUnmount(terminateLayoutWorker)
+
+async function onLayout() {
   if (!doc.value) return
-  graphStore.replace(applyLayout(cloneDoc(doc.value), props.profile))
+  const before = cloneDoc(doc.value)
+  const beforeJson = JSON.stringify(before)
+  let laidOut: GraphDocument
+  if (before.nodes.length > WORKER_LAYOUT_THRESHOLD && props.profile.layout !== 'lane' && props.profile.layout !== 'force' && props.profile.layout !== 'er') {
+    ElMessage.info(`正在后台布局 ${before.nodes.length} 个节点…`)
+    try {
+      laidOut = await layoutInWorker(before)
+    } catch (error) {
+      console.warn('Worker layout failed; falling back to main thread.', error)
+      laidOut = applyLayout(before, props.profile)
+    }
+  } else {
+    laidOut = applyLayout(before, props.profile)
+  }
+  // Never replace edits made while a large graph was being calculated.
+  if (!doc.value || JSON.stringify(doc.value) !== beforeJson) {
+    ElMessage.warning('布局期间画布已更新，已保留最新编辑')
+    return
+  }
+  graphStore.replace(laidOut)
   syncFromDoc()
   ElMessage.success('已自动布局')
 }
@@ -1093,7 +1167,18 @@ async function onRunCheck() {
 function onEdgeClick(e: { edge?: { id: string } }) {
   if (!doc.value || !e.edge) return
   const g = doc.value.edges.find((x) => x.id === e.edge!.id)
-  if (g) props.profile.onEdgeClick?.(g, doc.value)
+  if (!g) return
+  props.profile.onEdgeClick?.(g, doc.value)
+  const upstream = doc.value.nodes.find((node) => node.id === g.source)
+  if (!upstream) return
+  const spec = specEnabled.value ? componentStore.specMap.get(upstream.type) : undefined
+  const dataType = resolveEdgeDataType(g.sourceHandle, spec)
+  const outputs = spec?.outputs ?? spec?.ports.outputs.map((port) => ({ name: port.name, type: port.type })) ?? []
+  openFloat(`edge-data:${g.id}`, `边数据 · ${upstream.data.name || upstream.id}`, EdgeDataFloat, 680, 430, {
+    doc: doc.value, edge: g, upstream, outputs, dataType,
+    previewLimit: spec?.extensions?.capabilities?.previewLimit ?? 100,
+    workflowCode: props.docMeta?.code,
+  })
 }
 
 /** 节点渲染组件：profile 可注入自定义（如 ER 实体卡片），缺省 DataNode */
@@ -1398,6 +1483,7 @@ function onDrop(e: DragEvent) {
      < 上游快照 prefillFromUpstream —— 上游非空同名值最后落笔，覆盖模板与通用默认 */
   const up = pickPrefillUpstream(pos)
   prefillFromUpstream(g.data, up?.data ?? null, schema.dropPolicy?.prefillFromUpstream)
+  prefillDeclaredFromUpstream(g.data, up?.data ?? null, schema.behaviors?.prefillFromUpstream)
   dropSchema.value = schema
   dropNode.value = g
   dropUpstream.value = up ? [up] : []
@@ -1850,7 +1936,7 @@ function ctxLayout() { onLayout(); closeCtx() }
           <template #node-gn="nodeProps">
             <div :class="{ 'gn-hit': nodeProps.id === searchHit }">
               <component
-                :is="nodeComp"
+                :is="nodeProps.data.gnode.type === 'reroute' ? RerouteNode : nodeComp"
                 :id="nodeProps.id"
                 :gnode="nodeProps.data.gnode"
                 :schema="nodeProps.data.schema"

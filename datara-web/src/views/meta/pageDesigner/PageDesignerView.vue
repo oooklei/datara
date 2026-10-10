@@ -37,6 +37,7 @@ import {
 } from '../../../services/componentApi'
 import { alignRects, distributeRects, normalizePage, genId, newWidget, reorderWidget, CANVAS_H, CANVAS_W, type BackgroundStyle, type PageDSL, type ReorderAction, type WidgetNode } from './designerModel'
 import { componentSeedPage, pageTemplates } from './templates'
+import UpgradeWizard from '../../../components/designer/UpgradeWizard.vue'
 import type { ResourceCatalog } from './bindingCatalog'
 import { pageApi, type PreviewQuery, type PreviewResult } from './pageApi'
 import {
@@ -95,6 +96,12 @@ const loading = ref(false)
 const loadErr = ref('')
 const saving = ref(false)
 const publishing = ref(false)
+const hasUnsavedChanges = ref(false)
+const autoSaveNotice = ref('')
+const saveConflict = ref(false)
+const remoteConflictSnapshot = ref('')
+let savedSpecSnapshot = ''
+let autoSaveTimer: ReturnType<typeof setTimeout> | undefined
 
 const STATE_TEXT: Record<string, string> = { draft: '草稿', frozen: '冻结', published: '已发布', offline: '已下线' }
 const stateText = computed(() => (draft.value ? STATE_TEXT[draft.value.state] ?? draft.value.state : ''))
@@ -241,6 +248,10 @@ async function loadAll(t: string): Promise<void> {
       fieldsState.value = st
     }
     resetUndo()
+    savedSpecSnapshot = JSON.stringify(currentSpec())
+    hasUnsavedChanges.value = false
+    autoSaveNotice.value = ''
+    saveConflict.value = false
   } catch (e) {
     loadErr.value = e instanceof Error ? e.message : String(e)
   } finally {
@@ -549,6 +560,83 @@ async function onRefresh(): Promise<void> {
 }
 
 /* ================= 保存 / 预览 ================= */
+function currentSpec(): Record<string, unknown> {
+  return fieldsState.value
+    ? toFieldsSpec(fieldsState.value) as unknown as Record<string, unknown>
+    : { page: page.value }
+}
+
+function cancelAutoSave(): void {
+  if (autoSaveTimer !== undefined) clearTimeout(autoSaveTimer)
+  autoSaveTimer = undefined
+}
+
+async function enterSaveConflict(type: string): Promise<void> {
+  saveConflict.value = true
+  cancelAutoSave()
+  try { remoteConflictSnapshot.value = JSON.stringify((await getComponentDraft(type)).spec, null, 2) }
+  catch { remoteConflictSnapshot.value = '' }
+  ElMessage.warning('草稿已被其他会话修改；本地内容已保留，自动保存已暂停')
+}
+
+async function saveAutomatically(): Promise<void> {
+  const d = draft.value
+  if (!d || saving.value || saveConflict.value || !hasUnsavedChanges.value) return
+  saving.value = true
+  try {
+    const spec = currentSpec()
+    const r = await saveComponentDraft(d.type, { draftRev: d.draftRev, spec })
+    d.draftRev = r.draftRev
+    savedSpecSnapshot = JSON.stringify(spec)
+    hasUnsavedChanges.value = false
+    autoSaveNotice.value = `已自动保存（rev ${r.draftRev}）`
+  } catch (e) {
+    if ((e as { code?: number }).code === 409) {
+      await enterSaveConflict(d.type)
+    }
+  } finally {
+    saving.value = false
+  }
+}
+
+function scheduleAutoSave(): void {
+  cancelAutoSave()
+  if (!hasUnsavedChanges.value || saveConflict.value || !draft.value) return
+  autoSaveTimer = setTimeout(() => { void saveAutomatically() }, 30_000)
+}
+
+watch([page, fieldsState], () => {
+  if (loading.value || !draft.value || saveConflict.value) return
+  hasUnsavedChanges.value = JSON.stringify(currentSpec()) !== savedSpecSnapshot
+  if (hasUnsavedChanges.value) scheduleAutoSave()
+}, { deep: true })
+
+/** Browser teardown cannot reliably complete the authenticated draft PUT.  Ask
+ * for confirmation instead of claiming a best-effort request was persisted. */
+function onBeforeUnload(event: BeforeUnloadEvent): void {
+  if (!hasUnsavedChanges.value) return
+  event.preventDefault()
+  event.returnValue = ''
+}
+
+async function reloadRemoteAfterConflict(): Promise<void> {
+  const type = activeType.value
+  if (!type) return
+  cancelAutoSave()
+  await loadAll(type)
+}
+
+async function overwriteRemoteAfterConflict(): Promise<void> {
+  const d = draft.value
+  if (!d || !saveConflict.value) return
+  try {
+    const remote = await getComponentDraft(d.type)
+    d.draftRev = remote.draftRev
+    saveConflict.value = false
+    await onSave()
+  } catch (e) { ElMessage.error(e instanceof Error ? e.message : String(e)) }
+}
+
 async function onSave(): Promise<void> {
   const d = draft.value
   if (!d || saving.value) return
@@ -556,11 +644,18 @@ async function onSave(): Promise<void> {
   try {
     /* 模式分派：fields 模式写回声明 spec（fields / form.params 双源 + dropPolicy）；
        page 模式写回页面 DSL */
-    const spec = fieldsState.value ? toFieldsSpec(fieldsState.value) : { page: page.value }
+    const spec = currentSpec()
     const r = await saveComponentDraft(d.type, { draftRev: d.draftRev, spec })
     d.draftRev = r.draftRev
+    savedSpecSnapshot = JSON.stringify(spec)
+    hasUnsavedChanges.value = false
+    autoSaveNotice.value = ''
     ElMessage.success(`已保存（rev ${r.draftRev}）`)
   } catch (e) {
+    if ((e as { code?: number }).code === 409) {
+      await enterSaveConflict(d.type)
+      return
+    }
     ElMessage.error(e instanceof Error ? e.message : String(e))
   } finally {
     saving.value = false
@@ -659,6 +754,19 @@ const STRATEGY_OPTS: Array<{ value: UpgradeStrategy; label: string; desc: string
   { value: 'manual', label: '手动升级', desc: '仅记录待升级清单，后续经批量升级向导逐个处理' },
   { value: 'pin', label: '钉住旧版', desc: '引用钉住当前版本继续可运行，不自动升级' },
 ]
+const upgradeOpen = ref(false)
+
+/**
+ * The wizard keeps its result report open until the user acknowledges it.  Only
+ * then refresh the designer/catalog snapshot, so a failed CAS target remains
+ * inspectable and the next open shows the current impacted-reference state.
+ */
+async function onUpgradeDone(): Promise<void> {
+  upgradeOpen.value = false
+  const type = activeType.value
+  if (type) await loadAll(type)
+  bus.emit('component:published')
+}
 
 /** 发布弹窗内容 VNode：说明 + 升级策略单选（绑定外层 ref，确认后读取所选值） */
 function publishDialogVNode(strategy: Ref<UpgradeStrategy>): VNode {
@@ -720,6 +828,7 @@ async function onPublish(): Promise<void> {
       tail = refreshTail(r)
     }
     ElMessage.success(`已发布 v${pub.publishedVersion}，${tail}`)
+    if (strategy.value === 'manual' && (pub.refresh?.pending ?? 0) > 0) upgradeOpen.value = true
     /* Task 15 审查修复（Major-1）：生产发射方——spec 骨架已随发布更新（body 变 → ETag 变），
        广播订阅方（componentStore.invalidate 等）重拉必得 200 新清单，
        画布引用角标随 specMap 重建自动刷新（§4.4 失效闭环）。 */
@@ -796,10 +905,13 @@ onMounted(() => {
     if (typeof p.rightW === 'number' && p.rightW >= PANEL_MIN_W && p.rightW <= PANEL_MAX_W) rightWidth.value = p.rightW
   } catch { /* 忽略隐私模式 */ }
   window.addEventListener('keydown', onKeydown)
+  window.addEventListener('beforeunload', onBeforeUnload)
 })
 onBeforeUnmount(() => {
+  cancelAutoSave()
   stopPanelResize()
   window.removeEventListener('keydown', onKeydown)
+  window.removeEventListener('beforeunload', onBeforeUnload)
 })
 watch([leftOpen, rightOpen, leftWidth, rightWidth], ([l, r, lw, rw]) => {
   try { localStorage.setItem('datara.pd.panels', JSON.stringify({ left: l, right: r, leftW: lw, rightW: rw })) } catch { /* 忽略隐私模式 */ }
@@ -895,6 +1007,14 @@ async function onCreate(): Promise<void> {
     <el-alert v-if="loadErr" type="error" :closable="false" :title="`页面草稿加载失败：${loadErr}`" show-icon class="pd-err" />
 
     <!-- 新建态：名称 + 4 页面模板卡 + 创建 -->
+    <div v-if="saveConflict" class="pd-save-conflict" role="alert">
+      <span>草稿发生并发冲突：本地编辑仍在当前页面，自动保存已暂停。</span>
+      <details><summary>查看基线 / 本地 / 远端内容</summary><pre>基线：{{ savedSpecSnapshot }}\n本地：{{ JSON.stringify(currentSpec(), null, 2) }}\n远端：{{ remoteConflictSnapshot || '未能读取远端快照' }}</pre></details>
+      <el-button size="small" type="warning" @click="overwriteRemoteAfterConflict">以本地内容覆盖远端</el-button>
+      <el-button size="small" @click="reloadRemoteAfterConflict">放弃本地并载入远端</el-button>
+    </div>
+    <span v-else-if="autoSaveNotice" class="pd-autosave-note">{{ autoSaveNotice }}</span>
+
     <section v-if="isCreate" class="pd-create">
       <div class="pd-create-title">新建页面组件</div>
       <div class="pd-create-row">
@@ -1008,6 +1128,14 @@ async function onCreate(): Promise<void> {
       </aside>
     </div>
   </div>
+  <el-dialog v-model="upgradeOpen" title="批量升级组件引用" width="560px" append-to-body>
+    <UpgradeWizard
+      v-if="draft"
+      :component-type="draft.type"
+      @cancel="upgradeOpen = false"
+      @done="onUpgradeDone"
+    />
+  </el-dialog>
 </template>
 
 <style scoped>

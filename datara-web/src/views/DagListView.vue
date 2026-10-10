@@ -14,6 +14,7 @@ import { graphService, isMock, listDefinitions, createDefinition, deleteDefiniti
 import { localTime } from '../services/mock/timeUtil'
 import { useAuthStore } from '../stores/auth'
 import ScheduleDialog from './dag/ScheduleDialog.vue'
+import { createTemplate } from '../services/templateApi'
 
 /** 统一行形状（mock WorkflowMeta 与 real DefinitionMeta 归一化） */
 interface Row {
@@ -92,6 +93,21 @@ function design(r: Row) {
   open(r.id)
 }
 
+async function saveAsTemplate(r: Row) {
+  if (!auth.canEdit) { ElMessage.warning('当前角色无权创建模板'); return }
+  try {
+    const doc = await graphService.get(r.id)
+    if (!doc) throw new Error('工作流图不存在')
+    const { value } = await ElMessageBox.prompt('模板名称', '另存为模板', {
+      inputValue: r.name, inputPattern: /\S+/, inputErrorMessage: '模板名称不能为空',
+    })
+    await createTemplate({ name: value.trim(), templateJson: doc })
+    ElMessage.success('已另存为模板')
+  } catch (e) {
+    if (e !== 'cancel' && e !== 'close') ElMessage.error('另存为模板失败：' + errMsg(e))
+  }
+}
+
 /* ---------- I3 定时调度（real 模式；mock 提示后端能力） ---------- */
 const scheduleVisible = ref(false)
 const scheduleWf = ref('')
@@ -143,6 +159,7 @@ function open(id: string) {
             <td style="color:var(--text-3)">{{ r.updatedAt.slice(0, 16).replace('T', ' ') }}</td>
             <td>
               <button class="op-btn primary" @click="design(r)">可视化编排</button>
+              <button class="op-btn" @click="saveAsTemplate(r)">另存为模板</button>
               <button class="op-btn" @click="openRuns">运行实例</button>
               <button v-if="!isMock" class="op-btn" @click="openSchedule(r)">定时</button>
               <button v-if="!isMock" class="op-btn" @click="onDelete(r)">删除</button>

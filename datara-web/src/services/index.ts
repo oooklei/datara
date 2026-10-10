@@ -22,7 +22,7 @@ export {
   onlineSchedule, offlineSchedule, previewCrontab,
   runWorkflow, complementWorkflow, publishWorkflow, offlineWorkflow,
   /* 实例/任务操作 */
-  getInstanceDetail, stopInstance, rerunInstance, rerunFailedTasks,
+  getInstanceDetail, stopInstance, rerunInstance, rerunFailedTasks, resumeFromNodes,
   getTaskLog, listRuntimeNodes,
   /* I7 F53 SSH 运行节点 */
   listSshNodes,
