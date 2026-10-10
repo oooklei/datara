@@ -2,7 +2,7 @@
 /**
  * 工作流列表行内「可选升级」入口：模板有新版本时渲染提示与差异预览动作。
  * 升级确认与画布回写主流程由 TemplateCenter 承担，本组件只负责列表行的轻量入口
- * （点击拉取 diff；差异渲染复用 store.upgradePreview，无本地状态镜像）。
+ * （点击拉取 diff；差异快照行内自持，避免全局 store 被多行互相覆盖）。
  */
 import { useTemplateStore } from '../../stores/templateStore'
 import type { UpgradeStatus } from '../../services/templateApi'
@@ -11,9 +11,12 @@ import { ref } from 'vue'
 const props = defineProps<{ workflowId: string; status: UpgradeStatus }>()
 const store = useTemplateStore()
 const showPreview = ref(false)
+/* 差异数据行内自持：store.upgradePreview 为全局单例，两行先后预览会互相覆盖。 */
+const localDiff = ref<Array<{ path: string; before: unknown; after: unknown }>>([])
 
 async function preview() {
   await store.previewUpgrade(props.workflowId)
+  localDiff.value = store.upgradePreview?.diff ?? []
   showPreview.value = true
 }
 </script>
@@ -24,8 +27,8 @@ async function preview() {
     <span class="ver">v{{ status.currentVersion }} → v{{ status.latestVersion }}</span>
     <button data-testid="list-preview-upgrade" @click="preview">查看差异</button>
   </span>
-  <div v-if="showPreview && store.upgradePreview" class="wf-upgrade-diff">
-    <div v-for="item in store.upgradePreview.diff" :key="item.path" class="diff-row">
+  <div v-if="showPreview && localDiff.length" class="wf-upgrade-diff">
+    <div v-for="item in localDiff" :key="item.path" class="diff-row">
       <code>{{ item.path }}</code><span>{{ item.before }}</span><b>→</b><span>{{ item.after }}</span>
     </div>
   </div>

@@ -37,4 +37,26 @@ describe('workflow list optional upgrade actions', () => {
 
     expect(wrapper.find('[data-testid="list-preview-upgrade"]').exists()).toBe(false)
   })
+
+  it('keeps each row diff independent when two rows preview in turn', async () => {
+    setActivePinia(createPinia())
+    const store = useTemplateStore()
+    const status = { upgradeAvailable: true, templateId: 4, currentVersion: 1, latestVersion: 2 }
+    const rowA = mount(WorkflowUpgradeActions, { props: { workflowId: 'wf_a', status } })
+    const rowB = mount(WorkflowUpgradeActions, { props: { workflowId: 'wf_b', status } })
+
+    store.previewUpgrade = vi.fn().mockImplementation(async () => {
+      store.upgradePreview = { workflowVersion: 1, currentVersion: 1, latestVersion: 2, diff: [{ path: 'wf_a/nodes[0].name', before: 'A', after: 'A2' }] }
+    })
+    await rowA.get('[data-testid="list-preview-upgrade"]').trigger('click')
+
+    store.previewUpgrade = vi.fn().mockImplementation(async () => {
+      store.upgradePreview = { workflowVersion: 1, currentVersion: 1, latestVersion: 2, diff: [{ path: 'wf_b/nodes[0].name', before: 'B', after: 'B2' }] }
+    })
+    await rowB.get('[data-testid="list-preview-upgrade"]').trigger('click')
+
+    expect(rowA.text()).toContain('wf_a/nodes[0].name')
+    expect(rowA.text()).not.toContain('wf_b/nodes[0].name')
+    expect(rowB.text()).toContain('wf_b/nodes[0].name')
+  })
 })
