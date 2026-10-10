@@ -81,3 +81,12 @@ export function updatePropsCommand(
     : node)
   return transition('update-props', doc, after)
 }
+
+/**
+ * Task 22（2e）：按「实际变更前后档」捕获命令。带联动副作用的变更（连线/断边同步目标节点
+ * inputs 引用、删节点清组与引用等）重放工厂得到的 after 与运行档可能不一致，直接捕获真实
+ * 前后档可保证 undo/redo 精确等价；GraphWorkbench 在变更点调用并压入 commandHistory。
+ */
+export function captureCommand(kind: GraphCommandKind, before: GraphDocument, after: GraphDocument): GraphCommand {
+  return transition(kind, before, after)
+}

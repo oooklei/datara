@@ -51,3 +51,30 @@ export function patchById<Source extends Identified, Flow extends Identified>(
     removed: current.reduce((count, item) => count + (sourceIds.has(item.id) ? 0 : 1), 0),
   }
 }
+
+/* ---------- Task 18（§5.1）边流动动画 ---------- */
+
+/** 流动边判定的运行态集合：两端节点皆 executing/executed（plan Task 18 口径） */
+const EDGE_FLOW_STATES = new Set(['executing', 'executed'])
+
+/** 追加到边 class 上的流动动画类（theme.css 定义 stroke-dashoffset 关键帧） */
+export const EDGE_FLOWING_CLASS = 'edge-flowing'
+
+/**
+ * 计算处于「流动」状态的边 id 集合：数据流向 source→target，两端节点状态
+ * 均在 EDGE_FLOW_STATES 内才流动（纯函数，GraphWorkbench 据此增删 flow edge class）。
+ */
+export function flowingEdgeIds(
+  edges: readonly { id: string; source: string; target: string }[],
+  nodeStates: Record<string, { state?: string } | undefined> | Record<string, string>,
+): Set<string> {
+  const flowing = new Set<string>()
+  for (const e of edges) {
+    const s = nodeStates[e.source]
+    const t = nodeStates[e.target]
+    const ss = typeof s === 'string' ? s : s?.state
+    const ts = typeof t === 'string' ? t : t?.state
+    if (ss && ts && EDGE_FLOW_STATES.has(ss) && EDGE_FLOW_STATES.has(ts)) flowing.add(e.id)
+  }
+  return flowing
+}

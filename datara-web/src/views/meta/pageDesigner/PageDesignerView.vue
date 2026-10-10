@@ -57,6 +57,7 @@ import PageCanvas from './canvas/PageCanvas.vue'
 import PageInspector from './inspector/PageInspector.vue'
 import FieldsCanvas from './fields/FieldsCanvas.vue'
 import FieldsInspector from './fields/FieldsInspector.vue'
+import SaveConflictDiffDialog from './SaveConflictDiffDialog.vue'
 
 /* 组件治理三页整合（ComponentHub 宿主）：designType 入参 + goCatalog/designTypeChange
  * 回调优先（页签流转），缺省回退独立路由（route.params.type + router.replace 深链）。 */
@@ -101,6 +102,12 @@ const autoSaveNotice = ref('')
 const saveConflict = ref(false)
 const remoteConflictSnapshot = ref('')
 let savedSpecSnapshot = ''
+/* Task 23：三方 diff 对话框状态——mine/remote/base 在打开时刻快照
+ * （savedSpecSnapshot 为非响应式闭包变量，无法参与 computed，故以 ref 在 openConflictDiff 捕获） */
+const conflictDlg = ref(false)
+const diffMine = ref<Record<string, unknown> | null>(null)
+const diffRemote = ref<Record<string, unknown> | null>(null)
+const diffBase = ref<Record<string, unknown> | null>(null)
 let autoSaveTimer: ReturnType<typeof setTimeout> | undefined
 
 const STATE_TEXT: Record<string, string> = { draft: '草稿', frozen: '冻结', published: '已发布', offline: '已下线' }
@@ -577,6 +584,18 @@ async function enterSaveConflict(type: string): Promise<void> {
   try { remoteConflictSnapshot.value = JSON.stringify((await getComponentDraft(type)).spec, null, 2) }
   catch { remoteConflictSnapshot.value = '' }
   ElMessage.warning('草稿已被其他会话修改；本地内容已保留，自动保存已暂停')
+  openConflictDiff()
+}
+
+/** Task 23：打开三方逐项 diff 对话框——mine=当前本地 spec、remote=冲突时远端快照、
+ * base=上次成功保存快照；均在打开时刻捕获（横幅「逐项对比解决…」重开时取到最新） */
+function openConflictDiff(): void {
+  diffMine.value = currentSpec()
+  try { diffRemote.value = remoteConflictSnapshot.value ? JSON.parse(remoteConflictSnapshot.value) as Record<string, unknown> : null }
+  catch { diffRemote.value = null }
+  try { diffBase.value = savedSpecSnapshot ? JSON.parse(savedSpecSnapshot) as Record<string, unknown> : null }
+  catch { diffBase.value = null }
+  conflictDlg.value = true
 }
 
 async function saveAutomatically(): Promise<void> {
@@ -635,6 +654,36 @@ async function overwriteRemoteAfterConflict(): Promise<void> {
     saveConflict.value = false
     await onSave()
   } catch (e) { ElMessage.error(e instanceof Error ? e.message : String(e)) }
+}
+
+/** Task 23：按逐项采纳合并后的 spec 保存——先取最新 draftRev 再写（对话框打开期间远端可能再变）；
+ *  成功后 loadAll 重建编辑器与合并持久化结果对齐（否则编辑器仍持未合并旧内容，下次编辑的
+ *  自动保存会用旧内容覆盖合并结果）；再遇 409 重进冲突流程（自动重开 diff）。 */
+async function resolveConflictWith(merged: Record<string, unknown>): Promise<void> {
+  const d = draft.value
+  if (!d || saving.value) return
+  saving.value = true
+  try {
+    const remote = await getComponentDraft(d.type)
+    const r = await saveComponentDraft(d.type, { draftRev: remote.draftRev, spec: merged })
+    d.draftRev = r.draftRev
+    savedSpecSnapshot = JSON.stringify(merged)
+    hasUnsavedChanges.value = false
+    saveConflict.value = false
+    remoteConflictSnapshot.value = ''
+    conflictDlg.value = false
+    autoSaveNotice.value = ''
+    ElMessage.success(`已按逐项采纳合并保存（rev ${r.draftRev}）`)
+    await loadAll(d.type)
+  } catch (e) {
+    if ((e as { code?: number }).code === 409) {
+      await enterSaveConflict(d.type)
+      return
+    }
+    ElMessage.error(e instanceof Error ? e.message : String(e))
+  } finally {
+    saving.value = false
+  }
 }
 
 async function onSave(): Promise<void> {
@@ -1011,6 +1060,7 @@ async function onCreate(): Promise<void> {
       <span>草稿发生并发冲突：本地编辑仍在当前页面，自动保存已暂停。</span>
       <details><summary>查看基线 / 本地 / 远端内容</summary><pre>基线：{{ savedSpecSnapshot }}\n本地：{{ JSON.stringify(currentSpec(), null, 2) }}\n远端：{{ remoteConflictSnapshot || '未能读取远端快照' }}</pre></details>
       <el-button size="small" type="warning" @click="overwriteRemoteAfterConflict">以本地内容覆盖远端</el-button>
+      <el-button size="small" type="primary" plain data-testid="tb-conflict-diff" @click="openConflictDiff">逐项对比解决…</el-button>
       <el-button size="small" @click="reloadRemoteAfterConflict">放弃本地并载入远端</el-button>
     </div>
     <span v-else-if="autoSaveNotice" class="pd-autosave-note">{{ autoSaveNotice }}</span>
@@ -1136,6 +1186,12 @@ async function onCreate(): Promise<void> {
       @done="onUpgradeDone"
     />
   </el-dialog>
+  <!-- Task 23：保存 409 三方逐项 diff 对话框（我的/远端/基准，逐项勾选采纳后合并保存） -->
+  <SaveConflictDiffDialog
+    v-model="conflictDlg"
+    :mine="diffMine" :remote="diffRemote" :base="diffBase" :saving="saving"
+    @resolve="resolveConflictWith"
+  />
 </template>
 
 <style scoped>

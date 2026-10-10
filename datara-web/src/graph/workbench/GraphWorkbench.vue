@@ -30,7 +30,7 @@ import { onEdgeCreated, onEdgeRemoved, decideDrop, prefillFromUpstream, prefillD
 import { createTemplateStage, selectTemplateSteps, stagedUpstreamOf } from '../profiles/templateStaging'
 import type { TemplateStage } from '../profiles/templateStaging'
 import { useGraphStore } from '../../stores/graph'
-import { patchById } from './syncFromDoc'
+import { patchById, flowingEdgeIds, EDGE_FLOWING_CLASS } from './syncFromDoc'
 import { useAuthStore } from '../../stores/auth'
 import { useRunStore } from '../../stores/run'
 import { useFloatStore } from '../../stores/float'
@@ -39,6 +39,10 @@ import { graphService, isMock } from '../../services'
 import type { DagPickItem } from '../../stores/dagTabs'
 import { canvasOnlyRenderVisible } from './canvasFlags' // Task 12（§3.6）：视口裁剪开关（localStorage datara.wb.flags）
 import { loadCanvasState, saveCanvasState, type CanvasState } from '../../composables/useCanvasState' // Task 14（§3.7）：画布状态持久化（canvas-state:{docId}）
+import { useCommandHistory } from '../history/commandHistory'
+import { captureCommand } from '../history/commands' // Task 22（§3.5/2e）：undo 命令栈（灰度 undoCommandStack）
+import type { GraphCommandKind } from '../history/commands'
+import { isUndoCommandStackOn, flagsVersion } from '../../services/featureFlags' // §0.3 灰度开关（datara.flags）
 
 import DataNode from './DataNode.vue'
 import RerouteNode from './RerouteNode.vue'
@@ -205,6 +209,31 @@ const dropHot = ref(false)
 let dragDepth = 0
 
 const doc = computed(() => props.doc ?? graphStore.doc)
+
+/* ---------- Task 22（§3.5/2e）undo 命令栈灰度接入（undoCommandStack，默认 off 走快照栈） ---------- */
+const cmdHistory = useCommandHistory()
+/** 运行时开关即时读取（flagsVersion 订阅翻转：UI 态与 undo/redo 入口随开关即时切换） */
+const commandStackOn = computed(() => {
+  flagsVersion()
+  return isUndoCommandStackOn()
+})
+const canUndoNow = computed(() => (commandStackOn.value ? cmdHistory.canUndo : graphStore.canUndo))
+const canRedoNow = computed(() => (commandStackOn.value ? cmdHistory.canRedo : graphStore.canRedo))
+/** 命令栈换档旗标：应用命令 undo/redo 结果换入 store 时抑制 watch(graphStore.doc) 的历史重置 */
+let applyingCommandResult = false
+/** 变更记录：off 恒 no-op（零开销）；on 捕获真实前后档压命令栈（before 须为变更前克隆；
+ *  after 统一 cloneDoc 归一为纯树——reactive 代理树不可 structuredClone，commands.transition 依赖） */
+function recordCommand(kind: GraphCommandKind, before: GraphDocument | null, after?: GraphDocument | null) {
+  if (!commandStackOn.value || !before) return
+  const d = after === undefined ? doc.value : after
+  if (!d) return
+  cmdHistory.push(captureCommand(kind, before, cloneDoc(d)))
+}
+/** 变更前档克隆（JSON 纯树，与 store 基线同构；无文档返回 null） */
+function preDocSnapshot(): GraphDocument | null {
+  const d = doc.value
+  return d ? cloneDoc(d) : null
+}
 const selectedNode = computed<GNode | null>(() =>
   doc.value?.nodes.find((n) => n.id === selectedId.value) ?? null)
 
@@ -299,7 +328,22 @@ function syncFromDoc() {
     flowEdges.value = doc.value.edges.map((e) => toFlowEdge(e, nodeMap))
   }
   applyVisibility()
+  applyEdgeFlow()
 }
+
+/* ---------- Task 18（§5.1）运行中边流动动画 ---------- */
+/** nodeStateMap 驱动：两端节点皆 executing/executed 的边追加 .edge-flowing（theme.css 关键帧）。
+ *  仅改 flow edge 的 class 字段，不动 doc；无运行态（默认 polling 无 node_event）时零副作用。 */
+function applyEdgeFlow() {
+  const flowing = flowingEdgeIds(doc.value?.edges ?? [], run.nodeStateMap)
+  flowEdges.value.forEach((fe) => {
+    const cls = String(fe.class ?? '')
+    const has = cls.includes(EDGE_FLOWING_CLASS)
+    if (flowing.has(fe.id) && !has) fe.class = `${cls} ${EDGE_FLOWING_CLASS}`.trim()
+    else if (!flowing.has(fe.id) && has) fe.class = cls.split(/\s+/).filter((c) => c !== EDGE_FLOWING_CLASS).join(' ')
+  })
+}
+watch(() => run.nodeStateMap, applyEdgeFlow, { deep: true })
 
 /* ---------- F56b：可见性（N7 类型过滤 + N6 组折叠）与合成徽标 ---------- */
 
@@ -430,8 +474,15 @@ watch(() => props.doc, (d) => {
 })
 
 /* store.doc 引用变更（版本回滚/保存后替换/撤销重做 N14）时重同步渲染数组；外部注入文档以 props 为准 */
-watch(() => graphStore.doc, (d) => {
+watch(() => graphStore.doc, (d, old) => {
   if (props.doc || !d) return
+  /* Task 22：整档内容替换（载入/保存换版回滚/自动布局）→ 命令历史失配清空；
+   * 保存（仅 version 刷新、内容等价）保留命令历史，与快照栈「保存后仍可撤销」语义对齐 */
+  if (!applyingCommandResult) {
+    const saveLike = old != null && old.id === d.id
+      && JSON.stringify({ ...(old as GraphDocument), version: d.version }) === JSON.stringify(d)
+    if (!saveLike) cmdHistory.reset()
+  }
   syncFromDoc()
   pruneSelection()
 })
@@ -718,9 +769,33 @@ async function onLayout() {
   ElMessage.success('已自动布局')
 }
 
-/* ---------- F56b N14 撤销/重做 + N10 适配 ---------- */
-function onUndo() { graphStore.undo() }
-function onRedo() { graphStore.redo() }
+/* ---------- F56b N14 撤销/重做 + N10 适配 ----------
+ * Task 22（2e）：undo/redo 统一入口——undoCommandStack=on 走命令栈（cmdHistory 换档 +
+ * setDocViaCommand 换入，不触碰快照栈），off（默认）走快照栈（现状不动）。 */
+function onUndo() {
+  if (commandStackOn.value) { undoViaCommands(); return }
+  graphStore.undo()
+}
+function onRedo() {
+  if (commandStackOn.value) { redoViaCommands(); return }
+  graphStore.redo()
+}
+function undoViaCommands() {
+  const d = doc.value
+  if (!d) return
+  const prev = cmdHistory.undo(d)
+  if (!prev) return
+  applyingCommandResult = true
+  try { graphStore.setDocViaCommand(prev) } finally { applyingCommandResult = false }
+}
+function redoViaCommands() {
+  const d = doc.value
+  if (!d) return
+  const next = cmdHistory.redo(d)
+  if (!next) return
+  applyingCommandResult = true
+  try { graphStore.setDocViaCommand(next) } finally { applyingCommandResult = false }
+}
 function onFit() { fitView({ padding: 0.15, duration: 220 }) }
 
 /* ---------- N15 任务载入（B 复制合并）：勾选任务 → 复制其节点/边原样合并进当前画布 ---------- */
@@ -733,6 +808,7 @@ function onPaletteLoad(p: { items: DagPickItem[] }) {
 
 async function onLoadTasks(ids: string[]) {
   if (!ids.length || !doc.value || props.doc || effMode.value !== 'edit') return
+  const before = preDocSnapshot() // Task 22：载入合并按单条复合新增命令捕获
   let added = 0
   for (const [idx, id] of ids.entries()) {
     let src: GraphDocument | null = null
@@ -758,6 +834,7 @@ async function onLoadTasks(ids: string[]) {
   /* 必须整档重同步渲染数组：Vue Flow 的 v-model:nodes 按引用同步，原地 push 不会写入其内部 store（新节点不渲染） */
   syncFromDoc()
   graphStore.markDirty()
+  recordCommand('add-node', before)
   ElMessage.success(`已载入 ${ids.length} 个任务（复制合并 ${added} 个节点）`)
   nextTick(() => fitView({ padding: 0.15, duration: 250 }))
 }
@@ -953,8 +1030,8 @@ function onKeydown(e: KeyboardEvent) {
     return
   }
   if (effMode.value !== 'edit') return
-  if ((e.ctrlKey || e.metaKey) && k === 'z' && !e.shiftKey) { e.preventDefault(); graphStore.undo(); return }
-  if ((e.ctrlKey || e.metaKey) && (k === 'y' || (k === 'z' && e.shiftKey))) { e.preventDefault(); graphStore.redo(); return }
+  if ((e.ctrlKey || e.metaKey) && k === 'z' && !e.shiftKey) { e.preventDefault(); onUndo(); return }
+  if ((e.ctrlKey || e.metaKey) && (k === 'y' || (k === 'z' && e.shiftKey))) { e.preventDefault(); onRedo(); return }
   /* Task 11（§3.5）：Ctrl+A 全选 / Ctrl+C 复制 / Ctrl+V 粘贴 / Ctrl+D 原位复制 */
   if ((e.ctrlKey || e.metaKey) && k === 'a') { e.preventDefault(); selectAllNodes(); return }
   if ((e.ctrlKey || e.metaKey) && k === 'c') { e.preventDefault(); copySelection(); return }
@@ -1027,6 +1104,7 @@ function copySelection() {
 function pasteClip(offset: number) {
   const d = doc.value
   if (!d || !copiedSnapshot) return
+  const before = preDocSnapshot() // Task 22：复合新增（节点+边）按单命令捕获
   const r = pasteSelection(copiedSnapshot, () => uid('nd'), offset)
   r.nodes.forEach((n) => {
     const g: GNode = { id: n.id, type: n.type, position: { ...n.position }, data: n.data }
@@ -1043,6 +1121,7 @@ function pasteClip(offset: number) {
     flowEdges.value.push(toFlowEdge(g))
   })
   graphStore.markDirty()
+  recordCommand('add-node', before)
   selectedIds.value = new Set(r.nodes.map((n) => n.id))
   /* 清空边选区：防紧接 Delete 误删粘贴前选中的旧边 */
   selectedEdgeIds.value = new Set()
@@ -1066,6 +1145,7 @@ function nudgeSelection(key: string, step: number) {
   if (!d) return
   const dx = key === 'ArrowLeft' ? -step : key === 'ArrowRight' ? step : 0
   const dy = key === 'ArrowUp' ? -step : key === 'ArrowDown' ? step : 0
+  const before = preDocSnapshot() // Task 22：burst 首键捕获前档；命令模式下每键一步（快照模式仍 600ms 合并）
   d.nodes.forEach((n) => {
     if (!selectedIds.value.has(n.id)) return
     n.position = { x: n.position.x + dx, y: n.position.y + dy }
@@ -1073,6 +1153,7 @@ function nudgeSelection(key: string, step: number) {
     if (fn) fn.position = { ...n.position }
   })
   nudgeMarkDirty()
+  recordCommand('move-nodes', before)
 }
 
 /** F2：重命名唯一选中节点（非空校验；改 data.name 后 syncFromDoc 传播渲染 + markDirty） */
@@ -1085,7 +1166,13 @@ function renameSelected() {
     confirmButtonText: '确定', cancelButtonText: '取消',
   }).then(({ value }) => {
     const v = String(value ?? '').trim()
-    if (v && v !== n.data.name) { n.data.name = v; syncFromDoc(); graphStore.markDirty() }
+    if (v && v !== n.data.name) {
+      const before = preDocSnapshot() // Task 22：data.name 变更按 update-props 记录
+      n.data.name = v
+      syncFromDoc()
+      graphStore.markDirty()
+      recordCommand('update-props', before)
+    }
   }).catch(() => { /* 取消 */ })
 }
 
@@ -1105,18 +1192,22 @@ function writeBackPosition(id: string, position: { x: number; y: number }) {
 function applyAlign(dir: AlignDir) {
   const d = doc.value
   if (!d || selectedIds.value.size < 2) return
+  const before = preDocSnapshot() // Task 22：批量落位按 move-nodes 记录
   const sel = d.nodes.filter((n) => selectedIds.value.has(n.id))
   alignNodes(sel, dir, canvasWidthOf, canvasHeightOf).forEach((n) => writeBackPosition(n.id, n.position))
   graphStore.markDirty()
+  recordCommand('move-nodes', before)
 }
 
 /** 工具条分布（选中 ≥3）：排序后相邻等间隙，写回同上 */
 function applyDistribute(axis: DistributeAxis) {
   const d = doc.value
   if (!d || selectedIds.value.size < 3) return
+  const before = preDocSnapshot() // Task 22：批量落位按 move-nodes 记录
   const sel = d.nodes.filter((n) => selectedIds.value.has(n.id))
   distributeNodes(sel, axis, canvasWidthOf, canvasHeightOf).forEach((n) => writeBackPosition(n.id, n.position))
   graphStore.markDirty()
+  recordCommand('move-nodes', before)
 }
 
 /** 运行：mock 走本地 execService 演示链路；real 弹运行对话框（手工/补数页签，I3 §13） */
@@ -1309,11 +1400,13 @@ function onConnect(conn: Connection) {
     sourceHandle: conn.sourceHandle ?? undefined,
     targetHandle: conn.targetHandle ?? undefined,
   }
+  const before = preDocSnapshot() // Task 22：副作用（onEdgeCreated 写 inputs 引用）前捕获
   doc.value.edges.push(edge)
   onEdgeCreated(doc.value, edge) // 拖边即引用（§3.3）：同步向目标节点 inputs 追加 `${source}:${sourceHandle ?? ''}` 引用
   flowEdges.value.push(toFlowEdge(edge))
   applyVisibility()
   graphStore.markDirty()
+  recordCommand('connect', before)
   if (port) ElMessage.success(`已连接分支「${port.label}」`)
 }
 
@@ -1347,7 +1440,12 @@ function onNodesChange(changes: NodeChange[]) {
     if (c.type === 'position' && c.position && !c.dragging) {
       if (c.id.startsWith('grp:')) { badgePos[c.id.slice(4)] = { ...c.position }; return } // 组徽标拖位（会话级）
       const g = doc.value!.nodes.find((n) => n.id === c.id)
-      if (g) { g.position = { ...c.position }; graphStore.markDirty() }
+      if (g) {
+        const before = preDocSnapshot() // Task 22：拖拽结束落位按 move-nodes 记录
+        g.position = { ...c.position }
+        graphStore.markDirty()
+        recordCommand('move-nodes', before)
+      }
     } else if (c.type === 'remove') {
       if (!c.id.startsWith('grp:')) void removeNodes([c.id])
     } else if (c.type === 'select') {
@@ -1393,6 +1491,7 @@ async function removeNodes(ids: string[], opts?: { silent?: boolean }) {
       )
     } catch { return }
   }
+  const before = preDocSnapshot() // Task 22：副作用（inputs 清引用）前捕获，保证 undo 精确复原引用
   cutEdges.forEach((e) => onEdgeRemoved(d, e)) // 拖边即引用（§3.3）：被断开的边同步从目标节点 inputs 移除引用（目标节点已删时为空操作）
   d.nodes = d.nodes.filter((n) => !set.has(n.id))
   d.edges = d.edges.filter((e) => !set.has(e.source) && !set.has(e.target))
@@ -1406,6 +1505,7 @@ async function removeNodes(ids: string[], opts?: { silent?: boolean }) {
   selectedIds.value = new Set([...selectedIds.value].filter((id) => !set.has(id)))
   if (selectedId.value && set.has(selectedId.value)) { selectedId.value = null; emit('select', null) }
   graphStore.markDirty()
+  recordCommand('delete-nodes', before)
   ElMessage.success(`已删除 ${targets.length} 个节点${linked ? `（断开 ${linked} 条连线）` : ''}`)
   applyVisibility()
 }
@@ -1418,11 +1518,13 @@ function removeEdges(ids: string[]) {
   const d = doc.value
   if (!d || !ids.length) return
   const set = new Set(ids)
+  const before = preDocSnapshot() // Task 22：副作用（inputs 清引用）前捕获
   d.edges.filter((e) => set.has(e.id)).forEach((e) => onEdgeRemoved(d, e)) // 拖边即引用（§3.3）：同步从目标节点 inputs 移除引用
   d.edges = d.edges.filter((e) => !set.has(e.id))
   flowEdges.value = flowEdges.value.filter((e) => !set.has(e.id))
   selectedEdgeIds.value = new Set([...selectedEdgeIds.value].filter((x) => !set.has(x)))
   graphStore.markDirty()
+  recordCommand('disconnect', before)
   ElMessage.success(set.size === 1 ? '已删除连线' : `已删除 ${set.size} 条连线`)
 }
 
@@ -1548,11 +1650,13 @@ function paletteDisabledOf(type: string): boolean {
 /** F1：节点落画布公共尾（弹窗确认后统一收口） */
 function addNodeToCanvas(g: GNode) {
   if (!doc.value) return
+  const before = preDocSnapshot() // Task 22：变更前档（命令栈记录用，off 时仅一次克隆开销）
   doc.value.nodes.push(g)
   flowNodes.value.push(toFlowNode(g))
   selectedId.value = g.id
   applyVisibility()
   graphStore.markDirty()
+  recordCommand('add-node', before)
 }
 
 /* ---------- F1 拖入配置弹窗状态 ---------- */
@@ -1666,11 +1770,13 @@ function clearDropState() {
 /** 原子提交：整链一次写入 doc + 画布，随后统一标脏/选中/可见性 */
 function commitTemplate(chainLabel: string, nodes: GNode[], edges: GEdge[]) {
   if (!doc.value) return
+  const before = preDocSnapshot() // Task 22：模板整链展开按单条复合新增命令捕获
   nodes.forEach((n) => { doc.value!.nodes.push(n); flowNodes.value.push(toFlowNode(n)) })
   edges.forEach((e2) => { doc.value!.edges.push(e2); flowEdges.value.push(toFlowEdge(e2)) })
   selectedId.value = nodes[0]!.id
   applyVisibility()
   graphStore.markDirty()
+  recordCommand('add-node', before)
   const total = nodes.length
   ElMessage.success(`模板「${chainLabel}」已展开为 ${total} 个普通节点（配置已通过，可再编辑/增删插节点）`)}
 
@@ -1794,8 +1900,8 @@ function ctxLayout() { onLayout(); closeCtx() }
         <button v-if="!isManaged" class="tb-ico" title="刷新（重新加载当前画布）" @click="onRefreshDoc"><el-icon><Refresh /></el-icon></button>
         <button class="tb-ico" title="适配视图（全部节点居中）" @click="onFit"><el-icon><FullScreen /></el-icon></button>
         <button class="tb-ico" :class="{ on: searchOpen }" title="搜索节点（Ctrl+F）" @click="toggleSearch"><el-icon><Search /></el-icon></button>
-        <button class="tb-ico" :disabled="!graphStore.canUndo" title="撤销（Ctrl+Z）" @click="onUndo"><el-icon><RefreshLeft /></el-icon></button>
-        <button class="tb-ico" :disabled="!graphStore.canRedo" title="重做（Ctrl+Y）" @click="onRedo"><el-icon><RefreshRight /></el-icon></button>
+        <button class="tb-ico" :disabled="!canUndoNow" title="撤销（Ctrl+Z）" @click="onUndo"><el-icon><RefreshLeft /></el-icon></button>
+        <button class="tb-ico" :disabled="!canRedoNow" title="重做（Ctrl+Y）" @click="onRedo"><el-icon><RefreshRight /></el-icon></button>
         <button class="tb-ico" :class="{ on: navOpen }" title="图例过滤 / 大纲 / 节点组" @click="navOpen = !navOpen"><el-icon><Operation /></el-icon></button>
         <span class="tb-sep" />
         <button class="tb-btn" @click="openFloat('ai', 'AI 助手', AiPanel, 380, 420)">AI</button>

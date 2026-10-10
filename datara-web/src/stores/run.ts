@@ -4,6 +4,7 @@ import type { NodeRunStatus, RunOptions } from '../services/types'
 import { execService } from '../services/mock/execService'
 import { bus } from '../services/eventBus'
 import { openRunEventSource } from '../services/runEventSource'
+import { getSseSource } from '../services/featureFlags' // §0.3 sseSource 灰度开关（Task 17/18）
 
 export interface NodeRunEvent {
   id?: number
@@ -65,6 +66,9 @@ export const useRunStore = defineStore('run', {
     subscribeNodeEvents(instanceId: string) {
       this.stopNodeEvents()
       this.runId = instanceId
+      /* §0.3 sseSource 灰度：默认 polling 不开 node_event SSE（走既有轮询/实例流/总线通道，现状不变）；
+       * pubsub 才真正启用 runEventSource（Task 18 唯一持连方，禁止组件各自开连接）。 */
+      if (getSseSource() !== 'pubsub') return
       activeNodeEventSource = openRunEventSource(instanceId, (event) => this.applyNodeEvent(event))
     },
     stopNodeEvents() {

@@ -242,6 +242,12 @@ button,.btn,.el-button,a,.menu-item,.card,.stat{transition:all var(--dur-base) v
 .gnode.blind{border-style:dashed;border-color:var(--danger);border-width:2px}
 @keyframes pulse{0%,100%{box-shadow:0 0 0 0 rgba(217,119,6,.5)}50%{box-shadow:0 0 0 5px rgba(217,119,6,0)}}
 
+/* Task 18（§5.1）运行中边流动动画：两端节点 executing/executed 的边由 GraphWorkbench 追加
+   .edge-flowing；stroke-dashoffset 递减 = 虚线段沿路径方向（source→target）向前流动。
+   周期 12px（7+5）×2 = -24/圈，无缝循环；实线边经 dasharray 覆盖后同样呈现流动虚线。 */
+.vue-flow__edge.edge-flowing .vue-flow__edge-path{stroke-dasharray:7 5;animation:edge-flow .8s linear infinite}
+@keyframes edge-flow{to{stroke-dashoffset:-24}}
+
 /* 画布上的泳道背景标注 */
 .lane-label{position:absolute;font-size:10.5px;color:var(--text-3);letter-spacing:2px;pointer-events:none}
 
