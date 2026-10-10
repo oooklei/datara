@@ -23,7 +23,7 @@ describe('workflow template store', () => {
 
   it('keeps upgrades optional and exposes a diff only after confirmation flow starts', async () => {
     vi.mocked(api.getUpgradeStatus).mockResolvedValue({ upgradeAvailable: true, templateId: 7, currentVersion: 1, latestVersion: 2 })
-    vi.mocked(api.previewTemplateUpgrade).mockResolvedValue({ currentVersion: 1, latestVersion: 2, diff: [{ path: 'nodes[1].data.name', before: 'End', after: 'Finish' }] })
+    vi.mocked(api.previewTemplateUpgrade).mockResolvedValue({ workflowVersion: 3, currentVersion: 1, latestVersion: 2, diff: [{ path: 'nodes[1].data.name', before: 'End', after: 'Finish' }] })
     const store = useTemplateStore()
     await store.checkUpgrade('wf_old')
     expect(store.upgradeNotice?.upgradeAvailable).toBe(true)
@@ -31,5 +31,18 @@ describe('workflow template store', () => {
     await store.previewUpgrade('wf_old')
     expect(store.upgradePreview?.diff).toHaveLength(1)
   })
-})
 
+  it('confirms exactly the previewed workflow/template versions', async () => {
+    const doc = { id: 'wf_old', name: 'Old', version: 4, meta: { profile: 'dag' }, nodes: [], edges: [] }
+    vi.mocked(api.getUpgradeStatus).mockResolvedValue({ upgradeAvailable: true, templateId: 7, currentVersion: 1, latestVersion: 2 })
+    vi.mocked(api.previewTemplateUpgrade).mockResolvedValue({ workflowVersion: 3, currentVersion: 1, latestVersion: 2, diff: [] })
+    vi.mocked(api.confirmTemplateUpgrade).mockResolvedValue(doc)
+    const store = useTemplateStore()
+    await store.checkUpgrade('wf_old')
+    await store.previewUpgrade('wf_old')
+    await store.confirmUpgrade('wf_old')
+    expect(api.confirmTemplateUpgrade).toHaveBeenCalledWith(7, 'wf_old', {
+      baseVersion: 3, templateVersion: 1, targetTemplateVersion: 2,
+    })
+  })
+})

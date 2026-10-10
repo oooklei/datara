@@ -1,16 +1,37 @@
-import { describe, expect, it } from 'vitest'
-import { readFileSync } from 'node:fs'
-import { fileURLToPath } from 'node:url'
+// @vitest-environment happy-dom
+import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { mount } from '@vue/test-utils'
+import { createPinia, setActivePinia } from 'pinia'
+import TemplateCenter from '../TemplateCenter.vue'
+import { useTemplateStore } from '../../../stores/templateStore'
+import { useGraphStore } from '../../../stores/graph'
 
-describe('template center integration', () => {
-  it('offers save-as-template, create-from-template, optional upgrade and diff confirmation controls', () => {
-    const taskCenter = readFileSync(fileURLToPath(new URL('../../TaskCenterView.vue', import.meta.url)), 'utf8')
-    const center = readFileSync(fileURLToPath(new URL('../TemplateCenter.vue', import.meta.url)), 'utf8')
-    expect(taskCenter).toContain('模板中心')
-    expect(taskCenter).toContain('另存为模板')
-    expect(center).toContain('从模板新建')
-    expect(center).toContain('可选升级')
-    expect(center).toContain('diff')
-    expect(center).toContain('确认升级')
+vi.mock('element-plus', () => ({ ElMessage: { success: vi.fn() }, ElMessageBox: { prompt: vi.fn(), confirm: vi.fn().mockResolvedValue('confirm') } }))
+vi.mock('../../../services/templateApi', () => ({
+  listTemplates: vi.fn().mockResolvedValue([]), getUpgradeStatus: vi.fn(), previewTemplateUpgrade: vi.fn(),
+  instantiateTemplate: vi.fn(), confirmTemplateUpgrade: vi.fn(),
+}))
+
+beforeEach(() => setActivePinia(createPinia()))
+
+describe('TemplateCenter upgrade interaction', () => {
+  it('previews, confirms, and refreshes the active graph', async () => {
+    const store = useTemplateStore()
+    const graph = useGraphStore()
+    graph.setDoc({ id: 'wf_old', name: 'Old', version: 3, meta: { profile: 'dag' }, nodes: [], edges: [] })
+    store.upgradeNotice = { upgradeAvailable: true, templateId: 7, currentVersion: 1, latestVersion: 2 }
+    store.previewUpgrade = vi.fn().mockImplementation(async () => {
+      store.upgradePreview = { workflowVersion: 3, currentVersion: 1, latestVersion: 2, diff: [{ path: 'nodes[0]', before: null, after: 'Start' }] }
+    })
+    const upgraded = { id: 'wf_old', name: 'Old', version: 4, meta: { profile: 'dag', templateId: 7, templateVersion: 2 }, nodes: [], edges: [] }
+    store.confirmUpgrade = vi.fn().mockResolvedValue(upgraded)
+    const wrapper = mount(TemplateCenter, { props: { workflowId: 'wf_old' } })
+    await wrapper.get('[data-testid="preview-upgrade"]').trigger('click')
+    await wrapper.vm.$nextTick()
+    expect(wrapper.text()).toContain('nodes[0]')
+    await wrapper.get('[data-testid="confirm-upgrade"]').trigger('click')
+    await Promise.resolve()
+    expect(graph.doc).toEqual(upgraded)
+    expect(graph.dirty).toBe(false)
   })
 })
