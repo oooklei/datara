@@ -1,5 +1,6 @@
 """Best-effort run event publishing: Redis fan-out plus durable replay rows."""
 import json
+import threading
 import time
 from typing import Any, Optional
 
@@ -12,6 +13,19 @@ from common.models import TRunEvent
 
 logger = get_logger("master.event_bus")
 
+_client: Optional[redis.Redis] = None
+_lock = threading.Lock()
+
+
+def _get_client() -> redis.Redis:
+    """双重检查懒加载 Redis 客户端（复用连接，惯例同 common.queue.get_client）。"""
+    global _client
+    if _client is None:
+        with _lock:
+            if _client is None:
+                _client = redis.from_url(get_settings().redis_url)
+    return _client
+
 
 def publish_run_event(run_id: str, node_id: str, event_type: str,
                       payload: Optional[dict[str, Any]] = None, rds=None) -> dict:
@@ -20,7 +34,7 @@ def publish_run_event(run_id: str, node_id: str, event_type: str,
     if payload:
         message["payload"] = payload
     try:
-        client = rds or redis.from_url(get_settings().redis_url)
+        client = rds or _get_client()
         client.publish("datara:run_events:%s" % run_id, json.dumps(message, ensure_ascii=False, default=str))
     except Exception as exc:  # delivery must never affect scheduling
         logger.warning("运行事件 Redis 发布失败: %s", exc)

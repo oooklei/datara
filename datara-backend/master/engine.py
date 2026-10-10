@@ -519,7 +519,13 @@ class WorkflowExecuteRunnable(threading.Thread):
             session.close()
         if st == state.SUCCESS:
             self._record_artifact(key[0], payload.get("outputs"))
-        self._event("node_error" if st == state.FAILURE else "node_executed", key[0], {"state": st})
+        event_payload = {"state": st}
+        if st == state.FAILURE:  # node_error 附带错误信息，供前端/告警直接展示
+            details = payload.get("outputs") if isinstance(payload.get("outputs"), dict) else {}
+            message = details.get("error") or details.get("message")
+            if message:
+                event_payload["message"] = str(message)
+        self._event("node_error" if st == state.FAILURE else "node_executed", key[0], event_payload)
         if st == state.FAILURE and self._schedule_retry(key, payload.get("outputs")):
             return
         self._advance_downstream(key[0], key[1])

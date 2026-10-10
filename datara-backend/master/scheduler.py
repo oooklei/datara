@@ -462,6 +462,8 @@ def _cmd_resume_from(command: Command, param: dict) -> None:
         instance = session.query(WorkflowInstance).filter(WorkflowInstance.instance_id == instance_id).first()
         if instance is None:
             raise ValueError("实例不存在: %s" % instance_id)
+        if instance.state in state.TERMINAL_STATES:
+            raise ValueError("实例已处于终态，不允许续跑: %s（state=%s）" % (instance_id, instance.state))
         _definition, graph = _load_graph(session, instance.wf_code)
         graph_nodes = set(graph.nodes)
         unknown = requested - graph_nodes
