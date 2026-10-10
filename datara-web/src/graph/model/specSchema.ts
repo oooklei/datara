@@ -38,7 +38,7 @@
  * 免去 flowNode data 深代理开销。
  */
 import { markRaw } from 'vue'
-import type { ComponentInitTemplate, FieldSchema, NodeSchema, ViewProfile } from '../profiles/types'
+import type { ComponentInitTemplate, DeclaredBehaviors, FieldSchema, NodeSchema, ResourcePick, ViewProfile } from '../profiles/types'
 import type { ComponentSpec } from '../../services/componentSpec'
 
 /** spec → NodeSchema 视图缓存（弱引用，随 spec 生命周期回收） */
@@ -50,9 +50,19 @@ export function specToSchema(type: string, spec: ComponentSpec): NodeSchema {
   if (cached) return cached
   const form: FieldSchema[] = []
   const defaults: Record<string, unknown> = {}
+  const pickByField = new Map((spec.behaviors?.pick ?? []).map((item) => [item.field, item.picker]))
+  const capForPick = (picker: string | undefined): ResourcePick | undefined => {
+    switch (picker) {
+      case 'table': return { mode: 'table' }
+      case 'column': return { mode: 'column' }
+      case 'sshHost': return { mode: 'runtimeNode' }
+      default: return undefined
+    }
+  }
   for (const f of spec.fields) {
     if (f.layer === 'hidden') continue
-    const fs: FieldSchema = { key: f.key, label: f.label, type: f.uiType, required: f.required }
+    const cap = capForPick(pickByField.get(f.key))
+    const fs: FieldSchema = { key: f.key, label: f.label, type: cap ? 'resource' : f.uiType, required: f.required, ...(cap ? { cap } : {}) }
     if (f.uiType === 'select' && f.options) {
       fs.options = f.options.map((o) => ({ value: String(o.value), label: o.label }))
     }
@@ -80,6 +90,7 @@ export function specToSchema(type: string, spec: ComponentSpec): NodeSchema {
     ...(Object.keys(defaults).length > 0 ? { defaults } : {}),
     ...(dropPolicy !== undefined ? { dropPolicy } : {}),
     ...(initTemplate !== undefined ? { initTemplate } : {}),
+    ...(spec.behaviors ? { behaviors: spec.behaviors as DeclaredBehaviors } : {}),
     form,
   })
   schemaCache.set(spec, view)

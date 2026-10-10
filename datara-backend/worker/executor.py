@@ -45,16 +45,17 @@ class TaskContext:
     """
 
     __slots__ = ("task_id", "instance_id", "node_type", "name", "attempt",
-                 "param", "constraints", "log", "killed")
+                 "param", "hidden_inputs", "constraints", "log", "killed")
 
     def __init__(self, task_id, instance_id, node_type, name, attempt,
-                 param, constraints, log, killed):
+                 param, hidden_inputs, constraints, log, killed):
         self.task_id = task_id
         self.instance_id = instance_id
         self.node_type = node_type
         self.name = name
         self.attempt = attempt
         self.param = param
+        self.hidden_inputs = hidden_inputs
         self.constraints = constraints
         self.log = log
         self.killed = killed
@@ -197,6 +198,7 @@ def handle_task(msg: dict, claimed: bool = False) -> None:
                 task_id=task_id, instance_id=instance_id, node_type=node_type,
                 name=name, attempt=attempt,
                 param=msg.get("param_resolved") or msg.get("param") or {},
+                hidden_inputs=msg.get("hidden_inputs") or {},
                 constraints=msg.get("constraints") or {},
                 log=live.write,
                 killed=lambda: queue.check_kill(task_id),

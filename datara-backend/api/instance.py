@@ -12,7 +12,7 @@ import json
 import time
 from typing import Optional
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Header, Query
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from sqlalchemy import or_
@@ -22,7 +22,7 @@ from api.auth import ApiError, get_current_user, require_perm
 from api.commands import submit_command
 from common.db import get_db, new_session
 from common.log import get_logger
-from common.models import TaskInstance, TaskLog, User, WorkflowInstance
+from common.models import TRunEvent, TaskInstance, TaskLog, User, WorkflowInstance
 from common.resp import INSTANCE_NOT_FOUND, COMMAND_FAIL, PageQuery, fmt_dt, ok, page_result
 from master.state import INSTANCE_RUNNING_STATES, TERMINAL_STATES
 
@@ -40,6 +40,23 @@ def _get_instance(db: Session, instance_id: str) -> WorkflowInstance:
     if row is None:
         raise ApiError(INSTANCE_NOT_FOUND, status=404)
     return row
+
+
+def _run_event_data(row: TRunEvent) -> dict:
+    """Convert a durable run event to the public API/SSE representation."""
+    try:
+        payload = json.loads(row.payload_json) if row.payload_json else {}
+    except (TypeError, ValueError):
+        logger.warning("invalid run event payload: id=%s", row.id)
+        payload = {}
+    return {
+        "id": row.id,
+        "runId": row.run_id,
+        "nodeId": row.node_id,
+        "type": row.event_type,
+        "payload": payload,
+        "ts": fmt_dt(row.ts),
+    }
 
 
 @router.get("")
@@ -92,6 +109,26 @@ def list_instances(
         for row in rows
     ]
     return ok(page_result(total, items))
+
+
+@router.get("/{instance_id}/events")
+def list_run_events(
+    instance_id: str,
+    page: PageQuery = Depends(),
+    after_id: Optional[int] = None,
+    user: User = Depends(require_perm("view_all")),
+    db: Session = Depends(get_db),
+):
+    """Return durable node/execution events, newest first unless resuming by id."""
+    _get_instance(db, instance_id)
+    query = db.query(TRunEvent).filter(TRunEvent.run_id == instance_id)
+    if after_id is not None:
+        query = query.filter(TRunEvent.id > after_id).order_by(TRunEvent.id)
+    else:
+        query = query.order_by(TRunEvent.id.desc())
+    total = query.count()
+    rows = query.offset(page.offset).limit(page.page_size).all()
+    return ok(page_result(total, [_run_event_data(row) for row in rows]))
 
 
 @router.get("/{instance_id}")
@@ -204,6 +241,8 @@ def _stream_session() -> Session:
 @router.get("/{instance_id}/stream")
 def stream_instance(
     instance_id: str,
+    last_event_id: Optional[str] = Header(None, alias="Last-Event-ID"),
+    last_event_id_query: Optional[int] = Query(None, alias="lastEventId"),
     user: User = Depends(require_perm("view_all")),
     db: Session = Depends(get_db),
 ):
@@ -217,7 +256,15 @@ def stream_instance(
     """
     row = _get_instance(db, instance_id)  # 404 闸门（存在性校验后请求级会话即还池）
 
+    try:
+        event_cursor = last_event_id_query if isinstance(last_event_id_query, int) else (
+            max(0, int(last_event_id or 0)) if isinstance(last_event_id, (str, int)) else 0
+        )
+    except ValueError:
+        event_cursor = 0
+
     def gen():
+        nonlocal event_cursor
         baseline: dict[int, str] = {}  # task_id -> state（diff 基线）
         last_state: Optional[str] = None
         first = True
@@ -240,6 +287,16 @@ def stream_instance(
                     .order_by(TaskInstance.id)
                     .all()
                 )
+                run_events = (
+                    session.query(TRunEvent)
+                    .filter(TRunEvent.run_id == instance_id, TRunEvent.id > event_cursor)
+                    .order_by(TRunEvent.id)
+                    .limit(200)
+                    .all()
+                )
+                for run_event in run_events:
+                    events.append(("node_event", _run_event_data(run_event)))
+                    event_cursor = run_event.id
                 for t in tasks:
                     if first or t.state != baseline.get(t.id):
                         events.append(("task_state_changed", {
@@ -262,7 +319,8 @@ def stream_instance(
             if events:
                 idle = 0.0
                 for name, payload in events:
-                    yield f"event: {name}\ndata: {json.dumps(payload, ensure_ascii=False, default=str)}\n\n"
+                    event_id = f"id: {payload['id']}\n" if name == "node_event" else ""
+                    yield f"{event_id}event: {name}\ndata: {json.dumps(payload, ensure_ascii=False, default=str)}\n\n"
                 if finished:
                     return
             else:

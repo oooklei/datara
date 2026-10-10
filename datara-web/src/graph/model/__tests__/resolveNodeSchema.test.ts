@@ -108,6 +108,24 @@ describe('specToSchema（ComponentSpec → NodeSchema 视图适配）', () => {
     expect('options' in s.form[1]!).toBe(false)
   })
 
+  it('behaviors 映射为运行时声明，table/column/sshHost 复用已有资源选择器', () => {
+    const s = specToSchema('t1', specOf({
+      fields: [
+        { key: 'table', label: '表', uiType: 'text', required: false, desc: '', layer: 'required' },
+        { key: 'columns', label: '列', uiType: 'text', required: false, desc: '', layer: 'required' },
+        { key: 'host', label: '主机', uiType: 'text', required: false, desc: '', layer: 'required' },
+      ],
+      behaviors: {
+        pick: [{ field: 'table', picker: 'table' }, { field: 'columns', picker: 'column' }, { field: 'host', picker: 'sshHost' }],
+        onChange: [{ field: 'table', action: 'resetFields', target: ['columns'] }],
+      },
+    }))
+    expect(s.form.map((f) => [f.key, f.type, f.cap?.mode])).toEqual([
+      ['table', 'resource', 'table'], ['columns', 'resource', 'column'], ['host', 'resource', 'runtimeNode'],
+    ])
+    expect(s.behaviors?.onChange).toEqual([{ field: 'table', action: 'resetFields', target: ['columns'] }])
+  })
+
   it('fields[].default 汇总进 defaults（hidden 不汇入）；空 fields → form 空数组且无 defaults 键', () => {
     const s = specToSchema('t1', specOf({
       fields: [

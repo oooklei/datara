@@ -11,7 +11,7 @@ import { ElMessage } from 'element-plus'
 import type { ComputedRef, Ref } from 'vue'
 import type { GNode } from '../../model'
 import type { FieldSchema, NodeSchema } from '../../profiles/types'
-import { clearOnConditionHide, condVisible, probeMatchTables, requiredMissing, resolveDataContext } from '../../profiles/formLinkage'
+import { applyDeclaredOnChange, clearOnConditionHide, condVisible, probeMatchTables, requiredMissing, resolveDataContext } from '../../profiles/formLinkage'
 import type { DataContext, NodeOutputSchema } from '../../profiles/formLinkage'
 import { pickCfg, resolveDsId, sortByCanvasX } from '../../profiles/pickerLogic'
 import { useGraphStore } from '../../../stores/graph'
@@ -208,6 +208,24 @@ export function createFieldCtx(host: FieldCtxHost): FieldCtxBundle {
     const s = schema.value
     if (s?.conditions?.length) clearOnConditionHide(s, node.value.data, f.key)
     if (f.onChange) f.onChange(node.value.data, node.value.data[f.key])
+    if (s?.behaviors) {
+      applyDeclaredOnChange(s, node.value.data, f.key, upstream.value[0]?.data)
+      for (const action of s.behaviors.onChange ?? []) {
+        if (action.field !== f.key || action.action !== 'refreshOptions') continue
+        const target = s.form.find((item) => action.target?.includes(item.key))
+        if (action.remote === 'datasource.topics') {
+          void ensureTopics(String(node.value.data[target?.cap?.dsKey ?? 'dsRef'] ?? ''), true)
+        } else if (action.remote === 'datasource.tree') {
+          const ds = String(node.value.data[target?.cap?.dsKey ?? 'datasource'] ?? '')
+          if (ds) {
+            delete pickTrees.value[ds]
+            void ensureTree(ds)
+          }
+        } else if (action.remote === 'runtime.nodes') {
+          void loadShared()
+        }
+      }
+    }
   }
 
   /* ================= 共享候选状态（节点无关；弹窗与 Inspector 消费同一份缓存） ================= */

@@ -9,6 +9,7 @@
 - PUT  /components/{type}/draft       保存草稿（乐观锁 draft_rev；纯数据校验 422）
 - POST /components/{type}/versions    冻结草稿为不可变版本（B5）
 - GET  /components/{type}/versions    版本列表（B5）
+- GET  /components/{type}/versions/{version} 不可变版本快照（升级字段映射审阅）
 - POST /components/{type}/publish     发布指定 frozen 版本（M2 D1，跑 §13 八项闸门）
 - POST /components/{type}/offline     下线组件（M2 D3，§8：published→offline）
 - POST /components/{type}/rollback    回滚到历史发布版本（M2 D3，§8：offline→published）
@@ -35,7 +36,7 @@ import re
 from typing import Literal, Optional
 
 from fastapi import APIRouter, Depends
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
 from api.auth import ApiError, require_perm
@@ -476,6 +477,39 @@ def list_versions(
             }
             for r in rows
         ],
+    })
+
+
+@router.get("/{type_name}/versions/{version}", summary="读取不可变版本快照")
+def get_version_snapshot(
+    type_name: str,
+    version: int,
+    user: User = Depends(require_perm("design_component")),
+    db: Session = Depends(get_db),
+):
+    """返回单个版本的不可变 spec，供升级向导比较旧引用与当前发布契约。
+
+    列表端点仍只给摘要，避免常规设计器加载全部 spec；本端点按需读取单个
+    version 行，不修改草稿、发布状态或审计链。
+    """
+    comp = _get_or_404(db, type_name)
+    row = (
+        db.query(ComponentVersion)
+        .filter(ComponentVersion.component_id == comp.id,
+                ComponentVersion.version == version)
+        .first()
+    )
+    if row is None:
+        raise ApiError(COMP_STATE_CONFLICT, status=404, msg="版本不存在")
+    try:
+        spec = json.loads(row.spec_json) if row.spec_json else {}
+    except (TypeError, ValueError):
+        # version rows normally pass pure-data gates; fail closed for historical
+        # corrupted rows instead of returning an invented comparison input.
+        raise ApiError(COMP_STATE_CONFLICT, status=409, msg="版本声明损坏，无法用于升级比对")
+    return ok({
+        "type": comp.type, "version": row.version, "state": row.state,
+        "spec": spec, "specHash": row.spec_hash,
     })
 
 
@@ -1293,6 +1327,11 @@ class UpgradeRefTarget(BaseModel):
     wf_id: str
     strategy: Literal["auto", "pin"] = "auto"
     base_version: Optional[int] = None
+    # Field-level compatibility decision authored by the manual-upgrade wizard.
+    # It belongs to each workflow reference rather than the component version:
+    # separate workflows can intentionally make different migration choices.
+    field_mapping: dict[str, str] = Field(default_factory=dict)
+    migration: Literal["map", "skip"] = "map"
 
 
 class UpgradeRefsBody(BaseModel):
@@ -1304,7 +1343,8 @@ def _upgrade_one_ref(db: Session, comp: Component, target: UpgradeRefTarget,
     """批量升级单目标：读图 → 注入新版本/钉住 → base_version 乐观锁保存。
     失败记 reason 返回 {"ok": False}，不抛出（不中断同批其余目标）。"""
     published = comp.published_version or 0
-    out: dict = {"wfId": target.wf_id, "ok": False, "reason": None, "newVersion": None}
+    out: dict = {"wfId": target.wf_id, "ok": False, "reason": None,
+                 "newVersion": None, "migration": target.migration}
     wf = db.query(WfDefinition).filter(WfDefinition.id == target.wf_id).first()
     if wf is None:
         out["reason"] = "工作流不存在"
@@ -1323,6 +1363,10 @@ def _upgrade_one_ref(db: Session, comp: Component, target: UpgradeRefTarget,
     if not isinstance(doc, dict):
         out["reason"] = "graph_json 顶层非对象"
         return out
+    # Pydantic enforces a string-to-string shape; keep only meaningful keys so
+    # a stale/empty browser form never writes ambiguous graph metadata.
+    mapping = {key: value for key, value in target.field_mapping.items()
+               if key.strip() and value.strip()}
     changed = False
     for ref in _iter_component_refs(doc, comp.type):
         v = ref.get("version")
@@ -1333,6 +1377,15 @@ def _upgrade_one_ref(db: Session, comp: Component, target: UpgradeRefTarget,
             ref["pinned"] = True
         else:  # auto
             ref["version"] = published
+            if target.migration == "skip":
+                ref["migration"] = "skip"
+                ref.pop("fieldMapping", None)
+            else:
+                ref.pop("migration", None)
+                if mapping:
+                    ref["fieldMapping"] = mapping
+                else:
+                    ref.pop("fieldMapping", None)
         changed = True
     if not changed:
         out["ok"] = True
@@ -1412,7 +1465,7 @@ def upgrade_refs(
     # remark 列 String(512)：截断保护（对齐 _apply_upgrade_strategy 审计口径）
     summary = json.dumps({
         "publishedVersion": comp.published_version,
-        "results": [{k: r[k] for k in ("wfId", "ok", "reason", "newVersion")} for r in results],
+        "results": [{k: r.get(k) for k in ("wfId", "ok", "reason", "newVersion", "migration")} for r in results],
     }, ensure_ascii=False)
     _append_log(db, comp, comp.published_version, "upgrade_refs", None,
                 user.user_name, summary[:500])

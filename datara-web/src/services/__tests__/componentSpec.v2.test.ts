@@ -66,6 +66,13 @@ describe('ComponentSpecV2 normalizeSpec 向后兼容（方案§2.2）', () => {
     expect(s.behaviors?.pick).toEqual([{ field: 'p2', picker: 'cron' }])
     expect(normalizeSpec({ behaviors: {} }).behaviors).toBeUndefined()
   })
+  it('refreshOptions 的 remote 只能使用平台白名单，任意 URL 或自定义名称会被丢弃', () => {
+    const s = normalizeSpec({ behaviors: { onChange: [
+      { field: 'ds', action: 'refreshOptions', remote: 'datasource.topics' },
+      { field: 'evil', action: 'refreshOptions', remote: 'https://example.invalid/options' },
+    ] } })
+    expect(s.behaviors?.onChange).toEqual([{ field: 'ds', action: 'refreshOptions', remote: 'datasource.topics' }, { field: 'evil', action: 'refreshOptions' }])
+  })
   it('extensions：hiddenInputs 过滤非法键；previewLimit 仅接受 >0 有限数并钳制 ≤100；空对象不落键', () => {
     const s = normalizeSpec({ extensions: { hiddenInputs: ['tenantId', 'evil', 'runId'], capabilities: { previewLimit: 500 } } })
     expect(s.extensions?.hiddenInputs).toEqual(['tenantId', 'runId'])

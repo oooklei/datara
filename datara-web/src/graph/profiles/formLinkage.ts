@@ -6,7 +6,7 @@
  * M-B2 八段 DSL 迁移收口（运行时消费真源）：conditions 显隐（condVisible）/ 条件清空（clearOnConditionHide）/
  * 副标题模板（renderSummary）——旧 showIf/onChange/summary 函数的声明化求值，旧函数双轨保留（未迁移组件不受影响）。
  */
-import type { ConditionDef, DataScope, FieldSchema, NodeSchema } from './types'
+import type { ConditionDef, DataScope, DeclaredBehaviors, FieldSchema, NodeSchema } from './types'
 
 /** 临时数据名合法规则（与后端 TMP_NAME_RE 同口径） */
 export const TMP_NAME_OK = /^[a-z][a-z0-9_]{2,31}$/
@@ -153,6 +153,42 @@ export function prefillFromUpstream(
     if (Array.isArray(v)) { if (v.length) data[k] = [...v]; continue }
     if (v === undefined || v === null || v === '') continue
     data[k] = v
+  }
+}
+
+/**
+ * ComponentSpec 的声明式预填：来源键被限制为 input.*，只从拖入时确定的
+ * 逻辑上游快照读取，保持与旧 dropPolicy 相同的「一次性、不回写」语义。
+ */
+export function prefillDeclaredFromUpstream(
+  data: Record<string, unknown>,
+  upData: Record<string, unknown> | null | undefined,
+  rules: DeclaredBehaviors['prefillFromUpstream'],
+): void {
+  if (!upData || !rules?.length) return
+  for (const rule of rules) {
+    const value = upData[rule.from.slice('input.'.length)]
+    if (Array.isArray(value)) { if (value.length) data[rule.field] = [...value]; continue }
+    if (value === undefined || value === null || value === '') continue
+    data[rule.field] = value
+  }
+}
+
+/** 声明式 onChange 的数据部分；网络刷新由宿主按 remote 白名单处理。 */
+export function applyDeclaredOnChange(
+  schema: Pick<NodeSchema, 'form' | 'behaviors'>,
+  data: Record<string, unknown>,
+  changedKey: string,
+  upstreamData?: Record<string, unknown> | null,
+): void {
+  const actions = schema.behaviors?.onChange?.filter((item) => item.field === changedKey) ?? []
+  for (const action of actions) {
+    if (action.action === 'resetFields') {
+      const boolKeys = new Set(schema.form.filter((field) => field.type === 'bool').map((field) => field.key))
+      for (const key of action.target ?? []) if (key !== changedKey) data[key] = boolKeys.has(key) ? false : ''
+    } else if (action.action === 'prefill') {
+      prefillFromUpstream(data, upstreamData, action.target)
+    }
   }
 }
 

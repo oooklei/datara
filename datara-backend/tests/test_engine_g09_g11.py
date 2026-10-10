@@ -4,6 +4,7 @@ G-09：_loop_batch_info 按 batchSize 切片 collection，返回 batchItems/batc
 G-11：_notify_trigger_matches 按 trigger 参数（on_success/on_failure/always）判定是否匹配上游状态。
 """
 
+import json
 import sys
 from pathlib import Path
 
@@ -11,6 +12,7 @@ BACKEND = Path(__file__).resolve().parent.parent
 if str(BACKEND) not in sys.path:
     sys.path.insert(0, str(BACKEND))
 
+import master.engine as engine  # noqa: E402
 from master.engine import WorkflowExecuteRunnable  # noqa: E402
 
 
@@ -34,6 +36,29 @@ def _make_runnable(node_data=None):
     _nd = node_data if node_data is not None else {}
     r._node_data = lambda nid: _nd
     return r
+
+
+def test_hidden_inputs_follow_frozen_component_version(monkeypatch):
+    """Only an explicitly declared immutable component version can expose runtime context."""
+    r = _make_runnable({"componentRef": {"type": "user_sql", "version": 7}})
+    r.wf_code = 42
+
+    row = type("Version", (), {
+        "spec_json": json.dumps({"extensions": {"hiddenInputs": ["runId", "nodeId", "workflowId", "tenantId", "evil"]}}),
+    })()
+
+    class Query:
+        def filter(self, *_args): return self
+        def first(self): return row
+
+    class Session:
+        def query(self, *_args): return Query()
+        def close(self): pass
+
+    monkeypatch.setattr(engine, "new_session", lambda: Session())
+    assert r._hidden_inputs("n_sql") == {
+        "runId": "i-test", "nodeId": "n_sql", "workflowId": 42,
+    }
 
 
 # ---------------- G-09 循环批次切片 ----------------

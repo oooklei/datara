@@ -83,6 +83,40 @@ class WfDefinitionLog(Base):
     __table_args__ = (Index("idx_wfdlog_code_ver", "wf_code", "version"),)
 
 
+class WfTemplate(Base):
+    """Reusable workflow graph template; the row always contains the latest version."""
+    __tablename__ = "t_wf_template"
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    name: Mapped[str] = mapped_column(String(255), nullable=False)
+    category: Mapped[str] = mapped_column(String(128), default="", nullable=False)
+    description: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    template_json: Mapped[str] = mapped_column(LONGTEXT, nullable=False)
+    version: Mapped[int] = mapped_column(Integer, default=1, nullable=False)
+    created_by: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=now, onupdate=now, nullable=False)
+
+
+class WfTemplateVersion(Base):
+    """Immutable template snapshots used by the version-chain and upgrade diff."""
+    __tablename__ = "t_wf_template_version"
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    template_id: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    version: Mapped[int] = mapped_column(Integer, nullable=False)
+    name: Mapped[str] = mapped_column(String(255), nullable=False)
+    category: Mapped[str] = mapped_column(String(128), default="", nullable=False)
+    description: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    template_json: Mapped[str] = mapped_column(LONGTEXT, nullable=False)
+    created_by: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=now, nullable=False)
+
+    __table_args__ = (
+        UniqueConstraint("template_id", "version", name="uq_wf_template_version"),
+        Index("idx_wf_template_version", "template_id", "version"),
+    )
+
+
 # ---------- 3.5 t_wf_category 工作流分类目录（Palette 分组，自定义分类，I11） ----------
 class WfCategory(Base):
     __tablename__ = "t_wf_category"
@@ -118,6 +152,39 @@ class WorkflowInstance(Base):
     update_time: Mapped[datetime] = mapped_column(DateTime, default=now, onupdate=now)
 
     __table_args__ = (Index("idx_wfinst_code", "wf_code"),)
+
+
+
+# ---------- 5.5 t_run_event（运行节点事件，SSE/回放的持久化基座） ----------
+class TRunEvent(Base):
+    __tablename__ = "t_run_event"
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    run_id: Mapped[str] = mapped_column(String(64), nullable=False)
+    node_id: Mapped[str] = mapped_column(String(128), nullable=False, default="")
+    event_type: Mapped[str] = mapped_column(String(32), nullable=False)
+    payload_json: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    ts: Mapped[datetime] = mapped_column(DateTime, default=now, nullable=False)
+
+    __table_args__ = (Index("idx_run_event_run_id", "run_id", "id"),)
+
+
+class TRunNodeArtifact(Base):
+    """Reusable successful-node checkpoint metadata; payload data stays in its owner system."""
+    __tablename__ = "t_run_node_artifact"
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    run_id: Mapped[str] = mapped_column(String(64), nullable=False)
+    node_id: Mapped[str] = mapped_column(String(128), nullable=False)
+    node_signature: Mapped[str] = mapped_column(String(64), nullable=False)
+    artifact_fingerprint: Mapped[str] = mapped_column(String(64), nullable=False)
+    refs: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
+    create_time: Mapped[datetime] = mapped_column(DateTime, default=now, nullable=False)
+
+    __table_args__ = (
+        UniqueConstraint("run_id", "node_id", name="uq_run_node_artifact"),
+        Index("idx_run_node_artifact_signature", "node_signature"),
+    )
 
 
 # ---------- 5. t_task_instance 任务实例 ----------

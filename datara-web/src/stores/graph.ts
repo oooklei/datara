@@ -103,6 +103,14 @@ export const useGraphStore = defineStore('graph', {
       this.dirty = false
       this.resetHistory()
     },
+    /** Task 22（undoCommandStack=on）：命令栈 undo/redo 的整档换入——仅换引用 + 同步刷新基线
+     *  （lastSnap/lastDoc 恒同步不变量），不动快照栈（历史由命令栈负责，快照栈保留兜底） */
+    setDocViaCommand(doc: GraphDocument) {
+      this.doc = doc
+      this.dirty = true
+      this.lastSnap = JSON.stringify(doc)
+      this.lastDoc = JSON.parse(this.lastSnap)
+    },
     /** 撤销：恢复上一快照；返回是否执行 */
     undo(): boolean {
       const prev = this.undoStack.pop()

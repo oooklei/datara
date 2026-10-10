@@ -1,4 +1,4 @@
-"""组件基线化 API（M-B0 · 目录 35 type 底稿推进 + 认可发 v1 + 声明级血缘图）。
+"""组件基线化 API（M-B0 · 目录 type 底稿推进 + 认可发 v1 + 声明级血缘图）。
 
 与既有模块的关系：
 - M0 只读目录（api/component.py）下发快照（不落库）；M1/M2 治理（api/component_design.py）
@@ -9,7 +9,7 @@
 
 端点（路由注意：静态段 /baseline/... 均在 component.py 的 GET /{type_name} 单段
 模板覆盖范围外，路径段数不同互不冲突）：
-- GET  /components/baseline/progress            进度清单（35 type 全量 + 统计）
+- GET  /components/baseline/progress            进度清单（目录 type 全量 + 统计）
 - GET  /components/baseline/{type}/draft        读取底稿（无进度行视为空态）
 - PUT  /components/baseline/{type}/draft        保存底稿（乐观锁 draft_rev；纯数据 422）
 - POST /components/baseline/{type}/check        体检（run_baseline_checks 10 项，只报告不拦截）
@@ -83,7 +83,7 @@ EXPORT_FROMS = frozenset({"result", "log", "output"})
 
 
 def _dag_types() -> frozenset:
-    """目录快照中 profile=dag 的 type 全集（基线化对象 = 35 type；与用户组件闸门方向相反）。"""
+    """目录快照中 profile=dag 的 type 全集（与用户组件闸门方向相反）。"""
     cat = _load_catalog()
     return frozenset(
         str(c.get("type") or "") for c in cat.get("components", []) if c.get("profile") == "dag"
@@ -349,12 +349,12 @@ def run_baseline_checks(spec: dict, comp_meta: dict, *,
 # ---------------- 进度清单 / 底稿读写 ----------------
 
 
-@router.get("/baseline/progress", summary="基线化进度清单（目录 35 type 全量）")
+@router.get("/baseline/progress", summary="基线化进度清单（目录 type 全量）")
 def baseline_progress(
     user: User = Depends(require_perm("view_all")),
     db: Session = Depends(get_db),
 ):
-    """以目录快照 profile=dag 的 35 type 为准，左联 t_baseline_progress（无行视为 pending）。"""
+    """以目录快照 profile=dag 的 type 为准，左联 t_baseline_progress（无行视为 pending）。"""
     rows = {r.type: r for r in db.query(BaselineProgress).all()}
     comp_rows = {c.type: c for c in db.query(Component).filter(Component.scope == "builtin").all()}
     items: list = []
@@ -392,7 +392,7 @@ def get_baseline_draft(
     user: User = Depends(require_perm("view_all")),
     db: Session = Depends(get_db),
 ):
-    """底稿读取：spec=draft_spec 解析（无底稿 spec={}）；type 不在目录 35 集内 404。"""
+    """底稿读取：spec=draft_spec 解析（无底稿 spec={}）；type 不在目录集合内 404。"""
     if type_name not in _dag_types():
         raise ApiError(COMP_NOT_FOUND, status=404, msg="type「%s」不在基线化目录内" % type_name)
     row = db.query(BaselineProgress).filter(BaselineProgress.type == type_name).first()

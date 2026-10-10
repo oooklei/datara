@@ -14,6 +14,9 @@ import type { ViewProfile } from '../profiles/types'
 import { useGraphStore } from '../../stores/graph'
 import { useAuthStore } from '../../stores/auth'
 import { useFloatStore } from '../../stores/float'
+import { useCommandHistory } from '../history/commandHistory'
+import { captureCommand } from '../history/commands'
+import { isUndoCommandStackOn } from '../../services/featureFlags'
 import FormSections from './fields/FormSections.vue'
 import SixBlocks from './fields/SixBlocks.vue'
 import { createFieldCtx } from './fields/fieldCtxFactory'
@@ -36,8 +39,19 @@ const effMode = computed(() => (props.profile.mode === 'edit' && !auth.canEdit ?
 const emit = defineEmits<{ (e: 'delete', id: string): void }>()
 
 const graphStore = useGraphStore()
+const cmdHistory = useCommandHistory()
 
-function markDirty() { graphStore.markDirty() }
+/** Task 22（undoCommandStack=on）：属性编辑（update-props）命令记录。fieldCtx 在回调本函数前
+ *  已完成 node.data 就地变更、无法事先捕获，故以 store 基线 lastDoc（上一 markDirty 刷新的
+ *  变更前纯克隆）为 before 捕获真实前后档；内容未变（markDirty 幂等早退）不入命令；off 零开销。 */
+function markDirty() {
+  const doc = graphStore.doc
+  if (isUndoCommandStackOn() && doc && graphStore.lastDoc
+      && JSON.stringify(graphStore.lastDoc) !== JSON.stringify(doc)) {
+    cmdHistory.push(captureCommand('update-props', graphStore.lastDoc, JSON.parse(JSON.stringify(doc))))
+  }
+  graphStore.markDirty()
+}
 
 /* ================= B3 F0 + F1：FieldCtx 组装收敛到共享工厂（§12.2 禁双实现漂移） =================
    Inspector 传画布选中节点；DropConfigDialog 传未落画布的虚拟节点——同一套候选状态/动态联动/脚本互通 */

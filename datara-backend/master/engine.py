@@ -8,6 +8,7 @@
 """
 
 import hashlib
+import json
 import os
 import threading
 from datetime import datetime, timedelta
@@ -18,9 +19,12 @@ from common import queue
 from common.config import get_settings
 from common.db import new_session
 from common.log import get_logger, set_instance_id
-from common.models import Component, DataSource, StreamJob, TaskInstance, TaskLog, WorkflowInstance, now
+from common.models import Component, ComponentVersion, DataSource, StreamJob, TaskInstance, TaskLog, TRunNodeArtifact, WorkflowInstance, now
 from master import state
+from master.retry_classifier import classify_error, retry_decision
+from master.signature import node_signature
 from master.dag import Graph, loop_bodies
+from master.event_bus import publish_run_event
 from master.variables import (
     VarResolver, clear_run_vars, eval_expr, get_run_vars,
     load_levels, set_run_vars, time_var,
@@ -31,6 +35,7 @@ logger = get_logger("master.engine")
 POLL_INTERVAL_SEC = 10  # 定时器/kill 自查轮询周期
 DEPENDENT_POLL_SEC = 10  # C9 依赖轮询周期
 DEFAULT_MAX_ITERATIONS = 100  # C10 防死循环上限
+CHECKPOINTABLE_TYPES = frozenset({"sql"})  # conservative: only idempotent SQL nodes opt in initially
 
 # worker 派发类节点全集（G-19 单一真源：由 components.catalog 统一定义，消除 4 处字面量副本）
 # 超时扫描（check_timeouts）/容错重派（_resume_sweep）/执行器分派（_execute_node）共用
@@ -213,6 +218,12 @@ class WorkflowExecuteRunnable(threading.Thread):
         self.snapshots: dict = {}      # {node_name: snapshot} 实例级汇总
         self.resolver: Optional[VarResolver] = None
         self.fail_defaults: dict = {}  # 定时/补数下发的任务缺省重试参数
+        self.checkpoint_enabled = False
+        self.wf_code = 0
+
+    def _event(self, event_type: str, node_id: str = "", payload: Optional[dict] = None) -> None:
+        """Best-effort event delivery; never changes scheduling outcomes."""
+        publish_run_event(self.instance_id, node_id, event_type, payload)
 
     # ---- 生命周期 ----
 
@@ -233,6 +244,7 @@ class WorkflowExecuteRunnable(threading.Thread):
                 self._resume_sweep()
             else:
                 self._mark_instance_running()
+                self._event("execution_start")
                 for node_id in self.graph.start_nodes():
                     self._try_activate(node_id, 0)
             logger.info("Runnable 启动: instance=%s resume=%s", self.instance_id, self.resume)
@@ -269,6 +281,7 @@ class WorkflowExecuteRunnable(threading.Thread):
             variables = instance.variables if isinstance(instance.variables, dict) else {}
             env_group_id = variables.get("envGroupId")
             base = instance.schedule_time or instance.create_time or now()
+            self.wf_code = int(instance.wf_code or 0)
             self.resolver = VarResolver(
                 self.instance_id, instance.wf_code,
                 load_levels(session, instance.wf_code, env_group_id), base,
@@ -277,6 +290,7 @@ class WorkflowExecuteRunnable(threading.Thread):
                 "retryTimes": int(variables.get("failRetryTimes") or 0),
                 "retryIntervalSec": int(variables.get("failRetryInterval") or 60) ,
             }
+            self.checkpoint_enabled = variables.get("checkpointEnabled") is True
         finally:
             session.close()
 
@@ -309,6 +323,102 @@ class WorkflowExecuteRunnable(threading.Thread):
 
     def _node_name(self, node_id: str) -> str:
         return str(self._node_data(node_id).get("name") or node_id)
+
+    def _hidden_inputs(self, node_id: str) -> dict:
+        """Resolve only the system keys explicitly declared by the frozen ref."""
+        ref = self._node_data(node_id).get("componentRef")
+        if not isinstance(ref, dict) or not isinstance(ref.get("type"), str):
+            return {}
+        try:
+            version = int(ref.get("version"))
+        except (TypeError, ValueError):
+            return {}
+        session = new_session()
+        try:
+            row = session.query(ComponentVersion).filter(
+                ComponentVersion.type == ref["type"], ComponentVersion.version == version
+            ).first()
+            spec = json.loads(row.spec_json) if row and row.spec_json else {}
+        except (TypeError, ValueError):
+            return {}
+        finally:
+            session.close()
+        keys = spec.get("extensions", {}).get("hiddenInputs", []) if isinstance(spec, dict) else []
+        values = {"runId": self.instance_id, "nodeId": node_id, "workflowId": self.wf_code}
+        return {key: values[key] for key in keys if key in values}
+
+    def _record_artifact(self, node_id: str, outputs: Optional[dict]) -> None:
+        """Persist a successful node result as a future resume checkpoint."""
+        data = self._node_data(node_id)
+        ref = data.get("componentRef") if isinstance(data.get("componentRef"), dict) else {}
+        upstream: dict[str, str] = {}
+        session = new_session()
+        try:
+            for edge in self.graph.preds.get(node_id, []):
+                artifact = (session.query(TRunNodeArtifact)
+                            .filter(TRunNodeArtifact.run_id == self.instance_id,
+                                    TRunNodeArtifact.node_id == edge["source"])
+                            .first())
+                if artifact is not None:
+                    upstream[edge["source"]] = artifact.node_signature
+            signature = node_signature(
+                self._node_type(node_id), ref.get("version"), data, upstream)
+            body = outputs if isinstance(outputs, dict) else {}
+            fingerprint = hashlib.sha256(
+                json.dumps(body, sort_keys=True, separators=(",", ":"), default=str).encode("utf-8")).hexdigest()
+            current = (session.query(TRunNodeArtifact)
+                       .filter(TRunNodeArtifact.run_id == self.instance_id,
+                               TRunNodeArtifact.node_id == node_id).first())
+            if current is None:
+                current = TRunNodeArtifact(run_id=self.instance_id, node_id=node_id,
+                                           node_signature=signature, artifact_fingerprint=fingerprint,
+                                           refs=body.get("refs") if isinstance(body.get("refs"), dict) else None)
+                session.add(current)
+            else:
+                current.node_signature = signature
+                current.artifact_fingerprint = fingerprint
+                current.refs = body.get("refs") if isinstance(body.get("refs"), dict) else None
+            session.commit()
+        except Exception as exc:  # checkpointing is best effort, never changes execution result
+            session.rollback()
+            logger.warning("node artifact persistence failed: run=%s node=%s error=%r", self.instance_id, node_id, exc)
+        finally:
+            session.close()
+
+    def _restore_cached_artifact(self, key: tuple) -> bool:
+        """Restore a matching prior artifact during an explicit checkpoint resume."""
+        node_id, loop_iter = key
+        if not self.checkpoint_enabled or self._node_type(node_id) not in CHECKPOINTABLE_TYPES:
+            return False
+        session = new_session()
+        try:
+            current = (session.query(TRunNodeArtifact)
+                       .filter(TRunNodeArtifact.run_id == self.instance_id,
+                               TRunNodeArtifact.node_id == node_id).first())
+            if current is None:
+                return False
+            upstream: dict[str, str] = {}
+            for edge in self.graph.preds.get(node_id, []):
+                parent = (session.query(TRunNodeArtifact)
+                          .filter(TRunNodeArtifact.run_id == self.instance_id,
+                                  TRunNodeArtifact.node_id == edge["source"]).first())
+                if parent is not None:
+                    upstream[edge["source"]] = parent.node_signature
+            data = self._node_data(node_id)
+            ref = data.get("componentRef") if isinstance(data.get("componentRef"), dict) else {}
+            expected = node_signature(self._node_type(node_id), ref.get("version"), data, upstream)
+            if current.node_signature != expected:
+                return False
+        finally:
+            session.close()
+        row = self.rows[key]
+        row["state"] = state.SUCCESS
+        row["end_time"] = now()
+        self._save_row(key, outputs={"cached": True, "artifactFingerprint": current.artifact_fingerprint},
+                       log_lines=["[master] checkpoint signature matched; worker dispatch skipped"])
+        self._event("node_cached", node_id, {"artifactFingerprint": current.artifact_fingerprint})
+        self._advance_downstream(node_id, loop_iter)
+        return True
 
     # ---- DB 写 ----
 
@@ -407,7 +517,16 @@ class WorkflowExecuteRunnable(threading.Thread):
             raise
         finally:
             session.close()
-        if st == state.FAILURE and self._schedule_retry(key):
+        if st == state.SUCCESS:
+            self._record_artifact(key[0], payload.get("outputs"))
+        event_payload = {"state": st}
+        if st == state.FAILURE:  # node_error 附带错误信息，供前端/告警直接展示
+            details = payload.get("outputs") if isinstance(payload.get("outputs"), dict) else {}
+            message = details.get("error") or details.get("message")
+            if message:
+                event_payload["message"] = str(message)
+        self._event("node_error" if st == state.FAILURE else "node_executed", key[0], event_payload)
+        if st == state.FAILURE and self._schedule_retry(key, payload.get("outputs")):
             return
         self._advance_downstream(key[0], key[1])
 
@@ -431,18 +550,31 @@ class WorkflowExecuteRunnable(threading.Thread):
             "workerGroup": str(cons.get("workerGroup") or ""),
         }
 
-    def _schedule_retry(self, key: tuple) -> bool:
+    def _schedule_retry(self, key: tuple, outputs: Optional[dict] = None) -> bool:
         """失败重试：仍有余额 → 置 retry 延迟重派（返回 True 表示已安排）。"""
         node_id, loop_iter = key
         cons = self._constraints(node_id)
         row = self.rows[key]
+        details = outputs if isinstance(outputs, dict) else {}
+        kind = classify_error(
+            str(details.get("exceptionType") or ""),
+            str(details.get("error") or details.get("message") or ""),
+            details.get("exitCode") if isinstance(details.get("exitCode"), int) else None,
+        )
+        decision = retry_decision(kind, row["attempt"], cons["retryIntervalSec"])
+        if not decision.retryable:
+            return False
         if row["attempt"] > cons["retryTimes"]:
             return False
         row["attempt"] += 1
         row["state"] = state.RETRY
-        self.timers_retry[key] = now() + timedelta(seconds=cons["retryIntervalSec"])
+        self.timers_retry[key] = now() + timedelta(seconds=decision.delay_seconds)
         self._save_row(key, log_lines=[
-            "[master] 第 %s 次重试将于 %s 秒后派发" % (row["attempt"] - 1, cons["retryIntervalSec"])])
+            "[master] 第 %s 次重试（%s）将于 %s 秒后派发" % (row["attempt"] - 1, decision.strategy, decision.delay_seconds)])
+        self._event("node_retry", node_id, {
+            "attempt": row["attempt"], "max": cons["retryTimes"] + 1,
+            "strategy": decision.strategy, "delaySeconds": decision.delay_seconds,
+        })
         logger.info("任务重试安排: task=%s attempt=%s", row["id"], row["attempt"])
         return True
 
@@ -590,6 +722,7 @@ class WorkflowExecuteRunnable(threading.Thread):
         row = self.rows[key]
         row["state"] = state.RUNNING
         row["start_time"] = now()
+        self._event("node_executing", node_id, {"attempt": row["attempt"]})
 
         # ④ 运行条件 / ⑥ 排除区块（§5.2 激活动作）
         scope = self._expr_scope(loop_iter, data)
@@ -636,6 +769,8 @@ class WorkflowExecuteRunnable(threading.Thread):
             handler(key, resolved)
             return
         if node_type in WORKER_TYPES:
+            if self._restore_cached_artifact(key):
+                return
             # G-11 修复：notify.trigger 真正驱动投递——触发时机与上游实际状态不符则跳过（SUCCESS 不落 worker）
             if node_type == "notify" and not self._notify_trigger_matches(node_id, loop_iter):
                 self._set_state(key, state.SUCCESS,
@@ -1720,6 +1855,7 @@ class WorkflowExecuteRunnable(threading.Thread):
             "attempt": row["attempt"],
             "param": param,
             "param_resolved": resolved,
+            "hidden_inputs": self._hidden_inputs(node_id),
             "var_snapshot": snapshot,
             "constraints": cons,
         }
@@ -1840,6 +1976,7 @@ class WorkflowExecuteRunnable(threading.Thread):
             raise
         finally:
             session.close()
+        self._event("execution_success" if instance_state == state.SUCCESS else "execution_interrupted", payload={"state": instance_state})
         logger.info("实例终态: %s → %s（任务 %d 个）", self.instance_id, instance_state, len(self.rows))
 
         # I4 临时数据收口（设计 §5.4）：immediate → 清扫置 cleaned；keep+成功 → RENAME 转正式表

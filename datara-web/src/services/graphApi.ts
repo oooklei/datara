@@ -439,6 +439,13 @@ export async function rerunFailedTasks(instanceId: string, priority = 3): Promis
   return http.post(`/instances/${encodeURIComponent(instanceId)}/rerun-failed`, { priority })
 }
 
+export async function resumeFromNodes(wfId: string, instanceId: string, fromNodeIds: string[], priority = 3): Promise<{ commandId: number }> {
+  return http.post(
+    `/workflow-definitions/${encodeURIComponent(wfId)}/runs/${encodeURIComponent(instanceId)}/resume-from`,
+    { fromNodeIds, priority },
+  )
+}
+
 /* ---- 任务日志（实时增量：前端 2s 轮询正文） ---- */
 
 export async function getTaskLog(taskId: number): Promise<{ taskInstanceId: number; instanceId: string; logPath: string; content: string }> {

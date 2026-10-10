@@ -11,7 +11,7 @@
  */
 import { computed } from 'vue'
 import type { SpecViolation } from '../../services/componentSpec'
-import { ONCHANGE_ACTION_VALUES, PREFILL_FROM_VALUES, PICKER_VALUES } from '../../services/componentSpec'
+import { ONCHANGE_ACTION_VALUES, PREFILL_FROM_VALUES, PICKER_VALUES, REMOTE_OPTION_SOURCE_VALUES } from '../../services/componentSpec'
 import type { DeclBadge, DeclBehaviors } from '../../views/meta/pageDesigner/fields/fieldsModel'
 
 const props = defineProps<{
@@ -41,6 +41,12 @@ const PICKER_LABEL: Record<string, string> = {
 const ONCHANGE_ACTIONS = ONCHANGE_ACTION_VALUES.map((value) => ({ value, label: ACTION_LABEL[value] ?? value }))
 const PREFILL_FROMS = PREFILL_FROM_VALUES.map((value) => ({ value, label: FROM_LABEL[value] ?? value }))
 const PICKERS = PICKER_VALUES.map((value) => ({ value, label: PICKER_LABEL[value] ?? value }))
+const REMOTE_LABEL: Record<string, string> = {
+  'datasource.tree': '数据源库表树',
+  'datasource.topics': 'Kafka Topic',
+  'runtime.nodes': '运行时节点',
+}
+const REMOTES = REMOTE_OPTION_SOURCE_VALUES.map((value) => ({ value, label: REMOTE_LABEL[value] ?? value }))
 
 const badge = computed<DeclBadge | null>(() => props.badge ?? null)
 const colorEntries = computed<[string, string][]>(() => Object.entries(badge.value?.colorMap ?? {}))
@@ -185,7 +191,9 @@ function onTargetInput(i: number, v: string): void {
         :model-value="targetText(o.target)" placeholder="目标字段（逗号分隔，可空）"
         @update:model-value="onTargetInput(i, $event)"
       />
-      <el-input :model-value="o.remote ?? ''" placeholder="远端候选源（可空）" @update:model-value="setOnChange(i, { remote: $event || undefined })" />
+      <el-select :model-value="o.remote ?? ''" placeholder="刷新来源（可空）" clearable @update:model-value="setOnChange(i, { remote: $event || undefined })">
+        <el-option v-for="remote in REMOTES" :key="remote.value" :label="remote.label" :value="remote.value" />
+      </el-select>
       <button type="button" class="sf-mini sf-mini-danger" title="删除" @click="removeOnChange(i)">删</button>
     </div>
     <el-button size="small" plain data-testid="sf-vi-onchange-add" @click="addOnChange">加联动</el-button>
