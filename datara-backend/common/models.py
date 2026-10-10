@@ -83,6 +83,40 @@ class WfDefinitionLog(Base):
     __table_args__ = (Index("idx_wfdlog_code_ver", "wf_code", "version"),)
 
 
+class WfTemplate(Base):
+    """Reusable workflow graph template; the row always contains the latest version."""
+    __tablename__ = "t_wf_template"
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    name: Mapped[str] = mapped_column(String(255), nullable=False)
+    category: Mapped[str] = mapped_column(String(128), default="", nullable=False)
+    description: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    template_json: Mapped[str] = mapped_column(LONGTEXT, nullable=False)
+    version: Mapped[int] = mapped_column(Integer, default=1, nullable=False)
+    created_by: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=now, onupdate=now, nullable=False)
+
+
+class WfTemplateVersion(Base):
+    """Immutable template snapshots used by the version-chain and upgrade diff."""
+    __tablename__ = "t_wf_template_version"
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    template_id: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    version: Mapped[int] = mapped_column(Integer, nullable=False)
+    name: Mapped[str] = mapped_column(String(255), nullable=False)
+    category: Mapped[str] = mapped_column(String(128), default="", nullable=False)
+    description: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    template_json: Mapped[str] = mapped_column(LONGTEXT, nullable=False)
+    created_by: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=now, nullable=False)
+
+    __table_args__ = (
+        UniqueConstraint("template_id", "version", name="uq_wf_template_version"),
+        Index("idx_wf_template_version", "template_id", "version"),
+    )
+
+
 # ---------- 3.5 t_wf_category 工作流分类目录（Palette 分组，自定义分类，I11） ----------
 class WfCategory(Base):
     __tablename__ = "t_wf_category"

@@ -19,7 +19,7 @@
 import { computed, nextTick, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { isMock, listDefinitions, listCategories, SYNC_TAG, ETL_TAG, STREAM_TAG } from '../services'
+import { graphService, isMock, listDefinitions, listCategories, SYNC_TAG, ETL_TAG, STREAM_TAG } from '../services'
 import { bus } from '../services/eventBus'
 import { listSeedTaskDocs } from '../services/mock/seed'
 import { dagProfile, etlProfile, streamProfile } from '../graph/profiles'
@@ -28,18 +28,21 @@ import Palette from '../graph/workbench/Palette.vue'
 import InstanceRunsView from './dag/InstanceRunsView.vue'
 import DagAlarmView from './dag/DagAlarmView.vue'
 import WfCreateDialog from './dag/WfCreateDialog.vue'
+import TemplateCenter from './dag/TemplateCenter.vue'
 import { useDagTabsStore, MAX_DAG_TABS } from '../stores/dagTabs'
 import type { DagPickItem, DagProfileType, DagTab } from '../stores/dagTabs'
 import { useGraphStore } from '../stores/graph'
 import { useAuthStore } from '../stores/auth'
+import { createTemplate } from '../services/templateApi'
 
 const route = useRoute()
 const router = useRouter()
 
 /* ---- 视角页签：任务编排（画布）+ 运行监控 + 告警与SLA ---- */
-type TabKey = 'edit' | 'runs' | 'alarm'
+type TabKey = 'edit' | 'templates' | 'runs' | 'alarm'
 const tabs: { k: TabKey; label: string; icon: string }[] = [
   { k: 'edit', label: '任务编排', icon: '⑃' },
+  { k: 'templates', label: '模板中心', icon: '▦' },
   { k: 'runs', label: '运行监控', icon: '▶' },
   { k: 'alarm', label: '告警与SLA', icon: '🖂' },
 ]
@@ -164,6 +167,19 @@ function onOpenCreateWf() {
   wfCreateVisible.value = true
 }
 
+async function saveActiveAsTemplate() {
+  if (!activeTab.value) return
+  try {
+    const doc = await graphService.get(activeTab.value.docId)
+    if (!doc) throw new Error('工作流图不存在')
+    const { value } = await ElMessageBox.prompt('模板名称', '另存为模板', { inputValue: activeTab.value.name, inputPattern: /\S+/ })
+    await createTemplate({ name: value.trim(), templateJson: doc })
+    ElMessage.success('已另存为模板')
+  } catch (e) {
+    if (e !== 'cancel' && e !== 'close') ElMessage.error(e instanceof Error ? e.message : String(e))
+  }
+}
+
 /** 创建成功：刷新候选池（取回 code/分类）→ 开新画布 Tab → 落「上次打开」→ 广播目录刷新 */
 async function onWfCreated(p: { id: string; name: string; type: DagProfileType; code?: number }) {
   await loadDefPool()
@@ -271,6 +287,7 @@ onMounted(async () => {
         @click="switchTab(t.k)"
       ><span class="tc-ic">{{ t.icon }}</span>{{ t.label }}</button>
       <span class="spacer" />
+      <button v-if="tab === 'edit' && activeTab" class="tc-save-template" @click="saveActiveAsTemplate">另存为模板</button>
       <span v-if="tab === 'edit'" class="tc-view">{{ profileOf.name }}</span>
     </div>
 
@@ -320,6 +337,12 @@ onMounted(async () => {
         </div>
       </template>
 
+      <TemplateCenter
+        v-else-if="tab === 'templates'"
+        :workflow-id="activeTab?.docId"
+        @created="onWfCreated({ ...$event, type: 'wf' })"
+      />
+
       <template v-else-if="tab === 'runs'">
         <!-- F56d：运行实例接引擎真数据（InstanceRunsView），纯 mock 演示页 DagRunsView 已删除 -->
         <!-- 运行监控展示所有工作流的运行实例（业务要求：不按画布当前工作流筛选） -->
@@ -347,6 +370,7 @@ onMounted(async () => {
 .tc-ic{font-size:12px;opacity:.75}
 .tc-tab.on .tc-ic{opacity:1}
 .spacer{flex:1}
+.tc-save-template{border:1px solid var(--border);background:#fff;color:var(--primary);border-radius:var(--radius-sm);padding:5px 10px;margin-right:8px;cursor:pointer}
 /* 当前画布视角（Profile 名）：类型页签移除后，此处与画布标题徽标一同标识当前视角 */
 .tc-view{font-size:11.5px;color:var(--text-3);border:1px solid var(--border);border-radius:var(--radius-lg);padding:2px 10px}
 .tc-body{flex:1;min-height:0;display:flex;flex-direction:column;overflow:auto}
