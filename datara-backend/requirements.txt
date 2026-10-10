@@ -3,7 +3,8 @@ fastapi>=0.110
 uvicorn[standard]>=0.29
 sqlalchemy>=2.0
 pymysql>=1.1
-cryptography>=42.0
+cryptography @ https://mirrors.aliyun.com/pypi/packages/d3/69/2c833a049475e0a3444e94c7d0aca0aa51d166374a449b09e92ac98138de/cryptography-50.0.2-cp311-abi3-manylinux_2_34_x86_64.whl ; sys_platform == "linux"
+cryptography>=42.0 ; sys_platform != "linux"
 kazoo>=2.9
 redis>=5.0
 passlib[bcrypt]==1.7.4
