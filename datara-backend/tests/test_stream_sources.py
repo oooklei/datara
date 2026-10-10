@@ -144,12 +144,15 @@ def kafka_mod(monkeypatch):
 
 
 def make_source() -> KafkaSource:
-    return KafkaSource("n1", {
-        "brokers": "broker1:9092",
-        "topic": "t1",
-        "group": "g1",
-        "startFrom": "earliest",
-    })
+    return KafkaSource(
+        "n1",
+        {
+            "brokers": "broker1:9092",
+            "topic": "t1",
+            "group": "g1",
+            "startFrom": "earliest",
+        },
+    )
 
 
 def test_resume_seeks_saved_offsets(kafka_mod):

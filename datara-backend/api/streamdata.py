@@ -26,8 +26,8 @@ logger = get_logger("api.streamdata")
 
 router = APIRouter(prefix="/stream-jobs", tags=["stream-data"])
 
-PUSH_INTERVAL = 1.0     # SSE/WS 快照周期（秒）
-DEFAULT_LIMIT = 100     # 轮询/SSE 单帧行数上限
+PUSH_INTERVAL = 1.0  # SSE/WS 快照周期（秒）
+DEFAULT_LIMIT = 100  # 轮询/SSE 单帧行数上限
 
 
 def _query_token_ok(request: Request, token: str) -> bool:

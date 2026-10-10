@@ -85,8 +85,11 @@ def _connect(host: str, port, user: str, cred: str, ctx) -> "paramiko.SSHClient"
     client = paramiko.SSHClient()
     client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
     kwargs = {
-        "hostname": host, "port": int(port or 22), "username": user or "root",
-        "timeout": CONNECT_TIMEOUT, "banner_timeout": CONNECT_TIMEOUT,
+        "hostname": host,
+        "port": int(port or 22),
+        "username": user or "root",
+        "timeout": CONNECT_TIMEOUT,
+        "banner_timeout": CONNECT_TIMEOUT,
         "auth_timeout": CONNECT_TIMEOUT,
     }
     cred = str(cred or "")
@@ -179,11 +182,11 @@ def execute(ctx) -> ExecResult:
         if not nodes:
             ctx.log("[ssh] 标签 %r 无健康节点（enabled+online+含标签）→ failure" % tag)
             return ExecResult(FAILURE, {}, [])
-        ctx.log("[ssh] 标签 %s 匹配 %d 个健康节点，轮转顺序: %s"
-                % (tag, len(nodes), " → ".join(n.name for n in nodes)))
+        ctx.log("[ssh] 标签 %s 匹配 %d 个健康节点，轮转顺序: %s" % (tag, len(nodes), " → ".join(n.name for n in nodes)))
         for node in nodes:
-            phase, result = _run_on_node(node.name, node.host, node.port, node.ssh_user,
-                                         node.cred_enc or "", "", script, ctx)
+            phase, result = _run_on_node(
+                node.name, node.host, node.port, node.ssh_user, node.cred_enc or "", "", script, ctx
+            )
             if phase == "connect" and result.state == FAILURE:
                 ctx.log("[ssh] 节点 %s 不可达，转派下一节点" % node.name)
                 continue
@@ -198,6 +201,7 @@ def execute(ctx) -> ExecResult:
     node = _lookup_node(ref)
     if node is None:
         return ExecResult(FAILURE, {}, ["[ssh] 运行时节点不存在: %s" % ref])
-    _phase, result = _run_on_node(node.name, node.host, node.port, node.user,
-                                  node.auth or "", str(node.runtime_dir or "").strip(), script, ctx)
+    _phase, result = _run_on_node(
+        node.name, node.host, node.port, node.user, node.auth or "", str(node.runtime_dir or "").strip(), script, ctx
+    )
     return result

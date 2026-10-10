@@ -1,4 +1,5 @@
 """Best-effort run event publishing: Redis fan-out plus durable replay rows."""
+
 import json
 import threading
 import time
@@ -33,8 +34,9 @@ def _get_client() -> redis.Redis:
     return _client
 
 
-def publish_run_event(run_id: str, node_id: str, event_type: str,
-                      payload: Optional[dict[str, Any]] = None, rds=None) -> dict:
+def publish_run_event(
+    run_id: str, node_id: str, event_type: str, payload: Optional[dict[str, Any]] = None, rds=None
+) -> dict:
     """公共发布入口：progress 走 200ms 合帧（方案 R6，见 _ProgressFramer），其余类型即时直发。
 
     progress 返回值为窗口内将要发出的合成消息（非实际发送时刻）；best-effort 语义不变。
@@ -45,15 +47,12 @@ def publish_run_event(run_id: str, node_id: str, event_type: str,
         except Exception as exc:  # 合帧绝不影响调度（best-effort 同主线），失败降级直发
             logger.warning("progress 合帧提交失败，降级直发: %s", exc)
             return _deliver(run_id, node_id, event_type, payload, rds)
-        return {"runId": run_id, "nodeId": node_id, "type": event_type,
-                "ts": int(time.time() * 1000)}
+        return {"runId": run_id, "nodeId": node_id, "type": event_type, "ts": int(time.time() * 1000)}
     return _deliver(run_id, node_id, event_type, payload, rds)
 
 
-def _deliver(run_id: str, node_id: str, event_type: str,
-             payload: Optional[dict[str, Any]] = None, rds=None) -> dict:
-    message = {"runId": run_id, "nodeId": node_id, "type": event_type,
-               "ts": int(time.time() * 1000)}
+def _deliver(run_id: str, node_id: str, event_type: str, payload: Optional[dict[str, Any]] = None, rds=None) -> dict:
+    message = {"runId": run_id, "nodeId": node_id, "type": event_type, "ts": int(time.time() * 1000)}
     if payload:
         message["payload"] = payload
     try:
@@ -64,8 +63,14 @@ def _deliver(run_id: str, node_id: str, event_type: str,
     try:
         session = new_session()
         try:
-            session.add(TRunEvent(run_id=run_id, node_id=node_id, event_type=event_type,
-                                  payload_json=json.dumps(payload, ensure_ascii=False, default=str) if payload else None))
+            session.add(
+                TRunEvent(
+                    run_id=run_id,
+                    node_id=node_id,
+                    event_type=event_type,
+                    payload_json=json.dumps(payload, ensure_ascii=False, default=str) if payload else None,
+                )
+            )
             session.commit()
         finally:
             session.close()

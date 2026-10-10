@@ -6,8 +6,13 @@ from common.models import AlertRecord
 
 def test_alert_payload_routes_instance_alerts() -> None:
     row = AlertRecord(
-        id=7, instance_id="inst-1", title="工作流失败", content="task 3 failed",
-        channel="system", state="sent", create_time=datetime(2026, 10, 1, 12, 30),
+        id=7,
+        instance_id="inst-1",
+        title="工作流失败",
+        content="task 3 failed",
+        channel="system",
+        state="sent",
+        create_time=datetime(2026, 10, 1, 12, 30),
         update_time=datetime(2026, 10, 1, 12, 31),
     )
     assert alert_payload(row)["target"] == "/dag/instances"

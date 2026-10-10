@@ -387,15 +387,20 @@ def save_definition(
     # D2 R6 componentRef：save 宽松模式——缺 ref 兼容存量未回填文档（§9.5 部署先跑
     # scripts/backfill_component_ref.py）；有 ref 则结构合法 + 版本存在性/漂移校验
     # Task 9 R14：边端口类型交集复检（published 组件 spec ports 供给，§3.1/§11.2）
-    violations = validate_graph(doc, _vars_supply(db, definition.code),
-                                comp_versions=_comp_versions(db),
-                                port_types=_port_types(db))
+    violations = validate_graph(
+        doc, _vars_supply(db, definition.code), comp_versions=_comp_versions(db), port_types=_port_types(db)
+    )
     if violations:
         raise ApiError(WF_GRAPH_RULE_FAILED, _gate_violations_msg(violations), status=422)
     base_version = body.base_version
     if base_version is not None and base_version != definition.version:
-        logger.warning("保存版本冲突: wf=%s 库内 v%s，提交基于 v%s（操作人 %s）",
-                       wf_id, definition.version, base_version, user.user_name)
+        logger.warning(
+            "保存版本冲突: wf=%s 库内 v%s，提交基于 v%s（操作人 %s）",
+            wf_id,
+            definition.version,
+            base_version,
+            user.user_name,
+        )
         raise ApiError(
             WF_VERSION_CONFLICT,
             "定义已被他人更新（当前 v%s，提交基于 v%s），请刷新后重试" % (definition.version, base_version),
@@ -422,8 +427,13 @@ def save_definition(
         if matched == 0:
             # CAS 失败即他人已提交 bump：refresh 读真实库内版本（文案/日志精准，session 无脏写安全）
             db.refresh(definition)
-            logger.warning("保存 CAS 失败: wf=%s 库内 v%s，提交基于 v%s（操作人 %s）",
-                           wf_id, definition.version, base_version, user.user_name)
+            logger.warning(
+                "保存 CAS 失败: wf=%s 库内 v%s，提交基于 v%s（操作人 %s）",
+                wf_id,
+                definition.version,
+                base_version,
+                user.user_name,
+            )
             raise ApiError(
                 WF_VERSION_CONFLICT,
                 "定义已被他人更新（当前 v%s，提交基于 v%s），请刷新后重试" % (definition.version, base_version),
@@ -469,18 +479,32 @@ def delete_definition(
         .count()
     )
     if running:
-        logger.warning("删除被拒（存在活跃实例）: wf=%s id=%s 活跃实例数=%d（操作人 %s）",
-                       definition.code, wf_id, running, user.user_name)
-        raise ApiError(WF_PARAM_INVALID, "该工作流存在 %d 个活跃（未终态）实例，请先停止实例后再删除" % running,
-                       status=409)
+        logger.warning(
+            "删除被拒（存在活跃实例）: wf=%s id=%s 活跃实例数=%d（操作人 %s）",
+            definition.code,
+            wf_id,
+            running,
+            user.user_name,
+        )
+        raise ApiError(
+            WF_PARAM_INVALID, "该工作流存在 %d 个活跃（未终态）实例，请先停止实例后再删除" % running, status=409
+        )
     stream_jobs = db.query(StreamJob).filter(StreamJob.doc_id == definition.id).all()
     active = [j for j in stream_jobs if (j.status or "") in STREAM_ACTIVE_STATUS]
     if active:
-        logger.warning("删除被拒（存在活跃流任务）: wf=%s id=%s job=%s（操作人 %s）",
-                       definition.code, wf_id,
-                       "、".join("#%s %s" % (j.id, j.name or j.wf_name) for j in active[:3]), user.user_name)
-        raise ApiError(WF_PARAM_INVALID, "该画布存在未停止的流任务（%s），请先在流任务列表停止后再删除"
-                       % "、".join("#%s %s" % (j.id, j.name or j.wf_name) for j in active[:3]), status=409)
+        logger.warning(
+            "删除被拒（存在活跃流任务）: wf=%s id=%s job=%s（操作人 %s）",
+            definition.code,
+            wf_id,
+            "、".join("#%s %s" % (j.id, j.name or j.wf_name) for j in active[:3]),
+            user.user_name,
+        )
+        raise ApiError(
+            WF_PARAM_INVALID,
+            "该画布存在未停止的流任务（%s），请先在流任务列表停止后再删除"
+            % "、".join("#%s %s" % (j.id, j.name or j.wf_name) for j in active[:3]),
+            status=409,
+        )
     for job in stream_jobs:
         db.query(StreamOffset).filter(StreamOffset.job_id == job.id).delete()
         db.delete(job)
@@ -489,8 +513,12 @@ def delete_definition(
     design_purged = delete_design_lineage(db, definition.code)  # 级联：设计态血缘行（先 field 后 edge）
     db.delete(definition)
     db.commit()
-    logger.info("删除工作流定义: %s（操作人 %s；级联调度/停止态流任务/快照/设计态血缘 %d 行）",
-                wf_id, user.user_name, design_purged)
+    logger.info(
+        "删除工作流定义: %s（操作人 %s；级联调度/停止态流任务/快照/设计态血缘 %d 行）",
+        wf_id,
+        user.user_name,
+        design_purged,
+    )
     return ok(True)
 
 
@@ -547,6 +575,7 @@ def rollback(
 
 # ---------------- 发布 / 下线（实施计划 20260926 Task A2：release_state 消费闭环） ----------------
 
+
 def _gate_violations_msg(violations: list) -> str:
     """图校验违规清单 → 前 5 条拼接的提示文本（与保存闸门同格式）。"""
     detail = "；".join("%s:%s" % (v.get("nodeId") or "-", v["message"]) for v in violations[:5])
@@ -573,17 +602,19 @@ def publish_workflow(
         # F4 R5：发布闸门同样带变量供给（引用有效性进发布链）
         # D2 R6：发布闸门带版本供给 + 严格模式（缺 ref 拒）
         # Task 9 R14：发布闸门带端口类型供给（同规则复检，§3.1/§11.2）
-        violations = validate_graph(doc, _vars_supply(db, definition.code),
-                                    comp_versions=_comp_versions(db),
-                                    port_types=_port_types(db),
-                                    require_component_ref=True)
+        violations = validate_graph(
+            doc,
+            _vars_supply(db, definition.code),
+            comp_versions=_comp_versions(db),
+            port_types=_port_types(db),
+            require_component_ref=True,
+        )
         if violations:
             raise ApiError(WF_GRAPH_RULE_FAILED, _gate_violations_msg(violations), status=422)
         definition.release_state = "online"
         _append_log(db, definition, user.user_name, "发布上线")
         db.commit()
-        logger.info("工作流发布上线: %s v%s（操作人 %s）",
-                    definition.id, definition.version, user.user_name)
+        logger.info("工作流发布上线: %s v%s（操作人 %s）", definition.id, definition.version, user.user_name)
         redesign_wf_lineage(db, definition)  # 发布成功 → 设计态血缘重算（旁路，失败不阻断发布）
     return ok({"id": definition.id, "release_state": definition.release_state})
 
@@ -605,6 +636,7 @@ def offline_workflow(
 
 
 # ---------------- 运行 / 补数（I3 §3.1/§9.2：api 只写 t_command，master 消费） ----------------
+
 
 def _resolve_wf(db: Session, wf: str) -> WfDefinition:
     """路径参数兼容定义 id（wf_xxx）与数字 code（§12 路由按 code）。"""
@@ -642,18 +674,25 @@ def run_workflow(
         spec = extract_stream_spec(definition, doc)  # 含混编/缺源汇/join/游离校验
         row, restarted = register_stream_job(db, definition, spec)
         logger.info("流任务启动（试运行入口）: job=%s wf=%s（用户 %s）", row.id, wf, user.user_name)
-        return ok({
-            "mode": "stream",
-            "streamJobId": row.id,
-            "name": row.name,
-            "restarted": restarted,
-        })
-    command = submit_command(db, "START_PROCESS", {
-        "wfCode": definition.code,
-        "wfVersion": definition.version,
-        "runMode": "manual",
-        "envGroupId": body.env_group_id,
-    }, priority=body.priority)
+        return ok(
+            {
+                "mode": "stream",
+                "streamJobId": row.id,
+                "name": row.name,
+                "restarted": restarted,
+            }
+        )
+    command = submit_command(
+        db,
+        "START_PROCESS",
+        {
+            "wfCode": definition.code,
+            "wfVersion": definition.version,
+            "runMode": "manual",
+            "envGroupId": body.env_group_id,
+        },
+        priority=body.priority,
+    )
     logger.info("运行命令已提交: wf=%s commandId=%s（用户 %s）", definition.code, command.id, user.user_name)
     return ok({"commandId": command.id})
 
@@ -687,9 +726,15 @@ def resume_from(
     node_ids = sorted({node_id.strip() for node_id in body.from_node_ids if node_id.strip()})
     if not node_ids:
         raise ApiError(WF_PARAM_INVALID, "fromNodeIds 不能为空", status=400)
-    command = submit_command(db, "RESUME_FROM", {
-        "instanceId": run_id, "fromNodeIds": node_ids,
-    }, priority=body.priority)
+    command = submit_command(
+        db,
+        "RESUME_FROM",
+        {
+            "instanceId": run_id,
+            "fromNodeIds": node_ids,
+        },
+        priority=body.priority,
+    )
     return ok({"commandId": command.id})
 
 
@@ -709,16 +754,26 @@ def complement_workflow(
         raise ApiError(WF_PARAM_INVALID, "补数日期格式应为 YYYY-MM-DD", status=400)
     if end < start:
         raise ApiError(WF_PARAM_INVALID, "date_to 早于 date_from", status=400)
-    command = submit_command(db, "COMPLEMENT_DATA", {
-        "wfCode": definition.code,
-        "wfVersion": definition.version,
-        "dateFrom": body.date_from,
-        "dateTo": body.date_to,
-        "parallel": body.parallel,
-        "envGroupId": body.env_group_id,
-    }, priority=body.priority)
+    command = submit_command(
+        db,
+        "COMPLEMENT_DATA",
+        {
+            "wfCode": definition.code,
+            "wfVersion": definition.version,
+            "dateFrom": body.date_from,
+            "dateTo": body.date_to,
+            "parallel": body.parallel,
+            "envGroupId": body.env_group_id,
+        },
+        priority=body.priority,
+    )
     days = (end - start).days + 1
-    logger.info("补数命令已提交: wf=%s %s ~ %s 共 %d 实例（%s）",
-                definition.code, body.date_from, body.date_to, days,
-                "并行" if body.parallel else "串行")
+    logger.info(
+        "补数命令已提交: wf=%s %s ~ %s 共 %d 实例（%s）",
+        definition.code,
+        body.date_from,
+        body.date_to,
+        days,
+        "并行" if body.parallel else "串行",
+    )
     return ok({"commandId": command.id, "instances": days})

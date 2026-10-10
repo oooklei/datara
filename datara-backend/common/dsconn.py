@@ -34,6 +34,7 @@ class FileSourceError(ValueError):
 
 # ---------- 连接型数据源（mysql / greatdb 同驱动） ----------
 
+
 def open_connection(
     ds: DataSource,
     *,
@@ -88,6 +89,7 @@ def quote_ident(name: str) -> str:
 
 
 # ---------- 文件源（数据源中心 type=file / C22 手动参数共用） ----------
+
 
 @dataclass
 class FileSpec:
@@ -198,9 +200,7 @@ def head_rows(spec: FileSpec, limit: int = 5) -> list[list]:
     return list(islice(iter_rows(spec), limit))
 
 
-def file_schema_preview(
-    spec: FileSpec, sample_limit: int = 1000, preview_limit: int = 200
-) -> tuple[dict, list[list]]:
+def file_schema_preview(spec: FileSpec, sample_limit: int = 1000, preview_limit: int = 200) -> tuple[dict, list[list]]:
     """抽样 + 推断 + 预览一次完成（C22 执行器/库表树共用，避免重复读文件）。"""
     sample = list(islice(iter_rows(spec), sample_limit))
     schema = infer_schema(sample, header=spec.header)
@@ -208,6 +208,7 @@ def file_schema_preview(
 
 
 # ---------- 类型推断（纯函数，无 IO） ----------
+
 
 def _is_datetime(s: str) -> bool:
     try:
@@ -255,9 +256,7 @@ def infer_schema(rows: list[list], header: bool = True) -> dict:
     width = max(len(r) for r in rows)
     first = rows[0]
     names = [
-        str(first[i]).strip()
-        if header and i < len(first) and str(first[i]).strip()
-        else f"col_{i + 1}"
+        str(first[i]).strip() if header and i < len(first) and str(first[i]).strip() else f"col_{i + 1}"
         for i in range(width)
     ]
     body = rows[1:] if header else rows

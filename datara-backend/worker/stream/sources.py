@@ -128,6 +128,7 @@ def build_source(node_id: str, params: dict) -> SourceBase:
 
 # ---------- C18 分型一：Kafka（F36） ----------
 
+
 class KafkaSource(SourceBase):
     """kafka-python 消费者：组消费 + 指定位点 seek（auto_commit 关闭，处理成功后引擎提交 t_stream_offset）。"""
 
@@ -174,8 +175,9 @@ class KafkaSource(SourceBase):
         # assignment 就绪后 seek（见 poll 门控）。
         self._saved = {k: int(v) for k, v in ((offset or {}).get("partitions") or {}).items()}
         self._seeked = False
-        logger.info("Kafka 源打开: %s topic=%s group=%s saved=%s",
-                    self.source_key, self.topic, self.group, bool(self._saved))
+        logger.info(
+            "Kafka 源打开: %s topic=%s group=%s saved=%s", self.source_key, self.topic, self.group, bool(self._saved)
+        )
         try:  # 缓存 broker IP：docker stop/start 后 embedded DNS 别名恢复有延迟，探测时兜底直连
             self._resolved_ip = socket.gethostbyname(self.brokers[0].split(":")[0])
         except OSError:
@@ -289,6 +291,7 @@ class KafkaSource(SourceBase):
 
 # ---------- C18 分型二：CDC binlog（F37） ----------
 
+
 class CdcSource(SourceBase):
     """mysql-replication BinLogStreamReader：库表白名单 + file:pos 位点（at-least-once）。"""
 
@@ -342,8 +345,14 @@ class CdcSource(SourceBase):
             log_file=log_file,
             log_pos=log_pos,
         )
-        logger.info("CDC 源打开: %s ds=%s schemas=%s tables=%s offset=%s",
-                    self.source_key, self.ds_ref, self.schemas or "*", self.tables or "*", (log_file, log_pos))
+        logger.info(
+            "CDC 源打开: %s ds=%s schemas=%s tables=%s offset=%s",
+            self.source_key,
+            self.ds_ref,
+            self.schemas or "*",
+            self.tables or "*",
+            (log_file, log_pos),
+        )
 
     def poll(self, max_rows: int) -> list:
         rows = []
@@ -363,8 +372,11 @@ class CdcSource(SourceBase):
                     data, before = r["values"], None
                 else:
                     continue
-                row = {"source": self.source_key, "ts": ts,
-                       "data": {"op": op, "schema": schema, "table": table, "row": data}}
+                row = {
+                    "source": self.source_key,
+                    "ts": ts,
+                    "data": {"op": op, "schema": schema, "table": table, "row": data},
+                }
                 if before is not None:
                     row["data"]["before"] = before
                 rows.append(row)
@@ -386,6 +398,7 @@ class CdcSource(SourceBase):
 
 
 # ---------- C18 分型三：HTTP 拉取（F38） ----------
+
 
 class HttpSource(SourceBase):
     """requests 周期轮询：数据点路径提取数组 + 游标参数（响应序号/分页 token）。"""
@@ -428,8 +441,13 @@ class HttpSource(SourceBase):
             raise SourceError("HTTP URL 未配置（或引用数据源 baseUrl 为空）")
         self._cursor = (offset or {}).get("cursor")
         self._next_poll = 0.0
-        logger.info("HTTP 源打开: %s url=%s interval=%ss cursor=%r",
-                    self.source_key, self._effective_url(), self.interval, self._cursor)
+        logger.info(
+            "HTTP 源打开: %s url=%s interval=%ss cursor=%r",
+            self.source_key,
+            self._effective_url(),
+            self.interval,
+            self._cursor,
+        )
 
     def poll(self, max_rows: int) -> list:
         if time.time() < self._next_poll:
@@ -440,8 +458,9 @@ class HttpSource(SourceBase):
         try:
             params = {self.cursor_param: self._cursor} if (self.cursor_param and self._cursor is not None) else None
             merged = {**self._reg_headers, **self.headers}  # 注册层基础头 + 节点业务头（同名覆盖）
-            resp = requests.request(self.method, self._effective_url(), headers=merged or None,
-                                    params=params, timeout=10)
+            resp = requests.request(
+                self.method, self._effective_url(), headers=merged or None, params=params, timeout=10
+            )
         except requests.RequestException as exc:
             raise SourceError(f"HTTP 请求失败: {exc}") from exc
         if resp.status_code >= 400:
@@ -475,6 +494,7 @@ class HttpSource(SourceBase):
 
 # ---------- C18 分型四：文件尾随（F38） ----------
 
+
 class FileSource(SourceBase):
     """逐行尾随 + inode 滚动跟随（滚动重开从头）；位点=字节偏移+inode+表头缓存。"""
 
@@ -492,7 +512,7 @@ class FileSource(SourceBase):
         self._fh = None
         self._inode: Optional[int] = None
         self._pos = 0
-        self._buf = b""          # 未凑整行残余
+        self._buf = b""  # 未凑整行残余
         self._headers: Optional[list] = None
 
     def open(self, offset: Optional[dict]) -> None:
@@ -545,8 +565,9 @@ class FileSource(SourceBase):
             self._pos += len(raw) + 1
             if self.delim:
                 parts = text.split(self.delim)
-                data = dict(zip(self._headers, parts)) if self._headers \
-                    else {f"c_{i + 1}": v for i, v in enumerate(parts)}
+                data = (
+                    dict(zip(self._headers, parts)) if self._headers else {f"c_{i + 1}": v for i, v in enumerate(parts)}
+                )
             else:
                 data = {"line": text}
             rows.append({"source": self.source_key, "ts": now, "data": data})
@@ -598,8 +619,13 @@ class SimulateSource(SourceBase):
 
     def open(self, offset: Optional[dict]) -> None:
         self._quota = 0.0
-        logger.info("模拟源打开: %s dataset=%s events=%s eps=%s",
-                    self.source_key, self.dataset, sorted(self.events) if self.events else "*", self.eps)
+        logger.info(
+            "模拟源打开: %s dataset=%s events=%s eps=%s",
+            self.source_key,
+            self.dataset,
+            sorted(self.events) if self.events else "*",
+            self.eps,
+        )
 
     def _emit_ok(self, name: str) -> bool:
         return self.events is None or name in self.events
@@ -623,7 +649,7 @@ class SimulateSource(SourceBase):
         r = random.random()
         if r < 0.2:  # 订单（demo 比例 1:3:1）
             return "order_pay", {
-                "order_id": f"ord_{random.randrange(10 ** 8):08d}",
+                "order_id": f"ord_{random.randrange(10**8):08d}",
                 "user_id": random.choice(SIM_USERS),
                 "goods_id": random.choice(SIM_GOODS),
                 "amount": round(random.uniform(9.9, 999.0), 2),
@@ -657,7 +683,7 @@ class SimulateSource(SourceBase):
     def _gen_visit(self, now: float) -> tuple[str, dict]:
         if random.random() < 0.2:
             return "order", {
-                "order_id": f"o_{random.randrange(10 ** 8):08d}",
+                "order_id": f"o_{random.randrange(10**8):08d}",
                 "user_id": random.choice(SIM_USERS),
                 "amount": round(random.uniform(20, 800), 2),
                 "ts": now,
@@ -688,6 +714,7 @@ class SimulateSource(SourceBase):
 
 
 # ---------- C18 分型六：Redis Stream（XREADGROUP 消费组，位点由 group 天然续跑） ----------
+
 
 class RedisStreamSource(SourceBase):
     """Redis Stream 消费源：直连 URL（redis://host:port/db），consumer group 消费。
@@ -733,16 +760,23 @@ class RedisStreamSource(SourceBase):
             except Exception as exc:  # noqa: BLE001 BUSYGROUP = 已存在（续跑）
                 if "BUSYGROUP" not in str(exc):
                     logger.warning("Redis 消费组创建异常: %s/%s %r", s, self.group, exc)
-        logger.info("Redis Stream 源打开: %s url=%s streams=%s group=%s",
-                    self.source_key, self.redis_url, self.streams, self.group)
+        logger.info(
+            "Redis Stream 源打开: %s url=%s streams=%s group=%s",
+            self.source_key,
+            self.redis_url,
+            self.streams,
+            self.group,
+        )
 
     def poll(self, max_rows: int) -> list:
         if self._r is None:
             return []
         resp = self._r.xreadgroup(
-            self.group, self.consumer,
+            self.group,
+            self.consumer,
             streams={s: ">" for s in self.streams},
-            count=max_rows, block=400,
+            count=max_rows,
+            block=400,
         )
         rows = []
         now = time.time()
@@ -782,6 +816,7 @@ class RedisStreamSource(SourceBase):
 
 
 # ---------- C18 分型七：MQTT 订阅（paho-mqtt，回调线程 → 队列桥接） ----------
+
 
 class MqttSource(SourceBase):
     """MQTT 订阅源：paho-mqtt 回调线程收包入队，poll 线程出队（无位点，QoS0 至少送达）。"""

@@ -21,15 +21,36 @@ import yaml
 
 # 规则种类全集（dirty_rules.yaml kind 字段）
 KNOWN_KINDS = {
-    "null_value", "format_phone", "format_idcard", "format_credit",
-    "out_of_range", "enum_out", "orphan", "time_future", "time_invalid",
-    "time_before_order", "time_before_coupon", "dirty_chars",
-    "duplicate_row", "phone_pair",
+    "null_value",
+    "format_phone",
+    "format_idcard",
+    "format_credit",
+    "out_of_range",
+    "enum_out",
+    "orphan",
+    "time_future",
+    "time_invalid",
+    "time_before_order",
+    "time_before_coupon",
+    "dirty_chars",
+    "duplicate_row",
+    "phone_pair",
 }
 
 # 列生成策略前缀全集（tables.yaml strategy 字段）
-STRATEGY_PREFIXES = ("seq", "const:", "null", "int:", "dec:", "choice:",
-                     "faker:", "ref:", "phone:", "randphone", "calc:")
+STRATEGY_PREFIXES = (
+    "seq",
+    "const:",
+    "null",
+    "int:",
+    "dec:",
+    "choice:",
+    "faker:",
+    "ref:",
+    "phone:",
+    "randphone",
+    "calc:",
+)
 
 
 class ConfigError(Exception):
@@ -49,13 +70,13 @@ class ColumnSpec:
 class TableSpec:
     name: str
     schema_name: str
-    db: str                     # src / dw
+    db: str  # src / dw
     rows: int
     columns: list  # list[ColumnSpec]
     partition_column: str = ""  # 空=不分区
-    partition_days: int = 0     # >0=按天分区（+pmax 兜底）
-    sec_level: str = ""         # 机密/绝密（空=业务表）
-    derived: bool = False       # dw 派生表（seed 物化，不逐行生成）
+    partition_days: int = 0  # >0=按天分区（+pmax 兜底）
+    sec_level: str = ""  # 机密/绝密（空=业务表）
+    derived: bool = False  # dw 派生表（seed 物化，不逐行生成）
     comment: str = ""
 
     @property
@@ -156,6 +177,7 @@ def anchor_blocks(table: TableSpec, rules: list) -> dict:
 
 # ---------------- 配置加载与校验 ----------------
 
+
 def load_config(datagen_dir: Path) -> DatagenConfig:
     datagen_dir = Path(datagen_dir)
     with open(datagen_dir / "tables.yaml", encoding="utf-8") as f:
@@ -178,26 +200,45 @@ def load_config(datagen_dir: Path) -> DatagenConfig:
             raise ConfigError(f"schema {schema_name} 的 db 必须为 src/dw")
         for t in schema.get("tables") or []:
             _validate_table(t, schema_name, db, seen)
-            cols = [ColumnSpec(
-                name=c["name"], ctype=c["type"], strategy=c.get("strategy") or "",
-                nullable=bool(c.get("nullable", False)), comment=c.get("comment", ""),
-            ) for c in t["columns"]]
+            cols = [
+                ColumnSpec(
+                    name=c["name"],
+                    ctype=c["type"],
+                    strategy=c.get("strategy") or "",
+                    nullable=bool(c.get("nullable", False)),
+                    comment=c.get("comment", ""),
+                )
+                for c in t["columns"]
+            ]
             part = t.get("partition") or {}
-            tables.append(TableSpec(
-                name=t["name"], schema_name=schema_name, db=db, rows=int(t["rows"]),
-                columns=cols, partition_column=part.get("column", ""),
-                partition_days=int(part.get("days", 0)), sec_level=t.get("sec_level", ""),
-                derived=bool(t.get("derived", False)), comment=t.get("comment", ""),
-            ))
+            tables.append(
+                TableSpec(
+                    name=t["name"],
+                    schema_name=schema_name,
+                    db=db,
+                    rows=int(t["rows"]),
+                    columns=cols,
+                    partition_column=part.get("column", ""),
+                    partition_days=int(part.get("days", 0)),
+                    sec_level=t.get("sec_level", ""),
+                    derived=bool(t.get("derived", False)),
+                    comment=t.get("comment", ""),
+                )
+            )
 
     rules = []
     for r in raw_r.get("rules") or []:
         rules.append(_validate_rule(r, tables))
 
     cfg = DatagenConfig(
-        seed=int(g["seed"]), window_days=int(g["window_days"]), batch_size=int(g["batch_size"]),
-        target_rows_total=int(g["target_rows_total"]), tables=tables, rules=rules,
-        dsn_env=g["dsn_env"], relations=raw_t.get("relations") or [],
+        seed=int(g["seed"]),
+        window_days=int(g["window_days"]),
+        batch_size=int(g["batch_size"]),
+        target_rows_total=int(g["target_rows_total"]),
+        tables=tables,
+        rules=rules,
+        dsn_env=g["dsn_env"],
+        relations=raw_t.get("relations") or [],
     )
     _validate_totals(cfg)
     return cfg
@@ -245,11 +286,16 @@ def _validate_rule(r: dict, tables: list) -> RuleSpec:
     colnames = t.col_names
     if kind != "duplicate_row" and col not in colnames:
         raise ConfigError(f"规则 {rid} 列不存在：{tname}.{col}")
-    params = {k: v for k, v in r.items()
-              if k not in ("id", "table", "column", "kind", "ratio", "anchor")}
-    rule = RuleSpec(id=rid, table=tname, kind=kind, column=col,
-                    ratio=float(r.get("ratio", 0.0)), anchor=int(r.get("anchor", 0)),
-                    params=params)
+    params = {k: v for k, v in r.items() if k not in ("id", "table", "column", "kind", "ratio", "anchor")}
+    rule = RuleSpec(
+        id=rid,
+        table=tname,
+        kind=kind,
+        column=col,
+        ratio=float(r.get("ratio", 0.0)),
+        anchor=int(r.get("anchor", 0)),
+        params=params,
+    )
     total = rule.expected_total(t)
     if rule.anchor < 0 or rule.anchor > total:
         raise ConfigError(f"规则 {rid} 锚定量 {rule.anchor} 超出期望总数 {total}")
@@ -286,6 +332,7 @@ def _validate_totals(cfg: DatagenConfig) -> None:
 
 # ---------------- 生成计划（plan dry-run） ----------------
 
+
 def compute_plan(cfg: DatagenConfig) -> dict:
     """不连库计算生成计划：表×行数×规则条数×分区数。"""
     today = run_today().isoformat()
@@ -294,20 +341,36 @@ def compute_plan(cfg: DatagenConfig) -> dict:
         rules = []
         for r in cfg.rules_of(t.name):
             total = r.expected_total(t)
-            rules.append({
-                "rule": r.id, "kind": r.kind, "column": r.column,
-                "expected": total, "anchor": r.anchor, "random": total - r.anchor,
-            })
-        entry = {"table": t.name, "rows": t.rows, "sec_level": t.sec_level,
-                 "derived": t.derived, "partitions": t.partition_count, "rules": rules}
+            rules.append(
+                {
+                    "rule": r.id,
+                    "kind": r.kind,
+                    "column": r.column,
+                    "expected": total,
+                    "anchor": r.anchor,
+                    "random": total - r.anchor,
+                }
+            )
+        entry = {
+            "table": t.name,
+            "rows": t.rows,
+            "sec_level": t.sec_level,
+            "derived": t.derived,
+            "partitions": t.partition_count,
+            "rules": rules,
+        }
         schemas.setdefault(t.schema_name, {"db": t.db, "tables": [], "rows_total": 0})
         schemas[t.schema_name]["tables"].append(entry)
         if t.is_business:
             schemas[t.schema_name]["rows_total"] += t.rows
     business_total = sum(t.rows for t in cfg.business_tables())
     return {
-        "today": today, "seed": cfg.seed, "window_days": cfg.window_days,
-        "schemas": schemas, "relations": len(cfg.relations),
-        "business_total": business_total, "target_rows_total": cfg.target_rows_total,
+        "today": today,
+        "seed": cfg.seed,
+        "window_days": cfg.window_days,
+        "schemas": schemas,
+        "relations": len(cfg.relations),
+        "business_total": business_total,
+        "target_rows_total": cfg.target_rows_total,
         "ok": business_total == cfg.target_rows_total,
     }

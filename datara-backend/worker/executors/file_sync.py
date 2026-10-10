@@ -36,11 +36,11 @@ try:
 except ImportError:  # 依赖缺失不阻断 worker 进程，执行时按 failure 留痕
     paramiko = None
 
-INSERT_BATCH = 1000        # 写端批大小（对齐 file.py/sync.py 口径）
-KILL_CHECK_BATCHES = 50    # 每隔多少批检查一次 kill 中断
-PROGRESS_BATCHES = 10      # 每隔多少批打一次进度日志
-SAMPLE_LIMIT = 1000        # 类型推断抽样行数（file_schema_preview 同口径）
-SKIP_THRESHOLD = 10 ** 15  # 坏行只计「忽略行」不断流（设计 §3.1 日志含忽略行数）
+INSERT_BATCH = 1000  # 写端批大小（对齐 file.py/sync.py 口径）
+KILL_CHECK_BATCHES = 50  # 每隔多少批检查一次 kill 中断
+PROGRESS_BATCHES = 10  # 每隔多少批打一次进度日志
+SAMPLE_LIMIT = 1000  # 类型推断抽样行数（file_schema_preview 同口径）
+SKIP_THRESHOLD = 10**15  # 坏行只计「忽略行」不断流（设计 §3.1 日志含忽略行数）
 
 # infer_schema 类型 → DDL 类型（I12；str 兜底 TEXT）
 _SQL_TYPES = {"int": "BIGINT", "float": "DOUBLE", "bool": "TINYINT(1)", "datetime": "DATETIME"}
@@ -60,15 +60,13 @@ def _stage_remote(ctx, node, remote_path: str) -> str:
         raise FileSourceError("paramiko 未安装，无法经 SFTP 拉取远端文件")
     # I12 T11 修：_connect 签名为 5 参 (host, port, user, cred, ctx)，勿传节点名
     client = _connect(node.host, node.port, node.user or "root", node.auth or "", ctx)
-    staged = "%s_filesync_%s" % (
-        ctx.instance_id, os.path.basename(remote_path.replace("\\", "/")) or "file")
+    staged = "%s_filesync_%s" % (ctx.instance_id, os.path.basename(remote_path.replace("\\", "/")) or "file")
     local_path = FILES_ROOT / staged
     try:
         sftp = client.open_sftp()
         try:
             os.makedirs(FILES_ROOT, exist_ok=True)
-            ctx.log("[file_sync] SFTP 拉取: %s@%s:%s → %s"
-                    % (node.name, node.host, remote_path, local_path))
+            ctx.log("[file_sync] SFTP 拉取: %s@%s:%s → %s" % (node.name, node.host, remote_path, local_path))
             sftp.get(remote_path, str(local_path))
         finally:
             sftp.close()
@@ -147,15 +145,19 @@ def execute(ctx) -> ExecResult:
             raise FileSourceError("未知写入模式: %s（append/overwrite/src_flag）" % write_mode)
         header_rows = max(0, _int_or(param.get("headerRows"), 1))
         spec_path, staged_rel = _resolve_source(ctx, param)
-        spec = normalize_file_params({
-            "format": file_type,
-            "path": spec_path,
-            "encoding": param.get("encoding") or "utf-8",
-            "delimiter": param.get("delimiter"),
-            "header": header_rows > 0,
-        })
-        log("[file_sync] 来源: %s（format=%s encoding=%s delimiter=%r 表头行=%d）"
-            % (spec_path, spec.format, spec.encoding, spec.delimiter, header_rows))
+        spec = normalize_file_params(
+            {
+                "format": file_type,
+                "path": spec_path,
+                "encoding": param.get("encoding") or "utf-8",
+                "delimiter": param.get("delimiter"),
+                "header": header_rows > 0,
+            }
+        )
+        log(
+            "[file_sync] 来源: %s（format=%s encoding=%s delimiter=%r 表头行=%d）"
+            % (spec_path, spec.format, spec.encoding, spec.delimiter, header_rows)
+        )
 
         # ---- 2. 抽样 + 类型推断（样本读与写读独立 iterator，样本行不占用写流） ----
         sample_it, header_names, sample_raw = _open_after_header(spec, header_rows)
@@ -168,15 +170,17 @@ def execute(ctx) -> ExecResult:
             raise FileSourceError("文件无有效列（全空行）: %s" % spec_path)
         # 列名：表头行优先（宽度按推断列对齐，缺名回退 col_N），无表头用 col_N
         columns = [
-            header_names[i] if header_names is not None and i < len(header_names) and header_names[i]
+            header_names[i]
+            if header_names is not None and i < len(header_names) and header_names[i]
             else str(inferred[i]["name"])
             for i in range(len(inferred))
         ]
         types = [str(c["type"]) for c in inferred]
         columns = _safe_columns(columns)
-        log("[file_sync] 列数=%d 抽样=%d 行；类型推断: %s"
-            % (len(columns), len(sample),
-               ", ".join("%s:%s" % (c, t) for c, t in zip(columns, types))))
+        log(
+            "[file_sync] 列数=%d 抽样=%d 行；类型推断: %s"
+            % (len(columns), len(sample), ", ".join("%s:%s" % (c, t) for c, t in zip(columns, types)))
+        )
 
         # ---- 3. 目标端解析 + 列配对（复用 sync._column_pairs：field_map 优先，同名全列兜底） ----
         writer_ds = _lookup_datasource(str(param.get("targetDs") or ""))
@@ -197,8 +201,8 @@ def execute(ctx) -> ExecResult:
         field_map = param.get("fieldMap") if isinstance(param.get("fieldMap"), list) else []
         type_of = dict(zip(columns, types))
         src_cols, dst_cols = _column_pairs(
-            [(c, "text") for c in columns], field_map, flag_column,
-            "src_flag" if write_mode == "src_flag" else "union")
+            [(c, "text") for c in columns], field_map, flag_column, "src_flag" if write_mode == "src_flag" else "union"
+        )
         col_types = [type_of.get(str(s), "str") for s in src_cols]
 
         # ---- 4. 目标端准备：auto_create 建表 / overwrite 清空 ----
@@ -221,8 +225,9 @@ def execute(ctx) -> ExecResult:
                 if write_mode == "src_flag":
                     defs.append("`%s` VARCHAR(64) NULL" % flag_column)
                 with conn.cursor() as cur:
-                    cur.execute("CREATE TABLE `%s` (%s) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4"
-                                % (table, ", ".join(defs)))
+                    cur.execute(
+                        "CREATE TABLE `%s` (%s) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4" % (table, ", ".join(defs))
+                    )
                 conn.commit()
                 log("[file_sync] 已自动建表: %s（%d 列，按文件头推断类型）" % (table, len(dst_cols)))
         if write_mode == "overwrite":
@@ -252,8 +257,7 @@ def execute(ctx) -> ExecResult:
                 rows_read += 1
                 batch.append(tuple(vals))
                 if len(batch) >= INSERT_BATCH:
-                    skipped = _insert_batch(cur, conn, table, dst_cols, batch,
-                                            SKIP_THRESHOLD, skipped, log)
+                    skipped = _insert_batch(cur, conn, table, dst_cols, batch, SKIP_THRESHOLD, skipped, log)
                     rows_written += len(batch)
                     batch_no += 1
                     batch = []
@@ -261,18 +265,18 @@ def execute(ctx) -> ExecResult:
                         log("[file_sync] 收到中断指令，写入中止（已写 %d 行）" % rows_written)
                         return ExecResult(KILL, _outputs(ctx, rows_read, rows_written, skipped), [])
                     if batch_no % PROGRESS_BATCHES == 0:
-                        log("[file_sync] 进度: 已读 %d / 已写 %d / 忽略 %d"
-                            % (rows_read, rows_written, skipped))
+                        log("[file_sync] 进度: 已读 %d / 已写 %d / 忽略 %d" % (rows_read, rows_written, skipped))
             if batch:
-                skipped = _insert_batch(cur, conn, table, dst_cols, batch,
-                                        SKIP_THRESHOLD, skipped, log)
+                skipped = _insert_batch(cur, conn, table, dst_cols, batch, SKIP_THRESHOLD, skipped, log)
                 rows_written += len(batch)
         finally:
             cur.close()
             write_raw.close()  # I12 T11 修：KILL 早退同样释放文件句柄（成功路径遍历尽后 close 幂等）
 
-        log("[file_sync] 完成: 读 %d / 写 %d / 忽略 %d（耗时 %dms）"
-            % (rows_read, rows_written, skipped, int((time.monotonic() - t0) * 1000)))
+        log(
+            "[file_sync] 完成: 读 %d / 写 %d / 忽略 %d（耗时 %dms）"
+            % (rows_read, rows_written, skipped, int((time.monotonic() - t0) * 1000))
+        )
         return ExecResult(SUCCESS, _outputs(ctx, rows_read, rows_written, skipped), [])
     except SyncFail as exc:
         log("[file_sync] 失败: %s" % exc)

@@ -33,12 +33,21 @@ def _stop(_sig, _frm):
 def gen_ecommerce(now):
     r = random.random()
     if r < 0.2:
-        return "order_pay", {"order_id": f"ord_{random.randrange(10**8):08d}", "user_id": random.choice(USERS),
-                             "goods_id": random.choice(GOODS), "amount": round(random.uniform(9.9, 999.0), 2), "ts": now}
+        return "order_pay", {
+            "order_id": f"ord_{random.randrange(10**8):08d}",
+            "user_id": random.choice(USERS),
+            "goods_id": random.choice(GOODS),
+            "amount": round(random.uniform(9.9, 999.0), 2),
+            "ts": now,
+        }
     if r < 0.8:
         return "user_click", {"user_id": random.choice(USERS), "goods_id": random.choice(GOODS), "ts": now}
-    return "cart_event", {"user_id": random.choice(USERS), "goods_id": random.choice(GOODS),
-                          "action": random.choice(["add", "add", "remove"]), "ts": now}
+    return "cart_event", {
+        "user_id": random.choice(USERS),
+        "goods_id": random.choice(GOODS),
+        "action": random.choice(["add", "add", "remove"]),
+        "ts": now,
+    }
 
 
 def gen_iot(now):
@@ -50,21 +59,30 @@ def gen_iot(now):
         return f"iot/sensor/press/{dev}", {"device": dev, "value": round(random.gauss(3.5, 0.5), 3), "ts": now}
     if r < 0.98:
         return f"iot/sensor/vib/{dev}", {"device": dev, "value": round(abs(random.gauss(0, 2)), 3), "ts": now}
-    return f"iot/alert/{dev}", {"device": dev, "ts": now,
-                                "type": random.choice(["OVERHEAT", "PRESSURE_HIGH", "VIBRATION_HIGH"])}
+    return f"iot/alert/{dev}", {
+        "device": dev,
+        "ts": now,
+        "type": random.choice(["OVERHEAT", "PRESSURE_HIGH", "VIBRATION_HIGH"]),
+    }
 
 
 def gen_visit(now):
     if random.random() < 0.2:
-        return "order_stream", {"order_id": f"o_{random.randrange(10**8):08d}", "user_id": random.choice(USERS),
-                                "amount": round(random.uniform(20, 800), 2), "ts": now}
+        return "order_stream", {
+            "order_id": f"o_{random.randrange(10**8):08d}",
+            "user_id": random.choice(USERS),
+            "amount": round(random.uniform(20, 800), 2),
+            "ts": now,
+        }
     return "user_stream", {"user_id": random.choice(USERS), "page": random.choice(PAGES), "ts": now}
 
 
 def seed_kafka(brokers, eps, duration):
     from kafka import KafkaProducer
-    p = KafkaProducer(bootstrap_servers=brokers,
-                      value_serializer=lambda v: json.dumps(v, ensure_ascii=False).encode("utf-8"))
+
+    p = KafkaProducer(
+        bootstrap_servers=brokers, value_serializer=lambda v: json.dumps(v, ensure_ascii=False).encode("utf-8")
+    )
     print(f"[seed-kafka] brokers={brokers} eps={eps}", flush=True)
     n = 0
     deadline = time.time() + duration
@@ -81,6 +99,7 @@ def seed_kafka(brokers, eps, duration):
 
 def seed_mqtt(host, port, eps, duration):
     import paho.mqtt.client as mqtt
+
     c = mqtt.Client(mqtt.CallbackAPIVersion.VERSION2)
     c.connect(host, port, keepalive=60)
     c.loop_start()
@@ -100,6 +119,7 @@ def seed_mqtt(host, port, eps, duration):
 
 def seed_redis(url, eps, duration):
     import redis
+
     r = redis.from_url(url, decode_responses=True)
     print(f"[seed-redis] url={url} eps={eps}", flush=True)
     n = 0

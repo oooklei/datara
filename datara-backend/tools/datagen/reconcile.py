@@ -38,8 +38,7 @@ def _lit(v) -> str:
 
 def _like(s: str) -> str:
     """LIKE 模式转义（MySQL 默认转义符为反斜杠）。"""
-    return (s.replace("\\", "\\\\").replace("%", "\\%")
-             .replace("_", "\\_").replace("'", "''"))
+    return s.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_").replace("'", "''")
 
 
 def _fk_col(cfg: DatagenConfig, table_name: str, parent: str) -> str:
@@ -59,11 +58,11 @@ def rule_sql(cfg: DatagenConfig, t: TableSpec, r: RuleSpec, blocks: dict) -> dic
         sql = f"SELECT COUNT(*) FROM {t.name} a JOIN {t.name} b ON b.{pk} = a.{pk} + 1 WHERE {eq}"
         anchor_sql = None
         if r.anchor:  # 锚定重复对 = (PK2, PK3)，恰 1 对
-            anchor_sql = (f"SELECT COUNT(*) FROM {t.name} a JOIN {t.name} b ON b.{pk} = a.{pk} + 1 "
-                          f"WHERE a.{pk} = 2 AND {eq}")
+            anchor_sql = (
+                f"SELECT COUNT(*) FROM {t.name} a JOIN {t.name} b ON b.{pk} = a.{pk} + 1 WHERE a.{pk} = 2 AND {eq}"
+            )
     elif r.kind == "phone_pair":
-        sql = (f"SELECT COUNT(*) FROM (SELECT {col} FROM {t.name} "
-               f"GROUP BY {col} HAVING COUNT(*) > 1) g")
+        sql = f"SELECT COUNT(*) FROM (SELECT {col} FROM {t.name} GROUP BY {col} HAVING COUNT(*) > 1) g"
         anchor_sql = None  # 结构型规则不占锚定块
     else:
         join, where = "", ""
@@ -126,9 +125,10 @@ def run_verify(cfg: DatagenConfig, log=print) -> dict:
     today = run_today()
     report = {
         "generated_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-        "mode": "gen", "seed": cfg.seed, "run_date": today.isoformat(),
-        "window": {"from": (today - timedelta(days=cfg.window_days - 1)).isoformat(),
-                   "to": today.isoformat()},
+        "mode": "gen",
+        "seed": cfg.seed,
+        "run_date": today.isoformat(),
+        "window": {"from": (today - timedelta(days=cfg.window_days - 1)).isoformat(), "to": today.isoformat()},
         "databases": {},
     }
     conns = {"src": connect(cfg.dsn("src")), "dw": connect(cfg.dsn("dw"))}
@@ -139,22 +139,34 @@ def run_verify(cfg: DatagenConfig, log=print) -> dict:
             db_name = cfg.dsn(db_key)["db"]
             for schema_name in sorted({t.schema_name for t in cfg.tables if t.db == db_key}):
                 tables_of = [t for t in cfg.tables if t.schema_name == schema_name]
-                entry = {"dsn": {"host": cfg.dsn(db_key)["host"], "db": db_name},
-                         "tables": [], "partitions": [], "rules": []}
+                entry = {
+                    "dsn": {"host": cfg.dsn(db_key)["host"], "db": db_name},
+                    "tables": [],
+                    "partitions": [],
+                    "rules": [],
+                }
                 for t in tables_of:
                     actual = _check(cur, f"SELECT COUNT(*) FROM {t.name}")
-                    entry["tables"].append({"table": t.name, "expected": t.rows,
-                                            "actual": actual, "pass": actual == t.rows})
+                    entry["tables"].append(
+                        {"table": t.name, "expected": t.rows, "actual": actual, "pass": actual == t.rows}
+                    )
                     if actual != t.rows:
                         mismatch.append(f"{schema_name}.{t.name} 行数 {actual} != {t.rows}")
                     if t.is_partitioned:
                         cur.execute(
                             "SELECT COUNT(*) FROM information_schema.PARTITIONS "
                             "WHERE TABLE_SCHEMA = %s AND TABLE_NAME = %s AND PARTITION_NAME IS NOT NULL",
-                            (db_name, t.name))
+                            (db_name, t.name),
+                        )
                         pactual = cur.fetchone()[0]
-                        entry["partitions"].append({"table": t.name, "expected": t.partition_count,
-                                                    "actual": pactual, "pass": pactual == t.partition_count})
+                        entry["partitions"].append(
+                            {
+                                "table": t.name,
+                                "expected": t.partition_count,
+                                "actual": pactual,
+                                "pass": pactual == t.partition_count,
+                            }
+                        )
                         if pactual != t.partition_count:
                             mismatch.append(f"{schema_name}.{t.name} 分区数 {pactual} != {t.partition_count}")
                 for t in tables_of:
@@ -164,8 +176,15 @@ def run_verify(cfg: DatagenConfig, log=print) -> dict:
                         sqls = rule_sql(cfg, t, r, blocks)
                         expected = r.expected_total(t)
                         actual = _check(cur, sqls["actual"])
-                        item = {"rule": r.id, "kind": r.kind, "table": t.name, "column": r.column,
-                                "expected": expected, "actual": actual, "pass": actual == expected}
+                        item = {
+                            "rule": r.id,
+                            "kind": r.kind,
+                            "table": t.name,
+                            "column": r.column,
+                            "expected": expected,
+                            "actual": actual,
+                            "pass": actual == expected,
+                        }
                         if sqls["note"]:
                             item["note"] = sqls["note"]
                         if actual != expected:
@@ -182,8 +201,7 @@ def run_verify(cfg: DatagenConfig, log=print) -> dict:
                     "rows": sum(x["actual"] for x in entry["tables"]),
                     "partitions": len(entry["partitions"]),
                     "rules": len(entry["rules"]),
-                    "mismatch": sum(1 for x in entry["tables"] + entry["partitions"] + entry["rules"]
-                                    if not x["pass"]),
+                    "mismatch": sum(1 for x in entry["tables"] + entry["partitions"] + entry["rules"] if not x["pass"]),
                 }
                 if db_key == "src":
                     biz = sum(x["actual"] for x, t in zip(entry["tables"], tables_of) if t.is_business)
@@ -196,16 +214,23 @@ def run_verify(cfg: DatagenConfig, log=print) -> dict:
         for c in conns.values():
             c.close()
 
-    report["summary"] = {"mismatch": len(mismatch), "mismatch_detail": mismatch[:20],
-                         "status": "PASS" if not mismatch else "FAIL"}
+    report["summary"] = {
+        "mismatch": len(mismatch),
+        "mismatch_detail": mismatch[:20],
+        "status": "PASS" if not mismatch else "FAIL",
+    }
     write_report(report, log)
     _write_verify_sql(cfg)
     for schema_name, entry in report["databases"].items():
         s = entry["summary"]
-        log(f"[verify] {schema_name}: 表 {s['tables']} 行 {s['rows']:,} "
-            f"分区 {s['partitions']} 规则 {s['rules']} 失配 {s['mismatch']}")
-    log(f"[verify] 对账结论：{report['summary']['status']}"
-        + (f"（{len(mismatch)} 项失配）" if mismatch else "（expected = actual 全部严格相等）"))
+        log(
+            f"[verify] {schema_name}: 表 {s['tables']} 行 {s['rows']:,} "
+            f"分区 {s['partitions']} 规则 {s['rules']} 失配 {s['mismatch']}"
+        )
+    log(
+        f"[verify] 对账结论：{report['summary']['status']}"
+        + (f"（{len(mismatch)} 项失配）" if mismatch else "（expected = actual 全部严格相等）")
+    )
     log(f"[verify] 报告：{REPORT_DIR / 'reconcile.json'}")
     return report
 
@@ -234,8 +259,7 @@ def build_verify_sql(cfg: DatagenConfig) -> str:
         "-- ============================================================",
         "-- I2 reconcile 核对 SQL 清单（1.9 实测门 #4/#5/#7 比对依据）",
         f"-- 生成时间 {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}  seed={cfg.seed}",
-        f"-- 窗口 T-89~T = {(today - timedelta(days=cfg.window_days - 1)).isoformat()}"
-        f" ~ {today.isoformat()}",
+        f"-- 窗口 T-89~T = {(today - timedelta(days=cfg.window_days - 1)).isoformat()} ~ {today.isoformat()}",
         "-- 用法：SRC 段在容器 datara-mysql-src 执行；DW 段在容器 datara-mysql-dw 执行",
         "-- ============================================================",
         "",
@@ -246,14 +270,15 @@ def build_verify_sql(cfg: DatagenConfig) -> str:
     ]
     src_tables = [t for t in cfg.tables if t.db == "src"]
     for t in src_tables:
-        L.append(f"SELECT '{t.name}' AS tbl, COUNT(*) AS rows_cnt FROM {t.name};"
-                 f"  -- expect {t.rows:,}")
+        L.append(f"SELECT '{t.name}' AS tbl, COUNT(*) AS rows_cnt FROM {t.name};  -- expect {t.rows:,}")
     L += ["", "-- B. 分区数（90 日 + pmax = 91）"]
     for t in src_tables:
         if t.is_partitioned:
-            L.append("SELECT COUNT(*) AS part_cnt FROM information_schema.PARTITIONS "
-                     f"WHERE TABLE_SCHEMA = '{t.schema_name}' AND TABLE_NAME = '{t.name}' "
-                     "AND PARTITION_NAME IS NOT NULL;  -- expect 91")
+            L.append(
+                "SELECT COUNT(*) AS part_cnt FROM information_schema.PARTITIONS "
+                f"WHERE TABLE_SCHEMA = '{t.schema_name}' AND TABLE_NAME = '{t.name}' "
+                "AND PARTITION_NAME IS NOT NULL;  -- expect 91"
+            )
     L += ["", "-- C. 锚定段断言（PK 区间 + 谓词，不受 seed 漂移影响）"]
     for t in src_tables:
         rules = cfg.rules_of(t.name)
@@ -286,8 +311,7 @@ def build_verify_sql(cfg: DatagenConfig) -> str:
         "  -- expect total=1,500 ok=1,500（100% 合规）",
         "SELECT COUNT(*) AS total, SUM(credit_code REGEXP '^91[0-9]{16}$') AS ok "
         "FROM sec_supplier_contract;  -- expect total=3,000 ok=3,000（100% 合规）",
-        "SELECT COUNT(*) AS dw_base FROM ods_order_item;"
-        "  -- F 基准：dw 明细宽表行数应等于此值（400,000）",
+        "SELECT COUNT(*) AS dw_base FROM ods_order_item;  -- F 基准：dw 明细宽表行数应等于此值（400,000）",
         "",
         "-- ############ DW（容器 datara-mysql-dw / 库 datara_dw） ############",
         "USE datara_dw;",

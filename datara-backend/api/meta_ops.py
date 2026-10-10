@@ -103,8 +103,7 @@ def table_ddl(
     try:
         with conn.cursor() as cur:
             cur.execute(
-                "SELECT TABLE_TYPE FROM INFORMATION_SCHEMA.TABLES "
-                "WHERE TABLE_SCHEMA = %s AND TABLE_NAME = %s",
+                "SELECT TABLE_TYPE FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_SCHEMA = %s AND TABLE_NAME = %s",
                 (db_name, table_name),
             )
             row = cur.fetchone()
@@ -199,7 +198,13 @@ def table_audit(
     passed = not any(c["level"] == "block" for c in checks)
     logger.info(
         "表稽核: ds=%s %s.%s op=%s → pass=%s checks=%d（操作人 %s）",
-        ds.name, body.db, body.tb, body.op, passed, len(checks), user.user_name,
+        ds.name,
+        body.db,
+        body.tb,
+        body.op,
+        passed,
+        len(checks),
+        user.user_name,
     )
     return ok({"pass": passed, "checks": checks})
 
@@ -294,9 +299,7 @@ def table_rows_apply(
                         raise ValueError("更新行缺少主键或变更值")
                     sets = ", ".join(f"{quote_ident(k)} = %s" for k in data)
                     where = " AND ".join(f"{quote_ident(k)} = %s" for k in keys)
-                    cur.execute(
-                        f"UPDATE {q_tb} SET {sets} WHERE {where}", (*data.values(), *keys.values())
-                    )
+                    cur.execute(f"UPDATE {q_tb} SET {sets} WHERE {where}", (*data.values(), *keys.values()))
                     applied += 1
                     results.append({"op": "update", "index": i, "ok": True, "affected": cur.rowcount})
                 for i, item in enumerate(body.inserts):
@@ -317,8 +320,15 @@ def table_rows_apply(
         conn.close()
     logger.info(
         "编辑数据应用: ds=%s %s.%s 增/改/删=%d/%d/%d → %s applied=%d（操作人 %s）",
-        ds.name, db_name, table_name, len(body.inserts), len(body.updates), len(body.deletes),
-        status, applied, user.user_name,
+        ds.name,
+        db_name,
+        table_name,
+        len(body.inserts),
+        len(body.updates),
+        len(body.deletes),
+        status,
+        applied,
+        user.user_name,
     )
     return ok({"status": status, "applied": applied, "error": error_msg, "results": results})
 
@@ -373,9 +383,7 @@ async def import_csv(
             break
     del text, raw  # 大字符串及时释放
     if over_cap:
-        raise ApiError(
-            PARAM_INVALID, f"数据行超过导入上限 {IMPORT_ROW_CAP} 行（裁定③）", status=400
-        )
+        raise ApiError(PARAM_INVALID, f"数据行超过导入上限 {IMPORT_ROW_CAP} 行（裁定③）", status=400)
     if has_header:
         if not rows:
             raise ApiError(PARAM_INVALID, "CSV 文件为空", status=400)
@@ -407,8 +415,7 @@ async def import_csv(
     try:
         with conn.cursor() as cur:
             cur.execute(
-                "SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS "
-                "WHERE TABLE_SCHEMA = %s AND TABLE_NAME = %s",
+                "SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = %s AND TABLE_NAME = %s",
                 (db_name, table_name),
             )
             table_cols = {r[0] for r in cur.fetchall()}
@@ -424,10 +431,8 @@ async def import_csv(
             try:
                 for start in range(0, len(data_rows), IMPORT_BATCH):
                     batch = []
-                    for r in data_rows[start:start + IMPORT_BATCH]:
-                        batch.append(
-                            [_jsonable(r[i]) if i < len(r) else None for i in col_idx]
-                        )
+                    for r in data_rows[start : start + IMPORT_BATCH]:
+                        batch.append([_jsonable(r[i]) if i < len(r) else None for i in col_idx])
                     cur.executemany(sql, batch)
                     inserted += len(batch)
                 conn.commit()
@@ -438,6 +443,11 @@ async def import_csv(
         conn.close()
     logger.info(
         "CSV 导入: ds=%s %s.%s 映射=%d 列 行数=%d（操作人 %s）",
-        ds.name, db_name, table_name, len(target_cols), inserted, user.user_name,
+        ds.name,
+        db_name,
+        table_name,
+        len(target_cols),
+        inserted,
+        user.user_name,
     )
     return ok({"imported": inserted, "columns": target_cols})

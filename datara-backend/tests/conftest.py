@@ -73,5 +73,4 @@ def client(db_session):
 
 def set_role(app, role: str) -> None:
     """切换当前注入用户角色（权限矩阵用例）。"""
-    app.dependency_overrides[get_current_user] = lambda: SimpleNamespace(
-        id=1, user_name="tester", user_role=role)
+    app.dependency_overrides[get_current_user] = lambda: SimpleNamespace(id=1, user_name="tester", user_role=role)

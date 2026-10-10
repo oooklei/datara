@@ -53,8 +53,9 @@ def _probe_round(streaks: dict) -> None:
                 n = streaks.get(node.id, 0) + 1
                 streaks[node.id] = n
                 if n >= OFFLINE_STREAK and node.heartbeat_state != "offline":
-                    logger.warning("SSH 节点连续 %d 次探活失败置 offline: %s (%s:%s) — %s",
-                                   n, node.name, node.host, node.port, msg)
+                    logger.warning(
+                        "SSH 节点连续 %d 次探活失败置 offline: %s (%s:%s) — %s", n, node.name, node.host, node.port, msg
+                    )
                     node.heartbeat_state = "offline"
                 elif n == 1:
                     logger.warning("SSH 节点探活失败（1/%d）: %s — %s", OFFLINE_STREAK, node.name, msg)

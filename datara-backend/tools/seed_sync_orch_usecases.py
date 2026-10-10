@@ -5,14 +5,18 @@
 工作流结构（端点合一新拓扑，设计态画布不含执行组件；master 装载 doc 时
 materialize_sync_exec 在 assert 入边处自动物化 sys_exec 执行节点，执行类型按
 endpoint_select.baseMode 分拣，配置沿入边向上合并进执行参数）：
-  源表基准：start → sql(清理) → endpoint_select(src_base) → field_map → condition_set → assert → end（不通过→notify）
-  目标表基准：start → sql(清理) → endpoint_select(tgt_base) → field_map_union → condition_set → assert → end（不通过→notify）
-  文件同步：start → sql(清理) → endpoint_select(file_sync) → field_map → condition_set → assert → end（不通过→notify）
+  源表基准：start → sql(清理) → endpoint_select(src_base) → field_map
+            → condition_set → assert → end（不通过→notify）
+  目标表基准：start → sql(清理) → endpoint_select(tgt_base) → field_map_union
+              → condition_set → assert → end（不通过→notify）
+  文件同步：start → sql(清理) → endpoint_select(file_sync) → field_map
+            → condition_set → assert → end（不通过→notify）
 
 幂等可重跑：多 schema 数据每次重置为各 5 行；用例先删后建保证最新图。
 用法（服务器/容器内，需能连 MySQL）：
   python tools/seed_sync_orch_usecases.py
 """
+
 import json
 
 from sqlalchemy import func
@@ -28,13 +32,19 @@ TAGS = ["同步"]
 # 旧同步类节点 type 全集（已废弃的专业组件 + 旧单节点执行器 + 旧细项端点）：graph 命中即删。
 # 注：field_map/field_map_union/condition_set 为端点合一新拓扑仍在用的配置组件，不在清理范围
 OLD_NODE_TYPES = {
-    "sync", "sync_template", "file_sync",
-    "src_base_orchestration", "tgt_base_orchestration", "file_sync_orchestration",
-    "src_select", "tgt_select",
+    "sync",
+    "sync_template",
+    "file_sync",
+    "src_base_orchestration",
+    "tgt_base_orchestration",
+    "file_sync_orchestration",
+    "src_select",
+    "tgt_select",
 }
 
 
 # ---------- GraphDocument 构建 ----------
+
 
 def node(uid, ntype, name, data, x=0, y=100):
     item = {"id": uid, "type": ntype, "position": {"x": x, "y": y}, "data": dict(data)}
@@ -66,86 +76,150 @@ def chain_doc(wf_id, name, middle):
         nodes.append(item)
         x += 220
     nodes.append(node("nd_end", "end", "结束", {}, x))
-    nodes.append(node("nd_notify", "notify", "消息通知",
-                      {"template": "同步对账未通过"}, x, 260))
+    nodes.append(node("nd_notify", "notify", "消息通知", {"template": "同步对账未通过"}, x, 260))
     edges = []
     for i in range(len(nodes) - 3):  # 主链线性连线：start → … → assert（末两位 end/notify 走分支出边）
         # 端点选择双输出口（§3.2）：ep→map 主链边与用户从源端表口拖边同形态，edge↔inputs 自洽
         # （UI 删边时 onEdgeRemoved 按 "nd_ep:sourceRef" 清引用）；flow 边 sourceHandle 运行时不被引擎消费
-        edges.append(edge(nodes[i]["id"], nodes[i + 1]["id"],
-                          "sourceRef" if nodes[i]["type"] == "endpoint_select" else None))
+        edges.append(
+            edge(nodes[i]["id"], nodes[i + 1]["id"], "sourceRef" if nodes[i]["type"] == "endpoint_select" else None)
+        )
     edges.append(edge("nd_assert", "nd_end", "success", "branch_true", "通过"))
     edges.append(edge("nd_assert", "nd_notify", "failure", "branch_false", "不通过"))
-    return {"id": wf_id, "name": name, "version": 1, "meta": {"profile": "dag"},
-            "nodes": nodes, "edges": edges}
+    return {"id": wf_id, "name": name, "version": 1, "meta": {"profile": "dag"}, "nodes": nodes, "edges": edges}
 
 
 def sql_cleanup(table):
     """前置清理节点（数仓 DROP 目标表，配合执行节点 autoCreate 重建）。"""
-    return node("nd_prep", "sql", "前置清理", {
-        "datasource": DW_DS, "pre": "", "post": "",
-        "sql": "DROP TABLE IF EXISTS %s" % table,
-    })
+    return node(
+        "nd_prep",
+        "sql",
+        "前置清理",
+        {
+            "datasource": DW_DS,
+            "pre": "",
+            "post": "",
+            "sql": "DROP TABLE IF EXISTS %s" % table,
+        },
+    )
 
 
 def assert_node():
-    return node("nd_assert", "assert", "对账校验", {
-        "assertSrc": "upstream",
-        "rules": [{"key": "rows", "value": "min=1"}],
-        # onFail=warn 告警继续：不达标走「不通过」出口触发通知不断流；engine 缺省 fail 会使节点 FAILURE、下游全跳过，notify 分支永不激活，勿改回 fail
-        "onFail": "warn",
-    })
+    return node(
+        "nd_assert",
+        "assert",
+        "对账校验",
+        {
+            "assertSrc": "upstream",
+            "rules": [{"key": "rows", "value": "min=1"}],
+            # onFail=warn：不达标走「不通过」出口触发通知但不断流。
+            # engine 缺省 fail 会使节点 FAILURE、下游全跳过，notify 分支永不激活，勿改回 fail。
+            "onFail": "warn",
+        },
+    )
 
 
 def doc_src_base(wf_id):
     """源表基准：endpoint_select(src_base) 单端点（源表精确 + 目标端 autoCreate），
     运行时物化 sync 执行（filterExpr → readerWhere 过滤）。"""
-    return chain_doc(wf_id, "源表基准同步编排用例", [
-        sql_cleanup("ods_order_sync"),
-        node("nd_ep", "endpoint_select", "端点选择", {
-            "baseMode": "src_base", "srcDs": SRC_DS, "srcTable": "ods_order",
-            "tgtDs": DW_DS, "tgtTable": "ods_order_sync", "autoCreate": True}),
-        node("nd_map", "field_map", "字段映射-复制",
-             {"inputs": ["nd_ep:sourceRef"], "fieldMap": []}),
-        node("nd_cond", "condition_set", "条件设定",
-             {"inputs": ["nd_map:"], "filterExpr": "status = 'PAID'"}),
-        assert_node(),
-    ])
+    return chain_doc(
+        wf_id,
+        "源表基准同步编排用例",
+        [
+            sql_cleanup("ods_order_sync"),
+            node(
+                "nd_ep",
+                "endpoint_select",
+                "端点选择",
+                {
+                    "baseMode": "src_base",
+                    "srcDs": SRC_DS,
+                    "srcTable": "ods_order",
+                    "tgtDs": DW_DS,
+                    "tgtTable": "ods_order_sync",
+                    "autoCreate": True,
+                },
+            ),
+            node("nd_map", "field_map", "字段映射-复制", {"inputs": ["nd_ep:sourceRef"], "fieldMap": []}),
+            node("nd_cond", "condition_set", "条件设定", {"inputs": ["nd_map:"], "filterExpr": "status = 'PAID'"}),
+            assert_node(),
+        ],
+    )
 
 
 def doc_tgt_base(wf_id):
     """目标表基准：endpoint_select(tgt_base) probeResult 数组直写 3 个源 schema，
     运行时物化 sync 执行 + field_map_union 加 schema 标识列（→ src_flag）。"""
-    return chain_doc(wf_id, "目标表基准同步编排用例", [
-        sql_cleanup("ods_order_multi"),
-        node("nd_ep", "endpoint_select", "端点选择", {
-            "baseMode": "tgt_base", "srcDs": SRC_DS, "probe": True, "matchType": "exact",
-            "tgtDs": DW_DS, "tgtTable": "ods_order_multi",
-            "probeResult": [{"schema": "ec_retail", "table": "ods_order"},
-                            {"schema": "ec_retail_east", "table": "ods_order"},
-                            {"schema": "ec_retail_south", "table": "ods_order"}]}),
-        node("nd_map", "field_map_union", "字段映射-联合",
-             {"inputs": ["nd_ep:sourceRef"], "fieldMap": [], "addSchemaFlag": True,
-              "srcSchemaField": "src_schema", "aggOperator": "union_all"}),
-        node("nd_cond", "condition_set", "条件设定", {"inputs": ["nd_map:"]}),
-        assert_node(),
-    ])
+    return chain_doc(
+        wf_id,
+        "目标表基准同步编排用例",
+        [
+            sql_cleanup("ods_order_multi"),
+            node(
+                "nd_ep",
+                "endpoint_select",
+                "端点选择",
+                {
+                    "baseMode": "tgt_base",
+                    "srcDs": SRC_DS,
+                    "probe": True,
+                    "matchType": "exact",
+                    "tgtDs": DW_DS,
+                    "tgtTable": "ods_order_multi",
+                    "probeResult": [
+                        {"schema": "ec_retail", "table": "ods_order"},
+                        {"schema": "ec_retail_east", "table": "ods_order"},
+                        {"schema": "ec_retail_south", "table": "ods_order"},
+                    ],
+                },
+            ),
+            node(
+                "nd_map",
+                "field_map_union",
+                "字段映射-联合",
+                {
+                    "inputs": ["nd_ep:sourceRef"],
+                    "fieldMap": [],
+                    "addSchemaFlag": True,
+                    "srcSchemaField": "src_schema",
+                    "aggOperator": "union_all",
+                },
+            ),
+            node("nd_cond", "condition_set", "条件设定", {"inputs": ["nd_map:"]}),
+            assert_node(),
+        ],
+    )
 
 
 def doc_file_sync(wf_id):
     """文件同步：endpoint_select(file_sync) 文件源细项键直写，
     运行时物化 file_sync 执行入仓。"""
-    return chain_doc(wf_id, "文件同步编排用例", [
-        sql_cleanup("ods_order_file"),
-        node("nd_ep", "endpoint_select", "端点选择", {
-            "baseMode": "file_sync", "filePath": "samples/orders_part.csv", "fileType": "csv",
-            "fileDelimiter": ",", "fileEncoding": "utf-8", "fileHeaderRows": 1,
-            "tgtDs": DW_DS, "tgtTable": "ods_order_file", "autoCreate": True}),
-        node("nd_map", "field_map", "字段映射-复制",
-             {"inputs": ["nd_ep:sourceRef"], "fieldMap": []}),
-        node("nd_cond", "condition_set", "条件设定", {"inputs": ["nd_map:"]}),
-        assert_node(),
-    ])
+    return chain_doc(
+        wf_id,
+        "文件同步编排用例",
+        [
+            sql_cleanup("ods_order_file"),
+            node(
+                "nd_ep",
+                "endpoint_select",
+                "端点选择",
+                {
+                    "baseMode": "file_sync",
+                    "filePath": "samples/orders_part.csv",
+                    "fileType": "csv",
+                    "fileDelimiter": ",",
+                    "fileEncoding": "utf-8",
+                    "fileHeaderRows": 1,
+                    "tgtDs": DW_DS,
+                    "tgtTable": "ods_order_file",
+                    "autoCreate": True,
+                },
+            ),
+            node("nd_map", "field_map", "字段映射-复制", {"inputs": ["nd_ep:sourceRef"], "fieldMap": []}),
+            node("nd_cond", "condition_set", "条件设定", {"inputs": ["nd_map:"]}),
+            assert_node(),
+        ],
+    )
 
 
 WORKFLOWS = [
@@ -157,15 +231,12 @@ WORKFLOWS = [
 
 # ---------- 数据预置 / 清理 / 建流 ----------
 
+
 def preset_schemas():
     """源库预置 ec_retail_east/south 多 schema 测试数据（幂等：每次重置为各 5 行）。"""
     session = new_session()
     try:
-        ds = (
-            session.query(DataSource)
-            .filter(DataSource.name.like("%源库%"), DataSource.type == "mysql")
-            .first()
-        )
+        ds = session.query(DataSource).filter(DataSource.name.like("%源库%"), DataSource.type == "mysql").first()
     finally:
         session.close()
     if ds is None:
@@ -218,16 +289,30 @@ def create_workflows(db, owner_id=1):
             _delete_wf(db, old)
         code = (db.query(func.max(WfDefinition.code)).scalar() or 0) + 1
         graph_json = json.dumps(builder(wf_id), ensure_ascii=False)
-        db.add(WfDefinition(
-            id=wf_id, code=code, name=name, version=1, release_state="offline",
-            flag="yes", project_code="default", tags=TAGS,
-            graph_json=graph_json, owner_id=owner_id,
-        ))
+        db.add(
+            WfDefinition(
+                id=wf_id,
+                code=code,
+                name=name,
+                version=1,
+                release_state="offline",
+                flag="yes",
+                project_code="default",
+                tags=TAGS,
+                graph_json=graph_json,
+                owner_id=owner_id,
+            )
+        )
         db.flush()
-        db.add(WfDefinitionLog(
-            wf_code=code, version=1, graph_json=graph_json,
-            operator="seed", remark="同步编排端点合一用例（配置链，执行节点运行态物化）",
-        ))
+        db.add(
+            WfDefinitionLog(
+                wf_code=code,
+                version=1,
+                graph_json=graph_json,
+                operator="seed",
+                remark="同步编排端点合一用例（配置链，执行节点运行态物化）",
+            )
+        )
         created += 1
         print("[seed-orch] 已创建: %s %s (code=%s)" % (wf_id, name, code))
     db.commit()
@@ -243,8 +328,7 @@ def main():
         deleted = delete_old_workflows(db)
         created = create_workflows(db)
         total = db.query(func.count(WfDefinition.id)).scalar()
-        print("[seed-orch] 完成: 删除旧流 %d 个，新建用例 %d 个，当前工作流总数 %d"
-              % (deleted, created, total))
+        print("[seed-orch] 完成: 删除旧流 %d 个，新建用例 %d 个，当前工作流总数 %d" % (deleted, created, total))
     except Exception:
         db.rollback()
         raise

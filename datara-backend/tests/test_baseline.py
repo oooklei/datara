@@ -29,7 +29,8 @@ from common.models import BaselineProgress, Component, ComponentLog, ComponentVe
 def set_role(client, role: str) -> None:
     """切换注入用户角色（conftest.set_role 的 client 便捷版；权限矩阵用例）。"""
     client.app.dependency_overrides[get_current_user] = lambda: SimpleNamespace(
-        id=1, user_name="tester", user_role=role)
+        id=1, user_name="tester", user_role=role
+    )
 
 
 # ---------------- 测试底稿 ----------------
@@ -42,28 +43,40 @@ def _legal_spec() -> dict:
             "inputs": [{"key": "sql_text", "label": "SQL 语句", "uiType": "text"}],
             "outputs": [{"key": "out_rows", "label": "输出行", "uiType": "number"}],
             "params": [{"key": "timeout", "label": "超时秒数", "uiType": "number"}],
-            "conditions": [], "constraints": [], "exclusions": [], "refs": [],
+            "conditions": [],
+            "constraints": [],
+            "exclusions": [],
+            "refs": [],
             "exports": [{"key": "rows", "from": "result"}],
         },
-        "lineage": {"assets": [
-            {"role": "source", "pick": "sql_text", "assetType": "table"},
-            {"role": "target", "pick": "out_rows", "assetType": "table"},
-        ]},
+        "lineage": {
+            "assets": [
+                {"role": "source", "pick": "sql_text", "assetType": "table"},
+                {"role": "target", "pick": "out_rows", "assetType": "table"},
+            ]
+        },
     }
 
 
 def _logic_spec() -> dict:
     """逻辑控制类（start，executor 空）底稿：lineage_decl 豁免，contract 报红但不拦截。"""
     return {
-        "form": {"inputs": [], "outputs": [], "params": [], "conditions": [],
-                 "constraints": [], "exclusions": [], "refs": [], "exports": []},
+        "form": {
+            "inputs": [],
+            "outputs": [],
+            "params": [],
+            "conditions": [],
+            "constraints": [],
+            "exclusions": [],
+            "refs": [],
+            "exports": [],
+        },
         "lineage": {"assets": []},
     }
 
 
 def _save_draft(client, type_name: str, spec: dict, draft_rev: int = 0):
-    return client.put("/api/v1/components/baseline/%s/draft" % type_name,
-                      json={"draft_rev": draft_rev, "spec": spec})
+    return client.put("/api/v1/components/baseline/%s/draft" % type_name, json={"draft_rev": draft_rev, "spec": spec})
 
 
 # ---------------- 进度清单 ----------------
@@ -157,9 +170,19 @@ def test_check_legal_draft_all_green(client, db_session):
 
 def test_check_reports_violations_without_blocking(client, db_session):
     """form 多余键 + 执行类无血缘：体检报红，但 HTTP 仍 200 且状态不变。"""
-    bad = {"form": {"inputs": [], "outputs": [], "params": [], "conditions": [],
-                    "constraints": [], "exclusions": [], "refs": [], "exports": [],
-                    "extra_key": 1}}
+    bad = {
+        "form": {
+            "inputs": [],
+            "outputs": [],
+            "params": [],
+            "conditions": [],
+            "constraints": [],
+            "exclusions": [],
+            "refs": [],
+            "exports": [],
+            "extra_key": 1,
+        }
+    }
     assert _save_draft(client, "sql", bad).status_code == 200
     r = client.post("/api/v1/components/baseline/sql/check")
     assert r.status_code == 200, "体检只报告不拦截"
@@ -355,8 +378,7 @@ def test_publish_revision_creates_v2(client, db_session):
     # DB 层：主表版本指针推进 v2；修订 log（action=publish, version=2，带 remark/hash）
     comp = db_session.query(Component).filter_by(type="sql").one()
     assert comp.published_version == 2
-    log = db_session.query(ComponentLog).filter_by(
-        component_id=comp.id, action="publish", version=2).one()
+    log = db_session.query(ComponentLog).filter_by(component_id=comp.id, action="publish", version=2).one()
     assert log.remark == "修订发布" and log.spec_hash == d["specHash"]
     # 进度行 draft_rev 不重置（1→redraft 2→保存 3，修订轮连续递增）
     assert db_session.query(BaselineProgress).filter_by(type="sql").one().draft_rev == 3
@@ -380,8 +402,17 @@ def test_publish_rejected_when_user_component_occupies_type(client, db_session):
     该 type 进度 designing 时认可发版若误判为修订型会对未发版行做 published_version+1。
     """
     set_role(client, "admin")
-    db_session.add(Component(type="sql", name="冒名 sql", profile="dag", scope="user",
-                             execution_model="dag-engine", state="draft", published_version=None))
+    db_session.add(
+        Component(
+            type="sql",
+            name="冒名 sql",
+            profile="dag",
+            scope="user",
+            execution_model="dag-engine",
+            state="draft",
+            published_version=None,
+        )
+    )
     db_session.commit()
     assert _save_draft(client, "sql", _legal_spec()).status_code == 200
     r = _publish(client, "sql")

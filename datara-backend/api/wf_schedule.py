@@ -115,12 +115,7 @@ def list_schedules(
 ):
     """某工作流的定时列表（倒序）。"""
     definition = _resolve_wf(db, wf)
-    rows = (
-        db.query(WfSchedule)
-        .filter(WfSchedule.wf_code == definition.code)
-        .order_by(WfSchedule.id.desc())
-        .all()
-    )
+    rows = db.query(WfSchedule).filter(WfSchedule.wf_code == definition.code).order_by(WfSchedule.id.desc()).all()
     return ok([_payload(row) for row in rows])
 
 
@@ -148,8 +143,9 @@ def create_schedule(
     )
     db.add(schedule)
     db.commit()
-    logger.info("定时计划新建: id=%s wf=%s crontab=%s（%s）",
-                schedule.id, definition.code, schedule.crontab, user.user_name)
+    logger.info(
+        "定时计划新建: id=%s wf=%s crontab=%s（%s）", schedule.id, definition.code, schedule.crontab, user.user_name
+    )
     return ok({**_payload(schedule), "nextFireTimes": preview})
 
 
@@ -202,8 +198,9 @@ def online_schedule(
     _validate_crontab(schedule.crontab)  # 上线前再校验（防建后直改库脏数据）
     schedule.state = "online"
     db.commit()
-    logger.info("定时上线: id=%s wf=%s crontab=%s（%s）",
-                schedule.id, schedule.wf_code, schedule.crontab, user.user_name)
+    logger.info(
+        "定时上线: id=%s wf=%s crontab=%s（%s）", schedule.id, schedule.wf_code, schedule.crontab, user.user_name
+    )
     return ok(_payload(schedule))
 
 

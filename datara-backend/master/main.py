@@ -39,9 +39,7 @@ def main() -> None:
     heartbeat.start()
 
     # 内部健康 HTTP 在独立线程运行（uvicorn 非主线程自动跳过信号注册）
-    server = uvicorn.Server(
-        uvicorn.Config(create_health_app(), host="0.0.0.0", port=18001, log_level="warning")
-    )
+    server = uvicorn.Server(uvicorn.Config(create_health_app(), host="0.0.0.0", port=18001, log_level="warning"))
     health_thread = threading.Thread(target=server.run, name="master-health", daemon=True)
     health_thread.start()
 

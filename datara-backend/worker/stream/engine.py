@@ -44,10 +44,10 @@ METRICS_PREFIX = "datara:flink:metrics:"
 LOGS_PREFIX = "datara:flink:logs:"
 ALIVE_PREFIX = "datara:flink:alive:"
 ACTIVE_STATUSES = ("starting", "running", "reconnecting")
-MAX_RETRIES = 30          # 连续失败上限 → failed（实测 KRaft 冷启动恢复 >180s，10 次/190s 会在恢复期误判死）
-REAPER_INTERVAL = 30      # 收割/自愈周期（秒）
-METRICS_INTERVAL = 2      # 指标周期（秒）
-OFFSET_INTERVAL = 5       # 位点提交周期（秒）
+MAX_RETRIES = 30  # 连续失败上限 → failed（实测 KRaft 冷启动恢复 >180s，10 次/190s 会在恢复期误判死）
+REAPER_INTERVAL = 30  # 收割/自愈周期（秒）
+METRICS_INTERVAL = 2  # 指标周期（秒）
+OFFSET_INTERVAL = 5  # 位点提交周期（秒）
 
 
 class JobRuntime:
@@ -150,14 +150,22 @@ class StreamEngine:
         """查询流任务对应的 TaskLog 日志文件路径（instance_id 前缀 stream-{job_id}-）。"""
         session = new_session()
         try:
-            inst = session.query(WorkflowInstance).filter(
-                WorkflowInstance.instance_id.like(f"stream-{job_id}-%"),
-                WorkflowInstance.run_mode == "stream",
-            ).first()
+            inst = (
+                session.query(WorkflowInstance)
+                .filter(
+                    WorkflowInstance.instance_id.like(f"stream-{job_id}-%"),
+                    WorkflowInstance.run_mode == "stream",
+                )
+                .first()
+            )
             if inst:
-                log_row = session.query(TaskLog).filter(
-                    TaskLog.instance_id == inst.instance_id,
-                ).first()
+                log_row = (
+                    session.query(TaskLog)
+                    .filter(
+                        TaskLog.instance_id == inst.instance_id,
+                    )
+                    .first()
+                )
                 if log_row:
                     return log_row.log_path
         except Exception:  # noqa: BLE001
@@ -296,8 +304,12 @@ class StreamEngine:
             # 1) 本地任务对账：host/generation/status 变化（他机接管/外部停止/重启代号）→ 停本地
             for job_id, rt in list(self._jobs.items()):
                 row = session.get(StreamJob, job_id)
-                if row is None or row.host != self.identity or row.generation != rt.generation \
-                        or row.status not in ACTIVE_STATUSES:
+                if (
+                    row is None
+                    or row.host != self.identity
+                    or row.generation != rt.generation
+                    or row.status not in ACTIVE_STATUSES
+                ):
                     logger.info("流任务本地对齐停止: job=%s（宿主/代号/状态变化）", job_id)
                     rt.request_stop()
             # 2) 自愈：本机宿主但无线程（如本机重启后 recover 遗漏）→ 重新拉起
@@ -318,8 +330,9 @@ class StreamEngine:
             # 3) 失联宿主接管：alive 缺失 → 清 host，广播 start 让健康 worker 抢占
             orphans = (
                 session.query(StreamJob)
-                .filter(StreamJob.status.in_(ACTIVE_STATUSES), StreamJob.host.isnot(None),
-                        StreamJob.host != self.identity)
+                .filter(
+                    StreamJob.status.in_(ACTIVE_STATUSES), StreamJob.host.isnot(None), StreamJob.host != self.identity
+                )
                 .all()
             )
             for row in orphans:
@@ -333,8 +346,9 @@ class StreamEngine:
                 )
                 session.commit()
                 if updated:
-                    rq.get_client().publish(CTL_CHANNEL, json.dumps(
-                        {"action": "start", "jobId": row.id, "generation": row.generation}))
+                    rq.get_client().publish(
+                        CTL_CHANNEL, json.dumps({"action": "start", "jobId": row.id, "generation": row.generation})
+                    )
         finally:
             session.close()
 
@@ -377,13 +391,15 @@ class StreamEngine:
         self._log(rt.job_id, "ERROR", f"连续 {MAX_RETRIES} 次重连失败，转 failed: {err}")
         session = new_session()
         try:
-            session.add(AlertRecord(
-                instance_id=None,
-                title=f"流任务失败: {rt.spec.get('name') or rt.job_id}",
-                content=str(err)[:2000],
-                channel="system",
-                state="wait",
-            ))
+            session.add(
+                AlertRecord(
+                    instance_id=None,
+                    title=f"流任务失败: {rt.spec.get('name') or rt.job_id}",
+                    content=str(err)[:2000],
+                    channel="system",
+                    state="wait",
+                )
+            )
             session.commit()
         except Exception:  # noqa: BLE001 告警失败不阻断状态收口
             session.rollback()
@@ -403,9 +419,7 @@ class StreamEngine:
         for e in edges:
             outs.setdefault(e["source"], []).append(e["target"])
             ins.setdefault(e["target"], []).append(e["source"])
-        queues: dict[tuple, pyqueue.Queue] = {
-            (e["source"], e["target"]): pyqueue.Queue(maxsize=10000) for e in edges
-        }
+        queues: dict[tuple, pyqueue.Queue] = {(e["source"], e["target"]): pyqueue.Queue(maxsize=10000) for e in edges}
         out_queues = lambda nid: [queues[(nid, t)] for t in outs.get(nid, [])]  # noqa: E731
         in_queues = lambda nid: [queues[(s, nid)] for s in ins.get(nid, [])]  # noqa: E731
 
@@ -420,6 +434,7 @@ class StreamEngine:
             def _emit(row: dict) -> None:
                 for q in targets:
                     _put(q, row, rt)
+
             return _emit
 
         for nid, node in nodes.items():
@@ -428,24 +443,33 @@ class StreamEngine:
             if ntype == "stream_input":
                 src = build_source(nid, params)
                 sources[src.source_key] = src
-                threads.append(threading.Thread(
-                    target=self._source_loop, args=(rt, src, out_queues(nid)),
-                    name=f"flink-src-{nid}", daemon=True))
+                threads.append(
+                    threading.Thread(
+                        target=self._source_loop, args=(rt, src, out_queues(nid)), name=f"flink-src-{nid}", daemon=True
+                    )
+                )
             elif ntype == "stream_fuse":
                 op = build_op(str(params.get("fuseType") or "union"), params)
                 ops[nid] = op
                 if isinstance(op, WindowAggOp):
                     rt.window_op = op  # windowEmits 指标统计入口
                     op.bind_emit(emit_of(nid))  # 定时触发线程经同一 emit 投递聚合结果
-                threads.append(threading.Thread(
-                    target=self._fuse_loop, args=(rt, op, in_queues(nid), emit_of(nid)),
-                    name=f"flink-op-{nid}", daemon=True))
+                threads.append(
+                    threading.Thread(
+                        target=self._fuse_loop,
+                        args=(rt, op, in_queues(nid), emit_of(nid)),
+                        name=f"flink-op-{nid}",
+                        daemon=True,
+                    )
+                )
             elif ntype == "stream_output":
                 sink = build_sink(rt.job_id, nid, params)
                 sinks.append(sink)
-                threads.append(threading.Thread(
-                    target=self._sink_loop, args=(rt, sink, in_queues(nid)),
-                    name=f"flink-sink-{nid}", daemon=True))
+                threads.append(
+                    threading.Thread(
+                        target=self._sink_loop, args=(rt, sink, in_queues(nid)), name=f"flink-sink-{nid}", daemon=True
+                    )
+                )
 
         if not sources:
             raise RuntimeError("流子图缺少可用输入源")
@@ -613,8 +637,9 @@ class StreamEngine:
                     continue
                 row = session.get(StreamOffset, (rt.job_id, key))
                 if row is None:
-                    session.add(StreamOffset(job_id=rt.job_id, source_key=key,
-                                             offset_json=offset, updated_at=datetime.now()))
+                    session.add(
+                        StreamOffset(job_id=rt.job_id, source_key=key, offset_json=offset, updated_at=datetime.now())
+                    )
                 elif row.offset_json != offset:
                     row.offset_json = offset
                     row.updated_at = datetime.now()
@@ -629,16 +654,19 @@ class StreamEngine:
         try:
             client = rq.get_client()
             window_op = rt.window_op
-            client.hset(METRICS_PREFIX + str(rt.job_id), mapping={
-                "status": rt.status,
-                "ratePerSec": f"{rate:.1f}",
-                "totalIn": str(rt.total_in),
-                "totalOut": str(rt.total_out),
-                "errors": str(rt.errors),
-                "windowEmits": str(window_op.emits if window_op is not None else 0),
-                "offsets": json.dumps(rt.offsets_snapshot(), ensure_ascii=False, default=str),
-                "lastBeat": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-            })
+            client.hset(
+                METRICS_PREFIX + str(rt.job_id),
+                mapping={
+                    "status": rt.status,
+                    "ratePerSec": f"{rate:.1f}",
+                    "totalIn": str(rt.total_in),
+                    "totalOut": str(rt.total_out),
+                    "errors": str(rt.errors),
+                    "windowEmits": str(window_op.emits if window_op is not None else 0),
+                    "offsets": json.dumps(rt.offsets_snapshot(), ensure_ascii=False, default=str),
+                    "lastBeat": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                },
+            )
             client.expire(METRICS_PREFIX + str(rt.job_id), 90)
         except Exception as exc:  # noqa: BLE001 指标上报失败不阻断
             logger.warning("流指标上报失败: %r", exc)
@@ -663,10 +691,14 @@ class StreamEngine:
                 stream_status = fields["status"]
                 wi_state = _STREAM_TO_WI_STATE.get(stream_status)
                 if wi_state:
-                    inst = session.query(WorkflowInstance).filter(
-                        WorkflowInstance.instance_id.like(f"stream-{job_id}-%"),
-                        WorkflowInstance.run_mode == "stream",
-                    ).first()
+                    inst = (
+                        session.query(WorkflowInstance)
+                        .filter(
+                            WorkflowInstance.instance_id.like(f"stream-{job_id}-%"),
+                            WorkflowInstance.run_mode == "stream",
+                        )
+                        .first()
+                    )
                     if inst:
                         inst.state = wi_state
                         if wi_state in ("kill", "failure") and not inst.end_time:

@@ -58,12 +58,26 @@ FILE_NAME_PREFIX = "file:"
 
 # 跳过组：逻辑控制 + 直通无表配置 + 模板类型（components/catalog.py 口径 + condition_set 已核实无表语义；
 # page_board 虽为 passthrough，按任务裁定 D3 归 opaque 展示组件）
-SKIP_TYPES = frozenset({
-    "start", "end", "conditions", "switch", "fork", "join", "merge", "delay",
-    "dependent", "loop", "variable", "assert",
-    "condition_set",
-    "demo_pipeline", "src_base_orch", "tgt_base_orch",
-})
+SKIP_TYPES = frozenset(
+    {
+        "start",
+        "end",
+        "conditions",
+        "switch",
+        "fork",
+        "join",
+        "merge",
+        "delay",
+        "dependent",
+        "loop",
+        "variable",
+        "assert",
+        "condition_set",
+        "demo_pipeline",
+        "src_base_orch",
+        "tgt_base_orch",
+    }
+)
 
 # 端点族：持有源/目标表语义的节点（设计态 endpoint_select + 运行态 sync/file_sync 兜底）
 ENDPOINT_TYPES = frozenset({"endpoint_select", "sync", "file_sync"})
@@ -72,6 +86,7 @@ _SQL_KEYS = ("pre", "sql", "post")  # 执行顺序（sql.py：前置 → 主 →
 
 
 # ---------------- 基础工具 ----------------
+
 
 def _node_id(node: dict) -> str:
     """节点 id（真实结构 id；兼容任务口径 nodeId 别名）。"""
@@ -97,8 +112,7 @@ def _safe_int(v) -> int:
 def _split_table(v) -> tuple:
     """表取值拆分：str（"tbl" 或 "schema.tbl"）或 {schema, table} 对象 → (schema, table)。"""
     if isinstance(v, dict):
-        return (str(v.get("schema") or "").strip().strip("`"),
-                str(v.get("table") or "").strip().strip("`"))
+        return (str(v.get("schema") or "").strip().strip("`"), str(v.get("table") or "").strip().strip("`"))
     text = str(v or "").strip().strip("`")
     if "." in text:
         schema, name = text.split(".", 1)
@@ -155,25 +169,45 @@ def _probe_tables(raw) -> list:
     return out
 
 
-def _t_edge(wf_code: int, node_id: str, from_table: str, to_table: str,
-            stmt_no: int = 0) -> dict:
-    return {"wf_code": wf_code, "instance_id": 0, "node_id": node_id,
-            "stmt_no": stmt_no, "from_table": from_table, "to_table": to_table,
-            "tmp_flag": 0, "src_type": SRC_TYPE_DESIGN}
+def _t_edge(wf_code: int, node_id: str, from_table: str, to_table: str, stmt_no: int = 0) -> dict:
+    return {
+        "wf_code": wf_code,
+        "instance_id": 0,
+        "node_id": node_id,
+        "stmt_no": stmt_no,
+        "from_table": from_table,
+        "to_table": to_table,
+        "tmp_flag": 0,
+        "src_type": SRC_TYPE_DESIGN,
+    }
 
 
-def _f_edge(node_id: str, stmt_no: int, to_table: str, to_field: str,
-            from_table: str, from_field: str, transform: str = "") -> dict:
-    return {"node_id": node_id, "stmt_no": stmt_no, "to_table": to_table,
-            "to_field": to_field, "from_table": from_table,
-            "from_field": from_field, "transform": transform, "src_type": SRC_TYPE_DESIGN}
+def _f_edge(
+    node_id: str, stmt_no: int, to_table: str, to_field: str, from_table: str, from_field: str, transform: str = ""
+) -> dict:
+    return {
+        "node_id": node_id,
+        "stmt_no": stmt_no,
+        "to_table": to_table,
+        "to_field": to_field,
+        "from_table": from_table,
+        "from_field": from_field,
+        "transform": transform,
+        "src_type": SRC_TYPE_DESIGN,
+    }
 
 
 def _fkey(edge: dict) -> tuple:
     """字段边去重键：node/stmt 参与去重（同字段映射出自不同语句/节点时各保留，
     落库分别挂靠各自表级边）；edge 关联由落库时按 (node_id,stmt_no,from,to) 建立。"""
-    return (edge["node_id"], edge["stmt_no"], edge["to_table"], edge["to_field"],
-            edge["from_table"], edge["from_field"])
+    return (
+        edge["node_id"],
+        edge["stmt_no"],
+        edge["to_table"],
+        edge["to_field"],
+        edge["from_table"],
+        edge["from_field"],
+    )
 
 
 def _dedup(items: list, key) -> list:
@@ -189,6 +223,7 @@ def _dedup(items: list, key) -> list:
 
 
 # ---------------- 端点族：源/目标侧解析 ----------------
+
 
 def _endpoint_tgt_table(data: dict, node_type: str) -> str:
     """端点节点目标侧限定表名（无目标 → 空串）。"""
@@ -249,8 +284,7 @@ def _sync_family_edges(node_id: str, data: dict, node_type: str, wf_code: int) -
     else:
         table_edges = [_t_edge(wf_code, node_id, src, tgt) for src in src_tables]
     field_edges = [
-        _f_edge(edge["node_id"], edge["stmt_no"], edge["to_table"], dst,
-                edge["from_table"], src)
+        _f_edge(edge["node_id"], edge["stmt_no"], edge["to_table"], dst, edge["from_table"], src)
         for edge in table_edges
         for src, dst in _field_map_pairs(data)
     ]
@@ -258,6 +292,7 @@ def _sync_family_edges(node_id: str, data: dict, node_type: str, wf_code: int) -
 
 
 # ---------------- field_map / field_map_union：前驱回溯 ----------------
+
 
 def _ref_node(ref, by_id: dict):
     """inputs 引用（"<节点id>[:port]"）→ 节点 dict；引用缺失/未知节点 → None。"""
@@ -287,8 +322,7 @@ def _walk_up_endpoints(node_id: str, by_id: dict, preds: dict) -> list:
     return out
 
 
-def _field_map_edges(node_id: str, data: dict, node_type: str, wf_code: int,
-                     by_id: dict, preds: dict) -> tuple:
+def _field_map_edges(node_id: str, data: dict, node_type: str, wf_code: int, by_id: dict, preds: dict) -> tuple:
     """field_map/field_map_union：端点两侧解析（inputs 端口语义 > 索引定向 > 前驱回溯）→ 表级+字段边。
 
     - 索引方向契约（dag.ts 已核实）：field_map fmSrcIndex=0/fmTgtIndex=1；field_map_union 反向(1/0)
@@ -324,7 +358,8 @@ def _field_map_edges(node_id: str, data: dict, node_type: str, wf_code: int,
 
     table_edges = _dedup(
         [_t_edge(wf_code, node_id, src, tgt_table) for src in src_tables],
-        lambda e: (e["stmt_no"], e["from_table"], e["to_table"]))
+        lambda e: (e["stmt_no"], e["from_table"], e["to_table"]),
+    )
     field_edges = [
         _f_edge(e["node_id"], e["stmt_no"], tgt_table, dst, e["from_table"], src_field)
         for src_field, dst in _field_map_pairs(data)
@@ -340,6 +375,7 @@ def _node_type(node) -> str:
 
 
 # ---------------- sql 节点 ----------------
+
 
 def _sql_edges(node_id: str, data: dict, wf_code: int) -> tuple:
     """sql 节点：pre+sql+post 按执行序合并解析（stmt_no=全语句顺序拆分序，对齐运行态）。
@@ -361,18 +397,26 @@ def _sql_edges(node_id: str, data: dict, wf_code: int) -> tuple:
         if not parsed.to_tables:
             continue
         for to_table in parsed.to_tables:
-            for from_table in (parsed.from_tables or [""]):
-                table_edges.append(
-                    _t_edge(wf_code, node_id, from_table, to_table, parsed.stmt_no))
+            for from_table in parsed.from_tables or [""]:
+                table_edges.append(_t_edge(wf_code, node_id, from_table, to_table, parsed.stmt_no))
             for fm in parsed.fields:
                 if fm.to_table == to_table:
-                    field_edges.append(_f_edge(
-                        node_id, parsed.stmt_no, fm.to_table, fm.to_field,
-                        fm.from_table, fm.from_field, fm.transform))
+                    field_edges.append(
+                        _f_edge(
+                            node_id,
+                            parsed.stmt_no,
+                            fm.to_table,
+                            fm.to_field,
+                            fm.from_table,
+                            fm.from_field,
+                            fm.transform,
+                        )
+                    )
     return table_edges, field_edges
 
 
 # ---------------- 主入口 ----------------
+
 
 def extract_wf_lineage(nodes, edges, wf_code) -> dict:
     """工作流定义节点/边 → 设计态血缘（纯函数，容错不抛出）。
@@ -393,7 +437,7 @@ def extract_wf_lineage(nodes, edges, wf_code) -> dict:
         if nid:
             by_id.setdefault(nid, node)
     preds: dict = {}
-    for edge in (edges or []):
+    for edge in edges or []:
         if not isinstance(edge, dict):
             continue
         src, tgt = edge.get("source"), edge.get("target")
@@ -423,6 +467,7 @@ def extract_wf_lineage(nodes, edges, wf_code) -> dict:
             table_edges.extend(te)
             field_edges.extend(fe)
         except Exception as exc:  # noqa: BLE001 单节点异常隔离（任务裁定，附 reason）
-            opaques.append({"wf_code": wf, "node_id": nid, "type": ntype,
-                            "reason": "%s: %s" % (type(exc).__name__, exc)})
+            opaques.append(
+                {"wf_code": wf, "node_id": nid, "type": ntype, "reason": "%s: %s" % (type(exc).__name__, exc)}
+            )
     return {"table_edges": table_edges, "field_edges": field_edges, "opaques": opaques}

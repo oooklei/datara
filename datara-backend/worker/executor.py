@@ -44,11 +44,20 @@ class TaskContext:
     - killed(): kill 中断检查回调（执行器等待/循环内 1s 周期调用）
     """
 
-    __slots__ = ("task_id", "instance_id", "node_type", "name", "attempt",
-                 "param", "hidden_inputs", "constraints", "log", "killed")
+    __slots__ = (
+        "task_id",
+        "instance_id",
+        "node_type",
+        "name",
+        "attempt",
+        "param",
+        "hidden_inputs",
+        "constraints",
+        "log",
+        "killed",
+    )
 
-    def __init__(self, task_id, instance_id, node_type, name, attempt,
-                 param, hidden_inputs, constraints, log, killed):
+    def __init__(self, task_id, instance_id, node_type, name, attempt, param, hidden_inputs, constraints, log, killed):
         self.task_id = task_id
         self.instance_id = instance_id
         self.node_type = node_type
@@ -129,8 +138,7 @@ def _ensure_log_index(session, instance_id: str, task_id: int, path: str, host: 
     """t_task_log 索引补齐（先查后插，重复投递/重新认领不重复插行）。"""
     exists = session.query(TaskLog).filter(TaskLog.task_instance_id == task_id).first()
     if exists is None:
-        session.add(TaskLog(instance_id=instance_id, task_instance_id=task_id,
-                            log_path=path, host=host))
+        session.add(TaskLog(instance_id=instance_id, task_instance_id=task_id, log_path=path, host=host))
         session.commit()
 
 
@@ -156,8 +164,7 @@ def handle_task(msg: dict, claimed: bool = False) -> None:
             return
         # 幂等校验：陈旧投递（attempt 不符）/ 重复投递（DB 已终态）→ 丢弃
         if int(task.attempt or 1) != attempt:
-            logger.warning("陈旧投递丢弃（DB attempt=%s 消息 attempt=%s）: taskId=%s",
-                           task.attempt, attempt, task_id)
+            logger.warning("陈旧投递丢弃（DB attempt=%s 消息 attempt=%s）: taskId=%s", task.attempt, attempt, task_id)
             return
         if task.state in TERMINAL_STATES:
             logger.warning("任务已终态（%s），丢弃重复投递: taskId=%s", task.state, task_id)
@@ -171,8 +178,7 @@ def handle_task(msg: dict, claimed: bool = False) -> None:
             fault_claimed = True
             task.state = FAULT_TOLERANCE
             session.commit()
-            logger.warning("容错认领: taskId=%s 原 host=%s → fault_tolerance，5s 后重跑",
-                           task_id, task.host)
+            logger.warning("容错认领: taskId=%s 原 host=%s → fault_tolerance，5s 后重跑", task_id, task.host)
             time.sleep(5)
 
         # 置 running
@@ -184,8 +190,9 @@ def handle_task(msg: dict, claimed: bool = False) -> None:
         # 日志文件先建 + 变量快照头 + 索引（§7.1）
         live, log_path = _open_live_log(instance_id, task_id, msg.get("var_snapshot") or {}, name)
         if fault_claimed:
-            live.write("[worker] 容错认领：前次执行节点失联（原 host=%s），按原 attempt=%s 重跑"
-                       % (task.host or "-", attempt))
+            live.write(
+                "[worker] 容错认领：前次执行节点失联（原 host=%s），按原 attempt=%s 重跑" % (task.host or "-", attempt)
+            )
         _ensure_log_index(session, instance_id, task_id, log_path, host)
 
         # 执行（未注册类型 / 执行异常均按 failure 处理，日志留痕）
@@ -195,8 +202,11 @@ def handle_task(msg: dict, claimed: bool = False) -> None:
             result = ExecResult(FAILURE, {}, [])
         else:
             ctx = TaskContext(
-                task_id=task_id, instance_id=instance_id, node_type=node_type,
-                name=name, attempt=attempt,
+                task_id=task_id,
+                instance_id=instance_id,
+                node_type=node_type,
+                name=name,
+                attempt=attempt,
                 param=msg.get("param_resolved") or msg.get("param") or {},
                 hidden_inputs=msg.get("hidden_inputs") or {},
                 constraints=msg.get("constraints") or {},

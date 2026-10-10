@@ -20,9 +20,11 @@ from sqlalchemy import text  # noqa: E402
 
 # ---------------- 夹具 ----------------
 
+
 def _set_role(client, role: str) -> None:
     client.app.dependency_overrides[get_current_user] = lambda: SimpleNamespace(
-        id=1, user_name="tester", user_role=role)
+        id=1, user_name="tester", user_role=role
+    )
 
 
 def _mk_wf(client, name="血缘wf"):
@@ -60,18 +62,17 @@ def _design_fields(db, code):
         return []
     return (
         db.query(LineageField)
-        .filter(LineageField.edge_id.in_([e.id for e in edges]),
-                LineageField.src_type == "design")
+        .filter(LineageField.edge_id.in_([e.id for e in edges]), LineageField.src_type == "design")
         .all()
     )
 
 
 # ---------------- 保存触发：落库 ----------------
 
+
 def test_save_writes_design_edges_and_fields(client, db_session):
     wf = _mk_wf(client, "血缘落库")
-    r = _save(client, wf, [
-        _sql_node("n1", "INSERT INTO dw.t SELECT o.amount * 0.9 AS amt FROM ods.orders o")])
+    r = _save(client, wf, [_sql_node("n1", "INSERT INTO dw.t SELECT o.amount * 0.9 AS amt FROM ods.orders o")])
     assert r.status_code == 200, r.text
     edges = _design_edges(db_session, wf["code"])
     assert [(e.from_table, e.to_table) for e in edges] == [("ods.orders", "dw.t")]
@@ -90,10 +91,12 @@ def test_save_writes_design_edges_and_fields(client, db_session):
 def test_save_control_flow_only_no_rows(client, db_session):
     """纯控制流（start/end 跳过组）不产行，保存不受影响。"""
     wf = _mk_wf(client, "纯控制流")
-    r = _save(client, wf,
-              [{"id": "s", "type": "start", "data": {}},
-               {"id": "e", "type": "end", "data": {}}],
-              edges=[{"source": "s", "target": "e"}])
+    r = _save(
+        client,
+        wf,
+        [{"id": "s", "type": "start", "data": {}}, {"id": "e", "type": "end", "data": {}}],
+        edges=[{"source": "s", "target": "e"}],
+    )
     assert r.status_code == 200, r.text
     assert _design_edges(db_session, wf["code"]) == []
     assert _design_fields(db_session, wf["code"]) == []
@@ -124,10 +127,10 @@ def test_save_idempotent_replace(client, db_session):
 
 # ---------------- 发布触发 ----------------
 
+
 def test_publish_triggers_rebuild(client, db_session):
     wf = _mk_wf(client, "发布触发")
-    node = _sql_node("n1", "INSERT INTO dw.t SELECT x FROM ods.t",
-                     ref={"type": "sql", "version": 1})
+    node = _sql_node("n1", "INSERT INTO dw.t SELECT x FROM ods.t", ref={"type": "sql", "version": 1})
     assert _save(client, wf, [node]).status_code == 200
     r = client.post("/api/v1/workflow-definitions/%s/publish" % wf["id"])
     assert r.status_code == 200, r.text
@@ -137,6 +140,7 @@ def test_publish_triggers_rebuild(client, db_session):
 
 # ---------------- 回滚触发 ----------------
 
+
 def test_rollback_triggers_rebuild(client, db_session):
     """回滚覆写 graph_json 语义等同保存：design 行按回滚后的图重算。"""
     wf = _mk_wf(client, "回滚重算")
@@ -144,20 +148,18 @@ def test_rollback_triggers_rebuild(client, db_session):
     assert _save(client, wf, [node_a]).status_code == 200  # v2：快照含 A 边
     node_b = _sql_node("n1", "INSERT INTO dw.b SELECT * FROM ods.b1")
     assert _save(client, wf, [node_b]).status_code == 200  # v3：design 行变 B
-    assert [(e.from_table, e.to_table)
-            for e in _design_edges(db_session, wf["code"])] == [("ods.b1", "dw.b")]
+    assert [(e.from_table, e.to_table) for e in _design_edges(db_session, wf["code"])] == [("ods.b1", "dw.b")]
 
-    r = client.post("/api/v1/workflow-definitions/%s/rollback" % wf["id"],
-                    json={"version": 2})
+    r = client.post("/api/v1/workflow-definitions/%s/rollback" % wf["id"], json={"version": 2})
     assert r.status_code == 200, r.text
     db_session.expire_all()
     edges = _design_edges(db_session, wf["code"])
-    assert [(e.from_table, e.to_table) for e in edges] == [("ods.a1", "dw.a")], \
-        "回滚后 design 行应回到 v2 图的 A 边"
+    assert [(e.from_table, e.to_table) for e in edges] == [("ods.a1", "dw.a")], "回滚后 design 行应回到 v2 图的 A 边"
     assert len(edges) == 1, "回滚重算不得残留 v3 的 B 边"
 
 
 # ---------------- redesign 端点 ----------------
+
 
 def test_redesign_permission_and_404(client):
     wf = _mk_wf(client, "重算端点")
@@ -172,14 +174,17 @@ def test_redesign_permission_and_404(client):
 
 def test_redesign_rebuilds_from_current_doc(client, db_session):
     wf = _mk_wf(client, "按需重算")
-    assert _save(client, wf, [
-        _sql_node("n1", "INSERT INTO dw.a SELECT x FROM ods.a")]).status_code == 200
+    assert _save(client, wf, [_sql_node("n1", "INSERT INTO dw.a SELECT x FROM ods.a")]).status_code == 200
     # 绕过 save 直接改库内文档（原生 SQL 手法，test_graph_rules 同款），再手动重算
-    new_doc = {"id": wf["id"], "name": wf["name"],
-               "nodes": [_sql_node("n2", "INSERT INTO dw.c SELECT z FROM ods.c")], "edges": []}
+    new_doc = {
+        "id": wf["id"],
+        "name": wf["name"],
+        "nodes": [_sql_node("n2", "INSERT INTO dw.c SELECT z FROM ods.c")],
+        "edges": [],
+    }
     db_session.execute(
-        text("UPDATE t_wf_definition SET graph_json = :g WHERE id = :i"),
-        {"g": json.dumps(new_doc), "i": wf["id"]})
+        text("UPDATE t_wf_definition SET graph_json = :g WHERE id = :i"), {"g": json.dumps(new_doc), "i": wf["id"]}
+    )
     db_session.commit()
     db_session.expire_all()
 
@@ -195,6 +200,7 @@ def test_redesign_rebuilds_from_current_doc(client, db_session):
 
 
 # ---------------- 旁路：血缘失败不阻断保存 ----------------
+
 
 def test_save_bypass_on_lineage_failure(client, db_session, monkeypatch):
     import api.lineage as lineage_mod
@@ -212,10 +218,12 @@ def test_save_bypass_on_lineage_failure(client, db_session, monkeypatch):
 
 # ---------------- 删除级联清理 ----------------
 
+
 def test_delete_cleans_design_rows(client, db_session):
     wf = _mk_wf(client, "删除清理")
-    assert _save(client, wf, [
-        _sql_node("n1", "INSERT INTO dw.t SELECT o.amount AS amt FROM ods.t o")]).status_code == 200
+    assert (
+        _save(client, wf, [_sql_node("n1", "INSERT INTO dw.t SELECT o.amount AS amt FROM ods.t o")]).status_code == 200
+    )
     assert len(_design_edges(db_session, wf["code"])) == 1
     assert len(_design_fields(db_session, wf["code"])) == 1
 
@@ -227,21 +235,39 @@ def test_delete_cleans_design_rows(client, db_session):
 
 # ---------------- 服务级：字段行无归属表级边跳过不炸 ----------------
 
+
 def test_orphan_field_edge_skipped(db_session, monkeypatch):
     import api.lineage as lineage_mod
 
     fake = {
-        "table_edges": [{"wf_code": 7, "instance_id": 0, "node_id": "n1", "stmt_no": 1,
-                         "from_table": "a.t1", "to_table": "b.t2", "tmp_flag": 0,
-                         "src_type": "design"}],
-        "field_edges": [{"node_id": "nX", "stmt_no": 9, "to_table": "b.t2",
-                         "to_field": "x", "from_table": "ghost.g",
-                         "from_field": "y", "transform": "", "src_type": "design"}],
+        "table_edges": [
+            {
+                "wf_code": 7,
+                "instance_id": 0,
+                "node_id": "n1",
+                "stmt_no": 1,
+                "from_table": "a.t1",
+                "to_table": "b.t2",
+                "tmp_flag": 0,
+                "src_type": "design",
+            }
+        ],
+        "field_edges": [
+            {
+                "node_id": "nX",
+                "stmt_no": 9,
+                "to_table": "b.t2",
+                "to_field": "x",
+                "from_table": "ghost.g",
+                "from_field": "y",
+                "transform": "",
+                "src_type": "design",
+            }
+        ],
         "opaques": [],
     }
     monkeypatch.setattr(lineage_mod, "extract_wf_lineage", lambda nodes, edges, code: fake)
-    definition = SimpleNamespace(
-        id="wf_x", code=7, name="孤儿", graph_json=json.dumps({"nodes": [], "edges": []}))
+    definition = SimpleNamespace(id="wf_x", code=7, name="孤儿", graph_json=json.dumps({"nodes": [], "edges": []}))
     stats = lineage_mod.rebuild_design_lineage(db_session, definition)
     assert stats == {"tableEdges": 1, "fieldEdges": 0, "opaqueNodes": 0}
     assert len(_design_edges(db_session, 7)) == 1
@@ -249,6 +275,7 @@ def test_orphan_field_edge_skipped(db_session, monkeypatch):
 
 
 # ---------------- 服务级：批内 uk 去重防御 ----------------
+
 
 def test_batch_internal_dedup(client, db_session):
     """同 id 重复节点产出完全相同的边 → 批内去重（uk_lineage 防御），行数不虚高。"""
@@ -261,16 +288,34 @@ def test_batch_internal_dedup(client, db_session):
 
 # ---------------- 部分写库失败：flush 抛错 → rollback 完整恢复旧行 ----------------
 
+
 def _fake_parsed(frm, to):
     """extract_wf_lineage 替身：一条表级边 + 一条可挂靠字段行。"""
     return {
-        "table_edges": [{"wf_code": 7, "instance_id": 0, "node_id": "n1", "stmt_no": 1,
-                         "from_table": frm, "to_table": to, "tmp_flag": 0,
-                         "src_type": "design"}],
-        "field_edges": [{"node_id": "n1", "stmt_no": 1, "to_table": to,
-                         "to_field": "amt", "from_table": frm,
-                         "from_field": "amount", "transform": "amount",
-                         "src_type": "design"}],
+        "table_edges": [
+            {
+                "wf_code": 7,
+                "instance_id": 0,
+                "node_id": "n1",
+                "stmt_no": 1,
+                "from_table": frm,
+                "to_table": to,
+                "tmp_flag": 0,
+                "src_type": "design",
+            }
+        ],
+        "field_edges": [
+            {
+                "node_id": "n1",
+                "stmt_no": 1,
+                "to_table": to,
+                "to_field": "amt",
+                "from_table": frm,
+                "from_field": "amount",
+                "transform": "amount",
+                "src_type": "design",
+            }
+        ],
         "opaques": [],
     }
 
@@ -278,10 +323,8 @@ def _fake_parsed(frm, to):
 def _snap(db, code):
     """该 wf_code 全部 design 行内容快照（边 + 字段），供失败前后比对。"""
     return (
-        [(e.from_table, e.to_table, e.node_id, e.stmt_no)
-         for e in _design_edges(db, code)],
-        sorted((f.to_field, f.from_table, f.from_field)
-               for f in _design_fields(db, code)),
+        [(e.from_table, e.to_table, e.node_id, e.stmt_no) for e in _design_edges(db, code)],
+        sorted((f.to_field, f.from_table, f.from_field) for f in _design_fields(db, code)),
     )
 
 
@@ -302,16 +345,13 @@ def test_rebuild_flush_failure_rolls_back_to_old_rows(db_session, monkeypatch):
     （delete-then-reinsert 同事务语义：未提交整体作废，不丢旧图）。"""
     import api.lineage as lineage_mod
 
-    definition = SimpleNamespace(
-        id="wf_x", code=7, name="回滚", graph_json=json.dumps({"nodes": [], "edges": []}))
-    monkeypatch.setattr(lineage_mod, "extract_wf_lineage",
-                        lambda nodes, edges, code: _fake_parsed("ods.a1", "dw.a"))
+    definition = SimpleNamespace(id="wf_x", code=7, name="回滚", graph_json=json.dumps({"nodes": [], "edges": []}))
+    monkeypatch.setattr(lineage_mod, "extract_wf_lineage", lambda nodes, edges, code: _fake_parsed("ods.a1", "dw.a"))
     lineage_mod.rebuild_design_lineage(db_session, definition)
     old_snap = _snap(db_session, 7)
     assert old_snap == ([("ods.a1", "dw.a", "n1", 1)], [("amt", "ods.a1", "amount")])
 
-    monkeypatch.setattr(lineage_mod, "extract_wf_lineage",
-                        lambda nodes, edges, code: _fake_parsed("ods.b1", "dw.b"))
+    monkeypatch.setattr(lineage_mod, "extract_wf_lineage", lambda nodes, edges, code: _fake_parsed("ods.b1", "dw.b"))
     _flush_boom(db_session, monkeypatch)
     with pytest.raises(RuntimeError, match="flush boom"):
         lineage_mod.rebuild_design_lineage(db_session, definition)
@@ -325,15 +365,12 @@ def test_redesign_flush_failure_swallows_and_keeps_old_rows(db_session, monkeypa
     （保存/发布主流程不受血缘重算失败影响）。"""
     import api.lineage as lineage_mod
 
-    definition = SimpleNamespace(
-        id="wf_x", code=7, name="旁路回滚", graph_json=json.dumps({"nodes": [], "edges": []}))
-    monkeypatch.setattr(lineage_mod, "extract_wf_lineage",
-                        lambda nodes, edges, code: _fake_parsed("ods.a1", "dw.a"))
+    definition = SimpleNamespace(id="wf_x", code=7, name="旁路回滚", graph_json=json.dumps({"nodes": [], "edges": []}))
+    monkeypatch.setattr(lineage_mod, "extract_wf_lineage", lambda nodes, edges, code: _fake_parsed("ods.a1", "dw.a"))
     lineage_mod.rebuild_design_lineage(db_session, definition)
     old_snap = _snap(db_session, 7)
 
-    monkeypatch.setattr(lineage_mod, "extract_wf_lineage",
-                        lambda nodes, edges, code: _fake_parsed("ods.b1", "dw.b"))
+    monkeypatch.setattr(lineage_mod, "extract_wf_lineage", lambda nodes, edges, code: _fake_parsed("ods.b1", "dw.b"))
     _flush_boom(db_session, monkeypatch)
     lineage_mod.redesign_wf_lineage(db_session, definition)  # 内部吞异常，不得上抛
 
@@ -342,17 +379,24 @@ def test_redesign_flush_failure_swallows_and_keeps_old_rows(db_session, monkeypa
 
 # ---------------- field 挂靠精确键：同表对多语句/多节点各归各边 ----------------
 
+
 def test_same_pair_multi_node_fields_attach_own_edges(client, db_session):
     """同 wf 两节点产同 (from,to) 表对：字段行按 (node_id,stmt_no,from,to) 精确挂靠
     各自表级边，不再全挂首边（/trace 与 graph refs 归属正确）。"""
     wf = _mk_wf(client, "同表对挂靠")
-    assert _save(client, wf, [
-        _sql_node("n1", "INSERT INTO dw.t SELECT x AS c1 FROM ods.s"),
-        _sql_node("n2", "INSERT INTO dw.t SELECT y AS c1 FROM ods.s"),
-    ]).status_code == 200
+    assert (
+        _save(
+            client,
+            wf,
+            [
+                _sql_node("n1", "INSERT INTO dw.t SELECT x AS c1 FROM ods.s"),
+                _sql_node("n2", "INSERT INTO dw.t SELECT y AS c1 FROM ods.s"),
+            ],
+        ).status_code
+        == 200
+    )
     edges = _design_edges(db_session, wf["code"])
-    assert [(e.node_id, e.from_table, e.to_table) for e in edges] == [
-        ("n1", "ods.s", "dw.t"), ("n2", "ods.s", "dw.t")]
+    assert [(e.node_id, e.from_table, e.to_table) for e in edges] == [("n1", "ods.s", "dw.t"), ("n2", "ods.s", "dw.t")]
     fields = _design_fields(db_session, wf["code"])
     assert len(fields) == 2
     by_edge: dict = {}
@@ -366,13 +410,20 @@ def test_same_pair_multi_node_fields_attach_own_edges(client, db_session):
 def test_same_pair_multi_stmt_fields_attach_own_edges(client, db_session):
     """同节点多语句产同 (from,to) 表对：字段行按 stmt_no 各归各语句边。"""
     wf = _mk_wf(client, "同表对多语句")
-    assert _save(client, wf, [
-        _sql_node("n1", "INSERT INTO dw.t SELECT x AS c1 FROM ods.s;"
-                          " INSERT INTO dw.t SELECT y AS c1 FROM ods.s"),
-    ]).status_code == 200
+    assert (
+        _save(
+            client,
+            wf,
+            [
+                _sql_node(
+                    "n1", "INSERT INTO dw.t SELECT x AS c1 FROM ods.s; INSERT INTO dw.t SELECT y AS c1 FROM ods.s"
+                ),
+            ],
+        ).status_code
+        == 200
+    )
     edges = _design_edges(db_session, wf["code"])
-    assert [(e.stmt_no, e.node_id, e.to_table) for e in edges] == [
-        (1, "n1", "dw.t"), (2, "n1", "dw.t")]
+    assert [(e.stmt_no, e.node_id, e.to_table) for e in edges] == [(1, "n1", "dw.t"), (2, "n1", "dw.t")]
     fields = _design_fields(db_session, wf["code"])
     assert len(fields) == 2
     assert len({f.edge_id for f in fields}) == 2, "字段行必须分挂两条语句边"
@@ -383,17 +434,34 @@ def test_field_pair_fallback_when_precise_key_misses(db_session, monkeypatch):
     import api.lineage as lineage_mod
 
     fake = {
-        "table_edges": [{"wf_code": 7, "instance_id": 0, "node_id": "n1", "stmt_no": 1,
-                         "from_table": "a.t1", "to_table": "b.t2", "tmp_flag": 0,
-                         "src_type": "design"}],
-        "field_edges": [{"node_id": "nX", "stmt_no": 9, "to_table": "b.t2",
-                         "to_field": "x", "from_table": "a.t1",
-                         "from_field": "y", "transform": "", "src_type": "design"}],
+        "table_edges": [
+            {
+                "wf_code": 7,
+                "instance_id": 0,
+                "node_id": "n1",
+                "stmt_no": 1,
+                "from_table": "a.t1",
+                "to_table": "b.t2",
+                "tmp_flag": 0,
+                "src_type": "design",
+            }
+        ],
+        "field_edges": [
+            {
+                "node_id": "nX",
+                "stmt_no": 9,
+                "to_table": "b.t2",
+                "to_field": "x",
+                "from_table": "a.t1",
+                "from_field": "y",
+                "transform": "",
+                "src_type": "design",
+            }
+        ],
         "opaques": [],
     }
     monkeypatch.setattr(lineage_mod, "extract_wf_lineage", lambda nodes, edges, code: fake)
-    definition = SimpleNamespace(
-        id="wf_x", code=7, name="兜底", graph_json=json.dumps({"nodes": [], "edges": []}))
+    definition = SimpleNamespace(id="wf_x", code=7, name="兜底", graph_json=json.dumps({"nodes": [], "edges": []}))
     stats = lineage_mod.rebuild_design_lineage(db_session, definition)
     assert stats == {"tableEdges": 1, "fieldEdges": 1, "opaqueNodes": 0}
     fields = _design_fields(db_session, 7)

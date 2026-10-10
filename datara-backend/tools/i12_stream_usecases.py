@@ -23,6 +23,7 @@
 证据行格式：EVIDENCE|<case>|<key>|<value>；最终逐例打印 PASS/FAIL。
 页面证（playwright DOM+截图）脚本外执行，本脚本输出的 job id 供页面证定位。
 """
+
 import argparse
 import json
 import re
@@ -35,12 +36,12 @@ import urllib.request
 
 BASE = "http://127.0.0.1:8000/api/v1"
 USER = ("admin", "Admin@123")
-DW_DS = "内置数仓-datara_dw"     # id=4（默认库 datara_dw，F5 落库目标）
+DW_DS = "内置数仓-datara_dw"  # id=4（默认库 datara_dw，F5 落库目标）
 TAGS = ["流"]
 TERMINAL = {"success", "failure", "kill"}
 TIMEOUT = {"f1": 240, "f2": 120, "f3": 180, "f4": 240, "f5": 240}
 
-KAFKA_DS = "i12_kafka_local"     # 注册 kafka 源（id=25，brokers=datara-kafka:9092）
+KAFKA_DS = "i12_kafka_local"  # 注册 kafka 源（id=25，brokers=datara-kafka:9092）
 KAFKA_BROKER = "datara-kafka:9092"
 TOPIC_ORDER = "order_pay"
 TOPIC_CLICK = "user_click"
@@ -50,8 +51,8 @@ WF_F4 = "i12_F4_http_threshold"
 TOKEN = ""
 SRC_C = ""
 DW_C = ""
-API_C = ""      # api 容器名（F4 http 源 from worker 视角的 service 名）
-KAFKA_C = ""    # kafka 容器名（断流抽测 docker stop/start 对象）
+API_C = ""  # api 容器名（F4 http 源 from worker 视角的 service 名）
+KAFKA_C = ""  # kafka 容器名（断流抽测 docker stop/start 对象）
 
 GOODS = ["SKU_1001", "SKU_1002", "SKU_1003", "SKU_1004", "SKU_1005"]
 USERS = ["u_%04d" % i for i in range(50)]
@@ -64,6 +65,7 @@ DIM_ROWS = [
 ]
 
 # ---------- 基础工具（与 i12_etl_usecases.py 同构） ----------
+
 
 def http(method, path, body=None):
     req = urllib.request.Request(
@@ -88,8 +90,9 @@ def login():
 
 
 def sh(cmd, input_text=None, timeout=120):
-    proc = subprocess.run(cmd, shell=isinstance(cmd, str), input=input_text,
-                          capture_output=True, text=True, timeout=timeout)
+    proc = subprocess.run(
+        cmd, shell=isinstance(cmd, str), input=input_text, capture_output=True, text=True, timeout=timeout
+    )
     return proc.returncode, proc.stdout.strip()
 
 
@@ -150,15 +153,15 @@ def _mysql_dbs(container):
             break
     if not pwd:
         return set()
-    rc, out = sh("docker exec %s sh -c %s" % (
-        container, json.dumps('MYSQL_PWD="%s" mysql -uroot -N -e "SHOW DATABASES"' % pwd)))
+    rc, out = sh(
+        "docker exec %s sh -c %s" % (container, json.dumps('MYSQL_PWD="%s" mysql -uroot -N -e "SHOW DATABASES"' % pwd))
+    )
     return set(out.splitlines()) if rc == 0 else set()
 
 
 def mysql_exec(container, sql, db=None, head_limit=None):
     pwd = _mysql_pwd(container)
-    argv = ["docker", "exec", "-e", "MYSQL_PWD=%s" % pwd, container,
-            "mysql", "-uroot", "-N", "-B"]
+    argv = ["docker", "exec", "-e", "MYSQL_PWD=%s" % pwd, container, "mysql", "-uroot", "-N", "-B"]
     if db:
         argv += ["-D", db]
     argv += ["-e", sql]
@@ -181,9 +184,9 @@ def check(case, name, ok_flag, detail):
 
 # ---------- 流任务画布构造（smoke_stream_i11 同款） ----------
 
+
 def _n(nid, ntype, name, x, data):
-    return {"id": nid, "type": ntype, "position": {"x": x, "y": 0},
-            "data": dict(data, name=name)}
+    return {"id": nid, "type": ntype, "position": {"x": x, "y": 0}, "data": dict(data, name=name)}
 
 
 def _e(s, t):
@@ -191,23 +194,44 @@ def _e(s, t):
 
 
 def _doc(name, nodes, edges):
-    return {"id": name, "name": name, "version": 1, "meta": {"profile": "stream"},
-            "nodes": nodes, "edges": edges}
+    return {"id": name, "name": name, "version": 1, "meta": {"profile": "stream"}, "nodes": nodes, "edges": edges}
 
 
 def _kafka_src(nid, name, x, topic, group, start_from="earliest"):
-    return _n(nid, "stream_input", name, x, {
-        "srcType": "kafka", "dsRef": KAFKA_DS, "topic": topic,
-        "group": group, "startFrom": start_from, "format": "json", "delimiter": ",",
-    })
+    return _n(
+        nid,
+        "stream_input",
+        name,
+        x,
+        {
+            "srcType": "kafka",
+            "dsRef": KAFKA_DS,
+            "topic": topic,
+            "group": group,
+            "startFrom": start_from,
+            "format": "json",
+            "delimiter": ",",
+        },
+    )
 
 
 def _http_src(nid, name, x, url, interval_sec, headers, data_path="data"):
-    return _n(nid, "stream_input", name, x, {
-        "srcType": "http", "httpUrl": url, "httpMethod": "GET",
-        "intervalSec": interval_sec, "headers": headers, "dataPath": data_path,
-        "cursorParam": "", "cursorPath": "",
-    })
+    return _n(
+        nid,
+        "stream_input",
+        name,
+        x,
+        {
+            "srcType": "http",
+            "httpUrl": url,
+            "httpMethod": "GET",
+            "intervalSec": interval_sec,
+            "headers": headers,
+            "dataPath": data_path,
+            "cursorParam": "",
+            "cursorPath": "",
+        },
+    )
 
 
 def _filter(nid, name, x, expr):
@@ -215,17 +239,37 @@ def _filter(nid, name, x, expr):
 
 
 def _win(nid, name, x, group_keys, aggs, size):
-    return _n(nid, "stream_fuse", name, x, {
-        "fuseType": "window", "groupKeys": group_keys, "aggs": aggs,
-        "windowType": "tumbling", "windowSizeSec": size, "slideSec": size, "watermarkSec": 0,
-    })
+    return _n(
+        nid,
+        "stream_fuse",
+        name,
+        x,
+        {
+            "fuseType": "window",
+            "groupKeys": group_keys,
+            "aggs": aggs,
+            "windowType": "tumbling",
+            "windowSizeSec": size,
+            "slideSec": size,
+            "watermarkSec": 0,
+        },
+    )
 
 
 def _join(nid, name, x, key_left, key_right, win_sec, jtype):
-    return _n(nid, "stream_fuse", name, x, {
-        "fuseType": "join", "joinKeyLeft": key_left, "joinKeyRight": key_right,
-        "joinWindowSec": win_sec, "joinType": jtype,
-    })
+    return _n(
+        nid,
+        "stream_fuse",
+        name,
+        x,
+        {
+            "fuseType": "join",
+            "joinKeyLeft": key_left,
+            "joinKeyRight": key_right,
+            "joinWindowSec": win_sec,
+            "joinType": jtype,
+        },
+    )
 
 
 def _union(nid, name, x):
@@ -237,11 +281,20 @@ def _api_out(nid, name, x):
 
 
 def _table_out(nid, name, x, out_table, field_map, unique_key, batch=500):
-    return _n(nid, "stream_output", name, x, {
-        "outType": "table", "outDs": DW_DS, "outTable": out_table,
-        "outFieldMap": [{"key": k, "value": v} for k, v in field_map],
-        "uniqueKey": unique_key, "outBatchSize": batch,
-    })
+    return _n(
+        nid,
+        "stream_output",
+        name,
+        x,
+        {
+            "outType": "table",
+            "outDs": DW_DS,
+            "outTable": out_table,
+            "outFieldMap": [{"key": k, "value": v} for k, v in field_map],
+            "uniqueKey": unique_key,
+            "outBatchSize": batch,
+        },
+    )
 
 
 def _board(nid, name, x, preset):
@@ -267,8 +320,7 @@ def ensure_wf(name):
 def save_stream_doc(wf_id, doc):
     doc["id"] = wf_id
     doc["name"] = doc["name"]
-    resp = http("PUT", "/workflow-definitions/%s/save" % wf_id,
-                {"doc": doc, "remark": "I12 流类用例", "tags": TAGS})
+    resp = http("PUT", "/workflow-definitions/%s/save" % wf_id, {"doc": doc, "remark": "I12 流类用例", "tags": TAGS})
     assert resp.get("code") == 0, "保存失败 %s: %s" % (wf_id, resp)
     print("EVIDENCE|stream|save|%s version=%s" % (wf_id, resp["data"]))
 
@@ -320,6 +372,7 @@ def find_running_job(wf_name):
 
 # ---------- kafka 灌数（console-producer stdin 管道，不依赖 kafka-python） ----------
 
+
 class KafkaFeeder(threading.Thread):
     """kafka-console-producer 管道灌数：容器内 localhost:9092；断线自动重建（断流后续灌）。"""
 
@@ -336,9 +389,21 @@ class KafkaFeeder(threading.Thread):
         if self._proc is not None and self._proc.poll() is None:
             return self._proc
         self._proc = subprocess.Popen(
-            ["docker", "exec", "-i", KAFKA_C, "kafka-console-producer",
-             "--broker-list", self.conn, "--topic", self.topic],
-            stdin=subprocess.PIPE, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            [
+                "docker",
+                "exec",
+                "-i",
+                KAFKA_C,
+                "kafka-console-producer",
+                "--broker-list",
+                self.conn,
+                "--topic",
+                self.topic,
+            ],
+            stdin=subprocess.PIPE,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
         return self._proc
 
     def run(self):
@@ -371,19 +436,33 @@ _order_iter = None
 def _order_rows():
     """与 seed_stream.gen_ecommerce 相同 schema（order_pay 20%/user_click 60%/cart_event 20%）。"""
     import random
+
     while True:
         r = random.random()
         if r < 0.2:
-            yield {"event": "order_pay", "order_id": "ord_%08d" % random.randrange(10**8),
-                   "user_id": random.choice(USERS), "goods_id": random.choice(GOODS),
-                   "amount": round(random.uniform(9.9, 999.0), 2), "ts": time.time()}
+            yield {
+                "event": "order_pay",
+                "order_id": "ord_%08d" % random.randrange(10**8),
+                "user_id": random.choice(USERS),
+                "goods_id": random.choice(GOODS),
+                "amount": round(random.uniform(9.9, 999.0), 2),
+                "ts": time.time(),
+            }
         elif r < 0.8:
-            yield {"event": "user_click", "user_id": random.choice(USERS),
-                   "goods_id": random.choice(GOODS), "ts": time.time()}
+            yield {
+                "event": "user_click",
+                "user_id": random.choice(USERS),
+                "goods_id": random.choice(GOODS),
+                "ts": time.time(),
+            }
         else:
-            yield {"event": "cart_event", "user_id": random.choice(USERS),
-                   "goods_id": random.choice(GOODS),
-                   "action": random.choice(["add", "add", "remove"]), "ts": time.time()}
+            yield {
+                "event": "cart_event",
+                "user_id": random.choice(USERS),
+                "goods_id": random.choice(GOODS),
+                "action": random.choice(["add", "add", "remove"]),
+                "ts": time.time(),
+            }
 
 
 def _dim_rows():
@@ -400,8 +479,7 @@ def start_feeders(need_dim=False):
     if need_dim:
         dim_feed = KafkaFeeder(TOPIC_DIM, _dim_rows(), eps=1.0)
         dim_feed.start()
-    print("EVIDENCE|seed|kafka_feeder|topic=%s running; dim=%s" %
-          (TOPIC_ORDER, TOPIC_DIM if need_dim else "-"))
+    print("EVIDENCE|seed|kafka_feeder|topic=%s running; dim=%s" % (TOPIC_ORDER, TOPIC_DIM if need_dim else "-"))
     return order_feed, dim_feed
 
 
@@ -432,37 +510,52 @@ def kafka_stop_start(seconds, case):
 
 # ---------- 画布定义 ----------
 
+
 def doc_f1():
     nodes = [
         _kafka_src("s1", "订单流(kafka)", 0, TOPIC_ORDER, "i12_f1"),
-        _win("w1", "10s全局窗口", 180, "", [
-            {"key": "amount", "value": "sum:amt_total"},
-            {"key": "order_id", "value": "count:ord_cnt"},
-            {"key": "user_id", "value": "count_distinct:uv"},
-        ], 10),
+        _win(
+            "w1",
+            "10s全局窗口",
+            180,
+            "",
+            [
+                {"key": "amount", "value": "sum:amt_total"},
+                {"key": "order_id", "value": "count:ord_cnt"},
+                {"key": "user_id", "value": "count_distinct:uv"},
+            ],
+            10,
+        ),
         _api_out("o1", "API通道", 360),
     ]
-    return "i12_F1_kafka_window_api", _doc("i12_F1_kafka_window_api", nodes,
-                                           [_e("s1", "w1"), _e("w1", "o1")])
+    return "i12_F1_kafka_window_api", _doc("i12_F1_kafka_window_api", nodes, [_e("s1", "w1"), _e("w1", "o1")])
 
 
 def doc_f2():
     nodes = [
         _kafka_src("s1", "订单流(kafka)", 0, TOPIC_ORDER, "i12_f2a"),
         _kafka_src("s2", "点击流(kafka)", 0, TOPIC_CLICK, "i12_f2b"),
-        _win("w1", "订单10s窗口", 180, "", [
-            {"key": "amount", "value": "sum:amt_total"},
-            {"key": "order_id", "value": "count:ord_cnt"},
-        ], 10),
+        _win(
+            "w1",
+            "订单10s窗口",
+            180,
+            "",
+            [
+                {"key": "amount", "value": "sum:amt_total"},
+                {"key": "order_id", "value": "count:ord_cnt"},
+            ],
+            10,
+        ),
         _win("w2", "点击10s窗口", 180, "goods_id", [{"key": "user_id", "value": "count:click_cnt"}], 10),
         _union("u1", "双流合并", 360),
         _api_out("o1", "API通道", 520),
         _board("b1", "电商实时大盘", 680, "ecommerce"),
     ]
-    return "i12_F2_kafka2_union_board", _doc("i12_F2_kafka2_union_board", nodes,
-                                            [_e("s1", "w1"), _e("s2", "w2"),
-                                             _e("w1", "u1"), _e("w2", "u1"),
-                                             _e("u1", "o1"), _e("o1", "b1")])
+    return "i12_F2_kafka2_union_board", _doc(
+        "i12_F2_kafka2_union_board",
+        nodes,
+        [_e("s1", "w1"), _e("s2", "w2"), _e("w1", "u1"), _e("w2", "u1"), _e("u1", "o1"), _e("o1", "b1")],
+    )
 
 
 def doc_f3():
@@ -472,15 +565,17 @@ def doc_f3():
         _join("j1", "订单⋈维表", 180, "goods_id", "goods_id", 60, "left"),
         _api_out("o1", "API通道", 360),
     ]
-    return "i12_F3_kafka_join_dim", _doc("i12_F3_kafka_join_dim", nodes,
-                                         [_e("s1", "j1"), _e("s2", "j1"), _e("j1", "o1")])
+    return "i12_F3_kafka_join_dim", _doc(
+        "i12_F3_kafka_join_dim", nodes, [_e("s1", "j1"), _e("s2", "j1"), _e("j1", "o1")]
+    )
 
 
 def doc_f4(f4_url, f4_token):
     filter_expr = "status == 'running' and wfName != '%s'" % WF_F4
     nodes = [
-        _http_src("s1", "任务列表(http)", 0, f4_url, 5,
-                  [{"key": "Authorization", "value": "Bearer " + f4_token}], "data"),
+        _http_src(
+            "s1", "任务列表(http)", 0, f4_url, 5, [{"key": "Authorization", "value": "Bearer " + f4_token}], "data"
+        ),
         _filter("f1", "前置过滤", 180, filter_expr),
         _win("w1", "5s状态窗口", 320, "status", [{"key": "status", "value": "count:cnt"}], 5),
         _api_out("o1", "API通道", 460),
@@ -491,19 +586,31 @@ def doc_f4(f4_url, f4_token):
 def doc_f5():
     nodes = [
         _kafka_src("s1", "订单流(kafka)", 0, TOPIC_ORDER, "i12_f5"),
-        _win("w1", "10s窗口", 180, "", [
-            {"key": "amount", "value": "sum:amt_total"},
-            {"key": "order_id", "value": "count:cnt"},
-        ], 10),
-        _table_out("o1", "落库(upsert)", 360, "i12_stream_agg",
-                   [("win_start", "win_start"), ("amt_total", "amt_total"), ("cnt", "cnt")],
-                   "win_start"),
+        _win(
+            "w1",
+            "10s窗口",
+            180,
+            "",
+            [
+                {"key": "amount", "value": "sum:amt_total"},
+                {"key": "order_id", "value": "count:cnt"},
+            ],
+            10,
+        ),
+        _table_out(
+            "o1",
+            "落库(upsert)",
+            360,
+            "i12_stream_agg",
+            [("win_start", "win_start"), ("amt_total", "amt_total"), ("cnt", "cnt")],
+            "win_start",
+        ),
     ]
-    return "i12_F5_kafka_table_agg", _doc("i12_F5_kafka_table_agg", nodes,
-                                          [_e("s1", "w1"), _e("w1", "o1")])
+    return "i12_F5_kafka_table_agg", _doc("i12_F5_kafka_table_agg", nodes, [_e("s1", "w1"), _e("w1", "o1")])
 
 
 # ---------- C26 尾联：F4 通知批处理 DAG（i12_F4_notify） ----------
+
 
 def _sql_node(nid, name, x, sql, ds=DW_DS, constraints=None):
     data = {"name": name, "datasource": ds, "pre": "", "sql": sql, "post": ""}
@@ -513,9 +620,12 @@ def _sql_node(nid, name, x, sql, ds=DW_DS, constraints=None):
 
 
 def _notify_node(nid, name, x, url):
-    return {"id": nid, "type": "notify", "position": {"x": x, "y": 0},
-            "data": {"name": name, "channel": "webhook", "url": url,
-                     "trigger": "always", "failHard": True}}
+    return {
+        "id": nid,
+        "type": "notify",
+        "position": {"x": x, "y": 0},
+        "data": {"name": name, "channel": "webhook", "url": url, "trigger": "always", "failHard": True},
+    }
 
 
 def ensure_and_run_notify_dag(case):
@@ -528,21 +638,35 @@ def ensure_and_run_notify_dag(case):
     wf_id, code = ensure_wf("i12_F4_notify")
     ok_sql = "SELECT 1;"
     bad_sql = "SELECT * FROM datara_dw.no_such_table_%s" % int(time.time())
-    doc = {"id": wf_id, "name": "i12_F4_notify", "version": 1, "meta": {"profile": "dag"},
-           "nodes": [
-               {"id": "nd_start", "type": "start", "position": {"x": 80, "y": 0}, "data": {"name": "开始"}},
-               {"id": "nd_fork", "type": "fork", "position": {"x": 220, "y": 0},
-                "data": {"name": "双实例分叉", "parallel": 2}},
-               _sql_node("nd_ok", "成功实例", 400, ok_sql),
-               _sql_node("nd_bad", "故意失败实例", 400, bad_sql,
-                         constraints={"failPolicy": "continue"}),
-               {"id": "nd_merge", "type": "merge", "position": {"x": 580, "y": 0}, "data": {"name": "合并(OR)"}},
-               _notify_node("nd_notify", "通知(webhook)", 720, "http://%s:8000/api/v1/echo" % API_C),
-               {"id": "nd_end", "type": "end", "position": {"x": 880, "y": 0}, "data": {"name": "结束"}},
-           ],
-           "edges": [_e("nd_start", "nd_fork"), _e("nd_fork", "nd_ok"), _e("nd_fork", "nd_bad"),
-                     _e("nd_ok", "nd_merge"), _e("nd_bad", "nd_merge"),
-                     _e("nd_merge", "nd_notify"), _e("nd_notify", "nd_end")]}
+    doc = {
+        "id": wf_id,
+        "name": "i12_F4_notify",
+        "version": 1,
+        "meta": {"profile": "dag"},
+        "nodes": [
+            {"id": "nd_start", "type": "start", "position": {"x": 80, "y": 0}, "data": {"name": "开始"}},
+            {
+                "id": "nd_fork",
+                "type": "fork",
+                "position": {"x": 220, "y": 0},
+                "data": {"name": "双实例分叉", "parallel": 2},
+            },
+            _sql_node("nd_ok", "成功实例", 400, ok_sql),
+            _sql_node("nd_bad", "故意失败实例", 400, bad_sql, constraints={"failPolicy": "continue"}),
+            {"id": "nd_merge", "type": "merge", "position": {"x": 580, "y": 0}, "data": {"name": "合并(OR)"}},
+            _notify_node("nd_notify", "通知(webhook)", 720, "http://%s:8000/api/v1/echo" % API_C),
+            {"id": "nd_end", "type": "end", "position": {"x": 880, "y": 0}, "data": {"name": "结束"}},
+        ],
+        "edges": [
+            _e("nd_start", "nd_fork"),
+            _e("nd_fork", "nd_ok"),
+            _e("nd_fork", "nd_bad"),
+            _e("nd_ok", "nd_merge"),
+            _e("nd_bad", "nd_merge"),
+            _e("nd_merge", "nd_notify"),
+            _e("nd_notify", "nd_end"),
+        ],
+    }
     save_stream_doc(wf_id, doc)
     resp = http("POST", "/workflow-definitions/%s/run" % wf_id, {})
     assert resp.get("code") == 0, "DAG 运行失败: %s" % resp
@@ -569,8 +693,12 @@ def ensure_and_run_notify_dag(case):
     # nd_bad 为 continue → 实例终态 success（F4 文档 §7-4「成功实例终态 success」）。
     ok = full_ok = bool(detail) and detail.get("state") == "success"
     ok &= check(case, "notify_dag_final", full_ok, detail.get("state") if detail else "no-data")
-    ok &= check(case, "notify_dag_failBranch", any(
-        t.get("state") == "failure" and "失败" in (t.get("name") or "") for t in tasks), "见任务清单")
+    ok &= check(
+        case,
+        "notify_dag_failBranch",
+        any(t.get("state") == "failure" and "失败" in (t.get("name") or "") for t in tasks),
+        "见任务清单",
+    )
     notify_tasks = [t for t in tasks if t.get("nodeType") == "notify"]
     ok &= check(case, "notify_dag_notifyRan", bool(notify_tasks), len(notify_tasks))
     if notify_tasks:
@@ -581,6 +709,7 @@ def ensure_and_run_notify_dag(case):
 
 
 # ---------- 用例编排 ----------
+
 
 def run_f1():
     """kafka 单源→窗口→API + kafka 断流 10s 恢复（位点续跑、窗口桶不重放）。"""
@@ -600,8 +729,10 @@ def run_f1():
     ok &= check(case, "sum_amount", float(cur.get("amt_total") or 0) > 0, cur.get("amt_total"))
     ok &= check(case, "count_orders", int(cur.get("ord_cnt") or 0) >= 1, cur.get("ord_cnt"))
     ok &= check(case, "count_distinct_uv", int(cur.get("uv") or 0) >= 1, cur.get("uv"))
-    print("EVIDENCE|%s|latest_win|start=%s amt=%s ord=%s uv=%s" %
-          (case, latest, cur.get("amt_total"), cur.get("ord_cnt"), cur.get("uv")))
+    print(
+        "EVIDENCE|%s|latest_win|start=%s amt=%s ord=%s uv=%s"
+        % (case, latest, cur.get("amt_total"), cur.get("ord_cnt"), cur.get("uv"))
+    )
 
     # 断流恢复：停 kafka → 复启 → 位点续跑（新桶单调增，无重复）
     before_max = latest
@@ -612,8 +743,7 @@ def run_f1():
     win2 = [r for r in rows2 if r.get("win_start") is not None]
     ok &= check(case, "reconnect_job_alive", wait_running(job_id, case, timeout=30) == "running", "")
     after_max = max((r.get("win_start") or 0) for r in win2) if win2 else 0
-    ok &= check(case, "reconnect_offset_resume", after_max > before_max,
-                "before=%s after=%s" % (before_max, after_max))
+    ok &= check(case, "reconnect_offset_resume", after_max > before_max, "before=%s after=%s" % (before_max, after_max))
     all_starts = [r.get("win_start") for r in win2]
     ok &= check(case, "reconnect_no_replay", len(all_starts) == len(set(all_starts)), "win_start 无重复桶")
     print("EVIDENCE|%s|reconnect_windows|%d 个窗口桶" % (case, len(win2)))
@@ -634,12 +764,18 @@ def run_f2():
     win_rows = [r for r in rows if r.get("win_start") is not None]
     amt_rows = [r for r in win_rows if (r.get("amt_total") or 0) > 0]
     click_rows = [r for r in win_rows if (r.get("click_cnt") or 0) > 0]
-    ok &= check(case, "both_streams", len(amt_rows) > 0 and len(click_rows) > 0,
-                "amt=%d click=%d" % (len(amt_rows), len(click_rows)))
+    ok &= check(
+        case,
+        "both_streams",
+        len(amt_rows) > 0 and len(click_rows) > 0,
+        "amt=%d click=%d" % (len(amt_rows), len(click_rows)),
+    )
     latest = max((r.get("win_start") or 0) for r in win_rows) if win_rows else 0
     cur_amt = next((r for r in amt_rows if (r.get("win_start") or 0) == latest), {})
-    print("EVIDENCE|%s|latest_win|start=%s amt=%s ord=%s" %
-          (case, latest, cur_amt.get("amt_total"), cur_amt.get("ord_cnt")))
+    print(
+        "EVIDENCE|%s|latest_win|start=%s amt=%s ord=%s"
+        % (case, latest, cur_amt.get("amt_total"), cur_amt.get("ord_cnt"))
+    )
     return ok
 
 
@@ -658,11 +794,17 @@ def run_f3():
     ok &= check(case, "order_rows", len(joined) > 0, "%d 行" % len(joined))
     matched = [r for r in joined if (r.get("name") or "") != "" and (r.get("category") or "") != ""]
     rate = (len(matched) / float(len(joined))) if joined else 0.0
-    ok &= check(case, "join_matched", len(matched) > 0 and rate >= 0.8,
-                "%d/%d (%.0f%%)" % (len(matched), len(joined), rate * 100))
+    ok &= check(
+        case,
+        "join_matched",
+        len(matched) > 0 and rate >= 0.8,
+        "%d/%d (%.0f%%)" % (len(matched), len(joined), rate * 100),
+    )
     sample = matched[0] if matched else (joined[0] if joined else {})
-    print("EVIDENCE|%s|join_sample|goods=%s name=%s cat=%s" %
-          (case, sample.get("goods_id"), sample.get("name"), sample.get("category")))
+    print(
+        "EVIDENCE|%s|join_sample|goods=%s name=%s cat=%s"
+        % (case, sample.get("goods_id"), sample.get("name"), sample.get("category"))
+    )
     return ok
 
 
@@ -688,8 +830,7 @@ def run_f4():
     rows, metrics = poll_rows(job_id)
     win_rows = [r for r in rows if r.get("win_start") is not None]
     fired = [r for r in win_rows if int(r.get("cnt") or 0) >= 1 and (r.get("status") or "") == "running"]
-    ok &= check(case, "threshold_fired", len(fired) > 0,
-                "%d 个 cnt>=1 窗口（对照任务 running）" % len(fired))
+    ok &= check(case, "threshold_fired", len(fired) > 0, "%d 个 cnt>=1 窗口（对照任务 running）" % len(fired))
     before_max = max((r.get("win_start") or 0) for r in win_rows) if win_rows else 0
 
     # 两相之二：停对照任务 → 新增窗口不得再出现 cnt>=1
@@ -698,10 +839,8 @@ def run_f4():
     time.sleep(15)  # ≥3 窗口
     rows2, _ = poll_rows(job_id)
     win2 = [r for r in rows2 if r.get("win_start") is not None]
-    new_fired = [r for r in win2 if (r.get("win_start") or 0) > before_max
-                 and int(r.get("cnt") or 0) >= 1]
-    ok &= check(case, "threshold_quiet", len(new_fired) == 0,
-                "stop 后新增 cnt>=1 窗口=%d 个" % len(new_fired))
+    new_fired = [r for r in win2 if (r.get("win_start") or 0) > before_max and int(r.get("cnt") or 0) >= 1]
+    ok &= check(case, "threshold_quiet", len(new_fired) == 0, "stop 后新增 cnt>=1 窗口=%d 个" % len(new_fired))
 
     # C26 尾联：notify 批处理双实例（成功实例终态 success + 失败实例 notify 仍触发 → echo 命中）
     ok_notify, _ = ensure_and_run_notify_dag(case)
@@ -720,40 +859,42 @@ def run_f5():
     job_id = start_stream_job(wf_id, case)
     ok = wait_running(job_id, case) == "running"
     time.sleep(ARGS.wait)
-    exists = scalar(DW_C, "SELECT COUNT(*) FROM INFORMATION_SCHEMA.TABLES "
-                          "WHERE TABLE_SCHEMA='datara_dw' AND TABLE_NAME='i12_stream_agg'")
+    exists = scalar(
+        DW_C,
+        "SELECT COUNT(*) FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_SCHEMA='datara_dw' AND TABLE_NAME='i12_stream_agg'",
+    )
     ok &= check(case, "table_created", exists == "1", exists)
     total = int(scalar(DW_C, "SELECT COUNT(*) FROM datara_dw.i12_stream_agg") or 0)
     ok &= check(case, "rows_written", total > 0, total)
-    dup = int(scalar(DW_C, "SELECT COUNT(*) - COUNT(DISTINCT win_start) "
-                           "FROM datara_dw.i12_stream_agg") or 0)
+    dup = int(scalar(DW_C, "SELECT COUNT(*) - COUNT(DISTINCT win_start) FROM datara_dw.i12_stream_agg") or 0)
     ok &= check(case, "upsert_unique", dup == 0, "重复 win_start=%d" % dup)
-    amt = float(scalar(DW_C, "SELECT COALESCE(SUM(CAST(amt_total AS DECIMAL(12,2))),0) "
-                             "FROM datara_dw.i12_stream_agg") or 0)
+    amt = float(
+        scalar(DW_C, "SELECT COALESCE(SUM(CAST(amt_total AS DECIMAL(12,2))),0) FROM datara_dw.i12_stream_agg") or 0
+    )
     ok &= check(case, "amt_positive", amt > 0, amt)
 
     # 断流恢复（job 级）：重启流任务（restarted=true）→ upsert 幂等（无重复桶、不重放）
     job2 = start_stream_job(wf_id, case)
     ok &= wait_running(job2, case) == "running"
     time.sleep(20)
-    dup2 = int(scalar(DW_C, "SELECT COUNT(*) - COUNT(DISTINCT win_start) "
-                            "FROM datara_dw.i12_stream_agg") or 0)
+    dup2 = int(scalar(DW_C, "SELECT COUNT(*) - COUNT(DISTINCT win_start) FROM datara_dw.i12_stream_agg") or 0)
     total2 = int(scalar(DW_C, "SELECT COUNT(*) FROM datara_dw.i12_stream_agg") or 0)
-    ok &= check(case, "restart_idempotent", dup2 == 0 and total2 >= total,
-                "dup=%d total %d→%d" % (dup2, total, total2))
+    ok &= check(case, "restart_idempotent", dup2 == 0 and total2 >= total, "dup=%d total %d→%d" % (dup2, total, total2))
 
     # 下游 SQL 手动跑批（R5 Dependent 演示，不建调度壳）
-    mysql_exec(DW_C, "DROP TABLE IF EXISTS datara_dw.i12_stream_agg_daily;"
-                     "CREATE TABLE datara_dw.i12_stream_agg_daily AS"
-                     " SELECT DATE(FROM_UNIXTIME(win_start)) AS d,"
-                     " COUNT(*) AS bucket_cnt,"
-                     " SUM(CAST(amt_total AS DECIMAL(12,2))) AS amt_sum,"
-                     " SUM(CAST(cnt AS UNSIGNED)) AS ord_cnt"
-                     " FROM datara_dw.i12_stream_agg GROUP BY DATE(FROM_UNIXTIME(win_start))")
+    mysql_exec(
+        DW_C,
+        "DROP TABLE IF EXISTS datara_dw.i12_stream_agg_daily;"
+        "CREATE TABLE datara_dw.i12_stream_agg_daily AS"
+        " SELECT DATE(FROM_UNIXTIME(win_start)) AS d,"
+        " COUNT(*) AS bucket_cnt,"
+        " SUM(CAST(amt_total AS DECIMAL(12,2))) AS amt_sum,"
+        " SUM(CAST(cnt AS UNSIGNED)) AS ord_cnt"
+        " FROM datara_dw.i12_stream_agg GROUP BY DATE(FROM_UNIXTIME(win_start))",
+    )
     daily = int(scalar(DW_C, "SELECT COUNT(*) FROM datara_dw.i12_stream_agg_daily") or 0)
     ok &= check(case, "daily_buckets", daily >= 1, daily)
-    daily_amt = float(scalar(DW_C, "SELECT COALESCE(SUM(amt_sum),0) "
-                                   "FROM datara_dw.i12_stream_agg_daily") or 0)
+    daily_amt = float(scalar(DW_C, "SELECT COALESCE(SUM(amt_sum),0) FROM datara_dw.i12_stream_agg_daily") or 0)
     ok &= check(case, "daily_amt_match", abs(daily_amt - amt) < 0.01, "%s vs %s" % (daily_amt, amt))
     return ok
 

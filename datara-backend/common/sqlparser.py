@@ -20,7 +20,7 @@ from common.log import get_logger
 
 _log = get_logger("common.sqlparser")
 
-_STMT_MAX = 2000     # 语句原文截断（对齐 t_lineage_edge.stmt）
+_STMT_MAX = 2000  # 语句原文截断（对齐 t_lineage_edge.stmt）
 _TRANSFORM_MAX = 1000  # 表达式截断（对齐 t_lineage_field.transform）
 
 
@@ -30,20 +30,20 @@ class FieldMap:
 
     to_table: str
     to_field: str
-    from_table: str = ""   # 空串 = 常量/无来源
+    from_table: str = ""  # 空串 = 常量/无来源
     from_field: str = ""
-    transform: str = ""    # mysql 方言回写，如 "o.amount * 0.9"
+    transform: str = ""  # mysql 方言回写，如 "o.amount * 0.9"
 
 
 @dataclass
 class StmtLineage:
     """单语句血缘：表级输入/输出 + 字段级映射。"""
 
-    stmt_no: int                 # 语句序号（1 起）
-    stmt: str                    # 语句文本（回写，截断 2000）
+    stmt_no: int  # 语句序号（1 起）
+    stmt: str  # 语句文本（回写，截断 2000）
     from_tables: list = field(default_factory=list)  # 输入表（去重保序）
-    to_tables: list = field(default_factory=list)    # 输出表
-    fields: list = field(default_factory=list)       # list[FieldMap]
+    to_tables: list = field(default_factory=list)  # 输出表
+    fields: list = field(default_factory=list)  # list[FieldMap]
 
 
 def _short_sql(node) -> str:
@@ -73,8 +73,7 @@ def _target_table(node):
 def _target_columns(node) -> list:
     """INSERT 显式目标列（INSERT INTO t (a, b) SELECT ...）→ ['a', 'b']。"""
     if isinstance(node, exp.Schema):
-        return [c.name for c in node.expressions
-                if isinstance(c, (exp.Column, exp.Identifier))]
+        return [c.name for c in node.expressions if isinstance(c, (exp.Column, exp.Identifier))]
     return []
 
 
@@ -143,8 +142,7 @@ def _output_name(proj, idx: int) -> str:
     return name or ("expr_%d" % (idx + 1))
 
 
-def _resolve_from_table(col: exp.Column, amap: dict, scope, default_db: str,
-                        cte_names: set) -> str:
+def _resolve_from_table(col: exp.Column, amap: dict, scope, default_db: str, cte_names: set) -> str:
     """来源列归属表：有前缀查别名映射；无前缀在唯一来源表（含 CTE 名）时归属之。"""
     prefix = col.table or ""
     if prefix:
@@ -153,8 +151,7 @@ def _resolve_from_table(col: exp.Column, amap: dict, scope, default_db: str,
     return uniq.pop() if len(uniq) == 1 else ""
 
 
-def _field_maps(body, to_table: str, target_cols: list, amap: dict,
-                default_db: str, cte_names: set) -> list:
+def _field_maps(body, to_table: str, target_cols: list, amap: dict, default_db: str, cte_names: set) -> list:
     """SELECT 投影 → 字段映射（Star/列数不齐时退化为跳过对应投影）。"""
     maps, seen = [], set()
     if body is None:
@@ -201,8 +198,7 @@ def _parse_insert(stmt, default_db: str):
     fields = []
     if body is not None:
         amap = _alias_map(stmt, default_db, cte_names)
-        fields = _field_maps(body, target, _target_columns(stmt.this),
-                             amap, default_db, cte_names)
+        fields = _field_maps(body, target, _target_columns(stmt.this), amap, default_db, cte_names)
     return froms, [target], fields
 
 

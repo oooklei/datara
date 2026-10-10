@@ -35,10 +35,7 @@ def monitor_nodes(
     zk_ok, live = list_live_nodes(registry.zk if registry is not None else None)
 
     rows = []
-    live_by_module = {
-        module: {item["node"] for item in live if item["module"] == module}
-        for module in MONITOR_MODULES
-    }
+    live_by_module = {module: {item["node"] for item in live if item["module"] == module} for module in MONITOR_MODULES}
     current_ts = datetime.now().timestamp()
     for module in MONITOR_MODULES:
         known = read_known_nodes(module)
@@ -47,36 +44,38 @@ def monitor_nodes(
             reported_at = float(m.get("reportedAt") or known.get(node) or 0)
             age = current_ts - reported_at if reported_at else None
             metric_state = "fresh" if age is not None and age <= METRICS_TTL_SEC else "stale"
-            heartbeat = (
-                "online" if node in live_by_module[module] else "offline"
-            ) if zk_ok else "unknown"
-            rows.append({
-                "module": module,
-                "node": node,
-                "cpu": m.get("cpu"),
-                "mem": m.get("mem"),
-                "memUsedMb": m.get("memUsedMb"),
-                "memTotalMb": m.get("memTotalMb"),
-                "disk": m.get("disk"),
-                "heartbeat": heartbeat,
-                "metricState": metric_state,
-                "lastSeen": fmt_dt(datetime.fromtimestamp(reported_at)) if reported_at else None,
-                "tags": [],
-            })
+            heartbeat = ("online" if node in live_by_module[module] else "offline") if zk_ok else "unknown"
+            rows.append(
+                {
+                    "module": module,
+                    "node": node,
+                    "cpu": m.get("cpu"),
+                    "mem": m.get("mem"),
+                    "memUsedMb": m.get("memUsedMb"),
+                    "memTotalMb": m.get("memTotalMb"),
+                    "disk": m.get("disk"),
+                    "heartbeat": heartbeat,
+                    "metricState": metric_state,
+                    "lastSeen": fmt_dt(datetime.fromtimestamp(reported_at)) if reported_at else None,
+                    "tags": [],
+                }
+            )
 
     for node_row in db.query(SshNode).order_by(SshNode.id).all():
-        rows.append({
-            "module": "ssh",
-            "node": node_row.name,
-            "cpu": None,
-            "mem": None,
-            "memUsedMb": None,
-            "memTotalMb": None,
-            "disk": None,
-            "heartbeat": node_row.heartbeat_state,
-            "metricState": "unsupported",
-            "lastSeen": fmt_dt(node_row.last_seen),
-            "tags": node_row.tags or [],
-        })
+        rows.append(
+            {
+                "module": "ssh",
+                "node": node_row.name,
+                "cpu": None,
+                "mem": None,
+                "memUsedMb": None,
+                "memTotalMb": None,
+                "disk": None,
+                "heartbeat": node_row.heartbeat_state,
+                "metricState": "unsupported",
+                "lastSeen": fmt_dt(node_row.last_seen),
+                "tags": node_row.tags or [],
+            }
+        )
 
     return ok({"zkAvailable": zk_ok, "generatedAt": fmt_dt(datetime.now()), "nodes": rows})

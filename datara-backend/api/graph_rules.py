@@ -193,8 +193,13 @@ def _ref_resolvable(name: str, vars_supply: dict, node_param_keys: set) -> bool:
     return render_pattern(name, _PATTERN_PROBE) is not None
 
 
-def validate_graph(doc: dict, vars_supply: dict = None, comp_versions: dict = None,
-                   port_types: dict = None, require_component_ref: bool = False) -> list:
+def validate_graph(
+    doc: dict,
+    vars_supply: dict = None,
+    comp_versions: dict = None,
+    port_types: dict = None,
+    require_component_ref: bool = False,
+) -> list:
     """校验 GraphDocument，返回违规清单 [{rule, nodeId, message}]（空=通过）。
 
     vars_supply（Task F4 R5）：{"workflow": set[str], "global": set[str]}，调用方
@@ -227,14 +232,18 @@ def validate_graph(doc: dict, vars_supply: dict = None, comp_versions: dict = No
 
     cat = _catalog()
     legal_types = _legal_types(cat) if cat else None
-    fields_by_type = {
-        str(c.get("type") or ""): [
-            f for f in (c.get("formFields") or [])
-            if f.get("required") and not f.get("hasWhen")
-            and str(f.get("type") or "") != "hint"
-        ]
-        for c in cat.get("components", [])
-    } if cat else {}
+    fields_by_type = (
+        {
+            str(c.get("type") or ""): [
+                f
+                for f in (c.get("formFields") or [])
+                if f.get("required") and not f.get("hasWhen") and str(f.get("type") or "") != "hint"
+            ]
+            for c in cat.get("components", [])
+        }
+        if cat
+        else {}
+    )
 
     node_ids: set = set()
     for n in nodes:
@@ -264,9 +273,7 @@ def validate_graph(doc: dict, vars_supply: dict = None, comp_versions: dict = No
         # ---- R5 引用有效性（Task F4；vars_supply=None 时跳过） ----
         if vars_supply is not None and isinstance(data, dict):
             param_keys = {
-                str(row.get("key"))
-                for row in (data.get("params") or [])
-                if isinstance(row, dict) and row.get("key")
+                str(row.get("key")) for row in (data.get("params") or []) if isinstance(row, dict) and row.get("key")
             }
             refs: list = []
             _extract_refs(data, refs)
@@ -299,8 +306,7 @@ def validate_graph(doc: dict, vars_supply: dict = None, comp_versions: dict = No
                 if not bid:
                     continue
                 has_out = any(
-                    isinstance(e, dict) and e.get("source") == nid
-                    and str(e.get("sourceHandle") or "") == bid
+                    isinstance(e, dict) and e.get("source") == nid and str(e.get("sourceHandle") or "") == bid
                     for e in edges
                 )
                 if not has_out:
@@ -310,14 +316,13 @@ def validate_graph(doc: dict, vars_supply: dict = None, comp_versions: dict = No
         # 排除：① 后端兼容旧画布节点（src_select/tgt_select/smoke）——无前端 palette 入口；
         # ② 展示型节点（page_board）——渲染宿主，无需出边。
         _backend_only = frozenset(cat.get("stats", {}).get("backendOnlyTypes") or [])
-        if (ntype in PASSTHROUGH_TYPES
-                and ntype not in TEMPLATE_TYPES
-                and ntype not in _backend_only
-                and ntype not in NON_EXECUTABLE_TYPES):
-            has_out = any(
-                isinstance(e, dict) and e.get("source") == nid
-                for e in edges
-            )
+        if (
+            ntype in PASSTHROUGH_TYPES
+            and ntype not in TEMPLATE_TYPES
+            and ntype not in _backend_only
+            and ntype not in NON_EXECUTABLE_TYPES
+        ):
+            has_out = any(isinstance(e, dict) and e.get("source") == nid for e in edges)
             if not has_out:
                 bad("R9", "直通节点无下游消费边（配置无处落地）", nid)
 
@@ -327,20 +332,30 @@ def validate_graph(doc: dict, vars_supply: dict = None, comp_versions: dict = No
             ref = data.get("componentRef") if isinstance(data, dict) else None
             if ref is None:
                 if require_component_ref:
-                    bad("R6", "节点缺少 componentRef（禁止缺省语义 §9.2；存量画布请先跑 "
-                              "scripts/backfill_component_ref.py 回填）", nid)
+                    bad(
+                        "R6",
+                        "节点缺少 componentRef（禁止缺省语义 §9.2；存量画布请先跑 "
+                        "scripts/backfill_component_ref.py 回填）",
+                        nid,
+                    )
                 # R12：缺 ref 的节点，若该 type 在 comp_versions 中无 published 版本 → 警告
                 # （save 宽松路径：兼容存量未回填文档；但无 published 版本的组件不可发布）
-                if comp_versions is not None and ntype in comp_versions \
-                        and comp_versions[ntype] is None and ntype not in TEMPLATE_TYPES:
-                    bad("R12", "组件「%s」当前无 published 版本（§8/§18.3：该节点所在工作流"
-                              "不可发布，请先发布该组件）" % ntype, nid)
+                if (
+                    comp_versions is not None
+                    and ntype in comp_versions
+                    and comp_versions[ntype] is None
+                    and ntype not in TEMPLATE_TYPES
+                ):
+                    bad(
+                        "R12",
+                        "组件「%s」当前无 published 版本（§8/§18.3：该节点所在工作流不可发布，请先发布该组件）" % ntype,
+                        nid,
+                    )
             elif not isinstance(ref, dict):
                 bad("R6", "componentRef 必须为对象 {type, version}", nid)
             else:
                 if ref.get("type") != ntype:
-                    bad("R6", "componentRef.type「%s」与节点 type「%s」不一致（§9.1）"
-                        % (ref.get("type"), ntype), nid)
+                    bad("R6", "componentRef.type「%s」与节点 type「%s」不一致（§9.1）" % (ref.get("type"), ntype), nid)
                 ver = ref.get("version")
                 if isinstance(ver, bool) or not isinstance(ver, int) or ver < 1:
                     bad("R6", "componentRef.version 必须为 ≥1 整数（禁止 latest/null，§9.2）", nid)
@@ -348,11 +363,14 @@ def validate_graph(doc: dict, vars_supply: dict = None, comp_versions: dict = No
                     published = comp_versions.get(ntype)
                     if published is None:
                         # R6 + R12 联合：有 ref 但组件无 published 版本 → 拒绝发布
-                        bad("R6", "组件「%s」当前无 published 版本，工作流不可发布（§8/§18.3）"
-                            % ntype, nid)
+                        bad("R6", "组件「%s」当前无 published 版本，工作流不可发布（§8/§18.3）" % ntype, nid)
                     elif ver != published:
-                        bad("R6", "组件「%s」引用 v%s，当前 published 为 v%s（升级走显式升级 §9.3）"
-                            % (ntype, ver, published), nid)
+                        bad(
+                            "R6",
+                            "组件「%s」引用 v%s，当前 published 为 v%s（升级走显式升级 §9.3）"
+                            % (ntype, ver, published),
+                            nid,
+                        )
 
     # ---- R1 环检测（Kahn） + R4 悬挂边 + R14 边端口类型交集 ----
     node_map = {str(n.get("id") or ""): n for n in nodes if isinstance(n, dict)}
@@ -399,16 +417,16 @@ def validate_graph(doc: dict, vars_supply: dict = None, comp_versions: dict = No
     # ---- R13 物化锚点：含 endpoint_select 的同步链必须挂 assert（G-10 服务端收口）----
     # 对齐 engine.py materialize_sync_exec：无 assert 的同步链不会被物化 → sync 配置无处落地。
     # 保存闸门直接报 error，避免用户画完链才发现运行不了。
-    ep_ids = [nid for nid, n in node_map.items()
-              if isinstance(n, dict) and n.get("type") == "endpoint_select"]
+    ep_ids = [nid for nid, n in node_map.items() if isinstance(n, dict) and n.get("type") == "endpoint_select"]
     if ep_ids:
-        has_assert = any(
-            isinstance(n, dict) and n.get("type") == "assert"
-            for n in nodes if isinstance(n, dict)
-        )
+        has_assert = any(isinstance(n, dict) and n.get("type") == "assert" for n in nodes if isinstance(n, dict))
         if not has_assert:
             for eid in ep_ids:
-                bad("R13", "同步链含 endpoint_select 但无 assert 对账节点（链无法物化，"
-                          "请用 src_base_orch/tgt_base_orch/file_sync_orch 模板建链）", eid)
+                bad(
+                    "R13",
+                    "同步链含 endpoint_select 但无 assert 对账节点（链无法物化，"
+                    "请用 src_base_orch/tgt_base_orch/file_sync_orch 模板建链）",
+                    eid,
+                )
 
     return violations

@@ -24,6 +24,7 @@ from common.models import LineageEdge, LineageField, WfDefinition  # noqa: E402
 
 # ---------------- 夹具 ----------------
 
+
 def _mk_wf(client, name="血缘图wf"):
     r = client.post("/api/v1/workflow-definitions", json={"name": name})
     assert r.status_code == 200, r.text
@@ -42,17 +43,26 @@ def _save(client, wf, nodes):
     assert r.status_code == 200, r.text
 
 
-def _rt_edge(db, wf_code, frm, to, node_id="r1", stmt_no=1, tmp=False,
-             instance="inst-1", fields=(), create_time=None):
+def _rt_edge(db, wf_code, frm, to, node_id="r1", stmt_no=1, tmp=False, instance="inst-1", fields=(), create_time=None):
     """直插 runtime 血缘边（+可选字段行），src_type 默认 runtime；create_time 可显式定值。"""
-    edge = LineageEdge(wf_code=wf_code, wf_name="rt", instance_id=instance,
-                       node_id=node_id, stmt_no=stmt_no, from_table=frm, to_table=to,
-                       tmp_flag=tmp, src_type="runtime", create_time=create_time)
+    edge = LineageEdge(
+        wf_code=wf_code,
+        wf_name="rt",
+        instance_id=instance,
+        node_id=node_id,
+        stmt_no=stmt_no,
+        from_table=frm,
+        to_table=to,
+        tmp_flag=tmp,
+        src_type="runtime",
+        create_time=create_time,
+    )
     db.add(edge)
     db.flush()
     for ft, ff, tf, tr in fields:
-        db.add(LineageField(edge_id=edge.id, from_table=ft, from_field=ff,
-                            to_field=tf, transform=tr, src_type="runtime"))
+        db.add(
+            LineageField(edge_id=edge.id, from_table=ft, from_field=ff, to_field=tf, transform=tr, src_type="runtime")
+        )
     db.flush()
     return edge
 
@@ -69,11 +79,13 @@ def _fqs(d):
 
 # ---------------- 空库空图 ----------------
 
+
 def test_graph_empty_db(client):
     assert _graph(client) == {"nodes": [], "edges": [], "opaques": [], "truncated": False}
 
 
 # ---------------- design+runtime 同表对聚合 ----------------
+
 
 def test_graph_design_runtime_same_pair_dedup_sources(client, db_session):
     wf = _mk_wf(client, "双源聚合")
@@ -88,7 +100,9 @@ def test_graph_design_runtime_same_pair_dedup_sources(client, db_session):
     assert (e["from"], e["to"], e["level"]) == ("a", "t", "table"), "端点输出裸表名"
     assert e["sources"] == ["design", "runtime"], "src_type 去重双值"
     assert {(r["wfCode"], r["nodeId"], r["stmtNo"]) for r in e["refs"]} == {
-        (wf["code"], "n1", 1), (wf["code"], "r1", 1)}
+        (wf["code"], "n1", 1),
+        (wf["code"], "r1", 1),
+    }
     assert all(set(r) == {"wfCode", "nodeId", "stmtNo"} for r in e["refs"])
 
     nodes = {n["fq"]: n for n in d["nodes"]}
@@ -99,6 +113,7 @@ def test_graph_design_runtime_same_pair_dedup_sources(client, db_session):
 
 
 # ---------------- source 筛选 ----------------
+
 
 def test_graph_source_filter(client, db_session):
     wf = _mk_wf(client, "源筛选")
@@ -114,6 +129,7 @@ def test_graph_source_filter(client, db_session):
 
 # ---------------- wfCode 过滤 ----------------
 
+
 def test_graph_wfcode_filter(client):
     wf1 = _mk_wf(client, "过滤A")
     _save(client, wf1, [_sql_node("n1", "INSERT INTO dw.t1 SELECT x FROM ods.a1")])
@@ -128,11 +144,11 @@ def test_graph_wfcode_filter(client):
 
 # ---------------- 中心表扩散：direction / depth / 裸表名匹配 ----------------
 
+
 def _chain_wf(client, name, hops):
     """单 wf 内 h 跳链：dw.c0 → dw.c1 → ... → dw.c{h}。"""
     wf = _mk_wf(client, name)
-    nodes = [_sql_node("n%d" % i, "INSERT INTO dw.c%d SELECT x FROM dw.c%d" % (i, i - 1))
-             for i in range(1, hops + 1)]
+    nodes = [_sql_node("n%d" % i, "INSERT INTO dw.c%d SELECT x FROM dw.c%d" % (i, i - 1)) for i in range(1, hops + 1)]
     _save(client, wf, nodes)
 
 
@@ -156,12 +172,16 @@ def test_graph_diffusion_direction_and_depth(client):
 def test_graph_diffusion_diamond_converge(client):
     """菱形拓扑 A→B、A→C、B→D、C→D：both 从 A 扩散收敛 D，visited/边无重复。"""
     wf = _mk_wf(client, "菱形拓扑")
-    _save(client, wf, [
-        _sql_node("n1", "INSERT INTO dw.B SELECT x FROM dw.A"),
-        _sql_node("n2", "INSERT INTO dw.C SELECT x FROM dw.A"),
-        _sql_node("n3", "INSERT INTO dw.D SELECT x FROM dw.B"),
-        _sql_node("n4", "INSERT INTO dw.D SELECT x FROM dw.C"),
-    ])
+    _save(
+        client,
+        wf,
+        [
+            _sql_node("n1", "INSERT INTO dw.B SELECT x FROM dw.A"),
+            _sql_node("n2", "INSERT INTO dw.C SELECT x FROM dw.A"),
+            _sql_node("n3", "INSERT INTO dw.D SELECT x FROM dw.B"),
+            _sql_node("n4", "INSERT INTO dw.D SELECT x FROM dw.C"),
+        ],
+    )
     d = _graph(client, table="dw.A", direction="both")
     assert _fqs(d) == {"A", "B", "C", "D"}, "分叉经 B/C 汇聚到 D"
     assert d["truncated"] is False
@@ -172,13 +192,13 @@ def test_graph_diffusion_diamond_converge(client):
 def test_graph_seeds_over_limit_truncated(client):
     """中心表多 seed 命中（field 级宽表逐字段）超 limit：seed 截断并置 truncated。"""
     wf = _mk_wf(client, "宽表多seed")
-    _save(client, wf, [
-        _sql_node("n1", "INSERT INTO dw.w SELECT a AS f1, b AS f2, c AS f3 FROM ods.src")])
+    _save(client, wf, [_sql_node("n1", "INSERT INTO dw.w SELECT a AS f1, b AS f2, c AS f3 FROM ods.src")])
     d = _graph(client, level="field", table="dw.w", limit=2)
     assert d["truncated"] is True and len(d["nodes"]) == 2
 
 
 # ---------------- limit 截断（扩散 + 全图） ----------------
+
 
 def test_graph_limit_truncated_diffusion(client):
     _chain_wf(client, "扩散截断", 4)  # c0→c1→c2→c3→c4
@@ -190,27 +210,35 @@ def test_graph_limit_truncated_diffusion(client):
 
 def test_graph_limit_truncated_full_graph(client):
     wf = _mk_wf(client, "全图截断")
-    _save(client, wf, [
-        _sql_node("n1", "INSERT INTO dw.b1 SELECT x FROM dw.a1"),
-        _sql_node("n2", "INSERT INTO dw.b2 SELECT x FROM dw.a2"),
-        _sql_node("n3", "INSERT INTO dw.b3 SELECT x FROM dw.a3"),
-    ])
+    _save(
+        client,
+        wf,
+        [
+            _sql_node("n1", "INSERT INTO dw.b1 SELECT x FROM dw.a1"),
+            _sql_node("n2", "INSERT INTO dw.b2 SELECT x FROM dw.a2"),
+            _sql_node("n3", "INSERT INTO dw.b3 SELECT x FROM dw.a3"),
+        ],
+    )
     d = _graph(client, limit=4)
     assert len(d["nodes"]) == 4 and d["truncated"] is True
     kept = _fqs(d)
-    assert all(e["from"] in kept and e["to"] in kept for e in d["edges"]), \
-        "被截断节点的悬空边一并剔除"
+    assert all(e["from"] in kept and e["to"] in kept for e in d["edges"]), "被截断节点的悬空边一并剔除"
 
 
 # ---------------- 环图不进环 ----------------
 
+
 def test_graph_cycle_no_revisit(client):
     wf = _mk_wf(client, "环图")
-    _save(client, wf, [
-        _sql_node("n1", "INSERT INTO dw.b SELECT x FROM dw.a"),
-        _sql_node("n2", "INSERT INTO dw.c SELECT x FROM dw.b"),
-        _sql_node("n3", "INSERT INTO dw.a SELECT x FROM dw.c"),
-    ])
+    _save(
+        client,
+        wf,
+        [
+            _sql_node("n1", "INSERT INTO dw.b SELECT x FROM dw.a"),
+            _sql_node("n2", "INSERT INTO dw.c SELECT x FROM dw.b"),
+            _sql_node("n3", "INSERT INTO dw.a SELECT x FROM dw.c"),
+        ],
+    )
     d = _graph(client, table="dw.a")
     assert _fqs(d) == {"a", "b", "c"}, "visited 防环，不重入不爆炸"
     assert len(d["edges"]) == 3 and d["truncated"] is False
@@ -218,10 +246,10 @@ def test_graph_cycle_no_revisit(client):
 
 # ---------------- field 级边带 transform ----------------
 
+
 def test_graph_field_level_transform(client):
     wf = _mk_wf(client, "字段级")
-    _save(client, wf, [
-        _sql_node("n1", "INSERT INTO dw.t SELECT o.amount * 0.9 AS amt FROM ods.orders o")])
+    _save(client, wf, [_sql_node("n1", "INSERT INTO dw.t SELECT o.amount * 0.9 AS amt FROM ods.orders o")])
 
     d = _graph(client, level="field")
     assert len(d["edges"]) == 1
@@ -240,6 +268,7 @@ def test_graph_field_level_transform(client):
 
 
 # ---------------- file: 边 _bare 特判 ----------------
+
 
 def test_bare_file_prefix_guard():
     assert _bare("file:x/y.csv") == "file:x/y.csv", "file: 前缀路径不得按点误剥"
@@ -264,15 +293,20 @@ def test_graph_file_edge_original_fq_and_center_match(client, db_session):
 
 # ---------------- tmpFlag 节点聚合 + opaque 重算 ----------------
 
+
 def test_graph_tmp_flag_and_opaques(client, db_session):
     wf = _mk_wf(client, "临时表与opaque")
     _save(client, wf, [_sql_node("n1", "INSERT INTO dw.t SELECT x FROM ods.a")])
     _rt_edge(db_session, wf["code"], "ods.tmp1", "dw.h", tmp=True)
     # opaque：解析期不产边的组件（python）未落库，直插定义由查询端重算
-    db_session.add(WfDefinition(
-        id="wf_op", code=99001, name="py流",
-        graph_json=json.dumps({"nodes": [{"id": "p1", "type": "python", "data": {}}],
-                               "edges": []})))
+    db_session.add(
+        WfDefinition(
+            id="wf_op",
+            code=99001,
+            name="py流",
+            graph_json=json.dumps({"nodes": [{"id": "p1", "type": "python", "data": {}}], "edges": []}),
+        )
+    )
     db_session.commit()
 
     d = _graph(client)
@@ -288,6 +322,7 @@ def test_graph_tmp_flag_and_opaques(client, db_session):
 
 # ---------------- 三形态聚合一（1.9 实测缺陷回归） ----------------
 
+
 def test_graph_mixed_prefix_forms_merge_dual_source(client, db_session):
     """design 落数据源 ID 前缀（9.a→4.b）/ runtime 落数据源名前缀（ec.a）或裸名（b）：
     同一物理血缘按 _bare 归一聚成一条边，sources 双值命中（1.9 实测：原值聚合裂边
@@ -301,8 +336,9 @@ def test_graph_mixed_prefix_forms_merge_dual_source(client, db_session):
     e = d["edges"][0]
     assert (e["from"], e["to"]) == ("a", "b")
     assert e["sources"] == ["design", "runtime"], "双源归一命中（本缺陷核心断言）"
-    assert {(r["wfCode"], r["nodeId"]) for r in e["refs"]} == {
-        (wf_d["code"], "n1"), (97, "r1")}, "refs 两来源明细合并收集"
+    assert {(r["wfCode"], r["nodeId"]) for r in e["refs"]} == {(wf_d["code"], "n1"), (97, "r1")}, (
+        "refs 两来源明细合并收集"
+    )
     nodes = {n["fq"]: n for n in d["nodes"]}
     assert set(nodes) == {"a", "b"}, "多形态同表聚为单节点（fq 全局一致）"
     assert nodes["a"]["sources"] == ["design", "runtime"]
@@ -314,14 +350,15 @@ def test_graph_mixed_prefix_forms_merge_dual_source(client, db_session):
 
 # ---------------- 归一防误伤（字段级 + file:） ----------------
 
+
 def test_graph_field_mixed_prefix_and_file_guard(client, db_session):
     """①file: 路径端点不受 _bare 归一影响（不剥不并）；②design（ds-ID 前缀）与
     runtime（ds 名前缀）同表同字段归一为一条字段边、双源命中，不同字段不串行。"""
     wf = _mk_wf(client, "字段归一防误伤")
-    _save(client, wf, [
-        _sql_node("n1", "INSERT INTO 4.pay SELECT o.amount * 0.9 AS amt FROM 9.orders o")])
-    _rt_edge(db_session, wf["code"], "ec.orders", "pay", node_id="r1",
-             fields=[("ec.orders", "amount", "amt", "amount")])
+    _save(client, wf, [_sql_node("n1", "INSERT INTO 4.pay SELECT o.amount * 0.9 AS amt FROM 9.orders o")])
+    _rt_edge(
+        db_session, wf["code"], "ec.orders", "pay", node_id="r1", fields=[("ec.orders", "amount", "amt", "amount")]
+    )
     _rt_edge(db_session, wf["code"], "file:x/y.csv", "dw.ext", node_id="r2")
 
     d = _graph(client, level="field")
@@ -329,8 +366,7 @@ def test_graph_field_mixed_prefix_and_file_guard(client, db_session):
     assert len(fe) == 1, "两形态同字段聚合为一条字段边（不串不裂）"
     assert (fe[0]["from"], fe[0]["to"]) == ("orders.amount", "pay.amt")
     assert fe[0]["sources"] == ["design", "runtime"], "字段级双源归一命中"
-    assert {(r["wfCode"], r["nodeId"]) for r in fe[0]["refs"]} == {
-        (wf["code"], "n1"), (wf["code"], "r1")}
+    assert {(r["wfCode"], r["nodeId"]) for r in fe[0]["refs"]} == {(wf["code"], "n1"), (wf["code"], "r1")}
     design_ref = next(r for r in fe[0]["refs"] if r["nodeId"] == "n1")
     assert "0.9" in design_ref["transform"]
     # field 级图只聚合字段行；file 边仅表级行无字段行，不出现于 field 图（表级段验证）
@@ -345,15 +381,13 @@ def test_graph_field_mixed_prefix_and_file_guard(client, db_session):
 
 # ---------------- 节点 lastCollected（聚合行 create_time max，/stats lastTime 同口径） ----------------
 
+
 def test_graph_last_collected_max_per_node(client, db_session):
     """同表多条边取最大 create_time，序列化 'YYYY-MM-DD HH:mm:ss'；各节点独立。"""
     wf = _mk_wf(client, "最近采集")
-    _rt_edge(db_session, wf["code"], "ods.a", "dw.t", node_id="r1",
-             create_time=datetime(2026, 9, 30, 10, 0, 0))
-    _rt_edge(db_session, wf["code"], "ods.a", "dw.t", node_id="r2",
-             create_time=datetime(2026, 9, 30, 11, 30, 5))
-    _rt_edge(db_session, wf["code"], "ods.b", "dw.u", node_id="r3",
-             create_time=datetime(2026, 9, 1, 8, 0, 0))
+    _rt_edge(db_session, wf["code"], "ods.a", "dw.t", node_id="r1", create_time=datetime(2026, 9, 30, 10, 0, 0))
+    _rt_edge(db_session, wf["code"], "ods.a", "dw.t", node_id="r2", create_time=datetime(2026, 9, 30, 11, 30, 5))
+    _rt_edge(db_session, wf["code"], "ods.b", "dw.u", node_id="r3", create_time=datetime(2026, 9, 1, 8, 0, 0))
 
     d = _graph(client)
     nodes = {n["fq"]: n for n in d["nodes"]}
@@ -366,12 +400,24 @@ def test_graph_last_collected_max_per_node(client, db_session):
 def test_graph_last_collected_field_level_from_parent_edge(client, db_session):
     """field 级节点 lastCollected 取组内父边 create_time max（字段行自身无独立时间口径）。"""
     wf = _mk_wf(client, "字段最近采集")
-    _rt_edge(db_session, wf["code"], "ec.orders", "pay", node_id="r1",
-             create_time=datetime(2026, 9, 30, 12, 0, 0),
-             fields=[("ec.orders", "amount", "amt", "amount")])
-    _rt_edge(db_session, wf["code"], "ec.orders", "pay", node_id="r2",
-             create_time=datetime(2026, 9, 30, 15, 0, 0),
-             fields=[("ec.orders", "amount", "amt", "amount")])
+    _rt_edge(
+        db_session,
+        wf["code"],
+        "ec.orders",
+        "pay",
+        node_id="r1",
+        create_time=datetime(2026, 9, 30, 12, 0, 0),
+        fields=[("ec.orders", "amount", "amt", "amount")],
+    )
+    _rt_edge(
+        db_session,
+        wf["code"],
+        "ec.orders",
+        "pay",
+        node_id="r2",
+        create_time=datetime(2026, 9, 30, 15, 0, 0),
+        fields=[("ec.orders", "amount", "amt", "amount")],
+    )
 
     d = _graph(client, level="field")
     nodes = {n["fq"]: n for n in d["nodes"]}
@@ -386,16 +432,45 @@ def test_graph_last_collected_null_when_missing(client, db_session, monkeypatch)
     import api.lineage as mod
 
     rows = [
-        SimpleNamespace(id=1, wf_code=1, wf_name="rt", instance_id="inst-1",
-                        node_id="r1", stmt_no=1, from_table="ods.x", to_table="dw.y",
-                        tmp_flag=0, src_type="runtime",
-                        create_time=datetime(2026, 9, 30, 9, 0, 0)),
-        SimpleNamespace(id=2, wf_code=1, wf_name="rt", instance_id="inst-1",
-                        node_id="r2", stmt_no=1, from_table="ods.x", to_table="dw.y",
-                        tmp_flag=0, src_type="runtime", create_time=None),
-        SimpleNamespace(id=3, wf_code=1, wf_name="rt", instance_id="inst-1",
-                        node_id="r3", stmt_no=1, from_table="ods.z", to_table="dw.w",
-                        tmp_flag=0, src_type="runtime", create_time=None),
+        SimpleNamespace(
+            id=1,
+            wf_code=1,
+            wf_name="rt",
+            instance_id="inst-1",
+            node_id="r1",
+            stmt_no=1,
+            from_table="ods.x",
+            to_table="dw.y",
+            tmp_flag=0,
+            src_type="runtime",
+            create_time=datetime(2026, 9, 30, 9, 0, 0),
+        ),
+        SimpleNamespace(
+            id=2,
+            wf_code=1,
+            wf_name="rt",
+            instance_id="inst-1",
+            node_id="r2",
+            stmt_no=1,
+            from_table="ods.x",
+            to_table="dw.y",
+            tmp_flag=0,
+            src_type="runtime",
+            create_time=None,
+        ),
+        SimpleNamespace(
+            id=3,
+            wf_code=1,
+            wf_name="rt",
+            instance_id="inst-1",
+            node_id="r3",
+            stmt_no=1,
+            from_table="ods.z",
+            to_table="dw.w",
+            tmp_flag=0,
+            src_type="runtime",
+            create_time=None,
+        ),
     ]
 
     class _FakeQuery:
@@ -420,11 +495,13 @@ def test_graph_last_collected_null_when_missing(client, db_session, monkeypatch)
 
 # ---------------- opaque 内容寻址缓存 ----------------
 
+
 def test_opaques_cache_hit_and_invalidate(client, db_session, monkeypatch):
     """_collect_opaques 内容寻址缓存：graph_json 摘要未变直接复用解析结果（不重复调
     extract_wf_lineage），改写定义换戳自动重算（免显式失效钩子）。save 端点自身经
     redesign 也会解析，计数快照围住每次 graph 调用前后，不与 rebuild 耦合。"""
     import api.lineage as lineage_mod
+
     real_extract = lineage_mod.extract_wf_lineage
     calls = {"n": 0}
 
@@ -436,10 +513,14 @@ def test_opaques_cache_hit_and_invalidate(client, db_session, monkeypatch):
     lineage_mod._opaques_cache.clear()  # 隔离同进程其他用例的缓存残留
 
     _mk_wf(client, "opaque缓存")
-    db_session.add(WfDefinition(
-        id="wf_cache", code=99002, name="py流缓存",
-        graph_json=json.dumps({"nodes": [{"id": "p1", "type": "python", "data": {}}],
-                               "edges": []})))
+    db_session.add(
+        WfDefinition(
+            id="wf_cache",
+            code=99002,
+            name="py流缓存",
+            graph_json=json.dumps({"nodes": [{"id": "p1", "type": "python", "data": {}}], "edges": []}),
+        )
+    )
     db_session.commit()
 
     before = calls["n"]
@@ -453,8 +534,7 @@ def test_opaques_cache_hit_and_invalidate(client, db_session, monkeypatch):
     assert d2["opaques"] == d1["opaques"]
 
     row = db_session.query(WfDefinition).filter(WfDefinition.code == 99002).one()
-    row.graph_json = json.dumps({"nodes": [{"id": "p2", "type": "shell", "data": {}}],
-                                 "edges": []})
+    row.graph_json = json.dumps({"nodes": [{"id": "p2", "type": "shell", "data": {}}], "edges": []})
     db_session.commit()
 
     before = calls["n"]

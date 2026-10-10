@@ -79,9 +79,23 @@ def test_three_tables_registered():
 def test_component_columns_match_spec():
     cols = set(Component.__table__.columns.keys())
     assert cols == {
-        "id", "type", "name", "category", "profile", "scope", "execution_model",
-        "executor", "executable", "state", "published_version", "draft_rev",
-        "description", "tags", "owner_id", "create_time", "update_time",
+        "id",
+        "type",
+        "name",
+        "category",
+        "profile",
+        "scope",
+        "execution_model",
+        "executor",
+        "executable",
+        "state",
+        "published_version",
+        "draft_rev",
+        "description",
+        "tags",
+        "owner_id",
+        "create_time",
+        "update_time",
     }
     # §7.1 关键约束
     assert Component.__table__.columns["type"].unique is True
@@ -94,9 +108,18 @@ def test_component_version_columns_and_constraints():
     t = ComponentVersion.__table__
     cols = set(t.columns.keys())
     assert cols == {
-        "id", "component_id", "type", "version", "state", "spec_json",
-        "spec_hash", "remark", "published_by", "published_time",
-        "create_time", "update_time",
+        "id",
+        "component_id",
+        "type",
+        "version",
+        "state",
+        "spec_json",
+        "spec_hash",
+        "remark",
+        "published_by",
+        "published_time",
+        "create_time",
+        "update_time",
     }
     # 版本冻结的存储层保证：type+version 唯一
     uk = {c.name for c in t.constraints if c.__class__.__name__ == "UniqueConstraint"}
@@ -112,8 +135,17 @@ def test_component_log_columns_and_index():
     t = ComponentLog.__table__
     cols = set(t.columns.keys())
     assert cols == {
-        "id", "component_id", "type", "version", "action", "spec_hash",
-        "operator", "remark", "operate_time", "create_time", "update_time",
+        "id",
+        "component_id",
+        "type",
+        "version",
+        "action",
+        "spec_hash",
+        "operator",
+        "remark",
+        "operate_time",
+        "create_time",
+        "update_time",
     }
     idx = {i.name for i in t.indexes}
     assert "idx_complog_comp" in idx

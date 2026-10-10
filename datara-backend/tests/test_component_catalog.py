@@ -58,6 +58,7 @@ def catalog() -> dict:
 
 # ---------------------------------------------------------------- 目录自洽
 
+
 def test_snapshot_exists_and_has_basics(catalog):
     assert SNAPSHOT.is_file(), "快照缺失，请运行 python scripts/export_dag_catalog.py"
     assert catalog["schemaVersion"] == 1
@@ -129,30 +130,37 @@ def test_execution_model_is_declared_per_profile(catalog):
     assert by_prof["topo"] == {"canvas-device"}
 
     # 逐 type 校验：passthrough 集 = 直通配置节点（自身不执行，配置被下游拍平消费）
-    passthrough_types = {c["type"] for c in catalog["components"]
-                         if c["executionModel"] == "passthrough"}
+    passthrough_types = {c["type"] for c in catalog["components"] if c["executionModel"] == "passthrough"}
     assert passthrough_types == {
-        "endpoint_select", "field_map", "field_map_union", "condition_set", "page_board",
+        "endpoint_select",
+        "field_map",
+        "field_map_union",
+        "condition_set",
+        "page_board",
     }, "passthrough 集应与 PASSTHROUGH_TYPES 一致（page_board 归 passthrough 不归入 nonExecutable）"
 
     # template 集 = 编排模板（落图即展开为节点链，无独立运行时路由）
-    template_types = {c["type"] for c in catalog["components"]
-                      if c["executionModel"] == "template"}
-    assert template_types == {"src_base_orch", "tgt_base_orch", "file_sync_orch", "demo_pipeline"}, \
+    template_types = {c["type"] for c in catalog["components"] if c["executionModel"] == "template"}
+    assert template_types == {"src_base_orch", "tgt_base_orch", "file_sync_orch", "demo_pipeline"}, (
         "template 集 = 3 个 dag 编排模板 + etl 的 demo_pipeline"
+    )
 
     # dag-engine 组件分两类：master 路由（控制流节点，无 worker executor）/
     # worker 路由（执行节点，必须绑定 executor）。
-    dag_engine_worker = [c for c in catalog["components"]
-                         if c["profile"] == "dag" and c["executionModel"] == "dag-engine"
-                         and c["route"] == "worker"]
+    dag_engine_worker = [
+        c
+        for c in catalog["components"]
+        if c["profile"] == "dag" and c["executionModel"] == "dag-engine" and c["route"] == "worker"
+    ]
     for c in dag_engine_worker:
         assert c["executor"], "dag-engine worker 路由组件 %s 必须绑定 executor" % c["type"]
     # master 路由的 dag-engine 组件（start/end/conditions/switch/fork/join/merge/delay/
     # dependent/loop/assert/stream_*/variable）由 master 引擎直接处理，无 worker executor。
-    dag_engine_master = [c for c in catalog["components"]
-                         if c["profile"] == "dag" and c["executionModel"] == "dag-engine"
-                         and c["route"] == "master"]
+    dag_engine_master = [
+        c
+        for c in catalog["components"]
+        if c["profile"] == "dag" and c["executionModel"] == "dag-engine" and c["route"] == "master"
+    ]
     assert len(dag_engine_master) > 0, "应由 master 路由的控制流节点"
 
 
@@ -202,6 +210,7 @@ def test_runtime_only_flag(catalog):
 
 
 # ---------------------------------------------------------------- 只读 API
+
 
 def test_list_components(client):
     r = client.get("/api/v1/components")
@@ -299,10 +308,14 @@ def test_api_is_read_only(client):
 
 # ---------------------------------------------------------------- 漂移守卫
 
+
 def _run_check(tmp_out: Path) -> subprocess.CompletedProcess:
     return subprocess.run(
         [sys.executable, str(EXPORTER), "--check", "--quiet", "--out", str(tmp_out)],
-        capture_output=True, text=True, cwd=str(REPO), encoding="utf-8",
+        capture_output=True,
+        text=True,
+        cwd=str(REPO),
+        encoding="utf-8",
     )
 
 
@@ -314,7 +327,7 @@ def test_check_detects_tampered_content_even_when_hash_kept(tmp_path):
     """回归：只改内容、不动自述 catalogHash，也必须检出（旧实现会漏过）。"""
     bad = tmp_path / "dag_catalog.json"
     doc = json.loads(SNAPSHOT.read_text(encoding="utf-8"))
-    doc["schemaVersion"] = 999          # hash 字段原样保留
+    doc["schemaVersion"] = 999  # hash 字段原样保留
     bad.write_text(json.dumps(doc, ensure_ascii=False, indent=2), encoding="utf-8")
     r = _run_check(bad)
     assert r.returncode == 1

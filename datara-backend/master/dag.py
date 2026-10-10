@@ -24,14 +24,15 @@ def eliminate_reroutes(graph_json: dict) -> dict:
 
     nodes = [dict(node) for node in raw_nodes if isinstance(node, dict)]
     edges = [dict(edge) for edge in raw_edges if isinstance(edge, dict)]
-    reroute_ids = [str(node.get("id")) for node in nodes
-                   if node.get("id") and node.get("type") == "reroute"]
+    reroute_ids = [str(node.get("id")) for node in nodes if node.get("id") and node.get("type") == "reroute"]
     for reroute_id in reroute_ids:
         incoming = [edge for edge in edges if str(edge.get("target") or "") == reroute_id]
         outgoing = [edge for edge in edges if str(edge.get("source") or "") == reroute_id]
-        edges = [edge for edge in edges
-                 if str(edge.get("source") or "") != reroute_id
-                 and str(edge.get("target") or "") != reroute_id]
+        edges = [
+            edge
+            for edge in edges
+            if str(edge.get("source") or "") != reroute_id and str(edge.get("target") or "") != reroute_id
+        ]
         existing = {
             (
                 str(edge.get("source") or ""),
@@ -105,8 +106,9 @@ class Graph:
         if branch is None:
             return not edge.get("sourceHandle")
         handle = edge.get("sourceHandle") or ""
-        return handle in (branch.get("id"), branch.get("name"), branch.get("expr")) or \
-            edge.get("label") == branch.get("name")
+        return handle in (branch.get("id"), branch.get("name"), branch.get("expr")) or edge.get("label") == branch.get(
+            "name"
+        )
 
 
 def extract_stream_subgraph(graph_json: dict) -> tuple[dict, Optional[dict]]:
@@ -132,8 +134,7 @@ def extract_stream_subgraph(graph_json: dict) -> tuple[dict, Optional[dict]]:
     if not isinstance(raw_nodes, list) or not isinstance(raw_edges, list):
         return graph_json, None
 
-    stream_ids = {str(n["id"]) for n in raw_nodes
-                  if isinstance(n, dict) and n.get("type") in STREAM_TYPES}
+    stream_ids = {str(n["id"]) for n in raw_nodes if isinstance(n, dict) and n.get("type") in STREAM_TYPES}
     if not stream_ids:
         return graph_json, None
 
@@ -143,40 +144,47 @@ def extract_stream_subgraph(graph_json: dict) -> tuple[dict, Optional[dict]]:
     try:
         from api.streamjob import extract_stream_spec
         from common.models import WfDefinition
+
         # 构造仅含流节点 + page_board 的子图文档（extract_stream_spec 允许 page_board）。
-        stream_nodes = [dict(n) for n in raw_nodes
-                        if isinstance(n, dict) and str(n.get("id") or "") in stream_ids]
+        stream_nodes = [dict(n) for n in raw_nodes if isinstance(n, dict) and str(n.get("id") or "") in stream_ids]
         # page_board 节点保留在子图中（display 类型，extract_stream_spec 允许）
-        display_nodes = [dict(n) for n in raw_nodes
-                         if isinstance(n, dict)
-                         and str(n.get("id") or "") not in stream_ids
-                         and str(n.get("type") or "") == "page_board"]
+        display_nodes = [
+            dict(n)
+            for n in raw_nodes
+            if isinstance(n, dict)
+            and str(n.get("id") or "") not in stream_ids
+            and str(n.get("type") or "") == "page_board"
+        ]
         sub_ids = {str(n["id"]) for n in stream_nodes + display_nodes}
-        sub_edges = [dict(e) for e in raw_edges
-                     if isinstance(e, dict)
-                     and str(e.get("source") or "") in sub_ids
-                     and str(e.get("target") or "") in sub_ids]
+        sub_edges = [
+            dict(e)
+            for e in raw_edges
+            if isinstance(e, dict) and str(e.get("source") or "") in sub_ids and str(e.get("target") or "") in sub_ids
+        ]
         sub_doc = {"nodes": stream_nodes + display_nodes, "edges": sub_edges}
         _defn = WfDefinition(id="_batch_extract", name=str(graph_json.get("name") or ""))
         spec = extract_stream_spec(_defn, sub_doc)
     except Exception as exc:  # noqa: BLE001 —— 流图不合规，降级：不提取，由 _exec_stream 兜底
         # 延迟导入避免模块级循环（dag ← engine ← scheduler → api）
         from common.log import get_logger
+
         get_logger("master.dag").warning("流子图提取降级（结构不合规: %s），留给 _exec_stream 兜底", exc)
         return graph_json, None
 
     # ---- 移除流节点 + 内部边 ----
-    remaining_nodes = [dict(n) for n in raw_nodes
-                       if isinstance(n, dict) and str(n.get("id") or "") not in stream_ids]
-    internal_edges = [dict(e) for e in raw_edges
-                      if isinstance(e, dict)
-                      and str(e.get("source") or "") not in stream_ids
-                      and str(e.get("target") or "") not in stream_ids]
+    remaining_nodes = [dict(n) for n in raw_nodes if isinstance(n, dict) and str(n.get("id") or "") not in stream_ids]
+    internal_edges = [
+        dict(e)
+        for e in raw_edges
+        if isinstance(e, dict)
+        and str(e.get("source") or "") not in stream_ids
+        and str(e.get("target") or "") not in stream_ids
+    ]
 
     # ---- 桥接：批前驱 → 流 的边 → 批前驱 → 批后继 ----
     # 收集：哪些批节点有边进入流子图（preds），哪些批节点有边从子图引出（succs）。
-    preds_of_stream: set = set()   # 有出边指向流节点的批节点
-    succs_of_stream: set = set()   # 有入边从流节点引出的批节点
+    preds_of_stream: set = set()  # 有出边指向流节点的批节点
+    succs_of_stream: set = set()  # 有入边从流节点引出的批节点
     for e in raw_edges:
         if not isinstance(e, dict):
             continue
@@ -200,10 +208,14 @@ def extract_stream_subgraph(graph_json: dict) -> tuple[dict, Optional[dict]]:
             if key in seen_edges:
                 continue
             seen_edges.add(key)
-            bridge_edges.append({
-                "source": pred, "target": succ,
-                "sourceHandle": None, "label": "stream_bridge",
-            })
+            bridge_edges.append(
+                {
+                    "source": pred,
+                    "target": succ,
+                    "sourceHandle": None,
+                    "label": "stream_bridge",
+                }
+            )
 
     out = dict(graph_json)
     out["nodes"] = remaining_nodes
@@ -249,16 +261,18 @@ def parse_graph(graph_json: dict, comp_versions: Optional[dict] = None) -> tuple
     edges = []
     for idx, e in enumerate(raw_edges if isinstance(raw_edges, list) else []):
         if isinstance(e, dict) and e.get("source") and e.get("target"):
-            edges.append({
-                "_idx": idx,  # 全局边序号（引擎边状态键，两侧列表共享）
-                "source": str(e["source"]),
-                "target": str(e["target"]),
-                "sourceHandle": e.get("sourceHandle"),
-                "label": e.get("label"),
-                # I7：GEdge.partial 部分依赖声明透传（EdgePartialDep：table/fields/filter/scope），
-                # 引擎派发时消费（_collect_partial_inputs 注入下游输入）
-                "partial": e.get("partial") if isinstance(e.get("partial"), dict) else None,
-            })
+            edges.append(
+                {
+                    "_idx": idx,  # 全局边序号（引擎边状态键，两侧列表共享）
+                    "source": str(e["source"]),
+                    "target": str(e["target"]),
+                    "sourceHandle": e.get("sourceHandle"),
+                    "label": e.get("label"),
+                    # I7：GEdge.partial 部分依赖声明透传（EdgePartialDep：table/fields/filter/scope），
+                    # 引擎派发时消费（_collect_partial_inputs 注入下游输入）
+                    "partial": e.get("partial") if isinstance(e.get("partial"), dict) else None,
+                }
+            )
     graph = Graph(nodes, edges)
     starts = [nid for nid, n in nodes.items() if n["type"] == "start"]
     if len(starts) != 1:

@@ -23,8 +23,10 @@ def run_notify(ctx) -> ExecResult:
     channel = str(param.get("channel") or "log")
     url = str(render_text(str(param.get("url") or ""), param)[0] or "").strip()
     msg = render_text(str(param.get("template") or ""), param)[0]
-    ctx.log("[notify] 通道=%s 触发时机=%s url=%s 消息=%s"
-            % (channel, param.get("trigger") or "on_success", "有" if url else "无", msg))
+    ctx.log(
+        "[notify] 通道=%s 触发时机=%s url=%s 消息=%s"
+        % (channel, param.get("trigger") or "on_success", "有" if url else "无", msg)
+    )
     if channel == "webhook" and url:
         req = urllib.request.Request(
             url,

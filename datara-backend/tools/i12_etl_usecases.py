@@ -17,6 +17,7 @@
 零接触约定：只创建/复用 i12_E1~E5 前缀工作流，自建表均 i12_ / dwd_ / dws_ 新表，不碰他人资产。
 证据行格式：EVIDENCE|<case>|<key>|<value>；最终逐例打印 PASS/FAIL。
 """
+
 import argparse
 import json
 import os
@@ -29,8 +30,8 @@ import urllib.request
 
 BASE = "http://127.0.0.1:8000/api/v1"
 USER = ("admin", "Admin@123")
-DW_DS = "内置数仓-datara_dw"       # id=4（默认库 datara_dw）
-NODE_HOST = "1.9宿主机"            # 运行节点 id=2
+DW_DS = "内置数仓-datara_dw"  # id=4（默认库 datara_dw）
+NODE_HOST = "1.9宿主机"  # 运行节点 id=2
 TAGS = ["ETL"]
 TERMINAL = {"success", "failure", "kill"}
 TIMEOUT = {"e1": 300, "e2": 300, "e3": 300, "e4": 600, "e5": 900}
@@ -74,8 +75,9 @@ def login():
 
 
 def sh(cmd, input_text=None):
-    proc = subprocess.run(cmd, shell=isinstance(cmd, str), input=input_text,
-                          capture_output=True, text=True, timeout=120)
+    proc = subprocess.run(
+        cmd, shell=isinstance(cmd, str), input=input_text, capture_output=True, text=True, timeout=120
+    )
     return proc.returncode, proc.stdout.strip()
 
 
@@ -84,8 +86,7 @@ def detect_mysql_containers():
     global SRC_C, DW_C
     rc, out = sh("docker ps --format '{{.Names}}|{{.Image}}'")
     assert rc == 0, "docker ps 失败: %s" % out
-    candidates = [line.split("|")[0] for line in out.splitlines()
-                  if re.search(r"mysql|mariadb", line, re.I)]
+    candidates = [line.split("|")[0] for line in out.splitlines() if re.search(r"mysql|mariadb", line, re.I)]
     assert candidates, "未发现 mysql 容器"
     for name in candidates:
         dbs = mysql_dbs(name)
@@ -117,8 +118,7 @@ def _mysql_pwd(container):
 
 def mysql_exec(container, sql, db=None, head_limit=None):
     pwd = _mysql_pwd(container)
-    argv = ["docker", "exec", "-e", "MYSQL_PWD=%s" % pwd, container,
-            "mysql", "-uroot", "-N", "-B"]
+    argv = ["docker", "exec", "-e", "MYSQL_PWD=%s" % pwd, container, "mysql", "-uroot", "-N", "-B"]
     if db:
         argv += ["-D", db]
     argv += ["-e", sql]
@@ -141,8 +141,9 @@ def mysql_dbs(container):
             break
     if not pwd:
         return set()
-    rc, out = sh("docker exec %s sh -c %s" % (
-        container, json.dumps('MYSQL_PWD="%s" mysql -uroot -N -e "SHOW DATABASES"' % pwd)))
+    rc, out = sh(
+        "docker exec %s sh -c %s" % (container, json.dumps('MYSQL_PWD="%s" mysql -uroot -N -e "SHOW DATABASES"' % pwd))
+    )
     return set(out.splitlines()) if rc == 0 else set()
 
 
@@ -152,18 +153,21 @@ def scalar(container, sql, db=None):
 
 
 def _pk_column(container, schema, table):
-    rows = mysql_exec(container,
-                      "SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.STATISTICS "
-                      "WHERE TABLE_SCHEMA='%s' AND TABLE_NAME='%s' AND INDEX_NAME='PRIMARY' "
-                      "ORDER BY SEQ_IN_INDEX LIMIT 1" % (schema, table))
+    rows = mysql_exec(
+        container,
+        "SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.STATISTICS "
+        "WHERE TABLE_SCHEMA='%s' AND TABLE_NAME='%s' AND INDEX_NAME='PRIMARY' "
+        "ORDER BY SEQ_IN_INDEX LIMIT 1" % (schema, table),
+    )
     return rows[0] if rows else None
 
 
 def _columns(container, schema, table):
-    return mysql_exec(container,
-                      "SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS "
-                      "WHERE TABLE_SCHEMA='%s' AND TABLE_NAME='%s' ORDER BY ORDINAL_POSITION"
-                      % (schema, table))
+    return mysql_exec(
+        container,
+        "SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS "
+        "WHERE TABLE_SCHEMA='%s' AND TABLE_NAME='%s' ORDER BY ORDINAL_POSITION" % (schema, table),
+    )
 
 
 def clone_table(src_container, dst_container, src_schema, src_table, dst_schema, dst_table):
@@ -199,8 +203,14 @@ def _ensure_ods_order():
 
 def _build_dwd_clean():
     """确保 E1 清洗产物存在（E2/E4 依赖底座时直接 SQL 预建）。"""
-    count = int(scalar(DW_C, "SELECT COUNT(*) FROM INFORMATION_SCHEMA.TABLES "
-                             "WHERE TABLE_SCHEMA='datara_dw' AND TABLE_NAME='dwd_order_clean'") or 0)
+    count = int(
+        scalar(
+            DW_C,
+            "SELECT COUNT(*) FROM INFORMATION_SCHEMA.TABLES "
+            "WHERE TABLE_SCHEMA='datara_dw' AND TABLE_NAME='dwd_order_clean'",
+        )
+        or 0
+    )
     if count:
         return int(scalar(DW_C, "SELECT COUNT(*) FROM datara_dw.dwd_order_clean") or 0)
     mysql_exec(DW_C, CLEAN_SQL_TMPL.format(dwd="dwd_order_clean", src="ods_order"))
@@ -228,9 +238,10 @@ def prep_e3():
         with open(path, "w", encoding="utf-8") as handle:
             handle.write("order_no,user_id,amount,status,create_time\n")
             for i in range(500):
-                handle.write("i12NO%04d,%d,%.2f,%s,2026-09-%02d %02d:%02d:00\n"
-                             % (i, 1000 + i % 97, 100.50 + i % 90, statuses[i % 4],
-                                20 + i % 3, i % 24, i % 60))
+                handle.write(
+                    "i12NO%04d,%d,%.2f,%s,2026-09-%02d %02d:%02d:00\n"
+                    % (i, 1000 + i % 97, 100.50 + i % 90, statuses[i % 4], 20 + i % 3, i % 24, i % 60)
+                )
     with open(path, encoding="utf-8") as handle:
         total = sum(1 for _ in handle)
     print("EVIDENCE|prep|e3|%s (%d 行)" % (path, total))
@@ -249,8 +260,7 @@ def prep_e4():
         for i, uid in enumerate(user_ids):
             handle.write("%s,%s\n" % (uid, regions[i % len(regions)]))
     print("EVIDENCE|prep|e4|%s (%d 维表行)" % (path, len(user_ids)))
-    rc, out = sh(["docker", "exec", "datara-worker", "sh", "-c",
-                  "wc -l < /datara/files/i12_etl_user_region.csv"])
+    rc, out = sh(["docker", "exec", "datara-worker", "sh", "-c", "wc -l < /datara/files/i12_etl_user_region.csv"])
     print("EVIDENCE|prep|e4|worker_container_view|%s" % (out if rc == 0 else "不可见(仅告警)"))
 
 
@@ -262,8 +272,7 @@ def prep_e5():
     count = int(scalar(DW_C, "SELECT COUNT(*) FROM datara_dw.i12_o_order_src") or 0)
     if count != 5000:
         mysql_exec(DW_C, "TRUNCATE TABLE datara_dw.i12_o_order_src")
-        mysql_exec(DW_C, "INSERT INTO datara_dw.i12_o_order_src "
-                         "SELECT * FROM datara_dw.ods_order LIMIT 5000")
+        mysql_exec(DW_C, "INSERT INTO datara_dw.i12_o_order_src SELECT * FROM datara_dw.ods_order LIMIT 5000")
         count = int(scalar(DW_C, "SELECT COUNT(*) FROM datara_dw.i12_o_order_src") or 0)
     mysql_exec(DW_C, "DROP TABLE IF EXISTS datara_dw.dwd_order_gate")
     mysql_exec(DW_C, "DROP TABLE IF EXISTS datara_dw.dws_gate_day")
@@ -273,8 +282,7 @@ def prep_e5():
 def restore_e5():
     """run3 前恢复源表 5000 行。"""
     mysql_exec(DW_C, "TRUNCATE TABLE datara_dw.i12_o_order_src")
-    mysql_exec(DW_C, "INSERT INTO datara_dw.i12_o_order_src "
-                     "SELECT * FROM datara_dw.ods_order LIMIT 5000")
+    mysql_exec(DW_C, "INSERT INTO datara_dw.i12_o_order_src SELECT * FROM datara_dw.ods_order LIMIT 5000")
     count = int(scalar(DW_C, "SELECT COUNT(*) FROM datara_dw.i12_o_order_src") or 0)
     print("EVIDENCE|e5|restore|src=%d 行" % count)
 
@@ -302,19 +310,37 @@ def sql_data(sql, result_table=None, **kw):
 
 
 def assert_data(rules, **kw):
-    base = {"assertSrc": "upstream", "assertUpstream": "", "assertDs": "", "assertTable": "",
-            "rules": rules, "ruleColumns": [], "onFail": "fail"}
+    base = {
+        "assertSrc": "upstream",
+        "assertUpstream": "",
+        "assertDs": "",
+        "assertTable": "",
+        "rules": rules,
+        "ruleColumns": [],
+        "onFail": "fail",
+    }
     base.update(kw)
     return base
 
 
 def file_sync_data(**kw):
     base = {
-        "runtimeNode": "", "filePath": "", "fileName": "", "stagedPath": "",
-        "fileType": "csv", "delimiter": ",", "encoding": "utf-8", "headerRows": 1,
-        "targetDs": "", "targetSchema": "", "targetTable": "",
-        "autoCreate": True, "ddl": "", "writeMode": "append",
-        "flagColumn": "src_schema", "fieldMap": [],
+        "runtimeNode": "",
+        "filePath": "",
+        "fileName": "",
+        "stagedPath": "",
+        "fileType": "csv",
+        "delimiter": ",",
+        "encoding": "utf-8",
+        "headerRows": 1,
+        "targetDs": "",
+        "targetSchema": "",
+        "targetTable": "",
+        "autoCreate": True,
+        "ddl": "",
+        "writeMode": "append",
+        "flagColumn": "src_schema",
+        "fieldMap": [],
     }
     base.update(kw)
     return base
@@ -323,10 +349,20 @@ def file_sync_data(**kw):
 def file22_data(**kw):
     """C22 文件读取（临时数据注册）。表单键 tmpName（避免与节点显示名 name 冲突）。"""
     base = {
-        "mode": "manual", "datasource": "",
-        "path": "", "format": "csv", "encoding": "utf-8", "delimiter": ",", "header": True, "sheet": "",
-        "register": True, "tmpName": "", "kind": "table", "targetDs": DW_DS,
-        "retention": "immediate", "keepDays": 7,
+        "mode": "manual",
+        "datasource": "",
+        "path": "",
+        "format": "csv",
+        "encoding": "utf-8",
+        "delimiter": ",",
+        "header": True,
+        "sheet": "",
+        "register": True,
+        "tmpName": "",
+        "kind": "table",
+        "targetDs": DW_DS,
+        "retention": "immediate",
+        "keepDays": 7,
     }
     base.update(kw)
     return base
@@ -346,140 +382,275 @@ def chain_doc(wf_id, name, middle):
         src_node = next(n for n in nodes if n["id"] == ids[i])
         sh = "success" if src_node.get("type") == "assert" else None
         edges.append(edge(ids[i], ids[i + 1], sh))
-    return {"id": wf_id, "name": name, "version": 1, "meta": {"profile": "dag"},
-            "nodes": nodes, "edges": edges}
+    return {"id": wf_id, "name": name, "version": 1, "meta": {"profile": "dag"}, "nodes": nodes, "edges": edges}
 
 
 def doc_e1(wf_id):
     clean_sql = CLEAN_SQL_TMPL.format(dwd="dwd_order_clean", src="ods_order")
-    match_sql = ("SELECT IF((SELECT COUNT(*) FROM dwd_order_clean) = "
-                 "(SELECT COUNT(*) FROM (SELECT order_no FROM ods_order "
-                 "WHERE amount >= 0 AND order_no IS NOT NULL AND order_no <> '' "
-                 "GROUP BY order_no) s), 1, 0)")
-    return chain_doc(wf_id, "i12_E1_ods_to_dwd_clean", [
-        node("nd_sql", "sql", "ODS清洗", sql_data(clean_sql, "dwd_order_clean"), 300),
-        node("nd_assert", "assert", "对账校验", assert_data([
-            {"key": "rows", "value": "min=1", "note": "清洗产物非空"},
-            {"key": "unique", "value": "order_no", "note": "去重后单号唯一"},
-            {"key": "sql", "value": match_sql, "note": "行数与源去重口径一致"},
-        ]), 520),
-    ])
+    match_sql = (
+        "SELECT IF((SELECT COUNT(*) FROM dwd_order_clean) = "
+        "(SELECT COUNT(*) FROM (SELECT order_no FROM ods_order "
+        "WHERE amount >= 0 AND order_no IS NOT NULL AND order_no <> '' "
+        "GROUP BY order_no) s), 1, 0)"
+    )
+    return chain_doc(
+        wf_id,
+        "i12_E1_ods_to_dwd_clean",
+        [
+            node("nd_sql", "sql", "ODS清洗", sql_data(clean_sql, "dwd_order_clean"), 300),
+            node(
+                "nd_assert",
+                "assert",
+                "对账校验",
+                assert_data(
+                    [
+                        {"key": "rows", "value": "min=1", "note": "清洗产物非空"},
+                        {"key": "unique", "value": "order_no", "note": "去重后单号唯一"},
+                        {"key": "sql", "value": match_sql, "note": "行数与源去重口径一致"},
+                    ]
+                ),
+                520,
+            ),
+        ],
+    )
 
 
 def doc_e2(wf_id):
-    day_sql = ("DROP TABLE IF EXISTS dws_order_stat_day;"
-               "CREATE TABLE dws_order_stat_day AS"
-               " SELECT order_date, COUNT(*) AS order_cnt, SUM(amount) AS amt_sum"
-               " FROM dwd_order_clean GROUP BY order_date")
-    day_match = ("SELECT IF((SELECT COALESCE(SUM(order_cnt),0) FROM dws_order_stat_day) = "
-                 "(SELECT COUNT(*) FROM dwd_order_clean), 1, 0)")
-    st_sql = ("DROP TABLE IF EXISTS dws_order_stat_status;"
-              "CREATE TABLE dws_order_stat_status AS"
-              " SELECT order_date, status, COUNT(*) AS order_cnt"
-              " FROM dwd_order_clean GROUP BY order_date, status")
-    st_match = ("SELECT IF((SELECT COALESCE(SUM(order_cnt),0) FROM dws_order_stat_status) = "
-                "(SELECT COUNT(*) FROM dwd_order_clean), 1, 0)")
+    day_sql = (
+        "DROP TABLE IF EXISTS dws_order_stat_day;"
+        "CREATE TABLE dws_order_stat_day AS"
+        " SELECT order_date, COUNT(*) AS order_cnt, SUM(amount) AS amt_sum"
+        " FROM dwd_order_clean GROUP BY order_date"
+    )
+    day_match = (
+        "SELECT IF((SELECT COALESCE(SUM(order_cnt),0) FROM dws_order_stat_day) = "
+        "(SELECT COUNT(*) FROM dwd_order_clean), 1, 0)"
+    )
+    st_sql = (
+        "DROP TABLE IF EXISTS dws_order_stat_status;"
+        "CREATE TABLE dws_order_stat_status AS"
+        " SELECT order_date, status, COUNT(*) AS order_cnt"
+        " FROM dwd_order_clean GROUP BY order_date, status"
+    )
+    st_match = (
+        "SELECT IF((SELECT COALESCE(SUM(order_cnt),0) FROM dws_order_stat_status) = "
+        "(SELECT COUNT(*) FROM dwd_order_clean), 1, 0)"
+    )
     nodes = [
         node("nd_start", "start", "开始", {}, 80),
         node("nd_fork", "fork", "并行分叉", {"parallel": 2}, 240),
         node("nd_sql_day", "sql", "日聚合-按天", sql_data(day_sql, "dws_order_stat_day"), 440, 40),
-        node("nd_as_day", "assert", "校验-按天", assert_data([
-            {"key": "rows", "value": "min=1", "note": "聚合非空"},
-            {"key": "sql", "value": day_match, "note": "各天单数之和=DWD 总数"},
-        ]), 660, 40),
+        node(
+            "nd_as_day",
+            "assert",
+            "校验-按天",
+            assert_data(
+                [
+                    {"key": "rows", "value": "min=1", "note": "聚合非空"},
+                    {"key": "sql", "value": day_match, "note": "各天单数之和=DWD 总数"},
+                ]
+            ),
+            660,
+            40,
+        ),
         node("nd_sql_st", "sql", "日聚合-按状态", sql_data(st_sql, "dws_order_stat_status"), 440, 220),
-        node("nd_as_st", "assert", "校验-按状态", assert_data([
-            {"key": "rows", "value": "min=1", "note": "聚合非空"},
-            {"key": "sql", "value": st_match, "note": "各状态单数之和=DWD 总数"},
-        ]), 660, 220),
+        node(
+            "nd_as_st",
+            "assert",
+            "校验-按状态",
+            assert_data(
+                [
+                    {"key": "rows", "value": "min=1", "note": "聚合非空"},
+                    {"key": "sql", "value": st_match, "note": "各状态单数之和=DWD 总数"},
+                ]
+            ),
+            660,
+            220,
+        ),
         node("nd_merge", "merge", "合并（OR）", {}, 900, 130),
         node("nd_end", "end", "结束", {}, 1060, 130),
     ]
-    edges = [edge("nd_start", "nd_fork"), edge("nd_fork", "nd_sql_day"),
-             edge("nd_sql_day", "nd_as_day"), edge("nd_fork", "nd_sql_st"),
-             edge("nd_sql_st", "nd_as_st"),
-             edge("nd_as_day", "nd_merge", "success"),
-             edge("nd_as_st", "nd_merge", "success"),
-             edge("nd_merge", "nd_end")]
-    return {"id": wf_id, "name": "i12_E2_dws_daily_agg", "version": 1, "meta": {"profile": "dag"},
-            "nodes": nodes, "edges": edges}
+    edges = [
+        edge("nd_start", "nd_fork"),
+        edge("nd_fork", "nd_sql_day"),
+        edge("nd_sql_day", "nd_as_day"),
+        edge("nd_fork", "nd_sql_st"),
+        edge("nd_sql_st", "nd_as_st"),
+        edge("nd_as_day", "nd_merge", "success"),
+        edge("nd_as_st", "nd_merge", "success"),
+        edge("nd_merge", "nd_end"),
+    ]
+    return {
+        "id": wf_id,
+        "name": "i12_E2_dws_daily_agg",
+        "version": 1,
+        "meta": {"profile": "dag"},
+        "nodes": nodes,
+        "edges": edges,
+    }
 
 
 def doc_e3(wf_id):
-    raw_ddl = ("CREATE TABLE IF NOT EXISTS i12_ods_order_raw ("
-               "order_no TEXT, user_id TEXT, amount TEXT, status TEXT, create_time TEXT)")
-    typed_sql = ("DROP TABLE IF EXISTS dwd_order_file;"
-                 "CREATE TABLE dwd_order_file AS"
-                 " SELECT order_no, CAST(user_id AS UNSIGNED) AS user_id,"
-                 " CAST(amount AS DECIMAL(12,2)) AS amount, status,"
-                 " STR_TO_DATE(create_time, '%Y-%m-%d %H:%i:%s') AS create_time"
-                 " FROM i12_ods_order_raw WHERE order_no <> ''")
-    count_match = ("SELECT IF((SELECT COUNT(*) FROM dwd_order_file) = "
-                   "(SELECT COUNT(*) FROM i12_ods_order_raw WHERE order_no <> ''), 1, 0)")
-    return chain_doc(wf_id, "i12_E3_elt_file_raw", [
-        node("nd_fsync", "file_sync", "文件原样入仓", file_sync_data(
-            runtimeNode=NODE_HOST, filePath="/mnt/lei/datara/i12files/orders.csv",
-            fileType="csv", delimiter=",", encoding="utf-8", headerRows=1,
-            targetDs=DW_DS, targetTable={"schema": "datara_dw", "table": "i12_ods_order_raw"},
-            autoCreate=True, ddl=raw_ddl, writeMode="overwrite"), 300),
-        node("nd_sql", "sql", "ELT类型规整", sql_data(typed_sql, "dwd_order_file"), 520),
-        node("nd_assert", "assert", "对账校验", assert_data([
-            {"key": "rows", "value": "min=500,max=500", "note": "文件数据行精确值"},
-            {"key": "unique", "value": "order_no", "note": "单号唯一"},
-            {"key": "sql", "value": count_match, "note": "规整前后行数一致"},
-        ]), 740),
-    ])
+    raw_ddl = (
+        "CREATE TABLE IF NOT EXISTS i12_ods_order_raw ("
+        "order_no TEXT, user_id TEXT, amount TEXT, status TEXT, create_time TEXT)"
+    )
+    typed_sql = (
+        "DROP TABLE IF EXISTS dwd_order_file;"
+        "CREATE TABLE dwd_order_file AS"
+        " SELECT order_no, CAST(user_id AS UNSIGNED) AS user_id,"
+        " CAST(amount AS DECIMAL(12,2)) AS amount, status,"
+        " STR_TO_DATE(create_time, '%Y-%m-%d %H:%i:%s') AS create_time"
+        " FROM i12_ods_order_raw WHERE order_no <> ''"
+    )
+    count_match = (
+        "SELECT IF((SELECT COUNT(*) FROM dwd_order_file) = "
+        "(SELECT COUNT(*) FROM i12_ods_order_raw WHERE order_no <> ''), 1, 0)"
+    )
+    return chain_doc(
+        wf_id,
+        "i12_E3_elt_file_raw",
+        [
+            node(
+                "nd_fsync",
+                "file_sync",
+                "文件原样入仓",
+                file_sync_data(
+                    runtimeNode=NODE_HOST,
+                    filePath="/mnt/lei/datara/i12files/orders.csv",
+                    fileType="csv",
+                    delimiter=",",
+                    encoding="utf-8",
+                    headerRows=1,
+                    targetDs=DW_DS,
+                    targetTable={"schema": "datara_dw", "table": "i12_ods_order_raw"},
+                    autoCreate=True,
+                    ddl=raw_ddl,
+                    writeMode="overwrite",
+                ),
+                300,
+            ),
+            node("nd_sql", "sql", "ELT类型规整", sql_data(typed_sql, "dwd_order_file"), 520),
+            node(
+                "nd_assert",
+                "assert",
+                "对账校验",
+                assert_data(
+                    [
+                        {"key": "rows", "value": "min=500,max=500", "note": "文件数据行精确值"},
+                        {"key": "unique", "value": "order_no", "note": "单号唯一"},
+                        {"key": "sql", "value": count_match, "note": "规整前后行数一致"},
+                    ]
+                ),
+                740,
+            ),
+        ],
+    )
 
 
 def doc_e4(wf_id):
-    join_sql = ("DROP TABLE IF EXISTS dwd_order_region;"
-                "CREATE TABLE dwd_order_region AS"
-                " SELECT o.order_no, o.user_id, r.region, o.amount, o.status"
-                " FROM ods_order o LEFT JOIN ${tmp.user_region} r ON o.user_id = r.user_id")
-    count_match = ("SELECT IF((SELECT COUNT(*) FROM dwd_order_region) = "
-                   "(SELECT COUNT(*) FROM ods_order), 1, 0)")
-    region_match = ("SELECT IF((SELECT COUNT(*) FROM dwd_order_region WHERE region IS NOT NULL) = "
-                    "(SELECT COUNT(*) FROM dwd_order_region), 1, 0)")
-    return chain_doc(wf_id, "i12_E4_file_join_dim", [
-        node("nd_file", "file", "读取维表CSV", file22_data(
-            mode="manual", path="i12_etl_user_region.csv", format="csv",
-            encoding="utf-8", delimiter=",", header=True,
-            register=True, tmpName="user_region", kind="table",
-            targetDs=DW_DS, retention="immediate"), 300),
-        node("nd_sql", "sql", "维表JOIN加工", sql_data(join_sql, "dwd_order_region"), 520),
-        node("nd_assert", "assert", "对账校验", assert_data([
-            {"key": "rows", "value": "min=1", "note": "加工产物非空"},
-            {"key": "sql", "value": count_match, "note": "LEFT JOIN 行数=事实表"},
-            {"key": "sql", "value": region_match, "note": "维表全覆盖 region 非空"},
-        ]), 740),
-    ])
+    join_sql = (
+        "DROP TABLE IF EXISTS dwd_order_region;"
+        "CREATE TABLE dwd_order_region AS"
+        " SELECT o.order_no, o.user_id, r.region, o.amount, o.status"
+        " FROM ods_order o LEFT JOIN ${tmp.user_region} r ON o.user_id = r.user_id"
+    )
+    count_match = "SELECT IF((SELECT COUNT(*) FROM dwd_order_region) = (SELECT COUNT(*) FROM ods_order), 1, 0)"
+    region_match = (
+        "SELECT IF((SELECT COUNT(*) FROM dwd_order_region WHERE region IS NOT NULL) = "
+        "(SELECT COUNT(*) FROM dwd_order_region), 1, 0)"
+    )
+    return chain_doc(
+        wf_id,
+        "i12_E4_file_join_dim",
+        [
+            node(
+                "nd_file",
+                "file",
+                "读取维表CSV",
+                file22_data(
+                    mode="manual",
+                    path="i12_etl_user_region.csv",
+                    format="csv",
+                    encoding="utf-8",
+                    delimiter=",",
+                    header=True,
+                    register=True,
+                    tmpName="user_region",
+                    kind="table",
+                    targetDs=DW_DS,
+                    retention="immediate",
+                ),
+                300,
+            ),
+            node("nd_sql", "sql", "维表JOIN加工", sql_data(join_sql, "dwd_order_region"), 520),
+            node(
+                "nd_assert",
+                "assert",
+                "对账校验",
+                assert_data(
+                    [
+                        {"key": "rows", "value": "min=1", "note": "加工产物非空"},
+                        {"key": "sql", "value": count_match, "note": "LEFT JOIN 行数=事实表"},
+                        {"key": "sql", "value": region_match, "note": "维表全覆盖 region 非空"},
+                    ]
+                ),
+                740,
+            ),
+        ],
+    )
 
 
 def doc_e5(wf_id):
     l1_sql = CLEAN_SQL_TMPL.format(dwd="dwd_order_gate", src="i12_o_order_src")
-    l1_match = ("SELECT IF((SELECT COUNT(*) FROM dwd_order_gate) = "
-                "(SELECT COUNT(*) FROM (SELECT order_no FROM i12_o_order_src "
-                "WHERE amount >= 0 AND order_no IS NOT NULL AND order_no <> '' "
-                "GROUP BY order_no) s), 1, 0)")
-    l2_sql = ("DROP TABLE IF EXISTS dws_gate_day;"
-              "CREATE TABLE dws_gate_day AS"
-              " SELECT order_date, COUNT(*) AS order_cnt, SUM(amount) AS amt_sum"
-              " FROM dwd_order_gate GROUP BY order_date")
-    l2_match = ("SELECT IF((SELECT COALESCE(SUM(order_cnt),0) FROM dws_gate_day) = "
-                "(SELECT COUNT(*) FROM dwd_order_gate), 1, 0)")
-    return chain_doc(wf_id, "i12_E5_gated_pipeline", [
-        node("nd_sql1", "sql", "分层一-清洗", sql_data(l1_sql, "dwd_order_gate"), 300),
-        node("nd_g1", "assert", "闸门一", assert_data([
-            {"key": "rows", "value": "min=1", "note": "清洗产物非空（0 行即断流）"},
-            {"key": "unique", "value": "order_no", "note": "单号唯一"},
-            {"key": "sql", "value": l1_match, "note": "与源去重口径一致"},
-        ]), 520),
-        node("nd_sql2", "sql", "分层二-聚合", sql_data(l2_sql, "dws_gate_day"), 740),
-        node("nd_g2", "assert", "闸门二", assert_data([
-            {"key": "rows", "value": "min=1", "note": "聚合非空"},
-            {"key": "sql", "value": l2_match, "note": "各天单数之和=DWD 总数"},
-        ]), 960),
-    ])
+    l1_match = (
+        "SELECT IF((SELECT COUNT(*) FROM dwd_order_gate) = "
+        "(SELECT COUNT(*) FROM (SELECT order_no FROM i12_o_order_src "
+        "WHERE amount >= 0 AND order_no IS NOT NULL AND order_no <> '' "
+        "GROUP BY order_no) s), 1, 0)"
+    )
+    l2_sql = (
+        "DROP TABLE IF EXISTS dws_gate_day;"
+        "CREATE TABLE dws_gate_day AS"
+        " SELECT order_date, COUNT(*) AS order_cnt, SUM(amount) AS amt_sum"
+        " FROM dwd_order_gate GROUP BY order_date"
+    )
+    l2_match = (
+        "SELECT IF((SELECT COALESCE(SUM(order_cnt),0) FROM dws_gate_day) = (SELECT COUNT(*) FROM dwd_order_gate), 1, 0)"
+    )
+    return chain_doc(
+        wf_id,
+        "i12_E5_gated_pipeline",
+        [
+            node("nd_sql1", "sql", "分层一-清洗", sql_data(l1_sql, "dwd_order_gate"), 300),
+            node(
+                "nd_g1",
+                "assert",
+                "闸门一",
+                assert_data(
+                    [
+                        {"key": "rows", "value": "min=1", "note": "清洗产物非空（0 行即断流）"},
+                        {"key": "unique", "value": "order_no", "note": "单号唯一"},
+                        {"key": "sql", "value": l1_match, "note": "与源去重口径一致"},
+                    ]
+                ),
+                520,
+            ),
+            node("nd_sql2", "sql", "分层二-聚合", sql_data(l2_sql, "dws_gate_day"), 740),
+            node(
+                "nd_g2",
+                "assert",
+                "闸门二",
+                assert_data(
+                    [
+                        {"key": "rows", "value": "min=1", "note": "聚合非空"},
+                        {"key": "sql", "value": l2_match, "note": "各天单数之和=DWD 总数"},
+                    ]
+                ),
+                960,
+            ),
+        ],
+    )
 
 
 # ---------- 工作流生命周期 ----------
@@ -498,8 +669,7 @@ def ensure_wf(name):
 
 
 def save_doc(wf_id, doc):
-    resp = http("PUT", "/workflow-definitions/%s/save" % wf_id,
-                {"doc": doc, "remark": "I12 ETL 类用例", "tags": TAGS})
+    resp = http("PUT", "/workflow-definitions/%s/save" % wf_id, {"doc": doc, "remark": "I12 ETL 类用例", "tags": TAGS})
     assert resp.get("code") == 0, "保存失败 %s: %s" % (wf_id, resp)
     print("EVIDENCE|wf|save|%s version=%s" % (wf_id, resp["data"]))
 
@@ -573,12 +743,24 @@ def run_e1():
     save_doc(wf_id, doc_e1(wf_id))
     detail = run_and_poll(wf_id, code, "e1")
     ok = detail["state"] == "success"
-    expect = int(scalar(DW_C, "SELECT COUNT(*) FROM (SELECT order_no FROM datara_dw.ods_order "
-                              "WHERE amount >= 0 AND order_no IS NOT NULL AND order_no <> '' "
-                              "GROUP BY order_no) s") or 0)
+    expect = int(
+        scalar(
+            DW_C,
+            "SELECT COUNT(*) FROM (SELECT order_no FROM datara_dw.ods_order "
+            "WHERE amount >= 0 AND order_no IS NOT NULL AND order_no <> '' "
+            "GROUP BY order_no) s",
+        )
+        or 0
+    )
     actual = int(scalar(DW_C, "SELECT COUNT(*) FROM datara_dw.dwd_order_clean") or 0)
-    dup = int(scalar(DW_C, "SELECT COUNT(*) FROM (SELECT order_no FROM datara_dw.dwd_order_clean "
-                           "GROUP BY order_no HAVING COUNT(*) > 1) t") or 0)
+    dup = int(
+        scalar(
+            DW_C,
+            "SELECT COUNT(*) FROM (SELECT order_no FROM datara_dw.dwd_order_clean "
+            "GROUP BY order_no HAVING COUNT(*) > 1) t",
+        )
+        or 0
+    )
     neg = int(scalar(DW_C, "SELECT COUNT(*) FROM datara_dw.dwd_order_clean WHERE amount < 0") or 0)
     asserts_ok = all(t["state"] == "success" for t in tasks_of(detail, "assert"))
     sql_tasks = tasks_of(detail, "sql")
@@ -620,8 +802,9 @@ def run_e3():
     raw = int(scalar(DW_C, "SELECT COUNT(*) FROM datara_dw.i12_ods_order_raw") or 0)
     typed = int(scalar(DW_C, "SELECT COUNT(*) FROM datara_dw.dwd_order_file") or 0)
     uniq = int(scalar(DW_C, "SELECT COUNT(DISTINCT order_no) FROM datara_dw.dwd_order_file") or 0)
-    bad_time = int(scalar(DW_C, "SELECT COUNT(*) FROM datara_dw.dwd_order_file "
-                                "WHERE create_time IS NULL OR amount IS NULL") or 0)
+    bad_time = int(
+        scalar(DW_C, "SELECT COUNT(*) FROM datara_dw.dwd_order_file WHERE create_time IS NULL OR amount IS NULL") or 0
+    )
     fs = tasks_of(detail, "file_sync")
     outs = outputs_of(fs[0]) if fs else {}
     asserts_ok = all(t["state"] == "success" for t in tasks_of(detail, "assert"))
@@ -646,8 +829,9 @@ def run_e4():
     ok = detail["state"] == "success"
     ods = int(scalar(DW_C, "SELECT COUNT(*) FROM datara_dw.ods_order") or 0)
     joined = int(scalar(DW_C, "SELECT COUNT(*) FROM datara_dw.dwd_order_region") or 0)
-    no_region = int(scalar(DW_C, "SELECT COUNT(*) FROM datara_dw.dwd_order_region "
-                                 "WHERE region IS NULL OR region = ''") or 0)
+    no_region = int(
+        scalar(DW_C, "SELECT COUNT(*) FROM datara_dw.dwd_order_region WHERE region IS NULL OR region = ''") or 0
+    )
     fnodes = tasks_of(detail, "file")
     fouts = outputs_of(fnodes[0]) if fnodes else {}
     asserts_ok = all(t["state"] == "success" for t in tasks_of(detail, "assert"))
@@ -692,12 +876,15 @@ def run_e5():
     g1 = task_by_name(detail2, "闸门一")
     g1_outs = outputs_of(g1) if g1 else {}
     # onFail=fail（默认）时闸门节点 FAILURE，outputs={"error","failed"}（engine.py L790），无 assert_ok 键
-    ok &= check("e5", "run2_g1_assert_failed",
-                bool(g1) and g1.get("state") == "failure"
-                and g1_outs.get("error") == "assert_failed"
-                and bool(g1_outs.get("failed")),
-                {"state": (g1 or {}).get("state"), "error": g1_outs.get("error"),
-                 "failed": g1_outs.get("failed")})
+    ok &= check(
+        "e5",
+        "run2_g1_assert_failed",
+        bool(g1)
+        and g1.get("state") == "failure"
+        and g1_outs.get("error") == "assert_failed"
+        and bool(g1_outs.get("failed")),
+        {"state": (g1 or {}).get("state"), "error": g1_outs.get("error"), "failed": g1_outs.get("failed")},
+    )
     if g1:
         tail_log(g1, "e5")
 
@@ -708,8 +895,9 @@ def run_e5():
     dwd3 = int(scalar(DW_C, "SELECT COUNT(*) FROM datara_dw.dwd_order_gate") or 0)
     dws3 = int(scalar(DW_C, "SELECT COUNT(*) FROM datara_dw.dws_gate_day") or 0)
     asserts3 = all(t["state"] == "success" for t in tasks_of(detail3, "assert"))
-    ok &= check("e5", "run3_recovered", dwd3 == dwd1 and dws3 == dws1,
-                "dwd %d vs %d, dws %d vs %d" % (dwd3, dwd1, dws3, dws1))
+    ok &= check(
+        "e5", "run3_recovered", dwd3 == dwd1 and dws3 == dws1, "dwd %d vs %d, dws %d vs %d" % (dwd3, dwd1, dws3, dws1)
+    )
     ok &= check("e5", "run3_asserts", asserts3, asserts3)
     sqls = tasks_of(detail3, "sql")
     for task in sqls:

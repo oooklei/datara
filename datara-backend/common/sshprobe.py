@@ -40,8 +40,12 @@ def probe(host: str, port: int, user: str, cred: str) -> tuple:
     client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
     try:
         kwargs = {
-            "hostname": host, "port": int(port or 22), "username": user or "root",
-            "timeout": PROBE_TIMEOUT, "banner_timeout": PROBE_TIMEOUT, "auth_timeout": PROBE_TIMEOUT,
+            "hostname": host,
+            "port": int(port or 22),
+            "username": user or "root",
+            "timeout": PROBE_TIMEOUT,
+            "banner_timeout": PROBE_TIMEOUT,
+            "auth_timeout": PROBE_TIMEOUT,
         }
         cred = str(cred or "")
         if cred.startswith("-----BEGIN"):

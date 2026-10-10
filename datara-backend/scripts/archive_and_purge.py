@@ -67,8 +67,7 @@ def rows_to_dicts(rows: list) -> list:
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="清库归档（导出可复盘，不可回库）")
-    parser.add_argument("--confirm", action="store_true",
-                        help="导出成功后 DELETE 清空五表（缺省只导出 + 打印统计）")
+    parser.add_argument("--confirm", action="store_true", help="导出成功后 DELETE 清空五表（缺省只导出 + 打印统计）")
     args = parser.parse_args()
 
     from common.db import new_session
@@ -95,8 +94,7 @@ def main() -> None:
         ensure_gitignore()
         for table, _count, data in stats:
             path = out_dir / (table + ".json")
-            path.write_text(json.dumps(data, ensure_ascii=False, indent=2, default=str),
-                            encoding="utf-8")
+            path.write_text(json.dumps(data, ensure_ascii=False, indent=2, default=str), encoding="utf-8")
             print("已归档: %s（%d 行）" % (path, len(data)))
 
         # 2. 清空（仅 --confirm；逐表 DELETE 打印行数，单事务原子生效）

@@ -19,8 +19,7 @@ def _load_rules():
     name = "datara_test_graph_rules"
     if name in sys.modules:
         return sys.modules[name]
-    spec = importlib.util.spec_from_file_location(
-        name, ROOT / "api" / "graph_rules.py")
+    spec = importlib.util.spec_from_file_location(name, ROOT / "api" / "graph_rules.py")
     mod = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(mod)
     sys.modules[name] = mod
@@ -34,11 +33,14 @@ _REAL_CATALOG = _rules._catalog  # 原始 lru_cache 函数（autouse fixture 替
 # 受控 mini 目录：comp_a（无条件必填 k + 条件必填 w + hint r）、comp_b（无必填）
 MINI_CAT = {
     "components": [
-        {"type": "comp_a", "formFields": [
-            {"key": "k", "label": "必填K", "type": "text", "required": True, "hasWhen": False},
-            {"key": "w", "label": "条件W", "type": "text", "required": True, "hasWhen": True},
-            {"key": "r", "label": "提示R", "type": "hint", "required": True, "hasWhen": False},
-        ]},
+        {
+            "type": "comp_a",
+            "formFields": [
+                {"key": "k", "label": "必填K", "type": "text", "required": True, "hasWhen": False},
+                {"key": "w", "label": "条件W", "type": "text", "required": True, "hasWhen": True},
+                {"key": "r", "label": "提示R", "type": "hint", "required": True, "hasWhen": False},
+            ],
+        },
         {"type": "comp_b", "formFields": []},
     ],
     "stats": {"backendOnlyTypes": ["src_select", "tgt_select", "smoke"]},
@@ -63,6 +65,7 @@ def _node(nid, ntype, data=None):
 
 # ---------------- R0 结构基础 ----------------
 
+
 def test_r0_nodes_not_list():
     v = validate_graph({"id": "wf_x", "nodes": None, "edges": []})
     assert [x["rule"] for x in v] == ["R0"]
@@ -75,22 +78,30 @@ def test_r0_node_missing_id_or_type():
 
 # ---------------- R1 环检测 ----------------
 
+
 def test_r1_cycle_detected():
-    v = validate_graph(_doc(
-        [_node("a", "comp_b"), _node("b", "comp_b")],
-        [{"source": "a", "target": "b"}, {"source": "b", "target": "a"}]))
+    v = validate_graph(
+        _doc(
+            [_node("a", "comp_b"), _node("b", "comp_b")],
+            [{"source": "a", "target": "b"}, {"source": "b", "target": "a"}],
+        )
+    )
     assert [x["rule"] for x in v] == ["R1"]
     assert "a" in v[0]["message"] and "b" in v[0]["message"]
 
 
 def test_r1_diamond_dag_passes():
-    v = validate_graph(_doc(
-        [_node("a", "comp_b"), _node("b", "comp_b"), _node("c", "comp_b")],
-        [{"source": "a", "target": "b"}, {"source": "a", "target": "c"}]))
+    v = validate_graph(
+        _doc(
+            [_node("a", "comp_b"), _node("b", "comp_b"), _node("c", "comp_b")],
+            [{"source": "a", "target": "b"}, {"source": "a", "target": "c"}],
+        )
+    )
     assert v == []
 
 
 # ---------------- R2 类型合法性 ----------------
+
 
 def test_r2_unknown_type():
     v = validate_graph(_doc([_node("a", "no_such_comp")], []))
@@ -109,10 +120,10 @@ def test_r2_sys_exec_materialized_exempt():
 
 # ---------------- R3 无条件必填 ----------------
 
+
 def test_r3_missing_required():
     v = validate_graph(_doc([_node("a", "comp_a", {"w": "x"})], []))
-    assert [x for x in v if x["rule"] == "R3"] == [
-        {"rule": "R3", "nodeId": "a", "message": "必填项未填: 必填K"}]
+    assert [x for x in v if x["rule"] == "R3"] == [{"rule": "R3", "nodeId": "a", "message": "必填项未填: 必填K"}]
 
 
 def test_r3_blank_variants():
@@ -129,6 +140,7 @@ def test_r3_conditional_and_hint_skipped():
 
 # ---------------- R4 悬挂边 ----------------
 
+
 def test_r4_dangling_edge():
     v = validate_graph(_doc([_node("a", "comp_b")], [{"source": "a", "target": "ghost"}]))
     assert any(x["rule"] == "R4" and "ghost" in x["message"] for x in v)
@@ -136,22 +148,27 @@ def test_r4_dangling_edge():
 
 # ---------------- catalog 降级 ----------------
 
+
 def test_degraded_catalog_skips_r2_r3_but_keeps_r1(monkeypatch):
     monkeypatch.setattr(_rules, "_catalog", lambda: {})
-    v = validate_graph(_doc(
-        [_node("a", "anything"), _node("b", "anything")],
-        [{"source": "a", "target": "b"}, {"source": "b", "target": "a"}]))
+    v = validate_graph(
+        _doc(
+            [_node("a", "anything"), _node("b", "anything")],
+            [{"source": "a", "target": "b"}, {"source": "b", "target": "a"}],
+        )
+    )
     assert [x["rule"] for x in v] == ["R1"]
 
 
 # ---------------- 真实快照冒烟 ----------------
 
+
 def test_real_catalog_smoke(monkeypatch):
     """真实 dag_catalog.json：合法类型文档零违规；未注入 mini 时引擎可独立跑通。"""
     monkeypatch.setattr(_rules, "_catalog", _REAL_CATALOG)
-    v = validate_graph(_doc(
-        [_node("a", "endpoint_select", {}), _node("b", "assert", {})],
-        [{"source": "a", "target": "b"}]))
+    v = validate_graph(
+        _doc([_node("a", "endpoint_select", {}), _node("b", "assert", {})], [{"source": "a", "target": "b"}])
+    )
     assert [x for x in v if x["rule"] == "R2"] == []
     _REAL_CATALOG.cache_clear()  # 还原缓存，避免影响其它用例
 
@@ -171,10 +188,10 @@ def test_r5_legal_refs_pass():
     """合法引用全家桶：全局参数/工作流变量/run.*/内置时间参数/date(N)/日期模式/$[wf.*]。"""
     data = {
         "sql": "select ${gp_ok}, ${wfv_a}, ${run.instanceId}, ${run.loopIter},"
-               " ${biz_date}, ${ts_nodash}, ${date(3)}, ${date(-1)},"
-               " ${yyyyMMdd_HHmmss}, ${yyyy-MM-dd}",
+        " ${biz_date}, ${ts_nodash}, ${date(3)}, ${date(-1)},"
+        " ${yyyyMMdd_HHmmss}, ${yyyy-MM-dd}",
         "params": [{"key": "cnt", "value": "${cnt}"}],  # 同节点 params key 自引用合法
-        "expr": "$[yyyyMMdd-1]",                        # 时间模板恒可求值，不校验
+        "expr": "$[yyyyMMdd-1]",  # 时间模板恒可求值，不校验
     }
     v = validate_graph(_doc([_node("a", "comp_b", data)], []), SUPPLY)
     assert [x for x in v if x["rule"] == "R5"] == []
@@ -209,10 +226,13 @@ def test_r5_branches_skipped():
 
 def test_r5_dedup_per_node():
     """同节点同名引用只报一条（去重防刷屏）；跨节点各报各的。"""
-    doc = _doc([
-        _node("a", "comp_b", {"sql": "${missing} ${missing}", "path": "${missing}"}),
-        _node("b", "comp_b", {"sql": "${missing}"}),
-    ], [])
+    doc = _doc(
+        [
+            _node("a", "comp_b", {"sql": "${missing} ${missing}", "path": "${missing}"}),
+            _node("b", "comp_b", {"sql": "${missing}"}),
+        ],
+        [],
+    )
     r5 = [x for x in validate_graph(doc, SUPPLY) if x["rule"] == "R5"]
     assert sorted(x["nodeId"] for x in r5) == ["a", "b"]
 
@@ -240,6 +260,7 @@ def test_r5_plain_name_not_date_pattern():
 
 
 # ---------------- R6 componentRef（Task D2，治理设计 §9） ----------------
+
 
 def test_r6_missing_ref_lenient_vs_strict():
     """缺 ref：save 宽松不拒（兼容存量未回填 §9.5）；publish 严格拒（§9.2 封死缺省语义）。"""
@@ -287,6 +308,7 @@ def test_r6_comp_versions_gating():
 
 
 # ---------------- G-21 R12 组件版本存在性（缺 ref 节点的 published 版本校验） ----------------
+
 
 def _no_ref_node(nid, ntype):
     """构造缺 componentRef 的节点（R12 测试用——_node 默认注入 ref）。"""
@@ -347,6 +369,7 @@ def test_publish_endpoint_r6_strict(client, db_session, monkeypatch):
     # 原生 SQL 手法同 test_publish_endpoint_r5_gate——模型模块分裂免疫）
     import json as _json
     from sqlalchemy import text
+
     legacy = _doc([{"id": "a", "type": "comp_b", "data": {"sql": "select 1"}}], [], wf["id"])
     db_session.execute(
         text("UPDATE t_wf_definition SET graph_json = :g WHERE id = :i"),
@@ -369,15 +392,19 @@ def test_save_endpoint_r6_lenient_with_governed_comp(client, db_session, monkeyp
     """save 宽松模式对治理库组件生效：ref 版本与 published 漂移 → 422 逐条（缺 ref 仍放行）。"""
     _patch_real_catalog(monkeypatch)
     from sqlalchemy import text as _text
+
     r = client.post("/api/v1/workflow-definitions", json={"name": "D2保存版本"})
     wf = r.json()["data"]
     save_url = "/api/v1/workflow-definitions/%s/save" % wf["id"]
     # 治理库组件：published v2（原生 SQL 插入，模块分裂免疫；时间戳列无 SQL 默认需显式给）
-    db_session.execute(_text(
-        "INSERT INTO t_component (type, name, profile, scope, execution_model, executor,"
-        " executable, state, published_version, draft_rev, create_time, update_time)"
-        " VALUES ('comp_b', 'B组件', 'dag', 'builtin', 'dag-engine', NULL, 1, 'published', 2, 0,"
-        " CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)"))
+    db_session.execute(
+        _text(
+            "INSERT INTO t_component (type, name, profile, scope, execution_model, executor,"
+            " executable, state, published_version, draft_rev, create_time, update_time)"
+            " VALUES ('comp_b', 'B组件', 'dag', 'builtin', 'dag-engine', NULL, 1, 'published', 2, 0,"
+            " CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)"
+        )
+    )
     db_session.commit()
 
     # 漂移：引用 v1，当前 published v2 → 拒（升级走显式升级 §9.3）
@@ -395,8 +422,10 @@ def test_save_endpoint_r6_lenient_with_governed_comp(client, db_session, monkeyp
 
 # ---------------- R5 端点集成（save/publish 闸门，sqlite 内存库） ----------------
 
+
 def _patch_real_catalog(monkeypatch):
     import api.graph_rules as real_rules
+
     monkeypatch.setattr(real_rules, "_catalog", lambda: MINI_CAT)
     return real_rules
 
@@ -405,6 +434,7 @@ def test_save_endpoint_r5_gate(client, db_session, monkeypatch):
     """save 闸门：查库组装供给；合法引用保存成功，未知引用 422(2006) 逐条。"""
     _patch_real_catalog(monkeypatch)
     from common.models import GlobalParam, WfVariable
+
     r = client.post("/api/v1/workflow-definitions", json={"name": "F4引用校验"})
     assert r.status_code == 200, r.text
     wf = r.json()["data"]
@@ -429,6 +459,7 @@ def test_publish_endpoint_r5_gate(client, db_session, monkeypatch):
     """publish 闸门带供给：存量库内文档含未知引用 → 发布被拒 422（先修再发）。"""
     _patch_real_catalog(monkeypatch)
     from common.models import GlobalParam, WfVariable
+
     r = client.post("/api/v1/workflow-definitions", json={"name": "F4发布校验"})
     wf = r.json()["data"]
     db_session.add(WfVariable(wf_code=wf["code"], name="wfv_a", value="2"))
@@ -445,6 +476,7 @@ def test_publish_endpoint_r5_gate(client, db_session, monkeypatch):
     # expire_all 对该分裂免疫。
     import json as _json
     from sqlalchemy import text
+
     db_session.execute(
         text("UPDATE t_wf_definition SET graph_json = :g WHERE id = :i"),
         {"g": _json.dumps(_doc([bad], [], wf["id"]), ensure_ascii=False), "i": wf["id"]},
@@ -465,8 +497,7 @@ def test_publish_endpoint_r5_gate(client, db_session, monkeypatch):
 # ---------------- R14 边端口类型交集（工作台优化 Task 9，方案 §3.1/§11.2） ----------------
 
 # 前后端共享用例表（Task 1 权威产物，唯一真源；跨目录定位到 datara-web 侧）
-_CASES_FILE = (ROOT.parent / "datara-web" / "src" / "graph" / "model"
-               / "__tests__" / "portTypeCases.json")
+_CASES_FILE = ROOT.parent / "datara-web" / "src" / "graph" / "model" / "__tests__" / "portTypeCases.json"
 _CASES = json.loads(_CASES_FILE.read_text(encoding="utf-8"))["cases"]
 
 port_types_match_py = _rules.port_types_match_py
@@ -510,15 +541,13 @@ def test_r14_pin_unknown_src_as_any():
 def test_r14_mismatched_edge_rejected():
     """R14：端口类型不匹配的边 → 违规，文案与前端逐字一致，nodeId 落在源节点。"""
     supply = {
-        "comp_a": {"inputs": [{"name": "in", "type": "stream"}],
-                   "outputs": [{"name": "out", "type": "table"}]},
-        "comp_b": {"inputs": [{"name": "in", "type": "stream"}],
-                   "outputs": [{"name": "out", "type": "table"}]},
+        "comp_a": {"inputs": [{"name": "in", "type": "stream"}], "outputs": [{"name": "out", "type": "table"}]},
+        "comp_b": {"inputs": [{"name": "in", "type": "stream"}], "outputs": [{"name": "out", "type": "table"}]},
     }
     doc = _doc(
         [_node("a", "comp_a"), _node("b", "comp_b")],
-        [{"id": "e1", "source": "a", "target": "b",
-          "sourceHandle": "out", "targetHandle": "in"}])
+        [{"id": "e1", "source": "a", "target": "b", "sourceHandle": "out", "targetHandle": "in"}],
+    )
     v = [x for x in validate_graph(doc, port_types=supply) if x["rule"] == "R14"]
     assert v == [{"rule": "R14", "nodeId": "a", "message": "类型不匹配：源 table → 目标 stream"}]
 
@@ -531,8 +560,8 @@ def test_r14_matched_edge_passes():
     }
     doc = _doc(
         [_node("a", "comp_a"), _node("b", "comp_b")],
-        [{"id": "e1", "source": "a", "target": "b",
-          "sourceHandle": "out", "targetHandle": "in"}])
+        [{"id": "e1", "source": "a", "target": "b", "sourceHandle": "out", "targetHandle": "in"}],
+    )
     assert [x for x in validate_graph(doc, port_types=supply) if x["rule"] == "R14"] == []
 
 
@@ -540,8 +569,8 @@ def test_r14_skipped_without_supply():
     """port_types 缺省（None）→ R14 整体跳过（纯函数兼容：vars_supply/comp_versions 同先例）。"""
     doc = _doc(
         [_node("a", "comp_b"), _node("b", "comp_b")],
-        [{"id": "e1", "source": "a", "target": "b",
-          "sourceHandle": "out", "targetHandle": "in"}])
+        [{"id": "e1", "source": "a", "target": "b", "sourceHandle": "out", "targetHandle": "in"}],
+    )
     assert [x for x in validate_graph(doc) if x["rule"] == "R14"] == []
 
 
@@ -554,29 +583,31 @@ def test_r14_unresolvable_port_treated_as_any():
     doc = _doc([_node("a", "ghost_x"), _node("b", "ghost_y")], base)
     assert [x for x in validate_graph(doc, port_types={}) if x["rule"] == "R14"] == []
     # ② handle 未命中端口名
-    supply = {"comp_a": {"outputs": [{"name": "out", "type": "table"}]},
-              "comp_b": {"inputs": [{"name": "in", "type": "stream"}]}}
-    doc = _doc(nodes, [{"id": "e1", "source": "a", "target": "b",
-                        "sourceHandle": "nope", "targetHandle": "in"}])
+    supply = {
+        "comp_a": {"outputs": [{"name": "out", "type": "table"}]},
+        "comp_b": {"inputs": [{"name": "in", "type": "stream"}]},
+    }
+    doc = _doc(nodes, [{"id": "e1", "source": "a", "target": "b", "sourceHandle": "nope", "targetHandle": "in"}])
     assert [x for x in validate_graph(doc, port_types=supply) if x["rule"] == "R14"] == []
     # ③ 边缺省 handle（存量旧画布形态）
     doc = _doc(nodes, base)
     assert [x for x in validate_graph(doc, port_types=supply) if x["rule"] == "R14"] == []
     # ④ 命中端口但未声明 type
-    supply = {"comp_a": {"outputs": [{"name": "out"}]},
-              "comp_b": {"inputs": [{"name": "in", "type": "stream"}]}}
-    doc = _doc(nodes, [{"id": "e1", "source": "a", "target": "b",
-                        "sourceHandle": "out", "targetHandle": "in"}])
+    supply = {"comp_a": {"outputs": [{"name": "out"}]}, "comp_b": {"inputs": [{"name": "in", "type": "stream"}]}}
+    doc = _doc(nodes, [{"id": "e1", "source": "a", "target": "b", "sourceHandle": "out", "targetHandle": "in"}])
     assert [x for x in validate_graph(doc, port_types=supply) if x["rule"] == "R14"] == []
 
 
 def test_r14_dangling_edge_skips_type_check():
     """端点缺失的边走 R4，R14 不重复报（前端 edgeTypeIssues 同口径跳过悬挂边）。"""
-    supply = {"comp_a": {"outputs": [{"name": "out", "type": "table"}]},
-              "comp_b": {"inputs": [{"name": "in", "type": "stream"}]}}
-    doc = _doc([_node("a", "comp_a")],
-               [{"id": "e1", "source": "a", "target": "ghost",
-                 "sourceHandle": "out", "targetHandle": "in"}])
+    supply = {
+        "comp_a": {"outputs": [{"name": "out", "type": "table"}]},
+        "comp_b": {"inputs": [{"name": "in", "type": "stream"}]},
+    }
+    doc = _doc(
+        [_node("a", "comp_a")],
+        [{"id": "e1", "source": "a", "target": "ghost", "sourceHandle": "out", "targetHandle": "in"}],
+    )
     v = validate_graph(doc, port_types=supply)
     assert any(x["rule"] == "R4" for x in v)
     assert [x for x in v if x["rule"] == "R14"] == []
@@ -584,23 +615,31 @@ def test_r14_dangling_edge_skips_type_check():
 
 # ---------------- R14 端点激活（Task 9 补齐：save/publish 传 port_types 供给） ----------------
 
+
 def _insert_published_comp_with_ports(db_session, spec_json_str):
     """插一条 published 组件 comp_b + published 版本行（原生 SQL 手法同 R6 用例——
     test_component_catalog 收集期 pop sys.modules['common.*'] 导致模型模块分裂，
     ORM 写库绕过端点侧 identity map，原生 SQL + expire_all 免疫）。"""
     from sqlalchemy import text
-    db_session.execute(text(
-        "INSERT INTO t_component (type, name, profile, scope, execution_model, executor,"
-        " executable, state, published_version, draft_rev, create_time, update_time)"
-        " VALUES ('comp_b', 'B组件', 'dag', 'builtin', 'dag-engine', NULL, 1, 'published',"
-        " 1, 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)"))
+
+    db_session.execute(
+        text(
+            "INSERT INTO t_component (type, name, profile, scope, execution_model, executor,"
+            " executable, state, published_version, draft_rev, create_time, update_time)"
+            " VALUES ('comp_b', 'B组件', 'dag', 'builtin', 'dag-engine', NULL, 1, 'published',"
+            " 1, 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)"
+        )
+    )
     cid = db_session.execute(text("SELECT id FROM t_component WHERE type='comp_b'")).scalar()
-    db_session.execute(text(
-        "INSERT INTO t_component_version (component_id, type, version, state, spec_json,"
-        " spec_hash, create_time, update_time)"
-        " VALUES (:cid, 'comp_b', 1, 'published', :spec, 'testhash',"
-        " CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)"),
-        {"cid": cid, "spec": spec_json_str})
+    db_session.execute(
+        text(
+            "INSERT INTO t_component_version (component_id, type, version, state, spec_json,"
+            " spec_hash, create_time, update_time)"
+            " VALUES (:cid, 'comp_b', 1, 'published', :spec, 'testhash',"
+            " CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)"
+        ),
+        {"cid": cid, "spec": spec_json_str},
+    )
     db_session.commit()
     db_session.expire_all()
 
@@ -609,18 +648,23 @@ def test_save_endpoint_r14_gate(client, db_session, monkeypatch):
     """R14 端点激活：published 组件 spec ports 声明类型 → 保存含类型不匹配边的图
     422(2006) 拦截，文案与前端逐字一致；缺省 handle 解析不到 → any 放行（宽进口径）。"""
     _patch_real_catalog(monkeypatch)
-    _insert_published_comp_with_ports(db_session, json.dumps({
-        "ports": {"inputs": [{"name": "in", "type": "stream"}],
-                  "outputs": [{"name": "out", "type": "table"}]}}))
+    _insert_published_comp_with_ports(
+        db_session,
+        json.dumps(
+            {"ports": {"inputs": [{"name": "in", "type": "stream"}], "outputs": [{"name": "out", "type": "table"}]}}
+        ),
+    )
     r = client.post("/api/v1/workflow-definitions", json={"name": "R14类型闸门"})
     assert r.status_code == 200, r.text
     wf = r.json()["data"]
     save_url = "/api/v1/workflow-definitions/%s/save" % wf["id"]
 
     # a.out(table) → b.in(stream)：不匹配 → 拒
-    bad = _doc([_node("a", "comp_b"), _node("b", "comp_b")],
-               [{"id": "e1", "source": "a", "target": "b",
-                 "sourceHandle": "out", "targetHandle": "in"}], wf["id"])
+    bad = _doc(
+        [_node("a", "comp_b"), _node("b", "comp_b")],
+        [{"id": "e1", "source": "a", "target": "b", "sourceHandle": "out", "targetHandle": "in"}],
+        wf["id"],
+    )
     r = client.put(save_url, json={"doc": bad})
     assert r.status_code == 422
     body = r.json()
@@ -628,8 +672,7 @@ def test_save_endpoint_r14_gate(client, db_session, monkeypatch):
     assert "类型不匹配：源 table → 目标 stream" in body["msg"]
 
     # 缺省 handle → 任一端视为 any → 放行（不误拦存量旧画布边）
-    loose = _doc([_node("a", "comp_b"), _node("b", "comp_b")],
-                 [{"id": "e1", "source": "a", "target": "b"}], wf["id"])
+    loose = _doc([_node("a", "comp_b"), _node("b", "comp_b")], [{"id": "e1", "source": "a", "target": "b"}], wf["id"])
     assert client.put(save_url, json={"doc": loose}).status_code == 200
 
 
@@ -641,9 +684,11 @@ def test_save_endpoint_r14_no_ports_supply_lenient(client, db_session, monkeypat
     r = client.post("/api/v1/workflow-definitions", json={"name": "R14宽松口径"})
     wf = r.json()["data"]
     save_url = "/api/v1/workflow-definitions/%s/save" % wf["id"]
-    doc = _doc([_node("a", "comp_b"), _node("b", "comp_b")],
-               [{"id": "e1", "source": "a", "target": "b",
-                 "sourceHandle": "out", "targetHandle": "in"}], wf["id"])
+    doc = _doc(
+        [_node("a", "comp_b"), _node("b", "comp_b")],
+        [{"id": "e1", "source": "a", "target": "b", "sourceHandle": "out", "targetHandle": "in"}],
+        wf["id"],
+    )
     assert client.put(save_url, json={"doc": doc}).status_code == 200
 
 
@@ -655,7 +700,9 @@ def test_save_endpoint_r14_non_dict_spec_json_degrades(client, db_session, monke
     r = client.post("/api/v1/workflow-definitions", json={"name": "R14坏行降级"})
     wf = r.json()["data"]
     save_url = "/api/v1/workflow-definitions/%s/save" % wf["id"]
-    doc = _doc([_node("a", "comp_b"), _node("b", "comp_b")],
-               [{"id": "e1", "source": "a", "target": "b",
-                 "sourceHandle": "out", "targetHandle": "in"}], wf["id"])
+    doc = _doc(
+        [_node("a", "comp_b"), _node("b", "comp_b")],
+        [{"id": "e1", "source": "a", "target": "b", "sourceHandle": "out", "targetHandle": "in"}],
+        wf["id"],
+    )
     assert client.put(save_url, json={"doc": doc}).status_code == 200

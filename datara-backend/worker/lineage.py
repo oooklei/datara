@@ -56,11 +56,7 @@ def _ctx_info(session, ctx) -> tuple:
         node_id = task.node_id or ""
         node_name = task.name or ""
     wf_code, wf_name = 0, ""
-    wi = (
-        session.query(WorkflowInstance)
-        .filter(WorkflowInstance.instance_id == ctx.instance_id)
-        .first()
-    )
+    wi = session.query(WorkflowInstance).filter(WorkflowInstance.instance_id == ctx.instance_id).first()
     if wi is not None:
         wf_code = int(wi.wf_code or 0)
         wd = session.query(WfDefinition).filter(WfDefinition.code == wf_code).first()
@@ -124,11 +120,17 @@ def _collect_sync(ctx, edges: list, ds_name: str) -> tuple:
             )
             if edge is None:
                 edge = LineageEdge(
-                    wf_code=wf_code, wf_name=wf_name,
-                    instance_id=ctx.instance_id, task_id=ctx.task_id,
-                    node_id=node_id, node_name=node_name, ds_name=ds_name,
-                    stmt_no=stmt_no, stmt=stmt,
-                    from_table=from_reg, to_table=to_reg,
+                    wf_code=wf_code,
+                    wf_name=wf_name,
+                    instance_id=ctx.instance_id,
+                    task_id=ctx.task_id,
+                    node_id=node_id,
+                    node_name=node_name,
+                    ds_name=ds_name,
+                    stmt_no=stmt_no,
+                    stmt=stmt,
+                    from_table=from_reg,
+                    to_table=to_reg,
                     tmp_flag=to_tmp or from_tmp,
                 )
                 session.add(edge)
@@ -150,15 +152,20 @@ def _collect_sync(ctx, edges: list, ds_name: str) -> tuple:
                     .first()
                 )
                 if exists is None:
-                    session.add(LineageField(
-                        edge_id=edge.id, to_field=to_field,
-                        from_table=from_reg, from_field=from_field,
-                        transform="",
-                    ))
+                    session.add(
+                        LineageField(
+                            edge_id=edge.id,
+                            to_field=to_field,
+                            from_table=from_reg,
+                            from_field=from_field,
+                            transform="",
+                        )
+                    )
                     field_count += 1
         session.commit()
-        ctx.log("[lineage] 同步血缘: 表级边 %d / 字段映射 %d（临时表映射 %d）"
-                % (edge_count, field_count, len(tmp_map)))
+        ctx.log(
+            "[lineage] 同步血缘: 表级边 %d / 字段映射 %d（临时表映射 %d）" % (edge_count, field_count, len(tmp_map))
+        )
     finally:
         session.close()
     return edge_count, field_count
@@ -194,11 +201,17 @@ def _collect(ctx, stmts: list, ds_name: str, default_db: str) -> tuple:
                         )
                         if edge is None:
                             edge = LineageEdge(
-                                wf_code=wf_code, wf_name=wf_name,
-                                instance_id=ctx.instance_id, task_id=ctx.task_id,
-                                node_id=node_id, node_name=node_name, ds_name=ds_name,
-                                stmt_no=stmt_no, stmt=parsed.stmt,
-                                from_table=from_reg, to_table=to_reg,
+                                wf_code=wf_code,
+                                wf_name=wf_name,
+                                instance_id=ctx.instance_id,
+                                task_id=ctx.task_id,
+                                node_id=node_id,
+                                node_name=node_name,
+                                ds_name=ds_name,
+                                stmt_no=stmt_no,
+                                stmt=parsed.stmt,
+                                from_table=from_reg,
+                                to_table=to_reg,
                                 tmp_flag=to_tmp or from_tmp,
                             )
                             session.add(edge)
@@ -223,15 +236,21 @@ def _collect(ctx, stmts: list, ds_name: str, default_db: str) -> tuple:
                             .first()
                         )
                         if exists is None:
-                            session.add(LineageField(
-                                edge_id=eid, to_field=fm.to_field,
-                                from_table=f_reg, from_field=fm.from_field,
-                                transform=fm.transform,
-                            ))
+                            session.add(
+                                LineageField(
+                                    edge_id=eid,
+                                    to_field=fm.to_field,
+                                    from_table=f_reg,
+                                    from_field=fm.from_field,
+                                    transform=fm.transform,
+                                )
+                            )
                             field_count += 1
         session.commit()
     finally:
         session.close()
-    ctx.log("[lineage] 血缘采集: 语句 %d 条 → 表级边 %d / 字段映射 %d（临时表映射 %d）"
-            % (len(stmts), edge_count, field_count, len(tmp_map)))
+    ctx.log(
+        "[lineage] 血缘采集: 语句 %d 条 → 表级边 %d / 字段映射 %d（临时表映射 %d）"
+        % (len(stmts), edge_count, field_count, len(tmp_map))
+    )
     return edge_count, field_count

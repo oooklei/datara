@@ -44,8 +44,16 @@ from api.graph_rules import _catalog as _load_catalog
 from common.db import get_db
 from common.log import get_logger
 from common.models import (
-    Component, ComponentLog, ComponentVersion, DataSource, GlobalParam, User,
-    WfDefinition, WfDefinitionLog, WfVariable, now,
+    Component,
+    ComponentLog,
+    ComponentVersion,
+    DataSource,
+    GlobalParam,
+    User,
+    WfDefinition,
+    WfDefinitionLog,
+    WfVariable,
+    now,
 )
 from common.resp import (
     COMP_BREAKING_CHANGE,
@@ -71,11 +79,26 @@ EXECUTION_MODELS = ("dag-engine", "canvas-device", "demo-only", "runtime-only", 
 # 红线 2：声明中禁止出现的函数/代码片段（大小写敏感子串，设计器产出为结构化 UI
 # 文本，出现这些模式即异常；宁可误伤也不放行——B4 白名单校验是主闸门，此为兜底）
 FORBIDDEN_SNIPPETS = (
-    "function", "=>", "eval(", "new Function", "Function(",
-    "<script", "javascript:", "__import__", "import ", "import(",
-    "def ", "lambda ", "require(", "module.exports",
-    "exec(", "subprocess", "os.system", "child_process",
-    "${", "`",
+    "function",
+    "=>",
+    "eval(",
+    "new Function",
+    "Function(",
+    "<script",
+    "javascript:",
+    "__import__",
+    "import ",
+    "import(",
+    "def ",
+    "lambda ",
+    "require(",
+    "module.exports",
+    "exec(",
+    "subprocess",
+    "os.system",
+    "child_process",
+    "${",
+    "`",
 )
 
 # dropPolicy.autoName 模板仅允许的占位符（治理文档 §11）
@@ -112,21 +135,59 @@ def _scan_pure_data(node, path: str, violations: list) -> None:
 
 # 页面设计器 page DSL（execution_model=page）：widget kind 白名单 / 绑定 kind 与
 # 必填字段（手动输入兜底 placeholder 即默认值）/ 画布尺寸钳制（设计器画布上限）
-_WIDGET_KINDS = frozenset({
-    # 布局容器
-    "grid-row", "card", "tabs", "collapse", "divider", "spacer",
-    # 基础元素
-    "text", "heading", "rich-text", "image", "icon", "button", "badge", "link",
-    # 表单输入
-    "input", "number", "select", "date", "date-range", "switch", "slider",
-    "radio", "checkbox", "cascader", "textarea", "upload",
-    # 数据展示
-    "table", "list", "descriptions", "statistic", "progress", "timeline", "tree",
-    # 图表
-    "chart-bar", "chart-line", "chart-pie", "chart-area", "chart-gauge", "chart-scatter",
-    # 绑定元素
-    "meta-field", "var-label", "query-result", "sys-status",
-})
+_WIDGET_KINDS = frozenset(
+    {
+        # 布局容器
+        "grid-row",
+        "card",
+        "tabs",
+        "collapse",
+        "divider",
+        "spacer",
+        # 基础元素
+        "text",
+        "heading",
+        "rich-text",
+        "image",
+        "icon",
+        "button",
+        "badge",
+        "link",
+        # 表单输入
+        "input",
+        "number",
+        "select",
+        "date",
+        "date-range",
+        "switch",
+        "slider",
+        "radio",
+        "checkbox",
+        "cascader",
+        "textarea",
+        "upload",
+        # 数据展示
+        "table",
+        "list",
+        "descriptions",
+        "statistic",
+        "progress",
+        "timeline",
+        "tree",
+        # 图表
+        "chart-bar",
+        "chart-line",
+        "chart-pie",
+        "chart-area",
+        "chart-gauge",
+        "chart-scatter",
+        # 绑定元素
+        "meta-field",
+        "var-label",
+        "query-result",
+        "sys-status",
+    }
+)
 _BINDING_KINDS = frozenset({"metadata", "variable", "query", "static"})
 # 必填字段表（§9.1 绑定形状）：query 特判——数据源引用型（datasourceId）与显式 SQL 型
 # （query）二者有其一即合法（数据源引用型绑定 SQL 后续在数据集钻取中补），见 _validate_page_spec
@@ -144,9 +205,14 @@ def _validate_page_spec(spec, violations: list) -> None:
     canvas = page.get("canvas")
     width = canvas.get("width") if isinstance(canvas, dict) else None
     height = canvas.get("height") if isinstance(canvas, dict) else None
-    if not (isinstance(width, (int, float)) and not isinstance(width, bool)
-            and isinstance(height, (int, float)) and not isinstance(height, bool)
-            and 140 <= width <= 520 and 320 <= height <= 1200):
+    if not (
+        isinstance(width, (int, float))
+        and not isinstance(width, bool)
+        and isinstance(height, (int, float))
+        and not isinstance(height, bool)
+        and 140 <= width <= 520
+        and 320 <= height <= 1200
+    ):
         violations.append("page.canvas: 尺寸越界（宽 140-520 / 高 320-1200）")
 
     def walk(widgets, prefix):
@@ -202,8 +268,7 @@ def validate_spec_pure_data(spec) -> list:
     if isinstance(auto_name, str):
         for ph in re.findall(r"\{([^{}]*)\}", auto_name):
             if ph not in _ALLOWED_PLACEHOLDERS:
-                violations.append(
-                    "dropPolicy.autoName 占位符 {%s} 不在白名单（仅允许 {type}/{n}）" % ph)
+                violations.append("dropPolicy.autoName 占位符 {%s} 不在白名单（仅允许 {type}/{n}）" % ph)
     _validate_page_spec(spec, violations)
     return violations
 
@@ -238,8 +303,7 @@ def _draft_version(db: Session, component_id: int) -> ComponentVersion:
     """取 state=draft 的草稿版本行（§16：草稿存版本表，缺失=已被冻结且无新草稿）。"""
     row = (
         db.query(ComponentVersion)
-        .filter(ComponentVersion.component_id == component_id,
-                ComponentVersion.state == "draft")
+        .filter(ComponentVersion.component_id == component_id, ComponentVersion.state == "draft")
         .first()
     )
     if row is None:
@@ -262,40 +326,56 @@ def _reopen_draft(db: Session, comp: Component, operator: str) -> ComponentVersi
     )
     src = (
         db.query(ComponentVersion)
-        .filter(ComponentVersion.component_id == comp.id,
-                ComponentVersion.state == "published")
+        .filter(ComponentVersion.component_id == comp.id, ComponentVersion.state == "published")
         .order_by(ComponentVersion.version.desc())
         .first()
     )
     if src is None:
         src = (
             db.query(ComponentVersion)
-            .filter(ComponentVersion.component_id == comp.id,
-                    ComponentVersion.state != "draft")
+            .filter(ComponentVersion.component_id == comp.id, ComponentVersion.state != "draft")
             .order_by(ComponentVersion.version.desc())
             .first()
         )
     spec = json.loads(src.spec_json) if (src is not None and src.spec_json) else {}
     row = ComponentVersion(
-        component_id=comp.id, type=comp.type,
+        component_id=comp.id,
+        type=comp.type,
         version=(latest_any.version + 1) if latest_any is not None else 1,
-        state="draft", spec_json=json.dumps(spec, ensure_ascii=False),
-        spec_hash=_spec_hash(spec), remark="自动开修订草稿（复制已发版内容）",
+        state="draft",
+        spec_json=json.dumps(spec, ensure_ascii=False),
+        spec_hash=_spec_hash(spec),
+        remark="自动开修订草稿（复制已发版内容）",
     )
     db.add(row)
-    _append_log(db, comp, row.version, "reopen_draft", row.spec_hash, operator,
-                "无进行中草稿，自动复制%s内容开修订" % (f"v{src.version}" if src is not None else "空声明"))
+    _append_log(
+        db,
+        comp,
+        row.version,
+        "reopen_draft",
+        row.spec_hash,
+        operator,
+        "无进行中草稿，自动复制%s内容开修订" % (f"v{src.version}" if src is not None else "空声明"),
+    )
     db.commit()
     logger.info("自动开修订草稿: %s v%d（操作人 %s）", comp.type, row.version, operator)
     return row
 
 
-def _append_log(db: Session, comp: Component, version: int, action: str,
-                spec_hash: str, operator: str, remark: Optional[str]) -> None:
-    db.add(ComponentLog(
-        component_id=comp.id, type=comp.type, version=version, action=action,
-        spec_hash=spec_hash, operator=operator, remark=remark,
-    ))
+def _append_log(
+    db: Session, comp: Component, version: int, action: str, spec_hash: str, operator: str, remark: Optional[str]
+) -> None:
+    db.add(
+        ComponentLog(
+            component_id=comp.id,
+            type=comp.type,
+            version=version,
+            action=action,
+            spec_hash=spec_hash,
+            operator=operator,
+            remark=remark,
+        )
+    )
 
 
 @router.post("", summary="创建组件草稿")
@@ -311,31 +391,43 @@ def create_component(
     if not (body.name or "").strip():
         return fail(COMP_SPEC_INVALID, "组件名称不能为空")
     if db.query(Component).filter(Component.type == type_name).first() is not None:
-        raise ApiError(COMP_DUPLICATE_TYPE, status=409,
-                       msg="组件 type「%s」已被占用" % type_name)
+        raise ApiError(COMP_DUPLICATE_TYPE, status=409, msg="组件 type「%s」已被占用" % type_name)
     violations = validate_spec_pure_data(body.spec)
     if violations:
-        raise ApiError(COMP_SPEC_INVALID, status=422,
-                       msg="初始声明非纯数据", data={"violations": violations})
+        raise ApiError(COMP_SPEC_INVALID, status=422, msg="初始声明非纯数据", data={"violations": violations})
     # 页面设计器产出的 UI 组件不可执行（page 模型红线）
     if body.execution_model == "page" and body.executable:
-        raise ApiError(COMP_SPEC_INVALID, status=422,
-                       msg="execution_model=page 组件 executable 必须为 false")
+        raise ApiError(COMP_SPEC_INVALID, status=422, msg="execution_model=page 组件 executable 必须为 false")
 
     comp = Component(
-        type=type_name, name=body.name.strip(), category=body.category,
-        profile=body.profile, scope="user", execution_model=body.execution_model,
-        executor=body.executor, executable=body.executable, state="draft",
-        published_version=None, draft_rev=0, description=body.description,
-        tags=body.tags or [], owner_id=user.id,
+        type=type_name,
+        name=body.name.strip(),
+        category=body.category,
+        profile=body.profile,
+        scope="user",
+        execution_model=body.execution_model,
+        executor=body.executor,
+        executable=body.executable,
+        state="draft",
+        published_version=None,
+        draft_rev=0,
+        description=body.description,
+        tags=body.tags or [],
+        owner_id=user.id,
     )
     db.add(comp)
     db.flush()  # 取 comp.id
-    db.add(ComponentVersion(
-        component_id=comp.id, type=type_name, version=1, state="draft",
-        spec_json=json.dumps(body.spec, ensure_ascii=False), spec_hash=_spec_hash(body.spec),
-        remark="初始草稿",
-    ))
+    db.add(
+        ComponentVersion(
+            component_id=comp.id,
+            type=type_name,
+            version=1,
+            state="draft",
+            spec_json=json.dumps(body.spec, ensure_ascii=False),
+            spec_hash=_spec_hash(body.spec),
+            remark="初始草稿",
+        )
+    )
     _append_log(db, comp, 1, "create", _spec_hash(body.spec), user.user_name, None)
     db.commit()
     logger.info("创建组件草稿: %s（%s，操作人 %s）", type_name, body.profile, user.user_name)
@@ -356,24 +448,32 @@ def get_draft(
     comp = _get_or_404(db, type_name)
     draft = (
         db.query(ComponentVersion)
-        .filter(ComponentVersion.component_id == comp.id,
-                ComponentVersion.state == "draft")
+        .filter(ComponentVersion.component_id == comp.id, ComponentVersion.state == "draft")
         .first()
     )
     if draft is None:
         draft = _reopen_draft(db, comp, user.user_name)
-    return ok({
-        "type": comp.type, "name": comp.name, "category": comp.category,
-        "profile": comp.profile, "scope": comp.scope,
-        "executionModel": comp.execution_model, "executor": comp.executor,
-        "executable": comp.executable, "state": comp.state,
-        "publishedVersion": comp.published_version,
-        "draftRev": comp.draft_rev, "draftVersion": draft.version,
-        "description": comp.description, "tags": comp.tags or [],
-        "spec": json.loads(draft.spec_json) if draft.spec_json else {},
-        "specHash": draft.spec_hash,
-        "updatedAt": fmt_dt(comp.update_time),
-    })
+    return ok(
+        {
+            "type": comp.type,
+            "name": comp.name,
+            "category": comp.category,
+            "profile": comp.profile,
+            "scope": comp.scope,
+            "executionModel": comp.execution_model,
+            "executor": comp.executor,
+            "executable": comp.executable,
+            "state": comp.state,
+            "publishedVersion": comp.published_version,
+            "draftRev": comp.draft_rev,
+            "draftVersion": draft.version,
+            "description": comp.description,
+            "tags": comp.tags or [],
+            "spec": json.loads(draft.spec_json) if draft.spec_json else {},
+            "specHash": draft.spec_hash,
+            "updatedAt": fmt_dt(comp.update_time),
+        }
+    )
 
 
 @router.put("/{type_name}/draft", summary="保存组件草稿（乐观锁）")
@@ -389,25 +489,22 @@ def save_draft(
     """
     comp = _get_or_404(db, type_name)
     if body.draft_rev != comp.draft_rev:
-        raise ApiError(COMP_LOCK_CONFLICT, status=409,
-                       data={"currentRev": comp.draft_rev})
+        raise ApiError(COMP_LOCK_CONFLICT, status=409, data={"currentRev": comp.draft_rev})
     violations = validate_spec_pure_data(body.spec)
     if violations:
-        raise ApiError(COMP_SPEC_INVALID, status=422,
-                       msg="声明非纯数据", data={"violations": violations})
+        raise ApiError(COMP_SPEC_INVALID, status=422, msg="声明非纯数据", data={"violations": violations})
     draft = _draft_version(db, comp.id)
     draft.spec_json = json.dumps(body.spec, ensure_ascii=False)
     draft.spec_hash = _spec_hash(body.spec)
     comp.draft_rev += 1
-    _append_log(db, comp, draft.version, "update_draft", draft.spec_hash,
-                user.user_name, body.remark)
+    _append_log(db, comp, draft.version, "update_draft", draft.spec_hash, user.user_name, body.remark)
     db.commit()
     logger.info("保存组件草稿: %s rev=%d（操作人 %s）", type_name, comp.draft_rev, user.user_name)
-    return ok({"draftRev": comp.draft_rev, "specHash": draft.spec_hash,
-               "savedAt": fmt_dt(now())})
+    return ok({"draftRev": comp.draft_rev, "specHash": draft.spec_hash, "savedAt": fmt_dt(now())})
 
 
 # ---------------- B5 冻结版本（实施计划 20260926 Task B5；§18.2 versions 两端点） ----------------
+
 
 class FreezeBody(BaseModel):
     remark: Optional[str] = None
@@ -430,22 +527,26 @@ def freeze_version(
     spec = json.loads(draft.spec_json) if draft.spec_json else {}
     violations = validate_spec_pure_data(spec)
     if violations:
-        raise ApiError(COMP_SPEC_INVALID, status=422,
-                       msg="草稿声明非纯数据，不可冻结", data={"violations": violations})
+        raise ApiError(COMP_SPEC_INVALID, status=422, msg="草稿声明非纯数据，不可冻结", data={"violations": violations})
     frozen_version = draft.version
     draft.state = "frozen"
-    db.add(ComponentVersion(
-        component_id=comp.id, type=comp.type, version=frozen_version + 1,
-        state="draft", spec_json=json.dumps({}, ensure_ascii=False),
-        spec_hash=_spec_hash({}), remark="冻结 v%d 后自动开启" % frozen_version,
-    ))
-    _append_log(db, comp, frozen_version, "freeze_version", draft.spec_hash,
-                user.user_name, body.remark)
+    db.add(
+        ComponentVersion(
+            component_id=comp.id,
+            type=comp.type,
+            version=frozen_version + 1,
+            state="draft",
+            spec_json=json.dumps({}, ensure_ascii=False),
+            spec_hash=_spec_hash({}),
+            remark="冻结 v%d 后自动开启" % frozen_version,
+        )
+    )
+    _append_log(db, comp, frozen_version, "freeze_version", draft.spec_hash, user.user_name, body.remark)
     db.commit()
-    logger.info("冻结组件版本: %s v%d（操作人 %s，新草稿 v%d）",
-                type_name, frozen_version, user.user_name, frozen_version + 1)
-    return ok({"frozenVersion": frozen_version, "draftVersion": frozen_version + 1,
-               "draftRev": comp.draft_rev})
+    logger.info(
+        "冻结组件版本: %s v%d（操作人 %s，新草稿 v%d）", type_name, frozen_version, user.user_name, frozen_version + 1
+    )
+    return ok({"frozenVersion": frozen_version, "draftVersion": frozen_version + 1, "draftRev": comp.draft_rev})
 
 
 @router.get("/{type_name}/versions", summary="版本列表")
@@ -462,22 +563,24 @@ def list_versions(
         .order_by(ComponentVersion.version.desc())
         .all()
     )
-    return ok({
-        "type": comp.type,
-        "publishedVersion": comp.published_version,
-        "items": [
-            {
-                "version": r.version,
-                "state": r.state,
-                "specHash": r.spec_hash,
-                "remark": r.remark,
-                "publishedBy": r.published_by,
-                "publishedAt": fmt_dt(r.published_time),
-                "createdAt": fmt_dt(r.create_time),
-            }
-            for r in rows
-        ],
-    })
+    return ok(
+        {
+            "type": comp.type,
+            "publishedVersion": comp.published_version,
+            "items": [
+                {
+                    "version": r.version,
+                    "state": r.state,
+                    "specHash": r.spec_hash,
+                    "remark": r.remark,
+                    "publishedBy": r.published_by,
+                    "publishedAt": fmt_dt(r.published_time),
+                    "createdAt": fmt_dt(r.create_time),
+                }
+                for r in rows
+            ],
+        }
+    )
 
 
 @router.get("/{type_name}/versions/{version}", summary="读取不可变版本快照")
@@ -495,8 +598,7 @@ def get_version_snapshot(
     comp = _get_or_404(db, type_name)
     row = (
         db.query(ComponentVersion)
-        .filter(ComponentVersion.component_id == comp.id,
-                ComponentVersion.version == version)
+        .filter(ComponentVersion.component_id == comp.id, ComponentVersion.version == version)
         .first()
     )
     if row is None:
@@ -507,10 +609,15 @@ def get_version_snapshot(
         # version rows normally pass pure-data gates; fail closed for historical
         # corrupted rows instead of returning an invented comparison input.
         raise ApiError(COMP_STATE_CONFLICT, status=409, msg="版本声明损坏，无法用于升级比对")
-    return ok({
-        "type": comp.type, "version": row.version, "state": row.state,
-        "spec": spec, "specHash": row.spec_hash,
-    })
+    return ok(
+        {
+            "type": comp.type,
+            "version": row.version,
+            "state": row.state,
+            "spec": spec,
+            "specHash": row.spec_hash,
+        }
+    )
 
 
 # ---------------- M2 发布闸门（实施计划 20260926 Task D1；治理设计 §13 八项） ----------------
@@ -539,17 +646,46 @@ def get_version_snapshot(
 DISPATCHABLE_EXECUTORS = _CATALOG_DISPATCHABLE
 
 # uiType 白名单：B3 收敛 FieldKind 9 基元（前端 services/componentSpec.ts SPEC_UI_TYPES 同口径）
-SPEC_UI_TYPES = frozenset({
-    "text", "number", "bool", "select", "expr", "hint", "rows", "mapEditor", "resource",
-})
+SPEC_UI_TYPES = frozenset(
+    {
+        "text",
+        "number",
+        "bool",
+        "select",
+        "expr",
+        "hint",
+        "rows",
+        "mapEditor",
+        "resource",
+    }
+)
 
 # pick 键白名单（§10.2 的 17 键 + 2026-09-26 校验补充的 upstreamMax/fmSrcIndex/fmTgtIndex；
 # 与前端 graph/profiles/types.ts ResourcePick 接口字段一一对应）
-PICK_KEYS = frozenset({
-    "mode", "dsKey", "tableKey", "nodeKey", "dsTypes", "src", "upstreamIndex", "multi",
-    "writeAs", "insertKey", "excludeDsKey", "srcNodeType", "tgtNodeType", "srcDsKey",
-    "srcTableKey", "tgtDsKey", "tgtTableKey", "upstreamMax", "fmSrcIndex", "fmTgtIndex",
-})
+PICK_KEYS = frozenset(
+    {
+        "mode",
+        "dsKey",
+        "tableKey",
+        "nodeKey",
+        "dsTypes",
+        "src",
+        "upstreamIndex",
+        "multi",
+        "writeAs",
+        "insertKey",
+        "excludeDsKey",
+        "srcNodeType",
+        "tgtNodeType",
+        "srcDsKey",
+        "srcTableKey",
+        "tgtDsKey",
+        "tgtTableKey",
+        "upstreamMax",
+        "fmSrcIndex",
+        "fmTgtIndex",
+    }
+)
 
 # dropPolicy 键白名单（§11 封闭表：openInspectorOnDrop 已废弃不收）
 DROP_POLICY_KEYS = frozenset({"snapToGrid", "autoName", "prefillFromUpstream", "autoConnect", "maxInstances"})
@@ -728,16 +864,14 @@ def _gate_page_bindings(db: Session, spec: dict) -> list:
                         continue  # 内置时间参数
                     model, name = None, ""
                     if path.startswith("$wf."):
-                        model, name = WfVariable, path[len("$wf."):]
+                        model, name = WfVariable, path[len("$wf.") :]
                     elif path.startswith("$param."):
-                        model, name = GlobalParam, path[len("$param."):]
-                    if model is not None and (
-                            not name or db.query(model).filter(model.name == name).first() is None):
+                        model, name = GlobalParam, path[len("$param.") :]
+                    if model is not None and (not name or db.query(model).filter(model.name == name).first() is None):
                         violations.append("bindings.%s: 引用资源不存在（%s）" % (key, path))
                 elif kind == "query":
                     ds_id = b.get("datasourceId")
-                    if isinstance(ds_id, bool) or not isinstance(ds_id, int) \
-                            or db.get(DataSource, ds_id) is None:
+                    if isinstance(ds_id, bool) or not isinstance(ds_id, int) or db.get(DataSource, ds_id) is None:
                         violations.append("bindings.%s: 引用资源不存在（ds:%s）" % (key, ds_id))
                 elif kind == "metadata":
                     path = b.get("path")
@@ -770,18 +904,18 @@ def run_publish_gates(
         ("whitelist", _gate_whitelist(spec)),
         ("drop_policy", _gate_drop_policy(spec)),
         ("contract", _gate_contract(comp, spec, executor_registry)),
-        ("hash_consistency",
-         ["type「%s」与系统内置目录同名，同名定义一致性无法证明，拒绝发布（§13 第 6 项/§15）" % comp.type]
-         if comp.type in catalog_types else []),
+        (
+            "hash_consistency",
+            ["type「%s」与系统内置目录同名，同名定义一致性无法证明，拒绝发布（§13 第 6 项/§15）" % comp.type]
+            if comp.type in catalog_types
+            else [],
+        ),
         ("references", _gate_references(spec)),
     ]
     if isinstance(spec, dict) and isinstance(spec.get("page"), dict):
         # §9.1 page 分支闸门：绑定资源存在性。仅 page 根节点介入，非 page 声明闸门清单零变化
         checks.append(("page_bindings", _gate_page_bindings(db, spec) if db is not None else []))
-    return [
-        {"gate": name, "ok": not msgs, "msg": "；".join(msgs)}
-        for name, msgs in checks
-    ]
+    return [{"gate": name, "ok": not msgs, "msg": "；".join(msgs)} for name, msgs in checks]
 
 
 def _classify_spec_change(old: dict, new: dict) -> dict:
@@ -796,9 +930,10 @@ def _classify_spec_change(old: dict, new: dict) -> dict:
 
     非 dict/缺键宽容处理（spec 形态异常时不误判，交由既有八项闸门兜底）。
     """
+
     def _fields(spec: dict) -> dict:
         result = {}
-        for f in (spec.get("fields") or []):
+        for f in spec.get("fields") or []:
             if isinstance(f, dict) and isinstance(f.get("key"), str):
                 result[f["key"]] = f
         return result
@@ -806,16 +941,15 @@ def _classify_spec_change(old: dict, new: dict) -> dict:
     old_fields, new_fields = _fields(old), _fields(new)
     removed = sorted(k for k in old_fields if k not in new_fields)
     ui_changed = sorted(
-        k for k, f in old_fields.items()
-        if k in new_fields and f.get("uiType") != new_fields[k].get("uiType"))
+        k for k, f in old_fields.items() if k in new_fields and f.get("uiType") != new_fields[k].get("uiType")
+    )
     required_tightened = sorted(
-        k for k, f in old_fields.items()
-        if k in new_fields and not f.get("required") and new_fields[k].get("required"))
+        k for k, f in old_fields.items() if k in new_fields and not f.get("required") and new_fields[k].get("required")
+    )
 
     def _outputs(spec: dict) -> set:
         return {
-            o["name"] for o in (spec.get("outputs") or [])
-            if isinstance(o, dict) and isinstance(o.get("name"), str)
+            o["name"] for o in (spec.get("outputs") or []) if isinstance(o, dict) and isinstance(o.get("name"), str)
         }
 
     outputs_removed = sorted(_outputs(old) - _outputs(new))
@@ -861,34 +995,30 @@ def publish_version(
     """
     comp = _get_or_404(db, type_name)
     if body.draft_rev != comp.draft_rev:
-        raise ApiError(COMP_LOCK_CONFLICT, status=409,
-                       data={"currentRev": comp.draft_rev})
+        raise ApiError(COMP_LOCK_CONFLICT, status=409, data={"currentRev": comp.draft_rev})
     ver = (
         db.query(ComponentVersion)
-        .filter(ComponentVersion.component_id == comp.id,
-                ComponentVersion.version == body.version)
+        .filter(ComponentVersion.component_id == comp.id, ComponentVersion.version == body.version)
         .first()
     )
     if ver is None:
         raise ApiError(COMP_STATE_CONFLICT, status=409, msg="版本不存在")
     if ver.state != "frozen":
-        raise ApiError(COMP_STATE_CONFLICT, status=409,
-                       msg="仅 frozen 版本可发布（当前 %s）" % ver.state)
+        raise ApiError(COMP_STATE_CONFLICT, status=409, msg="仅 frozen 版本可发布（当前 %s）" % ver.state)
     spec = json.loads(ver.spec_json) if ver.spec_json else {}
-    items = run_publish_gates(
-        comp, spec, db=db, catalog_types=frozenset(_catalog_types()))
+    items = run_publish_gates(comp, spec, db=db, catalog_types=frozenset(_catalog_types()))
     failed = [i for i in items if not i["ok"]]
     if failed:
-        logger.info("发布闸门拦截: %s v%d（%d 项未过，操作人 %s）",
-                    type_name, body.version, len(failed), user.user_name)
+        logger.info(
+            "发布闸门拦截: %s v%d（%d 项未过，操作人 %s）", type_name, body.version, len(failed), user.user_name
+        )
         raise ApiError(COMP_GATE_FAILED, status=422, data={"items": items})
 
     # 第 9 项闸门（方案 §2.4）：破坏性变更分类——仅对已有 published 版本的组件生效
     # （首次发布 v1 无 old spec 不分类）。major 且未确认 → 422 拦截；确认后放行并落审计。
     prev_pub = (
         db.query(ComponentVersion)
-        .filter(ComponentVersion.component_id == comp.id,
-                ComponentVersion.state == "published")
+        .filter(ComponentVersion.component_id == comp.id, ComponentVersion.state == "published")
         .order_by(ComponentVersion.version.desc())
         .first()
     )
@@ -897,21 +1027,26 @@ def publish_version(
         old_spec = json.loads(prev_pub.spec_json) if prev_pub.spec_json else {}
         breaking = _classify_spec_change(old_spec, spec)
         if breaking["major"] and not body.breaking_confirmed:
-            logger.info("发布破坏性变更拦截: %s v%d（操作人 %s）",
-                        type_name, body.version, user.user_name)
-            raise ApiError(COMP_BREAKING_CHANGE, status=422, data={
-                "code": "breaking_change",
-                "changes": breaking["changes"],
-                "hint": "存在破坏性变更，确认后随发布请求带 breaking_confirmed=true 重发；"
-                        "field_mapping 仅记录，迁移执行由后续升级动作提供",
-            })
+            logger.info("发布破坏性变更拦截: %s v%d（操作人 %s）", type_name, body.version, user.user_name)
+            raise ApiError(
+                COMP_BREAKING_CHANGE,
+                status=422,
+                data={
+                    "code": "breaking_change",
+                    "changes": breaking["changes"],
+                    "hint": "存在破坏性变更，确认后随发布请求带 breaking_confirmed=true 重发；"
+                    "field_mapping 仅记录，迁移执行由后续升级动作提供",
+                },
+            )
 
     superseded = 0
     for prev in (
         db.query(ComponentVersion)
-        .filter(ComponentVersion.component_id == comp.id,
-                ComponentVersion.state == "published",
-                ComponentVersion.version != ver.version)
+        .filter(
+            ComponentVersion.component_id == comp.id,
+            ComponentVersion.state == "published",
+            ComponentVersion.version != ver.version,
+        )
         .all()
     ):
         prev.state = "offline"  # 旧 published 让位：既有工作流引用仍可运行（§8 关键语义）
@@ -921,24 +1056,40 @@ def publish_version(
     ver.published_time = now()
     comp.state = "published"
     comp.published_version = ver.version
-    _append_log(db, comp, ver.version, "publish", ver.spec_hash, user.user_name,
-                body.remark if body.remark else ("取代 v%d" % superseded if superseded else None))
+    _append_log(
+        db,
+        comp,
+        ver.version,
+        "publish",
+        ver.spec_hash,
+        user.user_name,
+        body.remark if body.remark else ("取代 v%d" % superseded if superseded else None),
+    )
     if breaking is not None and breaking["major"]:
         # 破坏性变更已确认：major 决策（升级策略 + field_mapping 内容 + 四类清单）落审计；
         # remark 列 String(512)，序列化结果超长截断保护（sqlite 不 enforce、MySQL 严格模式会拒）
-        decision = json.dumps({
-            "upgradeStrategy": body.upgrade_strategy,
-            "fieldMapping": body.field_mapping or {},
-            "changes": breaking["changes"],
-        }, ensure_ascii=False)
-        _append_log(db, comp, ver.version, "breaking_confirmed", ver.spec_hash,
-                    user.user_name, decision[:500])
+        decision = json.dumps(
+            {
+                "upgradeStrategy": body.upgrade_strategy,
+                "fieldMapping": body.field_mapping or {},
+                "changes": breaking["changes"],
+            },
+            ensure_ascii=False,
+        )
+        _append_log(db, comp, ver.version, "breaking_confirmed", ver.spec_hash, user.user_name, decision[:500])
     db.commit()
-    logger.info("发布组件版本: %s v%d（操作人 %s%s）", type_name, ver.version,
-                user.user_name, "，取代 v%d" % superseded if superseded else "")
+    logger.info(
+        "发布组件版本: %s v%d（操作人 %s%s）",
+        type_name,
+        ver.version,
+        user.user_name,
+        "，取代 v%d" % superseded if superseded else "",
+    )
     payload = {
-        "type": comp.type, "publishedVersion": ver.version,
-        "specHash": ver.spec_hash, "supersededVersion": superseded or None,
+        "type": comp.type,
+        "publishedVersion": ver.version,
+        "specHash": ver.spec_hash,
+        "supersededVersion": superseded or None,
         "publishedAt": fmt_dt(ver.published_time),
     }
     # 方案 §4.3 升级策略三档：auto=发布即刷新（既有 §9）；pin=钉住旧版（版本不动）；
@@ -969,6 +1120,7 @@ def _catalog_types() -> set:
 #   逐字节一致——版本行不可变），审计 rollback 留痕即可。
 # - published_by/published_time 语义 = 首次发布归属，回滚不改写（操作人/时间在审计）。
 
+
 class OfflineBody(BaseModel):
     remark: Optional[str] = None
 
@@ -992,27 +1144,29 @@ def offline_component(
     """
     comp = _get_or_404(db, type_name)
     if comp.state == "offline":
-        return ok({"type": comp.type, "state": comp.state,
-                   "publishedVersion": comp.published_version})  # 幂等
+        return ok({"type": comp.type, "state": comp.state, "publishedVersion": comp.published_version})  # 幂等
     if comp.state != "published" or comp.published_version is None:
-        raise ApiError(COMP_STATE_CONFLICT, status=409,
-                       msg="仅已发布组件可下线（当前 %s）" % comp.state)
+        raise ApiError(COMP_STATE_CONFLICT, status=409, msg="仅已发布组件可下线（当前 %s）" % comp.state)
     ver = (
         db.query(ComponentVersion)
-        .filter(ComponentVersion.component_id == comp.id,
-                ComponentVersion.version == comp.published_version)
+        .filter(ComponentVersion.component_id == comp.id, ComponentVersion.version == comp.published_version)
         .first()
     )
     if ver is not None:
         ver.state = "offline"
     comp.state = "offline"
-    _append_log(db, comp, ver.version if ver else (comp.published_version or 0),
-                "offline", ver.spec_hash if ver else "", user.user_name, body.remark)
+    _append_log(
+        db,
+        comp,
+        ver.version if ver else (comp.published_version or 0),
+        "offline",
+        ver.spec_hash if ver else "",
+        user.user_name,
+        body.remark,
+    )
     db.commit()
-    logger.info("下线组件: %s（生效版本 v%s 保留，操作人 %s）",
-                type_name, comp.published_version, user.user_name)
-    return ok({"type": comp.type, "state": comp.state,
-               "publishedVersion": comp.published_version})
+    logger.info("下线组件: %s（生效版本 v%s 保留，操作人 %s）", type_name, comp.published_version, user.user_name)
+    return ok({"type": comp.type, "state": comp.state, "publishedVersion": comp.published_version})
 
 
 @router.post("/{type_name}/rollback", summary="回滚到历史发布版本（§8：offline→published）")
@@ -1034,21 +1188,23 @@ def rollback_component(
     comp = _get_or_404(db, type_name)
     ver = (
         db.query(ComponentVersion)
-        .filter(ComponentVersion.component_id == comp.id,
-                ComponentVersion.version == body.version)
+        .filter(ComponentVersion.component_id == comp.id, ComponentVersion.version == body.version)
         .first()
     )
     if ver is None:
         raise ApiError(COMP_STATE_CONFLICT, status=409, msg="版本不存在")
     if ver.state != "offline" or ver.published_time is None:
-        raise ApiError(COMP_STATE_CONFLICT, status=409,
-                       msg="仅曾发布后下线的版本可回滚（v%s 当前 %s）" % (body.version, ver.state))
+        raise ApiError(
+            COMP_STATE_CONFLICT, status=409, msg="仅曾发布后下线的版本可回滚（v%s 当前 %s）" % (body.version, ver.state)
+        )
     superseded = 0
     for prev in (
         db.query(ComponentVersion)
-        .filter(ComponentVersion.component_id == comp.id,
-                ComponentVersion.state == "published",
-                ComponentVersion.version != ver.version)
+        .filter(
+            ComponentVersion.component_id == comp.id,
+            ComponentVersion.state == "published",
+            ComponentVersion.version != ver.version,
+        )
         .all()
     ):
         prev.state = "offline"
@@ -1056,13 +1212,24 @@ def rollback_component(
     ver.state = "published"
     comp.state = "published"
     comp.published_version = ver.version
-    _append_log(db, comp, ver.version, "rollback", ver.spec_hash, user.user_name,
-                body.remark if body.remark else ("让位 v%d" % superseded if superseded else None))
+    _append_log(
+        db,
+        comp,
+        ver.version,
+        "rollback",
+        ver.spec_hash,
+        user.user_name,
+        body.remark if body.remark else ("让位 v%d" % superseded if superseded else None),
+    )
     db.commit()
-    logger.info("回滚组件版本: %s → v%s（操作人 %s%s）", type_name, ver.version,
-                user.user_name, "，让位 v%d" % superseded if superseded else "")
-    return ok({"type": comp.type, "publishedVersion": ver.version,
-               "supersededVersion": superseded or None})
+    logger.info(
+        "回滚组件版本: %s → v%s（操作人 %s%s）",
+        type_name,
+        ver.version,
+        user.user_name,
+        "，让位 v%d" % superseded if superseded else "",
+    )
+    return ok({"type": comp.type, "publishedVersion": ver.version, "supersededVersion": superseded or None})
 
 
 @router.delete("/{type_name}", summary="删除组件（仅草稿态可删，Task 15 CRUD 补齐）")
@@ -1082,17 +1249,16 @@ def delete_component(
     """
     comp = _get_or_404(db, type_name)
     if comp.scope != "user":
-        raise ApiError(COMP_STATE_CONFLICT, status=409,
-                       msg="系统目录组件（scope=builtin）不可删除")
+        raise ApiError(COMP_STATE_CONFLICT, status=409, msg="系统目录组件（scope=builtin）不可删除")
     non_draft = (
         db.query(ComponentVersion)
-        .filter(ComponentVersion.component_id == comp.id,
-                ComponentVersion.state != "draft")
+        .filter(ComponentVersion.component_id == comp.id, ComponentVersion.state != "draft")
         .count()
     )
     if non_draft > 0:
-        raise ApiError(COMP_STATE_CONFLICT, status=409,
-                       msg="组件存在冻结/发布/下线历史版本（%d 条），不可删除" % non_draft)
+        raise ApiError(
+            COMP_STATE_CONFLICT, status=409, msg="组件存在冻结/发布/下线历史版本（%d 条），不可删除" % non_draft
+        )
     _append_log(db, comp, 0, "delete", "", user.user_name, "删除草稿组件（全部 draft 版本随删）")
     db.query(ComponentVersion).filter(
         ComponentVersion.component_id == comp.id,
@@ -1143,16 +1309,20 @@ def impacted_workflows(
         if not ref_versions:
             continue
         pub = comp.published_version
-        items.append({
-            "id": definition.id, "code": definition.code, "name": definition.name,
-            "version": definition.version, "releaseState": definition.release_state,
-            "refVersions": sorted(ref_versions),
-            "behind": pub is not None and any(v < pub for v in ref_versions),
-            "aligned": pub is not None and all(v == pub for v in ref_versions),
-        })
+        items.append(
+            {
+                "id": definition.id,
+                "code": definition.code,
+                "name": definition.name,
+                "version": definition.version,
+                "releaseState": definition.release_state,
+                "refVersions": sorted(ref_versions),
+                "behind": pub is not None and any(v < pub for v in ref_versions),
+                "aligned": pub is not None and all(v == pub for v in ref_versions),
+            }
+        )
     items.sort(key=lambda x: (not x["behind"], str(x["code"] or x["id"])))
-    return ok({"type": comp.type, "publishedVersion": comp.published_version,
-               "state": comp.state, "items": items})
+    return ok({"type": comp.type, "publishedVersion": comp.published_version, "state": comp.state, "items": items})
 
 
 # ---------------- 发布即刷新（实施计划 2026-10-03 Task 3；设计文档 §9） ----------------
@@ -1164,6 +1334,7 @@ def impacted_workflows(
 #   批量升级至 published_version（幂等：已对齐的图零写入零提交）；
 # - POST /{type_name}/refresh-refs：手动触发（存量回填/补偿场景）；
 # - publish_version 成功后自动挂载 refresh 结果（响应 data.refresh，见上）。
+
 
 def _iter_component_refs(doc: dict, type_name: str):
     """产出图中匹配 type 的 componentRef dict（口径与 _refresh_refs/影响面查询一致——
@@ -1196,18 +1367,22 @@ def _refresh_refs(db: Session, comp: Component, operator: str) -> dict:
         changed = False
         for ref in _iter_component_refs(doc, comp.type):
             v = ref.get("version")
-            if (isinstance(v, int) and not isinstance(v, bool) and v < published
-                    and not ref.get("pinned")):
+            if isinstance(v, int) and not isinstance(v, bool) and v < published and not ref.get("pinned"):
                 ref["version"] = published
                 changed = True
         if changed:
             wf.graph_json = json.dumps(doc, ensure_ascii=False, separators=(",", ":"))
             wf.version = (wf.version or 1) + 1
             wf.update_time = now()
-            db.add(WfDefinitionLog(
-                wf_code=wf.code, version=wf.version, graph_json=wf.graph_json,
-                operator=operator, remark="组件 %s 发布即刷新引用至 v%d" % (comp.type, published),
-            ))
+            db.add(
+                WfDefinitionLog(
+                    wf_code=wf.code,
+                    version=wf.version,
+                    graph_json=wf.graph_json,
+                    operator=operator,
+                    remark="组件 %s 发布即刷新引用至 v%d" % (comp.type, published),
+                )
+            )
             refreshed += 1
             items.append({"wfId": wf.id, "wfName": wf.name})
     if refreshed:
@@ -1226,8 +1401,7 @@ def refresh_refs(
     if comp.state != "published":
         raise ApiError(COMP_STATE_CONFLICT, status=409, msg="仅 published 组件可刷新引用")
     result = _refresh_refs(db, comp, user.user_name)
-    logger.info("刷新组件引用: %s（命中 %d 个图，操作人 %s）",
-                type_name, result["refreshed"], user.user_name)
+    logger.info("刷新组件引用: %s（命中 %d 个图，操作人 %s）", type_name, result["refreshed"], user.user_name)
     return ok(result)
 
 
@@ -1238,6 +1412,7 @@ def refresh_refs(
 # pinned: boolean，钉住即不自动升级（_refresh_refs 对 pinned 引用跳过）。
 # 全部策略决策落 t_component_log（只追加审计；publish 每次发布一条 upgrade_strategy，
 # 批量升级每次一条 upgrade_refs 携带逐项结果）。
+
 
 def _pin_refs(db: Session, comp: Component, operator: str) -> dict:
     """pin 档：落后引用写 pinned=true，版本不动。幂等：已钉住/已对齐的图零写入；
@@ -1253,19 +1428,22 @@ def _pin_refs(db: Session, comp: Component, operator: str) -> dict:
         changed = False
         for ref in _iter_component_refs(doc, comp.type):
             v = ref.get("version")
-            if (isinstance(v, int) and not isinstance(v, bool) and v < published
-                    and not ref.get("pinned")):
+            if isinstance(v, int) and not isinstance(v, bool) and v < published and not ref.get("pinned"):
                 ref["pinned"] = True
                 changed = True
         if changed:
             wf.graph_json = json.dumps(doc, ensure_ascii=False, separators=(",", ":"))
             wf.version = (wf.version or 1) + 1
             wf.update_time = now()
-            db.add(WfDefinitionLog(
-                wf_code=wf.code, version=wf.version, graph_json=wf.graph_json,
-                operator=operator,
-                remark="组件 %s 发布钉住引用于 v%d（版本不自动升）" % (comp.type, published),
-            ))
+            db.add(
+                WfDefinitionLog(
+                    wf_code=wf.code,
+                    version=wf.version,
+                    graph_json=wf.graph_json,
+                    operator=operator,
+                    remark="组件 %s 发布钉住引用于 v%d（版本不自动升）" % (comp.type, published),
+                )
+            )
             pinned += 1
             items.append({"wfId": wf.id, "wfName": wf.name})
     if pinned:
@@ -1284,9 +1462,12 @@ def _record_pending_refs(db: Session, comp: Component) -> dict:
         except (TypeError, ValueError):
             continue
         versions = {
-            ref.get("version") for ref in _iter_component_refs(doc, comp.type)
-            if isinstance(ref.get("version"), int) and not isinstance(ref["version"], bool)
-            and ref["version"] < published and not ref.get("pinned")
+            ref.get("version")
+            for ref in _iter_component_refs(doc, comp.type)
+            if isinstance(ref.get("version"), int)
+            and not isinstance(ref["version"], bool)
+            and ref["version"] < published
+            and not ref.get("pinned")
         }
         if versions:
             items.append({"wfId": wf.id, "wfName": wf.name, "refVersions": sorted(versions)})
@@ -1310,11 +1491,17 @@ def _apply_upgrade_strategy(db: Session, comp: Component, strategy: str, operato
     else:  # auto（PublishBody 缺省档）
         result = _refresh_refs(db, comp, operator)
     # remark 列 String(512)：序列化结果超长截断保护（对齐 breaking_confirmed 审计）
-    summary = json.dumps({
-        "strategy": strategy, "publishedVersion": published,
-        "refreshed": result.get("refreshed", 0), "pinned": result.get("pinned", 0),
-        "pending": result.get("pending", 0), "items": result.get("items", []),
-    }, ensure_ascii=False)
+    summary = json.dumps(
+        {
+            "strategy": strategy,
+            "publishedVersion": published,
+            "refreshed": result.get("refreshed", 0),
+            "pinned": result.get("pinned", 0),
+            "pending": result.get("pending", 0),
+            "items": result.get("items", []),
+        },
+        ensure_ascii=False,
+    )
     _append_log(db, comp, published, "upgrade_strategy", None, operator, summary[:500])
     db.commit()
     return result
@@ -1324,6 +1511,7 @@ class UpgradeRefTarget(BaseModel):
     """批量升级单目标：wf_id 定位工作流；strategy 逐目标分派（auto=注入新版本 /
     pin=写 pinned=true 不动版本）；base_version 为 §4.4 第三层乐观锁凭证
     （缺省=服务端扫描口径，与 _refresh_refs 同；提供时走 CAS 条件更新）。"""
+
     wf_id: str
     strategy: Literal["auto", "pin"] = "auto"
     base_version: Optional[int] = None
@@ -1338,13 +1526,11 @@ class UpgradeRefsBody(BaseModel):
     targets: list[UpgradeRefTarget]
 
 
-def _upgrade_one_ref(db: Session, comp: Component, target: UpgradeRefTarget,
-                     operator: str) -> dict:
+def _upgrade_one_ref(db: Session, comp: Component, target: UpgradeRefTarget, operator: str) -> dict:
     """批量升级单目标：读图 → 注入新版本/钉住 → base_version 乐观锁保存。
     失败记 reason 返回 {"ok": False}，不抛出（不中断同批其余目标）。"""
     published = comp.published_version or 0
-    out: dict = {"wfId": target.wf_id, "ok": False, "reason": None,
-                 "newVersion": None, "migration": target.migration}
+    out: dict = {"wfId": target.wf_id, "ok": False, "reason": None, "newVersion": None, "migration": target.migration}
     wf = db.query(WfDefinition).filter(WfDefinition.id == target.wf_id).first()
     if wf is None:
         out["reason"] = "工作流不存在"
@@ -1365,13 +1551,11 @@ def _upgrade_one_ref(db: Session, comp: Component, target: UpgradeRefTarget,
         return out
     # Pydantic enforces a string-to-string shape; keep only meaningful keys so
     # a stale/empty browser form never writes ambiguous graph metadata.
-    mapping = {key: value for key, value in target.field_mapping.items()
-               if key.strip() and value.strip()}
+    mapping = {key: value for key, value in target.field_mapping.items() if key.strip() and value.strip()}
     changed = False
     for ref in _iter_component_refs(doc, comp.type):
         v = ref.get("version")
-        if not (isinstance(v, int) and not isinstance(v, bool) and v < published
-                and not ref.get("pinned")):
+        if not (isinstance(v, int) and not isinstance(v, bool) and v < published and not ref.get("pinned")):
             continue
         if target.strategy == "pin":
             ref["pinned"] = True
@@ -1409,12 +1593,16 @@ def _upgrade_one_ref(db: Session, comp: Component, target: UpgradeRefTarget,
         wf.graph_json = graph_json
         wf.version = next_version
         wf.update_time = values["update_time"]
-    db.add(WfDefinitionLog(
-        wf_code=wf.code, version=next_version, graph_json=graph_json,
-        operator=operator,
-        remark=("组件 %s 引用钉住于 v%d" if target.strategy == "pin"
-                else "组件 %s 引用升级至 v%d") % (comp.type, published),
-    ))
+    db.add(
+        WfDefinitionLog(
+            wf_code=wf.code,
+            version=next_version,
+            graph_json=graph_json,
+            operator=operator,
+            remark=("组件 %s 引用钉住于 v%d" if target.strategy == "pin" else "组件 %s 引用升级至 v%d")
+            % (comp.type, published),
+        )
+    )
     if target.base_version is not None:
         # Task 15 审查修复（Major-3）：Core 级 update 不触碰身份映射，成功后 wf 内存对象
         # 仍是旧值——expunge 移出 session，防同 session 后续读到 stale graph_json/version
@@ -1448,8 +1636,7 @@ def upgrade_refs(
         # Task 15 审查修复（Major-3）：按 wf_id 去重保序——重复目标不重复 bump，
         # results 与 targets 一一对应并标注原因，向导逐项展示不丢项
         if t.wf_id in seen_wf:
-            results.append({"wfId": t.wf_id, "ok": False,
-                            "reason": "重复目标（同批已处理首个）", "newVersion": None})
+            results.append({"wfId": t.wf_id, "ok": False, "reason": "重复目标（同批已处理首个）", "newVersion": None})
             continue
         seen_wf.add(t.wf_id)
         try:
@@ -1463,14 +1650,20 @@ def upgrade_refs(
             r = {"wfId": t.wf_id, "ok": False, "reason": "处理异常: %s" % e, "newVersion": None}
         results.append(r)
     # remark 列 String(512)：截断保护（对齐 _apply_upgrade_strategy 审计口径）
-    summary = json.dumps({
-        "publishedVersion": comp.published_version,
-        "results": [{k: r.get(k) for k in ("wfId", "ok", "reason", "newVersion", "migration")} for r in results],
-    }, ensure_ascii=False)
-    _append_log(db, comp, comp.published_version, "upgrade_refs", None,
-                user.user_name, summary[:500])
+    summary = json.dumps(
+        {
+            "publishedVersion": comp.published_version,
+            "results": [{k: r.get(k) for k in ("wfId", "ok", "reason", "newVersion", "migration")} for r in results],
+        },
+        ensure_ascii=False,
+    )
+    _append_log(db, comp, comp.published_version, "upgrade_refs", None, user.user_name, summary[:500])
     db.commit()
-    logger.info("批量升级组件引用: %s（%d 项目标，成功 %d，操作人 %s）",
-                type_name, len(results), sum(1 for r in results if r["ok"]), user.user_name)
-    return ok({"type": comp.type, "publishedVersion": comp.published_version,
-               "results": results})
+    logger.info(
+        "批量升级组件引用: %s（%d 项目标，成功 %d，操作人 %s）",
+        type_name,
+        len(results),
+        sum(1 for r in results if r["ok"]),
+        user.user_name,
+    )
+    return ok({"type": comp.type, "publishedVersion": comp.published_version, "results": results})

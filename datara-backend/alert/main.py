@@ -75,9 +75,7 @@ def main() -> None:
     registry = ServiceRegistry("alert", 18003)
     registry.start()
 
-    server = uvicorn.Server(
-        uvicorn.Config(create_health_app(), host="0.0.0.0", port=18003, log_level="warning")
-    )
+    server = uvicorn.Server(uvicorn.Config(create_health_app(), host="0.0.0.0", port=18003, log_level="warning"))
     threading.Thread(target=server.run, name="alert-health", daemon=True).start()
 
     stop = threading.Event()

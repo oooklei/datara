@@ -29,8 +29,7 @@ def _load_backfill():
     name = "datara_test_backfill_component_ref"
     if name in sys.modules:
         return sys.modules[name]
-    spec = importlib.util.spec_from_file_location(
-        name, REPO_ROOT / "scripts" / "backfill_component_ref.py")
+    spec = importlib.util.spec_from_file_location(name, REPO_ROOT / "scripts" / "backfill_component_ref.py")
     mod = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(mod)
     sys.modules[name] = mod
@@ -46,8 +45,7 @@ def _mk_doc(nodes):
 
 
 def _graph_of(db_session, wf_id):
-    row = db_session.execute(
-        text("SELECT graph_json FROM t_wf_definition WHERE id = :i"), {"i": wf_id}).fetchone()
+    row = db_session.execute(text("SELECT graph_json FROM t_wf_definition WHERE id = :i"), {"i": wf_id}).fetchone()
     return json.loads(row[0])
 
 
@@ -59,24 +57,34 @@ def wf_rows(client, db_session):
         r = client.post("/api/v1/workflow-definitions", json={"name": name})
         assert r.status_code == 200, r.text
         ids.append(r.json()["data"]["id"])
-    legacy = _mk_doc([
-        {"id": "n1", "type": "comp_b", "data": {"sql": "select 1"}},
-        {"id": "sys_exec_ab12cd34", "type": "sync", "data": {"type": "sync"}},
-    ])
-    already = _mk_doc([
-        {"id": "n1", "type": "comp_b",
-         "data": {"sql": "select 1", "componentRef": {"type": "comp_b", "version": 2}}},
-    ])
+    legacy = _mk_doc(
+        [
+            {"id": "n1", "type": "comp_b", "data": {"sql": "select 1"}},
+            {"id": "sys_exec_ab12cd34", "type": "sync", "data": {"type": "sync"}},
+        ]
+    )
+    already = _mk_doc(
+        [
+            {
+                "id": "n1",
+                "type": "comp_b",
+                "data": {"sql": "select 1", "componentRef": {"type": "comp_b", "version": 2}},
+            },
+        ]
+    )
     db_session.execute(
         text("UPDATE t_wf_definition SET graph_json = :g WHERE id = :i"),
-        [{"g": json.dumps(legacy, ensure_ascii=False), "i": ids[0]},
-         {"g": json.dumps(already, ensure_ascii=False), "i": ids[1]}],
+        [
+            {"g": json.dumps(legacy, ensure_ascii=False), "i": ids[0]},
+            {"g": json.dumps(already, ensure_ascii=False), "i": ids[1]},
+        ],
     )
     db_session.commit()
     return ids
 
 
 # ---------------- backfill 幂等回填（§9.5） ----------------
+
 
 def test_backfill_injects_and_skips(wf_rows, db_session):
     """缺 ref 注入（sys_exec_ 豁免）；version 取治理库 published；已有 ref 不动。"""
@@ -110,11 +118,14 @@ def test_backfill_default_version_and_idempotent(wf_rows, db_session):
 def test_backfill_reads_component_table_when_supply_absent(wf_rows, db_session):
     """comp_versions 缺省 → 查 t_component 组装（治理库组件注入 published 版本）。"""
     ids = wf_rows
-    db_session.execute(text(
-        "INSERT INTO t_component (type, name, profile, scope, execution_model, executor,"
-        " executable, state, published_version, draft_rev, create_time, update_time)"
-        " VALUES ('comp_b', 'B组件', 'dag', 'builtin', 'dag-engine', NULL, 1, 'published', 4, 0,"
-        " CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)"))
+    db_session.execute(
+        text(
+            "INSERT INTO t_component (type, name, profile, scope, execution_model, executor,"
+            " executable, state, published_version, draft_rev, create_time, update_time)"
+            " VALUES ('comp_b', 'B组件', 'dag', 'builtin', 'dag-engine', NULL, 1, 'published', 4, 0,"
+            " CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)"
+        )
+    )
     db_session.commit()
 
     backfill(db_session)
@@ -128,10 +139,13 @@ from master.engine import materialize_sync_exec  # noqa: E402
 
 
 def _ep_doc():
-    return {"nodes": [
-        {"id": "ep", "type": "endpoint_select", "data": {"baseMode": "src_base"}},
-        {"id": "a", "type": "assert", "data": {}},
-    ], "edges": [{"source": "ep", "target": "a"}]}
+    return {
+        "nodes": [
+            {"id": "ep", "type": "endpoint_select", "data": {"baseMode": "src_base"}},
+            {"id": "a", "type": "assert", "data": {}},
+        ],
+        "edges": [{"source": "ep", "target": "a"}],
+    }
 
 
 def test_materializer_injects_ref_from_supply():
@@ -151,6 +165,7 @@ def test_materializer_injects_ref_from_supply():
 def test_parse_graph_passes_supply_to_materializer():
     """parse_graph 透传 comp_versions（scheduler/failover 接线路径全链生效）。"""
     from master.dag import parse_graph
+
     doc = _ep_doc()
     doc["nodes"].insert(0, {"id": "s", "type": "start", "data": {}})
     doc["edges"].insert(0, {"source": "s", "target": "ep"})

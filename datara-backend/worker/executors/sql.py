@@ -19,9 +19,9 @@ from worker.executor import ExecResult, register
 from worker.lineage import collect_sql_lineage
 from worker.state import FAILURE, KILL, SUCCESS
 
-POOL_MAX = 8          # LRU 连接池上限
-PREVIEW_ROWS = 200    # result_preview 截断行数（§7.1）
-FETCH_BATCH = 500     # 批量取行批大小（避免大结果集一次性载入内存）
+POOL_MAX = 8  # LRU 连接池上限
+PREVIEW_ROWS = 200  # result_preview 截断行数（§7.1）
+FETCH_BATCH = 500  # 批量取行批大小（避免大结果集一次性载入内存）
 
 _conn_pool: "OrderedDict[int, pymysql.connections.Connection]" = OrderedDict()
 _pool_lock = threading.Lock()
@@ -68,10 +68,14 @@ def _get_conn(ds):
             except Exception:  # noqa: BLE001
                 pass
     conn = pymysql.connect(
-        host=ds.host, port=int(ds.port or 3306),
-        user=ds.user or "root", password=ds.pwd or "",
+        host=ds.host,
+        port=int(ds.port or 3306),
+        user=ds.user or "root",
+        password=ds.pwd or "",
         database=ds.db_name or None,
-        charset="utf8mb4", autocommit=True, connect_timeout=10,
+        charset="utf8mb4",
+        autocommit=True,
+        connect_timeout=10,
     )
     with _pool_lock:
         _conn_pool[key] = conn
@@ -149,8 +153,7 @@ def execute(ctx) -> ExecResult:
     killed = False
     state = SUCCESS
     try:
-        for phase, text in (("前置", param.get("pre")), ("主", param.get("sql")),
-                            ("后置", param.get("post"))):
+        for phase, text in (("前置", param.get("pre")), ("主", param.get("sql")), ("后置", param.get("post"))):
             for i, stmt in enumerate(_split_sql(str(text or "")), start=1):
                 if ctx.killed():
                     killed = True

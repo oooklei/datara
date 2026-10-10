@@ -20,26 +20,27 @@ if str(BACKEND) not in sys.path:
 from api.auth import get_current_user  # noqa: E402
 
 # 8 要素骨架键（方案 §2.3：缺失项显式 None）
-SKELETON_KEYS = ["identity", "description", "inputs", "outputs", "visual",
-                 "behaviors", "dropPolicy", "extensions"]
+SKELETON_KEYS = ["identity", "description", "inputs", "outputs", "visual", "behaviors", "dropPolicy", "extensions"]
 
 
 def set_role(app, role: str) -> None:
     """切换注入用户角色（与 conftest.set_role 同实现，文件内自含）。"""
-    app.dependency_overrides[get_current_user] = lambda: SimpleNamespace(
-        id=1, user_name="tester", user_role=role)
+    app.dependency_overrides[get_current_user] = lambda: SimpleNamespace(id=1, user_name="tester", user_role=role)
 
 
 # ---------------------------------------------------------------- 种子 helper
 
+
 def _make_frozen(client, type_name="spec_demo", spec=None) -> dict:
     """建组件（spec 直接合法）→ 冻结 v1（与 test_component_design._make_frozen 同模式）。"""
     body = {
-        "type": type_name, "name": "规格演示", "profile": "dag",
-        "execution_model": "dag-engine", "executor": "sql",
+        "type": type_name,
+        "name": "规格演示",
+        "profile": "dag",
+        "execution_model": "dag-engine",
+        "executor": "sql",
         "executable": True,
-        "spec": spec if spec is not None else {
-            "fields": [{"key": "sql", "label": "SQL", "uiType": "text"}]},
+        "spec": spec if spec is not None else {"fields": [{"key": "sql", "label": "SQL", "uiType": "text"}]},
     }
     r = client.post("/api/v1/components", json=body)
     assert r.status_code == 200, r.text
@@ -51,8 +52,7 @@ def _make_frozen(client, type_name="spec_demo", spec=None) -> dict:
 def _publish(client, type_name="spec_demo"):
     """发布 v1（publish_component 由 admin 独占，§14）。"""
     set_role(client.app, "admin")
-    return client.post("/api/v1/components/%s/publish" % type_name,
-                       json={"version": 1, "draft_rev": 0})
+    return client.post("/api/v1/components/%s/publish" % type_name, json={"version": 1, "draft_rev": 0})
 
 
 def _offline(client, type_name):
@@ -114,8 +114,7 @@ def test_spec_offline_component_excluded(client):
     """下线组件不在 spec 清单中（仅 state=published 进下发范围）。"""
     _make_frozen(client)
     assert _publish(client).status_code == 200
-    assert "spec_demo" in [i["type"] for i in
-                           client.get("/api/v1/components/spec").json()["items"]]
+    assert "spec_demo" in [i["type"] for i in client.get("/api/v1/components/spec").json()["items"]]
     assert _offline(client, "spec_demo").status_code == 200
     r = client.get("/api/v1/components/spec")
     assert r.status_code == 200

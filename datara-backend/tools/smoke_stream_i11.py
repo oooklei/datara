@@ -50,6 +50,7 @@ def api(method: str, path: str, token: str = "", **kwargs) -> dict:
 
 # ---------- 画布构造 ----------
 
+
 def _n(nid: str, ntype: str, name: str, x: float, data: dict) -> dict:
     return {"id": nid, "type": ntype, "position": {"x": x, "y": 0}, "data": {"name": name, **data}}
 
@@ -59,21 +60,40 @@ def _e(s: str, t: str) -> dict:
 
 
 def _doc(name: str, nodes: list, edges: list) -> dict:
-    return {"id": name, "name": name, "version": 1, "meta": {"profile": "stream"},
-            "nodes": nodes, "edges": edges}
+    return {"id": name, "name": name, "version": 1, "meta": {"profile": "stream"}, "nodes": nodes, "edges": edges}
 
 
 def _win(name: str, x: float, group_keys: str, aggs: list, size: int) -> dict:
-    return _n(name, "stream_fuse", name, x, {
-        "fuseType": "window", "groupKeys": group_keys, "aggs": aggs,
-        "windowType": "tumbling", "windowSizeSec": size, "slideSec": size, "watermarkSec": 0,
-    })
+    return _n(
+        name,
+        "stream_fuse",
+        name,
+        x,
+        {
+            "fuseType": "window",
+            "groupKeys": group_keys,
+            "aggs": aggs,
+            "windowType": "tumbling",
+            "windowSizeSec": size,
+            "slideSec": size,
+            "watermarkSec": 0,
+        },
+    )
 
 
 def _sim_src(nid: str, name: str, events: str, eps: float) -> dict:
-    return _n(nid, "stream_input", name, 0, {
-        "srcType": "simulate", "simDataset": "ecommerce", "simEvents": events, "simEps": eps,
-    })
+    return _n(
+        nid,
+        "stream_input",
+        name,
+        0,
+        {
+            "srcType": "simulate",
+            "simDataset": "ecommerce",
+            "simEvents": events,
+            "simEps": eps,
+        },
+    )
 
 
 def _sim_src_iot(nid: str, name: str, events: str, eps: float) -> dict:
@@ -83,10 +103,19 @@ def _sim_src_iot(nid: str, name: str, events: str, eps: float) -> dict:
 
 
 def _redis_src(nid: str, name: str, stream: str) -> dict:
-    return _n(nid, "stream_input", name, 0, {
-        "srcType": "redis", "redisUrl": "redis://redis:6379/0", "streamsText": stream,
-        "redisGroup": "datara-flink", "redisConsumer": "c1",
-    })
+    return _n(
+        nid,
+        "stream_input",
+        name,
+        0,
+        {
+            "srcType": "redis",
+            "redisUrl": "redis://redis:6379/0",
+            "streamsText": stream,
+            "redisGroup": "datara-flink",
+            "redisConsumer": "c1",
+        },
+    )
 
 
 def _union(nid: str, name: str, x: float) -> dict:
@@ -108,19 +137,33 @@ def build_wf1() -> tuple[str, dict]:
         _sim_src("t1", "订单流", "order_pay", 2),
         _sim_src("t2", "点击流", "user_click", 3),
         _sim_src("t3", "加购流", "cart_event", 2),
-        _win("w1", 200, "", [
-            {"key": "amount", "value": "sum:amt_total"},
-            {"key": "order_id", "value": "count:ord_cnt"},
-            {"key": "user_id", "value": "count_distinct:uv"},
-        ], 10),
+        _win(
+            "w1",
+            200,
+            "",
+            [
+                {"key": "amount", "value": "sum:amt_total"},
+                {"key": "order_id", "value": "count:ord_cnt"},
+                {"key": "user_id", "value": "count_distinct:uv"},
+            ],
+            10,
+        ),
         _win("w2", 200, "goods_id", [{"key": "user_id", "value": "count:click_cnt"}], 10),
         _win("w3", 200, "goods_id", [{"key": "user_id", "value": "count:cart_cnt"}], 10),
         _union("u1", "三路合并", 400),
         _api_out("o1", "API通道", 600),
         _board("b1", "电商实时大盘", 800, "ecommerce"),
     ]
-    edges = [_e("t1", "w1"), _e("t2", "w2"), _e("t3", "w3"),
-             _e("w1", "u1"), _e("w2", "u1"), _e("w3", "u1"), _e("u1", "o1"), _e("o1", "b1")]
+    edges = [
+        _e("t1", "w1"),
+        _e("t2", "w2"),
+        _e("t3", "w3"),
+        _e("w1", "u1"),
+        _e("w2", "u1"),
+        _e("w3", "u1"),
+        _e("u1", "o1"),
+        _e("o1", "b1"),
+    ]
     return "I11_电商实时大盘", _doc("wf_i11_ecommerce", nodes, edges)
 
 
@@ -138,8 +181,17 @@ def build_wf2() -> tuple[str, dict]:
         _api_out("o1", "API通道", 600),
         _board("b1", "IoT设备监控", 800, "iot"),
     ]
-    edges = [_e("i1", "w1"), _e("i2", "w2"), _e("i3", "w3"), _e("i4", "u1"),
-             _e("w1", "u1"), _e("w2", "u1"), _e("w3", "u1"), _e("u1", "o1"), _e("o1", "b1")]
+    edges = [
+        _e("i1", "w1"),
+        _e("i2", "w2"),
+        _e("i3", "w3"),
+        _e("i4", "u1"),
+        _e("w1", "u1"),
+        _e("w2", "u1"),
+        _e("w3", "u1"),
+        _e("u1", "o1"),
+        _e("o1", "b1"),
+    ]
     return "I11_IoT设备监控", _doc("wf_i11_iot", nodes, edges)
 
 
@@ -159,6 +211,7 @@ def build_wf3() -> tuple[str, dict]:
 
 
 # ---------- 运行与验证 ----------
+
 
 def deploy_wf(token: str, name: str, doc: dict) -> int:
     """创建定义 → 保存画布 → 启动流任务 → 返回 job id。"""
@@ -207,8 +260,10 @@ def verify(token: str, tag: str, job_id: int) -> None:
         if gmv_rows and click_rows and cart_rows:
             latest = max(r["win_start"] for r in gmv_rows)
             cur = next(r for r in gmv_rows if r["win_start"] == latest)
-            _pass(f"WF1: 三路窗口行齐备（gmv={len(gmv_rows)}, click={len(click_rows)}, cart={len(cart_rows)}）；"
-                  f"最新窗口 GMV={cur.get('amt_total')} 订单={cur.get('ord_cnt')} UV={cur.get('uv')}")
+            _pass(
+                f"WF1: 三路窗口行齐备（gmv={len(gmv_rows)}, click={len(click_rows)}, cart={len(cart_rows)}）；"
+                f"最新窗口 GMV={cur.get('amt_total')} 订单={cur.get('ord_cnt')} UV={cur.get('uv')}"
+            )
         else:
             _fail(f"WF1: 窗口行不全 gmv={len(gmv_rows)} click={len(click_rows)} cart={len(cart_rows)}")
     elif tag == "WF2":
@@ -217,10 +272,13 @@ def verify(token: str, tag: str, job_id: int) -> None:
         vib_rows = [r for r in win_rows if r.get("vib_rms") is not None]
         alert_rows = [r for r in rows if r.get("event") == "alert"]
         if temp_rows and press_rows and vib_rows:
-            _pass(f"WF2: 三聚合窗口行齐备（temp={len(temp_rows)}, press={len(press_rows)}, vib={len(vib_rows)}），"
-                  f"设备分组 {len({r.get('device') for r in temp_rows})} 个，告警透传 {len(alert_rows)} 条")
+            _pass(
+                f"WF2: 三聚合窗口行齐备（temp={len(temp_rows)}, press={len(press_rows)}, vib={len(vib_rows)}），"
+                f"设备分组 {len({r.get('device') for r in temp_rows})} 个，告警透传 {len(alert_rows)} 条"
+            )
         else:
-            _fail(f"WF2: 聚合行不全 temp={len(temp_rows)} press={len(press_rows)} vib={len(vib_rows)} alert={len(alert_rows)}")
+            counts = f"temp={len(temp_rows)} press={len(press_rows)} vib={len(vib_rows)} alert={len(alert_rows)}"
+            _fail(f"WF2: 聚合行不全 {counts}")
         if alert_rows:
             _pass(f"WF2: 告警事件行到达看板通道（样例 {alert_rows[0]})")
     elif tag == "WF3":
@@ -230,14 +288,17 @@ def verify(token: str, tag: str, job_id: int) -> None:
             latest = max(r["win_start"] for r in gmv_rows)
             cur = next(r for r in gmv_rows if r["win_start"] == latest)
             pages = sorted({r.get("page") for r in page_rows if r["win_start"] == latest})
-            _pass(f"WF3: Redis 双流窗口行齐备（gmv={len(gmv_rows)}, page={len(page_rows)}）；"
-                  f"最新窗口 GMV={cur.get('gmv')}，页面分布 {pages}")
+            _pass(
+                f"WF3: Redis 双流窗口行齐备（gmv={len(gmv_rows)}, page={len(page_rows)}）；"
+                f"最新窗口 GMV={cur.get('gmv')}，页面分布 {pages}"
+            )
         else:
             _fail(f"WF3: 窗口行不全 gmv={len(gmv_rows)} page={len(page_rows)}（检查灌数与消费组）")
     _p(f"  事件集合: {sorted(x for x in events if x)}；样例行: {json.dumps(rows[-1], ensure_ascii=False)[:200]}")
 
 
 # ---------- WF3 Redis 灌数（Redis Stream 源无内置数据生成，需外部持续 XADD） ----------
+
 
 def _redis_feeder(url: str, eps: float) -> None:
     """后台 daemon 线程：向 order_stream/user_stream 灌数直至进程退出。
@@ -309,8 +370,7 @@ def main() -> None:
     ap.add_argument("--pwd", default="Admin@123")
     ap.add_argument("--only", default="", choices=["", "wf1", "wf2", "wf3"])
     ap.add_argument("--wait", type=int, default=45, help="启动后数据观察秒数")
-    ap.add_argument("--redis-url", default="redis://192.168.1.9:6380/0",
-                    help="WF3 灌数用 Redis 地址（宿主机映射端口）")
+    ap.add_argument("--redis-url", default="redis://192.168.1.9:6380/0", help="WF3 灌数用 Redis 地址（宿主机映射端口）")
     ARGS = ap.parse_args()
 
     token = api("POST", "/login", json={"user_name": ARGS.user, "user_pwd": ARGS.pwd})

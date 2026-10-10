@@ -23,9 +23,27 @@ from common.db import new_session
 from common.models import WfDefinition, WfDefinitionLog
 
 PROFILES = [
-    {"code": "wf_wf_sync", "name": "月度数据同步", "tags": ["同步"], "profile": "dag", "desc": "月度数据同步（画布测试用例）"},
-    {"code": "wf_etl_incr", "name": "增量ETL同步", "tags": ["ETL"], "profile": "dag", "desc": "增量ETL同步（画布测试用例）"},
-    {"code": "wf_stream_mon", "name": "实时流监控", "tags": ["流"], "profile": "dag", "desc": "实时流监控（画布测试用例）"},
+    {
+        "code": "wf_wf_sync",
+        "name": "月度数据同步",
+        "tags": ["同步"],
+        "profile": "dag",
+        "desc": "月度数据同步（画布测试用例）",
+    },
+    {
+        "code": "wf_etl_incr",
+        "name": "增量ETL同步",
+        "tags": ["ETL"],
+        "profile": "dag",
+        "desc": "增量ETL同步（画布测试用例）",
+    },
+    {
+        "code": "wf_stream_mon",
+        "name": "实时流监控",
+        "tags": ["流"],
+        "profile": "dag",
+        "desc": "实时流监控（画布测试用例）",
+    },
 ]
 
 

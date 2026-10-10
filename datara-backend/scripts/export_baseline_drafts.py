@@ -44,8 +44,7 @@ def build_params(form_fields: list) -> tuple:
         p: dict = {"key": f["key"], "label": f.get("label"), "uiType": f.get("type")}
         if "required" in f:
             p["required"] = f["required"]
-        for src_key, dst_key in (("desc", "hint"), ("placeholder", "hint"),
-                                 ("options", "options"), ("pick", "cap")):
+        for src_key, dst_key in (("desc", "hint"), ("placeholder", "hint"), ("options", "options"), ("pick", "cap")):
             if f.get(src_key) is not None and dst_key not in p:
                 p[dst_key] = f[src_key]
         params.append(p)
@@ -58,12 +57,20 @@ def build_draft(c: dict) -> dict:
     showif_note = "、".join(showif_keys) if showif_keys else "无"
     draft: dict = {
         "form": {
-            "inputs": [], "outputs": [], "params": params,
-            "conditions": [], "constraints": [], "exclusions": [], "refs": [], "exports": [],
+            "inputs": [],
+            "outputs": [],
+            "params": params,
+            "conditions": [],
+            "constraints": [],
+            "exclusions": [],
+            "refs": [],
+            "exports": [],
         },
         "lineage": {"assets": []},
         "render": {
-            "icon": c.get("icon"), "color": c.get("color"), "shape": c.get("shape"),
+            "icon": c.get("icon"),
+            "color": c.get("color"),
+            "shape": c.get("shape"),
             "summary": c.get("desc"),
             "ports": [],  # 快照无 ports 字段 → 空（端口拓扑属前端运行态）
         },
@@ -72,8 +79,8 @@ def build_draft(c: dict) -> dict:
             "migratedAt": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
             "source": "dag_catalog",
             "note": "params 段由旧 formFields 机械迁移（showIf 函数不可序列化已丢弃：%s）；"
-                    "inputs/outputs/conditions/constraints/exclusions/refs/exports/lineage "
-                    "待逐组件语义分析补全" % showif_note,
+            "inputs/outputs/conditions/constraints/exclusions/refs/exports/lineage "
+            "待逐组件语义分析补全" % showif_note,
         },
     }
     if c.get("dropPolicy"):
@@ -83,8 +90,7 @@ def build_draft(c: dict) -> dict:
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="基线底稿初始化导出（M-B0，幂等可重复跑）")
-    parser.add_argument("--apply", action="store_true",
-                        help="实际写库（缺省 dry-run 只打印清单与统计）")
+    parser.add_argument("--apply", action="store_true", help="实际写库（缺省 dry-run 只打印清单与统计）")
     args = parser.parse_args()
 
     data = json.loads(CATALOG_FILE.read_text(encoding="utf-8"))
@@ -98,9 +104,10 @@ def main() -> None:
     print("基线化对象: %d type（profile=dag），机械迁移 params 字段共 %d 个" % (len(drafts), total_params))
     for c in dag_items:
         d = drafts[c["type"]]
-        print("  %-16s %-14s params=%-3d executor=%s"
-              % (c["type"], str(c.get("code") or ""), len(d["form"]["params"]),
-                 c.get("executor") or "-"))
+        print(
+            "  %-16s %-14s params=%-3d executor=%s"
+            % (c["type"], str(c.get("code") or ""), len(d["form"]["params"]), c.get("executor") or "-")
+        )
 
     if not args.apply:
         print("\n[dry-run] 未写库；确认后加 --apply 执行（已存在进度行的 type 将跳过）")
@@ -118,10 +125,13 @@ def main() -> None:
             if exists is not None:
                 skipped += 1
                 continue
-            session.add(BaselineProgress(
-                type=type_name, status="pending",
-                draft_spec=json.dumps(draft, ensure_ascii=False),
-            ))
+            session.add(
+                BaselineProgress(
+                    type=type_name,
+                    status="pending",
+                    draft_spec=json.dumps(draft, ensure_ascii=False),
+                )
+            )
             created += 1
         session.commit()
     except Exception:

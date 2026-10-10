@@ -85,6 +85,7 @@ class WfDefinitionLog(Base):
 
 class WfTemplate(Base):
     """Reusable workflow graph template; the row always contains the latest version."""
+
     __tablename__ = "t_wf_template"
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
@@ -99,6 +100,7 @@ class WfTemplate(Base):
 
 class WfTemplateVersion(Base):
     """Immutable template snapshots used by the version-chain and upgrade diff."""
+
     __tablename__ = "t_wf_template_version"
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
@@ -154,7 +156,6 @@ class WorkflowInstance(Base):
     __table_args__ = (Index("idx_wfinst_code", "wf_code"),)
 
 
-
 # ---------- 5.5 t_run_event（运行节点事件，SSE/回放的持久化基座） ----------
 class TRunEvent(Base):
     __tablename__ = "t_run_event"
@@ -171,6 +172,7 @@ class TRunEvent(Base):
 
 class TRunNodeArtifact(Base):
     """Reusable successful-node checkpoint metadata; payload data stays in its owner system."""
+
     __tablename__ = "t_run_node_artifact"
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
@@ -385,11 +387,10 @@ class IdeHistory(Base):
     user_id: Mapped[Optional[int]] = mapped_column(Integer, nullable=True, comment="执行用户 id")
     datasource_id: Mapped[int] = mapped_column(BigInteger, comment="数据源 id")
     db_name: Mapped[Optional[str]] = mapped_column(String(128), nullable=True, comment="执行库")
-    sql_text: Mapped[Optional[str]] = mapped_column(
-        MEDIUMTEXT, nullable=True, comment="SQL 全文（I10 升 MEDIUMTEXT）"
-    )
+    sql_text: Mapped[Optional[str]] = mapped_column(MEDIUMTEXT, nullable=True, comment="SQL 全文（I10 升 MEDIUMTEXT）")
     rendered_sql: Mapped[Optional[str]] = mapped_column(
-        MEDIUMTEXT, nullable=True,
+        MEDIUMTEXT,
+        nullable=True,
         comment="渲染后 SQL 全文（重放分页/导出用；存量历史回退 sql_text，09-22 加列）",
     )
     status: Mapped[str] = mapped_column(String(16), default="success", comment="success/failure")
@@ -453,7 +454,9 @@ class LineageEdge(Base):
     stmt_no: Mapped[int] = mapped_column(Integer, comment="语句序号（分号拆分序，1 起）")
     stmt: Mapped[Optional[str]] = mapped_column(String(2000), nullable=True, comment="语句原文（回写文本，截断）")
     from_table: Mapped[str] = mapped_column(
-        String(255), default="", server_default="",
+        String(255),
+        default="",
+        server_default="",
         comment="输入表 db.table（空串=无来源，如 INSERT..VALUES）",
     )
     to_table: Mapped[str] = mapped_column(String(255), comment="输出表 db.table")
@@ -461,14 +464,15 @@ class LineageEdge(Base):
     tmp_flag: Mapped[bool] = mapped_column(Boolean, default=False, comment="边涉及临时注册名 0/1")
     # 血缘来源层：runtime=运行时采集（存量默认）/ design=设计态推导（instance_id=0 标识，uk 不变）
     src_type: Mapped[str] = mapped_column(
-        String(16), default="runtime", server_default="runtime",
+        String(16),
+        default="runtime",
+        server_default="runtime",
         comment="血缘来源 runtime/design",
     )
     create_time: Mapped[datetime] = mapped_column(DateTime, default=now)
 
     __table_args__ = (
-        UniqueConstraint("wf_code", "instance_id", "node_id", "stmt_no", "from_table", "to_table",
-                         name="uk_lineage"),
+        UniqueConstraint("wf_code", "instance_id", "node_id", "stmt_no", "from_table", "to_table", name="uk_lineage"),
         Index("idx_ln_from", "from_table"),
         Index("idx_ln_to", "to_table"),
         Index("idx_ln_inst", "instance_id"),
@@ -483,17 +487,27 @@ class LineageField(Base):
     edge_id: Mapped[int] = mapped_column(BigInteger, comment="所属表级血缘边 id")
     to_field: Mapped[str] = mapped_column(String(128), comment="目标字段")
     from_table: Mapped[str] = mapped_column(
-        String(255), default="", server_default="", comment="来源表 db.table（空串=常量/无来源）",
+        String(255),
+        default="",
+        server_default="",
+        comment="来源表 db.table（空串=常量/无来源）",
     )
     from_field: Mapped[str] = mapped_column(
-        String(128), default="", server_default="", comment="来源字段",
+        String(128),
+        default="",
+        server_default="",
+        comment="来源字段",
     )
     transform: Mapped[Optional[str]] = mapped_column(
-        String(1000), nullable=True, comment="加工表达式（mysql 方言回写）",
+        String(1000),
+        nullable=True,
+        comment="加工表达式（mysql 方言回写）",
     )
     # 血缘来源层：runtime=运行时采集（存量默认）/ design=设计态推导（instance_id=0 标识，uk 不变）
     src_type: Mapped[str] = mapped_column(
-        String(16), default="runtime", server_default="runtime",
+        String(16),
+        default="runtime",
+        server_default="runtime",
         comment="血缘来源 runtime/design",
     )
     create_time: Mapped[datetime] = mapped_column(DateTime, default=now)
@@ -538,21 +552,28 @@ class StreamJob(Base):
     wf_name: Mapped[str] = mapped_column(String(255), default="", comment="工作流名称（展示冗余）")
     name: Mapped[str] = mapped_column(String(255), default="", comment="流任务名（默认取画布名）")
     spec_json: Mapped[Optional[str]] = mapped_column(
-        LONGTEXT, nullable=True, comment="流子图规格 JSON（源/算子/汇参数+拓扑）")
+        LONGTEXT, nullable=True, comment="流子图规格 JSON（源/算子/汇参数+拓扑）"
+    )
     status: Mapped[str] = mapped_column(
-        String(16), default="starting",
+        String(16),
+        default="starting",
         comment="starting/running/reconnecting/stopped/failed（started 类状态=宿主 worker 常驻线程）",
     )
     host: Mapped[Optional[str]] = mapped_column(
-        String(128), nullable=True, comment="宿主 worker 身份（认领原子性锚点）")
+        String(128), nullable=True, comment="宿主 worker 身份（认领原子性锚点）"
+    )
     generation: Mapped[int] = mapped_column(Integer, default=1, comment="启动代号（每次 start 自增，重启/换主对齐）")
     last_error: Mapped[Optional[str]] = mapped_column(
-        String(2000), nullable=True, comment="最近错误（failed/重连留痕）")
+        String(2000), nullable=True, comment="最近错误（failed/重连留痕）"
+    )
     started_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True, comment="最近启动时间")
     create_time: Mapped[datetime] = mapped_column(DateTime, default=now)
     update_time: Mapped[datetime] = mapped_column(DateTime, default=now, onupdate=now)
 
-    __table_args__ = (Index("idx_streamjob_doc", "doc_id"), Index("idx_streamjob_status", "status"),)
+    __table_args__ = (
+        Index("idx_streamjob_doc", "doc_id"),
+        Index("idx_streamjob_status", "status"),
+    )
 
 
 # ---------- 21. t_stream_offset 流源位点持久化（I8 新增，at-least-once 续跑） ----------
@@ -562,7 +583,8 @@ class StreamOffset(Base):
     job_id: Mapped[int] = mapped_column(BigInteger, primary_key=True, comment="流任务 id（t_stream_job.id）")
     source_key: Mapped[str] = mapped_column(String(128), primary_key=True, comment="源标识（node_id:分型）")
     offset_json: Mapped[Optional[dict]] = mapped_column(
-        JSON, nullable=True, comment="位点（partition offset/file:pos/cursor/字节偏移）")
+        JSON, nullable=True, comment="位点（partition offset/file:pos/cursor/字节偏移）"
+    )
     updated_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True, comment="位点提交时间")
 
 
@@ -626,7 +648,8 @@ class ComponentVersion(Base):
     type: Mapped[str] = mapped_column(String(64), comment="冗余，便于 type+version 直查")
     version: Mapped[int] = mapped_column(Integer, comment="从 1 递增")
     state: Mapped[str] = mapped_column(
-        String(16), default="draft",
+        String(16),
+        default="draft",
         comment="draft/frozen/published/offline（§8 状态机；frozen=B5 冻结不可变，M2 publish→published）",
     )
     spec_json: Mapped[str] = mapped_column(
@@ -677,7 +700,8 @@ class BaselineProgress(Base):
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
     type: Mapped[str] = mapped_column(String(64), unique=True, comment="组件类型（目录快照 profile=dag 的 35 type）")
     status: Mapped[str] = mapped_column(
-        String(16), default="pending",
+        String(16),
+        default="pending",
         comment="pending/designing/testing/confirming/published（基线化推进状态）",
     )
     draft_spec: Mapped[Optional[str]] = mapped_column(

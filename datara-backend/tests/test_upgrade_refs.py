@@ -34,44 +34,48 @@ COMP = "upg_demo"
 
 def set_role(app, role: str) -> None:
     """切换注入用户角色（发布由 admin 独占；与 conftest.set_role 同实现）。"""
-    app.dependency_overrides[get_current_user] = lambda: SimpleNamespace(
-        id=1, user_name="tester", user_role=role)
+    app.dependency_overrides[get_current_user] = lambda: SimpleNamespace(id=1, user_name="tester", user_role=role)
 
 
 def _spec(keys, required=False, **extra) -> dict:
     """可通过全部八项闸门的最小声明（minor 变更 = 追加可选字段）。"""
-    return {"fields": [{"key": k, "label": k.upper(), "uiType": "text",
-                        "required": required} for k in keys], **extra}
+    return {"fields": [{"key": k, "label": k.upper(), "uiType": "text", "required": required} for k in keys], **extra}
 
 
 def _make_published_v1(client, type_name=COMP) -> None:
     """建组件 → 冻结 v1 → 发布 v1（首发布无 old spec，闸门不介入）。"""
-    r = client.post("/api/v1/components", json={
-        "type": type_name, "name": type_name, "profile": "dag",
-        "execution_model": "dag-engine", "executor": "sql", "executable": True,
-        "spec": _spec(["sql", "table"]),
-    })
+    r = client.post(
+        "/api/v1/components",
+        json={
+            "type": type_name,
+            "name": type_name,
+            "profile": "dag",
+            "execution_model": "dag-engine",
+            "executor": "sql",
+            "executable": True,
+            "spec": _spec(["sql", "table"]),
+        },
+    )
     assert r.status_code == 200, r.text
     r = client.post("/api/v1/components/%s/versions" % type_name, json={})
     assert r.status_code == 200, r.text
     set_role(client.app, "admin")
-    r = client.post("/api/v1/components/%s/publish" % type_name,
-                    json={"version": 1, "draft_rev": 0})
+    r = client.post("/api/v1/components/%s/publish" % type_name, json={"version": 1, "draft_rev": 0})
     assert r.status_code == 200, r.text
 
 
 def _publish_minor(client, type_name, keys, **extra):
     """draft 自愈开修订 → 保存 minor 新 spec（追加可选字段）→ 冻结 → 发布，返回发布响应。"""
     d = client.get("/api/v1/components/%s/draft" % type_name).json()["data"]
-    r = client.put("/api/v1/components/%s/draft" % type_name,
-                   json={"draft_rev": d["draftRev"], "spec": _spec(keys)})
+    r = client.put("/api/v1/components/%s/draft" % type_name, json={"draft_rev": d["draftRev"], "spec": _spec(keys)})
     assert r.status_code == 200, r.text
     r = client.post("/api/v1/components/%s/versions" % type_name, json={})
     assert r.status_code == 200, r.text
     fr = r.json()["data"]
-    return client.post("/api/v1/components/%s/publish" % type_name,
-                       json={"version": fr["frozenVersion"],
-                             "draft_rev": fr["draftRev"], **extra})
+    return client.post(
+        "/api/v1/components/%s/publish" % type_name,
+        json={"version": fr["frozenVersion"], "draft_rev": fr["draftRev"], **extra},
+    )
 
 
 def _seed_wf(client, db_session, name: str, ref_version: int, wf_id_hint: str) -> str:
@@ -83,10 +87,19 @@ def _seed_wf(client, db_session, name: str, ref_version: int, wf_id_hint: str) -
     r = client.post("/api/v1/workflow-definitions", json={"name": name})
     assert r.status_code == 200, r.text
     wf_id = r.json()["data"]["id"]
-    doc = {"id": wf_id, "name": name, "version": 1, "nodes": [
-        {"id": wf_id_hint, "type": COMP,
-         "data": {"sql": "select 1",
-                  "componentRef": {"type": COMP, "version": ref_version}}}], "edges": []}
+    doc = {
+        "id": wf_id,
+        "name": name,
+        "version": 1,
+        "nodes": [
+            {
+                "id": wf_id_hint,
+                "type": COMP,
+                "data": {"sql": "select 1", "componentRef": {"type": COMP, "version": ref_version}},
+            }
+        ],
+        "edges": [],
+    }
     row = db_session.query(WfDefinition).filter_by(id=wf_id).one()
     row.graph_json = json.dumps(doc, ensure_ascii=False)
     db_session.commit()
@@ -95,8 +108,7 @@ def _seed_wf(client, db_session, name: str, ref_version: int, wf_id_hint: str) -
 
 def _graph_of(db_session, wf_id: str) -> dict:
     """裸 SQL 读回 graph_json（绕过身份映射，CAS 条件更新后断言不失真）。"""
-    row = db_session.execute(
-        text("SELECT graph_json FROM t_wf_definition WHERE id = :i"), {"i": wf_id}).fetchone()
+    row = db_session.execute(text("SELECT graph_json FROM t_wf_definition WHERE id = :i"), {"i": wf_id}).fetchone()
     return json.loads(row[0])
 
 
@@ -134,8 +146,7 @@ def test_publish_pin_strategy_pins_refs(client, db_session):
     assert ref["pinned"] is True
     # 决策落 t_component_log（action=upgrade_strategy；v1 首发布默认 auto 也有审计，按版本过滤）
     comp = db_session.query(Component).filter_by(type=COMP).one()
-    logs = db_session.query(ComponentLog).filter_by(
-        component_id=comp.id, action="upgrade_strategy", version=2).all()
+    logs = db_session.query(ComponentLog).filter_by(component_id=comp.id, action="upgrade_strategy", version=2).all()
     assert len(logs) == 1
     decision = json.loads(logs[0].remark)
     assert decision["strategy"] == "pin" and decision["pinned"] >= 1
@@ -154,8 +165,7 @@ def test_publish_manual_strategy_records_pending_only(client, db_session):
     assert ref["version"] == 1 and "pinned" not in ref  # 图未动
     # 待升级清单随策略决策落 t_component_log（供 P1 批量升级向导消费；按 v2 发布过滤）
     comp = db_session.query(Component).filter_by(type=COMP).one()
-    logs = db_session.query(ComponentLog).filter_by(
-        component_id=comp.id, action="upgrade_strategy", version=2).all()
+    logs = db_session.query(ComponentLog).filter_by(component_id=comp.id, action="upgrade_strategy", version=2).all()
     assert len(logs) == 1
     decision = json.loads(logs[0].remark)
     assert decision["strategy"] == "manual" and decision["pending"] >= 1
@@ -187,12 +197,16 @@ def test_upgrade_refs_batch(client, db_session):
     wf_b = _seed_wf(client, db_session, "批量B", 1, "n_b")
     set_role(client.app, "admin")
     # manual 发布留下落后引用（不自动 bump）
-    assert _publish_minor(client, COMP, ["sql", "table", "extra"],
-                          upgrade_strategy="manual").status_code == 200
-    r = client.post("/api/v1/components/%s/upgrade-refs" % COMP, json={"targets": [
-        {"wf_id": wf_a, "strategy": "auto"},
-        {"wf_id": wf_b, "strategy": "auto", "base_version": 1},  # CAS 命中路径
-    ]})
+    assert _publish_minor(client, COMP, ["sql", "table", "extra"], upgrade_strategy="manual").status_code == 200
+    r = client.post(
+        "/api/v1/components/%s/upgrade-refs" % COMP,
+        json={
+            "targets": [
+                {"wf_id": wf_a, "strategy": "auto"},
+                {"wf_id": wf_b, "strategy": "auto", "base_version": 1},  # CAS 命中路径
+            ]
+        },
+    )
     assert r.status_code == 200, r.text
     body = r.json()["data"]
     assert {x["wfId"] for x in body["results"]} == {wf_a, wf_b}
@@ -202,8 +216,7 @@ def test_upgrade_refs_batch(client, db_session):
     assert _ref_of(db_session, wf_b)["version"] == 2
     # 批量决策落 t_component_log（action=upgrade_refs）
     comp = db_session.query(Component).filter_by(type=COMP).one()
-    logs = db_session.query(ComponentLog).filter_by(
-        component_id=comp.id, action="upgrade_refs").all()
+    logs = db_session.query(ComponentLog).filter_by(component_id=comp.id, action="upgrade_refs").all()
     assert len(logs) == 1
 
 
@@ -213,24 +226,31 @@ def test_upgrade_refs_persists_mapping_or_explicit_skip(client, db_session):
     wf_map = _seed_wf(client, db_session, "映射升级", 1, "n_map")
     wf_skip = _seed_wf(client, db_session, "跳过迁移", 1, "n_skip")
     set_role(client.app, "admin")
-    assert _publish_minor(client, COMP, ["sql", "table", "extra"],
-                          upgrade_strategy="manual").status_code == 200
+    assert _publish_minor(client, COMP, ["sql", "table", "extra"], upgrade_strategy="manual").status_code == 200
 
-    r = client.post("/api/v1/components/%s/upgrade-refs" % COMP, json={"targets": [
-        {"wf_id": wf_map, "base_version": 1,
-         "field_mapping": {"old_table": "source_table"}},
-        {"wf_id": wf_skip, "base_version": 1, "migration": "skip"},
-    ]})
+    r = client.post(
+        "/api/v1/components/%s/upgrade-refs" % COMP,
+        json={
+            "targets": [
+                {"wf_id": wf_map, "base_version": 1, "field_mapping": {"old_table": "source_table"}},
+                {"wf_id": wf_skip, "base_version": 1, "migration": "skip"},
+            ]
+        },
+    )
 
     assert r.status_code == 200, r.text
     results = {item["wfId"]: item for item in r.json()["data"]["results"]}
     assert results[wf_map]["migration"] == "map"
     assert results[wf_skip]["migration"] == "skip"
     assert _ref_of(db_session, wf_map) == {
-        "type": COMP, "version": 2, "fieldMapping": {"old_table": "source_table"},
+        "type": COMP,
+        "version": 2,
+        "fieldMapping": {"old_table": "source_table"},
     }
     assert _ref_of(db_session, wf_skip) == {
-        "type": COMP, "version": 2, "migration": "skip",
+        "type": COMP,
+        "version": 2,
+        "migration": "skip",
     }
 
 
@@ -240,13 +260,17 @@ def test_upgrade_refs_failure_isolated(client, db_session):
     wf_a = _seed_wf(client, db_session, "隔离A", 1, "n_a")
     wf_b = _seed_wf(client, db_session, "隔离B", 1, "n_b")
     set_role(client.app, "admin")
-    assert _publish_minor(client, COMP, ["sql", "table", "extra"],
-                          upgrade_strategy="manual").status_code == 200
-    r = client.post("/api/v1/components/%s/upgrade-refs" % COMP, json={"targets": [
-        {"wf_id": wf_a, "strategy": "auto"},
-        {"wf_id": "wf_missing", "strategy": "auto"},              # 工作流不存在
-        {"wf_id": wf_b, "strategy": "auto", "base_version": 99},  # 乐观锁冲突
-    ]})
+    assert _publish_minor(client, COMP, ["sql", "table", "extra"], upgrade_strategy="manual").status_code == 200
+    r = client.post(
+        "/api/v1/components/%s/upgrade-refs" % COMP,
+        json={
+            "targets": [
+                {"wf_id": wf_a, "strategy": "auto"},
+                {"wf_id": "wf_missing", "strategy": "auto"},  # 工作流不存在
+                {"wf_id": wf_b, "strategy": "auto", "base_version": 99},  # 乐观锁冲突
+            ]
+        },
+    )
     assert r.status_code == 200, r.text
     res = {x["wfId"]: x for x in r.json()["data"]["results"]}
     assert res[wf_a]["ok"] is True and res[wf_a]["newVersion"] == 2
@@ -262,10 +286,8 @@ def test_upgrade_refs_pin_target_keeps_version(client, db_session):
     _make_published_v1(client)
     wf_a = _seed_wf(client, db_session, "批钉A", 1, "n_a")
     set_role(client.app, "admin")
-    assert _publish_minor(client, COMP, ["sql", "table", "extra"],
-                          upgrade_strategy="manual").status_code == 200
-    r = client.post("/api/v1/components/%s/upgrade-refs" % COMP,
-                    json={"targets": [{"wf_id": wf_a, "strategy": "pin"}]})
+    assert _publish_minor(client, COMP, ["sql", "table", "extra"], upgrade_strategy="manual").status_code == 200
+    r = client.post("/api/v1/components/%s/upgrade-refs" % COMP, json={"targets": [{"wf_id": wf_a, "strategy": "pin"}]})
     assert r.status_code == 200, r.text
     item = r.json()["data"]["results"][0]
     assert item["ok"] is True and item["newVersion"] is None
@@ -276,13 +298,21 @@ def test_upgrade_refs_pin_target_keeps_version(client, db_session):
 def test_upgrade_refs_requires_published(client):
     """未发布组件（无 published 版本可注入）→ 409/6002 状态机拦截。"""
     set_role(client.app, "admin")
-    client.post("/api/v1/components", json={
-        "type": "upg_draft_only", "name": "草稿组件", "profile": "dag",
-        "execution_model": "dag-engine", "executor": "sql", "executable": True,
-        "spec": _spec(["sql"]),
-    })
-    r = client.post("/api/v1/components/upg_draft_only/upgrade-refs",
-                    json={"targets": [{"wf_id": "wf_x", "strategy": "auto"}]})
+    client.post(
+        "/api/v1/components",
+        json={
+            "type": "upg_draft_only",
+            "name": "草稿组件",
+            "profile": "dag",
+            "execution_model": "dag-engine",
+            "executor": "sql",
+            "executable": True,
+            "spec": _spec(["sql"]),
+        },
+    )
+    r = client.post(
+        "/api/v1/components/upg_draft_only/upgrade-refs", json={"targets": [{"wf_id": "wf_x", "strategy": "auto"}]}
+    )
     assert r.status_code == 409 and r.json()["code"] == 6002  # COMP_STATE_CONFLICT
 
 
@@ -298,8 +328,7 @@ def test_upgrade_refs_infra_exception_isolated(client, db_session, monkeypatch):
     wf_a = _seed_wf(client, db_session, "异常A", 1, "n_a")
     wf_b = _seed_wf(client, db_session, "异常B", 1, "n_b")
     set_role(client.app, "admin")
-    assert _publish_minor(client, COMP, ["sql", "table", "extra"],
-                          upgrade_strategy="manual").status_code == 200
+    assert _publish_minor(client, COMP, ["sql", "table", "extra"], upgrade_strategy="manual").status_code == 200
 
     real_log = cd_mod.WfDefinitionLog
     state = {"n": 0}
@@ -313,10 +342,15 @@ def test_upgrade_refs_infra_exception_isolated(client, db_session, monkeypatch):
         return real_log(*args, **kwargs)
 
     monkeypatch.setattr(cd_mod, "WfDefinitionLog", boom_once)
-    r = client.post("/api/v1/components/%s/upgrade-refs" % COMP, json={"targets": [
-        {"wf_id": wf_a, "strategy": "auto"},   # 写日志抛异常
-        {"wf_id": wf_b, "strategy": "auto"},   # 异常后的目标必须照常成功
-    ]})
+    r = client.post(
+        "/api/v1/components/%s/upgrade-refs" % COMP,
+        json={
+            "targets": [
+                {"wf_id": wf_a, "strategy": "auto"},  # 写日志抛异常
+                {"wf_id": wf_b, "strategy": "auto"},  # 异常后的目标必须照常成功
+            ]
+        },
+    )
     monkeypatch.undo()
     assert r.status_code == 200, r.text
     res = {x["wfId"]: x for x in r.json()["data"]["results"]}
@@ -333,12 +367,16 @@ def test_upgrade_refs_dedup_targets(client, db_session):
     _make_published_v1(client)
     wf_a = _seed_wf(client, db_session, "重复A", 1, "n_a")
     set_role(client.app, "admin")
-    assert _publish_minor(client, COMP, ["sql", "table", "extra"],
-                          upgrade_strategy="manual").status_code == 200
-    r = client.post("/api/v1/components/%s/upgrade-refs" % COMP, json={"targets": [
-        {"wf_id": wf_a, "strategy": "auto"},
-        {"wf_id": wf_a, "strategy": "auto"},  # 重复目标
-    ]})
+    assert _publish_minor(client, COMP, ["sql", "table", "extra"], upgrade_strategy="manual").status_code == 200
+    r = client.post(
+        "/api/v1/components/%s/upgrade-refs" % COMP,
+        json={
+            "targets": [
+                {"wf_id": wf_a, "strategy": "auto"},
+                {"wf_id": wf_a, "strategy": "auto"},  # 重复目标
+            ]
+        },
+    )
     assert r.status_code == 200, r.text
     results = r.json()["data"]["results"]
     assert len(results) == 2

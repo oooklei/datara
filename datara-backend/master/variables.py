@@ -72,25 +72,18 @@ def clear_run_vars(instance_id: str) -> None:
 
 def load_levels(session, wf_code: int, env_group_id: Optional[int] = None) -> dict:
     """加载三级静态变量层：{"workflow": {...}, "env": {...}, "global": {...}}（实例级一次加载）。"""
-    workflow = {
-        v.name: (v.value or "")
-        for v in session.query(WfVariable).filter(WfVariable.wf_code == wf_code).all()
-    }
+    workflow = {v.name: (v.value or "") for v in session.query(WfVariable).filter(WfVariable.wf_code == wf_code).all()}
     env = {}
     if env_group_id:
         group = session.get(EnvGroup, int(env_group_id))
         if group is not None and isinstance(group.config, dict):
             # I12-m1（评审）：None 值渲染空串（与全链 None→空串口径统一；workflow/global 层由 `or ""` 兜底）
             env = {k: ("" if v is None else str(v)) for k, v in group.config.items() if isinstance(k, str)}
-    glob = {
-        g.name: (g.value or "")
-        for g in session.query(GlobalParam).all()
-    }
+    glob = {g.name: (g.value or "") for g in session.query(GlobalParam).all()}
     return {"workflow": workflow, "env": env, "global": glob}
 
 
-def eval_expr(expr: str, scope: dict, resolver: Optional["VarResolver"] = None,
-              loop_iter: int = 0) -> object:
+def eval_expr(expr: str, scope: dict, resolver: Optional["VarResolver"] = None, loop_iter: int = 0) -> object:
     """表达式安全求值：先占位替换再 simpleeval；空表达式恒真；异常视为 False 并留日志。
 
     resolver 传入时 ${var}/$[时间] 先做占位替换（如 `${cnt} > 0` → `3 > 0`）；
@@ -153,11 +146,7 @@ class VarResolver:
         raw = match.group(0)
         session = new_session()
         try:
-            row = (
-                session.query(TmpData)
-                .filter(TmpData.instance_id == self.instance_id, TmpData.name == name)
-                .first()
-            )
+            row = session.query(TmpData).filter(TmpData.instance_id == self.instance_id, TmpData.name == name).first()
         finally:
             session.close()
         if row is None:
@@ -198,9 +187,11 @@ class VarResolver:
 
         def _var(match: re.Match) -> str:
             name = match.group(1).strip()
+
             # I12-D5：空值（None）统一渲染为空串（str(None)="None" 会把字面量 None 拼进 SQL/参数）
             def _to_text(v) -> str:
                 return "" if v is None else str(v)
+
             if name.startswith("run."):
                 value = self.runtime_scope(loop_iter).get(name)
                 self._snap(snapshot, name, value, RUNTIME_SOURCE, True)
@@ -232,8 +223,15 @@ class VarResolver:
 
     # ---- 参数树解析 ----
 
-    def resolve_tree(self, obj: object, loop_iter: int, snapshot: dict,
-                     skip_keys: tuple = (), depth: int = 0, node_params: Optional[dict] = None) -> object:
+    def resolve_tree(
+        self,
+        obj: object,
+        loop_iter: int,
+        snapshot: dict,
+        skip_keys: tuple = (),
+        depth: int = 0,
+        node_params: Optional[dict] = None,
+    ) -> object:
         """深遍历 dict/list/str 做占位替换（业务字段 + params 全量下发 param_resolved）。
 
         node_params 传入时业务字段中的 ${} 按四级链解析（节点参数优先，09-18 实测修复）。
@@ -242,13 +240,15 @@ class VarResolver:
             return obj
         if isinstance(obj, dict):
             return {
-                k: (v if k in skip_keys
-                    else self.resolve_tree(v, loop_iter, snapshot, skip_keys, depth + 1, node_params))
+                k: (
+                    v
+                    if k in skip_keys
+                    else self.resolve_tree(v, loop_iter, snapshot, skip_keys, depth + 1, node_params)
+                )
                 for k, v in obj.items()
             }
         if isinstance(obj, list):
-            return [self.resolve_tree(v, loop_iter, snapshot, skip_keys, depth + 1, node_params)
-                    for v in obj]
+            return [self.resolve_tree(v, loop_iter, snapshot, skip_keys, depth + 1, node_params) for v in obj]
         if isinstance(obj, str):
             return self.resolve_text(obj, node_params or {}, loop_iter, snapshot)
         return obj
@@ -266,11 +266,12 @@ class VarResolver:
             for row in rows:
                 if isinstance(row, dict) and row.get("key"):
                     node_params[str(row["key"])] = str(row.get("value") or "")
-        resolved = self.resolve_tree(data, loop_iter, snapshot, skip_keys=("branches",),
-                                     node_params=node_params)
+        resolved = self.resolve_tree(data, loop_iter, snapshot, skip_keys=("branches",), node_params=node_params)
         if isinstance(resolved, dict):
             resolved = dict(resolved)
-            resolved["params"] = {
-                k: self.resolve_text(v, node_params, loop_iter, snapshot) for k, v in node_params.items()
-            } if node_params else {}
+            resolved["params"] = (
+                {k: self.resolve_text(v, node_params, loop_iter, snapshot) for k, v in node_params.items()}
+                if node_params
+                else {}
+            )
         return resolved, snapshot

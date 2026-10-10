@@ -24,9 +24,7 @@ SYNC_TAG = "同步"
 def _sync_outputs(db: Session, instance_id: str) -> dict:
     """实例内全部 sync 节点任务输出聚合（多 sync 节点求和；schemas 取并集保序）。"""
     rows = (
-        db.query(TaskInstance)
-        .filter(TaskInstance.instance_id == instance_id, TaskInstance.node_type == "sync")
-        .all()
+        db.query(TaskInstance).filter(TaskInstance.instance_id == instance_id, TaskInstance.node_type == "sync").all()
     )
     agg = {"readRows": 0, "writeRows": 0, "badRows": 0, "batchId": instance_id, "schemas": []}
     for row in rows:
@@ -100,7 +98,7 @@ def list_sync_tasks(
         items = [i for i in items if i["lastState"] == state]
     total = len(items)
     start = page.offset
-    return ok(page_result(total, items[start: start + page.page_size]))
+    return ok(page_result(total, items[start : start + page.page_size]))
 
 
 @router.get("/{wf_code}/instances")

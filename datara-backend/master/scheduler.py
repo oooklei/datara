@@ -24,8 +24,12 @@ from common.models import Command, TaskInstance, WorkflowInstance, now
 from master import state
 from master.dag import loop_bodies, parse_graph
 from master.engine import (
-    WorkflowExecuteRunnable, all_runnables, comp_published_versions,
-    get_runnable, register_runnable, remove_runnable,
+    WorkflowExecuteRunnable,
+    all_runnables,
+    comp_published_versions,
+    get_runnable,
+    register_runnable,
+    remove_runnable,
 )
 from master.failover import recover_running_instances
 
@@ -39,6 +43,7 @@ def generate_instance_id(wf_code: int) -> str:
 
 
 # ---------------- LeaderGate ----------------
+
 
 class LeaderGate:
     """选主联动闸门：仅 leader 放行；首次放行时执行一次容错恢复（线程安全单次）。"""
@@ -63,6 +68,7 @@ class LeaderGate:
 
 
 # ---------------- 命令消费 ----------------
+
 
 def consume_commands() -> int:
     """消费一批 wait 命令（优先级降序）；补数串行组阻塞的命令跳过留待下轮。返回处理条数。"""
@@ -96,9 +102,7 @@ def _complement_group_blocked(param: dict) -> bool:
     session = new_session()
     try:
         instances = (
-            session.query(WorkflowInstance)
-            .filter(WorkflowInstance.state.in_(state.INSTANCE_RUNNING_STATES))
-            .all()
+            session.query(WorkflowInstance).filter(WorkflowInstance.state.in_(state.INSTANCE_RUNNING_STATES)).all()
         )
         for inst in instances:
             variables = inst.variables if isinstance(inst.variables, dict) else {}
@@ -185,13 +189,11 @@ def _load_graph(session, wf_code: int):
         raise ValueError("工作流定义不存在或画布为空: wfCode=%s" % wf_code)
     # D2 §9.6：物化器按源组件 published 版本注入 sys_exec 节点 componentRef
     # G-14：parse_graph 同时提取流子图（stream_spec 供注册 stream_job）
-    graph, stream_spec = parse_graph(json.loads(definition.graph_json),
-                                     comp_versions=comp_published_versions(session))
+    graph, stream_spec = parse_graph(json.loads(definition.graph_json), comp_versions=comp_published_versions(session))
     return definition, graph, stream_spec
 
 
-def _create_instance(session, command: Command, param: dict, wf_code: int, wf_version: int,
-                     graph) -> WorkflowInstance:
+def _create_instance(session, command: Command, param: dict, wf_code: int, wf_version: int, graph) -> WorkflowInstance:
     """建实例（submitted）+ 逐节点预建任务行（loop_iter=0, attempt=1）。"""
     instance_id = generate_instance_id(wf_code)
     schedule_time = _parse_schedule_time(param)
@@ -219,15 +221,17 @@ def _create_instance(session, command: Command, param: dict, wf_code: int, wf_ve
         for node_id, node in graph.nodes.items():
             if node_id in body_nodes:
                 continue
-            session.add(TaskInstance(
-                instance_id=instance_id,
-                node_id=node_id,
-                node_type=node["type"],
-                name=str(node["data"].get("name") or node_id),
-                state=state.SUBMITTED,
-                attempt=1,
-                loop_iter=0,
-            ))
+            session.add(
+                TaskInstance(
+                    instance_id=instance_id,
+                    node_id=node_id,
+                    node_type=node["type"],
+                    name=str(node["data"].get("name") or node_id),
+                    state=state.SUBMITTED,
+                    attempt=1,
+                    loop_iter=0,
+                )
+            )
         session.flush()
     return instance
 
@@ -244,8 +248,12 @@ def _cmd_start(command: Command, param: dict) -> None:
     try:
         definition, graph, stream_spec = _load_graph(session, wf_code)
         instance = _create_instance(
-            session, command, param, wf_code,
-            int(param.get("wfVersion") or definition.version or 0), graph,
+            session,
+            command,
+            param,
+            wf_code,
+            int(param.get("wfVersion") or definition.version or 0),
+            graph,
         )
         # G-14 完整方案：流子图在批实例启动时注册为常驻 stream_job
         # （流节点不进入 Master 任务状态机，数据面由 worker/stream 承载）。
@@ -253,10 +261,10 @@ def _cmd_start(command: Command, param: dict) -> None:
         if stream_spec is not None:
             try:
                 from api.streamjob import register_stream_job, preflight_stream
+
                 preflight_stream(session, stream_spec)
                 job, restarted = register_stream_job(session, definition, stream_spec)
-                logger.info("G-14 流作业随批实例启动注册: job=%s wf=%s restarted=%s",
-                            job.id, wf_code, restarted)
+                logger.info("G-14 流作业随批实例启动注册: job=%s wf=%s restarted=%s", job.id, wf_code, restarted)
             except Exception as exc:  # noqa: BLE001
                 logger.warning("G-14 流作业注册失败（不影响批实例）: wf=%s %r", wf_code, exc)
         session.commit()
@@ -276,8 +284,11 @@ def _cmd_smoke(command: Command, param: dict) -> None:
     try:
         instance = _create_instance(session, command, param, 0, 0, None)
         task = TaskInstance(
-            instance_id=instance.instance_id, node_type="smoke",
-            name=param.get("name") or "smoke", state=state.SUBMITTED, attempt=1,
+            instance_id=instance.instance_id,
+            node_type="smoke",
+            name=param.get("name") or "smoke",
+            state=state.SUBMITTED,
+            attempt=1,
         )
         session.add(task)
         session.commit()
@@ -288,9 +299,17 @@ def _cmd_smoke(command: Command, param: dict) -> None:
     finally:
         session.close()
     queue.add_task(
-        {"taskId": task_id, "instanceId": instance.instance_id, "type": "smoke",
-         "name": param.get("name") or "smoke", "attempt": 1,
-         "param": param, "param_resolved": param, "var_snapshot": {}, "constraints": {}},
+        {
+            "taskId": task_id,
+            "instanceId": instance.instance_id,
+            "type": "smoke",
+            "name": param.get("name") or "smoke",
+            "attempt": 1,
+            "param": param,
+            "param_resolved": param,
+            "var_snapshot": {},
+            "constraints": {},
+        },
         priority=int(param.get("priority") or 3),
     )
     logger.info("冒烟实例已启动: %s（task %s）", instance.instance_id, task_id)
@@ -313,24 +332,32 @@ def _cmd_complement(command: Command, param: dict) -> None:
         current = start
         count = 0
         while current <= end:
-            session.add(Command(
-                command_type="START_PROCESS",
-                command_param={
-                    "wfCode": wf_code,
-                    "wfVersion": int(param.get("wfVersion") or definition.version or 0),
-                    "runMode": "complement",
-                    "scheduleTime": current.strftime("%Y-%m-%d %H:%M:%S"),
-                    "envGroupId": param.get("envGroupId"),
-                    "complementGroup": None if parallel else group,
-                    "complementDate": current.strftime("%Y-%m-%d"),
-                },
-                priority=int(param.get("priority") or 3),
-            ))
+            session.add(
+                Command(
+                    command_type="START_PROCESS",
+                    command_param={
+                        "wfCode": wf_code,
+                        "wfVersion": int(param.get("wfVersion") or definition.version or 0),
+                        "runMode": "complement",
+                        "scheduleTime": current.strftime("%Y-%m-%d %H:%M:%S"),
+                        "envGroupId": param.get("envGroupId"),
+                        "complementGroup": None if parallel else group,
+                        "complementDate": current.strftime("%Y-%m-%d"),
+                    },
+                    priority=int(param.get("priority") or 3),
+                )
+            )
             current = current + timedelta(days=1)
             count += 1
         session.commit()
-        logger.info("补数展开: wf=%s %s ~ %s 共 %d 实例（%s）",
-                    wf_code, date_from, date_to, count, "并行" if parallel else "串行组 " + group)
+        logger.info(
+            "补数展开: wf=%s %s ~ %s 共 %d 实例（%s）",
+            wf_code,
+            date_from,
+            date_to,
+            count,
+            "并行" if parallel else "串行组 " + group,
+        )
     except Exception:
         session.rollback()
         raise
@@ -344,11 +371,7 @@ def _cmd_repeat_running(command: Command, param: dict) -> None:
     session = new_session()
     graph = None
     try:
-        origin = (
-            session.query(WorkflowInstance)
-            .filter(WorkflowInstance.instance_id == origin_id)
-            .first()
-        )
+        origin = session.query(WorkflowInstance).filter(WorkflowInstance.instance_id == origin_id).first()
         if origin is None:
             raise ValueError("原实例不存在: %s" % origin_id)
         variables = origin.variables if isinstance(origin.variables, dict) else {}
@@ -374,11 +397,17 @@ def _cmd_repeat_running(command: Command, param: dict) -> None:
             for node_id, node in graph.nodes.items():
                 if node_id in body_nodes:
                     continue  # 循环体节点每迭代建行（不预建 iter0）
-                session.add(TaskInstance(
-                    instance_id=instance_id, node_id=node_id, node_type=node["type"],
-                    name=str(node["data"].get("name") or node_id),
-                    state=state.SUBMITTED, attempt=1, loop_iter=0,
-                ))
+                session.add(
+                    TaskInstance(
+                        instance_id=instance_id,
+                        node_id=node_id,
+                        node_type=node["type"],
+                        name=str(node["data"].get("name") or node_id),
+                        state=state.SUBMITTED,
+                        attempt=1,
+                        loop_iter=0,
+                    )
+                )
             session.flush()
         elif not variables:
             raise ValueError("原实例无定义且无参数，无法重跑: %s" % origin_id)
@@ -401,19 +430,11 @@ def _cmd_failure_tasks(command: Command, param: dict) -> None:
     instance_id = str(param.get("instanceId") or "")
     session = new_session()
     try:
-        instance = (
-            session.query(WorkflowInstance)
-            .filter(WorkflowInstance.instance_id == instance_id)
-            .first()
-        )
+        instance = session.query(WorkflowInstance).filter(WorkflowInstance.instance_id == instance_id).first()
         if instance is None:
             raise ValueError("实例不存在: %s" % instance_id)
         _definition, graph = _load_graph(session, instance.wf_code)
-        tasks = (
-            session.query(TaskInstance)
-            .filter(TaskInstance.instance_id == instance_id)
-            .all()
-        )
+        tasks = session.query(TaskInstance).filter(TaskInstance.instance_id == instance_id).all()
         failed_ids = {t.node_id for t in tasks if t.state == state.FAILURE and t.node_id}
         if not failed_ids:
             raise ValueError("实例无失败任务: %s" % instance_id)
@@ -510,19 +531,11 @@ def _cmd_stop(command: Command, param: dict) -> None:
     instance_id = str(param.get("instanceId") or "")
     session = new_session()
     try:
-        instance = (
-            session.query(WorkflowInstance)
-            .filter(WorkflowInstance.instance_id == instance_id)
-            .first()
-        )
+        instance = session.query(WorkflowInstance).filter(WorkflowInstance.instance_id == instance_id).first()
         if instance is None:
             raise ValueError("实例不存在: %s" % instance_id)
         instance.state = state.KILL
-        tasks = (
-            session.query(TaskInstance)
-            .filter(TaskInstance.instance_id == instance_id)
-            .all()
-        )
+        tasks = session.query(TaskInstance).filter(TaskInstance.instance_id == instance_id).all()
         for task in tasks:
             if task.state not in state.TERMINAL_STATES:
                 task.state = state.KILL
@@ -541,6 +554,7 @@ def _cmd_stop(command: Command, param: dict) -> None:
 
 
 # ---------------- 状态消费 ----------------
+
 
 def consume_state_reports() -> bool:
     """消费一批任务状态上报 → 路由 Runnable（无 Runnable 走 DB 直收兜底）。"""
@@ -574,20 +588,12 @@ def _apply_state_direct(msg: dict) -> None:
         task.log_path = msg.get("logPath")
         task.host = msg.get("host")
 
-        instance = (
-            session.query(WorkflowInstance)
-            .filter(WorkflowInstance.instance_id == task.instance_id)
-            .first()
-        )
+        instance = session.query(WorkflowInstance).filter(WorkflowInstance.instance_id == task.instance_id).first()
         if instance is not None and instance.state in state.INSTANCE_RUNNING_STATES:
             if instance.state == state.SUBMITTED:
                 instance.state = state.RUNNING
                 instance.start_time = now()
-            tasks = (
-                session.query(TaskInstance)
-                .filter(TaskInstance.instance_id == task.instance_id)
-                .all()
-            )
+            tasks = session.query(TaskInstance).filter(TaskInstance.instance_id == task.instance_id).all()
             if tasks and all(t.state in state.TERMINAL_STATES for t in tasks):
                 if any(t.state == state.KILL for t in tasks):
                     instance.state = state.KILL
@@ -607,6 +613,7 @@ def _apply_state_direct(msg: dict) -> None:
 
 
 # ---------------- 服务循环 ----------------
+
 
 def command_loop(stop, gate: LeaderGate) -> None:
     """① 命令消费线程（2s/轮）。"""

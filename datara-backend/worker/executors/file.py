@@ -104,9 +104,7 @@ def _materialize(ctx, ds, table: str, columns: list, rows_iter, log) -> tuple:
         with conn.cursor() as cur:
             cur.execute("DROP TABLE IF EXISTS `%s`" % table)
             col_defs = ", ".join("`%s` TEXT NULL" % c for c in columns)
-            cur.execute(
-                "CREATE TABLE `%s` (%s) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4" % (table, col_defs)
-            )
+            cur.execute("CREATE TABLE `%s` (%s) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4" % (table, col_defs))
             conn.commit()
             batch = []
             for row in rows_iter:
@@ -155,11 +153,7 @@ def _register_tmp(ctx, name, kind, ref, target_ds_id, rows_count, schema, previe
     """upsert t_tmp_data（uk_tmp_name：重试/重复注册覆盖更新）。"""
     session = new_session()
     try:
-        row = (
-            session.query(TmpData)
-            .filter(TmpData.instance_id == ctx.instance_id, TmpData.name == name)
-            .first()
-        )
+        row = session.query(TmpData).filter(TmpData.instance_id == ctx.instance_id, TmpData.name == name).first()
         if row is None:
             row = TmpData(instance_id=ctx.instance_id, name=name)
             session.add(row)
@@ -172,11 +166,7 @@ def _register_tmp(ctx, name, kind, ref, target_ds_id, rows_count, schema, previe
         row.schema_json = schema
         row.preview_json = preview
         row.retention = retention
-        row.expire_at = (
-            datetime.now() + timedelta(days=keep_days)
-            if retention == "days" and keep_days > 0
-            else None
-        )
+        row.expire_at = datetime.now() + timedelta(days=keep_days) if retention == "days" and keep_days > 0 else None
         row.status = "active"
         session.commit()
     finally:
@@ -272,10 +262,16 @@ def execute(ctx) -> ExecResult:
     # 5. 落库注册 + 输出
     keep_days = int(param.get("keepDays") or 0)
     _register_tmp(
-        ctx, name=name, kind=kind, ref=ref, target_ds_id=target_ds_id,
-        rows_count=rows_count, schema=schema,
+        ctx,
+        name=name,
+        kind=kind,
+        ref=ref,
+        target_ds_id=target_ds_id,
+        rows_count=rows_count,
+        schema=schema,
         preview={"columns": columns, "rows": sample[:PREVIEW_ROWS]},
-        retention=retention, keep_days=keep_days,
+        retention=retention,
+        keep_days=keep_days,
     )
     outputs["rows_count"] = rows_count
     outputs["tmp_name"] = name

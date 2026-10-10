@@ -35,8 +35,7 @@ def run_samples(cfg: DatagenConfig, out: Path = None, rows: int = 5000, log=prin
     out.mkdir(parents=True, exist_ok=True)
     t = plan_table_copy(cfg.table("ods_order"), rows)
     ctx = GenCtx(cfg, run_today())
-    data = [[_cell(row[c.name]) for c in t.columns]
-            for row, _content in iter_rows(t, cfg.rules_of("ods_order"), ctx)]
+    data = [[_cell(row[c.name]) for c in t.columns] for row, _content in iter_rows(t, cfg.rules_of("ods_order"), ctx)]
     header = t.col_names
 
     csv_path = out / "orders_part.csv"
@@ -54,6 +53,7 @@ def run_samples(cfg: DatagenConfig, out: Path = None, rows: int = 5000, log=prin
 
     xlsx_path = out / "orders_part.xlsx"
     from openpyxl import Workbook
+
     wb = Workbook()
     ws = wb.active
     ws.title = "数据"

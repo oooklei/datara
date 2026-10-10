@@ -69,9 +69,7 @@ def builtin_vars(now: Optional[datetime] = None) -> dict:
         "year": str(now.year),
         "lyear": str(now.year - 1),
         "month_start": first_of_month.strftime("%Y-%m-%d"),
-        "month_end": "%04d-%02d-%02d" % (
-            now.year, now.month, calendar.monthrange(now.year, now.month)[1]
-        ),
+        "month_end": "%04d-%02d-%02d" % (now.year, now.month, calendar.monthrange(now.year, now.month)[1]),
         "last_month_start": last_month_start.strftime("%Y-%m-%d"),
         "last_month_end": last_month_end.strftime("%Y-%m-%d"),
         "hour": now.strftime("%H"),
@@ -126,9 +124,7 @@ def render_text(
     def _time(match: "re.Match") -> str:
         inner = match.group(1)
         resolved = time_var(inner, now)
-        snapshot.append(
-            {"name": "$[%s]" % inner, "value": resolved, "source": "时间变量", "resolved": True}
-        )
+        snapshot.append({"name": "$[%s]" % inner, "value": resolved, "source": "时间变量", "resolved": True})
         return resolved
 
     def _var(match: "re.Match") -> str:

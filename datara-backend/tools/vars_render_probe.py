@@ -11,6 +11,7 @@
 - 循环引用 → MAX_DEPTH 截断不死循环
 - 时间变量 / date(N) / 日期命名模式基础回归（基准 now 固定，输出可断言）
 """
+
 import os
 import sys
 
@@ -74,7 +75,8 @@ check("内置 biz_date=T-1", out == "2026-09-21", repr(out))
 from master.variables import VarResolver  # noqa: E402
 
 resolver = VarResolver(
-    "inst-probe", 1,
+    "inst-probe",
+    1,
     {"workflow": {"wv": None}, "env": {"envv": None}, "global": {}},
     BASE,
 )

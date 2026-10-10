@@ -84,8 +84,11 @@ class MapOp(OpBase):
     """map：字段转换表达式表（目标字段 ← 表达式，基于行字段求值后合并）。"""
 
     def __init__(self, params: dict):
-        self.fields = [(str(r["key"]).strip(), str(r.get("value") or "").strip())
-                       for r in _kv_rows(params or {}, "fieldMap") if str(r.get("value") or "").strip()]
+        self.fields = [
+            (str(r["key"]).strip(), str(r.get("value") or "").strip())
+            for r in _kv_rows(params or {}, "fieldMap")
+            if str(r.get("value") or "").strip()
+        ]
 
     def process(self, row: dict, emit) -> None:  # noqa: ANN001
         data = dict(row["data"])
@@ -98,8 +101,11 @@ class UnionOp(OpBase):
     """union：字段对齐映射（目标 ← 来源；空映射 = 同名透传），多入边由引擎合并推进。"""
 
     def __init__(self, params: dict):
-        self.align = [(str(r["key"]).strip(), str(r.get("value") or "").strip())
-                      for r in _kv_rows(params or {}, "alignMap") if str(r.get("value") or "").strip()]
+        self.align = [
+            (str(r["key"]).strip(), str(r.get("value") or "").strip())
+            for r in _kv_rows(params or {}, "alignMap")
+            if str(r.get("value") or "").strip()
+        ]
 
     def process(self, row: dict, emit) -> None:  # noqa: ANN001
         if not self.align:
@@ -122,7 +128,7 @@ class JoinOp(OpBase):
         self.join_type = str(p.get("joinType") or "inner")
         if not self.key_left or not self.key_right:
             raise OpError("join 须配置左右流关联键")
-        self._left: list = []   # [(ts, key, data)]
+        self._left: list = []  # [(ts, key, data)]
         self._right: list = []
 
     def process(self, row: dict, emit) -> None:  # noqa: ANN001
@@ -177,7 +183,7 @@ class WindowAggOp(OpBase):
         self.slide = max(1, int(p.get("slideSec") or 10)) if self.window_type == "sliding" else self.size
         self.watermark = max(0, int(p.get("watermarkSec") or 5))
         self._lock = threading.Lock()
-        self._buckets: dict[tuple, dict] = {}   # (ws, group) → {start, end, rows}
+        self._buckets: dict[tuple, dict] = {}  # (ws, group) → {start, end, rows}
         self._emit: Optional[Callable] = None
         self._stop = threading.Event()
         self._timer: Optional[threading.Thread] = None
@@ -209,8 +215,7 @@ class WindowAggOp(OpBase):
             return [int(ts // self.size) * self.size]
         first = int((ts - self.size) // self.slide) * self.slide  # 覆盖 ts 的全部滑动桶起点
         return [
-            ws for ws in range(first, int(ts // self.slide) * self.slide + 1, self.slide)
-            if ws <= ts < ws + self.size
+            ws for ws in range(first, int(ts // self.slide) * self.slide + 1, self.slide) if ws <= ts < ws + self.size
         ]
 
     def _fire_loop(self) -> None:

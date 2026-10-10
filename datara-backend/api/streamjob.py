@@ -86,10 +86,13 @@ def extract_stream_spec(definition: WfDefinition, doc: dict) -> dict:
     if not nodes:
         raise ApiError(WF_PARAM_INVALID, "画布无流组件（需 stream_input/stream_fuse/stream_output）", status=400)
     # 展示型节点（page_board）合法放行，其余一律视为批处理混编
-    stray = sorted({
-        str(n.get("type")) for n in raw_nodes
-        if isinstance(n, dict) and n.get("type") not in STREAM_TYPES and n.get("type") not in DISPLAY_TYPES
-    })
+    stray = sorted(
+        {
+            str(n.get("type"))
+            for n in raw_nodes
+            if isinstance(n, dict) and n.get("type") not in STREAM_TYPES and n.get("type") not in DISPLAY_TYPES
+        }
+    )
     if stray:
         raise ApiError(WF_PARAM_INVALID, f"流任务画布不允许混编批处理组件: {','.join(stray)}", status=400)
     ids = {str(n["id"]) for n in nodes}
@@ -113,8 +116,11 @@ def extract_stream_spec(definition: WfDefinition, doc: dict) -> dict:
         nid = str(n["id"])
         if ins.get(nid, 0) == 0 and outs.get(nid, 0) == 0:
             raise ApiError(WF_PARAM_INVALID, f"存在游离节点: {nid}", status=400)
-        if n["type"] == "stream_fuse" and str((n.get("data") or {}).get("fuseType") or "") == "join" \
-                and ins.get(nid, 0) != 2:
+        if (
+            n["type"] == "stream_fuse"
+            and str((n.get("data") or {}).get("fuseType") or "") == "join"
+            and ins.get(nid, 0) != 2
+        ):
             raise ApiError(WF_PARAM_INVALID, f"join 融合节点须两条入边: {nid}", status=400)
     return {
         "name": definition.name,
@@ -157,8 +163,9 @@ def preflight_stream(db: Session, spec: dict) -> None:
             elif ds.type not in _REF_EXPECT[st]:
                 problems.append(f"{where}: 数据源 {ds.name} 类型为 {ds.type}，与源分型 {st} 不匹配")
             elif ds.status != "online":
-                problems.append(f"{where}: 数据源 {ds.name} 未连通（状态: {ds.status or '未测试'}），"
-                                "请先在数据源中心测试连接")
+                problems.append(
+                    f"{where}: 数据源 {ds.name} 未连通（状态: {ds.status or '未测试'}），请先在数据源中心测试连接"
+                )
         else:
             for key, label in _CONN_INLINE[st]:
                 if not str(p.get(key) or "").strip():
@@ -232,9 +239,17 @@ def register_stream_job(db: Session, definition: WfDefinition, spec: dict) -> tu
     task.log_path = log_path
     db.commit()
 
-    queue.get_client().publish("datara:flink:ctl", json.dumps(
-        {"action": "start", "jobId": row.id, "generation": int(row.generation)}))
-    logger.info("流任务启动广播: job=%s doc=%s gen=%s inst=%s task=%s", row.id, definition.id, row.generation, instance_id, task.id)
+    queue.get_client().publish(
+        "datara:flink:ctl", json.dumps({"action": "start", "jobId": row.id, "generation": int(row.generation)})
+    )
+    logger.info(
+        "流任务启动广播: job=%s doc=%s gen=%s inst=%s task=%s",
+        row.id,
+        definition.id,
+        row.generation,
+        instance_id,
+        task.id,
+    )
     return row, restarted
 
 
@@ -266,8 +281,9 @@ def stop_stream_job(
     row.status = "stopped"
     row.host = None
     db.commit()
-    queue.get_client().publish("datara:flink:ctl", json.dumps(
-        {"action": "stop", "jobId": job_id, "generation": int(row.generation or 0)}))
+    queue.get_client().publish(
+        "datara:flink:ctl", json.dumps({"action": "stop", "jobId": job_id, "generation": int(row.generation or 0)})
+    )
     logger.info("流任务停止广播: job=%s（用户 %s）", job_id, user.user_name)
     return ok(True)
 
@@ -285,8 +301,9 @@ def delete_stream_job(
     if row is None:
         raise ApiError(INSTANCE_NOT_FOUND, status=404)
     doc_id = row.doc_id
-    queue.get_client().publish("datara:flink:ctl", json.dumps(
-        {"action": "stop", "jobId": job_id, "generation": int(row.generation or 0)}))
+    queue.get_client().publish(
+        "datara:flink:ctl", json.dumps({"action": "stop", "jobId": job_id, "generation": int(row.generation or 0)})
+    )
     db.delete(row)
     if with_def and doc_id:
         definition = db.get(WfDefinition, doc_id)

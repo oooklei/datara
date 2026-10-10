@@ -3,6 +3,7 @@
 This script is intentionally small and dependency-free so it can run inside the
 runtime image when dev-only test packages are unavailable.
 """
+
 from __future__ import annotations
 
 import sys

@@ -14,8 +14,7 @@ from common.models import DataSource  # noqa: E402
 
 def set_role(app, role: str) -> None:
     """切换注入用户角色（权限矩阵用例；与 conftest.set_role 同实现）。"""
-    app.dependency_overrides[get_current_user] = lambda: SimpleNamespace(
-        id=1, user_name="tester", user_role=role)
+    app.dependency_overrides[get_current_user] = lambda: SimpleNamespace(id=1, user_name="tester", user_role=role)
 
 
 # ---------------------------------------------------------------- 资源目录
@@ -35,8 +34,9 @@ def test_resources_tree(client):
 
 def test_preview_rejects_non_select(client):
     set_role(client.app, "dev")
-    r = client.post("/api/v1/page-designer/preview", json={
-        "queries": [{"id": "q1", "datasourceId": 1, "sql": "DELETE FROM t"}]})
+    r = client.post(
+        "/api/v1/page-designer/preview", json={"queries": [{"id": "q1", "datasourceId": 1, "sql": "DELETE FROM t"}]}
+    )
     assert r.status_code == 422
 
 
@@ -48,12 +48,12 @@ def test_preview_caps_rows(monkeypatch, client, db_session):
 
     def fake_run(ds, sql, cap):
         called["sql"], called["cap"] = sql, cap
-        return {"id": "q1", "columns": ["a"], "rows": [[str(i)] for i in range(cap)],
-                "truncated": True, "error": ""}
+        return {"id": "q1", "columns": ["a"], "rows": [[str(i)] for i in range(cap)], "truncated": True, "error": ""}
 
     monkeypatch.setattr("api.page_designer._run_readonly", fake_run)
-    r = client.post("/api/v1/page-designer/preview", json={
-        "queries": [{"id": "q1", "datasourceId": 1, "sql": "SELECT a FROM t"}]})
+    r = client.post(
+        "/api/v1/page-designer/preview", json={"queries": [{"id": "q1", "datasourceId": 1, "sql": "SELECT a FROM t"}]}
+    )
     assert r.status_code == 200
     assert called["cap"] == 100
     assert len(r.json()["data"]["results"]["q1"]["rows"]) == 100
@@ -66,14 +66,18 @@ def test_preview_widget_errors_aggregated(monkeypatch, client, db_session):
     set_role(client.app, "dev")
     monkeypatch.setattr(
         "api.page_designer._run_readonly",
-        lambda ds, sql, cap: {"id": "", "columns": ["a"], "rows": [["1"]],
-                              "truncated": False, "error": ""})
-    r = client.post("/api/v1/page-designer/preview", json={
-        "queries": [
-            {"id": "ok1", "datasourceId": 1, "sql": "SELECT a FROM t"},
-            {"id": "bad1", "datasourceId": 999, "sql": "SELECT a FROM t"},
-            {"id": "ok2", "datasourceId": 1, "sql": "SELECT b FROM t"},
-        ]})
+        lambda ds, sql, cap: {"id": "", "columns": ["a"], "rows": [["1"]], "truncated": False, "error": ""},
+    )
+    r = client.post(
+        "/api/v1/page-designer/preview",
+        json={
+            "queries": [
+                {"id": "ok1", "datasourceId": 1, "sql": "SELECT a FROM t"},
+                {"id": "bad1", "datasourceId": 999, "sql": "SELECT a FROM t"},
+                {"id": "ok2", "datasourceId": 1, "sql": "SELECT b FROM t"},
+            ]
+        },
+    )
     assert r.status_code == 200
     data = r.json()["data"]
     assert data["widgetErrors"] == [{"id": "bad1", "error": "数据源 999 不存在"}]
@@ -89,9 +93,10 @@ def test_preview_all_success_widget_errors_empty(monkeypatch, client, db_session
     set_role(client.app, "dev")
     monkeypatch.setattr(
         "api.page_designer._run_readonly",
-        lambda ds, sql, cap: {"id": "", "columns": ["a"], "rows": [["1"]],
-                              "truncated": False, "error": ""})
-    r = client.post("/api/v1/page-designer/preview", json={
-        "queries": [{"id": "q1", "datasourceId": 1, "sql": "SELECT a FROM t"}]})
+        lambda ds, sql, cap: {"id": "", "columns": ["a"], "rows": [["1"]], "truncated": False, "error": ""},
+    )
+    r = client.post(
+        "/api/v1/page-designer/preview", json={"queries": [{"id": "q1", "datasourceId": 1, "sql": "SELECT a FROM t"}]}
+    )
     assert r.status_code == 200
     assert r.json()["data"]["widgetErrors"] == []

@@ -32,8 +32,8 @@ from common.models import Component, ComponentLog, ComponentVersion, DataSource,
 
 def set_role(app, role: str) -> None:
     """切换注入用户角色（权限矩阵用例；与 conftest.set_role 同实现）。"""
-    app.dependency_overrides[get_current_user] = lambda: SimpleNamespace(
-        id=1, user_name="tester", user_role=role)
+    app.dependency_overrides[get_current_user] = lambda: SimpleNamespace(id=1, user_name="tester", user_role=role)
+
 
 # ---------------------------------------------------------------- 纯数据校验器
 
@@ -57,9 +57,26 @@ def test_chinese_text_not_flagged():
     assert validate_spec_pure_data(spec) == []
 
 
-@pytest.mark.parametrize("snippet", ["function", "=>", "eval(", "new Function", "Function(",
-                                     "<script", "javascript:", "__import__", "import ",
-                                     "def ", "lambda ", "${", "`", "require(", "exec("])
+@pytest.mark.parametrize(
+    "snippet",
+    [
+        "function",
+        "=>",
+        "eval(",
+        "new Function",
+        "Function(",
+        "<script",
+        "javascript:",
+        "__import__",
+        "import ",
+        "def ",
+        "lambda ",
+        "${",
+        "`",
+        "require(",
+        "exec(",
+    ],
+)
 def test_forbidden_snippets_detected(snippet):
     spec = _ok_spec()
     spec["fields"][0]["label"] = "x%sy" % snippet
@@ -87,11 +104,11 @@ def test_non_object_spec_rejected():
 
 def test_autoname_placeholder_whitelist():
     spec = _ok_spec()
-    assert validate_spec_pure_data(spec) == []          # {n} 允许
+    assert validate_spec_pure_data(spec) == []  # {n} 允许
     spec["dropPolicy"]["autoName"] = "{type}_{n}"
-    assert validate_spec_pure_data(spec) == []          # {type} 允许
+    assert validate_spec_pure_data(spec) == []  # {type} 允许
     spec["dropPolicy"]["autoName"] = "{expr: eval_x}"
-    assert validate_spec_pure_data(spec)                # 其它占位符拒绝
+    assert validate_spec_pure_data(spec)  # 其它占位符拒绝
 
 
 def test_spec_hash_is_canonical():
@@ -160,40 +177,62 @@ def test_create_rejects_impure_spec(client):
 
 # ---------------------------------------------------------------- 页面设计器（execution_model=page）
 
+
 def test_create_page_component_ok(client):
     """page 组件可创建：executable 显式 false（页面设计器产出的 UI 组件不可执行）。"""
     set_role(client.app, "dev")
-    r = client.post("/api/v1/components", json={
-        "type": "page_sales_board", "name": "销售看板", "profile": "dag",
-        "execution_model": "page", "executable": False,
-        "spec": {"page": {"version": 1, "canvas": {"width": 288, "height": 520}, "widgets": []}},
-    })
+    r = client.post(
+        "/api/v1/components",
+        json={
+            "type": "page_sales_board",
+            "name": "销售看板",
+            "profile": "dag",
+            "execution_model": "page",
+            "executable": False,
+            "spec": {"page": {"version": 1, "canvas": {"width": 288, "height": 520}, "widgets": []}},
+        },
+    )
     assert r.status_code == 200, r.text
 
 
 def test_page_model_executable_forbidden(client):
     """page + executable=true → 422 COMP_SPEC_INVALID（断言业务码，区别于 Literal 的 FastAPI 422）。"""
     set_role(client.app, "dev")
-    r = client.post("/api/v1/components", json={
-        "type": "page_bad_exec", "name": "x", "profile": "dag",
-        "execution_model": "page", "executable": True,
-        "spec": {"page": {"version": 1, "canvas": {}, "widgets": []}},
-    })
+    r = client.post(
+        "/api/v1/components",
+        json={
+            "type": "page_bad_exec",
+            "name": "x",
+            "profile": "dag",
+            "execution_model": "page",
+            "executable": True,
+            "spec": {"page": {"version": 1, "canvas": {}, "widgets": []}},
+        },
+    )
     assert r.status_code == 422
     assert r.json()["code"] == 6008  # COMP_SPEC_INVALID
 
 
 def _page_spec(widgets):
-    return {"page": {"version": 1, "name": "看板", "icon": "bar", "color": "#1677ff",
-                     "canvas": {"width": 288, "height": 520, "background": {"fill": "#ffffff"}},
-                     "widgets": widgets}}
+    return {
+        "page": {
+            "version": 1,
+            "name": "看板",
+            "icon": "bar",
+            "color": "#1677ff",
+            "canvas": {"width": 288, "height": 520, "background": {"fill": "#ffffff"}},
+            "widgets": widgets,
+        }
+    }
 
 
 def test_page_spec_structural_violations():
     from api.component_design import validate_spec_pure_data
+
     # widget 缺 id；binding（static）缺 fallback
-    bad = _page_spec([{"kind": "text", "rect": {"x": 0, "y": 0, "w": 100, "h": 24},
-                       "bindings": {"value": {"kind": "static"}}}])
+    bad = _page_spec(
+        [{"kind": "text", "rect": {"x": 0, "y": 0, "w": 100, "h": 24}, "bindings": {"value": {"kind": "static"}}}]
+    )
     violations = validate_spec_pure_data(bad)
     assert any("widget.id" in v or "widget.kind" in v for v in violations)
     assert any("fallback" in v for v in violations)
@@ -201,9 +240,19 @@ def test_page_spec_structural_violations():
 
 def test_page_spec_valid_passes():
     from api.component_design import validate_spec_pure_data
-    ok = _page_spec([{"id": "w1", "kind": "text", "rect": {"x": 8, "y": 8, "w": 120, "h": 24},
-                      "props": {"text": "销售"},
-                      "style": {}, "bindings": {"value": {"kind": "static", "fallback": "销售"}}}])
+
+    ok = _page_spec(
+        [
+            {
+                "id": "w1",
+                "kind": "text",
+                "rect": {"x": 8, "y": 8, "w": 120, "h": 24},
+                "props": {"text": "销售"},
+                "style": {},
+                "bindings": {"value": {"kind": "static", "fallback": "销售"}},
+            }
+        ]
+    )
     assert validate_spec_pure_data(ok) == []
 
 
@@ -230,21 +279,58 @@ def test_page_spec_query_binding_datasource_only_valid():
     SQL 后续在数据集钻取中补；显式 SQL 型（query 字段）同合法；二者皆缺才违规。
     metadata 缺 path 仍违规（原必填字段不放宽）。"""
     from api.component_design import validate_spec_pure_data
-    ref_only = _page_spec([{"id": "w1", "kind": "table", "rect": {"x": 8, "y": 8, "w": 264, "h": 160},
-                            "props": {}, "style": {},
-                            "bindings": {"data": {"kind": "query", "datasourceId": 1, "fallback": "数据集"}}}])
+
+    ref_only = _page_spec(
+        [
+            {
+                "id": "w1",
+                "kind": "table",
+                "rect": {"x": 8, "y": 8, "w": 264, "h": 160},
+                "props": {},
+                "style": {},
+                "bindings": {"data": {"kind": "query", "datasourceId": 1, "fallback": "数据集"}},
+            }
+        ]
+    )
     assert validate_spec_pure_data(ref_only) == []
-    sql_only = _page_spec([{"id": "w2", "kind": "table", "rect": {"x": 8, "y": 8, "w": 264, "h": 160},
-                            "props": {}, "style": {},
-                            "bindings": {"data": {"kind": "query", "query": "SELECT 1", "fallback": "数据集"}}}])
+    sql_only = _page_spec(
+        [
+            {
+                "id": "w2",
+                "kind": "table",
+                "rect": {"x": 8, "y": 8, "w": 264, "h": 160},
+                "props": {},
+                "style": {},
+                "bindings": {"data": {"kind": "query", "query": "SELECT 1", "fallback": "数据集"}},
+            }
+        ]
+    )
     assert validate_spec_pure_data(sql_only) == []
-    both_missing = _page_spec([{"id": "w3", "kind": "table", "rect": {"x": 8, "y": 8, "w": 264, "h": 160},
-                                "props": {}, "style": {},
-                                "bindings": {"data": {"kind": "query", "fallback": "数据集"}}}])
+    both_missing = _page_spec(
+        [
+            {
+                "id": "w3",
+                "kind": "table",
+                "rect": {"x": 8, "y": 8, "w": 264, "h": 160},
+                "props": {},
+                "style": {},
+                "bindings": {"data": {"kind": "query", "fallback": "数据集"}},
+            }
+        ]
+    )
     assert any("datasourceId 或 query" in v for v in validate_spec_pure_data(both_missing))
-    no_path = _page_spec([{"id": "w4", "kind": "meta-field", "rect": {"x": 8, "y": 8, "w": 80, "h": 24},
-                           "props": {}, "style": {},
-                           "bindings": {"value": {"kind": "metadata", "fallback": "-"}}}])
+    no_path = _page_spec(
+        [
+            {
+                "id": "w4",
+                "kind": "meta-field",
+                "rect": {"x": 8, "y": 8, "w": 80, "h": 24},
+                "props": {},
+                "style": {},
+                "bindings": {"value": {"kind": "metadata", "fallback": "-"}},
+            }
+        ]
+    )
     assert any("path" in v for v in validate_spec_pure_data(no_path))
 
 
@@ -275,8 +361,7 @@ def test_get_draft_unknown_type_404(client):
 def test_save_draft_bumps_rev(client, db_session):
     _created(client)
     spec = {"fields": [{"key": "sql", "label": "SQL v2", "uiType": "textarea"}]}
-    r = client.put("/api/v1/components/user_demo/draft",
-                   json={"draft_rev": 0, "spec": spec})
+    r = client.put("/api/v1/components/user_demo/draft", json={"draft_rev": 0, "spec": spec})
     assert r.status_code == 200
     assert r.json()["data"]["draftRev"] == 1
     comp = db_session.query(Component).filter_by(type="user_demo").one()
@@ -289,12 +374,10 @@ def test_save_draft_bumps_rev(client, db_session):
 
 def test_save_draft_stale_rev_409_with_current(client):
     _created(client)
-    r = client.put("/api/v1/components/user_demo/draft",
-                   json={"draft_rev": 0, "spec": {"a": 1}})
+    r = client.put("/api/v1/components/user_demo/draft", json={"draft_rev": 0, "spec": {"a": 1}})
     assert r.status_code == 200
     # 用过期 rev 再存 → 409 + data.currentRev
-    r = client.put("/api/v1/components/user_demo/draft",
-                   json={"draft_rev": 0, "spec": {"a": 2}})
+    r = client.put("/api/v1/components/user_demo/draft", json={"draft_rev": 0, "spec": {"a": 2}})
     assert r.status_code == 409
     body = r.json()
     assert body["code"] == 6007 and body["data"]["currentRev"] == 1
@@ -302,8 +385,7 @@ def test_save_draft_stale_rev_409_with_current(client):
 
 def test_save_draft_impure_spec_422(client):
     _created(client)
-    r = client.put("/api/v1/components/user_demo/draft",
-                   json={"draft_rev": 0, "spec": {"tpl": "${window.alert}"}})
+    r = client.put("/api/v1/components/user_demo/draft", json={"draft_rev": 0, "spec": {"tpl": "${window.alert}"}})
     assert r.status_code == 422
     body = r.json()
     assert body["code"] == 6008 and body["data"]["violations"]
@@ -316,12 +398,13 @@ def test_save_draft_unknown_type_404(client):
 
 # ---------------------------------------------------------------- 读侧自愈（6002 自动开修订草稿）
 
+
 def _drop_draft_rows(db_session, type_name: str) -> None:
     """删除 draft 版本行（模拟基线化产物：有历史版本、无进行中草稿 → 原 6002 场景）。"""
     comp = db_session.query(Component).filter_by(type=type_name).one()
     db_session.query(ComponentVersion).filter(
-        ComponentVersion.component_id == comp.id,
-        ComponentVersion.state == "draft").delete()
+        ComponentVersion.component_id == comp.id, ComponentVersion.state == "draft"
+    ).delete()
     db_session.commit()
     db_session.expire_all()
 
@@ -349,15 +432,15 @@ def test_get_draft_auto_reopens_from_published(client, db_session):
     logs = db_session.query(ComponentLog).filter_by(component_id=comp.id).all()
     assert logs[-1].action == "reopen_draft" and "v1" in logs[-1].remark
     # 修订草稿可直接编辑保存（乐观锁基线 draft_rev 不变，save 正常 bump）
-    r2 = client.put("/api/v1/components/gate_demo/draft",
-                    json={"draft_rev": 0, "spec": dict(_publishable_spec(), summary="改")})
+    r2 = client.put(
+        "/api/v1/components/gate_demo/draft", json={"draft_rev": 0, "spec": dict(_publishable_spec(), summary="改")}
+    )
     assert r2.status_code == 200 and r2.json()["data"]["draftRev"] == 1
 
 
 def test_get_draft_auto_reopens_from_frozen_when_no_published(client, db_session):
     """无已发版、仅有冻结历史（基线化发 v1 前修订）：回退复制最新冻结行内容开稿。"""
-    _make_frozen(client, type_name="reopen_frozen",
-                 spec={"fields": [{"key": "a", "label": "A", "uiType": "text"}]})
+    _make_frozen(client, type_name="reopen_frozen", spec={"fields": [{"key": "a", "label": "A", "uiType": "text"}]})
     _drop_draft_rows(db_session, "reopen_frozen")
     r = client.get("/api/v1/components/reopen_frozen/draft")
     assert r.status_code == 200, r.text
@@ -387,6 +470,7 @@ def test_get_draft_reopen_zero_history_materializes_empty(client, db_session):
 
 # ---------------------------------------------------------------- B5 冻结版本
 
+
 def _freeze(client, remark=None):
     payload = {"remark": remark} if remark else {}
     return client.post("/api/v1/components/user_demo/versions", json=payload)
@@ -401,8 +485,7 @@ def _versions(client):
 def test_freeze_creates_immutable_version(client, db_session):
     """冻结：v1 → frozen + 自动开启 v2 空草稿（§8 状态机自环）；draft_rev 不 bump。"""
     _created(client)
-    r = client.put("/api/v1/components/user_demo/draft",
-                   json={"draft_rev": 0, "spec": VALID_BODY["spec"]})
+    r = client.put("/api/v1/components/user_demo/draft", json={"draft_rev": 0, "spec": VALID_BODY["spec"]})
     saved_hash = r.json()["data"]["specHash"]
     r = _freeze(client, remark="首个冻结")
     assert r.status_code == 200
@@ -426,17 +509,14 @@ def test_freeze_creates_immutable_version(client, db_session):
 def test_frozen_version_immutable_after_further_edits(client, db_session):
     """§19.1 硬验收：冻结后再怎么编辑新草稿，冻结行 spec_json/spec_hash 永不变化。"""
     _created(client)
-    client.put("/api/v1/components/user_demo/draft",
-               json={"draft_rev": 0, "spec": {"fields": [{"key": "a"}]}})
+    client.put("/api/v1/components/user_demo/draft", json={"draft_rev": 0, "spec": {"fields": [{"key": "a"}]}})
     _freeze(client)
     frozen_hash = _versions(client)["items"][-1]["specHash"]
-    frozen_json = (
-        db_session.query(ComponentVersion)
-        .filter_by(type="user_demo", version=1).one().spec_json
-    )
+    frozen_json = db_session.query(ComponentVersion).filter_by(type="user_demo", version=1).one().spec_json
     # 持续编辑 v2 草稿并再冻结 v2
-    client.put("/api/v1/components/user_demo/draft",
-               json={"draft_rev": 1, "spec": {"fields": [{"key": "b"}, {"key": "c"}]}})
+    client.put(
+        "/api/v1/components/user_demo/draft", json={"draft_rev": 1, "spec": {"fields": [{"key": "b"}, {"key": "c"}]}}
+    )
     _freeze(client)
     comp = db_session.query(Component).filter_by(type="user_demo").one()
     v1 = db_session.query(ComponentVersion).filter_by(component_id=comp.id, version=1).one()
@@ -481,16 +561,18 @@ def test_version_snapshot_returns_immutable_spec_for_upgrade_review(client):
     """升级向导须比较真实的旧/新不可变版本，列表端点不能以摘要替代快照。"""
     _created(client)
     spec = {"fields": [{"key": "legacy_table", "label": "旧表", "uiType": "text"}]}
-    assert client.put("/api/v1/components/user_demo/draft",
-                      json={"draft_rev": 0, "spec": spec}).status_code == 200
+    assert client.put("/api/v1/components/user_demo/draft", json={"draft_rev": 0, "spec": spec}).status_code == 200
     assert _freeze(client).status_code == 200
 
     r = client.get("/api/v1/components/user_demo/versions/1")
 
     assert r.status_code == 200, r.text
     assert r.json()["data"] == {
-        "type": "user_demo", "version": 1, "state": "frozen",
-        "spec": spec, "specHash": _spec_hash(spec),
+        "type": "user_demo",
+        "version": 1,
+        "state": "frozen",
+        "spec": spec,
+        "specHash": _spec_hash(spec),
     }
 
 
@@ -507,8 +589,7 @@ def test_freeze_rbac(client):
 def test_freeze_hash_matches_canonical_spec(client):
     """冻结哈希 = 规范化内容哈希：键序不同的等价声明冻结结果一致。"""
     _created(client)
-    client.put("/api/v1/components/user_demo/draft",
-               json={"draft_rev": 0, "spec": {"y": {"b": 1, "a": 2}, "x": 1}})
+    client.put("/api/v1/components/user_demo/draft", json={"draft_rev": 0, "spec": {"y": {"b": 1, "a": 2}, "x": 1}})
     _freeze(client)
     items = {i["version"]: i for i in _versions(client)["items"]}
     assert items[1]["specHash"] == _spec_hash({"x": 1, "y": {"a": 2, "b": 1}})
@@ -522,8 +603,7 @@ def test_analyst_viewer_cannot_design(client):
     for role in ("analyst", "viewer"):
         set_role(client.app, role)
         assert client.get("/api/v1/components/user_demo/draft").status_code == 403
-        assert client.put("/api/v1/components/user_demo/draft",
-                          json={"draft_rev": 0, "spec": {}}).status_code == 403
+        assert client.put("/api/v1/components/user_demo/draft", json={"draft_rev": 0, "spec": {}}).status_code == 403
     set_role(client.app, "dev")
 
 
@@ -546,17 +626,22 @@ def test_m0_readonly_catalog_still_works(client):
 
 # ---------------------------------------------------------------- M2 发布闸门（Task D1，§13 八项）
 
+
 def _publishable_spec() -> dict:
     """可通过全部闸门的最小声明（uiType 取 9 基元）。"""
     return {"fields": [{"key": "sql", "label": "SQL", "uiType": "text"}]}
 
 
-def _make_frozen(client, type_name="gate_demo", execution_model="dag-engine",
-                 executor="sql", spec=None, executable=True) -> dict:
+def _make_frozen(
+    client, type_name="gate_demo", execution_model="dag-engine", executor="sql", spec=None, executable=True
+) -> dict:
     """建组件（初始 spec 直接合法）→ 冻结 v1（draft_rev 恒 0，freeze 不 bump）。"""
     body = {
-        "type": type_name, "name": type_name, "profile": "dag",
-        "execution_model": execution_model, "executor": executor,
+        "type": type_name,
+        "name": type_name,
+        "profile": "dag",
+        "execution_model": execution_model,
+        "executor": executor,
         "executable": executable,
         "spec": spec if spec is not None else _publishable_spec(),
     }
@@ -569,8 +654,9 @@ def _make_frozen(client, type_name="gate_demo", execution_model="dag-engine",
 
 def _publish(client, type_name="gate_demo", version=1, draft_rev=0, **extra):
     set_role(client.app, "admin")
-    return client.post("/api/v1/components/%s/publish" % type_name,
-                       json={"version": version, "draft_rev": draft_rev, **extra})
+    return client.post(
+        "/api/v1/components/%s/publish" % type_name, json={"version": version, "draft_rev": draft_rev, **extra}
+    )
 
 
 def _gate_item(body: dict, gate: str) -> dict:
@@ -596,8 +682,7 @@ def test_publish_success_frozen_to_published(client, db_session):
 def test_publish_rbac_dev_403(client):
     """§13-1 权限：dev 可设计不可发布（publish_component 由 admin 独占，§14）。"""
     _make_frozen(client)
-    assert client.post("/api/v1/components/gate_demo/publish",
-                       json={"version": 1, "draft_rev": 0}).status_code == 403
+    assert client.post("/api/v1/components/gate_demo/publish", json={"version": 1, "draft_rev": 0}).status_code == 403
 
 
 def test_publish_gate_pure_data_dirty_frozen_row(client, db_session):
@@ -613,8 +698,7 @@ def test_publish_gate_pure_data_dirty_frozen_row(client, db_session):
     assert not item["ok"] and "eval" in item["msg"]
     # 失败不落状态：版本行仍 frozen、主表未发布
     db_session.expire_all()
-    assert db_session.query(ComponentVersion).filter_by(
-        component_id=comp.id, version=1).one().state == "frozen"
+    assert db_session.query(ComponentVersion).filter_by(component_id=comp.id, version=1).one().state == "frozen"
     assert db_session.query(Component).filter_by(type="gate_demo").one().state == "draft"
 
 
@@ -629,8 +713,9 @@ def test_publish_gate_whitelist_uitype(client):
 
 def test_publish_gate_whitelist_pick_keys(client):
     """§13-3 白名单：pick 键不在 ResourcePick 契约内 → 拒（mode 合法键不误伤）。"""
-    spec = {"fields": [{"key": "ds", "label": "数据源", "uiType": "resource",
-                        "pick": {"mode": "table", "bogusKey": 1}}]}
+    spec = {
+        "fields": [{"key": "ds", "label": "数据源", "uiType": "resource", "pick": {"mode": "table", "bogusKey": 1}}]
+    }
     _make_frozen(client, spec=spec)
     r = _publish(client)
     assert r.status_code == 422
@@ -639,8 +724,7 @@ def test_publish_gate_whitelist_pick_keys(client):
 
 def test_publish_gate_drop_policy(client):
     """§13-4 dropPolicy：未知键与非法枚举 → 拒（占位符/函数由纯数据闸门覆盖）。"""
-    spec = dict(_publishable_spec(),
-                dropPolicy={"mystery": 1, "autoConnect": {"upstream": "sideways"}})
+    spec = dict(_publishable_spec(), dropPolicy={"mystery": 1, "autoConnect": {"upstream": "sideways"}})
     _make_frozen(client, spec=spec)
     r = _publish(client)
     assert r.status_code == 422
@@ -674,16 +758,22 @@ def test_publish_gate_contract_executor_not_in_registry(client):
 
 def test_publish_gate_contract_canvas_device(client):
     """§13-5：canvas-device 必须 executable=false；置 false 后可发布。"""
-    _make_frozen(client, type_name="gate_canvas_bad",
-                 execution_model="canvas-device", executor=None, executable=True)
+    _make_frozen(client, type_name="gate_canvas_bad", execution_model="canvas-device", executor=None, executable=True)
     r = _publish(client, type_name="gate_canvas_bad")
     assert r.status_code == 422
     assert not _gate_item(r.json(), "contract")["ok"]
     # 置 false（回填语义：装饰件本来就不执行）
-    client.post("/api/v1/components", json={
-        "type": "gate_canvas_ok", "name": "装饰", "profile": "dag",
-        "execution_model": "canvas-device", "executable": False,
-        "spec": _publishable_spec()})
+    client.post(
+        "/api/v1/components",
+        json={
+            "type": "gate_canvas_ok",
+            "name": "装饰",
+            "profile": "dag",
+            "execution_model": "canvas-device",
+            "executable": False,
+            "spec": _publishable_spec(),
+        },
+    )
     client.post("/api/v1/components/gate_canvas_ok/versions", json={})
     assert _publish(client, type_name="gate_canvas_ok").status_code == 200
 
@@ -695,8 +785,10 @@ def test_publish_gate_contract_runtime_only_palette(client):
     assert r.status_code == 422
     assert "paletteVisible" in _gate_item(r.json(), "contract")["msg"]
     # 显式声明后可发布
-    client.put("/api/v1/components/gate_rt_bad/draft",
-               json={"draft_rev": 0, "spec": dict(_publishable_spec(), paletteVisible=False)})
+    client.put(
+        "/api/v1/components/gate_rt_bad/draft",
+        json={"draft_rev": 0, "spec": dict(_publishable_spec(), paletteVisible=False)},
+    )
     client.post("/api/v1/components/gate_rt_bad/versions", json={})
     r = _publish(client, type_name="gate_rt_bad", version=2, draft_rev=1)
     assert r.status_code == 200, r.text
@@ -713,8 +805,7 @@ def test_publish_gate_hash_consistency_catalog_collision(client):
 def test_publish_lock_conflict_409(client):
     """§13-7 乐观锁：draft_rev 不一致 → 409 COMP_LOCK_CONFLICT 带 currentRev（§16）。"""
     _make_frozen(client)
-    client.put("/api/v1/components/gate_demo/draft",
-               json={"draft_rev": 0, "spec": _publishable_spec()})  # rev → 1
+    client.put("/api/v1/components/gate_demo/draft", json={"draft_rev": 0, "spec": _publishable_spec()})  # rev → 1
     r = _publish(client, draft_rev=0)
     assert r.status_code == 409
     body = r.json()
@@ -737,18 +828,14 @@ def test_publish_supersedes_previous_published(client, db_session):
     """发布 v2：v1 自动转 offline 让位（既有工作流引用仍可运行，§8），主表指向 v2。"""
     _make_frozen(client)
     assert _publish(client).status_code == 200
-    client.put("/api/v1/components/gate_demo/draft",
-               json={"draft_rev": 0, "spec": _publishable_spec()})
+    client.put("/api/v1/components/gate_demo/draft", json={"draft_rev": 0, "spec": _publishable_spec()})
     client.post("/api/v1/components/gate_demo/versions", json={})
     r = _publish(client, version=2, draft_rev=1)
     assert r.status_code == 200
     assert r.json()["data"]["supersededVersion"] == 1
     comp = db_session.query(Component).filter_by(type="gate_demo").one()
     assert comp.published_version == 2
-    v1, v2 = (
-        db_session.query(ComponentVersion)
-        .filter_by(component_id=comp.id, version=v).one() for v in (1, 2)
-    )
+    v1, v2 = (db_session.query(ComponentVersion).filter_by(component_id=comp.id, version=v).one() for v in (1, 2))
     assert v1.state == "offline" and v2.state == "published"
 
 
@@ -770,11 +857,24 @@ def test_publish_gate_no_force_bypass(client):
 
 def test_publish_gate_page_bindings_missing_resource(client):
     """§9.1 page 分支发布闸门：绑定引用不存在的 $wf.novar → 422 闸门失败，含「引用资源不存在」。"""
-    widgets = [{"id": "w1", "kind": "var-label", "rect": {"x": 0, "y": 0, "w": 80, "h": 24},
-                "props": {}, "style": {},
-                "bindings": {"value": {"kind": "variable", "path": "$wf.novar", "fallback": "-"}}}]
-    _make_frozen(client, type_name="page_gate_bad", execution_model="page",
-                 executor=None, executable=False, spec=_page_spec(widgets))
+    widgets = [
+        {
+            "id": "w1",
+            "kind": "var-label",
+            "rect": {"x": 0, "y": 0, "w": 80, "h": 24},
+            "props": {},
+            "style": {},
+            "bindings": {"value": {"kind": "variable", "path": "$wf.novar", "fallback": "-"}},
+        }
+    ]
+    _make_frozen(
+        client,
+        type_name="page_gate_bad",
+        execution_model="page",
+        executor=None,
+        executable=False,
+        spec=_page_spec(widgets),
+    )
     r = _publish(client, type_name="page_gate_bad")
     assert r.status_code == 422 and r.json()["code"] == 6003
     item = _gate_item(r.json(), "page_bindings")
@@ -788,17 +888,47 @@ def test_publish_gate_page_bindings_existing_resources_ok(client, db_session):
     db_session.add(DataSource(id=1, name="dw", type="mysql"))
     db_session.commit()
     widgets = [
-        {"id": "w1", "kind": "var-label", "rect": {"x": 0, "y": 0, "w": 80, "h": 24}, "props": {}, "style": {},
-         "bindings": {"value": {"kind": "variable", "path": "$wf.sales", "fallback": "-"}}},
-        {"id": "w2", "kind": "table", "rect": {"x": 0, "y": 30, "w": 200, "h": 100}, "props": {}, "style": {},
-         "bindings": {"data": {"kind": "query", "datasourceId": 1, "fallback": "数据集"}}},
-        {"id": "w3", "kind": "meta-field", "rect": {"x": 0, "y": 140, "w": 80, "h": 24}, "props": {}, "style": {},
-         "bindings": {"value": {"kind": "metadata", "path": "ds/dw/t_user.name", "fallback": "-"}}},
-        {"id": "w4", "kind": "text", "rect": {"x": 0, "y": 170, "w": 80, "h": 24}, "props": {}, "style": {},
-         "bindings": {"value": {"kind": "static", "fallback": "文本"}}},
+        {
+            "id": "w1",
+            "kind": "var-label",
+            "rect": {"x": 0, "y": 0, "w": 80, "h": 24},
+            "props": {},
+            "style": {},
+            "bindings": {"value": {"kind": "variable", "path": "$wf.sales", "fallback": "-"}},
+        },
+        {
+            "id": "w2",
+            "kind": "table",
+            "rect": {"x": 0, "y": 30, "w": 200, "h": 100},
+            "props": {},
+            "style": {},
+            "bindings": {"data": {"kind": "query", "datasourceId": 1, "fallback": "数据集"}},
+        },
+        {
+            "id": "w3",
+            "kind": "meta-field",
+            "rect": {"x": 0, "y": 140, "w": 80, "h": 24},
+            "props": {},
+            "style": {},
+            "bindings": {"value": {"kind": "metadata", "path": "ds/dw/t_user.name", "fallback": "-"}},
+        },
+        {
+            "id": "w4",
+            "kind": "text",
+            "rect": {"x": 0, "y": 170, "w": 80, "h": 24},
+            "props": {},
+            "style": {},
+            "bindings": {"value": {"kind": "static", "fallback": "文本"}},
+        },
     ]
-    _make_frozen(client, type_name="page_gate_ok", execution_model="page",
-                 executor=None, executable=False, spec=_page_spec(widgets))
+    _make_frozen(
+        client,
+        type_name="page_gate_ok",
+        execution_model="page",
+        executor=None,
+        executable=False,
+        spec=_page_spec(widgets),
+    )
     r = _publish(client, type_name="page_gate_ok")
     assert r.status_code == 200, r.text
 
@@ -806,12 +936,17 @@ def test_publish_gate_page_bindings_existing_resources_ok(client, db_session):
 def test_run_publish_gates_returns_all_items_in_order():
     """闸门纯函数：六项全评估不短路，按 §13 序返回（2/3/4/5/6/8；1、7 在端点层）。"""
     from api.component_design import run_publish_gates
-    comp = SimpleNamespace(type="x_demo", execution_model="demo-only",
-                           executor=None, executable=True)
-    items = run_publish_gates(comp, {"fields": "bad", "tpl": "${eval(x)}"},
-                              catalog_types=frozenset({"x_demo"}))
+
+    comp = SimpleNamespace(type="x_demo", execution_model="demo-only", executor=None, executable=True)
+    items = run_publish_gates(comp, {"fields": "bad", "tpl": "${eval(x)}"}, catalog_types=frozenset({"x_demo"}))
     assert [i["gate"] for i in items] == [
-        "pure_data", "whitelist", "drop_policy", "contract", "hash_consistency", "references"]
+        "pure_data",
+        "whitelist",
+        "drop_policy",
+        "contract",
+        "hash_consistency",
+        "references",
+    ]
     by = {i["gate"]: i["ok"] for i in items}
     assert not by["pure_data"] and not by["whitelist"] and not by["contract"]
     assert not by["hash_consistency"]
@@ -822,8 +957,10 @@ def test_run_publish_gates_returns_all_items_in_order():
 # 6002 重开的内置组件草稿复制 BaselineSpec（参数表单承载于 form.params），
 # 设计器 fields 模式保存写回原源；发布闸门 whitelist/references 必须同口径双源校验。
 
+
 def test_gate_whitelist_form_params_source():
     from api.component_design import _gate_whitelist
+
     # form.params 合法 → 通过
     spec = {"form": {"params": [{"key": "sql", "label": "SQL", "uiType": "text"}]}}
     assert _gate_whitelist(spec) == []
@@ -832,8 +969,10 @@ def test_gate_whitelist_form_params_source():
     msgs = _gate_whitelist(spec_bad)
     assert any("form.params[0]" in m and "uiType" in m for m in msgs)
     # 双源并存 → fields 优先（form.params 不参与校验）
-    spec_both = {"fields": [{"key": "a", "label": "A", "uiType": "text"}],
-                 "form": {"params": [{"key": "b", "uiType": "magic"}]}}
+    spec_both = {
+        "fields": [{"key": "a", "label": "A", "uiType": "text"}],
+        "form": {"params": [{"key": "b", "uiType": "magic"}]},
+    }
     assert _gate_whitelist(spec_both) == []
     # 两者皆非数组 → 报错（提示兼容双源）
     assert _gate_whitelist({"fields": "bad"}) != []
@@ -841,20 +980,33 @@ def test_gate_whitelist_form_params_source():
 
 def test_gate_references_form_params_source():
     from api.component_design import _gate_references
-    spec_ok = {"form": {"params": [{"key": "sql", "label": "SQL", "uiType": "text"}]},
-               "dropPolicy": {"prefillFromUpstream": ["sql"]}}
+
+    spec_ok = {
+        "form": {"params": [{"key": "sql", "label": "SQL", "uiType": "text"}]},
+        "dropPolicy": {"prefillFromUpstream": ["sql"]},
+    }
     assert _gate_references(spec_ok) == []
-    spec_bad = {"form": {"params": [{"key": "sql", "label": "SQL", "uiType": "text"}]},
-                "dropPolicy": {"prefillFromUpstream": ["ghost"]}}
+    spec_bad = {
+        "form": {"params": [{"key": "sql", "label": "SQL", "uiType": "text"}]},
+        "dropPolicy": {"prefillFromUpstream": ["ghost"]},
+    }
     assert "ghost" in _gate_references(spec_bad)[0]
 
 
 def test_publish_gate_form_params_end_to_end(client, db_session):
     """八段底稿形态（form.params + dropPolicy）走完整发布链 → 闸门双源全过，publish 200。"""
-    spec = {"form": {"title": "参数", "params": [{"key": "sql", "label": "SQL", "uiType": "text", "visible": True}]},
-            "dropPolicy": {"prefillFromUpstream": ["sql"], "autoName": "{type}_{n}"}}
-    _make_frozen(client, type_name="gate_form_params", execution_model="canvas-device",
-                 executor=None, executable=False, spec=spec)
+    spec = {
+        "form": {"title": "参数", "params": [{"key": "sql", "label": "SQL", "uiType": "text", "visible": True}]},
+        "dropPolicy": {"prefillFromUpstream": ["sql"], "autoName": "{type}_{n}"},
+    }
+    _make_frozen(
+        client,
+        type_name="gate_form_params",
+        execution_model="canvas-device",
+        executor=None,
+        executable=False,
+        spec=spec,
+    )
     r = _publish(client, type_name="gate_form_params")
     assert r.status_code == 200, r.text
     assert r.json()["data"]["publishedVersion"] == 1
@@ -868,18 +1020,37 @@ def test_publish_gate_form_params_end_to_end(client, db_session):
 # 隔离闸门第 6 项同名拦截（同名拒绝已在专门用例覆盖），execution 契约按目录原样复刻。
 _GAP_DEMO = [
     # etl（16 + op_script，与 stream 共享、只列一次）
-    "src_db", "src_file", "out_db", "out_file",
-    "op_filter", "op_join", "op_expr", "op_agg", "op_dedup", "op_select",
-    "op_sort", "op_split", "op_merge", "op_replace", "op_sample", "op_udf",
+    "src_db",
+    "src_file",
+    "out_db",
+    "out_file",
+    "op_filter",
+    "op_join",
+    "op_expr",
+    "op_agg",
+    "op_dedup",
+    "op_select",
+    "op_sort",
+    "op_split",
+    "op_merge",
+    "op_replace",
+    "op_sample",
+    "op_udf",
     "op_script",
     # stream（9 + op_script 共享）
-    "s_kafka", "s_cdc", "p_filter", "p_join", "p_window", "op_cep",
-    "o_doris", "o_kafka", "o_alert",
+    "s_kafka",
+    "s_cdc",
+    "p_filter",
+    "p_join",
+    "p_window",
+    "op_cep",
+    "o_doris",
+    "o_kafka",
+    "o_alert",
 ]
-_GAP_CASES = (
-    [("gap27_%s" % t, "demo-only") for t in _GAP_DEMO]
-    + [("gap3_%s" % t, "dag-engine") for t in ("stream_input", "stream_fuse", "stream_output")]
-)
+_GAP_CASES = [("gap27_%s" % t, "demo-only") for t in _GAP_DEMO] + [
+    ("gap3_%s" % t, "dag-engine") for t in ("stream_input", "stream_fuse", "stream_output")
+]
 
 
 @pytest.mark.parametrize("type_name,em", _GAP_CASES)
@@ -894,6 +1065,7 @@ def test_gate30_gap_components_rejected(client, type_name, em):
 
 
 # ---------------------------------------------------------------- D3 下线 / 回滚 / 影响面
+
 
 def _offline(client, type_name="gate_demo", remark=None):
     set_role(client.app, "admin")
@@ -922,8 +1094,7 @@ def test_offline_success_keeps_published_version(client, db_session):
     ver = db_session.query(ComponentVersion).filter_by(component_id=comp.id, version=1).one()
     assert ver.state == "offline" and ver.published_time
     logs = db_session.query(ComponentLog).filter_by(component_id=comp.id).all()
-    assert [lg.action for lg in logs] == [
-        "create", "freeze_version", "publish", "upgrade_strategy", "offline"]
+    assert [lg.action for lg in logs] == ["create", "freeze_version", "publish", "upgrade_strategy", "offline"]
     assert logs[-1].remark == "停用观察"
 
 
@@ -966,7 +1137,13 @@ def test_rollback_reactivates_offline_version(client, db_session):
     assert ver.state == "published"
     logs = db_session.query(ComponentLog).filter_by(component_id=comp.id).all()
     assert [lg.action for lg in logs] == [
-        "create", "freeze_version", "publish", "upgrade_strategy", "offline", "rollback"]
+        "create",
+        "freeze_version",
+        "publish",
+        "upgrade_strategy",
+        "offline",
+        "rollback",
+    ]
     assert logs[-1].remark == "恢复上线"
 
 
@@ -981,10 +1158,7 @@ def test_rollback_supersedes_current_published(client, db_session):
     assert r.status_code == 200
     assert r.json()["data"]["supersededVersion"] == 2
     comp = db_session.query(Component).filter_by(type="gate_demo").one()
-    v1, v2 = (
-        db_session.query(ComponentVersion)
-        .filter_by(component_id=comp.id, version=v).one() for v in (1, 2)
-    )
+    v1, v2 = (db_session.query(ComponentVersion).filter_by(component_id=comp.id, version=v).one() for v in (1, 2))
     assert v1.state == "published" and v2.state == "offline"
     assert comp.published_version == 1
 
@@ -1007,13 +1181,15 @@ def test_rollback_rbac_dev_403(client):
 
 def _insert_wf(db_session, wf_id: str, code: int, doc: dict, release_state: str = "offline") -> None:
     """直插工作流定义行（原生 SQL：模型模块分裂坑见 B5 注记；NOT NULL 列显式给值）。"""
-    db_session.execute(text(
-        "INSERT INTO t_wf_definition (id, code, name, version, release_state, flag,"
-        " project_code, graph_json, create_time, update_time)"
-        " VALUES (:id, :code, :name, 1, :rs, 'yes', 'default', :gj,"
-        " CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)"),
-        {"id": wf_id, "code": code, "name": wf_id, "rs": release_state,
-         "gj": json.dumps(doc, ensure_ascii=False)})
+    db_session.execute(
+        text(
+            "INSERT INTO t_wf_definition (id, code, name, version, release_state, flag,"
+            " project_code, graph_json, create_time, update_time)"
+            " VALUES (:id, :code, :name, 1, :rs, 'yes', 'default', :gj,"
+            " CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)"
+        ),
+        {"id": wf_id, "code": code, "name": wf_id, "rs": release_state, "gj": json.dumps(doc, ensure_ascii=False)},
+    )
     db_session.commit()
     db_session.expire_all()
 
@@ -1027,9 +1203,9 @@ def test_impacted_lists_referencing_workflows(client, db_session):
     _make_frozen(client)
     assert _publish(client, version=1).status_code == 200  # published v1
     _insert_wf(db_session, "wf_a", 101, {"nodes": [_node("gate_demo", 1), _node("other_x", 1, "n2")]})
-    _insert_wf(db_session, "wf_b", 102, {"nodes": [_node("gate_demo", 2)]})   # 引用超前 v2
-    _insert_wf(db_session, "wf_c", 103, {"nodes": [_node("other_x", 1)]})     # 不引用
-    _insert_wf(db_session, "wf_d", 104, {"nodes": []})                        # 空文档
+    _insert_wf(db_session, "wf_b", 102, {"nodes": [_node("gate_demo", 2)]})  # 引用超前 v2
+    _insert_wf(db_session, "wf_c", 103, {"nodes": [_node("other_x", 1)]})  # 不引用
+    _insert_wf(db_session, "wf_d", 104, {"nodes": []})  # 空文档
     r = client.get("/api/v1/components/gate_demo/impacted")
     assert r.status_code == 200
     d = r.json()["data"]
@@ -1095,18 +1271,19 @@ def test_registry_lists_governance_rows(client, db_session):
 
 # ---------------------------------------------------------------- 发布即刷新（Task 3，§9：refresh-refs）
 
+
 def test_refresh_refs_publish_auto_and_idempotent(client, db_session):
     """§9 发布即刷新：publish v2 自动升级落后引用（响应挂 data.refresh）→ 手动再刷幂等 0。
 
     落后引用的图无法经 save 端点写入（R6 拒漂移引用），直插模拟存量——与 impacted 分节同模式。
     """
     set_role(client.app, "dev")
-    _make_frozen(client, type_name="page_board_a", execution_model="page",
-                 executor=None, executable=False, spec=_page_spec([]))
+    _make_frozen(
+        client, type_name="page_board_a", execution_model="page", executor=None, executable=False, spec=_page_spec([])
+    )
     assert _publish(client, type_name="page_board_a").status_code == 200
     _insert_wf(db_session, "wf_ref_1", 901, {"nodes": [_node("page_board_a", 1)]})
-    client.put("/api/v1/components/page_board_a/draft",
-               json={"draft_rev": 0, "spec": _page_spec([])})
+    client.put("/api/v1/components/page_board_a/draft", json={"draft_rev": 0, "spec": _page_spec([])})
     client.post("/api/v1/components/page_board_a/versions", json={})
     r = _publish(client, type_name="page_board_a", version=2, draft_rev=1)
     assert r.status_code == 200, r.text
@@ -1125,11 +1302,11 @@ def test_refresh_refs_publish_auto_and_idempotent(client, db_session):
 def test_refresh_refs_manual_bumps_stale_refs(client, db_session):
     """手动刷新：发布后新出现的落后引用（存量回填/补偿场景）显式升级 + wf.version bump。"""
     set_role(client.app, "dev")
-    _make_frozen(client, type_name="page_board_b", execution_model="page",
-                 executor=None, executable=False, spec=_page_spec([]))
+    _make_frozen(
+        client, type_name="page_board_b", execution_model="page", executor=None, executable=False, spec=_page_spec([])
+    )
     assert _publish(client, type_name="page_board_b").status_code == 200
-    client.put("/api/v1/components/page_board_b/draft",
-               json={"draft_rev": 0, "spec": _page_spec([])})
+    client.put("/api/v1/components/page_board_b/draft", json={"draft_rev": 0, "spec": _page_spec([])})
     client.post("/api/v1/components/page_board_b/versions", json={})
     assert _publish(client, type_name="page_board_b", version=2, draft_rev=1).status_code == 200
     _insert_wf(db_session, "wf_ref_2", 902, {"nodes": [_node("page_board_b", 1)]})
@@ -1139,8 +1316,7 @@ def test_refresh_refs_manual_bumps_stale_refs(client, db_session):
     assert body["refreshed"] == 1 and body["publishedVersion"] == 2
     assert body["items"][0] == {"wfId": "wf_ref_2", "wfName": "wf_ref_2"}
     db_session.expire_all()
-    row = db_session.execute(text(
-        "SELECT version FROM t_wf_definition WHERE id = 'wf_ref_2'")).one()
+    row = db_session.execute(text("SELECT version FROM t_wf_definition WHERE id = 'wf_ref_2'")).one()
     assert row[0] == 2  # wf.version bump（v1 → v2）
     r2 = client.post("/api/v1/components/page_board_b/refresh-refs")
     assert r2.json()["data"]["refreshed"] == 0  # 幂等
@@ -1148,8 +1324,7 @@ def test_refresh_refs_manual_bumps_stale_refs(client, db_session):
     snaps = db_session.query(WfDefinitionLog).filter_by(wf_code=902, version=2).all()
     assert len(snaps) == 1 and snaps[0].operator == "tester"
     assert "刷新" in (snaps[0].remark or "")
-    assert json.loads(snaps[0].graph_json)["nodes"][0]["data"]["componentRef"] == {
-        "type": "page_board_b", "version": 2}
+    assert json.loads(snaps[0].graph_json)["nodes"][0]["data"]["componentRef"] == {"type": "page_board_b", "version": 2}
 
 
 def test_refresh_refs_draft_conflict_409(client):
@@ -1161,6 +1336,7 @@ def test_refresh_refs_draft_conflict_409(client):
 
 
 # ---------------------------------------------------------------- Task 15 删除（CRUD 补齐，仅草稿可删）
+
 
 def test_delete_draft_success(client, db_session):
     """仅草稿可删：主表行 + draft 版本行删除；log 只追加，delete 留痕行保留（type 冗余列可读）。"""
@@ -1199,10 +1375,18 @@ def test_delete_published_409(client):
 
 def test_delete_builtin_scope_409(client, db_session):
     """系统目录组件（scope=builtin）不可删。"""
-    db_session.add(Component(type="builtin_x", name="系统组件", profile="dag",
-                             scope="builtin", execution_model="dag-engine",
-                             executor="demo_handler", state="published",
-                             published_version=1))
+    db_session.add(
+        Component(
+            type="builtin_x",
+            name="系统组件",
+            profile="dag",
+            scope="builtin",
+            execution_model="dag-engine",
+            executor="demo_handler",
+            state="published",
+            published_version=1,
+        )
+    )
     db_session.commit()
     r = client.delete("/api/v1/components/builtin_x")
     assert r.status_code == 409 and r.json()["code"] == 6002

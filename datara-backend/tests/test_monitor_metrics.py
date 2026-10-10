@@ -8,11 +8,20 @@ class FakeRedis:
         self.values = {}
         self.hashes = {}
 
-    def set(self, key, value, ex): self.values[key] = (value, ex)
-    def get(self, key): return self.values.get(key, (None,))[0]
-    def hset(self, key, field, value): self.hashes.setdefault(key, {})[field] = value
-    def hgetall(self, key): return self.hashes.get(key, {})
-    def expire(self, key, ttl): self.values[f"ttl:{key}"] = ttl
+    def set(self, key, value, ex):
+        self.values[key] = (value, ex)
+
+    def get(self, key):
+        return self.values.get(key, (None,))[0]
+
+    def hset(self, key, field, value):
+        self.hashes.setdefault(key, {})[field] = value
+
+    def hgetall(self, key):
+        return self.hashes.get(key, {})
+
+    def expire(self, key, ttl):
+        self.values[f"ttl:{key}"] = ttl
 
 
 def test_reported_metrics_include_time_and_known_node(monkeypatch) -> None:

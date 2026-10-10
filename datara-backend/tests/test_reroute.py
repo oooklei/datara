@@ -41,10 +41,7 @@ def test_parse_graph_preserves_port_distinct_paths_through_reroute():
 
     graph, _ = parse_graph(doc)
 
-    assert [
-        (edge["source"], edge["target"], edge["sourceHandle"])
-        for edge in graph.edges
-    ] == [
+    assert [(edge["source"], edge["target"], edge["sourceHandle"]) for edge in graph.edges] == [
         ("start", "switch", None),
         ("switch", "sql", "yes"),
         ("switch", "sql", "no"),

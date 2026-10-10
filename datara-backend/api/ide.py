@@ -94,11 +94,7 @@ def _purge_tasks() -> None:
     """清理 TTL 过期的完成任务（注册表与事件队列及时释放，防内存泄漏）。"""
     now = time.monotonic()
     with _TASKS_LOCK:
-        for tid in [
-            tid
-            for tid, t in IDE_TASKS.items()
-            if t.status != "running" and now - t.created > TASK_TTL_SEC
-        ]:
+        for tid in [tid for tid, t in IDE_TASKS.items() if t.status != "running" and now - t.created > TASK_TTL_SEC]:
             IDE_TASKS.pop(tid, None)
 
 
@@ -183,8 +179,7 @@ def _exec_worker(task: _Task, payload: dict) -> None:
         if ds is None:
             raise RuntimeError("数据源不存在或已删除")
         env_params = {
-            g.name: (g.value or "")
-            for g in sess.query(GlobalParam).filter(GlobalParam.env == payload["env"]).all()
+            g.name: (g.value or "") for g in sess.query(GlobalParam).filter(GlobalParam.env == payload["env"]).all()
         }
         conn = open_connection(ds, db=payload["db"], read_timeout=READ_TIMEOUT)
         with conn.cursor() as cur:
@@ -300,9 +295,7 @@ def _exec_worker(task: _Task, payload: dict) -> None:
                     events.put({"event": "log", "data": {"type": "txn", "action": "COMMIT"}})
                 else:
                     conn.rollback()
-                    events.put(
-                        {"event": "log", "data": {"type": "txn", "action": "ROLLBACK", "reason": status}}
-                    )
+                    events.put({"event": "log", "data": {"type": "txn", "action": "ROLLBACK", "reason": status}})
             except Exception as exc:  # noqa: BLE001
                 logger.warning("事务收口失败: task=%s %r", task.task_id, exc)
     except Exception as exc:  # noqa: BLE001 连接级失败（数据源缺失/连不上/超时）
@@ -336,11 +329,9 @@ def _exec_worker(task: _Task, payload: dict) -> None:
         elapsed = int((time.monotonic() - started) * 1000)
         history_id = None
         # rendered 全文 = 各语句渲染后 SQL 以 `;\n` 拼接（与 _split_sql 分号口径一致，可重拆分重放）
-        rendered_sql = ";\n".join(
-            e["rendered"]
-            for e in entries
-            if e.get("stmtIndex", -1) >= 0 and e.get("rendered")
-        ) or None
+        rendered_sql = (
+            ";\n".join(e["rendered"] for e in entries if e.get("stmtIndex", -1) >= 0 and e.get("rendered")) or None
+        )
         try:
             hist = IdeHistory(
                 user_id=payload["user_id"],
@@ -381,7 +372,12 @@ def _exec_worker(task: _Task, payload: dict) -> None:
             _ACTIVE -= 1
         logger.info(
             "IDE 执行完成: task=%s ds=%s db=%s 语句数=%d → %s %dms",
-            task.task_id, payload["ds_id"], payload["db"], len(statements), status, elapsed,
+            task.task_id,
+            payload["ds_id"],
+            payload["db"],
+            len(statements),
+            status,
+            elapsed,
         )
 
 
@@ -434,7 +430,13 @@ def ide_execute(
         raise
     logger.info(
         "IDE 任务提交: task=%s ds=%s db=%s 语句数=%d mode=%s env=%s（操作人 %s）",
-        task.task_id, ds.name, body.db, len(statements), body.mode, body.env, user.user_name,
+        task.task_id,
+        ds.name,
+        body.db,
+        len(statements),
+        body.mode,
+        body.env,
+        user.user_name,
     )
     return ok({"taskId": task.task_id})
 
@@ -753,20 +755,13 @@ def _json_stream(ds: DataSource, db_name: Optional[str], sql_text: str) -> Itera
                 columns = [col[0] for col in cur.description]
                 prefix = b"," if not first_section else b""
                 first_section = False
-                yield (
-                    prefix
-                    + b'{"columns":'
-                    + json.dumps(columns, ensure_ascii=False).encode("utf-8")
-                    + b',"rows":['
-                )
+                yield (prefix + b'{"columns":' + json.dumps(columns, ensure_ascii=False).encode("utf-8") + b',"rows":[')
                 first_row = True
                 for row in cur:
                     if total_rows >= EXPORT_ROW_CAP:
                         truncated = True
                         break
-                    piece = json.dumps(
-                        [_jsonable(v) for v in row], ensure_ascii=False, default=str
-                    ).encode("utf-8")
+                    piece = json.dumps([_jsonable(v) for v in row], ensure_ascii=False, default=str).encode("utf-8")
                     yield (b"," if not first_row else b"") + piece
                     first_row = False
                     total_rows += 1

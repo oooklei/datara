@@ -10,7 +10,6 @@
 
 from pathlib import Path
 
-import pytest
 
 # 使用 WORKER_TYPES 的后端模块应全部 import 自 components.catalog
 # （dag.py 现仅 import STREAM_TYPES，scheduler.py 重构后不再使用，均已移出清单）
@@ -66,13 +65,15 @@ def test_backend_files_import_from_catalog():
         assert 'WORKER_TYPES = ("sql"' not in text, f"{rel} 存在内联 WORKER_TYPES 字面量副本"
         assert "WORKER_TYPES = frozenset({'sql'" not in text, f"{rel} 存在内联 WORKER_TYPES 字面量副本"
         # 必须 import 自 catalog（G-14：dag.py 额外导入 STREAM_TYPES，允许同行）
-        assert "from components.catalog import" in text and "WORKER_TYPES" in text, \
+        assert "from components.catalog import" in text and "WORKER_TYPES" in text, (
             f"{rel} 未从 components.catalog 导入 WORKER_TYPES"
+        )
     # dag.py 同口径：类型集合必须 import 自真源（当前仅 STREAM_TYPES）
     dag_text = (repo_root / _DAG_STREAM_IMPORT).read_text(encoding="utf-8")
     assert "WORKER_TYPES = " not in dag_text, "dag.py 不得内联 WORKER_TYPES 字面量副本"
-    assert "from components.catalog import STREAM_TYPES" in dag_text, \
+    assert "from components.catalog import STREAM_TYPES" in dag_text, (
         "dag.py 的 STREAM_TYPES 必须从 components.catalog 导入"
+    )
 
 
 def test_engine_handler_covers_master_types():
@@ -82,12 +83,14 @@ def test_engine_handler_covers_master_types():
 
     # 通过 _execute_node 的 handler 字典反查（源码静态解析）
     import inspect
+
     src = inspect.getsource(WorkflowExecuteRunnable._execute_node)
     # handler = { "start": ..., "end": ..., ... }.get(node_type)
     # 简单断言：每个 MASTER_HANDLER_TYPES 成员都在源码中被引用为字典 key
     for t in sorted(MASTER_HANDLER_TYPES):
-        assert f'"{t}": self._' in src or f"'{t}': self._" in src, \
+        assert f'"{t}": self._' in src or f"'{t}': self._" in src, (
             f"MASTER_HANDLER_TYPES 中 {t} 未在引擎 handler 字典中注册"
+        )
 
 
 def test_dispatachable_matches_catalog():

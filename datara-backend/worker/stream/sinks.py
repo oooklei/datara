@@ -46,8 +46,11 @@ def build_sink(job_id: int, node_id: str, params: dict) -> "SinkBase":
 
 def _kv_rows(params: dict, key: str) -> list:
     rows = params.get(key) or []
-    return [(str(r["key"]).strip(), str(r.get("value") or "").strip())
-            for r in rows if isinstance(r, dict) and str(r.get("key") or "").strip()]
+    return [
+        (str(r["key"]).strip(), str(r.get("value") or "").strip())
+        for r in rows
+        if isinstance(r, dict) and str(r.get("key") or "").strip()
+    ]
 
 
 class SinkBase:
@@ -99,7 +102,7 @@ class TableSink(SinkBase):
         p = params or {}
         self.ds_ref = p.get("outDs")
         self.table = str(p.get("outTable") or "")
-        self.field_map = _kv_rows(p, "outFieldMap")   # (目标列, 流字段)
+        self.field_map = _kv_rows(p, "outFieldMap")  # (目标列, 流字段)
         self.unique_key = str(p.get("uniqueKey") or "").strip()
         self.batch = max(1, int(p.get("outBatchSize") or 500))
         self._buf: list = []
@@ -138,8 +141,11 @@ class TableSink(SinkBase):
         rows, self._buf = self._buf, []
         self._ensure_conn()
         data_cols = [d for _, d in self.field_map] if self.field_map else None
-        cols = [t for t, _ in self.field_map] if self.field_map else \
-            sorted({k for row in rows for k in (row.get("data") or {})})
+        cols = (
+            [t for t, _ in self.field_map]
+            if self.field_map
+            else sorted({k for row in rows for k in (row.get("data") or {})})
+        )
         self._ensure_table(cols)
         placeholders = ", ".join(["%s"] * len(cols))
         sql = f"INSERT INTO `{self.table}` ({', '.join('`' + c + '`' for c in cols)}) VALUES ({placeholders})"
@@ -151,8 +157,7 @@ class TableSink(SinkBase):
             with self._conn.cursor() as cur:
                 for row in rows:
                     data = row.get("data") or {}
-                    cur.execute(sql, [data.get(d) for d in data_cols] if data_cols else
-                                [data.get(c) for c in cols])
+                    cur.execute(sql, [data.get(d) for d in data_cols] if data_cols else [data.get(c) for c in cols])
             self._conn.commit()
         except Exception:
             self._conn.rollback()
@@ -228,8 +233,9 @@ class FileSink(SinkBase):
             self._opened_at = time.time()
             self._written = self.path.stat().st_size if self.path.exists() else 0
             logger.info("文件输出打开: %s → %s", self.raw_path, self.path)
-        need_roll = (self.roll_by == "size" and self._written >= self.size_mb * 1024 * 1024) or \
-                    (self.roll_by == "time" and time.time() - self._opened_at >= self.roll_minutes * 60)
+        need_roll = (self.roll_by == "size" and self._written >= self.size_mb * 1024 * 1024) or (
+            self.roll_by == "time" and time.time() - self._opened_at >= self.roll_minutes * 60
+        )
         if need_roll:
             self._fh.close()
             stamp = datetime.now().strftime("%Y%m%d%H%M%S")

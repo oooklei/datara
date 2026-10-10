@@ -31,12 +31,7 @@ def query_logs(instance_id: str, user: User = Depends(get_current_user), db: Ses
     """按运行实例编号查任务日志：[{taskInstanceId, logPath, content}]。"""
     if not instance_id.strip():
         raise ApiError(PARAM_INVALID, "instance_id 不能为空", status=400)
-    rows = (
-        db.query(TaskLog)
-        .filter(TaskLog.instance_id == instance_id.strip())
-        .order_by(TaskLog.id)
-        .all()
-    )
+    rows = db.query(TaskLog).filter(TaskLog.instance_id == instance_id.strip()).order_by(TaskLog.id).all()
     items = [
         {
             "taskInstanceId": row.task_instance_id,
@@ -54,12 +49,14 @@ def query_task_log(task_id: int, user: User = Depends(get_current_user), db: Ses
     row = db.query(TaskLog).filter(TaskLog.task_instance_id == task_id).first()
     if row is None:
         raise ApiError(PARAM_INVALID, "任务日志索引不存在: task_id=%s" % task_id, status=404)
-    return ok({
-        "taskInstanceId": row.task_instance_id,
-        "instanceId": row.instance_id,
-        "logPath": row.log_path,
-        "content": _read_log(row.log_path),
-    })
+    return ok(
+        {
+            "taskInstanceId": row.task_instance_id,
+            "instanceId": row.instance_id,
+            "logPath": row.log_path,
+            "content": _read_log(row.log_path),
+        }
+    )
 
 
 def _is_under_log_dir(path: str) -> bool:
@@ -91,12 +88,7 @@ def delete_instance_logs(
     total_files = 0
     total_skipped = 0
     for target in targets:
-        rows = (
-            db.query(TaskLog)
-            .filter(TaskLog.instance_id == target)
-            .order_by(TaskLog.id)
-            .all()
-        )
+        rows = db.query(TaskLog).filter(TaskLog.instance_id == target).order_by(TaskLog.id).all()
         removed_files = 0
         skipped_files = 0
         for row in rows:
@@ -117,13 +109,23 @@ def delete_instance_logs(
         total_deleted += len(rows)
         total_files += removed_files
         total_skipped += skipped_files
-        logger.info("删除实例日志: instance=%s rows=%s files=%s skipped=%s（用户 %s）",
-                    target, len(rows), removed_files, skipped_files, user.user_name)
+        logger.info(
+            "删除实例日志: instance=%s rows=%s files=%s skipped=%s（用户 %s）",
+            target,
+            len(rows),
+            removed_files,
+            skipped_files,
+            user.user_name,
+        )
     db.commit()
-    return ok({
-        "deleted": total_deleted, "files": total_files, "skipped": total_skipped,
-        "instances": len(targets),
-    })
+    return ok(
+        {
+            "deleted": total_deleted,
+            "files": total_files,
+            "skipped": total_skipped,
+            "instances": len(targets),
+        }
+    )
 
 
 def _remove_empty_dir(path: str) -> None:

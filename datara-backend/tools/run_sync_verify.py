@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """同步编排重构 1.9 实测驱动：登录 → 触发 3 用例 → 轮询实例终态 → 打印任务明细与 outputs。
 在 datara-master 容器内运行（网络直达 datara-api:8000）。"""
+
 import json
 import time
 import urllib.request
@@ -41,9 +42,11 @@ def main():
     WF_CODES = resolve_wf_codes(token)
     print("[1a] 用例 code 解析: %s" % sorted(WF_CODES))
     # 触发前既有实例快照（历史遗留同 code 实例，轮询与终态判定一律忽略）
-    pre = {str(r["instanceId"]) for r in
-           call("GET", "/instances?page_no=1&page_size=50", token=token)["list"]
-           if r.get("wfCode") in WF_CODES}
+    pre = {
+        str(r["instanceId"])
+        for r in call("GET", "/instances?page_no=1&page_size=50", token=token)["list"]
+        if r.get("wfCode") in WF_CODES
+    }
     print("[1b] 触发前既有实例 %d 个（忽略）" % len(pre))
     for wf in WFS:
         d = call("POST", "/workflow-definitions/%s/run" % wf, {}, token)
@@ -74,11 +77,32 @@ def main():
         print("== wfCode=%s instance=%s state=%s ==" % (wf_code, iid, state))
         for t in d.get("taskInstances") or []:
             out = t.get("outputs") or {}
-            keep = {k: v for k, v in out.items() if k in
-                    ("rows_read", "rows_written", "rows_skipped", "schemas_included", "error",
-                     "targetTable", "filePath", "rows", "strategy", "flagColumn")}
-            print("  %-14s %-10s %-8s %s" % (t.get("nodeType"), t.get("name"), t.get("state"),
-                                             json.dumps(keep, ensure_ascii=False) if keep else ""))
+            keep = {
+                k: v
+                for k, v in out.items()
+                if k
+                in (
+                    "rows_read",
+                    "rows_written",
+                    "rows_skipped",
+                    "schemas_included",
+                    "error",
+                    "targetTable",
+                    "filePath",
+                    "rows",
+                    "strategy",
+                    "flagColumn",
+                )
+            }
+            print(
+                "  %-14s %-10s %-8s %s"
+                % (
+                    t.get("nodeType"),
+                    t.get("name"),
+                    t.get("state"),
+                    json.dumps(keep, ensure_ascii=False) if keep else "",
+                )
+            )
             if t.get("state") not in ("success", "skipped", "skip"):
                 bad += 1
                 if t.get("logPath"):

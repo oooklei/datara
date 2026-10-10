@@ -64,12 +64,24 @@ def init_db() -> None:
     engine = get_engine()
     Base = models.Base
     Base.metadata.create_all(engine)
-    _ensure_column(engine, "t_ide_history", "rendered_sql",
-                   "MEDIUMTEXT NULL COMMENT '渲染后 SQL 全文（重放分页/导出用，09-22 加列）'")
-    _ensure_column(engine, "t_lineage_edge", "src_type",
-                   "VARCHAR(16) NOT NULL DEFAULT 'runtime' COMMENT '血缘来源 runtime/design（design 行 instance_id=0）'")
-    _ensure_column(engine, "t_lineage_field", "src_type",
-                   "VARCHAR(16) NOT NULL DEFAULT 'runtime' COMMENT '血缘来源 runtime/design（对齐边表）'")
+    _ensure_column(
+        engine,
+        "t_ide_history",
+        "rendered_sql",
+        "MEDIUMTEXT NULL COMMENT '渲染后 SQL 全文（重放分页/导出用，09-22 加列）'",
+    )
+    _ensure_column(
+        engine,
+        "t_lineage_edge",
+        "src_type",
+        "VARCHAR(16) NOT NULL DEFAULT 'runtime' COMMENT '血缘来源 runtime/design（design 行 instance_id=0）'",
+    )
+    _ensure_column(
+        engine,
+        "t_lineage_field",
+        "src_type",
+        "VARCHAR(16) NOT NULL DEFAULT 'runtime' COMMENT '血缘来源 runtime/design（对齐边表）'",
+    )
     logger.info("create_all 完成（meta 表兜底建表，幂等；增量列已保障）")
 
 
@@ -80,8 +92,10 @@ def _ensure_column(engine: Engine, table: str, col: str, ddl: str) -> None:
     try:
         with engine.connect() as conn:
             exists = conn.execute(
-                text("SELECT COUNT(*) FROM information_schema.COLUMNS "
-                     "WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = :t AND COLUMN_NAME = :c"),
+                text(
+                    "SELECT COUNT(*) FROM information_schema.COLUMNS "
+                    "WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = :t AND COLUMN_NAME = :c"
+                ),
                 {"t": table, "c": col},
             ).scalar()
             if not exists:

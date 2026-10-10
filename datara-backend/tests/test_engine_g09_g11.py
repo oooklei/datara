@@ -32,6 +32,7 @@ def _make_runnable(node_data=None):
 
         def runtime_scope(self, loop_iter):
             return {}
+
     r.resolver = _FakeResolver()
     _nd = node_data if node_data is not None else {}
     r._node_data = lambda nid: _nd
@@ -43,25 +44,40 @@ def test_hidden_inputs_follow_frozen_component_version(monkeypatch):
     r = _make_runnable({"componentRef": {"type": "user_sql", "version": 7}})
     r.wf_code = 42
 
-    row = type("Version", (), {
-        "spec_json": json.dumps({"extensions": {"hiddenInputs": ["runId", "nodeId", "workflowId", "tenantId", "evil"]}}),
-    })()
+    row = type(
+        "Version",
+        (),
+        {
+            "spec_json": json.dumps(
+                {"extensions": {"hiddenInputs": ["runId", "nodeId", "workflowId", "tenantId", "evil"]}}
+            ),
+        },
+    )()
 
     class Query:
-        def filter(self, *_args): return self
-        def first(self): return row
+        def filter(self, *_args):
+            return self
+
+        def first(self):
+            return row
 
     class Session:
-        def query(self, *_args): return Query()
-        def close(self): pass
+        def query(self, *_args):
+            return Query()
+
+        def close(self):
+            pass
 
     monkeypatch.setattr(engine, "new_session", lambda: Session())
     assert r._hidden_inputs("n_sql") == {
-        "runId": "i-test", "nodeId": "n_sql", "workflowId": 42,
+        "runId": "i-test",
+        "nodeId": "n_sql",
+        "workflowId": 42,
     }
 
 
 # ---------------- G-09 循环批次切片 ----------------
+
 
 def test_loop_batch_info_slices_by_batch_size():
     """collection=a,b,c,d,e batchSize=2 → 3 批（2,2,1）。"""
@@ -93,6 +109,7 @@ def test_loop_batch_info_default_batch_size():
 
 
 # ---------------- G-11 notify 触发时机 ----------------
+
 
 def _make_runnable_with_graph(pred_states=None, node_data=None):
     """创建带图结构的 runnable（mock preds 上游状态）。"""

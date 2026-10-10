@@ -22,8 +22,7 @@ from tools.datagen.gen import connect
 from tools.datagen.reconcile import REPORT_DIR, write_report
 
 
-def import_dir(cfg: DatagenConfig, csv_dir: Path, schema_name: str,
-               truncate: bool, log=print) -> dict:
+def import_dir(cfg: DatagenConfig, csv_dir: Path, schema_name: str, truncate: bool, log=print) -> dict:
     tables = {t.name: t for t in cfg.tables if t.schema_name == schema_name}
     if not tables:
         raise ConfigError(f"tables.yaml 无 schema：{schema_name}")
@@ -59,8 +58,7 @@ def import_dir(cfg: DatagenConfig, csv_dir: Path, schema_name: str,
     try:
         cur = conn.cursor()
         for f, t, idx in plans:
-            sql = (f"INSERT INTO {t.name} ({','.join(t.col_names)}) "
-                   f"VALUES ({','.join(['%s'] * len(t.col_names))})")
+            sql = f"INSERT INTO {t.name} ({','.join(t.col_names)}) VALUES ({','.join(['%s'] * len(t.col_names))})"
             if truncate:
                 cur.execute(f"TRUNCATE TABLE {t.name}")
             n, buf = 0, []
@@ -80,8 +78,7 @@ def import_dir(cfg: DatagenConfig, csv_dir: Path, schema_name: str,
             db_rows = cur.fetchone()[0]
             conn.commit()
             ok = db_rows == n if truncate else db_rows >= n
-            results.append({"table": t.name, "file": f.name, "csv_rows": n,
-                            "db_rows": db_rows, "pass": ok})
+            results.append({"table": t.name, "file": f.name, "csv_rows": n, "db_rows": db_rows, "pass": ok})
             log(f"[import] {t.name}: CSV {n:,} 行 → 库 {db_rows:,} 行 {'✓' if ok else '✗'}")
     except Exception:
         conn.rollback()
@@ -92,8 +89,11 @@ def import_dir(cfg: DatagenConfig, csv_dir: Path, schema_name: str,
     mismatch = [r for r in results if not r["pass"]]
     report = {
         "generated_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-        "mode": "import", "schema": schema_name, "db": db,
-        "source_dir": str(csv_dir), "truncate": truncate,
+        "mode": "import",
+        "schema": schema_name,
+        "db": db,
+        "source_dir": str(csv_dir),
+        "truncate": truncate,
         "tables": results,
         "summary": {"tables": len(results), "mismatch": len(mismatch)},
         "status": "PASS" if not mismatch else "FAIL",

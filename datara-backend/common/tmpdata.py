@@ -73,9 +73,7 @@ def _promote(session: Session, row: TmpData) -> None:
         conn = open_connection(ds)
         try:
             with conn.cursor() as cur:
-                cur.execute(
-                    "RENAME TABLE `%s`.`%s` TO `%s`.`%s`" % (ds.db_name, row.ref, ds.db_name, formal)
-                )
+                cur.execute("RENAME TABLE `%s`.`%s` TO `%s`.`%s`" % (ds.db_name, row.ref, ds.db_name, formal))
             conn.commit()
         finally:
             conn.close()
@@ -94,11 +92,7 @@ def finalize_instance_tmp(instance_id: str, success: bool) -> None:
     """
     session = new_session()
     try:
-        rows = (
-            session.query(TmpData)
-            .filter(TmpData.instance_id == instance_id, TmpData.status == "active")
-            .all()
-        )
+        rows = session.query(TmpData).filter(TmpData.instance_id == instance_id, TmpData.status == "active").all()
         for row in rows:
             if row.retention == "immediate":
                 if clean_tmp_data(session, row):

@@ -7,9 +7,14 @@ from alert import channels
 
 def _settings(**overrides):
     values = {
-        "alert_webhook_url": "", "alert_delivery_timeout": 3.0,
-        "alert_email_to": "", "smtp_host": "", "smtp_port": 25,
-        "smtp_user": "", "smtp_pwd": "", "smtp_from": "datara@example.test",
+        "alert_webhook_url": "",
+        "alert_delivery_timeout": 3.0,
+        "alert_email_to": "",
+        "smtp_host": "",
+        "smtp_port": 25,
+        "smtp_user": "",
+        "smtp_pwd": "",
+        "smtp_from": "datara@example.test",
         "smtp_use_tls": False,
     }
     values.update(overrides)
@@ -30,8 +35,12 @@ def test_webhook_posts_json(monkeypatch) -> None:
 
     class Response:
         status = 204
-        def __enter__(self): return self
-        def __exit__(self, *_args): return None
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args):
+            return None
 
     def fake_open(req, timeout):
         captured.update(url=req.full_url, body=req.data.decode("utf-8"), timeout=timeout)

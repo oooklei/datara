@@ -76,6 +76,7 @@ def _loads(raw: Any) -> dict:
 
 # ---------- 消费组管理 ----------
 
+
 def ensure_group(stream: str, group: str) -> None:
     """幂等创建消费组（组不存在则从 0-0 建，BUSYGROUP 忽略）。"""
     try:
@@ -93,6 +94,7 @@ def ensure_all_groups() -> None:
 
 
 # ---------- 任务流（master → worker） ----------
+
 
 def priority_stream(priority: int) -> str:
     """优先级 1~5 → 三档流（4~5→high，3→normal，1~2→low）。"""
@@ -113,9 +115,7 @@ def read_tasks(consumer: str, block_ms: int = 1000, count: int = 1) -> list:
     client = get_client()
     streams = {s: ">" for s in TASK_STREAMS}
     try:
-        result = client.xreadgroup(
-            WORKER_GROUP, consumer, streams, count=count, block=block_ms
-        )
+        result = client.xreadgroup(WORKER_GROUP, consumer, streams, count=count, block=block_ms)
     except redis.exceptions.ResponseError as exc:
         # 消费组缺失（如 Redis 重启丢流）时自愈重建
         if "NOGROUP" in str(exc):
@@ -141,14 +141,18 @@ def claim_stale_tasks(consumer: str, min_idle_ms: int = 60000) -> list:
     for stream in TASK_STREAMS:
         try:
             result = client.xautoclaim(
-                stream, WORKER_GROUP, consumer, min_idle_time=min_idle_ms,
-                start_id="0-0", count=10,
+                stream,
+                WORKER_GROUP,
+                consumer,
+                min_idle_time=min_idle_ms,
+                start_id="0-0",
+                count=10,
             )
         except redis.exceptions.ResponseError:
             ensure_all_groups()
             continue
         # redis-py 5.x 返回 [next_start_id, [(msg_id, fields), ...], [deleted]]
-        for msg_id, fields in (result[1] if result else []):
+        for msg_id, fields in result[1] if result else []:
             payload = fields.get("data")
             if payload is None:
                 continue
@@ -157,6 +161,7 @@ def claim_stale_tasks(consumer: str, min_idle_ms: int = 60000) -> list:
 
 
 # ---------- 状态上报流（worker → master） ----------
+
 
 def add_state(payload: dict) -> str:
     """任务状态上报入流（worker）。"""
@@ -167,9 +172,7 @@ def read_states(consumer: str, block_ms: int = 1000, count: int = 5) -> list:
     """master 消费状态上报。返回 [(msg_id, payload)]。"""
     client = get_client()
     try:
-        result = client.xreadgroup(
-            MASTER_GROUP, consumer, {STATE_STREAM: ">"}, count=count, block=block_ms
-        )
+        result = client.xreadgroup(MASTER_GROUP, consumer, {STATE_STREAM: ">"}, count=count, block=block_ms)
     except redis.exceptions.ResponseError as exc:
         if "NOGROUP" in str(exc):
             ensure_all_groups()
@@ -188,6 +191,7 @@ def ack_state(msg_id: str) -> None:
 
 
 # ---------- kill 中断标记 ----------
+
 
 def set_kill(task_id: int, reason: str = "stop", ttl: int = 86400) -> None:
     """任务中断标记（master：取消/超时时设置，worker 执行器周期检查）。
@@ -211,6 +215,7 @@ def clear_kill(task_id: int) -> None:
 
 
 # ---------- 会话 token ----------
+
 
 def save_token(token: str, user_json: str, ttl: int) -> None:
     """SETEX 存会话，TTL 到期自动失效。"""

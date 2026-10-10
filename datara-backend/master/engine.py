@@ -19,15 +19,30 @@ from common import queue
 from common.config import get_settings
 from common.db import new_session
 from common.log import get_logger, set_instance_id
-from common.models import Component, ComponentVersion, DataSource, StreamJob, TaskInstance, TaskLog, TRunNodeArtifact, WorkflowInstance, now
+from common.models import (
+    Component,
+    ComponentVersion,
+    DataSource,
+    StreamJob,
+    TaskInstance,
+    TaskLog,
+    TRunNodeArtifact,
+    WorkflowInstance,
+    now,
+)
 from master import state
 from master.retry_classifier import classify_error, retry_decision
 from master.signature import node_signature
 from master.dag import Graph, loop_bodies
 from master.event_bus import publish_run_event
 from master.variables import (
-    VarResolver, clear_run_vars, eval_expr, get_run_vars,
-    load_levels, set_run_vars, time_var,
+    VarResolver,
+    clear_run_vars,
+    eval_expr,
+    get_run_vars,
+    load_levels,
+    set_run_vars,
+    time_var,
 )
 
 logger = get_logger("master.engine")
@@ -40,13 +55,15 @@ CHECKPOINTABLE_TYPES = frozenset({"sql"})  # conservative: only idempotent SQL n
 # worker 派发类节点全集（G-19 单一真源：由 components.catalog 统一定义，消除 4 处字面量副本）
 # 超时扫描（check_timeouts）/容错重派（_resume_sweep）/执行器分派（_execute_node）共用
 from components.catalog import WORKER_TYPES  # noqa: E402 — 必须在 common 导入之后
+
 # 流任务活跃状态（与 t_stream_job.status 注释同口径；stopped/failed 不算承载中）
 STREAM_ACTIVE_STATES = ("starting", "running", "reconnecting")
 
 # 同步编排链配置组件类型（编排链配置收集范围；sync/file_sync 派发前合并其 outputs.config）
 # C32-C35 细项 + 端点合一 endpoint_select（§3.2；运行图由 materialize_sync_exec 物化 sys_exec 执行节点）
-CHAIN_DETAIL_TYPES = frozenset({"src_select", "tgt_select", "field_map", "field_map_union",
-                                "condition_set", "endpoint_select"})
+CHAIN_DETAIL_TYPES = frozenset(
+    {"src_select", "tgt_select", "field_map", "field_map_union", "condition_set", "endpoint_select"}
+)
 
 # 运行态物化节点 id 前缀（同步编排端点合一 §3.2：设计态画布不含执行节点，装载时物化）
 SYS_EXEC_PREFIX = "sys_exec_"
@@ -76,35 +93,44 @@ def materialize_sync_exec(graph_json: dict, comp_versions: Optional[dict] = None
     raw_edges = graph_json.get("edges")
     if not isinstance(raw_nodes, list) or not isinstance(raw_edges, list):
         return graph_json
-    if any(isinstance(n, dict) and str(n.get("id") or "").startswith(SYS_EXEC_PREFIX)
-           and n.get("type") in ("sync", "file_sync")
-           for n in raw_nodes):
+    if any(
+        isinstance(n, dict)
+        and str(n.get("id") or "").startswith(SYS_EXEC_PREFIX)
+        and n.get("type") in ("sync", "file_sync")
+        for n in raw_nodes
+    ):
         return graph_json  # 已物化（防御：重复物化会令旧执行节点悬空）
     ep_nodes = [n for n in raw_nodes if isinstance(n, dict) and n.get("type") == "endpoint_select"]
     asserts = [n for n in raw_nodes if isinstance(n, dict) and n.get("type") == "assert"]
     if not ep_nodes or not asserts:
         return graph_json
     if len(ep_nodes) > 1:
-        logger.warning("画布含 %d 个端点选择组件，多链场景暂不支持物化，跳过"
-                       "（assert 将按未解析对账目标明确失败留痕）", len(ep_nodes))
+        logger.warning(
+            "画布含 %d 个端点选择组件，多链场景暂不支持物化，跳过（assert 将按未解析对账目标明确失败留痕）",
+            len(ep_nodes),
+        )
         return graph_json
     base_mode = str((ep_nodes[0].get("data") or {}).get("baseMode") or "src_base")
     exec_type = "file_sync" if base_mode == "file_sync" else "sync"
-    nid = SYS_EXEC_PREFIX + hashlib.md5(
-        str(ep_nodes[0].get("id") or "").encode("utf-8")).hexdigest()[:8]
+    nid = SYS_EXEC_PREFIX + hashlib.md5(str(ep_nodes[0].get("id") or "").encode("utf-8")).hexdigest()[:8]
     doc = dict(graph_json)
     doc["nodes"] = [dict(n) if isinstance(n, dict) else n for n in raw_nodes]
     doc["edges"] = [dict(e) for e in raw_edges if isinstance(e, dict)]
-    doc["nodes"].append({
-        "id": nid, "type": exec_type,
-        "data": {
-            "name": "文件入仓" if exec_type == "file_sync" else "同步执行",
+    doc["nodes"].append(
+        {
+            "id": nid,
             "type": exec_type,
-            # §9.6：按源组件（endpoint_select）published 版本注入，缺省兜底 v1
-            "componentRef": {"type": "endpoint_select",
-                             "version": (comp_versions or {}).get("endpoint_select") or 1},
-        },
-    })
+            "data": {
+                "name": "文件入仓" if exec_type == "file_sync" else "同步执行",
+                "type": exec_type,
+                # §9.6：按源组件（endpoint_select）published 版本注入，缺省兜底 v1
+                "componentRef": {
+                    "type": "endpoint_select",
+                    "version": (comp_versions or {}).get("endpoint_select") or 1,
+                },
+            },
+        }
+    )
     edges = doc["edges"]
     assert_ids = {str(a.get("id") or "") for a in asserts}
     rewritten = 0
@@ -114,10 +140,14 @@ def materialize_sync_exec(graph_json: dict, comp_versions: Optional[dict] = None
             rewritten += 1
     for a in asserts:  # 按文档序追加 sys_exec → assert（确定性顺序，failover 解析对齐）
         aid = str(a.get("id") or "")
-        edges.append({"id": "e_%s_%s" % (nid, aid), "source": nid, "target": aid,
-                      "sourceHandle": "", "label": ""})
-    logger.info("运行态物化: sys_exec 节点 %s（type=%s, baseMode=%s）改写 assert 入边 %d 条",
-                nid, exec_type, base_mode, rewritten)
+        edges.append({"id": "e_%s_%s" % (nid, aid), "source": nid, "target": aid, "sourceHandle": "", "label": ""})
+    logger.info(
+        "运行态物化: sys_exec 节点 %s（type=%s, baseMode=%s）改写 assert 入边 %d 条",
+        nid,
+        exec_type,
+        base_mode,
+        rewritten,
+    )
     return doc
 
 
@@ -157,6 +187,7 @@ def all_runnables() -> list:
 
 # ---------------- 工具 ----------------
 
+
 def _snapshot_lines(snapshot: dict, instance_id: str, node_name: str) -> list:
     """变量快照日志头（§10.3，明文不脱敏）。"""
     lines = ["===== 变量快照 instance_id=%s node=%s =====" % (instance_id, node_name)]
@@ -181,16 +212,13 @@ def _append_task_log(instance_id: str, task_id: int, lines: list) -> str:
 
 
 def _ensure_task_log_index(session, instance_id: str, task_id: int, path: str, host: str) -> None:
-    exists = (
-        session.query(TaskLog)
-        .filter(TaskLog.task_instance_id == task_id)
-        .first()
-    )
+    exists = session.query(TaskLog).filter(TaskLog.task_instance_id == task_id).first()
     if exists is None:
         session.add(TaskLog(instance_id=instance_id, task_instance_id=task_id, log_path=path, host=host))
 
 
 # ---------------- 执行 Runnable ----------------
+
 
 class WorkflowExecuteRunnable(threading.Thread):
     """单实例执行线程：拓扑推进 + 逻辑节点内联 + 定时器（延时/依赖/重试）。"""
@@ -205,17 +233,17 @@ class WorkflowExecuteRunnable(threading.Thread):
         self.stop_flag = False
         self.killed = False
 
-        self.rows: dict = {}       # {(node_id, loop_iter): {id,state,attempt,start_time,delay_until}}
+        self.rows: dict = {}  # {(node_id, loop_iter): {id,state,attempt,start_time,delay_until}}
         self.by_task_id: dict = {}  # {task_row_id: (node_id, loop_iter)}
         self.edge_status: dict = {}  # {(loop_iter, edge_idx): ready/skipped/broken}
-        self.chosen: dict = {}     # {(node_id, loop_iter): 命中分支 dict|None}
+        self.chosen: dict = {}  # {(node_id, loop_iter): 命中分支 dict|None}
         self.activated: set = set()
         self.loop_iter_now: dict = {}  # {loop_node_id: 当前迭代号}
         self.loop_members: dict = loop_bodies(graph)  # {loop_node_id: 体节点集}（§6.8）
-        self.timers_delay: dict = {}   # {key: datetime}
-        self.timers_retry: dict = {}   # {key: datetime}
-        self.timers_dep: dict = {}     # {key: datetime}
-        self.snapshots: dict = {}      # {node_name: snapshot} 实例级汇总
+        self.timers_delay: dict = {}  # {key: datetime}
+        self.timers_retry: dict = {}  # {key: datetime}
+        self.timers_dep: dict = {}  # {key: datetime}
+        self.snapshots: dict = {}  # {node_name: snapshot} 实例级汇总
         self.resolver: Optional[VarResolver] = None
         self.fail_defaults: dict = {}  # 定时/补数下发的任务缺省重试参数
         self.checkpoint_enabled = False
@@ -271,11 +299,7 @@ class WorkflowExecuteRunnable(threading.Thread):
     def _load_context(self) -> None:
         session = new_session()
         try:
-            instance = (
-                session.query(WorkflowInstance)
-                .filter(WorkflowInstance.instance_id == self.instance_id)
-                .first()
-            )
+            instance = session.query(WorkflowInstance).filter(WorkflowInstance.instance_id == self.instance_id).first()
             if instance is None:
                 raise ValueError("实例不存在: %s" % self.instance_id)
             variables = instance.variables if isinstance(instance.variables, dict) else {}
@@ -283,12 +307,14 @@ class WorkflowExecuteRunnable(threading.Thread):
             base = instance.schedule_time or instance.create_time or now()
             self.wf_code = int(instance.wf_code or 0)
             self.resolver = VarResolver(
-                self.instance_id, instance.wf_code,
-                load_levels(session, instance.wf_code, env_group_id), base,
+                self.instance_id,
+                instance.wf_code,
+                load_levels(session, instance.wf_code, env_group_id),
+                base,
             )
             self.fail_defaults = {
                 "retryTimes": int(variables.get("failRetryTimes") or 0),
-                "retryIntervalSec": int(variables.get("failRetryInterval") or 60) ,
+                "retryIntervalSec": int(variables.get("failRetryInterval") or 60),
             }
             self.checkpoint_enabled = variables.get("checkpointEnabled") is True
         finally:
@@ -297,16 +323,15 @@ class WorkflowExecuteRunnable(threading.Thread):
     def _load_rows(self) -> None:
         session = new_session()
         try:
-            rows = (
-                session.query(TaskInstance)
-                .filter(TaskInstance.instance_id == self.instance_id)
-                .all()
-            )
+            rows = session.query(TaskInstance).filter(TaskInstance.instance_id == self.instance_id).all()
             for row in rows:
                 key = (row.node_id or "", int(row.loop_iter or 0))
                 self.rows[key] = {
-                    "id": row.id, "state": row.state, "attempt": int(row.attempt or 1),
-                    "start_time": row.start_time, "delay_until": row.delay_until,
+                    "id": row.id,
+                    "state": row.state,
+                    "attempt": int(row.attempt or 1),
+                    "start_time": row.start_time,
+                    "delay_until": row.delay_until,
                 }
                 self.by_task_id[row.id] = key
         finally:
@@ -335,9 +360,11 @@ class WorkflowExecuteRunnable(threading.Thread):
             return {}
         session = new_session()
         try:
-            row = session.query(ComponentVersion).filter(
-                ComponentVersion.type == ref["type"], ComponentVersion.version == version
-            ).first()
+            row = (
+                session.query(ComponentVersion)
+                .filter(ComponentVersion.type == ref["type"], ComponentVersion.version == version)
+                .first()
+            )
             spec = json.loads(row.spec_json) if row and row.spec_json else {}
         except (TypeError, ValueError):
             return {}
@@ -355,24 +382,31 @@ class WorkflowExecuteRunnable(threading.Thread):
         session = new_session()
         try:
             for edge in self.graph.preds.get(node_id, []):
-                artifact = (session.query(TRunNodeArtifact)
-                            .filter(TRunNodeArtifact.run_id == self.instance_id,
-                                    TRunNodeArtifact.node_id == edge["source"])
-                            .first())
+                artifact = (
+                    session.query(TRunNodeArtifact)
+                    .filter(TRunNodeArtifact.run_id == self.instance_id, TRunNodeArtifact.node_id == edge["source"])
+                    .first()
+                )
                 if artifact is not None:
                     upstream[edge["source"]] = artifact.node_signature
-            signature = node_signature(
-                self._node_type(node_id), ref.get("version"), data, upstream)
+            signature = node_signature(self._node_type(node_id), ref.get("version"), data, upstream)
             body = outputs if isinstance(outputs, dict) else {}
             fingerprint = hashlib.sha256(
-                json.dumps(body, sort_keys=True, separators=(",", ":"), default=str).encode("utf-8")).hexdigest()
-            current = (session.query(TRunNodeArtifact)
-                       .filter(TRunNodeArtifact.run_id == self.instance_id,
-                               TRunNodeArtifact.node_id == node_id).first())
+                json.dumps(body, sort_keys=True, separators=(",", ":"), default=str).encode("utf-8")
+            ).hexdigest()
+            current = (
+                session.query(TRunNodeArtifact)
+                .filter(TRunNodeArtifact.run_id == self.instance_id, TRunNodeArtifact.node_id == node_id)
+                .first()
+            )
             if current is None:
-                current = TRunNodeArtifact(run_id=self.instance_id, node_id=node_id,
-                                           node_signature=signature, artifact_fingerprint=fingerprint,
-                                           refs=body.get("refs") if isinstance(body.get("refs"), dict) else None)
+                current = TRunNodeArtifact(
+                    run_id=self.instance_id,
+                    node_id=node_id,
+                    node_signature=signature,
+                    artifact_fingerprint=fingerprint,
+                    refs=body.get("refs") if isinstance(body.get("refs"), dict) else None,
+                )
                 session.add(current)
             else:
                 current.node_signature = signature
@@ -392,16 +426,20 @@ class WorkflowExecuteRunnable(threading.Thread):
             return False
         session = new_session()
         try:
-            current = (session.query(TRunNodeArtifact)
-                       .filter(TRunNodeArtifact.run_id == self.instance_id,
-                               TRunNodeArtifact.node_id == node_id).first())
+            current = (
+                session.query(TRunNodeArtifact)
+                .filter(TRunNodeArtifact.run_id == self.instance_id, TRunNodeArtifact.node_id == node_id)
+                .first()
+            )
             if current is None:
                 return False
             upstream: dict[str, str] = {}
             for edge in self.graph.preds.get(node_id, []):
-                parent = (session.query(TRunNodeArtifact)
-                          .filter(TRunNodeArtifact.run_id == self.instance_id,
-                                  TRunNodeArtifact.node_id == edge["source"]).first())
+                parent = (
+                    session.query(TRunNodeArtifact)
+                    .filter(TRunNodeArtifact.run_id == self.instance_id, TRunNodeArtifact.node_id == edge["source"])
+                    .first()
+                )
                 if parent is not None:
                     upstream[edge["source"]] = parent.node_signature
             data = self._node_data(node_id)
@@ -414,8 +452,11 @@ class WorkflowExecuteRunnable(threading.Thread):
         row = self.rows[key]
         row["state"] = state.SUCCESS
         row["end_time"] = now()
-        self._save_row(key, outputs={"cached": True, "artifactFingerprint": current.artifact_fingerprint},
-                       log_lines=["[master] checkpoint signature matched; worker dispatch skipped"])
+        self._save_row(
+            key,
+            outputs={"cached": True, "artifactFingerprint": current.artifact_fingerprint},
+            log_lines=["[master] checkpoint signature matched; worker dispatch skipped"],
+        )
         self._event("node_cached", node_id, {"artifactFingerprint": current.artifact_fingerprint})
         self._advance_downstream(node_id, loop_iter)
         return True
@@ -458,11 +499,7 @@ class WorkflowExecuteRunnable(threading.Thread):
     def _mark_instance_running(self) -> None:
         session = new_session()
         try:
-            instance = (
-                session.query(WorkflowInstance)
-                .filter(WorkflowInstance.instance_id == self.instance_id)
-                .first()
-            )
+            instance = session.query(WorkflowInstance).filter(WorkflowInstance.instance_id == self.instance_id).first()
             if instance is not None and instance.state == state.SUBMITTED:
                 instance.state = state.RUNNING
                 instance.start_time = now()
@@ -569,12 +606,23 @@ class WorkflowExecuteRunnable(threading.Thread):
         row["attempt"] += 1
         row["state"] = state.RETRY
         self.timers_retry[key] = now() + timedelta(seconds=decision.delay_seconds)
-        self._save_row(key, log_lines=[
-            "[master] 第 %s 次重试（%s）将于 %s 秒后派发" % (row["attempt"] - 1, decision.strategy, decision.delay_seconds)])
-        self._event("node_retry", node_id, {
-            "attempt": row["attempt"], "max": cons["retryTimes"] + 1,
-            "strategy": decision.strategy, "delaySeconds": decision.delay_seconds,
-        })
+        self._save_row(
+            key,
+            log_lines=[
+                "[master] 第 %s 次重试（%s）将于 %s 秒后派发"
+                % (row["attempt"] - 1, decision.strategy, decision.delay_seconds)
+            ],
+        )
+        self._event(
+            "node_retry",
+            node_id,
+            {
+                "attempt": row["attempt"],
+                "max": cons["retryTimes"] + 1,
+                "strategy": decision.strategy,
+                "delaySeconds": decision.delay_seconds,
+            },
+        )
         logger.info("任务重试安排: task=%s attempt=%s", row["id"], row["attempt"])
         return True
 
@@ -591,7 +639,8 @@ class WorkflowExecuteRunnable(threading.Thread):
                 queue.set_kill(row["id"], reason="timeout")  # worker 按 failure 收口（§14 项7）
                 logger.warning("任务超时: task=%s timeout=%ss → failure", row["id"], cons["timeoutSec"])
                 self._set_state(
-                    key, state.FAILURE,
+                    key,
+                    state.FAILURE,
                     outputs={"error": "timeout", "timeoutSec": cons["timeoutSec"]},
                     log_lines=["[master] 任务超时（%s 秒），标记中断并置 failure" % cons["timeoutSec"]],
                 )
@@ -639,8 +688,9 @@ class WorkflowExecuteRunnable(threading.Thread):
                 loop_key = (back["target"], 0)
                 loop_row = self.rows.get(loop_key)
                 if loop_row is not None and loop_row["state"] not in state.TERMINAL_STATES:
-                    self._set_state(loop_key, state.FAILURE,
-                                    log_lines=["[master] 循环体尾节点 %s 终止，循环中断" % source_id])
+                    self._set_state(
+                        loop_key, state.FAILURE, log_lines=["[master] 循环体尾节点 %s 终止，循环中断" % source_id]
+                    )
                     self._advance_downstream(back["target"], 0)
 
     def _pred_status(self, node_id: str, loop_iter: int) -> list:
@@ -748,18 +798,28 @@ class WorkflowExecuteRunnable(threading.Thread):
         self.snapshots[self._node_name(node_id)] = snapshot
 
         handler = {
-            "start": self._exec_start, "end": self._exec_end,
-            "conditions": self._exec_conditions, "switch": self._exec_switch,
-            "fork": self._exec_fork, "join": self._exec_join,
-            "merge": self._exec_merge, "delay": self._exec_delay,
-            "dependent": self._exec_dependent, "loop": self._exec_loop,
-            "variable": self._exec_variable, "assert": self._exec_assert,  # assert=C25（I12）
+            "start": self._exec_start,
+            "end": self._exec_end,
+            "conditions": self._exec_conditions,
+            "switch": self._exec_switch,
+            "fork": self._exec_fork,
+            "join": self._exec_join,
+            "merge": self._exec_merge,
+            "delay": self._exec_delay,
+            "dependent": self._exec_dependent,
+            "loop": self._exec_loop,
+            "variable": self._exec_variable,
+            "assert": self._exec_assert,  # assert=C25（I12）
             # C32-C35 同步编排细项组件 + 端点合一 endpoint_select：配置节点（直通，不执行实际操作）
-            "src_select": self._exec_passthrough, "tgt_select": self._exec_passthrough,
-            "field_map": self._exec_passthrough, "field_map_union": self._exec_passthrough,
-            "condition_set": self._exec_passthrough, "endpoint_select": self._exec_passthrough,
+            "src_select": self._exec_passthrough,
+            "tgt_select": self._exec_passthrough,
+            "field_map": self._exec_passthrough,
+            "field_map_union": self._exec_passthrough,
+            "condition_set": self._exec_passthrough,
+            "endpoint_select": self._exec_passthrough,
             # G1 流节点接线（Task C1）：批引擎状态占位，数据面由常驻流任务承载（I8 裁定②）
-            "stream_input": self._exec_stream, "stream_fuse": self._exec_stream,
+            "stream_input": self._exec_stream,
+            "stream_fuse": self._exec_stream,
             "stream_output": self._exec_stream,
             # G-17 修复：page_board 是页面宿主/渲染型节点（非执行节点），直通 SUCCESS，
             # 不落 executor_not_implemented FAILURE。正解（nonExecutor 第三类别）见 G-22 路线。
@@ -773,10 +833,15 @@ class WorkflowExecuteRunnable(threading.Thread):
                 return
             # G-11 修复：notify.trigger 真正驱动投递——触发时机与上游实际状态不符则跳过（SUCCESS 不落 worker）
             if node_type == "notify" and not self._notify_trigger_matches(node_id, loop_iter):
-                self._set_state(key, state.SUCCESS,
-                                outputs={"notified": False, "reason": "trigger_not_matched"},
-                                log_lines=["[master] 通知触发时机与上游状态不符，跳过（trigger=%s)"
-                                           % str(self._node_data(node_id).get("trigger") or "on_success")])
+                self._set_state(
+                    key,
+                    state.SUCCESS,
+                    outputs={"notified": False, "reason": "trigger_not_matched"},
+                    log_lines=[
+                        "[master] 通知触发时机与上游状态不符，跳过（trigger=%s)"
+                        % str(self._node_data(node_id).get("trigger") or "on_success")
+                    ],
+                )
                 self._advance_downstream(node_id, loop_iter)
                 return
             merge_logs = None
@@ -784,8 +849,12 @@ class WorkflowExecuteRunnable(threading.Thread):
                 resolved, merge_logs = self._merge_sync_chain_config(node_id, loop_iter, resolved)
             self._dispatch_worker(key, resolved, snapshot, extra_logs=merge_logs)
             return
-        self._set_state(key, state.FAILURE, outputs={"error": "executor_not_implemented"},
-                        log_lines=["[master] 执行器未实现（后续增量注册）: %s" % node_type])
+        self._set_state(
+            key,
+            state.FAILURE,
+            outputs={"error": "executor_not_implemented"},
+            log_lines=["[master] 执行器未实现（后续增量注册）: %s" % node_type],
+        )
         self._advance_downstream(node_id, loop_iter)
 
     def _expr_scope(self, loop_iter: int, data: dict) -> dict:
@@ -808,9 +877,12 @@ class WorkflowExecuteRunnable(threading.Thread):
         """配置节点直通（C32-C35 细项组件 + endpoint_select：src_select/tgt_select/field_map/
         field_map_union/condition_set/endpoint_select）。
         这些节点仅存储配置数据，不执行实际操作，直接置 SUCCESS 并推进下游。"""
-        self._set_state(key, state.SUCCESS,
-                        outputs={"config": resolved},
-                        log_lines=["[master] 配置节点直通: %s" % self._node_name(key[0])])
+        self._set_state(
+            key,
+            state.SUCCESS,
+            outputs={"config": resolved},
+            log_lines=["[master] 配置节点直通: %s" % self._node_name(key[0])],
+        )
         self._advance_downstream(key[0], key[1])
 
     def _exec_stream(self, key: tuple, resolved: dict) -> None:
@@ -826,39 +898,48 @@ class WorkflowExecuteRunnable(threading.Thread):
         node_id, loop_iter = key
         session = new_session()
         try:
-            instance = (
-                session.query(WorkflowInstance)
-                .filter(WorkflowInstance.instance_id == self.instance_id)
-                .first()
-            )
+            instance = session.query(WorkflowInstance).filter(WorkflowInstance.instance_id == self.instance_id).first()
             wf_code = int(instance.wf_code or 0) if instance else 0
             job = (
-                session.query(StreamJob)
-                .filter(StreamJob.wf_code == wf_code,
-                        StreamJob.status.in_(STREAM_ACTIVE_STATES))
-                .first()
-            ) if wf_code else None
+                (
+                    session.query(StreamJob)
+                    .filter(StreamJob.wf_code == wf_code, StreamJob.status.in_(STREAM_ACTIVE_STATES))
+                    .first()
+                )
+                if wf_code
+                else None
+            )
         finally:
             session.close()
         name = self._node_name(node_id)
         if job is not None:
-            self._set_state(key, state.SUCCESS,
-                            outputs={"streamJobId": job.id, "streamStatus": job.status},
-                            log_lines=["[master] 流节点由常驻流任务 #%s 承载（status=%s）: %s"
-                                       % (job.id, job.status, name)])
+            self._set_state(
+                key,
+                state.SUCCESS,
+                outputs={"streamJobId": job.id, "streamStatus": job.status},
+                log_lines=["[master] 流节点由常驻流任务 #%s 承载（status=%s）: %s" % (job.id, job.status, name)],
+            )
         else:
-            self._set_state(key, state.FAILURE,
-                            outputs={"error": "stream_job_not_started"},
-                            log_lines=["[master] 流节点无运行中的流任务: %s"
-                                       "（请先在画布启动流任务: POST /stream-jobs/start）" % name])
+            self._set_state(
+                key,
+                state.FAILURE,
+                outputs={"error": "stream_job_not_started"},
+                log_lines=[
+                    "[master] 流节点无运行中的流任务: %s（请先在画布启动流任务: POST /stream-jobs/start）" % name
+                ],
+            )
         self._advance_downstream(node_id, loop_iter)
 
     def _exec_start(self, key: tuple, resolved: dict) -> None:
-        self._set_state(key, state.SUCCESS,
-                        outputs={"startTime": now().strftime("%Y-%m-%d %H:%M:%S")},
-                        log_lines=_snapshot_lines(self.snapshots.get(self._node_name(key[0]), {}),
-                                                  self.instance_id, self._node_name(key[0]))
-                        + ["[master] 工作流启动，instance_id=%s" % self.instance_id])
+        self._set_state(
+            key,
+            state.SUCCESS,
+            outputs={"startTime": now().strftime("%Y-%m-%d %H:%M:%S")},
+            log_lines=_snapshot_lines(
+                self.snapshots.get(self._node_name(key[0]), {}), self.instance_id, self._node_name(key[0])
+            )
+            + ["[master] 工作流启动，instance_id=%s" % self.instance_id],
+        )
         self._advance_downstream(key[0], key[1])
 
     def _exec_end(self, key: tuple, resolved: dict) -> None:
@@ -873,8 +954,7 @@ class WorkflowExecuteRunnable(threading.Thread):
                     merged.update(task.outputs)
         finally:
             session.close()
-        self._set_state(key, state.SUCCESS, outputs={"summary": merged},
-                        log_lines=["[master] 工作流结束"])
+        self._set_state(key, state.SUCCESS, outputs={"summary": merged}, log_lines=["[master] 工作流结束"])
         self._advance_downstream(key[0], key[1])
 
     def _decide_branch(self, node_id: str, loop_iter: int) -> Optional[dict]:
@@ -929,34 +1009,45 @@ class WorkflowExecuteRunnable(threading.Thread):
         # G-01 修复：无命中且无兜底 → FAILURE（而非 SUCCESS + 全部出边 skipped → 实例挂起）。
         # 有兜底（空 expr 分支）时命中兜底，行为不变。
         if branch is None:
-            self._set_state(key, state.FAILURE,
-                            outputs={"hitBranch": None, "error": "conditions_no_match"},
-                            log_lines=["[master] 条件分支无命中且无兜底 → failure"])
+            self._set_state(
+                key,
+                state.FAILURE,
+                outputs={"hitBranch": None, "error": "conditions_no_match"},
+                log_lines=["[master] 条件分支无命中且无兜底 → failure"],
+            )
         else:
-            self._set_state(key, state.SUCCESS,
-                            outputs={"hitBranch": name},
-                            log_lines=["[master] 条件分支命中: %s" % name])
+            self._set_state(
+                key, state.SUCCESS, outputs={"hitBranch": name}, log_lines=["[master] 条件分支命中: %s" % name]
+            )
         self._advance_downstream(key[0], key[1])
 
     def _exec_switch(self, key: tuple, resolved: dict) -> None:
         branch = self._decide_branch(key[0], key[1])
         self.chosen[key] = branch
-        self._set_state(key, state.SUCCESS,
-                        outputs={"hitValue": (branch or {}).get("expr")},
-                        log_lines=["[master] 切换命中: %s" % ((branch or {}).get("name") or "（默认/无命中）")])
+        self._set_state(
+            key,
+            state.SUCCESS,
+            outputs={"hitValue": (branch or {}).get("expr")},
+            log_lines=["[master] 切换命中: %s" % ((branch or {}).get("name") or "（默认/无命中）")],
+        )
         self._advance_downstream(key[0], key[1])
 
     def _exec_fork(self, key: tuple, resolved: dict) -> None:
         outs = len(self.graph.succs[key[0]])
-        self._set_state(key, state.SUCCESS, outputs={"parallelism": outs},
-                        log_lines=["[master] 并行分叉 %d 路" % outs])
+        self._set_state(key, state.SUCCESS, outputs={"parallelism": outs}, log_lines=["[master] 并行分叉 %d 路" % outs])
         self._advance_downstream(key[0], key[1])
 
     def _exec_join(self, key: tuple, resolved: dict) -> None:
-        summary = [{"source": e["source"], "state": (r["state"] if r else None)}
-                   for e, _s, r in self._pred_status(key[0], key[1])]
-        self._set_state(key, state.SUCCESS, outputs={"upstreams": summary},
-                        log_lines=["[master] 汇聚放行（%d 路上游）" % len(summary)])
+        summary = [
+            {"source": e["source"], "state": (r["state"] if r else None)}
+            for e, _s, r in self._pred_status(key[0], key[1])
+        ]
+        self._set_state(
+            key,
+            state.SUCCESS,
+            outputs={"upstreams": summary},
+            log_lines=["[master] 汇聚放行（%d 路上游）" % len(summary)],
+        )
         self._advance_downstream(key[0], key[1])
 
     def _exec_merge(self, key: tuple, resolved: dict) -> None:
@@ -973,9 +1064,9 @@ class WorkflowExecuteRunnable(threading.Thread):
                 first_out = task.outputs if task is not None else None
             finally:
                 session.close()
-        self._set_state(key, state.SUCCESS,
-                        outputs={"from": first_out},
-                        log_lines=["[master] 合并放行（首个到达上游）"])
+        self._set_state(
+            key, state.SUCCESS, outputs={"from": first_out}, log_lines=["[master] 合并放行（首个到达上游）"]
+        )
         self._advance_downstream(key[0], key[1])
 
     def _exec_variable(self, key: tuple, resolved: dict) -> None:
@@ -1012,16 +1103,16 @@ class WorkflowExecuteRunnable(threading.Thread):
             items[name] = value
         set_run_vars(self.instance_id, items)
         self.resolver.refresh_run_vars()
-        snapshot = {name: {"value": value, "source": "变量组件(C21)", "resolved": True}
-                    for name, value in items.items()}
+        snapshot = {
+            name: {"value": value, "source": "变量组件(C21)", "resolved": True} for name, value in items.items()
+        }
         self.snapshots[self._node_name(node_id)] = snapshot
         # C9 衔接（门 3 实测修复）：快照实时并入实例 variables（收口前被依赖方即可读）；
         # dict 拷贝后再赋值——原引用原地改 SQLAlchemy 不标记 dirty，会静默丢库
         try:
             session = new_session()
             try:
-                inst = session.query(WorkflowInstance).filter(
-                    WorkflowInstance.instance_id == self.instance_id).first()
+                inst = session.query(WorkflowInstance).filter(WorkflowInstance.instance_id == self.instance_id).first()
                 if inst is not None:
                     variables = dict(inst.variables) if isinstance(inst.variables, dict) else {}
                     variables["varSnapshot"] = {**(variables.get("varSnapshot") or {}), **snapshot}
@@ -1031,12 +1122,18 @@ class WorkflowExecuteRunnable(threading.Thread):
                 session.close()
         except Exception as exc:  # noqa: BLE001 快照落库失败不阻断注入
             logger.warning("实例变量快照落库失败: %r", exc)
-        log_lines = ["[master] 变量组件注入 %d 项: %s" % (
-            len(items), ", ".join("%s=%s" % (kv[0], kv[1]) for kv in items.items()) or "（空表）")]
+        log_lines = [
+            "[master] 变量组件注入 %d 项: %s"
+            % (len(items), ", ".join("%s=%s" % (kv[0], kv[1]) for kv in items.items()) or "（空表）")
+        ]
         if skipped:
             log_lines.append("[master] 跳过未注入: %s" % "; ".join(skipped))
-        self._set_state(key, state.SUCCESS, outputs={"injected": items},
-                        log_lines=log_lines + _snapshot_lines(snapshot, self.instance_id, self._node_name(node_id)))
+        self._set_state(
+            key,
+            state.SUCCESS,
+            outputs={"injected": items},
+            log_lines=log_lines + _snapshot_lines(snapshot, self.instance_id, self._node_name(node_id)),
+        )
         self._advance_downstream(node_id, loop_iter)
 
     def _exec_assert(self, key: tuple, resolved: dict) -> None:
@@ -1049,52 +1146,66 @@ class WorkflowExecuteRunnable(threading.Thread):
         """
         node_id, loop_iter = key
         data = self._node_data(node_id)
-        rules = [r for r in (data.get("rules") if isinstance(data.get("rules"), list) else [])
-                 if isinstance(r, dict) and str(r.get("key") or "").strip()]
+        rules = [
+            r
+            for r in (data.get("rules") if isinstance(data.get("rules"), list) else [])
+            if isinstance(r, dict) and str(r.get("key") or "").strip()
+        ]
         target = self._assert_target(node_id, loop_iter)
         if target is None:
-            self._set_state(key, state.FAILURE, outputs={"error": "assert_target_unresolved"},
-                            log_lines=["[master] 校验对象未解析（手选 ds.table 为空 / "
-                                       "显式上游引用无目标表 / 上游无可校验目标表）"])
+            self._set_state(
+                key,
+                state.FAILURE,
+                outputs={"error": "assert_target_unresolved"},
+                log_lines=["[master] 校验对象未解析（手选 ds.table 为空 / 显式上游引用无目标表 / 上游无可校验目标表）"],
+            )
             self._advance_downstream(node_id, loop_iter)
             return
         from common.dsconn import open_connection, quote_ident  # 惰性导入（校验节点低频，不占 master 启动路径）
+
         ds = self._assert_lookup_ds(target["ds_ref"])
         if ds is None:
-            self._set_state(key, state.FAILURE, outputs={"error": "assert_ds_not_found"},
-                            log_lines=["[master] 校验数据源不存在: %s" % target["ds_ref"]])
+            self._set_state(
+                key,
+                state.FAILURE,
+                outputs={"error": "assert_ds_not_found"},
+                log_lines=["[master] 校验数据源不存在: %s" % target["ds_ref"]],
+            )
             self._advance_downstream(node_id, loop_iter)
             return
         try:
             conn = open_connection(ds, db=target["schema"] or None)
         except Exception as exc:  # noqa: BLE001 连接失败 → failure
-            self._set_state(key, state.FAILURE, outputs={"error": str(exc)},
-                            log_lines=["[master] 校验数据源连接失败: %r" % exc])
+            self._set_state(
+                key, state.FAILURE, outputs={"error": str(exc)}, log_lines=["[master] 校验数据源连接失败: %r" % exc]
+            )
             self._advance_downstream(node_id, loop_iter)
             return
         try:
             with conn.cursor() as cur:
                 failed = self._assert_rules(cur, quote_ident(target["table"]), rules)
         except Exception as exc:  # noqa: BLE001 规则执行异常 → failure
-            self._set_state(key, state.FAILURE, outputs={"error": str(exc)},
-                            log_lines=["[master] 校验规则执行异常: %r" % exc])
+            self._set_state(
+                key, state.FAILURE, outputs={"error": str(exc)}, log_lines=["[master] 校验规则执行异常: %r" % exc]
+            )
             self._advance_downstream(node_id, loop_iter)
             return
         finally:
             conn.close()
         full_table = "%s.%s" % (target["schema"], target["table"]) if target["schema"] else target["table"]
-        log_lines = ["[master] 校验目标: %s @ %s" % (full_table, target["ds_ref"]),
-                     "[master] 规则 %d 项，不通过 %d 项" % (len(rules), len(failed))]
+        log_lines = [
+            "[master] 校验目标: %s @ %s" % (full_table, target["ds_ref"]),
+            "[master] 规则 %d 项，不通过 %d 项" % (len(rules), len(failed)),
+        ]
         log_lines += ["[master] 不通过: %s" % f for f in failed]
         if failed and str(data.get("onFail") or "fail") != "warn":
-            self._set_state(key, state.FAILURE, outputs={"error": "assert_failed", "failed": failed},
-                            log_lines=log_lines)
+            self._set_state(
+                key, state.FAILURE, outputs={"error": "assert_failed", "failed": failed}, log_lines=log_lines
+            )
             self._advance_downstream(node_id, loop_iter)
             return
-        self.chosen[key] = {"id": "success" if not failed else "failure",
-                            "name": "通过" if not failed else "不通过"}
-        self._set_state(key, state.SUCCESS, outputs={"assert_ok": not failed, "failed": failed},
-                        log_lines=log_lines)
+        self.chosen[key] = {"id": "success" if not failed else "failure", "name": "通过" if not failed else "不通过"}
+        self._set_state(key, state.SUCCESS, outputs={"assert_ok": not failed, "failed": failed}, log_lines=log_lines)
         self._advance_downstream(node_id, loop_iter)
 
     def _assert_target(self, node_id: str, loop_iter: int) -> Optional[dict]:
@@ -1230,14 +1341,16 @@ class WorkflowExecuteRunnable(threading.Thread):
                     cnt = int(cur.fetchone()[0])
                     lo, hi = bounds.get("min"), bounds.get("max")
                     if (lo is not None and cnt < lo) or (hi is not None and cnt > hi):
-                        failed.append("行数 %d 不在区间 [%s, %s]" % (
-                            cnt, lo if lo is not None else 0, hi if hi is not None else "∞"))
+                        failed.append(
+                            "行数 %d 不在区间 [%s, %s]"
+                            % (cnt, lo if lo is not None else 0, hi if hi is not None else "∞")
+                        )
                 elif key == "unique":
                     cols = ", ".join(quote_ident(c) for c in val.replace("，", ",").split(",") if c.strip())
                     if cols:
                         cur.execute(
-                            "SELECT COUNT(*) FROM (SELECT 1 FROM %s GROUP BY %s HAVING COUNT(*) > 1) t"
-                            % (table, cols))
+                            "SELECT COUNT(*) FROM (SELECT 1 FROM %s GROUP BY %s HAVING COUNT(*) > 1) t" % (table, cols)
+                        )
                         dup = int(cur.fetchone()[0])
                         if dup:
                             failed.append("唯一性不满足（%s，重复组 %d 个）" % (val, dup))
@@ -1323,13 +1436,17 @@ class WorkflowExecuteRunnable(threading.Thread):
         WAITING_DEPENDENCY 永久等待——把 P0 从"运行期挂起"提前为"执行期明确失败"。
         """
         # 预检：wfCode==0 → 目标工作流不存在，立即 failure
-        missing = [d for d in self._parse_deps(key[0]) if int(d.get("wfCode") or 0) == 0
-                   and str(d.get("wfRef") or "").strip()]
+        missing = [
+            d for d in self._parse_deps(key[0]) if int(d.get("wfCode") or 0) == 0 and str(d.get("wfRef") or "").strip()
+        ]
         if missing:
             refs = ", ".join(str(d.get("wfRef")) for d in missing)
-            self._set_state(key, state.FAILURE,
-                            outputs={"error": "dependency_workflow_not_found", "missingRefs": refs},
-                            log_lines=["[master] 依赖目标工作流不存在: %s → failure（G-07 守卫）" % refs])
+            self._set_state(
+                key,
+                state.FAILURE,
+                outputs={"error": "dependency_workflow_not_found", "missingRefs": refs},
+                log_lines=["[master] 依赖目标工作流不存在: %s → failure（G-07 守卫）" % refs],
+            )
             self._advance_downstream(key[0], key[1])
             return
         row = self.rows[key]
@@ -1352,14 +1469,16 @@ class WorkflowExecuteRunnable(threading.Thread):
                     if not isinstance(item, dict) or not str(item.get("wf") or "").strip():
                         continue
                     wf_ref = str(item["wf"]).strip()
-                    deps.append({
-                        "wfRef": wf_ref,
-                        "wfCode": self._resolve_wf_code(session, wf_ref),
-                        "nodeRef": str(item.get("node") or "").strip(),
-                        "nodeName": str(item.get("nodeName") or ""),
-                        "cond": str(item.get("cond") or "").strip(),
-                        "expected": "success",
-                    })
+                    deps.append(
+                        {
+                            "wfRef": wf_ref,
+                            "wfCode": self._resolve_wf_code(session, wf_ref),
+                            "nodeRef": str(item.get("node") or "").strip(),
+                            "nodeName": str(item.get("nodeName") or ""),
+                            "cond": str(item.get("cond") or "").strip(),
+                            "expected": "success",
+                        }
+                    )
             finally:
                 session.close()
             return deps
@@ -1370,8 +1489,16 @@ class WorkflowExecuteRunnable(threading.Thread):
             code = int(parts[0]) if parts[0].isdigit() else 0
             node_name = parts[1] if len(parts) > 1 else ""
             expected = parts[2] if len(parts) > 2 else "success"
-            deps.append({"wfRef": str(code), "wfCode": code, "nodeRef": "",
-                         "nodeName": node_name, "cond": "", "expected": expected})
+            deps.append(
+                {
+                    "wfRef": str(code),
+                    "wfCode": code,
+                    "nodeRef": "",
+                    "nodeName": node_name,
+                    "cond": "",
+                    "expected": expected,
+                }
+            )
         return deps
 
     def _resolve_wf_code(self, session, wf_ref: str) -> int:
@@ -1422,8 +1549,10 @@ class WorkflowExecuteRunnable(threading.Thread):
             exp_val = self.resolver.resolve_text(expect, {}, loop_iter, {})
             hit = dep_val is not None and str(dep_val) == str(exp_val)
             ok = ok and hit
-            log_lines.append("[dependent] 变量条件 %s：%s（被依赖实例）%s %s（本实例解析）"
-                             % (text, dep_val, "==" if hit else "!=", exp_val))
+            log_lines.append(
+                "[dependent] 变量条件 %s：%s（被依赖实例）%s %s（本实例解析）"
+                % (text, dep_val, "==" if hit else "!=", exp_val)
+            )
         return ok
 
     def _poll_dependent(self, key: tuple) -> None:
@@ -1442,14 +1571,13 @@ class WorkflowExecuteRunnable(threading.Thread):
                 )
                 task = None
                 if instance is not None:
-                    tq = session.query(TaskInstance).filter(
-                        TaskInstance.instance_id == instance.instance_id)
+                    tq = session.query(TaskInstance).filter(TaskInstance.instance_id == instance.instance_id)
                     if dep["nodeRef"]:  # I7 新格式：按节点 id 精确匹配
-                        task = tq.filter(TaskInstance.node_id == dep["nodeRef"]) \
-                            .order_by(TaskInstance.id.desc()).first()
+                        task = (
+                            tq.filter(TaskInstance.node_id == dep["nodeRef"]).order_by(TaskInstance.id.desc()).first()
+                        )
                     elif dep["nodeName"]:  # 旧格式：按节点名匹配
-                        task = tq.filter(TaskInstance.name == dep["nodeName"]) \
-                            .order_by(TaskInstance.id.desc()).first()
+                        task = tq.filter(TaskInstance.name == dep["nodeName"]).order_by(TaskInstance.id.desc()).first()
                 actual = task.state if task is not None else None
                 satisfied = (
                     actual is not None
@@ -1457,30 +1585,45 @@ class WorkflowExecuteRunnable(threading.Thread):
                     and (dep["expected"] == "done" or actual == dep["expected"])
                 )
                 wf_name = dep["nodeName"] or dep["nodeRef"] or "未配置节点"
-                check_lines.append("[dependent] 依赖检查：WF:%s/节点%s=%s %s"
-                                   % (dep["wfRef"] or dep["wfCode"], wf_name,
-                                      actual or "无实例", "✓" if satisfied else "✗"))
+                check_lines.append(
+                    "[dependent] 依赖检查：WF:%s/节点%s=%s %s"
+                    % (dep["wfRef"] or dep["wfCode"], wf_name, actual or "无实例", "✓" if satisfied else "✗")
+                )
                 if satisfied and dep["cond"]:  # I7：节点成功后追加变量条件匹配
                     satisfied = self._dep_cond_ok(dep, instance, loop_iter, check_lines)
                 ok = ok and satisfied
-                details.append({**dep, "instanceId": instance.instance_id if instance else None,
-                                "actual": actual, "satisfied": satisfied})
+                details.append(
+                    {
+                        **dep,
+                        "instanceId": instance.instance_id if instance else None,
+                        "actual": actual,
+                        "satisfied": satisfied,
+                    }
+                )
         finally:
             session.close()
         if ok:
             self.timers_dep.pop(key, None)
-            self._set_state(key, state.SUCCESS, outputs={"deps": details},
-                            log_lines=["[master] 依赖满足"] + check_lines)
+            self._set_state(
+                key, state.SUCCESS, outputs={"deps": details}, log_lines=["[master] 依赖满足"] + check_lines
+            )
             self._advance_downstream(node_id, loop_iter)
         else:
             self.timers_dep[key] = now() + timedelta(seconds=DEPENDENT_POLL_SEC)
             cons = self._constraints(node_id)
             row = self.rows[key]
-            if cons["timeoutSec"] > 0 and row["start_time"] is not None \
-                    and now() >= row["start_time"] + timedelta(seconds=cons["timeoutSec"]):
+            if (
+                cons["timeoutSec"] > 0
+                and row["start_time"] is not None
+                and now() >= row["start_time"] + timedelta(seconds=cons["timeoutSec"])
+            ):
                 self.timers_dep.pop(key, None)
-                self._set_state(key, state.FAILURE, outputs={"deps": details},
-                                log_lines=["[master] 依赖等待超时 → failure"] + check_lines)
+                self._set_state(
+                    key,
+                    state.FAILURE,
+                    outputs={"deps": details},
+                    log_lines=["[master] 依赖等待超时 → failure"] + check_lines,
+                )
                 self._advance_downstream(node_id, loop_iter)
 
     # ---- C10 Loop（自创最小语义，§6.8） ----
@@ -1530,8 +1673,12 @@ class WorkflowExecuteRunnable(threading.Thread):
             return
         if iteration + 1 > max_iter:
             key = (loop_node_id, 0)
-            self._set_state(key, state.FAILURE, outputs={"iterations": iteration},
-                            log_lines=["[master] 超出最大迭代 %d → failure" % max_iter])
+            self._set_state(
+                key,
+                state.FAILURE,
+                outputs={"iterations": iteration},
+                log_lines=["[master] 超出最大迭代 %d → failure" % max_iter],
+            )
             self._advance_downstream(loop_node_id, 0)
             return
         self.loop_iter_now[loop_node_id] = iteration + 1
@@ -1539,8 +1686,12 @@ class WorkflowExecuteRunnable(threading.Thread):
 
     def _loop_finish(self, loop_node_id: str, iterations: int) -> None:
         key = (loop_node_id, 0)
-        self._set_state(key, state.SUCCESS, outputs={"iterations": iterations},
-                        log_lines=["[master] 循环收口，共 %d 轮" % iterations])
+        self._set_state(
+            key,
+            state.SUCCESS,
+            outputs={"iterations": iterations},
+            log_lines=["[master] 循环收口，共 %d 轮" % iterations],
+        )
         self._advance_downstream(loop_node_id, 0)
         self._loop_release_exit(loop_node_id)
 
@@ -1573,7 +1724,7 @@ class WorkflowExecuteRunnable(threading.Thread):
             return {}
         batch = max(1, int(data.get("batchSize") or 1))
         idx = iteration - 1  # 迭代从 1 开始，批索引从 0 开始
-        batch_items = items[idx * batch:(idx + 1) * batch]
+        batch_items = items[idx * batch : (idx + 1) * batch]
         return {"batchItems": ",".join(batch_items), "batchIndex": idx, "batchTotal": -(-len(items) // batch)}
 
     def _loop_dispatch_body(self, loop_node_id: str, iteration: int) -> None:
@@ -1617,14 +1768,17 @@ class WorkflowExecuteRunnable(threading.Thread):
         session = new_session()
         try:
             task = TaskInstance(
-                instance_id=self.instance_id, node_id=node_id,
-                node_type=self._node_type(node_id), name=self._node_name(node_id),
-                state=state.SUBMITTED, attempt=1, loop_iter=loop_iter,
+                instance_id=self.instance_id,
+                node_id=node_id,
+                node_type=self._node_type(node_id),
+                name=self._node_name(node_id),
+                state=state.SUBMITTED,
+                attempt=1,
+                loop_iter=loop_iter,
             )
             session.add(task)
             session.flush()
-            row = {"id": task.id, "state": state.SUBMITTED, "attempt": 1,
-                   "start_time": None, "delay_until": None}
+            row = {"id": task.id, "state": state.SUBMITTED, "attempt": 1, "start_time": None, "delay_until": None}
             self.rows[(node_id, loop_iter)] = row
             self.by_task_id[task.id] = (node_id, loop_iter)
             session.commit()
@@ -1665,15 +1819,17 @@ class WorkflowExecuteRunnable(threading.Thread):
                             upstream_ref = t.get("v")
                             resolved = True
                             break
-            items.append({
-                "source": self._node_name(edge["source"]),
-                "table": p.get("table"),
-                "fields": p.get("fields") if isinstance(p.get("fields"), list) else [],
-                "filter": str(p.get("filter") or ""),
-                "scope": str(p.get("scope") or "cycle"),
-                "upstreamRef": upstream_ref,
-                "resolved": resolved,
-            })
+            items.append(
+                {
+                    "source": self._node_name(edge["source"]),
+                    "table": p.get("table"),
+                    "fields": p.get("fields") if isinstance(p.get("fields"), list) else [],
+                    "filter": str(p.get("filter") or ""),
+                    "scope": str(p.get("scope") or "cycle"),
+                    "upstreamRef": upstream_ref,
+                    "resolved": resolved,
+                }
+            )
         return items
 
     def _chain_upstream_config(self, src: str, loop_iter: int) -> Optional[dict]:
@@ -1707,14 +1863,23 @@ class WorkflowExecuteRunnable(threading.Thread):
         if stype == "src_select":
             if exec_type == "file_sync" and (cfg.get("fileSync") or cfg.get("filePath")):
                 # 文件源端：细项文件键 → file_sync 契约键
-                for sk, dk in (("filePath", "filePath"), ("fileType", "fileType"),
-                               ("fileDelimiter", "delimiter"), ("fileEncoding", "encoding"),
-                               ("fileHeaderRows", "headerRows")):
+                for sk, dk in (
+                    ("filePath", "filePath"),
+                    ("fileType", "fileType"),
+                    ("fileDelimiter", "delimiter"),
+                    ("fileEncoding", "encoding"),
+                    ("fileHeaderRows", "headerRows"),
+                ):
                     put(dk, cfg.get(sk))
             else:  # 连接型源端
-                for sk, dk in (("ds", "readerDs"), ("table", "readerTable"),
-                               ("schemasText", "readerSchemasText"), ("matchType", "readerMatchType"),
-                               ("matchPrefix", "readerMatchPrefix"), ("autoSchema", "autoSchema")):
+                for sk, dk in (
+                    ("ds", "readerDs"),
+                    ("table", "readerTable"),
+                    ("schemasText", "readerSchemasText"),
+                    ("matchType", "readerMatchType"),
+                    ("matchPrefix", "readerMatchPrefix"),
+                    ("autoSchema", "autoSchema"),
+                ):
                     put(dk, cfg.get(sk))
         elif stype == "tgt_select":
             if exec_type == "file_sync":
@@ -1744,9 +1909,13 @@ class WorkflowExecuteRunnable(threading.Thread):
             mode = str(cfg.get("baseMode") or "src_base")
             if mode == "file_sync":
                 # 文件入仓：文件键 → file_sync 契约键（与 src_select 文件模式同映射）
-                for sk, dk in (("filePath", "filePath"), ("fileType", "fileType"),
-                               ("fileDelimiter", "delimiter"), ("fileEncoding", "encoding"),
-                               ("fileHeaderRows", "headerRows")):
+                for sk, dk in (
+                    ("filePath", "filePath"),
+                    ("fileType", "fileType"),
+                    ("fileDelimiter", "delimiter"),
+                    ("fileEncoding", "encoding"),
+                    ("fileHeaderRows", "headerRows"),
+                ):
                     put(dk, cfg.get(sk))
                 put("targetDs", cfg.get("tgtDs"))
                 put("targetTable", cfg.get("tgtTable"))
@@ -1812,7 +1981,9 @@ class WorkflowExecuteRunnable(threading.Thread):
         return next(iter(tables)) if len(tables) == 1 else str(tgt_table or "").strip()
 
     def _merge_sync_chain_config(self, node_id: str, loop_iter: int, data: dict) -> tuple:
-        """sync/file_sync 派发前，沿入边向上递归收集细项节点配置并合并进执行参数（C32-C35 链 + 端点合一 endpoint_select）。
+        """sync/file_sync 派发前，沿入边向上递归收集细项节点配置并合并进执行参数。
+
+        适用于 C32-C35 链及端点合一 endpoint_select。
 
         - 细项值非空才写入且优先覆盖执行节点 data 同键（细项是业务主配置位，执行节点 data 仅兜底）
         - 同节点多 loop_iter 按当前迭代取；上游为 start/非细项即停止该分支
@@ -1832,21 +2003,25 @@ class WorkflowExecuteRunnable(threading.Thread):
                 if cfg is not None:
                     keys = self._apply_detail_config(merged, exec_type, stype, cfg)
                     if keys:
-                        logs.append("[master] 编排链配置合并: %s → %s, 共合并 %d 键"
-                                    % (self._node_name(src), ", ".join(keys), len(keys)))
+                        logs.append(
+                            "[master] 编排链配置合并: %s → %s, 共合并 %d 键"
+                            % (self._node_name(src), ", ".join(keys), len(keys))
+                        )
                 collect(src)
 
         collect(node_id)
         return merged, logs
 
-    def _dispatch_worker(self, key: tuple, resolved: dict, snapshot: dict,
-                         extra_logs: Optional[list] = None) -> None:
+    def _dispatch_worker(self, key: tuple, resolved: dict, snapshot: dict, extra_logs: Optional[list] = None) -> None:
         node_id, _loop_iter = key
         data = self._node_data(node_id)
         cons = self._constraints(node_id)
         row = self.rows[key]
-        param = {k: v for k, v in data.items()
-                 if k not in ("params", "constraints", "condition", "exclude", "branches", "inputs", "outputs")}
+        param = {
+            k: v
+            for k, v in data.items()
+            if k not in ("params", "constraints", "condition", "exclude", "branches", "inputs", "outputs")
+        }
         msg = {
             "taskId": row["id"],
             "instanceId": self.instance_id,
@@ -1867,9 +2042,15 @@ class WorkflowExecuteRunnable(threading.Thread):
             param["partialInputs"] = partial_inputs
             for pi in partial_inputs:
                 log_lines.append(
-                    "[master] 部分依赖 %s.table=%s（fields=%d, scope=%s）→ %s" % (
-                        pi["source"], pi["table"], len(pi["fields"]), pi["scope"],
-                        "实体 %s" % pi["upstreamRef"] if pi["resolved"] else "unresolved（上游未产出该结果表）"))
+                    "[master] 部分依赖 %s.table=%s（fields=%d, scope=%s）→ %s"
+                    % (
+                        pi["source"],
+                        pi["table"],
+                        len(pi["fields"]),
+                        pi["scope"],
+                        "实体 %s" % pi["upstreamRef"] if pi["resolved"] else "unresolved（上游未产出该结果表）",
+                    )
+                )
         queue.add_task(msg, priority=cons["priority"])
         self._save_row(key, log_lines=log_lines)
         logger.info("任务派发: task=%s node=%s type=%s", row["id"], node_id, self._node_type(node_id))
@@ -1881,8 +2062,12 @@ class WorkflowExecuteRunnable(threading.Thread):
             if current >= due:
                 self.timers_delay.pop(key, None)
                 if self.rows[key]["state"] == state.RUNNING:
-                    self._set_state(key, state.SUCCESS, outputs={"waitedUntil": due.strftime("%Y-%m-%d %H:%M:%S")},
-                                    log_lines=["[master] 延时到期 → success"])
+                    self._set_state(
+                        key,
+                        state.SUCCESS,
+                        outputs={"waitedUntil": due.strftime("%Y-%m-%d %H:%M:%S")},
+                        log_lines=["[master] 延时到期 → success"],
+                    )
                     self._advance_downstream(key[0], key[1])
         for key, due in list(self.timers_retry.items()):
             if current >= due:
@@ -1904,8 +2089,7 @@ class WorkflowExecuteRunnable(threading.Thread):
                 self._poll_dependent(key)
 
     def _next_timeout(self) -> float:
-        deadlines = list(self.timers_delay.values()) + list(self.timers_retry.values()) \
-            + list(self.timers_dep.values())
+        deadlines = list(self.timers_delay.values()) + list(self.timers_retry.values()) + list(self.timers_dep.values())
         if deadlines:
             delta = (min(deadlines) - now()).total_seconds()
             return max(0.5, min(delta, POLL_INTERVAL_SEC))
@@ -1921,11 +2105,7 @@ class WorkflowExecuteRunnable(threading.Thread):
             return True
         session = new_session()
         try:
-            instance = (
-                session.query(WorkflowInstance)
-                .filter(WorkflowInstance.instance_id == self.instance_id)
-                .first()
-            )
+            instance = session.query(WorkflowInstance).filter(WorkflowInstance.instance_id == self.instance_id).first()
             return instance is not None and instance.state == state.KILL
         finally:
             session.close()
@@ -1933,8 +2113,10 @@ class WorkflowExecuteRunnable(threading.Thread):
     def _mark_all_killed(self) -> None:
         for key, row in self.rows.items():
             if row["state"] not in state.TERMINAL_STATES:
-                if self._node_type(key[0]) not in ("sql", "shell", "python", "ssh", "smoke") \
-                        or row["state"] in (state.RUNNING, state.RETRY):
+                if self._node_type(key[0]) not in ("sql", "shell", "python", "ssh", "smoke") or row["state"] in (
+                    state.RUNNING,
+                    state.RETRY,
+                ):
                     queue.set_kill(row["id"])
                 row["state"] = state.KILL
                 row["end_time"] = now()
@@ -1950,8 +2132,10 @@ class WorkflowExecuteRunnable(threading.Thread):
         instance_state = state.SUCCESS
         if any(r["state"] == state.KILL for r in self.rows.values()):
             instance_state = state.KILL
-        elif any(r["state"] == state.FAILURE and self._constraints(k[0])["failPolicy"] != "continue"
-                 for k, r in self.rows.items()):
+        elif any(
+            r["state"] == state.FAILURE and self._constraints(k[0])["failPolicy"] != "continue"
+            for k, r in self.rows.items()
+        ):
             instance_state = state.FAILURE
         merged_snapshot: dict = {}
         for snap in self.snapshots.values():
@@ -1959,11 +2143,7 @@ class WorkflowExecuteRunnable(threading.Thread):
                 merged_snapshot.setdefault(name, item)
         session = new_session()
         try:
-            instance = (
-                session.query(WorkflowInstance)
-                .filter(WorkflowInstance.instance_id == self.instance_id)
-                .first()
-            )
+            instance = session.query(WorkflowInstance).filter(WorkflowInstance.instance_id == self.instance_id).first()
             if instance is not None:
                 instance.state = instance_state
                 instance.end_time = now()
@@ -1976,7 +2156,10 @@ class WorkflowExecuteRunnable(threading.Thread):
             raise
         finally:
             session.close()
-        self._event("execution_success" if instance_state == state.SUCCESS else "execution_interrupted", payload={"state": instance_state})
+        self._event(
+            "execution_success" if instance_state == state.SUCCESS else "execution_interrupted",
+            payload={"state": instance_state},
+        )
         logger.info("实例终态: %s → %s（任务 %d 个）", self.instance_id, instance_state, len(self.rows))
 
         # I4 临时数据收口（设计 §5.4）：immediate → 清扫置 cleaned；keep+成功 → RENAME 转正式表
@@ -1999,9 +2182,7 @@ class WorkflowExecuteRunnable(threading.Thread):
             session = new_session()
             try:
                 instance = (
-                    session.query(WorkflowInstance)
-                    .filter(WorkflowInstance.instance_id == self.instance_id)
-                    .first()
+                    session.query(WorkflowInstance).filter(WorkflowInstance.instance_id == self.instance_id).first()
                 )
                 if instance is not None and instance.state not in state.TERMINAL_STATES:
                     instance.state = state.FAILURE
@@ -2034,14 +2215,16 @@ class WorkflowExecuteRunnable(threading.Thread):
                 self.timers_delay[key] = due
                 self.activated.add(key)
             elif ntype == "dependent" and row["state"] in (
-                    state.WAITING_DEPENDENCY, state.RUNNING, state.FAULT_TOLERANCE):
+                state.WAITING_DEPENDENCY,
+                state.RUNNING,
+                state.FAULT_TOLERANCE,
+            ):
                 row["state"] = state.WAITING_DEPENDENCY
                 self.timers_dep[key] = now()
                 self.activated.add(key)
             elif ntype == "loop" and row["state"] == state.RUNNING:
                 self.activated.add(key)
-                self.loop_iter_now[node_id] = max(
-                    [li for (nid, li) in self.rows if nid == node_id and li > 0] or [0])
+                self.loop_iter_now[node_id] = max([li for (nid, li) in self.rows if nid == node_id and li > 0] or [0])
             elif ntype == "loop" and row["state"] == state.SUCCESS:
                 # 循环已收口：重驱出口链（边状态内存丢失，重新标记 ready@0 放行）
                 self._loop_release_exit(node_id)

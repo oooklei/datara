@@ -31,8 +31,7 @@ def test_publish_run_event_publishes_and_persists(monkeypatch):
     monkeypatch.setattr(event_bus, "new_session", lambda: fake_db)
     fake_redis = FakeRedis()
 
-    message = event_bus.publish_run_event(
-        "run-1", "node-1", "node_executing", {"attempt": 1}, rds=fake_redis)
+    message = event_bus.publish_run_event("run-1", "node-1", "node_executing", {"attempt": 1}, rds=fake_redis)
 
     assert fake_redis.calls == [("datara:run_events:run-1", message)]
     assert {"runId", "nodeId", "type", "ts", "payload"} <= set(message)
@@ -104,8 +103,7 @@ def test_progress_framed_via_publish_entrypoint(monkeypatch):
     fake_redis = FakeRedis()
 
     for value in range(3):
-        message = event_bus.publish_run_event(
-            "run-1", "n1", "progress", {"value": value}, rds=fake_redis)
+        message = event_bus.publish_run_event("run-1", "n1", "progress", {"value": value}, rds=fake_redis)
         assert message["type"] == "progress"
     assert fake_redis.calls == [], "progress 在合帧窗口内不应直发"
     assert framer.wait_drained(timeout=2.0)

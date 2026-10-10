@@ -42,8 +42,7 @@ def test_dispatch_table_contains_stream_types():
 
 
 def _seed(db_session, wf_code: int, job_status: str = None):
-    db_session.add(WorkflowInstance(
-        instance_id="i-stream", wf_code=wf_code, state="running"))
+    db_session.add(WorkflowInstance(instance_id="i-stream", wf_code=wf_code, state="running"))
     if job_status is not None:
         db_session.add(StreamJob(doc_id="wf_x", wf_code=wf_code, status=job_status))
     db_session.commit()
@@ -106,6 +105,7 @@ def test_stream_node_survives_missing_instance(db_session, monkeypatch):
 
 # ---------------- G-14 流子图提取 + 桥接 ----------------
 
+
 def _stream_doc():
     """构造含流子图的画布：start → sql → stream_input → stream_fuse → stream_output → page_board → end。"""
     return {
@@ -146,7 +146,7 @@ def _stream_only_doc():
 
 def test_extract_stream_subgraph_removes_stream_nodes():
     """G-14：流子图从批运行图中提取，流节点不再出现在 Graph 中。"""
-    from master.dag import extract_stream_subgraph, parse_graph
+    from master.dag import extract_stream_subgraph
 
     doc = _stream_doc()
     bridged, spec = extract_stream_subgraph(doc)
@@ -170,8 +170,7 @@ def test_extract_stream_subgraph_bridges_batch_nodes():
     bridged, _spec = extract_stream_subgraph(doc)
     edges_by_pair = {(e["source"], e["target"]) for e in bridged["edges"]}
     # 桥接边：sql1 → page_board（绕过流子图）
-    assert any(s == "sql1" and t == "pb" for s, t in edges_by_pair), \
-        f"缺少桥接边 sql1→pb，实际边: {edges_by_pair}"
+    assert any(s == "sql1" and t == "pb" for s, t in edges_by_pair), f"缺少桥接边 sql1→pb，实际边: {edges_by_pair}"
     # 流内部边被移除
     assert ("si", "sf") not in edges_by_pair
     assert ("sf", "so") not in edges_by_pair

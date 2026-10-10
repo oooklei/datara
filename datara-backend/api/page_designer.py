@@ -28,24 +28,34 @@ TIME_PARAMS = [
 
 @router.get("/resources", summary="系统资源目录（适配性绑定候选来源）")
 def resources(db: Session = Depends(get_db), _user=Depends(require_perm("design_component"))):
-    return ok({
-        "datasources": [
-            {"id": d.id, "name": d.name, "type": d.type, "db": d.db_name or ""}
-            for d in db.query(DataSource).order_by(DataSource.name).all()],
-        "workflows": [
-            {"code": w.code, "name": w.name,
-             "vars": [{"path": f"$wf.{v.name}", "label": v.name, "type": v.type}
-                      for v in db.query(WfVariable).filter(WfVariable.wf_code == w.code).all()]}
-            for w in db.query(WfDefinition).order_by(WfDefinition.name).all()],
-        "globalParams": [
-            {"path": f"$param.{p.name}", "label": p.name}
-            for p in db.query(GlobalParam).order_by(GlobalParam.name).all()],
-        "timeParams": TIME_PARAMS,
-        "components": [
-            {"type": c.type, "name": c.name, "state": c.state,
-             "publishedVersion": c.published_version}
-            for c in db.query(Component).order_by(Component.type).all()],
-    })
+    return ok(
+        {
+            "datasources": [
+                {"id": d.id, "name": d.name, "type": d.type, "db": d.db_name or ""}
+                for d in db.query(DataSource).order_by(DataSource.name).all()
+            ],
+            "workflows": [
+                {
+                    "code": w.code,
+                    "name": w.name,
+                    "vars": [
+                        {"path": f"$wf.{v.name}", "label": v.name, "type": v.type}
+                        for v in db.query(WfVariable).filter(WfVariable.wf_code == w.code).all()
+                    ],
+                }
+                for w in db.query(WfDefinition).order_by(WfDefinition.name).all()
+            ],
+            "globalParams": [
+                {"path": f"$param.{p.name}", "label": p.name}
+                for p in db.query(GlobalParam).order_by(GlobalParam.name).all()
+            ],
+            "timeParams": TIME_PARAMS,
+            "components": [
+                {"type": c.type, "name": c.name, "state": c.state, "publishedVersion": c.published_version}
+                for c in db.query(Component).order_by(Component.type).all()
+            ],
+        }
+    )
 
 
 # ---------------------------------------------------------------- 数据预览
@@ -102,13 +112,11 @@ def preview(body: PreviewBody, db: Session = Depends(get_db), _user=Depends(requ
             raise ApiError(PAGE_PREVIEW_SQL_FORBIDDEN, status=422)
         ds = db.get(DataSource, q.datasourceId)
         if ds is None:
-            results[q.id] = {"columns": [], "rows": [], "truncated": False,
-                             "error": f"数据源 {q.datasourceId} 不存在"}
+            results[q.id] = {"columns": [], "rows": [], "truncated": False, "error": f"数据源 {q.datasourceId} 不存在"}
             continue
         item = _run_readonly(ds, f"SELECT * FROM ({sql}) _pv LIMIT {PREVIEW_ROW_CAP}", PREVIEW_ROW_CAP)
         item["id"] = q.id
         results[q.id] = item
     # 失败组件聚合（按 queries 顺序而非 dict 序，保证稳定；成功项不进，前端汇总提示用）
-    widget_errors = [{"id": q.id, "error": results[q.id]["error"]}
-                     for q in body.queries if results[q.id].get("error")]
+    widget_errors = [{"id": q.id, "error": results[q.id]["error"]} for q in body.queries if results[q.id].get("error")]
     return ok({"results": results, "rowCap": PREVIEW_ROW_CAP, "widgetErrors": widget_errors})

@@ -61,9 +61,13 @@ def run_stream(cmd: list, cwd: str, env: dict, log: Callable, killed: Callable) 
     逐行回调 log 实时落盘；killed() 命中 → terminate 子进程并返回 killed=True。
     """
     proc = subprocess.Popen(  # noqa: S603 容器内受控脚本执行
-        cmd, cwd=cwd, env=env,
-        stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
-        text=True, bufsize=1,
+        cmd,
+        cwd=cwd,
+        env=env,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        text=True,
+        bufsize=1,
     )
     lines_q: Queue = Queue()
 

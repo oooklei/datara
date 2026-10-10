@@ -23,20 +23,22 @@ router = APIRouter(prefix="/runtime-nodes", tags=["runtime-node"])
 def list_runtime_nodes(user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     """运行时节点列表（只读，SSH 节点 runtimeNode 字段下拉数据源）。"""
     rows = db.query(RuntimeNode).order_by(RuntimeNode.id).all()
-    return ok([
-        {
-            "id": row.id,
-            "name": row.name,
-            "kind": row.kind,
-            "host": row.host,
-            "port": row.port,
-            "user": row.user,
-            "runtimeDir": row.runtime_dir,
-            "status": row.status,
-            "lastHeartbeat": fmt_dt(row.last_heartbeat),
-        }
-        for row in rows
-    ])
+    return ok(
+        [
+            {
+                "id": row.id,
+                "name": row.name,
+                "kind": row.kind,
+                "host": row.host,
+                "port": row.port,
+                "user": row.user,
+                "runtimeDir": row.runtime_dir,
+                "status": row.status,
+                "lastHeartbeat": fmt_dt(row.last_heartbeat),
+            }
+            for row in rows
+        ]
+    )
 
 
 LS_MAX_ENTRIES = 500  # 目录浏览单次返回上限（防止大目录拖垮响应）
@@ -53,9 +55,11 @@ def _open_sftp(node: RuntimeNode):
     client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
     try:
         kwargs = {
-            "hostname": node.host, "port": int(node.port or 22),
+            "hostname": node.host,
+            "port": int(node.port or 22),
             "username": node.user or "root",
-            "timeout": PROBE_TIMEOUT, "banner_timeout": PROBE_TIMEOUT,
+            "timeout": PROBE_TIMEOUT,
+            "banner_timeout": PROBE_TIMEOUT,
             "auth_timeout": PROBE_TIMEOUT,
         }
         cred = str(node.auth or "")
@@ -108,15 +112,17 @@ def ls_runtime_node_dir(
         attrs,
         key=lambda e: (0 if stat.S_ISDIR(e.st_mode or 0) else 1, e.filename),
     )[:LS_MAX_ENTRIES]
-    return ok({
-        "path": base,
-        "entries": [
-            {
-                "name": e.filename,
-                "dir": stat.S_ISDIR(e.st_mode or 0),
-                "size": e.st_size,
-                "mtime": int(e.st_mtime or 0),
-            }
-            for e in entries
-        ],
-    })
+    return ok(
+        {
+            "path": base,
+            "entries": [
+                {
+                    "name": e.filename,
+                    "dir": stat.S_ISDIR(e.st_mode or 0),
+                    "size": e.st_size,
+                    "mtime": int(e.st_mtime or 0),
+                }
+                for e in entries
+            ],
+        }
+    )

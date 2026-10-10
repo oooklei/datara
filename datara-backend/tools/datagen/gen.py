@@ -24,32 +24,90 @@ from tools.datagen.config import DatagenConfig, RuleSpec, TableSpec, anchor_bloc
 
 # 灌数拓扑序（先维表后事实；coupon 先于 usage——usage_time 读取券有效期缓存）
 GEN_ORDER = [
-    "dim_category", "dim_supplier", "dim_goods", "dim_user", "dim_user_address",
-    "ods_cart", "dim_inventory", "ods_order", "ods_order_item", "ods_payment",
-    "ods_refund", "ods_coupon", "ods_coupon_usage", "dim_promotion_activity",
-    "sec_user_identity", "sec_bank_card", "sec_supplier_contract",
+    "dim_category",
+    "dim_supplier",
+    "dim_goods",
+    "dim_user",
+    "dim_user_address",
+    "ods_cart",
+    "dim_inventory",
+    "ods_order",
+    "ods_order_item",
+    "ods_payment",
+    "ods_refund",
+    "ods_coupon",
+    "ods_coupon_usage",
+    "dim_promotion_activity",
+    "sec_user_identity",
+    "sec_bank_card",
+    "sec_supplier_contract",
 ]
 
 CAT_TOP = [
-    "手机数码", "家用电器", "服饰鞋包", "美妆个护", "食品生鲜", "母婴玩具",
-    "图书文娱", "运动户外", "家居家装", "汽车用品", "医药保健", "宠物生活",
-    "珠宝钟表", "酒水饮料", "办公设备", "虚拟充值", "厨具餐具", "灯饰照明",
-    "五金工具", "箱包配饰", "鲜花绿植", "乐器音像", "教育培训", "本地生活",
+    "手机数码",
+    "家用电器",
+    "服饰鞋包",
+    "美妆个护",
+    "食品生鲜",
+    "母婴玩具",
+    "图书文娱",
+    "运动户外",
+    "家居家装",
+    "汽车用品",
+    "医药保健",
+    "宠物生活",
+    "珠宝钟表",
+    "酒水饮料",
+    "办公设备",
+    "虚拟充值",
+    "厨具餐具",
+    "灯饰照明",
+    "五金工具",
+    "箱包配饰",
+    "鲜花绿植",
+    "乐器音像",
+    "教育培训",
+    "本地生活",
 ]
 CAT_TOP_N = len(CAT_TOP)
 GOODS_NOUN = [
-    "手机", "平板电脑", "笔记本电脑", "蓝牙耳机", "智能手表", "电视机",
-    "空调", "冰箱", "洗衣机", "电饭煲", "加湿器", "电动牙刷", "洗发水",
-    "防晒霜", "运动鞋", "羽绒服", "双肩包", "保温杯", "桌面台灯", "机械键盘",
-    "游戏手柄", "坚果礼盒", "益生菌", "猫粮",
+    "手机",
+    "平板电脑",
+    "笔记本电脑",
+    "蓝牙耳机",
+    "智能手表",
+    "电视机",
+    "空调",
+    "冰箱",
+    "洗衣机",
+    "电饭煲",
+    "加湿器",
+    "电动牙刷",
+    "洗发水",
+    "防晒霜",
+    "运动鞋",
+    "羽绒服",
+    "双肩包",
+    "保温杯",
+    "桌面台灯",
+    "机械键盘",
+    "游戏手柄",
+    "坚果礼盒",
+    "益生菌",
+    "猫粮",
 ]
 SUP_SUFFIX = [
-    "科技有限公司", "贸易有限公司", "实业有限公司", "电子商务有限公司",
-    "网络科技有限公司", "供应链管理有限公司",
+    "科技有限公司",
+    "贸易有限公司",
+    "实业有限公司",
+    "电子商务有限公司",
+    "网络科技有限公司",
+    "供应链管理有限公司",
 ]
 
 
 # ---------------- 确定性时间推导（跨表共享，零内存驻留） ----------------
+
 
 def order_day(pos: int, today: date, days: int = 90) -> date:
     """订单所在日：行位置 → [T-(days-1), T] 乘法散列均匀散布。"""
@@ -60,8 +118,7 @@ def order_day(pos: int, today: date, days: int = 90) -> date:
 def order_ctime(pos: int, today: date, days: int = 90) -> datetime:
     """订单下单时间：日期散布 + 当日秒数由行位置确定。"""
     secs = (pos * 40503 + 7) % 86400
-    return datetime.combine(order_day(pos, today, days),
-                            time(secs // 3600, (secs % 3600) // 60, secs % 60))
+    return datetime.combine(order_day(pos, today, days), time(secs // 3600, (secs % 3600) // 60, secs % 60))
 
 
 def _rand_time(rng: random.Random) -> time:
@@ -88,6 +145,7 @@ class GenCtx:
 
 # ---------------- 列生成器 ----------------
 
+
 def build_producer(col, table: TableSpec, ctx: GenCtx, rng: random.Random):
     """按策略构造 f(pos, row) -> value 生成闭包。"""
     s = col.strategy
@@ -106,7 +164,7 @@ def build_producer(col, table: TableSpec, ctx: GenCtx, rng: random.Random):
     if s.startswith("dec:"):
         _, lo, hi, scale = s.split(":")
         lo, hi, scale = float(lo), float(hi), int(scale)
-        f = 10 ** scale
+        f = 10**scale
         return lambda pos, row: rng.randint(int(lo * f), int(hi * f)) / f
     if s.startswith("choice:"):
         vals = s[7:].split("|")
@@ -152,10 +210,11 @@ def _build_calc(name: str, table: TableSpec, ctx: GenCtx, rng: random.Random):
         fk = _seeded_faker(ctx, f"{table.name}:{name}")
         return lambda pos, row: f"{rng.choice(GOODS_NOUN)}{fk.word()}({(pos + 1):05d})"
     if name == "cat_name":
-        return lambda pos, row: (CAT_TOP[pos] if pos < CAT_TOP_N
-                                 else f"{CAT_TOP[(pos * 7) % CAT_TOP_N]}-{CAT_TOP[pos % CAT_TOP_N]}")
+        return lambda pos, row: (
+            CAT_TOP[pos] if pos < CAT_TOP_N else f"{CAT_TOP[(pos * 7) % CAT_TOP_N]}-{CAT_TOP[pos % CAT_TOP_N]}"
+        )
     if name == "cat_parent":
-        return lambda pos, row: (None if pos < CAT_TOP_N else rng.randint(1, CAT_TOP_N))
+        return lambda pos, row: None if pos < CAT_TOP_N else rng.randint(1, CAT_TOP_N)
     if name == "cat_level":
         return lambda pos, row: 1 if pos < CAT_TOP_N else 2
     if name == "credit_unique":
@@ -178,22 +237,25 @@ def _build_calc(name: str, table: TableSpec, ctx: GenCtx, rng: random.Random):
     if name == "item_order_date":
         return lambda pos, row: order_day(row["order_id"] - 1, today, days)
     if name == "pay_time":
-        return lambda pos, row: (order_ctime(row["order_id"] - 1, today, days)
-                                 + timedelta(seconds=rng.randint(60, 7200)))
+        return lambda pos, row: order_ctime(row["order_id"] - 1, today, days) + timedelta(seconds=rng.randint(60, 7200))
     if name == "date_of_pay":
         return lambda pos, row: row["pay_time"].date()
     if name == "refund_time":
-        return lambda pos, row: (order_ctime(row["order_id"] - 1, today, days)
-                                 + timedelta(days=rng.randint(1, 7), seconds=rng.randint(0, 86399)))
+        return lambda pos, row: (
+            order_ctime(row["order_id"] - 1, today, days)
+            + timedelta(days=rng.randint(1, 7), seconds=rng.randint(0, 86399))
+        )
     if name == "coupon_from":
         return lambda pos, row: today - timedelta(days=rng.randint(0, 60))
     if name == "coupon_to":
         return lambda pos, row: row["valid_from"] + timedelta(days=rng.randint(15, 90))
     if name == "usage_time":
+
         def f(pos, row):
             valid_from, valid_to = ctx.cache["ods_coupon"][row["coupon_id"] - 1]
             span = max((valid_to - valid_from).days, 0)
             return datetime.combine(valid_from + timedelta(days=rng.randint(0, span)), _rand_time(rng))
+
         return f
     if name == "register_time":
         return lambda pos, row: datetime.combine(today - timedelta(days=rng.randint(0, 720)), _rand_time(rng))
@@ -202,11 +264,13 @@ def _build_calc(name: str, table: TableSpec, ctx: GenCtx, rng: random.Random):
     if name == "window_dt":
         return lambda pos, row: datetime.combine(today - timedelta(days=rng.randint(0, days - 1)), _rand_time(rng))
     if name == "act_end":
-        return lambda pos, row: (row["start_time"] + timedelta(days=rng.randint(7, 30), seconds=rng.randint(0, 86399)))
+        return lambda pos, row: row["start_time"] + timedelta(days=rng.randint(7, 30), seconds=rng.randint(0, 86399))
     if name == "expire_date":
+
         def f(pos, row):
             m = today.month + rng.randint(1, 60)
             return f"{(m - 1) % 12 + 1:02d}/{today.year + (m - 1) // 12}"
+
         return f
     if name == "snapshot_today":
         return lambda pos, row: today
@@ -214,6 +278,7 @@ def _build_calc(name: str, table: TableSpec, ctx: GenCtx, rng: random.Random):
 
 
 # ---------------- 脏注入计划 ----------------
+
 
 class DirtyPlan:
     """计数驱动脏注入：位置采样 + 锚定块，apply() 逐行变换。
@@ -236,11 +301,11 @@ class DirtyPlan:
         value_anchor = set()
         for s, _e in self.blocks.values():
             value_anchor.update(range(s, _e + 1))
-        reserved = value_anchor | {0, 1, 2}   # 行 0 无前驱；1/2 留给锚定重复对
+        reserved = value_anchor | {0, 1, 2}  # 行 0 无前驱；1/2 留给锚定重复对
 
-        self.dup_positions = set()      # duplicate_row：该行=复制上一行内容（PK 除外）
-        self.pair_map = {}              # phone_pair：follower_pos -> leader_pos
-        self.by_pos = {}                # pos -> [(rule, is_anchor, ord_)]
+        self.dup_positions = set()  # duplicate_row：该行=复制上一行内容（PK 除外）
+        self.pair_map = {}  # phone_pair：follower_pos -> leader_pos
+        self.by_pos = {}  # pos -> [(rule, is_anchor, ord_)]
 
         # 1+2) 值型规则：锚定块 + 随机位
         pool_v = [p for p in range(table.rows) if p not in reserved]
@@ -260,8 +325,7 @@ class DirtyPlan:
         # 3) duplicate_row（锚定对 = PK2、PK3：行位 1 正常、行位 2 复制行位 1）
         dup_rules = [r for r in rules if r.kind == "duplicate_row"]
         if dup_rules:
-            pool_d = [p for p in range(3, table.rows)
-                      if p not in value_positions and (p - 1) not in value_positions]
+            pool_d = [p for p in range(3, table.rows) if p not in value_positions and (p - 1) not in value_positions]
             for r in dup_rules:
                 pick_rng = random.Random(f"{ctx.cfg.seed}:{table.name}:{r.id}:pick")
                 total = r.expected_total(table)
@@ -272,8 +336,7 @@ class DirtyPlan:
         # 4) phone_pair（同号不同户对）
         for r in (x for x in rules if x.kind == "phone_pair"):
             pick_rng = random.Random(f"{ctx.cfg.seed}:{table.name}:{r.id}:pick")
-            pool_p = [p for p in range(table.rows)
-                      if p not in value_positions and p not in self.dup_positions]
+            pool_p = [p for p in range(table.rows) if p not in value_positions and p not in self.dup_positions]
             picks = sorted(pick_rng.sample(pool_p, r.expected_total(table) * 2))
             for i in range(0, len(picks) - 1, 2):
                 self.pair_map[picks[i + 1]] = picks[i]
@@ -290,11 +353,11 @@ class DirtyPlan:
         if k == "null_value":
             row[col] = None
         elif k == "format_phone":
-            row[col] = f"1X{(pos + 1):09d}"          # 唯一化：含字母 11 位
+            row[col] = f"1X{(pos + 1):09d}"  # 唯一化：含字母 11 位
         elif k == "format_idcard":
-            row[col] = f"{(pos + 1):017d}Q"          # 唯一化：校验位非法
+            row[col] = f"{(pos + 1):017d}Q"  # 唯一化：校验位非法
         elif k == "format_credit":
-            row[col] = f"91BAD0{(pos + 1):012d}"     # 唯一化：含字母
+            row[col] = f"91BAD0{(pos + 1):012d}"  # 唯一化：含字母
         elif k == "out_of_range":
             row[col] = p["values"][pos % len(p["values"])]
         elif k == "enum_out":
@@ -307,7 +370,7 @@ class DirtyPlan:
         elif k == "time_future":
             row[col] = datetime.strptime(p["value"], "%Y-%m-%d %H:%M:%S")
             if self.table.name == "ods_payment":
-                row["pay_date"] = row[col].date()    # 落 pmax 分区，分区键同步
+                row["pay_date"] = row[col].date()  # 落 pmax 分区，分区键同步
         elif k == "time_invalid":
             row[col] = datetime.strptime(p["values"][pos % len(p["values"])], "%Y-%m-%d %H:%M:%S")
         elif k == "time_before_order":
@@ -326,6 +389,7 @@ class DirtyPlan:
 
 # ---------------- 行迭代（gen 与 samples 共用） ----------------
 
+
 def iter_rows(table: TableSpec, rules: list, ctx: GenCtx, rows: int = 0):
     """逐行产出 (row_dict, content_list)：content 为插入用值序列（含脏变换）。"""
     total = rows or table.rows
@@ -343,7 +407,7 @@ def iter_rows(table: TableSpec, rules: list, ctx: GenCtx, rows: int = 0):
             ctx.cache.setdefault("ods_coupon", []).append((row["valid_from"], row["valid_to"]))
         if pos in plan.dup_positions and prev_content is not None:
             content = list(prev_content)
-            content[0] = pos + 1                       # 同内容重复行：仅主键不同
+            content[0] = pos + 1  # 同内容重复行：仅主键不同
         else:
             content = [row[c.name] for c in cols]
         prev_content = content
@@ -351,6 +415,7 @@ def iter_rows(table: TableSpec, rules: list, ctx: GenCtx, rows: int = 0):
 
 
 # ---------------- 建表维护（分区滚动手术） ----------------
+
 
 def reorg(conn, table: TableSpec, ctx: GenCtx) -> None:
     """gen 前置：清空表；分区表按运行日 T 滚动重建日分区（90+pmax=91）。"""
@@ -376,15 +441,22 @@ def reorg(conn, table: TableSpec, ctx: GenCtx) -> None:
             f"PARTITION p{d.strftime('%Y%m%d')} VALUES LESS THAN ('{(d + timedelta(days=1)).isoformat()}')"
             for d in days
         )
-        reorg_sql = (f"ALTER TABLE {table.name} REORGANIZE PARTITION pmax INTO "
-                     f"({defs}, PARTITION pmax VALUES LESS THAN (MAXVALUE))")
+        reorg_sql = (
+            f"ALTER TABLE {table.name} REORGANIZE PARTITION pmax INTO "
+            f"({defs}, PARTITION pmax VALUES LESS THAN (MAXVALUE))"
+        )
         cur.execute(reorg_sql)
 
 
 def connect(dsn: dict):
     return pymysql.connect(
-        host=dsn["host"], port=dsn["port"], user=dsn["user"], password=dsn["pwd"],
-        database=dsn["db"], charset="utf8mb4", autocommit=False,
+        host=dsn["host"],
+        port=dsn["port"],
+        user=dsn["user"],
+        password=dsn["pwd"],
+        database=dsn["db"],
+        charset="utf8mb4",
+        autocommit=False,
     )
 
 
@@ -481,6 +553,7 @@ def run_gen(cfg: DatagenConfig, log=print) -> dict:
         seed_dw(src, dw, cfg, log)
         # 生成即对账（I2 设计文档 §7）
         from tools.datagen.reconcile import run_verify
+
         return run_verify(cfg, log)
     finally:
         src.close()

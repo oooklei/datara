@@ -27,9 +27,7 @@ def recover_running_instances() -> int:
     session = new_session()
     try:
         instances = (
-            session.query(WorkflowInstance)
-            .filter(WorkflowInstance.state.in_(state.INSTANCE_RUNNING_STATES))
-            .all()
+            session.query(WorkflowInstance).filter(WorkflowInstance.state.in_(state.INSTANCE_RUNNING_STATES)).all()
         )
         ids = [inst.instance_id for inst in instances]
     finally:
@@ -54,11 +52,7 @@ def _recover_one(instance_id: str) -> bool:
     graph = None
     session = new_session()
     try:
-        instance = (
-            session.query(WorkflowInstance)
-            .filter(WorkflowInstance.instance_id == instance_id)
-            .first()
-        )
+        instance = session.query(WorkflowInstance).filter(WorkflowInstance.instance_id == instance_id).first()
         if instance is None:
             return False
         instance.recovery = 1
@@ -68,31 +62,25 @@ def _recover_one(instance_id: str) -> bool:
                 instance.start_time = now()
         definition = None
         if instance.wf_code:
-            definition = (
-                session.query(WfDefinition)
-                .filter(WfDefinition.code == instance.wf_code)
-                .first()
-            )
+            definition = session.query(WfDefinition).filter(WfDefinition.code == instance.wf_code).first()
         if definition is not None and definition.graph_json:
             try:
                 # D2 §9.6：物化器按源组件 published 版本注入 sys_exec 节点 componentRef
                 # G-14：parse_graph 同时提取流子图（stream_spec），failover 恢复路径不注册
                 # 流作业（流作业由 API 显式启停，不随批实例恢复自动拉起）。
-                graph, _stream_spec = parse_graph(json.loads(definition.graph_json),
-                                                  comp_versions=comp_published_versions(session))
+                graph, _stream_spec = parse_graph(
+                    json.loads(definition.graph_json), comp_versions=comp_published_versions(session)
+                )
             except ValueError as exc:
                 logger.warning("实例 %s 图解析失败（按无图恢复）: %s", instance_id, exc)
-        tasks = (
-            session.query(TaskInstance)
-            .filter(TaskInstance.instance_id == instance_id)
-            .all()
-        )
+        tasks = session.query(TaskInstance).filter(TaskInstance.instance_id == instance_id).all()
         for task in tasks:
-            ntype = task.node_type or (
-                graph.node(task.node_id)["type"] if graph and task.node_id else "smoke"
-            )
+            ntype = task.node_type or (graph.node(task.node_id)["type"] if graph and task.node_id else "smoke")
             if ntype in WORKER_TYPES and task.state in (
-                state.RUNNING, state.FAULT_TOLERANCE, state.SUBMITTED, state.RETRY,
+                state.RUNNING,
+                state.FAULT_TOLERANCE,
+                state.SUBMITTED,
+                state.RETRY,
             ):
                 if task.state == state.RUNNING:
                     task.state = state.FAULT_TOLERANCE
@@ -124,16 +112,8 @@ def _redispatch_smoke(instance_id: str) -> None:
 
     session = new_session()
     try:
-        instance = (
-            session.query(WorkflowInstance)
-            .filter(WorkflowInstance.instance_id == instance_id)
-            .first()
-        )
-        tasks = (
-            session.query(TaskInstance)
-            .filter(TaskInstance.instance_id == instance_id)
-            .all()
-        )
+        instance = session.query(WorkflowInstance).filter(WorkflowInstance.instance_id == instance_id).first()
+        tasks = session.query(TaskInstance).filter(TaskInstance.instance_id == instance_id).all()
         param = instance.variables if isinstance(instance.variables, dict) else {}
         for task in tasks:
             if task.state not in state.ACTIVE_STATES:

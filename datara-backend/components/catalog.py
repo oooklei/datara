@@ -15,49 +15,109 @@ CI 门禁（tests/test_catalog_consistency.py）断言：
 """
 
 # ---- worker 执行器（派发 → Redis Stream → worker）----
-WORKER_TYPES = frozenset({
-    "sql", "shell", "python", "ssh", "smoke", "procedure", "http", "file", "sync", "file_sync", "notify",
-    # M-B2 ETL 执行器（17 个）
-    "src_db", "src_file", "out_db", "out_file",
-    "op_filter", "op_join", "op_expr", "op_agg", "op_dedup", "op_select", "op_sort", "op_split",
-    "op_merge", "op_replace", "op_sample", "op_udf", "op_script",
-    # M-B2 Stream 执行器（9 个，op_script 共享）
-    "s_kafka", "s_cdc", "p_filter", "p_join", "p_window", "op_cep", "o_doris", "o_kafka", "o_alert",
-})
+WORKER_TYPES = frozenset(
+    {
+        "sql",
+        "shell",
+        "python",
+        "ssh",
+        "smoke",
+        "procedure",
+        "http",
+        "file",
+        "sync",
+        "file_sync",
+        "notify",
+        # M-B2 ETL 执行器（17 个）
+        "src_db",
+        "src_file",
+        "out_db",
+        "out_file",
+        "op_filter",
+        "op_join",
+        "op_expr",
+        "op_agg",
+        "op_dedup",
+        "op_select",
+        "op_sort",
+        "op_split",
+        "op_merge",
+        "op_replace",
+        "op_sample",
+        "op_udf",
+        "op_script",
+        # M-B2 Stream 执行器（9 个，op_script 共享）
+        "s_kafka",
+        "s_cdc",
+        "p_filter",
+        "p_join",
+        "p_window",
+        "op_cep",
+        "o_doris",
+        "o_kafka",
+        "o_alert",
+    }
+)
 
 # ---- master 内联 handler 字典可路由节点 ----
 # 逻辑控制（12）
-_MASTER_LOGIC = frozenset({
-    "start", "end", "conditions", "switch", "fork", "join", "merge", "delay", "dependent", "loop",
-    "variable", "assert",
-})
+_MASTER_LOGIC = frozenset(
+    {
+        "start",
+        "end",
+        "conditions",
+        "switch",
+        "fork",
+        "join",
+        "merge",
+        "delay",
+        "dependent",
+        "loop",
+        "variable",
+        "assert",
+    }
+)
 # 直通配置（5）：自身不执行，配置被下游拍平/消费
 # src_select/tgt_select 已废弃（依托 endpoint_select 实现），从 PASSTHROUGH_TYPES 移除
-PASSTHROUGH_TYPES = frozenset({
-    "field_map", "field_map_union", "condition_set", "endpoint_select",
-    "page_board",  # G-17：渲染型节点，passthrough SUCCESS
-})
+PASSTHROUGH_TYPES = frozenset(
+    {
+        "field_map",
+        "field_map_union",
+        "condition_set",
+        "endpoint_select",
+        "page_board",  # G-17：渲染型节点，passthrough SUCCESS
+    }
+)
 # 常驻流算子（3）：批引擎仅状态占位，数据面由 worker/stream 承载
-STREAM_TYPES = frozenset({
-    "stream_input", "stream_fuse", "stream_output",
-})
+STREAM_TYPES = frozenset(
+    {
+        "stream_input",
+        "stream_fuse",
+        "stream_output",
+    }
+)
 # 展示型节点（1）：不产生任务实例
-NON_EXECUTABLE_TYPES = frozenset({
-    "page_board",
-})
+NON_EXECUTABLE_TYPES = frozenset(
+    {
+        "page_board",
+    }
+)
 
 # G-24：已废弃类型（历史兼容保留一个版本周期，待历史工作流迁移到 endpoint_select 后移除）
 # src_select/tgt_select 已彻底删除（依托 endpoint_select 实现），不再保留
 _DEPRECATED_TYPES = frozenset()
 
-MASTER_HANDLER_TYPES = frozenset(
-    _MASTER_LOGIC | PASSTHROUGH_TYPES | STREAM_TYPES
-)
+MASTER_HANDLER_TYPES = frozenset(_MASTER_LOGIC | PASSTHROUGH_TYPES | STREAM_TYPES)
 
 # ---- 模板类型（落图即展开，无独立运行时路由）----
-TEMPLATE_TYPES = frozenset({
-    "demo_pipeline", "src_base_orch", "tgt_base_orch", "file_sync_orch",
-})
+TEMPLATE_TYPES = frozenset(
+    {
+        "demo_pipeline",
+        "src_base_orch",
+        "tgt_base_orch",
+        "file_sync_orch",
+    }
+)
 
 # ---- 全量可拖出节点（palette 渲染集合 = MASTER_HANDLER_TYPES - runtimeOnly - 模板）----
 # runtimeOnly 执行节点（sync/file_sync）由 materialize_sync_exec 物化进运行图，设计态不落地

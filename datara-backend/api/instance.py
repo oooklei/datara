@@ -84,11 +84,7 @@ def list_instances(
         query = query.filter(WorkflowInstance.wf_code == wf_code)
     if sync_logs:
         # 终态且无日志索引 → 悬空实例，过滤（保证前端与后端日志真实状态同步）
-        log_exists = (
-            db.query(TaskLog.id)
-            .filter(TaskLog.instance_id == WorkflowInstance.instance_id)
-            .exists()
-        )
+        log_exists = db.query(TaskLog.id).filter(TaskLog.instance_id == WorkflowInstance.instance_id).exists()
         query = query.filter(or_(WorkflowInstance.state.notin_(TERMINAL_STATES), log_exists))
     total = query.count()
     rows = query.order_by(WorkflowInstance.id.desc()).offset(page.offset).limit(page.page_size).all()
@@ -139,12 +135,7 @@ def get_instance(
 ):
     """实例详情（含 task_instances 列表；补 runMode/scheduleTime/loopIter/delayUntil，I3 §12）。"""
     row = _get_instance(db, instance_id)
-    tasks = (
-        db.query(TaskInstance)
-        .filter(TaskInstance.instance_id == instance_id)
-        .order_by(TaskInstance.id)
-        .all()
-    )
+    tasks = db.query(TaskInstance).filter(TaskInstance.instance_id == instance_id).order_by(TaskInstance.id).all()
     return ok(
         {
             "id": row.id,
@@ -257,8 +248,10 @@ def stream_instance(
     row = _get_instance(db, instance_id)  # 404 闸门（存在性校验后请求级会话即还池）
 
     try:
-        event_cursor = last_event_id_query if isinstance(last_event_id_query, int) else (
-            max(0, int(last_event_id or 0)) if isinstance(last_event_id, (str, int)) else 0
+        event_cursor = (
+            last_event_id_query
+            if isinstance(last_event_id_query, int)
+            else (max(0, int(last_event_id or 0)) if isinstance(last_event_id, (str, int)) else 0)
         )
     except ValueError:
         event_cursor = 0
@@ -274,11 +267,7 @@ def stream_instance(
             finished = False
             session = _stream_session()
             try:
-                inst = (
-                    session.query(WorkflowInstance)
-                    .filter(WorkflowInstance.instance_id == instance_id)
-                    .first()
-                )
+                inst = session.query(WorkflowInstance).filter(WorkflowInstance.instance_id == instance_id).first()
                 if inst is None:  # 实例被清理（悬空）→ 收流，前端 onError 降级轮询兜底
                     return
                 tasks = (
@@ -299,20 +288,35 @@ def stream_instance(
                     event_cursor = run_event.id
                 for t in tasks:
                     if first or t.state != baseline.get(t.id):
-                        events.append(("task_state_changed", {
-                            "taskId": t.id, "nodeId": t.node_id, "nodeType": t.node_type,
-                            "name": t.name, "state": t.state, "attempt": t.attempt,
-                            "loopIter": t.loop_iter or 0,
-                            "startTime": fmt_dt(t.start_time), "endTime": fmt_dt(t.end_time),
-                        }))
+                        events.append(
+                            (
+                                "task_state_changed",
+                                {
+                                    "taskId": t.id,
+                                    "nodeId": t.node_id,
+                                    "nodeType": t.node_type,
+                                    "name": t.name,
+                                    "state": t.state,
+                                    "attempt": t.attempt,
+                                    "loopIter": t.loop_iter or 0,
+                                    "startTime": fmt_dt(t.start_time),
+                                    "endTime": fmt_dt(t.end_time),
+                                },
+                            )
+                        )
                     baseline[t.id] = t.state
                 replay_batch_full = len(run_events) == 200
-                if (inst.state in TERMINAL_STATES and not replay_batch_full
-                        and (first or inst.state != last_state)):
-                    events.append(("instance_finished", {
-                        "instanceId": instance_id, "state": inst.state,
-                        "endTime": fmt_dt(inst.end_time),
-                    }))
+                if inst.state in TERMINAL_STATES and not replay_batch_full and (first or inst.state != last_state):
+                    events.append(
+                        (
+                            "instance_finished",
+                            {
+                                "instanceId": instance_id,
+                                "state": inst.state,
+                                "endTime": fmt_dt(inst.end_time),
+                            },
+                        )
+                    )
                     finished = True
                 if not (inst.state in TERMINAL_STATES and replay_batch_full):
                     last_state = inst.state

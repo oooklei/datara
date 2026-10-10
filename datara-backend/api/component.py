@@ -17,7 +17,6 @@ profile 源码生成并提交（git 内唯一真源，可 diff、可评审）。
 M0 为只读，不接受任何写操作。发布/草稿/版本治理属 M2。
 """
 
-import re
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -33,6 +32,7 @@ logger = get_logger("api.component")
 
 router = APIRouter(prefix="/components", tags=["component"])
 
+
 def _load() -> dict:
     """读取共享适配器提供的、随代码发布的目录快照。"""
     return catalog_payload()
@@ -41,10 +41,8 @@ def _load() -> dict:
 @router.get("", summary="组件清单")
 def list_components(
     profile: Optional[str] = Query(None, description="按 ViewProfile 过滤：dag/etl/stream/topo"),
-    route: Optional[str] = Query(
-        None, description="按派发方式过滤：master/worker/template/nonExecutable/UNROUTED"),
-    palette_visible: Optional[bool] = Query(None, alias="paletteVisible",
-                                            description="是否只在 Palette 可见"),
+    route: Optional[str] = Query(None, description="按派发方式过滤：master/worker/template/nonExecutable/UNROUTED"),
+    palette_visible: Optional[bool] = Query(None, alias="paletteVisible", description="是否只在 Palette 可见"),
     q: Optional[str] = Query(None, description="按 type/label/desc 模糊搜索"),
 ) -> dict:
     """组件清单。默认返回全部 74 个（含 4 个 profile）。"""
@@ -60,7 +58,8 @@ def list_components(
     if q:
         needle = q.strip().lower()
         items = [
-            c for c in items
+            c
+            for c in items
             if needle in (c["type"] or "").lower()
             or needle in (c["label"] or "").lower()
             or needle in (c["desc"] or "").lower()
@@ -68,49 +67,56 @@ def list_components(
         ]
 
     # 精简列表视图：去掉逐字段明细（详情走 /components/{type}）
-    brief = [{
-        "type": c["type"],
-        "profile": c["profile"],
-        "dagRelevant": c["dagRelevant"],
-        "executionModel": c["executionModel"],
-        "executionNote": c["executionNote"],
-        "code": c["code"],
-        "label": c["label"],
-        "icon": c["icon"],
-        "color": c["color"],
-        "desc": c["desc"],
-        "categories": c["categories"],
-        "shape": c["shape"],
-        "runtimeOnly": c["runtimeOnly"],
-        "route": c["route"],
-        "executor": c["executor"],
-        "paletteVisible": c["paletteVisible"],
-        "paletteGroup": c["paletteGroup"],
-        "initTemplate": c.get("initTemplate"),
-        "formFieldCount": c["formFieldCount"],
-        "requiredFieldCount": sum(1 for f in c["formFields"] if f["required"]),
-        "flags": c["flags"],
-    } for c in items]
+    brief = [
+        {
+            "type": c["type"],
+            "profile": c["profile"],
+            "dagRelevant": c["dagRelevant"],
+            "executionModel": c["executionModel"],
+            "executionNote": c["executionNote"],
+            "code": c["code"],
+            "label": c["label"],
+            "icon": c["icon"],
+            "color": c["color"],
+            "desc": c["desc"],
+            "categories": c["categories"],
+            "shape": c["shape"],
+            "runtimeOnly": c["runtimeOnly"],
+            "route": c["route"],
+            "executor": c["executor"],
+            "paletteVisible": c["paletteVisible"],
+            "paletteGroup": c["paletteGroup"],
+            "initTemplate": c.get("initTemplate"),
+            "formFieldCount": c["formFieldCount"],
+            "requiredFieldCount": sum(1 for f in c["formFields"] if f["required"]),
+            "flags": c["flags"],
+        }
+        for c in items
+    ]
 
-    return ok({
-        "total": len(brief),
-        "catalogHash": cat["catalogHash"],
-        "schemaVersion": cat["schemaVersion"],
-        "items": brief,
-    })
+    return ok(
+        {
+            "total": len(brief),
+            "catalogHash": cat["catalogHash"],
+            "schemaVersion": cat["schemaVersion"],
+            "items": brief,
+        }
+    )
 
 
 @router.get("/stats", summary="组件目录统计")
 def stats() -> dict:
     """汇总统计。`consistencyErrors` 非空即表示目录与源码/后端路由不自洽。"""
     cat = _load()
-    return ok({
-        "catalogHash": cat["catalogHash"],
-        "generatedAt": cat["generatedAt"],
-        "source": cat["source"],
-        "stats": cat["stats"],
-        "profiles": cat["profiles"],
-    })
+    return ok(
+        {
+            "catalogHash": cat["catalogHash"],
+            "generatedAt": cat["generatedAt"],
+            "source": cat["source"],
+            "stats": cat["stats"],
+            "profiles": cat["profiles"],
+        }
+    )
 
 
 @router.get("/catalog", summary="目录原始快照")
@@ -131,17 +137,23 @@ def registry(db: Session = Depends(get_db)) -> dict:
     注意路由顺序：必须注册在 GET /{type_name} 之前，否则被单组件详情路径吞掉。
     """
     rows = db.query(Component).order_by(Component.type).all()
-    return ok({
-        "items": [
-            {
-                "type": r.type, "name": r.name, "profile": r.profile,
-                "scope": r.scope, "state": r.state,
-                "publishedVersion": r.published_version,
-                "executionModel": r.execution_model, "category": r.category,
-            }
-            for r in rows
-        ],
-    })
+    return ok(
+        {
+            "items": [
+                {
+                    "type": r.type,
+                    "name": r.name,
+                    "profile": r.profile,
+                    "scope": r.scope,
+                    "state": r.state,
+                    "publishedVersion": r.published_version,
+                    "executionModel": r.execution_model,
+                    "category": r.category,
+                }
+                for r in rows
+            ],
+        }
+    )
 
 
 @router.get("/{type_name}", summary="单组件详情")
@@ -158,9 +170,7 @@ def get_component(type_name: str) -> dict:
     # 区分"存在但不在前端"（如 src_select/tgt_select/smoke）与"完全不存在"
     known_backend = set(cat["stats"].get("backendOnlyTypes") or [])
     if type_name in known_backend:
-        raise HTTPException(
-            status_code=409,
-            detail=f"{type_name} 为后端保留类型，无前端 NodeSchema（预期行为）")
+        raise HTTPException(status_code=409, detail=f"{type_name} 为后端保留类型，无前端 NodeSchema（预期行为）")
     raise HTTPException(status_code=404, detail=f"组件不存在: {type_name}")
 
 

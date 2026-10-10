@@ -34,9 +34,9 @@ _CONN_TYPES = frozenset({"mysql", "greatdb"})
 _STRATEGIES = frozenset({"union", "src_flag", "partition"})
 _SYSTEM_DBS = frozenset({"information_schema", "mysql", "performance_schema", "sys"})
 
-_INSERT_BATCH = 1000       # 写端批大小上限（脏数据逐行回退粒度）
-_KILL_CHECK_BATCHES = 50   # 每隔多少批检查一次 kill 中断
-_PROGRESS_BATCHES = 10     # 每隔多少批打一次进度日志
+_INSERT_BATCH = 1000  # 写端批大小上限（脏数据逐行回退粒度）
+_KILL_CHECK_BATCHES = 50  # 每隔多少批检查一次 kill 中断
+_PROGRESS_BATCHES = 10  # 每隔多少批打一次进度日志
 
 
 class SyncFail(Exception):
@@ -80,8 +80,7 @@ def _resolve_schemas(conn, param, table: str, match_type: str, log) -> list:
     （readerMatchPrefix 非空则用之，否则 readerTable）逐库收集全部匹配表。
     无匹配表的库剔除，全部为空报参数错误。
     """
-    pattern = ("%s%%" % (_backtick(param.get("readerMatchPrefix")) or table)
-               if match_type == "prefix" else table)
+    pattern = "%s%%" % (_backtick(param.get("readerMatchPrefix")) or table) if match_type == "prefix" else table
     # 前端表单键 readerSchemasText（逗号分隔文本）优先；API/旧契约 readerSchemas（list）兜底
     raw_schemas = param.get("readerSchemasText") or param.get("readerSchemas") or []
     if isinstance(raw_schemas, str):  # 前端逗号分隔文本输入兼容（中英文逗号）
@@ -141,8 +140,7 @@ def _plan_targets(schemas: list, strategy: str, writer_table: str) -> list:
     return [(writer_table, None, None)]
 
 
-def _column_pairs(first_cols: list, field_map: list, flag_column: str,
-                  strategy: str) -> tuple:
+def _column_pairs(first_cols: list, field_map: list, flag_column: str, strategy: str) -> tuple:
     """源列/目标列配对：fieldMap 优先，空=同名全列；src_flag 目标侧追加标识列。"""
     if field_map:
         # 键名双兼容：执行器契约 {from,to} / 前端 kv-table 形态 {key,value}
@@ -158,8 +156,9 @@ def _column_pairs(first_cols: list, field_map: list, flag_column: str,
     return src_cols, dst_cols
 
 
-def _create_target(conn, table: str, first_cols: list, dst_cols: list,
-                   flag_column: str, strategy: str, is_file: bool) -> None:
+def _create_target(
+    conn, table: str, first_cols: list, dst_cols: list, flag_column: str, strategy: str, is_file: bool
+) -> None:
     """autoCreate 建目标表：连接型同构 COLUMN_TYPE / 文件型 TEXT；src_flag 追加标识列。"""
     col_type = {name: ctype for name, ctype in first_cols}
     defs = []
@@ -172,15 +171,11 @@ def _create_target(conn, table: str, first_cols: list, dst_cols: list,
             defs.append("`%s` %s NULL" % (c, col_type[c]))
     with conn.cursor() as cur:
         cur.execute("DROP TABLE IF EXISTS `%s`" % table)
-        cur.execute(
-            "CREATE TABLE `%s` (%s) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4"
-            % (table, ", ".join(defs))
-        )
+        cur.execute("CREATE TABLE `%s` (%s) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4" % (table, ", ".join(defs)))
     conn.commit()
 
 
-def _insert_batch(cur, conn, table: str, dst_cols: list, batch: list,
-                  error_threshold: int, bad_rows: int, log) -> int:
+def _insert_batch(cur, conn, table: str, dst_cols: list, batch: list, error_threshold: int, bad_rows: int, log) -> int:
     """批插 + 脏数据逐行回退定位；返回累计坏行数（超阈值抛 SyncFail）。"""
     cols_sql = ", ".join("`%s`" % c for c in dst_cols)
     marks = ", ".join(["%s"] * len(dst_cols))
@@ -206,8 +201,9 @@ def _insert_batch(cur, conn, table: str, dst_cols: list, batch: list,
         return bad_rows
 
 
-def _pump(read_iter, writer_conn, target_table: str, dst_cols: list, batch_size: int,
-          error_threshold: int, ctx, stat: dict) -> None:
+def _pump(
+    read_iter, writer_conn, target_table: str, dst_cols: list, batch_size: int, error_threshold: int, ctx, stat: dict
+) -> None:
     """统一搬运循环：迭代器 → 分批写（kill 检查/进度日志/脏数据回退），原地更新 stat。"""
     wcur = writer_conn.cursor()
     batch, batch_no = [], 0
@@ -216,19 +212,20 @@ def _pump(read_iter, writer_conn, target_table: str, dst_cols: list, batch_size:
             stat["read"] += 1
             batch.append(row)
             if len(batch) >= batch_size:
-                stat["bad"] = _insert_batch(wcur, writer_conn, target_table, dst_cols,
-                                            batch, error_threshold, stat["bad"], ctx.log)
+                stat["bad"] = _insert_batch(
+                    wcur, writer_conn, target_table, dst_cols, batch, error_threshold, stat["bad"], ctx.log
+                )
                 stat["write"] += len(batch)
                 batch_no += 1
                 batch = []
                 if batch_no % _KILL_CHECK_BATCHES == 0 and ctx.killed():
                     raise KeyboardInterrupt
                 if batch_no % _PROGRESS_BATCHES == 0:
-                    ctx.log("[sync] 进度: 已读 %d / 已写 %d / 坏行 %d"
-                            % (stat["read"], stat["write"], stat["bad"]))
+                    ctx.log("[sync] 进度: 已读 %d / 已写 %d / 坏行 %d" % (stat["read"], stat["write"], stat["bad"]))
         if batch:
-            stat["bad"] = _insert_batch(wcur, writer_conn, target_table, dst_cols,
-                                        batch, error_threshold, stat["bad"], ctx.log)
+            stat["bad"] = _insert_batch(
+                wcur, writer_conn, target_table, dst_cols, batch, error_threshold, stat["bad"], ctx.log
+            )
             stat["write"] += len(batch)
     finally:
         wcur.close()
@@ -268,7 +265,7 @@ def _parse_file_where(expr, col_names: list) -> list:
             pos = seg.find(op)
             if pos > 0:
                 name = seg[:pos].strip().strip("`'\"").strip()
-                raw = seg[pos + len(op):].strip()
+                raw = seg[pos + len(op) :].strip()
                 if name and raw:
                     if len(raw) >= 2 and raw[0] == raw[-1] and raw[0] in ("'", '"'):
                         raw = raw[1:-1]
@@ -309,15 +306,15 @@ def _row_matches(row: list, conds: list) -> bool:
     return True
 
 
-def _build_union_sql(schemas: list, src_cols: list,
-                     strategy: str, flag_column: str, where: str) -> str:
+def _build_union_sql(schemas: list, src_cols: list, strategy: str, flag_column: str, where: str) -> str:
     """union/src_flag 生成 UNION ALL 语句（schemas=[(schema, 实际表名)]，src_flag 附加标识列）。"""
     cols_sql = ", ".join("`%s`" % c for c in src_cols)
     branches = []
     for s, t in schemas:
         if strategy == "src_flag":
-            branches.append("SELECT %s, '%s' AS `%s` FROM `%s`.`%s`%s"
-                            % (cols_sql, s.replace("'", "''"), flag_column, s, t, where))
+            branches.append(
+                "SELECT %s, '%s' AS `%s` FROM `%s`.`%s`%s" % (cols_sql, s.replace("'", "''"), flag_column, s, t, where)
+            )
         else:
             branches.append("SELECT %s FROM `%s`.`%s`%s" % (cols_sql, s, t, where))
     return "\nUNION ALL\n".join(branches)
@@ -369,8 +366,10 @@ def execute(ctx) -> ExecResult:
                     "sheet": param.get("readerSheet") or "",
                 }
             spec = normalize_file_params(file_params)
-            log("[sync] 文件读端: %s（format=%s delimiter=%r header=%s）"
-                % (spec.path, spec.format, spec.delimiter, spec.header))
+            log(
+                "[sync] 文件读端: %s（format=%s delimiter=%r header=%s）"
+                % (spec.path, spec.format, spec.delimiter, spec.header)
+            )
             schema_preview, _sample = file_schema_preview(spec, sample_limit=1000, preview_limit=0)
             first_cols = [(str(c["name"]), "text") for c in schema_preview.get("columns") or []]
             if not first_cols:
@@ -383,8 +382,7 @@ def execute(ctx) -> ExecResult:
             if reader_ds is None:  # readerType 显式给出的旧路径：兜底未触发，此处才自查
                 reader_ds = _lookup_datasource(param.get("readerDs"))
             if reader_ds is None:
-                return ExecResult(FAILURE, {},
-                                  ["[sync] 读端数据源不存在: %s" % param.get("readerDs")])
+                return ExecResult(FAILURE, {}, ["[sync] 读端数据源不存在: %s" % param.get("readerDs")])
             if str(reader_ds.type or "").lower() not in _CONN_TYPES:
                 return ExecResult(FAILURE, {}, ["[sync] 读端数据源类型不支持: %s" % reader_ds.type])
             reader_conn = open_connection(reader_ds, read_timeout=None)
@@ -397,8 +395,7 @@ def execute(ctx) -> ExecResult:
                 log("[sync] 前缀匹配命中表数: %d" % len(schemas))
             first_cols = _source_columns(reader_conn, schemas[0][0], schemas[0][1])
             if not first_cols:
-                return ExecResult(FAILURE, {},
-                                  ["[sync] 源表无列: %s.%s" % (schemas[0][0], schemas[0][1])])
+                return ExecResult(FAILURE, {}, ["[sync] 源表无列: %s.%s" % (schemas[0][0], schemas[0][1])])
             is_file = False
         else:
             return ExecResult(FAILURE, {}, ["[sync] 不支持的读端类型: %s" % reader_type])
@@ -419,8 +416,7 @@ def execute(ctx) -> ExecResult:
                 exists = cur.fetchone() is not None
             if not exists:
                 if param.get("autoCreate", True):
-                    _create_target(writer_conn, target_table, first_cols, dst_cols,
-                                   flag_column, strategy, is_file)
+                    _create_target(writer_conn, target_table, first_cols, dst_cols, flag_column, strategy, is_file)
                     log("[sync] 已自动建表: %s（%d 列）" % (target_table, len(dst_cols)))
                 else:
                     raise FileSourceError("目标表不存在且未开启自动建表: %s" % target_table)
@@ -433,6 +429,7 @@ def execute(ctx) -> ExecResult:
         # ---- 搬运 ----
         try:
             if is_file:
+
                 def file_rows():
                     skip_header = spec.header
                     for row in iter_rows(spec):
@@ -442,20 +439,19 @@ def execute(ctx) -> ExecResult:
                         if file_conds and not _row_matches(row, file_conds):
                             stat["skip"] += 1
                             continue
-                        vals = [None if v is None or str(v) == "" else str(v)
-                                for v in row[: len(dst_cols)]]
+                        vals = [None if v is None or str(v) == "" else str(v) for v in row[: len(dst_cols)]]
                         if len(vals) < len(dst_cols):
                             vals += [None] * (len(dst_cols) - len(vals))
                         yield tuple(vals)
 
-                _pump(file_rows(), writer_conn, plan[0][0], dst_cols,
-                      batch_size, error_threshold, ctx, stat)
+                _pump(file_rows(), writer_conn, plan[0][0], dst_cols, batch_size, error_threshold, ctx, stat)
             else:
                 conds = []
                 if incremental and incremental.get("column"):
-                    conds.append("(`%s` >= '%s')" % (
-                        _backtick(incremental["column"]),
-                        str(incremental.get("expr") or "").replace("'", "''")))
+                    conds.append(
+                        "(`%s` >= '%s')"
+                        % (_backtick(incremental["column"]), str(incremental.get("expr") or "").replace("'", "''"))
+                    )
                 reader_where = str(param.get("readerWhere") or "").strip()
                 if reader_where:
                     # 内部工具：表达式原样拼入，括号包裹隔离 AND 优先级
@@ -463,20 +459,36 @@ def execute(ctx) -> ExecResult:
                 where = " WHERE %s" % " AND ".join(conds) if conds else ""
                 if strategy == "partition":
                     for target_table, schema, src_table in plan:
-                        select_sql = ("SELECT %s FROM `%s`.`%s`%s"
-                                      % (", ".join("`%s`" % c for c in src_cols),
-                                         schema, src_table, where))
+                        select_sql = "SELECT %s FROM `%s`.`%s`%s" % (
+                            ", ".join("`%s`" % c for c in src_cols),
+                            schema,
+                            src_table,
+                            where,
+                        )
                         ctx.log("[sync] 抽取: %s" % select_sql[:300].replace("\n", " "))
-                        _pump(_sql_row_iter(reader_conn, select_sql, batch_size),
-                              writer_conn, target_table, dst_cols,
-                              batch_size, error_threshold, ctx, stat)
+                        _pump(
+                            _sql_row_iter(reader_conn, select_sql, batch_size),
+                            writer_conn,
+                            target_table,
+                            dst_cols,
+                            batch_size,
+                            error_threshold,
+                            ctx,
+                            stat,
+                        )
                 else:
-                    select_sql = _build_union_sql(schemas, src_cols,
-                                                  strategy, flag_column, where)
+                    select_sql = _build_union_sql(schemas, src_cols, strategy, flag_column, where)
                     ctx.log("[sync] 抽取: %s" % select_sql[:300].replace("\n", " "))
-                    _pump(_sql_row_iter(reader_conn, select_sql, batch_size),
-                          writer_conn, plan[0][0], dst_cols,
-                          batch_size, error_threshold, ctx, stat)
+                    _pump(
+                        _sql_row_iter(reader_conn, select_sql, batch_size),
+                        writer_conn,
+                        plan[0][0],
+                        dst_cols,
+                        batch_size,
+                        error_threshold,
+                        ctx,
+                        stat,
+                    )
         except KeyboardInterrupt:
             log("[sync] 收到中断指令，搬运中止（已写 %d 行）" % stat["write"])
             return ExecResult(KILL, {"read_rows": stat["read"], "write_rows": stat["write"]}, [])
@@ -491,26 +503,27 @@ def execute(ctx) -> ExecResult:
             "rows_per_sec": rps,
             "batch_id": ctx.instance_id,
             # prefix 模式输出 "schema.table" 形态；exact 维持 schema 名单（旧契约）
-            "schemas_included": [] if is_file else (
-                ["%s.%s" % (s, t) for s, t in schemas] if match_type == "prefix"
-                else [s for s, _t in schemas]),
+            "schemas_included": []
+            if is_file
+            else (["%s.%s" % (s, t) for s, t in schemas] if match_type == "prefix" else [s for s, _t in schemas]),
         }
-        log("[sync] 完成: 读 %d / 写 %d / 坏行 %d / 过滤跳过 %d（%.1f 行/s，耗时 %dms）"
-            % (stat["read"], stat["write"], stat["bad"], stat["skip"], rps, int(secs * 1000)))
+        log(
+            "[sync] 完成: 读 %d / 写 %d / 坏行 %d / 过滤跳过 %d（%.1f 行/s，耗时 %dms）"
+            % (stat["read"], stat["write"], stat["bad"], stat["skip"], rps, int(secs * 1000))
+        )
 
         # ---- 血缘（裁定④，旁路；空写不落避免零行边噪音） ----
         if stat["write"] > 0:
-            fields = [{"from_field": s, "to_field": d}
-                      for s, d in zip(src_cols, dst_cols) if d != flag_column]
+            fields = [{"from_field": s, "to_field": d} for s, d in zip(src_cols, dst_cols) if d != flag_column]
             if is_file:
                 edges = [{"from": "", "to": plan[0][0], "stmt": "", "fields": fields}]
             elif strategy == "partition":
-                edges = [{"from": "%s.%s" % (s, t), "to": tbl, "stmt": "",
-                          "fields": fields} for tbl, s, t in plan]
+                edges = [{"from": "%s.%s" % (s, t), "to": tbl, "stmt": "", "fields": fields} for tbl, s, t in plan]
             else:
                 stmt = _build_union_sql(schemas, src_cols, strategy, flag_column, where)
-                edges = [{"from": "%s.%s" % (s, t), "to": plan[0][0],
-                          "stmt": stmt, "fields": fields} for s, t in schemas]
+                edges = [
+                    {"from": "%s.%s" % (s, t), "to": plan[0][0], "stmt": stmt, "fields": fields} for s, t in schemas
+                ]
             collect_sync_lineage(ctx, edges, writer_ds.name)
 
         return ExecResult(SUCCESS, outputs, [])
@@ -522,6 +535,7 @@ def execute(ctx) -> ExecResult:
         return ExecResult(FAILURE, {}, [])
     except Exception as exc:  # noqa: BLE001 执行异常统一 failure
         import traceback
+
         log("[sync] 执行异常: %r" % exc)
         log("[sync] 堆栈: %s" % traceback.format_exc())
         return ExecResult(FAILURE, {}, [])

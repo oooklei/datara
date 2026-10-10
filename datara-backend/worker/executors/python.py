@@ -51,9 +51,11 @@ def execute(ctx) -> ExecResult:
     ctx.log("[python] 运行目录: %s（解释器 %s）" % (run_dir, sys.version.split()[0]))
 
     code, stdout_text, killed = run_stream(
-        [sys.executable, script_path], run_dir,
+        [sys.executable, script_path],
+        run_dir,
         build_env({"PYTHONUNBUFFERED": "1", **(param.get("env") or {})}),
-        ctx.log, ctx.killed,
+        ctx.log,
+        ctx.killed,
     )
     if killed:
         ctx.log("[python] 收到中断指令，子进程已终止")

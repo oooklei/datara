@@ -6,6 +6,7 @@ i12 三证之③ —— Playwright DOM 取证（沙箱侧跑，直连 ssh 反向
 - 此路径在多个独立探针中均返回 200 + Server: nginx/1.27.5（1.9 实机栈），非本地伪造页面
 - 输出：DOM 断言 JSON + 全页截图 PNG，落盘本机
 """
+
 import json
 import os
 import sys
@@ -13,6 +14,7 @@ import sys
 URL = "http://127.0.0.1:18090/"
 SHOT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "i12_dom_proof.png")
 DOM_JSON = os.path.join(os.path.dirname(os.path.abspath(__file__)), "i12_dom_assert.json")
+
 
 def main() -> int:
     try:
@@ -35,7 +37,11 @@ def main() -> int:
             # DOM 结构断言
             res["h1"] = page.locator("h1").first.text_content(timeout=3000) if page.locator("h1").count() else None
             res["nav_links"] = page.locator("nav a").count()
-            res["nav_labels"] = [t.strip() for t in page.locator("nav a").all_text_contents()][:10] if page.locator("nav").count() else []
+            res["nav_labels"] = (
+                [t.strip() for t in page.locator("nav a").all_text_contents()][:10]
+                if page.locator("nav").count()
+                else []
+            )
             res["tables"] = page.locator("table").count()
             body = page.locator("body").inner_text(timeout=5000)
             res["body_snippet"] = body[:500]
@@ -50,6 +56,7 @@ def main() -> int:
         json.dump(res, f, ensure_ascii=False, indent=2)
     print(json.dumps(res, ensure_ascii=False, indent=2))
     return 0 if res.get("ok") and res.get("shot_bytes") else 1
+
 
 if __name__ == "__main__":
     sys.exit(main())

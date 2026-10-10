@@ -7,6 +7,7 @@
   3. /#/dag?doc=wf_order_daily 画布（?doc= 直达载入 seed 工作流 → palette 分组与组件项）
 输出：baseline_ui_assert.json + 3 张截图（本目录）
 """
+
 import json
 import os
 
@@ -33,9 +34,13 @@ def main() -> int:
             body = page.locator("body").inner_text(timeout=8000)
             pg = {"final_url": page.url}
             for key, kw in {
-                "分组_同步类": "同步类", "分组_ETL计算类": "ETL / 计算类",
-                "状态_待认可": "待认可", "状态_设计中": "设计中", "状态_未开始": "未开始",
-                "组件_endpoint_select": "endpoint_select", "组件_sql": "sql",
+                "分组_同步类": "同步类",
+                "分组_ETL计算类": "ETL / 计算类",
+                "状态_待认可": "待认可",
+                "状态_设计中": "设计中",
+                "状态_未开始": "未开始",
+                "组件_endpoint_select": "endpoint_select",
+                "组件_sql": "sql",
                 "证据区_体检": "体检",
             }.items():
                 pg[key] = kw in body
@@ -67,7 +72,7 @@ def main() -> int:
             for tab_name in ["基本信息", "端口", "表单字段", "dropPolicy"]:
                 pg[f"设计器Tab_{tab_name}"] = tab_name in body
             pg["实时预览"] = "实时预览" in body
-            pg["版本区"] = ("版本" in body)
+            pg["版本区"] = "版本" in body
             pg["body_chars"] = len(body)
             page.screenshot(path=os.path.join(OUT, "ui_component_designer.png"), full_page=True)
             res["pages"]["component_designer_ssh"] = pg
@@ -77,8 +82,7 @@ def main() -> int:
 
         # ---------- 3. 画布 palette（?doc= 直达载入 seed 工作流） ----------
         try:
-            page.goto(f"{BASE}/#/dag?tab=edit&type=wf&doc=wf_order_daily",
-                      wait_until="domcontentloaded", timeout=30000)
+            page.goto(f"{BASE}/#/dag?tab=edit&type=wf&doc=wf_order_daily", wait_until="domcontentloaded", timeout=30000)
             page.wait_for_timeout(4000)
             body = page.locator("body").inner_text(timeout=8000)
             pg = {"final_url": page.url}
@@ -116,10 +120,18 @@ def main() -> int:
     out = os.path.join(OUT, "baseline_ui_assert.json")
     with open(out, "w", encoding="utf-8") as f:
         json.dump(res, f, ensure_ascii=False, indent=2)
-    print(json.dumps({"ok": res["ok"], "checks": f"{res['key_checks_passed']}/{res['key_checks_total']}",
-                      "console_errors": len(res["console_errors"]),
-                      "pages": {k: v.get("error") or f"chars={v.get('body_chars')}" for k, v in res["pages"].items()}},
-                     ensure_ascii=False, indent=1))
+    print(
+        json.dumps(
+            {
+                "ok": res["ok"],
+                "checks": f"{res['key_checks_passed']}/{res['key_checks_total']}",
+                "console_errors": len(res["console_errors"]),
+                "pages": {k: v.get("error") or f"chars={v.get('body_chars')}" for k, v in res["pages"].items()},
+            },
+            ensure_ascii=False,
+            indent=1,
+        )
+    )
     return 0 if res["ok"] else 1
 
 

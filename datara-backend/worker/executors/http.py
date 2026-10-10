@@ -93,9 +93,7 @@ def execute(ctx) -> ExecResult:
     ctx.log("[http] %s %s（timeout=%ss，成功码=%s）" % (method, url, timeout, success_rules))
     t0 = time.monotonic()
     try:
-        resp = requests.request(
-            method, url, headers=headers or None, json=json_payload, data=data, timeout=timeout
-        )
+        resp = requests.request(method, url, headers=headers or None, json=json_payload, data=data, timeout=timeout)
     except Exception as exc:  # noqa: BLE001 连接/超时异常 → failure
         ctx.log("[http] 请求失败: %r" % exc)
         return ExecResult(FAILURE, {}, [])

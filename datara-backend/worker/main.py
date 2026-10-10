@@ -37,9 +37,7 @@ def main() -> None:
     heartbeat = WorkerHeartbeat(port=18002)
     heartbeat.start()
 
-    server = uvicorn.Server(
-        uvicorn.Config(create_health_app(), host="0.0.0.0", port=18002, log_level="warning")
-    )
+    server = uvicorn.Server(uvicorn.Config(create_health_app(), host="0.0.0.0", port=18002, log_level="warning"))
     threading.Thread(target=server.run, name="worker-health", daemon=True).start()
 
     stop = threading.Event()

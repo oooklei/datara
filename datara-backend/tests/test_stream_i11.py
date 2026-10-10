@@ -60,20 +60,28 @@ def _load(mod_name, rel_path, stubs):
 
 
 def _load_sources():
-    return _load("datara_test_stream_i11_sources", "worker/stream/sources.py", {
-        "common": {},
-        "common.dsconn": {"resolve_file_path": lambda p: p},
-        "common.db": {"new_session": lambda: None},
-        "common.log": {"get_logger": logging.getLogger},
-        "common.models": {"DataSource": type("DataSource", (), {})},
-    })
+    return _load(
+        "datara_test_stream_i11_sources",
+        "worker/stream/sources.py",
+        {
+            "common": {},
+            "common.dsconn": {"resolve_file_path": lambda p: p},
+            "common.db": {"new_session": lambda: None},
+            "common.log": {"get_logger": logging.getLogger},
+            "common.models": {"DataSource": type("DataSource", (), {})},
+        },
+    )
 
 
 def _load_ops():
-    return _load("datara_test_stream_i11_ops", "worker/stream/ops.py", {
-        "common.log": {"get_logger": logging.getLogger},
-        "simpleeval": {"simple_eval": lambda expr, names=None: eval(expr, {"__builtins__": {}}, dict(names or {}))},
-    })
+    return _load(
+        "datara_test_stream_i11_ops",
+        "worker/stream/ops.py",
+        {
+            "common.log": {"get_logger": logging.getLogger},
+            "simpleeval": {"simple_eval": lambda expr, names=None: eval(expr, {"__builtins__": {}}, dict(names or {}))},
+        },
+    )
 
 
 _sources = _load_sources()
@@ -88,6 +96,7 @@ OpError = _ops.OpError
 
 
 # ---------- build_source 七源工厂 ----------
+
 
 def test_build_source_dispatch():
     assert isinstance(build_source("n1", {"srcType": "simulate"}), SimulateSource)
@@ -127,11 +136,14 @@ def _drain(src, rounds=80):
     return rows
 
 
-@pytest.mark.parametrize("dataset,fieldsets", [
-    ("ecommerce", ECOM_FIELDSETS),
-    ("iot", IOT_FIELDSETS),
-    ("visit", VISIT_FIELDSETS),
-])
+@pytest.mark.parametrize(
+    "dataset,fieldsets",
+    [
+        ("ecommerce", ECOM_FIELDSETS),
+        ("iot", IOT_FIELDSETS),
+        ("visit", VISIT_FIELDSETS),
+    ],
+)
 def test_simulate_event_schema(dataset, fieldsets):
     # 400 条：iot alert 概率 0.02 期望 ~8 条（P(零)=0.0003），visit order 0.2 期望 ~80 条
     rows = _drain(SimulateSource("n1", {"simDataset": dataset}), rounds=400)
@@ -178,6 +190,7 @@ def test_simulate_eps_clamp():
 
 
 # ---------- RedisStreamSource ----------
+
 
 class FakeRedis:
     instances: list["FakeRedis"] = []
@@ -231,9 +244,14 @@ def test_redis_open_requires_config():
 
 
 def test_redis_open_and_group(fake_redis):
-    src = RedisStreamSource("n1", {
-        "redisUrl": "redis://redis:6379/0", "streamsText": "s1,s2", "redisGroup": "g1",
-    })
+    src = RedisStreamSource(
+        "n1",
+        {
+            "redisUrl": "redis://redis:6379/0",
+            "streamsText": "s1,s2",
+            "redisGroup": "g1",
+        },
+    )
     src.open({"streams": ["s1"], "group": "g1"})  # 注入旧位点：open 不做核对仅装配
     r = fake_redis.instances[0]
     assert r.kw["url"] == "redis://redis:6379/0"
@@ -253,14 +271,19 @@ def test_redis_poll_decode_shapes(fake_redis):
     src = RedisStreamSource("n1", {"redisUrl": "redis://x/0", "streamsText": "orders"})
     src.open(None)
     r = fake_redis.instances[0]
-    r.xread_responses = [[
-        ("orders", [
-            ("1-1", {"data": '{"order_id":"o1","amount":9.9,"ts":1000.5}'}),
-            ("1-2", {"user_id": "u1", "page": "/home"}),
-            ("1-3", {"data": "not-json"}),
-            ("1-4", {"data": "[1,2]"}),  # 非 dict JSON → {"value": [...]}
-        ]),
-    ]]
+    r.xread_responses = [
+        [
+            (
+                "orders",
+                [
+                    ("1-1", {"data": '{"order_id":"o1","amount":9.9,"ts":1000.5}'}),
+                    ("1-2", {"user_id": "u1", "page": "/home"}),
+                    ("1-3", {"data": "not-json"}),
+                    ("1-4", {"data": "[1,2]"}),  # 非 dict JSON → {"value": [...]}
+                ],
+            ),
+        ]
+    ]
     rows = src.poll(10)
     assert len(rows) == 3  # 坏 JSON 跳过
     assert rows[0] == {"source": "n1:redis:orders", "ts": 1000.5, "data": {"order_id": "o1", "amount": 9.9}}
@@ -279,6 +302,7 @@ def test_redis_offset_contract(fake_redis):
 
 
 # ---------- MqttSource ----------
+
 
 class FakeMqttClient:
     def __init__(self, api_version):
@@ -352,7 +376,7 @@ def test_mqtt_poll_queue_bridge(fake_paho):
     src.open(None)
     c = fake_paho[0]
     c.on_message(None, None, _msg("iot/temp", b'{"device":"d1","value":45.5,"ts":2000.0}'))
-    c.on_message(None, None, _msg("iot/temp", b'raw-text'))
+    c.on_message(None, None, _msg("iot/temp", b"raw-text"))
     rows = src.poll(10)
     assert len(rows) == 2
     assert rows[0] == {"source": "n1:mqtt:iot/temp", "ts": 2000.0, "data": {"device": "d1", "value": 45.5}}
@@ -365,6 +389,7 @@ def test_mqtt_queue_full_backpressure(fake_paho):
     src = MqttSource("n1", {"mqttHost": "h", "mqttTopics": "t"})
     src.open(None)
     import queue as pyqueue
+
     src._queue = pyqueue.Queue(maxsize=1)
     src._queue.put(("t", {"old": 1}))  # 占满
     c = fake_paho[0]
@@ -375,9 +400,11 @@ def test_mqtt_queue_full_backpressure(fake_paho):
 
 # ---------- WindowAggOp 新聚合函数 ----------
 
+
 def _mk_op(aggs, group_keys=""):
-    return WindowAggOp({"groupKeys": group_keys, "aggs": aggs, "windowType": "tumbling",
-                        "windowSizeSec": 5, "watermarkSec": 0})
+    return WindowAggOp(
+        {"groupKeys": group_keys, "aggs": aggs, "windowType": "tumbling", "windowSizeSec": 5, "watermarkSec": 0}
+    )
 
 
 def test_window_unknown_func_raises():
@@ -388,9 +415,17 @@ def test_window_unknown_func_raises():
 def test_window_count_distinct_any_type():
     """count_distinct 对任意类型去重（字符串/数值混合），None 不计入。"""
     op = _mk_op([{"key": "user_id", "value": "count_distinct:uv"}])
-    bucket = {"start": 100, "end": 105, "rows": [
-        {"user_id": "u1"}, {"user_id": "u2"}, {"user_id": "u1"}, {}, {"user_id": None},
-    ]}
+    bucket = {
+        "start": 100,
+        "end": 105,
+        "rows": [
+            {"user_id": "u1"},
+            {"user_id": "u2"},
+            {"user_id": "u1"},
+            {},
+            {"user_id": None},
+        ],
+    }
     out = op._result(bucket)["data"]
     assert out["uv"] == 2
 
@@ -404,17 +439,24 @@ def test_window_rms():
 
 def test_window_mixed_aggs_iot_shape():
     """IoT 场景混合聚合：avg/max/rms/count_distinct 同窗口并行 + 分组键回填。"""
-    op = _mk_op([
-        {"key": "temp", "value": "avg:temp_avg"},
-        {"key": "press", "value": "max:press_max"},
-        {"key": "vib", "value": "rms:vib_rms"},
-        {"key": "user", "value": "count_distinct:uv"},
-    ], group_keys="device")
-    bucket = {"start": 10, "end": 15, "rows": [
-        {"device": "d1", "temp": 40, "press": 3.0, "vib": 3, "user": "u1"},
-        {"device": "d1", "temp": 50, "press": 4.0, "vib": 4, "user": "u2"},
-        {"device": "d1", "temp": 45, "vib": 0, "user": "u1"},  # 无 press
-    ]}
+    op = _mk_op(
+        [
+            {"key": "temp", "value": "avg:temp_avg"},
+            {"key": "press", "value": "max:press_max"},
+            {"key": "vib", "value": "rms:vib_rms"},
+            {"key": "user", "value": "count_distinct:uv"},
+        ],
+        group_keys="device",
+    )
+    bucket = {
+        "start": 10,
+        "end": 15,
+        "rows": [
+            {"device": "d1", "temp": 40, "press": 3.0, "vib": 3, "user": "u1"},
+            {"device": "d1", "temp": 50, "press": 4.0, "vib": 4, "user": "u2"},
+            {"device": "d1", "temp": 45, "vib": 0, "user": "u1"},  # 无 press
+        ],
+    }
     out = op._result(bucket)["data"]
     assert out["device"] == "d1"
     assert out["temp_avg"] == 45.0
@@ -432,8 +474,9 @@ def test_window_count_len_rows():
 
 def test_window_fire_end_to_end():
     """到期窗口由定时线程触发投递（水位线 0，行 ts 已过窗口 end）。"""
-    op = WindowAggOp({"windowType": "tumbling", "windowSizeSec": 2, "watermarkSec": 0,
-                      "aggs": [{"key": "v", "value": "sum:s"}]})
+    op = WindowAggOp(
+        {"windowType": "tumbling", "windowSizeSec": 2, "watermarkSec": 0, "aggs": [{"key": "v", "value": "sum:s"}]}
+    )
     outs: list = []
     op.bind_emit(outs.append)
     op.open()

@@ -22,9 +22,7 @@ def _next_fire(crontab: str, base: datetime) -> datetime:
 
 def _fire(session, schedule: WfSchedule, planned: datetime) -> None:
     """到期触发：写 START_PROCESS 命令（run_mode=schedule，schedule_time=计划时刻）。"""
-    definition = (
-        session.query(WfDefinition).filter(WfDefinition.code == schedule.wf_code).first()
-    )
+    definition = session.query(WfDefinition).filter(WfDefinition.code == schedule.wf_code).first()
     session.add(
         Command(
             command_type="START_PROCESS",
@@ -55,14 +53,16 @@ def _tick(cache: dict) -> None:
             if schedule.end_time is not None and current > schedule.end_time:
                 continue
             entry = cache.get(schedule.id)
-            if entry is None or entry["crontab"] != schedule.crontab \
-                    or entry["update_time"] != schedule.update_time:
-                entry = {"crontab": schedule.crontab,
-                         "update_time": schedule.update_time,
-                         "next": _next_fire(schedule.crontab, current)}
+            if entry is None or entry["crontab"] != schedule.crontab or entry["update_time"] != schedule.update_time:
+                entry = {
+                    "crontab": schedule.crontab,
+                    "update_time": schedule.update_time,
+                    "next": _next_fire(schedule.crontab, current),
+                }
                 cache[schedule.id] = entry
-                logger.info("定时计划装载: schedule=%s crontab=%s next=%s",
-                            schedule.id, schedule.crontab, entry["next"])
+                logger.info(
+                    "定时计划装载: schedule=%s crontab=%s next=%s", schedule.id, schedule.crontab, entry["next"]
+                )
             if current >= entry["next"]:
                 planned = entry["next"]
                 _fire(session, schedule, planned)

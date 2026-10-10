@@ -35,8 +35,8 @@ USER = SimpleNamespace(id=1, user_name="tester", user_role="dev")
 def set_role(app, role: str) -> None:
     """切换注入用户角色（与 conftest.set_role 同实现；conftest 不可直接 import）。"""
     from api.auth import get_current_user
-    app.dependency_overrides[get_current_user] = lambda: SimpleNamespace(
-        id=1, user_name="tester", user_role=role)
+
+    app.dependency_overrides[get_current_user] = lambda: SimpleNamespace(id=1, user_name="tester", user_role=role)
 
 
 @pytest.fixture(autouse=True)
@@ -52,8 +52,9 @@ def _mk_instance(db, state="running", end_time=None):
 
 
 def _mk_task(db, node_id, state, attempt=1):
-    t = TaskInstance(instance_id=IID, node_id=node_id, node_type="sql", name=f"节点{node_id}",
-                     state=state, attempt=attempt)
+    t = TaskInstance(
+        instance_id=IID, node_id=node_id, node_type="sql", name=f"节点{node_id}", state=state, attempt=attempt
+    )
     db.add(t)
     db.commit()
     return t
@@ -89,9 +90,9 @@ class SSESession:
                 raise AssertionError(f"流提前关闭，仅得 {len(events)}/{n} 事件: {events}")
             for line in chunk.split("\n"):
                 if line.startswith("event: "):
-                    pending = line[len("event: "):]
+                    pending = line[len("event: ") :]
                 elif line.startswith("data: ") and pending:
-                    events.append((pending, json.loads(line[len("data: "):])))
+                    events.append((pending, json.loads(line[len("data: ") :])))
                     pending = None
         return events
 
@@ -117,6 +118,7 @@ def _writer(db):
     """独立写会话（同引擎同连接）：流内 gen 的 close() 会 expunge 共享 session 的对象，
     之后再用它 commit 是空写（教训见模块 docstring）；生产中状态变更是 master 独立写库。"""
     from sqlalchemy.orm import sessionmaker
+
     return sessionmaker(bind=db.get_bind(), expire_on_commit=False)()
 
 
@@ -178,9 +180,14 @@ def test_stream_replays_run_events_and_honors_last_event_id(db_session):
     _mk_run_event(db_session, 2, "node_executed")
 
     async def main():
-        s = SSESession(instance_mod.stream_instance(
-            IID, last_event_id="1", user=USER, db=db_session,
-        ).body_iterator)
+        s = SSESession(
+            instance_mod.stream_instance(
+                IID,
+                last_event_id="1",
+                user=USER,
+                db=db_session,
+            ).body_iterator
+        )
         events = await s.events(1)
         assert events[0][0] == "node_event"
         payload = events[0][1]
@@ -192,16 +199,18 @@ def test_stream_replays_run_events_and_honors_last_event_id(db_session):
 
 def test_terminal_stream_replays_every_durable_event_before_closing(db_session):
     _mk_instance(db_session, state="success")
-    db_session.add_all([
-        TRunEvent(
-            id=event_id,
-            run_id=IID,
-            node_id="n1",
-            event_type="progress",
-            payload_json=json.dumps({"value": event_id}),
-        )
-        for event_id in range(1, 202)
-    ])
+    db_session.add_all(
+        [
+            TRunEvent(
+                id=event_id,
+                run_id=IID,
+                node_id="n1",
+                event_type="progress",
+                payload_json=json.dumps({"value": event_id}),
+            )
+            for event_id in range(1, 202)
+        ]
+    )
     db_session.commit()
 
     async def main():

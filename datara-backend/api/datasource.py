@@ -248,6 +248,7 @@ def delete_datasource(
 
 # ---------- 流源连通测试（kafka / redis / mqtt / http，09-21 注册化） ----------
 
+
 def _parse_brokers(raw) -> List[tuple]:
     """brokers 串（"h1:9092,h2:9092"）→ [(host, port)]；缺省端口 9092；非法项跳过。"""
     out: List[tuple] = []
@@ -355,7 +356,10 @@ def _test_http(row: DataSource) -> str:
     headers = {str(k): str(v) for k, v in (params.get("headers") or {}).items() if str(k).strip()}
     try:
         resp = requests.request(
-            str(params.get("probeMethod") or "GET"), base, headers=headers or None, timeout=8,
+            str(params.get("probeMethod") or "GET"),
+            base,
+            headers=headers or None,
+            timeout=8,
             allow_redirects=True,
         )
     except requests.RequestException as exc:
@@ -405,9 +409,7 @@ def test_datasource(
     elapsed = int((time.monotonic() - start) * 1000)
     row.status = status
     db.commit()
-    logger.info(
-        "数据源连通测试: %s(%s) → %s %dms（操作人 %s）", row.name, row.type, status, elapsed, user.user_name
-    )
+    logger.info("数据源连通测试: %s(%s) → %s %dms（操作人 %s）", row.name, row.type, status, elapsed, user.user_name)
     return ok({"status": status, "elapsedMs": elapsed, "message": msg, **detail})
 
 
@@ -602,7 +604,12 @@ def list_tables_lazy(
     ]
     logger.info(
         "表列表(懒加载): ds=%s db=%s kind=%s kw=%r → %d 项（%s）",
-        row.name, db_name, kind, keyword, len(tables), user.user_name,
+        row.name,
+        db_name,
+        kind,
+        keyword,
+        len(tables),
+        user.user_name,
     )
     return ok(tables)
 
@@ -681,10 +688,7 @@ def search_tables(
     finally:
         conn.close()
     return ok(
-        [
-            {"db": schema, "name": name, "kind": "view" if ttype == "VIEW" else "table"}
-            for schema, name, ttype in raw
-        ]
+        [{"db": schema, "name": name, "kind": "view" if ttype == "VIEW" else "table"} for schema, name, ttype in raw]
     )
 
 
@@ -735,7 +739,12 @@ def manual_clean_tmp(
     db.commit()
     logger.info(
         "手动清理临时数据: id=%s %s(%s/%s) → %s（操作人 %s）",
-        tmp_id, row.name, row.kind, row.ref, row.status, user.user_name,
+        tmp_id,
+        row.name,
+        row.kind,
+        row.ref,
+        row.status,
+        user.user_name,
     )
     return ok(True)
 
@@ -789,9 +798,7 @@ def datasource_schemas(
     schemas = [
         {
             "db": name,
-            "tables": [
-                {"name": t, "columns": cols} for t, cols in sorted(columns.get(name, {}).items())
-            ],
+            "tables": [{"name": t, "columns": cols} for t, cols in sorted(columns.get(name, {}).items())],
         }
         for name in sorted(dbs)
     ]
@@ -799,6 +806,7 @@ def datasource_schemas(
 
 
 # ---------- 流源注册化 I12「选择代替填空」：Kafka topic 枚举 ----------
+
 
 @router.get("/datasources/{ds_id}/topics")
 def list_kafka_topics(
@@ -840,7 +848,9 @@ def list_kafka_topics(
         raise ApiError(DEP_UNAVAILABLE, f"topic 枚举失败：{exc}", status=502) from exc
     logger.info(
         "Kafka topic 枚举: id=%s %s → %d 个 topic（操作人 %s）",
-        ds_id, row.name, len(topics), user.user_name,
+        ds_id,
+        row.name,
+        len(topics),
+        user.user_name,
     )
     return ok({"topics": topics})
-
