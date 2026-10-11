@@ -37,6 +37,12 @@ router = APIRouter(prefix="/stream-jobs", tags=["stream-job"])
 
 STREAM_TYPES = ("stream_input", "stream_fuse", "stream_output")
 DISPLAY_TYPES = ("page_board",)  # 展示型节点（C2x 页面组件）：不参与管道装配，仅画布看板语义
+# 统一工作流编排内核（dagProfile）的流画布允许拖入 DAG 逻辑控制/变量/通知/自检组件：
+# 它们不参与流子图装配（spec 仅取 STREAM_TYPES），但不应被当批处理混编拒绝（口径与前端 palette 同步）。
+NON_PIPELINE_TYPES = (
+    "start", "end", "conditions", "switch", "fork", "join", "merge", "delay", "dependent", "loop", "reroute",
+    "variable", "notify", "smoke",
+)
 
 # 源分型 → 引用数据源合法类型（09-21 连接性注册化预检；连接性在注册层验证，启动只校验引用与状态）
 _REF_EXPECT = {
@@ -85,12 +91,15 @@ def extract_stream_spec(definition: WfDefinition, doc: dict) -> dict:
     nodes = [n for n in raw_nodes if isinstance(n, dict) and n.get("type") in STREAM_TYPES]
     if not nodes:
         raise ApiError(WF_PARAM_INVALID, "画布无流组件（需 stream_input/stream_fuse/stream_output）", status=400)
-    # 展示型节点（page_board）合法放行，其余一律视为批处理混编
+    # 展示型/逻辑控制等非管道节点合法放行，其余一律视为批处理混编
     stray = sorted(
         {
             str(n.get("type"))
             for n in raw_nodes
-            if isinstance(n, dict) and n.get("type") not in STREAM_TYPES and n.get("type") not in DISPLAY_TYPES
+            if isinstance(n, dict)
+            and n.get("type") not in STREAM_TYPES
+            and n.get("type") not in DISPLAY_TYPES
+            and n.get("type") not in NON_PIPELINE_TYPES
         }
     )
     if stray:
