@@ -2,28 +2,57 @@
 /**
  * M04 数仓建模列表（对齐 prototype m04-model.js #/model/list）
  * 分层统计卡 + 业务域标签双维筛选（可叠加、再点取消）；
- * 新建模型（草稿→字段设计器）；行操作：字段设计 / 版本 / 血缘影响 / 物理化建表 / 删除。
- * 数据：models / dwLayers / bizDomains / engineTypes（dataStore 持久化）。
+ * 新建模型（草稿）；行操作：字段设计 / 版本 / 血缘影响 / 物理化建表 / 删除；逆向工程导入。
+ * 数据：modelApi + datasourceApi（真实后端；isMock 时服务内部走演示文档）。
  */
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { dataStore } from '../../services/mock/dataStore'
-import { localTime } from '../../services/mock/timeUtil'
-import type { Model, DwLayer, BizDomain, EngineType, ModelVersion, DataSource, DbUser } from '../../services/types'
+import {
+  listModels, createModel, deleteModel, getModelDicts, getDdl, physicalize,
+  reverseScan, reverseImport, reverseImportDdl,
+  type ModelRow, type ModelDicts, type ModelListResp,
+} from '../../services/modelApi'
+import { listDataSources, type DsRow } from '../../services/datasourceApi'
+import { useAuthStore } from '../../stores/auth'
 import ListFilterPanel from '../../components/ListFilterPanel.vue'
 
 const router = useRouter()
+const auth = useAuthStore()
 
-const models = ref<Model[]>([])
-const layers = ref<DwLayer[]>([])
-const domains = ref<BizDomain[]>([])
-const engines = ref<EngineType[]>([])
-const datasources = ref<DataSource[]>([])
-const userName = ref('王工')
+const models = ref<ModelRow[]>([])
+const dicts = ref<ModelDicts>({ layers: [], domains: [], engines: [] })
+const datasources = ref<DsRow[]>([])
+const listStats = ref<ModelListResp>({ list: [], total: 0, layers: [], domains: [] })
+const userName = ref(auth.account?.name ?? auth.current.name)
+
+const layers = computed(() => dicts.value.layers)
+const domains = computed(() => dicts.value.domains)
+const engines = computed(() => dicts.value.engines)
 
 const keyword = ref('')
 const filters = ref<Record<string, string>>({ layer: '', status: '', domain: '' })
+
+async function reload() {
+  const [ls, ds, srcs] = await Promise.all([
+    listModels({ keyword: keyword.value || undefined }),
+    getModelDicts(),
+    listDataSources(),
+  ])
+  models.value = ls.list
+  listStats.value = ls
+  dicts.value = ds
+  datasources.value = srcs
+}
+
+/* 关键字为服务端统计维度（listStats 随 keyword 刷新）；输入防抖后重查 */
+let kwTimer: number | undefined
+watch(keyword, () => {
+  window.clearTimeout(kwTimer)
+  kwTimer = window.setTimeout(() => { void reload() }, 300)
+})
+
+onMounted(reload)
 
 /* ---- 左侧筛选面板：分层/状态 facet（业务域保留原统计卡+域标签交互，避免重复入口） ---- */
 const facets = computed(() => [
@@ -33,29 +62,12 @@ const facets = computed(() => [
     label: '状态',
     options: [
       { v: 'draft', t: '草稿' },
-      { v: 'published', t: '已物理化' },
+      { v: 'published', t: '已发布' },
+      { v: 'built', t: '已物理化' },
+      { v: 'produced', t: '已投产' },
     ],
   },
 ])
-
-async function reload() {
-  const [ms, ls, ds, es, srcs, u] = await Promise.all([
-    dataStore.list<Model>('models'),
-    dataStore.list<DwLayer>('dwLayers'),
-    dataStore.list<BizDomain>('bizDomains'),
-    dataStore.list<EngineType>('engineTypes'),
-    dataStore.list<DataSource>('datasources'),
-    dataStore.get<DbUser>('user'),
-  ])
-  models.value = [...(ms ?? [])]
-  layers.value = [...(ls ?? [])]
-  domains.value = [...(ds ?? [])]
-  engines.value = [...(es ?? [])]
-  datasources.value = [...(srcs ?? [])]
-  userName.value = u?.name ?? '王工'
-}
-
-onMounted(reload)
 
 /* ---- 分层 / 业务域双维筛选（再点取消，与左侧面板同源 filters） ---- */
 function toggleLayer(code: string) {
@@ -76,30 +88,32 @@ const filtered = computed(() => {
     if (filters.value.status && m.status !== filters.value.status) return false
     if (filters.value.domain && m.bizDomain !== filters.value.domain) return false
     if (!kw) return true
-    return [m.id, m.name, m.code, m.bizDomain, m.owner].some((s) => s.toLowerCase().includes(kw))
+    return [m.id, m.name, m.code, m.bizDomain, m.owner].some((s) => String(s).toLowerCase().includes(kw))
   })
 })
 
+/* 双维统计取服务端 facet（listStats 随 keyword 维度刷新），不再叠加本地筛选条件 */
 function layerCount(code: string): number {
-  return models.value.filter((m) => m.layer === code && (!filters.value.domain || m.bizDomain === filters.value.domain)).length
+  return listStats.value.layers.find((l) => l.code === code)?.count ?? 0
 }
 function domainCount(name: string): number {
-  return models.value.filter((m) => m.bizDomain === name && (!filters.value.layer || m.layer === filters.value.layer)).length
+  return listStats.value.domains.find((d) => d.name === name)?.count ?? 0
 }
-const allCount = computed(() =>
-  models.value.filter((m) => !filters.value.layer || m.layer === filters.value.layer).length,
-)
+const allCount = computed(() => listStats.value.total)
 
 function layerColor(code: string): string {
   return layers.value.find((l) => l.code === code)?.color ?? '#64748b'
 }
 function isXcEngine(name: string): boolean {
-  return engines.value.find((e) => e.name === name)?.xc ?? false
+  return dicts.value.engines.find((e) => e.name === name)?.xc ?? false
 }
-function statusOf(m: Model): { cls: string; label: string } {
-  return m.status === 'draft' ? { cls: 'st-gray', label: '草稿' } : { cls: 'st-green', label: '已物理化' }
+function statusOf(m: ModelRow): { cls: string; label: string } {
+  if (m.status === 'draft') return { cls: 'st-gray', label: '草稿' }
+  if (m.status === 'published') return { cls: 'st-blue', label: '已发布' }
+  if (m.status === 'built') return { cls: 'st-green', label: '已物理化' }
+  return { cls: 'st-green', label: '已投产' }
 }
-function typeNameOf(m: Model): string {
+function typeNameOf(m: ModelRow): string {
   if (m.type === '事实表') return '星型模型（事务事实）'
   if (m.type === '维度表') return '星型模型（维度）'
   if (m.type === '宽表') return '宽表模型'
@@ -108,10 +122,17 @@ function typeNameOf(m: Model): string {
 
 /* ---- 新建模型（草稿） ---- */
 const createVisible = ref(false)
-const form = ref({ name: '', code: '', layer: 'DWD', engine: 'Apache Doris', type: '事实表', domain: '交易域' })
+const form = ref({ name: '', code: '', layer: 'ODS', engine: '', type: '事实表', domain: '' })
 
 function openCreate() {
-  form.value = { name: '', code: '', layer: 'DWD', engine: 'Apache Doris', type: '事实表', domain: '交易域' }
+  /* 默认值取字典首项（真实字典与演示默认不一定一致） */
+  form.value = {
+    name: '', code: '',
+    layer: layers.value[0]?.code ?? 'ODS',
+    engine: engines.value[0]?.name ?? '',
+    type: '事实表',
+    domain: domains.value[0]?.name ?? '',
+  }
   createVisible.value = true
 }
 const layerHint = computed(() => {
@@ -124,69 +145,60 @@ async function saveCreate() {
     ElMessage.warning('请填写模型名称与表名')
     return
   }
-  const nextSeq = models.value.reduce((mx, m) => {
-    const n = Number(String(m.id).replace(/^\D+/, ''))
-    return Number.isFinite(n) && n > mx ? n : mx
-  }, 0) + 1
-  const now = nowStr()
-  const id = 'MD' + String(nextSeq).padStart(3, '0')
-  const version: ModelVersion = { v: 1, date: now, author: '王工', note: '初版（字段设计器创建）', status: '当前版本' }
-  const model: Model = {
-    id,
-    name: form.value.name.trim(),
-    code: form.value.code.trim(),
-    layer: form.value.layer,
-    engine: form.value.engine,
-    type: form.value.type,
-    status: 'draft',
-    fields: [
-      { n: 'id', t: 'BIGINT', len: '', pk: true, pkPart: false, cmt: '主键', def: '' },
-      { n: 'dt', t: 'DATE', len: '', pk: false, pkPart: true, cmt: '分区字段', def: '' },
-    ],
-    version: 1,
-    owner: '王工',
-    bizDomain: form.value.domain,
-    updatedAt: now,
-    versions: [version],
+  try {
+    await createModel({
+      name: form.value.name.trim(),
+      code: form.value.code.trim(),
+      layer: form.value.layer,
+      engine: form.value.engine,
+      type: form.value.type,
+      bizDomain: form.value.domain,
+    })
+    createVisible.value = false
+    ElMessage.success('草稿已创建')
+    await reload()
+  } catch (e) {
+    ElMessage.error((e as Error).message)
   }
-  await dataStore.save<Model>('models', model)
-  createVisible.value = false
-  ElMessage.success('模型已创建（草稿），进入字段设计器')
-  await reload()
-  router.push(`/model/design/${id}`)
 }
 
 /* ---- 物理化建表 / 重新物理化 ---- */
 const physVisible = ref(false)
 const physMode = ref('exec')
 const physEngine = ref('')
-const physTarget = ref<Model | null>(null)
-const physDdl = computed(() => (physTarget.value ? genDdl(physTarget.value, physEngine.value) : ''))
+const physTarget = ref<ModelRow | null>(null)
+const physDsId = ref<number | null>(null)
+const physDb = ref('')
+const physDdl = ref('')
+const physDsOptions = computed(() =>
+  datasources.value.filter((d) => d.type === 'mysql' || d.type === 'greatdb'))
 
-function openPhys(m: Model) {
+function ddlOf(name: string): string {
+  return dicts.value.engines.find((e) => e.name === name)?.ddl ?? 'mysql'
+}
+
+async function loadPhysDdl() {
+  const m = physTarget.value
+  if (!m) return
+  try {
+    const r = await getDdl(m.id, ddlOf(physEngine.value))
+    physDdl.value = r.ddl
+  } catch (e) {
+    physDdl.value = ''
+    ElMessage.error((e as Error).message)
+  }
+}
+
+async function openPhys(m: ModelRow) {
   physTarget.value = m
   physEngine.value = m.engine
   physMode.value = 'exec'
+  physDsId.value = m.dsId
+  physDb.value = m.dbName ?? ''
   physVisible.value = true
+  await loadPhysDdl()
 }
-function genDdl(m: Model, engine: string): string {
-  const isDoris = engine.indexOf('Doris') >= 0 || engine === '万里 GreatDB'
-  const cols = m.fields.map((f) => {
-    const len = String(f.len ?? '')
-    const t = f.t + (len !== '' ? (len.charAt(0) === '(' ? len : `(${len})`) : '')
-    return `  ${f.n} ${t}${f.cmt ? ` COMMENT '${f.cmt}'` : ''}`
-  }).join(',\n')
-  const part = m.fields.find((f) => f.pkPart)
-  let s = `CREATE TABLE ${m.code} (\n${cols}\n)\n`
-  if (part) s += `PARTITION BY ${part.n}\n`
-  if (isDoris) {
-    const pkField = m.fields.find((f) => f.pk) ?? m.fields[0]
-    s += `DISTRIBUTED BY HASH(${pkField ? pkField.n : 'id'}) BUCKETS 10\nPROPERTIES("replication_num"="3");`
-  } else {
-    s += `COMMENT '${m.name}';`
-  }
-  return s
-}
+
 function download(name: string, content: string) {
   const blob = new Blob([content], { type: 'text/plain;charset=utf-8' })
   const url = URL.createObjectURL(blob)
@@ -196,50 +208,75 @@ function download(name: string, content: string) {
   a.click()
   URL.revokeObjectURL(url)
 }
+
 async function execPhys() {
   const m = physTarget.value
   if (!m) return
-  m.engine = physEngine.value
-  m.status = 'published'
-  m.updatedAt = nowStr()
-  await dataStore.save<Model>('models', m)
-  physVisible.value = false
-  ElMessage.success(`建表成功：${m.code}（${m.engine}），模型已与ETL任务建立血缘关联`)
-  await reload()
+  if (!physDsId.value) {
+    ElMessage.warning('请选择目标数据源')
+    return
+  }
+  try {
+    const r = await physicalize(m.id, {
+      engine: ddlOf(physEngine.value),
+      dsId: physDsId.value,
+      dbName: physDb.value || undefined,
+      mode: 'exec',
+    })
+    physVisible.value = false
+    ElMessage.success(`建表成功（执行 ${r.executed ?? 1} 条语句）`)
+    await reload()
+  } catch (e) {
+    ElMessage.error((e as Error).message)
+  }
+}
+
+async function downloadScript() {
+  const m = physTarget.value
+  if (!m) return
+  try {
+    const r = await physicalize(m.id, { engine: ddlOf(physEngine.value), mode: 'script' })
+    download((m.code || 'model') + '.sql', r.script ?? '')
+    ElMessage.success('DDL 脚本已生成并下载')
+  } catch (e) {
+    ElMessage.error((e as Error).message)
+  }
 }
 
 /* ---- 删除（二次确认） ---- */
-async function removeRow(m: Model) {
+async function removeRow(m: ModelRow) {
   try {
-    await ElMessageBox.confirm(`确认删除模型「${m.name}（${m.code}）」？该操作不可恢复。`, '删除确认', {
+    await ElMessageBox.confirm(`确认删除模型「${m.code}」？`, '删除模型', {
       confirmButtonText: '删除', cancelButtonText: '取消', type: 'warning',
     })
   } catch {
     return
   }
-  await dataStore.remove('models', m.id)
-  ElMessage.success('已删除')
-  await reload()
+  try {
+    await deleteModel(m.id)
+    ElMessage.success('已删除')
+    await reload()
+  } catch (e) {
+    ElMessage.error((e as Error).message)
+  }
 }
 
-/* ---- 其他模块入口（路由由主控接线，本页仅提示） ---- */
+/* ---- AI 建表助手（R2 规划中：按钮 disabled，click 不可达） ---- */
 function aiTip() {
-  ElMessage.info('AI 建表助手为独立模块入口，请在字段设计器中使用')
+  ElMessage.info('AI 建表助手规划中，敬请期待')
 }
+
 /* ---- 逆向工程导入（对齐 prototype m04-model.js #/model/reverse L504-542） ---- */
 const revVisible = ref(false)
-const revScanning = ref(false)
+const revStep = ref<'pick' | 'file'>('pick')
+const revDsId = ref<number | null>(null)
+const revDb = ref('')
+const revLoading = ref(false)
 const revScanned = ref(false)
-const revDs = ref<DataSource | null>(null)
-const revSelected = ref<string[]>([])
-// 静态 mock：与原型第二步表清单一致
-const revTables = [
-  { n: 'user_info', c: 8 },
-  { n: 'order_info', c: 12 },
-  { n: 'product_info', c: 7 },
-  { n: 'coupon_record', c: 11 },
-]
-const revSources = computed(() => datasources.value.filter((d) => d.type !== 'Kafka'))
+const revTables = ref<{ tb: string; comment: string; rows: number; cols: number; picked: boolean }[]>([])
+const revLayer = ref('ODS')
+const imported = ref<{ imported: number; skipped: { tb: string; reason: string }[] } | null>(null)
+const revDsOptions = computed(() => datasources.value.filter((d) => d.type !== 'file'))
 
 /* ---- 批量业务域标注：逆向导入时支持多表统一标注 + 逐表覆盖 ----
  * 交互约定（已确认）：placeholder 显示上次使用的业务域；按 Tab 快速填入；
@@ -280,93 +317,92 @@ function rememberDomain(name: string) {
 }
 
 function openReverse() {
-  revDs.value = null
-  revScanning.value = false
+  revStep.value = 'pick'
+  revDsId.value = null
+  revDb.value = ''
+  revLoading.value = false
   revScanned.value = false
-  revSelected.value = []
+  revTables.value = []
+  revLayer.value = 'ODS'
   revDomain.value = ''
   revTableDomains.value = {}
+  imported.value = null
   revVisible.value = true
 }
 
-function revScan(d: DataSource) {
-  revDs.value = d
-  revScanned.value = false
-  revSelected.value = []
-  revScanning.value = true
-  ElMessage.info(`正在扫描 ${d.name} ...`)
-  window.setTimeout(() => {
-    revScanning.value = false
-    revScanned.value = true
-  }, 700)
-}
-
-async function revImport() {
-  if (revSelected.value.length === 0) {
-    ElMessage.warning('请先勾选要导入的表')
+async function doScan() {
+  if (!revDsId.value) {
+    ElMessage.warning('请选择数据源')
     return
   }
-  const ds = revDs.value
-  if (!ds) return
-  const count = revSelected.value.length
+  revLoading.value = true
+  try {
+    const r = await reverseScan({ dsId: revDsId.value, dbName: revDb.value || undefined })
+    revTables.value = r.tables.map((t) => ({ ...t, picked: false }))
+    revScanned.value = true
+  } catch (e) {
+    ElMessage.error((e as Error).message)
+  } finally {
+    revLoading.value = false
+  }
+}
+
+async function doImport() {
+  const picked = revTables.value.filter((t) => t.picked)
+  if (!picked.length) {
+    ElMessage.warning('请勾选要导入的表')
+    return
+  }
+  if (!revDsId.value) {
+    ElMessage.warning('请选择数据源')
+    return
+  }
   try {
     await ElMessageBox.confirm(
-      `确认将选中的 ${count} 张表反向生成为逻辑模型？默认导入至 ODS 层，生成后可调整分层与字段。`,
+      `确认将选中的 ${picked.length} 张表反向生成为逻辑模型（${revLayer.value} 层）？生成后可调整分层与字段。`,
       '导入确认',
       { confirmButtonText: '导入', cancelButtonText: '取消', type: 'info' },
     )
   } catch {
     return
   }
-  // 取现有 models 中 MD 前缀最大序号 +1（禁止用数组长度）
-  let seq = models.value.reduce((mx, m) => {
-    const s = String(m.id)
-    if (!s.startsWith('MD')) return mx
-    const n = Number(s.slice(2))
-    return Number.isFinite(n) && n > mx ? n : mx
-  }, 0)
-  for (const t of revSelected.value) {
-    seq += 1
-    const id = 'MD' + String(seq).padStart(3, '0')
-    const now = localTime()
-    const model: Model = {
-      id,
-      name: t + '（逆向导入）',
-      code: 'ods_imported_' + t,
-      layer: 'ODS',
-      engine: 'Apache Doris',
-      type: '明细表',
-      status: 'draft',
-      fields: [
-        { n: 'id', t: 'BIGINT', len: '', pk: true, pkPart: false, cmt: '主键', def: '' },
-        { n: 'dt', t: 'DATE', len: '', pk: false, pkPart: true, cmt: '分区', def: '' },
-      ],
-      version: 1,
-      owner: userName.value,
-      bizDomain: domainOf(t),
-      updatedAt: now,
-      versions: [{ v: 1, date: now, author: userName.value, note: '逆向工程导入自 ' + ds.id, status: '当前版本' }],
-    }
-    await dataStore.save<Model>('models', model)
+  try {
+    imported.value = await reverseImport({
+      dsId: revDsId.value,
+      dbName: revDb.value || undefined,
+      tables: picked.map((t) => ({ tb: t.tb, layer: revLayer.value, bizDomain: domainOf(t.tb) })),
+    })
+    /* 记录本次统一标注的业务域为"上次使用"（下次导入 Tab 快速填入） */
+    if (revDomain.value.trim()) rememberDomain(revDomain.value)
+    await reload()
+    ElMessage.success(`导入 ${imported.value.imported} 张，跳过 ${imported.value.skipped.length} 张`)
+  } catch (e) {
+    ElMessage.error((e as Error).message)
   }
-  // 记录本次统一标注的业务域为"上次使用"（下次导入 Tab 快速填入）
-  if (revDomain.value.trim()) rememberDomain(revDomain.value)
-  revVisible.value = false
-  ElMessage.success(`已导入生成 ${count} 个逻辑模型（ODS层草稿）`)
-  await reload()
+}
+
+async function doImportDdl(file: File) {
+  try {
+    imported.value = await reverseImportDdl(file)
+    await reload()
+    ElMessage.success(`导入 ${imported.value!.imported} 张，跳过 ${imported.value!.skipped.length} 张`)
+  } catch (e) {
+    ElMessage.error((e as Error).message)
+  }
+}
+
+async function onDdlFile(e: Event) {
+  const input = e.target as HTMLInputElement
+  const f = input.files?.[0]
+  input.value = ''
+  if (f) await doImportDdl(f)
 }
 
 function tipVersion() {
   ElMessage.info('版本管理为独立页面（/model/version/:id），暂由后续迭代提供')
 }
-function tipLineage(m: Model) {
+function tipLineage(m: ModelRow) {
   router.push(`/model/lineage/${m.id}`)
-}
-
-function nowStr(): string {
-  const d = new Date()
-  const p = (n: number) => String(n).padStart(2, '0')
-  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`
 }
 </script>
 
@@ -391,10 +427,12 @@ function nowStr(): string {
         <span class="spacer" />
         <button class="tb-new" @click="openCreate">+ 新建模型</button>
         <button class="op-btn" @click="router.push('/model/er')">ER 设计器</button>
-        <button class="op-btn" @click="aiTip">✦ AI 建表助手</button>
+        <el-tooltip content="规划中" placement="top">
+          <span class="op-wrap"><button class="op-btn" disabled @click="aiTip">✦ AI 建表助手</button></span>
+        </el-tooltip>
         <button class="op-btn" @click="openReverse">逆向工程导入</button>
       </div>
-      <div class="hint">操作指引：① 点击分层统计卡与业务域标签可双维筛选（再点取消）；② 「新建模型」进入字段设计器（三阶段：概念→逻辑→物理）；③ 「ER 设计器」直达实体关系画布；④ 物理化后模型进入版本管理与血缘影响分析。</div>
+      <div class="hint">操作指引：① 点击分层统计卡与业务域标签可双维筛选（再点取消）；② 「新建模型」创建草稿，列表「字段设计」进入设计器（三阶段：概念→逻辑→物理）；③ 「ER 设计器」直达实体关系画布；④ 物理化后模型进入版本管理与血缘影响分析。</div>
     </div>
 
     <!-- 状态流转 -->
@@ -425,7 +463,7 @@ function nowStr(): string {
           <b>{{ l.code }}</b> {{ l.name }}
           <span v-if="filters.layer === l.code" class="pill info">筛选中</span>
         </div>
-        <div class="layer-desc">{{ l.desc }}</div>
+        <div class="layer-desc">{{ l.rule }}</div>
       </div>
     </div>
 
@@ -475,9 +513,9 @@ function nowStr(): string {
             <td>{{ m.type }}<div style="color:var(--text-3);font-size:11px">{{ typeNameOf(m) }}</div></td>
             <td>{{ m.engine }} <span v-if="isXcEngine(m.engine)" class="tag xc">信创</span></td>
             <td>{{ m.bizDomain }}</td>
-            <td><span class="mono">{{ m.fields.length }}</span></td>
+            <td class="mono">-</td>
             <td><span class="st" :class="statusOf(m).cls"><span class="dot" />{{ statusOf(m).label }}</span></td>
-            <td>{{ m.owner }}</td>
+            <td>{{ m.owner || userName }}</td>
             <td>
               <button class="op-btn primary" @click="router.push(`/model/design/${m.id}`)">字段设计</button>
               <button class="op-btn" @click="tipVersion">版本</button>
@@ -524,7 +562,7 @@ function nowStr(): string {
         <div class="lock-tip">{{ layerHint }}</div>
       </div>
       <div style="margin-top:16px;display:flex;gap:8px">
-        <button class="tb-new" @click="saveCreate">创建并进入设计器</button>
+        <button class="tb-new" @click="saveCreate">创建草稿</button>
         <button class="op-btn" @click="createVisible = false">取消</button>
       </div>
     </el-drawer>
@@ -533,9 +571,18 @@ function nowStr(): string {
     <el-dialog v-model="physVisible" :title="(physTarget?.status === 'draft' ? '物理化建表' : '重新物理化') + ' - ' + (physTarget?.code ?? '')" width="640px">
       <div class="form-grid" v-if="physTarget">
         <label class="f-item">目标引擎
-          <select v-model="physEngine" class="kw" style="width:100%">
+          <select v-model="physEngine" class="kw" style="width:100%" @change="loadPhysDdl">
             <option v-for="e in engines" :key="e.name" :value="e.name">{{ e.name }}（{{ e.ddl }}）</option>
           </select>
+        </label>
+        <label class="f-item">目标数据源（仅 MySQL/GreatDB）*
+          <select v-model="physDsId" class="kw" style="width:100%">
+            <option :value="null" disabled>请选择数据源</option>
+            <option v-for="d in physDsOptions" :key="d.id" :value="d.id">{{ d.name }}（{{ d.type }} · {{ d.host ?? '-' }}）</option>
+          </select>
+        </label>
+        <label class="f-item">目标库名
+          <input v-model="physDb" class="kw mono" style="width:100%" placeholder="留空使用数据源默认库" />
         </label>
         <label class="f-item">执行方式
           <select v-model="physMode" class="kw" style="width:100%">
@@ -544,11 +591,11 @@ function nowStr(): string {
           </select>
         </label>
       </div>
-      <div class="f-label">DDL预览（一键生成，可编辑）</div>
+      <div class="f-label">DDL 预览（后端生成）</div>
       <pre class="code-box">{{ physDdl }}</pre>
       <template #footer>
         <button class="op-btn" @click="physVisible = false">取消</button>
-        <button v-if="physMode === 'script'" class="op-btn" @click="download((physTarget?.code ?? 'model') + '.sql', physDdl)">⇩ 导出DDL</button>
+        <button v-if="physMode === 'script'" class="op-btn" @click="downloadScript">⇩ 导出DDL</button>
         <button class="tb-new" @click="execPhys">执行建表</button>
       </template>
     </el-dialog>
@@ -556,69 +603,100 @@ function nowStr(): string {
     <!-- 逆向工程导入弹窗（对齐 prototype #/model/reverse） -->
     <el-dialog v-model="revVisible" title="逆向工程导入" width="680px">
       <div class="rev-hint">从已有数据库表反向生成逻辑模型（默认导入至 ODS 层，生成后可调整分层与字段）</div>
-      <div class="f-label" style="margin-top:12px">第一步：选择数据源与库表</div>
-      <table class="tbl">
-        <thead>
-          <tr><th>数据源</th><th>环境</th><th>状态</th><th style="width:110px">操作</th></tr>
-        </thead>
-        <tbody>
-          <tr v-for="d in revSources" :key="d.id">
-            <td><b>{{ d.name }}</b><div style="color:var(--text-3);font-size:11px">{{ d.type }} · {{ d.host }}</div></td>
-            <td>{{ d.env }}</td>
-            <td>
-              <span class="pill" :class="d.status === 'enabled' ? 'ok' : 'off'">{{ d.status === 'enabled' ? '已启用' : '已停用' }}</span>
-            </td>
-            <td><a class="rev-link" @click="revScan(d)">扫描库表 →</a></td>
-          </tr>
-        </tbody>
-      </table>
+      <div class="rev-tabs">
+        <button class="chip" :class="{ on: revStep === 'pick' }" @click="revStep = 'pick'">数据库扫描导入</button>
+        <button class="chip" :class="{ on: revStep === 'file' }" @click="revStep = 'file'">DDL 文件导入</button>
+      </div>
 
-      <div v-if="revScanning && revDs" class="rev-scanning">正在扫描 {{ revDs.name }} ...</div>
+      <template v-if="revStep === 'pick'">
+        <div class="f-label" style="margin-top:12px">第一步：选择数据源与库表</div>
+        <div class="rev-scan-row">
+          <select v-model="revDsId" class="rev-domain-input" style="flex:1">
+            <option :value="null" disabled>请选择数据源（连接型）</option>
+            <option v-for="d in revDsOptions" :key="d.id" :value="d.id">{{ d.name }}（{{ d.type }} · {{ d.host ?? '-' }}）</option>
+          </select>
+          <input v-model="revDb" class="rev-domain-input" style="flex:none;width:150px" placeholder="库名（可留空）" />
+          <button class="op-btn" :disabled="revLoading" @click="doScan">{{ revLoading ? '扫描中…' : '扫描库表' }}</button>
+        </div>
+        <div v-if="revLoading" class="rev-scanning">正在扫描所选数据源 ...</div>
 
-      <template v-if="revScanned && revDs">
-        <div class="f-label">第二步：选择要导入的表（{{ revDs.name }}）</div>
-        <table class="tbl">
-          <thead>
-            <tr><th style="width:36px"></th><th>表名</th><th>字段数</th><th style="width:150px">业务域（可逐表覆盖）</th></tr>
-          </thead>
-          <tbody>
-            <tr v-for="t in revTables" :key="t.n">
-              <td><input v-model="revSelected" type="checkbox" :value="t.n" /></td>
-              <td><span class="mono">{{ t.n }}</span></td>
-              <td>{{ t.c }}</td>
-              <td>
-                <input
-                  v-model="revTableDomains[t.n]"
-                  class="rev-domain-input"
-                  :placeholder="domainFallback(t.n)"
-                  :disabled="!revSelected.includes(t.n)"
-                />
-              </td>
-            </tr>
-          </tbody>
-        </table>
+        <template v-if="revScanned">
+          <div class="f-label">第二步：选择要导入的表{{ revTables.length ? `（共 ${revTables.length} 张）` : '' }}</div>
+          <table v-if="revTables.length" class="tbl">
+            <thead>
+              <tr><th style="width:36px"></th><th>表名</th><th>注释</th><th>列数</th><th>行数估</th><th style="width:150px">业务域（可逐表覆盖）</th></tr>
+            </thead>
+            <tbody>
+              <tr v-for="t in revTables" :key="t.tb">
+                <td><input v-model="t.picked" type="checkbox" /></td>
+                <td><span class="mono">{{ t.tb }}</span></td>
+                <td>{{ t.comment }}</td>
+                <td>{{ t.cols }}</td>
+                <td class="mono">{{ t.rows }}</td>
+                <td>
+                  <input
+                    v-model="revTableDomains[t.tb]"
+                    class="rev-domain-input"
+                    :placeholder="domainFallback(t.tb)"
+                    :disabled="!t.picked"
+                  />
+                </td>
+              </tr>
+            </tbody>
+          </table>
+          <div v-else class="empty">未扫描到表，请确认库名或数据源配置</div>
+        </template>
 
-        <div class="f-label" style="margin-top:12px">第三步：业务域批量标注</div>
-        <div class="rev-domain-row">
-          <input
-            v-model="revDomain"
-            class="rev-domain-input"
-            style="flex:1"
-            list="rev-domain-history"
-            :placeholder="domainPlaceholder"
-            @keydown.tab.prevent="fillLastDomain"
-          />
-          <datalist id="rev-domain-history">
-            <option v-for="d in domainSuggestions" :key="d" :value="d" />
-          </datalist>
-          <span class="rev-tip" title="输入框默认显示上次使用的业务域：按 Tab 键快速填入上次名称；不填则默认使用上次业务域。可在上方表列表中逐表覆盖，留空沿用统一业务域。">ⓘ</span>
-          <span class="rev-domain-cur">当前标注：<b>{{ revDomain.trim() || lastDomain || '公共' }}</b></span>
+        <template v-if="revScanned && revTables.length">
+          <div class="f-label" style="margin-top:12px">第三步：导入分层与业务域批量标注</div>
+          <div class="rev-domain-row">
+            <select v-model="revLayer" class="rev-domain-input" style="flex:none;width:150px" title="导入分层">
+              <option v-for="l in layers" :key="l.code" :value="l.code">{{ l.code }} {{ l.name }}</option>
+            </select>
+            <input
+              v-model="revDomain"
+              class="rev-domain-input"
+              style="flex:1"
+              list="rev-domain-history"
+              :placeholder="domainPlaceholder"
+              @keydown.tab.prevent="fillLastDomain"
+            />
+            <datalist id="rev-domain-history">
+              <option v-for="d in domainSuggestions" :key="d" :value="d" />
+            </datalist>
+            <span class="rev-tip" title="输入框默认显示上次使用的业务域：按 Tab 键快速填入上次名称；不填则默认使用上次业务域。可在上方表列表中逐表覆盖，留空沿用统一业务域。">ⓘ</span>
+            <span class="rev-domain-cur">当前标注：<b>{{ revDomain.trim() || lastDomain || '公共' }}</b></span>
+          </div>
+        </template>
+      </template>
+
+      <template v-else>
+        <div class="f-label" style="margin-top:12px">DDL 文件导入</div>
+        <div class="rev-file-row">
+          <label class="op-btn rev-file-btn">⇩ 选择 .sql 文件
+            <input type="file" accept=".sql" style="display:none" @change="onDdlFile" />
+          </label>
+          <span class="rev-tip">上传包含 CREATE TABLE 语句的 DDL 文件，解析后反向生成逻辑模型（超时 15s）</span>
         </div>
       </template>
 
+      <div v-if="imported" class="rev-imported">
+        <div class="f-label" style="margin:0 0 6px">导入结果</div>
+        <div style="font-size:12.5px">成功导入 <b>{{ imported.imported }}</b> 张，跳过 <b>{{ imported.skipped.length }}</b> 张</div>
+        <table v-if="imported.skipped.length" class="tbl" style="margin-top:8px">
+          <thead><tr><th>跳过表</th><th>原因</th></tr></thead>
+          <tbody>
+            <tr v-for="s in imported.skipped" :key="s.tb">
+              <td><span class="mono">{{ s.tb }}</span></td>
+              <td>{{ s.reason }}</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
       <template #footer>
-        <button class="op-btn" @click="revVisible = false">取消</button>
-        <button class="tb-new" @click="revImport">导入生成逻辑模型</button>
+        <button class="op-btn" @click="revVisible = false">关闭</button>
+        <button v-if="revStep === 'pick'" class="tb-new" @click="doImport">导入所选</button>
       </template>
     </el-dialog>
     </div>
@@ -632,6 +710,8 @@ function nowStr(): string {
 .head-sub{color:var(--text-3);font-size:12px;margin-top:2px}
 .hint{color:var(--text-3);font-size:11.5px;margin-top:8px}
 .spacer{flex:1}
+.op-wrap{display:inline-flex}
+.op-btn:disabled{opacity:.5;cursor:not-allowed}
 .flow-row{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
 .flow-step{display:flex;flex-direction:column;font-size:12.5px}
 .flow-step i{font-style:normal;color:var(--text-3);font-size:11px}
@@ -668,9 +748,13 @@ function nowStr(): string {
 .f-label{font-size:12px;color:var(--text-2);margin:12px 0 6px;font-weight:600}
 .f-help{font-size:11px;color:var(--text-3)}
 .lock-tip{background:var(--warn-bg);color:var(--warn);border-radius:var(--radius-sm);padding:8px 10px;font-size:11.5px}
+.rev-tabs{display:flex;gap:6px;margin-top:10px}
+.rev-scan-row{display:flex;gap:8px;align-items:center}
+.rev-scan-row .op-btn{flex:none;white-space:nowrap}
 .rev-hint{color:var(--text-3);font-size:12px}
-.rev-link{color:var(--primary);cursor:pointer;font-size:12px}
-.rev-link:hover{text-decoration:underline}
+.rev-file-row{display:flex;align-items:center;gap:10px}
+.rev-file-btn{cursor:pointer;white-space:nowrap}
+.rev-imported{border:1px solid var(--border);border-radius:var(--radius-sm);padding:10px 12px;margin-top:12px}
 .rev-scanning{color:var(--info);background:var(--info-bg);border-radius:var(--radius-sm);padding:8px 10px;font-size:12px;margin-top:10px}
 .rev-domain-row{display:flex;align-items:center;gap:8px;margin-bottom:6px}
 .rev-domain-input{border:1px solid var(--border);border-radius:var(--radius-sm);padding:5px 8px;font-size:12px;background:#fff;color:var(--text-1);min-width:0;width:100%}
