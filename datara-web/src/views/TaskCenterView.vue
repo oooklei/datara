@@ -22,7 +22,7 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import { graphService, isMock, listDefinitions, listCategories, SYNC_TAG, ETL_TAG, STREAM_TAG } from '../services'
 import { bus } from '../services/eventBus'
 import { listSeedTaskDocs } from '../services/mock/seed'
-import { dagProfile, etlProfile, streamProfile } from '../graph/profiles'
+import { dagProfile } from '../graph/profiles/dag'
 import GraphWorkbench from '../graph/workbench/GraphWorkbench.vue'
 import Palette from '../graph/workbench/Palette.vue'
 import InstanceRunsView from './dag/InstanceRunsView.vue'
@@ -35,6 +35,7 @@ import { useGraphStore } from '../stores/graph'
 import { useAuthStore } from '../stores/auth'
 import { createTemplate } from '../services/templateApi'
 import { resolveTemplateSourceDoc } from './templateSource'
+import { workflowEditorProfile } from './taskCenterPolicy'
 
 const route = useRoute()
 const router = useRouter()
@@ -61,11 +62,8 @@ const graphStore = useGraphStore()
 const auth = useAuthStore()
 const activeTab = computed(() => dagTabs.activeTab)
 
-/** 画布 Profile：由当前激活 Tab 类型决定（工作流/同步共用 DAG 编排；ETL / 流 各自专用节点库） */
-const profileOf = computed(() => {
-  const t = activeTab.value?.type
-  return t === 'etl' ? etlProfile : t === 'stream' ? streamProfile : dagProfile
-})
+/** 四类仅为标签/目录分类，始终使用同一个工作流编排内核。 */
+const profileOf = computed(() => workflowEditorProfile(activeTab.value?.type))
 
 function lsGet(key: string): string {
   try { return localStorage.getItem(key) ?? '' } catch { return '' }
@@ -288,6 +286,7 @@ onMounted(async () => {
         @click="switchTab(t.k)"
       ><span class="tc-ic">{{ t.icon }}</span>{{ t.label }}</button>
       <span class="spacer" />
+      <button v-if="tab === 'edit'" class="tc-new-workflow" data-testid="new-workflow" @click="onOpenCreateWf">＋ 新建工作流</button>
       <button v-if="tab === 'edit' && activeTab" class="tc-save-template" @click="saveActiveAsTemplate">另存为模板</button>
       <span v-if="tab === 'edit'" class="tc-view">{{ profileOf.name }}</span>
     </div>
@@ -371,6 +370,8 @@ onMounted(async () => {
 .tc-ic{font-size:12px;opacity:.75}
 .tc-tab.on .tc-ic{opacity:1}
 .spacer{flex:1}
+.tc-new-workflow{border:none;background:var(--primary);color:#fff;border-radius:var(--radius-sm);padding:6px 12px;margin-right:8px;cursor:pointer;font-size:12px;font-weight:600}
+.tc-new-workflow:hover{background:var(--primary-hover)}
 .tc-save-template{border:1px solid var(--border);background:#fff;color:var(--primary);border-radius:var(--radius-sm);padding:5px 10px;margin-right:8px;cursor:pointer}
 /* 当前画布视角（Profile 名）：类型页签移除后，此处与画布标题徽标一同标识当前视角 */
 .tc-view{font-size:11.5px;color:var(--text-3);border:1px solid var(--border);border-radius:var(--radius-lg);padding:2px 10px}

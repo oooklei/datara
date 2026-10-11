@@ -39,6 +39,16 @@ describe('router shell (todo 5)', () => {
     expect(routes.some((r) => r.path === '/:pathMatch(.*)*')).toBe(true)
   })
 
+  it('keeps legacy workflow editor links in the unified task center without separate designer wording', () => {
+    const byPath = new Map(routes.map((r) => [r.path, r]))
+    for (const [path, type] of [['/dag/design/:id', 'wf'], ['/stream/design/:id', 'stream']] as const) {
+      const rec = byPath.get(path)!
+      const target = (rec.redirect as (to: { query: Record<string, unknown>; params: { id: string } }) => { path: string; query: Record<string, unknown> })({ query: {}, params: { id: 'wf-1' } })
+      expect(target).toMatchObject({ path: '/dag', query: { tab: 'edit', type, doc: 'wf-1' } })
+      expect((rec.meta as { title?: string }).title).toBe('工作流编排')
+    }
+  })
+
   /* F56a 同壳单入口：旧同壳路径 redirect 到权威路由（query.tab 承载页签，原 query 透传保书签） */
   it('redirects legacy same-shell paths to the canonical hub route', () => {
     const byPath = new Map(routes.map((r) => [r.path, r]))

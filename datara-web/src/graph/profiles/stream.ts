@@ -1,5 +1,5 @@
 /**
- * stream profile：U3 流数据处理 · 流设计器（dagre LR 管道方向）。
+ * stream profile：历史兼容的流分类配置；任务中心统一使用 DAG 工作流编排内核。
  * I11 收敛：装饰性节点（s_kafka/p_window/op_cep 等）自 palette 隐藏（nodeTypes 保留供
  * 历史 mock 文档渲染），画布只暴露可执行组件 C18~C20 + 页面组件（C24 看板）；
  * 混编批处理组件由后端 extract_stream_spec 校验拦截（同口径）。
@@ -13,7 +13,7 @@ import StreamMetricsPanel from '../workbench/panels/StreamMetricsPanel.vue'
 
 export const streamProfile: ViewProfile = {
   id: 'stream',
-  name: '流设计器',
+  name: '工作流编排 · 流',
   mode: 'edit',
   layout: 'dagre',
   layoutDir: 'LR',
@@ -151,7 +151,7 @@ export const streamProfile: ViewProfile = {
       summary: (d: Record<string, unknown>) => String(d.rule || '未配置规则'),
     },
 
-    /* 可视化编排（DAG）组件全量并入流设计器：逻辑关系 / 数据开发 / 数据集成 / 其他组件 */
+    /* 可视化编排（DAG）组件全量可用：逻辑关系 / 数据开发 / 数据集成 / 其他组件 */
     ...dagProfile.nodeTypes,
   } as unknown as Record<string, NodeSchema>,
   edgeKinds: {

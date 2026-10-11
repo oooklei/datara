@@ -11,12 +11,12 @@ export const routes: RouteRecordRaw[] = [
   { path: '/', name: 'dashboard', component: () => import('../views/DashboardView.vue'), meta: { title: '工作台' } },
   { path: '/dag', name: 'task-center', component: () => import('../views/TaskCenterView.vue'), meta: { title: '任务中心' } },
   /* G2：中间壳 DagDesignView 已删除（任务中心直挂 GraphWorkbench），旧路径 redirect 保书签 */
-  { path: '/dag/design/:id', name: 'dag-design', redirect: (to) => ({ path: '/dag', query: { ...to.query, tab: 'edit', type: 'wf', doc: String(to.params.id) } }), meta: { title: '可视化编排' } },
+  { path: '/dag/design/:id', name: 'dag-design', redirect: (to) => ({ path: '/dag', query: { ...to.query, tab: 'edit', type: 'wf', doc: String(to.params.id) } }), meta: { title: '工作流编排' } },
   // 集群拓扑独立页（/deploy）已合并入集群监控（DeployMonitorView 内嵌同一 GraphWorkbench 拓扑工作台），老链接重定向
   { path: '/deploy', name: 'deploy', redirect: '/dep/monitor', meta: { title: '集群拓扑' } },
   // /etl/design/:id 已删除（I1 意见③：ETL 设计器入口移除，EtlMappingPanel 删除；页面文件 I9 收尾清理）
   /* G2：中间壳 StreamDesignView 已删除，旧路径 redirect 保书签（type=stream 直达流视角） */
-  { path: '/stream/design/:id', name: 'stream-design', redirect: (to) => ({ path: '/dag', query: { ...to.query, tab: 'edit', type: 'stream', doc: String(to.params.id) } }), meta: { title: '流设计器' } },
+  { path: '/stream/design/:id', name: 'stream-design', redirect: (to) => ({ path: '/dag', query: { ...to.query, tab: 'edit', type: 'stream', doc: String(to.params.id) } }), meta: { title: '工作流编排' } },
   { path: '/model/er', name: 'model-er', component: () => import('../views/ErCanvasView.vue'), meta: { title: 'ER画布', demo: true } },
   { path: '/meta/lineage', name: 'meta-lineage', component: () => import('../views/LineageView.vue'), meta: { title: '血缘分析' } },
   /* 组件治理三页整合（ComponentHub）：组件目录 / 基线化工作台 / 组件设计器同壳页签，

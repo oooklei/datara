@@ -17,7 +17,7 @@ import '@vue-flow/core/dist/style.css'
 import '@vue-flow/core/dist/theme-default.css'
 
 import type { ClipboardNode, DocGroup, EdgePartialDep, GraphDocument, GEdge, GEdgeKind, GNode, GNodeData, Issue, AlignDir, DistributeAxis } from '../model'
-import { cloneDoc, uid, resolveNodeSchema, alignNodes, distributeNodes, pasteSelection } from '../model' // Task 11（§3.5）：批量对齐/分布/复制粘贴纯函数
+import { cloneDoc, cloneJson, uid, resolveNodeSchema, alignNodes, distributeNodes, pasteSelection } from '../model' // Task 11（§3.5）：批量对齐/分布/复制粘贴纯函数
 import { connectionRejectReason } from '../model/connectionGuard'
 import type { ConnSpec, PortTypesHint } from '../model/connectionGuard'
 import { collectDocErrors, issuesToSources } from '../model/docErrors' // Task 10（§3.3）：错误聚合模型
@@ -1090,12 +1090,12 @@ function copySelection() {
   if (!d || !sel.size) return
   copiedSnapshot = {
     nodes: d.nodes.filter((n) => sel.has(n.id)).map((n) => ({
-      id: n.id, type: n.type, position: { ...n.position }, data: structuredClone(n.data),
+      id: n.id, type: n.type, position: { ...n.position }, data: cloneJson(n.data),
     })),
     edges: d.edges.filter((e) => sel.has(e.source) && sel.has(e.target)).map((e) => ({
       source: e.source, target: e.target, kind: e.kind, label: e.label,
       sourceHandle: e.sourceHandle, targetHandle: e.targetHandle,
-      partial: e.partial ? structuredClone(e.partial) : undefined,
+      partial: e.partial ? cloneJson(e.partial) : undefined,
     })),
   }
 }
@@ -1115,7 +1115,7 @@ function pasteClip(offset: number) {
     const g: GEdge = {
       id: e.id, source: e.source, target: e.target, kind: e.kind, label: e.label,
       sourceHandle: e.sourceHandle, targetHandle: e.targetHandle,
-      partial: e.partial ? structuredClone(e.partial) : undefined, // 再次深拷贝：防与剪贴板快照共享引用
+      partial: e.partial ? cloneJson(e.partial) : undefined, // 再次深拷贝：防与剪贴板快照共享引用
     }
     d.edges.push(g)
     flowEdges.value.push(toFlowEdge(g))

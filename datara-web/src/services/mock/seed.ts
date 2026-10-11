@@ -156,7 +156,7 @@ function etlPayCleanDoc(): GraphDocument {
   return dagreLayout(doc, { dir: 'TB' })
 }
 
-/** U3 流设计器：订单支付实时入仓（迁移原型 SJ001） */
+/** U3 流分类工作流：订单支付实时入仓（迁移原型 SJ001） */
 function streamRealtimeDoc(): GraphDocument {
   const doc: GraphDocument = {
     id: 'stream_realtime',

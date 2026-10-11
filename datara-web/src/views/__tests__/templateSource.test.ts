@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
+import { reactive } from 'vue'
 import type { GraphDocument } from '../../graph/model'
 import { resolveTemplateSourceDoc } from '../templateSource'
 
@@ -15,6 +16,17 @@ describe('resolveTemplateSourceDoc', () => {
 
     expect(load).not.toHaveBeenCalled()
     expect(result).toEqual(active)
+    expect(result).not.toBe(active)
+  })
+
+  it('clones a Vue reactive document before saving it as a template', async () => {
+    const active = reactive(doc('wf_reactive'))
+    const load = vi.fn()
+
+    const result = await resolveTemplateSourceDoc(active, 'wf_reactive', load)
+
+    expect(load).not.toHaveBeenCalled()
+    expect(result).toEqual(doc('wf_reactive'))
     expect(result).not.toBe(active)
   })
 

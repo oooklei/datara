@@ -1,5 +1,5 @@
 /**
- * etl profile：U2 批处理与同步 · ETL 设计器（对齐原型 ETL001 清洗支付明细）。
+ * etl profile：历史兼容的 ETL 分类配置；任务中心统一使用 DAG 工作流编排内核。
  * 算子库（输入输出 / 转换算子）拖拽 + 数据流连线；校验：断链/孤立/环；
  * 字段映射浮窗；试运行复用 run 状态机（拓扑序点亮）。
  */
@@ -29,7 +29,7 @@ const validatorChain = (doc: GraphDocument) => {
 
 export const etlProfile: ViewProfile = {
   id: 'etl',
-  name: 'ETL 设计器',
+  name: '工作流编排 · ETL',
   mode: 'edit',
   layout: 'dagre',
   layoutDir: 'TB',

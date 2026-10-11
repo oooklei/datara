@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest'
+import { reactive } from 'vue'
 import type { GEdge, GNode, GraphDocument } from '../../model'
 import {
   addNodeCommand,
@@ -51,6 +52,14 @@ describe('graph commands', () => {
     expect(changed.nodes.find((item) => item.id === 'a')?.position).toEqual({ x: 48, y: 24 })
     expect(original.nodes.find((item) => item.id === 'a')?.position).toEqual({ x: 0, y: 0 })
     expect(command.undo(changed)).toEqual(original)
+  })
+
+  it('accepts a reactive document from the graph store', () => {
+    const original = reactive(base())
+    const command = updatePropsCommand(original, 'a', { name: 'reactive-safe' })
+
+    expect(command.apply(original).nodes[0]?.data.name).toBe('reactive-safe')
+    expect(command.undo(original)).toEqual(base())
   })
 
   it('has apply/undo duality across ten deterministic edit sequences', () => {

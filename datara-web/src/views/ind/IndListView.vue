@@ -321,8 +321,8 @@ function openTask(r: Indicator) {
 }
 function gotoTask() {
   taskVisible.value = false
-  /* /etl/design/:id 路由已移除（I1 意见③）：ETL 编排统一走任务中心 ETL 视角 */
-  router.push('/dag?tab=etl')
+  /* ETL 只是分类标签，编排统一走任务中心。 */
+  router.push('/dag?tab=edit')
 }
 </script>
 
@@ -550,7 +550,7 @@ function gotoTask() {
       </template>
     </el-dialog>
 
-    <!-- 核查弹层 C：查看任务（产出任务卡片 + SQL 片段 + 跳转 ETL 设计器） -->
+    <!-- 核查弹层 C：查看任务（产出任务卡片 + SQL 片段 + 跳转统一任务中心） -->
     <el-dialog v-model="taskVisible" :title="taskRow ? '产出任务 - ' + taskRow.name : '产出任务'" width="560px">
       <template v-if="taskRow">
         <div class="task-card">

@@ -148,8 +148,8 @@ function checkSql() {
 async function saveSql() {
   const j = job.value
   if (!j) return
-  /* F56d：SQL 由流设计器画布 spec 生成（画布保存即生效），real 不提供在线编辑 */
-  if (!isMock) { ElMessage.info('流任务 SQL 由流设计器画布生成，请在画布中编辑并保存（启动即生效）'); return }
+  /* F56d：SQL 由统一工作流画布 spec 生成（画布保存即生效），real 不提供在线编辑 */
+  if (!isMock) { ElMessage.info('流任务 SQL 由统一工作流画布生成，请在任务中心编辑并保存（启动即生效）'); return }
   j.sql = sqlText.value
   await dataStore.save<StreamJob>('streamJobs', j)
   ElMessage.success('已保存并应用（作业将重启生效）')

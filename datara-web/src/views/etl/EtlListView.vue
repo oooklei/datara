@@ -3,7 +3,7 @@
  * M05 批处理 ETL 任务（todo 15）
  * 对齐 prototype/assets/pages/m05-batch.js `#/etl/list`（L316-367）：
  * 任务表格（关键字 + 类型/状态筛选）；顶部工具栏：搜索 + 筛选 + 新建ETL任务；
- * 行操作：设计(/etl/design/:id) / 运行 / 发布·下线 / 删除（dataStore.save/remove 持久化 + ElMessage 反馈）。
+ * 行操作：统一工作流编排 / 运行 / 发布·下线 / 删除（dataStore.save/remove 持久化 + ElMessage 反馈）。
  * 新建表单的目标产出表取自 dataStore.models。
  * F56d 双态：real 走 listDefinitions({ tag: ETL_TAG })（保存自动打「ETL」标签的定义）；
  * 行缺失字段显示 '-'，删除/新建按 DagListView real 同款接后端，运行/发布为 mock 演示动作 real 下禁用。
@@ -109,8 +109,8 @@ function typeStyle(t: string): { background: string; color: string } {
 function goDesign(r: EtlTask) {
   /* embed（任务中心「看列表」弹窗）：行内「可视化编排」不跳路由，emit 由任务中心切换内嵌画布 */
   if (props.embed) { emit('open', r.id); return }
-  /* /etl/design/:id 路由已移除（I1 意见③）：独立入口统一落任务中心 ETL 视角 */
-  router.push('/dag?tab=etl')
+  /* ETL 只是分类标签，直接打开统一任务中心中的对应工作流。 */
+  router.push({ path: '/dag', query: { tab: 'edit', doc: r.id } })
 }
 
 const running = ref(false)
@@ -198,12 +198,12 @@ async function saveCreate() {
   /* F56d real：对齐 DagListView real 分支 —— createDefinition 落库（编码/类型/产出表为 mock 专有字段） */
   if (!isMock) {
     try {
-      const created = await createDefinition(cName.value.trim())
+      const created = await createDefinition(cName.value.trim(), { tags: [ETL_TAG] })
       createVisible.value = false
-      ElMessage.success('ETL任务已创建（后端落库），进入画布编排后保存自动打「ETL」标签')
+      ElMessage.success('工作流已创建并归入 ETL 分类，正在进入统一编排')
       await reload()
       if (props.embed) emit('open', created.id)
-      else router.push('/dag?tab=etl')
+      else router.push({ path: '/dag', query: { tab: 'edit', doc: created.id } })
     } catch (e) {
       ElMessage.error('创建失败：' + errMsg(e))
     }
@@ -233,7 +233,7 @@ async function saveCreate() {
   }
   await dataStore.save<EtlTask>('etlTasks', task)
   createVisible.value = false
-  ElMessage.success('ETL任务已创建（草稿），可进入设计器编排')
+  ElMessage.success('ETL 分类工作流已创建（草稿），可进入统一工作流编排')
   await reload()
 }
 </script>

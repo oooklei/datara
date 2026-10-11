@@ -5,6 +5,7 @@
  * - 边仅保留两端都在快照节点集内的内部边并重映射端点，边 id 由模块级序号生成器自实现
  *   （模式仿 model/index.ts 的 uid；本模块不 import index，避免循环依赖）。
  */
+import { cloneJson } from './jsonClone'
 
 /** 剪贴板节点快照（data 泛型：宿主传 GNodeData，粘贴结果原样带回，不丢类型） */
 export interface ClipboardNode<D = Record<string, unknown>> {
@@ -49,7 +50,7 @@ export function pasteSelection<D, E extends ClipboardEdge>(
       id,
       type: n.type,
       position: { x: n.position.x + offset, y: n.position.y + offset },
-      data: structuredClone(n.data),
+      data: cloneJson(n.data),
     }
   })
   const inner = new Set(copied.nodes.map((n) => n.id))

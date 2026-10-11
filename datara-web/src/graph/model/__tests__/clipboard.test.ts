@@ -1,4 +1,5 @@
 import { describe, it, expect } from 'vitest'
+import { reactive } from 'vue'
 import { pasteSelection, type ClipboardNode, type ClipboardEdge } from '../clipboard'
 
 /** 源快照：两节点 A→B 内部边 + 一条跨组件边（C 不在快照内，粘贴时必须丢弃） */
@@ -44,6 +45,14 @@ describe('pasteSelection（方案 §3.5：多选复制粘贴，纯函数）', ()
     r.nodes[0]!.data.cfg.deep = 99
     expect(s.nodes[0]!.data.name).toBe('A')
     expect(s.nodes[0]!.data.cfg.deep).toBe(1)
+  })
+
+  it('可粘贴 Vue reactive 节点快照，不触发 DataCloneError', () => {
+    const s = reactive(snap())
+    const r = pasteSelection(s, (type) => `reactive_${type}`)
+
+    expect(r.nodes.map((n) => n.id)).toEqual(['reactive_ds', 'reactive_sql'])
+    expect(r.nodes[0]?.data).toEqual({ name: 'A', cfg: { deep: 1 } })
   })
 
   it('跨组件连线被丢弃，仅保留两端都在快照节点集内的内部边', () => {

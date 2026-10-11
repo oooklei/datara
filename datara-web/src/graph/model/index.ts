@@ -2,6 +2,7 @@
  * 图模型层：GraphDocument / GNode / GEdge 统一数据结构 + 校验工具
  * 所有视角（DAG/拓扑/ER/血缘…）共享同一模型，差异由 ViewProfile 定义。
  */
+import { cloneJson } from './jsonClone'
 
 export interface GNodeData {
   name: string
@@ -236,8 +237,10 @@ export function findDuplicateEdges(doc: GraphDocument): string[] {
 
 /** 深拷贝（结构化，doc 均为可序列化 JSON） */
 export function cloneDoc(doc: GraphDocument): GraphDocument {
-  return JSON.parse(JSON.stringify(doc)) as GraphDocument
+  return cloneJson(doc)
 }
+
+export { cloneJson } from './jsonClone'
 
 /* spec 驱动渲染的视图适配（工作台优化 Task 5，方案 §2.3）：独立模块承载，
    此处仅 re-export——specSchema 对 profiles/services 均为 import type，运行时零依赖，无循环 */

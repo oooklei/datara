@@ -1,4 +1,5 @@
 import type { GEdge, GNode, GraphDocument } from '../model'
+import { cloneJson } from '../model/jsonClone'
 
 export type GraphCommandKind = 'add-node' | 'delete-nodes' | 'move-nodes' | 'connect' | 'disconnect' | 'update-props'
 
@@ -9,7 +10,7 @@ export interface GraphCommand {
   undo(doc: GraphDocument): GraphDocument
 }
 
-const copy = <T>(value: T): T => structuredClone(value)
+const copy = cloneJson
 
 /**
  * A command retains its before/after document boundaries.  This makes undo

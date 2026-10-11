@@ -3,7 +3,7 @@
  * M06 流处理作业列表（todo 17）
  * 对齐 prototype/assets/pages/m06-stream.js `#/stream/list`（L6-42）：
  * 作业表格（关键字 + 状态筛选，吞吐/延迟、Checkpoint 列）；顶部工具栏：新建流作业 + 资源概览；
- * 行操作：设计器(/stream/design/:id) / 详情(/stream/detail/:id) / 暂停·恢复·启动 / 停止。
+ * 行操作：统一工作流编排 / 详情(/stream/detail/:id) / 暂停·恢复·启动 / 停止。
  * 下方窗口计算、时间语义参考卡与核心能力说明（dataStore.windows / timeSemantics）。
  * F56d 双态：real 走 streamApi —— 列表 listStreamJobs()，行字段映射 StreamJobRow（引擎无的字段
  * 显示 '-'，status 原样展示）；启停接 startStreamJob/stopStreamJob（start 用 docId，stop 用 job id）；
@@ -13,7 +13,7 @@ import { ref, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { dataStore, ST } from '../../services/mock/dataStore'
-import { isMock, listStreamJobs, startStreamJob, stopStreamJob, deleteStreamJob, createDefinition } from '../../services'
+import { isMock, listStreamJobs, startStreamJob, stopStreamJob, deleteStreamJob, createDefinition, STREAM_TAG } from '../../services'
 import ListFilterPanel from '../../components/ListFilterPanel.vue'
 import type { DbUser, StreamJob, StreamWindow, TimeSemantics } from '../../services/types'
 
@@ -127,7 +127,7 @@ function goDesign(j: Row) {
      F56d real：编排目标是画布文档（docId），非流任务记录 id */
   const target = j.docId ?? j.id
   if (props.embed) { emit('open', target); return }
-  router.push(`/stream/design/${target}`)
+  router.push({ path: '/dag', query: { tab: 'edit', doc: target } })
 }
 function goDetail(j: Row) {
   /* F56d：详情路由参数 = 流任务 id（数字），详情页 GET /stream-jobs/{id} 同口径 */
@@ -247,13 +247,13 @@ const paraOptions = [1, 2, 4, 8]
 const ckOptions = ['30s', '60s', '120s']
 
 async function openCreate() {
-  /* I11 W3：real 新建 = 创建工作流定义（POST /workflow-definitions）→ 进流设计器画布编排；
+  /* I11 W3：real 新建 = 创建工作流定义（POST /workflow-definitions）→ 进入统一工作流编排；
      流任务本身仍由画布「启动」生成（一画布一流任务） */
   if (!isMock) {
     let name = ''
     try {
       const { value } = await ElMessageBox.prompt(
-        '输入工作流名称，创建后进入流设计器画布编排节点；画布配置完成后点「启动」即生成流任务。',
+        '输入工作流名称，创建后进入统一工作流画布编排节点；画布配置完成后点「启动」即生成流任务。',
         '新建流任务',
         {
           confirmButtonText: '创建并编排',
@@ -267,10 +267,10 @@ async function openCreate() {
       return /* 用户取消 */
     }
     try {
-      const def = await createDefinition(name)
-      ElMessage.success(`工作流定义已创建（${def.id}），正在进入流设计器`)
+      const def = await createDefinition(name, { tags: [STREAM_TAG] })
+      ElMessage.success(`工作流定义已创建（${def.id}）并归入流分类，正在进入统一编排`)
       if (props.embed) { emit('open', def.id); return }
-      router.push(`/stream/design/${def.id}`)
+      router.push({ path: '/dag', query: { tab: 'edit', doc: def.id } })
     } catch (e) {
       ElMessage.error('创建失败：' + errMsg(e))
     }
