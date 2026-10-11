@@ -1,6 +1,16 @@
-"""ORM 模型：meta 库 25 张表（I1 十三表 + I3 t_wf_schedule + I4 t_ide_history/t_tmp_data
-+ I5 t_lineage_edge/t_lineage_field + I7 t_ssh_node + I8 t_stream_job/t_stream_offset
-+ I10 t_ide_script + M1 t_component/t_component_version/t_component_log）。
+"""ORM 模型：meta 库 38 张表。
+
+清单：
+- I1 十三表：t_user、t_wf_definition、t_wf_definition_log、t_workflow_instance、t_task_instance、
+  t_command、t_data_source、t_wf_variable、t_global_param、t_env_group、t_task_log、
+  t_alert_record、t_runtime_node
+- 后续批次：t_run_event/t_run_node_artifact（运行事件/产物）、t_wf_template/t_wf_template_version
+  （workbench 模板库）、t_wf_category（I11）、t_wf_schedule（I3）、t_ide_history/t_tmp_data（I4）、
+  t_lineage_edge/t_lineage_field（I5）、t_ssh_node（I7）、t_stream_job/t_stream_offset（I8）、
+  t_ide_script（I10）、t_component/t_component_version/t_component_log（M1）、
+  t_baseline_progress（M-B0）
+- I18 数仓建模 7 张：t_dw_layer、t_biz_domain、t_engine_type、t_dw_model、t_dw_model_field、
+  t_dw_model_relation、t_dw_model_version
 
 - 所有表含 create_time/update_time（datetime，本地时区写入 datetime.now()）
 - t_wf_definition.id = 前端 GraphDocument 的 doc.id（形如 'wf_xxx'），code 为雪花式数字
@@ -829,8 +839,9 @@ class DwModelRelation(Base):
     create_time: Mapped[datetime] = mapped_column(DateTime, default=now)
     update_time: Mapped[datetime] = mapped_column(DateTime, default=now, onupdate=now)
 
+    # 去重由应用层代码比较完成：src_fields/tgt_fields 为 JSON 文本、长度不固定，
+    # MySQL utf8mb4 下组合唯一键超 InnoDB 3072 字节单索引上限，故不建 DB 级唯一约束
     __table_args__ = (
-        UniqueConstraint("src_model_id", "tgt_model_id", "src_fields", "tgt_fields", name="uq_dw_rel"),
         Index("idx_dwrel_src", "src_model_id"),
         Index("idx_dwrel_tgt", "tgt_model_id"),
     )
