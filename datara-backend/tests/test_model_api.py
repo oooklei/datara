@@ -33,7 +33,7 @@ def test_seed_dict_tables_idempotent(db_session):
     _seed_dicts(db_session)
     _seed_dicts(db_session)  # 二次调用不重复插入
     assert db_session.query(DwLayer).count() == 5
-    assert db_session.query(BizDomain).count() >= 4
+    assert db_session.query(BizDomain).count() == 4
     assert db_session.query(EngineType).count() == 3
     dwd = db_session.get(DwLayer, "DWD")
     assert dwd.rule.startswith("dwd_")

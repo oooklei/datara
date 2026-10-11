@@ -9,6 +9,7 @@ from typing import Iterator, Optional
 
 from sqlalchemy import create_engine, text
 from sqlalchemy.engine import Engine
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, sessionmaker
 
 from common.config import get_settings
@@ -55,10 +56,12 @@ def get_db() -> Iterator[Session]:
         session.close()
 
 
-def seed_dict_tables(session) -> None:
+def seed_dict_tables(session: Session) -> None:
     """I18 字典种子：分层/业务域/引擎（幂等，存在即跳过）。
 
     分层/规范文案对齐 prototype/assets/data.js DB.dwLayers。
+    count==0 守卫与插入非原子，多进程并发首启时由主键/唯一约束兜底，
+    后提交者捕获 IntegrityError 回滚跳过（单实例部署不触发）。
     """
     from common.models import BizDomain, DwLayer, EngineType
 
@@ -81,7 +84,12 @@ def seed_dict_tables(session) -> None:
             EngineType(name="Apache Doris", ddl="doris", xc=False),
             EngineType(name="GreatDB", ddl="greatdb", xc=True),
         ])
-    session.commit()
+    try:
+        session.commit()
+        logger.info("字典种子就绪（分层/业务域/引擎，空库路径写入）")
+    except IntegrityError:
+        session.rollback()
+        logger.warning("字典种子并发竞争：另一进程已写入，本次跳过")
 
 
 def init_db() -> None:
