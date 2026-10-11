@@ -8,6 +8,7 @@
 import re
 from typing import Optional
 
+import sqlglot
 from fastapi import APIRouter, Depends, Query
 from pydantic import BaseModel
 from sqlalchemy import func, or_
@@ -15,6 +16,8 @@ from sqlalchemy.orm import Session
 
 from api.auth import ApiError, get_current_user, require_perm
 from common.db import get_db
+from common.ddlgen import dialect_notes, gen_ddl
+from common.dsconn import open_connection
 from common.log import get_logger
 from common.models import (
     BizDomain, DataSource, DwLayer, DwModel, DwModelField, DwModelRelation,
@@ -22,7 +25,7 @@ from common.models import (
 )
 from common.resp import (
     DS_NOT_FOUND, MODEL_CODE_DUP, MODEL_CODE_INVALID, MODEL_FIELDS_LOCKED, MODEL_IN_USE,
-    MODEL_NAMING_RULE, MODEL_NOT_FOUND, MODEL_REV_CONFLICT, MODEL_STATE_CONFLICT, PARAM_INVALID,
+    MODEL_NAMING_RULE, MODEL_NOT_FOUND, MODEL_PHYS_FAIL, MODEL_REV_CONFLICT, MODEL_STATE_CONFLICT, PARAM_INVALID,
     fmt_dt, ok,
 )
 
@@ -294,3 +297,84 @@ def publish_model(model_id: int, user: User = Depends(require_perm("model:write"
     db.commit()
     audit.info("model.publish user=%s code=%s version=%s", user.user_name, m.code, m.version)
     return ok({"status": "published"})
+
+
+# ---------- DDL 与物理化 ----------
+
+
+def _fields_of(db: Session, model_id: int) -> list[dict]:
+    fs = (db.query(DwModelField).filter(DwModelField.model_id == model_id)
+          .order_by(DwModelField.seq).all())
+    return [_field_row(f) for f in fs]
+
+
+@router.get("/models/{model_id}/ddl")
+def preview_ddl(model_id: int, engine: str = "",
+                user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    """方言预览（不落库，供前端可编辑框）。engine 为方言标识，缺省按模型引擎映射。"""
+    m = _get_model(db, model_id)
+    if not engine:
+        ddl_id = db.get(EngineType, m.engine or "").ddl if m.engine and db.get(EngineType, m.engine) else "mysql"
+    else:
+        ddl_id = engine
+    fields = _fields_of(db, model_id)
+    try:
+        ddl = gen_ddl(m.code, m.name, fields, ddl_id)
+    except ValueError as exc:  # ddlgen 约定：非法标识符/类型/空字段 → 400
+        raise ApiError(MODEL_CODE_INVALID, str(exc), status=400)
+    return ok({"engine": ddl_id, "ddl": ddl, "notes": dialect_notes(fields, ddl_id)})
+
+
+class PhysicalizeBody(BaseModel):
+    engine: str
+    dsId: Optional[int] = None
+    dbName: Optional[str] = None
+    mode: str = "script"  # exec | script
+    ddl: Optional[str] = None
+
+
+@router.post("/models/{model_id}/physicalize")
+def physicalize(model_id: int, body: PhysicalizeBody,
+                user: User = Depends(require_perm("model:write")), db: Session = Depends(get_db)):
+    """物理化（R3 复用 dsconn 连接；60s 读超时对齐 meta_ops）。
+
+    - script：仅返回校验后脚本文本，状态不变
+    - exec：真实连接执行（sqlglot 拆语句防注释内分号误拆），成功→built，
+      失败→状态不变并附已执行条数（I18 §8）
+    """
+    m = _get_model(db, model_id)
+    fields = _fields_of(db, model_id)
+    try:
+        sql = body.ddl or gen_ddl(m.code, m.name, fields, body.engine)
+    except ValueError as exc:  # ddlgen 约定：非法标识符/类型/空字段 → 400
+        raise ApiError(MODEL_CODE_INVALID, str(exc), status=400)
+    if body.mode == "script":
+        return ok({"script": sql, "notes": dialect_notes(fields, body.engine)})
+
+    ds = db.get(DataSource, body.dsId) if body.dsId else None
+    if ds is None or ds.type not in ("mysql", "greatdb"):
+        raise ApiError(DS_NOT_FOUND, "物理化需选择 mysql/greatdb 连接型数据源", status=400)
+    stmts = [s for s in (sqlglot.parse(sql, read="mysql") or []) if s is not None]
+    executed = 0
+    try:
+        conn = open_connection(ds, db=body.dbName or None)
+        try:
+            with conn.cursor() as cur:
+                for s in stmts:
+                    cur.execute(s.sql(dialect="mysql"))
+                    executed += 1
+                conn.commit()
+        finally:
+            conn.close()
+    except Exception as exc:  # noqa: BLE001 执行失败：状态不变 + 审计 + 已执行条数
+        audit.error("model.physicalize user=%s code=%s FAIL executed=%d err=%s",
+                    user.user_name, m.code, executed, exc)
+        raise ApiError(MODEL_PHYS_FAIL, f"DDL 执行失败（已执行 {executed} 条）：{exc}",
+                       status=400, data={"executed": executed, "error": str(exc)})
+    m.status = "built"
+    m.last_ddl = sql
+    m.built_at = now()
+    m.built_by = user.user_name
+    db.commit()
+    audit.info("model.physicalize user=%s code=%s version=%s", user.user_name, m.code, m.version)
+    return ok({"status": "built", "executed": executed})

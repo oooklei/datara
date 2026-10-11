@@ -232,3 +232,110 @@ def test_fields_clear_all(client, db_session):
     assert r.status_code == 200
     d = client.get(f"/api/v1/models/{mid}").json()["data"]
     assert d["fields"] == []
+
+
+# ---------------- Task 7: DDL/物理化 ----------------
+
+_DS = {"name": "测试库", "type": "mysql", "host": "127.0.0.1", "port": 3306,
+       "db_name": "dwd", "user": "root", "pwd": ""}
+
+
+def _mk_ds(db_session) -> int:
+    ds = DataSource(**_DS)
+    db_session.add(ds)
+    db_session.commit()
+    return ds.id
+
+
+class _FakeCursor:
+    def __init__(self, fail_on: int = 0):
+        self.n = 0
+        self.fail_on = fail_on
+        self.executed = []
+
+    def execute(self, sql, args=None):
+        self.n += 1
+        # 规格修正：fail_on 语义=「第 fail_on 条执行失败」（原文 n > fail_on 在单语句 DDL 下永不触发，
+        # 无法满足 data.executed == 0 断言）
+        if self.fail_on and self.n >= self.fail_on:
+            raise RuntimeError("mock 执行失败")
+        self.executed.append(sql)
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *a):
+        return False
+
+
+class _FakeConn:
+    def __init__(self, fail_on: int = 0):
+        self.cursor_obj = _FakeCursor(fail_on)
+
+    def cursor(self):
+        return self.cursor_obj
+
+    def commit(self):
+        pass
+
+    def close(self):
+        pass
+
+
+def test_ddl_preview_dialects(client, db_session):
+    _seed_dicts(db_session)
+    mid = _mk_model(client)
+    # 规格修正：断言依赖分区字段（PARTITION BY RANGE / mysql 提示），默认 _FIELDS 无 isPartition
+    _put_fields(client, mid, fields=[dict(_FIELDS[0], isPartition=True), _FIELDS[1]])
+    r = client.get(f"/api/v1/models/{mid}/ddl?engine=doris")
+    d = r.json()["data"]
+    assert d["engine"] == "doris" and "PARTITION BY RANGE" in d["ddl"] and d["notes"] == []
+    r2 = client.get(f"/api/v1/models/{mid}/ddl?engine=mysql")
+    assert r2.json()["data"]["notes"] == ["该引擎不支持分区声明"]
+
+
+def test_physicalize_script_mode(client, db_session):
+    _seed_dicts(db_session)
+    mid = _mk_model(client)
+    _put_fields(client, mid)
+    r = client.post(f"/api/v1/models/{mid}/physicalize",
+                    json={"engine": "mysql", "mode": "script"})
+    assert r.status_code == 200
+    assert r.json()["data"]["script"].startswith("CREATE TABLE `dwd_order_pay`")
+    assert db_session.get(DwModel, mid).status == "draft"  # 状态不变
+
+
+def test_physicalize_exec_success(client, db_session, monkeypatch):
+    _seed_dicts(db_session)
+    ds_id = _mk_ds(db_session)
+    mid = _mk_model(client)
+    _put_fields(client, mid)
+    fake = _FakeConn()
+    monkeypatch.setattr("api.model.open_connection", lambda ds, **kw: fake)
+    r = client.post(f"/api/v1/models/{mid}/physicalize",
+                    json={"engine": "mysql", "mode": "exec", "dsId": ds_id, "dbName": "dwd"})
+    assert r.status_code == 200 and r.json()["data"]["status"] == "built"
+    m = db_session.get(DwModel, mid)
+    assert m.status == "built" and m.built_by == "tester" and m.last_ddl
+    assert fake.cursor_obj.executed and fake.cursor_obj.executed[0].startswith("CREATE TABLE")
+
+
+def test_physicalize_exec_fail_keeps_status(client, db_session, monkeypatch):
+    _seed_dicts(db_session)
+    ds_id = _mk_ds(db_session)
+    mid = _mk_model(client)
+    _put_fields(client, mid)
+    monkeypatch.setattr("api.model.open_connection", lambda ds, **kw: _FakeConn(fail_on=1))
+    r = client.post(f"/api/v1/models/{mid}/physicalize",
+                    json={"engine": "mysql", "mode": "exec", "dsId": ds_id})
+    assert r.status_code == 400 and r.json()["code"] == 8009
+    assert r.json()["data"]["executed"] == 0
+    assert db_session.get(DwModel, mid).status == "draft"
+
+
+def test_physicalize_requires_connection_ds(client, db_session):
+    _seed_dicts(db_session)
+    mid = _mk_model(client)
+    r = client.post(f"/api/v1/models/{mid}/physicalize",
+                    json={"engine": "mysql", "mode": "exec"})
+    assert r.status_code == 400
