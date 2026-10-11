@@ -21,8 +21,8 @@ from common.models import (
     EngineType, LineageEdge, User, now,
 )
 from common.resp import (
-    DS_NOT_FOUND, MODEL_CODE_DUP, MODEL_CODE_INVALID, MODEL_IN_USE,
-    MODEL_NAMING_RULE, MODEL_NOT_FOUND, MODEL_STATE_CONFLICT, PARAM_INVALID,
+    DS_NOT_FOUND, MODEL_CODE_DUP, MODEL_CODE_INVALID, MODEL_FIELDS_LOCKED, MODEL_IN_USE,
+    MODEL_NAMING_RULE, MODEL_NOT_FOUND, MODEL_REV_CONFLICT, MODEL_STATE_CONFLICT, PARAM_INVALID,
     fmt_dt, ok,
 )
 
@@ -235,3 +235,57 @@ def delete_model(model_id: int, user: User = Depends(require_perm("model:write")
     db.commit()
     audit.info("model.delete user=%s code=%s", user.user_name, m.code)
     return ok(True)
+
+
+# ---------- 字段与发布 ----------
+
+
+def _field_kwargs(f: dict) -> dict:
+    """API 契约字段 dict → ORM 列 kwargs（字段保存/逆向导入共用）。"""
+    return {
+        "name": str(f.get("name") or "").strip(),
+        "data_type": str(f.get("dataType") or "VARCHAR").upper(),
+        "length": str(f.get("length") or ""),
+        "precision": str(f.get("precision") or ""),
+        "nullable": bool(f.get("nullable", True)),
+        "default_value": str(f.get("defaultValue") or ""),
+        "comment": str(f.get("comment") or ""),
+        "is_pk": bool(f.get("isPk", False)),
+        "is_partition": bool(f.get("isPartition", False)),
+        "dict_ref": str(f.get("dictRef") or ""),
+    }
+
+
+class FieldsBody(BaseModel):
+    rev: int
+    fields: list = []
+
+
+@router.put("/models/{model_id}/fields")
+def save_fields(model_id: int, body: FieldsBody,
+                user: User = Depends(require_perm("model:write")), db: Session = Depends(get_db)):
+    """字段全量保存（乐观锁：rev 须等于当前 version；仅 draft 可保存）。"""
+    m = _get_model(db, model_id)
+    if m.status != "draft":
+        raise ApiError(MODEL_FIELDS_LOCKED, status=409)
+    if body.rev != m.version:
+        raise ApiError(MODEL_REV_CONFLICT, status=422, data={"currentRev": m.version})
+    db.query(DwModelField).filter(DwModelField.model_id == model_id).delete()
+    for i, f in enumerate(body.fields, 1):
+        db.add(DwModelField(model_id=model_id, seq=i, **_field_kwargs(f)))
+    db.commit()
+    audit.info("model.fields user=%s code=%s version=%s n=%d", user.user_name, m.code, m.version, len(body.fields))
+    return ok({"rev": m.version})
+
+
+@router.post("/models/{model_id}/publish")
+def publish_model(model_id: int, user: User = Depends(require_perm("model:write")),
+                  db: Session = Depends(get_db)):
+    """draft→published（直接发布 + 审计留痕，R5 无审批流）。"""
+    m = _get_model(db, model_id)
+    if m.status != "draft":
+        raise ApiError(MODEL_STATE_CONFLICT, "仅草稿可发布", status=409)
+    m.status = "published"
+    db.commit()
+    audit.info("model.publish user=%s code=%s version=%s", user.user_name, m.code, m.version)
+    return ok({"status": "published"})

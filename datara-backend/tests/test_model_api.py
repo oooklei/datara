@@ -162,3 +162,51 @@ def test_delete_target_keeps_edge_cleanup(client, db_session):
     r = client.delete(f"/api/v1/models/{b}")
     assert r.status_code == 200
     assert db_session.query(DwModelRelation).count() == 0
+
+
+# ---------------- Task 6: 字段/发布 ----------------
+
+_FIELDS = [
+    {"name": "user_id", "dataType": "BIGINT", "length": "", "precision": "", "nullable": False,
+     "defaultValue": "", "comment": "用户ID", "isPk": True, "isPartition": False, "dictRef": ""},
+    {"name": "user_name", "dataType": "VARCHAR", "length": "100", "precision": "", "nullable": True,
+     "defaultValue": "", "comment": "姓名", "isPk": False, "isPartition": False, "dictRef": ""},
+]
+
+
+def _put_fields(client, mid, rev=1, fields=None):
+    return client.put(f"/api/v1/models/{mid}/fields", json={"rev": rev, "fields": fields or _FIELDS})
+
+
+def test_fields_full_replace(client, db_session):
+    _seed_dicts(db_session)
+    mid = _mk_model(client)
+    r = _put_fields(client, mid, rev=1)
+    assert r.status_code == 200 and r.json()["data"]["rev"] == 1
+    d = client.get(f"/api/v1/models/{mid}").json()["data"]
+    assert [f["name"] for f in d["fields"]] == ["user_id", "user_name"]
+
+
+def test_fields_rev_conflict_422(client, db_session):
+    _seed_dicts(db_session)
+    mid = _mk_model(client)
+    r = _put_fields(client, mid, rev=99)
+    assert r.status_code == 422 and r.json()["code"] == 8006
+    assert r.json()["data"]["currentRev"] == 1
+
+
+def test_fields_locked_on_published(client, db_session):
+    _seed_dicts(db_session)
+    mid = _mk_model(client)
+    client.post(f"/api/v1/models/{mid}/publish")
+    r = _put_fields(client, mid, rev=1)
+    assert r.status_code == 409 and r.json()["code"] == 8007
+
+
+def test_publish_state_matrix(client, db_session):
+    _seed_dicts(db_session)
+    mid = _mk_model(client)
+    r = client.post(f"/api/v1/models/{mid}/publish")
+    assert r.status_code == 200 and r.json()["data"]["status"] == "published"
+    r2 = client.post(f"/api/v1/models/{mid}/publish")
+    assert r2.status_code == 409 and r2.json()["code"] == 8005
