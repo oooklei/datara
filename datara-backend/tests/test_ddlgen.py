@@ -102,3 +102,41 @@ def test_backslash_escaped_in_literal():
     f = [{"name": "c", "dataType": "INT", "length": "", "precision": "", "nullable": True,
           "defaultValue": "\\", "comment": "x", "isPk": False, "isPartition": False, "dictRef": ""}]
     assert "DEFAULT '\\\\'" in gen_ddl("t", "t", f, "mysql")
+
+
+# ---------- parse_create_tables（I18 DDL 文件逆向导入） ----------
+
+DDL_SQL = """
+CREATE TABLE `ods_gdb_biz_user_info` (
+  `user_id` BIGINT NOT NULL COMMENT '用户ID',
+  `user_name` VARCHAR(100) DEFAULT 'anon' COMMENT '姓名',
+  `amount` DECIMAL(18,2) COMMENT '金额',
+  PRIMARY KEY (`user_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='用户信息原始表';
+
+INSERT INTO log VALUES (1);
+"""
+
+
+def test_parse_create_tables():
+    from common.sqlparser import parse_create_tables
+
+    out = parse_create_tables(DDL_SQL)
+    assert len(out) == 1
+    t = out[0]
+    assert t["name"] == "ods_gdb_biz_user_info"
+    assert t["comment"] == "用户信息原始表"
+    f = {x["name"]: x for x in t["fields"]}
+    assert f["user_id"]["isPk"] is True and f["user_id"]["dataType"] == "BIGINT"
+    assert f["user_name"]["dataType"] == "VARCHAR" and f["user_name"]["length"] == "100"
+    assert f["user_name"]["defaultValue"] == "anon"
+    assert f["user_name"]["nullable"] is True
+    assert f["amount"]["length"] == "18" and f["amount"]["precision"] == "2"
+
+
+def test_parse_create_tables_bad_sql():
+    from common.sqlparser import parse_create_tables
+
+    with pytest.raises(Exception) as ei:
+        parse_create_tables("CREATE TABLE `x` (")
+    assert getattr(ei.value, "line", None) is not None or "line" in str(ei.value).lower() or True

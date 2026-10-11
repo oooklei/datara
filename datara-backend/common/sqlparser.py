@@ -284,3 +284,54 @@ def parse_sql_lineage(sql: str, default_db: str = "") -> list:
         except Exception as exc:  # noqa: BLE001 单语句异常 → 跳过不阻断
             _log.warning("[sqlparser] parse_error 语句#%d: %r", no, exc)
     return out
+
+
+def parse_create_tables(sql: str) -> list[dict]:
+    """I18 逆向导入（DDL 文件）：解析 CREATE TABLE → [{name, comment, fields[]}]。
+
+    - sqlglot read='mysql'；语法错误上抛 sqlglot.errors.ParseError（路由转 400 附行号）
+    - 字段形状为 API 契约 camelCase；仅取 CREATE TABLE，其余语句忽略
+    """
+    from sqlglot import exp
+
+    out: list[dict] = []
+    for stmt in sqlglot.parse(sql, read="mysql") or []:
+        if not (isinstance(stmt, exp.Create) and stmt.kind == "TABLE"):
+            continue
+        schema = stmt.this
+        if not isinstance(schema, exp.Schema):
+            continue
+        name = schema.this.name
+        comment = ""
+        props = stmt.args.get("properties")
+        for p in (props.expressions if props else []):
+            if isinstance(p, exp.SchemaCommentProperty):
+                v = p.args.get("this")
+                comment = v.name if isinstance(v, exp.Literal) else str(v or "")
+        pk_cols: set[str] = set()
+        for node in schema.expressions:
+            if isinstance(node, exp.PrimaryKey):
+                pk_cols.update(c.name for c in node.expressions)
+        fields = []
+        for coldef in schema.find_all(exp.ColumnDef):
+            kind = coldef.kind
+            dtype = ((getattr(kind.this, "value", "") or "VARCHAR") if kind is not None else "VARCHAR").upper()
+            params = [e.sql() for e in (kind.expressions if kind is not None else [])]
+            cons = [c.args.get("kind") for c in (coldef.args.get("constraints") or [])]
+            nullable = not any(isinstance(k, exp.NotNullColumnConstraint) for k in cons)
+            d = next((k.this for k in cons if isinstance(k, exp.DefaultColumnConstraint)), None)
+            cm = next((k.this for k in cons if isinstance(k, exp.CommentColumnConstraint)), None)
+            fields.append({
+                "name": coldef.name,
+                "dataType": dtype,
+                "length": str(params[0]) if params else "",
+                "precision": str(params[1]) if len(params) > 1 else "",
+                "nullable": nullable,
+                "defaultValue": (d.name if isinstance(d, exp.Literal) else d.sql()) if d is not None else "",
+                "comment": cm.name if cm is not None else "",
+                "isPk": coldef.name in pk_cols,
+                "isPartition": False,
+                "dictRef": "",
+            })
+        out.append({"name": name, "comment": comment, "fields": fields})
+    return out
