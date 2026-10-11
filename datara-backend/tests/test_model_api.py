@@ -339,3 +339,39 @@ def test_physicalize_requires_connection_ds(client, db_session):
     r = client.post(f"/api/v1/models/{mid}/physicalize",
                     json={"engine": "mysql", "mode": "exec"})
     assert r.status_code == 400
+
+
+def test_physicalize_exec_rejects_non_create(client, db_session, monkeypatch):
+    _seed_dicts(db_session)
+    ds_id = _mk_ds(db_session)
+    mid = _mk_model(client)
+    _put_fields(client, mid)
+    monkeypatch.setattr("api.model.open_connection", lambda ds, **kw: _FakeConn())
+    r = client.post(f"/api/v1/models/{mid}/physicalize",
+                    json={"engine": "mysql", "mode": "exec", "dsId": ds_id,
+                          "ddl": "DROP TABLE sensitive; --"})
+    assert r.status_code == 400 and r.json()["code"] == 8009
+    assert db_session.get(DwModel, mid).status == "draft"
+
+
+def test_physicalize_exec_bad_ddl_400(client, db_session, monkeypatch):
+    _seed_dicts(db_session)
+    ds_id = _mk_ds(db_session)
+    mid = _mk_model(client)
+    _put_fields(client, mid)
+    r = client.post(f"/api/v1/models/{mid}/physicalize",
+                    json={"engine": "mysql", "mode": "exec", "dsId": ds_id,
+                          "ddl": "CREATE TABLE x ("})
+    assert r.status_code == 400
+
+
+def test_physicalize_bad_mode_and_engine(client, db_session):
+    _seed_dicts(db_session)
+    mid = _mk_model(client)
+    _put_fields(client, mid)
+    r = client.post(f"/api/v1/models/{mid}/physicalize",
+                    json={"engine": "mysql", "mode": "Exec"})
+    assert r.status_code == 400
+    r2 = client.post(f"/api/v1/models/{mid}/physicalize",
+                     json={"engine": "pg", "mode": "script"})
+    assert r2.status_code == 400

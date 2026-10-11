@@ -13,6 +13,7 @@ from fastapi import APIRouter, Depends, Query
 from pydantic import BaseModel
 from sqlalchemy import func, or_
 from sqlalchemy.orm import Session
+from sqlglot import exp
 
 from api.auth import ApiError, get_current_user, require_perm
 from common.db import get_db
@@ -314,7 +315,8 @@ def preview_ddl(model_id: int, engine: str = "",
     """方言预览（不落库，供前端可编辑框）。engine 为方言标识，缺省按模型引擎映射。"""
     m = _get_model(db, model_id)
     if not engine:
-        ddl_id = db.get(EngineType, m.engine or "").ddl if m.engine and db.get(EngineType, m.engine) else "mysql"
+        row = db.get(EngineType, m.engine) if m.engine else None
+        ddl_id = row.ddl if row and row.ddl else "mysql"
     else:
         ddl_id = engine
     fields = _fields_of(db, model_id)
@@ -339,11 +341,16 @@ def physicalize(model_id: int, body: PhysicalizeBody,
     """物理化（R3 复用 dsconn 连接；60s 读超时对齐 meta_ops）。
 
     - script：仅返回校验后脚本文本，状态不变
-    - exec：真实连接执行（sqlglot 拆语句防注释内分号误拆），成功→built，
+    - exec：真实连接执行（sqlglot 拆语句防注释内分号误拆，白名单仅放行
+      CREATE——排除法会漏 Command 兜底节点如 GRANT），成功→built，
       失败→状态不变并附已执行条数（I18 §8）
     """
     m = _get_model(db, model_id)
+    if body.mode not in ("exec", "script"):
+        raise ApiError(PARAM_INVALID, "mode 仅支持 exec/script", status=400)
     fields = _fields_of(db, model_id)
+    if body.engine not in ("mysql", "greatdb", "doris"):
+        raise ApiError(PARAM_INVALID, f"不支持的引擎方言: {body.engine}", status=400)
     try:
         sql = body.ddl or gen_ddl(m.code, m.name, fields, body.engine)
     except ValueError as exc:  # ddlgen 约定：非法标识符/类型/空字段 → 400
@@ -354,7 +361,13 @@ def physicalize(model_id: int, body: PhysicalizeBody,
     ds = db.get(DataSource, body.dsId) if body.dsId else None
     if ds is None or ds.type not in ("mysql", "greatdb"):
         raise ApiError(DS_NOT_FOUND, "物理化需选择 mysql/greatdb 连接型数据源", status=400)
-    stmts = [s for s in (sqlglot.parse(sql, read="mysql") or []) if s is not None]
+    try:
+        stmts = [s for s in (sqlglot.parse(sql, read="mysql") or []) if s is not None]
+    except sqlglot.errors.ParseError as exc:  # 畸形 DDL 一并 400 而非 500
+        raise ApiError(MODEL_PHYS_FAIL, f"DDL 解析失败: {exc}", status=400)
+    bad = next((s for s in stmts if not isinstance(s, exp.Create)), None)
+    if bad is not None or not stmts:  # 白名单仅 CREATE；空语句列表同样拒绝
+        raise ApiError(MODEL_PHYS_FAIL, "物理化仅允许 CREATE TABLE 语句", status=400)
     executed = 0
     try:
         conn = open_connection(ds, db=body.dbName or None)
