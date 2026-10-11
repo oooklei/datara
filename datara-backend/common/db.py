@@ -55,6 +55,35 @@ def get_db() -> Iterator[Session]:
         session.close()
 
 
+def seed_dict_tables(session) -> None:
+    """I18 字典种子：分层/业务域/引擎（幂等，存在即跳过）。
+
+    分层/规范文案对齐 prototype/assets/data.js DB.dwLayers。
+    """
+    from common.models import BizDomain, DwLayer, EngineType
+
+    if session.query(DwLayer).count() == 0:
+        session.add_all([
+            DwLayer(code="ODS", name="原始数据层", rule="ods_源库名_源表名，保留原始字段", color="#0891b2", seq=1),
+            DwLayer(code="DWD", name="明细数据层", rule="dwd_业务_过程，一个过程一张表", color="#1668dc", seq=2),
+            DwLayer(code="DWS", name="汇总数据层", rule="dws_主题_粒度，预聚合指标", color="#7c3aed", seq=3),
+            DwLayer(code="ADS", name="应用数据层", rule="ads_应用_场景，直接服务报表", color="#16a34a", seq=4),
+            DwLayer(code="DIM", name="维度层", rule="dim_维度名，全局唯一", color="#d97706", seq=5),
+        ])
+    if session.query(BizDomain).count() == 0:
+        session.add_all([
+            BizDomain(name="交易域"), BizDomain(name="用户域"),
+            BizDomain(name="商品域"), BizDomain(name="流量域"),
+        ])
+    if session.query(EngineType).count() == 0:
+        session.add_all([
+            EngineType(name="MySQL", ddl="mysql", xc=False),
+            EngineType(name="Apache Doris", ddl="doris", xc=False),
+            EngineType(name="GreatDB", ddl="greatdb", xc=True),
+        ])
+    session.commit()
+
+
 def init_db() -> None:
     """create_all 兜底建表：幂等（存在的表跳过）。
     create_all 对已存在的表不会补列 —— 增量列由 _ensure_column 显式 ALTER 保障。
@@ -82,6 +111,11 @@ def init_db() -> None:
         "src_type",
         "VARCHAR(16) NOT NULL DEFAULT 'runtime' COMMENT '血缘来源 runtime/design（对齐边表）'",
     )
+    _s = new_session()
+    try:
+        seed_dict_tables(_s)
+    finally:
+        _s.close()
     logger.info("create_all 完成（meta 表兜底建表，幂等；增量列已保障）")
 
 
