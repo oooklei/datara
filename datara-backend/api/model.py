@@ -39,6 +39,9 @@ router = APIRouter(tags=["model"])
 
 CODE_RE = re.compile(r"^[a-z][a-z0-9_]*$")
 
+# 逆向导入 engine 映射：ds.type → EngineType 主键（_conn_ds 已限定仅这两种类型）
+_REV_ENGINE_MAP = {"mysql": "MySQL", "greatdb": "GreatDB"}
+
 
 # ---------- 共用 ----------
 
@@ -458,18 +461,19 @@ def reverse_scan(body: ReverseScanBody, user: User = Depends(require_perm("model
                 "WHERE TABLE_SCHEMA = %s AND TABLE_TYPE = 'BASE TABLE' ORDER BY TABLE_NAME",
                 (target_db,),
             )
-            tables = [{"tb": r[0], "comment": r[1] or "", "rows": int(r[2] or 0)} for r in cur.fetchall()]
-            for t in tables:
-                cur.execute(
-                    "SELECT COUNT(*) FROM information_schema.COLUMNS "
-                    "WHERE TABLE_SCHEMA = %s AND TABLE_NAME = %s",
-                    (target_db, t["tb"]),
-                )
-                t["cols"] = int(cur.fetchone()[0])
+            rows = cur.fetchall()
+            cur.execute(
+                "SELECT TABLE_NAME, COUNT(*) FROM information_schema.COLUMNS "
+                "WHERE TABLE_SCHEMA = %s GROUP BY TABLE_NAME",
+                (target_db,),
+            )
+            col_counts = {r[0]: int(r[1] or 0) for r in cur.fetchall()}
         finally:
             cur.close()
     finally:
         conn.close()
+    tables = [{"tb": r[0], "comment": r[1] or "", "rows": int(r[2] or 0),
+               "cols": col_counts.get(r[0], 0)} for r in rows]
     return ok({"db": target_db, "tables": tables})
 
 
@@ -517,8 +521,12 @@ def reverse_import(body: ReverseImportBody, user: User = Depends(require_perm("m
                 cols = cur.fetchall()
             finally:
                 cur.close()
+            if not cols:  # 目标表不存在/无列信息 → 跳过，不建 0 字段草稿模型
+                skipped.append({"tb": code, "reason": "未找到列（表不存在？）"})
+                continue
             _reverse_create(db, code, t.layer, t.name or "", t.bizDomain,
-                            ds.name, user.user_name, [_col_to_field(c) for c in cols])
+                            _REV_ENGINE_MAP[ds.type], user.user_name,
+                            [_col_to_field(c) for c in cols])
             imported += 1
     finally:
         conn.close()
@@ -532,9 +540,20 @@ async def reverse_import_ddl(file: UploadFile = File(...),
                              user: User = Depends(require_perm("model:write")),
                              db: Session = Depends(get_db)):
     """DDL 文件导入（.sql，≤5MB）：sqlglot 解析 CREATE TABLE → ODS 草稿。"""
-    raw = await file.read()
-    if len(raw) > 5 * 1024 * 1024:
+    limit = 5 * 1024 * 1024
+    if file.size is not None and file.size > limit:  # size 已知时快速拒绝（size 可能为 None）
         raise ApiError(PARAM_INVALID, "DDL 文件超过 5MB 上限", status=400)
+    chunks: list[bytes] = []
+    total = 0
+    while True:  # 分块读取兜底：超限立即中断，避免超大文件整体进内存
+        chunk = await file.read(1024 * 1024)
+        if not chunk:
+            break
+        total += len(chunk)
+        if total > limit:
+            raise ApiError(PARAM_INVALID, "DDL 文件超过 5MB 上限", status=400)
+        chunks.append(chunk)
+    raw = b"".join(chunks)
     try:
         sql = raw.decode("utf-8")
     except UnicodeDecodeError:

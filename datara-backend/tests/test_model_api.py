@@ -387,33 +387,51 @@ _COL_ROWS = [
     ("id", "bigint", "bigint(20)", "NO", None, "主键", "PRI", None, 20, 0),
     ("user_name", "varchar", "varchar(100)", "YES", "anon", "姓名", "", 100, None, None),
 ]
+_COL_COUNT_ROWS = [
+    ("ods_gdb_biz_user_info", 2),
+    ("ods_gdb_biz_order", 2),
+]
 
 
 class _MetaCursor:
-    """information_schema 内省 mock：scan 消费 3 列行，import 消费 10 列行。"""
+    """information_schema 内省 mock：按 SQL 形态分流返回。
 
-    def __init__(self):
+    - 含 GROUP BY → 列计数查询（scan 单条聚合），返回 [(tb, n), ...]
+    - 含 COLUMNS → import 逐表内省（empty_tables 中的表返回空列表）
+    - 其余 → scan 表清单（3 列行）
+    """
+
+    def __init__(self, empty_tables: tuple = ()):
+        self.empty_tables = frozenset(empty_tables)
         self.last_sql = ""
+        self.last_args: tuple = ()
+        self.executed: list[str] = []
 
     def execute(self, sql, args=None):
         self.last_sql = sql
-        self.last_args = args
+        self.last_args = args or ()
+        self.executed.append(sql)
 
     def fetchall(self):
-        if "COLUMNS" in self.last_sql.upper():
+        sql = self.last_sql.upper()
+        if "GROUP BY" in sql:
+            return _COL_COUNT_ROWS
+        if "COLUMNS" in sql:
+            if len(self.last_args) >= 2 and self.last_args[1] in self.empty_tables:
+                return []
             return _COL_ROWS
         return _SCAN_ROWS
-
-    def fetchone(self):
-        return (2,)
 
     def close(self):
         pass
 
 
 class _MetaConn:
+    def __init__(self, empty_tables: tuple = ()):
+        self.cursor_obj = _MetaCursor(empty_tables)
+
     def cursor(self):
-        return _MetaCursor()
+        return self.cursor_obj
 
     def close(self):
         pass
@@ -422,11 +440,14 @@ class _MetaConn:
 def test_reverse_scan(client, db_session, monkeypatch):
     _seed_dicts(db_session)
     ds_id = _mk_ds(db_session)
-    monkeypatch.setattr("api.model.open_connection", lambda ds, **kw: _MetaConn())
+    fake = _MetaConn()
+    monkeypatch.setattr("api.model.open_connection", lambda ds, **kw: fake)
     r = client.post("/api/v1/models/reverse/scan", json={"dsId": ds_id, "dbName": "ods"})
     d = r.json()["data"]
     assert d["db"] == "ods" and len(d["tables"]) == 2
     assert d["tables"][0]["tb"] == "ods_gdb_biz_user_info" and d["tables"][0]["cols"] == 2
+    # N+1 消除：整个 scan 仅 2 条 SQL（表清单 + 单条 GROUP BY 列计数）
+    assert len(fake.cursor_obj.executed) == 2
 
 
 def test_reverse_import_skip_existing(client, db_session, monkeypatch):
@@ -442,10 +463,46 @@ def test_reverse_import_skip_existing(client, db_session, monkeypatch):
     assert d["imported"] == 1 and d["skipped"][0]["tb"] == "ods_gdb_biz_user_info"
     new = db_session.query(DwModel).filter(DwModel.code == "ods_gdb_biz_order").first()
     assert new is not None and new.status == "draft"
+    # engine 按 ds.type 映射 EngineType 主键（_mk_ds 为 mysql 类型 → "MySQL"）
+    assert new.engine == "MySQL"
     # 规格适配：DwModel 无 fields relationship，改为直接查 DwModelField
     fs = sorted(f.name for f in
                 db_session.query(DwModelField).filter(DwModelField.model_id == new.id).all())
     assert fs == ["id", "user_name"]
+
+
+def test_reverse_import_naming_skip(client, db_session, monkeypatch):
+    """编码不符合分层命名规范（ODS 层要求 ods_ 前缀）→ skipped，不建模型。"""
+    _seed_dicts(db_session)
+    ds_id = _mk_ds(db_session)
+    monkeypatch.setattr("api.model.open_connection", lambda ds, **kw: _MetaConn())
+    r = client.post("/api/v1/models/reverse/import", json={
+        "dsId": ds_id, "dbName": "ods",
+        "tables": [{"tb": "dwd_bad", "layer": "ODS"},
+                   {"tb": "ods_gdb_biz_order", "layer": "ODS"}]})
+    d = r.json()["data"]
+    assert d["imported"] == 1
+    assert d["skipped"][0]["tb"] == "dwd_bad"
+    assert "命名规范" in d["skipped"][0]["reason"]
+    assert db_session.query(DwModel).filter(DwModel.code == "dwd_bad").first() is None
+
+
+def test_reverse_import_empty_cols_skipped(client, db_session, monkeypatch):
+    """目标表无列信息（表不存在等）→ 计入 skipped，不建 0 字段模型。"""
+    _seed_dicts(db_session)
+    ds_id = _mk_ds(db_session)
+    monkeypatch.setattr(
+        "api.model.open_connection",
+        lambda ds, **kw: _MetaConn(empty_tables=("ods_gdb_biz_user_info",)))
+    r = client.post("/api/v1/models/reverse/import", json={
+        "dsId": ds_id, "dbName": "ods",
+        "tables": [{"tb": "ods_gdb_biz_user_info", "layer": "ODS"},
+                   {"tb": "ods_gdb_biz_order", "layer": "ODS"}]})
+    d = r.json()["data"]
+    assert d["imported"] == 1
+    assert d["skipped"] == [{"tb": "ods_gdb_biz_user_info", "reason": "未找到列（表不存在？）"}]
+    assert db_session.query(DwModel).filter(DwModel.code == "ods_gdb_biz_user_info").first() is None
+    assert db_session.query(DwModel).filter(DwModel.code == "ods_gdb_biz_order").first() is not None
 
 
 def test_reverse_import_ddl_file(client, db_session):
@@ -472,3 +529,33 @@ def test_reverse_import_ddl_bad_file_400(client, db_session):
     r = client.post("/api/v1/models/reverse/import-ddl",
                     files={"file": ("bad.sql", b"CREATE TABLE `x` (", "text/plain")})
     assert r.status_code == 400 and r.json()["code"] == 8010
+
+
+def test_reverse_import_ddl_oversize_400(client, db_session):
+    """超过 5MB 上限 → 400，不落任何模型。"""
+    _seed_dicts(db_session)
+    big = b"x" * (5 * 1024 * 1024 + 1)
+    r = client.post("/api/v1/models/reverse/import-ddl",
+                    files={"file": ("big.sql", big, "text/plain")})
+    assert r.status_code == 400 and r.json()["code"] == 4002
+    assert "5MB" in r.json()["msg"]
+    assert db_session.query(DwModel).count() == 0
+
+
+def test_reverse_import_ddl_gbk(client, db_session):
+    """GBK 编码的合法 DDL（中文 COMMENT）→ 降级解码成功导入。"""
+    _seed_dicts(db_session)
+    ddl = ("CREATE TABLE `ods_gdb_biz_user_info` (\n"
+           "  `user_id` BIGINT NOT NULL COMMENT '用户ID',\n"
+           "  PRIMARY KEY (`user_id`)\n"
+           ") COMMENT='用户信息表';\n").encode("gbk")
+    r = client.post("/api/v1/models/reverse/import-ddl",
+                    files={"file": ("init.sql", ddl, "text/plain")})
+    assert r.status_code == 200, r.text
+    d = r.json()["data"]
+    assert d["imported"] == 1 and d["skipped"] == []
+    m = db_session.query(DwModel).filter(DwModel.code == "ods_gdb_biz_user_info").first()
+    assert m is not None and m.remark == "用户信息表"
+    f = (db_session.query(DwModelField).filter(DwModelField.model_id == m.id)
+         .order_by(DwModelField.seq).first())
+    assert f.comment == "用户ID"
