@@ -52,6 +52,18 @@ COMP_BREAKING_CHANGE = 6009  # 破坏性变更未确认拦截（422，data 带 c
 # 页面设计器段（页面设计器设计文档 §8）
 PAGE_PREVIEW_SQL_FORBIDDEN = 7001  # 预览 SQL 非 SELECT/WITH 只读（422）
 
+# 数仓建模段（I18 P0）
+MODEL_NOT_FOUND = 8001  # 模型不存在（404）
+MODEL_CODE_DUP = 8002  # 模型编码已存在（409）
+MODEL_CODE_INVALID = 8003  # 编码非法（须 ^[a-z][a-z0-9_]*$，400）
+MODEL_NAMING_RULE = 8004  # 不符合分层命名规范（400）
+MODEL_STATE_CONFLICT = 8005  # 状态机不允许该操作（409）
+MODEL_REV_CONFLICT = 8006  # 字段保存乐观锁冲突（422，data 带 currentRev）
+MODEL_FIELDS_LOCKED = 8007  # 非 draft 不可改字段，需开新修订（409）
+MODEL_IN_USE = 8008  # 模型被下游血缘引用（409，data 带 refs）
+MODEL_PHYS_FAIL = 8009  # 物理化执行失败（400，data 带 executed/error）
+MODEL_DDL_INVALID = 8010  # DDL 文件解析失败（400，附行号）
+
 _MSGS = {
     USER_NOT_FOUND: "用户不存在",
     USER_PWD_WRONG: "密码错误",
@@ -85,6 +97,16 @@ _MSGS = {
     COMP_SPEC_INVALID: "组件声明包含非纯数据内容",
     COMP_BREAKING_CHANGE: "发布存在破坏性变更，需确认后重发",
     PAGE_PREVIEW_SQL_FORBIDDEN: "预览仅允许 SELECT/WITH 只读查询",
+    MODEL_NOT_FOUND: "模型不存在",
+    MODEL_CODE_DUP: "模型编码已存在",
+    MODEL_CODE_INVALID: "编码非法，须以小写字母开头，仅含小写字母/数字/下划线",
+    MODEL_NAMING_RULE: "编码不符合分层命名规范",
+    MODEL_STATE_CONFLICT: "当前状态不允许该操作",
+    MODEL_REV_CONFLICT: "字段已被他人更新，请刷新后重试",
+    MODEL_FIELDS_LOCKED: "已发布模型不可修改字段，请开新修订",
+    MODEL_IN_USE: "模型被下游血缘引用，不可删除",
+    MODEL_PHYS_FAIL: "DDL 执行失败",
+    MODEL_DDL_INVALID: "DDL 文件解析失败",
 }
 
 
