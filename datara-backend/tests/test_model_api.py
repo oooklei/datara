@@ -140,3 +140,25 @@ def test_delete_ok_cascades_fields(client, db_session):
     r = client.delete(f"/api/v1/models/{mid}")
     assert r.status_code == 200
     assert client.get(f"/api/v1/models/{mid}").status_code == 404
+
+
+def test_create_bad_layer_engine_400(client, db_session):
+    _seed_dicts(db_session)
+    r = client.post("/api/v1/models", json={
+        "name": "x", "code": "dwd_x", "layer": "不存在的层", "engine": "MySQL", "type": "明细表"})
+    assert r.status_code == 400
+    r2 = client.post("/api/v1/models", json={
+        "name": "x", "code": "dwd_x", "layer": "DWD", "engine": "Oracle", "type": "明细表"})
+    assert r2.status_code == 400
+
+
+def test_delete_target_keeps_edge_cleanup(client, db_session):
+    """上游指向我的关系随删除一并消失（tgt 方向）。"""
+    _seed_dicts(db_session)
+    a = _mk_model(client, code="dwd_a")
+    b = _mk_model(client, code="dws_b", layer="DWS")
+    db_session.add(DwModelRelation(src_model_id=a, tgt_model_id=b))
+    db_session.commit()
+    r = client.delete(f"/api/v1/models/{b}")
+    assert r.status_code == 200
+    assert db_session.query(DwModelRelation).count() == 0

@@ -8,7 +8,7 @@
 import re
 from typing import Optional
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Query
 from pydantic import BaseModel
 from sqlalchemy import func, or_
 from sqlalchemy.orm import Session
@@ -77,7 +77,7 @@ def _check_code(db: Session, code: str, layer: str) -> None:
         raise ApiError(MODEL_CODE_DUP, status=409)
     l = db.get(DwLayer, layer)
     if l and l.rule:
-        prefix = l.rule.split("，")[0].split("_")[0]
+        prefix = l.rule.split("，")[0].split("_")[0].strip()
         if prefix and not code.startswith(prefix + "_"):
             raise ApiError(MODEL_NAMING_RULE, f"编码需符合分层命名规范：{l.rule}", status=400)
 
@@ -104,7 +104,7 @@ def model_dicts(user: User = Depends(get_current_user), db: Session = Depends(ge
 @router.get("/models")
 def list_models(
     layer: str = "", status: str = "", domain: str = "", keyword: str = "",
-    page: int = 1, size: int = 50,
+    page: int = Query(default=1, ge=1), size: int = Query(default=50, ge=1, le=200),
     user: User = Depends(get_current_user), db: Session = Depends(get_db),
 ):
     """列表 + 双维统计（交叉过滤，I18 §4.1）：分层计数叠 domain，域计数叠 layer。"""
@@ -158,6 +158,10 @@ class ModelCreateBody(BaseModel):
 def create_model(body: ModelCreateBody, user: User = Depends(require_perm("model:write")),
                  db: Session = Depends(get_db)):
     code = body.code.strip()
+    if db.get(DwLayer, body.layer) is None:
+        raise ApiError(PARAM_INVALID, f"分层不存在: {body.layer}", status=400)
+    if db.get(EngineType, body.engine) is None:
+        raise ApiError(PARAM_INVALID, f"引擎不存在: {body.engine}", status=400)
     _check_code(db, code, body.layer)
     m = DwModel(code=code, name=body.name.strip(), layer=body.layer, type=body.type,
                 biz_domain=body.bizDomain, engine=body.engine, status="draft", version=1,
