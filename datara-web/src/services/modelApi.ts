@@ -6,7 +6,7 @@
  * - POST /models/reverse/scan|import|import-ddl、GET /models/{id}/lineage|impact
  * isMock 分支保留（单测/离线演示；mock 读写 dataStore 演示文档并做形状适配）。
  */
-import { http } from './http'
+import { http, getToken, BASE } from './http'
 import { isMock } from './apiMode'
 import { dataStore } from './mock/dataStore'
 
@@ -103,8 +103,15 @@ export async function listModels(params?: {
   if (isMock) {
     const ms = (await dataStore.list<Record<string, unknown>>('models')) ?? []
     const rows = ms.map(demoToRow)
-    const layers = [...new Set(rows.map((r) => r.layer))].map((code) => ({ code, count: rows.filter((r) => r.layer === code).length }))
-    const domains = [...new Set(rows.map((r) => r.bizDomain).filter(Boolean))].map((name) => ({ name, count: rows.filter((r) => r.bizDomain === name).length }))
+    /* 单次遍历计数（避免 Set 去重 + filter 的 O(n²) 重复计算） */
+    const layerCount = new Map<string, number>()
+    const domainCount = new Map<string, number>()
+    for (const r of rows) {
+      layerCount.set(r.layer, (layerCount.get(r.layer) ?? 0) + 1)
+      if (r.bizDomain) domainCount.set(r.bizDomain, (domainCount.get(r.bizDomain) ?? 0) + 1)
+    }
+    const layers = [...layerCount].map(([code, count]) => ({ code, count }))
+    const domains = [...domainCount].map(([name, count]) => ({ name, count }))
     return { list: rows, total: rows.length, layers, domains }
   }
   const q = new URLSearchParams()
@@ -169,22 +176,40 @@ export async function reverseImport(body: {
   return http.post('/models/reverse/import', body)
 }
 
-/** DDL 文件导入（multipart；后端 400 时 http 层 throw Error(msg)） */
+/** DDL 文件导入（multipart；15s 超时对齐 http.ts；非 JSON 响应/后端 code≠0 → throw 可读 Error。
+ *  注：鉴权 1xxx 跳登录逻辑不在此复制（延后：待 http 层提供可复用的错误处理出口） */
 export async function reverseImportDdl(file: File): Promise<{ imported: number; skipped: { tb: string; reason: string }[] }> {
   const fd = new FormData()
   fd.append('file', file)
-  const { getToken } = await import('./http')
   const headers: Record<string, string> = {}
   const token = getToken()
   if (token) headers.token = token
-  const res = await fetch('/api/v1/models/reverse/import-ddl', {
-    method: 'POST',
-    headers,
-    body: fd,
-  })
-  const json = (await res.json()) as { code: number; msg: string; data: { imported: number; skipped: { tb: string; reason: string }[] } }
-  if (json.code !== 0) throw new Error(json.msg || '导入失败')
-  return json.data
+  const ctrl = new AbortController()
+  const timer = setTimeout(() => ctrl.abort(), 15000)
+  try {
+    const res = await fetch(`${BASE}/models/reverse/import-ddl`, {
+      method: 'POST',
+      headers,
+      body: fd,
+      signal: ctrl.signal,
+    })
+    let json: { code: number; msg: string; data: { imported: number; skipped: { tb: string; reason: string }[] } }
+    try {
+      json = JSON.parse(await res.text())
+    } catch {
+      /* 代理 5xx 返回 HTML 等非 JSON 响应（对齐 http.ts「响应解析失败（HTTP xx）」语义） */
+      throw new Error(`响应解析失败（HTTP ${res.status}）`)
+    }
+    if (json.code !== 0) throw new Error(json.msg || '导入失败')
+    return json.data
+  } catch (err) {
+    if (err instanceof DOMException && err.name === 'AbortError') {
+      throw new Error('请求超时（15s），请检查后端服务')
+    }
+    throw err
+  } finally {
+    clearTimeout(timer)
+  }
 }
 
 export async function getModelLineage(id: number | string): Promise<LineageResp> {

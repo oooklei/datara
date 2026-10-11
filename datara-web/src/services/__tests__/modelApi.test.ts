@@ -41,3 +41,56 @@ describe('modelApi mock 分支', () => {
     expect(d.engines.length).toBeGreaterThan(0)
   })
 })
+
+describe('modelApi 真实分支（stub fetch 契约，datasourceApi.test 先例）', () => {
+  const fetchMock = vi.fn()
+
+  beforeEach(() => {
+    vi.stubEnv('VITE_API_MODE', 'real')
+    vi.resetModules()
+    fetchMock.mockReset()
+    vi.stubGlobal('fetch', fetchMock)
+    vi.stubGlobal('localStorage', { getItem: () => 'tok-i4', setItem: vi.fn(), removeItem: vi.fn() })
+  })
+
+  it('listModels → GET /models，查询串按需拼接（无参时无 ?）', async () => {
+    const api = await import('../modelApi')
+    const resp = { code: 0, msg: '', data: { list: [], total: 0, layers: [], domains: [] } }
+    fetchMock.mockResolvedValueOnce({ json: async () => resp })
+    await api.listModels({ layer: 'DWD', status: 'published', keyword: 'pay', page: 1, size: 20 })
+    const [url, init] = fetchMock.mock.calls[0]
+    expect(url).toBe('/api/v1/models?layer=DWD&status=published&keyword=pay&page=1&size=20')
+    expect(init.method).toBe('GET')
+    expect(init.headers.token).toBe('tok-i4')
+
+    fetchMock.mockResolvedValueOnce({ json: async () => resp })
+    await api.listModels()
+    expect(fetchMock.mock.calls[1][0]).toBe('/api/v1/models')
+  })
+
+  it('reverseImportDdl → POST multipart（URL/FormData file 字段/token header），code=0 返回 data', async () => {
+    const api = await import('../modelApi')
+    fetchMock.mockResolvedValueOnce({ status: 200, text: async () => JSON.stringify({ code: 0, msg: '', data: { imported: 2, skipped: [] } }) })
+    const file = new File(['CREATE TABLE t(id INT);'], 'model.sql', { type: 'text/plain' })
+    const r = await api.reverseImportDdl(file)
+    expect(r).toEqual({ imported: 2, skipped: [] })
+    const [url, init] = fetchMock.mock.calls[0]
+    expect(url).toBe('/api/v1/models/reverse/import-ddl')
+    expect(init.method).toBe('POST')
+    expect(init.body).toBeInstanceOf(FormData)
+    expect(init.body.get('file')).toBe(file)
+    expect(init.headers.token).toBe('tok-i4')
+  })
+
+  it('reverseImportDdl：code≠0 → throw Error(msg)', async () => {
+    const api = await import('../modelApi')
+    fetchMock.mockResolvedValueOnce({ status: 400, text: async () => JSON.stringify({ code: 1, msg: 'DDL 解析失败', data: null }) })
+    await expect(api.reverseImportDdl(new File(['bad'], 'bad.sql'))).rejects.toThrow('DDL 解析失败')
+  })
+
+  it('reverseImportDdl：非 JSON 响应（代理 502 HTML）→ 可读 HTTP 错误', async () => {
+    const api = await import('../modelApi')
+    fetchMock.mockResolvedValueOnce({ status: 502, text: async () => '<html>502 Bad Gateway</html>' })
+    await expect(api.reverseImportDdl(new File(['x'], 'x.sql'))).rejects.toThrow('HTTP 502')
+  })
+})

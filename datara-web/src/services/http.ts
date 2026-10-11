@@ -7,7 +7,7 @@
  */
 import { localTime } from './mock/timeUtil'
 
-const BASE = '/api/v1'
+export const BASE = '/api/v1'
 export const TOKEN_KEY = 'datara_token'
 const TIMEOUT_MS = 15000
 
