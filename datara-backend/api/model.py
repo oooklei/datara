@@ -9,7 +9,7 @@ import re
 from typing import Optional
 
 import sqlglot
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, File, Query, UploadFile
 from pydantic import BaseModel
 from sqlalchemy import func, or_
 from sqlalchemy.orm import Session
@@ -25,10 +25,12 @@ from common.models import (
     EngineType, LineageEdge, User, now,
 )
 from common.resp import (
-    DS_NOT_FOUND, MODEL_CODE_DUP, MODEL_CODE_INVALID, MODEL_FIELDS_LOCKED, MODEL_IN_USE,
-    MODEL_NAMING_RULE, MODEL_NOT_FOUND, MODEL_PHYS_FAIL, MODEL_REV_CONFLICT, MODEL_STATE_CONFLICT, PARAM_INVALID,
+    DS_NOT_FOUND, MODEL_CODE_DUP, MODEL_CODE_INVALID, MODEL_DDL_INVALID, MODEL_FIELDS_LOCKED,
+    MODEL_IN_USE, MODEL_NAMING_RULE, MODEL_NOT_FOUND, MODEL_PHYS_FAIL, MODEL_REV_CONFLICT,
+    MODEL_STATE_CONFLICT, PARAM_INVALID,
     fmt_dt, ok,
 )
+from common.sqlparser import parse_create_tables
 
 logger = get_logger("api.model")
 audit = get_logger("audit.model")
@@ -391,3 +393,175 @@ def physicalize(model_id: int, body: PhysicalizeBody,
     db.commit()
     audit.info("model.physicalize user=%s code=%s version=%s", user.user_name, m.code, m.version)
     return ok({"status": "built", "executed": executed})
+
+
+# ---------- 逆向工程 ----------
+
+
+def _conn_ds(db: Session, ds_id: int) -> DataSource:
+    ds = db.get(DataSource, ds_id)
+    if ds is None:
+        raise ApiError(DS_NOT_FOUND, status=400)
+    if ds.type not in ("mysql", "greatdb"):
+        raise ApiError(PARAM_INVALID, "逆向导入仅支持连接型数据源（mysql/greatdb）", status=400)
+    return ds
+
+
+def _col_to_field(c: tuple) -> dict:
+    """information_schema.COLUMNS 行（10 列）→ API 契约字段 dict。"""
+    (name, data_type, _column_type, is_nullable, default, cmt, key, char_len, num_p, num_s) = c
+    dtype = str(data_type or "varchar").upper()
+    length, precision = "", ""
+    if dtype in ("VARCHAR", "CHAR"):
+        length = str(char_len or "")
+    elif dtype in ("DECIMAL", "NUMERIC"):
+        length = str(num_p or "")
+        precision = str(num_s or "")
+    return {
+        "name": name, "dataType": dtype, "length": length, "precision": precision,
+        "nullable": is_nullable == "YES",
+        "defaultValue": str(default) if default is not None else "",
+        "comment": cmt or "", "isPk": key == "PRI", "isPartition": False, "dictRef": "",
+    }
+
+
+def _reverse_create(db: Session, code: str, layer: str, name: str, domain: str,
+                    engine: str, owner: str, fields: list[dict], remark: str = "") -> int:
+    """逆向建草稿模型 + 字段（调用方已做 code 查重/规范校验）。"""
+    m = DwModel(code=code, name=name or code, layer=layer, type="明细表",
+                biz_domain=domain, engine=engine, status="draft", version=1,
+                security_level="内部", owner=owner, remark=remark)
+    db.add(m)
+    db.flush()
+    for i, f in enumerate(fields, 1):
+        db.add(DwModelField(model_id=m.id, seq=i, **_field_kwargs(f)))
+    return m.id
+
+
+class ReverseScanBody(BaseModel):
+    dsId: int
+    dbName: Optional[str] = None
+
+
+@router.post("/models/reverse/scan")
+def reverse_scan(body: ReverseScanBody, user: User = Depends(require_perm("model:write")),
+                 db: Session = Depends(get_db)):
+    """内省表清单（表名/注释/行数估算/列数）。"""
+    ds = _conn_ds(db, body.dsId)
+    target_db = body.dbName or ds.db_name or ""
+    conn = open_connection(ds)
+    try:
+        cur = conn.cursor()
+        try:
+            cur.execute(
+                "SELECT TABLE_NAME, TABLE_COMMENT, TABLE_ROWS FROM information_schema.TABLES "
+                "WHERE TABLE_SCHEMA = %s AND TABLE_TYPE = 'BASE TABLE' ORDER BY TABLE_NAME",
+                (target_db,),
+            )
+            tables = [{"tb": r[0], "comment": r[1] or "", "rows": int(r[2] or 0)} for r in cur.fetchall()]
+            for t in tables:
+                cur.execute(
+                    "SELECT COUNT(*) FROM information_schema.COLUMNS "
+                    "WHERE TABLE_SCHEMA = %s AND TABLE_NAME = %s",
+                    (target_db, t["tb"]),
+                )
+                t["cols"] = int(cur.fetchone()[0])
+        finally:
+            cur.close()
+    finally:
+        conn.close()
+    return ok({"db": target_db, "tables": tables})
+
+
+class ReverseImportTable(BaseModel):
+    tb: str
+    layer: str = "ODS"
+    bizDomain: str = ""
+    name: Optional[str] = None
+
+
+class ReverseImportBody(BaseModel):
+    dsId: int
+    dbName: Optional[str] = None
+    tables: list[ReverseImportTable]
+
+
+@router.post("/models/reverse/import")
+def reverse_import(body: ReverseImportBody, user: User = Depends(require_perm("model:write")),
+                   db: Session = Depends(get_db)):
+    """逐表建草稿（字段内省直转；已存在/校验不过计入 skipped，成功者落库）。"""
+    ds = _conn_ds(db, body.dsId)
+    target_db = body.dbName or ds.db_name or ""
+    imported, skipped = 0, []
+    conn = open_connection(ds)
+    try:
+        for t in body.tables:
+            code = t.tb.strip()
+            if db.query(DwModel).filter(DwModel.code == code).first():
+                skipped.append({"tb": code, "reason": "同名模型已存在"})
+                continue
+            try:
+                _check_code(db, code, t.layer)
+            except ApiError as e:
+                skipped.append({"tb": code, "reason": e.msg or "校验未通过"})
+                continue
+            cur = conn.cursor()
+            try:
+                cur.execute(
+                    "SELECT COLUMN_NAME, DATA_TYPE, COLUMN_TYPE, IS_NULLABLE, COLUMN_DEFAULT, "
+                    "COLUMN_COMMENT, COLUMN_KEY, CHARACTER_MAXIMUM_LENGTH, NUMERIC_PRECISION, NUMERIC_SCALE "
+                    "FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = %s AND TABLE_NAME = %s "
+                    "ORDER BY ORDINAL_POSITION",
+                    (target_db, code),
+                )
+                cols = cur.fetchall()
+            finally:
+                cur.close()
+            _reverse_create(db, code, t.layer, t.name or "", t.bizDomain,
+                            ds.name, user.user_name, [_col_to_field(c) for c in cols])
+            imported += 1
+    finally:
+        conn.close()
+    db.commit()
+    audit.info("model.reverse_import user=%s imported=%d skipped=%d", user.user_name, imported, len(skipped))
+    return ok({"imported": imported, "skipped": skipped})
+
+
+@router.post("/models/reverse/import-ddl")
+async def reverse_import_ddl(file: UploadFile = File(...),
+                             user: User = Depends(require_perm("model:write")),
+                             db: Session = Depends(get_db)):
+    """DDL 文件导入（.sql，≤5MB）：sqlglot 解析 CREATE TABLE → ODS 草稿。"""
+    raw = await file.read()
+    if len(raw) > 5 * 1024 * 1024:
+        raise ApiError(PARAM_INVALID, "DDL 文件超过 5MB 上限", status=400)
+    try:
+        sql = raw.decode("utf-8")
+    except UnicodeDecodeError:
+        sql = raw.decode("gbk", errors="replace")
+    try:
+        parsed = parse_create_tables(sql)
+    except Exception as exc:  # noqa: BLE001 sqlglot ParseError → 400 附行号
+        line = getattr(exc, "line", None)
+        raise ApiError(MODEL_DDL_INVALID, f"DDL 解析失败：{exc}" + (f"（第 {line} 行）" if line else ""),
+                       status=400)  # noqa: B904
+    imported, skipped = 0, []
+    for t in parsed:
+        code = (t["name"] or "").strip()
+        if not code:
+            continue
+        if db.query(DwModel).filter(DwModel.code == code).first():
+            skipped.append({"tb": code, "reason": "同名模型已存在"})
+            continue
+        try:
+            _check_code(db, code, "ODS")
+        except ApiError as e:
+            skipped.append({"tb": code, "reason": e.msg or "校验未通过"})
+            continue
+        _reverse_create(db, code, "ODS", "", "", "MySQL", user.user_name,
+                        t["fields"], remark=t["comment"] or "DDL 导入")
+        imported += 1
+    db.commit()
+    audit.info("model.reverse_import user=%s ddl imported=%d skipped=%d",
+               user.user_name, imported, len(skipped))
+    return ok({"imported": imported, "skipped": skipped})

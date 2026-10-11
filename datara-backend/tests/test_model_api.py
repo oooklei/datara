@@ -13,7 +13,7 @@ if str(BACKEND) not in sys.path:
     sys.path.insert(0, str(BACKEND))
 
 from api.auth import get_current_user  # noqa: E402
-from common.models import BizDomain, DataSource, DwLayer, DwModel, DwModelRelation, EngineType  # noqa: E402
+from common.models import BizDomain, DataSource, DwLayer, DwModel, DwModelField, DwModelRelation, EngineType  # noqa: E402
 from common.db import seed_dict_tables  # noqa: E402
 
 
@@ -375,3 +375,100 @@ def test_physicalize_bad_mode_and_engine(client, db_session):
     r2 = client.post(f"/api/v1/models/{mid}/physicalize",
                      json={"engine": "pg", "mode": "script"})
     assert r2.status_code == 400
+
+
+# ---------------- Task 8: 逆向导入 ----------------
+
+_SCAN_ROWS = [
+    ("ods_gdb_biz_user_info", "用户信息原始表", 1200),
+    ("ods_gdb_biz_order", "订单表", 3400),
+]
+_COL_ROWS = [
+    ("id", "bigint", "bigint(20)", "NO", None, "主键", "PRI", None, 20, 0),
+    ("user_name", "varchar", "varchar(100)", "YES", "anon", "姓名", "", 100, None, None),
+]
+
+
+class _MetaCursor:
+    """information_schema 内省 mock：scan 消费 3 列行，import 消费 10 列行。"""
+
+    def __init__(self):
+        self.last_sql = ""
+
+    def execute(self, sql, args=None):
+        self.last_sql = sql
+        self.last_args = args
+
+    def fetchall(self):
+        if "COLUMNS" in self.last_sql.upper():
+            return _COL_ROWS
+        return _SCAN_ROWS
+
+    def fetchone(self):
+        return (2,)
+
+    def close(self):
+        pass
+
+
+class _MetaConn:
+    def cursor(self):
+        return _MetaCursor()
+
+    def close(self):
+        pass
+
+
+def test_reverse_scan(client, db_session, monkeypatch):
+    _seed_dicts(db_session)
+    ds_id = _mk_ds(db_session)
+    monkeypatch.setattr("api.model.open_connection", lambda ds, **kw: _MetaConn())
+    r = client.post("/api/v1/models/reverse/scan", json={"dsId": ds_id, "dbName": "ods"})
+    d = r.json()["data"]
+    assert d["db"] == "ods" and len(d["tables"]) == 2
+    assert d["tables"][0]["tb"] == "ods_gdb_biz_user_info" and d["tables"][0]["cols"] == 2
+
+
+def test_reverse_import_skip_existing(client, db_session, monkeypatch):
+    _seed_dicts(db_session)
+    ds_id = _mk_ds(db_session)
+    _mk_model(client, code="ods_gdb_biz_user_info", layer="ODS")
+    monkeypatch.setattr("api.model.open_connection", lambda ds, **kw: _MetaConn())
+    r = client.post("/api/v1/models/reverse/import", json={
+        "dsId": ds_id, "dbName": "ods",
+        "tables": [{"tb": "ods_gdb_biz_user_info", "layer": "ODS"},
+                   {"tb": "ods_gdb_biz_order", "layer": "ODS"}]})
+    d = r.json()["data"]
+    assert d["imported"] == 1 and d["skipped"][0]["tb"] == "ods_gdb_biz_user_info"
+    new = db_session.query(DwModel).filter(DwModel.code == "ods_gdb_biz_order").first()
+    assert new is not None and new.status == "draft"
+    # 规格适配：DwModel 无 fields relationship，改为直接查 DwModelField
+    fs = sorted(f.name for f in
+                db_session.query(DwModelField).filter(DwModelField.model_id == new.id).all())
+    assert fs == ["id", "user_name"]
+
+
+def test_reverse_import_ddl_file(client, db_session):
+    _seed_dicts(db_session)
+    ddl = (b"CREATE TABLE `ods_gdb_biz_user_info` (\n"
+           b"  `user_id` BIGINT NOT NULL COMMENT 'ID',\n"
+           b"  `user_name` VARCHAR(100) COMMENT 'name',\n"
+           b"  PRIMARY KEY (`user_id`)\n"
+           b") COMMENT='users';\n")
+    r = client.post("/api/v1/models/reverse/import-ddl",
+                    files={"file": ("init.sql", ddl, "text/plain")})
+    d = r.json()["data"]
+    assert d["imported"] == 1 and d["skipped"] == []
+    m = db_session.query(DwModel).filter(DwModel.code == "ods_gdb_biz_user_info").first()
+    assert m is not None and m.layer == "ODS"
+    # 规格适配：DwModel 无 fields relationship，改为直接查 DwModelField
+    f = (db_session.query(DwModelField).filter(DwModelField.model_id == m.id)
+         .order_by(DwModelField.seq).first())
+    assert f.data_type == "BIGINT" and f.is_pk is True
+
+
+def test_reverse_import_ddl_bad_file_400(client, db_session):
+    _seed_dicts(db_session)
+    r = client.post("/api/v1/models/reverse/import-ddl",
+                    files={"file": ("bad.sql", b"CREATE TABLE `x` (", "text/plain")})
+    assert r.status_code == 400 and r.json()["code"] == 8010
