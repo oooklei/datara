@@ -1,4 +1,4 @@
-"""ddlgen DDL 三方言生成器单测（快照断言 + 注入拦截 + 分区提示）。"""
+"""ddlgen DDL 三方言生成器单测（快照断言 + 注入拦截 + 分区提示 + 类型白名单/长度校验/转义）。"""
 
 import sys
 from pathlib import Path
@@ -71,3 +71,34 @@ def test_comment_quote_escaped():
     f = [{"name": "c", "dataType": "INT", "length": "", "precision": "", "nullable": True,
           "defaultValue": "", "comment": "it's ok", "isPk": False, "isPartition": False, "dictRef": ""}]
     assert "COMMENT 'it''s ok'" in gen_ddl("t", "t", f, "mysql")
+
+
+def test_type_not_in_whitelist_rejected():
+    f = dict(FIELDS[0]); f["dataType"] = "INT) ENGINE=InnoDB; DROP TABLE x--"
+    with pytest.raises(ValueError):
+        gen_ddl("t", "t", [f], "mysql")
+
+
+def test_length_precision_injection_rejected():
+    f = dict(FIELDS[1]); f["length"] = "100) ENGINE=InnoDB; DROP TABLE x--"
+    with pytest.raises(ValueError):
+        gen_ddl("t", "t", [f], "mysql")
+    f2 = dict(FIELDS[2]); f2["precision"] = "2); DROP TABLE x--"
+    with pytest.raises(ValueError):
+        gen_ddl("t", "t", [f2], "mysql")
+    f3 = dict(FIELDS[2]); f3["length"] = ""
+    with pytest.raises(ValueError):
+        gen_ddl("t", "t", [f3], "mysql")
+
+
+def test_empty_fields_rejected():
+    with pytest.raises(ValueError):
+        gen_ddl("t", "t", [], "mysql")
+    with pytest.raises(ValueError):
+        gen_ddl("t", "t", FIELDS, "pg")
+
+
+def test_backslash_escaped_in_literal():
+    f = [{"name": "c", "dataType": "INT", "length": "", "precision": "", "nullable": True,
+          "defaultValue": "\\", "comment": "x", "isPk": False, "isPartition": False, "dictRef": ""}]
+    assert "DEFAULT '\\\\'" in gen_ddl("t", "t", f, "mysql")
