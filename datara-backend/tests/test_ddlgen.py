@@ -135,8 +135,39 @@ def test_parse_create_tables():
 
 
 def test_parse_create_tables_bad_sql():
+    from sqlglot.errors import ParseError
+
     from common.sqlparser import parse_create_tables
 
-    with pytest.raises(Exception) as ei:
+    with pytest.raises(ParseError) as ei:
         parse_create_tables("CREATE TABLE `x` (")
-    assert getattr(ei.value, "line", None) is not None or "line" in str(ei.value).lower() or True
+    assert "Line" in str(ei.value)
+
+
+DDL_SQL_MULTI = """
+CREATE TABLE `dwd_t1` (
+  `id` BIGINT PRIMARY KEY COMMENT '内联主键',
+  `amt` DECIMAL(10,2)
+) ENGINE=InnoDB COMMENT='表一';
+
+CREATE TABLE `ods_t2` (
+  `code` VARCHAR(32) NOT NULL,
+  `name` VARCHAR(100)
+);
+"""
+
+
+def test_parse_create_tables_inline_pk_and_multi():
+    from common.sqlparser import parse_create_tables
+
+    out = parse_create_tables(DDL_SQL_MULTI)
+    assert len(out) == 2
+    t1 = next(t for t in out if t["name"] == "dwd_t1")
+    assert t1["comment"] == "表一"
+    f1 = {x["name"]: x for x in t1["fields"]}
+    assert f1["id"]["isPk"] is True and f1["id"]["nullable"] is False
+    t2 = next(t for t in out if t["name"] == "ods_t2")
+    assert t2["comment"] == ""
+    f2 = {x["name"]: x for x in t2["fields"]}
+    assert f2["code"]["nullable"] is False and f2["code"]["isPk"] is False
+    assert f2["name"]["nullable"] is True

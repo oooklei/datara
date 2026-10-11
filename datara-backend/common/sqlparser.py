@@ -292,8 +292,6 @@ def parse_create_tables(sql: str) -> list[dict]:
     - sqlglot read='mysql'；语法错误上抛 sqlglot.errors.ParseError（路由转 400 附行号）
     - 字段形状为 API 契约 camelCase；仅取 CREATE TABLE，其余语句忽略
     """
-    from sqlglot import exp
-
     out: list[dict] = []
     for stmt in sqlglot.parse(sql, read="mysql") or []:
         if not (isinstance(stmt, exp.Create) and stmt.kind == "TABLE"):
@@ -316,8 +314,10 @@ def parse_create_tables(sql: str) -> list[dict]:
         for coldef in schema.find_all(exp.ColumnDef):
             kind = coldef.kind
             dtype = ((getattr(kind.this, "value", "") or "VARCHAR") if kind is not None else "VARCHAR").upper()
-            params = [e.sql() for e in (kind.expressions if kind is not None else [])]
-            cons = [c.args.get("kind") for c in (coldef.args.get("constraints") or [])]
+            params = [e.sql(dialect="mysql") for e in (kind.expressions if kind is not None else [])]
+            cons = [c.args.get("kind") for c in (coldef.args.get("constraints") or [])
+                    if c.args.get("kind") is not None]
+            pk_inline = any(isinstance(k, exp.PrimaryKeyColumnConstraint) for k in cons)
             nullable = not any(isinstance(k, exp.NotNullColumnConstraint) for k in cons)
             d = next((k.this for k in cons if isinstance(k, exp.DefaultColumnConstraint)), None)
             cm = next((k.this for k in cons if isinstance(k, exp.CommentColumnConstraint)), None)
@@ -326,10 +326,10 @@ def parse_create_tables(sql: str) -> list[dict]:
                 "dataType": dtype,
                 "length": str(params[0]) if params else "",
                 "precision": str(params[1]) if len(params) > 1 else "",
-                "nullable": nullable,
-                "defaultValue": (d.name if isinstance(d, exp.Literal) else d.sql()) if d is not None else "",
+                "nullable": nullable and not pk_inline,
+                "defaultValue": (d.name if isinstance(d, exp.Literal) else d.sql(dialect="mysql")) if d is not None else "",
                 "comment": cm.name if cm is not None else "",
-                "isPk": coldef.name in pk_cols,
+                "isPk": coldef.name in pk_cols or pk_inline,
                 "isPartition": False,
                 "dictRef": "",
             })
