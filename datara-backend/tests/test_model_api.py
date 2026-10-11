@@ -580,8 +580,12 @@ def test_lineage_merged_declared_runtime(client, db_session):
     assert "dws_b" in ids and "ods_raw.x" in ids
     kinds = {(e["from"], e["to"], e["kind"]) for e in r["edges"]}
     assert ("dwd_a", "dws_b", "declared") in kinds
-    assert ("ods_raw.x", "ods.dwd_a", "runtime") in kinds
+    # I-1 修复后契约：模型侧表名 ods.dwd_a 归一化为节点 id dwd_a
+    assert ("ods_raw.x", "dwd_a", "runtime") in kinds
     assert r["sources"] == {"declared": 1, "runtime": 1}
+    # 边端点契约：所有边 from/to 必须引用 nodes 中存在的 id（模型侧表名归一化为裸 code）
+    node_ids = {n["id"] for n in r["nodes"]}
+    assert all(e["from"] in node_ids and e["to"] in node_ids for e in r["edges"])
 
 
 def test_impact_recursive_chain(client, db_session):

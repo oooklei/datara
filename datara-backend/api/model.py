@@ -621,7 +621,12 @@ def model_lineage(model_id: int, user: User = Depends(get_current_user), db: Ses
             nodes.append({"id": e.from_table, "kind": "ext", "label": e.from_table})
         if e.to_table and not e.to_table.endswith(f".{m.code}"):
             nodes.append({"id": e.to_table, "kind": "ext", "label": e.to_table})
-        edges.append({"from": e.from_table, "to": e.to_table, "kind": "runtime"})
+        # 边端点归一化：模型侧表名（db.code）映射为模型节点裸 code，保证边引用的 id 均在 nodes 中
+        edges.append({
+            "from": m.code if (e.from_table or "").endswith(f".{m.code}") else e.from_table,
+            "to": m.code if (e.to_table or "").endswith(f".{m.code}") else e.to_table,
+            "kind": "runtime",
+        })
 
     seen: set[str] = set()
     uniq_nodes = []
