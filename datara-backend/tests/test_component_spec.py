@@ -110,6 +110,39 @@ def test_spec_etag_changes_after_offline(client):
     assert "spec_demo" not in [i["type"] for i in r.json()["items"]]
 
 
+def test_spec_maps_baseline_octagon_spec(client):
+    """八段 DSL 底稿（基线化认可发布形态，见 baseline.publish_baseline 写入）→ 8 要素骨架：
+    render 段 → visual/description.summary，form.params 段 → inputs（hint→desc），ports 数组形态 → None。"""
+    octagon = {
+        "form": {
+            "inputs": [], "outputs": [],
+            "params": [
+                {"key": "sql", "label": "SQL", "uiType": "text", "required": True, "hint": "要执行的语句"},
+                {"key": "mode", "label": "模式", "uiType": "select", "options": [{"label": "全量", "value": "full"}]},
+            ],
+            "conditions": [], "constraints": [], "exclusions": [], "refs": [], "exports": [],
+        },
+        "lineage": {"assets": []},
+        "render": {"icon": "⚙", "color": "#0ea5e9", "shape": "default", "summary": "SQL 执行组件", "ports": []},
+        "paletteVisible": True,
+        "meta": {"note": "八段底稿"},
+    }
+    _make_frozen(client, "spec_oct", spec=octagon)
+    assert _publish(client, "spec_oct").status_code == 200
+    items = {i["type"]: i for i in client.get("/api/v1/components/spec").json()["items"]}
+    item = items["spec_oct"]
+    # render 段 → visual（shape 回退 render，badge 缺省 None）
+    assert item["visual"] == {"icon": "⚙", "color": "#0ea5e9", "shape": "default", "badge": None}
+    assert item["description"]["summary"] == "SQL 执行组件"
+    # form.params → inputs：hint→desc 逆映射、options 直传
+    assert item["inputs"] == [
+        {"key": "sql", "label": "SQL", "uiType": "text", "required": True, "desc": "要执行的语句"},
+        {"key": "mode", "label": "模式", "uiType": "select", "options": [{"label": "全量", "value": "full"}]},
+    ]
+    # render.ports 为数组形态（画布运行态位，非扁平 ports 对象契约）→ 显式 None
+    assert item["ports"] is None
+
+
 def test_spec_offline_component_excluded(client):
     """下线组件不在 spec 清单中（仅 state=published 进下发范围）。"""
     _make_frozen(client)

@@ -11,7 +11,9 @@
  * 不引入运行时环（profiles/types → ../model 亦为 import type）。
  *
  * 适配口径（宁可缺省不可编造，逐键取舍）：
- * - label = displayName ?? summary，desc = summary，icon/color 直传；
+ * - label = displayName ?? summary，desc = summary，icon/color 直传（空值回退 base 底稿视觉——
+ *   基线化八段底稿/未填视觉的 spec 命中时 palette 不白板；base 为 profile 底稿 schema，
+ *   模块级单例同 type 恒同一对象，不影响按 spec 弱引用缓存的同一性）；
  * - form：fields 映射 FieldSchema（key/label 直传、uiType→type 恒等映射——SPEC_UI_TYPES
  *   九基元本就是 B3 收敛后 FieldKind 的子集、required 直传、select options 的 value
  *   收敛为 string 值域，select 恒落 options 键与 normField 产物一致——可为空数组）；
@@ -44,8 +46,9 @@ import type { ComponentSpec } from '../../services/componentSpec'
 /** spec → NodeSchema 视图缓存（弱引用，随 spec 生命周期回收） */
 const schemaCache = new WeakMap<ComponentSpec, NodeSchema>()
 
-/** ComponentSpec → NodeSchema 视图适配（纯函数；type 取 specMap 键，spec 自身无 type 字段） */
-export function specToSchema(type: string, spec: ComponentSpec): NodeSchema {
+/** ComponentSpec → NodeSchema 视图适配（纯函数；type 取 specMap 键，spec 自身无 type 字段；
+ *  base 为 profile 底稿 schema，仅用于 icon/color 空值回退——见文件头适配口径） */
+export function specToSchema(type: string, spec: ComponentSpec, base?: Pick<NodeSchema, 'icon' | 'color'>): NodeSchema {
   const cached = schemaCache.get(spec)
   if (cached) return cached
   const form: FieldSchema[] = []
@@ -84,8 +87,8 @@ export function specToSchema(type: string, spec: ComponentSpec): NodeSchema {
   const view: NodeSchema = markRaw({
     type,
     label: spec.displayName ?? spec.summary,
-    icon: spec.icon,
-    color: spec.color,
+    icon: spec.icon || base?.icon || '',
+    color: spec.color || base?.color || '',
     desc: spec.summary,
     ...(Object.keys(defaults).length > 0 ? { defaults } : {}),
     ...(dropPolicy !== undefined ? { dropPolicy } : {}),
@@ -106,7 +109,7 @@ export function resolveNodeSchema(
 ): NodeSchema | undefined {
   if (specEnabled) {
     const spec = specMap.get(type)
-    if (spec) return specToSchema(type, spec)
+    if (spec) return specToSchema(type, spec, profile.nodeTypes[type])
   }
   return profile.nodeTypes[type]
 }

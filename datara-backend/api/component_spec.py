@@ -29,11 +29,40 @@ from common.models import Component, ComponentVersion
 router = APIRouter(prefix="/components", tags=["component-spec"])
 
 
+def _param_to_field(p: dict) -> dict:
+    """八段 form.params 字段 → 扁平 spec 字段：同名键透传（key/label/uiType/required/
+    options/default/layer/showIf），hint→desc（底稿迁移时 desc/placeholder 折叠为 hint 的逆映射），
+    cap（旧 CapabilityRef 白名单）无扁平对应键剔除。"""
+    f = dict(p)
+    f.pop("cap", None)
+    if isinstance(p.get("hint"), str) and not p.get("desc"):
+        f["desc"] = f.pop("hint")
+    return f
+
+
 def _spec_item(comp: Component, ver: ComponentVersion) -> dict:
-    """单组件 8 要素骨架映射：spec 未声明的要素显式 None（§2.3 契约）。"""
-    # published 行经发布闸门校验、损坏仅可能源于外部改库——解析失败直接抛错快速失败，
-    # 不静默兜底，避免把半成品规格下发到前端
+    """单组件 8 要素骨架映射：spec 未声明的要素显式 None（§2.3 契约）。
+
+    兼容两种已发布存储形态：
+    - 扁平 spec（M1 用户组件设计器产出：fields/summary/icon/color/ports 顶层键）；
+    - 八段 DSL 底稿全文（基线化认可发布写入，见 baseline.publish_baseline：
+      icon/color/shape/summary/ports 在 render 段、表单字段在 form.params 段）——
+      按 render/form 段回退映射，params→fields 逐项转换。
+
+    published 行经发布闸门校验、损坏仅可能源于外部改库——解析失败直接抛错快速失败，
+    不静默兜底，避免把半成品规格下发到前端。
+    """
     spec = json.loads(ver.spec_json or "{}")
+    render = spec.get("render") if isinstance(spec.get("render"), dict) else {}
+    form = spec.get("form") if isinstance(spec.get("form"), dict) else {}
+    params = form.get("params") if isinstance(form.get("params"), list) else []
+    fields = spec.get("fields")
+    if not isinstance(fields, list):
+        fields = [_param_to_field(p) for p in params if isinstance(p, dict) and isinstance(p.get("key"), str)]
+    ports = spec.get("ports")
+    if not isinstance(ports, dict):
+        # 八段底稿 render.ports 为数组形态（画布运行态位），非扁平 ports 对象契约 → 显式 None
+        ports = render.get("ports") if isinstance(render.get("ports"), dict) else None
     return {
         "type": comp.type,
         # Task 15（方案 §4.3）：发布版本号随骨架下发——前端引用角标以 published_version
@@ -45,24 +74,24 @@ def _spec_item(comp: Component, ver: ComponentVersion) -> dict:
             "aliases": spec.get("aliases", []),
         },
         "description": {
-            "summary": spec.get("summary", ""),
+            "summary": spec.get("summary") or render.get("summary") or "",
             "description": spec.get("description"),
             "category": spec.get("category"),
             "docUrl": spec.get("docUrl"),
         },
-        "inputs": spec.get("fields", []),
-        "outputs": spec.get("outputs", []),
+        "inputs": fields,
+        "outputs": spec.get("outputs") if isinstance(spec.get("outputs"), list) else [],
         "visual": {
-            "icon": spec.get("icon", ""),
-            "color": spec.get("color"),
-            "shape": spec.get("shape", "default"),
+            "icon": spec.get("icon") or render.get("icon") or "",
+            "color": spec.get("color") if spec.get("color") is not None else render.get("color"),
+            "shape": spec.get("shape") or render.get("shape") or "default",
             "badge": spec.get("badge"),
         },
         "behaviors": spec.get("behaviors"),
         "dropPolicy": spec.get("dropPolicy"),
         "extensions": spec.get("extensions"),
         "specVersion": spec.get("specVersion"),
-        "ports": spec.get("ports"),
+        "ports": ports,
     }
 
 

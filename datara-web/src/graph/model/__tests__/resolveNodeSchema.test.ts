@@ -55,6 +55,17 @@ describe('resolveNodeSchema（两源并存：spec 命中驱动，profile 兜底�
     expect(s!.color).toBe('#2563eb')
   })
 
+  it('spec 视觉缺位 → icon/color 回退 profile 底稿（纵深防御：基线化八段底稿/未填视觉不白板），齐备则 spec 优先', () => {
+    const blank = new Map([['t1', specOf({ icon: '', color: '' })]])
+    const s = resolveNodeSchema('t1', profile, blank, true)
+    expect(s!.icon).toBe('▣')
+    expect(s!.color).toBe('#2563eb')
+    const full = new Map([['t1', specOf({ icon: '★', color: '#111111' })]])
+    const v = resolveNodeSchema('t1', profile, full, true)
+    expect(v!.icon).toBe('★')
+    expect(v!.color).toBe('#111111')
+  })
+
   it('spec 缺失 → profile 兜底（直接透传，同一性成立）', () => {
     const specMap = new Map<string, ComponentSpec>()
     expect(resolveNodeSchema('t1', profile, specMap, true)).toBe(profileSchema)
@@ -74,6 +85,14 @@ describe('resolveNodeSchema（两源并存：spec 命中驱动，profile 兜底�
 })
 
 describe('specToSchema（ComponentSpec → NodeSchema 视图适配）', () => {
+  it('base 视觉兜底：spec icon/color 空值回退 base；非空不覆盖（spec 优先）', () => {
+    const base = { icon: '▣', color: '#2563eb' }
+    expect(specToSchema('t1', specOf({ icon: '', color: '' }), base).icon).toBe('▣')
+    expect(specToSchema('t1', specOf({ icon: '', color: '' }), base).color).toBe('#2563eb')
+    expect(specToSchema('t1', specOf({ icon: '★', color: '#111111' }), base).icon).toBe('★')
+    expect(specToSchema('t1', specOf({ icon: '★', color: '#111111' }), base).color).toBe('#111111')
+  })
+
   it('label = displayName ?? summary；desc = summary；无 displayName 回落 summary，两者皆无则空串', () => {
     expect(specToSchema('t1', specOf({ displayName: '展示名' })).label).toBe('展示名')
     expect(specToSchema('t1', specOf()).label).toBe('一句话摘要')
