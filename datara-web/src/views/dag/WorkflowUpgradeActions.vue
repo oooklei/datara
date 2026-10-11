@@ -15,8 +15,8 @@ const showPreview = ref(false)
 const localDiff = ref<Array<{ path: string; before: unknown; after: unknown }>>([])
 
 async function preview() {
-  await store.previewUpgrade(props.workflowId)
-  localDiff.value = store.upgradePreview?.diff ?? []
+  const result = await store.previewUpgrade(props.workflowId)
+  localDiff.value = result?.diff ?? []
   showPreview.value = true
 }
 </script>

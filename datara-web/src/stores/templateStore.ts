@@ -12,7 +12,9 @@ export const useTemplateStore = defineStore('workflow-templates', () => {
   async function checkUpgrade(wfId: string) { upgradeNotice.value = await getUpgradeStatus(wfId); upgradePreview.value = null }
   async function previewUpgrade(wfId: string) {
     await checkUpgrade(wfId)
-    upgradePreview.value = await previewTemplateUpgrade(wfId)
+    const preview = await previewTemplateUpgrade(wfId)
+    upgradePreview.value = preview
+    return preview
   }
   async function confirmUpgrade(wfId: string) {
     const notice = upgradeNotice.value
