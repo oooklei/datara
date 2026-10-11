@@ -175,14 +175,15 @@ _FIELDS = [
 
 
 def _put_fields(client, mid, rev=1, fields=None):
-    return client.put(f"/api/v1/models/{mid}/fields", json={"rev": rev, "fields": fields or _FIELDS})
+    return client.put(f"/api/v1/models/{mid}/fields",
+                      json={"rev": rev, "fields": _FIELDS if fields is None else fields})
 
 
 def test_fields_full_replace(client, db_session):
     _seed_dicts(db_session)
     mid = _mk_model(client)
     r = _put_fields(client, mid, rev=1)
-    assert r.status_code == 200 and r.json()["data"]["rev"] == 1
+    assert r.status_code == 200 and r.json()["data"]["rev"] == 2
     d = client.get(f"/api/v1/models/{mid}").json()["data"]
     assert [f["name"] for f in d["fields"]] == ["user_id", "user_name"]
 
@@ -210,3 +211,24 @@ def test_publish_state_matrix(client, db_session):
     assert r.status_code == 200 and r.json()["data"]["status"] == "published"
     r2 = client.post(f"/api/v1/models/{mid}/publish")
     assert r2.status_code == 409 and r2.json()["code"] == 8005
+
+
+def test_fields_rev_increments_on_save(client, db_session):
+    _seed_dicts(db_session)
+    mid = _mk_model(client)
+    assert _put_fields(client, mid, rev=1).status_code == 200  # version → 2
+    r = _put_fields(client, mid, rev=1)  # 旧 rev 再次保存 → 冲突
+    assert r.status_code == 422 and r.json()["code"] == 8006
+    assert r.json()["data"]["currentRev"] == 2
+    r2 = _put_fields(client, mid, rev=2)
+    assert r2.status_code == 200 and r2.json()["data"]["rev"] == 3
+
+
+def test_fields_clear_all(client, db_session):
+    _seed_dicts(db_session)
+    mid = _mk_model(client)
+    assert _put_fields(client, mid, rev=1).status_code == 200
+    r = _put_fields(client, mid, rev=2, fields=[])
+    assert r.status_code == 200
+    d = client.get(f"/api/v1/models/{mid}").json()["data"]
+    assert d["fields"] == []

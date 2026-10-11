@@ -258,18 +258,23 @@ def _field_kwargs(f: dict) -> dict:
 
 class FieldsBody(BaseModel):
     rev: int
-    fields: list = []
+    fields: list[dict] = []
 
 
 @router.put("/models/{model_id}/fields")
 def save_fields(model_id: int, body: FieldsBody,
                 user: User = Depends(require_perm("model:write")), db: Session = Depends(get_db)):
-    """字段全量保存（乐观锁：rev 须等于当前 version；仅 draft 可保存）。"""
+    """字段全量保存（乐观锁：rev 须等于当前 version，成功即递增；仅 draft 可保存）。"""
     m = _get_model(db, model_id)
     if m.status != "draft":
         raise ApiError(MODEL_FIELDS_LOCKED, status=409)
-    if body.rev != m.version:
+    rows = (db.query(DwModel)
+            .filter(DwModel.id == model_id, DwModel.version == body.rev)
+            .update({"version": DwModel.version + 1}))
+    if rows == 0:
+        db.refresh(m)
         raise ApiError(MODEL_REV_CONFLICT, status=422, data={"currentRev": m.version})
+    m.version = body.rev + 1
     db.query(DwModelField).filter(DwModelField.model_id == model_id).delete()
     for i, f in enumerate(body.fields, 1):
         db.add(DwModelField(model_id=model_id, seq=i, **_field_kwargs(f)))
