@@ -147,7 +147,12 @@ class StreamEngine:
         threading.Thread(target=self._job_main, args=(rt,), name=f"flink-job-{job_id}", daemon=True).start()
 
     def _query_task_log_path(self, job_id: int) -> str:
-        """查询流任务对应的 TaskLog 日志文件路径（instance_id 前缀 stream-{job_id}-）。"""
+        """查询流任务对应的 TaskLog 日志文件路径（instance_id 前缀 stream-{job_id}-）。
+
+        同 job 存在多实例（每次启动新建实例，历史实例保留）时必须命中最新的——
+        API 先 commit 实例+TaskLog 再广播 ctl start，因此最大 id 即本次运行的实例；
+        无排序的 first() 会命中最旧实例，导致日志写入历史路径、新实例日志文件缺失。
+        """
         session = new_session()
         try:
             inst = (
@@ -156,6 +161,7 @@ class StreamEngine:
                     WorkflowInstance.instance_id.like(f"stream-{job_id}-%"),
                     WorkflowInstance.run_mode == "stream",
                 )
+                .order_by(WorkflowInstance.id.desc())
                 .first()
             )
             if inst:
@@ -697,6 +703,7 @@ class StreamEngine:
                             WorkflowInstance.instance_id.like(f"stream-{job_id}-%"),
                             WorkflowInstance.run_mode == "stream",
                         )
+                        .order_by(WorkflowInstance.id.desc())
                         .first()
                     )
                     if inst:

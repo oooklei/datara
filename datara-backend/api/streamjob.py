@@ -206,6 +206,26 @@ def register_stream_job(db: Session, definition: WfDefinition, spec: dict) -> tu
     row.spec_json = json.dumps(spec, ensure_ascii=False)
     db.commit()
 
+    # 收口同任务未终态旧实例（submitted/running → kill）：前缀查询 + 无排序 first() 曾命中最旧
+    # 实例导致日志路径错位、新实例状态卡 submitted——创建新实例前先把历史未终态实例收口，
+    # 保证任意时刻同 job 至多一个未终态实例（先 commit 后广播，最新 id 即本次运行实例）。
+    stale_insts = (
+        db.query(WorkflowInstance)
+        .filter(
+            WorkflowInstance.instance_id.like(f"stream-{row.id}-%"),
+            WorkflowInstance.run_mode == "stream",
+            WorkflowInstance.state.in_(("submitted", "running")),
+        )
+        .all()
+    )
+    for old in stale_insts:
+        old.state = "kill"
+        if not old.end_time:
+            old.end_time = datetime.now()
+    if stale_insts:
+        logger.info("流任务旧实例收口: job=%s instances=%s", row.id, [x.instance_id for x in stale_insts])
+        db.commit()
+
     # 创建 WorkflowInstance 记录（run_mode='stream'），使流任务出现在运行监控
     instance_id = f"stream-{row.id}-{int(datetime.now().timestamp())}"
     inst = WorkflowInstance(

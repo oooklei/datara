@@ -23,7 +23,7 @@ if str(BACKEND) not in sys.path:
     sys.path.insert(0, str(BACKEND))
 
 import master.engine as engine_mod  # noqa: E402
-from common.models import StreamJob, WorkflowInstance  # noqa: E402
+from common.models import StreamJob, TaskLog, WorkflowInstance  # noqa: E402
 from master.engine import WorkflowExecuteRunnable  # noqa: E402
 
 
@@ -272,3 +272,45 @@ def test_extract_stream_subgraph_fallback_on_missing_sink():
     }
     _bridged, spec = extract_stream_subgraph(doc)
     assert spec is None, "缺汇的流子图应降级"
+
+
+# ---------------- 流引擎日志路径排序回归（同 job 多实例必须命中最新的） ----------------
+
+
+def test_query_task_log_path_prefers_newest_instance(db_session, monkeypatch):
+    """回归守卫：_query_task_log_path 前缀查询必须按 id 倒序命中最新的实例。
+
+    缺陷背景（2026-10-11 1.9 实证）：无排序 first() 命中最旧实例 → 引擎日志写入历史
+    实例路径，新实例日志文件缺失（前端报「日志文件不存在或不可读」）。
+    """
+    import worker.stream.engine as stream_engine_mod
+    from worker.stream.engine import StreamEngine
+
+    # 先建旧实例 + 旧 TaskLog（模拟历史运行遗留），再建新实例 + 新 TaskLog（本次运行）
+    db_session.add(
+        WorkflowInstance(instance_id="stream-26-1000", wf_code=83640, state="running", run_mode="stream")
+    )
+    db_session.add(
+        TaskLog(instance_id="stream-26-1000", task_instance_id=1074, log_path="/datara/logs/stream-26-1000/1074.log")
+    )
+    db_session.commit()
+    db_session.add(
+        WorkflowInstance(instance_id="stream-26-2000", wf_code=83640, state="submitted", run_mode="stream")
+    )
+    db_session.add(
+        TaskLog(instance_id="stream-26-2000", task_instance_id=1139, log_path="/datara/logs/stream-26-2000/1139.log")
+    )
+    db_session.commit()
+
+    monkeypatch.setattr(stream_engine_mod, "new_session", lambda: db_session)
+    path = StreamEngine()._query_task_log_path(26)
+    assert path == "/datara/logs/stream-26-2000/1139.log", "必须命中最新实例的日志路径，而非最旧实例"
+
+
+def test_query_task_log_path_empty_when_no_instance(db_session, monkeypatch):
+    """无任何实例时返回空串（引擎退化为仅 Redis 日志通道，不炸线程）。"""
+    import worker.stream.engine as stream_engine_mod
+    from worker.stream.engine import StreamEngine
+
+    monkeypatch.setattr(stream_engine_mod, "new_session", lambda: db_session)
+    assert StreamEngine()._query_task_log_path(999) == ""
