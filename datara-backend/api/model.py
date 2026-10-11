@@ -584,3 +584,84 @@ async def reverse_import_ddl(file: UploadFile = File(...),
     audit.info("model.reverse_import user=%s ddl imported=%d skipped=%d",
                user.user_name, imported, len(skipped))
     return ok({"imported": imported, "skipped": skipped})
+
+
+# ---------- 血缘与影响 ----------
+
+
+@router.get("/models/{model_id}/lineage")
+def model_lineage(model_id: int, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    """合并图（R4）：declared=t_dw_model_relation 双向展开；runtime=t_lineage_edge 按 code 匹配。"""
+    m = _get_model(db, model_id)
+    nodes = [{"id": m.code, "kind": "model", "label": f"{m.code} {m.name}"}]
+    edges: list[dict] = []
+
+    rels = (db.query(DwModelRelation)
+            .filter(or_(DwModelRelation.src_model_id == model_id, DwModelRelation.tgt_model_id == model_id))
+            .all())
+    rel_ids = {r.src_model_id for r in rels} | {r.tgt_model_id for r in rels}
+    name_by_id = {x.id: x for x in db.query(DwModel).filter(DwModel.id.in_(rel_ids)).all()}
+    for r in rels:
+        s = name_by_id.get(r.src_model_id)
+        t = name_by_id.get(r.tgt_model_id)
+        if not s or not t:
+            continue
+        if s.id != model_id:
+            nodes.append({"id": s.code, "kind": "model", "label": f"{s.code} {s.name}"})
+        if t.id != model_id:
+            nodes.append({"id": t.code, "kind": "model", "label": f"{t.code} {t.name}"})
+        edges.append({"from": s.code, "to": t.code, "kind": "declared", "relType": r.rel_type or ""})
+
+    like = f"%.{m.code}"
+    run = (db.query(LineageEdge)
+           .filter(or_(LineageEdge.from_table.like(like), LineageEdge.to_table.like(like)))
+           .limit(200).all())
+    for e in run:
+        if e.from_table and not e.from_table.endswith(f".{m.code}"):
+            nodes.append({"id": e.from_table, "kind": "ext", "label": e.from_table})
+        if e.to_table and not e.to_table.endswith(f".{m.code}"):
+            nodes.append({"id": e.to_table, "kind": "ext", "label": e.to_table})
+        edges.append({"from": e.from_table, "to": e.to_table, "kind": "runtime"})
+
+    seen: set[str] = set()
+    uniq_nodes = []
+    for n in nodes:
+        if n["id"] in seen:
+            continue
+        seen.add(n["id"])
+        uniq_nodes.append(n)
+    return ok({
+        "nodes": uniq_nodes,
+        "edges": edges,
+        "sources": {"declared": sum(1 for e in edges if e["kind"] == "declared"),
+                    "runtime": sum(1 for e in edges if e["kind"] == "runtime")},
+    })
+
+
+@router.get("/models/{model_id}/impact")
+def model_impact(model_id: int, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    """下游递归清单（声明血缘 BFS，环防护）。"""
+    m = _get_model(db, model_id)
+    nxt: dict[int, list[int]] = {}
+    for r in db.query(DwModelRelation).all():
+        nxt.setdefault(r.src_model_id, []).append(r.tgt_model_id)
+    out: list[dict] = []
+    path = [m]
+    seen = {m.id}
+
+    def dfs(cur: DwModel) -> None:
+        for t in nxt.get(cur.id, []):
+            if t in seen:
+                continue
+            seen.add(t)
+            tm = db.get(DwModel, t)
+            if tm is None:
+                continue
+            path.append(tm)
+            out.append({"modelId": tm.id, "code": tm.code, "name": tm.name,
+                        "path": " → ".join(x.code for x in path)})
+            dfs(tm)
+            path.pop()
+
+    dfs(m)
+    return ok({"list": out})

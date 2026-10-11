@@ -559,3 +559,54 @@ def test_reverse_import_ddl_gbk(client, db_session):
     f = (db_session.query(DwModelField).filter(DwModelField.model_id == m.id)
          .order_by(DwModelField.seq).first())
     assert f.comment == "用户ID"
+
+
+# ---------------- Task 9: 血缘/影响/审计 ----------------
+
+
+def test_lineage_merged_declared_runtime(client, db_session):
+    from common.models import LineageEdge
+
+    _seed_dicts(db_session)
+    a = _mk_model(client, code="dwd_a")
+    b = _mk_model(client, code="dws_b", layer="DWS")
+    db_session.add(DwModelRelation(src_model_id=a, tgt_model_id=b))
+    db_session.add(LineageEdge(wf_code=1, wf_name="wf1", instance_id="r1", node_id="n1",
+                               stmt_no=1, from_table="ods_raw.x", to_table="ods.dwd_a",
+                               src_type="runtime"))
+    db_session.commit()
+    r = client.get(f"/api/v1/models/{a}/lineage").json()["data"]
+    ids = {n["id"] for n in r["nodes"]}
+    assert "dws_b" in ids and "ods_raw.x" in ids
+    kinds = {(e["from"], e["to"], e["kind"]) for e in r["edges"]}
+    assert ("dwd_a", "dws_b", "declared") in kinds
+    assert ("ods_raw.x", "ods.dwd_a", "runtime") in kinds
+    assert r["sources"] == {"declared": 1, "runtime": 1}
+
+
+def test_impact_recursive_chain(client, db_session):
+    _seed_dicts(db_session)
+    a = _mk_model(client, code="dwd_a")
+    b = _mk_model(client, code="dws_b", layer="DWS")
+    c = _mk_model(client, code="ads_c", layer="ADS")
+    db_session.add_all([
+        DwModelRelation(src_model_id=a, tgt_model_id=b),
+        DwModelRelation(src_model_id=b, tgt_model_id=c),
+    ])
+    db_session.commit()
+    r = client.get(f"/api/v1/models/{a}/impact").json()["data"]
+    codes = {x["code"] for x in r["list"]}
+    assert codes == {"dws_b", "ads_c"}
+    assert all("dwd_a" in x["path"] for x in r["list"])
+
+
+def test_publish_audit_recorded(client, db_session, monkeypatch):
+    calls = []
+    monkeypatch.setattr("api.model.audit", SimpleNamespace(
+        info=lambda *a, **k: calls.append(a),
+        error=lambda *a, **k: calls.append(a),
+    ))
+    _seed_dicts(db_session)
+    mid = _mk_model(client)
+    client.post(f"/api/v1/models/{mid}/publish")
+    assert any(str(c[0]).startswith("model.publish") for c in calls)
