@@ -5,7 +5,7 @@
  * 新建模型（草稿）；行操作：字段设计 / 版本 / 血缘影响 / 物理化建表 / 删除；逆向工程导入。
  * 数据：modelApi + datasourceApi（真实后端；isMock 时服务内部走演示文档）。
  */
-import { ref, computed, onMounted, watch } from 'vue'
+import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import {
@@ -33,24 +33,46 @@ const engines = computed(() => dicts.value.engines)
 const keyword = ref('')
 const filters = ref<Record<string, string>>({ layer: '', status: '', domain: '' })
 
-async function reload() {
-  const [ls, ds, srcs] = await Promise.all([
-    listModels({ keyword: keyword.value || undefined }),
-    getModelDicts(),
-    listDataSources(),
-  ])
-  models.value = ls.list
-  listStats.value = ls
-  dicts.value = ds
-  datasources.value = srcs
+/* reload 竞态序号：防抖/操作触发的并发 reload 后写胜出（晚到响应丢弃） */
+let reloadSeq = 0
+
+async function reloadModels() {
+  const seq = ++reloadSeq
+  try {
+    const ls = await listModels({ keyword: keyword.value || undefined })
+    if (seq !== reloadSeq) return
+    models.value = ls.list
+    listStats.value = ls
+  } catch (e) {
+    if (seq === reloadSeq) ElMessage.error((e as Error).message)
+  }
 }
 
-/* 关键字为服务端统计维度（listStats 随 keyword 刷新）；输入防抖后重查 */
+async function reload() {
+  const seq = ++reloadSeq
+  try {
+    const [ls, ds, srcs] = await Promise.all([
+      listModels({ keyword: keyword.value || undefined }),
+      getModelDicts(),
+      listDataSources(),
+    ])
+    if (seq !== reloadSeq) return
+    models.value = ls.list
+    listStats.value = ls
+    dicts.value = ds
+    datasources.value = srcs
+  } catch (e) {
+    if (seq === reloadSeq) ElMessage.error((e as Error).message)
+  }
+}
+
+/* 关键字为服务端统计维度（listStats 随 keyword 刷新）；输入防抖后重查（字典/数据源本页无变更路径，不重拉） */
 let kwTimer: number | undefined
 watch(keyword, () => {
   window.clearTimeout(kwTimer)
-  kwTimer = window.setTimeout(() => { void reload() }, 300)
+  kwTimer = window.setTimeout(() => { void reloadModels() }, 300)
 })
+onUnmounted(() => window.clearTimeout(kwTimer))
 
 onMounted(reload)
 
@@ -156,7 +178,7 @@ async function saveCreate() {
     })
     createVisible.value = false
     ElMessage.success('草稿已创建')
-    await reload()
+    await reloadModels()
   } catch (e) {
     ElMessage.error((e as Error).message)
   }
@@ -180,10 +202,13 @@ function ddlOf(name: string): string {
 async function loadPhysDdl() {
   const m = physTarget.value
   if (!m) return
+  const myEngine = physEngine.value
   try {
-    const r = await getDdl(m.id, ddlOf(physEngine.value))
+    const r = await getDdl(m.id, ddlOf(myEngine))
+    if (myEngine !== physEngine.value) return
     physDdl.value = r.ddl
   } catch (e) {
+    if (myEngine !== physEngine.value) return
     physDdl.value = ''
     ElMessage.error((e as Error).message)
   }
@@ -193,7 +218,8 @@ async function openPhys(m: ModelRow) {
   physTarget.value = m
   physEngine.value = m.engine
   physMode.value = 'exec'
-  physDsId.value = m.dsId
+  /* 预填数据源：不属于连接型（mysql/greatdb）时置空，避免 select 空白无提示 */
+  physDsId.value = physDsOptions.value.some((d) => d.id === m.dsId) ? m.dsId : null
   physDb.value = m.dbName ?? ''
   physVisible.value = true
   await loadPhysDdl()
@@ -225,7 +251,7 @@ async function execPhys() {
     })
     physVisible.value = false
     ElMessage.success(`建表成功（执行 ${r.executed ?? 1} 条语句）`)
-    await reload()
+    await reloadModels()
   } catch (e) {
     ElMessage.error((e as Error).message)
   }
@@ -236,7 +262,11 @@ async function downloadScript() {
   if (!m) return
   try {
     const r = await physicalize(m.id, { engine: ddlOf(physEngine.value), mode: 'script' })
-    download((m.code || 'model') + '.sql', r.script ?? '')
+    if (!r.script) {
+      ElMessage.warning('后端未返回脚本，无法下载')
+      return
+    }
+    download((m.code || 'model') + '.sql', r.script)
     ElMessage.success('DDL 脚本已生成并下载')
   } catch (e) {
     ElMessage.error((e as Error).message)
@@ -255,7 +285,7 @@ async function removeRow(m: ModelRow) {
   try {
     await deleteModel(m.id)
     ElMessage.success('已删除')
-    await reload()
+    await reloadModels()
   } catch (e) {
     ElMessage.error((e as Error).message)
   }
@@ -272,6 +302,7 @@ const revStep = ref<'pick' | 'file'>('pick')
 const revDsId = ref<number | null>(null)
 const revDb = ref('')
 const revLoading = ref(false)
+const revImporting = ref(false)
 const revScanned = ref(false)
 const revTables = ref<{ tb: string; comment: string; rows: number; cols: number; picked: boolean }[]>([])
 const revLayer = ref('ODS')
@@ -316,11 +347,16 @@ function rememberDomain(name: string) {
   localStorage.setItem(LAST_DOMAIN_KEY, v)
 }
 
+/* 扫描会话序号：openReverse 重开/再次扫描使晚到的旧扫描响应失效，不污染新会话 */
+let scanSeq = 0
+
 function openReverse() {
+  scanSeq++
   revStep.value = 'pick'
   revDsId.value = null
   revDb.value = ''
   revLoading.value = false
+  revImporting.value = false
   revScanned.value = false
   revTables.value = []
   revLayer.value = 'ODS'
@@ -335,15 +371,18 @@ async function doScan() {
     ElMessage.warning('请选择数据源')
     return
   }
+  const seq = ++scanSeq
   revLoading.value = true
   try {
     const r = await reverseScan({ dsId: revDsId.value, dbName: revDb.value || undefined })
+    if (seq !== scanSeq) return
     revTables.value = r.tables.map((t) => ({ ...t, picked: false }))
     revScanned.value = true
   } catch (e) {
+    if (seq !== scanSeq) return
     ElMessage.error((e as Error).message)
   } finally {
-    revLoading.value = false
+    if (seq === scanSeq) revLoading.value = false
   }
 }
 
@@ -367,6 +406,7 @@ async function doImport() {
     return
   }
   try {
+    revImporting.value = true
     imported.value = await reverseImport({
       dsId: revDsId.value,
       dbName: revDb.value || undefined,
@@ -374,20 +414,25 @@ async function doImport() {
     })
     /* 记录本次统一标注的业务域为"上次使用"（下次导入 Tab 快速填入） */
     if (revDomain.value.trim()) rememberDomain(revDomain.value)
-    await reload()
+    await reloadModels()
     ElMessage.success(`导入 ${imported.value.imported} 张，跳过 ${imported.value.skipped.length} 张`)
   } catch (e) {
     ElMessage.error((e as Error).message)
+  } finally {
+    revImporting.value = false
   }
 }
 
 async function doImportDdl(file: File) {
   try {
+    revImporting.value = true
     imported.value = await reverseImportDdl(file)
-    await reload()
+    await reloadModels()
     ElMessage.success(`导入 ${imported.value!.imported} 张，跳过 ${imported.value!.skipped.length} 张`)
   } catch (e) {
     ElMessage.error((e as Error).message)
+  } finally {
+    revImporting.value = false
   }
 }
 
@@ -673,7 +718,7 @@ function tipLineage(m: ModelRow) {
       <template v-else>
         <div class="f-label" style="margin-top:12px">DDL 文件导入</div>
         <div class="rev-file-row">
-          <label class="op-btn rev-file-btn">⇩ 选择 .sql 文件
+          <label class="op-btn rev-file-btn" :class="{ off: revImporting }">⇩ 选择 .sql 文件
             <input type="file" accept=".sql" style="display:none" @change="onDdlFile" />
           </label>
           <span class="rev-tip">上传包含 CREATE TABLE 语句的 DDL 文件，解析后反向生成逻辑模型（超时 15s）</span>
@@ -696,7 +741,7 @@ function tipLineage(m: ModelRow) {
 
       <template #footer>
         <button class="op-btn" @click="revVisible = false">关闭</button>
-        <button v-if="revStep === 'pick'" class="tb-new" @click="doImport">导入所选</button>
+        <button v-if="revStep === 'pick'" class="tb-new" :disabled="revImporting" @click="doImport">{{ revImporting ? '导入中…' : '导入所选' }}</button>
       </template>
     </el-dialog>
     </div>
@@ -712,6 +757,8 @@ function tipLineage(m: ModelRow) {
 .spacer{flex:1}
 .op-wrap{display:inline-flex}
 .op-btn:disabled{opacity:.5;cursor:not-allowed}
+.tb-new:disabled{opacity:.5;cursor:not-allowed}
+.rev-file-btn.off{pointer-events:none;opacity:.5;cursor:not-allowed}
 .flow-row{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
 .flow-step{display:flex;flex-direction:column;font-size:12.5px}
 .flow-step i{font-style:normal;color:var(--text-3);font-size:11px}
