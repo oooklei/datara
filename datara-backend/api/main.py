@@ -63,6 +63,7 @@ def create_app() -> FastAPI:
         instance,
         lineage,
         meta_ops,
+        model,
         monitor,
         page_designer,
         params,
@@ -92,6 +93,7 @@ def create_app() -> FastAPI:
     app.include_router(instance.router, prefix="/api/v1")
     app.include_router(lineage.router, prefix="/api/v1")
     app.include_router(meta_ops.router, prefix="/api/v1")
+    app.include_router(model.router, prefix="/api/v1")
     app.include_router(monitor.router, prefix="/api/v1")
     app.include_router(params.router, prefix="/api/v1")
     app.include_router(runtime_node.router, prefix="/api/v1")

@@ -34,8 +34,8 @@ router = APIRouter(tags=["auth"])
 # 角色权限点静态映射（设计文档 §6.1 + 组件治理 §14.2：dev 可设计不可发布，
 # publish_component 由 admin 独占——执行契约绑定决策须对执行引擎负责的角色）
 ROLE_PERMS = {
-    "admin": ["manage_user", "edit_definition", "run_instance", "view_all", "design_component", "publish_component"],
-    "dev": ["edit_definition", "run_instance", "view_all", "design_component"],
+    "admin": ["manage_user", "edit_definition", "run_instance", "view_all", "design_component", "publish_component", "model:write"],
+    "dev": ["edit_definition", "run_instance", "view_all", "design_component", "model:write"],
     "analyst": ["run_instance", "view_all"],
     "viewer": ["view_all"],
 }

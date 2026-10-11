@@ -13,7 +13,7 @@ if str(BACKEND) not in sys.path:
     sys.path.insert(0, str(BACKEND))
 
 from api.auth import get_current_user  # noqa: E402
-from common.models import BizDomain, DwLayer, EngineType  # noqa: E402
+from common.models import BizDomain, DataSource, DwLayer, DwModel, DwModelRelation, EngineType  # noqa: E402
 from common.db import seed_dict_tables  # noqa: E402
 
 
@@ -39,3 +39,104 @@ def test_seed_dict_tables_idempotent(db_session):
     assert dwd.rule.startswith("dwd_")
     gdb = db_session.get(EngineType, "GreatDB")
     assert gdb.ddl == "greatdb" and gdb.xc is True
+
+
+# ---------------- Task 5: 模型 CRUD ----------------
+
+
+def _mk_model(client, code="dwd_order_pay", layer="DWD", **kw) -> int:
+    body = {"name": "订单支付明细", "code": code, "layer": layer,
+            "engine": "MySQL", "type": "事实表", "bizDomain": "交易域"}
+    body.update(kw)
+    r = client.post("/api/v1/models", json=body)
+    assert r.status_code == 200, r.text
+    return r.json()["data"]["id"]
+
+
+def test_create_and_detail_and_list(client, db_session):
+    _seed_dicts(db_session)
+    mid = _mk_model(client)
+    d = client.get(f"/api/v1/models/{mid}").json()["data"]
+    assert d["code"] == "dwd_order_pay" and d["status"] == "draft" and d["version"] == 1
+    assert d["owner"] == "tester" and d["fields"] == []
+    ls = client.get("/api/v1/models").json()["data"]
+    assert ls["total"] == 1
+    assert {"code": "DWD", "count": 1} in ls["layers"]
+    assert {"name": "交易域", "count": 1} in ls["domains"]
+
+
+def test_create_dup_code_409(client, db_session):
+    _seed_dicts(db_session)
+    _mk_model(client)
+    r = client.post("/api/v1/models", json={
+        "name": "另一个", "code": "dwd_order_pay", "layer": "DWD", "engine": "MySQL", "type": "明细表"})
+    assert r.status_code == 409 and r.json()["code"] == 8002
+
+
+def test_create_bad_code_400(client, db_session):
+    _seed_dicts(db_session)
+    r = client.post("/api/v1/models", json={
+        "name": "x", "code": "DWD_X", "layer": "DWD", "engine": "MySQL", "type": "明细表"})
+    assert r.status_code == 400 and r.json()["code"] == 8003
+
+
+def test_create_naming_rule_400(client, db_session):
+    _seed_dicts(db_session)
+    r = client.post("/api/v1/models", json={
+        "name": "x", "code": "foo_bar", "layer": "DWD", "engine": "MySQL", "type": "明细表"})
+    assert r.status_code == 400 and r.json()["code"] == 8004
+
+
+def test_create_viewer_403(client, db_session):
+    _seed_dicts(db_session)
+    set_role(client, "viewer")
+    r = client.post("/api/v1/models", json={
+        "name": "x", "code": "dwd_x", "layer": "DWD", "engine": "MySQL", "type": "明细表"})
+    assert r.status_code == 403
+    set_role(client, "dev")
+
+
+def test_update_published_locked(client, db_session):
+    _seed_dicts(db_session)
+    mid = _mk_model(client)
+    m = db_session.get(DwModel, mid)
+    m.status = "published"
+    db_session.commit()
+    r = client.put(f"/api/v1/models/{mid}", json={"name": "改名"})
+    assert r.status_code == 409 and r.json()["code"] == 8005
+    r2 = client.put(f"/api/v1/models/{mid}", json={"remark": "只改备注", "securityLevel": "机密"})
+    assert r2.status_code == 200 and r2.json()["data"]["securityLevel"] == "机密"
+
+
+def test_delete_refused_when_built(client, db_session):
+    _seed_dicts(db_session)
+    mid = _mk_model(client)
+    m = db_session.get(DwModel, mid)
+    m.status = "built"
+    db_session.commit()
+    r = client.delete(f"/api/v1/models/{mid}")
+    assert r.status_code == 409
+
+
+def test_delete_with_downstream_refs_409(client, db_session):
+    _seed_dicts(db_session)
+    a = _mk_model(client, code="dwd_a")
+    b = _mk_model(client, code="dws_b", layer="DWS")
+    db_session.add(DwModelRelation(src_model_id=a, tgt_model_id=b))
+    db_session.commit()
+    r = client.delete(f"/api/v1/models/{a}")
+    assert r.status_code == 409 and r.json()["code"] == 8008
+    assert r.json()["data"]["refs"][0]["code"] == "dws_b"
+
+
+def test_delete_ok_cascades_fields(client, db_session):
+    _seed_dicts(db_session)
+    mid = _mk_model(client)
+    # 先建一条字段再删（字段级联删除）
+    from common.models import DwModelField
+
+    db_session.add(DwModelField(model_id=mid, seq=1, name="id"))
+    db_session.commit()
+    r = client.delete(f"/api/v1/models/{mid}")
+    assert r.status_code == 200
+    assert client.get(f"/api/v1/models/{mid}").status_code == 404
