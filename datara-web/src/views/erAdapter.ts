@@ -163,31 +163,42 @@ async function saveErFromStore(store: GraphStore): Promise<number> {
     sentRel.set(e.id, { source: e.source, target: e.target, relType })
     /* 已在基线中的 uid 边不再重复 added（重载失败回退基线含 uid 键，忽略 toast 再保存亦不重复建行） */
     if (!NUM_ID.test(e.id) && !base.relations.has(e.id)) added.push({ source: Number(e.source), target: Number(e.target), relType })
-    else if (base.relations.get(e.id)?.relType !== relType) updated.push({ id: Number(e.id), relType })
+    else if (NUM_ID.test(e.id) && base.relations.get(e.id)?.relType !== relType) updated.push({ id: Number(e.id), relType })
   })
   /* P2 兜底：removed 一律过 NUM_ID 过滤（uid 边进基线后被删 → Number(uid)=NaN → JSON null → 后端 int(None) 500） */
   base.relations.forEach((_rel, id) => {
     if (NUM_ID.test(id) && !sentRel.has(id)) removed.push(Number(id))
   })
+  /* I1：入口捕获代际——await 期间视图卸载/易主（restore 里 loadGen++）则保存虽已成功，
+     store 已归新视图（如 /dag），后续一律不再触碰 store 状态 */
+  const gen = loadGen
+  /* M1：发送时刻文档快照（字符串即冻结），回退路径据此判定 await 期间是否有未持久化改动 */
+  const sentDocJson = JSON.stringify(doc)
   store.saving = true
   try {
     await saveEr({ positions, relations: { added, updated, removed } })
+    if (gen !== loadGen) return doc.version
     /* P1：保存成功后全量重载——新建边获得后端数字 id（否则 doc 不重载，该边下次 save 仍命中 added
        重复落库）；基线与画布同刷为服务端已存态，后续 diff 永远以真实服务端态为基。
        取舍：保存 await 期间的未保存画布改动被重载覆盖（保存成功即最新已保存态，窗口毫秒级，
        且 saving 旗标挡住并发保存；语义可预期，优于维护脆弱的 uid↔数字 id 映射回写）。 */
     try {
       const fresh = buildErDoc(await getEr())
+      if (gen !== loadGen) return doc.version
       baseline = snapBaseline(fresh)
       store.doc = fresh
       store.dirty = false
       store.resetHistory()
     } catch {
-      /* 重载失败：保存本身已成功，退回发送时刻快照基线（P2 过滤兜底下行为仍正确） */
-      baseline = { positions: sentPos, relations: sentRel }
-      store.dirty = false
-      store.lastSnap = JSON.stringify(store.doc)
-      store.lastDoc = JSON.parse(store.lastSnap)
+      if (gen !== loadGen) return doc.version
+      /* 重载失败：保存本身已成功。仅当 await 期间文档无新改动才推进基线+清脏（否则保留
+         dirty 提示，未落库改动不得被标记干净后静默丢失）；P2 过滤兜底下行为仍正确 */
+      if (JSON.stringify(store.doc) === sentDocJson) {
+        baseline = { positions: sentPos, relations: sentRel }
+        store.dirty = false
+        store.lastSnap = sentDocJson
+        store.lastDoc = JSON.parse(sentDocJson)
+      }
       ElMessage.warning('已保存，但画布数据重载失败，请手动刷新')
     }
     return doc.version
@@ -200,16 +211,25 @@ async function saveErFromStore(store: GraphStore): Promise<number> {
  * ErCanvasView 壳层安装（仅 real 模式调用）：替换 graphStore.load/save 为 ER 适配实现，
  * 返回恢复函数（视图卸载时还原，/dag 等其他 GraphWorkbench 使用方语义零影响）。
  */
+/* M3 套娃防御：重复安装先还原上一个（HMR/异常重挂载不留双份动作替换） */
+let activeRestore: (() => void) | null = null
+
 export function installErAdapter(store: GraphStore): () => void {
+  activeRestore?.()
   const origLoad = store.load
   const origSave = store.save
   loadGen++ // 使此前在途响应失效
   baseline = null
   store.load = async (id: string) => (id === ER_DOC_ID ? loadErIntoStore(store) : origLoad(id))
   store.save = () => saveErFromStore(store)
-  return () => {
+  const restore = () => {
+    if (activeRestore !== restore) return
+    activeRestore = null
     loadGen++
+    baseline = null // M2：释放驻留 Map
     store.load = origLoad
     store.save = origSave
   }
+  activeRestore = restore
+  return restore
 }
