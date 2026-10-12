@@ -5,9 +5,8 @@
  * mock 模式不安装本适配器，原 dataStore 种子路径完全不变。
  * - load：GET /models/er → GraphDocument（实体节点=模型，边=模型关系）；
  *   erPos 缺失的节点按 ER 分层列布局补位，已有 erPos 的保持服务端坐标。
- * - save：对 load 基线做 diff，单次 PUT /models/er（positions 变更集 + relations added/updated/removed），
- *   写回成功才推进基线（失败基线不动，保存按钮重试语义）；载荷以发送时刻快照为准，
- *   await 期间继续拖拽产生的改动由下一轮 diff 重发，不丢不错发。
+ * - save：对 load 基线做 diff，单次 PUT /models/er（positions 变更集 + relations added/updated/removed）；
+ *   成功后全量重载（新建边获得后端数字 id，防二次保存重复落库；重载失败退回发送时刻快照基线）。
  */
 import { ElMessage } from 'element-plus'
 import type { GEdge, GEdgeKind, GNode, GraphDocument } from '../graph/model'
@@ -143,7 +142,7 @@ async function saveErFromStore(store: GraphStore): Promise<number> {
   const doc = store.doc
   if (!doc) return 0
   const base = baseline ?? { positions: new Map<string, { x: number; y: number }>(), relations: new Map<string, RelSnap>() }
-  /* 发送时刻快照：PUT 整体提交成功 ⇒ 服务端终态=快照；await 期间的新改动下轮 diff 重发 */
+  /* 发送时刻快照：PUT 整体提交成功 ⇒ 服务端终态=快照（重载失败回退路径的基线依据） */
   const positions: Record<string, { x: number; y: number }> = {}
   const sentPos = new Map(base.positions)
   doc.nodes.forEach((n) => {
@@ -165,17 +164,31 @@ async function saveErFromStore(store: GraphStore): Promise<number> {
     if (!NUM_ID.test(e.id)) added.push({ source: Number(e.source), target: Number(e.target), relType })
     else if (base.relations.get(e.id)?.relType !== relType) updated.push({ id: Number(e.id), relType })
   })
+  /* P2 兜底：removed 一律过 NUM_ID 过滤（uid 边进基线后被删 → Number(uid)=NaN → JSON null → 后端 int(None) 500） */
   base.relations.forEach((_rel, id) => {
-    if (!sentRel.has(id)) removed.push(Number(id))
+    if (NUM_ID.test(id) && !sentRel.has(id)) removed.push(Number(id))
   })
   store.saving = true
   try {
     await saveEr({ positions, relations: { added, updated, removed } })
-    /* 成功才推进基线 + 刷脏标记/快照基线（对齐原 save 的落点后状态，undo 栈保留可撤到保存前） */
-    baseline = { positions: sentPos, relations: sentRel }
-    store.dirty = false
-    store.lastSnap = JSON.stringify(store.doc)
-    store.lastDoc = JSON.parse(store.lastSnap)
+    /* P1：保存成功后全量重载——新建边获得后端数字 id（否则 doc 不重载，该边下次 save 仍命中 added
+       重复落库）；基线与画布同刷为服务端已存态，后续 diff 永远以真实服务端态为基。
+       取舍：保存 await 期间的未保存画布改动被重载覆盖（保存成功即最新已保存态，窗口毫秒级，
+       且 saving 旗标挡住并发保存；语义可预期，优于维护脆弱的 uid↔数字 id 映射回写）。 */
+    try {
+      const fresh = buildErDoc(await getEr())
+      baseline = snapBaseline(fresh)
+      store.doc = fresh
+      store.dirty = false
+      store.resetHistory()
+    } catch {
+      /* 重载失败：保存本身已成功，退回发送时刻快照基线（P2 过滤兜底下行为仍正确） */
+      baseline = { positions: sentPos, relations: sentRel }
+      store.dirty = false
+      store.lastSnap = JSON.stringify(store.doc)
+      store.lastDoc = JSON.parse(store.lastSnap)
+      ElMessage.warning('已保存，但画布数据重载失败，请手动刷新')
+    }
     return doc.version
   } finally {
     store.saving = false
