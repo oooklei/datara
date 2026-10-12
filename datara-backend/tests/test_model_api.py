@@ -13,7 +13,7 @@ if str(BACKEND) not in sys.path:
     sys.path.insert(0, str(BACKEND))
 
 from api.auth import get_current_user  # noqa: E402
-from common.models import BizDomain, DataSource, DwLayer, DwModel, DwModelField, DwModelRelation, EngineType  # noqa: E402
+from common.models import BizDomain, DataSource, DwLayer, DwModel, DwModelField, DwModelRelation, EngineType, DwModelVersion  # noqa: E402
 from common.db import seed_dict_tables  # noqa: E402
 
 
@@ -78,6 +78,31 @@ def test_create_bad_code_400(client, db_session):
     r = client.post("/api/v1/models", json={
         "name": "x", "code": "DWD_X", "layer": "DWD", "engine": "MySQL", "type": "明细表"})
     assert r.status_code == 400 and r.json()["code"] == 8003
+
+
+def test_i18_p1_versions_redraft_diff_rollback_and_er_projection(client, db_session):
+    _seed_dicts(db_session)
+    mid = _mk_model(client, code="dwd_i18_version")
+    assert client.put(f"/api/v1/models/{mid}/fields", json={"rev": 1, "fields": [
+        {"name": "id", "dataType": "BIGINT", "isPk": True, "nullable": False},
+    ]}).status_code == 200
+    assert client.post(f"/api/v1/models/{mid}/publish").status_code == 200
+    assert client.post(f"/api/v1/models/{mid}/redraft").json()["data"]["status"] == "draft"
+    saved = client.post(f"/api/v1/models/{mid}/versions", json={"changeNote": "基线快照"})
+    assert saved.status_code == 200
+    vid = saved.json()["data"]["id"]
+    versions = client.get(f"/api/v1/models/{mid}/versions").json()["data"]
+    assert versions[0]["id"] == vid
+    diff = client.get(f"/api/v1/models/{mid}/versions/{vid}/diff").json()["data"]
+    assert diff["added"][0]["name"] == "id"
+    rb = client.post(f"/api/v1/models/{mid}/versions/{vid}/rollback")
+    assert rb.status_code == 200 and rb.json()["data"]["status"] == "draft"
+    er = client.get("/api/v1/models/er").json()["data"]
+    assert any(n["id"] == str(mid) for n in er["nodes"])
+    put = client.put("/api/v1/models/er", json={"positions": {str(mid): {"x": 10, "y": 20}}, "relations": {}})
+    assert put.status_code == 200
+    assert client.get("/api/v1/models/er").json()["data"]["nodes"][0]["erPos"] == {"x": 10.0, "y": 20.0}
+    assert db_session.query(DwModelVersion).count() >= 2
 
 
 def test_create_naming_rule_400(client, db_session):

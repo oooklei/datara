@@ -5,6 +5,7 @@
 - 错误码：8xxx 数仓建模段（common/resp.py）
 """
 
+import json
 import re
 from typing import Optional
 
@@ -21,7 +22,7 @@ from common.ddlgen import dialect_notes, gen_ddl
 from common.dsconn import open_connection
 from common.log import get_logger
 from common.models import (
-    BizDomain, DataSource, DwLayer, DwModel, DwModelField, DwModelRelation,
+    BizDomain, DataSource, DwLayer, DwModel, DwModelField, DwModelRelation, DwModelVersion,
     EngineType, LineageEdge, User, now,
 )
 from common.resp import (
@@ -181,6 +182,21 @@ def create_model(body: ModelCreateBody, user: User = Depends(require_perm("model
     return ok({"id": m.id})
 
 
+# Static ER routes must be registered before the integer model-id route below.
+class ErBody(BaseModel):
+    positions: dict[str, dict[str, float]] = {}
+    relations: dict[str, list[dict]] = {}
+
+@router.get("/models/er")
+def get_er_static(layer: str = "", domain: str = "", user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    return get_er(layer=layer, domain=domain, user=user, db=db)
+
+
+@router.put("/models/er")
+def put_er_static(body: ErBody, user: User = Depends(require_perm("model:write")), db: Session = Depends(get_db)):
+    return put_er(body=body, user=user, db=db)
+
+
 @router.get("/models/{model_id}")
 def get_model(model_id: int, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     m = _get_model(db, model_id)
@@ -303,6 +319,139 @@ def publish_model(model_id: int, user: User = Depends(require_perm("model:write"
     db.commit()
     audit.info("model.publish user=%s code=%s version=%s", user.user_name, m.code, m.version)
     return ok({"status": "published"})
+
+
+# ---------- 修订与版本（I18 P1） ----------
+
+def _model_snapshot(db: Session, m: DwModel) -> dict:
+    fields = _fields_of(db, m.id)
+    relations = []
+    for r in db.query(DwModelRelation).filter(
+        or_(DwModelRelation.src_model_id == m.id, DwModelRelation.tgt_model_id == m.id)
+    ).all():
+        relations.append({"id": r.id, "srcModelId": r.src_model_id, "tgtModelId": r.tgt_model_id,
+                          "relType": r.rel_type, "srcFields": r.src_fields, "tgtFields": r.tgt_fields,
+                          "joinDesc": r.join_desc})
+    return {"model": _model_row(m, _xc_map(db)), "fields": fields, "relations": relations}
+
+
+class VersionBody(BaseModel):
+    changeNote: str = ""
+
+
+@router.post("/models/{model_id}/redraft")
+def redraft_model(model_id: int, user: User = Depends(require_perm("model:write")),
+                  db: Session = Depends(get_db)):
+    m = _get_model(db, model_id)
+    if m.status == "draft":
+        raise ApiError(MODEL_STATE_CONFLICT, "当前已是草稿", status=409)
+    m.status = "draft"
+    m.version += 1
+    db.commit()
+    audit.info("model.redraft user=%s code=%s version=%s", user.user_name, m.code, m.version)
+    return ok(_model_row(m, _xc_map(db)))
+
+
+@router.get("/models/{model_id}/versions")
+def list_model_versions(model_id: int, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    _get_model(db, model_id)
+    rows = db.query(DwModelVersion).filter(DwModelVersion.model_id == model_id).order_by(
+        DwModelVersion.version.desc(), DwModelVersion.id.desc()).all()
+    return ok([{"id": r.id, "version": r.version, "changeNote": r.change_note,
+                "createdBy": r.created_by, "createdAt": fmt_dt(r.create_time)} for r in rows])
+
+
+@router.post("/models/{model_id}/versions")
+def save_model_version(model_id: int, body: VersionBody,
+                       user: User = Depends(require_perm("model:write")), db: Session = Depends(get_db)):
+    m = _get_model(db, model_id)
+    snap = _model_snapshot(db, m)
+    row = DwModelVersion(model_id=m.id, version=m.version, snapshot_json=json.dumps(snap, ensure_ascii=False),
+                         change_note=body.changeNote.strip(), created_by=user.user_name)
+    db.add(row)
+    db.commit()
+    return ok({"id": row.id, "version": row.version, "changeNote": row.change_note})
+
+
+@router.get("/models/{model_id}/versions/{version_id}/diff")
+def diff_model_version(model_id: int, version_id: int, base: Optional[int] = None,
+                       user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    _get_model(db, model_id)
+    cur = db.query(DwModelVersion).filter(DwModelVersion.id == version_id,
+                                          DwModelVersion.model_id == model_id).first()
+    if cur is None:
+        raise ApiError(MODEL_NOT_FOUND, "版本不存在", status=404)
+    prev = db.query(DwModelVersion).filter(DwModelVersion.model_id == model_id,
+                                           DwModelVersion.id == base).first() if base else None
+    a = json.loads(prev.snapshot_json) if prev else {"fields": [], "model": {}, "relations": []}
+    b = json.loads(cur.snapshot_json)
+    af = {x["name"]: x for x in a.get("fields", [])}
+    bf = {x["name"]: x for x in b.get("fields", [])}
+    added = [bf[k] for k in bf.keys() - af.keys()]
+    removed = [af[k] for k in af.keys() - bf.keys()]
+    changed = [{"name": k, "before": af[k], "after": bf[k]} for k in bf.keys() & af.keys() if af[k] != bf[k]]
+    return ok({"added": added, "removed": removed, "changed": changed,
+               "relationsChanged": a.get("relations", []) != b.get("relations", [])})
+
+
+@router.post("/models/{model_id}/versions/{version_id}/rollback")
+def rollback_model_version(model_id: int, version_id: int,
+                           user: User = Depends(require_perm("model:write")), db: Session = Depends(get_db)):
+    m = _get_model(db, model_id)
+    src = db.query(DwModelVersion).filter(DwModelVersion.id == version_id,
+                                          DwModelVersion.model_id == model_id).first()
+    if src is None:
+        raise ApiError(MODEL_NOT_FOUND, "版本不存在", status=404)
+    snap = json.loads(src.snapshot_json)
+    m.status = "draft"
+    m.version += 1
+    fields = snap.get("fields", [])
+    db.query(DwModelField).filter(DwModelField.model_id == m.id).delete()
+    for i, f in enumerate(fields, 1):
+        db.add(DwModelField(model_id=m.id, seq=i, **_field_kwargs(f)))
+    db.commit()
+    saved = DwModelVersion(model_id=m.id, version=m.version, snapshot_json=json.dumps(_model_snapshot(db, m), ensure_ascii=False),
+                           change_note=f"rollback from {src.version}", created_by=user.user_name)
+    db.add(saved)
+    db.commit()
+    return ok({"status": "draft", "version": m.version, "sourceVersion": src.version})
+
+
+@router.get("/models/er")
+def get_er(layer: str = "", domain: str = "", user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    q = db.query(DwModel)
+    if layer: q = q.filter(DwModel.layer == layer)
+    if domain: q = q.filter(DwModel.biz_domain == domain)
+    models = q.order_by(DwModel.id).all()
+    ids = {m.id for m in models}
+    nodes = [{"id": str(m.id), "model": _model_row(m, _xc_map(db)), "erPos": m.er_pos or {}} for m in models]
+    rels = db.query(DwModelRelation).filter(DwModelRelation.src_model_id.in_(ids), DwModelRelation.tgt_model_id.in_(ids)).all() if ids else []
+    edges = [{"id": r.id, "source": str(r.src_model_id), "target": str(r.tgt_model_id), "relType": r.rel_type,
+              "srcFields": r.src_fields, "tgtFields": r.tgt_fields, "joinDesc": r.join_desc} for r in rels]
+    return ok({"nodes": nodes, "edges": edges})
+
+
+@router.put("/models/er")
+def put_er(body: ErBody, user: User = Depends(require_perm("model:write")), db: Session = Depends(get_db)):
+    for raw_id, pos in body.positions.items():
+        m = db.get(DwModel, int(raw_id))
+        if m is None: raise ApiError(MODEL_NOT_FOUND, status=404)
+        m.er_pos = {"x": float(pos.get("x", 0)), "y": float(pos.get("y", 0))}
+    for rid in body.relations.get("removed", []):
+        r = db.get(DwModelRelation, int(rid.get("id", rid) if isinstance(rid, dict) else rid))
+        if r: db.delete(r)
+    for item in body.relations.get("added", []) + body.relations.get("updated", []):
+        rid = item.get("id")
+        r = db.get(DwModelRelation, int(rid)) if rid else None
+        if r is None:
+            r = DwModelRelation(src_model_id=int(item["source"]), tgt_model_id=int(item["target"]), created_by=user.user_name)
+            db.add(r)
+        r.rel_type = item.get("relType", r.rel_type)
+        r.src_fields = item.get("srcFields", r.src_fields)
+        r.tgt_fields = item.get("tgtFields", r.tgt_fields)
+        r.join_desc = item.get("joinDesc", r.join_desc)
+    db.commit()
+    return ok({"saved": True})
 
 
 # ---------- DDL 与物理化 ----------

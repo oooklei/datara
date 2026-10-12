@@ -24,6 +24,7 @@ from sqlalchemy import (
     BigInteger,
     Boolean,
     DateTime,
+    Float,
     Index,
     Integer,
     JSON,

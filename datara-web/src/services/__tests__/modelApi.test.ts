@@ -93,4 +93,18 @@ describe('modelApi 真实分支（stub fetch 契约，datasourceApi.test 先例�
     fetchMock.mockResolvedValueOnce({ status: 502, text: async () => '<html>502 Bad Gateway</html>' })
     await expect(api.reverseImportDdl(new File(['x'], 'x.sql'))).rejects.toThrow('HTTP 502')
   })
+
+  it('I18 P1 版本与 ER API 路径、方法和查询参数对齐', async () => {
+    const api = await import('../modelApi')
+    const ok = (data: unknown) => ({ json: async () => ({ code: 0, msg: '', data }) })
+    fetchMock.mockResolvedValueOnce(ok([])); await api.listModelVersions(7)
+    expect(fetchMock.mock.calls[0][0]).toBe('/api/v1/models/7/versions')
+    fetchMock.mockResolvedValueOnce(ok({ id: 1, version: 2, changeNote: 'x' })); await api.saveModelVersion(7, 'x')
+    expect(fetchMock.mock.calls[1][1].method).toBe('POST')
+    expect(JSON.parse(fetchMock.mock.calls[1][1].body)).toEqual({ changeNote: 'x' })
+    fetchMock.mockResolvedValueOnce(ok({ nodes: [], edges: [] })); await api.getEr({ layer: 'DWD' })
+    expect(fetchMock.mock.calls[2][0]).toBe('/api/v1/models/er?layer=DWD')
+    fetchMock.mockResolvedValueOnce(ok({ saved: true })); await api.saveEr({ positions: { '7': { x: 1, y: 2 } } })
+    expect(fetchMock.mock.calls[3][1].method).toBe('PUT')
+  })
 })

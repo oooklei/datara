@@ -62,6 +62,11 @@ export interface LineageNode { id: string; kind: 'model' | 'ext'; label: string 
 export interface LineageEdgeRow { from: string; to: string; kind: 'declared' | 'runtime'; relType?: string }
 export interface LineageResp { nodes: LineageNode[]; edges: LineageEdgeRow[]; sources: { declared: number; runtime: number } }
 export interface ImpactItem { modelId: number; code: string; name: string; path: string }
+export interface ModelVersion { id: number; version: number; changeNote: string; createdBy: string; createdAt: string | null }
+export interface ModelDiff { added: ModelFieldRow[]; removed: ModelFieldRow[]; changed: { name: string; before: ModelFieldRow; after: ModelFieldRow }[]; relationsChanged: boolean }
+export interface ErNode { id: string; model: ModelRow; erPos: { x?: number; y?: number } }
+export interface ErEdge { id: number; source: string; target: string; relType: string; srcFields: string; tgtFields: string; joinDesc: string }
+export interface ErResp { nodes: ErNode[]; edges: ErEdge[] }
 
 /* ---------- mock 适配（演示文档形状 ↔ API 契约） ---------- */
 
@@ -218,4 +223,37 @@ export async function getModelLineage(id: number | string): Promise<LineageResp>
 
 export async function getModelImpact(id: number | string): Promise<{ list: ImpactItem[] }> {
   return http.get<{ list: ImpactItem[] }>(`/models/${encodeURIComponent(id)}/impact`)
+}
+
+export async function redraftModel(id: number | string): Promise<ModelRow> {
+  return http.post<ModelRow>(`/models/${encodeURIComponent(id)}/redraft`)
+}
+
+export async function listModelVersions(id: number | string): Promise<ModelVersion[]> {
+  return http.get<ModelVersion[]>(`/models/${encodeURIComponent(id)}/versions`)
+}
+
+export async function saveModelVersion(id: number | string, changeNote = ''): Promise<{ id: number; version: number; changeNote: string }> {
+  return http.post(`/models/${encodeURIComponent(id)}/versions`, { changeNote })
+}
+
+export async function diffModelVersion(id: number | string, versionId: number, base?: number): Promise<ModelDiff> {
+  const qs = base ? `?base=${encodeURIComponent(base)}` : ''
+  return http.get<ModelDiff>(`/models/${encodeURIComponent(id)}/versions/${versionId}/diff${qs}`)
+}
+
+export async function rollbackModelVersion(id: number | string, versionId: number): Promise<{ status: string; version: number; sourceVersion: number }> {
+  return http.post(`/models/${encodeURIComponent(id)}/versions/${versionId}/rollback`)
+}
+
+export async function getEr(params?: { layer?: string; domain?: string }): Promise<ErResp> {
+  const q = new URLSearchParams()
+  if (params?.layer) q.set('layer', params.layer)
+  if (params?.domain) q.set('domain', params.domain)
+  const qs = q.toString()
+  return http.get<ErResp>(`/models/er${qs ? `?${qs}` : ''}`)
+}
+
+export async function saveEr(body: { positions: Record<string, { x: number; y: number }>; relations?: Record<string, unknown[]> }): Promise<{ saved: boolean }> {
+  return http.put('/models/er', body)
 }

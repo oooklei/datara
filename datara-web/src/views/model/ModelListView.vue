@@ -443,8 +443,8 @@ async function onDdlFile(e: Event) {
   if (f) await doImportDdl(f)
 }
 
-function tipVersion() {
-  ElMessage.info('版本管理为独立页面（/model/version/:id），暂由后续迭代提供')
+function tipVersion(m: ModelRow) {
+  router.push(`/model/version/${m.id}`)
 }
 function tipLineage(m: ModelRow) {
   router.push(`/model/lineage/${m.id}`)
@@ -563,7 +563,7 @@ function tipLineage(m: ModelRow) {
             <td>{{ m.owner || userName }}</td>
             <td>
               <button class="op-btn primary" @click="router.push(`/model/design/${m.id}`)">字段设计</button>
-              <button class="op-btn" @click="tipVersion">版本</button>
+              <button class="op-btn" @click="tipVersion(m)">版本</button>
               <button class="op-btn" @click="tipLineage(m)">血缘影响</button>
               <button class="op-btn" @click="openPhys(m)">{{ m.status === 'draft' ? '物理化建表' : '重新物理化' }}</button>
               <button class="op-btn danger" @click="removeRow(m)">删除</button>
