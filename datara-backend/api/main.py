@@ -61,6 +61,7 @@ def create_app() -> FastAPI:
         health,
         ide,
         instance,
+        ind,
         lineage,
         meta_ops,
         model,
@@ -91,6 +92,7 @@ def create_app() -> FastAPI:
     app.include_router(ide.router, prefix="/api/v1")
     app.include_router(health.router, prefix="/api/v1")
     app.include_router(instance.router, prefix="/api/v1")
+    app.include_router(ind.router, prefix="/api/v1")
     app.include_router(lineage.router, prefix="/api/v1")
     app.include_router(meta_ops.router, prefix="/api/v1")
     app.include_router(model.router, prefix="/api/v1")

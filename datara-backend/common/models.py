@@ -863,3 +863,85 @@ class DwModelVersion(Base):
     update_time: Mapped[datetime] = mapped_column(DateTime, default=now, onupdate=now)
 
     __table_args__ = (UniqueConstraint("model_id", "version", name="uq_dw_model_ver"),)
+
+
+# ---------- I19 元数据目录扩展 ----------
+class MetaTableExt(Base):
+    __tablename__ = "t_meta_table_ext"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    ds_id: Mapped[int] = mapped_column(Integer)
+    db_name: Mapped[str] = mapped_column(String(128))
+    table_name: Mapped[str] = mapped_column(String(128))
+    biz_domain: Mapped[str] = mapped_column(String(64), default="")
+    security_level: Mapped[str] = mapped_column(String(16), default="内部")
+    owner: Mapped[str] = mapped_column(String(64), default="")
+    remark: Mapped[str] = mapped_column(String(255), default="")
+    create_time: Mapped[datetime] = mapped_column(DateTime, default=now)
+    update_time: Mapped[datetime] = mapped_column(DateTime, default=now, onupdate=now)
+    __table_args__ = (UniqueConstraint("ds_id", "db_name", "table_name", name="uq_meta_table_ext"),)
+
+
+class MetaTag(Base):
+    __tablename__ = "t_meta_tag"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    name: Mapped[str] = mapped_column(String(64), unique=True)
+    cat: Mapped[str] = mapped_column(String(16), default="用途")
+    color: Mapped[str] = mapped_column(String(16), default="#1677ff")
+    desc: Mapped[str] = mapped_column(String(255), default="")
+    create_time: Mapped[datetime] = mapped_column(DateTime, default=now)
+    update_time: Mapped[datetime] = mapped_column(DateTime, default=now, onupdate=now)
+
+
+class MetaTagging(Base):
+    __tablename__ = "t_meta_tagging"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    tag_id: Mapped[int] = mapped_column(Integer)
+    target_type: Mapped[str] = mapped_column(String(16))
+    target_key: Mapped[str] = mapped_column(String(255))
+    created_by: Mapped[str] = mapped_column(String(64), default="")
+    create_time: Mapped[datetime] = mapped_column(DateTime, default=now)
+    __table_args__ = (UniqueConstraint("tag_id", "target_type", "target_key", name="uq_meta_tagging"),
+                      Index("idx_meta_tag_target", "target_type", "target_key"))
+
+
+# ---------- I20 指标 ----------
+class Indicator(Base):
+    __tablename__ = "t_indicator"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    code: Mapped[str] = mapped_column(String(64), unique=True)
+    name: Mapped[str] = mapped_column(String(128), unique=True)
+    type: Mapped[str] = mapped_column(String(16), default="原子")
+    biz_domain: Mapped[str] = mapped_column(String(64), default="")
+    biz_def: Mapped[str] = mapped_column(String(512))
+    tech_def: Mapped[str] = mapped_column(String(512), default="")
+    src_kind: Mapped[str] = mapped_column(String(16), default="table")
+    src_ref: Mapped[str] = mapped_column(String(255), default="")
+    src_field: Mapped[str] = mapped_column(String(128), default="")
+    out_table: Mapped[str] = mapped_column(String(128), default="")
+    out_task: Mapped[str] = mapped_column(String(128), default="")
+    period: Mapped[str] = mapped_column(String(16), default="日")
+    dims: Mapped[str] = mapped_column(String(255), default="")
+    unit: Mapped[str] = mapped_column(String(16), default="")
+    status: Mapped[str] = mapped_column(String(16), default="draft")
+    version: Mapped[int] = mapped_column(Integer, default=1)
+    owner: Mapped[str] = mapped_column(String(64), default="")
+    base_metric_id: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    agg_fn: Mapped[Optional[str]] = mapped_column(String(16), nullable=True)
+    num_field: Mapped[Optional[str]] = mapped_column(String(128), nullable=True)
+    time_field: Mapped[Optional[str]] = mapped_column(String(128), nullable=True)
+    dim_field: Mapped[Optional[str]] = mapped_column(String(128), nullable=True)
+    filter_cond: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    create_time: Mapped[datetime] = mapped_column(DateTime, default=now)
+    update_time: Mapped[datetime] = mapped_column(DateTime, default=now, onupdate=now)
+
+
+class IndicatorVersion(Base):
+    __tablename__ = "t_indicator_version"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    indicator_id: Mapped[int] = mapped_column(Integer)
+    version: Mapped[int] = mapped_column(Integer)
+    snapshot_json: Mapped[str] = mapped_column(MEDIUMTEXT)
+    change_note: Mapped[str] = mapped_column(String(255))
+    created_by: Mapped[str] = mapped_column(String(64), default="")
+    create_time: Mapped[datetime] = mapped_column(DateTime, default=now)
+    __table_args__ = (UniqueConstraint("indicator_id", "version", name="uq_indicator_version"),)
