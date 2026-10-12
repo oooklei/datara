@@ -17,7 +17,7 @@ export const routes: RouteRecordRaw[] = [
   // /etl/design/:id 已删除（I1 意见③：ETL 设计器入口移除，EtlMappingPanel 删除；页面文件 I9 收尾清理）
   /* G2：中间壳 StreamDesignView 已删除，旧路径 redirect 保书签（type=stream 直达流视角） */
   { path: '/stream/design/:id', name: 'stream-design', redirect: (to) => ({ path: '/dag', query: { ...to.query, tab: 'edit', type: 'stream', doc: String(to.params.id) } }), meta: { title: '工作流编排' } },
-  { path: '/model/er', name: 'model-er', component: () => import('../views/ErCanvasView.vue'), meta: { title: 'ER画布', demo: true } },
+  { path: '/model/er', name: 'model-er', component: () => import('../views/ErCanvasView.vue'), meta: { title: 'ER画布' } },
   { path: '/meta/lineage', name: 'meta-lineage', component: () => import('../views/LineageView.vue'), meta: { title: '血缘分析' } },
   /* 组件治理三页整合（ComponentHub）：组件目录 / 基线化工作台 / 组件设计器同壳页签，
      query.tab + query.designType/query.type 承载页签与深链（任务中心同款单向 replace 同步） */
@@ -31,7 +31,7 @@ export const routes: RouteRecordRaw[] = [
   /* 组件页面设计器：原独立路由 redirect 落宿主设计器页签（深链 :type → designType，保 Task 15 建稿链）；
      设计器本体由 ComponentHubView 内嵌 PageDesignerView 承载 */
   { path: '/meta/components/page-designer/:type?', name: 'meta-page-designer', redirect: (to) => ({ path: '/meta/components', query: { tab: 'designer', ...(to.params.type ? { designType: String(to.params.type) } : {}) } }), meta: { title: '组件设计器' } },
-  { path: '/meta/map', name: 'meta-map', component: () => import('../views/AssetMapView.vue'), meta: { title: '资产地图', demo: true } },
+  { path: '/meta/map', name: 'meta-map', component: () => import('../views/AssetMapView.vue'), meta: { title: '资产地图' } },
 
   // ---- 新增 45 条模块路由 ----
   // 数据集成
@@ -45,9 +45,10 @@ export const routes: RouteRecordRaw[] = [
   { path: '/stream/list', name: 'stream-list', component: () => import('../views/stream/StreamListView.vue'), meta: { title: '流数据处理', demo: true } },
   { path: '/stream/detail/:id', name: 'stream-detail', component: () => import('../views/stream/StreamDetailView.vue'), meta: { title: '流任务详情', demo: true } },
   // 数据开发
-  { path: '/model/list', name: 'model-list', component: () => import('../views/model/ModelListView.vue'), meta: { title: '数仓建模', demo: true } },
-  { path: '/model/design/:id', name: 'model-design', component: () => import('../views/model/ModelDesignView.vue'), meta: { title: '模型设计', demo: true } },
-  { path: '/model/lineage/:id', name: 'model-lineage', component: () => import('../views/model/ModelLineageView.vue'), meta: { title: '模型血缘与影响', demo: true } },
+  { path: '/model/list', name: 'model-list', component: () => import('../views/model/ModelListView.vue'), meta: { title: '数仓建模' } },
+  { path: '/model/design/:id', name: 'model-design', component: () => import('../views/model/ModelDesignView.vue'), meta: { title: '模型设计' } },
+  { path: '/model/version/:id', name: 'model-version', component: () => import('../views/model/ModelVersionView.vue'), meta: { title: '模型版本' } },
+  { path: '/model/lineage/:id', name: 'model-lineage', component: () => import('../views/model/ModelLineageView.vue'), meta: { title: '模型血缘与影响' } },
   { path: '/ide', name: 'ide', component: () => import('../views/ide/IdeView.vue'), meta: { title: '数据开发IDE' } },
   // 纯 mock 运行实例页已删除（F56d）：真实运行实例统一走 /dag/instances（InstanceRunsView），老链接重定向
   { path: '/dag/runs', redirect: '/dag/instances', meta: { title: '运行实例' } },
@@ -78,20 +79,20 @@ export const routes: RouteRecordRaw[] = [
   { path: '/open/api', name: 'open-api', component: () => import('../views/open/OpenApiView.vue'), meta: { title: 'API管理', demo: true } },
   { path: '/open/key', name: 'open-key', component: () => import('../views/open/OpenKeyView.vue'), meta: { title: 'API-Key管理', demo: true } },
   { path: '/open/log', name: 'open-log', component: () => import('../views/open/OpenLogView.vue'), meta: { title: '调用日志', demo: true } },
-  { path: '/meta/catalog', name: 'meta-catalog', component: () => import('../views/meta/MetaCatalogView.vue'), meta: { title: '元数据目录', demo: true } },
-  { path: '/meta/tag', name: 'meta-tag', component: () => import('../views/meta/MetaTagView.vue'), meta: { title: '标签管理', demo: true } },
+  { path: '/meta/catalog', name: 'meta-catalog', component: () => import('../views/meta/MetaCatalogView.vue'), meta: { title: '元数据目录' } },
+  { path: '/meta/tag', name: 'meta-tag', component: () => import('../views/meta/MetaTagView.vue'), meta: { title: '标签管理' } },
   // F56a：数据标准 5 页同壳为「标准管理」单入口（StdHubView 页签切换），旧路径 redirect 保书签
   { path: '/std/element', name: 'std-element', component: () => import('../views/std/StdHubView.vue'), meta: { title: '标准管理', demo: true } },
   { path: '/std/code', name: 'std-code', redirect: (to) => ({ path: '/std/element', query: { ...to.query, tab: 'code' } }), meta: { title: '代码标准', demo: true } },
   { path: '/std/naming', name: 'std-naming', redirect: (to) => ({ path: '/std/element', query: { ...to.query, tab: 'naming' } }), meta: { title: '命名规范', demo: true } },
   { path: '/std/mapping', name: 'std-mapping', redirect: (to) => ({ path: '/std/element', query: { ...to.query, tab: 'mapping' } }), meta: { title: '标准映射与合规', demo: true } },
   { path: '/std/approval', name: 'std-approval', redirect: (to) => ({ path: '/std/element', query: { ...to.query, tab: 'approval' } }), meta: { title: '标准审批', demo: true } },
-  { path: '/ind/list', name: 'ind-list', component: () => import('../views/ind/IndListView.vue'), meta: { title: '指标目录', demo: true } },
+  { path: '/ind/list', name: 'ind-list', component: () => import('../views/ind/IndListView.vue'), meta: { title: '指标目录' } },
   { path: '/sec/perm', name: 'sec-perm', component: () => import('../views/sec/SecPermView.vue'), meta: { title: '权限管理', demo: true } },
   { path: '/sec/mask', name: 'sec-mask', component: () => import('../views/sec/SecMaskView.vue'), meta: { title: '脱敏规则', demo: true } },
   { path: '/sec/audit', name: 'sec-audit', component: () => import('../views/sec/SecAuditView.vue'), meta: { title: '访问审计', demo: true } },
-  { path: '/ind/board', name: 'ind-board', component: () => import('../views/ind/IndBoardView.vue'), meta: { title: '指标看板', demo: true } },
-  { path: '/ind/consistency', name: 'ind-consistency', component: () => import('../views/ind/IndConsistencyView.vue'), meta: { title: '一致性检查', demo: true } },
+  { path: '/ind/board', name: 'ind-board', component: () => import('../views/ind/IndBoardView.vue'), meta: { title: '指标看板' } },
+  { path: '/ind/consistency', name: 'ind-consistency', component: () => import('../views/ind/IndConsistencyView.vue'), meta: { title: '一致性检查' } },
   // 部署运维
   { path: '/dep/runtime', name: 'dep-runtime', component: () => import('../views/deploy/DeployRuntimeView.vue'), meta: { title: '运行时节点' } },
   { path: '/dep/center', name: 'dep-center', component: () => import('../views/deploy/DeployCenterView.vue'), meta: { title: '部署中心', demo: true } },

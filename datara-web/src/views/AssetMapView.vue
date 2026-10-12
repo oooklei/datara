@@ -13,6 +13,8 @@
 import { computed, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { dataStore } from '../services/mock/dataStore'
+import { isMock } from '../services/apiMode'
+import { getMetaMap } from '../services/metaApi'
 import type { BizDomain, Indicator, MetaTable, Model, StdElement, StdCode, StdMapping } from '../services/types'
 
 const router = useRouter()
@@ -33,6 +35,13 @@ const LAYER_COLOR: Record<string, string> = {
 }
 
 async function reload() {
+  if (!isMock) {
+    const p = await getMetaMap({ view: view.value, limit: 200 })
+    tables.value = p.nodes.map((n) => ({ id: n.id, name: n.code, layer: n.layer || '未分层', domain: n.domain || '未分类', rows: 0, size: '-', owner: '', tags: [], yesterdayOk: true, desc: n.label, sample: [], security: '内部' }))
+    domains.value = [...new Set(tables.value.map((t) => t.domain))].map((name) => ({ name, color: '#64748b', tables: 0, models: 0, indicators: 0, desc: '' }))
+    models.value = []; indicators.value = []; stdElements.value = []; stdCodes.value = []; stdMappings.value = []
+    return
+  }
   tables.value = [...((await dataStore.list<MetaTable>('metaTables')) ?? [])]
   domains.value = [...((await dataStore.list<BizDomain>('bizDomains')) ?? [])]
   models.value = [...((await dataStore.list<Model>('models')) ?? [])]

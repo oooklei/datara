@@ -9,6 +9,8 @@ import { ref, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { dataStore } from '../../services/mock/dataStore'
+import { isMock } from '../../services/apiMode'
+import { listMetaCatalog, listMetaTags, setMetaTaggings } from '../../services/metaApi'
 import ListFilterPanel from '../../components/ListFilterPanel.vue'
 import type { Facet } from '../../components/ListFilterPanel.vue'
 import { useAuthStore } from '../../stores/auth'
@@ -28,6 +30,18 @@ const filters = ref<Record<string, string>>({ layer: '', domain: '' }) // domain
 const expanded = ref<Set<string>>(new Set())
 
 async function reload() {
+  if (!isMock) {
+    const [catalog, remoteTags] = await Promise.all([listMetaCatalog(), listMetaTags()])
+    tables.value = catalog.list.map((r) => ({
+      id: r.key, name: r.code, layer: r.layer || '未分层', domain: r.domain || '未分类', rows: 0,
+      size: '-', owner: '', tags: [], yesterdayOk: true, desc: r.name || '', sample: [], security: '内部',
+    }))
+    tags.value = remoteTags.map((t) => ({ id: String(t.id), name: t.name, cat: t.cat, color: t.color, cnt: t.cnt, desc: t.desc, tables: [] }))
+    domains.value = [...new Set(tables.value.map((t) => t.domain))].map((name) => ({ name, color: '#64748b', tables: 0, models: 0, indicators: 0, desc: '' }))
+    models.value = []
+    maskRules.value = []
+    return
+  }
   tables.value = (await dataStore.list<MetaTable>('metaTables')) ?? []
   domains.value = (await dataStore.list<BizDomain>('bizDomains')) ?? []
   models.value = (await dataStore.list<Model>('models')) ?? []
@@ -137,6 +151,11 @@ async function saveTags() {
   const t = current.value
   if (!t) return
   const vals = [...checkedTags.value]
+  if (!isMock) {
+    await setMetaTaggings({ tagIds: tags.value.filter((tg) => vals.includes(tg.name)).map((tg) => Number(tg.id)), targetType: 'table', targetKey: t.id })
+    ElMessage.success(`「${t.name}」标签已更新`)
+    return
+  }
   t.tags = vals
   for (const tg of tags.value) {
     const had = tg.tables.includes(t.id)

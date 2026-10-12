@@ -8,6 +8,8 @@
 import { ref, computed, onMounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { dataStore } from '../../services/mock/dataStore'
+import { isMock } from '../../services/apiMode'
+import { createMetaTag, deleteMetaTag, listMetaCatalog, listMetaTags, setMetaTaggings, updateMetaTag } from '../../services/metaApi'
 import ListFilterPanel from '../../components/ListFilterPanel.vue'
 import type { Facet } from '../../components/ListFilterPanel.vue'
 import type { MetaTable, MetaTag } from '../../services/types'
@@ -16,6 +18,12 @@ const tags = ref<MetaTag[]>([])
 const tables = ref<MetaTable[]>([])
 
 async function reload() {
+  if (!isMock) {
+    const [remoteTags, catalog] = await Promise.all([listMetaTags(), listMetaCatalog()])
+    tags.value = remoteTags.map((t) => ({ id: String(t.id), name: t.name, cat: t.cat, color: t.color, cnt: t.cnt, desc: t.desc, tables: [] }))
+    tables.value = catalog.list.map((r) => ({ id: r.key, name: r.code, layer: r.layer || '未分层', domain: r.domain || '未分类', rows: 0, size: '-', owner: '', tags: [], yesterdayOk: true, desc: r.name || '', sample: [], security: '内部' }))
+    return
+  }
   tags.value = [...((await dataStore.list<MetaTag>('metaTags')) ?? [])]
   tables.value = [...((await dataStore.list<MetaTable>('metaTables')) ?? [])]
 }
@@ -66,10 +74,20 @@ async function saveForm() {
     return
   }
   if (editing.value) {
+    if (!isMock) {
+      const updated = await updateMetaTag(Number(editing.value.id), { name, cat: form.value.cat, color: form.value.color, desc: form.value.desc })
+      Object.assign(editing.value, { name: updated.name, cat: updated.cat, color: updated.color, desc: updated.desc })
+      formVisible.value = false; ElMessage.success('标签已保存'); return
+    }
     Object.assign(editing.value, { name, cat: form.value.cat, color: form.value.color, desc: form.value.desc })
     await dataStore.save('metaTags', editing.value)
     ElMessage.success('标签已保存')
   } else {
+    if (!isMock) {
+      const created = await createMetaTag({ name, cat: form.value.cat, color: form.value.color, desc: form.value.desc })
+      tags.value.unshift({ id: String(created.id), name: created.name, cat: created.cat, color: created.color, cnt: 0, desc: created.desc, tables: [] })
+      formVisible.value = false; ElMessage.success(`标签「${name}」已创建`); return
+    }
     // ID 取现有最大序号 +1：删除标签后再新建不会碰撞
     const nextSeq = tags.value.reduce((m, t) => {
       const n = Number(String(t.id).replace(/^\D+/, ''))
@@ -104,6 +122,12 @@ async function removeTag(t: MetaTag) {
       await dataStore.save('metaTables', tb)
     }
   }
+  if (!isMock) {
+    await deleteMetaTag(Number(t.id))
+    tags.value = tags.value.filter((x) => x.id !== t.id)
+    ElMessage.success('标签已删除')
+    return
+  }
   tags.value = tags.value.filter((x) => x.id !== t.id)
   await dataStore.remove('metaTags', t.id)
   ElMessage.success('标签已删除')
@@ -124,6 +148,13 @@ async function saveTagTables() {
   const d = tagTarget.value
   if (!d) return
   const vals = [...checkedIds.value]
+  if (!isMock) {
+    await Promise.all(tables.value.map((tb) => setMetaTaggings({ tagIds: vals.includes(tb.id) ? [Number(d.id)] : [], targetType: 'table', targetKey: tb.id })))
+    d.tables = vals; d.cnt = vals.length
+    ElMessage.success(`标签「${d.name}」已关联 ${vals.length} 张表`)
+    tagDrawerVisible.value = false
+    return
+  }
   d.tables = vals
   d.cnt = vals.length
   for (const tb of tables.value) {

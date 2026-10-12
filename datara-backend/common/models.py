@@ -945,3 +945,89 @@ class IndicatorVersion(Base):
     created_by: Mapped[str] = mapped_column(String(64), default="")
     create_time: Mapped[datetime] = mapped_column(DateTime, default=now)
     __table_args__ = (UniqueConstraint("indicator_id", "version", name="uq_indicator_version"),)
+
+
+# ---------- I21 数据质量 ----------
+class QcRule(Base):
+    __tablename__ = "t_qc_rule"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    name: Mapped[str] = mapped_column(String(128))
+    dim: Mapped[str] = mapped_column(String(32), default="完整性")
+    rule_type: Mapped[str] = mapped_column(String(32))
+    ds_id: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    db_name: Mapped[str] = mapped_column(String(128), default="")
+    table_name: Mapped[str] = mapped_column(String(128), default="")
+    column_name: Mapped[str] = mapped_column(String(128), default="")
+    params_json: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
+    threshold: Mapped[float] = mapped_column(Float, default=0)
+    level: Mapped[str] = mapped_column(String(16), default="warning")
+    status: Mapped[str] = mapped_column(String(16), default="enabled")
+    owner: Mapped[str] = mapped_column(String(64), default="")
+    remark: Mapped[str] = mapped_column(String(255), default="")
+    create_time: Mapped[datetime] = mapped_column(DateTime, default=now)
+    update_time: Mapped[datetime] = mapped_column(DateTime, default=now, onupdate=now)
+
+
+class QcTask(Base):
+    __tablename__ = "t_qc_task"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    name: Mapped[str] = mapped_column(String(128))
+    crontab: Mapped[str] = mapped_column(String(64), default="0 0 * * * *")
+    enabled: Mapped[bool] = mapped_column(Boolean, default=True)
+    rule_ids: Mapped[Optional[list]] = mapped_column(JSON, nullable=True)
+    status: Mapped[str] = mapped_column(String(16), default="idle")
+    last_run_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    last_result: Mapped[str] = mapped_column(String(16), default="")
+    owner: Mapped[str] = mapped_column(String(64), default="")
+    remark: Mapped[str] = mapped_column(String(255), default="")
+    create_time: Mapped[datetime] = mapped_column(DateTime, default=now)
+
+
+class QcRun(Base):
+    __tablename__ = "t_qc_run"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    task_id: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    trigger: Mapped[str] = mapped_column(String(16), default="manual")
+    started_at: Mapped[datetime] = mapped_column(DateTime, default=now)
+    finished_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    result: Mapped[str] = mapped_column(String(16), default="running")
+    score: Mapped[float] = mapped_column(Float, default=0)
+    stats_json: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
+
+
+class QcException(Base):
+    __tablename__ = "t_qc_exception"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    run_id: Mapped[int] = mapped_column(Integer)
+    rule_id: Mapped[int] = mapped_column(Integer)
+    task_id: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    target: Mapped[str] = mapped_column(String(255), default="")
+    sample_sql: Mapped[str] = mapped_column(MEDIUMTEXT, default="")
+    hit_count: Mapped[int] = mapped_column(Integer, default=0)
+    status: Mapped[str] = mapped_column(String(16), default="open")
+    fix_note: Mapped[str] = mapped_column(String(255), default="")
+    handled_by: Mapped[str] = mapped_column(String(64), default="")
+    handled_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+
+
+class QcReport(Base):
+    __tablename__ = "t_qc_report"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    title: Mapped[str] = mapped_column(String(128))
+    scope: Mapped[str] = mapped_column(String(128), default="")
+    period: Mapped[str] = mapped_column(String(64), default="")
+    content_json: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
+    created_by: Mapped[str] = mapped_column(String(64), default="")
+    create_time: Mapped[datetime] = mapped_column(DateTime, default=now)
+
+
+class QcAlarmPolicy(Base):
+    __tablename__ = "t_qc_alarm_policy"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    name: Mapped[str] = mapped_column(String(128))
+    scope: Mapped[str] = mapped_column(String(128), default="")
+    metric: Mapped[str] = mapped_column(String(32), default="score")
+    op: Mapped[str] = mapped_column(String(4), default="<")
+    threshold: Mapped[float] = mapped_column(Float, default=90)
+    enabled: Mapped[bool] = mapped_column(Boolean, default=True)
+    last_fired_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
