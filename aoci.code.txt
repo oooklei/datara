@@ -1,1 +1,878 @@
 #AOCI-CODE-VOLUME: 1
+
+===D:/需求/数据治理工具/Datara/===
+.gitattributes[CC4T]: F:Normalizes checkout line endings for reproducible AOCI byte baselines. | R:- | A:Git attributes apply LF normalization to tracked text while leaving binaries untouched. | S:Windows autocrlf must not rewrite baseline bytes.
+.gitignore[CC4T]: F:Excludes dependencies, build artifacts, logs, and local deployment outputs from version control. | R:- | A:Repository hygiene rules used by developers and CI. | S:Do not ignore source or AOCI managed cognition assets.
+AGENTS.md[XZ9L]: F:Defines the repository cognition contract and agent operating rules. | R:- | A:Governs AOCI overview, maintenance, authoring, and safe task closure. | S:Machine-issued AOCI rules take precedence over prose guidance.
+LICENSE[ZS8S]: F:States the dual AGPLv3 and commercial licensing terms for Datara. | R:- | A:Applies to distribution and network use of the platform. | S:Commercial use requires the separate commercial agreement.
+LICENSE-COMMERCIAL.md[ZS5S]: F:Documents the commercial licensing option and review caveats. | R:- | A:Supports licensing decisions alongside LICENSE. | S:This is an unofficial template and requires legal review before issuance.
+README.md[ZS5S]: F:Introduces Datara as a data-governance platform and links its licensing and setup context. | R:- | A:Provides project entry documentation for users and maintainers. | S:Keep usage and license claims aligned with implementation.
+SECURITY.md[ZS5S]: F:Defines private vulnerability reporting and response expectations. | R:- | A:Provides the security disclosure contract for the repository. | S:Do not route security reports through public issue tracking.
+docker-compose.yml[CZ5T]: F:Defines structured configuration or catalog data in docker-compose.yml. | R:- | A:Supplies declarative input to platform services. | S:-
+
+===D:/需求/数据治理工具/Datara/datara-backend/===
+Dockerfile[RM7S]: F:Builds the shared Python 3.11 backend image used by API, master, worker, alert, and logger services. | R:- | A:docker-compose commands select the runtime module for each container. | S:Health checks depend on curl and the image timezone/environment settings.
+pyproject.toml[CZ5T]: F:Defines backend build and dependency configuration in datara-backend/pyproject.toml. | R:- | A:Supplies reproducible runtime inputs to packaging and deployment. | S:-
+requirements.txt[CZ5T]: F:Defines backend build and dependency configuration in datara-backend/requirements.txt. | R:- | A:Supplies reproducible runtime inputs to packaging and deployment. | S:-
+
+===D:/需求/数据治理工具/Datara/datara-backend/alert/===
+__init__.py[DB3T]: F:Marks the alert package and documents its persistence and delivery responsibility. | R:code:datara-backend/alert/channels.py,code:datara-backend/alert/main.py | A:Provides package-level ownership for alert workers and adapters. | S:Only confirmed delivery may enter sent.
+channels.py[IM7S]: F:Implements webhook and email alert-channel adapters and delivery errors. | R:code:datara-backend/alert/main.py | A:Converts channel configuration into outbound notification attempts. | S:Unsupported or incomplete channel configuration must fail explicitly.
+main.py[RM7S]: F:Runs the alert worker health endpoint and polls pending alert records for delivery. | R:code:datara-backend/alert/channels.py,code:datara-backend/api/alerts.py | A:Registers the alert service and transitions queued records after delivery. | S:A failed delivery remains failed; it must not be marked sent optimistically.
+
+===D:/需求/数据治理工具/Datara/datara-backend/api/===
+__init__.py[EB6T]: F:Defines the API package boundary for authentication, definitions, instances, commands, and health routes. | R:code:datara-backend/api/main.py | A:Groups HTTP route modules mounted by the FastAPI application. | S:Route behavior is implemented in the individual modules.
+alerts.py[EB6T]: F:Exposes authenticated queries for persisted in-site alert records. | R:code:datara-backend/api/auth.py,code:datara-backend/alert/main.py | A:Provides the message-center read contract over alert state. | S:Permission checks must remain enforced before returning records.
+auth.py[EI8S]: F:Implements login, logout, token persistence, and role-based permission dependencies. | R:code:datara-backend/api/main.py | A:Uses bcrypt credentials and Redis-backed token sessions for route authorization. | S:Token TTL and permission mapping are part of the external API contract.
+baseline.py[DB8M]: F:Implements built-in component baseline progress, acknowledgement, and published version transitions. | R:code:datara-backend/api/component.py,code:datara-backend/api/component_design.py | A:Bridges the read-only catalog to governed component/version rows and lineage declarations. | S:Built-in components enter the version chain only after user acknowledgement.
+commands.py[DB7T]: F:Provides the transactional helper that queues commands for asynchronous master consumption. | R:code:datara-backend/api/instance.py | A:Persists command type, parameters, priority, and wait state. | S:API handlers must not execute master work synchronously.
+component.py[DB8M]: F:Serves the read-only system component catalog, filters, statistics, details, and snapshots. | R:code:datara-backend/common/dag_catalog.json,code:datara-backend/api/component_spec.py | A:Supplies the catalog contract consumed by design and validation clients. | S:Catalog output must preserve deterministic hashes and registry-drift visibility.
+component_design.py[DB8M]: F:Manages user component drafts, optimistic revisions, and immutable published versions. | R:code:datara-backend/api/component.py,code:datara-backend/api/component_spec.py | A:Persists governed component lifecycle state and validates specifications. | S:Draft updates require the current revision; published versions are immutable.
+component_spec.py[DB7S]: F:Returns deterministic eight-element specifications for published components with ETag caching. | R:code:datara-backend/api/component_design.py,code:datara-backend/api/component.py | A:Provides the offline assembly contract used by the frontend designer. | S:Missing specification elements are returned as explicit null values.
+components.py[DB4T]: F:Provides a compatibility import for the shared component catalog payload without registering duplicate routes. | R:code:datara-backend/api/component.py | A:Keeps legacy imports pointed at the canonical catalog implementation. | S:Importing this module must not create a second catalog endpoint.
+datasource.py[DI8L]: F:Implements datasource registration, connectivity tests, metadata trees, and stream-source configuration. | R:code:datara-backend/api/meta_ops.py,code:datara-backend/api/lineage.py | A:Connects governed datasource assets to IDE, metadata, lineage, and stream workflows. | S:File paths are constrained to the managed data directory and credentials follow the internal deployment policy.
+graph_rules.py[DB8S]: F:Validates graph structure, required fields, and cycles with server-side rules aligned to the frontend workbench. | R:code:datara-backend/api/component.py | A:Provides the save and execute validation gate for workflow graphs. | S:Conditional requiredness remains a frontend concern when it cannot be serialized.
+health.py[MR8T]: F:Reports API, database, Redis, and ZooKeeper connectivity through the health endpoint. | R:code:datara-backend/api/main.py | A:Supports container probes and operational readiness checks. | S:A dependency failure must be visible in the component-specific health response.
+ide.py[DI8M]: F:Provides asynchronous SQL IDE execution, SSE logs, cancellation, lint, history, replay, and CSV export. | R:code:datara-backend/api/datasource.py,code:datara-backend/api/instance.py | A:Bridges user SQL actions to datasource execution and persisted task history. | S:Execution limits, transaction mode, cancellation, and token-based SSE auth are contractual.
+ind.py[DB7M]: F:Implements metric definition, versioning, and consistency-rule APIs. | R:code:datara-backend/api/auth.py,code:datara-backend/api/datasource.py | A:Connects governed indicators to authenticated datasource metadata and validation. | S:Metric revisions and consistency checks must retain version semantics.
+instance.py[DB8M]: F:Serves workflow instance lists, details, SSE state streams, stop, rerun, and failed-node rerun commands. | R:code:datara-backend/api/commands.py | A:Exposes runtime state while delegating control actions through the command queue. | S:Only valid runtime or terminal states may accept the corresponding control command.
+lineage.py[DI9M]: F:Queries table, field, graph, trace, and redesign lineage across design and runtime sources. | R:code:datara-backend/api/baseline.py,code:datara-backend/api/instance.py | A:Provides governance lineage traversal and impact-analysis contracts. | S:Runtime snapshots preserve instance context while aggregate graph responses deduplicate edges.
+main.py[ER9S]: F:Creates the FastAPI application, middleware, route mounts, and startup registration. | R:code:datara-backend/api/health.py,code:datara-backend/api/auth.py | A:Defines the HTTP boundary and lifecycle for all API modules. | S:CORS and startup behavior must remain consistent with deployment health checks.
+meta.py[DB7M]: F:Provides metadata catalog projections, extensions, labels, and tagging APIs. | R:code:datara-backend/api/datasource.py,code:datara-backend/api/meta_ops.py | A:Maintains metadata governance annotations without duplicating connector introspection. | S:Labels are persisted through their dedicated source-of-truth tables.
+meta_ops.py[DI8M]: F:Implements table DDL/count inspection, audit, paged row editing, and CSV import operations. | R:code:datara-backend/api/datasource.py,code:datara-backend/api/auth.py | A:Connects metadata UI actions to validated datasource SQL operations. | S:Identifiers are quoted and values parameterized; batch imports are transactional.
+model.py[DB7S]: F:Implements the backend API behavior defined in datara-backend/api/model.py. | R:- | A:Exposes authenticated governance or runtime operations to the frontend and integrations. | S:-
+monitor.py[DB7S]: F:Implements the backend API behavior defined in datara-backend/api/monitor.py. | R:- | A:Exposes authenticated governance or runtime operations to the frontend and integrations. | S:-
+page_designer.py[DB7S]: F:Implements the backend API behavior defined in datara-backend/api/page_designer.py. | R:- | A:Exposes authenticated governance or runtime operations to the frontend and integrations. | S:-
+params.py[DB7S]: F:Implements the backend API behavior defined in datara-backend/api/params.py. | R:- | A:Exposes authenticated governance or runtime operations to the frontend and integrations. | S:-
+qc.py[DB7S]: F:Implements the backend API behavior defined in datara-backend/api/qc.py. | R:- | A:Exposes authenticated governance or runtime operations to the frontend and integrations. | S:-
+runtime_node.py[DB7S]: F:Implements the backend API behavior defined in datara-backend/api/runtime_node.py. | R:- | A:Exposes authenticated governance or runtime operations to the frontend and integrations. | S:-
+smoke.py[DB7S]: F:Implements the backend API behavior defined in datara-backend/api/smoke.py. | R:- | A:Exposes authenticated governance or runtime operations to the frontend and integrations. | S:-
+sshnode.py[DB7S]: F:Implements the backend API behavior defined in datara-backend/api/sshnode.py. | R:- | A:Exposes authenticated governance or runtime operations to the frontend and integrations. | S:-
+streamdata.py[DB7S]: F:Implements the backend API behavior defined in datara-backend/api/streamdata.py. | R:- | A:Exposes authenticated governance or runtime operations to the frontend and integrations. | S:-
+streamjob.py[DB7S]: F:Implements the backend API behavior defined in datara-backend/api/streamjob.py. | R:- | A:Exposes authenticated governance or runtime operations to the frontend and integrations. | S:-
+sync.py[DB7S]: F:Implements the backend API behavior defined in datara-backend/api/sync.py. | R:- | A:Exposes authenticated governance or runtime operations to the frontend and integrations. | S:-
+wf_definition.py[DB7S]: F:Implements the backend API behavior defined in datara-backend/api/wf_definition.py. | R:- | A:Exposes authenticated governance or runtime operations to the frontend and integrations. | S:-
+wf_schedule.py[DB7S]: F:Implements the backend API behavior defined in datara-backend/api/wf_schedule.py. | R:- | A:Exposes authenticated governance or runtime operations to the frontend and integrations. | S:-
+wf_variable.py[DB7S]: F:Implements the backend API behavior defined in datara-backend/api/wf_variable.py. | R:- | A:Exposes authenticated governance or runtime operations to the frontend and integrations. | S:-
+workflow_templates.py[DB7S]: F:Implements the backend API behavior defined in datara-backend/api/workflow_templates.py. | R:- | A:Exposes authenticated governance or runtime operations to the frontend and integrations. | S:-
+
+===D:/需求/数据治理工具/Datara/datara-backend/common/===
+__init__.py[CM6S]: F:Provides shared backend infrastructure used by datara-backend/common/__init__.py. | R:- | A:Defines reusable contracts consumed by API and runtime modules. | S:-
+component_catalog.py[CM6S]: F:Provides shared backend infrastructure used by datara-backend/common/component_catalog.py. | R:- | A:Defines reusable contracts consumed by API and runtime modules. | S:-
+config.py[CM6S]: F:Provides shared backend infrastructure used by datara-backend/common/config.py. | R:- | A:Defines reusable contracts consumed by API and runtime modules. | S:-
+dag_catalog.json[CM6S]: F:Provides shared backend infrastructure used by datara-backend/common/dag_catalog.json. | R:- | A:Defines reusable contracts consumed by API and runtime modules. | S:-
+db.py[CM6S]: F:Provides shared backend infrastructure used by datara-backend/common/db.py. | R:- | A:Defines reusable contracts consumed by API and runtime modules. | S:-
+ddlgen.py[CM6S]: F:Provides shared backend infrastructure used by datara-backend/common/ddlgen.py. | R:- | A:Defines reusable contracts consumed by API and runtime modules. | S:-
+dsconn.py[CM6S]: F:Provides shared backend infrastructure used by datara-backend/common/dsconn.py. | R:- | A:Defines reusable contracts consumed by API and runtime modules. | S:-
+init_accounts.py[CM6S]: F:Provides shared backend infrastructure used by datara-backend/common/init_accounts.py. | R:- | A:Defines reusable contracts consumed by API and runtime modules. | S:-
+lineage_extract.py[CM6S]: F:Provides shared backend infrastructure used by datara-backend/common/lineage_extract.py. | R:- | A:Defines reusable contracts consumed by API and runtime modules. | S:-
+log.py[CM6S]: F:Provides shared backend infrastructure used by datara-backend/common/log.py. | R:- | A:Defines reusable contracts consumed by API and runtime modules. | S:-
+models.py[CM6S]: F:Provides shared backend infrastructure in datara-backend/common/models.py. | R:- | A:Defines reusable contracts consumed by API and runtime modules. | S:-
+monitor.py[CM6S]: F:Provides shared backend infrastructure used by datara-backend/common/monitor.py. | R:- | A:Defines reusable contracts consumed by API and runtime modules. | S:-
+qc_engine.py[CM6S]: F:Provides shared backend infrastructure used by datara-backend/common/qc_engine.py. | R:- | A:Defines reusable contracts consumed by API and runtime modules. | S:-
+queue.py[CM6S]: F:Provides shared backend infrastructure used by datara-backend/common/queue.py. | R:- | A:Defines reusable contracts consumed by API and runtime modules. | S:-
+registry.py[CM6S]: F:Provides shared backend infrastructure used by datara-backend/common/registry.py. | R:- | A:Defines reusable contracts consumed by API and runtime modules. | S:-
+resp.py[CM6S]: F:Provides shared backend infrastructure used by datara-backend/common/resp.py. | R:- | A:Defines reusable contracts consumed by API and runtime modules. | S:-
+security.py[CM6S]: F:Provides shared backend infrastructure used by datara-backend/common/security.py. | R:- | A:Defines reusable contracts consumed by API and runtime modules. | S:-
+sqlparser.py[CM6S]: F:Provides shared backend infrastructure used by datara-backend/common/sqlparser.py. | R:- | A:Defines reusable contracts consumed by API and runtime modules. | S:-
+sshprobe.py[CM6S]: F:Provides shared backend infrastructure used by datara-backend/common/sshprobe.py. | R:- | A:Defines reusable contracts consumed by API and runtime modules. | S:-
+tmpdata.py[CM6S]: F:Provides shared backend infrastructure used by datara-backend/common/tmpdata.py. | R:- | A:Defines reusable contracts consumed by API and runtime modules. | S:-
+vars_render.py[CM6S]: F:Provides shared backend infrastructure used by datara-backend/common/vars_render.py. | R:- | A:Defines reusable contracts consumed by API and runtime modules. | S:-
+
+===D:/需求/数据治理工具/Datara/datara-backend/components/===
+__init__.py[DB5T]: F:Implements the Datara managed behavior in datara-backend/components/__init__.py. | R:- | A:Provides the module contract used by adjacent platform services. | S:-
+catalog.py[DB5T]: F:Implements the Datara managed behavior in datara-backend/components/catalog.py. | R:- | A:Provides the module contract used by adjacent platform services. | S:-
+
+===D:/需求/数据治理工具/Datara/datara-backend/docs/increments/===
+D12-同步取证收口.md[ZS5T]: F:Documents the design, verification, or operating guidance for datara-backend/docs/increments/D12-同步取证收口.md. | R:- | A:Provides evidence and decisions for maintainers and operators. | S:-
+I11-同步任务取证交接单.md[ZS5T]: F:Documents the design, verification, or operating guidance for datara-backend/docs/increments/I11-同步任务取证交接单.md. | R:- | A:Provides evidence and decisions for maintainers and operators. | S:-
+
+===D:/需求/数据治理工具/Datara/datara-backend/docs/increments/i12_proofs/===
+i12_dom_assert.json[CZ5T]: F:Defines structured configuration or catalog data in datara-backend/docs/increments/i12_proofs/i12_dom_assert.json. | R:- | A:Supplies declarative input to platform services. | S:-
+i12_dom_proof.md[ZS5T]: F:Documents the design, verification, or operating guidance for datara-backend/docs/increments/i12_proofs/i12_dom_proof.md. | R:- | A:Provides evidence and decisions for maintainers and operators. | S:-
+i12_execution_report.md[ZS5T]: F:Documents the design, verification, or operating guidance for datara-backend/docs/increments/i12_proofs/i12_execution_report.md. | R:- | A:Provides evidence and decisions for maintainers and operators. | S:-
+
+===D:/需求/数据治理工具/Datara/datara-backend/logger/===
+log_api.py[DB5T]: F:Implements the Datara managed behavior in datara-backend/logger/log_api.py. | R:- | A:Provides the module contract used by adjacent platform services. | S:-
+main.py[DB5T]: F:Implements the Datara managed behavior in datara-backend/logger/main.py. | R:- | A:Provides the module contract used by adjacent platform services. | S:-
+
+===D:/需求/数据治理工具/Datara/datara-backend/master/===
+__init__.py[DW7S]: F:Orchestrates backend scheduling or runtime control in datara-backend/master/__init__.py. | R:- | A:Coordinates commands, workflow state, and worker execution. | S:-
+dag.py[DW7S]: F:Orchestrates backend scheduling or runtime control in datara-backend/master/dag.py. | R:- | A:Coordinates commands, workflow state, and worker execution. | S:-
+engine.py[DW7S]: F:Orchestrates backend scheduling or runtime control in datara-backend/master/engine.py. | R:- | A:Coordinates commands, workflow state, and worker execution. | S:-
+event_bus.py[DW7S]: F:Orchestrates backend scheduling or runtime control in datara-backend/master/event_bus.py. | R:- | A:Coordinates commands, workflow state, and worker execution. | S:-
+failover.py[DW7S]: F:Orchestrates backend scheduling or runtime control in datara-backend/master/failover.py. | R:- | A:Coordinates commands, workflow state, and worker execution. | S:-
+heartbeat.py[DW7S]: F:Orchestrates backend scheduling or runtime control in datara-backend/master/heartbeat.py. | R:- | A:Coordinates commands, workflow state, and worker execution. | S:-
+main.py[DW7S]: F:Orchestrates backend scheduling or runtime control in datara-backend/master/main.py. | R:- | A:Coordinates commands, workflow state, and worker execution. | S:-
+retry_classifier.py[DW7S]: F:Orchestrates backend scheduling or runtime control in datara-backend/master/retry_classifier.py. | R:- | A:Coordinates commands, workflow state, and worker execution. | S:-
+schedule.py[DW7S]: F:Orchestrates backend scheduling or runtime control in datara-backend/master/schedule.py. | R:- | A:Coordinates commands, workflow state, and worker execution. | S:-
+scheduler.py[DW7S]: F:Orchestrates backend scheduling or runtime control in datara-backend/master/scheduler.py. | R:- | A:Coordinates commands, workflow state, and worker execution. | S:-
+signature.py[DW7S]: F:Orchestrates runtime scheduling and control in datara-backend/master/signature.py. | R:- | A:Coordinates workflow state, commands, and worker execution. | S:-
+ssh_probe.py[DW7S]: F:Orchestrates runtime scheduling and control in datara-backend/master/ssh_probe.py. | R:- | A:Coordinates workflow state, commands, and worker execution. | S:-
+state.py[DW7S]: F:Orchestrates runtime scheduling and control in datara-backend/master/state.py. | R:- | A:Coordinates workflow state, commands, and worker execution. | S:-
+variables.py[DW7S]: F:Orchestrates runtime scheduling and control in datara-backend/master/variables.py. | R:- | A:Coordinates workflow state, commands, and worker execution. | S:-
+
+===D:/需求/数据治理工具/Datara/datara-backend/scripts/===
+apply_m_b1_drafts.py[XQ5T]: F:Provides a development, data-preparation, or verification utility in datara-backend/scripts/apply_m_b1_drafts.py. | R:- | A:Supports repeatable engineering and test evidence. | S:-
+apply_m_b2_drafts.py[XQ5T]: F:Provides a development, data-preparation, or verification utility in datara-backend/scripts/apply_m_b2_drafts.py. | R:- | A:Supports repeatable engineering and test evidence. | S:-
+archive_and_purge.py[XQ5T]: F:Provides a development, data-preparation, or verification utility in datara-backend/scripts/archive_and_purge.py. | R:- | A:Supports repeatable engineering and test evidence. | S:-
+debug_http.js[XQ5T]: F:Provides a development, data-preparation, or verification utility in datara-backend/scripts/debug_http.js. | R:- | A:Supports repeatable engineering and test evidence. | S:-
+debug_http2.js[XQ5T]: F:Provides a development, data-preparation, or verification utility in datara-backend/scripts/debug_http2.js. | R:- | A:Supports repeatable engineering and test evidence. | S:-
+debug_http3.js[XQ5T]: F:Provides a development, data-preparation, or verification utility in datara-backend/scripts/debug_http3.js. | R:- | A:Supports repeatable engineering and test evidence. | S:-
+debug_http4.js[XQ5T]: F:Provides a development, data-preparation, or verification utility in datara-backend/scripts/debug_http4.js. | R:- | A:Supports repeatable engineering and test evidence. | S:-
+debug_http5.js[XQ5T]: F:Provides a development, data-preparation, or verification utility in datara-backend/scripts/debug_http5.js. | R:- | A:Supports repeatable engineering and test evidence. | S:-
+debug_parse.js[XQ5T]: F:Provides a development, data-preparation, or verification utility in datara-backend/scripts/debug_parse.js. | R:- | A:Supports repeatable engineering and test evidence. | S:-
+debug_parse2.js[XQ5T]: F:Provides a development, data-preparation, or verification utility in datara-backend/scripts/debug_parse2.js. | R:- | A:Supports repeatable engineering and test evidence. | S:-
+debug_parse3.js[XQ5T]: F:Provides a development, data-preparation, or verification utility in datara-backend/scripts/debug_parse3.js. | R:- | A:Supports repeatable engineering and test evidence. | S:-
+debug_parse4.js[XQ5T]: F:Provides a development, data-preparation, or verification utility in datara-backend/scripts/debug_parse4.js. | R:- | A:Supports repeatable engineering and test evidence. | S:-
+debug_parse5.js[XQ5T]: F:Provides a development, data-preparation, or verification utility in datara-backend/scripts/debug_parse5.js. | R:- | A:Supports repeatable engineering and test evidence. | S:-
+debug_parse6.js[XQ5T]: F:Provides a development, data-preparation, or verification utility in datara-backend/scripts/debug_parse6.js. | R:- | A:Supports repeatable engineering and test evidence. | S:-
+export_baseline_drafts.py[XQ5T]: F:Provides a development, data-preparation, or verification utility in datara-backend/scripts/export_baseline_drafts.py. | R:- | A:Supports repeatable engineering and test evidence. | S:-
+export_dag_catalog.py[XQ5T]: F:Provides a development, data-preparation, or verification utility in datara-backend/scripts/export_dag_catalog.py. | R:- | A:Supports repeatable engineering and test evidence. | S:-
+parse_profiles.js[XQ5T]: F:Provides a development, data-preparation, or verification utility in datara-backend/scripts/parse_profiles.js. | R:- | A:Supports repeatable engineering and test evidence. | S:-
+
+===D:/需求/数据治理工具/Datara/datara-backend/tools/===
+SEED_WF_HANDOFF.md[XQ5T]: F:Provides a development, data-preparation, or verification utility in datara-backend/tools/SEED_WF_HANDOFF.md. | R:- | A:Supports repeatable engineering and test evidence. | S:-
+__init__.py[XQ5T]: F:Provides a development, data-preparation, or verification utility in datara-backend/tools/__init__.py. | R:- | A:Supports repeatable engineering and test evidence. | S:-
+_poll_run.py[XQ5T]: F:Provides a development, data-preparation, or verification utility in datara-backend/tools/_poll_run.py. | R:- | A:Supports repeatable engineering and test evidence. | S:-
+_run_wf.py[XQ5T]: F:Provides a development, data-preparation, or verification utility in datara-backend/tools/_run_wf.py. | R:- | A:Supports repeatable engineering and test evidence. | S:-
+_run_wf2.py[XQ5T]: F:Provides a development, data-preparation, or verification utility in datara-backend/tools/_run_wf2.py. | R:- | A:Supports repeatable engineering and test evidence. | S:-
+baseline_ui_assert.json[XQ5T]: F:Provides a development, data-preparation, or verification utility in datara-backend/tools/baseline_ui_assert.json. | R:- | A:Supports repeatable engineering and test evidence. | S:-
+baseline_ui_check.py[XQ5T]: F:Provides a development, data-preparation, or verification utility in datara-backend/tools/baseline_ui_check.py. | R:- | A:Supports repeatable engineering and test evidence. | S:-
+i12_cleanup.sh[XQ5T]: F:Provides a development, data-preparation, or verification utility in datara-backend/tools/i12_cleanup.sh. | R:- | A:Supports repeatable engineering and test evidence. | S:-
+i12_dom_shot.py[XQ5T]: F:Provides a development, data-preparation, or verification utility in datara-backend/tools/i12_dom_shot.py. | R:- | A:Supports repeatable engineering and test evidence. | S:-
+i12_etl_usecases.py[XQ5T]: F:Provides a development, data-preparation, or verification utility in datara-backend/tools/i12_etl_usecases.py. | R:- | A:Supports repeatable engineering and test evidence. | S:-
+i12_general_usecases.py[XQ5T]: F:Provides a development, data-preparation, or verification utility in datara-backend/tools/i12_general_usecases.py. | R:- | A:Supports repeatable engineering and test evidence. | S:-
+i12_probe_state.sh[XQ5T]: F:Provides a development, data-preparation, or verification utility in datara-backend/tools/i12_probe_state.sh. | R:- | A:Supports repeatable engineering and test evidence. | S:-
+i12_stream_usecases.py[XQ5T]: F:Provides a development, data-preparation, or verification utility in datara-backend/tools/i12_stream_usecases.py. | R:- | A:Supports repeatable engineering and test evidence. | S:-
+i12_sync_usecases.py[XQ5T]: F:Provides a development, data-preparation, or verification utility in datara-backend/tools/i12_sync_usecases.py. | R:- | A:Supports repeatable engineering and test evidence. | S:-
+parse_probe.py[XQ5T]: F:Provides a development, data-preparation, or verification utility in datara-backend/tools/parse_probe.py. | R:- | A:Supports repeatable engineering and test evidence. | S:-
+run_sync_verify.py[XQ5T]: F:Provides a development, data-preparation, or verification utility in datara-backend/tools/run_sync_verify.py. | R:- | A:Supports repeatable engineering and test evidence. | S:-
+seed_stream.py[XQ5T]: F:Provides a development, data-preparation, or verification utility in datara-backend/tools/seed_stream.py. | R:- | A:Supports repeatable engineering and test evidence. | S:-
+seed_sync_orch_usecases.py[XQ5T]: F:Provides a development, data-preparation, or verification utility in datara-backend/tools/seed_sync_orch_usecases.py. | R:- | A:Supports repeatable engineering and test evidence. | S:-
+seed_wf_definition.py[XQ5T]: F:Provides a development, data-preparation, or verification utility in datara-backend/tools/seed_wf_definition.py. | R:- | A:Supports repeatable engineering and test evidence. | S:-
+smoke_stream_i11.py[XQ5T]: F:Provides a development, data-preparation, or verification utility in datara-backend/tools/smoke_stream_i11.py. | R:- | A:Supports repeatable engineering and test evidence. | S:-
+vars_render_probe.py[XQ5T]: F:Provides a development, data-preparation, or verification utility in datara-backend/tools/vars_render_probe.py. | R:- | A:Supports repeatable engineering and test evidence. | S:-
+
+===D:/需求/数据治理工具/Datara/datara-backend/tools/datagen/===
+__init__.py[XQ5T]: F:Provides a development, data-preparation, or verification utility in datara-backend/tools/datagen/__init__.py. | R:- | A:Supports repeatable engineering and test evidence. | S:-
+config.py[XQ5T]: F:Provides a development, data-preparation, or verification utility in datara-backend/tools/datagen/config.py. | R:- | A:Supports repeatable engineering and test evidence. | S:-
+dirty_rules.yaml[XQ5T]: F:Provides a development, data-preparation, or verification utility in datara-backend/tools/datagen/dirty_rules.yaml. | R:- | A:Supports repeatable engineering and test evidence. | S:-
+gen.py[XQ5T]: F:Provides a development, data-preparation, or verification utility in datara-backend/tools/datagen/gen.py. | R:- | A:Supports repeatable engineering and test evidence. | S:-
+import_csv.py[XQ5T]: F:Provides a development, data-preparation, or verification utility in datara-backend/tools/datagen/import_csv.py. | R:- | A:Supports repeatable engineering and test evidence. | S:-
+reconcile.py[XQ5T]: F:Provides a development, data-preparation, or verification utility in datara-backend/tools/datagen/reconcile.py. | R:- | A:Supports repeatable engineering and test evidence. | S:-
+run.py[XQ5T]: F:Provides a development, data-preparation, or verification utility in datara-backend/tools/datagen/run.py. | R:- | A:Supports repeatable engineering and test evidence. | S:-
+samples.py[XQ5T]: F:Provides a development, data-preparation, or verification utility in datara-backend/tools/datagen/samples.py. | R:- | A:Supports repeatable engineering and test evidence. | S:-
+tables.yaml[XQ5T]: F:Provides a development, data-preparation, or verification utility in datara-backend/tools/datagen/tables.yaml. | R:- | A:Supports repeatable engineering and test evidence. | S:-
+
+===D:/需求/数据治理工具/Datara/datara-backend/worker/===
+__init__.py[DI7S]: F:Executes backend worker processing for datara-backend/worker/__init__.py. | R:- | A:Consumes queued or runtime data and produces governed task outcomes. | S:-
+executor.py[DI7S]: F:Executes backend worker processing for datara-backend/worker/executor.py. | R:- | A:Consumes queued or runtime data and produces governed task outcomes. | S:-
+heartbeat.py[DI7S]: F:Executes backend worker processing for datara-backend/worker/heartbeat.py. | R:- | A:Consumes queued or runtime data and produces governed task outcomes. | S:-
+lineage.py[DI7S]: F:Executes backend worker processing for datara-backend/worker/lineage.py. | R:- | A:Consumes queued or runtime data and produces governed task outcomes. | S:-
+main.py[DI7S]: F:Executes backend worker processing for datara-backend/worker/main.py. | R:- | A:Consumes queued or runtime data and produces governed task outcomes. | S:-
+state.py[DI7S]: F:Executes backend worker processing for datara-backend/worker/state.py. | R:- | A:Consumes queued or runtime data and produces governed task outcomes. | S:-
+
+===D:/需求/数据治理工具/Datara/datara-backend/worker/executors/===
+__init__.py[DI7S]: F:Executes backend worker processing for datara-backend/worker/executors/__init__.py. | R:- | A:Consumes queued or runtime data and produces governed task outcomes. | S:-
+_proc.py[DI7S]: F:Executes backend worker processing for datara-backend/worker/executors/_proc.py. | R:- | A:Consumes queued or runtime data and produces governed task outcomes. | S:-
+file.py[DI7S]: F:Executes backend worker processing for datara-backend/worker/executors/file.py. | R:- | A:Consumes queued or runtime data and produces governed task outcomes. | S:-
+file_sync.py[DI7S]: F:Executes backend worker processing for datara-backend/worker/executors/file_sync.py. | R:- | A:Consumes queued or runtime data and produces governed task outcomes. | S:-
+http.py[DI7S]: F:Executes backend worker processing for datara-backend/worker/executors/http.py. | R:- | A:Consumes queued or runtime data and produces governed task outcomes. | S:-
+notify.py[DI7S]: F:Executes backend worker processing for datara-backend/worker/executors/notify.py. | R:- | A:Consumes queued or runtime data and produces governed task outcomes. | S:-
+o_alert.py[DI7S]: F:Executes backend worker processing for datara-backend/worker/executors/o_alert.py. | R:- | A:Consumes queued or runtime data and produces governed task outcomes. | S:-
+o_doris.py[DI7S]: F:Executes backend worker processing for datara-backend/worker/executors/o_doris.py. | R:- | A:Consumes queued or runtime data and produces governed task outcomes. | S:-
+o_kafka.py[DI7S]: F:Executes backend worker processing for datara-backend/worker/executors/o_kafka.py. | R:- | A:Consumes queued or runtime data and produces governed task outcomes. | S:-
+op_agg.py[DI7S]: F:Executes backend worker processing for datara-backend/worker/executors/op_agg.py. | R:- | A:Consumes queued or runtime data and produces governed task outcomes. | S:-
+op_cep.py[DI7S]: F:Executes backend worker processing for datara-backend/worker/executors/op_cep.py. | R:- | A:Consumes queued or runtime data and produces governed task outcomes. | S:-
+op_dedup.py[DI7S]: F:Executes backend worker processing for datara-backend/worker/executors/op_dedup.py. | R:- | A:Consumes queued or runtime data and produces governed task outcomes. | S:-
+op_expr.py[DI7S]: F:Executes backend worker processing for datara-backend/worker/executors/op_expr.py. | R:- | A:Consumes queued or runtime data and produces governed task outcomes. | S:-
+op_filter.py[DI7S]: F:Executes backend worker processing for datara-backend/worker/executors/op_filter.py. | R:- | A:Consumes queued or runtime data and produces governed task outcomes. | S:-
+op_join.py[DI7S]: F:Executes backend worker processing for datara-backend/worker/executors/op_join.py. | R:- | A:Consumes queued or runtime data and produces governed task outcomes. | S:-
+op_merge.py[DI7S]: F:Executes backend worker processing for datara-backend/worker/executors/op_merge.py. | R:- | A:Consumes queued or runtime data and produces governed task outcomes. | S:-
+op_replace.py[DI7S]: F:Executes backend worker processing for datara-backend/worker/executors/op_replace.py. | R:- | A:Consumes queued or runtime data and produces governed task outcomes. | S:-
+op_sample.py[DI7S]: F:Executes backend worker processing for datara-backend/worker/executors/op_sample.py. | R:- | A:Consumes queued or runtime data and produces governed task outcomes. | S:-
+op_script.py[DI7S]: F:Executes backend worker processing for datara-backend/worker/executors/op_script.py. | R:- | A:Consumes queued or runtime data and produces governed task outcomes. | S:-
+op_select.py[DI7S]: F:Executes backend worker processing for datara-backend/worker/executors/op_select.py. | R:- | A:Consumes queued or runtime data and produces governed task outcomes. | S:-
+op_sort.py[DI7S]: F:Executes backend worker processing for datara-backend/worker/executors/op_sort.py. | R:- | A:Consumes queued or runtime data and produces governed task outcomes. | S:-
+op_split.py[DI7S]: F:Executes backend worker processing for datara-backend/worker/executors/op_split.py. | R:- | A:Consumes queued or runtime data and produces governed task outcomes. | S:-
+op_udf.py[DI7S]: F:Executes backend worker processing for datara-backend/worker/executors/op_udf.py. | R:- | A:Consumes queued or runtime data and produces governed task outcomes. | S:-
+out_db.py[DI7S]: F:Executes backend worker processing for datara-backend/worker/executors/out_db.py. | R:- | A:Consumes queued or runtime data and produces governed task outcomes. | S:-
+out_file.py[DI7S]: F:Executes backend worker processing for datara-backend/worker/executors/out_file.py. | R:- | A:Consumes queued or runtime data and produces governed task outcomes. | S:-
+p_filter.py[DI7S]: F:Executes backend worker processing for datara-backend/worker/executors/p_filter.py. | R:- | A:Consumes queued or runtime data and produces governed task outcomes. | S:-
+p_join.py[DI7S]: F:Executes backend worker processing for datara-backend/worker/executors/p_join.py. | R:- | A:Consumes queued or runtime data and produces governed task outcomes. | S:-
+p_window.py[DI7S]: F:Executes backend worker processing for datara-backend/worker/executors/p_window.py. | R:- | A:Consumes queued or runtime data and produces governed task outcomes. | S:-
+procedure.py[DI7S]: F:Executes backend worker processing for datara-backend/worker/executors/procedure.py. | R:- | A:Consumes queued or runtime data and produces governed task outcomes. | S:-
+python.py[DI7S]: F:Executes backend worker processing for datara-backend/worker/executors/python.py. | R:- | A:Consumes queued or runtime data and produces governed task outcomes. | S:-
+s_cdc.py[DI7S]: F:Executes backend worker processing for datara-backend/worker/executors/s_cdc.py. | R:- | A:Consumes queued or runtime data and produces governed task outcomes. | S:-
+s_kafka.py[DI7S]: F:Executes backend worker processing for datara-backend/worker/executors/s_kafka.py. | R:- | A:Consumes queued or runtime data and produces governed task outcomes. | S:-
+shell.py[DI7S]: F:Executes backend worker processing for datara-backend/worker/executors/shell.py. | R:- | A:Consumes queued or runtime data and produces governed task outcomes. | S:-
+smoke.py[DI7S]: F:Executes backend worker processing for datara-backend/worker/executors/smoke.py. | R:- | A:Consumes queued or runtime data and produces governed task outcomes. | S:-
+sql.py[DI7S]: F:Executes backend worker processing for datara-backend/worker/executors/sql.py. | R:- | A:Consumes queued or runtime data and produces governed task outcomes. | S:-
+src_db.py[DI7S]: F:Executes backend worker processing for datara-backend/worker/executors/src_db.py. | R:- | A:Consumes queued or runtime data and produces governed task outcomes. | S:-
+src_file.py[DI7S]: F:Executes backend worker processing for datara-backend/worker/executors/src_file.py. | R:- | A:Consumes queued or runtime data and produces governed task outcomes. | S:-
+ssh.py[DI7S]: F:Executes backend worker processing for datara-backend/worker/executors/ssh.py. | R:- | A:Consumes queued or runtime data and produces governed task outcomes. | S:-
+sync.py[DI7S]: F:Executes backend worker processing for datara-backend/worker/executors/sync.py. | R:- | A:Consumes queued or runtime data and produces governed task outcomes. | S:-
+
+===D:/需求/数据治理工具/Datara/datara-backend/worker/stream/===
+__init__.py[DI7S]: F:Executes backend worker processing for datara-backend/worker/stream/__init__.py. | R:- | A:Consumes queued or runtime data and produces governed task outcomes. | S:-
+engine.py[DI7S]: F:Executes backend worker processing for datara-backend/worker/stream/engine.py. | R:- | A:Consumes queued or runtime data and produces governed task outcomes. | S:-
+ops.py[DI7S]: F:Executes backend worker processing for datara-backend/worker/stream/ops.py. | R:- | A:Consumes queued or runtime data and produces governed task outcomes. | S:-
+sinks.py[DI7S]: F:Executes backend worker processing for datara-backend/worker/stream/sinks.py. | R:- | A:Consumes queued or runtime data and produces governed task outcomes. | S:-
+sources.py[DI7S]: F:Executes backend worker processing for datara-backend/worker/stream/sources.py. | R:- | A:Consumes queued or runtime data and produces governed task outcomes. | S:-
+
+===D:/需求/数据治理工具/Datara/datara-web/===
+.gitignore[EB6T]: F:Renders the frontend workflow and user interactions implemented by datara-web/.gitignore. | R:- | A:Connects user actions to Datara API services and governed state. | S:-
+README.md[ZS5T]: F:Documents design, verification, or operating guidance in datara-web/README.md. | R:- | A:Provides evidence and decisions for maintainers and operators. | S:-
+docker-compose.yml[EB6T]: F:Renders the frontend workflow and user interactions implemented by datara-web/docker-compose.yml. | R:- | A:Connects user actions to Datara API services and governed state. | S:-
+index.html[EB6T]: F:Renders the frontend workflow and user interactions implemented by datara-web/index.html. | R:- | A:Connects user actions to Datara API services and governed state. | S:-
+package-lock.json[EB6T]: F:Renders the frontend workflow and user interactions implemented by datara-web/package-lock.json. | R:- | A:Connects user actions to Datara API services and governed state. | S:-
+package.json[EB6T]: F:Renders the frontend workflow and user interactions implemented by datara-web/package.json. | R:- | A:Connects user actions to Datara API services and governed state. | S:-
+pnpm-lock.yaml[EB6T]: F:Renders the frontend workflow and user interactions implemented by datara-web/pnpm-lock.yaml. | R:- | A:Connects user actions to Datara API services and governed state. | S:-
+tsconfig.app.json[EB6T]: F:Renders the frontend workflow and user interactions implemented by datara-web/tsconfig.app.json. | R:- | A:Connects user actions to Datara API services and governed state. | S:-
+tsconfig.json[EB6T]: F:Renders the frontend workflow and user interactions implemented by datara-web/tsconfig.json. | R:- | A:Connects user actions to Datara API services and governed state. | S:-
+tsconfig.node.json[EB6T]: F:Renders the frontend workflow and user interactions implemented by datara-web/tsconfig.node.json. | R:- | A:Connects user actions to Datara API services and governed state. | S:-
+vite.config.ts[EB6T]: F:Renders the frontend workflow and user interactions implemented by datara-web/vite.config.ts. | R:- | A:Connects user actions to Datara API services and governed state. | S:-
+vitest.config.ts[EB6T]: F:Renders the frontend workflow and user interactions implemented by datara-web/vitest.config.ts. | R:- | A:Connects user actions to Datara API services and governed state. | S:-
+
+===D:/需求/数据治理工具/Datara/datara-web/deploy/===
+Dockerfile[EB6T]: F:Renders the frontend workflow and user interactions implemented by datara-web/deploy/Dockerfile. | R:- | A:Connects user actions to Datara API services and governed state. | S:-
+deploy_autoschema_fix.sh[EB6T]: F:Renders the frontend workflow and user interactions implemented by datara-web/deploy/deploy_autoschema_fix.sh. | R:- | A:Connects user actions to Datara API services and governed state. | S:-
+deploy_endpoint_unify.sh[EB6T]: F:Renders the frontend workflow and user interactions implemented by datara-web/deploy/deploy_endpoint_unify.sh. | R:- | A:Connects user actions to Datara API services and governed state. | S:-
+deploy_engine_readerTable.sh[EB6T]: F:Renders the frontend workflow and user interactions implemented by datara-web/deploy/deploy_engine_readerTable.sh. | R:- | A:Connects user actions to Datara API services and governed state. | S:-
+deploy_final_round.sh[EB6T]: F:Renders the frontend workflow and user interactions implemented by datara-web/deploy/deploy_final_round.sh. | R:- | A:Connects user actions to Datara API services and governed state. | S:-
+deploy_sync_refactor.sh[EB6T]: F:Renders the frontend workflow and user interactions implemented by datara-web/deploy/deploy_sync_refactor.sh. | R:- | A:Connects user actions to Datara API services and governed state. | S:-
+nginx.conf[EB6T]: F:Renders the frontend workflow and user interactions implemented by datara-web/deploy/nginx.conf. | R:- | A:Connects user actions to Datara API services and governed state. | S:-
+reconcile_b.sh[EB6T]: F:Renders the frontend workflow and user interactions implemented by datara-web/deploy/reconcile_b.sh. | R:- | A:Connects user actions to Datara API services and governed state. | S:-
+run_sync_e2e.sh[EB6T]: F:Renders the frontend workflow and user interactions implemented by datara-web/deploy/run_sync_e2e.sh. | R:- | A:Connects user actions to Datara API services and governed state. | S:-
+verify_ui.cjs[EB6T]: F:Renders the frontend workflow and user interactions implemented by datara-web/deploy/verify_ui.cjs. | R:- | A:Connects user actions to Datara API services and governed state. | S:-
+verify_ui_interactive.cjs[EB6T]: F:Renders the frontend workflow and user interactions implemented by datara-web/deploy/verify_ui_interactive.cjs. | R:- | A:Connects user actions to Datara API services and governed state. | S:-
+verify_workflow_closure.cjs[EB6T]: F:Renders the frontend workflow and user interactions implemented by datara-web/deploy/verify_workflow_closure.cjs. | R:- | A:Connects user actions to Datara API services and governed state. | S:-
+
+===D:/需求/数据治理工具/Datara/datara-web/public/===
+favicon.svg[EB6T]: F:Renders the frontend workflow and user interactions implemented by datara-web/public/favicon.svg. | R:- | A:Connects user actions to Datara API services and governed state. | S:-
+icons.svg[EB6T]: F:Renders the frontend workflow and user interactions implemented by datara-web/public/icons.svg. | R:- | A:Connects user actions to Datara API services and governed state. | S:-
+
+===D:/需求/数据治理工具/Datara/datara-web/src/===
+App.vue[EB6T]: F:Renders the frontend workflow and user interactions implemented by datara-web/src/App.vue. | R:- | A:Connects user actions to Datara API services and governed state. | S:-
+main.ts[EB6T]: F:Renders the frontend workflow and user interactions implemented by datara-web/src/main.ts. | R:- | A:Connects user actions to Datara API services and governed state. | S:-
+
+===D:/需求/数据治理工具/Datara/datara-web/src/components/===
+ListFilterPanel.vue[EB6T]: F:Renders the frontend workflow and user interactions implemented by datara-web/src/components/ListFilterPanel.vue. | R:- | A:Connects user actions to Datara API services and governed state. | S:-
+
+===D:/需求/数据治理工具/Datara/datara-web/src/components/baseline/===
+EightSectionEditor.vue[EB6T]: F:Renders the frontend workflow and user interactions implemented by datara-web/src/components/baseline/EightSectionEditor.vue. | R:- | A:Connects user actions to Datara API services and governed state. | S:-
+
+===D:/需求/数据治理工具/Datara/datara-web/src/components/designer/===
+SpecCompletenessBadge.vue[EB6T]: F:Renders the frontend workflow and user interactions implemented by datara-web/src/components/designer/SpecCompletenessBadge.vue. | R:- | A:Connects user actions to Datara API services and governed state. | S:-
+SpecFormContract.vue[EB6T]: F:Renders the frontend workflow and user interactions implemented by datara-web/src/components/designer/SpecFormContract.vue. | R:- | A:Connects user actions to Datara API services and governed state. | S:-
+SpecFormExtension.vue[EB6T]: F:Renders the frontend workflow and user interactions implemented by datara-web/src/components/designer/SpecFormExtension.vue. | R:- | A:Connects user actions to Datara API services and governed state. | S:-
+SpecFormIdentity.vue[EB6T]: F:Renders the frontend workflow and user interactions implemented by datara-web/src/components/designer/SpecFormIdentity.vue. | R:- | A:Connects user actions to Datara API services and governed state. | S:-
+SpecFormVisual.vue[EB6T]: F:Renders the frontend workflow and user interactions implemented by datara-web/src/components/designer/SpecFormVisual.vue. | R:- | A:Connects user actions to Datara API services and governed state. | S:-
+UpgradeWizard.vue[EB6T]: F:Renders the frontend workflow and user interactions implemented by datara-web/src/components/designer/UpgradeWizard.vue. | R:- | A:Connects user actions to Datara API services and governed state. | S:-
+specCompleteness.ts[EB6T]: F:Renders the frontend workflow and user interactions implemented by datara-web/src/components/designer/specCompleteness.ts. | R:- | A:Connects user actions to Datara API services and governed state. | S:-
+
+===D:/需求/数据治理工具/Datara/datara-web/src/composables/===
+useCanvasState.ts[EB6T]: F:Renders the frontend workflow and user interactions implemented by datara-web/src/composables/useCanvasState.ts. | R:- | A:Connects user actions to Datara API services and governed state. | S:-
+
+===D:/需求/数据治理工具/Datara/datara-web/src/graph/history/===
+commandHistory.ts[EB6T]: F:Renders the frontend workflow and user interactions implemented by datara-web/src/graph/history/commandHistory.ts. | R:- | A:Connects user actions to Datara API services and governed state. | S:-
+commands.ts[EB6T]: F:Renders the frontend workflow and user interactions implemented by datara-web/src/graph/history/commands.ts. | R:- | A:Connects user actions to Datara API services and governed state. | S:-
+
+===D:/需求/数据治理工具/Datara/datara-web/src/graph/layout/===
+dagre.ts[EB6T]: F:Renders the frontend workflow and user interactions implemented by datara-web/src/graph/layout/dagre.ts. | R:- | A:Connects user actions to Datara API services and governed state. | S:-
+er.ts[EB6T]: F:Renders the frontend workflow and user interactions implemented by datara-web/src/graph/layout/er.ts. | R:- | A:Connects user actions to Datara API services and governed state. | S:-
+force.ts[EB6T]: F:Renders the frontend workflow and user interactions implemented by datara-web/src/graph/layout/force.ts. | R:- | A:Connects user actions to Datara API services and governed state. | S:-
+index.ts[EB6T]: F:Renders the frontend workflow and user interactions implemented by datara-web/src/graph/layout/index.ts. | R:- | A:Connects user actions to Datara API services and governed state. | S:-
+lane.ts[EB6T]: F:Renders the frontend workflow and user interactions implemented by datara-web/src/graph/layout/lane.ts. | R:- | A:Connects user actions to Datara API services and governed state. | S:-
+
+===D:/需求/数据治理工具/Datara/datara-web/src/graph/model/__tests__/===
+portTypeCases.json[EB6T]: F:Renders the frontend workflow and user interactions implemented by datara-web/src/graph/model/__tests__/portTypeCases.json. | R:- | A:Connects user actions to Datara API services and governed state. | S:-
+
+===D:/需求/数据治理工具/Datara/datara-web/src/graph/model/===
+align.ts[EB6T]: F:Renders the frontend workflow and user interactions implemented by datara-web/src/graph/model/align.ts. | R:- | A:Connects user actions to Datara API services and governed state. | S:-
+clipboard.ts[EB6T]: F:Renders the frontend workflow and user interactions implemented by datara-web/src/graph/model/clipboard.ts. | R:- | A:Connects user actions to Datara API services and governed state. | S:-
+connectionGuard.ts[EB6T]: F:Renders the frontend workflow and user interactions implemented by datara-web/src/graph/model/connectionGuard.ts. | R:- | A:Connects user actions to Datara API services and governed state. | S:-
+deriveDoc.ts[EB6T]: F:Renders the frontend workflow and user interactions implemented by datara-web/src/graph/model/deriveDoc.ts. | R:- | A:Connects user actions to Datara API services and governed state. | S:-
+docErrors.ts[EB6T]: F:Renders the frontend workflow and user interactions implemented by datara-web/src/graph/model/docErrors.ts. | R:- | A:Connects user actions to Datara API services and governed state. | S:-
+index.ts[EB6T]: F:Renders the frontend workflow and user interactions implemented by datara-web/src/graph/model/index.ts. | R:- | A:Connects user actions to Datara API services and governed state. | S:-
+jsonClone.ts[EB6T]: F:Renders the frontend workflow and user interactions implemented by datara-web/src/graph/model/jsonClone.ts. | R:- | A:Connects user actions to Datara API services and governed state. | S:-
+portTypes.ts[EB6T]: F:Renders the frontend workflow and user interactions implemented by datara-web/src/graph/model/portTypes.ts. | R:- | A:Connects user actions to Datara API services and governed state. | S:-
+specSchema.ts[EB6T]: F:Renders the frontend workflow and user interactions implemented by datara-web/src/graph/model/specSchema.ts. | R:- | A:Connects user actions to Datara API services and governed state. | S:-
+
+===D:/需求/数据治理工具/Datara/datara-web/src/graph/profiles/===
+dag.ts[EB6T]: F:Renders the frontend workflow and user interactions implemented by datara-web/src/graph/profiles/dag.ts. | R:- | A:Connects user actions to Datara API services and governed state. | S:-
+er.ts[EB6T]: F:Renders the frontend workflow and user interactions implemented by datara-web/src/graph/profiles/er.ts. | R:- | A:Connects user actions to Datara API services and governed state. | S:-
+etl.ts[EB6T]: F:Renders the frontend workflow and user interactions implemented by datara-web/src/graph/profiles/etl.ts. | R:- | A:Connects user actions to Datara API services and governed state. | S:-
+formLinkage.ts[EB6T]: F:Renders the frontend workflow and user interactions implemented by datara-web/src/graph/profiles/formLinkage.ts. | R:- | A:Connects user actions to Datara API services and governed state. | S:-
+formSections.ts[EB6T]: F:Renders the frontend workflow and user interactions implemented by datara-web/src/graph/profiles/formSections.ts. | R:- | A:Connects user actions to Datara API services and governed state. | S:-
+index.ts[EB6T]: F:Renders the frontend workflow and user interactions implemented by datara-web/src/graph/profiles/index.ts. | R:- | A:Connects user actions to Datara API services and governed state. | S:-
+lineage.ts[EB6T]: F:Renders the frontend workflow and user interactions implemented by datara-web/src/graph/profiles/lineage.ts. | R:- | A:Connects user actions to Datara API services and governed state. | S:-
+pickerLogic.ts[EB6T]: F:Renders the frontend workflow and user interactions implemented by datara-web/src/graph/profiles/pickerLogic.ts. | R:- | A:Connects user actions to Datara API services and governed state. | S:-
+relation.ts[EB6T]: F:Renders the frontend workflow and user interactions implemented by datara-web/src/graph/profiles/relation.ts. | R:- | A:Connects user actions to Datara API services and governed state. | S:-
+shared.ts[EB6T]: F:Renders the frontend workflow and user interactions implemented by datara-web/src/graph/profiles/shared.ts. | R:- | A:Connects user actions to Datara API services and governed state. | S:-
+stream.ts[EB6T]: F:Renders the frontend workflow and user interactions implemented by datara-web/src/graph/profiles/stream.ts. | R:- | A:Connects user actions to Datara API services and governed state. | S:-
+templateStaging.ts[EB6T]: F:Renders the frontend workflow and user interactions implemented by datara-web/src/graph/profiles/templateStaging.ts. | R:- | A:Connects user actions to Datara API services and governed state. | S:-
+topo.ts[EB6T]: F:Renders the frontend workflow and user interactions implemented by datara-web/src/graph/profiles/topo.ts. | R:- | A:Connects user actions to Datara API services and governed state. | S:-
+types.ts[EB6T]: F:Renders the frontend workflow and user interactions implemented by datara-web/src/graph/profiles/types.ts. | R:- | A:Connects user actions to Datara API services and governed state. | S:-
+
+===D:/需求/数据治理工具/Datara/datara-web/src/graph/workbench/===
+DataNode.vue[EB6T]: F:Renders the frontend workflow and user interactions implemented by datara-web/src/graph/workbench/DataNode.vue. | R:- | A:Connects user actions to Datara API services and governed state. | S:-
+DropConfigDialog.vue[EB6T]: F:Renders the frontend workflow and user interactions implemented by datara-web/src/graph/workbench/DropConfigDialog.vue. | R:- | A:Connects user actions to Datara API services and governed state. | S:-
+EdgeDataFloat.vue[EB6T]: F:Renders the frontend workflow and user interactions implemented by datara-web/src/graph/workbench/EdgeDataFloat.vue. | R:- | A:Connects user actions to Datara API services and governed state. | S:-
+EdgeLegend.vue[EB6T]: F:Renders the frontend workflow and user interactions implemented by datara-web/src/graph/workbench/EdgeLegend.vue. | R:- | A:Connects user actions to Datara API services and governed state. | S:-
+ErNode.vue[EB6T]: F:Renders the frontend workflow and user interactions implemented by datara-web/src/graph/workbench/ErNode.vue. | R:- | A:Connects user actions to Datara API services and governed state. | S:-
+FloatLayer.vue[EB6T]: F:Renders the frontend workflow and user interactions implemented by datara-web/src/graph/workbench/FloatLayer.vue. | R:- | A:Connects user actions to Datara API services and governed state. | S:-
+GraphWorkbench.vue[EB6T]: F:Renders the frontend workflow and user interactions implemented by datara-web/src/graph/workbench/GraphWorkbench.vue. | R:- | A:Connects user actions to Datara API services and governed state. | S:-
+Inspector.vue[EB6T]: F:Renders the frontend workflow and user interactions implemented by datara-web/src/graph/workbench/Inspector.vue. | R:- | A:Connects user actions to Datara API services and governed state. | S:-
+Palette.vue[EB6T]: F:Renders the frontend workflow and user interactions implemented by datara-web/src/graph/workbench/Palette.vue. | R:- | A:Connects user actions to Datara API services and governed state. | S:-
+RerouteNode.vue[EB6T]: F:Renders the frontend workflow and user interactions implemented by datara-web/src/graph/workbench/RerouteNode.vue. | R:- | A:Connects user actions to Datara API services and governed state. | S:-
+RunDialog.vue[EB6T]: F:Renders the frontend workflow and user interactions implemented by datara-web/src/graph/workbench/RunDialog.vue. | R:- | A:Connects user actions to Datara API services and governed state. | S:-
+arts.ts[EB6T]: F:Renders the frontend workflow and user interactions implemented by datara-web/src/graph/workbench/arts.ts. | R:- | A:Connects user actions to Datara API services and governed state. | S:-
+canvasFlags.ts[EB6T]: F:Renders the frontend workflow and user interactions implemented by datara-web/src/graph/workbench/canvasFlags.ts. | R:- | A:Connects user actions to Datara API services and governed state. | S:-
+edgeData.ts[EB6T]: F:Renders the frontend workflow and user interactions implemented by datara-web/src/graph/workbench/edgeData.ts. | R:- | A:Connects user actions to Datara API services and governed state. | S:-
+layoutWorker.ts[EB6T]: F:Renders the frontend workflow and user interactions implemented by datara-web/src/graph/workbench/layoutWorker.ts. | R:- | A:Connects user actions to Datara API services and governed state. | S:-
+palettePinning.ts[EB6T]: F:Renders the frontend workflow and user interactions implemented by datara-web/src/graph/workbench/palettePinning.ts. | R:- | A:Connects user actions to Datara API services and governed state. | S:-
+portsMemo.ts[EB6T]: F:Renders the frontend workflow and user interactions implemented by datara-web/src/graph/workbench/portsMemo.ts. | R:- | A:Connects user actions to Datara API services and governed state. | S:-
+syncFromDoc.ts[EB6T]: F:Renders the frontend workflow and user interactions implemented by datara-web/src/graph/workbench/syncFromDoc.ts. | R:- | A:Connects user actions to Datara API services and governed state. | S:-
+
+===D:/需求/数据治理工具/Datara/datara-web/src/graph/workbench/fields/===
+DepsField.vue[EB6T]: F:Renders the frontend workflow and user interactions implemented by datara-web/src/graph/workbench/fields/DepsField.vue. | R:- | A:Connects user actions to Datara API services and governed state. | S:-
+FieldRenderer.vue[EB6T]: F:Renders the frontend workflow and user interactions implemented by datara-web/src/graph/workbench/fields/FieldRenderer.vue. | R:- | A:Connects user actions to Datara API services and governed state. | S:-
+FormSections.vue[EB6T]: F:Renders the frontend workflow and user interactions implemented by datara-web/src/graph/workbench/fields/FormSections.vue. | R:- | A:Connects user actions to Datara API services and governed state. | S:-
+RowsField.vue[EB6T]: F:Renders the frontend workflow and user interactions implemented by datara-web/src/graph/workbench/fields/RowsField.vue. | R:- | A:Connects user actions to Datara API services and governed state. | S:-
+SixBlocks.vue[EB6T]: F:Renders the frontend workflow and user interactions implemented by datara-web/src/graph/workbench/fields/SixBlocks.vue. | R:- | A:Connects user actions to Datara API services and governed state. | S:-
+fieldCtx.ts[EB6T]: F:Renders the frontend workflow and user interactions implemented by datara-web/src/graph/workbench/fields/fieldCtx.ts. | R:- | A:Connects user actions to Datara API services and governed state. | S:-
+fieldCtxFactory.ts[EB6T]: F:Renders the frontend workflow and user interactions implemented by datara-web/src/graph/workbench/fields/fieldCtxFactory.ts. | R:- | A:Connects user actions to Datara API services and governed state. | S:-
+
+===D:/需求/数据治理工具/Datara/datara-web/src/graph/workbench/pages/===
+BoardPage.vue[EB6T]: F:Renders the frontend workflow and user interactions implemented by datara-web/src/graph/workbench/pages/BoardPage.vue. | R:- | A:Connects user actions to Datara API services and governed state. | S:-
+NodeRunDetailPage.vue[EB6T]: F:Renders the frontend workflow and user interactions implemented by datara-web/src/graph/workbench/pages/NodeRunDetailPage.vue. | R:- | A:Connects user actions to Datara API services and governed state. | S:-
+SqlPreviewPage.vue[EB6T]: F:Renders the frontend workflow and user interactions implemented by datara-web/src/graph/workbench/pages/SqlPreviewPage.vue. | R:- | A:Connects user actions to Datara API services and governed state. | S:-
+StreamDataPage.vue[EB6T]: F:Renders the frontend workflow and user interactions implemented by datara-web/src/graph/workbench/pages/StreamDataPage.vue. | R:- | A:Connects user actions to Datara API services and governed state. | S:-
+StreamNodePage.vue[EB6T]: F:Renders the frontend workflow and user interactions implemented by datara-web/src/graph/workbench/pages/StreamNodePage.vue. | R:- | A:Connects user actions to Datara API services and governed state. | S:-
+TmpPreviewPage.vue[EB6T]: F:Renders the frontend workflow and user interactions implemented by datara-web/src/graph/workbench/pages/TmpPreviewPage.vue. | R:- | A:Connects user actions to Datara API services and governed state. | S:-
+
+===D:/需求/数据治理工具/Datara/datara-web/src/graph/workbench/panels/===
+AiPanel.vue[EB6T]: F:Renders the frontend workflow and user interactions implemented by datara-web/src/graph/workbench/panels/AiPanel.vue. | R:- | A:Connects user actions to Datara API services and governed state. | S:-
+ErrorPanel.vue[EB6T]: F:Renders the frontend workflow and user interactions implemented by datara-web/src/graph/workbench/panels/ErrorPanel.vue. | R:- | A:Connects user actions to Datara API services and governed state. | S:-
+IssuePanel.vue[EB6T]: F:Renders the frontend workflow and user interactions implemented by datara-web/src/graph/workbench/panels/IssuePanel.vue. | R:- | A:Connects user actions to Datara API services and governed state. | S:-
+LineageStatsPanel.vue[EB6T]: F:Renders the frontend workflow and user interactions implemented by datara-web/src/graph/workbench/panels/LineageStatsPanel.vue. | R:- | A:Connects user actions to Datara API services and governed state. | S:-
+LogPanel.vue[EB6T]: F:Renders the frontend workflow and user interactions implemented by datara-web/src/graph/workbench/panels/LogPanel.vue. | R:- | A:Connects user actions to Datara API services and governed state. | S:-
+ShortcutHelp.vue[EB6T]: F:Renders the frontend workflow and user interactions implemented by datara-web/src/graph/workbench/panels/ShortcutHelp.vue. | R:- | A:Connects user actions to Datara API services and governed state. | S:-
+StreamMetricsPanel.vue[EB6T]: F:Renders the frontend workflow and user interactions implemented by datara-web/src/graph/workbench/panels/StreamMetricsPanel.vue. | R:- | A:Connects user actions to Datara API services and governed state. | S:-
+VersionPanel.vue[EB6T]: F:Renders the frontend workflow and user interactions implemented by datara-web/src/graph/workbench/panels/VersionPanel.vue. | R:- | A:Connects user actions to Datara API services and governed state. | S:-
+WfVarPanel.vue[EB6T]: F:Renders the frontend workflow and user interactions implemented by datara-web/src/graph/workbench/panels/WfVarPanel.vue. | R:- | A:Connects user actions to Datara API services and governed state. | S:-
+
+===D:/需求/数据治理工具/Datara/datara-web/src/router/===
+index.ts[EB6T]: F:Renders the frontend workflow and user interactions implemented by datara-web/src/router/index.ts. | R:- | A:Connects user actions to Datara API services and governed state. | S:-
+routes.ts[EB6T]: F:Renders the frontend workflow and user interactions implemented by datara-web/src/router/routes.ts. | R:- | A:Connects user actions to Datara API services and governed state. | S:-
+
+===D:/需求/数据治理工具/Datara/datara-web/src/services/===
+alertApi.ts[EB6T]: F:Renders the frontend workflow and user interactions implemented by datara-web/src/services/alertApi.ts. | R:- | A:Connects user actions to Datara API services and governed state. | S:-
+apiMode.ts[EB6T]: F:Renders the frontend workflow and user interactions implemented by datara-web/src/services/apiMode.ts. | R:- | A:Connects user actions to Datara API services and governed state. | S:-
+baselineApi.ts[EB6T]: F:Renders the frontend workflow and user interactions implemented by datara-web/src/services/baselineApi.ts. | R:- | A:Connects user actions to Datara API services and governed state. | S:-
+baselineSpec.ts[EB6T]: F:Renders the frontend workflow and user interactions implemented by datara-web/src/services/baselineSpec.ts. | R:- | A:Connects user actions to Datara API services and governed state. | S:-
+componentApi.ts[EB6T]: F:Renders the frontend workflow and user interactions implemented by datara-web/src/services/componentApi.ts. | R:- | A:Connects user actions to Datara API services and governed state. | S:-
+componentSpec.ts[EB6T]: F:Renders the frontend workflow and user interactions implemented by datara-web/src/services/componentSpec.ts. | R:- | A:Connects user actions to Datara API services and governed state. | S:-
+datasourceApi.ts[EB6T]: F:Renders the frontend workflow and user interactions implemented by datara-web/src/services/datasourceApi.ts. | R:- | A:Connects user actions to Datara API services and governed state. | S:-
+eventBus.ts[EB6T]: F:Renders the frontend workflow and user interactions implemented by datara-web/src/services/eventBus.ts. | R:- | A:Connects user actions to Datara API services and governed state. | S:-
+featureFlags.ts[EB6T]: F:Renders the frontend workflow and user interactions implemented by datara-web/src/services/featureFlags.ts. | R:- | A:Connects user actions to Datara API services and governed state. | S:-
+graphApi.ts[EB6T]: F:Renders the frontend workflow and user interactions implemented by datara-web/src/services/graphApi.ts. | R:- | A:Connects user actions to Datara API services and governed state. | S:-
+http.ts[EB6T]: F:Renders the frontend workflow and user interactions implemented by datara-web/src/services/http.ts. | R:- | A:Connects user actions to Datara API services and governed state. | S:-
+ideApi.ts[EB6T]: F:Renders the frontend workflow and user interactions implemented by datara-web/src/services/ideApi.ts. | R:- | A:Connects user actions to Datara API services and governed state. | S:-
+indApi.ts[EB6T]: F:Renders the frontend workflow and user interactions implemented by datara-web/src/services/indApi.ts. | R:- | A:Connects user actions to Datara API services and governed state. | S:-
+index.ts[EB6T]: F:Renders the frontend workflow and user interactions implemented by datara-web/src/services/index.ts. | R:- | A:Connects user actions to Datara API services and governed state. | S:-
+lineageApi.ts[EB6T]: F:Renders the frontend workflow and user interactions implemented by datara-web/src/services/lineageApi.ts. | R:- | A:Connects user actions to Datara API services and governed state. | S:-
+metaApi.ts[EB6T]: F:Renders the frontend workflow and user interactions implemented by datara-web/src/services/metaApi.ts. | R:- | A:Connects user actions to Datara API services and governed state. | S:-
+modelApi.ts[EB6T]: F:Renders the frontend workflow and user interactions implemented by datara-web/src/services/modelApi.ts. | R:- | A:Connects user actions to Datara API services and governed state. | S:-
+runEventSource.ts[EB6T]: F:Renders the frontend workflow and user interactions implemented by datara-web/src/services/runEventSource.ts. | R:- | A:Connects user actions to Datara API services and governed state. | S:-
+streamApi.ts[EB6T]: F:Renders the frontend workflow and user interactions implemented by datara-web/src/services/streamApi.ts. | R:- | A:Connects user actions to Datara API services and governed state. | S:-
+syncApi.ts[EB6T]: F:Renders the frontend workflow and user interactions implemented by datara-web/src/services/syncApi.ts. | R:- | A:Connects user actions to Datara API services and governed state. | S:-
+templateApi.ts[EB6T]: F:Renders the frontend workflow and user interactions implemented by datara-web/src/services/templateApi.ts. | R:- | A:Connects user actions to Datara API services and governed state. | S:-
+types.ts[EB6T]: F:Renders the frontend workflow and user interactions implemented by datara-web/src/services/types.ts. | R:- | A:Connects user actions to Datara API services and governed state. | S:-
+
+===D:/需求/数据治理工具/Datara/datara-web/src/services/mock/===
+api.ts[EB6T]: F:Renders the frontend workflow and user interactions implemented by datara-web/src/services/mock/api.ts. | R:- | A:Connects user actions to Datara API services and governed state. | S:-
+dataStore.ts[EB6T]: F:Renders the frontend workflow and user interactions implemented by datara-web/src/services/mock/dataStore.ts. | R:- | A:Connects user actions to Datara API services and governed state. | S:-
+dsUtils.ts[EB6T]: F:Renders the frontend workflow and user interactions implemented by datara-web/src/services/mock/dsUtils.ts. | R:- | A:Connects user actions to Datara API services and governed state. | S:-
+execService.ts[EB6T]: F:Renders the frontend workflow and user interactions implemented by datara-web/src/services/mock/execService.ts. | R:- | A:Connects user actions to Datara API services and governed state. | S:-
+graphService.ts[EB6T]: F:Renders the frontend workflow and user interactions implemented by datara-web/src/services/mock/graphService.ts. | R:- | A:Connects user actions to Datara API services and governed state. | S:-
+lineageUtils.ts[EB6T]: F:Renders the frontend workflow and user interactions implemented by datara-web/src/services/mock/lineageUtils.ts. | R:- | A:Connects user actions to Datara API services and governed state. | S:-
+runtimeService.ts[EB6T]: F:Renders the frontend workflow and user interactions implemented by datara-web/src/services/mock/runtimeService.ts. | R:- | A:Connects user actions to Datara API services and governed state. | S:-
+seed.ts[EB6T]: F:Renders the frontend workflow and user interactions implemented by datara-web/src/services/mock/seed.ts. | R:- | A:Connects user actions to Datara API services and governed state. | S:-
+timeUtil.ts[EB6T]: F:Renders the frontend workflow and user interactions implemented by datara-web/src/services/mock/timeUtil.ts. | R:- | A:Connects user actions to Datara API services and governed state. | S:-
+
+===D:/需求/数据治理工具/Datara/datara-web/src/stores/===
+auth.ts[EB6T]: F:Renders the frontend workflow and user interactions implemented by datara-web/src/stores/auth.ts. | R:- | A:Connects user actions to Datara API services and governed state. | S:-
+componentStore.ts[EB6T]: F:Renders the frontend workflow and user interactions implemented by datara-web/src/stores/componentStore.ts. | R:- | A:Connects user actions to Datara API services and governed state. | S:-
+dagTabs.ts[EB6T]: F:Renders the frontend workflow and user interactions implemented by datara-web/src/stores/dagTabs.ts. | R:- | A:Connects user actions to Datara API services and governed state. | S:-
+float.ts[EB6T]: F:Renders the frontend workflow and user interactions implemented by datara-web/src/stores/float.ts. | R:- | A:Connects user actions to Datara API services and governed state. | S:-
+graph.ts[EB6T]: F:Renders the frontend workflow and user interactions implemented by datara-web/src/stores/graph.ts. | R:- | A:Connects user actions to Datara API services and governed state. | S:-
+ideStore.ts[EB6T]: F:Renders the frontend workflow and user interactions implemented by datara-web/src/stores/ideStore.ts. | R:- | A:Connects user actions to Datara API services and governed state. | S:-
+run.ts[EB6T]: F:Renders the frontend workflow and user interactions implemented by datara-web/src/stores/run.ts. | R:- | A:Connects user actions to Datara API services and governed state. | S:-
+templateStore.ts[EB6T]: F:Renders the frontend workflow and user interactions implemented by datara-web/src/stores/templateStore.ts. | R:- | A:Connects user actions to Datara API services and governed state. | S:-
+
+===D:/需求/数据治理工具/Datara/datara-web/src/styles/===
+theme.css[EB6T]: F:Renders the frontend workflow and user interactions implemented by datara-web/src/styles/theme.css. | R:- | A:Connects user actions to Datara API services and governed state. | S:-
+
+===D:/需求/数据治理工具/Datara/datara-web/src/utils/===
+mask.ts[EB6T]: F:Renders the frontend workflow and user interactions implemented by datara-web/src/utils/mask.ts. | R:- | A:Connects user actions to Datara API services and governed state. | S:-
+
+===D:/需求/数据治理工具/Datara/datara-web/src/views/===
+AssetMapView.vue[EB6T]: F:Renders the frontend workflow and user interactions implemented by datara-web/src/views/AssetMapView.vue. | R:- | A:Connects user actions to Datara API services and governed state. | S:-
+DagListView.vue[EB6T]: F:Renders the frontend workflow and user interactions implemented by datara-web/src/views/DagListView.vue. | R:- | A:Connects user actions to Datara API services and governed state. | S:-
+DashboardView.vue[EB6T]: F:Renders the frontend workflow and user interactions implemented by datara-web/src/views/DashboardView.vue. | R:- | A:Connects user actions to Datara API services and governed state. | S:-
+ErCanvasView.vue[EB6T]: F:Renders the frontend workflow and user interactions implemented by datara-web/src/views/ErCanvasView.vue. | R:- | A:Connects user actions to Datara API services and governed state. | S:-
+FieldLineageMap.vue[EB6T]: F:Renders the frontend workflow and user interactions implemented by datara-web/src/views/FieldLineageMap.vue. | R:- | A:Connects user actions to Datara API services and governed state. | S:-
+LineageView.vue[EB6T]: F:Renders the frontend workflow and user interactions implemented by datara-web/src/views/LineageView.vue. | R:- | A:Connects user actions to Datara API services and governed state. | S:-
+LoginView.vue[EB6T]: F:Renders the frontend workflow and user interactions implemented by datara-web/src/views/LoginView.vue. | R:- | A:Connects user actions to Datara API services and governed state. | S:-
+PlaceholderView.vue[EB6T]: F:Renders the frontend workflow and user interactions implemented by datara-web/src/views/PlaceholderView.vue. | R:- | A:Connects user actions to Datara API services and governed state. | S:-
+TaskCenterView.vue[EB6T]: F:Renders the frontend workflow and user interactions implemented by datara-web/src/views/TaskCenterView.vue. | R:- | A:Connects user actions to Datara API services and governed state. | S:-
+taskCenterPolicy.ts[EB6T]: F:Renders the frontend workflow and user interactions implemented by datara-web/src/views/taskCenterPolicy.ts. | R:- | A:Connects user actions to Datara API services and governed state. | S:-
+templateSource.ts[EB6T]: F:Renders the frontend workflow and user interactions implemented by datara-web/src/views/templateSource.ts. | R:- | A:Connects user actions to Datara API services and governed state. | S:-
+
+===D:/需求/数据治理工具/Datara/datara-web/src/views/dag/===
+DagAlarmView.vue[EB6T]: F:Renders the frontend workflow and user interactions implemented by datara-web/src/views/dag/DagAlarmView.vue. | R:- | A:Connects user actions to Datara API services and governed state. | S:-
+InstanceRunsView.vue[EB6T]: F:Renders the frontend workflow and user interactions implemented by datara-web/src/views/dag/InstanceRunsView.vue. | R:- | A:Connects user actions to Datara API services and governed state. | S:-
+ScheduleDialog.vue[EB6T]: F:Renders the frontend workflow and user interactions implemented by datara-web/src/views/dag/ScheduleDialog.vue. | R:- | A:Connects user actions to Datara API services and governed state. | S:-
+TemplateCenter.vue[EB6T]: F:Renders the frontend workflow and user interactions implemented by datara-web/src/views/dag/TemplateCenter.vue. | R:- | A:Connects user actions to Datara API services and governed state. | S:-
+WfCreateDialog.vue[EB6T]: F:Renders the frontend workflow and user interactions implemented by datara-web/src/views/dag/WfCreateDialog.vue. | R:- | A:Connects user actions to Datara API services and governed state. | S:-
+WorkflowUpgradeActions.vue[EB6T]: F:Renders the frontend workflow and user interactions implemented by datara-web/src/views/dag/WorkflowUpgradeActions.vue. | R:- | A:Connects user actions to Datara API services and governed state. | S:-
+
+===D:/需求/数据治理工具/Datara/datara-web/src/views/datasource/===
+DataSourceDetailView.vue[EB6T]: F:Renders the frontend workflow and user interactions implemented by datara-web/src/views/datasource/DataSourceDetailView.vue. | R:- | A:Connects user actions to Datara API services and governed state. | S:-
+DataSourceListView.vue[EB6T]: F:Renders the frontend workflow and user interactions implemented by datara-web/src/views/datasource/DataSourceListView.vue. | R:- | A:Connects user actions to Datara API services and governed state. | S:-
+DataSourceWizard.vue[EB6T]: F:Renders the frontend workflow and user interactions implemented by datara-web/src/views/datasource/DataSourceWizard.vue. | R:- | A:Connects user actions to Datara API services and governed state. | S:-
+
+===D:/需求/数据治理工具/Datara/datara-web/src/views/deploy/===
+DeployAlarmView.vue[EB6T]: F:Renders the frontend workflow and user interactions implemented by datara-web/src/views/deploy/DeployAlarmView.vue. | R:- | A:Connects user actions to Datara API services and governed state. | S:-
+DeployCenterView.vue[EB6T]: F:Renders the frontend workflow and user interactions implemented by datara-web/src/views/deploy/DeployCenterView.vue. | R:- | A:Connects user actions to Datara API services and governed state. | S:-
+DeployLogView.vue[EB6T]: F:Renders the frontend workflow and user interactions implemented by datara-web/src/views/deploy/DeployLogView.vue. | R:- | A:Connects user actions to Datara API services and governed state. | S:-
+DeployMonitorView.vue[EB6T]: F:Renders the frontend workflow and user interactions implemented by datara-web/src/views/deploy/DeployMonitorView.vue. | R:- | A:Connects user actions to Datara API services and governed state. | S:-
+DeployOpsView.vue[EB6T]: F:Renders the frontend workflow and user interactions implemented by datara-web/src/views/deploy/DeployOpsView.vue. | R:- | A:Connects user actions to Datara API services and governed state. | S:-
+DeployRuntimeView.vue[EB6T]: F:Renders the frontend workflow and user interactions implemented by datara-web/src/views/deploy/DeployRuntimeView.vue. | R:- | A:Connects user actions to Datara API services and governed state. | S:-
+
+===D:/需求/数据治理工具/Datara/datara-web/src/views/etl/===
+EtlListView.vue[EB6T]: F:Renders the frontend workflow and user interactions implemented by datara-web/src/views/etl/EtlListView.vue. | R:- | A:Connects user actions to Datara API services and governed state. | S:-
+
+===D:/需求/数据治理工具/Datara/datara-web/src/views/ide/===
+IdeView.vue[EB6T]: F:Renders the frontend workflow and user interactions implemented by datara-web/src/views/ide/IdeView.vue. | R:- | A:Connects user actions to Datara API services and governed state. | S:-
+
+===D:/需求/数据治理工具/Datara/datara-web/src/views/ide/components/===
+ExplorerTree.vue[EB6T]: F:Renders the frontend workflow and user interactions implemented by datara-web/src/views/ide/components/ExplorerTree.vue. | R:- | A:Connects user actions to Datara API services and governed state. | S:-
+GlobalParamDrawer.vue[EB6T]: F:Renders the frontend workflow and user interactions implemented by datara-web/src/views/ide/components/GlobalParamDrawer.vue. | R:- | A:Connects user actions to Datara API services and governed state. | S:-
+HistoryDrawer.vue[EB6T]: F:Renders the frontend workflow and user interactions implemented by datara-web/src/views/ide/components/HistoryDrawer.vue. | R:- | A:Connects user actions to Datara API services and governed state. | S:-
+InstanceBar.vue[EB6T]: F:Renders the frontend workflow and user interactions implemented by datara-web/src/views/ide/components/InstanceBar.vue. | R:- | A:Connects user actions to Datara API services and governed state. | S:-
+ResultPanel.vue[EB6T]: F:Renders the frontend workflow and user interactions implemented by datara-web/src/views/ide/components/ResultPanel.vue. | R:- | A:Connects user actions to Datara API services and governed state. | S:-
+SqlEditor.vue[EB6T]: F:Renders the frontend workflow and user interactions implemented by datara-web/src/views/ide/components/SqlEditor.vue. | R:- | A:Connects user actions to Datara API services and governed state. | S:-
+
+===D:/需求/数据治理工具/Datara/datara-web/src/views/ind/===
+IndBoardView.vue[EB6T]: F:Renders the frontend workflow and user interactions implemented by datara-web/src/views/ind/IndBoardView.vue. | R:- | A:Connects user actions to Datara API services and governed state. | S:-
+IndConsistencyView.vue[EB6T]: F:Renders the frontend workflow and user interactions implemented by datara-web/src/views/ind/IndConsistencyView.vue. | R:- | A:Connects user actions to Datara API services and governed state. | S:-
+IndListView.vue[EB6T]: F:Renders the frontend workflow and user interactions implemented by datara-web/src/views/ind/IndListView.vue. | R:- | A:Connects user actions to Datara API services and governed state. | S:-
+
+===D:/需求/数据治理工具/Datara/datara-web/src/views/meta/===
+BaselineWorkbenchView.vue[EB6T]: F:Renders the frontend workflow and user interactions implemented by datara-web/src/views/meta/BaselineWorkbenchView.vue. | R:- | A:Connects user actions to Datara API services and governed state. | S:-
+ComponentCatalogView.vue[EB6T]: F:Renders the frontend workflow and user interactions implemented by datara-web/src/views/meta/ComponentCatalogView.vue. | R:- | A:Connects user actions to Datara API services and governed state. | S:-
+ComponentHubView.vue[EB6T]: F:Renders the frontend workflow and user interactions implemented by datara-web/src/views/meta/ComponentHubView.vue. | R:- | A:Connects user actions to Datara API services and governed state. | S:-
+MetaCatalogView.vue[EB6T]: F:Renders the frontend workflow and user interactions implemented by datara-web/src/views/meta/MetaCatalogView.vue. | R:- | A:Connects user actions to Datara API services and governed state. | S:-
+MetaTagView.vue[EB6T]: F:Renders the frontend workflow and user interactions implemented by datara-web/src/views/meta/MetaTagView.vue. | R:- | A:Connects user actions to Datara API services and governed state. | S:-
+
+===D:/需求/数据治理工具/Datara/datara-web/src/views/meta/pageDesigner/===
+PageDesignerView.vue[EB6T]: F:Renders the frontend workflow and user interactions implemented by datara-web/src/views/meta/pageDesigner/PageDesignerView.vue. | R:- | A:Connects user actions to Datara API services and governed state. | S:-
+SaveConflictDiffDialog.vue[EB6T]: F:Renders the frontend workflow and user interactions implemented by datara-web/src/views/meta/pageDesigner/SaveConflictDiffDialog.vue. | R:- | A:Connects user actions to Datara API services and governed state. | S:-
+bindingCatalog.ts[EB6T]: F:Renders the frontend workflow and user interactions implemented by datara-web/src/views/meta/pageDesigner/bindingCatalog.ts. | R:- | A:Connects user actions to Datara API services and governed state. | S:-
+designerModel.ts[EB6T]: F:Renders the frontend workflow and user interactions implemented by datara-web/src/views/meta/pageDesigner/designerModel.ts. | R:- | A:Connects user actions to Datara API services and governed state. | S:-
+pageApi.ts[EB6T]: F:Renders the frontend workflow and user interactions implemented by datara-web/src/views/meta/pageDesigner/pageApi.ts. | R:- | A:Connects user actions to Datara API services and governed state. | S:-
+templates.ts[EB6T]: F:Renders the frontend workflow and user interactions implemented by datara-web/src/views/meta/pageDesigner/templates.ts. | R:- | A:Connects user actions to Datara API services and governed state. | S:-
+threeWayDiff.ts[EB6T]: F:Renders the frontend workflow and user interactions implemented by datara-web/src/views/meta/pageDesigner/threeWayDiff.ts. | R:- | A:Connects user actions to Datara API services and governed state. | S:-
+
+===D:/需求/数据治理工具/Datara/datara-web/src/views/meta/pageDesigner/canvas/===
+PageCanvas.vue[EB6T]: F:Renders the frontend workflow and user interactions implemented by datara-web/src/views/meta/pageDesigner/canvas/PageCanvas.vue. | R:- | A:Connects user actions to Datara API services and governed state. | S:-
+WidgetRenderer.vue[EB6T]: F:Renders the frontend workflow and user interactions implemented by datara-web/src/views/meta/pageDesigner/canvas/WidgetRenderer.vue. | R:- | A:Connects user actions to Datara API services and governed state. | S:-
+
+===D:/需求/数据治理工具/Datara/datara-web/src/views/meta/pageDesigner/fields/===
+FieldsCanvas.vue[EB6T]: F:Renders the frontend workflow and user interactions implemented by datara-web/src/views/meta/pageDesigner/fields/FieldsCanvas.vue. | R:- | A:Connects user actions to Datara API services and governed state. | S:-
+FieldsInspector.vue[EB6T]: F:Renders the frontend workflow and user interactions implemented by datara-web/src/views/meta/pageDesigner/fields/FieldsInspector.vue. | R:- | A:Connects user actions to Datara API services and governed state. | S:-
+fieldsModel.ts[EB6T]: F:Renders the frontend workflow and user interactions implemented by datara-web/src/views/meta/pageDesigner/fields/fieldsModel.ts. | R:- | A:Connects user actions to Datara API services and governed state. | S:-
+
+===D:/需求/数据治理工具/Datara/datara-web/src/views/meta/pageDesigner/inspector/===
+PageInspector.vue[EB6T]: F:Renders the frontend workflow and user interactions implemented by datara-web/src/views/meta/pageDesigner/inspector/PageInspector.vue. | R:- | A:Connects user actions to Datara API services and governed state. | S:-
+
+===D:/需求/数据治理工具/Datara/datara-web/src/views/meta/pageDesigner/palette/===
+PagePalette.vue[EB6T]: F:Renders the frontend workflow and user interactions implemented by datara-web/src/views/meta/pageDesigner/palette/PagePalette.vue. | R:- | A:Connects user actions to Datara API services and governed state. | S:-
+
+===D:/需求/数据治理工具/Datara/datara-web/src/views/model/===
+ModelDesignView.vue[EB6T]: F:Renders the frontend workflow and user interactions implemented by datara-web/src/views/model/ModelDesignView.vue. | R:- | A:Connects user actions to Datara API services and governed state. | S:-
+ModelLineageView.vue[EB6T]: F:Renders the frontend workflow and user interactions implemented by datara-web/src/views/model/ModelLineageView.vue. | R:- | A:Connects user actions to Datara API services and governed state. | S:-
+ModelListView.vue[EB6T]: F:Renders the frontend workflow and user interactions implemented by datara-web/src/views/model/ModelListView.vue. | R:- | A:Connects user actions to Datara API services and governed state. | S:-
+ModelVersionView.vue[EB6T]: F:Renders the frontend workflow and user interactions implemented by datara-web/src/views/model/ModelVersionView.vue. | R:- | A:Connects user actions to Datara API services and governed state. | S:-
+
+===D:/需求/数据治理工具/Datara/datara-web/src/views/open/===
+OpenApiView.vue[EB6T]: F:Renders the frontend workflow and user interactions implemented by datara-web/src/views/open/OpenApiView.vue. | R:- | A:Connects user actions to Datara API services and governed state. | S:-
+OpenKeyView.vue[EB6T]: F:Renders the frontend workflow and user interactions implemented by datara-web/src/views/open/OpenKeyView.vue. | R:- | A:Connects user actions to Datara API services and governed state. | S:-
+OpenLogView.vue[EB6T]: F:Renders the frontend workflow and user interactions implemented by datara-web/src/views/open/OpenLogView.vue. | R:- | A:Connects user actions to Datara API services and governed state. | S:-
+
+===D:/需求/数据治理工具/Datara/datara-web/src/views/param/===
+ParamBuiltinView.vue[EB6T]: F:Renders the frontend workflow and user interactions implemented by datara-web/src/views/param/ParamBuiltinView.vue. | R:- | A:Connects user actions to Datara API services and governed state. | S:-
+ParamEnvView.vue[EB6T]: F:Renders the frontend workflow and user interactions implemented by datara-web/src/views/param/ParamEnvView.vue. | R:- | A:Connects user actions to Datara API services and governed state. | S:-
+ParamGlobalView.vue[EB6T]: F:Renders the frontend workflow and user interactions implemented by datara-web/src/views/param/ParamGlobalView.vue. | R:- | A:Connects user actions to Datara API services and governed state. | S:-
+ParamHubView.vue[EB6T]: F:Renders the frontend workflow and user interactions implemented by datara-web/src/views/param/ParamHubView.vue. | R:- | A:Connects user actions to Datara API services and governed state. | S:-
+ParamToolsView.vue[EB6T]: F:Renders the frontend workflow and user interactions implemented by datara-web/src/views/param/ParamToolsView.vue. | R:- | A:Connects user actions to Datara API services and governed state. | S:-
+ParamTree.vue[EB6T]: F:Renders the frontend workflow and user interactions implemented by datara-web/src/views/param/ParamTree.vue. | R:- | A:Connects user actions to Datara API services and governed state. | S:-
+
+===D:/需求/数据治理工具/Datara/datara-web/src/views/qc/===
+QcAlarmView.vue[EB6T]: F:Renders the frontend workflow and user interactions implemented by datara-web/src/views/qc/QcAlarmView.vue. | R:- | A:Connects user actions to Datara API services and governed state. | S:-
+QcExceptionView.vue[EB6T]: F:Renders the frontend workflow and user interactions implemented by datara-web/src/views/qc/QcExceptionView.vue. | R:- | A:Connects user actions to Datara API services and governed state. | S:-
+QcReportDagView.vue[EB6T]: F:Renders the frontend workflow and user interactions implemented by datara-web/src/views/qc/QcReportDagView.vue. | R:- | A:Connects user actions to Datara API services and governed state. | S:-
+QcReportHubView.vue[EB6T]: F:Renders the frontend workflow and user interactions implemented by datara-web/src/views/qc/QcReportHubView.vue. | R:- | A:Connects user actions to Datara API services and governed state. | S:-
+QcReportTableView.vue[EB6T]: F:Renders the frontend workflow and user interactions implemented by datara-web/src/views/qc/QcReportTableView.vue. | R:- | A:Connects user actions to Datara API services and governed state. | S:-
+QcReportView.vue[EB6T]: F:Renders the frontend workflow and user interactions implemented by datara-web/src/views/qc/QcReportView.vue. | R:- | A:Connects user actions to Datara API services and governed state. | S:-
+QcRuleView.vue[EB6T]: F:Renders the frontend workflow and user interactions implemented by datara-web/src/views/qc/QcRuleView.vue. | R:- | A:Connects user actions to Datara API services and governed state. | S:-
+QcScoreView.vue[EB6T]: F:Renders the frontend workflow and user interactions implemented by datara-web/src/views/qc/QcScoreView.vue. | R:- | A:Connects user actions to Datara API services and governed state. | S:-
+QcTaskView.vue[EB6T]: F:Renders the frontend workflow and user interactions implemented by datara-web/src/views/qc/QcTaskView.vue. | R:- | A:Connects user actions to Datara API services and governed state. | S:-
+
+===D:/需求/数据治理工具/Datara/datara-web/src/views/script/===
+ScriptEnvView.vue[EB6T]: F:Renders the frontend workflow and user interactions implemented by datara-web/src/views/script/ScriptEnvView.vue. | R:- | A:Connects user actions to Datara API services and governed state. | S:-
+ScriptHubView.vue[EB6T]: F:Renders the frontend workflow and user interactions implemented by datara-web/src/views/script/ScriptHubView.vue. | R:- | A:Connects user actions to Datara API services and governed state. | S:-
+ScriptListView.vue[EB6T]: F:Renders the frontend workflow and user interactions implemented by datara-web/src/views/script/ScriptListView.vue. | R:- | A:Connects user actions to Datara API services and governed state. | S:-
+ScriptRemoteView.vue[EB6T]: F:Renders the frontend workflow and user interactions implemented by datara-web/src/views/script/ScriptRemoteView.vue. | R:- | A:Connects user actions to Datara API services and governed state. | S:-
+
+===D:/需求/数据治理工具/Datara/datara-web/src/views/sec/===
+SecAuditView.vue[EB6T]: F:Renders the frontend workflow and user interactions implemented by datara-web/src/views/sec/SecAuditView.vue. | R:- | A:Connects user actions to Datara API services and governed state. | S:-
+SecMaskView.vue[EB6T]: F:Renders the frontend workflow and user interactions implemented by datara-web/src/views/sec/SecMaskView.vue. | R:- | A:Connects user actions to Datara API services and governed state. | S:-
+SecPermView.vue[EB6T]: F:Renders the frontend workflow and user interactions implemented by datara-web/src/views/sec/SecPermView.vue. | R:- | A:Connects user actions to Datara API services and governed state. | S:-
+
+===D:/需求/数据治理工具/Datara/datara-web/src/views/std/===
+StdApprovalView.vue[EB6T]: F:Renders the frontend workflow and user interactions implemented by datara-web/src/views/std/StdApprovalView.vue. | R:- | A:Connects user actions to Datara API services and governed state. | S:-
+StdCodeView.vue[EB6T]: F:Renders the frontend workflow and user interactions implemented by datara-web/src/views/std/StdCodeView.vue. | R:- | A:Connects user actions to Datara API services and governed state. | S:-
+StdElementView.vue[EB6T]: F:Renders the frontend workflow and user interactions implemented by datara-web/src/views/std/StdElementView.vue. | R:- | A:Connects user actions to Datara API services and governed state. | S:-
+StdHubView.vue[EB6T]: F:Renders the frontend workflow and user interactions implemented by datara-web/src/views/std/StdHubView.vue. | R:- | A:Connects user actions to Datara API services and governed state. | S:-
+StdMappingView.vue[EB6T]: F:Renders the frontend workflow and user interactions implemented by datara-web/src/views/std/StdMappingView.vue. | R:- | A:Connects user actions to Datara API services and governed state. | S:-
+StdNamingView.vue[EB6T]: F:Renders the frontend workflow and user interactions implemented by datara-web/src/views/std/StdNamingView.vue. | R:- | A:Connects user actions to Datara API services and governed state. | S:-
+
+===D:/需求/数据治理工具/Datara/datara-web/src/views/stream/===
+StreamDetailView.vue[EB6T]: F:Renders the frontend workflow and user interactions implemented by datara-web/src/views/stream/StreamDetailView.vue. | R:- | A:Connects user actions to Datara API services and governed state. | S:-
+StreamListView.vue[EB6T]: F:Renders the frontend workflow and user interactions implemented by datara-web/src/views/stream/StreamListView.vue. | R:- | A:Connects user actions to Datara API services and governed state. | S:-
+
+===D:/需求/数据治理工具/Datara/datara-web/src/views/sync/===
+SyncDetailView.vue[EB6T]: F:Renders the frontend workflow and user interactions implemented by datara-web/src/views/sync/SyncDetailView.vue. | R:- | A:Connects user actions to Datara API services and governed state. | S:-
+SyncListView.vue[EB6T]: F:Renders the frontend workflow and user interactions implemented by datara-web/src/views/sync/SyncListView.vue. | R:- | A:Connects user actions to Datara API services and governed state. | S:-
+
+===D:/需求/数据治理工具/Datara/datara-web/tools/===
+c7_probe_schemas.py[EB6T]: F:Renders the frontend workflow and user interactions implemented by datara-web/tools/c7_probe_schemas.py. | R:- | A:Connects user actions to Datara API services and governed state. | S:-
+
+===D:/需求/数据治理工具/Datara/deploy/===
+i8_check_repl.sh[RO5T]: F:Provides deployment or environment support through deploy/i8_check_repl.sh. | R:- | A:Supports reproducible installation, verification, or operations. | S:-
+i8_chk10.sh[RO5T]: F:Provides deployment or environment support through deploy/i8_chk10.sh. | R:- | A:Supports reproducible installation, verification, or operations. | S:-
+i8_chk11.sh[RO5T]: F:Provides deployment or environment support through deploy/i8_chk11.sh. | R:- | A:Supports reproducible installation, verification, or operations. | S:-
+i8_chk12.sh[RO5T]: F:Provides deployment or environment support through deploy/i8_chk12.sh. | R:- | A:Supports reproducible installation, verification, or operations. | S:-
+i8_chk13.sh[RO5T]: F:Provides deployment or environment support through deploy/i8_chk13.sh. | R:- | A:Supports reproducible installation, verification, or operations. | S:-
+i8_chk14.sh[RO5T]: F:Provides deployment or environment support through deploy/i8_chk14.sh. | R:- | A:Supports reproducible installation, verification, or operations. | S:-
+i8_chk15.sh[RO5T]: F:Provides deployment or environment support through deploy/i8_chk15.sh. | R:- | A:Supports reproducible installation, verification, or operations. | S:-
+i8_chk5.sh[RO5T]: F:Provides deployment or environment support through deploy/i8_chk5.sh. | R:- | A:Supports reproducible installation, verification, or operations. | S:-
+i8_chk6.sh[RO5T]: F:Provides deployment or environment support through deploy/i8_chk6.sh. | R:- | A:Supports reproducible installation, verification, or operations. | S:-
+i8_chk7.sh[RO5T]: F:Provides deployment or environment support through deploy/i8_chk7.sh. | R:- | A:Supports reproducible installation, verification, or operations. | S:-
+i8_chk9.sh[RO5T]: F:Provides deployment or environment support through deploy/i8_chk9.sh. | R:- | A:Supports reproducible installation, verification, or operations. | S:-
+i8_cleanup.sh[RO5T]: F:Provides deployment or environment support through deploy/i8_cleanup.sh. | R:- | A:Supports reproducible installation, verification, or operations. | S:-
+i8_debug1.sh[RO5T]: F:Provides deployment or environment support through deploy/i8_debug1.sh. | R:- | A:Supports reproducible installation, verification, or operations. | S:-
+i8_deploy.sh[RO5T]: F:Provides deployment or environment support through deploy/i8_deploy.sh. | R:- | A:Supports reproducible installation, verification, or operations. | S:-
+i8_diag11.py[RO5T]: F:Provides deployment or environment support through deploy/i8_diag11.py. | R:- | A:Supports reproducible installation, verification, or operations. | S:-
+i8_diag11.sh[RO5T]: F:Provides deployment or environment support through deploy/i8_diag11.sh. | R:- | A:Supports reproducible installation, verification, or operations. | S:-
+i8_diag3.sh[RO5T]: F:Provides deployment or environment support through deploy/i8_diag3.sh. | R:- | A:Supports reproducible installation, verification, or operations. | S:-
+i8_diag8.sh[RO5T]: F:Provides deployment or environment support through deploy/i8_diag8.sh. | R:- | A:Supports reproducible installation, verification, or operations. | S:-
+i8_diag9.sh[RO5T]: F:Provides deployment or environment support through deploy/i8_diag9.sh. | R:- | A:Supports reproducible installation, verification, or operations. | S:-
+i8_distchk.sh[RO5T]: F:Provides deployment or environment support through deploy/i8_distchk.sh. | R:- | A:Supports reproducible installation, verification, or operations. | S:-
+i8_dnsmon.sh[RO5T]: F:Provides deployment or environment support through deploy/i8_dnsmon.sh. | R:- | A:Supports reproducible installation, verification, or operations. | S:-
+i8_fix1.sh[RO5T]: F:Provides deployment or environment support through deploy/i8_fix1.sh. | R:- | A:Supports reproducible installation, verification, or operations. | S:-
+i8_g56.sh[RO5T]: F:Provides deployment or environment support through deploy/i8_g56.sh. | R:- | A:Supports reproducible installation, verification, or operations. | S:-
+i8_g5final.sh[RO5T]: F:Provides deployment or environment support through deploy/i8_g5final.sh. | R:- | A:Supports reproducible installation, verification, or operations. | S:-
+i8_g5final3.sh[RO5T]: F:Provides deployment or environment support through deploy/i8_g5final3.sh. | R:- | A:Supports reproducible installation, verification, or operations. | S:-
+i8_g5fix.sh[RO5T]: F:Provides deployment or environment support through deploy/i8_g5fix.sh. | R:- | A:Supports reproducible installation, verification, or operations. | S:-
+i8_g5forensic.sh[RO5T]: F:Provides deployment or environment support through deploy/i8_g5forensic.sh. | R:- | A:Supports reproducible installation, verification, or operations. | S:-
+i8_g5probe.sh[RO5T]: F:Provides deployment or environment support through deploy/i8_g5probe.sh. | R:- | A:Supports reproducible installation, verification, or operations. | S:-
+i8_g5r.sh[RO5T]: F:Provides deployment or environment support through deploy/i8_g5r.sh. | R:- | A:Supports reproducible installation, verification, or operations. | S:-
+i8_g5r2.sh[RO5T]: F:Provides deployment or environment support through deploy/i8_g5r2.sh. | R:- | A:Supports reproducible installation, verification, or operations. | S:-
+i8_gate.py[RO5T]: F:Provides deployment or environment support through deploy/i8_gate.py. | R:- | A:Supports reproducible installation, verification, or operations. | S:-
+i8_gate1.sh[RO5T]: F:Provides deployment or environment support through deploy/i8_gate1.sh. | R:- | A:Supports reproducible installation, verification, or operations. | S:-
+i8_gate2.sh[RO5T]: F:Provides deployment or environment support through deploy/i8_gate2.sh. | R:- | A:Supports reproducible installation, verification, or operations. | S:-
+i8_gate3.sh[RO5T]: F:Provides deployment or environment support through deploy/i8_gate3.sh. | R:- | A:Supports reproducible installation, verification, or operations. | S:-
+i8_gate3b.sh[RO5T]: F:Provides deployment or environment support through deploy/i8_gate3b.sh. | R:- | A:Supports reproducible installation, verification, or operations. | S:-
+i8_gate4.sh[RO5T]: F:Provides deployment or environment support through deploy/i8_gate4.sh. | R:- | A:Supports reproducible installation, verification, or operations. | S:-
+i8_gate5.sh[RO5T]: F:Provides deployment or environment support through deploy/i8_gate5.sh. | R:- | A:Supports reproducible installation, verification, or operations. | S:-
+i8_gate7.sh[RO5T]: F:Provides deployment or environment support through deploy/i8_gate7.sh. | R:- | A:Supports reproducible installation, verification, or operations. | S:-
+i8_gate7b.sh[RO5T]: F:Provides deployment or environment support through deploy/i8_gate7b.sh. | R:- | A:Supports reproducible installation, verification, or operations. | S:-
+i8_health.sh[RO5T]: F:Provides deployment or environment support through deploy/i8_health.sh. | R:- | A:Supports reproducible installation, verification, or operations. | S:-
+i8_roles.sh[RO5T]: F:Provides deployment or environment support through deploy/i8_roles.sh. | R:- | A:Supports reproducible installation, verification, or operations. | S:-
+i8_setup.sh[RO5T]: F:Provides deployment or environment support through deploy/i8_setup.sh. | R:- | A:Supports reproducible installation, verification, or operations. | S:-
+i9_seek.py[RO5T]: F:Provides deployment or environment support through deploy/i9_seek.py. | R:- | A:Supports reproducible installation, verification, or operations. | S:-
+i9_smoke.py[RO5T]: F:Provides deployment or environment support through deploy/i9_smoke.py. | R:- | A:Supports reproducible installation, verification, or operations. | S:-
+
+===D:/需求/数据治理工具/Datara/docs/===
+DAG与组件综合优化实施计划-20260926.md[ZS5T]: F:Documents design, verification, or operating guidance in docs/DAG与组件综合优化实施计划-20260926.md. | R:- | A:Provides evidence and decisions for maintainers and operators. | S:-
+DAG组件化编排规范与Datara适配方案.md[ZS5T]: F:Documents design, verification, or operating guidance in docs/DAG组件化编排规范与Datara适配方案.md. | R:- | A:Provides evidence and decisions for maintainers and operators. | S:-
+DAG组件声明契约与Plan产物设计.md[ZS5T]: F:Documents design, verification, or operating guidance in docs/DAG组件声明契约与Plan产物设计.md. | R:- | A:Provides evidence and decisions for maintainers and operators. | S:-
+DAG组件逐项前后端设计与使用规范.md[ZS5T]: F:Documents design, verification, or operating guidance in docs/DAG组件逐项前后端设计与使用规范.md. | R:- | A:Provides evidence and decisions for maintainers and operators. | S:-
+DAG页面改进和优化任务-0922.txt[ZS5T]: F:Documents design, verification, or operating guidance in docs/DAG页面改进和优化任务-0922.txt. | R:- | A:Provides evidence and decisions for maintainers and operators. | S:-
+DAG页面改进和优化任务.txt[ZS5T]: F:Documents design, verification, or operating guidance in docs/DAG页面改进和优化任务.txt. | R:- | A:Provides evidence and decisions for maintainers and operators. | S:-
+Datara_版本菜单功能映射.html[ZS5T]: F:Documents design, verification, or operating guidance in docs/Datara_版本菜单功能映射.html. | R:- | A:Provides evidence and decisions for maintainers and operators. | S:-
+Datara_版本菜单功能映射清单.md[ZS5T]: F:Documents design, verification, or operating guidance in docs/Datara_版本菜单功能映射清单.md. | R:- | A:Provides evidence and decisions for maintainers and operators. | S:-
+Datara_版本规划与工作量评估方案.md[ZS5T]: F:Documents design, verification, or operating guidance in docs/Datara_版本规划与工作量评估方案.md. | R:- | A:Provides evidence and decisions for maintainers and operators. | S:-
+Datara用户操作使用手册——数据开发与数据集成.md[ZS5T]: F:Documents design, verification, or operating guidance in docs/Datara用户操作使用手册——数据开发与数据集成.md. | R:- | A:Provides evidence and decisions for maintainers and operators. | S:-
+README.md[ZS5T]: F:Documents design, verification, or operating guidance in docs/README.md. | R:- | A:Provides evidence and decisions for maintainers and operators. | S:-
+build_docs.py[ZS5T]: F:Documents design, verification, or operating guidance in docs/build_docs.py. | R:- | A:Provides evidence and decisions for maintainers and operators. | S:-
+build_manual.py[ZS5T]: F:Documents design, verification, or operating guidance in docs/build_manual.py. | R:- | A:Provides evidence and decisions for maintainers and operators. | S:-
+同步编排端点合一与设计态分离设计.md[ZS5T]: F:Documents design, verification, or operating guidance in docs/同步编排端点合一与设计态分离设计.md. | R:- | A:Provides evidence and decisions for maintainers and operators. | S:-
+同步编排端点合一实施计划-20260925.md[ZS5T]: F:Documents design, verification, or operating guidance in docs/同步编排端点合一实施计划-20260925.md. | R:- | A:Provides evidence and decisions for maintainers and operators. | S:-
+数据同步业务问题.txt[ZS5T]: F:Documents design, verification, or operating guidance in docs/数据同步业务问题.txt. | R:- | A:Provides evidence and decisions for maintainers and operators. | S:-
+数据同步工作流设计.txt[ZS5T]: F:Documents design, verification, or operating guidance in docs/数据同步工作流设计.txt. | R:- | A:Provides evidence and decisions for maintainers and operators. | S:-
+数据处理主业务流程和规范.txt[ZS5T]: F:Documents design, verification, or operating guidance in docs/数据处理主业务流程和规范.txt. | R:- | A:Provides evidence and decisions for maintainers and operators. | S:-
+数据开发IDE.md[ZS5T]: F:Documents design, verification, or operating guidance in docs/数据开发IDE.md. | R:- | A:Provides evidence and decisions for maintainers and operators. | S:-
+数据治理工具_Datara_系统功能讲解_TTS播报.txt[ZS5T]: F:Documents design, verification, or operating guidance in docs/数据治理工具_Datara_系统功能讲解_TTS播报.txt. | R:- | A:Provides evidence and decisions for maintainers and operators. | S:-
+目录审计-20261012.md[ZS5T]: F:Documents design, verification, or operating guidance in docs/目录审计-20261012.md. | R:- | A:Provides evidence and decisions for maintainers and operators. | S:-
+组件基线化与逐组件发版设计.md[ZS5T]: F:Documents design, verification, or operating guidance in docs/组件基线化与逐组件发版设计.md. | R:- | A:Provides evidence and decisions for maintainers and operators. | S:-
+组件开发规范.md[ZS5T]: F:Documents design, verification, or operating guidance in docs/组件开发规范.md. | R:- | A:Provides evidence and decisions for maintainers and operators. | S:-
+组件管理与发布治理设计.md[ZS5T]: F:Documents design, verification, or operating guidance in docs/组件管理与发布治理设计.md. | R:- | A:Provides evidence and decisions for maintainers and operators. | S:-
+血缘关系梳理.txt[ZS5T]: F:Documents design, verification, or operating guidance in docs/血缘关系梳理.txt. | R:- | A:Provides evidence and decisions for maintainers and operators. | S:-
+
+===D:/需求/数据治理工具/Datara/docs/increments/===
+00-流程与记录.md[ZS5T]: F:Documents design, verification, or operating guidance in docs/increments/00-流程与记录.md. | R:- | A:Provides evidence and decisions for maintainers and operators. | S:-
+01-新重置版本-方案与计划.md[ZS5T]: F:Documents design, verification, or operating guidance in docs/increments/01-新重置版本-方案与计划.md. | R:- | A:Provides evidence and decisions for maintainers and operators. | S:-
+02-DAG组件清单与定义.md[ZS5T]: F:Documents design, verification, or operating guidance in docs/increments/02-DAG组件清单与定义.md. | R:- | A:Provides evidence and decisions for maintainers and operators. | S:-
+I1-设计文档.md[ZS5T]: F:Documents design, verification, or operating guidance in docs/increments/I1-设计文档.md. | R:- | A:Provides evidence and decisions for maintainers and operators. | S:-
+I1-验证单.md[ZS5T]: F:Documents design, verification, or operating guidance in docs/increments/I1-验证单.md. | R:- | A:Provides evidence and decisions for maintainers and operators. | S:-
+I10-设计文档.md[ZS5T]: F:Documents design, verification, or operating guidance in docs/increments/I10-设计文档.md. | R:- | A:Provides evidence and decisions for maintainers and operators. | S:-
+I10-验证单.md[ZS5T]: F:Documents design, verification, or operating guidance in docs/increments/I10-验证单.md. | R:- | A:Provides evidence and decisions for maintainers and operators. | S:-
+I11-全盘统一优化设计.md[ZS5T]: F:Documents design, verification, or operating guidance in docs/increments/I11-全盘统一优化设计.md. | R:- | A:Provides evidence and decisions for maintainers and operators. | S:-
+I11-设计文档.md[ZS5T]: F:Documents design, verification, or operating guidance in docs/increments/I11-设计文档.md. | R:- | A:Provides evidence and decisions for maintainers and operators. | S:-
+I11-验证单.md[ZS5T]: F:Documents design, verification, or operating guidance in docs/increments/I11-验证单.md. | R:- | A:Provides evidence and decisions for maintainers and operators. | S:-
+I12-实施计划.md[ZS5T]: F:Documents design, verification, or operating guidance in docs/increments/I12-实施计划.md. | R:- | A:Provides evidence and decisions for maintainers and operators. | S:-
+I12-设计文档.md[ZS5T]: F:Documents design, verification, or operating guidance in docs/increments/I12-设计文档.md. | R:- | A:Provides evidence and decisions for maintainers and operators. | S:-
+I12-验证单.md[ZS5T]: F:Documents design, verification, or operating guidance in docs/increments/I12-验证单.md. | R:- | A:Provides evidence and decisions for maintainers and operators. | S:-
+I13-最终交付记录.md[ZS5T]: F:Documents design, verification, or operating guidance in docs/increments/I13-最终交付记录.md. | R:- | A:Provides evidence and decisions for maintainers and operators. | S:-
+I13-最终方案与全盘梳理.md[ZS5T]: F:Documents design, verification, or operating guidance in docs/increments/I13-最终方案与全盘梳理.md. | R:- | A:Provides evidence and decisions for maintainers and operators. | S:-
+I13-统一基础设施硬化设计.md[ZS5T]: F:Documents design, verification, or operating guidance in docs/increments/I13-统一基础设施硬化设计.md. | R:- | A:Provides evidence and decisions for maintainers and operators. | S:-
+I13-验证单.md[ZS5T]: F:Documents design, verification, or operating guidance in docs/increments/I13-验证单.md. | R:- | A:Provides evidence and decisions for maintainers and operators. | S:-
+I18-I19实现核验-20261012.md[ZS5T]: F:Documents design, verification, or operating guidance in docs/increments/I18-I19实现核验-20261012.md. | R:- | A:Provides evidence and decisions for maintainers and operators. | S:-
+I18-数仓建模设计.md[ZS5T]: F:Documents design, verification, or operating guidance in docs/increments/I18-数仓建模设计.md. | R:- | A:Provides evidence and decisions for maintainers and operators. | S:-
+I19-元数据与标签管理设计.md[ZS5T]: F:Documents design, verification, or operating guidance in docs/increments/I19-元数据与标签管理设计.md. | R:- | A:Provides evidence and decisions for maintainers and operators. | S:-
+I2-设计文档.md[ZS5T]: F:Documents design, verification, or operating guidance in docs/increments/I2-设计文档.md. | R:- | A:Provides evidence and decisions for maintainers and operators. | S:-
+I2-验证单.md[ZS5T]: F:Documents design, verification, or operating guidance in docs/increments/I2-验证单.md. | R:- | A:Provides evidence and decisions for maintainers and operators. | S:-
+I20-指标管理设计.md[ZS5T]: F:Documents design, verification, or operating guidance in docs/increments/I20-指标管理设计.md. | R:- | A:Provides evidence and decisions for maintainers and operators. | S:-
+I20实现核验-20261012.md[ZS5T]: F:Documents design, verification, or operating guidance in docs/increments/I20实现核验-20261012.md. | R:- | A:Provides evidence and decisions for maintainers and operators. | S:-
+I21-数据质量管理设计.md[ZS5T]: F:Documents design, verification, or operating guidance in docs/increments/I21-数据质量管理设计.md. | R:- | A:Provides evidence and decisions for maintainers and operators. | S:-
+I22-数据标准管理设计.md[ZS5T]: F:Documents design, verification, or operating guidance in docs/increments/I22-数据标准管理设计.md. | R:- | A:Provides evidence and decisions for maintainers and operators. | S:-
+I23-权限管理设计.md[ZS5T]: F:Documents design, verification, or operating guidance in docs/increments/I23-权限管理设计.md. | R:- | A:Provides evidence and decisions for maintainers and operators. | S:-
+I24-开放接口设计.md[ZS5T]: F:Documents design, verification, or operating guidance in docs/increments/I24-开放接口设计.md. | R:- | A:Provides evidence and decisions for maintainers and operators. | S:-
+I3-设计文档.md[ZS5T]: F:Documents design, verification, or operating guidance in docs/increments/I3-设计文档.md. | R:- | A:Provides evidence and decisions for maintainers and operators. | S:-
+I3-验证单.md[ZS5T]: F:Documents design, verification, or operating guidance in docs/increments/I3-验证单.md. | R:- | A:Provides evidence and decisions for maintainers and operators. | S:-
+I4-设计文档.md[ZS5T]: F:Documents design, verification, or operating guidance in docs/increments/I4-设计文档.md. | R:- | A:Provides evidence and decisions for maintainers and operators. | S:-
+I4-验证单.md[ZS5T]: F:Documents design, verification, or operating guidance in docs/increments/I4-验证单.md. | R:- | A:Provides evidence and decisions for maintainers and operators. | S:-
+I5-设计文档.md[ZS5T]: F:Documents design, verification, or operating guidance in docs/increments/I5-设计文档.md. | R:- | A:Provides evidence and decisions for maintainers and operators. | S:-
+I5-验证单.md[ZS5T]: F:Documents design, verification, or operating guidance in docs/increments/I5-验证单.md. | R:- | A:Provides evidence and decisions for maintainers and operators. | S:-
+I6-设计文档.md[ZS5T]: F:Documents design, verification, or operating guidance in docs/increments/I6-设计文档.md. | R:- | A:Provides evidence and decisions for maintainers and operators. | S:-
+I6-验证单.md[ZS5T]: F:Documents design, verification, or operating guidance in docs/increments/I6-验证单.md. | R:- | A:Provides evidence and decisions for maintainers and operators. | S:-
+I7-设计文档.md[ZS5T]: F:Documents design, verification, or operating guidance in docs/increments/I7-设计文档.md. | R:- | A:Provides evidence and decisions for maintainers and operators. | S:-
+I7-验证单.md[ZS5T]: F:Documents design, verification, or operating guidance in docs/increments/I7-验证单.md. | R:- | A:Provides evidence and decisions for maintainers and operators. | S:-
+I8-F35流引擎调研报告.md[ZS5T]: F:Documents design, verification, or operating guidance in docs/increments/I8-F35流引擎调研报告.md. | R:- | A:Provides evidence and decisions for maintainers and operators. | S:-
+I8-设计文档.md[ZS5T]: F:Documents design, verification, or operating guidance in docs/increments/I8-设计文档.md. | R:- | A:Provides evidence and decisions for maintainers and operators. | S:-
+I8-验证单.md[ZS5T]: F:Documents design, verification, or operating guidance in docs/increments/I8-验证单.md. | R:- | A:Provides evidence and decisions for maintainers and operators. | S:-
+I9-F59-发布包验证日志.txt[ZS5T]: F:Documents design, verification, or operating guidance in docs/increments/I9-F59-发布包验证日志.txt. | R:- | A:Provides evidence and decisions for maintainers and operators. | S:-
+I9-UI摸底报告.md[ZS5T]: F:Documents design, verification, or operating guidance in docs/increments/I9-UI摸底报告.md. | R:- | A:Provides evidence and decisions for maintainers and operators. | S:-
+I9-方案-信息架构与任务中心重构.md[ZS5T]: F:Documents design, verification, or operating guidance in docs/increments/I9-方案-信息架构与任务中心重构.md. | R:- | A:Provides evidence and decisions for maintainers and operators. | S:-
+I9-设计文档.md[ZS5T]: F:Documents design, verification, or operating guidance in docs/increments/I9-设计文档.md. | R:- | A:Provides evidence and decisions for maintainers and operators. | S:-
+I9-验证单.md[ZS5T]: F:Documents design, verification, or operating guidance in docs/increments/I9-验证单.md. | R:- | A:Provides evidence and decisions for maintainers and operators. | S:-
+决策记录.md[ZS5T]: F:Documents design, verification, or operating guidance in docs/increments/决策记录.md. | R:- | A:Provides evidence and decisions for maintainers and operators. | S:-
+
+===D:/需求/数据治理工具/Datara/docs/increments/i12_proofs/===
+I12_verification_summary_P2.3.md[ZS5T]: F:Documents design, verification, or operating guidance in docs/increments/i12_proofs/I12_verification_summary_P2.3.md. | R:- | A:Provides evidence and decisions for maintainers and operators. | S:-
+i12_board_cat_dom.json[ZS5T]: F:Documents design, verification, or operating guidance in docs/increments/i12_proofs/i12_board_cat_dom.json. | R:- | A:Provides evidence and decisions for maintainers and operators. | S:-
+i12_board_cat_dom2.json[ZS5T]: F:Documents design, verification, or operating guidance in docs/increments/i12_proofs/i12_board_cat_dom2.json. | R:- | A:Provides evidence and decisions for maintainers and operators. | S:-
+i12_board_cat_dom_final.json[ZS5T]: F:Documents design, verification, or operating guidance in docs/increments/i12_proofs/i12_board_cat_dom_final.json. | R:- | A:Provides evidence and decisions for maintainers and operators. | S:-
+i12_board_cat_sidebar2.json[ZS5T]: F:Documents design, verification, or operating guidance in docs/increments/i12_proofs/i12_board_cat_sidebar2.json. | R:- | A:Provides evidence and decisions for maintainers and operators. | S:-
+i12_cat_stream_sources.json[ZS5T]: F:Documents design, verification, or operating guidance in docs/increments/i12_proofs/i12_cat_stream_sources.json. | R:- | A:Provides evidence and decisions for maintainers and operators. | S:-
+i12_closeout.json[ZS5T]: F:Documents design, verification, or operating guidance in docs/increments/i12_proofs/i12_closeout.json. | R:- | A:Provides evidence and decisions for maintainers and operators. | S:-
+i12_complete.json[ZS5T]: F:Documents design, verification, or operating guidance in docs/increments/i12_proofs/i12_complete.json. | R:- | A:Provides evidence and decisions for maintainers and operators. | S:-
+i12_general_g1g5.json[ZS5T]: F:Documents design, verification, or operating guidance in docs/increments/i12_proofs/i12_general_g1g5.json. | R:- | A:Provides evidence and decisions for maintainers and operators. | S:-
+i12_handoff_dom.json[ZS5T]: F:Documents design, verification, or operating guidance in docs/increments/i12_proofs/i12_handoff_dom.json. | R:- | A:Provides evidence and decisions for maintainers and operators. | S:-
+
+===D:/需求/数据治理工具/Datara/docs/superpowers/plans/===
+2026-09-30-baseline-revision.md[ZS5T]: F:Documents design, verification, or operating guidance in docs/superpowers/plans/2026-09-30-baseline-revision.md. | R:- | A:Provides evidence and decisions for maintainers and operators. | S:-
+2026-09-30-lineage.md[ZS5T]: F:Documents design, verification, or operating guidance in docs/superpowers/plans/2026-09-30-lineage.md. | R:- | A:Provides evidence and decisions for maintainers and operators. | S:-
+2026-10-01-datara-unified-hardening.md[ZS5T]: F:Documents design, verification, or operating guidance in docs/superpowers/plans/2026-10-01-datara-unified-hardening.md. | R:- | A:Provides evidence and decisions for maintainers and operators. | S:-
+2026-10-01-i13-unified-hardening.md[ZS5T]: F:Documents design, verification, or operating guidance in docs/superpowers/plans/2026-10-01-i13-unified-hardening.md. | R:- | A:Provides evidence and decisions for maintainers and operators. | S:-
+2026-10-01-lineage-followup.md[ZS5T]: F:Documents design, verification, or operating guidance in docs/superpowers/plans/2026-10-01-lineage-followup.md. | R:- | A:Provides evidence and decisions for maintainers and operators. | S:-
+2026-10-03-component-page-designer.md[ZS5T]: F:Documents design, verification, or operating guidance in docs/superpowers/plans/2026-10-03-component-page-designer.md. | R:- | A:Provides evidence and decisions for maintainers and operators. | S:-
+2026-10-05-workbench-optimization.md[ZS5T]: F:Documents design, verification, or operating guidance in docs/superpowers/plans/2026-10-05-workbench-optimization.md. | R:- | A:Provides evidence and decisions for maintainers and operators. | S:-
+2026-10-09-component-reference-upgrade.md[ZS5T]: F:Documents design, verification, or operating guidance in docs/superpowers/plans/2026-10-09-component-reference-upgrade.md. | R:- | A:Provides evidence and decisions for maintainers and operators. | S:-
+2026-10-12-i18-model-p0.md[ZS5T]: F:Documents design, verification, or operating guidance in docs/superpowers/plans/2026-10-12-i18-model-p0.md. | R:- | A:Provides evidence and decisions for maintainers and operators. | S:-
+
+===D:/需求/数据治理工具/Datara/docs/superpowers/specs/===
+2026-09-30-baseline-revision-design.md[ZS5T]: F:Documents design, verification, or operating guidance in docs/superpowers/specs/2026-09-30-baseline-revision-design.md. | R:- | A:Provides evidence and decisions for maintainers and operators. | S:-
+2026-09-30-lineage-design.md[ZS5T]: F:Documents design, verification, or operating guidance in docs/superpowers/specs/2026-09-30-lineage-design.md. | R:- | A:Provides evidence and decisions for maintainers and operators. | S:-
+2026-10-01-lineage-followup.md[ZS5T]: F:Documents design, verification, or operating guidance in docs/superpowers/specs/2026-10-01-lineage-followup.md. | R:- | A:Provides evidence and decisions for maintainers and operators. | S:-
+2026-10-03-component-page-designer-design.md[ZS5T]: F:Documents design, verification, or operating guidance in docs/superpowers/specs/2026-10-03-component-page-designer-design.md. | R:- | A:Provides evidence and decisions for maintainers and operators. | S:-
+2026-10-05-workbench-optimization-design.md[ZS5T]: F:Documents design, verification, or operating guidance in docs/superpowers/specs/2026-10-05-workbench-optimization-design.md. | R:- | A:Provides evidence and decisions for maintainers and operators. | S:-
+
+===D:/需求/数据治理工具/Datara/docs/use-cases/===
+README.md[ZS5T]: F:Documents design, verification, or operating guidance in docs/use-cases/README.md. | R:- | A:Provides evidence and decisions for maintainers and operators. | S:-
+
+===D:/需求/数据治理工具/Datara/docs/use-cases/etl/===
+I12-etl-E1-ODS清洗入DWD.md[ZS5T]: F:Documents design, verification, or operating guidance in docs/use-cases/etl/I12-etl-E1-ODS清洗入DWD.md. | R:- | A:Provides evidence and decisions for maintainers and operators. | S:-
+I12-etl-E2-DWD聚合入DWS.md[ZS5T]: F:Documents design, verification, or operating guidance in docs/use-cases/etl/I12-etl-E2-DWD聚合入DWS.md. | R:- | A:Provides evidence and decisions for maintainers and operators. | S:-
+I12-etl-E3-ELT文件先入仓后加工.md[ZS5T]: F:Documents design, verification, or operating guidance in docs/use-cases/etl/I12-etl-E3-ELT文件先入仓后加工.md. | R:- | A:Provides evidence and decisions for maintainers and operators. | S:-
+I12-etl-E4-文件维表JOIN加工.md[ZS5T]: F:Documents design, verification, or operating guidance in docs/use-cases/etl/I12-etl-E4-文件维表JOIN加工.md. | R:- | A:Provides evidence and decisions for maintainers and operators. | S:-
+I12-etl-E5-带闸门分层链.md[ZS5T]: F:Documents design, verification, or operating guidance in docs/use-cases/etl/I12-etl-E5-带闸门分层链.md. | R:- | A:Provides evidence and decisions for maintainers and operators. | S:-
+
+===D:/需求/数据治理工具/Datara/docs/use-cases/general/===
+I12-general-G1-定时shell巡检.md[ZS5T]: F:Documents design, verification, or operating guidance in docs/use-cases/general/I12-general-G1-定时shell巡检.md. | R:- | A:Provides evidence and decisions for maintainers and operators. | S:-
+I12-general-G2-python文件清洗归档.md[ZS5T]: F:Documents design, verification, or operating guidance in docs/use-cases/general/I12-general-G2-python文件清洗归档.md. | R:- | A:Provides evidence and decisions for maintainers and operators. | S:-
+I12-general-G3-HTTP拉取落库通知.md[ZS5T]: F:Documents design, verification, or operating guidance in docs/use-cases/general/I12-general-G3-HTTP拉取落库通知.md. | R:- | A:Provides evidence and decisions for maintainers and operators. | S:-
+I12-general-G4-SSH多节点fork批执行.md[ZS5T]: F:Documents design, verification, or operating guidance in docs/use-cases/general/I12-general-G4-SSH多节点fork批执行.md. | R:- | A:Provides evidence and decisions for maintainers and operators. | S:-
+I12-general-G5-数据出仓归档.md[ZS5T]: F:Documents design, verification, or operating guidance in docs/use-cases/general/I12-general-G5-数据出仓归档.md. | R:- | A:Provides evidence and decisions for maintainers and operators. | S:-
+
+===D:/需求/数据治理工具/Datara/docs/use-cases/stream/===
+I12-stream-F1-kafka单源窗口API实时汇总.md[ZS5T]: F:Documents design, verification, or operating guidance in docs/use-cases/stream/I12-stream-F1-kafka单源窗口API实时汇总.md. | R:- | A:Provides evidence and decisions for maintainers and operators. | S:-
+I12-stream-F2-kafka双源union看板.md[ZS5T]: F:Documents design, verification, or operating guidance in docs/use-cases/stream/I12-stream-F2-kafka双源union看板.md. | R:- | A:Provides evidence and decisions for maintainers and operators. | S:-
+I12-stream-F3-kafkajoin维表流.md[ZS5T]: F:Documents design, verification, or operating guidance in docs/use-cases/stream/I12-stream-F3-kafkajoin维表流.md. | R:- | A:Provides evidence and decisions for maintainers and operators. | S:-
+I12-stream-F4-http阈值触发.md[ZS5T]: F:Documents design, verification, or operating guidance in docs/use-cases/stream/I12-stream-F4-http阈值触发.md. | R:- | A:Provides evidence and decisions for maintainers and operators. | S:-
+I12-stream-F5-kafka窗口落仓.md[ZS5T]: F:Documents design, verification, or operating guidance in docs/use-cases/stream/I12-stream-F5-kafka窗口落仓.md. | R:- | A:Provides evidence and decisions for maintainers and operators. | S:-
+
+===D:/需求/数据治理工具/Datara/docs/use-cases/sync/===
+I12-sync-S1-ods_order全量初载.md[ZS5T]: F:Documents design, verification, or operating guidance in docs/use-cases/sync/I12-sync-S1-ods_order全量初载.md. | R:- | A:Provides evidence and decisions for maintainers and operators. | S:-
+I12-sync-S2-ods_payment增量同步.md[ZS5T]: F:Documents design, verification, or operating guidance in docs/use-cases/sync/I12-sync-S2-ods_payment增量同步.md. | R:- | A:Provides evidence and decisions for maintainers and operators. | S:-
+I12-sync-S3-目标表反推源.md[ZS5T]: F:Documents design, verification, or operating guidance in docs/use-cases/sync/I12-sync-S3-目标表反推源.md. | R:- | A:Provides evidence and decisions for maintainers and operators. | S:-
+I12-sync-S4-文件入仓.md[ZS5T]: F:Documents design, verification, or operating guidance in docs/use-cases/sync/I12-sync-S4-文件入仓.md. | R:- | A:Provides evidence and decisions for maintainers and operators. | S:-
+I12-sync-S5-多表并行fork.md[ZS5T]: F:Documents design, verification, or operating guidance in docs/use-cases/sync/I12-sync-S5-多表并行fork.md. | R:- | A:Provides evidence and decisions for maintainers and operators. | S:-
+
+===D:/需求/数据治理工具/Datara/docs/组件基线化/===
+README.md[ZS5T]: F:Documents design, verification, or operating guidance in docs/组件基线化/README.md. | R:- | A:Provides evidence and decisions for maintainers and operators. | S:-
+assert.md[ZS5T]: F:Documents design, verification, or operating guidance in docs/组件基线化/assert.md. | R:- | A:Provides evidence and decisions for maintainers and operators. | S:-
+condition_set.md[ZS5T]: F:Documents design, verification, or operating guidance in docs/组件基线化/condition_set.md. | R:- | A:Provides evidence and decisions for maintainers and operators. | S:-
+conditions.md[ZS5T]: F:Documents design, verification, or operating guidance in docs/组件基线化/conditions.md. | R:- | A:Provides evidence and decisions for maintainers and operators. | S:-
+delay.md[ZS5T]: F:Documents design, verification, or operating guidance in docs/组件基线化/delay.md. | R:- | A:Provides evidence and decisions for maintainers and operators. | S:-
+demo_pipeline.md[ZS5T]: F:Documents design, verification, or operating guidance in docs/组件基线化/demo_pipeline.md. | R:- | A:Provides evidence and decisions for maintainers and operators. | S:-
+dependent.md[ZS5T]: F:Documents design, verification, or operating guidance in docs/组件基线化/dependent.md. | R:- | A:Provides evidence and decisions for maintainers and operators. | S:-
+end.md[ZS5T]: F:Documents design, verification, or operating guidance in docs/组件基线化/end.md. | R:- | A:Provides evidence and decisions for maintainers and operators. | S:-
+endpoint_select.md[ZS5T]: F:Documents design, verification, or operating guidance in docs/组件基线化/endpoint_select.md. | R:- | A:Provides evidence and decisions for maintainers and operators. | S:-
+field_map.md[ZS5T]: F:Documents design, verification, or operating guidance in docs/组件基线化/field_map.md. | R:- | A:Provides evidence and decisions for maintainers and operators. | S:-
+field_map_union.md[ZS5T]: F:Documents design, verification, or operating guidance in docs/组件基线化/field_map_union.md. | R:- | A:Provides evidence and decisions for maintainers and operators. | S:-
+file.md[ZS5T]: F:Documents design, verification, or operating guidance in docs/组件基线化/file.md. | R:- | A:Provides evidence and decisions for maintainers and operators. | S:-
+file_sync.md[ZS5T]: F:Documents design, verification, or operating guidance in docs/组件基线化/file_sync.md. | R:- | A:Provides evidence and decisions for maintainers and operators. | S:-
+file_sync_orch.md[ZS5T]: F:Documents design, verification, or operating guidance in docs/组件基线化/file_sync_orch.md. | R:- | A:Provides evidence and decisions for maintainers and operators. | S:-
+fork.md[ZS5T]: F:Documents design, verification, or operating guidance in docs/组件基线化/fork.md. | R:- | A:Provides evidence and decisions for maintainers and operators. | S:-
+http.md[ZS5T]: F:Documents design, verification, or operating guidance in docs/组件基线化/http.md. | R:- | A:Provides evidence and decisions for maintainers and operators. | S:-
+join.md[ZS5T]: F:Documents design, verification, or operating guidance in docs/组件基线化/join.md. | R:- | A:Provides evidence and decisions for maintainers and operators. | S:-
+loop.md[ZS5T]: F:Documents design, verification, or operating guidance in docs/组件基线化/loop.md. | R:- | A:Provides evidence and decisions for maintainers and operators. | S:-
+merge.md[ZS5T]: F:Documents design, verification, or operating guidance in docs/组件基线化/merge.md. | R:- | A:Provides evidence and decisions for maintainers and operators. | S:-
+notify.md[ZS5T]: F:Documents design, verification, or operating guidance in docs/组件基线化/notify.md. | R:- | A:Provides evidence and decisions for maintainers and operators. | S:-
+page_board.md[ZS5T]: F:Documents design, verification, or operating guidance in docs/组件基线化/page_board.md. | R:- | A:Provides evidence and decisions for maintainers and operators. | S:-
+procedure.md[ZS5T]: F:Documents design, verification, or operating guidance in docs/组件基线化/procedure.md. | R:- | A:Provides evidence and decisions for maintainers and operators. | S:-
+python.md[ZS5T]: F:Documents design, verification, or operating guidance in docs/组件基线化/python.md. | R:- | A:Provides evidence and decisions for maintainers and operators. | S:-
+shell.md[ZS5T]: F:Documents design, verification, or operating guidance in docs/组件基线化/shell.md. | R:- | A:Provides evidence and decisions for maintainers and operators. | S:-
+smoke.md[ZS5T]: F:Documents design, verification, or operating guidance in docs/组件基线化/smoke.md. | R:- | A:Provides evidence and decisions for maintainers and operators. | S:-
+sql.md[ZS5T]: F:Documents design, verification, or operating guidance in docs/组件基线化/sql.md. | R:- | A:Provides evidence and decisions for maintainers and operators. | S:-
+src_base_orch.md[ZS5T]: F:Documents design, verification, or operating guidance in docs/组件基线化/src_base_orch.md. | R:- | A:Provides evidence and decisions for maintainers and operators. | S:-
+ssh.md[ZS5T]: F:Documents design, verification, or operating guidance in docs/组件基线化/ssh.md. | R:- | A:Provides evidence and decisions for maintainers and operators. | S:-
+start.md[ZS5T]: F:Documents design, verification, or operating guidance in docs/组件基线化/start.md. | R:- | A:Provides evidence and decisions for maintainers and operators. | S:-
+stream_fuse.md[ZS5T]: F:Documents design, verification, or operating guidance in docs/组件基线化/stream_fuse.md. | R:- | A:Provides evidence and decisions for maintainers and operators. | S:-
+stream_input.md[ZS5T]: F:Documents design, verification, or operating guidance in docs/组件基线化/stream_input.md. | R:- | A:Provides evidence and decisions for maintainers and operators. | S:-
+stream_output.md[ZS5T]: F:Documents design, verification, or operating guidance in docs/组件基线化/stream_output.md. | R:- | A:Provides evidence and decisions for maintainers and operators. | S:-
+switch.md[ZS5T]: F:Documents design, verification, or operating guidance in docs/组件基线化/switch.md. | R:- | A:Provides evidence and decisions for maintainers and operators. | S:-
+sync.md[ZS5T]: F:Documents design, verification, or operating guidance in docs/组件基线化/sync.md. | R:- | A:Provides evidence and decisions for maintainers and operators. | S:-
+tgt_base_orch.md[ZS5T]: F:Documents design, verification, or operating guidance in docs/组件基线化/tgt_base_orch.md. | R:- | A:Provides evidence and decisions for maintainers and operators. | S:-
+variable.md[ZS5T]: F:Documents design, verification, or operating guidance in docs/组件基线化/variable.md. | R:- | A:Provides evidence and decisions for maintainers and operators. | S:-
+
+===D:/需求/数据治理工具/Datara/infra/bin/===
+clean_logs.sh[RO5T]: F:Provides deployment or environment support through infra/bin/clean_logs.sh. | R:- | A:Supports reproducible installation, verification, or operations. | S:-
+import.sh[RO5T]: F:Provides deployment or environment support through infra/bin/import.sh. | R:- | A:Supports reproducible installation, verification, or operations. | S:-
+install.sh[RO5T]: F:Provides deployment or environment support through infra/bin/install.sh. | R:- | A:Supports reproducible installation, verification, or operations. | S:-
+reset.sh[RO5T]: F:Provides deployment or environment support through infra/bin/reset.sh. | R:- | A:Supports reproducible installation, verification, or operations. | S:-
+uninstall.sh[RO5T]: F:Provides deployment or environment support through infra/bin/uninstall.sh. | R:- | A:Supports reproducible installation, verification, or operations. | S:-
+
+===D:/需求/数据治理工具/Datara/infra/===
+check_i9.sh[RO5T]: F:Provides deployment or environment support through infra/check_i9.sh. | R:- | A:Supports reproducible installation, verification, or operations. | S:-
+deploy_i10.sh[RO5T]: F:Provides deployment or environment support through infra/deploy_i10.sh. | R:- | A:Supports reproducible installation, verification, or operations. | S:-
+deploy_i11.sh[RO5T]: F:Provides deployment or environment support through infra/deploy_i11.sh. | R:- | A:Supports reproducible installation, verification, or operations. | S:-
+deploy_i12.sh[RO5T]: F:Provides deployment or environment support through infra/deploy_i12.sh. | R:- | A:Supports reproducible installation, verification, or operations. | S:-
+deploy_i17.sh[RO5T]: F:Provides deployment or environment support through infra/deploy_i17.sh. | R:- | A:Supports reproducible installation, verification, or operations. | S:-
+deploy_i4.sh[RO5T]: F:Provides deployment or environment support through infra/deploy_i4.sh. | R:- | A:Supports reproducible installation, verification, or operations. | S:-
+deploy_i5.sh[RO5T]: F:Provides deployment or environment support through infra/deploy_i5.sh. | R:- | A:Supports reproducible installation, verification, or operations. | S:-
+deploy_i6.sh[RO5T]: F:Provides deployment or environment support through infra/deploy_i6.sh. | R:- | A:Supports reproducible installation, verification, or operations. | S:-
+deploy_i9.sh[RO5T]: F:Provides deployment or environment support through infra/deploy_i9.sh. | R:- | A:Supports reproducible installation, verification, or operations. | S:-
+deploy_p1_page_designer.sh[RO5T]: F:Provides deployment or environment support through infra/deploy_p1_page_designer.sh. | R:- | A:Supports reproducible installation, verification, or operations. | S:-
+f59_preflight.sh[RO5T]: F:Provides deployment or environment support through infra/f59_preflight.sh. | R:- | A:Supports reproducible installation, verification, or operations. | S:-
+f59_recheck.sh[RO5T]: F:Provides deployment or environment support through infra/f59_recheck.sh. | R:- | A:Supports reproducible installation, verification, or operations. | S:-
+f59_verify.sh[RO5T]: F:Provides deployment or environment support through infra/f59_verify.sh. | R:- | A:Supports reproducible installation, verification, or operations. | S:-
+i5_check1.sh[RO5T]: F:Provides deployment or environment support through infra/i5_check1.sh. | R:- | A:Supports reproducible installation, verification, or operations. | S:-
+i5_check8.sh[RO5T]: F:Provides deployment or environment support through infra/i5_check8.sh. | R:- | A:Supports reproducible installation, verification, or operations. | S:-
+i5_fix_tmp.sh[RO5T]: F:Provides deployment or environment support through infra/i5_fix_tmp.sh. | R:- | A:Supports reproducible installation, verification, or operations. | S:-
+i5_probe_file.sh[RO5T]: F:Provides deployment or environment support through infra/i5_probe_file.sh. | R:- | A:Supports reproducible installation, verification, or operations. | S:-
+i5_regress.sh[RO5T]: F:Provides deployment or environment support through infra/i5_regress.sh. | R:- | A:Supports reproducible installation, verification, or operations. | S:-
+i5_test1.sh[RO5T]: F:Provides deployment or environment support through infra/i5_test1.sh. | R:- | A:Supports reproducible installation, verification, or operations. | S:-
+i5_test2.sh[RO5T]: F:Provides deployment or environment support through infra/i5_test2.sh. | R:- | A:Supports reproducible installation, verification, or operations. | S:-
+i5_test3.sh[RO5T]: F:Provides deployment or environment support through infra/i5_test3.sh. | R:- | A:Supports reproducible installation, verification, or operations. | S:-
+i5_test4.sh[RO5T]: F:Provides deployment or environment support through infra/i5_test4.sh. | R:- | A:Supports reproducible installation, verification, or operations. | S:-
+i5_test5.sh[RO5T]: F:Provides deployment or environment support through infra/i5_test5.sh. | R:- | A:Supports reproducible installation, verification, or operations. | S:-
+i6_check_master.sh[RO5T]: F:Provides deployment or environment support through infra/i6_check_master.sh. | R:- | A:Supports reproducible installation, verification, or operations. | S:-
+i6_clean.sh[RO5T]: F:Provides deployment or environment support through infra/i6_clean.sh. | R:- | A:Supports reproducible installation, verification, or operations. | S:-
+i6_diag.sh[RO5T]: F:Provides deployment or environment support through infra/i6_diag.sh. | R:- | A:Supports reproducible installation, verification, or operations. | S:-
+i6_diag2.sh[RO5T]: F:Provides deployment or environment support through infra/i6_diag2.sh. | R:- | A:Supports reproducible installation, verification, or operations. | S:-
+i6_diag3.sh[RO5T]: F:Provides deployment or environment support through infra/i6_diag3.sh. | R:- | A:Supports reproducible installation, verification, or operations. | S:-
+i6_diag4.sh[RO5T]: F:Provides deployment or environment support through infra/i6_diag4.sh. | R:- | A:Supports reproducible installation, verification, or operations. | S:-
+i6_diag5.sh[RO5T]: F:Provides deployment or environment support through infra/i6_diag5.sh. | R:- | A:Supports reproducible installation, verification, or operations. | S:-
+i6_setup.sh[RO5T]: F:Provides deployment or environment support through infra/i6_setup.sh. | R:- | A:Supports reproducible installation, verification, or operations. | S:-
+i6_test1.sh[RO5T]: F:Provides deployment or environment support through infra/i6_test1.sh. | R:- | A:Supports reproducible installation, verification, or operations. | S:-
+i9_run.sh[RO5T]: F:Provides deployment or environment support through infra/i9_run.sh. | R:- | A:Supports reproducible installation, verification, or operations. | S:-
+patch_i4.sh[RO5T]: F:Provides deployment or environment support through infra/patch_i4.sh. | R:- | A:Supports reproducible installation, verification, or operations. | S:-
+probe_p1_page_designer.sh[RO5T]: F:Provides deployment or environment support through infra/probe_p1_page_designer.sh. | R:- | A:Supports reproducible installation, verification, or operations. | S:-
+tmp_wf_id.txt[ZS5T]: F:Documents design, verification, or operating guidance in infra/tmp_wf_id.txt. | R:- | A:Provides evidence and decisions for maintainers and operators. | S:-
+
+===D:/需求/数据治理工具/Datara/infra/files/samples/===
+orders_part.csv[RO5T]: F:Provides deployment or environment support through infra/files/samples/orders_part.csv. | R:- | A:Supports reproducible installation, verification, or operations. | S:-
+orders_part.txt[ZS5T]: F:Documents design, verification, or operating guidance in infra/files/samples/orders_part.txt. | R:- | A:Provides evidence and decisions for maintainers and operators. | S:-
+
+===D:/需求/数据治理工具/Datara/infra/mysql/dw/init/===
+01_schema.sql[RO5T]: F:Provides deployment or environment support through infra/mysql/dw/init/01_schema.sql. | R:- | A:Supports reproducible installation, verification, or operations. | S:-
+02_seed_dwd.sql[RO5T]: F:Provides deployment or environment support through infra/mysql/dw/init/02_seed_dwd.sql. | R:- | A:Supports reproducible installation, verification, or operations. | S:-
+
+===D:/需求/数据治理工具/Datara/infra/mysql/init/===
+01_meta.sql[RO5T]: F:Provides deployment or environment support through infra/mysql/init/01_meta.sql. | R:- | A:Supports reproducible installation, verification, or operations. | S:-
+02_meta_i3.sql[RO5T]: F:Provides deployment or environment support through infra/mysql/init/02_meta_i3.sql. | R:- | A:Supports reproducible installation, verification, or operations. | S:-
+02_meta_i4.sql[RO5T]: F:Provides deployment or environment support through infra/mysql/init/02_meta_i4.sql. | R:- | A:Supports reproducible installation, verification, or operations. | S:-
+03_meta_i5.sql[RO5T]: F:Provides deployment or environment support through infra/mysql/init/03_meta_i5.sql. | R:- | A:Supports reproducible installation, verification, or operations. | S:-
+04_meta_i10.sql[RO5T]: F:Provides deployment or environment support through infra/mysql/init/04_meta_i10.sql. | R:- | A:Supports reproducible installation, verification, or operations. | S:-
+
+===D:/需求/数据治理工具/Datara/infra/mysql/src/init/===
+01_schema.sql[RO5T]: F:Provides deployment or environment support through infra/mysql/src/init/01_schema.sql. | R:- | A:Supports reproducible installation, verification, or operations. | S:-
+
+===D:/需求/数据治理工具/Datara/prototype/assets/===
+ai.js[DB5T]: F:Implements the managed behavior in prototype/assets/ai.js. | R:- | A:Provides the module contract used by adjacent platform services. | S:-
+canvas.js[DB5T]: F:Implements the managed behavior in prototype/assets/canvas.js. | R:- | A:Provides the module contract used by adjacent platform services. | S:-
+core.js[DB5T]: F:Implements the managed behavior in prototype/assets/core.js. | R:- | A:Provides the module contract used by adjacent platform services. | S:-
+data.js[DB5T]: F:Implements the managed behavior in prototype/assets/data.js. | R:- | A:Provides the module contract used by adjacent platform services. | S:-
+main.css[DB5T]: F:Implements the managed behavior in prototype/assets/main.css. | R:- | A:Provides the module contract used by adjacent platform services. | S:-
+
+===D:/需求/数据治理工具/Datara/prototype/assets/pages/===
+dashboard.js[DB5T]: F:Implements the managed behavior in prototype/assets/pages/dashboard.js. | R:- | A:Provides the module contract used by adjacent platform services. | S:-
+m03-datasource.js[DB5T]: F:Implements the managed behavior in prototype/assets/pages/m03-datasource.js. | R:- | A:Provides the module contract used by adjacent platform services. | S:-
+m04-model.js[DB5T]: F:Implements the managed behavior in prototype/assets/pages/m04-model.js. | R:- | A:Provides the module contract used by adjacent platform services. | S:-
+m05-batch.js[DB5T]: F:Implements the managed behavior in prototype/assets/pages/m05-batch.js. | R:- | A:Provides the module contract used by adjacent platform services. | S:-
+m06-stream.js[DB5T]: F:Implements the managed behavior in prototype/assets/pages/m06-stream.js. | R:- | A:Provides the module contract used by adjacent platform services. | S:-
+m07-quality.js[DB5T]: F:Implements the managed behavior in prototype/assets/pages/m07-quality.js. | R:- | A:Provides the module contract used by adjacent platform services. | S:-
+m09-meta.js[DB5T]: F:Implements the managed behavior in prototype/assets/pages/m09-meta.js. | R:- | A:Provides the module contract used by adjacent platform services. | S:-
+m10-standard.js[DB5T]: F:Implements the managed behavior in prototype/assets/pages/m10-standard.js. | R:- | A:Provides the module contract used by adjacent platform services. | S:-
+m11-ide.js[DB5T]: F:Implements the managed behavior in prototype/assets/pages/m11-ide.js. | R:- | A:Provides the module contract used by adjacent platform services. | S:-
+m12-param.js[DB5T]: F:Implements the managed behavior in prototype/assets/pages/m12-param.js. | R:- | A:Provides the module contract used by adjacent platform services. | S:-
+m13-dag.js[DB5T]: F:Implements the managed behavior in prototype/assets/pages/m13-dag.js. | R:- | A:Provides the module contract used by adjacent platform services. | S:-
+m14-script.js[DB5T]: F:Implements the managed behavior in prototype/assets/pages/m14-script.js. | R:- | A:Provides the module contract used by adjacent platform services. | S:-
+m16-deploy.js[DB5T]: F:Implements the managed behavior in prototype/assets/pages/m16-deploy.js. | R:- | A:Provides the module contract used by adjacent platform services. | S:-
+
+===D:/需求/数据治理工具/Datara/prototype/===
+index.html[DB5T]: F:Implements the managed behavior in prototype/index.html. | R:- | A:Provides the module contract used by adjacent platform services. | S:-
+
+===D:/需求/数据治理工具/Datara/scripts/===
+backfill_component_ref.py[XQ5T]: F:Provides a development, data-preparation, or verification utility in scripts/backfill_component_ref.py. | R:- | A:Supports repeatable engineering and test evidence. | S:-
+check_dag_route_completeness.py[XQ5T]: F:Provides a development, data-preparation, or verification utility in scripts/check_dag_route_completeness.py. | R:- | A:Supports repeatable engineering and test evidence. | S:-
+export_dag_catalog.py[XQ5T]: F:Provides a development, data-preparation, or verification utility in scripts/export_dag_catalog.py. | R:- | A:Supports repeatable engineering and test evidence. | S:-
