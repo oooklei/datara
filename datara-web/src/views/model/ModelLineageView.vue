@@ -45,34 +45,47 @@ async function reload() {
   } catch (e) {
     if (seq !== reloadSeq) return
     const err = e as Error & { code?: number }
-    /* 仅「模型不存在」（8001）进兜底；超时/500/鉴权等仅提示 */
+    /* 仅「模型不存在」（8001）进兜底；超时/500/鉴权等仅提示并清空血缘残留 */
     if (err.code === 8001) {
       current.value = null
       notFound.value = true
     } else {
+      lineage.value = null
+      impacts.value = []
       ElMessage.error(err.message)
     }
     return
   }
-  /* 血缘 + 影响 + 字典 + code→id 映射并行；失败置空仅提示，不阻断信息卡 */
-  try {
-    const [lg, im, ds, ms] = await Promise.all([
-      getModelLineage(id),
-      getModelImpact(id),
-      dicts.value.layers.length ? Promise.resolve(dicts.value) : getModelDicts(),
-      codeToId.value.size ? Promise.resolve(null) : listModels({ size: 200 }),
-    ])
-    if (seq !== reloadSeq) return
-    lineage.value = lg
-    impacts.value = im.list
-    dicts.value = ds
-    if (ms) codeToId.value = new Map(ms.list.map((m) => [m.code, m.id]))
-  } catch (e) {
-    if (seq !== reloadSeq) return
-    lineage.value = null
-    impacts.value = []
-    ElMessage.error((e as Error).message)
+  /* 主数据（血缘 + 影响）与次要数据（字典 + code→id 映射）分组并行、互不捆绑：
+     主数据失败置空提示；次要数据失败仅提示，不动 lineage/impacts/codeToId 旧值 */
+  const loadMain = async () => {
+    try {
+      const [lg, im] = await Promise.all([getModelLineage(id), getModelImpact(id)])
+      if (seq !== reloadSeq) return
+      lineage.value = lg
+      impacts.value = im.list
+    } catch (e) {
+      if (seq !== reloadSeq) return
+      lineage.value = null
+      impacts.value = []
+      ElMessage.error((e as Error).message)
+    }
   }
+  const loadAux = async () => {
+    if (dicts.value.layers.length && codeToId.value.size) return
+    try {
+      const [ds, ms] = await Promise.all([
+        dicts.value.layers.length ? Promise.resolve(dicts.value) : getModelDicts(),
+        codeToId.value.size ? Promise.resolve(null) : listModels({ size: 200 }),
+      ])
+      if (seq !== reloadSeq) return
+      dicts.value = ds
+      if (ms) codeToId.value = new Map(ms.list.map((m) => [m.code, m.id]))
+    } catch (e) {
+      if (seq === reloadSeq) ElMessage.error((e as Error).message)
+    }
+  }
+  await Promise.all([loadMain(), loadAux()])
 }
 
 onMounted(reload)
