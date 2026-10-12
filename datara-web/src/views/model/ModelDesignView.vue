@@ -50,10 +50,16 @@ async function reload() {
       n: f.name, t: f.dataType, len: f.length, pk: f.isPk, pkPart: f.isPartition, cmt: f.comment, def: f.defaultValue,
     }))
     notFound.value = false
-  } catch {
+  } catch (e) {
     if (seq !== reloadSeq) return
-    model.value = null
-    notFound.value = true
+    const err = e as Error & { code?: number }
+    /* 仅「模型不存在」（8001）进空态；超时/500/鉴权等保留旧数据，仅提示 */
+    if (err.code === 8001) {
+      model.value = null
+      notFound.value = true
+    } else {
+      ElMessage.error(err.message)
+    }
     return
   }
   void refreshDdl()
@@ -94,20 +100,24 @@ async function delField(i: number) {
 }
 async function persist() {
   if (!model.value) return
+  /* 快照模型 id：响应晚到且页面已切换模型时丢弃写回（rev/version/提示均不落） */
+  const mid = model.value.id
   const fields = rows.value.map((r) => ({
     name: r.n, dataType: r.t, length: String(r.len ?? ''), precision: '',
     nullable: true, defaultValue: r.def, comment: r.cmt,
     isPk: r.pk, isPartition: r.pkPart, dictRef: '',
   }))
   try {
-    const r = await saveFields(model.value.id, { rev: rev.value, fields })
+    const r = await saveFields(mid, { rev: rev.value, fields })
+    if (!model.value || model.value.id !== mid) return
     rev.value = r.rev
+    model.value.version = r.rev
     ElMessage.success('字段已保存')
     void refreshDdl()
   } catch (e) {
     const err = e as Error & { code?: number; data?: { currentRev?: number } }
     if (err.code === 8006) {
-      ElMessageBox.confirm('字段已被他人更新，是否刷新至最新版本？', '乐观锁冲突', {
+      ElMessageBox.confirm('字段已被他人更新，是否刷新至最新版本？未保存的修改将丢失。', '乐观锁冲突', {
         confirmButtonText: '刷新', cancelButtonText: '取消', type: 'warning',
       }).then(reload).catch(() => undefined)
       return
@@ -120,7 +130,7 @@ async function persist() {
 async function doPublish() {
   if (!model.value) return
   try {
-    await ElMessageBox.confirm('发布后字段将冻结，需开新修订才能再次修改。确认发布？', '发布模型', {
+    await ElMessageBox.confirm('发布后字段将冻结，需开新修订才能再次修改。未保存的修改将丢失。确认发布？', '发布模型', {
       confirmButtonText: '发布', cancelButtonText: '取消', type: 'warning',
     })
   } catch {
