@@ -2,127 +2,155 @@
 /**
  * M04 模型血缘影响（/model/lineage/:id）
  * 对齐第4章 L258：模型与ETL任务、数据血缘关联，模型变更时自动提示影响范围。
- * 简洁分层行式血缘（ODS→DWD→DWS→ADS→DIM，不引图内核）：当前模型高亮描边并标注「当前查看」，
- * 其余模型行可点击跳转本页（路由参数复用同一组件实例，computed 响应式跟随）。
- * 影响范围确定性推导：
- *  - 下游表：bizDomain 与当前模型相同、且分层序位在其之后的模型；
- *  - 下游任务：mock 固定映射（dwd_order_pay_detail / dws_pay_summary_daily / ads_kpi_report → etl_pay_clean）；
- *    real 模式（I5 F27）按运行时血缘（/lineage/tables）BFS 推导，无命中显示「暂无注册任务」；
- *  - 受影响指标：indicators 中 srcTable === 当前模型 code。
+ * 数据：modelApi 真实后端（getModel / getModelLineage / getModelImpact；isMock 时服务内部走演示文档）。
+ * 血缘链路为「上游 → 当前 → 下游」三段式行式布局（无图内核）：
+ *  - 边端点已归一化为节点 id（Task 9 裁定），模型节点 id === 模型 code，直接按 id 匹配边端点；
+ *  - 边双线型：声明血缘实线（#1668dc）/ 运行时血缘虚线（6 4 #94a3b8），顶部图例附 sources 计数；
+ *  - 外部节点（kind==='ext'，未注册为模型的库表）虚线底框 + 「外部」tag，不可点击；
+ *  - 模型节点经 listModels 建立的 code→id 映射点击跳 /model/lineage/{id}
+ *    （hash 复用组件实例，watch :id 重载，reload 序号防竞态）。
+ * 变更影响范围：getModelImpact 下游递归清单（表名/名称/影响路径），点表名跳其血缘页。
  */
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { dataStore } from '../../services/mock/dataStore'
-import { isMock } from '../../services'
-import { listTableLineage } from '../../services/lineageApi'
-import { deriveImpact } from '../../services/mock/lineageUtils'
-import type { Model, DwLayer, Indicator, TableLineage } from '../../services/types'
+import { ElMessage } from 'element-plus'
+import {
+  getModel, getModelLineage, getModelImpact, getModelDicts, listModels,
+  type ModelDetail, type ModelDicts, type LineageResp, type LineageNode, type ImpactItem,
+} from '../../services/modelApi'
 
 const route = useRoute()
 const router = useRouter()
 
-const models = ref<Model[]>([])
-const layers = ref<DwLayer[]>([])
-const indicators = ref<Indicator[]>([])
-/** real 模式运行时血缘边（I5 F27：替代固定 TASK_MAP 推导下游任务） */
-const realEdges = ref<TableLineage[]>([])
+const current = ref<ModelDetail | null>(null)
+const notFound = ref(false)
+const lineage = ref<LineageResp | null>(null)
+const impacts = ref<ImpactItem[]>([])
+const dicts = ref<ModelDicts>({ layers: [], domains: [], engines: [] })
+/** lineage 模型节点 id === code → 数字模型 id 的跳转映射（本页无变更路径，拉一次即可） */
+const codeToId = ref<Map<string, number>>(new Map())
+
+/* reload 竞态序号：hash 导航复用实例的并发 reload 后写胜出（晚到响应丢弃） */
+let reloadSeq = 0
 
 async function reload() {
-  const [ms, ls, inds] = await Promise.all([
-    dataStore.list<Model>('models'),
-    dataStore.list<DwLayer>('dwLayers'),
-    dataStore.list<Indicator>('indicators'),
-  ])
-  models.value = [...(ms ?? [])]
-  layers.value = [...(ls ?? [])]
-  indicators.value = [...(inds ?? [])]
-  if (!isMock) {
-    try {
-      const edges = await listTableLineage()
-      realEdges.value = edges.map((r) => ({ from: r.from, to: r.to, task: r.task, wf: r.wf }))
-    } catch { /* 血缘拉取失败不阻断模型页（下游任务显示为空） */ }
+  const seq = ++reloadSeq
+  const id = String(route.params.id ?? '')
+  /* 先取模型详情（信息卡 + 当前节点 code 匹配血缘节点） */
+  try {
+    const d = await getModel(id)
+    if (seq !== reloadSeq) return
+    current.value = d
+    notFound.value = false
+  } catch (e) {
+    if (seq !== reloadSeq) return
+    const err = e as Error & { code?: number }
+    /* 仅「模型不存在」（8001）进兜底；超时/500/鉴权等仅提示 */
+    if (err.code === 8001) {
+      current.value = null
+      notFound.value = true
+    } else {
+      ElMessage.error(err.message)
+    }
+    return
+  }
+  /* 血缘 + 影响 + 字典 + code→id 映射并行；失败置空仅提示，不阻断信息卡 */
+  try {
+    const [lg, im, ds, ms] = await Promise.all([
+      getModelLineage(id),
+      getModelImpact(id),
+      dicts.value.layers.length ? Promise.resolve(dicts.value) : getModelDicts(),
+      codeToId.value.size ? Promise.resolve(null) : listModels({ size: 200 }),
+    ])
+    if (seq !== reloadSeq) return
+    lineage.value = lg
+    impacts.value = im.list
+    dicts.value = ds
+    if (ms) codeToId.value = new Map(ms.list.map((m) => [m.code, m.id]))
+  } catch (e) {
+    if (seq !== reloadSeq) return
+    lineage.value = null
+    impacts.value = []
+    ElMessage.error((e as Error).message)
   }
 }
+
 onMounted(reload)
+// hash 导航复用实例时按 :id 重新加载
+watch(() => route.params.id, reload)
 
-/* ---- 当前模型（路由参数响应式驱动，站内跳转无需重新拉取集合） ---- */
 const modelId = computed(() => String(route.params.id ?? ''))
-const current = computed(() => models.value.find((m) => m.id === modelId.value) ?? null)
-
-/* ---- 分层血缘链路：仅展示有模型的分层，按 ODS→DWD→DWS→ADS→DIM 行式排列 ---- */
-const LAYER_ORDER = ['ODS', 'DWD', 'DWS', 'ADS', 'DIM']
-const LAYER_IDX: Record<string, number> = { ODS: 0, DWD: 1, DWS: 2, ADS: 3, DIM: 4, TMP: 5 }
-
-const layerRows = computed(() =>
-  LAYER_ORDER
-    .map((code) => ({ code, items: models.value.filter((m) => m.layer === code) }))
-    .filter((r) => r.items.length > 0),
-)
+/** 当前模型 code（lineage 模型节点 id 与 code 一致） */
+const currentCode = computed(() => current.value?.code ?? '')
 
 function layerColor(code: string): string {
-  return layers.value.find((l) => l.code === code)?.color ?? '#64748b'
+  return dicts.value.layers.find((l) => l.code === code)?.color ?? '#64748b'
 }
 function layerName(code: string): string {
-  return layers.value.find((l) => l.code === code)?.name ?? ''
+  return dicts.value.layers.find((l) => l.code === code)?.name ?? ''
 }
 
-/* ---- 影响范围（确定性推导，computed 懒计算） ---- */
-// 下游任务固定映射（演示集合）：模型/表 → 注册的 ETL 任务
-const TASK_MAP: Record<string, string> = {
-  dwd_order_pay_detail: 'etl_pay_clean',
-  dws_pay_summary_daily: 'etl_pay_clean',
-  ads_kpi_report: 'etl_pay_clean',
-}
+/* ---- 血缘链路：上游/下游集合（edges 端点按节点 id 匹配；同对节点去重，边类型聚合） ---- */
+interface RelEntry { node: LineageNode; kinds: string[]; relType: string }
 
-/* 下游表：同 bizDomain 且分层序位在当前模型之后 */
-const downTables = computed(() => {
-  const m = current.value
-  if (!m) return []
-  const curIdx = LAYER_IDX[m.layer] ?? -1
-  return models.value.filter(
-    (x) => x.id !== m.id && (LAYER_IDX[x.layer] ?? 99) > curIdx && x.bizDomain === m.bizDomain,
-  )
-})
-
-/* 下游任务：mock 固定映射；real 按运行时血缘 BFS 推导（deriveImpact），无命中 → 「暂无注册任务」 */
-const downTasks = computed(() => {
-  const m = current.value
-  if (!m) return []
-  if (isMock) {
-    const codes = [m.code, ...downTables.value.map((d) => d.code)]
-    const tasks: string[] = []
-    for (const c of codes) {
-      const t = TASK_MAP[c]
-      if (t && !tasks.includes(t)) tasks.push(t)
+function collectRels(dir: 'up' | 'down'): RelEntry[] {
+  const lg = lineage.value
+  const cur = currentCode.value
+  if (!lg || !cur) return []
+  const byId = new Map(lg.nodes.map((n) => [n.id, n]))
+  const seen = new Map<string, RelEntry>()
+  for (const e of lg.edges) {
+    const otherId = dir === 'up' ? (e.to === cur ? e.from : '') : (e.from === cur ? e.to : '')
+    if (!otherId) continue
+    const n = byId.get(otherId)
+    if (!n) continue
+    let r = seen.get(otherId)
+    if (!r) {
+      r = { node: n, kinds: [], relType: '' }
+      seen.set(otherId, r)
     }
-    return tasks
+    if (!r.kinds.includes(e.kind)) r.kinds.push(e.kind)
+    if (e.relType && !r.relType) r.relType = e.relType
   }
-  return deriveImpact(m.code, realEdges.value).downTasks.map((t) => t.name)
-})
+  return [...seen.values()]
+}
 
-/* 受影响指标：srcTable === 当前模型 code */
-const impactIndicators = computed(() => {
-  const m = current.value
-  if (!m) return []
-  return indicators.value.filter((i) => i.srcTable === m.code)
-})
+const upstream = computed(() => collectRels('up'))
+const downstream = computed(() => collectRels('down'))
+
+/** 边双线型（图例：声明=实线 / 运行时=虚线） */
+function edgeStyle(kind: string): Record<string, string> {
+  return kind === 'runtime' ? { strokeDasharray: '6 4', stroke: '#94a3b8' } : { strokeDasharray: 'none', stroke: '#1668dc' }
+}
+
+/** 节点副标题：模型节点 label 为 "code name"，剥掉 id 前缀得名称；ext 节点 label===id 无副标题 */
+function nodeSub(n: LineageNode): string {
+  return n.label !== n.id ? n.label.replace(n.id, '').trim() : ''
+}
+
+/** 模型节点可解析出数字 id 则可点击跳其血缘页；外部节点与当前节点不可点击 */
+function goNode(n: LineageNode) {
+  if (n.kind !== 'model' || n.id === currentCode.value) return
+  const nid = codeToId.value.get(n.id)
+  if (nid != null) router.push('/model/lineage/' + nid)
+}
 </script>
 
 <template>
   <div class="page">
     <!-- 未找到模型兜底 -->
-    <div v-if="!current" class="card" style="padding:32px;text-align:center">
+    <div v-if="notFound" class="card" style="padding:32px;text-align:center">
       <div style="color:var(--text-3);font-size:13px">未找到模型（{{ modelId }}），可能已被删除</div>
       <button class="op-btn" style="margin-top:12px" @click="router.back()">← 返回</button>
     </div>
 
-    <template v-else>
+    <template v-else-if="current">
       <!-- 顶部模型信息卡 -->
       <div class="card info-card">
         <div class="info-top">
           <div>
             <div class="ph-title">{{ current.name }}</div>
-            <div class="ph-desc">模型与 ETL 任务、数据血缘关联；模型变更前请先确认下游表、任务与指标的影响范围</div>
+            <div class="ph-desc">模型与 ETL 任务、数据血缘关联；模型变更前请先确认下游影响范围</div>
           </div>
           <span class="spacer" />
           <button class="op-btn" @click="router.back()">← 返回</button>
@@ -141,90 +169,100 @@ const impactIndicators = computed(() => {
         </div>
       </div>
 
-      <!-- 分层血缘链路（行式，flex 竖排 + 层间向下箭头） -->
+      <!-- 血缘链路（上游 → 当前 → 下游 三段式；SVG 线段区分声明/运行时） -->
       <div class="card" style="padding:16px">
         <div class="tbl-toolbar">
-          <span class="card-title">分层血缘链路</span>
-          <span class="pill info">ODS → DWD → DWS → ADS → DIM</span>
+          <span class="card-title">血缘链路</span>
+          <span class="pill info">上游 → 当前 → 下游</span>
           <span class="spacer" />
-          <span style="font-size:11.5px;color:var(--text-3)">点击其他模型可查看其血缘与影响</span>
+          <span v-if="lineage" class="lg-legend">
+            <svg class="lg-line" viewBox="0 0 28 4"><line x1="0" y1="2" x2="28" y2="2" stroke-width="2" :style="edgeStyle('declared')" /></svg>
+            声明 {{ lineage.sources.declared }}
+            <svg class="lg-line" viewBox="0 0 28 4"><line x1="0" y1="2" x2="28" y2="2" stroke-width="2" :style="edgeStyle('runtime')" /></svg>
+            运行时 {{ lineage.sources.runtime }}
+          </span>
+          <span style="font-size:11.5px;color:var(--text-3);margin-left:10px">点击模型节点可查看其血缘与影响</span>
         </div>
-        <div class="lineage-flow">
-          <template v-for="(row, i) in layerRows" :key="row.code">
-            <div class="lg-layer">
-              <div class="lg-side" :style="{ color: layerColor(row.code) }">
-                <b>{{ row.code }}</b>
-                <i>{{ layerName(row.code) }}</i>
-              </div>
-              <div class="lg-items">
+        <div v-if="lineage" class="lineage-flow">
+          <!-- 上游 -->
+          <div class="lg-col">
+            <div class="lg-col-title">上游（{{ upstream.length }}）</div>
+            <template v-if="upstream.length">
+              <div v-for="r in upstream" :key="r.node.id" class="lg-rel">
                 <div
-                  v-for="m in row.items"
-                  :key="m.id"
                   class="lg-node"
-                  :class="{ cur: m.id === current.id, click: m.id !== current.id }"
-                  :style="m.id === current.id ? { borderColor: layerColor(row.code) } : undefined"
-                  @click="m.id !== current.id && router.push('/model/lineage/' + m.id)"
+                  :class="{ ext: r.node.kind === 'ext', click: r.node.kind === 'model' && codeToId.has(r.node.id) }"
+                  @click="goNode(r.node)"
                 >
-                  <b class="mono">{{ m.code }}</b>
-                  <span v-if="m.id === current.id" class="pill info" style="margin-left:6px">当前查看</span>
+                  <b class="mono">{{ r.node.id }}</b>
+                  <span v-if="r.node.kind === 'ext'" class="tag ext-tag">外部</span>
+                  <i v-if="nodeSub(r.node)">{{ nodeSub(r.node) }}</i>
                 </div>
+                <span class="lg-conns">
+                  <svg v-for="k in r.kinds" :key="k" class="lg-line" viewBox="0 0 28 4"><line x1="0" y1="2" x2="28" y2="2" stroke-width="2" :style="edgeStyle(k)" /></svg>
+                </span>
+                <span class="lg-arr">→</span>
+                <span v-if="r.relType" class="lg-reltype">{{ r.relType }}</span>
               </div>
+            </template>
+            <div v-else class="impact-empty">无上游节点</div>
+          </div>
+          <!-- 当前 -->
+          <div class="lg-col cur-col">
+            <div class="lg-col-title" style="text-align:center">当前</div>
+            <div class="lg-node cur" :style="{ borderColor: layerColor(current.layer) }">
+              <b class="mono">{{ current.code }}</b>
+              <span class="pill info" style="margin-left:6px">当前查看</span>
             </div>
-            <div v-if="i < layerRows.length - 1" class="lg-arrow">↓</div>
-          </template>
+          </div>
+          <!-- 下游 -->
+          <div class="lg-col">
+            <div class="lg-col-title">下游（{{ downstream.length }}）</div>
+            <template v-if="downstream.length">
+              <div v-for="r in downstream" :key="r.node.id" class="lg-rel">
+                <span class="lg-arr">→</span>
+                <span class="lg-conns">
+                  <svg v-for="k in r.kinds" :key="k" class="lg-line" viewBox="0 0 28 4"><line x1="0" y1="2" x2="28" y2="2" stroke-width="2" :style="edgeStyle(k)" /></svg>
+                </span>
+                <div
+                  class="lg-node"
+                  :class="{ ext: r.node.kind === 'ext', click: r.node.kind === 'model' && codeToId.has(r.node.id) }"
+                  @click="goNode(r.node)"
+                >
+                  <b class="mono">{{ r.node.id }}</b>
+                  <span v-if="r.node.kind === 'ext'" class="tag ext-tag">外部</span>
+                  <i v-if="nodeSub(r.node)">{{ nodeSub(r.node) }}</i>
+                </div>
+                <span v-if="r.relType" class="lg-reltype">{{ r.relType }}</span>
+              </div>
+            </template>
+            <div v-else class="impact-empty">无下游节点</div>
+          </div>
         </div>
+        <div v-else class="impact-empty">暂无血缘数据（血缘加载失败或无血缘记录）</div>
       </div>
 
-      <!-- 影响范围（模型变更时自动提示） -->
+      <!-- 变更影响范围（模型变更时自动提示） -->
       <div class="card" style="padding:16px;margin-top:14px">
         <div class="tbl-toolbar">
           <span class="card-title">变更影响范围</span>
-          <span class="pill info">变更影响：下游 {{ downTables.length }} 表 / {{ downTasks.length }} 任务 / {{ impactIndicators.length }} 指标</span>
+          <span class="pill info">下游影响模型 {{ impacts.length }} 个</span>
+          <span class="spacer" />
+          <span style="font-size:11.5px;color:var(--text-3)">模型变更前请先确认下游影响范围</span>
         </div>
-        <div class="impact-grid">
-          <!-- 下游表 -->
-          <div class="impact-box">
-            <div class="impact-title">下游表</div>
-            <table v-if="downTables.length" class="tbl">
-              <thead>
-                <tr><th>表名</th><th>分层</th></tr>
-              </thead>
-              <tbody>
-                <tr v-for="d in downTables" :key="d.id">
-                  <td><a class="lg-link mono" @click="router.push('/model/lineage/' + d.id)">{{ d.code }}</a></td>
-                  <td>
-                    <span class="tag" :style="{ background: layerColor(d.layer) + '22', color: layerColor(d.layer) }">{{ d.layer }}</span>
-                  </td>
-                </tr>
-              </tbody>
-            </table>
-            <div v-else class="impact-empty">暂无下游表（同业务域内无更深层模型）</div>
-          </div>
-          <!-- 下游任务 -->
-          <div class="impact-box">
-            <div class="impact-title">下游任务</div>
-            <div v-if="downTasks.length" class="task-list">
-              <div v-for="t in downTasks" :key="t" class="task-row"><span class="mono">{{ t }}</span></div>
-            </div>
-            <div v-else class="impact-empty">暂无注册任务</div>
-          </div>
-          <!-- 受影响指标 -->
-          <div class="impact-box">
-            <div class="impact-title">受影响指标</div>
-            <table v-if="impactIndicators.length" class="tbl">
-              <thead>
-                <tr><th>指标</th><th>来源字段</th></tr>
-              </thead>
-              <tbody>
-                <tr v-for="ind in impactIndicators" :key="ind.id">
-                  <td>{{ ind.name }} <span class="mono" style="font-size:11px;color:var(--text-3)">{{ ind.en }}</span></td>
-                  <td class="mono">{{ ind.srcField }}</td>
-                </tr>
-              </tbody>
-            </table>
-            <div v-else class="impact-empty">暂无以本表为来源的指标</div>
-          </div>
-        </div>
+        <table v-if="impacts.length" class="tbl" style="margin-top:10px">
+          <thead>
+            <tr><th>表名</th><th>名称</th><th>影响路径</th></tr>
+          </thead>
+          <tbody>
+            <tr v-for="im in impacts" :key="im.modelId">
+              <td><a class="lg-link mono" @click="router.push('/model/lineage/' + im.modelId)">{{ im.code }}</a></td>
+              <td>{{ im.name }}</td>
+              <td class="mono" style="font-size:11.5px;color:var(--text-3)">{{ im.path }}</td>
+            </tr>
+          </tbody>
+        </table>
+        <div v-else class="impact-empty">暂无下游影响模型</div>
       </div>
     </template>
   </div>
@@ -245,25 +283,25 @@ const impactIndicators = computed(() => {
 .info-grid{display:grid;grid-template-columns:64px 1fr 64px 1fr 64px 1fr;gap:8px 10px;font-size:12.5px;margin-top:12px}
 .info-grid .d-k{color:var(--text-3)}
 .tag{display:inline-block;border-radius:4px;padding:1px 8px;font-size:11.5px;font-weight:600}
-/* 血缘链路：分层行式，flex 竖排，层间向下箭头 */
-.lineage-flow{display:flex;flex-direction:column;gap:4px;max-width:960px}
-.lg-layer{display:flex;align-items:center;gap:14px}
-.lg-side{width:88px;flex:none;display:flex;flex-direction:column;font-size:13px}
-.lg-side i{font-style:normal;font-size:10.5px;color:var(--text-3)}
-.lg-items{display:flex;gap:8px;flex-wrap:wrap;flex:1}
-.lg-node{border:1px solid var(--border-strong);border-radius:var(--radius-sm);padding:6px 10px;font-size:12px;background:#fff;display:flex;align-items:center}
+/* 血缘链路：上游 → 当前 → 下游 三段式 */
+.lineage-flow{display:flex;gap:18px;align-items:flex-start}
+.lg-col{flex:1;min-width:0;display:flex;flex-direction:column;gap:8px}
+.lg-col-title{font-size:12px;color:var(--text-3);font-weight:600}
+.lg-col.cur-col{flex:none}
+.lg-rel{display:flex;align-items:center;gap:6px;flex-wrap:wrap}
+.lg-node{border:1px solid var(--border-strong);border-radius:var(--radius-sm);padding:6px 10px;font-size:12px;background:#fff;display:flex;align-items:center;max-width:100%}
 .lg-node.click{cursor:pointer}
 .lg-node.click:hover{border-color:var(--primary);color:var(--primary)}
 .lg-node.cur{border-width:2px;box-shadow:0 0 0 2px var(--primary-light)}
-.lg-arrow{text-align:center;color:var(--text-3);font-size:14px;line-height:1.2;margin-left:88px}
-/* 影响范围三块 */
-.impact-grid{display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;margin-top:10px}
-.impact-box{border:1px solid var(--border);border-radius:var(--radius);padding:10px 12px}
-.impact-title{font-weight:600;font-size:12.5px;margin-bottom:8px}
+.lg-node.ext{background:#f8fafc;border-style:dashed;color:var(--text-2)}
+.lg-node i{font-style:normal;font-size:10.5px;color:var(--text-3);margin-left:6px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.ext-tag{background:var(--bg);color:var(--text-3);margin-left:6px}
+.lg-line{width:28px;height:4px;flex:none}
+.lg-conns{display:inline-flex;flex-direction:column;gap:2px;flex:none}
+.lg-arr{color:var(--text-3);font-size:12px}
+.lg-reltype{font-size:10.5px;color:var(--text-3)}
+.lg-legend{display:inline-flex;align-items:center;gap:6px;font-size:11.5px;color:var(--text-2)}
 .impact-empty{padding:14px 4px;text-align:center;color:var(--text-3);font-size:12px}
-.task-list{display:flex;flex-direction:column}
-.task-row{padding:6px 4px;border-bottom:1px solid var(--border);font-size:12.5px}
-.task-row:last-child{border-bottom:none}
 .lg-link{color:var(--primary);cursor:pointer}
 .lg-link:hover{text-decoration:underline}
 </style>
