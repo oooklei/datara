@@ -161,7 +161,8 @@ async function saveErFromStore(store: GraphStore): Promise<number> {
     if (!NUM_ID.test(e.source) || !NUM_ID.test(e.target)) return
     const relType = KIND_TO_REL[e.kind ?? 'rel_1n'] ?? '1:N'
     sentRel.set(e.id, { source: e.source, target: e.target, relType })
-    if (!NUM_ID.test(e.id)) added.push({ source: Number(e.source), target: Number(e.target), relType })
+    /* 已在基线中的 uid 边不再重复 added（重载失败回退基线含 uid 键，忽略 toast 再保存亦不重复建行） */
+    if (!NUM_ID.test(e.id) && !base.relations.has(e.id)) added.push({ source: Number(e.source), target: Number(e.target), relType })
     else if (base.relations.get(e.id)?.relType !== relType) updated.push({ id: Number(e.id), relType })
   })
   /* P2 兜底：removed 一律过 NUM_ID 过滤（uid 边进基线后被删 → Number(uid)=NaN → JSON null → 后端 int(None) 500） */
