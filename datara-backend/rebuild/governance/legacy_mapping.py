@@ -38,6 +38,7 @@ class MappedLegacyRow:
     unresolved_references: tuple[tuple[str, str], ...] = ()
     child_rows: tuple[Mapping[str, object], ...] = ()
     identity_aliases: tuple[tuple[str, str], ...] = ()
+    target_id: int | None = None
 
     @property
     def ready_to_import(self) -> bool:

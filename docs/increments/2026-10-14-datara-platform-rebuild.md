@@ -105,7 +105,7 @@
 
 ## 7. R3-S9：I18–I23 规范化模型扩展与隔离迁移
 
-状态：IN_PROGRESS / I18_DRY_RUN_CONTRACT_CHECKPOINT；用户于 2026-10-14 明确批准方案 A。S9 影响分析见 `R3-S9-开始前影响分析.md`；v2 additive schema/migration 已提交，I18 七张源表纯映射、关联图校验和离线 dry-run 计划契约已实现。本地检查为治理子集 71 passed、全后端 608 passed、Ruff/compileall/diff-check 通过。I19-I23 映射、真实只读快照采集、导入器/API、验证页面和所有远端门禁尚未完成；没有连接目标数据库或执行数据导入。批准范围不代表可以跳过逐批门禁或直接改旧库。
+状态：IN_PROGRESS / I18_TARGET_SNAPSHOT_REPOSITORY_CHECKPOINT；用户于 2026-10-14 明确批准方案 A。S9 影响分析见 `R3-S9-开始前影响分析.md`；v2 additive schema/migration 已提交，I18 七张源表纯映射、关联图校验、离线 dry-run 计划契约及目标库 project-scoped SELECT snapshot repository 已实现。本地检查为治理子集 72 passed、全后端 609 passed、Ruff/compileall/diff-check 通过。repository 尚未接入运行 API/真实 MySQL 只读账号；I19-I23 映射、源库读取、导入器/API、验证页面和所有远端门禁尚未完成；没有连接远端数据库或执行数据导入。批准范围不代表可以跳过逐批门禁或直接改旧库。
 
 实现细化：S9 使用 additive revision `r3_0002_legacy_governance_carryforward`，不得修改已登记的 `r3_0001_governance_catalog` 及其 checksum。承接字段以设计 §5.2 的显式列/关系为准；标签定义单独成实体；模型 security/build/owner、指标的派生属性及原始维度、旧 I19 security metadata 均保留为普通业务字段，不引入遮罩/敏感值处理功能。当前代码分支采用 29 张新增承接表（较初始 28 张清单新增旧标签定义实体），迁移前需在文档、revision manifest 和测试中保持同数；如实现需要再扩表，须先更新本计划、设计与台账。
 
@@ -128,7 +128,7 @@
 5. 本地运行定向、全量 pytest，Ruff、compileall、Vue 类型检查和 migration offline/dry-run；检查旧库只读脚本、schema guard 和禁止旧 `api.*`/`common.*` 隐式依赖。更新 R3-S9 本机证据。
 6. 在参考产品风格隔离验证页增加可操作业务场景和稳定 fixture；执行控件级 UI 流程并验证后端 API 结果。使用 192.168.1.9 非冲突端口部署；页面不得持有统一验证 key，仅注入受限短期 token。
 7. 远端先只读重采样，再目标快照、dry-run 冲突清单；确认 dry-run 的新增/更新/跳过/冲突数与批准范围一致后才执行导入。逐批记录前后时间戳、进程退出码、容器日志、DB 对账查询和恢复点。
-   - I18 离线 dry-run 契约已要求调用方提供与目标 project 匹配的只读快照（采集时间、摘要、source identity→target ID、业务语义指纹、模型字段集合及项目范围唯一键占用者）。计划只分类 create/unchanged/conflict/blocked，冲突不自动更新；有问题的父模型阻断子字段/关系。该纯函数没有采集真实 DB 快照，不能据此授权写入。
+   - I18 离线 dry-run 契约已要求调用方提供与目标 project 匹配的只读快照（采集时间、摘要、source identity→target ID、业务语义指纹、模型字段集合及项目范围唯一键占用者）。目标快照 repository 已按项目筛选 target ORM，仅用 SELECT 装配这组信息，并重建旧映射语义计算指纹；SQLite 集成测试断言无 DML。当前尚未在 MySQL/192.168.1.9 上运行，也未接 API。计划只分类 create/unchanged/conflict/blocked，冲突不自动更新；有问题的父模型阻断子字段/关系，不能据此授权写入。
 8. 按源表逐一对账总数、有效/拒绝/重复计数、来源 ID 覆盖、字段摘要、父子/多对多/血缘关系、版本/审批链、孤儿数量和 `created_at/updated_at/generated_at`；要求未解释差异为 0，所有拒绝行有显式可复现原因。
 9. 重新运行目标端重复导入验证无重复且统计 skipped/idempotent；核对 API/UI 展示、数据库行和日志时间；完成异常注入（重复键、非法 FK、中途失败恢复、并发同批请求）及批次级回滚演练。
 10. 更新本计划、R3 状态和台账；只有本地检查、参考产品控件流、远端容器/中间件/数据库、日志和数据 parity 四联证据齐全才关闭 S9。R3 的其他未完成子项仍须单独完成后才可转 PASS。
