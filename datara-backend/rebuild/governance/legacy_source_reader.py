@@ -1,4 +1,4 @@
-"""Allowlisted, read-only readers for the legacy I18-I21 source tables."""
+"""Allowlisted, read-only readers for legacy governance source tables."""
 
 from __future__ import annotations
 
@@ -209,6 +209,43 @@ I21_SOURCE_COLUMNS: dict[str, tuple[str, tuple[str, ...]]] = {
     "t_qc_alarm_policy": (
         "id",
         ("id", "name", "scope", "metric", "op", "threshold", "enabled", "last_fired_at"),
+    ),
+}
+
+# Live schema verified on 2026-10-15 against datara_meta on MySQL 8.0.46.
+# Keep these columns bound to evidence/R3/s9-i22-live-schema-20261015.md;
+# do not add fields from the stale I22 proposal without fresh source evidence.
+I22_SOURCE_COLUMNS: dict[str, tuple[str, tuple[str, ...]]] = {
+    "t_std_approval": (
+        "id",
+        ("id", "biz_type", "biz_id", "action", "payload_json", "status", "opinion", "create_time"),
+    ),
+    "t_std_check_report": (
+        "id",
+        ("id", "scope", "summary_json", "issues_json", "status", "create_time"),
+    ),
+    "t_std_code": (
+        "id",
+        ("id", "code", "name", "remark", "status", "version", "create_time"),
+    ),
+    "t_std_code_value": (
+        "id",
+        ("id", "std_code_id", "c", "n", "seq", "remark"),
+    ),
+    "t_std_element": (
+        "id",
+        (
+            "id", "code", "cn", "en", "data_type", "length", "status", "version", "owner", "remark",
+            "create_time", "update_time",
+        ),
+    ),
+    "t_std_mapping": (
+        "id",
+        ("id", "name", "target", "element_id", "code_id", "status", "diff"),
+    ),
+    "t_std_naming_rule": (
+        "id",
+        ("id", "name", "rule_type", "pattern", "target", "enabled"),
     ),
 }
 
@@ -604,6 +641,87 @@ class LegacyI21SourceReader(LegacyI18SourceReader):
             json.dumps(payload, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode("utf-8")
         ).hexdigest()
         return LegacyI21SourceSnapshot(
+            schema=LEGACY_SCHEMA,
+            captured_at=captured_at,
+            digest=digest,
+            counts={table: len(rows) for table, rows in all_rows.items()},
+            rows=all_rows,
+        )
+
+
+@dataclass(frozen=True)
+class LegacyI22SourceSnapshot:
+    schema: str
+    captured_at: datetime
+    digest: str
+    counts: Mapping[str, int]
+    rows: Mapping[str, tuple[Mapping[str, object], ...]]
+
+
+class LegacyI22SourceReader(LegacyI18SourceReader):
+    """Read the live-evidence-bound I22 standard tables without interpretation."""
+
+    def read_snapshot(
+        self,
+        *,
+        page_size: int = 500,
+        max_total_rows: int = 100_000,
+        captured_at: datetime | None = None,
+    ) -> LegacyI22SourceSnapshot:
+        if not 1 <= page_size <= 10_000:
+            raise ValueError("page_size must be between 1 and 10000")
+        if max_total_rows < 1:
+            raise ValueError("max_total_rows must be positive")
+        captured_at = captured_at or datetime.now(ZoneInfo("Asia/Shanghai"))
+        if captured_at.tzinfo is None:
+            raise ValueError("captured_at must be timezone-aware")
+
+        all_rows: dict[str, tuple[Mapping[str, object], ...]] = {}
+        total_read = 0
+        connection = self.engine.connect()
+        transaction = connection.begin()
+        sqlite_query_only = self.engine.dialect.name == "sqlite"
+        try:
+            if sqlite_query_only:
+                connection.exec_driver_sql("PRAGMA query_only = ON")
+            else:
+                connection.exec_driver_sql("SET TRANSACTION READ ONLY")
+            for table_name, (identity_column, columns) in I22_SOURCE_COLUMNS.items():
+                table_rows = self._read_table(
+                    connection,
+                    table_name,
+                    identity_column,
+                    columns,
+                    page_size,
+                    max_total_rows - total_read,
+                    "I22",
+                )
+                total_read += len(table_rows)
+                if total_read > max_total_rows:
+                    raise RuntimeError(f"legacy I22 snapshot exceeded row safety limit {max_total_rows}")
+                all_rows[table_name] = tuple(table_rows)
+            transaction.rollback()
+        except Exception:
+            if transaction.is_active:
+                transaction.rollback()
+            raise
+        finally:
+            if sqlite_query_only and not connection.closed:
+                connection.exec_driver_sql("PRAGMA query_only = OFF")
+                connection.rollback()
+            connection.close()
+
+        payload = {
+            "schema": LEGACY_SCHEMA,
+            "rows": {
+                table: [_json_safe(row) for row in rows]
+                for table, rows in all_rows.items()
+            },
+        }
+        digest = hashlib.sha256(
+            json.dumps(payload, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode("utf-8")
+        ).hexdigest()
+        return LegacyI22SourceSnapshot(
             schema=LEGACY_SCHEMA,
             captured_at=captured_at,
             digest=digest,
