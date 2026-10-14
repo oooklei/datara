@@ -2,7 +2,7 @@
 
 Date: 2026-10-14 Asia/Shanghai
 Workspace: `D:\需求\数据治理工具\Datara`
-Status: R3-S1 inventory complete; R3-S2 contracts and local tests complete; R3-S3 migration framework local PASS; R3-S4 governance API implementation and local tests complete; R3-S5 standalone reference-driven governance page and local static/build checks complete. R3 is not PASS: no remote governance migration/import and no S7 UI-led closure.
+Status: R3-S1 inventory complete; R3-S2 contracts and local tests complete; R3-S3 migration framework local PASS; R3-S4 governance API implementation and local tests complete; R3-S5 standalone reference-driven governance page and local static/build checks complete; R3-S6 schema migration and R3-S7 UI-led control closure passed for their stated scopes. R3 remains PARTIAL pending R3-S8 exact I18-I23 source/API/menu/consumer mapping and row/relationship reconciliation; the 2026-10-14 read-only inventory is explicitly preliminary because the remote shell transfer preserved CRLF and returned nonzero.
 
 ## R3-S1 closure
 
