@@ -1,0 +1,32 @@
+# R3-S9 I20 metric mapping local evidence
+
+- Generated at: 2026-10-15 (Asia/Shanghai; local verification run)
+- Worktree: `D:\需求\数据治理工具\Datara\.worktrees\r3-s9`
+- Baseline commit: `ce4fa69` (I21 read-only snapshots; I20 reader predecessor `af0cb61`)
+- Scope: pure snapshot-to-target I20 metric/profile/version mapping only.
+- Source semantics inspected: retained legacy `Indicator`/`IndicatorVersion` ORM, old indicator API publish/change behavior, new semantic metric/profile/dimension/version models, and old UI dimensions displayed as free text.
+
+## Mapping contract
+
+- `tech_def` is preserved as metric `formula`; `biz_def` maps to metric description and the profile's business definition.
+- Legacy `draft` maps to target `draft`; legacy `published` maps to target `active`. Any other status blocks.
+- `dims` is copied exactly to `legacy_dimensions`; it is not split into normalized dimension rows because the old value is free text and has no proven delimiter contract.
+- Historical `snapshot_json` is copied as exact text; no parse/reconstruction occurs.
+- `base_metric_id` resolves only through explicit source identity maps or declared same-batch pending identities. Missing identities, cycles, orphan versions, duplicate identities/version numbers, incomplete source column sets, and target length violations produce blockers.
+- Metric + profile are exposed as one source-row bundle; historical versions retain their individual source table/id. This batch does not implement transactional importer support for the bundle.
+
+## Verification
+
+- TDD RED: the I20 mapping module was absent before implementation.
+- `pytest tests/rebuild/test_governance_legacy_i20_mapping.py -q`: 11 passed.
+- I18-I21 reader + I20 mapper regression: 36 passed.
+- `pytest tests -q`: 675 passed in 70.63s.
+- `ruff check rebuild tests/rebuild`: passed.
+- `python -m compileall -q rebuild`: passed.
+- `git diff --check`: passed after final documentation update.
+
+## Explicitly not verified or performed
+
+- No current source schema/database query, target snapshot, migration, importer, or business data write.
+- No API/UI, browser-use/Playwright, remote service/log, middleware, or runtime resource validation.
+- No I20 parity or end-to-end migration claim. State remains `LOCAL_SUBSTEP_PASS / INTEGRATION_GATE_PENDING`.

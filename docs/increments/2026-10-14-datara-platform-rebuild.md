@@ -185,3 +185,12 @@
 - 步骤：TDD RED→实现→I18-I21 reader 回归→全后端 pytest→Ruff/compileall/diff-check→更新本地证据/影响分析/计划/台账→独立提交。schema 差异一律 fail closed。
 - 运行/验收安全：不连接旧库或目标库，不部署/改服务或前端，不做 API/UI/日志/中间件/资源验证。本地通过不等同正式增量 PASS；I21 后续 mapper/parity 和 192.168.1.9 控件闭环仍 pending。
 - 本地结果：I21 reader 7 passed；I18-I21 readers 25 passed；全后端 `pytest tests -q` 664 passed in 67.78s；`ruff check rebuild tests/rebuild` 和 `python -m compileall -q rebuild` 通过。证据 `evidence/R3/s9-i21-source-reader-local-20261015.txt`。只完成源 reader 子步，integration gate pending。
+
+### 2026-10-15：I20 指标纯映射增量计划
+
+- 开工前影响分析：见 `R3-S9-开始前影响分析.md`“I20 指标 source-to-target 纯映射开工影响分析”。此前 reader commits：I20 `af0cb61`、I21 `ce4fa69`。
+- 输出契约：snapshot → metric/profile atomic bundle + individual version rows; preserve `dims` as exact legacy free text (no delimiter inference) and preserve version JSON without reconstruction. Resolve base metric only through explicit source identity maps; unknown status/reference/duplicate/orphan becomes a blocker.
+- 本批无 schema migration、ORM/API/importer/UI 或 DB write；后续 importer 必须支持 bundle 原子 checkpoint 和 pending identity 解析，本批不提前宣称可导入。
+- 步骤：TDD RED→纯 mapper→mapping + I18-I21 reader回归→全后端 tests + Ruff/compileall/diff-check→项目证据/台账→独立 commit。
+- 验收范围仅本地逻辑；实时 MySQL schema、browser 控件、API/log/middleware/resources 及数据导入均为 pending。
+- 本地实测：I20 mapper 11 passed；I18-I21 readers + I20 mapper 36 passed；全后端 `pytest tests -q` 675 passed in 70.63s；Ruff、compileall、diff-check 通过。证据 `evidence/R3/s9-i20-mapper-local-20261015.txt`。仅纯映射合同，未接 importer/API/数据库。
