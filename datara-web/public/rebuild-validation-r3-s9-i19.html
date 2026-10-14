@@ -1,0 +1,72 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>R3-S9 I19 元数据与标签映射预览</title>
+  <style>
+    :root{font-family:Inter,"Microsoft YaHei",system-ui,sans-serif;color:#193047;background:#f2f6fa;font-synthesis:none}
+    *{box-sizing:border-box}body{margin:0}.shell{max-width:1240px;margin:auto;padding:28px 22px 52px}.top{display:flex;align-items:center;justify-content:space-between;gap:18px;margin-bottom:18px}.brand{display:flex;align-items:center;gap:12px}.mark{display:grid;place-items:center;width:42px;height:42px;border-radius:13px;background:#193c5b;color:#fff;font-weight:800}.eyebrow{font-size:11px;color:#688097;letter-spacing:.08em}.title{font-size:22px;margin:3px 0}.runtime,.pill{padding:7px 11px;border-radius:99px;background:#e8eff6;color:#4d667d;font-size:12px}.grid{display:grid;grid-template-columns:300px minmax(0,1fr);gap:16px;align-items:start}.card{background:#fff;border:1px solid #dce5ec;border-radius:14px;box-shadow:0 3px 14px #1739580a}.card-head{padding:16px 18px;border-bottom:1px solid #edf1f5}.card-head h2,.card-head h3{margin:0;font-size:15px}.card-body,.section{padding:17px 18px}.intro{padding:19px 21px;margin-bottom:15px}.intro h2{margin:0 0 7px;font-size:16px}.intro p,.muted{margin:0;color:#62768a;font-size:13px;line-height:1.7}.form-row{margin:14px 0}label{display:block;margin-bottom:7px;font-size:12px;font-weight:700;color:#50677e}select,button{font:inherit}select{height:40px;width:100%;padding:0 10px;border:1px solid #cbd7e2;border-radius:8px;background:#fff;color:#243a50}button{border:0;border-radius:8px;padding:10px 14px;font-weight:700;cursor:pointer}button:disabled{opacity:.5;cursor:not-allowed}.primary{background:#1769a6;color:#fff}.secondary{background:#edf3f8;color:#35536d}.actions{display:flex;gap:8px;flex-wrap:wrap}.warning{padding:12px;border-radius:9px;background:#fff8e8;color:#775c24;font-size:12px;line-height:1.7;margin-top:14px}.notice{display:none;margin-bottom:14px;padding:12px 14px;border-radius:9px;font-size:13px}.notice.show{display:block}.notice.info{background:#eef6ff;color:#275b88}.notice.success{background:#eaf8f0;color:#236744}.notice.error{background:#fff0ef;color:#a3322a}.stats{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:9px;padding:16px 18px;border-bottom:1px solid #edf1f5}.stat{padding:11px;background:#f6f8fb;border-radius:8px}.stat span{display:block;color:#718498;font-size:11px}.stat strong{display:block;margin-top:5px;font-size:18px;color:#1d4265}.table-wrap{overflow:auto;border:1px solid #e4eaf0;border-radius:8px}table{width:100%;border-collapse:collapse;min-width:660px;font-size:12px}th,td{text-align:left;vertical-align:top;padding:9px 11px;border-bottom:1px solid #edf1f5}th{background:#f7f9fb;color:#63778a}tbody tr:last-child td{border-bottom:0}.pill.blocked{background:#fff0e5;color:#a24d11}.pill.target_identity_match{background:#e8f4ff;color:#1a6093}.pill.new_identity_candidate{background:#eaf7ef;color:#25744b}.empty{text-align:center;padding:20px;color:#8291a0}.issue{display:inline-block;margin:3px;padding:4px 7px;border-radius:6px;background:#fff3e8;color:#99520e;font-size:11px}
+    @media(max-width:850px){.shell{padding:18px 13px 36px}.grid{grid-template-columns:1fr}.top{align-items:flex-start;flex-direction:column}.stats{grid-template-columns:repeat(2,minmax(0,1fr))}}
+  </style>
+</head>
+<body>
+  <main class="shell">
+    <header class="top"><div class="brand"><div class="mark" aria-hidden="true">D</div><div><div class="eyebrow">DATARA · ISOLATED VALIDATION · R3-S9</div><h1 class="title">I19 元数据与标签映射预览</h1></div></div><div id="runtime" class="runtime" data-testid="runtime-status">等待验证运行时</div></header>
+    <section class="card intro"><h2>核对旧元数据扩展、标签定义与标签引用</h2><p>数据表扩展仅按项目内已存在的精确资产身份匹配；标签身份与标签引用按来源主键和项目边界匹配。页面仅展示行数、身份分类与阻断代码，不回显源业务字段，不执行迁移或导入。</p></section>
+    <div id="notice" class="notice" role="status" aria-live="polite" data-testid="notice"></div>
+    <div class="grid">
+      <section class="card"><div class="card-head"><h2>预览范围</h2></div><div class="card-body">
+        <div class="form-row"><label for="projectSelect">目标项目</label><select id="projectSelect" data-testid="project-select"><option value="">正在加载可访问项目</option></select></div>
+        <div class="actions"><button id="runPreview" class="primary" type="button" data-testid="run-preview" disabled>读取并预览</button><button id="reloadProjects" class="secondary" type="button" data-testid="reload-projects">刷新项目</button></div>
+        <div class="warning" data-testid="readonly-warning"><strong>只读边界</strong><br>旧库：固定 I19 allowlist + READ ONLY；目标库：仅精确隔离 schema 中的项目级 SELECT。parity 未验证、导入未授权，页面没有写入/导入控件。</div>
+      </div></section>
+      <section class="card"><div class="card-head"><h2>映射审阅</h2></div>
+        <div class="stats"><div class="stat"><span>源记录</span><strong id="sourceRows" data-testid="source-rows">—</strong></div><div class="stat"><span>新增身份候选</span><strong id="newRows" data-testid="new-rows">—</strong></div><div class="stat"><span>目标身份匹配</span><strong id="matchedRows" data-testid="matched-rows">—</strong></div><div class="stat"><span>阻断</span><strong id="blockedRows" data-testid="blocked-rows">—</strong></div></div>
+        <section class="section"><p id="snapshot" class="muted" data-testid="snapshot">尚未执行</p></section>
+        <section class="section"><h3>三个来源域 / 项目目标行数</h3><div class="table-wrap"><table><thead><tr><th>来源表</th><th>来源行数</th><th>目标项目行数</th></tr></thead><tbody id="domainRows" data-testid="domain-rows"><tr><td class="empty" colspan="3">请先选择项目</td></tr></tbody></table></div></section>
+        <section class="section"><h3>来源身份映射结果</h3><div class="table-wrap"><table><thead><tr><th>来源表</th><th>来源 ID</th><th>分类</th></tr></thead><tbody id="previewRows" data-testid="preview-rows"><tr><td class="empty" colspan="3">尚无结果</td></tr></tbody></table></div></section>
+        <section class="section"><h3>阻断原因</h3><div id="issueList" data-testid="issue-list"><span class="muted">尚无结果</span></div></section>
+      </section>
+    </div>
+  </main>
+  <script>
+  (() => {
+    'use strict';
+    const token=window.__DATARA_TEST_TOKEN__||'';
+    const tables=['t_meta_table_ext','t_meta_tag','t_meta_tagging'];
+    const $=id=>document.getElementById(id);
+    const escapeHtml=value=>String(value??'').replace(/[&<>"']/g,ch=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));
+    const state={projectId:null,busy:false};
+    const notify=(message,kind='info')=>{const el=$('notice');el.className=`notice show ${kind}`;el.textContent=message;};
+    async function request(path,options={}){
+      if(!token)throw new Error('验证 runner 未注入短期 token；页面不接收或保存验证 key');
+      const response=await fetch(path,{...options,headers:{Authorization:`Bearer ${token}`,...(options.headers||{})}});
+      let body;try{body=await response.json();}catch{throw new Error(`HTTP ${response.status}`);}
+      if(!response.ok||body.code)throw new Error(body.msg||`HTTP ${response.status}`);
+      return body.data;
+    }
+    function clear(){['sourceRows','newRows','matchedRows','blockedRows'].forEach(id=>$(id).textContent='—');$('snapshot').textContent='尚未执行';$('domainRows').innerHTML='<tr><td class="empty" colspan="3">尚未执行</td></tr>';$('previewRows').innerHTML='<tr><td class="empty" colspan="3">尚无结果</td></tr>';$('issueList').innerHTML='<span class="muted">尚无结果</span>';}
+    async function loadProjects(){
+      $('reloadProjects').disabled=true;
+      try{const result=await request('/api/v1/rebuild/projects');const select=$('projectSelect');select.innerHTML=result.list.length?result.list.map(project=>`<option value="${Number(project.id)}">${escapeHtml(project.name)} · #${Number(project.id)}</option>`).join(''):'<option value="">没有可访问项目</option>';state.projectId=result.list[0]?.id??null;$('runPreview').disabled=!state.projectId;$('runtime').textContent='验证身份已就绪';notify(`已加载 ${result.list.length} 个可访问项目，请选择目标后执行只读预览。`);}
+      catch(error){state.projectId=null;$('projectSelect').innerHTML='<option value="">项目列表暂不可用</option>';$('runPreview').disabled=true;$('runtime').textContent='验证运行时未就绪';notify(error.message,'error');}
+      finally{$('reloadProjects').disabled=false;}
+    }
+    function render(data){
+      const source=data.source||{},target=data.target||{},preview=data.preview||{},counts=preview.counts||{},sourceCounts=source.counts||{},targetCounts=target.counts||{};
+      $('sourceRows').textContent=Object.values(sourceCounts).reduce((sum,value)=>sum+Number(value||0),0).toLocaleString('zh-CN');$('newRows').textContent=Number(counts.new_identity_candidate||0).toLocaleString('zh-CN');$('matchedRows').textContent=Number(counts.target_identity_match||0).toLocaleString('zh-CN');$('blockedRows').textContent=Number(counts.blocked||0).toLocaleString('zh-CN');
+      $('snapshot').textContent=`项目 #${Number(data.project_id)} · 来源 ${escapeHtml(source.schema||'—')} · 快照 ${escapeHtml(source.captured_at||'—')} · 摘要 ${escapeHtml(source.digest||'—')}`;
+      $('domainRows').innerHTML=tables.map(table=>`<tr><td>${table}</td><td>${Number(sourceCounts[table]||0)}</td><td>${Number(targetCounts[table]||0)}</td></tr>`).join('');
+      const entries=preview.entries||[];$('previewRows').innerHTML=entries.length?entries.map(item=>`<tr><td>${escapeHtml(item.source_table)}</td><td>${escapeHtml(item.source_id)}</td><td><span class="pill ${escapeHtml(item.disposition)}">${escapeHtml(item.disposition)}</span></td></tr>`).join(''):'<tr><td class="empty" colspan="3">来源当前为空</td></tr>';
+      const issues=preview.issues||[];$('issueList').innerHTML=issues.length?issues.map(issue=>`<span class="issue">${escapeHtml(issue.code)} · ${escapeHtml(issue.source_table)}#${escapeHtml(issue.source_id)}</span>`).join(''):'<span class="muted" data-testid="no-issues">没有映射阻断</span>';
+      $('runtime').textContent='预览完成 · 只读';const blocked=Number(counts.blocked||0);notify(`预览完成：候选 ${counts.new_identity_candidate||0}，目标匹配 ${counts.target_identity_match||0}，阻断 ${blocked}。无导入操作，parity 未验证。`,blocked?'info':'success');
+    }
+    $('projectSelect').addEventListener('change',event=>{state.projectId=event.target.value?Number(event.target.value):null;clear();$('runPreview').disabled=!state.projectId||state.busy;});
+    $('reloadProjects').addEventListener('click',loadProjects);
+    $('runPreview').addEventListener('click',async()=>{if(state.busy||!state.projectId)return;state.busy=true;$('runPreview').disabled=true;$('runtime').textContent='正在读取只读快照';clear();notify('正在读取 I19 三张来源表，并对照所选项目身份；不会写入任何业务表。');try{render(await request(`/api/v1/rebuild/governance/projects/${state.projectId}/legacy/i19/mapping-preview`,{method:'POST'}));}catch(error){$('runtime').textContent='预览失败';notify(`预览失败：${error.message}。没有执行导入。`,'error');}finally{state.busy=false;$('runPreview').disabled=!state.projectId;}});
+    loadProjects();
+  })();
+  </script>
+</body>
+</html>

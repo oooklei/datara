@@ -277,3 +277,16 @@ I21 修正子批已完成：固定 reader 列已按 live schema 对齐；mapper 
 - 阻断：当前验证 token 是 `Role.DEV`，只有 `EDIT_DEFINITION/RUN_INSTANCE/VIEW_ALL`，不含 `MANAGE_USER`；提升共用 token 到 admin 或让 project editor 查询全局用户都违反最小权限。既有 I23 reader 的 schema/count 检查不等同于用户批准读取 `t_user` 业务行；本批尚未读取用户行。
 - 后续仅在用户明确裁定后再实施：推荐固定 source `datara_meta.t_user` 六列、READ ONLY transaction；target 只 project-independent SELECT；接口限定短期 `legacy:i23:preview` 只读能力且不能复用全局 admin/导入权限；前端逐项显式选择已有 target ID，展示匹配/缺失/属性差异，不创建/更新用户、不访问密码、不猜成员关系。必须先确定来源行读取批准和 browser-use/Playwright 如何取得不扩大通用权限的测试能力；其后再依次 RED→GREEN、API+页面、1.9 控件/日志/数据库资源验证和独立提交。
 - 当前状态：`BLOCKED_PENDING_POLICY_APPROVAL`，未改代码、未部署、未查询 `t_user` 行、未写 target。此处阻断不影响已完成的 I22 read-only preview 子批；R3-S9/R3 仍 IN_PROGRESS/PARTIAL。
+
+#### I19 项目级只读映射预览 API 与隔离控件验证页（本子批完成）
+
+- 开工前影响分析：见 `R3-S9-开始前影响分析.md` 的“I19 项目级只读映射预览 API 与隔离控件页开工影响分析”。本轮用户确认系统验证/管理账号 `admin`、source MySQL `root`；这不等于目标 `rebuild_user` 存在 admin 行，也未批准身份关联或目标写入。
+- 依赖影响：I19 reader/mapper 已完成本地子步；API 共享 `governance/api.py` 和 `api/app.py`，必须回归 I18 dry-run + disabled importer、I22 project preview、I23 endpoint-only preview。项目预览只用 `EDIT_DEFINITION`，禁止复用 I23 全局 capability。正式 Vue/menu 不改。
+- 步骤：先为权限先行、固定三表只读 reader、目标 project provenance 查询/target schema guard、逐行映射分类、重复身份 fail closed、payload-free 响应和 import/parity false 写 RED；实现只读 preview service/API；再做参考组件语义的隔离控件页与 protected Playwright runner；本地 full backend/Ruff/compileall/diff-check/page contract 后，在 192.168.1.9 备份并部署隔离 API/新静态页，只重启 rebuild API，以 18091 控件、API log、MySQL/Web health、源 READ ONLY 和 target no-write 做整体验证。
+- 限制：root 仅用于 `datara_meta` I19 三表精确 allowlist READ ONLY transaction；目标仅对 `datara_rebuild_i0` 当前 project SELECT；未知 asset/tag reference 保留 unresolved/block，不做模糊映射；不启用 I18 importer、不触发实际业务导入或目标 DML。
+- 实施结果：新增项目级只读映射预览 API、目标同项目身份约束、重复身份 fail-closed、只返回身份/问题码的隔离验证页与 protected Playwright runner。系统管理/验证 admin 仅用于受控验证；MySQL root 仅用于固定三表 allowlist 只读读取；未增加权限、未导入目标业务数据、未改正式 Vue/menu。
+- 本地验收：全后端 `pytest tests -q` 737 passed in 71.07s；I19 API tests 3 passed；隔离验证页 contract tests 3 passed；定向 Ruff、`compileall`、runner `node --check` 与 `git diff --check` 通过。
+- 远端整体验收：browser-use 因两次操作超时判定 BLOCKED，按既定 fallback 使用同一 18091 页面 Playwright 控件实测；保护 token、页面、项目预填、API、三域/计数呈现、无 parity/import、无业务值、只读控件提示、无浏览器错误共 10/10 PASS。`datara-rebuild-api` healthy，`datara-web` up，`datara-mysql-meta` healthy；部署文件哈希与本地一致，后端访问日志记录 mapping-preview POST 200。
+- 数据边界与状态：源 `datara_meta` 的三张 I19 表本次均为 0 行，目标同域计数亦为 0；故只能记 `I19_PREVIEW_CONTROL_PASS / I19_PARITY_PENDING / IMPORT_NOT_AUTHORIZED`。这不是 source-target parity 或 importer 验收，也不代表完整 S9/R3 PASS。首次重启暴露远端挂载缺少 `legacy_i19_mapping.py`，补齐该模块并重启后健康；失败与修复均保留在证据/台账，不删除失败记录。
+- 最终时区修正：target `captured_at` 明确使用 `Asia/Shanghai` 并断言 `+08:00`；修正后全后端仍 737 passed，定向质量检查通过，API 重新部署且 Playwright run `R3S9I19-20261014232132-19a437` 10/10 PASS。最终 JSON/截图与环境哈希见 `evidence/R3/s9-i19-preview-remote-20261015.txt`。
+- 证据：`evidence/R3/r3s9i19-20261014231348-d48a0e.json`（首次部署失败，保留）、`r3s9i19-20261014231449-1bfec9.json`（首次恢复）、`r3s9i19-20261014232132-19a437.json` 及同名 `-summary.png`（时区修正后最终通过）、`evidence/R3/s9-i19-preview-local-20261015.txt`、`evidence/R3/s9-i19-preview-remote-20261015.txt`。AOCI 此轮仅有完整索引交付确认；严格 Attestation 未通过且维护状态未对齐，不声称 AOCI 认知维护完成。
