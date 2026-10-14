@@ -167,3 +167,12 @@
 - 核查发现：`remote-schema-inventory.txt` 捕获于 `2026-10-14T17:55:28+08:00`，现存字段与 `I22-数据标准管理设计.md` 有具体差异，且当前隔离工作树没有旧 Std ORM/API。差异及范围记录见 `R3-S9-开始前影响分析.md`“I22 旧标准表 schema 证据差异复核”。
 - 阻断项：I22 不开始字段 mapper/source allowlist/parity/import，直至通过批准的数据库只读途径取得当前 7 张 `t_std_*` 表的 schema identity、列/类型/nullability/default、PK/unique/FK/index 与采集时间摘要。未把 DB root 凭据放入应用，也未推断 OS root 授权。
 - 无关工作仍可推进：I19 标签与资产关系的纯本地映射研究、I20 指标/版本和 I21 质量行映射可依据其自身旧 ORM 字段契约分批开发；每批均须独立影响分析、定向/全后端与静态验证。所有本地子步骤仍需保留 `LOCAL_SUBSTEP_PASS / INTEGRATION_GATE_PENDING`，只有 192.168.1.9 browser-use + API/日志 + middleware/resources 的约法闭环通过后才能关闭对应正式增量。
+
+### 2026-10-15：I20 指标源只读快照 reader 增量计划
+
+- 前序影响分析：见 `R3-S9-开始前影响分析.md`“I20 指标只读快照 reader 开工影响分析”；基线为 `23cc06f`。
+- 限定文件/合同：在 governance source reader 增加 `t_indicator`、`t_indicator_version` 固定列白名单和独立 I20 snapshot/read API；本地增加 SQLite-only fixture 测试。不能改变 I18/I19 reader/API合同与错误文本。
+- 映射语义边界：本批只作固定列原样快照，不解释 `dims`、`snapshot_json` 或 base metric 身份，不解析 JSON、不转换业务时间、不写目标侧。
+- 验收步骤：TDD RED→实现→I18/I19/I20 定向测试→全后端 pytest→Ruff/compileall/diff-check→更新证据/影响分析/本计划/台账→独立提交。完全本地测试仍不构成正式增量 PASS。
+- 运行安全：不连 `datara_meta`/target MySQL，不部署、不修改容器/中间件/正式前端、不新增可触发导入的 API/UI。I20 正式端到端验收仍需 192.168.1.9 的前端控件、后端 API/日志及中间件/资源闭环；缺少环境/数据证据时保持 pending。
+- 本地结果：I20 定向 7 passed，I18-I20 三套 reader regression 18 passed；全后端 `pytest tests -q` 657 passed in 67.09s；Ruff、compileall、`git diff --check` 通过。证据 `evidence/R3/s9-i20-source-reader-local-20261015.txt`。这是 reader 子步，不代表 mapper/API/import/parity 或正式增量 PASS。
