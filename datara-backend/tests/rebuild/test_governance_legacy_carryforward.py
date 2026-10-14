@@ -12,10 +12,14 @@ EXPECTED_CARRY_FORWARD_TABLES = {
     "rebuild_governance_warehouse_model_relation_field",
     "rebuild_governance_warehouse_model_version",
     "rebuild_governance_asset_metadata_extension",
+    "rebuild_governance_legacy_tag_reference",
+    "rebuild_governance_semantic_metric_profile",
     "rebuild_governance_semantic_metric_dimension",
     "rebuild_governance_semantic_metric_version",
     "rebuild_governance_quality_task",
     "rebuild_governance_quality_task_rule",
+    "rebuild_governance_quality_rule_definition",
+    "rebuild_governance_quality_run_legacy_details",
     "rebuild_governance_quality_exception",
     "rebuild_governance_quality_report",
     "rebuild_governance_quality_alarm_policy",
@@ -63,7 +67,10 @@ def test_normalized_children_have_real_foreign_keys_not_json_only_links():
             "rebuild_governance_warehouse_model_relation.id"
         },
         "rebuild_governance_semantic_metric_dimension": {"rebuild_governance_semantic_metric.id"},
+        "rebuild_governance_semantic_metric_profile": {"rebuild_governance_semantic_metric.id"},
         "rebuild_governance_quality_task_rule": {"rebuild_governance_quality_task.id"},
+        "rebuild_governance_quality_rule_definition": {"rebuild_governance_quality_rule.id"},
+        "rebuild_governance_quality_run_legacy_details": {"rebuild_governance_quality_run.id"},
         "rebuild_governance_standard_code_value": {"rebuild_governance_standard_code_set.id"},
         "rebuild_governance_standard_approval": {"rebuild_governance_standard.id"},
     }
@@ -72,3 +79,40 @@ def test_normalized_children_have_real_foreign_keys_not_json_only_links():
     for table_name, expected_targets in expected_foreign_keys.items():
         actual_targets = {foreign_key.target_fullname for foreign_key in carry_forward_tables[table_name].foreign_keys}
         assert expected_targets <= actual_targets, table_name
+
+
+def test_metric_quality_and_unresolved_tag_extensions_preserve_legacy_fields():
+    tables = {table.name: table for table in getattr(models, "LEGACY_CARRY_FORWARD_TABLES", ())}
+
+    expected_fields = {
+        "rebuild_governance_legacy_tag_reference": {"target_type", "target_key"},
+        "rebuild_governance_semantic_metric_profile": {
+            "source_kind",
+            "source_reference",
+            "source_field",
+            "output_table",
+            "output_task",
+            "period",
+            "unit",
+        },
+        "rebuild_governance_quality_rule_definition": {
+            "rule_type",
+            "target_database",
+            "target_table",
+            "target_column",
+            "params_json",
+            "threshold",
+        },
+        "rebuild_governance_quality_run_legacy_details": {
+            "trigger_source",
+            "started_at",
+            "finished_at",
+            "legacy_result",
+            "score",
+            "stats_json",
+        },
+    }
+
+    assert tables
+    for table_name, fields in expected_fields.items():
+        assert fields <= set(tables[table_name].columns.keys()), table_name
