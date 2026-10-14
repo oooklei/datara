@@ -52,12 +52,34 @@
 
 ## 3. 本批次执行顺序
 
-1. 对上一批 R3/D-2 影响复核：只读确认 R0-R11 路径、D-1 豁免、Qc ORM 保留和 1.9 健康。
+1. 对上一批 R3/D-2 影响复核：只读确认 R0-R11 路径、D-1 豁免、Qc ORM 保留和 1.9 健康；逐项见 `R3-to-batch2-impact-20261014.md`。
 2. 先完成设计/计划 15 项同源修订，更新台账并执行文档交叉检查。
 3. 执行后端契约扫描：`rebuild/` 代码禁止隐式依赖旧 `api.*`/`common.*`，只有显式白名单可用；AI 工具必须存在 schema 和权限断言。
 4. 本机执行 Python compile、定向 pytest、Vue 类型检查（依赖不存在时记录环境阻塞，不伪报 0 错）。
 5. 将需要运行的最小验证页部署到 192.168.1.9 的非正式端口，验证 API、容器、MySQL/Redis/ZK/Kafka 和日志。
 6. 完成四联证据后独立提交批次 2；没有浏览器控件级证据不得标记全绿。
+
+### 3.1 R2-01—R2-15 状态跟踪（2026-10-14）
+
+| 任务 | 状态 | 已有证据/未完成条件 |
+|---|---|---|
+| R2-01 治理域 | IN_PROGRESS | 本轮已将五域真源、采集/解析/质量责任与迁移原则写入设计 §5；仍需完成 I18-I23 表/API/菜单/消费者映射和逐域验收证据。 |
+| R2-02 调度 | DESIGN_DEFINED | 设计矩阵有触发/时区/misfire/并发/worker 契约；需核验实现、故障/并发测试及真实运行证据。 |
+| R2-03 权限 | DESIGN_DEFINED | 最小 RBAC 与范围策略已定义；需核验新 Backend 认证/API/拒权覆盖及验证页证据。 |
+| R2-04 DDL | DESIGN_DEFINED | 已要求 R10-B draft/diff/backup/publish/rollback；尚未实现/验收，不允许提前开放写路径。 |
+| R2-05 变量 | DESIGN_DEFINED | 类型/作用域/补全/现值/运行快照已定义；需模型、验证、日志实测。 |
+| R2-06 流 | DESIGN_DEFINED | Kafka 与长驻 stream 状态机已定义；需真实生产观摩及故障恢复证据。 |
+| R2-07 结果集 | DESIGN_DEFINED | taskId/cursor/TTL/截断/取消/导出已定义；需 R10-A 协议测试和 UI 证据。 |
+| R2-08 部署 | DESIGN_DEFINED | 1.9 compose 拓扑、配置和日志/health 已定义；需核验 env 引用、compose 与日志聚合证据。 |
+| R2-09 AI | DESIGN_DEFINED | 五工具契约/权限/审计/预算与浮动助手边界已定义；需代码 schema、拒权和冻结门禁。 |
+| R2-10 指标 | IN_PROGRESS | 本轮将过时全量测试数 536 更新为实测 583，并记录 QC browser 21/21；其余性能基线需专门采样。 |
+| R2-11 SYNC | DESIGN_DEFINED | 执行器链路已写入设计；需 datasource 前置、执行器实现和全量/增量/断点/行计数闭环。 |
+| R2-12 datasource | DESIGN_DEFINED | CRUD/探查/连接池契约已定义；需实现与跨 schema、失败路径验证。 |
+| R2-13 测试库 | PARTIAL | 1.9 运行 schema 已供测试，R3 时间戳/行数证据部分存在；需把 schema/init 与默认值证据按新 Backend 契约核实。 |
+| R2-14 门禁 | IN_PROGRESS | token bootstrap 与 Playwright 同页策略已有；QC 批次 1 21/21 PASS，仍需每个后端增量依照参考产品 UI 做闭环。 |
+| R2-15 IDE 拆分 | DESIGN_DEFINED | R10-A/B 已拆分；需两份独立验证单和 DDL 写路径审批边界。 |
+
+此跟踪表是最高实证状态，不以“设计中有一行”代替代码/远端/控件验收；状态提升须附证据链接并同步更新台账。
 
 ## 4. 与旧资产的处置
 
@@ -71,11 +93,12 @@
 
 | 项目 | 实测值 | 环境/证据 | 结论 |
 |---|---:|---|---|
-| Backend 全量回归 | 536 passed / 47.20s | 本机 `datara-backend/tests`，证据 `evidence/R3/local-r3-3.txt` | PASS |
+| Backend 全量回归（最新） | 584 passed / 60.91s | 本机 `datara-backend/tests`，含 QC 权限回归断言；前一 QC 退役基线 583/65.47s 见 `evidence/R3/batch1-postdeploy-20261014.txt` | PASS |
+| 批次 2 runner 定向回归 | 4 passed / 0.12s | 本机 `datara-web/deploy/test_r3_governance_runner.py` | PASS |
 | R3-3 调度契约定向测试 | 2 passed | 本机 `test_i3_schedule_contract.py` | PASS |
 | Vue 类型检查 | `vue-tsc --noEmit` 0 errors | 本机 `datara-web` | PASS |
 | 远端 API 健康 | `UP`；`db=true`、`redis=true`、`zk=true` | 192.168.1.9:8000 | PASS |
 | 调度/依赖/补数实例 | 3 个实例均 success；3/3 任务成功 | 192.168.1.9 Master/Worker 日志与 metrics | PASS |
-| 浏览器控件闭环 | 当前通道超时 | 18091 隔离页可加载但 CUA 控件调用未完成 | BLOCKED_BROWSER |
+| QC 退役浏览器控件闭环 | 21/21 assertions；browser errors=0 | Playwright 操作同一 `192.168.1.9:18091/rebuild-validation-r3.html`；browser-use 无法绑定 tab 后按 R2-14 回退 | PASS |
 
 以上数字为本轮实际测量值，不是目标值；目标值仍以 R2-10 的响应、延迟、完整率和吞吐门禁为准。

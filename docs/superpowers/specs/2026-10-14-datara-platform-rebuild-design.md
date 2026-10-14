@@ -1,6 +1,6 @@
 # Datara 平台重建设计文档
 
-> **SUPERSEDED（2026-10-14）**：本稿保留作历史评审记录；当前权威设计已移至 [`docs/increments/2026-10-14-datara-platform-rebuild-design.md`](../../increments/2026-10-14-datara-platform-rebuild-design.md)，包含 §1.3 验证/认证边界及 R2-14 修订。发生差异时以新路径为准。
+> **SUPERSEDED（2026-10-14）**：本稿仅保留作历史评审记录；当前唯一权威设计为 [`docs/increments/2026-10-14-datara-platform-rebuild-design.md`](../../increments/2026-10-14-datara-platform-rebuild-design.md)。计划、执行状态和后续修订以 `docs/increments/` 下对应文件为准；发生差异时以该目录为准。
 
 > 状态：设计基线
 >
@@ -10,7 +10,7 @@
 >
 > 说明：本文档是用户最新裁定下的新重建设计基线。现有 Backend 和现有前端保留用于参考，不作为新架构的运行时依赖。
 
-> 执行约束：所有增量必须遵守 `docs/increments/重建执行约法与台账.md`。设计冲突经用户批准后立即刷新本文档；用户要求和命令进入台账；每次增量必须完成前端牵引、browser-use、Backend、中间件、资源、环境和后台日志的整体验证；新增长量前必须完成上一增量影响分析；本文件的权威路径为 `D:\需求\数据治理工具\Datara\docs\superpowers\specs`；本机只做代码检测和业务逻辑稽核，部署与运行资源统一使用 `192.168.1.9`。
+> 执行约束：本历史稿不再接收设计修订；增量门禁、用户要求留痕、影响分析和运行资源要求均以权威台账 `docs/increments/重建执行约法与台账.md` 及增量目录的当前设计/计划为准。旧稿原先关于本目录为权威路径的说明已失效。
 
 ## 1. 目标与边界
 

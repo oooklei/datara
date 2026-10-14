@@ -1,0 +1,26 @@
+Timestamp: 2026-10-14 21:40 Asia/Shanghai
+Workspace: D:\需求\数据治理工具\Datara
+
+QC permission follow-up
+----------------------
+TDD RED: pytest tests/test_component_models.py::test_retired_qc_permission_is_not_granted_to_legacy_roles -q
+Expected failure observed before production edit: assertion False; ROLE_PERMS included qc:write.
+TDD GREEN: pytest tests/test_component_models.py -q
+Result: 13 passed / 0.13s.
+
+R3-S2 final lint rerun
+---------------------
+Command: ruff check rebuild tests/rebuild api/auth.py tests/test_component_models.py
+Result: PASS (no diagnostics).
+
+Full Backend tests after follow-up
+----------------------------------
+Command: pytest tests -q
+Result: 584 passed in 60.91s.
+
+Additional checks
+-----------------
+- node --check datara-web/deploy/r3-governance-control-smoke.cjs: PASS.
+- pytest datara-web/deploy/test_r3_governance_runner.py -q: 4 passed / 0.12s.
+- git diff --check: PASS.
+- No remote deployment was performed for this auth-only follow-up. The existing deployed API already has QC routes removed; std permission changes in auth.py remain grouped with their pending standard module work.

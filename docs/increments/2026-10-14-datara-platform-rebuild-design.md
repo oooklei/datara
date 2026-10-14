@@ -1,5 +1,6 @@
 # Datara 平台重建设计（评审修订版）
 
+> 唯一权威设计文件：`docs/increments/2026-10-14-datara-platform-rebuild-design.md`；`docs/superpowers/specs/2026-10-14-datara-platform-rebuild-design.md` 仅为 superseded 历史副本，冲突时以本文件为准。
 > 版本：2026-10-14；编号体系：R0-R11；运行资源：192.168.1.9；默认时区：Asia/Shanghai（UTC+8）。
 > 本文是重建域的设计基线。正式前端功能继续冻结，隔离验证页只调用新 Backend API；菜单展示层 D-1=B 豁免见 §1.2。验证门禁不要求操作前端登录页；测试运行环境使用统一验证 key 经 Backend 认证 API 取得短期 token，再驱动业务控件。
 
@@ -53,10 +54,30 @@
 
 ## 5. 治理与 AI 真源
 
-采集器写 metadata 快照，解析器从 SQL/同步映射/工作流定义生成 lineage，质量规则引擎写 quality run/exception，data_asset 聚合标签、指标、质量和血缘链接。数仓表、视图、函数、存储过程和样例数据的 schema/字段/注释均可纳入元数据训练语料；AI 只能引用有来源、时间戳和权限范围的资产。
+### 5.1 五域模型、写入责任与真源
+
+| 域 | 规范对象/责任 | 写入生产者 | 内部真源与外部边界 |
+|---|---|---|---|
+| `metadata` | 数据源、schema、表/视图/函数/存储过程、字段、描述、采集批次与快照 | datasource 探查器、周期采集器、受控导入器 | Datara 的治理 schema 保存目录和快照；OpenMetadata/DataHub 仅作为可追溯导入源，不直接成为工作流执行状态或元数据写入真源 |
+| `data_asset` | 统一资产身份、项目归属、标签关联、质量/血缘/指标导航引用 | 资产目录服务、导入映射器 | 内部 `asset_id` 与外部 `(source_system, external_id)` 映射是关联真源；外部原始 ID 不覆盖内部主键 |
+| `lineage` | 作业/SQL/同步映射产生的表级及字段级 upstream/downstream 边、解析来源、置信/状态 | SQL/工作流解析器、SYNC 执行器、显式校正 API | 内部 lineage edge 与字段边保存解析结果；源 SQL/映射版本及解析批次保留，解析失败不得伪造边 |
+| `quality` | 规则定义/版本、运行、输入输出计数、异常样本引用与状态 | 规则服务、Quality worker | 新治理 API 的规则和运行历史为重建域真源；旧 `Qc*` ORM/表保留作为旧资产迁移输入，不再由退役的 `/api/v1/qc/*` 写入 |
+| `data_transfer` | 同步端点、探查 schema、字段映射版本、全量/增量计划、checkpoint、运行及成功/失败/跳过行数 | datasource 探查器、SYNC 编排器/执行器 | 新 Backend 记录映射与执行状态；外部传输工具仅作为执行适配器，不能绕过 Datara instance/metrics 留痕 |
+
+数仓建模、指标、标签、标准、质量、血缘、权限和审计的旧 I18-I23 资产统一先盘点，不在本设计阶段静默删除。`DwModel*` 是建模/关系/版本迁移候选；`MetaTableExt/MetaTag/MetaTagging` 是目录/标签候选；旧 `LineageEdge/LineageField` 与 `Qc*` 是血缘/质量候选。指标、标准、访问授权及操作审计按各自旧表/API 的实物清单映射。处置默认如下：语义相同则经 source-id、行数、字段映射及幂等核验后迁移至新域；仍被旧运行链路引用则暂时冻结只读；无消费者且无业务数据的历史实现，在用户批准和回滚窗口后废弃。任何一项在表/API/菜单/消费者清单核完之前都不标“已迁移”或“已废弃”。`Qc*` ORM/表保留，旧 QC API 已按批次 1 退役；治理 API 和数据仍可审计。
+
+### 5.2 采集、解析、规则执行边界
+
+- 元数据采集按 datasource 授权读取 schema/table/column 及对象定义，保存采集时间、数据源版本、对象指纹与失败明细；增量采集允许 tombstone 标记，但不自动物理删除历史资产。
+- 血缘解析器消费 SQL、工作流版本和 SYNC 映射版本，先产出可审阅的解析批次，再发布表级/字段级边；来源不明、动态 SQL 无法解析、字段映射不完整时保留 `unknown/unresolved`，并记录原因，不猜测下游字段关系。
+- 质量规则定义与执行分离；执行快照绑定规则版本、数据源/资产、时间窗口、运行实例及输入/成功/失败/跳过行数。异常可引用样本位置或主键，默认不复制整行数据到治理库。
+- `data_asset` 是导航聚合和稳定内部身份，不复制成 metadata/lineage/quality 的并行事实表；标签、标准和指标通过稳定 asset identity 关联，各子域保留本域版本和审计。
+- 元数据训练可纳入数仓 schema、对象定义、字段注释、标准/指标及经授权的样例数据摘要；需要保留 source、采集时间、权限范围和来源对象版本。AI 检索只读取授权后的目录/血缘/规则资料，不把模型答案回写为正式元数据，除非用户通过对应编辑接口确认。
+
+外部平台导入必须具备 adapter、source identity、字段映射版本、dry-run 冲突报告、幂等键、导入计数和回滚方案；外部更新不能覆盖 Datara 本地人工校正或工作流/运行状态。内部首期不做敏感值识别、脱敏、密级驱动隐藏或加密展示分支。
 
 AI 不添加左侧菜单项，采用全系统浮动助手图标和上下文入口；工具面与普通 API 同步冻结，回答必须给出对象、来源时间和失败原因，不能替代执行确认。
 
 ## 6. 实测基线回写
 
-截至 2026-10-14 Asia/Shanghai，后端实测基线为 Backend 全量回归 `536 passed / 47.20s`，R3-3 调度契约定向测试 `2 passed`，`vue-tsc --noEmit` 为 `0 errors`；192.168.1.9 API health 为 `UP`，`db=true`、`redis=true`、`zk=true`。调度、依赖、补数各生成 1 个成功实例，SSH 工作流任务成功率为 `3/3`，metrics 返回任务/行级统计及 `generatedAt/createdAt/updatedAt`。另有一组旧 Datara IDE 探索页的 Playwright 子集证据（登录、数据源树、跨 Schema SQL、历史），按 2026-10-14 裁定仅为历史探索，不属于 R4-SYNC 验收，也不能作为 R10-A/R10-B 新 Backend 验收；新门禁不要求人工点击登录页。
+截至 2026-10-14 Asia/Shanghai，后端全量回归最近一次为 `584 passed / 60.91s`（含 QC 权限回归断言）；QC 退役后上一轮全量为 `583 passed / 65.47s`。R3 governance runner 专项 `4 passed / 0.12s`，QC 退役控件级 Playwright `21/21`、浏览器错误 `0`。远端 `datara-api` health `UP`，数据库/Redis/ZK 均健康，QC OpenAPI routes `0`、标准 routes `24`，重建治理 API `11` routes healthy，六张旧 QC 表保留且各 `0` 行；完整细节见 `evidence/R3/batch1-postdeploy-20261014.txt`。`536 passed / 47.20s` 为更早基线，不再作为最新数字。192.168.1.9 实测调度/依赖/补数和旧 IDE 探索结果仍只代表各自历史证据，不得替代 R4 SYNC 或 R10-A/R10-B 新 Backend 验收；门禁不要求人工点击登录页。
