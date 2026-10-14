@@ -1,0 +1,562 @@
+{
+  "run_id": "R3V-20261014132657-466f99",
+  "started_at": "2026-10-14T13:26:57.164Z",
+  "timezone": "Asia/Shanghai",
+  "url": "http://192.168.1.9:18091/rebuild-validation-r3.html",
+  "browser": "Chrome 149.0.7827.115",
+  "fixture": {
+    "project_name": "R3 governance validation R3V-20261014132657-466f99",
+    "project_id": 9,
+    "http_status": 200,
+    "setup_only": true
+  },
+  "actions": [
+    {
+      "name": "prepare-isolated-validation-project",
+      "at": "2026-10-14T13:26:57.240Z",
+      "project_id": 9,
+      "http_status": 200
+    },
+    {
+      "name": "confirm-legacy-qc-api-is-not-mounted",
+      "at": "2026-10-14T13:26:57.984Z",
+      "http_status": 404
+    },
+    {
+      "name": "select-isolated-project",
+      "at": "2026-10-14T13:26:57.999Z",
+      "project_id": 9
+    },
+    {
+      "name": "create-source-asset",
+      "at": "2026-10-14T13:26:58.325Z",
+      "asset_id": 12
+    },
+    {
+      "name": "create-target-asset",
+      "at": "2026-10-14T13:26:58.542Z",
+      "asset_id": 13
+    },
+    {
+      "name": "create-and-attach-tag",
+      "at": "2026-10-14T13:26:58.752Z"
+    },
+    {
+      "name": "define-quality-rule-and-check-history",
+      "at": "2026-10-14T13:26:59.168Z"
+    },
+    {
+      "name": "create-and-traverse-lineage",
+      "at": "2026-10-14T13:26:59.420Z"
+    },
+    {
+      "name": "create-standard",
+      "at": "2026-10-14T13:26:59.625Z"
+    },
+    {
+      "name": "create-semantic-metric",
+      "at": "2026-10-14T13:26:59.802Z"
+    },
+    {
+      "name": "duplicate-standard-negative-control",
+      "at": "2026-10-14T13:26:59.993Z",
+      "expected_http_status": 409
+    },
+    {
+      "name": "inspect-activity-audit",
+      "at": "2026-10-14T13:27:00.211Z"
+    },
+    {
+      "name": "logout-and-confirm-token-revocation",
+      "at": "2026-10-14T13:27:00.285Z"
+    }
+  ],
+  "checks": [
+    {
+      "name": "protected-runner-token-exchange",
+      "pass": true,
+      "http_status": 200
+    },
+    {
+      "name": "governance-page-loaded",
+      "pass": true,
+      "http_status": 200
+    },
+    {
+      "name": "no-human-login-or-token-storage",
+      "pass": true
+    },
+    {
+      "name": "project-selector-loaded-from-backend",
+      "pass": true
+    },
+    {
+      "name": "legacy-quality-api-retired",
+      "pass": true,
+      "http_status": 404
+    },
+    {
+      "name": "create-source-asset-through-form",
+      "pass": true,
+      "rendered_notice": "新建数据资产已保存，记录 ID 12\n操作时间 · 2026年10月14日 21:26:58"
+    },
+    {
+      "name": "create-target-asset-through-form",
+      "pass": true,
+      "rendered_notice": "新建数据资产已保存，记录 ID 13\n操作时间 · 2026年10月14日 21:26:58"
+    },
+    {
+      "name": "asset-schema-tab-renders-persisted-fields",
+      "pass": true
+    },
+    {
+      "name": "create-and-attach-tag-through-form",
+      "pass": true,
+      "rendered_notice": "新建并关联业务标签已保存，记录 ID 6\n操作时间 · 2026年10月14日 21:26:58"
+    },
+    {
+      "name": "catalog-search-filters-real-asset",
+      "pass": true
+    },
+    {
+      "name": "create-quality-rule-definition-through-form",
+      "pass": true,
+      "rendered_notice": "定义质量规则已保存，记录 ID 6\n操作时间 · 2026年10月14日 21:26:59"
+    },
+    {
+      "name": "quality-history-is-real-empty-state-not-fabricated",
+      "pass": true,
+      "rendered_text": "质量规则 · 1\n运行结果仅反映已有持久化执行记录，不在验证页伪造。\nr3v_20261014132657_466f99_order_id_not_null error\n\norder_id IS NOT NULL\n\n已启用 · 创建 2026-10-14 21:26:57\n执行历史 · 0\n状态\t检查行\t成功\t失败\t跳过\t生成时间\n尚无真实运行记录；定义规则不等于已执行。"
+    },
+    {
+      "name": "create-field-lineage-through-form",
+      "pass": true,
+      "rendered_notice": "建立血缘关系已保存，记录 ID 5\n操作时间 · 2026年10月14日 21:26:59"
+    },
+    {
+      "name": "lineage-graph-renders-persisted-edge",
+      "pass": true,
+      "rendered_text": "UPSTREAM · 0 边\n源节点\n按查询结果显示\n→\n当前资产 · table\nr3v_20261014132657_466f99_orders_src\nods · 1 条关联\n→\nDOWNSTREAM · 1 边\nr3v_20261014132657_466f99_orders_dw\n表级 / 字段级\n\n1 条边 · 2 个节点 · 每条边来自后端存储，不是示例数据\n\n遍历方向\n上下游\n仅上游\n仅下游\n最大层级\n1 层\n2 层\n3 层\n5 层\n10 层\n重新查询连接资产"
+    },
+    {
+      "name": "create-standard-through-form",
+      "pass": true,
+      "rendered_notice": "定义数据标准已保存，记录 ID 7\n操作时间 · 2026年10月14日 21:26:59"
+    },
+    {
+      "name": "create-semantic-metric-through-form",
+      "pass": true,
+      "rendered_notice": "定义语义指标已保存，记录 ID 4\n操作时间 · 2026年10月14日 21:26:59"
+    },
+    {
+      "name": "duplicate-standard-conflict-shown-as-real-409",
+      "pass": true
+    },
+    {
+      "name": "duplicate-standard-conflict-is-backend-409",
+      "pass": true,
+      "http_status": 409
+    },
+    {
+      "name": "audit-tab-renders-persisted-events",
+      "pass": true,
+      "rendered_text": "2026-10-14 21:26:58\nmetric.create\nmetric #4\n2026-10-14 21:26:58\nstandard.create\nstandard #7\n2026-10-14 21:26:57\nlineage.create\nlineage_edge #5\n2026-10-14 21:26:57\nquality_rule.create\nquality_rule #6\n2026-10-14 21:26:57\ntag.create_and_attach\ntag #6\n2026-10-14 21:26:57\nasset.create\nasset #13\n2026-10-14 21:26:56\nasset.create\nasset #12"
+    },
+    {
+      "name": "audit-renders-generated-time",
+      "pass": true
+    },
+    {
+      "name": "page-logout-revokes-runner-token",
+      "pass": true,
+      "http_status": 401
+    }
+  ],
+  "relevant_responses": [
+    {
+      "at": "2026-10-14T13:26:57.883Z",
+      "method": "GET",
+      "path": "/api/v1/rebuild/projects",
+      "status": 200
+    },
+    {
+      "at": "2026-10-14T13:26:57.924Z",
+      "method": "GET",
+      "path": "/api/v1/rebuild/governance/projects/3/assets",
+      "status": 200
+    },
+    {
+      "at": "2026-10-14T13:26:57.924Z",
+      "method": "GET",
+      "path": "/api/v1/rebuild/governance/projects/3/metrics",
+      "status": 200
+    },
+    {
+      "at": "2026-10-14T13:26:57.924Z",
+      "method": "GET",
+      "path": "/api/v1/rebuild/governance/projects/3/standards",
+      "status": 200
+    },
+    {
+      "at": "2026-10-14T13:26:58.018Z",
+      "method": "GET",
+      "path": "/api/v1/rebuild/governance/projects/9/assets",
+      "status": 200
+    },
+    {
+      "at": "2026-10-14T13:26:58.023Z",
+      "method": "GET",
+      "path": "/api/v1/rebuild/governance/projects/9/standards",
+      "status": 200
+    },
+    {
+      "at": "2026-10-14T13:26:58.023Z",
+      "method": "GET",
+      "path": "/api/v1/rebuild/governance/projects/9/metrics",
+      "status": 200
+    },
+    {
+      "at": "2026-10-14T13:26:58.264Z",
+      "method": "POST",
+      "path": "/api/v1/rebuild/governance/projects/9/assets",
+      "status": 201,
+      "record_id": 12
+    },
+    {
+      "at": "2026-10-14T13:26:58.303Z",
+      "method": "GET",
+      "path": "/api/v1/rebuild/governance/projects/9/assets",
+      "status": 200
+    },
+    {
+      "at": "2026-10-14T13:26:58.319Z",
+      "method": "GET",
+      "path": "/api/v1/rebuild/governance/projects/9/standards",
+      "status": 200
+    },
+    {
+      "at": "2026-10-14T13:26:58.320Z",
+      "method": "GET",
+      "path": "/api/v1/rebuild/governance/projects/9/metrics",
+      "status": 200
+    },
+    {
+      "at": "2026-10-14T13:26:58.341Z",
+      "method": "GET",
+      "path": "/api/v1/rebuild/governance/assets/12",
+      "status": 200
+    },
+    {
+      "at": "2026-10-14T13:26:58.501Z",
+      "method": "POST",
+      "path": "/api/v1/rebuild/governance/projects/9/assets",
+      "status": 201,
+      "record_id": 13
+    },
+    {
+      "at": "2026-10-14T13:26:58.544Z",
+      "method": "GET",
+      "path": "/api/v1/rebuild/governance/projects/9/standards",
+      "status": 200
+    },
+    {
+      "at": "2026-10-14T13:26:58.547Z",
+      "method": "GET",
+      "path": "/api/v1/rebuild/governance/projects/9/assets",
+      "status": 200
+    },
+    {
+      "at": "2026-10-14T13:26:58.547Z",
+      "method": "GET",
+      "path": "/api/v1/rebuild/governance/projects/9/metrics",
+      "status": 200
+    },
+    {
+      "at": "2026-10-14T13:26:58.572Z",
+      "method": "GET",
+      "path": "/api/v1/rebuild/governance/assets/12",
+      "status": 200
+    },
+    {
+      "at": "2026-10-14T13:26:58.597Z",
+      "method": "GET",
+      "path": "/api/v1/rebuild/governance/assets/13",
+      "status": 200
+    },
+    {
+      "at": "2026-10-14T13:26:58.746Z",
+      "method": "POST",
+      "path": "/api/v1/rebuild/governance/projects/9/tags",
+      "status": 201,
+      "record_id": 6
+    },
+    {
+      "at": "2026-10-14T13:26:58.765Z",
+      "method": "GET",
+      "path": "/api/v1/rebuild/governance/projects/9/assets",
+      "status": 200
+    },
+    {
+      "at": "2026-10-14T13:26:58.765Z",
+      "method": "GET",
+      "path": "/api/v1/rebuild/governance/projects/9/standards",
+      "status": 200
+    },
+    {
+      "at": "2026-10-14T13:26:58.765Z",
+      "method": "GET",
+      "path": "/api/v1/rebuild/governance/projects/9/metrics",
+      "status": 200
+    },
+    {
+      "at": "2026-10-14T13:26:58.774Z",
+      "method": "GET",
+      "path": "/api/v1/rebuild/governance/assets/13",
+      "status": 200
+    },
+    {
+      "at": "2026-10-14T13:26:58.790Z",
+      "method": "GET",
+      "path": "/api/v1/rebuild/governance/assets/13",
+      "status": 200
+    },
+    {
+      "at": "2026-10-14T13:26:58.824Z",
+      "method": "GET",
+      "path": "/api/v1/rebuild/governance/projects/9/assets",
+      "status": 200
+    },
+    {
+      "at": "2026-10-14T13:26:58.909Z",
+      "method": "GET",
+      "path": "/api/v1/rebuild/governance/assets/12",
+      "status": 200
+    },
+    {
+      "at": "2026-10-14T13:26:59.030Z",
+      "method": "POST",
+      "path": "/api/v1/rebuild/governance/projects/9/quality-rules",
+      "status": 201,
+      "record_id": 6
+    },
+    {
+      "at": "2026-10-14T13:26:59.046Z",
+      "method": "GET",
+      "path": "/api/v1/rebuild/governance/projects/9/standards",
+      "status": 200
+    },
+    {
+      "at": "2026-10-14T13:26:59.046Z",
+      "method": "GET",
+      "path": "/api/v1/rebuild/governance/projects/9/metrics",
+      "status": 200
+    },
+    {
+      "at": "2026-10-14T13:26:59.047Z",
+      "method": "GET",
+      "path": "/api/v1/rebuild/governance/projects/9/assets",
+      "status": 200
+    },
+    {
+      "at": "2026-10-14T13:26:59.057Z",
+      "method": "GET",
+      "path": "/api/v1/rebuild/governance/assets/12",
+      "status": 200
+    },
+    {
+      "at": "2026-10-14T13:26:59.069Z",
+      "method": "GET",
+      "path": "/api/v1/rebuild/governance/assets/12",
+      "status": 200
+    },
+    {
+      "at": "2026-10-14T13:26:59.084Z",
+      "method": "GET",
+      "path": "/api/v1/rebuild/governance/projects/9/quality-rules",
+      "status": 200
+    },
+    {
+      "at": "2026-10-14T13:26:59.084Z",
+      "method": "GET",
+      "path": "/api/v1/rebuild/governance/projects/9/quality-runs",
+      "status": 200
+    },
+    {
+      "at": "2026-10-14T13:26:59.143Z",
+      "method": "GET",
+      "path": "/api/v1/rebuild/governance/projects/9/quality-runs",
+      "status": 200
+    },
+    {
+      "at": "2026-10-14T13:26:59.144Z",
+      "method": "GET",
+      "path": "/api/v1/rebuild/governance/projects/9/quality-rules",
+      "status": 200
+    },
+    {
+      "at": "2026-10-14T13:26:59.158Z",
+      "method": "GET",
+      "path": "/api/v1/rebuild/governance/projects/9/assets",
+      "status": 200
+    },
+    {
+      "at": "2026-10-14T13:26:59.223Z",
+      "method": "GET",
+      "path": "/api/v1/rebuild/governance/assets/12/lineage",
+      "status": 200
+    },
+    {
+      "at": "2026-10-14T13:26:59.363Z",
+      "method": "POST",
+      "path": "/api/v1/rebuild/governance/projects/9/lineage",
+      "status": 201,
+      "record_id": 5
+    },
+    {
+      "at": "2026-10-14T13:26:59.379Z",
+      "method": "GET",
+      "path": "/api/v1/rebuild/governance/projects/9/assets",
+      "status": 200
+    },
+    {
+      "at": "2026-10-14T13:26:59.379Z",
+      "method": "GET",
+      "path": "/api/v1/rebuild/governance/projects/9/standards",
+      "status": 200
+    },
+    {
+      "at": "2026-10-14T13:26:59.379Z",
+      "method": "GET",
+      "path": "/api/v1/rebuild/governance/projects/9/metrics",
+      "status": 200
+    },
+    {
+      "at": "2026-10-14T13:26:59.393Z",
+      "method": "GET",
+      "path": "/api/v1/rebuild/governance/assets/12",
+      "status": 200
+    },
+    {
+      "at": "2026-10-14T13:26:59.406Z",
+      "method": "GET",
+      "path": "/api/v1/rebuild/governance/assets/12/lineage",
+      "status": 200
+    },
+    {
+      "at": "2026-10-14T13:26:59.417Z",
+      "method": "GET",
+      "path": "/api/v1/rebuild/governance/assets/12/lineage",
+      "status": 200
+    },
+    {
+      "at": "2026-10-14T13:26:59.571Z",
+      "method": "POST",
+      "path": "/api/v1/rebuild/governance/projects/9/standards",
+      "status": 201,
+      "record_id": 7
+    },
+    {
+      "at": "2026-10-14T13:26:59.614Z",
+      "method": "GET",
+      "path": "/api/v1/rebuild/governance/projects/9/assets",
+      "status": 200
+    },
+    {
+      "at": "2026-10-14T13:26:59.618Z",
+      "method": "GET",
+      "path": "/api/v1/rebuild/governance/projects/9/metrics",
+      "status": 200
+    },
+    {
+      "at": "2026-10-14T13:26:59.620Z",
+      "method": "GET",
+      "path": "/api/v1/rebuild/governance/projects/9/standards",
+      "status": 200
+    },
+    {
+      "at": "2026-10-14T13:26:59.645Z",
+      "method": "GET",
+      "path": "/api/v1/rebuild/governance/assets/12",
+      "status": 200
+    },
+    {
+      "at": "2026-10-14T13:26:59.676Z",
+      "method": "GET",
+      "path": "/api/v1/rebuild/governance/assets/12/lineage",
+      "status": 200
+    },
+    {
+      "at": "2026-10-14T13:26:59.772Z",
+      "method": "POST",
+      "path": "/api/v1/rebuild/governance/projects/9/metrics",
+      "status": 201,
+      "record_id": 4
+    },
+    {
+      "at": "2026-10-14T13:26:59.796Z",
+      "method": "GET",
+      "path": "/api/v1/rebuild/governance/projects/9/assets",
+      "status": 200
+    },
+    {
+      "at": "2026-10-14T13:26:59.796Z",
+      "method": "GET",
+      "path": "/api/v1/rebuild/governance/projects/9/standards",
+      "status": 200
+    },
+    {
+      "at": "2026-10-14T13:26:59.796Z",
+      "method": "GET",
+      "path": "/api/v1/rebuild/governance/projects/9/metrics",
+      "status": 200
+    },
+    {
+      "at": "2026-10-14T13:26:59.809Z",
+      "method": "GET",
+      "path": "/api/v1/rebuild/governance/assets/12",
+      "status": 200
+    },
+    {
+      "at": "2026-10-14T13:26:59.832Z",
+      "method": "GET",
+      "path": "/api/v1/rebuild/governance/assets/12/lineage",
+      "status": 200
+    },
+    {
+      "at": "2026-10-14T13:26:59.953Z",
+      "method": "POST",
+      "path": "/api/v1/rebuild/governance/projects/9/standards",
+      "status": 409
+    },
+    {
+      "at": "2026-10-14T13:27:00.049Z",
+      "method": "GET",
+      "path": "/api/v1/rebuild/governance/projects/9/audit",
+      "status": 200
+    },
+    {
+      "at": "2026-10-14T13:27:00.255Z",
+      "method": "POST",
+      "path": "/api/v1/rebuild/logout",
+      "status": 200
+    }
+  ],
+  "errors": [
+    "console: Failed to load resource: the server responded with a status of 404 (Not Found)"
+  ],
+  "outcome": "FAIL",
+  "secrets_recorded": false,
+  "record_ids": {
+    "source_asset_id": 12,
+    "target_asset_id": 13,
+    "project_id": 9
+  },
+  "canonical_codes": {
+    "standard": "R3_R3V_20261014132657_466_99_ID",
+    "metric": "R3_R3V_20261014132657_466_99_COUNT",
+    "tag": "r3v_20261014132657_466f99_tag",
+    "rule": "r3v_20261014132657_466f99_order_id_not_null",
+    "lineage": "r3v_20261014132657_466f99_lineage_12_13"
+  },
+  "finished_at": "2026-10-14T13:27:00.586Z"
+}

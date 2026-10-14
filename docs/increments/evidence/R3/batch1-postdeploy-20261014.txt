@@ -1,0 +1,54 @@
+R3 audit batch 1 — remote deployment and frontend-led acceptance
+Timestamp: 2026-10-14 21:28 Asia/Shanghai
+Target runtime: 192.168.1.9; browser validation origin: http://192.168.1.9:18091
+Local batch commit: 1cb03f8 fix(qc): remove unmounted legacy quality engine
+
+Change and rollback boundary
+- Before deployment, backed up remote api/main.py, api/qc.py, and common/qc_engine.py under
+  /lei/backups/datara-qc-retirement-1cb03f8/; SHA-256s are recorded in
+  batch1-remote-readonly-20261014.txt.
+- Preserved old image as datara-backend:pre-qc-retirement-1cb03f8,
+  image sha256:7ee19bc854542567909600d1fa0362af1c9ad63518b2fd9adcdde12a7feb6bb8.
+- Built datara-backend:latest sha256:43e5f5567f230d1c092cac0ba275ed664b629052d566fbbc7b0e06e9bd41bb0f.
+- Compared backed-up and deployed api/main.py: diff contains exactly two removals,
+  the qc import and qc router registration. Only datara-api was recreated.
+- No DB DDL/DML, table or row deletion, Web/Master/Worker/rebuild API restart,
+  or middleware restart was performed.
+
+Remote verification
+- datara-api: running/healthy; /api/v1/health=UP (db=true, redis=true, zk=true).
+- OpenAPI: QC routes=0; standard routes=24; instance/workflow scheduling routes present.
+- datara-rebuild-api: running/healthy; governance routes=11.
+- datara-master, datara-worker, datara-web, MySQL, Redis, Kafka, ZooKeeper: unchanged and healthy.
+- Error/Traceback/Exception log markers in the last 10m: 0 for datara-api and rebuild API.
+- t_qc_rule, t_qc_task, t_qc_run, t_qc_exception, t_qc_report,
+  t_qc_alarm_policy all exist; each row count=0.
+- Two API access-log requests to /api/v1/qc/rules are the controlled Playwright
+  retirement probes, both HTTP 404. The pre-deploy historical log coverage was
+  only ~8.5h, not seven days; do not infer older traffic from it.
+
+Browser-use / Playwright
+- browser-use: BLOCKED after two tab-bind attempts returned “Tab not found in browser 2”.
+- First Playwright pass exercised the page and all business assertions, but the
+  generic console listener treated the intentional QC 404 probe as an error.
+  The listener was narrowed to that single expected probe; no product code changed.
+- Final Playwright run: R3V-20261014132741-7af32d, same deployed R3 page,
+  21/21 assertions passed, browser/page/request errors=0.
+- Assertions include page bootstrap via backend short-lived token, no human login,
+  retired legacy QC route 404, project asset CRUD, schema fields, tag, quality
+  rule and true empty run history, lineage, standard, metric, genuine conflict 409,
+  persisted audit timestamps, logout and revoked-token 401.
+- Final machine-readable evidence and screenshot:
+  R3V-20261014132741-7af32d-playwright.json
+  R3V-20261014132741-7af32d-governance.png
+- Initial harness diagnostic retained separately:
+  R3V-20261014132657-466f99-playwright.json
+  R3V-20261014132657-466f99-final.png
+
+Local checks
+- Backend full suite: 583 passed (65.47s).
+- Batch Ruff: All checks passed; compileall and git diff --check passed.
+- Playwright runner tests: 4 passed; runner node --check passed.
+
+Outcome: PASS for QC legacy implementation retirement only. The broader R3
+increment remains PARTIAL pending its separately listed migration/parity tasks.
