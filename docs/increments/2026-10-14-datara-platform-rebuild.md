@@ -107,6 +107,8 @@
 
 状态：IMPACT_ANALYSIS_COMPLETE / READY_FOR_LOCAL_IMPLEMENTATION；用户于 2026-10-14 明确批准方案 A。S9 影响分析见 `R3-S9-开始前影响分析.md`；批准范围是模型扩展、计划更新和完整承接，不代表可以跳过逐批门禁或直接改旧库。
 
+实现细化：S9 使用 additive revision `r3_0002_legacy_governance_carryforward`，不得修改已登记的 `r3_0001_governance_catalog` 及其 checksum。承接字段以设计 §5.2 的显式列/关系为准；标签定义单独成实体；模型 security/build/owner、指标的派生属性及原始维度、旧 I19 security metadata 均保留为普通业务字段，不引入遮罩/敏感值处理功能。当前代码分支采用 29 张新增承接表（较初始 28 张清单新增旧标签定义实体），迁移前需在文档、revision manifest 和测试中保持同数；如实现需要再扩表，须先更新本计划、设计与台账。
+
 ### 开始前影响分析与边界
 
 - 前序影响：R3-S6 已在隔离 `datara_rebuild_i0` 安装 12 张通用治理表；R3-S7 已写入可识别的验证 fixture；R3-S8 只读采样确认旧库 I18 有 45 条、I22 有 3 条，I19/I20/I21 当前为 0，I23 `t_user` 有 4 条。迁移统计必须区分 S7 fixture、历史来源行和新目标行。

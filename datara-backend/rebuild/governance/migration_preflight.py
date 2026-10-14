@@ -11,9 +11,10 @@ import sys
 from sqlalchemy import Boolean, Engine, create_engine, inspect, text
 
 from rebuild.governance.migrations import R3_GOVERNANCE_MIGRATIONS
-from rebuild.governance.models import GOVERNANCE_TABLES, SchemaMigrationRecord
+from rebuild.governance.models import SchemaMigrationRecord
 
 import_module("rebuild.project.models")  # Register the referenced core table in Base.metadata.
+import_module("rebuild.identity.models")  # Register the user table referenced by carry-forward mappings.
 
 
 @dataclass(frozen=True)
@@ -32,17 +33,18 @@ class SchemaPreflightReport:
 
 
 def inspect_governance_schema(engine: Engine) -> SchemaPreflightReport:
-    """Compare existing objects with the one registered R3 DDL, without DDL/DML writes."""
-    if len(R3_GOVERNANCE_MIGRATIONS) != 1:
-        raise ValueError("R3 preflight requires an explicitly selected single revision")
-    migration = R3_GOVERNANCE_MIGRATIONS[0]
+    """Compare existing objects with every registered additive R3 revision, read-only."""
+    if not R3_GOVERNANCE_MIGRATIONS:
+        raise ValueError("R3 preflight requires at least one registered revision")
+    migration = R3_GOVERNANCE_MIGRATIONS[-1]
     inspector = inspect(engine)
     existing = set(inspector.get_table_names())
-    expected_names = {table.name for table in GOVERNANCE_TABLES}
+    expected_tables = tuple(table for revision in R3_GOVERNANCE_MIGRATIONS for table in revision.tables)
+    expected_names = {table.name for table in expected_tables}
     missing = expected_names - existing
     conflicts: list[str] = []
 
-    for table in GOVERNANCE_TABLES:
+    for table in expected_tables:
         if table.name not in existing:
             continue
         conflicts.extend(_compare_table(inspector, table))
@@ -56,21 +58,28 @@ def inspect_governance_schema(engine: Engine) -> SchemaPreflightReport:
             conflicts.append("migration revision table has an incompatible column set")
         else:
             with engine.connect() as connection:
-                row = connection.execute(
-                    text(
-                        "SELECT checksum, status FROM rebuild_schema_migration "
-                        "WHERE revision = :revision"
-                    ),
-                    {"revision": migration.revision},
-                ).mappings().first()
-            if row is not None:
-                revision_status = str(row["status"])
-                if row["checksum"] != migration.checksum:
-                    conflicts.append("migration revision checksum differs from the registered code")
-                if revision_status == "completed" and missing:
-                    conflicts.append("completed revision is missing one or more governance tables")
-                if revision_status not in {"running", "failed", "completed"}:
-                    conflicts.append("migration revision has an unsupported status")
+                for registered in R3_GOVERNANCE_MIGRATIONS:
+                    row = connection.execute(
+                        text(
+                            "SELECT checksum, status FROM rebuild_schema_migration "
+                            "WHERE revision = :revision"
+                        ),
+                        {"revision": registered.revision},
+                    ).mappings().first()
+                    if row is None:
+                        if registered.revision == migration.revision:
+                            revision_status = "absent"
+                        continue
+                    status = str(row["status"])
+                    if registered.revision == migration.revision:
+                        revision_status = status
+                    if row["checksum"] != registered.checksum:
+                        conflicts.append(f"migration checksum differs for {registered.revision}")
+                    revision_tables = {table.name for table in registered.tables}
+                    if status == "completed" and revision_tables & missing:
+                        conflicts.append(f"completed revision {registered.revision} is missing one or more tables")
+                    if status not in {"running", "failed", "completed"}:
+                        conflicts.append(f"migration {registered.revision} has an unsupported status")
 
     return SchemaPreflightReport(
         revision=migration.revision,

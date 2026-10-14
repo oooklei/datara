@@ -12,6 +12,7 @@ EXPECTED_CARRY_FORWARD_TABLES = {
     "rebuild_governance_warehouse_model_relation_field",
     "rebuild_governance_warehouse_model_version",
     "rebuild_governance_asset_metadata_extension",
+    "rebuild_governance_legacy_tag_definition",
     "rebuild_governance_legacy_tag_reference",
     "rebuild_governance_semantic_metric_profile",
     "rebuild_governance_semantic_metric_dimension",
@@ -85,6 +86,9 @@ def test_metric_quality_and_unresolved_tag_extensions_preserve_legacy_fields():
     tables = {table.name: table for table in getattr(models, "LEGACY_CARRY_FORWARD_TABLES", ())}
 
     expected_fields = {
+        "rebuild_governance_warehouse_model": {"security_level", "built_at", "built_by", "owner_name"},
+        "rebuild_governance_asset_metadata_extension": {"security_level"},
+        "rebuild_governance_legacy_tag_definition": {"tag_category", "color", "tag_description"},
         "rebuild_governance_legacy_tag_reference": {"target_type", "target_key"},
         "rebuild_governance_semantic_metric_profile": {
             "source_kind",
@@ -94,6 +98,12 @@ def test_metric_quality_and_unresolved_tag_extensions_preserve_legacy_fields():
             "output_task",
             "period",
             "unit",
+            "base_metric_id",
+            "aggregation_function",
+            "numerator_field",
+            "time_field",
+            "dimension_field",
+            "filter_condition",
         },
         "rebuild_governance_quality_rule_definition": {
             "rule_type",

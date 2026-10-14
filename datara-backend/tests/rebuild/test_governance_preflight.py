@@ -1,17 +1,20 @@
 from sqlalchemy import create_engine, inspect, text
 
 from rebuild.governance.migration_preflight import inspect_governance_schema
-from rebuild.governance.models import GOVERNANCE_TABLES
+from rebuild.governance.migrations import R3_GOVERNANCE_MIGRATIONS, MigrationRunner
+from rebuild.governance.models import GOVERNANCE_TABLES, LEGACY_CARRY_FORWARD_TABLES
 from rebuild.project.models import ProjectRecord
+from rebuild.identity.models import UserRecord
 
 
 def isolated_engine():
     engine = create_engine("sqlite+pysqlite:///:memory:")
     ProjectRecord.__table__.create(engine)
+    UserRecord.__table__.create(engine)
     return engine
 
 
-def test_preflight_is_read_only_and_reports_only_planned_governance_tables():
+def test_preflight_is_read_only_and_reports_all_registered_additive_tables():
     engine = isolated_engine()
     before = set(inspect(engine).get_table_names())
 
@@ -19,7 +22,8 @@ def test_preflight_is_read_only_and_reports_only_planned_governance_tables():
 
     after = set(inspect(engine).get_table_names())
     assert report.ready
-    assert set(report.missing_tables) == {table.name for table in GOVERNANCE_TABLES}
+    expected = {table.name for table in (*GOVERNANCE_TABLES, *LEGACY_CARRY_FORWARD_TABLES)}
+    assert set(report.missing_tables) == expected
     assert report.conflicts == ()
     assert not report.revision_table_present
     assert report.revision_status == "absent"
@@ -65,6 +69,17 @@ def test_preflight_accepts_schema_created_by_the_registered_revision():
     assert report.missing_tables == ()
     assert report.conflicts == ()
     assert report.revision_status == "completed"
+
+
+def test_preflight_allows_v1_complete_while_v2_is_pending():
+    engine = isolated_engine()
+    MigrationRunner(engine, R3_GOVERNANCE_MIGRATIONS[:1]).apply()
+
+    report = inspect_governance_schema(engine)
+
+    assert report.ready
+    assert report.revision_status == "absent"
+    assert set(report.missing_tables) == {table.name for table in LEGACY_CARRY_FORWARD_TABLES}
 
 
 def test_migration_cli_refuses_non_mysql_target_before_connecting(monkeypatch, capsys):
