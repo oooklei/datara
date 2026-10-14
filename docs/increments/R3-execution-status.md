@@ -2,7 +2,7 @@
 
 Date: 2026-10-14 Asia/Shanghai
 Workspace: `D:\需求\数据治理工具\Datara`
-Status: R3-S1 inventory complete; R3-S2 contracts and local tests complete; R3-S3 migration framework local PASS; R3-S4 governance API implementation and local tests complete; R3-S5 standalone reference-driven governance page and local static/build checks complete; R3-S6 schema migration and R3-S7 UI-led control closure passed for their stated scopes. R3 remains PARTIAL pending R3-S8 exact I18-I23 source/API/menu/consumer mapping and row/relationship reconciliation; the 2026-10-14 read-only inventory is explicitly preliminary because the remote shell transfer preserved CRLF and returned nonzero.
+Status: R3-S1 inventory complete; R3-S2 contracts and local tests complete; R3-S3 migration framework local PASS; R3-S4 governance API implementation and local tests complete; R3-S5 standalone reference-driven governance page and local static/build checks complete; R3-S6 schema migration and R3-S7 UI-led control closure passed for their stated scopes. R3-S8 read-only inventory has exact counts and source/API mapping evidence; R3 remains PARTIAL because legacy I18-I23 semantic parity is not complete. User approved normalized schema expansion (D-R3-S8=A); R3-S9 impact analysis/implementation remains open.
 
 ## R3-S1 closure
 
@@ -49,3 +49,10 @@ The previous compose service definition was absent from the active remote base f
 - After read-only consumer scan and backup, retired QC only in remote `datara-api`; no DB changes or other service restarts. Remote QC OpenAPI count=0, health=UP, standard=24 routes, governance service 11 routes healthy, QC tables preserved with 0 rows each. Pre-deployment access-log history was only ~8.5h; two post-deployment 404 requests are the deliberate Playwright retirement probes.
 - browser-use could not bind the tab after a single retry. Playwright used the same R3 URL on 18091; final `R3V-20261014132741-7af32d` passed 21/21 assertions with zero browser errors, including actual governance-form controls and retired-route 404. Evidence: `evidence/R3/batch1-postdeploy-20261014.txt` and same-run JSON/PNG.
 - Old image rollback tag: `datara-backend:pre-qc-retirement-1cb03f8`. Overall R3 remains PARTIAL for I18-I23 legacy import/mapping/parity and other planned gates.
+
+## R3-S8/S9 legacy governance carry-forward
+
+- The prior CRLF transport error was resolved by stripping carriage returns before remote execution; the exact-count read-only script completed successfully. Evidence: `evidence/R3/s8-source-inventory-20261014.md`; old schema 57 tables, isolated target 16 tables, I18 exact 45 rows, I22 exact 3 rows, I23 users 4; I19/I20/I21 source tables are currently empty. Counts are the dated inventory, not a guarantee of unchanged live state.
+- The S8 comparison confirmed that current generic R3 tables do not represent all I18 model/version/relation, I20 dimensions/versions, I21 task/exception/report/alarm, or I22 code/naming/mapping/approval/check-report semantics.
+- User decision 2026-10-14: option A approved—extend the new Backend's normalized models and fully carry forward legacy I18-I23. Decision record: design §6; normalized entity contract: design §5.2; implementation plan: plan §7. Legacy source database remains read-only; only isolated `datara_rebuild_i0` may receive additive schema and migration writes.
+- R3-S9 impact analysis and plan are complete; backend implementation has not started. Next gate is an isolated documentation/analysis commit, followed by additive models/migration/API, reference-driven UI validation, remote backup/dry-run/import, exact row/relationship/time parity, idempotency/fault/concurrency checks, and rollback evidence. R3 remains PARTIAL until those gates and all other R3 obligations pass.

@@ -63,7 +63,7 @@
 
 | 任务 | 状态 | 已有证据/未完成条件 |
 |---|---|---|
-| R2-01 治理域 | IN_PROGRESS | 本轮已将五域真源、采集/解析/质量责任与迁移原则写入设计 §5；仍需完成 I18-I23 表/API/菜单/消费者映射和逐域验收证据。 |
+| R2-01 治理域 | IN_PROGRESS | 用户已裁定 D-R3-S8=A：扩展新 Backend 规范化模型完整承接 I18-I23。实体清单/语义/迁移边界见设计 §5.2、§6；R3-S9 影响分析与实现闭环未完成，仍需逐源表/实体/关系 parity 及隔离验证页证据。 |
 | R2-02 调度 | DESIGN_DEFINED | 设计矩阵有触发/时区/misfire/并发/worker 契约；需核验实现、故障/并发测试及真实运行证据。 |
 | R2-03 权限 | DESIGN_DEFINED | 最小 RBAC 与范围策略已定义；需核验新 Backend 认证/API/拒权覆盖及验证页证据。 |
 | R2-04 DDL | DESIGN_DEFINED | 已要求 R10-B draft/diff/backup/publish/rollback；尚未实现/验收，不允许提前开放写路径。 |
@@ -102,3 +102,36 @@
 | QC 退役浏览器控件闭环 | 21/21 assertions；browser errors=0 | Playwright 操作同一 `192.168.1.9:18091/rebuild-validation-r3.html`；browser-use 无法绑定 tab 后按 R2-14 回退 | PASS |
 
 以上数字为本轮实际测量值，不是目标值；目标值仍以 R2-10 的响应、延迟、完整率和吞吐门禁为准。
+
+## 7. R3-S9：I18–I23 规范化模型扩展与隔离迁移
+
+状态：IMPACT_ANALYSIS_COMPLETE / READY_FOR_LOCAL_IMPLEMENTATION；用户于 2026-10-14 明确批准方案 A。S9 影响分析见 `R3-S9-开始前影响分析.md`；批准范围是模型扩展、计划更新和完整承接，不代表可以跳过逐批门禁或直接改旧库。
+
+### 开始前影响分析与边界
+
+- 前序影响：R3-S6 已在隔离 `datara_rebuild_i0` 安装 12 张通用治理表；R3-S7 已写入可识别的验证 fixture；R3-S8 只读采样确认旧库 I18 有 45 条、I22 有 3 条，I19/I20/I21 当前为 0，I23 `t_user` 有 4 条。迁移统计必须区分 S7 fixture、历史来源行和新目标行。
+- 业务影响：需要扩展治理 ORM/migration/API 和验证页，要求项目归属、稳定来源键、主子实体、版本/审批/历史关系及统一时间戳；可能影响 R5/R6/R11 的 API contract。不能在没有实体映射和回归证据时将旧资产标记为完整承接。
+- 数据边界：源 `datara_meta` 只读；所有 DDL/DML 仅可作用于 `datara_rebuild_i0`。执行前生成并校验目标 schema/数据快照，记录 SHA-256、目标 schema identity 和数据库时间；导入采用批次 ID、source identity、幂等唯一键及逐记录 checkpoint。任何目标行冲突不得覆盖。
+- 回滚：按 migration batch 精确回滚新增批次且未被新业务引用的记录；schema 变更只做 additive migration。恢复前后核对 schema 指纹、目标表行数和批次状态；不允许 DROP/TRUNCATE，不允许恢复旧 QC API/engine。
+- 控件门禁：新验证页按 OpenMetadata/DataHub 目录与对象详情、标准/指标/质量任务的参考产品真实操作语义设计；通过新 Backend API 预置/查看/复核资产、模型版本、指标维度、标准码值审批、质量任务运行与异常报告。browser-use 优先，按 R2-14 限次回退同页 Playwright；API-only 不能替代控件闭环。正式 Vue 继续冻结。
+- 停止条件：旧源快照与 R3-S8 证据不一致、目标 schema 非唯一、活动验证 fixture 无法排除、来源键冲突/归属不唯一、源只读权限失效、目标快照不可恢复、parity 有缺失或额外关系、运行服务出现 error marker、远端执行影响旧库/其他 schema。
+
+### 细化步骤
+
+1. 复核并冻结 R3-S8 源/目标 schema 指纹、表列/键/外键、精确行数及所有实体字段映射；补足 I18-I23 完整性矩阵和 I23 用户/角色/权限映射。只读检查，不读取/输出口令明文。
+2. 本地先为新实体/API/migration contract 编写失败测试：来源组合唯一键、外键与级联策略、项目授权、统一时间戳、历史版本完整性、孤儿拦截、幂等与重试、回滚隔离及错误批次续跑。
+3. 按设计 §5.2 扩展规范化 ORM：I18 domain/layer/engine/model/field/relation/version；I19 asset extension/tagging；I20 metric dimension/version；I21 quality task/task-rule/run/exception/report/alarm policy；I22 standard element/code-set/code-value/naming/mapping/approval/check report；I23 identity mapping。复用现有 asset、tag、quality_rule/run、standard、semantic_metric，不造平行主实体。
+4. 新增 additive migration 与 repository/service/API；将每个源行通过 `(source_system, source_table, source_id)` 映射到目标 ID，子表/关系按明确外键顺序导入。对 I21 当前零行表仍须建模并测试空表迁移/后续 API 契约；“当前无数据”不等于忽略业务能力。
+5. 本地运行定向、全量 pytest，Ruff、compileall、Vue 类型检查和 migration offline/dry-run；检查旧库只读脚本、schema guard 和禁止旧 `api.*`/`common.*` 隐式依赖。更新 R3-S9 本机证据。
+6. 在参考产品风格隔离验证页增加可操作业务场景和稳定 fixture；执行控件级 UI 流程并验证后端 API 结果。使用 192.168.1.9 非冲突端口部署；页面不得持有统一验证 key，仅注入受限短期 token。
+7. 远端先只读重采样，再目标快照、dry-run 冲突清单；确认 dry-run 的新增/更新/跳过/冲突数与批准范围一致后才执行导入。逐批记录前后时间戳、进程退出码、容器日志、DB 对账查询和恢复点。
+8. 按源表逐一对账总数、有效/拒绝/重复计数、来源 ID 覆盖、字段摘要、父子/多对多/血缘关系、版本/审批链、孤儿数量和 `created_at/updated_at/generated_at`；要求未解释差异为 0，所有拒绝行有显式可复现原因。
+9. 重新运行目标端重复导入验证无重复且统计 skipped/idempotent；核对 API/UI 展示、数据库行和日志时间；完成异常注入（重复键、非法 FK、中途失败恢复、并发同批请求）及批次级回滚演练。
+10. 更新本计划、R3 状态和台账；只有本地检查、参考产品控件流、远端容器/中间件/数据库、日志和数据 parity 四联证据齐全才关闭 S9。R3 的其他未完成子项仍须单独完成后才可转 PASS。
+
+### 文件与验收基线
+
+- 预期后端范围：`datara-backend/rebuild/governance/models.py`、迁移版本文件、repository/service/API、迁移执行器（若需扩展）及 `datara-backend/tests/rebuild/` 对应回归测试；禁止改旧 `datara-backend/api/*` 和旧库模型作为运行真源。
+- 验证页/runner/evidence：项目隔离页及其独立契约测试；实测证据存放 `docs/increments/evidence/R3/`，包括 schema snapshot/hash、dry-run、导入批次、逐表逐关系 parity、UI runner JSON/截图、容器/依赖健康和错误日志窗口。
+- 必须满足：重复导入后目标无重复；经批准源记录 100% 有目标或显式拒绝原因；所有可解析父子/关联关系 100% 对应；未解释孤儿/数据差异为 0；新增记录 DB 时间戳非空；Ruff/compileall/pytest 全绿；页面所有关键控件闭环；远端服务健康且错误窗口为 0。
+- 此增量只形成实施计划，不得把源表当前 0 行作为省略 schema/API/空集行为测试的理由；I23 credential compatibility 若尚未核实，保存账号身份/权限关系并输出重置路径，不输出凭据值。
