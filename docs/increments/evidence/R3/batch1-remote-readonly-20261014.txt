@@ -1,0 +1,25 @@
+R3 audit batch 1 remote read-only verification
+Timestamp: 2026-10-14T19:37:30+08:00
+Target: 192.168.1.9 (no DML, deployment, container recreation, or restart)
+
+datara-api: running; health=healthy; legacy health endpoint=UP
+Host port 8000: bound to 0.0.0.0 (reachable on the configured host interfaces)
+Uvicorn command: access logging enabled by default (no --no-access-log)
+Legacy QC OpenAPI routes: 18
+datara-rebuild-api: running; health=healthy; governance routes=11
+QC tables present: t_qc_rule, t_qc_task, t_qc_run, t_qc_exception,
+  t_qc_report, t_qc_alarm_policy
+Rows in each QC table: 0
+Container log ERROR/Traceback/Exception markers, last 10 minutes: 0
+Container log lines mentioning /api/v1/qc/, requested window 168h: 0
+Actual available API log window: about 8.5h; earliest retained line 2026-10-14 12:48 +08:00
+Web access-log stdout lines mentioning /api/v1/qc/, requested window 168h: 0
+Rebuild API log ERROR/Traceback/Exception markers, last 10 minutes: 0
+
+Repository search found no business-code caller of /api/v1/qc/*. QC web routes
+remain demo routes and use dataStore. The observed API/Web log window had no
+QC hits, and all QC tables are empty. This does not prove no callers existed
+before the retained window or outside the repository; port 8000 is host-bound.
+The user work order explicitly requests removal of the legacy QC API source.
+Keep ORM/schema/data intact and preserve the prior image for rollback.
+Status: PARTIAL; local source removal is not deployed.
