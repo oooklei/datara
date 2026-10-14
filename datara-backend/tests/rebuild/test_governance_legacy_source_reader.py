@@ -101,7 +101,7 @@ def test_source_reader_refuses_silent_row_truncation():
             "VALUES (18, 'users', '用户', 'DWD', '维度表', '交易', 'Doris')"
         )
 
-    with pytest.raises(RuntimeError, match="row safety limit"):
+    with pytest.raises(RuntimeError, match="legacy I18 snapshot exceeded configured total row safety limit"):
         LegacyI18SourceReader(engine, sqlite_test_mode=True).read_snapshot(
             page_size=1,
             max_total_rows=1,

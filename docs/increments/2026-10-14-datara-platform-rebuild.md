@@ -149,3 +149,21 @@
 - 2026-10-15 后续本地批次增加 I18 replay integrity：target ID/provenance/映射字段/关系字段 child rows 在 imported/unchanged 重放时校验；外部漂移生成 terminal conflict，不自动修复或覆盖。修复 `交易`→`交易域` approved alias 经 checkpoint 无法向模型/关系传播 target ID 的缺陷。定向 9 passed、全后端 638 passed、Ruff/compileall/diff-check 通过；此批仍仅本地内存 SQLite，远端状态与导入批准不变。
 - 下一本地批次：实施默认关闭的 I18 import API + fresh source/target digest 和显式确认短语契约，仅 mock 验证未来 enabled 调用；不新增验证页按钮/不改 compose 环境、不启用、不部署、不执行目标数据写入。用户的实际目标导入授权和远端快照/parity/恢复门禁仍独立。
 - 2026-10-15 API contract 状态覆盖：实现默认关闭 API gate、正数持久 operator+项目编辑授权、精确 target/digest/确认短语和 ready plan 校验；target digest 现在是内容寻址，采集时间独立留痕。`pytest tests -q` 643 passed，Ruff/compileall/diff-check 通过。代码仅在隔离 worktree；运行配置未设为 true、未部署且无目标数据写入。I19-I23 映射及完整远端门禁仍未完成。
+
+### 2026-10-15：I19 只读快照 reader 增量计划
+
+- 前序影响分析：见 `R3-S9-开始前影响分析.md`“I19 元数据与标签只读快照 reader 开工影响分析”；以上一提交 `b78899b` 为基线。
+- 本增量只覆盖旧 I19 三表 `t_meta_table_ext`、`t_meta_tag`、`t_meta_tagging` 的固定列白名单、独立只读 snapshot reader、稳定内容摘要及本地只读/分页/上限测试；不改 I18 API、mapper/importer、schema/migration、旧后端、任何前端、compose 或远端运行资源。
+- 字段依据限定为旧 ORM 本地声明；S8 只读盘点曾证明三表当时各为 0 行，但本轮不重连旧库，故不能声称已复核当前远端列结构/数据。真实 reader 必须在列不匹配时失败关闭。
+- 实施顺序：RED 用例（完整字段/缺列/空集/非空/只读/页序/行数上限/稳定摘要）→ 增加独立 `LegacyI19SourceSnapshot` 与 reader（复用隔离 schema/只读事务约束，不扩大 I18 snapshot 合同）→ 运行定向与全后端 pytest、Ruff、compileall、diff-check → 更新证据、影响分析、计划及台账 → 独立提交。
+- 后续显式保留映射前置条件：旧 `ds_id` 到项目内目标 asset 的精确身份表、标签定义与归一化 tag 双实体的父子身份、tagging target key 的资产/字段解析规则；本批不猜测、不清空/改写 unresolved 引用，不声称 I19 mapper/parity 完成。
+- 运行状态仍禁止访问源/目标 MySQL、部署、启用导入旗标、实际业务数据写入或浏览器门禁。本地结果只构成 reader 逻辑证据；后续启用源 reader/API 或导入，仍受完整 I18-I23 parity、目标快照/恢复/并发/回滚、远端验证及独立目标写入批准约束。
+- 实现闭环：新增 `LegacyI19SourceSnapshot`、I19 fixed-column allowlist 与 `LegacyI19SourceReader`；不改变 I18 snapshot/API/error contract。定向 I19 reader 7 passed，I18+I19 reader regression 11 passed，最终全后端 `pytest tests -q` 650 passed in 61.34s，Ruff/compileall/diff-check 通过；真实远端 source schema 仍未验证。证据：`evidence/R3/s9-i19-source-reader-local-20261015.txt`。
+- 状态：本地 reader 合同完成；I19 mapper/API/importer/parity 以及 I20-I23 未完成。无远端部署、旧库连接或目标业务写入。依约法四条，本步骤仅为 `LOCAL_SUBSTEP_PASS / INTEGRATION_GATE_PENDING`，browser-use 控件、后台日志、中间件/资源联验未通过/未执行，不能计正式增量 PASS。
+
+### 2026-10-15：I22 源 schema 证据门与实施顺序调整
+
+- 设计依据已补至重建设计 §13.15：I18-I23 完整承接决策不变；迁移字段映射必须绑定当前只读 schema 证据，历史主题设计稿或 dated inventory 不单独构成 source contract。
+- 核查发现：`remote-schema-inventory.txt` 捕获于 `2026-10-14T17:55:28+08:00`，现存字段与 `I22-数据标准管理设计.md` 有具体差异，且当前隔离工作树没有旧 Std ORM/API。差异及范围记录见 `R3-S9-开始前影响分析.md`“I22 旧标准表 schema 证据差异复核”。
+- 阻断项：I22 不开始字段 mapper/source allowlist/parity/import，直至通过批准的数据库只读途径取得当前 7 张 `t_std_*` 表的 schema identity、列/类型/nullability/default、PK/unique/FK/index 与采集时间摘要。未把 DB root 凭据放入应用，也未推断 OS root 授权。
+- 无关工作仍可推进：I19 标签与资产关系的纯本地映射研究、I20 指标/版本和 I21 质量行映射可依据其自身旧 ORM 字段契约分批开发；每批均须独立影响分析、定向/全后端与静态验证。所有本地子步骤仍需保留 `LOCAL_SUBSTEP_PASS / INTEGRATION_GATE_PENDING`，只有 192.168.1.9 browser-use + API/日志 + middleware/resources 的约法闭环通过后才能关闭对应正式增量。

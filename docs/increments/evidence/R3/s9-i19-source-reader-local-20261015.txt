@@ -1,0 +1,26 @@
+# R3-S9 I19 legacy source reader local evidence
+
+- Generated at: 2026-10-15T03:48:16+08:00 (Asia/Shanghai)
+- Worktree: `D:\需求\数据治理工具\Datara\.worktrees\r3-s9`
+- Baseline commit: `b78899b` (I18 import API remains disabled by default)
+- Scope: local I19 fixed-column read-only snapshot contract only.
+- Source-field basis: retained `MetaTableExt`, `MetaTag`, and `MetaTagging` ORM declarations in `datara-backend/common/models.py`; this does not attest the current remote MySQL schema.
+- Existing S8 evidence: the three I19 tables had 0 rows at that earlier read-only snapshot. This increment did not reconnect to or query the legacy database.
+
+## Verification
+
+- `pytest tests/rebuild/test_governance_legacy_i19_source_reader.py -q`: 7 passed.
+- Final `pytest tests -q`: 650 passed in 61.34s.
+- `ruff check rebuild tests/rebuild`: All checks passed.
+- `python -m compileall -q rebuild`: passed.
+- `git diff --check`: passed before closeout.
+- I18 + I19 reader compatibility rerun: 11 passed, including an assertion that the legacy I18 row-limit error text is unchanged.
+
+The tests cover fixed-column selection, keyset pagination, read-only SQLite query enforcement, an empty snapshot, a non-empty snapshot, stable content digest independent of capture time, content-sensitive digest, missing-column fail-closed behavior, row-limit rejection, invalid limits, timezone-aware capture time, explicit SQLite test mode, and exact legacy-schema guard.
+
+## Explicitly not verified or performed
+
+- No legacy MySQL connection, source query, deployment, environment or compose mutation.
+- No I19 mapper/importer/API/UI, target snapshot, data write, or parity claim.
+- No browser-use/Playwright, remote service/middleware/resource/log verification.
+- The old datasource ID to target asset identity, normalized-tag/legacy-tag parent identity, and tagging target-key resolution remain unmapped and must fail closed until separately evidenced.

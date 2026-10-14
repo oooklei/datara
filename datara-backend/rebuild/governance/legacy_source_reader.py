@@ -1,4 +1,4 @@
-"""Allowlisted, read-only reader for the seven legacy I18 source tables."""
+"""Allowlisted, read-only readers for the legacy I18 and I19 source tables."""
 
 from __future__ import annotations
 
@@ -103,6 +103,34 @@ I18_SOURCE_COLUMNS: dict[str, tuple[str, tuple[str, ...]]] = {
             "create_time",
             "update_time",
         ),
+    ),
+}
+
+# (primary key, selected columns). These I19 columns are derived from the
+# retained legacy ORM declarations and still require live schema preflight.
+I19_SOURCE_COLUMNS: dict[str, tuple[str, tuple[str, ...]]] = {
+    "t_meta_table_ext": (
+        "id",
+        (
+            "id",
+            "ds_id",
+            "db_name",
+            "table_name",
+            "biz_domain",
+            "security_level",
+            "owner",
+            "remark",
+            "create_time",
+            "update_time",
+        ),
+    ),
+    "t_meta_tag": (
+        "id",
+        ("id", "name", "cat", "color", "desc", "create_time", "update_time"),
+    ),
+    "t_meta_tagging": (
+        "id",
+        ("id", "tag_id", "target_type", "target_key", "created_by", "create_time"),
     ),
 }
 
@@ -211,7 +239,16 @@ class LegacyI18SourceReader:
             rows=all_rows,
         )
 
-    def _read_table(self, connection, table_name, identity_column, columns, page_size, remaining_rows):
+    def _read_table(
+        self,
+        connection,
+        table_name,
+        identity_column,
+        columns,
+        page_size,
+        remaining_rows,
+        source_label="I18",
+    ):
         preparer = connection.dialect.identifier_preparer
         quoted_columns = ", ".join(preparer.quote(column) for column in columns)
         if self.engine.dialect.name == "mysql":
@@ -234,12 +271,95 @@ class LegacyI18SourceReader:
             if not page:
                 break
             if len(rows) + len(page) > remaining_rows:
-                raise RuntimeError("legacy I18 snapshot exceeded configured total row safety limit")
+                raise RuntimeError(
+                    f"legacy {source_label} snapshot exceeded configured total row safety limit"
+                )
             rows.extend(dict(row) for row in page)
             last_identity = page[-1][identity_column]
             if len(page) < page_size:
                 break
         return rows
+
+
+@dataclass(frozen=True)
+class LegacyI19SourceSnapshot:
+    schema: str
+    captured_at: datetime
+    digest: str
+    counts: Mapping[str, int]
+    rows: Mapping[str, tuple[Mapping[str, object], ...]]
+
+
+class LegacyI19SourceReader(LegacyI18SourceReader):
+    """Read the fixed I19 metadata/tagging tables without opening a write path."""
+
+    def read_snapshot(
+        self,
+        *,
+        page_size: int = 500,
+        max_total_rows: int = 100_000,
+        captured_at: datetime | None = None,
+    ) -> LegacyI19SourceSnapshot:
+        if not 1 <= page_size <= 10_000:
+            raise ValueError("page_size must be between 1 and 10000")
+        if max_total_rows < 1:
+            raise ValueError("max_total_rows must be positive")
+        captured_at = captured_at or datetime.now(ZoneInfo("Asia/Shanghai"))
+        if captured_at.tzinfo is None:
+            raise ValueError("captured_at must be timezone-aware")
+
+        all_rows: dict[str, tuple[Mapping[str, object], ...]] = {}
+        total_read = 0
+        connection = self.engine.connect()
+        transaction = connection.begin()
+        sqlite_query_only = self.engine.dialect.name == "sqlite"
+        try:
+            if sqlite_query_only:
+                connection.exec_driver_sql("PRAGMA query_only = ON")
+            else:
+                connection.exec_driver_sql("SET TRANSACTION READ ONLY")
+            for table_name, (identity_column, columns) in I19_SOURCE_COLUMNS.items():
+                table_rows = self._read_table(
+                    connection,
+                    table_name,
+                    identity_column,
+                    columns,
+                    page_size,
+                    max_total_rows - total_read,
+                    "I19",
+                )
+                total_read += len(table_rows)
+                if total_read > max_total_rows:
+                    raise RuntimeError(f"legacy I19 snapshot exceeded row safety limit {max_total_rows}")
+                all_rows[table_name] = tuple(table_rows)
+            transaction.rollback()
+        except Exception:
+            if transaction.is_active:
+                transaction.rollback()
+            raise
+        finally:
+            if sqlite_query_only and not connection.closed:
+                connection.exec_driver_sql("PRAGMA query_only = OFF")
+                connection.rollback()
+            connection.close()
+
+        payload = {
+            "schema": LEGACY_SCHEMA,
+            "rows": {
+                table: [_json_safe(row) for row in rows]
+                for table, rows in all_rows.items()
+            },
+        }
+        digest = hashlib.sha256(
+            json.dumps(payload, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode("utf-8")
+        ).hexdigest()
+        return LegacyI19SourceSnapshot(
+            schema=LEGACY_SCHEMA,
+            captured_at=captured_at,
+            digest=digest,
+            counts={table: len(rows) for table, rows in all_rows.items()},
+            rows=all_rows,
+        )
 
 
 def _json_safe(value: object) -> object:
