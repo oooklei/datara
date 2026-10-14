@@ -68,7 +68,7 @@
 
 ### 5.2 I18–I23 规范化承接模型
 
-用户于 2026-10-14 明确裁定方案 A：扩展新 Backend 的规范化模型并完整承接旧 I18–I23 业务语义。旧库继续只读；源记录只允许迁入隔离目标 `datara_rebuild_i0`，且须先快照、dry-run、逐表/逐关系核对后才允许执行。现有 R3 通用表保留并演进，不以 `properties_json`、拼接文本或单一快照 JSON 替代可查询、可授权、可建立关系的业务实体；JSON 快照仅用于原始证据/历史差异辅助。
+用户于 2026-10-14 明确裁定方案 A：扩展新 Backend 的规范化模型并完整承接旧 I18–I23 业务语义。旧库继续只读；源记录拟迁入隔离目标 `datara_rebuild_i0`，但快照、dry-run、逐表/逐关系核对都不构成写入许可：任何目标业务数据导入执行前仍须另获用户明确批准，并完成备份、恢复、并发和回滚门禁。2026-10-15 用户明确批准：本次对 `datara_meta` 的只读盘点可使用 MySQL root；连接边界是 `REBUILD_LEGACY_META_URL` 必须解析到 MySQL 精确 schema `datara_meta`，代码只许使用固定表/列 allowlist 与只读事务，root 不得配置或注入新 Backend 运行服务；绝不复用指向其他 schema 的 `REBUILD_MYSQL_SRC_URL`，不得执行源端 DDL/DML/GRANT，不向日志、证据或页面输出凭据。已取得的 I22 现场结构证据见 `evidence/R3/s9-i22-live-schema-20261015.md`；该 root CLI schema 查询没有配置 Backend runtime source URL。后续仍优先改为最小权限账号。现有 R3 通用表保留并演进，不以 `properties_json`、拼接文本或单一快照 JSON 替代可查询、可授权、可建立关系的业务实体；JSON 快照仅用于原始证据/历史差异辅助。
 
 | 旧域与语义 | 新规范化实体（名称为契约候选，迁移前需在 R3-S9 冻结物理命名） | 关键关系与保真要求 |
 |---|---|---|

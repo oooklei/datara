@@ -32,6 +32,14 @@ Final S9 read-only Playwright run `R3S9-20261014182427-6498d0` passed 9/9 checks
 
 The `skipped` disposition is currently a validated dry-run plan result; it has not yet been persisted as a `MigrationItemRecord`. Durable per-source migration checkpoints, target import, and exact post-import parity remain implementation/approval gates, not completed work.
 
+## R3-S9 I22 live schema checkpoint (2026-10-15 05:02 +08:00)
+
+User-approved MySQL root read-only access was used against `datara-mysql-meta` on `192.168.1.9` (MySQL 8.0.46), limited to `datara_meta` I22's seven `t_std_*` tables. A READ ONLY transaction queried column/type/nullability/default metadata, index and FK metadata, and aggregate counts only. No payload rows, source mutations, grants, restarts, target imports, or credentials were involved. The live schema matched the dated inventory and confirmed that several columns from the old I22 proposal do not physically exist. Full capture: `evidence/R3/s9-i22-live-schema-20261015.md`; historical no-URL preflight now has a dated addendum and is not overwritten.
+
+This unblocks an I22 fixed-allowlist local reader and pure mapper under their own impact analyses and commits. It does not provision `REBUILD_LEGACY_META_URL`, so the backend API source dry-run gate remains separate. R3-S9 remains IN_PROGRESS/PARTIAL; no target business data was written.
+
+I22 reader sub-batch A is locally complete: TDD RED→GREEN; 7 focused tests, 32 I18-I22 reader regressions, and full backend suite 716 passed (64.38s); Ruff/compileall passed. Evidence `evidence/R3/s9-i22-reader-local-20261015.txt`. Status is only `LOCAL_SUBSTEP_PASS / INTEGRATION_GATE_PENDING`; no API runtime URL/config, service deployment, payload read, target import, or browser/log/middleware/resource gate was performed.
+
 ## R3-S1 closure
 
 - The isolated rebuild schema and dedicated source profile were inventoried read-only on 192.168.1.9.
