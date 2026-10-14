@@ -78,7 +78,7 @@
 | I20 指标及版本 | 现有 `semantic_metric` 加 `semantic_metric_version`、`metric_dimension` | 规范化指标代码/名称/类型/业务域/业务定义/技术定义/来源类型与引用/字段/输出表/任务/统计周期/维度/单位/状态/当前版本；保留版本快照、变更说明、作者和时间。 |
 | I21 质量规则、任务、任务规则关系、运行、异常、报告、告警 | 现有 `quality_rule`/`quality_run` 加 `quality_task`、`quality_task_rule`、`quality_exception`、`quality_report`、`quality_alarm_policy` | 保留旧 cron/enabled/状态/最近运行、规则集合及顺序、触发方式/起止时间/结果/分数/统计、异常目标/样例 SQL/命中数/处理状态、报告范围/周期/内容、告警指标/运算符/阈值/启用与触发时间。旧 QC 执行 API/engine 仍退役；本模型承接历史业务记录与新治理 API，不恢复旧 `/api/v1/qc/*`。 |
 | I22 标准元素、码表/码值、命名规则、映射、审批、校验报告 | 现有 `standard` 加 `standard_element`、`standard_code_set`、`standard_code_value`、`standard_naming_rule`、`standard_mapping`、`standard_approval`、`standard_check_report` | 保留中英文名称、数据类型/长度、标准状态/版本/负责人、码值编码/名称/顺序、命名表达式及适用对象、映射目标/元素或码表/差异状态、审批业务类型/动作/申请载荷/意见/状态/时间、检查范围/汇总/问题清单/结果。码值与父码表建立 FK，映射到标准元素/码表建立可空 FK；历史审批目标保留 source identity。 |
-| I23 用户/角色/权限及项目成员关系 | 新 `identity`/`role`/`permission`/`project_member` 及 `legacy_identity_mapping` | 保留用户稳定源 ID、登录名、显示名、启停状态、角色/权限与项目成员关系；凭据只有在算法/格式兼容并通过验证时才可迁移哈希，否则要求重置，不迁移明文口令。旧权限点逐项映射到新权限点，无法映射项进入阻断清单；不将旧身份表直接作为新 Backend 运行时真源。 |
+| I23 用户及全局角色/权限映射 | 新 `identity`/`role`/`permission`/`project_member` 及 `legacy_identity_mapping` | `t_user` 记录登录名、角色和状态；保留稳定源 ID 并逐项映射旧静态角色权限。只有在完整源盘点找到旧项目绑定记录时才迁移项目成员关系；否则不伪造历史成员关联。凭据仅在算法/格式兼容并通过验证时迁移哈希，否则走重置，不迁移明文口令。不将旧身份表作为新 Backend 运行时真源。 |
 
 所有迁移实体统一附 `source_system`、`source_table`、`source_id`（组合唯一）、`migration_batch_id`、`created_at`、`updated_at`、`generated_at`；业务记录按本体保存原创建/更新时间，`generated_at` 表示新系统迁移/生成时点，批次时间单独记录。目标表使用外键、唯一约束及稳定自然键；多对多关系拆为关联表。源表主键仅作为来源键，不复用为目标主键。迁移项保存源/目标键、状态、校验摘要、错误及重试次数，保证可重入、可定位、可回滚。每表校验精确行数、字段规范化摘要、源 ID 覆盖率、关系条数、孤儿数、版本/审批链完整率与时间戳；目标不得少于任一来源记录，冲突必须显式报告，不可静默覆盖。迁移前做目标 schema 快照；回滚只能删除本迁移批次拥有且未被新业务引用的目标记录，绝不触碰旧库。
 
