@@ -194,3 +194,13 @@
 - 步骤：TDD RED→纯 mapper→mapping + I18-I21 reader回归→全后端 tests + Ruff/compileall/diff-check→项目证据/台账→独立 commit。
 - 验收范围仅本地逻辑；实时 MySQL schema、browser 控件、API/log/middleware/resources 及数据导入均为 pending。
 - 本地实测：I20 mapper 11 passed；I18-I21 readers + I20 mapper 36 passed；全后端 `pytest tests -q` 675 passed in 70.63s；Ruff、compileall、diff-check 通过。证据 `evidence/R3/s9-i20-mapper-local-20261015.txt`。仅纯映射合同，未接 importer/API/数据库。
+
+### 2026-10-15：I21 质量治理纯映射增量计划
+
+- 开工前影响分析：见 `R3-S9-开始前影响分析.md`“I21 质量历史 source-to-target 纯映射开工影响分析”；前序 reader 基线 `ce4fa69`。
+- 输出契约：从六表 snapshot 生成 normalized rule/task/task-rule/run legacy details/exception/report/alarm records；强制 project ID；关联通过同批 source identity 或现有显式 target ID 解析；无法解析即阻断。规则 level/status 与 SQL 原文保留；JSON 作为 JSON value 稳定编码，不解释/执行。
+- 旧 QC router/engine 维持退役状态；不生成虚假 asset/canonical quality rule，不将历史 run 伪装成新执行。
+- 步骤：TDD RED→纯 mapping bundle→I18-I21 readers + I20 mapping regression→全后端测试/静态检查→evidence/ledger/plan→独立提交。目标 schema 不改。
+- 验收仅本地逻辑；源 schema、真实关联/parity、importer/API、browser、运行资源和业务数据写入皆 pending。
+- 实测结果：I21 mapper 14 passed；I18-I21 reader + I20/I21 mapper regression 72 passed；当前全后端 `pytest tests -q` 689 passed in 66.31s；Ruff、compileall、`git diff --check` 通过。规格审阅发现 run/exception 非空 `task_id` 还需解析目标任务，修复并复核通过；独立代码质量审阅未返回，不能记为通过；之后加固无效显式 target ID、date-only 时间戳和超大 numeric 边界。详见 `evidence/R3/s9-i21-mapper-local-20261015.txt`。
+- 映射细节：run/exception 的非空 `task_id` 必须命中同批任务或显式 target/pending identity，同时 `legacy_task_id` 保持源 ID；目标日期列仅接受 datetime 或可解析的无时区 ISO 值，带 offset 阻断；report/alarm 使用调用方 target IDs。结果仍是 `LOCAL_SUBSTEP_PASS / INTEGRATION_GATE_PENDING`，没有 importer、实时 schema/parity、API/UI/远端运行资源或数据写入验收。
