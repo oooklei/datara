@@ -259,3 +259,11 @@ I21 修正子批已完成：固定 reader 列已按 live schema 对齐；mapper 
 - 顺序：RED tests→纯 mapper→I23 与治理 readers/mappers regression→全后端 pytest/Ruff/compileall/diff-check→记录证据→本增量单独提交。
 - 只可记 `LOCAL_SUBSTEP_PASS / INTEGRATION_GATE_PENDING`，不等于用户迁移、身份 parity 或 R3 关闭。
 - 实测：I23 mapper + reader 9 passed；全后端 709 passed in 68.62s；Ruff、compileall、backend diff-check 通过。证据 `evidence/R3/s9-i23-mapper-local-20261015.txt`。
+
+### 2026-10-15：I23 项目外身份预览 API 开工前权限与数据边界核查
+
+- 前序影响：刚完成并部署的 I22 mapping-preview 使用 project `EDIT_DEFINITION`，查询仅限该项目；I23 的 `LegacyIdentityMappingRecord` 是全局用户身份关联，不能复用项目权限或将项目编辑权限扩大为全局账号查询。
+- 现有合同：I23 mapper 要求调用方显式提供 source-user→已存在 target-user 的选择，并精确核对 username/role/status；source allowlist 列为 `id,user_name,user_role,state,create_time,update_time`，明确排除 `user_pwd`；目标实体含 `rebuild_user` 与 `rebuild_governance_legacy_identity_mapping`。
+- 阻断：当前验证 token 是 `Role.DEV`，只有 `EDIT_DEFINITION/RUN_INSTANCE/VIEW_ALL`，不含 `MANAGE_USER`；提升共用 token 到 admin 或让 project editor 查询全局用户都违反最小权限。既有 I23 reader 的 schema/count 检查不等同于用户批准读取 `t_user` 业务行；本批尚未读取用户行。
+- 后续仅在用户明确裁定后再实施：推荐固定 source `datara_meta.t_user` 六列、READ ONLY transaction；target 只 project-independent SELECT；接口限定短期 `legacy:i23:preview` 只读能力且不能复用全局 admin/导入权限；前端逐项显式选择已有 target ID，展示匹配/缺失/属性差异，不创建/更新用户、不访问密码、不猜成员关系。必须先确定来源行读取批准和 browser-use/Playwright 如何取得不扩大通用权限的测试能力；其后再依次 RED→GREEN、API+页面、1.9 控件/日志/数据库资源验证和独立提交。
+- 当前状态：`BLOCKED_PENDING_POLICY_APPROVAL`，未改代码、未部署、未查询 `t_user` 行、未写 target。此处阻断不影响已完成的 I22 read-only preview 子批；R3-S9/R3 仍 IN_PROGRESS/PARTIAL。
