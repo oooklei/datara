@@ -1,0 +1,28 @@
+# R3-S9 I21 legacy quality source reader local evidence
+
+- Generated at: 2026-10-15 (Asia/Shanghai; local verification run)
+- Worktree: `D:\需求\数据治理工具\Datara\.worktrees\r3-s9`
+- Baseline commit: `af0cb61` (I20 read-only source snapshots)
+- Scope: fixed-column I21 source snapshots for the six retained legacy QC tables.
+- Source-field basis: retained `QcRule`, `QcTask`, `QcRun`, `QcException`, `QcReport`, and `QcAlarmPolicy` ORM declarations only; current live MySQL schema is not attested.
+- The earlier S8 snapshot reported zero rows for all six tables. This batch did not reconnect to or query the legacy database.
+- The old QC router/engine remain retired. This reader does not execute sample SQL, evaluate rules, schedule quality jobs, or create target rows.
+- JSON/configuration/report payloads are returned without interpretation; timestamps and source identities remain source values.
+
+## Verification
+
+- TDD RED: I21 allowlist and reader symbols were absent before implementation.
+- `pytest tests/rebuild/test_governance_legacy_i21_source_reader.py -q`: 7 passed.
+- I18-I21 reader regression: four reader files, 25 passed.
+- `pytest tests -q`: 664 passed in 67.78s.
+- `ruff check rebuild tests/rebuild`: passed after fixing one added test line-length violation.
+- `python -m compileall -q rebuild`: passed.
+- `git diff --check`: passed before staging.
+
+The tests cover all six allowlisted tables, SQLite SELECT/PRAGMA-only enforcement, raw JSON payload preservation, empty and non-empty snapshots, stable content digest independent of capture time, content-sensitive digest, missing-column failure, total-row-limit failure, invalid limits, timezone-aware capture time, explicit SQLite test mode, and exact legacy-schema guard.
+
+## Explicitly not verified or performed
+
+- No live legacy schema preflight/query, source or target MySQL access, deployment, or runtime resource/log/middleware verification.
+- No QC mapping, importer, API, scheduler, rule execution, browser-use/Playwright, or frontend validation.
+- This is `LOCAL_SUBSTEP_PASS / INTEGRATION_GATE_PENDING`, not formal I21 or R3-S9 acceptance.

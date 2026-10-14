@@ -176,3 +176,12 @@
 - 验收步骤：TDD RED→实现→I18/I19/I20 定向测试→全后端 pytest→Ruff/compileall/diff-check→更新证据/影响分析/本计划/台账→独立提交。完全本地测试仍不构成正式增量 PASS。
 - 运行安全：不连 `datara_meta`/target MySQL，不部署、不修改容器/中间件/正式前端、不新增可触发导入的 API/UI。I20 正式端到端验收仍需 192.168.1.9 的前端控件、后端 API/日志及中间件/资源闭环；缺少环境/数据证据时保持 pending。
 - 本地结果：I20 定向 7 passed，I18-I20 三套 reader regression 18 passed；全后端 `pytest tests -q` 657 passed in 67.09s；Ruff、compileall、`git diff --check` 通过。证据 `evidence/R3/s9-i20-source-reader-local-20261015.txt`。这是 reader 子步，不代表 mapper/API/import/parity 或正式增量 PASS。
+
+### 2026-10-15：I21 六表质量治理源快照 reader 增量计划
+
+- 前序影响分析：见 `R3-S9-开始前影响分析.md`“I21 质量治理只读快照 reader 开工影响分析”；基线提交 `af0cb61`。
+- 范围：六张 I21 表的 fixed-column allowlist + 独立 read-only snapshot reader + SQLite 本地契约测试；列依据仅为保留旧 QC ORM。旧 QC router/engine 已退役，本批绝不恢复执行/调度功能。
+- 映射边界：JSON 配置/统计/报告保持原样，不解释 SQL、质量语义、状态或关系，不连接数据源，不写目标实体。
+- 步骤：TDD RED→实现→I18-I21 reader 回归→全后端 pytest→Ruff/compileall/diff-check→更新本地证据/影响分析/计划/台账→独立提交。schema 差异一律 fail closed。
+- 运行/验收安全：不连接旧库或目标库，不部署/改服务或前端，不做 API/UI/日志/中间件/资源验证。本地通过不等同正式增量 PASS；I21 后续 mapper/parity 和 192.168.1.9 控件闭环仍 pending。
+- 本地结果：I21 reader 7 passed；I18-I21 readers 25 passed；全后端 `pytest tests -q` 664 passed in 67.78s；`ruff check rebuild tests/rebuild` 和 `python -m compileall -q rebuild` 通过。证据 `evidence/R3/s9-i21-source-reader-local-20261015.txt`。只完成源 reader 子步，integration gate pending。

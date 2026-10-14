@@ -1,4 +1,4 @@
-"""Allowlisted, read-only readers for the legacy I18-I20 source tables."""
+"""Allowlisted, read-only readers for the legacy I18-I21 source tables."""
 
 from __future__ import annotations
 
@@ -171,6 +171,44 @@ I20_SOURCE_COLUMNS: dict[str, tuple[str, tuple[str, ...]]] = {
     "t_indicator_version": (
         "id",
         ("id", "indicator_id", "version", "snapshot_json", "change_note", "created_by", "create_time"),
+    ),
+}
+
+# Contract follows the retained legacy Qc* ORM declarations only. The old QC
+# router and execution engine are retired; this allowlist does not revive them.
+I21_SOURCE_COLUMNS: dict[str, tuple[str, tuple[str, ...]]] = {
+    "t_qc_rule": (
+        "id",
+        (
+            "id", "name", "dim", "rule_type", "ds_id", "db_name", "table_name", "column_name",
+            "params_json", "threshold", "level", "status", "owner", "remark", "create_time", "update_time",
+        ),
+    ),
+    "t_qc_task": (
+        "id",
+        (
+            "id", "name", "crontab", "enabled", "rule_ids", "status", "last_run_at", "last_result",
+            "owner", "remark", "create_time",
+        ),
+    ),
+    "t_qc_run": (
+        "id",
+        ("id", "task_id", "trigger", "started_at", "finished_at", "result", "score", "stats_json"),
+    ),
+    "t_qc_exception": (
+        "id",
+        (
+            "id", "run_id", "rule_id", "task_id", "target", "sample_sql", "hit_count", "status",
+            "fix_note", "handled_by", "handled_at",
+        ),
+    ),
+    "t_qc_report": (
+        "id",
+        ("id", "title", "scope", "period", "content_json", "created_by", "create_time"),
+    ),
+    "t_qc_alarm_policy": (
+        "id",
+        ("id", "name", "scope", "metric", "op", "threshold", "enabled", "last_fired_at"),
     ),
 }
 
@@ -475,6 +513,87 @@ class LegacyI20SourceReader(LegacyI18SourceReader):
             json.dumps(payload, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode("utf-8")
         ).hexdigest()
         return LegacyI20SourceSnapshot(
+            schema=LEGACY_SCHEMA,
+            captured_at=captured_at,
+            digest=digest,
+            counts={table: len(rows) for table, rows in all_rows.items()},
+            rows=all_rows,
+        )
+
+
+@dataclass(frozen=True)
+class LegacyI21SourceSnapshot:
+    schema: str
+    captured_at: datetime
+    digest: str
+    counts: Mapping[str, int]
+    rows: Mapping[str, tuple[Mapping[str, object], ...]]
+
+
+class LegacyI21SourceReader(LegacyI18SourceReader):
+    """Read the six fixed I21 QC tables without invoking any quality behavior."""
+
+    def read_snapshot(
+        self,
+        *,
+        page_size: int = 500,
+        max_total_rows: int = 100_000,
+        captured_at: datetime | None = None,
+    ) -> LegacyI21SourceSnapshot:
+        if not 1 <= page_size <= 10_000:
+            raise ValueError("page_size must be between 1 and 10000")
+        if max_total_rows < 1:
+            raise ValueError("max_total_rows must be positive")
+        captured_at = captured_at or datetime.now(ZoneInfo("Asia/Shanghai"))
+        if captured_at.tzinfo is None:
+            raise ValueError("captured_at must be timezone-aware")
+
+        all_rows: dict[str, tuple[Mapping[str, object], ...]] = {}
+        total_read = 0
+        connection = self.engine.connect()
+        transaction = connection.begin()
+        sqlite_query_only = self.engine.dialect.name == "sqlite"
+        try:
+            if sqlite_query_only:
+                connection.exec_driver_sql("PRAGMA query_only = ON")
+            else:
+                connection.exec_driver_sql("SET TRANSACTION READ ONLY")
+            for table_name, (identity_column, columns) in I21_SOURCE_COLUMNS.items():
+                table_rows = self._read_table(
+                    connection,
+                    table_name,
+                    identity_column,
+                    columns,
+                    page_size,
+                    max_total_rows - total_read,
+                    "I21",
+                )
+                total_read += len(table_rows)
+                if total_read > max_total_rows:
+                    raise RuntimeError(f"legacy I21 snapshot exceeded row safety limit {max_total_rows}")
+                all_rows[table_name] = tuple(table_rows)
+            transaction.rollback()
+        except Exception:
+            if transaction.is_active:
+                transaction.rollback()
+            raise
+        finally:
+            if sqlite_query_only and not connection.closed:
+                connection.exec_driver_sql("PRAGMA query_only = OFF")
+                connection.rollback()
+            connection.close()
+
+        payload = {
+            "schema": LEGACY_SCHEMA,
+            "rows": {
+                table: [_json_safe(row) for row in rows]
+                for table, rows in all_rows.items()
+            },
+        }
+        digest = hashlib.sha256(
+            json.dumps(payload, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode("utf-8")
+        ).hexdigest()
+        return LegacyI21SourceSnapshot(
             schema=LEGACY_SCHEMA,
             captured_at=captured_at,
             digest=digest,
