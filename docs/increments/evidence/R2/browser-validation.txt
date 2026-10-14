@@ -1,0 +1,8 @@
+R2 browser-use validation evidence
+Date: 2026-10-14 Asia/Shanghai
+URL: http://192.168.1.9:18091/rebuild-validation-i2.html
+
+- Login succeeded in the visible validation page: `2026-10-13T22:11:08.590Z`.
+- R2 status action visibly returned `R2 状态：PASS`, `mismatch=0`, `status=PASS`, databases `datara_dw、ec_retail`, and samples `orders_part.csv、orders_part.txt、orders_part.xlsx`; request timestamp `2026-10-13T22:12:16.438Z`.
+- Logout visibly revoked the validation token at `2026-10-13T22:13:24.605Z`.
+- This page is an isolated validation entry and is not registered in the formal menu or production route.

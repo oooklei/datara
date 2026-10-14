@@ -1,0 +1,24 @@
+R1 remote deployment evidence
+Date: 2026-10-14 Asia/Shanghai
+Host: 192.168.1.9
+
+- Remote compose config passed after adding `datara-rebuild-api`.
+- Image `datara-backend:latest` rebuilt with the new `rebuild/` package.
+- `datara-rebuild-api` started on internal container port 8001 and healthcheck became healthy.
+- `datara-web` was force-recreated on host port 18091; old 8090 remains unused.
+- `GET http://127.0.0.1:18091/api/v1/rebuild/health` -> HTTP 200.
+- `POST http://127.0.0.1:18091/api/v1/rebuild/login` with the dev validation account -> HTTP 200.
+- Existing `datara-api` was restarted by the shared image rebuild and remained running; it was not replaced by the rebuild API.
+- Additive migration repaired the existing `rebuild_user` table with `created_at` and `updated_at`; no legacy table was changed.
+- Real probe: `datara-mysql-src/ec_retail`, root password `datara_2026` -> connected=true, database=ec_retail, MySQL 8.0.46, capabilities cross_schema/metadata/query.
+- Logout/revocation: POST `/api/v1/rebuild/logout` -> HTTP 200; subsequent authenticated project request -> HTTP 401.
+- Permission rejection: developer role without `manage_user` -> project member request -> HTTP 403.
+- Redis, metadata MySQL, source MySQL, API and Web containers were healthy; rebuild API logs recorded health/login/probe/logout/401 with no startup traceback after migration.
+- Remaining gate: browser-use control-level form interaction on 18091; route reachability is not treated as PASS.
+- Latest Web validation redeploy: rebuilt `datara-web/dist`, copied to the actual bind source `/lei/datara/datara-web/dist`, restarted `datara-web`, and confirmed `18091` HTTP 200.
+- The R1 validation page now exposes login retry, project create/list, real datasource probe, developer permission-denial check, logout/token revocation, and ISO request timestamp display.
+- A failed deployment attempt targeted the obsolete `/mnt/lei/datara` path; it did not alter the running bind mount. The corrected `/lei/datara` deployment was applied and verified.
+- Fallback validation entry deployed: `http://192.168.1.9:18091/rebuild-validation-i1.html`; it is plain HTML/JavaScript and exposes the same login, project, datasource, 403, logout, and timestamp checks without Vue/hash routing.
+- The static entry appeared as a browser tab, but browser-use binding still timed out; this isolates the remaining failure to the browser control adapter rather than the SPA route.
+- Browser-use control-level closure completed on the static entry: login success at `2026-10-13T21:20:53.733Z`; project create/list success at `2026-10-13T21:22:01.416Z`; real datasource capability result `cross_schema, metadata, query` at `2026-10-13T21:23:08.290Z`; permission denial HTTP 403 at `2026-10-13T21:24:15.373Z`; logout and token revocation success at `2026-10-13T21:25:22.771Z`.
+- Final R1 status: PASS. The earlier browser binding timeout is superseded by the successful control-level run above; the static page remains the auditable validation entry and is not a production menu route.

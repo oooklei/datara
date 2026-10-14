@@ -1,0 +1,14 @@
+R0 browser-use evidence
+Date: 2026-10-14 Asia/Shanghai
+Historical target: http://192.168.1.9:8090/
+Historical result: Browser tab was created for the remote Datara Web entry and reported title “Datara · 数据治理平台”. Terminal HTTP verification returned 200.
+
+Port migration verification:
+- Rebuild Web host port: `18091` -> container port `80`.
+- Remote `docker compose up -d --force-recreate datara-web` completed successfully.
+- `http://192.168.1.9:18091/` opened in a new browser tab and reported title “Datara · 数据治理平台”.
+- Remote terminal HTTP verification for `18091` returned 200.
+- Remote terminal check for `8090` returned connection refused; it is no longer the rebuild validation entry.
+- `18090` remains reserved by the unrelated `dpkg-web` service.
+
+Scope note: the 8090 check is historical evidence only. All rebuild browser-use flows must use 18091; full business flows begin with R1 validation pages.

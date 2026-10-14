@@ -1,0 +1,11 @@
+R0 remote compose configuration evidence
+Date: 2026-10-14 Asia/Shanghai
+Host: 192.168.1.9
+Working directory: /lei/datara
+Compose config command: docker compose config --quiet
+Result: PASS (exit code 0)
+Compose file reported by Docker labels: /lei/datara/docker-compose.yml
+Compose project: datara
+No compose files or services were modified by R0.
+
+Post-R0 port decision: rebuild validation Web must use host port 18091; legacy 8090 is not a rebuild browser-use entry, and 18090 is occupied by dpkg-web.

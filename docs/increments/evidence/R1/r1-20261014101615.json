@@ -1,0 +1,100 @@
+{
+  "run_id": "r1-20261014101615",
+  "started_at": "2026-10-14T10:16:15.432Z",
+  "finished_at": "2026-10-14T10:16:17.134Z",
+  "timezone": "Asia/Shanghai",
+  "url": "http://192.168.1.9:18091/rebuild-validation-i1.html",
+  "browser": "Chrome 149.0.7827.115",
+  "browser_use": {
+    "outcome": "BLOCKED",
+    "operation": "bind/initialize the ambient 18091 rebuild-validation-r4.html tab",
+    "first_attempt": "tab not found",
+    "retry": "new browser-use tab creation and AX read timed out after 30 seconds"
+  },
+  "playwright_fallback_url": "http://192.168.1.9:18091/rebuild-validation-r4.html",
+  "actions": [
+    "runner-key exchange (server process only)",
+    "project form create",
+    "member permission denial",
+    "mysql-src profile probe",
+    "logout",
+    "revoked token request"
+  ],
+  "checks": [
+    {
+      "name": "playwright-fallback-same-browser-use-url",
+      "pass": true,
+      "http_status": 200
+    },
+    {
+      "name": "page-loaded",
+      "pass": true
+    },
+    {
+      "name": "no-human-login-controls",
+      "pass": true
+    },
+    {
+      "name": "runner-token-enabled-controls",
+      "pass": true
+    },
+    {
+      "name": "project-created-through-ui",
+      "pass": true
+    },
+    {
+      "name": "member-write-denied-through-ui",
+      "pass": true
+    },
+    {
+      "name": "managed-datasource-probe-through-ui",
+      "pass": true
+    },
+    {
+      "name": "logout-message-visible",
+      "pass": true,
+      "rendered_text": "登出成功，旧 Token 已撤销 · 2026-10-14T10:16:17.060Z"
+    },
+    {
+      "name": "logout-through-ui",
+      "pass": true
+    },
+    {
+      "name": "revoked-token-denied",
+      "pass": true,
+      "status": 401
+    }
+  ],
+  "relevant_responses": [
+    {
+      "path": "/api/v1/rebuild/projects",
+      "status": 200
+    },
+    {
+      "path": "/api/v1/rebuild/projects",
+      "status": 200
+    },
+    {
+      "path": "/api/v1/rebuild/projects/6/members",
+      "status": 403
+    },
+    {
+      "path": "/api/v1/rebuild/datasources/profiles/mysql-src/probe",
+      "status": 200
+    },
+    {
+      "path": "/api/v1/rebuild/logout",
+      "status": 200
+    },
+    {
+      "path": "/api/v1/rebuild/projects",
+      "status": 401
+    }
+  ],
+  "errors": [],
+  "expected_negative_console": [
+    "console: Failed to load resource: the server responded with a status of 403 (Forbidden)",
+    "console: Failed to load resource: the server responded with a status of 401 (Unauthorized)"
+  ],
+  "outcome": "PASS"
+}

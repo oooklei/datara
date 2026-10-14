@@ -1,0 +1,9 @@
+R2 local static evidence
+Date: 2026-10-14 Asia/Shanghai
+Workspace: D:\需求\数据治理工具\Datara
+
+- `python -m compileall -q datara-backend/tools/datagen`: PASS.
+- `python -m ruff check datara-backend/tools/datagen`: PASS (`All checks passed!`).
+- `bash -n infra/bin/install.sh infra/bin/reset.sh infra/bin/import.sh infra/bin/uninstall.sh`: NOT RUN locally because bash is not installed on this Windows workstation; this is an environment limitation, not a script result. The command is required on 192.168.1.9.
+- YAML structural parse remains a remote/container gate; local command was not counted as PASS because the workstation shell quoting prevented a reliable result.
+- No runtime or database claim is made by this local evidence. R2 requires remote container, MySQL, resource, log, and browser-use evidence before PASS.

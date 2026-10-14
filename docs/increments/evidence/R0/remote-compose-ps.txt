@@ -1,0 +1,20 @@
+R0 remote container evidence
+Date: 2026-10-14 Asia/Shanghai
+Host: 192.168.1.9
+Working directory: /lei/datara
+
+Healthy/running Datara services observed:
+- datara-api: running, healthy, port 8000
+- datara-master: running, healthy
+- datara-worker: running, healthy
+- datara-alert: running, healthy
+- datara-logger: running, healthy
+- datara-web: running, no Docker healthcheck (HTTP 200 verified)
+- datara-mysql-meta: running, healthy, host port 3307
+- datara-mysql-src: running, healthy, host port 3310
+- datara-mysql-dw: running, healthy, host port 3309
+- datara-redis: running, healthy, host port 6380
+- datara-kafka: running, healthy, host port 9092
+- datara-zookeeper: running, healthy, host port 2181
+
+Additional unrelated/parallel containers were observed but were not modified.

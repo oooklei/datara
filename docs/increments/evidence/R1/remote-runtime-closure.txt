@@ -1,0 +1,14 @@
+Increment: R1 authentication carry-forward validation
+Runtime: 192.168.1.9, Web port 18091
+Observed at: 2026-10-14 18:17:50 Asia/Shanghai
+
+Browser-use: BLOCKED. The ambient R4 tab was discovered, but binding/AX initialization timed out on the one bounded retry.
+Playwright fallback: PASS on the same R4 URL (HTTP 200), then full R1 control-level flow on /rebuild-validation-i1.html.
+
+R1 UI checks: no human login controls; runner-injected short-lived token enables controls; project create; member permission denial (403); mysql-src managed profile probe (200); logout; revoked-token request denied (401). Final report: r1-20261014101615.json. Screenshots: r1-20261014101615.png and r1-20261014101615-browser-use-fallback.png.
+
+Backend runtime: datara-rebuild-api running and healthy. Health endpoint returned service=rebuild-api,status=ok. Recent logs correlated token exchange 200, project create 200, member write 403, datasource probe 200, logout 200, and post-logout protected request 401. No unexpected browser console/page errors in the final run.
+
+Timestamp database proof: rebuild_project columns id,name,description,owner_id,created_at,updated_at. A count of 4 R1 runner-created projects had 4 non-null created_at and 4 non-null updated_at; newest created_at was 2026-10-14 18:16:16. These are isolated-schema validation records and were retained as evidence; no deletion was performed.
+
+R1 functional acceptance remains PASS from the earlier project/datasource flow; auth bootstrap remains CARRY_FORWARD until the full Backend freeze gate. No key, token, password, or credential value is included in this evidence.

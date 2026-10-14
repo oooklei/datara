@@ -1,0 +1,19 @@
+R0 remote service log evidence
+Date: 2026-10-14 Asia/Shanghai
+Host: 192.168.1.9
+Command: cd /lei/datara && docker compose logs --tail=80 datara-api datara-master datara-worker datara-alert datara-logger redis kafka
+
+Positive evidence:
+- API repeatedly logged GET /api/v1/health 200 OK.
+- Master logged scheduler, command consumer, status consumer, timeout scan and SSH probe thread startup.
+- Worker logged successful SQL/sync task completions and Kafka source/offset recovery activity.
+- Redis and Kafka containers were healthy; Kafka topics were readable.
+
+Pre-existing anomalies requiring follow-up (not caused by R0):
+- Master failover log recorded stream instance stream-26 resume failure with KeyError('stream-26').
+- Master SSH probe logged authentication failure for node-1.9 and connection failure for node-bad:2222.
+- Worker stream logs repeatedly recorded generation-change warnings while stopping/restarting stream job 26.
+
+R0 handling:
+- No restart, repair, deletion, migration, or configuration change was performed.
+- These anomalies are carried into the R0 ledger as follow-up risks and must be resolved or explicitly accepted before stream-related increments are closed.

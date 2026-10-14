@@ -1,0 +1,12 @@
+R1 local code evidence
+Date: 2026-10-14 Asia/Shanghai
+Root: D:\需求\数据治理工具\Datara
+
+- Backend: `python -m pytest tests/rebuild -q` -> 14 passed.
+- Backend: `python -m ruff check rebuild tests/rebuild` -> All checks passed.
+- Backend: `python -m compileall -q rebuild` -> PASS.
+- Frontend: R1 route test -> 1 passed.
+- Frontend: `npm run build` -> PASS; `RebuildValidationI1View` emitted.
+- Frontend: route test and production build passed after adding permission-denial, logout/revocation, and request-timestamp controls.
+- Old API import scan: new `rebuild/` has no `from api`, `from common`, `import api`, or `import common` dependency.
+- Added coverage: additive lifecycle migration, token logout revocation, member permission rejection, and real-probe request contract.

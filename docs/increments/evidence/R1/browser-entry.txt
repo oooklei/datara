@@ -1,0 +1,8 @@
+R1 browser-use entry evidence
+Date: 2026-10-14 Asia/Shanghai
+Host: 192.168.1.9
+
+- New browser tab opened at `http://192.168.1.9:18091/#/rebuild-validation/i1`.
+- Browser state reported title `Datara · 数据治理平台` and the exact 18091 validation URL.
+- The route is marked `validationOnly`, `publicValidation`, and `menu=false`; it is not a formal menu entry.
+- Browser accessibility-tree reads timed out in this environment; therefore this file does not claim control-level login/project/data-source interaction completion.

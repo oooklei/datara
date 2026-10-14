@@ -1,0 +1,29 @@
+R0 local static inventory
+Date: 2026-10-14 Asia/Shanghai
+Scope: read-only inventory; no container/database startup on local machine.
+
+Repository state:
+- Existing user changes were present before R0 and were preserved.
+- Existing modified files include datara-backend/api/auth.py, datara-backend/api/main.py, datara-backend/common/models.py, datara-web/src/App.vue, datara-web/src/router/routes.ts and datara-web/src/views/ide/components/SqlEditor.vue.
+- Existing untracked implementation/docs/assets were preserved; no cleanup or reset was performed.
+
+Required assets:
+- docker-compose.yml: present
+- I18-数仓建模设计.md: present
+- I19-元数据与标签管理设计.md: present
+- I20-指标管理设计.md: present
+- I21-数据质量管理设计.md: present
+- I22-数据标准管理设计.md: present
+- I23-权限管理设计.md: present
+- datara-backend/api/auth.py: present
+- datara-backend/common/models.py: present
+
+Existing implementation evidence found by static scan:
+- FastAPI API, auth/token handling, workflow/master/worker runtime, stream runtime, variables, lineage and quality-related modules exist.
+- Existing compose services declare API, Master, Worker, Alert, Logger, Web, MySQL metadata/source/DW, Redis, Kafka and Zookeeper.
+- Existing I18-I23 documents define the current model/metadata/metric/quality/standard/permission assets and table names.
+
+Rebuild dependency scan:
+- No rebuild/ implementation directory was created in R0.
+- Therefore no new Backend-to-old-API import dependency can be introduced in R0.
+- The required import scan remains an R11 freeze gate after rebuild/ code exists.

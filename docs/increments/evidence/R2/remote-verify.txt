@@ -1,0 +1,12 @@
+R2 remote generation and verification evidence
+Date: 2026-10-14 Asia/Shanghai
+Host: 192.168.1.9
+
+- Fixed generator defect: same-column dirty rules now use mutually exclusive sample positions.
+- Rebuilt `datara-api` with the corrected generator and ran `python -m tools.datagen.run gen`, followed by independent `verify`.
+- Latest reconcile generated at `2026-10-14 06:08:59`, seed `20260918`, window `2026-06-21` through `2026-09-18`.
+- `ec_retail`: 17 tables, 1,220,200 rows, 3 partitioned tables, 28 rules, mismatch 0; business rows 1,077,200.
+- `datara_dw`: 1 derived table, 400,000 rows, mismatch 0.
+- Final console result: `对账结论：PASS（expected = actual 全部严格相等）`.
+- Samples: `orders_part.csv`, `orders_part.txt`, `orders_part.xlsx`.
+- The prior failure was `r_pay_time_before actual 996 != expected 1000`; after mutual-exclusion sampling the rule passed at 1000.

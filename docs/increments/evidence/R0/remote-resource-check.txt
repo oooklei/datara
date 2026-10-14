@@ -1,0 +1,26 @@
+R0 remote resource and test database evidence
+Date: 2026-10-14 Asia/Shanghai
+Host: 192.168.1.9
+
+Service checks:
+- Redis: PONG
+- Kafka topic listing: __consumer_offsets, cart_event, order_pay, user_click
+- API canonical health endpoint: GET /api/v1/health returned HTTP 200 in service logs.
+- Web entry: GET http://127.0.0.1:18091/ returned HTTP 200; the former 8090 entry is no longer exposed by `datara-web`.
+- The root path /health returned 404; this is not the canonical API health path and is recorded for future health-check contract correction.
+
+MySQL databases:
+- mysql-meta: datara_meta plus system schemas
+- mysql-src: ec_retail, ec_retail_bad, ec_retail_east, ec_retail_north, ec_retail_south plus system schemas
+- mysql-dw: datara_dw plus system schemas
+
+Metadata table inventory:
+- mysql-meta contains 56 tables, including workflow, task, lineage, quality, standard, model, metadata, metric, stream and permission-related tables.
+
+Isolation result after user-authorized provisioning:
+- Dedicated `datara_rebuild_i0` schema: PRESENT on `mysql-meta`.
+- Dedicated `datara_rebuild_i0` database user: PRESENT and login verified through TCP as `datara_rebuild_i0@%`.
+- The dedicated user has privileges only on `datara_rebuild_i0.*`; existing `datara_meta/root` remains shared runtime metadata access and was not reused as the rebuild isolation identity.
+- `mysql-src/ec_retail`: connection verified; 359 tables reported.
+- `mysql-dw/datara_dw`: connection verified; 371 tables reported.
+- Current 30-minute API/Master/Worker log scan found no new stream-26, SSH probe, generation, ERROR, or Traceback anomaly. Earlier log findings remain historical evidence, not a current R0 blocker.

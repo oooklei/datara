@@ -1,0 +1,11 @@
+R2 remote preflight evidence
+Date: 2026-10-14 Asia/Shanghai
+Host: 192.168.1.9
+
+- Preflight timestamp: `2026-10-14T05:33:00+08:00`.
+- Docker executable: `/usr/bin/docker`.
+- Datara runtime containers were present; `datara-api`, `datara-rebuild-api`, `datara-worker`, `datara-master`, `datara-alert`, `datara-logger`, `datara-mysql-src`, `datara-mysql-meta`, `datara-mysql-dw`, `datara-redis`, `datara-kafka`, `datara-zookeeper`, and `datara-web` were up; API/rebuild API/worker/master/alert/logger/MySQL/Redis/Kafka/Zookeeper health was reported by Docker.
+- Actual bind sources: `/lei/datara/infra/mysql/src/init`, `/lei/datara/infra/mysql/dw/init`; actual project source root: `/lei/datara`.
+- After synchronizing the normalized LF shell scripts to `/lei/datara/infra/bin`, `bash -n` passed for install/reset/import/uninstall: `I2_REMOTE_SHELL_SYNTAX_OK`.
+- Container YAML parsing passed: `I2_REMOTE_YAML_OK` for `tables.yaml` and `dirty_rules.yaml`.
+- This is a preflight only; data generation, reconcile, determinism, browser-use, and final R2 acceptance remain open.
