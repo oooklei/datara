@@ -1,0 +1,22 @@
+R3-S9 I21 live-schema reader contract repair — local verification
+Captured: 2026-10-15 05:25 Asia/Shanghai
+Worktree: D:/需求/数据治理工具/Datara/.worktrees/r3-s9 (codex/r3-s9)
+
+Live facts:
+- Source is `datara_meta` on 192.168.1.9 / `datara-mysql-meta`, MySQL 8.0.46. The six I21 tables are empty (exact aggregate counts); current live contract comparison is in `evidence/R3/s9-live-reader-schema-audit-20261015.md`.
+- Missing physical columns removed from I21 reader allowlist: `t_qc_rule.update_time`; `t_qc_task.owner`, `remark`, `create_time`; `t_qc_exception.handled_by`.
+- No source rows were fetched during this code substep. No source or target DB write, runtime source URL configuration, API call, deployment, or frontend change.
+
+Implementation:
+- Reader now selects only live columns.
+- Pure mapper sets target fields whose legacy columns do not exist to the target's empty/null representation and attaches `mapping_notes.source_schema_missing_columns` to every affected mapped row; absent source timestamps are null. This note is propagated in the dry-run mapping contract. The placeholder does not claim the source contained an empty value.
+- I21 snapshot tests now construct rows strictly from the reader allowlist; explicit test verifies the three absent-column notes and null source timestamps.
+
+Verification:
+- TDD initial RED: live-contract test failed because stale I21 allowlist still included `update_time`.
+- Focused I21 reader/mapper suite: 22 passed.
+- Full backend: `pytest tests -q` — 725 passed in 54.19s.
+- Ruff on changed reader/mapper/tests and `python -m compileall -q rebuild`: passed.
+- `git diff --check`: pending final pre-commit check.
+
+Status: `LOCAL_SUBSTEP_PASS / LIVE_SCHEMA_CONTRACT_MATCH / INTEGRATION_GATE_PENDING`. Does not complete I21 source API or target import, source/target parity, remote control-loop, logs/middleware/resources, or R3-S9.

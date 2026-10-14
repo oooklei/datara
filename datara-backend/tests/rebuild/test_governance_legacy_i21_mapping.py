@@ -10,7 +10,7 @@ def _row(table, **values):
     columns = I21_SOURCE_COLUMNS[table][1]
     row = {column: None for column in columns}
     row.update(values)
-    return row
+    return {column: row[column] for column in columns}
 
 
 def _snapshot(**table_rows):
@@ -163,6 +163,28 @@ def test_i21_mapper_preserves_all_six_table_semantics_and_task_rule_order():
     assert mapped.exceptions[0].values["sample_sql"] == "DELETE FROM ods.orders"
     assert mapped.reports[0].values["content_json"] == '{"count":1,"items":["orders"]}'
     assert mapped.alarm_policies[0].values["operator"] == "<"
+
+
+def test_i21_mapper_marks_fields_absent_from_live_schema_without_inventing_values():
+    assert "update_time" not in I21_SOURCE_COLUMNS["t_qc_rule"][1]
+    assert not {"owner", "remark", "create_time"}.intersection(I21_SOURCE_COLUMNS["t_qc_task"][1])
+    assert "handled_by" not in I21_SOURCE_COLUMNS["t_qc_exception"][1]
+
+    mapped = map_i21_snapshot(
+        _snapshot(t_qc_rule=[_rule()], t_qc_task=[_task()], t_qc_exception=[_exception()]),
+        _context(),
+    )
+
+    assert mapped.rules[0].values["source_updated_at"] is None
+    assert mapped.tasks[0].task.values["source_created_at"] is None
+    assert mapped.tasks[0].task.values["owner_name"] == ""
+    assert mapped.tasks[0].task.values["remark"] == ""
+    assert mapped.exceptions[0].values["handled_by"] == ""
+    assert mapped.rules[0].mapping_notes == ({"source_schema_missing_columns": ["update_time"]},)
+    assert mapped.tasks[0].task.mapping_notes == (
+        {"source_schema_missing_columns": ["owner", "remark", "create_time"]},
+    )
+    assert mapped.exceptions[0].mapping_notes == ({"source_schema_missing_columns": ["handled_by"]},)
 
 
 def test_i21_mapper_empty_snapshot_is_valid_and_project_scoped():

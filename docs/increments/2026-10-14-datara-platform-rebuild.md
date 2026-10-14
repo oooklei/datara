@@ -136,6 +136,14 @@
 - A 当前结果：TDD RED→GREEN；I22 专项 7 passed，I18-I22 reader regression 32 passed，全后端 716 passed（64.38s），Ruff/compileall 通过。证据 `evidence/R3/s9-i22-reader-local-20261015.txt`。本批只证明本地 reader 合同，不是远程 API 或整体验收。
 - 子批次 B mapper：以 A 的快照为唯一数据输入，基于现存规范化模型映射 element/code set/value/naming rule/mapping/approval/check report；显式 source identities 解析关联，源值/IDs/时间原样留痕，未知枚举、孤儿或重复关联 fail closed；先 RED，再定向和全量验证、证据及独立提交。不得执行源 SQL/审批动作，不新增用户未批准的目标导入。
 - B 当前结果：TDD RED→GREEN；I22 reader+mapper 15 passed，全后端 724 passed（71.64s，含最终回归），Ruff/compileall/diff-check 通过。证据 `evidence/R3/s9-i22-mapper-local-20261015.txt`。实测 approval#1 的 `biz_type=code,biz_id=2` 找不到源码表#2，按阻断保留，未自动跳过或替换。
+
+#### I18-I23 live schema allowlist preflight
+
+在实现下一条 importer/API 链路前，逐域核对所有 I18-I23 reader 固定 allowlist 中的表列是否匹配 `datara_meta` 当前 live schema。先按 `R3-S9-开始前影响分析.md` 相应小节做只读 preflight；仅从 information_schema 取字段/索引/FK metadata，并对 allowlist 表做聚合 COUNT；I23 严禁选择 `user_pwd` 或账户行值。若出现 drift，停下为该 reader 做独立影响分析/修复/测试；无 drift 时记录证据与更新计划/台账后再开始下一编码子批。无 API runtime secret、无部署、无目标导入。
+
+Preflight 发现 I21 reader 三组缺失列（详见 `evidence/R3/s9-live-reader-schema-audit-20261015.md`）。先执行影响分析中的 I21 live-contract 修正子批，之后才可继续 reader/API/importer 复核。I21 六表零行仍不豁免空快照 reader 的 live schema 合同。
+
+I21 修正子批已完成：固定 reader 列已按 live schema 对齐；mapper 用 `source_schema_missing_columns` 备注旧源物理上不存在的字段，不假造原值/时间。I21 reader+mapper 22 passed，全后端 725 passed，Ruff/compileall 通过；证据 `evidence/R3/s9-i21-live-schema-reader-fix-20261015.txt`。仍未配置 runtime source URL/API、部署或导入。
 - 验收：A/B 均仅达到 `LOCAL_SUBSTEP_PASS / INTEGRATION_GATE_PENDING`。本次 root CLI schema 查询不等于 Backend runtime dry-run；完整 I18-I23 importer/parity、目标备份/恢复、并发/故障注入、service log/middleware/resource 以及 browser-use→必要时 Playwright 控件闭环继续按计划单独完成。
 6. 在参考产品风格隔离验证页增加可操作业务场景和稳定 fixture，预置目标项目/数据/表单并呈现行数、快照摘要、计划分类、导入顺序和阻断原因；执行控件级 UI 流程并验证后端 API 结果。使用 192.168.1.9 的非冲突端口部署；页面不得持有统一验证 key，仅由受保护 runner 注入受限短期 token。
 7. 远端先只读重采样，再目标快照、dry-run 冲突清单；这些证据仅用于评审，确认 dry-run 的新增/更新/跳过/冲突数与拟定范围一致后，仍须另获用户对目标业务数据写入的明确批准才能执行导入。逐批记录前后时间戳、进程退出码、容器日志、DB 对账查询和恢复点。root 只允许用于 `REBUILD_LEGACY_META_URL` 精确指向 `datara_meta` 的固定 allowlist 仅读，不注入 root 凭据到 Backend。

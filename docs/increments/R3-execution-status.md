@@ -42,6 +42,10 @@ I22 reader sub-batch A is locally complete: TDD RED→GREEN; 7 focused tests, 32
 
 I22 mapper sub-batch B is locally complete: TDD RED→GREEN; reader+mapper focused suite 15 passed, final full backend suite 724 passed (71.64s), Ruff/compileall/diff-check passed. Evidence `evidence/R3/s9-i22-mapper-local-20261015.txt`. The only currently non-empty approval sample points to absent `t_std_code#2`; it remains explicitly unresolved (not skipped). No target import authorization, runtime API connection, deployment, or UI/log/middleware/resource gate was exercised. R3-S9 remains IN_PROGRESS/PARTIAL.
 
+The live reader allowlist audit captured exact counts and schema metadata for I18-I23 under root-read-only scope. It found I21 reader drift (`t_qc_rule.update_time`; `t_qc_task.owner/remark/create_time`; `t_qc_exception.handled_by` absent) and all six I21 tables currently have zero rows. Evidence `evidence/R3/s9-live-reader-schema-audit-20261015.md`. One broad information_schema query returned only the `t_user.user_pwd` column name/type metadata (never a value); this query-scope deviation is disclosed in evidence and followed by a precise I23 allowlist-only metadata query. I21 source reads are blocked until contract repair. No imports or source writes occurred.
+
+I21 contract repair locally completed: reader allowlist now matches live physical columns; mapper marks schema-absent owner/remark/handler/time fields via `source_schema_missing_columns` notes and null source timestamps. I21 reader/mapper 22 passed; full backend suite 725 passed (54.19s); Ruff/compileall passed. Evidence `evidence/R3/s9-i21-live-schema-reader-fix-20261015.txt`. No business rows were fetched and no runtime/API/deploy/import/frontend action occurred; S9 remains partial.
+
 ## R3-S1 closure
 
 - The isolated rebuild schema and dedicated source profile were inventoried read-only on 192.168.1.9.

@@ -180,15 +180,34 @@ I21_SOURCE_COLUMNS: dict[str, tuple[str, tuple[str, ...]]] = {
     "t_qc_rule": (
         "id",
         (
-            "id", "name", "dim", "rule_type", "ds_id", "db_name", "table_name", "column_name",
-            "params_json", "threshold", "level", "status", "owner", "remark", "create_time", "update_time",
+            "id",
+            "name",
+            "dim",
+            "rule_type",
+            "ds_id",
+            "db_name",
+            "table_name",
+            "column_name",
+            "params_json",
+            "threshold",
+            "level",
+            "status",
+            "owner",
+            "remark",
+            "create_time",
         ),
     ),
     "t_qc_task": (
         "id",
         (
-            "id", "name", "crontab", "enabled", "rule_ids", "status", "last_run_at", "last_result",
-            "owner", "remark", "create_time",
+            "id",
+            "name",
+            "crontab",
+            "enabled",
+            "rule_ids",
+            "status",
+            "last_run_at",
+            "last_result",
         ),
     ),
     "t_qc_run": (
@@ -198,8 +217,16 @@ I21_SOURCE_COLUMNS: dict[str, tuple[str, tuple[str, ...]]] = {
     "t_qc_exception": (
         "id",
         (
-            "id", "run_id", "rule_id", "task_id", "target", "sample_sql", "hit_count", "status",
-            "fix_note", "handled_by", "handled_at",
+            "id",
+            "run_id",
+            "rule_id",
+            "task_id",
+            "target",
+            "sample_sql",
+            "hit_count",
+            "status",
+            "fix_note",
+            "handled_at",
         ),
     ),
     "t_qc_report": (
@@ -235,8 +262,18 @@ I22_SOURCE_COLUMNS: dict[str, tuple[str, tuple[str, ...]]] = {
     "t_std_element": (
         "id",
         (
-            "id", "code", "cn", "en", "data_type", "length", "status", "version", "owner", "remark",
-            "create_time", "update_time",
+            "id",
+            "code",
+            "cn",
+            "en",
+            "data_type",
+            "length",
+            "status",
+            "version",
+            "owner",
+            "remark",
+            "create_time",
+            "update_time",
         ),
     ),
     "t_std_mapping": (
@@ -348,10 +385,7 @@ class LegacyI18SourceReader:
         payload = {
             "schema": LEGACY_SCHEMA,
             "captured_at": captured_at.isoformat(),
-            "rows": {
-                table: [_json_safe(row) for row in rows]
-                for table, rows in all_rows.items()
-            },
+            "rows": {table: [_json_safe(row) for row in rows] for table, rows in all_rows.items()},
         }
         digest = hashlib.sha256(
             json.dumps(payload, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode("utf-8")
@@ -386,8 +420,7 @@ class LegacyI18SourceReader:
         while True:
             where_clause = f" WHERE {quoted_identity} > :last_identity" if last_identity is not None else ""
             statement = text(
-                f"SELECT {quoted_columns} FROM {table_ref}{where_clause} "
-                f"ORDER BY {quoted_identity} LIMIT :page_size"
+                f"SELECT {quoted_columns} FROM {table_ref}{where_clause} ORDER BY {quoted_identity} LIMIT :page_size"
             )
             parameters = {"page_size": page_size}
             if last_identity is not None:
@@ -396,9 +429,7 @@ class LegacyI18SourceReader:
             if not page:
                 break
             if len(rows) + len(page) > remaining_rows:
-                raise RuntimeError(
-                    f"legacy {source_label} snapshot exceeded configured total row safety limit"
-                )
+                raise RuntimeError(f"legacy {source_label} snapshot exceeded configured total row safety limit")
             rows.extend(dict(row) for row in page)
             last_identity = page[-1][identity_column]
             if len(page) < page_size:
@@ -470,10 +501,7 @@ class LegacyI19SourceReader(LegacyI18SourceReader):
 
         payload = {
             "schema": LEGACY_SCHEMA,
-            "rows": {
-                table: [_json_safe(row) for row in rows]
-                for table, rows in all_rows.items()
-            },
+            "rows": {table: [_json_safe(row) for row in rows] for table, rows in all_rows.items()},
         }
         digest = hashlib.sha256(
             json.dumps(payload, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode("utf-8")
@@ -551,10 +579,7 @@ class LegacyI20SourceReader(LegacyI18SourceReader):
 
         payload = {
             "schema": LEGACY_SCHEMA,
-            "rows": {
-                table: [_json_safe(row) for row in rows]
-                for table, rows in all_rows.items()
-            },
+            "rows": {table: [_json_safe(row) for row in rows] for table, rows in all_rows.items()},
         }
         digest = hashlib.sha256(
             json.dumps(payload, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode("utf-8")
@@ -632,10 +657,7 @@ class LegacyI21SourceReader(LegacyI18SourceReader):
 
         payload = {
             "schema": LEGACY_SCHEMA,
-            "rows": {
-                table: [_json_safe(row) for row in rows]
-                for table, rows in all_rows.items()
-            },
+            "rows": {table: [_json_safe(row) for row in rows] for table, rows in all_rows.items()},
         }
         digest = hashlib.sha256(
             json.dumps(payload, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode("utf-8")
@@ -713,10 +735,7 @@ class LegacyI22SourceReader(LegacyI18SourceReader):
 
         payload = {
             "schema": LEGACY_SCHEMA,
-            "rows": {
-                table: [_json_safe(row) for row in rows]
-                for table, rows in all_rows.items()
-            },
+            "rows": {table: [_json_safe(row) for row in rows] for table, rows in all_rows.items()},
         }
         digest = hashlib.sha256(
             json.dumps(payload, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode("utf-8")

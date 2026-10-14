@@ -215,6 +215,7 @@ def _map_rule(source_id, source, project_id, context, issues):
         },
         context,
         local,
+        mapping_notes=({"source_schema_missing_columns": ["update_time"]},),
     )
     issues.extend(local)
     return row
@@ -222,14 +223,7 @@ def _map_rule(source_id, source, project_id, context, issues):
 
 def _map_task(source_id, source, project_id, context, rule_refs, issues):
     local: list[MappingIssue] = []
-    for key, max_length in {
-        "name": 128,
-        "crontab": 64,
-        "status": 16,
-        "last_result": 16,
-        "owner": 64,
-        "remark": 255,
-    }.items():
+    for key, max_length in {"name": 128, "crontab": 64, "status": 16, "last_result": 16}.items():
         _check_text(source.get(key), max_length, "t_qc_task", source_id, key, local)
     if not isinstance(source.get("enabled"), bool):
         local.append(MappingIssue("invalid_source_value", "t_qc_task", source_id, "enabled must be boolean"))
@@ -280,15 +274,14 @@ def _map_task(source_id, source, project_id, context, rule_refs, issues):
             "status": source.get("status", ""),
             "last_run_at": _datetime_value(source.get("last_run_at"), "t_qc_task", source_id, "last_run_at", local),
             "last_result": source.get("last_result", ""),
-            "owner_name": source.get("owner", ""),
-            "remark": source.get("remark", ""),
-            "source_created_at": _datetime_value(
-                source.get("create_time"), "t_qc_task", source_id, "create_time", local
-            ),
+            "owner_name": "",
+            "remark": "",
+            "source_created_at": _datetime_value(None, "t_qc_task", source_id, "create_time", local),
             "source_updated_at": None,
         },
         context,
         local,
+        mapping_notes=({"source_schema_missing_columns": ["owner", "remark", "create_time"]},),
     )
     issues.extend(local)
     return MappedI21TaskBundle(task, tuple(links), tuple(local))
@@ -334,7 +327,7 @@ def _map_run(source_id, source, context, task_refs, issues):
 
 def _map_exception(source_id, source, project_id, context, rule_refs, run_refs, task_refs, issues):
     local: list[MappingIssue] = []
-    for key, max_length in {"target": 255, "status": 16, "fix_note": 255, "handled_by": 64}.items():
+    for key, max_length in {"target": 255, "status": 16, "fix_note": 255}.items():
         _check_text(source.get(key), max_length, "t_qc_exception", source_id, key, local)
     for key in ("hit_count", "run_id", "rule_id"):
         value = source.get(key)
@@ -374,7 +367,7 @@ def _map_exception(source_id, source, project_id, context, rule_refs, run_refs, 
             "hit_count": source.get("hit_count", 0),
             "status": source.get("status", ""),
             "fix_note": source.get("fix_note", ""),
-            "handled_by": source.get("handled_by", ""),
+            "handled_by": "",
             "handled_at": _datetime_value(source.get("handled_at"), "t_qc_exception", source_id, "handled_at", local),
             "source_created_at": None,
             "source_updated_at": None,
@@ -382,6 +375,7 @@ def _map_exception(source_id, source, project_id, context, rule_refs, run_refs, 
         context,
         local,
         unresolved_references=tuple(unresolved),
+        mapping_notes=({"source_schema_missing_columns": ["handled_by"]},),
     )
     issues.extend(local)
     return row
@@ -447,7 +441,16 @@ def _map_alarm(source_id, source, project_id, context, issues):
     return row
 
 
-def _mapped(source_table, source_id, target_table, values, context, issues, unresolved_references=()):
+def _mapped(
+    source_table,
+    source_id,
+    target_table,
+    values,
+    context,
+    issues,
+    unresolved_references=(),
+    mapping_notes=(),
+):
     return MappedLegacyRow(
         source_system="datara_meta",
         source_table=source_table,
@@ -457,6 +460,7 @@ def _mapped(source_table, source_id, target_table, values, context, issues, unre
         unresolved_references=tuple(unresolved_references),
         target_id=context.target_ids.get((source_table, source_id)),
         mapping_issues=tuple(issues),
+        mapping_notes=tuple(mapping_notes),
     )
 
 
