@@ -57,6 +57,10 @@ def test_existing_perms_unchanged():
     assert ROLE_PERMS["viewer"] == ["view_all"]
 
 
+def test_retired_qc_permission_is_not_granted_to_legacy_roles():
+    assert all("qc:write" not in permissions for permissions in ROLE_PERMS.values())
+
+
 def test_login_payload_perms_from_same_source():
     """登录返回的 perms 与 ROLE_PERMS 同一映射（避免双真源）。"""
 
