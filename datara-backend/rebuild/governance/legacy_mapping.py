@@ -17,6 +17,15 @@ class LegacyMappingContext:
 
     target_project_id: int | None = None
     target_ids: Mapping[tuple[str, str], int] = field(default_factory=dict)
+    pending_identities: frozenset[tuple[str, str]] = frozenset()
+
+
+@dataclass(frozen=True)
+class TargetIdentityReference:
+    """A declared source identity that will receive its target ID during import."""
+
+    source_table: str
+    source_id: str
 
 
 @dataclass(frozen=True)
@@ -28,10 +37,19 @@ class MappedLegacyRow:
     values: Mapping[str, object]
     unresolved_references: tuple[tuple[str, str], ...] = ()
     child_rows: tuple[Mapping[str, object], ...] = ()
+    identity_aliases: tuple[tuple[str, str], ...] = ()
 
     @property
     def ready_to_import(self) -> bool:
         return not self.unresolved_references
+
+
+@dataclass(frozen=True)
+class MappingIssue:
+    code: str
+    source_table: str
+    source_id: str
+    detail: str
 
 
 _MODEL_REFERENCES = (
@@ -39,6 +57,129 @@ _MODEL_REFERENCES = (
     ("biz_domain", "t_biz_domain", "domain_id"),
     ("engine", "t_engine_type", "engine_id"),
 )
+
+
+def _resolve_target_identity(
+    identity: tuple[str, str],
+    context: LegacyMappingContext,
+    unresolved: list[tuple[str, str]],
+    reference_field: str,
+) -> int | TargetIdentityReference:
+    target_id = context.target_ids.get(identity)
+    if target_id is not None:
+        return target_id
+    if identity in context.pending_identities:
+        return TargetIdentityReference(*identity)
+    unresolved.append((reference_field, identity[1]))
+    return TargetIdentityReference(*identity)
+
+
+def validate_i18_mapping_graph(
+    rows: list[MappedLegacyRow],
+    existing_model_fields: Mapping[int, frozenset[str]] | None = None,
+) -> tuple[MappingIssue, ...]:
+    """Check same-batch identities and model-relation field pairs before import."""
+
+    issues: list[MappingIssue] = []
+    identity_counts: dict[tuple[str, str], int] = {}
+    for row in rows:
+        identity = (row.source_table, row.source_id)
+        identity_counts[identity] = identity_counts.get(identity, 0) + 1
+        for alias in row.identity_aliases:
+            identity_counts[alias] = identity_counts.get(alias, 0) + 1
+    batch_identities = set(identity_counts)
+    for (source_table, source_id), count in identity_counts.items():
+        if count > 1:
+            issues.append(MappingIssue("duplicate_source_identity", source_table, source_id, str(count)))
+
+    for row in rows:
+        for source_table, source_id in row.unresolved_references:
+            issues.append(
+                MappingIssue(
+                    "unresolved_reference",
+                    row.source_table,
+                    row.source_id,
+                    f"{source_table}:{source_id}",
+                )
+            )
+        for value in row.values.values():
+            if isinstance(value, TargetIdentityReference) and (
+                value.source_table,
+                value.source_id,
+            ) not in batch_identities:
+                issues.append(
+                    MappingIssue(
+                        "pending_identity_missing_from_batch",
+                        row.source_table,
+                        row.source_id,
+                        f"{value.source_table}:{value.source_id}",
+                    )
+                )
+
+    model_fields: dict[tuple[str, str], set[str]] = {}
+    for row in rows:
+        if row.source_table != "t_dw_model_field":
+            continue
+        model_ref = row.values.get("model_id")
+        if isinstance(model_ref, TargetIdentityReference):
+            model_identity = (model_ref.source_table, model_ref.source_id)
+            model_fields.setdefault(model_identity, set()).add(str(row.values.get("field_name", "")))
+
+    existing_model_fields = existing_model_fields or {}
+    for row in rows:
+        if row.source_table != "t_dw_model_relation":
+            continue
+        source_ref = row.values.get("source_model_id")
+        target_ref = row.values.get("target_model_id")
+        for role, model_ref in (("source", source_ref), ("target", target_ref)):
+            if isinstance(model_ref, TargetIdentityReference):
+                identity = (model_ref.source_table, model_ref.source_id)
+                fields = model_fields.get(identity, set())
+            elif isinstance(model_ref, int):
+                fields = set(existing_model_fields.get(model_ref, frozenset()))
+            else:
+                continue
+            if not fields:
+                issues.append(
+                    MappingIssue(
+                        f"relation_{role}_model_fields_unavailable",
+                        row.source_table,
+                        row.source_id,
+                        str(model_ref),
+                    )
+                )
+        source_fields = _fields_for_model_ref(source_ref, model_fields, existing_model_fields)
+        target_fields = _fields_for_model_ref(target_ref, model_fields, existing_model_fields)
+        for child in row.child_rows:
+            source_name = str(child.get("source_field_name", ""))
+            target_name = str(child.get("target_field_name", ""))
+            if source_fields is not None and source_name not in source_fields:
+                issues.append(
+                    MappingIssue(
+                        "relation_source_field_missing", row.source_table, row.source_id, source_name
+                    )
+                )
+            if target_fields is not None and target_name not in target_fields:
+                issues.append(
+                    MappingIssue(
+                        "relation_target_field_missing", row.source_table, row.source_id, target_name
+                    )
+                )
+    return tuple(issues)
+
+
+def _fields_for_model_ref(
+    model_ref: object,
+    model_fields: Mapping[tuple[str, str], set[str]],
+    existing_model_fields: Mapping[int, frozenset[str]],
+) -> set[str] | None:
+    if isinstance(model_ref, TargetIdentityReference):
+        identity = (model_ref.source_table, model_ref.source_id)
+        return model_fields.get(identity, set())
+    if isinstance(model_ref, int):
+        fields = existing_model_fields.get(model_ref)
+        return set(fields) if fields is not None else None
+    return None
 
 
 def map_legacy_row(
@@ -102,12 +243,17 @@ def map_legacy_row(
             source_id=str(source_id),
             target_table=target_table,
             values=dictionary_values,
+            identity_aliases=(
+                ((source_table, str(dictionary_values["name"])),)
+                if source_table == "t_biz_domain" and dictionary_values["name"]
+                else ()
+            ),
         )
 
     if source_table == "t_dw_model_field":
         model_identity = ("t_dw_model", str(source.get("model_id", "")))
-        model_id = context.target_ids.get(model_identity)
-        unresolved = [] if model_id is not None else [("model_id", model_identity[1])]
+        unresolved: list[tuple[str, str]] = []
+        model_id = _resolve_target_identity(model_identity, context, unresolved, "model_id")
         values: dict[str, object] = {
             "model_id": model_id,
             "ordinal_position": source.get("seq", 0),
@@ -135,8 +281,8 @@ def map_legacy_row(
 
     if source_table == "t_dw_model_version":
         model_identity = ("t_dw_model", str(source.get("model_id", "")))
-        model_id = context.target_ids.get(model_identity)
-        unresolved = [] if model_id is not None else [("model_id", model_identity[1])]
+        unresolved: list[tuple[str, str]] = []
+        model_id = _resolve_target_identity(model_identity, context, unresolved, "model_id")
         values = {
             "model_id": model_id,
             "version": source.get("version", 1),
@@ -158,13 +304,9 @@ def map_legacy_row(
     if source_table == "t_dw_model_relation":
         src_identity = ("t_dw_model", str(source.get("src_model_id", "")))
         tgt_identity = ("t_dw_model", str(source.get("tgt_model_id", "")))
-        src_model_id = context.target_ids.get(src_identity)
-        tgt_model_id = context.target_ids.get(tgt_identity)
         unresolved = []
-        if src_model_id is None:
-            unresolved.append(("src_model_id", src_identity[1]))
-        if tgt_model_id is None:
-            unresolved.append(("tgt_model_id", tgt_identity[1]))
+        src_model_id = _resolve_target_identity(src_identity, context, unresolved, "src_model_id")
+        tgt_model_id = _resolve_target_identity(tgt_identity, context, unresolved, "tgt_model_id")
         try:
             source_fields = json.loads(source.get("src_fields") or "[]")
             target_fields = json.loads(source.get("tgt_fields") or "[]")
@@ -204,17 +346,14 @@ def map_legacy_row(
         )
 
     unresolved: list[tuple[str, str]] = []
-    references: dict[str, int | None] = {}
+    references: dict[str, int | TargetIdentityReference | None] = {}
     for source_field, identity_table, target_field in _MODEL_REFERENCES:
         identity_value = source.get(source_field)
         if identity_value in (None, ""):
             references[target_field] = None
             continue
         identity = (identity_table, str(identity_value))
-        target_id = context.target_ids.get(identity)
-        references[target_field] = target_id
-        if target_id is None:
-            unresolved.append((source_field, str(identity_value)))
+        references[target_field] = _resolve_target_identity(identity, context, unresolved, source_field)
 
     values: dict[str, object] = {
         "project_id": context.target_project_id,

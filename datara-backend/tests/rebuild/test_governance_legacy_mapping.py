@@ -5,7 +5,9 @@ import pytest
 from rebuild.governance.legacy_mapping import (
     LegacyMappingContext,
     LegacyMappingError,
+    TargetIdentityReference,
     map_legacy_row,
+    validate_i18_mapping_graph,
 )
 
 
@@ -71,9 +73,9 @@ def test_reports_unresolved_required_legacy_references_instead_of_guessing():
         LegacyMappingContext(target_project_id=41),
     )
 
-    assert mapped.values["layer_id"] is None
-    assert mapped.values["domain_id"] is None
-    assert mapped.values["engine_id"] is None
+    assert mapped.values["layer_id"] == TargetIdentityReference("t_dw_layer", "DWD")
+    assert mapped.values["domain_id"] == TargetIdentityReference("t_biz_domain", "交易")
+    assert mapped.values["engine_id"] == TargetIdentityReference("t_engine_type", "Doris")
     assert mapped.unresolved_references == (
         ("layer", "DWD"),
         ("biz_domain", "交易"),
@@ -137,6 +139,20 @@ def test_model_field_with_unresolved_model_identity_is_blocked():
 
     assert mapped.unresolved_references == (("model_id", "17"),)
     assert not mapped.ready_to_import
+
+
+def test_model_field_can_reference_a_model_scheduled_in_the_same_batch():
+    mapped = map_legacy_row(
+        "t_dw_model_field",
+        {"id": 29, "model_id": 17, "seq": 2, "name": "order_amount"},
+        LegacyMappingContext(
+            target_project_id=41,
+            pending_identities=frozenset({("t_dw_model", "17")}),
+        ),
+    )
+
+    assert mapped.values["model_id"] == TargetIdentityReference("t_dw_model", "17")
+    assert mapped.ready_to_import
 
 
 def test_maps_legacy_model_version_snapshot_without_rewriting_its_payload():
@@ -214,6 +230,81 @@ def test_maps_legacy_model_relation_and_preserves_field_pairs_as_child_rows():
     assert mapped.unresolved_references == ()
 
 
+def test_model_relation_can_reference_models_scheduled_in_the_same_batch():
+    mapped = map_legacy_row(
+        "t_dw_model_relation",
+        {"id": 91, "src_model_id": 17, "tgt_model_id": 18},
+        LegacyMappingContext(
+            target_project_id=41,
+            pending_identities=frozenset({("t_dw_model", "17"), ("t_dw_model", "18")}),
+        ),
+    )
+
+    assert mapped.values["source_model_id"] == TargetIdentityReference("t_dw_model", "17")
+    assert mapped.values["target_model_id"] == TargetIdentityReference("t_dw_model", "18")
+    assert mapped.ready_to_import
+
+
+def test_graph_validation_rejects_relation_fields_missing_from_either_model():
+    pending = frozenset({("t_dw_model", "17"), ("t_dw_model", "18")})
+    context = LegacyMappingContext(target_project_id=41, pending_identities=pending)
+    rows = [
+        map_legacy_row("t_dw_model", {"id": 17, "code": "orders", "name": "订单"}, context),
+        map_legacy_row("t_dw_model", {"id": 18, "code": "users", "name": "用户"}, context),
+        map_legacy_row(
+            "t_dw_model_field", {"id": 1, "model_id": 17, "seq": 1, "name": "order_id"}, context
+        ),
+        map_legacy_row(
+            "t_dw_model_field", {"id": 2, "model_id": 18, "seq": 1, "name": "user_id"}, context
+        ),
+        map_legacy_row(
+            "t_dw_model_relation",
+            {"id": 3, "src_model_id": 17, "tgt_model_id": 18, "src_fields": '["missing"]', "tgt_fields": '["user_id"]'},
+            context,
+        ),
+    ]
+
+    issues = validate_i18_mapping_graph(rows)
+
+    assert [(issue.code, issue.source_id, issue.detail) for issue in issues] == [
+        ("relation_source_field_missing", "3", "missing")
+    ]
+
+
+def test_graph_validation_checks_target_model_field_names_too():
+    context = LegacyMappingContext(
+        target_project_id=41,
+        pending_identities=frozenset({("t_dw_model", "17"), ("t_dw_model", "18")}),
+    )
+    rows = [
+        map_legacy_row("t_dw_model", {"id": 17, "code": "orders", "name": "订单"}, context),
+        map_legacy_row("t_dw_model", {"id": 18, "code": "users", "name": "用户"}, context),
+        map_legacy_row(
+            "t_dw_model_field", {"id": 1, "model_id": 17, "seq": 1, "name": "order_id"}, context
+        ),
+        map_legacy_row(
+            "t_dw_model_field", {"id": 2, "model_id": 18, "seq": 1, "name": "user_id"}, context
+        ),
+        map_legacy_row(
+            "t_dw_model_relation",
+            {
+                "id": 3,
+                "src_model_id": 17,
+                "tgt_model_id": 18,
+                "src_fields": '["order_id"]',
+                "tgt_fields": '["missing"]',
+            },
+            context,
+        ),
+    ]
+
+    issues = validate_i18_mapping_graph(rows)
+
+    assert [(issue.code, issue.source_id, issue.detail) for issue in issues] == [
+        ("relation_target_field_missing", "3", "missing")
+    ]
+
+
 @pytest.mark.parametrize(
     ("source_fields", "target_fields"),
     [("not-json", "[]"), ('["a"]', "[]"), ('[1]', '["a"]')],
@@ -271,3 +362,24 @@ def test_maps_legacy_model_dictionaries_with_explicit_project_scope(
     assert mapped.source_id == identity
     assert {key: mapped.values[key] for key in target_values} == target_values
     assert mapped.values["project_id"] == 41
+
+
+def test_domain_name_reference_uses_declared_unique_source_alias_not_name_matching():
+    domain = map_legacy_row(
+        "t_biz_domain",
+        {"id": 5, "name": "交易", "remark": "订单域"},
+        LegacyMappingContext(target_project_id=41),
+    )
+    model = map_legacy_row(
+        "t_dw_model",
+        {"id": 17, "code": "orders", "name": "订单", "biz_domain": "交易"},
+        LegacyMappingContext(
+            target_project_id=41,
+            pending_identities=frozenset({("t_biz_domain", "交易")}),
+        ),
+    )
+
+    assert domain.source_id == "5"
+    assert domain.identity_aliases == (("t_biz_domain", "交易"),)
+    assert model.values["domain_id"] == TargetIdentityReference("t_biz_domain", "交易")
+    assert model.ready_to_import
