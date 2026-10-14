@@ -34,3 +34,4 @@ p0_dump.txt
 .vscode/
 .idea/
 .DS_Store
+.worktrees/
