@@ -74,15 +74,15 @@
 |---|---|---|
 | I18 业务域、数仓分层、引擎字典 | `governance_domain`、`warehouse_layer`、`model_engine` | 按旧自然键保留源 ID 映射、名称、规则/方言、排序与启用状态；模型引用均以新主键关联。 |
 | I18 模型、字段、ER 关系、版本 | `warehouse_model`、`warehouse_model_field`、`warehouse_model_relation`、`warehouse_model_version` | 保存模型状态/版本/目标数据源/schema、画布坐标、字段类型精度/可空/默认值/主键/分区/字典引用、关系两端字段与关系类型、每个历史版本完整快照/变更说明/作者/时间；关系字段从 JSON 文本解析为规范化关系字段行，同时保留原始字段载荷供审计。物化 DDL 作为历史文本留档，不自动重放。 |
-| I19 元数据扩展、标签与挂接 | 现有 `asset`/`asset_field`/`tag`/`asset_tag` 加 `asset_metadata_extension` | 旧 `(ds_id, db_name, table_name)` 对齐统一 asset identity；业务域、owner、备注等扩展落专表；保留标签分类/颜色/说明和 target_type/target_key 关联，无法解析的旧 target 保留 unresolved 映射，不丢弃。 |
-| I20 指标及版本 | 现有 `semantic_metric` 加 `semantic_metric_version`、`metric_dimension` | 规范化指标代码/名称/类型/业务域/业务定义/技术定义/来源类型与引用/字段/输出表/任务/统计周期/维度/单位/状态/当前版本；保留版本快照、变更说明、作者和时间。 |
-| I21 质量规则、任务、任务规则关系、运行、异常、报告、告警 | 现有 `quality_rule`/`quality_run` 加 `quality_task`、`quality_task_rule`、`quality_exception`、`quality_report`、`quality_alarm_policy` | 保留旧 cron/enabled/状态/最近运行、规则集合及顺序、触发方式/起止时间/结果/分数/统计、异常目标/样例 SQL/命中数/处理状态、报告范围/周期/内容、告警指标/运算符/阈值/启用与触发时间。旧 QC 执行 API/engine 仍退役；本模型承接历史业务记录与新治理 API，不恢复旧 `/api/v1/qc/*`。 |
+| I19 元数据扩展、标签与挂接 | 现有 `asset`/`asset_field`/`tag`/`asset_tag` 加 `asset_metadata_extension`、`legacy_tag_reference` | 旧 `(ds_id, db_name, table_name)` 对齐统一 asset identity；业务域、owner、备注等扩展落专表；可解析的标签挂接落 asset-tag 关系，任意旧 target_type/key 及未解析引用落 `legacy_tag_reference` 并保留原键，不丢弃。 |
+| I20 指标及版本 | 现有 `semantic_metric` 加 `semantic_metric_profile`、`semantic_metric_version`、`semantic_metric_dimension` | 规范化指标代码/名称/类型/业务域/业务定义/技术定义/来源类型与引用/字段/输出表/任务/统计周期/维度/单位/状态/当前版本；profile 保存主实体暂未覆盖的旧属性，维度为独立关联行；保留版本快照、变更说明、作者和时间。 |
+| I21 质量规则、任务、任务规则关系、运行、异常、报告、告警 | 现有 `quality_rule`/`quality_run` 加 `quality_rule_definition`、`quality_task`、`quality_task_rule`、`quality_run_legacy_details`、`quality_exception`、`quality_report`、`quality_alarm_policy` | 规范化保留旧 rule 类型/参数/阈值/对象键，即使目标 asset 未能解析；保存 cron/enabled/状态/最近运行、规则集合及顺序、触发方式/起止时间/结果/分数/统计、异常目标/样例 SQL/命中数/处理状态、报告范围/周期/内容、告警指标/运算符/阈值/启用与触发时间。旧 QC 执行 API/engine 仍退役；本模型承接历史业务记录与新治理 API，不恢复旧 `/api/v1/qc/*`。 |
 | I22 标准元素、码表/码值、命名规则、映射、审批、校验报告 | 现有 `standard` 加 `standard_element`、`standard_code_set`、`standard_code_value`、`standard_naming_rule`、`standard_mapping`、`standard_approval`、`standard_check_report` | 保留中英文名称、数据类型/长度、标准状态/版本/负责人、码值编码/名称/顺序、命名表达式及适用对象、映射目标/元素或码表/差异状态、审批业务类型/动作/申请载荷/意见/状态/时间、检查范围/汇总/问题清单/结果。码值与父码表建立 FK，映射到标准元素/码表建立可空 FK；历史审批目标保留 source identity。 |
 | I23 用户及全局角色/权限映射 | 既有 `rebuild_user`/`rebuild_project_member` + `legacy_identity_mapping` | `t_user` 记录登录名、角色和状态；保留稳定源 ID 并逐项映射旧静态角色权限至 R1 已冻结的 `Role/Permission/ROLE_PERMISSIONS` 契约，不另造动态 RBAC 真源。只有在完整源盘点找到旧项目绑定记录时才迁移项目成员关系；否则不伪造历史成员关联。凭据仅在算法/格式兼容并通过验证时迁移哈希，否则走重置，不迁移明文口令。不将旧身份表作为新 Backend 运行时真源。 |
 
 所有迁移实体统一附 `source_system`、`source_table`、`source_id`（组合唯一）、`migration_batch_id`、`created_at`、`updated_at`、`generated_at`；业务记录按本体保存原创建/更新时间，`generated_at` 表示新系统迁移/生成时点，批次时间单独记录。目标表使用外键、唯一约束及稳定自然键；多对多关系拆为关联表。源表主键仅作为来源键，不复用为目标主键。迁移项保存源/目标键、状态、校验摘要、错误及重试次数，保证可重入、可定位、可回滚。每表校验精确行数、字段规范化摘要、源 ID 覆盖率、关系条数、孤儿数、版本/审批链完整率与时间戳；目标不得少于任一来源记录，冲突必须显式报告，不可静默覆盖。迁移前做目标 schema 快照；回滚只能删除本迁移批次拥有且未被新业务引用的目标记录，绝不触碰旧库。
 
-迁移排序：身份与项目键映射 → 字典/资产身份 → 模型及字段/关系/版本、元数据扩展/标签 → 指标及维度/版本 → 标准元素/码表/码值/规则/映射 → 审批/校验报告 → 质量规则/任务关联/运行/异常/报告/告警 → 全域关系与总量核对。用户/角色数据映射先 dry-run；遇到登录名冲突、项目归属不唯一、权限点无目标或凭据算法不兼容时停止对应记录组，保留已提交的无关组并提交裁定，不进行猜测合并。
+迁移排序：身份与项目键映射 → 字典/资产身份 → 模型及字段/关系/版本、元数据扩展/标签引用 → 指标及 profile/维度/版本 → 标准元素/码表/码值/规则/映射 → 审批/校验报告 → 质量规则定义/任务关联/运行细节/异常/报告/告警 → 全域关系与总量核对。用户/角色数据映射先 dry-run；遇到登录名冲突、项目归属不唯一、权限点无目标或凭据算法不兼容时停止对应记录组，保留已提交的无关组并提交裁定，不进行猜测合并。
 
 ### 5.3 采集、解析、规则执行边界
 

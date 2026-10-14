@@ -120,7 +120,7 @@
 
 1. 复核并冻结 R3-S8 源/目标 schema 指纹、表列/键/外键、精确行数及所有实体字段映射；补足 I18-I23 完整性矩阵和 I23 用户/角色/权限映射。只读检查，不读取/输出口令明文。
 2. 本地先为新实体/API/migration contract 编写失败测试：来源组合唯一键、外键与级联策略、项目授权、统一时间戳、历史版本完整性、孤儿拦截、幂等与重试、回滚隔离及错误批次续跑。
-3. 按设计 §5.2 扩展规范化 ORM：I18 domain/layer/engine/model/field/relation/version；I19 asset extension/tagging；I20 metric dimension/version；I21 quality task/task-rule/run/exception/report/alarm policy；I22 standard element/code-set/code-value/naming/mapping/approval/check report；I23 identity mapping。复用现有 asset、tag、quality_rule/run、standard、semantic_metric，不造平行主实体。
+3. 按设计 §5.2 扩展规范化 ORM：I18 domain/layer/engine/model/field/relation/version；I19 asset extension/tagging/unresolved tag reference；I20 metric profile/dimension/version；I21 rule definition/task/task-rule/run legacy details/exception/report/alarm policy；I22 standard element/code-set/code-value/naming/mapping/approval/check report；I23 identity mapping。复用现有 asset、tag、quality_rule/run、standard、semantic_metric，不造平行主实体；无法解析的对象键不得创建虚构资产。
 4. 新增 additive migration 与 repository/service/API；将每个源行通过 `(source_system, source_table, source_id)` 映射到目标 ID，子表/关系按明确外键顺序导入。对 I21 当前零行表仍须建模并测试空表迁移/后续 API 契约；“当前无数据”不等于忽略业务能力。
 5. 本地运行定向、全量 pytest，Ruff、compileall、Vue 类型检查和 migration offline/dry-run；检查旧库只读脚本、schema guard 和禁止旧 `api.*`/`common.*` 隐式依赖。更新 R3-S9 本机证据。
 6. 在参考产品风格隔离验证页增加可操作业务场景和稳定 fixture；执行控件级 UI 流程并验证后端 API 结果。使用 192.168.1.9 非冲突端口部署；页面不得持有统一验证 key，仅注入受限短期 token。
