@@ -112,23 +112,31 @@ def _compare_table(inspector, expected_table) -> list[str]:
     if actual_pk != expected_pk:
         conflicts.append(f"{expected_table.name}: incompatible primary key")
 
-    actual_indexes = {
-        item["name"]: tuple(item["column_names"] or ()) for item in inspector.get_indexes(expected_table.name)
-    }
+    actual_indexes = tuple(inspector.get_indexes(expected_table.name))
     for index in expected_table.indexes:
         expected_columns = tuple(column.name for column in index.columns)
-        if actual_indexes.get(index.name) != expected_columns:
+        # MySQL limits index identifiers to 64 characters and SQLAlchemy's
+        # generated names are shortened with a deterministic suffix. Names
+        # are not part of the physical index contract; ordered columns and
+        # uniqueness are. Compare those properties so a valid MySQL schema
+        # does not fail preflight solely because its identifier was shortened.
+        if not any(
+            tuple(item.get("column_names") or ()) == expected_columns
+            and bool(item.get("unique")) == bool(index.unique)
+            for item in actual_indexes
+        ):
             conflicts.append(f"{expected_table.name}: missing or incompatible index {index.name}")
 
-    actual_unique = {
-        item.get("name"): tuple(item.get("column_names") or ())
-        for item in inspector.get_unique_constraints(expected_table.name)
-    }
+    actual_unique = tuple(inspector.get_unique_constraints(expected_table.name))
     for constraint in expected_table.constraints:
         if constraint.__class__.__name__ != "UniqueConstraint":
             continue
         expected_columns = tuple(column.name for column in constraint.columns)
-        if actual_unique.get(constraint.name) != expected_columns:
+        if not any(
+            tuple(item.get("column_names") or ()) == expected_columns
+            and (constraint.name is None or item.get("name") == constraint.name)
+            for item in actual_unique
+        ):
             conflicts.append(f"{expected_table.name}: missing or incompatible unique constraint {constraint.name}")
 
     actual_fks = {

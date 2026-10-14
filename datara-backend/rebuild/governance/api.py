@@ -178,7 +178,9 @@ def build_governance_router(
                                 "source_table": entry.source_table,
                                 "source_id": entry.source_id,
                                 "disposition": entry.disposition,
+                                "disposition_reason": entry.disposition_reason,
                                 "fingerprint": entry.fingerprint,
+                                "mapping_notes": list(entry.mapping_notes),
                             }
                             for entry in result.plan.entries
                         ],

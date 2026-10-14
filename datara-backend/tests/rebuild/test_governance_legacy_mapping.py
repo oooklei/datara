@@ -307,24 +307,138 @@ def test_graph_validation_checks_target_model_field_names_too():
 
 @pytest.mark.parametrize(
     ("source_fields", "target_fields"),
-    [("not-json", "[]"), ('["a"]', "[]"), ('[1]', '["a"]')],
+    [("field name", "[]"), ('["a"]', "[]"), ('[1]', '["a"]')],
 )
-def test_rejects_malformed_legacy_relation_field_pairs(source_fields, target_fields):
-    with pytest.raises(LegacyMappingError, match="relation field pairs"):
-        map_legacy_row(
-            "t_dw_model_relation",
-            {
-                "id": 91,
-                "src_model_id": 17,
-                "tgt_model_id": 18,
-                "src_fields": source_fields,
-                "tgt_fields": target_fields,
-            },
-            LegacyMappingContext(
-                target_project_id=41,
-                target_ids={("t_dw_model", "17"): 501, ("t_dw_model", "18"): 502},
-            ),
-        )
+def test_reports_malformed_legacy_relation_field_pairs_as_blocking_mapping_issues(source_fields, target_fields):
+    mapped = map_legacy_row(
+        "t_dw_model_relation",
+        {
+            "id": 91,
+            "src_model_id": 17,
+            "tgt_model_id": 18,
+            "src_fields": source_fields,
+            "tgt_fields": target_fields,
+        },
+        LegacyMappingContext(
+            target_project_id=41,
+            target_ids={("t_dw_model", "17"): 501, ("t_dw_model", "18"): 502},
+        ),
+    )
+
+    assert mapped.child_rows == ()
+    assert [(issue.code, issue.source_id) for issue in mapped.mapping_issues] == [
+        ("invalid_relation_field_pairs", "91")
+    ]
+    assert "not interpreted" in mapped.mapping_issues[0].detail or "must contain" in mapped.mapping_issues[0].detail
+
+
+def test_approved_bare_relation_field_pair_is_mapped_to_singleton_child_row():
+    mapped = map_legacy_row(
+        "t_dw_model_relation",
+        {"id": 91, "src_model_id": 17, "tgt_model_id": 18, "src_fields": "order_id", "tgt_fields": "dt"},
+        LegacyMappingContext(
+            target_project_id=41,
+            pending_identities=frozenset({("t_dw_model", "17"), ("t_dw_model", "18")}),
+        ),
+    )
+
+    assert mapped.child_rows == (
+        {"ordinal_position": 1, "source_field_name": "order_id", "target_field_name": "dt"},
+    )
+    assert mapped.mapping_issues == ()
+
+
+def test_approved_relation_field_aliases_are_endpoint_scoped_and_preserve_source_names():
+    context = LegacyMappingContext(
+        target_project_id=41,
+        pending_identities=frozenset({("t_dw_model", "2"), ("t_dw_model", "3")}),
+        approved_relation_field_aliases={
+            ("1", "source", "order_id"): "order_no",
+            ("2", "target", "dt"): "order_date",
+        },
+    )
+
+    first = map_legacy_row(
+        "t_dw_model_relation",
+        {"id": 1, "src_model_id": 2, "tgt_model_id": 3, "src_fields": "order_id", "tgt_fields": "order_id"},
+        context,
+    )
+    second = map_legacy_row(
+        "t_dw_model_relation",
+        {"id": 2, "src_model_id": 3, "tgt_model_id": 4, "src_fields": "order_id", "tgt_fields": "dt"},
+        context,
+    )
+    unrelated = map_legacy_row(
+        "t_dw_model_relation",
+        {"id": 3, "src_model_id": 3, "tgt_model_id": 4, "src_fields": "order_id", "tgt_fields": "dt"},
+        context,
+    )
+
+    assert first.child_rows[0]["source_field_name"] == "order_no"
+    assert first.mapping_notes == ({"endpoint": "source", "original_field": "order_id", "mapped_field": "order_no"},)
+    assert second.child_rows[0]["target_field_name"] == "order_date"
+    assert second.mapping_notes == ({"endpoint": "target", "original_field": "dt", "mapped_field": "order_date"},)
+    assert unrelated.child_rows[0]["target_field_name"] == "dt"
+    assert unrelated.mapping_notes == ()
+
+
+def test_dry_run_keeps_invalid_relation_visible_as_blocked_not_fatal():
+    from datetime import datetime, timezone
+
+    from rebuild.governance.legacy_dry_run import I18TargetSnapshot, build_i18_dry_run_plan
+
+    row = map_legacy_row(
+        "t_dw_model_relation",
+        {"id": 91, "src_model_id": 17, "tgt_model_id": 18, "src_fields": "field name", "tgt_fields": "dt"},
+        LegacyMappingContext(
+            target_project_id=41,
+            pending_identities=frozenset({("t_dw_model", "17"), ("t_dw_model", "18")}),
+        ),
+    )
+    snapshot = I18TargetSnapshot(
+        project_id=41,
+        captured_at=datetime.now(timezone.utc),
+        digest="a" * 64,
+        row_fingerprints={},
+        target_ids={},
+        model_fields={},
+        unique_key_owners={},
+    )
+
+    plan = build_i18_dry_run_plan([row], project_id=41, snapshot=snapshot)
+
+    assert plan.counts["blocked"] == 1
+    assert plan.entries[0].source_id == "91"
+    assert plan.entries[0].issues[0].code == "invalid_relation_field_pairs"
+    assert plan.ready_to_import is False
+
+
+def test_exact_user_approved_domain_alias_resolves_but_other_values_stay_unresolved():
+    from rebuild.governance.legacy_migration_service import I18_APPROVED_REFERENCE_ALIASES
+
+    context = LegacyMappingContext(
+        target_project_id=41,
+        pending_identities=frozenset({("t_biz_domain", "交易域")}),
+        approved_reference_aliases=I18_APPROVED_REFERENCE_ALIASES,
+    )
+    approved = map_legacy_row(
+        "t_dw_model",
+        {"id": 17, "code": "orders", "name": "订单", "biz_domain": "交易"},
+        context,
+    )
+    unknown = map_legacy_row(
+        "t_dw_model",
+        {"id": 18, "code": "users", "name": "用户", "biz_domain": "其他"},
+        context,
+    )
+
+    assert approved.values["domain_id"] == TargetIdentityReference("t_biz_domain", "交易域")
+    assert approved.mapping_notes == (
+        {"field": "biz_domain", "original_value": "交易", "resolved_identity": "交易域"},
+    )
+    assert approved.unresolved_references == ()
+    assert unknown.values["domain_id"] == TargetIdentityReference("t_biz_domain", "其他")
+    assert unknown.unresolved_references == (("biz_domain", "其他"),)
 
 
 @pytest.mark.parametrize(

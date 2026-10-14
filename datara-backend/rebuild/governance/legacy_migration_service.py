@@ -14,6 +14,18 @@ from rebuild.governance.legacy_source_reader import (
 )
 
 
+# User-approved exact identity alias for the observed I18 source data. This is
+# deliberately not fuzzy matching and must not be generalized to other values.
+I18_APPROVED_REFERENCE_ALIASES = {
+    ("t_biz_domain", "交易"): ("t_biz_domain", "交易域"),
+}
+I18_APPROVED_RELATION_FIELD_ALIASES = {
+    ("1", "source", "order_id"): "order_no",
+    ("2", "target", "dt"): "order_date",
+}
+I18_APPROVED_SKIP_REASON = "approved_missing_model_reference"
+
+
 @dataclass(frozen=True)
 class I18LegacyDryRunResult:
     source_digest: str
@@ -60,13 +72,30 @@ def build_i18_legacy_dry_run(
         target_project_id=project_id,
         target_ids=target_snapshot.target_ids,
         pending_identities=frozenset(pending_identities),
+        approved_reference_aliases=I18_APPROVED_REFERENCE_ALIASES,
+        approved_relation_field_aliases=I18_APPROVED_RELATION_FIELD_ALIASES,
     )
     mapped_rows = [
         map_legacy_row(table_name, source_row, context)
         for table_name in I18_SOURCE_COLUMNS
         for source_row in source_snapshot.rows[table_name]
     ]
-    plan = build_i18_dry_run_plan(mapped_rows, project_id=project_id, snapshot=target_snapshot)
+    version_rows = [
+        row for row in source_snapshot.rows["t_dw_model_version"] if str(row.get("id")) == "1"
+    ]
+    if version_rows:
+        model_one_exists = any(str(row.get("id")) == "1" for row in source_snapshot.rows["t_dw_model"])
+        if len(version_rows) != 1 or str(version_rows[0].get("model_id")) != "1" or model_one_exists:
+            raise ValueError("approved skip precondition changed for t_dw_model_version#1")
+    approved_skips = (
+        {("t_dw_model_version", "1"): I18_APPROVED_SKIP_REASON} if version_rows else {}
+    )
+    plan = build_i18_dry_run_plan(
+        mapped_rows,
+        project_id=project_id,
+        snapshot=target_snapshot,
+        approved_skips=approved_skips,
+    )
     return I18LegacyDryRunResult(
         source_digest=source_snapshot.digest,
         source_captured_at=source_snapshot.captured_at,

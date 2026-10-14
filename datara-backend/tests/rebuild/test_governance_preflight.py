@@ -102,3 +102,45 @@ def test_mysql_tinyint_one_reflects_boolean_but_other_tinyint_sizes_do_not():
 
     assert _types_compatible(TINYINT(display_width=1), Boolean())
     assert not _types_compatible(TINYINT(display_width=4), Boolean())
+
+
+def test_preflight_compares_mysql_generated_identifiers_by_schema_shape():
+    from rebuild.governance.migration_preflight import _compare_table
+
+    engine = isolated_engine()
+    MigrationRunner(engine, R3_GOVERNANCE_MIGRATIONS).apply()
+    delegate = inspect(engine)
+
+    class MySQLLikeInspector:
+        def __getattr__(self, name):
+            return getattr(delegate, name)
+
+        def get_indexes(self, table_name):
+            # MySQL shortens long generated identifiers; their physical
+            # contract is still the ordered columns and uniqueness.
+            return [
+                {**index, "name": "mysql_shortened_identifier"}
+                for index in delegate.get_indexes(table_name)
+            ]
+
+        def get_unique_constraints(self, table_name):
+            table = next(table for table in LEGACY_CARRY_FORWARD_TABLES if table.name == table_name)
+            unnamed = {
+                tuple(column.name for column in constraint.columns)
+                for constraint in table.constraints
+                if constraint.__class__.__name__ == "UniqueConstraint" and constraint.name is None
+            }
+            return [
+                {
+                    **constraint,
+                    "name": "mysql_generated_name"
+                    if tuple(constraint.get("column_names") or ()) in unnamed
+                    else constraint.get("name"),
+                }
+                for constraint in delegate.get_unique_constraints(table_name)
+            ]
+
+    table = next(
+        table for table in LEGACY_CARRY_FORWARD_TABLES if table.name == "rebuild_governance_asset_metadata_extension"
+    )
+    assert _compare_table(MySQLLikeInspector(), table) == []

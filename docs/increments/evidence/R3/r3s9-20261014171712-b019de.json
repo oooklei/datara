@@ -1,0 +1,25 @@
+{
+  "run_id": "R3S9-20261014171712-b019de",
+  "started_at": "2026-10-14T17:17:12.101Z",
+  "timezone": "Asia/Shanghai",
+  "url": "http://192.168.1.9:18091/rebuild-validation-r3-s9.html",
+  "browser": null,
+  "project_id": null,
+  "actions": [],
+  "checks": [
+    {
+      "name": "protected-runner-token-exchange",
+      "pass": true,
+      "http_status": 200
+    }
+  ],
+  "relevant_responses": [],
+  "errors": [
+    {
+      "kind": "runner",
+      "message": "browserType.launch: Executable doesn't exist at C:\\Users\\Administrator\\AppData\\Local\\ms-playwright\\chromium_headless_shell-1248\\chrome-headless-shell-win64\\chrome-headless-shell.exe\n╔════════════════════════════════════════════════════════════╗\n║ Looks like Playwright was just installed or updated.       ║\n║ Please run the following command to download new browsers: ║\n║                                                            ║\n║     npx playwright install                                 ║\n║                                                            ║\n║ <3 Playwright Team                                         ║\n╚════════════════════════════════════════════════════════════╝"
+    }
+  ],
+  "outcome": "FAIL",
+  "secrets_recorded": false
+}

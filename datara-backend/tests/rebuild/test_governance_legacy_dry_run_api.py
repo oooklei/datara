@@ -85,9 +85,76 @@ def test_i18_dry_run_api_returns_snapshot_evidence_and_plan_without_mutation(mon
     assert data["source"]["schema"] == LEGACY_SCHEMA
     assert data["source"]["digest"] == "b" * 64
     assert data["target"]["project_id"] == project_id
-    assert data["plan"]["counts"] == {"create": 0, "unchanged": 0, "conflict": 0, "blocked": 0}
+    assert data["plan"]["counts"] == {
+        "create": 0,
+        "unchanged": 0,
+        "conflict": 0,
+        "blocked": 0,
+        "skipped": 0,
+    }
     assert data["plan"]["ready_to_import"] is True
     assert source_entities == 0
+
+
+def test_i18_dry_run_api_serializes_approved_skip_and_mapping_notes(monkeypatch):
+    from rebuild.governance import api as governance_api
+    from rebuild.governance.legacy_dry_run import DryRunEntry, I18DryRunPlan
+    from rebuild.governance.legacy_migration_service import I18LegacyDryRunResult
+
+    client, app, headers, project_id, _denied_project_id = _client(monkeypatch)
+    captured_at = datetime(2026, 10, 15, tzinfo=timezone.utc)
+    plan = I18DryRunPlan(
+        project_id=project_id,
+        source_count=2,
+        counts={"create": 1, "unchanged": 0, "conflict": 0, "blocked": 0, "skipped": 1},
+        entries=(
+            DryRunEntry(
+                "t_dw_model_relation",
+                "1",
+                "create",
+                "a" * 64,
+                mapping_notes=({"endpoint": "source", "from": "order_id", "to": "order_no"},),
+            ),
+            DryRunEntry(
+                "t_dw_model_version",
+                "1",
+                "skipped",
+                "b" * 64,
+                disposition_reason="approved_missing_model_reference",
+            ),
+        ),
+        import_order=(("t_dw_model_relation", "1"),),
+        blocking_issues=(),
+        snapshot_digest="c" * 64,
+        snapshot_captured_at=captured_at,
+    )
+    monkeypatch.setattr(
+        governance_api,
+        "build_i18_legacy_dry_run",
+        lambda project_id, source_snapshot, target_snapshot: I18LegacyDryRunResult(
+            source_digest=source_snapshot.digest,
+            source_captured_at=source_snapshot.captured_at,
+            target_digest=target_snapshot.digest,
+            target_captured_at=target_snapshot.captured_at,
+            plan=plan,
+        ),
+    )
+    try:
+        response = client.post(
+            f"/api/v1/rebuild/governance/projects/{project_id}/legacy/i18/dry-run",
+            headers=headers,
+        )
+    finally:
+        client.__exit__(None, None, None)
+
+    assert response.status_code == 200
+    serialized_plan = response.json()["data"]["plan"]
+    assert serialized_plan["counts"]["skipped"] == 1
+    assert serialized_plan["entries"][0]["mapping_notes"] == [
+        {"endpoint": "source", "from": "order_id", "to": "order_no"}
+    ]
+    assert serialized_plan["entries"][1]["disposition"] == "skipped"
+    assert serialized_plan["entries"][1]["disposition_reason"] == "approved_missing_model_reference"
 
 
 def test_i18_dry_run_api_checks_project_permission_before_opening_source(monkeypatch):

@@ -52,7 +52,11 @@ async function main() {
     });
     const token = exchangeBody.data.token;
 
-    browser = await chromium.launch({ headless: true });
+    const launchOptions = { headless: true };
+    if (process.env.DATARA_PLAYWRIGHT_EXECUTABLE) {
+      launchOptions.executablePath = process.env.DATARA_PLAYWRIGHT_EXECUTABLE;
+    }
+    browser = await chromium.launch(launchOptions);
     report.browser = `${browser.browserType().name()} ${browser.version()}`;
     const context = await browser.newContext({ viewport: { width: 1360, height: 720 }, acceptDownloads: false });
     const page = await context.newPage();
@@ -81,17 +85,36 @@ async function main() {
     actions.push({ name: 'select-project-in-page', project_id: report.project_id, at: new Date().toISOString() });
     await page.getByTestId('run-dry-run').click();
     actions.push({ name: 'click-read-only-i18-preview', at: new Date().toISOString() });
-    await page.waitForFunction(() => ['预检完成 · 只读', '预检未完成'].includes(document.querySelector('#runtimeStatus')?.textContent), null, { timeout: 120000 });
+    await page.waitForFunction(() => ['complete', 'failed'].includes(document.querySelector('#runtimeStatus')?.dataset.state), null, { timeout: 120000 });
 
-    const resultStatus = (await page.locator('#runtimeStatus').innerText()).trim();
+    const resultStatus = await page.locator('#runtimeStatus').getAttribute('data-state');
     const notice = (await page.locator('#notice').innerText()).trim();
-    const stats = await page.evaluate(() => ['sourceRows', 'targetRows', 'plannedRows', 'blockedRows'].map(id => document.querySelector(`#${id}`)?.textContent?.trim()));
+    const stats = await page.evaluate(() => ['sourceRows', 'targetRows', 'plannedRows', 'skippedRows', 'blockedRows'].map(id => document.querySelector(`#${id}`)?.textContent?.trim()));
+    const visibleIssues = await page.locator('#issueList .issue').allTextContents();
+    const planRows = await page.locator('#planRows tr').allTextContents();
+    const issueCodeCounts = visibleIssues.reduce((counts, text) => {
+      const code = text.trim().split(/\s+/)[0] || 'unclassified';
+      counts[code] = (counts[code] || 0) + 1;
+      return counts;
+    }, {});
     check(checks, 'dry-run-api-returned-success', responses.some(item => item.name === 'i18-dry-run' && item.status === 200), {
       status: responses.find(item => item.name === 'i18-dry-run')?.status ?? null,
+      failure_notice: responses.some(item => item.name === 'i18-dry-run' && item.status >= 400) ? notice : undefined,
     });
-    check(checks, 'page-rendered-live-dry-run-result', resultStatus === '预检完成 · 只读' && stats.every(value => value && value !== '—'), {
+    check(checks, 'page-rendered-live-dry-run-result', resultStatus === 'complete' && stats.every(value => value && value !== '—'), {
       runtime_status: resultStatus,
       stats_rendered: stats.every(value => value && value !== '—'),
+      rendered_counts: stats,
+      visible_issue_count: visibleIssues.length,
+      issue_code_counts: issueCodeCounts,
+      issue_samples: visibleIssues.slice(0, 12),
+    });
+    check(checks, 'approved-orphan-version-is-visible-as-skipped', Number(stats[3]) === 1 && planRows.some(row => row.includes('t_dw_model_version') && row.includes('skipped') && row.includes('approved_missing_model_reference')), {
+      skipped_count: stats[3],
+      matching_rows: planRows.filter(row => row.includes('t_dw_model_version')),
+    });
+    check(checks, 'approved-relation-field-mappings-are-visible', planRows.some(row => row.includes('order_id') && row.includes('order_no')) && planRows.some(row => row.includes('dt') && row.includes('order_date')), {
+      mapping_rows: planRows.filter(row => row.includes('order_id') || row.includes('order_date')),
     });
     check(checks, 'page-reported-no-target-import', notice.includes('未执行迁移'));
     check(checks, 'no-browser-errors', errors.length === 0, { error_count: errors.length });

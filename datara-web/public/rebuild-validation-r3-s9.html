@@ -11,7 +11,7 @@
     .intro{padding:22px 24px;border:1px solid #dce6f0;border-radius:16px;background:linear-gradient(115deg,#fff,#f6faff);margin-bottom:18px}.intro h2{font-size:18px;margin:0 0 7px}.intro p{color:#60758b;margin:0;line-height:1.7;max-width:900px}
     .grid{display:grid;grid-template-columns:330px minmax(0,1fr);gap:18px;align-items:start}.card{background:#fff;border:1px solid #dce5ef;border-radius:14px;box-shadow:0 3px 12px #203b5710}.card-head{padding:17px 19px;border-bottom:1px solid #edf1f5}.card-head h3{font-size:15px;margin:0}.card-body{padding:19px}.form-row{margin-bottom:16px}label{display:block;font-size:12px;font-weight:700;color:#4d6379;margin-bottom:7px}select,button{font:inherit}select{width:100%;height:40px;padding:0 11px;border:1px solid #ccd8e4;border-radius:8px;background:#fff;color:#20364e}button{border:0;border-radius:8px;padding:10px 14px;font-weight:700;cursor:pointer}button:disabled{opacity:.5;cursor:not-allowed}.primary{background:#1769aa;color:#fff}.secondary{background:#edf3f8;color:#33506c}.actions{display:flex;gap:9px;flex-wrap:wrap}.hint{font-size:12px;line-height:1.6;color:#71859a;margin:14px 0 0}.scope{padding:12px;background:#f5f8fb;border-radius:9px;color:#52697f;font-size:12px;line-height:1.75;margin-top:15px}.scope strong{color:#294662}
     .notice{display:none;padding:12px 14px;border-radius:9px;font-size:13px;line-height:1.5;margin-bottom:16px}.notice.show{display:block}.notice.info{background:#eef6ff;color:#275b88}.notice.success{background:#eaf8f0;color:#236744}.notice.error{background:#fff0ef;color:#a3322a}
-    .stats{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:11px;padding:17px 19px;border-bottom:1px solid #edf1f5}.stat{padding:12px;background:#f7f9fc;border-radius:9px}.stat span{display:block;color:#70849a;font-size:11px}.stat strong{display:block;font-size:18px;margin-top:5px;color:#1a3d60;overflow-wrap:anywhere}.stat.digest strong{font-size:12px;line-height:1.5}
+    .stats{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:11px;padding:17px 19px;border-bottom:1px solid #edf1f5}.stat{padding:12px;background:#f7f9fc;border-radius:9px}.stat span{display:block;color:#70849a;font-size:11px}.stat strong{display:block;font-size:18px;margin-top:5px;color:#1a3d60;overflow-wrap:anywhere}.stat.digest strong{font-size:12px;line-height:1.5}
     .section{padding:17px 19px}.section h4{margin:0 0 12px;font-size:13px}.meta{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}.meta-item{padding:10px 12px;border:1px solid #edf1f5;border-radius:8px;min-width:0}.meta-item span{display:block;font-size:11px;color:#789}.meta-item strong{display:block;font-size:12px;margin-top:5px;word-break:break-word}.table-wrap{overflow:auto;border:1px solid #e5ebf1;border-radius:9px}table{width:100%;border-collapse:collapse;font-size:12px;min-width:620px}th,td{text-align:left;padding:10px 12px;border-bottom:1px solid #edf1f5}th{color:#60758b;background:#f8fafc;font-weight:700}tbody tr:last-child td{border-bottom:0}.pill{display:inline-block;padding:3px 8px;border-radius:99px;background:#edf3f8;color:#46627d}.pill.create{background:#e9f7ef;color:#26744b}.pill.blocked,.pill.conflict{background:#fff1e7;color:#a05216}.empty{text-align:center;color:#8394a5;padding:26px}.issues{display:grid;gap:8px}.issue{padding:10px 12px;border-left:3px solid #e3a34a;background:#fff9f1;border-radius:5px;font-size:12px;line-height:1.6}.muted{color:#7b8da0;font-size:12px}
     @media(max-width:850px){.grid{grid-template-columns:1fr}.stats{grid-template-columns:repeat(2,minmax(0,1fr))}.top{align-items:flex-start;flex-direction:column}}
   </style>
@@ -29,7 +29,7 @@
         <div class="scope"><strong>来源范围</strong><br>t_biz_domain · t_dw_layer · t_engine_type · t_dw_model · t_dw_model_field · t_dw_model_relation · t_dw_model_version<br><strong>执行边界</strong><br>只读源事务 · 项目级目标快照 · 不执行导入</div>
       </div></section>
       <section class="card" aria-labelledby="resultTitle"><div class="card-head"><h3 id="resultTitle">预检结果</h3></div>
-        <div class="stats" aria-label="预检计数"><div class="stat"><span>来源记录</span><strong id="sourceRows" data-testid="source-rows">—</strong></div><div class="stat"><span>目标记录</span><strong id="targetRows" data-testid="target-rows">—</strong></div><div class="stat"><span>待新增 / 未变</span><strong id="plannedRows" data-testid="planned-rows">—</strong></div><div class="stat"><span>冲突 / 阻断</span><strong id="blockedRows" data-testid="blocked-rows">—</strong></div></div>
+        <div class="stats" aria-label="预检计数"><div class="stat"><span>来源记录</span><strong id="sourceRows" data-testid="source-rows">—</strong></div><div class="stat"><span>目标记录</span><strong id="targetRows" data-testid="target-rows">—</strong></div><div class="stat"><span>待新增 / 未变</span><strong id="plannedRows" data-testid="planned-rows">—</strong></div><div class="stat"><span>批准跳过</span><strong id="skippedRows" data-testid="skipped-rows">—</strong></div><div class="stat"><span>冲突 / 阻断</span><strong id="blockedRows" data-testid="blocked-rows">—</strong></div></div>
         <section class="section"><h4>快照摘要</h4><div class="meta"><div class="meta-item"><span>源端采集时间（上海）</span><strong id="sourceCapturedAt" data-testid="source-captured-at">尚未执行</strong></div><div class="meta-item"><span>目标采集时间（上海）</span><strong id="targetCapturedAt" data-testid="target-captured-at">尚未执行</strong></div><div class="meta-item"><span>来源摘要</span><strong id="sourceDigest" data-testid="source-digest">—</strong></div><div class="meta-item"><span>目标摘要</span><strong id="targetDigest" data-testid="target-digest">—</strong></div></div></section>
         <section class="section"><h4>迁移计划明细</h4><div class="table-wrap"><table><thead><tr><th>来源表</th><th>来源主键</th><th>目标实体</th><th>计划</th><th>说明</th></tr></thead><tbody id="planRows" data-testid="plan-rows"><tr><td class="empty" colspan="5">请先选择目标项目并执行只读预检</td></tr></tbody></table></div></section>
         <section class="section"><h4>需处理的问题</h4><div id="issueList" class="issues" data-testid="issue-list"><div class="muted">尚无预检结果</div></div></section>
@@ -53,7 +53,7 @@
       return payload.data;
     };
     function clearResult() {
-      ['sourceRows','targetRows','plannedRows','blockedRows'].forEach(id=>$(id).textContent='—');
+      ['sourceRows','targetRows','plannedRows','skippedRows','blockedRows'].forEach(id=>$(id).textContent='—');
       ['sourceDigest','targetDigest'].forEach(id=>$(id).textContent='—');
       ['sourceCapturedAt','targetCapturedAt'].forEach(id=>$(id).textContent='尚未执行');
       $('planRows').innerHTML='<tr><td class="empty" colspan="5">请先执行只读预检</td></tr>';
@@ -69,10 +69,10 @@
         select.innerHTML=result.list.length ? result.list.map(p=>`<option value="${Number(p.id)}">${escapeHtml(p.name)} · #${Number(p.id)}</option>`).join('') : '<option value="">没有可访问项目</option>';
         state.projectId=result.list[0]?.id ?? null;
         $('runDryRun').disabled=!state.projectId;
-        $('runtimeStatus').textContent='验证身份已就绪';
+        $('runtimeStatus').textContent='验证身份已就绪';$('runtimeStatus').dataset.state='ready';
         notify(result.list.length ? `已载入 ${result.list.length} 个可访问项目；默认选择第一个项目，可按本次预检范围切换。` : '当前身份没有可访问项目。','info');
       } catch(error) {
-        $('runtimeStatus').textContent='验证运行时未就绪';
+        $('runtimeStatus').textContent='验证运行时未就绪';$('runtimeStatus').dataset.state='failed';
         $('projectSelect').innerHTML='<option value="">项目列表暂不可用</option>';
         $('runDryRun').disabled=true;
         notify(error.message,'error');
@@ -89,7 +89,8 @@
       $('sourceDigest').textContent=source.digest||'—';
       $('targetDigest').textContent=target.digest||'—';
       const entries=plan.entries||[];
-      $('planRows').innerHTML=entries.length ? entries.map(entry=>`<tr><td>${escapeHtml(entry.source_table)}</td><td>${escapeHtml(entry.source_id)}</td><td>${escapeHtml(entry.source_table)}</td><td><span class="pill ${escapeHtml(entry.disposition)}">${escapeHtml(entry.disposition)}</span></td><td>${escapeHtml(entry.fingerprint||'—')}</td></tr>`).join('') : '<tr><td class="empty" colspan="5">来源表为空，或无待处理记录</td></tr>';
+      $('skippedRows').textContent=Number(counts.skipped||0).toLocaleString('zh-CN');
+      $('planRows').innerHTML=entries.length ? entries.map(entry=>{const notes=(entry.mapping_notes||[]).map(note=>`${note.endpoint||note.field||''} ${note.original_field||note.original_value||note.from||''} → ${note.mapped_field||note.resolved_identity||note.to||''}`).join('；');return `<tr><td>${escapeHtml(entry.source_table)}</td><td>${escapeHtml(entry.source_id)}</td><td>${escapeHtml(entry.source_table)}</td><td><span class="pill ${escapeHtml(entry.disposition)}">${escapeHtml(entry.disposition)}</span></td><td>${escapeHtml(entry.disposition_reason||notes||entry.fingerprint||'—')}</td></tr>`}).join('') : '<tr><td class="empty" colspan="5">来源表为空，或无待处理记录</td></tr>';
       const issues=plan.issues||[];
       $('issueList').innerHTML=issues.length ? issues.map(issue=>`<div class="issue"><strong>${escapeHtml(issue.code||'检查项')}</strong> · ${escapeHtml(issue.source_table||'')}#${escapeHtml(issue.source_id||'')} · ${escapeHtml(issue.detail||'需要进一步检查')}</div>`).join('') : '<div class="muted" data-testid="no-issues">没有未解析关系或阻断项。</div>';
       $('importOrder').textContent=(plan.import_order||[]).map(item=>`${item.source_table}#${item.source_id}`).join(' → ')||'无待导入实体';
@@ -98,13 +99,13 @@
     $('reloadProjects').addEventListener('click',loadProjects);
     $('runDryRun').addEventListener('click',async()=>{
       if(!state.projectId){notify('请选择目标项目后再执行。','error');return;}
-      state.busy=true;$('runDryRun').disabled=true;$('runtimeStatus').textContent='只读预检执行中';clearResult();notify('正在读取七张 I18 来源表并与所选项目目标快照比对；不会写入目标业务表。','info');
+      state.busy=true;$('runDryRun').disabled=true;$('runtimeStatus').textContent='只读预检执行中';$('runtimeStatus').dataset.state='running';clearResult();notify('正在读取七张 I18 来源表并与所选项目目标快照比对；不会写入目标业务表。','info');
       try {
         const data=await request(`/api/v1/rebuild/governance/projects/${state.projectId}/legacy/i18/dry-run`,{method:'POST'});
-        renderResult(data);$('runtimeStatus').textContent='预检完成 · 只读';
+        renderResult(data);$('runtimeStatus').textContent='预检完成 · 只读';$('runtimeStatus').dataset.state='complete';
         const counts=data.plan?.counts||{}, blocked=Number(counts.conflict||0)+Number(counts.blocked||0);
-        notify(`预检已完成：新增 ${counts.create||0}，未变 ${counts.unchanged||0}，冲突/阻断 ${blocked}。仅生成计划，未执行迁移。`,blocked?'error':'success');
-      } catch(error) { $('runtimeStatus').textContent='预检未完成';notify(`预检失败：${error.message}。未执行目标写入。`, 'error'); }
+        notify(`预检已完成：新增 ${counts.create||0}，未变 ${counts.unchanged||0}，批准跳过 ${counts.skipped||0}，冲突/阻断 ${blocked}。仅生成计划，未执行迁移。`,blocked?'error':'success');
+      } catch(error) { $('runtimeStatus').textContent='预检未完成';$('runtimeStatus').dataset.state='failed';notify(`预检失败：${error.message}。未执行目标写入。`, 'error'); }
       finally {state.busy=false;$('runDryRun').disabled=!state.projectId;}
     });
     loadProjects();

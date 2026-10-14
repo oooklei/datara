@@ -18,6 +18,8 @@ class LegacyMappingContext:
     target_project_id: int | None = None
     target_ids: Mapping[tuple[str, str], int] = field(default_factory=dict)
     pending_identities: frozenset[tuple[str, str]] = frozenset()
+    approved_reference_aliases: Mapping[tuple[str, str], tuple[str, str]] = field(default_factory=dict)
+    approved_relation_field_aliases: Mapping[tuple[str, str, str], str] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)
@@ -39,6 +41,8 @@ class MappedLegacyRow:
     child_rows: tuple[Mapping[str, object], ...] = ()
     identity_aliases: tuple[tuple[str, str], ...] = ()
     target_id: int | None = None
+    mapping_issues: tuple[MappingIssue, ...] = ()
+    mapping_notes: tuple[Mapping[str, object], ...] = ()
 
     @property
     def ready_to_import(self) -> bool:
@@ -66,13 +70,18 @@ def _resolve_target_identity(
     unresolved: list[tuple[str, str]],
     reference_field: str,
 ) -> int | TargetIdentityReference:
-    target_id = context.target_ids.get(identity)
+    canonical_identity = context.approved_reference_aliases.get(identity, identity)
+    if canonical_identity not in context.target_ids and canonical_identity not in context.pending_identities:
+        # A source snapshot may contain the original exact identity instead of
+        # the approved canonical name; preserve that source identity when present.
+        canonical_identity = identity
+    target_id = context.target_ids.get(canonical_identity)
     if target_id is not None:
         return target_id
-    if identity in context.pending_identities:
-        return TargetIdentityReference(*identity)
+    if canonical_identity in context.pending_identities:
+        return TargetIdentityReference(*canonical_identity)
     unresolved.append((reference_field, identity[1]))
-    return TargetIdentityReference(*identity)
+    return TargetIdentityReference(*canonical_identity)
 
 
 def validate_i18_mapping_graph(
@@ -84,6 +93,7 @@ def validate_i18_mapping_graph(
     issues: list[MappingIssue] = []
     identity_counts: dict[tuple[str, str], int] = {}
     for row in rows:
+        issues.extend(row.mapping_issues)
         identity = (row.source_table, row.source_id)
         identity_counts[identity] = identity_counts.get(identity, 0) + 1
         for alias in row.identity_aliases:
@@ -308,18 +318,53 @@ def map_legacy_row(
         unresolved = []
         src_model_id = _resolve_target_identity(src_identity, context, unresolved, "src_model_id")
         tgt_model_id = _resolve_target_identity(tgt_identity, context, unresolved, "tgt_model_id")
+        mapping_issues: tuple[MappingIssue, ...] = ()
         try:
-            source_fields = json.loads(source.get("src_fields") or "[]")
-            target_fields = json.loads(source.get("tgt_fields") or "[]")
-        except (TypeError, json.JSONDecodeError) as exc:
-            raise LegacyMappingError("invalid relation field pairs: expected JSON arrays") from exc
-        if (
+            source_fields = _decode_approved_field_list(source.get("src_fields"))
+            target_fields = _decode_approved_field_list(source.get("tgt_fields"))
+        except (TypeError, json.JSONDecodeError, ValueError):
+            source_fields, target_fields = [], []
+            mapping_issues = (
+                MappingIssue(
+                    "invalid_relation_field_pairs",
+                    source_table,
+                    str(source_id),
+                    "expected JSON arrays or approved non-empty bare field names; source values were not interpreted",
+                ),
+            )
+        if not mapping_issues and (
             not isinstance(source_fields, list)
             or not isinstance(target_fields, list)
             or len(source_fields) != len(target_fields)
             or any(not isinstance(name, str) or not name for name in source_fields + target_fields)
         ):
-            raise LegacyMappingError("invalid relation field pairs: arrays must contain paired non-empty names")
+            mapping_issues = (
+                MappingIssue(
+                    "invalid_relation_field_pairs",
+                    source_table,
+                    str(source_id),
+                    "arrays must contain paired non-empty names; source values were not interpreted",
+                ),
+            )
+        mapping_notes: list[Mapping[str, object]] = []
+        mapped_fields = []
+        for endpoint, names in (("source", source_fields), ("target", target_fields)):
+            mapped_endpoint_fields = []
+            for field_name in names:
+                mapped_name = context.approved_relation_field_aliases.get(
+                    (str(source_id), endpoint, field_name), field_name
+                )
+                mapped_endpoint_fields.append(mapped_name)
+                if mapped_name != field_name:
+                    mapping_notes.append(
+                        {
+                            "endpoint": endpoint,
+                            "original_field": field_name,
+                            "mapped_field": mapped_name,
+                        }
+                    )
+            mapped_fields.append(mapped_endpoint_fields)
+        source_fields, target_fields = mapped_fields
         return MappedLegacyRow(
             source_system="datara_meta",
             source_table=source_table,
@@ -336,7 +381,9 @@ def map_legacy_row(
                 "source_updated_at": source.get("update_time"),
             },
             unresolved_references=tuple(unresolved),
-            child_rows=tuple(
+            child_rows=()
+            if mapping_issues
+            else tuple(
                 {
                     "ordinal_position": index,
                     "source_field_name": source_name,
@@ -344,6 +391,8 @@ def map_legacy_row(
                 }
                 for index, (source_name, target_name) in enumerate(zip(source_fields, target_fields), start=1)
             ),
+            mapping_issues=mapping_issues,
+            mapping_notes=tuple(mapping_notes),
         )
 
     unresolved: list[tuple[str, str]] = []
@@ -376,6 +425,17 @@ def map_legacy_row(
         "source_updated_at": source.get("update_time"),
         **references,
     }
+    mapping_notes = tuple(
+        {
+            "field": source_field,
+            "original_value": str(source[source_field]),
+            "resolved_identity": alias[1],
+        }
+        for source_field, identity_table, _target_field in _MODEL_REFERENCES
+        if source.get(source_field) not in (None, "")
+        for alias in (context.approved_reference_aliases.get((identity_table, str(source[source_field])), ()),)
+        if alias
+    )
     return MappedLegacyRow(
         source_system="datara_meta",
         source_table=source_table,
@@ -383,4 +443,26 @@ def map_legacy_row(
         target_table=target_table,
         values=values,
         unresolved_references=tuple(unresolved),
+        mapping_notes=mapping_notes,
     )
+
+
+def _decode_approved_field_list(value: object) -> list[str]:
+    """Decode JSON arrays and the explicitly approved legacy single-field form."""
+
+    if value is None or value == "":
+        return []
+    try:
+        decoded = json.loads(value) if isinstance(value, str) else value
+    except json.JSONDecodeError:
+        # The approved source format stores a single field as a bare identifier.
+        if isinstance(value, str) and value.strip() == value and value.isidentifier():
+            return [value]
+        raise
+    if isinstance(decoded, str):
+        if decoded and decoded.strip() == decoded and decoded.isidentifier():
+            return [decoded]
+        raise ValueError("field name must be a non-empty identifier")
+    if not isinstance(decoded, list):
+        raise ValueError("field mapping must be a list")
+    return decoded

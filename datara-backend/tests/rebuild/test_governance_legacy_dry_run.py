@@ -53,8 +53,34 @@ def test_dry_run_classifies_create_and_unchanged_only_from_target_snapshot():
     )
 
     assert plan.source_count == 2
-    assert plan.counts == {"create": 1, "unchanged": 1, "conflict": 0, "blocked": 0}
+    assert plan.counts == {"create": 1, "unchanged": 1, "conflict": 0, "blocked": 0, "skipped": 0}
     assert plan.import_order == (("t_dw_model_field", "29"),)
+    assert plan.blocking_issues == ()
+
+
+def test_dry_run_retains_approved_orphan_as_explicit_skipped_item():
+    context = LegacyMappingContext(
+        target_project_id=41,
+        pending_identities=frozenset({("t_dw_model_version", "1")}),
+    )
+    version = map_legacy_row(
+        "t_dw_model_version",
+        {"id": 1, "model_id": 1, "version": 1, "snapshot_json": "{}"},
+        context,
+    )
+
+    plan = build_i18_dry_run_plan(
+        [version],
+        project_id=41,
+        snapshot=_snapshot(41),
+        approved_skips={("t_dw_model_version", "1"): "approved_missing_model_reference"},
+    )
+
+    assert plan.counts == {"create": 0, "unchanged": 0, "conflict": 0, "blocked": 0, "skipped": 1}
+    assert plan.entries[0].disposition == "skipped"
+    assert plan.entries[0].disposition_reason == "approved_missing_model_reference"
+    assert plan.import_order == ()
+    assert plan.ready_to_import
     assert plan.blocking_issues == ()
 
 
@@ -71,7 +97,7 @@ def test_dry_run_classifies_changed_existing_identity_as_conflict_not_update():
         ),
     )
 
-    assert plan.counts == {"create": 1, "unchanged": 0, "conflict": 1, "blocked": 0}
+    assert plan.counts == {"create": 1, "unchanged": 0, "conflict": 1, "blocked": 0, "skipped": 0}
     assert not any(entry.disposition == "update" for entry in plan.entries)
 
 
@@ -84,7 +110,7 @@ def test_dry_run_detects_project_scoped_unique_key_collision_without_source_iden
 
     plan = build_i18_dry_run_plan(rows, project_id=41, snapshot=snapshot)
 
-    assert plan.counts == {"create": 0, "unchanged": 0, "conflict": 1, "blocked": 1}
+    assert plan.counts == {"create": 0, "unchanged": 0, "conflict": 1, "blocked": 1, "skipped": 0}
     collision = next(issue for issue in plan.blocking_issues if issue.code == "target_business_key_collision")
     assert collision.detail.endswith("rebuild_governance_warehouse_model:old-row")
 
@@ -107,7 +133,7 @@ def test_dry_run_blocks_unresolved_references_and_project_mismatch():
 
     plan = build_i18_dry_run_plan([model, row], project_id=42, snapshot=_snapshot(42))
 
-    assert plan.counts == {"create": 0, "unchanged": 0, "conflict": 0, "blocked": 2}
+    assert plan.counts == {"create": 0, "unchanged": 0, "conflict": 0, "blocked": 2, "skipped": 0}
     assert {issue.code for issue in plan.blocking_issues} == {
         "unresolved_reference",
         "project_scope_mismatch",

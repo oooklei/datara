@@ -35,6 +35,8 @@ class DryRunEntry:
     disposition: str
     fingerprint: str
     issues: tuple[MappingIssue, ...] = ()
+    disposition_reason: str = ""
+    mapping_notes: tuple[Mapping[str, object], ...] = ()
 
 
 @dataclass(frozen=True)
@@ -81,6 +83,7 @@ def build_i18_dry_run_plan(
     *,
     project_id: int,
     snapshot: I18TargetSnapshot,
+    approved_skips: Mapping[SourceIdentity, str] | None = None,
 ) -> I18DryRunPlan:
     """Classify rows only against a project-bound, caller-supplied read-only snapshot."""
 
@@ -91,6 +94,13 @@ def build_i18_dry_run_plan(
     if set(snapshot.row_fingerprints) - set(snapshot.target_ids):
         raise ValueError("every existing source identity in snapshot must include its target ID")
     issues = list(validate_i18_mapping_graph(rows, snapshot.model_fields))
+    approved_skips = approved_skips or {}
+    skipped_identities = {identity for identity, reason in approved_skips.items() if reason}
+    issues = [
+        issue
+        for issue in issues
+        if (issue.source_table, issue.source_id) not in skipped_identities
+    ]
     issue_index: dict[SourceIdentity, list[MappingIssue]] = {}
     for issue in issues:
         issue_index.setdefault((issue.source_table, issue.source_id), []).append(issue)
@@ -98,6 +108,20 @@ def build_i18_dry_run_plan(
     entries: list[DryRunEntry] = []
     for row in rows:
         identity = (row.source_table, row.source_id)
+        skip_reason = approved_skips.get(identity)
+        if skip_reason:
+            entries.append(
+                DryRunEntry(
+                    row.source_table,
+                    row.source_id,
+                    "skipped",
+                    semantic_fingerprint(row),
+                    (),
+                    skip_reason,
+                    row.mapping_notes,
+                )
+            )
+            continue
         row_issues = list(issue_index.get(identity, ()))
         for value in row.values.values():
             if isinstance(value, TargetIdentityReference) and (
@@ -160,6 +184,8 @@ def build_i18_dry_run_plan(
                 disposition,
                 fingerprint,
                 tuple(row_issues + ([key_issue] if key_issue is not None else [])),
+                "",
+                row.mapping_notes,
             )
         )
 
@@ -199,7 +225,7 @@ def build_i18_dry_run_plan(
 
     counts = {
         disposition: sum(entry.disposition == disposition for entry in entries)
-        for disposition in ("create", "unchanged", "conflict", "blocked")
+        for disposition in ("create", "unchanged", "conflict", "blocked", "skipped")
     }
     import_order = tuple(
         (entry.source_table, entry.source_id)

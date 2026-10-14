@@ -8,6 +8,10 @@ if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace($keyLine) -or $keyLine 
 $env:DATARA_REBUILD_BASE_URL = 'http://192.168.1.9:18091'
 $env:DATARA_REBUILD_VALIDATION_KEY = $keyLine
 $keyLine = $null
+$edge = 'C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe'
+if (Test-Path -LiteralPath $edge) {
+    $env:DATARA_PLAYWRIGHT_EXECUTABLE = $edge
+}
 try {
     rtk node "$PSScriptRoot/r3-s9-i18-preview.cjs"
     if ($LASTEXITCODE -ne 0) { throw 'R3-S9 Playwright control-level validation did not pass.' }
@@ -15,4 +19,5 @@ try {
 finally {
     Remove-Item Env:DATARA_REBUILD_VALIDATION_KEY -ErrorAction SilentlyContinue
     Remove-Item Env:DATARA_REBUILD_BASE_URL -ErrorAction SilentlyContinue
+    Remove-Item Env:DATARA_PLAYWRIGHT_EXECUTABLE -ErrorAction SilentlyContinue
 }

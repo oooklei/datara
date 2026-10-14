@@ -73,7 +73,7 @@
 | 旧域与语义 | 新规范化实体（名称为契约候选，迁移前需在 R3-S9 冻结物理命名） | 关键关系与保真要求 |
 |---|---|---|
 | I18 业务域、数仓分层、引擎字典 | `governance_domain`、`warehouse_layer`、`model_engine` | 按旧自然键保留源 ID 映射、名称、规则/方言、排序与启用状态；模型引用均以新主键关联。 |
-| I18 模型、字段、ER 关系、版本 | `warehouse_model`、`warehouse_model_field`、`warehouse_model_relation`、`warehouse_model_version` | 保存模型状态/版本/目标数据源/schema、画布坐标、字段类型精度/可空/默认值/主键/分区/字典引用、关系两端字段与关系类型、每个历史版本完整快照/变更说明/作者/时间；关系字段从 JSON 文本解析为规范化关系字段行，同时保留原始字段载荷供审计。物化 DDL 作为历史文本留档，不自动重放。 |
+| I18 模型、字段、ER 关系、版本 | `warehouse_model`、`warehouse_model_field`、`warehouse_model_relation`、`warehouse_model_version` | 保存模型状态/版本/目标数据源/schema、画布坐标、字段类型精度/可空/默认值/主键/分区/字典引用、关系两端字段与关系类型、每个历史版本完整快照/变更说明/作者/时间；关系字段从 JSON 文本解析为规范化关系字段行，同时保留原始字段载荷供审计。物化 DDL 作为历史文本留档，不自动重放。若旧关系字段载荷不符合 JSON 数组契约，dry-run 必须将该关系作为 `invalid_relation_field_pairs` 阻断项显示，不得猜测拆分或中止其他记录的预检。 |
 | I19 元数据扩展、标签与挂接 | 现有 `asset`/`asset_field`/`tag`/`asset_tag` 加 `asset_metadata_extension`、`legacy_tag_reference` | 旧 `(ds_id, db_name, table_name)` 对齐统一 asset identity；业务域、owner、备注等扩展落专表；可解析的标签挂接落 asset-tag 关系，任意旧 target_type/key 及未解析引用落 `legacy_tag_reference` 并保留原键，不丢弃。 |
 | I20 指标及版本 | 现有 `semantic_metric` 加 `semantic_metric_profile`、`semantic_metric_version`、`semantic_metric_dimension` | 规范化指标代码/名称/类型/业务域/业务定义/技术定义/来源类型与引用/字段/输出表/任务/统计周期/维度/单位/状态/当前版本；profile 保存主实体暂未覆盖的旧属性，维度为独立关联行；保留版本快照、变更说明、作者和时间。 |
 | I21 质量规则、任务、任务规则关系、运行、异常、报告、告警 | 现有 `quality_rule`/`quality_run` 加 `quality_rule_definition`、`quality_task`、`quality_task_rule`、`quality_run_legacy_details`、`quality_exception`、`quality_report`、`quality_alarm_policy` | 规范化保留旧 rule 类型/参数/阈值/对象键，即使目标 asset 未能解析；保存 cron/enabled/状态/最近运行、规则集合及顺序、触发方式/起止时间/结果/分数/统计、异常目标/样例 SQL/命中数/处理状态、报告范围/周期/内容、告警指标/运算符/阈值/启用与触发时间。旧 QC 执行 API/engine 仍退役；本模型承接历史业务记录与新治理 API，不恢复旧 `/api/v1/qc/*`。 |
@@ -85,6 +85,10 @@
 R3-S9 的物理增量采用不可变序列：`r3_0001_governance_catalog` 保持既有校验和与 DDL 不变；`r3_0002_legacy_governance_carryforward` 仅新增来源承接表。承接实体必须显式保存旧字段，而非把有类型、有关系的事实塞入 JSON：I18 保存 security/build/owner 状态、模型字段顺序与 ER 两端字段、完整版本快照；I19 将旧标签定义与旧 target 引用分开保存，保留类别、颜色、说明和未解析目标；I20 除维度子表外，还保留旧维度原文、基础指标来源键、聚合/分子/时间/维度/过滤属性、状态、版本与负责人；I21 分拆规则定义、任务顺序关联、运行统计、异常、报告和告警策略；I22 保留元素、码表、码值、命名规则、映射、审批 payload/意见及校验报告。新增的辅助列和实体属于方案 A 的无损承接细化；不能解析或不能唯一关联的旧引用须显式标为 unresolved，不伪造主实体或外键。
 
 迁移排序：身份与项目键映射 → 字典/资产身份 → 模型及字段/关系/版本、元数据扩展/标签引用 → 指标及 profile/维度/版本 → 标准元素/码表/码值/规则/映射 → 审批/校验报告 → 质量规则定义/任务关联/运行细节/异常/报告/告警 → 全域关系与总量核对。用户/角色数据映射先 dry-run；遇到登录名冲突、项目归属不唯一、权限点无目标或凭据算法不兼容时停止对应记录组，保留已提交的无关组并提交裁定，不进行猜测合并。
+
+#### I18 approved exact mapping and explicit skip disposition (2026-10-15)
+
+For the observed I18 source snapshot only, the user approved three row-scoped interpretations: `t_dw_model.biz_domain` value `交易` resolves to the exact `t_biz_domain.name=交易域`; relation `t_dw_model_relation#1` source field `order_id` resolves to actual model 2 field `order_no`; relation `t_dw_model_relation#2` target field `dt` resolves to actual model 4 field `order_date`. These aliases must be exact, bound to the approved source identity/endpoint, recorded alongside the untouched original source payload, and included in the source-to-target audit evidence; they are not global field aliases. The user also approved `t_dw_model_version#1` as an explicit `skipped` migration item because it references missing model ID 1. The source row remains unchanged and must receive a durable per-source checkpoint with disposition `skipped` and a reason; it is not silently omitted or counted as imported. The skip is valid only while the source identity/reference and missing-parent precondition match the reviewed snapshot; drift fails closed. Dry-run accounting must partition every source row among `create`, `unchanged`, `skipped`, `conflict`, and `blocked`. This approval authorizes mapping/skip planning, not target import; the ordinary snapshot, review, and per-plan execution gates still apply.
 
 ### 5.3 采集、解析、规则执行边界
 
