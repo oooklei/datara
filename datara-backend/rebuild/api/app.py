@@ -59,6 +59,7 @@ def create_app(
     validation_key: str | None = None,
     legacy_i18_import_enabled: bool | None = None,
     legacy_i22_source_reader_factory=None,
+    legacy_i23_source_reader_factory=None,
 ) -> FastAPI:
     database_url = database_url or os.getenv("REBUILD_DB_URL")
     if not database_url:
@@ -166,13 +167,50 @@ def create_app(
             "data": {"token": token, "user": {"id": 0, "username": "validation-runner", "role": Role.DEV.value}},
         }
 
+    @app.post("/api/v1/rebuild/validation-capabilities/legacy-i23-preview")
+    def issue_i23_preview_capability(x_backend_validation_key: str = Header(default="")):
+        """Exchange the protected runner key for an I23-preview-only token."""
+        if not validation_key:
+            return JSONResponse(
+                status_code=404,
+                content={"code": 4043, "msg": "validation bootstrap disabled", "data": None},
+            )
+        if not hmac.compare_digest(x_backend_validation_key, validation_key):
+            return JSONResponse(status_code=401, content={"code": 1001, "msg": "invalid validation key", "data": None})
+        token = validation_token_service.issue(
+            user_id=0,
+            username="i23-preview-runner",
+            role=Role.VIEWER,
+            capability="legacy:i23:preview",
+        )
+        active_tokens.add(token)
+        return {
+            "code": 0,
+            "msg": "success",
+            "data": {"token": token, "capability": "legacy:i23:preview", "expires_in": 900},
+        }
+
     def current_user(authorization: str) -> dict[str, object]:
         if not authorization.startswith("Bearer "):
             raise ValueError("missing bearer token")
         token = authorization[7:]
         if token not in active_tokens:
             raise ValueError("token revoked or unknown")
-        return token_service.verify(token)
+        claims = token_service.verify(token)
+        if "capability" in claims:
+            raise ValueError("scoped capability is not valid for ordinary API routes")
+        return claims
+
+    def current_i23_preview_capability(authorization: str) -> dict[str, object]:
+        if not authorization.startswith("Bearer "):
+            raise ValueError("missing bearer token")
+        token = authorization[7:]
+        if token not in active_tokens:
+            raise ValueError("token revoked or unknown")
+        claims = validation_token_service.verify(token)
+        if claims.get("capability") != "legacy:i23:preview":
+            raise PermissionError("I23 preview capability required")
+        return claims
 
     @app.post("/api/v1/rebuild/logout")
     def logout(authorization: str = Header(default="")):
@@ -266,6 +304,8 @@ def create_app(
             current_user,
             legacy_i18_import_enabled=legacy_i18_import_enabled,
             legacy_i22_source_reader_factory=legacy_i22_source_reader_factory,
+            legacy_i23_source_reader_factory=legacy_i23_source_reader_factory,
+            legacy_i23_preview_user=current_i23_preview_capability,
         )
     )
 
@@ -293,4 +333,3 @@ def create_app(
             }
 
     return app
-

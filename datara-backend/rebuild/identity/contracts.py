@@ -54,7 +54,14 @@ class TokenService:
         self._secret = secret.encode("utf-8")
         self._ttl_seconds = ttl_seconds
 
-    def issue(self, *, user_id: int, username: str, role: Role) -> str:
+    def issue(
+        self,
+        *,
+        user_id: int,
+        username: str,
+        role: Role,
+        capability: str | None = None,
+    ) -> str:
         now = int(time.time())
         payload = {
             "jti": secrets.token_urlsafe(18),
@@ -64,6 +71,10 @@ class TokenService:
             "iat": now,
             "exp": now + self._ttl_seconds,
         }
+        if capability is not None:
+            if not capability or len(capability) > 128:
+                raise ValueError("token capability must be between 1 and 128 characters")
+            payload["capability"] = capability
         encoded = _encode(payload)
         signature = hmac.new(self._secret, encoded, hashlib.sha256).digest()
         return f"{_b64(encoded)}.{_b64(signature)}"
@@ -80,7 +91,13 @@ class TokenService:
             if int(payload["exp"]) < int(time.time()):
                 raise ValueError("token expired")
             Role(payload["role"])
-            return {key: payload[key] for key in ("user_id", "username", "role")}
+            claims = {key: payload[key] for key in ("user_id", "username", "role")}
+            if "capability" in payload:
+                capability = payload["capability"]
+                if not isinstance(capability, str) or not capability or len(capability) > 128:
+                    raise ValueError("invalid token capability")
+                claims["capability"] = capability
+            return claims
         except (KeyError, TypeError, ValueError, json.JSONDecodeError) as exc:
             raise ValueError("invalid token") from exc
 
@@ -95,4 +112,3 @@ def _b64(value: bytes) -> str:
 
 def _unb64(value: str) -> bytes:
     return base64.urlsafe_b64decode(value + "=" * (-len(value) % 4))
-

@@ -158,12 +158,13 @@ I21 修正子批已完成：固定 reader 列已按 live schema 对齐；mapper 
 
 #### I23 身份映射只读预览 API 与隔离验证页
 
-- 状态：已获授权，实施中；授权不包括身份导入、用户/角色修改、密码访问或正式前端解冻。
+- 状态：`I23_PREVIEW_CONTROL_PASS / IDENTITY_PARITY_PENDING / IMPORT_NOT_AUTHORIZED`；整体 S9/R3 仍 IN_PROGRESS/PARTIAL。
 - 用户批准：只读 `datara_meta.t_user(id,user_name,user_role,state,create_time,update_time)`；endpoint-only `legacy:i23:preview` 短期 capability；AOCI 仅 acknowledge observe fingerprints。继续排除 `user_pwd`，源端 READ ONLY、target SELECT-only。
 - 前序 I22 影响：共享 `governance/api.py`、`api/app.py`、source allowlist/reader 和隔离部署合同；必须保持 I18 importer flag=false，并回归 I22 现有静态页/API。I23 是全局身份边界，不使用项目级 `EDIT_DEFINITION`/普通 DEV token。
 - 实施步骤：先 RED 覆盖 scoped token 仅 I23 endpoint 可用、通用 API 拒绝 capability、验证 key 只能签发固定 15 分钟 scope；再实现 I23 endpoint 的 allowlist reader、target identity/user 只读查询、显式映射选择和阻断摘要；增加独立静态验证页和 protected Playwright runner；本地全量测试/ruff/compileall/diff-check；在 1.9 做哈希备份、限量 source/target 审核、只更新隔离容器与 18091 页面，并验证前端控件/API/backend log/MySQL readonly 与 target no-write；更新证据、状态/台账后单独提交。
 - 冻结边界：不改正式 Vue/menu、通用权限矩阵、admin/DEV token 权限、DB schema、source data 或 target data；不得在页面或证据记录验证 key/token/口令；任何超出 I23 scope 的 API/数据访问拒绝。
 - 验收语义：preview/control loop 通过只能记 `I23_PREVIEW_CONTROL_PASS / IDENTITY_PARITY_PENDING / IMPORT_NOT_AUTHORIZED`，不能提升 S9/R3 为 PASS，也不证明逐字段 parity。
+- 实测验收：远端隔离 API healthy，I23/I22/I18 路由均在 OpenAPI；18091 独立页 HTTP 200。protected Playwright `R3S9I23-20261014222209-50244b` 12/12 PASS；读取 4 条 source identity，1 个同名 target candidate，0 个既有 mapping；操作者选择候选后 1 条为 `identity_candidate`，其余 3 条 `unresolved_target_user`。scoped token 的普通 API negative control 为 401；无 credential 字段/导入控件/浏览器错误。后端最近 10 分钟 ERROR/Traceback 为 0，I18 importer 保持 false。完整 hashes、部署/备份和失败运行修正记录见 `evidence/R3/s9-i23-preview-remote-deploy-20261015.md` 与同 run JSON/PNG。无 source/target writes；结果不是 parity 或导入授权。
 6. 在参考产品风格隔离验证页增加可操作业务场景和稳定 fixture，预置目标项目/数据/表单并呈现行数、快照摘要、计划分类、导入顺序和阻断原因；执行控件级 UI 流程并验证后端 API 结果。使用 192.168.1.9 的非冲突端口部署；页面不得持有统一验证 key，仅由受保护 runner 注入受限短期 token。
 7. 远端先只读重采样，再目标快照、dry-run 冲突清单；这些证据仅用于评审，确认 dry-run 的新增/更新/跳过/冲突数与拟定范围一致后，仍须另获用户对目标业务数据写入的明确批准才能执行导入。逐批记录前后时间戳、进程退出码、容器日志、DB 对账查询和恢复点。root 只允许用于 `REBUILD_LEGACY_META_URL` 精确指向 `datara_meta` 的固定 allowlist 仅读，不注入 root 凭据到 Backend。
    - I18 离线 dry-run 契约已要求调用方提供与目标 project 匹配的只读快照（采集时间、摘要、source identity→target ID、业务语义指纹、模型字段集合及项目范围唯一键占用者）。目标快照 repository 已按项目筛选 target ORM，仅用 SELECT 装配这组信息，并重建旧映射语义计算指纹；SQLite 集成测试断言无 DML。当前尚未在 MySQL/192.168.1.9 上运行，也未接 API。计划只分类 create/unchanged/conflict/blocked，冲突不自动更新；有问题的父模型阻断子字段/关系，不能据此授权写入。

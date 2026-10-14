@@ -8,7 +8,7 @@ from collections import deque
 from datetime import datetime
 from typing import Callable
 
-from fastapi import APIRouter, Header, Query
+from fastapi import APIRouter, Body, Header, Query
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 from sqlalchemy import func, or_, select
@@ -31,6 +31,8 @@ from rebuild.governance.service import GovernanceService
 from rebuild.governance.legacy_migration_service import build_i18_legacy_dry_run
 from rebuild.governance.legacy_source_reader import LegacyI18SourceReader
 from rebuild.governance.legacy_source_reader import LegacyI22SourceReader
+from rebuild.governance.legacy_source_reader import LegacyI23SourceReader
+from rebuild.governance.legacy_i23_preview import MAX_I23_PREVIEW_ROWS, build_i23_identity_preview
 from rebuild.governance.legacy_i22_preview import build_i22_mapping_preview
 from rebuild.governance.legacy_importer import LegacyImportRejected, execute_i18_legacy_import
 from rebuild.governance.migration_checkpoints import CheckpointConflict
@@ -118,12 +120,23 @@ class MetricInput(BaseModel):
     status: str = Field(default="draft", pattern="^(draft|active|retired)$")
 
 
+class I23IdentitySelectionInput(BaseModel):
+    source_id: str = Field(min_length=1, max_length=24, pattern="^[1-9][0-9]*$")
+    target_user_id: int = Field(gt=0, strict=True)
+
+
+class I23IdentityPreviewInput(BaseModel):
+    selections: list[I23IdentitySelectionInput] = Field(default_factory=list, max_length=MAX_I23_PREVIEW_ROWS)
+
+
 def build_governance_router(
     session_factory: sessionmaker[Session],
     current_user: Callable[[str], dict[str, object]],
     *,
     legacy_source_reader_factory: Callable[[], LegacyI18SourceReader] | None = None,
     legacy_i22_source_reader_factory: Callable[[], LegacyI22SourceReader] | None = None,
+    legacy_i23_source_reader_factory: Callable[[], LegacyI23SourceReader] | None = None,
+    legacy_i23_preview_user: Callable[[str], dict[str, object]] | None = None,
     legacy_i18_import_enabled: bool = False,
 ) -> APIRouter:
     router = APIRouter(prefix="/api/v1/rebuild/governance", tags=["rebuild-governance"])
@@ -144,6 +157,58 @@ def build_governance_router(
         if project is None:
             return fail(404, 4041, "project not found")
         return project if allowed else fail(403, 1003, "project permission denied")
+
+    @router.post("/legacy/i23/identity-preview")
+    def legacy_i23_identity_preview(
+        body: I23IdentityPreviewInput = Body(default_factory=I23IdentityPreviewInput),
+        authorization: str = Header(default=""),
+    ):
+        if legacy_i23_preview_user is None:
+            return fail(503, 5033, "I23 preview capability is unavailable")
+        try:
+            legacy_i23_preview_user(authorization)
+        except PermissionError:
+            return fail(403, 1003, "I23 preview capability required")
+        except ValueError:
+            return fail(401, 1001, "invalid token")
+
+        selection_map: dict[str, int] = {}
+        for selection in body.selections:
+            if selection.source_id in selection_map:
+                return fail(422, 4221, "duplicate I23 source selection")
+            selection_map[selection.source_id] = selection.target_user_id
+
+        reader = None
+        try:
+            with session_factory() as session:
+                target_url = session.get_bind().url
+                target_backend = target_url.get_backend_name()
+                if target_backend == "mysql" and target_url.database != "datara_rebuild_i0":
+                    return fail(503, 5032, "target database is not the isolated rebuild schema")
+                if target_backend not in {"mysql", "sqlite"}:
+                    return fail(503, 5032, "unsupported target database for I23 identity preview")
+                if target_backend == "mysql":
+                    session.connection().exec_driver_sql("SET TRANSACTION READ ONLY")
+                reader = (legacy_i23_source_reader_factory or LegacyI23SourceReader.from_runtime_env)()
+                source_snapshot = reader.read_snapshot(max_total_rows=MAX_I23_PREVIEW_ROWS)
+                data = build_i23_identity_preview(session, source_snapshot, selection_map)
+                logger.info(
+                    "legacy I23 identity preview completed",
+                    extra={
+                        "source_counts": data["source"]["counts"],
+                        "preview_counts": data["preview"]["counts"],
+                    },
+                )
+                return {"code": 0, "msg": "success", "data": data}
+        except ValueError:
+            return fail(422, 4221, "legacy I23 snapshot or mapping is invalid")
+        except Exception as exc:
+            logger.error("legacy I23 identity preview failed", extra={"error_type": type(exc).__name__})
+            return fail(503, 5031, "legacy I23 identity preview is unavailable")
+        finally:
+            source_engine = getattr(reader, "engine", None)
+            if source_engine is not None:
+                source_engine.dispose()
 
     @router.post("/projects/{project_id}/legacy/i22/mapping-preview")
     def legacy_i22_mapping_preview(project_id: int, authorization: str = Header(default="")):
@@ -340,9 +405,7 @@ def build_governance_router(
                 permitted = project_permission(session, project_id, operator, Permission.EDIT_DEFINITION)
                 if isinstance(permitted, JSONResponse):
                     return permitted
-                expected_confirmation = (
-                    f"IMPORT I18 {project_id} {body.source_digest} {body.target_digest}"
-                )
+                expected_confirmation = f"IMPORT I18 {project_id} {body.source_digest} {body.target_digest}"
                 if body.confirmation != expected_confirmation:
                     return fail(409, 4094, "explicit I18 confirmation does not match the supplied snapshots")
                 target_url = session.get_bind().url
@@ -358,10 +421,7 @@ def build_governance_router(
                 source_snapshot = reader.read_snapshot()
                 target_snapshot = LegacyI18TargetSnapshotRepository(session).read_project_snapshot(project_id)
                 dry_run = build_i18_legacy_dry_run(project_id, source_snapshot, target_snapshot)
-                if (
-                    source_snapshot.digest != body.source_digest
-                    or target_snapshot.digest != body.target_digest
-                ):
+                if source_snapshot.digest != body.source_digest or target_snapshot.digest != body.target_digest:
                     return fail(409, 4095, "I18 source or target snapshot changed; run a fresh dry-run")
                 if not dry_run.plan.ready_to_import:
                     return fail(409, 4096, "latest I18 dry-run contains conflicts or blocked rows")
