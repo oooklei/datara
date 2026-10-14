@@ -222,3 +222,11 @@
 - 执行次序：测试 RED→实现 reader→I18-I23 reader regression/全后端 pytest/Ruff/compileall/diff-check→写证据并更新影响分析、计划、台账→独立提交。
 - 结果最高为 `LOCAL_SUBSTEP_PASS / INTEGRATION_GATE_PENDING`；真实源 schema/data、identity mapper/importer、项目成员关系、密码 reset、1.9 控件、运行日志/中间件/资源均须后续门禁，不得宣称 I23/R3 完成。
 - 实测：I23 reader 4 passed；I18/I19/I20/I21/I23 reader regression 29 passed；全后端 704 passed in 66.28s；Ruff、compileall 通过。SQL listener 确认 SELECT/PRAGMA only，未选择 `user_pwd`。详见 `evidence/R3/s9-i23-reader-local-20261015.txt`。
+
+### 2026-10-15：I23 显式用户身份关联纯映射增量计划
+
+- 目标仅将 I23 源用户身份关联到调用方显式指定、已存在的新用户；校验用户名/Role/状态精确一致后映射至 `LegacyIdentityMappingRecord`。旧/new 静态 Role 当前枚举一致；未知值、目标不存在/跨引用重复、属性不匹配均阻断。
+- 不创建或更新用户、不读或迁移 `user_pwd`、不推断项目成员、不改认证/重置流程、不部署/调 API/DB/UI。
+- 顺序：RED tests→纯 mapper→I23 与治理 readers/mappers regression→全后端 pytest/Ruff/compileall/diff-check→记录证据→本增量单独提交。
+- 只可记 `LOCAL_SUBSTEP_PASS / INTEGRATION_GATE_PENDING`，不等于用户迁移、身份 parity 或 R3 关闭。
+- 实测：I23 mapper + reader 9 passed；全后端 709 passed in 68.62s；Ruff、compileall、backend diff-check 通过。证据 `evidence/R3/s9-i23-mapper-local-20261015.txt`。
