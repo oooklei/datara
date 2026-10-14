@@ -4,7 +4,8 @@ from __future__ import annotations
 
 import hashlib
 import json
-from datetime import datetime, timezone
+from datetime import datetime
+from zoneinfo import ZoneInfo
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -206,7 +207,7 @@ class LegacyI18TargetSnapshotRepository:
         for row in versions:
             self._add_key(unique_key_owners, ("model_version", row.model_id, row.version), row, "t_dw_model_version")
 
-        captured_at = datetime.now(timezone.utc)
+        captured_at = datetime.now(ZoneInfo("Asia/Shanghai"))
         digest_payload = {
             "project_id": project_id,
             "captured_at": captured_at.isoformat(),

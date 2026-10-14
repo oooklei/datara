@@ -1,0 +1,13 @@
+R3-S9 source-access runtime preflight
+Captured: 2026-10-15 00:46 Asia/Shanghai (remote host clock)
+Host: 192.168.1.9
+
+Checks performed (read-only; no database business rows read):
+- datara-rebuild-api: running and healthy before any S9 deployment.
+- REBUILD_LEGACY_META_URL in datara-rebuild-api: not configured.
+- Remote /lei/datara/.env key-name inventory includes REBUILD_MYSQL_SRC_URL, but the approved R3-S9 contract explicitly rejects reusing that ec_retail source profile for datara_meta.
+- MySQL account privilege inventory: root has global privileges; the non-root runtime account shown is scoped to datara_rebuild_i0 with no privileges on datara_meta. No datara_meta database-level or table-level grants were present for a dedicated SELECT-only account.
+- Source schema SELECT, target snapshot, R3-S9 API deployment, Web deployment, and browser interaction were not attempted.
+- No credentials or environment values were printed or recorded. No DDL/DML, GRANT, restart, or deployment was issued.
+
+Result: BLOCKED for the remote source-read/dry-run gate. A dedicated principal with SELECT-only access to the seven allowlisted I18 tables in datara_meta, plus its runtime-only REBUILD_LEGACY_META_URL configuration for datara-rebuild-api, must be provisioned through the approved operations path before continuing. Do not substitute root or REBUILD_MYSQL_SRC_URL. The code and page remain locally testable; this preflight is not an increment PASS.

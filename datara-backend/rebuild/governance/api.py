@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import logging
 from collections import deque
 from datetime import datetime
 from typing import Callable
@@ -27,8 +28,13 @@ from rebuild.governance.models import (
     StandardDefinitionRecord,
 )
 from rebuild.governance.service import GovernanceService
+from rebuild.governance.legacy_migration_service import build_i18_legacy_dry_run
+from rebuild.governance.legacy_source_reader import LegacyI18SourceReader
+from rebuild.governance.snapshot_repository import LegacyI18TargetSnapshotRepository
 from rebuild.identity.contracts import Permission
 from rebuild.project.models import ProjectRecord
+
+logger = logging.getLogger(__name__)
 
 
 class AssetFieldInput(BaseModel):
@@ -101,7 +107,10 @@ class MetricInput(BaseModel):
 
 
 def build_governance_router(
-    session_factory: sessionmaker[Session], current_user: Callable[[str], dict[str, object]]
+    session_factory: sessionmaker[Session],
+    current_user: Callable[[str], dict[str, object]],
+    *,
+    legacy_source_reader_factory: Callable[[], LegacyI18SourceReader] | None = None,
 ) -> APIRouter:
     router = APIRouter(prefix="/api/v1/rebuild/governance", tags=["rebuild-governance"])
 
@@ -121,6 +130,94 @@ def build_governance_router(
         if project is None:
             return fail(404, 4041, "project not found")
         return project if allowed else fail(403, 1003, "project permission denied")
+
+    @router.post("/projects/{project_id}/legacy/i18/dry-run")
+    def legacy_i18_dry_run(project_id: int, authorization: str = Header(default="")):
+        try:
+            user = authenticate(authorization)
+            if isinstance(user, JSONResponse):
+                return user
+        except ValueError:
+            return fail(401, 1001, "invalid token")
+
+        reader = None
+        try:
+            with session_factory() as session:
+                permitted = project_permission(session, project_id, user, Permission.EDIT_DEFINITION)
+                if isinstance(permitted, JSONResponse):
+                    return permitted
+                target_url = session.get_bind().url
+                target_backend = target_url.get_backend_name()
+                if target_backend == "mysql" and target_url.database != "datara_rebuild_i0":
+                    return fail(503, 5032, "target database is not the isolated rebuild schema")
+                if target_backend not in {"mysql", "sqlite"}:
+                    return fail(503, 5032, "unsupported target database for I18 dry-run")
+                reader = (legacy_source_reader_factory or LegacyI18SourceReader.from_runtime_env)()
+                source_snapshot = reader.read_snapshot()
+                target_snapshot = LegacyI18TargetSnapshotRepository(session).read_project_snapshot(project_id)
+                result = build_i18_legacy_dry_run(project_id, source_snapshot, target_snapshot)
+                data = {
+                    "project_id": project_id,
+                    "source": {
+                        "schema": source_snapshot.schema,
+                        "captured_at": source_snapshot.captured_at.isoformat(),
+                        "digest": source_snapshot.digest,
+                        "counts": dict(source_snapshot.counts),
+                    },
+                    "target": {
+                        "project_id": target_snapshot.project_id,
+                        "captured_at": target_snapshot.captured_at.isoformat(),
+                        "digest": target_snapshot.digest,
+                        "identity_count": len(target_snapshot.row_fingerprints),
+                    },
+                    "plan": {
+                        "counts": dict(result.plan.counts),
+                        "ready_to_import": result.plan.ready_to_import,
+                        "entries": [
+                            {
+                                "source_table": entry.source_table,
+                                "source_id": entry.source_id,
+                                "disposition": entry.disposition,
+                                "fingerprint": entry.fingerprint,
+                            }
+                            for entry in result.plan.entries
+                        ],
+                        "import_order": [
+                            {"source_table": table, "source_id": source_id}
+                            for table, source_id in result.plan.import_order
+                        ],
+                        "issues": [
+                            {
+                                "code": issue.code,
+                                "source_table": issue.source_table,
+                                "source_id": issue.source_id,
+                                "detail": issue.detail,
+                            }
+                            for issue in result.plan.blocking_issues
+                        ],
+                    },
+                }
+                logger.info(
+                    "legacy I18 dry-run completed",
+                    extra={
+                        "project_id": project_id,
+                        "source_counts": dict(source_snapshot.counts),
+                        "plan_counts": dict(result.plan.counts),
+                    },
+                )
+                return {"code": 0, "msg": "success", "data": data}
+        except ValueError as exc:
+            return fail(422, 4221, str(exc))
+        except Exception as exc:
+            logger.error(
+                "legacy I18 dry-run snapshot failed",
+                extra={"project_id": project_id, "error_type": type(exc).__name__},
+            )
+            return fail(503, 5031, "legacy I18 snapshot is unavailable")
+        finally:
+            source_engine = getattr(reader, "engine", None)
+            if source_engine is not None:
+                source_engine.dispose()
 
     def write_audit(
         session: Session,
