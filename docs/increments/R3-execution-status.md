@@ -40,6 +40,8 @@ This unblocks an I22 fixed-allowlist local reader and pure mapper under their ow
 
 I22 reader sub-batch A is locally complete: TDD RED→GREEN; 7 focused tests, 32 I18-I22 reader regressions, and full backend suite 716 passed (64.38s); Ruff/compileall passed. Evidence `evidence/R3/s9-i22-reader-local-20261015.txt`. Status is only `LOCAL_SUBSTEP_PASS / INTEGRATION_GATE_PENDING`; no API runtime URL/config, service deployment, payload read, target import, or browser/log/middleware/resource gate was performed.
 
+I22 mapper sub-batch B is locally complete: TDD RED→GREEN; reader+mapper focused suite 15 passed, final full backend suite 724 passed (71.64s), Ruff/compileall/diff-check passed. Evidence `evidence/R3/s9-i22-mapper-local-20261015.txt`. The only currently non-empty approval sample points to absent `t_std_code#2`; it remains explicitly unresolved (not skipped). No target import authorization, runtime API connection, deployment, or UI/log/middleware/resource gate was exercised. R3-S9 remains IN_PROGRESS/PARTIAL.
+
 ## R3-S1 closure
 
 - The isolated rebuild schema and dedicated source profile were inventoried read-only on 192.168.1.9.

@@ -78,3 +78,9 @@ t_std_naming_rule.enabled | tinyint(1) | NO | NULL | 6
 ## Decision and scope boundary
 
 This live evidence unblocks development of an I22 read-only source snapshot reader and a pure, fail-closed mapper strictly against these observed columns. The mapping must retain raw IDs/values and timestamps, use source identities for relationships (there are no DB-enforced FKs), and reject dangling links or unsupported enum states rather than infer semantics. It does not authorize target import, source writes, target DDL, service deployment, or frontend changes. Those require their existing separate gates.
+
+## Read-only relationship spot-check addendum — 2026-10-15 05:12 +08:00
+
+- Under the same user authorization, a second read-only transaction selected only the declared columns of the one `t_std_code`, one `t_std_code_value`, and one `t_std_approval` row. No other table data was selected.
+- The code-value row references existing `t_std_code#1`. The approval row has `biz_type=code` and `biz_id=2`, which does not exist in the current code-set snapshot; its JSON payload was read for relationship verification but its contents are not copied into this evidence. The mapper must preserve `legacy_business_id=2`, keep canonical `standard_id` null, and mark `t_std_code#2` unresolved; it must not infer a replacement from payload, name, or another row.
+- This confirms that the source approval is not safely importable under current facts. It is not implicitly skipped; a later import plan must block it or obtain an explicit row-scoped disposition. No source write or target import occurred.
