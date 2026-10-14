@@ -1,0 +1,34 @@
+R3-S9 I20 remote preview integration evidence
+Date: 2026-10-15 Asia/Shanghai
+Validation page: http://192.168.1.9:18091/rebuild-validation-r3-s9-i20.html
+API: isolated datara-rebuild-api (container listener 8001; source bind mount is read-only)
+Accounts: Datara has an admin system account; validation used the established protected backend-key/token flow. The legacy MySQL connection uses root for explicitly authorized read-only source access. No password, token, or connection URL recorded.
+
+Local checks
+- Backend full suite after final duplicate-identity fix: `rtk pytest tests -q` -> 742 passed.
+- I20 API tests: 5 passed (unauthenticated request before source read; read-only/no DML; payload omission; cross-project identity isolation; orphan version blocked; duplicate metric identity blocked).
+- I20 page contract: 3 passed.
+- Ruff on changed Backend files: passed.
+- compileall on changed Backend files: passed.
+- Playwright runner `node --check`: passed.
+
+Deployment and recovery
+- Backed up the replaced API files before transfer under `/lei/datara/backups/rebuild-i20-20261015/`.
+- The first restart exposed a missing staged dependency (`rebuild.governance.legacy_i20_mapping`) and the API became unhealthy. The import error was filtered from container logs; no credential values were printed. Backed up the previous reader/mapping files, copied the current source reader and I20 mapper into the isolated source mount, verified hashes, restarted only `datara-rebuild-api`, and confirmed healthy status. A duplicate-identity test then exposed an issue-routing defect (observed failing before fix); backed up and deployed the corrected `legacy_i20_preview.py`, verified its hash, restarted the API, and reran the full Playwright control flow. An intermediate same-hash `api.py` upload did not change content; its backup is retained.
+- Runtime env probe reported only `I20_SOURCE_URL=set`; source URL/password were not printed. Reader code pins schema/table/column allowlists and issues a read-only transaction.
+- Final SHA-256 (local and remote identical): `governance/api.py` `6e233737b7da84ce646013e7b9c1ebb64ab1fc3a61375be08bc1635db34fb1e3`; `governance/legacy_i20_preview.py` `410b254a0e424e92c06ee2903dcc2027c9ae7476dc70aff8413620932d7234fc`; `api/app.py` `32626b8b3db98ac38a1f04122e5332a29b68c5e4345d93a3cd84548eb581d853`; `governance/legacy_source_reader.py` `2c9c884d6ded72b1b4e60749e9d5377487233f39f6c2f238ed745939b32e2afd`; `governance/legacy_i20_mapping.py` `45d55a5fa3c29e82a5f63c0d11149108a4b9fb45531653b887cd28cd92dae679`; validation page `539eea65e09d0dbc06ef8ec86b6dd0e235492decc41f969e038952e350393811`.
+
+Browser channels
+- browser-use: BLOCKED after two bounded 30-second timeouts while binding/navigating the existing I19 validation tab to the I20 page.
+- Playwright: PASS on the same deployed page and port 18091. Final run `R3S9I20-20261014235000-e0ae9c`, 10/10 checks; preliminary run `R3S9I20-20261014234555-81aafa` is retained too. The protected runtime key exchanged for a short-lived token in the test process; the page did not contain the key or login form.
+- UI flow: page loaded; 12 accessible projects prefilled; project #3 selected; operator clicked the I20 read-only preview control; API returned HTTP 200; both source-table rows, counts, notices, and read-only boundary rendered; zero browser errors.
+- API/UI returned source counts `t_indicator=0`, `t_indicator_version=0`; target project counts were also zero. The empty result validates the control path only, not business parity.
+- `parity_verified=false`, `import_enabled=false`, no import/write control; response payload checks passed (no metric definitions, formula, dimensions, version JSON). No target business DML was authorized or executed.
+
+Runtime correlation
+- API log: project-scoped `POST /api/v1/rebuild/governance/projects/3/legacy/i20/mapping-preview` -> 200.
+- Web access log: `GET /rebuild-validation-r3-s9-i20.html` -> 200; project list GET 200; preview POST 200.
+- Containers: datara-rebuild-api running/healthy; datara-web running; datara-mysql-meta running/healthy.
+- Final post-fix resource sample: API 0.15% CPU / 68.16 MiB; web 0.00% / 2.746 MiB; mysql-meta 0.81% / 98.07 MiB. This is a point-in-time sample, not a capacity benchmark.
+
+Result ceiling: `I20_PREVIEW_CONTROL_PASS / I20_PARITY_PENDING / IMPORT_NOT_AUTHORIZED`. Detailed final browser evidence and screenshot are adjacent files named `r3s9i20-20261014235000-e0ae9c.json` and `r3s9i20-20261014235000-e0ae9c-summary.png`; preliminary run files remain adjacent.
