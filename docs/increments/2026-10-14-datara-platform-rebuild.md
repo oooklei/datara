@@ -139,3 +139,10 @@
 - 验证页/runner/evidence：项目隔离页及其独立契约测试；实测证据存放 `docs/increments/evidence/R3/`，包括 schema snapshot/hash、dry-run、导入批次、逐表逐关系 parity、UI runner JSON/截图、容器/依赖健康和错误日志窗口。
 - 必须满足：重复导入后目标无重复；经批准源记录 100% 有目标或显式拒绝原因；所有可解析父子/关联关系 100% 对应；未解释孤儿/数据差异为 0；新增记录 DB 时间戳非空；Ruff/compileall/pytest 全绿；页面所有关键控件闭环；远端服务健康且错误窗口为 0。
 - 此增量只形成实施计划，不得把源表当前 0 行作为省略 schema/API/空集行为测试的理由；I23 credential compatibility 若尚未核实，保存账号身份/权限关系并输出重置路径，不输出凭据值。
+
+### 2026-10-15 S9 durable checkpoint/importer 状态覆盖更新
+
+- 本地新增通用 batch/item checkpoint repository 与 I18 service-only importer：同批次幂等键/payload 漂移保护，逐实体事务内写目标行与 checkpoint，失败项留存 class-only 错误并可显式恢复；`conflict` 不自动重试；批准的孤儿版本行持久记录 `skipped` 原因。要求 project `EDIT_DEFINITION`；MySQL target guard 精确限定 `datara_rebuild_i0`，只允许 `:memory:` SQLite 用于本地集成测试；MySQL advisory lock 与本地串行避免同键并发重复执行。
+- 当前未增加可触发真实导入的 API route，亦未连接远端、调用 source reader 或写入目标数据。任何面向验证页的导入动作须另经项目权限与明确确认契约，且本轮用户裁定不等同于实际导入批准。
+- 本地证据：新增 checkpoint/importer tests 7 passed，全后端 `pytest tests -q` 633 passed，Ruff、compileall、diff-check 通过。仅属内存 SQLite/本机逻辑验证，不能替代 192.168.1.9 服务、MySQL、中间件、资源、日志和浏览器四联门禁。
+- 状态保持：R3-S9/R3 为 IN_PROGRESS/PARTIAL；I19-I23 映射与导入、完整 parity、目标备份/恢复、并发及回滚演练、写入确认和 API/页面控件闭环仍未完成。实际导入前必须由人工审阅最新 44-create/1-skip dry-run 及恢复计划并单独批准；不得以此轮“继续推进”解释成数据写入授权。
