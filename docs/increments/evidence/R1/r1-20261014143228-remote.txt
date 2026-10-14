@@ -1,0 +1,16 @@
+R1 auth-bootstrap final control-level run
+Run ID: r1-20261014143228
+Captured: 2026-10-14 22:32:28 Asia/Shanghai
+URL: http://192.168.1.9:18091/rebuild-validation-i1.html
+Browser: Chrome 149.0.7827.115 (Playwright)
+
+Browser-use channel: BLOCKED after two bounded 30-second timeouts while binding the already-open page and reading its accessibility state. The exact same deployed URL was then exercised with Playwright; this is not an API-only substitution.
+
+Playwright: PASS, 9/9 assertions. The page returned HTTP 200, displayed no human login controls, and enabled controls only after the runner injected its short-lived test token. The user flow created a project through the form (HTTP 200, id 14; list count increased from 11 to 12), attempted a member write (403), probed `mysql-src` (200, non-empty capabilities), logged out (200 and visible message; controls disabled), then confirmed the revoked token was rejected (401). Browser/page errors=0; failed requests=0.
+
+Remote DB read-only row:
+`14 | 0 | R1 validation r1-20261014143228 | 2026-10-14 22:32:27 | 2026-10-14 22:32:27`
+
+The row proves persisted `created_at` and `updated_at` in Asia/Shanghai. API logs correlate validation-token 200, project POST/GET 200, members 403, datasource probe 200, logout 200, and post-logout projects 401. API container was `running healthy`; health endpoint returned code 0/status ok.
+
+The previous runs `r1-20261014143004` and `r1-20261014143128` are preserved as FAIL evidence. They exposed a test timing race: the success message renders before the asynchronous project-list refresh completes. The runner now waits for the list count to increase relative to its pre-create value; it does not hide either failure or weaken the visible UI gate.

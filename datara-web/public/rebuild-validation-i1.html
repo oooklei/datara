@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Datara I1 重建验证</title>
+  <style>
+    body{margin:0;background:#f3f7f7;color:#172033;font:14px system-ui,sans-serif}
+    main{max-width:980px;margin:0 auto;padding:36px}
+    .card{background:#fff;border:1px solid #dbe5e7;border-radius:14px;padding:20px;margin:14px 0;box-shadow:0 6px 18px #0b38420d}
+    .row{display:flex;gap:10px;flex-wrap:wrap} input,button{min-height:36px;border:1px solid #c9d6da;border-radius:7px;padding:0 11px} button{background:#146c72;color:#fff;border:0;cursor:pointer} button:disabled{opacity:.45;cursor:not-allowed}
+    output{display:block;margin-top:16px;padding:12px;background:#eaf7f3;border-radius:8px} small{color:#557}
+  </style>
+</head>
+<body>
+<main>
+  <p>I1 / REBUILD VALIDATION · 运行入口固定为 18091</p>
+  <h1>身份、项目、数据源验证页</h1>
+  <section class="card"><h2>1. 验证会话</h2><p id="tokenState">等待验证运行器注入短时授权上下文</p><button id="logout" disabled>撤销验证会话</button></section>
+  <section class="card"><h2>2. 项目与权限</h2><div class="row"><input id="projectName" aria-label="项目名称" value="I1静态验证项目"><button id="create" disabled>创建并刷新</button><button id="permission" disabled>验证成员权限拒绝</button></div><p id="projectState">当前用户项目数：0</p></section>
+  <section class="card"><h2>3. 数据源</h2><button id="probe" disabled>探查 mysql-src</button><p id="capabilities">能力：未校验</p></section>
+  <output id="message">等待 I1 验证</output>
+</main>
+<script>
+(() => {
+  let token = window.__DATARA_TEST_TOKEN__ || '', projectId = null
+  const $ = id => document.getElementById(id)
+  const mark = text => { $('message').innerHTML = `${text}<small> · ${new Date().toISOString()}</small>` }
+  const auth = () => ({Authorization: `Bearer ${token}`})
+  const enable = ok => ['logout','create','permission','probe'].forEach(id => $(id).disabled = !ok)
+  if (token) { $('tokenState').textContent = '验证运行器已注入短时授权上下文'; enable(true); mark('验证会话已初始化') }
+  $('create').onclick = async () => { const r=await fetch('/api/v1/rebuild/projects',{method:'POST',headers:{...auth(),'Content-Type':'application/json'},body:JSON.stringify({name:$('projectName').value,description:'I1 browser validation'})}); const b=await r.json(); if(r.ok) projectId=b.data.id; mark(r.ok?`项目已创建：${b.data.name}`:b.msg); await list() }
+  async function list(){ const r=await fetch('/api/v1/rebuild/projects',{headers:auth()}); const b=await r.json(); if(r.ok){$('projectState').textContent=`当前用户项目数：${b.data.total}`; projectId=projectId||b.data.list[0]?.id} }
+  $('permission').onclick = async () => { if(!projectId) await list(); const r=await fetch(`/api/v1/rebuild/projects/${projectId}/members`,{method:'POST',headers:{...auth(),'Content-Type':'application/json'},body:JSON.stringify({username:'dev',role:'viewer'})}); mark(r.status===403?'权限拒绝验证成功（HTTP 403）':`权限验证返回 HTTP ${r.status}`) }
+  $('probe').onclick = async () => { const r=await fetch('/api/v1/rebuild/datasources/profiles/mysql-src/probe',{method:'POST',headers:auth()}); const b=await r.json(); $('capabilities').textContent=r.ok?`能力：${b.data.capabilities.join('、')}`:`能力校验失败：${b.msg}`; mark(r.ok?'数据源能力校验成功':b.msg) }
+  $('logout').onclick = async () => { const r=await fetch('/api/v1/rebuild/logout',{method:'POST',headers:auth()}); mark(r.ok?'登出成功，旧 Token 已撤销':`登出失败 HTTP ${r.status}`); token=''; $('tokenState').textContent='Token：未获得'; enable(false) }
+  if (!token) mark('等待测试运行器通过受控验证会话启动本页')
+})()
+</script>
+</body></html>

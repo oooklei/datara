@@ -1,0 +1,107 @@
+{
+  "run_id": "r1-20261014143228",
+  "started_at": "2026-10-14T14:32:28.346Z",
+  "started_at_local": "2026-10-14 22:32:28",
+  "finished_at": "2026-10-14T14:32:29.404Z",
+  "timezone": "Asia/Shanghai",
+  "url": "http://192.168.1.9:18091/rebuild-validation-i1.html",
+  "browser": "Chrome 149.0.7827.115",
+  "playwright_validation_url": "http://192.168.1.9:18091/rebuild-validation-i1.html",
+  "screenshot": "docs/increments/evidence/R1/r1-20261014143228.png",
+  "created_project_id": 14,
+  "actions": [
+    "runner-key exchange (server process only)",
+    "project form create",
+    "member permission denial",
+    "mysql-src profile probe",
+    "logout",
+    "revoked token request"
+  ],
+  "checks": [
+    {
+      "name": "playwright-r1-page-loaded",
+      "pass": true,
+      "http_status": 200
+    },
+    {
+      "name": "no-human-login-controls",
+      "pass": true
+    },
+    {
+      "name": "runner-token-enabled-controls",
+      "pass": true
+    },
+    {
+      "name": "project-created-through-ui",
+      "pass": true,
+      "http_status": 200,
+      "project_id_type": "number",
+      "project_count": 12,
+      "project_state_text": "当前用户项目数：12"
+    },
+    {
+      "name": "member-write-denied-through-ui",
+      "pass": true,
+      "http_status": 403
+    },
+    {
+      "name": "managed-datasource-probe-through-ui",
+      "pass": true,
+      "http_status": 200
+    },
+    {
+      "name": "logout-message-visible",
+      "pass": true,
+      "http_status": 200
+    },
+    {
+      "name": "logout-through-ui",
+      "pass": true,
+      "http_status": 200
+    },
+    {
+      "name": "revoked-token-denied",
+      "pass": true,
+      "status": 401
+    }
+  ],
+  "relevant_responses": [
+    {
+      "method": "POST",
+      "path": "/api/v1/rebuild/projects",
+      "status": 200
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/rebuild/projects",
+      "status": 200
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/rebuild/projects/14/members",
+      "status": 403
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/rebuild/datasources/profiles/mysql-src/probe",
+      "status": 200
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/rebuild/logout",
+      "status": 200
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/rebuild/projects",
+      "status": 401
+    }
+  ],
+  "failed_requests": [],
+  "errors": [],
+  "expected_negative_console": [
+    "console: Failed to load resource: the server responded with a status of 403 (Forbidden)",
+    "console: Failed to load resource: the server responded with a status of 401 (Unauthorized)"
+  ],
+  "outcome": "PASS"
+}

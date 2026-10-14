@@ -1,0 +1,29 @@
+R1 auth-bootstrap browser/runtime evidence
+Run ID: r1-20261014142424
+Capture time: 2026-10-14 22:25:36 Asia/Shanghai
+Validation URL: http://192.168.1.9:18091/rebuild-validation-i1.html
+Browser: Chrome 149.0.7827.115 via Playwright
+
+Browser control channels
+- browser-use: BLOCKED. Binding the already-open R1 page timed out twice at 30 seconds; the second attempt included binding and accessibility-state read. No login or business operation was attempted through browser-use.
+- Playwright control-level validation: PASS. It opened the same deployed R1 page and drove the visible project, permission, datasource-probe, and logout controls. Report: r1-20261014142424.json; screenshot: r1-20261014142424.png.
+
+Visible control assertions: 8/8 passed
+- Page HTTP 200; no username/password/login controls; runner-injected token enabled business controls.
+- Project created through the form: HTTP 200, project id 11.
+- Member write correctly denied: HTTP 403.
+- Managed mysql-src datasource probe: HTTP 200 with a non-empty capability list.
+- Logout through the page: HTTP 200; controls disabled afterward.
+- Reuse of the revoked token: HTTP 401.
+- Playwright page/console errors: 0; failed network requests: 0.
+
+Remote database evidence
+Read-only query on datara-mysql-meta:
+`SELECT id,name,created_at,updated_at FROM datara_rebuild_i0.rebuild_project WHERE id=11`
+
+Result:
+`11 | R1 validation r1-20261014142424 | 2026-10-14 22:24:24 | 2026-10-14 22:24:24`
+
+Remote API log correlation (datara-rebuild-api): validation-token 200; project POST/GET 200; `/projects/11/members` 403; mysql-src probe 200; logout 200; post-logout project GET 401. Runtime container state was `running healthy`; `/api/v1/rebuild/health` returned `{"code":0,"msg":"success","data":{"service":"rebuild-api","status":"ok"}}`.
+
+No user-facing login form or static validation key was added. The key remained in the approved server-side runner process and was exchanged for a short-lived token before the page was loaded.
