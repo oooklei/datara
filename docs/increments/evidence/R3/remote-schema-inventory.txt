@@ -1,0 +1,281 @@
+R3_INVENTORY_AT=2026-10-14T17:55:28+08:00
+datara_meta	57
+datara_rebuild_i0	3
+datara_meta	BASE TABLE	57
+datara_rebuild_i0	BASE TABLE	3
+t_alert_record	BASE TABLE
+t_baseline_progress	BASE TABLE
+t_biz_domain	BASE TABLE
+t_command	BASE TABLE
+t_component	BASE TABLE
+t_component_log	BASE TABLE
+t_component_version	BASE TABLE
+t_data_source	BASE TABLE
+t_dw_layer	BASE TABLE
+t_dw_model	BASE TABLE
+t_dw_model_field	BASE TABLE
+t_dw_model_relation	BASE TABLE
+t_dw_model_version	BASE TABLE
+t_engine_type	BASE TABLE
+t_env_group	BASE TABLE
+t_global_param	BASE TABLE
+t_ide_history	BASE TABLE
+t_ide_script	BASE TABLE
+t_indicator	BASE TABLE
+t_indicator_version	BASE TABLE
+t_lineage_edge	BASE TABLE
+t_lineage_field	BASE TABLE
+t_meta_table_ext	BASE TABLE
+t_meta_tag	BASE TABLE
+t_meta_tagging	BASE TABLE
+t_qc_alarm_policy	BASE TABLE
+t_qc_exception	BASE TABLE
+t_qc_report	BASE TABLE
+t_qc_rule	BASE TABLE
+t_qc_run	BASE TABLE
+t_qc_task	BASE TABLE
+t_run_event	BASE TABLE
+t_run_node_artifact	BASE TABLE
+t_runtime_node	BASE TABLE
+t_ssh_node	BASE TABLE
+t_std_approval	BASE TABLE
+t_std_check_report	BASE TABLE
+t_std_code	BASE TABLE
+t_std_code_value	BASE TABLE
+t_std_element	BASE TABLE
+t_std_mapping	BASE TABLE
+t_std_naming_rule	BASE TABLE
+t_stream_job	BASE TABLE
+t_stream_offset	BASE TABLE
+t_task_instance	BASE TABLE
+t_task_log	BASE TABLE
+t_tmp_data	BASE TABLE
+t_user	BASE TABLE
+t_wf_category	BASE TABLE
+t_wf_definition	BASE TABLE
+t_wf_definition_log	BASE TABLE
+t_wf_schedule	BASE TABLE
+t_wf_template	BASE TABLE
+t_wf_template_version	BASE TABLE
+t_wf_variable	BASE TABLE
+t_workflow_instance	BASE TABLE
+t_workflow_run_metric	BASE TABLE
+t_biz_domain	InnoDB	4	2026-10-12 22:25:28	2026-10-12 22:25:33
+t_dw_layer	InnoDB	5	2026-10-12 22:25:28	2026-10-12 22:25:33
+t_dw_model	InnoDB	3	2026-10-12 22:25:28	2026-10-13 04:00:10
+t_dw_model_field	InnoDB	27	2026-10-12 22:25:30	2026-10-13 03:59:44
+t_dw_model_relation	InnoDB	2	2026-10-12 22:25:32	2026-10-13 04:00:24
+t_dw_model_version	InnoDB	1	2026-10-12 22:25:32	2026-10-13 00:56:25
+t_engine_type	InnoDB	3	2026-10-12 22:25:28	2026-10-12 22:25:33
+t_indicator	InnoDB	0	2026-10-13 03:58:25	NULL
+t_indicator_version	InnoDB	0	2026-10-13 03:58:25	NULL
+t_meta_table_ext	InnoDB	0	2026-10-13 03:58:22	NULL
+t_meta_tag	InnoDB	0	2026-10-13 03:58:23	NULL
+t_meta_tagging	InnoDB	0	2026-10-13 03:58:24	NULL
+t_qc_alarm_policy	InnoDB	0	2026-10-13 00:45:35	NULL
+t_qc_exception	InnoDB	0	2026-10-13 00:45:34	NULL
+t_qc_report	InnoDB	0	2026-10-13 00:45:35	NULL
+t_qc_rule	InnoDB	0	2026-10-13 00:45:34	2026-10-13 00:48:41
+t_qc_run	InnoDB	0	2026-10-13 00:45:34	NULL
+t_qc_task	InnoDB	0	2026-10-13 00:45:34	NULL
+t_std_approval	InnoDB	1	2026-10-13 00:45:36	2026-10-13 00:49:26
+t_std_check_report	InnoDB	0	2026-10-13 00:45:36	NULL
+t_std_code	InnoDB	1	2026-10-13 00:45:35	2026-10-13 00:49:26
+t_std_code_value	InnoDB	1	2026-10-13 00:45:35	2026-10-13 00:49:26
+t_std_element	InnoDB	0	2026-10-13 00:45:35	2026-10-13 11:17:19
+t_std_mapping	InnoDB	0	2026-10-13 00:45:36	NULL
+t_std_naming_rule	InnoDB	0	2026-10-13 00:45:36	NULL
+t_user	InnoDB	4	2026-09-18 15:59:12	NULL
+t_indicator	id	int	NO	PRI	auto_increment
+t_indicator	code	varchar(64)	NO	UNI	
+t_indicator	name	varchar(128)	NO	UNI	
+t_indicator	type	varchar(16)	NO		
+t_indicator	biz_domain	varchar(64)	NO		
+t_indicator	biz_def	varchar(512)	NO		
+t_indicator	tech_def	varchar(512)	NO		
+t_indicator	src_kind	varchar(16)	NO		
+t_indicator	src_ref	varchar(255)	NO		
+t_indicator	src_field	varchar(128)	NO		
+t_indicator	out_table	varchar(128)	NO		
+t_indicator	out_task	varchar(128)	NO		
+t_indicator	period	varchar(16)	NO		
+t_indicator	dims	varchar(255)	NO		
+t_indicator	unit	varchar(16)	NO		
+t_indicator	status	varchar(16)	NO		
+t_indicator	version	int	NO		
+t_indicator	owner	varchar(64)	NO		
+t_indicator	base_metric_id	int	YES		
+t_indicator	agg_fn	varchar(16)	YES		
+t_indicator	num_field	varchar(128)	YES		
+t_indicator	time_field	varchar(128)	YES		
+t_indicator	dim_field	varchar(128)	YES		
+t_indicator	filter_cond	varchar(255)	YES		
+t_indicator	create_time	datetime	NO		
+t_indicator	update_time	datetime	NO		
+t_indicator_version	id	int	NO	PRI	auto_increment
+t_indicator_version	indicator_id	int	NO	MUL	
+t_indicator_version	version	int	NO		
+t_indicator_version	snapshot_json	mediumtext	NO		
+t_indicator_version	change_note	varchar(255)	NO		
+t_indicator_version	created_by	varchar(64)	NO		
+t_indicator_version	create_time	datetime	NO		
+t_meta_table_ext	id	int	NO	PRI	auto_increment
+t_meta_table_ext	ds_id	int	NO	MUL	
+t_meta_table_ext	db_name	varchar(128)	NO		
+t_meta_table_ext	table_name	varchar(128)	NO		
+t_meta_table_ext	biz_domain	varchar(64)	NO		
+t_meta_table_ext	security_level	varchar(16)	NO		
+t_meta_table_ext	owner	varchar(64)	NO		
+t_meta_table_ext	remark	varchar(255)	NO		
+t_meta_table_ext	create_time	datetime	NO		
+t_meta_table_ext	update_time	datetime	NO		
+t_meta_tag	id	int	NO	PRI	auto_increment
+t_meta_tag	name	varchar(64)	NO	UNI	
+t_meta_tag	cat	varchar(16)	NO		
+t_meta_tag	color	varchar(16)	NO		
+t_meta_tag	desc	varchar(255)	NO		
+t_meta_tag	create_time	datetime	NO		
+t_meta_tag	update_time	datetime	NO		
+t_meta_tagging	id	int	NO	PRI	auto_increment
+t_meta_tagging	tag_id	int	NO	MUL	
+t_meta_tagging	target_type	varchar(16)	NO	MUL	
+t_meta_tagging	target_key	varchar(255)	NO		
+t_meta_tagging	created_by	varchar(64)	NO		
+t_meta_tagging	create_time	datetime	NO		
+t_qc_alarm_policy	id	int	NO	PRI	auto_increment
+t_qc_alarm_policy	name	varchar(128)	NO		
+t_qc_alarm_policy	scope	varchar(128)	NO		
+t_qc_alarm_policy	metric	varchar(32)	NO		
+t_qc_alarm_policy	op	varchar(4)	NO		
+t_qc_alarm_policy	threshold	float	NO		
+t_qc_alarm_policy	enabled	tinyint(1)	NO		
+t_qc_alarm_policy	last_fired_at	datetime	YES		
+t_qc_exception	id	int	NO	PRI	auto_increment
+t_qc_exception	run_id	int	NO		
+t_qc_exception	rule_id	int	NO		
+t_qc_exception	task_id	int	YES		
+t_qc_exception	target	varchar(255)	NO		
+t_qc_exception	sample_sql	mediumtext	NO		
+t_qc_exception	hit_count	int	NO		
+t_qc_exception	status	varchar(16)	NO		
+t_qc_exception	fix_note	varchar(255)	NO		
+t_qc_exception	handled_at	datetime	YES		
+t_qc_report	id	int	NO	PRI	auto_increment
+t_qc_report	title	varchar(128)	NO		
+t_qc_report	scope	varchar(128)	NO		
+t_qc_report	period	varchar(64)	NO		
+t_qc_report	content_json	json	YES		
+t_qc_report	created_by	varchar(64)	NO		
+t_qc_report	create_time	datetime	NO		
+t_qc_rule	id	int	NO	PRI	auto_increment
+t_qc_rule	name	varchar(128)	NO		
+t_qc_rule	rule_type	varchar(32)	NO		
+t_qc_rule	dim	varchar(32)	NO		
+t_qc_rule	ds_id	int	YES		
+t_qc_rule	db_name	varchar(128)	NO		
+t_qc_rule	table_name	varchar(128)	NO		
+t_qc_rule	column_name	varchar(128)	NO		
+t_qc_rule	params_json	json	YES		
+t_qc_rule	threshold	float	NO		
+t_qc_rule	level	varchar(16)	NO		
+t_qc_rule	status	varchar(16)	NO		
+t_qc_rule	owner	varchar(64)	NO		
+t_qc_rule	remark	varchar(255)	NO		
+t_qc_rule	create_time	datetime	NO		
+t_qc_run	id	int	NO	PRI	auto_increment
+t_qc_run	task_id	int	YES		
+t_qc_run	trigger	varchar(16)	NO		
+t_qc_run	started_at	datetime	NO		
+t_qc_run	finished_at	datetime	YES		
+t_qc_run	result	varchar(16)	NO		
+t_qc_run	score	float	NO		
+t_qc_run	stats_json	json	YES		
+t_qc_task	id	int	NO	PRI	auto_increment
+t_qc_task	name	varchar(128)	NO		
+t_qc_task	crontab	varchar(64)	NO		
+t_qc_task	enabled	tinyint(1)	NO		
+t_qc_task	rule_ids	json	YES		
+t_qc_task	status	varchar(16)	NO		
+t_qc_task	last_run_at	datetime	YES		
+t_qc_task	last_result	varchar(16)	NO		
+t_std_approval	id	int	NO	PRI	auto_increment
+t_std_approval	biz_type	varchar(16)	NO		
+t_std_approval	biz_id	int	NO		
+t_std_approval	action	varchar(16)	NO		
+t_std_approval	payload_json	json	YES		
+t_std_approval	status	varchar(16)	NO		
+t_std_approval	opinion	varchar(255)	NO		
+t_std_approval	create_time	datetime	NO		
+t_std_check_report	id	int	NO	PRI	auto_increment
+t_std_check_report	scope	varchar(16)	NO		
+t_std_check_report	summary_json	json	YES		
+t_std_check_report	issues_json	json	YES		
+t_std_check_report	status	varchar(16)	NO		
+t_std_check_report	create_time	datetime	NO		
+t_std_code	id	int	NO	PRI	auto_increment
+t_std_code	code	varchar(64)	NO	UNI	
+t_std_code	name	varchar(128)	NO		
+t_std_code	remark	varchar(255)	NO		
+t_std_code	status	varchar(16)	NO		
+t_std_code	version	int	NO		
+t_std_code	create_time	datetime	NO		
+t_std_code_value	id	int	NO	PRI	auto_increment
+t_std_code_value	std_code_id	int	NO	MUL	
+t_std_code_value	c	varchar(64)	NO		
+t_std_code_value	n	varchar(128)	NO		
+t_std_code_value	seq	int	NO		
+t_std_code_value	remark	varchar(255)	NO		
+t_std_element	id	int	NO	PRI	auto_increment
+t_std_element	code	varchar(64)	NO	UNI	
+t_std_element	cn	varchar(128)	NO		
+t_std_element	en	varchar(128)	NO		
+t_std_element	data_type	varchar(32)	NO		
+t_std_element	length	int	YES		
+t_std_element	status	varchar(16)	NO		
+t_std_element	version	int	NO		
+t_std_element	owner	varchar(64)	NO		
+t_std_element	remark	varchar(255)	NO		
+t_std_element	create_time	datetime	NO		
+t_std_element	update_time	datetime	NO		
+t_std_mapping	id	int	NO	PRI	auto_increment
+t_std_mapping	name	varchar(128)	NO		
+t_std_mapping	target	varchar(255)	NO		
+t_std_mapping	element_id	int	YES		
+t_std_mapping	code_id	int	YES		
+t_std_mapping	status	varchar(16)	NO		
+t_std_mapping	diff	varchar(255)	NO		
+t_std_naming_rule	id	int	NO	PRI	auto_increment
+t_std_naming_rule	name	varchar(128)	NO		
+t_std_naming_rule	rule_type	varchar(16)	NO		
+t_std_naming_rule	pattern	varchar(255)	NO		
+t_std_naming_rule	target	varchar(32)	NO		
+t_std_naming_rule	enabled	tinyint(1)	NO		
+t_user	id	int	NO	PRI	auto_increment
+t_user	user_name	varchar(64)	NO	UNI	
+t_user	user_pwd	varchar(128)	NO		
+t_user	user_role	varchar(32)	NO		
+t_user	state	varchar(16)	NO		
+t_user	create_time	datetime	YES		
+t_user	update_time	datetime	YES		
+rebuild_project	id	int	NULL	auto_increment
+rebuild_project	name	varchar(128)	NULL	
+rebuild_project	description	text	NULL	
+rebuild_project	owner_id	int	NULL	
+rebuild_project	created_at	datetime	NULL	
+rebuild_project	updated_at	datetime	NULL	
+rebuild_project_member	id	int	NULL	auto_increment
+rebuild_project_member	project_id	int	NULL	
+rebuild_project_member	user_id	int	NULL	
+rebuild_project_member	role	varchar(32)	NULL	
+rebuild_project_member	created_at	datetime	NULL	
+rebuild_project_member	updated_at	datetime	NULL	
+rebuild_user	id	int	NULL	auto_increment
+rebuild_user	username	varchar(64)	NULL	
+rebuild_user	password_hash	varchar(255)	NULL	
+rebuild_user	role	varchar(32)	NULL	
+rebuild_user	status	varchar(16)	NULL	
+rebuild_user	created_at	datetime	NULL	
+rebuild_user	updated_at	datetime	NULL	
+LOG_SCAN container=datara-rebuild-api window=10m error_markers=0
+LOG_SCAN container=datara-api window=10m error_markers=0
+LOG_SCAN container=datara-worker window=10m error_markers=0

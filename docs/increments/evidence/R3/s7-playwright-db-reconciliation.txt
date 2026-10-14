@@ -1,0 +1,42 @@
+R3-S7 remote control-level validation and database reconciliation
+Run: R3V-20261014112022-4fc8a6
+Time zone: Asia/Shanghai
+Page: http://192.168.1.9:18091/rebuild-validation-r3.html
+Project fixture: id=8, pre-existing isolated `R3 governance validation R3V-20261014110900-fe0cee`
+Outcome: Playwright PASS, 20 control assertions passed, browser error count=0.
+Runner report: `R3V-20261014112022-4fc8a6-playwright.json`
+Screenshot: `R3V-20261014112022-4fc8a6-governance.png`
+
+Browser-use result: first control call timed out after 30s; one same-page retry also timed out after 30s. Per R2-14, browser-use is recorded BLOCKED and Playwright drove the exact same URL and UI controls. API-only checks did not replace the UI run.
+
+UI/backend outcomes:
+- Validation-key exchange returned 200; no login form, key/token storage or page credential field.
+- Created assets id=10,11 with 4 fields; tag id=5 and one asset-tag link; quality rule id=5; lineage edge id=4; standard id=5; metric id=3.
+- Catalog search and schema detail rendered persisted assets/fields.
+- Lineage form saved and the graph rendered 1 persisted edge / 2 nodes.
+- Quality history rendered the real empty state; no quality run was fabricated or started.
+- Duplicate standard returned real HTTP 409 and the page displayed the conflict.
+- Activity/Audit rendered the 7 persisted events below with generated timestamps.
+- Page logout revoked the runner token; follow-up protected request returned HTTP 401.
+
+Exact MySQL read-only reconciliation (schema `datara_rebuild_i0`, project 8):
+- Assets 10,11: exact count=2; created_at/updated_at null count=0; DB values 2026-10-14 19:20:23.
+- Fields: exact count=4; created_at/updated_at null count=0; DB values 2026-10-14 19:20:23.
+- Tag 5: exact count=1; created_at/updated_at null count=0; timestamp 19:20:24.
+- Asset-tag links for tag 5 and assets 10,11: exact count=1 (asset 11); timestamp 19:20:24.
+- Quality rule 5 on asset 10: exact count=1; created_at/updated_at null count=0; timestamp 19:20:24.
+- Quality runs for assets 10,11: exact count=0, matching the real empty history shown in UI.
+- Lineage edge 4 (asset 10 -> 11): exact count=1; created_at/updated_at null count=0; timestamp 19:20:24.
+- Standard 5: exact count=1; created_at/updated_at null count=0; timestamp 19:20:25.
+- Metric 3: exact count=1; created_at/updated_at null count=0; timestamp 19:20:25.
+- Audit window 19:20:23–19:20:27: exact count=7; generated_at null count=0. Events: asset.create x2, tag.create_and_attach, quality_rule.create, lineage.create, standard.create, metric.create. Each ID/action/resource/timestamp matched the Activity/Audit UI.
+- `datara-rebuild-api`: running/healthy; API error markers in last 10 minutes=0.
+
+Test-runner corrections exercised by the passing rerun:
+- Wait for the persisted lineage count and audit row before asserting asynchronously refreshed UI.
+- Wait for the real quality empty-state before checking it.
+- Classify only the explicitly awaited duplicate-standard HTTP 409 as the expected negative control; assert its response status, and keep other console errors fatal.
+
+Reconciliation script: `infra/r3_s7_reconcile_run.sh` via `infra/r3_s7_reconcile_run.ps1`. It performs SELECT-only queries; it issued no DML. No Web restart/rebuild, port change, legacy `datara_meta` write, or test-data cleanup was performed.
+
+S7 result: control-level UI, Backend, DB, timestamp, and service-log closure PASS. Overall R3 remains PARTIAL until I18-I23 legacy asset import/parity is completed and separately verified.

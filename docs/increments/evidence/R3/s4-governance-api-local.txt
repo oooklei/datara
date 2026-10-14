@@ -1,0 +1,15 @@
+Increment: R3-S4 governance API implementation and local contract validation
+Date: 2026-10-14 Asia/Shanghai
+Workspace: D:\需求\数据治理工具\Datara
+Scope: local SQLite/TestClient only. No local containers, remote DB migration, or R3 remote schema changes.
+
+Impact gate: completed before implementation at `docs/increments/R3-S4-开始前影响分析.md`.
+TDD RED: `rtk proxy pytest tests/rebuild/test_governance_api.py -q` initially failed on the expected absent governance routes (404); after correcting the harness to explicitly invoke the versioned migration runner, the feature tests continued to fail on 404 as intended.
+TDD GREEN: `rtk proxy pytest tests/rebuild/test_governance_api.py -q` -> 5 passed.
+Full suite: `rtk proxy pytest tests/rebuild -q` -> 35 passed.
+Lint: `rtk ruff check rebuild tests/rebuild` -> passed.
+Compile: `rtk python -m compileall -q rebuild` -> passed.
+
+Covered behavior: bearer authentication; project-owner authorization; cross-project denial; asset create/list/detail/search/type/domain/tag filters and pagination; field records; project-owned tags and atomic asset-tag replacement; create-tag-and-attach in one transaction; table/field lineage traversal with bounded depth; quality-rule definitions; real quality-run history projection (no synthetic run operation); standards and semantic metrics; transaction-bound audit events and generated timestamps; failed tag assignment returns not-found and creates no false success audit row.
+
+Schema boundary: test lifespan creates only R1 identity/project tables. The test explicitly invokes `MigrationRunner` against its in-memory SQLite engine. Production lifespan does not run R3 migrations. Remote migration/import, row-level permission fixtures, product-reference validation page, and browser interaction remain incomplete and are not claimed here.

@@ -1,0 +1,9 @@
+R3 local static and contract evidence
+Date: 2026-10-14 (Asia/Shanghai)
+Scope: source-only local checks; no local container/database/runtime used.
+
+- Rebuild-to-legacy API import scan: no `from api/common` or `import api/common` matches under `datara-backend/rebuild` or `datara-backend/tests/rebuild`.
+- Existing rebuild backend tests: `15 passed`.
+- Source inventory review: governance ORM currently lives in the legacy `datara-backend/common/models.py`; R3 must implement new models under `datara-backend/rebuild/` and may only read the legacy model/schema as migration evidence.
+- Remote inventory SQL script uses explicit table names after the first read-only query exposed MySQL binary REGEXP collation incompatibility; the corrected script ran successfully on the target host. No remote data was changed.
+- Result: local R3-S1 source boundary check PASS; the implementation/API contract test suite is not yet authored, so R3 overall remains IN_PROGRESS.

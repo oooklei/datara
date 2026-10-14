@@ -1,0 +1,12 @@
+Increment: R3-S2 governance contracts and failure tests
+Date: 2026-10-14 Asia/Shanghai
+Scope: local-only source/schema contract tests; no database or container was started.
+
+RED: focused test collection failed because rebuild.governance.models/contracts did not exist.
+GREEN at the S2 checkpoint: rtk proxy pytest datara-backend/tests/rebuild -q -> 26 passed.
+Lint: final `rtk ruff check datara-backend/rebuild/governance datara-backend/tests/rebuild/test_governance_contracts.py` passed after correcting the initial E501 finding.
+Compile: rtk python -m compileall -q datara-backend/rebuild/governance -> passed.
+
+Contract coverage includes the governance table set, DB-generated created_at/updated_at/generated_at, project FK enforcement, stable asset/field identity uniqueness, row-count non-negativity/reconciliation, project-scoped authorization, migration replay hash decisions, legal state transitions, and constructibility of standard/semantic/tag/lineage/audit entities.
+
+Not claimed at the S2 checkpoint: no R3 API, versioned migration, source-data import, R3 UI, remote R3 schema, or R3 end-to-end acceptance existed. Later work is tracked separately in `s3-migration-tests.txt` and `s4-governance-api-local.txt`; R3 remains open.

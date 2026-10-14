@@ -1,0 +1,97 @@
+{
+  "run_id": "R3V-20261014110557-a0c74c",
+  "started_at": "2026-10-14T11:05:57.546Z",
+  "timezone": "Asia/Shanghai",
+  "url": "http://192.168.1.9:18091/rebuild-validation-r3.html",
+  "browser": "Chrome 149.0.7827.115",
+  "fixture": {
+    "project_name": "R3 governance validation R3V-20261014110557-a0c74c",
+    "project_id": 7,
+    "http_status": 200,
+    "setup_only": true
+  },
+  "actions": [
+    {
+      "name": "prepare-isolated-validation-project",
+      "at": "2026-10-14T11:05:57.728Z",
+      "project_id": 7,
+      "http_status": 200
+    },
+    {
+      "name": "select-isolated-project",
+      "at": "2026-10-14T11:05:58.614Z",
+      "project_id": 7
+    }
+  ],
+  "checks": [
+    {
+      "name": "protected-runner-token-exchange",
+      "pass": true,
+      "http_status": 200
+    },
+    {
+      "name": "governance-page-loaded",
+      "pass": true,
+      "http_status": 200
+    },
+    {
+      "name": "no-human-login-or-token-storage",
+      "pass": true
+    },
+    {
+      "name": "project-selector-loaded-from-backend",
+      "pass": true
+    }
+  ],
+  "relevant_responses": [
+    {
+      "at": "2026-10-14T11:05:58.499Z",
+      "method": "GET",
+      "path": "/api/v1/rebuild/projects",
+      "status": 200
+    },
+    {
+      "at": "2026-10-14T11:05:58.536Z",
+      "method": "GET",
+      "path": "/api/v1/rebuild/governance/projects/3/assets",
+      "status": 200
+    },
+    {
+      "at": "2026-10-14T11:05:58.565Z",
+      "method": "GET",
+      "path": "/api/v1/rebuild/governance/projects/3/metrics",
+      "status": 200
+    },
+    {
+      "at": "2026-10-14T11:05:58.565Z",
+      "method": "GET",
+      "path": "/api/v1/rebuild/governance/projects/3/standards",
+      "status": 200
+    },
+    {
+      "at": "2026-10-14T11:05:58.629Z",
+      "method": "GET",
+      "path": "/api/v1/rebuild/governance/projects/7/assets",
+      "status": 200
+    },
+    {
+      "at": "2026-10-14T11:05:58.633Z",
+      "method": "GET",
+      "path": "/api/v1/rebuild/governance/projects/7/metrics",
+      "status": 200
+    },
+    {
+      "at": "2026-10-14T11:05:58.683Z",
+      "method": "GET",
+      "path": "/api/v1/rebuild/governance/projects/7/standards",
+      "status": 200
+    }
+  ],
+  "errors": [
+    "pageerror: Cannot read properties of null (reading 'id')",
+    "TimeoutError: locator.fill: Timeout 30000ms exceeded.\nCall log:\n\u001b[2m  - waiting for locator('#field-asset_name')\u001b[22m\n"
+  ],
+  "outcome": "FAIL",
+  "secrets_recorded": false,
+  "finished_at": "2026-10-14T11:06:29.031Z"
+}

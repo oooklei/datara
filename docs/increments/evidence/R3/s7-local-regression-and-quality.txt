@@ -1,0 +1,11 @@
+R3-S7 local checks, 2026-10-14 Asia/Shanghai
+
+`rtk proxy python -m ruff check rebuild tests/rebuild`: All checks passed.
+Wider baseline probe `rtk proxy python -m ruff check .`: failed on 445 diagnostics in legacy/non-rebuild files (predominantly older compact SQL/API/test code); this is not represented as a clean whole-backend Ruff result. The focused files changed in the rebuild R3/S6-S7 scope remain Ruff-clean.
+`rtk proxy pytest tests/rebuild -q`: 41 passed in 4.86s.
+`rtk proxy pytest tests -q`: 581 passed in 61.27s.
+`rtk proxy pnpm exec vue-tsc --noEmit`: exit 0; no diagnostics (0 errors).
+`rtk proxy pytest test_governance_validation_page.py test_r3_governance_runner.py -q`: 8 passed in 0.16s.
+`node --check r3-governance-control-smoke.cjs`: exit 0.
+
+The full backend suite and typecheck were rerun after the S7 test-runner fixes. Runtime UI, DB and service evidence is in `s7-playwright-db-reconciliation.txt`; local checks do not substitute for that evidence.

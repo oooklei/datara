@@ -1,0 +1,29 @@
+Increment: R3-S6 remote read-only preflight
+Observed: 2026-10-14 18:48 Asia/Shanghai, host 192.168.1.9
+Method: existing `infra/r3_readonly_inventory.sh` plus new `infra/r3_s6_remote_readonly.sh`; copied to unique /tmp scripts and executed by SSH. No remote DB or application writes.
+
+Results:
+- `datara-rebuild-api`: running, healthy; image `datara-backend:latest`; mount `/lei/datara/rebuild-source/rebuild:/app/rebuild` (read-only in container).
+- `datara-mysql-meta`: running on mysql:8.0.
+- Sanitized API DB identity: backend=mysql, host=mysql-meta, database=datara_rebuild_i0, user=datara_rebuild_i0. No URL, password, validation key, or token printed.
+- `datara_rebuild_i0` currently has 3 R1 core BASE TABLES and 0 `rebuild_governance_*` tables; no migration revision table/record is present.
+- `datara_meta` remains 57 BASE TABLES. This is an inventory only; no legacy rows were read or changed.
+- API/datara-api/worker 10-minute error-marker scan: 0 each.
+- Remote `rebuild.governance` and preflight modules absent from the live mounted package. Read-only source SHA256s: API app `c4fd19775e514c65e8efb8667d3c9f02424f9e0e629623932a6d3a1131b72a7b`; shared db `797a59539d55321a1e35369c9530a926e2f254c4b65dad0ab76204f1403e0972`; identity models `4afe1da630d7a93c12d363413633b8698747bfd71a623ccdf0e5390b152ed30b`; project models `7c81fdb531d1890f34ef2673c96d31458157e0976c89e2b5653b95b55df9b450`.
+- Local shared db/identity/project model hashes match exactly; local `rebuild/api/app.py` SHA256 is `f36a2c3025852ce092c6289695a61259aa2f07aba5d0818f11a5a1f57ebe036e`, differing from deployed R1 app because S4 governance router integration is not deployed.
+- API app diff was reviewed line-by-line: only `ProjectRecord`/governance router imports, the R1-only startup table list, and router registration differ; no other R1 behavior changed.
+- Before deployment, created unique mode-0700 backup directory `/lei/datara/backups/r3-s6-IuZlyI`; mode-0600 `app.py.before` is SHA256 `c4fd19775e514c65e8efb8667d3c9f02424f9e0e629623932a6d3a1131b72a7b`; schema-only dump (72 lines) is SHA256 `25fd293ad797b33b40a50e6aa0675cc2318afa1fe3fc84bbbefab00dd90d3497`. Both files are non-empty. This created backup artifacts only; no DB schema/data or running service changed.
+
+Conclusion: target identity is unique and clean; schema migration cannot run until the S4 governance package and guarded CLI are staged into the isolated runtime. The first probe had a Python nested-package `find_spec` error while checking absent module; corrected read-only probe then completed. Backup files were subsequently created and checksummed; no DB/application state changed. S6 dry-run remains mandatory.
+
+## S6 execution addendum (2026-10-14 18:54–18:57 Asia/Shanghai)
+
+- Staged the 11-file governance Python package and `api/app.py` candidate. Every governance `.py` SHA-256 matched the project source. Before switching the entry point, moved only the absent governance package into the isolated read-only source mount and ran in-container Python compilation plus `migration_apply --dry-run`.
+- Dry-run result: target `datara_rebuild_i0`; revision `r3_0001_governance_catalog`; checksum `4fdfd619453f4784b28da8f95551df1a48913ada99ca7fc461ed8f333bc5b897`; missing tables exactly the 12 declared `rebuild_governance_*` tables; existing governance tables 0; conflicts 0; version table absent; ready=true; post-count remained 0.
+- First additive apply created the 12 tables and a completed revision, but the initial postflight flagged `Boolean` reflection as incompatible because MySQL reports SQLAlchemy Boolean as `TINYINT(1)`. It did not drop/alter tables or write business rows. Local TDD added an exact `TINYINT(1)` compatibility rule (other widths remain incompatible), then 41 backend tests/Ruff/compileall passed. The corrected preflight was atomically updated and verified.
+- Corrected dry-run: ready=true, 12/12 expected tables present, missing=0, conflicts=0, revision completed. Idempotent `--apply`: `applied=[]`, `skipped=[r3_0001_governance_catalog]`; checksum unchanged. Revision row: status completed, attempt_count=1, database-generated timestamps `created_at/updated_at/generated_at/started_at/finished_at` populated at 2026-10-14 18:54:40–18:54:44.
+- Final MySQL inspection at 18:57:41: 12 governance tables plus `rebuild_schema_migration`; every governance table exact `COUNT(*)=0`, version table exact count 1. Table constraints show PK, FK, UNIQUE and declared CHECK entries; timestamp columns show `CURRENT_TIMESTAMP` server defaults (`finished_at` nullable by design).
+- API source switch: backed-up deployed file hash `c4fd19775e514c65e8efb8667d3c9f02424f9e0e629623932a6d3a1131b72a7b`; candidate file hash `f36a2c3025852ce092c6289695a61259aa2f07aba5d0818f11a5a1f57ebe036e`. Diff was limited to governance router imports/registration and explicitly R1-only startup table creation. Only `datara-rebuild-api` restarted at 18:57:00; API health healthy, 11 governance OpenAPI paths, 10-minute error markers 0. Web and all other containers untouched.
+- One postflight SQL evidence query initially had a quoting error; it was corrected and the read-only check above completed. No database impact from that query failure.
+
+S6 result: schema migration + idempotency + isolated API registration PASS. Historical I18-I23 data import/parity and S7 real page controls remain outstanding; therefore R3 remains PARTIAL.

@@ -1,0 +1,400 @@
+{
+  "run_id": "R3V-20261014111140-4de0c4",
+  "started_at": "2026-10-14T11:11:40.625Z",
+  "timezone": "Asia/Shanghai",
+  "url": "http://192.168.1.9:18091/rebuild-validation-r3.html",
+  "browser": "Chrome 149.0.7827.115",
+  "fixture": {
+    "project_name": "R3 governance validation R3V-20261014110900-fe0cee",
+    "project_id": 8,
+    "http_status": 200,
+    "reused": true
+  },
+  "actions": [
+    {
+      "name": "reuse-isolated-validation-project",
+      "at": "2026-10-14T11:11:40.690Z",
+      "project_id": 8,
+      "http_status": 200
+    },
+    {
+      "name": "select-isolated-project",
+      "at": "2026-10-14T11:11:41.435Z",
+      "project_id": 8
+    },
+    {
+      "name": "create-source-asset",
+      "at": "2026-10-14T11:11:41.824Z",
+      "asset_id": 2
+    },
+    {
+      "name": "create-target-asset",
+      "at": "2026-10-14T11:11:42.058Z",
+      "asset_id": 3
+    },
+    {
+      "name": "create-and-attach-tag",
+      "at": "2026-10-14T11:11:42.308Z"
+    },
+    {
+      "name": "define-quality-rule-and-check-history",
+      "at": "2026-10-14T11:11:42.843Z"
+    }
+  ],
+  "checks": [
+    {
+      "name": "protected-runner-token-exchange",
+      "pass": true,
+      "http_status": 200
+    },
+    {
+      "name": "governance-page-loaded",
+      "pass": true,
+      "http_status": 200
+    },
+    {
+      "name": "no-human-login-or-token-storage",
+      "pass": true
+    },
+    {
+      "name": "project-selector-loaded-from-backend",
+      "pass": true
+    },
+    {
+      "name": "create-source-asset-through-form",
+      "pass": true,
+      "rendered_notice": "新建数据资产已保存，记录 ID 2\n操作时间 · 2026年10月14日 19:11:41"
+    },
+    {
+      "name": "create-target-asset-through-form",
+      "pass": true,
+      "rendered_notice": "新建数据资产已保存，记录 ID 3\n操作时间 · 2026年10月14日 19:11:42"
+    },
+    {
+      "name": "asset-schema-tab-renders-persisted-fields",
+      "pass": true
+    },
+    {
+      "name": "create-and-attach-tag-through-form",
+      "pass": true,
+      "rendered_notice": "新建并关联业务标签已保存，记录 ID 1\n操作时间 · 2026年10月14日 19:11:42"
+    },
+    {
+      "name": "catalog-search-filters-real-asset",
+      "pass": true
+    },
+    {
+      "name": "create-quality-rule-definition-through-form",
+      "pass": true,
+      "rendered_notice": "定义质量规则已保存，记录 ID 1\n操作时间 · 2026年10月14日 19:11:42"
+    },
+    {
+      "name": "quality-history-is-real-empty-state-not-fabricated",
+      "pass": true
+    },
+    {
+      "name": "create-field-lineage-through-form",
+      "pass": true,
+      "rendered_notice": "建立血缘关系已保存，记录 ID 1\n操作时间 · 2026年10月14日 19:11:43"
+    },
+    {
+      "name": "lineage-graph-renders-persisted-edge",
+      "pass": false
+    }
+  ],
+  "relevant_responses": [
+    {
+      "at": "2026-10-14T11:11:41.360Z",
+      "method": "GET",
+      "path": "/api/v1/rebuild/projects",
+      "status": 200
+    },
+    {
+      "at": "2026-10-14T11:11:41.384Z",
+      "method": "GET",
+      "path": "/api/v1/rebuild/governance/projects/3/assets",
+      "status": 200
+    },
+    {
+      "at": "2026-10-14T11:11:41.385Z",
+      "method": "GET",
+      "path": "/api/v1/rebuild/governance/projects/3/standards",
+      "status": 200
+    },
+    {
+      "at": "2026-10-14T11:11:41.385Z",
+      "method": "GET",
+      "path": "/api/v1/rebuild/governance/projects/3/metrics",
+      "status": 200
+    },
+    {
+      "at": "2026-10-14T11:11:41.451Z",
+      "method": "GET",
+      "path": "/api/v1/rebuild/governance/projects/8/assets",
+      "status": 200
+    },
+    {
+      "at": "2026-10-14T11:11:41.454Z",
+      "method": "GET",
+      "path": "/api/v1/rebuild/governance/projects/8/standards",
+      "status": 200
+    },
+    {
+      "at": "2026-10-14T11:11:41.455Z",
+      "method": "GET",
+      "path": "/api/v1/rebuild/governance/projects/8/metrics",
+      "status": 200
+    },
+    {
+      "at": "2026-10-14T11:11:41.778Z",
+      "method": "POST",
+      "path": "/api/v1/rebuild/governance/projects/8/assets",
+      "status": 201,
+      "record_id": 2
+    },
+    {
+      "at": "2026-10-14T11:11:41.817Z",
+      "method": "GET",
+      "path": "/api/v1/rebuild/governance/projects/8/standards",
+      "status": 200
+    },
+    {
+      "at": "2026-10-14T11:11:41.819Z",
+      "method": "GET",
+      "path": "/api/v1/rebuild/governance/projects/8/assets",
+      "status": 200
+    },
+    {
+      "at": "2026-10-14T11:11:41.821Z",
+      "method": "GET",
+      "path": "/api/v1/rebuild/governance/projects/8/metrics",
+      "status": 200
+    },
+    {
+      "at": "2026-10-14T11:11:41.846Z",
+      "method": "GET",
+      "path": "/api/v1/rebuild/governance/assets/2",
+      "status": 200
+    },
+    {
+      "at": "2026-10-14T11:11:42.004Z",
+      "method": "POST",
+      "path": "/api/v1/rebuild/governance/projects/8/assets",
+      "status": 201,
+      "record_id": 3
+    },
+    {
+      "at": "2026-10-14T11:11:42.033Z",
+      "method": "GET",
+      "path": "/api/v1/rebuild/governance/projects/8/assets",
+      "status": 200
+    },
+    {
+      "at": "2026-10-14T11:11:42.033Z",
+      "method": "GET",
+      "path": "/api/v1/rebuild/governance/projects/8/standards",
+      "status": 200
+    },
+    {
+      "at": "2026-10-14T11:11:42.042Z",
+      "method": "GET",
+      "path": "/api/v1/rebuild/governance/projects/8/metrics",
+      "status": 200
+    },
+    {
+      "at": "2026-10-14T11:11:42.064Z",
+      "method": "GET",
+      "path": "/api/v1/rebuild/governance/assets/2",
+      "status": 200
+    },
+    {
+      "at": "2026-10-14T11:11:42.087Z",
+      "method": "GET",
+      "path": "/api/v1/rebuild/governance/assets/3",
+      "status": 200
+    },
+    {
+      "at": "2026-10-14T11:11:42.277Z",
+      "method": "POST",
+      "path": "/api/v1/rebuild/governance/projects/8/tags",
+      "status": 201,
+      "record_id": 1
+    },
+    {
+      "at": "2026-10-14T11:11:42.317Z",
+      "method": "GET",
+      "path": "/api/v1/rebuild/governance/projects/8/metrics",
+      "status": 200
+    },
+    {
+      "at": "2026-10-14T11:11:42.320Z",
+      "method": "GET",
+      "path": "/api/v1/rebuild/governance/projects/8/standards",
+      "status": 200
+    },
+    {
+      "at": "2026-10-14T11:11:42.321Z",
+      "method": "GET",
+      "path": "/api/v1/rebuild/governance/projects/8/assets",
+      "status": 200
+    },
+    {
+      "at": "2026-10-14T11:11:42.363Z",
+      "method": "GET",
+      "path": "/api/v1/rebuild/governance/assets/3",
+      "status": 200
+    },
+    {
+      "at": "2026-10-14T11:11:42.397Z",
+      "method": "GET",
+      "path": "/api/v1/rebuild/governance/assets/3",
+      "status": 200
+    },
+    {
+      "at": "2026-10-14T11:11:42.416Z",
+      "method": "GET",
+      "path": "/api/v1/rebuild/governance/projects/8/assets",
+      "status": 200
+    },
+    {
+      "at": "2026-10-14T11:11:42.509Z",
+      "method": "GET",
+      "path": "/api/v1/rebuild/governance/assets/2",
+      "status": 200
+    },
+    {
+      "at": "2026-10-14T11:11:42.634Z",
+      "method": "POST",
+      "path": "/api/v1/rebuild/governance/projects/8/quality-rules",
+      "status": 201,
+      "record_id": 1
+    },
+    {
+      "at": "2026-10-14T11:11:42.681Z",
+      "method": "GET",
+      "path": "/api/v1/rebuild/governance/projects/8/assets",
+      "status": 200
+    },
+    {
+      "at": "2026-10-14T11:11:42.685Z",
+      "method": "GET",
+      "path": "/api/v1/rebuild/governance/projects/8/standards",
+      "status": 200
+    },
+    {
+      "at": "2026-10-14T11:11:42.685Z",
+      "method": "GET",
+      "path": "/api/v1/rebuild/governance/projects/8/metrics",
+      "status": 200
+    },
+    {
+      "at": "2026-10-14T11:11:42.715Z",
+      "method": "GET",
+      "path": "/api/v1/rebuild/governance/assets/2",
+      "status": 200
+    },
+    {
+      "at": "2026-10-14T11:11:42.749Z",
+      "method": "GET",
+      "path": "/api/v1/rebuild/governance/projects/8/assets",
+      "status": 200
+    },
+    {
+      "at": "2026-10-14T11:11:42.779Z",
+      "method": "GET",
+      "path": "/api/v1/rebuild/governance/assets/2",
+      "status": 200
+    },
+    {
+      "at": "2026-10-14T11:11:42.784Z",
+      "method": "GET",
+      "path": "/api/v1/rebuild/governance/projects/8/quality-rules",
+      "status": 200
+    },
+    {
+      "at": "2026-10-14T11:11:42.792Z",
+      "method": "GET",
+      "path": "/api/v1/rebuild/governance/projects/8/quality-runs",
+      "status": 200
+    },
+    {
+      "at": "2026-10-14T11:11:42.810Z",
+      "method": "GET",
+      "path": "/api/v1/rebuild/governance/projects/8/quality-rules",
+      "status": 200
+    },
+    {
+      "at": "2026-10-14T11:11:42.818Z",
+      "method": "GET",
+      "path": "/api/v1/rebuild/governance/projects/8/quality-runs",
+      "status": 200
+    },
+    {
+      "at": "2026-10-14T11:11:42.831Z",
+      "method": "GET",
+      "path": "/api/v1/rebuild/governance/projects/8/quality-rules",
+      "status": 200
+    },
+    {
+      "at": "2026-10-14T11:11:42.839Z",
+      "method": "GET",
+      "path": "/api/v1/rebuild/governance/projects/8/quality-runs",
+      "status": 200
+    },
+    {
+      "at": "2026-10-14T11:11:42.925Z",
+      "method": "GET",
+      "path": "/api/v1/rebuild/governance/assets/2/lineage",
+      "status": 200
+    },
+    {
+      "at": "2026-10-14T11:11:43.097Z",
+      "method": "POST",
+      "path": "/api/v1/rebuild/governance/projects/8/lineage",
+      "status": 201,
+      "record_id": 1
+    },
+    {
+      "at": "2026-10-14T11:11:43.143Z",
+      "method": "GET",
+      "path": "/api/v1/rebuild/governance/projects/8/standards",
+      "status": 200
+    },
+    {
+      "at": "2026-10-14T11:11:43.146Z",
+      "method": "GET",
+      "path": "/api/v1/rebuild/governance/projects/8/metrics",
+      "status": 200
+    },
+    {
+      "at": "2026-10-14T11:11:43.151Z",
+      "method": "GET",
+      "path": "/api/v1/rebuild/governance/projects/8/assets",
+      "status": 200
+    },
+    {
+      "at": "2026-10-14T11:11:43.186Z",
+      "method": "GET",
+      "path": "/api/v1/rebuild/governance/assets/2",
+      "status": 200
+    },
+    {
+      "at": "2026-10-14T11:11:43.219Z",
+      "method": "GET",
+      "path": "/api/v1/rebuild/governance/assets/2/lineage",
+      "status": 200
+    },
+    {
+      "at": "2026-10-14T11:11:43.303Z",
+      "method": "GET",
+      "path": "/api/v1/rebuild/governance/assets/2/lineage",
+      "status": 200
+    }
+  ],
+  "errors": [
+    "Error: UI assertion failed: lineage-graph-renders-persisted-edge"
+  ],
+  "outcome": "FAIL",
+  "secrets_recorded": false,
+  "finished_at": "2026-10-14T11:11:43.567Z"
+}

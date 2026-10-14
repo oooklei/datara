@@ -1,0 +1,16 @@
+Increment: R3-S5 reference-driven governance workbench (local-only checks)
+Date: 2026-10-14 Asia/Shanghai
+Workspace: D:\需求\数据治理工具\Datara
+Scope: local static page contract, project frontend build, source diff whitespace check. No local containers, no remote DB writes, no remote deployment, no browser E2E claim.
+
+Page: datara-web/public/rebuild-validation-r3.html (standalone static page; no formal Vue/menu/router change)
+Reference: official OpenMetadata asset catalog and detail interaction; links and scope in R3-S5-开始前影响分析.md.
+Authentication: no login form, key, or token in HTML/URL/local/session storage; page only accepts short-lived runtime token through window.__DATARA_TEST_TOKEN__.
+
+Validation:
+- pytest datara-web/deploy/test_governance_validation_page.py -q: 3 passed.
+- pnpm build in datara-web: vue-tsc -b and vite build succeeded; Vite emitted existing large-chunk warnings (IDE ~3.5 MB, GraphWorkbench ~1.0 MB), no compile error.
+- git diff --check: passed; one existing docker-compose.yml CRLF normalization warning only.
+- Inline script parse: passed in prior local check (new Function on inline JS).
+
+Not validated here: remote serving on 18091, browser-use/Playwright controls, remote auth token injection, governance MySQL migration, remote API writes, DB rows, containers/log correlation. Those remain S6/S7 gates; this evidence is not remote or end-to-end PASS.

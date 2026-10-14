@@ -1,0 +1,12 @@
+Increment: R3-S3 versioned additive schema migration framework
+Date: 2026-10-14 Asia/Shanghai
+Validation: local-only SQLite; no container or remote DB was started.
+
+RED: migration tests failed at collection because rebuild.governance.migrations did not exist.
+GREEN: rtk proxy pytest datara-backend/tests/rebuild -q -> 30 passed.
+Ruff: rtk ruff check datara-backend/rebuild/governance datara-backend/tests/rebuild/test_governance_contracts.py datara-backend/tests/rebuild/test_governance_migrations.py -> passed.
+Compile: rtk python -m compileall -q datara-backend/rebuild/governance -> passed.
+
+Verified: actual R3 revision creates the 12 governance tables only; repeated apply skips completed revision; failed partial table creation is recorded with exception class only and resumes with same checksum; checksum drift fails closed without overwriting a completed record; schema migration rows have database-generated created_at/updated_at/generated_at and finished_at.
+
+Not claimed: migration runner is not yet wired to app startup; no R3 schema changes were made on 192.168.1.9; no legacy source rows were imported; R3 remains open.
