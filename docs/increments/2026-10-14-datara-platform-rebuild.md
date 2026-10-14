@@ -105,7 +105,7 @@
 
 ## 7. R3-S9：I18–I23 规范化模型扩展与隔离迁移
 
-状态：IN_PROGRESS / LOCAL_MAPPING_CHECKPOINT；用户于 2026-10-14 明确批准方案 A。S9 影响分析见 `R3-S9-开始前影响分析.md`；v2 additive schema/migration 已提交，I18 `t_dw_model` 首个纯映射函数和契约测试已实现。本地检查为治理子集 49 passed、全后端 586 passed、Ruff/compileall/diff-check 通过；完整源表导入器/API、验证页面和所有远端门禁尚未完成。批准范围不代表可以跳过逐批门禁或直接改旧库。
+状态：IN_PROGRESS / I18_LOCAL_MAPPING_CHECKPOINT；用户于 2026-10-14 明确批准方案 A。S9 影响分析见 `R3-S9-开始前影响分析.md`；v2 additive schema/migration 已提交，I18 七张源表的纯映射函数及契约测试已实现。本地检查为治理子集 59 passed、全后端 596 passed、Ruff/compileall/diff-check 通过；I19-I23 映射、完整 dry-run/import/API、验证页面和所有远端门禁尚未完成。批准范围不代表可以跳过逐批门禁或直接改旧库。
 
 实现细化：S9 使用 additive revision `r3_0002_legacy_governance_carryforward`，不得修改已登记的 `r3_0001_governance_catalog` 及其 checksum。承接字段以设计 §5.2 的显式列/关系为准；标签定义单独成实体；模型 security/build/owner、指标的派生属性及原始维度、旧 I19 security metadata 均保留为普通业务字段，不引入遮罩/敏感值处理功能。当前代码分支采用 29 张新增承接表（较初始 28 张清单新增旧标签定义实体），迁移前需在文档、revision manifest 和测试中保持同数；如实现需要再扩表，须先更新本计划、设计与台账。
 
@@ -124,7 +124,7 @@
 2. 本地先为新实体/API/migration contract 编写失败测试：来源组合唯一键、外键与级联策略、项目授权、统一时间戳、历史版本完整性、孤儿拦截、幂等与重试、回滚隔离及错误批次续跑。
 3. 按设计 §5.2 扩展规范化 ORM：I18 domain/layer/engine/model/field/relation/version；I19 asset extension/tagging/unresolved tag reference；I20 metric profile/dimension/version；I21 rule definition/task/task-rule/run legacy details/exception/report/alarm policy；I22 standard element/code-set/code-value/naming/mapping/approval/check report；I23 identity mapping。复用现有 asset、tag、quality_rule/run、standard、semantic_metric，不造平行主实体；无法解析的对象键不得创建虚构资产。
 4. 新增 additive migration 与 repository/service/API；将每个源行通过 `(source_system, source_table, source_id)` 映射到目标 ID，子表/关系按明确外键顺序导入。对 I21 当前零行表仍须建模并测试空表迁移/后续 API 契约；“当前无数据”不等于忽略业务能力。
-   - 项目归属映射必须由有权操作人显式选择目标 `project_id` 并纳入 dry-run；旧源记录没有可证明的项目成员关系时禁止推断。层、域、引擎、资产、标签、指标、标准等引用必须由来源身份映射表解析；未解析引用进入 dry-run 阻断清单，不以同名猜测、自动置空或隐式建关联放行。
+   - 项目归属映射必须由有权操作人显式选择目标 `project_id` 并纳入 dry-run；旧源记录没有可证明的项目成员关系时禁止推断。层、域、引擎、资产、标签、指标、标准等引用必须由来源身份映射表解析；未解析引用进入 dry-run 阻断清单，不以同名猜测、自动置空或隐式建关联放行。已实现 I18 七张表的纯映射：字典/模型/字段/版本均保留源身份与业务时间；关系的 src/tgt 模型必须身份解析，字段数组须为等长非空字符串 JSON 列表，并展开为目标关系字段子项。该映射尚不读库、不写库，也不验证字段名是否实际存在于模型定义。
 5. 本地运行定向、全量 pytest，Ruff、compileall、Vue 类型检查和 migration offline/dry-run；检查旧库只读脚本、schema guard 和禁止旧 `api.*`/`common.*` 隐式依赖。更新 R3-S9 本机证据。
 6. 在参考产品风格隔离验证页增加可操作业务场景和稳定 fixture；执行控件级 UI 流程并验证后端 API 结果。使用 192.168.1.9 非冲突端口部署；页面不得持有统一验证 key，仅注入受限短期 token。
 7. 远端先只读重采样，再目标快照、dry-run 冲突清单；确认 dry-run 的新增/更新/跳过/冲突数与批准范围一致后才执行导入。逐批记录前后时间戳、进程退出码、容器日志、DB 对账查询和恢复点。

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from dataclasses import dataclass, field
 from typing import Mapping
 
@@ -26,6 +27,7 @@ class MappedLegacyRow:
     target_table: str
     values: Mapping[str, object]
     unresolved_references: tuple[tuple[str, str], ...] = ()
+    child_rows: tuple[Mapping[str, object], ...] = ()
 
     @property
     def ready_to_import(self) -> bool:
@@ -44,15 +46,162 @@ def map_legacy_row(
     source: Mapping[str, object],
     context: LegacyMappingContext,
 ) -> MappedLegacyRow:
-    """Map one legacy warehouse model without inferring project or dictionary IDs."""
+    """Map one I18 source row without inferring scope or foreign identities."""
 
-    if source_table != "t_dw_model":
+    target_tables = {
+        "t_biz_domain": "rebuild_governance_domain",
+        "t_dw_layer": "rebuild_governance_warehouse_layer",
+        "t_engine_type": "rebuild_governance_model_engine",
+        "t_dw_model": "rebuild_governance_warehouse_model",
+        "t_dw_model_field": "rebuild_governance_warehouse_model_field",
+        "t_dw_model_relation": "rebuild_governance_warehouse_model_relation",
+        "t_dw_model_version": "rebuild_governance_warehouse_model_version",
+    }
+    target_table = target_tables.get(source_table)
+    if target_table is None:
         raise LegacyMappingError(f"unsupported legacy source table: {source_table}")
-    source_id = source.get("id")
+
+    identity_fields = {"t_dw_layer": "code", "t_engine_type": "name"}
+    source_id = source.get(identity_fields.get(source_table, "id"))
     if source_id is None:
-        raise LegacyMappingError("legacy t_dw_model row is missing id")
+        raise LegacyMappingError(f"legacy {source_table} row is missing its identity")
     if context.target_project_id is None:
         raise LegacyMappingError("target project must be explicit for project-scoped legacy rows")
+
+    dictionary_values: dict[str, object] | None = None
+    if source_table == "t_biz_domain":
+        dictionary_values = {
+            "name": source.get("name", ""),
+            "description": source.get("remark", ""),
+        }
+    elif source_table == "t_dw_layer":
+        dictionary_values = {
+            "code": source_id,
+            "name": source.get("name", ""),
+            "naming_rule": source.get("rule", ""),
+            "color": source.get("color", "#64748b"),
+            "sequence": source.get("seq", 0),
+        }
+    elif source_table == "t_engine_type":
+        dictionary_values = {
+            "name": source_id,
+            "ddl_dialect": source.get("ddl", ""),
+            "vendor_flag": source.get("xc", False),
+        }
+    if dictionary_values is not None:
+        dictionary_values.update(
+            {
+                "project_id": context.target_project_id,
+                "source_created_at": source.get("create_time"),
+                "source_updated_at": source.get("update_time"),
+            }
+        )
+        return MappedLegacyRow(
+            source_system="datara_meta",
+            source_table=source_table,
+            source_id=str(source_id),
+            target_table=target_table,
+            values=dictionary_values,
+        )
+
+    if source_table == "t_dw_model_field":
+        model_identity = ("t_dw_model", str(source.get("model_id", "")))
+        model_id = context.target_ids.get(model_identity)
+        unresolved = [] if model_id is not None else [("model_id", model_identity[1])]
+        values: dict[str, object] = {
+            "model_id": model_id,
+            "ordinal_position": source.get("seq", 0),
+            "field_name": source.get("name", ""),
+            "data_type": source.get("data_type", "VARCHAR"),
+            "length": source.get("length", ""),
+            "precision": source.get("precision", ""),
+            "nullable": source.get("nullable", True),
+            "default_value": source.get("default_value", ""),
+            "description": source.get("comment", ""),
+            "is_primary_key": source.get("is_pk", False),
+            "is_partition_key": source.get("is_partition", False),
+            "dictionary_reference": source.get("dict_ref", ""),
+            "source_created_at": source.get("create_time"),
+            "source_updated_at": source.get("update_time"),
+        }
+        return MappedLegacyRow(
+            source_system="datara_meta",
+            source_table=source_table,
+            source_id=str(source_id),
+            target_table=target_table,
+            values=values,
+            unresolved_references=tuple(unresolved),
+        )
+
+    if source_table == "t_dw_model_version":
+        model_identity = ("t_dw_model", str(source.get("model_id", "")))
+        model_id = context.target_ids.get(model_identity)
+        unresolved = [] if model_id is not None else [("model_id", model_identity[1])]
+        values = {
+            "model_id": model_id,
+            "version": source.get("version", 1),
+            "snapshot_json": source.get("snapshot_json", "{}"),
+            "change_note": source.get("change_note", ""),
+            "created_by": source.get("created_by", ""),
+            "source_created_at": source.get("create_time"),
+            "source_updated_at": source.get("update_time"),
+        }
+        return MappedLegacyRow(
+            source_system="datara_meta",
+            source_table=source_table,
+            source_id=str(source_id),
+            target_table=target_table,
+            values=values,
+            unresolved_references=tuple(unresolved),
+        )
+
+    if source_table == "t_dw_model_relation":
+        src_identity = ("t_dw_model", str(source.get("src_model_id", "")))
+        tgt_identity = ("t_dw_model", str(source.get("tgt_model_id", "")))
+        src_model_id = context.target_ids.get(src_identity)
+        tgt_model_id = context.target_ids.get(tgt_identity)
+        unresolved = []
+        if src_model_id is None:
+            unresolved.append(("src_model_id", src_identity[1]))
+        if tgt_model_id is None:
+            unresolved.append(("tgt_model_id", tgt_identity[1]))
+        try:
+            source_fields = json.loads(source.get("src_fields") or "[]")
+            target_fields = json.loads(source.get("tgt_fields") or "[]")
+        except (TypeError, json.JSONDecodeError) as exc:
+            raise LegacyMappingError("invalid relation field pairs: expected JSON arrays") from exc
+        if (
+            not isinstance(source_fields, list)
+            or not isinstance(target_fields, list)
+            or len(source_fields) != len(target_fields)
+            or any(not isinstance(name, str) or not name for name in source_fields + target_fields)
+        ):
+            raise LegacyMappingError("invalid relation field pairs: arrays must contain paired non-empty names")
+        return MappedLegacyRow(
+            source_system="datara_meta",
+            source_table=source_table,
+            source_id=str(source_id),
+            target_table=target_table,
+            values={
+                "project_id": context.target_project_id,
+                "source_model_id": src_model_id,
+                "target_model_id": tgt_model_id,
+                "relation_type": source.get("rel_type", "1:N"),
+                "join_description": source.get("join_desc", ""),
+                "created_by": source.get("created_by", ""),
+                "source_created_at": source.get("create_time"),
+                "source_updated_at": source.get("update_time"),
+            },
+            unresolved_references=tuple(unresolved),
+            child_rows=tuple(
+                {
+                    "ordinal_position": index,
+                    "source_field_name": source_name,
+                    "target_field_name": target_name,
+                }
+                for index, (source_name, target_name) in enumerate(zip(source_fields, target_fields), start=1)
+            ),
+        )
 
     unresolved: list[tuple[str, str]] = []
     references: dict[str, int | None] = {}
@@ -91,7 +240,7 @@ def map_legacy_row(
         source_system="datara_meta",
         source_table=source_table,
         source_id=str(source_id),
-        target_table="rebuild_governance_warehouse_model",
+        target_table=target_table,
         values=values,
         unresolved_references=tuple(unresolved),
     )

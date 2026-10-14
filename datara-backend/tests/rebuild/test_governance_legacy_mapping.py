@@ -80,3 +80,194 @@ def test_reports_unresolved_required_legacy_references_instead_of_guessing():
         ("engine", "Doris"),
     )
     assert not mapped.ready_to_import
+
+
+def test_maps_legacy_model_field_only_after_explicit_model_identity_resolution():
+    created = datetime(2026, 10, 12, 22, 25, 30)
+    source = {
+        "id": 29,
+        "model_id": 17,
+        "seq": 2,
+        "name": "order_amount",
+        "data_type": "DECIMAL",
+        "length": "18",
+        "precision": "2",
+        "nullable": False,
+        "default_value": "0",
+        "comment": "订单金额",
+        "is_pk": False,
+        "is_partition": True,
+        "dict_ref": "currency_dim",
+        "create_time": created,
+        "update_time": created,
+    }
+
+    mapped = map_legacy_row(
+        "t_dw_model_field",
+        source,
+        LegacyMappingContext(target_project_id=41, target_ids={("t_dw_model", "17"): 501}),
+    )
+
+    assert mapped.target_table == "rebuild_governance_warehouse_model_field"
+    assert mapped.values == {
+        "model_id": 501,
+        "ordinal_position": 2,
+        "field_name": "order_amount",
+        "data_type": "DECIMAL",
+        "length": "18",
+        "precision": "2",
+        "nullable": False,
+        "default_value": "0",
+        "description": "订单金额",
+        "is_primary_key": False,
+        "is_partition_key": True,
+        "dictionary_reference": "currency_dim",
+        "source_created_at": created,
+        "source_updated_at": created,
+    }
+    assert mapped.unresolved_references == ()
+
+
+def test_model_field_with_unresolved_model_identity_is_blocked():
+    mapped = map_legacy_row(
+        "t_dw_model_field",
+        {"id": 29, "model_id": 17, "seq": 2, "name": "order_amount"},
+        LegacyMappingContext(target_project_id=41),
+    )
+
+    assert mapped.unresolved_references == (("model_id", "17"),)
+    assert not mapped.ready_to_import
+
+
+def test_maps_legacy_model_version_snapshot_without_rewriting_its_payload():
+    snapshot = '{"model":{"id":17},"fields":[{"name":"id"}],"relations":[]}'
+    created = datetime(2026, 10, 13, 0, 56, 25)
+
+    mapped = map_legacy_row(
+        "t_dw_model_version",
+        {
+            "id": 72,
+            "model_id": 17,
+            "version": 4,
+            "snapshot_json": snapshot,
+            "change_note": "字段调整",
+            "created_by": "designer",
+            "create_time": created,
+            "update_time": created,
+        },
+        LegacyMappingContext(target_project_id=41, target_ids={("t_dw_model", "17"): 501}),
+    )
+
+    assert mapped.target_table == "rebuild_governance_warehouse_model_version"
+    assert mapped.values["model_id"] == 501
+    assert mapped.values["version"] == 4
+    assert mapped.values["snapshot_json"] == snapshot
+    assert mapped.values["change_note"] == "字段调整"
+    assert mapped.values["created_by"] == "designer"
+    assert mapped.values["source_created_at"] == created
+    assert mapped.values["source_updated_at"] == created
+    assert mapped.unresolved_references == ()
+
+
+def test_maps_legacy_model_relation_and_preserves_field_pairs_as_child_rows():
+    mapped = map_legacy_row(
+        "t_dw_model_relation",
+        {
+            "id": 91,
+            "src_model_id": 17,
+            "tgt_model_id": 18,
+            "rel_type": "1:N",
+            "src_fields": '["order_id", "tenant_id"]',
+            "tgt_fields": '["id", "tenant_id"]',
+            "join_desc": "订单关联",
+            "created_by": "designer",
+        },
+        LegacyMappingContext(
+            target_project_id=41,
+            target_ids={("t_dw_model", "17"): 501, ("t_dw_model", "18"): 502},
+        ),
+    )
+
+    assert mapped.target_table == "rebuild_governance_warehouse_model_relation"
+    assert mapped.values == {
+        "project_id": 41,
+        "source_model_id": 501,
+        "target_model_id": 502,
+        "relation_type": "1:N",
+        "join_description": "订单关联",
+        "created_by": "designer",
+        "source_created_at": None,
+        "source_updated_at": None,
+    }
+    assert mapped.child_rows == (
+        {
+            "ordinal_position": 1,
+            "source_field_name": "order_id",
+            "target_field_name": "id",
+        },
+        {
+            "ordinal_position": 2,
+            "source_field_name": "tenant_id",
+            "target_field_name": "tenant_id",
+        },
+    )
+    assert mapped.unresolved_references == ()
+
+
+@pytest.mark.parametrize(
+    ("source_fields", "target_fields"),
+    [("not-json", "[]"), ('["a"]', "[]"), ('[1]', '["a"]')],
+)
+def test_rejects_malformed_legacy_relation_field_pairs(source_fields, target_fields):
+    with pytest.raises(LegacyMappingError, match="relation field pairs"):
+        map_legacy_row(
+            "t_dw_model_relation",
+            {
+                "id": 91,
+                "src_model_id": 17,
+                "tgt_model_id": 18,
+                "src_fields": source_fields,
+                "tgt_fields": target_fields,
+            },
+            LegacyMappingContext(
+                target_project_id=41,
+                target_ids={("t_dw_model", "17"): 501, ("t_dw_model", "18"): 502},
+            ),
+        )
+
+
+@pytest.mark.parametrize(
+    ("table", "source", "target_table", "target_values", "identity"),
+    [
+        (
+            "t_dw_layer",
+            {"code": "DWD", "name": "明细层", "rule": "dwd_*", "color": "#123456", "seq": 2},
+            "rebuild_governance_warehouse_layer",
+            {"code": "DWD", "name": "明细层", "naming_rule": "dwd_*", "color": "#123456", "sequence": 2},
+            "DWD",
+        ),
+        (
+            "t_biz_domain",
+            {"id": 5, "name": "交易", "remark": "订单域"},
+            "rebuild_governance_domain",
+            {"name": "交易", "description": "订单域"},
+            "5",
+        ),
+        (
+            "t_engine_type",
+            {"name": "Doris", "ddl": "doris", "xc": True},
+            "rebuild_governance_model_engine",
+            {"name": "Doris", "ddl_dialect": "doris", "vendor_flag": True},
+            "Doris",
+        ),
+    ],
+)
+def test_maps_legacy_model_dictionaries_with_explicit_project_scope(
+    table, source, target_table, target_values, identity
+):
+    mapped = map_legacy_row(table, source, LegacyMappingContext(target_project_id=41))
+
+    assert mapped.target_table == target_table
+    assert mapped.source_id == identity
+    assert {key: mapped.values[key] for key in target_values} == target_values
+    assert mapped.values["project_id"] == 41
