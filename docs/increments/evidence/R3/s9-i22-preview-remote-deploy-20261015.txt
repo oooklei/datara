@@ -1,0 +1,41 @@
+R3-S9 / I22 mapping-preview deployment and UI-control verification
+Date: 2026-10-15 (Asia/Shanghai)
+Remote target: 192.168.1.9; web validation port 18091; isolated rebuild API container only
+
+Scope and safety
+- Deployed only the I22 read-only mapping-preview path and one isolated static validation page.
+- Source connection metadata: mysql-meta / datara_meta / root; source reader is fixed-column allowlist and executes a READ ONLY transaction.
+- Target connection metadata: mysql-meta / datara_rebuild_i0; preview uses project-scoped SELECT only.
+- REBUILD_LEGACY_I18_IMPORT_ENABLED evaluated false before restart. No import route was called, no target business data was written, and no source DDL/DML or credentials were emitted.
+- Did not modify datara-api, formal Vue application/menu, existing validation pages, or 18091 service configuration.
+
+Deployment procedure and checks
+- Existing files were backed up before replacement to `/lei/datara/rebuild-source/backups/r3-s9-i22-20261014T2147Z/` (api_app.py, governance_api.py, governance_legacy_source_reader.py).
+- Staged file SHA-256 digests matched the local artifacts before promotion; final deployed digests below also match local.
+- Container import preflight passed. Restarted only `datara-rebuild-api`; resulting status healthy.
+- Correct listener `:8001/openapi.json`: I22 mapping-preview route present; existing I18 dry-run route remains present; 23 paths.
+- Isolated page `http://192.168.1.9:18091/rebuild-validation-r3-s9-i22.html` returned HTTP 200 (13,939 bytes).
+- Dependencies used by this preview: datara-web Up, datara-rebuild-api healthy, mysql-meta healthy. Source and target schemas are separate schemas on mysql-meta. Other middleware (Redis/Kafka) is not on this read-only preview request path.
+- Backend access log recorded `POST /api/v1/rebuild/governance/projects/3/legacy/i22/mapping-preview` as 200 OK.
+
+Browser-use initially timed out while binding/reading the existing I3 tab (30 seconds). Per project fallback skill, protected Playwright drove the same 18091 isolated I22 page and clicked its real controls.
+
+Playwright run: `R3S9I22-20261014215054-01b8e2`
+- Outcome PASS, 11/11 checks; report `r3s9i22-20261014215054-01b8e2.json`; screenshot `r3s9i22-20261014215054-01b8e2-summary.png`.
+- Token exchange and page load both returned 200; 12 authorized projects were prefilled; selected project #3.
+- UI click triggered the live I22 preview API (200). Seven source domains rendered: approval=1, code=1, code_value=1, check_report=0, element=0, mapping=0, naming_rule=0 (3 source rows total).
+- UI rendered 2 new identity candidates, 0 target identity matches, 1 blocked row with reason `unresolved_reference`.
+- Response explicitly set `parity_verified=false` and `import_enabled=false`; payload absent; no import/migration button; no browser errors.
+
+Final deployed SHA-256 (local == remote)
+d27f93b56a6a8793841477a0c9dcc3b39b338d0dafa52cf2d7d3c669d0250cd4  rebuild/api/app.py
+5b2d2c9675050e4af749ef2f131fdf91d2f90f1c65f55ee687cf06d03ac719cd  rebuild/governance/api.py
+2c9c884d6ded72b1b4e60749e9d5377487233f39f6c2f238ed745939b32e2afd  rebuild/governance/legacy_source_reader.py
+072a2dded172420164ee77174159de6350c2cd27ae9d1d2853663f00f67cf727  rebuild/governance/legacy_i22_mapping.py
+17d330b1df0d6319a43497ab9ab0d8896d8aa118483f9895f268da706762e204  rebuild/governance/legacy_i22_preview.py
+c4eaf838c35ba8bd07e3d098f7fccd70a4c3f8e11492e9051ef963c4618c379d  rebuild/governance/legacy_importer.py
+48d49146b8d23334c9805d7b41035e2793844718aede22862d8333b730c438e6  rebuild/governance/migration_checkpoints.py
+77d88cec09b40e8167db3146c8017ff153e96cfae82a6cadf050f2a1f0aaa848  datara-web/public/rebuild-validation-r3-s9-i22.html
+
+Interpretation
+`PREVIEW_CONTROL_PASS / PARITY_PENDING / IMPORT_NOT_AUTHORIZED`. This verifies the I22 preview API and browser controls only. It does not establish semantic parity, resolve the orphan approval, authorize import, or mark I22/R3-S9/R3 complete.

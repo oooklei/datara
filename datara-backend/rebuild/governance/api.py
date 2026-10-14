@@ -30,6 +30,8 @@ from rebuild.governance.models import (
 from rebuild.governance.service import GovernanceService
 from rebuild.governance.legacy_migration_service import build_i18_legacy_dry_run
 from rebuild.governance.legacy_source_reader import LegacyI18SourceReader
+from rebuild.governance.legacy_source_reader import LegacyI22SourceReader
+from rebuild.governance.legacy_i22_preview import build_i22_mapping_preview
 from rebuild.governance.legacy_importer import LegacyImportRejected, execute_i18_legacy_import
 from rebuild.governance.migration_checkpoints import CheckpointConflict
 from rebuild.governance.snapshot_repository import LegacyI18TargetSnapshotRepository
@@ -121,6 +123,7 @@ def build_governance_router(
     current_user: Callable[[str], dict[str, object]],
     *,
     legacy_source_reader_factory: Callable[[], LegacyI18SourceReader] | None = None,
+    legacy_i22_source_reader_factory: Callable[[], LegacyI22SourceReader] | None = None,
     legacy_i18_import_enabled: bool = False,
 ) -> APIRouter:
     router = APIRouter(prefix="/api/v1/rebuild/governance", tags=["rebuild-governance"])
@@ -141,6 +144,77 @@ def build_governance_router(
         if project is None:
             return fail(404, 4041, "project not found")
         return project if allowed else fail(403, 1003, "project permission denied")
+
+    @router.post("/projects/{project_id}/legacy/i22/mapping-preview")
+    def legacy_i22_mapping_preview(project_id: int, authorization: str = Header(default="")):
+        user = authenticate(authorization)
+        if isinstance(user, JSONResponse):
+            return user
+        reader = None
+        try:
+            with session_factory() as session:
+                permitted = project_permission(session, project_id, user, Permission.EDIT_DEFINITION)
+                if isinstance(permitted, JSONResponse):
+                    return permitted
+                target_url = session.get_bind().url
+                target_backend = target_url.get_backend_name()
+                if target_backend == "mysql" and target_url.database != "datara_rebuild_i0":
+                    return fail(503, 5032, "target database is not the isolated rebuild schema")
+                if target_backend not in {"mysql", "sqlite"}:
+                    return fail(503, 5032, "unsupported target database for I22 mapping preview")
+                reader = (legacy_i22_source_reader_factory or LegacyI22SourceReader.from_runtime_env)()
+                source_snapshot = reader.read_snapshot()
+                preview = build_i22_mapping_preview(session, project_id, source_snapshot)
+                data = {
+                    "project_id": project_id,
+                    "source": {
+                        "schema": preview.source_schema,
+                        "captured_at": source_snapshot.captured_at.isoformat(),
+                        "digest": preview.source_digest,
+                        "counts": dict(preview.source_counts),
+                    },
+                    "target": {
+                        "project_id": project_id,
+                        "captured_at": preview.captured_at.isoformat(),
+                        "identity_digest": preview.target_digest,
+                        "counts": dict(preview.target_counts),
+                    },
+                    "preview": {
+                        "counts": dict(preview.dispositions),
+                        "entries": list(preview.entries),
+                        "issues": [
+                            {
+                                "code": issue.code,
+                                "source_table": issue.source_table,
+                                "source_id": issue.source_id,
+                            }
+                            for issue in preview.issues
+                        ],
+                        "parity_verified": False,
+                        "import_enabled": False,
+                    },
+                }
+                logger.info(
+                    "legacy I22 mapping preview completed",
+                    extra={
+                        "project_id": project_id,
+                        "source_counts": dict(preview.source_counts),
+                        "preview_counts": dict(preview.dispositions),
+                    },
+                )
+                return {"code": 0, "msg": "success", "data": data}
+        except ValueError:
+            return fail(422, 4221, "legacy I22 snapshot or mapping is invalid")
+        except Exception as exc:
+            logger.error(
+                "legacy I22 mapping preview failed",
+                extra={"project_id": project_id, "error_type": type(exc).__name__},
+            )
+            return fail(503, 5031, "legacy I22 mapping preview is unavailable")
+        finally:
+            source_engine = getattr(reader, "engine", None)
+            if source_engine is not None:
+                source_engine.dispose()
 
     @router.post("/projects/{project_id}/legacy/i18/dry-run")
     def legacy_i18_dry_run(project_id: int, authorization: str = Header(default="")):

@@ -58,6 +58,7 @@ def create_app(
     token_secret: str | None = None,
     validation_key: str | None = None,
     legacy_i18_import_enabled: bool | None = None,
+    legacy_i22_source_reader_factory=None,
 ) -> FastAPI:
     database_url = database_url or os.getenv("REBUILD_DB_URL")
     if not database_url:
@@ -264,6 +265,7 @@ def create_app(
             session_factory,
             current_user,
             legacy_i18_import_enabled=legacy_i18_import_enabled,
+            legacy_i22_source_reader_factory=legacy_i22_source_reader_factory,
         )
     )
 

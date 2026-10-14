@@ -105,7 +105,7 @@
 
 ## 7. R3-S9：I18–I23 规范化模型扩展与隔离迁移
 
-状态：IN_PROGRESS / I18_READ_ONLY_DRY_RUN_API_LOCAL_CHECKPOINT；用户于 2026-10-14 明确批准方案 A。S9 影响分析见 `R3-S9-开始前影响分析.md`；v2 additive schema/migration 已提交，I18 七张源表纯映射、关联图校验、离线 dry-run 计划契约、project-scoped target SELECT snapshot、专用 `REBUILD_LEGACY_META_URL` 只读源 reader、dry-run service 与受项目授权保护的 API 均已实现。本地检查为 `pytest tests/rebuild -q` 80 passed、全后端 `pytest tests -q` 617 passed、Ruff/compileall/diff-check 通过；隔离 I18 预检页/Playwright runner 4 项静态契约测试通过，runner JS syntax check 通过。Vue 类型检查/Vite build 未能运行：该隔离工作树缺少 `node_modules`，本轮未安装依赖或更改锁文件。此前远端预检发现 `REBUILD_LEGACY_META_URL` 缺失，且 `datara_meta` 无专用 SELECT-only 账号；证据 `evidence/R3/s9-source-access-preflight.txt`。2026-10-15 用户明确批准以 MySQL root 仅读 `datara_meta`，严禁源库 DDL/DML；下一步须用隔离 reader 的固定 allowlist/只读事务安全配置连接，且不得复用指向 ec_retail 的旧 `REBUILD_MYSQL_SRC_URL`，不得输出凭据。配置未完成前不声称已连接或已采集新快照。I19-I23 映射、真实快照、parity/import 仍未完成；无目标业务数据写入。root 读取授权不等于目标导入授权，也不豁免逐批门禁。
+状态：IN_PROGRESS / I18 local dry-run API present; I19-I23 reader/mapper local substeps PARTIAL; remote integration gate PENDING。用户于 2026-10-14 明确批准方案 A。S9 影响分析见 `R3-S9-开始前影响分析.md`；v2 additive schema/migration、I18 七张源表映射/关系图/隔离目标快照/项目授权 API 与 disabled-by-default importer contract 已实现。I19-I23 各 reader/mapper 的本地子步骤及回归见本节后续子批记录，最高均为 `LOCAL_SUBSTEP_PASS / INTEGRATION_GATE_PENDING`。2026-10-15 用户明确批准 MySQL root 仅只读 `datara_meta`；I22 实时 schema 与数量证据、I18-I23 reader allowlist 一致性审计已记录，I21 reader 已依据真实 schema 修复，I22 reader+mapper 完成本地测试。经端口纠正，healthy `datara-rebuild-api` 在容器内 `:8001` 正运行 rebuild API，含 I18 dry-run，但没有本批 I22 mapping-preview；容器挂载的是旧 staging source，当前 worktree 本批代码尚未部署。I22 项目级只读 preview 已在本地实现，远端部署/控件闭环仍 pending。任何 source runtime 仍须固定 allowlist/READ ONLY transaction，不得复用指向 `ec_retail` 的 `REBUILD_MYSQL_SRC_URL` 或输出 root 凭据；不得向目标库导入业务数据，用户另行批准目标写入前不得开启/调用 importer。正式增量只有在 192.168.1.9 前端控件、后端/日志、中间件/资源、真实源/目标 parity 等约法门禁通过后才可 PASS。
 
 2026-10-15 更新：已在用户 root 仅读授权下从 `192.168.1.9/datara-mysql-meta` 读取 I22 七张 `t_std_*` 表的 live `information_schema` 与聚合计数；证据 `evidence/R3/s9-i22-live-schema-20261015.md`。授权仅解锁固定表范围的只读源调查，不允许把 root 凭据配置进服务、不允许目标导入。当前继续按 I22 reader → I22 pure mapper 分批实现；每批按对应影响分析、测试、证据和独立提交完成。API runtime source dry-run、完整 importer/parity 及浏览器控件/日志/资源整体验收仍是独立门禁，R3-S9 仍不能标 PASS。
 
@@ -136,6 +136,16 @@
 - A 当前结果：TDD RED→GREEN；I22 专项 7 passed，I18-I22 reader regression 32 passed，全后端 716 passed（64.38s），Ruff/compileall 通过。证据 `evidence/R3/s9-i22-reader-local-20261015.txt`。本批只证明本地 reader 合同，不是远程 API 或整体验收。
 - 子批次 B mapper：以 A 的快照为唯一数据输入，基于现存规范化模型映射 element/code set/value/naming rule/mapping/approval/check report；显式 source identities 解析关联，源值/IDs/时间原样留痕，未知枚举、孤儿或重复关联 fail closed；先 RED，再定向和全量验证、证据及独立提交。不得执行源 SQL/审批动作，不新增用户未批准的目标导入。
 - B 当前结果：TDD RED→GREEN；I22 reader+mapper 15 passed，全后端 724 passed（71.64s，含最终回归），Ruff/compileall/diff-check 通过。证据 `evidence/R3/s9-i22-mapper-local-20261015.txt`。实测 approval#1 的 `biz_type=code,biz_id=2` 找不到源码表#2，按阻断保留，未自动跳过或替换。
+
+#### I22 项目级 read-only mapping-preview API 子批
+
+最新状态（2026-10-15）：I22 mapping-preview 隔离 API 与页面已在 1.9 完成受控部署和控件级验证；结果为 `PREVIEW_CONTROL_PASS / PARITY_PENDING / IMPORT_NOT_AUTHORIZED`，不改变 S9/R3 整体 `IN_PROGRESS` 状态。详情见本节后续验收条目及执行台账。
+
+- 开工前影响分析：见 `R3-S9-开始前影响分析.md`“I22 project-scoped read-only mapping preview API 开工影响分析”。实施前已检查本地 I22 mapper、标准规范化 ORM、I18 项目授权 API，以及 1.9 rebuild 容器实际 OpenAPI；范围与验收边界以该影响分析为准。
+- 步骤：先为 target SELECT snapshot、source identity/fingerprint 计划服务和 API 项目权限/隔离 schema/源端只读/响应无 payload契约写 RED；实现后跑 I22 定向、I18-I23 治理回归、全后端 pytest、Ruff、compileall、diff-check。任何目标模型语义无法无损表示或未解决关联都保持 blocked，不产生隐式 create/import。随后更新隔离页面显示真实预置项目、行数/分类/关系/阻断及摘要，并通过受保护 runner 完成 1.9 控件闭环与日志/资源检查。
+- 2026-10-15 子批运行验收：本地全后端 `pytest tests -q` 728 passed，Ruff/compileall/diff-check 通过；I22 页面静态契约 3 passed、Playwright runner `node --check` 通过。browser-use 对现有标签绑定/AX 读取超时后，按 fallback 技能对 `http://192.168.1.9:18091/rebuild-validation-r3-s9-i22.html` 实际操作 11/11 PASS（run `R3S9I22-20261014215054-01b8e2`）。远端 `datara-rebuild-api` 仅更新隔离 staging 所需文件，先备份 3 个原文件并 SHA-256 对照，import preflight 成功后只重启该容器；正确 `:8001` OpenAPI 包含 I22 preview 与原 I18 dry-run，容器 healthy；web 静态页 200。实时源七域共 3 行（code 1、code_value 1、approval 1，其余 0），UI 显示 2 个新增身份候选、0 个目标身份匹配、1 个 `unresolved_reference` 阻断；无 payload；响应明确 `parity_verified=false`、`import_enabled=false`，I18 import flag 为 false，API access log 为 200。相关依赖 `datara-web` up、`datara-rebuild-api` healthy、source/target 共用的 `mysql-meta` healthy；target schema 精确为 `datara_rebuild_i0`，source 为用户批准的 `datara_meta`/root 只读配置。报告/截图和部署备份位置见执行台账。本结果只关闭 mapping-preview API/UI 子批，不构成 I22 内容 parity、目标导入批准或 S9/R3 PASS。
+- 运行事实：2026-10-15 远端 `datara-rebuild-api` 容器内 `:8001` OpenAPI 确认是 rebuild app，含 I18 dry-run、无 I22 preview；运行代码通过 mount 来自旧 staging source。部署时需仅更新隔离 source mount 中本批涉及的新 Backend 文件并执行健康/OpenAPI验证，不替换正式 `datara-api`，不动目标数据。当前本批 endpoint 尚未远端运行验证。
+- 安全边界：仅允许项目级 source/target 只读预览。源数据继续使用用户已批准的 `datara_meta` 固定 allowlist + READ ONLY 事务；不回显 payload/root 配置，不改源表；审批 orphan 仍阻断，I18 已批准的 skip 不外推。禁止添加/启用任何目标导入 API 或写入动作。Local tests pass 不等于 S9/R3 PASS。
 
 #### I18-I23 live schema allowlist preflight
 
