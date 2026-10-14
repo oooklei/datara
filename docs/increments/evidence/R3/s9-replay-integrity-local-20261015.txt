@@ -1,0 +1,23 @@
+R3-S9 I18 importer replay-integrity local evidence
+Date: 2026-10-15 Asia/Shanghai
+Worktree: D:\需求\数据治理工具\Datara\.worktrees\r3-s9
+Branch: codex/r3-s9
+Previous checkpoint commit: d6b8a9c
+
+TDD / local behavior
+- Before fix, imported target content mutation and deletion replay both returned completed; focused assertions failed.
+- Before alias fix, multi-entity I18 fixture stopped after importing the domain (1 imported, 1 approved skip; batch failed) because approved canonical domain alias had no checkpoint target-ID resolution.
+- After fix, checkpoint/importer tests: 9 passed.
+- Covered imported entity field mutation, deletion, provenance mutation; pre-existing unchanged target drift; relation-field child mutation; approved domain alias target-ID propagation; existing failed-item resume and permission/isolated-target guards.
+- Drift behavior: no target repair/overwrite/reinsert; item becomes terminal conflict `target_integrity_mismatch`, batch failed, external state preserved.
+
+Verification
+- `pytest tests -q`: 638 passed in 62.21s.
+- `ruff check rebuild tests/rebuild`: passed.
+- `python -m compileall -q rebuild`: passed.
+- `git diff --check`: passed.
+
+Boundary
+- Local in-memory SQLite only; no MySQL/source access, remote deployment, container/middleware/resource validation, browser-use/Playwright run, or target business data write.
+- This evidence is not remote integration acceptance and does not authorize target import.
+- R3-S9/R3 remains IN_PROGRESS/PARTIAL.

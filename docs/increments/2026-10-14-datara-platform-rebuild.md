@@ -146,3 +146,4 @@
 - 当前未增加可触发真实导入的 API route，亦未连接远端、调用 source reader 或写入目标数据。任何面向验证页的导入动作须另经项目权限与明确确认契约，且本轮用户裁定不等同于实际导入批准。
 - 本地证据：新增 checkpoint/importer tests 7 passed，全后端 `pytest tests -q` 633 passed，Ruff、compileall、diff-check 通过。仅属内存 SQLite/本机逻辑验证，不能替代 192.168.1.9 服务、MySQL、中间件、资源、日志和浏览器四联门禁。
 - 状态保持：R3-S9/R3 为 IN_PROGRESS/PARTIAL；I19-I23 映射与导入、完整 parity、目标备份/恢复、并发及回滚演练、写入确认和 API/页面控件闭环仍未完成。实际导入前必须由人工审阅最新 44-create/1-skip dry-run 及恢复计划并单独批准；不得以此轮“继续推进”解释成数据写入授权。
+- 2026-10-15 后续本地批次增加 I18 replay integrity：target ID/provenance/映射字段/关系字段 child rows 在 imported/unchanged 重放时校验；外部漂移生成 terminal conflict，不自动修复或覆盖。修复 `交易`→`交易域` approved alias 经 checkpoint 无法向模型/关系传播 target ID 的缺陷。定向 9 passed、全后端 638 passed、Ruff/compileall/diff-check 通过；此批仍仅本地内存 SQLite，远端状态与导入批准不变。

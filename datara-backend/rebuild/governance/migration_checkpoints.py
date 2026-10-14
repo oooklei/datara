@@ -181,6 +181,31 @@ class MigrationCheckpointRepository:
         self._refresh_batch(batch)
         return reopened
 
+    def mark_target_integrity_conflict(self, batch_id: int, external_id: str) -> MigrationItemRecord:
+        """Promote a previously successful item to a terminal conflict on replay drift."""
+
+        batch = self._batch(batch_id)
+        item = self.session.scalar(
+            select(MigrationItemRecord)
+            .where(
+                MigrationItemRecord.batch_id == batch_id,
+                MigrationItemRecord.external_id == external_id,
+            )
+            .with_for_update()
+        )
+        if item is None:
+            raise KeyError(f"migration checkpoint not found: {external_id}")
+        if item.status == "conflict" and item.error_message == "target_integrity_mismatch":
+            return item
+        if item.status not in {"imported", "skipped"} or not item.target_type or not item.target_id:
+            raise CheckpointConflict(f"checkpoint cannot be integrity-checked: {external_id}")
+
+        item.status = "conflict"
+        item.error_message = "target_integrity_mismatch"
+        self.session.flush()
+        self._refresh_batch(batch)
+        return item
+
     def _batch(self, batch_id: int) -> MigrationBatchRecord:
         batch = self.session.scalar(
             select(MigrationBatchRecord).where(MigrationBatchRecord.id == batch_id).with_for_update()
