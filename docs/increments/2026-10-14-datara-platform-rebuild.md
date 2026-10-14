@@ -213,3 +213,12 @@
 - 步骤：先 RED→纯 mapper/context/bundle→I18-I21 reader 与 I20/I21 mapper regression→全后端 `pytest tests -q`、Ruff/compileall/diff-check→项目内证据与台账→独立 commit。
 - 无 importer/API/ORM/migration/数据库连接、实际导入、部署、页面/远端控件或 browser/log/middleware/resources；该子步骤最高只可为 `LOCAL_SUBSTEP_PASS / INTEGRATION_GATE_PENDING`，正式 I19 parity 与 S9 仍待完整门禁。
 - 实测：I19 mapper 11 passed；I18-I21 reader + I19-I21 mapper 回归 83 passed；全后端 `pytest tests -q` 700 passed in 73.02s；Ruff、compileall 通过。规格审阅在提交前仍未回报，不记 PASS。证据：`evidence/R3/s9-i19-mapper-local-20261015.txt`。
+
+### 2026-10-15：I23 用户身份最小只读快照 reader 增量计划
+
+- 基线：I19 mapper 已提交 `150edd0`；I22 保持 schema evidence gate，不将历史 inventory 当作当前 schema。
+- 只实现 `t_user` 六列 allowlist (`id/user_name/user_role/state/create_time/update_time`) 及只读 snapshot reader；明确排除 `user_pwd`，不得读取用户行或凭据。旧 ORM 为来源字段证据，新身份 `Role` 为后续角色映射目标。
+- 不在本批实现 mapper/importer/口令重置、成员关系、API/UI、DDL、数据库连接或部署；绝不从用户/所有者猜项目成员。
+- 执行次序：测试 RED→实现 reader→I18-I23 reader regression/全后端 pytest/Ruff/compileall/diff-check→写证据并更新影响分析、计划、台账→独立提交。
+- 结果最高为 `LOCAL_SUBSTEP_PASS / INTEGRATION_GATE_PENDING`；真实源 schema/data、identity mapper/importer、项目成员关系、密码 reset、1.9 控件、运行日志/中间件/资源均须后续门禁，不得宣称 I23/R3 完成。
+- 实测：I23 reader 4 passed；I18/I19/I20/I21/I23 reader regression 29 passed；全后端 704 passed in 66.28s；Ruff、compileall 通过。SQL listener 确认 SELECT/PRAGMA only，未选择 `user_pwd`。详见 `evidence/R3/s9-i23-reader-local-20261015.txt`。

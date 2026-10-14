@@ -212,6 +212,16 @@ I21_SOURCE_COLUMNS: dict[str, tuple[str, tuple[str, ...]]] = {
     ),
 }
 
+# Identity snapshot intentionally excludes t_user.user_pwd. The legacy hash
+# algorithm is not compatible with the new identity verifier, and the reader
+# must not fetch credential material as part of governance carry-forward.
+I23_SOURCE_COLUMNS: dict[str, tuple[str, tuple[str, ...]]] = {
+    "t_user": (
+        "id",
+        ("id", "user_name", "user_role", "state", "create_time", "update_time"),
+    ),
+}
+
 
 @dataclass(frozen=True)
 class LegacyI18SourceSnapshot:
@@ -594,6 +604,84 @@ class LegacyI21SourceReader(LegacyI18SourceReader):
             json.dumps(payload, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode("utf-8")
         ).hexdigest()
         return LegacyI21SourceSnapshot(
+            schema=LEGACY_SCHEMA,
+            captured_at=captured_at,
+            digest=digest,
+            counts={table: len(rows) for table, rows in all_rows.items()},
+            rows=all_rows,
+        )
+
+
+@dataclass(frozen=True)
+class LegacyI23SourceSnapshot:
+    schema: str
+    captured_at: datetime
+    digest: str
+    counts: Mapping[str, int]
+    rows: Mapping[str, tuple[Mapping[str, object], ...]]
+
+
+class LegacyI23SourceReader(LegacyI18SourceReader):
+    """Read user identity metadata without selecting password/hash material."""
+
+    def read_snapshot(
+        self,
+        *,
+        page_size: int = 500,
+        max_total_rows: int = 100_000,
+        captured_at: datetime | None = None,
+    ) -> LegacyI23SourceSnapshot:
+        if not 1 <= page_size <= 10_000:
+            raise ValueError("page_size must be between 1 and 10000")
+        if max_total_rows < 1:
+            raise ValueError("max_total_rows must be positive")
+        captured_at = captured_at or datetime.now(ZoneInfo("Asia/Shanghai"))
+        if captured_at.tzinfo is None:
+            raise ValueError("captured_at must be timezone-aware")
+
+        all_rows: dict[str, tuple[Mapping[str, object], ...]] = {}
+        total_read = 0
+        connection = self.engine.connect()
+        transaction = connection.begin()
+        sqlite_query_only = self.engine.dialect.name == "sqlite"
+        try:
+            if sqlite_query_only:
+                connection.exec_driver_sql("PRAGMA query_only = ON")
+            else:
+                connection.exec_driver_sql("SET TRANSACTION READ ONLY")
+            for table_name, (identity_column, columns) in I23_SOURCE_COLUMNS.items():
+                table_rows = self._read_table(
+                    connection,
+                    table_name,
+                    identity_column,
+                    columns,
+                    page_size,
+                    max_total_rows - total_read,
+                    "I23",
+                )
+                total_read += len(table_rows)
+                if total_read > max_total_rows:
+                    raise RuntimeError(f"legacy I23 snapshot exceeded row safety limit {max_total_rows}")
+                all_rows[table_name] = tuple(table_rows)
+            transaction.rollback()
+        except Exception:
+            if transaction.is_active:
+                transaction.rollback()
+            raise
+        finally:
+            if sqlite_query_only and not connection.closed:
+                connection.exec_driver_sql("PRAGMA query_only = OFF")
+                connection.rollback()
+            connection.close()
+
+        payload = {
+            "schema": LEGACY_SCHEMA,
+            "rows": {table: [_json_safe(row) for row in rows] for table, rows in all_rows.items()},
+        }
+        digest = hashlib.sha256(
+            json.dumps(payload, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode("utf-8")
+        ).hexdigest()
+        return LegacyI23SourceSnapshot(
             schema=LEGACY_SCHEMA,
             captured_at=captured_at,
             digest=digest,
