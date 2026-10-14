@@ -210,7 +210,6 @@ class LegacyI18TargetSnapshotRepository:
         captured_at = datetime.now(ZoneInfo("Asia/Shanghai"))
         digest_payload = {
             "project_id": project_id,
-            "captured_at": captured_at.isoformat(),
             "row_fingerprints": sorted((list(key), value) for key, value in fingerprints.items()),
             "target_ids": sorted((list(key), value) for key, value in target_ids.items()),
             "model_fields": sorted((key, sorted(value)) for key, value in model_fields.items()),

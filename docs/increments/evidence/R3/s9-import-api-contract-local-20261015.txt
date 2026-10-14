@@ -1,0 +1,26 @@
+R3-S9 I18 import API contract local evidence
+Date: 2026-10-15 Asia/Shanghai
+Worktree: D:\需求\数据治理工具\Datara\.worktrees\r3-s9
+Branch: codex/r3-s9
+Base commit: 51a39e5
+
+TDD and contract
+- RED observed before implementation: test app factory rejected missing `legacy_i18_import_enabled` option.
+- Target digest test initially failed because `captured_at` was part of the digest; content-stable digest fixed it while captured_at remains available separately.
+- API/snapshot focused tests: 8 passed.
+- Full backend `pytest tests -q`: 643 passed in 64.37s.
+- `ruff check rebuild tests/rebuild`: passed.
+- `python -m compileall -q rebuild`: passed.
+- `git diff --check`: passed.
+
+Covered
+- Default/omitted `REBUILD_LEGACY_I18_IMPORT_ENABLED` is false and returns 5034 before source reader, target snapshot, batch/checkpoint, or importer calls.
+- Validation runner user_id=0 is rejected even with explicit test-only feature enablement.
+- Persisted user lacking project EDIT_DEFINITION is rejected before source access.
+- Wrong confirmation text, stale source digest, stale target digest, and a non-ready dry-run all refuse without importer calls.
+- Enabled happy-path test uses a mock importer and verifies actor/project/digests/idempotency arguments; no business entity writes are performed.
+- Repeated equal target content produces an equal digest; target content changes produce a different digest; capture time stays separate.
+
+Boundary
+- Local tests only; runtime feature flag was not enabled in deployment, no compose change, remote DB read/write, deployment, browser-use/Playwright, service-log, middleware, resource, or target-business-data verification was performed.
+- Code does not grant the separate approval required for any actual target import. R3-S9/R3 remains IN_PROGRESS/PARTIAL.

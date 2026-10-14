@@ -30,8 +30,11 @@ from rebuild.governance.models import (
 from rebuild.governance.service import GovernanceService
 from rebuild.governance.legacy_migration_service import build_i18_legacy_dry_run
 from rebuild.governance.legacy_source_reader import LegacyI18SourceReader
+from rebuild.governance.legacy_importer import LegacyImportRejected, execute_i18_legacy_import
+from rebuild.governance.migration_checkpoints import CheckpointConflict
 from rebuild.governance.snapshot_repository import LegacyI18TargetSnapshotRepository
 from rebuild.identity.contracts import Permission
+from rebuild.identity.models import UserRecord
 from rebuild.project.models import ProjectRecord
 
 logger = logging.getLogger(__name__)
@@ -89,6 +92,13 @@ class QualityRuleInput(BaseModel):
     enabled: bool = True
 
 
+class LegacyI18ImportInput(BaseModel):
+    source_digest: str = Field(pattern="^[0-9a-f]{64}$")
+    target_digest: str = Field(pattern="^[0-9a-f]{64}$")
+    idempotency_key: str = Field(min_length=1, max_length=128)
+    confirmation: str = Field(min_length=1, max_length=256)
+
+
 class StandardInput(BaseModel):
     code: str = Field(min_length=1, max_length=128)
     name: str = Field(min_length=1, max_length=256)
@@ -111,6 +121,7 @@ def build_governance_router(
     current_user: Callable[[str], dict[str, object]],
     *,
     legacy_source_reader_factory: Callable[[], LegacyI18SourceReader] | None = None,
+    legacy_i18_import_enabled: bool = False,
 ) -> APIRouter:
     router = APIRouter(prefix="/api/v1/rebuild/governance", tags=["rebuild-governance"])
 
@@ -216,6 +227,111 @@ def build_governance_router(
                 extra={"project_id": project_id, "error_type": type(exc).__name__},
             )
             return fail(503, 5031, "legacy I18 snapshot is unavailable")
+        finally:
+            source_engine = getattr(reader, "engine", None)
+            if source_engine is not None:
+                source_engine.dispose()
+
+    @router.post("/projects/{project_id}/legacy/i18/import")
+    def legacy_i18_import(
+        project_id: int,
+        body: LegacyI18ImportInput,
+        authorization: str = Header(default=""),
+    ):
+        # Keep the default path completely inert: no source connection, target
+        # snapshot query, checkpoint, or importer construction may occur.
+        if not legacy_i18_import_enabled:
+            return fail(503, 5034, "legacy I18 import is disabled")
+        try:
+            user = authenticate(authorization)
+            if isinstance(user, JSONResponse):
+                return user
+        except ValueError:
+            return fail(401, 1001, "invalid token")
+
+        try:
+            actor_id = int(user.get("user_id", 0))
+        except (TypeError, ValueError):
+            actor_id = 0
+        if actor_id <= 0:
+            return fail(403, 1003, "a persisted operator identity is required for I18 import")
+
+        reader = None
+        try:
+            with session_factory() as session:
+                actor = session.get(UserRecord, actor_id)
+                if actor is None:
+                    return fail(403, 1003, "a persisted operator identity is required for I18 import")
+                operator = {**user, "user_id": actor.id, "role": actor.role}
+                permitted = project_permission(session, project_id, operator, Permission.EDIT_DEFINITION)
+                if isinstance(permitted, JSONResponse):
+                    return permitted
+                expected_confirmation = (
+                    f"IMPORT I18 {project_id} {body.source_digest} {body.target_digest}"
+                )
+                if body.confirmation != expected_confirmation:
+                    return fail(409, 4094, "explicit I18 confirmation does not match the supplied snapshots")
+                target_url = session.get_bind().url
+                target_backend = target_url.get_backend_name()
+                if target_backend == "mysql" and target_url.database != "datara_rebuild_i0":
+                    return fail(503, 5032, "target database is not the isolated rebuild schema")
+                if target_backend == "sqlite" and target_url.database != ":memory:":
+                    return fail(503, 5032, "file SQLite is not an allowed I18 import target")
+                if target_backend not in {"mysql", "sqlite"}:
+                    return fail(503, 5032, "unsupported target database for I18 import")
+
+                reader = (legacy_source_reader_factory or LegacyI18SourceReader.from_runtime_env)()
+                source_snapshot = reader.read_snapshot()
+                target_snapshot = LegacyI18TargetSnapshotRepository(session).read_project_snapshot(project_id)
+                dry_run = build_i18_legacy_dry_run(project_id, source_snapshot, target_snapshot)
+                if (
+                    source_snapshot.digest != body.source_digest
+                    or target_snapshot.digest != body.target_digest
+                ):
+                    return fail(409, 4095, "I18 source or target snapshot changed; run a fresh dry-run")
+                if not dry_run.plan.ready_to_import:
+                    return fail(409, 4096, "latest I18 dry-run contains conflicts or blocked rows")
+
+                result = execute_i18_legacy_import(
+                    session_factory,
+                    project_id=project_id,
+                    actor_id=actor_id,
+                    source_snapshot=source_snapshot,
+                    target_snapshot=target_snapshot,
+                    idempotency_key=body.idempotency_key,
+                )
+                data = {
+                    "batch_id": result.batch_id,
+                    "status": result.status,
+                    "expected_count": result.expected_count,
+                    "imported_count": result.imported_count,
+                    "skipped_count": result.skipped_count,
+                    "error_count": result.error_count,
+                }
+                logger.info(
+                    "legacy I18 import request completed",
+                    extra={"project_id": project_id, "batch_id": result.batch_id, "status": result.status},
+                )
+                if result.status != "completed":
+                    return JSONResponse(
+                        status_code=409,
+                        content={"code": 4097, "msg": "I18 import stopped with unresolved items", "data": data},
+                    )
+                return {"code": 0, "msg": "success", "data": data}
+        except (LegacyImportRejected, CheckpointConflict) as exc:
+            logger.warning(
+                "legacy I18 import rejected",
+                extra={"project_id": project_id, "error_type": type(exc).__name__},
+            )
+            return fail(409, 4098, "I18 import was rejected by a migration safety check")
+        except ValueError as exc:
+            return fail(422, 4221, str(exc))
+        except Exception as exc:
+            logger.error(
+                "legacy I18 import failed",
+                extra={"project_id": project_id, "error_type": type(exc).__name__},
+            )
+            return fail(503, 5031, "legacy I18 import is unavailable")
         finally:
             source_engine = getattr(reader, "engine", None)
             if source_engine is not None:

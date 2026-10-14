@@ -57,6 +57,7 @@ def create_app(
     *,
     token_secret: str | None = None,
     validation_key: str | None = None,
+    legacy_i18_import_enabled: bool | None = None,
 ) -> FastAPI:
     database_url = database_url or os.getenv("REBUILD_DB_URL")
     if not database_url:
@@ -65,6 +66,11 @@ def create_app(
     if not token_secret:
         raise RuntimeError("REBUILD_TOKEN_SECRET must be configured")
     validation_key = validation_key if validation_key is not None else os.getenv("REBUILD_VALIDATION_KEY")
+    if legacy_i18_import_enabled is None:
+        legacy_i18_import_enabled = os.getenv("REBUILD_LEGACY_I18_IMPORT_ENABLED", "false").strip().lower() in {
+            "1",
+            "true",
+        }
     connect_args = {"check_same_thread": False} if database_url.startswith("sqlite") else {}
     pool_args = {"poolclass": StaticPool} if database_url.endswith(":memory:") else {}
     engine = create_engine(database_url, connect_args=connect_args, pool_pre_ping=True, **pool_args)
@@ -253,7 +259,13 @@ def create_app(
             return JSONResponse(status_code=400, content={"code": 4001, "msg": str(exc), "data": None})
         return {"code": 0, "msg": "success", "data": result}
 
-    app.include_router(build_governance_router(session_factory, current_user))
+    app.include_router(
+        build_governance_router(
+            session_factory,
+            current_user,
+            legacy_i18_import_enabled=legacy_i18_import_enabled,
+        )
+    )
 
     @app.post("/api/v1/rebuild/projects/{project_id}/members")
     def add_member(project_id: int, body: MemberRequest, authorization: str = Header(default="")):

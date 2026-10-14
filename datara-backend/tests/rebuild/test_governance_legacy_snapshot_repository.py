@@ -305,3 +305,32 @@ def test_target_snapshot_is_project_scoped_read_only_and_semantics_match_legacy_
     assert statements and set(statements) == {"SELECT"}
     assert len(snapshot.digest) == 64
     assert snapshot.captured_at.tzinfo is not None
+
+
+def test_target_snapshot_digest_tracks_content_not_capture_time():
+    engine = create_engine(
+        "sqlite+pysqlite:///:memory:",
+        connect_args={"check_same_thread": False},
+        poolclass=StaticPool,
+    )
+    Base.metadata.create_all(engine)
+    from rebuild.governance.models import GovernanceDomainRecord
+
+    with Session(engine) as session, session.begin():
+        session.add(UserRecord(id=1, username="owner", password_hash="test", role="admin"))
+        session.add(ProjectRecord(id=41, name="target", description="", owner_id=1))
+
+    with Session(engine) as session:
+        first = LegacyI18TargetSnapshotRepository(session).read_project_snapshot(41)
+    with Session(engine) as session:
+        repeated = LegacyI18TargetSnapshotRepository(session).read_project_snapshot(41)
+    assert first.captured_at != repeated.captured_at
+    assert first.digest == repeated.digest
+
+    with Session(engine) as session, session.begin():
+        session.add(GovernanceDomainRecord(project_id=41, name="交易域", description="订单"))
+    with Session(engine) as session:
+        changed = LegacyI18TargetSnapshotRepository(session).read_project_snapshot(41)
+
+    assert changed.digest != first.digest
+    engine.dispose()
