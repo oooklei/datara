@@ -204,3 +204,12 @@
 - 验收仅本地逻辑；源 schema、真实关联/parity、importer/API、browser、运行资源和业务数据写入皆 pending。
 - 实测结果：I21 mapper 14 passed；I18-I21 reader + I20/I21 mapper regression 72 passed；当前全后端 `pytest tests -q` 689 passed in 66.31s；Ruff、compileall、`git diff --check` 通过。规格审阅发现 run/exception 非空 `task_id` 还需解析目标任务，修复并复核通过；独立代码质量审阅未返回，不能记为通过；之后加固无效显式 target ID、date-only 时间戳和超大 numeric 边界。详见 `evidence/R3/s9-i21-mapper-local-20261015.txt`。
 - 映射细节：run/exception 的非空 `task_id` 必须命中同批任务或显式 target/pending identity，同时 `legacy_task_id` 保持源 ID；目标日期列仅接受 datetime 或可解析的无时区 ISO 值，带 offset 阻断；report/alarm 使用调用方 target IDs。结果仍是 `LOCAL_SUBSTEP_PASS / INTEGRATION_GATE_PENDING`，没有 importer、实时 schema/parity、API/UI/远端运行资源或数据写入验收。
+
+### 2026-10-15：I19 元数据扩展/标签纯映射增量计划
+
+- 前序影响分析：见 `R3-S9-开始前影响分析.md`“I19 元数据扩展与标签纯映射开工影响分析”；reader 基线 `23cc06f`。
+- 输出契约：三表 snapshot 纯 map；extension 只关联操作者显式给定且 project-scoped 的 Asset，不推造资产；旧 Tag 映射 normalized tag + legacy definition bundle；tagging 保持原 target type/key，只有 exact project-scoped target asset map 才填 resolved asset，其余原键留存且 resolved_asset_id 为空。
+- TDD：覆盖空/完整/多行、tag 双实体、顺序/身份、显式重复映射、跨项目、未知 target type、悬空资产键/tag、重复键、源 JSON/日期/长度/target project；任何不可表示/引用缺失均 issue+block。
+- 步骤：先 RED→纯 mapper/context/bundle→I18-I21 reader 与 I20/I21 mapper regression→全后端 `pytest tests -q`、Ruff/compileall/diff-check→项目内证据与台账→独立 commit。
+- 无 importer/API/ORM/migration/数据库连接、实际导入、部署、页面/远端控件或 browser/log/middleware/resources；该子步骤最高只可为 `LOCAL_SUBSTEP_PASS / INTEGRATION_GATE_PENDING`，正式 I19 parity 与 S9 仍待完整门禁。
+- 实测：I19 mapper 11 passed；I18-I21 reader + I19-I21 mapper 回归 83 passed；全后端 `pytest tests -q` 700 passed in 73.02s；Ruff、compileall 通过。规格审阅在提交前仍未回报，不记 PASS。证据：`evidence/R3/s9-i19-mapper-local-20261015.txt`。
