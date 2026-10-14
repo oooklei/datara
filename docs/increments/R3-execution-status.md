@@ -94,6 +94,13 @@ The previous compose service definition was absent from the active remote base f
 
 ## R3-S8/S9 legacy governance carry-forward
 
+### I23 identity preview approval and current implementation gate — 2026-10-15
+
+- User approved source-only READ ONLY selection of `datara_meta.t_user(id,user_name,user_role,state,create_time,update_time)`; `user_pwd` remains excluded. User approved a short-lived endpoint-only `legacy:i23:preview` capability and a one-time AOCI observe acknowledgement; no target writes/import, account/role changes, scope policy changes, or formal frontend changes are authorized.
+- Detailed impact analysis, capability contract, and 9 implementation steps are recorded in `R3-S9-开始前影响分析.md` and `2026-10-14-datara-platform-rebuild.md`.
+- AOCI observe acknowledgement transaction `d17064b5e17a4567c1dea253` applied as explicitly authorized. Subsequent Maintain returned blocked with no semantic candidate batch (`aligned=false`; 125 targets, 112 source files missing/unbaselined); the tool’s cognition receipt points at the main repository root rather than this worktree. No Entry authoring, orphan removal, or scope-policy mutation was performed. AOCI alignment remains unresolved.
+- Working-tree preservation: `.aoci/baseline.json` was dirty before this run and remains uncommitted; the unrelated untracked nested test tree `datara-backend/datara-backend/` is preserved. Neither is part of I23 staging.
+
 - The prior CRLF transport error was resolved by stripping carriage returns before remote execution; the exact-count read-only script completed successfully. Evidence: `evidence/R3/s8-source-inventory-20261014.md`; old schema 57 tables, isolated target 16 tables, I18 exact 45 rows, I22 exact 3 rows, I23 users 4; I19/I20/I21 source tables are currently empty. Counts are the dated inventory, not a guarantee of unchanged live state.
 - The S8 comparison confirmed that current generic R3 tables do not represent all I18 model/version/relation, I20 dimensions/versions, I21 task/exception/report/alarm, or I22 code/naming/mapping/approval/check-report semantics.
 - User decision 2026-10-14: option A approved—extend the new Backend's normalized models and fully carry forward legacy I18-I23. Decision record: design §6; normalized entity contract: design §5.2; implementation plan: plan §7. Legacy source database remains read-only; only isolated `datara_rebuild_i0` may receive additive schema and migration writes.
