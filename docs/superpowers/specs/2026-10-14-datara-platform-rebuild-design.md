@@ -899,3 +899,10 @@ I18-I23 完整承接裁定仍有效，但旧主题设计稿/ORM 不自动等同�
 若旧主题设计、保留 ORM、历史 inventory 与当前只读物理 schema 不一致，必须在迁移计划/证据中逐列解释：能够无损承接的显式映射；不可映射的阻断项；是否需要新增规范化字段/关系。不得按字段名近似、设计稿想当然或空值填充掩盖差异；若不能无损表达，先更新本设计及实施计划并按变更治理处理，再实现映射。目标设计承诺完整承接，不代表可以省略源证据。
 
 I22 特别状态：`docs/increments/evidence/R3/remote-schema-inventory.txt` 是 `2026-10-14T17:55:28+08:00` 的历史列清单，其 `t_std_element`、`t_std_approval`、`t_std_mapping` 列与旧 I22 设计稿不一致，且当前重建工作树没有可作为当前合同的旧 Std ORM/API。该清单不得用作 I22 mapper 的唯一输入；须先取得版本绑定的当前只读 schema 证据并完成逐列复核。此门仅阻断 I22 字段映射/parity/import，不撤销 I18-I23 全量承接决策，也不授权任何源/目标写入。
+### 13.16 R2-13 测试库与数据库时间戳实测（2026-10-15）
+
+R2-13 在 `192.168.1.9` 的隔离 schema `datara_rebuild_i0` 上完成只读验收：仅查询目标 schema 的 `information_schema`、治理/迁移表计数与时间戳、已存在验证资产 #10/#11 以及项目 #8 审计记录；远端应用/API/容器状态与受限 API 访问日志只读采集。没有触碰 `datara_meta`、源库、数仓或目标数据写入。
+
+证据 `docs/increments/evidence/R2/r2-13-20261015175857.json` 与同名 PNG 证明目标 MySQL 8.0.46 中 42 张治理/迁移表的 130 个时间列定义均采用 `CURRENT_TIMESTAMP` 默认；逐表已存记录的 `created_at/updated_at/generated_at` 均无 NULL。两条迁移 revision/checksum 与当前 Backend 注册内容一致，状态均为 `completed` 且有 started/finished 时间。真实页面选择既有项目、打开既有资产与 Activity/Audit：31 条审计的数据库 `generated_at`、API 响应和页面控件逐条一致；页面/健康探测 HTTP 200，页面业务请求全为 GET。外部资产 `row_count` 在目标数据中为 NULL，页面如实显示“—”；此结果不构成源业务数据行数探查。工作流实例/任务执行表尚未在本增量创建，必须在对应后续增量建表时继续执行 §13.13 的完整字段契约和表级验收。
+
+验证通道：browser-use 同页绑定/导航两次分别在 30s 与 60s 超时，按已批准经验规则改用 Playwright 对同一 18091 验证页执行真实控件操作；R2-13 证据同时归档 `browser-entry-20261015.txt`、`remote-final-20261015.txt`。此记录是 §13.13 的局部治理 schema 实测，不替代工作流运行表的未来验收。

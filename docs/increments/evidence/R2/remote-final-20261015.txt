@@ -1,0 +1,23 @@
+R2-13 Remote Final — 2026-10-15 Asia/Shanghai
+
+Run: r2-13-20261015175857
+Full machine-readable source: r2-13-20261015175857.json
+Browser evidence pair: r2-13-20261015175857.json + r2-13-20261015175857.png
+Validation URL: http://192.168.1.9:18091/rebuild-validation-r3.html
+
+Remote resource and service state
+- 13 Datara containers were running at final inspection. Rebuild API, platform API, master, worker, logger, alert, MySQL source/meta/DW, Redis, Kafka, and ZooKeeper reported healthy; Web was running.
+- Validation Web returned HTTP 200 (44,924 response bytes); rebuild API health returned HTTP 200 (73 response bytes).
+- Filtered rebuild API access logs show the validation-token exchange and browser-triggered project/assets/detail/audit calls returning 200. Exact captured lines are in the paired JSON.
+- No deployment, restart, compose operation, or middleware/data service mutation was performed.
+
+Target database boundary and results
+- Connected as MySQL root only to the explicitly isolated target schema `datara_rebuild_i0` in `datara-mysql-meta`; MySQL version 8.0.46.
+- All database operations were SELECT-only: schema identity, information_schema timestamp definitions, counts/null checks over governance/migration tables, two existing validation assets, migration history, and project #8 audit rows. No query was issued to `datara_meta`, source, or warehouse schemas.
+- Schema contains 46 total tables. The 42 `rebuild_governance_*` / `rebuild_schema_migration` tables were inspected; the four project/identity tables were recorded by name only, and their row contents were not queried.
+- Across the inspected governance/migration schema, 130 timestamp-column definitions are non-null with `CURRENT_TIMESTAMP` database defaults. Stored-row timestamp NULL counts are zero.
+- Both migrations (`r3_0001_governance_catalog`, `r3_0002_legacy_governance_carryforward`) are completed, each with attempt_count=1, checksum, started_at, and finished_at. Recorded revision/checksum pairs equal the current backend's registered migrations.
+- Existing governance assets #10/#11 have updated_at values matching their visible UI values. Their row_count is SQL NULL and the UI correctly renders “—”; no external source-table row-count scan was claimed.
+- All 31 project #8 audit events shown by the page/API matched `rebuild_governance_audit_event` by generated_at, action, resource_type, and resource_id.
+
+Final status: PASS for R2-13's isolated governance test-schema supply and timestamp/default reconciliation. Workflow execution runtime tables have not been created or validated in this increment; their full §13.13 timestamp contract remains a later runtime acceptance item.

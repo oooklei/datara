@@ -75,7 +75,7 @@
 | R2-10 指标 | IN_PROGRESS | 本轮将过时全量测试数 536 更新为实测 583，并记录 QC browser 21/21；其余性能基线需专门采样。 |
 | R2-11 SYNC | DESIGN_DEFINED | 执行器链路已写入设计；需 datasource 前置、执行器实现和全量/增量/断点/行计数闭环。 |
 | R2-12 datasource | CONTROL_PASS | R2-12-A/B/C/D 均有独立实现/验收；D 已增加 PostgreSQL probe/catalog，并以同一真实验证页联合回归 PostgreSQL 与 MySQL：run `r2-12-d-20261015164635` PASS，6 UI assertions、11 API responses、JSON+PNG、remote-final 完整。D 最终全量 backend tests 796 passed；Ruff/compileall/diff check 通过。候选镜像只部署至 `datara-rebuild-api`，共享 `datara-backend:latest` 与其余运行容器未改；PG/MySQL 临时只读 fixture、profile 均收尾清理。早期 502 失败证据保留。AOCI dirty/stale 独立跟踪，不声称 aligned。R2-12 仅关闭 datasource 公共前置能力，不表示 SQL/SYNC/IDE/治理消费者已接入。 |
-| R2-13 测试库 | PARTIAL | 1.9 运行 schema 已供测试，R3 时间戳/行数证据部分存在；需把 schema/init 与默认值证据按新 Backend 契约核实。 |
+| R2-13 测试库 | CONTROL_PASS | run `r2-13-20261015175857`：1.9 `datara_rebuild_i0` 只读核对 42 张治理/迁移表、130 个时间列定义、全部 timestamp defaults 与存行非空；两条迁移 revision/checksum 与当前 Backend 相符且均 completed；同页 31 条 Audit 的 `generated_at` 与 API/数据库逐条一致。页面/健康探测 200、容器健康；仅 POST 为 validation-token bootstrap，其余页面 API 全 GET。JSON+PNG、browser-entry 与 remote-final 已归档。R3 本次仅有外部资产 row_count 为数据库 NULL、页面显示“—”，不冒称取得源业务表行数；workflow runtime 表仍按后续 R2-10/11 实现时遵守 §13.13。 |
 | R2-14 门禁 | IN_PROGRESS | token bootstrap 与 Playwright 同页策略已有；QC 批次 1 21/21 PASS，仍需每个后端增量依照参考产品 UI 做闭环。 |
 | R2-15 IDE 拆分 | DESIGN_DEFINED | R10-A/B 已拆分；需两份独立验证单和 DDL 写路径审批边界。 |
 
