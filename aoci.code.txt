@@ -8,7 +8,9 @@ LICENSE[ZS8S]: F:States the dual AGPLv3 and commercial licensing terms for Datar
 LICENSE-COMMERCIAL.md[ZS5S]: F:Documents the commercial licensing option and review caveats. | R:- | A:Supports licensing decisions alongside LICENSE. | S:This is an unofficial template and requires legal review before issuance.
 README.md[ZS5S]: F:Introduces Datara as a data-governance platform and links its licensing and setup context. | R:- | A:Provides project entry documentation for users and maintainers. | S:Keep usage and license claims aligned with implementation.
 SECURITY.md[ZS5S]: F:Defines private vulnerability reporting and response expectations. | R:- | A:Provides the security disclosure contract for the repository. | S:Do not route security reports through public issue tracking.
-docker-compose.yml[CZ5T]: F:Defines structured configuration or catalog data in docker-compose.yml. | R:- | A:Supplies declarative input to platform services. | S:-
+docker-compose.yml[CM7M]: F:Defines Datara service topology including the isolated rebuild API service and shared runtime resources. | R:code:datara-backend/rebuild/api/app.py,code:docker-compose.rebuild.yml,code:infra/mysql/src/init/01_schema.sql | A:Connects rebuild and legacy validation runtimes over the shared MySQL services. | S:Rebuild API mounts stay read-only and Web remains on the 18091 validation bind.
+.mcp.json[CC4T]: F:Registers the AOCI MCP server command for agent sessions. | R:- | A:Launches the AOCI binary in MCP stdio mode bound to this repository root. | S:Server identity and repo binding must match the active workspace.
+docker-compose.rebuild.yml[FV5T]: F:Defines the isolated rebuild API compose service with validation key, MySQL dependencies, and health check. | R:code:datara-backend/rebuild/api/app.py,code:docker-compose.yml | A:Provisions the rebuild runtime consumed by R-series validation. | S:Rebuild mounts stay read-only and secrets come from the environment.
 
 ===D:/需求/数据治理工具/Datara/datara-backend/===
 Dockerfile[RM7S]: F:Builds the shared Python 3.11 backend image used by API, master, worker, alert, and logger services. | R:- | A:docker-compose commands select the runtime module for each container. | S:Health checks depend on curl and the image timezone/environment settings.
@@ -23,7 +25,7 @@ main.py[RM7S]: F:Runs the alert worker health endpoint and polls pending alert r
 ===D:/需求/数据治理工具/Datara/datara-backend/api/===
 __init__.py[EB6T]: F:Defines the API package boundary for authentication, definitions, instances, commands, and health routes. | R:code:datara-backend/api/main.py | A:Groups HTTP route modules mounted by the FastAPI application. | S:Route behavior is implemented in the individual modules.
 alerts.py[EB6T]: F:Exposes authenticated queries for persisted in-site alert records. | R:code:datara-backend/api/auth.py,code:datara-backend/alert/main.py | A:Provides the message-center read contract over alert state. | S:Permission checks must remain enforced before returning records.
-auth.py[EI8S]: F:Implements login, logout, token persistence, and role-based permission dependencies. | R:code:datara-backend/api/main.py | A:Uses bcrypt credentials and Redis-backed token sessions for route authorization. | S:Token TTL and permission mapping are part of the external API contract.
+auth.py[EI8S]: F:Implements login, logout, token persistence, and role-based permission dependencies for governance APIs. | R:code:datara-backend/api/main.py | A:Authorizes model, metadata, quality, and standard governance operations. | S:Role permissions are part of the deployed API contract.
 baseline.py[DB8M]: F:Implements built-in component baseline progress, acknowledgement, and published version transitions. | R:code:datara-backend/api/component.py,code:datara-backend/api/component_design.py | A:Bridges the read-only catalog to governed component/version rows and lineage declarations. | S:Built-in components enter the version chain only after user acknowledgement.
 commands.py[DB7T]: F:Provides the transactional helper that queues commands for asynchronous master consumption. | R:code:datara-backend/api/instance.py | A:Persists command type, parameters, priority, and wait state. | S:API handlers must not execute master work synchronously.
 component.py[DB8M]: F:Serves the read-only system component catalog, filters, statistics, details, and snapshots. | R:code:datara-backend/common/dag_catalog.json,code:datara-backend/api/component_spec.py | A:Supplies the catalog contract consumed by design and validation clients. | S:Catalog output must preserve deterministic hashes and registry-drift visibility.
@@ -37,14 +39,13 @@ ide.py[DI8M]: F:Provides asynchronous SQL IDE execution, SSE logs, cancellation,
 ind.py[DB7M]: F:Implements metric definition, versioning, and consistency-rule APIs. | R:code:datara-backend/api/auth.py,code:datara-backend/api/datasource.py | A:Connects governed indicators to authenticated datasource metadata and validation. | S:Metric revisions and consistency checks must retain version semantics.
 instance.py[DB8M]: F:Serves workflow instance lists, details, SSE state streams, stop, rerun, and failed-node rerun commands. | R:code:datara-backend/api/commands.py | A:Exposes runtime state while delegating control actions through the command queue. | S:Only valid runtime or terminal states may accept the corresponding control command.
 lineage.py[DI9M]: F:Queries table, field, graph, trace, and redesign lineage across design and runtime sources. | R:code:datara-backend/api/baseline.py,code:datara-backend/api/instance.py | A:Provides governance lineage traversal and impact-analysis contracts. | S:Runtime snapshots preserve instance context while aggregate graph responses deduplicate edges.
-main.py[ER9S]: F:Creates the FastAPI application, middleware, route mounts, and startup registration. | R:code:datara-backend/api/health.py,code:datara-backend/api/auth.py | A:Defines the HTTP boundary and lifecycle for all API modules. | S:CORS and startup behavior must remain consistent with deployment health checks.
+main.py[ER9S]: F:Creates the FastAPI application, middleware, route mounts, and startup registration for governance services. | R:code:datara-backend/api/health.py,code:datara-backend/api/auth.py,code:datara-backend/api/qc.py,code:datara-backend/api/std.py | A:Defines the HTTP boundary and lifecycle for all API modules. | S:Every mounted route must be included in the deployment image.
 meta.py[DB7M]: F:Provides metadata catalog projections, extensions, labels, and tagging APIs. | R:code:datara-backend/api/datasource.py,code:datara-backend/api/meta_ops.py | A:Maintains metadata governance annotations without duplicating connector introspection. | S:Labels are persisted through their dedicated source-of-truth tables.
 meta_ops.py[DI8M]: F:Implements table DDL/count inspection, audit, paged row editing, and CSV import operations. | R:code:datara-backend/api/datasource.py,code:datara-backend/api/auth.py | A:Connects metadata UI actions to validated datasource SQL operations. | S:Identifiers are quoted and values parameterized; batch imports are transactional.
 model.py[DB7S]: F:Implements the backend API behavior defined in datara-backend/api/model.py. | R:- | A:Exposes authenticated governance or runtime operations to the frontend and integrations. | S:-
 monitor.py[DB7S]: F:Implements the backend API behavior defined in datara-backend/api/monitor.py. | R:- | A:Exposes authenticated governance or runtime operations to the frontend and integrations. | S:-
 page_designer.py[DB7S]: F:Implements the backend API behavior defined in datara-backend/api/page_designer.py. | R:- | A:Exposes authenticated governance or runtime operations to the frontend and integrations. | S:-
 params.py[DB7S]: F:Implements the backend API behavior defined in datara-backend/api/params.py. | R:- | A:Exposes authenticated governance or runtime operations to the frontend and integrations. | S:-
-qc.py[DB7S]: F:Implements the backend API behavior defined in datara-backend/api/qc.py. | R:- | A:Exposes authenticated governance or runtime operations to the frontend and integrations. | S:-
 runtime_node.py[DB7S]: F:Implements the backend API behavior defined in datara-backend/api/runtime_node.py. | R:- | A:Exposes authenticated governance or runtime operations to the frontend and integrations. | S:-
 smoke.py[DB7S]: F:Implements the backend API behavior defined in datara-backend/api/smoke.py. | R:- | A:Exposes authenticated governance or runtime operations to the frontend and integrations. | S:-
 sshnode.py[DB7S]: F:Implements the backend API behavior defined in datara-backend/api/sshnode.py. | R:- | A:Exposes authenticated governance or runtime operations to the frontend and integrations. | S:-
@@ -55,6 +56,7 @@ wf_definition.py[DB7S]: F:Implements the backend API behavior defined in datara-
 wf_schedule.py[DB7S]: F:Implements the backend API behavior defined in datara-backend/api/wf_schedule.py. | R:- | A:Exposes authenticated governance or runtime operations to the frontend and integrations. | S:-
 wf_variable.py[DB7S]: F:Implements the backend API behavior defined in datara-backend/api/wf_variable.py. | R:- | A:Exposes authenticated governance or runtime operations to the frontend and integrations. | S:-
 workflow_templates.py[DB7S]: F:Implements the backend API behavior defined in datara-backend/api/workflow_templates.py. | R:- | A:Exposes authenticated governance or runtime operations to the frontend and integrations. | S:-
+std.py[DB7S]: F:Implements standard element, code table, naming, mapping, approval, and report APIs. | R:code:datara-backend/common/std_engine.py,code:datara-backend/common/models.py | A:Exposes governed standard management operations to the frontend. | S:Published elements and codes require approval before mutation.
 
 ===D:/需求/数据治理工具/Datara/datara-backend/common/===
 __init__.py[CM6S]: F:Provides shared backend infrastructure used by datara-backend/common/__init__.py. | R:- | A:Defines reusable contracts consumed by API and runtime modules. | S:-
@@ -67,9 +69,8 @@ dsconn.py[CM6S]: F:Provides shared backend infrastructure used by datara-backend
 init_accounts.py[CM6S]: F:Provides shared backend infrastructure used by datara-backend/common/init_accounts.py. | R:- | A:Defines reusable contracts consumed by API and runtime modules. | S:-
 lineage_extract.py[CM6S]: F:Provides shared backend infrastructure used by datara-backend/common/lineage_extract.py. | R:- | A:Defines reusable contracts consumed by API and runtime modules. | S:-
 log.py[CM6S]: F:Provides shared backend infrastructure used by datara-backend/common/log.py. | R:- | A:Defines reusable contracts consumed by API and runtime modules. | S:-
-models.py[CM6S]: F:Provides shared backend infrastructure in datara-backend/common/models.py. | R:- | A:Defines reusable contracts consumed by API and runtime modules. | S:-
+models.py[CM9L]: F:Defines SQLAlchemy persistence models for workflow, governance, quality, and standard data. | R:code:datara-backend/api/std.py,code:datara-backend/api/qc.py | A:Provides the shared schema used by API and runtime modules. | S:New tables rely on startup schema provisioning or migrations.
 monitor.py[CM6S]: F:Provides shared backend infrastructure used by datara-backend/common/monitor.py. | R:- | A:Defines reusable contracts consumed by API and runtime modules. | S:-
-qc_engine.py[CM6S]: F:Provides shared backend infrastructure used by datara-backend/common/qc_engine.py. | R:- | A:Defines reusable contracts consumed by API and runtime modules. | S:-
 queue.py[CM6S]: F:Provides shared backend infrastructure used by datara-backend/common/queue.py. | R:- | A:Defines reusable contracts consumed by API and runtime modules. | S:-
 registry.py[CM6S]: F:Provides shared backend infrastructure used by datara-backend/common/registry.py. | R:- | A:Defines reusable contracts consumed by API and runtime modules. | S:-
 resp.py[CM6S]: F:Provides shared backend infrastructure used by datara-backend/common/resp.py. | R:- | A:Defines reusable contracts consumed by API and runtime modules. | S:-
@@ -78,6 +79,7 @@ sqlparser.py[CM6S]: F:Provides shared backend infrastructure used by datara-back
 sshprobe.py[CM6S]: F:Provides shared backend infrastructure used by datara-backend/common/sshprobe.py. | R:- | A:Defines reusable contracts consumed by API and runtime modules. | S:-
 tmpdata.py[CM6S]: F:Provides shared backend infrastructure used by datara-backend/common/tmpdata.py. | R:- | A:Defines reusable contracts consumed by API and runtime modules. | S:-
 vars_render.py[CM6S]: F:Provides shared backend infrastructure used by datara-backend/common/vars_render.py. | R:- | A:Defines reusable contracts consumed by API and runtime modules. | S:-
+std_engine.py[CM7T]: F:Provides naming, type, code, and identifier validators for standard governance. | R:code:datara-backend/api/std.py | A:Centralizes deterministic validation used by standard APIs. | S:Identifier validation must reject unsafe SQL names.
 
 ===D:/需求/数据治理工具/Datara/datara-backend/components/===
 __init__.py[DB5T]: F:Implements the Datara managed behavior in datara-backend/components/__init__.py. | R:- | A:Provides the module contract used by adjacent platform services. | S:-
@@ -158,7 +160,7 @@ vars_render_probe.py[XQ5T]: F:Provides a development, data-preparation, or verif
 __init__.py[XQ5T]: F:Provides a development, data-preparation, or verification utility in datara-backend/tools/datagen/__init__.py. | R:- | A:Supports repeatable engineering and test evidence. | S:-
 config.py[XQ5T]: F:Provides a development, data-preparation, or verification utility in datara-backend/tools/datagen/config.py. | R:- | A:Supports repeatable engineering and test evidence. | S:-
 dirty_rules.yaml[XQ5T]: F:Provides a development, data-preparation, or verification utility in datara-backend/tools/datagen/dirty_rules.yaml. | R:- | A:Supports repeatable engineering and test evidence. | S:-
-gen.py[XQ5T]: F:Provides a development, data-preparation, or verification utility in datara-backend/tools/datagen/gen.py. | R:- | A:Supports repeatable engineering and test evidence. | S:-
+gen.py[RO7S]: F:Generates deterministic source and warehouse test data with dirty-rule injection and reconciliation inputs. | R:code:datara-backend/tools/datagen/tables.yaml,code:datara-backend/tools/datagen/reconcile.py | A:Provides reproducible I2 data and prevents same-column rule overwrite by mutually exclusive sampling. | S:Same-table same-column dirty rules must not overlap sampling positions.
 import_csv.py[XQ5T]: F:Provides a development, data-preparation, or verification utility in datara-backend/tools/datagen/import_csv.py. | R:- | A:Supports repeatable engineering and test evidence. | S:-
 reconcile.py[XQ5T]: F:Provides a development, data-preparation, or verification utility in datara-backend/tools/datagen/reconcile.py. | R:- | A:Supports repeatable engineering and test evidence. | S:-
 run.py[XQ5T]: F:Provides a development, data-preparation, or verification utility in datara-backend/tools/datagen/run.py. | R:- | A:Supports repeatable engineering and test evidence. | S:-
@@ -242,19 +244,26 @@ deploy_endpoint_unify.sh[EB6T]: F:Renders the frontend workflow and user interac
 deploy_engine_readerTable.sh[EB6T]: F:Renders the frontend workflow and user interactions implemented by datara-web/deploy/deploy_engine_readerTable.sh. | R:- | A:Connects user actions to Datara API services and governed state. | S:-
 deploy_final_round.sh[EB6T]: F:Renders the frontend workflow and user interactions implemented by datara-web/deploy/deploy_final_round.sh. | R:- | A:Connects user actions to Datara API services and governed state. | S:-
 deploy_sync_refactor.sh[EB6T]: F:Renders the frontend workflow and user interactions implemented by datara-web/deploy/deploy_sync_refactor.sh. | R:- | A:Connects user actions to Datara API services and governed state. | S:-
-nginx.conf[EB6T]: F:Renders the frontend workflow and user interactions implemented by datara-web/deploy/nginx.conf. | R:- | A:Connects user actions to Datara API services and governed state. | S:-
+nginx.conf[IM6S]: F:Defines the I1 rebuild responsibility and contract. | R:code:datara-backend/rebuild/api/app.py | A:Supports the isolated backend-first rebuild and validation evidence. | S:Keep isolated until freeze.
 reconcile_b.sh[EB6T]: F:Renders the frontend workflow and user interactions implemented by datara-web/deploy/reconcile_b.sh. | R:- | A:Connects user actions to Datara API services and governed state. | S:-
 run_sync_e2e.sh[EB6T]: F:Renders the frontend workflow and user interactions implemented by datara-web/deploy/run_sync_e2e.sh. | R:- | A:Connects user actions to Datara API services and governed state. | S:-
 verify_ui.cjs[EB6T]: F:Renders the frontend workflow and user interactions implemented by datara-web/deploy/verify_ui.cjs. | R:- | A:Connects user actions to Datara API services and governed state. | S:-
 verify_ui_interactive.cjs[EB6T]: F:Renders the frontend workflow and user interactions implemented by datara-web/deploy/verify_ui_interactive.cjs. | R:- | A:Connects user actions to Datara API services and governed state. | S:-
 verify_workflow_closure.cjs[EB6T]: F:Renders the frontend workflow and user interactions implemented by datara-web/deploy/verify_workflow_closure.cjs. | R:- | A:Connects user actions to Datara API services and governed state. | S:-
+r1-auth-bootstrap-smoke.cjs[TQ5S]: F:Runs the R1 auth bootstrap browser smoke covering login, project creation, permission denial, datasource probe, logout, and token revocation. | R:code:datara-backend/rebuild/api/app.py,code:datara-web/deploy/run-r1-auth-bootstrap.ps1 | A:Produces Playwright evidence for the R1 validation gate. | S:Requires DATARA_REBUILD_BASE_URL and the validation key from the environment.
+r3-governance-control-smoke.cjs[TQ5M]: F:Runs the R3 governance control browser smoke with isolated validation project setup and legacy QC API decommission checks. | R:code:datara-web/public/rebuild-validation-r3.html,code:datara-web/deploy/run-r3-governance-control-smoke.ps1 | A:Produces the R3 governance validation evidence. | S:Only the approved 18091 validation host may be driven.
+run-r1-auth-bootstrap.ps1[OR5T]: F:Launches the R1 auth bootstrap smoke with base URL and validation key environment variables. | R:code:datara-web/deploy/r1-auth-bootstrap-smoke.cjs | A:Provides the local Windows entry for R1 evidence. | S:-
+run-r3-governance-control-smoke.ps1[OR5T]: F:Launches the R3 governance control smoke against the approved validation host. | R:code:datara-web/deploy/r3-governance-control-smoke.cjs | A:Provides the local Windows entry for R3 evidence. | S:-
 
 ===D:/需求/数据治理工具/Datara/datara-web/public/===
 favicon.svg[EB6T]: F:Renders the frontend workflow and user interactions implemented by datara-web/public/favicon.svg. | R:- | A:Connects user actions to Datara API services and governed state. | S:-
 icons.svg[EB6T]: F:Renders the frontend workflow and user interactions implemented by datara-web/public/icons.svg. | R:- | A:Connects user actions to Datara API services and governed state. | S:-
+rebuild-validation-i1.html[AU7S]: F:Provides a standalone I1 validation page for login, project, datasource, permission-denial, logout, and timestamp checks. | R:code:datara-backend/rebuild/api/app.py | A:Avoids SPA/hash routing during frontend-led rebuild validation. | S:Must remain outside the production menu and use the 18091 validation host.
+rebuild-validation-i2.html[AU7S]: F:Provides an isolated I2 browser validation page for login, reconcile status, samples, timestamps, and logout. | R:code:datara-backend/rebuild/api/app.py,code:datara-backend/tools/datagen/reconcile.py | A:Bridges backend data evidence to the 18091 browser gate without changing formal frontend routes. | S:Must remain outside production menus and show the remote report timestamp.
+rebuild-validation-r3.html[AU6M]: F:Provides the R3 standalone governance validation page for assets, quality rules, labels, standards, and metrics. | R:code:datara-backend/rebuild/governance/api.py,code:datara-web/deploy/r3-governance-control-smoke.cjs | A:Bridges token-injected browser validation to governance APIs without SPA routing. | S:Must remain outside production menus and on the 18091 validation host.
 
 ===D:/需求/数据治理工具/Datara/datara-web/src/===
-App.vue[EB6T]: F:Renders the frontend workflow and user interactions implemented by datara-web/src/App.vue. | R:- | A:Connects user actions to Datara API services and governed state. | S:-
+App.vue[EU8S]: F:Defines the Datara shell, grouped navigation, notifications, account controls, and route content host. | R:code:datara-web/src/router/routes.ts,code:datara-web/src/services/alertApi.ts | A:Keeps verified production modules visible in domain groups and isolates unfinished demos in the extension group. | S:Navigation grouping must match the verified feature boundary; demo items must not displace completed modules.
 main.ts[EB6T]: F:Renders the frontend workflow and user interactions implemented by datara-web/src/main.ts. | R:- | A:Connects user actions to Datara API services and governed state. | S:-
 
 ===D:/需求/数据治理工具/Datara/datara-web/src/components/===
@@ -365,8 +374,8 @@ VersionPanel.vue[EB6T]: F:Renders the frontend workflow and user interactions im
 WfVarPanel.vue[EB6T]: F:Renders the frontend workflow and user interactions implemented by datara-web/src/graph/workbench/panels/WfVarPanel.vue. | R:- | A:Connects user actions to Datara API services and governed state. | S:-
 
 ===D:/需求/数据治理工具/Datara/datara-web/src/router/===
-index.ts[EB6T]: F:Renders the frontend workflow and user interactions implemented by datara-web/src/router/index.ts. | R:- | A:Connects user actions to Datara API services and governed state. | S:-
-routes.ts[EB6T]: F:Renders the frontend workflow and user interactions implemented by datara-web/src/router/routes.ts. | R:- | A:Connects user actions to Datara API services and governed state. | S:-
+index.ts[EI6S]: F:Defines the I1 rebuild router responsibility and history-mode contract. | R:code:datara-backend/rebuild/api/app.py | A:Supports the isolated backend-first rebuild and validation evidence. | S:Keep isolated until freeze.
+routes.ts[EI6S]: F:Defines the I1 rebuild route table responsibility and contract. | R:code:datara-backend/rebuild/api/app.py | A:Supports the isolated backend-first rebuild and validation evidence. | S:Keep isolated until freeze.
 
 ===D:/需求/数据治理工具/Datara/datara-web/src/services/===
 alertApi.ts[EB6T]: F:Renders the frontend workflow and user interactions implemented by datara-web/src/services/alertApi.ts. | R:- | A:Connects user actions to Datara API services and governed state. | S:-
@@ -423,7 +432,7 @@ mask.ts[EB6T]: F:Renders the frontend workflow and user interactions implemented
 AssetMapView.vue[EB6T]: F:Renders the frontend workflow and user interactions implemented by datara-web/src/views/AssetMapView.vue. | R:- | A:Connects user actions to Datara API services and governed state. | S:-
 DagListView.vue[EB6T]: F:Renders the frontend workflow and user interactions implemented by datara-web/src/views/DagListView.vue. | R:- | A:Connects user actions to Datara API services and governed state. | S:-
 DashboardView.vue[EB6T]: F:Renders the frontend workflow and user interactions implemented by datara-web/src/views/DashboardView.vue. | R:- | A:Connects user actions to Datara API services and governed state. | S:-
-ErCanvasView.vue[EB6T]: F:Renders the frontend workflow and user interactions implemented by datara-web/src/views/ErCanvasView.vue. | R:- | A:Connects user actions to Datara API services and governed state. | S:-
+ErCanvasView.vue[EB7T]: F:Hosts the ER GraphWorkbench and installs the real model ER adapter. | R:code:datara-web/src/views/erAdapter.ts,code:datara-web/src/graph/workbench/GraphWorkbench.vue | A:Presents model ER editing while preserving shared canvas behavior. | S:Mock mode must bypass the real adapter.
 FieldLineageMap.vue[EB6T]: F:Renders the frontend workflow and user interactions implemented by datara-web/src/views/FieldLineageMap.vue. | R:- | A:Connects user actions to Datara API services and governed state. | S:-
 LineageView.vue[EB6T]: F:Renders the frontend workflow and user interactions implemented by datara-web/src/views/LineageView.vue. | R:- | A:Connects user actions to Datara API services and governed state. | S:-
 LoginView.vue[EB6T]: F:Renders the frontend workflow and user interactions implemented by datara-web/src/views/LoginView.vue. | R:- | A:Connects user actions to Datara API services and governed state. | S:-
@@ -431,6 +440,7 @@ PlaceholderView.vue[EB6T]: F:Renders the frontend workflow and user interactions
 TaskCenterView.vue[EB6T]: F:Renders the frontend workflow and user interactions implemented by datara-web/src/views/TaskCenterView.vue. | R:- | A:Connects user actions to Datara API services and governed state. | S:-
 taskCenterPolicy.ts[EB6T]: F:Renders the frontend workflow and user interactions implemented by datara-web/src/views/taskCenterPolicy.ts. | R:- | A:Connects user actions to Datara API services and governed state. | S:-
 templateSource.ts[EB6T]: F:Renders the frontend workflow and user interactions implemented by datara-web/src/views/templateSource.ts. | R:- | A:Connects user actions to Datara API services and governed state. | S:-
+erAdapter.ts[DI8S]: F:Adapts model ER graph load and save operations to the shared GraphWorkbench. | R:code:datara-web/src/services/modelApi.ts,code:datara-backend/api/model.py | A:Converts model relations and positions to canvas documents and persists graph diffs. | S:Reload after save is required to assign persistent relation identifiers.
 
 ===D:/需求/数据治理工具/Datara/datara-web/src/views/dag/===
 DagAlarmView.vue[EB6T]: F:Renders the frontend workflow and user interactions implemented by datara-web/src/views/dag/DagAlarmView.vue. | R:- | A:Connects user actions to Datara API services and governed state. | S:-
@@ -465,7 +475,7 @@ GlobalParamDrawer.vue[EB6T]: F:Renders the frontend workflow and user interactio
 HistoryDrawer.vue[EB6T]: F:Renders the frontend workflow and user interactions implemented by datara-web/src/views/ide/components/HistoryDrawer.vue. | R:- | A:Connects user actions to Datara API services and governed state. | S:-
 InstanceBar.vue[EB6T]: F:Renders the frontend workflow and user interactions implemented by datara-web/src/views/ide/components/InstanceBar.vue. | R:- | A:Connects user actions to Datara API services and governed state. | S:-
 ResultPanel.vue[EB6T]: F:Renders the frontend workflow and user interactions implemented by datara-web/src/views/ide/components/ResultPanel.vue. | R:- | A:Connects user actions to Datara API services and governed state. | S:-
-SqlEditor.vue[EB6T]: F:Renders the frontend workflow and user interactions implemented by datara-web/src/views/ide/components/SqlEditor.vue. | R:- | A:Connects user actions to Datara API services and governed state. | S:-
+SqlEditor.vue[EU8S]: F:Provides the SQL editor with custom Datara SQL tokens, completion, lint markers, themes, scripts, and execution controls. | R:code:datara-web/src/services/ideApi.ts | A:Uses Monaco editor.api and one editor worker while avoiding unrelated built-in language workers. | S:The editor worker contract must remain available; SQL language registration must stay custom and minimal.
 
 ===D:/需求/数据治理工具/Datara/datara-web/src/views/ind/===
 IndBoardView.vue[EB6T]: F:Renders the frontend workflow and user interactions implemented by datara-web/src/views/ind/IndBoardView.vue. | R:- | A:Connects user actions to Datara API services and governed state. | S:-
@@ -504,8 +514,8 @@ PageInspector.vue[EB6T]: F:Renders the frontend workflow and user interactions i
 PagePalette.vue[EB6T]: F:Renders the frontend workflow and user interactions implemented by datara-web/src/views/meta/pageDesigner/palette/PagePalette.vue. | R:- | A:Connects user actions to Datara API services and governed state. | S:-
 
 ===D:/需求/数据治理工具/Datara/datara-web/src/views/model/===
-ModelDesignView.vue[EB6T]: F:Renders the frontend workflow and user interactions implemented by datara-web/src/views/model/ModelDesignView.vue. | R:- | A:Connects user actions to Datara API services and governed state. | S:-
-ModelLineageView.vue[EB6T]: F:Renders the frontend workflow and user interactions implemented by datara-web/src/views/model/ModelLineageView.vue. | R:- | A:Connects user actions to Datara API services and governed state. | S:-
+ModelDesignView.vue[EB8S]: F:Provides model detail, field editing, optimistic save, publish, version, DDL, and physicalization actions. | R:code:datara-web/src/services/modelApi.ts,code:datara-backend/api/model.py | A:Binds design controls to governed model state transitions. | S:Field saves use the current revision and refresh after conflicts.
+ModelLineageView.vue[EB6T]: F:Shows backend lineage and impact in the model view. | R:code:datara-web/src/services/modelApi.ts,code:datara-backend/api/model.py | A:Maps lineage nodes and impact paths. | S:-
 ModelListView.vue[EB6T]: F:Renders the frontend workflow and user interactions implemented by datara-web/src/views/model/ModelListView.vue. | R:- | A:Connects user actions to Datara API services and governed state. | S:-
 ModelVersionView.vue[EB6T]: F:Renders the frontend workflow and user interactions implemented by datara-web/src/views/model/ModelVersionView.vue. | R:- | A:Connects user actions to Datara API services and governed state. | S:-
 
@@ -635,13 +645,12 @@ build_manual.py[ZS5T]: F:Documents design, verification, or operating guidance i
 组件开发规范.md[ZS5T]: F:Documents design, verification, or operating guidance in docs/组件开发规范.md. | R:- | A:Provides evidence and decisions for maintainers and operators. | S:-
 组件管理与发布治理设计.md[ZS5T]: F:Documents design, verification, or operating guidance in docs/组件管理与发布治理设计.md. | R:- | A:Provides evidence and decisions for maintainers and operators. | S:-
 血缘关系梳理.txt[ZS5T]: F:Documents design, verification, or operating guidance in docs/血缘关系梳理.txt. | R:- | A:Provides evidence and decisions for maintainers and operators. | S:-
+2026-10-13-功能实测报告.md[TQ5T]: F:Records I19 IDE, menus, stream #76, sync #110/#111, lineage trace, and regression evidence for object browsing, cross-schema SQL, and routine editing. | R:code:datara-backend/api/lineage.py,code:datara-backend/api/datasource.py,code:datara-backend/api/ide.py,code:datara-web/src/views/ide/components/ExplorerTree.vue,code:datara-web/src/services/ideApi.ts | A:Connects regression evidence to workflow definitions, runtime workers, lineage navigation, datasource metadata, SQL execution, and release decisions. | S:WorkflowRefs omit deleted definitions; IDE routine DDL loads without execution and preserves required database quoting; generated normal object refs use schema.object.
 
 ===D:/需求/数据治理工具/Datara/docs/increments/===
 00-流程与记录.md[ZS5T]: F:Documents design, verification, or operating guidance in docs/increments/00-流程与记录.md. | R:- | A:Provides evidence and decisions for maintainers and operators. | S:-
 01-新重置版本-方案与计划.md[ZS5T]: F:Documents design, verification, or operating guidance in docs/increments/01-新重置版本-方案与计划.md. | R:- | A:Provides evidence and decisions for maintainers and operators. | S:-
 02-DAG组件清单与定义.md[ZS5T]: F:Documents design, verification, or operating guidance in docs/increments/02-DAG组件清单与定义.md. | R:- | A:Provides evidence and decisions for maintainers and operators. | S:-
-I1-设计文档.md[ZS5T]: F:Documents design, verification, or operating guidance in docs/increments/I1-设计文档.md. | R:- | A:Provides evidence and decisions for maintainers and operators. | S:-
-I1-验证单.md[ZS5T]: F:Documents design, verification, or operating guidance in docs/increments/I1-验证单.md. | R:- | A:Provides evidence and decisions for maintainers and operators. | S:-
 I10-设计文档.md[ZS5T]: F:Documents design, verification, or operating guidance in docs/increments/I10-设计文档.md. | R:- | A:Provides evidence and decisions for maintainers and operators. | S:-
 I10-验证单.md[ZS5T]: F:Documents design, verification, or operating guidance in docs/increments/I10-验证单.md. | R:- | A:Provides evidence and decisions for maintainers and operators. | S:-
 I11-全盘统一优化设计.md[ZS5T]: F:Documents design, verification, or operating guidance in docs/increments/I11-全盘统一优化设计.md. | R:- | A:Provides evidence and decisions for maintainers and operators. | S:-
@@ -657,8 +666,6 @@ I13-验证单.md[ZS5T]: F:Documents design, verification, or operating guidance 
 I18-I19实现核验-20261012.md[ZS5T]: F:Documents design, verification, or operating guidance in docs/increments/I18-I19实现核验-20261012.md. | R:- | A:Provides evidence and decisions for maintainers and operators. | S:-
 I18-数仓建模设计.md[ZS5T]: F:Documents design, verification, or operating guidance in docs/increments/I18-数仓建模设计.md. | R:- | A:Provides evidence and decisions for maintainers and operators. | S:-
 I19-元数据与标签管理设计.md[ZS5T]: F:Documents design, verification, or operating guidance in docs/increments/I19-元数据与标签管理设计.md. | R:- | A:Provides evidence and decisions for maintainers and operators. | S:-
-I2-设计文档.md[ZS5T]: F:Documents design, verification, or operating guidance in docs/increments/I2-设计文档.md. | R:- | A:Provides evidence and decisions for maintainers and operators. | S:-
-I2-验证单.md[ZS5T]: F:Documents design, verification, or operating guidance in docs/increments/I2-验证单.md. | R:- | A:Provides evidence and decisions for maintainers and operators. | S:-
 I20-指标管理设计.md[ZS5T]: F:Documents design, verification, or operating guidance in docs/increments/I20-指标管理设计.md. | R:- | A:Provides evidence and decisions for maintainers and operators. | S:-
 I20实现核验-20261012.md[ZS5T]: F:Documents design, verification, or operating guidance in docs/increments/I20实现核验-20261012.md. | R:- | A:Provides evidence and decisions for maintainers and operators. | S:-
 I21-数据质量管理设计.md[ZS5T]: F:Documents design, verification, or operating guidance in docs/increments/I21-数据质量管理设计.md. | R:- | A:Provides evidence and decisions for maintainers and operators. | S:-
@@ -684,6 +691,25 @@ I9-方案-信息架构与任务中心重构.md[ZS5T]: F:Documents design, verifi
 I9-设计文档.md[ZS5T]: F:Documents design, verification, or operating guidance in docs/increments/I9-设计文档.md. | R:- | A:Provides evidence and decisions for maintainers and operators. | S:-
 I9-验证单.md[ZS5T]: F:Documents design, verification, or operating guidance in docs/increments/I9-验证单.md. | R:- | A:Provides evidence and decisions for maintainers and operators. | S:-
 决策记录.md[ZS5T]: F:Documents design, verification, or operating guidance in docs/increments/决策记录.md. | R:- | A:Provides evidence and decisions for maintainers and operators. | S:-
+重建执行约法与台账.md[SO5T]: F:Records user commands, execution laws, I1-I2 gates, and R3 batch decisions. | R:code:docs/increments/R3-execution-status.md,code:docs/increments/2026-10-14-datara-platform-rebuild-design.md | A:Provides the durable multi-agent audit trail across rebuild batches. | S:Every user command, repair, and unresolved task must remain traceable.
+2026-10-14-datara-platform-rebuild-design.md[ZS6T]: F:Defines the authoritative rebuild design with validation-page and backend-first acceptance separation. | R:code:docs/increments/2026-10-14-datara-platform-rebuild.md,code:docs/increments/重建执行约法与台账.md | A:Serves as the master rebuild design; superpowers copies are historical snapshots. | S:On conflict the master file prevails and design changes require user approval.
+2026-10-14-datara-platform-rebuild.md[ZS6S]: F:Sequences the rebuild increments with per-increment impact analysis and acceptance gates. | R:code:docs/increments/2026-10-14-datara-platform-rebuild-design.md | A:Turns the rebuild design into independently verifiable delivery increments. | S:Design conflicts pause execution until recorded and approved.
+I25-数据开发IDE对象编辑.md[ZS5T]: F:Records the I25 increment scope for IDE object editing. | R:- | A:Provides evidence and decisions for maintainers and operators. | S:-
+R0-rebuild-impact-analysis.md[ZS5T]: F:Records the R0 pre-rebuild impact analysis across backend, frontend, and data assets. | R:- | A:Provides the R0 boundary evidence for the rebuild ledger. | S:-
+R1-auth-bootstrap-carry-forward.md[ZS5T]: F:Records R1 auth bootstrap carry-forward decisions and open items. | R:- | A:Links R1 outcomes into the rebuild ledger. | S:-
+R1-rebuild-impact-analysis.md[ZS5T]: F:Records the R1 pre-work impact analysis for auth bootstrap. | R:- | A:Provides R1 boundary evidence for the rebuild ledger. | S:-
+R2-开始前影响分析.md[ZS5T]: F:Records the R2 pre-work impact analysis. | R:- | A:Provides R2 boundary evidence for the rebuild ledger. | S:-
+R3-S3-开始前影响分析.md[ZS5T]: F:Records the R3-S3 pre-work impact analysis and acceptance scope. | R:- | A:Provides the R3-S3 gate evidence. | S:-
+R3-S4-开始前影响分析.md[ZS5T]: F:Records the R3-S4 pre-work impact analysis and acceptance scope. | R:- | A:Provides the R3-S4 gate evidence. | S:-
+R3-S5-开始前影响分析.md[ZS5T]: F:Records the R3-S5 pre-work impact analysis and acceptance scope. | R:- | A:Provides the R3-S5 gate evidence. | S:-
+R3-S6-开始前影响分析.md[ZS5T]: F:Records the R3-S6 pre-work impact analysis and acceptance scope. | R:- | A:Provides the R3-S6 gate evidence. | S:-
+R3-S7-开始前影响分析.md[ZS5T]: F:Records the R3-S7 pre-work impact analysis and acceptance scope. | R:- | A:Provides the R3-S7 gate evidence. | S:-
+R3-S8-开始前影响分析.md[ZS5T]: F:Records the R3-S8 pre-work impact analysis and acceptance scope. | R:- | A:Provides the R3-S8 gate evidence. | S:-
+R3-S9-开始前影响分析.md[ZS5T]: F:Records the R3-S9 pre-work impact analysis and acceptance scope. | R:- | A:Provides the R3-S9 gate evidence. | S:-
+R3-audit-batch1-main-workspace-impact.md[ZS5T]: F:Records the R3 audit batch-1 main workspace impact analysis. | R:- | A:Provides the batch-1 audit boundary evidence. | S:-
+R3-execution-status.md[ZS5T]: F:Tracks R3 execution state across steps and batches. | R:- | A:Provides the live R3 status ledger for maintainers. | S:-
+R3-to-batch2-impact-20261014.md[ZS5T]: F:Records the handover impact analysis from R3 batch 1 to batch 2. | R:- | A:Provides the batch-2 boundary evidence. | S:-
+R3-开始前影响分析.md[ZS5T]: F:Records the R3 batch-level pre-work impact analysis. | R:- | A:Provides R3 boundary evidence for the rebuild ledger. | S:-
 
 ===D:/需求/数据治理工具/Datara/docs/increments/i12_proofs/===
 I12_verification_summary_P2.3.md[ZS5T]: F:Documents design, verification, or operating guidance in docs/increments/i12_proofs/I12_verification_summary_P2.3.md. | R:- | A:Provides evidence and decisions for maintainers and operators. | S:-
@@ -707,6 +733,7 @@ i12_handoff_dom.json[ZS5T]: F:Documents design, verification, or operating guida
 2026-10-05-workbench-optimization.md[ZS5T]: F:Documents design, verification, or operating guidance in docs/superpowers/plans/2026-10-05-workbench-optimization.md. | R:- | A:Provides evidence and decisions for maintainers and operators. | S:-
 2026-10-09-component-reference-upgrade.md[ZS5T]: F:Documents design, verification, or operating guidance in docs/superpowers/plans/2026-10-09-component-reference-upgrade.md. | R:- | A:Provides evidence and decisions for maintainers and operators. | S:-
 2026-10-12-i18-model-p0.md[ZS5T]: F:Documents design, verification, or operating guidance in docs/superpowers/plans/2026-10-12-i18-model-p0.md. | R:- | A:Provides evidence and decisions for maintainers and operators. | S:-
+2026-10-14-datara-platform-rebuild.md[ZS5T]: F:Preserves the historical copy of the rebuild plan. | R:code:docs/increments/2026-10-14-datara-platform-rebuild.md | A:Keeps the original planning snapshot for traceability. | S:Conflicts resolve in favor of the master docs/increments file.
 
 ===D:/需求/数据治理工具/Datara/docs/superpowers/specs/===
 2026-09-30-baseline-revision-design.md[ZS5T]: F:Documents design, verification, or operating guidance in docs/superpowers/specs/2026-09-30-baseline-revision-design.md. | R:- | A:Provides evidence and decisions for maintainers and operators. | S:-
@@ -714,6 +741,7 @@ i12_handoff_dom.json[ZS5T]: F:Documents design, verification, or operating guida
 2026-10-01-lineage-followup.md[ZS5T]: F:Documents design, verification, or operating guidance in docs/superpowers/specs/2026-10-01-lineage-followup.md. | R:- | A:Provides evidence and decisions for maintainers and operators. | S:-
 2026-10-03-component-page-designer-design.md[ZS5T]: F:Documents design, verification, or operating guidance in docs/superpowers/specs/2026-10-03-component-page-designer-design.md. | R:- | A:Provides evidence and decisions for maintainers and operators. | S:-
 2026-10-05-workbench-optimization-design.md[ZS5T]: F:Documents design, verification, or operating guidance in docs/superpowers/specs/2026-10-05-workbench-optimization-design.md. | R:- | A:Provides evidence and decisions for maintainers and operators. | S:-
+2026-10-14-datara-platform-rebuild-design.md[ZS5T]: F:Preserves the historical copy of the rebuild design document. | R:code:docs/increments/2026-10-14-datara-platform-rebuild-design.md | A:Keeps the original design snapshot for traceability. | S:Conflicts resolve in favor of the master docs/increments file.
 
 ===D:/需求/数据治理工具/Datara/docs/use-cases/===
 README.md[ZS5T]: F:Documents design, verification, or operating guidance in docs/use-cases/README.md. | R:- | A:Provides evidence and decisions for maintainers and operators. | S:-
@@ -828,6 +856,33 @@ i9_run.sh[RO5T]: F:Provides deployment or environment support through infra/i9_r
 patch_i4.sh[RO5T]: F:Provides deployment or environment support through infra/patch_i4.sh. | R:- | A:Supports reproducible installation, verification, or operations. | S:-
 probe_p1_page_designer.sh[RO5T]: F:Provides deployment or environment support through infra/probe_p1_page_designer.sh. | R:- | A:Supports reproducible installation, verification, or operations. | S:-
 tmp_wf_id.txt[ZS5T]: F:Documents design, verification, or operating guidance in infra/tmp_wf_id.txt. | R:- | A:Provides evidence and decisions for maintainers and operators. | S:-
+i2_remote_preflight.sh[RO4T]: F:Checks remote Datara containers, mounts, shell syntax, and YAML configuration for I2. | R:code:infra/bin/install.sh,code:infra/mysql/src/init/01_schema.sql | A:Separates remote preflight from data generation. | S:Must run against /lei/datara and never declare I2 PASS alone.
+i2_debug_payment.sh[RO4T]: F:Inspects payment/order temporal-rule mismatches in the remote MySQL source. | R:code:datara-backend/tools/datagen/gen.py,code:infra/mysql/src/init/01_schema.sql | A:Supports diagnosis of I2 dirty-rule reconciliation failures. | S:Must remain diagnostic and must not mutate data.
+i2_deploy_remote.sh[RO4T]: F:Builds and health-checks the isolated rebuild API on the remote host. | R:code:docker-compose.yml,code:datara-backend/rebuild/api/app.py | A:Deploys the I2 status contract to 192.168.1.9. | S:Must use the project compose file and report a real health response.
+i2_regenerate.sh[RO4T]: F:Rebuilds datara-api and runs I2 generation and independent verification remotely. | R:code:datara-backend/tools/datagen/gen.py,code:datara-backend/tools/datagen/reconcile.py | A:Reproduces the corrected data foundation on 192.168.1.9. | S:It is a long-running remote data operation and must not be duplicated concurrently.
+i2_remote_status.sh[RO4T]: F:Inspects remote I2 reconcile and sample artifacts. | R:code:infra/i2_remote_verify.sh,code:datara-backend/tools/datagen/reconcile.py | A:Confirms remote report and sample locations before browser validation. | S:Read-only status inspection only.
+i2_remote_verify.sh[RO4T]: F:Runs remote I2 plan, verify, and sample generation checks. | R:code:datara-backend/tools/datagen/run.py,code:datara-backend/tools/datagen/reconcile.py | A:Separates remote verification from local syntax checks. | S:Must run on the actual datara-api container.
+i2_web_deploy.sh[RO4T]: F:Publishes the built I2 validation page to the actual Web bind mount and checks HTTP 200. | R:code:datara-web/public/rebuild-validation-i2.html,code:docker-compose.yml | A:Keeps Web validation on port 18091. | S:Must target /lei/datara/datara-web/dist and never the old 8090 path.
+provision_rebuild_runtime_env.sh[RO5T]: F:Provides R-series rebuild deployment or verification operations through infra/provision_rebuild_runtime_env.sh. | R:- | A:Supports reproducible remote operations for the rebuild ledger. | S:Generated credentials must come from the local .env, never hard-coded.
+r1_remote_runtime_evidence.sh[RO5T]: F:Provides R-series rebuild deployment or verification operations through infra/r1_remote_runtime_evidence.sh. | R:- | A:Supports reproducible remote operations for the rebuild ledger. | S:-
+r3_audit_batch1_remote_verify.ps1[RO5T]: F:Provides R-series rebuild deployment or verification operations through infra/r3_audit_batch1_remote_verify.ps1. | R:- | A:Supports reproducible remote operations for the rebuild ledger. | S:-
+r3_audit_batch1_remote_verify.sh[RO5T]: F:Provides R-series rebuild deployment or verification operations through infra/r3_audit_batch1_remote_verify.sh. | R:- | A:Supports reproducible remote operations for the rebuild ledger. | S:Read-only: no DML, deployment, or restarts allowed.
+r3_readonly_inventory.sh[RO5T]: F:Provides R-series rebuild deployment or verification operations through infra/r3_readonly_inventory.sh. | R:- | A:Supports reproducible remote operations for the rebuild ledger. | S:-
+r3_s6_apply_migration.sh[RO5T]: F:Provides R-series rebuild deployment or verification operations through infra/r3_s6_apply_migration.sh. | R:- | A:Supports reproducible remote operations for the rebuild ledger. | S:Apply runs only after the snapshot step and inside datara-rebuild-api.
+r3_s6_deploy_api.sh[RO5T]: F:Provides R-series rebuild deployment or verification operations through infra/r3_s6_deploy_api.sh. | R:- | A:Supports reproducible remote operations for the rebuild ledger. | S:Restart datara-rebuild-api only after hash-verified source replacement.
+r3_s6_final_check.sh[RO5T]: F:Provides R-series rebuild deployment or verification operations through infra/r3_s6_final_check.sh. | R:- | A:Supports reproducible remote operations for the rebuild ledger. | S:-
+r3_s6_remote_readonly.sh[RO5T]: F:Provides R-series rebuild deployment or verification operations through infra/r3_s6_remote_readonly.sh. | R:- | A:Supports reproducible remote operations for the rebuild ledger. | S:-
+r3_s6_run_dryrun.sh[RO5T]: F:Provides R-series rebuild deployment or verification operations through infra/r3_s6_run_dryrun.sh. | R:- | A:Supports reproducible remote operations for the rebuild ledger. | S:-
+r3_s6_snapshot.sh[RO5T]: F:Provides R-series rebuild deployment or verification operations through infra/r3_s6_snapshot.sh. | R:- | A:Supports reproducible remote operations for the rebuild ledger. | S:Snapshot must precede any destructive apply step.
+r3_s6_verify_migration.sh[RO5T]: F:Provides R-series rebuild deployment or verification operations through infra/r3_s6_verify_migration.sh. | R:- | A:Supports reproducible remote operations for the rebuild ledger. | S:-
+r3_s7_deploy_page.sh[RO5T]: F:Provides R-series rebuild deployment or verification operations through infra/r3_s7_deploy_page.sh. | R:- | A:Supports reproducible remote operations for the rebuild ledger. | S:-
+r3_s7_fixture_inventory.sh[RO5T]: F:Provides R-series rebuild deployment or verification operations through infra/r3_s7_fixture_inventory.sh. | R:- | A:Supports reproducible remote operations for the rebuild ledger. | S:-
+r3_s7_reconcile_run.ps1[RO5T]: F:Provides R-series rebuild deployment or verification operations through infra/r3_s7_reconcile_run.ps1. | R:- | A:Supports reproducible remote operations for the rebuild ledger. | S:-
+r3_s7_reconcile_run.sh[RO5T]: F:Provides R-series rebuild deployment or verification operations through infra/r3_s7_reconcile_run.sh. | R:- | A:Supports reproducible remote operations for the rebuild ledger. | S:-
+r3_s7_repair_page.sh[RO5T]: F:Provides R-series rebuild deployment or verification operations through infra/r3_s7_repair_page.sh. | R:- | A:Supports reproducible remote operations for the rebuild ledger. | S:-
+r3_s7_web_readonly.sh[RO5T]: F:Provides R-series rebuild deployment or verification operations through infra/r3_s7_web_readonly.sh. | R:- | A:Supports reproducible remote operations for the rebuild ledger. | S:-
+r3_s8_exact_counts.sh[RO5T]: F:Provides R-series rebuild deployment or verification operations through infra/r3_s8_exact_counts.sh. | R:- | A:Supports reproducible remote operations for the rebuild ledger. | S:-
+rebuild_env_presence_check.sh[RO5T]: F:Provides R-series rebuild deployment or verification operations through infra/rebuild_env_presence_check.sh. | R:- | A:Supports reproducible remote operations for the rebuild ledger. | S:-
 
 ===D:/需求/数据治理工具/Datara/infra/files/samples/===
 orders_part.csv[RO5T]: F:Provides deployment or environment support through infra/files/samples/orders_part.csv. | R:- | A:Supports reproducible installation, verification, or operations. | S:-
@@ -876,3 +931,116 @@ index.html[DB5T]: F:Implements the managed behavior in prototype/index.html. | R
 backfill_component_ref.py[XQ5T]: F:Provides a development, data-preparation, or verification utility in scripts/backfill_component_ref.py. | R:- | A:Supports repeatable engineering and test evidence. | S:-
 check_dag_route_completeness.py[XQ5T]: F:Provides a development, data-preparation, or verification utility in scripts/check_dag_route_completeness.py. | R:- | A:Supports repeatable engineering and test evidence. | S:-
 export_dag_catalog.py[XQ5T]: F:Provides a development, data-preparation, or verification utility in scripts/export_dag_catalog.py. | R:- | A:Supports repeatable engineering and test evidence. | S:-
+
+===D:/需求/数据治理工具/Datara/datara-backend/rebuild/===
+__init__.py[AZ5T]: F:Defines the I1 rebuild responsibility and contract. | R:code:datara-backend/rebuild/api/app.py | A:Supports the isolated backend-first rebuild and validation evidence. | S:Keep isolated until freeze.
+
+===D:/需求/数据治理工具/Datara/datara-backend/rebuild/api/===
+__init__.py[AD5T]: F:Defines the I1 rebuild responsibility and contract. | R:code:datara-backend/rebuild/api/app.py | A:Supports the isolated backend-first rebuild and validation evidence. | S:Keep isolated until freeze.
+app.py[RO7M]: F:Provides the isolated rebuild API for identity, project, datasource, permission, governance catalog, and validation contracts. | R:code:datara-backend/rebuild/governance/api.py,code:datara-backend/rebuild/identity,code:datara-backend/tools/datagen/reconcile.py | A:Exposes authenticated validation and governance evidence to R-series validation pages. | S:I2 report and sample paths are environment-configurable and read-only.
+
+===D:/需求/数据治理工具/Datara/datara-backend/rebuild/common/===
+__init__.py[AC3T]: F:Defines the I1 rebuild responsibility and contract. | R:code:datara-backend/rebuild/api/app.py | A:Supports the isolated backend-first rebuild and validation evidence. | S:Keep isolated until freeze.
+db.py[AP7S]: F:Defines the I1 rebuild responsibility and contract. | R:code:datara-backend/rebuild/api/app.py | A:Supports the isolated backend-first rebuild and validation evidence. | S:Keep isolated until freeze.
+
+===D:/需求/数据治理工具/Datara/datara-backend/rebuild/datasource/===
+__init__.py[AD3T]: F:Defines the I1 rebuild responsibility and contract. | R:code:datara-backend/rebuild/api/app.py | A:Supports the isolated backend-first rebuild and validation evidence. | S:Keep isolated until freeze.
+contracts.py[DI7M]: F:Defines the I1 rebuild responsibility and verification contract. | R:code:datara-backend/rebuild/api/app.py | A:Supports the isolated backend-first rebuild and auditable validation evidence. | S:Keep isolated until freeze.
+
+===D:/需求/数据治理工具/Datara/datara-backend/rebuild/identity/===
+__init__.py[DI3T]: F:Defines the I1 rebuild responsibility and contract. | R:code:datara-backend/rebuild/api/app.py | A:Supports the isolated backend-first rebuild and validation evidence. | S:Keep isolated until freeze.
+contracts.py[DI6S]: F:Defines the I1 rebuild responsibility and verification contract. | R:code:datara-backend/rebuild/api/app.py | A:Supports the isolated backend-first rebuild and auditable validation evidence. | S:Keep isolated until freeze.
+models.py[DI7S]: F:Defines the I1 rebuild responsibility and verification contract. | R:code:datara-backend/rebuild/api/app.py | A:Supports the isolated backend-first rebuild and auditable validation evidence. | S:Keep isolated until freeze.
+passwords.py[DI6S]: F:Defines the I1 rebuild responsibility and contract. | R:code:datara-backend/rebuild/api/app.py | A:Supports the isolated backend-first rebuild and validation evidence. | S:Keep isolated until freeze.
+repository.py[DP7M]: F:Defines the I1 rebuild responsibility and contract. | R:code:datara-backend/rebuild/api/app.py | A:Supports the isolated backend-first rebuild and validation evidence. | S:Keep isolated until freeze.
+
+===D:/需求/数据治理工具/Datara/datara-backend/rebuild/project/===
+__init__.py[AD3T]: F:Defines the I1 rebuild responsibility and contract. | R:code:datara-backend/rebuild/api/app.py | A:Supports the isolated backend-first rebuild and validation evidence. | S:Keep isolated until freeze.
+contracts.py[AD6S]: F:Defines the I1 rebuild responsibility and contract. | R:code:datara-backend/rebuild/api/app.py | A:Supports the isolated backend-first rebuild and validation evidence. | S:Keep isolated until freeze.
+models.py[DP6S]: F:Defines the I1 rebuild responsibility and contract. | R:code:datara-backend/rebuild/api/app.py | A:Supports the isolated backend-first rebuild and validation evidence. | S:Keep isolated until freeze.
+repository.py[DP7M]: F:Defines the I1 rebuild responsibility and contract. | R:code:datara-backend/rebuild/api/app.py | A:Supports the isolated backend-first rebuild and validation evidence. | S:Keep isolated until freeze.
+
+===D:/需求/数据治理工具/Datara/datara-backend/rebuild/governance/===
+__init__.py[CG3T]: F:Marks the rebuild governance package for catalog assets and schema migrations. | R:code:datara-backend/rebuild/governance/api.py,code:datara-backend/rebuild/governance/service.py | A:Provides package ownership for the R3 governance boundary. | S:-
+api.py[EB8L]: F:Implements authenticated rebuild governance HTTP routes for project assets, audit, and catalog operations. | R:code:datara-backend/rebuild/governance/service.py,code:datara-backend/rebuild/api/app.py,code:datara-backend/api/auth.py | A:Exposes the /api/v1/rebuild/governance contracts consumed by the R3 validation page. | S:Every mutation requires project permission checks and writes a governance audit event.
+contracts.py[DR5T]: F:Defines the schema migration state machine and SHA-256 payload checksum contracts. | R:code:datara-backend/rebuild/governance/migrations.py,code:datara-backend/rebuild/governance/migration_apply.py | A:Provides the shared migration validation vocabulary. | S:Migration payloads must fail closed on checksum mismatch.
+migration_apply.py[OR5T]: F:Runs the governed migration CLI with dry-run and apply modes after preflight verification. | R:code:datara-backend/rebuild/governance/migration_preflight.py,code:datara-backend/rebuild/governance/migrations.py | A:Provides the operational entry used by infra/r3_s6_apply_migration.sh. | S:Apply requires explicit --apply; dry-run must never mutate the database.
+migration_preflight.py[OR5S]: F:Performs read-only checks that the governance schema state matches registered migrations. | R:code:datara-backend/rebuild/governance/contracts.py,code:datara-backend/rebuild/governance/repository.py | A:Reports missing, conflicting, or ready migration states before apply. | S:Preflight must remain read-only and never write migration state.
+migrations.py[PR6S]: F:Implements MigrationRunner with MySQL locking, transactional upgrade, rollback, and completion records. | R:code:datara-backend/rebuild/governance/revisions/v0001_governance_catalog.py,code:datara-backend/rebuild/governance/contracts.py | A:Provides the governed DDL execution engine. | S:A failed migration must roll back and never mark completion optimistically.
+models.py[PD6M]: F:Defines governance catalog ORM tables for assets, audits, and migration state with unique and check constraints. | R:code:datara-backend/rebuild/governance/repository.py | A:Provides the persistence contract for the governance schema. | S:Schema changes must go through registered migrations, not ad-hoc DDL.
+repository.py[PD5T]: F:Implements governance data access for project membership, roles, and audit event insertion. | R:code:datara-backend/rebuild/governance/models.py,code:datara-backend/rebuild/governance/service.py | A:Supplies the persistence boundary used by the service layer. | S:-
+service.py[DB5T]: F:Enforces project access decisions and records mutation audit events for governance operations. | R:code:datara-backend/rebuild/governance/repository.py,code:datara-backend/rebuild/governance/api.py | A:Bridges HTTP routes to authorized persistence. | S:Permission denials must be explicit and audited.
+
+===D:/需求/数据治理工具/Datara/datara-backend/rebuild/governance/revisions/===
+__init__.py[CG3T]: F:Marks the governance migrations revision package. | R:code:datara-backend/rebuild/governance/revisions/v0001_governance_catalog.py | A:Groups registered migration revisions for runner discovery. | S:-
+v0001_governance_catalog.py[PD5T]: F:Registers the r3_0001_governance_catalog migration that creates the governance catalog tables. | R:code:datara-backend/rebuild/governance/migrations.py,code:datara-backend/rebuild/governance/models.py | A:Provides the initial governed DDL revision. | S:Revision checksums are manifest-bound and immutable after registration.
+
+===D:/需求/数据治理工具/Datara/docs/agents/===
+domain.md[ZS5T]: F:Defines the domain documentation reading order across GLOSSARY and docs/adr. | R:- | A:Guides agents to authoritative terminology before writing outputs. | S:Outputs must use glossary terms and flag ADR conflicts.
+issue-tracker.md[ZS5T]: F:Defines GitHub Issues operations for this repository through the gh CLI. | R:- | A:Standardizes issue creation, comments, labeling, and closure workflow. | S:Issue operations must go through gh CLI, not manual edits.
+triage-labels.md[ZS5T]: F:Defines the five canonical triage labels and their routing usage. | R:- | A:Standardizes triage states for issue handling. | S:-
+
+===D:/需求/数据治理工具/Datara/docs/increments/archive/legacy/===
+I1-设计文档.md[ZS5M]: F:Archives the legacy I1 rebuild design document. | R:- | A:Preserves historical design evidence; superseded by the 2026-10-14 rebuild design. | S:Legacy content is read-only history, not current acceptance criteria.
+I1-验证单.md[ZS5T]: F:Archives the legacy I1 verification checklist. | R:- | A:Preserves historical verification evidence. | S:-
+I2-设计文档.md[ZS5M]: F:Archives the legacy I2 design document. | R:- | A:Preserves historical design evidence. | S:-
+I2-验证单.md[ZS5T]: F:Archives the legacy I2 verification checklist. | R:- | A:Preserves historical verification evidence. | S:-
+README.md[ZS5T]: F:Describes the purpose of the legacy archive directory. | R:- | A:Points maintainers to archived legacy increments. | S:-
+
+===D:/需求/数据治理工具/Datara/docs/increments/evidence/R0/===
+browser-web-entry.txt[ZS5T]: F:Stores R-series validation or inventory evidence in docs/increments/evidence/. | R:- | A:Provides reproducible run evidence for the rebuild ledger. | S:-
+i18-i23-migration-inventory.md[ZS5T]: F:Stores R-series validation or inventory evidence in docs/increments/evidence/. | R:- | A:Provides reproducible run evidence for the rebuild ledger. | S:-
+local-static-inventory.txt[ZS5T]: F:Stores R-series validation or inventory evidence in docs/increments/evidence/. | R:- | A:Provides reproducible run evidence for the rebuild ledger. | S:-
+remote-compose-config.txt[ZS5T]: F:Stores R-series validation or inventory evidence in docs/increments/evidence/. | R:- | A:Provides reproducible run evidence for the rebuild ledger. | S:-
+remote-compose-ps.txt[ZS5T]: F:Stores R-series validation or inventory evidence in docs/increments/evidence/. | R:- | A:Provides reproducible run evidence for the rebuild ledger. | S:-
+remote-resource-check.txt[ZS5T]: F:Stores R-series validation or inventory evidence in docs/increments/evidence/. | R:- | A:Provides reproducible run evidence for the rebuild ledger. | S:-
+remote-service-logs.txt[ZS5T]: F:Stores R-series validation or inventory evidence in docs/increments/evidence/. | R:- | A:Provides reproducible run evidence for the rebuild ledger. | S:-
+
+===D:/需求/数据治理工具/Datara/docs/increments/evidence/R1/===
+browser-entry.txt[ZS5T]: F:Stores R-series validation or inventory evidence in docs/increments/evidence/. | R:- | A:Provides reproducible run evidence for the rebuild ledger. | S:-
+local-tests.txt[ZS5T]: F:Stores R-series validation or inventory evidence in docs/increments/evidence/. | R:- | A:Provides reproducible run evidence for the rebuild ledger. | S:-
+r1-20261014101526.json[ZS5T]: F:Stores R-series validation or inventory evidence in docs/increments/evidence/. | R:- | A:Provides reproducible run evidence for the rebuild ledger. | S:-
+r1-20261014101553.json[ZS5S]: F:Stores R-series validation or inventory evidence in docs/increments/evidence/. | R:- | A:Provides reproducible run evidence for the rebuild ledger. | S:-
+r1-20261014101615.json[ZS5S]: F:Stores R-series validation or inventory evidence in docs/increments/evidence/. | R:- | A:Provides reproducible run evidence for the rebuild ledger. | S:-
+r1-20261014141528.json[ZS5T]: F:Stores R-series validation or inventory evidence in docs/increments/evidence/. | R:- | A:Provides reproducible run evidence for the rebuild ledger. | S:-
+r1-20261014142424-remote.txt[ZS5T]: F:Stores R-series validation or inventory evidence in docs/increments/evidence/. | R:- | A:Provides reproducible run evidence for the rebuild ledger. | S:-
+r1-20261014142424.json[ZS5T]: F:Stores R-series validation or inventory evidence in docs/increments/evidence/. | R:- | A:Provides reproducible run evidence for the rebuild ledger. | S:-
+r1-20261014143004.json[ZS5S]: F:Stores R-series validation or inventory evidence in docs/increments/evidence/. | R:- | A:Provides reproducible run evidence for the rebuild ledger. | S:-
+r1-20261014143128.json[ZS5S]: F:Stores R-series validation or inventory evidence in docs/increments/evidence/. | R:- | A:Provides reproducible run evidence for the rebuild ledger. | S:-
+r1-20261014143228-remote.txt[ZS5T]: F:Stores R-series validation or inventory evidence in docs/increments/evidence/. | R:- | A:Provides reproducible run evidence for the rebuild ledger. | S:-
+r1-20261014143228.json[ZS5S]: F:Stores R-series validation or inventory evidence in docs/increments/evidence/. | R:- | A:Provides reproducible run evidence for the rebuild ledger. | S:-
+remote-deploy.txt[ZS5T]: F:Stores R-series validation or inventory evidence in docs/increments/evidence/. | R:- | A:Provides reproducible run evidence for the rebuild ledger. | S:-
+remote-runtime-closure.txt[ZS5T]: F:Stores R-series validation or inventory evidence in docs/increments/evidence/. | R:- | A:Provides reproducible run evidence for the rebuild ledger. | S:-
+
+===D:/需求/数据治理工具/Datara/docs/increments/evidence/R2/===
+browser-validation.txt[ZS5T]: F:Stores R-series validation or inventory evidence in docs/increments/evidence/. | R:- | A:Provides reproducible run evidence for the rebuild ledger. | S:-
+local-tests.txt[ZS5T]: F:Stores R-series validation or inventory evidence in docs/increments/evidence/. | R:- | A:Provides reproducible run evidence for the rebuild ledger. | S:-
+remote-preflight.txt[ZS5T]: F:Stores R-series validation or inventory evidence in docs/increments/evidence/. | R:- | A:Provides reproducible run evidence for the rebuild ledger. | S:-
+remote-verify.txt[ZS5T]: F:Stores R-series validation or inventory evidence in docs/increments/evidence/. | R:- | A:Provides reproducible run evidence for the rebuild ledger. | S:-
+
+===D:/需求/数据治理工具/Datara/docs/increments/evidence/R3/===
+R3V-20261014110557-a0c74c-playwright.json[ZS5T]: F:Stores R-series validation or inventory evidence in docs/increments/evidence/. | R:- | A:Provides reproducible run evidence for the rebuild ledger. | S:-
+R3V-20261014110900-fe0cee-playwright.json[ZS5S]: F:Stores R-series validation or inventory evidence in docs/increments/evidence/. | R:- | A:Provides reproducible run evidence for the rebuild ledger. | S:-
+R3V-20261014111140-4de0c4-playwright.json[ZS5M]: F:Stores R-series validation or inventory evidence in docs/increments/evidence/. | R:- | A:Provides reproducible run evidence for the rebuild ledger. | S:-
+R3V-20261014111326-cfd4a1-playwright.json[ZS5L]: F:Stores R-series validation or inventory evidence in docs/increments/evidence/. | R:- | A:Provides reproducible run evidence for the rebuild ledger. | S:-
+R3V-20261014111827-289bcc-playwright.json[ZS5M]: F:Stores R-series validation or inventory evidence in docs/increments/evidence/. | R:- | A:Provides reproducible run evidence for the rebuild ledger. | S:-
+R3V-20261014111917-5d9873-playwright.json[ZS5L]: F:Stores R-series validation or inventory evidence in docs/increments/evidence/. | R:- | A:Provides reproducible run evidence for the rebuild ledger. | S:-
+R3V-20261014112022-4fc8a6-playwright.json[ZS5L]: F:Stores R-series validation or inventory evidence in docs/increments/evidence/. | R:- | A:Provides reproducible run evidence for the rebuild ledger. | S:-
+R3V-20261014132657-466f99-playwright.json[ZS5L]: F:Stores R-series validation or inventory evidence in docs/increments/evidence/. | R:- | A:Provides reproducible run evidence for the rebuild ledger. | S:-
+R3V-20261014132741-7af32d-playwright.json[ZS5L]: F:Stores R-series validation or inventory evidence in docs/increments/evidence/. | R:- | A:Provides reproducible run evidence for the rebuild ledger. | S:-
+batch1-postdeploy-20261014.txt[ZS5T]: F:Stores R-series validation or inventory evidence in docs/increments/evidence/. | R:- | A:Provides reproducible run evidence for the rebuild ledger. | S:-
+batch1-remote-readonly-20261014.txt[ZS5T]: F:Stores R-series validation or inventory evidence in docs/increments/evidence/. | R:- | A:Provides reproducible run evidence for the rebuild ledger. | S:-
+local-tests.txt[ZS5T]: F:Stores R-series validation or inventory evidence in docs/increments/evidence/. | R:- | A:Provides reproducible run evidence for the rebuild ledger. | S:-
+r3-s2-ruff-auth-20261014.txt[ZS5T]: F:Stores R-series validation or inventory evidence in docs/increments/evidence/. | R:- | A:Provides reproducible run evidence for the rebuild ledger. | S:-
+remote-schema-inventory.txt[ZS5M]: F:Stores R-series validation or inventory evidence in docs/increments/evidence/. | R:- | A:Provides reproducible run evidence for the rebuild ledger. | S:-
+s2-local-contracts.txt[ZS5T]: F:Stores R-series validation or inventory evidence in docs/increments/evidence/. | R:- | A:Provides reproducible run evidence for the rebuild ledger. | S:-
+s3-migration-tests.txt[ZS5T]: F:Stores R-series validation or inventory evidence in docs/increments/evidence/. | R:- | A:Provides reproducible run evidence for the rebuild ledger. | S:-
+s4-governance-api-local.txt[ZS5T]: F:Stores R-series validation or inventory evidence in docs/increments/evidence/. | R:- | A:Provides reproducible run evidence for the rebuild ledger. | S:-
+s5-local-validation.txt[ZS5T]: F:Stores R-series validation or inventory evidence in docs/increments/evidence/. | R:- | A:Provides reproducible run evidence for the rebuild ledger. | S:-
+s6-local-preflight.txt[ZS5T]: F:Stores R-series validation or inventory evidence in docs/increments/evidence/. | R:- | A:Provides reproducible run evidence for the rebuild ledger. | S:-
+s6-remote-readonly.txt[ZS5T]: F:Stores R-series validation or inventory evidence in docs/increments/evidence/. | R:- | A:Provides reproducible run evidence for the rebuild ledger. | S:-
+s7-local-regression-and-quality.txt[ZS5T]: F:Stores R-series validation or inventory evidence in docs/increments/evidence/. | R:- | A:Provides reproducible run evidence for the rebuild ledger. | S:-
+s7-playwright-db-reconciliation.txt[ZS5T]: F:Stores R-series validation or inventory evidence in docs/increments/evidence/. | R:- | A:Provides reproducible run evidence for the rebuild ledger. | S:-
+s8-source-inventory-20261014.md[ZS5T]: F:Stores R-series validation or inventory evidence in docs/increments/evidence/. | R:- | A:Provides reproducible run evidence for the rebuild ledger. | S:-
+source-reconciliation.md[ZS5T]: F:Stores R-series validation or inventory evidence in docs/increments/evidence/. | R:- | A:Provides reproducible run evidence for the rebuild ledger. | S:-
+
