@@ -17,16 +17,21 @@ function check(checks, name, pass, details = {}) {
   if (!pass) throw new Error(`UI assertion failed: ${name}`);
 }
 
-// stdin 单向通道读取 admin token — 读毕立即清零全部字节缓冲，通道内不再留存。
+// stdin 单向通道读取 admin token — 字节缓冲在任何退出路径（含解码失败）都清零。
 async function readAdminTokenFromStdin() {
   const chunks = [];
-  for await (const chunk of process.stdin) chunks.push(chunk);
-  const joined = Buffer.concat(chunks);
-  const value = joined.toString('utf8').trim();
-  joined.fill(0);
-  for (const chunk of chunks) chunk.fill(0);
-  chunks.length = 0;
-  return value;
+  try {
+    for await (const chunk of process.stdin) chunks.push(chunk);
+    const joined = Buffer.concat(chunks);
+    try {
+      return joined.toString('utf8').trim();
+    } finally {
+      joined.fill(0);
+    }
+  } finally {
+    for (const chunk of chunks) chunk.fill(0);
+    chunks.length = 0;
+  }
 }
 
 // 泄漏闸（fail-closed）：受控面（argv/环境变量/证据 JSON/stdout 摘要）任一命中即拒绝记录证据。
@@ -224,20 +229,24 @@ async function main() {
   } catch (error) {
     errors.push({ kind: 'runner', message: error.message });
   } finally {
-    if (browser) await browser.close();
-    // 先声明 reportPath（Codex 审出的 TDZ 缺陷：stdoutSummary 不得引用未初始化的 const）。
-    const reportPath = path.join(evidenceDir, `${runId.toLowerCase()}.json`);
-    // 泄漏闸（fail-closed）：argv / 环境变量 / 证据 JSON / stdout 摘要任一面出现 token 即拒绝写证据。
-    assertNoTokenLeak(token, {
-      argv: process.argv.join(' '),
-      env: Object.entries(process.env).map(([name, value]) => `${name}=${value ?? ''}`).join('\n'),
-      evidence: JSON.stringify(report),
-    });
-    const stdoutSummary = JSON.stringify({ run_id: runId, outcome: report.outcome, checks, evidence: reportPath });
-    assertNoTokenLeak(token, { stdout: stdoutSummary });
-    await fs.writeFile(reportPath, `${JSON.stringify(report, null, 2)}\n`, 'utf8');
-    process.stdout.write(`${stdoutSummary}\n`);
-    token = null;
+    // 内层 finally 兜底（Codex 二审）：泄漏闸断言、证据写入或 stdout 写入失败都不得跳过 token 清理。
+    try {
+      if (browser) await browser.close();
+      // 先声明 reportPath（Codex 审出的 TDZ 缺陷：stdoutSummary 不得引用未初始化的 const）。
+      const reportPath = path.join(evidenceDir, `${runId.toLowerCase()}.json`);
+      // 泄漏闸（fail-closed）：argv / 环境变量 / 证据 JSON / stdout 摘要任一面出现 token 即拒绝写证据。
+      assertNoTokenLeak(token, {
+        argv: process.argv.join(' '),
+        env: Object.entries(process.env).map(([name, value]) => `${name}=${value ?? ''}`).join('\n'),
+        evidence: JSON.stringify(report),
+      });
+      const stdoutSummary = JSON.stringify({ run_id: runId, outcome: report.outcome, checks, evidence: reportPath });
+      assertNoTokenLeak(token, { stdout: stdoutSummary });
+      await fs.writeFile(reportPath, `${JSON.stringify(report, null, 2)}\n`, 'utf8');
+      process.stdout.write(`${stdoutSummary}\n`);
+    } finally {
+      token = null;
+    }
   }
 
   if (report.outcome !== 'PASS') process.exitCode = 1;

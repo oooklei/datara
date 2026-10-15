@@ -193,6 +193,11 @@ def test_i18_headed_admin_launcher_transfers_token_via_stdin_without_string_copy
     # 不落盘、不回显、不打印
     assert "Out-File" not in script and "Set-Content" not in script and "Add-Content" not in script
     assert "Write-Host" not in script and "Write-Output" not in script
+    # 清理缺口回归（Codex 二审）：SecureString 用毕释放；UTF-16/UTF-8 各一次清零；
+    # UTF-8 清零必须在 Process.Start 之后（外层 finally 覆盖启动失败路径，缓冲不残留）
+    assert "$secure.Dispose()" in script
+    assert script.count("[System.Array]::Clear") == 2
+    assert script.index("[System.Diagnostics.Process]::Start") < script.rindex("[System.Array]::Clear($utf8")
 
 
 def test_i18_runner_admin_mode_reads_token_from_stdin_with_leak_guard():
@@ -227,6 +232,10 @@ def test_i18_runner_admin_mode_reads_token_from_stdin_with_leak_guard():
     assert "admin_token:" not in runner and "token:" not in runner.replace("auth_token", "")
     # TDZ 缺陷回归钉死：reportPath 声明必须先于 stdoutSummary（Codex 审出的运行期 ReferenceError）
     assert runner.index("const reportPath") < runner.index("const stdoutSummary")
+    # 清理缺口回归（Codex 二审）：token 引用清空置于内层 finally — 断言/证据/stdout 失败也不得跳过
+    assert runner.count("let token = null") == 1
+    assert runner.count("token = null;") == 2  # 声明 + finally 兜底清引用
+    assert runner.rindex("token = null;") > runner.rindex("assertNoTokenLeak")
 
 
 IMPORT_GATE = Path(__file__).parent / "r3-s9-import-gate.cjs"

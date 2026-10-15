@@ -7,8 +7,9 @@ $ErrorActionPreference = 'Stop'
 # 安全约定（合同冻结于 test_r3_s9_legacy_preview_page.py；Codex 返工裁定：stdin 或等价短时本地 IPC）：
 #   1. admin token 仅由人工在本机经 Read-Host -AsSecureString 输入（不回显、不落盘）；
 #   2. token 经 stdin 单向管道（本地 IPC）传给 runner 子进程 — 不进 argv、不进环境变量、
-#      不落盘；全程无托管字符串副本（SecureString → BSTR → 可清零字节缓冲 → stdin），
-#      每个中间缓冲用毕即清零（零化不等退出路径，而是写入完成后立即执行）；
+#      不落盘；全程无托管字符串副本（SecureString → BSTR → 可清零字节缓冲 → stdin）；
+#      缓冲清理不依赖单一退出路径：SecureString/BSTR/UTF-16 转换后立即在 finally 清零，
+#      UTF-8 缓冲由覆盖"进程启动 → stdin 写入"全程的外层 finally 清零（Codex 二审缺口回归）；
 #   3. token 仅经 playwright addInitScript 注入当前页面内存（window.__DATARA_TEST_TOKEN__），
 #      不进 URL / DOM 属性 / localStorage/sessionStorage / 日志 / 证据 JSON / 仓库；
 #      runner 侧另有泄漏闸（fail-closed）：argv/环境变量/证据/stdout 任一面出现 token 即拒绝记录证据；
@@ -35,40 +36,50 @@ finally {
         [System.Array]::Clear($utf16, 0, $utf16.Length)
         $utf16 = $null
     }
+    # SecureString 用毕即释放（Codex 二审清理缺口回归）
+    $secure.Dispose()
 }
 if (-not $utf8 -or $utf8.Length -eq 0) { throw 'Admin token is required for the headed confirmation gate.' }
 
-# runner 子进程：仅重定向 stdin；stdout/stderr 直接继承控制台（不新增缓存转发面）。
-# 注：直连 node 而非经 rtk 包装 — rtk 的 stdin 转发行为未验证，管道语义必须确定。
-$psi = New-Object System.Diagnostics.ProcessStartInfo
-$psi.FileName = 'node'
-$psi.Arguments = "`"$PSScriptRoot\r3-s9-i18-preview.cjs`" --token-stdin"
-$psi.WorkingDirectory = $PSScriptRoot
-$psi.UseShellExecute = $false
-$psi.RedirectStandardInput = $true
-$psi.RedirectStandardOutput = $false
-$psi.RedirectStandardError = $false
-# 防御性清除：若上级环境残留旧通道变量，不得带入子进程
-$psi.EnvironmentVariables.Remove('DATARA_REBUILD_ADMIN_TOKEN') | Out-Null
-$psi.EnvironmentVariables['DATARA_REBUILD_BASE_URL'] = 'http://192.168.1.9:18091'
-$edge = 'C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe'
-if (Test-Path -LiteralPath $edge) {
-    $psi.EnvironmentVariables['DATARA_PLAYWRIGHT_EXECUTABLE'] = $edge
-}
-$proc = [System.Diagnostics.Process]::Start($psi)
-
-# 仅经 BaseStream 写原始字节（绕过 StreamWriter 的托管字符串副本），写毕立即清零。
-$stdin = $proc.StandardInput.BaseStream
+# 进程启动到 stdin 写入全程包裹在外层 try/finally：任何一步失败（含 Process.Start 本身），
+# UTF-8 缓冲都会被清零，不残留活动凭据字节。
+$proc = $null
+$exitCode = $null
 try {
-    $stdin.Write($utf8, 0, $utf8.Length)
-    $stdin.WriteByte(10)
-    $stdin.Flush()
+    # runner 子进程：仅重定向 stdin；stdout/stderr 直接继承控制台（不新增缓存转发面）。
+    # 注：直连 node 而非经 rtk 包装 — rtk 的 stdin 转发行为未验证，管道语义必须确定。
+    $psi = New-Object System.Diagnostics.ProcessStartInfo
+    $psi.FileName = 'node'
+    $psi.Arguments = "`"$PSScriptRoot\r3-s9-i18-preview.cjs`" --token-stdin"
+    $psi.WorkingDirectory = $PSScriptRoot
+    $psi.UseShellExecute = $false
+    $psi.RedirectStandardInput = $true
+    $psi.RedirectStandardOutput = $false
+    $psi.RedirectStandardError = $false
+    # 防御性清除：若上级环境残留旧通道变量，不得带入子进程
+    $psi.EnvironmentVariables.Remove('DATARA_REBUILD_ADMIN_TOKEN') | Out-Null
+    $psi.EnvironmentVariables['DATARA_REBUILD_BASE_URL'] = 'http://192.168.1.9:18091'
+    $edge = 'C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe'
+    if (Test-Path -LiteralPath $edge) {
+        $psi.EnvironmentVariables['DATARA_PLAYWRIGHT_EXECUTABLE'] = $edge
+    }
+    $proc = [System.Diagnostics.Process]::Start($psi)
+    # 仅经 BaseStream 写原始字节（绕过 StreamWriter 的托管字符串副本），写毕立即关闭通道。
+    $stdin = $proc.StandardInput.BaseStream
+    try {
+        $stdin.Write($utf8, 0, $utf8.Length)
+        $stdin.WriteByte(10)
+        $stdin.Flush()
+    }
+    finally {
+        $stdin.Close()
+    }
+    $proc.WaitForExit()
+    $exitCode = $proc.ExitCode
 }
 finally {
-    $stdin.Close()
+    if ($proc) { $proc.Dispose() }
     [System.Array]::Clear($utf8, 0, $utf8.Length)
     $utf8 = $null
 }
-
-$proc.WaitForExit()
-if ($proc.ExitCode -ne 0) { throw 'R3-S9 headed admin confirmation gate did not pass.' }
+if ($exitCode -ne 0) { throw 'R3-S9 headed admin confirmation gate did not pass.' }
