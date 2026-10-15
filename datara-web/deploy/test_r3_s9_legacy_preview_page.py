@@ -251,6 +251,12 @@ def test_i18_runner_admin_mode_reads_token_from_stdin_with_leak_guard():
     assert runner.count("let token = null") == 1
     assert runner.count("token = null;") == 2  # 声明 + finally 兜底清引用
     assert runner.rindex("token = null;") > runner.rindex("assertNoTokenLeak")
+    # 会话生命周期（Codex 集成后裁定）：运行结束（无论成败）即 /logout 吊销同进程签发的
+    # operator 会话 — 标准登录 token TTL 86400s 并非短时，吊销把暴露窗口缩到单次运行时长；
+    # 吊销调用位于 browser 关闭之后、证据写盘之前，结果只记布尔，不得记录 token 值。
+    assert "/api/v1/rebuild/logout" in runner
+    assert "session-revoked-after-run" in runner
+    assert runner.index("browser.close()") < runner.index("/api/v1/rebuild/logout") < runner.index("const reportPath")
 
 
 IMPORT_GATE = Path(__file__).parent / "r3-s9-import-gate.cjs"
