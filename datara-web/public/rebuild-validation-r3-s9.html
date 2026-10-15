@@ -9,7 +9,7 @@
     *{box-sizing:border-box}body{margin:0}.shell{max-width:1240px;margin:0 auto;padding:28px 24px 56px}
     .top{display:flex;align-items:center;justify-content:space-between;gap:20px;margin-bottom:24px}.brand{display:flex;align-items:center;gap:12px}.mark{display:grid;place-items:center;width:42px;height:42px;border-radius:13px;background:#193b65;color:#fff;font-weight:800}.eyebrow{font-size:12px;letter-spacing:.08em;color:#64809e;text-transform:uppercase}.title{font-size:22px;margin:3px 0 0}.runtime{font-size:12px;color:#62778c;background:#e9f0f7;padding:8px 12px;border-radius:99px}
     .intro{padding:22px 24px;border:1px solid #dce6f0;border-radius:16px;background:linear-gradient(115deg,#fff,#f6faff);margin-bottom:18px}.intro h2{font-size:18px;margin:0 0 7px}.intro p{color:#60758b;margin:0;line-height:1.7;max-width:900px}
-    .grid{display:grid;grid-template-columns:330px minmax(0,1fr);gap:18px;align-items:start}.card{background:#fff;border:1px solid #dce5ef;border-radius:14px;box-shadow:0 3px 12px #203b5710}.card-head{padding:17px 19px;border-bottom:1px solid #edf1f5}.card-head h3{font-size:15px;margin:0}.card-body{padding:19px}.form-row{margin-bottom:16px}label{display:block;font-size:12px;font-weight:700;color:#4d6379;margin-bottom:7px}select,button{font:inherit}select{width:100%;height:40px;padding:0 11px;border:1px solid #ccd8e4;border-radius:8px;background:#fff;color:#20364e}button{border:0;border-radius:8px;padding:10px 14px;font-weight:700;cursor:pointer}button:disabled{opacity:.5;cursor:not-allowed}.primary{background:#1769aa;color:#fff}.secondary{background:#edf3f8;color:#33506c}.actions{display:flex;gap:9px;flex-wrap:wrap}.hint{font-size:12px;line-height:1.6;color:#71859a;margin:14px 0 0}.scope{padding:12px;background:#f5f8fb;border-radius:9px;color:#52697f;font-size:12px;line-height:1.75;margin-top:15px}.scope strong{color:#294662}
+    .grid{display:grid;grid-template-columns:330px minmax(0,1fr);gap:18px;align-items:start}.card{background:#fff;border:1px solid #dce5ef;border-radius:14px;box-shadow:0 3px 12px #203b5710}.card-head{padding:17px 19px;border-bottom:1px solid #edf1f5}.card-head h3{font-size:15px;margin:0}.card-body{padding:19px}.form-row{margin-bottom:16px}label{display:block;font-size:12px;font-weight:700;color:#4d6379;margin-bottom:7px}select,input[type=text],button{font:inherit}select,input[type=text]{width:100%;height:40px;padding:0 11px;border:1px solid #ccd8e4;border-radius:8px;background:#fff;color:#20364e}button{border:0;border-radius:8px;padding:10px 14px;font-weight:700;cursor:pointer}button:disabled{opacity:.5;cursor:not-allowed}.primary{background:#1769aa;color:#fff}.secondary{background:#edf3f8;color:#33506c}.actions{display:flex;gap:9px;flex-wrap:wrap}.hint{font-size:12px;line-height:1.6;color:#71859a;margin:14px 0 0}.scope{padding:12px;background:#f5f8fb;border-radius:9px;color:#52697f;font-size:12px;line-height:1.75;margin-top:15px}.scope strong{color:#294662}.confirm-box{padding:14px;border:1px solid #f2c991;background:#fff9f1;border-radius:10px}.confirm-box code{display:block;overflow-wrap:anywhere;padding:9px;background:#fff;border:1px solid #f2e4d2;border-radius:7px;margin:8px 0;font-size:12px}.confirm-box .hint{margin-top:8px}
     .notice{display:none;padding:12px 14px;border-radius:9px;font-size:13px;line-height:1.5;margin-bottom:16px}.notice.show{display:block}.notice.info{background:#eef6ff;color:#275b88}.notice.success{background:#eaf8f0;color:#236744}.notice.error{background:#fff0ef;color:#a3322a}
     .stats{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:11px;padding:17px 19px;border-bottom:1px solid #edf1f5}.stat{padding:12px;background:#f7f9fc;border-radius:9px}.stat span{display:block;color:#70849a;font-size:11px}.stat strong{display:block;font-size:18px;margin-top:5px;color:#1a3d60;overflow-wrap:anywhere}.stat.digest strong{font-size:12px;line-height:1.5}
     .section{padding:17px 19px}.section h4{margin:0 0 12px;font-size:13px}.meta{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}.meta-item{padding:10px 12px;border:1px solid #edf1f5;border-radius:8px;min-width:0}.meta-item span{display:block;font-size:11px;color:#789}.meta-item strong{display:block;font-size:12px;margin-top:5px;word-break:break-word}.table-wrap{overflow:auto;border:1px solid #e5ebf1;border-radius:9px}table{width:100%;border-collapse:collapse;font-size:12px;min-width:620px}th,td{text-align:left;padding:10px 12px;border-bottom:1px solid #edf1f5}th{color:#60758b;background:#f8fafc;font-weight:700}tbody tr:last-child td{border-bottom:0}.pill{display:inline-block;padding:3px 8px;border-radius:99px;background:#edf3f8;color:#46627d}.pill.create{background:#e9f7ef;color:#26744b}.pill.blocked,.pill.conflict{background:#fff1e7;color:#a05216}.empty{text-align:center;color:#8394a5;padding:26px}.issues{display:grid;gap:8px}.issue{padding:10px 12px;border-left:3px solid #e3a34a;background:#fff9f1;border-radius:5px;font-size:12px;line-height:1.6}.muted{color:#7b8da0;font-size:12px}
@@ -33,7 +33,8 @@
         <section class="section"><h4>快照摘要</h4><div class="meta"><div class="meta-item"><span>源端采集时间（上海）</span><strong id="sourceCapturedAt" data-testid="source-captured-at">尚未执行</strong></div><div class="meta-item"><span>目标采集时间（上海）</span><strong id="targetCapturedAt" data-testid="target-captured-at">尚未执行</strong></div><div class="meta-item"><span>来源摘要</span><strong id="sourceDigest" data-testid="source-digest">—</strong></div><div class="meta-item"><span>目标摘要</span><strong id="targetDigest" data-testid="target-digest">—</strong></div></div></section>
         <section class="section"><h4>迁移计划明细</h4><div class="table-wrap"><table><thead><tr><th>来源表</th><th>来源主键</th><th>目标实体</th><th>计划</th><th>说明</th></tr></thead><tbody id="planRows" data-testid="plan-rows"><tr><td class="empty" colspan="5">请先选择目标项目并执行只读预检</td></tr></tbody></table></div></section>
         <section class="section"><h4>需处理的问题</h4><div id="issueList" class="issues" data-testid="issue-list"><div class="muted">尚无预检结果</div></div></section>
-        <section class="section"><h4>导入依赖顺序</h4><div id="importOrder" class="muted" data-testid="import-order">将在预检后显示；本页面不会执行导入。</div></section>
+        <section class="section"><h4>导入依赖顺序</h4><div id="importOrder" class="muted" data-testid="import-order">将在预检后显示。</div></section>
+        <section class="section" aria-labelledby="importTitle"><h4 id="importTitle">I18 create-only 导入</h4><div id="importStatus" class="scope" role="status" aria-live="polite" data-testid="import-status">先执行只读预检；仅项目 #3 且结果严格为 44 新增、0 未变、1 批准跳过、0 冲突/阻断时开放确认。</div><div class="confirm-box"><strong>写入范围</strong><div class="hint">只允许创建已批准的 44 条 I18 新记录；孤儿版本 1 跳过。不会更新、覆盖或删除既有目标记录，不写 I19–I23；提交前后端会重新读取快照并校验摘要。导入要求标准持久 admin 身份，验证 runner 不具备此权限。</div><label for="requiredConfirmPhrase" style="margin-top:12px">本次摘要绑定确认语</label><code id="requiredConfirmPhrase" data-testid="required-confirm-phrase">执行只读预检后生成</code><label for="importConfirmPhrase">输入上方完整确认语以启用按钮</label><input id="importConfirmPhrase" type="text" autocomplete="off" spellcheck="false" data-testid="import-confirm-phrase" aria-describedby="importStatus" disabled><div class="actions" style="margin-top:10px"><button id="runI18Import" class="primary" type="button" data-testid="run-i18-import" disabled>人工确认并导入 44 条</button></div><p class="hint">按钮点击是独立人工确认闸；不要将密钥、口令或 token 输入此页。结果将立即用只读预检复核。</p></div></section>
       </section>
     </div>
   </main>
@@ -42,7 +43,7 @@
     'use strict';
     const token = window.__DATARA_TEST_TOKEN__ || '';
     const $ = id => document.getElementById(id);
-    const state = { projectId: null, busy: false };
+    const state = { projectId: null, busy: false, preview: null, importEligible: false, importAttempted: false, imported: false, idempotencyKey: crypto.randomUUID() };
     const escapeHtml = value => String(value ?? '').replace(/[&<>"']/g, ch => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));
     const shanghaiTime = value => value ? new Intl.DateTimeFormat('zh-CN',{timeZone:'Asia/Shanghai',dateStyle:'medium',timeStyle:'medium'}).format(new Date(value)) : '—';
     const notify = (message, kind='info') => { const box=$('notice'); box.className=`notice show ${kind}`; box.textContent=message; };
@@ -58,7 +59,9 @@
       ['sourceCapturedAt','targetCapturedAt'].forEach(id=>$(id).textContent='尚未执行');
       $('planRows').innerHTML='<tr><td class="empty" colspan="5">请先执行只读预检</td></tr>';
       $('issueList').innerHTML='<div class="muted">尚无预检结果</div>';
-      $('importOrder').textContent='将在预检后显示；本页面不会执行导入。';
+      $('importOrder').textContent='将在预检后显示。';
+      state.preview=null;state.importEligible=false;$('requiredConfirmPhrase').textContent='执行只读预检后生成';$('importConfirmPhrase').value='';$('importConfirmPhrase').disabled=true;$('runI18Import').disabled=true;
+      if(!state.imported&&!state.importAttempted)$('importStatus').textContent='先执行只读预检；仅项目 #3 且结果严格为 44 新增、0 未变、1 批准跳过、0 冲突/阻断时开放确认。';
     }
     async function loadProjects() {
       $('reloadProjects').disabled=true;
@@ -94,7 +97,16 @@
       const issues=plan.issues||[];
       $('issueList').innerHTML=issues.length ? issues.map(issue=>`<div class="issue"><strong>${escapeHtml(issue.code||'检查项')}</strong> · ${escapeHtml(issue.source_table||'')}#${escapeHtml(issue.source_id||'')} · ${escapeHtml(issue.detail||'需要进一步检查')}</div>`).join('') : '<div class="muted" data-testid="no-issues">没有未解析关系或阻断项。</div>';
       $('importOrder').textContent=(plan.import_order||[]).map(item=>`${item.source_table}#${item.source_id}`).join(' → ')||'无待导入实体';
+      state.preview=data;
+      const exactApprovedScope=Number(state.projectId)===3&&plan.ready_to_import===true&&Number(counts.create)===44&&Number(counts.unchanged)===0&&Number(counts.skipped)===1&&Number(counts.conflict)===0&&Number(counts.blocked)===0&&Number(target.identity_count)===0&&/^[0-9a-f]{64}$/.test(source.digest||'')&&/^[0-9a-f]{64}$/.test(target.digest||'');
+      state.importEligible=exactApprovedScope&&!state.imported&&!state.importAttempted;
+      const phrase=`IMPORT I18 ${state.projectId} ${source.digest||''} ${target.digest||''}`;
+      $('requiredConfirmPhrase').textContent=state.importEligible?phrase:'当前结果不匹配已批准的 44/0/1/0/0 范围；导入保持关闭。';
+      $('importConfirmPhrase').disabled=!state.importEligible;
+      $('importStatus').textContent=state.importEligible?'预检匹配项目 #3 的 44 create / 0 unchanged / 1 skipped / 0 conflict / 0 blocked。请核对本轮两个 digest，再输入完整确认语；服务端仍会执行 admin/RBAC/快照校验。':'当前预检未通过精确范围门禁，不能导入。';
+      updateImportButton();
     }
+    function updateImportButton(){const expected=$('requiredConfirmPhrase').textContent;$('runI18Import').disabled=state.busy||!state.importEligible||$('importConfirmPhrase').value!==expected;}
     $('projectSelect').addEventListener('change',event=>{state.projectId=event.target.value?Number(event.target.value):null;clearResult();$('runDryRun').disabled=!state.projectId||state.busy;});
     $('reloadProjects').addEventListener('click',loadProjects);
     $('runDryRun').addEventListener('click',async()=>{
@@ -106,7 +118,26 @@
         const counts=data.plan?.counts||{}, blocked=Number(counts.conflict||0)+Number(counts.blocked||0);
         notify(`预检已完成：新增 ${counts.create||0}，未变 ${counts.unchanged||0}，批准跳过 ${counts.skipped||0}，冲突/阻断 ${blocked}。仅生成计划，未执行迁移。`,blocked?'error':'success');
       } catch(error) { $('runtimeStatus').textContent='预检未完成';$('runtimeStatus').dataset.state='failed';notify(`预检失败：${error.message}。未执行目标写入。`, 'error'); }
-      finally {state.busy=false;$('runDryRun').disabled=!state.projectId;}
+      finally {state.busy=false;$('runDryRun').disabled=!state.projectId;updateImportButton();}
+    });
+    $('importConfirmPhrase').addEventListener('input',updateImportButton);
+    $('runI18Import').addEventListener('click',async()=>{
+      if(!state.importEligible||!state.preview){notify('当前快照不符合已批准的精确导入范围。','error');return;}
+      const source=state.preview.source||{},target=state.preview.target||{};
+      const phrase=`IMPORT I18 ${state.projectId} ${source.digest} ${target.digest}`;
+      if($('importConfirmPhrase').value!==phrase){notify('确认语与本轮快照摘要不匹配；未提交导入。','error');return;}
+      state.busy=true;state.importAttempted=true;$('runI18Import').disabled=true;$('runDryRun').disabled=true;$('importConfirmPhrase').disabled=true;$('runtimeStatus').textContent='导入请求提交中';$('runtimeStatus').dataset.state='running';$('importStatus').textContent='已由人工点击提交；服务端正在再次核对身份、项目权限与 source/target digest。';
+      try{
+        const result=await request(`/api/v1/rebuild/governance/projects/${state.projectId}/legacy/i18/import`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({source_digest:source.digest,target_digest:target.digest,idempotency_key:state.idempotencyKey,confirmation:phrase})});
+        if(Number(result.imported_count)!==44||Number(result.skipped_count)!==1||Number(result.error_count)!==0)throw new Error('导入返回计数不符合 44 create / 1 skipped / 0 error；请查看后端审计日志。');
+        state.imported=true;$('importStatus').textContent=`导入事务已完成：${result.imported_count} 新增、${result.skipped_count} 跳过、${result.error_count} 错误；批次 ${result.batch_id}。正在发起只读复核。`;
+        const verified=await request(`/api/v1/rebuild/governance/projects/${state.projectId}/legacy/i18/dry-run`,{method:'POST'});
+        renderResult(verified);const after=verified.plan?.counts||{};
+        const verifiedOk=Number(after.create)===0&&Number(after.unchanged)===44&&Number(after.skipped)===1&&Number(after.conflict)===0&&Number(after.blocked)===0;
+        $('importStatus').textContent=verifiedOk?`导入与只读复核通过：44 条未变、1 条批准跳过、0 冲突/阻断。批次 ${result.batch_id}。`:`导入已提交但复核计数异常；请依据后台批次 ${result.batch_id} 进行人工核查。`;
+        $('runtimeStatus').textContent=verifiedOk?'导入完成 · 复核通过':'导入完成 · 复核需检查';$('runtimeStatus').dataset.state=verifiedOk?'complete':'failed';notify($('importStatus').textContent,verifiedOk?'success':'error');
+      }catch(error){$('importStatus').textContent=`导入未能确认完成：${error.message}。按钮保持锁定以避免产生第二个 idempotency key；请先复核后端批次/日志。`;$('runtimeStatus').textContent='导入状态需复核';$('runtimeStatus').dataset.state='failed';notify($('importStatus').textContent,'error');}
+      finally{state.busy=false;$('runDryRun').disabled=!state.projectId;updateImportButton();}
     });
     loadProjects();
   })();

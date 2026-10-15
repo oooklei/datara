@@ -28,7 +28,17 @@ def test_i18_preview_page_has_prepopulated_project_and_operable_preview_controls
     controls = PageControls()
     controls.feed(html)
 
-    assert {"projectSelect", "runDryRun", "reloadProjects", "planRows", "issueList", "importOrder"} <= set(
+    assert {
+        "projectSelect",
+        "runDryRun",
+        "reloadProjects",
+        "planRows",
+        "issueList",
+        "importOrder",
+        "importStatus",
+        "importConfirmPhrase",
+        "runI18Import",
+    } <= set(
         controls.ids
     )
     assert 'data-testid="run-dry-run"' in html
@@ -49,6 +59,7 @@ def test_i18_preview_page_uses_short_lived_injected_token_without_login_or_key_s
     assert "localstorage" not in html
     assert "sessionstorage" not in html
     assert not any(name in {"username", "password", "login"} for _, name in controls.inputs)
+    assert not any(name == "importConfirmPhrase" and kind == "password" for kind, name in controls.inputs)
 
 
 def test_i18_preview_page_calls_actual_read_only_dry_run_contract_and_renders_response_fields():
@@ -64,6 +75,7 @@ def test_i18_preview_page_calls_actual_read_only_dry_run_contract_and_renders_re
         "plan.entries",
         "plan.import_order",
         "plan.issues",
+        "plan.ready_to_import",
     ):
         assert contract_field in html
 
@@ -76,6 +88,11 @@ def test_i18_runner_uses_protected_runtime_key_and_real_page_controls():
     assert "DATARA_REBUILD_VALIDATION_KEY" in runner and "validation-token" in runner
     assert "addInitScript" in runner and "__DATARA_TEST_TOKEN__" in runner
     assert "getByTestId('run-dry-run').click()" in runner
+    assert "snapshot_digests" in runner and "sourceDigest" in runner and "targetDigest" in runner
+    assert "approved-project-3" in runner
+    assert "importConfirmPhrase" in runner and "runI18Import" in runner
+    assert "run-i18-import-confirmation-ready" in runner
+    assert "getByTestId('run-i18-import').click()" not in runner
     assert "writeFile(reportPath" in runner and "screenshot" in runner
     assert "REBUILD_VALIDATION_KEY" in launcher
     assert "Remove-Item Env:DATARA_REBUILD_VALIDATION_KEY" in launcher
