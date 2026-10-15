@@ -13,6 +13,7 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 from sqlalchemy import create_engine, inspect, select, text
 from sqlalchemy.engine import make_url
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
@@ -21,6 +22,8 @@ from rebuild.identity.contracts import Permission, Role, TokenService, authorize
 from rebuild.identity.models import ProjectMemberRecord, UserRecord
 from rebuild.identity.passwords import verify_password
 from rebuild.datasource.contracts import DataSourceDraft, probe_datasource, validate_datasource
+from rebuild.datasource.models import ProjectDatasourceRecord
+from rebuild.datasource.repository import ProjectDatasourceRepository
 from rebuild.project.repository import ProjectRepository
 from rebuild.project.models import ProjectRecord
 from rebuild.governance.api import build_governance_router
@@ -100,7 +103,12 @@ def create_app(
         # versioned MigrationRunner after the R3-S7 remote gate.
         Base.metadata.create_all(
             engine,
-            tables=[UserRecord.__table__, ProjectRecord.__table__, ProjectMemberRecord.__table__],
+            tables=[
+                UserRecord.__table__,
+                ProjectRecord.__table__,
+                ProjectMemberRecord.__table__,
+                ProjectDatasourceRecord.__table__,
+            ],
         )
         ensure_i1_schema()
         yield
@@ -204,6 +212,41 @@ def create_app(
             raise ValueError("scoped capability is not valid for ordinary API routes")
         return claims
 
+    def project_permission_error(session, project_id: int, user: dict[str, object], permission: Permission):
+        project = session.get(ProjectRecord, project_id)
+        if project is None:
+            return JSONResponse(status_code=404, content={"code": 4041, "msg": "project not found", "data": None})
+        if user.get("role") == Role.ADMIN.value:
+            return None
+        if not authorize(user.get("role", ""), permission):
+            return JSONResponse(status_code=403, content={"code": 1003, "msg": "permission denied", "data": None})
+        user_id = int(user["user_id"])
+        if project.owner_id == user_id:
+            return None
+        member = session.scalar(
+            select(ProjectMemberRecord).where(
+                ProjectMemberRecord.project_id == project_id,
+                ProjectMemberRecord.user_id == user_id,
+            )
+        )
+        if member is None or not authorize(member.role, permission):
+            return JSONResponse(status_code=403, content={"code": 1003, "msg": "permission denied", "data": None})
+        return None
+
+    def datasource_payload(record: ProjectDatasourceRecord) -> dict[str, object]:
+        return {
+            "id": record.id,
+            "project_id": record.project_id,
+            "name": record.name,
+            "kind": record.kind,
+            "host": record.host,
+            "port": record.port,
+            "database": record.database_name,
+            "username": record.username,
+            "created_at": record.created_at.isoformat(),
+            "updated_at": record.updated_at.isoformat(),
+        }
+
     def current_i23_preview_capability(authorization: str) -> dict[str, object]:
         if not authorization.startswith("Bearer "):
             raise ValueError("missing bearer token")
@@ -252,8 +295,17 @@ def create_app(
     def validate_datasource_endpoint(body: DataSourceRequest, authorization: str = Header(default="")):
         try:
             current_user(authorization)
+            if body.probe:
+                return JSONResponse(
+                    status_code=400,
+                    content={
+                        "code": 4002,
+                        "msg": "register a project datasource before testing its connection",
+                        "data": None,
+                    },
+                )
             draft = DataSourceDraft(**body.model_dump(exclude={"probe"}))
-            result = probe_datasource(draft) if body.probe else validate_datasource(draft)
+            result = validate_datasource(draft)
         except ValueError as exc:
             code = 1001 if "token" in str(exc) else 4001
             status = 401 if code == 1001 else 400
@@ -269,9 +321,11 @@ def create_app(
     @app.post("/api/v1/rebuild/datasources/profiles/{profile_id}/probe")
     def probe_datasource_profile(profile_id: str, authorization: str = Header(default="")):
         try:
-            current_user(authorization)
+            user = current_user(authorization)
         except ValueError:
             return JSONResponse(status_code=401, content={"code": 1001, "msg": "invalid token", "data": None})
+        if user.get("role") != Role.ADMIN.value:
+            return JSONResponse(status_code=403, content={"code": 1003, "msg": "permission denied", "data": None})
         if profile_id != "mysql-src":
             return JSONResponse(
                 status_code=404,
@@ -299,6 +353,152 @@ def create_app(
             result = probe_datasource(draft)
         except ValueError as exc:
             return JSONResponse(status_code=400, content={"code": 4001, "msg": str(exc), "data": None})
+        return {"code": 0, "msg": "success", "data": result}
+
+    @app.get("/api/v1/rebuild/projects/{project_id}/datasources")
+    def list_project_datasources(project_id: int, authorization: str = Header(default="")):
+        try:
+            user = current_user(authorization)
+        except ValueError:
+            return JSONResponse(status_code=401, content={"code": 1001, "msg": "invalid token", "data": None})
+        with session_factory() as session:
+            denied = project_permission_error(session, project_id, user, Permission.VIEW_ALL)
+            if denied is not None:
+                return denied
+            records = ProjectDatasourceRepository(session).list_for_project(project_id)
+            return {"code": 0, "msg": "success", "data": {"items": [datasource_payload(r) for r in records]}}
+
+    @app.post("/api/v1/rebuild/projects/{project_id}/datasources", status_code=201)
+    def create_project_datasource(project_id: int, body: DataSourceRequest, authorization: str = Header(default="")):
+        try:
+            user = current_user(authorization)
+            draft = DataSourceDraft(**body.model_dump(exclude={"probe"}))
+            validate_datasource(draft)
+        except ValueError as exc:
+            if "token" in str(exc):
+                return JSONResponse(status_code=401, content={"code": 1001, "msg": "invalid token", "data": None})
+            return JSONResponse(status_code=400, content={"code": 4001, "msg": str(exc), "data": None})
+        with session_factory() as session:
+            denied = project_permission_error(session, project_id, user, Permission.EDIT_DEFINITION)
+            if denied is not None:
+                return denied
+            repository = ProjectDatasourceRepository(session)
+            try:
+                record = repository.create(project_id, draft)
+                session.commit()
+            except IntegrityError:
+                session.rollback()
+                return JSONResponse(
+                    status_code=409,
+                    content={"code": 4091, "msg": "datasource name already exists in project", "data": None},
+                )
+            return JSONResponse(
+                status_code=201, content={"code": 0, "msg": "success", "data": datasource_payload(record)}
+            )
+
+    @app.get("/api/v1/rebuild/projects/{project_id}/datasources/{datasource_id}")
+    def get_project_datasource(project_id: int, datasource_id: int, authorization: str = Header(default="")):
+        try:
+            user = current_user(authorization)
+        except ValueError:
+            return JSONResponse(status_code=401, content={"code": 1001, "msg": "invalid token", "data": None})
+        with session_factory() as session:
+            denied = project_permission_error(session, project_id, user, Permission.VIEW_ALL)
+            if denied is not None:
+                return denied
+            record = ProjectDatasourceRepository(session).get(project_id, datasource_id)
+            if record is None:
+                return JSONResponse(
+                    status_code=404, content={"code": 4042, "msg": "datasource not found", "data": None}
+                )
+            return {"code": 0, "msg": "success", "data": datasource_payload(record)}
+
+    @app.put("/api/v1/rebuild/projects/{project_id}/datasources/{datasource_id}")
+    def update_project_datasource(
+        project_id: int, datasource_id: int, body: DataSourceRequest, authorization: str = Header(default="")
+    ):
+        try:
+            user = current_user(authorization)
+            draft = DataSourceDraft(**body.model_dump(exclude={"probe"}))
+            validate_datasource(draft)
+        except ValueError as exc:
+            if "token" in str(exc):
+                return JSONResponse(status_code=401, content={"code": 1001, "msg": "invalid token", "data": None})
+            return JSONResponse(status_code=400, content={"code": 4001, "msg": str(exc), "data": None})
+        with session_factory() as session:
+            denied = project_permission_error(session, project_id, user, Permission.EDIT_DEFINITION)
+            if denied is not None:
+                return denied
+            repository = ProjectDatasourceRepository(session)
+            record = repository.get(project_id, datasource_id)
+            if record is None:
+                return JSONResponse(
+                    status_code=404, content={"code": 4042, "msg": "datasource not found", "data": None}
+                )
+            repository.update(record, draft)
+            try:
+                session.commit()
+            except IntegrityError:
+                session.rollback()
+                return JSONResponse(
+                    status_code=409,
+                    content={"code": 4091, "msg": "datasource name already exists in project", "data": None},
+                )
+            return {"code": 0, "msg": "success", "data": datasource_payload(record)}
+
+    @app.delete("/api/v1/rebuild/projects/{project_id}/datasources/{datasource_id}")
+    def delete_project_datasource(project_id: int, datasource_id: int, authorization: str = Header(default="")):
+        try:
+            user = current_user(authorization)
+        except ValueError:
+            return JSONResponse(status_code=401, content={"code": 1001, "msg": "invalid token", "data": None})
+        with session_factory() as session:
+            denied = project_permission_error(session, project_id, user, Permission.EDIT_DEFINITION)
+            if denied is not None:
+                return denied
+            repository = ProjectDatasourceRepository(session)
+            record = repository.get(project_id, datasource_id)
+            if record is None:
+                return JSONResponse(
+                    status_code=404, content={"code": 4042, "msg": "datasource not found", "data": None}
+                )
+            repository.delete(record)
+            session.commit()
+            return {"code": 0, "msg": "success", "data": {"deleted": True, "id": datasource_id}}
+
+    @app.post("/api/v1/rebuild/projects/{project_id}/datasources/{datasource_id}/test")
+    def test_project_datasource(project_id: int, datasource_id: int, authorization: str = Header(default="")):
+        try:
+            user = current_user(authorization)
+        except ValueError:
+            return JSONResponse(status_code=401, content={"code": 1001, "msg": "invalid token", "data": None})
+        with session_factory() as session:
+            denied = project_permission_error(session, project_id, user, Permission.EDIT_DEFINITION)
+            if denied is not None:
+                return denied
+            record = ProjectDatasourceRepository(session).get(project_id, datasource_id)
+            if record is None:
+                return JSONResponse(
+                    status_code=404, content={"code": 4042, "msg": "datasource not found", "data": None}
+                )
+            draft = DataSourceDraft(
+                name=record.name,
+                kind=record.kind,
+                host=record.host,
+                port=record.port,
+                database=record.database_name,
+                username=record.username,
+                password=record.password,
+            )
+        try:
+            result = probe_datasource(draft)
+        except ValueError as exc:
+            return JSONResponse(status_code=400, content={"code": 4001, "msg": str(exc), "data": None})
+        except Exception:
+            return JSONResponse(
+                status_code=502,
+                content={"code": 5021, "msg": "datasource connection test failed", "data": None},
+            )
         return {"code": 0, "msg": "success", "data": result}
 
     app.include_router(

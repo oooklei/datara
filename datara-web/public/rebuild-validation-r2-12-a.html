@@ -1,0 +1,214 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>R2-12-A 项目数据源验证</title>
+    <style>
+      :root { color-scheme: light; font: 14px/1.5 Inter, "Microsoft YaHei", sans-serif; color: #182433; background: #f3f6fa; }
+      * { box-sizing: border-box; }
+      body { margin: 0; }
+      header { background: #102a43; color: white; padding: 22px max(24px, calc((100vw - 1180px) / 2)); }
+      header h1 { margin: 0 0 5px; font-size: 22px; }
+      header p { margin: 0; color: #cbd8e5; }
+      main { max-width: 1180px; margin: 24px auto; padding: 0 20px 48px; display: grid; gap: 18px; }
+      .card { background: white; border: 1px solid #dce4ed; border-radius: 10px; padding: 20px; box-shadow: 0 3px 14px #152b430a; }
+      .card h2 { margin: 0 0 14px; font-size: 17px; }
+      .context { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+      .context strong { color: #075985; }
+      .form-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; }
+      label { display: grid; gap: 6px; color: #405166; font-weight: 600; }
+      input, select { width: 100%; min-height: 38px; border: 1px solid #b9c7d6; border-radius: 6px; padding: 8px 10px; color: #182433; background: white; }
+      input:focus, select:focus { outline: 2px solid #7dd3fc; border-color: #0284c7; }
+      .actions { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 16px; }
+      button { min-height: 36px; border: 1px solid #b5c4d4; border-radius: 6px; padding: 7px 12px; background: white; color: #17324d; font-weight: 650; cursor: pointer; }
+      button.primary { border-color: #0369a1; background: #0369a1; color: white; }
+      button.danger { color: #a12a2a; border-color: #e0b4b4; }
+      button:disabled { opacity: .55; cursor: wait; }
+      .toolbar { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 12px; }
+      .table-wrap { overflow-x: auto; }
+      table { width: 100%; border-collapse: collapse; min-width: 760px; }
+      th, td { border-bottom: 1px solid #e5ebf1; padding: 11px 9px; text-align: left; vertical-align: middle; }
+      th { color: #53657a; font-size: 12px; background: #f8fafc; }
+      td .actions { margin: 0; }
+      td button { min-height: 30px; padding: 4px 8px; font-size: 12px; }
+      .status { min-height: 42px; padding: 10px 12px; border-radius: 6px; background: #eff6ff; color: #184e77; white-space: pre-wrap; }
+      .status.error { background: #fff1f0; color: #9b2525; }
+      .status.success { background: #effaf3; color: #17643a; }
+      .muted { color: #6b7c8e; font-weight: 400; }
+      .empty { padding: 25px; color: #718096; text-align: center; }
+      @media (max-width: 780px) { .form-grid { grid-template-columns: 1fr 1fr; } }
+      @media (max-width: 520px) { .form-grid { grid-template-columns: 1fr; } main { padding: 0 12px 32px; } .card { padding: 15px; } }
+    </style>
+  </head>
+  <body>
+    <header>
+      <h1>项目数据源</h1>
+      <p>R2-12-A 独立验收页 · 项目隔离、连接测试与 CRUD · 不属于正式菜单</p>
+    </header>
+    <main>
+      <section class="card context" aria-label="项目范围">
+        <div><h2>当前项目范围</h2><div>主项目 <strong id="project-label">待加载</strong> <span class="muted">只操作该项目登记的数据源</span></div></div>
+        <button id="reload-button" type="button">刷新列表</button>
+      </section>
+      <section class="card">
+        <h2 id="form-title">登记项目数据源</h2>
+        <form id="datasource-form">
+          <div class="form-grid">
+            <label>数据源名称<input id="name" name="name" required maxlength="128" value="r2-12-a-validation" /></label>
+            <label>数据库类型<select id="kind" name="kind"><option value="mysql">MySQL</option><option value="postgresql">PostgreSQL（登记验证）</option></select></label>
+            <label>主机地址<input id="host" name="host" required autocomplete="off" placeholder="填写隔离测试数据库主机" /></label>
+            <label>端口<input id="port" name="port" type="number" min="1" max="65535" value="3306" required /></label>
+            <label>默认数据库<input id="database" name="database" required autocomplete="off" placeholder="测试数据库名称" /></label>
+            <label>数据库用户<input id="username" name="username" required autocomplete="off" placeholder="隔离测试用户" /></label>
+            <label>数据库密码<input id="password" name="password" type="password" autocomplete="new-password" placeholder="创建时填写；编辑留空则保留已登记值" /></label>
+          </div>
+          <div class="actions">
+            <button class="primary" id="save-button" type="submit">保存数据源</button>
+            <button id="cancel-edit" type="button" hidden>取消编辑</button>
+          </div>
+        </form>
+      </section>
+      <section class="card">
+        <div class="toolbar"><h2>已登记数据源</h2><span id="count-label" class="muted">0 项</span></div>
+        <div class="table-wrap"><table>
+          <thead><tr><th>名称</th><th>类型</th><th>主机</th><th>数据库</th><th>更新时间（上海时区）</th><th>操作</th></tr></thead>
+          <tbody id="datasource-rows"><tr><td colspan="6" class="empty">正在加载…</td></tr></tbody>
+        </table></div>
+      </section>
+      <section class="card">
+        <h2>权限与隔离检查</h2>
+        <div class="actions">
+          <button id="unauth-check" type="button">验证无 Token 请求被拒绝</button>
+          <button id="cross-project-check" type="button">验证跨项目不可读取</button>
+        </div>
+      </section>
+      <div id="status" class="status" role="status" aria-live="polite">验证页已就绪。</div>
+    </main>
+    <script>
+      (() => {
+        const params = new URLSearchParams(location.search);
+        const projectId = Number(params.get("projectId"));
+        const otherProjectId = Number(params.get("otherProjectId"));
+        const token = sessionStorage.getItem("rebuild.validation.token") || "";
+        const $ = (id) => document.getElementById(id);
+        let editingId = null;
+        let records = [];
+        const status = (message, type = "") => { $("status").textContent = message; $("status").className = `status ${type}`.trim(); };
+        const fixtureText = sessionStorage.getItem("rebuild.datasource.fixture");
+        if (fixtureText) {
+          try {
+            const fixture = JSON.parse(fixtureText);
+            for (const key of ["name", "kind", "host", "port", "database", "username", "password"]) {
+              if (fixture[key] !== undefined) $(key).value = fixture[key];
+            }
+          } catch { status("隔离测试数据源预置格式无效。", "error"); }
+          finally { sessionStorage.removeItem("rebuild.datasource.fixture"); }
+        }
+        async function api(path, options = {}, withAuth = true) {
+          const headers = { "Content-Type": "application/json", ...(options.headers || {}) };
+          if (withAuth && token) headers.Authorization = `Bearer ${token}`;
+          const response = await fetch(`/api/v1/rebuild${path}`, { ...options, headers });
+          let body = {};
+          try { body = await response.json(); } catch { /* Keep HTTP error visible below. */ }
+          return { response, body };
+        }
+        function currentPath(id = "") {
+          return `/projects/${projectId}/datasources${id ? `/${id}` : ""}`;
+        }
+        function formValue() {
+          return {
+            name: $("name").value.trim(), kind: $("kind").value, host: $("host").value.trim(),
+            port: Number($("port").value), database: $("database").value.trim(),
+            username: $("username").value.trim(), password: $("password").value, probe: false,
+          };
+        }
+        function render() {
+          $("count-label").textContent = `${records.length} 项`;
+          const tbody = $("datasource-rows");
+          tbody.replaceChildren();
+          if (!records.length) {
+            const row = tbody.insertRow(); const cell = row.insertCell(); cell.colSpan = 6; cell.className = "empty"; cell.textContent = "当前项目尚无数据源，请使用上方表单登记。";
+            return;
+          }
+          for (const item of records) {
+            const row = tbody.insertRow();
+            row.dataset.id = item.id;
+            for (const value of [item.name, item.kind, `${item.host}:${item.port}`, item.database, item.updated_at.replace("T", " ")]) {
+              row.insertCell().textContent = value;
+            }
+            const actions = row.insertCell(); actions.className = "actions";
+            const edit = document.createElement("button"); edit.type = "button"; edit.textContent = "编辑"; edit.dataset.action = "edit"; edit.dataset.id = item.id;
+            const test = document.createElement("button"); test.type = "button"; test.textContent = "连接测试"; test.dataset.action = "test"; test.dataset.id = item.id;
+            const remove = document.createElement("button"); remove.type = "button"; remove.textContent = "删除"; remove.className = "danger"; remove.dataset.action = "delete"; remove.dataset.id = item.id;
+            actions.append(edit, test, remove);
+          }
+        }
+        async function reload() {
+          if (!projectId || !token) { status("缺少项目范围或验证会话；由受控测试运行器初始化后再打开此页。", "error"); return; }
+          $("project-label").textContent = `#${projectId}`;
+          const { response, body } = await api(currentPath());
+          if (!response.ok) { status(`加载失败（HTTP ${response.status}）：${body.msg || "请求失败"}`, "error"); return; }
+          records = body.data.items || []; render();
+          status(`已加载 ${records.length} 项项目数据源。`, "success");
+        }
+        function editRecord(item) {
+          editingId = item.id;
+          for (const key of ["name", "kind", "host", "port", "database", "username"]) $(key).value = item[key];
+          $("password").value = "";
+          $("form-title").textContent = `编辑数据源 #${item.id}`;
+          $("save-button").textContent = "保存修改"; $("cancel-edit").hidden = false;
+          $("name").focus();
+        }
+        function resetForm() {
+          editingId = null; $("datasource-form").reset(); $("port").value = "3306";
+          $("form-title").textContent = "登记项目数据源"; $("save-button").textContent = "保存数据源"; $("cancel-edit").hidden = true;
+        }
+        $("datasource-form").addEventListener("submit", async (event) => {
+          event.preventDefault();
+          const button = $("save-button"); button.disabled = true;
+          try {
+            const { response, body } = await api(currentPath(editingId || ""), {
+              method: editingId ? "PUT" : "POST", body: JSON.stringify(formValue()),
+            });
+            if (!response.ok) { status(`保存失败（HTTP ${response.status}）：${body.msg || "请检查表单"}`, "error"); return; }
+            status(editingId ? "数据源修改已保存。" : `数据源已登记（#${body.data.id}）。`, "success");
+            resetForm(); await reload();
+          } catch (error) { status(`保存请求失败：${error.message}`, "error"); }
+          finally { button.disabled = false; }
+        });
+        $("datasource-rows").addEventListener("click", async (event) => {
+          const button = event.target.closest("button[data-action]"); if (!button) return;
+          const id = Number(button.dataset.id); const item = records.find((record) => record.id === id); if (!item) return;
+          if (button.dataset.action === "edit") { editRecord(item); status(`正在编辑 ${item.name}；密码留空会保留已登记值。`); return; }
+          button.disabled = true;
+          try {
+            if (button.dataset.action === "test") {
+              const { response, body } = await api(`${currentPath(id)}/test`, { method: "POST" });
+              if (!response.ok) { status(`连接失败（HTTP ${response.status}）：${body.msg || "探测失败"}`, "error"); return; }
+              status(`连接成功：数据库 ${body.data.database}，服务端 ${body.data.server_version}。`, "success");
+            } else if (button.dataset.action === "delete") {
+              const { response, body } = await api(currentPath(id), { method: "DELETE" });
+              if (!response.ok) { status(`删除失败（HTTP ${response.status}）：${body.msg || "请求失败"}`, "error"); return; }
+              if (editingId === id) resetForm();
+              status(`数据源 ${item.name} 已删除。`, "success"); await reload();
+            }
+          } catch (error) { status(`操作请求失败：${error.message}`, "error"); }
+          finally { button.disabled = false; }
+        });
+        $("unauth-check").addEventListener("click", async () => {
+          const { response, body } = await api(currentPath(), {}, false);
+          status(response.status === 401 ? "验证通过：未携带 Token 的请求被拒绝（401）。" : `验证失败：预期 401，实际 ${response.status} / ${body.msg || ""}`, response.status === 401 ? "success" : "error");
+        });
+        $("cross-project-check").addEventListener("click", async () => {
+          if (!otherProjectId || !records.length) { status("缺少对照项目或数据源；请先创建数据源并配置隔离对照项目。", "error"); return; }
+          const { response } = await api(`/projects/${otherProjectId}/datasources/${records[0].id}`);
+          status(response.status === 404 ? "验证通过：其他项目无法读取此数据源（404）。" : `验证失败：预期 404，实际 ${response.status}`, response.status === 404 ? "success" : "error");
+        });
+        $("reload-button").addEventListener("click", reload);
+        $("cancel-edit").addEventListener("click", () => { resetForm(); status("已取消编辑。"); });
+        reload();
+      })();
+    </script>
+  </body>
+</html>

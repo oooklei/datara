@@ -53,10 +53,12 @@ def probe_datasource(draft: DataSourceDraft) -> dict[str, Any]:
         connect_timeout=3,
         read_timeout=3,
         write_timeout=3,
-        autocommit=True,
+        autocommit=False,
     )
     try:
         with connection.cursor() as cursor:
+            cursor.execute("SET TRANSACTION READ ONLY")
+            connection.begin()
             cursor.execute("SELECT DATABASE(), VERSION()")
             database, version = cursor.fetchone()
         return {
@@ -66,5 +68,7 @@ def probe_datasource(draft: DataSourceDraft) -> dict[str, Any]:
             "capabilities": sorted(validated.capabilities),
         }
     finally:
-        connection.close()
-
+        try:
+            connection.rollback()
+        finally:
+            connection.close()

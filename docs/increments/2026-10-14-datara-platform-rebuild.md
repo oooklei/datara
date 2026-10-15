@@ -74,7 +74,7 @@
 | R2-09 AI | DESIGN_DEFINED | 五工具契约/权限/审计/预算与浮动助手边界已定义；需代码 schema、拒权和冻结门禁。 |
 | R2-10 指标 | IN_PROGRESS | 本轮将过时全量测试数 536 更新为实测 583，并记录 QC browser 21/21；其余性能基线需专门采样。 |
 | R2-11 SYNC | DESIGN_DEFINED | 执行器链路已写入设计；需 datasource 前置、执行器实现和全量/增量/断点/行计数闭环。 |
-| R2-12 datasource | IN_PROGRESS | 依赖 R4-SYNC；R2-12-A 先实现项目隔离 CRUD/只读连接探测和控件门禁，影响分析见 `R2-12-A-数据源项目隔离与连接探测影响分析.md`；schema tree、连接池和 SYNC 接入仍未完成。 |
+| R2-12 datasource | IN_PROGRESS | R2-12-A 项目隔离 CRUD/只读连接探测子批已通过：全后端 754 tests PASS，Playwright 同页控件闭环 PASS，远端 API/依赖容器健康、日志及临时只读 MySQL fixture 清理已核实。见 `R2-12-A-数据源项目隔离与连接探测影响分析.md` 和 `evidence/R2/r2-12-a-remote-final-20261015.txt`。schema/table/column tree、连接池和 SYNC 接入仍未完成；R2-12 总体保持 IN_PROGRESS。 |
 | R2-13 测试库 | PARTIAL | 1.9 运行 schema 已供测试，R3 时间戳/行数证据部分存在；需把 schema/init 与默认值证据按新 Backend 契约核实。 |
 | R2-14 门禁 | IN_PROGRESS | token bootstrap 与 Playwright 同页策略已有；QC 批次 1 21/21 PASS，仍需每个后端增量依照参考产品 UI 做闭环。 |
 | R2-15 IDE 拆分 | DESIGN_DEFINED | R10-A/B 已拆分；需两份独立验证单和 DDL 写路径审批边界。 |

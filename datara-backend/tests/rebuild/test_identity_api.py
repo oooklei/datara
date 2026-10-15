@@ -204,21 +204,29 @@ def test_datasource_profile_probe_uses_backend_managed_connection(monkeypatch):
 
     monkeypatch.setattr(rebuild_app, "probe_datasource", probe)
     with TestClient(
-        create_app(
-            "sqlite+pysqlite:///:memory:", token_secret="unit-test-secret", validation_key="unit-test-key"
-        )
+        create_app("sqlite+pysqlite:///:memory:", token_secret="unit-test-secret", validation_key="unit-test-key")
     ) as client:
-        token = client.post(
+        with client.app.state.session_factory() as session:
+            UserRepository(session).create(username="datasource-admin", password="admin-password", role=Role.ADMIN)
+            session.commit()
+        runner_token = client.post(
             "/api/v1/rebuild/validation-token",
             headers={"X-Backend-Validation-Key": "unit-test-key"},
         ).json()["data"]["token"]
+        runner_denied = client.post(
+            "/api/v1/rebuild/datasources/profiles/mysql-src/probe",
+            headers={"Authorization": f"Bearer {runner_token}"},
+        )
+        admin_token = client.post(
+            "/api/v1/rebuild/login", json={"username": "datasource-admin", "password": "admin-password"}
+        ).json()["data"]["token"]
         response = client.post(
             "/api/v1/rebuild/datasources/profiles/mysql-src/probe",
-            headers={"Authorization": f"Bearer {token}"},
+            headers={"Authorization": f"Bearer {admin_token}"},
         )
 
+    assert runner_denied.status_code == 403
     assert response.status_code == 200
     assert response.json()["data"]["connected"] is True
     assert response.json()["data"]["database"] == "ec_retail"
     assert captured["draft"].password == "unit-test-pass"
-
