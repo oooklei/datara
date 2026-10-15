@@ -96,6 +96,7 @@ export const routes: RouteRecordRaw[] = [
   // ---- 重建验证页（独立验证页，不进正式菜单；RED 骨架 — 后端契约接入前全占位） ----
   // 注：R5-A/B 两行（sql-ide-readonly / sql-ide-ddl）在 trae/r5-a-red 分支，合 main 后此处自动补齐
   { path: '/rebuild/validation/schedule', name: 'rebuild-schedule-validation', component: () => import('../views/rebuild/validation/schedule/ScheduleValidationView.vue'), meta: { title: '调度运行时验证（I7）' } },
+  { path: '/rebuild/validation/metrics', name: 'rebuild-metrics-validation', component: () => import('../views/rebuild/validation/metrics/MetricsValidationView.vue'), meta: { title: '统计质量血缘验证（I9）' } },
 
   // ---- 部署运维 ----
   { path: '/dep/runtime', name: 'dep-runtime', component: () => import('../views/deploy/DeployRuntimeView.vue'), meta: { title: '运行时节点' } },
