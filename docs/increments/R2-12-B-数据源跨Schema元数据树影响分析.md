@@ -58,4 +58,4 @@
 
 ## AOCI 治理检查说明
 
-2026-10-15 在 R2-12-A 文件稳定后至 R2-12-B 影响分析/台账更新期间，累计三次调用 `aoci_maintain`。维护均以 `stopped/blocked` 返回：未产生候选或索引写入；报告全仓 Code cognition drift（112 missing、112 unbaselined；125 targets）及 12 个 observed pending review，且提示需先人工检查 scope。此为项目级索引收口问题，不伪称 alignment；R2-12-B 仅在上述全局 scope blocker 被单独复核后开始代码实现。
+2026-10-15 在 R2-12-A 文件稳定后至 R2-12-B 影响分析/台账更新期间，累计四次调用 `aoci_maintain`。维护均以 `stopped/blocked` 返回：未产生候选或索引写入；报告全仓 Code cognition drift（112 missing、112 unbaselined；125 targets）及 12 个 observed pending review，且提示需先人工检查 scope。只读 `scope status` 另显示 5 项观察变化待核对、4 项 inventory 人工检查；本轮没有 ack、改 scope 或写 Entry。AOCI 全局索引仍不宣称 alignment，但此阻塞不涉及 R2-12-B 的源代码语义或外部权限；该增量有独立影响分析、局部源码/测试证据，故允许按 source-bound 范围继续开发，不改 AOCI managed assets。
