@@ -1,0 +1,126 @@
+{
+  "run_id": "R3S9I21-20261015002225-8ece11",
+  "started_at": "2026-10-15T00:22:25.748Z",
+  "timezone": "Asia/Shanghai",
+  "url": "http://192.168.1.9:18091/rebuild-validation-r3-s9-i21.html",
+  "browser": "chromium 153.0.4234.32",
+  "project_id": 3,
+  "actions": [
+    {
+      "name": "select-project-in-page",
+      "project_id": 3,
+      "at": "2026-10-15T00:22:26.526Z"
+    },
+    {
+      "name": "click-i21-read-only-mapping-preview",
+      "at": "2026-10-15T00:22:26.566Z"
+    }
+  ],
+  "checks": [
+    {
+      "name": "protected-runner-token-exchange",
+      "pass": true,
+      "http_status": 200
+    },
+    {
+      "name": "validation-page-loaded",
+      "pass": true,
+      "http_status": 200
+    },
+    {
+      "name": "authorized-project-prefilled",
+      "pass": true,
+      "available_projects": 12
+    },
+    {
+      "name": "i21-preview-api-succeeded",
+      "pass": true,
+      "status": 200
+    },
+    {
+      "name": "all-six-i21-source-tables-rendered",
+      "pass": true,
+      "source_table_rows": 6,
+      "source_counts": {
+        "t_qc_rule": 0,
+        "t_qc_task": 0,
+        "t_qc_run": 0,
+        "t_qc_exception": 0,
+        "t_qc_report": 0,
+        "t_qc_alarm_policy": 0
+      }
+    },
+    {
+      "name": "counts-and-mapping-rendered",
+      "pass": true,
+      "stats": [
+        "0",
+        "0",
+        "0",
+        "0"
+      ],
+      "preview_rows": 1
+    },
+    {
+      "name": "no-parity-or-import-authorization",
+      "pass": true,
+      "parity_verified": false,
+      "import_enabled": false
+    },
+    {
+      "name": "response-excludes-business-payload",
+      "pass": true
+    },
+    {
+      "name": "read-only-boundary-visible",
+      "pass": true,
+      "import_controls": 0
+    },
+    {
+      "name": "no-browser-errors",
+      "pass": true,
+      "error_count": 0
+    }
+  ],
+  "relevant_responses": [
+    {
+      "name": "project-list",
+      "status": 200
+    },
+    {
+      "name": "i21-mapping-preview",
+      "status": 200,
+      "source_schema": "datara_meta",
+      "source_counts": {
+        "t_qc_rule": 0,
+        "t_qc_task": 0,
+        "t_qc_run": 0,
+        "t_qc_exception": 0,
+        "t_qc_report": 0,
+        "t_qc_alarm_policy": 0
+      },
+      "target_counts": {
+        "t_qc_rule": 0,
+        "t_qc_task": 0,
+        "t_qc_exception": 0,
+        "t_qc_report": 0,
+        "t_qc_alarm_policy": 0,
+        "t_qc_run": 0
+      },
+      "preview_counts": {
+        "new_identity_candidate": 0,
+        "target_identity_match": 0,
+        "blocked": 0
+      },
+      "parity_verified": false,
+      "import_enabled": false,
+      "business_values_absent": true,
+      "payload_fields_absent": true
+    }
+  ],
+  "errors": [],
+  "outcome": "PASS",
+  "secrets_recorded": false,
+  "source_payload_recorded": false,
+  "target_writes_authorized": false
+}
