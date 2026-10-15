@@ -101,3 +101,21 @@ Initialization, complete-index generation, Header generation, Entries generation
 
 Do not preload, guess, or reconstruct these specialized workflows. The relevant Guide, tool descriptions, model Prompt, and CLI help provide platform invocation, request format, batch limits, approval rules, index-format details, and recovery steps as needed.
 <!-- aoci:end -->
+
+## Active handoff
+
+活跃交接：`docs/handoff/2026-10-16-并行协作分工.md`（Trae × Codex 并行开发分工与信道规则；新会话开始前必须先读）。交接过期后删除本节。
+
+## Agent skills
+
+### Issue tracker
+
+Issues 存放在 GitHub Issues（oooklei/datara），所有操作通过 gh CLI 完成。See `docs/agents/issue-tracker.md`.
+
+### Triage labels
+
+使用五个默认规范 triage labels：needs-triage、needs-info、ready-for-agent、ready-for-human、wontfix。See `docs/agents/triage-labels.md`.
+
+### Domain docs
+
+Single-context 布局：repo 根目录 GLOSSARY.md 与 docs/adr/。See `docs/agents/domain.md`.

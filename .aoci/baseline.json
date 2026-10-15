@@ -1,7 +1,7 @@
 {
   "version": 1,
   "created_at": "2026-10-02T22:25:37Z",
-  "updated_at": "2026-10-15T15:17:43Z",
+  "updated_at": "2026-10-15T16:41:41Z",
   "files": {
     ".gitattributes": {
       "role": "index",
@@ -38,9 +38,9 @@
     },
     "AGENTS.md": {
       "role": "index",
-      "sha256": "aa32e768c927d0fccdd58cfcd9688329d31c93e7fcc3a20756dabaf145eb38cb",
-      "size": 16044,
-      "normalized_sha256": "aa32e768c927d0fccdd58cfcd9688329d31c93e7fcc3a20756dabaf145eb38cb"
+      "sha256": "3cf6fd465743f9395f7ebf60267812c45db72572cf4b15bb5369129fa4467a7a",
+      "size": 16246,
+      "normalized_sha256": "3cf6fd465743f9395f7ebf60267812c45db72572cf4b15bb5369129fa4467a7a"
     },
     "Datara/docs/increments/i12_proofs/I12_verification_summary_P2.3.md": {
       "role": "index",
@@ -128,9 +128,9 @@
     },
     "aoci.code.txt": {
       "role": "index",
-      "sha256": "e567250332dc0cd4eeb5f4c10a4dbfae2fd28bf2bbac90a3173e956e38c26d8e",
-      "size": 194117,
-      "normalized_sha256": "e567250332dc0cd4eeb5f4c10a4dbfae2fd28bf2bbac90a3173e956e38c26d8e"
+      "sha256": "69f6bbbd02c983430c67950016c3d78443710e9966a1608aa7afdc861d943961",
+      "size": 194842,
+      "normalized_sha256": "69f6bbbd02c983430c67950016c3d78443710e9966a1608aa7afdc861d943961"
     },
     "aoci.meta.txt": {
       "role": "index",
@@ -4190,6 +4190,12 @@
       "sha256": "60b6668892877e79a42adfb7594e0691ce5eceb3d0a7bb245e6afb7d0d13a85b",
       "size": 46540,
       "normalized_sha256": "60b6668892877e79a42adfb7594e0691ce5eceb3d0a7bb245e6afb7d0d13a85b"
+    },
+    "docs/handoff/2026-10-16-并行协作分工.md": {
+      "role": "index",
+      "sha256": "9f42d228580b7e8f5e9657edf3f25fd9e7ae7cbbe8f14da9fbfba873381687a7",
+      "size": 2390,
+      "normalized_sha256": "9f42d228580b7e8f5e9657edf3f25fd9e7ae7cbbe8f14da9fbfba873381687a7"
     },
     "docs/increments/00-流程与记录.md": {
       "role": "index",

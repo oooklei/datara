@@ -3,7 +3,7 @@
 ===D:/需求/数据治理工具/Datara/===
 .gitattributes[CC4T]: F:Normalizes checkout line endings for reproducible AOCI byte baselines. | R:- | A:Git attributes apply LF normalization to tracked text while leaving binaries untouched. | S:Windows autocrlf must not rewrite baseline bytes.
 .gitignore[CC4T]: F:Excludes dependencies, build artifacts, logs, and local deployment outputs from version control. | R:- | A:Repository hygiene rules used by developers and CI. | S:Do not ignore source or AOCI managed cognition assets.
-AGENTS.md[XZ9L]: F:Defines the repository cognition contract and agent operating rules. | R:- | A:Governs AOCI overview, maintenance, authoring, and safe task closure. | S:Machine-issued AOCI rules take precedence over prose guidance.
+AGENTS.md[SC6S]: F:Defines agent workspace rules: the AOCI cognition contract, the active handoff channel, and agent skills routing for issues, triage, and domain docs. | R:code:docs/agents/issue-tracker.md,code:docs/agents/triage-labels.md,code:docs/agents/domain.md,code:docs/handoff/2026-10-16-并行协作分工.md | A:Always-applied workspace rules loaded by every agent session. | S:The aoci:begin/end managed block must not be edited outside AOCI pipelines.
 LICENSE[ZS8S]: F:States the dual AGPLv3 and commercial licensing terms for Datara. | R:- | A:Applies to distribution and network use of the platform. | S:Commercial use requires the separate commercial agreement.
 LICENSE-COMMERCIAL.md[ZS5S]: F:Documents the commercial licensing option and review caveats. | R:- | A:Supports licensing decisions alongside LICENSE. | S:This is an unofficial template and requires legal review before issuance.
 README.md[ZS5S]: F:Introduces Datara as a data-governance platform and links its licensing and setup context. | R:- | A:Provides project entry documentation for users and maintainers. | S:Keep usage and license claims aligned with implementation.
@@ -1090,4 +1090,7 @@ S3-log-autoschema.png[ZS5T]: F:Stores screenshot evidence in docs/use-cases/sync
 S4-instance.png[ZS5T]: F:Stores screenshot evidence in docs/use-cases/sync/shots/S4-instance.png. | R:- | A:- | S:-
 S4-log-staging.png[ZS5T]: F:Stores screenshot evidence in docs/use-cases/sync/shots/S4-log-staging.png. | R:- | A:- | S:-
 S5-dag-parallel.png[ZS5T]: F:Stores screenshot evidence in docs/use-cases/sync/shots/S5-dag-parallel.png. | R:- | A:- | S:-
+
+===D:/需求/数据治理工具/Datara/docs/handoff/===
+2026-10-16-并行协作分工.md[SO5T]: F:Records the Trae-Codex parallel development ownership split, five hard collaboration rules, and the handoff message loop. | R:code:AGENTS.md,code:docs/increments/R3-execution-status.md | A:Defines the task-level channel and file boundaries both agents must honor at session start. | S:Single-writer for shared files; AOCI write windows are mutually exclusive; user-only gates stay with the user.
 
