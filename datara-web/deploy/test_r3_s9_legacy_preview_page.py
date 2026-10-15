@@ -179,7 +179,8 @@ def test_i18_headed_admin_launcher_transfers_token_via_stdin_without_string_copy
     script = ADMIN_LAUNCHER.read_text(encoding="utf-8")
 
     assert "Read-Host" in script and "-AsSecureString" in script
-    assert "SecureStringToBSTR" in script and "ZeroBSTR" in script
+    # ZeroFreeBSTR（覆写并释放 BSTR 分配）强于 ZeroBSTR（仅覆写、泄漏分配）— 合同钉死更强原语
+    assert "SecureStringToBSTR" in script and "ZeroFreeBSTR" in script
     # 全程无可清零性差的托管字符串副本（禁用 PtrToStringBSTR），仅使用可清零字节缓冲
     assert "PtrToStringBSTR" not in script
     assert "[System.Array]::Clear" in script
@@ -203,6 +204,10 @@ def test_i18_headed_admin_launcher_transfers_token_via_stdin_without_string_copy
     assert script.index("try {") < script.index("SecureStringToBSTR") < script.index("finally {")
     assert script.index("finally {") < script.index("$secure.Dispose()")
     assert "if ($ptr -ne [IntPtr]::Zero)" in script
+    # 嵌套 finally（加固）：ZeroFreeBSTR 自身失败不得中断清理链 — 其后必有一层嵌套 finally
+    # 先于 $secure.Dispose()，保证 Dispose/UTF-16 清零无条件执行。
+    assert script.index("ZeroFreeBSTR") > script.index("finally {")
+    assert script.index("finally {", script.index("ZeroFreeBSTR")) < script.index("$secure.Dispose()")
 
 
 def test_i18_runner_admin_mode_reads_token_from_stdin_with_leak_guard():

@@ -33,15 +33,21 @@ try {
     }
 }
 finally {
-    if ($ptr -ne [IntPtr]::Zero) {
-        [System.Runtime.InteropServices.Marshal]::ZeroBSTR($ptr)
-        $ptr = [IntPtr]::Zero
+    try {
+        if ($ptr -ne [IntPtr]::Zero) {
+            # ZeroFreeBSTR 同时覆写 BSTR 内容并释放内存；ZeroBSTR 并非所有
+            # PowerShell/.NET 运行时都提供，会导致 finally 中断并跳过后续清理。
+            [System.Runtime.InteropServices.Marshal]::ZeroFreeBSTR($ptr)
+            $ptr = [IntPtr]::Zero
+        }
     }
-    # SecureString 无条件释放（即使上面的转换失败）
-    $secure.Dispose()
-    if ($utf16) {
-        [System.Array]::Clear($utf16, 0, $utf16.Length)
-        $utf16 = $null
+    finally {
+        # 即使 BSTR 清理失败，也无条件释放 SecureString 并清零 UTF-16 副本。
+        $secure.Dispose()
+        if ($utf16) {
+            [System.Array]::Clear($utf16, 0, $utf16.Length)
+            $utf16 = $null
+        }
     }
 }
 if (-not $utf8 -or $utf8.Length -eq 0) { throw 'Admin token is required for the headed confirmation gate.' }
