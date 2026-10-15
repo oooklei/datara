@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import json
+import subprocess
 from html.parser import HTMLParser
 from pathlib import Path
 
@@ -28,7 +30,17 @@ def test_i18_preview_page_has_prepopulated_project_and_operable_preview_controls
     controls = PageControls()
     controls.feed(html)
 
-    assert {"projectSelect", "runDryRun", "reloadProjects", "planRows", "issueList", "importOrder"} <= set(
+    assert {
+        "projectSelect",
+        "runDryRun",
+        "reloadProjects",
+        "planRows",
+        "issueList",
+        "importOrder",
+        "importStatus",
+        "importConfirmPhrase",
+        "runI18Import",
+    } <= set(
         controls.ids
     )
     assert 'data-testid="run-dry-run"' in html
@@ -49,6 +61,7 @@ def test_i18_preview_page_uses_short_lived_injected_token_without_login_or_key_s
     assert "localstorage" not in html
     assert "sessionstorage" not in html
     assert not any(name in {"username", "password", "login"} for _, name in controls.inputs)
+    assert not any(name == "importConfirmPhrase" and kind == "password" for kind, name in controls.inputs)
 
 
 def test_i18_preview_page_calls_actual_read_only_dry_run_contract_and_renders_response_fields():
@@ -64,6 +77,7 @@ def test_i18_preview_page_calls_actual_read_only_dry_run_contract_and_renders_re
         "plan.entries",
         "plan.import_order",
         "plan.issues",
+        "plan.ready_to_import",
     ):
         assert contract_field in html
 
@@ -76,7 +90,207 @@ def test_i18_runner_uses_protected_runtime_key_and_real_page_controls():
     assert "DATARA_REBUILD_VALIDATION_KEY" in runner and "validation-token" in runner
     assert "addInitScript" in runner and "__DATARA_TEST_TOKEN__" in runner
     assert "getByTestId('run-dry-run').click()" in runner
+    assert "snapshot_digests" in runner and "sourceDigest" in runner and "targetDigest" in runner
+    assert "approved-project-3" in runner
+    assert "importConfirmPhrase" in runner and "runI18Import" in runner
+    assert "run-i18-import-confirmation-ready" in runner
+    assert "getByTestId('run-i18-import').click()" not in runner
     assert "writeFile(reportPath" in runner and "screenshot" in runner
     assert "REBUILD_VALIDATION_KEY" in launcher
     assert "Remove-Item Env:DATARA_REBUILD_VALIDATION_KEY" in launcher
-    assert "localStorage" not in runner and "sessionStorage" not in runner
+    # runner 不得向页面持久存储写入 token（只允许泄漏闸对空存储的只读探针）
+    assert "localStorage.setItem" not in runner and "sessionStorage.setItem" not in runner
+    assert "localStorage.clear" not in runner and "sessionStorage.clear" not in runner
+
+
+def test_i18_preview_page_generates_idempotency_key_in_non_secure_context():
+    """缺口 #1：crypto.randomUUID 仅 secure context 可用；页面必须带回退，禁止无条件调用。"""
+    html = PAGE.read_text(encoding="utf-8")
+
+    assert "generateIdempotencyKey" in html
+    # crypto.randomUUID() 只允许出现在类型守卫后的 return 处（1 次），禁止任何无条件调用
+    assert html.count("crypto.randomUUID()") == 1
+    assert "typeof crypto?.randomUUID === 'function'" in html
+    assert "getRandomValues" in html
+    assert "(bytes[6] & 0x0f) | 0x40" in html and "(bytes[8] & 0x3f) | 0x80" in html
+    assert "无安全随机源" in html
+
+
+def test_i18_preview_page_plan_table_has_no_misleading_target_entity_column():
+    """缺口 #3：后端 entries 契约无 target 实体字段，列须删除而非误渲染 source_table。"""
+    html = PAGE.read_text(encoding="utf-8")
+
+    assert "<th>目标实体</th>" not in html
+    assert "<th>来源表</th><th>来源主键</th><th>计划</th><th>说明</th>" in html
+    assert 'colspan="5"' not in html and 'colspan="4"' in html
+    rendered = html.split("planRows').innerHTML=entries.length")[1]
+    assert "<td>${escapeHtml(entry.source_table)}</td><td>${escapeHtml(entry.source_id)}</td><td><span" in rendered
+
+
+def test_i18_preview_page_preserves_4097_partial_completion_payload():
+    """缺口 #4：4097 部分完成响应的 batch_id/status 须保存到 error.data 并在导入状态展示。"""
+    html = PAGE.read_text(encoding="utf-8")
+
+    assert "error.data=payload.data??null" in html
+    assert "error&&error.data&&error.data.batch_id" in html
+    assert "导入部分完成：批次" in html and "partial.status" in html and "partial.imported_count" in html
+
+
+def test_i18_preview_page_pill_covers_all_dispositions():
+    """缺口 #7：skipped/unchanged 徽章须有专属配色。"""
+    html = PAGE.read_text(encoding="utf-8")
+
+    assert ".pill.skipped{" in html and ".pill.unchanged{" in html
+
+
+def test_i18_preview_page_mapping_details_survive_disposition_reason():
+    """缺口 #6：映射明细与 disposition_reason 拼接展示，不得被 fallback 链遮蔽。"""
+    html = PAGE.read_text(encoding="utf-8")
+
+    assert "[entry.disposition_reason,notes,entry.fingerprint].filter(Boolean).join" in html
+    assert "entry.disposition_reason||notes||entry.fingerprint" not in html
+
+
+def test_i18_preview_page_reveals_idempotency_key_and_states_refresh_risk():
+    """缺口 #5：幂等键在导入状态可见可审计；锁定文案如实陈述刷新后会生成新键（无存储契约不变）。"""
+    html = PAGE.read_text(encoding="utf-8").lower()
+
+    assert "幂等键 ${state.idempotencykey}" in html
+    assert "刷新页面会生成新的幂等键" in html
+    assert "localstorage" not in html and "sessionstorage" not in html and "document.cookie" not in html
+
+
+def test_i18_preview_page_token_surface_stays_injection_only():
+    """缺口 #2 合同：token 只读 window.__DATARA_TEST_TOKEN__ 注入面，不落 DOM 属性/存储/日志。"""
+    html = PAGE.read_text(encoding="utf-8")
+
+    assert "window.__DATARA_TEST_TOKEN__ || ''" in html
+    token_reads = html.count("__DATARA_TEST_TOKEN__")
+    assert token_reads == 1
+    assert "console." not in html
+    assert "Authorization:`Bearer ${token}`" in html
+
+
+ADMIN_LAUNCHER = Path(__file__).parent / "run-r3-s9-i18-admin-headed.ps1"
+
+
+def test_i18_headed_admin_launcher_transfers_token_via_stdin_without_string_copy():
+    """缺口 #2 返工（Codex 裁定）：token 经 stdin 单向管道 — 不进 argv、不进环境变量、无托管字符串副本。"""
+    script = ADMIN_LAUNCHER.read_text(encoding="utf-8")
+
+    assert "Read-Host" in script and "-AsSecureString" in script
+    # ZeroFreeBSTR（覆写并释放 BSTR 分配）强于 ZeroBSTR（仅覆写、泄漏分配）— 合同钉死更强原语
+    assert "SecureStringToBSTR" in script and "ZeroFreeBSTR" in script
+    # 全程无可清零性差的托管字符串副本（禁用 PtrToStringBSTR），仅使用可清零字节缓冲
+    assert "PtrToStringBSTR" not in script
+    assert "[System.Array]::Clear" in script
+    # stdin 管道传递：--token-stdin 模式 + 仅重定向 stdin；token 不在任何环境变量
+    assert "--token-stdin" in script
+    assert "RedirectStandardInput = $true" in script
+    assert "StandardInput.BaseStream" in script
+    # token 不在任何环境变量；变量名仅允许出现一次 — 防御性清除上级环境残留（fail-closed 拒绝旧通道）
+    assert script.count("DATARA_REBUILD_ADMIN_TOKEN") == 1
+    assert "Remove('DATARA_REBUILD_ADMIN_TOKEN')" in script
+    # 不落盘、不回显、不打印
+    assert "Out-File" not in script and "Set-Content" not in script and "Add-Content" not in script
+    assert "Write-Host" not in script and "Write-Output" not in script
+    # 清理缺口回归（Codex 二审）：SecureString 用毕释放；UTF-16/UTF-8 各一次清零；
+    # UTF-8 清零必须在 Process.Start 之后（外层 finally 覆盖启动失败路径，缓冲不残留）
+    assert "$secure.Dispose()" in script
+    assert script.count("[System.Array]::Clear") == 2
+    assert script.index("[System.Diagnostics.Process]::Start") < script.rindex("[System.Array]::Clear($utf8")
+    # 清理缺口回归（Codex 复审 8441e49）：BSTR 转换在 try 内，finally 有条件清零非零指针 +
+    # 无条件 Dispose SecureString（转换异常也必须走到清理）
+    assert script.index("try {") < script.index("SecureStringToBSTR") < script.index("finally {")
+    assert script.index("finally {") < script.index("$secure.Dispose()")
+    assert "if ($ptr -ne [IntPtr]::Zero)" in script
+    # 嵌套 finally（加固）：ZeroFreeBSTR 自身失败不得中断清理链 — 其后必有一层嵌套 finally
+    # 先于 $secure.Dispose()，保证 Dispose/UTF-16 清零无条件执行。
+    assert script.index("ZeroFreeBSTR") > script.index("finally {")
+    assert script.index("finally {", script.index("ZeroFreeBSTR")) < script.index("$secure.Dispose()")
+
+
+def test_i18_runner_admin_mode_reads_token_from_stdin_with_leak_guard():
+    """缺口 #2 返工（Codex 裁定）：runner 仅从 stdin 读 admin token，且 argv/环境/日志/证据/持久存储有 fail-closed 泄漏闸。"""
+    runner = RUNNER.read_text(encoding="utf-8")
+
+    assert "DATARA_REBUILD_ADMIN_TOKEN" not in runner
+    assert "process.argv.includes('--token-stdin')" in runner
+    assert "readAdminTokenFromStdin" in runner
+    assert "chunk.fill(0)" in runner  # stdin 字节缓冲读毕即清零
+    # 泄漏闸 fail-closed：任一面命中即拒绝写证据
+    assert "assertNoTokenLeak" in runner
+    assert "refusing to record evidence" in runner
+    # 受控面覆盖：argv、环境变量、证据 JSON、stdout 摘要 + 页面持久存储只读探针
+    assert "argv: process.argv.join" in runner
+    assert "env: Object.entries(process.env)" in runner
+    assert "evidence: JSON.stringify(report)" in runner
+    assert "stdout: stdoutSummary" in runner
+    assert "no-persistent-token-storage" in runner
+    # admin-headed 模式行为：headed 打开、token 仅经 init script 注入内存、导入仍由人工点击
+    assert "admin-headed-manual-injection" in runner
+    assert "headless: adminHeaded ? false : true" in runner
+    assert "getByTestId('run-i18-import')" not in runner
+    assert "importConfirmPhrase').fill(" not in runner and "keyboard" not in runner
+    assert "waiting-for-human-confirmation-and-click" in runner
+    # PASS 判定单一事实源接线（r3-s9-import-gate.cjs）：2xx + 终态文案 + runtime 终态三参齐备
+    assert "require('./r3-s9-import-gate.cjs')" in runner
+    assert "importGateVerdict(importResponse, importStatusText, terminalRuntimeState)" in runner
+    # 两阶段等待（Codex 裁定）：先等人工提交转 running，再等 complete|failed 终态；
+    # 中间态"导入事务已完成…正在发起只读复核"（running）不唤醒，禁用弱"批次字样"等待
+    assert "dataset.state === 'running'" in runner
+    assert "'complete', 'failed'].includes" in runner
+    assert "/批次/.test(document.querySelector" not in runner
+    # 双模式互斥（stdin 新通道语义）
+    assert "Set exactly one of DATARA_REBUILD_VALIDATION_KEY (env) / --token-stdin (stdin)" in runner
+    # token 不进证据：报告/检查输出无 token 值字段
+    assert "admin_token:" not in runner and "token:" not in runner.replace("auth_token", "")
+    # TDZ 缺陷回归钉死：reportPath 声明必须先于 stdoutSummary（Codex 审出的运行期 ReferenceError）
+    assert runner.index("const reportPath") < runner.index("const stdoutSummary")
+    # 清理缺口回归（Codex 二审）：token 引用清空置于内层 finally — 断言/证据/stdout 失败也不得跳过
+    assert runner.count("let token = null") == 1
+    assert runner.count("token = null;") == 2  # 声明 + finally 兜底清引用
+    assert runner.rindex("token = null;") > runner.rindex("assertNoTokenLeak")
+
+
+IMPORT_GATE = Path(__file__).parent / "r3-s9-import-gate.cjs"
+
+
+def test_i18_import_gate_predicate_requires_accepted_2xx_and_explicit_success_ui():
+    """Codex 裁定：导入 PASS 必须要求已接受 2xx + 终态成功文案 + runtime 终态 complete；假响应回归。"""
+    probe = subprocess.run(
+        [
+            "node", "-e",
+            "const { importGateVerdict } = require('./deploy/r3-s9-import-gate.cjs');"
+            "const accepted = importGateVerdict({ status: 200 }, '导入与只读复核通过：批次 R3S9-FAKE。', 'complete');"
+            "const partial409 = importGateVerdict({ status: 409 }, '导入部分完成：批次 R3S9-FAKE', 'failed');"
+            "const noResponse = importGateVerdict(undefined, '导入与只读复核通过', 'complete');"
+            "const httpOnly = importGateVerdict({ status: 200 }, '批次已创建', 'complete');"
+            "const serverError = importGateVerdict({ status: 500 }, '导入与只读复核通过', 'complete');"
+            "const intermediate = importGateVerdict({ status: 200 },"
+            "  '导入事务已完成：44 新增、1 跳过、0 错误；批次 R3S9-FAKE。正在发起只读复核。', 'running');"
+            "const intermediateCompleteRuntime = importGateVerdict({ status: 200 },"
+            "  '导入事务已完成：44 新增。正在发起只读复核。', 'complete');"
+            "const runtimeFailed = importGateVerdict({ status: 200 }, '导入与只读复核通过：批次 R3S9-FAKE。', 'failed');"
+            "process.stdout.write(JSON.stringify({"
+            "accepted: accepted.pass, partial409: partial409.pass, noResponse: noResponse.pass,"
+            "httpOnly: httpOnly.pass, serverError: serverError.pass, intermediate: intermediate.pass,"
+            "intermediateCompleteRuntime: intermediateCompleteRuntime.pass, runtimeFailed: runtimeFailed.pass }));",
+        ],
+        capture_output=True,
+        text=True,
+        cwd=RUNNER.parents[1],
+    )
+    assert probe.returncode == 0, probe.stderr
+    verdicts = json.loads(probe.stdout)
+    assert verdicts == {
+        "accepted": True,
+        "partial409": False,
+        "noResponse": False,
+        "httpOnly": False,
+        "serverError": False,
+        # Codex 裁定：导入事务已完成是中间态（只读复核尚未执行），任何组合都不得 PASS
+        "intermediate": False,
+        "intermediateCompleteRuntime": False,
+        "runtimeFailed": False,
+    }

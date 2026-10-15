@@ -2,9 +2,13 @@ const fs = require('node:fs/promises');
 const path = require('node:path');
 const crypto = require('node:crypto');
 const { chromium } = require('playwright-core');
+const { importGateVerdict } = require('./r3-s9-import-gate.cjs');
 
 const baseUrl = process.env.DATARA_REBUILD_BASE_URL;
 const validationKey = process.env.DATARA_REBUILD_VALIDATION_KEY;
+// #2 人工确认闸（Codex 返工裁定）：admin token 不走环境变量、不走 argv —
+// 仅经 stdin 单向管道（--token-stdin）由 headed launcher 注入本进程。
+const tokenViaStdin = process.argv.includes('--token-stdin');
 const expectedBaseUrl = 'http://192.168.1.9:18091';
 const evidenceDir = path.resolve(__dirname, '../../docs/increments/evidence/R3');
 
@@ -13,9 +17,41 @@ function check(checks, name, pass, details = {}) {
   if (!pass) throw new Error(`UI assertion failed: ${name}`);
 }
 
+// stdin 单向通道读取 admin token — 字节缓冲在任何退出路径（含解码失败）都清零。
+async function readAdminTokenFromStdin() {
+  const chunks = [];
+  try {
+    for await (const chunk of process.stdin) chunks.push(chunk);
+    const joined = Buffer.concat(chunks);
+    try {
+      return joined.toString('utf8').trim();
+    } finally {
+      joined.fill(0);
+    }
+  } finally {
+    for (const chunk of chunks) chunk.fill(0);
+    chunks.length = 0;
+  }
+}
+
+// 泄漏闸（fail-closed）：受控面（argv/环境变量/证据 JSON/stdout 摘要）任一命中即拒绝记录证据。
+function assertNoTokenLeak(token, surfaces) {
+  if (!token) return;
+  for (const [surface, text] of Object.entries(surfaces)) {
+    if (typeof text === 'string' && text.includes(token)) {
+      throw new Error(`secret leak detected in ${surface}; refusing to record evidence`);
+    }
+  }
+}
+
 async function main() {
   if (baseUrl !== expectedBaseUrl) throw new Error('S9 runner is restricted to http://192.168.1.9:18091');
-  if (!validationKey) throw new Error('S9 runner requires a protected runtime validation key');
+  if (!validationKey && !tokenViaStdin) {
+    throw new Error('S9 runner requires a protected runtime validation key (env) or a manually injected short-lived admin token via stdin (--token-stdin)');
+  }
+  if (validationKey && tokenViaStdin) {
+    throw new Error('Set exactly one of DATARA_REBUILD_VALIDATION_KEY (env) / --token-stdin (stdin)');
+  }
   await fs.mkdir(evidenceDir, { recursive: true });
 
   const startedAt = new Date().toISOString();
@@ -31,7 +67,9 @@ async function main() {
     timezone: 'Asia/Shanghai',
     url: pageUrl,
     browser: null,
+    auth_mode: tokenViaStdin ? 'admin-headed-manual-injection' : 'protected-runner-token-exchange',
     project_id: null,
+    snapshot_digests: null,
     actions,
     checks,
     relevant_responses: responses,
@@ -41,18 +79,28 @@ async function main() {
   };
 
   let browser;
+  let token = null;
   try {
-    const exchange = await fetch(new URL('/api/v1/rebuild/validation-token', baseUrl), {
-      method: 'POST',
-      headers: { 'X-Backend-Validation-Key': validationKey },
-    });
-    const exchangeBody = await exchange.json();
-    check(checks, 'protected-runner-token-exchange', exchange.ok && Boolean(exchangeBody?.data?.token), {
-      http_status: exchange.status,
-    });
-    const token = exchangeBody.data.token;
+    let adminHeaded = false;
+    if (tokenViaStdin) {
+      // #2 人工确认闸路径：短时 admin token 由人工经 headed launcher 以 stdin 管道注入本进程，
+      // 仅经 addInitScript 进入当前页面内存；不进 argv/环境变量/URL/DOM 属性/持久存储/日志/证据/仓库。
+      adminHeaded = true;
+      token = await readAdminTokenFromStdin();
+      check(checks, 'admin-token-manual-injection-mode', token.length > 0);
+    } else {
+      const exchange = await fetch(new URL('/api/v1/rebuild/validation-token', baseUrl), {
+        method: 'POST',
+        headers: { 'X-Backend-Validation-Key': validationKey },
+      });
+      const exchangeBody = await exchange.json();
+      check(checks, 'protected-runner-token-exchange', exchange.ok && Boolean(exchangeBody?.data?.token), {
+        http_status: exchange.status,
+      });
+      token = exchangeBody.data.token;
+    }
 
-    const launchOptions = { headless: true };
+    const launchOptions = { headless: adminHeaded ? false : true };
     if (process.env.DATARA_PLAYWRIGHT_EXECUTABLE) {
       launchOptions.executablePath = process.env.DATARA_PLAYWRIGHT_EXECUTABLE;
     }
@@ -68,6 +116,7 @@ async function main() {
     page.on('requestfailed', request => errors.push({ kind: 'requestfailed', url: request.url(), error: request.failure()?.errorText }));
     page.on('response', response => {
       if (response.url().includes('/legacy/i18/dry-run')) responses.push({ name: 'i18-dry-run', status: response.status() });
+      if (response.url().includes('/legacy/i18/import')) responses.push({ name: 'i18-import', status: response.status() });
       if (response.url().endsWith('/api/v1/rebuild/projects')) responses.push({ name: 'project-list', status: response.status() });
     });
 
@@ -78,10 +127,11 @@ async function main() {
       return select?.options.length > 0 && Boolean(select.options[0].value);
     }, null, { timeout: 30000 });
     const options = await page.locator('#projectSelect option').evaluateAll(items => items.filter(item => item.value).map(item => ({ id: item.value })));
-    check(checks, 'authorized-project-prefilled', options.length > 0 && Boolean(options[0].id), { available_projects: options.length });
+    const approvedProject = options.find(project => project.id === '3');
+    check(checks, 'approved-project-3', Boolean(approvedProject), { available_projects: options.length });
 
-    await page.locator('#projectSelect').selectOption(options[0].id);
-    report.project_id = Number(options[0].id);
+    await page.locator('#projectSelect').selectOption(approvedProject.id);
+    report.project_id = Number(approvedProject.id);
     actions.push({ name: 'select-project-in-page', project_id: report.project_id, at: new Date().toISOString() });
     await page.getByTestId('run-dry-run').click();
     actions.push({ name: 'click-read-only-i18-preview', at: new Date().toISOString() });
@@ -90,6 +140,15 @@ async function main() {
     const resultStatus = await page.locator('#runtimeStatus').getAttribute('data-state');
     const notice = (await page.locator('#notice').innerText()).trim();
     const stats = await page.evaluate(() => ['sourceRows', 'targetRows', 'plannedRows', 'skippedRows', 'blockedRows'].map(id => document.querySelector(`#${id}`)?.textContent?.trim()));
+    const snapshotDigests = await page.evaluate(() => ({
+      source_digest: document.querySelector('#sourceDigest')?.textContent?.trim() || '',
+      target_digest: document.querySelector('#targetDigest')?.textContent?.trim() || '',
+    }));
+    report.snapshot_digests = snapshotDigests;
+    check(checks, 'approved-i18-snapshot-digests', /^[0-9a-f]{64}$/.test(snapshotDigests.source_digest) && /^[0-9a-f]{64}$/.test(snapshotDigests.target_digest), {
+      source_digest: snapshotDigests.source_digest,
+      target_digest: snapshotDigests.target_digest,
+    });
     const visibleIssues = await page.locator('#issueList .issue').allTextContents();
     const planRows = await page.locator('#planRows tr').allTextContents();
     const issueCodeCounts = visibleIssues.reduce((counts, text) => {
@@ -117,7 +176,61 @@ async function main() {
       mapping_rows: planRows.filter(row => row.includes('order_id') || row.includes('order_date')),
     });
     check(checks, 'page-reported-no-target-import', notice.includes('未执行迁移'));
+    const confirmationPhrase = await page.getByTestId('required-confirm-phrase').innerText();
+    const confirmationEnabled = await page.locator('#importConfirmPhrase').isEnabled();
+    const importButtonDisabled = await page.locator('#runI18Import').isDisabled();
+    check(
+      checks,
+      'run-i18-import-confirmation-ready',
+      resultStatus === 'complete' && confirmationEnabled && importButtonDisabled &&
+        confirmationPhrase === `IMPORT I18 3 ${snapshotDigests.source_digest} ${snapshotDigests.target_digest}`,
+      {
+        confirmation_input_enabled: confirmationEnabled,
+        import_button_disabled_until_human_confirmation: importButtonDisabled,
+        confirmation_phrase_matches_live_digests: confirmationPhrase ===
+          `IMPORT I18 3 ${snapshotDigests.source_digest} ${snapshotDigests.target_digest}`,
+      },
+    );
     check(checks, 'no-browser-errors', errors.length === 0, { error_count: errors.length });
+
+    if (adminHeaded) {
+      // 人工确认闸：headed 窗口交由人工输入确认语并点击导入；runner 不代输、不点击（任何模式）。
+      // 仅等待页面自身到达导入终态，并记录导入响应状态与页面终态作为证据。
+      check(checks, 'import-gate-open-for-human', await page.locator('#runI18Import').isEnabled());
+      actions.push({ name: 'waiting-for-human-confirmation-and-click', at: new Date().toISOString() });
+      // 两阶段等待（Codex 裁定）：先等人工提交（runtimeStatus 转 running，预检 complete 不再算终态），
+      // 再等导入流程终态 — 中间态"导入事务已完成…正在发起只读复核"仍是 running，不唤醒。
+      await page.waitForFunction(
+        () => document.querySelector('#runtimeStatus')?.dataset.state === 'running',
+        null,
+        { timeout: 600000 },
+      );
+      await page.waitForFunction(
+        () => ['complete', 'failed'].includes(document.querySelector('#runtimeStatus')?.dataset.state),
+        null,
+        { timeout: 600000 },
+      );
+      const importStatusText = (await page.locator('#importStatus').innerText()).trim();
+      const importResponse = responses.find(item => item.name === 'i18-import');
+      // PASS 判定单一事实源（r3-s9-import-gate.cjs）：已接受 2xx + 终态成功文案 + runtime 终态 complete
+      // 三者齐备；中间完成/复核计数异常/部分完成/非 2xx 均如实记 FAIL，细节入证据。
+      const terminalRuntimeState = await page.locator('#runtimeStatus').getAttribute('data-state');
+      const verdict = importGateVerdict(importResponse, importStatusText, terminalRuntimeState);
+      check(checks, 'human-confirmed-import-recorded', verdict.pass, {
+        import_http_status: verdict.status,
+        import_accepted_2xx: verdict.importAccepted,
+        import_completed: verdict.importSucceededInUi,
+        runtime_state: terminalRuntimeState,
+        import_status_text: importStatusText,
+      });
+      actions.push({ name: 'human-confirmation-finished', at: new Date().toISOString() });
+      // 持久化面探针：token 只存在于页面内存（init script 注入），localStorage/sessionStorage 必须为空。
+      const storageProbe = await page.evaluate(() => ({
+        local: window.localStorage.length,
+        session: window.sessionStorage.length,
+      }));
+      check(checks, 'no-persistent-token-storage', storageProbe.local === 0 && storageProbe.session === 0, storageProbe);
+    }
 
     await page.screenshot({ path: path.join(evidenceDir, `${runId.toLowerCase()}-summary.png`), fullPage: false });
     report.outcome = 'PASS';
@@ -125,10 +238,24 @@ async function main() {
   } catch (error) {
     errors.push({ kind: 'runner', message: error.message });
   } finally {
-    if (browser) await browser.close();
-    const reportPath = path.join(evidenceDir, `${runId.toLowerCase()}.json`);
-    await fs.writeFile(reportPath, `${JSON.stringify(report, null, 2)}\n`, 'utf8');
-    process.stdout.write(`${JSON.stringify({ run_id: runId, outcome: report.outcome, checks, evidence: reportPath })}\n`);
+    // 内层 finally 兜底（Codex 二审）：泄漏闸断言、证据写入或 stdout 写入失败都不得跳过 token 清理。
+    try {
+      if (browser) await browser.close();
+      // 先声明 reportPath（Codex 审出的 TDZ 缺陷：stdoutSummary 不得引用未初始化的 const）。
+      const reportPath = path.join(evidenceDir, `${runId.toLowerCase()}.json`);
+      // 泄漏闸（fail-closed）：argv / 环境变量 / 证据 JSON / stdout 摘要任一面出现 token 即拒绝写证据。
+      assertNoTokenLeak(token, {
+        argv: process.argv.join(' '),
+        env: Object.entries(process.env).map(([name, value]) => `${name}=${value ?? ''}`).join('\n'),
+        evidence: JSON.stringify(report),
+      });
+      const stdoutSummary = JSON.stringify({ run_id: runId, outcome: report.outcome, checks, evidence: reportPath });
+      assertNoTokenLeak(token, { stdout: stdoutSummary });
+      await fs.writeFile(reportPath, `${JSON.stringify(report, null, 2)}\n`, 'utf8');
+      process.stdout.write(`${stdoutSummary}\n`);
+    } finally {
+      token = null;
+    }
   }
 
   if (report.outcome !== 'PASS') process.exitCode = 1;
