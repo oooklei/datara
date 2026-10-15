@@ -195,23 +195,32 @@ async function main() {
 
     if (adminHeaded) {
       // 人工确认闸：headed 窗口交由人工输入确认语并点击导入；runner 不代输、不点击（任何模式）。
-      // 仅等待页面自身在导入完成后展示批次结果，并记录导入响应状态作为证据。
+      // 仅等待页面自身到达导入终态，并记录导入响应状态与页面终态作为证据。
       check(checks, 'import-gate-open-for-human', await page.locator('#runI18Import').isEnabled());
       actions.push({ name: 'waiting-for-human-confirmation-and-click', at: new Date().toISOString() });
+      // 两阶段等待（Codex 裁定）：先等人工提交（runtimeStatus 转 running，预检 complete 不再算终态），
+      // 再等导入流程终态 — 中间态"导入事务已完成…正在发起只读复核"仍是 running，不唤醒。
       await page.waitForFunction(
-        () => /批次/.test(document.querySelector('#importStatus')?.textContent || ''),
+        () => document.querySelector('#runtimeStatus')?.dataset.state === 'running',
+        null,
+        { timeout: 600000 },
+      );
+      await page.waitForFunction(
+        () => ['complete', 'failed'].includes(document.querySelector('#runtimeStatus')?.dataset.state),
         null,
         { timeout: 600000 },
       );
       const importStatusText = (await page.locator('#importStatus').innerText()).trim();
       const importResponse = responses.find(item => item.name === 'i18-import');
-      // PASS 判定单一事实源（r3-s9-import-gate.cjs）：必须已接受 2xx + 页面明确成功终态；
-      // "有响应 + 批次字样"不足以 PASS（409 部分完成 / 非 2xx 均如实记 FAIL，细节入证据）。
-      const verdict = importGateVerdict(importResponse, importStatusText);
+      // PASS 判定单一事实源（r3-s9-import-gate.cjs）：已接受 2xx + 终态成功文案 + runtime 终态 complete
+      // 三者齐备；中间完成/复核计数异常/部分完成/非 2xx 均如实记 FAIL，细节入证据。
+      const terminalRuntimeState = await page.locator('#runtimeStatus').getAttribute('data-state');
+      const verdict = importGateVerdict(importResponse, importStatusText, terminalRuntimeState);
       check(checks, 'human-confirmed-import-recorded', verdict.pass, {
         import_http_status: verdict.status,
         import_accepted_2xx: verdict.importAccepted,
         import_completed: verdict.importSucceededInUi,
+        runtime_state: terminalRuntimeState,
         import_status_text: importStatusText,
       });
       actions.push({ name: 'human-confirmation-finished', at: new Date().toISOString() });

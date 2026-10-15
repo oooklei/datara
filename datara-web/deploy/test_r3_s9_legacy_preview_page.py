@@ -223,9 +223,14 @@ def test_i18_runner_admin_mode_reads_token_from_stdin_with_leak_guard():
     assert "getByTestId('run-i18-import')" not in runner
     assert "importConfirmPhrase').fill(" not in runner and "keyboard" not in runner
     assert "waiting-for-human-confirmation-and-click" in runner
-    # PASS 判定单一事实源接线（r3-s9-import-gate.cjs）
+    # PASS 判定单一事实源接线（r3-s9-import-gate.cjs）：2xx + 终态文案 + runtime 终态三参齐备
     assert "require('./r3-s9-import-gate.cjs')" in runner
-    assert "importGateVerdict(importResponse, importStatusText)" in runner
+    assert "importGateVerdict(importResponse, importStatusText, terminalRuntimeState)" in runner
+    # 两阶段等待（Codex 裁定）：先等人工提交转 running，再等 complete|failed 终态；
+    # 中间态"导入事务已完成…正在发起只读复核"（running）不唤醒，禁用弱"批次字样"等待
+    assert "dataset.state === 'running'" in runner
+    assert "'complete', 'failed'].includes" in runner
+    assert "/批次/.test(document.querySelector" not in runner
     # 双模式互斥（stdin 新通道语义）
     assert "Set exactly one of DATARA_REBUILD_VALIDATION_KEY (env) / --token-stdin (stdin)" in runner
     # token 不进证据：报告/检查输出无 token 值字段
@@ -242,19 +247,25 @@ IMPORT_GATE = Path(__file__).parent / "r3-s9-import-gate.cjs"
 
 
 def test_i18_import_gate_predicate_requires_accepted_2xx_and_explicit_success_ui():
-    """Codex 裁定：导入 PASS 必须要求已接受 2xx + 明确成功终态；假失败响应回归（真实驱动判定函数）。"""
+    """Codex 裁定：导入 PASS 必须要求已接受 2xx + 终态成功文案 + runtime 终态 complete；假响应回归。"""
     probe = subprocess.run(
         [
             "node", "-e",
             "const { importGateVerdict } = require('./deploy/r3-s9-import-gate.cjs');"
-            "const accepted = importGateVerdict({ status: 200 }, '导入事务已完成：批次 R3S9-FAKE');"
-            "const partial409 = importGateVerdict({ status: 409 }, '导入部分完成：批次 R3S9-FAKE');"
-            "const noResponse = importGateVerdict(undefined, '导入事务已完成');"
-            "const httpOnly = importGateVerdict({ status: 200 }, '批次已创建');"
-            "const serverError = importGateVerdict({ status: 500 }, '导入事务已完成');"
+            "const accepted = importGateVerdict({ status: 200 }, '导入与只读复核通过：批次 R3S9-FAKE。', 'complete');"
+            "const partial409 = importGateVerdict({ status: 409 }, '导入部分完成：批次 R3S9-FAKE', 'failed');"
+            "const noResponse = importGateVerdict(undefined, '导入与只读复核通过', 'complete');"
+            "const httpOnly = importGateVerdict({ status: 200 }, '批次已创建', 'complete');"
+            "const serverError = importGateVerdict({ status: 500 }, '导入与只读复核通过', 'complete');"
+            "const intermediate = importGateVerdict({ status: 200 },"
+            "  '导入事务已完成：44 新增、1 跳过、0 错误；批次 R3S9-FAKE。正在发起只读复核。', 'running');"
+            "const intermediateCompleteRuntime = importGateVerdict({ status: 200 },"
+            "  '导入事务已完成：44 新增。正在发起只读复核。', 'complete');"
+            "const runtimeFailed = importGateVerdict({ status: 200 }, '导入与只读复核通过：批次 R3S9-FAKE。', 'failed');"
             "process.stdout.write(JSON.stringify({"
             "accepted: accepted.pass, partial409: partial409.pass, noResponse: noResponse.pass,"
-            "httpOnly: httpOnly.pass, serverError: serverError.pass }));",
+            "httpOnly: httpOnly.pass, serverError: serverError.pass, intermediate: intermediate.pass,"
+            "intermediateCompleteRuntime: intermediateCompleteRuntime.pass, runtimeFailed: runtimeFailed.pass }));",
         ],
         capture_output=True,
         text=True,
@@ -268,4 +279,8 @@ def test_i18_import_gate_predicate_requires_accepted_2xx_and_explicit_success_ui
         "noResponse": False,
         "httpOnly": False,
         "serverError": False,
+        # Codex 裁定：导入事务已完成是中间态（只读复核尚未执行），任何组合都不得 PASS
+        "intermediate": False,
+        "intermediateCompleteRuntime": False,
+        "runtimeFailed": False,
     }
