@@ -13,6 +13,7 @@
     .notice{display:none;padding:12px 14px;border-radius:9px;font-size:13px;line-height:1.5;margin-bottom:16px}.notice.show{display:block}.notice.info{background:#eef6ff;color:#275b88}.notice.success{background:#eaf8f0;color:#236744}.notice.error{background:#fff0ef;color:#a3322a}
     .stats{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:11px;padding:17px 19px;border-bottom:1px solid #edf1f5}.stat{padding:12px;background:#f7f9fc;border-radius:9px}.stat span{display:block;color:#70849a;font-size:11px}.stat strong{display:block;font-size:18px;margin-top:5px;color:#1a3d60;overflow-wrap:anywhere}.stat.digest strong{font-size:12px;line-height:1.5}
     .section{padding:17px 19px}.section h4{margin:0 0 12px;font-size:13px}.meta{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}.meta-item{padding:10px 12px;border:1px solid #edf1f5;border-radius:8px;min-width:0}.meta-item span{display:block;font-size:11px;color:#789}.meta-item strong{display:block;font-size:12px;margin-top:5px;word-break:break-word}.table-wrap{overflow:auto;border:1px solid #e5ebf1;border-radius:9px}table{width:100%;border-collapse:collapse;font-size:12px;min-width:620px}th,td{text-align:left;padding:10px 12px;border-bottom:1px solid #edf1f5}th{color:#60758b;background:#f8fafc;font-weight:700}tbody tr:last-child td{border-bottom:0}.pill{display:inline-block;padding:3px 8px;border-radius:99px;background:#edf3f8;color:#46627d}.pill.create{background:#e9f7ef;color:#26744b}.pill.blocked,.pill.conflict{background:#fff1e7;color:#a05216}.pill.skipped{background:#f1ecf9;color:#6b4fa8}.pill.unchanged{background:#eef2f6;color:#4a6b8a}.empty{text-align:center;color:#8394a5;padding:26px}.issues{display:grid;gap:8px}.issue{padding:10px 12px;border-left:3px solid #e3a34a;background:#fff9f1;border-radius:5px;font-size:12px;line-height:1.6}.muted{color:#7b8da0;font-size:12px}
+    .onboarding{margin-bottom:18px}.onboarding .card-body p{color:#60758b;margin:0 0 12px;line-height:1.7}.onboarding ol{margin:0 0 4px;padding-left:20px;color:#43596e}.onboarding ol li{margin-bottom:10px;line-height:1.75;font-size:13px}.onboarding h4{margin:14px 0 8px;font-size:13px;color:#294662}.onboarding code{overflow-wrap:anywhere;background:#f2f6fa;border:1px solid #dce6f0;border-radius:5px;padding:2px 6px;font-size:12px;color:#275b88}.onboarding .path-note{font-size:12px;color:#71859a;margin:12px 0 0}
     @media(max-width:850px){.grid{grid-template-columns:1fr}.stats{grid-template-columns:repeat(2,minmax(0,1fr))}.top{align-items:flex-start;flex-direction:column}}
   </style>
 </head>
@@ -20,8 +21,22 @@
   <main class="shell">
     <header class="top"><div class="brand"><div class="mark" aria-hidden="true">D</div><div><div class="eyebrow">Datara · isolated validation</div><h1 class="title">I18 旧治理资产迁移预检</h1></div></div><div class="runtime" id="runtimeStatus" data-testid="runtime-status">等待验证运行时</div></header>
     <section class="intro"><h2>先看清差异，再决定是否迁移</h2><p>按已盘点的 I18 七张来源表读取只读快照，与当前项目的新治理模型逐项比对。此操作只生成 dry-run 计划，不写入任何目标业务表；冲突、未解析关系和阻断项会在下方明确列出。</p></section>
+    <section id="onboarding" class="onboarding" hidden data-testid="onboarding" aria-labelledby="onboardingTitle">
+      <div class="card"><div class="card-head"><h3 id="onboardingTitle">引导首屏 · 未检测到短期验证 token</h3></div><div class="card-body">
+        <p>本页为隔离验证页，仅使用短期 token 调用受保护的新 Backend API。当前浏览器上下文未注入 <code>window.__DATARA_TEST_TOKEN__</code>，主操作面板保持锁定。本页不提供登录表单，也不接收验证 key、账号口令或 token 输入。</p>
+        <h4>token 取得路径（二选一，注入后刷新本页生效）</h4>
+        <ol>
+          <li><strong>自动路径（标准，推荐）</strong> — 受控验证运行器从部署环境读取统一验证 key，调用 <code>POST /api/v1/rebuild/validation-token</code>（请求头 <code>X-Backend-Validation-Key</code>）换取短期 token（validation-runner / DEV 角色），随后由运行器把 token 注入本页运行上下文并刷新页面。验证 key 不进入页面、源码、URL 或浏览器存储。</li>
+          <li><strong>ADMIN 签发路径（仅用于要求持久 admin 身份的操作，例如本页 I18 导入闸）</strong> — 由 ADMIN 角色账号调用 <code>POST /api/v1/rebuild/login</code>（请求体 <code>{"username":"&lt;账号&gt;","password":"&lt;口令&gt;"}</code>）签发 token，再由受控上下文注入本页。请在可信环境执行；账号口令不得出现在页面、URL、日志或证据材料中。</li>
+        </ol>
+        <h4>委托执行入口</h4>
+        <p>无需本机手工操作时，可将本轮验证委托给验证 runner：由其完成 token 签发与注入后自动驱动本页真实控件，并产出 JSON+PNG 成对证据。委托内容（页面地址、目标操作、预期范围）提交给验证运行环境即可；执行记录与结果可回溯至 <code>docs/increments/</code>（约法与台账、增量计划）与 <code>docs/increments/evidence/</code>（逐轮证据索引）。</p>
+        <div class="actions"><button id="recheckToken" class="secondary" type="button" data-testid="recheck-token">重新检测 token</button></div>
+        <p class="path-note">提示：token 为短期凭据，注入方式由验证运行环境决定；刷新后如已过期需重新签发。</p>
+      </div></div>
+    </section>
     <div id="notice" class="notice" role="status" aria-live="polite" data-testid="notice"></div>
-    <div class="grid">
+    <div class="grid" id="mainGrid" data-testid="main-grid">
       <section class="card" aria-labelledby="scopeTitle"><div class="card-head"><h3 id="scopeTitle">预检范围</h3></div><div class="card-body">
         <div class="form-row"><label for="projectSelect">目标项目</label><select id="projectSelect" data-testid="project-select" required><option value="">正在读取可访问项目…</option></select></div>
         <div class="actions"><button id="runDryRun" class="primary" type="button" data-testid="run-dry-run" disabled>执行只读预检</button><button id="reloadProjects" class="secondary" type="button" data-testid="reload-projects">重新载入项目</button></div>
@@ -152,7 +167,19 @@
       }catch(error){const partial=(error&&error.data&&error.data.batch_id)?error.data:null;$('importStatus').textContent=partial?`导入部分完成：批次 ${partial.batch_id}（状态 ${partial.status||'未知'}，已导入 ${Number(partial.imported_count||0)} 条）。${error.message}；请依据该批次人工核查，勿在未核对前重复提交。`:`导入未能确认完成：${error.message}。按钮在当前页面会话内保持锁定；刷新页面会生成新的幂等键（${state.idempotencyKey}），若导入结果未知，请先依据后端批次/日志人工核查再决定是否重新提交。`;$('runtimeStatus').textContent='导入状态需复核';$('runtimeStatus').dataset.state='failed';notify($('importStatus').textContent,'error');}
       finally{state.busy=false;$('runDryRun').disabled=!state.projectId;updateImportButton();}
     });
-    loadProjects();
+    const hasTokenNow = () => Boolean(window.__DATARA_TEST_TOKEN__);
+    function showOnboarding() {
+      $('onboarding').hidden = false;
+      $('mainGrid').hidden = true;
+      $('runtimeStatus').textContent = '验证运行时未就绪 · 见引导首屏';
+      $('runtimeStatus').dataset.state = 'failed';
+    }
+    $('recheckToken').addEventListener('click', () => {
+      if (hasTokenNow()) { location.reload(); return; }
+      showOnboarding();
+      notify('仍未检测到注入的短期 token；请按引导首屏任一路径取得并注入后重试。','error');
+    });
+    if (hasTokenNow()) { loadProjects(); } else { showOnboarding(); }
   })();
   </script>
 </body>
