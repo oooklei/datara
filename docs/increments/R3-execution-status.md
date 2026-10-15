@@ -1,5 +1,12 @@
 # R3 Execution Status (authoritative continuation record)
 
+## 2026-10-15：I18 双侧摘要稳定性修复与复验
+
+- source digest 去除动态 `captured_at`；source reader 专项 5 passed，TDD 先 RED 后 GREEN。全 Backend `816 passed, 1 xfailed`，Ruff、compileall、diff-check 通过。
+- 远端发现 target snapshot 文件部署滞后，已备份并单独同步 `legacy_source_reader.py`、`snapshot_repository.py`，仅重启隔离 `datara-rebuild-api`；最终 running/healthy。部署 hash 和备份路径见远程证据文档。
+- Playwright 真实页面两轮 `R3S9-20261015140154-db7020`、`R3S9-20261015140204-080915` 均 10/10，source digest 两轮均 `a0227040f719c0064e51f3377378677022238d909b68c922d36275a218efbf3e`，target digest 两轮均 `044e357c04b28ea09489348b913f4392915e29445cf2b2fb437db27246455b22`；两轮均 45/44/1/0/0，确认未输入、导入未点击，浏览器错误 0。修复前的不稳定摘要 run/截图保留。
+- READ ONLY 目标核验 batch/item/项目 #3 I18 model=0/0/0；import gate unset（默认关闭）、近 30 分钟 importer route=0。人工审阅最新完整计划及恢复方案并亲自确认仍未完成；R3-S9/R3 保持 PARTIAL，不合 main，不启动 R4 GREEN/P4 执行者 2。
+
 Date: 2026-10-15 Asia/Shanghai
 Workspace: `D:\需求\数据治理工具\Datara`
 Status: R3-S1 through R3-S8 are complete for their stated scopes; R3 remains PARTIAL pending I18-I23 parity/import gates. R3-S9 is IN_PROGRESS: v2 schema is deployed to the isolated rebuild target, read-only preflight is ready with zero conflicts, the fixed-allowlist I18 source reader and project-authorized dry-run API are live, and the standalone validation page passed the real Playwright control loop on port 18091. User explicitly approved MySQL root for source reads only; the reader sets a read-only transaction and performs no source DDL/DML. Latest UI evidence `evidence/R3/r3s9-20261014174030-e03460.json` reports 45 source rows, 0 existing target identities, 12 planned creates, 0 unchanged, 0 conflicts, 33 blocked rows, and 37 visible issues: 2 `invalid_relation_field_pairs`, 4 `unresolved_reference`, 4 `pending_identity_missing_from_batch`, and 27 `dependency_not_importable`. The malformed relation-field records are surfaced as blockers; no values are inferred. Target schema snapshot backup SHA-256: `ea00016f184ad4abc771a6d7374eca929bc98c5a3c3fa792192c29e9c857e213`. Local gates on 2026-10-15: full `pytest tests -q` 619 passed; S9 browser-page static tests 4 passed; `ruff check rebuild`, `python -m compileall -q rebuild`, `vue-tsc --noEmit`, Vite production build and runner syntax check passed. Full repository Ruff still reports 18 pre-existing findings in legacy tests outside the rebuild domain. No source writes, target business-data imports, or formal frontend changes occurred. R3-S9 import/parity, remaining I19-I23 mapping, recovery/concurrency drills, and later increments remain open.
@@ -107,3 +114,40 @@ The previous compose service definition was absent from the active remote base f
 - The S8 comparison confirmed that current generic R3 tables do not represent all I18 model/version/relation, I20 dimensions/versions, I21 task/exception/report/alarm, or I22 code/naming/mapping/approval/check-report semantics.
 - User decision 2026-10-14: option A approved—extend the new Backend's normalized models and fully carry forward legacy I18-I23. Decision record: design §6; normalized entity contract: design §5.2; implementation plan: plan §7. Legacy source database remains read-only; only isolated `datara_rebuild_i0` may receive additive schema and migration writes.
 - R3-S9 impact analysis and plan are complete. The additive v2 schema/migration is committed, and pure mappers/contracts cover all seven I18 source tables. They require an explicit destination project and source-identity resolution, preserve source business timestamps and snapshot text, and expand paired relation fields into normalized child rows. Same-batch identities use symbolic references; graph validation checks batch membership and model relation field names. The offline dry-run plan contract requires a project-bound target snapshot containing capture time/digest, source identity→target IDs/fingerprints, field metadata and occupied unique keys; it classifies create/unchanged/conflict/blocked and cascades blocked parents to their children. A target snapshot repository now reads project-scoped normalized I18 rows through SELECT-only ORM queries, rebuilds semantic fingerprints, and checks natural-key occupancy; its SQLite integration contract passes. Local gates: `pytest tests/rebuild -q` 72 passed; full `pytest tests -q` 609 passed; Ruff, compileall and `git diff --check` passed. It is not yet connected to API or verified against remote MySQL. No source reader/import, frontend/API dry-run, remote backup/import, exact parity, idempotency/fault/concurrency or rollback evidence has been completed. R3 remains PARTIAL.
+
+## 2026-10-15 P1-P4 流水线状态续记（覆盖前述 admin 登录待验证状态）
+
+- R3-S9 仍是当前唯一未验收增量：`PARTIAL / REMOTE_VALIDATION_CLOSEOUT`，未合回 main。
+- 标准 admin provisioning/login 已完成：仅隔离库新增一个 admin 与一条身份审计；凭据在 1.9 root-only mode 0600 文件，不入页面、日志或证据。项目列表 admin 全局可见性缺陷已按既有 RBAC 修复；未改 project #3 owner/member。API 仅备份并替换两个文件、仅重启隔离 `datara-rebuild-api`，当前 healthy。
+- 最终真实控件 run `R3S9-20261015125654-0356f5` 以标准 admin token 操作真实 18091 页面，10/10 PASS：project #3 选择，dry-run 200，45 source/44 create/1 skipped/0 conflict/block；人工确认短语未输入、按钮保持 disabled、import 未调用。失败 run `R3S9-20261015124843-dc81df` 保留。证据位于 `evidence/R3/r3s9-admin-project-list-remote-20261015.txt` 和成对 JSON/PNG。
+- 远端 2026-10-15 20:58 +08:00：`REBUILD_LEGACY_I18_IMPORT_ENABLED=false`；最近 30 分钟 login/projects/dry-run/import 请求 6/6/4/0，服务 error markers 0；API/Web、MySQL/Redis/Kafka/ZooKeeper 正常。无 I18 目标业务 DML。
+- P1：R4-SYNC 仅影响分析与 `xfail/pending-acceptance` 契约 RED；全量 `pytest tests -q` 最新 `811 passed, 1 xfailed`。R3 验收并合回 main 前不得开始 R4 GREEN。
+- P2：主计划已改为 R0-R8 九个增量；R5-IDE 内 R5-A/R5-B 独立门禁，R9 统计产出归 R4/R8。
+- P3：本轮权限变更及真实控件 run 即时取证，失败/通过 JSON/PNG 均保留。
+- P4：第二执行者尚未启动；R3 合回 main 后才可从最新 main 的独立 worktree 开始，只写 `datara-web/` 与专属 evidence。当前不得合并/并行实现。
+
+## 2026-10-15：I18 导入服务端范围防线与最新远程复核
+
+- 针对“页面门禁不能替代服务端范围授权”的审查，已用 TDD 增加双重服务端约束：项目非 #3 在打开 source reader 前拒绝；最新 source/target snapshot digest 复核后，只接受恰好 45 项的获批计划（44 create + 精确孤儿版本 #1 skipped，其余计数必须为 0），不满足则在 importer 构造前拒绝。未扩展原批准业务范围。
+- 本地验证：专项 11 passed；完整 `pytest tests -q` 815 passed, 1 xfailed；Ruff、compileall、diff-check、验证页 4 项合同测试、runner 语法及 `vue-tsc --noEmit` 均通过。
+- 远程仅替换隔离挂载的 `governance/api.py`、`legacy_migration_service.py`，事前备份且核验新旧 SHA-256；`datara-rebuild-api` healthy，导入开关默认关闭，最近 15 分钟 importer route=0。未重启其它服务，未写旧源或目标业务数据。细节及备份位置见 `evidence/R3/r3s9-import-scope-guard-remote-final-20261015.md`。
+- 最新真实控件 run `R3S9-20261015132632-d31f45` 10/10 PASS：标准 admin 会话、项目 #3、真实后端 dry-run 200、45/44/0/1/0/0、人工确认未输入、按钮仍禁用、未调用 importer；成对 JSON/PNG 已存证。browser-use 同一页面绑定首次及一次重试均未建立可用认证会话，按既定 fallback 改用同页 Playwright 控件验证；不把 API-only 作为 UI 验收。
+- 本轮源 digest 含采集时间 `captured_at`；与较早 run digest 不同不等同于业务行差异。本轮只对当前摘要做预览绑定。
+- 早期已批准 run 的 JSON 只有聚合计数和两条字段映射，没有完整行计划/digest；尽管最新控件 run 计数相同，仍无法据此证明逐条 identity 与早先获批范围完全一致。须由人审阅最新完整计划与恢复方案。
+- 人工必须审阅最新 run 的恢复方案和 44-create/1-skip 计划，并在真实页面亲自确认；自动化未键入确认短语、未点导入、未发导入请求，I18 目标业务 DML=0。因此 R3-S9/R3 仍 `PARTIAL / REMOTE_VALIDATION_CLOSEOUT`，未合回 main；R4 GREEN 和 P4 第二执行者均未启动。
+
+
+## 2026-10-16 S9 backend review fixes (local only)
+
+- Applied the preflight review: checksum, column, PK, ordered index, unique constraint/index equivalence, unexpected unique shapes, FK delete actions, and CHECK expressions are compared before migration apply.
+- Applied the I18 mapping review: non-positive/non-integer t_dw_model_field.seq is a blocking dry-run issue and the original order is not rewritten; null er_pos is persisted as JSON null, distinct from {}. Legacy datasource IDs remain preserved only in legacy_datasource_id until a verified target mapping exists.
+- Verification in the isolated codex/r3-s9 worktree: focused preflight, mapping, dry-run, and dry-run API suite 55 passed; changed-file Ruff clean; git diff --check clean apart from existing CRLF normalization warnings. No import or target business DML was run. The exact user confirmation gate, R3 acceptance, and main integration remain outstanding.
+
+
+## 2026-10-16 S9 unique-index semantic preflight fix
+
+- The review found that a partial unique index could be mistaken for a full UniqueConstraint when only column names were compared. Preflight now counts a unique index as constraint-equivalent only when it has plain column names and no WHERE/predicate, expression, collation, operator-class, or prefix-length semantics; expected unique indexes use the same check.
+- Added a regression using inspector dialect metadata for sqlite_where; the existing full-key unique-index equivalence test still passes. Focused preflight/mapping/dry-run/API suite: 57 passed; changed-file Ruff: clean; git diff --check: clean.
+- The previously appended dry-run sequence-blocking test is normal source text (no literal backslash-n corruption) and is included in the 57-pass run. R3-S9 remains partial pending the human import-confirmation phrase, import/parity validation, acceptance, and main integration.
+
+- Full backend verification on 2026-10-16 after review fixes: pytest tests -q 827 passed, 0 failed, 1 expected xfailed (R4-SYNC remains pending-acceptance); compileall and changed-file Ruff passed. No import, deploy, or target business DML was run.\n\n## 2026-10-16 S9 isolated page deployment\n\n- Published the reviewed Trae page source to the existing 18091 static web bind mount after backing up the prior file. Local, staged, remote-file, and served-response SHA-256 all match: b02ec8e3a844bad68a1fb12cddf91ee47b1e294e2eef924ff5515c141c288fd6. Prior page and backup hash: 21e5f90892f540494bd85b332887696fe585e70ef5af48b43b97d166122d3d24.\n- Only the isolated HTML file changed; datara-web stayed running and no API/container restart occurred. No credential or confirmation phrase was entered; no importer call, target business DML, or parity claim was made.\n- Evidence: evidence/R3/r3s9-page-only-final-deploy-20261016.txt. R3-S9 remains PARTIAL / REMOTE_VALIDATION_CLOSEOUT pending the user-only digest-bound confirmation/import/parity and acceptance gates; main integration remains gated.\n
