@@ -2,7 +2,7 @@ from sqlalchemy import create_engine, inspect, text
 
 from rebuild.governance.migration_preflight import inspect_governance_schema
 from rebuild.governance.migrations import R3_GOVERNANCE_MIGRATIONS, MigrationRunner
-from rebuild.governance.models import GOVERNANCE_TABLES, LEGACY_CARRY_FORWARD_TABLES
+from rebuild.governance.models import GOVERNANCE_I19_I20_TABLES, GOVERNANCE_TABLES, LEGACY_CARRY_FORWARD_TABLES
 from rebuild.project.models import ProjectRecord
 from rebuild.identity.models import UserRecord
 
@@ -22,7 +22,7 @@ def test_preflight_is_read_only_and_reports_all_registered_additive_tables():
 
     after = set(inspect(engine).get_table_names())
     assert report.ready
-    expected = {table.name for table in (*GOVERNANCE_TABLES, *LEGACY_CARRY_FORWARD_TABLES)}
+    expected = {table.name for table in (*GOVERNANCE_TABLES, *LEGACY_CARRY_FORWARD_TABLES, *GOVERNANCE_I19_I20_TABLES)}
     assert set(report.missing_tables) == expected
     assert report.conflicts == ()
     assert not report.revision_table_present
@@ -79,7 +79,20 @@ def test_preflight_allows_v1_complete_while_v2_is_pending():
 
     assert report.ready
     assert report.revision_status == "absent"
-    assert set(report.missing_tables) == {table.name for table in LEGACY_CARRY_FORWARD_TABLES}
+    assert set(report.missing_tables) == {
+        table.name for table in (*LEGACY_CARRY_FORWARD_TABLES, *GOVERNANCE_I19_I20_TABLES)
+    }
+
+
+def test_preflight_allows_v2_complete_while_v3_is_pending():
+    engine = isolated_engine()
+    MigrationRunner(engine, R3_GOVERNANCE_MIGRATIONS[:2]).apply()
+
+    report = inspect_governance_schema(engine)
+
+    assert report.ready
+    assert report.revision_status == "absent"
+    assert set(report.missing_tables) == {table.name for table in GOVERNANCE_I19_I20_TABLES}
 
 
 def test_migration_cli_refuses_non_mysql_target_before_connecting(monkeypatch, capsys):

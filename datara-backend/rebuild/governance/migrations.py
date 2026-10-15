@@ -8,8 +8,17 @@ from sqlalchemy import Engine, select, text
 from sqlalchemy.orm import Session
 
 from rebuild.governance.contracts import is_sha256_digest
-from rebuild.governance.models import GOVERNANCE_TABLES, LEGACY_CARRY_FORWARD_TABLES, SchemaMigrationRecord
-from rebuild.governance.revisions import v0001_governance_catalog, v0002_legacy_governance_carryforward
+from rebuild.governance.models import (
+    GOVERNANCE_I19_I20_TABLES,
+    GOVERNANCE_TABLES,
+    LEGACY_CARRY_FORWARD_TABLES,
+    SchemaMigrationRecord,
+)
+from rebuild.governance.revisions import (
+    v0001_governance_catalog,
+    v0002_legacy_governance_carryforward,
+    v0003_metadata_metric_carry_forward,
+)
 
 
 MigrationUpgrade = Callable[[Engine], None]
@@ -133,5 +142,11 @@ R3_GOVERNANCE_MIGRATIONS = (
         checksum=v0002_legacy_governance_carryforward.checksum,
         upgrade=v0002_legacy_governance_carryforward.upgrade,
         tables=LEGACY_CARRY_FORWARD_TABLES,
+    ),
+    GovernanceMigration(
+        revision=v0003_metadata_metric_carry_forward.revision,
+        checksum=v0003_metadata_metric_carry_forward.checksum,
+        upgrade=v0003_metadata_metric_carry_forward.upgrade,
+        tables=GOVERNANCE_I19_I20_TABLES,
     ),
 )

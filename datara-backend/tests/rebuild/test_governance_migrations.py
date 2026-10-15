@@ -11,10 +11,21 @@ from rebuild.governance.migrations import (
     MigrationRunner,
     R3_GOVERNANCE_MIGRATIONS,
 )
-from rebuild.governance.models import AssetRecord, GOVERNANCE_TABLES, LEGACY_CARRY_FORWARD_TABLES
+from rebuild.governance.models import (
+    AssetRecord,
+    AssetTagUnresolvedRecord,
+    GOVERNANCE_I19_I20_TABLES,
+    GOVERNANCE_TABLES,
+    LEGACY_CARRY_FORWARD_TABLES,
+    MetricDimensionRecord,
+)
 from rebuild.project.models import ProjectRecord
 from rebuild.identity.models import UserRecord
-from rebuild.governance.revisions import v0001_governance_catalog, v0002_legacy_governance_carryforward
+from rebuild.governance.revisions import (
+    v0001_governance_catalog,
+    v0002_legacy_governance_carryforward,
+    v0003_metadata_metric_carry_forward,
+)
 
 
 def isolated_engine():
@@ -59,14 +70,51 @@ def test_real_r3_revisions_are_additive_and_create_all_normalized_legacy_tables(
     table_names = set(inspect(engine).get_table_names())
     expected_v1 = {table.name for table in GOVERNANCE_TABLES}
     expected_v2 = {table.name for table in LEGACY_CARRY_FORWARD_TABLES}
+    expected_v3 = {table.name for table in GOVERNANCE_I19_I20_TABLES}
 
-    assert result.applied == ("r3_0001_governance_catalog", "r3_0002_legacy_governance_carryforward")
-    assert expected_v1 | expected_v2 <= table_names
+    assert result.applied == (
+        "r3_0001_governance_catalog",
+        "r3_0002_legacy_governance_carryforward",
+        "r3_0003_metadata_metric_carry_forward",
+    )
+    assert expected_v1 | expected_v2 | expected_v3 <= table_names
     assert R3_GOVERNANCE_MIGRATIONS[0].checksum == v0001_governance_catalog.checksum
     assert R3_GOVERNANCE_MIGRATIONS[1].checksum == v0002_legacy_governance_carryforward.checksum
+    assert R3_GOVERNANCE_MIGRATIONS[2].checksum == v0003_metadata_metric_carry_forward.checksum
     assert MigrationRunner(engine, R3_GOVERNANCE_MIGRATIONS).apply().skipped == result.applied
     assert "rebuild_user" in table_names
     assert "qc_task" not in table_names
+
+
+def test_i19_i20_tables_follow_main_legacy_source_contract_without_rewriting_v2():
+    engine = isolated_engine()
+    MigrationRunner(engine, R3_GOVERNANCE_MIGRATIONS).apply()
+    inspector = inspect(engine)
+
+    for record in (AssetTagUnresolvedRecord, MetricDimensionRecord):
+        columns = {item["name"]: item for item in inspector.get_columns(record.__tablename__)}
+        assert columns["source_id"]["nullable"]
+        assert columns["source_system"]["nullable"]
+        assert columns["migration_batch_id"]["nullable"]
+        assert columns["source_id"]["type"].length == 256
+        batch_fk = next(
+            item for item in inspector.get_foreign_keys(record.__tablename__)
+            if item["constrained_columns"] == ["migration_batch_id"]
+        )
+        assert batch_fk["referred_table"] == "rebuild_governance_migration_batch"
+        assert batch_fk["options"]["ondelete"] == "RESTRICT"
+
+    tag_fks = inspector.get_foreign_keys(AssetTagUnresolvedRecord.__tablename__)
+    assert any(
+        item["constrained_columns"] == ["tag_id"] and item["options"]["ondelete"] == "RESTRICT"
+        for item in tag_fks
+    )
+    assert any(item["constrained_columns"] == ["project_id"] for item in tag_fks)
+    dimension_fks = inspector.get_foreign_keys(MetricDimensionRecord.__tablename__)
+    assert any(
+        item["constrained_columns"] == ["metric_id"] and item["options"]["ondelete"] == "RESTRICT"
+        for item in dimension_fks
+    )
 
 
 def test_failed_revision_is_audited_and_same_checksum_can_resume_after_partial_ddl():

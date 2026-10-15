@@ -467,6 +467,26 @@ class LegacyTagReferenceRecord(LegacySourceMixin, Base):
     created_by: Mapped[str] = mapped_column(String(64), nullable=False, default="")
 
 
+class AssetTagUnresolvedRecord(LegacySourceMixin, Base):
+    """Keep an unbound legacy tag target available for later identity resolution."""
+
+    __tablename__ = "rebuild_governance_asset_tag_unresolved"
+    __table_args__ = (
+        UniqueConstraint("source_system", "source_table", "source_id", name="uq_gov_asset_tag_unresolved_source"),
+        UniqueConstraint("tag_id", "target_type", "target_key", name="uq_gov_asset_tag_unresolved_target"),
+        Index("ix_gov_asset_tag_unresolved_target", "target_type", "target_key"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    project_id: Mapped[int] = mapped_column(ForeignKey("rebuild_project.id"), nullable=False, index=True)
+    tag_id: Mapped[int] = mapped_column(
+        ForeignKey("rebuild_governance_tag.id", ondelete="RESTRICT"), nullable=False, index=True
+    )
+    target_type: Mapped[str] = mapped_column(String(16), nullable=False)
+    target_key: Mapped[str] = mapped_column(String(255), nullable=False)
+    created_by: Mapped[str] = mapped_column(String(64), nullable=False, default="")
+
+
 class SemanticMetricProfileRecord(LegacySourceMixin, Base):
     __tablename__ = "rebuild_governance_semantic_metric_profile"
 
@@ -510,6 +530,27 @@ class SemanticMetricDimensionRecord(LegacySourceMixin, Base):
     )
     ordinal_position: Mapped[int] = mapped_column(Integer, nullable=False)
     dimension_name: Mapped[str] = mapped_column(String(128), nullable=False)
+
+
+class MetricDimensionRecord(LegacySourceMixin, Base):
+    """Queryable I20 dimension attributes while preserving a legacy source key when present."""
+
+    __tablename__ = "rebuild_governance_metric_dimension"
+    __table_args__ = (
+        UniqueConstraint("source_system", "source_table", "source_id", name="uq_gov_metric_dimension_source"),
+        UniqueConstraint("metric_id", "dimension_key", name="uq_gov_metric_dimension_key"),
+        CheckConstraint("ordinal_position > 0", name="ck_gov_metric_dimension_ordinal"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    metric_id: Mapped[int] = mapped_column(
+        ForeignKey("rebuild_governance_semantic_metric.id", ondelete="RESTRICT"), nullable=False, index=True
+    )
+    ordinal_position: Mapped[int] = mapped_column(Integer, nullable=False)
+    dimension_key: Mapped[str] = mapped_column(String(128), nullable=False)
+    display_name: Mapped[str] = mapped_column(String(128), nullable=False, default="")
+    source_field: Mapped[str] = mapped_column(String(128), nullable=False, default="")
+    description: Mapped[str] = mapped_column(Text, nullable=False, default="")
 
 
 class SemanticMetricVersionRecord(LegacySourceMixin, Base):
@@ -783,6 +824,11 @@ LEGACY_CARRY_FORWARD_TABLES = (
     StandardApprovalRecord.__table__,
     StandardCheckReportRecord.__table__,
     LegacyIdentityMappingRecord.__table__,
+)
+
+GOVERNANCE_I19_I20_TABLES = (
+    AssetTagUnresolvedRecord.__table__,
+    MetricDimensionRecord.__table__,
 )
 
 for _carry_forward_table in LEGACY_CARRY_FORWARD_TABLES:
