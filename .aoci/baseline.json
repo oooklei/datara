@@ -1,7 +1,7 @@
 {
   "version": 1,
   "created_at": "2026-10-02T22:25:37Z",
-  "updated_at": "2026-10-15T16:41:41Z",
+  "updated_at": "2026-10-15T17:13:48Z",
   "files": {
     ".gitattributes": {
       "role": "index",
@@ -128,9 +128,9 @@
     },
     "aoci.code.txt": {
       "role": "index",
-      "sha256": "69f6bbbd02c983430c67950016c3d78443710e9966a1608aa7afdc861d943961",
-      "size": 194842,
-      "normalized_sha256": "69f6bbbd02c983430c67950016c3d78443710e9966a1608aa7afdc861d943961"
+      "sha256": "80672a525c1c51c8883fc98c3eb0b313ce7bbd2b75876ad05f7edcd125c2b250",
+      "size": 194917,
+      "normalized_sha256": "80672a525c1c51c8883fc98c3eb0b313ce7bbd2b75876ad05f7edcd125c2b250"
     },
     "aoci.meta.txt": {
       "role": "index",
@@ -4193,9 +4193,9 @@
     },
     "docs/handoff/2026-10-16-并行协作分工.md": {
       "role": "index",
-      "sha256": "9f42d228580b7e8f5e9657edf3f25fd9e7ae7cbbe8f14da9fbfba873381687a7",
-      "size": 2390,
-      "normalized_sha256": "9f42d228580b7e8f5e9657edf3f25fd9e7ae7cbbe8f14da9fbfba873381687a7"
+      "sha256": "7e5066fce0ce9d6446dbdf765fa63225c339a9c2bc98583531475c3b02a13d5c",
+      "size": 5317,
+      "normalized_sha256": "7e5066fce0ce9d6446dbdf765fa63225c339a9c2bc98583531475c3b02a13d5c"
     },
     "docs/increments/00-流程与记录.md": {
       "role": "index",

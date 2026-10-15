@@ -1092,5 +1092,5 @@ S4-log-staging.png[ZS5T]: F:Stores screenshot evidence in docs/use-cases/sync/sh
 S5-dag-parallel.png[ZS5T]: F:Stores screenshot evidence in docs/use-cases/sync/shots/S5-dag-parallel.png. | R:- | A:- | S:-
 
 ===D:/需求/数据治理工具/Datara/docs/handoff/===
-2026-10-16-并行协作分工.md[SO5T]: F:Records the Trae-Codex parallel development ownership split, five hard collaboration rules, and the handoff message loop. | R:code:AGENTS.md,code:docs/increments/R3-execution-status.md | A:Defines the task-level channel and file boundaries both agents must honor at session start. | S:Single-writer for shared files; AOCI write windows are mutually exclusive; user-only gates stay with the user.
+2026-10-16-并行协作分工.md[SO5T]: F:Operates the Trae-Codex handoff channel with ownership boundaries, five hard collaboration rules, and dated message records in both directions. | R:code:AGENTS.md,code:docs/increments/R3-execution-status.md,code:docs/increments/R5-IDE-开始前影响分析.md | A:Defines the task-level channel and file boundaries both agents must honor at session start. | S:Single-writer for shared files; AOCI write windows are mutually exclusive; user-only gates stay with the user.
 
