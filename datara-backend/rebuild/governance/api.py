@@ -49,11 +49,17 @@ from rebuild.governance.legacy_i19_mapping import (
     LegacyI19MappingContext,
     map_i19_snapshot,
 )
+from rebuild.governance.legacy_i19_importer import (
+    build_i19_mapping_context,
+    execute_i19_legacy_import,
+    i19_target_identity_digest,
+)
 from rebuild.governance.legacy_i23_preview import MAX_I23_PREVIEW_ROWS, build_i23_identity_preview
 from rebuild.governance.legacy_i22_preview import build_i22_mapping_preview
 from rebuild.governance.legacy_i20_preview import build_i20_mapping_preview
 from rebuild.governance.legacy_i21_preview import build_i21_mapping_preview
 from rebuild.governance.legacy_importer import LegacyImportRejected, execute_i18_legacy_import
+from rebuild.governance.legacy_i20_importer import execute_i20_legacy_import
 from rebuild.governance.migration_checkpoints import CheckpointConflict
 from rebuild.governance.snapshot_repository import LegacyI18TargetSnapshotRepository
 from rebuild.identity.contracts import Permission
@@ -122,6 +128,13 @@ class LegacyI18ImportInput(BaseModel):
     confirmation: str = Field(min_length=1, max_length=256)
 
 
+class LegacyI19I20ImportInput(BaseModel):
+    source_digest: str = Field(pattern="^[0-9a-f]{64}$")
+    target_digest: str = Field(pattern="^[0-9a-f]{64}$")
+    idempotency_key: str = Field(min_length=1, max_length=128)
+    confirmation: str = Field(min_length=1, max_length=256)
+
+
 class StandardInput(BaseModel):
     code: str = Field(min_length=1, max_length=128)
     name: str = Field(min_length=1, max_length=256)
@@ -160,6 +173,8 @@ def build_governance_router(
     legacy_i21_source_reader_factory: Callable[[], LegacyI21SourceReader] | None = None,
     legacy_i23_preview_user: Callable[[str], dict[str, object]] | None = None,
     legacy_i18_import_enabled: bool = False,
+    legacy_i19_import_enabled: bool = False,
+    legacy_i20_import_enabled: bool = False,
 ) -> APIRouter:
     router = APIRouter(prefix="/api/v1/rebuild/governance", tags=["rebuild-governance"])
 
@@ -302,6 +317,7 @@ def build_governance_router(
                     tag_targets=tag_targets,
                     tagging_asset_targets=tagging_asset_targets,
                 )
+                target_identity_digest = i19_target_identity_digest(context)
                 mapped = map_i19_snapshot(source_snapshot, context)
                 mapped_rows = mapped.extensions + mapped.tag_references
                 blocked_ids = {
@@ -372,6 +388,7 @@ def build_governance_router(
                     "target": {
                         "project_id": project_id,
                         "captured_at": datetime.now(ZoneInfo("Asia/Shanghai")).isoformat(),
+                        "identity_digest": target_identity_digest,
                         "counts": target_counts,
                     },
                     "preview": {
@@ -655,6 +672,175 @@ def build_governance_router(
                 extra={"project_id": project_id, "error_type": type(exc).__name__},
             )
             return fail(503, 5031, "legacy I20 mapping preview is unavailable")
+        finally:
+            if reader is not None:
+                source_engine = getattr(reader, "engine", None)
+                if source_engine is not None:
+                    source_engine.dispose()
+
+    @router.post("/projects/{project_id}/legacy/i19/import")
+    def legacy_i19_import(
+        project_id: int,
+        body: LegacyI19I20ImportInput,
+        authorization: str = Header(default=""),
+    ):
+        if not legacy_i19_import_enabled:
+            return fail(503, 5034, "legacy I19 import is disabled")
+        user = authenticate(authorization)
+        if isinstance(user, JSONResponse):
+            return user
+        try:
+            actor_id = int(user.get("user_id", 0))
+        except (TypeError, ValueError):
+            actor_id = 0
+        if actor_id <= 0:
+            return fail(403, 1003, "a persisted operator identity is required for I19 import")
+
+        reader = None
+        try:
+            with session_factory() as session:
+                actor = session.get(UserRecord, actor_id)
+                if actor is None:
+                    return fail(403, 1003, "a persisted operator identity is required for I19 import")
+                operator = {**user, "user_id": actor.id, "role": actor.role}
+                permitted = project_permission(session, project_id, operator, Permission.EDIT_DEFINITION)
+                if isinstance(permitted, JSONResponse):
+                    return permitted
+                target_url = session.get_bind().url
+                target_backend = target_url.get_backend_name()
+                if target_backend == "mysql" and target_url.database != "datara_rebuild_i0":
+                    return fail(503, 5032, "target database is not the isolated rebuild schema")
+                if target_backend == "sqlite" and target_url.database != ":memory:":
+                    return fail(503, 5032, "file SQLite is not an allowed I19 import target")
+                if target_backend not in {"mysql", "sqlite"}:
+                    return fail(503, 5032, "unsupported target database for I19 import")
+                expected_confirmation = f"IMPORT I19 {project_id} {body.source_digest} {body.target_digest}"
+                if body.confirmation != expected_confirmation:
+                    return fail(409, 4094, "explicit I19 confirmation does not match the supplied snapshots")
+                reader = (legacy_i19_source_reader_factory or LegacyI19SourceReader.from_runtime_env)()
+                source_snapshot = reader.read_snapshot()
+                if source_snapshot.digest != body.source_digest:
+                    return fail(409, 4094, "I19 source digest changed; request a fresh mapping preview")
+                context = build_i19_mapping_context(session, project_id)
+                if i19_target_identity_digest(context) != body.target_digest:
+                    return fail(409, 4094, "I19 target digest changed; request a fresh mapping preview")
+
+            result = execute_i19_legacy_import(
+                session_factory,
+                project_id=project_id,
+                actor_id=actor_id,
+                source_snapshot=source_snapshot,
+                expected_source_digest=body.source_digest,
+                expected_target_digest=body.target_digest,
+                mapping_context_factory=build_i19_mapping_context,
+                idempotency_key=body.idempotency_key,
+            )
+            return {
+                "code": 0,
+                "msg": "success",
+                "data": {
+                    "batch_id": result.batch_id,
+                    "status": result.status,
+                    "expected_count": result.expected_count,
+                    "imported_count": result.imported_count,
+                    "skipped_count": result.skipped_count,
+                    "error_count": result.error_count,
+                },
+            }
+        except (LegacyImportRejected, CheckpointConflict):
+            return fail(409, 4094, "I19 import conflicts with the current source or target state")
+        except ValueError:
+            return fail(422, 4221, "legacy I19 snapshot or mapping is invalid")
+        except Exception as exc:
+            logger.error(
+                "legacy I19 import failed",
+                extra={"project_id": project_id, "error_type": type(exc).__name__},
+            )
+            return fail(503, 5031, "legacy I19 import is unavailable")
+        finally:
+            if reader is not None:
+                source_engine = getattr(reader, "engine", None)
+                if source_engine is not None:
+                    source_engine.dispose()
+
+    @router.post("/projects/{project_id}/legacy/i20/import")
+    def legacy_i20_import(
+        project_id: int,
+        body: LegacyI19I20ImportInput,
+        authorization: str = Header(default=""),
+    ):
+        if not legacy_i20_import_enabled:
+            return fail(503, 5034, "legacy I20 import is disabled")
+        user = authenticate(authorization)
+        if isinstance(user, JSONResponse):
+            return user
+        try:
+            actor_id = int(user.get("user_id", 0))
+        except (TypeError, ValueError):
+            actor_id = 0
+        if actor_id <= 0:
+            return fail(403, 1003, "a persisted operator identity is required for I20 import")
+
+        reader = None
+        try:
+            with session_factory() as session:
+                actor = session.get(UserRecord, actor_id)
+                if actor is None:
+                    return fail(403, 1003, "a persisted operator identity is required for I20 import")
+                operator = {**user, "user_id": actor.id, "role": actor.role}
+                permitted = project_permission(session, project_id, operator, Permission.EDIT_DEFINITION)
+                if isinstance(permitted, JSONResponse):
+                    return permitted
+                target_url = session.get_bind().url
+                target_backend = target_url.get_backend_name()
+                if target_backend == "mysql" and target_url.database != "datara_rebuild_i0":
+                    return fail(503, 5032, "target database is not the isolated rebuild schema")
+                if target_backend == "sqlite" and target_url.database != ":memory:":
+                    return fail(503, 5032, "file SQLite is not an allowed I20 import target")
+                if target_backend not in {"mysql", "sqlite"}:
+                    return fail(503, 5032, "unsupported target database for I20 import")
+                expected_confirmation = f"IMPORT I20 {project_id} {body.source_digest} {body.target_digest}"
+                if body.confirmation != expected_confirmation:
+                    return fail(409, 4094, "explicit I20 confirmation does not match the supplied snapshots")
+                reader = (legacy_i20_source_reader_factory or LegacyI20SourceReader.from_runtime_env)()
+                source_snapshot = reader.read_snapshot()
+                if source_snapshot.digest != body.source_digest:
+                    return fail(409, 4094, "I20 source digest changed; request a fresh mapping preview")
+                preview = build_i20_mapping_preview(session, project_id, source_snapshot)
+                if preview.target_digest != body.target_digest:
+                    return fail(409, 4094, "I20 target digest changed; request a fresh mapping preview")
+
+            result = execute_i20_legacy_import(
+                session_factory,
+                project_id=project_id,
+                actor_id=actor_id,
+                source_snapshot=source_snapshot,
+                expected_source_digest=body.source_digest,
+                expected_target_digest=body.target_digest,
+                idempotency_key=body.idempotency_key,
+            )
+            return {
+                "code": 0,
+                "msg": "success",
+                "data": {
+                    "batch_id": result.batch_id,
+                    "status": result.status,
+                    "expected_count": result.expected_count,
+                    "imported_count": result.imported_count,
+                    "skipped_count": result.skipped_count,
+                    "error_count": result.error_count,
+                },
+            }
+        except (LegacyImportRejected, CheckpointConflict):
+            return fail(409, 4094, "I20 import conflicts with the current source or target state")
+        except ValueError:
+            return fail(422, 4221, "legacy I20 snapshot or mapping is invalid")
+        except Exception as exc:
+            logger.error(
+                "legacy I20 import failed",
+                extra={"project_id": project_id, "error_type": type(exc).__name__},
+            )
+            return fail(503, 5031, "legacy I20 import is unavailable")
         finally:
             if reader is not None:
                 source_engine = getattr(reader, "engine", None)

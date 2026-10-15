@@ -76,6 +76,7 @@ def test_i19_mapping_preview_is_project_scoped_read_only_and_import_disabled():
     assert data["project_id"] == project_id
     assert data["source"]["counts"] == {table: 0 for table in I19_SOURCE_COLUMNS}
     assert data["target"]["captured_at"].endswith("+08:00")
+    assert len(data["target"]["identity_digest"]) == 64
     assert data["preview"]["counts"] == {
         "new_identity_candidate": 0,
         "target_identity_match": 0,

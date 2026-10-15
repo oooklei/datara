@@ -66,6 +66,8 @@ def create_app(
     token_secret: str | None = None,
     validation_key: str | None = None,
     legacy_i18_import_enabled: bool | None = None,
+    legacy_i19_import_enabled: bool | None = None,
+    legacy_i20_import_enabled: bool | None = None,
     legacy_i22_source_reader_factory=None,
     legacy_i23_source_reader_factory=None,
     legacy_i19_source_reader_factory=None,
@@ -81,6 +83,16 @@ def create_app(
     validation_key = validation_key if validation_key is not None else os.getenv("REBUILD_VALIDATION_KEY")
     if legacy_i18_import_enabled is None:
         legacy_i18_import_enabled = os.getenv("REBUILD_LEGACY_I18_IMPORT_ENABLED", "false").strip().lower() in {
+            "1",
+            "true",
+        }
+    if legacy_i19_import_enabled is None:
+        legacy_i19_import_enabled = os.getenv("REBUILD_LEGACY_I19_IMPORT_ENABLED", "false").strip().lower() in {
+            "1",
+            "true",
+        }
+    if legacy_i20_import_enabled is None:
+        legacy_i20_import_enabled = os.getenv("REBUILD_LEGACY_I20_IMPORT_ENABLED", "false").strip().lower() in {
             "1",
             "true",
         }
@@ -669,6 +681,8 @@ def create_app(
             session_factory,
             current_user,
             legacy_i18_import_enabled=legacy_i18_import_enabled,
+            legacy_i19_import_enabled=legacy_i19_import_enabled,
+            legacy_i20_import_enabled=legacy_i20_import_enabled,
             legacy_i22_source_reader_factory=legacy_i22_source_reader_factory,
             legacy_i23_source_reader_factory=legacy_i23_source_reader_factory,
             legacy_i19_source_reader_factory=legacy_i19_source_reader_factory,
