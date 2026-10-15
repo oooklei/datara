@@ -32,6 +32,14 @@ def test_valid_datasource_exposes_mysql_capabilities():
     assert result.capabilities == {"query", "metadata", "cross_schema"}
 
 
+def test_postgresql_does_not_advertise_runtime_capabilities_before_driver_exists():
+    result = validate_datasource(
+        DataSourceDraft(name="pg", kind="postgresql", host="pg-test", port=5432, database="warehouse", username="reader")
+    )
+
+    assert result.capabilities == set()
+
+
 def test_mysql_probe_uses_read_only_transaction_and_rolls_back(monkeypatch):
     import rebuild.datasource.contracts as datasource_contracts
 
