@@ -96,7 +96,9 @@ def test_i18_runner_uses_protected_runtime_key_and_real_page_controls():
     assert "writeFile(reportPath" in runner and "screenshot" in runner
     assert "REBUILD_VALIDATION_KEY" in launcher
     assert "Remove-Item Env:DATARA_REBUILD_VALIDATION_KEY" in launcher
-    assert "localStorage" not in runner and "sessionStorage" not in runner
+    # runner 不得向页面持久存储写入 token（只允许泄漏闸对空存储的只读探针）
+    assert "localStorage.setItem" not in runner and "sessionStorage.setItem" not in runner
+    assert "localStorage.clear" not in runner and "sessionStorage.clear" not in runner
 
 
 def test_i18_preview_page_generates_idempotency_key_in_non_secure_context():
@@ -170,29 +172,51 @@ def test_i18_preview_page_token_surface_stays_injection_only():
 ADMIN_LAUNCHER = Path(__file__).parent / "run-r3-s9-i18-admin-headed.ps1"
 
 
-def test_i18_headed_admin_launcher_reads_token_from_console_and_clears_it():
-    """缺口 #2 合同：headed launcher 从本机安全输入读 token（不回显）、缓冲归零、退出清环境、不落盘。"""
+def test_i18_headed_admin_launcher_transfers_token_via_stdin_without_string_copy():
+    """缺口 #2 返工（Codex 裁定）：token 经 stdin 单向管道 — 不进 argv、不进环境变量、无托管字符串副本。"""
     script = ADMIN_LAUNCHER.read_text(encoding="utf-8")
 
     assert "Read-Host" in script and "-AsSecureString" in script
     assert "SecureStringToBSTR" in script and "ZeroBSTR" in script
-    assert "DATARA_REBUILD_ADMIN_TOKEN" in script
-    assert "Remove-Item Env:DATARA_REBUILD_ADMIN_TOKEN" in script
+    # 全程无可清零性差的托管字符串副本（禁用 PtrToStringBSTR），仅使用可清零字节缓冲
+    assert "PtrToStringBSTR" not in script
+    assert "[System.Array]::Clear" in script
+    # stdin 管道传递：--token-stdin 模式 + 仅重定向 stdin；token 不在任何环境变量
+    assert "--token-stdin" in script
+    assert "RedirectStandardInput = $true" in script
+    assert "StandardInput.BaseStream" in script
+    # token 不在任何环境变量；变量名仅允许出现一次 — 防御性清除上级环境残留（fail-closed 拒绝旧通道）
+    assert script.count("DATARA_REBUILD_ADMIN_TOKEN") == 1
+    assert "Remove('DATARA_REBUILD_ADMIN_TOKEN')" in script
+    # 不落盘、不回显、不打印
     assert "Out-File" not in script and "Set-Content" not in script and "Add-Content" not in script
+    assert "Write-Host" not in script and "Write-Output" not in script
 
 
-def test_i18_runner_admin_mode_keeps_import_under_human_control():
-    """缺口 #2 合同：admin-headed 模式 headed 打开、token 仅经 init script 注入内存、导入仍由人工点击。"""
+def test_i18_runner_admin_mode_reads_token_from_stdin_with_leak_guard():
+    """缺口 #2 返工（Codex 裁定）：runner 仅从 stdin 读 admin token，且 argv/环境/日志/证据/持久存储有 fail-closed 泄漏闸。"""
     runner = RUNNER.read_text(encoding="utf-8")
 
-    assert "DATARA_REBUILD_ADMIN_TOKEN" in runner
+    assert "DATARA_REBUILD_ADMIN_TOKEN" not in runner
+    assert "process.argv.includes('--token-stdin')" in runner
+    assert "readAdminTokenFromStdin" in runner
+    assert "chunk.fill(0)" in runner  # stdin 字节缓冲读毕即清零
+    # 泄漏闸 fail-closed：任一面命中即拒绝写证据
+    assert "assertNoTokenLeak" in runner
+    assert "refusing to record evidence" in runner
+    # 受控面覆盖：argv、环境变量、证据 JSON、stdout 摘要 + 页面持久存储只读探针
+    assert "argv: process.argv.join" in runner
+    assert "env: Object.entries(process.env)" in runner
+    assert "evidence: JSON.stringify(report)" in runner
+    assert "stdout: stdoutSummary" in runner
+    assert "no-persistent-token-storage" in runner
+    # admin-headed 模式行为：headed 打开、token 仅经 init script 注入内存、导入仍由人工点击
     assert "admin-headed-manual-injection" in runner
     assert "headless: adminHeaded ? false : true" in runner
-    # 双模式互斥：不得同时设置 validation key 与 admin token
-    assert "Set exactly one of DATARA_REBUILD_VALIDATION_KEY / DATARA_REBUILD_ADMIN_TOKEN" in runner
-    # runner 任何模式都不得代输确认语或点击导入按钮
     assert "getByTestId('run-i18-import')" not in runner
     assert "importConfirmPhrase').fill(" not in runner and "keyboard" not in runner
     assert "waiting-for-human-confirmation-and-click" in runner
+    # 双模式互斥（stdin 新通道语义）
+    assert "Set exactly one of DATARA_REBUILD_VALIDATION_KEY (env) / --token-stdin (stdin)" in runner
     # token 不进证据：报告/检查输出无 token 值字段
     assert "admin_token:" not in runner and "token:" not in runner.replace("auth_token", "")

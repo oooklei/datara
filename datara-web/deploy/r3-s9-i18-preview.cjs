@@ -5,7 +5,9 @@ const { chromium } = require('playwright-core');
 
 const baseUrl = process.env.DATARA_REBUILD_BASE_URL;
 const validationKey = process.env.DATARA_REBUILD_VALIDATION_KEY;
-const adminToken = process.env.DATARA_REBUILD_ADMIN_TOKEN;
+// #2 人工确认闸（Codex 返工裁定）：admin token 不走环境变量、不走 argv —
+// 仅经 stdin 单向管道（--token-stdin）由 headed launcher 注入本进程。
+const tokenViaStdin = process.argv.includes('--token-stdin');
 const expectedBaseUrl = 'http://192.168.1.9:18091';
 const evidenceDir = path.resolve(__dirname, '../../docs/increments/evidence/R3');
 
@@ -14,10 +16,36 @@ function check(checks, name, pass, details = {}) {
   if (!pass) throw new Error(`UI assertion failed: ${name}`);
 }
 
+// stdin 单向通道读取 admin token — 读毕立即清零全部字节缓冲，通道内不再留存。
+async function readAdminTokenFromStdin() {
+  const chunks = [];
+  for await (const chunk of process.stdin) chunks.push(chunk);
+  const joined = Buffer.concat(chunks);
+  const value = joined.toString('utf8').trim();
+  joined.fill(0);
+  for (const chunk of chunks) chunk.fill(0);
+  chunks.length = 0;
+  return value;
+}
+
+// 泄漏闸（fail-closed）：受控面（argv/环境变量/证据 JSON/stdout 摘要）任一命中即拒绝记录证据。
+function assertNoTokenLeak(token, surfaces) {
+  if (!token) return;
+  for (const [surface, text] of Object.entries(surfaces)) {
+    if (typeof text === 'string' && text.includes(token)) {
+      throw new Error(`secret leak detected in ${surface}; refusing to record evidence`);
+    }
+  }
+}
+
 async function main() {
   if (baseUrl !== expectedBaseUrl) throw new Error('S9 runner is restricted to http://192.168.1.9:18091');
-  if (!validationKey && !adminToken) throw new Error('S9 runner requires a protected runtime validation key or a manually injected short-lived admin token');
-  if (validationKey && adminToken) throw new Error('Set exactly one of DATARA_REBUILD_VALIDATION_KEY / DATARA_REBUILD_ADMIN_TOKEN');
+  if (!validationKey && !tokenViaStdin) {
+    throw new Error('S9 runner requires a protected runtime validation key (env) or a manually injected short-lived admin token via stdin (--token-stdin)');
+  }
+  if (validationKey && tokenViaStdin) {
+    throw new Error('Set exactly one of DATARA_REBUILD_VALIDATION_KEY (env) / --token-stdin (stdin)');
+  }
   await fs.mkdir(evidenceDir, { recursive: true });
 
   const startedAt = new Date().toISOString();
@@ -33,7 +61,7 @@ async function main() {
     timezone: 'Asia/Shanghai',
     url: pageUrl,
     browser: null,
-    auth_mode: adminToken ? 'admin-headed-manual-injection' : 'protected-runner-token-exchange',
+    auth_mode: tokenViaStdin ? 'admin-headed-manual-injection' : 'protected-runner-token-exchange',
     project_id: null,
     snapshot_digests: null,
     actions,
@@ -45,15 +73,15 @@ async function main() {
   };
 
   let browser;
+  let token = null;
   try {
-    let token;
     let adminHeaded = false;
-    if (adminToken) {
-      // #2 人工确认闸路径：短时 admin token 由人工经 headed launcher（SecureString）注入本进程，
-      // 仅经 addInitScript 进入当前页面内存；不进 URL/DOM 属性/持久存储/日志/证据/仓库。
+    if (tokenViaStdin) {
+      // #2 人工确认闸路径：短时 admin token 由人工经 headed launcher 以 stdin 管道注入本进程，
+      // 仅经 addInitScript 进入当前页面内存；不进 argv/环境变量/URL/DOM 属性/持久存储/日志/证据/仓库。
       adminHeaded = true;
-      token = adminToken;
-      check(checks, 'admin-token-manual-injection-mode', token.trim().length > 0);
+      token = await readAdminTokenFromStdin();
+      check(checks, 'admin-token-manual-injection-mode', token.length > 0);
     } else {
       const exchange = await fetch(new URL('/api/v1/rebuild/validation-token', baseUrl), {
         method: 'POST',
@@ -176,6 +204,12 @@ async function main() {
         import_completed: /导入与只读复核通过|导入事务已完成/.test(importStatusText),
       });
       actions.push({ name: 'human-confirmation-finished', at: new Date().toISOString() });
+      // 持久化面探针：token 只存在于页面内存（init script 注入），localStorage/sessionStorage 必须为空。
+      const storageProbe = await page.evaluate(() => ({
+        local: window.localStorage.length,
+        session: window.sessionStorage.length,
+      }));
+      check(checks, 'no-persistent-token-storage', storageProbe.local === 0 && storageProbe.session === 0, storageProbe);
     }
 
     await page.screenshot({ path: path.join(evidenceDir, `${runId.toLowerCase()}-summary.png`), fullPage: false });
@@ -185,9 +219,18 @@ async function main() {
     errors.push({ kind: 'runner', message: error.message });
   } finally {
     if (browser) await browser.close();
+    // 泄漏闸（fail-closed）：argv / 环境变量 / 证据 JSON / stdout 摘要任一面出现 token 即拒绝写证据。
+    assertNoTokenLeak(token, {
+      argv: process.argv.join(' '),
+      env: Object.entries(process.env).map(([name, value]) => `${name}=${value ?? ''}`).join('\n'),
+      evidence: JSON.stringify(report),
+    });
+    const stdoutSummary = JSON.stringify({ run_id: runId, outcome: report.outcome, checks, evidence: reportPath });
+    assertNoTokenLeak(token, { stdout: stdoutSummary });
     const reportPath = path.join(evidenceDir, `${runId.toLowerCase()}.json`);
     await fs.writeFile(reportPath, `${JSON.stringify(report, null, 2)}\n`, 'utf8');
-    process.stdout.write(`${JSON.stringify({ run_id: runId, outcome: report.outcome, checks, evidence: reportPath })}\n`);
+    process.stdout.write(`${stdoutSummary}\n`);
+    token = null;
   }
 
   if (report.outcome !== 'PASS') process.exitCode = 1;
