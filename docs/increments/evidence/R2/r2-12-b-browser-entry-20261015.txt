@@ -1,0 +1,12 @@
+R2-12-B browser/control entry evidence
+Date: 2026-10-15 Asia/Shanghai
+
+Target page: http://192.168.1.9:18091/rebuild-validation-r2-12-b.html
+Browser-first result: browser-use could not bind/control the new page; the bounded retry timed out. Recorded as BLOCKED_TOOL_BRIDGE, not as a product/UI failure.
+Fallback: Playwright drove the same deployed page and its visible schema/object/column controls. The page used a short-lived token injected by the protected runner; no key/token was placed in the page source, URL, screenshot, or JSON report.
+Final control run: r2-12-b-20261015135851 (PASS; paired JSON and PNG are stored beside this file).
+Earlier failed/partial run reports and available screenshots remain in this directory; they were not overwritten.
+
+Assertions in the final run: schema navigation across analytics/shared; same-name orders remain distinct by schema; analytics.orders_view is identified as a view; column type/nullability/primary-key/comment metadata matches the isolated fixture; cross-project access is rejected (404). Expected 404 browser resource noise is recorded separately in the JSON report and is not treated as an unexpected console error.
+
+The page is a standalone DBX-style validation client, not registered in the production SPA/menu. This evidence proves a real UI → deployed Backend API → isolated MySQL fixture path; API-only checks do not substitute for this run.

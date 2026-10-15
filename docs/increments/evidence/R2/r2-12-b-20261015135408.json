@@ -1,0 +1,48 @@
+{
+  "run_id": "r2-12-b-20261015135408",
+  "timestamp": "2026-10-15T13:54:23.186045+08:00",
+  "timezone": "Asia/Shanghai",
+  "url": "http://192.168.1.9:18091/rebuild-validation-r2-12-b.html?projectId=17&datasourceId=3",
+  "browser": "Chromium via Playwright",
+  "actions": [
+    {
+      "action": "load schemas through explorer control",
+      "http_status": 200
+    }
+  ],
+  "assertions": [
+    {
+      "name": "validation-page-loaded",
+      "passed": true
+    },
+    {
+      "name": "schema-visible-in-tree",
+      "passed": true
+    }
+  ],
+  "responses": [
+    {
+      "status": 200,
+      "method": "GET",
+      "path": "/projects/17/datasources/3/schemas"
+    },
+    {
+      "status": 200,
+      "method": "GET",
+      "path": "/projects/17/datasources/3/objects"
+    }
+  ],
+  "page_errors": [
+    "validation failure: Error: Locator.wait_for: Error: strict mode violation: get_by_role(\"button\", name=\"orders\") resolved to 2 elements:\n    1) <button type=\"button\" data-object=\"orders\" data-schema=\"analytics\">…</button> aka get_by_role(\"button\", name=\"orders table\")\n    2) <button type=\"button\" data-schema=\"analytics\" data-object=\"orders_view\">…</button> aka get_by_role(\"button\", name=\"orders_view view\")\n\nCall log:\n  - waiting for get_by_role(\"button\", name=\"orders\") to be visible\n"
+  ],
+  "console_errors": [],
+  "failed_requests": [],
+  "cleanup": {
+    "datasource_profile_deleted": true
+  },
+  "screenshot": null,
+  "result": "FAIL",
+  "notes": [
+    "Verification key, bearer token, and datasource credentials are excluded."
+  ]
+}

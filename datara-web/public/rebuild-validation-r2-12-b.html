@@ -1,0 +1,227 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>R2-12-B 数据源元数据树验证</title>
+    <style>
+      :root { color-scheme: light; font: 15px/1.5 "Segoe UI", "Microsoft YaHei", sans-serif; color: #172b4d; background: #f4f7fb; }
+      body { margin: 0; }
+      header { padding: 18px 24px; color: #fff; background: #12304a; }
+      header h1 { margin: 0 0 4px; font-size: 21px; }
+      header p { margin: 0; color: #c5d5e4; }
+      main { display: grid; grid-template-columns: 310px minmax(420px, 1fr); gap: 16px; padding: 16px; }
+      section { min-height: 590px; border: 1px solid #d8e1eb; border-radius: 8px; background: white; }
+      h2 { margin: 0; padding: 14px 16px; border-bottom: 1px solid #e2e9f0; font-size: 16px; }
+      .controls, .detail { padding: 14px 16px; }
+      label { display: block; margin: 0 0 10px; color: #526579; font-size: 13px; }
+      input, select, button { box-sizing: border-box; min-height: 36px; border: 1px solid #cbd6e2; border-radius: 5px; background: white; font: inherit; }
+      input, select { width: 100%; margin-top: 4px; padding: 6px 8px; }
+      button { padding: 6px 11px; color: #12304a; cursor: pointer; }
+      button.primary { border-color: #1769aa; color: white; background: #1769aa; }
+      button:disabled { cursor: not-allowed; opacity: .55; }
+      .tree { padding: 0 10px 16px; }
+      .tree ul { margin: 0; padding: 0 0 0 20px; list-style: none; }
+      .tree > ul { padding-left: 0; }
+      .tree li { margin: 3px 0; }
+      .tree button { width: 100%; border: 0; text-align: left; }
+      .tree button:hover, .tree button[aria-current="true"] { background: #e9f3fb; }
+      .tree .kind { float: right; color: #73879b; font-size: 12px; }
+      .toolbar { display: flex; flex-wrap: wrap; align-items: end; gap: 10px; }
+      .toolbar label { min-width: 130px; flex: 1; margin: 0; }
+      .muted { color: #718398; }
+      .status { min-height: 25px; margin: 12px 0; padding: 8px 10px; border-radius: 5px; background: #f1f5f9; }
+      .status.error { color: #9d2424; background: #fff0f0; }
+      .status.success { color: #17623c; background: #eaf7ef; }
+      table { width: 100%; border-collapse: collapse; font-size: 13px; }
+      th, td { padding: 8px; border-bottom: 1px solid #e3eaf1; text-align: left; vertical-align: top; }
+      th { color: #526579; background: #f7f9fb; }
+      .identity { font-family: Consolas, monospace; color: #435b73; }
+      @media (max-width: 760px) { main { grid-template-columns: 1fr; } section { min-height: 0; } }
+    </style>
+  </head>
+  <body>
+    <header>
+      <h1>项目数据源 · Schema / 对象浏览</h1>
+      <p>R2-12-B 独立验证页：按连接 → Schema → Table/View → Columns 导航；只读、分页、真实后端。</p>
+    </header>
+    <main>
+      <section aria-labelledby="tree-title">
+        <h2 id="tree-title">对象资源管理器</h2>
+        <div class="controls">
+          <label>当前项目<input id="project-id" readonly /></label>
+          <label>已保存数据源 ID<input id="datasource-id" readonly /></label>
+          <div class="toolbar">
+            <button id="load-schemas" class="primary" type="button">加载 Schema</button>
+            <button id="load-next-schemas" type="button" disabled>更多 Schema</button>
+          </div>
+        </div>
+        <nav id="schema-tree" class="tree" aria-label="Schema 和数据库对象"><p class="muted">加载已保存数据源的 Schema。</p></nav>
+      </section>
+      <section aria-labelledby="detail-title">
+        <h2 id="detail-title">对象定义</h2>
+        <div class="detail">
+          <div class="toolbar">
+            <label>完整对象标识<input id="object-identity" readonly placeholder="选择一个 table 或 view" /></label>
+            <button id="load-columns" class="primary" type="button" disabled>查看列定义</button>
+          </div>
+          <div id="notice" class="status" role="status" aria-live="polite">验证上下文由测试运行时注入；本页面不包含登录表单或验证密钥。</div>
+          <div id="column-summary" class="muted">列定义、类型、可空、主键与注释将在此显示。</div>
+          <table aria-label="列定义"><thead><tr><th>列名</th><th>类型</th><th>可空</th><th>主键</th><th>注释</th></tr></thead><tbody id="column-rows"></tbody></table>
+        </div>
+      </section>
+    </main>
+    <script>
+      (() => {
+        const params = new URLSearchParams(location.search);
+        const projectId = Number(params.get('projectId'));
+        const datasourceId = Number(params.get('datasourceId'));
+        const token = sessionStorage.getItem('rebuild.validation.token') || '';
+        const projectInput = document.querySelector('#project-id');
+        const datasourceInput = document.querySelector('#datasource-id');
+        const schemaTree = document.querySelector('#schema-tree');
+        const notice = document.querySelector('#notice');
+        const objectIdentity = document.querySelector('#object-identity');
+        const loadColumns = document.querySelector('#load-columns');
+        const columnRows = document.querySelector('#column-rows');
+        const loadNextSchemas = document.querySelector('#load-next-schemas');
+        let nextSchema = null;
+        let selectedObject = null;
+
+        projectInput.value = Number.isInteger(projectId) && projectId > 0 ? String(projectId) : '未提供';
+        datasourceInput.value = Number.isInteger(datasourceId) && datasourceId > 0 ? String(datasourceId) : '未提供';
+        if (!token) setNotice('未注入验证 Token。此页面不登录；请由受控测试运行时获取短期 Token。', 'error');
+        if (!projectId || !datasourceId) setNotice('缺少项目或已保存数据源参数。', 'error');
+
+        function setNotice(text, type = '') {
+          notice.textContent = text;
+          notice.className = `status ${type}`;
+        }
+
+        async function request(path, auth = token) {
+          const response = await fetch(`/api/v1/rebuild/projects/${projectId}/datasources/${datasourceId}/${path}`, {
+            headers: auth ? { Authorization: `Bearer ${auth}` } : {},
+          });
+          const payload = await response.json();
+          return { response, payload };
+        }
+
+        function addObjectButtons(list, schema, parent) {
+          const ul = document.createElement('ul');
+          for (const item of list) {
+            const li = document.createElement('li');
+            const button = document.createElement('button');
+            button.type = 'button';
+            button.dataset.schema = schema;
+            button.dataset.object = item.name;
+            button.innerHTML = `<span>${escapeText(item.name)}</span><span class="kind">${escapeText(item.type)}</span>`;
+            button.addEventListener('click', () => {
+              schemaTree.querySelectorAll('button[aria-current="true"]').forEach(node => node.removeAttribute('aria-current'));
+              button.setAttribute('aria-current', 'true');
+              selectedObject = { schema, name: item.name, kind: item.type };
+              objectIdentity.value = `${schema}.${item.name}`;
+              loadColumns.disabled = false;
+              columnRows.replaceChildren();
+              document.querySelector('#column-summary').textContent = `${schema}.${item.name} · ${item.kind}`;
+              setNotice(`已选择 ${schema}.${item.name}（${item.kind}）。`, 'success');
+            });
+            li.append(button);
+            ul.append(li);
+          }
+          parent.append(ul);
+        }
+
+        async function loadObjects(schema, parent) {
+          parent.textContent = '正在读取对象…';
+          const { response, payload } = await request(`objects?schema=${encodeURIComponent(schema)}&limit=200`);
+          if (!response.ok || payload.code !== 0) throw new Error(`${schema} 对象读取失败（HTTP ${response.status}）：${payload.msg || 'request failed'}`);
+          parent.replaceChildren();
+          addObjectButtons(payload.data.items, schema, parent);
+          if (payload.data.next_after) {
+            const more = document.createElement('button');
+            more.type = 'button';
+            more.textContent = '加载更多对象';
+            more.addEventListener('click', async () => {
+              const next = await request(`objects?schema=${encodeURIComponent(schema)}&after=${encodeURIComponent(payload.data.next_after)}&limit=200`);
+              if (!next.response.ok || next.payload.code !== 0) return setNotice('读取下一页对象失败。', 'error');
+              addObjectButtons(next.payload.data.items, schema, parent);
+              more.remove();
+            });
+            parent.append(more);
+          }
+        }
+
+        function escapeText(value) {
+          return String(value).replace(/[&<>"']/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[char]);
+        }
+
+        async function loadSchemaPage(after = null) {
+          const suffix = after ? `?after=${encodeURIComponent(after)}&limit=100` : '?limit=100';
+          const { response, payload } = await request(`schemas${suffix}`);
+          if (!response.ok || payload.code !== 0) throw new Error(`Schema 读取失败（HTTP ${response.status}）：${payload.msg || 'request failed'}`);
+          if (!after) schemaTree.replaceChildren();
+          const root = schemaTree.querySelector(':scope > ul') || document.createElement('ul');
+          for (const schema of payload.data.items) {
+            const li = document.createElement('li');
+            const button = document.createElement('button');
+            button.type = 'button';
+            button.textContent = `▸ ${schema}`;
+            const children = document.createElement('div');
+            button.addEventListener('click', async () => {
+              const opened = button.getAttribute('aria-expanded') === 'true';
+              button.setAttribute('aria-expanded', String(!opened));
+              if (opened) return children.hidden = true;
+              children.hidden = false;
+              if (!children.dataset.loaded) {
+                try { await loadObjects(schema, children); children.dataset.loaded = 'true'; }
+                catch (error) { children.textContent = error.message; setNotice(error.message, 'error'); }
+              }
+            });
+            children.hidden = true;
+            li.append(button, children);
+            root.append(li);
+          }
+          if (!root.isConnected) schemaTree.append(root);
+          nextSchema = payload.data.next_after;
+          loadNextSchemas.disabled = !nextSchema;
+          setNotice(`已读取 ${payload.data.items.length} 个 Schema${nextSchema ? '，可继续加载' : ''}。`, 'success');
+        }
+
+        document.querySelector('#load-schemas').addEventListener('click', async () => {
+          try {
+            if (!token) {
+              const { response } = await request('schemas', '');
+              if (response.status === 401) setNotice('未授权请求已被拒绝（401）。', 'success');
+              else setNotice(`未授权请求返回 HTTP ${response.status}。`, 'error');
+              return;
+            }
+            await loadSchemaPage();
+          } catch (error) { setNotice(error.message, 'error'); }
+        });
+        loadNextSchemas.addEventListener('click', async () => {
+          try { if (nextSchema) await loadSchemaPage(nextSchema); }
+          catch (error) { setNotice(error.message, 'error'); }
+        });
+        loadColumns.addEventListener('click', async () => {
+          if (!selectedObject) return;
+          try {
+            const query = new URLSearchParams({ schema: selectedObject.schema, object_name: selectedObject.name, limit: '500' });
+            const { response, payload } = await request(`columns?${query}`);
+            if (!response.ok || payload.code !== 0) throw new Error(`列定义读取失败（HTTP ${response.status}）：${payload.msg || 'request failed'}`);
+            columnRows.replaceChildren(...payload.data.items.map(column => {
+              const row = document.createElement('tr');
+              for (const value of [column.name, column.database_type || column.data_type, column.nullable ? '是' : '否', column.primary_key ? '是' : '否', column.comment || '']) {
+                const cell = document.createElement('td');
+                cell.textContent = value;
+                row.append(cell);
+              }
+              return row;
+            }));
+            document.querySelector('#column-summary').textContent = `${selectedObject.schema}.${selectedObject.name} · ${payload.data.items.length} 列`;
+            setNotice(`已加载 ${payload.data.items.length} 列定义。`, 'success');
+          } catch (error) { setNotice(error.message, 'error'); }
+        });
+      })();
+    </script>
+  </body>
+</html>

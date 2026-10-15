@@ -42,6 +42,13 @@
 | R2-14 | 每增量浏览器门禁、登录前置与控制桥阻塞 | 每个后端增量配独立验证页/路由，不注册正式菜单；用测试身份经 Backend auth API 获取短期 token 后直接驱动业务控件，登录页人工点击不是门禁；R1 单独验 auth/RBAC。browser-use 优先，控件桥一次有界重试仍阻塞即 Playwright 驱动同页真实控件；API-only 不替代 UI，Playwright 失败才 BLOCKED_BROWSER | Token 获取来源/有效期、真实控件操作、后端状态、截图（无凭据）、API/日志/资源证据；流程见 `.agents/skills/browser-use-playwright-fallback/SKILL.md` |
 | R2-15 | SQL IDE 单增量过大 | 拆 R10-A 只读：浏览、补全、查询、历史、结果分页、导出；R10-B 写路径：对象编辑、差异、备份、发布、回滚、DDL 权限。二者分别设计、实现和验收 | R10-A/R10-B 两份验证单，写路径不得混入只读门禁 |
 
+### 2.1 R2-12 datasource 元数据浏览子契约（R2-12-B 实测收口）
+
+- 当前可运行能力：仅 MySQL。使用已登记 datasource profile 创建只读连接，项目/数据源授权先于连接；通过 MySQL `information_schema` 提供 schema 列表、schema 下 table/view 分页与对象 columns/type/nullability/primary-key/comment。对象身份始终带 project、datasource、schema、type、name，不得按裸表名合并跨 schema 对象。
+- 连接与查询限制：本子批执行 metadata SELECT，不接受客户端 DSN/host/凭据，不提供 DDL/DML/SQL execution，不落目录快照；过滤值参数化，标识符使用 driver/Inspector 安全处理，连接设置有限超时并在成功/失败路径 rollback/close。权限或驱动错误不得伪装为空 schema。
+- 前端验收以 DBX 风格对象树的 schema→table/view→columns 用户操作流为参考，由隔离静态页调用真实 Backend；不改正式 Vue/菜单。已验证跨 schema 同名对象与项目隔离；browser-use 控件桥受限重试阻塞后，可按 R2-14 在同一 URL 使用 Playwright，真实控件仍是验收对象。
+- 子批状态：R2-12-B `CONTROL_PASS`，最终证据为 `evidence/R2/r2-12-b-20261015135851.json` + `.png` 及配套 `r2-12-b-remote-final-20261015.txt`。此状态只覆盖上述 MySQL 元数据浏览。连接池、PostgreSQL adapter/driver、SYNC/SQL IDE/治理的共享调用以及目录快照仍是 R2-12 后续任务，不得据此标记 R2-12 总体完成。
+
 ## 3. 身份、调度和运行表统一契约
 
 所有运行记录表至少拥有数据库生成的 `created_at`、`updated_at`、`generated_at`；实例、任务、attempt、command、task_log、output、variable_runtime、data_stat、workflow_run_metric、stream_attempt 均不得由前端伪造时间。上海时区用于业务解释，数据库时间戳保存实际生成时刻；API 同时返回 ISO 字段与显示时区。

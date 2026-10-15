@@ -1,7 +1,7 @@
 # R2-12-B：项目数据源跨 Schema 元数据树影响分析
 
 日期：2026-10-15（Asia/Shanghai）  
-状态：READY_FOR_IMPLEMENTATION（仅设计/影响分析；未开始代码）
+状态：R2-12-B_CONTROL_PASS（本子批闭环；R2-12 总体仍 IN_PROGRESS）
 
 ## 前序增量影响复核
 
@@ -59,3 +59,13 @@
 ## AOCI 治理检查说明
 
 2026-10-15 在 R2-12-A 文件稳定后至 R2-12-B 影响分析/台账更新期间，累计四次调用 `aoci_maintain`。维护均以 `stopped/blocked` 返回：未产生候选或索引写入；报告全仓 Code cognition drift（112 missing、112 unbaselined；125 targets）及 12 个 observed pending review，且提示需先人工检查 scope。只读 `scope status` 另显示 5 项观察变化待核对、4 项 inventory 人工检查；本轮没有 ack、改 scope 或写 Entry。AOCI 全局索引仍不宣称 alignment，但此阻塞不涉及 R2-12-B 的源代码语义或外部权限；该增量有独立影响分析、局部源码/测试证据，故允许按 source-bound 范围继续开发，不改 AOCI managed assets。
+
+## 实施与验收收口（2026-10-15 Asia/Shanghai）
+
+- 实现：MySQL `information_schema` 只读目录 adapter/API，按已保存项目 datasource profile 读取 schema、table/view 与 columns；项目和 datasource 范围在创建连接前校验。PostgreSQL 从 active capability 移除；未实现连接池、SQL/DDL、metadata 快照及 SYNC 执行。
+- 独立控件页按 DBX 对象浏览器方式提供 schema → object → columns 导航，显示同名对象的 schema-qualified identity、table/view 类型及列类型/可空/主键/comment。未改正式 Vue、路由或菜单。
+- 本地最终：`pytest tests -q` 764 passed；改动 Python Ruff、compileall、验证页脚本语法与 `git diff --check` 通过。远端运行验证报告见 `evidence/R2/r2-12-b-20261015135851.json` 和配对截图 `.png`；浏览器入口/工具桥结果见 `evidence/R2/r2-12-b-browser-entry-20261015.txt`，部署、服务日志、资源与清理见 `evidence/R2/r2-12-b-remote-final-20261015.txt`。
+- browser-use 页面绑定/控制尝试按约定受限重试后仍超时，登记为 `BLOCKED_TOOL_BRIDGE`；随后对同一 `http://192.168.1.9:18091/rebuild-validation-r2-12-b.html` 使用 Playwright 完成真实控件→真实 API→临时隔离 MySQL 的通过闭环，不以 API-only 代替 UI。
+- 临时容器 `datara-r2-12b-mysql-fixture` 使用 `--rm`、tmpfs、无 host port；测试用户仅有 fixture schema 的 `SELECT, SHOW VIEW`。运行后容器已移除，新增 datasource profile 行数为 0；旧 source/meta/dw 库未访问或修改。服务源码/Web 变更前备份与校验记录已归入 remote-final。
+- 控件断言覆盖两个 schema 下同名 `orders` 区分、`analytics.orders_view` 类型、两套不同字段类型/nullable/PK/comment、跨项目访问 404。最终 run `r2-12-b-20261015135851` PASS；较早失败/部分 JSON 与截图均保留，不覆盖为最终通过。
+- 当前结论仅为 `R2-12-B_CONTROL_PASS`。R2-12 总体继续 `IN_PROGRESS`：连接池、PostgreSQL 驱动/隔离验证、与 SYNC/SQL IDE/治理采集共享 datasource service 尚未完成。AOCI 全局治理仍 dirty/stale、严格 Challenge 部分通过，不宣称 AOCI aligned；不阻断本子批 source-bound 结果。

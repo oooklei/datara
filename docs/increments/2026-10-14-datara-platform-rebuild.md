@@ -59,7 +59,7 @@
 5. 将需要运行的最小验证页部署到 192.168.1.9 的非正式端口，验证 API、容器、MySQL/Redis/ZK/Kafka 和日志。
 6. 完成四联证据后独立提交批次 2；没有浏览器控件级证据不得标记全绿。
 
-### 3.1 R2-01—R2-15 状态跟踪（2026-10-14）
+### 3.1 R2-01—R2-15 状态跟踪（2026-10-15）
 
 | 任务 | 状态 | 已有证据/未完成条件 |
 |---|---|---|
@@ -74,12 +74,18 @@
 | R2-09 AI | DESIGN_DEFINED | 五工具契约/权限/审计/预算与浮动助手边界已定义；需代码 schema、拒权和冻结门禁。 |
 | R2-10 指标 | IN_PROGRESS | 本轮将过时全量测试数 536 更新为实测 583，并记录 QC browser 21/21；其余性能基线需专门采样。 |
 | R2-11 SYNC | DESIGN_DEFINED | 执行器链路已写入设计；需 datasource 前置、执行器实现和全量/增量/断点/行计数闭环。 |
-| R2-12 datasource | IN_PROGRESS | R2-12-A 项目隔离 CRUD/只读连接探测子批已通过：全后端 754 tests PASS，Playwright 同页控件闭环 PASS，远端 API/依赖容器健康、日志及临时只读 MySQL fixture 清理已核实。R2-12-B 影响分析已完成，继续实现 MySQL 跨 schema 元数据树，并纠正 PostgreSQL active-capability 不实声明；connection pool 与 SYNC 接入仍未完成。AOCI 全局索引门保持独立跟踪，不阻断 source-bound 子批实现。见 `R2-12-A-数据源项目隔离与连接探测影响分析.md`、`R2-12-B-数据源跨Schema元数据树影响分析.md` 和 `evidence/R2/r2-12-a-remote-final-20261015.txt`。R2-12 总体保持 IN_PROGRESS。 |
+| R2-12 datasource | IN_PROGRESS | R2-12-A 项目隔离 CRUD/只读 probe 与 R2-12-B MySQL 跨 schema 元数据树均为 `CONTROL_PASS`；B 最终真实控件 run `r2-12-b-20261015135851` PASS，后端全量 pytest 764 passed，两个 schema 的同名表、view、列详情与跨项目拒绝均有 JSON+PNG、remote-final 证据。B 仅支持 MySQL 且只读；连接池、PostgreSQL runtime、SQL/SYNC/治理复用仍未完成。见 `R2-12-B-数据源跨Schema元数据树影响分析.md`、`evidence/R2/r2-12-b-remote-final-20261015.txt`。AOCI dirty/stale 单独跟踪，不夸大为 aligned。R2-12 总体仍 IN_PROGRESS。 |
 | R2-13 测试库 | PARTIAL | 1.9 运行 schema 已供测试，R3 时间戳/行数证据部分存在；需把 schema/init 与默认值证据按新 Backend 契约核实。 |
 | R2-14 门禁 | IN_PROGRESS | token bootstrap 与 Playwright 同页策略已有；QC 批次 1 21/21 PASS，仍需每个后端增量依照参考产品 UI 做闭环。 |
 | R2-15 IDE 拆分 | DESIGN_DEFINED | R10-A/B 已拆分；需两份独立验证单和 DDL 写路径审批边界。 |
 
 此跟踪表是最高实证状态，不以“设计中有一行”代替代码/远端/控件验收；状态提升须附证据链接并同步更新台账。
+
+#### 2026-10-15 R2-12-B 实施结论
+
+- MySQL project-scoped 只读 metadata browse 已实现并完成远端控件验收；最终全后端 `pytest tests -q` 为 764 passed。Playwright 对同一 18091 页面进行 UI 控件操作，远端 API 日志与请求状态相符；MySQL fixture 只读账号/权限和删除后 datasource 行数为 0 见 B remote-final。
+- browser-use 控制桥受限重试后仍超时，按已批准 fallback 由 Playwright 对同页取证；同域多个断言合并在一次最终控件运行中，保留早期失败证据。
+- `R2-12-B_CONTROL_PASS` 不提升 R2-12 总体状态；下一子批只能在 B 本次收口验收后另立影响分析、更新计划并细化步骤，不能在 B 远程验证期间并行开工。
 
 ## 4. 与旧资产的处置
 
