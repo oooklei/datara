@@ -53,6 +53,7 @@ def create_app() -> FastAPI:
     from api import (
         alerts,
         auth,
+        std,
         baseline,
         component,
         component_design,
@@ -110,6 +111,7 @@ def create_app() -> FastAPI:
     app.include_router(wf_schedule.router, prefix="/api/v1")
     app.include_router(wf_variable.router, prefix="/api/v1")
     app.include_router(workflow_templates.router, prefix="/api/v1")
+    app.include_router(std.router, prefix="/api/v1")
     # 页面设计器（资源目录/数据预览）
     app.include_router(page_designer.router, prefix="/api/v1")
 

@@ -1031,3 +1031,52 @@ class QcAlarmPolicy(Base):
     threshold: Mapped[float] = mapped_column(Float, default=90)
     enabled: Mapped[bool] = mapped_column(Boolean, default=True)
     last_fired_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+
+
+class StdElement(Base):
+    __tablename__ = "t_std_element"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    code: Mapped[str] = mapped_column(String(64), unique=True)
+    cn: Mapped[str] = mapped_column(String(128)); en: Mapped[str] = mapped_column(String(128))
+    data_type: Mapped[str] = mapped_column(String(32)); length: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    status: Mapped[str] = mapped_column(String(16), default="draft"); version: Mapped[int] = mapped_column(Integer, default=1)
+    owner: Mapped[str] = mapped_column(String(64), default=""); remark: Mapped[str] = mapped_column(String(255), default="")
+    create_time: Mapped[datetime] = mapped_column(DateTime, default=now); update_time: Mapped[datetime] = mapped_column(DateTime, default=now, onupdate=now)
+
+
+class StdCode(Base):
+    __tablename__ = "t_std_code"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    code: Mapped[str] = mapped_column(String(64), unique=True); name: Mapped[str] = mapped_column(String(128))
+    remark: Mapped[str] = mapped_column(String(255), default=""); status: Mapped[str] = mapped_column(String(16), default="draft"); version: Mapped[int] = mapped_column(Integer, default=1)
+    create_time: Mapped[datetime] = mapped_column(DateTime, default=now)
+
+
+class StdCodeValue(Base):
+    __tablename__ = "t_std_code_value"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    std_code_id: Mapped[int] = mapped_column(Integer, index=True); c: Mapped[str] = mapped_column(String(64)); n: Mapped[str] = mapped_column(String(128)); seq: Mapped[int] = mapped_column(Integer, default=0); remark: Mapped[str] = mapped_column(String(255), default="")
+
+
+class StdNamingRule(Base):
+    __tablename__ = "t_std_naming_rule"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    name: Mapped[str] = mapped_column(String(128)); rule_type: Mapped[str] = mapped_column(String(16)); pattern: Mapped[str] = mapped_column(String(255)); target: Mapped[str] = mapped_column(String(32), default="field"); enabled: Mapped[bool] = mapped_column(Boolean, default=True)
+
+
+class StdMapping(Base):
+    __tablename__ = "t_std_mapping"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    name: Mapped[str] = mapped_column(String(128)); target: Mapped[str] = mapped_column(String(255)); element_id: Mapped[Optional[int]] = mapped_column(Integer, nullable=True); code_id: Mapped[Optional[int]] = mapped_column(Integer, nullable=True); status: Mapped[str] = mapped_column(String(16), default="open"); diff: Mapped[str] = mapped_column(String(255), default="")
+
+
+class StdApproval(Base):
+    __tablename__ = "t_std_approval"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    biz_type: Mapped[str] = mapped_column(String(16)); biz_id: Mapped[int] = mapped_column(Integer); action: Mapped[str] = mapped_column(String(16)); payload_json: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True); status: Mapped[str] = mapped_column(String(16), default="review"); opinion: Mapped[str] = mapped_column(String(255), default=""); create_time: Mapped[datetime] = mapped_column(DateTime, default=now)
+
+
+class StdCheckReport(Base):
+    __tablename__ = "t_std_check_report"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    scope: Mapped[str] = mapped_column(String(16)); summary_json: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True); issues_json: Mapped[Optional[list]] = mapped_column(JSON, nullable=True); status: Mapped[str] = mapped_column(String(16), default="done"); create_time: Mapped[datetime] = mapped_column(DateTime, default=now)

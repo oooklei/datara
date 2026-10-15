@@ -307,18 +307,29 @@ class DirtyPlan:
         self.pair_map = {}  # phone_pair：follower_pos -> leader_pos
         self.by_pos = {}  # pos -> [(rule, is_anchor, ord_)]
 
-        # 1+2) 值型规则：锚定块 + 随机位
+        # 1+2) 值型规则：锚定块 + 随机位。
+        # 同表同列的规则必须互斥，否则后执行的规则会覆盖前一规则，
+        # 造成 expected 与实际命中数漂移（例如 pay_time 的 before/future）。
         pool_v = [p for p in range(table.rows) if p not in reserved]
+        occupied_by_column: dict[str, set[int]] = {}
         for r in rules:
             if r.kind in ("duplicate_row", "phone_pair"):
                 continue
             pick_rng = random.Random(f"{ctx.cfg.seed}:{table.name}:{r.id}:pick")
             total = r.expected_total(table)
+            occupied = occupied_by_column.setdefault(r.column, set())
             if r.anchor:
                 s, e = self.blocks[r.id]
                 for pos in range(s, e + 1):
                     self.by_pos.setdefault(pos, []).append((r, True, pos - s + 1))
-            for pos in pick_rng.sample(pool_v, total - r.anchor):
+                occupied.update(range(s, e + 1))
+            candidates = [pos for pos in pool_v if pos not in occupied]
+            random_count = total - r.anchor
+            if random_count > len(candidates):
+                raise ValueError(f"规则 {r.id} 在列 {r.column} 上没有足够的互斥采样位")
+            picks = pick_rng.sample(candidates, random_count)
+            occupied.update(picks)
+            for pos in picks:
                 self.by_pos.setdefault(pos, []).append((r, False, 0))
         value_positions = value_anchor | set(self.by_pos)
 
