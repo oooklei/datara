@@ -97,3 +97,71 @@ def test_i18_runner_uses_protected_runtime_key_and_real_page_controls():
     assert "REBUILD_VALIDATION_KEY" in launcher
     assert "Remove-Item Env:DATARA_REBUILD_VALIDATION_KEY" in launcher
     assert "localStorage" not in runner and "sessionStorage" not in runner
+
+
+def test_i18_preview_page_generates_idempotency_key_in_non_secure_context():
+    """缺口 #1：crypto.randomUUID 仅 secure context 可用；页面必须带回退，禁止无条件调用。"""
+    html = PAGE.read_text(encoding="utf-8")
+
+    assert "generateIdempotencyKey" in html
+    # crypto.randomUUID() 只允许出现在类型守卫后的 return 处（1 次），禁止任何无条件调用
+    assert html.count("crypto.randomUUID()") == 1
+    assert "typeof crypto?.randomUUID === 'function'" in html
+    assert "getRandomValues" in html
+    assert "(bytes[6] & 0x0f) | 0x40" in html and "(bytes[8] & 0x3f) | 0x80" in html
+    assert "无安全随机源" in html
+
+
+def test_i18_preview_page_plan_table_has_no_misleading_target_entity_column():
+    """缺口 #3：后端 entries 契约无 target 实体字段，列须删除而非误渲染 source_table。"""
+    html = PAGE.read_text(encoding="utf-8")
+
+    assert "<th>目标实体</th>" not in html
+    assert "<th>来源表</th><th>来源主键</th><th>计划</th><th>说明</th>" in html
+    assert 'colspan="5"' not in html and 'colspan="4"' in html
+    rendered = html.split("planRows').innerHTML=entries.length")[1]
+    assert "<td>${escapeHtml(entry.source_table)}</td><td>${escapeHtml(entry.source_id)}</td><td><span" in rendered
+
+
+def test_i18_preview_page_preserves_4097_partial_completion_payload():
+    """缺口 #4：4097 部分完成响应的 batch_id/status 须保存到 error.data 并在导入状态展示。"""
+    html = PAGE.read_text(encoding="utf-8")
+
+    assert "error.data=payload.data??null" in html
+    assert "error&&error.data&&error.data.batch_id" in html
+    assert "导入部分完成：批次" in html and "partial.status" in html and "partial.imported_count" in html
+
+
+def test_i18_preview_page_pill_covers_all_dispositions():
+    """缺口 #7：skipped/unchanged 徽章须有专属配色。"""
+    html = PAGE.read_text(encoding="utf-8")
+
+    assert ".pill.skipped{" in html and ".pill.unchanged{" in html
+
+
+def test_i18_preview_page_mapping_details_survive_disposition_reason():
+    """缺口 #6：映射明细与 disposition_reason 拼接展示，不得被 fallback 链遮蔽。"""
+    html = PAGE.read_text(encoding="utf-8")
+
+    assert "[entry.disposition_reason,notes,entry.fingerprint].filter(Boolean).join" in html
+    assert "entry.disposition_reason||notes||entry.fingerprint" not in html
+
+
+def test_i18_preview_page_reveals_idempotency_key_and_states_refresh_risk():
+    """缺口 #5：幂等键在导入状态可见可审计；锁定文案如实陈述刷新后会生成新键（无存储契约不变）。"""
+    html = PAGE.read_text(encoding="utf-8").lower()
+
+    assert "幂等键 ${state.idempotencykey}" in html
+    assert "刷新页面会生成新的幂等键" in html
+    assert "localstorage" not in html and "sessionstorage" not in html and "document.cookie" not in html
+
+
+def test_i18_preview_page_token_surface_stays_injection_only():
+    """缺口 #2 合同：token 只读 window.__DATARA_TEST_TOKEN__ 注入面，不落 DOM 属性/存储/日志。"""
+    html = PAGE.read_text(encoding="utf-8")
+
+    assert "window.__DATARA_TEST_TOKEN__ || ''" in html
+    token_reads = html.count("__DATARA_TEST_TOKEN__")
+    assert token_reads == 1
+    assert "console." not in html
+    assert "Authorization:`Bearer ${token}`" in html
