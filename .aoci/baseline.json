@@ -1,7 +1,7 @@
 {
   "version": 1,
   "created_at": "2026-10-02T22:25:37Z",
-  "updated_at": "2026-10-15T17:13:48Z",
+  "updated_at": "2026-10-15T17:15:44Z",
   "files": {
     ".gitattributes": {
       "role": "index",
@@ -128,9 +128,9 @@
     },
     "aoci.code.txt": {
       "role": "index",
-      "sha256": "80672a525c1c51c8883fc98c3eb0b313ce7bbd2b75876ad05f7edcd125c2b250",
-      "size": 194917,
-      "normalized_sha256": "80672a525c1c51c8883fc98c3eb0b313ce7bbd2b75876ad05f7edcd125c2b250"
+      "sha256": "81baf05f36badc298774b4fd98933f916e76daf92a3931e03c80b60f256470f8",
+      "size": 195467,
+      "normalized_sha256": "81baf05f36badc298774b4fd98933f916e76daf92a3931e03c80b60f256470f8"
     },
     "aoci.meta.txt": {
       "role": "index",
@@ -4193,9 +4193,9 @@
     },
     "docs/handoff/2026-10-16-并行协作分工.md": {
       "role": "index",
-      "sha256": "7e5066fce0ce9d6446dbdf765fa63225c339a9c2bc98583531475c3b02a13d5c",
-      "size": 5317,
-      "normalized_sha256": "7e5066fce0ce9d6446dbdf765fa63225c339a9c2bc98583531475c3b02a13d5c"
+      "sha256": "24e1c23a8cd0a33ebe76faba6171c41b619164846e8f4e8710d7c0266364758a",
+      "size": 5770,
+      "normalized_sha256": "b2b985a8fe6b026c01f0dc9ccfa23b1549c13bf51f7ffef6b7150b90b86a6f20"
     },
     "docs/increments/00-流程与记录.md": {
       "role": "index",
@@ -4604,6 +4604,12 @@
       "sha256": "634e348056f2c37e8c4ae6ce3c8735f922846408413b8992277c87ef975ccc7a",
       "size": 6627,
       "normalized_sha256": "634e348056f2c37e8c4ae6ce3c8735f922846408413b8992277c87ef975ccc7a"
+    },
+    "docs/increments/R5-IDE-开始前影响分析.md": {
+      "role": "index",
+      "sha256": "6793c29cad28b9ec29a5afa3ef6c01942a1812014e57daceca4b1fd099d32e46",
+      "size": 5961,
+      "normalized_sha256": "6793c29cad28b9ec29a5afa3ef6c01942a1812014e57daceca4b1fd099d32e46"
     },
     "docs/increments/archive/legacy/I1-设计文档.md": {
       "role": "index",

@@ -718,6 +718,7 @@ R3-audit-batch1-main-workspace-impact.md[ZS5T]: F:Records the R3 audit batch-1 m
 R3-execution-status.md[ZS5T]: F:Tracks R3 execution state across steps and batches. | R:- | A:Provides the live R3 status ledger for maintainers. | S:-
 R3-to-batch2-impact-20261014.md[ZS5T]: F:Records the handover impact analysis from R3 batch 1 to batch 2. | R:- | A:Provides the batch-2 boundary evidence. | S:-
 R3-开始前影响分析.md[ZS5T]: F:Records the R3 batch-level pre-work impact analysis. | R:- | A:Provides R3 boundary evidence for the rebuild ledger. | S:-
+R5-IDE-开始前影响分析.md[SO5T]: F:Records the R5-IDE frontend impact analysis with readonly contract draft, DDL gate requirements, and increment boundary decisions. | R:code:docs/superpowers/plans/2026-10-14-datara-platform-rebuild.md,code:docs/superpowers/specs/2026-10-14-datara-platform-rebuild-design.md,code:datara-web/src/services/ideApi.ts | A:Defines the R5-A/R5-B frontend contract baseline and the independent validation-page scope consumed by both agents. | S:Readonly analysis; no GREEN trigger; formal SPA fusion stays out of R5.
 
 ===D:/需求/数据治理工具/Datara/docs/increments/i12_proofs/===
 I12_verification_summary_P2.3.md[ZS5T]: F:Documents design, verification, or operating guidance in docs/increments/i12_proofs/I12_verification_summary_P2.3.md. | R:- | A:Provides evidence and decisions for maintainers and operators. | S:-
