@@ -13,14 +13,16 @@ $ErrorActionPreference = 'Stop'
 #   3. token 仅经 playwright addInitScript 注入当前页面内存（window.__DATARA_TEST_TOKEN__），
 #      不进 URL / DOM 属性 / localStorage/sessionStorage / 日志 / 证据 JSON / 仓库；
 #      runner 侧另有泄漏闸（fail-closed）：argv/环境变量/证据/stdout 任一面出现 token 即拒绝记录证据；
-#   4. token 必须是 1.9 rebuild API 本进程签发的活跃会话 token（ADMIN 角色账号经
-#      POST /api/v1/rebuild/login 换出）— rebuild API 的 current_user 校验要求 token 同时
-#      通过签名验证并在进程内存 active_tokens 注册表中（外部 store 直接签发的 token 一律 401，
-#      API 进程重启也会清空注册表使旧 token 失效，2026-10-16 03:12 实测 FAIL 401 教训）。
-#      建议取得后 10 分钟内用毕。
+#   4. token 必须由同一个正在运行的 1.9 rebuild API 进程经 POST /api/v1/rebuild/login 签发
+#      （ADMIN 角色账号；i18 导入另要求持久 operator identity + EDIT_DEFINITION 项目权限，
+#      ADMIN 具备）。标准登录 token TTL 为 86400 秒，并非短时凭据（Codex 集成后裁定）。
+#      不可用凭据：旧产品 localStorage token、外部 store 直接签发 token、API 重启前旧 token、
+#      I23 preview capability — 均无法通过普通 API 鉴权（2026-10-16 03:12 实测 401）。
+#      生命周期补偿：runner 运行结束（无论成败）自动 POST /logout 吊销该会话，把有效暴露
+#      窗口缩短到单次运行时长；若 launcher 中途被杀，人工应事后自行吊销。
 # 前置：已获用户批准执行人工确认闸；token 由授权运维/人工本人提供（本脚本不索取、不存储凭据）。
 
-$secure = Read-Host -Prompt '输入短时 admin token（输入不回显）' -AsSecureString
+$secure = Read-Host -Prompt '输入 rebuild API 登录签发的 operator token（输入不回显）' -AsSecureString
 $ptr = [IntPtr]::Zero
 $utf16 = $null
 $utf8 = $null

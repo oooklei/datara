@@ -241,6 +241,22 @@ async function main() {
     // 内层 finally 兜底（Codex 二审）：泄漏闸断言、证据写入或 stdout 写入失败都不得跳过 token 清理。
     try {
       if (browser) await browser.close();
+      // 运行结束（无论成败）即吊销会话：POST /logout 将 token 移出 rebuild API 进程内
+      // active_tokens 注册表 — 标准 operator 登录 token TTL 为 86400s，吊销把有效暴露窗口
+      // 缩短到单次运行时长。401 视为"已不可用"（本就无效或已失效）；网络失败不掩盖运行结论。
+      let sessionRevoked = false;
+      if (token) {
+        try {
+          const logoutResponse = await fetch(new URL('/api/v1/rebuild/logout', baseUrl), {
+            method: 'POST',
+            headers: { Authorization: `Bearer ${token}` },
+          });
+          sessionRevoked = logoutResponse.ok || logoutResponse.status === 401;
+        } catch {
+          sessionRevoked = false;
+        }
+      }
+      actions.push({ name: 'session-revoked-after-run', ok: sessionRevoked, at: new Date().toISOString() });
       // 先声明 reportPath（Codex 审出的 TDZ 缺陷：stdoutSummary 不得引用未初始化的 const）。
       const reportPath = path.join(evidenceDir, `${runId.toLowerCase()}.json`);
       // 泄漏闸（fail-closed）：argv / 环境变量 / 证据 JSON / stdout 摘要任一面出现 token 即拒绝写证据。
