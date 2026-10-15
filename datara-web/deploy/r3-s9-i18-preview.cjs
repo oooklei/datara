@@ -5,6 +5,7 @@ const { chromium } = require('playwright-core');
 
 const baseUrl = process.env.DATARA_REBUILD_BASE_URL;
 const validationKey = process.env.DATARA_REBUILD_VALIDATION_KEY;
+const adminToken = process.env.DATARA_REBUILD_ADMIN_TOKEN;
 const expectedBaseUrl = 'http://192.168.1.9:18091';
 const evidenceDir = path.resolve(__dirname, '../../docs/increments/evidence/R3');
 
@@ -15,7 +16,8 @@ function check(checks, name, pass, details = {}) {
 
 async function main() {
   if (baseUrl !== expectedBaseUrl) throw new Error('S9 runner is restricted to http://192.168.1.9:18091');
-  if (!validationKey) throw new Error('S9 runner requires a protected runtime validation key');
+  if (!validationKey && !adminToken) throw new Error('S9 runner requires a protected runtime validation key or a manually injected short-lived admin token');
+  if (validationKey && adminToken) throw new Error('Set exactly one of DATARA_REBUILD_VALIDATION_KEY / DATARA_REBUILD_ADMIN_TOKEN');
   await fs.mkdir(evidenceDir, { recursive: true });
 
   const startedAt = new Date().toISOString();
@@ -31,6 +33,7 @@ async function main() {
     timezone: 'Asia/Shanghai',
     url: pageUrl,
     browser: null,
+    auth_mode: adminToken ? 'admin-headed-manual-injection' : 'protected-runner-token-exchange',
     project_id: null,
     snapshot_digests: null,
     actions,
@@ -43,17 +46,27 @@ async function main() {
 
   let browser;
   try {
-    const exchange = await fetch(new URL('/api/v1/rebuild/validation-token', baseUrl), {
-      method: 'POST',
-      headers: { 'X-Backend-Validation-Key': validationKey },
-    });
-    const exchangeBody = await exchange.json();
-    check(checks, 'protected-runner-token-exchange', exchange.ok && Boolean(exchangeBody?.data?.token), {
-      http_status: exchange.status,
-    });
-    const token = exchangeBody.data.token;
+    let token;
+    let adminHeaded = false;
+    if (adminToken) {
+      // #2 人工确认闸路径：短时 admin token 由人工经 headed launcher（SecureString）注入本进程，
+      // 仅经 addInitScript 进入当前页面内存；不进 URL/DOM 属性/持久存储/日志/证据/仓库。
+      adminHeaded = true;
+      token = adminToken;
+      check(checks, 'admin-token-manual-injection-mode', token.trim().length > 0);
+    } else {
+      const exchange = await fetch(new URL('/api/v1/rebuild/validation-token', baseUrl), {
+        method: 'POST',
+        headers: { 'X-Backend-Validation-Key': validationKey },
+      });
+      const exchangeBody = await exchange.json();
+      check(checks, 'protected-runner-token-exchange', exchange.ok && Boolean(exchangeBody?.data?.token), {
+        http_status: exchange.status,
+      });
+      token = exchangeBody.data.token;
+    }
 
-    const launchOptions = { headless: true };
+    const launchOptions = { headless: adminHeaded ? false : true };
     if (process.env.DATARA_PLAYWRIGHT_EXECUTABLE) {
       launchOptions.executablePath = process.env.DATARA_PLAYWRIGHT_EXECUTABLE;
     }
@@ -69,6 +82,7 @@ async function main() {
     page.on('requestfailed', request => errors.push({ kind: 'requestfailed', url: request.url(), error: request.failure()?.errorText }));
     page.on('response', response => {
       if (response.url().includes('/legacy/i18/dry-run')) responses.push({ name: 'i18-dry-run', status: response.status() });
+      if (response.url().includes('/legacy/i18/import')) responses.push({ name: 'i18-import', status: response.status() });
       if (response.url().endsWith('/api/v1/rebuild/projects')) responses.push({ name: 'project-list', status: response.status() });
     });
 
@@ -144,6 +158,25 @@ async function main() {
       },
     );
     check(checks, 'no-browser-errors', errors.length === 0, { error_count: errors.length });
+
+    if (adminHeaded) {
+      // 人工确认闸：headed 窗口交由人工输入确认语并点击导入；runner 不代输、不点击（任何模式）。
+      // 仅等待页面自身在导入完成后展示批次结果，并记录导入响应状态作为证据。
+      check(checks, 'import-gate-open-for-human', await page.locator('#runI18Import').isEnabled());
+      actions.push({ name: 'waiting-for-human-confirmation-and-click', at: new Date().toISOString() });
+      await page.waitForFunction(
+        () => /批次/.test(document.querySelector('#importStatus')?.textContent || ''),
+        null,
+        { timeout: 600000 },
+      );
+      const importStatusText = (await page.locator('#importStatus').innerText()).trim();
+      const importResponse = responses.find(item => item.name === 'i18-import');
+      check(checks, 'human-confirmed-import-recorded', Boolean(importResponse) && /批次/.test(importStatusText), {
+        import_http_status: importResponse?.status ?? null,
+        import_completed: /导入与只读复核通过|导入事务已完成/.test(importStatusText),
+      });
+      actions.push({ name: 'human-confirmation-finished', at: new Date().toISOString() });
+    }
 
     await page.screenshot({ path: path.join(evidenceDir, `${runId.toLowerCase()}-summary.png`), fullPage: false });
     report.outcome = 'PASS';

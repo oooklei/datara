@@ -165,3 +165,34 @@ def test_i18_preview_page_token_surface_stays_injection_only():
     assert token_reads == 1
     assert "console." not in html
     assert "Authorization:`Bearer ${token}`" in html
+
+
+ADMIN_LAUNCHER = Path(__file__).parent / "run-r3-s9-i18-admin-headed.ps1"
+
+
+def test_i18_headed_admin_launcher_reads_token_from_console_and_clears_it():
+    """缺口 #2 合同：headed launcher 从本机安全输入读 token（不回显）、缓冲归零、退出清环境、不落盘。"""
+    script = ADMIN_LAUNCHER.read_text(encoding="utf-8")
+
+    assert "Read-Host" in script and "-AsSecureString" in script
+    assert "SecureStringToBSTR" in script and "ZeroBSTR" in script
+    assert "DATARA_REBUILD_ADMIN_TOKEN" in script
+    assert "Remove-Item Env:DATARA_REBUILD_ADMIN_TOKEN" in script
+    assert "Out-File" not in script and "Set-Content" not in script and "Add-Content" not in script
+
+
+def test_i18_runner_admin_mode_keeps_import_under_human_control():
+    """缺口 #2 合同：admin-headed 模式 headed 打开、token 仅经 init script 注入内存、导入仍由人工点击。"""
+    runner = RUNNER.read_text(encoding="utf-8")
+
+    assert "DATARA_REBUILD_ADMIN_TOKEN" in runner
+    assert "admin-headed-manual-injection" in runner
+    assert "headless: adminHeaded ? false : true" in runner
+    # 双模式互斥：不得同时设置 validation key 与 admin token
+    assert "Set exactly one of DATARA_REBUILD_VALIDATION_KEY / DATARA_REBUILD_ADMIN_TOKEN" in runner
+    # runner 任何模式都不得代输确认语或点击导入按钮
+    assert "getByTestId('run-i18-import')" not in runner
+    assert "importConfirmPhrase').fill(" not in runner and "keyboard" not in runner
+    assert "waiting-for-human-confirmation-and-click" in runner
+    # token 不进证据：报告/检查输出无 token 值字段
+    assert "admin_token:" not in runner and "token:" not in runner.replace("auth_token", "")
