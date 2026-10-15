@@ -1,6 +1,7 @@
 """I1 数据源草稿校验和能力矩阵。"""
 
 from dataclasses import dataclass
+from collections.abc import Callable
 from typing import Any
 
 import pymysql
@@ -39,12 +40,14 @@ def validate_datasource(draft: DataSourceDraft) -> ValidatedDataSource:
     return ValidatedDataSource(draft=draft, capabilities=set(capabilities))
 
 
-def probe_datasource(draft: DataSourceDraft) -> dict[str, Any]:
+def probe_datasource(
+    draft: DataSourceDraft, *, connector: Callable[[DataSourceDraft], Any] | None = None
+) -> dict[str, Any]:
     """Open a short-lived MySQL connection and return a small runtime probe."""
     validated = validate_datasource(draft)
     if draft.kind.lower() != "mysql":
         raise ValueError("runtime probe currently supports mysql only")
-    connection = pymysql.connect(
+    connection = connector(draft) if connector else pymysql.connect(
         host=draft.host,
         port=draft.port,
         user=draft.username,

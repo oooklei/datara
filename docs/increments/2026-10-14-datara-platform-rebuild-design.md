@@ -49,6 +49,13 @@
 - 前端验收以 DBX 风格对象树的 schema→table/view→columns 用户操作流为参考，由隔离静态页调用真实 Backend；不改正式 Vue/菜单。已验证跨 schema 同名对象与项目隔离；browser-use 控件桥受限重试阻塞后，可按 R2-14 在同一 URL 使用 Playwright，真实控件仍是验收对象。
 - 子批状态：R2-12-B `CONTROL_PASS`，最终证据为 `evidence/R2/r2-12-b-20261015135851.json` + `.png` 及配套 `r2-12-b-remote-final-20261015.txt`。此状态只覆盖上述 MySQL 元数据浏览。连接池、PostgreSQL adapter/driver、SYNC/SQL IDE/治理的共享调用以及目录快照仍是 R2-12 后续任务，不得据此标记 R2-12 总体完成。
 
+### 2.2 R2-12 datasource 有界连接池与生命周期子契约（R2-12-C 实测收口）
+
+- 连接池身份与边界：以 `(project_id, datasource_id)` 隔离 SQLAlchemy Engine；profile 内容 fingerprint 改变后只失效对应池。每个 profile 默认 pool size=2、max overflow=2、timeout=3s、recycle=300s；进程内最多保留 32 个 profile pools，仅驱逐无 checked-out connection 的 idle pool，达到上限且无可驱逐项时明确拒绝创建，不越界增长。
+- 共享与失效：datasource probe 与 MySQL metadata browse 通过同一 connector 获取连接；profile 更新在数据库提交后失效对应池，profile 删除在成功后失效，应用 shutdown dispose 全部 Engine。该注册表为进程本地，不承诺跨 worker 限额或分布式协调；单 worker 远端实例理论上最多 128 个 datasource sockets（32×(2+2)）。
+- 安全及范围：不记录连接凭据，不扩展可读 schema/table allowlist，不执行旧源库迁移；池生命周期不改变 metadata API 的只读语义。PostgreSQL runtime、SQL/SYNC/治理消费者接入、持久 metadata snapshot 均仍为后续工作。
+- 子批状态：R2-12-C `CONTROL_PASS`，最终真实控件 run `evidence/R2/r2-12-c-20261015144457.json` + `.png`；同域浏览与 profile 更新失效验证在一轮控件运行中完成。首轮 teardown 失败 `r2-12-c-20261015143839.json` + `.png` 保留为失败证据，修复并复跑通过；部署、API 日志、fixture 与资源清理证据见 `evidence/R2/r2-12-c-remote-final-20261015.txt`。仅关闭 C，不代表 R2-12 总体完成。
+
 ## 3. 身份、调度和运行表统一契约
 
 所有运行记录表至少拥有数据库生成的 `created_at`、`updated_at`、`generated_at`；实例、任务、attempt、command、task_log、output、variable_runtime、data_stat、workflow_run_metric、stream_attempt 均不得由前端伪造时间。上海时区用于业务解释，数据库时间戳保存实际生成时刻；API 同时返回 ISO 字段与显示时区。

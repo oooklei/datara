@@ -118,9 +118,23 @@ def test_admin_can_manage_project_datasource_and_test_uses_saved_connection(monk
     from rebuild.api import app as rebuild_app
 
     observed = []
+    pool_requests = []
 
-    def fake_probe(draft):
+    class FakeConnection:
+        def close(self):
+            pass
+
+    monkeypatch.setattr(
+        app.state.datasource_engines,
+        "connect",
+        lambda project_id, datasource_id, draft: pool_requests.append((project_id, datasource_id))
+        or FakeConnection(),
+    )
+
+    def fake_probe(draft, *, connector=None):
         observed.append(draft)
+        assert connector is not None
+        connector(draft).close()
         return {"connected": True, "database": draft.database, "server_version": "8.test", "capabilities": ["metadata"]}
 
     monkeypatch.setattr(rebuild_app, "probe_datasource", fake_probe)
@@ -139,6 +153,7 @@ def test_admin_can_manage_project_datasource_and_test_uses_saved_connection(monk
         assert len(observed) == 1
         assert observed[0].username == "operator"
         assert observed[0].password == "do-not-return"
+        assert pool_requests == [(other_id, datasource_id)]
     finally:
         client.__exit__(None, None, None)
 
@@ -181,10 +196,22 @@ def test_metadata_browser_uses_saved_profile_and_returns_schema_qualified_identi
     )
     datasource_id = created.json()["data"]["id"]
     constructed = []
+    pool_requests = []
+
+    class FakeConnection:
+        def close(self):
+            pass
+
+    monkeypatch.setattr(
+        app.state.datasource_engines,
+        "connect",
+        lambda project_id, record_id, draft: pool_requests.append((project_id, record_id)) or FakeConnection(),
+    )
 
     class Catalog:
-        def __init__(self, draft):
-            constructed.append(draft)
+        def __init__(self, draft, *, connector):
+            constructed.append((draft, connector))
+            connector(draft).close()
 
         def schemas(self, *, after=None, limit=100):
             return ["analytics", "shared"]
@@ -235,7 +262,38 @@ def test_metadata_browser_uses_saved_profile_and_returns_schema_qualified_identi
         assert columns.status_code == 200
         assert columns.json()["data"]["items"][0]["primary_key"] is True
         assert cross_project.status_code == 404
-        assert all(draft.password == "do-not-return" for draft in constructed)
+        assert all(draft.password == "do-not-return" for draft, _connector in constructed)
+        assert all(callable(connector) for _draft, connector in constructed)
         assert len(constructed) == 3
+        assert pool_requests == [(owned_id, datasource_id)] * 3
+    finally:
+        client.__exit__(None, None, None)
+
+
+def test_profile_update_and_delete_invalidate_project_scoped_engines(monkeypatch):
+    client, app, owned_id, _other_id, _identities, tokens = _client()
+    created = client.post(
+        f"/api/v1/rebuild/projects/{owned_id}/datasources", headers=tokens["dev"], json=_profile()
+    )
+    datasource_id = created.json()["data"]["id"]
+    invalidations = []
+    monkeypatch.setattr(
+        app.state.datasource_engines,
+        "invalidate",
+        lambda project_id, record_id: invalidations.append((project_id, record_id)) or True,
+    )
+    try:
+        updated = client.put(
+            f"/api/v1/rebuild/projects/{owned_id}/datasources/{datasource_id}",
+            headers=tokens["dev"],
+            json=_profile(name="warehouse-v2", password="rotated"),
+        )
+        deleted = client.delete(
+            f"/api/v1/rebuild/projects/{owned_id}/datasources/{datasource_id}", headers=tokens["dev"]
+        )
+
+        assert updated.status_code == 200
+        assert deleted.status_code == 200
+        assert invalidations == [(owned_id, datasource_id), (owned_id, datasource_id)]
     finally:
         client.__exit__(None, None, None)

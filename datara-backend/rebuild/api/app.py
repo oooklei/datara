@@ -24,6 +24,7 @@ from rebuild.identity.passwords import verify_password
 from rebuild.datasource.contracts import DataSourceDraft, probe_datasource, validate_datasource
 from rebuild.datasource.models import ProjectDatasourceRecord
 from rebuild.datasource.metadata import MySQLMetadataCatalog
+from rebuild.datasource.pool import DatasourceEngineRegistry
 from rebuild.datasource.repository import ProjectDatasourceRepository
 from rebuild.project.repository import ProjectRepository
 from rebuild.project.models import ProjectRecord
@@ -87,6 +88,7 @@ def create_app(
     token_service = TokenService(secret=token_secret)
     validation_token_service = TokenService(secret=token_secret, ttl_seconds=900)
     active_tokens: set[str] = set()
+    datasource_engines = DatasourceEngineRegistry()
 
     def ensure_i1_schema() -> None:
         """Apply additive I1 columns to the dedicated schema without touching legacy tables."""
@@ -113,10 +115,15 @@ def create_app(
         )
         ensure_i1_schema()
         yield
+        datasource_engines.dispose_all()
         engine.dispose()
 
     app = FastAPI(title="Datara Rebuild API", version="0.1.0", lifespan=lifespan)
     app.state.session_factory = session_factory
+    app.state.datasource_engines = datasource_engines
+
+    def pooled_connector(project_id: int, datasource_id: int):
+        return lambda draft: datasource_engines.connect(project_id, datasource_id, draft)
 
     @app.get("/api/v1/rebuild/health")
     def health() -> dict[str, object]:
@@ -456,6 +463,7 @@ def create_app(
                     status_code=409,
                     content={"code": 4091, "msg": "datasource name already exists in project", "data": None},
                 )
+            datasource_engines.invalidate(project_id, datasource_id)
             return {"code": 0, "msg": "success", "data": datasource_payload(record)}
 
     @app.delete("/api/v1/rebuild/projects/{project_id}/datasources/{datasource_id}")
@@ -476,6 +484,7 @@ def create_app(
                 )
             repository.delete(record)
             session.commit()
+            datasource_engines.invalidate(project_id, datasource_id)
             return {"code": 0, "msg": "success", "data": {"deleted": True, "id": datasource_id}}
 
     @app.post("/api/v1/rebuild/projects/{project_id}/datasources/{datasource_id}/test")
@@ -503,7 +512,7 @@ def create_app(
                 password=record.password,
             )
         try:
-            result = probe_datasource(draft)
+            result = probe_datasource(draft, connector=pooled_connector(project_id, datasource_id))
         except ValueError as exc:
             return JSONResponse(status_code=400, content={"code": 4001, "msg": str(exc), "data": None})
         except Exception:
@@ -537,7 +546,9 @@ def create_app(
                 )
             draft = datasource_draft(record)
         try:
-            rows = MySQLMetadataCatalog(draft).schemas(after=after, limit=limit)
+            rows = MySQLMetadataCatalog(draft, connector=pooled_connector(project_id, datasource_id)).schemas(
+                after=after, limit=limit
+            )
         except ValueError as exc:
             return JSONResponse(status_code=400, content={"code": 4001, "msg": str(exc), "data": None})
         except Exception:
@@ -574,7 +585,9 @@ def create_app(
                 )
             draft = datasource_draft(record)
         try:
-            rows = MySQLMetadataCatalog(draft).objects(schema, after=after, limit=limit)
+            rows = MySQLMetadataCatalog(draft, connector=pooled_connector(project_id, datasource_id)).objects(
+                schema, after=after, limit=limit
+            )
         except ValueError as exc:
             return JSONResponse(status_code=400, content={"code": 4001, "msg": str(exc), "data": None})
         except Exception:
@@ -615,7 +628,9 @@ def create_app(
                 )
             draft = datasource_draft(record)
         try:
-            rows = MySQLMetadataCatalog(draft).columns(schema, object_name, limit=limit)
+            rows = MySQLMetadataCatalog(draft, connector=pooled_connector(project_id, datasource_id)).columns(
+                schema, object_name, limit=limit
+            )
         except ValueError as exc:
             return JSONResponse(status_code=400, content={"code": 4001, "msg": str(exc), "data": None})
         except Exception:

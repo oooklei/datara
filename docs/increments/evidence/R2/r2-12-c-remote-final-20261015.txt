@@ -1,0 +1,30 @@
+R2-12-C remote-final evidence
+Date: 2026-10-15 Asia/Shanghai
+Host: 192.168.1.9
+Web validation port: 18091
+
+Deployment and preimage:
+- API source bind: `/lei/datara/rebuild-source/rebuild` -> `/app/rebuild` (read-only inside container).
+- Before replacement, backups were made under `/lei/datara/backups/r3-s9-20261015/`:
+  - `r2-12-c-before-app.py` SHA256 `2b7642684e6c1561bd006e0a90e44a8b3471a9e9c404b5935255a518ae832131`
+  - `r2-12-c-before-contracts.py` SHA256 `f248d8f3b6a838fa02624036688f0b4286b57b1dd8beab4820efdf2dd7d2284e`
+- Uploaded staging bytes were SHA-256 verified before same-filesystem replacement; deployed hashes:
+  - `rebuild/api/app.py` `fef62843d2153616757b2fd3d83905e26794ff7fd3615d0cc82ae6f6f375bb87`
+  - `rebuild/datasource/contracts.py` `1beed6b50b0022c4ad7935a71dc3a9a2df1d5768d45febcb8c87103420018cec`
+  - `rebuild/datasource/pool.py` `3cdcae6c5787ada814168ab2f70590bc10352ab631e47eb3d7117edf1db54a04`
+- API restarted once after the three replacements; container remained `running/healthy`, `/api/v1/rebuild/health` returned `status=ok`, validation page returned HTTP 200. `docker top` showed one uvicorn process.
+
+Isolated fixture and runtime:
+- Fixture container: `datara-r2-12c-mysql-fixture`, MySQL 8.0 image SHA `sha256:6cd09145362dfe6831b14545de3d5fd6cc75c37cfd6ef8561429c1fc73518b39`.
+- Attached only to `datara_default`; no host port; `/var/lib/mysql` on a 256 MiB tmpfs. Schemas `analytics` and `shared` each had an `orders` table; analytics also had `v_orders`.
+- Profile user `ds_reader` was granted only `SELECT, SHOW VIEW` on those two fixture schemas; simple SELECT and SHOW GRANTS checks succeeded. No datasource profile used DB root. No connection was made to persistent `datara_mysql_src`, `datara_mysql_meta`, or `datara_mysql_dw`.
+- First runner left disposable datasource profile #9 after its teardown bug; the corrected run removed that exact R2-12-C profile before setup, then created profile #10 and deleted it with HTTP 200. API logs show both DELETEs; successful-run JSON records cleanup true. Fixture container was removed and no matching container remained.
+- Final run `r2-12-c-20261015144457`: schema/object/column API calls returned HTTP 200; wrong-project access returned 404; no failed browser requests. One expected browser console 404 is separated in JSON. Backend health stayed healthy.
+
+Local checks against the exact deployed revision:
+- Targeted tests: 15 passed.
+- Full backend tests: 773 passed.
+- Ruff, compileall, and `git diff --check`: passed.
+- No Vue source changed in C; official frontend remains frozen.
+
+Conclusion: `R2-12-C_CONTROL_PASS`. This closes only the bounded datasource pool/lifecycle sub-batch. R2-12 overall remains `IN_PROGRESS`; PostgreSQL runtime and later consumers remain outstanding. Tokens, verification key, fixture password, and DSN are intentionally absent from this record.

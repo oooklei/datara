@@ -74,7 +74,7 @@
 | R2-09 AI | DESIGN_DEFINED | 五工具契约/权限/审计/预算与浮动助手边界已定义；需代码 schema、拒权和冻结门禁。 |
 | R2-10 指标 | IN_PROGRESS | 本轮将过时全量测试数 536 更新为实测 583，并记录 QC browser 21/21；其余性能基线需专门采样。 |
 | R2-11 SYNC | DESIGN_DEFINED | 执行器链路已写入设计；需 datasource 前置、执行器实现和全量/增量/断点/行计数闭环。 |
-| R2-12 datasource | IN_PROGRESS | R2-12-A 项目隔离 CRUD/只读 probe 与 R2-12-B MySQL 跨 schema 元数据树均为 `CONTROL_PASS`；B 最终真实控件 run `r2-12-b-20261015135851` PASS，后端全量 pytest 764 passed，两个 schema 的同名表、view、列详情与跨项目拒绝均有 JSON+PNG、remote-final 证据。B 仅支持 MySQL 且只读；连接池、PostgreSQL runtime、SQL/SYNC/治理复用仍未完成。见 `R2-12-B-数据源跨Schema元数据树影响分析.md`、`evidence/R2/r2-12-b-remote-final-20261015.txt`。AOCI dirty/stale 单独跟踪，不夸大为 aligned。R2-12 总体仍 IN_PROGRESS。 |
+| R2-12 datasource | IN_PROGRESS | R2-12-A/B/C 子批均已分别 CONTROL_PASS。C 有界 MySQL pool/lifecycle 最终控件 run `r2-12-c-20261015144457` PASS；双 schema 并发浏览、profile 更新失效后恢复、跨项目拒绝均有 JSON+PNG、remote-final。后端全量 pytest 773 passed。C 仅覆盖 MySQL profile-scoped pool 和 probe/metadata 复用；PostgreSQL runtime、SQL/SYNC/治理消费者仍未完成。见 `R2-12-C-数据源连接池与生命周期影响分析.md` 及 `evidence/R2/r2-12-c-remote-final-20261015.txt`。AOCI dirty/stale 单独跟踪，不夸大为 aligned；R2-12 总体仍 IN_PROGRESS。 |
 | R2-13 测试库 | PARTIAL | 1.9 运行 schema 已供测试，R3 时间戳/行数证据部分存在；需把 schema/init 与默认值证据按新 Backend 契约核实。 |
 | R2-14 门禁 | IN_PROGRESS | token bootstrap 与 Playwright 同页策略已有；QC 批次 1 21/21 PASS，仍需每个后端增量依照参考产品 UI 做闭环。 |
 | R2-15 IDE 拆分 | DESIGN_DEFINED | R10-A/B 已拆分；需两份独立验证单和 DDL 写路径审批边界。 |
@@ -86,6 +86,15 @@
 - MySQL project-scoped 只读 metadata browse 已实现并完成远端控件验收；最终全后端 `pytest tests -q` 为 764 passed。Playwright 对同一 18091 页面进行 UI 控件操作，远端 API 日志与请求状态相符；MySQL fixture 只读账号/权限和删除后 datasource 行数为 0 见 B remote-final。
 - browser-use 控制桥受限重试后仍超时，按已批准 fallback 由 Playwright 对同页取证；同域多个断言合并在一次最终控件运行中，保留早期失败证据。
 - `R2-12-B_CONTROL_PASS` 不提升 R2-12 总体状态；下一子批只能在 B 本次收口验收后另立影响分析、更新计划并细化步骤，不能在 B 远程验证期间并行开工。
+
+#### 2026-10-15 R2-12-C 实施结论
+
+- `DatasourceEngineRegistry` 已实现 project/datasource 隔离、fingerprint 更新失效、删除失效、idle-only eviction、profile registry 上限和 app shutdown dispose；probe 与 MySQL metadata browse 共用 pool connector。默认单 profile pool size=2、overflow=2、timeout=3s、recycle=300s、最多 32 profiles；当前 1.9 rebuild API 为单 uvicorn worker，理论 datasource socket 上限 128，非跨进程集群限额。
+- TDD 生命周期回归先观察到 runner teardown 顺序错误：`Event loop is closed` 中断 JSON 和 profile 清理；失败的 `r2-12-c-20261015143839.json/.png` 保留。加测试先 RED 后 GREEN，修复 managed-browser teardown 与失败截图回调；下一 run 自动回收准确命名的 disposable 残留。
+- 定向测试 15 passed，全量 backend tests 773 passed，Ruff/compileall/diff check 通过。无 Vue/正式前端改动。
+- 最终页面控件运行 `r2-12-c-20261015144457` PASS：同一 DBX 风格 metadata 页面展开 analytics/shared、选表取列、profile 更新后重复查询、错误 project 返回 404；JSON+PNG 与 API/容器/fixture 收尾证据见 `evidence/R2/r2-12-c-browser-entry-20261015.txt` 和 `evidence/R2/r2-12-c-remote-final-20261015.txt`。Fixture 为 1.9 tmpfs MySQL、无 host port，仅 SELECT/SHOW VIEW；两次 run 的 profile 均已清理，fixture 容器不存在。
+- 提速裁定已应用：同域 UI 断言合并为一轮最终控件 run；早期失败证据保留；无下一增量并行实现。Browser-use 在共享 user tab 只做页面读取（首次绑定超时后一次重试成功，页内无 token），Playwright 在独立短期 token 上下文操作同页真实控件，未将 API-only 作为验收。
+- `R2-12-C_CONTROL_PASS` 仅关闭 C；R2-12 总体仍 `IN_PROGRESS`。下一子批仍须以前序影响分析和 C 收口审查为前置，不得预先并行开工。
 
 ## 4. 与旧资产的处置
 

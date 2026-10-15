@@ -1,0 +1,17 @@
+R2-12-C browser-channel and control-run record
+Date: 2026-10-15 Asia/Shanghai
+Validation URL: http://192.168.1.9:18091/rebuild-validation-r2-12-b.html
+
+Browser-use channel:
+- First binding of the already-open R2-12-B tab timed out at 30 seconds. One bounded retry at 60 seconds recovered and returned the accessibility tree.
+- The existing user tab had no injected validation token by design and showed project 15 / datasource 1. No unauthenticated metadata request was fired and no key/token was copied into that tab.
+- Browser-use therefore provided page identity and UI contract inspection, but did not perform the authenticated C control run.
+
+Playwright channel:
+- `r2-12-c-20261015143839`: FAIL retained. The real page rendered both schemas and analytics.orders columns, but runner teardown closed the Playwright driver before closing its BrowserContext, so structured reporting/profile cleanup was interrupted. Screenshot and explicit FAIL JSON are paired and preserved. The leaked datasource profile was removed by the next controlled run.
+- Added a lifecycle regression test; observed RED before repair, then GREEN. The managed runner now closes context/browser before the driver and captures UI failure screenshots while the page is still live.
+- `r2-12-c-20261015144457`: PASS. The isolated Playwright context obtained its short-lived token through the backend verification-key API at runtime (no key/token in page bundle or evidence), then used visible page controls to load schemas, concurrently expand `analytics` and `shared`, select `analytics.orders`, load its columns, repeat browse after profile update/invalidation, and confirm cross-project denial (404).
+- Final run assertions: metadata browser loaded; profile update invalidated/rebuilt pool and browsing recovered; repeated concurrent requests succeeded; cross-project profile isolation held. No page errors or failed requests. Expected 404 console message is recorded separately.
+- Paired evidence: `r2-12-c-20261015144457.json` and `r2-12-c-20261015144457.png`.
+
+Gate status: Browser-use authenticated controls PARTIAL (token intentionally unavailable in the shared user tab); Playwright same-page real-control validation PASS. No API-only substitution was used.
