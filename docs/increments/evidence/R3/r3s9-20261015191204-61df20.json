@@ -1,0 +1,40 @@
+{
+  "run_id": "R3S9-20261015191204-61df20",
+  "started_at": "2026-10-15T19:12:04.265Z",
+  "timezone": "Asia/Shanghai",
+  "url": "http://192.168.1.9:18091/rebuild-validation-r3-s9.html",
+  "browser": "chromium 153.0.4234.32",
+  "auth_mode": "admin-headed-manual-injection",
+  "project_id": null,
+  "snapshot_digests": null,
+  "actions": [],
+  "checks": [
+    {
+      "name": "admin-token-manual-injection-mode",
+      "pass": true
+    },
+    {
+      "name": "validation-page-loaded",
+      "pass": true,
+      "http_status": 200
+    }
+  ],
+  "relevant_responses": [
+    {
+      "name": "project-list",
+      "status": 401
+    }
+  ],
+  "errors": [
+    {
+      "kind": "console",
+      "message": "Failed to load resource: the server responded with a status of 401 (Unauthorized)"
+    },
+    {
+      "kind": "runner",
+      "message": "page.waitForFunction: Timeout 30000ms exceeded."
+    }
+  ],
+  "outcome": "FAIL",
+  "secrets_recorded": false
+}

@@ -13,7 +13,11 @@ $ErrorActionPreference = 'Stop'
 #   3. token 仅经 playwright addInitScript 注入当前页面内存（window.__DATARA_TEST_TOKEN__），
 #      不进 URL / DOM 属性 / localStorage/sessionStorage / 日志 / 证据 JSON / 仓库；
 #      runner 侧另有泄漏闸（fail-closed）：argv/环境变量/证据/stdout 任一面出现 token 即拒绝记录证据；
-#   4. token 应为短时凭据（建议 TTL ≤ 10 分钟），由 1.9 root-only 持久 admin store 换出。
+#   4. token 必须是 1.9 rebuild API 本进程签发的活跃会话 token（ADMIN 角色账号经
+#      POST /api/v1/rebuild/login 换出）— rebuild API 的 current_user 校验要求 token 同时
+#      通过签名验证并在进程内存 active_tokens 注册表中（外部 store 直接签发的 token 一律 401，
+#      API 进程重启也会清空注册表使旧 token 失效，2026-10-16 03:12 实测 FAIL 401 教训）。
+#      建议取得后 10 分钟内用毕。
 # 前置：已获用户批准执行人工确认闸；token 由授权运维/人工本人提供（本脚本不索取、不存储凭据）。
 
 $secure = Read-Host -Prompt '输入短时 admin token（输入不回显）' -AsSecureString
