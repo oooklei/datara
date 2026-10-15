@@ -3,7 +3,7 @@
  * 断言：4 方法统一抛 R5B_BACKEND_NOT_WIRED；确认闸语义由 UI+服务端双闸（契约层不提供绕过）。
  */
 import { describe, expect, it } from 'vitest'
-import { R5B_BACKEND_NOT_WIRED, R5B_CONTRACT_METHODS, createSqlIdeDdlContract } from '../../../../../services/rebuild/sqlIdeDdlApi'
+import { R5B_BACKEND_NOT_WIRED, R5B_CONTRACT_METHODS, createSqlIdeDdlContract } from '../../../../services/rebuild/sqlIdeDdlApi'
 
 describe('R5-B sqlIdeDdlApi contract (RED)', () => {
   it('contract method list is frozen', () => {
