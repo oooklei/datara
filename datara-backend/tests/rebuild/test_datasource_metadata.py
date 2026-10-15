@@ -112,11 +112,11 @@ def test_column_contract_preserves_schema_and_column_semantics():
         }
     ]
     _statement, parameters = next(item for item in connection.executions if "information_schema.columns" in item[0])
-    assert parameters == ("analytics", "orders")
+    assert parameters == ("analytics", "orders", 501)
     assert connection.closed is True
 
 
-@pytest.mark.parametrize("requested, expected", [(0, 1), (75, 76), (1000, 201)])
+@pytest.mark.parametrize("requested, expected", [(0, 2), (75, 76), (1000, 201)])
 def test_object_page_size_is_bounded_and_uses_lookahead(requested, expected):
     connection = FakeConnection()
     catalog = MySQLMetadataCatalog(_draft(), connector=lambda _draft: connection)

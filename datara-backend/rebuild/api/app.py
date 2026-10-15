@@ -8,7 +8,7 @@ import json
 import os
 from pathlib import Path
 
-from fastapi import FastAPI, Header
+from fastapi import FastAPI, Header, Query
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 from sqlalchemy import create_engine, inspect, select, text
@@ -23,6 +23,7 @@ from rebuild.identity.models import ProjectMemberRecord, UserRecord
 from rebuild.identity.passwords import verify_password
 from rebuild.datasource.contracts import DataSourceDraft, probe_datasource, validate_datasource
 from rebuild.datasource.models import ProjectDatasourceRecord
+from rebuild.datasource.metadata import MySQLMetadataCatalog
 from rebuild.datasource.repository import ProjectDatasourceRepository
 from rebuild.project.repository import ProjectRepository
 from rebuild.project.models import ProjectRecord
@@ -246,6 +247,17 @@ def create_app(
             "created_at": record.created_at.isoformat(),
             "updated_at": record.updated_at.isoformat(),
         }
+
+    def datasource_draft(record: ProjectDatasourceRecord) -> DataSourceDraft:
+        return DataSourceDraft(
+            name=record.name,
+            kind=record.kind,
+            host=record.host,
+            port=record.port,
+            database=record.database_name,
+            username=record.username,
+            password=record.password,
+        )
 
     def current_i23_preview_capability(authorization: str) -> dict[str, object]:
         if not authorization.startswith("Bearer "):
@@ -500,6 +512,119 @@ def create_app(
                 content={"code": 5021, "msg": "datasource connection test failed", "data": None},
             )
         return {"code": 0, "msg": "success", "data": result}
+
+    @app.get("/api/v1/rebuild/projects/{project_id}/datasources/{datasource_id}/schemas")
+    def browse_datasource_schemas(
+        project_id: int,
+        datasource_id: int,
+        after: str | None = None,
+        limit: int = Query(default=100, ge=1, le=200),
+        authorization: str = Header(default=""),
+    ):
+        try:
+            user = current_user(authorization)
+        except ValueError:
+            return JSONResponse(status_code=401, content={"code": 1001, "msg": "invalid token", "data": None})
+        with session_factory() as session:
+            denied = project_permission_error(session, project_id, user, Permission.VIEW_ALL)
+            if denied is not None:
+                return denied
+            record = ProjectDatasourceRepository(session).get(project_id, datasource_id)
+            if record is None:
+                return JSONResponse(
+                    status_code=404,
+                    content={"code": 4042, "msg": "datasource not found", "data": None},
+                )
+            draft = datasource_draft(record)
+        try:
+            rows = MySQLMetadataCatalog(draft).schemas(after=after, limit=limit)
+        except ValueError as exc:
+            return JSONResponse(status_code=400, content={"code": 4001, "msg": str(exc), "data": None})
+        except Exception:
+            return JSONResponse(status_code=502, content={"code": 5022, "msg": "metadata browse failed", "data": None})
+        items = rows[:limit]
+        return {
+            "code": 0,
+            "msg": "success",
+            "data": {"items": items, "next_after": items[-1] if len(rows) > limit else None, "limit": limit},
+        }
+
+    @app.get("/api/v1/rebuild/projects/{project_id}/datasources/{datasource_id}/objects")
+    def browse_datasource_objects(
+        project_id: int,
+        datasource_id: int,
+        schema: str = Query(min_length=1, max_length=255),
+        after: str | None = Query(default=None, max_length=255),
+        limit: int = Query(default=100, ge=1, le=200),
+        authorization: str = Header(default=""),
+    ):
+        try:
+            user = current_user(authorization)
+        except ValueError:
+            return JSONResponse(status_code=401, content={"code": 1001, "msg": "invalid token", "data": None})
+        with session_factory() as session:
+            denied = project_permission_error(session, project_id, user, Permission.VIEW_ALL)
+            if denied is not None:
+                return denied
+            record = ProjectDatasourceRepository(session).get(project_id, datasource_id)
+            if record is None:
+                return JSONResponse(
+                    status_code=404,
+                    content={"code": 4042, "msg": "datasource not found", "data": None},
+                )
+            draft = datasource_draft(record)
+        try:
+            rows = MySQLMetadataCatalog(draft).objects(schema, after=after, limit=limit)
+        except ValueError as exc:
+            return JSONResponse(status_code=400, content={"code": 4001, "msg": str(exc), "data": None})
+        except Exception:
+            return JSONResponse(status_code=502, content={"code": 5022, "msg": "metadata browse failed", "data": None})
+        items = rows[:limit]
+        return {
+            "code": 0,
+            "msg": "success",
+            "data": {
+                "items": items,
+                "next_after": items[-1]["name"] if len(rows) > limit else None,
+                "limit": limit,
+            },
+        }
+
+    @app.get("/api/v1/rebuild/projects/{project_id}/datasources/{datasource_id}/columns")
+    def browse_datasource_columns(
+        project_id: int,
+        datasource_id: int,
+        schema: str = Query(min_length=1, max_length=255),
+        object_name: str = Query(min_length=1, max_length=255),
+        limit: int = Query(default=200, ge=1, le=500),
+        authorization: str = Header(default=""),
+    ):
+        try:
+            user = current_user(authorization)
+        except ValueError:
+            return JSONResponse(status_code=401, content={"code": 1001, "msg": "invalid token", "data": None})
+        with session_factory() as session:
+            denied = project_permission_error(session, project_id, user, Permission.VIEW_ALL)
+            if denied is not None:
+                return denied
+            record = ProjectDatasourceRepository(session).get(project_id, datasource_id)
+            if record is None:
+                return JSONResponse(
+                    status_code=404,
+                    content={"code": 4042, "msg": "datasource not found", "data": None},
+                )
+            draft = datasource_draft(record)
+        try:
+            rows = MySQLMetadataCatalog(draft).columns(schema, object_name, limit=limit)
+        except ValueError as exc:
+            return JSONResponse(status_code=400, content={"code": 4001, "msg": str(exc), "data": None})
+        except Exception:
+            return JSONResponse(status_code=502, content={"code": 5022, "msg": "metadata browse failed", "data": None})
+        return {
+            "code": 0,
+            "msg": "success",
+            "data": {"items": rows[:limit], "truncated": len(rows) > limit, "limit": limit},
+        }
 
     app.include_router(
         build_governance_router(

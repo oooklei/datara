@@ -31,7 +31,7 @@ def validate_datasource(draft: DataSourceDraft) -> ValidatedDataSource:
         raise ValueError("port must be between 1 and 65535")
     capability_map = {
         "mysql": {"query", "metadata", "cross_schema"},
-        "postgresql": {"query", "metadata", "cross_schema"},
+        "postgresql": set(),
     }
     capabilities = capability_map.get(draft.kind.lower())
     if capabilities is None:
