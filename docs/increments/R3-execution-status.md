@@ -150,4 +150,29 @@ The previous compose service definition was absent from the active remote base f
 - Added a regression using inspector dialect metadata for sqlite_where; the existing full-key unique-index equivalence test still passes. Focused preflight/mapping/dry-run/API suite: 57 passed; changed-file Ruff: clean; git diff --check: clean.
 - The previously appended dry-run sequence-blocking test is normal source text (no literal backslash-n corruption) and is included in the 57-pass run. R3-S9 remains partial pending the human import-confirmation phrase, import/parity validation, acceptance, and main integration.
 
-- Full backend verification on 2026-10-16 after review fixes: pytest tests -q 827 passed, 0 failed, 1 expected xfailed (R4-SYNC remains pending-acceptance); compileall and changed-file Ruff passed. No import, deploy, or target business DML was run.\n\n## 2026-10-16 S9 isolated page deployment\n\n- Published the reviewed Trae page source to the existing 18091 static web bind mount after backing up the prior file. Local, staged, remote-file, and served-response SHA-256 all match: b02ec8e3a844bad68a1fb12cddf91ee47b1e294e2eef924ff5515c141c288fd6. Prior page and backup hash: 21e5f90892f540494bd85b332887696fe585e70ef5af48b43b97d166122d3d24.\n- Only the isolated HTML file changed; datara-web stayed running and no API/container restart occurred. No credential or confirmation phrase was entered; no importer call, target business DML, or parity claim was made.\n- Evidence: evidence/R3/r3s9-page-only-final-deploy-20261016.txt. R3-S9 remains PARTIAL / REMOTE_VALIDATION_CLOSEOUT pending the user-only digest-bound confirmation/import/parity and acceptance gates; main integration remains gated.\n
+- Full backend verification on 2026-10-16 after review fixes: pytest tests -q 827 passed, 0 failed, 1 expected xfailed (R4-SYNC remains pending-acceptance); compileall and changed-file Ruff passed. No import, deploy, or target business DML was run.
+
+## 2026-10-16 S9 isolated page deployment
+
+- Published the reviewed Trae page source to the existing 18091 static web bind mount after backing up the prior file. Local, staged, remote-file, and served-response SHA-256 all match: b02ec8e3a844bad68a1fb12cddf91ee47b1e294e2eef924ff5515c141c288fd6. Prior page and backup hash: 21e5f90892f540494bd85b332887696fe585e70ef5af48b43b97d166122d3d24.
+- Only the isolated HTML file changed; datara-web stayed running and no API/container restart occurred. No credential or confirmation phrase was entered; no importer call, target business DML, or parity claim was made.
+- Evidence: evidence/R3/r3s9-page-only-final-deploy-20261016.txt. R3-S9 remains PARTIAL / REMOTE_VALIDATION_CLOSEOUT pending the user-only digest-bound confirmation/import/parity and acceptance gates; main integration remains gated.
+
+- **Historical checkpoint as of 2026-10-14**: R3-S9 impact analysis and plan were complete; implementation had not started at that timestamp. This checkpoint is superseded by the 2026-10-15 P1-P4 pipeline state below: implementation now exists on `.worktrees/r3-s9`, but is not merged and overall R3 remains PARTIAL pending the explicit import confirmation and remaining parity/closure gates.
+
+## 2026-10-15 P1-P4 流水线与所有权状态（权威追加）
+
+- 裁定已生效：每增量收口至少一轮真实控件操作真实后端；中间低风险步骤用 API JSON 留证；认证/权限/DDL/导入/确认闸/破坏性操作即时取证。失败证据保留，诚实自评、TDD 红绿、显式人工确认及 token/key 红线不变。
+- **流水线当前位**：R3-S9 在 `D:\需求\数据治理工具\Datara\.worktrees\r3-s9` 处于 `PARTIAL / REMOTE_VALIDATION_CLOSEOUT`。真实页面 admin 项目可见性与 I18 dry-run 控件已通过；但用户确认短语未输入、导入未调用且隔离导入 flag 仍为 false，R3 未验收、未合入 main。该 worktree 的代码/证据不等同于 main 已包含或整体 PASS。
+- **允许的并行 RED**：下一增量 R4-SYNC 的影响分析与 `pending-acceptance`/`xfail` 契约测试已在 R3 工作树准备；该测试不破坏主测试集，不能触发 R4 实现/部署。当前阶段：R3=S9 远程验证收口；R4=影响分析/契约 RED；R4 GREEN=禁止，直到 R3 验收并合回 main。
+- P2 目标为 9 个增量（R0-R4、R5-IDE、R6-R8）；R5-IDE 的 R5-A/R5-B 分别验收，R9 统计产出并入 R4/R8、消费展示归 R7。
+- P4 第二执行者未启动；R3 合回 main 后才可由最新 main 创建项目内隔离 worktree。执行者 1 独占 Backend；执行者 2 仅写 `datara-web/` 与专属 evidence 子目录；不得提前启动或交叉改写。
+- 最新全后端门禁为 `811 passed, 1 xfailed`；该 XFAIL 是 R4-SYNC pending-acceptance 契约 RED，主套件保持绿色。仅为来源 worktree 实测，不代表 R3 变更已进入 main。
+- 此状态仅记录流水线和文件所有权，不等同于 R3 通过、已执行数据导入或授权启动 R4 GREEN。
+
+### 2026-10-16：R3 与 Trae S9 合入 main（代码集成，不代表业务验收）
+
+- 按用户指令，在独立集成 worktree 合并 `codex/r3-s9` 与 `trae/r3-s9-fe-fix`，随后快进至 `main`，HEAD `6342d5b`。集成期自动合并无冲突；main 原有本地更改先 stash，再全部恢复。两份重叠进度文档已保留两侧记录并追加本节；原 stash 保留作恢复点。
+- 合入验证：`datara-backend/tests/rebuild` 为 290 passed、0 failed、1 个计划内 R4 xfail；R3-S9 前端契约 14 passed；两个 Node runner `--check` 与集成差异检查通过。R4 xfail 仍为 pending-acceptance。
+- headed run `R3S9-20261015191204-61df20` 在 project-list 返回 401。源码确认普通路由要求签名 token 且 token 在当前 API 进程的 `active_tokens` 集合；I18 导入另要求持久化用户身份及 `EDIT_DEFINITION`，ADMIN 有此权限。验证 key 目前签发 DEV runner token 或 I23 preview capability，均不能完成 I18 导入。标准 rebuild `/login` token TTL 为 86400 秒，重启 API 会清空进程内注册表；当前代码没有 root-only 的短期 ADMIN token 签发器。
+- 因此 R3-S9 仍为 `PARTIAL / REMOTE_VALIDATION_CLOSEOUT`：该 401 run 尚未重跑成功，人工 digest-bound 确认、真实导入、导入后只读 parity 与 R3 acceptance 均未发生。此合入只完成源码/验证页集成，不构成导入授权或增量验收；不启动 R4 GREEN 或 P4 第二执行者。
