@@ -23,16 +23,16 @@
     <section class="intro"><h2>先看清差异，再决定是否迁移</h2><p>按已盘点的 I18 七张来源表读取只读快照，与当前项目的新治理模型逐项比对。此操作只生成 dry-run 计划，不写入任何目标业务表；冲突、未解析关系和阻断项会在下方明确列出。</p></section>
     <section id="onboarding" class="onboarding" hidden data-testid="onboarding" aria-labelledby="onboardingTitle">
       <div class="card"><div class="card-head"><h3 id="onboardingTitle">引导首屏 · 未检测到短期验证 token</h3></div><div class="card-body">
-        <p>本页为隔离验证页，仅使用短期 token 调用受保护的新 Backend API。当前浏览器上下文未注入 <code>window.__DATARA_TEST_TOKEN__</code>，主操作面板保持锁定。本页不提供登录表单，也不接收验证 key、账号口令或 token 输入。</p>
+        <p>本页为隔离验证页，仅使用短期 token 调用受保护的新 Backend API。当前浏览器上下文未注入短期验证 token（由验证运行器以页面内存变量方式注入，不落任何持久存储），主操作面板保持锁定。本页不提供登录表单，也不接收验证 key、账号口令或 token 输入。</p>
         <h4>token 取得路径（二选一，注入后刷新本页生效）</h4>
         <ol>
-          <li><strong>自动路径（标准，推荐）</strong> — 受控验证运行器从部署环境读取统一验证 key，调用 <code>POST /api/v1/rebuild/validation-token</code>（请求头 <code>X-Backend-Validation-Key</code>）换取短期 token（validation-runner / DEV 角色），随后由运行器把 token 注入本页运行上下文并刷新页面。验证 key 不进入页面、源码、URL 或浏览器存储。</li>
-          <li><strong>ADMIN 签发路径（仅用于要求持久 admin 身份的操作，例如本页 I18 导入闸）</strong> — 由 ADMIN 角色账号调用 <code>POST /api/v1/rebuild/login</code>（请求体 <code>{"username":"&lt;账号&gt;","password":"&lt;口令&gt;"}</code>）签发 token，再由受控上下文注入本页。请在可信环境执行；账号口令不得出现在页面、URL、日志或证据材料中。</li>
+          <li><strong>自动路径（标准，推荐）</strong> — 受控验证运行器从部署环境读取统一验证 key，调用后端 <code>POST /api/v1/rebuild/validation-token</code>（验证 key 仅经请求头传递，不进页面/源码/URL/浏览器存储）换取短期 token（validation-runner / DEV 角色），随后由运行器把 token 注入本页运行上下文并刷新页面。</li>
+          <li><strong>ADMIN 签发路径（仅用于要求持久 admin 身份的操作，例如本页 I18 导入闸）</strong> — 由 ADMIN 角色账号调用 <code>POST /api/v1/rebuild/login</code>（请求体含账号与口令字段）签发 token，再由受控上下文注入本页。请在可信环境执行；账号口令不得出现在页面输入、URL、日志或证据材料中。</li>
         </ol>
         <h4>委托执行入口</h4>
         <p>无需本机手工操作时，可将本轮验证委托给验证 runner：由其完成 token 签发与注入后自动驱动本页真实控件，并产出 JSON+PNG 成对证据。委托内容（页面地址、目标操作、预期范围）提交给验证运行环境即可；执行记录与结果可回溯至 <code>docs/increments/</code>（约法与台账、增量计划）与 <code>docs/increments/evidence/</code>（逐轮证据索引）。</p>
         <div class="actions"><button id="recheckToken" class="secondary" type="button" data-testid="recheck-token">重新检测 token</button></div>
-        <p class="path-note">提示：token 为短期凭据，注入方式由验证运行环境决定；刷新后如已过期需重新签发。</p>
+        <p class="path-note">提示：token 为短期凭据，注入方式由验证运行环境决定；点击上方按钮将刷新页面并自动重新检测，若仍未注入则回到本首屏，已过期需重新签发。</p>
       </div></div>
     </section>
     <div id="notice" class="notice" role="status" aria-live="polite" data-testid="notice"></div>
@@ -167,19 +167,15 @@
       }catch(error){const partial=(error&&error.data&&error.data.batch_id)?error.data:null;$('importStatus').textContent=partial?`导入部分完成：批次 ${partial.batch_id}（状态 ${partial.status||'未知'}，已导入 ${Number(partial.imported_count||0)} 条）。${error.message}；请依据该批次人工核查，勿在未核对前重复提交。`:`导入未能确认完成：${error.message}。按钮在当前页面会话内保持锁定；刷新页面会生成新的幂等键（${state.idempotencyKey}），若导入结果未知，请先依据后端批次/日志人工核查再决定是否重新提交。`;$('runtimeStatus').textContent='导入状态需复核';$('runtimeStatus').dataset.state='failed';notify($('importStatus').textContent,'error');}
       finally{state.busy=false;$('runDryRun').disabled=!state.projectId;updateImportButton();}
     });
-    const hasTokenNow = () => Boolean(window.__DATARA_TEST_TOKEN__);
     function showOnboarding() {
       $('onboarding').hidden = false;
       $('mainGrid').hidden = true;
       $('runtimeStatus').textContent = '验证运行时未就绪 · 见引导首屏';
       $('runtimeStatus').dataset.state = 'failed';
     }
-    $('recheckToken').addEventListener('click', () => {
-      if (hasTokenNow()) { location.reload(); return; }
-      showOnboarding();
-      notify('仍未检测到注入的短期 token；请按引导首屏任一路径取得并注入后重试。','error');
-    });
-    if (hasTokenNow()) { loadProjects(); } else { showOnboarding(); }
+    // 重新检测 = 整页刷新：token 仍由页首唯一读取点在加载时判定，避免第二读取面
+    $('recheckToken').addEventListener('click', () => { location.reload(); });
+    if (token) { loadProjects(); } else { showOnboarding(); }
   })();
   </script>
 </body>
