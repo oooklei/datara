@@ -198,6 +198,11 @@ def test_i18_headed_admin_launcher_transfers_token_via_stdin_without_string_copy
     assert "$secure.Dispose()" in script
     assert script.count("[System.Array]::Clear") == 2
     assert script.index("[System.Diagnostics.Process]::Start") < script.rindex("[System.Array]::Clear($utf8")
+    # 清理缺口回归（Codex 复审 8441e49）：BSTR 转换在 try 内，finally 有条件清零非零指针 +
+    # 无条件 Dispose SecureString（转换异常也必须走到清理）
+    assert script.index("try {") < script.index("SecureStringToBSTR") < script.index("finally {")
+    assert script.index("finally {") < script.index("$secure.Dispose()")
+    assert "if ($ptr -ne [IntPtr]::Zero)" in script
 
 
 def test_i18_runner_admin_mode_reads_token_from_stdin_with_leak_guard():

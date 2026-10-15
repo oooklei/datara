@@ -17,10 +17,13 @@ $ErrorActionPreference = 'Stop'
 # 前置：已获用户批准执行人工确认闸；token 由授权运维/人工本人提供（本脚本不索取、不存储凭据）。
 
 $secure = Read-Host -Prompt '输入短时 admin token（输入不回显）' -AsSecureString
-$ptr = [System.Runtime.InteropServices.Marshal]::SecureStringToBSTR($secure)
+$ptr = [IntPtr]::Zero
 $utf16 = $null
 $utf8 = $null
 try {
+    # BSTR 转换在 try 内（Codex 复审缺口回归）：SecureStringToBSTR/字节复制/编码转换任何一步抛出，
+    # finally 都会执行 — 有条件清零非零 BSTR 指针 + 无条件释放 SecureString。
+    $ptr = [System.Runtime.InteropServices.Marshal]::SecureStringToBSTR($secure)
     # BSTR 长度前缀在指针前 4 字节（字节数）；直接按字节复制，绝不物化托管字符串
     $byteLen = [System.Runtime.InteropServices.Marshal]::ReadInt32($ptr, -4)
     if ($byteLen -gt 0) {
@@ -30,14 +33,16 @@ try {
     }
 }
 finally {
-    [System.Runtime.InteropServices.Marshal]::ZeroBSTR($ptr)
-    $ptr = [IntPtr]::Zero
+    if ($ptr -ne [IntPtr]::Zero) {
+        [System.Runtime.InteropServices.Marshal]::ZeroBSTR($ptr)
+        $ptr = [IntPtr]::Zero
+    }
+    # SecureString 无条件释放（即使上面的转换失败）
+    $secure.Dispose()
     if ($utf16) {
         [System.Array]::Clear($utf16, 0, $utf16.Length)
         $utf16 = $null
     }
-    # SecureString 用毕即释放（Codex 二审清理缺口回归）
-    $secure.Dispose()
 }
 if (-not $utf8 -or $utf8.Length -eq 0) { throw 'Admin token is required for the headed confirmation gate.' }
 
