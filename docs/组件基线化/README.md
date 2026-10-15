@@ -175,11 +175,11 @@
 | 前端三态 | 工作台保存栏：published 态只读（.ro）+「复制 vN 开修订」入口；修订中「保存底稿 / 放弃修订 / 认可发 vN+1」+ 紫徽标；目录页蓝徽标「修订中（vN 已发）」 |
 | 1.9 实测 | 浏览器回归 15/15 + API 全链探针 11/11（redraft→改底稿→体检→publish v2→versions [2,1] 双留档→discard 回滚）；sql 组件实测发至 v2，其余 17 组件 v1 不变 |
 
-设计全文：`docs/superpowers/specs/2026-09-30-baseline-revision-design.md`（含 R1/R2/R3 缺陷修复与决策记录 D1-D4）。
+设计全文：`docs/archive/superpowers/specs/2026-09-30-baseline-revision-design.md`（含 R1/R2/R3 缺陷修复与决策记录 D1-D4；原 `docs/superpowers/` 路径已归档至 `docs/archive/`，2026-10-16 裁定①）。
 
 ## 8. 血缘关系三层汇总实施记录（2026-09-30）
 
-> 上游设计：[2026-09-30-lineage-design.md](../superpowers/specs/2026-09-30-lineage-design.md)；批次一 commit 39fa045（后端），批次二（前端 Task 5-8）待 commit。
+> 上游设计：[2026-09-30-lineage-design.md](../archive/superpowers/specs/2026-09-30-lineage-design.md)；批次一 commit 39fa045（后端），批次二（前端 Task 5-8）待 commit。
 
 **三层架构**：设计态解析（`datara-backend/common/lineage_extract.py` 的 `extract_wf_lineage` 纯函数，按 35 组件分派矩阵静态解析节点 config，信封层异常隔离）→ 汇总（`GET /lineage/graph` 聚合端点：design∪runtime 按 fq 去重聚合 + 中心表 BFS 扩散 + 环检测 + 截断）→ 消费（前端 LineageView 表级图谱增强 / 字段级映射图 / 实例追溯模式化）。存储复用 t_lineage_edge / t_lineage_field 加 `src_type` 列（design/runtime，instance_id=0 即设计态行，存量零迁移）；工作流保存/发布/删除/回滚四处触发 delete-then-reinsert 重算，另设 `POST /lineage/redesign/{wfCode}` 按需重算。
 
