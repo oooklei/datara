@@ -93,7 +93,11 @@ export const routes: RouteRecordRaw[] = [
   { path: '/sec/audit', name: 'sec-audit', component: () => import('../views/sec/SecAuditView.vue'), meta: { title: '访问审计', demo: true } },
   { path: '/ind/board', name: 'ind-board', component: () => import('../views/ind/IndBoardView.vue'), meta: { title: '指标看板' } },
   { path: '/ind/consistency', name: 'ind-consistency', component: () => import('../views/ind/IndConsistencyView.vue'), meta: { title: '一致性检查' } },
-  // 部署运维
+  // ---- 重建验证页（独立验证页，不进正式菜单；RED 骨架 — 后端契约接入前全占位） ----
+  // 注：R5-A/B 两行（sql-ide-readonly / sql-ide-ddl）在 trae/r5-a-red 分支，合 main 后此处自动补齐
+  { path: '/rebuild/validation/schedule', name: 'rebuild-schedule-validation', component: () => import('../views/rebuild/validation/schedule/ScheduleValidationView.vue'), meta: { title: '调度运行时验证（I7）' } },
+
+  // ---- 部署运维 ----
   { path: '/dep/runtime', name: 'dep-runtime', component: () => import('../views/deploy/DeployRuntimeView.vue'), meta: { title: '运行时节点' } },
   { path: '/dep/center', name: 'dep-center', component: () => import('../views/deploy/DeployCenterView.vue'), meta: { title: '部署中心', demo: true } },
   { path: '/dep/monitor', name: 'dep-monitor', component: () => import('../views/deploy/DeployMonitorView.vue'), meta: { title: '集群监控', demo: true } },
