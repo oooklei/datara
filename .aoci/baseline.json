@@ -1,7 +1,7 @@
 {
   "version": 1,
   "created_at": "2026-10-02T22:25:37Z",
-  "updated_at": "2026-10-15T15:02:02Z",
+  "updated_at": "2026-10-15T15:17:43Z",
   "files": {
     ".gitattributes": {
       "role": "index",
@@ -20,6 +20,21 @@
       "sha256": "14d9592d6d41eabdce2cccfdcf491c86f344fb397109f43e2283324a6c4e02eb",
       "size": 191,
       "normalized_sha256": "14d9592d6d41eabdce2cccfdcf491c86f344fb397109f43e2283324a6c4e02eb"
+    },
+    "2026-10-13-功能实测包.xls": {
+      "role": "index",
+      "sha256": "3f7167503b1c9f0fd9716b319d751c69fa4165028e4fb45d97092656202e1b23",
+      "size": 13779
+    },
+    "2026-10-13-功能实测包.xlsx": {
+      "role": "index",
+      "sha256": "3f7167503b1c9f0fd9716b319d751c69fa4165028e4fb45d97092656202e1b23",
+      "size": 13779
+    },
+    "2026-10-13-用户现场演示操作手册.docx": {
+      "role": "index",
+      "sha256": "724a7366d331723e8324f78887f5c967490a036fe023ae32b334d6e348f9089b",
+      "size": 42304
     },
     "AGENTS.md": {
       "role": "index",
@@ -113,9 +128,9 @@
     },
     "aoci.code.txt": {
       "role": "index",
-      "sha256": "4265914d14c3b2254f38731a144df96185364127f005f3f2e5780acfc55b897b",
-      "size": 188617,
-      "normalized_sha256": "4265914d14c3b2254f38731a144df96185364127f005f3f2e5780acfc55b897b"
+      "sha256": "e567250332dc0cd4eeb5f4c10a4dbfae2fd28bf2bbac90a3173e956e38c26d8e",
+      "size": 194117,
+      "normalized_sha256": "e567250332dc0cd4eeb5f4c10a4dbfae2fd28bf2bbac90a3173e956e38c26d8e"
     },
     "aoci.meta.txt": {
       "role": "index",
@@ -4124,6 +4139,11 @@
       "size": 14079,
       "normalized_sha256": "cc18ad9311799b9782e470504b20fe73eeee83a65de40a38aaf487619b4bf2c2"
     },
+    "docs/Datara用户操作使用手册——数据开发与数据集成.docx": {
+      "role": "index",
+      "sha256": "f4fef19bb2213ac63f865a406b6e66a638136ef076a579544f26981f067eb546",
+      "size": 55408
+    },
     "docs/Datara用户操作使用手册——数据开发与数据集成.md": {
       "role": "index",
       "sha256": "67639322ee4d32b770a931a248e5e2f6c8764f4c1ef43ec06f41a6d550e25faa",
@@ -4783,17 +4803,32 @@
       "size": 2412,
       "normalized_sha256": "b54dd130e8c97906162ffe4998016df05094f644cb6f2d03320ed98db22ab027"
     },
+    "docs/increments/evidence/R1/r1-20261014142424.png": {
+      "role": "index",
+      "sha256": "39fabb4fdffa81e61bb544f7ca7e79ae3937e7369240b2dcd19a8fa8eb28e079",
+      "size": 48917
+    },
     "docs/increments/evidence/R1/r1-20261014143004.json": {
       "role": "index",
       "sha256": "24db25ee9749b02acebaf93ecd7f795f48722cb4ec328543469458547c1edab7",
       "size": 2511,
       "normalized_sha256": "24db25ee9749b02acebaf93ecd7f795f48722cb4ec328543469458547c1edab7"
     },
+    "docs/increments/evidence/R1/r1-20261014143004.png": {
+      "role": "index",
+      "sha256": "fe2036d34e4805627d299ea8174b5ba3e53046e02b950a993501e2235d6a96ea",
+      "size": 48858
+    },
     "docs/increments/evidence/R1/r1-20261014143128.json": {
       "role": "index",
       "sha256": "f6f6438117d53d1e3d83cf982c44320ed92028c6a3e130015981425d5216fbf2",
       "size": 2629,
       "normalized_sha256": "f6f6438117d53d1e3d83cf982c44320ed92028c6a3e130015981425d5216fbf2"
+    },
+    "docs/increments/evidence/R1/r1-20261014143128.png": {
+      "role": "index",
+      "sha256": "c67512ad0ab8cf4e8624ffb53de648103268674d16efc0351b0bbfdaed1670eb",
+      "size": 48762
     },
     "docs/increments/evidence/R1/r1-20261014143228-remote.txt": {
       "role": "index",
@@ -4806,6 +4841,11 @@
       "sha256": "a724c8f89686ba56db95ad9513423b5c41eb3fb4a918f4bf2554c18ad24437ba",
       "size": 2630,
       "normalized_sha256": "a724c8f89686ba56db95ad9513423b5c41eb3fb4a918f4bf2554c18ad24437ba"
+    },
+    "docs/increments/evidence/R1/r1-20261014143228.png": {
+      "role": "index",
+      "sha256": "491f6190529e82c74b93ff0417033178f8ed4005cee3f862a21b1bf47b3d13db",
+      "size": 48815
     },
     "docs/increments/evidence/R1/remote-deploy.txt": {
       "role": "index",
@@ -6324,6 +6364,11 @@
       "sha256": "243ea18dfc5501ecaa53bfe6dcbb3cd4e9aff4d074c31977de7f4e42b7cb130e",
       "size": 34310,
       "normalized_sha256": "243ea18dfc5501ecaa53bfe6dcbb3cd4e9aff4d074c31977de7f4e42b7cb130e"
+    },
+    "技能使用说明书.docx": {
+      "role": "index",
+      "sha256": "42559f4d29b34756d6ee1125ce351633ec1e60056118983757d576f33347fd4d",
+      "size": 19123
     }
   },
   "managed_scope": {

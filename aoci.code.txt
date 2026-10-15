@@ -11,6 +11,10 @@ SECURITY.md[ZS5S]: F:Defines private vulnerability reporting and response expect
 docker-compose.yml[CM7M]: F:Defines Datara service topology including the isolated rebuild API service and shared runtime resources. | R:code:datara-backend/rebuild/api/app.py,code:docker-compose.rebuild.yml,code:infra/mysql/src/init/01_schema.sql | A:Connects rebuild and legacy validation runtimes over the shared MySQL services. | S:Rebuild API mounts stay read-only and Web remains on the 18091 validation bind.
 .mcp.json[CC4T]: F:Registers the AOCI MCP server command for agent sessions. | R:- | A:Launches the AOCI binary in MCP stdio mode bound to this repository root. | S:Server identity and repo binding must match the active workspace.
 docker-compose.rebuild.yml[FV5T]: F:Defines the isolated rebuild API compose service with validation key, MySQL dependencies, and health check. | R:code:datara-backend/rebuild/api/app.py,code:docker-compose.yml | A:Provisions the rebuild runtime consumed by R-series validation. | S:Rebuild mounts stay read-only and secrets come from the environment.
+2026-10-13-功能实测包.xls[ZS5T]: F:Stores tabular test or sample data in 2026-10-13-功能实测包.xls. | R:- | A:- | S:-
+2026-10-13-功能实测包.xlsx[ZS5T]: F:Stores tabular test or sample data in 2026-10-13-功能实测包.xlsx. | R:- | A:- | S:-
+2026-10-13-用户现场演示操作手册.docx[SO5T]: F:Documents operating or requirements guidance in 2026-10-13-用户现场演示操作手册.docx. | R:- | A:- | S:-
+技能使用说明书.docx[SO5T]: F:Documents operating or requirements guidance in 技能使用说明书.docx. | R:- | A:- | S:-
 
 ===D:/需求/数据治理工具/Datara/datara-backend/===
 Dockerfile[RM7S]: F:Builds the shared Python 3.11 backend image used by API, master, worker, alert, and logger services. | R:- | A:docker-compose commands select the runtime module for each container. | S:Health checks depend on curl and the image timezone/environment settings.
@@ -646,6 +650,10 @@ build_manual.py[ZS5T]: F:Documents design, verification, or operating guidance i
 组件管理与发布治理设计.md[ZS5T]: F:Documents design, verification, or operating guidance in docs/组件管理与发布治理设计.md. | R:- | A:Provides evidence and decisions for maintainers and operators. | S:-
 血缘关系梳理.txt[ZS5T]: F:Documents design, verification, or operating guidance in docs/血缘关系梳理.txt. | R:- | A:Provides evidence and decisions for maintainers and operators. | S:-
 2026-10-13-功能实测报告.md[TQ5T]: F:Records I19 IDE, menus, stream #76, sync #110/#111, lineage trace, and regression evidence for object browsing, cross-schema SQL, and routine editing. | R:code:datara-backend/api/lineage.py,code:datara-backend/api/datasource.py,code:datara-backend/api/ide.py,code:datara-web/src/views/ide/components/ExplorerTree.vue,code:datara-web/src/services/ideApi.ts | A:Connects regression evidence to workflow definitions, runtime workers, lineage navigation, datasource metadata, SQL execution, and release decisions. | S:WorkflowRefs omit deleted definitions; IDE routine DDL loads without execution and preserves required database quoting; generated normal object refs use schema.object.
+数据开发IDE用户使用手册.docx[SO5T]: F:Documents operating or requirements guidance in docs/数据开发IDE用户使用手册.docx. | R:- | A:- | S:-
+数据开发IDE用户使用手册.pdf[SO5T]: F:Documents operating or requirements guidance in docs/数据开发IDE用户使用手册.pdf. | R:- | A:- | S:-
+Datara需求规格说明书_V3.0.docx[SO5T]: F:Documents operating or requirements guidance in docs/Datara需求规格说明书_V3.0.docx. | R:- | A:- | S:-
+Datara用户操作使用手册——数据开发与数据集成.docx[SO5T]: F:Documents operating or requirements guidance in docs/Datara用户操作使用手册——数据开发与数据集成.docx. | R:- | A:- | S:-
 
 ===D:/需求/数据治理工具/Datara/docs/increments/===
 00-流程与记录.md[ZS5T]: F:Documents design, verification, or operating guidance in docs/increments/00-流程与记录.md. | R:- | A:Provides evidence and decisions for maintainers and operators. | S:-
@@ -887,6 +895,7 @@ rebuild_env_presence_check.sh[RO5T]: F:Provides R-series rebuild deployment or v
 ===D:/需求/数据治理工具/Datara/infra/files/samples/===
 orders_part.csv[RO5T]: F:Provides deployment or environment support through infra/files/samples/orders_part.csv. | R:- | A:Supports reproducible installation, verification, or operations. | S:-
 orders_part.txt[ZS5T]: F:Documents design, verification, or operating guidance in infra/files/samples/orders_part.txt. | R:- | A:Provides evidence and decisions for maintainers and operators. | S:-
+orders_part.xlsx[ZS5T]: F:Stores tabular test or sample data in infra/files/samples/orders_part.xlsx. | R:- | A:- | S:-
 
 ===D:/需求/数据治理工具/Datara/infra/mysql/dw/init/===
 01_schema.sql[RO5T]: F:Provides deployment or environment support through infra/mysql/dw/init/01_schema.sql. | R:- | A:Supports reproducible installation, verification, or operations. | S:-
@@ -1011,6 +1020,10 @@ r1-20261014143228-remote.txt[ZS5T]: F:Stores R-series validation or inventory ev
 r1-20261014143228.json[ZS5S]: F:Stores R-series validation or inventory evidence in docs/increments/evidence/. | R:- | A:Provides reproducible run evidence for the rebuild ledger. | S:-
 remote-deploy.txt[ZS5T]: F:Stores R-series validation or inventory evidence in docs/increments/evidence/. | R:- | A:Provides reproducible run evidence for the rebuild ledger. | S:-
 remote-runtime-closure.txt[ZS5T]: F:Stores R-series validation or inventory evidence in docs/increments/evidence/. | R:- | A:Provides reproducible run evidence for the rebuild ledger. | S:-
+r1-20261014142424.png[ZS5T]: F:Stores screenshot evidence in docs/increments/evidence/R1/r1-20261014142424.png. | R:- | A:- | S:-
+r1-20261014143004.png[ZS5T]: F:Stores screenshot evidence in docs/increments/evidence/R1/r1-20261014143004.png. | R:- | A:- | S:-
+r1-20261014143128.png[ZS5T]: F:Stores screenshot evidence in docs/increments/evidence/R1/r1-20261014143128.png. | R:- | A:- | S:-
+r1-20261014143228.png[ZS5T]: F:Stores screenshot evidence in docs/increments/evidence/R1/r1-20261014143228.png. | R:- | A:- | S:-
 
 ===D:/需求/数据治理工具/Datara/docs/increments/evidence/R2/===
 browser-validation.txt[ZS5T]: F:Stores R-series validation or inventory evidence in docs/increments/evidence/. | R:- | A:Provides reproducible run evidence for the rebuild ledger. | S:-
@@ -1043,4 +1056,38 @@ s7-local-regression-and-quality.txt[ZS5T]: F:Stores R-series validation or inven
 s7-playwright-db-reconciliation.txt[ZS5T]: F:Stores R-series validation or inventory evidence in docs/increments/evidence/. | R:- | A:Provides reproducible run evidence for the rebuild ledger. | S:-
 s8-source-inventory-20261014.md[ZS5T]: F:Stores R-series validation or inventory evidence in docs/increments/evidence/. | R:- | A:Provides reproducible run evidence for the rebuild ledger. | S:-
 source-reconciliation.md[ZS5T]: F:Stores R-series validation or inventory evidence in docs/increments/evidence/. | R:- | A:Provides reproducible run evidence for the rebuild ledger. | S:-
+
+===D:/需求/数据治理工具/Datara/docs/use-cases/etl/shots/===
+E-runs-list.png[ZS5T]: F:Stores screenshot evidence in docs/use-cases/etl/shots/E-runs-list.png. | R:- | A:- | S:-
+E1-instance.png[ZS5T]: F:Stores screenshot evidence in docs/use-cases/etl/shots/E1-instance.png. | R:- | A:- | S:-
+E2-instance.png[ZS5T]: F:Stores screenshot evidence in docs/use-cases/etl/shots/E2-instance.png. | R:- | A:- | S:-
+E3-instance.png[ZS5T]: F:Stores screenshot evidence in docs/use-cases/etl/shots/E3-instance.png. | R:- | A:- | S:-
+E4-instance.png[ZS5T]: F:Stores screenshot evidence in docs/use-cases/etl/shots/E4-instance.png. | R:- | A:- | S:-
+E5-fail-instance.png[ZS5T]: F:Stores screenshot evidence in docs/use-cases/etl/shots/E5-fail-instance.png. | R:- | A:- | S:-
+E5-success-instance.png[ZS5T]: F:Stores screenshot evidence in docs/use-cases/etl/shots/E5-success-instance.png. | R:- | A:- | S:-
+
+===D:/需求/数据治理工具/Datara/docs/use-cases/general/shots/===
+G1-shell健康巡检.png[ZS5T]: F:Stores screenshot evidence in docs/use-cases/general/shots/G1-shell健康巡检.png. | R:- | A:- | S:-
+G2-python文件清洗.png[ZS5T]: F:Stores screenshot evidence in docs/use-cases/general/shots/G2-python文件清洗.png. | R:- | A:- | S:-
+G3-http拉取落库.png[ZS5T]: F:Stores screenshot evidence in docs/use-cases/general/shots/G3-http拉取落库.png. | R:- | A:- | S:-
+G4-ssh多节点并行.png[ZS5T]: F:Stores screenshot evidence in docs/use-cases/general/shots/G4-ssh多节点并行.png. | R:- | A:- | S:-
+G5-数据出仓归档.png[ZS5T]: F:Stores screenshot evidence in docs/use-cases/general/shots/G5-数据出仓归档.png. | R:- | A:- | S:-
+
+===D:/需求/数据治理工具/Datara/docs/use-cases/stream/shots/===
+F1-kafka单源窗口聚合.png[ZS5T]: F:Stores screenshot evidence in docs/use-cases/stream/shots/F1-kafka单源窗口聚合.png. | R:- | A:- | S:-
+F2-kafka双源union看板.png[ZS5T]: F:Stores screenshot evidence in docs/use-cases/stream/shots/F2-kafka双源union看板.png. | R:- | A:- | S:-
+F3-kafkajoin维表流.png[ZS5T]: F:Stores screenshot evidence in docs/use-cases/stream/shots/F3-kafkajoin维表流.png. | R:- | A:- | S:-
+F4-http阈值触发.png[ZS5T]: F:Stores screenshot evidence in docs/use-cases/stream/shots/F4-http阈值触发.png. | R:- | A:- | S:-
+F4notify-尾联-batch.png[ZS5T]: F:Stores screenshot evidence in docs/use-cases/stream/shots/F4notify-尾联-batch.png. | R:- | A:- | S:-
+F5-kafka窗口落仓.png[ZS5T]: F:Stores screenshot evidence in docs/use-cases/stream/shots/F5-kafka窗口落仓.png. | R:- | A:- | S:-
+
+===D:/需求/数据治理工具/Datara/docs/use-cases/sync/shots/===
+S0-run4-instances.png[ZS5T]: F:Stores screenshot evidence in docs/use-cases/sync/shots/S0-run4-instances.png. | R:- | A:- | S:-
+S1-instance.png[ZS5T]: F:Stores screenshot evidence in docs/use-cases/sync/shots/S1-instance.png. | R:- | A:- | S:-
+S2-instance.png[ZS5T]: F:Stores screenshot evidence in docs/use-cases/sync/shots/S2-instance.png. | R:- | A:- | S:-
+S3-instance.png[ZS5T]: F:Stores screenshot evidence in docs/use-cases/sync/shots/S3-instance.png. | R:- | A:- | S:-
+S3-log-autoschema.png[ZS5T]: F:Stores screenshot evidence in docs/use-cases/sync/shots/S3-log-autoschema.png. | R:- | A:- | S:-
+S4-instance.png[ZS5T]: F:Stores screenshot evidence in docs/use-cases/sync/shots/S4-instance.png. | R:- | A:- | S:-
+S4-log-staging.png[ZS5T]: F:Stores screenshot evidence in docs/use-cases/sync/shots/S4-log-staging.png. | R:- | A:- | S:-
+S5-dag-parallel.png[ZS5T]: F:Stores screenshot evidence in docs/use-cases/sync/shots/S5-dag-parallel.png. | R:- | A:- | S:-
 
