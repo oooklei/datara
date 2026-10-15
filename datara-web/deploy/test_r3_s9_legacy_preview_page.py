@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import json
+import subprocess
 from html.parser import HTMLParser
 from pathlib import Path
 
@@ -216,7 +218,45 @@ def test_i18_runner_admin_mode_reads_token_from_stdin_with_leak_guard():
     assert "getByTestId('run-i18-import')" not in runner
     assert "importConfirmPhrase').fill(" not in runner and "keyboard" not in runner
     assert "waiting-for-human-confirmation-and-click" in runner
+    # PASS 判定单一事实源接线（r3-s9-import-gate.cjs）
+    assert "require('./r3-s9-import-gate.cjs')" in runner
+    assert "importGateVerdict(importResponse, importStatusText)" in runner
     # 双模式互斥（stdin 新通道语义）
     assert "Set exactly one of DATARA_REBUILD_VALIDATION_KEY (env) / --token-stdin (stdin)" in runner
     # token 不进证据：报告/检查输出无 token 值字段
     assert "admin_token:" not in runner and "token:" not in runner.replace("auth_token", "")
+    # TDZ 缺陷回归钉死：reportPath 声明必须先于 stdoutSummary（Codex 审出的运行期 ReferenceError）
+    assert runner.index("const reportPath") < runner.index("const stdoutSummary")
+
+
+IMPORT_GATE = Path(__file__).parent / "r3-s9-import-gate.cjs"
+
+
+def test_i18_import_gate_predicate_requires_accepted_2xx_and_explicit_success_ui():
+    """Codex 裁定：导入 PASS 必须要求已接受 2xx + 明确成功终态；假失败响应回归（真实驱动判定函数）。"""
+    probe = subprocess.run(
+        [
+            "node", "-e",
+            "const { importGateVerdict } = require('./deploy/r3-s9-import-gate.cjs');"
+            "const accepted = importGateVerdict({ status: 200 }, '导入事务已完成：批次 R3S9-FAKE');"
+            "const partial409 = importGateVerdict({ status: 409 }, '导入部分完成：批次 R3S9-FAKE');"
+            "const noResponse = importGateVerdict(undefined, '导入事务已完成');"
+            "const httpOnly = importGateVerdict({ status: 200 }, '批次已创建');"
+            "const serverError = importGateVerdict({ status: 500 }, '导入事务已完成');"
+            "process.stdout.write(JSON.stringify({"
+            "accepted: accepted.pass, partial409: partial409.pass, noResponse: noResponse.pass,"
+            "httpOnly: httpOnly.pass, serverError: serverError.pass }));",
+        ],
+        capture_output=True,
+        text=True,
+        cwd=RUNNER.parents[1],
+    )
+    assert probe.returncode == 0, probe.stderr
+    verdicts = json.loads(probe.stdout)
+    assert verdicts == {
+        "accepted": True,
+        "partial409": False,
+        "noResponse": False,
+        "httpOnly": False,
+        "serverError": False,
+    }

@@ -2,6 +2,7 @@ const fs = require('node:fs/promises');
 const path = require('node:path');
 const crypto = require('node:crypto');
 const { chromium } = require('playwright-core');
+const { importGateVerdict } = require('./r3-s9-import-gate.cjs');
 
 const baseUrl = process.env.DATARA_REBUILD_BASE_URL;
 const validationKey = process.env.DATARA_REBUILD_VALIDATION_KEY;
@@ -199,9 +200,14 @@ async function main() {
       );
       const importStatusText = (await page.locator('#importStatus').innerText()).trim();
       const importResponse = responses.find(item => item.name === 'i18-import');
-      check(checks, 'human-confirmed-import-recorded', Boolean(importResponse) && /批次/.test(importStatusText), {
-        import_http_status: importResponse?.status ?? null,
-        import_completed: /导入与只读复核通过|导入事务已完成/.test(importStatusText),
+      // PASS 判定单一事实源（r3-s9-import-gate.cjs）：必须已接受 2xx + 页面明确成功终态；
+      // "有响应 + 批次字样"不足以 PASS（409 部分完成 / 非 2xx 均如实记 FAIL，细节入证据）。
+      const verdict = importGateVerdict(importResponse, importStatusText);
+      check(checks, 'human-confirmed-import-recorded', verdict.pass, {
+        import_http_status: verdict.status,
+        import_accepted_2xx: verdict.importAccepted,
+        import_completed: verdict.importSucceededInUi,
+        import_status_text: importStatusText,
       });
       actions.push({ name: 'human-confirmation-finished', at: new Date().toISOString() });
       // 持久化面探针：token 只存在于页面内存（init script 注入），localStorage/sessionStorage 必须为空。
@@ -219,6 +225,8 @@ async function main() {
     errors.push({ kind: 'runner', message: error.message });
   } finally {
     if (browser) await browser.close();
+    // 先声明 reportPath（Codex 审出的 TDZ 缺陷：stdoutSummary 不得引用未初始化的 const）。
+    const reportPath = path.join(evidenceDir, `${runId.toLowerCase()}.json`);
     // 泄漏闸（fail-closed）：argv / 环境变量 / 证据 JSON / stdout 摘要任一面出现 token 即拒绝写证据。
     assertNoTokenLeak(token, {
       argv: process.argv.join(' '),
@@ -227,7 +235,6 @@ async function main() {
     });
     const stdoutSummary = JSON.stringify({ run_id: runId, outcome: report.outcome, checks, evidence: reportPath });
     assertNoTokenLeak(token, { stdout: stdoutSummary });
-    const reportPath = path.join(evidenceDir, `${runId.toLowerCase()}.json`);
     await fs.writeFile(reportPath, `${JSON.stringify(report, null, 2)}\n`, 'utf8');
     process.stdout.write(`${stdoutSummary}\n`);
     token = null;
