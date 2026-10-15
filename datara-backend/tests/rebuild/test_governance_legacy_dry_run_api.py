@@ -119,6 +119,46 @@ def test_validation_runner_cannot_execute_enabled_i18_import(monkeypatch):
     assert response.json()["code"] == 1003
 
 
+def test_i18_import_rejects_unapproved_project_before_opening_source(monkeypatch):
+    client, _app, _validation_headers, _project_id, other_project_id = _client(
+        monkeypatch, import_enabled=True
+    )
+    from rebuild.governance.legacy_source_reader import LegacyI18SourceReader
+    from rebuild.identity.models import UserRecord
+    from rebuild.identity.passwords import hash_password
+
+    with _app.state.session_factory() as session, session.begin():
+        session.add(
+            UserRecord(
+                id=76,
+                username="approved-scope-operator",
+                password_hash=hash_password("scope-test-password"),
+                role="admin",
+            )
+        )
+    login = client.post(
+        "/api/v1/rebuild/login",
+        json={"username": "approved-scope-operator", "password": "scope-test-password"},
+    )
+    headers = {"Authorization": f"Bearer {login.json()['data']['token']}"}
+
+    def must_not_open(_cls):
+        raise AssertionError("unapproved project must be rejected before source access")
+
+    monkeypatch.setattr(LegacyI18SourceReader, "from_runtime_env", classmethod(must_not_open))
+    try:
+        response = client.post(
+            f"/api/v1/rebuild/governance/projects/{other_project_id}/legacy/i18/import",
+            headers=headers,
+            json=_import_request(other_project_id, "a" * 64, "b" * 64),
+        )
+    finally:
+        client.__exit__(None, None, None)
+
+    assert response.status_code == 409
+    assert response.json()["code"] == 4099
+
+
 def test_i18_import_api_checks_project_edit_before_opening_source(monkeypatch):
     client, app, _validation_headers, _project_id, _denied_project_id = _client(
         monkeypatch, import_enabled=True
@@ -209,10 +249,31 @@ def test_enabled_i18_import_api_requires_fresh_digests_and_calls_service(monkeyp
     )
     assert project_response.status_code == 200
     project_id = project_response.json()["data"]["id"]
+    assert project_id == 3
 
     with app.state.session_factory() as session:
         target_digest = LegacyI18TargetSnapshotRepository(session).read_project_snapshot(project_id).digest
     importer_calls = []
+    approved_plan = SimpleNamespace(
+        project_id=project_id,
+        source_count=45,
+        counts={"create": 44, "unchanged": 0, "skipped": 1, "conflict": 0, "blocked": 0},
+        entries=[SimpleNamespace(disposition="create") for _ in range(44)]
+        + [
+            SimpleNamespace(
+                source_table="t_dw_model_version",
+                source_id="1",
+                disposition="skipped",
+                disposition_reason="approved_missing_model_reference",
+            )
+        ],
+        ready_to_import=True,
+    )
+    monkeypatch.setattr(
+        governance_api,
+        "build_i18_legacy_dry_run",
+        lambda *_args: SimpleNamespace(plan=approved_plan),
+    )
     monkeypatch.setattr(
         governance_api,
         "execute_i18_legacy_import",
@@ -220,9 +281,9 @@ def test_enabled_i18_import_api_requires_fresh_digests_and_calls_service(monkeyp
         or SimpleNamespace(
             batch_id=71,
             status="completed",
-            expected_count=0,
-            imported_count=0,
-            skipped_count=0,
+            expected_count=45,
+            imported_count=44,
+            skipped_count=1,
             error_count=0,
         ),
     )
@@ -251,7 +312,9 @@ def test_enabled_i18_import_api_requires_fresh_digests_and_calls_service(monkeyp
             patcher.setattr(
                 governance_api,
                 "build_i18_legacy_dry_run",
-                lambda *_args: SimpleNamespace(plan=SimpleNamespace(ready_to_import=False)),
+                lambda *_args: SimpleNamespace(
+                    plan=SimpleNamespace(**{**vars(approved_plan), "ready_to_import": False})
+                ),
             )
             blocked = client.post(
                 f"/api/v1/rebuild/governance/projects/{project_id}/legacy/i18/import",
@@ -277,9 +340,9 @@ def test_enabled_i18_import_api_requires_fresh_digests_and_calls_service(monkeyp
     assert valid.json()["data"] == {
         "batch_id": 71,
         "status": "completed",
-        "expected_count": 0,
-        "imported_count": 0,
-        "skipped_count": 0,
+        "expected_count": 45,
+        "imported_count": 44,
+        "skipped_count": 1,
         "error_count": 0,
     }
     assert len(importer_calls) == 1

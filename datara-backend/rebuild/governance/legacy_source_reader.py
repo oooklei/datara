@@ -384,7 +384,6 @@ class LegacyI18SourceReader:
 
         payload = {
             "schema": LEGACY_SCHEMA,
-            "captured_at": captured_at.isoformat(),
             "rows": {table: [_json_safe(row) for row in rows] for table, rows in all_rows.items()},
         }
         digest = hashlib.sha256(

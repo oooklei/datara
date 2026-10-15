@@ -69,6 +69,31 @@ def test_source_reader_reads_only_fixed_i18_columns_and_pages_without_truncating
     assert statements and set(statements) == {"SELECT", "PRAGMA"}
 
 
+def test_source_digest_is_stable_across_capture_times_but_changes_with_source_rows():
+    engine = _sqlite_source_engine()
+    with engine.begin() as connection:
+        connection.exec_driver_sql(
+            "INSERT INTO t_dw_model (id, code, name, layer, type, biz_domain, engine) "
+            "VALUES (17, 'orders', '订单', 'DWD', '明细表', '交易', 'Doris')"
+        )
+
+    reader = LegacyI18SourceReader(engine, sqlite_test_mode=True)
+    first_capture = datetime(2026, 10, 15, 10, 0, tzinfo=timezone.utc)
+    second_capture = datetime(2026, 10, 15, 10, 1, tzinfo=timezone.utc)
+    first = reader.read_snapshot(captured_at=first_capture)
+    second = reader.read_snapshot(captured_at=second_capture)
+
+    assert first.captured_at == first_capture
+    assert second.captured_at == second_capture
+    assert first.digest == second.digest
+
+    with engine.begin() as connection:
+        connection.exec_driver_sql("UPDATE t_dw_model SET name = '订单明细' WHERE id = 17")
+    changed = reader.read_snapshot(captured_at=second_capture)
+
+    assert changed.digest != second.digest
+
+
 def test_source_reader_rejects_non_legacy_schema_and_requires_explicit_sqlite_test_mode():
     target_engine = create_engine("mysql+pymysql://reader:unused@127.0.0.1/datara_rebuild_i0")
     with pytest.raises(ValueError, match="must point to datara_meta"):

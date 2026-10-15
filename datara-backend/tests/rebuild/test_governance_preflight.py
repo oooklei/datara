@@ -144,3 +144,159 @@ def test_preflight_compares_mysql_generated_identifiers_by_schema_shape():
         table for table in LEGACY_CARRY_FORWARD_TABLES if table.name == "rebuild_governance_asset_metadata_extension"
     )
     assert _compare_table(MySQLLikeInspector(), table) == []
+
+
+def test_preflight_detects_foreign_key_delete_action_drift():
+    from rebuild.governance.migration_preflight import _compare_table
+
+    engine = isolated_engine()
+    MigrationRunner(engine, R3_GOVERNANCE_MIGRATIONS).apply()
+    delegate = inspect(engine)
+    table = next(
+        table
+        for table in LEGACY_CARRY_FORWARD_TABLES
+        if table.name == "rebuild_governance_warehouse_model_field"
+    )
+
+    class DriftedInspector:
+        def __getattr__(self, name):
+            return getattr(delegate, name)
+
+        def get_foreign_keys(self, table_name):
+            keys = delegate.get_foreign_keys(table_name)
+            if table_name != table.name:
+                return keys
+            return [
+                {**key, "options": {**key.get("options", {}), "ondelete": "CASCADE"}}
+                if key.get("constrained_columns") == ["model_id"]
+                else key
+                for key in keys
+            ]
+
+    assert any("foreign key" in conflict for conflict in _compare_table(DriftedInspector(), table))
+
+
+def test_preflight_detects_missing_check_constraint():
+    from rebuild.governance.migration_preflight import _compare_table
+
+    engine = isolated_engine()
+    MigrationRunner(engine, R3_GOVERNANCE_MIGRATIONS).apply()
+    delegate = inspect(engine)
+    table = next(
+        table
+        for table in LEGACY_CARRY_FORWARD_TABLES
+        if table.name == "rebuild_governance_warehouse_model_field"
+    )
+
+    class MissingCheckInspector:
+        def __getattr__(self, name):
+            return getattr(delegate, name)
+
+        def get_check_constraints(self, table_name):
+            checks = delegate.get_check_constraints(table_name)
+            return checks[:-1] if table_name == table.name else checks
+
+    assert any("check constraint" in conflict for conflict in _compare_table(MissingCheckInspector(), table))
+
+
+def test_preflight_accepts_unique_index_as_unique_constraint_equivalent():
+    from rebuild.governance.migration_preflight import _compare_table
+
+    engine = isolated_engine()
+    MigrationRunner(engine, R3_GOVERNANCE_MIGRATIONS).apply()
+    delegate = inspect(engine)
+    table = next(
+        table
+        for table in LEGACY_CARRY_FORWARD_TABLES
+        if table.name == "rebuild_governance_domain"
+    )
+    expected = next(
+        constraint
+        for constraint in table.constraints
+        if constraint.__class__.__name__ == "UniqueConstraint"
+        and tuple(column.name for column in constraint.columns) == ("project_id", "name")
+    )
+
+    class IndexBackedUniqueInspector:
+        def __getattr__(self, name):
+            return getattr(delegate, name)
+
+        def get_unique_constraints(self, table_name):
+            constraints = delegate.get_unique_constraints(table_name)
+            return [
+                item for item in constraints
+                if not (table_name == table.name and tuple(item.get("column_names") or ()) == ("project_id", "name"))
+            ]
+
+        def get_indexes(self, table_name):
+            indexes = delegate.get_indexes(table_name)
+            if table_name == table.name:
+                indexes.append({"name": expected.name, "column_names": ["project_id", "name"], "unique": True})
+            return indexes
+
+    assert _compare_table(IndexBackedUniqueInspector(), table) == []
+
+
+
+def test_preflight_does_not_treat_partial_unique_index_as_constraint_equivalent():
+    from rebuild.governance.migration_preflight import _compare_table
+
+    engine = isolated_engine()
+    MigrationRunner(engine, R3_GOVERNANCE_MIGRATIONS).apply()
+    delegate = inspect(engine)
+    table = next(
+        table for table in LEGACY_CARRY_FORWARD_TABLES if table.name == "rebuild_governance_domain"
+    )
+
+    class PartialUniqueInspector:
+        def __getattr__(self, name):
+            return getattr(delegate, name)
+
+        def get_unique_constraints(self, table_name):
+            constraints = delegate.get_unique_constraints(table_name)
+            if table_name != table.name:
+                return constraints
+            return [
+                item for item in constraints
+                if tuple(item.get("column_names") or ()) != ("project_id", "name")
+            ]
+
+        def get_indexes(self, table_name):
+            indexes = delegate.get_indexes(table_name)
+            if table_name == table.name:
+                indexes.append(
+                    {
+                        "name": "partial_uq_project_name",
+                        "column_names": ["project_id", "name"],
+                        "unique": True,
+                        "dialect_options": {"sqlite_where": "name <> ''"},
+                    }
+                )
+            return indexes
+
+    conflicts = _compare_table(PartialUniqueInspector(), table)
+
+    assert any("missing or incompatible unique constraint" in conflict for conflict in conflicts)
+
+
+def test_preflight_detects_unexpected_unique_index():
+    from rebuild.governance.migration_preflight import _compare_table
+
+    engine = isolated_engine()
+    MigrationRunner(engine, R3_GOVERNANCE_MIGRATIONS).apply()
+    delegate = inspect(engine)
+    table = next(
+        table for table in LEGACY_CARRY_FORWARD_TABLES if table.name == "rebuild_governance_domain"
+    )
+
+    class ExtraUniqueInspector:
+        def __getattr__(self, name):
+            return getattr(delegate, name)
+
+        def get_indexes(self, table_name):
+            indexes = delegate.get_indexes(table_name)
+            if table_name == table.name:
+                indexes.append({"name": "unexpected_uq", "column_names": ["description"], "unique": True})
+            return indexes
+
+    assert any("unexpected unique" in conflict for conflict in _compare_table(ExtraUniqueInspector(), table))

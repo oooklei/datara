@@ -32,7 +32,11 @@ from rebuild.governance.models import (
     StandardDefinitionRecord,
 )
 from rebuild.governance.service import GovernanceService
-from rebuild.governance.legacy_migration_service import build_i18_legacy_dry_run
+from rebuild.governance.legacy_migration_service import (
+    I18_APPROVED_IMPORT_PROJECT_ID,
+    build_i18_legacy_dry_run,
+    i18_import_matches_approved_scope,
+)
 from rebuild.governance.legacy_source_reader import LegacyI18SourceReader
 from rebuild.governance.legacy_source_reader import LegacyI22SourceReader
 from rebuild.governance.legacy_source_reader import LegacyI23SourceReader
@@ -781,6 +785,8 @@ def build_governance_router(
                 permitted = project_permission(session, project_id, operator, Permission.EDIT_DEFINITION)
                 if isinstance(permitted, JSONResponse):
                     return permitted
+                if project_id != I18_APPROVED_IMPORT_PROJECT_ID:
+                    return fail(409, 4099, "I18 import project is outside the approved one-time scope")
                 expected_confirmation = f"IMPORT I18 {project_id} {body.source_digest} {body.target_digest}"
                 if body.confirmation != expected_confirmation:
                     return fail(409, 4094, "explicit I18 confirmation does not match the supplied snapshots")
@@ -799,6 +805,8 @@ def build_governance_router(
                 dry_run = build_i18_legacy_dry_run(project_id, source_snapshot, target_snapshot)
                 if source_snapshot.digest != body.source_digest or target_snapshot.digest != body.target_digest:
                     return fail(409, 4095, "I18 source or target snapshot changed; run a fresh dry-run")
+                if not i18_import_matches_approved_scope(project_id, dry_run.plan):
+                    return fail(409, 4099, "latest I18 dry-run is outside the approved one-time import scope")
                 if not dry_run.plan.ready_to_import:
                     return fail(409, 4096, "latest I18 dry-run contains conflicts or blocked rows")
 

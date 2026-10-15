@@ -6,6 +6,7 @@ from dataclasses import dataclass
 from importlib import import_module
 import json
 import os
+import re
 import sys
 
 from sqlalchemy import Boolean, Engine, create_engine, inspect, text
@@ -92,6 +93,36 @@ def inspect_governance_schema(engine: Engine) -> SchemaPreflightReport:
     )
 
 
+
+def _unique_index_is_full_column_index(index: dict) -> bool:
+    """Return whether an inspected unique index enforces uniqueness for full columns."""
+    columns = index.get("column_names")
+    if not columns or any(not isinstance(column, str) or not column for column in columns):
+        return False
+    if index.get("expressions"):
+        return False
+
+    semantic_option_names = ("where", "predicate", "collation", "opclass", "operator_class", "length", "prefix")
+    for key, value in index.items():
+        if any(name in str(key).lower() for name in semantic_option_names) and value not in (None, "", [], {}):
+            return False
+
+    dialect_options = index.get("dialect_options") or {}
+    if not isinstance(dialect_options, dict):
+        return False
+    for key, value in dialect_options.items():
+        if any(name in str(key).lower() for name in semantic_option_names) and value not in (None, "", [], {}):
+            return False
+        if isinstance(value, dict):
+            for option, option_value in value.items():
+                if (
+                    any(name in str(option).lower() for name in semantic_option_names)
+                    and option_value not in (None, "", [], {})
+                ):
+                    return False
+    return True
+
+
 def _compare_table(inspector, expected_table) -> list[str]:
     conflicts: list[str] = []
     actual_columns = {column["name"]: column for column in inspector.get_columns(expected_table.name)}
@@ -123,27 +154,60 @@ def _compare_table(inspector, expected_table) -> list[str]:
         if not any(
             tuple(item.get("column_names") or ()) == expected_columns
             and bool(item.get("unique")) == bool(index.unique)
+            and (not index.unique or _unique_index_is_full_column_index(item))
             for item in actual_indexes
         ):
             conflicts.append(f"{expected_table.name}: missing or incompatible index {index.name}")
 
     actual_unique = tuple(inspector.get_unique_constraints(expected_table.name))
+    # Unique constraints from the dialect inspector describe full-key constraints.
+    # Indexes are equivalent only when they use full columns and have no predicate,
+    # expression, collation, or prefix-length semantics that weaken/change the key.
+    actual_unique_columns = {
+        tuple(item.get("column_names") or ())
+        for item in actual_unique
+        if _unique_index_is_full_column_index(item)
+    }
+    actual_unique_columns.update(
+        tuple(item.get("column_names") or ())
+        for item in actual_indexes
+        if item.get("unique") and _unique_index_is_full_column_index(item)
+    )
+    all_unique_columns = {
+        tuple(item.get("column_names") or ())
+        for item in actual_unique
+    }
+    all_unique_columns.update(
+        tuple(item.get("column_names") or ())
+        for item in actual_indexes
+        if item.get("unique")
+    )
+    expected_unique_columns = {
+        tuple(column.name for column in constraint.columns)
+        for constraint in expected_table.constraints
+        if constraint.__class__.__name__ == "UniqueConstraint"
+    }
+    expected_unique_columns.update(
+        tuple(column.name for column in index.columns)
+        for index in expected_table.indexes
+        if index.unique
+    )
     for constraint in expected_table.constraints:
         if constraint.__class__.__name__ != "UniqueConstraint":
             continue
         expected_columns = tuple(column.name for column in constraint.columns)
-        if not any(
-            tuple(item.get("column_names") or ()) == expected_columns
-            and (constraint.name is None or item.get("name") == constraint.name)
-            for item in actual_unique
-        ):
+        if expected_columns not in actual_unique_columns:
             conflicts.append(f"{expected_table.name}: missing or incompatible unique constraint {constraint.name}")
+
+    for unexpected_columns in sorted(all_unique_columns - expected_unique_columns):
+        conflicts.append(f"{expected_table.name}: unexpected unique constraint or index {unexpected_columns}")
 
     actual_fks = {
         (
             tuple(item.get("constrained_columns") or ()),
             item.get("referred_table"),
             tuple(item.get("referred_columns") or ()),
+            _normalize_referential_action((item.get("options") or {}).get("ondelete")),
         )
         for item in inspector.get_foreign_keys(expected_table.name)
     }
@@ -152,12 +216,36 @@ def _compare_table(inspector, expected_table) -> list[str]:
             tuple(element.parent.name for element in constraint.elements),
             constraint.elements[0].column.table.name,
             tuple(element.column.name for element in constraint.elements),
+            _normalize_referential_action(constraint.ondelete),
         )
         if expected_fk not in actual_fks:
             conflicts.append(
                 f"{expected_table.name}: missing or incompatible foreign key {constraint.name or expected_fk[0]}"
             )
+    actual_checks = {
+        _normalize_check_expression(item.get("sqltext", ""))
+        for item in inspector.get_check_constraints(expected_table.name)
+    }
+    for constraint in expected_table.constraints:
+        if constraint.__class__.__name__ != "CheckConstraint":
+            continue
+        expected_check = _normalize_check_expression(str(constraint.sqltext))
+        if expected_check not in actual_checks:
+            conflicts.append(
+                f"{expected_table.name}: missing or incompatible check constraint {constraint.name or expected_check}"
+            )
     return conflicts
+
+
+def _normalize_referential_action(action: str | None) -> str:
+    normalized = (action or "NO ACTION").strip().upper().replace("_", " ")
+    if normalized in {"RESTRICT", "NO ACTION"}:
+        return "RESTRICT"
+    return normalized
+
+
+def _normalize_check_expression(expression: str) -> str:
+    return re.sub(r"[\s`\"\[\]]+", "", expression).lower()
 
 
 def _types_compatible(actual_type, expected_type) -> bool:

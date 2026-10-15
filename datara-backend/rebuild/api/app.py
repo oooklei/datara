@@ -306,7 +306,12 @@ def create_app(
         except ValueError:
             return JSONResponse(status_code=401, content={"code": 1001, "msg": "invalid token", "data": None})
         with session_factory() as session:
-            projects = ProjectRepository(session).list_for_user(int(user["user_id"]))
+            repository = ProjectRepository(session)
+            projects = (
+                repository.list_all()
+                if user.get("role") == Role.ADMIN.value
+                else repository.list_for_user(int(user["user_id"]))
+            )
             return {
                 "code": 0,
                 "msg": "success",

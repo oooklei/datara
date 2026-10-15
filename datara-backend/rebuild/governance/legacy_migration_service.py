@@ -24,6 +24,14 @@ I18_APPROVED_RELATION_FIELD_ALIASES = {
     ("2", "target", "dt"): "order_date",
 }
 I18_APPROVED_SKIP_REASON = "approved_missing_model_reference"
+I18_APPROVED_IMPORT_PROJECT_ID = 3
+I18_APPROVED_IMPORT_COUNTS = {
+    "create": 44,
+    "unchanged": 0,
+    "skipped": 1,
+    "conflict": 0,
+    "blocked": 0,
+}
 
 
 @dataclass(frozen=True)
@@ -33,6 +41,27 @@ class I18LegacyDryRunResult:
     target_digest: str
     target_captured_at: datetime
     plan: I18DryRunPlan
+
+
+def i18_import_matches_approved_scope(project_id: int, plan: I18DryRunPlan) -> bool:
+    """Enforce the user's one-time, exact I18 import approval server-side."""
+
+    if project_id != I18_APPROVED_IMPORT_PROJECT_ID or plan.project_id != project_id:
+        return False
+    if plan.source_count != 45 or dict(plan.counts) != I18_APPROVED_IMPORT_COUNTS:
+        return False
+    if len(plan.entries) != 45:
+        return False
+    skipped = [entry for entry in plan.entries if entry.disposition == "skipped"]
+    creates = [entry for entry in plan.entries if entry.disposition == "create"]
+    return (
+        len(creates) == 44
+        and len(skipped) == 1
+        and skipped[0].source_table == "t_dw_model_version"
+        and skipped[0].source_id == "1"
+        and skipped[0].disposition_reason == I18_APPROVED_SKIP_REASON
+        and all(entry.disposition in {"create", "skipped"} for entry in plan.entries)
+    )
 
 
 def build_i18_legacy_dry_run(

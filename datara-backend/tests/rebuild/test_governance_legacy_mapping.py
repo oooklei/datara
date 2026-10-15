@@ -497,3 +497,28 @@ def test_domain_name_reference_uses_declared_unique_source_alias_not_name_matchi
     assert domain.identity_aliases == (("t_biz_domain", "交易"),)
     assert model.values["domain_id"] == TargetIdentityReference("t_biz_domain", "交易")
     assert model.ready_to_import
+
+
+
+@pytest.mark.parametrize("seq", [0, None, -1, "invalid"])
+def test_model_field_rejects_nonpositive_or_noninteger_source_sequence(seq):
+    mapped = map_legacy_row(
+        "t_dw_model_field",
+        {"id": 29, "model_id": 17, "seq": seq, "name": "order_amount"},
+        LegacyMappingContext(target_project_id=41, target_ids={("t_dw_model", "17"): 501}),
+    )
+
+    assert mapped.values["ordinal_position"] == seq
+    assert mapped.mapping_issues[0].code == "invalid_ordinal_position"
+    assert not mapped.ready_to_import
+    assert "invalid_ordinal_position" in {issue.code for issue in validate_i18_mapping_graph([mapped])}
+
+
+def test_model_position_null_is_preserved_as_json_null():
+    mapped = map_legacy_row(
+        "t_dw_model",
+        {"id": 17, "code": "dwd_order", "name": "orders", "er_pos": None},
+        LegacyMappingContext(target_project_id=41),
+    )
+
+    assert mapped.values["er_position_json"] == "null"

@@ -186,3 +186,26 @@ def test_semantic_fingerprint_is_stable_for_mapping_order_and_datetime_values():
     )
 
     assert semantic_fingerprint(row) == semantic_fingerprint(reordered)
+
+
+
+def test_dry_run_blocks_invalid_model_field_sequence_before_import():
+    context = LegacyMappingContext(
+        target_project_id=41,
+        pending_identities=frozenset({("t_dw_model", "17")}),
+    )
+    rows = [
+        map_legacy_row("t_dw_model", {"id": 17, "code": "orders", "name": "orders"}, context),
+        map_legacy_row(
+            "t_dw_model_field",
+            {"id": 29, "model_id": 17, "seq": 0, "name": "order_id"},
+            context,
+        ),
+    ]
+
+    plan = build_i18_dry_run_plan(rows, project_id=41, snapshot=_snapshot(41))
+
+    assert plan.counts == {"create": 1, "unchanged": 0, "conflict": 0, "blocked": 1, "skipped": 0}
+    assert not plan.ready_to_import
+    issue = next(issue for issue in plan.blocking_issues if issue.code == "invalid_ordinal_position")
+    assert (issue.source_table, issue.source_id) == ("t_dw_model_field", "29")

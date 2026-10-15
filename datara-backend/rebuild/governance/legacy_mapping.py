@@ -46,7 +46,7 @@ class MappedLegacyRow:
 
     @property
     def ready_to_import(self) -> bool:
-        return not self.unresolved_references
+        return not self.unresolved_references and not self.mapping_issues
 
 
 @dataclass(frozen=True)
@@ -265,9 +265,20 @@ def map_legacy_row(
         model_identity = ("t_dw_model", str(source.get("model_id", "")))
         unresolved: list[tuple[str, str]] = []
         model_id = _resolve_target_identity(model_identity, context, unresolved, "model_id")
+        source_ordinal = source.get("seq")
+        mapping_issues = ()
+        if not isinstance(source_ordinal, int) or isinstance(source_ordinal, bool) or source_ordinal <= 0:
+            mapping_issues = (
+                MappingIssue(
+                    "invalid_ordinal_position",
+                    source_table,
+                    str(source_id),
+                    "seq must be a positive integer; source order was not changed",
+                ),
+            )
         values: dict[str, object] = {
             "model_id": model_id,
-            "ordinal_position": source.get("seq", 0),
+            "ordinal_position": source_ordinal,
             "field_name": source.get("name", ""),
             "data_type": source.get("data_type", "VARCHAR"),
             "length": source.get("length", ""),
@@ -288,6 +299,7 @@ def map_legacy_row(
             target_table=target_table,
             values=values,
             unresolved_references=tuple(unresolved),
+            mapping_issues=mapping_issues,
         )
 
     if source_table == "t_dw_model_version":
@@ -415,7 +427,7 @@ def map_legacy_row(
         "security_level": source.get("security_level", "内部"),
         "status": source.get("status", "draft"),
         "version": source.get("version", 1),
-        "er_position_json": source.get("er_pos") or {},
+        "er_position_json": source.get("er_pos") if source.get("er_pos") is not None else "null",
         "last_ddl_snapshot": source.get("last_ddl"),
         "built_at": source.get("built_at"),
         "built_by": source.get("built_by"),
