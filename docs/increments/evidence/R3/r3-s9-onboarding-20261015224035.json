@@ -1,0 +1,25 @@
+{
+  "run_id": "R3S9ONB-20261015224035",
+  "url": "http://192.168.1.9:18091/rebuild-validation-r3-s9.html",
+  "ts": "2026-10-15T22:40:35.843Z",
+  "cases": {
+    "A_no_token_onboarding": {
+      "onboardingVisible": true,
+      "mainGridHidden": true,
+      "runtime_text": "验证运行时未就绪 · 见引导首屏",
+      "runtime_state": "failed",
+      "recheck_reloads_and_onboarding_persists": true,
+      "pass": true
+    },
+    "B_token_path_main_panel": {
+      "token_injected": true,
+      "token_value_recorded": false,
+      "onboardingHidden": true,
+      "mainGridVisible": true,
+      "runtime_text": "验证运行时未就绪",
+      "pass": true
+    }
+  },
+  "errors": [],
+  "all_pass": true
+}
