@@ -93,6 +93,10 @@ export const routes: RouteRecordRaw[] = [
   { path: '/sec/audit', name: 'sec-audit', component: () => import('../views/sec/SecAuditView.vue'), meta: { title: '访问审计', demo: true } },
   { path: '/ind/board', name: 'ind-board', component: () => import('../views/ind/IndBoardView.vue'), meta: { title: '指标看板' } },
   { path: '/ind/consistency', name: 'ind-consistency', component: () => import('../views/ind/IndConsistencyView.vue'), meta: { title: '一致性检查' } },
+
+  // ---- R5-IDE 重建验证页（独立验证页，不进正式菜单；RED 骨架 — A5 后端契约接入前全占位） ----
+  { path: '/rebuild/validation/sql-ide-readonly', name: 'rebuild-sql-ide-readonly', component: () => import('../views/rebuild/validation/sql-ide-readonly/SqlIdeReadonlyView.vue'), meta: { title: 'SQL IDE 只读验证（R5-A）' } },
+  { path: '/rebuild/validation/sql-ide-ddl', name: 'rebuild-sql-ide-ddl', component: () => import('../views/rebuild/validation/sql-ide-ddl/SqlIdeDdlView.vue'), meta: { title: 'SQL IDE DDL 验证（R5-B）' } },
   // 部署运维
   { path: '/dep/runtime', name: 'dep-runtime', component: () => import('../views/deploy/DeployRuntimeView.vue'), meta: { title: '运行时节点' } },
   { path: '/dep/center', name: 'dep-center', component: () => import('../views/deploy/DeployCenterView.vue'), meta: { title: '部署中心', demo: true } },
