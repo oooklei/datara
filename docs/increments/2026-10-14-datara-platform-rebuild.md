@@ -74,7 +74,7 @@
 | R2-09 AI | DESIGN_DEFINED | 五工具契约/权限/审计/预算与浮动助手边界已定义；需代码 schema、拒权和冻结门禁。 |
 | R2-10 指标 | IN_PROGRESS | 本轮将过时全量测试数 536 更新为实测 583，并记录 QC browser 21/21；其余性能基线需专门采样。 |
 | R2-11 SYNC | DESIGN_DEFINED | 执行器链路已写入设计；需 datasource 前置、执行器实现和全量/增量/断点/行计数闭环。 |
-| R2-12 datasource | IN_PROGRESS | R2-12-A/B/C 子批均已分别 CONTROL_PASS。C 有界 MySQL pool/lifecycle 最终控件 run `r2-12-c-20261015144457` PASS；双 schema 并发浏览、profile 更新失效后恢复、跨项目拒绝均有 JSON+PNG、remote-final。后端全量 pytest 773 passed。C 仅覆盖 MySQL profile-scoped pool 和 probe/metadata 复用；PostgreSQL runtime、SQL/SYNC/治理消费者仍未完成。见 `R2-12-C-数据源连接池与生命周期影响分析.md` 及 `evidence/R2/r2-12-c-remote-final-20261015.txt`。AOCI dirty/stale 单独跟踪，不夸大为 aligned；R2-12 总体仍 IN_PROGRESS。 |
+| R2-12 datasource | CONTROL_PASS | R2-12-A/B/C/D 均有独立实现/验收；D 已增加 PostgreSQL probe/catalog，并以同一真实验证页联合回归 PostgreSQL 与 MySQL：run `r2-12-d-20261015164635` PASS，6 UI assertions、11 API responses、JSON+PNG、remote-final 完整。D 最终全量 backend tests 796 passed；Ruff/compileall/diff check 通过。候选镜像只部署至 `datara-rebuild-api`，共享 `datara-backend:latest` 与其余运行容器未改；PG/MySQL 临时只读 fixture、profile 均收尾清理。早期 502 失败证据保留。AOCI dirty/stale 独立跟踪，不声称 aligned。R2-12 仅关闭 datasource 公共前置能力，不表示 SQL/SYNC/IDE/治理消费者已接入。 |
 | R2-13 测试库 | PARTIAL | 1.9 运行 schema 已供测试，R3 时间戳/行数证据部分存在；需把 schema/init 与默认值证据按新 Backend 契约核实。 |
 | R2-14 门禁 | IN_PROGRESS | token bootstrap 与 Playwright 同页策略已有；QC 批次 1 21/21 PASS，仍需每个后端增量依照参考产品 UI 做闭环。 |
 | R2-15 IDE 拆分 | DESIGN_DEFINED | R10-A/B 已拆分；需两份独立验证单和 DDL 写路径审批边界。 |
@@ -95,6 +95,22 @@
 - 最终页面控件运行 `r2-12-c-20261015144457` PASS：同一 DBX 风格 metadata 页面展开 analytics/shared、选表取列、profile 更新后重复查询、错误 project 返回 404；JSON+PNG 与 API/容器/fixture 收尾证据见 `evidence/R2/r2-12-c-browser-entry-20261015.txt` 和 `evidence/R2/r2-12-c-remote-final-20261015.txt`。Fixture 为 1.9 tmpfs MySQL、无 host port，仅 SELECT/SHOW VIEW；两次 run 的 profile 均已清理，fixture 容器不存在。
 - 提速裁定已应用：同域 UI 断言合并为一轮最终控件 run；早期失败证据保留；无下一增量并行实现。Browser-use 在共享 user tab 只做页面读取（首次绑定超时后一次重试成功，页内无 token），Playwright 在独立短期 token 上下文操作同页真实控件，未将 API-only 作为验收。
 - `R2-12-C_CONTROL_PASS` 仅关闭 C；R2-12 总体仍 `IN_PROGRESS`。下一子批仍须以前序影响分析和 C 收口审查为前置，不得预先并行开工。
+
+#### 2026-10-15 R2-12-D 开工前影响分析
+
+- C 已完成验收并提交 `6f6b4cd` 后，按顺序开始 D 的前置影响分析；此时尚未改 D 的实现代码。C 中的 MySQL-only Engine factory/pool 与 MySQL `information_schema` catalog 将由方言 adapter 扩展，项目隔离、pool limits、profile invalidation、shutdown 和现有 MySQL API 响应保持不变。
+- D 范围为 PostgreSQL datasource probe 和只读 schema/table/view/column 浏览，继续使用 project-scoped datasource API、同一隔离测试页/真实控件、后端统一短期 token。PostgreSQL profile 已可保存但当前没有 runtime capability，不能误报可用。
+- 计划使用 `postgresql+psycopg`/Psycopg 3 binary extra，catalog 优先经 SQLAlchemy Inspector；实际选型依据官方文档为 [SQLAlchemy PostgreSQL dialect](https://docs.sqlalchemy.org/en/20/dialects/postgresql.html) 和 [Psycopg installation](https://www.psycopg.org/psycopg3/docs/basic/install.html)。实现前只读预检 1.9 Python/runtime、镜像/wheel、磁盘/内存和 Postgres fixture 可用性；不足时记录阻塞，不以本机模拟冒充远端通过。
+- D 的 TDD RED、实现、API/驱动集成、本地全测、1.9 数据库权限/容器、同域一次真实控件运行、JSON+PNG/remote-final、清理及收口步骤完整列于 `R2-12-D-PostgreSQL数据源探测与元数据浏览影响分析.md`。D 远程验证期间禁止开始下一增量；本批不包含 PostgreSQL 写 SQL、SYNC/IDE/治理消费者、旧库接入或正式前端融合。
+- 适用提速裁定范围：D 同一页面同域控件合并一轮并仍保留失败证据与成败 JSON+PNG；文档在 D 收口同步；仅无 DB/network/API/UI 的纯函数可跳过远端证据且保持 TDD；真实连接、API、UI、key/token及人工确认门禁不变。
+
+#### 2026-10-15 R2-12-D 实施与验收结论
+
+- PostgreSQL catalog 首次远端 UI 查询出现 502，首轮追查发现 Psycopg 参数绑定与 SQL 文本里的字面 `%` LIKE pattern 冲突；先添加回归测试观察 RED，再把模式字面百分号转为 `%%`。随后对运行 API 增加安全诊断日志（仅 operation、exception class、SQLSTATE，不记录消息/SQL/参数/DSN），维持外部通用错误语义。
+- 最终按照 D 验收细则，在同一 18091 验证页、同一 Playwright 控件 run 同时覆盖 PostgreSQL 与 MySQL profile：保存类型、schema 展开、跨 schema table/view/columns、限定对象身份及错误 project 404。最终 `r2-12-d-20261015164635` PASS，6 UI assertions，11 API responses；页面错误与失败请求为空。之前两次 502、其后的 PG-only 中间运行均留有 JSON+PNG，不覆盖、不冒充联合最终验收。
+- browser-use 首次 30 秒绑定/读取超时，按技能要求对同一绑定/action 用 60 秒有界重试仍超时；状态记为 `browser-use=BLOCKED`。Playwright 在同一个 `http://192.168.1.9:18091/rebuild-validation-r2-12-b.html` 实际操作可见控件，完成验收；不是 API-only 替代。
+- 1.9 的 PostgreSQL 16/MySQL 8.0 测试容器只在 `datara_default`、256 MiB tmpfs、无 host port；两种 datasource reader 最小权限（PG INSERT privilege=false；MySQL 仅 SELECT/SHOW VIEW）。profile #15/#16 删除返回 200；两 fixture 以标签复核后移除。API 镜像 ID 为 `sha256:0cd060a34e7b699814d0715680dc0f712f5bdc65ffaac7d0c9ab66eb8d2dd614`，`datara-rebuild-api` 最终 healthy，18091 页面 HTTP 200，API 日志与两种 profile 请求和跨项目 404 对应；共享 API/master/worker/alert/logger/web、MySQL/Redis/Kafka/Zookeeper 均保持运行。
+- 最终本地门禁：`pytest tests -q` 796 passed，Ruff、compileall、diff check 全部通过。D 仅关闭 datasource 前置能力；SQL、SYNC、IDE 与治理消费者接入仍在后续增量，不据此提升整体平台状态。全部 JSON+PNG、browser-entry 与 remote-final 记录位于 `docs/increments/evidence/R2/`。
 
 ## 4. 与旧资产的处置
 

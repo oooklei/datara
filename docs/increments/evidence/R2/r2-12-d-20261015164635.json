@@ -1,0 +1,95 @@
+{
+  "run_id": "r2-12-d-20261015164635",
+  "started_at": "2026-10-15T16:46:35.102039+08:00",
+  "result": "PASS",
+  "token_redacted": true,
+  "fixture_credentials_recorded": false,
+  "assertions": [
+    {
+      "name": "saved-postgresql-profile-kind-displayed-from-backend",
+      "passed": true
+    },
+    {
+      "name": "postgresql-view-discovery-and-identity",
+      "passed": true
+    },
+    {
+      "name": "postgresql-cross-schema-table-view-and-columns",
+      "passed": true
+    },
+    {
+      "name": "saved-mysql-profile-kind-displayed-from-backend",
+      "passed": true
+    },
+    {
+      "name": "mysql-compatibility-schema-object-and-columns",
+      "passed": true
+    },
+    {
+      "name": "cross-project-profile-isolation",
+      "passed": true
+    }
+  ],
+  "responses": [
+    {
+      "method": "GET",
+      "path": "/projects/21/datasources",
+      "status": 200
+    },
+    {
+      "method": "GET",
+      "path": "/projects/21/datasources/15/schemas",
+      "status": 200
+    },
+    {
+      "method": "GET",
+      "path": "/projects/21/datasources/15/objects",
+      "status": 200
+    },
+    {
+      "method": "GET",
+      "path": "/projects/21/datasources/15/objects",
+      "status": 200
+    },
+    {
+      "method": "GET",
+      "path": "/projects/21/datasources/15/columns",
+      "status": 200
+    },
+    {
+      "method": "GET",
+      "path": "/projects/21/datasources",
+      "status": 200
+    },
+    {
+      "method": "GET",
+      "path": "/projects/21/datasources/16/schemas",
+      "status": 200
+    },
+    {
+      "method": "GET",
+      "path": "/projects/21/datasources/16/objects",
+      "status": 200
+    },
+    {
+      "method": "GET",
+      "path": "/projects/21/datasources/16/columns",
+      "status": 200
+    },
+    {
+      "method": "GET",
+      "path": "/projects/22/datasources",
+      "status": 200
+    },
+    {
+      "method": "GET",
+      "path": "/projects/22/datasources/15/schemas",
+      "status": 404
+    }
+  ],
+  "page_errors": [],
+  "failed_requests": [],
+  "profile_cleanup": true,
+  "finished_at": "2026-10-15T16:46:52.619160+08:00",
+  "screenshot": "r2-12-d-20261015164635.png"
+}

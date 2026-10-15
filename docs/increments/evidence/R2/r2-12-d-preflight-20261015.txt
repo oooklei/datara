@@ -1,0 +1,15 @@
+R2-12-D remote preflight (read-only)
+Date: 2026-10-15 Asia/Shanghai
+Host: 192.168.1.9
+
+- SSH public-key access succeeded in batch mode; no secret/key material was printed or stored.
+- PostgreSQL images already available: `postgres:16-alpine` image `75f5a96988cd`; `postgres:14.1` image `da2cb49d7a8d`.
+- Existing `ds-postgres` is healthy and has run for 3 days. It is user/runtime-owned and was inspected only by container name/status; it will not be reused, stopped, or modified by R2-12-D.
+- `/lei`: 444 GiB total, 214 GiB available. Host memory: 62 GiB total, 21 GiB available. Docker network `datara_default` exists with 13 attached containers.
+- `datara-rebuild-api` is healthy; image `datara-backend:latest`; runtime Python 3.11.17. Backend Dockerfile is Python 3.11 slim and installs `requirements.txt` from the Aliyun HTTPS mirror. PostgreSQL driver addition therefore requires an image build, not merely a source bind update.
+- Shared base image id is `sha256:43e5f5567f230d1c092cac0ba275ed664b629052d566fbbc7b0e06e9bd41bb0f`; Docker Compose is v5.5.1 and the official configured Aliyun PyPI mirror returned HTTP 200 for the Psycopg package index.
+- The exact `datara-r2-12d-pg-fixture` container name was absent before this batch; it is reserved for the new disposable fixture.
+- Operational impact: `datara-backend:latest` is shared by API/master/worker/alert/logger. D must build a distinct candidate tag and recreate only `datara-rebuild-api`; it must not restart the five existing production-facing processes or mutate the running `ds-postgres` container.
+- No containers, files, profiles, or databases were created/changed during this preflight. The existing PostgreSQL image availability and capacity permit a separately named, no-host-port, tmpfs fixture after code/TDD gates pass.
+
+Conclusion: PRECHECK_PASS (read-only). This is resource evidence only, not D implementation or UI acceptance.

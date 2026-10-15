@@ -6,19 +6,24 @@ from sqlalchemy import create_engine
 from sqlalchemy.exc import TimeoutError
 
 from rebuild.datasource.contracts import DataSourceDraft
-from rebuild.datasource.pool import DatasourceEngineRegistry, DatasourcePoolSettings
+from rebuild.datasource.pool import DatasourceEngineRegistry, DatasourcePoolSettings, _url
 
 
-def _draft(password: str = "secret-a") -> DataSourceDraft:
+def _draft(password: str = "secret-a", kind: str = "mysql") -> DataSourceDraft:
     return DataSourceDraft(
         name="warehouse",
-        kind="mysql",
+        kind=kind,
         host="localhost",
         port=3306,
         database="analytics",
         username="reader",
         password=password,
     )
+
+
+def test_postgresql_profile_uses_explicit_psycopg_sqlalchemy_dialect():
+    assert _url(_draft(kind="postgresql")).drivername == "postgresql+psycopg"
+    assert _url(_draft()).drivername == "mysql+pymysql"
 
 
 def _registry(tmp_path, settings: DatasourcePoolSettings | None = None):

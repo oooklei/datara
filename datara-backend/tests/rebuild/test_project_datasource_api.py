@@ -1,4 +1,5 @@
 from datetime import datetime
+import logging
 
 from fastapi.testclient import TestClient
 
@@ -236,7 +237,11 @@ def test_metadata_browser_uses_saved_profile_and_returns_schema_qualified_identi
                 }
             ]
 
-    monkeypatch.setattr(rebuild_app, "MySQLMetadataCatalog", Catalog)
+    monkeypatch.setattr(
+        rebuild_app,
+        "metadata_catalog_for",
+        lambda draft, *, connector: Catalog(draft, connector=connector),
+    )
     try:
         schemas = client.get(
             f"/api/v1/rebuild/projects/{owned_id}/datasources/{datasource_id}/schemas", headers=tokens["dev"]
@@ -266,6 +271,88 @@ def test_metadata_browser_uses_saved_profile_and_returns_schema_qualified_identi
         assert all(callable(connector) for _draft, connector in constructed)
         assert len(constructed) == 3
         assert pool_requests == [(owned_id, datasource_id)] * 3
+    finally:
+        client.__exit__(None, None, None)
+
+
+def test_postgresql_profile_routes_to_postgresql_metadata_catalog(monkeypatch):
+    client, app, owned_id, _other_id, _identities, tokens = _client()
+    from rebuild.api import app as rebuild_app
+
+    created = client.post(
+        f"/api/v1/rebuild/projects/{owned_id}/datasources",
+        headers=tokens["dev"],
+        json={**_profile(), "kind": "postgresql", "port": 5432},
+    )
+    assert created.status_code == 201
+    datasource_id = created.json()["data"]["id"]
+    selected = []
+
+    class FakeConnection:
+        def close(self):
+            pass
+
+    class PostgreSQLCatalog:
+        def __init__(self, draft, *, connector):
+            selected.append(draft.kind)
+            connector(draft).close()
+
+        def schemas(self, *, after=None, limit=100):
+            return ["analytics"]
+
+    monkeypatch.setattr(
+        app.state.datasource_engines,
+        "connect",
+        lambda _project_id, _datasource_id, _draft: FakeConnection(),
+    )
+    monkeypatch.setattr(
+        rebuild_app,
+        "metadata_catalog_for",
+        lambda draft, *, connector: PostgreSQLCatalog(draft, connector=connector),
+    )
+    try:
+        response = client.get(
+            f"/api/v1/rebuild/projects/{owned_id}/datasources/{datasource_id}/schemas",
+            headers=tokens["dev"],
+        )
+        assert response.status_code == 200
+        assert response.json()["data"]["items"] == ["analytics"]
+        assert selected == ["postgresql"]
+    finally:
+        client.__exit__(None, None, None)
+
+
+def test_postgresql_metadata_failure_logs_safe_diagnostic_without_exception_message(monkeypatch, caplog):
+    client, _app, owned_id, _other_id, _identities, tokens = _client()
+    created = client.post(
+        f"/api/v1/rebuild/projects/{owned_id}/datasources",
+        headers=tokens["dev"],
+        json={**_profile(), "kind": "postgresql", "port": 5432},
+    )
+    datasource_id = created.json()["data"]["id"]
+
+    class BrokenCatalog:
+        def __init__(self, _draft, *, connector):
+            self._connector = connector
+
+        def schemas(self, *, after=None, limit=100):
+            raise RuntimeError("do-not-log-this-secret-detail")
+
+    from rebuild.api import app as rebuild_app
+
+    monkeypatch.setattr(
+        rebuild_app,
+        "metadata_catalog_for",
+        lambda draft, *, connector: BrokenCatalog(draft, connector=connector),
+    )
+    caplog.set_level(logging.WARNING, logger="rebuild.api.app")
+    try:
+        response = client.get(
+            f"/api/v1/rebuild/projects/{owned_id}/datasources/{datasource_id}/schemas", headers=tokens["dev"]
+        )
+        assert response.status_code == 502
+        assert "metadata_browse_failed operation=schemas exception_type=RuntimeError" in caplog.text
+        assert "do-not-log-this-secret-detail" not in caplog.text
     finally:
         client.__exit__(None, None, None)
 

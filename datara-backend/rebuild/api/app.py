@@ -5,6 +5,7 @@ from __future__ import annotations
 from contextlib import asynccontextmanager
 import hmac
 import json
+import logging
 import os
 from pathlib import Path
 
@@ -23,12 +24,14 @@ from rebuild.identity.models import ProjectMemberRecord, UserRecord
 from rebuild.identity.passwords import verify_password
 from rebuild.datasource.contracts import DataSourceDraft, probe_datasource, validate_datasource
 from rebuild.datasource.models import ProjectDatasourceRecord
-from rebuild.datasource.metadata import MySQLMetadataCatalog
+from rebuild.datasource.metadata import metadata_catalog_for
 from rebuild.datasource.pool import DatasourceEngineRegistry
 from rebuild.datasource.repository import ProjectDatasourceRepository
 from rebuild.project.repository import ProjectRepository
 from rebuild.project.models import ProjectRecord
 from rebuild.governance.api import build_governance_router
+
+logger = logging.getLogger(__name__)
 
 
 class LoginRequest(BaseModel):
@@ -546,12 +549,17 @@ def create_app(
                 )
             draft = datasource_draft(record)
         try:
-            rows = MySQLMetadataCatalog(draft, connector=pooled_connector(project_id, datasource_id)).schemas(
+            rows = metadata_catalog_for(draft, connector=pooled_connector(project_id, datasource_id)).schemas(
                 after=after, limit=limit
             )
         except ValueError as exc:
             return JSONResponse(status_code=400, content={"code": 4001, "msg": str(exc), "data": None})
-        except Exception:
+        except Exception as exc:
+            logger.warning(
+                "metadata_browse_failed operation=schemas exception_type=%s sqlstate=%s",
+                type(exc).__name__,
+                getattr(exc, "sqlstate", None) or "-",
+            )
             return JSONResponse(status_code=502, content={"code": 5022, "msg": "metadata browse failed", "data": None})
         items = rows[:limit]
         return {
@@ -585,12 +593,17 @@ def create_app(
                 )
             draft = datasource_draft(record)
         try:
-            rows = MySQLMetadataCatalog(draft, connector=pooled_connector(project_id, datasource_id)).objects(
+            rows = metadata_catalog_for(draft, connector=pooled_connector(project_id, datasource_id)).objects(
                 schema, after=after, limit=limit
             )
         except ValueError as exc:
             return JSONResponse(status_code=400, content={"code": 4001, "msg": str(exc), "data": None})
-        except Exception:
+        except Exception as exc:
+            logger.warning(
+                "metadata_browse_failed operation=objects exception_type=%s sqlstate=%s",
+                type(exc).__name__,
+                getattr(exc, "sqlstate", None) or "-",
+            )
             return JSONResponse(status_code=502, content={"code": 5022, "msg": "metadata browse failed", "data": None})
         items = rows[:limit]
         return {
@@ -628,12 +641,17 @@ def create_app(
                 )
             draft = datasource_draft(record)
         try:
-            rows = MySQLMetadataCatalog(draft, connector=pooled_connector(project_id, datasource_id)).columns(
+            rows = metadata_catalog_for(draft, connector=pooled_connector(project_id, datasource_id)).columns(
                 schema, object_name, limit=limit
             )
         except ValueError as exc:
             return JSONResponse(status_code=400, content={"code": 4001, "msg": str(exc), "data": None})
-        except Exception:
+        except Exception as exc:
+            logger.warning(
+                "metadata_browse_failed operation=columns exception_type=%s sqlstate=%s",
+                type(exc).__name__,
+                getattr(exc, "sqlstate", None) or "-",
+            )
             return JSONResponse(status_code=502, content={"code": 5022, "msg": "metadata browse failed", "data": None})
         return {
             "code": 0,

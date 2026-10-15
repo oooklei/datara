@@ -54,8 +54,12 @@ class DatasourcePoolSettings:
 
 
 def _url(draft: DataSourceDraft) -> URL:
+    kind = draft.kind.lower()
+    drivername = {"mysql": "mysql+pymysql", "postgresql": "postgresql+psycopg"}.get(kind)
+    if drivername is None:
+        raise ValueError(f"pooled datasource connections do not support kind: {draft.kind}")
     return URL.create(
-        "mysql+pymysql",
+        drivername,
         username=draft.username,
         password=draft.password,
         host=draft.host,
@@ -97,8 +101,8 @@ class DatasourceEngineRegistry:
             return len(self._engines)
 
     def connect(self, project_id: int, datasource_id: int, draft: DataSourceDraft):
-        if draft.kind.lower() != "mysql":
-            raise ValueError("pooled datasource connections currently support mysql only")
+        if draft.kind.lower() not in {"mysql", "postgresql"}:
+            raise ValueError(f"pooled datasource connections do not support kind: {draft.kind}")
         identity = (int(project_id), int(datasource_id))
         fingerprint = _profile_fingerprint(draft)
         with self._lock:
@@ -128,6 +132,16 @@ class DatasourceEngineRegistry:
                         "datasource_pool_evicted_idle project_id=%s datasource_id=%s", *idle_identity
                     )
                 settings = self._settings
+                connect_args = (
+                    {
+                        "connect_timeout": 3,
+                        "autocommit": False,
+                        "read_timeout": 5,
+                        "write_timeout": 3,
+                    }
+                    if draft.kind.lower() == "mysql"
+                    else {"connect_timeout": 3, "autocommit": False}
+                )
                 engine = self._engine_factory(
                     _url(draft),
                     pool_size=settings.pool_size,
@@ -135,12 +149,7 @@ class DatasourceEngineRegistry:
                     pool_timeout=settings.pool_timeout,
                     pool_recycle=settings.pool_recycle,
                     pool_pre_ping=True,
-                    connect_args={
-                        "connect_timeout": 3,
-                        "read_timeout": 5,
-                        "write_timeout": 3,
-                        "autocommit": False,
-                    },
+                    connect_args=connect_args,
                 )
                 self._engines[identity] = (fingerprint, engine)
                 logger.info(

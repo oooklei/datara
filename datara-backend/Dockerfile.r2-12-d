@@ -1,0 +1,6 @@
+ARG BASE_IMAGE=datara-backend:latest
+FROM ${BASE_IMAGE}
+
+# Extend only the isolated rebuild API image. The shared base tag and the
+# API/master/worker/alert/logger containers remain untouched.
+RUN pip install --no-cache-dir -i https://mirrors.aliyun.com/pypi/simple/ "psycopg[binary]>=3.2,<4"

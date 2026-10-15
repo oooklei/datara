@@ -1,0 +1,12 @@
+R2-12-D browser entry and control evidence
+Date: 2026-10-15 Asia/Shanghai
+Page: http://192.168.1.9:18091/rebuild-validation-r2-12-b.html
+
+- Browser-use first bound the existing A page successfully, but binding/navigating the shared IAB tab to the D validation page plus accessibility read timed out after 30 seconds.
+- Retried the specific binding/action once with a 60-second bound; it timed out again. Record browser-use as BLOCKED (control bridge), not as a product failure and not as acceptance.
+- Per the approved browser-use → Playwright fallback skill, Playwright drove the same isolated 18091 validation page and visible controls against the deployed rebuild Backend. It used a short-lived token obtained through the Backend validation-token API; neither key nor token entered page source, screenshot, or evidence.
+- Final combined run `r2-12-d-20261015164635` is PASS. One run covered saved PostgreSQL and MySQL profile kinds, schema trees, table/view labels, schema-qualified identities, column metadata, and cross-project 404. The paired JSON+PNG are stored beside this note.
+- Earlier actual browser runs were retained: `r2-12-d-20261015161750.json/.png` and `r2-12-d-20261015162640.json/.png` are PARTIAL schema HTTP 502 runs; `r2-12-d-20261015162817.json/.png` and `r2-12-d-20261015163408.json/.png` record diagnostic/PG-only intermediate runs. They are not overwritten or presented as the final joint gate.
+- The final screenshot visibly shows the validation form, MySQL profile, analytics schema object tree, table/view kinds, and two column definitions. Browser console/page errors and failed requests are empty in the final JSON.
+
+API-only checks are supporting evidence only. This file distinguishes a browser-use transport failure from successful Playwright control-level acceptance.

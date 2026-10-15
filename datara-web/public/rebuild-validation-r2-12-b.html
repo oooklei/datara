@@ -3,7 +3,7 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>R2-12-B 数据源元数据树验证</title>
+    <title>R2-12-D 多数据库数据源元数据树验证</title>
     <style>
       :root { color-scheme: light; font: 15px/1.5 "Segoe UI", "Microsoft YaHei", sans-serif; color: #172b4d; background: #f4f7fb; }
       body { margin: 0; }
@@ -43,7 +43,7 @@
   <body>
     <header>
       <h1>项目数据源 · Schema / 对象浏览</h1>
-      <p>R2-12-B 独立验证页：按连接 → Schema → Table/View → Columns 导航；只读、分页、真实后端。</p>
+      <p>R2-12-D 独立验证页：按连接 → Schema → Table/View → Columns 导航；MySQL/PostgreSQL 只读、分页、真实后端。</p>
     </header>
     <main>
       <section aria-labelledby="tree-title">
@@ -51,6 +51,7 @@
         <div class="controls">
           <label>当前项目<input id="project-id" readonly /></label>
           <label>已保存数据源 ID<input id="datasource-id" readonly /></label>
+          <label>数据库类型<input id="datasource-kind" readonly placeholder="读取后端 profile" /></label>
           <div class="toolbar">
             <button id="load-schemas" class="primary" type="button">加载 Schema</button>
             <button id="load-next-schemas" type="button" disabled>更多 Schema</button>
@@ -79,6 +80,7 @@
         const token = sessionStorage.getItem('rebuild.validation.token') || '';
         const projectInput = document.querySelector('#project-id');
         const datasourceInput = document.querySelector('#datasource-id');
+        const datasourceKind = document.querySelector('#datasource-kind');
         const schemaTree = document.querySelector('#schema-tree');
         const notice = document.querySelector('#notice');
         const objectIdentity = document.querySelector('#object-identity');
@@ -92,6 +94,19 @@
         datasourceInput.value = Number.isInteger(datasourceId) && datasourceId > 0 ? String(datasourceId) : '未提供';
         if (!token) setNotice('未注入验证 Token。此页面不登录；请由受控测试运行时获取短期 Token。', 'error');
         if (!projectId || !datasourceId) setNotice('缺少项目或已保存数据源参数。', 'error');
+
+        async function loadDatasourceKind() {
+          const response = await fetch(`/api/v1/rebuild/projects/${projectId}/datasources`, {
+            headers: token ? { Authorization: `Bearer ${token}` } : {},
+          });
+          const payload = await response.json();
+          const profile = payload.data?.items?.find(item => Number(item.id) === datasourceId);
+          if (!response.ok || payload.code !== 0 || !profile) {
+            throw new Error(`数据源 profile 读取失败（HTTP ${response.status}）`);
+          }
+          datasourceKind.value = String(profile.kind || '').toUpperCase();
+          datasourceKind.dataset.kind = String(profile.kind || '').toLowerCase();
+        }
 
         function setNotice(text, type = '') {
           notice.textContent = text;
@@ -198,6 +213,10 @@
             await loadSchemaPage();
           } catch (error) { setNotice(error.message, 'error'); }
         });
+
+        if (token && projectId && datasourceId) {
+          loadDatasourceKind().catch(error => setNotice(error.message, 'error'));
+        }
         loadNextSchemas.addEventListener('click', async () => {
           try { if (nextSchema) await loadSchemaPage(nextSchema); }
           catch (error) { setNotice(error.message, 'error'); }

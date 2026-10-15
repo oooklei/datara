@@ -56,6 +56,17 @@
 - 安全及范围：不记录连接凭据，不扩展可读 schema/table allowlist，不执行旧源库迁移；池生命周期不改变 metadata API 的只读语义。PostgreSQL runtime、SQL/SYNC/治理消费者接入、持久 metadata snapshot 均仍为后续工作。
 - 子批状态：R2-12-C `CONTROL_PASS`，最终真实控件 run `evidence/R2/r2-12-c-20261015144457.json` + `.png`；同域浏览与 profile 更新失效验证在一轮控件运行中完成。首轮 teardown 失败 `r2-12-c-20261015143839.json` + `.png` 保留为失败证据，修复并复跑通过；部署、API 日志、fixture 与资源清理证据见 `evidence/R2/r2-12-c-remote-final-20261015.txt`。仅关闭 C，不代表 R2-12 总体完成。
 
+### 2.3 R2-12 datasource PostgreSQL adapter 子契约（R2-12-D 实测收口）
+
+- PostgreSQL profile 复用现有项目 scoped datasource API 和 C 的 pool registry；SQLAlchemy URL 使用明确 dialect/driver `postgresql+psycopg`，不得将连接凭据返回前端或写日志。计划用 Psycopg 3 binary extra；部署预检必须确认 Python/平台兼容、镜像构建及 wheel 来源。
+- 运行镜像隔离由 `datara-backend/Dockerfile.r2-12-d` 从当前共享 base 派生，`docker-compose.r2-12-d.yml` 以 `datara-backend:r2-12-d-psycopg` 只替换 `datara-rebuild-api`；严禁使用 main compose 重建 API/master/worker/alert/logger。
+- catalog adapter 使用与 dialect 匹配的参数化只读目录 SQL，返回 schema→table/view→column 与类型、nullability、主键、comment；对象 identity 仍包含 project/datasource/schema/type/name。D 复用 DBAPI raw connection、pool checkout/rollback/return 生命周期和 bounded keyset/lookahead paging；不另取 Inspector connection 形成双池路径。MySQL adapter 保持当前响应兼容，API 采用共同协议而不复用 MySQL 专属 SQL。
+- 只读边界由最低权限数据库账号（CONNECT/USAGE/SELECT）和 transaction read-only 双重落实。D 仅实现 probe 与 metadata browser，不包含 DML/DDL、SYNC、IDE 生产接入、跨 worker pool 或持久快照。
+- 实测范围与边界：D 已扩展为显式 MySQL 兼容性 + PostgreSQL 新增能力联合验收，运行于同一 DBX 风格验证页；不包含 SQL 写执行、SYNC、IDE/治理消费者、跨 worker pool 或持久 metadata snapshot。官方驱动契约参见 [SQLAlchemy PostgreSQL dialect](https://docs.sqlalchemy.org/en/20/dialects/postgresql.html) 与 [Psycopg installation](https://www.psycopg.org/psycopg3/docs/basic/install.html)。具体实现与运行证据见 `R2-12-D-PostgreSQL数据源探测与元数据浏览影响分析.md` 和 `evidence/R2/r2-12-d-remote-final-20261015.txt`。
+- D 实现：新增 Psycopg 3 runtime、`postgresql+psycopg` dialect、只读 PostgreSQL catalog adapter，并复用 C 的 project/datasource Engine registry、profile fingerprint、连接池和生命周期；MySQL API 合同及行为维持兼容。schema/table/view/column 元数据支持跨 schema 展示、分页、类型/nullability/主键/comment 与限定对象身份。Psycopg 参数绑定下 PostgreSQL LIKE 文本中的字面 `%` 使用 `%%` 编码，回归测试覆盖该边界。
+- D 安全诊断：目录 API 仍对外返回通用 502，不泄露数据库细节；后端日志仅记录 operation、异常类别和 SQLSTATE，不输出 SQL、参数、凭据或 DSN。
+- D 状态：`CONTROL_PASS`。最终同一轮真实 UI run `r2-12-d-20261015164635` 覆盖 PostgreSQL/MySQL profile、schema、table/view、columns、跨项目拒绝，共 6 项断言、11 个 API 响应，无页面/网络错误；JSON+PNG、部署/日志/权限/清理凭证分别见 `evidence/R2/r2-12-d-20261015164635.json/.png`、`r2-12-d-browser-entry-20261015.txt`、`r2-12-d-remote-final-20261015.txt`。PG/MySQL 只读角色验证及无宿主端口临时 fixture 均完成并清理。browser-use 桥在一次 30 秒与一次 60 秒有界尝试后 BLOCKED，按已批准流程改用 Playwright 操作相同 18091 页面真实控件；控件门禁不是 API-only。两个早期 502 失败 run 的 JSON+PNG 保留；首轮已定位 Psycopg literal-percent pattern 错误并回归修复，第二轮通用 502 的独立根因未被证据确认，故不作推断。
+
 ## 3. 身份、调度和运行表统一契约
 
 所有运行记录表至少拥有数据库生成的 `created_at`、`updated_at`、`generated_at`；实例、任务、attempt、command、task_log、output、variable_runtime、data_stat、workflow_run_metric、stream_attempt 均不得由前端伪造时间。上海时区用于业务解释，数据库时间戳保存实际生成时刻；API 同时返回 ISO 字段与显示时区。
