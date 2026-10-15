@@ -3,7 +3,7 @@
 Date: 2026-10-16 Asia/Shanghai
 Author: Trae（执行者 2 角色，`datara-web/` 所有权域）
 Baseline: main `5f31afc`（只读分析，未改业务代码；本文件为 R5 RED 产出）
-Scope authority: `docs/superpowers/plans/2026-10-14-datara-platform-rebuild.md` I5/I6；`docs/superpowers/specs/2026-10-14-datara-platform-rebuild-design.md` §7/§13.6；legacy 主题 `docs/increments/I25-数据开发IDE对象编辑.md`
+Scope authority: plan `docs/increments/2026-10-14-datara-platform-rebuild.md`（现行计划）R5-IDE（R5-A 只读 / R5-B DDL 两道独立子门禁）；design `docs/increments/2026-10-14-datara-platform-rebuild-design.md`（评审修订版）R2-04（DDL 8 步管控）/R2-07（结果集协议）/R2-15（子门禁边界）/R2-10（IDE 首屏≤2s、API P95≤500ms）；旧稿 §7（对象 9 类清单、每对象 8 项操作、§7.3 结果转图表/保存数据集）与 §13.6（元数据补全 P95≤2s）在权威链无对应章节，本文正文相关旧引仅指历史稿（归档后见 `docs/archive/superpowers/`）；legacy 主题 `docs/increments/I25-数据开发IDE对象编辑.md`
 
 ## 1. 编号与范围界定
 
