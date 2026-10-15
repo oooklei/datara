@@ -170,3 +170,72 @@ def test_ephemeral_validation_cannot_probe_an_arbitrary_host():
         assert response.json()["code"] == 4002
     finally:
         client.__exit__(None, None, None)
+
+
+def test_metadata_browser_uses_saved_profile_and_returns_schema_qualified_identity(monkeypatch):
+    client, app, owned_id, other_id, _identities, tokens = _client()
+    from rebuild.api import app as rebuild_app
+
+    created = client.post(
+        f"/api/v1/rebuild/projects/{owned_id}/datasources", headers=tokens["dev"], json=_profile()
+    )
+    datasource_id = created.json()["data"]["id"]
+    constructed = []
+
+    class Catalog:
+        def __init__(self, draft):
+            constructed.append(draft)
+
+        def schemas(self, *, after=None, limit=100):
+            return ["analytics", "shared"]
+
+        def objects(self, schema, *, after=None, limit=100):
+            return [
+                {"schema": schema, "name": "orders", "type": "table"},
+                {"schema": schema, "name": "orders_view", "type": "view"},
+            ]
+
+        def columns(self, schema, object_name, *, limit=500):
+            return [
+                {
+                    "schema": schema,
+                    "object": object_name,
+                    "name": "order_id",
+                    "data_type": "bigint",
+                    "database_type": "bigint unsigned",
+                    "nullable": False,
+                    "primary_key": True,
+                    "comment": "identifier",
+                }
+            ]
+
+    monkeypatch.setattr(rebuild_app, "MySQLMetadataCatalog", Catalog)
+    try:
+        schemas = client.get(
+            f"/api/v1/rebuild/projects/{owned_id}/datasources/{datasource_id}/schemas", headers=tokens["dev"]
+        )
+        objects = client.get(
+            f"/api/v1/rebuild/projects/{owned_id}/datasources/{datasource_id}/objects",
+            headers=tokens["dev"],
+            params={"schema": "shared"},
+        )
+        columns = client.get(
+            f"/api/v1/rebuild/projects/{owned_id}/datasources/{datasource_id}/columns",
+            headers=tokens["dev"],
+            params={"schema": "shared", "object_name": "orders"},
+        )
+        cross_project = client.get(
+            f"/api/v1/rebuild/projects/{other_id}/datasources/{datasource_id}/schemas", headers=tokens["admin"]
+        )
+
+        assert schemas.status_code == 200
+        assert schemas.json()["data"]["items"] == ["analytics", "shared"]
+        assert objects.status_code == 200
+        assert objects.json()["data"]["items"][0]["schema"] == "shared"
+        assert columns.status_code == 200
+        assert columns.json()["data"]["items"][0]["primary_key"] is True
+        assert cross_project.status_code == 404
+        assert all(draft.password == "do-not-return" for draft in constructed)
+        assert len(constructed) == 3
+    finally:
+        client.__exit__(None, None, None)
