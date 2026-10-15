@@ -1,0 +1,31 @@
+R2-12-B remote final environment and cleanup evidence summary
+Date: 2026-10-15 Asia/Shanghai
+Host: 192.168.1.9
+Web validation port: 18091 (no prior validation port reused)
+
+Deployment scope
+- Backend source was staged under /lei/datara/rebuild-source/r2-12-b-stage-20261015-1400 and copied only to the isolated rebuild source mount.
+- Static validation page was published to /lei/datara/datara-web/dist/rebuild-validation-r2-12-b.html.
+- Only datara-rebuild-api was restarted; Web was not rebuilt/restarted. datara-rebuild-api health was healthy; datara-web remained running. mysql-meta, Redis, Kafka, and ZooKeeper were healthy.
+- Container API port is 8001. The page returned HTTP 200 on 18091. No compose/environment topology was changed.
+
+Backup and preimage checks
+- Database pre-deploy dump: /lei/datara/backups/r3-s9-20261015/datara_rebuild_i0-pre-r2-12-b-20261015.sql.gz; gzip integrity test passed.
+- Exact prior app.py/contracts.py and prior validation-page copies were retained under /lei/datara/backups/r3-s9-20261015/r2-12-b-before/.
+- Remote app.py/contracts.py preimages were compared with the expected Git preimages before replacement. Deployed source/page backups are recoverable at the listed backup paths.
+
+Isolated fixture and privileges
+- Temporary container datara-r2-12b-mysql-fixture was launched with --rm, tmpfs storage, only the datara_default network, and no published host port.
+- It contained analytics and shared schemas; each had an orders table with deliberately different columns. analytics also had orders_view.
+- metadata_reader was granted SELECT and SHOW VIEW only on the two fixture schemas. SHOW GRANTS confirmed the restricted grants. Fixture credentials were runtime-only and are not recorded here.
+- The browser test observed schema/object/column metadata and attempted a cross-project access, which returned 404 before another project’s datasource was exposed.
+
+Runtime evidence and cleanup
+- Final UI run r2-12-b-20261015135851 passed; the adjacent JSON/PNG hold exact assertions and screenshot.
+- API logs correlated with the UI run’s analytics schema/object/column requests, shared schema/object/column requests, and cross-project 404. No credentials/DSN were copied into this summary.
+- Resource snapshot during verification: API about 68 MiB, Web about 3.6 MiB; dependency services reported healthy.
+- Temporary fixture was stopped and auto-removed. The temporary datasource profile count returned to 0; datasource timestamp columns remained present. Two reusable project fixture records were preserved.
+- No legacy source/meta/dw database was accessed or modified. No legacy root credential was used as a project datasource credential.
+
+Result: R2-12-B_CONTROL_PASS only. R2-12 remains IN_PROGRESS; connection-pool tuning, PostgreSQL runtime, SYNC/IDE/governance reuse, and durable metadata snapshots are not covered by this evidence.
+AOCI final maintenance was attempted after the increment reached stable state. It returned stopped/blocked, aligned=false, zero candidates available for Apply, with 125 Code targets remaining (112 missing, 112 unbaselined, and 13 stale entries) and 12 observed pending review. No Entry, scope, or Baseline change was made as part of this closeout. This global cognition governance condition is recorded separately and does not alter the source-bound R2-12-B runtime result.

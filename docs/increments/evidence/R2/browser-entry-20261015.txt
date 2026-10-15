@@ -1,0 +1,23 @@
+R2-13 Browser Entry — 2026-10-15 Asia/Shanghai
+
+Target page: http://192.168.1.9:18091/rebuild-validation-r3.html
+Final run: r2-13-20261015175857
+Browser: Chromium via Playwright, controlled deployed page and actual visible controls.
+Evidence pair: r2-13-20261015175857.json + r2-13-20261015175857.png
+
+Browser-use bridge attempts
+- Same-page tab binding/navigation timed out at 30 seconds.
+- One bounded retry of the same operation timed out at 60 seconds.
+- Per the user's approved experience rule, switched immediately to Playwright on the exact same deployed page; UI validation was not replaced by API-only tests.
+
+Token boundary
+- Obtained a short-lived validation token using the approved backend validation key exchange; key and token were kept in process/page memory and omitted from evidence, URL, and screenshot.
+- The only POST was POST /api/v1/rebuild/validation-token. Every page API request was GET; the runner asserts this boundary.
+
+Visible control flow and result
+1. Selected the existing isolated project #8 from the project selector.
+2. Confirmed existing asset rows #10 and #11 in the asset table.
+3. Opened asset #10 and its Overview tab; compared the displayed updated_at and row_count presentation to target MySQL. row_count is currently NULL and is shown as “—”.
+4. Opened Activity / Audit and reconciled all 31 displayed rows—including generated_at, action, and resource identity—to the API response and target MySQL audit records.
+
+Outcome: PASS. Page and API health returned HTTP 200. No page errors, console errors, failed requests, or page mutations were observed. The full control trace, requests, response codes, assertions, and timestamp snapshots are in the paired JSON; the screenshot preserves the final visible UI state.

@@ -1,0 +1,28 @@
+R3-S9 / I19 metadata extension and tag pure-mapping substep
+Date: 2026-10-15 (Asia/Shanghai)
+Worktree: codex/r3-s9
+Commit baseline: 19593ce (I21 pure mapper)
+
+Scope
+- Added only a pure mapper and contract tests for the existing I19 reader snapshot.
+- No source/target database connection, importer, ORM/schema migration, API, deployment, frontend, or business-data write was performed.
+- Legacy table-extension rows require an explicit project-scoped target asset. Tag definitions retain normalized-tag and legacy-detail identities; tagging preserves raw target_type/target_key and resolves an asset only from an exact project-scoped mapping.
+- This evidence supports only LOCAL_SUBSTEP_PASS / INTEGRATION_GATE_PENDING. It does not establish live schema/data parity or importer/API/browser/runtime acceptance.
+
+Checks
+- I19 mapper: 11 passed (see focused test run in the task transcript).
+- I18-I21 source readers and I19-I21 mappers regression:
+  `pytest tests/rebuild/test_governance_legacy_source_reader.py tests/rebuild/test_governance_legacy_mapping.py tests/rebuild/test_governance_legacy_i19_source_reader.py tests/rebuild/test_governance_legacy_i20_source_reader.py tests/rebuild/test_governance_legacy_i21_source_reader.py tests/rebuild/test_governance_legacy_i19_mapping.py tests/rebuild/test_governance_legacy_i20_mapping.py tests/rebuild/test_governance_legacy_i21_mapping.py -q`
+  Result: 83 passed in 0.80s.
+- Full backend: `pytest tests -q`
+  Result: 700 passed in 73.02s.
+- `ruff check rebuild tests/rebuild`: passed (`All checks passed!`).
+- `python -m compileall -q rebuild`: passed.
+- `git diff --check`: pending final repository-root run before commit.
+- Independent spec subagent review: pending at evidence draft time; no PASS claimed unless a final result is received before commit.
+
+Outstanding integration gates
+- Current version-bound, read-only legacy source schema/data access and target integration are not available in this local step.
+- No importer or frontend endpoint consumes the emitted `i19_normalized_tag` identity bundle yet.
+- Browser/control-level verification, 1.9 logs, middleware/resources, and source/target parity remain pending.
+- No authorization to import business records or write the legacy source database was exercised.

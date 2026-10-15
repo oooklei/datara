@@ -1,0 +1,25 @@
+R3-S9 I19 project mapping-preview — remote integration evidence
+Date: 2026-10-15 Asia/Shanghai (runner timestamps are recorded in UTC in the JSON)
+Environment: http://192.168.1.9:18091; protected validation key is fetched transiently from the approved runtime and is not included here.
+
+Browser-use was attempted twice for the isolated I19 page and timed out both times. Per the established fallback, Playwright operated the same deployed page and its actual controls. Initial recovered run R3S9I19-20261014231449-1bfec9 passed 10/10. After correcting target captured_at to Shanghai +08:00 and redeploying, final run R3S9I19-20261014232132-19a437 also passed 10/10 with no browser errors. Protected token exchange 200, page 200, authorized project prefilled, preview API 200, three domains/counts rendered, parity=false, import=false, no source business values, read-only boundary visible.
+
+Observed data counts in the successful response:
+- datara_meta source: t_meta_table_ext=0, t_meta_tag=0, t_meta_tagging=0.
+- Selected-project target: same three tables each 0.
+- Preview: 0 candidates, 0 matches, 0 blocked rows.
+Empty input does not establish source-target parity. State remains I19_PREVIEW_CONTROL_PASS / I19_PARITY_PENDING / IMPORT_NOT_AUTHORIZED.
+
+Resource and runtime checks after repair:
+- datara-rebuild-api: Up (healthy).
+- datara-web: Up, serving port 18091.
+- datara-mysql-meta: Up (healthy).
+- API logs show startup completed, health GET 200, and POST /api/v1/rebuild/governance/projects/3/legacy/i19/mapping-preview 200.
+- Deployed SHA256 matched local for governance/api.py (8074772e537ec2e5b01e880ea827535af5aad048566a28ced401d1e1eb07e9d5), api/app.py (e8d065112d9867e3c54d966529852adef96a34f8160f24679d6e9a980a5297b2), governance/legacy_i19_mapping.py (86acfa4aa773991090ea5ec9181c31844721e3001f9f57dd742ea3efd9c76c1a), and the isolated HTML page (275d42add9ffb0c1bb0181fddc1431f33c2818bf2a19688cb6379146a62c162d).
+
+Deployment issue retained honestly:
+- First API restart failed because the live source mount did not contain governance/legacy_i19_mapping.py, producing ModuleNotFoundError. No source or target business rows were read or modified during that failed startup.
+- The missing module was transferred into the existing source mount, SHA256-verified, then only datara-rebuild-api was restarted. It recovered healthy and the final browser/API run passed.
+- Pre-deployment backups for the two replaced API files are retained on the host under /lei/datara/backups/r3-s9-i19-20261015T0711CST/. No credentials, tokens, or source payloads are stored in this evidence.
+
+Artifacts: r3s9i19-20261014231348-d48a0e.json (initial failed run, retained); r3s9i19-20261014231449-1bfec9.json and screenshot (first recovered run); r3s9i19-20261014232132-19a437.json and r3s9i19-20261014232132-19a437-summary.png (final successful post-timezone-fix run).

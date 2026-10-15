@@ -1,0 +1,146 @@
+{
+  "run_id": "R3S9I23-20261014222118-a76bf5",
+  "started_at": "2026-10-14T22:21:18.003Z",
+  "timezone": "Asia/Shanghai",
+  "url": "http://192.168.1.9:18091/rebuild-validation-r3-s9-i23.html",
+  "browser": "chromium 153.0.4234.32",
+  "actions": [
+    {
+      "name": "select-existing-target-user-candidate",
+      "at": "2026-10-14T22:21:18.721Z"
+    }
+  ],
+  "checks": [
+    {
+      "name": "i23-only-capability-issued",
+      "pass": true,
+      "http_status": 200,
+      "expires_in": 900
+    },
+    {
+      "name": "i23-validation-page-loaded",
+      "pass": true,
+      "http_status": 200
+    },
+    {
+      "name": "i23-preview-api-returned-success",
+      "pass": true,
+      "status": 200
+    },
+    {
+      "name": "six-approved-source-fields-rendered",
+      "pass": true,
+      "source_column_count": 6
+    },
+    {
+      "name": "credentials-absent-from-preview-response",
+      "pass": true
+    },
+    {
+      "name": "preview-explicitly-disables-parity-and-import",
+      "pass": true
+    },
+    {
+      "name": "scoped-token-rejected-by-ordinary-api",
+      "pass": true,
+      "http_status": 401
+    },
+    {
+      "name": "explicit-user-selection-preview-rerun",
+      "pass": true,
+      "http_status": 200
+    },
+    {
+      "name": "identity-records-and-selection-controls-rendered",
+      "pass": true,
+      "source_rows": 4,
+      "source_count": 4,
+      "selection_controls": 4
+    },
+    {
+      "name": "no-account-mutation-or-import-control",
+      "pass": true,
+      "rows": 4,
+      "sourceCount": 4,
+      "selections": 4,
+      "importControls": 0,
+      "warningsVisible": true,
+      "pageHasCredentialInput": false
+    },
+    {
+      "name": "readonly-policy-visible",
+      "pass": true
+    },
+    {
+      "name": "no-browser-errors",
+      "pass": true,
+      "error_count": 0
+    }
+  ],
+  "relevant_responses": [
+    {
+      "name": "i23-identity-preview",
+      "status": 200,
+      "source_counts": {
+        "t_user": 4
+      },
+      "target_summary": {
+        "candidate_users": 1,
+        "existing_identity_mappings": 0
+      },
+      "preview_counts": {
+        "identity_candidate": 0,
+        "target_identity_match": 0,
+        "unresolved": 0,
+        "blocked": 4
+      },
+      "source_columns": [
+        "source_id",
+        "source_username",
+        "source_role",
+        "source_status",
+        "source_created_at",
+        "source_updated_at"
+      ],
+      "parity_verified": false,
+      "import_enabled": false,
+      "credential_fields_absent": true
+    },
+    {
+      "name": "scoped-token-ordinary-api-negative-control",
+      "status": 401
+    },
+    {
+      "name": "i23-identity-preview",
+      "status": 200,
+      "source_counts": {
+        "t_user": 4
+      },
+      "target_summary": {
+        "candidate_users": 1,
+        "existing_identity_mappings": 0
+      },
+      "preview_counts": {
+        "identity_candidate": 1,
+        "target_identity_match": 0,
+        "unresolved": 0,
+        "blocked": 3
+      },
+      "source_columns": [
+        "source_id",
+        "source_username",
+        "source_role",
+        "source_status",
+        "source_created_at",
+        "source_updated_at"
+      ],
+      "parity_verified": false,
+      "import_enabled": false,
+      "credential_fields_absent": true
+    }
+  ],
+  "errors": [],
+  "outcome": "PASS",
+  "secrets_recorded": false,
+  "business_payload_recorded": true
+}

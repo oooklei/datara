@@ -1,0 +1,21 @@
+{
+  "run_id": "R3S9I19-20261014231348-d48a0e",
+  "started_at": "2026-10-14T23:13:48.870Z",
+  "timezone": "Asia/Shanghai",
+  "url": "http://192.168.1.9:18091/rebuild-validation-r3-s9-i19.html",
+  "browser": null,
+  "project_id": null,
+  "actions": [],
+  "checks": [],
+  "relevant_responses": [],
+  "errors": [
+    {
+      "kind": "runner",
+      "message": "Unexpected token '<', \"<html>\r\n<h\"... is not valid JSON"
+    }
+  ],
+  "outcome": "FAIL",
+  "secrets_recorded": false,
+  "source_payload_recorded": false,
+  "target_writes_authorized": false
+}

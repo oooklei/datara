@@ -1,0 +1,6 @@
+services:
+  datara-rebuild-api:
+    image: datara-backend:r2-12-d-psycopg
+    build:
+      context: ./datara-backend
+      dockerfile: Dockerfile.r2-12-d

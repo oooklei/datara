@@ -1,0 +1,24 @@
+R3-S9 / I23 explicit identity-link pure mapper
+Date: 2026-10-15 (Asia/Shanghai)
+Worktree: codex/r3-s9
+Preceding reader commit: 793cd8f
+
+Scope and boundaries
+- Added a pure mapping from the allowlisted I23 identity snapshot to `rebuild_governance_legacy_identity_mapping` rows.
+- Requires a caller-supplied existing target user identity. Source and target username, role, and enabled/disabled status must match exactly; duplicate source IDs/usernames and duplicate target-user bindings fail closed.
+- Preserves source ID and source creation/update timestamps. No project membership is inferred because neither a source project relationship nor target project field exists in this identity-mapping model.
+- No user creation/update, password/hash read or migration, source/target DB access, importer/API/UI/deploy, or business data write occurred.
+- This supports LOCAL_SUBSTEP_PASS / INTEGRATION_GATE_PENDING only, not I23 import/parity or R3 completion.
+
+Checks
+- RED: initial collection failed because the I23 mapper module did not exist.
+- Mapper+reader focused tests: 9 passed in 0.32s.
+- Full backend: `pytest tests -q` — 709 passed in 68.62s.
+- `ruff check rebuild tests/rebuild` — passed.
+- `python -m compileall -q rebuild` — passed.
+- Backend-scope `git diff --check` — passed; repository-root check pending before commit.
+
+Outstanding
+- Target identities were test fixtures; no live source row or target user was queried.
+- Actual target user provisioning, credential policy/reset, importing the identity mapping, and cross-system identity parity remain unverified.
+- 1.9 controls, logs, middleware/resources, and other R3 gates remain pending.

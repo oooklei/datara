@@ -1,0 +1,120 @@
+{
+  "run_id": "R3S9I22-20261014214938-2541ab",
+  "started_at": "2026-10-14T21:49:38.947Z",
+  "timezone": "Asia/Shanghai",
+  "url": "http://192.168.1.9:18091/rebuild-validation-r3-s9-i22.html",
+  "browser": "chromium 153.0.4234.32",
+  "project_id": 3,
+  "actions": [
+    {
+      "name": "select-project-in-page",
+      "project_id": 3,
+      "at": "2026-10-14T21:49:40.159Z"
+    },
+    {
+      "name": "click-i22-read-only-preview",
+      "at": "2026-10-14T21:49:40.230Z"
+    }
+  ],
+  "checks": [
+    {
+      "name": "protected-runner-token-exchange",
+      "pass": true,
+      "http_status": 200
+    },
+    {
+      "name": "validation-page-loaded",
+      "pass": true,
+      "http_status": 200
+    },
+    {
+      "name": "authorized-project-prefilled",
+      "pass": true,
+      "available_projects": 12
+    },
+    {
+      "name": "i22-preview-api-returned-success",
+      "pass": true,
+      "status": 200
+    },
+    {
+      "name": "source-seven-domains-rendered",
+      "pass": true,
+      "domain_rows": 7,
+      "source_counts": {
+        "t_std_approval": 1,
+        "t_std_check_report": 0,
+        "t_std_code": 1,
+        "t_std_code_value": 1,
+        "t_std_element": 0,
+        "t_std_mapping": 0,
+        "t_std_naming_rule": 0
+      }
+    },
+    {
+      "name": "mapping-summary-rendered",
+      "pass": true,
+      "counts": [
+        "3",
+        "2",
+        "0",
+        "1"
+      ],
+      "mapped_rows": 3
+    },
+    {
+      "name": "response-explicitly-disables-parity-and-import",
+      "pass": true,
+      "parity_verified": false,
+      "import_enabled": false
+    },
+    {
+      "name": "payload-not-returned-or-rendered",
+      "pass": true,
+      "payload_field_absent": true
+    },
+    {
+      "name": "page-has-no-import-control-and-explains-identity-only",
+      "pass": true,
+      "import_buttons": 0,
+      "identity_only_warning": true
+    },
+    {
+      "name": "no-browser-errors",
+      "pass": true,
+      "error_count": 0
+    }
+  ],
+  "relevant_responses": [
+    {
+      "name": "project-list",
+      "status": 200
+    },
+    {
+      "name": "i22-mapping-preview",
+      "status": 200,
+      "source_schema": "datara_meta",
+      "source_counts": {
+        "t_std_approval": 1,
+        "t_std_check_report": 0,
+        "t_std_code": 1,
+        "t_std_code_value": 1,
+        "t_std_element": 0,
+        "t_std_mapping": 0,
+        "t_std_naming_rule": 0
+      },
+      "preview_counts": {
+        "new_identity_candidate": 2,
+        "target_identity_match": 0,
+        "blocked": 1
+      },
+      "parity_verified": false,
+      "import_enabled": false,
+      "payload_field_absent": true
+    }
+  ],
+  "errors": [],
+  "outcome": "PASS",
+  "secrets_recorded": false,
+  "business_payload_recorded": false
+}

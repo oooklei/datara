@@ -42,6 +42,31 @@
 | R2-14 | 每增量浏览器门禁、登录前置与控制桥阻塞 | 每个后端增量配独立验证页/路由，不注册正式菜单；用测试身份经 Backend auth API 获取短期 token 后直接驱动业务控件，登录页人工点击不是门禁；R1 单独验 auth/RBAC。browser-use 优先，控件桥一次有界重试仍阻塞即 Playwright 驱动同页真实控件；API-only 不替代 UI，Playwright 失败才 BLOCKED_BROWSER | Token 获取来源/有效期、真实控件操作、后端状态、截图（无凭据）、API/日志/资源证据；流程见 `.agents/skills/browser-use-playwright-fallback/SKILL.md` |
 | R2-15 | SQL IDE 单增量过大 | 拆 R10-A 只读：浏览、补全、查询、历史、结果分页、导出；R10-B 写路径：对象编辑、差异、备份、发布、回滚、DDL 权限。二者分别设计、实现和验收 | R10-A/R10-B 两份验证单，写路径不得混入只读门禁 |
 
+### 2.1 R2-12 datasource 元数据浏览子契约（R2-12-B 实测收口）
+
+- 当前可运行能力：仅 MySQL。使用已登记 datasource profile 创建只读连接，项目/数据源授权先于连接；通过 MySQL `information_schema` 提供 schema 列表、schema 下 table/view 分页与对象 columns/type/nullability/primary-key/comment。对象身份始终带 project、datasource、schema、type、name，不得按裸表名合并跨 schema 对象。
+- 连接与查询限制：本子批执行 metadata SELECT，不接受客户端 DSN/host/凭据，不提供 DDL/DML/SQL execution，不落目录快照；过滤值参数化，标识符使用 driver/Inspector 安全处理，连接设置有限超时并在成功/失败路径 rollback/close。权限或驱动错误不得伪装为空 schema。
+- 前端验收以 DBX 风格对象树的 schema→table/view→columns 用户操作流为参考，由隔离静态页调用真实 Backend；不改正式 Vue/菜单。已验证跨 schema 同名对象与项目隔离；browser-use 控件桥受限重试阻塞后，可按 R2-14 在同一 URL 使用 Playwright，真实控件仍是验收对象。
+- 子批状态：R2-12-B `CONTROL_PASS`，最终证据为 `evidence/R2/r2-12-b-20261015135851.json` + `.png` 及配套 `r2-12-b-remote-final-20261015.txt`。此状态只覆盖上述 MySQL 元数据浏览。连接池、PostgreSQL adapter/driver、SYNC/SQL IDE/治理的共享调用以及目录快照仍是 R2-12 后续任务，不得据此标记 R2-12 总体完成。
+
+### 2.2 R2-12 datasource 有界连接池与生命周期子契约（R2-12-C 实测收口）
+
+- 连接池身份与边界：以 `(project_id, datasource_id)` 隔离 SQLAlchemy Engine；profile 内容 fingerprint 改变后只失效对应池。每个 profile 默认 pool size=2、max overflow=2、timeout=3s、recycle=300s；进程内最多保留 32 个 profile pools，仅驱逐无 checked-out connection 的 idle pool，达到上限且无可驱逐项时明确拒绝创建，不越界增长。
+- 共享与失效：datasource probe 与 MySQL metadata browse 通过同一 connector 获取连接；profile 更新在数据库提交后失效对应池，profile 删除在成功后失效，应用 shutdown dispose 全部 Engine。该注册表为进程本地，不承诺跨 worker 限额或分布式协调；单 worker 远端实例理论上最多 128 个 datasource sockets（32×(2+2)）。
+- 安全及范围：不记录连接凭据，不扩展可读 schema/table allowlist，不执行旧源库迁移；池生命周期不改变 metadata API 的只读语义。PostgreSQL runtime、SQL/SYNC/治理消费者接入、持久 metadata snapshot 均仍为后续工作。
+- 子批状态：R2-12-C `CONTROL_PASS`，最终真实控件 run `evidence/R2/r2-12-c-20261015144457.json` + `.png`；同域浏览与 profile 更新失效验证在一轮控件运行中完成。首轮 teardown 失败 `r2-12-c-20261015143839.json` + `.png` 保留为失败证据，修复并复跑通过；部署、API 日志、fixture 与资源清理证据见 `evidence/R2/r2-12-c-remote-final-20261015.txt`。仅关闭 C，不代表 R2-12 总体完成。
+
+### 2.3 R2-12 datasource PostgreSQL adapter 子契约（R2-12-D 实测收口）
+
+- PostgreSQL profile 复用现有项目 scoped datasource API 和 C 的 pool registry；SQLAlchemy URL 使用明确 dialect/driver `postgresql+psycopg`，不得将连接凭据返回前端或写日志。计划用 Psycopg 3 binary extra；部署预检必须确认 Python/平台兼容、镜像构建及 wheel 来源。
+- 运行镜像隔离由 `datara-backend/Dockerfile.r2-12-d` 从当前共享 base 派生，`docker-compose.r2-12-d.yml` 以 `datara-backend:r2-12-d-psycopg` 只替换 `datara-rebuild-api`；严禁使用 main compose 重建 API/master/worker/alert/logger。
+- catalog adapter 使用与 dialect 匹配的参数化只读目录 SQL，返回 schema→table/view→column 与类型、nullability、主键、comment；对象 identity 仍包含 project/datasource/schema/type/name。D 复用 DBAPI raw connection、pool checkout/rollback/return 生命周期和 bounded keyset/lookahead paging；不另取 Inspector connection 形成双池路径。MySQL adapter 保持当前响应兼容，API 采用共同协议而不复用 MySQL 专属 SQL。
+- 只读边界由最低权限数据库账号（CONNECT/USAGE/SELECT）和 transaction read-only 双重落实。D 仅实现 probe 与 metadata browser，不包含 DML/DDL、SYNC、IDE 生产接入、跨 worker pool 或持久快照。
+- 实测范围与边界：D 已扩展为显式 MySQL 兼容性 + PostgreSQL 新增能力联合验收，运行于同一 DBX 风格验证页；不包含 SQL 写执行、SYNC、IDE/治理消费者、跨 worker pool 或持久 metadata snapshot。官方驱动契约参见 [SQLAlchemy PostgreSQL dialect](https://docs.sqlalchemy.org/en/20/dialects/postgresql.html) 与 [Psycopg installation](https://www.psycopg.org/psycopg3/docs/basic/install.html)。具体实现与运行证据见 `R2-12-D-PostgreSQL数据源探测与元数据浏览影响分析.md` 和 `evidence/R2/r2-12-d-remote-final-20261015.txt`。
+- D 实现：新增 Psycopg 3 runtime、`postgresql+psycopg` dialect、只读 PostgreSQL catalog adapter，并复用 C 的 project/datasource Engine registry、profile fingerprint、连接池和生命周期；MySQL API 合同及行为维持兼容。schema/table/view/column 元数据支持跨 schema 展示、分页、类型/nullability/主键/comment 与限定对象身份。Psycopg 参数绑定下 PostgreSQL LIKE 文本中的字面 `%` 使用 `%%` 编码，回归测试覆盖该边界。
+- D 安全诊断：目录 API 仍对外返回通用 502，不泄露数据库细节；后端日志仅记录 operation、异常类别和 SQLSTATE，不输出 SQL、参数、凭据或 DSN。
+- D 状态：`CONTROL_PASS`。最终同一轮真实 UI run `r2-12-d-20261015164635` 覆盖 PostgreSQL/MySQL profile、schema、table/view、columns、跨项目拒绝，共 6 项断言、11 个 API 响应，无页面/网络错误；JSON+PNG、部署/日志/权限/清理凭证分别见 `evidence/R2/r2-12-d-20261015164635.json/.png`、`r2-12-d-browser-entry-20261015.txt`、`r2-12-d-remote-final-20261015.txt`。PG/MySQL 只读角色验证及无宿主端口临时 fixture 均完成并清理。browser-use 桥在一次 30 秒与一次 60 秒有界尝试后 BLOCKED，按已批准流程改用 Playwright 操作相同 18091 页面真实控件；控件门禁不是 API-only。两个早期 502 失败 run 的 JSON+PNG 保留；首轮已定位 Psycopg literal-percent pattern 错误并回归修复，第二轮通用 502 的独立根因未被证据确认，故不作推断。
+
 ## 3. 身份、调度和运行表统一契约
 
 所有运行记录表至少拥有数据库生成的 `created_at`、`updated_at`、`generated_at`；实例、任务、attempt、command、task_log、output、variable_runtime、data_stat、workflow_run_metric、stream_attempt 均不得由前端伪造时间。上海时区用于业务解释，数据库时间戳保存实际生成时刻；API 同时返回 ISO 字段与显示时区。
@@ -68,21 +93,27 @@
 
 ### 5.2 I18–I23 规范化承接模型
 
-用户于 2026-10-14 明确裁定方案 A：扩展新 Backend 的规范化模型并完整承接旧 I18–I23 业务语义。旧库继续只读；源记录只允许迁入隔离目标 `datara_rebuild_i0`，且须先快照、dry-run、逐表/逐关系核对后才允许执行。现有 R3 通用表保留并演进，不以 `properties_json`、拼接文本或单一快照 JSON 替代可查询、可授权、可建立关系的业务实体；JSON 快照仅用于原始证据/历史差异辅助。
+用户于 2026-10-14 明确裁定方案 A：扩展新 Backend 的规范化模型并完整承接旧 I18–I23 业务语义。旧库继续只读；源记录拟迁入隔离目标 `datara_rebuild_i0`，但快照、dry-run、逐表/逐关系核对都不构成写入许可：任何目标业务数据导入执行前仍须另获用户明确批准，并完成备份、恢复、并发和回滚门禁。2026-10-15 用户明确批准：本次对 `datara_meta` 的只读盘点可使用 MySQL root；连接边界是 `REBUILD_LEGACY_META_URL` 必须解析到 MySQL 精确 schema `datara_meta`，代码只许使用固定表/列 allowlist 与只读事务，root 不得配置或注入新 Backend 运行服务；绝不复用指向其他 schema 的 `REBUILD_MYSQL_SRC_URL`，不得执行源端 DDL/DML/GRANT，不向日志、证据或页面输出凭据。已取得的 I22 现场结构证据见 `evidence/R3/s9-i22-live-schema-20261015.md`；该 root CLI schema 查询没有配置 Backend runtime source URL。后续仍优先改为最小权限账号。现有 R3 通用表保留并演进，不以 `properties_json`、拼接文本或单一快照 JSON 替代可查询、可授权、可建立关系的业务实体；JSON 快照仅用于原始证据/历史差异辅助。
 
 | 旧域与语义 | 新规范化实体（名称为契约候选，迁移前需在 R3-S9 冻结物理命名） | 关键关系与保真要求 |
 |---|---|---|
 | I18 业务域、数仓分层、引擎字典 | `governance_domain`、`warehouse_layer`、`model_engine` | 按旧自然键保留源 ID 映射、名称、规则/方言、排序与启用状态；模型引用均以新主键关联。 |
-| I18 模型、字段、ER 关系、版本 | `warehouse_model`、`warehouse_model_field`、`warehouse_model_relation`、`warehouse_model_version` | 保存模型状态/版本/目标数据源/schema、画布坐标、字段类型精度/可空/默认值/主键/分区/字典引用、关系两端字段与关系类型、每个历史版本完整快照/变更说明/作者/时间；关系字段从 JSON 文本解析为规范化关系字段行，同时保留原始字段载荷供审计。物化 DDL 作为历史文本留档，不自动重放。 |
-| I19 元数据扩展、标签与挂接 | 现有 `asset`/`asset_field`/`tag`/`asset_tag` 加 `asset_metadata_extension` | 旧 `(ds_id, db_name, table_name)` 对齐统一 asset identity；业务域、owner、备注等扩展落专表；保留标签分类/颜色/说明和 target_type/target_key 关联，无法解析的旧 target 保留 unresolved 映射，不丢弃。 |
-| I20 指标及版本 | 现有 `semantic_metric` 加 `semantic_metric_version`、`metric_dimension` | 规范化指标代码/名称/类型/业务域/业务定义/技术定义/来源类型与引用/字段/输出表/任务/统计周期/维度/单位/状态/当前版本；保留版本快照、变更说明、作者和时间。 |
-| I21 质量规则、任务、任务规则关系、运行、异常、报告、告警 | 现有 `quality_rule`/`quality_run` 加 `quality_task`、`quality_task_rule`、`quality_exception`、`quality_report`、`quality_alarm_policy` | 保留旧 cron/enabled/状态/最近运行、规则集合及顺序、触发方式/起止时间/结果/分数/统计、异常目标/样例 SQL/命中数/处理状态、报告范围/周期/内容、告警指标/运算符/阈值/启用与触发时间。旧 QC 执行 API/engine 仍退役；本模型承接历史业务记录与新治理 API，不恢复旧 `/api/v1/qc/*`。 |
-| I22 标准元素、码表/码值、命名规则、映射、审批、校验报告 | 现有 `standard` 加 `standard_element`、`standard_code_set`、`standard_code_value`、`standard_naming_rule`、`standard_mapping`、`standard_approval`、`standard_check_report` | 保留中英文名称、数据类型/长度、标准状态/版本/负责人、码值编码/名称/顺序、命名表达式及适用对象、映射目标/元素或码表/差异状态、审批业务类型/动作/申请载荷/意见/状态/时间、检查范围/汇总/问题清单/结果。码值与父码表建立 FK，映射到标准元素/码表建立可空 FK；历史审批目标保留 source identity。 |
-| I23 用户及全局角色/权限映射 | 新 `identity`/`role`/`permission`/`project_member` 及 `legacy_identity_mapping` | `t_user` 记录登录名、角色和状态；保留稳定源 ID 并逐项映射旧静态角色权限。只有在完整源盘点找到旧项目绑定记录时才迁移项目成员关系；否则不伪造历史成员关联。凭据仅在算法/格式兼容并通过验证时迁移哈希，否则走重置，不迁移明文口令。不将旧身份表作为新 Backend 运行时真源。 |
+| I18 模型、字段、ER 关系、版本 | `warehouse_model`、`warehouse_model_field`、`warehouse_model_relation`、`warehouse_model_version` | 保存模型状态/版本/目标数据源/schema、画布坐标、字段类型精度/可空/默认值/主键/分区/字典引用、关系两端字段与关系类型、每个历史版本完整快照/变更说明/作者/时间；关系字段从 JSON 文本解析为规范化关系字段行，同时保留原始字段载荷供审计。物化 DDL 作为历史文本留档，不自动重放。若旧关系字段载荷不符合 JSON 数组契约，dry-run 必须将该关系作为 `invalid_relation_field_pairs` 阻断项显示，不得猜测拆分或中止其他记录的预检。 |
+| I19 元数据扩展、标签与挂接 | 现有 `asset`/`asset_field`/`tag`/`asset_tag` 加 `asset_metadata_extension`、`legacy_tag_reference` | 旧 `(ds_id, db_name, table_name)` 对齐统一 asset identity；业务域、owner、备注等扩展落专表；可解析的标签挂接落 asset-tag 关系，任意旧 target_type/key 及未解析引用落 `legacy_tag_reference` 并保留原键，不丢弃。 |
+| I20 指标及版本 | 现有 `semantic_metric` 加 `semantic_metric_profile`、`semantic_metric_version`、`semantic_metric_dimension` | 规范化指标代码/名称/类型/业务域/业务定义/技术定义/来源类型与引用/字段/输出表/任务/统计周期/维度/单位/状态/当前版本；profile 保存主实体暂未覆盖的旧属性，维度为独立关联行；保留版本快照、变更说明、作者和时间。 |
+| I21 质量规则、任务、任务规则关系、运行、异常、报告、告警 | 现有 `quality_rule`/`quality_run` 加 `quality_rule_definition`、`quality_task`、`quality_task_rule`、`quality_run_legacy_details`、`quality_exception`、`quality_report`、`quality_alarm_policy` | 规范化保留旧 rule 类型/参数/阈值/对象键，即使目标 asset 未能解析；保存 cron/enabled/状态/最近运行、规则集合及顺序、触发方式/起止时间/结果/分数/统计、异常目标/样例 SQL/命中数/处理状态、报告范围/周期/内容、告警指标/运算符/阈值/启用与触发时间。已按 2026-10-15 live schema 收敛 I21 allowlist：`t_qc_rule.update_time`、`t_qc_task.owner/remark/create_time`、`t_qc_exception.handled_by` 物理不存在；不得依据历史 ORM 伪造源值，目标映射需带 `source_schema_missing_columns` 备注，缺失源时间保留 null。旧 QC 执行 API/engine 仍退役；本模型承接历史业务记录与新治理 API，不恢复旧 `/api/v1/qc/*`。 |
+| I22 标准元素、码表/码值、命名规则、映射、审批、校验报告 | 现有 `standard` 加 `standard_element`、`standard_code_set`、`standard_code_value`、`standard_naming_rule`、`standard_mapping`、`standard_approval`、`standard_check_report` | 以 2026-10-15 live schema 为源契约：七张表实际列及键见 `evidence/R3/s9-i22-live-schema-20261015.md`；只保留实测存在的中英文名称、数据类型/长度、状态/版本/负责人、码表字段、码值编码/名称/顺序、命名表达式及目标、映射目标/元素或码表/差异、审批业务类型/业务 ID/payload/意见/状态/时间、检查范围/汇总/问题/状态。码值与父码表建立 FK，映射到标准元素/码表建立可空 FK；缺少源 FK 时由 mapper 用复合 source identity 校验，孤儿阻断。历史审批目标保留原业务类型与 source ID；不得将旧 code/element ID 填入指向 `StandardDefinitionRecord` 的 `standard_id`，没有经验证的 canonical target 时保持空并将无法解析的源业务关联报告为 unresolved。旧设计稿所述但现场不存在的 element `format/domain/cat`、审批 proposer/reason/approver/handled_at、mapping `code_std_id/last_check_json` 均不得假造。 |
+| I23 用户及全局角色/权限映射 | 既有 `rebuild_user`/`rebuild_project_member` + `legacy_identity_mapping` | `t_user` 记录登录名、角色和状态；保留稳定源 ID 并逐项映射旧静态角色权限至 R1 已冻结的 `Role/Permission/ROLE_PERMISSIONS` 契约，不另造动态 RBAC 真源。只有在完整源盘点找到旧项目绑定记录时才迁移项目成员关系；否则不伪造历史成员关联。凭据仅在算法/格式兼容并通过验证时迁移哈希，否则走重置，不迁移明文口令。不将旧身份表作为新 Backend 运行时真源。 |
 
 所有迁移实体统一附 `source_system`、`source_table`、`source_id`（组合唯一）、`migration_batch_id`、`created_at`、`updated_at`、`generated_at`；业务记录按本体保存原创建/更新时间，`generated_at` 表示新系统迁移/生成时点，批次时间单独记录。目标表使用外键、唯一约束及稳定自然键；多对多关系拆为关联表。源表主键仅作为来源键，不复用为目标主键。迁移项保存源/目标键、状态、校验摘要、错误及重试次数，保证可重入、可定位、可回滚。每表校验精确行数、字段规范化摘要、源 ID 覆盖率、关系条数、孤儿数、版本/审批链完整率与时间戳；目标不得少于任一来源记录，冲突必须显式报告，不可静默覆盖。迁移前做目标 schema 快照；回滚只能删除本迁移批次拥有且未被新业务引用的目标记录，绝不触碰旧库。
 
-迁移排序：身份与项目键映射 → 字典/资产身份 → 模型及字段/关系/版本、元数据扩展/标签 → 指标及维度/版本 → 标准元素/码表/码值/规则/映射 → 审批/校验报告 → 质量规则/任务关联/运行/异常/报告/告警 → 全域关系与总量核对。用户/角色数据映射先 dry-run；遇到登录名冲突、项目归属不唯一、权限点无目标或凭据算法不兼容时停止对应记录组，保留已提交的无关组并提交裁定，不进行猜测合并。
+R3-S9 的物理增量采用不可变序列：`r3_0001_governance_catalog` 保持既有校验和与 DDL 不变；`r3_0002_legacy_governance_carryforward` 仅新增来源承接表。承接实体必须显式保存旧字段，而非把有类型、有关系的事实塞入 JSON：I18 保存 security/build/owner 状态、模型字段顺序与 ER 两端字段、完整版本快照；I19 将旧标签定义与旧 target 引用分开保存，保留类别、颜色、说明和未解析目标；I20 除维度子表外，还保留旧维度原文、基础指标来源键、聚合/分子/时间/维度/过滤属性、状态、版本与负责人；I21 分拆规则定义、任务顺序关联、运行统计、异常、报告和告警策略；I22 保留元素、码表、码值、命名规则、映射、审批 payload/意见及校验报告。新增的辅助列和实体属于方案 A 的无损承接细化；不能解析或不能唯一关联的旧引用须显式标为 unresolved，不伪造主实体或外键。
+
+迁移排序：身份与项目键映射 → 字典/资产身份 → 模型及字段/关系/版本、元数据扩展/标签引用 → 指标及 profile/维度/版本 → 标准元素/码表/码值/规则/映射 → 审批/校验报告 → 质量规则定义/任务关联/运行细节/异常/报告/告警 → 全域关系与总量核对。用户/角色数据映射先 dry-run；遇到登录名冲突、项目归属不唯一、权限点无目标或凭据算法不兼容时停止对应记录组，保留已提交的无关组并提交裁定，不进行猜测合并。
+
+#### I18 approved exact mapping and explicit skip disposition (2026-10-15)
+
+For the observed I18 source snapshot only, the user approved three row-scoped interpretations: `t_dw_model.biz_domain` value `交易` resolves to the exact `t_biz_domain.name=交易域`; relation `t_dw_model_relation#1` source field `order_id` resolves to actual model 2 field `order_no`; relation `t_dw_model_relation#2` target field `dt` resolves to actual model 4 field `order_date`. These aliases must be exact, bound to the approved source identity/endpoint, recorded alongside the untouched original source payload, and included in the source-to-target audit evidence; they are not global field aliases. The user also approved `t_dw_model_version#1` as an explicit `skipped` migration item because it references missing model ID 1. The source row remains unchanged and must receive a durable per-source checkpoint with disposition `skipped` and a reason; it is not silently omitted or counted as imported. The skip is valid only while the source identity/reference and missing-parent precondition match the reviewed snapshot; drift fails closed. Dry-run accounting must partition every source row among `create`, `unchanged`, `skipped`, `conflict`, and `blocked`. This approval authorizes mapping/skip planning, not target import; the ordinary snapshot, review, and per-plan execution gates still apply.
 
 ### 5.3 采集、解析、规则执行边界
 

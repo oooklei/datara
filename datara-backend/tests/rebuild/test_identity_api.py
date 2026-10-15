@@ -3,10 +3,13 @@ import json
 import base64
 from contextlib import contextmanager
 
+from sqlalchemy import select
 from rebuild.api.app import create_app
 import rebuild.api.app as rebuild_app
+from rebuild.identity.models import ProjectMemberRecord, UserRecord
 from rebuild.identity.contracts import Role
 from rebuild.identity.repository import UserRepository
+from rebuild.project.repository import ProjectRepository
 
 
 _TEST_USERNAME = "rebuild-test-dev"
@@ -56,6 +59,64 @@ def test_developer_can_create_project_and_list_it():
     assert created.status_code == 200
     assert listed.json()["data"]["total"] == 1
     assert listed.json()["data"]["list"][0]["name"] == "I1验证项目"
+
+
+def test_admin_can_list_projects_even_when_not_project_owner_or_member():
+    app = create_app("sqlite+pysqlite:///:memory:", token_secret="unit-test-token-secret")
+    with TestClient(app) as client:
+        with app.state.session_factory() as session:
+            UserRepository(session).create(username="rebuild-test-admin", password="admin-password", role=Role.ADMIN)
+            ProjectRepository(session).create(name="unowned-project", description="", owner_id=0)
+            ProjectRepository(session).create(name="other-owner-project", description="", owner_id=999)
+            session.commit()
+
+        login = client.post(
+            "/api/v1/rebuild/login", json={"username": "rebuild-test-admin", "password": "admin-password"}
+        )
+        listed = client.get(
+            "/api/v1/rebuild/projects",
+            headers={"Authorization": f"Bearer {login.json()['data']['token']}"},
+        )
+
+    assert listed.status_code == 200
+    assert listed.json()["data"]["total"] == 2
+    assert {project["name"] for project in listed.json()["data"]["list"]} == {
+        "unowned-project",
+        "other-owner-project",
+    }
+
+
+def test_developer_project_list_does_not_include_unowned_project():
+    with developer_client("sqlite+pysqlite:///:memory:") as client:
+        with client.app.state.session_factory() as session:
+            ProjectRepository(session).create(name="foreign-project", description="", owner_id=999)
+            session.commit()
+        login = client.post("/api/v1/rebuild/login", json={"username": _TEST_USERNAME, "password": _TEST_PASSWORD})
+        listed = client.get(
+            "/api/v1/rebuild/projects",
+            headers={"Authorization": f"Bearer {login.json()['data']['token']}"},
+        )
+
+    assert listed.status_code == 200
+    assert listed.json()["data"]["total"] == 0
+
+
+def test_project_member_can_list_member_project():
+    with developer_client("sqlite+pysqlite:///:memory:") as client:
+        with client.app.state.session_factory() as session:
+            project = ProjectRepository(session).create(name="member-project", description="", owner_id=999)
+            user = session.scalar(select(UserRecord).where(UserRecord.username == _TEST_USERNAME))
+            session.add(ProjectMemberRecord(project_id=project.id, user_id=user.id, role="viewer"))
+            session.commit()
+        login = client.post("/api/v1/rebuild/login", json={"username": _TEST_USERNAME, "password": _TEST_PASSWORD})
+        listed = client.get(
+            "/api/v1/rebuild/projects",
+            headers={"Authorization": f"Bearer {login.json()['data']['token']}"},
+        )
+
+    assert listed.status_code == 200
+    assert listed.json()["data"]["total"] == 1
+    assert listed.json()["data"]["list"][0]["name"] == "member-project"
 
 
 def test_datasource_validation_returns_capability_matrix():
@@ -204,21 +265,29 @@ def test_datasource_profile_probe_uses_backend_managed_connection(monkeypatch):
 
     monkeypatch.setattr(rebuild_app, "probe_datasource", probe)
     with TestClient(
-        create_app(
-            "sqlite+pysqlite:///:memory:", token_secret="unit-test-secret", validation_key="unit-test-key"
-        )
+        create_app("sqlite+pysqlite:///:memory:", token_secret="unit-test-secret", validation_key="unit-test-key")
     ) as client:
-        token = client.post(
+        with client.app.state.session_factory() as session:
+            UserRepository(session).create(username="datasource-admin", password="admin-password", role=Role.ADMIN)
+            session.commit()
+        runner_token = client.post(
             "/api/v1/rebuild/validation-token",
             headers={"X-Backend-Validation-Key": "unit-test-key"},
         ).json()["data"]["token"]
+        runner_denied = client.post(
+            "/api/v1/rebuild/datasources/profiles/mysql-src/probe",
+            headers={"Authorization": f"Bearer {runner_token}"},
+        )
+        admin_token = client.post(
+            "/api/v1/rebuild/login", json={"username": "datasource-admin", "password": "admin-password"}
+        ).json()["data"]["token"]
         response = client.post(
             "/api/v1/rebuild/datasources/profiles/mysql-src/probe",
-            headers={"Authorization": f"Bearer {token}"},
+            headers={"Authorization": f"Bearer {admin_token}"},
         )
 
+    assert runner_denied.status_code == 403
     assert response.status_code == 200
     assert response.json()["data"]["connected"] is True
     assert response.json()["data"]["database"] == "ec_retail"
     assert captured["draft"].password == "unit-test-pass"
-

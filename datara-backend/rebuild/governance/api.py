@@ -3,11 +3,13 @@
 from __future__ import annotations
 
 import json
+import logging
 from collections import deque
 from datetime import datetime
 from typing import Callable
+from zoneinfo import ZoneInfo
 
-from fastapi import APIRouter, Header, Query
+from fastapi import APIRouter, Body, Header, Query
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 from sqlalchemy import func, or_, select
@@ -16,10 +18,13 @@ from sqlalchemy.orm import Session, sessionmaker
 
 from rebuild.governance.models import (
     AssetFieldRecord,
+    AssetMetadataExtensionRecord,
     AssetRecord,
     AssetTagRecord,
     AuditEventRecord,
     GovernanceTagRecord,
+    LegacyTagDefinitionRecord,
+    LegacyTagReferenceRecord,
     LineageEdgeRecord,
     QualityRuleRecord,
     QualityRunRecord,
@@ -27,8 +32,35 @@ from rebuild.governance.models import (
     StandardDefinitionRecord,
 )
 from rebuild.governance.service import GovernanceService
+from rebuild.governance.legacy_migration_service import (
+    I18_APPROVED_IMPORT_PROJECT_ID,
+    build_i18_legacy_dry_run,
+    i18_import_matches_approved_scope,
+)
+from rebuild.governance.legacy_source_reader import LegacyI18SourceReader
+from rebuild.governance.legacy_source_reader import LegacyI22SourceReader
+from rebuild.governance.legacy_source_reader import LegacyI23SourceReader
+from rebuild.governance.legacy_source_reader import LegacyI19SourceReader
+from rebuild.governance.legacy_source_reader import LegacyI20SourceReader
+from rebuild.governance.legacy_source_reader import LegacyI21SourceReader
+from rebuild.governance.legacy_i19_mapping import (
+    I19ScopedTarget,
+    I19TagTarget,
+    LegacyI19MappingContext,
+    map_i19_snapshot,
+)
+from rebuild.governance.legacy_i23_preview import MAX_I23_PREVIEW_ROWS, build_i23_identity_preview
+from rebuild.governance.legacy_i22_preview import build_i22_mapping_preview
+from rebuild.governance.legacy_i20_preview import build_i20_mapping_preview
+from rebuild.governance.legacy_i21_preview import build_i21_mapping_preview
+from rebuild.governance.legacy_importer import LegacyImportRejected, execute_i18_legacy_import
+from rebuild.governance.migration_checkpoints import CheckpointConflict
+from rebuild.governance.snapshot_repository import LegacyI18TargetSnapshotRepository
 from rebuild.identity.contracts import Permission
+from rebuild.identity.models import UserRecord
 from rebuild.project.models import ProjectRecord
+
+logger = logging.getLogger(__name__)
 
 
 class AssetFieldInput(BaseModel):
@@ -83,6 +115,13 @@ class QualityRuleInput(BaseModel):
     enabled: bool = True
 
 
+class LegacyI18ImportInput(BaseModel):
+    source_digest: str = Field(pattern="^[0-9a-f]{64}$")
+    target_digest: str = Field(pattern="^[0-9a-f]{64}$")
+    idempotency_key: str = Field(min_length=1, max_length=128)
+    confirmation: str = Field(min_length=1, max_length=256)
+
+
 class StandardInput(BaseModel):
     code: str = Field(min_length=1, max_length=128)
     name: str = Field(min_length=1, max_length=256)
@@ -100,8 +139,27 @@ class MetricInput(BaseModel):
     status: str = Field(default="draft", pattern="^(draft|active|retired)$")
 
 
+class I23IdentitySelectionInput(BaseModel):
+    source_id: str = Field(min_length=1, max_length=24, pattern="^[1-9][0-9]*$")
+    target_user_id: int = Field(gt=0, strict=True)
+
+
+class I23IdentityPreviewInput(BaseModel):
+    selections: list[I23IdentitySelectionInput] = Field(default_factory=list, max_length=MAX_I23_PREVIEW_ROWS)
+
+
 def build_governance_router(
-    session_factory: sessionmaker[Session], current_user: Callable[[str], dict[str, object]]
+    session_factory: sessionmaker[Session],
+    current_user: Callable[[str], dict[str, object]],
+    *,
+    legacy_source_reader_factory: Callable[[], LegacyI18SourceReader] | None = None,
+    legacy_i22_source_reader_factory: Callable[[], LegacyI22SourceReader] | None = None,
+    legacy_i23_source_reader_factory: Callable[[], LegacyI23SourceReader] | None = None,
+    legacy_i19_source_reader_factory: Callable[[], LegacyI19SourceReader] | None = None,
+    legacy_i20_source_reader_factory: Callable[[], LegacyI20SourceReader] | None = None,
+    legacy_i21_source_reader_factory: Callable[[], LegacyI21SourceReader] | None = None,
+    legacy_i23_preview_user: Callable[[str], dict[str, object]] | None = None,
+    legacy_i18_import_enabled: bool = False,
 ) -> APIRouter:
     router = APIRouter(prefix="/api/v1/rebuild/governance", tags=["rebuild-governance"])
 
@@ -121,6 +179,681 @@ def build_governance_router(
         if project is None:
             return fail(404, 4041, "project not found")
         return project if allowed else fail(403, 1003, "project permission denied")
+
+    @router.post("/projects/{project_id}/legacy/i19/mapping-preview")
+    def legacy_i19_mapping_preview(project_id: int, authorization: str = Header(default="")):
+        user = authenticate(authorization)
+        if isinstance(user, JSONResponse):
+            return user
+        reader = None
+        try:
+            with session_factory() as session:
+                target_url = session.get_bind().url
+                target_backend = target_url.get_backend_name()
+                if target_backend == "mysql" and target_url.database != "datara_rebuild_i0":
+                    return fail(503, 5032, "target database is not the isolated rebuild schema")
+                if target_backend not in {"mysql", "sqlite"}:
+                    return fail(503, 5032, "unsupported target database for I19 mapping preview")
+                if target_backend == "mysql":
+                    session.connection().exec_driver_sql("SET TRANSACTION READ ONLY")
+                permitted = project_permission(session, project_id, user, Permission.EDIT_DEFINITION)
+                if isinstance(permitted, JSONResponse):
+                    return permitted
+
+                reader = (legacy_i19_source_reader_factory or LegacyI19SourceReader.from_runtime_env)()
+                source_snapshot = reader.read_snapshot()
+                target_ids: dict[tuple[str, str], int] = {}
+                target_id_candidates: dict[tuple[str, str], list[int]] = {}
+                target_identity_conflicts: set[tuple[str, str]] = set()
+                asset_targets: dict[tuple[int, str, str], I19ScopedTarget] = {}
+                asset_key_counts: dict[tuple[int, str, str], int] = {}
+                extension_source_targets: dict[str, list[tuple[int, tuple[int, str, str], int]]] = {}
+                extension_rows = session.execute(
+                    select(AssetMetadataExtensionRecord, AssetRecord)
+                    .join(AssetRecord, AssetRecord.id == AssetMetadataExtensionRecord.asset_id)
+                    .where(
+                        AssetRecord.project_id == project_id,
+                        AssetMetadataExtensionRecord.source_system == "datara_meta",
+                        AssetMetadataExtensionRecord.source_table == "t_meta_table_ext",
+                    )
+                ).all()
+                for extension, asset in extension_rows:
+                    if extension.source_id:
+                        extension_source_targets.setdefault(extension.source_id, []).append(
+                            (
+                                asset.id,
+                                (extension.legacy_datasource_id, extension.database_name, extension.table_name),
+                                extension.id,
+                            )
+                        )
+                    key = (extension.legacy_datasource_id, extension.database_name, extension.table_name)
+                    asset_key_counts[key] = asset_key_counts.get(key, 0) + 1
+                    asset_targets[key] = I19ScopedTarget(asset.id, project_id)
+                asset_targets = {key: value for key, value in asset_targets.items() if asset_key_counts[key] == 1}
+                for source_id, candidates in extension_source_targets.items():
+                    identity = ("t_meta_table_ext", source_id)
+                    if len(candidates) != 1:
+                        target_identity_conflicts.add(identity)
+                        continue
+                    asset_id, key, extension_id = candidates[0]
+                    exact_asset = asset_targets.get(key)
+                    if exact_asset is None or exact_asset.target_id != asset_id:
+                        target_identity_conflicts.add(identity)
+                        continue
+                    target_id_candidates.setdefault(identity, []).append(extension_id)
+
+                tag_targets: dict[str, I19TagTarget] = {}
+                tag_rows = session.execute(
+                    select(LegacyTagDefinitionRecord, GovernanceTagRecord)
+                    .join(
+                        GovernanceTagRecord,
+                        GovernanceTagRecord.id == LegacyTagDefinitionRecord.normalized_tag_id,
+                    )
+                    .where(
+                        GovernanceTagRecord.project_id == project_id,
+                        LegacyTagDefinitionRecord.source_system == "datara_meta",
+                        LegacyTagDefinitionRecord.source_table == "t_meta_tag",
+                    )
+                ).all()
+                for definition, tag in tag_rows:
+                    if definition.source_id:
+                        identity = ("t_meta_tag", definition.source_id)
+                        target_id_candidates.setdefault(identity, []).append(definition.id)
+                        if definition.source_id in tag_targets:
+                            target_identity_conflicts.add(identity)
+                            tag_targets.pop(definition.source_id, None)
+                        elif identity not in target_identity_conflicts:
+                            tag_targets[definition.source_id] = I19TagTarget(tag.id, project_id, definition.id)
+
+                tagging_asset_targets: dict[tuple[str, str], I19ScopedTarget] = {}
+                tagging_key_candidates: dict[tuple[str, str], list[I19ScopedTarget]] = {}
+                reference_rows = session.execute(
+                    select(LegacyTagReferenceRecord, AssetRecord)
+                    .join(GovernanceTagRecord, GovernanceTagRecord.id == LegacyTagReferenceRecord.tag_id)
+                    .outerjoin(AssetRecord, AssetRecord.id == LegacyTagReferenceRecord.resolved_asset_id)
+                    .where(
+                        LegacyTagReferenceRecord.project_id == project_id,
+                        GovernanceTagRecord.project_id == project_id,
+                        LegacyTagReferenceRecord.source_system == "datara_meta",
+                        LegacyTagReferenceRecord.source_table == "t_meta_tagging",
+                    )
+                ).all()
+                for reference, asset in reference_rows:
+                    if reference.source_id:
+                        identity = ("t_meta_tagging", reference.source_id)
+                        target_id_candidates.setdefault(identity, []).append(reference.id)
+                    if asset is not None and asset.project_id == project_id:
+                        key = (reference.target_type, reference.target_key)
+                        tagging_key_candidates.setdefault(key, []).append(I19ScopedTarget(asset.id, project_id))
+                for key, candidates in tagging_key_candidates.items():
+                    unique_ids = {candidate.target_id for candidate in candidates}
+                    if len(unique_ids) == 1:
+                        tagging_asset_targets[key] = candidates[0]
+                for identity, candidates in target_id_candidates.items():
+                    if len(candidates) == 1 and identity not in target_identity_conflicts:
+                        target_ids[identity] = candidates[0]
+                    else:
+                        target_identity_conflicts.add(identity)
+
+                context = LegacyI19MappingContext(
+                    target_project_id=project_id,
+                    target_ids=target_ids,
+                    asset_targets=asset_targets,
+                    tag_targets=tag_targets,
+                    tagging_asset_targets=tagging_asset_targets,
+                )
+                mapped = map_i19_snapshot(source_snapshot, context)
+                mapped_rows = mapped.extensions + mapped.tag_references
+                blocked_ids = {
+                    (issue.source_table, issue.source_id) for issue in mapped.mapping_issues if issue.source_table
+                }
+                blocked_ids.update(target_identity_conflicts)
+                blocked_ids.update(
+                    (row.source_table, row.source_id)
+                    for row in mapped_rows
+                    if row.mapping_issues or not row.ready_to_import
+                )
+                blocked_ids.update(
+                    (tag.definition.source_table, tag.definition.source_id)
+                    for tag in mapped.tags
+                    if tag.mapping_issues or tag.definition.mapping_issues or not tag.ready_to_import
+                )
+                dispositions = {"new_identity_candidate": 0, "target_identity_match": 0, "blocked": 0}
+                entries = []
+                for row in mapped_rows:
+                    blocked = (row.source_table, row.source_id) in blocked_ids
+                    disposition = (
+                        "blocked"
+                        if blocked
+                        else "target_identity_match"
+                        if row.target_id is not None
+                        else "new_identity_candidate"
+                    )
+                    dispositions[disposition] += 1
+                    entries.append(
+                        {"source_table": row.source_table, "source_id": row.source_id, "disposition": disposition}
+                    )
+                for tag in mapped.tags:
+                    row = tag.definition
+                    blocked = (row.source_table, row.source_id) in blocked_ids
+                    disposition = (
+                        "blocked"
+                        if blocked
+                        else "target_identity_match"
+                        if row.target_id is not None
+                        else "new_identity_candidate"
+                    )
+                    dispositions[disposition] += 1
+                    entries.append(
+                        {"source_table": row.source_table, "source_id": row.source_id, "disposition": disposition}
+                    )
+                source_counts = dict(source_snapshot.counts)
+                target_counts = {
+                    "t_meta_table_ext": len(extension_rows),
+                    "t_meta_tag": len(tag_rows),
+                    "t_meta_tagging": len(reference_rows),
+                }
+                issues = [
+                    {"code": issue.code, "source_table": issue.source_table, "source_id": issue.source_id}
+                    for issue in mapped.mapping_issues
+                ]
+                issues.extend(
+                    {"code": "ambiguous_target_identity", "source_table": table, "source_id": source_id}
+                    for table, source_id in sorted(target_identity_conflicts)
+                )
+                data = {
+                    "project_id": project_id,
+                    "source": {
+                        "schema": source_snapshot.schema,
+                        "captured_at": source_snapshot.captured_at.isoformat(),
+                        "digest": source_snapshot.digest,
+                        "counts": source_counts,
+                    },
+                    "target": {
+                        "project_id": project_id,
+                        "captured_at": datetime.now(ZoneInfo("Asia/Shanghai")).isoformat(),
+                        "counts": target_counts,
+                    },
+                    "preview": {
+                        "counts": dispositions,
+                        "entries": entries,
+                        "issues": issues,
+                        "parity_verified": False,
+                        "import_enabled": False,
+                    },
+                }
+                logger.info(
+                    "legacy I19 mapping preview completed",
+                    extra={"project_id": project_id, "source_counts": source_counts, "preview_counts": dispositions},
+                )
+                return {"code": 0, "msg": "success", "data": data}
+        except ValueError:
+            return fail(422, 4221, "legacy I19 snapshot or mapping is invalid")
+        except Exception as exc:
+            logger.error(
+                "legacy I19 mapping preview failed",
+                extra={"project_id": project_id, "error_type": type(exc).__name__},
+            )
+            return fail(503, 5031, "legacy I19 mapping preview is unavailable")
+        finally:
+            source_engine = getattr(reader, "engine", None)
+            if source_engine is not None:
+                source_engine.dispose()
+
+    @router.post("/projects/{project_id}/legacy/i21/mapping-preview")
+    def legacy_i21_mapping_preview(project_id: int, authorization: str = Header(default="")):
+        user = authenticate(authorization)
+        if isinstance(user, JSONResponse):
+            return user
+        reader = None
+        try:
+            with session_factory() as session:
+                target_url = session.get_bind().url
+                target_backend = target_url.get_backend_name()
+                if target_backend == "mysql" and target_url.database != "datara_rebuild_i0":
+                    return fail(503, 5032, "target database is not the isolated rebuild schema")
+                if target_backend not in {"mysql", "sqlite"}:
+                    return fail(503, 5032, "unsupported target database for I21 mapping preview")
+                if target_backend == "mysql":
+                    session.connection().exec_driver_sql("SET TRANSACTION READ ONLY")
+                permitted = project_permission(session, project_id, user, Permission.EDIT_DEFINITION)
+                if isinstance(permitted, JSONResponse):
+                    return permitted
+
+                reader = (legacy_i21_source_reader_factory or LegacyI21SourceReader.from_runtime_env)()
+                source_snapshot = reader.read_snapshot()
+                preview = build_i21_mapping_preview(session, project_id, source_snapshot)
+                data = {
+                    "project_id": project_id,
+                    "source": {
+                        "schema": preview.source_schema,
+                        "captured_at": source_snapshot.captured_at.isoformat(),
+                        "digest": preview.source_digest,
+                        "counts": dict(preview.source_counts),
+                    },
+                    "target": {
+                        "project_id": project_id,
+                        "captured_at": preview.captured_at.isoformat(),
+                        "identity_digest": preview.target_digest,
+                        "counts": dict(preview.target_counts),
+                    },
+                    "preview": {
+                        "counts": dict(preview.dispositions),
+                        "entries": list(preview.entries),
+                        "issues": [
+                            {"code": issue.code, "source_table": issue.source_table, "source_id": issue.source_id}
+                            for issue in preview.issues
+                        ],
+                        "parity_verified": False,
+                        "import_enabled": False,
+                    },
+                }
+                logger.info(
+                    "legacy I21 mapping preview completed",
+                    extra={
+                        "project_id": project_id,
+                        "source_counts": dict(preview.source_counts),
+                        "preview_counts": dict(preview.dispositions),
+                    },
+                )
+                return {"code": 0, "msg": "success", "data": data}
+        except ValueError:
+            return fail(422, 4221, "legacy I21 snapshot or mapping is invalid")
+        except Exception as exc:
+            logger.error(
+                "legacy I21 mapping preview failed",
+                extra={"project_id": project_id, "error_type": type(exc).__name__},
+            )
+            return fail(503, 5031, "legacy I21 mapping preview is unavailable")
+        finally:
+            source_engine = getattr(reader, "engine", None)
+            if source_engine is not None:
+                source_engine.dispose()
+
+    @router.post("/legacy/i23/identity-preview")
+    def legacy_i23_identity_preview(
+        body: I23IdentityPreviewInput = Body(default_factory=I23IdentityPreviewInput),
+        authorization: str = Header(default=""),
+    ):
+        if legacy_i23_preview_user is None:
+            return fail(503, 5033, "I23 preview capability is unavailable")
+        try:
+            legacy_i23_preview_user(authorization)
+        except PermissionError:
+            return fail(403, 1003, "I23 preview capability required")
+        except ValueError:
+            return fail(401, 1001, "invalid token")
+
+        selection_map: dict[str, int] = {}
+        for selection in body.selections:
+            if selection.source_id in selection_map:
+                return fail(422, 4221, "duplicate I23 source selection")
+            selection_map[selection.source_id] = selection.target_user_id
+
+        reader = None
+        try:
+            with session_factory() as session:
+                target_url = session.get_bind().url
+                target_backend = target_url.get_backend_name()
+                if target_backend == "mysql" and target_url.database != "datara_rebuild_i0":
+                    return fail(503, 5032, "target database is not the isolated rebuild schema")
+                if target_backend not in {"mysql", "sqlite"}:
+                    return fail(503, 5032, "unsupported target database for I23 identity preview")
+                if target_backend == "mysql":
+                    session.connection().exec_driver_sql("SET TRANSACTION READ ONLY")
+                reader = (legacy_i23_source_reader_factory or LegacyI23SourceReader.from_runtime_env)()
+                source_snapshot = reader.read_snapshot(max_total_rows=MAX_I23_PREVIEW_ROWS)
+                data = build_i23_identity_preview(session, source_snapshot, selection_map)
+                logger.info(
+                    "legacy I23 identity preview completed",
+                    extra={
+                        "source_counts": data["source"]["counts"],
+                        "preview_counts": data["preview"]["counts"],
+                    },
+                )
+                return {"code": 0, "msg": "success", "data": data}
+        except ValueError:
+            return fail(422, 4221, "legacy I23 snapshot or mapping is invalid")
+        except Exception as exc:
+            logger.error("legacy I23 identity preview failed", extra={"error_type": type(exc).__name__})
+            return fail(503, 5031, "legacy I23 identity preview is unavailable")
+        finally:
+            source_engine = getattr(reader, "engine", None)
+            if source_engine is not None:
+                source_engine.dispose()
+
+    @router.post("/projects/{project_id}/legacy/i22/mapping-preview")
+    def legacy_i22_mapping_preview(project_id: int, authorization: str = Header(default="")):
+        user = authenticate(authorization)
+        if isinstance(user, JSONResponse):
+            return user
+        reader = None
+        try:
+            with session_factory() as session:
+                permitted = project_permission(session, project_id, user, Permission.EDIT_DEFINITION)
+                if isinstance(permitted, JSONResponse):
+                    return permitted
+                target_url = session.get_bind().url
+                target_backend = target_url.get_backend_name()
+                if target_backend == "mysql" and target_url.database != "datara_rebuild_i0":
+                    return fail(503, 5032, "target database is not the isolated rebuild schema")
+                if target_backend not in {"mysql", "sqlite"}:
+                    return fail(503, 5032, "unsupported target database for I22 mapping preview")
+                reader = (legacy_i22_source_reader_factory or LegacyI22SourceReader.from_runtime_env)()
+                source_snapshot = reader.read_snapshot()
+                preview = build_i22_mapping_preview(session, project_id, source_snapshot)
+                data = {
+                    "project_id": project_id,
+                    "source": {
+                        "schema": preview.source_schema,
+                        "captured_at": source_snapshot.captured_at.isoformat(),
+                        "digest": preview.source_digest,
+                        "counts": dict(preview.source_counts),
+                    },
+                    "target": {
+                        "project_id": project_id,
+                        "captured_at": preview.captured_at.isoformat(),
+                        "identity_digest": preview.target_digest,
+                        "counts": dict(preview.target_counts),
+                    },
+                    "preview": {
+                        "counts": dict(preview.dispositions),
+                        "entries": list(preview.entries),
+                        "issues": [
+                            {
+                                "code": issue.code,
+                                "source_table": issue.source_table,
+                                "source_id": issue.source_id,
+                            }
+                            for issue in preview.issues
+                        ],
+                        "parity_verified": False,
+                        "import_enabled": False,
+                    },
+                }
+                logger.info(
+                    "legacy I22 mapping preview completed",
+                    extra={
+                        "project_id": project_id,
+                        "source_counts": dict(preview.source_counts),
+                        "preview_counts": dict(preview.dispositions),
+                    },
+                )
+                return {"code": 0, "msg": "success", "data": data}
+        except ValueError:
+            return fail(422, 4221, "legacy I22 snapshot or mapping is invalid")
+        except Exception as exc:
+            logger.error(
+                "legacy I22 mapping preview failed",
+                extra={"project_id": project_id, "error_type": type(exc).__name__},
+            )
+            return fail(503, 5031, "legacy I22 mapping preview is unavailable")
+        finally:
+            source_engine = getattr(reader, "engine", None)
+            if source_engine is not None:
+                source_engine.dispose()
+
+    @router.post("/projects/{project_id}/legacy/i20/mapping-preview")
+    def legacy_i20_mapping_preview(project_id: int, authorization: str = Header(default="")):
+        user = authenticate(authorization)
+        if isinstance(user, JSONResponse):
+            return user
+        reader = None
+        try:
+            with session_factory() as session:
+                permitted = project_permission(session, project_id, user, Permission.EDIT_DEFINITION)
+                if isinstance(permitted, JSONResponse):
+                    return permitted
+                target_url = session.get_bind().url
+                target_backend = target_url.get_backend_name()
+                if target_backend == "mysql" and target_url.database != "datara_rebuild_i0":
+                    return fail(503, 5032, "target database is not the isolated rebuild schema")
+                if target_backend not in {"mysql", "sqlite"}:
+                    return fail(503, 5032, "unsupported target database for I20 mapping preview")
+                reader = (legacy_i20_source_reader_factory or LegacyI20SourceReader.from_runtime_env)()
+                source_snapshot = reader.read_snapshot()
+                preview = build_i20_mapping_preview(session, project_id, source_snapshot)
+                data = {
+                    "project_id": project_id,
+                    "source": {
+                        "schema": preview.source_schema,
+                        "captured_at": source_snapshot.captured_at.isoformat(),
+                        "digest": preview.source_digest,
+                        "counts": dict(preview.source_counts),
+                    },
+                    "target": {
+                        "project_id": project_id,
+                        "captured_at": preview.captured_at.isoformat(),
+                        "identity_digest": preview.target_digest,
+                        "counts": dict(preview.target_counts),
+                    },
+                    "preview": {
+                        "counts": dict(preview.dispositions),
+                        "entries": list(preview.entries),
+                        "issues": [
+                            {"code": issue.code, "source_table": issue.source_table, "source_id": issue.source_id}
+                            for issue in preview.issues
+                        ],
+                        "parity_verified": False,
+                        "import_enabled": False,
+                    },
+                }
+                logger.info(
+                    "legacy I20 mapping preview completed",
+                    extra={
+                        "project_id": project_id,
+                        "source_counts": dict(preview.source_counts),
+                        "preview_counts": dict(preview.dispositions),
+                    },
+                )
+                return {"code": 0, "msg": "success", "data": data}
+        except ValueError:
+            return fail(422, 4221, "legacy I20 snapshot or mapping is invalid")
+        except Exception as exc:
+            logger.error(
+                "legacy I20 mapping preview failed",
+                extra={"project_id": project_id, "error_type": type(exc).__name__},
+            )
+            return fail(503, 5031, "legacy I20 mapping preview is unavailable")
+        finally:
+            if reader is not None:
+                source_engine = getattr(reader, "engine", None)
+                if source_engine is not None:
+                    source_engine.dispose()
+
+    @router.post("/projects/{project_id}/legacy/i18/dry-run")
+    def legacy_i18_dry_run(project_id: int, authorization: str = Header(default="")):
+        try:
+            user = authenticate(authorization)
+            if isinstance(user, JSONResponse):
+                return user
+        except ValueError:
+            return fail(401, 1001, "invalid token")
+
+        reader = None
+        try:
+            with session_factory() as session:
+                permitted = project_permission(session, project_id, user, Permission.EDIT_DEFINITION)
+                if isinstance(permitted, JSONResponse):
+                    return permitted
+                target_url = session.get_bind().url
+                target_backend = target_url.get_backend_name()
+                if target_backend == "mysql" and target_url.database != "datara_rebuild_i0":
+                    return fail(503, 5032, "target database is not the isolated rebuild schema")
+                if target_backend not in {"mysql", "sqlite"}:
+                    return fail(503, 5032, "unsupported target database for I18 dry-run")
+                reader = (legacy_source_reader_factory or LegacyI18SourceReader.from_runtime_env)()
+                source_snapshot = reader.read_snapshot()
+                target_snapshot = LegacyI18TargetSnapshotRepository(session).read_project_snapshot(project_id)
+                result = build_i18_legacy_dry_run(project_id, source_snapshot, target_snapshot)
+                data = {
+                    "project_id": project_id,
+                    "source": {
+                        "schema": source_snapshot.schema,
+                        "captured_at": source_snapshot.captured_at.isoformat(),
+                        "digest": source_snapshot.digest,
+                        "counts": dict(source_snapshot.counts),
+                    },
+                    "target": {
+                        "project_id": target_snapshot.project_id,
+                        "captured_at": target_snapshot.captured_at.isoformat(),
+                        "digest": target_snapshot.digest,
+                        "identity_count": len(target_snapshot.row_fingerprints),
+                    },
+                    "plan": {
+                        "counts": dict(result.plan.counts),
+                        "ready_to_import": result.plan.ready_to_import,
+                        "entries": [
+                            {
+                                "source_table": entry.source_table,
+                                "source_id": entry.source_id,
+                                "disposition": entry.disposition,
+                                "disposition_reason": entry.disposition_reason,
+                                "fingerprint": entry.fingerprint,
+                                "mapping_notes": list(entry.mapping_notes),
+                            }
+                            for entry in result.plan.entries
+                        ],
+                        "import_order": [
+                            {"source_table": table, "source_id": source_id}
+                            for table, source_id in result.plan.import_order
+                        ],
+                        "issues": [
+                            {
+                                "code": issue.code,
+                                "source_table": issue.source_table,
+                                "source_id": issue.source_id,
+                                "detail": issue.detail,
+                            }
+                            for issue in result.plan.blocking_issues
+                        ],
+                    },
+                }
+                logger.info(
+                    "legacy I18 dry-run completed",
+                    extra={
+                        "project_id": project_id,
+                        "source_counts": dict(source_snapshot.counts),
+                        "plan_counts": dict(result.plan.counts),
+                    },
+                )
+                return {"code": 0, "msg": "success", "data": data}
+        except ValueError as exc:
+            return fail(422, 4221, str(exc))
+        except Exception as exc:
+            logger.error(
+                "legacy I18 dry-run snapshot failed",
+                extra={"project_id": project_id, "error_type": type(exc).__name__},
+            )
+            return fail(503, 5031, "legacy I18 snapshot is unavailable")
+        finally:
+            source_engine = getattr(reader, "engine", None)
+            if source_engine is not None:
+                source_engine.dispose()
+
+    @router.post("/projects/{project_id}/legacy/i18/import")
+    def legacy_i18_import(
+        project_id: int,
+        body: LegacyI18ImportInput,
+        authorization: str = Header(default=""),
+    ):
+        # Keep the default path completely inert: no source connection, target
+        # snapshot query, checkpoint, or importer construction may occur.
+        if not legacy_i18_import_enabled:
+            return fail(503, 5034, "legacy I18 import is disabled")
+        try:
+            user = authenticate(authorization)
+            if isinstance(user, JSONResponse):
+                return user
+        except ValueError:
+            return fail(401, 1001, "invalid token")
+
+        try:
+            actor_id = int(user.get("user_id", 0))
+        except (TypeError, ValueError):
+            actor_id = 0
+        if actor_id <= 0:
+            return fail(403, 1003, "a persisted operator identity is required for I18 import")
+
+        reader = None
+        try:
+            with session_factory() as session:
+                actor = session.get(UserRecord, actor_id)
+                if actor is None:
+                    return fail(403, 1003, "a persisted operator identity is required for I18 import")
+                operator = {**user, "user_id": actor.id, "role": actor.role}
+                permitted = project_permission(session, project_id, operator, Permission.EDIT_DEFINITION)
+                if isinstance(permitted, JSONResponse):
+                    return permitted
+                if project_id != I18_APPROVED_IMPORT_PROJECT_ID:
+                    return fail(409, 4099, "I18 import project is outside the approved one-time scope")
+                expected_confirmation = f"IMPORT I18 {project_id} {body.source_digest} {body.target_digest}"
+                if body.confirmation != expected_confirmation:
+                    return fail(409, 4094, "explicit I18 confirmation does not match the supplied snapshots")
+                target_url = session.get_bind().url
+                target_backend = target_url.get_backend_name()
+                if target_backend == "mysql" and target_url.database != "datara_rebuild_i0":
+                    return fail(503, 5032, "target database is not the isolated rebuild schema")
+                if target_backend == "sqlite" and target_url.database != ":memory:":
+                    return fail(503, 5032, "file SQLite is not an allowed I18 import target")
+                if target_backend not in {"mysql", "sqlite"}:
+                    return fail(503, 5032, "unsupported target database for I18 import")
+
+                reader = (legacy_source_reader_factory or LegacyI18SourceReader.from_runtime_env)()
+                source_snapshot = reader.read_snapshot()
+                target_snapshot = LegacyI18TargetSnapshotRepository(session).read_project_snapshot(project_id)
+                dry_run = build_i18_legacy_dry_run(project_id, source_snapshot, target_snapshot)
+                if source_snapshot.digest != body.source_digest or target_snapshot.digest != body.target_digest:
+                    return fail(409, 4095, "I18 source or target snapshot changed; run a fresh dry-run")
+                if not i18_import_matches_approved_scope(project_id, dry_run.plan):
+                    return fail(409, 4099, "latest I18 dry-run is outside the approved one-time import scope")
+                if not dry_run.plan.ready_to_import:
+                    return fail(409, 4096, "latest I18 dry-run contains conflicts or blocked rows")
+
+                result = execute_i18_legacy_import(
+                    session_factory,
+                    project_id=project_id,
+                    actor_id=actor_id,
+                    source_snapshot=source_snapshot,
+                    target_snapshot=target_snapshot,
+                    idempotency_key=body.idempotency_key,
+                )
+                data = {
+                    "batch_id": result.batch_id,
+                    "status": result.status,
+                    "expected_count": result.expected_count,
+                    "imported_count": result.imported_count,
+                    "skipped_count": result.skipped_count,
+                    "error_count": result.error_count,
+                }
+                logger.info(
+                    "legacy I18 import request completed",
+                    extra={"project_id": project_id, "batch_id": result.batch_id, "status": result.status},
+                )
+                if result.status != "completed":
+                    return JSONResponse(
+                        status_code=409,
+                        content={"code": 4097, "msg": "I18 import stopped with unresolved items", "data": data},
+                    )
+                return {"code": 0, "msg": "success", "data": data}
+        except (LegacyImportRejected, CheckpointConflict) as exc:
+            logger.warning(
+                "legacy I18 import rejected",
+                extra={"project_id": project_id, "error_type": type(exc).__name__},
+            )
+            return fail(409, 4098, "I18 import was rejected by a migration safety check")
+        except ValueError as exc:
+            return fail(422, 4221, str(exc))
+        except Exception as exc:
+            logger.error(
+                "legacy I18 import failed",
+                extra={"project_id": project_id, "error_type": type(exc).__name__},
+            )
+            return fail(503, 5031, "legacy I18 import is unavailable")
+        finally:
+            source_engine = getattr(reader, "engine", None)
+            if source_engine is not None:
+                source_engine.dispose()
 
     def write_audit(
         session: Session,

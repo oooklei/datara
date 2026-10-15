@@ -1,0 +1,22 @@
+R3-S9 I19 project mapping-preview — local verification
+Date: 2026-10-15 Asia/Shanghai
+Workspace: isolated R3-S9 worktree
+
+Commands and results:
+- python -m pytest tests -q (datara-backend): 737 passed in 71.07s.
+- python -m pytest tests/rebuild/test_governance_legacy_i19_preview_api.py -q: 3 passed.
+- python -m pytest ../datara-web/deploy/test_r3_s9_i19_preview_page.py -q: 3 passed.
+- ruff check rebuild/governance/api.py rebuild/api/app.py tests/rebuild/test_governance_legacy_i19_preview_api.py ../datara-web/deploy/test_r3_s9_i19_preview_page.py: passed.
+- python -m compileall -q rebuild: passed.
+- node --check datara-web/deploy/r3-s9-i19-preview.cjs: passed.
+- git diff --check: passed.
+- Target capture timestamp is asserted to carry the Asia/Shanghai +08:00 offset.
+
+Scope assertions covered by tests:
+- Authentication is checked before invoking the injected source reader.
+- Empty I19 source snapshot is represented without claiming parity; import remains disabled.
+- Target asset/extension identity is project-scoped; another project's identity is not reused.
+- SQL listener rejects target DML; response does not echo source business values.
+- Isolated page has no login form, import, or write controls and uses the fixed preview endpoint.
+
+No production frontend/menu changes. No target business DML/import. The legacy importer remains disabled.

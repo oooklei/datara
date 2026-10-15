@@ -1,0 +1,946 @@
+{
+  "run_id": "r2-13-20261015174953",
+  "generated_at": "2026-10-15T17:49:53.808013+08:00",
+  "timezone": "Asia/Shanghai",
+  "url": "http://192.168.1.9:18091/rebuild-validation-r3.html",
+  "project_id": 8,
+  "expected_asset_ids": [
+    10,
+    11
+  ],
+  "browser": "Chromium via Playwright",
+  "token_source": "192.168.1.9 running rebuild-api environment over BatchMode SSH",
+  "actions": [
+    {
+      "action": "select pre-existing isolated project",
+      "project_id": 8
+    },
+    {
+      "action": "open existing asset detail and overview",
+      "asset_id": 10
+    },
+    {
+      "action": "open Activity / Audit and reconcile displayed rows",
+      "project_id": 8
+    }
+  ],
+  "assertions": [
+    {
+      "name": "isolated-schema-timestamp-defaults-and-row-values",
+      "passed": true
+    },
+    {
+      "name": "governance-migrations-completed-with-start-and-finish-times",
+      "passed": true
+    },
+    {
+      "name": "fixed-project-and-existing-assets-visible",
+      "passed": true
+    },
+    {
+      "name": "asset-updated-at-and-row-count-reconciled-to-mysql",
+      "passed": true
+    },
+    {
+      "name": "asset-detail-row-count-and-updated-at-visible",
+      "passed": true
+    },
+    {
+      "name": "audit-generated-timestamps-match-api-and-mysql",
+      "passed": true
+    },
+    {
+      "name": "all-page-api-requests-are-get",
+      "passed": true
+    }
+  ],
+  "responses": [
+    {
+      "method": "POST",
+      "status": 200,
+      "path": "/api/v1/rebuild/validation-token"
+    },
+    {
+      "method": "GET",
+      "status": 200,
+      "path": "/projects"
+    },
+    {
+      "method": "GET",
+      "status": 200,
+      "path": "/governance/projects/3/assets"
+    },
+    {
+      "method": "GET",
+      "status": 200,
+      "path": "/governance/projects/3/metrics"
+    },
+    {
+      "method": "GET",
+      "status": 200,
+      "path": "/governance/projects/3/standards"
+    },
+    {
+      "method": "GET",
+      "status": 200,
+      "path": "/governance/projects/8/standards"
+    },
+    {
+      "method": "GET",
+      "status": 200,
+      "path": "/governance/projects/8/metrics"
+    },
+    {
+      "method": "GET",
+      "status": 200,
+      "path": "/governance/projects/8/assets"
+    },
+    {
+      "method": "GET",
+      "status": 200,
+      "path": "/governance/assets/10"
+    },
+    {
+      "method": "GET",
+      "status": 200,
+      "path": "/governance/projects/8/audit"
+    }
+  ],
+  "page_errors": [],
+  "console_errors": [],
+  "failed_requests": [],
+  "screenshot": "r2-13-20261015174953.png",
+  "result": "PASS",
+  "mutation_policy": "Only POST /api/v1/rebuild/validation-token is allowed; all page requests must be GET.",
+  "notes": [
+    "The key and short-lived token are excluded from this report, URL, page storage, and screenshot."
+  ],
+  "target_database": {
+    "database_identity": "datara_rebuild_i0\t8.0.46\t2026-10-15 17:49:53",
+    "tables": [
+      "rebuild_governance_asset",
+      "rebuild_governance_asset_field",
+      "rebuild_governance_asset_metadata_extension",
+      "rebuild_governance_asset_tag",
+      "rebuild_governance_audit_event",
+      "rebuild_governance_domain",
+      "rebuild_governance_legacy_identity_mapping",
+      "rebuild_governance_legacy_tag_definition",
+      "rebuild_governance_legacy_tag_reference",
+      "rebuild_governance_lineage_edge",
+      "rebuild_governance_migration_batch",
+      "rebuild_governance_migration_item",
+      "rebuild_governance_model_engine",
+      "rebuild_governance_quality_alarm_policy",
+      "rebuild_governance_quality_exception",
+      "rebuild_governance_quality_report",
+      "rebuild_governance_quality_rule",
+      "rebuild_governance_quality_rule_definition",
+      "rebuild_governance_quality_run",
+      "rebuild_governance_quality_run_legacy_details",
+      "rebuild_governance_quality_task",
+      "rebuild_governance_quality_task_rule",
+      "rebuild_governance_semantic_metric",
+      "rebuild_governance_semantic_metric_dimension",
+      "rebuild_governance_semantic_metric_profile",
+      "rebuild_governance_semantic_metric_version",
+      "rebuild_governance_standard",
+      "rebuild_governance_standard_approval",
+      "rebuild_governance_standard_check_report",
+      "rebuild_governance_standard_code_set",
+      "rebuild_governance_standard_code_value",
+      "rebuild_governance_standard_element",
+      "rebuild_governance_standard_mapping",
+      "rebuild_governance_standard_naming_rule",
+      "rebuild_governance_tag",
+      "rebuild_governance_warehouse_layer",
+      "rebuild_governance_warehouse_model",
+      "rebuild_governance_warehouse_model_field",
+      "rebuild_governance_warehouse_model_relation",
+      "rebuild_governance_warehouse_model_relation_field",
+      "rebuild_governance_warehouse_model_version",
+      "rebuild_project",
+      "rebuild_project_datasource",
+      "rebuild_project_member",
+      "rebuild_schema_migration",
+      "rebuild_user"
+    ],
+    "other_tables_in_same_isolated_schema_not_inspected": [
+      "rebuild_project",
+      "rebuild_project_datasource",
+      "rebuild_project_member",
+      "rebuild_user"
+    ],
+    "timestamp_column_metadata": [
+      "rebuild_governance_asset\tcreated_at\tNO\tCURRENT_TIMESTAMP",
+      "rebuild_governance_asset\tupdated_at\tNO\tCURRENT_TIMESTAMP",
+      "rebuild_governance_asset_field\tcreated_at\tNO\tCURRENT_TIMESTAMP",
+      "rebuild_governance_asset_field\tupdated_at\tNO\tCURRENT_TIMESTAMP",
+      "rebuild_governance_asset_metadata_extension\tgenerated_at\tNO\tCURRENT_TIMESTAMP",
+      "rebuild_governance_asset_metadata_extension\tcreated_at\tNO\tCURRENT_TIMESTAMP",
+      "rebuild_governance_asset_metadata_extension\tupdated_at\tNO\tCURRENT_TIMESTAMP",
+      "rebuild_governance_asset_tag\tcreated_at\tNO\tCURRENT_TIMESTAMP",
+      "rebuild_governance_asset_tag\tupdated_at\tNO\tCURRENT_TIMESTAMP",
+      "rebuild_governance_audit_event\tgenerated_at\tNO\tCURRENT_TIMESTAMP",
+      "rebuild_governance_audit_event\tcreated_at\tNO\tCURRENT_TIMESTAMP",
+      "rebuild_governance_audit_event\tupdated_at\tNO\tCURRENT_TIMESTAMP",
+      "rebuild_governance_domain\tgenerated_at\tNO\tCURRENT_TIMESTAMP",
+      "rebuild_governance_domain\tcreated_at\tNO\tCURRENT_TIMESTAMP",
+      "rebuild_governance_domain\tupdated_at\tNO\tCURRENT_TIMESTAMP",
+      "rebuild_governance_legacy_identity_mapping\tgenerated_at\tNO\tCURRENT_TIMESTAMP",
+      "rebuild_governance_legacy_identity_mapping\tcreated_at\tNO\tCURRENT_TIMESTAMP",
+      "rebuild_governance_legacy_identity_mapping\tupdated_at\tNO\tCURRENT_TIMESTAMP",
+      "rebuild_governance_legacy_tag_definition\tgenerated_at\tNO\tCURRENT_TIMESTAMP",
+      "rebuild_governance_legacy_tag_definition\tcreated_at\tNO\tCURRENT_TIMESTAMP",
+      "rebuild_governance_legacy_tag_definition\tupdated_at\tNO\tCURRENT_TIMESTAMP",
+      "rebuild_governance_legacy_tag_reference\tgenerated_at\tNO\tCURRENT_TIMESTAMP",
+      "rebuild_governance_legacy_tag_reference\tcreated_at\tNO\tCURRENT_TIMESTAMP",
+      "rebuild_governance_legacy_tag_reference\tupdated_at\tNO\tCURRENT_TIMESTAMP",
+      "rebuild_governance_lineage_edge\tcreated_at\tNO\tCURRENT_TIMESTAMP",
+      "rebuild_governance_lineage_edge\tupdated_at\tNO\tCURRENT_TIMESTAMP",
+      "rebuild_governance_migration_batch\tgenerated_at\tNO\tCURRENT_TIMESTAMP",
+      "rebuild_governance_migration_batch\tcreated_at\tNO\tCURRENT_TIMESTAMP",
+      "rebuild_governance_migration_batch\tupdated_at\tNO\tCURRENT_TIMESTAMP",
+      "rebuild_governance_migration_item\tgenerated_at\tNO\tCURRENT_TIMESTAMP",
+      "rebuild_governance_migration_item\tcreated_at\tNO\tCURRENT_TIMESTAMP",
+      "rebuild_governance_migration_item\tupdated_at\tNO\tCURRENT_TIMESTAMP",
+      "rebuild_governance_model_engine\tgenerated_at\tNO\tCURRENT_TIMESTAMP",
+      "rebuild_governance_model_engine\tcreated_at\tNO\tCURRENT_TIMESTAMP",
+      "rebuild_governance_model_engine\tupdated_at\tNO\tCURRENT_TIMESTAMP",
+      "rebuild_governance_quality_alarm_policy\tgenerated_at\tNO\tCURRENT_TIMESTAMP",
+      "rebuild_governance_quality_alarm_policy\tcreated_at\tNO\tCURRENT_TIMESTAMP",
+      "rebuild_governance_quality_alarm_policy\tupdated_at\tNO\tCURRENT_TIMESTAMP",
+      "rebuild_governance_quality_exception\tgenerated_at\tNO\tCURRENT_TIMESTAMP",
+      "rebuild_governance_quality_exception\tcreated_at\tNO\tCURRENT_TIMESTAMP",
+      "rebuild_governance_quality_exception\tupdated_at\tNO\tCURRENT_TIMESTAMP",
+      "rebuild_governance_quality_report\tgenerated_at\tNO\tCURRENT_TIMESTAMP",
+      "rebuild_governance_quality_report\tcreated_at\tNO\tCURRENT_TIMESTAMP",
+      "rebuild_governance_quality_report\tupdated_at\tNO\tCURRENT_TIMESTAMP",
+      "rebuild_governance_quality_rule\tcreated_at\tNO\tCURRENT_TIMESTAMP",
+      "rebuild_governance_quality_rule\tupdated_at\tNO\tCURRENT_TIMESTAMP",
+      "rebuild_governance_quality_rule_definition\tgenerated_at\tNO\tCURRENT_TIMESTAMP",
+      "rebuild_governance_quality_rule_definition\tcreated_at\tNO\tCURRENT_TIMESTAMP",
+      "rebuild_governance_quality_rule_definition\tupdated_at\tNO\tCURRENT_TIMESTAMP",
+      "rebuild_governance_quality_run\tgenerated_at\tNO\tCURRENT_TIMESTAMP",
+      "rebuild_governance_quality_run\tcreated_at\tNO\tCURRENT_TIMESTAMP",
+      "rebuild_governance_quality_run\tupdated_at\tNO\tCURRENT_TIMESTAMP",
+      "rebuild_governance_quality_run_legacy_details\tstarted_at\tYES\t<NULL>",
+      "rebuild_governance_quality_run_legacy_details\tfinished_at\tYES\t<NULL>",
+      "rebuild_governance_quality_run_legacy_details\tgenerated_at\tNO\tCURRENT_TIMESTAMP",
+      "rebuild_governance_quality_run_legacy_details\tcreated_at\tNO\tCURRENT_TIMESTAMP",
+      "rebuild_governance_quality_run_legacy_details\tupdated_at\tNO\tCURRENT_TIMESTAMP",
+      "rebuild_governance_quality_task\tgenerated_at\tNO\tCURRENT_TIMESTAMP",
+      "rebuild_governance_quality_task\tcreated_at\tNO\tCURRENT_TIMESTAMP",
+      "rebuild_governance_quality_task\tupdated_at\tNO\tCURRENT_TIMESTAMP",
+      "rebuild_governance_quality_task_rule\tgenerated_at\tNO\tCURRENT_TIMESTAMP",
+      "rebuild_governance_quality_task_rule\tcreated_at\tNO\tCURRENT_TIMESTAMP",
+      "rebuild_governance_quality_task_rule\tupdated_at\tNO\tCURRENT_TIMESTAMP",
+      "rebuild_governance_semantic_metric\tcreated_at\tNO\tCURRENT_TIMESTAMP",
+      "rebuild_governance_semantic_metric\tupdated_at\tNO\tCURRENT_TIMESTAMP",
+      "rebuild_governance_semantic_metric_dimension\tgenerated_at\tNO\tCURRENT_TIMESTAMP",
+      "rebuild_governance_semantic_metric_dimension\tcreated_at\tNO\tCURRENT_TIMESTAMP",
+      "rebuild_governance_semantic_metric_dimension\tupdated_at\tNO\tCURRENT_TIMESTAMP",
+      "rebuild_governance_semantic_metric_profile\tgenerated_at\tNO\tCURRENT_TIMESTAMP",
+      "rebuild_governance_semantic_metric_profile\tcreated_at\tNO\tCURRENT_TIMESTAMP",
+      "rebuild_governance_semantic_metric_profile\tupdated_at\tNO\tCURRENT_TIMESTAMP",
+      "rebuild_governance_semantic_metric_version\tgenerated_at\tNO\tCURRENT_TIMESTAMP",
+      "rebuild_governance_semantic_metric_version\tcreated_at\tNO\tCURRENT_TIMESTAMP",
+      "rebuild_governance_semantic_metric_version\tupdated_at\tNO\tCURRENT_TIMESTAMP",
+      "rebuild_governance_standard\tcreated_at\tNO\tCURRENT_TIMESTAMP",
+      "rebuild_governance_standard\tupdated_at\tNO\tCURRENT_TIMESTAMP",
+      "rebuild_governance_standard_approval\tgenerated_at\tNO\tCURRENT_TIMESTAMP",
+      "rebuild_governance_standard_approval\tcreated_at\tNO\tCURRENT_TIMESTAMP",
+      "rebuild_governance_standard_approval\tupdated_at\tNO\tCURRENT_TIMESTAMP",
+      "rebuild_governance_standard_check_report\tgenerated_at\tNO\tCURRENT_TIMESTAMP",
+      "rebuild_governance_standard_check_report\tcreated_at\tNO\tCURRENT_TIMESTAMP",
+      "rebuild_governance_standard_check_report\tupdated_at\tNO\tCURRENT_TIMESTAMP",
+      "rebuild_governance_standard_code_set\tgenerated_at\tNO\tCURRENT_TIMESTAMP",
+      "rebuild_governance_standard_code_set\tcreated_at\tNO\tCURRENT_TIMESTAMP",
+      "rebuild_governance_standard_code_set\tupdated_at\tNO\tCURRENT_TIMESTAMP",
+      "rebuild_governance_standard_code_value\tgenerated_at\tNO\tCURRENT_TIMESTAMP",
+      "rebuild_governance_standard_code_value\tcreated_at\tNO\tCURRENT_TIMESTAMP",
+      "rebuild_governance_standard_code_value\tupdated_at\tNO\tCURRENT_TIMESTAMP",
+      "rebuild_governance_standard_element\tgenerated_at\tNO\tCURRENT_TIMESTAMP",
+      "rebuild_governance_standard_element\tcreated_at\tNO\tCURRENT_TIMESTAMP",
+      "rebuild_governance_standard_element\tupdated_at\tNO\tCURRENT_TIMESTAMP",
+      "rebuild_governance_standard_mapping\tgenerated_at\tNO\tCURRENT_TIMESTAMP",
+      "rebuild_governance_standard_mapping\tcreated_at\tNO\tCURRENT_TIMESTAMP",
+      "rebuild_governance_standard_mapping\tupdated_at\tNO\tCURRENT_TIMESTAMP",
+      "rebuild_governance_standard_naming_rule\tgenerated_at\tNO\tCURRENT_TIMESTAMP",
+      "rebuild_governance_standard_naming_rule\tcreated_at\tNO\tCURRENT_TIMESTAMP",
+      "rebuild_governance_standard_naming_rule\tupdated_at\tNO\tCURRENT_TIMESTAMP",
+      "rebuild_governance_tag\tcreated_at\tNO\tCURRENT_TIMESTAMP",
+      "rebuild_governance_tag\tupdated_at\tNO\tCURRENT_TIMESTAMP",
+      "rebuild_governance_warehouse_layer\tgenerated_at\tNO\tCURRENT_TIMESTAMP",
+      "rebuild_governance_warehouse_layer\tcreated_at\tNO\tCURRENT_TIMESTAMP",
+      "rebuild_governance_warehouse_layer\tupdated_at\tNO\tCURRENT_TIMESTAMP",
+      "rebuild_governance_warehouse_model\tgenerated_at\tNO\tCURRENT_TIMESTAMP",
+      "rebuild_governance_warehouse_model\tcreated_at\tNO\tCURRENT_TIMESTAMP",
+      "rebuild_governance_warehouse_model\tupdated_at\tNO\tCURRENT_TIMESTAMP",
+      "rebuild_governance_warehouse_model_field\tgenerated_at\tNO\tCURRENT_TIMESTAMP",
+      "rebuild_governance_warehouse_model_field\tcreated_at\tNO\tCURRENT_TIMESTAMP",
+      "rebuild_governance_warehouse_model_field\tupdated_at\tNO\tCURRENT_TIMESTAMP",
+      "rebuild_governance_warehouse_model_relation\tgenerated_at\tNO\tCURRENT_TIMESTAMP",
+      "rebuild_governance_warehouse_model_relation\tcreated_at\tNO\tCURRENT_TIMESTAMP",
+      "rebuild_governance_warehouse_model_relation\tupdated_at\tNO\tCURRENT_TIMESTAMP",
+      "rebuild_governance_warehouse_model_relation_field\tgenerated_at\tNO\tCURRENT_TIMESTAMP",
+      "rebuild_governance_warehouse_model_relation_field\tcreated_at\tNO\tCURRENT_TIMESTAMP",
+      "rebuild_governance_warehouse_model_relation_field\tupdated_at\tNO\tCURRENT_TIMESTAMP",
+      "rebuild_governance_warehouse_model_version\tgenerated_at\tNO\tCURRENT_TIMESTAMP",
+      "rebuild_governance_warehouse_model_version\tcreated_at\tNO\tCURRENT_TIMESTAMP",
+      "rebuild_governance_warehouse_model_version\tupdated_at\tNO\tCURRENT_TIMESTAMP",
+      "rebuild_project\tcreated_at\tNO\t<NULL>",
+      "rebuild_project\tupdated_at\tNO\t<NULL>",
+      "rebuild_project_datasource\tcreated_at\tNO\t<NULL>",
+      "rebuild_project_datasource\tupdated_at\tNO\t<NULL>",
+      "rebuild_project_member\tcreated_at\tNO\t<NULL>",
+      "rebuild_project_member\tupdated_at\tNO\t<NULL>",
+      "rebuild_schema_migration\tstarted_at\tNO\tCURRENT_TIMESTAMP",
+      "rebuild_schema_migration\tfinished_at\tYES\t<NULL>",
+      "rebuild_schema_migration\tgenerated_at\tNO\tCURRENT_TIMESTAMP",
+      "rebuild_schema_migration\tcreated_at\tNO\tCURRENT_TIMESTAMP",
+      "rebuild_schema_migration\tupdated_at\tNO\tCURRENT_TIMESTAMP",
+      "rebuild_user\tcreated_at\tYES\t<NULL>",
+      "rebuild_user\tupdated_at\tYES\t<NULL>"
+    ],
+    "row_and_null_timestamp_counts": [
+      {
+        "table": "rebuild_governance_asset",
+        "rows": 15,
+        "null_timestamp_counts": {
+          "created_at": 0,
+          "updated_at": 0
+        }
+      },
+      {
+        "table": "rebuild_governance_asset_field",
+        "rows": 30,
+        "null_timestamp_counts": {
+          "created_at": 0,
+          "updated_at": 0
+        }
+      },
+      {
+        "table": "rebuild_governance_asset_metadata_extension",
+        "rows": 0,
+        "null_timestamp_counts": {
+          "created_at": 0,
+          "updated_at": 0,
+          "generated_at": 0
+        }
+      },
+      {
+        "table": "rebuild_governance_asset_tag",
+        "rows": 7,
+        "null_timestamp_counts": {
+          "created_at": 0,
+          "updated_at": 0
+        }
+      },
+      {
+        "table": "rebuild_governance_audit_event",
+        "rows": 45,
+        "null_timestamp_counts": {
+          "created_at": 0,
+          "updated_at": 0,
+          "generated_at": 0
+        }
+      },
+      {
+        "table": "rebuild_governance_domain",
+        "rows": 0,
+        "null_timestamp_counts": {
+          "created_at": 0,
+          "updated_at": 0,
+          "generated_at": 0
+        }
+      },
+      {
+        "table": "rebuild_governance_legacy_identity_mapping",
+        "rows": 0,
+        "null_timestamp_counts": {
+          "created_at": 0,
+          "updated_at": 0,
+          "generated_at": 0
+        }
+      },
+      {
+        "table": "rebuild_governance_legacy_tag_definition",
+        "rows": 0,
+        "null_timestamp_counts": {
+          "created_at": 0,
+          "updated_at": 0,
+          "generated_at": 0
+        }
+      },
+      {
+        "table": "rebuild_governance_legacy_tag_reference",
+        "rows": 0,
+        "null_timestamp_counts": {
+          "created_at": 0,
+          "updated_at": 0,
+          "generated_at": 0
+        }
+      },
+      {
+        "table": "rebuild_governance_lineage_edge",
+        "rows": 6,
+        "null_timestamp_counts": {
+          "created_at": 0,
+          "updated_at": 0
+        }
+      },
+      {
+        "table": "rebuild_governance_migration_batch",
+        "rows": 0,
+        "null_timestamp_counts": {
+          "created_at": 0,
+          "updated_at": 0,
+          "generated_at": 0
+        }
+      },
+      {
+        "table": "rebuild_governance_migration_item",
+        "rows": 0,
+        "null_timestamp_counts": {
+          "created_at": 0,
+          "updated_at": 0,
+          "generated_at": 0
+        }
+      },
+      {
+        "table": "rebuild_governance_model_engine",
+        "rows": 0,
+        "null_timestamp_counts": {
+          "created_at": 0,
+          "updated_at": 0,
+          "generated_at": 0
+        }
+      },
+      {
+        "table": "rebuild_governance_quality_alarm_policy",
+        "rows": 0,
+        "null_timestamp_counts": {
+          "created_at": 0,
+          "updated_at": 0,
+          "generated_at": 0
+        }
+      },
+      {
+        "table": "rebuild_governance_quality_exception",
+        "rows": 0,
+        "null_timestamp_counts": {
+          "created_at": 0,
+          "updated_at": 0,
+          "generated_at": 0
+        }
+      },
+      {
+        "table": "rebuild_governance_quality_report",
+        "rows": 0,
+        "null_timestamp_counts": {
+          "created_at": 0,
+          "updated_at": 0,
+          "generated_at": 0
+        }
+      },
+      {
+        "table": "rebuild_governance_quality_rule",
+        "rows": 7,
+        "null_timestamp_counts": {
+          "created_at": 0,
+          "updated_at": 0
+        }
+      },
+      {
+        "table": "rebuild_governance_quality_rule_definition",
+        "rows": 0,
+        "null_timestamp_counts": {
+          "created_at": 0,
+          "updated_at": 0,
+          "generated_at": 0
+        }
+      },
+      {
+        "table": "rebuild_governance_quality_run",
+        "rows": 0,
+        "null_timestamp_counts": {
+          "created_at": 0,
+          "updated_at": 0,
+          "generated_at": 0
+        }
+      },
+      {
+        "table": "rebuild_governance_quality_run_legacy_details",
+        "rows": 0,
+        "null_timestamp_counts": {
+          "created_at": 0,
+          "updated_at": 0,
+          "generated_at": 0
+        }
+      },
+      {
+        "table": "rebuild_governance_quality_task",
+        "rows": 0,
+        "null_timestamp_counts": {
+          "created_at": 0,
+          "updated_at": 0,
+          "generated_at": 0
+        }
+      },
+      {
+        "table": "rebuild_governance_quality_task_rule",
+        "rows": 0,
+        "null_timestamp_counts": {
+          "created_at": 0,
+          "updated_at": 0,
+          "generated_at": 0
+        }
+      },
+      {
+        "table": "rebuild_governance_semantic_metric",
+        "rows": 5,
+        "null_timestamp_counts": {
+          "created_at": 0,
+          "updated_at": 0
+        }
+      },
+      {
+        "table": "rebuild_governance_semantic_metric_dimension",
+        "rows": 0,
+        "null_timestamp_counts": {
+          "created_at": 0,
+          "updated_at": 0,
+          "generated_at": 0
+        }
+      },
+      {
+        "table": "rebuild_governance_semantic_metric_profile",
+        "rows": 0,
+        "null_timestamp_counts": {
+          "created_at": 0,
+          "updated_at": 0,
+          "generated_at": 0
+        }
+      },
+      {
+        "table": "rebuild_governance_semantic_metric_version",
+        "rows": 0,
+        "null_timestamp_counts": {
+          "created_at": 0,
+          "updated_at": 0,
+          "generated_at": 0
+        }
+      },
+      {
+        "table": "rebuild_governance_standard",
+        "rows": 5,
+        "null_timestamp_counts": {
+          "created_at": 0,
+          "updated_at": 0
+        }
+      },
+      {
+        "table": "rebuild_governance_standard_approval",
+        "rows": 0,
+        "null_timestamp_counts": {
+          "created_at": 0,
+          "updated_at": 0,
+          "generated_at": 0
+        }
+      },
+      {
+        "table": "rebuild_governance_standard_check_report",
+        "rows": 0,
+        "null_timestamp_counts": {
+          "created_at": 0,
+          "updated_at": 0,
+          "generated_at": 0
+        }
+      },
+      {
+        "table": "rebuild_governance_standard_code_set",
+        "rows": 0,
+        "null_timestamp_counts": {
+          "created_at": 0,
+          "updated_at": 0,
+          "generated_at": 0
+        }
+      },
+      {
+        "table": "rebuild_governance_standard_code_value",
+        "rows": 0,
+        "null_timestamp_counts": {
+          "created_at": 0,
+          "updated_at": 0,
+          "generated_at": 0
+        }
+      },
+      {
+        "table": "rebuild_governance_standard_element",
+        "rows": 0,
+        "null_timestamp_counts": {
+          "created_at": 0,
+          "updated_at": 0,
+          "generated_at": 0
+        }
+      },
+      {
+        "table": "rebuild_governance_standard_mapping",
+        "rows": 0,
+        "null_timestamp_counts": {
+          "created_at": 0,
+          "updated_at": 0,
+          "generated_at": 0
+        }
+      },
+      {
+        "table": "rebuild_governance_standard_naming_rule",
+        "rows": 0,
+        "null_timestamp_counts": {
+          "created_at": 0,
+          "updated_at": 0,
+          "generated_at": 0
+        }
+      },
+      {
+        "table": "rebuild_governance_tag",
+        "rows": 7,
+        "null_timestamp_counts": {
+          "created_at": 0,
+          "updated_at": 0
+        }
+      },
+      {
+        "table": "rebuild_governance_warehouse_layer",
+        "rows": 0,
+        "null_timestamp_counts": {
+          "created_at": 0,
+          "updated_at": 0,
+          "generated_at": 0
+        }
+      },
+      {
+        "table": "rebuild_governance_warehouse_model",
+        "rows": 0,
+        "null_timestamp_counts": {
+          "created_at": 0,
+          "updated_at": 0,
+          "generated_at": 0
+        }
+      },
+      {
+        "table": "rebuild_governance_warehouse_model_field",
+        "rows": 0,
+        "null_timestamp_counts": {
+          "created_at": 0,
+          "updated_at": 0,
+          "generated_at": 0
+        }
+      },
+      {
+        "table": "rebuild_governance_warehouse_model_relation",
+        "rows": 0,
+        "null_timestamp_counts": {
+          "created_at": 0,
+          "updated_at": 0,
+          "generated_at": 0
+        }
+      },
+      {
+        "table": "rebuild_governance_warehouse_model_relation_field",
+        "rows": 0,
+        "null_timestamp_counts": {
+          "created_at": 0,
+          "updated_at": 0,
+          "generated_at": 0
+        }
+      },
+      {
+        "table": "rebuild_governance_warehouse_model_version",
+        "rows": 0,
+        "null_timestamp_counts": {
+          "created_at": 0,
+          "updated_at": 0,
+          "generated_at": 0
+        }
+      },
+      {
+        "table": "rebuild_schema_migration",
+        "rows": 2,
+        "null_timestamp_counts": {
+          "created_at": 0,
+          "updated_at": 0,
+          "generated_at": 0
+        }
+      }
+    ],
+    "migration_records": [
+      "r3_0001_governance_catalog\t4fdfd619453f4784b28da8f95551df1a48913ada99ca7fc461ed8f333bc5b897\tcompleted\t1\t2026-10-14 18:54:40\t2026-10-14 18:54:44",
+      "r3_0002_legacy_governance_carryforward\t9d5359d2926f5e407df05a4e07f9f1c7a3c2d35ca6a08221181d9faf2efd0e93\tcompleted\t1\t2026-10-15 01:22:24\t2026-10-15 01:23:01"
+    ],
+    "existing_assets": [
+      "10\tr3v_20261014112022_4fc8a6_orders_src\t<NULL>\t2026-10-14 19:20:23",
+      "11\tr3v_20261014112022_4fc8a6_orders_dw\t<NULL>\t2026-10-14 19:20:23"
+    ],
+    "audit_events": [
+      "31\t2026-10-14 19:20:25\tmetric.create\tmetric\t3",
+      "30\t2026-10-14 19:20:25\tstandard.create\tstandard\t5",
+      "29\t2026-10-14 19:20:24\tlineage.create\tlineage_edge\t4",
+      "28\t2026-10-14 19:20:24\tquality_rule.create\tquality_rule\t5",
+      "27\t2026-10-14 19:20:24\ttag.create_and_attach\ttag\t5",
+      "26\t2026-10-14 19:20:23\tasset.create\tasset\t11",
+      "25\t2026-10-14 19:20:23\tasset.create\tasset\t10",
+      "24\t2026-10-14 19:19:20\tmetric.create\tmetric\t2",
+      "23\t2026-10-14 19:19:19\tstandard.create\tstandard\t3",
+      "22\t2026-10-14 19:19:18\tlineage.create\tlineage_edge\t3",
+      "21\t2026-10-14 19:19:18\tquality_rule.create\tquality_rule\t4",
+      "20\t2026-10-14 19:19:18\ttag.create_and_attach\ttag\t4",
+      "19\t2026-10-14 19:19:17\tasset.create\tasset\t9",
+      "18\t2026-10-14 19:19:17\tasset.create\tasset\t8",
+      "17\t2026-10-14 19:18:28\tquality_rule.create\tquality_rule\t3",
+      "16\t2026-10-14 19:18:27\ttag.create_and_attach\ttag\t3",
+      "15\t2026-10-14 19:18:27\tasset.create\tasset\t7",
+      "14\t2026-10-14 19:18:27\tasset.create\tasset\t6",
+      "13\t2026-10-14 19:13:28\tmetric.create\tmetric\t1",
+      "12\t2026-10-14 19:13:28\tstandard.create\tstandard\t1",
+      "11\t2026-10-14 19:13:27\tlineage.create\tlineage_edge\t2",
+      "10\t2026-10-14 19:13:27\tquality_rule.create\tquality_rule\t2",
+      "9\t2026-10-14 19:13:27\ttag.create_and_attach\ttag\t2",
+      "8\t2026-10-14 19:13:26\tasset.create\tasset\t5",
+      "7\t2026-10-14 19:13:26\tasset.create\tasset\t4",
+      "6\t2026-10-14 19:11:42\tlineage.create\tlineage_edge\t1",
+      "5\t2026-10-14 19:11:41\tquality_rule.create\tquality_rule\t1",
+      "4\t2026-10-14 19:11:41\ttag.create_and_attach\ttag\t1",
+      "3\t2026-10-14 19:11:40\tasset.create\tasset\t3",
+      "2\t2026-10-14 19:11:40\tasset.create\tasset\t2",
+      "1\t2026-10-14 19:09:00\tasset.create\tasset\t1"
+    ],
+    "query_policy": "SELECT-only; database fixed to datara_rebuild_i0; no source or warehouse schemas queried"
+  },
+  "browser_version": "147.0.7727.15",
+  "table_snapshot": {
+    "project_label": "R3 governance validation R3V-20261014110900-fe0cee",
+    "summary": "共 11 项 · 每页 25 项",
+    "visible_rows": 11,
+    "assets": [
+      {
+        "id": 10,
+        "name": "R3V-20261014112022-4fc8a6 source orders\nods.r3v_20261014112022_4fc8a6_orders_src",
+        "row_count": "—",
+        "updated_at": "2026-10-14 19:20:23"
+      },
+      {
+        "id": 11,
+        "name": "R3V-20261014112022-4fc8a6 curated orders\nods.r3v_20261014112022_4fc8a6_orders_dw",
+        "row_count": "—",
+        "updated_at": "2026-10-14 19:20:23"
+      }
+    ]
+  },
+  "asset_detail": {
+    "id": 10,
+    "name": "R3V-20261014112022-4fc8a6 source orders",
+    "path": "mysql-src / ec_retail / ods · ID 10",
+    "overview": "来源系统\nmysql-src\n数据库\nec_retail\nSchema\nods\n对象类型\ntable\n负责人\ndata-engineering\n业务域\nr3-validation\n数据行数\n—\n最后更新\n2026-10-14 19:20:23\n业务标签\n暂未关联标签"
+  },
+  "audit_snapshot": {
+    "total": 31,
+    "visible_count": 31,
+    "rows": [
+      {
+        "generated_at": "2026-10-14 19:20:25",
+        "action": "metric.create",
+        "resource": "metric #3"
+      },
+      {
+        "generated_at": "2026-10-14 19:20:25",
+        "action": "standard.create",
+        "resource": "standard #5"
+      },
+      {
+        "generated_at": "2026-10-14 19:20:24",
+        "action": "lineage.create",
+        "resource": "lineage_edge #4"
+      },
+      {
+        "generated_at": "2026-10-14 19:20:24",
+        "action": "quality_rule.create",
+        "resource": "quality_rule #5"
+      },
+      {
+        "generated_at": "2026-10-14 19:20:24",
+        "action": "tag.create_and_attach",
+        "resource": "tag #5"
+      },
+      {
+        "generated_at": "2026-10-14 19:20:23",
+        "action": "asset.create",
+        "resource": "asset #11"
+      },
+      {
+        "generated_at": "2026-10-14 19:20:23",
+        "action": "asset.create",
+        "resource": "asset #10"
+      },
+      {
+        "generated_at": "2026-10-14 19:19:20",
+        "action": "metric.create",
+        "resource": "metric #2"
+      },
+      {
+        "generated_at": "2026-10-14 19:19:19",
+        "action": "standard.create",
+        "resource": "standard #3"
+      },
+      {
+        "generated_at": "2026-10-14 19:19:18",
+        "action": "lineage.create",
+        "resource": "lineage_edge #3"
+      },
+      {
+        "generated_at": "2026-10-14 19:19:18",
+        "action": "quality_rule.create",
+        "resource": "quality_rule #4"
+      },
+      {
+        "generated_at": "2026-10-14 19:19:18",
+        "action": "tag.create_and_attach",
+        "resource": "tag #4"
+      },
+      {
+        "generated_at": "2026-10-14 19:19:17",
+        "action": "asset.create",
+        "resource": "asset #9"
+      },
+      {
+        "generated_at": "2026-10-14 19:19:17",
+        "action": "asset.create",
+        "resource": "asset #8"
+      },
+      {
+        "generated_at": "2026-10-14 19:18:28",
+        "action": "quality_rule.create",
+        "resource": "quality_rule #3"
+      },
+      {
+        "generated_at": "2026-10-14 19:18:27",
+        "action": "tag.create_and_attach",
+        "resource": "tag #3"
+      },
+      {
+        "generated_at": "2026-10-14 19:18:27",
+        "action": "asset.create",
+        "resource": "asset #7"
+      },
+      {
+        "generated_at": "2026-10-14 19:18:27",
+        "action": "asset.create",
+        "resource": "asset #6"
+      },
+      {
+        "generated_at": "2026-10-14 19:13:28",
+        "action": "metric.create",
+        "resource": "metric #1"
+      },
+      {
+        "generated_at": "2026-10-14 19:13:28",
+        "action": "standard.create",
+        "resource": "standard #1"
+      },
+      {
+        "generated_at": "2026-10-14 19:13:27",
+        "action": "lineage.create",
+        "resource": "lineage_edge #2"
+      },
+      {
+        "generated_at": "2026-10-14 19:13:27",
+        "action": "quality_rule.create",
+        "resource": "quality_rule #2"
+      },
+      {
+        "generated_at": "2026-10-14 19:13:27",
+        "action": "tag.create_and_attach",
+        "resource": "tag #2"
+      },
+      {
+        "generated_at": "2026-10-14 19:13:26",
+        "action": "asset.create",
+        "resource": "asset #5"
+      },
+      {
+        "generated_at": "2026-10-14 19:13:26",
+        "action": "asset.create",
+        "resource": "asset #4"
+      },
+      {
+        "generated_at": "2026-10-14 19:11:42",
+        "action": "lineage.create",
+        "resource": "lineage_edge #1"
+      },
+      {
+        "generated_at": "2026-10-14 19:11:41",
+        "action": "quality_rule.create",
+        "resource": "quality_rule #1"
+      },
+      {
+        "generated_at": "2026-10-14 19:11:41",
+        "action": "tag.create_and_attach",
+        "resource": "tag #1"
+      },
+      {
+        "generated_at": "2026-10-14 19:11:40",
+        "action": "asset.create",
+        "resource": "asset #3"
+      },
+      {
+        "generated_at": "2026-10-14 19:11:40",
+        "action": "asset.create",
+        "resource": "asset #2"
+      },
+      {
+        "generated_at": "2026-10-14 19:09:00",
+        "action": "asset.create",
+        "resource": "asset #1"
+      }
+    ]
+  },
+  "page_requests": [
+    {
+      "method": "GET",
+      "path": "/projects"
+    },
+    {
+      "method": "GET",
+      "path": "/governance/projects/3/assets"
+    },
+    {
+      "method": "GET",
+      "path": "/governance/projects/3/standards"
+    },
+    {
+      "method": "GET",
+      "path": "/governance/projects/3/metrics"
+    },
+    {
+      "method": "GET",
+      "path": "/governance/projects/8/assets"
+    },
+    {
+      "method": "GET",
+      "path": "/governance/projects/8/standards"
+    },
+    {
+      "method": "GET",
+      "path": "/governance/projects/8/metrics"
+    },
+    {
+      "method": "GET",
+      "path": "/governance/assets/10"
+    },
+    {
+      "method": "GET",
+      "path": "/governance/projects/8/audit"
+    }
+  ]
+}

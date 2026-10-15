@@ -1,0 +1,32 @@
+{
+  "run_id": "r2-13-20261015174726",
+  "generated_at": "2026-10-15T17:47:26.529184+08:00",
+  "timezone": "Asia/Shanghai",
+  "url": "http://192.168.1.9:18091/rebuild-validation-r3.html",
+  "project_id": 8,
+  "expected_asset_ids": [
+    10,
+    11
+  ],
+  "browser": "Chromium via Playwright",
+  "token_source": "192.168.1.9 running rebuild-api environment over BatchMode SSH",
+  "actions": [],
+  "assertions": [],
+  "responses": [
+    {
+      "method": "POST",
+      "status": 200,
+      "path": "/api/v1/rebuild/validation-token"
+    }
+  ],
+  "page_errors": [],
+  "console_errors": [],
+  "failed_requests": [],
+  "screenshot": null,
+  "result": "FAIL",
+  "mutation_policy": "Only POST /api/v1/rebuild/validation-token is allowed; all page requests must be GET.",
+  "notes": [
+    "The key and short-lived token are excluded from this report, URL, page storage, and screenshot."
+  ],
+  "failure": "RuntimeError: isolated schema contains an unexpected non-rebuild table; refusing further inspection"
+}

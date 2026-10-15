@@ -1,0 +1,135 @@
+{
+  "run_id": "r2-12-a-20261015131733",
+  "generated_at": "2026-10-15T13:17:35.167552+08:00",
+  "timezone": "Asia/Shanghai",
+  "url": "http://192.168.1.9:18091/rebuild-validation-r2-12-a.html?projectId=15&otherProjectId=16",
+  "browser": "Chromium",
+  "browser_version": "147.0.7727.15",
+  "project_id": 15,
+  "isolation_project_id": 16,
+  "datasource_id": 2,
+  "actions": [
+    {
+      "action": "open isolated datasource page",
+      "project_id": 15
+    },
+    {
+      "action": "create datasource through form",
+      "http_status": 201
+    },
+    {
+      "action": "test saved datasource connection through row control",
+      "http_status": 200
+    },
+    {
+      "action": "edit datasource and preserve password when blank",
+      "http_status": 200
+    },
+    {
+      "action": "delete datasource created by this run",
+      "http_status": 200
+    }
+  ],
+  "assertions": [
+    {
+      "name": "validation-page-loaded",
+      "passed": true
+    },
+    {
+      "name": "preseeded-datasource-form",
+      "passed": true
+    },
+    {
+      "name": "datasource-visible-in-project-list",
+      "passed": true
+    },
+    {
+      "name": "saved-profile-read-only-probe-success",
+      "passed": true
+    },
+    {
+      "name": "datasource-update-control",
+      "passed": true
+    },
+    {
+      "name": "cross-project-datasource-isolation",
+      "passed": true
+    },
+    {
+      "name": "unauthenticated-request-denied",
+      "passed": true
+    },
+    {
+      "name": "fixture-datasource-cleaned-up",
+      "passed": true
+    }
+  ],
+  "responses": [
+    {
+      "method": "GET",
+      "status": 200,
+      "path": "/projects/15/datasources"
+    },
+    {
+      "method": "POST",
+      "status": 201,
+      "path": "/projects/15/datasources"
+    },
+    {
+      "method": "GET",
+      "status": 200,
+      "path": "/projects/15/datasources"
+    },
+    {
+      "method": "POST",
+      "status": 200,
+      "path": "/projects/15/datasources/2/test"
+    },
+    {
+      "method": "PUT",
+      "status": 200,
+      "path": "/projects/15/datasources/2"
+    },
+    {
+      "method": "GET",
+      "status": 200,
+      "path": "/projects/15/datasources"
+    },
+    {
+      "method": "GET",
+      "status": 404,
+      "path": "/projects/16/datasources/2"
+    },
+    {
+      "method": "GET",
+      "status": 401,
+      "path": "/projects/15/datasources"
+    },
+    {
+      "method": "DELETE",
+      "status": 200,
+      "path": "/projects/15/datasources/2"
+    },
+    {
+      "method": "GET",
+      "status": 200,
+      "path": "/projects/15/datasources"
+    }
+  ],
+  "page_errors": [],
+  "console_errors": [
+    "Failed to load resource: the server responded with a status of 404 (Not Found)",
+    "Failed to load resource: the server responded with a status of 401 (Unauthorized)"
+  ],
+  "expected_console_errors": [
+    "Failed to load resource: the server responded with a status of 404 (Not Found)",
+    "Failed to load resource: the server responded with a status of 401 (Unauthorized)"
+  ],
+  "unexpected_console_errors": [],
+  "failed_requests": [],
+  "screenshot": "r2-12-a-20261015131733.png",
+  "result": "PASS",
+  "notes": [
+    "Validation key, token, datasource credentials, and connection URL are intentionally excluded."
+  ]
+}

@@ -1,0 +1,114 @@
+{
+  "run_id": "R3S9I20-20261014234555-81aafa",
+  "started_at": "2026-10-14T23:45:55.661Z",
+  "timezone": "Asia/Shanghai",
+  "url": "http://192.168.1.9:18091/rebuild-validation-r3-s9-i20.html",
+  "browser": "chromium 153.0.4234.32",
+  "project_id": 3,
+  "actions": [
+    {
+      "name": "select-project-in-page",
+      "project_id": 3,
+      "at": "2026-10-14T23:45:56.486Z"
+    },
+    {
+      "name": "click-i20-read-only-mapping-preview",
+      "at": "2026-10-14T23:45:56.522Z"
+    }
+  ],
+  "checks": [
+    {
+      "name": "protected-runner-token-exchange",
+      "pass": true,
+      "http_status": 200
+    },
+    {
+      "name": "validation-page-loaded",
+      "pass": true,
+      "http_status": 200
+    },
+    {
+      "name": "authorized-project-prefilled",
+      "pass": true,
+      "available_projects": 12
+    },
+    {
+      "name": "i20-preview-api-succeeded",
+      "pass": true,
+      "status": 200
+    },
+    {
+      "name": "both-i20-source-tables-rendered",
+      "pass": true,
+      "source_table_rows": 2,
+      "source_counts": {
+        "t_indicator": 0,
+        "t_indicator_version": 0
+      }
+    },
+    {
+      "name": "counts-and-mapping-rendered",
+      "pass": true,
+      "stats": [
+        "0",
+        "0",
+        "0",
+        "0"
+      ],
+      "preview_rows": 1
+    },
+    {
+      "name": "no-parity-or-import-authorization",
+      "pass": true,
+      "parity_verified": false,
+      "import_enabled": false
+    },
+    {
+      "name": "response-excludes-business-payload",
+      "pass": true
+    },
+    {
+      "name": "read-only-boundary-visible",
+      "pass": true,
+      "import_controls": 0
+    },
+    {
+      "name": "no-browser-errors",
+      "pass": true,
+      "error_count": 0
+    }
+  ],
+  "relevant_responses": [
+    {
+      "name": "project-list",
+      "status": 200
+    },
+    {
+      "name": "i20-mapping-preview",
+      "status": 200,
+      "source_schema": "datara_meta",
+      "source_counts": {
+        "t_indicator": 0,
+        "t_indicator_version": 0
+      },
+      "target_counts": {
+        "t_indicator": 0,
+        "t_indicator_version": 0
+      },
+      "preview_counts": {
+        "new_identity_candidate": 0,
+        "target_identity_match": 0,
+        "blocked": 0
+      },
+      "parity_verified": false,
+      "import_enabled": false,
+      "business_values_absent": true,
+      "payload_columns_absent": true
+    }
+  ],
+  "errors": [],
+  "outcome": "PASS",
+  "secrets_recorded": false,
+  "source_payload_recorded": false,
+  "target_writes_authorized": false
+}

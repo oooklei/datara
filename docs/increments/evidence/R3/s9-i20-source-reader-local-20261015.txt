@@ -1,0 +1,28 @@
+# R3-S9 I20 legacy source reader local evidence
+
+- Generated at: 2026-10-15 (Asia/Shanghai; local verification run)
+- Worktree: `D:\需求\数据治理工具\Datara\.worktrees\r3-s9`
+- Baseline commit: `23cc06f` (I19 read-only source snapshots)
+- Scope: fixed-column I20 read-only snapshot contract for `t_indicator` and `t_indicator_version` only.
+- Source-field basis: retained legacy `Indicator` and `IndicatorVersion` ORM declarations. This does not attest the current remote MySQL schema.
+- Earlier S8 snapshot had 0 rows in both I20 tables. This work did not reconnect to or query the legacy database.
+- Payload boundary: `dims` and `snapshot_json` remain raw source values; no JSON interpretation, identifier inference, normalization, mapper, importer, API, or target write was added.
+
+## Verification
+
+- TDD RED: I20 reader symbols were absent before implementation.
+- `pytest tests/rebuild/test_governance_legacy_i20_source_reader.py -q`: 7 passed.
+- I18-I20 reader regression: `pytest tests/rebuild/test_governance_legacy_source_reader.py tests/rebuild/test_governance_legacy_i19_source_reader.py tests/rebuild/test_governance_legacy_i20_source_reader.py -q`: 18 passed.
+- `pytest tests -q`: 657 passed in 67.09s.
+- `ruff check rebuild/governance/legacy_source_reader.py tests/rebuild/test_governance_legacy_i20_source_reader.py`: passed.
+- `python -m compileall -q rebuild/governance/legacy_source_reader.py tests/rebuild/test_governance_legacy_i20_source_reader.py`: passed.
+- `git diff --check`: passed.
+
+The contract tests cover fixed-column selection, keyset pagination, read-only SQLite query enforcement, raw payload preservation, empty and non-empty snapshots, stable content digest independent of capture time, content-sensitive digest, missing-column failure, total-row-limit failure, invalid limits, timezone-aware capture time, explicit SQLite test mode, and exact legacy-schema guard.
+
+## Explicitly not verified or performed
+
+- No legacy or target MySQL connection, source schema preflight/query, deployment, container/middleware/resource/log verification.
+- No I20 mapper/importer/API/UI, target snapshot, data write, or parity claim.
+- No browser-use/Playwright or frontend-control closure.
+- This is `LOCAL_SUBSTEP_PASS / INTEGRATION_GATE_PENDING`, not formal I20 or R3-S9 acceptance.

@@ -1,0 +1,43 @@
+R3-S9 I21 quality-governance project-scoped mapping-preview evidence
+Date: 2026-10-15 Asia/Shanghai
+Validation URL: http://192.168.1.9:18091/rebuild-validation-r3-s9-i21.html
+API: isolated datara-rebuild-api; web validation port 18091
+
+Identity and database boundaries
+- The business system account is `admin`, as confirmed by the user. The isolated page does not ask for a human login; its runner exchanges the configured protected validation key for the existing short-lived `validation-runner` DEV token. This does not impersonate or grant the business admin role.
+- The legacy MySQL account is root and its configured database is `datara_meta`; the target database is the isolated `datara_rebuild_i0`. Connection strings, passwords, tokens, hosts, and raw source payloads were not recorded.
+- The API source bind mount is read-only inside the container. I21 reader uses six fixed tables/columns and a READ ONLY transaction; the target preview uses the isolated target schema, project-scoped SELECTs and a READ ONLY transaction. No source or target DDL/DML/import was authorized or executed.
+
+Preflight, backup, and deployment
+- Before deployment: API and MySQL containers healthy; web container running; `REBUILD_LEGACY_META_URL` was present (value not printed); safe URL parsing confirmed `root@datara_meta` and target `datara_rebuild_i0`.
+- Existing I20 baseline hashes of `rebuild/api/app.py` and `rebuild/governance/api.py` matched the worktree's committed preimage. I21 mapping module and preview service were absent remotely; the I21 static file was absent from web dist (the URL returned the SPA fallback before deployment).
+- Staging: `/lei/datara/rebuild-source/staging/r3-s9-i21-20261015T001830Z/`.
+- Rollback backup: `/lei/datara/rebuild-source/backups/r3-s9-i21-20261015T001830Z/`; preimage copies of `rebuild/api/app.py` and `rebuild/governance/api.py` were retained. I21 preview, I21 mapper, and I21 page were recorded as absent preimages.
+- A final relationship review found that I21 task matching also needed to verify normalized task-rule edges. The preview builder and page were corrected before closing; the second rollout backed up their first deployed versions to `/lei/datara/rebuild-source/backups/r3-s9-i21-linkcheck-20261015T002804Z/` and staged them under `/lei/datara/rebuild-source/staging/r3-s9-i21-linkcheck-20261015T002804Z/`. Only the I21 preview builder/page were replaced and only `datara-rebuild-api` was restarted again.
+- Staged SHA-256 matched the worktree for all five delivered files. Container import preflight succeeded, registering I21 while preserving I18 dry-run and I19/I20/I22/I23 routes. Only `datara-rebuild-api` was restarted; no Web/API form or compose configuration was rebuilt.
+- Post-restart: `datara-rebuild-api` running/healthy, `datara-web` running, `datara-mysql-meta` healthy; rebuild health endpoint returned `ok`; OpenAPI had all I18-I23 routes; I21 page returned HTTP 200 and its expected title. API ERROR/Traceback marker count in the verification interval: 0.
+
+Local verification
+- Full backend suite after the relationship check: `rtk pytest tests -q` -> 748 passed.
+- Changed Backend files: Ruff passed; `compileall` passed.
+- I18-I23 and governance isolated validation-page contracts: 19 passed.
+- I21 Playwright runner `node --check` passed; `git diff --check` passed.
+- Broad Backend `rtk ruff check .` still reports 130 pre-existing violations in nine legacy files (`ind.py`, `meta.py`, `model.py`, `auth.py`, `sqlparser.py`, and legacy tests); none are in the changed I21 Backend files. No unrelated cleanup was included.
+
+Browser verification
+- Browser-use attempt 1 timed out at 30 seconds; one bounded retry timed out at 45 seconds. The approved fallback then drove the same URL/port with Playwright (not an API-only substitute).
+- Initial Playwright run before the relationship check: `R3S9I21-20261015002225-8ece11`, 10/10. Final post-correction run: `R3S9I21-20261015002853-9b122f`, PASS 11/11. Final JSON: `r3s9i21-20261015002853-9b122f.json`; screenshot: `r3s9i21-20261015002853-9b122f-summary.png`.
+- Final UI loaded 12 accessible projects, selected project #3, and clicked the real I21 preview button. Project-list GET and preview POST both returned 200. All six source table rows, count cards and the separate project task-rule link count rendered; no browser errors, no import/write controls, no raw quality-rule/SQL/report payload, `parity_verified=false`, and `import_enabled=false`.
+- Actual source counts were all zero: `t_qc_rule=0`, `t_qc_task=0`, `t_qc_run=0`, `t_qc_exception=0`, `t_qc_report=0`, `t_qc_alarm_policy=0`. Selected-project target provenance counts and normalized task-rule edge count were also zero. Thus this run validates empty-state/control flow only; it does not validate semantic parity or populated relationship mapping.
+- Correlated final runtime logs: web access log recorded I21 page GET 200, project-list GET 200 and preview POST 200; API access log recorded the project-scoped preview POST 200; no API ERROR/Traceback markers in the final interval. All I18-I23 routes remained registered. Resource point sample: API 0.15% CPU / 69.66 MiB; web 0.00% / 2.93 MiB; mysql-meta 0.71% / 102.4 MiB.
+
+Result ceiling: `I21_PREVIEW_CONTROL_PASS / I21_PARITY_PENDING / IMPORT_NOT_AUTHORIZED`. This does not mark I21 import/parity, R3-S9, or R3 complete.
+
+Deployed SHA-256 (local == remote)
+```text
+16ae4df225107ec3135e3e66b198e4cd53d0e1ff0a14dd80691e166a8fac2dc7  rebuild/api/app.py
+b0d1bdafad440f7ef7f7a667acf46b1fb9400ff1eca354319d3ee331407fe651  rebuild/governance/api.py
+dbe0dc7094306879101164807f8010c578a87992d1a41a976f9f8a66d2debdef  rebuild/governance/legacy_i21_preview.py
+2404575d4f4abb27ec3b35db49763d40ae95e293142544678d44edfefed886ac  rebuild/governance/legacy_i21_mapping.py
+34bb4ac0ccb2e0caa57065bbb75e91f399ba87b351c5208b9ee6f23e1afbd818  datara-web/public/rebuild-validation-r3-s9-i21.html
+```

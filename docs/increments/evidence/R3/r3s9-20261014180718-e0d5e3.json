@@ -1,0 +1,88 @@
+{
+  "run_id": "R3S9-20261014180718-e0d5e3",
+  "started_at": "2026-10-14T18:07:18.693Z",
+  "timezone": "Asia/Shanghai",
+  "url": "http://192.168.1.9:18091/rebuild-validation-r3-s9.html",
+  "browser": "chromium 153.0.4234.32",
+  "project_id": 3,
+  "actions": [
+    {
+      "name": "select-project-in-page",
+      "project_id": 3,
+      "at": "2026-10-14T18:07:20.490Z"
+    },
+    {
+      "name": "click-read-only-i18-preview",
+      "at": "2026-10-14T18:07:20.566Z"
+    }
+  ],
+  "checks": [
+    {
+      "name": "protected-runner-token-exchange",
+      "pass": true,
+      "http_status": 200
+    },
+    {
+      "name": "validation-page-loaded",
+      "pass": true,
+      "http_status": 200
+    },
+    {
+      "name": "authorized-project-prefilled",
+      "pass": true,
+      "available_projects": 12
+    },
+    {
+      "name": "dry-run-api-returned-success",
+      "pass": true,
+      "status": 200
+    },
+    {
+      "name": "page-rendered-live-dry-run-result",
+      "pass": true,
+      "runtime_status": "预检完成 · 只读",
+      "stats_rendered": true,
+      "rendered_counts": [
+        "45",
+        "0",
+        "42 / 0",
+        "0 / 3"
+      ],
+      "visible_issue_count": 4,
+      "issue_code_counts": {
+        "unresolved_reference": 1,
+        "pending_identity_missing_from_batch": 1,
+        "relation_source_field_missing": 1,
+        "relation_target_field_missing": 1
+      },
+      "issue_samples": [
+        "unresolved_reference · t_dw_model_version#1 · model_id:1",
+        "pending_identity_missing_from_batch · t_dw_model_version#1 · t_dw_model:1",
+        "relation_source_field_missing · t_dw_model_relation#1 · order_id",
+        "relation_target_field_missing · t_dw_model_relation#2 · dt"
+      ]
+    },
+    {
+      "name": "page-reported-no-target-import",
+      "pass": true
+    },
+    {
+      "name": "no-browser-errors",
+      "pass": true,
+      "error_count": 0
+    }
+  ],
+  "relevant_responses": [
+    {
+      "name": "project-list",
+      "status": 200
+    },
+    {
+      "name": "i18-dry-run",
+      "status": 200
+    }
+  ],
+  "errors": [],
+  "outcome": "PASS",
+  "secrets_recorded": false
+}

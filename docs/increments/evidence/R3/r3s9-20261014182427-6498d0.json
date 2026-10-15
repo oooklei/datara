@@ -1,0 +1,95 @@
+{
+  "run_id": "R3S9-20261014182427-6498d0",
+  "started_at": "2026-10-14T18:24:27.739Z",
+  "timezone": "Asia/Shanghai",
+  "url": "http://192.168.1.9:18091/rebuild-validation-r3-s9.html",
+  "browser": "chromium 153.0.4234.32",
+  "project_id": 3,
+  "actions": [
+    {
+      "name": "select-project-in-page",
+      "project_id": 3,
+      "at": "2026-10-14T18:24:28.462Z"
+    },
+    {
+      "name": "click-read-only-i18-preview",
+      "at": "2026-10-14T18:24:28.511Z"
+    }
+  ],
+  "checks": [
+    {
+      "name": "protected-runner-token-exchange",
+      "pass": true,
+      "http_status": 200
+    },
+    {
+      "name": "validation-page-loaded",
+      "pass": true,
+      "http_status": 200
+    },
+    {
+      "name": "authorized-project-prefilled",
+      "pass": true,
+      "available_projects": 12
+    },
+    {
+      "name": "dry-run-api-returned-success",
+      "pass": true,
+      "status": 200
+    },
+    {
+      "name": "page-rendered-live-dry-run-result",
+      "pass": true,
+      "runtime_status": "complete",
+      "stats_rendered": true,
+      "rendered_counts": [
+        "45",
+        "0",
+        "44 / 0",
+        "1",
+        "0 / 0"
+      ],
+      "visible_issue_count": 0,
+      "issue_code_counts": {},
+      "issue_samples": []
+    },
+    {
+      "name": "approved-orphan-version-is-visible-as-skipped",
+      "pass": true,
+      "skipped_count": "1",
+      "matching_rows": [
+        "t_dw_model_version1t_dw_model_versionskippedapproved_missing_model_reference"
+      ]
+    },
+    {
+      "name": "approved-relation-field-mappings-are-visible",
+      "pass": true,
+      "mapping_rows": [
+        "t_dw_model_relation1t_dw_model_relationcreatesource order_id → order_no",
+        "t_dw_model_relation2t_dw_model_relationcreatetarget dt → order_date"
+      ]
+    },
+    {
+      "name": "page-reported-no-target-import",
+      "pass": true
+    },
+    {
+      "name": "no-browser-errors",
+      "pass": true,
+      "error_count": 0
+    }
+  ],
+  "relevant_responses": [
+    {
+      "name": "project-list",
+      "status": 200
+    },
+    {
+      "name": "i18-dry-run",
+      "status": 200
+    }
+  ],
+  "errors": [],
+  "outcome": "PASS",
+  "secrets_recorded": false
+}

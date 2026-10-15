@@ -6,14 +6,16 @@ from dataclasses import dataclass
 from importlib import import_module
 import json
 import os
+import re
 import sys
 
 from sqlalchemy import Boolean, Engine, create_engine, inspect, text
 
 from rebuild.governance.migrations import R3_GOVERNANCE_MIGRATIONS
-from rebuild.governance.models import GOVERNANCE_TABLES, SchemaMigrationRecord
+from rebuild.governance.models import SchemaMigrationRecord
 
 import_module("rebuild.project.models")  # Register the referenced core table in Base.metadata.
+import_module("rebuild.identity.models")  # Register the user table referenced by carry-forward mappings.
 
 
 @dataclass(frozen=True)
@@ -32,17 +34,18 @@ class SchemaPreflightReport:
 
 
 def inspect_governance_schema(engine: Engine) -> SchemaPreflightReport:
-    """Compare existing objects with the one registered R3 DDL, without DDL/DML writes."""
-    if len(R3_GOVERNANCE_MIGRATIONS) != 1:
-        raise ValueError("R3 preflight requires an explicitly selected single revision")
-    migration = R3_GOVERNANCE_MIGRATIONS[0]
+    """Compare existing objects with every registered additive R3 revision, read-only."""
+    if not R3_GOVERNANCE_MIGRATIONS:
+        raise ValueError("R3 preflight requires at least one registered revision")
+    migration = R3_GOVERNANCE_MIGRATIONS[-1]
     inspector = inspect(engine)
     existing = set(inspector.get_table_names())
-    expected_names = {table.name for table in GOVERNANCE_TABLES}
+    expected_tables = tuple(table for revision in R3_GOVERNANCE_MIGRATIONS for table in revision.tables)
+    expected_names = {table.name for table in expected_tables}
     missing = expected_names - existing
     conflicts: list[str] = []
 
-    for table in GOVERNANCE_TABLES:
+    for table in expected_tables:
         if table.name not in existing:
             continue
         conflicts.extend(_compare_table(inspector, table))
@@ -56,21 +59,28 @@ def inspect_governance_schema(engine: Engine) -> SchemaPreflightReport:
             conflicts.append("migration revision table has an incompatible column set")
         else:
             with engine.connect() as connection:
-                row = connection.execute(
-                    text(
-                        "SELECT checksum, status FROM rebuild_schema_migration "
-                        "WHERE revision = :revision"
-                    ),
-                    {"revision": migration.revision},
-                ).mappings().first()
-            if row is not None:
-                revision_status = str(row["status"])
-                if row["checksum"] != migration.checksum:
-                    conflicts.append("migration revision checksum differs from the registered code")
-                if revision_status == "completed" and missing:
-                    conflicts.append("completed revision is missing one or more governance tables")
-                if revision_status not in {"running", "failed", "completed"}:
-                    conflicts.append("migration revision has an unsupported status")
+                for registered in R3_GOVERNANCE_MIGRATIONS:
+                    row = connection.execute(
+                        text(
+                            "SELECT checksum, status FROM rebuild_schema_migration "
+                            "WHERE revision = :revision"
+                        ),
+                        {"revision": registered.revision},
+                    ).mappings().first()
+                    if row is None:
+                        if registered.revision == migration.revision:
+                            revision_status = "absent"
+                        continue
+                    status = str(row["status"])
+                    if registered.revision == migration.revision:
+                        revision_status = status
+                    if row["checksum"] != registered.checksum:
+                        conflicts.append(f"migration checksum differs for {registered.revision}")
+                    revision_tables = {table.name for table in registered.tables}
+                    if status == "completed" and revision_tables & missing:
+                        conflicts.append(f"completed revision {registered.revision} is missing one or more tables")
+                    if status not in {"running", "failed", "completed"}:
+                        conflicts.append(f"migration {registered.revision} has an unsupported status")
 
     return SchemaPreflightReport(
         revision=migration.revision,
@@ -81,6 +91,36 @@ def inspect_governance_schema(engine: Engine) -> SchemaPreflightReport:
         revision_table_present=revision_present,
         revision_status=revision_status,
     )
+
+
+
+def _unique_index_is_full_column_index(index: dict) -> bool:
+    """Return whether an inspected unique index enforces uniqueness for full columns."""
+    columns = index.get("column_names")
+    if not columns or any(not isinstance(column, str) or not column for column in columns):
+        return False
+    if index.get("expressions"):
+        return False
+
+    semantic_option_names = ("where", "predicate", "collation", "opclass", "operator_class", "length", "prefix")
+    for key, value in index.items():
+        if any(name in str(key).lower() for name in semantic_option_names) and value not in (None, "", [], {}):
+            return False
+
+    dialect_options = index.get("dialect_options") or {}
+    if not isinstance(dialect_options, dict):
+        return False
+    for key, value in dialect_options.items():
+        if any(name in str(key).lower() for name in semantic_option_names) and value not in (None, "", [], {}):
+            return False
+        if isinstance(value, dict):
+            for option, option_value in value.items():
+                if (
+                    any(name in str(option).lower() for name in semantic_option_names)
+                    and option_value not in (None, "", [], {})
+                ):
+                    return False
+    return True
 
 
 def _compare_table(inspector, expected_table) -> list[str]:
@@ -103,30 +143,71 @@ def _compare_table(inspector, expected_table) -> list[str]:
     if actual_pk != expected_pk:
         conflicts.append(f"{expected_table.name}: incompatible primary key")
 
-    actual_indexes = {
-        item["name"]: tuple(item["column_names"] or ()) for item in inspector.get_indexes(expected_table.name)
-    }
+    actual_indexes = tuple(inspector.get_indexes(expected_table.name))
     for index in expected_table.indexes:
         expected_columns = tuple(column.name for column in index.columns)
-        if actual_indexes.get(index.name) != expected_columns:
+        # MySQL limits index identifiers to 64 characters and SQLAlchemy's
+        # generated names are shortened with a deterministic suffix. Names
+        # are not part of the physical index contract; ordered columns and
+        # uniqueness are. Compare those properties so a valid MySQL schema
+        # does not fail preflight solely because its identifier was shortened.
+        if not any(
+            tuple(item.get("column_names") or ()) == expected_columns
+            and bool(item.get("unique")) == bool(index.unique)
+            and (not index.unique or _unique_index_is_full_column_index(item))
+            for item in actual_indexes
+        ):
             conflicts.append(f"{expected_table.name}: missing or incompatible index {index.name}")
 
-    actual_unique = {
-        item.get("name"): tuple(item.get("column_names") or ())
-        for item in inspector.get_unique_constraints(expected_table.name)
+    actual_unique = tuple(inspector.get_unique_constraints(expected_table.name))
+    # Unique constraints from the dialect inspector describe full-key constraints.
+    # Indexes are equivalent only when they use full columns and have no predicate,
+    # expression, collation, or prefix-length semantics that weaken/change the key.
+    actual_unique_columns = {
+        tuple(item.get("column_names") or ())
+        for item in actual_unique
+        if _unique_index_is_full_column_index(item)
     }
+    actual_unique_columns.update(
+        tuple(item.get("column_names") or ())
+        for item in actual_indexes
+        if item.get("unique") and _unique_index_is_full_column_index(item)
+    )
+    all_unique_columns = {
+        tuple(item.get("column_names") or ())
+        for item in actual_unique
+    }
+    all_unique_columns.update(
+        tuple(item.get("column_names") or ())
+        for item in actual_indexes
+        if item.get("unique")
+    )
+    expected_unique_columns = {
+        tuple(column.name for column in constraint.columns)
+        for constraint in expected_table.constraints
+        if constraint.__class__.__name__ == "UniqueConstraint"
+    }
+    expected_unique_columns.update(
+        tuple(column.name for column in index.columns)
+        for index in expected_table.indexes
+        if index.unique
+    )
     for constraint in expected_table.constraints:
         if constraint.__class__.__name__ != "UniqueConstraint":
             continue
         expected_columns = tuple(column.name for column in constraint.columns)
-        if actual_unique.get(constraint.name) != expected_columns:
+        if expected_columns not in actual_unique_columns:
             conflicts.append(f"{expected_table.name}: missing or incompatible unique constraint {constraint.name}")
+
+    for unexpected_columns in sorted(all_unique_columns - expected_unique_columns):
+        conflicts.append(f"{expected_table.name}: unexpected unique constraint or index {unexpected_columns}")
 
     actual_fks = {
         (
             tuple(item.get("constrained_columns") or ()),
             item.get("referred_table"),
             tuple(item.get("referred_columns") or ()),
+            _normalize_referential_action((item.get("options") or {}).get("ondelete")),
         )
         for item in inspector.get_foreign_keys(expected_table.name)
     }
@@ -135,12 +216,36 @@ def _compare_table(inspector, expected_table) -> list[str]:
             tuple(element.parent.name for element in constraint.elements),
             constraint.elements[0].column.table.name,
             tuple(element.column.name for element in constraint.elements),
+            _normalize_referential_action(constraint.ondelete),
         )
         if expected_fk not in actual_fks:
             conflicts.append(
                 f"{expected_table.name}: missing or incompatible foreign key {constraint.name or expected_fk[0]}"
             )
+    actual_checks = {
+        _normalize_check_expression(item.get("sqltext", ""))
+        for item in inspector.get_check_constraints(expected_table.name)
+    }
+    for constraint in expected_table.constraints:
+        if constraint.__class__.__name__ != "CheckConstraint":
+            continue
+        expected_check = _normalize_check_expression(str(constraint.sqltext))
+        if expected_check not in actual_checks:
+            conflicts.append(
+                f"{expected_table.name}: missing or incompatible check constraint {constraint.name or expected_check}"
+            )
     return conflicts
+
+
+def _normalize_referential_action(action: str | None) -> str:
+    normalized = (action or "NO ACTION").strip().upper().replace("_", " ")
+    if normalized in {"RESTRICT", "NO ACTION"}:
+        return "RESTRICT"
+    return normalized
+
+
+def _normalize_check_expression(expression: str) -> str:
+    return re.sub(r"[\s`\"\[\]]+", "", expression).lower()
 
 
 def _types_compatible(actual_type, expected_type) -> bool:

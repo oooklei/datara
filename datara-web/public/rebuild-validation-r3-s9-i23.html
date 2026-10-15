@@ -1,0 +1,74 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>R3-S9 · I23 身份映射预览</title>
+  <style>
+    :root{font-family:Inter,"Microsoft YaHei",system-ui,sans-serif;color:#192c40;background:#f2f6f9;font-synthesis:none}
+    *{box-sizing:border-box}body{margin:0}.shell{max-width:1240px;margin:auto;padding:28px 22px 52px}.top{display:flex;align-items:center;justify-content:space-between;gap:18px;margin-bottom:18px}.brand{display:flex;align-items:center;gap:12px}.mark{display:grid;place-items:center;width:42px;height:42px;border-radius:13px;background:#193c5b;color:#fff;font-weight:800}.eyebrow{font-size:11px;color:#688097;letter-spacing:.08em}.title{font-size:22px;margin:3px 0}.runtime,.pill{padding:7px 11px;border-radius:99px;background:#e8eff6;color:#4d667d;font-size:12px}.card{background:white;border:1px solid #dce5ec;border-radius:14px;box-shadow:0 3px 14px #1739580a;margin-bottom:15px}.intro,.card-body{padding:19px 21px}.intro h2,.card h3{margin:0 0 7px;font-size:16px}.intro p,.muted{color:#62768a;font-size:13px;line-height:1.7;margin:0}.notice{display:none;margin:12px 0;padding:12px 14px;border-radius:9px;font-size:13px}.notice.show{display:block}.notice.info{background:#eef6ff;color:#275b88}.notice.success{background:#eaf8f0;color:#236744}.notice.error{background:#fff0ef;color:#a3322a}.actions{display:flex;gap:9px;margin-top:14px}button,select{font:inherit}button{border:0;border-radius:8px;padding:10px 15px;background:#1769a6;color:white;font-weight:700;cursor:pointer}button:disabled{opacity:.5;cursor:not-allowed}.secondary{background:#edf3f8;color:#35536d}.table-wrap{overflow:auto;border:1px solid #e4eaf0;border-radius:9px;margin-top:12px}table{width:100%;border-collapse:collapse;min-width:900px;font-size:12px}th,td{text-align:left;vertical-align:top;padding:10px 11px;border-bottom:1px solid #edf1f5}th{background:#f7f9fb;color:#63778a}tbody tr:last-child td{border-bottom:0}select{min-width:190px;max-width:250px;height:36px;padding:0 8px;border:1px solid #cbd7e2;border-radius:7px;background:white;color:#243a50}.stats{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:9px;margin:15px 0}.stat{padding:11px;background:#f6f8fb;border-radius:8px}.stat span{display:block;color:#718498;font-size:11px}.stat strong{display:block;margin-top:5px;font-size:18px;color:#1d4265}.issue{display:inline-block;margin:2px;padding:4px 7px;border-radius:6px;background:#fff3e8;color:#99520e}.warning{padding:12px;background:#fff8e8;color:#735c2b;border-radius:9px;font-size:12px;line-height:1.65;margin-top:13px}.empty{padding:20px;text-align:center;color:#8291a0}@media(max-width:760px){.shell{padding:18px 12px 35px}.top{align-items:flex-start;flex-direction:column}.stats{grid-template-columns:repeat(2,minmax(0,1fr))}}
+  </style>
+</head>
+<body>
+  <main class="shell">
+    <header class="top"><div class="brand"><div class="mark" aria-hidden="true">D</div><div><div class="eyebrow">DATARA · ISOLATED VALIDATION</div><h1 class="title">I23 身份映射预览</h1></div></div><div id="runtime" class="runtime" data-testid="runtime-status">等待验证运行时</div></header>
+    <section class="card intro"><h2>核对旧身份与已存在的目标账号</h2><p>仅读取旧库 `t_user` 的 ID、用户名、角色、状态和时间戳；不读取密码列。下方仅显示同名目标账号候选，必须由操作者逐项选择。此页面只预览，不新增用户、不改变身份关系、不推断项目成员。</p><div id="notice" class="notice" role="status" aria-live="polite" data-testid="notice"></div><div class="actions"><button id="runPreview" type="button" data-testid="run-preview" disabled>读取 / 刷新只读预览</button></div></section>
+    <section class="card"><div class="card-body"><h3>来源快照与映射分类</h3><div class="stats"><div class="stat"><span>来源用户</span><strong id="sourceCount" data-testid="source-count">—</strong></div><div class="stat"><span>可建立候选</span><strong id="candidateCount" data-testid="candidate-count">—</strong></div><div class="stat"><span>已有关系匹配</span><strong id="matchCount" data-testid="match-count">—</strong></div><div class="stat"><span>待选择 / 阻断</span><strong id="blockedCount" data-testid="blocked-count">—</strong></div></div><p id="snapshot" class="muted" data-testid="snapshot">尚未读取</p><p id="digest" class="muted">来源摘要：— · 目标身份摘要：—</p>
+      <div class="table-wrap"><table><thead><tr><th>旧用户 ID</th><th>旧用户名</th><th>旧角色 / 状态</th><th>目标账号（同名候选）</th><th>结果</th><th>阻断/说明</th></tr></thead><tbody id="rows" data-testid="identity-rows"><tr><td class="empty" colspan="6">尚未执行预览</td></tr></tbody></table></div>
+      <div class="warning" data-testid="readonly-warning">只读边界：源端 READ ONLY；目标只查询账号身份元数据；没有导入、账号创建/更新、角色变更、密码或项目成员操作。匹配候选不等于语义 parity，`parity_verified=false`、`import_enabled=false`。</div>
+    </div></section>
+  </main>
+  <script>
+  (() => {
+    'use strict';
+    const token=window.__DATARA_I23_CAPABILITY__||'';
+    const $=id=>document.getElementById(id);
+    const state={busy:false,entries:[]};
+    const escapeHtml=value=>String(value??'').replace(/[&<>"']/g,ch=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));
+    const notify=(message,kind='info')=>{const node=$('notice');node.className=`notice show ${kind}`;node.textContent=message;};
+    async function request(selections){
+      if(!token)throw new Error('验证 runner 未注入短期 I23 capability；页面不会收集验证 key。');
+      const response=await fetch('/api/v1/rebuild/governance/legacy/i23/identity-preview',{method:'POST',headers:{Authorization:`Bearer ${token}`,'Content-Type':'application/json'},body:JSON.stringify({selections})});
+      let body;try{body=await response.json();}catch{throw new Error(`HTTP ${response.status}`);}
+      if(!response.ok||body.code)throw new Error(body.msg||`HTTP ${response.status}`);
+      return body.data;
+    }
+    function selectedMappings(){return [...document.querySelectorAll('select[data-source-id]')].map(select=>({source_id:select.dataset.sourceId,target_user_id:Number(select.value)})).filter(item=>item.target_user_id>0);}
+    function render(data){
+      const preview=data.preview||{},counts=preview.counts||{};state.entries=preview.entries||[];
+      $('sourceCount').textContent=Number(data.source?.counts?.t_user||0).toLocaleString('zh-CN');
+      $('candidateCount').textContent=Number(counts.identity_candidate||0).toLocaleString('zh-CN');
+      $('matchCount').textContent=Number(counts.target_identity_match||0).toLocaleString('zh-CN');
+      $('blockedCount').textContent=(Number(counts.unresolved||0)+Number(counts.blocked||0)).toLocaleString('zh-CN');
+      $('snapshot').textContent=`源 schema ${data.source?.schema||'—'} · 源采集 ${data.source?.captured_at||'—'} · 目标采集 ${data.target?.captured_at||'—'}`;
+      $('digest').textContent=`来源摘要：${data.source?.digest||'—'} · 目标身份摘要：${data.target?.identity_digest||'—'}`;
+      $('rows').innerHTML=state.entries.length?state.entries.map(item=>{
+        const candidates=item.target_candidates||[];const options=['<option value="">请选择现存目标账号</option>',...candidates.map(user=>`<option value="${Number(user.user_id)}">${user.candidate_type==='existing_mapping'?'现有关联 · ':''}${escapeHtml(user.username)} · ${escapeHtml(user.role)} / ${escapeHtml(user.status)} · #${Number(user.user_id)}</option>`)].join('');
+        const select=`<select data-source-id="${escapeHtml(item.source_id)}" aria-label="为旧用户 ${escapeHtml(item.source_username)} 选择目标账号" data-testid="target-user-${escapeHtml(item.source_id)}">${options}</select>`;
+        const issues=(item.issues||[]).map(issue=>`<span class="issue">${escapeHtml(issue.code)}</span>`).join('')||'<span class="muted">—</span>';
+        const status=escapeHtml(item.disposition);
+        return `<tr data-source-id="${escapeHtml(item.source_id)}"><td>${escapeHtml(item.source_id)}</td><td>${escapeHtml(item.source_username)}</td><td>${escapeHtml(item.source_role)} / ${escapeHtml(item.source_status)}</td><td>${select}</td><td><span class="pill">${status}</span></td><td>${issues}</td></tr>`;
+      }).join(''):'<tr><td class="empty" colspan="6">旧库当前没有用户记录</td></tr>';
+      for(const item of state.entries){const select=document.querySelector(`select[data-source-id="${CSS.escape(item.source_id)}"]`);if(select&&item.selected_target_user_id)select.value=String(selectedTarget(item));}
+      $('runtime').textContent='预览完成 · 只读';
+      const unresolved=Number(counts.unresolved||0)+Number(counts.blocked||0);
+      notify(`已读取 ${state.entries.length} 条来源身份；候选 ${counts.identity_candidate||0}，已有匹配 ${counts.target_identity_match||0}，待处理/阻断 ${unresolved}。未执行任何导入。`,unresolved?'info':'success');
+    }
+    function selectedTarget(item){return Number(item.selected_target_user_id||0);}
+    $('runPreview').addEventListener('click',async()=>{
+      if(state.busy)return;state.busy=true;$('runPreview').disabled=true;$('runtime').textContent='正在执行只读预览';notify('读取批准的六列源快照与目标身份元数据；不会写入用户或关系。','info');
+      try{render(await request(selectedMappings()));}
+      catch(error){$('runtime').textContent='预览失败';notify(`预览失败：${error.message}。没有执行导入。`,'error');}
+      finally{state.busy=false;$('runPreview').disabled=!token;}
+    });
+    loadPreview();
+    async function loadPreview(){
+      if(!token){$('runtime').textContent='验证 capability 未就绪';notify('需由受保护 runner 注入仅 I23 端点可用的短期 capability token。','error');return;}
+      $('runPreview').disabled=true;
+      try{render(await request([]));$('runPreview').disabled=false;}
+      catch(error){$('runtime').textContent='预览不可用';notify(`无法载入只读预览：${error.message}`,'error');}
+    }
+  })();
+  </script>
+</body>
+</html>

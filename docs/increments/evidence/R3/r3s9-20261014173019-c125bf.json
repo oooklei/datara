@@ -1,0 +1,63 @@
+{
+  "run_id": "R3S9-20261014173019-c125bf",
+  "started_at": "2026-10-14T17:30:19.843Z",
+  "timezone": "Asia/Shanghai",
+  "url": "http://192.168.1.9:18091/rebuild-validation-r3-s9.html",
+  "browser": "chromium 153.0.4234.32",
+  "project_id": 3,
+  "actions": [
+    {
+      "name": "select-project-in-page",
+      "project_id": 3,
+      "at": "2026-10-14T17:30:21.347Z"
+    },
+    {
+      "name": "click-read-only-i18-preview",
+      "at": "2026-10-14T17:30:21.409Z"
+    }
+  ],
+  "checks": [
+    {
+      "name": "protected-runner-token-exchange",
+      "pass": true,
+      "http_status": 200
+    },
+    {
+      "name": "validation-page-loaded",
+      "pass": true,
+      "http_status": 200
+    },
+    {
+      "name": "authorized-project-prefilled",
+      "pass": true,
+      "available_projects": 12
+    },
+    {
+      "name": "dry-run-api-returned-success",
+      "pass": false,
+      "status": 422
+    }
+  ],
+  "relevant_responses": [
+    {
+      "name": "project-list",
+      "status": 200
+    },
+    {
+      "name": "i18-dry-run",
+      "status": 422
+    }
+  ],
+  "errors": [
+    {
+      "kind": "console",
+      "message": "Failed to load resource: the server responded with a status of 422 (Unprocessable Entity)"
+    },
+    {
+      "kind": "runner",
+      "message": "UI assertion failed: dry-run-api-returned-success"
+    }
+  ],
+  "outcome": "FAIL",
+  "secrets_recorded": false
+}

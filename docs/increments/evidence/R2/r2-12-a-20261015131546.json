@@ -1,0 +1,30 @@
+{
+  "run_id": "r2-12-a-20261015131546",
+  "generated_at": "2026-10-15T13:15:47.557994+08:00",
+  "timezone": "Asia/Shanghai",
+  "url": "http://192.168.1.9:18091/rebuild-validation-r2-12-a.html?projectId=15&otherProjectId=16",
+  "browser": "Chromium",
+  "browser_version": "147.0.7727.15",
+  "project_id": 15,
+  "isolation_project_id": 16,
+  "datasource_id": null,
+  "actions": [],
+  "assertions": [],
+  "responses": [
+    {
+      "method": "GET",
+      "status": 200,
+      "path": "/projects/15/datasources"
+    }
+  ],
+  "page_errors": [
+    "validation failure: Error: Locator.wait_for: Error: strict mode violation: get_by_role(\"heading\", name=\"项目数据源\") resolved to 2 elements:\n    1) <h1>项目数据源</h1> aka get_by_role(\"heading\", name=\"项目数据源\", exact=True)\n    2) <h2 id=\"form-title\">登记项目数据源</h2> aka get_by_role(\"heading\", name=\"登记项目数据源\")\n\nCall log:\n  - waiting for get_by_role(\"heading\", name=\"项目数据源\") to be visible\n"
+  ],
+  "console_errors": [],
+  "failed_requests": [],
+  "screenshot": "r2-12-a-20261015131546.png",
+  "result": "FAIL",
+  "notes": [
+    "Validation key, token, datasource credentials, and connection URL are intentionally excluded."
+  ]
+}

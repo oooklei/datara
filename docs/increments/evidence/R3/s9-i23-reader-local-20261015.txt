@@ -1,0 +1,25 @@
+R3-S9 / I23 minimum user identity read-only snapshot reader
+Date: 2026-10-15 (Asia/Shanghai)
+Worktree: codex/r3-s9
+Preceding commit: 150edd0 (I19 pure mapper)
+
+Scope and boundaries
+- Added an allowlist and SQLite-contract-tested snapshot reader for `t_user` identity metadata only.
+- Selected columns are `id`, `user_name`, `user_role`, `state`, `create_time`, `update_time`; `user_pwd` is intentionally absent from the allowlist and generated SELECT statements.
+- No source/target DB connection, user-row read, credential/hash read, identity import, role migration, project membership inference, deploy, API/UI or business data write occurred.
+- This is LOCAL_SUBSTEP_PASS / INTEGRATION_GATE_PENDING only. It is not live schema/data parity or I23/S9/R3 completion.
+
+Checks
+- RED: initial test collection failed because `I23_SOURCE_COLUMNS` and `LegacyI23SourceReader` did not yet exist.
+- I23 reader tests: `pytest tests/rebuild/test_governance_legacy_i23_source_reader.py -q` — 4 passed in 0.22s.
+- I18/I19/I20/I21/I23 reader regression — 29 passed in 0.48s.
+- Full backend: `pytest tests -q` — 704 passed in 66.28s.
+- `ruff check rebuild tests/rebuild` — passed.
+- `python -m compileall -q rebuild` — passed.
+- `git diff --check` at backend scope — passed; repository-root check pending before commit.
+- SQL statement listener asserted SELECT/PRAGMA only and no emitted SQL contains `USER_PWD`.
+
+Outstanding
+- Current live source schema remains unverified; no old user row or credential material was read.
+- Identity mapping/import, duplicate username handling, explicit role validation, credential reset/disabled-account path, and any project membership migration remain separate work.
+- 1.9 browser controls, backend/container logs, middleware/resources, and source/target parity remain pending.

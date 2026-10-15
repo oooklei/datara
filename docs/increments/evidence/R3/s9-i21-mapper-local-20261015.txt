@@ -1,0 +1,35 @@
+R3-S9 I21 quality snapshot mapper — local substep evidence
+Date: 2026-10-15 Asia/Shanghai
+Workspace: D:\需求\数据治理工具\Datara\.worktrees\r3-s9
+Branch: codex/r3-s9
+Previous relevant commits: I21 reader ce4fa69; I20 mapper 476758d
+
+Scope
+- Pure snapshot-to-target mapping for the six allowlisted legacy I21 QC tables.
+- No database connections, schema changes, importer/API/UI/deploy changes, or business-data writes.
+- Legacy QC router/engine remain retired. sample_sql is copied as inert text and never executed.
+
+Measured local checks (final source state)
+- pytest tests/rebuild/test_governance_legacy_i21_mapping.py -q: 14 passed.
+- I18-I21 readers + I20/I21 mapping regression: 72 passed.
+- pytest tests -q: 689 passed in 66.31s.
+- ruff check rebuild tests/rebuild: All checks passed.
+- python -m compileall -q rebuild: exit 0.
+- git diff --check: exit 0.
+
+Mapping controls
+- Explicit positive target project required; source rows must match the complete fixed-column snapshot contract.
+- Task rule IDs retain order as ordinal positions; rule/run/task references must resolve to same-batch rows or explicit target/pending identities.
+- Non-null legacy task IDs on runs/exceptions are checked for a resolvable task while the original source ID remains in legacy_task_id.
+- Missing/duplicate/invalid references and explicit target IDs, malformed values, target-length overflow, date-only timestamp strings, timezone-aware timestamps and extreme numeric overflow block the complete mapping.
+- JSON-valued fields are deterministically encoded for target Text columns; legacy rule level/status are retained; reports/alarms retain explicit target IDs.
+- No canonical quality rule/asset or single-asset execution run is fabricated.
+
+Review and correction
+- Independent spec reviewer found the non-null run/exception task reference gap. The mapper was fixed to fail closed and a dangling-task regression was added; spec re-review PASS.
+- Separate code-quality reviewer did not return within the bounded wait and was closed. This is not recorded as a pass; local target-model review plus automated checks are the available evidence.
+
+Integration boundary
+- Status: LOCAL_SUBSTEP_PASS / INTEGRATION_GATE_PENDING.
+- No current live source-schema/data or target parity evidence; no importer/API, browser controls, 192.168.1.9 service/container/log, middleware/resource checks, deployment, or business data write occurred.
+- This evidence does not close I21 migration/parity or R3-S9/R3.

@@ -1,0 +1,13 @@
+# R2-12-A remote closure evidence
+
+- Time zone: Asia/Shanghai; date: 2026-10-15.
+- UI URL: `http://192.168.1.9:18091/rebuild-validation-r2-12-a.html?projectId=15&otherProjectId=16`.
+- Browser-use outcome: browser binding/page control timed out twice (30s initial, 60s retry). Per `browser-use-playwright-fallback`, Playwright operated the same deployed URL; this is a transport fallback, not an API-only substitute.
+- Final control run: `r2-12-a-20261015131733`, result PASS. JSON: `r2-12-a-20261015131733.json`; screenshot: `r2-12-a-20261015131733.png`. It records create 201, saved-profile probe 200, update 200, cross-project isolation 404, missing-token denial 401, delete 200; no page errors, unexpected console errors, or failed requests. The test datasource was removed by the run.
+- API log correlation: `datara-rebuild-api` access log shows the datasource create/list/probe/update/list/cross-project/list-without-token/delete/list sequence with expected 201/200/404/401/200 statuses. A `docker logs --since 20m ... | grep -E 'Traceback|ERROR|Exception'` check returned no matches.
+- Runtime/schema: API `healthy`; Web `running`; `datara-mysql-meta`, Redis, Kafka, and Zookeeper `healthy`. The deployed `rebuild_project_datasource` table exists with `id, project_id, name, kind, host, port, database_name, username, password, created_at, updated_at`; post-run datasource row count is 0. No credential or URL value is included here.
+- Resource snapshot (`docker stats --no-stream`): API 0.15% CPU / 69.05 MiB; Web 0.00% / 3.301 MiB; Meta MySQL 0.55% / 107.6 MiB; Redis 3.27% / 16.91 MiB; Kafka 1.17% / 267 MiB; Zookeeper 0.16% / 236.8 MiB.
+- Temporary fixture `datara-r2-12a-mysql-fixture` was stopped after validation. It had no published host port, used tmpfs on `datara_default`, and its test user had SELECT/SHOW VIEW only on its fixture schema. It was launched with `--rm`; `docker ps -a --filter name=datara-r2-12a-mysql-fixture` returned no container after stop. Existing source/meta/dw MySQL containers were not used as the probe target.
+- Local final check: `pytest tests -q` — 754 passed. Changed-file Ruff, `python -m compileall`, and `git diff --check` passed. (The full repository has pre-existing Ruff/format findings outside this increment; they were not changed.)
+- Database backup prerequisite had been satisfied before deployment: app DB snapshot `datara_rebuild_i0-pre-r2-12-a-20261015-130921.sql.gz` under `/lei/datara/backups/r3-s9-20261015/`; gzip/header validity was checked. No legacy source/target business rows were written.
+- Scope is only R2-12-A. Schema/table/column browsing, connection-pool capacity tuning, and SYNC integration remain open under R2-12.

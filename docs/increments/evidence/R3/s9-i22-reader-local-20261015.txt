@@ -1,0 +1,20 @@
+R3-S9 I22 live-schema-bound source reader — local verification
+Captured: 2026-10-15 05:07 Asia/Shanghai
+Worktree: D:/需求/数据治理工具/Datara/.worktrees/r3-s9 (codex/r3-s9)
+
+Scope:
+- Added a fixed seven-table/fixed-column I22 reader bound to the live schema evidence `s9-i22-live-schema-20261015.md`.
+- Reader uses inherited exact MySQL schema guard (`datara_meta` only), read-only transaction, keyset paging, row ceilings, stable content digest, Shanghai timezone-aware capture time, and rejects non-test SQLite mode / target schema.
+- Added local SQLite contract tests for all seven allowlisted tables, JSON/text value preservation, read-only SQL, empty and changing-content digests, missing-column fail-closed behavior, truncation limit, timestamp/limits, and source/target schema guards.
+- No runtime URL was configured, no API/service deployment or browser action was attempted, and no source row payload or target business data was read/written in this reader substep. The separate live schema/count evidence contains metadata and aggregate counts only.
+
+TDD and verification:
+- RED: focused test collection failed because `I22_SOURCE_COLUMNS` / `LegacyI22SourceReader` did not yet exist (expected).
+- GREEN: `pytest tests/rebuild/test_governance_legacy_i22_source_reader.py -q` — 7 passed.
+- I18-I22 reader regression — 32 passed.
+- Full backend suite: `pytest tests -q` — 716 passed in 64.38s.
+- Ruff on changed reader and test: passed.
+- `python -m compileall -q rebuild`: passed.
+- `git diff --check`: passed.
+
+Boundary/status: `LOCAL_SUBSTEP_PASS / INTEGRATION_GATE_PENDING`; does not establish API runtime connectivity, source/target parity, importer, target-write permission, browser control loop, remote service logs/middleware/resources, or R3-S9/R3 acceptance.

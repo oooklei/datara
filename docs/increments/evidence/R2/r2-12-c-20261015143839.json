@@ -1,0 +1,36 @@
+{
+  "run_id": "r2-12-c-20261015143839",
+  "timestamp": "2026-10-15T14:38:39+08:00",
+  "timezone": "Asia/Shanghai",
+  "url": "http://192.168.1.9:18091/rebuild-validation-r2-12-b.html?projectId=19&datasourceId=9",
+  "browser": "Chromium via Playwright",
+  "actions": [
+    "Loaded two schemas through the visible metadata browser controls.",
+    "Selected analytics.orders and loaded its column definition through the visible control.",
+    "Updated the temporary datasource profile before the repeated browse round."
+  ],
+  "assertions": [
+    {
+      "name": "schema-and-column-controls-rendered",
+      "passed": true,
+      "evidence": "paired screenshot visibly shows analytics/shared and three analytics.orders columns"
+    }
+  ],
+  "responses": "Not persisted: the runner crashed during teardown before writing its structured report.",
+  "page_errors": [
+    "FAIL: runner raised Playwright Error: Event loop is closed while closing BrowserContext after the sync_playwright context manager had already stopped."
+  ],
+  "console_errors": "Not persisted by the crashed runner.",
+  "failed_requests": "Not persisted by the crashed runner.",
+  "cleanup": {
+    "temporary_mysql_fixture_removed": true,
+    "datasource_profile_deleted": false,
+    "note": "The outer cleanup removed the tmpfs-only MySQL container; the runner teardown exception interrupted its profile deletion. The next controlled run is programmed to remove only the prior R2-12-C disposable profile before setup."
+  },
+  "screenshot": "r2-12-c-20261015143839.png",
+  "result": "FAIL",
+  "notes": [
+    "This is retained failure evidence, not acceptance. No validation key, token, or datasource password is recorded.",
+    "The page is the already-deployed R2-12-B DBX-style browser; C adds no page-design change."
+  ]
+}

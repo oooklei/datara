@@ -1,0 +1,116 @@
+{
+  "run_id": "R3S9I19-20261014232132-19a437",
+  "started_at": "2026-10-14T23:21:32.642Z",
+  "timezone": "Asia/Shanghai",
+  "url": "http://192.168.1.9:18091/rebuild-validation-r3-s9-i19.html",
+  "browser": "chromium 153.0.4234.32",
+  "project_id": 3,
+  "actions": [
+    {
+      "name": "select-project-in-page",
+      "project_id": 3,
+      "at": "2026-10-14T23:21:33.375Z"
+    },
+    {
+      "name": "click-i19-read-only-mapping-preview",
+      "at": "2026-10-14T23:21:33.428Z"
+    }
+  ],
+  "checks": [
+    {
+      "name": "protected-runner-token-exchange",
+      "pass": true,
+      "http_status": 200
+    },
+    {
+      "name": "validation-page-loaded",
+      "pass": true,
+      "http_status": 200
+    },
+    {
+      "name": "authorized-project-prefilled",
+      "pass": true,
+      "available_projects": 12
+    },
+    {
+      "name": "i19-preview-api-succeeded",
+      "pass": true,
+      "status": 200
+    },
+    {
+      "name": "three-i19-domains-rendered",
+      "pass": true,
+      "domain_rows": 3,
+      "source_counts": {
+        "t_meta_table_ext": 0,
+        "t_meta_tag": 0,
+        "t_meta_tagging": 0
+      }
+    },
+    {
+      "name": "counts-and-preview-rendered",
+      "pass": true,
+      "stats": [
+        "0",
+        "0",
+        "0",
+        "0"
+      ],
+      "preview_rows": 1
+    },
+    {
+      "name": "explicit-no-parity-and-no-import",
+      "pass": true,
+      "parity_verified": false,
+      "import_enabled": false
+    },
+    {
+      "name": "response-contains-no-source-business-values",
+      "pass": true
+    },
+    {
+      "name": "read-only-controls-and-boundary-visible",
+      "pass": true,
+      "import_controls": 0
+    },
+    {
+      "name": "no-browser-errors",
+      "pass": true,
+      "error_count": 0
+    }
+  ],
+  "relevant_responses": [
+    {
+      "name": "project-list",
+      "status": 200
+    },
+    {
+      "name": "i19-mapping-preview",
+      "status": 200,
+      "source_schema": "datara_meta",
+      "source_counts": {
+        "t_meta_table_ext": 0,
+        "t_meta_tag": 0,
+        "t_meta_tagging": 0
+      },
+      "target_counts": {
+        "t_meta_table_ext": 0,
+        "t_meta_tag": 0,
+        "t_meta_tagging": 0
+      },
+      "preview_counts": {
+        "new_identity_candidate": 0,
+        "target_identity_match": 0,
+        "blocked": 0
+      },
+      "parity_verified": false,
+      "import_enabled": false,
+      "business_values_absent": true
+    }
+  ],
+  "errors": [],
+  "outcome": "PASS",
+  "secrets_recorded": false,
+  "source_payload_recorded": false,
+  "target_writes_authorized": false
+}

@@ -1,0 +1,63 @@
+{
+  "run_id": "R3S9-20261014171802-61e7dd",
+  "started_at": "2026-10-14T17:18:02.318Z",
+  "timezone": "Asia/Shanghai",
+  "url": "http://192.168.1.9:18091/rebuild-validation-r3-s9.html",
+  "browser": "chromium 153.0.4234.32",
+  "project_id": 3,
+  "actions": [
+    {
+      "name": "select-project-in-page",
+      "project_id": 3,
+      "at": "2026-10-14T17:18:05.296Z"
+    },
+    {
+      "name": "click-read-only-i18-preview",
+      "at": "2026-10-14T17:18:05.345Z"
+    }
+  ],
+  "checks": [
+    {
+      "name": "protected-runner-token-exchange",
+      "pass": true,
+      "http_status": 200
+    },
+    {
+      "name": "validation-page-loaded",
+      "pass": true,
+      "http_status": 200
+    },
+    {
+      "name": "authorized-project-prefilled",
+      "pass": true,
+      "available_projects": 12
+    },
+    {
+      "name": "dry-run-api-returned-success",
+      "pass": false,
+      "status": 503
+    }
+  ],
+  "relevant_responses": [
+    {
+      "name": "project-list",
+      "status": 200
+    },
+    {
+      "name": "i18-dry-run",
+      "status": 503
+    }
+  ],
+  "errors": [
+    {
+      "kind": "console",
+      "message": "Failed to load resource: the server responded with a status of 503 (Service Unavailable)"
+    },
+    {
+      "kind": "runner",
+      "message": "UI assertion failed: dry-run-api-returned-success"
+    }
+  ],
+  "outcome": "FAIL",
+  "secrets_recorded": false
+}

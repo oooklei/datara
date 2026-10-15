@@ -1,0 +1,19 @@
+R3-S9 source-access runtime preflight
+Captured: 2026-10-15 00:46 Asia/Shanghai (remote host clock)
+Host: 192.168.1.9
+
+Checks performed (read-only; no database business rows read):
+- datara-rebuild-api: running and healthy before any S9 deployment.
+- REBUILD_LEGACY_META_URL in datara-rebuild-api: not configured.
+- Remote /lei/datara/.env key-name inventory includes REBUILD_MYSQL_SRC_URL, but the approved R3-S9 contract explicitly rejects reusing that ec_retail source profile for datara_meta.
+- MySQL account privilege inventory: root has global privileges; the non-root runtime account shown is scoped to datara_rebuild_i0 with no privileges on datara_meta. No datara_meta database-level or table-level grants were present for a dedicated SELECT-only account.
+- Source schema SELECT, target snapshot, R3-S9 API deployment, Web deployment, and browser interaction were not attempted.
+- No credentials or environment values were printed or recorded. No DDL/DML, GRANT, restart, or deployment was issued.
+
+Result at capture time: BLOCKED for the remote source-read/dry-run gate. This is a historical preflight and is not the current authorization state. A dedicated principal was recommended; do not substitute REBUILD_MYSQL_SRC_URL.
+
+Addendum — 2026-10-15 05:02 Asia/Shanghai:
+- User explicitly approved MySQL root for read-only use only, with source modification forbidden. This later approval supersedes the historical “do not substitute root” restriction for fixed allowlisted read-only inspection only.
+- Confirmed healthy `datara-mysql-meta` on 192.168.1.9, MySQL 8.0.46; root was used only inside the container for `information_schema` and aggregate counts, inside a read-only transaction. Credentials were neither printed nor copied to runtime configuration.
+- I22 live-schema evidence is `s9-i22-live-schema-20261015.md`. No business-row payload was read. Source DDL/DML, GRANT, restart, deployment, and target import were not performed.
+- The previous missing `REBUILD_LEGACY_META_URL` remains a separate runtime API dry-run blocker; root CLI read-only schema access does not configure or authorize that API connection. This preflight still does not constitute an increment PASS.

@@ -11,13 +11,16 @@ from rebuild.governance.migrations import (
     MigrationRunner,
     R3_GOVERNANCE_MIGRATIONS,
 )
-from rebuild.governance.models import AssetRecord, GOVERNANCE_TABLES
+from rebuild.governance.models import AssetRecord, GOVERNANCE_TABLES, LEGACY_CARRY_FORWARD_TABLES
 from rebuild.project.models import ProjectRecord
+from rebuild.identity.models import UserRecord
+from rebuild.governance.revisions import v0001_governance_catalog, v0002_legacy_governance_carryforward
 
 
 def isolated_engine():
     engine = create_engine("sqlite+pysqlite:///:memory:")
     ProjectRecord.__table__.create(engine)
+    UserRecord.__table__.create(engine)
     return engine
 
 
@@ -50,15 +53,19 @@ def test_migration_registry_applies_once_and_records_database_timestamps():
         assert isinstance(record.finished_at, datetime)
 
 
-def test_real_r3_revision_creates_only_the_governance_table_set():
+def test_real_r3_revisions_are_additive_and_create_all_normalized_legacy_tables():
     engine = isolated_engine()
     result = MigrationRunner(engine, R3_GOVERNANCE_MIGRATIONS).apply()
     table_names = set(inspect(engine).get_table_names())
-    expected = {table.name for table in GOVERNANCE_TABLES}
+    expected_v1 = {table.name for table in GOVERNANCE_TABLES}
+    expected_v2 = {table.name for table in LEGACY_CARRY_FORWARD_TABLES}
 
-    assert result.applied == ("r3_0001_governance_catalog",)
-    assert expected <= table_names
-    assert "rebuild_user" not in table_names
+    assert result.applied == ("r3_0001_governance_catalog", "r3_0002_legacy_governance_carryforward")
+    assert expected_v1 | expected_v2 <= table_names
+    assert R3_GOVERNANCE_MIGRATIONS[0].checksum == v0001_governance_catalog.checksum
+    assert R3_GOVERNANCE_MIGRATIONS[1].checksum == v0002_legacy_governance_carryforward.checksum
+    assert MigrationRunner(engine, R3_GOVERNANCE_MIGRATIONS).apply().skipped == result.applied
+    assert "rebuild_user" in table_names
     assert "qc_task" not in table_names
 
 

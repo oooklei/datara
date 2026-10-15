@@ -1,0 +1,97 @@
+{
+  "run_id": "R3S9-20261014175743-e04920",
+  "started_at": "2026-10-14T17:57:43.430Z",
+  "timezone": "Asia/Shanghai",
+  "url": "http://192.168.1.9:18091/rebuild-validation-r3-s9.html",
+  "browser": "chromium 153.0.4234.32",
+  "project_id": 3,
+  "actions": [
+    {
+      "name": "select-project-in-page",
+      "project_id": 3,
+      "at": "2026-10-14T17:57:44.197Z"
+    },
+    {
+      "name": "click-read-only-i18-preview",
+      "at": "2026-10-14T17:57:44.251Z"
+    }
+  ],
+  "checks": [
+    {
+      "name": "protected-runner-token-exchange",
+      "pass": true,
+      "http_status": 200
+    },
+    {
+      "name": "validation-page-loaded",
+      "pass": true,
+      "http_status": 200
+    },
+    {
+      "name": "authorized-project-prefilled",
+      "pass": true,
+      "available_projects": 12
+    },
+    {
+      "name": "dry-run-api-returned-success",
+      "pass": true,
+      "status": 200
+    },
+    {
+      "name": "page-rendered-live-dry-run-result",
+      "pass": true,
+      "runtime_status": "预检完成 · 只读",
+      "stats_rendered": true,
+      "rendered_counts": [
+        "45",
+        "0",
+        "12 / 0",
+        "0 / 33"
+      ],
+      "visible_issue_count": 37,
+      "issue_code_counts": {
+        "unresolved_reference": 4,
+        "pending_identity_missing_from_batch": 4,
+        "relation_source_field_missing": 1,
+        "relation_target_field_missing": 1,
+        "dependency_not_importable": 27
+      },
+      "issue_samples": [
+        "unresolved_reference · t_dw_model#2 · biz_domain:交易",
+        "pending_identity_missing_from_batch · t_dw_model#2 · t_biz_domain:交易",
+        "unresolved_reference · t_dw_model#3 · biz_domain:交易",
+        "pending_identity_missing_from_batch · t_dw_model#3 · t_biz_domain:交易",
+        "unresolved_reference · t_dw_model#4 · biz_domain:交易",
+        "pending_identity_missing_from_batch · t_dw_model#4 · t_biz_domain:交易",
+        "unresolved_reference · t_dw_model_version#1 · model_id:1",
+        "pending_identity_missing_from_batch · t_dw_model_version#1 · t_dw_model:1",
+        "relation_source_field_missing · t_dw_model_relation#1 · order_id",
+        "relation_target_field_missing · t_dw_model_relation#2 · dt",
+        "dependency_not_importable · t_dw_model_field#2 · t_dw_model:2 (blocked)",
+        "dependency_not_importable · t_dw_model_field#3 · t_dw_model:2 (blocked)"
+      ]
+    },
+    {
+      "name": "page-reported-no-target-import",
+      "pass": true
+    },
+    {
+      "name": "no-browser-errors",
+      "pass": true,
+      "error_count": 0
+    }
+  ],
+  "relevant_responses": [
+    {
+      "name": "project-list",
+      "status": 200
+    },
+    {
+      "name": "i18-dry-run",
+      "status": 200
+    }
+  ],
+  "errors": [],
+  "outcome": "PASS",
+  "secrets_recorded": false
+}

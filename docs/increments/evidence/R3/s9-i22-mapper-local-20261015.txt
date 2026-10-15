@@ -1,0 +1,19 @@
+R3-S9 I22 pure source-to-target mapper — local verification
+Captured: 2026-10-15 05:19 Asia/Shanghai
+Worktree: D:/需求/数据治理工具/Datara/.worktrees/r3-s9 (codex/r3-s9)
+
+Impact/contract:
+- Preceding reader commit: `37c94c3`; live schema contract: `s9-i22-live-schema-20261015.md`.
+- Read-only source sample confirmed 1 code set, 1 code value, 1 approval; code value links to code set #1. Approval is `code` business type with missing source code ID #2. Mapper preserves this source ID and reports an unresolved reference; it does not infer a target StandardDefinition, rewrite the ID, execute approval, or silently skip.
+- Mapped all seven I22 source domains to the existing normalized target records. Mapping is pure: no SQL, API, importer, target DB, DDL, or frontend operation.
+- Explicit target project required; relations resolve only through exact source identities in the snapshot/context. Unsupported approval type, malformed JSON, invalid values/timestamps, duplicate identity, missing parent, invalid target ID, or incomplete table/column contract fail closed. Nullable links remain null.
+
+TDD and verification:
+- RED: tests failed to collect because `legacy_i22_mapping` had not been implemented.
+- GREEN: I22 mapper + reader focused suite — 14 passed.
+- Full backend suite: `pytest tests -q` — 724 passed in 71.64s (final rerun after adding explicit existing-identity coverage).
+- Ruff on changed I22 reader/mapper and tests: passed.
+- `python -m compileall -q rebuild`: passed.
+- `git diff --check`: passed.
+
+Disposition/status: the sampled approval #1 remains blocked on orphan `t_std_code#2`; it is not marked skipped. Mapper sub-batch is only `LOCAL_SUBSTEP_PASS / INTEGRATION_GATE_PENDING`. No target import permission is implied. Runtime API, UI control loop, remote service logs/middleware/resources, parity, recovery/concurrency and R3-S9 acceptance remain open.

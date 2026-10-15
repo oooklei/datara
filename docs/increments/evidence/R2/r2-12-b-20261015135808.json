@@ -1,0 +1,85 @@
+{
+  "run_id": "r2-12-b-20261015135808",
+  "timestamp": "2026-10-15T13:58:19.556164+08:00",
+  "timezone": "Asia/Shanghai",
+  "url": "http://192.168.1.9:18091/rebuild-validation-r2-12-b.html?projectId=17&datasourceId=7",
+  "browser": "Chromium via Playwright",
+  "actions": [
+    {
+      "action": "load schemas through explorer control",
+      "http_status": 200
+    },
+    {
+      "action": "expand schema and load tables/views",
+      "http_status": 200
+    },
+    {
+      "action": "select qualified table/view and load column definition",
+      "http_status": 200
+    },
+    {
+      "action": "attempt cross-project datasource browse",
+      "http_status": 404
+    }
+  ],
+  "assertions": [
+    {
+      "name": "validation-page-loaded",
+      "passed": true
+    },
+    {
+      "name": "schema-visible-in-tree",
+      "passed": true
+    },
+    {
+      "name": "table-or-view-visible-in-tree",
+      "passed": true
+    },
+    {
+      "name": "qualified-identity-and-columns-visible",
+      "passed": true
+    },
+    {
+      "name": "cross-project-profile-isolation",
+      "passed": true
+    }
+  ],
+  "responses": [
+    {
+      "status": 200,
+      "method": "GET",
+      "path": "/projects/17/datasources/7/schemas"
+    },
+    {
+      "status": 200,
+      "method": "GET",
+      "path": "/projects/17/datasources/7/objects"
+    },
+    {
+      "status": 200,
+      "method": "GET",
+      "path": "/projects/17/datasources/7/columns"
+    },
+    {
+      "status": 404,
+      "method": "GET",
+      "path": "/projects/18/datasources/7/schemas"
+    }
+  ],
+  "page_errors": [],
+  "console_errors": [
+    "Failed to load resource: the server responded with a status of 404 (Not Found)"
+  ],
+  "expected_console_errors": [
+    "Failed to load resource: the server responded with a status of 404 (Not Found)"
+  ],
+  "failed_requests": [],
+  "cleanup": {
+    "datasource_profile_deleted": true
+  },
+  "screenshot": "r2-12-b-20261015135808.png",
+  "result": "PASS",
+  "notes": [
+    "Verification key, bearer token, and datasource credentials are excluded."
+  ]
+}

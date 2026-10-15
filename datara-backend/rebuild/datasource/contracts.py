@@ -1,6 +1,7 @@
 """I1 数据源草稿校验和能力矩阵。"""
 
 from dataclasses import dataclass
+from collections.abc import Callable
 from typing import Any
 
 import pymysql
@@ -31,7 +32,7 @@ def validate_datasource(draft: DataSourceDraft) -> ValidatedDataSource:
         raise ValueError("port must be between 1 and 65535")
     capability_map = {
         "mysql": {"query", "metadata", "cross_schema"},
-        "postgresql": {"query", "metadata", "cross_schema"},
+        "postgresql": {"metadata", "cross_schema"},
     }
     capabilities = capability_map.get(draft.kind.lower())
     if capabilities is None:
@@ -39,25 +40,49 @@ def validate_datasource(draft: DataSourceDraft) -> ValidatedDataSource:
     return ValidatedDataSource(draft=draft, capabilities=set(capabilities))
 
 
-def probe_datasource(draft: DataSourceDraft) -> dict[str, Any]:
-    """Open a short-lived MySQL connection and return a small runtime probe."""
+def probe_datasource(
+    draft: DataSourceDraft, *, connector: Callable[[DataSourceDraft], Any] | None = None
+) -> dict[str, Any]:
+    """Open a short-lived read-only connection and return a small runtime probe."""
     validated = validate_datasource(draft)
-    if draft.kind.lower() != "mysql":
-        raise ValueError("runtime probe currently supports mysql only")
-    connection = pymysql.connect(
-        host=draft.host,
-        port=draft.port,
-        user=draft.username,
-        password=draft.password,
-        database=draft.database,
-        connect_timeout=3,
-        read_timeout=3,
-        write_timeout=3,
-        autocommit=True,
-    )
+    kind = draft.kind.lower()
+    if kind not in {"mysql", "postgresql"}:
+        raise ValueError(f"runtime probe does not support datasource kind: {draft.kind}")
+    if connector:
+        connection = connector(draft)
+    elif kind == "postgresql":
+        import psycopg
+
+        connection = psycopg.connect(
+            host=draft.host,
+            port=draft.port,
+            user=draft.username,
+            password=draft.password,
+            dbname=draft.database,
+            connect_timeout=3,
+            autocommit=False,
+        )
+    else:
+        connection = pymysql.connect(
+            host=draft.host,
+            port=draft.port,
+            user=draft.username,
+            password=draft.password,
+            database=draft.database,
+            connect_timeout=3,
+            read_timeout=3,
+            write_timeout=3,
+            autocommit=False,
+        )
     try:
         with connection.cursor() as cursor:
-            cursor.execute("SELECT DATABASE(), VERSION()")
+            if kind == "postgresql":
+                cursor.execute("BEGIN READ ONLY")
+                cursor.execute("SELECT current_database(), version()")
+            else:
+                cursor.execute("SET TRANSACTION READ ONLY")
+                connection.begin()
+                cursor.execute("SELECT DATABASE(), VERSION()")
             database, version = cursor.fetchone()
         return {
             "connected": True,
@@ -66,5 +91,7 @@ def probe_datasource(draft: DataSourceDraft) -> dict[str, Any]:
             "capabilities": sorted(validated.capabilities),
         }
     finally:
-        connection.close()
-
+        try:
+            connection.rollback()
+        finally:
+            connection.close()

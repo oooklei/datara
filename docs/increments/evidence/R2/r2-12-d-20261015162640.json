@@ -1,0 +1,34 @@
+{
+  "run_id": "r2-12-d-20261015162640",
+  "started_at": "2026-10-15T16:26:40.751225+08:00",
+  "result": "PARTIAL",
+  "token_redacted": true,
+  "fixture_credentials_recorded": false,
+  "assertions": [
+    {
+      "name": "saved-postgresql-profile-kind-displayed-from-backend",
+      "passed": true
+    }
+  ],
+  "responses": [
+    {
+      "method": "GET",
+      "path": "/projects/21/datasources",
+      "status": 200
+    },
+    {
+      "method": "GET",
+      "path": "/projects/21/datasources/12/schemas",
+      "status": 502
+    }
+  ],
+  "page_errors": [
+    "TimeoutError",
+    "PlaywrightTimeoutError",
+    "Error"
+  ],
+  "failed_requests": [],
+  "profile_cleanup": true,
+  "finished_at": "2026-10-15T16:27:21.224173+08:00",
+  "screenshot": "r2-12-d-20261015162640.png"
+}

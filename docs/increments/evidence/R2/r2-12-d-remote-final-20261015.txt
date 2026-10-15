@@ -1,0 +1,31 @@
+R2-12-D remote-final evidence
+Date: 2026-10-15 Asia/Shanghai
+Host: 192.168.1.9
+Web validation port: 18091
+
+Deployment and isolation:
+- Only `datara-rebuild-api` was created/recreated for D; it runs `datara-backend:r2-12-d-psycopg`, image ID `sha256:0cd060a34e7b699814d0715680dc0f712f5bdc65ffaac7d0c9ab66eb8d2dd614`.
+- Final container state is running/healthy. `/api/v1/rebuild/health` returned HTTP 200; the validation page returned HTTP 200.
+- The shared `datara-api`, `datara-worker`, `datara-master`, `datara-logger`, `datara-alert`, `datara-web`, persistent MySQL, Redis, Kafka, and Zookeeper containers remained running with their pre-existing images. No existing PostgreSQL service was reused or changed.
+- Mounted runtime source hashes: `rebuild/api/app.py` `9a76c509e9fa6b7d33c5bff4600834877a074194fee9977cdd3acd3d2d0af908`; `rebuild/datasource/metadata.py` `b3a1ecd2e1e72014e6090a7826209d0e5a0645a88dba4cc11ace90b480a34921`. The pre-replacement app source was preserved as `app.py.pre-safe-logging` (`6b0d33565db1c480abb7d0b2b75620e1b2f6f999441d2dc476e61c08ed3384d7`).
+- API catalog failure responses remain generic. Safe operational logging records only operation, exception class, and SQLSTATE; it does not log exception text, SQL parameters, credentials, or DSNs.
+
+Disposable fixtures and privileges:
+- PostgreSQL 16 and MySQL 8.0 were isolated under `datara_default`, each with the R2-12-D label, 256 MiB tmpfs database storage, and no host port binding. Both contained `analytics.orders`, `analytics.v_orders`, and `shared.orders` as applicable.
+- PostgreSQL `ds_reader` INSERT privilege check returned `false`. MySQL `ds_reader` grants were limited to `SELECT, SHOW VIEW` on the two fixture schemas. No persistent/legacy database was queried or modified.
+- Final UI run `r2-12-d-20261015164635` created datasource profiles 15 (PostgreSQL) and 16 (MySQL), then deleted both via API with HTTP 200. The runner recorded `profile_cleanup=true`.
+- After capturing evidence and logs, both exactly named fixture containers were verified against the D label and removed. A follow-up exact-name container query found neither fixture. `datara-rebuild-api` remained healthy after cleanup.
+
+Control/runtime correlation:
+- Final run `r2-12-d-20261015164635`: PASS; 6 UI assertions; 11 recorded API responses (9 expected 200s and 2 expected cross-project 404s); no page errors or failed requests. Paired JSON and PNG are stored beside this file.
+- API access logs show matching schema, object, columns calls for both profiles; the wrong-project PostgreSQL schema read returned 404; both profile DELETEs returned 200.
+- Earlier 502 browser runs `r2-12-d-20261015161750` and `r2-12-d-20261015162640` remain preserved with paired JSON+PNG. The first run was traced to Psycopg parameter formatting of literal `%` in PostgreSQL catalog LIKE patterns; that issue is fixed and regression-tested. The later 502 occurred while the API exposed only a generic response and had no safe exception-class log, so its independent cause was not proven. After safe diagnostic logging, API restart, and fresh fixtures, the PostgreSQL-only and final dual-dialect runs passed; do not treat the second failure as independently diagnosed.
+- PG-only intermediate control runs are retained but do not substitute for the final combined control run.
+
+Local verification on final D source:
+- Backend `pytest tests -q`: 796 passed.
+- Ruff, `python -m compileall -q rebuild tools/verify_r2_12_d.py`, and `git diff --check`: passed.
+- `datara-backend/Dockerfile.r2-12-d` and `docker-compose.r2-12-d.yml` isolate the candidate dependency image; the official/shared `datara-backend:latest` image was not replaced.
+- Browser-use control bridge: BLOCKED after one bounded retry. Playwright control-level validation on the same page: PASS. API-only was not used as UI acceptance.
+
+No key, token, password, or DSN is included in this record.

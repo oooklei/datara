@@ -1,0 +1,95 @@
+{
+  "run_id": "r2-12-c-20261015144457",
+  "timestamp": "2026-10-15T14:45:16.619412+08:00",
+  "timezone": "Asia/Shanghai",
+  "url": "http://192.168.1.9:18091/rebuild-validation-r2-12-b.html?projectId=19&datasourceId=10",
+  "browser": "Chromium via Playwright",
+  "actions": [
+    {
+      "action": "expand 2 schema controls concurrently (initial profile)"
+    },
+    {
+      "action": "update saved datasource profile through authenticated API",
+      "http_status": 200
+    },
+    {
+      "action": "expand 2 schema controls concurrently (after profile update invalidation)"
+    }
+  ],
+  "assertions": [
+    {
+      "name": "same-db-x-object-browser-loaded",
+      "passed": true
+    },
+    {
+      "name": "profile-update-invalidates-pool-and-browse-recovers",
+      "passed": true
+    },
+    {
+      "name": "bounded-pool-serves-repeated-concurrent-schema-requests",
+      "passed": true
+    },
+    {
+      "name": "cross-project-profile-isolation",
+      "passed": true
+    }
+  ],
+  "responses": [
+    {
+      "status": 200,
+      "method": "GET",
+      "path": "/projects/19/datasources/10/schemas"
+    },
+    {
+      "status": 200,
+      "method": "GET",
+      "path": "/projects/19/datasources/10/objects"
+    },
+    {
+      "status": 200,
+      "method": "GET",
+      "path": "/projects/19/datasources/10/objects"
+    },
+    {
+      "status": 200,
+      "method": "GET",
+      "path": "/projects/19/datasources/10/schemas"
+    },
+    {
+      "status": 200,
+      "method": "GET",
+      "path": "/projects/19/datasources/10/objects"
+    },
+    {
+      "status": 200,
+      "method": "GET",
+      "path": "/projects/19/datasources/10/objects"
+    },
+    {
+      "status": 200,
+      "method": "GET",
+      "path": "/projects/19/datasources/10/columns"
+    },
+    {
+      "status": 404,
+      "method": "GET",
+      "path": "/projects/20/datasources/10/schemas"
+    }
+  ],
+  "page_errors": [],
+  "console_errors": [
+    "Failed to load resource: the server responded with a status of 404 (Not Found)"
+  ],
+  "expected_console_errors": [
+    "Failed to load resource: the server responded with a status of 404 (Not Found)"
+  ],
+  "failed_requests": [],
+  "cleanup": {
+    "datasource_profile_deleted": true
+  },
+  "screenshot": "r2-12-c-20261015144457.png",
+  "result": "PASS",
+  "notes": [
+    "Validation key, token, datasource password, and DSN are not included in this report."
+  ]
+}
