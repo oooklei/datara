@@ -32,6 +32,7 @@ async function main() {
     url: pageUrl,
     browser: null,
     project_id: null,
+    snapshot_digests: null,
     actions,
     checks,
     relevant_responses: responses,
@@ -78,10 +79,11 @@ async function main() {
       return select?.options.length > 0 && Boolean(select.options[0].value);
     }, null, { timeout: 30000 });
     const options = await page.locator('#projectSelect option').evaluateAll(items => items.filter(item => item.value).map(item => ({ id: item.value })));
-    check(checks, 'authorized-project-prefilled', options.length > 0 && Boolean(options[0].id), { available_projects: options.length });
+    const approvedProject = options.find(project => project.id === '3');
+    check(checks, 'approved-project-3', Boolean(approvedProject), { available_projects: options.length });
 
-    await page.locator('#projectSelect').selectOption(options[0].id);
-    report.project_id = Number(options[0].id);
+    await page.locator('#projectSelect').selectOption(approvedProject.id);
+    report.project_id = Number(approvedProject.id);
     actions.push({ name: 'select-project-in-page', project_id: report.project_id, at: new Date().toISOString() });
     await page.getByTestId('run-dry-run').click();
     actions.push({ name: 'click-read-only-i18-preview', at: new Date().toISOString() });
@@ -90,6 +92,15 @@ async function main() {
     const resultStatus = await page.locator('#runtimeStatus').getAttribute('data-state');
     const notice = (await page.locator('#notice').innerText()).trim();
     const stats = await page.evaluate(() => ['sourceRows', 'targetRows', 'plannedRows', 'skippedRows', 'blockedRows'].map(id => document.querySelector(`#${id}`)?.textContent?.trim()));
+    const snapshotDigests = await page.evaluate(() => ({
+      source_digest: document.querySelector('#sourceDigest')?.textContent?.trim() || '',
+      target_digest: document.querySelector('#targetDigest')?.textContent?.trim() || '',
+    }));
+    report.snapshot_digests = snapshotDigests;
+    check(checks, 'approved-i18-snapshot-digests', /^[0-9a-f]{64}$/.test(snapshotDigests.source_digest) && /^[0-9a-f]{64}$/.test(snapshotDigests.target_digest), {
+      source_digest: snapshotDigests.source_digest,
+      target_digest: snapshotDigests.target_digest,
+    });
     const visibleIssues = await page.locator('#issueList .issue').allTextContents();
     const planRows = await page.locator('#planRows tr').allTextContents();
     const issueCodeCounts = visibleIssues.reduce((counts, text) => {
@@ -117,6 +128,21 @@ async function main() {
       mapping_rows: planRows.filter(row => row.includes('order_id') || row.includes('order_date')),
     });
     check(checks, 'page-reported-no-target-import', notice.includes('未执行迁移'));
+    const confirmationPhrase = await page.getByTestId('required-confirm-phrase').innerText();
+    const confirmationEnabled = await page.locator('#importConfirmPhrase').isEnabled();
+    const importButtonDisabled = await page.locator('#runI18Import').isDisabled();
+    check(
+      checks,
+      'run-i18-import-confirmation-ready',
+      resultStatus === 'complete' && confirmationEnabled && importButtonDisabled &&
+        confirmationPhrase === `IMPORT I18 3 ${snapshotDigests.source_digest} ${snapshotDigests.target_digest}`,
+      {
+        confirmation_input_enabled: confirmationEnabled,
+        import_button_disabled_until_human_confirmation: importButtonDisabled,
+        confirmation_phrase_matches_live_digests: confirmationPhrase ===
+          `IMPORT I18 3 ${snapshotDigests.source_digest} ${snapshotDigests.target_digest}`,
+      },
+    );
     check(checks, 'no-browser-errors', errors.length === 0, { error_count: errors.length });
 
     await page.screenshot({ path: path.join(evidenceDir, `${runId.toLowerCase()}-summary.png`), fullPage: false });
