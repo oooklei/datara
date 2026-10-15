@@ -17,8 +17,8 @@ describe('isolated rebuild validation pages', () => {
     expect(runner).not.toMatch(/REBUILD_VALIDATION_KEY\s*=\s*['"][^'"]+['"]|X-Backend-Validation-Key\s*:\s*['"][0-9a-f]{32,}/i)
   })
 
-  // 仅 i1 存在于仓库（i2 页面从未提交过 git 历史）— 契约覆盖实际存在的隔离验证页。
-  it.each(['i1'])('keeps the %s validation page free of human login and prefilled credentials', (id) => {
+  // i1/i2 均已入库；新增隔离验证页时必须同步加入本列表（credentials/存储探针逐页覆盖）。
+  it.each(['i1', 'i2'])('keeps the %s validation page free of human login and prefilled credentials', (id) => {
     const html = readFileSync(new URL(`../../../public/rebuild-validation-${id}.html`, import.meta.url), 'utf8')
 
     expect(html).not.toMatch(/id=["'](?:username|password|login)["']/i)
