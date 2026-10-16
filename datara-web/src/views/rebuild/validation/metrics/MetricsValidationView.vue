@@ -1,25 +1,25 @@
 <!--
-  I9：统计/质量/血缘报告验证页（RED/原型态）。
+  R7：统计/质量/血缘报告验证页（契约已接线，R7 批次）。
   权威范围：plan I9（docs/superpowers/plans/2026-10-14-datara-platform-rebuild.md）
   + docs/increments/I7-I9-前端消费面分析.md §1/§3。
   边界：独立验证页，不进正式菜单（I11 融合）；契约全部经 services/rebuild/metricsApi
-  （后端接入前抛 I9_METRICS_NOT_WIRED，UI 统一横幅提示）；不触发增量 GREEN。
+  （P1 冻结词形 R7_CONTRACT_METHODS，{code,msg,data} 包络沿 R2 固化）；GREEN 标记待独立评审。
   legacy mock 页（IndBoardView/QcReportHubView）布局可参考，但其 mock 数据结构不进本契约。
 -->
 <template>
   <div class="i9-page">
     <el-alert
-      type="warning"
+      type="info"
       :closable="false"
       show-icon
       data-testid="i9-red-banner"
-      title="I9 RED 骨架（原型态）— rebuild/metrics 后端契约未接入，所有 I/O 返回 I9_METRICS_NOT_WIRED"
+      title="R7 契约已接线（rebuild/metrics P1 冻结词形）— I/O 经统一包络；GREEN 标记待独立评审"
     />
 
     <el-descriptions :column="3" size="small" border class="i9-context">
       <el-descriptions-item label="统计表面">workflow_result_stat / task_instance_data_stat / task_data_stat_segment / task_data_error_sample</el-descriptions-item>
       <el-descriptions-item label="口径透传">unknown（known=false）/ estimated 标记</el-descriptions-item>
-      <el-descriptions-item label="契约方法">{{ contractMethodCount }} 项（全部未接线）</el-descriptions-item>
+      <el-descriptions-item label="契约方法">{{ contractMethodCount }} 项（已接线，待独立评审）</el-descriptions-item>
     </el-descriptions>
 
     <!-- R7 深化：时间窗筛选（四表查询共用，真实可编辑） -->
@@ -40,7 +40,7 @@
             <span>工作流结果统计（成功/失败/跳过筛选）</span>
             <el-button size="small" @click="onQueryStats('workflow')">加载</el-button>
           </div>
-          <el-table :data="workflowStats" size="small" empty-text="（未接线）" data-testid="i9-workflow-stats">
+          <el-table :data="workflowStats" size="small" empty-text="（暂无数据）" data-testid="i9-workflow-stats">
             <el-table-column prop="workflowId" label="工作流" width="80" />
             <el-table-column prop="runDate" label="日期" width="110" />
             <el-table-column prop="successCount" label="成功" width="70" :filters="[{ text: '成功>0', value: 'success' }, { text: '失败>0', value: 'failure' }, { text: '跳过>0', value: 'skipped' }]" :filter-method="filterWorkflowRow" />
@@ -56,7 +56,7 @@
             <span>实例数据量统计（unknown/estimated 透传）</span>
             <el-button size="small" @click="onQueryStats('instance')">加载</el-button>
           </div>
-          <el-table :data="instanceStats" size="small" empty-text="（未接线）">
+          <el-table :data="instanceStats" size="small" empty-text="（暂无数据）">
             <el-table-column prop="instanceId" label="实例" width="80" />
             <el-table-column prop="taskId" label="任务" width="120" />
             <el-table-column prop="rowsIn" label="rowsIn" :formatter="metricFormatter" />
@@ -79,7 +79,7 @@
             <span>分段统计</span>
             <el-button size="small" @click="onQueryStats('segment')">加载</el-button>
           </div>
-          <el-table :data="segmentStats" size="small" empty-text="（未接线）">
+          <el-table :data="segmentStats" size="small" empty-text="（暂无数据）">
             <el-table-column prop="instanceId" label="实例" width="80" />
             <el-table-column prop="segmentKey" label="分段" />
             <el-table-column prop="rowCount" label="行数" :formatter="metricFormatter" />
@@ -92,7 +92,7 @@
             <span>错误样本（可跳转实例）</span>
             <el-button size="small" @click="onQueryStats('error')">样本</el-button>
           </div>
-          <el-table :data="errorSamples" size="small" empty-text="（未接线）" data-testid="i9-error-samples">
+          <el-table :data="errorSamples" size="small" empty-text="（暂无数据）" data-testid="i9-error-samples">
             <el-table-column prop="instanceId" label="实例" width="80" />
             <el-table-column prop="taskId" label="任务" width="110" />
             <el-table-column prop="errorType" label="错误类型" width="120" />
@@ -115,7 +115,7 @@
             <el-button size="small" @click="onQueryQuality">质量链</el-button>
             <el-button size="small" @click="onQueryLineage">血缘</el-button>
           </div>
-          <el-table :data="qualityLinks" size="small" empty-text="（未接线）">
+          <el-table :data="qualityLinks" size="small" empty-text="（暂无数据）">
             <el-table-column prop="ruleName" label="规则" />
             <el-table-column prop="statRef" label="统计引用" width="150" />
             <el-table-column prop="alertSent" label="已告警" width="80" />
@@ -138,8 +138,8 @@
 import { reactive, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import {
-  I9_CONTRACT_METHODS,
-  I9_METRICS_NOT_WIRED,
+  R7_CONTRACT_METHODS,
+  R7_METRICS_NOT_WIRED,
   createMetricsContract,
   type LineageWritebackEntry,
   type MetricValue,
@@ -155,7 +155,7 @@ defineOptions({ name: 'MetricsValidationView' })
 
 const router = useRouter()
 const contract = createMetricsContract()
-const contractMethodCount = I9_CONTRACT_METHODS.length
+const contractMethodCount = R7_CONTRACT_METHODS.length
 
 /* 时间窗筛选（R7 深化：真实可编辑，四表 + 质量链/血缘共用） */
 const queryWindow = reactive<TimeWindowQuery>({
@@ -202,8 +202,8 @@ function guard<T>(fn: () => Promise<T>, label: string): Promise<void> {
     })
     .catch((err: unknown) => {
       statusText.value =
-        err instanceof Error && err.message.startsWith(I9_METRICS_NOT_WIRED)
-          ? `${label}：后端未接线（${I9_METRICS_NOT_WIRED.split(':')[0]}）`
+        err instanceof Error && err.message.startsWith(R7_METRICS_NOT_WIRED)
+          ? `${label}：后端未接线（${R7_METRICS_NOT_WIRED.split(':')[0]}）`
           : `${label} 失败：${err instanceof Error ? err.message : String(err)}`
     })
 }
