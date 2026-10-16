@@ -1,6 +1,6 @@
 # Datara Platform Rebuild Implementation Plan
 
-> **SUPERSEDED（2026-10-14）**：本稿保留作历史执行计划；当前权威增量计划已移至 [`docs/increments/2026-10-14-datara-platform-rebuild.md`](../../increments/2026-10-14-datara-platform-rebuild.md)，包含 R0-R11、方案 A、参考研究产物及 R2-14 门禁。发生差异时以新路径为准。
+> **唯一权威增量计划（2026-10-16 用户裁定 A 恢复）**：本稿是用户逐字研究讨论的原始重建计划正本（出生提交 `6e9faf3`），自 `docs/archive/superpowers/plans/` 恢复为本路径并恢复计划真源地位。执行状态附录为 [`2026-10-14-datara-platform-rebuild-执行附录.md`](2026-10-14-datara-platform-rebuild-执行附录.md)（原评审修订版，承载 9 增量重排、P1-P4 执行规则、R2-01..15 状态跟踪与 S9/I18-I23 子增量计划）；本文末"修订章（2026-10-16 裁定 A 并回）"汇总经用户批准的执行重排。设计冲突以正本设计文档为准，执行现状以附录与台账为准。
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
@@ -18,7 +18,7 @@
 
 若发现与总体设计冲突，必须暂停受影响步骤，取得用户批准后立即刷新项目主目录中的设计文档、计划文档、接口/数据库契约和验收标准；未刷新前不得继续。
 
-本段为历史流程说明。当前设计、计划、执行台账、验证证据及增量文档均以项目根目录下的 `docs/increments/` 为唯一文档真源；本 superseded 副本不再承载执行状态。Agent worktree 仅用于代码隔离，不作为共享文档和执行状态的权威位置。
+本段流程说明自 2026-10-16 用户裁定 A 起继续有效：本稿即 `docs/increments/` 下的唯一权威增量计划正本；执行状态、9 增量重排与 R2 跟踪见文末修订章与执行附录。Agent worktree 仅用于代码隔离，不作为共享文档和执行状态的权威位置。
 
 验证环境固定为：
 
@@ -115,7 +115,7 @@ I0-I10 每个增量都必须有独立路由组下的最小验证页；正式前�
 ## 0. 开发约束和工作区边界
 
 **Files:**
-- Reference: `docs/superpowers/specs/2026-10-14-datara-platform-rebuild-design.md`
+- Reference: `docs/increments/2026-10-14-datara-platform-rebuild-design.md`（同目录设计正本，裁定 A 恢复）
 - Reference: `docs/README.md`
 - Reference: `datara-backend/pyproject.toml`
 - Reference: `datara-web/package.json`
