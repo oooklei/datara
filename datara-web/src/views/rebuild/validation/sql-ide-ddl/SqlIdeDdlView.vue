@@ -36,9 +36,12 @@
         <div class="r5b-panel">
           <div class="r5b-panel-head">
             <span>管控结果</span>
-            <el-tag v-if="report" :type="report.blocked ? 'danger' : 'success'" size="small">
-              {{ report.blocked ? 'BLOCKED' : 'PASS' }}
-            </el-tag>
+            <span class="r5b-head-actions">
+              <el-button size="small" data-testid="r5b-impact" @click="onPreviewImpact">影响预览</el-button>
+              <el-tag v-if="report" :type="report.blocked ? 'danger' : 'success'" size="small">
+                {{ report.blocked ? 'BLOCKED' : 'PASS' }}
+              </el-tag>
+            </span>
           </div>
           <div class="r5b-panel-body r5b-findings">
             <el-empty v-if="!report" description="（未校验 — validatePolicy 契约 A5 未接入）" :image-size="56" />
@@ -55,6 +58,15 @@
               <div v-if="f.impacts.length" class="r5b-impacts">影响对象：{{ f.impacts.join('、') }}</div>
             </el-alert>
           </div>
+          <div v-if="impacts.length" class="r5b-impact-table" data-testid="r5b-impact-list">
+            <div class="r5b-impact-title">影响预览（提交确认前必读）</div>
+            <el-table :data="impacts" size="small" border max-height="140">
+              <el-table-column prop="kind" label="类型" width="160" />
+              <el-table-column prop="name" label="对象" width="160" />
+              <el-table-column prop="detail" label="影响说明" />
+            </el-table>
+          </div>
+          <div class="r5b-impact-status" data-testid="r5b-impact-status">{{ impactStatus }}</div>
           <div class="r5b-confirm" data-testid="r5b-confirm-gate">
             <el-input
               v-model="confirmPhrase"
@@ -93,7 +105,9 @@ import { Splitpanes, Pane } from 'splitpanes'
 import 'splitpanes/dist/splitpanes.css'
 import {
   createSqlIdeDdlContract,
+  R5B_BACKEND_NOT_WIRED,
   type DdlExecutionRecord,
+  type DdlImpactItem,
   type DdlObjectKind,
   type DdlPolicyReport,
 } from '../../../../services/rebuild/sqlIdeDdlApi'
@@ -109,6 +123,10 @@ const ddlText = ref('')
 const confirmPhrase = ref('')
 const report = ref<DdlPolicyReport | null>(null)
 const records = ref<DdlExecutionRecord[]>([])
+
+/* R5-B 深化：影响预览（权威设计 §7.2，提交确认前必须展示） */
+const impacts = ref<DdlImpactItem[]>([])
+const impactStatus = ref('')
 
 /** block 级存在或无确认短语 → 确认闸关闭（UI 层先行，服务端仍为准） */
 const canConfirm = computed(() => !!confirmPhrase.value && !!report.value && !report.value.blocked && !!ddlText.value)
@@ -145,6 +163,24 @@ const onConfirm = () =>
       records.value = [rec, ...records.value]
     })
     .catch(() => {})
+
+/** 影响预览（只读）：哨兵错误落状态行，不中断交互 */
+const onPreviewImpact = () => {
+  impactStatus.value = '影响预览中…'
+  contract
+    .previewImpact(0, ddlText.value)
+    .then((items) => {
+      impacts.value = items
+      impactStatus.value = `影响预览完成：${items.length} 项`
+    })
+    .catch((err: unknown) => {
+      impacts.value = []
+      impactStatus.value =
+        err instanceof Error && err.message.startsWith(R5B_BACKEND_NOT_WIRED)
+          ? `影响预览：后端未接线（${R5B_BACKEND_NOT_WIRED.split(':')[0]}）`
+          : `影响预览失败：${err instanceof Error ? err.message : String(err)}`
+    })
+}
 </script>
 
 <style scoped>
@@ -187,6 +223,27 @@ const onConfirm = () =>
   display: inline-flex;
   gap: 6px;
   align-items: center;
+}
+.r5b-head-actions {
+  display: inline-flex;
+  gap: 6px;
+  align-items: center;
+}
+.r5b-impact-table {
+  flex: none;
+  padding: 4px 8px;
+  border-top: 1px solid var(--el-border-color-lighter);
+}
+.r5b-impact-title {
+  font-size: 12px;
+  color: var(--el-text-color-regular);
+  margin-bottom: 4px;
+}
+.r5b-impact-status {
+  flex: none;
+  padding: 2px 8px;
+  font-size: 12px;
+  color: var(--el-text-color-secondary);
 }
 .r5b-kind {
   width: 120px;

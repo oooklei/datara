@@ -59,9 +59,18 @@ export interface DdlExecutionRecord {
 
 export const R5B_BACKEND_NOT_WIRED = 'R5B_BACKEND_NOT_WIRED: A5 (rebuild/sql_ide/ddl) contract not connected yet'
 
+/* ---------- 影响预览（权威设计 §7.2 R5-B 能力面；纠偏执行附录 §2 追踪表「影响预览」） ---------- */
+
+export interface DdlImpactItem {
+  kind: 'dependent-view' | 'dependent-routine' | 'lineage-downstream' | 'permission-scope'
+  name: string
+  detail: string
+}
+
 export const R5B_CONTRACT_METHODS = [
   'getDefinition',
   'validatePolicy',
+  'previewImpact',
   'submitConfirm',
   'listExecutionRecords',
 ] as const
@@ -71,6 +80,8 @@ export type R5BContractMethod = (typeof R5B_CONTRACT_METHODS)[number]
 export interface SqlIdeDdlContract {
   getDefinition: (datasourceId: number, objectKind: DdlObjectKind, schema: string | null, name: string) => Promise<DdlDefinition>
   validatePolicy: (datasourceId: number, nextDdlText: string) => Promise<DdlPolicyReport>
+  /** 影响预览（只读）：DDL 生效将波及的依赖视图/例程/血缘下游/权限范围；提交确认前必须展示 */
+  previewImpact: (datasourceId: number, nextDdlText: string) => Promise<DdlImpactItem[]>
   /** 确认闸提交：block 级 finding 存在时服务端必须拒绝；confirmPhrase 由用户输入 */
   submitConfirm: (request: DdlConfirmRequest) => Promise<DdlExecutionRecord>
   listExecutionRecords: (datasourceId: number) => Promise<DdlExecutionRecord[]>
@@ -86,6 +97,7 @@ export function createSqlIdeDdlContract(): SqlIdeDdlContract {
   return {
     getDefinition: notWired,
     validatePolicy: notWired,
+    previewImpact: notWired,
     submitConfirm: notWired,
     listExecutionRecords: notWired,
   }
