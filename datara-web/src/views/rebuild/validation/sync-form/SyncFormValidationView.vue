@@ -22,7 +22,7 @@
       <el-descriptions-item label="契约方法">{{ contractMethodCount }} 项（全部未接线）</el-descriptions-item>
     </el-descriptions>
 
-    <!-- ① 连接与对象选择 -->
+    <!-- ① 连接与对象选择（源/目标三元组） -->
     <div class="r4-sync-panel">
       <div class="r4-sync-panel-head"><span>① 连接与对象选择（datasource_id / schema / table 三元组）</span></div>
       <el-form inline size="small" class="r4-sync-form">
@@ -32,6 +32,15 @@
         <el-form-item label="源表"><el-input v-model="source.table" style="width: 140px" /></el-form-item>
         <el-form-item>
           <el-button size="small" type="primary" data-testid="r4-sync-probe" @click="onProbe">探查表字段</el-button>
+        </el-form-item>
+      </el-form>
+      <el-form inline size="small" class="r4-sync-form">
+        <el-form-item label="目标连接"><el-input v-model.number="target.datasourceId" style="width: 90px" /></el-form-item>
+        <el-form-item label="目标 schema"><el-input v-model="target.schema" style="width: 120px" /></el-form-item>
+        <el-form-item label="目标表"><el-input v-model="target.table" style="width: 140px" /></el-form-item>
+        <el-form-item label="候选 schema"><el-input v-model="targetCandidateSchemas" style="width: 120px" placeholder="逗号分隔" /></el-form-item>
+        <el-form-item>
+          <el-button size="small" data-testid="r4-sync-probe-target" @click="onProbeTarget">探查目标候选</el-button>
         </el-form-item>
       </el-form>
     </div>
@@ -141,6 +150,9 @@ const contractMethodCount = R4_SYNC_CONTRACT_METHODS.length
 
 const form = reactive({ projectId: 1, strategy: 'full' as SyncStrategy, writeMode: 'append' as SyncWriteMode })
 const source = reactive<SyncObjectIdentity>({ datasourceId: 1, schema: 'public', table: '' })
+/** 目标侧三元组（客户 #2 选源/目标连接；草案 §3.1 target-led 探查带显式候选 schema） */
+const target = reactive<SyncObjectIdentity>({ datasourceId: 1, schema: 'public', table: '' })
+const targetCandidateSchemas = ref('public')
 const sourceColumns = ref<SyncColumn[]>([])
 const targetColumns = ref<SyncColumn[]>([])
 const mapping = ref<SyncMappingItem[]>([])
@@ -165,6 +177,17 @@ function guard<T>(fn: () => Promise<T>, label: string): Promise<void> {
 function onProbe() {
   const request: SyncProbeRequest = { projectId: form.projectId, mode: 'source_table', source: { ...source } }
   return guard(() => contract.probe(request), '探查表字段')
+}
+
+/** target-led 探查：按显式候选 schema 查目标列（草案 §3.1，同名跨 schema 返回全部候选不自动选中） */
+function onProbeTarget() {
+  const request: SyncProbeRequest = {
+    projectId: form.projectId,
+    mode: 'target_table',
+    source: { ...source },
+    candidateSchemas: targetCandidateSchemas.value.split(/[,\s]+/).filter(Boolean),
+  }
+  return guard(() => contract.probe(request), '探查目标候选')
 }
 
 /** 本地样例列集：仅驱动映射编辑演示（标注非后端数据） */
@@ -194,7 +217,7 @@ function onSavePlan() {
         projectId: form.projectId,
         mode: 'source_table',
         source: { ...source },
-        target: { datasourceId: source.datasourceId, schema: source.schema, table: source.table },
+        target: { ...target },
         strategy: form.strategy,
         writeMode: form.writeMode,
         targetPolicy: 'existing_only',
