@@ -1,0 +1,89 @@
+{
+  "run_id": "R3S9IMPORT-20261015235813-042570",
+  "started_at": "2026-10-15T23:58:13.644Z",
+  "timezone": "Asia/Shanghai",
+  "url": "http://192.168.1.9:18091/rebuild-validation-r3-s9.html",
+  "browser": "chromium(msedge.exe) headless",
+  "auth_mode": "admin-delegated-import (user handoff authorization 2026-10-16 07:37 + adjudication 2)",
+  "project_id": 3,
+  "snapshot_digests": {
+    "source_digest": "a0227040f719c0064e51f3377378677022238d909b68c922d36275a218efbf3e",
+    "target_digest": "044e357c04b28ea09489348b913f4392915e29445cf2b2fb437db27246455b22"
+  },
+  "actions": [
+    {
+      "name": "select-project-3",
+      "at": "2026-10-15T23:58:14.904Z"
+    },
+    {
+      "name": "click-read-only-i18-preview",
+      "at": "2026-10-15T23:58:14.993Z"
+    },
+    {
+      "name": "fill-confirmation-phrase (delegated import, adjudication 2)",
+      "at": "2026-10-15T23:58:15.185Z"
+    },
+    {
+      "name": "click-i18-import (delegated import, adjudication 2)",
+      "at": "2026-10-15T23:58:15.249Z"
+    },
+    {
+      "name": "session-revoked-after-run",
+      "ok": true,
+      "at": "2026-10-15T23:58:18.740Z"
+    }
+  ],
+  "checks": [
+    {
+      "name": "validation-page-loaded",
+      "pass": true,
+      "http_status": 200
+    },
+    {
+      "name": "snapshot-digests-match-dryrun-evidence",
+      "pass": true,
+      "source_digest": "a0227040f719c0064e51f3377378677022238d909b68c922d36275a218efbf3e",
+      "target_digest": "044e357c04b28ea09489348b913f4392915e29445cf2b2fb437db27246455b22"
+    },
+    {
+      "name": "confirmation-phrase-matches-digests",
+      "pass": true,
+      "phrase": "IMPORT I18 3 a0227040f719c0064e51f3377378677022238d909b68c922d36275a218efbf3e 044e357c04b28ea09489348b913f4392915e29445cf2b2fb437db27246455b22"
+    },
+    {
+      "name": "import-button-enabled-after-phrase",
+      "pass": true
+    },
+    {
+      "name": "delegated-import-gate-pass",
+      "pass": false,
+      "import_http_status": 200,
+      "import_accepted_2xx": true,
+      "import_completed": false,
+      "runtime_state": "failed",
+      "import_status_text": "导入已提交但复核计数异常；请依据后台批次 1 进行人工核查。"
+    }
+  ],
+  "relevant_responses": [
+    {
+      "name": "i18-dry-run",
+      "status": 200
+    },
+    {
+      "name": "i18-import",
+      "status": 200
+    },
+    {
+      "name": "i18-dry-run",
+      "status": 200
+    }
+  ],
+  "errors": [
+    {
+      "kind": "driver",
+      "message": "UI assertion failed: delegated-import-gate-pass"
+    }
+  ],
+  "outcome": "FAIL",
+  "secrets_recorded": false
+}
