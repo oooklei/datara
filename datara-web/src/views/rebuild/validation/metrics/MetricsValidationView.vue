@@ -3,7 +3,7 @@
   权威范围：plan I9（docs/superpowers/plans/2026-10-14-datara-platform-rebuild.md）
   + docs/increments/I7-I9-前端消费面分析.md §1/§3。
   边界：独立验证页，不进正式菜单（I11 融合）；契约全部经 services/rebuild/metricsApi
-  （后端接入前抛 I9_METRICS_NOT_WIRED，UI 统一横幅提示）；不触发增量 GREEN。
+  （后端接入前抛 R7_METRICS_NOT_WIRED，UI 统一横幅提示）；不触发增量 GREEN。
   legacy mock 页（IndBoardView/QcReportHubView）布局可参考，但其 mock 数据结构不进本契约。
 -->
 <template>
@@ -13,7 +13,7 @@
       :closable="false"
       show-icon
       data-testid="i9-red-banner"
-      title="I9 RED 骨架（原型态）— rebuild/metrics 后端契约未接入，所有 I/O 返回 I9_METRICS_NOT_WIRED"
+      title="I9 RED 骨架（原型态）— rebuild/metrics 后端契约未接入，所有 I/O 返回 R7_METRICS_NOT_WIRED"
     />
 
     <el-descriptions :column="3" size="small" border class="i9-context">
@@ -100,8 +100,8 @@
 <script setup lang="ts">
 import { ref } from 'vue'
 import {
-  I9_CONTRACT_METHODS,
-  I9_METRICS_NOT_WIRED,
+  R7_CONTRACT_METHODS,
+  R7_METRICS_NOT_WIRED,
   createMetricsContract,
   type LineageWritebackEntry,
   type QualityRuleResultLink,
@@ -115,7 +115,7 @@ import {
 defineOptions({ name: 'MetricsValidationView' })
 
 const contract = createMetricsContract()
-const contractMethodCount = I9_CONTRACT_METHODS.length
+const contractMethodCount = R7_CONTRACT_METHODS.length
 
 /* 时间窗（后端接入前为占位参数） */
 const window: TimeWindowQuery = {
@@ -140,8 +140,8 @@ function guard<T>(fn: () => Promise<T>, label: string): Promise<void> {
     })
     .catch((err: unknown) => {
       statusText.value =
-        err instanceof Error && err.message.startsWith(I9_METRICS_NOT_WIRED)
-          ? `${label}：后端未接线（${I9_METRICS_NOT_WIRED.split(':')[0]}）`
+        err instanceof Error && err.message.startsWith(R7_METRICS_NOT_WIRED)
+          ? `${label}：后端未接线（${R7_METRICS_NOT_WIRED.split(':')[0]}）`
           : `${label} 失败：${err instanceof Error ? err.message : String(err)}`
     })
 }
