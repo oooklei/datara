@@ -1,4 +1,4 @@
-# R 系列 GREEN Runbook — R2/R4/R5/R7/R8（Trae 前端接线）
+# R 系列 GREEN Runbook — R2/R4/R5/R6/R7/R8（Trae 前端接线）
 
 Date: 2026-10-16 · 作者：Trae 执行线 · 状态：等待 P1（后端契约冻结）后按本 runbook 执行
 适用域：`datara-web/`（Trae 域）· 基线 worktree：`.worktrees/trae-r4-red`（分支 `trae/r4-red`，基 main `1303d2b`，RED 终态 `e6a3174`，17 提交）
@@ -49,7 +49,17 @@ Date: 2026-10-16 · 作者：Trae 执行线 · 状态：等待 P1（后端契约
 - 门禁：同统一门禁。
 - evidence：`docs/increments/evidence/R7/trae-r7-green-<date>.txt`。
 
-## 5. R8 流观摩页（stream/）
+## 5. R6 调度运行时验证页（schedule/）
+
+> X11 终裁一补节（2026-10-16 用户批准，handoff `805488b`）：schedule 页（组件 I7，已在 main `048a615`）改判 **R6**（治理/运行及调度承接，执行附录 §6 R6 行）；本节为终裁后补入，registerTrigger 面自 §2 R4 批次移入。页名/title 改名随 worktree 5 页批次集成落地（终裁二①）。
+
+- 契约面：scheduleApi 5 方法（listTriggers / registerTrigger / listQueue / listRuntimeEvents / listAlerts；`I7_SCHEDULER_NOT_WIRED` 哨兵改名按终裁二②推迟至 P1 冻结同批）。
+- 前置：P1 中调度契约冻结。BE 实态（R4-SYNC 清单 §4.2 + FE 适配层设计 SCHEDULE 行）：`create_schedule_router` 仅 trigger CRUD（`_serialize` 键形 `misfire_policy/next_fire_at` 等待对照）、调度执行在 worker 侧（`run_due_schedules_once`/`ScheduleRunOnceResult`）；FE `listQueue/listRuntimeEvents/listAlerts` **无 BE 端点（需 Codex 新增）**；`TriggerKind` 5 值 vs BE 仅 `"CRON"` 待冻结扩面；无分页/projectId（B2 缺口 #4/#12）。
+- 接线步骤：①listTriggers/registerTrigger 接 CRUD 真接口（键形映射随 FE 适配层）；②queue/runtimeEvents/alerts 三查询待 BE 新增端点冻结后接真；③UI 横幅与 `I7_CONTRACT_METHODS` 单一事实源随哨兵改名（终裁二②）同步。
+- 门禁：同统一门禁。
+- evidence：`docs/increments/evidence/R6/trae-r6-green-<date>.txt`（evidence/R6 目录随首份证据创建）。
+
+## 6. R8 流观摩页（stream/）
 
 - 契约面：streamApi 6 方法 + TimeWindowQuery 复用（schema 提案见 `docs/increments/2026-10-16-R8观测schema提案.md`）。
 - 前置：P1 中 R8 stream 契约冻结 + 0.4 GREEN 集成裁定 + A5；观测 schema 提案经 Codex 评审定稿。
@@ -57,10 +67,10 @@ Date: 2026-10-16 · 作者：Trae 执行线 · 状态：等待 P1（后端契约
 - 门禁：同统一门禁；流断连/空窗口边界测试。
 - evidence：`docs/increments/evidence/R8/trae-r8-green-<date>.txt`。
 
-## 6. 统一红线（O7 重申，GREEN 心跳逐条携带）
+## 7. 统一红线（O7 重申，GREEN 心跳逐条携带）
 
 1. 显式人工确认闸不绕过；2. 失败证据保留（FAIL 不删改）；3. 诚实状态（NOT_WIRED/GREEN/DEGRADED 如实标注，禁止 GREEN 误报）；4. TDD 红绿顺序（接线先改测试再改实现）；5. token/key 边界（O3）；6. 验收前不提交实现（§7.7 流程顺序）。
 
-## 7. 执行顺序与批次
+## 8. 执行顺序与批次
 
-建议批次：R2 → R4（SYNC 先行，DEPENDENCY/RESOURCE 待草案）→ R7 → R5-A → R5-B → R8（最后，依赖裁定与 A5）。每批次独立评审 + handoff 心跳回报 + runbook 留痕。
+建议批次：R2 → R4（SYNC 先行，DEPENDENCY/RESOURCE 待草案）→ R7 → R5-A → R5-B → R6 → R8（最后，依赖裁定与 A5）。每批次独立评审 + handoff 心跳回报 + runbook 留痕。
