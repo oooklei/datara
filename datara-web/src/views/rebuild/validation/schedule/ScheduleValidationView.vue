@@ -3,7 +3,7 @@
   权威范围：plan I7（docs/superpowers/plans/2026-10-14-datara-platform-rebuild.md）
   + docs/increments/I7-I9-前端消费面分析.md §1/§3。
   边界：独立验证页，不进正式菜单（I11 融合）；契约全部经 services/rebuild/scheduleApi
-  （后端接入前抛 I7_SCHEDULER_NOT_WIRED，UI 统一横幅提示）；不触发增量 GREEN。
+  （后端接入前抛 R6_SCHEDULER_NOT_WIRED，UI 统一横幅提示）；不触发增量 GREEN。
 -->
 <template>
   <div class="i7-page">
@@ -12,7 +12,7 @@
       :closable="false"
       show-icon
       data-testid="i7-red-banner"
-      title="I7 RED 骨架（原型态）— rebuild/schedule 后端契约未接入，所有 I/O 返回 I7_SCHEDULER_NOT_WIRED"
+      title="I7 RED 骨架（原型态）— rebuild/schedule 后端契约未接入，所有 I/O 返回 R6_SCHEDULER_NOT_WIRED"
     />
 
     <el-descriptions :column="3" size="small" border class="i7-context">
@@ -95,8 +95,8 @@
 <script setup lang="ts">
 import { ref } from 'vue'
 import {
-  I7_CONTRACT_METHODS,
-  I7_SCHEDULER_NOT_WIRED,
+  R6_CONTRACT_METHODS,
+  R6_SCHEDULER_NOT_WIRED,
   createScheduleContract,
   type ScheduleAlert,
   type ScheduleQueueEntry,
@@ -107,7 +107,7 @@ import {
 defineOptions({ name: 'ScheduleValidationView' })
 
 const contract = createScheduleContract()
-const contractMethodCount = I7_CONTRACT_METHODS.length
+const contractMethodCount = R6_CONTRACT_METHODS.length
 
 /* 观测面数据（后端接入前恒为空，展示空态） */
 const triggers = ref<TriggerRegistration[]>([])
@@ -124,8 +124,8 @@ function guard<T>(fn: () => Promise<T>, label: string): Promise<void> {
     })
     .catch((err: unknown) => {
       statusText.value =
-        err instanceof Error && err.message.startsWith(I7_SCHEDULER_NOT_WIRED)
-          ? `${label}：后端未接线（${I7_SCHEDULER_NOT_WIRED.split(':')[0]}）`
+        err instanceof Error && err.message.startsWith(R6_SCHEDULER_NOT_WIRED)
+          ? `${label}：后端未接线（${R6_SCHEDULER_NOT_WIRED.split(':')[0]}）`
           : `${label} 失败：${err instanceof Error ? err.message : String(err)}`
     })
 }
