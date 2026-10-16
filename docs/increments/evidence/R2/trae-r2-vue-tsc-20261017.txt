@@ -1,0 +1,1 @@
+vue-tsc --noEmit -p tsconfig.app.json exit 0 (no output = no type errors) @ 2026-10-17 07:40:31
