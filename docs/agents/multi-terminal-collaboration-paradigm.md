@@ -73,6 +73,7 @@ Scope authority 对表（引用指向权威版 + 章节映射核实）
 | 弱 PASS 判定（接受中间态） | 判定闸不区分过程态与终态 | 2xx + 终态文案 + runtime complete 三重闸 |
 | BSTR/SecureString 泄漏路径 | 非托管内存清理遗漏 Dispose 作用域 | 二审清单 + 源码合同断言 |
 | 验证页 onboarding 首屏白屏（`.grid` 作者样式覆盖 UA `[hidden]` 隐藏语义，e219add） | 隐藏语义依赖 UA 默认样式而非显式 CSS；仅测 token 注入路径未测无 token 分支 | 显式覆盖 `.grid[hidden]{display:none}`；无 token 引导首屏纳入双路径自驱动验证（裁定 5 首次实战） |
+| 凭据经命令结构错误进入会话 transcript（2026-10-16 `cat file - \| bash` 使密码行被执行回显）+ 文件密码与 DB 哈希既成不一致 | 诊断命令嵌套管道把凭据与脚本混入同一 stdin；凭据一致性未做先验校验 | 凭据只经 `docker exec -i` 单向 stdin 传递、stdout 重定向直写文件不过 transcript；登录失败先校验"文件↔DB 哈希一致性"再怀疑其他；凭据类转录泄露一律立即轮换+审计留痕；跨线写动作前必须拉取最新 handoff 心跳（防撞车核对以最新时间戳为准） |
 
 ## 8. 质量监督评审员审计清单
 

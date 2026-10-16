@@ -1,0 +1,118 @@
+{
+  "run_id": "R3S9-20261016004218-7c4a23",
+  "started_at": "2026-10-16T00:42:18.756Z",
+  "timezone": "Asia/Shanghai",
+  "url": "http://192.168.1.9:18091/rebuild-validation-r3-s9.html",
+  "browser": "chromium 153.0.4234.32",
+  "auth_mode": "admin-headed-manual-injection",
+  "confirmation_mode": "delegated-agent-confirm",
+  "project_id": 3,
+  "snapshot_digests": {
+    "source_digest": "a0227040f719c0064e51f3377378677022238d909b68c922d36275a218efbf3e",
+    "target_digest": "09aa72f2722e3840cca4f7363d3e9fd5dfca6f6ba6295a9a9b00d2d9b5fedd58"
+  },
+  "actions": [
+    {
+      "name": "select-project-in-page",
+      "project_id": 3,
+      "at": "2026-10-16T00:42:19.693Z"
+    },
+    {
+      "name": "click-read-only-i18-preview",
+      "at": "2026-10-16T00:42:19.746Z"
+    },
+    {
+      "name": "session-revoked-after-run",
+      "ok": true,
+      "at": "2026-10-16T00:42:22.217Z"
+    }
+  ],
+  "checks": [
+    {
+      "name": "admin-token-manual-injection-mode",
+      "pass": true
+    },
+    {
+      "name": "validation-page-loaded",
+      "pass": true,
+      "http_status": 200
+    },
+    {
+      "name": "approved-project-3",
+      "pass": true,
+      "available_projects": 22
+    },
+    {
+      "name": "approved-i18-snapshot-digests",
+      "pass": true,
+      "source_digest": "a0227040f719c0064e51f3377378677022238d909b68c922d36275a218efbf3e",
+      "target_digest": "09aa72f2722e3840cca4f7363d3e9fd5dfca6f6ba6295a9a9b00d2d9b5fedd58"
+    },
+    {
+      "name": "dry-run-api-returned-success",
+      "pass": true,
+      "status": 200
+    },
+    {
+      "name": "page-rendered-live-dry-run-result",
+      "pass": true,
+      "runtime_status": "complete",
+      "stats_rendered": true,
+      "rendered_counts": [
+        "45",
+        "44",
+        "0 / 44",
+        "1",
+        "0 / 0"
+      ],
+      "visible_issue_count": 0,
+      "issue_code_counts": {},
+      "issue_samples": []
+    },
+    {
+      "name": "approved-orphan-version-is-visible-as-skipped",
+      "pass": true,
+      "skipped_count": "1",
+      "matching_rows": [
+        "t_dw_model_version1skippedapproved_missing_model_reference ｜ bd985043f51a7477682b49e94805c3b96f4a35c34871d4126996657c68b95f68"
+      ]
+    },
+    {
+      "name": "approved-relation-field-mappings-are-visible",
+      "pass": true,
+      "mapping_rows": [
+        "t_dw_model_relation1unchangedsource order_id → order_no ｜ 0843636458380f0b4473a44015d6aaf540541492e9d63e77e72c6cf4215f3bf7",
+        "t_dw_model_relation2unchangedtarget dt → order_date ｜ 3daf18bd14f3688507dfd7db334d46a0a62e7a71a613f2a5230ad21a52570fea"
+      ]
+    },
+    {
+      "name": "page-reported-no-target-import",
+      "pass": true
+    },
+    {
+      "name": "run-i18-import-confirmation-ready",
+      "pass": false,
+      "confirmation_input_enabled": false,
+      "import_button_disabled_until_human_confirmation": true,
+      "confirmation_phrase_matches_live_digests": false
+    }
+  ],
+  "relevant_responses": [
+    {
+      "name": "project-list",
+      "status": 200
+    },
+    {
+      "name": "i18-dry-run",
+      "status": 200
+    }
+  ],
+  "errors": [
+    {
+      "kind": "runner",
+      "message": "UI assertion failed: run-i18-import-confirmation-ready"
+    }
+  ],
+  "outcome": "FAIL",
+  "secrets_recorded": false
+}

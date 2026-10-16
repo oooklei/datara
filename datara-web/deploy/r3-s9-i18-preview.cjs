@@ -9,6 +9,9 @@ const validationKey = process.env.DATARA_REBUILD_VALIDATION_KEY;
 // #2 人工确认闸（Codex 返工裁定）：admin token 不走环境变量、不走 argv —
 // 仅经 stdin 单向管道（--token-stdin）由 headed launcher 注入本进程。
 const tokenViaStdin = process.argv.includes('--token-stdin');
+// 委托确认（裁定2）：经用户明确授权后，runner 代用户键入确认语并点击导入。
+// 确认语仍从页面 testid required-confirm-phrase 读取（digest-bound），不注入外部值。
+const delegatedConfirm = process.argv.includes('--delegated-confirm');
 const expectedBaseUrl = 'http://192.168.1.9:18091';
 const evidenceDir = path.resolve(__dirname, '../../docs/increments/evidence/R3');
 
@@ -52,6 +55,9 @@ async function main() {
   if (validationKey && tokenViaStdin) {
     throw new Error('Set exactly one of DATARA_REBUILD_VALIDATION_KEY (env) / --token-stdin (stdin)');
   }
+  if (delegatedConfirm && !tokenViaStdin) {
+    throw new Error('--delegated-confirm requires --token-stdin (admin token mode); runner-token cannot perform I18 import');
+  }
   await fs.mkdir(evidenceDir, { recursive: true });
 
   const startedAt = new Date().toISOString();
@@ -68,6 +74,7 @@ async function main() {
     url: pageUrl,
     browser: null,
     auth_mode: tokenViaStdin ? 'admin-headed-manual-injection' : 'protected-runner-token-exchange',
+    confirmation_mode: delegatedConfirm ? 'delegated-agent-confirm' : 'human-confirm',
     project_id: null,
     snapshot_digests: null,
     actions,
@@ -194,10 +201,20 @@ async function main() {
     check(checks, 'no-browser-errors', errors.length === 0, { error_count: errors.length });
 
     if (adminHeaded) {
-      // 人工确认闸：headed 窗口交由人工输入确认语并点击导入；runner 不代输、不点击（任何模式）。
+      // 人工确认闸：headed 窗口交由人工输入确认语并点击导入；runner 默认不代输、不点击（任何模式）。
       // 仅等待页面自身到达导入终态，并记录导入响应状态与页面终态作为证据。
+      // 委托例外（裁定2）：--delegated-confirm 时经用户明确授权，runner 代用户键入确认语并点击导入；
+      // 确认语仍从页面 testid required-confirm-phrase 读取（digest-bound，上方格式校验已通过），不注入外部值。
       check(checks, 'import-gate-open-for-human', await page.locator('#runI18Import').isEnabled());
-      actions.push({ name: 'waiting-for-human-confirmation-and-click', at: new Date().toISOString() });
+      if (delegatedConfirm) {
+        const delegatedPhrase = (await page.getByTestId('required-confirm-phrase').innerText()).trim();
+        await page.locator('#importConfirmPhrase').fill(delegatedPhrase);
+        actions.push({ name: 'delegated-confirmation-phrase-typed', basis: 'user delegation (裁定2 委托放行 / 2026-10-16 S9 收口授权)', at: new Date().toISOString() });
+        await page.locator('#runI18Import').click();
+        actions.push({ name: 'delegated-import-clicked', basis: 'user delegation (裁定2 委托放行 / 2026-10-16 S9 收口授权)', at: new Date().toISOString() });
+      } else {
+        actions.push({ name: 'waiting-for-human-confirmation-and-click', at: new Date().toISOString() });
+      }
       // 两阶段等待（Codex 裁定）：先等人工提交（runtimeStatus 转 running，预检 complete 不再算终态），
       // 再等导入流程终态 — 中间态"导入事务已完成…正在发起只读复核"仍是 running，不唤醒。
       await page.waitForFunction(
