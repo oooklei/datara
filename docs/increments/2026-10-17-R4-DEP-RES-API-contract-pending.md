@@ -65,3 +65,15 @@
 ## 6. 当前 RED 与后续门
 
 前端 RED 已就位：worktree `datara-web/src/views/rebuild/validation/dependency-form/dependencyApi.contract.test.ts` 与 `resource-upload/resourceApi.contract.test.ts` 断言两哨兵（`R4_DEPENDENCY_NOT_WIRED` / `R4_RESOURCE_NOT_WIRED`）rejects，主测试集保持可运行。后端实现落地且本草案经 Codex 复核冻结后，Trae 按接线计划对 10 方法做 TDD 红绿（端点 URL 与请求键形 / wire→FE 映射 / 错误归一三要素），worktree 侧无本域哨兵改名残留（`R4_*` 词形不在 X13 改名档）。若 Codex 对路由形态、错误码或待冻结项有修正，以修订后的本文为接线权威并同步 B2 总表。
+
+## 7. v2 修订（2026-10-17，用户复刻裁定后）
+
+用户裁定：后端重构阶段必须复刻 DolphinScheduler 依赖实现（源码 `D:\dolphinscheduler-dev\dolphinscheduler-dev`），扩展项按设计 §6.5 补建模。研读依据：`docs/increments/2026-10-17-DBX-DS-源码研读与复刻映射.md` §2/§3.1。本节为对 §2/§3.1 的增补修订，提请 Codex 复核冻结时**以本节为准**：
+
+1. **条件项扩展**：`conditions[]` 每项新增 `kind: workflow|task|file|table_state|external_task`（缺省 `task` 向后兼容 v1）。`workflow`/`task` 为 DS `DependentItem.dependentType` 复刻映射（`task` 的 `upstream_task_code` 缺省=整工作流成功，对应 DS `DEPENDENT_ALL_TASK_CODE` 分支）；`file`/`table_state`/`external_task` 为 Datara 扩展 kind，其条件参数结构（文件路径/表名+分区状态/外部系统+任务标识）随 kind 定义，v2 先冻结 kind 枚举与分发语义，各 kind 详细字段在 BE 实现设计时补齐并再确认。
+2. **条件极性**：新增 `dependResult: success|failed`（缺省 `success`）——复刻 DS 依赖上游失败也成立条件的语义。
+3. **配置级策略**（保存对象级，随 groups 一起保存）：`check_interval_seconds`（轮询判定间隔，缺省沿 DS 语义）、`failure_policy: fail|waiting`（缺省 `fail`）、`failure_waiting_seconds`（policy=waiting 时生效）、`timeout_seconds`（窗口关闭后未达成判超时的阈值）。对应 DS `checkInterval`/`failurePolicy`/`failureWaitingTime` 与注解「轮询周期/超时/满足和失败策略」。
+4. **时间窗双轨**：输入采纳 DS 命名窗词汇 `cycle ∈ hour|day|week|month` × `dateValue`（`currentHour|last1Hour|last24Hours|today|last7Days|thisMonth…`，全表以 DS `use-dependent.ts` CYCLE_LIST/DATE_LIST 为准）；输出窗口起止仍为 ISO 8601（§3.1 v1 的 `begin_offset/end_offset` 保留为等价计算形态，二者取一提交、服务端归一）。
+5. **判定语义照搬**：DS `DependentUtils` 三态机——AND 组内任一 `failed` 即失败、有 `pending` 即等待；OR 组内任一 `satisfied` 即通过、有 `pending` 即等待、否则失败；整体四枚举 satisfied|pending|failed|timeout 不变。
+6. **观察项**：DS `parameterPassing`（上游参数透传）与我方变量体系重叠——倾向以变量引用（R2 域）替代，随 A5 变量集成议程裁定，v2 不建模。
+7. 资源域（§3.2）不受本节影响。
