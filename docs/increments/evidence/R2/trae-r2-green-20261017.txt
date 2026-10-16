@@ -1,0 +1,79 @@
+R2 批次 GREEN 接线 evidence — trae 实施线
+================================================================
+日期：2026-10-17（Asia/Shanghai）
+基线：worktree trae/r4-red @ 42518f5（本批提交前）
+范围：datara-web/src/services/rebuild/variableApi.ts 6 方法接线 + 契约测试 GREEN describe
+计划依据：docs/increments/2026-10-17-R系列GREEN接线计划.md Task 2 / §1.1 / §1.3
+
+1. 接线范围（Task 2 契约面表，6/6 方法）
+----------------------------------------------------------------
+BASE = '/api/v1/rebuild/variables'
+  listVariables      GET  ''                    query: project_id, scopes(逗号串)
+  saveVariable       POST ''?project_id=N       body camel->snake；校验响应 saved:true（缺失抛 ContractApiError CONTRACT_VIOLATION）
+  completeVariables  POST /complete             body: prefix + context{project_id,workflow_id,workflow_version,task_id,attempt_no}
+  checkReference     POST /check-reference      body: expression + context；diagnostics 五码透传
+  previewResolution  POST /preview              body: expression + context；resolved_value->resolvedValue null 透传
+  getRunSnapshot     GET  /run-snapshot         query: instance_id, attempt_no?(undefined 剔除)；resolved_at->resolvedAt
+
+包络层（Step 2.0 固化，{code,msg,data}）三重实证参照：
+  - datara-backend/rebuild/api.py 全域统一包络
+  - datara-backend/rebuild/variables/api.py _success/_error（:196-201）同包络
+  - R4-SYNC 契约草案 L15 同文
+  规则：code 为 number 且 !=0/!=200 抛 ContractApiError{httpStatus, code, msg, raw}；成功解包 data ?? envelope。
+  其余批次沿用本固化，不再逐批确认。
+
+2. TDD 红绿链（时间序，真实输出摘录）
+----------------------------------------------------------------
+[红灯] 02:52:42  pnpm vitest run variableApi
+  Tests  11 failed | 7 passed (18)
+  新增 GREEN describe 11 断言全 FAIL（工厂仍 notWired 抛 R2_VARIABLE_NOT_WIRED）——红灯确认。
+[接线] variableApi.ts 引入 §1.1 原语（requestJson/getJson/sendJson + 15s AbortController + token header）
+  + 包络层；工厂 6 方法替换 notWired；parseVariableReferences 纯函数未动。
+[修复记录·诚实标注] 首轮绿灯跑出 5 failed：工厂 sendJson 调用漏传 'POST' method 参数（4 处），
+  运行期以 ERR_INVALID_URL 暴露（vitest esbuild 转译不做类型检查；类型门禁后置暴露为 vue-tsc 2 错）。
+  修复：saveVariable/completeVariables/checkReference/previewResolution 四处补 'POST'。
+[类型修复] getJson/sendJson 返回 snakeToCamel(...) as T（snakeToCamel 泛型入参 unknown 与返回 T 不相交，TS2322）。
+[绿灯] 02:55:43  pnpm vitest run variableApi
+  Test Files  1 passed (1)
+  Tests  17 passed (17)   （11 新 GREEN + 6 保留 RED 结构断言）
+
+3. 统一门禁（Step 2.3，修复后终值）
+----------------------------------------------------------------
+pnpm vitest run（worktree datara-web/）
+  Test Files  93 passed (93)
+  Tests  851 passed (851)
+  基线对照：841 - 1（旧 blanket-rejection 用例随批删除）+ 11（新 GREEN 断言）= 851，只增不减 ✓
+pnpm vue-tsc --noEmit -p tsconfig.app.json
+  rebuild 域（含 variableApi.ts）0 错误 ✓
+  全项目 61 错误均为基线固有（meta/pageDesigner PageInspector.vue 60 + __tests__ 1），
+  stash 验证：本批改动 stash 后错误数同为 61，与本批无关 ✓
+
+4. 测试删除记录（同批）
+----------------------------------------------------------------
+删除：RED describe 内 'every I/O method refuses until variable backend is wired'
+  （断言 6 方法全 reject——接线后语义失效；对应 import R2_VARIABLE_NOT_WIRED 一并移除）
+保留：方法清单冻结 / 七级优先级链 / 工厂暴露 / parseVariableReferences 3 条（设计真源断言）
+保留：variableApi.ts 内 R2_VARIABLE_NOT_WIRED 常量（View 横幅引用兼容，未接线语义不再使用）
+
+5. 红线自检（GREEN-runbook §7，逐条）
+----------------------------------------------------------------
+[x] 显式人工确认闸不绕过——本批无人工闸项；包络判定经实证固化（三重参照）非跳闸
+[x] 失败证据保留——红灯输出/运行期 ERR_INVALID_URL/TS2322 修复全程留痕（本文件 §2）
+[x] 诚实状态标注——本批状态=接线完成+单测全绿；GREEN 标记待独立评审 PASS 后生效
+[x] TDD 红绿顺序——先改测试（红灯 11 FAIL 实证）后接线（绿灯 17 PASS）
+[x] token/key 边界——token header 注入自 http.ts getToken（localStorage 'datara_token'），
+    无 key 明文入静态产物/URL/持久存储（O3 不涉及：R2 无 key 类参数）
+[x] 验收前不提交实现——本批提交=worktree 逻辑批（代码+测试+evidence），验收/评审独立进行
+
+6. 诚实边界（O7）
+----------------------------------------------------------------
+- 本 evidence 证明：契约层 6 方法已接线且契约测试全绿、类型检查 rebuild 域干净。
+- 本 evidence 不证明：后端联调通过（未做真实 BE 联调）；页面 UI 行为验收（UI 层零感知切换未做 E2E）。
+- GREEN 终判：待心跳请求独立评审（Codex/监督线）PASS 后在 handoff 中标记。
+
+7. 复现命令（worktree .worktrees/trae-r4-red/datara-web 下）
+----------------------------------------------------------------
+pnpm vitest run variableApi
+pnpm vitest run
+pnpm vue-tsc --noEmit -p tsconfig.app.json
+================================================================
