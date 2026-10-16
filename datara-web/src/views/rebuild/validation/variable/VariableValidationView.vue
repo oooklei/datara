@@ -52,6 +52,22 @@
           <el-button size="small" type="primary" data-testid="r2-variable-save" @click="onSave">保存变量</el-button>
         </el-form-item>
       </el-form>
+      <el-table
+        :data="definitions"
+        size="small"
+        border
+        max-height="200"
+        empty-text="（未接线 — listVariables 后端接入前恒为空）"
+        data-testid="r2-variable-definitions"
+      >
+        <el-table-column prop="scope" label="作用域" width="100" />
+        <el-table-column prop="name" label="变量名" width="150" />
+        <el-table-column prop="valueType" label="类型" width="90" />
+        <el-table-column prop="value" label="值" show-overflow-tooltip />
+        <el-table-column label="敏感" width="70">
+          <template #default="{ row }">{{ row.sensitive ? '是' : '否' }}</template>
+        </el-table-column>
+      </el-table>
     </div>
 
     <!-- ② 引用校验 / 补全 / 现值预览 -->
@@ -77,12 +93,57 @@
         </el-form-item>
       </el-form>
       <div v-if="parseResult" class="r2-var-parse" data-testid="r2-variable-parse-result">
-        <div>引用：{{ parseResult.refs.map((r) => `\${${r.scope}.${r.name}}`).join('、') || '（无）' }}</div>
+        <el-table
+          v-if="parseResult.refs.length"
+          :data="parseResult.refs"
+          size="small"
+          border
+          max-height="160"
+          data-testid="r2-variable-refs-table"
+        >
+          <el-table-column prop="scope" label="作用域" width="110" />
+          <el-table-column prop="name" label="变量名" width="170" />
+          <el-table-column label="链位" width="120">
+            <template #default="{ row }">{{ chainRank(row.scope) }}</template>
+          </el-table-column>
+          <el-table-column label="完整引用">
+            <template #default="{ row }">${{ row.scope }}.{{ row.name }}</template>
+          </el-table-column>
+        </el-table>
+        <div v-else>引用：（无）</div>
         <div>时间表达式：{{ parseResult.timeExpressions.join('、') || '（无）' }}</div>
-        <div :class="{ 'r2-var-err': parseResult.syntaxErrors.length > 0 }">
-          语法错误：{{ parseResult.syntaxErrors.join('、') || '（无）' }}
+        <div v-if="parseResult.syntaxErrors.length" class="r2-var-err" data-testid="r2-variable-syntax-errors">
+          语法错误：{{ parseResult.syntaxErrors.join('、') }}
         </div>
+        <div v-else>语法错误：（无）</div>
       </div>
+      <div v-if="checkResult" class="r2-var-result" data-testid="r2-variable-check-result">
+        <div>
+          校验结论：
+          <el-tag :type="checkResult.valid ? 'success' : 'danger'" size="small">{{ checkResult.valid ? 'VALID' : 'INVALID' }}</el-tag>
+        </div>
+        <div v-for="(d, i) in checkResult.diagnostics" :key="i" class="r2-var-err">[{{ d.code }}] {{ d.message }}</div>
+      </div>
+      <div v-if="previewResult" class="r2-var-result" data-testid="r2-variable-preview-result">
+        <div>现时解析值：{{ previewResult.resolvedValue ?? '（不可用 — 见诊断）' }}</div>
+        <div v-if="previewResult.source">来源：{{ previewResult.source.scope }}.{{ previewResult.source.name }}</div>
+        <div v-for="(d, i) in previewResult.diagnostics" :key="i" class="r2-var-err">[{{ d.code }}] {{ d.message }}</div>
+      </div>
+      <el-table
+        :data="completionItems"
+        size="small"
+        border
+        max-height="180"
+        empty-text="（未接线 — completeVariables 后端接入前恒为空）"
+        data-testid="r2-variable-completions"
+      >
+        <el-table-column prop="scope" label="作用域" width="110" />
+        <el-table-column prop="name" label="变量名" width="170" />
+        <el-table-column prop="valueType" label="类型" width="90" />
+        <el-table-column label="现值">
+          <template #default="{ row }">{{ row.currentValue ?? row.unavailableReason ?? '—' }}</template>
+        </el-table-column>
+      </el-table>
     </div>
 
     <!-- ③ 运行快照 -->
@@ -95,6 +156,23 @@
           <el-button size="small" data-testid="r2-variable-snapshot" @click="onSnapshot">查询快照</el-button>
         </el-form-item>
       </el-form>
+      <el-table
+        :data="snapshotEntries"
+        size="small"
+        border
+        max-height="220"
+        empty-text="（未接线 — getRunSnapshot 后端接入前恒为空）"
+        data-testid="r2-variable-snapshot-table"
+      >
+        <el-table-column prop="expression" label="表达式" show-overflow-tooltip />
+        <el-table-column prop="scope" label="作用域" width="90" />
+        <el-table-column prop="name" label="变量名" width="130" />
+        <el-table-column prop="resolvedValue" label="解析值" show-overflow-tooltip />
+        <el-table-column prop="valueType" label="类型" width="80" />
+        <el-table-column prop="source" label="来源" width="110" />
+        <el-table-column prop="resolvedAt" label="解析时间" width="160" />
+        <el-table-column prop="attemptNo" label="Attempt" width="80" />
+      </el-table>
     </div>
 
     <el-alert type="info" :closable="false" show-icon data-testid="r2-variable-status-bar" :title="statusText" />
@@ -102,7 +180,7 @@
 </template>
 
 <script setup lang="ts">
-import { reactive, ref } from 'vue'
+import { reactive, ref, watch } from 'vue'
 import {
   R2_VARIABLE_CONTRACT_METHODS,
   R2_VARIABLE_NOT_WIRED,
@@ -110,7 +188,12 @@ import {
   createVariableContract,
   parseVariableReferences,
   type ParsedReferences,
+  type ReferenceCheckResult,
+  type ResolutionPreview,
+  type VariableCompletionItem,
+  type VariableDefinition,
   type VariableScope,
+  type VariableSnapshotEntry,
   type VariableValueType,
 } from '../../../../services/rebuild/variableApi'
 
@@ -127,6 +210,28 @@ const completionPrefix = ref('')
 const parseResult = ref<ParsedReferences | null>(null)
 const snapshot = reactive({ instanceId: 1, attemptNo: 1 })
 const statusText = ref('待操作')
+
+/* R2 深化：消费面结果区（未接线契约恒为空态；本地解析真实运行） */
+const definitions = ref<VariableDefinition[]>([])
+const completionItems = ref<VariableCompletionItem[]>([])
+const checkResult = ref<ReferenceCheckResult | null>(null)
+const previewResult = ref<ResolutionPreview | null>(null)
+const snapshotEntries = ref<VariableSnapshotEntry[]>([])
+
+/** 实时本地解析（200ms 防抖延迟计算；语义校验仍以服务端 checkReference 为准） */
+let parseTimer: ReturnType<typeof setTimeout> | undefined
+watch(referenceText, (text) => {
+  if (parseTimer !== undefined) clearTimeout(parseTimer)
+  parseTimer = setTimeout(() => {
+    parseResult.value = parseVariableReferences(text)
+  }, 200)
+})
+
+/** 作用域在七级优先级链中的位置（tmp 不入链，解析时不参与覆盖） */
+function chainRank(scope: string): string {
+  const idx = VARIABLE_SCOPE_PRIORITY.indexOf(scope as (typeof VARIABLE_SCOPE_PRIORITY)[number])
+  return idx >= 0 ? `#${idx + 1}` : 'tmp（不入链）'
+}
 
 /** NOT_WIRED 统一落状态栏语义：提示 + 不中断交互 */
 function guard<T>(fn: () => Promise<T>, label: string): Promise<void> {
@@ -148,7 +253,9 @@ function context() {
 }
 
 function onList() {
-  return guard(() => contract.listVariables(form.projectId), '加载变量清单')
+  return guard(async () => {
+    definitions.value = await contract.listVariables(form.projectId)
+  }, '加载变量清单')
 }
 
 function onSave() {
@@ -168,19 +275,27 @@ function onParse() {
 }
 
 function onCheck() {
-  return guard(() => contract.checkReference(referenceText.value, context()), '引用校验')
+  return guard(async () => {
+    checkResult.value = await contract.checkReference(referenceText.value, context())
+  }, '引用校验')
 }
 
 function onPreview() {
-  return guard(() => contract.previewResolution(referenceText.value, context()), '现值预览')
+  return guard(async () => {
+    previewResult.value = await contract.previewResolution(referenceText.value, context())
+  }, '现值预览')
 }
 
 function onComplete() {
-  return guard(() => contract.completeVariables(completionPrefix.value, context()), '搜索补全')
+  return guard(async () => {
+    completionItems.value = await contract.completeVariables(completionPrefix.value, context())
+  }, '搜索补全')
 }
 
 function onSnapshot() {
-  return guard(() => contract.getRunSnapshot(snapshot.instanceId, snapshot.attemptNo), '查询运行快照')
+  return guard(async () => {
+    snapshotEntries.value = await contract.getRunSnapshot(snapshot.instanceId, snapshot.attemptNo)
+  }, '查询运行快照')
 }
 </script>
 
@@ -227,5 +342,15 @@ function onSnapshot() {
 
 .r2-var-err {
   color: var(--el-color-danger);
+}
+
+.r2-var-result {
+  font-size: 12px;
+  background: var(--el-fill-color-light);
+  border-radius: 4px;
+  padding: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
 }
 </style>
