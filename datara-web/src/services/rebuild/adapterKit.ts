@@ -10,7 +10,8 @@
  *
  * 明确不做（语义加工负面清单，设计文档 §1.3）：
  *   - 不做计数推导（targetWritten = inserted + updated 等，挂 R4-SYNC Q7，待冻结确认）
- *   - 不做枚举值词形映射（cancel_requested ↔ cancelling 等，Q9 已裁定词形落 FE 契约/页面层）
+ *   - 不做枚举值词形映射（Q9 已裁定并以 FE 契约承接：SyncRunStatus 采用 BE 权威词形
+ *     cancelling，2026-10-16 用户授权对齐；adapter 对任意词形原样透传，不做纠偏改写）
  *   - 不做成功包络解包/错误码改写（§2.3 包络是否全域统一待 Codex，开放问题 1，属 GREEN 接线期条目）
  *   - 不做 DTO 字段登记表（R1.1 每 API 文件映射表属 GREEN 接线期，与契约类型同文件演进）
  *   - 不接线任何哨兵/页面；不含 fetch。

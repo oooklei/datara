@@ -112,7 +112,9 @@ export interface SyncPreviewResult {
 
 /* ---------- 运行与 attempt（草案 §2/§4） ---------- */
 
-export type SyncRunStatus = 'queued' | 'running' | 'cancel_requested' | 'succeeded' | 'failed' | 'cancelled'
+/** Q9 已裁定（BE 权威，2026-10-16 用户授权 FE 对齐）：cancelling 为状态枚举词形；
+ *  cancel_requested 仅作请求标志（非状态枚举），待 R4 契约冻结时以独立字段接入。 */
+export type SyncRunStatus = 'queued' | 'running' | 'cancelling' | 'succeeded' | 'failed' | 'cancelled'
 
 export interface SyncRunCounts {
   sourceRead: number

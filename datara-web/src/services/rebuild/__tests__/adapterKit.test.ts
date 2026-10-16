@@ -165,7 +165,7 @@ describe('§2.1 双向 round-trip 与语义内容不改写', () => {
       rows_inserted: 7,
       rows_updated: 2,
       rows_rejected: 1,
-      status: 'cancel_requested',
+      status: 'cancelling',
       source: { datasource_id: 1, table: 't' },
       attempts: [{ attempt_id: 1, started_at: '2026-10-16T00:00:00Z' }],
     }
@@ -178,12 +178,12 @@ describe('§2.1 双向 round-trip 与语义内容不改写', () => {
   })
 
   it('仅键名变化，全部值深度不变（语义内容不改写）', () => {
-    const wire = { rows_read: 10, rows_inserted: 7, rows_updated: 2, status: 'cancel_requested', checkpoint: 'opaque_x_y' }
+    const wire = { rows_read: 10, rows_inserted: 7, rows_updated: 2, status: 'cancelling', checkpoint: 'opaque_x_y' }
     const out = snakeToCamel(wire) as Record<string, unknown>
     expect(out.rowsRead).toBe(10)
     expect(out.rowsInserted).toBe(7)
     expect(out.rowsUpdated).toBe(2)
-    expect(out.status).toBe('cancel_requested')
+    expect(out.status).toBe('cancelling')
     expect(out.checkpoint).toBe('opaque_x_y')
   })
 
@@ -206,7 +206,7 @@ describe('§2.1 双向 round-trip 与语义内容不改写', () => {
     expect(out.rowsUpdated).toBe(2)
   })
 
-  it('负面：adapter 不做枚举值词形映射——cancel_requested 原样透传（Q9 已裁定词形落契约/页面层）', () => {
+  it('负面：adapter 不做枚举值词形映射——非权威词形（历史 cancel_requested）原样透传不做 cancelling 纠偏（Q9 词形已由 FE 契约枚举承接，2026-10-16 对齐）', () => {
     const wire = { status: 'cancel_requested' }
     const out = snakeToCamel(wire) as Record<string, unknown>
     expect(out.status).toBe('cancel_requested')
