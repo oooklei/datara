@@ -1,0 +1,36 @@
+R2 变量验证页 Trae RED 证据（统一变量体系消费面）
+Date: 2026-10-16 Asia/Shanghai
+Branch: trae/r4-red (worktree .worktrees/trae-r4-red, base main 1303d2b)
+Owner: Trae（datara-web/ 与专属 evidence；rebuild/variables 契约接线前服务端 I/O 全部 NOT_WIRED）
+
+## 范围与权威来源
+- docs/increments/2026-10-14-datara-platform-rebuild-design.md §5（设计真源）
+- 纠偏设计 §2.2（编辑可搜索补全；引用校验/作用域可见性/现值/来源展示；运行快照不可变）
+
+## 契约面（variableApi.ts，R2_VARIABLE_NOT_WIRED）
+- 6 方法：listVariables/saveVariable/completeVariables/checkReference/
+  previewResolution/getRunSnapshot（R2_VARIABLE_CONTRACT_METHODS 冻结清单测试）
+- 七级优先级链常量 VARIABLE_SCOPE_PRIORITY = run > task > workflow > project >
+  global > env > builtin（设计差异注记 6：收窄须用户批准）+ tmp 作用域
+- parseVariableReferences 本地纯函数：${scope.name} 引用归类（去重/保序）、$[时间表达式]、
+  语法错误（未知作用域/缺点号）；3 单测
+
+## 消费面深化（9a6e358 + 20cb8ac）
+- 200ms 防抖实时本地解析（onUnmounted 清理 timer）；手动解析按钮保留
+- 引用结构化表格 + 链位列（chainRank：#1-#7 / tmp 不入链）
+- 五区结果渲染：清单表 / 补全候选表 / 校验结论（VALID 徽标+diagnostics）/
+  预览（resolvedValue+source）/ 运行快照八列表（expression/scope/name/resolvedValue/
+  valueType/source/resolvedAt/attemptNo，对齐快照表设计）
+- 全部取值在 guard 回调内；哨兵落状态栏；empty-text 标明未接线
+
+## 本地验证（2026-10-16）
+- vue-tsc -p tsconfig.app.json：rebuild/validation 范围 0 错
+- vitest 定向 10 files / 46 tests 全过；全量 91 files / 795 tests 零回归
+
+## 独立评审
+- 批次 1：9a6e358 合格（七级链逐项一致、快照 8 字段齐、rejects 断言齐、路由已加）
+- 批次 2：20cb8ac PASS（chainRank 正确、防抖可接受、五区渲染齐）
+
+## RED 边界声明
+- R2 变量 GREEN 硬前置 = 后端契约冻结（P1，责任方 Codex：变量 API/service/model
+  单一 owner）；本证据仅为 RED 合同态，服务端 I/O 恒空态。

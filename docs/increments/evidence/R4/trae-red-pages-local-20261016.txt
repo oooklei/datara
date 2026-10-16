@@ -1,0 +1,47 @@
+R4 Trae RED 页面证据（SYNC/依赖/资源/调度 消费面）
+Date: 2026-10-16 Asia/Shanghai
+Branch: trae/r4-red (worktree .worktrees/trae-r4-red, base main 1303d2b)
+Owner: Trae（datara-web/ 与专属 evidence；不写 backend、不做 main 集成、不触发 GREEN）
+
+## 范围与权威来源
+- 纠偏重构执行附录 §5.2（允许验证页 RED 先行）+ 方案设计 §2.2 客户要求 #2
+- SYNC 契约权威：docs/increments/R4-SYNC-API-contract-pending.md（Codex 草案 §2-§4，11 端点）
+
+## 契约面覆盖（契约层 services/rebuild/*.ts，RED 全部抛 *_NOT_WIRED）
+- syncComponentApi.ts：11 方法 = 草案 11 端点逐一对应（getCapabilities/probe/savePlan/getPlan/
+  previewPlan/runPlan/getRun/getAttempt/cancelRun/getCheckpoint/resumeRun）；suggestInitialMapping
+  为本地纯函数（真实运行）
+- dependencyApi.ts：5 方法（listCandidateWorkflows/listWorkflowTasks/previewExpression/
+  saveDependency/evaluateDependency）
+- resourceApi.ts：6 方法签名（uploadResource/listResources/listResourceVersions/
+  getResourceVersion/bindResourceVersion）
+- scheduleApi.ts：registerTrigger/listTriggers/listQueue/listRuntimeEvents/listAlerts
+
+## UI 消费面（views/rebuild/validation/*）
+- sync-form/SyncFormValidationView.vue：11/11 方法有 UI 消费（探查/映射/计划/预览/运行/
+  attempt/取消/checkpoint/恢复 分节）；preview 不回传源数据样本值（草案 §2 红线）
+- dependency-form/DependencyFormValidationView.vue：5/5（含候选工作流/任务面板）
+- resource-upload/ResourceUploadValidationView.vue：5/5（含指定版本读取）
+- schedule/ScheduleValidationView.vue：5/5（含触发器注册表单）
+- 取值全部在 guard 回调内（无 then 链取值）；哨兵错误落状态栏不中断交互；data-testid 前缀齐全
+
+## 提交链
+- d611d2b SYNC 页 RED / 2771a7e 依赖页 RED / fc2ba49 资源页 RED
+- 14ad099 R4 评审整改（目标侧 UI）
+- e7def74 SYNC 消费面深化（11 方法全覆盖，+376/-25）
+- 8e85626 三页消费面收尾（schedule/dependency/resource，+142/-1）
+
+## 本地验证（2026-10-16）
+- pnpm vue-tsc --noEmit -p tsconfig.app.json：rebuild/validation 范围 0 错
+  （61 错全在 pageDesigner 既有遗留，非本域；裸 vue-tsc --noEmit 为假门已弃用）
+- pnpm vitest run src/views/rebuild/validation src/router：10 files / 46 tests 全过
+- pnpm vitest run 全量：91 files / 795 tests 零回归
+
+## 独立评审（不自审自批）
+- 批次 1（含 R4 三页+整改）：PASS-with-notes，note-2 已整改（14ad099）
+- 批次 3（e7def74/d0fafb9）：PASS 无备注（11/11 覆盖、preview 红线合规、catch 无遗漏）
+- 批次 4（8e85626）：PASS（签名逐一对契约层核对一致、guard 回调取值、复现 0 错/46 过）
+
+## RED 边界声明
+- 本证据仅为 RED（合同/原型态），非 GREEN、非接线、非功能 PASS；后端 R4-SYNC 契约
+  冻结（P1，责任方 Codex）前不解锁 GREEN。
