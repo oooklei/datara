@@ -1,0 +1,86 @@
+R7 批次 GREEN 接线 evidence — trae 实施线
+================================================================
+日期：2026-10-17（Asia/Shanghai）
+基线：worktree trae/r4-red @ 0824069（R2 批后；本批提交前）
+范围：datara-web/src/services/rebuild/metricsApi.ts 6 方法接线
+     + worktree 侧 I9→R7 词形改名随批清账（X13 残余 I9×2）
+     + MetricsValidationView.vue 横幅接线态更新
+计划依据：docs/increments/2026-10-17-R系列GREEN接线计划.md Task 5 / §1.1
+
+1. 接线范围（Task 5 契约面表，6/6 方法；全 POST，包络沿 R2 固化）
+----------------------------------------------------------------
+BASE = '/api/v1/rebuild/metrics'
+  queryWorkflowResultStats    POST /workflow-result-stats    TimeWindowQuery body 原样
+  queryTaskInstanceDataStats  POST /task-instance-data-stats MetricValue 四字段透传不加工
+  queryTaskDataStatSegments   POST /task-data-stat-segments  segment_key→segmentKey
+  queryTaskDataErrorSamples   POST /task-data-error-samples  sample_data→sampleData、captured_at→capturedAt
+  listQualityRuleLinks        POST /quality-rule-links       stat_ref→statRef（表+主键原样透传）
+  listLineageWritebacks       POST /lineage-writebacks       body 合并 kind('sql'|'sync'|'workflow'|'all')；
+                                                             run_id 经 wireIdToString 归一 FE string（R2.2）
+
+批次序说明：R4-SYNC 前置「SYNC 草案转正式冻结」未到，按计划内置挂起机制（同 Task 4 Step 4.0）
+顺延，R7 提前接线（前置已就绪：宣言 v1 词形 + B2 缺口 #4/#9 口径处理见下）。
+
+2. 开放点处理（诚实标注）
+----------------------------------------------------------------
+- B2 缺口 #4（TimeWindowQuery.from/to 格式与 offset/limit 语义）：契约层原样透传不加工，
+  from/to 值由调用方给定；后续 BE 冻结口径差异仅需 BE 解析适配或 View 传值调整，不影响映射层。
+- B2 缺口 #9（retryCount 无共享字段对应）：透传展示（B2 §6 原文口径）；rowsIn/rowsOut/errorRows
+  语义候选映射仅为 BE 侧对账参考，FE 不做语义推导。
+- A7 Step 1：MetricValue{value,known,estimated} 透传不加工——测试断言 known:false/estimated:true
+  原样到达 FE，禁止 FE 端推导。
+
+3. TDD 红绿链
+----------------------------------------------------------------
+[Step 5.1 词形改名] worktree metricsApi.ts + 契约测试 + View 三文件 replace_all
+  （I9_METRICS_NOT_WIRED→R7_METRICS_NOT_WIRED、I9_CONTRACT_METHODS→R7_CONTRACT_METHODS、
+  I9ContractMethod→R7ContractMethod；独立 I9 历史字样按语义判读保留——plan I9/I7-I9 文档名）
+  改名后 pnpm vitest run metricsApi：3 passed（绿）。
+[红灯] pnpm vitest run metricsApi：Tests  9 failed | 3 passed (12)——新 GREEN describe 全 FAIL。
+[接线] §1.1 原语（R7 六方法全 POST：requestJson + 单一 sendJson，无 getJson）+ 工厂 6 方法替换。
+[绿灯] pnpm vitest run metricsApi：Tests  11 passed (11)（2 保留 RED 结构断言 + 9 新 GREEN）。
+
+4. 统一门禁（修复后终值）
+----------------------------------------------------------------
+pnpm vitest run（worktree datara-web/）
+  Test Files  93 passed (93)
+  Tests  859 passed (859)
+  基线对照：851（R2 批后）− 1（旧 blanket-rejection 用例随批删除）+ 9（新 GREEN 断言）= 859，只增不减 ✓
+pnpm vue-tsc --noEmit -p tsconfig.app.json
+  rebuild 域 0 错误 ✓（过程中 TS6133 未使用 import camelToSnakeKey 一次修复——R7 无 GET query 需求）
+  全项目 61 错误均为基线固有（meta/pageDesigner，R2 批 stash 验证过），与本批无关 ✓
+
+5. 测试删除记录（同批）
+----------------------------------------------------------------
+删除：RED describe 内 'every I/O method refuses until metrics backend is wired'（7 断言，
+  接线后语义失效）+ import R7_METRICS_NOT_WIRED。
+保留：方法清单冻结 / 工厂暴露（设计真源断言）+ metricsApi.ts 内 R7_METRICS_NOT_WIRED 常量（View 兼容）。
+
+6. View 横幅诚实更新（MetricsValidationView.vue，本批同提交）
+----------------------------------------------------------------
+- 头注释：RED/原型态 → 契约已接线（R7 批次）
+- RED 横幅（warning「I9 RED 骨架—后端契约未接入」）→ info「R7 契约已接线—GREEN 标记待独立评审」
+- 「全部未接线」→「已接线，待独立评审」；六处表格空态「（未接线）」→「（暂无数据）」
+- guard 哨兵判断逻辑保留（R7_METRICS_NOT_WIRED 不再抛出，运行期错误走 ContractApiError message 展示）
+
+7. 红线自检（GREEN-runbook §7，逐条）
+----------------------------------------------------------------
+[x] 显式人工确认闸不绕过——本批无人工闸项
+[x] 失败证据保留——红灯 9 FAIL/TS6133 修复全程留痕（本文件 §3/§4）
+[x] 诚实状态标注——GREEN 终判待独立评审；开放点（缺口 #4/#9）如实登记（§2）
+[x] TDD 红绿顺序——先改测试（红灯 9 FAIL 实证）后接线（绿灯 11 PASS）
+[x] token/key 边界——token header 自 http.ts getToken 注入，无 key 明文落静态产物/URL/持久存储
+[x] 验收前不提交实现——本批提交=worktree 逻辑批（契约+测试+View+evidence），评审独立进行
+
+8. 诚实边界（O7）
+----------------------------------------------------------------
+- 本 evidence 证明：metricsApi 6 方法已接线、契约测试全绿、rebuild 域类型检查干净、词形与 main 收敛。
+- 本 evidence 不证明：后端联调通过（未做真实 BE 联调）；View E2E 验收；B2 缺口 #4/#9 的 BE 侧口径已定。
+- GREEN 终判：待心跳独立评审（Codex/监督线）PASS 后在 handoff 中标记。
+
+9. 复现命令（worktree .worktrees/trae-r4-red/datara-web 下）
+----------------------------------------------------------------
+pnpm vitest run metricsApi
+pnpm vitest run
+pnpm vue-tsc --noEmit -p tsconfig.app.json
+================================================================
