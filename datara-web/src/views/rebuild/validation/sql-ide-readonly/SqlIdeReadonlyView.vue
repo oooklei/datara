@@ -169,8 +169,8 @@ const onCancel = () =>
     },
     '取消',
   ).catch(() => undefined)
-const onLint = () => guard(() => contract.lintSql(0, sqlText.value), '预检')
-const onSearch = () => guard(() => contract.searchObjects(0, keyword.value), '检索')
+const onLint = () => guard(() => contract.lintSql(0, sqlText.value), '预检').catch(() => undefined)
+const onSearch = () => guard(() => contract.searchObjects(0, keyword.value), '检索').catch(() => undefined)
 
 /** 服务端分页取页（汇合点「分页」）：RED 下哨兵拒绝，A5 接入后回填对应 stmt 页数据 */
 const onPageChange = (p: number, s: number) => {

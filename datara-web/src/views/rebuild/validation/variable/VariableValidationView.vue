@@ -180,7 +180,7 @@
 </template>
 
 <script setup lang="ts">
-import { reactive, ref, watch } from 'vue'
+import { onUnmounted, reactive, ref, watch } from 'vue'
 import {
   R2_VARIABLE_CONTRACT_METHODS,
   R2_VARIABLE_NOT_WIRED,
@@ -225,6 +225,9 @@ watch(referenceText, (text) => {
   parseTimer = setTimeout(() => {
     parseResult.value = parseVariableReferences(text)
   }, 200)
+})
+onUnmounted(() => {
+  if (parseTimer !== undefined) clearTimeout(parseTimer)
 })
 
 /** 作用域在七级优先级链中的位置（tmp 不入链，解析时不参与覆盖） */
