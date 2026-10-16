@@ -13,9 +13,10 @@ import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { debounce } from 'lodash-es'
 import { format } from 'sql-formatter'
-// monaco 0.56：根入口走 exports map（types+runtime 双可用）；深层 editor.api 子路径被 exports map
-// 的 `./*.js → ./esm/vs/*.js` 映射排除，故 worker 以包内相对路径 ?worker 引入（vite/client 通配类型兜底）
-import * as monaco from 'monaco-editor'
+// 只引入 Monaco editor.api：SQL 编辑器只需要编辑器核心、languages API 和自定义 Monarch
+// 语言，不需要 Monaco 内置 TypeScript/CSS/HTML/JSON 语言服务。
+// Worker 仍使用 editor.worker；这样不会把各语言服务注册/实现带入 SQL 页面 bundle。
+import * as monaco from '../../../../node_modules/monaco-editor/esm/vs/editor/editor.api.js'
 import EditorWorker from '../../../../node_modules/monaco-editor/esm/vs/editor/editor.worker.js?worker'
 import { useIdeStore } from '../../../stores/ideStore'
 import {

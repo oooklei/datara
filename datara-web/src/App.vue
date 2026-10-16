@@ -72,20 +72,14 @@ const menus: MenuGroup[] = [
   ]},
   { group: '数据集成', items: [
     { label: '数据源管理', path: '/ds/list', icon: '⛁' },
+    { label: '同步任务', path: '/sync/list', icon: '⇄' },
   ]},
   { group: '数据开发', items: [
     { label: '数据开发IDE', path: '/ide', icon: '⌨' },
+    { label: '数仓建模', path: '/model/list', icon: '▤' },
   ]},
   { group: '数据治理', items: [
     { label: '血缘分析', path: '/meta/lineage', icon: '⇶' },
-  ]},
-  { group: '部署运维', items: [
-    { label: '运行时节点', path: '/dep/runtime', icon: '⌂' },
-    { label: '集群监控', path: '/dep/monitor', icon: '◈' },
-  ]},
-  // 扩展（演示）（裁定 3B）：本期范围外演示模块收纳，默认折叠；组头挂「演示」标识
-  { group: '扩展（演示）', demo: true, foldable: true, items: [
-    { label: '数仓建模', path: '/model/list', icon: '▤' },
     { label: '资产地图', path: '/meta/map', icon: '◉' },
     { label: '元数据目录', path: '/meta/catalog', icon: '☰' },
     { label: '标签管理', path: '/meta/tag', icon: '⌗' },
@@ -93,6 +87,13 @@ const menus: MenuGroup[] = [
     { label: '指标目录', path: '/ind/list', icon: '✦' },
     { label: '指标看板', path: '/ind/board', icon: '▦' },
     { label: '一致性检查', path: '/ind/consistency', icon: '✓' },
+  ]},
+  { group: '部署运维', items: [
+    { label: '运行时节点', path: '/dep/runtime', icon: '⌂' },
+    { label: '集群监控', path: '/dep/monitor', icon: '◈' },
+  ]},
+  // 扩展（演示）（裁定 3B）：本期范围外演示模块收纳，默认折叠；组头挂「演示」标识
+  { group: '扩展（演示）', demo: true, foldable: true, items: [
     { label: '脚本任务', path: '/script/list', icon: '⌘' },
     { label: '参数配置', path: '/param/global', icon: '⚑' },
     { label: '质量规则', path: '/qc/rule', icon: '☑' },
