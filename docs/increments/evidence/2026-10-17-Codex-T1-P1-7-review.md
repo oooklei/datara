@@ -12,7 +12,7 @@
 | C2 语句执行粒度 | 有条件认可 | 清单把“选中优先”作为兼容提议交 A5 裁定，未冒充冻结结论，处理合理。补明：选区执行若与 DBX 的语句边界解析/可执行范围冲突，DBX 语义优先；提议不得覆盖该规则。 |
 | C3 对象枚举 | 部分认可 | DBX `ObjectSourceKind` 的 13 类枚举作为基准正确；R5-A 的 9 类收敛子集目前没有逐对象类型 × 数据库驱动支持、排除理由、阶段边界和回扩验收门槛。补充逐对象类型 × 数据库驱动支持边界矩阵，或提供等价的阶段/支持边界映射后，才能说明这是分阶段收敛，而非永久降级。 |
 | C4 连接模型 | 认可 | DBX 池化分级/驱动适配为目标，保留 Datara 数据源中心的信息架构，符合 D9 与不深绑原则。实施映射仍需保持 Datara 自有适配边界。 |
-| C5 凭证存储 | 有条件认可 | 禁止明文并加严安全基线方向正确。但 `connection_secrets.rs:L1` 标注为 legacy 空壳，`keychain.rs` 是辅助读取，不能证明 SQLite Storage 的实际加密实现或安全等价。请补真实存储读写、密钥保护和平台边界源码锚点；未核实前仅描述为待验证方向。 |
+| C5 凭证存储 | 有条件认可，修正引证 | 禁止明文并加严安全基线方向正确。独立复核已确认 DBX 有 AES-256-GCM 加解密实现（`crates/dbx-core/src/persistence/secret_codec.rs:L267-L303`），SQLite 存储/迁移锚为 `storage.rs:L235,L1010+`；因此不应说 DBX 实际存储加密未经证明。当前清单引用 `connection_secrets.rs:L1`（legacy 空壳）和 macOS Keychain 辅助读不能证明上述实现。请改引真实 codec/storage，并注明桌面 OS 凭据库与 Web/Docker 持久密钥配置差异；这仍不等于 Datara 的安全存储方案已定。 |
 | C6 编辑器交互 | 认可 | 以 DBX 交互语义为准并评估 Monaco 特性迁移成本符合 D9；需确保 Monaco 特性只作为候选吸收项，不能反向覆盖 DBX 语义。 |
 | 原版交互吸收项 | 认可 | 快捷键、变量补全、结果 SQL 回显、页间漂移提示、服务端重放分页等有利于融合，符合用户允许吸收原版界面优势的要求。逐项仍应有可追溯处理状态与后续接线验收点。 |
 | 查询生命周期语义 | 异议，需修正文义 | 清单将 DBX typed query/multi 与原版 taskId+SSE 概括为“形态差异、语义对齐”，证据不足且结论过宽：DBX 普通 `execute_query` 与 `execute_multi` 由调用方 await 到结果/批次返回；原版 `/ide/execute` 创建 taskId 后由 SSE 推送进度与终态，任务持久性、事件恢复、取消竞态等生命周期并不等价。D9 不要求复制 Tauri transport，但必须分开比较执行语义、生命周期与传输。另，“R5-A 17 方法已冻结”只可指 FE 方法面/签名冻结；A5 的 BE 状态、SSE、恢复、重放和取消语义仍待冻结，FE surface frozen 不等于 BE semantics frozen。|
@@ -28,7 +28,7 @@
 - DBX `README.zh-CN.md:L229-L231` 只支持功能概述（CodeMirror 6、补全、选中 SQL 执行、格式化、历史、脚本），不替代实现锚点。
 - 原版 `datara-web/src/views/ide/components/SqlEditor.vue:L4-L10,L47-L108,L509-L517` 支持 Monaco/Monarch、变量分色和选区执行事实；`IdeView.vue:L37-L43` 支持快捷键事实。
 - DBX `src-tauri/src/commands/query.rs:L35-L89,L174-L289` 及前端 `apps/desktop/src/lib/backend/tauri.ts:L1803,L1949` 可核普通查询/多语句命令 await 返回；条件更新的后台 task 路径单独处理。原版 `datara-backend/api/ide.py:L384-L441,L477-L506,L538-L615,L692-L852` 支持 taskId+SSE 异步执行、取消、结果重放分页及导出事实；`common/models.py:L394-L421` 支持 IdeHistory 字段事实。两者生命周期不应写成等价。
-- 凭证引用应以实现链复核；已知 `connection_secrets.rs` 是 legacy 空壳注记，不能作为 SQLite Storage 实现证明。
+- DBX `crates/dbx-core/src/persistence/secret_codec.rs:L267-L303` 实现 AES-256-GCM encrypt/decrypt，nonce 为 12 字节且 namespace/key 进入 AAD；`storage.rs:L235,L1010+` 是迁移与密钥/secret storage 锚点，官方 `docs/content/docs/data-security-migration.cn.mdx:L45-L63,L66-L108,L118-L129` 区分桌面凭据提供器与 Web/Docker 持久密钥。`connection_secrets.rs` 的 legacy 空壳不是有效实现锚。
 
 ## D9 优先级一致性
 
@@ -39,7 +39,7 @@
 1. 增加 13 类对象类型 × 数据库驱动的发现、查看、编辑/DDL 能力矩阵，或等价可追溯的阶段/支持边界映射；标记只读/写入阶段、排除理由、回扩门槛和验收证据。
 2. 显式映射跨 Schema 查询及表/视图/存储过程/函数的端到端后端职责与阶段计划。
 3. 对 §7 每项待精读内容增加实现路径、源码锚点、结论、状态；关闭之前继续标为未完成。
-4. 补充 DBX CodeMirror 实装与凭证存储真实实现锚点；未证实的安全能力保持 O7 未知状态。
+4. 将凭证存储引证改为实际 `secret_codec`/`storage` 和部署密钥管理文档；区分已证实加密实现与尚未决策的 Datara 密钥托管/迁移方案，未证实边界保持 O7 未知。
 5. 记录 DBX 参考快照的可复现标识、采集时间及 manifest/hash。
 6. 维持 C2 的“兼容提议/A5 待裁定”状态，并补充 DBX 优先约束，不得擅自冻结。
 7. 重写查询执行对比，区分 DBX Tauri 命令 await 生命周期、Datara taskId/SSE transport、durable replay/取消语义；澄清 R5-A FE signature 冻结不等于 BE/A5 语义冻结。
