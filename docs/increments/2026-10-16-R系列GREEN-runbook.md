@@ -23,9 +23,11 @@ Date: 2026-10-16 · 作者：Trae 执行线 · 状态：等待 P1（后端契约
 - 门禁：全量 `pnpm vitest run` 绿 + `pnpm vue-tsc --noEmit -p tsconfig.app.json` rebuild/validation 0 错 + 独立评审 PASS。
 - evidence：`docs/increments/evidence/R2/trae-r2-green-<date>.txt`（复现命令、提交链、评审结论）。
 
-## 2. R4 四验证页（sync-form / dependency-form / resource-upload / schedule/）
+## 2. R4 三验证页（sync-form / dependency-form / resource-upload）
 
-- 契约面：syncComponentApi 11 方法（capabilities/probes/plans/preview/runs/attempts/cancel/checkpoint/resume 等，逐条对齐 Codex 草案 §2-§4）；dependencyApi（listCandidateWorkflows / listWorkflowTasks 等）；resourceApi 11 方法（version+SHA 显式绑定，禁隐式 latest）；schedule registerTrigger 面。
+> X11 终裁一注记（2026-10-16 用户批准，handoff `805488b`）：schedule 页（组件 I7，`scheduleApi.ts`）改判 **R6**（治理/运行及调度承接，执行附录 §6 R6 行），移出 R4 批次；其 registerTrigger 面随 R6 批次接线。本节原标题「四验证页」含 schedule 系按 worktree 消费面打包的旧归属，据此作废；`I7_SCHEDULER_NOT_WIRED` 哨兵改名按终裁二②推迟至 P1 契约冻结同批。
+
+- 契约面：syncComponentApi 11 方法（capabilities/probes/plans/preview/runs/attempts/cancel/checkpoint/resume 等，逐条对齐 Codex 草案 §2-§4）；dependencyApi（listCandidateWorkflows / listWorkflowTasks 等）；resourceApi 11 方法（version+SHA 显式绑定，禁隐式 latest）。
 - 前置：P1 中 SYNC 草案转正式冻结；DEPENDENCY/RESOURCE 前端占位契约需 Codex 出正式草案后冻结；六类行计数（source_read/target_written/inserted/updated/skipped/failed）与共享 metrics 对齐。
 - 接线步骤：①按冻结契约逐方法替换哨兵（端点前缀以后端为准）；②SYNC 目标侧三元组+候选 schema 探查接真接口；③resource 上传预校验保留本地、上传/版本绑定接真接口；④dependency AND/OR 条件组+周期偏移+表达式预览的数据面接真接口；⑤契约测试同步改断言。
 - 门禁：同统一门禁 + 独立评审（重点：preview 不回传样本值红线、guard 回调取值不回归）。
