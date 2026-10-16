@@ -100,6 +100,7 @@ import {
   I8_CONTRACT_METHODS,
   I8_STREAM_NOT_WIRED,
   createStreamContract,
+  type StreamAttemptRow,
   type StreamJobRow,
   type StreamRecoveryEventRow,
   type TimeWindowQuery,
@@ -119,7 +120,7 @@ const window: TimeWindowQuery = {
 }
 
 /* 观测面数据（后端接入前恒为空，展示空态） */
-const runtimeRows = ref<(StreamJobRow | Record<string, unknown>)[]>([])
+const runtimeRows = ref<(StreamJobRow | StreamAttemptRow | Record<string, unknown>)[]>([])
 const metricRows = ref<{ key: string; name: string; value: string; at: string }[]>([])
 const observationRows = ref<{ item: string; value: string }[]>([])
 const recoveryRows = ref<(StreamRecoveryEventRow | Record<string, unknown>)[]>([])
@@ -143,8 +144,8 @@ const statusText = ref('待操作')
 
 function onQueryRuntime(which: 'jobs' | 'attempts') {
   return guard(async () => {
-    runtimeRows.value =
-      which === 'jobs' ? await contract.listStreamJobs(window) : await contract.listStreamAttempts(window)
+    if (which === 'jobs') runtimeRows.value = await contract.listStreamJobs(window)
+    else runtimeRows.value = await contract.listStreamAttempts(window)
   }, '加载流作业运行时')
 }
 

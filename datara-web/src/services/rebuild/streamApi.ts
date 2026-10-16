@@ -9,6 +9,9 @@
  */
 import { type MetricValue, type TimeWindowQuery } from './metricsApi'
 
+/** Stream 契约签名复用 metricsApi 的 TimeWindowQuery；re-export 供 View 单源导入 */
+export type { TimeWindowQuery }
+
 /* ---------- 流作业（长驻进程面） ---------- */
 
 export interface StreamJobRow {
