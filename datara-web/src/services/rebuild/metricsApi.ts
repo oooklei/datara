@@ -3,7 +3,7 @@
  * 端点前缀为草案（/api/v1/rebuild/metrics/*），最终以后端契约为权威；
  * 本文件语义源自 docs/increments/I7-I9-前端消费面分析.md §1/§3
  * （4 张统计表 + 质量规则结果链 + 运行回写血缘 + A7 Step 1 unknown/estimated 口径）。
- * RED 约定：所有 I/O 方法在后端接入前抛 I9_METRICS_NOT_WIRED，不发出任何真实请求。
+ * RED 约定：所有 I/O 方法在后端接入前抛 R7_METRICS_NOT_WIRED，不发出任何真实请求。
  */
 
 /* ---------- A7 Step 1 口径：unknown/estimated 标记透传 ---------- */
@@ -87,10 +87,10 @@ export interface LineageWritebackEntry {
 
 /* ---------- RED 哨兵 ---------- */
 
-export const I9_METRICS_NOT_WIRED = 'I9_METRICS_NOT_WIRED: rebuild/metrics contract not connected yet'
+export const R7_METRICS_NOT_WIRED = 'R7_METRICS_NOT_WIRED: rebuild/metrics contract not connected yet'
 
 /** 契约方法清单（测试与 UI 横幅共用，保持单一事实源） */
-export const I9_CONTRACT_METHODS = [
+export const R7_CONTRACT_METHODS = [
   'queryWorkflowResultStats',
   'queryTaskInstanceDataStats',
   'queryTaskDataStatSegments',
@@ -99,7 +99,7 @@ export const I9_CONTRACT_METHODS = [
   'listLineageWritebacks',
 ] as const
 
-export type I9ContractMethod = (typeof I9_CONTRACT_METHODS)[number]
+export type R7ContractMethod = (typeof R7_CONTRACT_METHODS)[number]
 
 export interface MetricsContract {
   queryWorkflowResultStats: (window: TimeWindowQuery) => Promise<WorkflowResultStatRow[]>
@@ -110,11 +110,11 @@ export interface MetricsContract {
   listLineageWritebacks: (window: TimeWindowQuery, kind: LineageWritebackEntry['runKind'] | 'all') => Promise<LineageWritebackEntry[]>
 }
 
-/* ---------- RED 实现（后端接入前统一抛哨兵；方法清单见 I9_CONTRACT_METHODS） ---------- */
+/* ---------- RED 实现（后端接入前统一抛哨兵；方法清单见 R7_CONTRACT_METHODS） ---------- */
 
 /** 异步契约方法统一实现：rejected promise（同步 throw 会在调用点直接炸出，无法被 rejects 断言捕获） */
 const notWired = async (): Promise<never> => {
-  throw new Error(I9_METRICS_NOT_WIRED)
+  throw new Error(R7_METRICS_NOT_WIRED)
 }
 
 /**
