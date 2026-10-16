@@ -1,0 +1,44 @@
+I8 流观摩 Trae RED 证据（R8 流场景 RED 提前）
+Date: 2026-10-16 Asia/Shanghai
+Branch: trae/r4-red (worktree .worktrees/trae-r4-red, base main 1303d2b)
+Owner: Trae（datara-web/ 与专属 evidence；rebuild/stream 契约接线前全部 NOT_WIRED）
+
+## 范围与权威来源
+- plan I8 + 权威设计 §8.4 观摩查询接口结构基线（f475c76）：生产速率、消费速率、积压、
+  偏移、窗口结果、成功/失败/跳过计数、错误样本
+- 纠偏执行附录 §5.2/§6："R8 的研究、影响分析和 RED 可先并行"
+
+## 代批记录（用户授权）
+- 0.4 复用矩阵的 RED 复用部分由 Trae 依用户 2026-10-16 指令代批执行：
+  I8 骨架自 trae/i7-i9-red@9167577 cherry-pick 复活至本分支（2e17d3f，4 文件 415 行，
+  routes.ts 自动合并无冲突）；0.4 的 GREEN 集成裁定仍归 Codex。
+
+## 契约面（services/rebuild/streamApi.ts，I8_STREAM_NOT_WIRED）
+- I8_CONTRACT_METHODS 6 方法：listStreamJobs/listStreamAttempts/listStreamCheckpoints/
+  listStreamMetrics/queryStreamObservation/listStreamRecoveryEvents（TimeWindowQuery
+  自 metricsApi 复用并 re-export 单源导入）
+- 复用 A7 MetricValue 口径（known/estimated）
+
+## 消费面（views/rebuild/validation/stream/StreamValidationView.vue）
+- 运行时（作业/attempt）、checkpoint 窗口、指标、观测、恢复事件 各动作 + 结果区
+- 取值在 guard 回调内；哨兵落状态栏不中断交互
+
+## 基线适配修复（85a870a）
+- 旧骨架在新基线暴露 2 类型错误：TimeWindowQuery 未导出（re-export 修复）、
+  runtimeRows 联合类型缺 StreamAttemptRow（TS2322，分支赋值修复）
+
+## 本地验证（2026-10-16）
+- vue-tsc -p tsconfig.app.json：rebuild/validation 范围 0 错
+- vitest 定向 11 files / 49 tests 全过（+stream 契约 3 用例）；全量 92 files / 798 tests 零回归
+
+## 独立评审
+- 批次 5（2e17d3f 复活 + 85a870a 修复）：PASS（2026-10-16）
+  - 边界合规：仅 datara-web/ 与 evidence，无 backend/main 集成写入
+  - cherry-pick 保真：三个新建文件 `git diff 9167577 2e17d3f` 均为空 diff
+  - 契约覆盖：6 方法全 notWired + 7 条 rejects 冻结；View 六动作按钮全 guard 回调取值
+  - 复用合理：metricsApi TimeWindowQuery 复用风险低，re-export 单源导入
+  - 复现：61 pageDesigner（既有遗留非本域）/ rebuild-validation 0 错；定向 49 全绿
+
+## RED 边界声明
+- R8 GREEN 受共用合同约束（Kafka/topic、attempt/checkpoint、metrics/result schema 与
+  环境核准，P1 责任方 Codex）；本证据仅为 RED 合同态，流查询均为空态展示。

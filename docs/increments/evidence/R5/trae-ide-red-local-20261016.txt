@@ -1,0 +1,36 @@
+R5-IDE Trae RED 页面证据（A 只读链路 / B DDL 写路径消费面）
+Date: 2026-10-16 Asia/Shanghai
+Branch: trae/r4-red (worktree .worktrees/trae-r4-red, base main 1303d2b)
+Owner: Trae（datara-web/ 与专属 evidence；A5 后端接入前全部 NOT_WIRED）
+
+## 范围与权威来源
+- docs/increments/R5-IDE-开始前影响分析.md §3/§4/§6/§7.2 + 纠偏执行附录 §5.2
+  （"A 链路后端/专属页分域并行；B 的影响分析可先 RED"）
+
+## R5-A sql-ide-readonly（SqlIdeReadonlyView.vue + sqlIdeApi.ts）
+- 契约方法：执行/取消/分页/历史/预检/检索 等（R5A_BACKEND_NOT_WIRED）
+- 深化（4c4d37d）：多语句多结果页签（stmtIndex el-tabs）、分页走 fetchResultPage、
+  executeSql 受理回填 taskId、历史抽屉 listHistory
+- 修复（d9a6b2e，批次 1 评审 FAIL 整改）：guard 取值移入回调（4×TS2339 消除，
+  taskId 回填真实可达）；补 onContractError handler（MetaTree emit 契约错误冒泡落状态栏）
+- 备注整改（d0fafb9，批次 2）：onLint/onSearch 补 .catch 防 unhandled rejection
+
+## R5-B sql-ide-ddl（SqlIdeDdlView.vue + sqlIdeDdlApi.ts）
+- 契约 5 方法：getDefinition/validatePolicy/previewImpact/submitConfirm/listExecutionRecords
+  （R5B_BACKEND_NOT_WIRED；冻结清单测试断言）
+- 深化（1633c5e）：影响预览（previewImpact/DdlImpactItem 四类：dependent-view/
+  dependent-routine/lineage-downstream/permission-scope）+ 影响表 + 状态行
+- 红线保持：确认短语用户亲自键入；block 级 finding 存在时确认按钮禁用（UI 层先行，
+  服务端为准）；A PASS 不授权 B 确认/备份/审计/回滚门禁
+
+## 本地验证（2026-10-16）
+- vue-tsc -p tsconfig.app.json：rebuild/validation 范围 0 错（pageDesigner 61 既有遗留除外）
+- vitest 定向 10 files / 46 tests 全过；全量 91 files / 795 tests 零回归
+
+## 独立评审
+- 批次 1：R5-A 深化 FAIL（guard 缺陷）→ d9a6b2e 修复
+- 批次 2：1633c5e PASS / d9a6b2e PASS（结论 PASS-with-notes，非阻塞备注已修 d0fafb9）
+- 批次 3：d0fafb9 PASS 无备注
+
+## RED 边界声明
+- R5 GREEN 需 A5 后端接线 + 人工闸（确认/执行/回滚）；本证据仅为 RED 合同态。

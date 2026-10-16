@@ -1,0 +1,32 @@
+R7 监控消费 Trae RED 证据（四表查询/筛选/跳转）
+Date: 2026-10-16 Asia/Shanghai
+Branch: trae/r4-red (worktree .worktrees/trae-r4-red, base main 1303d2b)
+Owner: Trae（datara-web/ 与专属 evidence；A7 统计契约接线前全部 NOT_WIRED）
+
+## 范围与权威来源
+- plan I9 + docs/increments/I7-I9-前端消费面分析.md §1/§3 + 纠偏执行附录 §5.2
+  （R7 监控消费页：Trae owner；Codex 只读查询 API owner）
+
+## 契约面（metricsApi.ts，I9_METRICS_NOT_WIRED）
+- I9_CONTRACT_METHODS：四表查询（workflow_result_stat / task_instance_data_stat /
+  task_data_stat_segment / task_data_error_sample）+ 质量链 + 血缘回写
+
+## 消费面深化（5880ce0 + 既有）
+- 四表共用可编辑时间窗（reactive queryWindow：from/to/offset/limit）
+- workflow_result_stat 成功/失败/跳过列筛选（客户 #9 监控语义）
+- MetricValue 渲染修复：[object Object] → formatter 按 unknown/estimated 口径透传
+  （A7 Step 1：known=false 标 unknown、estimated=true 标估算）
+- 错误样本独立表 + 跳转 /dag/instances（正式路由 routes.ts:56）
+
+## 本地验证（2026-10-16）
+- vue-tsc -p tsconfig.app.json：rebuild/validation 范围 0 错
+  （批次 1 评审指出的 TS6133 未用参数已修：metricFormatter _row，d9a6b2e）
+- vitest 定向 10 files / 46 tests 全过；全量 91 files / 795 tests 零回归
+
+## 独立评审
+- 批次 1：5880ce0 基本合格（1 处 TS6133 → 已修 d9a6b2e）
+- 批次 2：d9a6b2e PASS（修复核验通过）
+
+## RED 边界声明
+- R7 GREEN 需 R4/R8 统计写入者字段及幂等契约冻结（P1 前置，责任方 Codex）；
+  本证据仅为 RED 合同态，四表查询均为空态展示。

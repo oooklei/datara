@@ -55,17 +55,21 @@
           <pane min-size="20">
             <div class="r5a-panel">
               <div class="r5a-panel-head">
-                <span>结果</span>
+                <span>结果（多语句多结果集）</span>
                 <span class="r5a-status">{{ statusText }}</span>
               </div>
               <div class="r5a-panel-body">
+                <el-tabs v-if="results.length > 0" v-model="activeStmt" type="card" class="r5a-result-tabs">
+                  <el-tab-pane v-for="r in results" :key="r.stmtIndex" :label="`#${r.stmtIndex}（${r.rowsTotal} 行）`" :name="r.stmtIndex" />
+                </el-tabs>
                 <ResultGrid
-                  :columns="result.columns"
-                  :rows="result.rows"
-                  :rows-total="result.rowsTotal"
+                  :columns="activeResult.columns"
+                  :rows="activeResult.rows"
+                  :rows-total="activeResult.rowsTotal"
                   :page="page"
                   :page-size="pageSize"
                   truncated
+                  data-testid="r5a-result-grid"
                   @page-change="onPageChange"
                 />
               </div>
@@ -80,7 +84,7 @@
 </template>
 
 <script setup lang="ts">
-import { reactive, ref } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { Splitpanes, Pane } from 'splitpanes'
 import 'splitpanes/dist/splitpanes.css'
 import {
@@ -114,7 +118,25 @@ const historyVisible = ref(false)
 const history = ref<HistoryEntry[]>([])
 const page = ref(1)
 const pageSize = ref(50)
-const result = reactive<SqlResultEvent>({ stmtIndex: 0, columns: [], rows: [], rowsTotal: 0, elapsedMs: 0 })
+
+/** MetaTree 子组件契约错误冒泡：统一落状态栏，不中断交互 */
+const onContractError = (message: string) => {
+  statusText.value = message
+}
+
+/* 多结果集（汇合点「分页/取消、多结果」：按 stmtIndex 页签 + 服务端分页取页） */
+const results = ref<SqlResultEvent[]>([])
+const activeStmt = ref(0)
+/** 最近一次执行的历史 ID（done 事件回填；A5 接入前为 0，fetchResultPage 走哨兵拒绝） */
+const historyId = ref(0)
+const activeResult = computed<SqlResultEvent>(() => results.value.find((r) => r.stmtIndex === activeStmt.value) ?? { stmtIndex: 0, columns: [], rows: [], rowsTotal: 0, elapsedMs: 0 })
+
+/* 历史抽屉打开时拉取清单（RED 下走哨兵拒绝，落状态栏） */
+watch(historyVisible, (visible) => {
+  if (visible) {
+    guard(() => contract.listHistory(0).then((entries) => (history.value = entries)), '加载历史').catch(() => undefined)
+  }
+})
 
 /** NOT_WIRED 统一落横幅语义：状态栏提示 + 不中断交互 */
 function guard<T>(fn: () => Promise<T>, label: string): Promise<void> {
@@ -129,13 +151,39 @@ function guard<T>(fn: () => Promise<T>, label: string): Promise<void> {
     })
 }
 
-const onExecute = () => guard(() => contract.executeSql({ datasourceId: 0, db: null, sql: sqlText.value, mode: 'auto' }), '执行')
-const onCancel = () => guard(() => contract.cancelExecution(taskId.value), '取消')
-const onLint = () => guard(() => contract.lintSql(0, sqlText.value), '预检')
-const onSearch = () => guard(() => contract.searchObjects(0, keyword.value), '检索')
+const onExecute = () =>
+  guard(
+    async () => {
+      /* 执行受理：回填 taskId 供取消使用；结果行经事件流（openEventStream）接入后写入 results */
+      const r = await contract.executeSql({ datasourceId: 0, db: null, sql: sqlText.value, mode: 'auto' })
+      taskId.value = r.taskId
+      running.value = true
+    },
+    '执行',
+  ).catch(() => undefined)
+const onCancel = () =>
+  guard(
+    async () => {
+      const r = await contract.cancelExecution(taskId.value)
+      if (r.canceled) running.value = false
+    },
+    '取消',
+  ).catch(() => undefined)
+const onLint = () => guard(() => contract.lintSql(0, sqlText.value), '预检').catch(() => undefined)
+const onSearch = () => guard(() => contract.searchObjects(0, keyword.value), '检索').catch(() => undefined)
+
+/** 服务端分页取页（汇合点「分页」）：RED 下哨兵拒绝，A5 接入后回填对应 stmt 页数据 */
 const onPageChange = (p: number, s: number) => {
   page.value = p
   pageSize.value = s
+  guard(
+    async () => {
+      const pg = await contract.fetchResultPage(historyId.value, activeStmt.value, (p - 1) * s, s)
+      const target = results.value.find((r) => r.stmtIndex === pg.stmtIndex)
+      if (target) target.rows = pg.rows
+    },
+    '取结果页',
+  ).catch(() => undefined)
 }
 </script>
 
@@ -189,5 +237,11 @@ const onPageChange = (p: number, s: number) => {
 }
 .splitpanes__pane {
   transition: none;
+}
+.r5a-result-tabs {
+  margin-bottom: 4px;
+}
+.r5a-result-tabs :deep(.el-tabs__header) {
+  margin-bottom: 4px;
 }
 </style>

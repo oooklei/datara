@@ -21,6 +21,40 @@
       <el-descriptions-item label="契约方法">{{ contractMethodCount }} 项（全部未接线）</el-descriptions-item>
     </el-descriptions>
 
+    <!-- registerTrigger 注册表单（RED：哨兵落状态栏；成功时回显保存的 trigger） -->
+    <div class="i7-panel" data-testid="i7-register-panel">
+      <div class="i7-panel-head"><span>触发注册表单 — registerTrigger</span></div>
+      <el-form inline size="small" class="i7-form">
+        <el-form-item label="名称"><el-input v-model="registerForm.name" data-testid="i7-register-name" style="width: 140px" /></el-form-item>
+        <el-form-item label="类型">
+          <el-select v-model="registerForm.kind" data-testid="i7-register-kind" style="width: 130px">
+            <el-option label="MANUAL" value="MANUAL" />
+            <el-option label="CRON" value="CRON" />
+            <el-option label="DEPENDENCY" value="DEPENDENCY" />
+            <el-option label="EVENT" value="EVENT" />
+            <el-option label="TRIAL" value="TRIAL" />
+          </el-select>
+        </el-form-item>
+        <el-form-item label="CRON"><el-input v-model="registerForm.cron" data-testid="i7-register-cron" placeholder="0 0 * * *" style="width: 140px" /></el-form-item>
+        <el-form-item label="Source"><el-input v-model="registerForm.source" data-testid="i7-register-source" placeholder="依赖工作流ID/事件源" style="width: 150px" /></el-form-item>
+        <el-form-item label="启用"><el-switch v-model="registerForm.enabled" data-testid="i7-register-enabled" /></el-form-item>
+        <el-form-item>
+          <el-button size="small" type="primary" data-testid="i7-register-trigger" @click="onRegisterTrigger">注册触发</el-button>
+        </el-form-item>
+      </el-form>
+      <el-descriptions v-if="registeredTrigger" :column="4" size="small" border data-testid="i7-register-result">
+        <el-descriptions-item label="ID">{{ registeredTrigger.id }}</el-descriptions-item>
+        <el-descriptions-item label="名称">{{ registeredTrigger.name }}</el-descriptions-item>
+        <el-descriptions-item label="类型">{{ registeredTrigger.kind }}</el-descriptions-item>
+        <el-descriptions-item label="启用">{{ registeredTrigger.enabled ? '是' : '否' }}</el-descriptions-item>
+        <el-descriptions-item label="CRON">{{ registeredTrigger.cron ?? '—' }}</el-descriptions-item>
+        <el-descriptions-item label="Source">{{ registeredTrigger.source ?? '—' }}</el-descriptions-item>
+        <el-descriptions-item label="Next Fire">{{ registeredTrigger.nextFireAt ?? '—' }}</el-descriptions-item>
+        <el-descriptions-item label="Misfire">{{ registeredTrigger.misfirePolicy ?? '—' }}</el-descriptions-item>
+      </el-descriptions>
+      <div v-else class="i7-empty" data-testid="i7-register-empty">（未接线 — registerTrigger 后端接入前恒为空）</div>
+    </div>
+
     <el-row :gutter="12">
       <el-col :span="12">
         <div class="i7-panel">
@@ -93,7 +127,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref } from 'vue'
+import { reactive, ref } from 'vue'
 import {
   R6_CONTRACT_METHODS,
   R6_SCHEDULER_NOT_WIRED,
@@ -101,6 +135,7 @@ import {
   type ScheduleAlert,
   type ScheduleQueueEntry,
   type ScheduleRuntimeEvent,
+  type TriggerKind,
   type TriggerRegistration,
 } from '../../../../services/rebuild/scheduleApi'
 
@@ -114,6 +149,10 @@ const triggers = ref<TriggerRegistration[]>([])
 const queue = ref<ScheduleQueueEntry[]>([])
 const events = ref<ScheduleRuntimeEvent[]>([])
 const alerts = ref<ScheduleAlert[]>([])
+
+/* registerTrigger 注册表单（字段按 TriggerRegistrationInput） */
+const registerForm = reactive({ name: '', kind: 'MANUAL' as TriggerKind, cron: '', source: '', enabled: true })
+const registeredTrigger = ref<TriggerRegistration | null>(null)
 
 /** NOT_WIRED 统一落状态栏语义：提示 + 不中断交互 */
 function guard<T>(fn: () => Promise<T>, label: string): Promise<void> {
@@ -136,6 +175,19 @@ function onListTriggers() {
   return guard(async () => {
     triggers.value = await contract.listTriggers()
   }, '加载触发注册')
+}
+
+function onRegisterTrigger() {
+  return guard(async () => {
+    const registered = await contract.registerTrigger({
+      name: registerForm.name,
+      kind: registerForm.kind,
+      cron: registerForm.cron || null,
+      source: registerForm.source || null,
+      enabled: registerForm.enabled,
+    })
+    registeredTrigger.value = registered
+  }, '注册触发')
 }
 
 function onListQueue() {
@@ -178,5 +230,14 @@ function onListAlerts() {
   margin-bottom: 8px;
   font-size: 13px;
   font-weight: 600;
+}
+
+.i7-form {
+  margin-bottom: 8px;
+}
+
+.i7-empty {
+  font-size: 12px;
+  color: var(--el-text-color-secondary);
 }
 </style>
