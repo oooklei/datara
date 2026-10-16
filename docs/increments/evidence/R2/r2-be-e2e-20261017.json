@@ -1,0 +1,56 @@
+{
+  "task": "P0-2b R2 variables BE — E2E live integration evidence",
+  "date": "2026-10-17",
+  "executor": "trae",
+  "contract_source": [
+    "datara-web/src/services/rebuild/variableApi.ts (GREEN, frozen FE contract)",
+    "docs/increments/2026-10-17-R系列GREEN接线计划.md Task 2 契约面表",
+    "docs/increments/2026-10-14-datara-platform-rebuild-design.md §5"
+  ],
+  "environment": {
+    "backend": "uvicorn rebuild.api.app:create_app --factory --port 8000; REBUILD_DB_URL=sqlite+pysqlite:///./rebuild_e2e_r2.db",
+    "frontend": "vite dev http://localhost:5173 (proxy /api -> 127.0.0.1:8000)",
+    "page": "http://localhost:5173/#/rebuild/validation/variable (createWebHashHistory — plain path does NOT match)",
+    "account": "dev / dev-pass (token header 'token', FE frozen)"
+  },
+  "requests_frontend_side": [
+    "POST /api/v1/rebuild/variables?project_id=1 (saveVariable)",
+    "GET /api/v1/rebuild/variables?project_id=1 (listVariables)",
+    "POST /api/v1/rebuild/variables/check-reference (checkReference)",
+    "POST /api/v1/rebuild/variables/preview (previewResolution)",
+    "POST /api/v1/rebuild/variables/complete (completeVariables)",
+    "GET /api/v1/rebuild/variables/run-snapshot?instance_id=9001&attempt_no=1 (getRunSnapshot)"
+  ],
+  "requests_backend_side_uvicorn_log": [
+    "POST /api/v1/rebuild/variables?project_id=1 200 OK",
+    "GET /api/v1/rebuild/variables?project_id=1 200 OK",
+    "POST /api/v1/rebuild/variables/check-reference 200 OK",
+    "POST /api/v1/rebuild/variables/preview 200 OK",
+    "POST /api/v1/rebuild/variables/complete 200 OK",
+    "GET /api/v1/rebuild/variables/run-snapshot?instance_id=9001&attempt_no=1 200 OK"
+  ],
+  "page_results": {
+    "saveVariable": "保存变量 完成 (scope=e2e_probe 表单实测落库 global 层可见, name=e2e_probe, value=hello-e2e)",
+    "listVariables": "表格行含 e2e_probe | string | hello-e2e",
+    "checkReference": "${project.e2e_probe} 校验通过无网络错误",
+    "previewResolution": "现值预览显示解析值",
+    "completeVariables": "前缀 ${project.e2e 补全列表含 e2e_probe",
+    "getRunSnapshot": "instance_id=9001 返回空快照（无 500/网络错误）"
+  },
+  "console_errors": [
+    "[componentStore] 规格拉取失败 HTTP 404 → 设计内降级路径（profile 兜底），与 R2 变量域无关"
+  ],
+  "verdict": "PASS — 6/6 methods live-wired, FE↔BE request lists 1:1 match, envelope {code,msg,data} + token-header auth verified",
+  "notes": [
+    "鉴权按心跳 #56 条件 1：FE token header 优先 + Bearer 兼容",
+    "快照写入路径由 BE pytest 覆盖（write_snapshot_rows + attempt_no 过滤）",
+    "scope 枚举裁定：可持久化作用域=global/project/tmp（FE saveVariable body 无 workflow/task 归属字段）；run=执行瞬态、env/builtin=系统只读"
+  ],
+  "companion_files": [
+    "r2-be-e2e-20261017.png",
+    "trae-r2-vitest-full-20261017.txt (859/859)",
+    "trae-r2-vue-tsc-20261017.txt (exit 0)",
+    "../../evidence/2026-10-17-worktree-cleanup-report-trae.md"
+  ],
+  "be_regression": "pytest tests/rebuild: 315 passed, 1 xfailed"
+}
