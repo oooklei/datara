@@ -1,3 +1,4 @@
+import json
 from datetime import datetime
 
 import pytest
@@ -514,11 +515,17 @@ def test_model_field_rejects_nonpositive_or_noninteger_source_sequence(seq):
     assert "invalid_ordinal_position" in {issue.code for issue in validate_i18_mapping_graph([mapped])}
 
 
-def test_model_position_null_is_preserved_as_json_null():
+def test_model_position_null_maps_to_empty_position_map_with_roundtrip():
     mapped = map_legacy_row(
         "t_dw_model",
         {"id": 17, "code": "dwd_order", "name": "orders", "er_pos": None},
         LegacyMappingContext(target_project_id=41),
     )
 
-    assert mapped.values["er_position_json"] == "null"
+    assert mapped.values["er_position_json"] == {}
+
+    # Fingerprint roundtrip: importer stores dict values via json.dumps, and the
+    # snapshot reader decodes them back — mapped, stored, and re-fingerprinted
+    # forms must stay identical or post-import verification reports a conflict.
+    stored = json.dumps(mapped.values["er_position_json"], ensure_ascii=False, sort_keys=True)
+    assert json.loads(stored) == mapped.values["er_position_json"]

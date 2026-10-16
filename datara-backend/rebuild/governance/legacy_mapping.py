@@ -429,7 +429,10 @@ def map_legacy_row(
         "security_level": source.get("security_level", "内部"),
         "status": source.get("status", "draft"),
         "version": source.get("version", 1),
-        "er_position_json": source.get("er_pos") if source.get("er_pos") is not None else "null",
+        # A NULL er_pos maps to an empty position map, not the string "null":
+        # the importer stores {} as '{}', and the snapshot reader decodes it back
+        # to {} — keeping the mapped, stored, and re-fingerprinted forms identical.
+        "er_position_json": source.get("er_pos") if source.get("er_pos") is not None else {},
         "last_ddl_snapshot": source.get("last_ddl"),
         "built_at": source.get("built_at"),
         "built_by": source.get("built_by"),
