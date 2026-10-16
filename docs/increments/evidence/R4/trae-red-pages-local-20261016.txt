@@ -45,3 +45,13 @@ Owner: Trae（datara-web/ 与专属 evidence；不写 backend、不做 main 集�
 ## RED 边界声明
 - 本证据仅为 RED（合同/原型态），非 GREEN、非接线、非功能 PASS；后端 R4-SYNC 契约
   冻结（P1，责任方 Codex）前不解锁 GREEN。
+
+## Q9 词形对齐增记（2026-10-16，实施线）
+- 授权：用户经 Codex 心跳 #26 下达——BE 权威状态枚举 cancelling；cancel_requested 仅请求标志。
+- 变更（worktree 提交 fd539c7，3 文件 +9/-6）：syncComponentApi.ts SyncRunStatus
+  'cancel_requested'→'cancelling'（附 Q9 裁定注记：请求标志待 R4 契约冻结以独立字段接入）；
+  adapterKit.ts 负面清单注释同步；adapterKit.test.ts 夹具对齐（负面透传用例保留历史词形
+  cancel_requested 以证明 adapter 不做词形纠偏）。
+- 边界：RED/NOT_WIRED 哨兵与 11 方法签名零改动；仅枚举词形与注释/夹具。
+- 验证：定向 adapterKit.test.ts 43/43；全量 vitest 93 files/841 tests 零回归；
+  vue-tsc 本域（rebuild）0 错（3 错为 pageDesigner legacy 基线继承，非本域非本次 diff 闭包）。
