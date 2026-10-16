@@ -119,6 +119,11 @@ const history = ref<HistoryEntry[]>([])
 const page = ref(1)
 const pageSize = ref(50)
 
+/** MetaTree 子组件契约错误冒泡：统一落状态栏，不中断交互 */
+const onContractError = (message: string) => {
+  statusText.value = message
+}
+
 /* 多结果集（汇合点「分页/取消、多结果」：按 stmtIndex 页签 + 服务端分页取页） */
 const results = ref<SqlResultEvent[]>([])
 const activeStmt = ref(0)
@@ -147,19 +152,23 @@ function guard<T>(fn: () => Promise<T>, label: string): Promise<void> {
 }
 
 const onExecute = () =>
-  guard(() => contract.executeSql({ datasourceId: 0, db: null, sql: sqlText.value, mode: 'auto' }), '执行')
-    .then((r) => {
+  guard(
+    async () => {
       /* 执行受理：回填 taskId 供取消使用；结果行经事件流（openEventStream）接入后写入 results */
+      const r = await contract.executeSql({ datasourceId: 0, db: null, sql: sqlText.value, mode: 'auto' })
       taskId.value = r.taskId
       running.value = true
-    })
-    .catch(() => undefined)
+    },
+    '执行',
+  ).catch(() => undefined)
 const onCancel = () =>
-  guard(() => contract.cancelExecution(taskId.value), '取消')
-    .then((r) => {
+  guard(
+    async () => {
+      const r = await contract.cancelExecution(taskId.value)
       if (r.canceled) running.value = false
-    })
-    .catch(() => undefined)
+    },
+    '取消',
+  ).catch(() => undefined)
 const onLint = () => guard(() => contract.lintSql(0, sqlText.value), '预检')
 const onSearch = () => guard(() => contract.searchObjects(0, keyword.value), '检索')
 
@@ -167,12 +176,14 @@ const onSearch = () => guard(() => contract.searchObjects(0, keyword.value), '�
 const onPageChange = (p: number, s: number) => {
   page.value = p
   pageSize.value = s
-  guard(() => contract.fetchResultPage(historyId.value, activeStmt.value, (p - 1) * s, s), '取结果页')
-    .then((pg) => {
+  guard(
+    async () => {
+      const pg = await contract.fetchResultPage(historyId.value, activeStmt.value, (p - 1) * s, s)
       const target = results.value.find((r) => r.stmtIndex === pg.stmtIndex)
       if (target) target.rows = pg.rows
-    })
-    .catch(() => undefined)
+    },
+    '取结果页',
+  ).catch(() => undefined)
 }
 </script>
 

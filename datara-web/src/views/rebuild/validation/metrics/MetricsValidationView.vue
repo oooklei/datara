@@ -173,7 +173,7 @@ const errorSamples = ref<TaskDataErrorSampleRow[]>([])
 const qualityLinks = ref<(QualityRuleResultLink | LineageWritebackEntry)[]>([])
 
 /** MetricValue 渲染：known=false 标 unknown、estimated=true 标估算（A7 Step 1 口径透传） */
-function metricFormatter(row: Record<string, unknown>, _column: unknown, cellValue: unknown): string {
+function metricFormatter(_row: Record<string, unknown>, _column: unknown, cellValue: unknown): string {
   const metric = cellValue as MetricValue
   if (!metric || typeof metric !== 'object') return String(cellValue ?? '—')
   const flags = [!metric.known ? 'unknown' : '', metric.estimated ? 'estimated' : ''].filter(Boolean).join('/')
