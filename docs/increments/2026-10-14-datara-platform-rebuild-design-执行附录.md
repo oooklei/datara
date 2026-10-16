@@ -1,6 +1,6 @@
 # Datara 平台重建设计（评审修订版）
 
-> 唯一权威设计文件：`docs/increments/2026-10-14-datara-platform-rebuild-design.md`；`docs/archive/superpowers/specs/2026-10-14-datara-platform-rebuild-design.md` 仅为 superseded 历史副本（原 `docs/superpowers/` 路径已归档，2026-10-16 裁定①），冲突时以本文件为准。
+> **执行状态附录（2026-10-16 用户裁定 A 降级）**：本稿不再作为设计真源；唯一权威设计为 [`2026-10-14-datara-platform-rebuild-design.md`](2026-10-14-datara-platform-rebuild-design.md)（用户逐字研究的原始正本，已自 `docs/archive/superpowers/specs/` 恢复，部分反转裁定①仅限该文件）。本稿保留 2026-10-15 二次提速（P1-P4）、评审修复矩阵 R2-01..15、统计产出语义与裁定留痕，作为执行状态附录；与正本冲突时设计语义以正本为准（含变量作用域以正本 §5 七级优先级链为准，差异注记见正本 §13.17）。
 > 版本：2026-10-15；编号体系：9 个增量（R0-R4、R5-IDE、R6-R8）；运行资源：192.168.1.9；默认时区：Asia/Shanghai（UTC+8）。
 > 本文是重建域的设计基线。正式前端功能继续冻结，隔离验证页只调用新 Backend API；菜单展示层 D-1=B 豁免见 §1.2。验证门禁不要求操作前端登录页；测试运行环境使用统一验证 key 经 Backend 认证 API 取得短期 token，再驱动业务控件。
 
