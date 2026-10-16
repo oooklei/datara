@@ -1,181 +1,908 @@
-# Datara 平台重建设计（评审修订版）
+# Datara 平台重建设计文档
 
-> 唯一权威设计文件：`docs/increments/2026-10-14-datara-platform-rebuild-design.md`；`docs/archive/superpowers/specs/2026-10-14-datara-platform-rebuild-design.md` 仅为 superseded 历史副本（原 `docs/superpowers/` 路径已归档，2026-10-16 裁定①），冲突时以本文件为准。
-> 版本：2026-10-15；编号体系：9 个增量（R0-R4、R5-IDE、R6-R8）；运行资源：192.168.1.9；默认时区：Asia/Shanghai（UTC+8）。
-> 本文是重建域的设计基线。正式前端功能继续冻结，隔离验证页只调用新 Backend API；菜单展示层 D-1=B 豁免见 §1.2。验证门禁不要求操作前端登录页；测试运行环境使用统一验证 key 经 Backend 认证 API 取得短期 token，再驱动业务控件。
+> **SUPERSEDED（2026-10-14）**：本稿仅保留作历史评审记录；当前唯一权威设计为 [`docs/increments/2026-10-14-datara-platform-rebuild-design.md`](../../increments/2026-10-14-datara-platform-rebuild-design.md)。计划、执行状态和后续修订以 `docs/increments/` 下对应文件为准；发生差异时以该目录为准。
 
-## 1. 范围、真源与边界
+> 状态：设计基线
+>
+> 日期：2026-10-14
+>
+> 适用范围：新 Backend、独立测试页面、后续正式前端融合
+>
+> 说明：本文档是用户最新裁定下的新重建设计基线。现有 Backend 和现有前端保留用于参考，不作为新架构的运行时依赖。
 
-### 1.1 重建域
+> 执行约束：本历史稿不再接收设计修订；增量门禁、用户要求留痕、影响分析和运行资源要求均以权威台账 `docs/increments/重建执行约法与台账.md` 及增量目录的当前设计/计划为准。旧稿原先关于本目录为权威路径的说明已失效。
 
-重建域包含身份与项目、数据源、工作流定义/DAG、任务执行、调度、实例/日志/指标、变量、SQL IDE、同步、流运行时、治理资产和 AI 工具契约。治理资产不是空架构：`metadata` 是资产目录与 schema 快照真源，`lineage` 是表级/字段级解析结果真源，`quality` 是规则/运行/异常结果真源，`data_asset` 是资产引用与标签聚合真源，`data_transfer` 是同步探查、映射和执行记录真源。OpenMetadata/DataHub 可作为外部导入源，但不与自研表争夺写入真源。
+## 1. 目标与边界
 
-### 1.2 菜单展示层豁免
+Datara 重建为统一的数据开发、工作流调度、数据同步、流处理、数据治理和 AI 辅助平台。第一阶段只建设可验证的 Backend 和独立测试页面；正式前端在 Backend API、数据模型和运行协议冻结后再融合重构。
 
-按用户裁定 D-1=B，保留 App.vue“同步任务”“数仓建模”归组和 routes.ts `/std/*` 去 demo 三项展示层变更。豁免只覆盖菜单分组、入口和路由元信息；正式页面功能、mock 数据和业务交互仍冻结，必须通过新 Backend 契约与隔离验证页后再融合。
+### 1.1 必须满足
 
-### 1.3 设计依据与前端验证边界（本次裁定）
+- 新 Backend 重新设计和实现，不兼容旧变量语法和旧接口。
+- 工作流草稿支持试运行；正式运行必须绑定已发布的不可变版本。
+- 核心节点优先实现：流类、同步类、SQL、Python、SHELL、依赖。
+- SQL IDE 作为相对独立的子系统，与核心节点并行开发。
+- SQL IDE 参考 DBX，支持表、视图、存储过程、函数等对象编辑及跨 Schema 查询。
+- 所有变量引用都校验、补全并展示现时值。
+- SQL、Python、Shell 支持上传文件。
+- 所有运行记录拥有数据库生成的时间戳。
+- 工作流结果支持成功、失败、跳过等数据行统计。
+- 实时流任务具备数据生产、处理和实时观摩验证链路。
+- AI 只作为全系统悬浮助手，不新增一级菜单。
 
-- 新 Backend 与隔离验证页的功能/交互基准来自对应成熟系统的开发文档、用户文档、源码实现及其前端真实页面（按功能选择 DBX、Apache DolphinScheduler、Vanna、OpenMetadata/DataHub 等）；每个增量先形成“目标能力—来源文档/版本—源码模块/契约—参考前端页面/表单/用户操作流—Datara 新 Backend 适配—可验证场景”对照表。测试页须复现参考产品的关键业务步骤和表单语义并调用 Datara 新 API；不得以旧 Datara 页面为模板，也不得退化成 API 按钮面板。
-- Datara 旧前端只在全部新 Backend 契约冻结并通过各增量验收后，进入重建计划之外的前端融合阶段；既有页面、mock、旧 API 可用于资产盘点/兼容性分析，但不得作为新 Backend 的行为真源，也不得提前改造正式页面。融合阶段不新增或改写本计划的 9 个增量编号。
-- 隔离验证页是临时、独立的 Backend 验收客户端，不是旧 Datara 产品原型复制，也不是 API 按钮面板。页面布局、字段分组、步骤顺序、探查/校验/预览/运行/结果反馈等交互，以本增量对应参考产品真实前端为蓝本；表单字段和动作绑定新 Backend API/schema，并预置非秘密测试数据。不得复制参考产品代码或无关品牌视觉。
-- 登录认证与业务控件验收分离：R1 提供受保护的 token 签发契约（建议 `POST /auth/token`）；测试运行环境持有统一验证 key，认证 API 校验 key 并映射到受限测试身份/权限范围，签发短期 token，再由受控自动化上下文注入隔离验证页。页面不显示登录表单、不持有验证 key，仅使用短期 token 调用受保护业务 API。不得要求人工点击登录页作为每个增量门禁，不得增加绕过鉴权的公开业务 API，不得把 key、账号口令或 token 编译进静态 HTML/JS 或写入截图、证据、仓库。key 与 token 不落业务日志；签发接口纳入 R1 的认证/授权、过期、撤销和越权测试。
-- browser-use 优先；发生已记录的控件桥阻塞时，按 R2-14 用 Playwright 操作同一隔离验证页。两者均验证真实 UI 控件及其后端效果；纯 API/HTTP 检查只作辅助，不替代前端牵引门禁。
+### 1.2 明确不做
 
-### 1.4 2026-10-15 二次提速裁定（P1-P4）
+- 不恢复旧 Backend 作为新系统运行依赖。
+- 不在新系统中兼容旧变量写法。
+- 不在首期堆叠大量专用 DAG 组件。
+- 不把 ETL 单独作为工作流分类；ETL 作为普通 DAG 的一种业务用途。
+- 不在 Backend 冻结前改造正式前端。
+- 豁免注记（D-1 = B，2026-10-14）：只保留已批准的三项正式前端菜单展示层调整——`App.vue` 中“同步任务”“数仓建模”的菜单分组，以及 `routes.ts` 中 `/std/*` 路由退出 demo 标记。豁免仅限导航/路由展示属性，不授权页面业务功能改造；正式页面功能仍冻结至 Backend 冻结后融合。
 
-- P1 受控流水线：当前增量远程验证期间，仅允许下一增量的影响分析与契约 RED 并行；RED 标成 `xfail`/`pending-acceptance` 或放独立草稿。当前增量验收前不得开始下一增量 GREEN。两阶段及交接条件登记在 R3 执行状态文档。
-- P2 增量合并：全计划为 9 个增量（R0-R4、R5-IDE、R6-R8）。R5-IDE 是一个增量，包含独立 R5-A 只读与 R5-B DDL 子门禁；DDL 原 8 步风险管控与显式确认闸完整保留。同步和流统计分别由 R4/R8 产出，R7 任务中心消费；不设统计专用增量。
-- P3 证据分级：每增量至少一轮真实控件收口证据，高风险变更即时取证；每轮控件证据为 JSON+PNG 成对文件，收口需有完整 `remote-final`；非高风险中间步骤保留 API 请求/响应 JSON。失败材料保留。API 证据不能替代控件证据，浏览器控件必须作用于真实后端。
-- P4 双执行者：只在 R3 验收且合回 main 后启用执行者 2；其从最新 main 建项目本地独立 worktree，只拥有 `datara-web/` 和专属 evidence 子目录。执行者 1 独占 Backend 文件。主台账为唯一真源，双方只追加各自小节；同一远程 schema 的迁移串行。
-- 红线：显式人工确认、失败证据保留、诚实状态、TDD 红绿、token/key 边界、验收前不提交实现均不因提速改变。
+### 1.3 已批准的验证与前端边界补充（2026-10-14）
 
-## 2. 评审修复矩阵（15 项）
+- 本次重建的唯一增量编号为 `R0-R11`；历史重建记录 `I0-I11` 对应映射为 `R0-R11`。旧系统主题/资产 `I18-I24` 等编号保持原样；旧的 `I19-数据开发IDE对象编辑.md` 主题文档按裁定改名为 `I25-数据开发IDE对象编辑.md`，避免与新增量编号混淆。
+- 独立验证前端不提供人工账号/密码登录页面。验证运行环境使用不进入静态页面、源码、浏览器 localStorage 或 URL 的统一 Backend 验证 key 向 Backend 换取短时、最小权限 token，再把 token 注入验证页面运行上下文；key 只由受控验证运行器/部署环境注入，不能作为公开浏览器页面的输入项。正常用户认证 API 仍由 Backend 提供，不以验证 bootstrap 取代。
+- 每个独立测试页面必须以被测产品/组件自身的前端交互逻辑为参考（例如 Dolphin Scheduler、DBX、DataX、Vanna、OpenMetadata/DataHub 的相关 UI 与使用文档/源码），并以真实表单字段、默认值、校验、交互顺序和结果反馈作为验收依据；不得将 Datara 旧版正式前端当作参考标准，也不得把仅能点击 API 按钮的调试面板称作功能验证页。
+- 上述规则适用于 R0-R11 的独立验证页。正式 Datara 前端仍冻结至 Backend/API/数据模型/运行协议整体冻结后，才开展融合重构；既有批准保留的三项菜单展示层调整属于独立豁免，页面功能改造仍冻结。
 
-| 编号 | 评审问题 | 冻结设计与实现边界 | 验收证据 |
-|---|---|---|---|
-| R2-01 | 治理域有名无实 | 明确 data_asset/metadata/lineage/quality/data_transfer 五域模型、采集/解析/规则/同步边界；自研元数据为内部真源，外部平台只做导入适配 | 五域 API/表模型矩阵、表级+字段级血缘样例、质量规则执行样例 |
-| R2-02 | 调度语义缺失 | cron、手动、依赖、补数四种触发；Asia/Shanghai；misfire=skip/fire_once/catchup；concurrency=allow/forbid/queue；优先级、重试、超时、告警和 worker 执行模型写入契约 | schedule policy、命令、实例 `schedule_time/generated_at` 与终态日志 |
-| R2-03 | 权限模型缺失 | 最小 RBAC：user/role/permission/project_member；权限点覆盖定义读写、运行、数据源、IDE DDL、治理写、AI 查询；行/列权限作为 datasource policy 执行边界，内部系统不做敏感值脱敏设计 | token、成员、权限拒绝/允许矩阵和数据范围断言 |
-| R2-04 | DDL 写路径无管控 | 表/视图/函数/存储过程/触发器编辑纳入 R5-IDE/R5-B：draft→差异→备份点→发布；默认 dry-run，显式确认后执行；记录操作者、SQL hash、目标 schema、前后定义、回滚脚本。与 R5-A 只读链路同属 R5-IDE，但拥有独立子门禁，8 步管控不降级 | DDL 审计记录、拒绝危险语句、备份/回滚演示 |
-| R2-05 | 变量类型系统缺失 | string/number/boolean/date/datetime/array/object 六类；global/workflow/task/runtime 四级作用域；Asia/Shanghai 解析 `$[yyyy-MM-dd]` 与 offset；tmp 仅实例生命周期；输入校验、补全、现时值和运行快照均为同一 VariableService | 类型不匹配、补全列表、现时值、任务日志变量输出和实例快照 |
-| R2-06 | 实时流运行时空白 | Kafka 为标准 MQ；STREAM 是长驻 job，不复用一次性批实例终态语义；独立 stream_job/stream_attempt/offset/heartbeat，启动/停止/漂移/恢复/位点提交有状态机 | Kafka 生产观摩工作流、停止/重启续位点、心跳/指标/日志 |
-| R2-07 | SQL IDE 结果集协议缺失 | R5-IDE/R5-A 异步 task 返回 taskId；结果落临时结果存储并带 TTL，分页 cursor/offset、列元数据、rowsTotal、截断标记、导出句柄；取消映射数据库 KILL/连接回收；禁止无上限驻留 | 大结果截断、分页连续性、取消、导出和过期清理证据 |
-| R2-08 | 部署拓扑缺失 | 192.168.1.9 compose：api/master/worker/alert/logger + MySQL/Redis/ZK/Kafka/Web；配置来自 env/.env.example，日志统一卷和 health；本机不启动运行资源 | compose config、health、容器依赖、日志卷和环境变量清单 |
-| R2-09 | AI 契约游离 | AI 只调用冻结 Backend 工具：inspect_workflow_run、get_task_metrics、get_lineage、query_catalog、explain_sql；工具 schema、权限、审计、预算、超时并入各领域契约及其验收，跨域浮动助手和全平台验收归 R8；AI 为全系统浮动图标，不增加菜单项 | tool schema、拒权、审计和确定性回答样例，纳入对应领域及 R8 冻结门禁 |
-| R2-10 | 验收无量化基线 | API P95≤500ms（不含执行）、IDE 首屏≤2s、调度触发延迟≤10s、批任务指标完整率100%、流观摩吞吐/延迟按测试数据记录；证据统一落 `docs/increments/evidence/Rn/` | 带时间戳的 JSON/日志/截图索引与实测数字 |
-| R2-11 | SYNC 执行器缺失 | SYNC 纳入 catalog、master dispatch、scheduler/failover 和 worker executor；全量/增量、断点、批提交、映射计划和行级 metrics 同一执行链 | sync executor 单测、探查映射调整、真实工作流成功/失败行数 |
-| R2-12 | datasource 前置缺失 | 先完成 datasource CRUD、连接测试、schema/table/column 探查、连接池/超时；SQL、同步、IDE、治理和变量补全均只引用 datasource service | 数据源连通/失败、跨 schema 树、SQL/同步共享连接契约 |
-| R2-13 | 测试数据库供给缺失 | 运行测试库由 192.168.1.9 compose 的 MySQL schema 提供；本机只做 SQLite/fixture 逻辑测试，真实 MySQL 方言、默认时间戳和数据行统计必须远端验证 | schema 初始化、默认 CURRENT_TIMESTAMP、探查和对账证据 |
-| R2-14 | 每增量浏览器门禁、登录前置与控制桥阻塞 | 每个后端增量配独立验证页/路由，不注册正式菜单；用测试身份经 Backend auth API 获取短期 token 后直接驱动业务控件，登录页人工点击不是门禁；R1 单独验 auth/RBAC。browser-use 优先，控件桥一次有界重试仍阻塞即 Playwright 驱动同页真实控件；API-only 不替代 UI，Playwright 失败才 BLOCKED_BROWSER | Token 获取来源/有效期、真实控件操作、后端状态、截图（无凭据）、API/日志/资源证据；流程见 `.agents/skills/browser-use-playwright-fallback/SKILL.md` |
-| R2-15 | SQL IDE 单增量过大 | 合并为 R5-IDE 单一增量，内部设置 R5-A 只读（浏览、补全、查询、历史、结果分页、导出）与 R5-B 写路径（对象编辑、差异、备份、发布、回滚、DDL 权限）两道子门禁。R5-B 的 8 步管控、高风险属性、人工确认和失败回滚保持不变；R5-A 通过不代表 R5-B 获准 | 同一增量内两份子验证单，R5-B 单独风险评审和授权 |
+### 1.4 内部系统权限范围裁定
 
-### 2.1 R2-12 datasource 元数据浏览子契约（R2-12-B 实测收口）
+按用户裁定，Datara 为内部系统，首期不实现敏感值识别、列级脱敏、敏感值加密/脱敏展示或基于密级的内容隐藏。`security_level` 如因历史资产存在可作为治理元数据字段展示/迁移，但不得据此伪称已经实现敏感数据安全控制。仍须保留账号角色、项目成员/操作权限、工作流与治理对象的访问授权及操作审计；不以“内部系统”为由取消基本权限校验。
 
-- 当前可运行能力：仅 MySQL。使用已登记 datasource profile 创建只读连接，项目/数据源授权先于连接；通过 MySQL `information_schema` 提供 schema 列表、schema 下 table/view 分页与对象 columns/type/nullability/primary-key/comment。对象身份始终带 project、datasource、schema、type、name，不得按裸表名合并跨 schema 对象。
-- 连接与查询限制：本子批执行 metadata SELECT，不接受客户端 DSN/host/凭据，不提供 DDL/DML/SQL execution，不落目录快照；过滤值参数化，标识符使用 driver/Inspector 安全处理，连接设置有限超时并在成功/失败路径 rollback/close。权限或驱动错误不得伪装为空 schema。
-- 前端验收以 DBX 风格对象树的 schema→table/view→columns 用户操作流为参考，由隔离静态页调用真实 Backend；不改正式 Vue/菜单。已验证跨 schema 同名对象与项目隔离；browser-use 控件桥受限重试阻塞后，可按 R2-14 在同一 URL 使用 Playwright，真实控件仍是验收对象。
-- 子批状态：R2-12-B `CONTROL_PASS`，最终证据为 `evidence/R2/r2-12-b-20261015135851.json` + `.png` 及配套 `r2-12-b-remote-final-20261015.txt`。此状态只覆盖上述 MySQL 元数据浏览。连接池、PostgreSQL adapter/driver、SYNC/SQL IDE/治理的共享调用以及目录快照仍是 R2-12 后续任务，不得据此标记 R2-12 总体完成。
+## 2. 总体架构
 
-### 2.2 R2-12 datasource 有界连接池与生命周期子契约（R2-12-C 实测收口）
+```text
+新 Backend
+├── identity
+├── project
+├── workflow
+├── workflow_version
+├── task_definition
+├── task_instance
+├── schedule
+├── variable
+├── datasource
+├── sql_ide
+├── data_asset
+├── metadata
+├── lineage
+├── execution
+├── execution_metric
+├── quality
+├── data_transfer
+├── standard
+├── security
+├── semantic
+└── ai_copilot
 
-- 连接池身份与边界：以 `(project_id, datasource_id)` 隔离 SQLAlchemy Engine；profile 内容 fingerprint 改变后只失效对应池。每个 profile 默认 pool size=2、max overflow=2、timeout=3s、recycle=300s；进程内最多保留 32 个 profile pools，仅驱逐无 checked-out connection 的 idle pool，达到上限且无可驱逐项时明确拒绝创建，不越界增长。
-- 共享与失效：datasource probe 与 MySQL metadata browse 通过同一 connector 获取连接；profile 更新在数据库提交后失效对应池，profile 删除在成功后失效，应用 shutdown dispose 全部 Engine。该注册表为进程本地，不承诺跨 worker 限额或分布式协调；单 worker 远端实例理论上最多 128 个 datasource sockets（32×(2+2)）。
-- 安全及范围：不记录连接凭据，不扩展可读 schema/table allowlist，不执行旧源库迁移；池生命周期不改变 metadata API 的只读语义。PostgreSQL runtime、SQL/SYNC/治理消费者接入、持久 metadata snapshot 均仍为后续工作。
-- 子批状态：R2-12-C `CONTROL_PASS`，最终真实控件 run `evidence/R2/r2-12-c-20261015144457.json` + `.png`；同域浏览与 profile 更新失效验证在一轮控件运行中完成。首轮 teardown 失败 `r2-12-c-20261015143839.json` + `.png` 保留为失败证据，修复并复跑通过；部署、API 日志、fixture 与资源清理证据见 `evidence/R2/r2-12-c-remote-final-20261015.txt`。仅关闭 C，不代表 R2-12 总体完成。
+独立测试页面
+├── Backend API 验证页
+├── 节点表单验证页
+├── SQL IDE 验证页
+├── 运行与日志验证页
+└── 数据统计与血缘验证页
 
-### 2.3 R2-12 datasource PostgreSQL adapter 子契约（R2-12-D 实测收口）
+正式前端
+└── Backend 冻结后融合重构
+```
 
-- PostgreSQL profile 复用现有项目 scoped datasource API 和 C 的 pool registry；SQLAlchemy URL 使用明确 dialect/driver `postgresql+psycopg`，不得将连接凭据返回前端或写日志。计划用 Psycopg 3 binary extra；部署预检必须确认 Python/平台兼容、镜像构建及 wheel 来源。
-- 运行镜像隔离由 `datara-backend/Dockerfile.r2-12-d` 从当前共享 base 派生，`docker-compose.r2-12-d.yml` 以 `datara-backend:r2-12-d-psycopg` 只替换 `datara-rebuild-api`；严禁使用 main compose 重建 API/master/worker/alert/logger。
-- catalog adapter 使用与 dialect 匹配的参数化只读目录 SQL，返回 schema→table/view→column 与类型、nullability、主键、comment；对象 identity 仍包含 project/datasource/schema/type/name。D 复用 DBAPI raw connection、pool checkout/rollback/return 生命周期和 bounded keyset/lookahead paging；不另取 Inspector connection 形成双池路径。MySQL adapter 保持当前响应兼容，API 采用共同协议而不复用 MySQL 专属 SQL。
-- 只读边界由最低权限数据库账号（CONNECT/USAGE/SELECT）和 transaction read-only 双重落实。D 仅实现 probe 与 metadata browser，不包含 DML/DDL、SYNC、IDE 生产接入、跨 worker pool 或持久快照。
-- 实测范围与边界：D 已扩展为显式 MySQL 兼容性 + PostgreSQL 新增能力联合验收，运行于同一 DBX 风格验证页；不包含 SQL 写执行、SYNC、IDE/治理消费者、跨 worker pool 或持久 metadata snapshot。官方驱动契约参见 [SQLAlchemy PostgreSQL dialect](https://docs.sqlalchemy.org/en/20/dialects/postgresql.html) 与 [Psycopg installation](https://www.psycopg.org/psycopg3/docs/basic/install.html)。具体实现与运行证据见 `R2-12-D-PostgreSQL数据源探测与元数据浏览影响分析.md` 和 `evidence/R2/r2-12-d-remote-final-20261015.txt`。
-- D 实现：新增 Psycopg 3 runtime、`postgresql+psycopg` dialect、只读 PostgreSQL catalog adapter，并复用 C 的 project/datasource Engine registry、profile fingerprint、连接池和生命周期；MySQL API 合同及行为维持兼容。schema/table/view/column 元数据支持跨 schema 展示、分页、类型/nullability/主键/comment 与限定对象身份。Psycopg 参数绑定下 PostgreSQL LIKE 文本中的字面 `%` 使用 `%%` 编码，回归测试覆盖该边界。
-- D 安全诊断：目录 API 仍对外返回通用 502，不泄露数据库细节；后端日志仅记录 operation、异常类别和 SQLSTATE，不输出 SQL、参数、凭据或 DSN。
-- D 状态：`CONTROL_PASS`。最终同一轮真实 UI run `r2-12-d-20261015164635` 覆盖 PostgreSQL/MySQL profile、schema、table/view、columns、跨项目拒绝，共 6 项断言、11 个 API 响应，无页面/网络错误；JSON+PNG、部署/日志/权限/清理凭证分别见 `evidence/R2/r2-12-d-20261015164635.json/.png`、`r2-12-d-browser-entry-20261015.txt`、`r2-12-d-remote-final-20261015.txt`。PG/MySQL 只读角色验证及无宿主端口临时 fixture 均完成并清理。browser-use 桥在一次 30 秒与一次 60 秒有界尝试后 BLOCKED，按已批准流程改用 Playwright 操作相同 18091 页面真实控件；控件门禁不是 API-only。两个早期 502 失败 run 的 JSON+PNG 保留；首轮已定位 Psycopg literal-percent pattern 错误并回归修复，第二轮通用 502 的独立根因未被证据确认，故不作推断。
+核心原则是：SQL IDE、工作流节点、AI 助手共享同一套数据源、变量解析、执行、日志和统计服务，不允许各自建立独立执行引擎。
 
-## 3. 身份、调度和运行表统一契约
+## 3. 核心领域模型
 
-所有运行记录表至少拥有数据库生成的 `created_at`、`updated_at`、`generated_at`；实例、任务、attempt、command、task_log、output、variable_runtime、data_stat、workflow_run_metric、stream_attempt 均不得由前端伪造时间。上海时区用于业务解释，数据库时间戳保存实际生成时刻；API 同时返回 ISO 字段与显示时区。
+### 3.1 项目和工作流
 
-统计数据由实际执行器写入而非任务中心计算伪造：R4 SYNC 记录读取/写入/新增/更新/成功/失败/跳过/过滤行数、期望与实际计数、耗时及 attempt；R8 STREAM 记录输入/处理/输出/失败/跳过数量、吞吐/延迟/位点/重启和观测区间。R7 负责查询、聚合展示和追溯到 run/task/attempt；R8 后续向同一任务中心指标协议追加流统计，不反向阻塞 R7 批处理能力。所有统计行保留 `created_at/updated_at/generated_at` 与源运行 ID。
+```text
+project
+project_member
+project_variable
+workflow_definition
+workflow_version
+workflow_node
+workflow_edge
+workflow_variable
+workflow_schedule
+workflow_publish_record
+```
 
-一次性 DAG 以 workflow_instance 为主链；STREAM 以 stream_job 为主链，允许多个长驻 attempt。每次触发在 command→instance→task_instance→task_log/output/data_stat/metric 之间保留 instance_id、trigger_source、origin_instance_id 和 generated_at 关联。
+工作流版本状态：
 
-## 4. 变量规范
+```text
+DRAFT
+PUBLISHED
+RUNNING
+DISABLED
+ARCHIVED
+```
 
-变量编辑器统一使用 SQL IDE 风格的 token 补全：输入 `$`、`${` 或 `$[` 时按作用域、类型和可见项目返回候选；选中候选展示名称、类型、来源和现时值。保存/运行前执行类型、作用域、是否允许延迟求值、日期格式和引用存在性校验。任务日志允许输出本次运行解析后的变量键值及来源；内部系统按用户裁定不做敏感值脱敏分支。
+正式运行必须绑定 `workflow_version_id`。草稿试运行生成独立的 `workflow_draft_snapshot`，不改变已发布版本。
 
-## 5. 治理与 AI 真源
+### 3.2 任务类型
 
-### 5.1 五域模型、写入责任与真源
+首期 Palette：
 
-| 域 | 规范对象/责任 | 写入生产者 | 内部真源与外部边界 |
-|---|---|---|---|
-| `metadata` | 数据源、schema、表/视图/函数/存储过程、字段、描述、采集批次与快照 | datasource 探查器、周期采集器、受控导入器 | Datara 的治理 schema 保存目录和快照；OpenMetadata/DataHub 仅作为可追溯导入源，不直接成为工作流执行状态或元数据写入真源 |
-| `data_asset` | 统一资产身份、项目归属、标签关联、质量/血缘/指标导航引用 | 资产目录服务、导入映射器 | 内部 `asset_id` 与外部 `(source_system, external_id)` 映射是关联真源；外部原始 ID 不覆盖内部主键 |
-| `lineage` | 作业/SQL/同步映射产生的表级及字段级 upstream/downstream 边、解析来源、置信/状态 | SQL/工作流解析器、SYNC 执行器、显式校正 API | 内部 lineage edge 与字段边保存解析结果；源 SQL/映射版本及解析批次保留，解析失败不得伪造边 |
-| `quality` | 规则定义/版本、运行、输入输出计数、异常样本引用与状态 | 规则服务、Quality worker | 新治理 API 的规则和运行历史为重建域真源；旧 `Qc*` ORM/表保留作为旧资产迁移输入，不再由退役的 `/api/v1/qc/*` 写入 |
-| `data_transfer` | 同步端点、探查 schema、字段映射版本、全量/增量计划、checkpoint、运行及成功/失败/跳过行数 | datasource 探查器、SYNC 编排器/执行器 | 新 Backend 记录映射与执行状态；外部传输工具仅作为执行适配器，不能绕过 Datara instance/metrics 留痕 |
+```text
+FLOW
+SYNC
+SQL
+PYTHON
+SHELL
+DEPENDENCY
+```
 
-数仓建模、指标、标签、标准、质量、血缘、权限和审计的旧 I18-I23 资产统一先盘点，不在本设计阶段静默删除。`DwModel*` 是建模/关系/版本迁移候选；`MetaTableExt/MetaTag/MetaTagging` 是目录/标签候选；旧 `LineageEdge/LineageField` 与 `Qc*` 是血缘/质量候选。指标、标准、访问授权及操作审计按各自旧表/API 的实物清单映射。处置默认如下：语义相同则经 source-id、行数、字段映射及幂等核验后迁移至新域；仍被旧运行链路引用则暂时冻结只读；无消费者且无业务数据的历史实现，在用户批准和回滚窗口后废弃。任何一项在表/API/菜单/消费者清单核完之前都不标“已迁移”或“已废弃”。`Qc*` ORM/表保留，旧 QC API 已按批次 1 退役；治理 API 和数据仍可审计。
+首期流类组件：
 
-### 5.2 I18–I23 规范化承接模型
+```text
+START
+END
+CONDITION
+FORK
+JOIN
+WAIT
+SUB_WORKFLOW
+```
 
-用户于 2026-10-14 明确裁定方案 A：扩展新 Backend 的规范化模型并完整承接旧 I18–I23 业务语义。旧库继续只读；源记录拟迁入隔离目标 `datara_rebuild_i0`，但快照、dry-run、逐表/逐关系核对都不构成写入许可：任何目标业务数据导入执行前仍须另获用户明确批准，并完成备份、恢复、并发和回滚门禁。2026-10-15 用户明确批准：本次对 `datara_meta` 的只读盘点可使用 MySQL root；连接边界是 `REBUILD_LEGACY_META_URL` 必须解析到 MySQL 精确 schema `datara_meta`，代码只许使用固定表/列 allowlist 与只读事务，root 不得配置或注入新 Backend 运行服务；绝不复用指向其他 schema 的 `REBUILD_MYSQL_SRC_URL`，不得执行源端 DDL/DML/GRANT，不向日志、证据或页面输出凭据。已取得的 I22 现场结构证据见 `evidence/R3/s9-i22-live-schema-20261015.md`；该 root CLI schema 查询没有配置 Backend runtime source URL。后续仍优先改为最小权限账号。现有 R3 通用表保留并演进，不以 `properties_json`、拼接文本或单一快照 JSON 替代可查询、可授权、可建立关系的业务实体；JSON 快照仅用于原始证据/历史差异辅助。
+后续任务类型采用插件化扩展，不在首期加入大量 Spark、Flink、HTTP、Kafka 专用节点。
 
-| 旧域与语义 | 新规范化实体（名称为契约候选，迁移前需在 R3-S9 冻结物理命名） | 关键关系与保真要求 |
+## 4. 试运行和正式运行
+
+### 4.1 试运行
+
+```text
+当前草稿
+→ 静态校验
+→ 生成草稿快照
+→ 创建 TRIAL 实例
+→ 执行
+→ 输出日志、变量值和数据统计
+```
+
+支持：
+
+- 当前草稿运行；
+- 单节点运行；
+- 从指定节点运行；
+- 测试变量覆盖；
+- 依赖模拟；
+- Dry Run；
+- SQL 预检查；
+- 结果转正式版本。
+
+### 4.2 正式运行
+
+```text
+已发布版本
+→ 创建 FORMAL 实例
+→ 调度或手工运行
+→ 绑定固定变量快照
+→ 记录完整执行证据
+```
+
+运行实例通过 `instance_type` 区分：
+
+```text
+TRIAL
+FORMAL
+STREAM
+```
+
+## 5. 变量规范
+
+统一变量语法：
+
+```text
+${global.xxx}
+${project.xxx}
+${workflow.xxx}
+${task.xxx}
+${env.xxx}
+${run.xxx}
+${tmp.xxx}
+$[yyyy-MM-dd]
+```
+
+优先级：
+
+```text
+run > task > workflow > project > global > env > builtin
+```
+
+所有使用变量的表单、编辑器和脚本输入都必须支持：
+
+- 语法校验；
+- 变量补全；
+- 类型提示；
+- 当前值预览；
+- 来源展示；
+- 未定义检测；
+- 类型不匹配检测；
+- 循环引用检测。
+
+每次执行生成变量快照：
+
+```text
+task_instance_variable_runtime
+```
+
+记录表达式、作用域、变量名、解析值、类型、来源、解析时间和执行尝试编号。
+
+## 6. 核心节点设计
+
+### 6.1 SQL
+
+- 多语句执行；
+- 参数和变量替换；
+- 前置和后置 SQL；
+- 事务模式；
+- 读写模式；
+- Explain；
+- 影响行数统计；
+- SQL 文件上传；
+- SQL 资产绑定；
+- 试运行和正式运行。
+
+### 6.2 Python
+
+- 在线编辑；
+- `.py` 和 `.zip` 上传；
+- 依赖文件；
+- requirements；
+- 参数注入；
+- 结构化结果统计；
+- 标准输出和错误输出。
+
+### 6.3 Shell
+
+- `.sh` 和 `.bash` 上传；
+- 工作目录；
+- 解释器；
+- 参数和环境变量；
+- 返回码；
+- 超时和重试；
+- 结构化统计文件。
+
+### 6.4 同步
+
+同步表单包含：
+
+```text
+源数据源
+源表
+目标数据源
+目标表
+字段探查
+类型探查
+自动映射
+用户调整映射
+表达式转换
+过滤条件
+分区和增量字段
+主键和冲突处理
+批大小和并发度
+```
+
+字段映射必须记录：
+
+```text
+source_column
+target_column
+source_type
+target_type
+transform_expression
+nullable
+default_value
+mapping_status
+```
+
+### 6.5 依赖
+
+参考 DolphinScheduler 的依赖表单，支持：
+
+- 工作流依赖；
+- 任务依赖；
+- 文件依赖；
+- 表状态依赖；
+- 外部任务依赖；
+- 时间范围；
+- 轮询周期；
+- 超时；
+- 满足和失败策略。
+
+## 7. 数据开发 IDE
+
+SQL IDE 与核心节点并行建设，参考 DBX 的数据源能力分级、查询编辑、结果网格、SQL 历史、SQL 资产、异步执行和数据导出能力。
+
+### 7.1 对象范围
+
+```text
+数据库
+Schema
+表
+视图
+字段
+索引
+函数
+存储过程
+触发器
+```
+
+对象均支持：
+
+- 查看定义；
+- 编辑定义；
+- 语法校验；
+- 依赖分析；
+- 差异对比；
+- 版本保存；
+- 发布执行；
+- 执行日志。
+
+### 7.2 跨 Schema 查询
+
+补全和执行上下文需要支持数据库内跨 Schema：
+
+```sql
+select a.id, b.name
+from ods.order_info a
+join dwd.customer_info b
+  on a.customer_id = b.customer_id;
+```
+
+前提是数据源能力矩阵允许跨 Schema 查询。
+
+### 7.3 结果网格
+
+支持多结果集、分页、虚拟滚动、筛选、排序、行详情、JSON 展开、复制、CSV/JSON/Excel 导出、结果转图表和结果保存为数据集。
+
+## 8. 实时流处理验证
+
+建设一个可运行的实时观摩工作流：
+
+```text
+实时数据生产
+→ 消息队列
+→ 流处理任务
+→ 聚合/融合
+→ 结果存储
+→ 实时观摩
+```
+
+生产节点支持固定速率、随机数据、异常数据、重复数据、延迟数据、乱序数据和突发流量。
+
+观摩页面显示：
+
+```text
+生产速率
+消费速率
+处理速率
+输入数
+输出数
+成功数
+失败数
+跳过数
+重复数
+积压量
+偏移量
+窗口结果
+错误样本
+```
+
+## 9. 运行日志和结果统计
+
+运行相关表：
+
+```text
+workflow_instance
+task_instance
+task_instance_attempt
+task_instance_log
+task_instance_output
+task_instance_variable_runtime
+workflow_result_stat
+task_instance_data_stat
+task_data_stat_segment
+task_data_error_sample
+execution_event
+```
+
+每张运行相关表必须拥有数据库生成的非空时间字段：
+
+```text
+created_at
+updated_at
+generated_at
+```
+
+运行执行表额外拥有：
+
+```text
+started_at
+finished_at
+event_time
+attempt_no
+```
+
+统一工作流统计表 `workflow_result_stat` 至少记录：
+
+```text
+input_record_count
+output_record_count
+success_record_count
+failed_record_count
+skipped_record_count
+rejected_record_count
+filtered_record_count
+duplicate_record_count
+inserted_record_count
+updated_record_count
+deleted_record_count
+read_bytes
+write_bytes
+batch_count
+data_quality_status
+extra_metrics
+```
+
+任务级、阶段级和错误样本表保存细节，重试按 `attempt_no` 隔离，最终汇总不得重复计算。
+
+## 10. 前端测试页面和融合规则
+
+测试页面必须参考现有原版系统的布局、Palette、图标、DAG 交互、节点弹窗、运行页、日志页、变量编辑器和调度页，不得只做脱离原系统的临时表单。
+
+首期测试页面：
+
+```text
+项目测试页
+工作流测试页
+节点配置测试页
+变量测试页
+SQL IDE 测试页
+试运行测试页
+正式运行测试页
+日志和变量快照测试页
+数据统计测试页
+流处理观摩测试页
+```
+
+测试页面阶段完成以下门禁后，正式前端才允许融合：
+
+- API 契约冻结；
+- 数据模型冻结；
+- 节点协议冻结；
+- 变量协议冻结；
+- 执行状态冻结；
+- 统计协议冻结；
+- 时间戳规范冻结；
+- 试运行和正式运行行为验收通过。
+
+## 11. AI 助手
+
+AI 仅作为全系统悬浮图标和侧边抽屉，不新增一级菜单。
+
+根据当前页面携带：
+
+```text
+项目
+工作流
+节点
+SQL
+数据源
+变量
+运行记录
+数据统计
+元数据
+血缘
+```
+
+AI 通过统一工具调用 SQL 执行、工作流校验、运行诊断、元数据检索、血缘分析和结果可视化，不允许另建执行引擎。
+
+推荐组合：
+
+```text
+Datara Backend
++ OpenMetadata 或 DataHub
++ 数仓语义层
++ 自研 AI Agent
++ Vanna 工具调用思想
+```
+
+## 12. 验收原则
+
+每个增量必须同时提供：
+
+```text
+数据模型
+API 契约
+后端实现
+自动化测试
+独立测试页面
+运行证据
+文档更新
+```
+
+没有可执行测试和运行证据的功能，不进入“完成”状态。
+
+## 13. 评审修订与现有资产承接
+
+本章是对本设计文档的评审闭环，优先于前文中仅列出模块名称但未展开的表述。
+
+### 13.1 治理域不是占位模块
+
+新 Backend 的治理域包含：
+
+```text
+data_asset       数据资产主索引
+metadata         元数据目录、字段、负责人、标签
+lineage          表级、字段级、设计态、运行态血缘
+quality          质量规则、质量任务、异常样本、评分
+standard         数据元、代码、命名、映射、评审发布
+security         密级、业务域、列级脱敏、访问审计
+semantic         指标、维度、业务术语和口径
+```
+
+#### 现有 I18-I23 承接决策
+
+现有系统中的 I18-I23 资产不废弃：
+
+| 现有资产 | 重建处理 |
+|---|---|
+| I18 数仓建模 | 迁移模型、字段、关系和版本；新 Backend 成为后续运行真源 |
+| I19 元数据/标签 | 迁移资产扩展、标签和业务域；保留实时内省能力 |
+| I20 指标 | 迁移指标定义、结构化取数配置和版本 |
+| I21 质量 | 迁移规则、任务、异常样本和告警关联 |
+| I22 标准 | 迁移数据元、码表、命名和映射规则；保留标准评审发布 |
+| I23 权限 | 迁移角色、权限点、密级、业务域、脱敏规则和审计记录 |
+
+迁移原则：旧表在迁移期间只读；新 Backend 通过迁移适配器导入新模型；迁移完成后新模型为运行真源。旧模型不再接受新写入，但保留回溯查询。
+
+平台治理真源定义为：
+
+```text
+Datara 新 Backend：工作流、运行、任务、变量、数据资产和治理状态真源
+OpenMetadata/DataHub：可选外部目录和 AI 上下文投影，不作为 Datara 执行真源
+```
+
+### 13.2 治理域模型和边界
+
+核心模型：
+
+```text
+data_asset
+metadata_table
+metadata_column
+metadata_tag
+metadata_owner
+lineage_edge
+lineage_field_edge
+quality_rule
+quality_task
+quality_run
+quality_exception
+standard_data_element
+standard_code_set
+standard_naming_rule
+standard_mapping_rule
+security_policy
+mask_rule
+access_audit
+semantic_metric
+semantic_dimension
+business_term
+```
+
+边界：
+
+- 元数据采集首期采用实时内省、数仓模型和运行事件三类来源；
+- 血缘首期支持 SQL 解析、同步映射、工作流声明和运行回写；
+- 质量首期支持完整性、唯一性、准确性、及时性和一致性规则；
+- 标准首期支持数据元、码表、命名、类型精度、取值域和映射合规；
+- 安全首期支持最小 RBAC、密级、业务域、列级脱敏和访问审计；
+- 不在首期实现外部统一主数据、跨企业数据交换和复杂策略编排。
+
+### 13.3 调度与执行运行时
+
+调度触发类型：
+
+```text
+MANUAL
+CRON
+DEPENDENCY
+EVENT
+TRIAL
+```
+
+调度字段：
+
+```text
+timezone = Asia/Shanghai
+misfire_policy = FIRE_ONCE | SKIP | FIRE_ALL_LIMITED
+concurrency_policy = ALLOW | FORBID | QUEUE
+priority
+max_running_instances
+retry_policy
+timeout_policy
+alert_policy
+```
+
+运行拓扑：
+
+```text
+API：接收配置、创建实例、查询状态
+Master/Scheduler：解析调度、生成实例、分派任务
+Worker：执行 SQL/Python/Shell/Sync
+Stream Worker：管理长驻流任务
+Logger：收集日志和运行事件
+Alert：发送邮件、站内消息等告警
+Redis：会话、进度广播、短期状态
+MySQL：元数据、实例、统计、审计
+Kafka：流处理验证和消息链路
+```
+
+批任务是有限生命周期实例；流任务是长驻 `STREAM_JOB`，需要独立的启动、停止、心跳、故障恢复、位点、漂移和终止状态模型，不与批任务强行共享完成语义。
+
+### 13.4 权限模型
+
+首期采用最小 RBAC：
+
+```text
+ADMIN
+DEVELOPER
+OPERATOR
+VIEWER
+```
+
+权限点示例：
+
+```text
+project:read/write
+workflow:read/write/publish/run/delete
+task:read/write/run
+datasource:read/use/manage
+sql:read/execute/write-ddl
+schedule:read/manage
+lineage:read
+quality:read/write/run
+standard:read/write/approve
+security:read/manage
+audit:read
+```
+
+数据级控制沿用并重建现有 `clearance`、`biz_domain`、`maskRow` 机制：
+
+- 表级密级判定；
+- 业务域匹配；
+- 列级脱敏；
+- 统一读取出口；
+- 访问允许/拒绝审计。
+
+所有新 API 都必须携带用户上下文，测试页面使用现有 token header 约定的重新实现版本。
+
+### 13.5 变量类型和生命周期
+
+变量类型：
+
+```text
+STRING
+INTEGER
+DECIMAL
+BOOLEAN
+DATE
+DATETIME
+JSON
+ARRAY
+```
+
+变量定义增加：
+
+```text
+type
+default_value
+nullable
+format
+timezone
+business_calendar
+description
+```
+
+`$[yyyy-MM-dd]` 默认使用 `Asia/Shanghai`，支持显式时区和业务日历；`tmp` 变量只在当前工作流实例有效，实例结束后失效；密码类变量只保留引用和执行上下文，不进入普通日志。
+
+### 13.6 SQL IDE 结果和 DDL 管控
+
+查询结果协议固定为：
+
+```text
+execution_id
+result_set_id
+columns
+rows
+row_count
+page
+page_size
+has_more
+storage_ref
+truncated
+generated_at
+```
+
+小结果可短期内存缓存，大结果写入项目运行结果存储，页面只通过分页接口读取；超过限制必须截断并提供导出任务；取消操作向执行器发出 cancel/kill 信号，最终状态必须为 `CANCELLED` 或 `CANCEL_FAILED`。
+
+存储过程、函数、视图、触发器和表结构编辑属于 DDL 写路径，必须经过：
+
+```text
+权限校验
+→ 依赖检查
+→ 影响对象预览
+→ DDL 脚本快照
+→ 用户确认
+→ 执行
+→ 结果记录
+→ 失败回滚或补偿脚本
+```
+
+本系统首期不提供自动审批流，但必须记录操作者、脚本、对象、执行时间、结果和失败原因。
+
+### 13.7 流处理运行时
+
+首期沿用现有运行资源：Kafka 作为消息队列，Redis 作为进度广播和短期观摩数据，MySQL 保存作业状态、位点和统计；后续允许增加其他 MQ 适配器。
+
+流作业模型独立于批实例：
+
+```text
+stream_job
+stream_job_attempt
+stream_checkpoint
+stream_metric_snapshot
+stream_failure_event
+```
+
+状态：
+
+```text
+CREATED
+STARTING
+RUNNING
+PAUSED
+STOPPING
+STOPPED
+FAILED
+RECOVERING
+```
+
+### 13.8 部署与环境基线
+
+`192.168.1.9` 为唯一运行验证资源，沿用项目现有容器拓扑。重建验证 Web 使用独立宿主端口 `18091`；既有 `8090` 不再作为本次重建 browser-use 入口，`18090` 已被其他验证栈占用：
+
+```text
+mysql-meta
+mysql-src
+mysql-dw
+redis
+zookeeper
+kafka
+datara-api
+datara-master
+datara-worker
+datara-alert
+datara-logger
+datara-web
+```
+
+重建 Web 入口：`http://192.168.1.9:18091/`。端口切换只改变宿主机 Web 暴露端口，不改变容器内 Nginx 的 `80` 端口和 `/api` 反向代理契约。
+
+配置通过环境变量和远程部署配置注入；本机不作为容器运行资源。日志统一写入远程隔离目录，验证证据包括 compose 状态、容器日志、接口响应、浏览器操作、数据库行和服务健康检查。
+
+### 13.9 AI 契约纳入冻结范围
+
+AI 工具注册表、工具参数模型、工具返回结构、权限上下文和审计字段属于 Backend 契约的一部分，必须在 Backend 冻结前完成：
+
+```text
+search_schema
+validate_sql
+run_sql
+get_workflow
+validate_workflow
+inspect_workflow_run
+get_task_metrics
+get_lineage
+```
+
+AI 首期可以不接真实 LLM，但必须先完成工具契约、假 Agent 测试和悬浮助手测试页，避免 Backend 冻结后重新解冻接口。
+
+### 13.10 量化验收基线
+
+首期基线：
+
+```text
+Backend 单元/契约测试通过率：100%
+关键 API 集成测试：100%
+核心节点端到端场景：SQL/Python/Shell/Sync/Dependency/Stream 各至少 1 条
+变量引用校验覆盖：所有核心节点表单和编辑器入口
+运行表时间戳完整率：100%
+执行结果统计完整率：100%
+SQL IDE 元数据补全 P95：≤ 2 秒（远程测试环境）
+调度触发延迟 P95：≤ 10 秒
+流观摩指标刷新周期：≤ 5 秒
+异常注入场景：失败、重试、取消、断点恢复、重复数据、乱序数据
+```
+
+运行证据统一存放在：
+
+```text
+D:\需求\数据治理工具\Datara\docs\increments\evidence\I<编号>\
+```
+
+### 13.11 评审结论
+
+本轮评审提出的问题全部纳入修订：
+
+- 治理域补全并承接 I18-I23；
+- 调度、执行、权限和部署拓扑补全；
+- SQL IDE 拆分只读和 DDL 写路径；
+- 变量类型、流运行时和结果集协议补全；
+- SYNC 执行器、datasource 前置和远程测试库补入计划；
+- 每个增量配置最小前端验证页；
+- 测试页面与正式前端隔离；
+- AI 工具契约纳入 Backend 冻结；
+- 异常注入、并发、迁移、mock 双轨和量化基线补入验收。
+
+### 13.12 跨文档一致性闭环（2026-10-14）
+
+为避免架构模块在计划中“有名无实”，本设计与增量计划采用以下固定对应关系：
+
+| 设计域 | 计划增量 | 冻结前必须存在 |
 |---|---|---|
-| I18 业务域、数仓分层、引擎字典 | `governance_domain`、`warehouse_layer`、`model_engine` | 按旧自然键保留源 ID 映射、名称、规则/方言、排序与启用状态；模型引用均以新主键关联。 |
-| I18 模型、字段、ER 关系、版本 | `warehouse_model`、`warehouse_model_field`、`warehouse_model_relation`、`warehouse_model_version` | 保存模型状态/版本/目标数据源/schema、画布坐标、字段类型精度/可空/默认值/主键/分区/字典引用、关系两端字段与关系类型、每个历史版本完整快照/变更说明/作者/时间；关系字段从 JSON 文本解析为规范化关系字段行，同时保留原始字段载荷供审计。物化 DDL 作为历史文本留档，不自动重放。若旧关系字段载荷不符合 JSON 数组契约，dry-run 必须将该关系作为 `invalid_relation_field_pairs` 阻断项显示，不得猜测拆分或中止其他记录的预检。 |
-| I19 元数据扩展、标签与挂接 | 现有 `asset`/`asset_field`/`tag`/`asset_tag` 加 `asset_metadata_extension`、`legacy_tag_reference` | 旧 `(ds_id, db_name, table_name)` 对齐统一 asset identity；业务域、owner、备注等扩展落专表；可解析的标签挂接落 asset-tag 关系，任意旧 target_type/key 及未解析引用落 `legacy_tag_reference` 并保留原键，不丢弃。 |
-| I20 指标及版本 | 现有 `semantic_metric` 加 `semantic_metric_profile`、`semantic_metric_version`、`semantic_metric_dimension` | 规范化指标代码/名称/类型/业务域/业务定义/技术定义/来源类型与引用/字段/输出表/任务/统计周期/维度/单位/状态/当前版本；profile 保存主实体暂未覆盖的旧属性，维度为独立关联行；保留版本快照、变更说明、作者和时间。 |
-| I21 质量规则、任务、任务规则关系、运行、异常、报告、告警 | 现有 `quality_rule`/`quality_run` 加 `quality_rule_definition`、`quality_task`、`quality_task_rule`、`quality_run_legacy_details`、`quality_exception`、`quality_report`、`quality_alarm_policy` | 规范化保留旧 rule 类型/参数/阈值/对象键，即使目标 asset 未能解析；保存 cron/enabled/状态/最近运行、规则集合及顺序、触发方式/起止时间/结果/分数/统计、异常目标/样例 SQL/命中数/处理状态、报告范围/周期/内容、告警指标/运算符/阈值/启用与触发时间。已按 2026-10-15 live schema 收敛 I21 allowlist：`t_qc_rule.update_time`、`t_qc_task.owner/remark/create_time`、`t_qc_exception.handled_by` 物理不存在；不得依据历史 ORM 伪造源值，目标映射需带 `source_schema_missing_columns` 备注，缺失源时间保留 null。旧 QC 执行 API/engine 仍退役；本模型承接历史业务记录与新治理 API，不恢复旧 `/api/v1/qc/*`。 |
-| I22 标准元素、码表/码值、命名规则、映射、审批、校验报告 | 现有 `standard` 加 `standard_element`、`standard_code_set`、`standard_code_value`、`standard_naming_rule`、`standard_mapping`、`standard_approval`、`standard_check_report` | 以 2026-10-15 live schema 为源契约：七张表实际列及键见 `evidence/R3/s9-i22-live-schema-20261015.md`；只保留实测存在的中英文名称、数据类型/长度、状态/版本/负责人、码表字段、码值编码/名称/顺序、命名表达式及目标、映射目标/元素或码表/差异、审批业务类型/业务 ID/payload/意见/状态/时间、检查范围/汇总/问题/状态。码值与父码表建立 FK，映射到标准元素/码表建立可空 FK；缺少源 FK 时由 mapper 用复合 source identity 校验，孤儿阻断。历史审批目标保留原业务类型与 source ID；不得将旧 code/element ID 填入指向 `StandardDefinitionRecord` 的 `standard_id`，没有经验证的 canonical target 时保持空并将无法解析的源业务关联报告为 unresolved。旧设计稿所述但现场不存在的 element `format/domain/cat`、审批 proposer/reason/approver/handled_at、mapping `code_std_id/last_check_json` 均不得假造。 |
-| I23 用户及全局角色/权限映射 | 既有 `rebuild_user`/`rebuild_project_member` + `legacy_identity_mapping` | `t_user` 记录登录名、角色和状态；保留稳定源 ID 并逐项映射旧静态角色权限至 R1 已冻结的 `Role/Permission/ROLE_PERMISSIONS` 契约，不另造动态 RBAC 真源。只有在完整源盘点找到旧项目绑定记录时才迁移项目成员关系；否则不伪造历史成员关联。凭据仅在算法/格式兼容并通过验证时迁移哈希，否则走重置，不迁移明文口令。不将旧身份表作为新 Backend 运行时真源。 |
+| `identity/project/datasource` | I1 | token、成员/RBAC、数据源连通性和能力矩阵 |
+| `workflow/workflow_version/task_definition` | I1/I2/I4 | 版本、草稿快照、节点配置和六类执行器 |
+| `schedule/execution/execution_metric/task_instance` | I2/I7/I9 | 实例、调度、事件、统计、重试和取消 |
+| `variable` | I2 | 类型、作用域、补全、现值、运行快照 |
+| `data_asset/metadata/lineage/quality` | I3/I9 | I18-I23 承接、采集、表/字段血缘、质量规则和运行回写 |
+| `standard/security/semantic` | I3 | 标准、权限/密级/业务域/审计、指标和术语 |
+| `data_transfer` | I4/I9 | SYNC、探查映射、断点统计和血缘回写 |
+| `sql_ide` | I5/I6 | 只读查询协议与 DDL 写路径管控 |
+| `ai_copilot` | I10/I11 | 工具契约、假 Agent、悬浮助手和审计 |
 
-所有迁移实体统一附 `source_system`、`source_table`、`source_id`（组合唯一）、`migration_batch_id`、`created_at`、`updated_at`、`generated_at`；业务记录按本体保存原创建/更新时间，`generated_at` 表示新系统迁移/生成时点，批次时间单独记录。目标表使用外键、唯一约束及稳定自然键；多对多关系拆为关联表。源表主键仅作为来源键，不复用为目标主键。迁移项保存源/目标键、状态、校验摘要、错误及重试次数，保证可重入、可定位、可回滚。每表校验精确行数、字段规范化摘要、源 ID 覆盖率、关系条数、孤儿数、版本/审批链完整率与时间戳；目标不得少于任一来源记录，冲突必须显式报告，不可静默覆盖。迁移前做目标 schema 快照；回滚只能删除本迁移批次拥有且未被新业务引用的目标记录，绝不触碰旧库。
+### 13.13 全量运行表时间戳契约
 
-R3-S9 的物理增量采用不可变序列：`r3_0001_governance_catalog` 保持既有校验和与 DDL 不变；`r3_0002_legacy_governance_carryforward` 仅新增来源承接表。承接实体必须显式保存旧字段，而非把有类型、有关系的事实塞入 JSON：I18 保存 security/build/owner 状态、模型字段顺序与 ER 两端字段、完整版本快照；I19 将旧标签定义与旧 target 引用分开保存，保留类别、颜色、说明和未解析目标；I20 除维度子表外，还保留旧维度原文、基础指标来源键、聚合/分子/时间/维度/过滤属性、状态、版本与负责人；I21 分拆规则定义、任务顺序关联、运行统计、异常、报告和告警策略；I22 保留元素、码表、码值、命名规则、映射、审批 payload/意见及校验报告。新增的辅助列和实体属于方案 A 的无损承接细化；不能解析或不能唯一关联的旧引用须显式标为 unresolved，不伪造主实体或外键。
+以下表均属于运行记录范围，全部由数据库默认生成非空 `created_at`、`updated_at`、`generated_at`；I2 负责统一迁移模板和首轮真实 MySQL 断言，I8 新增流表时复用模板，I9 做最终完整性稽核：
 
-迁移排序：身份与项目键映射 → 字典/资产身份 → 模型及字段/关系/版本、元数据扩展/标签引用 → 指标及 profile/维度/版本 → 标准元素/码表/码值/规则/映射 → 审批/校验报告 → 质量规则定义/任务关联/运行细节/异常/报告/告警 → 全域关系与总量核对。用户/角色数据映射先 dry-run；遇到登录名冲突、项目归属不唯一、权限点无目标或凭据算法不兼容时停止对应记录组，保留已提交的无关组并提交裁定，不进行猜测合并。
+```text
+workflow_instance
+task_instance
+task_instance_attempt
+task_instance_log
+task_instance_output
+task_instance_variable_runtime
+workflow_result_stat
+task_instance_data_stat
+task_data_stat_segment
+task_data_error_sample
+execution_event
+stream_job_attempt
+stream_checkpoint
+stream_metric_snapshot
+stream_failure_event
+```
 
-#### I18 approved exact mapping and explicit skip disposition (2026-10-15)
+`started_at`、`finished_at`、`event_time`、`resolved_at` 等是业务时间字段，不能替代系统生成时间戳。验收证据必须逐表包含建表定义、插入记录、数据库返回值和容器日志摘要。
 
-For the observed I18 source snapshot only, the user approved three row-scoped interpretations: `t_dw_model.biz_domain` value `交易` resolves to the exact `t_biz_domain.name=交易域`; relation `t_dw_model_relation#1` source field `order_id` resolves to actual model 2 field `order_no`; relation `t_dw_model_relation#2` target field `dt` resolves to actual model 4 field `order_date`. These aliases must be exact, bound to the approved source identity/endpoint, recorded alongside the untouched original source payload, and included in the source-to-target audit evidence; they are not global field aliases. The user also approved `t_dw_model_version#1` as an explicit `skipped` migration item because it references missing model ID 1. The source row remains unchanged and must receive a durable per-source checkpoint with disposition `skipped` and a reason; it is not silently omitted or counted as imported. The skip is valid only while the source identity/reference and missing-parent precondition match the reviewed snapshot; drift fails closed. Dry-run accounting must partition every source row among `create`, `unchanged`, `skipped`, `conflict`, and `blocked`. This approval authorizes mapping/skip planning, not target import; the ordinary snapshot, review, and per-plan execution gates still apply.
+### 13.14 冻结门禁与 AI 契约
 
-### 5.3 采集、解析、规则执行边界
+AI 工具不是冻结后的附加功能。以下内容在 I10 完成并进入 I11 冻结快照：工具名和版本、输入输出 Schema、权限上下文、审计字段、错误码、超时/重试/预算策略、假 Agent 测试和悬浮助手验证页。I11 必须验证这些契约与普通 Backend API 一起冻结；冻结后只做正式前端融合，不允许新增或改变 AI/Backend 契约。
 
-- 元数据采集按 datasource 授权读取 schema/table/column 及对象定义，保存采集时间、数据源版本、对象指纹与失败明细；增量采集允许 tombstone 标记，但不自动物理删除历史资产。
-- 血缘解析器消费 SQL、工作流版本和 SYNC 映射版本，先产出可审阅的解析批次，再发布表级/字段级边；来源不明、动态 SQL 无法解析、字段映射不完整时保留 `unknown/unresolved`，并记录原因，不猜测下游字段关系。
-- 质量规则定义与执行分离；执行快照绑定规则版本、数据源/资产、时间窗口、运行实例及输入/成功/失败/跳过行数。异常可引用样本位置或主键，默认不复制整行数据到治理库。
-- `data_asset` 是导航聚合和稳定内部身份，不复制成 metadata/lineage/quality 的并行事实表；标签、标准和指标通过稳定 asset identity 关联，各子域保留本域版本和审计。
-- 元数据训练可纳入数仓 schema、对象定义、字段注释、标准/指标及经授权的样例数据摘要；需要保留 source、采集时间、权限范围和来源对象版本。AI 检索只读取授权后的目录/血缘/规则资料，不把模型答案回写为正式元数据，除非用户通过对应编辑接口确认。
+I0-I10 均须提供独立路由组下的最小前端验证页，并通过 `192.168.1.9` 的 browser-use、Backend、MySQL/Redis/Kafka、Worker 日志和页面结果闭环。正式前端菜单、正式页面和旧 mock 双轨在 Backend 冻结前保持不变。
 
-外部平台导入必须具备 adapter、source identity、字段映射版本、dry-run 冲突报告、幂等键、导入计数和回滚方案；外部更新不能覆盖 Datara 本地人工校正或工作流/运行状态。内部首期不做敏感值识别、脱敏、密级驱动隐藏或加密展示分支。
+### 13.15 旧治理数据迁移的源 schema 证据门（2026-10-15）
 
-AI 不添加左侧菜单项，采用全系统浮动助手图标和上下文入口；工具面与普通 API 同步冻结，回答必须给出对象、来源时间和失败原因，不能替代执行确认。
+I18-I23 完整承接裁定仍有效，但旧主题设计稿/ORM 不自动等同于运行中 `datara_meta` 的当前物理 schema。每个迁移源表在字段映射、parity 与任何目标导入之前，必须绑定当前只读采集的 schema identity、采集时间与摘要，并记录列名、类型、可空性、默认值、主键、唯一键及可验证外键/索引；采集不得产生旧源库 DDL/DML。历史 schema inventory 只能作差异线索，不能单独证明当前合同。
 
-## 6. 设计冲突裁定记录
+若旧主题设计、保留 ORM、历史 inventory 与当前只读物理 schema 不一致，必须在迁移计划/证据中逐列解释：能够无损承接的显式映射；不可映射的阻断项；是否需要新增规范化字段/关系。不得按字段名近似、设计稿想当然或空值填充掩盖差异；若不能无损表达，先更新本设计及实施计划并按变更治理处理，再实现映射。目标设计承诺完整承接，不代表可以省略源证据。
 
-### D-R3-S8：I18–I23 旧资产承接策略（2026-10-14）
+I22 特别状态：`docs/increments/evidence/R3/remote-schema-inventory.txt` 是 `2026-10-14T17:55:28+08:00` 的历史列清单，其 `t_std_element`、`t_std_approval`、`t_std_mapping` 列与旧 I22 设计稿不一致，且当前重建工作树没有可作为当前合同的旧 Std ORM/API。该清单不得用作 I22 mapper 的唯一输入；须先取得版本绑定的当前只读 schema 证据并完成逐列复核。此门仅阻断 I22 字段映射/parity/import，不撤销 I18-I23 全量承接决策，也不授权任何源/目标写入。
+### 13.16 R2-13 测试库与数据库时间戳实测（2026-10-15）
 
-- 冲突事实：R3-S8 只读盘点发现新治理 schema 缺少旧 I18 模型版本/关系、I20 指标维度与版本、I21 质量任务/异常/报告/告警、I22 标准码值/审批/命名规则/映射/检查报告等可查询关系模型；旧 I18 有 45 行、I22 有 3 行，通用 `properties_json` 不能证明无损表达。详细证据见 `evidence/R3/s8-source-inventory-20261014.md`。
-- 影响范围：R3 governance ORM/migrations/API、R3-S9 迁移器与 parity 检查、隔离验证页、R2-01 治理域状态以及依赖这些实体的 R6 治理目录/质量/标准、R8 AI 工具；旧库保持只读，正式前端仍冻结。
-- 候选方案：A. 扩展新 Backend 规范化模型并完整承接；B. 旧治理库长期只读，重建域延期承接。
-- 用户裁定：A，批准扩展新 Backend 规范化模型、更新设计/计划后完整承接；不需要对本裁定重复征求批准。
-- 执行边界：新增和迁移仅面向隔离 `datara_rebuild_i0`；需先提交 S9 影响分析，做目标快照/dry-run/逐表逐关系 parity 和回滚设计，再实施。不得改写或删除旧表/旧 API，不恢复已退役 QC router/engine，不触碰正式前端；如身份键、权限映射、重复业务键或无法解析关系存在未决冲突，停止对应记录组并将证据留台账。
-- 一致性要求：同一批准和实体清单同步回写实施计划、R3 状态、执行台账；设计/计划/台账的模型范围与验收阈值必须一致。
+R2-13 在 `192.168.1.9` 的隔离 schema `datara_rebuild_i0` 上完成只读验收：仅查询目标 schema 的 `information_schema`、治理/迁移表计数与时间戳、已存在验证资产 #10/#11 以及项目 #8 审计记录；远端应用/API/容器状态与受限 API 访问日志只读采集。没有触碰 `datara_meta`、源库、数仓或目标数据写入。
 
-## 7. 实测基线回写
+证据 `docs/increments/evidence/R2/r2-13-20261015175857.json` 与同名 PNG 证明目标 MySQL 8.0.46 中 42 张治理/迁移表的 130 个时间列定义均采用 `CURRENT_TIMESTAMP` 默认；逐表已存记录的 `created_at/updated_at/generated_at` 均无 NULL。两条迁移 revision/checksum 与当前 Backend 注册内容一致，状态均为 `completed` 且有 started/finished 时间。真实页面选择既有项目、打开既有资产与 Activity/Audit：31 条审计的数据库 `generated_at`、API 响应和页面控件逐条一致；页面/健康探测 HTTP 200，页面业务请求全为 GET。外部资产 `row_count` 在目标数据中为 NULL，页面如实显示“—”；此结果不构成源业务数据行数探查。工作流实例/任务执行表尚未在本增量创建，必须在对应后续增量建表时继续执行 §13.13 的完整字段契约和表级验收。
 
-截至 2026-10-14 Asia/Shanghai，后端全量回归最近一次为 `584 passed / 60.91s`（含 QC 权限回归断言）；QC 退役后上一轮全量为 `583 passed / 65.47s`。R3 governance runner 专项 `4 passed / 0.12s`，QC 退役控件级 Playwright `21/21`、浏览器错误 `0`。远端 `datara-api` health `UP`，数据库/Redis/ZK 均健康，QC OpenAPI routes `0`、标准 routes `24`，重建治理 API `11` routes healthy，六张旧 QC 表保留且各 `0` 行；完整细节见 `evidence/R3/batch1-postdeploy-20261014.txt`。`536 passed / 47.20s` 为更早基线，不再作为最新数字。192.168.1.9 实测调度/依赖/补数和旧 IDE 探索结果仍只代表各自历史证据，不得替代 R4-SYNC 或 R5-IDE 新 Backend 验收；门禁不要求人工点击登录页。
-
-## 7. 2026-10-15 二次提速裁定与执行边界
-
-- 计划固定为九个增量：R0-R4、R5-IDE、R6-R8。原任务中心能力归 R7，统计生产分别归 SYNC 的 R4 与 STREAM 的 R8；IDE 只计一个 R5-IDE，内部 R5-A/R5-B 两个独立子门禁。此为计划重排，不删减业务能力。
-- R5-A 覆盖只读数据源/schema/table/column 浏览、跨 schema 查询、补全、异步结果集、分页/取消/历史/导出；R5-B 覆盖表/视图/函数/存储过程等 DDL 编辑。R5-B 原定 8 步审批/差异/备份/执行/审计/回滚安全控制完整保留，且必须单独人工确认及验收；R5-A PASS 不构成 R5-B 授权。
-- AI 工具契约随其依赖领域冻结；全系统浮动助手（不新增菜单）、跨域体验与最终验收归 R8。不得等到 R8 才补建已由早期 API/权限依赖的工具契约。
-- 本地/远端协作按 P4 文件所有权与时序执行：执行者 1 负责 Backend；执行者 2 在 R3 合回 main 后由最新 main 建项目内独立 worktree，只写 `datara-web/` 和其专属 evidence 子目录。主台账仅由单一主写入者维护，两执行者只追加各自小节；相同远程 schema 迁移串行。
-- 本次用户裁定的流水线、证据分级、执行者分工及红线原文和当前状态，另见计划 §1.3、`R3-execution-status.md` 与台账“用户裁定记录”。
-
-## 8. 权威链回补（自 2026-10-14 历史稿，用户 2026-10-16 批准）
-
-> 本节内容自 SUPERSEDED 历史稿（`docs/archive/superpowers/specs|plans/2026-10-14-*`）回补，经用户 2026-10-16 批准（handoff 裁定 2 / 裁定 B）。历史稿其余内容仍为归档历史，不因本节恢复效力。
-
-### 8.1 R5-IDE 对象范围与操作基线（历史稿 §7.1）
-
-IDE 树覆盖九类对象：数据库、Schema、表、视图、字段、索引、函数、存储过程、触发器。每类对象均支持八项操作：查看定义、编辑定义、语法校验、依赖分析、差异对比、版本保存、发布执行、执行日志。其中编辑定义、差异对比、版本保存、发布执行属 R5-B 写路径，受 8 步管控约束；其余属 R5-A 只读链路。
-
-### 8.2 R5-IDE 结果网格扩展（历史稿 §7.3）
-
-结果网格在 R2-07 协议基线上支持：多结果集、分页、虚拟滚动、筛选、排序、行详情、JSON 展开、复制、CSV/JSON/Excel 导出、结果转图表和结果保存为数据集。其中"结果转图表"与"结果保存为数据集"为 R5-A 验收必需能力。
-
-### 8.3 量化基线补遗（历史稿 §13.10）
-
-- SQL IDE 元数据补全 P95：≤ 2 秒（远程测试环境）。
-
-### 8.4 R8/R2-06 观摩查询接口结构（历史稿计划附录 A7 Step 5）
-
-流观摩查询接口返回：生产速率、消费速率、积压、偏移、窗口结果、成功/失败/跳过计数和错误样本。该结构作为 R8/R2-06 生产观摩方案冻结前的契约基线参考；方案冻结时可按现行增量体系调整，不得低于本结构的信息完备度。
+验证通道：browser-use 同页绑定/导航两次分别在 30s 与 60s 超时，按已批准经验规则改用 Playwright 对同一 18091 验证页执行真实控件操作；R2-13 证据同时归档 `browser-entry-20261015.txt`、`remote-final-20261015.txt`。此记录是 §13.13 的局部治理 schema 实测，不替代工作流运行表的未来验收。

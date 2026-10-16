@@ -1,354 +1,702 @@
-# Datara 平台重建增量计划（评审修订版）
+# Datara Platform Rebuild Implementation Plan
 
-> 与《2026-10-14-datara-platform-rebuild-design.md》逐项对齐；按 2026-10-15 用户二次提速裁定，当前共 9 个增量：R0-R4、R5-IDE、R6-R8。每个增量遵守项目五条约法及后续提速裁定。R4=SYNC；R5-IDE 分 R5-A 只读和 R5-B 高风险 DDL 两个独立子门禁。验证页面按该能力对应参考产品自身的前端页面、表单和用户操作流构建，旧 Datara 前端仅在 Backend 冻结后融合。测试运行环境使用统一验证 key 经 Backend auth API 预取短期 token，页面不显示登录表单、不持 key；门禁不要求人工点击登录页。
+> **SUPERSEDED（2026-10-14）**：本稿保留作历史执行计划；当前权威增量计划已移至 [`docs/increments/2026-10-14-datara-platform-rebuild.md`](../../increments/2026-10-14-datara-platform-rebuild.md)，包含 R0-R11、方案 A、参考研究产物及 R2-14 门禁。发生差异时以新路径为准。
 
-## 1. 增量总览
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-| 增量 | 交付重点 | 依赖 | 独立门禁 |
-|---|---|---|---|
-| R0 | 环境、测试库、证据和编号基线 | 无 | compose/时间戳/证据目录 |
-| R1 | identity、project、RBAC、datasource 公共服务 | R0 | 统一验证 key 换短期 token、权限/连通性验证页 |
-| R2 | 测试数据、schema 探查、metadata/data_asset 基线 | R0/R1 | 192.168.1.9 MySQL 对账 |
-| R3 | DAG 执行、SQL/Python/Shell/依赖/调度、实例指标 | R1/R2 | 隔离页 + API + Master/Worker 日志 |
-| R4 | SYNC 三类编排（源表基准/目标表基准/文件同步）、探查映射、全量/增量执行器；同步统计由本增量产出（读取/写入/新增/更新/成功/失败/跳过/过滤及耗时） | R1/R2/R3 | 三场景可运行、映射可编辑、行级指标与端到端对账；记录 expected/actual、attempt 和生成时间 |
-| R5-IDE | SQL IDE：R5-A 只读浏览/补全/查询/异步结果/历史/导出；R5-B DDL 对象编辑/发布/回滚；两个子门禁独立验收 | R1/R2；R5-B 依赖 R5-A | A：跨 schema、分页/取消/结果保护；B：8 步 DDL 管控、权限/审计/备份/回滚 |
-| R6 | 治理资产统一交付：metadata/data_asset、表/字段 lineage、quality 规则/运行/异常、标准/安全/语义承接 | R2/R3/R4 | 五域真源、旧资产语义和关系对账、规则运行 |
-| R7 | 调度增强与任务中心：重试/超时/misfire/并发/告警/HA，以及工作流操作、实例树、导出、版本和批处理指标展示 | R3/R4/R6 | 调度故障恢复、工作流生命周期操作闭环；读取 R4 批处理统计，不另建统计生产增量 |
-| R8 | Kafka 流运行时、实时生产观摩工作流、流统计（输入/处理/输出/失败/跳过/延迟/位点/重启）；AI 浮动助手/工具契约及全盘验收 | R2/R3/R4/R6/R7/R5-IDE | 长驻/停止/续位点/吞吐；流统计回写并在任务中心呈现；AI tool schema/权限/审计/预算；全平台验收 |
+**Goal:** 在不依赖旧 Backend 和冻结正式前端的前提下，增量建设 Datara 新 Backend、独立测试页面、DBX 级数据开发 IDE、核心 DAG 节点、运行统计和实时流验证链路。
 
-R0-R4、R6-R8 加 R5-IDE 共 9 个增量。原 R9 的任务中心展示/操作归 R7，统计生产分别归 R4（SYNC）与 R8（STREAM）；原 R10-A/R10-B 合并为 R5-IDE 的 R5-A/R5-B 子门禁；原 R11 AI 工具契约按所依赖领域冻结，浮动助手及跨域总验收归 R8。不得将子门禁误算成独立增量或降低 DDL 风险门槛。
+**Architecture:** 新 Backend 采用领域模块化结构，共享变量解析、数据源能力、执行、日志和统计服务。SQL IDE 与工作流核心节点并行开发；每个增量先完成契约、后端、测试和独立页面，所有门禁通过后才进入下一增量，正式前端最后融合。
 
-### 1.1 IDE 试行材料的重新归属（裁定 A）
+**Tech Stack:** 以现有 `datara-backend` 的 Python 工程和 `datara-web` 的 Vue/TypeScript 工程为承载；数据库迁移沿现有 Backend 规范；测试使用现有 Backend/Web 测试框架；运行验证使用项目规定的隔离测试环境。
 
-- 原 `R4-设计文档.md`、`R4-开始前影响分析.md` 以及 `evidence/R4/r4-s3-*` 记录的是旧 Datara 数据源/IDE 后端上的探索试验，不是本次新 Backend 的 R4-SYNC，也不能计作 R5-IDE 验收通过。
-- 将上述材料作为历史输入保留；其中可复用的业务发现须逐项重新核对成熟参考系统源码/文档与冻结后的新 Backend 契约。R5-IDE 必须重新实现、重新部署并分别在 `evidence/R5-IDE/` 记录 R5-A 与 R5-B 子门禁证据。隔离页使用 R5-IDE 标识，避免把历史 `rebuild-validation-r4.html` 与 SYNC 的 R4 混淆。
-- 下一项按依赖顺序为 R4-SYNC：已新建 R3→R4 影响分析与 DolphinScheduler DataX 参考初步对照；开工前继续完成上游引擎版本/边界核验和 endpoint/mapping/checkpoint API 合同冻结。R4 验证页按 DolphinScheduler DataX 页面流程（端点选择、参数/SQL 配置、列探查、映射调整、校验/预览、提交运行及结果查看）设计，使用统一验证 key 获取的短期 token 调用新 API；不复刻 Datara 旧页面，不把页面简化为 API 按钮。
+---
 
-### 1.2 每增量的参考研究产物
+## 强制增量门禁
 
-开始相应实现前，至少建立一份项目内对照记录：产品及版本/提交、官方开发或用户文档章节、源码模块/关键类与调用链、参考产品前端路由/页面/组件/表单字段/校验与关键用户操作流、核心数据模型/API 契约、Datara 新 Backend 映射、偏离项及理由、由隔离验证页执行的同语义验收案例。隔离页必须让评审者按参考产品业务路径操作（可由预置数据降低输入成本），但调用 Datara 新 Backend；不调用旧 Datara API、不把验证页做成只有 API 按钮的技术面板。引用以可复核的来源路径/URL和版本为准；不可仅凭产品名称或旧系统页面宣称已对齐。
+每个 Task/增量开始前，必须先完成 `D:\需求\数据治理工具\Datara\docs\increments\重建执行约法与台账.md` 中的“开始前影响分析”和步骤细化；每个增量结束前，必须由参照对应产品/组件自身前端流程制作的独立页面牵引，使用 browser-use 验证浏览器交互、Backend、中间件、资源、环境、执行器和后台日志，并把用户要求、命令、证据和遗留任务写入项目主目录台账。页面不得复刻 Datara 旧前端或退化成 API 按钮面板。页面不设人工登录表单；验证运行器从部署环境读取统一 Backend 验证 key，向后端换取短时受限 token 并注入页面上下文，key 不得出现在静态产物、URL 或浏览器持久存储中。
 
-### 1.3 2026-10-15 二次提速执行规则（P1-P4）
+若发现与总体设计冲突，必须暂停受影响步骤，取得用户批准后立即刷新项目主目录中的设计文档、计划文档、接口/数据库契约和验收标准；未刷新前不得继续。
 
-1. **受控流水线（P1）**：当前增量进入远程验证后，可并行准备下一增量的影响分析和契约 RED；RED 必须使用 `xfail`/`pending-acceptance` 或独立草稿，不得使主测试套件变红。当前增量未验收前，不得启动下一增量 GREEN、部署或实现性提交。流水线当前增量、下一增量及各自阶段必须写入 `R3-execution-status.md`。
-2. **增量合并（P2）**：总数为 9。R5-IDE 内 R5-A 只读、R5-B DDL 两门分别验收；DDL 高风险 8 步控制、确认闸与回滚要求不降级。原 R9 统计生产分别由 R4-SYNC、R8-STREAM 产出，R7 任务中心消费展示；不保留独立 R9。
-3. **证据分级（P3）**：浏览器控件证据每增量收口至少一轮；认证、权限、DDL、导入、确认闸和破坏性操作发生时即时取证。每轮真实控件取证保存 JSON 与 PNG 成对文件；增量收口还须有完整 `remote-final` 证据。其他中间步骤保存 API 请求/响应 JSON 至该增量 evidence 目录。浏览器必须操作真实控件并到达真实后端；失败证据保留，不将 API-only 算 UI 通过。
-4. **双执行者（P4）**：R3 关闭并合回 main 后，执行者 2 才可从最新 main 建 `.worktrees/vpages/` 等项目内独立 worktree。执行者 1 仅负责 Backend；执行者 2 仅负责 `datara-web/` 与其专属 evidence 子目录，文件所有权零重叠；违者变更不得合回。主台账是唯一台账，双方只追加各自独立小节。1.9 的同一 schema 迁移必须串行，互不冲突的浏览器取证可并行。
-5. **不可放松的红线**：真实控件操作真实后端、显式人工确认闸、失败证据保留、PARTIAL/NOT CLOSED 如实自评、契约/集成 TDD 红绿顺序、token/key 安全边界；当前增量未验收前不得提交实现。任何与设计冲突的修改须先获用户批准并同步设计/计划/台账。
+本段为历史流程说明。当前设计、计划、执行台账、验证证据及增量文档均以项目根目录下的 `docs/increments/` 为唯一文档真源；本 superseded 副本不再承载执行状态。Agent worktree 仅用于代码隔离，不作为共享文档和执行状态的权威位置。
 
-## 2. 批次 2 的 15 项修复任务
+验证环境固定为：
 
-| 任务 | 具体步骤 | 产物与完成条件 |
+```text
+本机：代码检测、静态检查、类型检查、业务逻辑稽核
+192.168.1.9：部署、容器服务、中间件、运行资源、接口联调、browser-use 端到端验证
+```
+
+重建前端验证入口固定为 `http://192.168.1.9:18091/`。不得使用既有 `8090`；`18090` 已被并行验证栈占用。Web 容器内部仍监听 `80`，API 代理契约不变。
+
+计划中的部署和运行命令必须在 `192.168.1.9` 隔离工作目录执行；本机命令不得被视为部署或端到端验收证据。
+
+### 每个增量的固定执行顺序
+
+```text
+上一增量验收证据
+→ 影响分析
+→ 设计/计划调整
+→ 当前增量步骤细化
+→ 失败测试
+→ Backend/中间件/资源实现
+→ 前端测试页面
+→ browser-use 端到端验证
+→ 后台日志与数据库证据
+→ 台账更新
+→ 增量验收
+→ 下一增量
+```
+
+### 每个增量不得提前完成的条件
+
+- 没有上一增量影响分析；
+- 没有细化的可执行步骤；
+- 没有前端实际操作记录；
+- 没有 browser-use 验证；
+- 没有 Backend 和后台日志证据；
+- 没有中间件、资源和环境检查；
+- 没有更新用户要求和未实现任务台账。
+
+评审修订后的硬性补充：
+
+- I0 必须先完成远程测试环境和现有 I18-I23 资产盘点；
+- 每个后端增量必须同时提供最小独立验证页，不得等到 §8 才首次出现前端；
+- `192.168.1.9` 才是部署、容器、中间件和端到端验证环境；
+- 本机只执行代码检测和业务逻辑稽核；
+- SQL IDE 拆分为只读能力和 DDL 写路径；
+- AI 工具契约在 Backend 冻结前完成；
+- 远程运行证据写入 `D:\需求\数据治理工具\Datara\docs\increments\evidence\I<编号>\`。
+
+### 跨文档一致性基线（2026-10-14 修订）
+
+以下矩阵是本计划与总体设计的强制交集；旧章节中的简化步骤不得覆盖本矩阵。任何模块没有对应增量、验证页、测试和远程证据时，不得宣称 Backend 冻结。
+
+| 设计模块 | 计划增量 | 最小交付与验证 |
 |---|---|---|
-| R2-01 治理域 | 补五域模型、真源和外部导入边界；登记旧 I18-I23 资产承接/迁移/废弃决策 | 设计矩阵、迁移表、API 边界 |
-| R2-02 调度 | 固化触发、时区、misfire、并发、优先级、worker、重试、告警 | schedule/command/instance 契约和测试 |
-| R2-03 权限 | 实现最小 token/RBAC/project_member 与数据范围检查 | identity/project API、拒权测试 |
-| R2-04 DDL | 新增 draft/diff/backup/publish/rollback 状态机与审计字段 | R5-IDE/R5-B DDL 契约、危险 SQL 拦截 |
-| R2-05 变量 | 建类型/作用域/表达式/现时值/补全契约，运行日志输出解析值 | VariableService schema、正负测试 |
-| R2-06 流 | 固化 Kafka、长驻 job、attempt/offset/heartbeat 生命周期 | R8 流状态图和生产观摩方案 |
-| R2-07 结果集 | 冻结 taskId、cursor、分页、TTL、截断、取消、导出协议 | R5-IDE/R5-A 结果集协议 |
-| R2-08 部署 | 写清 compose 拓扑、env 配置、日志卷、health 和扩容边界 | 环境清单、compose 校验 |
-| R2-09 AI | 把五个 AI 工具纳入 API 清单、权限、审计和冻结门禁；保持浮动图标不加菜单 | AI tool contract、验收项 |
-| R2-10 指标 | 为延迟、吞吐、完整率、证据格式定义量化基线 | 指标表和 JSON 证据规范 |
-| R2-11 SYNC | 把同步执行器纳入组件单一真源和执行链，补全/增量/断点/行计数 | worker/master/scheduler/catalog 对齐 |
-| R2-12 datasource | datasource 先行覆盖 CRUD、连通、schema/table/column、连接池 | 公共前置 API 和探针 |
-| R2-13 测试库 | 明确 1.9 MySQL schema 供给和 init SQL，默认时间戳真测 | 远端 schema/默认值证据 |
-| R2-14 门禁 | 每后端增量建立按参考产品前端用户流程设计的隔离验证页，正式前端冻结；测试运行环境用统一验证 key 调用 R1 token API 获取受限短期 token 并注入页面上下文，不要求用户登录或暴露 key；browser-use 优先，一次有界重试仍阻塞即 Playwright 同页操作；API-only 不可替代 | key→token 签发及范围/过期测试、控件闭环与双通道/运行资源证据；R1 单独验 auth/RBAC |
-| R2-15 IDE 子门禁 | R5-IDE 合并规划，内部保留 R5-A 只读与 R5-B DDL 两道独立门禁；DDL 的 8 步风险控制、人工确认和回滚要求不变 | 同一增量内两份子验证单；R5-B 未过不得开放写路径 |
-
-## 3. 本批次执行顺序
-
-1. 对上一批 R3/D-2 影响复核：只读确认 R0-R8/R5-IDE 路径、D-1 豁免、Qc ORM 保留和 1.9 健康；逐项见 `R3-to-batch2-impact-20261014.md`。
-2. 先完成设计/计划 15 项同源修订，更新台账并执行文档交叉检查。
-3. 执行后端契约扫描：`rebuild/` 代码禁止隐式依赖旧 `api.*`/`common.*`，只有显式白名单可用；AI 工具必须存在 schema 和权限断言。
-4. 本机执行 Python compile、定向 pytest、Vue 类型检查（依赖不存在时记录环境阻塞，不伪报 0 错）。
-5. 将需要运行的最小验证页部署到 192.168.1.9 的非正式端口，验证 API、容器、MySQL/Redis/ZK/Kafka 和日志。
-6. 完成四联证据后独立提交批次 2；没有浏览器控件级证据不得标记全绿。
-
-### 3.1 R2-01—R2-15 状态跟踪（2026-10-15）
-
-| 任务 | 状态 | 已有证据/未完成条件 |
-|---|---|---|
-| R2-01 治理域 | IN_PROGRESS | 用户已裁定 D-R3-S8=A：扩展新 Backend 规范化模型完整承接 I18-I23。实体清单/语义/迁移边界见设计 §5.2、§6；R3-S9 影响分析与实现闭环未完成，仍需逐源表/实体/关系 parity 及隔离验证页证据。 |
-| R2-02 调度 | DESIGN_DEFINED | 设计矩阵有触发/时区/misfire/并发/worker 契约；需核验实现、故障/并发测试及真实运行证据。 |
-| R2-03 权限 | DESIGN_DEFINED | 最小 RBAC 与范围策略已定义；需核验新 Backend 认证/API/拒权覆盖及验证页证据。 |
-| R2-04 DDL | DESIGN_DEFINED | 已要求 R5-IDE/R5-B draft/diff/backup/publish/rollback；尚未实现/验收，不允许提前开放写路径。 |
-| R2-05 变量 | DESIGN_DEFINED | 类型/作用域/补全/现值/运行快照已定义；需模型、验证、日志实测。 |
-| R2-06 流 | DESIGN_DEFINED | Kafka 与长驻 stream 状态机已定义；需真实生产观摩及故障恢复证据。 |
-| R2-07 结果集 | DESIGN_DEFINED | taskId/cursor/TTL/截断/取消/导出已定义；需 R5-IDE/R5-A 协议测试和 UI 证据。 |
-| R2-08 部署 | DESIGN_DEFINED | 1.9 compose 拓扑、配置和日志/health 已定义；需核验 env 引用、compose 与日志聚合证据。 |
-| R2-09 AI | DESIGN_DEFINED | 五工具契约/权限/审计/预算与浮动助手边界已定义；需代码 schema、拒权和冻结门禁。 |
-| R2-10 指标 | IN_PROGRESS | 本轮将过时全量测试数 536 更新为实测 583，并记录 QC browser 21/21；其余性能基线需专门采样。 |
-| R2-11 SYNC | DESIGN_DEFINED | 执行器链路已写入设计；需 datasource 前置、执行器实现和全量/增量/断点/行计数闭环。 |
-| R2-12 datasource | CONTROL_PASS | R2-12-A/B/C/D 均有独立实现/验收；D 已增加 PostgreSQL probe/catalog，并以同一真实验证页联合回归 PostgreSQL 与 MySQL：run `r2-12-d-20261015164635` PASS，6 UI assertions、11 API responses、JSON+PNG、remote-final 完整。D 最终全量 backend tests 796 passed；Ruff/compileall/diff check 通过。候选镜像只部署至 `datara-rebuild-api`，共享 `datara-backend:latest` 与其余运行容器未改；PG/MySQL 临时只读 fixture、profile 均收尾清理。早期 502 失败证据保留。AOCI dirty/stale 独立跟踪，不声称 aligned。R2-12 仅关闭 datasource 公共前置能力，不表示 SQL/SYNC/IDE/治理消费者已接入。 |
-| R2-13 测试库 | CONTROL_PASS | run `r2-13-20261015175857`：1.9 `datara_rebuild_i0` 只读核对 42 张治理/迁移表、130 个时间列定义、全部 timestamp defaults 与存行非空；两条迁移 revision/checksum 与当前 Backend 相符且均 completed；同页 31 条 Audit 的 `generated_at` 与 API/数据库逐条一致。页面/健康探测 200、容器健康；仅 POST 为 validation-token bootstrap，其余页面 API 全 GET。JSON+PNG、browser-entry 与 remote-final 已归档。R3 本次仅有外部资产 row_count 为数据库 NULL、页面显示“—”，不冒称取得源业务表行数；workflow runtime 表仍按后续 R2-10/11 实现时遵守 §13.13。 |
-| R2-14 门禁 | IN_PROGRESS | token bootstrap 与 Playwright 同页策略已有；QC 批次 1 21/21 PASS，仍需每个后端增量依照参考产品 UI 做闭环。 |
-| R2-15 IDE 子门禁 | DESIGN_DEFINED | 已合并到 R5-IDE，R5-A/R5-B 各有独立验证单；DDL 写路径仍需单独审批边界。 |
-
-此跟踪表是最高实证状态，不以“设计中有一行”代替代码/远端/控件验收；状态提升须附证据链接并同步更新台账。
-
-#### 2026-10-15 R2-12-B 实施结论
-
-- MySQL project-scoped 只读 metadata browse 已实现并完成远端控件验收；最终全后端 `pytest tests -q` 为 764 passed。Playwright 对同一 18091 页面进行 UI 控件操作，远端 API 日志与请求状态相符；MySQL fixture 只读账号/权限和删除后 datasource 行数为 0 见 B remote-final。
-- browser-use 控制桥受限重试后仍超时，按已批准 fallback 由 Playwright 对同页取证；同域多个断言合并在一次最终控件运行中，保留早期失败证据。
-- `R2-12-B_CONTROL_PASS` 不提升 R2-12 总体状态；下一子批只能在 B 本次收口验收后另立影响分析、更新计划并细化步骤，不能在 B 远程验证期间并行开工。
-
-#### 2026-10-15 R2-12-C 实施结论
-
-- `DatasourceEngineRegistry` 已实现 project/datasource 隔离、fingerprint 更新失效、删除失效、idle-only eviction、profile registry 上限和 app shutdown dispose；probe 与 MySQL metadata browse 共用 pool connector。默认单 profile pool size=2、overflow=2、timeout=3s、recycle=300s、最多 32 profiles；当前 1.9 rebuild API 为单 uvicorn worker，理论 datasource socket 上限 128，非跨进程集群限额。
-- TDD 生命周期回归先观察到 runner teardown 顺序错误：`Event loop is closed` 中断 JSON 和 profile 清理；失败的 `r2-12-c-20261015143839.json/.png` 保留。加测试先 RED 后 GREEN，修复 managed-browser teardown 与失败截图回调；下一 run 自动回收准确命名的 disposable 残留。
-- 定向测试 15 passed，全量 backend tests 773 passed，Ruff/compileall/diff check 通过。无 Vue/正式前端改动。
-- 最终页面控件运行 `r2-12-c-20261015144457` PASS：同一 DBX 风格 metadata 页面展开 analytics/shared、选表取列、profile 更新后重复查询、错误 project 返回 404；JSON+PNG 与 API/容器/fixture 收尾证据见 `evidence/R2/r2-12-c-browser-entry-20261015.txt` 和 `evidence/R2/r2-12-c-remote-final-20261015.txt`。Fixture 为 1.9 tmpfs MySQL、无 host port，仅 SELECT/SHOW VIEW；两次 run 的 profile 均已清理，fixture 容器不存在。
-- 提速裁定已应用：同域 UI 断言合并为一轮最终控件 run；早期失败证据保留；无下一增量并行实现。Browser-use 在共享 user tab 只做页面读取（首次绑定超时后一次重试成功，页内无 token），Playwright 在独立短期 token 上下文操作同页真实控件，未将 API-only 作为验收。
-- `R2-12-C_CONTROL_PASS` 仅关闭 C；R2-12 总体仍 `IN_PROGRESS`。下一子批仍须以前序影响分析和 C 收口审查为前置，不得预先并行开工。
-
-#### 2026-10-15 R2-12-D 开工前影响分析
-
-- C 已完成验收并提交 `6f6b4cd` 后，按顺序开始 D 的前置影响分析；此时尚未改 D 的实现代码。C 中的 MySQL-only Engine factory/pool 与 MySQL `information_schema` catalog 将由方言 adapter 扩展，项目隔离、pool limits、profile invalidation、shutdown 和现有 MySQL API 响应保持不变。
-- D 范围为 PostgreSQL datasource probe 和只读 schema/table/view/column 浏览，继续使用 project-scoped datasource API、同一隔离测试页/真实控件、后端统一短期 token。PostgreSQL profile 已可保存但当前没有 runtime capability，不能误报可用。
-- 计划使用 `postgresql+psycopg`/Psycopg 3 binary extra，catalog 优先经 SQLAlchemy Inspector；实际选型依据官方文档为 [SQLAlchemy PostgreSQL dialect](https://docs.sqlalchemy.org/en/20/dialects/postgresql.html) 和 [Psycopg installation](https://www.psycopg.org/psycopg3/docs/basic/install.html)。实现前只读预检 1.9 Python/runtime、镜像/wheel、磁盘/内存和 Postgres fixture 可用性；不足时记录阻塞，不以本机模拟冒充远端通过。
-- D 的 TDD RED、实现、API/驱动集成、本地全测、1.9 数据库权限/容器、同域一次真实控件运行、JSON+PNG/remote-final、清理及收口步骤完整列于 `R2-12-D-PostgreSQL数据源探测与元数据浏览影响分析.md`。D 远程验证期间禁止开始下一增量；本批不包含 PostgreSQL 写 SQL、SYNC/IDE/治理消费者、旧库接入或正式前端融合。
-- 适用提速裁定范围：D 同一页面同域控件合并一轮并仍保留失败证据与成败 JSON+PNG；文档在 D 收口同步；仅无 DB/network/API/UI 的纯函数可跳过远端证据且保持 TDD；真实连接、API、UI、key/token及人工确认门禁不变。
-
-#### 2026-10-15 R2-12-D 实施与验收结论
-
-- PostgreSQL catalog 首次远端 UI 查询出现 502，首轮追查发现 Psycopg 参数绑定与 SQL 文本里的字面 `%` LIKE pattern 冲突；先添加回归测试观察 RED，再把模式字面百分号转为 `%%`。随后对运行 API 增加安全诊断日志（仅 operation、exception class、SQLSTATE，不记录消息/SQL/参数/DSN），维持外部通用错误语义。
-- 最终按照 D 验收细则，在同一 18091 验证页、同一 Playwright 控件 run 同时覆盖 PostgreSQL 与 MySQL profile：保存类型、schema 展开、跨 schema table/view/columns、限定对象身份及错误 project 404。最终 `r2-12-d-20261015164635` PASS，6 UI assertions，11 API responses；页面错误与失败请求为空。之前两次 502、其后的 PG-only 中间运行均留有 JSON+PNG，不覆盖、不冒充联合最终验收。
-- browser-use 首次 30 秒绑定/读取超时，按技能要求对同一绑定/action 用 60 秒有界重试仍超时；状态记为 `browser-use=BLOCKED`。Playwright 在同一个 `http://192.168.1.9:18091/rebuild-validation-r2-12-b.html` 实际操作可见控件，完成验收；不是 API-only 替代。
-- 1.9 的 PostgreSQL 16/MySQL 8.0 测试容器只在 `datara_default`、256 MiB tmpfs、无 host port；两种 datasource reader 最小权限（PG INSERT privilege=false；MySQL 仅 SELECT/SHOW VIEW）。profile #15/#16 删除返回 200；两 fixture 以标签复核后移除。API 镜像 ID 为 `sha256:0cd060a34e7b699814d0715680dc0f712f5bdc65ffaac7d0c9ab66eb8d2dd614`，`datara-rebuild-api` 最终 healthy，18091 页面 HTTP 200，API 日志与两种 profile 请求和跨项目 404 对应；共享 API/master/worker/alert/logger/web、MySQL/Redis/Kafka/Zookeeper 均保持运行。
-- 最终本地门禁：`pytest tests -q` 796 passed，Ruff、compileall、diff check 全部通过。D 仅关闭 datasource 前置能力；SQL、SYNC、IDE 与治理消费者接入仍在后续增量，不据此提升整体平台状态。全部 JSON+PNG、browser-entry 与 remote-final 记录位于 `docs/increments/evidence/R2/`。
-
-## 4. 与旧资产的处置
-
-旧 I18-I23 后端资产不因重建文档创建而删除：先做表/接口/菜单映射，再分别标记“承接、迁移、冻结或废弃”。`Qc*` ORM 保留，旧质量 API 源文件已按批次 1 清除；旧前端 mock 只有在正式融合增量时才清理。
-
-## 5. 证据和时间戳
-
-每个增量的证据路径为 `docs/increments/evidence/R{n}/`；运行表的 `created_at/updated_at/generated_at` 必须来自数据库默认或后端持久化，证据同时记录 API 返回时间、数据库行、容器日志时间和验证页操作时间。
-
-## 6. 当前实测基线回写（2026-10-14 Asia/Shanghai）
-
-| 项目 | 实测值 | 环境/证据 | 结论 |
-|---|---:|---|---|
-| Backend 全量回归（最新） | 584 passed / 60.91s | 本机 `datara-backend/tests`，含 QC 权限回归断言；前一 QC 退役基线 583/65.47s 见 `evidence/R3/batch1-postdeploy-20261014.txt` | PASS |
-| 批次 2 runner 定向回归 | 4 passed / 0.12s | 本机 `datara-web/deploy/test_r3_governance_runner.py` | PASS |
-| R3-3 调度契约定向测试 | 2 passed | 本机 `test_i3_schedule_contract.py` | PASS |
-| Vue 类型检查 | `vue-tsc --noEmit` 0 errors | 本机 `datara-web` | PASS |
-| 远端 API 健康 | `UP`；`db=true`、`redis=true`、`zk=true` | 192.168.1.9:8000 | PASS |
-| 调度/依赖/补数实例 | 3 个实例均 success；3/3 任务成功 | 192.168.1.9 Master/Worker 日志与 metrics | PASS |
-| QC 退役浏览器控件闭环 | 21/21 assertions；browser errors=0 | Playwright 操作同一 `192.168.1.9:18091/rebuild-validation-r3.html`；browser-use 无法绑定 tab 后按 R2-14 回退 | PASS |
-
-以上数字为本轮实际测量值，不是目标值；目标值仍以 R2-10 的响应、延迟、完整率和吞吐门禁为准。
-
-## 7. R3-S9：I18–I23 规范化模型扩展与隔离迁移
+| `identity/project/datasource` | I1 | token、成员/RBAC、数据源 CRUD/连通性/能力矩阵；远程连接与拒绝场景 |
+| `workflow/workflow_version/task_definition` | I1/I2/I4 | 版本、节点、试运行快照、六类执行器；验证页和 Worker 日志 |
+| `schedule/execution/execution_metric/task_instance` | I2/I7/I9 | 实例、调度、事件、统计协议；时间戳、重试、取消、汇总证据 |
+| `variable` | I2 | 类型、作用域、补全、现时值、运行快照；日志与数据库证据 |
+| `data_asset/metadata/lineage/quality` | I3/I9 | I18-I23 承接、采集、表/字段血缘、质量规则、运行回写；治理验证页 |
+| `standard/security/semantic` | I3 | 标准、权限/密级/业务域/审计、指标/术语；迁移和查询证据 |
+| `data_transfer` | I4/I9 | SYNC 执行器、探查映射、批次/断点/统计、血缘回写；远程真实数据源验证 |
+| `sql_ide` | I5/I6 | 只读查询协议与 DDL 写路径分离；分页、取消、快照、补偿和权限证据 |
+| `ai_copilot` | I10/I11 | 工具契约、假 Agent、悬浮助手；纳入冻结清单和远程审计证据 |
 
-状态：IN_PROGRESS / I18 local dry-run API present; I19-I23 reader/mapper local substeps PARTIAL; remote integration gate PENDING。用户于 2026-10-14 明确批准方案 A。S9 影响分析见 `R3-S9-开始前影响分析.md`；v2 additive schema/migration、I18 七张源表映射/关系图/隔离目标快照/项目授权 API 与 disabled-by-default importer contract 已实现。I19-I23 各 reader/mapper 的本地子步骤及回归见本节后续子批记录，最高均为 `LOCAL_SUBSTEP_PASS / INTEGRATION_GATE_PENDING`。2026-10-15 用户明确批准 MySQL root 仅只读 `datara_meta`；I22 实时 schema 与数量证据、I18-I23 reader allowlist 一致性审计已记录，I21 reader 已依据真实 schema 修复，I22 reader+mapper 完成本地测试。经端口纠正，healthy `datara-rebuild-api` 在容器内 `:8001` 正运行 rebuild API，含 I18 dry-run，但没有本批 I22 mapping-preview；容器挂载的是旧 staging source，当前 worktree 本批代码尚未部署。I22 项目级只读 preview 已在本地实现，远端部署/控件闭环仍 pending。任何 source runtime 仍须固定 allowlist/READ ONLY transaction，不得复用指向 `ec_retail` 的 `REBUILD_MYSQL_SRC_URL` 或输出 root 凭据；不得向目标库导入业务数据，用户另行批准目标写入前不得开启/调用 importer。正式增量只有在 192.168.1.9 前端控件、后端/日志、中间件/资源、真实源/目标 parity 等约法门禁通过后才可 PASS。
+#### 运行表时间戳闭环
 
-2026-10-15 更新：已在用户 root 仅读授权下从 `192.168.1.9/datara-mysql-meta` 读取 I22 七张 `t_std_*` 表的 live `information_schema` 与聚合计数；证据 `evidence/R3/s9-i22-live-schema-20261015.md`。授权仅解锁固定表范围的只读源调查，不允许把 root 凭据配置进服务、不允许目标导入。当前继续按 I22 reader → I22 pure mapper 分批实现；每批按对应影响分析、测试、证据和独立提交完成。API runtime source dry-run、完整 importer/parity 及浏览器控件/日志/资源整体验收仍是独立门禁，R3-S9 仍不能标 PASS。
+以下运行表全部必须由数据库默认生成非空 `created_at`、`updated_at`、`generated_at`，并在 I2 的远程真实 MySQL 测试中逐表断言；不得只验证其中四张：
 
-实现细化：S9 使用 additive revision `r3_0002_legacy_governance_carryforward`，不得修改已登记的 `r3_0001_governance_catalog` 及其 checksum。承接字段以设计 §5.2 的显式列/关系为准；标签定义单独成实体；模型 security/build/owner、指标的派生属性及原始维度、旧 I19 security metadata 均保留为普通业务字段，不引入遮罩/敏感值处理功能。当前代码分支采用 29 张新增承接表（较初始 28 张清单新增旧标签定义实体），迁移前需在文档、revision manifest 和测试中保持同数；如实现需要再扩表，须先更新本计划、设计与台账。
+```text
+workflow_instance
+task_instance
+task_instance_attempt
+task_instance_log
+task_instance_output
+task_instance_variable_runtime
+workflow_result_stat
+task_instance_data_stat
+task_data_stat_segment
+task_data_error_sample
+execution_event
+stream_job_attempt
+stream_checkpoint
+stream_metric_snapshot
+stream_failure_event
+```
 
-### 开始前影响分析与边界
+其中流运行表由 I8 建表，但必须复用 I2 固化的时间戳迁移模板和 I9 的完整性稽核；`started_at/finished_at/event_time` 是业务时间字段，不替代三类系统生成时间戳。
 
-- 前序影响：R3-S6 已在隔离 `datara_rebuild_i0` 安装 12 张通用治理表；R3-S7 已写入可识别的验证 fixture；R3-S8 只读采样确认旧库 I18 有 45 条、I22 有 3 条，I19/I20/I21 当前为 0，I23 `t_user` 有 4 条。迁移统计必须区分 S7 fixture、历史来源行和新目标行。
-- 业务影响：需要扩展治理 ORM/migration/API 和验证页，要求项目归属、稳定来源键、主子实体、版本/审批/历史关系及统一时间戳；可能影响 R5-IDE/R6/R8 的 API contract。不能在没有实体映射和回归证据时将旧资产标记为完整承接。
-- 数据边界：源 `datara_meta` 只读；所有 DDL/DML 仅可作用于 `datara_rebuild_i0`。执行前生成并校验目标 schema/数据快照，记录 SHA-256、目标 schema identity 和数据库时间；导入采用批次 ID、source identity、幂等唯一键及逐记录 checkpoint。任何目标行冲突不得覆盖。
-- 回滚：按 migration batch 精确回滚新增批次且未被新业务引用的记录；schema 变更只做 additive migration。恢复前后核对 schema 指纹、目标表行数和批次状态；不允许 DROP/TRUNCATE，不允许恢复旧 QC API/engine。
-- 控件门禁：新验证页按 OpenMetadata/DataHub 目录与对象详情、标准/指标/质量任务的参考产品真实操作语义设计；通过新 Backend API 预置/查看/复核资产、模型版本、指标维度、标准码值审批、质量任务运行与异常报告。browser-use 优先，按 R2-14 限次回退同页 Playwright；API-only 不能替代控件闭环。正式 Vue 继续冻结。
-- 停止条件：旧源快照与 R3-S8 证据不一致、目标 schema 非唯一、活动验证 fixture 无法排除、来源键冲突/归属不唯一、源只读权限失效、目标快照不可恢复、parity 有缺失或额外关系、运行服务出现 error marker、远端执行影响旧库/其他 schema。
+#### 门禁统一解释
 
-### 细化步骤
+I0-I10 每个增量都必须有独立路由组下的最小验证页；正式前端菜单和正式页面仍然冻结。browser-use 的远程端到端证据不可用单元测试、curl 或静态扫描替代。AI 工具契约、权限上下文、审计字段和错误码在 I10 完成，并在 I11 的冻结快照、端到端验证和 import 扫描中作为必检项。原“第 11 节 AI 悬浮助手”仅是能力细分说明，不表示把 AI 推迟到 Backend 冻结之后。
 
-1. 复核并冻结 R3-S8 源/目标 schema 指纹、表列/键/外键、精确行数及所有实体字段映射；补足 I18-I23 完整性矩阵和 I23 用户/角色/权限映射。只读检查，不读取/输出口令明文。
-2. 本地先为新实体/API/migration contract 编写失败测试：来源组合唯一键、外键与级联策略、项目授权、统一时间戳、历史版本完整性、孤儿拦截、幂等与重试、回滚隔离及错误批次续跑。
-3. 按设计 §5.2 扩展规范化 ORM：I18 domain/layer/engine/model/field/relation/version；I19 asset extension/tagging/unresolved tag reference；I20 metric profile/dimension/version；I21 rule definition/task/task-rule/run legacy details/exception/report/alarm policy；I22 standard element/code-set/code-value/naming/mapping/approval/check report；I23 identity mapping。复用现有 asset、tag、quality_rule/run、standard、semantic_metric，不造平行主实体；无法解析的对象键不得创建虚构资产。
-4. 新增 additive migration 与 repository/service/API；将每个源行通过 `(source_system, source_table, source_id)` 映射到目标 ID，子表/关系按明确外键顺序导入。对 I21 当前零行表仍须建模并测试空表迁移/后续 API 契约；“当前无数据”不等于忽略业务能力。
-   - 项目归属映射必须由有权操作人显式选择目标 `project_id` 并纳入 dry-run；旧源记录没有可证明的项目成员关系时禁止推断。层、域、引擎、资产、标签、指标、标准等引用必须由来源身份映射表解析；未解析引用进入 dry-run 阻断清单，不以同名猜测、自动置空或隐式建关联放行。已实现 I18 七张表的纯映射：字典/模型/字段/版本均保留源身份与业务时间；关系的 src/tgt 模型必须身份解析，字段数组须为等长非空字符串 JSON 列表，并展开为目标关系字段子项。新模型目标自增 ID 尚未生成时用 source identity 符号引用；只有引用身份确在本批源清单中，图校验才允许继续。业务域旧关系明确为 `t_dw_model.biz_domain -> t_biz_domain.name`，故映射器把旧域主键 ID 作为主身份、唯一域名作为显式关系别名；这不是展示名猜测。图校验验证同批父模型存在，并检查关系两侧字段是否在本批字段中；指向已存在目标模型时，dry-run 必须先读取其字段快照后才能验证。此映射仍不读库、不写库。
-5. 本地运行定向、全量 pytest，Ruff、compileall、Vue 类型检查和 migration offline/dry-run；检查旧库只读脚本、schema guard 和禁止旧 `api.*`/`common.*` 隐式依赖。更新 R3-S9 本机证据。I18 源 reader 已实现：固定七表/列 allowlist、keyset 分页、总量上限超限即失败；连接仅允许 `REBUILD_LEGACY_META_URL` 指向精确 `datara_meta`，并在只读事务内读取。用户已明确批准本次可使用 root，但必须保持同一 allowlist、只读事务、项目授权先行及无源端 DDL/DML；不得复用指向其他 schema 的 `REBUILD_MYSQL_SRC_URL`。dry-run API 拒绝非 `datara_rebuild_i0` 的目标库；此前该源 reader 未连接 1.9。
+## 0. 开发约束和工作区边界
 
-#### I22 标准治理实体 reader 与 mapper 增量（2026-10-15）
+**Files:**
+- Reference: `docs/superpowers/specs/2026-10-14-datara-platform-rebuild-design.md`
+- Reference: `docs/README.md`
+- Reference: `datara-backend/pyproject.toml`
+- Reference: `datara-web/package.json`
+- Reference: `datara-backend/tests/`
+- Reference: `datara-web/tests/`
 
-- 影响分析与现场 schema 绑定：`R3-S9-开始前影响分析.md` 的“I22 live schema gate 解锁与实施影响分析”；权威现场证据 `evidence/R3/s9-i22-live-schema-20261015.md`。只认 7 张表/实测列，不采用设计稿中的虚构列。
-- 子批次 A reader：按 7 表精确 allowlist 新增固定列 reader、稳定分页/digest/captured_at、单表/总量限额、缺表缺列拒绝、source/target schema 防混读、只读事务和 SQL listener tests；先 RED。独立提交前跑 I22 与 I18-I23 reader tests、全后端 pytest、Ruff、compileall、diff-check，记录本机证据。无 API/远端部署/前端更改。
-- A 当前结果：TDD RED→GREEN；I22 专项 7 passed，I18-I22 reader regression 32 passed，全后端 716 passed（64.38s），Ruff/compileall 通过。证据 `evidence/R3/s9-i22-reader-local-20261015.txt`。本批只证明本地 reader 合同，不是远程 API 或整体验收。
-- 子批次 B mapper：以 A 的快照为唯一数据输入，基于现存规范化模型映射 element/code set/value/naming rule/mapping/approval/check report；显式 source identities 解析关联，源值/IDs/时间原样留痕，未知枚举、孤儿或重复关联 fail closed；先 RED，再定向和全量验证、证据及独立提交。不得执行源 SQL/审批动作，不新增用户未批准的目标导入。
-- B 当前结果：TDD RED→GREEN；I22 reader+mapper 15 passed，全后端 724 passed（71.64s，含最终回归），Ruff/compileall/diff-check 通过。证据 `evidence/R3/s9-i22-mapper-local-20261015.txt`。实测 approval#1 的 `biz_type=code,biz_id=2` 找不到源码表#2，按阻断保留，未自动跳过或替换。
+- [ ] **Step 1: 建立新重建工作的模块清单**
 
-#### I22 项目级 read-only mapping-preview API 子批
+  以设计文档为唯一业务范围，建立以下工作项清单并写入增量记录：基础契约、变量、运行、节点、SQL IDE、同步、流观摩、统计、测试页面、前端融合、AI。
 
-最新状态（2026-10-15）：I22 mapping-preview 隔离 API 与页面已在 1.9 完成受控部署和控件级验证；结果为 `PREVIEW_CONTROL_PASS / PARITY_PENDING / IMPORT_NOT_AUTHORIZED`，不改变 S9/R3 整体 `IN_PROGRESS` 状态。详情见本节后续验收条目及执行台账。
-
-- 开工前影响分析：见 `R3-S9-开始前影响分析.md`“I22 project-scoped read-only mapping preview API 开工影响分析”。实施前已检查本地 I22 mapper、标准规范化 ORM、I18 项目授权 API，以及 1.9 rebuild 容器实际 OpenAPI；范围与验收边界以该影响分析为准。
-- 步骤：先为 target SELECT snapshot、source identity/fingerprint 计划服务和 API 项目权限/隔离 schema/源端只读/响应无 payload契约写 RED；实现后跑 I22 定向、I18-I23 治理回归、全后端 pytest、Ruff、compileall、diff-check。任何目标模型语义无法无损表示或未解决关联都保持 blocked，不产生隐式 create/import。随后更新隔离页面显示真实预置项目、行数/分类/关系/阻断及摘要，并通过受保护 runner 完成 1.9 控件闭环与日志/资源检查。
-- 2026-10-15 子批运行验收：本地全后端 `pytest tests -q` 728 passed，Ruff/compileall/diff-check 通过；I22 页面静态契约 3 passed、Playwright runner `node --check` 通过。browser-use 对现有标签绑定/AX 读取超时后，按 fallback 技能对 `http://192.168.1.9:18091/rebuild-validation-r3-s9-i22.html` 实际操作 11/11 PASS（run `R3S9I22-20261014215054-01b8e2`）。远端 `datara-rebuild-api` 仅更新隔离 staging 所需文件，先备份 3 个原文件并 SHA-256 对照，import preflight 成功后只重启该容器；正确 `:8001` OpenAPI 包含 I22 preview 与原 I18 dry-run，容器 healthy；web 静态页 200。实时源七域共 3 行（code 1、code_value 1、approval 1，其余 0），UI 显示 2 个新增身份候选、0 个目标身份匹配、1 个 `unresolved_reference` 阻断；无 payload；响应明确 `parity_verified=false`、`import_enabled=false`，I18 import flag 为 false，API access log 为 200。相关依赖 `datara-web` up、`datara-rebuild-api` healthy、source/target 共用的 `mysql-meta` healthy；target schema 精确为 `datara_rebuild_i0`，source 为用户批准的 `datara_meta`/root 只读配置。报告/截图和部署备份位置见执行台账。本结果只关闭 mapping-preview API/UI 子批，不构成 I22 内容 parity、目标导入批准或 S9/R3 PASS。
-- 运行事实：2026-10-15 远端 `datara-rebuild-api` 容器内 `:8001` OpenAPI 确认是 rebuild app，含 I18 dry-run、无 I22 preview；运行代码通过 mount 来自旧 staging source。部署时需仅更新隔离 source mount 中本批涉及的新 Backend 文件并执行健康/OpenAPI验证，不替换正式 `datara-api`，不动目标数据。当前本批 endpoint 尚未远端运行验证。
-- 安全边界：仅允许项目级 source/target 只读预览。源数据继续使用用户已批准的 `datara_meta` 固定 allowlist + READ ONLY 事务；不回显 payload/root 配置，不改源表；审批 orphan 仍阻断，I18 已批准的 skip 不外推。禁止添加/启用任何目标导入 API 或写入动作。Local tests pass 不等于 S9/R3 PASS。
+- [ ] **Step 2: 确认旧系统只读参考边界**
 
-#### I18-I23 live schema allowlist preflight
-
-在实现下一条 importer/API 链路前，逐域核对所有 I18-I23 reader 固定 allowlist 中的表列是否匹配 `datara_meta` 当前 live schema。先按 `R3-S9-开始前影响分析.md` 相应小节做只读 preflight；仅从 information_schema 取字段/索引/FK metadata，并对 allowlist 表做聚合 COUNT；I23 严禁选择 `user_pwd` 或账户行值。若出现 drift，停下为该 reader 做独立影响分析/修复/测试；无 drift 时记录证据与更新计划/台账后再开始下一编码子批。无 API runtime secret、无部署、无目标导入。
-
-Preflight 发现 I21 reader 三组缺失列（详见 `evidence/R3/s9-live-reader-schema-audit-20261015.md`）。先执行影响分析中的 I21 live-contract 修正子批，之后才可继续 reader/API/importer 复核。I21 六表零行仍不豁免空快照 reader 的 live schema 合同。
-
-I21 修正子批已完成：固定 reader 列已按 live schema 对齐；mapper 用 `source_schema_missing_columns` 备注旧源物理上不存在的字段，不假造原值/时间。I21 reader+mapper 22 passed，全后端 725 passed，Ruff/compileall 通过；证据 `evidence/R3/s9-i21-live-schema-reader-fix-20261015.txt`。仍未配置 runtime source URL/API、部署或导入。
-- 验收：A/B 均仅达到 `LOCAL_SUBSTEP_PASS / INTEGRATION_GATE_PENDING`。本次 root CLI schema 查询不等于 Backend runtime dry-run；完整 I18-I23 importer/parity、目标备份/恢复、并发/故障注入、service log/middleware/resource 以及 browser-use→必要时 Playwright 控件闭环继续按计划单独完成。
+  将现有 Backend 和正式前端标记为参考对象；新实现不得复用旧 API 作为新 API 的隐式依赖。检查命令：
 
-#### I23 身份映射只读预览 API 与隔离验证页
-
-- 状态：`I23_PREVIEW_CONTROL_PASS / IDENTITY_PARITY_PENDING / IMPORT_NOT_AUTHORIZED`；整体 S9/R3 仍 IN_PROGRESS/PARTIAL。
-- 用户批准：只读 `datara_meta.t_user(id,user_name,user_role,state,create_time,update_time)`；endpoint-only `legacy:i23:preview` 短期 capability；AOCI 仅 acknowledge observe fingerprints。继续排除 `user_pwd`，源端 READ ONLY、target SELECT-only。
-- 前序 I22 影响：共享 `governance/api.py`、`api/app.py`、source allowlist/reader 和隔离部署合同；必须保持 I18 importer flag=false，并回归 I22 现有静态页/API。I23 是全局身份边界，不使用项目级 `EDIT_DEFINITION`/普通 DEV token。
-- 实施步骤：先 RED 覆盖 scoped token 仅 I23 endpoint 可用、通用 API 拒绝 capability、验证 key 只能签发固定 15 分钟 scope；再实现 I23 endpoint 的 allowlist reader、target identity/user 只读查询、显式映射选择和阻断摘要；增加独立静态验证页和 protected Playwright runner；本地全量测试/ruff/compileall/diff-check；在 1.9 做哈希备份、限量 source/target 审核、只更新隔离容器与 18091 页面，并验证前端控件/API/backend log/MySQL readonly 与 target no-write；更新证据、状态/台账后单独提交。
-- 冻结边界：不改正式 Vue/menu、通用权限矩阵、admin/DEV token 权限、DB schema、source data 或 target data；不得在页面或证据记录验证 key/token/口令；任何超出 I23 scope 的 API/数据访问拒绝。
-- 验收语义：preview/control loop 通过只能记 `I23_PREVIEW_CONTROL_PASS / IDENTITY_PARITY_PENDING / IMPORT_NOT_AUTHORIZED`，不能提升 S9/R3 为 PASS，也不证明逐字段 parity。
-- 实测验收：远端隔离 API healthy，I23/I22/I18 路由均在 OpenAPI；18091 独立页 HTTP 200。protected Playwright `R3S9I23-20261014222209-50244b` 12/12 PASS；读取 4 条 source identity，1 个同名 target candidate，0 个既有 mapping；操作者选择候选后 1 条为 `identity_candidate`，其余 3 条 `unresolved_target_user`。scoped token 的普通 API negative control 为 401；无 credential 字段/导入控件/浏览器错误。后端最近 10 分钟 ERROR/Traceback 为 0，I18 importer 保持 false。完整 hashes、部署/备份和失败运行修正记录见 `evidence/R3/s9-i23-preview-remote-deploy-20261015.md` 与同 run JSON/PNG。无 source/target writes；结果不是 parity 或导入授权。
-6. 在参考产品风格隔离验证页增加可操作业务场景和稳定 fixture，预置目标项目/数据/表单并呈现行数、快照摘要、计划分类、导入顺序和阻断原因；执行控件级 UI 流程并验证后端 API 结果。使用 192.168.1.9 的非冲突端口部署；页面不得持有统一验证 key，仅由受保护 runner 注入受限短期 token。
-7. 远端先只读重采样，再目标快照、dry-run 冲突清单；这些证据仅用于评审，确认 dry-run 的新增/更新/跳过/冲突数与拟定范围一致后，仍须另获用户对目标业务数据写入的明确批准才能执行导入。逐批记录前后时间戳、进程退出码、容器日志、DB 对账查询和恢复点。root 只允许用于 `REBUILD_LEGACY_META_URL` 精确指向 `datara_meta` 的固定 allowlist 仅读，不注入 root 凭据到 Backend。
-   - I18 离线 dry-run 契约已要求调用方提供与目标 project 匹配的只读快照（采集时间、摘要、source identity→target ID、业务语义指纹、模型字段集合及项目范围唯一键占用者）。目标快照 repository 已按项目筛选 target ORM，仅用 SELECT 装配这组信息，并重建旧映射语义计算指纹；SQLite 集成测试断言无 DML。当前尚未在 MySQL/192.168.1.9 上运行，也未接 API。计划只分类 create/unchanged/conflict/blocked，冲突不自动更新；有问题的父模型阻断子字段/关系，不能据此授权写入。
-8. 按源表逐一对账总数、有效/拒绝/重复计数、来源 ID 覆盖、字段摘要、父子/多对多/血缘关系、版本/审批链、孤儿数量和 `created_at/updated_at/generated_at`；要求未解释差异为 0，所有拒绝行有显式可复现原因。
-9. 重新运行目标端重复导入验证无重复且统计 skipped/idempotent；核对 API/UI 展示、数据库行和日志时间；完成异常注入（重复键、非法 FK、中途失败恢复、并发同批请求）及批次级回滚演练。
-10. 更新本计划、R3 状态和台账；只有本地检查、参考产品控件流、远端容器/中间件/数据库、日志和数据 parity 四联证据齐全才关闭 S9。R3 的其他未完成子项仍须单独完成后才可转 PASS。
-
-### 文件与验收基线
-
-- 预期后端范围：`datara-backend/rebuild/governance/models.py`、迁移版本文件、repository/service/API、迁移执行器（若需扩展）及 `datara-backend/tests/rebuild/` 对应回归测试；禁止改旧 `datara-backend/api/*` 和旧库模型作为运行真源。
-- 验证页/runner/evidence：项目隔离页及其独立契约测试；实测证据存放 `docs/increments/evidence/R3/`，包括 schema snapshot/hash、dry-run、导入批次、逐表逐关系 parity、UI runner JSON/截图、容器/依赖健康和错误日志窗口。
-- 必须满足：重复导入后目标无重复；经批准源记录 100% 有目标或显式拒绝原因；所有可解析父子/关联关系 100% 对应；未解释孤儿/数据差异为 0；新增记录 DB 时间戳非空；Ruff/compileall/pytest 全绿；页面所有关键控件闭环；远端服务健康且错误窗口为 0。
-- 此增量只形成实施计划，不得把源表当前 0 行作为省略 schema/API/空集行为测试的理由；I23 credential compatibility 若尚未核实，保存账号身份/权限关系并输出重置路径，不输出凭据值。
-
-### 2026-10-15 S9 durable checkpoint/importer 状态覆盖更新
-
-- 本地新增通用 batch/item checkpoint repository 与 I18 service-only importer：同批次幂等键/payload 漂移保护，逐实体事务内写目标行与 checkpoint，失败项留存 class-only 错误并可显式恢复；`conflict` 不自动重试；批准的孤儿版本行持久记录 `skipped` 原因。要求 project `EDIT_DEFINITION`；MySQL target guard 精确限定 `datara_rebuild_i0`，只允许 `:memory:` SQLite 用于本地集成测试；MySQL advisory lock 与本地串行避免同键并发重复执行。
-- 当前未增加可触发真实导入的 API route，亦未连接远端、调用 source reader 或写入目标数据。任何面向验证页的导入动作须另经项目权限与明确确认契约，且本轮用户裁定不等同于实际导入批准。
-- 本地证据：新增 checkpoint/importer tests 7 passed，全后端 `pytest tests -q` 633 passed，Ruff、compileall、diff-check 通过。仅属内存 SQLite/本机逻辑验证，不能替代 192.168.1.9 服务、MySQL、中间件、资源、日志和浏览器四联门禁。
-- 状态保持：R3-S9/R3 为 IN_PROGRESS/PARTIAL；I19-I23 映射与导入、完整 parity、目标备份/恢复、并发及回滚演练、写入确认和 API/页面控件闭环仍未完成。实际导入前必须由人工审阅最新 44-create/1-skip dry-run 及恢复计划并单独批准；不得以此轮“继续推进”解释成数据写入授权。
-- 2026-10-15 后续本地批次增加 I18 replay integrity：target ID/provenance/映射字段/关系字段 child rows 在 imported/unchanged 重放时校验；外部漂移生成 terminal conflict，不自动修复或覆盖。修复 `交易`→`交易域` approved alias 经 checkpoint 无法向模型/关系传播 target ID 的缺陷。定向 9 passed、全后端 638 passed、Ruff/compileall/diff-check 通过；此批仍仅本地内存 SQLite，远端状态与导入批准不变。
-- 下一本地批次：实施默认关闭的 I18 import API + fresh source/target digest 和显式确认短语契约，仅 mock 验证未来 enabled 调用；不新增验证页按钮/不改 compose 环境、不启用、不部署、不执行目标数据写入。用户的实际目标导入授权和远端快照/parity/恢复门禁仍独立。
-- 2026-10-15 API contract 状态覆盖：实现默认关闭 API gate、正数持久 operator+项目编辑授权、精确 target/digest/确认短语和 ready plan 校验；target digest 现在是内容寻址，采集时间独立留痕。`pytest tests -q` 643 passed，Ruff/compileall/diff-check 通过。代码仅在隔离 worktree；运行配置未设为 true、未部署且无目标数据写入。I19-I23 映射及完整远端门禁仍未完成。
-
-### 2026-10-15：I19 只读快照 reader 增量计划
-
-- 前序影响分析：见 `R3-S9-开始前影响分析.md`“I19 元数据与标签只读快照 reader 开工影响分析”；以上一提交 `b78899b` 为基线。
-- 本增量只覆盖旧 I19 三表 `t_meta_table_ext`、`t_meta_tag`、`t_meta_tagging` 的固定列白名单、独立只读 snapshot reader、稳定内容摘要及本地只读/分页/上限测试；不改 I18 API、mapper/importer、schema/migration、旧后端、任何前端、compose 或远端运行资源。
-- 字段依据限定为旧 ORM 本地声明；S8 只读盘点曾证明三表当时各为 0 行，但本轮不重连旧库，故不能声称已复核当前远端列结构/数据。真实 reader 必须在列不匹配时失败关闭。
-- 实施顺序：RED 用例（完整字段/缺列/空集/非空/只读/页序/行数上限/稳定摘要）→ 增加独立 `LegacyI19SourceSnapshot` 与 reader（复用隔离 schema/只读事务约束，不扩大 I18 snapshot 合同）→ 运行定向与全后端 pytest、Ruff、compileall、diff-check → 更新证据、影响分析、计划及台账 → 独立提交。
-- 后续显式保留映射前置条件：旧 `ds_id` 到项目内目标 asset 的精确身份表、标签定义与归一化 tag 双实体的父子身份、tagging target key 的资产/字段解析规则；本批不猜测、不清空/改写 unresolved 引用，不声称 I19 mapper/parity 完成。
-- 运行状态仍禁止访问源/目标 MySQL、部署、启用导入旗标、实际业务数据写入或浏览器门禁。本地结果只构成 reader 逻辑证据；后续启用源 reader/API 或导入，仍受完整 I18-I23 parity、目标快照/恢复/并发/回滚、远端验证及独立目标写入批准约束。
-- 实现闭环：新增 `LegacyI19SourceSnapshot`、I19 fixed-column allowlist 与 `LegacyI19SourceReader`；不改变 I18 snapshot/API/error contract。定向 I19 reader 7 passed，I18+I19 reader regression 11 passed，最终全后端 `pytest tests -q` 650 passed in 61.34s，Ruff/compileall/diff-check 通过；真实远端 source schema 仍未验证。证据：`evidence/R3/s9-i19-source-reader-local-20261015.txt`。
-- 状态：本地 reader 合同完成；I19 mapper/API/importer/parity 以及 I20-I23 未完成。无远端部署、旧库连接或目标业务写入。依约法四条，本步骤仅为 `LOCAL_SUBSTEP_PASS / INTEGRATION_GATE_PENDING`，browser-use 控件、后台日志、中间件/资源联验未通过/未执行，不能计正式增量 PASS。
-
-### 2026-10-15：I22 源 schema 证据门与实施顺序调整
-
-- 设计依据已补至重建设计 §13.15：I18-I23 完整承接决策不变；迁移字段映射必须绑定当前只读 schema 证据，历史主题设计稿或 dated inventory 不单独构成 source contract。
-- 核查发现：`remote-schema-inventory.txt` 捕获于 `2026-10-14T17:55:28+08:00`，现存字段与 `I22-数据标准管理设计.md` 有具体差异，且当前隔离工作树没有旧 Std ORM/API。差异及范围记录见 `R3-S9-开始前影响分析.md`“I22 旧标准表 schema 证据差异复核”。
-- 阻断项：I22 不开始字段 mapper/source allowlist/parity/import，直至通过批准的数据库只读途径取得当前 7 张 `t_std_*` 表的 schema identity、列/类型/nullability/default、PK/unique/FK/index 与采集时间摘要。未把 DB root 凭据放入应用，也未推断 OS root 授权。
-- 无关工作仍可推进：I19 标签与资产关系的纯本地映射研究、I20 指标/版本和 I21 质量行映射可依据其自身旧 ORM 字段契约分批开发；每批均须独立影响分析、定向/全后端与静态验证。所有本地子步骤仍需保留 `LOCAL_SUBSTEP_PASS / INTEGRATION_GATE_PENDING`，只有 192.168.1.9 browser-use + API/日志 + middleware/resources 的约法闭环通过后才能关闭对应正式增量。
-
-### 2026-10-15：I20 指标源只读快照 reader 增量计划
-
-- 前序影响分析：见 `R3-S9-开始前影响分析.md`“I20 指标只读快照 reader 开工影响分析”；基线为 `23cc06f`。
-- 限定文件/合同：在 governance source reader 增加 `t_indicator`、`t_indicator_version` 固定列白名单和独立 I20 snapshot/read API；本地增加 SQLite-only fixture 测试。不能改变 I18/I19 reader/API合同与错误文本。
-- 映射语义边界：本批只作固定列原样快照，不解释 `dims`、`snapshot_json` 或 base metric 身份，不解析 JSON、不转换业务时间、不写目标侧。
-- 验收步骤：TDD RED→实现→I18/I19/I20 定向测试→全后端 pytest→Ruff/compileall/diff-check→更新证据/影响分析/本计划/台账→独立提交。完全本地测试仍不构成正式增量 PASS。
-- 运行安全：不连 `datara_meta`/target MySQL，不部署、不修改容器/中间件/正式前端、不新增可触发导入的 API/UI。I20 正式端到端验收仍需 192.168.1.9 的前端控件、后端 API/日志及中间件/资源闭环；缺少环境/数据证据时保持 pending。
-- 本地结果：I20 定向 7 passed，I18-I20 三套 reader regression 18 passed；全后端 `pytest tests -q` 657 passed in 67.09s；Ruff、compileall、`git diff --check` 通过。证据 `evidence/R3/s9-i20-source-reader-local-20261015.txt`。这是 reader 子步，不代表 mapper/API/import/parity 或正式增量 PASS。
-
-### 2026-10-15：I21 六表质量治理源快照 reader 增量计划
-
-- 前序影响分析：见 `R3-S9-开始前影响分析.md`“I21 质量治理只读快照 reader 开工影响分析”；基线提交 `af0cb61`。
-- 范围：六张 I21 表的 fixed-column allowlist + 独立 read-only snapshot reader + SQLite 本地契约测试；列依据仅为保留旧 QC ORM。旧 QC router/engine 已退役，本批绝不恢复执行/调度功能。
-- 映射边界：JSON 配置/统计/报告保持原样，不解释 SQL、质量语义、状态或关系，不连接数据源，不写目标实体。
-- 步骤：TDD RED→实现→I18-I21 reader 回归→全后端 pytest→Ruff/compileall/diff-check→更新本地证据/影响分析/计划/台账→独立提交。schema 差异一律 fail closed。
-- 运行/验收安全：不连接旧库或目标库，不部署/改服务或前端，不做 API/UI/日志/中间件/资源验证。本地通过不等同正式增量 PASS；I21 后续 mapper/parity 和 192.168.1.9 控件闭环仍 pending。
-- 本地结果：I21 reader 7 passed；I18-I21 readers 25 passed；全后端 `pytest tests -q` 664 passed in 67.78s；`ruff check rebuild tests/rebuild` 和 `python -m compileall -q rebuild` 通过。证据 `evidence/R3/s9-i21-source-reader-local-20261015.txt`。只完成源 reader 子步，integration gate pending。
-
-### 2026-10-15：I20 指标纯映射增量计划
-
-- 开工前影响分析：见 `R3-S9-开始前影响分析.md`“I20 指标 source-to-target 纯映射开工影响分析”。此前 reader commits：I20 `af0cb61`、I21 `ce4fa69`。
-- 输出契约：snapshot → metric/profile atomic bundle + individual version rows; preserve `dims` as exact legacy free text (no delimiter inference) and preserve version JSON without reconstruction. Resolve base metric only through explicit source identity maps; unknown status/reference/duplicate/orphan becomes a blocker.
-- 本批无 schema migration、ORM/API/importer/UI 或 DB write；后续 importer 必须支持 bundle 原子 checkpoint 和 pending identity 解析，本批不提前宣称可导入。
-- 步骤：TDD RED→纯 mapper→mapping + I18-I21 reader回归→全后端 tests + Ruff/compileall/diff-check→项目证据/台账→独立 commit。
-- 验收范围仅本地逻辑；实时 MySQL schema、browser 控件、API/log/middleware/resources 及数据导入均为 pending。
-- 本地实测：I20 mapper 11 passed；I18-I21 readers + I20 mapper 36 passed；全后端 `pytest tests -q` 675 passed in 70.63s；Ruff、compileall、diff-check 通过。证据 `evidence/R3/s9-i20-mapper-local-20261015.txt`。仅纯映射合同，未接 importer/API/数据库。
-
-### 2026-10-15：I21 质量治理纯映射增量计划
-
-- 开工前影响分析：见 `R3-S9-开始前影响分析.md`“I21 质量历史 source-to-target 纯映射开工影响分析”；前序 reader 基线 `ce4fa69`。
-- 输出契约：从六表 snapshot 生成 normalized rule/task/task-rule/run legacy details/exception/report/alarm records；强制 project ID；关联通过同批 source identity 或现有显式 target ID 解析；无法解析即阻断。规则 level/status 与 SQL 原文保留；JSON 作为 JSON value 稳定编码，不解释/执行。
-- 旧 QC router/engine 维持退役状态；不生成虚假 asset/canonical quality rule，不将历史 run 伪装成新执行。
-- 步骤：TDD RED→纯 mapping bundle→I18-I21 readers + I20 mapping regression→全后端测试/静态检查→evidence/ledger/plan→独立提交。目标 schema 不改。
-- 验收仅本地逻辑；源 schema、真实关联/parity、importer/API、browser、运行资源和业务数据写入皆 pending。
-- 实测结果：I21 mapper 14 passed；I18-I21 reader + I20/I21 mapper regression 72 passed；当前全后端 `pytest tests -q` 689 passed in 66.31s；Ruff、compileall、`git diff --check` 通过。规格审阅发现 run/exception 非空 `task_id` 还需解析目标任务，修复并复核通过；独立代码质量审阅未返回，不能记为通过；之后加固无效显式 target ID、date-only 时间戳和超大 numeric 边界。详见 `evidence/R3/s9-i21-mapper-local-20261015.txt`。
-- 映射细节：run/exception 的非空 `task_id` 必须命中同批任务或显式 target/pending identity，同时 `legacy_task_id` 保持源 ID；目标日期列仅接受 datetime 或可解析的无时区 ISO 值，带 offset 阻断；report/alarm 使用调用方 target IDs。结果仍是 `LOCAL_SUBSTEP_PASS / INTEGRATION_GATE_PENDING`，没有 importer、实时 schema/parity、API/UI/远端运行资源或数据写入验收。
-
-### 2026-10-15：I19 元数据扩展/标签纯映射增量计划
-
-- 前序影响分析：见 `R3-S9-开始前影响分析.md`“I19 元数据扩展与标签纯映射开工影响分析”；reader 基线 `23cc06f`。
-- 输出契约：三表 snapshot 纯 map；extension 只关联操作者显式给定且 project-scoped 的 Asset，不推造资产；旧 Tag 映射 normalized tag + legacy definition bundle；tagging 保持原 target type/key，只有 exact project-scoped target asset map 才填 resolved asset，其余原键留存且 resolved_asset_id 为空。
-- TDD：覆盖空/完整/多行、tag 双实体、顺序/身份、显式重复映射、跨项目、未知 target type、悬空资产键/tag、重复键、源 JSON/日期/长度/target project；任何不可表示/引用缺失均 issue+block。
-- 步骤：先 RED→纯 mapper/context/bundle→I18-I21 reader 与 I20/I21 mapper regression→全后端 `pytest tests -q`、Ruff/compileall/diff-check→项目内证据与台账→独立 commit。
-- 无 importer/API/ORM/migration/数据库连接、实际导入、部署、页面/远端控件或 browser/log/middleware/resources；该子步骤最高只可为 `LOCAL_SUBSTEP_PASS / INTEGRATION_GATE_PENDING`，正式 I19 parity 与 S9 仍待完整门禁。
-- 实测：I19 mapper 11 passed；I18-I21 reader + I19-I21 mapper 回归 83 passed；全后端 `pytest tests -q` 700 passed in 73.02s；Ruff、compileall 通过。规格审阅在提交前仍未回报，不记 PASS。证据：`evidence/R3/s9-i19-mapper-local-20261015.txt`。
-
-### 2026-10-15：I23 用户身份最小只读快照 reader 增量计划
-
-- 基线：I19 mapper 已提交 `150edd0`；I22 保持 schema evidence gate，不将历史 inventory 当作当前 schema。
-- 只实现 `t_user` 六列 allowlist (`id/user_name/user_role/state/create_time/update_time`) 及只读 snapshot reader；明确排除 `user_pwd`，不得读取用户行或凭据。旧 ORM 为来源字段证据，新身份 `Role` 为后续角色映射目标。
-- 不在本批实现 mapper/importer/口令重置、成员关系、API/UI、DDL、数据库连接或部署；绝不从用户/所有者猜项目成员。
-- 执行次序：测试 RED→实现 reader→I18-I23 reader regression/全后端 pytest/Ruff/compileall/diff-check→写证据并更新影响分析、计划、台账→独立提交。
-- 结果最高为 `LOCAL_SUBSTEP_PASS / INTEGRATION_GATE_PENDING`；真实源 schema/data、identity mapper/importer、项目成员关系、密码 reset、1.9 控件、运行日志/中间件/资源均须后续门禁，不得宣称 I23/R3 完成。
-- 实测：I23 reader 4 passed；I18/I19/I20/I21/I23 reader regression 29 passed；全后端 704 passed in 66.28s；Ruff、compileall 通过。SQL listener 确认 SELECT/PRAGMA only，未选择 `user_pwd`。详见 `evidence/R3/s9-i23-reader-local-20261015.txt`。
-
-### 2026-10-15：I23 显式用户身份关联纯映射增量计划
-
-- 目标仅将 I23 源用户身份关联到调用方显式指定、已存在的新用户；校验用户名/Role/状态精确一致后映射至 `LegacyIdentityMappingRecord`。旧/new 静态 Role 当前枚举一致；未知值、目标不存在/跨引用重复、属性不匹配均阻断。
-- 不创建或更新用户、不读或迁移 `user_pwd`、不推断项目成员、不改认证/重置流程、不部署/调 API/DB/UI。
-- 顺序：RED tests→纯 mapper→I23 与治理 readers/mappers regression→全后端 pytest/Ruff/compileall/diff-check→记录证据→本增量单独提交。
-- 只可记 `LOCAL_SUBSTEP_PASS / INTEGRATION_GATE_PENDING`，不等于用户迁移、身份 parity 或 R3 关闭。
-- 实测：I23 mapper + reader 9 passed；全后端 709 passed in 68.62s；Ruff、compileall、backend diff-check 通过。证据 `evidence/R3/s9-i23-mapper-local-20261015.txt`。
-
-### 2026-10-15：I23 项目外身份预览 API 开工前权限与数据边界核查
-
-- 前序影响：刚完成并部署的 I22 mapping-preview 使用 project `EDIT_DEFINITION`，查询仅限该项目；I23 的 `LegacyIdentityMappingRecord` 是全局用户身份关联，不能复用项目权限或将项目编辑权限扩大为全局账号查询。
-- 现有合同：I23 mapper 要求调用方显式提供 source-user→已存在 target-user 的选择，并精确核对 username/role/status；source allowlist 列为 `id,user_name,user_role,state,create_time,update_time`，明确排除 `user_pwd`；目标实体含 `rebuild_user` 与 `rebuild_governance_legacy_identity_mapping`。
-- 阻断：当前验证 token 是 `Role.DEV`，只有 `EDIT_DEFINITION/RUN_INSTANCE/VIEW_ALL`，不含 `MANAGE_USER`；提升共用 token 到 admin 或让 project editor 查询全局用户都违反最小权限。既有 I23 reader 的 schema/count 检查不等同于用户批准读取 `t_user` 业务行；本批尚未读取用户行。
-- 后续仅在用户明确裁定后再实施：推荐固定 source `datara_meta.t_user` 六列、READ ONLY transaction；target 只 project-independent SELECT；接口限定短期 `legacy:i23:preview` 只读能力且不能复用全局 admin/导入权限；前端逐项显式选择已有 target ID，展示匹配/缺失/属性差异，不创建/更新用户、不访问密码、不猜成员关系。必须先确定来源行读取批准和 browser-use/Playwright 如何取得不扩大通用权限的测试能力；其后再依次 RED→GREEN、API+页面、1.9 控件/日志/数据库资源验证和独立提交。
-- 当前状态：`BLOCKED_PENDING_POLICY_APPROVAL`，未改代码、未部署、未查询 `t_user` 行、未写 target。此处阻断不影响已完成的 I22 read-only preview 子批；R3-S9/R3 仍 IN_PROGRESS/PARTIAL。
-
-#### I19 项目级只读映射预览 API 与隔离控件验证页（本子批完成）
-
-- 开工前影响分析：见 `R3-S9-开始前影响分析.md` 的“I19 项目级只读映射预览 API 与隔离控件页开工影响分析”。本轮用户确认系统验证/管理账号 `admin`、source MySQL `root`；这不等于目标 `rebuild_user` 存在 admin 行，也未批准身份关联或目标写入。
-- 依赖影响：I19 reader/mapper 已完成本地子步；API 共享 `governance/api.py` 和 `api/app.py`，必须回归 I18 dry-run + disabled importer、I22 project preview、I23 endpoint-only preview。项目预览只用 `EDIT_DEFINITION`，禁止复用 I23 全局 capability。正式 Vue/menu 不改。
-- 步骤：先为权限先行、固定三表只读 reader、目标 project provenance 查询/target schema guard、逐行映射分类、重复身份 fail closed、payload-free 响应和 import/parity false 写 RED；实现只读 preview service/API；再做参考组件语义的隔离控件页与 protected Playwright runner；本地 full backend/Ruff/compileall/diff-check/page contract 后，在 192.168.1.9 备份并部署隔离 API/新静态页，只重启 rebuild API，以 18091 控件、API log、MySQL/Web health、源 READ ONLY 和 target no-write 做整体验证。
-- 限制：root 仅用于 `datara_meta` I19 三表精确 allowlist READ ONLY transaction；目标仅对 `datara_rebuild_i0` 当前 project SELECT；未知 asset/tag reference 保留 unresolved/block，不做模糊映射；不启用 I18 importer、不触发实际业务导入或目标 DML。
-- 实施结果：新增项目级只读映射预览 API、目标同项目身份约束、重复身份 fail-closed、只返回身份/问题码的隔离验证页与 protected Playwright runner。系统管理/验证 admin 仅用于受控验证；MySQL root 仅用于固定三表 allowlist 只读读取；未增加权限、未导入目标业务数据、未改正式 Vue/menu。
-- 本地验收：全后端 `pytest tests -q` 737 passed in 71.07s；I19 API tests 3 passed；隔离验证页 contract tests 3 passed；定向 Ruff、`compileall`、runner `node --check` 与 `git diff --check` 通过。
-- 远端整体验收：browser-use 因两次操作超时判定 BLOCKED，按既定 fallback 使用同一 18091 页面 Playwright 控件实测；保护 token、页面、项目预填、API、三域/计数呈现、无 parity/import、无业务值、只读控件提示、无浏览器错误共 10/10 PASS。`datara-rebuild-api` healthy，`datara-web` up，`datara-mysql-meta` healthy；部署文件哈希与本地一致，后端访问日志记录 mapping-preview POST 200。
-- 数据边界与状态：源 `datara_meta` 的三张 I19 表本次均为 0 行，目标同域计数亦为 0；故只能记 `I19_PREVIEW_CONTROL_PASS / I19_PARITY_PENDING / IMPORT_NOT_AUTHORIZED`。这不是 source-target parity 或 importer 验收，也不代表完整 S9/R3 PASS。首次重启暴露远端挂载缺少 `legacy_i19_mapping.py`，补齐该模块并重启后健康；失败与修复均保留在证据/台账，不删除失败记录。
-- 最终时区修正：target `captured_at` 明确使用 `Asia/Shanghai` 并断言 `+08:00`；修正后全后端仍 737 passed，定向质量检查通过，API 重新部署且 Playwright run `R3S9I19-20261014232132-19a437` 10/10 PASS。最终 JSON/截图与环境哈希见 `evidence/R3/s9-i19-preview-remote-20261015.txt`。
-- 证据：`evidence/R3/r3s9i19-20261014231348-d48a0e.json`（首次部署失败，保留）、`r3s9i19-20261014231449-1bfec9.json`（首次恢复）、`r3s9i19-20261014232132-19a437.json` 及同名 `-summary.png`（时区修正后最终通过）、`evidence/R3/s9-i19-preview-local-20261015.txt`、`evidence/R3/s9-i19-preview-remote-20261015.txt`。AOCI 此轮仅有完整索引交付确认；严格 Attestation 未通过且维护状态未对齐，不声称 AOCI 认知维护完成。
-
-#### I20 项目级指标/版本只读 mapping-preview API 与隔离验证页（控件子批完成；parity 待证）
-
-- 前序影响：I19 preview 子批 `fce3dff` 已扩展共享 governance API/app 并部署到隔离 source mount；本批需保留 I18 importer disabled，回归 I18/I19/I22/I23 路由和权限，不改正式 Vue/menu。
-- 固定旧源只读范围为 `datara_meta.t_indicator`、`t_indicator_version` 以及 `I20_SOURCE_COLUMNS` 精确列；复用现有 reader、I20 mapper、目标规范化 metric/profile/version 记录。目标父 metric 的来源身份由项目内 `SemanticMetricProfileRecord` 承载，version provenance 由 `SemanticMetricVersionRecord` 承载；target 必须精确为 `datara_rebuild_i0`，只读当前 project。
-- API/页面只显示上海时区采集时间、source/target counts/digest、指标及版本 source identity、候选/已匹配/阻断计数和 issue code；不回显 biz_def/tech_def/dims/src_ref/snapshot_json 等 payload。精确 provenance 唯一匹配；跨项目、重复、孤儿或悬空引用 block。`parity_verified=false`、`import_enabled=false` 固定。
-- 子步骤顺序：API/mapper composition 测试 RED→实现 project preview builder/API→隔离控件页/Playwright runner→本地全回归和静态检查→备份/哈希后部署 1.9 source mount 与静态页面→同页控件/API/log/container/resource/source-RO/target-no-write 联验→回写实际证据并独立提交。具体前置影响与停止条件见 `R3-S9-开始前影响分析.md` 的 I20 章节。
-- 本子批实测：API/页面实现通过 TDD；duplicate metric identity 专项回归先 RED 后 GREEN；最终后端全量 `pytest tests -q` 742 passed；API 5 tests、页面合同 3 tests、Ruff、compileall、Playwright runner syntax 均通过。browser-use 两次各 30 秒超时；按项目 fallback 在相同 18091 验证页执行 Playwright，最终 `R3S9I20-20261014235000-e0ae9c` 10/10 PASS（前序控件 run `R3S9I20-20261014234555-81aafa` 保留）。
-- 远端日志关联确认 token exchange、项目列表与 I20 preview POST 均为 200；API healthy、web running、mysql-meta healthy；`docker stats` 采样正常。两张旧来源表及所选项目内两类目标行均为 0，页面完成空数据控件闭环，不能据此宣称 I20 parity。首次 API restart 暴露 staging 缺少已存在的 `legacy_i20_mapping.py` 依赖，API 一度 unhealthy；先备份 source reader/mapping staging 文件、补齐与本地相同 hash 后重启，最终恢复 healthy。duplicate identity 修复部署前先做 TDD 并见 RED，随后备份及替换正确的 `legacy_i20_preview.py`，hash 确认一致并重启；一次选错的中间上传未改变 API hash。备份目录 `/lei/datara/backups/rebuild-i20-20261015/`。
-- 控件子批完成状态：`I20_PREVIEW_CONTROL_PASS / I20_PARITY_PENDING / IMPORT_NOT_AUTHORIZED`；未访问 source 业务 payload、未写旧库、未写 target 业务数据、未开放 importer/正式 Vue。证据：`docs/increments/evidence/R3/s9-i20-preview-remote-20261015.txt` 与最终 `r3s9i20-20261014235000-e0ae9c.json`/`-summary.png`（前序空集 run 证据亦保留）。此结果不代表 S9/R3 完成。
-
-### 2026-10-15：I21 项目级质量治理只读 mapping-preview API 与隔离页子批计划
-
-- 开工前影响分析：见 `R3-S9-开始前影响分析.md`“I21 质量治理项目级只读 mapping-preview API 与隔离控件页开工影响分析”；前序 I20 preview 已提交 `13c6820`。
-- 范围：为六张 I21 allowlisted source tables 增加所选 project 的只读 target provenance snapshot、I21 mapper composition preview、共享治理 API 路由和独立控件验证页/runner；不改 schema/migration、ORM、旧 QC router/engine、正式 Vue/menu 或 importer。
-- 认证/读取：服务端 validation key 只签发 runner token；本批保持 `validation-runner` DEV，不将系统 admin 账号身份混同到 token 或目标身份。DEV 仅因项目 scoped `EDIT_DEFINITION` 足以覆盖本批项目权限；root 仅读取 `datara_meta` 的 I21 固定列集合且 `READ ONLY transaction`。target 必须 `datara_rebuild_i0`，按当前 project SELECT。
-- 响应/边界：source 六表与目标规范化质量实体分别计数并比对稳定 source identities；任何重复 provenance/跨项目身份/mapper blocker 均 fail closed。返回源/目标摘要、分类和脱敏 issue，不回显配置/SQL/报告业务值；`parity_verified=false`、`import_enabled=false`，控件不提供写入/导入。
-- 步骤：测试先 RED→preview builder/API 最小实现→验证权限先于 source reader、target project isolation、空/非空六表、冲突/孤儿/业务 payload 抑制、import disabled→隔离 I21 页面和 protected Playwright runner→I18-I23 全后端与静态检查→远端备份/hash/config preflight→只部署隔离 API 与页面、只重启 `datara-rebuild-api`→browser-use 一次重试后必要时同 URL Playwright→核验 API/log/source READ ONLY/target no-write/MySQL+Web+middleware/resources→证据与本计划/台账→单独提交。
-- 远端失败条件：reader 列或 source schema drift、只读事务无法证明、target schema/project scope 不唯一、远端 source URL 配置不能证明指向 `datara_meta`、备份/hash/preflight 不符或依赖容器异常时停止远端步骤；不得绕过权限或目标写保护。
-- 验收只可到 `I21_PREVIEW_CONTROL_PASS / I21_PARITY_PENDING / IMPORT_NOT_AUTHORIZED`；真实空表结果不证明 parity，也不代表 I21 importer、R3-S9 或 R3 已通过。每步实测结果与证据在实施后回写。
-- 实施结果（2026-10-15）：I21 preview builder/API、mapper 容器依赖接入、隔离 HTML 控件页与 Playwright runner 已完成；验证证据见 `evidence/R3/s9-i21-preview-remote-20261015.txt`。最终全 Backend `pytest` 748 passed；改动文件 Ruff、compileall 通过；I18-I23/治理页合同 19 passed。全仓 Ruff 仍有 130 条旧问题分布在 9 个未改 legacy 文件，未纳入本批。
-- 远端实测：protected runner token 换取 200；页面加载 200；读取 12 个项目并在真实控件选择 #3；I21 preview POST 200；关系级补丁后的 Playwright `R3S9I21-20261015002853-9b122f` 11/11。I21 六张源表、所选项目目标身份以及 target task-rule edge 计数均为 0；显示 0 候选/0 匹配/0 阻断，因此只通过空数据控件链路，不声称字段、关系或 parity 通过。web/API 日志相关 GET/POST 均为 200，API healthy、Web running、mysql-meta healthy。
-- 关系复核补丁：首轮远端 preview 实测前代码审查发现目标 task identity 尚未核对规范化 task-rule edge；补充 project-scoped edge query/count 和严格顺序匹配，不匹配任务 fail closed。先本地 fixture 验证 mismatch RED/GREEN，最终 Backend 748 passed；随后单独备份第一版 builder/page、只更新两文件并仅重启隔离 API；最终 11/11 runner 确认关系计数控件渲染。
-- 结果维持 `I21_PREVIEW_CONTROL_PASS / I21_PARITY_PENDING / IMPORT_NOT_AUTHORIZED`。系统业务账号 `admin` 与受保护 runner 的 `validation-runner` DEV token 明确分离；MySQL root 仅访问 `datara_meta` 固定 I21 reader allowlist，并在只读事务中使用；目标隔离 schema 只读。未改权限、未触发 importer、未写目标业务数据。
-- browser-use 对同一验证页两次超时（30s、45s），按项目 fallback 改用同 URL 的 Playwright 完成控件闭环；不是 API-only 验证。
+  ```powershell
+  git status --short
+  Get-ChildItem datara-backend,datara-web -Directory
+  ```
+
+  预期：开始开发前工作区无未授权修改，旧代码仅作为对照材料。
+
+> **执行顺序裁定（唯一有效版本）**：以下 `R0-R11` 是唯一可执行的增量顺序（已批准映射：原重建 I0-I11 分别对应 R0-R11）。文档后部原有的“§1-§12”内容已降级为实现细节参考，不再构成独立增量、独立门禁或第二套执行顺序；其中 checkbox 只能作为对应 R 增量的实现提示，不能单独勾选为完成，也不能绕过 R0-R11 的影响分析、参考产品前端牵引和远程证据。旧系统 I18-I24 等资产编号不作改写。
+
+## 评审修订后的增量顺序
+
+以下顺序是对后续任务的拆分和覆盖，优先于原计划中把 datasource、前端验证和治理域放在后面的安排。
+
+### I0：远程环境、资产盘点和迁移基线
+
+**Files:**
+- Create: `docs/increments/I0-rebuild-impact-analysis.md`
+- Create: `docs/increments/evidence/I0/`
+- Reference: `docker-compose.yml`
+- Reference: `docs/increments/I18-数仓建模设计.md`
+- Reference: `docs/increments/I19-元数据与标签管理设计.md`
+- Reference: `docs/increments/I20-指标管理设计.md`
+- Reference: `docs/increments/I21-数据质量管理设计.md`
+- Reference: `docs/increments/I22-数据标准管理设计.md`
+- Reference: `docs/increments/I23-权限管理设计.md`
+
+- [ ] **Step 1: 在本机完成静态依赖和业务资产盘点**
+
+  检查旧 API 引用、模型、迁移、节点执行器、变量、鉴权和 I18-I23 数据资产；本机只记录检查结果，不启动容器验收。
+
+- [ ] **Step 2: 在 192.168.1.9 校验运行资源**
+
+  在远程隔离目录执行：
+
+  ```bash
+  docker compose config
+  docker compose ps
+  docker compose logs --tail=200 mysql-meta redis kafka datara-api datara-master datara-worker
+  ```
+
+  将容器状态、健康检查、数据库连接、Redis、Kafka 和日志路径写入 `docs/increments/evidence/I0/`。
+
+  同时明确并登记远程隔离测试库供给：使用 `192.168.1.9` 上的 `mysql-meta` 建立本次重建专用 schema/用户，使用现有 `mysql-src` 和 `mysql-dw` 作为同步与跨 Schema 验证数据源；本机 SQLite 或本机临时数据库不得作为 MySQL 默认时间戳和端到端验收依据。
+
+- [ ] **Step 3: 形成 I18-I23 迁移清单**
+
+  为每张旧表标记 `MIGRATE`、`READ_ONLY_COMPAT` 或 `RETIRE_AFTER_MIGRATION`，禁止直接删除旧资产。
+
+- [ ] **Step 4: 运行 I0 验收**
+
+  I0 没有远程资源证据不得进入 I1。
+
+### I1：身份、项目、数据源和最小权限（PARTIAL）
+
+**Files:**
+- Create: `datara-backend/rebuild/identity/`
+- Create: `datara-backend/rebuild/project/`
+- Create: `datara-backend/rebuild/datasource/`
+- Create: `datara-web/src/views/rebuild/validation/identity/`
+- Test: `datara-backend/tests/rebuild/test_identity_project_datasource.py`
+
+- [x] **Step 1: 实现 token 会话和最小 RBAC**（token 登出撤销和权限拒绝已完成；Redis 持久会话仍待增强）
+- [x] **Step 2: 实现项目创建/列表和基础权限点**（成员接口已建立，完整成员管理待补）
+- [x] **Step 3: 实现数据源校验端点和能力矩阵**（真实 MySQL 连通性探查已完成，CRUD/连接池待补）
+- [x] **Step 4: 新 Backend 使用隔离库运行时配置注入；凭据不进入普通日志**（凭据引用模型待补）
+- [x] **Step 5: 配置独立验证页，使用独立路由组，不注册正式菜单**
+- [ ] **Step 6: 在 192.168.1.9 完成 browser-use 登录、数据源连接和权限拒绝验证**（API、真实 MySQL、登出 401、权限 403 已验证；18091 控件级证据待补）
+
+### I2：变量、时间戳和执行实例
+
+**Files:**
+- Use: `datara-backend/rebuild/variable/`
+- Use: `datara-backend/rebuild/execution/`
+- Create: `datara-web/src/views/rebuild/validation/variables/`
+- Test: `datara-backend/tests/rebuild/test_variables_execution.py`
+
+- [ ] **Step 1: 固化变量类型、作用域、时区和 tmp 生命周期**
+- [ ] **Step 2: 实现变量补全、校验、当前值和运行快照**
+- [ ] **Step 3: 实现批实例、任务尝试、事件和生成时间戳**
+- [ ] **Step 4: 在验证页展示变量实际运行值**
+- [ ] **Step 5: 在 192.168.1.9 验证 MySQL 默认时间戳和重试快照**
+
+### I3：I18-I23 治理资产迁移和治理域基线
+
+**Files:**
+- Create: `datara-backend/rebuild/governance/`
+- Create: `datara-backend/rebuild/migration/`
+- Create: `datara-web/src/views/rebuild/validation/governance/`
+- Test: `datara-backend/tests/rebuild/test_governance_migration.py`
+
+- [ ] **Step 1: 建立 data_asset、metadata、lineage、quality、standard、security、semantic、data_transfer 模型边界**
+- [ ] **Step 2: 实现 I18-I23 只读盘点和新模型导入适配器**
+- [ ] **Step 3: 实现表级/字段级、设计态/运行态血缘基线**
+- [ ] **Step 4: 实现质量规则、标准规则、密级、业务域、脱敏和访问审计基线**
+- [ ] **Step 5: 验证新模型为唯一新写入真源，旧资产只读，并登记 OpenMetadata/DataHub 仅作为可选外部目录投影**
+- [ ] **Step 6: 在 192.168.1.9 验证迁移数据、权限判定和血缘查询**
+
+### I4：核心节点执行器，包含 SYNC
+
+**Files:**
+- Use: `datara-backend/rebuild/task/executors/`
+- Create: `datara-backend/rebuild/task/executors/sync.py`
+- Create: `datara-web/src/views/rebuild/validation/tasks/`
+- Test: `datara-backend/tests/rebuild/test_core_executors.py`
+
+- [ ] **Step 1: 实现 FLOW、SQL、PYTHON、SHELL、DEPENDENCY、SYNC 六类执行器契约**
+- [ ] **Step 2: 实现 SYNC 全量/增量、批提交、失败样本、断点和统计执行器**
+- [ ] **Step 3: 为每类执行器配置最小验证页**
+- [ ] **Step 4: 在 192.168.1.9 验证真实数据源、Worker、日志和统计**
+
+### I5：SQL IDE 只读能力
+
+**Files:**
+- Use: `datara-backend/rebuild/sql_ide/`
+- Create: `datara-web/src/views/rebuild/validation/sql-ide-readonly/`
+- Test: `datara-backend/tests/rebuild/test_sql_ide_readonly.py`
+
+- [ ] **Step 1: 实现数据库、Schema、表、视图、函数、存储过程和字段懒加载**
+- [ ] **Step 2: 实现跨 Schema 补全和查询**
+- [ ] **Step 3: 实现查询、取消、分页、多结果集和结果存储协议**
+- [ ] **Step 4: 实现历史、SQL 资产和导出**
+- [ ] **Step 5: 在 192.168.1.9 验证大结果、截断、分页和取消**
+
+### I6：SQL IDE DDL 写路径
+
+**Files:**
+- Create: `datara-backend/rebuild/sql_ide/ddl.py`
+- Create: `datara-backend/rebuild/sql_ide/ddl_policy.py`
+- Create: `datara-web/src/views/rebuild/validation/sql-ide-ddl/`
+- Test: `datara-backend/tests/rebuild/test_sql_ide_ddl.py`
+
+- [ ] **Step 1: 实现表、视图、函数、存储过程和触发器定义查看/编辑**
+- [ ] **Step 2: 实现权限、依赖、影响对象和脚本快照校验**
+- [ ] **Step 3: 实现用户确认、执行记录、失败补偿和回滚脚本**
+- [ ] **Step 4: 在 192.168.1.9 验证 DDL 成功、失败和无权限场景**
+
+### I7：调度与执行运行时
+
+**Files:**
+- Create: `datara-backend/rebuild/schedule/`
+- Create: `datara-backend/rebuild/runtime/`
+- Create: `datara-web/src/views/rebuild/validation/schedule/`
+- Test: `datara-backend/tests/rebuild/test_schedule_runtime.py`
+
+- [ ] **Step 1: 实现 MANUAL、CRON、DEPENDENCY、EVENT 和 TRIAL 触发**
+- [ ] **Step 2: 实现 Asia/Shanghai、misfire、并发、优先级、超时和重试**
+- [ ] **Step 3: 实现 Master 分派、Worker 执行、Alert 通知和 Logger 事件链**
+- [ ] **Step 4: 在 192.168.1.9 验证调度延迟、并发和失败重试**
+
+### I8：实时流运行时和观摩
+
+**Files:**
+- Use: `docker-compose.yml`
+- Create: `datara-backend/rebuild/stream_runtime/`
+- Create: `datara-web/src/views/rebuild/validation/stream/`
+- Test: `datara-backend/tests/rebuild/test_stream_runtime.py`
+
+- [ ] **Step 1: 固化 Kafka、Redis、MySQL 运行时职责**
+- [ ] **Step 2: 实现 stream_job、attempt、checkpoint、metric 和 failure 模型**
+- [ ] **Step 3: 实现生产、消费、聚合、融合、暂停、恢复、漂移和故障恢复**
+- [ ] **Step 4: 实现异常、重复、乱序、延迟和突发流量注入**
+- [ ] **Step 5: 在 192.168.1.9 验证长驻进程、位点恢复和实时观摩**
+
+### I9：统计、质量、血缘和运行报告
+
+**Files:**
+- Use: `datara-backend/rebuild/execution_metrics/`
+- Create: `datara-backend/rebuild/quality/`
+- Create: `datara-web/src/views/rebuild/validation/metrics/`
+- Test: `datara-backend/tests/rebuild/test_metrics_quality_lineage.py`
+
+- [ ] **Step 1: 汇总工作流、任务、阶段、重试和错误样本统计**
+- [ ] **Step 2: 将质量规则结果写入运行统计和告警链**
+- [ ] **Step 3: 将 SQL、同步和工作流运行回写到血缘**
+- [ ] **Step 4: 在 192.168.1.9 验证成功、失败、跳过、重试和异常注入**
+
+### I10：AI 工具契约和悬浮助手验证
+
+**Files:**
+- Create: `datara-backend/rebuild/ai_copilot/`
+- Create: `datara-web/src/views/rebuild/validation/ai/`
+- Test: `datara-backend/tests/rebuild/test_ai_tools.py`
+
+- [ ] **Step 1: 固化工具参数、返回 UI 组件、权限上下文和审计字段**
+- [ ] **Step 2: 使用假 Agent 完成工具调用测试，不依赖真实 LLM**
+- [ ] **Step 3: 接入悬浮助手验证页，不增加正式菜单**
+- [ ] **Step 4: 在 192.168.1.9 验证模型配置、调用预算、失败重试和工具审计**
+
+### I11：Backend 冻结与正式前端融合
+
+**Files:**
+- Create: `docs/increments/evidence/I11/`
+- Modify: `datara-web/src/views/`
+- Modify: `datara-web/src/components/`
+- Test: `datara-web/tests/e2e/`
+
+- [ ] **Step 1: 执行 import 扫描，禁止新 rebuild 模块隐式引用旧 API，白名单除外**
+- [ ] **Step 2: 确认 API、数据库、事件、变量、统计、AI 工具契约冻结**
+- [ ] **Step 3: 将验证页以独立路由组迁移到正式页面，删除 mock 双轨依赖**
+- [ ] **Step 4: 执行旧用户、数据源、模型、指标、标准和权限迁移回归**
+- [ ] **Step 5: 在 192.168.1.9 完成全链路 browser-use 和后台日志验收**
+
+以上 I0-I11 替代原计划中“先集中做后端、最后才出现前端验证”的执行顺序；每个增量均需最小验证页和远程运行证据。
+
+## 附录 A：原始任务细分参考（非独立执行顺序）
+
+本附录保留原始任务拆分，便于实施时复用测试命令、文件边界和验收细节；实际执行编号、完成状态和门禁均以项目 `docs/increments/` 下的权威计划 R0-R11 为准。
+
+### A1. 新 Backend 骨架与契约
+
+**Files:**
+- Create: `datara-backend/rebuild/common/`
+- Create: `datara-backend/rebuild/contracts/`
+- Create: `datara-backend/rebuild/identity/`
+- Create: `datara-backend/rebuild/project/`
+- Create: `datara-backend/rebuild/workflow/`
+- Create: `datara-backend/rebuild/task/`
+- Test: `datara-backend/tests/rebuild/test_contracts.py`
+
+- [ ] **Step 1: 编写领域标识和枚举契约测试**
+
+  测试必须覆盖 `workflow_version` 状态、`instance_type`、核心节点类型和统一错误码；先断言契约导入失败或字段不存在。
+
+- [ ] **Step 2: 实现基础契约模块**
+
+  定义项目、工作流版本、节点、边、实例、任务类型和错误码模型；所有外部输入使用明确类型，不接受未声明字段。
+
+- [ ] **Step 3: 增加工作流版本和草稿快照模型**
+
+  实现草稿、发布、禁用、归档状态转换；发布后版本内容不可变；试运行引用 `workflow_draft_snapshot`。
+
+- [ ] **Step 4: 运行契约测试**
+
+  ```powershell
+  python -m pytest datara-backend/tests/rebuild/test_contracts.py -q
+  ```
+
+  预期：所有枚举、状态转换和字段约束通过。
+
+### A2. 时间戳、实例和统一执行框架
+
+**Files:**
+- Create: `datara-backend/rebuild/execution/`
+- Create: `datara-backend/rebuild/execution/models.py`
+- Create: `datara-backend/rebuild/execution/events.py`
+- Create: `datara-backend/rebuild/execution/service.py`
+- Create: `datara-backend/rebuild/execution/migrations/`
+- Test: `datara-backend/tests/rebuild/test_execution_timestamps.py`
+
+- [ ] **Step 1: 编写全量运行表时间戳数据库测试**
+
+  对跨文档一致性基线列出的全部运行表逐表插入，断言 `created_at`、`updated_at`、`generated_at` 均为非空，且 `generated_at` 由数据库默认生成；测试必须在 `192.168.1.9` 的真实 MySQL 执行，不能用 SQLite 替代。
+
+- [ ] **Step 2: 创建运行实例、统计、错误样本和事件表**
+
+  增加 `workflow_instance`、`task_instance`、`task_instance_attempt`、`task_instance_log`、`task_instance_output`、`task_instance_variable_runtime`、`workflow_result_stat`、`task_instance_data_stat`、`task_data_stat_segment`、`task_data_error_sample`、`execution_event`，统一保存 `instance_type`、版本、尝试编号和上海时区展示信息；流运行表沿用同一迁移模板。
+
+- [ ] **Step 3: 实现试运行和正式运行入口**
+
+  `TRIAL` 只能引用草稿快照，`FORMAL` 只能引用已发布版本；两者共享执行器但隔离运行记录。
+
+- [ ] **Step 4: 验证时间和状态流转**
+
+  ```powershell
+  python -m pytest datara-backend/tests/rebuild/test_execution_timestamps.py -q
+  ```
+
+  预期：试运行、正式运行、取消、失败、完成状态及时间字段全部通过。
+
+### A3. 变量服务和运行值快照
+
+**Files:**
+- Create: `datara-backend/rebuild/variable/`
+- Create: `datara-backend/rebuild/variable/parser.py`
+- Create: `datara-backend/rebuild/variable/validator.py`
+- Create: `datara-backend/rebuild/variable/runtime_snapshot.py`
+- Test: `datara-backend/tests/rebuild/test_variables.py`
+- Test: `datara-web/src/services/__tests__/variableCompletion.test.ts`
+
+- [ ] **Step 1: 编写作用域、优先级和表达式测试**
+
+  覆盖 `${global.x}`、`${project.x}`、`${workflow.x}`、`${task.x}`、`${run.x}` 和 `$[yyyy-MM-dd]`；断言未定义变量、类型错误和循环引用失败。
+
+- [ ] **Step 2: 实现变量解析和校验**
+
+  固定优先级 `run > task > workflow > project > global > env > builtin`，返回变量来源、类型、当前值和错误位置。
+
+- [ ] **Step 3: 实现运行变量快照**
+
+  创建 `task_instance_variable_runtime`，记录表达式、作用域、解析值、来源、`attempt_no`、`resolved_at`、`created_at` 和 `generated_at`。
+
+- [ ] **Step 4: 实现测试页面补全数据服务**
+
+  返回变量名、作用域、类型、当前值和来源；编辑器输入 `${` 时展示候选项，并在失焦和保存时再次调用后端校验。
+
+- [ ] **Step 5: 运行变量测试**
+
+  ```powershell
+  python -m pytest datara-backend/tests/rebuild/test_variables.py -q
+  npm --prefix datara-web run test -- --run src/services/__tests__/variableCompletion.test.ts
+  ```
+
+### A4. 核心节点执行器
+
+**Files:**
+- Create: `datara-backend/rebuild/task/executors/flow.py`
+- Create: `datara-backend/rebuild/task/executors/sql.py`
+- Create: `datara-backend/rebuild/task/executors/python.py`
+- Create: `datara-backend/rebuild/task/executors/shell.py`
+- Create: `datara-backend/rebuild/task/executors/dependency.py`
+- Create: `datara-backend/tests/rebuild/test_core_executors.py`
+
+- [ ] **Step 1: 编写六类执行器契约测试**
+
+  FLOW、SYNC、SQL、PYTHON、SHELL、DEPENDENCY 六类执行器必须返回统一结果：状态、日志引用、变量快照引用、输入数、输出数、成功数、失败数、跳过数、错误样本引用。
+
+- [ ] **Step 2: 实现流类执行器**
+
+  支持开始、结束、条件、并行、合并、等待和子工作流，验证拓扑顺序、失败传播和等待超时。
+
+- [ ] **Step 3: 实现 SQL 执行器**
+
+  支持多语句、变量替换、事务、影响行数、前置后置 SQL、超时、重试和 SQL 文件内容。
+
+- [ ] **Step 4: 实现 Python 和 Shell 执行器**
+
+  支持上传资源、参数注入、工作目录、环境变量、结构化统计、标准输出、错误输出和退出码。
+
+- [ ] **Step 5: 实现依赖执行器**
+
+  支持工作流、任务、文件、表状态和外部任务依赖；记录轮询次数、最近检查时间、等待时长和最终结果。
+
+- [ ] **Step 6: 运行核心执行器测试**
+
+  ```powershell
+  python -m pytest datara-backend/tests/rebuild/test_core_executors.py -q
+  ```
+
+### A5. SQL IDE 后端能力
+
+**Files:**
+- Create: `datara-backend/rebuild/sql_ide/`
+- Create: `datara-backend/rebuild/sql_ide/metadata.py`
+- Create: `datara-backend/rebuild/sql_ide/objects.py`
+- Create: `datara-backend/rebuild/sql_ide/query.py`
+- Create: `datara-backend/rebuild/sql_ide/history.py`
+- Create: `datara-backend/rebuild/sql_ide/resources.py`
+- Test: `datara-backend/tests/rebuild/test_sql_ide.py`
+
+- [ ] **Step 1: 编写 SQL IDE 契约测试**
+
+  覆盖数据库、Schema、表、视图、函数、存储过程、字段、跨 Schema 查询、SQL 历史、异步执行和结果导出。
+
+- [ ] **Step 2: 实现数据源能力矩阵**
+
+  返回连接、浏览、跨 Schema、执行、Explain、分页、导入导出、Schema Diff 和异步执行能力。
+
+- [ ] **Step 3: 实现元数据懒加载接口**
+
+  支持数据库、Schema、表、视图、函数、存储过程和字段按需加载；补全接口支持别名、CTE、跨 Schema 对象。
+
+- [ ] **Step 4: 实现对象查看和编辑接口**
+
+  返回对象定义、依赖、差异和发布脚本；编辑结果必须先校验，再进入执行队列。
+
+- [ ] **Step 5: 实现查询、历史和结果导出接口**
+
+  支持当前语句、选中语句、全部语句、停止、分页、多结果集和 CSV/JSON/Excel 导出。
+
+- [ ] **Step 6: 运行 SQL IDE 后端测试**
+
+  ```powershell
+  python -m pytest datara-backend/tests/rebuild/test_sql_ide.py -q
+  ```
+
+### A6. 文件资源和同步映射
+
+**Files:**
+- Create: `datara-backend/rebuild/resources/`
+- Create: `datara-backend/rebuild/sync/`
+- Create: `datara-backend/tests/rebuild/test_resources_and_sync.py`
+
+- [ ] **Step 1: 编写上传和映射测试**
+
+  覆盖 SQL、Python、Shell 文件上传，源表和目标表探查，自动映射、手工调整、类型转换和映射模板。
+
+- [ ] **Step 2: 实现资源版本和绑定**
+
+  创建 `task_resource`、`task_resource_version`、`task_resource_binding`，上传文件必须产生不可变版本。
+
+- [ ] **Step 3: 实现同步探查服务**
+
+  返回源字段、目标字段、类型、可空性、默认值、主键和推荐映射；用户修改后再次校验。
+
+- [ ] **Step 4: 实现同步执行计划**
+
+  生成字段映射、转换表达式、过滤条件、分区、增量字段、批大小、并发和冲突处理计划。
+
+- [ ] **Step 5: 运行资源和同步测试**
+
+  ```powershell
+  python -m pytest datara-backend/tests/rebuild/test_resources_and_sync.py -q
+  ```
+
+### A7. 工作流结果统计和流处理观摩
+
+**Files:**
+- Create: `datara-backend/rebuild/execution_metrics/`
+- Create: `datara-backend/rebuild/stream_demo/`
+- Create: `datara-backend/tests/rebuild/test_execution_metrics.py`
+- Create: `datara-backend/tests/rebuild/test_stream_demo.py`
+
+- [ ] **Step 1: 编写统计口径测试**
+
+  断言工作流级、任务级、阶段级统计可汇总，重试不会重复累计，无法精确统计时标记 `unknown` 或 `estimated`。
+
+- [ ] **Step 2: 创建统计表和错误样本表**
+
+  创建 `workflow_result_stat`、`task_instance_data_stat`、`task_data_stat_segment`、`task_data_error_sample`，全部带数据库生成时间戳。
+
+- [ ] **Step 3: 实现统一统计采集器**
+
+  SQL 使用影响行数，Python/Shell 使用结构化返回，流任务记录 consumed/emitted/failed/dead-letter/lag/offset。
+
+- [ ] **Step 4: 实现实时生产工作流**
+
+  提供固定速率、异常、重复、延迟和乱序数据生产，连接消息队列、流处理、聚合、融合和结果存储。
+
+- [ ] **Step 5: 实现观摩查询接口**
+
+  返回生产速率、消费速率、积压、偏移、窗口结果、成功失败跳过和错误样本。
+
+- [ ] **Step 6: 运行统计和流处理测试**
+
+  ```powershell
+  python -m pytest datara-backend/tests/rebuild/test_execution_metrics.py datara-backend/tests/rebuild/test_stream_demo.py -q
+  ```
+
+### A8. 独立 Backend 测试页面
+
+**Files:**
+- Create: `datara-web/src/views/rebuild/project/`
+- Create: `datara-web/src/views/rebuild/workflow/`
+- Create: `datara-web/src/views/rebuild/task/`
+- Create: `datara-web/src/views/rebuild/variable/`
+- Create: `datara-web/src/views/rebuild/sql-ide/`
+- Create: `datara-web/src/views/rebuild/run/`
+- Create: `datara-web/src/views/rebuild/stream/`
+- Create: `datara-web/src/services/rebuild/`
+- Test: `datara-web/tests/rebuild/`
+
+- [ ] **Step 1: 建立 API 客户端和错误展示**
+
+  所有测试页面只调用新 Backend API，统一显示请求 ID、错误码、生成时间和执行 ID。
+
+- [ ] **Step 2: 按原版结构实现工作流和节点对照页**
+
+  保留原版 Palette、DAG、节点双击弹窗、属性面板、运行页和日志查看器的主要交互，用新 API 驱动数据。
+
+- [ ] **Step 3: 实现变量和试运行页**
+
+  支持补全、当前值、变量覆盖、单节点运行、从节点运行和变量快照查看。
+
+- [ ] **Step 4: 实现 SQL IDE 验证页**
+
+  支持资源树、跨 Schema 补全、对象编辑、SQL 执行、结果网格、历史和导出。
+
+- [ ] **Step 5: 实现运行统计和流观摩页**
+
+  展示工作流统计、任务统计、错误样本、变量运行值、生产速率、消费速率和积压。
+
+- [ ] **Step 6: 运行前端测试**
+
+  ```powershell
+  npm --prefix datara-web run test
+  npm --prefix datara-web run build
+  ```
+
+### A9. Backend 冻结门禁
+
+**Files:**
+- Create: `docs/increments/rebuild-backend-freeze-checklist.md`
+- Create: `datara-backend/tests/rebuild/test_freeze_contract.py`
+
+- [ ] **Step 1: 固化接口快照**
+
+  固化 OpenAPI、事件消息、节点配置、变量解析、错误码、分页协议和 AI 工具注册表/参数/返回结构/权限上下文/审计字段。
+
+- [ ] **Step 2: 固化数据库快照**
+
+  校验运行表时间戳、版本绑定、试运行隔离、统计口径和重试去重。
+
+- [ ] **Step 3: 执行端到端验收**
+
+  至少跑通：SQL、Python、Shell、同步、依赖、流观摩、试运行、正式运行、重试、取消、失败、统计汇总和 AI 假 Agent 工具调用；同时验证所有运行表的三类系统时间戳。
+
+- [ ] **Step 4: 标记 Backend FROZEN**
+
+  只有契约、测试页面和运行证据全部通过，才允许正式前端进入融合阶段。
+
+### A10. 正式前端融合
+
+**Files:**
+- Modify: `datara-web/src/views/`
+- Modify: `datara-web/src/components/`
+- Modify: `datara-web/src/services/`
+- Test: `datara-web/tests/e2e/`
+
+- [ ] **Step 1: 将测试页面组件化**
+
+  将已经通过验收的测试页面组件迁移为正式页面组件，不重新设计 Backend 契约。
+
+- [ ] **Step 2: 融合原版 Palette 和节点弹窗**
+
+  逐组件替换原页面，同时保留原版交互，并接入新节点配置和变量校验。
+
+- [ ] **Step 3: 融合 SQL IDE**
+
+  接入数据源树、跨 Schema 补全、对象编辑、执行结果、历史和文件资源。
+
+- [ ] **Step 4: 融合运行中心**
+
+  接入试运行、正式运行、变量快照、日志、数据行统计、错误样本和流处理观摩。
+
+- [ ] **Step 5: 运行端到端回归**
+
+  ```powershell
+  npm --prefix datara-web run test:e2e
+  ```
+
+### A11. AI 悬浮助手
+
+**Files:**
+- Create: `datara-backend/rebuild/ai_copilot/`
+- Create: `datara-web/src/components/rebuild/ai-assistant/`
+- Test: `datara-backend/tests/rebuild/test_ai_tools.py`
+- Test: `datara-web/tests/rebuild/ai-assistant.spec.ts`
+
+- [ ] **Step 1: 定义工具调用契约**
+
+  实现 `search_schema`、`validate_sql`、`run_sql`、`get_workflow`、`validate_workflow`、`inspect_workflow_run`、`get_task_metrics` 和 `get_lineage`。
+
+- [ ] **Step 2: 接入当前页面上下文**
+
+  悬浮助手自动携带当前项目、工作流、任务、SQL、数据源、变量、运行和血缘上下文。
+
+- [ ] **Step 3: 实现结果组件**
+
+  支持文本、表格、图表、日志、执行进度和配置草稿，不新增一级导航菜单。
+
+- [ ] **Step 4: 运行 AI 工具测试**
+
+  ```powershell
+  python -m pytest datara-backend/tests/rebuild/test_ai_tools.py -q
+  npm --prefix datara-web run test -- --run tests/rebuild/ai-assistant.spec.ts
+  ```
+
+### A12. 完成定义
+
+- [ ] 每个增量均有数据模型、API 契约、后端实现、自动化测试和独立测试页面。
+- [ ] 所有运行相关表具备 `created_at`、`updated_at`、`generated_at`。
+- [ ] 草稿试运行和正式运行隔离，正式运行绑定已发布版本。
+- [ ] 变量可以补全、校验、展示现时值，并在运行日志输出快照。
+- [ ] SQL IDE 支持对象编辑和跨 Schema 查询。
+- [ ] 同步支持探查映射和用户调整。
+- [ ] SQL/Python/Shell 支持文件上传。
+- [ ] 流处理有真实生产和观摩验证链路。
+- [ ] 工作流结果支持成功、失败、跳过等数据统计。
+- [ ] Backend 冻结前不修改正式前端。
+- [ ] AI 工具契约、假 Agent 和悬浮助手验证在 Backend 冻结前完成；Backend 冻结后只允许做正式前端融合，不得新增或变更 AI/Backend 契约。
