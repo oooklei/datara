@@ -30,6 +30,8 @@ from rebuild.datasource.repository import ProjectDatasourceRepository
 from rebuild.project.repository import ProjectRepository
 from rebuild.project.models import ProjectRecord
 from rebuild.governance.api import build_governance_router
+from rebuild.variables.api import build_variables_router
+from rebuild.variables.models import TaskInstanceVariableRuntimeRecord, VariableDefinitionRecord
 
 logger = logging.getLogger(__name__)
 
@@ -126,6 +128,8 @@ def create_app(
                 ProjectRecord.__table__,
                 ProjectMemberRecord.__table__,
                 ProjectDatasourceRecord.__table__,
+                VariableDefinitionRecord.__table__,
+                TaskInstanceVariableRuntimeRecord.__table__,
             ],
         )
         ensure_i1_schema()
@@ -690,6 +694,10 @@ def create_app(
             legacy_i21_source_reader_factory=legacy_i21_source_reader_factory,
             legacy_i23_preview_user=current_i23_preview_capability,
         )
+    )
+    app.include_router(
+        build_variables_router(session_factory, token_service, active_tokens, project_permission_error),
+        prefix="/api/v1/rebuild/variables",
     )
 
     @app.post("/api/v1/rebuild/projects/{project_id}/members")
