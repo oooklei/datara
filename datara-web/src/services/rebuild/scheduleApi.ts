@@ -3,7 +3,7 @@
  * 端点前缀为草案（/api/v1/rebuild/schedule/*），最终以后端契约为权威；
  * 本文件语义源自 docs/increments/I7-I9-前端消费面分析.md §3（契约期待草案）。
  * 事件契约模式参照 legacy views/dag/InstanceRunsView.vue 的 InstanceRow/TaskStateEvent。
- * RED 约定：所有 I/O 方法在后端接入前抛 I7_SCHEDULER_NOT_WIRED，不发出任何真实请求。
+ * RED 约定：所有 I/O 方法在后端接入前抛 R6_SCHEDULER_NOT_WIRED，不发出任何真实请求。
  */
 
 /* ---------- 触发注册（MANUAL/CRON/DEPENDENCY/EVENT/TRIAL，plan I7 Step） ---------- */
@@ -77,10 +77,10 @@ export interface ScheduleAlert {
 
 /* ---------- RED 哨兵 ---------- */
 
-export const I7_SCHEDULER_NOT_WIRED = 'I7_SCHEDULER_NOT_WIRED: rebuild/schedule contract not connected yet'
+export const R6_SCHEDULER_NOT_WIRED = 'R6_SCHEDULER_NOT_WIRED: rebuild/schedule contract not connected yet'
 
 /** 契约方法清单（测试与 UI 横幅共用，保持单一事实源） */
-export const I7_CONTRACT_METHODS = [
+export const R6_CONTRACT_METHODS = [
   'listTriggers',
   'registerTrigger',
   'listQueue',
@@ -88,7 +88,7 @@ export const I7_CONTRACT_METHODS = [
   'listAlerts',
 ] as const
 
-export type I7ContractMethod = (typeof I7_CONTRACT_METHODS)[number]
+export type R6ContractMethod = (typeof R6_CONTRACT_METHODS)[number]
 
 export interface ScheduleContract {
   listTriggers: () => Promise<TriggerRegistration[]>
@@ -98,11 +98,11 @@ export interface ScheduleContract {
   listAlerts: () => Promise<ScheduleAlert[]>
 }
 
-/* ---------- RED 实现（后端接入前统一抛哨兵；方法清单见 I7_CONTRACT_METHODS） ---------- */
+/* ---------- RED 实现（后端接入前统一抛哨兵；方法清单见 R6_CONTRACT_METHODS） ---------- */
 
 /** 异步契约方法统一实现：rejected promise（同步 throw 会在调用点直接炸出，无法被 rejects 断言捕获） */
 const notWired = async (): Promise<never> => {
-  throw new Error(I7_SCHEDULER_NOT_WIRED)
+  throw new Error(R6_SCHEDULER_NOT_WIRED)
 }
 
 /**
