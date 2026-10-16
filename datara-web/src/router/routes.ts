@@ -100,6 +100,7 @@ export const routes: RouteRecordRaw[] = [
   { path: '/rebuild/validation/schedule', name: 'rebuild-schedule-validation', component: () => import('../views/rebuild/validation/schedule/ScheduleValidationView.vue'), meta: { title: '调度运行时验证（I7）' } },
   { path: '/rebuild/validation/metrics', name: 'rebuild-metrics-validation', component: () => import('../views/rebuild/validation/metrics/MetricsValidationView.vue'), meta: { title: '统计质量血缘验证（I9）' } },
   { path: '/rebuild/validation/sync-form', name: 'rebuild-sync-form-validation', component: () => import('../views/rebuild/validation/sync-form/SyncFormValidationView.vue'), meta: { title: '同步组件表单验证（R4）' } },
+  { path: '/rebuild/validation/dependency-form', name: 'rebuild-dependency-form-validation', component: () => import('../views/rebuild/validation/dependency-form/DependencyFormValidationView.vue'), meta: { title: '依赖表单验证（R4）' } },
 
   // ---- 部署运维 ----
   { path: '/dep/runtime', name: 'dep-runtime', component: () => import('../views/deploy/DeployRuntimeView.vue'), meta: { title: '运行时节点' } },
