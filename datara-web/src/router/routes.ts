@@ -97,9 +97,9 @@ export const routes: RouteRecordRaw[] = [
   // ---- 重建验证页（独立验证页，不进正式菜单；RED 骨架 — 后端契约接入前全占位） ----
   { path: '/rebuild/validation/sql-ide-readonly', name: 'rebuild-sql-ide-readonly', component: () => import('../views/rebuild/validation/sql-ide-readonly/SqlIdeReadonlyView.vue'), meta: { title: 'SQL IDE 只读验证（R5-A）' } },
   { path: '/rebuild/validation/sql-ide-ddl', name: 'rebuild-sql-ide-ddl', component: () => import('../views/rebuild/validation/sql-ide-ddl/SqlIdeDdlView.vue'), meta: { title: 'SQL IDE DDL 验证（R5-B）' } },
-  { path: '/rebuild/validation/schedule', name: 'rebuild-schedule-validation', component: () => import('../views/rebuild/validation/schedule/ScheduleValidationView.vue'), meta: { title: '调度运行时验证（I7）' } },
-  { path: '/rebuild/validation/stream', name: 'rebuild-stream-validation', component: () => import('../views/rebuild/validation/stream/StreamValidationView.vue'), meta: { title: '流处理观摩验证（I8）' } },
-  { path: '/rebuild/validation/metrics', name: 'rebuild-metrics-validation', component: () => import('../views/rebuild/validation/metrics/MetricsValidationView.vue'), meta: { title: '统计质量血缘验证（I9）' } },
+  { path: '/rebuild/validation/schedule', name: 'rebuild-schedule-validation', component: () => import('../views/rebuild/validation/schedule/ScheduleValidationView.vue'), meta: { title: '调度运行时验证（R6）' } },
+  { path: '/rebuild/validation/stream', name: 'rebuild-stream-validation', component: () => import('../views/rebuild/validation/stream/StreamValidationView.vue'), meta: { title: '流处理观摩验证（R8）' } },
+  { path: '/rebuild/validation/metrics', name: 'rebuild-metrics-validation', component: () => import('../views/rebuild/validation/metrics/MetricsValidationView.vue'), meta: { title: '统计质量血缘验证（R7）' } },
   { path: '/rebuild/validation/sync-form', name: 'rebuild-sync-form-validation', component: () => import('../views/rebuild/validation/sync-form/SyncFormValidationView.vue'), meta: { title: '同步组件表单验证（R4）' } },
   { path: '/rebuild/validation/dependency-form', name: 'rebuild-dependency-form-validation', component: () => import('../views/rebuild/validation/dependency-form/DependencyFormValidationView.vue'), meta: { title: '依赖表单验证（R4）' } },
   { path: '/rebuild/validation/resource-upload', name: 'rebuild-resource-upload-validation', component: () => import('../views/rebuild/validation/resource-upload/ResourceUploadValidationView.vue'), meta: { title: '资源上传验证（R4）' } },
