@@ -53,9 +53,9 @@ Date: 2026-10-16 · 作者：Trae 执行线 · 状态：等待 P1（后端契约
 
 > X11 终裁一补节（2026-10-16 用户批准，handoff `805488b`）：schedule 页（组件 I7，已在 main `048a615`）改判 **R6**（治理/运行及调度承接，执行附录 §6 R6 行）；本节为终裁后补入，registerTrigger 面自 §2 R4 批次移入。页名/title 改名随 worktree 5 页批次集成落地（终裁二①）。
 
-- 契约面：scheduleApi 5 方法（listTriggers / registerTrigger / listQueue / listRuntimeEvents / listAlerts；`I7_SCHEDULER_NOT_WIRED` 哨兵改名按终裁二②推迟至 P1 冻结同批）。
+- 契约面：scheduleApi 5 方法（listTriggers / registerTrigger / listQueue / listRuntimeEvents / listAlerts；`R6_SCHEDULER_NOT_WIRED` 哨兵已按冻结宣言 §4 改名——X13-A main 侧先行，worktree 侧随本批次接线收敛）。
 - 前置：P1 中调度契约冻结。BE 实态（R4-SYNC 清单 §4.2 + FE 适配层设计 SCHEDULE 行）：`create_schedule_router` 仅 trigger CRUD（`_serialize` 键形 `misfire_policy/next_fire_at` 等待对照）、调度执行在 worker 侧（`run_due_schedules_once`/`ScheduleRunOnceResult`）；FE `listQueue/listRuntimeEvents/listAlerts` **无 BE 端点（需 Codex 新增）**；`TriggerKind` 5 值 vs BE 仅 `"CRON"` 待冻结扩面；无分页/projectId（B2 缺口 #4/#12）。
-- 接线步骤：①listTriggers/registerTrigger 接 CRUD 真接口（键形映射随 FE 适配层）；②queue/runtimeEvents/alerts 三查询待 BE 新增端点冻结后接真；③UI 横幅与 `I7_CONTRACT_METHODS` 单一事实源随哨兵改名（终裁二②）同步。
+- 接线步骤：①listTriggers/registerTrigger 接 CRUD 真接口（键形映射随 FE 适配层）；②queue/runtimeEvents/alerts 三查询待 BE 新增端点冻结后接真；③UI 横幅与 `R6_CONTRACT_METHODS` 单一事实源已随哨兵改名（X13-A）同步。
 - 门禁：同统一门禁。
 - evidence：`docs/increments/evidence/R6/trae-r6-green-<date>.txt`（evidence/R6 目录随首份证据创建）。
 
