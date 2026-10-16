@@ -238,7 +238,9 @@ def map_legacy_row(
         dictionary_values = {
             "name": source_id,
             "ddl_dialect": source.get("ddl", ""),
-            "vendor_flag": source.get("xc", False),
+            # Source tinyint(1) columns arrive as int 0/1 through the raw reader;
+            # normalize to bool so mapped fingerprints match ORM-reconstructed rows.
+            "vendor_flag": bool(source.get("xc", False)),
         }
     if dictionary_values is not None:
         dictionary_values.update(
@@ -283,11 +285,11 @@ def map_legacy_row(
             "data_type": source.get("data_type", "VARCHAR"),
             "length": source.get("length", ""),
             "precision": source.get("precision", ""),
-            "nullable": source.get("nullable", True),
+            "nullable": bool(source.get("nullable", True)),
             "default_value": source.get("default_value", ""),
             "description": source.get("comment", ""),
-            "is_primary_key": source.get("is_pk", False),
-            "is_partition_key": source.get("is_partition", False),
+            "is_primary_key": bool(source.get("is_pk", False)),
+            "is_partition_key": bool(source.get("is_partition", False)),
             "dictionary_reference": source.get("dict_ref", ""),
             "source_created_at": source.get("create_time"),
             "source_updated_at": source.get("update_time"),
