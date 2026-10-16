@@ -1,6 +1,6 @@
 # Datara 平台重建增量计划（评审修订版）
 
-> 与《2026-10-14-datara-platform-rebuild-design.md》逐项对齐；当前序列统一为 R0-R11。每个增量遵守项目五条约法。2026-10-14 用户裁定 D-2/A：R4=SYNC，IDE=R10-A/R10-B；验证页面按该能力对应参考产品自身的前端页面、表单和用户操作流构建，旧 Datara 前端仅在 Backend 冻结后融合。测试运行环境使用统一验证 key 经 Backend auth API 预取短期 token，页面不显示登录表单、不持 key；门禁不要求人工点击登录页。
+> 与《2026-10-14-datara-platform-rebuild-design.md》逐项对齐；按 2026-10-15 用户二次提速裁定，当前共 9 个增量：R0-R4、R5-IDE、R6-R8。每个增量遵守项目五条约法及后续提速裁定。R4=SYNC；R5-IDE 分 R5-A 只读和 R5-B 高风险 DDL 两个独立子门禁。验证页面按该能力对应参考产品自身的前端页面、表单和用户操作流构建，旧 Datara 前端仅在 Backend 冻结后融合。测试运行环境使用统一验证 key 经 Backend auth API 预取短期 token，页面不显示登录表单、不持 key；门禁不要求人工点击登录页。
 
 ## 1. 增量总览
 
@@ -10,25 +10,31 @@
 | R1 | identity、project、RBAC、datasource 公共服务 | R0 | 统一验证 key 换短期 token、权限/连通性验证页 |
 | R2 | 测试数据、schema 探查、metadata/data_asset 基线 | R0/R1 | 192.168.1.9 MySQL 对账 |
 | R3 | DAG 执行、SQL/Python/Shell/依赖/调度、实例指标 | R1/R2 | 隔离页 + API + Master/Worker 日志 |
-| R4 | SYNC 三类编排（源表基准/目标表基准/文件同步）、探查映射、全量/增量执行器 | R1/R2/R3 | 三场景可运行、映射可编辑、行级指标与端到端对账 |
-| R5 | lineage 解析与 data_transfer 关系 | R3/R4 | 表级/字段级 lineage 对账 |
-| R6 | 治理目录、quality 规则/运行/异常、标准资产承接 | R2/R5 | 五域真源和规则运行 |
-| R7 | 调度增强、重试/超时/告警、HA | R3 | misfire/并发/故障恢复 |
-| R8 | Kafka 流运行时与生产观摩工作流 | R2/R3 | 长驻/停止/续位点/吞吐 |
-| R9 | 任务中心、实例树、导出、版本和监控 | R3/R7 | 操作闭环和指标时间戳 |
-| R10-A | SQL IDE 只读能力 | R1/R2 | 资源树/补全/执行/分页/历史/导出 |
-| R10-B | SQL IDE 对象写路径 | R10-A/R1 | DDL diff/备份/发布/回滚 |
-| R11 | AI 工具契约、浮动助手、全盘验收 | R1-R10 | tool schema/权限/审计/预算 |
+| R4 | SYNC 三类编排（源表基准/目标表基准/文件同步）、探查映射、全量/增量执行器；同步统计由本增量产出（读取/写入/新增/更新/成功/失败/跳过/过滤及耗时） | R1/R2/R3 | 三场景可运行、映射可编辑、行级指标与端到端对账；记录 expected/actual、attempt 和生成时间 |
+| R5-IDE | SQL IDE：R5-A 只读浏览/补全/查询/异步结果/历史/导出；R5-B DDL 对象编辑/发布/回滚；两个子门禁独立验收 | R1/R2；R5-B 依赖 R5-A | A：跨 schema、分页/取消/结果保护；B：8 步 DDL 管控、权限/审计/备份/回滚 |
+| R6 | 治理资产统一交付：metadata/data_asset、表/字段 lineage、quality 规则/运行/异常、标准/安全/语义承接 | R2/R3/R4 | 五域真源、旧资产语义和关系对账、规则运行 |
+| R7 | 调度增强与任务中心：重试/超时/misfire/并发/告警/HA，以及工作流操作、实例树、导出、版本和批处理指标展示 | R3/R4/R6 | 调度故障恢复、工作流生命周期操作闭环；读取 R4 批处理统计，不另建统计生产增量 |
+| R8 | Kafka 流运行时、实时生产观摩工作流、流统计（输入/处理/输出/失败/跳过/延迟/位点/重启）；AI 浮动助手/工具契约及全盘验收 | R2/R3/R4/R6/R7/R5-IDE | 长驻/停止/续位点/吞吐；流统计回写并在任务中心呈现；AI tool schema/权限/审计/预算；全平台验收 |
+
+R0-R4、R6-R8 加 R5-IDE 共 9 个增量。原 R9 的任务中心展示/操作归 R7，统计生产分别归 R4（SYNC）与 R8（STREAM）；原 R10-A/R10-B 合并为 R5-IDE 的 R5-A/R5-B 子门禁；原 R11 AI 工具契约按所依赖领域冻结，浮动助手及跨域总验收归 R8。不得将子门禁误算成独立增量或降低 DDL 风险门槛。
 
 ### 1.1 IDE 试行材料的重新归属（裁定 A）
 
-- 原 `R4-设计文档.md`、`R4-开始前影响分析.md` 以及 `evidence/R4/r4-s3-*` 记录的是旧 Datara 数据源/IDE 后端上的探索试验，不是本次新 Backend 的 R4，也不能计作 R10-A/R10-B 验收通过。
-- 将上述材料作为历史输入保留；其中可复用的业务发现须逐项重新核对成熟参考系统源码/文档与冻结后的新 Backend 契约。R10-A/R10-B 必须重新实现、重新部署并在 `evidence/R10-A/`、`evidence/R10-B/` 形成新证据。隔离页路径后续改为 R10-A 标识，避免把历史 `rebuild-validation-r4.html` 与 SYNC 的 R4 混淆。
+- 原 `R4-设计文档.md`、`R4-开始前影响分析.md` 以及 `evidence/R4/r4-s3-*` 记录的是旧 Datara 数据源/IDE 后端上的探索试验，不是本次新 Backend 的 R4-SYNC，也不能计作 R5-IDE 验收通过。
+- 将上述材料作为历史输入保留；其中可复用的业务发现须逐项重新核对成熟参考系统源码/文档与冻结后的新 Backend 契约。R5-IDE 必须重新实现、重新部署并分别在 `evidence/R5-IDE/` 记录 R5-A 与 R5-B 子门禁证据。隔离页使用 R5-IDE 标识，避免把历史 `rebuild-validation-r4.html` 与 SYNC 的 R4 混淆。
 - 下一项按依赖顺序为 R4-SYNC：已新建 R3→R4 影响分析与 DolphinScheduler DataX 参考初步对照；开工前继续完成上游引擎版本/边界核验和 endpoint/mapping/checkpoint API 合同冻结。R4 验证页按 DolphinScheduler DataX 页面流程（端点选择、参数/SQL 配置、列探查、映射调整、校验/预览、提交运行及结果查看）设计，使用统一验证 key 获取的短期 token 调用新 API；不复刻 Datara 旧页面，不把页面简化为 API 按钮。
 
 ### 1.2 每增量的参考研究产物
 
 开始相应实现前，至少建立一份项目内对照记录：产品及版本/提交、官方开发或用户文档章节、源码模块/关键类与调用链、参考产品前端路由/页面/组件/表单字段/校验与关键用户操作流、核心数据模型/API 契约、Datara 新 Backend 映射、偏离项及理由、由隔离验证页执行的同语义验收案例。隔离页必须让评审者按参考产品业务路径操作（可由预置数据降低输入成本），但调用 Datara 新 Backend；不调用旧 Datara API、不把验证页做成只有 API 按钮的技术面板。引用以可复核的来源路径/URL和版本为准；不可仅凭产品名称或旧系统页面宣称已对齐。
+
+### 1.3 2026-10-15 二次提速执行规则（P1-P4）
+
+1. **受控流水线（P1）**：当前增量进入远程验证后，可并行准备下一增量的影响分析和契约 RED；RED 必须使用 `xfail`/`pending-acceptance` 或独立草稿，不得使主测试套件变红。当前增量未验收前，不得启动下一增量 GREEN、部署或实现性提交。流水线当前增量、下一增量及各自阶段必须写入 `R3-execution-status.md`。
+2. **增量合并（P2）**：总数为 9。R5-IDE 内 R5-A 只读、R5-B DDL 两门分别验收；DDL 高风险 8 步控制、确认闸与回滚要求不降级。原 R9 统计生产分别由 R4-SYNC、R8-STREAM 产出，R7 任务中心消费展示；不保留独立 R9。
+3. **证据分级（P3）**：浏览器控件证据每增量收口至少一轮；认证、权限、DDL、导入、确认闸和破坏性操作发生时即时取证。每轮真实控件取证保存 JSON 与 PNG 成对文件；增量收口还须有完整 `remote-final` 证据。其他中间步骤保存 API 请求/响应 JSON 至该增量 evidence 目录。浏览器必须操作真实控件并到达真实后端；失败证据保留，不将 API-only 算 UI 通过。
+4. **双执行者（P4）**：R3 关闭并合回 main 后，执行者 2 才可从最新 main 建 `.worktrees/vpages/` 等项目内独立 worktree。执行者 1 仅负责 Backend；执行者 2 仅负责 `datara-web/` 与其专属 evidence 子目录，文件所有权零重叠；违者变更不得合回。主台账是唯一台账，双方只追加各自独立小节。1.9 的同一 schema 迁移必须串行，互不冲突的浏览器取证可并行。
+5. **不可放松的红线**：真实控件操作真实后端、显式人工确认闸、失败证据保留、PARTIAL/NOT CLOSED 如实自评、契约/集成 TDD 红绿顺序、token/key 安全边界；当前增量未验收前不得提交实现。任何与设计冲突的修改须先获用户批准并同步设计/计划/台账。
 
 ## 2. 批次 2 的 15 项修复任务
 
@@ -37,10 +43,10 @@
 | R2-01 治理域 | 补五域模型、真源和外部导入边界；登记旧 I18-I23 资产承接/迁移/废弃决策 | 设计矩阵、迁移表、API 边界 |
 | R2-02 调度 | 固化触发、时区、misfire、并发、优先级、worker、重试、告警 | schedule/command/instance 契约和测试 |
 | R2-03 权限 | 实现最小 token/RBAC/project_member 与数据范围检查 | identity/project API、拒权测试 |
-| R2-04 DDL | 新增 draft/diff/backup/publish/rollback 状态机与审计字段 | R10-B DDL 契约、危险 SQL 拦截 |
+| R2-04 DDL | 新增 draft/diff/backup/publish/rollback 状态机与审计字段 | R5-IDE/R5-B DDL 契约、危险 SQL 拦截 |
 | R2-05 变量 | 建类型/作用域/表达式/现时值/补全契约，运行日志输出解析值 | VariableService schema、正负测试 |
 | R2-06 流 | 固化 Kafka、长驻 job、attempt/offset/heartbeat 生命周期 | R8 流状态图和生产观摩方案 |
-| R2-07 结果集 | 冻结 taskId、cursor、分页、TTL、截断、取消、导出协议 | R10-A 结果集协议 |
+| R2-07 结果集 | 冻结 taskId、cursor、分页、TTL、截断、取消、导出协议 | R5-IDE/R5-A 结果集协议 |
 | R2-08 部署 | 写清 compose 拓扑、env 配置、日志卷、health 和扩容边界 | 环境清单、compose 校验 |
 | R2-09 AI | 把五个 AI 工具纳入 API 清单、权限、审计和冻结门禁；保持浮动图标不加菜单 | AI tool contract、验收项 |
 | R2-10 指标 | 为延迟、吞吐、完整率、证据格式定义量化基线 | 指标表和 JSON 证据规范 |
@@ -48,11 +54,11 @@
 | R2-12 datasource | datasource 先行覆盖 CRUD、连通、schema/table/column、连接池 | 公共前置 API 和探针 |
 | R2-13 测试库 | 明确 1.9 MySQL schema 供给和 init SQL，默认时间戳真测 | 远端 schema/默认值证据 |
 | R2-14 门禁 | 每后端增量建立按参考产品前端用户流程设计的隔离验证页，正式前端冻结；测试运行环境用统一验证 key 调用 R1 token API 获取受限短期 token 并注入页面上下文，不要求用户登录或暴露 key；browser-use 优先，一次有界重试仍阻塞即 Playwright 同页操作；API-only 不可替代 | key→token 签发及范围/过期测试、控件闭环与双通道/运行资源证据；R1 单独验 auth/RBAC |
-| R2-15 IDE 拆分 | R10-A/R10-B 拆计划、文件、测试和发布门禁 | 两份验证单，写路径单独审批 |
+| R2-15 IDE 子门禁 | R5-IDE 合并规划，内部保留 R5-A 只读与 R5-B DDL 两道独立门禁；DDL 的 8 步风险控制、人工确认和回滚要求不变 | 同一增量内两份子验证单；R5-B 未过不得开放写路径 |
 
 ## 3. 本批次执行顺序
 
-1. 对上一批 R3/D-2 影响复核：只读确认 R0-R11 路径、D-1 豁免、Qc ORM 保留和 1.9 健康；逐项见 `R3-to-batch2-impact-20261014.md`。
+1. 对上一批 R3/D-2 影响复核：只读确认 R0-R8/R5-IDE 路径、D-1 豁免、Qc ORM 保留和 1.9 健康；逐项见 `R3-to-batch2-impact-20261014.md`。
 2. 先完成设计/计划 15 项同源修订，更新台账并执行文档交叉检查。
 3. 执行后端契约扫描：`rebuild/` 代码禁止隐式依赖旧 `api.*`/`common.*`，只有显式白名单可用；AI 工具必须存在 schema 和权限断言。
 4. 本机执行 Python compile、定向 pytest、Vue 类型检查（依赖不存在时记录环境阻塞，不伪报 0 错）。
@@ -66,10 +72,10 @@
 | R2-01 治理域 | IN_PROGRESS | 用户已裁定 D-R3-S8=A：扩展新 Backend 规范化模型完整承接 I18-I23。实体清单/语义/迁移边界见设计 §5.2、§6；R3-S9 影响分析与实现闭环未完成，仍需逐源表/实体/关系 parity 及隔离验证页证据。 |
 | R2-02 调度 | DESIGN_DEFINED | 设计矩阵有触发/时区/misfire/并发/worker 契约；需核验实现、故障/并发测试及真实运行证据。 |
 | R2-03 权限 | DESIGN_DEFINED | 最小 RBAC 与范围策略已定义；需核验新 Backend 认证/API/拒权覆盖及验证页证据。 |
-| R2-04 DDL | DESIGN_DEFINED | 已要求 R10-B draft/diff/backup/publish/rollback；尚未实现/验收，不允许提前开放写路径。 |
+| R2-04 DDL | DESIGN_DEFINED | 已要求 R5-IDE/R5-B draft/diff/backup/publish/rollback；尚未实现/验收，不允许提前开放写路径。 |
 | R2-05 变量 | DESIGN_DEFINED | 类型/作用域/补全/现值/运行快照已定义；需模型、验证、日志实测。 |
 | R2-06 流 | DESIGN_DEFINED | Kafka 与长驻 stream 状态机已定义；需真实生产观摩及故障恢复证据。 |
-| R2-07 结果集 | DESIGN_DEFINED | taskId/cursor/TTL/截断/取消/导出已定义；需 R10-A 协议测试和 UI 证据。 |
+| R2-07 结果集 | DESIGN_DEFINED | taskId/cursor/TTL/截断/取消/导出已定义；需 R5-IDE/R5-A 协议测试和 UI 证据。 |
 | R2-08 部署 | DESIGN_DEFINED | 1.9 compose 拓扑、配置和日志/health 已定义；需核验 env 引用、compose 与日志聚合证据。 |
 | R2-09 AI | DESIGN_DEFINED | 五工具契约/权限/审计/预算与浮动助手边界已定义；需代码 schema、拒权和冻结门禁。 |
 | R2-10 指标 | IN_PROGRESS | 本轮将过时全量测试数 536 更新为实测 583，并记录 QC browser 21/21；其余性能基线需专门采样。 |
@@ -77,7 +83,7 @@
 | R2-12 datasource | CONTROL_PASS | R2-12-A/B/C/D 均有独立实现/验收；D 已增加 PostgreSQL probe/catalog，并以同一真实验证页联合回归 PostgreSQL 与 MySQL：run `r2-12-d-20261015164635` PASS，6 UI assertions、11 API responses、JSON+PNG、remote-final 完整。D 最终全量 backend tests 796 passed；Ruff/compileall/diff check 通过。候选镜像只部署至 `datara-rebuild-api`，共享 `datara-backend:latest` 与其余运行容器未改；PG/MySQL 临时只读 fixture、profile 均收尾清理。早期 502 失败证据保留。AOCI dirty/stale 独立跟踪，不声称 aligned。R2-12 仅关闭 datasource 公共前置能力，不表示 SQL/SYNC/IDE/治理消费者已接入。 |
 | R2-13 测试库 | CONTROL_PASS | run `r2-13-20261015175857`：1.9 `datara_rebuild_i0` 只读核对 42 张治理/迁移表、130 个时间列定义、全部 timestamp defaults 与存行非空；两条迁移 revision/checksum 与当前 Backend 相符且均 completed；同页 31 条 Audit 的 `generated_at` 与 API/数据库逐条一致。页面/健康探测 200、容器健康；仅 POST 为 validation-token bootstrap，其余页面 API 全 GET。JSON+PNG、browser-entry 与 remote-final 已归档。R3 本次仅有外部资产 row_count 为数据库 NULL、页面显示“—”，不冒称取得源业务表行数；workflow runtime 表仍按后续 R2-10/11 实现时遵守 §13.13。 |
 | R2-14 门禁 | IN_PROGRESS | token bootstrap 与 Playwright 同页策略已有；QC 批次 1 21/21 PASS，仍需每个后端增量依照参考产品 UI 做闭环。 |
-| R2-15 IDE 拆分 | DESIGN_DEFINED | R10-A/B 已拆分；需两份独立验证单和 DDL 写路径审批边界。 |
+| R2-15 IDE 子门禁 | DESIGN_DEFINED | 已合并到 R5-IDE，R5-A/R5-B 各有独立验证单；DDL 写路径仍需单独审批边界。 |
 
 此跟踪表是最高实证状态，不以“设计中有一行”代替代码/远端/控件验收；状态提升须附证据链接并同步更新台账。
 
@@ -145,7 +151,7 @@
 ### 开始前影响分析与边界
 
 - 前序影响：R3-S6 已在隔离 `datara_rebuild_i0` 安装 12 张通用治理表；R3-S7 已写入可识别的验证 fixture；R3-S8 只读采样确认旧库 I18 有 45 条、I22 有 3 条，I19/I20/I21 当前为 0，I23 `t_user` 有 4 条。迁移统计必须区分 S7 fixture、历史来源行和新目标行。
-- 业务影响：需要扩展治理 ORM/migration/API 和验证页，要求项目归属、稳定来源键、主子实体、版本/审批/历史关系及统一时间戳；可能影响 R5/R6/R11 的 API contract。不能在没有实体映射和回归证据时将旧资产标记为完整承接。
+- 业务影响：需要扩展治理 ORM/migration/API 和验证页，要求项目归属、稳定来源键、主子实体、版本/审批/历史关系及统一时间戳；可能影响 R5-IDE/R6/R8 的 API contract。不能在没有实体映射和回归证据时将旧资产标记为完整承接。
 - 数据边界：源 `datara_meta` 只读；所有 DDL/DML 仅可作用于 `datara_rebuild_i0`。执行前生成并校验目标 schema/数据快照，记录 SHA-256、目标 schema identity 和数据库时间；导入采用批次 ID、source identity、幂等唯一键及逐记录 checkpoint。任何目标行冲突不得覆盖。
 - 回滚：按 migration batch 精确回滚新增批次且未被新业务引用的记录；schema 变更只做 additive migration。恢复前后核对 schema 指纹、目标表行数和批次状态；不允许 DROP/TRUNCATE，不允许恢复旧 QC API/engine。
 - 控件门禁：新验证页按 OpenMetadata/DataHub 目录与对象详情、标准/指标/质量任务的参考产品真实操作语义设计；通过新 Backend API 预置/查看/复核资产、模型版本、指标维度、标准码值审批、质量任务运行与异常报告。browser-use 优先，按 R2-14 限次回退同页 Playwright；API-only 不能替代控件闭环。正式 Vue 继续冻结。
