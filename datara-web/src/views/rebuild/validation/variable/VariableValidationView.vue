@@ -1,30 +1,31 @@
 <!--
-  R2：统一变量体系验证页（RED/原型态）。
+  R2：统一变量体系验证页（契约已接线，R2 批次）。
   权威范围：docs/increments/2026-10-14-datara-platform-rebuild-design.md §5（设计真源）
   + 纠偏设计 §2.2（编辑变量可搜索补全；引用校验/作用域可见性/现值/来源展示；
   保存草稿与运行前一致校验；运行实例保存不可变解析快照）。
   边界：独立验证页，不进正式菜单；服务端契约全部经 services/rebuild/variableApi
-  （后端接入前抛 R2_VARIABLE_NOT_WIRED，UI 统一状态栏提示）；引用语法解析为本地纯前端逻辑。
+  （P1 冻结词形，{code,msg,data} 包络已实证固化）；引用语法解析为本地纯前端逻辑。
+  GREEN 标记待独立评审（心跳 #33）。
 -->
 <template>
   <div class="r2-var-page">
     <el-alert
-      type="warning"
+      type="info"
       :closable="false"
       show-icon
       data-testid="r2-variable-red-banner"
-      title="R2 VARIABLE RED 骨架（原型态）— rebuild/variables 后端契约未接入，所有服务端 I/O 返回 R2_VARIABLE_NOT_WIRED"
+      title="R2 契约已接线（rebuild/variables P1 冻结词形）— I/O 经统一包络；GREEN 标记待独立评审"
     />
 
     <el-descriptions :column="3" size="small" border class="r2-var-context">
       <el-descriptions-item label="优先级链（设计真源）">{{ priorityChain }}</el-descriptions-item>
       <el-descriptions-item label="语法">$\{scope.name\}（global/project/workflow/task/env/run/tmp）+ $[时间表达式]</el-descriptions-item>
-      <el-descriptions-item label="契约方法">{{ contractMethodCount }} 项（全部未接线）</el-descriptions-item>
+      <el-descriptions-item label="契约方法">{{ contractMethodCount }} 项（已接线，待独立评审）</el-descriptions-item>
     </el-descriptions>
 
     <!-- ① 变量清单 / 编辑 -->
     <div class="r2-var-panel">
-      <div class="r2-var-panel-head"><span>① 变量定义（清单/编辑/保存走未接线契约）</span></div>
+      <div class="r2-var-panel-head"><span>① 变量定义（清单/编辑/保存走统一包络契约）</span></div>
       <el-form inline size="small" class="r2-var-form">
         <el-form-item label="项目ID"><el-input v-model.number="form.projectId" style="width: 90px" /></el-form-item>
         <el-form-item label="作用域">
@@ -57,7 +58,7 @@
         size="small"
         border
         max-height="200"
-        empty-text="（未接线 — listVariables 后端接入前恒为空）"
+        empty-text="（暂无数据）"
         data-testid="r2-variable-definitions"
       >
         <el-table-column prop="scope" label="作用域" width="100" />
@@ -134,7 +135,7 @@
         size="small"
         border
         max-height="180"
-        empty-text="（未接线 — completeVariables 后端接入前恒为空）"
+        empty-text="（暂无数据）"
         data-testid="r2-variable-completions"
       >
         <el-table-column prop="scope" label="作用域" width="110" />
@@ -161,7 +162,7 @@
         size="small"
         border
         max-height="220"
-        empty-text="（未接线 — getRunSnapshot 后端接入前恒为空）"
+        empty-text="（暂无数据）"
         data-testid="r2-variable-snapshot-table"
       >
         <el-table-column prop="expression" label="表达式" show-overflow-tooltip />
@@ -211,7 +212,7 @@ const parseResult = ref<ParsedReferences | null>(null)
 const snapshot = reactive({ instanceId: 1, attemptNo: 1 })
 const statusText = ref('待操作')
 
-/* R2 深化：消费面结果区（未接线契约恒为空态；本地解析真实运行） */
+/* R2 深化：消费面结果区（契约已接线；本地解析真实运行） */
 const definitions = ref<VariableDefinition[]>([])
 const completionItems = ref<VariableCompletionItem[]>([])
 const checkResult = ref<ReferenceCheckResult | null>(null)
