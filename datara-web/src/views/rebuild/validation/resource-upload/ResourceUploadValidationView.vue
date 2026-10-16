@@ -62,6 +62,7 @@
         <el-form-item>
           <el-button size="small" data-testid="r4-resource-list" @click="onList">资源列表</el-button>
           <el-button size="small" data-testid="r4-resource-versions" @click="onVersions">版本列表</el-button>
+          <el-button size="small" data-testid="r4-resource-get-version" @click="onGetVersion">读取指定版本</el-button>
         </el-form-item>
       </el-form>
       <el-form inline size="small" class="r4-res-form">
@@ -76,6 +77,15 @@
           <el-button size="small" type="primary" data-testid="r4-resource-bind" @click="onBind">绑定确定版本</el-button>
         </el-form-item>
       </el-form>
+      <!-- getResourceVersion 读取结果（RED：哨兵落状态栏；成功时按 ResourceVersion 字段回显） -->
+      <el-descriptions v-if="resourceVersion" :column="5" size="small" border data-testid="r4-resource-version-result" class="r4-res-version-result">
+        <el-descriptions-item label="资源ID">{{ resourceVersion.resourceId }}</el-descriptions-item>
+        <el-descriptions-item label="版本">{{ resourceVersion.version }}</el-descriptions-item>
+        <el-descriptions-item label="大小(Bytes)">{{ resourceVersion.sizeBytes }}</el-descriptions-item>
+        <el-descriptions-item label="Digest">{{ resourceVersion.digest }}</el-descriptions-item>
+        <el-descriptions-item label="上传时间">{{ resourceVersion.uploadedAt }}</el-descriptions-item>
+      </el-descriptions>
+      <div v-else class="r4-res-empty" data-testid="r4-resource-version-empty">（未接线 — getResourceVersion 后端接入前恒为空）</div>
     </div>
 
     <el-alert type="info" :closable="false" show-icon data-testid="r4-resource-status-bar" :title="statusText" />
@@ -92,6 +102,7 @@ import {
   validateUploadDraft,
   type ResourceDraftDiagnostic,
   type ResourceKind,
+  type ResourceVersion,
 } from '../../../../services/rebuild/resourceApi'
 
 defineOptions({ name: 'ResourceUploadValidationView' })
@@ -103,6 +114,7 @@ const form = reactive({ projectId: 1, kind: 'sql' as ResourceKind })
 const bind = reactive({ resourceId: 1, workflowId: 1, workflowVersion: 1, taskId: '', resourceVersion: 1 })
 const picked = ref<{ filename: string; sizeBytes: number } | null>(null)
 const precheckDiagnostics = ref<ResourceDraftDiagnostic[]>([])
+const resourceVersion = ref<ResourceVersion | null>(null)
 const statusText = ref('待操作')
 
 const acceptExtensions = computed(() => RESOURCE_ALLOWED_EXTENSIONS[form.kind].join(','))
@@ -147,6 +159,12 @@ function onList() {
 
 function onVersions() {
   return guard(() => contract.listResourceVersions(bind.resourceId, form.projectId), '版本列表')
+}
+
+function onGetVersion() {
+  return guard(async () => {
+    resourceVersion.value = await contract.getResourceVersion(bind.resourceId, bind.resourceVersion, form.projectId)
+  }, '读取指定版本')
 }
 
 function onBind() {
@@ -195,5 +213,14 @@ function onBind() {
 .r4-res-picked {
   font-size: 12px;
   color: var(--el-color-success);
+}
+
+.r4-res-version-result {
+  margin-top: 8px;
+}
+
+.r4-res-empty {
+  font-size: 12px;
+  color: var(--el-text-color-secondary);
 }
 </style>

@@ -95,6 +95,32 @@
       <div v-if="draft" class="r4-dep-draft" data-testid="r4-dependency-draft-text">{{ draft }}</div>
     </div>
 
+    <!-- ④ 候选工作流 / 任务（listCandidateWorkflows / listWorkflowTasks，复用①输入参数） -->
+    <div class="r4-dep-panel">
+      <div class="r4-dep-panel-head">
+        <span>④ 候选工作流 / 任务（listCandidateWorkflows / listWorkflowTasks）</span>
+        <span>
+          <el-button size="small" data-testid="r4-dependency-load-workflows" @click="onLoadWorkflows">候选工作流加载</el-button>
+          <el-button size="small" data-testid="r4-dependency-load-tasks" @click="onLoadTasks">任务加载</el-button>
+        </span>
+      </div>
+      <el-row :gutter="12">
+        <el-col :span="12">
+          <el-table :data="candidateWorkflows" size="small" empty-text="（未接线 — listCandidateWorkflows 后端接入前恒为空）" data-testid="r4-dependency-workflows-table">
+            <el-table-column prop="workflowId" label="工作流ID" width="110" />
+            <el-table-column prop="name" label="工作流名称" />
+            <el-table-column prop="latestVersion" label="最新版本" width="100" />
+          </el-table>
+        </el-col>
+        <el-col :span="12">
+          <el-table :data="workflowTasks" size="small" empty-text="（未接线 — listWorkflowTasks 后端接入前恒为空）" data-testid="r4-dependency-tasks-table">
+            <el-table-column prop="taskCode" label="任务编码" width="160" />
+            <el-table-column prop="name" label="任务名称" />
+          </el-table>
+        </el-col>
+      </el-row>
+    </div>
+
     <el-alert type="info" :closable="false" show-icon data-testid="r4-dependency-status-bar" :title="statusText" />
   </div>
 </template>
@@ -119,6 +145,21 @@ const form = reactive({ projectId: 1, workflowId: 1, workflowVersion: 1, taskId:
 const groups = ref<DependencyGroup[]>([])
 const draft = ref('')
 const statusText = ref('待操作')
+
+/* 候选工作流 / 任务（字段按 listCandidateWorkflows / listWorkflowTasks 返回类型；后端接入前恒为空） */
+interface CandidateWorkflow {
+  workflowId: number
+  name: string
+  latestVersion: number
+}
+
+interface WorkflowTask {
+  taskCode: string
+  name: string
+}
+
+const candidateWorkflows = ref<CandidateWorkflow[]>([])
+const workflowTasks = ref<WorkflowTask[]>([])
 
 function newCondition(): DependencyCondition {
   return { upstreamWorkflowId: 1, dateRange: { periodType: 'day', beginOffset: -1, endOffset: -1 } }
@@ -175,6 +216,18 @@ function onEvaluate() {
     () => contract.evaluateDependency({ projectId: form.projectId, workflowId: form.workflowId, workflowVersion: form.workflowVersion, taskId: form.taskId, groups: groups.value }),
     '预演判定',
   )
+}
+
+function onLoadWorkflows() {
+  return guard(async () => {
+    candidateWorkflows.value = await contract.listCandidateWorkflows(form.projectId)
+  }, '加载候选工作流')
+}
+
+function onLoadTasks() {
+  return guard(async () => {
+    workflowTasks.value = await contract.listWorkflowTasks(form.projectId, form.workflowId, form.workflowVersion)
+  }, '加载工作流任务')
 }
 </script>
 
