@@ -33,7 +33,7 @@
 
 ### 3.1 依赖域（DEPENDENCY）
 
-写入与判定请求统一承载 `groups: [{join, conditions: [...]}]`；`join` 为组内条件连接符（`AND`|`OR`），**多组之间固定 AND**（组间不允许 OR，服务端拼装表达式时强制；此为草案语义，提请冻结确认）。条件项 wire 字段：`upstream_workflow_id`（必填）、`upstream_workflow_version?`（缺省=随上游最新已发布版本，判定/预演时按 `as_of` 时点解析）、`upstream_task_code?`（缺省=整工作流成功）、`date_range: {period_type, begin_offset, end_offset}`（`period_type` ∈ `hour|day|week|month`；offset 0=当前周期，-1=上一周期，按周期类型各自解释）。
+写入与判定请求统一承载 `groups: [{join, conditions: [...]}]`；`join` 为组内条件连接符（`AND`|`OR`）。组间连接：v1 草案原定**多组之间固定 AND**（组间不允许 OR），§7.8 按用户复刻令修正为 `group_relation: AND|OR`（复刻 DS `Dependence.relation`，DS 原生支持组间 OR）——**以 §7.8 为准**。条件项 wire 字段：`upstream_workflow_id`（必填）、`upstream_workflow_version?`（缺省=随上游最新已发布版本，判定/预演时按 `as_of` 时点解析）、`upstream_task_code?`（缺省=整工作流成功）、`date_range: {period_type, begin_offset, end_offset}`（`period_type` ∈ `hour|day|week|month`；offset 0=当前周期，-1=上一周期，按周期类型各自解释）。
 
 - `previewExpression` / `evaluateDependency` 返回的 `expression` 为服务端拼装的最终依赖表达式（执行前所见即执行所判）；`resolved[]` 逐条件给出 `upstream_workflow_id`、`upstream_task_code?`、`window_start`、`window_end`（ISO 8601）与 `verdict`；整体 `verdict` ∈ `satisfied|pending|failed|timeout`（四枚举，与运行实例 `status` 语义不同，不做映射）。
 - `as_of` 为 ISO 8601 UTC 字符串（如 `2026-01-01T00:00:00Z`）；格式口径待冻结确认。
@@ -60,7 +60,7 @@
 - 不假设当前 Backend 已有 dependency/resources router、service、表结构或对象存储布局。
 - 不隐含资源内容预览/在线编辑、跨项目资源共享、配额管理；这些超出 B2 §2/§3 前端消费面。
 - 本草案不授权部署、访问 1.9、写入目标数据库或任何正式前端变更；R4 后半批 GREEN 接线在 Codex 复核冻结 + BE 实现落地后按 `2026-10-17-R系列GREEN接线计划.md` Task 4 执行。
-- 20MB 上限值、`as_of` 格式口径、组间固定 AND、`upstream_workflow_version` 缺省语义、绑定冲突语义为本文提请冻结项；冻结前前端按现类型面（草案语义）不动。
+- 20MB 上限值、`as_of` 格式口径、组间 relation（`group_relation: AND|OR`，见 §7.8）、`upstream_workflow_version` 缺省语义、绑定冲突语义为本文提请冻结项；冻结前前端按现类型面（草案语义）不动。
 
 ## 6. 当前 RED 与后续门
 
@@ -72,8 +72,9 @@
 
 1. **条件项扩展**：`conditions[]` 每项新增 `kind: workflow|task|file|table_state|external_task`（缺省 `task` 向后兼容 v1）。`workflow`/`task` 为 DS `DependentItem.dependentType` 复刻映射（`task` 的 `upstream_task_code` 缺省=整工作流成功，对应 DS `DEPENDENT_ALL_TASK_CODE` 分支）；`file`/`table_state`/`external_task` 为 Datara 扩展 kind，其条件参数结构（文件路径/表名+分区状态/外部系统+任务标识）随 kind 定义，v2 先冻结 kind 枚举与分发语义，各 kind 详细字段在 BE 实现设计时补齐并再确认。
 2. **条件极性**：新增 `dependResult: success|failed`（缺省 `success`）——复刻 DS 依赖上游失败也成立条件的语义。
-3. **配置级策略**（保存对象级，随 groups 一起保存）：`check_interval_seconds`（轮询判定间隔，缺省沿 DS 语义）、`failure_policy: fail|waiting`（缺省 `fail`）、`failure_waiting_seconds`（policy=waiting 时生效）、`timeout_seconds`（窗口关闭后未达成判超时的阈值）。对应 DS `checkInterval`/`failurePolicy`/`failureWaitingTime` 与注解「轮询周期/超时/满足和失败策略」。
+3. **配置级策略**（保存对象级，随 groups 同级保存——字段归属对齐 DS 内部静态类 `Dependence` 的嵌套：五字段为依赖配置顶层、与 dependTaskList 同级，监督线 F2）：`check_interval_seconds`（轮询判定间隔，DS `checkInterval` 单位=秒，一致无换算）、`failure_policy: fail|waiting`（缺省 `fail`，复刻 `DEPENDENT_FAILURE_FAILURE|WAITING`）、`failure_waiting_minutes`（policy=waiting 时生效；**复刻 DS `failureWaitingTime` 单位=分钟**——`DependentParameters.java:L66-L69` 注释 Time unit is minutes，监督线 F1；字段名直接带单位防 60 倍偏差，**不做秒统一换算**——DS 前端表单即分钟粒度，换算层是纯增风险）、`timeout_seconds`（窗口关闭后未达成判超时的阈值，Datara 语义，对应注解「超时」）。
 4. **时间窗双轨**：输入采纳 DS 命名窗词汇 `cycle ∈ hour|day|week|month` × `dateValue`（`currentHour|last1Hour|last24Hours|today|last7Days|thisMonth…`，全表以 DS `use-dependent.ts` CYCLE_LIST/DATE_LIST 为准）；输出窗口起止仍为 ISO 8601（§3.1 v1 的 `begin_offset/end_offset` 保留为等价计算形态，二者取一提交、服务端归一）。
-5. **判定语义照搬**：DS `DependentUtils` 三态机——AND 组内任一 `failed` 即失败、有 `pending` 即等待；OR 组内任一 `satisfied` 即通过、有 `pending` 即等待、否则失败；整体四枚举 satisfied|pending|failed|timeout 不变。
+5. **判定语义照搬**：DS `DependentUtils` 三态机同规则两层递归应用——组内（`join`）：AND 任一 `failed` 即失败、有 `pending` 即等待；OR 任一 `satisfied` 即通过、有 `pending` 即等待、否则失败；组间（`group_relation`，§7.8）：对各组结果按同一 AND/OR 规则再组合；整体四枚举 satisfied|pending|failed|timeout 不变。
 6. **观察项**：DS `parameterPassing`（上游参数透传）与我方变量体系重叠——倾向以变量引用（R2 域）替代，随 A5 变量集成议程裁定，v2 不建模。
 7. 资源域（§3.2）不受本节影响。
+8. **组间 relation 复刻（监督线 #38 F1/F2 修订连带发现，2026-10-17 补）**：DS `Dependence.relation` 为**组间** relation（`DependentParameters.java:L57-L70`，DS 原生支持组间 OR）；`groups[]` 同级新增 `group_relation: AND|OR`（缺省 `AND` 向后兼容 v1 wire），服务端拼装表达式按组内 `join` 判组、再按 `group_relation` 判整体。v1 §3.1「多组之间固定 AND」草案语义就此修正，本项与 §7 整体一并复核冻结。
