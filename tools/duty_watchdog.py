@@ -26,8 +26,8 @@ CMD_FILE = os.path.join(REPO, "tools", "watchdog_cmd.txt")
 STATE_FILE = os.path.join(REPO, "tools", "watchdog_state.json")
 
 POLL_SEC = 10
-SILENCE_ALERT_MIN = 20
-ALERT_DEDUP_MIN = 30
+SILENCE_ALERT_MIN = 8
+ALERT_DEDUP_MIN = 12
 SCAN_EVERY_N_POLLS = 6          # 60s 一次 handoff 尾部扫描
 NOTIFY_KEYWORDS = ("请裁", "待裁定", "待监督线", "申请复验", "待评审", "待派单", "待确认")
 NOTIFY_DEDUP_MIN = 30
@@ -36,7 +36,7 @@ SUMMARY_FILE = os.path.join(REPO, "tools", "watchdog_summary.txt")
 
 # v3: per-line silence detection (a single silent line must not be masked by
 # other lines' activity) + dispatch->claim closed-loop check.
-LINE_SILENCE_MIN = 15
+LINE_SILENCE_MIN = 8
 LINE_NOTIFY_DEDUP_MIN = 30
 
 # v4: auto-wake engine — inject the built-in wakeup text into a silent line's
