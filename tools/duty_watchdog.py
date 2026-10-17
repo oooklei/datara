@@ -51,7 +51,7 @@ WAKE_CMD_TEMPLATES = {
     "Codex": [r"C:\Users\Administrator\AppData\Local\OpenAI\Codex\bin\2e5e00daee91c61d\codex.exe",
               "exec", "{wakeup}"],
     "Trae": None,       # deprecated line
-    "Claude": None,     # no unattended CLI confirmed
+    "Claude": ["claude", "-p", "{wakeup}", "--continue"],  # user-approved 2026-10-18 (CLI 2.1.276 verified)
     "监督线": None,      # user-driven session
     "守护线": None,      # no unattended CLI confirmed
 }
