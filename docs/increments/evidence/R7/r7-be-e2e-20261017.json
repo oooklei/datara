@@ -1,0 +1,157 @@
+{
+  "login": {
+    "status": 200,
+    "hasToken": true
+  },
+  "banner": "R7 契约已接线（rebuild/metrics P1 冻结词形）— I/O 经统一包络；GREEN 标记待独立评审",
+  "buttons": [
+    "加载",
+    "加载",
+    "加载",
+    "样本",
+    "质量链",
+    "血缘"
+  ],
+  "steps": [
+    {
+      "label": "workflow-result-stats",
+      "btn": 0,
+      "table": 0,
+      "expectRows": 2,
+      "statusBefore": "待操作",
+      "status": "加载统计 完成",
+      "rows": 2,
+      "ok": true
+    },
+    {
+      "label": "task-instance-data-stats",
+      "btn": 1,
+      "table": 1,
+      "expectRows": 2,
+      "statusBefore": "加载统计 完成",
+      "status": "加载统计 完成",
+      "rows": 2,
+      "ok": true
+    },
+    {
+      "label": "task-data-stat-segments",
+      "btn": 2,
+      "table": 2,
+      "expectRows": 3,
+      "statusBefore": "加载统计 完成",
+      "status": "加载统计 完成",
+      "rows": 3,
+      "ok": true
+    },
+    {
+      "label": "task-data-error-samples",
+      "btn": 3,
+      "table": 3,
+      "expectRows": 2,
+      "statusBefore": "加载统计 完成",
+      "status": "加载统计 完成",
+      "rows": 2,
+      "ok": true
+    },
+    {
+      "label": "quality-rule-links",
+      "btn": 4,
+      "table": 4,
+      "expectRows": 2,
+      "statusBefore": "加载统计 完成",
+      "status": "加载质量规则结果链 完成",
+      "rows": 2,
+      "ok": true
+    },
+    {
+      "label": "lineage-writebacks",
+      "btn": 5,
+      "table": 4,
+      "expectRows": 3,
+      "statusBefore": "加载质量规则结果链 完成",
+      "status": "加载血缘回写 完成",
+      "rows": 3,
+      "ok": true
+    }
+  ],
+  "network": [
+    {
+      "url": "/api/v1/rebuild/metrics/workflow-result-stats",
+      "method": "POST",
+      "status": 200,
+      "body": {
+        "from": "1970-01-01T00:00:00Z",
+        "to": "2030-01-01T00:00:00Z",
+        "offset": 0,
+        "limit": 50
+      }
+    },
+    {
+      "url": "/api/v1/rebuild/metrics/task-instance-data-stats",
+      "method": "POST",
+      "status": 200,
+      "body": {
+        "from": "1970-01-01T00:00:00Z",
+        "to": "2030-01-01T00:00:00Z",
+        "offset": 0,
+        "limit": 50
+      }
+    },
+    {
+      "url": "/api/v1/rebuild/metrics/task-data-stat-segments",
+      "method": "POST",
+      "status": 200,
+      "body": {
+        "from": "1970-01-01T00:00:00Z",
+        "to": "2030-01-01T00:00:00Z",
+        "offset": 0,
+        "limit": 50
+      }
+    },
+    {
+      "url": "/api/v1/rebuild/metrics/task-data-error-samples",
+      "method": "POST",
+      "status": 200,
+      "body": {
+        "from": "1970-01-01T00:00:00Z",
+        "to": "2030-01-01T00:00:00Z",
+        "offset": 0,
+        "limit": 50
+      }
+    },
+    {
+      "url": "/api/v1/rebuild/metrics/quality-rule-links",
+      "method": "POST",
+      "status": 200,
+      "body": {
+        "from": "1970-01-01T00:00:00Z",
+        "to": "2030-01-01T00:00:00Z",
+        "offset": 0,
+        "limit": 50
+      }
+    },
+    {
+      "url": "/api/v1/rebuild/metrics/lineage-writebacks",
+      "method": "POST",
+      "status": 200,
+      "body": {
+        "from": "1970-01-01T00:00:00Z",
+        "to": "2030-01-01T00:00:00Z",
+        "offset": 0,
+        "limit": 50,
+        "kind": "all"
+      }
+    }
+  ],
+  "unknownCheck": {
+    "row2": [
+      "9002",
+      "sync-dwd-customer",
+      "0（unknown）",
+      "5000（estimated）",
+      "0",
+      "运行实例"
+    ]
+  },
+  "errors": []
+}
