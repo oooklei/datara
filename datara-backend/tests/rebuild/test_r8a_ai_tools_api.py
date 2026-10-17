@@ -364,7 +364,7 @@ def test_post_unimplemented_tool_returns_dependency_unavailable_not_fake():
 
 
 def test_post_audit_writer_failure_never_fakes_success():
-    client, _app, project_id, tokens, _writer = _bridge_app()
+    client, _app, project_id, tokens, writer = _bridge_app(audit_writer=_FakeAuditWriter(fail=True))
     try:
         response = _call(
             client,
@@ -377,5 +377,6 @@ def test_post_audit_writer_failure_never_fakes_success():
         assert body["error"]["code"] == "INTERNAL_ERROR"
         assert body["error"]["retryable"] is False
         assert body["result"] is None  # handler ran, but unaudited success is forbidden
+        assert writer.records == []  # nothing landed in the dead sink
     finally:
         client.__exit__(None, None, None)
