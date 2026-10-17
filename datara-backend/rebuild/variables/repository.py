@@ -108,14 +108,22 @@ class VariableRepository:
     # -- run snapshots -----------------------------------------------------
 
     def write_snapshot_rows(self, rows: list[dict[str, object]]) -> int:
-        """Append snapshot rows for one execution attempt; returns row count."""
+        """Append snapshot rows for one execution attempt; returns row count.
+
+        project_id (P0-7 security patch) is optional in the payload; rows
+        without it are legacy-shaped and unreadable from every project.
+        """
         for payload in rows:
             for field in ("expression", "scope", "name", "resolved_value", "value_type", "source"):
                 if not isinstance(payload.get(field), str) or not payload[field]:
                     raise VariableDomainError(4001, f"snapshot row missing field {field!r}")
+            project_id = payload.get("project_id")
+            if project_id is not None and (isinstance(project_id, bool) or not isinstance(project_id, int) or project_id < 1):
+                raise VariableDomainError(4001, "snapshot row project_id must be an integer >= 1")
             self._session.add(
                 TaskInstanceVariableRuntimeRecord(
                     instance_id=int(payload["instance_id"]),  # type: ignore[arg-type]
+                    project_id=project_id,  # type: ignore[arg-type]
                     attempt_no=int(payload.get("attempt_no") or 1),  # type: ignore[arg-type]
                     expression=str(payload["expression"]),
                     scope=str(payload["scope"]),
@@ -129,10 +137,16 @@ class VariableRepository:
         self._session.flush()
         return len(rows)
 
-    def read_snapshot(self, instance_id: int, attempt_no: int | None) -> list[dict[str, object]]:
-        """Snapshot rows for an instance (latest attempt when attempt_no omitted)."""
+    def read_snapshot(self, instance_id: int, attempt_no: int | None, project_id: int) -> list[dict[str, object]]:
+        """Snapshot rows for an instance (latest attempt when attempt_no omitted).
+
+        P0-7 security patch: rows are filtered by the requesting project —
+        cross-project instance ids yield an empty list, and legacy NULL rows
+        are unreadable from any project (fail-closed).
+        """
         query = select(TaskInstanceVariableRuntimeRecord).where(
-            TaskInstanceVariableRuntimeRecord.instance_id == instance_id
+            TaskInstanceVariableRuntimeRecord.instance_id == instance_id,
+            TaskInstanceVariableRuntimeRecord.project_id == project_id,
         )
         if attempt_no is not None:
             query = query.where(TaskInstanceVariableRuntimeRecord.attempt_no == attempt_no)
