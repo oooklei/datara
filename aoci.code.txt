@@ -292,6 +292,7 @@ rebuild-validation-r3-s9-i20.html[TQ5T]: F:R3-S9 I20 指标映射只读预览页
 rebuild-validation-r3-s9-i21.html[TQ5T]: F:R3-S9 I21 质量治理映射只读预览页：POST /governance/projects/{id}/legacy/i21/mapping-preview 渲染六来源表计数、处置明细与阻断列表 | R:code:datara-web/deploy/r3-s9-i21-preview.cjs | A:I21 六表固定列白名单+READ ONLY；业务 admin 登录与验证 runner 身份分离；无导入控件 | S:-
 rebuild-validation-r3-s9-i22.html[TQ5S]: F:R3-S9 I22 标准资产映射只读预览页：POST /governance/projects/{id}/legacy/i22/mapping-preview 逐项审阅七张 I22 来源表与项目归属 | R:code:datara-web/deploy/r3-s9-i22-preview.cjs | A:仅 live schema allowlist 七表；不展示审批 payload；阻断明细与身份说明渲染，无导入操作 | S:-
 rebuild-validation-r3-s9-i23.html[TQ5T]: F:R3-S9 I23 身份映射只读预览页：POST /governance/legacy/i23/identity-preview 核对旧 t_user 六列与目标同名账号候选 | R:code:datara-web/deploy/r3-s9-i23-preview.cjs | A:不读密码列；候选须操作者逐项选择；无新增用户/角色变更/密码/项目成员操作；parity 与导入显式禁用 | S:-
+rebuild-validation-r3-s9.html[EU7S]: F:I18 旧治理资产迁移自包含预检页：只读比对七张来源表快照与新治理模型生成 dry-run 计划，并设 44 条 create-only 导入人工确认闸 | R:- | A:预检仅生成 dry-run 计划不写目标业务表；导入闸仅项目 #3 且严格 44 新增/0 未变/1 批准跳过/0 阻断时开放，提交前后端重读快照校验摘要 | S:token 由验证运行器注入页面内存变量 window.__DATARA_TEST_TOKEN__ 不落任何持久存储；页面不提供登录表单也不接收验证 key 输入
 
 ===D:/需求/数据治理工具/Datara/datara-web/src/===
 App.vue[EU8S]: F:Defines the Datara shell, grouped navigation, notifications, account controls, and route content host. | R:code:datara-web/src/router/routes.ts,code:datara-web/src/services/alertApi.ts | A:Keeps verified production modules visible in domain groups and isolates unfinished demos in the extension group. | S:Navigation grouping must match the verified feature boundary; demo items must not displace completed modules.
@@ -406,7 +407,7 @@ WfVarPanel.vue[EB6T]: F:Renders the frontend workflow and user interactions impl
 
 ===D:/需求/数据治理工具/Datara/datara-web/src/router/===
 index.ts[EI6S]: F:Defines the I1 rebuild router responsibility and history-mode contract. | R:code:datara-backend/rebuild/api/app.py | A:Supports the isolated backend-first rebuild and validation evidence. | S:Keep isolated until freeze.
-routes.ts[EI6S]: F:Defines the I1 rebuild route table responsibility and contract. | R:code:datara-backend/rebuild/api/app.py | A:Supports the isolated backend-first rebuild and validation evidence. | S:Keep isolated until freeze.
+routes.ts[EU6S]: F:前端全量路由表（纯数据）：登录、核心路由、45 条模块路由与 9 个 rebuild 验证页，旧路径一律 redirect 保书签 | R:code:datara-web/src/router/index.ts | A:演示态模块挂 meta.demo 标识提示本期范围外；未注册路径兜底至占位页防 404 白屏 | S:路由表为纯数据不触 window/location，仅供 index.ts 装配与测试断言
 
 ===D:/需求/数据治理工具/Datara/datara-web/src/services/===
 alertApi.ts[EB6T]: F:Renders the frontend workflow and user interactions implemented by datara-web/src/services/alertApi.ts. | R:- | A:Connects user actions to Datara API services and governed state. | S:-
@@ -1180,4 +1181,43 @@ api.py[EB7M]: F:Serves six variable endpoints under /api/v1/rebuild/variables co
 models.py[PD6T]: F:Defines rebuild_variable_definition and task_instance_variable_runtime tables for stored definitions and per-attempt snapshots. | R:code:datara-backend/rebuild/variables/repository.py,code:datara-backend/rebuild/common/db.py | A:owner_key encodes scope identity while check constraints bind scope to project_id nullability; runtime rows unique-key instance, attempt, and name. | S:Legacy runtime rows with NULL project_id are unreadable from every project (fail-closed).
 repository.py[PD6S]: F:Persists variable definitions per owner_key and reads or writes per-attempt runtime snapshot rows. | R:code:datara-backend/rebuild/variables/models.py,code:datara-backend/rebuild/variables/service.py | A:upsert validates definitions then rewrites mutable columns; read_snapshot returns only the latest attempt when attempt_no is omitted. | S:Snapshot rows without project_id are legacy-shaped and unreadable from any project.
 service.py[DB8M]: F:Implements deterministic ${scope.name} resolution with the seven-level precedence chain run>task>workflow>project>global>env>builtin plus the tmp scope. | R:code:datara-backend/rebuild/variables/repository.py,code:datara-backend/rebuild/variables/api.py | A:Produces the five diagnostic codes SYNTAX/UNDEFINED/TYPE_MISMATCH/SCOPE_INVISIBLE/CYCLE, detects cycles through value-embedded references, and validates value_type parsing. | S:The precedence chain is the design source of truth; narrowing it requires user approval.
+
+===D:/需求/数据治理工具/Datara/datara-web/src/services/rebuild/===
+adapterKit.ts[CG8M]: F:FE 契约适配层共享机械原语：snake↔camel 深度键名转换、wire↔FE id 无损归一与 ContractApiError 归一错误类型 | R:code:datara-web/src/services/rebuild/dependencyApi.ts, code:datara-web/src/services/rebuild/metricsApi.ts, code:datara-web/src/services/rebuild/resourceApi.ts, code:datara-web/src/services/rebuild/variableApi.ts | A:键名转换 fail-visible：非标准 snake/camel 键原样返回不做猜测拆分；id 有损转换 fail-fast 禁止截断哈希或本地重映射 | S:未变化子树按原引用返回且调用方不得原地修改返回值；枚举词形原样透传不做纠偏改写
+dependencyApi.ts[IW7M]: F:R4 依赖组件表单契约层（GREEN）：依赖条件组与表达式预览/保存/预演等 5 方法接线 rebuild/dependency 端点 | R:code:datara-web/src/services/rebuild/adapterKit.ts, code:datara-web/src/views/rebuild/validation/dependency-form/DependencyFormValidationView.vue | A:upstreamTaskCode FE string 转 BE int 哨兵（0=workflow/-1=all_tasks/正数=task），非十进制整数字符串 fail-fast；组间恒 AND 组内按 join | S:main 暂无 workflow 注册表，listCandidateWorkflows/listWorkflowTasks 返回诚实空列表（窄口径披露，勿判为缺陷）
+metricsApi.ts[IA7S]: F:R7 统计/质量/血缘报告契约层（GREEN）：查询四张统计表、质量规则结果链与运行回写血缘共 6 方法 | R:code:datara-web/src/services/rebuild/adapterKit.ts, code:datara-web/src/services/rebuild/streamApi.ts, code:datara-web/src/views/rebuild/validation/metrics/MetricsValidationView.vue | A:MetricValue 透传不加工：known=false 即 unknown、estimated 透传，前端禁止推导数值；runId 经 wireIdToString 归一 | S:TimeWindowQuery.from/to 格式与 offset/limit 分页口径为 B2 缺口开放点，契约层原样透传不加工
+resourceApi.ts[ID7M]: F:R4 脚本/SQL 资源版本契约层（GREEN）：multipart 上传、资源与版本查询、显式版本绑定共 5 方法 | R:code:datara-web/src/services/rebuild/adapterKit.ts, code:datara-web/src/views/rebuild/validation/resource-upload/ResourceUploadValidationView.vue | A:uploadResource 强制真实 multipart（contentBase64 缺失即拒不静默降级）；本地预校验扩展名与 20MB 上限，服务端保存仍重验 | S:资源版本一经上传不可改写，绑定仅接受显式数字版本且类型上排除隐式 latest
+scheduleApi.ts[IW6S]: F:I7 调度运行时契约层（RED）：触发注册、实例队列、运行时事件流与告警共 5 方法，签名已冻结待后端逐方法替换 | R:code:datara-web/src/views/rebuild/validation/schedule/ScheduleValidationView.vue | A:后端接入前所有 I/O 方法抛 R6_SCHEDULER_NOT_WIRED，不发出任何真实请求 | S:契约方法用 rejected promise 而非同步 throw，保证可被 rejects 断言捕获
+sqlIdeApi.ts[ID7M]: F:R5-A SQL IDE 只读契约层（RED）：九类对象元数据、SQL 执行与 SSE 事件流、结果分页、历史与脚本共 17 方法 | R:code:datara-web/src/views/rebuild/validation/sql-ide-readonly/SqlIdeReadonlyView.vue, code:datara-web/src/views/rebuild/validation/sql-ide-readonly/components/MetaTree.vue | A:只读子集边界：不含 DDL 写路径（R5-B）、表数据编辑与全局参数；openEventStream 为同步方法直接返回 EventSource | S:SSE token 禁止落 storage，沿 R3 runner 注入先例
+sqlIdeDdlApi.ts[ID7S]: F:R5-B SQL IDE DDL 写路径契约层（RED）：定义查看、管控校验、影响预览、确认闸提交与执行记录共 5 方法 | R:code:datara-web/src/views/rebuild/validation/sql-ide-ddl/SqlIdeDdlView.vue, code:datara-web/src/views/rebuild/validation/sql-ide-readonly/components/SqlEditor.vue | A:block 级 finding 存在时确认闸服务端必须拒绝；confirmPhrase 由用户亲自键入 agent 不得代写 | S:确认/执行/回滚全部需用户人工闸，契约层不提供绕过通道
+streamApi.ts[IW6S]: F:I8 流处理观摩契约层（RED）：流作业/尝试/位点/指标序列、观摩结构与恢复漂移事件共 6 方法 | R:code:datara-web/src/services/rebuild/metricsApi.ts, code:datara-web/src/views/rebuild/validation/stream/StreamValidationView.vue | A:复用 metricsApi 的 TimeWindowQuery 与 MetricValue 并 re-export 供 View 单源导入 | S:观摩查询结构不得低于权威设计 §8.4 基线（f475c76）的信息完备度
+syncComponentApi.ts[ID7M]: F:R4 同步组件表单契约层（RED）：探查、计划保存/预览、运行/取消/检查点恢复等 11 方法，签名已冻结 | R:code:datara-web/src/views/rebuild/validation/sync-form/SyncFormValidationView.vue | A:suggestInitialMapping 按列名大小写不敏感加序号生成 map 建议；preview 仅返回列元数据与统计、禁止回传源数据样本值 | S:cancelling 为 BE 权威状态枚举词形（2026-10-16 用户授权对齐），cancel_requested 仅作请求标志
+variableApi.ts[IC7M]: F:R2 统一变量体系契约层（GREEN）：变量清单/保存、补全、引用校验、解析预览与运行快照共 6 方法 | R:code:datara-web/src/services/rebuild/adapterKit.ts, code:datara-web/src/views/rebuild/validation/variable/VariableValidationView.vue | A:七级解析优先级链 run>task>workflow>project>global>env>builtin；本地 parseVariableReferences 仅语法归类，语义校验以服务端为准 | S:getRunSnapshot 的 project_id 为必需帧字段（缺失时服务端 4001）并限定读取范围
+
+===D:/需求/数据治理工具/Datara/datara-web/src/views/rebuild/validation/dependency-form/===
+DependencyFormValidationView.vue[EW7M]: F:R4 依赖表单验证页（RED）：条件组编辑、本地表达式草稿与预览/保存/预演触发，验证 DolphinScheduler 式依赖配置 | R:code:datara-web/src/services/rebuild/dependencyApi.ts | A:服务端契约全经 dependencyApi，未接入时哨兵落统一状态栏；本地表达式草稿仅供表单即时反馈非终判 | S:独立验证页不进正式菜单
+
+===D:/需求/数据治理工具/Datara/datara-web/src/views/rebuild/validation/metrics/===
+MetricsValidationView.vue[EA7M]: F:R7 统计/质量/血缘验证页（契约已接线）：时间窗筛选下查询四张统计表、质量链与血缘回写并透传 unknown/estimated 标记 | R:code:datara-web/src/services/rebuild/metricsApi.ts | A:GREEN 标记待独立评审；未知与估算值按标记展示禁止前端推导 | S:独立验证页不进正式菜单（I11 融合）
+
+===D:/需求/数据治理工具/Datara/datara-web/src/views/rebuild/validation/resource-upload/===
+ResourceUploadValidationView.vue[ED6M]: F:R4 资源上传验证页（RED）：类型化文件选择与本地预校验真实运行，版本查询与显式版本绑定待后端接入 | R:code:datara-web/src/services/rebuild/resourceApi.ts | A:本地预校验（扩展名/大小）真实运行；服务端 I/O 未接入时哨兵落统一状态栏；界面不提供 latest 选项 | S:独立验证页不进正式菜单
+
+===D:/需求/数据治理工具/Datara/datara-web/src/views/rebuild/validation/schedule/===
+ScheduleValidationView.vue[EW6M]: F:I7 调度运行时验证页（RED）：触发注册表单与触发/队列/事件/告警观测面，全部 I/O 待后端接线 | R:code:datara-web/src/services/rebuild/scheduleApi.ts | A:全部契约方法未接线，哨兵 R6_SCHEDULER_NOT_WIRED 落统一横幅 | S:独立验证页不进正式菜单（I11 融合）
+
+===D:/需求/数据治理工具/Datara/datara-web/src/views/rebuild/validation/sql-ide-ddl/===
+SqlIdeDdlView.vue[ED7M]: F:R5-B DDL 写路径验证页（RED）：定义查看/编辑、三级管控结果、影响预览与人工确认短语闸 | R:code:datara-web/src/services/rebuild/sqlIdeDdlApi.ts, code:datara-web/src/views/rebuild/validation/sql-ide-readonly/components/SqlEditor.vue | A:block 级 finding 时确认按钮禁用（UI 层先行、服务端为准）；确认短语由用户在输入框亲自键入 | S:确认/执行/回滚均需用户人工闸（分工规则 5）
+
+===D:/需求/数据治理工具/Datara/datara-web/src/views/rebuild/validation/sql-ide-readonly/===
+SqlIdeReadonlyView.vue[ED7M]: F:R5-A SQL IDE 只读验证页（RED）：元数据树、SQL 编辑执行取消、多结果集分页与历史抽屉三栏布局 | R:code:datara-web/src/services/rebuild/sqlIdeApi.ts | A:契约全经 sqlIdeApi，A5 未接入时统一横幅提示；不改造正式 /ide SPA | S:不触发 R5 GREEN：真实控件验收待 A5 后端与人工闸
+
+===D:/需求/数据治理工具/Datara/datara-web/src/views/rebuild/validation/sql-ide-readonly/components/===
+HistoryDrawer.vue[ED4T]: F:R5-A 执行历史抽屉：父组件注入历史条目的只读列表展示 | R:code:datara-web/src/views/rebuild/validation/sql-ide-readonly/SqlIdeReadonlyView.vue | A:数据全部由父组件注入，组件自身不发请求 | S:-
+MetaTree.vue[ED5T]: F:R5-A 元数据懒加载树：九类对象层级渲染与未接入占位标记 | R:code:datara-web/src/services/rebuild/sqlIdeApi.ts | A:懒加载调用 sqlIde 契约（RED 阶段 NOT_WIRED）异常转占位节点并上抛 contract-error 事件 | S:-
+ResultGrid.vue[ED5T]: F:R5-A 页式结果网格：行数组转对象行渲染、分页控件与截断提示 | R:code:datara-web/src/views/rebuild/validation/sql-ide-readonly/SqlIdeReadonlyView.vue | A:不渲染全量大结果仅分页展示并提示截断；数据由父组件注入组件自身不发请求 | S:-
+SqlEditor.vue[ED5T]: F:R5-A 验证页专用 CodeMirror 6 SQL 编辑器：lang-sql 高亮、oneDark 主题与 v-model 双向绑定 | R:code:datara-web/src/views/rebuild/validation/sql-ide-readonly/SqlIdeReadonlyView.vue, code:datara-web/src/views/rebuild/validation/sql-ide-ddl/SqlIdeDdlView.vue | A:与正式 IDE 的 Monaco 编辑器完全独立，不引入 monaco-editor 避免验证页大包 | S:-
+
+===D:/需求/数据治理工具/Datara/datara-web/src/views/rebuild/validation/stream/===
+StreamValidationView.vue[EW6M]: F:I8 流处理观摩验证页（RED）：作业/尝试、位点/指标、观摩查询与恢复事件四观测面，全部 I/O 待后端接线 | R:code:datara-web/src/services/rebuild/streamApi.ts | A:全部契约方法未接线，哨兵 I8_STREAM_NOT_WIRED 落统一横幅 | S:独立验证页不进正式菜单（I11 融合）
 
