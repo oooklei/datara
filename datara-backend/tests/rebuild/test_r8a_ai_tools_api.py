@@ -78,6 +78,19 @@ class _FakeAuditWriter:
         return record["audit_id"]
 
 
+class _FakeFailureSink:
+    """Injected durable fallback sink for audit-writer outage details (ruling #178-2)."""
+
+    def __init__(self, *, fail=False):
+        self.records = []
+        self.fail = fail
+
+    def write(self, record):
+        if self.fail:
+            raise RuntimeError("failure sink down")
+        self.records.append(dict(record))
+
+
 def _fake_search_schema_handler(params, page_context, ctx):
     _fake_search_schema_handler.calls += 1  # R8A-05: zero-call assertion on denials
     return {
@@ -265,9 +278,10 @@ def test_post_version_mismatch_maps_tool_version_mismatch():
 def test_post_invalid_params_and_bad_page_context():
     client, _app, project_id, tokens, _writer = _bridge_app()
     try:
-        missing_sql = _call(client, tokens["dev"], "run_sql", params={"project_id": project_id, "datasource_id": 1})
-        assert missing_sql.status_code == 200
-        body = missing_sql.json()
+        # wired tool (search_schema) with a type-invalid optional param (§5 details)
+        bad_limit = _call(client, tokens["dev"], "search_schema", params={"project_id": project_id, "limit": "abc"})
+        assert bad_limit.status_code == 200
+        body = bad_limit.json()
         assert body["status"] == "ERROR"
         assert body["error"]["code"] == "INVALID_PARAMS"
         assert body["error"]["retryable"] is False
@@ -288,21 +302,49 @@ def test_post_invalid_params_and_bad_page_context():
         client.__exit__(None, None, None)
 
 
-def test_post_budget_static_enforcement():
+def test_disabled_tool_precedes_params_and_budget():
+    """Supervisor #178-3 ruling: auth > TOOL_DISABLED > params > budget (contract-fixed)."""
     client, _app, project_id, tokens, writer = _bridge_app()
     try:
         cases = [
-            ("run_sql", {"project_id": project_id, "datasource_id": 1, "sql": "SELECT 1", "row_limit": 2000}),
-            ("run_sql", {"project_id": project_id, "datasource_id": 1, "sql": "SELECT 1", "timeout_ms": 60000}),
-            ("validate_sql", {"project_id": project_id, "datasource_id": 1, "sql": "SELECT " + "1" * 102401}),
-            ("get_lineage", {"project_id": project_id, "entity_type": "TABLE", "entity": "a.b", "depth": 6}),
+            ("run_sql", {"project_id": project_id, "datasource_id": 1}),  # params problem
+            (
+                "run_sql",
+                {"project_id": project_id, "datasource_id": 1, "sql": "SELECT 1", "row_limit": 2000},
+            ),  # budget problem
+            (
+                "validate_sql",
+                {"project_id": project_id, "datasource_id": 1, "sql": "SELECT " + "1" * 102401},
+            ),  # budget problem
+            (
+                "get_lineage",
+                {"project_id": project_id, "entity_type": "TABLE", "entity": "a.b", "depth": 6},
+            ),  # budget problem
             (
                 "get_task_metrics",
-                {
-                    "project_id": project_id,
-                    "time_window": {"from": "2026-01-01T00:00:00Z", "to": "2026-06-30T00:00:00Z"},
-                },
-            ),
+                {"project_id": project_id, "time_window": {"from": "2026-01-01T00:00:00Z", "to": "2026-06-30T00:00:00Z"}},
+            ),  # budget problem
+        ]
+        for tool, params in cases:
+            response = _call(client, tokens["dev"], tool, params=params)
+            assert response.status_code == 200, tool
+            body = response.json()
+            assert body["status"] == "ERROR", tool
+            assert body["error"]["code"] == "TOOL_DISABLED", tool  # precedes params/budget
+            assert body["error"]["retryable"] is False, tool
+            record = writer.records[-1]
+            assert record["error_code"] == "TOOL_DISABLED" and record["outcome"] == "ERROR", tool
+        assert _fake_search_schema_handler.calls == 0
+    finally:
+        client.__exit__(None, None, None)
+
+
+def test_post_budget_static_enforcement():
+    client, _app, project_id, tokens, writer = _bridge_app()
+    try:
+        # budget gate is only reachable for WIRED tools (ruling #178-3); the
+        # unwired-tool budget cases live in test_disabled_tool_precedes_params_and_budget
+        cases = [
             ("search_schema", {"project_id": project_id, "limit": 200}),
         ]
         for tool, params in cases:
@@ -411,5 +453,55 @@ def test_post_audit_writer_failure_never_fakes_success():
         assert body["error"]["details"]["audit_write_failed"] is True  # traceable sink outage (§4)
         assert body["result"] is None  # handler ran, but unaudited success is forbidden
         assert writer.records == []  # nothing landed in the dead sink
+    finally:
+        client.__exit__(None, None, None)
+
+
+def test_audit_writer_outage_writes_durable_failure_detail_record():
+    """Ruling #178-2: outage -> wire marker AND durable failure detail record."""
+    sink = _FakeFailureSink()
+    client, _app, project_id, tokens, writer = _bridge_app(
+        audit_writer=_FakeAuditWriter(fail=True), audit_failure_sink=sink
+    )
+    try:
+        response = _call(client, tokens["dev"], "search_schema", params={"project_id": project_id})
+        body = response.json()
+        assert body["status"] == "ERROR"
+        assert body["error"]["code"] == "INTERNAL_ERROR"
+        assert body["error"]["details"]["audit_write_failed"] is True
+        assert writer.records == []  # primary sink still dead
+        assert len(sink.records) == 1
+        failure = sink.records[0]
+        assert failure["failure"] == "audit_write_failed"
+        assert failure["tool_call_id"] == body["tool_call_id"]
+        assert failure["project_id"] == project_id
+        assert failure["user_id"]
+        assert failure["reason"]
+    finally:
+        client.__exit__(None, None, None)
+
+
+def test_audit_writer_outage_without_failure_sink_never_fakes_success():
+    client, _app, project_id, tokens, writer = _bridge_app(audit_writer=_FakeAuditWriter(fail=True))
+    try:
+        response = _call(client, tokens["dev"], "search_schema", params={"project_id": project_id})
+        body = response.json()
+        assert body["status"] == "ERROR"
+        assert body["error"]["details"]["audit_write_failed"] is True  # fail-closed floor holds
+    finally:
+        client.__exit__(None, None, None)
+
+
+def test_failure_sink_outage_still_never_fakes_success():
+    sink = _FakeFailureSink(fail=True)
+    client, _app, project_id, tokens, writer = _bridge_app(
+        audit_writer=_FakeAuditWriter(fail=True), audit_failure_sink=sink
+    )
+    try:
+        response = _call(client, tokens["dev"], "search_schema", params={"project_id": project_id})
+        body = response.json()
+        assert body["status"] == "ERROR"
+        assert body["error"]["code"] == "INTERNAL_ERROR"
+        assert body["error"]["details"]["audit_write_failed"] is True
     finally:
         client.__exit__(None, None, None)
