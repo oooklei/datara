@@ -15,8 +15,10 @@ Red lines honored here:
 - Fail closed: ``build_ai_router`` refuses to mount without an injected audit
   writer; default ``create_app`` mounts no bridge at all, so no unaudited or
   ungoverned execution path can exist.
-- Honest errors: a registered tool without a wired handler returns
-  ``DEPENDENCY_UNAVAILABLE`` — no fabricated results (O7).
+- Honest errors: unwired PoC tools stay listed in the registry but report
+  ``enabled=False`` and refuse calls with ``TOOL_DISABLED`` — no fabricated
+  results (R8A-02/O7); handler-raised errors normalize to the frozen 12-code
+  space, never private codes.
 - Audit threads tool_call_id/user_id/roles/project_id/refs (P1-6' evidence
   interface); ``started_at``/``finished_at`` remain storage-generated in the real
   DB-backed writer (§4); audit write failure never fakes SUCCESS.
@@ -77,7 +79,7 @@ TOOL_REGISTRY: tuple[dict[str, Any], ...] = (
         "name": "search_schema",
         "version": TOOL_VERSION,
         "description": "检索项目元数据目录中的表/视图与列信息",
-        "enabled": True,
+        "enabled": False,  # dynamic at discovery: enabled ⇔ handler wired (R8A-02 PoC)
         "required_permissions": [Permission.VIEW_ALL.value],
         "timeout_ms": 10000,
         "retry_policy": IDEMPOTENT_RETRY,
@@ -87,7 +89,7 @@ TOOL_REGISTRY: tuple[dict[str, Any], ...] = (
         "name": "validate_sql",
         "version": TOOL_VERSION,
         "description": "复用 R5-A lintSql 链路校验 SQL 并返回问题列表",
-        "enabled": True,
+        "enabled": False,
         "required_permissions": [Permission.EDIT_DEFINITION.value],
         "timeout_ms": 10000,
         "retry_policy": IDEMPOTENT_RETRY,
@@ -97,7 +99,7 @@ TOOL_REGISTRY: tuple[dict[str, Any], ...] = (
         "name": "run_sql",
         "version": TOOL_VERSION,
         "description": "经 R5-A 统一执行链路执行 SQL（非幂等，不自动重试）",
-        "enabled": True,
+        "enabled": False,
         "required_permissions": [Permission.RUN_INSTANCE.value],
         "timeout_ms": 30000,
         "retry_policy": NO_AUTO_RETRY,
@@ -107,7 +109,7 @@ TOOL_REGISTRY: tuple[dict[str, Any], ...] = (
         "name": "get_workflow",
         "version": TOOL_VERSION,
         "description": "读取工作流定义概要（含发布状态与最新运行）",
-        "enabled": True,
+        "enabled": False,
         "required_permissions": [Permission.VIEW_ALL.value],
         "timeout_ms": 5000,
         "retry_policy": IDEMPOTENT_RETRY,
@@ -117,7 +119,7 @@ TOOL_REGISTRY: tuple[dict[str, Any], ...] = (
         "name": "validate_workflow",
         "version": TOOL_VERSION,
         "description": "复用统一 validate_graph 链路校验工作流定义",
-        "enabled": True,
+        "enabled": False,
         "required_permissions": [Permission.EDIT_DEFINITION.value],
         "timeout_ms": 15000,
         "retry_policy": IDEMPOTENT_RETRY,
@@ -127,7 +129,7 @@ TOOL_REGISTRY: tuple[dict[str, Any], ...] = (
         "name": "inspect_workflow_run",
         "version": TOOL_VERSION,
         "description": "读取工作流运行记录与任务明细诊断",
-        "enabled": True,
+        "enabled": False,
         "required_permissions": [Permission.VIEW_ALL.value],
         "timeout_ms": 5000,
         "retry_policy": IDEMPOTENT_RETRY,
@@ -137,7 +139,7 @@ TOOL_REGISTRY: tuple[dict[str, Any], ...] = (
         "name": "get_task_metrics",
         "version": TOOL_VERSION,
         "description": "读取统计四表的任务统计（不推导不补算）",
-        "enabled": True,
+        "enabled": False,
         "required_permissions": [Permission.VIEW_ALL.value],
         "timeout_ms": 10000,
         "retry_policy": IDEMPOTENT_RETRY,
@@ -147,7 +149,7 @@ TOOL_REGISTRY: tuple[dict[str, Any], ...] = (
         "name": "get_lineage",
         "version": TOOL_VERSION,
         "description": "读取血缘存储的上下游血缘（不推导）",
-        "enabled": True,
+        "enabled": False,
         "required_permissions": [Permission.VIEW_ALL.value],
         "timeout_ms": 10000,
         "retry_policy": IDEMPOTENT_RETRY,
@@ -178,7 +180,7 @@ ERROR_MESSAGES: dict[str, str] = {
     "PERMISSION_DENIED": "权限不足",
     "BUDGET_EXCEEDED": "预算策略越界",
     "NOT_FOUND": "目标实体不存在",
-    "DEPENDENCY_UNAVAILABLE": "工具执行端口未接线",
+    "DEPENDENCY_UNAVAILABLE": "下游依赖不可达",
     "EXECUTION_TIMEOUT": "执行超时",
     "EXECUTION_FAILED": "执行失败",
     "EXECUTION_CANCELLED": "执行已取消",
@@ -361,7 +363,8 @@ def build_ai_router(
             principal(token, authorization)
         except ValueError:
             return unauthorized()
-        return [dict(entry) for entry in TOOL_REGISTRY]
+        # enabled ⇔ handler wired: PoC lists unwired tools but reports them disabled (R8A-02)
+        return [{**entry, "enabled": entry["name"] in ports.handlers} for entry in TOOL_REGISTRY]
 
     @router.post("/api/v1/rebuild/ai/tool-calls")
     def invoke_tool(
@@ -463,14 +466,14 @@ def build_ai_router(
             return finish_error("TOOL_NOT_FOUND", False)
         if tool_version != entry["version"]:
             return finish_error("TOOL_VERSION_MISMATCH", False)
-        if not entry["enabled"]:
-            return finish_error("TOOL_DISABLED", False)
-        param_problems = validate_params(tool, params)
-        if param_problems:
-            return finish_error("INVALID_PARAMS", False, param_problems)
-        if budget_violation(tool, params):
-            return finish_error("BUDGET_EXCEEDED", False)
 
+        # R8A-05 order: trusted identity -> project authorization -> params/budget -> dispatch.
+        # The body project_id is only the authorization target, never the identity itself.
+        target_project_id = params.get("project_id")
+        if not isinstance(target_project_id, int):
+            return finish_error(
+                "INVALID_PARAMS", False, invalid_details({"project_id": "required integer"})
+            )
         role = str(user.get("role", ""))
         user_id = int(user.get("user_id", 0))
         permission = TOOL_PERMISSIONS[tool]
@@ -478,26 +481,36 @@ def build_ai_router(
             # §3: permission denial shares one canned message with ghost projects — no leak.
             return finish_error("PERMISSION_DENIED", False)
         with session_factory() as session:
-            project = session.get(ProjectRecord, params["project_id"])
+            project = session.get(ProjectRecord, target_project_id)
             if project is None:
                 return finish_error("PERMISSION_DENIED", False)
             if role != Role.ADMIN.value and project.owner_id != user_id:
                 member = session.scalar(
                     select(ProjectMemberRecord).where(
-                        ProjectMemberRecord.project_id == params["project_id"],
+                        ProjectMemberRecord.project_id == target_project_id,
                         ProjectMemberRecord.user_id == user_id,
                     )
                 )
                 if member is None or not authorize(member.role, permission):
                     return finish_error("PERMISSION_DENIED", False)
 
-        handler = ports.handlers.get(tool)
+        param_problems = validate_params(tool, params)
+        if param_problems:
+            return finish_error("INVALID_PARAMS", False, param_problems)
+        if budget_violation(tool, params):
+            return finish_error("BUDGET_EXCEEDED", False)
+        if tool not in ports.handlers:
+            # Dispatch stage (R8A-05 order): PoC lists unwired tools but refuses
+            # them honestly — no fake results (R8A-02).
+            return finish_error("TOOL_DISABLED", False)
+
+        handler = ports.handlers[tool]
         context: dict[str, Any] = {
             "tool_call_id": tool_call_id,
             "audit_id": audit_id,
             "user_id": user_id,
             "roles": [role],
-            "project_id": params["project_id"],
+            "project_id": target_project_id,
             "page_context": dict(page_context) if isinstance(page_context, Mapping) else None,
             "granted_permissions": [permission.value],
         }
@@ -506,35 +519,6 @@ def build_ai_router(
             if isinstance(page_context, Mapping) and isinstance(page_context.get("context_ref"), Mapping)
             else {}
         )
-        if handler is None:
-            record = audit_record(
-                audit_id=audit_id,
-                tool_call_id=tool_call_id,
-                tool=tool,
-                tool_version=tool_version,
-                user=user,
-                project_id=params["project_id"],
-                request_payload=dict(params),
-                outcome="ERROR",
-                error_code="DEPENDENCY_UNAVAILABLE",
-                latency_ms=int((time.perf_counter() - started) * 1000),
-                refs=page_refs,
-            )
-            try:
-                ports.audit_writer.write(record)
-            except Exception:
-                pass
-            return envelope(
-                tool_call_id=tool_call_id,
-                tool=tool,
-                tool_version=tool_version,
-                audit_id=audit_id,
-                server_time=server_time,
-                status="ERROR",
-                result=None,
-                error=error_payload("DEPENDENCY_UNAVAILABLE", True),
-            )
-
         try:
             result = dict(handler(params, page_context, context))
             outcome, error_code = "SUCCESS", None
