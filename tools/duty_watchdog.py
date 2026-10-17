@@ -39,6 +39,11 @@ SUMMARY_FILE = os.path.join(REPO, "tools", "watchdog_summary.txt")
 LINE_SILENCE_MIN = 3
 LINE_NOTIFY_DEDUP_MIN = 30
 
+# v5: the 监督线 (coordination session) gets its own liveness threshold and is
+# always given a popup + a relay-able wakeup text written to watchdog_summary.txt
+# (user directive 2026-10-18).
+SUPERVISOR_SILENCE_MIN = 3
+
 # v4: auto-wake engine — inject the built-in wakeup text into a silent line's
 # CLI session. AUTO_WAKE_DRY_RUN=False = real injection enabled (user-approved
 # 2026-10-18 after dry-run observation; codex exec confirmed unattended-capable).
@@ -71,8 +76,12 @@ WAKEUP_TEXTS = {
     "Claude": ("【监督线唤醒令 · Claude 实施线】立即执行：① cd d:\\需求\\数据治理工具\\Datara && git pull --ff-only（若因 index.lock/FETCH_HEAD 失败：等 5 秒重试一次，仍败则跳过同步直接读台账干活）；"
                "② git log --oneline -15 核对最新心跳号；③ 读 docs/handoff/2026-10-16-并行协作分工.md 尾部 60 行，"
                "认领你名下未竟派单/回执/修订，即领即做；④ 留守循环条款（#204/#210）：无任务落静默标记心跳"
-               "（待命状态+轮询锚点+无活时动作），存活以 git 产出为准、30 分钟内必须回执；"
-               "⑤ pathspec 单文件、零业务触碰、禁 aoci_*、禁 push。现在开始。"),
+              "（待命状态+轮询锚点+无活时动作），存活以 git 产出为准、30 分钟内必须回执；"
+              "⑤ pathspec 单文件、零业务触碰、禁 aoci_*、禁 push。现在开始。"),
+    "监督线": ("【值守唤醒令 · 质量监督线】你（协调会话）已静默超阈。立即执行："
+               "① 读 docs/handoff/2026-10-16-并行协作分工.md 尾部 60 行，核对心跳号与未竟派单；"
+               "② 处理待裁定/待复验/待派单事项，交付即派下一单、不留派单真空；"
+               "③ pathspec 单文件提交、零业务触碰、禁 push。现在继续。"),
 }
 
 
@@ -287,8 +296,13 @@ def scan_and_notify(state):
 
 
 def line_of_subject(subject):
+    # v5: most-specific marker wins first — an AOCI-guardian report is prefixed
+    # "监督线-AOCI守护" but belongs to the 守护线, not the 监督线.
+    if "AOCI守护" in subject:
+        return "守护线"
     best, best_pos = None, len(subject)
-    for key, name in LINE_KEYS:
+    for key, name in (("Trae", "Trae"), ("Codex", "Codex"),
+                      ("Claude", "Claude"), ("监督", "监督线")):
         p = subject.find(key)
         if p >= 0 and p < best_pos:
             best, best_pos = name, p
@@ -353,7 +367,8 @@ def check_line_silence(state):
             continue
         t = info["time"]
         silent_min = (datetime.now(t.tzinfo) - t).total_seconds() / 60.0
-        if silent_min < LINE_SILENCE_MIN:
+        threshold = SUPERVISOR_SILENCE_MIN if name == "监督线" else LINE_SILENCE_MIN
+        if silent_min < threshold:
             continue
         # v4.4: templated lines (Codex/Claude) go straight to auto-wake —
         # no popup/manual-forward, only auto_wake's own short dedup applies.
@@ -366,14 +381,21 @@ def check_line_silence(state):
         last_iso = notified.get(name)
         if last_iso and (datetime.now() - datetime.fromisoformat(last_iso)).total_seconds() / 60.0 < LINE_NOTIFY_DEDUP_MIN:
             continue
-        if name in WAKEUP_TEXTS:
+        wakeup = WAKEUP_TEXTS.get(name, "")
+        if wakeup:
             try:
                 with open(SUMMARY_FILE, "w", encoding="utf-8") as f:
                     f.write("[%s] %s 静默 %.0f 分钟\n\n%s\n" % (
                         datetime.now().strftime("%Y-%m-%d %H:%M:%S"), name,
-                        silent_min, WAKEUP_TEXTS[name]))
+                        silent_min, wakeup))
             except Exception:
                 pass
+        if name == "监督线":
+            popup = ("Datara 监督线存活提醒：监督线（协调会话）已静默 %.0f 分钟"
+                     "（最后产出 %s %s）。请在监督会话发送「继续」唤醒；"
+                     "唤醒令已写入 tools/watchdog_summary.txt。"
+                     % (silent_min, t.strftime("%H:%M"), info["hash"]))
+        elif wakeup:
             popup = ("Datara 值守提醒：%s 最后产出 %s（%s），已静默 %.0f 分钟，疑似掉线。"
                      "请将 tools/watchdog_summary.txt 中的唤醒令转发给该线。"
                      % (name, t.strftime("%H:%M"), info["hash"], silent_min))
