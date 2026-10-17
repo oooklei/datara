@@ -102,3 +102,10 @@ Codex 独立运行 `pytest -q tests/rebuild/test_r8a_generate_sql_port.py`：**6
 复核依据：Trae 心跳 #178（handoff 末尾）及 commits `753157f`/`94f104c`/`b9a214e`；步骤5计划 `docs/increments/2026-10-17-R8-V-Vanna-PoC-实施计划.md`。三名子智能体只读意见经主智能体对源码、测试及调用点复核后采纳；其中步骤5范围复核未运行测试，本节独立运行证据如上。本次仅更新本增量复核回执，不改 Trae 业务代码、不改 datara-web、不调用 AOCI、无远端 push。
 
 安全复核补充（子智能体只读，主智能体复核源码）：当前 CopilotAdapter 的原始 Vanna/LLM 错误已通过 from None 净化；风险限定为 generate_sql 对可注入 adapter 异常的通用 cause 保留。AdapterContext 校验身份格式，不做认证/授权；由于尚无生产调用方，当前没有已暴露 HTTP 越权路径，也没有授权 principal→project membership→AdapterContext 的接线证据。
+
+## 10. 监督 #181/#178 增量终验（安全小修与新增桥接测试）
+
+- 安全修复提交 `5ecc5fc` 将 `VannaAdapterError` 转换改为 `raise SqlGenerationError("generate_sql failed") from None`。Codex 独立复跑 `pytest -q tests/rebuild/test_r8a_generate_sql_port.py` = **6 passed in 0.24s**；`pytest -q tests/ai_copilot` = **12 passed in 0.24s**。这关闭前述异常 cause 风险（限此实现和这些测试），身份授权仍需生产接线验证。
+- 新增 `c2eb757` 桥接测试 Codex 独立运行 `pytest -q tests/rebuild/test_r8a_ai_tools_api.py` = **3 failed, 14 passed in 18.89s**。一项进入请求行为断言并证实 disabled 缺参请求错误优先级仍错（INVALID_PARAMS 应为 TOOL_DISABLED）；两项在测试 fixture 构造 `AiBridgePorts` 时因当前无 `audit_failure_sink` 参数而 TypeError，证明 sink seam 尚缺，但没有运行到响应级 durable fallback 断言。因此不得写成“durable fallback 行为已完成可诊断 RED”。
+- 并行只读审查确认新增断言方向符合 #178，但覆盖有界：disabled-vs-params/budget 样本未覆盖所有 disabled 工具/全部预算维度；failure reason 只断言 truthy，未证明脱敏；Fake sink 仅证明端口预期，不能证明生产耐久存储、重启后可读、failure sink 自身故障的生产告警/恢复。后续若测试/实现提交，应按这些边界验收；未接线不等于生产持久化通过。
+- 本节是增量状态，不关闭 P1-3。`run_sql` 的危险模式门、R5-A DB侧只读与项目数据源授权、生产端口/factory、生产 audit writer、FE 命名适配仍需按 #178/#181 范围验证。
