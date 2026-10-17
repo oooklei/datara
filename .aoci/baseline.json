@@ -1,8 +1,80 @@
 {
   "version": 1,
   "created_at": "2026-10-02T22:25:37Z",
-  "updated_at": "2026-10-15T17:15:44Z",
+  "updated_at": "2026-10-17T02:53:03Z",
   "files": {
+    ".claude/plans/2026-10-16-loop-runbook.md": {
+      "role": "index",
+      "sha256": "d8411d7fc4b3ba24fd4c506bcedce32343b6ddeeece23df35c239a5d54f61b43",
+      "size": 89823,
+      "normalized_sha256": "492da813d3c204e74d1e5c69f9c593cbaa9eedcaf384f115e9e11b8f82d4b7c4"
+    },
+    ".claude/port-ref/branch-migration_preflight.py": {
+      "role": "index",
+      "sha256": "84b84098ea1725934ce0d3268130d31894ffa9424d0ae066324e05eb47441388",
+      "size": 14164,
+      "normalized_sha256": "84b84098ea1725934ce0d3268130d31894ffa9424d0ae066324e05eb47441388"
+    },
+    ".claude/port-ref/branch-migrations.py": {
+      "role": "index",
+      "sha256": "9353b21f889e26119693cdb0766f19a838aab1dc2d2a5e92641c7d126d1403b9",
+      "size": 5781,
+      "normalized_sha256": "9353b21f889e26119693cdb0766f19a838aab1dc2d2a5e92641c7d126d1403b9"
+    },
+    ".claude/port-ref/branch-models.py": {
+      "role": "index",
+      "sha256": "45eb557e71cd3678601cfa9b8d0fccfd74045e8b58e06d3b13e052f5f2f311cf",
+      "size": 35414,
+      "normalized_sha256": "45eb557e71cd3678601cfa9b8d0fccfd74045e8b58e06d3b13e052f5f2f311cf"
+    },
+    ".claude/port-ref/branch-test_governance_migrations.py": {
+      "role": "index",
+      "sha256": "5931a2e21f9aac2af614e96929f23f3a72500ba811eead9da7f32774857c1714",
+      "size": 5968,
+      "normalized_sha256": "5931a2e21f9aac2af614e96929f23f3a72500ba811eead9da7f32774857c1714"
+    },
+    ".claude/port-ref/branch-test_governance_preflight.py": {
+      "role": "index",
+      "sha256": "1cbc1ea1d4efb7f2bdc62b07c70314b6e7a1700a937554fcaaf641e8ceaadb2a",
+      "size": 11111,
+      "normalized_sha256": "1cbc1ea1d4efb7f2bdc62b07c70314b6e7a1700a937554fcaaf641e8ceaadb2a"
+    },
+    ".claude/port-ref/branch-v0003_metadata_metric_carry_forward.py": {
+      "role": "index",
+      "sha256": "21a7b7e57ac9117ce77473497c10d0123571ceea3a071cbba8e6d5cfd0000388",
+      "size": 11984,
+      "normalized_sha256": "21a7b7e57ac9117ce77473497c10d0123571ceea3a071cbba8e6d5cfd0000388"
+    },
+    ".claude/specs/2026-10-16-loop-batches/spec.md": {
+      "role": "index",
+      "sha256": "4fe59c317d9abcf78a16078eb80292e2bbfff82676945fdc9cbb21750354dafa",
+      "size": 7082,
+      "normalized_sha256": "4fe59c317d9abcf78a16078eb80292e2bbfff82676945fdc9cbb21750354dafa"
+    },
+    ".claude/specs/2026-10-16-loop-batches/tasks.md": {
+      "role": "index",
+      "sha256": "7e85cc38e574a63cd8fc7457f69c431dba04ab30bba61d9e174787fe7c1ac94d",
+      "size": 2457,
+      "normalized_sha256": "7e85cc38e574a63cd8fc7457f69c431dba04ab30bba61d9e174787fe7c1ac94d"
+    },
+    ".claude/wip-preserve/codex-main-wip-staged-20261016.patch": {
+      "role": "index",
+      "sha256": "cde390589242f73cee374a61c16a074b0f30b149d0c6dbf0c3ef182c08ae7a00",
+      "size": 6240,
+      "normalized_sha256": "cde390589242f73cee374a61c16a074b0f30b149d0c6dbf0c3ef182c08ae7a00"
+    },
+    ".claude/wip-preserve/rebuild-validation-i2.html.codex-untracked": {
+      "role": "index",
+      "sha256": "471f274b7d3d88600b94d1197f1fe1c0ccbc45734d37bc45ec9343d85f8b8d48",
+      "size": 3051,
+      "normalized_sha256": "471f274b7d3d88600b94d1197f1fe1c0ccbc45734d37bc45ec9343d85f8b8d48"
+    },
+    ".claude/wip-preserve/run-r3-governance-control-smoke.ps1.codex-untracked": {
+      "role": "index",
+      "sha256": "741a5e3edf26169f81c9728cccb6f51629666a791a99e344496b5350c0e537f2",
+      "size": 1261,
+      "normalized_sha256": "741a5e3edf26169f81c9728cccb6f51629666a791a99e344496b5350c0e537f2"
+    },
     ".gitattributes": {
       "role": "index",
       "sha256": "21fa16a2122e2b0360b47502c577428b645437e08e9e87ffba661f84853cb476",
@@ -11,9 +83,9 @@
     },
     ".gitignore": {
       "role": "index",
-      "sha256": "d759be90a36785a71da3b8218363518a6fe94c51779fb6a2ced881ac5ece3b9f",
-      "size": 400,
-      "normalized_sha256": "d759be90a36785a71da3b8218363518a6fe94c51779fb6a2ced881ac5ece3b9f"
+      "sha256": "0954e3a0e81c3a43bc7572d1d47823e4926587b8ea3e249afcdfdc03fca46ad6",
+      "size": 595,
+      "normalized_sha256": "0954e3a0e81c3a43bc7572d1d47823e4926587b8ea3e249afcdfdc03fca46ad6"
     },
     ".mcp.json": {
       "role": "index",
@@ -128,9 +200,9 @@
     },
     "aoci.code.txt": {
       "role": "index",
-      "sha256": "81baf05f36badc298774b4fd98933f916e76daf92a3931e03c80b60f256470f8",
-      "size": 195467,
-      "normalized_sha256": "81baf05f36badc298774b4fd98933f916e76daf92a3931e03c80b60f256470f8"
+      "sha256": "f298f2591526cbfd96ba96fa4eaed165b24464578f0f5402f67ed70978e4cea4",
+      "size": 215437,
+      "normalized_sha256": "f298f2591526cbfd96ba96fa4eaed165b24464578f0f5402f67ed70978e4cea4"
     },
     "aoci.meta.txt": {
       "role": "index",
@@ -149,6 +221,12 @@
       "sha256": "d1d802435ba7ea95832d7dc3e74f3ae8103724c8194c0c06bdda345ac31ee934",
       "size": 979,
       "normalized_sha256": "d1d802435ba7ea95832d7dc3e74f3ae8103724c8194c0c06bdda345ac31ee934"
+    },
+    "datara-backend/Dockerfile.r2-12-d": {
+      "role": "index",
+      "sha256": "b870bb6e93d0c277b89ff2b89c5294578e82f978a18292a03a5c8dccfc4b1d08",
+      "size": 293,
+      "normalized_sha256": "b870bb6e93d0c277b89ff2b89c5294578e82f978a18292a03a5c8dccfc4b1d08"
     },
     "datara-backend/alert/__init__.py": {
       "role": "index",
@@ -668,9 +746,9 @@
     },
     "datara-backend/rebuild/api/app.py": {
       "role": "index",
-      "sha256": "f36a2c3025852ce092c6289695a61259aa2f07aba5d0818f11a5a1f57ebe036e",
-      "size": 12718,
-      "normalized_sha256": "f36a2c3025852ce092c6289695a61259aa2f07aba5d0818f11a5a1f57ebe036e"
+      "sha256": "6c3e747d58a1afe6619f9361a8320a8844107b193875e1189bcadd0d9a833f4c",
+      "size": 35483,
+      "normalized_sha256": "6c3e747d58a1afe6619f9361a8320a8844107b193875e1189bcadd0d9a833f4c"
     },
     "datara-backend/rebuild/common/__init__.py": {
       "role": "index",
@@ -692,9 +770,57 @@
     },
     "datara-backend/rebuild/datasource/contracts.py": {
       "role": "index",
-      "sha256": "88c679e316dd56584d7b72f16a57d731ba6111ab43a4921674e06d49335a841a",
-      "size": 2091,
-      "normalized_sha256": "88c679e316dd56584d7b72f16a57d731ba6111ab43a4921674e06d49335a841a"
+      "sha256": "6dc1d49de110a9792084ff573e8a0e840bf3b76bdcc38079794469a86508dfa1",
+      "size": 3025,
+      "normalized_sha256": "6dc1d49de110a9792084ff573e8a0e840bf3b76bdcc38079794469a86508dfa1"
+    },
+    "datara-backend/rebuild/datasource/metadata.py": {
+      "role": "index",
+      "sha256": "b3a1ecd2e1e72014e6090a7826209d0e5a0645a88dba4cc11ace90b480a34921",
+      "size": 9245,
+      "normalized_sha256": "b3a1ecd2e1e72014e6090a7826209d0e5a0645a88dba4cc11ace90b480a34921"
+    },
+    "datara-backend/rebuild/datasource/models.py": {
+      "role": "index",
+      "sha256": "34af79d61ec4177345213c3897bc72f4bc07eef29b756ab901fc4fb5396a7d27",
+      "size": 1363,
+      "normalized_sha256": "34af79d61ec4177345213c3897bc72f4bc07eef29b756ab901fc4fb5396a7d27"
+    },
+    "datara-backend/rebuild/datasource/pool.py": {
+      "role": "index",
+      "sha256": "d6bf4210f3076398cc67366af1e37d826cdc78aab02dc82dca6339705f44757b",
+      "size": 7479,
+      "normalized_sha256": "d6bf4210f3076398cc67366af1e37d826cdc78aab02dc82dca6339705f44757b"
+    },
+    "datara-backend/rebuild/datasource/repository.py": {
+      "role": "index",
+      "sha256": "7a610d38cc57d365d17cce0df447d1b447857b08843a5a58a4f70c62156ef3c7",
+      "size": 2117,
+      "normalized_sha256": "7a610d38cc57d365d17cce0df447d1b447857b08843a5a58a4f70c62156ef3c7"
+    },
+    "datara-backend/rebuild/dependency/__init__.py": {
+      "role": "index",
+      "sha256": "0df8d62a02b503862cf161e3aa86b1e20708a21aba193a8e7803a7d249a616b3",
+      "size": 85,
+      "normalized_sha256": "0df8d62a02b503862cf161e3aa86b1e20708a21aba193a8e7803a7d249a616b3"
+    },
+    "datara-backend/rebuild/dependency/api.py": {
+      "role": "index",
+      "sha256": "310bf7414907300a8ac41d8ab75ddbb6f4b7191e3c8d40ded2fbab0478556c43",
+      "size": 11128,
+      "normalized_sha256": "310bf7414907300a8ac41d8ab75ddbb6f4b7191e3c8d40ded2fbab0478556c43"
+    },
+    "datara-backend/rebuild/dependency/models.py": {
+      "role": "index",
+      "sha256": "f5f89fd6810beefcf03ef1cd9c9c85f2c7f8b1d24a2cd3f6ccee37eac5dc1328",
+      "size": 3267,
+      "normalized_sha256": "f5f89fd6810beefcf03ef1cd9c9c85f2c7f8b1d24a2cd3f6ccee37eac5dc1328"
+    },
+    "datara-backend/rebuild/dependency/repository.py": {
+      "role": "index",
+      "sha256": "ead0eb636d6d1b9c7aab1f731ac8a95002eb043f212244421ac16a634c400a28",
+      "size": 34260,
+      "normalized_sha256": "ead0eb636d6d1b9c7aab1f731ac8a95002eb043f212244421ac16a634c400a28"
     },
     "datara-backend/rebuild/governance/__init__.py": {
       "role": "index",
@@ -704,9 +830,9 @@
     },
     "datara-backend/rebuild/governance/api.py": {
       "role": "index",
-      "sha256": "a79f94d2fcfe9911dbda526e6af3d565643626fffebaa7e0faa050246ff1285b",
-      "size": 34063,
-      "normalized_sha256": "a79f94d2fcfe9911dbda526e6af3d565643626fffebaa7e0faa050246ff1285b"
+      "sha256": "f015ee473e3e050f128aa6d4d624fc3bd41cf23332fbfa1d759b023172f674c9",
+      "size": 82208,
+      "normalized_sha256": "f015ee473e3e050f128aa6d4d624fc3bd41cf23332fbfa1d759b023172f674c9"
     },
     "datara-backend/rebuild/governance/contracts.py": {
       "role": "index",
@@ -714,29 +840,131 @@
       "size": 2326,
       "normalized_sha256": "7f8d9643d6fbf164b54c32368ecc9bb6927e3486bac007537f3ff209ae07ccd8"
     },
+    "datara-backend/rebuild/governance/legacy_dry_run.py": {
+      "role": "index",
+      "sha256": "e297074807af3d141133493b1806f8064e9f30ce927faf61dabaae49e119ef41",
+      "size": 10241,
+      "normalized_sha256": "e297074807af3d141133493b1806f8064e9f30ce927faf61dabaae49e119ef41"
+    },
+    "datara-backend/rebuild/governance/legacy_i19_importer.py": {
+      "role": "index",
+      "sha256": "8b95d348162ab3350afb0a0e70e21df85ea435499b97473ef68acc3ebca6f4a8",
+      "size": 29757,
+      "normalized_sha256": "8b95d348162ab3350afb0a0e70e21df85ea435499b97473ef68acc3ebca6f4a8"
+    },
+    "datara-backend/rebuild/governance/legacy_i19_mapping.py": {
+      "role": "index",
+      "sha256": "86acfa4aa773991090ea5ec9181c31844721e3001f9f57dd742ea3efd9c76c1a",
+      "size": 21145,
+      "normalized_sha256": "86acfa4aa773991090ea5ec9181c31844721e3001f9f57dd742ea3efd9c76c1a"
+    },
+    "datara-backend/rebuild/governance/legacy_i20_importer.py": {
+      "role": "index",
+      "sha256": "e57e1ade6bf56cf1059cab7fe7f125e8f9eb29df1724f12dd2beaa0ca81e05b2",
+      "size": 28065,
+      "normalized_sha256": "e57e1ade6bf56cf1059cab7fe7f125e8f9eb29df1724f12dd2beaa0ca81e05b2"
+    },
+    "datara-backend/rebuild/governance/legacy_i20_mapping.py": {
+      "role": "index",
+      "sha256": "45d55a5fa3c29e82a5f63c0d11149108a4b9fb45531653b887cd28cd92dae679",
+      "size": 19072,
+      "normalized_sha256": "45d55a5fa3c29e82a5f63c0d11149108a4b9fb45531653b887cd28cd92dae679"
+    },
+    "datara-backend/rebuild/governance/legacy_i20_preview.py": {
+      "role": "index",
+      "sha256": "410b254a0e424e92c06ee2903dcc2027c9ae7476dc70aff8413620932d7234fc",
+      "size": 6459,
+      "normalized_sha256": "410b254a0e424e92c06ee2903dcc2027c9ae7476dc70aff8413620932d7234fc"
+    },
+    "datara-backend/rebuild/governance/legacy_i21_mapping.py": {
+      "role": "index",
+      "sha256": "2404575d4f4abb27ec3b35db49763d40ae95e293142544678d44edfefed886ac",
+      "size": 23103,
+      "normalized_sha256": "2404575d4f4abb27ec3b35db49763d40ae95e293142544678d44edfefed886ac"
+    },
+    "datara-backend/rebuild/governance/legacy_i21_preview.py": {
+      "role": "index",
+      "sha256": "dbe0dc7094306879101164807f8010c578a87992d1a41a976f9f8a66d2debdef",
+      "size": 11558,
+      "normalized_sha256": "dbe0dc7094306879101164807f8010c578a87992d1a41a976f9f8a66d2debdef"
+    },
+    "datara-backend/rebuild/governance/legacy_i22_mapping.py": {
+      "role": "index",
+      "sha256": "072a2dded172420164ee77174159de6350c2cd27ae9d1d2853663f00f67cf727",
+      "size": 18500,
+      "normalized_sha256": "072a2dded172420164ee77174159de6350c2cd27ae9d1d2853663f00f67cf727"
+    },
+    "datara-backend/rebuild/governance/legacy_i22_preview.py": {
+      "role": "index",
+      "sha256": "17d330b1df0d6319a43497ab9ab0d8896d8aa118483f9895f268da706762e204",
+      "size": 6561,
+      "normalized_sha256": "17d330b1df0d6319a43497ab9ab0d8896d8aa118483f9895f268da706762e204"
+    },
+    "datara-backend/rebuild/governance/legacy_i23_mapping.py": {
+      "role": "index",
+      "sha256": "d9348911277b505f7fbe6d80ddc1bf6daa2b5fdee26d85c608d78a4426bd3388",
+      "size": 9314,
+      "normalized_sha256": "d9348911277b505f7fbe6d80ddc1bf6daa2b5fdee26d85c608d78a4426bd3388"
+    },
+    "datara-backend/rebuild/governance/legacy_i23_preview.py": {
+      "role": "index",
+      "sha256": "f9bfdd4c954a87d6b44c0afa9c43a5d7be48607919e126928c2ef9270599f2bc",
+      "size": 12418,
+      "normalized_sha256": "f9bfdd4c954a87d6b44c0afa9c43a5d7be48607919e126928c2ef9270599f2bc"
+    },
+    "datara-backend/rebuild/governance/legacy_importer.py": {
+      "role": "index",
+      "sha256": "c4eaf838c35ba8bd07e3d098f7fccd70a4c3f8e11492e9051ef963c4618c379d",
+      "size": 21748,
+      "normalized_sha256": "c4eaf838c35ba8bd07e3d098f7fccd70a4c3f8e11492e9051ef963c4618c379d"
+    },
+    "datara-backend/rebuild/governance/legacy_mapping.py": {
+      "role": "index",
+      "sha256": "7cfffa6b852606fb381c2dcc5232b9242b9251676fddeb1f1094aa5822a804dd",
+      "size": 20460,
+      "normalized_sha256": "7cfffa6b852606fb381c2dcc5232b9242b9251676fddeb1f1094aa5822a804dd"
+    },
+    "datara-backend/rebuild/governance/legacy_migration_service.py": {
+      "role": "index",
+      "sha256": "4c9cc804b18f809137a40f708d1362f0f0ce18da3f1970404adee400391702d2",
+      "size": 5679,
+      "normalized_sha256": "4c9cc804b18f809137a40f708d1362f0f0ce18da3f1970404adee400391702d2"
+    },
+    "datara-backend/rebuild/governance/legacy_source_reader.py": {
+      "role": "index",
+      "sha256": "6df0eba43731b81bb0af83ccba13efe5b154ddee7f2519a4033dc97d8e230967",
+      "size": 28580,
+      "normalized_sha256": "6df0eba43731b81bb0af83ccba13efe5b154ddee7f2519a4033dc97d8e230967"
+    },
     "datara-backend/rebuild/governance/migration_apply.py": {
       "role": "index",
       "sha256": "26ae0ed913face9c5f2ee386ac98b9bc92215e7afbeac92b3cf54375b8eac9a7",
       "size": 2718,
       "normalized_sha256": "26ae0ed913face9c5f2ee386ac98b9bc92215e7afbeac92b3cf54375b8eac9a7"
     },
+    "datara-backend/rebuild/governance/migration_checkpoints.py": {
+      "role": "index",
+      "sha256": "48d49146b8d23334c9805d7b41035e2793844718aede22862d8333b730c438e6",
+      "size": 9260,
+      "normalized_sha256": "48d49146b8d23334c9805d7b41035e2793844718aede22862d8333b730c438e6"
+    },
     "datara-backend/rebuild/governance/migration_preflight.py": {
       "role": "index",
-      "sha256": "01482655c80ce07d1afdc938aaac7bb47344fb449f70e77385fcfa51682ae2e2",
-      "size": 7935,
-      "normalized_sha256": "01482655c80ce07d1afdc938aaac7bb47344fb449f70e77385fcfa51682ae2e2"
+      "sha256": "14c6342dd860c376c3235f5a469044d51d952f89bbd9438a925dc03717021301",
+      "size": 12871,
+      "normalized_sha256": "14c6342dd860c376c3235f5a469044d51d952f89bbd9438a925dc03717021301"
     },
     "datara-backend/rebuild/governance/migrations.py": {
       "role": "index",
-      "sha256": "48ed4a6250a437310427019aec8911be83664db2aa1eee057a13f5450f3933fe",
-      "size": 5252,
-      "normalized_sha256": "48ed4a6250a437310427019aec8911be83664db2aa1eee057a13f5450f3933fe"
+      "sha256": "3911ada86f8fad462667f7b410cb8fd814fd15fc875bb629ff531093c74ca4a1",
+      "size": 5661,
+      "normalized_sha256": "3911ada86f8fad462667f7b410cb8fd814fd15fc875bb629ff531093c74ca4a1"
     },
     "datara-backend/rebuild/governance/models.py": {
       "role": "index",
-      "sha256": "32477764b98dcd12ec9c01400f5ab6abf9dfe1cc39929d81adbb71599a66759a",
-      "size": 15180,
-      "normalized_sha256": "32477764b98dcd12ec9c01400f5ab6abf9dfe1cc39929d81adbb71599a66759a"
+      "sha256": "891f69deed6b858c7bae1a3e04493130eb077d24b1c859747708bc530eadc76e",
+      "size": 45284,
+      "normalized_sha256": "891f69deed6b858c7bae1a3e04493130eb077d24b1c859747708bc530eadc76e"
     },
     "datara-backend/rebuild/governance/repository.py": {
       "role": "index",
@@ -756,11 +984,23 @@
       "size": 610,
       "normalized_sha256": "9604b3ad4803280324458a9770c82d3e759eb27d4dadadb1b34c7eb60bfbe313"
     },
+    "datara-backend/rebuild/governance/revisions/v0002_legacy_governance_carryforward.py": {
+      "role": "index",
+      "sha256": "54914c5c157deb0b28183b07c02ec1b717a5b68206c4bc348a063a2150a31706",
+      "size": 1202,
+      "normalized_sha256": "54914c5c157deb0b28183b07c02ec1b717a5b68206c4bc348a063a2150a31706"
+    },
     "datara-backend/rebuild/governance/service.py": {
       "role": "index",
       "sha256": "64394a441b8093dff6bbd823e35b49116c325c548c75e6b8dc90dea5f3f5b021",
       "size": 1593,
       "normalized_sha256": "64394a441b8093dff6bbd823e35b49116c325c548c75e6b8dc90dea5f3f5b021"
+    },
+    "datara-backend/rebuild/governance/snapshot_repository.py": {
+      "role": "index",
+      "sha256": "46d5270d2b45460845f7725c379fec6b296d75e50df38a36eef503e32de5427d",
+      "size": 11910,
+      "normalized_sha256": "46d5270d2b45460845f7725c379fec6b296d75e50df38a36eef503e32de5427d"
     },
     "datara-backend/rebuild/identity/__init__.py": {
       "role": "index",
@@ -770,9 +1010,9 @@
     },
     "datara-backend/rebuild/identity/contracts.py": {
       "role": "index",
-      "sha256": "21fbdf605059c031fd8be28e5bca25c6ad80306c19ceb2be6c85a9c4f1401eae",
-      "size": 3334,
-      "normalized_sha256": "21fbdf605059c031fd8be28e5bca25c6ad80306c19ceb2be6c85a9c4f1401eae"
+      "sha256": "28853b67cd38fc9f70ed3684e28d6ced7caa1cb1c6e670f0a79c8d2bdec11679",
+      "size": 3976,
+      "normalized_sha256": "28853b67cd38fc9f70ed3684e28d6ced7caa1cb1c6e670f0a79c8d2bdec11679"
     },
     "datara-backend/rebuild/identity/models.py": {
       "role": "index",
@@ -785,6 +1025,12 @@
       "sha256": "818cc4583040ddab4ded610d2b247f2aaa34f231405d492288864c1f24b677b4",
       "size": 1289,
       "normalized_sha256": "818cc4583040ddab4ded610d2b247f2aaa34f231405d492288864c1f24b677b4"
+    },
+    "datara-backend/rebuild/identity/provision_admin.py": {
+      "role": "index",
+      "sha256": "fb69320c098210553f77a4986d5d910c7861e8ea1bba58ae88678e23cc0516b1",
+      "size": 4640,
+      "normalized_sha256": "fb69320c098210553f77a4986d5d910c7861e8ea1bba58ae88678e23cc0516b1"
     },
     "datara-backend/rebuild/identity/repository.py": {
       "role": "index",
@@ -812,15 +1058,15 @@
     },
     "datara-backend/rebuild/project/repository.py": {
       "role": "index",
-      "sha256": "fb9f8f4ac06c5a75e7dd2725bc3b1dd475369f31f19c0fdcd991d64bee26475d",
-      "size": 778,
-      "normalized_sha256": "fb9f8f4ac06c5a75e7dd2725bc3b1dd475369f31f19c0fdcd991d64bee26475d"
+      "sha256": "3e4b8617750c0848bc82766bb42d83d9126ae22a13dcc48e2257c02d58cdb251",
+      "size": 1252,
+      "normalized_sha256": "3e4b8617750c0848bc82766bb42d83d9126ae22a13dcc48e2257c02d58cdb251"
     },
     "datara-backend/requirements.txt": {
       "role": "index",
-      "sha256": "683700150a8749c261f9e9e082712804c2b95abe151dd568cbc22b6915d70cc3",
-      "size": 1692,
-      "normalized_sha256": "683700150a8749c261f9e9e082712804c2b95abe151dd568cbc22b6915d70cc3"
+      "sha256": "df96f4b8fdbcb815820ee41b48cfcc53bf6caf09ff4b256601d1630c9d86da89",
+      "size": 1740,
+      "normalized_sha256": "df96f4b8fdbcb815820ee41b48cfcc53bf6caf09ff4b256601d1630c9d86da89"
     },
     "datara-backend/scripts/apply_m_b1_drafts.py": {
       "role": "index",
@@ -953,6 +1199,24 @@
       "size": 1,
       "normalized_sha256": "01ba4719c80b6fe911b091a7c05124b64eeece964e09c058ef8f9805daca546b"
     },
+    "datara-backend/tests/rebuild/test_admin_provisioning.py": {
+      "role": "observe",
+      "sha256": "1ce61c3154efcf970d7acb2f913e1d827475e4a053a3cf1446284d49faca31d6",
+      "size": 3325,
+      "normalized_sha256": "1ce61c3154efcf970d7acb2f913e1d827475e4a053a3cf1446284d49faca31d6"
+    },
+    "datara-backend/tests/rebuild/test_datasource_metadata.py": {
+      "role": "observe",
+      "sha256": "7aa20f26ede6fde41dceb69f4d88a57d8adc127ca60879ba5fb3324ca3a54408",
+      "size": 4943,
+      "normalized_sha256": "7aa20f26ede6fde41dceb69f4d88a57d8adc127ca60879ba5fb3324ca3a54408"
+    },
+    "datara-backend/tests/rebuild/test_datasource_pool.py": {
+      "role": "observe",
+      "sha256": "575b7cd5dcc58045dbbb487bfbc1491e0f90ed07a0375d6bdb8b32f097910e8e",
+      "size": 4944,
+      "normalized_sha256": "575b7cd5dcc58045dbbb487bfbc1491e0f90ed07a0375d6bdb8b32f097910e8e"
+    },
     "datara-backend/tests/rebuild/test_governance_api.py": {
       "role": "observe",
       "sha256": "4874e5601b815b73a76dc1a86541cff1fe8df33fe264b1c7dfa3bce500de8706",
@@ -965,29 +1229,197 @@
       "size": 9280,
       "normalized_sha256": "d06a17c6319b116d9622784c688ba622c9a8de878ff37ad412aa43477e57635b"
     },
+    "datara-backend/tests/rebuild/test_governance_legacy_carryforward.py": {
+      "role": "observe",
+      "sha256": "5da57b10c780a85f571ca5127a44901aab6573988a2fa25e040f66986cfab771",
+      "size": 5290,
+      "normalized_sha256": "5da57b10c780a85f571ca5127a44901aab6573988a2fa25e040f66986cfab771"
+    },
+    "datara-backend/tests/rebuild/test_governance_legacy_dry_run.py": {
+      "role": "observe",
+      "sha256": "a650f2e0d0bfdb86bd8ff3a4064d811e3085d17893414ca9f40cbfb330542ad1",
+      "size": 7700,
+      "normalized_sha256": "a650f2e0d0bfdb86bd8ff3a4064d811e3085d17893414ca9f40cbfb330542ad1"
+    },
+    "datara-backend/tests/rebuild/test_governance_legacy_dry_run_api.py": {
+      "role": "observe",
+      "sha256": "6f826700ef7c0747c3cef656038dc50801dbc58cf7f8f77885147d706dc02df1",
+      "size": 18549,
+      "normalized_sha256": "6f826700ef7c0747c3cef656038dc50801dbc58cf7f8f77885147d706dc02df1"
+    },
+    "datara-backend/tests/rebuild/test_governance_legacy_i19_i20_import_api.py": {
+      "role": "observe",
+      "sha256": "7b0505beaf170554efb7cad716db39730e1274010b47765407ce29106aaad646",
+      "size": 9831,
+      "normalized_sha256": "7b0505beaf170554efb7cad716db39730e1274010b47765407ce29106aaad646"
+    },
+    "datara-backend/tests/rebuild/test_governance_legacy_i19_importer.py": {
+      "role": "observe",
+      "sha256": "6aa86bc17493c86ec9f916f42439ca6c186b94929951e896ff860b240f170a04",
+      "size": 14898,
+      "normalized_sha256": "6aa86bc17493c86ec9f916f42439ca6c186b94929951e896ff860b240f170a04"
+    },
+    "datara-backend/tests/rebuild/test_governance_legacy_i19_mapping.py": {
+      "role": "observe",
+      "sha256": "fb34dfb5de52bed6d7c59f8e23212897ac7fb6a97bc3d5729b31ea207c5e3bd9",
+      "size": 8940,
+      "normalized_sha256": "fb34dfb5de52bed6d7c59f8e23212897ac7fb6a97bc3d5729b31ea207c5e3bd9"
+    },
+    "datara-backend/tests/rebuild/test_governance_legacy_i19_preview_api.py": {
+      "role": "observe",
+      "sha256": "20e42f8e04c8efd7af11b038b072b08721271e0a4e52e5542824e79472706092",
+      "size": 6197,
+      "normalized_sha256": "20e42f8e04c8efd7af11b038b072b08721271e0a4e52e5542824e79472706092"
+    },
+    "datara-backend/tests/rebuild/test_governance_legacy_i19_source_reader.py": {
+      "role": "observe",
+      "sha256": "8d5cda41b81b4807631b0a66527ca20ddc3932bf8f0e320094272f360fdb4e65",
+      "size": 5944,
+      "normalized_sha256": "8d5cda41b81b4807631b0a66527ca20ddc3932bf8f0e320094272f360fdb4e65"
+    },
+    "datara-backend/tests/rebuild/test_governance_legacy_i20_importer.py": {
+      "role": "observe",
+      "sha256": "c82c1534c8115fd798a4af915a9703cd9afb41c8ec14fda1ece94e023a94a4fc",
+      "size": 10635,
+      "normalized_sha256": "c82c1534c8115fd798a4af915a9703cd9afb41c8ec14fda1ece94e023a94a4fc"
+    },
+    "datara-backend/tests/rebuild/test_governance_legacy_i20_mapping.py": {
+      "role": "observe",
+      "sha256": "c8b0c05d4295bfab0a9354b6eb2f1a543cb8b93a232e9442ad837dc04474359c",
+      "size": 7873,
+      "normalized_sha256": "c8b0c05d4295bfab0a9354b6eb2f1a543cb8b93a232e9442ad837dc04474359c"
+    },
+    "datara-backend/tests/rebuild/test_governance_legacy_i20_preview_api.py": {
+      "role": "observe",
+      "sha256": "d9f8e9e63af6937fda3db3a8d78c969491711f076de8a773c2cf5a26ab24d32b",
+      "size": 9130,
+      "normalized_sha256": "d9f8e9e63af6937fda3db3a8d78c969491711f076de8a773c2cf5a26ab24d32b"
+    },
+    "datara-backend/tests/rebuild/test_governance_legacy_i20_source_reader.py": {
+      "role": "observe",
+      "sha256": "c9b0656685b11fb913859a8d639a92c1f45b7100cbe5274d2ca7122838c43766",
+      "size": 5662,
+      "normalized_sha256": "c9b0656685b11fb913859a8d639a92c1f45b7100cbe5274d2ca7122838c43766"
+    },
+    "datara-backend/tests/rebuild/test_governance_legacy_i21_mapping.py": {
+      "role": "observe",
+      "sha256": "7e8c955f103c0ac2257167bec7d921fec04c3ce8eec12693bb0cb846b25f741e",
+      "size": 12605,
+      "normalized_sha256": "7e8c955f103c0ac2257167bec7d921fec04c3ce8eec12693bb0cb846b25f741e"
+    },
+    "datara-backend/tests/rebuild/test_governance_legacy_i21_preview_api.py": {
+      "role": "observe",
+      "sha256": "1ec4fb32735df85f76c3667d2d0d4f217f3281ab41681347ba96250c29cc7b94",
+      "size": 12633,
+      "normalized_sha256": "1ec4fb32735df85f76c3667d2d0d4f217f3281ab41681347ba96250c29cc7b94"
+    },
+    "datara-backend/tests/rebuild/test_governance_legacy_i21_source_reader.py": {
+      "role": "observe",
+      "sha256": "4859b4077810ead42974cf52620fab7486985cc4219c91979ab6abf634599dd6",
+      "size": 5670,
+      "normalized_sha256": "4859b4077810ead42974cf52620fab7486985cc4219c91979ab6abf634599dd6"
+    },
+    "datara-backend/tests/rebuild/test_governance_legacy_i22_mapping.py": {
+      "role": "observe",
+      "sha256": "cc1f42c209e813e6ac40b9920bd7118c11ae0eb113fcd4fd10fb5f3e0cdd9099",
+      "size": 7515,
+      "normalized_sha256": "cc1f42c209e813e6ac40b9920bd7118c11ae0eb113fcd4fd10fb5f3e0cdd9099"
+    },
+    "datara-backend/tests/rebuild/test_governance_legacy_i22_preview_api.py": {
+      "role": "observe",
+      "sha256": "58832bc95a378507868775f08f31fdf5dde19b4f1072f18dbf28ada55e5e51d6",
+      "size": 6749,
+      "normalized_sha256": "58832bc95a378507868775f08f31fdf5dde19b4f1072f18dbf28ada55e5e51d6"
+    },
+    "datara-backend/tests/rebuild/test_governance_legacy_i22_source_reader.py": {
+      "role": "observe",
+      "sha256": "c8426f67f8c8383cb031db7fb9dcd13dc7cddc65d1148d7e12f98719e1266406",
+      "size": 5275,
+      "normalized_sha256": "c8426f67f8c8383cb031db7fb9dcd13dc7cddc65d1148d7e12f98719e1266406"
+    },
+    "datara-backend/tests/rebuild/test_governance_legacy_i23_mapping.py": {
+      "role": "observe",
+      "sha256": "877c0e78bde72acd925bfe831899b252160bb27c4e15eb8715c6a474e309fe75",
+      "size": 4233,
+      "normalized_sha256": "877c0e78bde72acd925bfe831899b252160bb27c4e15eb8715c6a474e309fe75"
+    },
+    "datara-backend/tests/rebuild/test_governance_legacy_i23_preview_api.py": {
+      "role": "observe",
+      "sha256": "e9339466415c1d7266ae86710b3708dfd7d66734a63b91be095e2dd68bc1ec72",
+      "size": 7831,
+      "normalized_sha256": "e9339466415c1d7266ae86710b3708dfd7d66734a63b91be095e2dd68bc1ec72"
+    },
+    "datara-backend/tests/rebuild/test_governance_legacy_i23_source_reader.py": {
+      "role": "observe",
+      "sha256": "6617fee9951757cafe04515efcfd484042e435fabb6873c63ec9cfa8ed83b835",
+      "size": 4334,
+      "normalized_sha256": "6617fee9951757cafe04515efcfd484042e435fabb6873c63ec9cfa8ed83b835"
+    },
+    "datara-backend/tests/rebuild/test_governance_legacy_import_checkpoints.py": {
+      "role": "observe",
+      "sha256": "7a2eeecfd6b760c4b6591c41919b2fefe3d0bcb6a1a8c1613ee3742221466b61",
+      "size": 5330,
+      "normalized_sha256": "7a2eeecfd6b760c4b6591c41919b2fefe3d0bcb6a1a8c1613ee3742221466b61"
+    },
+    "datara-backend/tests/rebuild/test_governance_legacy_import_scope.py": {
+      "role": "observe",
+      "sha256": "8e8efbb1986b4a05123c75b9efcfea0031dc87092f8e716aa20dcf51f52fb547",
+      "size": 1537,
+      "normalized_sha256": "8e8efbb1986b4a05123c75b9efcfea0031dc87092f8e716aa20dcf51f52fb547"
+    },
+    "datara-backend/tests/rebuild/test_governance_legacy_importer.py": {
+      "role": "observe",
+      "sha256": "b8ddaa9974542da3d7a643acac7ddb6c7597b92cbe26798e4289bb3dc4d89780",
+      "size": 16389,
+      "normalized_sha256": "b8ddaa9974542da3d7a643acac7ddb6c7597b92cbe26798e4289bb3dc4d89780"
+    },
+    "datara-backend/tests/rebuild/test_governance_legacy_mapping.py": {
+      "role": "observe",
+      "sha256": "95827b97258be771d2b025956e95d1e5ad2b1c9fa329ad972bc02274c7768c50",
+      "size": 19277,
+      "normalized_sha256": "95827b97258be771d2b025956e95d1e5ad2b1c9fa329ad972bc02274c7768c50"
+    },
+    "datara-backend/tests/rebuild/test_governance_legacy_migration_service.py": {
+      "role": "observe",
+      "sha256": "f21c25fdd381e3e14d12c458ada8f42b37e2f888cb22f662c175ede217960ce5",
+      "size": 4658,
+      "normalized_sha256": "f21c25fdd381e3e14d12c458ada8f42b37e2f888cb22f662c175ede217960ce5"
+    },
+    "datara-backend/tests/rebuild/test_governance_legacy_snapshot_repository.py": {
+      "role": "observe",
+      "sha256": "cdba3eb8e8a417d8d4a4df05e0bf1e2baab3288c178e0cc5c77cce32f32012e9",
+      "size": 12206,
+      "normalized_sha256": "cdba3eb8e8a417d8d4a4df05e0bf1e2baab3288c178e0cc5c77cce32f32012e9"
+    },
+    "datara-backend/tests/rebuild/test_governance_legacy_source_reader.py": {
+      "role": "observe",
+      "sha256": "24c46b71edd5d9dd66fc704652cb0c25200f6b20ee4a98f611852f6fbeb4295e",
+      "size": 5785,
+      "normalized_sha256": "24c46b71edd5d9dd66fc704652cb0c25200f6b20ee4a98f611852f6fbeb4295e"
+    },
     "datara-backend/tests/rebuild/test_governance_migrations.py": {
       "role": "observe",
-      "sha256": "5ae58ecee8c7cc6991c9db66165a6d24d6944e1d1b4dcc54bc6057dcbba61e68",
-      "size": 4291,
-      "normalized_sha256": "5ae58ecee8c7cc6991c9db66165a6d24d6944e1d1b4dcc54bc6057dcbba61e68"
+      "sha256": "eb738366ef0efd2409ede2c1ac27aba4aeca30e154e07c029cfa76f3c411d021",
+      "size": 6808,
+      "normalized_sha256": "eb738366ef0efd2409ede2c1ac27aba4aeca30e154e07c029cfa76f3c411d021"
     },
     "datara-backend/tests/rebuild/test_governance_preflight.py": {
       "role": "observe",
-      "sha256": "dec8b7a98e96add4b2a0d91308db7ff2eaa670aa04663d18ea089c6aa8e9cc96",
-      "size": 3194,
-      "normalized_sha256": "dec8b7a98e96add4b2a0d91308db7ff2eaa670aa04663d18ea089c6aa8e9cc96"
+      "sha256": "2756bf210068ce830921aa235e1d9bb92fe2eeb4c80c283c1cdc3c6bcb12e460",
+      "size": 11733,
+      "normalized_sha256": "2756bf210068ce830921aa235e1d9bb92fe2eeb4c80c283c1cdc3c6bcb12e460"
     },
     "datara-backend/tests/rebuild/test_identity_api.py": {
       "role": "observe",
-      "sha256": "875502f402c305258c3bdfa200668b229c170e0e06dffce9fc1da3ccc24140be",
-      "size": 8992,
-      "normalized_sha256": "875502f402c305258c3bdfa200668b229c170e0e06dffce9fc1da3ccc24140be"
+      "sha256": "dd7db4b90960c1c9737fe9014cb580aca1d3f8d592abbbe983a1e664d0c1d66d",
+      "size": 12522,
+      "normalized_sha256": "dd7db4b90960c1c9737fe9014cb580aca1d3f8d592abbbe983a1e664d0c1d66d"
     },
     "datara-backend/tests/rebuild/test_identity_contract.py": {
       "role": "observe",
-      "sha256": "93ca9663fd180b837bd4b2ff7d3763dffaba9e64646d848420d139c40f6b52cc",
-      "size": 1018,
-      "normalized_sha256": "93ca9663fd180b837bd4b2ff7d3763dffaba9e64646d848420d139c40f6b52cc"
+      "sha256": "3c47e8fc0a4ff80b26a0933a164599786b012a96229a5a42ad47c384aa2b7a51",
+      "size": 1496,
+      "normalized_sha256": "3c47e8fc0a4ff80b26a0933a164599786b012a96229a5a42ad47c384aa2b7a51"
     },
     "datara-backend/tests/rebuild/test_persistence_contract.py": {
       "role": "observe",
@@ -995,11 +1427,71 @@
       "size": 806,
       "normalized_sha256": "8e94daccfdfde92d8cdde5801d8e7f5e54078d801adfb150c665f9a1013eeff7"
     },
+    "datara-backend/tests/rebuild/test_postgresql_metadata.py": {
+      "role": "observe",
+      "sha256": "a45df32069ac788883780aedd56be29b87889d3405c565e8c8a335ce5cdfbb80",
+      "size": 3682,
+      "normalized_sha256": "a45df32069ac788883780aedd56be29b87889d3405c565e8c8a335ce5cdfbb80"
+    },
+    "datara-backend/tests/rebuild/test_project_datasource_api.py": {
+      "role": "observe",
+      "sha256": "7a6b89ae0c2adc41e26274b091aecc553ad18a5592a126cf00c9668f340cf0eb",
+      "size": 15169,
+      "normalized_sha256": "7a6b89ae0c2adc41e26274b091aecc553ad18a5592a126cf00c9668f340cf0eb"
+    },
     "datara-backend/tests/rebuild/test_project_datasource_contract.py": {
       "role": "observe",
-      "sha256": "88d09ff25cf9eb2509333983c15439e11649cf3b006b70d630798c8aecca2509",
-      "size": 1115,
-      "normalized_sha256": "88d09ff25cf9eb2509333983c15439e11649cf3b006b70d630798c8aecca2509"
+      "sha256": "2db7399078c639a9f12d3cc84ed68eaccbb4f28058061e39758a0c4b6e4cd11a",
+      "size": 4180,
+      "normalized_sha256": "2db7399078c639a9f12d3cc84ed68eaccbb4f28058061e39758a0c4b6e4cd11a"
+    },
+    "datara-backend/tests/rebuild/test_r2_12_c_runner.py": {
+      "role": "observe",
+      "sha256": "bdc09279d618714d1d6df26c1da2995c5cb84648665d6d0009b05dbd7cd5a362",
+      "size": 2288,
+      "normalized_sha256": "bdc09279d618714d1d6df26c1da2995c5cb84648665d6d0009b05dbd7cd5a362"
+    },
+    "datara-backend/tests/rebuild/test_r2_12_d_runner.py": {
+      "role": "observe",
+      "sha256": "451bfcb30c111b649efc43cb77585cfede59f290f9a3c6b11cd751a24be76713",
+      "size": 2811,
+      "normalized_sha256": "451bfcb30c111b649efc43cb77585cfede59f290f9a3c6b11cd751a24be76713"
+    },
+    "datara-backend/tests/rebuild/test_r2_13_readonly_runner.py": {
+      "role": "observe",
+      "sha256": "51b5aae47f86876ffc026b28f7487209183d239c8efab9070d6f4516f29ea3c7",
+      "size": 2558,
+      "normalized_sha256": "51b5aae47f86876ffc026b28f7487209183d239c8efab9070d6f4516f29ea3c7"
+    },
+    "datara-backend/tests/rebuild/test_r2_variables_api.py": {
+      "role": "observe",
+      "sha256": "0836182f483da7664c864c9d6919cef9a11ee9938cfb7c89b745ad2127d05f75",
+      "size": 15406,
+      "normalized_sha256": "0836182f483da7664c864c9d6919cef9a11ee9938cfb7c89b745ad2127d05f75"
+    },
+    "datara-backend/tests/rebuild/test_r4_dependency_api.py": {
+      "role": "observe",
+      "sha256": "e42a5a1ba0b678237e1d32c1f423741b59ee03be91d86b8b4564795d887b8655",
+      "size": 16679,
+      "normalized_sha256": "e42a5a1ba0b678237e1d32c1f423741b59ee03be91d86b8b4564795d887b8655"
+    },
+    "datara-backend/tests/rebuild/test_r4_resources_api.py": {
+      "role": "observe",
+      "sha256": "89f4caf5411f223a97a2662b6630c352d0878bc35e39137e016e4f26bfad89a5",
+      "size": 12605,
+      "normalized_sha256": "89f4caf5411f223a97a2662b6630c352d0878bc35e39137e016e4f26bfad89a5"
+    },
+    "datara-backend/tests/rebuild/test_r4_sync_contract_pending.py": {
+      "role": "observe",
+      "sha256": "1a971e0efa66dbae0ba73c430dcd5757741f2596fb29fb9c6a10a351870ff460",
+      "size": 815,
+      "normalized_sha256": "1a971e0efa66dbae0ba73c430dcd5757741f2596fb29fb9c6a10a351870ff460"
+    },
+    "datara-backend/tests/rebuild/test_r7_metrics_api.py": {
+      "role": "observe",
+      "sha256": "da09b3787c54ba7e86af777e4adc494d711d491897735df4d8b0b126dc8dc7e6",
+      "size": 6615,
+      "normalized_sha256": "da09b3787c54ba7e86af777e4adc494d711d491897735df4d8b0b126dc8dc7e6"
     },
     "datara-backend/tests/test_alert_api.py": {
       "role": "observe",
@@ -1415,6 +1907,30 @@
       "size": 3976,
       "normalized_sha256": "e04c95aaf276fb48c5472c025bbdbd3ca1304b9ba8560a6073c3d8f0f1da956f"
     },
+    "datara-backend/tools/verify_r2_12_a.py": {
+      "role": "index",
+      "sha256": "3e58d432babb70cd89146f84470008dbc7679df69e3738d9bbc18ea7e58ff659",
+      "size": 13650,
+      "normalized_sha256": "3e58d432babb70cd89146f84470008dbc7679df69e3738d9bbc18ea7e58ff659"
+    },
+    "datara-backend/tools/verify_r2_12_b.py": {
+      "role": "index",
+      "sha256": "b7c6241984516dab09a1628be2c3456e51d42abb4c2b1773d7cb2b101d940155",
+      "size": 11522,
+      "normalized_sha256": "b7c6241984516dab09a1628be2c3456e51d42abb4c2b1773d7cb2b101d940155"
+    },
+    "datara-backend/tools/verify_r2_12_c.py": {
+      "role": "index",
+      "sha256": "4322881cd486af00325a2e6be21cb71d6fef1d652c43d1e99073e20c71b8e2d8",
+      "size": 12321,
+      "normalized_sha256": "4322881cd486af00325a2e6be21cb71d6fef1d652c43d1e99073e20c71b8e2d8"
+    },
+    "datara-backend/tools/verify_r2_12_d.py": {
+      "role": "index",
+      "sha256": "f1f9b7df1f51f315dde566795c88cbfda6fa5cb1297c49ec520ea38ab2850e3b",
+      "size": 15342,
+      "normalized_sha256": "f1f9b7df1f51f315dde566795c88cbfda6fa5cb1297c49ec520ea38ab2850e3b"
+    },
     "datara-backend/worker/__init__.py": {
       "role": "index",
       "sha256": "8b4363f56827d960c8334448b6db82b0ee837fdebc9c138ca22da7cb98a1ad03",
@@ -1816,6 +2332,42 @@
       "sha256": "5430f013aa4206c514abedf8939478c3e784dfdba2ddf864c3987e2bb2f4bb93",
       "size": 2336,
       "normalized_sha256": "5430f013aa4206c514abedf8939478c3e784dfdba2ddf864c3987e2bb2f4bb93"
+    },
+    "datara-web/deploy/test_r3_s9_i19_preview_page.py": {
+      "role": "observe",
+      "sha256": "eeaa5ee8e26ce4b1cda69c4787076d01e498c6e95b0d1fe8e804c1aa9493b779",
+      "size": 3226,
+      "normalized_sha256": "eeaa5ee8e26ce4b1cda69c4787076d01e498c6e95b0d1fe8e804c1aa9493b779"
+    },
+    "datara-web/deploy/test_r3_s9_i20_preview_page.py": {
+      "role": "observe",
+      "sha256": "47cd5499d6bb66adea2add89af0434e4a8bfc0179c4b8755630dd82d4557b0c0",
+      "size": 3271,
+      "normalized_sha256": "47cd5499d6bb66adea2add89af0434e4a8bfc0179c4b8755630dd82d4557b0c0"
+    },
+    "datara-web/deploy/test_r3_s9_i21_preview_page.py": {
+      "role": "observe",
+      "sha256": "c81640ae756d1eaad656fc29157a310726d701b9b9916c678bba6ae35001b957",
+      "size": 3451,
+      "normalized_sha256": "c81640ae756d1eaad656fc29157a310726d701b9b9916c678bba6ae35001b957"
+    },
+    "datara-web/deploy/test_r3_s9_i22_preview_page.py": {
+      "role": "observe",
+      "sha256": "76ed5503194923cd04cd7759d62581687c3c77ea3db0f678b148e1d3416ffc39",
+      "size": 3336,
+      "normalized_sha256": "76ed5503194923cd04cd7759d62581687c3c77ea3db0f678b148e1d3416ffc39"
+    },
+    "datara-web/deploy/test_r3_s9_i23_preview_page.py": {
+      "role": "observe",
+      "sha256": "d3f7c67b4fe0bd4f911236f7d4dc36a602d2b1a62bd5388e21c18152319d6c8a",
+      "size": 1110,
+      "normalized_sha256": "d3f7c67b4fe0bd4f911236f7d4dc36a602d2b1a62bd5388e21c18152319d6c8a"
+    },
+    "datara-web/deploy/test_r3_s9_legacy_preview_page.py": {
+      "role": "observe",
+      "sha256": "a217c96681a2c5e91dfc8c70a9b2560b5a67d8697c0bc58d4d574610789474b2",
+      "size": 16095,
+      "normalized_sha256": "a217c96681a2c5e91dfc8c70a9b2560b5a67d8697c0bc58d4d574610789474b2"
     },
     "datara-web/deploy/verify_ui.cjs": {
       "role": "index",
@@ -2593,9 +3145,9 @@
     },
     "datara-web/src/router/__tests__/rebuild-validation.test.ts": {
       "role": "observe",
-      "sha256": "13406a294f3e576d92a391748648149620c9165bdc4ea808fd60ae3c3567a858",
-      "size": 1359,
-      "normalized_sha256": "13406a294f3e576d92a391748648149620c9165bdc4ea808fd60ae3c3567a858"
+      "sha256": "a86815c8d4cbe9dbf066987356fd1fa35d31a0b25cdbb33db3aef80ddfd7f43e",
+      "size": 1482,
+      "normalized_sha256": "a86815c8d4cbe9dbf066987356fd1fa35d31a0b25cdbb33db3aef80ddfd7f43e"
     },
     "datara-web/src/router/__tests__/routes.test.ts": {
       "role": "observe",
@@ -2890,6 +3442,12 @@
       "sha256": "cd40ab71740293c7cf5258797120507f659084e606414d38348fc115aef554a2",
       "size": 11703,
       "normalized_sha256": "cd40ab71740293c7cf5258797120507f659084e606414d38348fc115aef554a2"
+    },
+    "datara-web/src/services/rebuild/__tests__/adapterKit.test.ts": {
+      "role": "observe",
+      "sha256": "e9e405cc502414add8a9fc98525bb5fc2933e27a4c8ac2863b2a020c3f57955c",
+      "size": 14531,
+      "normalized_sha256": "e9e405cc502414add8a9fc98525bb5fc2933e27a4c8ac2863b2a020c3f57955c"
     },
     "datara-web/src/services/runEventSource.ts": {
       "role": "index",
@@ -3623,6 +4181,60 @@
       "size": 17192,
       "normalized_sha256": "37d091ce6de74abfb4bd6820f4a4c80810feed397b770b8bad456fa0e58de4d4"
     },
+    "datara-web/src/views/rebuild/validation/dependency-form/dependencyApi.contract.test.ts": {
+      "role": "observe",
+      "sha256": "41a7b5304d5f59904e39f06c5e6ee610b318dec13a11991ab6d77ed9d1deff10",
+      "size": 9149,
+      "normalized_sha256": "41a7b5304d5f59904e39f06c5e6ee610b318dec13a11991ab6d77ed9d1deff10"
+    },
+    "datara-web/src/views/rebuild/validation/metrics/metricsApi.contract.test.ts": {
+      "role": "observe",
+      "sha256": "56e116f9e795e6099a50ecd17eebd8beb78377b4929962b5da4ae79e73ccbd42",
+      "size": 7949,
+      "normalized_sha256": "56e116f9e795e6099a50ecd17eebd8beb78377b4929962b5da4ae79e73ccbd42"
+    },
+    "datara-web/src/views/rebuild/validation/resource-upload/resourceApi.contract.test.ts": {
+      "role": "observe",
+      "sha256": "eee7da4c9455cabb39a03c29c74402171db2ca3d3d8df291f487d349f0365deb",
+      "size": 8130,
+      "normalized_sha256": "eee7da4c9455cabb39a03c29c74402171db2ca3d3d8df291f487d349f0365deb"
+    },
+    "datara-web/src/views/rebuild/validation/schedule/scheduleApi.contract.test.ts": {
+      "role": "observe",
+      "sha256": "b969b0ecafdfacc28e8ff87e56562514af05aaa87cc562d15279020bcf587187",
+      "size": 1630,
+      "normalized_sha256": "b969b0ecafdfacc28e8ff87e56562514af05aaa87cc562d15279020bcf587187"
+    },
+    "datara-web/src/views/rebuild/validation/sql-ide-ddl/sqlIdeDdlApi.contract.test.ts": {
+      "role": "observe",
+      "sha256": "28a99e7962a32ecbb8caf89359bac850ba3e7bb9e906403ee970e2173afb323a",
+      "size": 1614,
+      "normalized_sha256": "28a99e7962a32ecbb8caf89359bac850ba3e7bb9e906403ee970e2173afb323a"
+    },
+    "datara-web/src/views/rebuild/validation/sql-ide-readonly/sqlIdeApi.contract.test.ts": {
+      "role": "observe",
+      "sha256": "08dc3a51d5d3f5edfe09468544e78df4a63df0087962afbed4d58101b7497485",
+      "size": 2412,
+      "normalized_sha256": "08dc3a51d5d3f5edfe09468544e78df4a63df0087962afbed4d58101b7497485"
+    },
+    "datara-web/src/views/rebuild/validation/stream/streamApi.contract.test.ts": {
+      "role": "observe",
+      "sha256": "2ebf6c8b02bae3d6ee987c32fd3e7dcb1a82cb886dbf05e8b52204f303af803b",
+      "size": 1895,
+      "normalized_sha256": "2ebf6c8b02bae3d6ee987c32fd3e7dcb1a82cb886dbf05e8b52204f303af803b"
+    },
+    "datara-web/src/views/rebuild/validation/sync-form/syncComponentApi.contract.test.ts": {
+      "role": "observe",
+      "sha256": "e7ee74f69374f10a352e65f796314bab6c085a08def6e5d693f377531b96a101",
+      "size": 3637,
+      "normalized_sha256": "e7ee74f69374f10a352e65f796314bab6c085a08def6e5d693f377531b96a101"
+    },
+    "datara-web/src/views/rebuild/validation/variable/variableApi.contract.test.ts": {
+      "role": "observe",
+      "sha256": "80381749264cfde90208fcc11534191ff53ef675fec745b1096e2c823f68fda4",
+      "size": 10556,
+      "normalized_sha256": "80381749264cfde90208fcc11534191ff53ef675fec745b1096e2c823f68fda4"
+    },
     "datara-web/src/views/script/ScriptEnvView.vue": {
       "role": "index",
       "sha256": "e1a4d813c25276820b5470cf454656a559052093b05d097b6cac99c572923ff4",
@@ -3757,9 +4369,9 @@
     },
     "datara-web/tests/perf/last-bench.json": {
       "role": "observe",
-      "sha256": "699e4459d7f38aa45494dec37c8001a1440e802ef15456265541b08679f7a4ea",
-      "size": 143,
-      "normalized_sha256": "699e4459d7f38aa45494dec37c8001a1440e802ef15456265541b08679f7a4ea"
+      "sha256": "13c000e11afa44e50edb1b7ea61caf688f51dd16706e2342af78e20a06ef5e14",
+      "size": 145,
+      "normalized_sha256": "13c000e11afa44e50edb1b7ea61caf688f51dd16706e2342af78e20a06ef5e14"
     },
     "datara-web/tools/c7_probe_schemas.py": {
       "role": "index",
@@ -4191,11 +4803,23 @@
       "size": 46540,
       "normalized_sha256": "60b6668892877e79a42adfb7594e0691ce5eceb3d0a7bb245e6afb7d0d13a85b"
     },
+    "docs/handoff/2026-10-16-Codex-to-Trae-i18-invalid-token.md": {
+      "role": "index",
+      "sha256": "2fa4503d9500d61b1aea10eeee9632d56ea0fb120f55b0b3275be04c21c78c60",
+      "size": 1422,
+      "normalized_sha256": "2fa4503d9500d61b1aea10eeee9632d56ea0fb120f55b0b3275be04c21c78c60"
+    },
+    "docs/handoff/2026-10-16-Codex-to-Trae-r3-s9-zero-free-bstr.md": {
+      "role": "index",
+      "sha256": "48f0363e1661e11add6a1d97ffd28547e66e68d7dba76ab18d65ceaf8b12e69b",
+      "size": 1401,
+      "normalized_sha256": "48f0363e1661e11add6a1d97ffd28547e66e68d7dba76ab18d65ceaf8b12e69b"
+    },
     "docs/handoff/2026-10-16-并行协作分工.md": {
       "role": "index",
-      "sha256": "24e1c23a8cd0a33ebe76faba6171c41b619164846e8f4e8710d7c0266364758a",
-      "size": 5770,
-      "normalized_sha256": "b2b985a8fe6b026c01f0dc9ccfa23b1549c13bf51f7ffef6b7150b90b86a6f20"
+      "sha256": "c8bc1b11ae71eaf8f97a5de24ba8f2be880f2ccca5569cfac2d142b2a54b50f4",
+      "size": 47375,
+      "normalized_sha256": "79e766b798a34be0fb8bd753ae1b0c24b3fa69724b608b8c819a6cfe6958b45f"
     },
     "docs/increments/00-流程与记录.md": {
       "role": "index",
@@ -4454,6 +5078,12 @@
       "sha256": "b3d9f4bc31d6797e2d29646ea3b429774320686ec109f087923cae6975cea4b4",
       "size": 12742,
       "normalized_sha256": "b3d9f4bc31d6797e2d29646ea3b429774320686ec109f087923cae6975cea4b4"
+    },
+    "docs/increments/I7-I9-前端消费面分析.md": {
+      "role": "index",
+      "sha256": "470c691e6f652e58515f5fbfc10c87291ea4e8bd4091aafe49612ab991f4e3c6",
+      "size": 4460,
+      "normalized_sha256": "470c691e6f652e58515f5fbfc10c87291ea4e8bd4091aafe49612ab991f4e3c6"
     },
     "docs/increments/I7-设计文档.md": {
       "role": "index",
