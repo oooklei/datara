@@ -1,7 +1,7 @@
 /**
  * R8-A（AI 八工具统一契约）FE 消费面 — RED 态（R8-B 悬浮助手测试页 GREEN 前证据）。
  * 契约真源：docs/increments/2026-10-17-R8-A八工具契约.md（v1 冻结面，tool_version=1）：
- *   §2.1 端点 GET /api/rebuild/ai/tools + POST /api/rebuild/ai/tool-calls（单一调用端点，信封层统一
+ *   §2.1 端点 GET /api/v1/rebuild/ai/tools + POST /api/v1/rebuild/ai/tool-calls（统一前缀 /api/v1/rebuild/ai，监督 #147 裁定一；单一调用端点，信封层统一
  *        权限/审计/预算/错误归一）；§2.2/§2.3 请求/响应信封；§2.4 注册表条目；§5 错误码空间；
  *        §6 超时/重试/预算；§7 八工具差异契约。
  * 红线（冻结不可豁免）：八工具全部经统一调用链路，不另建执行引擎；BE 未接线（P1-3 ai_copilot
@@ -179,7 +179,7 @@ export const R8A_CONTRACT_METHODS = [
 export type R8AContractMethod = (typeof R8A_CONTRACT_METHODS)[number]
 
 export interface R8AToolsContract {
-  /** GET /api/rebuild/ai/tools（§2.4 条目数组） */
+  /** GET /api/v1/rebuild/ai/tools（§2.4 条目数组） */
   discoverRegistry: () => Promise<R8ARegistryEntry[]>
   searchSchema: (params: Record<string, unknown>, pageContext: R8APageContext | null) => Promise<R8ASearchSchemaResult>
   validateSql: (params: Record<string, unknown>, pageContext: R8APageContext | null) => Promise<R8AValidateSqlResult>
@@ -191,7 +191,7 @@ export interface R8AToolsContract {
   getLineage: (params: Record<string, unknown>, pageContext: R8APageContext | null) => Promise<Record<string, unknown>>
 }
 
-/** 统一信封调用原语（POST /api/rebuild/ai/tool-calls；信封层统一权限/审计/预算/错误归一） */
+/** 统一信封调用原语（POST /api/v1/rebuild/ai/tool-calls；信封层统一权限/审计/预算/错误归一） */
 export type R8AToolCallInvoker = (request: R8AToolCallRequest) => Promise<R8AToolCallResponse>
 
 /**
