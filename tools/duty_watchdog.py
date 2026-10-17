@@ -46,13 +46,17 @@ LINE_NOTIFY_DEDUP_MIN = 30
 AUTO_WAKE_DRY_RUN = False
 AUTO_WAKE_DEDUP_MIN = 30
 WAKE_CMD_TEMPLATES = {
-    "Codex": ["codex", "exec", "{wakeup}"],
+    # Official desktop CLI (0.162.x, gpt-6-luna capable). The PATH codex.exe is
+    # a CodeBuddy-bundled 0.146 build that 400s on ChatGPT accounts.
+    "Codex": [r"C:\Users\Administrator\AppData\Local\OpenAI\Codex\bin\2e5e00daee91c61d\codex.exe",
+              "exec", "{wakeup}"],
     "Trae": None,       # deprecated line
+    "Claude": None,     # no unattended CLI confirmed
     "监督线": None,      # user-driven session
     "守护线": None,      # no unattended CLI confirmed
 }
 # subject 中最早出现的标识决定归线（防监督 subject 提及 Trae/Codex 时误归线）。
-LINE_KEYS = (("AOCI守护", "守护线"), ("监督", "监督线"), ("Trae", "Trae"), ("Codex", "Codex"))
+LINE_KEYS = (("AOCI守护", "守护线"), ("监督", "监督线"), ("Trae", "Trae"), ("Claude", "Claude"), ("Codex", "Codex"))
 DISPATCH_RE = re.compile(r"派单[^。\n]*→\s*(Trae|Codex)")
 CLAIM_RE = r"###\s*[^\n]{0,100}%s[^\n]{0,100}(领单|接单|回执|交付)"
 WAKEUP_TEXTS = {
@@ -64,6 +68,11 @@ WAKEUP_TEXTS = {
               "② git log --oneline -15 核对最新心跳号；③ 读 docs/handoff/2026-10-16-并行协作分工.md 尾部 60 行，"
               "认领你名下未竟派单/回执/评审，即领即做；④ 常驻值守铁律（#158/#165）：无任务落静默标记心跳、"
               "存活以 git 产出为准、30 分钟内必须回执；⑤ pathspec 单文件、零业务触碰、禁 aoci_*、禁 push。现在开始。"),
+    "Claude": ("【监督线唤醒令 · Claude 实施线】立即执行：① cd d:\\需求\\数据治理工具\\Datara && git pull --ff-only；"
+               "② git log --oneline -15 核对最新心跳号；③ 读 docs/handoff/2026-10-16-并行协作分工.md 尾部 60 行，"
+               "认领你名下未竟派单/回执/修订，即领即做；④ 留守循环条款（#204/#210）：无任务落静默标记心跳"
+               "（待命状态+轮询锚点+无活时动作），存活以 git 产出为准、30 分钟内必须回执；"
+               "⑤ pathspec 单文件、零业务触碰、禁 aoci_*、禁 push。现在开始。"),
 }
 
 
@@ -333,7 +342,7 @@ def check_line_silence(state):
     masked by other lines still committing. Deduped per line."""
     per_line = line_last_commits()
     notified = state.setdefault("line_notify", {})
-    for name in ("Trae", "Codex", "监督线", "守护线"):
+    for name in ("Trae", "Codex", "Claude", "监督线", "守护线"):
         info = per_line.get(name)
         if not info:
             continue
