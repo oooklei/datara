@@ -17,6 +17,7 @@ import os
 import re
 import subprocess
 import time
+import urllib.request
 from datetime import datetime, timedelta
 
 REPO = r"d:\需求\数据治理工具\Datara"
@@ -27,6 +28,94 @@ STATE_FILE = os.path.join(REPO, "tools", "watchdog_state.json")
 POLL_SEC = 10
 SILENCE_ALERT_MIN = 20
 ALERT_DEDUP_MIN = 30
+SCAN_EVERY_N_POLLS = 6          # 60s 一次 handoff 尾部扫描
+NOTIFY_KEYWORDS = ("请裁", "待裁定", "待监督线", "申请复验", "待评审", "待派单", "待确认")
+NOTIFY_DEDUP_MIN = 30
+ENV_FILE = os.path.join(REPO, "datara-backend", ".env")
+SUMMARY_FILE = os.path.join(REPO, "tools", "watchdog_summary.txt")
+
+# v3: per-line silence detection (a single silent line must not be masked by
+# other lines' activity) + dispatch->claim closed-loop check.
+LINE_SILENCE_MIN = 15
+LINE_NOTIFY_DEDUP_MIN = 30
+# subject 中最早出现的标识决定归线（防监督 subject 提及 Trae/Codex 时误归线）。
+LINE_KEYS = (("AOCI守护", "守护线"), ("监督", "监督线"), ("Trae", "Trae"), ("Codex", "Codex"))
+DISPATCH_RE = re.compile(r"派单[^。\n]*→\s*(Trae|Codex)")
+CLAIM_RE = r"###\s*[^\n]{0,100}%s[^\n]{0,100}(领单|接单|回执|交付)"
+WAKEUP_TEXTS = {
+    "Trae": ("【监督线唤醒令 · Trae 实施线】立即执行：① cd d:\\需求\\数据治理工具\\Datara && git pull --ff-only；"
+             "② git log --oneline -15 核对最新心跳号；③ 读 docs/handoff/2026-10-16-并行协作分工.md 尾部 60 行，"
+             "认领你名下未竟派单/回执/修订，即领即做；④ 常驻值守铁律（#158/#165）：无任务落静默标记心跳、"
+             "存活以 git 产出为准、30 分钟内必须回执；⑤ pathspec 单文件、零业务触碰、禁 aoci_*、禁 push。现在开始。"),
+    "Codex": ("【监督线唤醒令 · Codex 实施线】立即执行：① cd d:\\需求\\数据治理工具\\Datara && git pull --ff-only；"
+              "② git log --oneline -15 核对最新心跳号；③ 读 docs/handoff/2026-10-16-并行协作分工.md 尾部 60 行，"
+              "认领你名下未竟派单/回执/评审，即领即做；④ 常驻值守铁律（#158/#165）：无任务落静默标记心跳、"
+              "存活以 git 产出为准、30 分钟内必须回执；⑤ pathspec 单文件、零业务触碰、禁 aoci_*、禁 push。现在开始。"),
+}
+
+
+def notify_popup(text):
+    """Windows popup: try msg.exe, fallback to async PowerShell MessageBox."""
+    try:
+        r = subprocess.run(["msg", "*", text], capture_output=True, timeout=10)
+        if r.returncode == 0:
+            return "msg"
+    except Exception:
+        pass
+    try:
+        esc = text.replace("'", "''")
+        subprocess.Popen(
+            ["powershell", "-NoProfile", "-Command",
+             "Add-Type -AssemblyName System.Windows.Forms;"
+             "[System.Windows.Forms.MessageBox]::Show('%s','Datara Duty Watchdog')" % esc],
+            creationflags=0x00000008)
+        return "powershell"
+    except Exception as e:
+        log("notify failed: %r" % e)
+        return None
+
+
+def load_llm_env():
+    cfg = {}
+    try:
+        with open(ENV_FILE, "r", encoding="utf-8-sig", errors="replace") as f:
+            for line in f:
+                line = line.strip()
+                if line and not line.startswith("#") and "=" in line:
+                    k, v = line.split("=", 1)
+                    k = k.strip()
+                    if k in ("LLM_PROVIDER", "LLM_BASE_URL", "LLM_MODEL", "LLM_API_KEY"):
+                        cfg[k] = v.strip()
+    except Exception:
+        return {}
+    return cfg if cfg.get("LLM_API_KEY") and cfg.get("LLM_BASE_URL") else {}
+
+
+def llm_summary(tail_text):
+    """Advisory digest only (never a ruling). Best-effort, silent on failure."""
+    cfg = load_llm_env()
+    if not cfg:
+        return None
+    prompt = (
+        "你是 Datara 项目监督值守程序的摘要器。以下是协作台账最新心跳片段。"
+        "只输出 6 行以内中文摘要：1) 各线最新动作一行一条；2) 明确列出待裁定/待评审/待派单事项及其归属；"
+        "3) 结尾一行写「摘要仅供参考，裁定权在监督会话」。不要给任何裁定结论。\n\n" + tail_text[-4000:])
+    body = json.dumps({
+        "model": cfg.get("LLM_MODEL", ""),
+        "messages": [{"role": "user", "content": prompt}],
+        "max_tokens": 400, "temperature": 0.1,
+    }).encode("utf-8")
+    req = urllib.request.Request(
+        cfg["LLM_BASE_URL"].rstrip("/") + "/chat/completions", data=body,
+        headers={"Content-Type": "application/json",
+                 "Authorization": "Bearer " + cfg["LLM_API_KEY"]})
+    try:
+        with urllib.request.urlopen(req, timeout=30) as resp:
+            data = json.loads(resp.read().decode("utf-8"))
+        return data["choices"][0]["message"]["content"].strip()
+    except Exception as e:
+        log("llm summary failed: %r" % e)
+        return None
 
 
 def log(msg):
@@ -136,10 +225,160 @@ def handle_cmd(state):
     return state
 
 
+def scan_and_notify(state):
+    """60s cadence: scan handoff tail for pending-ruling/review keywords; popup-notify
+    the user + write LLM advisory digest. Dedup per heartbeat number and time."""
+    try:
+        with open(HANDOFF, "r", encoding="utf-8", errors="replace") as f:
+            text = f.read()
+        tail = text[-6000:]
+        no = max_heartbeat_no(text)
+        last_no = state.get("last_notified_no") or 0
+        if no <= last_no:
+            return
+        hits = [k for k in NOTIFY_KEYWORDS if k in tail]
+        if not hits:
+            state["last_notified_no"] = no
+            return
+        last_dt = state.get("last_notify_iso")
+        if last_dt and (datetime.now() - datetime.fromisoformat(last_dt)).total_seconds() / 60.0 < NOTIFY_DEDUP_MIN:
+            return
+        summary = llm_summary(tail)
+        if summary:
+            try:
+                with open(SUMMARY_FILE, "w", encoding="utf-8") as f:
+                    f.write("[%s] heartbeat #%d\n%s\n" % (
+                        datetime.now().strftime("%Y-%m-%d %H:%M:%S"), no, summary))
+            except Exception:
+                pass
+        popup = ("Datara 监督提醒：台账心跳 #%d 含待办事项（%s），请在 Trae 监督会话发送「继续」唤醒监督线处理。"
+                 % (no, "/".join(hits[:3])))
+        how = notify_popup(popup)
+        log("notify #%d via %s keywords=%s summary=%s" % (
+            no, how, ",".join(hits[:3]), "yes" if summary else "no"))
+        state["last_notified_no"] = no
+        state["last_notify_iso"] = datetime.now().isoformat(timespec="seconds")
+    except SystemExit:
+        raise
+    except Exception as e:
+        log("scan error: %r" % e)
+
+
+def line_of_subject(subject):
+    best, best_pos = None, len(subject)
+    for key, name in LINE_KEYS:
+        p = subject.find(key)
+        if p >= 0 and p < best_pos:
+            best, best_pos = name, p
+    return best
+
+
+def line_last_commits(limit=60):
+    """Map line name -> its most recent commit (subject-anchored attribution)."""
+    r = git(["log", "-%d" % limit, "--format=%h|%ad|%s", "--date=iso"])
+    out = {}
+    if r.returncode != 0:
+        return out
+    for ln in r.stdout.strip().splitlines():
+        try:
+            h, ad, subject = ln.split("|", 2)
+            dt = datetime.fromisoformat(ad)
+        except ValueError:
+            continue
+        name = line_of_subject(subject)
+        if name and name not in out:
+            out[name] = {"hash": h, "time": dt, "subject": subject}
+    return out
+
+
+def check_line_silence(state):
+    """Per-line silence: popup (not heartbeat) so one silent line cannot be
+    masked by other lines still committing. Deduped per line."""
+    per_line = line_last_commits()
+    notified = state.setdefault("line_notify", {})
+    for name in ("Trae", "Codex", "监督线", "守护线"):
+        info = per_line.get(name)
+        if not info:
+            continue
+        t = info["time"]
+        silent_min = (datetime.now(t.tzinfo) - t).total_seconds() / 60.0
+        if silent_min < LINE_SILENCE_MIN:
+            continue
+        last_iso = notified.get(name)
+        if last_iso and (datetime.now() - datetime.fromisoformat(last_iso)).total_seconds() / 60.0 < LINE_NOTIFY_DEDUP_MIN:
+            continue
+        if name in WAKEUP_TEXTS:
+            try:
+                with open(SUMMARY_FILE, "w", encoding="utf-8") as f:
+                    f.write("[%s] %s 静默 %.0f 分钟\n\n%s\n" % (
+                        datetime.now().strftime("%Y-%m-%d %H:%M:%S"), name,
+                        silent_min, WAKEUP_TEXTS[name]))
+            except Exception:
+                pass
+            popup = ("Datara 值守提醒：%s 最后产出 %s（%s），已静默 %.0f 分钟，疑似掉线。"
+                     "请将 tools/watchdog_summary.txt 中的唤醒令转发给该线。"
+                     % (name, t.strftime("%H:%M"), info["hash"], silent_min))
+        else:
+            popup = ("Datara 值守提醒：%s 已静默 %.0f 分钟（最后产出 %s）。"
+                     "请在监督会话发送「继续」唤醒监督线。"
+                     % (name, silent_min, t.strftime("%H:%M")))
+        how = notify_popup(popup)
+        log("line-silence notify %s %.0fmin via %s" % (name, silent_min, how))
+        notified[name] = datetime.now().isoformat(timespec="seconds")
+        save_state(state)
+
+
+def check_unclaimed_dispatch(state):
+    """Dispatch->claim closed loop: any 派单→X in the handoff tail without a
+    later X claim/receipt heading means the dispatch may be unclaimed."""
+    try:
+        with open(HANDOFF, "r", encoding="utf-8", errors="replace") as f:
+            text = f.read()
+    except Exception:
+        return
+    tail = text[-20000:]
+    pending = set()
+    for m in DISPATCH_RE.finditer(tail):
+        line_name = m.group(1)
+        if not re.search(CLAIM_RE % line_name, tail[m.end():]):
+            pending.add(line_name)
+    key = ",".join(sorted(pending))
+    if not pending:
+        if state.get("unclaimed_dispatch"):
+            state["unclaimed_dispatch"] = None
+            save_state(state)
+        return
+    last_iso = state.get("unclaimed_notify_iso")
+    if state.get("unclaimed_dispatch") == key and last_iso and (
+            datetime.now() - datetime.fromisoformat(last_iso)).total_seconds() / 60.0 < LINE_NOTIFY_DEDUP_MIN:
+        return
+    wakeup = WAKEUP_TEXTS.get(sorted(pending)[0], "")
+    try:
+        with open(SUMMARY_FILE, "w", encoding="utf-8") as f:
+            f.write("[%s] 疑似未领派单（→ %s）\n\n%s\n" % (
+                datetime.now().strftime("%Y-%m-%d %H:%M:%S"), key, wakeup))
+    except Exception:
+        pass
+    popup = ("Datara 值守提醒：台账存在疑似未领派单（→ %s）。请核实该线状态；"
+             "唤醒令已写入 tools/watchdog_summary.txt，可直接转发。" % key)
+    how = notify_popup(popup)
+    log("unclaimed dispatch notify (%s) via %s" % (key, how))
+    state["unclaimed_dispatch"] = key
+    state["unclaimed_notify_iso"] = datetime.now().isoformat(timespec="seconds")
+    save_state(state)
+
+
 def main():
-    log("watchdog started: poll=%ds silence_alert=%dmin dedup=%dmin" %
+    log("watchdog started: poll=%ds silence_alert=%dmin dedup=%dmin notify=on summary=advisory" %
         (POLL_SEC, SILENCE_ALERT_MIN, ALERT_DEDUP_MIN))
     state = load_state()
+    if "last_notified_no" not in state:
+        try:
+            with open(HANDOFF, "r", encoding="utf-8", errors="replace") as f:
+                state["last_notified_no"] = max_heartbeat_no(f.read())
+        except Exception:
+            state["last_notified_no"] = 0
+    poll_count = 0
     while True:
         try:
             state = handle_cmd(state)
@@ -161,6 +400,14 @@ def main():
                         silent_min, last["time"].strftime("%H:%M"), last["hash"])
                     append_alert(reason)
                     state["last_alert_iso"] = datetime.now().isoformat(timespec="seconds")
+                    save_state(state)
+            poll_count += 1
+            if poll_count % SCAN_EVERY_N_POLLS == 0:
+                before = json.dumps(state, sort_keys=True)
+                scan_and_notify(state)
+                check_line_silence(state)
+                check_unclaimed_dispatch(state)
+                if json.dumps(state, sort_keys=True) != before:
                     save_state(state)
         except SystemExit:
             raise
