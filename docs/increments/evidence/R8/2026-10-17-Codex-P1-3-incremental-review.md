@@ -109,3 +109,10 @@ Codex 独立运行 `pytest -q tests/rebuild/test_r8a_generate_sql_port.py`：**6
 - 新增 `c2eb757` 桥接测试 Codex 独立运行 `pytest -q tests/rebuild/test_r8a_ai_tools_api.py` = **3 failed, 14 passed in 18.89s**。一项进入请求行为断言并证实 disabled 缺参请求错误优先级仍错（INVALID_PARAMS 应为 TOOL_DISABLED）；两项在测试 fixture 构造 `AiBridgePorts` 时因当前无 `audit_failure_sink` 参数而 TypeError，证明 sink seam 尚缺，但没有运行到响应级 durable fallback 断言。因此不得写成“durable fallback 行为已完成可诊断 RED”。
 - 并行只读审查确认新增断言方向符合 #178，但覆盖有界：disabled-vs-params/budget 样本未覆盖所有 disabled 工具/全部预算维度；failure reason 只断言 truthy，未证明脱敏；Fake sink 仅证明端口预期，不能证明生产耐久存储、重启后可读、failure sink 自身故障的生产告警/恢复。后续若测试/实现提交，应按这些边界验收；未接线不等于生产持久化通过。
 - 本节是增量状态，不关闭 P1-3。`run_sql` 的危险模式门、R5-A DB侧只读与项目数据源授权、生产端口/factory、生产 audit writer、FE 命名适配仍需按 #178/#181 范围验证。
+
+## 11. #178 桥接实现 GREEN / SQL 危险模式 RED
+
+- Trae commit `45fbe89` 将 disabled gate 移至参数/预算之前，并为 `AiBridgePorts` 加入 `audit_failure_sink`，审计写失败时尝试提交失败详情，sink 缺失/异常走 fail-closed。Codex 独立运行 `pytest -q tests/rebuild/test_r8a_ai_tools_api.py`：**17 passed in 24.57s**。这是测试注入端口 seam 证据，不证明生产 sink 的持久化存储、跨重启可恢复或生产装配。
+- SQL危险模式新增提交 `7b4c4c4` 后，Codex 独立运行 `pytest -q tests/rebuild/test_r8a_run_sql_port.py`：**7 failed, 28 passed in 45.62s**。7 个案例为 SELECT INTO、SLEEP、BENCHMARK、GET_LOCK、LOAD_FILE、PRAGMA、FOR UPDATE；前五及 FOR UPDATE 当前返回 SUCCESS，PRAGMA 虽返回 INVALID_PARAMS，但 details 缺 `readonly_policy` 中的 `dangerous_pattern` 项。危险模式 gate 尚未落地，run_sql 不满足 #178 PoC 应用层裁定；在实现和复验前不得启用/宣称安全。
+- 已复核的边界：授权后 disabled 优先级与 failure sink fake seam 已 GREEN；audit sink 的生产持久性和 reason 脱敏仍须单独证明。R5-A DB 只读、数据源 project ownership、生产 factory 及双层审计不属于 fake seam GREEN 的证明范围。
+- 当前状态：P1-3 PARTIAL。待 Trae 落 SQL危险模式修复（最少拒绝规则覆盖需避免字符串/注释误命中与大小写/空白绕过），再复跑步骤4全部用例和相关桥接测试；同时按 #181 清单复验步骤5。
