@@ -141,6 +141,11 @@ def _sql_tokens_and_statement_count(sql: str) -> tuple[list[str], int, tuple[str
     return tokens, statements, tuple(dict.fromkeys(lexical_errors))
 
 
+# Public alias for sibling modules (run_sql PoC read-only gate): one conservative
+# scanner reused, never a second tokenizer (§11 no-duplicate-engine red line).
+sql_tokens_and_statement_count = _sql_tokens_and_statement_count
+
+
 def _operation_and_object(tokens: list[str]) -> tuple[str | None, str | None]:
     if not tokens:
         return None, None
