@@ -18,6 +18,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
+from rebuild.ai_bridge import AiBridgePorts, build_ai_router
 from rebuild.common.db import Base
 from rebuild.identity.contracts import Permission, Role, TokenService, authorize
 from rebuild.identity.models import ProjectMemberRecord, UserRecord
@@ -88,6 +89,7 @@ def create_app(
     legacy_i19_source_reader_factory=None,
     legacy_i20_source_reader_factory=None,
     legacy_i21_source_reader_factory=None,
+    ai_bridge_ports: AiBridgePorts | None = None,
 ) -> FastAPI:
     database_url = database_url or os.getenv("REBUILD_DB_URL")
     if not database_url:
@@ -734,6 +736,10 @@ def create_app(
         build_resources_router(session_factory, token_service, active_tokens, project_permission_error),
         prefix="/api/v1/rebuild/resources",
     )
+    # R8-A eight-tool bridge (P1-3): mounted ONLY with explicitly injected ports.
+    # Default construction stays bridge-free — no unaudited/ungoverned path (readiness red line).
+    if ai_bridge_ports is not None:
+        app.include_router(build_ai_router(session_factory, token_service, active_tokens, ai_bridge_ports))
 
     @app.post("/api/v1/rebuild/projects/{project_id}/members")
     def add_member(project_id: int, body: MemberRequest, authorization: str = Header(default="")):
