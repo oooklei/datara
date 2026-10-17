@@ -26,6 +26,27 @@ MAX_TIMEOUT_MS = 30000  # §6: converge only, never widen
 
 _READONLY_LEADING_TOKENS = frozenset({"SELECT"})
 
+# Supervisor #178 read-only ruling, layer 1: the SELECT-leading gate alone is
+# not sufficient — side-effect constructs that fit the gate shape are
+# blacklisted separately. Tokens come from the shared conservative tokenizer
+# (words outside comments/quoted values, uppercased), so string literals like
+# 'FOR UPDATE' can never match. This is bridge-side defense-in-depth only;
+# DB-side read-only stays an R5-A production-assembly verification item.
+_DANGEROUS_TOKENS = frozenset(
+    {
+        "INTO",  # SELECT ... INTO (table create/write)
+        "PRAGMA",
+        "SLEEP",
+        "BENCHMARK",
+        "GET_LOCK",
+        "RELEASE_LOCK",
+        "LOAD_FILE",
+        "SYS_EXEC",
+        "SYS_EVAL",
+    }
+)
+_DANGEROUS_PAIRS = frozenset({("FOR", "UPDATE")})  # locking reads
+
 _LEXICAL_MESSAGES = {
     "unterminated_quoted_value": "SQL 包含未闭合的引号值",
     "unterminated_block_comment": "SQL 包含未闭合的块注释",
@@ -92,6 +113,22 @@ def evaluate_readonly_sql(sql: str) -> tuple[bool, list[dict[str, str]]]:
                 "message": "只读 PoC 仅接受单条 SELECT，其余语句（含 WITH/EXPLAIN）一律拒绝",
             }
         )
+    for token in tokens:
+        if token in _DANGEROUS_TOKENS:
+            violations.append(
+                {
+                    "code": "dangerous_pattern",
+                    "message": f"SQL 包含只读 PoC 禁止的危险构造（{token}）",
+                }
+            )
+    for pair in zip(tokens, tokens[1:]):
+        if pair in _DANGEROUS_PAIRS:
+            violations.append(
+                {
+                    "code": "dangerous_pattern",
+                    "message": "SQL 包含锁定读构造（FOR UPDATE）",
+                }
+            )
     return (not violations), violations
 
 
