@@ -30,6 +30,15 @@ from rebuild.datasource.repository import ProjectDatasourceRepository
 from rebuild.project.repository import ProjectRepository
 from rebuild.project.models import ProjectRecord
 from rebuild.governance.api import build_governance_router
+from rebuild.metrics.api import build_metrics_router
+from rebuild.metrics.models import (
+    LineageWritebackRecord,
+    QualityRuleResultLinkRecord,
+    TaskDataErrorSampleRecord,
+    TaskDataStatSegmentRecord,
+    TaskInstanceDataStatRecord,
+    WorkflowResultStatRecord,
+)
 from rebuild.variables.api import build_variables_router
 from rebuild.variables.models import TaskInstanceVariableRuntimeRecord, VariableDefinitionRecord
 
@@ -130,6 +139,12 @@ def create_app(
                 ProjectDatasourceRecord.__table__,
                 VariableDefinitionRecord.__table__,
                 TaskInstanceVariableRuntimeRecord.__table__,
+                WorkflowResultStatRecord.__table__,
+                TaskInstanceDataStatRecord.__table__,
+                TaskDataStatSegmentRecord.__table__,
+                TaskDataErrorSampleRecord.__table__,
+                QualityRuleResultLinkRecord.__table__,
+                LineageWritebackRecord.__table__,
             ],
         )
         ensure_i1_schema()
@@ -698,6 +713,10 @@ def create_app(
     app.include_router(
         build_variables_router(session_factory, token_service, active_tokens, project_permission_error),
         prefix="/api/v1/rebuild/variables",
+    )
+    app.include_router(
+        build_metrics_router(session_factory, token_service, active_tokens),
+        prefix="/api/v1/rebuild/metrics",
     )
 
     @app.post("/api/v1/rebuild/projects/{project_id}/members")
