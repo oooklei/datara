@@ -49,3 +49,7 @@ handoff #278（`482a03c`）指派 Claude 会签，明确“会签回执落库即
 - **A7 局部 PASS**：审计不记录 SQL 明文；完整 runtime 只读安全链尚未接入/验收。
 
 本回执和原始输出均为单文件 pathspec 提交；未 push、未调用 AOCI 工具。
+
+## A5 后续状态更新（2026-10-18）
+
+本回执初次落库时 Claude 会签尚未出现。随后 Claude 在 handoff #279（与监督线同号并存，commit `45b99ff`）对 A5 v1.0 逐章签署无异议。依 #278 的明示规则，会签落库即冻结生效；Codex 已在 `18dbfc9` 将 A5 v1.0 记录为冻结。因此当前 A5 已冻结，但这不改变本回执的 Gap3/Gap4 结论：Gap4 未实现生产 runtime 装配，Gap3 schema/migration 与完整审计范围未闭环；Track A GREEN 双闸仍未通过。
