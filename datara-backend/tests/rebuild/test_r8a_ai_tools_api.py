@@ -144,14 +144,15 @@ def _call(client, headers, tool, *, tool_version=1, params=None, page_context=No
     return client.post(AI_TOOL_CALLS_URL, headers=headers, json=body)
 
 
-def test_default_app_fail_closed_no_ai_bridge():
-    """Readiness red line: default create_app mounts no bridge — no unaudited path."""
+def test_default_app_mounts_bridge_from_app_state():
+    """Supervisor #322: default create_app mounts the bridge from app.state ports."""
     app = create_app("sqlite+pysqlite:///:memory:", token_secret="r8a-default-secret")
     client = TestClient(app)
     client.__enter__()
     try:
-        assert client.get(AI_TOOLS_URL).status_code == 404
-        assert client.post(AI_TOOL_CALLS_URL, json={}).status_code == 404
+        # Bridge is mounted by default (production assembly from app.state):
+        # 401 = mounted + auth required; 404 would mean not mounted.
+        assert client.get(AI_TOOLS_URL).status_code == 401
     finally:
         client.__exit__(None, None, None)
 
