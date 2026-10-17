@@ -49,3 +49,15 @@
 - **HOST/SQL-RO：仍 NOT VERIFIED。** `create_app` 仅提供可选 `ai_bridge_ports` 注入点，未发现生产 factory/宿主装配；`run_sql` 没有 R5-A `executeSql` 端口绑定和正向 SQL/只读拒绝证据。Trae #172 已将这些登记为步骤 4/5 或后续缺口。
 
 **当前结论：P1-3 步骤 1–3 的桥接 PoC 测试与基础边界实现有 13/13 运行证据；P1-3 整体仍 PARTIAL、不得关闭。** 剩余责任：Trae继续 R5-A `run_sql` 与 P1-2 adapter 接线及审计持久化；监督线/契约责任方裁定 `enabled` 与审计 sink outage 的精确契约、disabled/error precedence；FE 线实测 snake_case/camelCase 映射。
+
+## 6. 步骤 4 临时复核（待 Trae 实现提交）
+
+本节基于 RED 测试提交 `487071f`、词法 helper 导出 `694892f`、端口 stub `3036605`、桥接错误/审计 seam `ebcec10`，以及随后看到的未提交 `datara-backend/rebuild/run_sql.py` 差异。未提交实现只做静态阅读，不作为交付证据。
+
+- **当前阶段与运行结果：RED。** Codex 在 `datara-backend` 执行 `pytest -q tests/rebuild/test_r8a_run_sql_port.py`，结果 **26 failed in 1.43s**，失败栈均指向 stub `build_run_sql_handler` / `evaluate_readonly_sql` 的 `NotImplementedError`。这是实现前的预期红灯；随后工作区出现 GREEN 实现差异，但尚未提交，不能据此推断测试已绿。
+- **契约测试范围 PARTIAL：** 26 例覆盖 port 单次委派、若干 DML/DDL/多语句/注释拒绝、预算默认/截断、错误码与 no-auto-retry。它们使用 `_FakePort`，不覆盖真实 R5-A executeSql、Datasource project ownership、R5-A 执行授权或执行域审计。
+- **只读安全门 FAIL / P1：** 当前未提交 scanner 只检查一个 statement 和首 token `SELECT`，复用 `sql_tokens_and_statement_count`；静态词法规则不能排除 `SELECT ... INTO OUTFILE`、`SELECT ... FOR UPDATE`、副作用函数/UDF 等数据库语义。除非既有 R5-A port 提供有证据的只读事务/数据库侧拒写和 datasource-project 授权，否则不可宣称 run_sql 只读安全；缺少这些能力时保持该工具 disabled。
+- **错误词形需裁定：** 未提交 handler 将只读策略拒绝映射 `INVALID_PARAMS`。冻结 R8-A §5 将该码用于 schema 校验，§7.3 将写语义交由权限点；PoC read-only policy 拒绝到底属于参数错误或授权拒绝尚无一致冻结依据。监督线需定词或更新契约/验收清单，不由本线擅改。
+- **范围状态 NOT VERIFIED：** 提交的 `SqlExecutionPort` 是 injected seam；当前 `create_app` 没有生产 factory 注入，仓库没有已验证的 R5-A `executeSql` 实现/绑定。步骤4 只能在 port seam 层继续，不等价于真实 SQL 执行链交付；双层审计也未验证。
+
+三名子智能体分别复核契约覆盖、安全边界、宿主/范围；主智能体已核对提交、测试失败栈与未提交实现差异。等待 Trae 提交 GREEN 实现及 R5-A 端口证据后，按 SQL-RO-01..05 再次复验。
