@@ -24,7 +24,7 @@ HANDOFF = os.path.join(REPO, "docs", "handoff", "2026-10-16-并行协作分工.m
 CMD_FILE = os.path.join(REPO, "tools", "watchdog_cmd.txt")
 STATE_FILE = os.path.join(REPO, "tools", "watchdog_state.json")
 
-POLL_SEC = 60
+POLL_SEC = 10
 SILENCE_ALERT_MIN = 20
 ALERT_DEDUP_MIN = 30
 
