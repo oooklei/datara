@@ -295,3 +295,17 @@ docs/increments/evidence/R5/r5-routine-catalog-source-delta-20261017.md
 ### 本批结论与后续
 
 四个候选及 6789 的嵌套 checkout 全部暂留。b245 的提交由 branch 保底；r3-s9 与 6789 两个已提交基线在 main 历史中可达（其中 r3-s9、6789 父 checkout 的历史另有 archive tag 包含）；2d99 的 19 个独有 detached commits 无 branch/tag 保底。所有列明的 tracked 修改和 untracked 文件均未提交，不能视为保全。后续可由 owner 评审后为 detached 独有历史建立归档 branch/tag；对 dirty tracked 变更导出 patch，对 untracked 文件显式快照/打包，或在确认可恢复性后使用包含 untracked 的 stash。任何保全方案及后续删除/tag/prune 均由主线程评估，本轮不执行。
+
+## 独立审计后的 detached HEAD 引用保全
+
+为按 #54/#65 为待清理的 detached checkout 提前保全已提交历史，主线程在本报告 Batch 1/2 盘点后仅创建以下本地 lightweight tag（不改 checkout 文件）：
+
+| Tag | HEAD |
+|---|---|
+| `archive/wt-134a-bec06af` | `bec06af6045f7ccbfdc6ce2a3ec29e6aa216eeca` |
+| `archive/wt-6789-60c5485` | `60c5485d0dbdbaa4de3df081c0ef1cede2ba9737` |
+| `archive/wt-phase0-status-sync-9f9bb61` | `9f9bb61478822d7553ab219ccabe4c9581d6d8d4` |
+| `archive/wt-r8a-contract-freeze-84d8313` | `84d8313a31d375565ef0b70f110570bbd61713ee` |
+| `archive/wt-2d99-93d5861` | `93d5861b87f9e634dc60973eec5834b7209fd5d0` |
+
+这些 refs 保住各自 HEAD 的已提交历史（包括 2d99 的 19 个独有提交），但不保住 tracked/untracked 工作树差异；所有候选仍暂留，未删除 checkout、分支或执行 prune。后续仍须逐项保全并验证脏区，再依删除门禁执行。
