@@ -476,7 +476,11 @@ def test_audit_writer_outage_writes_durable_failure_detail_record():
         assert failure["tool_call_id"] == body["tool_call_id"]
         assert failure["project_id"] == project_id
         assert failure["user_id"]
+        # Codex #186 sanitization: the reason carries the exception TYPE only —
+        # raw exc text (connection strings/SQL/credentials) never lands durably.
         assert failure["reason"]
+        assert "audit sink down" not in failure["reason"]
+        assert "RuntimeError" in failure["reason"]
     finally:
         client.__exit__(None, None, None)
 
