@@ -124,16 +124,16 @@ class TestProductionComponentWiring:
 class TestFailClosed:
     """Factory assembly is fail-closed: missing config raises."""
 
-    def test_no_bridge_without_explicit_ports(self):
-        """Default create_app does not mount AI bridge (fail-closed)."""
+    def test_bridge_mounted_by_default(self):
+        """Default create_app mounts AI bridge from app.state (production assembly)."""
+        from fastapi.testclient import TestClient
+
         with patch.dict(os.environ, _env(), clear=True):
             app = create_app()
-            # Bridge should NOT be mounted without explicit ai_bridge_ports
-            routes = []
-            for r in app.routes:
-                path = getattr(r, "path", None) or getattr(r, "prefix", "")
-                routes.append(path)
-            assert not any("ai" in path.lower() for path in routes if path)
+            with TestClient(app) as client:
+                response = client.get("/api/v1/rebuild/ai/tools")
+                # 401 = mounted, auth required (production bridge from app.state)
+                assert response.status_code == 401
 
     def test_health_endpoint_available(self):
         with patch.dict(os.environ, _env(), clear=True):
