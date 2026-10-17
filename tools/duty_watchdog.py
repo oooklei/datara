@@ -432,6 +432,8 @@ def main():
     while True:
         try:
             state = handle_cmd(state)
+            with open(os.path.join(REPO, "tools", "watchdog_alive.txt"), "w", encoding="utf-8") as f:
+                f.write("alive %s pid=%s\n" % (datetime.now().strftime("%Y-%m-%d %H:%M:%S"), os.getpid()))
             last = repo_last_commit()
             if last is None:
                 log("WARN: cannot read last commit")
