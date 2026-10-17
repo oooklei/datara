@@ -1,4 +1,4 @@
-# DBX × 原版 SQLIDE 融合对照清单（2026-10-17，P1-7 / D9 执行令产出；v2.2 修订）
+# DBX × 原版 SQLIDE 融合对照清单（2026-10-17，P1-7 / D9 执行令产出；v2.3 修订）
 
 > 目的：落实设计 §13.17-9 D9——「全面学习和研究 DBX 代码、使用文档等相关资料，与现有原版 SQLIDE 进行融合；若存在冲突和歧义，优先级以 DBX 为准。原版 SQLIDE 在界面操作层面具备自身特色和优势，在条件允许的情况下可进行吸收融入。」
 > 输入基线：DBX=`D:\dbx-main` 本地快照（标识见 §0）；原版 SQLIDE=Datara 现行 `/ide`（`datara-web/src/views/ide/` + `datara-backend/api/ide.py`）；承接映射 v2.2（`2026-10-17-DBX-DS-源码研读与复刻映射.md`，九能力锚点不重复展开）；Codex 对象×驱动×操作矩阵与 DDL 源码复核两份 evidence（`docs/increments/evidence/R5/dbx-object-driver-operation-matrix-20261017.md`、`dbx-ddl-source-review-20261017.md`）。
@@ -7,6 +7,7 @@
 > v2 修订说明：对照 T-1 评审（`docs/increments/evidence/2026-10-17-Codex-T1-P1-7-review.md`，FAIL）五缺口与复评清单 7 项逐项闭环——缺口①→§2 新增对象×驱动矩阵；缺口②→§3 新增端到端阶段映射；缺口③→§9 重写逐项锚点表；缺口④→§1 凭证存储行+C5 改真锚；缺口⑤→§0 新增快照可复现标识；复评第 6 项（C2 DBX 优先约束）→§1 语句切分行+C2；复评第 7 项（查询执行生命周期重写）→§1 查询执行行。闭环登记总表见 §11。
 > v2.1 修订说明（复评后补差）：对照 Codex 复评回执（`docs/increments/evidence/2026-10-17-Codex-T1-P1-7-review-v2-recheck.md`，FAIL——仅第 1 项未闭环，6 项 PASS）唯一缺口，新增 §2.4 逐路由组×源码型对象（8 类排除对象+MATERIALIZED_VIEW）操作矩阵；不可实证处一律标 U/Unknown；其余六项 PASS 不回退。闭环登记见 §11 末行。
 > v2.2 修订说明（复验后补差）：对照 Codex 复验回执（`docs/increments/evidence/2026-10-17-Codex-T1-P1-7-review-v2.1-recheck.md`，FAIL——§2.4 存在未定义单元格：空缺 L/N、裸 N 歧义、合并行未证共享）逐点修正——全表每格补齐 L/G/N 三元、新增 NA 语义与 N 列统一取值规则（V=专用 builder/C=通用原文执行回退/G=N→NA/结构化定义→NA）、PACKAGE/PACKAGE_BODY 合并行补三项共享证明、声明面锚点行窗修正（L42-L110）。
+> v2.3 修订说明（复验后补差，监督线 #115 裁定二）：对照 Codex 复验回执（`docs/increments/evidence/2026-10-17-Codex-T1-P1-7-review-v2.2-recheck.md`，FAIL——仅 N 列规则④与格值矛盾，其余三项 PASS）与监督线裁定「无需改格，仅修订规则④措辞」，将 §2.4 N 列取值规则④条件化：`G=U` 仅在 N 依赖 G/source 获取路径时才传递 U，独立生成器/入口凭独立证据定值；**全部格值零改动**（SEQUENCE×OB N=V / MATERIALIZED_VIEW×OB N=C / SQLite 族 N=NA 均有独立证据，与条件化规则自洽）。
 
 ## 0. DBX 快照可复现标识【亲核，v2 新增】
 
@@ -86,13 +87,13 @@
 - 回扩门槛：每类须同时具备 ①对象清单路由锚点 ②DDL 读取路由锚点 ③至少一驱动实测证据，三者齐备方可进入契约扩展提案。
 - 验收证据形态：引用本文 §2 + evidence 矩阵文件 + MetaTree 实锚行号。
 
-### 2.4 逐路由组 × 源码型对象操作矩阵（v2.2 新增：复评第 1 项闭环；v2.2 按复验回执消除空格/裸值）【亲核】
+### 2.4 逐路由组 × 源码型对象操作矩阵（v2.2 新增：复评第 1 项闭环；v2.2 按复验回执消除空格/裸值；v2.3 规则④条件化）【亲核】
 
 补齐 evidence §1.3 未覆盖的 8 类 ObjectSourceKind（EVENT/SEQUENCE/SYNONYM/JOB/PACKAGE/PACKAGE_BODY/TYPE/TYPE_BODY）与 MATERIALIZED_VIEW 独立能力边界。行=对象类型，列=evidence §1.3 同款后端路由组合并组（不把路由说成独立适配器）；**每格必须为三操作各给一个状态，禁止空格与无前缀裸值**。
 
 - **L/G/N** = 发现(list) / 定义读取(get-definition) / DDL 生成(generate)。
 - **取值**：**V**（源码直接路由/实现，仅证代码路径不证运行成功）/**C**（路径存在但受驱动、Agent 实现、DB 配置或版本约束）/**U**（Unknown，本次不能证明）/**N**（源码显式拒绝：空臂/恒空过滤/显式空串）/**NA**（Not applicable：该操作对此对象×路由组入口不存在或不适用）。语义与 evidence §1.3 一致并扩充 NA。
-- **N 列取值规则（统一，避免歧义）**：①`N=V` 仅限存在专用方言 builder——全矩阵唯一处=OB Oracle×SEQUENCE（`build_executable_object_source_statements` 专用臂 `object_source_sql.rs:L130-L131`）；②`N=C` = 无专用 builder，源码保存走**通用原文执行回退**（同函数兜底臂 `object_source_sql.rs:L188-L190`，原文当 DDL 提交，非方言生成）；③`G=N`（读取不支持）→ `N=NA`（源码保存入口依赖读取通道，读取即无）；④`G=U` → `N=U`；⑤定义读取为**结构化详情而非文本源**（PG TYPE，见下）→ `N=NA`（源码编辑器不适用）。
+- **N 列取值规则（统一，避免歧义；v2.3 规则④条件化）**：①`N=V` 仅限存在专用方言 builder——全矩阵唯一处=OB Oracle×SEQUENCE（`build_executable_object_source_statements` 专用臂 `object_source_sql.rs:L130-L131`）；②`N=C` = 无专用 builder，源码保存走**通用原文执行回退**（同函数兜底臂 `object_source_sql.rs:L188-L190`，原文当 DDL 提交，非方言生成）；③`G=N`（读取不支持）→ `N=NA`（源码保存入口依赖读取通道，读取即无）；④`G=U` **不无条件传递 `N=U`**——N 仅在依赖 G/source 获取路径时才由 G 传递 U；独立生成器/入口凭独立证据定值（`N=V` 有专用 builder 实证 `object_source_sql.rs:L130-L131`、`N=C` 有回退臂实证 `L188-L190`、`N=NA` 为入口不存在/不适用）；⑤定义读取为**结构化详情而非文本源**（PG TYPE，见下）→ `N=NA`（源码编辑器不适用）。
 
 **E（edit）列统一注记**：全 9 类无逐驱动显式 editable 分派——`ObjectSource.editable` 为声明位（`types.rs:L225-L233`），native/Agent 源码路返回 `editable: None`（`schema/mod.rs:L10761,L10819`），Source Editor 读 `editable=false` 即只读（evidence 关键实现 77 行）；已证实唯一显式负声明=PG 家族 trigger `editable=false`（evidence §1.3）。故 E 列除注明外一律为 U，不重复写入格内。
 **V/D/X/R 共性注记**：validate=未发现独立 dry-run 端点（evidence 关键实现 80 行）；dependency=DependencyGraph 仅以 table 为节点、Sequence 参数未用于构图（evidence 关键实现 81 行，本 9 类均不入图）；execute=通用 SQL 执行通道 C（DDL 保存经 production guard，多语句非事务）；rollback=仅 Schema Diff 反向 DDL，source save 无自动补偿（evidence 关键实现 82 行）。
@@ -214,5 +215,6 @@
 | 复评第 7 项：查询执行生命周期重写 | §1 查询执行行（Tauri await vs taskId+SSE 生命周期分离；SSE 定位为传输适配层；R5-A FE 冻结≠BE/A5 语义冻结） | 判定重写为冲突项 |
 | 复评（v2-recheck）第 1 项：8 类排除对象+MATERIALIZED_VIEW 逐驱动操作矩阵 | §2.4（逐路由组×9 对象 L/G/N 矩阵 + E/V/D/X/R 统一注记 + 声明面差异如实登记 6 项 + 矩阵边界）；§0 追加 object_source_sql.rs 锚点 SHA256 | 【亲核】（`schema/mod.rs` 与 `object_source_sql.rs` 行级实锚，SHA256 只读计算）；声明面【转引 evidence】 |
 | 复验（v2.1-recheck）第 1 项：矩阵单元格完备性（空缺 L/N、裸 N 歧义、合并行共享） | §2.4 v2.2 重写：每格补齐 L/G/N 三元、NA 语义与 N 列统一取值规则、PACKAGE/PACKAGE_BODY 共享三项证明、声明面锚点行窗修正 | 【亲核】（新增 builder 分派函数全貌 `object_source_sql.rs:L129-L191` 行级实锚） |
+| 复验（v2.2-recheck）第 1 项：N 列统一规则与格值矛盾 | §2.4 v2.3 规则④条件化：`G=U` 不无条件传递 `N=U`，仅在 N 依赖 G/source 获取路径时传递；独立生成器/入口凭独立证据定值（N=V 专用 builder `object_source_sql.rs:L130-L131` / N=C 回退臂 `L188-L190` / N=NA 入口不存在）；**格值零改动** | 【亲核】（监督线 #115 裁定二采纳；三项独立证据锚点复核） |
 
-- 评审分工：Codex 复评本清单 v2（P1-7 复评，回执 `2026-10-17-Codex-T1-P1-7-review-v2-recheck.md`：FAIL 仅第 1 项）→ v2.1 补差 → Codex 复验（回执 `2026-10-17-Codex-T1-P1-7-review-v2.1-recheck.md`：FAIL 单元格完备性）→ v2.2 补差后申请再次复验；裁定项进入 A5 冻结前议程。
+- 评审分工：Codex 复评本清单 v2（P1-7 复评，回执 `2026-10-17-Codex-T1-P1-7-review-v2-recheck.md`：FAIL 仅第 1 项）→ v2.1 补差 → Codex 复验（回执 `2026-10-17-Codex-T1-P1-7-review-v2.1-recheck.md`：FAIL 单元格完备性）→ v2.2 补差 → Codex 复验（回执 `2026-10-17-Codex-T1-P1-7-review-v2.2-recheck.md`：FAIL 仅 N 列规则④，三项 PASS）→ 监督线 #115 裁定二（无需改格，仅修订规则④措辞）→ v2.3 补差后申请第 5 轮复验；裁定项进入 A5 冻结前议程。
