@@ -37,3 +37,15 @@
 ## 4. 冻结边界
 
 `5a71821` 的 13 项测试已由 Codex 本轮复跑通过；这只证明当前集成测试覆盖的桥接行为，不证明八工具可用、生产宿主接线、R5-A SQL 执行或审计持久化完整。R8-A v1 和 `generate_sql` 不作为第九个注册工具的裁定保持不变。复核未修改 Trae 实现、未调用 AOCI、未远端 push。
+
+## 5. 后续提交复核（Trae #172）
+
+复核基线推进到 canonical main `9ea53ad`，新增 `1b40e43`、`775c1cd`、`178778c`、`643b845`。Codex 再次执行 `pytest -q tests/rebuild/test_r8a_ai_tools_api.py`，结果 **13 passed in 17.23s**。本节对上表相关项作增量修订：
+
+- **R8A-02：行为口径 PASS，PoC 完整度 PARTIAL。** `enabled` 已按实际 handler 接线动态计算，未接线工具显示 disabled，并对有效请求返回 `TOOL_DISABLED`；测试同时验证无 `generate_sql`。但当前只有 `search_schema` handler 接线，实施计划要求的 `run_sql` 仍 disabled，不能判定三工具 PoC 完成。另 disabled 检查在业务参数和预算校验之后；对 disabled 工具提交缺参数/超预算请求会先返回 `INVALID_PARAMS`/`BUDGET_EXCEEDED`。验收清单未写明错误优先级，需补测试或裁定。
+- **R8A-05：PARTIAL。** 对有效目标项目，身份/项目权限在业务参数和预算校验之前；新增拒绝用例覆盖角色不足、跨项目、幽灵项目同码同消息，并断言 search_schema handler 零调用。尚无无权限+坏业务参数/超预算请求的优先级测试，且没有真实 SQL port 可用于零调用 spy；拒绝请求逐条与审计记录的完整匹配也未覆盖。
+- **R8A-07/AUD：PARTIAL，不再按上表原措辞称普通失败分支静默吞错。** `178778c` 将 writer 封装为统一 `write_audit` 并在可返回错误的路径添加 `details.audit_write_failed=true`；成功 handler 后 writer 失败仍丢弃结果并返回 INTERNAL_ERROR。该标记使 sink outage 可观察，但 outage 时仍不存在可持久回链的 audit record；401 认证失败在工具分发前返回且不写审计，是否属于“每次工具调用”由监督/冻结口径界定。当前仅 handler 成功后的 writer 故障测试验证 marker；参数、权限、预算、disabled、版本等错误分支未各自注入故障并断言 marker、记录数和 audit_id 关联。不得将此状态写成“失败路径恰有持久审计记录”。
+- **AUD-01：时间来源已实现，字段/持久化仍 PARTIAL。** `started_at`/`finished_at` 现在取 DB `func.now()`；测试只断言非空，未解析时间、验证先后或与响应时间关系。`budget_consumption` 仍只从结果提取 `row_count` 和 `truncated`，不是八工具实际预算消耗的完整记录；测试未验证成功记录 budget。writer 仍是注入端口，未提供 Datara 持久化审计实体、迁移或生产 writer。
+- **HOST/SQL-RO：仍 NOT VERIFIED。** `create_app` 仅提供可选 `ai_bridge_ports` 注入点，未发现生产 factory/宿主装配；`run_sql` 没有 R5-A `executeSql` 端口绑定和正向 SQL/只读拒绝证据。Trae #172 已将这些登记为步骤 4/5 或后续缺口。
+
+**当前结论：P1-3 步骤 1–3 的桥接 PoC 测试与基础边界实现有 13/13 运行证据；P1-3 整体仍 PARTIAL、不得关闭。** 剩余责任：Trae继续 R5-A `run_sql` 与 P1-2 adapter 接线及审计持久化；监督线/契约责任方裁定 `enabled` 与审计 sink outage 的精确契约、disabled/error precedence；FE 线实测 snake_case/camelCase 映射。
