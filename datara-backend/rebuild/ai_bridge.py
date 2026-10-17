@@ -232,6 +232,25 @@ def build_ai_router(
             value = session.scalar(select(func.now()))
         return value.isoformat() if hasattr(value, "isoformat") else str(value)
 
+    def write_audit(record: Mapping[str, Any]) -> bool:
+        """Single audit sink call; never bypassed, never swallowed silently."""
+        try:
+            ports.audit_writer.write(record)
+            return True
+        except Exception:
+            return False
+
+    def budget_consumption(result: Mapping[str, Any] | None) -> dict[str, Any]:
+        """§4 actual consumption derived from the tool result, when present."""
+        if not isinstance(result, Mapping):
+            return {}
+        budget: dict[str, Any] = {}
+        if isinstance(result.get("row_count"), int):
+            budget["rows_returned"] = result["row_count"]
+        if "truncated" in result:
+            budget["truncated"] = bool(result["truncated"])
+        return budget
+
     def audit_record(
         *,
         audit_id: str,
@@ -245,6 +264,8 @@ def build_ai_router(
         error_code: str | None,
         latency_ms: int,
         refs: Mapping[str, Any],
+        started_at: str,
+        result: Mapping[str, Any] | None = None,
     ) -> dict[str, Any]:
         return {
             "audit_id": audit_id,
@@ -257,8 +278,10 @@ def build_ai_router(
             "request_payload": request_payload,
             "outcome": outcome,
             "error_code": error_code,
+            "started_at": started_at,
+            "finished_at": server_time_now(),  # DB-generated timestamps (§4)
             "latency_ms": latency_ms,
-            "budget": {},
+            "budget": budget_consumption(result),
             "refs": dict(refs),
         }
 
@@ -404,23 +427,25 @@ def build_ai_router(
         server_time = server_time_now()
         latency_ms = int((time.perf_counter() - started) * 1000)
         if envelope_problems:
-            record = audit_record(
-                audit_id=audit_id,
-                tool_call_id=tool_call_id if isinstance(tool_call_id, str) else "",
-                tool=tool if isinstance(tool, str) else "",
-                tool_version=tool_version if isinstance(tool_version, int) else 0,
-                user=user,
-                project_id=None,
-                request_payload={"params": params, "page_context": page_context},
-                outcome="ERROR",
-                error_code="INVALID_PARAMS",
-                latency_ms=latency_ms,
-                refs={},
+            audit_ok = write_audit(
+                audit_record(
+                    audit_id=audit_id,
+                    tool_call_id=tool_call_id if isinstance(tool_call_id, str) else "",
+                    tool=tool if isinstance(tool, str) else "",
+                    tool_version=tool_version if isinstance(tool_version, int) else 0,
+                    user=user,
+                    project_id=None,
+                    request_payload={"params": params, "page_context": page_context},
+                    outcome="ERROR",
+                    error_code="INVALID_PARAMS",
+                    latency_ms=latency_ms,
+                    refs={},
+                    started_at=server_time,
+                )
             )
-            try:
-                ports.audit_writer.write(record)
-            except Exception:
-                pass
+            invalid_error = error_payload("INVALID_PARAMS", False, invalid_details(envelope_problems))
+            if not audit_ok:
+                invalid_error["details"] = {**invalid_error.get("details", {}), "audit_write_failed": True}
             return envelope(
                 tool_call_id=tool_call_id if isinstance(tool_call_id, str) else "",
                 tool=tool if isinstance(tool, str) else "",
@@ -429,27 +454,30 @@ def build_ai_router(
                 server_time=server_time,
                 status="ERROR",
                 result=None,
-                error=error_payload("INVALID_PARAMS", False, invalid_details(envelope_problems)),
+                error=invalid_error,
             )
 
         def finish_error(code: str, retryable: bool, details: Mapping[str, Any] | None = None):
-            record = audit_record(
-                audit_id=audit_id,
-                tool_call_id=tool_call_id,
-                tool=tool,
-                tool_version=tool_version,
-                user=user,
-                project_id=params.get("project_id") if isinstance(params.get("project_id"), int) else None,
-                request_payload=dict(params),
-                outcome="ERROR",
-                error_code=code,
-                latency_ms=int((time.perf_counter() - started) * 1000),
-                refs={},
+            audit_ok = write_audit(
+                audit_record(
+                    audit_id=audit_id,
+                    tool_call_id=tool_call_id,
+                    tool=tool,
+                    tool_version=tool_version,
+                    user=user,
+                    project_id=params.get("project_id") if isinstance(params.get("project_id"), int) else None,
+                    request_payload=dict(params),
+                    outcome="ERROR",
+                    error_code=code,
+                    latency_ms=int((time.perf_counter() - started) * 1000),
+                    refs={},
+                    started_at=server_time,
+                )
             )
-            try:
-                ports.audit_writer.write(record)
-            except Exception:
-                pass
+            error = error_payload(code, retryable, details)
+            if not audit_ok:
+                # "失败可追踪" (acceptance §4): mark the sink outage on the wire
+                error["details"] = {**(error.get("details") or {}), "audit_write_failed": True}
             return envelope(
                 tool_call_id=tool_call_id,
                 tool=tool,
@@ -458,7 +486,7 @@ def build_ai_router(
                 server_time=server_time,
                 status="ERROR",
                 result=None,
-                error=error_payload(code, retryable, details),
+                error=error,
             )
 
         entry = REGISTRY_BY_NAME.get(tool)
@@ -530,16 +558,16 @@ def build_ai_router(
             tool=tool,
             tool_version=tool_version,
             user=user,
-            project_id=params["project_id"],
+            project_id=target_project_id,
             request_payload=dict(params),
             outcome=outcome,
             error_code=error_code,
             latency_ms=int((time.perf_counter() - started) * 1000),
             refs=page_refs,
+            started_at=server_time,
+            result=result,
         )
-        try:
-            ports.audit_writer.write(record)
-        except Exception:
+        if not write_audit(record):
             # unaudited success is forbidden: discard the handler result, fail closed
             return envelope(
                 tool_call_id=tool_call_id,
@@ -549,7 +577,7 @@ def build_ai_router(
                 server_time=server_time,
                 status="ERROR",
                 result=None,
-                error=error_payload("INTERNAL_ERROR", False),
+                error=error_payload("INTERNAL_ERROR", False, {"audit_write_failed": True}),
             )
         if outcome == "SUCCESS":
             return envelope(
