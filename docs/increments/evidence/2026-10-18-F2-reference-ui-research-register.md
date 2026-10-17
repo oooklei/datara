@@ -6,7 +6,7 @@
 
 - 权威重建设计正本 `docs/increments/2026-10-14-datara-platform-rebuild-design.md` §1.2 明确正式前端在 Backend 冻结前不改；§1.3 要求独立验证页面以被测产品的真实交互、表单、默认值、校验、步骤及反馈为准，不得以 Datara 旧正式前端为参考，也不得做成 API 按钮面板。§1.2 的 D-1 豁免仅指菜单分组和 `/std/*` 路由展示元信息，不覆盖正式页面业务功能。
 - 执行状态附录 `docs/increments/2026-10-14-datara-platform-rebuild-design-执行附录.md` §1.2 复述同一豁免边界，§1.3 规定“能力—来源—源码/契约—参考页面/用户流程—新 Backend 适配—可验证场景”对照，并要求验证页调用新 Backend API。
-- 当前 checkout 未发现名为《核心业务功能实现规范与验收标准》的 v4 独立文件；因此本登记不声称逐字核验了该标准 v4 的 §1.2。以上边界以本地存在的权威设计正本及执行状态附录为准；如 v4 §1.2 另有经批准差异，需由权威持有人补充其路径/版本后复核。
+- canonical main 存在并生效的《2026-10-17-核心业务功能实现规范与验收标准.md》（标题注明“标准规则稿 v4 · 生效”，路径 `D:\需求\数据治理工具\Datara\docs\increments\2026-10-17-核心业务功能实现规范与验收标准.md`）。复核其效力位阶、§0.5、§2/S2、S6 后，确认：后端优先，正式前端融合须等 Backend 冻结后单独开展；当前 R 系列面板属于契约接线验证层，不称完整功能验证页；正式功能验证需按参考组件真实交互五要素验收；外部组件不得成为 Datara 主权数据真源。v4 目录结构是 §0、§2 等，并没有 §1.2；本任务所指展示层豁免 §1.2/交互验证 §1.3 位于权威设计正本 `docs/increments/2026-10-14-datara-platform-rebuild-design.md`。两份依据一致：D-1 只覆盖菜单分组与 `/std/*` 路由展示元信息，不覆盖业务页面、mock 或交互改造。执行状态附录 §1.2–§1.3 是该边界的补充记录，不再作为缺失标准的替代依据。
 - `D:\dbx-main`、`D:\dolphinscheduler-dev\dolphinscheduler-dev`、`D:\vanna-main` 可读取，但在各目录根部未发现 `.git` 元数据，无法核验分支、commit 或 tag。下面的源码锚点均为本机快照路径；不将其表述为已锁定上游版本。未发现独立 `D:\DataX` 源码检出；DataX 部分只依据 DolphinScheduler DataX 任务集成源码和文档，不能代表 DataX 原生 UI。
 
 ## 2. 组件证据和差异矩阵
@@ -19,18 +19,19 @@
 
 ## 3. 融合差异优先级与处理方向
 
-1. **P0 边界：前端解冻条件。** 当前只准研究登记；D-1 仅豁免导航/路由展示属性。任何 Datara 正式业务页面、mock/API 交互或菜单以外的页面行为改动仍需等 Backend 契约冻结及后续融合阶段，不由本登记授权。
+1. **P0 边界：前端解冻条件。** 依 v4 §0.5、§2/S2 与设计正本 §1.2–§1.3，当前只准研究登记；D-1 仅豁免导航/路由展示属性。任何 Datara 正式业务页面、mock/API 交互或菜单以外的页面行为改动仍需等 Backend 契约冻结及后续融合阶段，不由本登记授权。R 系列接线面板按 v4 归为契约接线验证层，报告中没有把它们称作功能验收页。
 2. **P1 后端可执行契约：** 先让 Datara 自己具备项目/数据源权限、变量解析、作业/SQL 的可审计执行、异步状态、错误反馈、结果/日志和资源引用，再把参考 UI 的关键表单步骤映射到其 API。每个字段需有后端 schema、默认来源、校验错误形状和状态转换；前端单独校验只是即时提示，不能成为安全边界。
 3. **P1 组件主参考：** SQL IDE 以 DBX 作为编辑、跨 Schema 查询和结果工作区参照；DAG/DataX 以 DolphinScheduler 的画布与 DataX 节点配置参照；AI 以 Vanna 的自然语言到结构化结果流参照。融合保留 Datara 全局变量、项目 scope、运行审计和后端主权。
 4. **P2 证据补足：** 固定上游仓库 commit/tag；精读 DBX 对象编辑及逐驱动能力，DS DataX 完整表单/默认值/字段交互与运行反馈，Vanna 后端权限/工具合同及组件失败恢复；补充真实页面的控件路径或截图/自动化证据。未完成前，相应功能标为“源码/文档初步映射，UI 复核待办”。
 
 ## 4. 当前结论
 
-现有证据足以建立三个模块的交互骨架映射，但不够据此直接批准正式前端融合或宣称目标功能验收通过。DBX 和 Vanna 的参考 UI 不应被当作可直接嵌入的 Datara 页面；DolphinScheduler 的 DataX 节点是 DS 对 DataX 的集成形态，不等同 DataX 独立产品 UI。建议先完成 P2 中版本固定与缺口精读，再由后端契约冻结结果形成正式融合立项条目。本登记没有对 Datara 代码、页面或用户数据作改动。
+现有证据足以建立三个模块的交互骨架映射，但不够据此直接批准正式前端融合或宣称目标功能验收通过。该结论与生效标准 v4 一致：研究登记不替代后端冻结或后端全量验收。DBX 和 Vanna 的参考 UI 不应被当作可直接嵌入的 Datara 页面；DolphinScheduler 的 DataX 节点是 DS 对 DataX 的集成形态，不等同 DataX 独立产品 UI。建议先完成 P2 中版本固定与缺口精读，再由后端契约冻结结果形成正式融合立项条目。本登记没有对 Datara 代码、页面或用户数据作改动。
 
 ## 5. 来源锚点
 
 - Datara 权威设计：`docs/increments/2026-10-14-datara-platform-rebuild-design.md` §1.2–§1.3。
+- 生效验收标准：`D:\需求\数据治理工具\Datara\docs\increments\2026-10-17-核心业务功能实现规范与验收标准.md`（标准规则稿 v4）：§0.5 后端阶段优先；§2/S2 验证分层、五要素与 R 系列面板定位；§1.2/§1.3 的 D-1 展示豁免具体见上项权威设计正本，v4 文件本身不设 §1.2 编号。
 - Datara 执行状态边界：`docs/increments/2026-10-14-datara-platform-rebuild-design-执行附录.md` §1.2–§1.3。
 - Datara 标准 v2 反馈处理与待研读事项（仅作过程证据，不替代标准 v4）：`docs/increments/evidence/2026-10-17-standard-v2-feedback-disposition.md`，位于当前嵌套 main 工作副本；本登记没有将其作为 v4 权威条文。
 - DBX 用户交互：`D:\dbx-main\docs\content\docs\query-editor.cn.mdx`；真实 UI 代码 `D:\dbx-main\apps\desktop\src\components\layout\SqlEditorWorkspace.vue`、`QueryResultSurface.vue`、`D:\dbx-main\apps\desktop\src\components\grid\DataGrid.vue`、`D:\dbx-main\apps\desktop\src\stores\queryStore.ts`、`D:\dbx-main\apps\desktop\src\composables\useSqlExecution.ts`。
