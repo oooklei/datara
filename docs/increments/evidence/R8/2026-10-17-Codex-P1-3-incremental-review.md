@@ -133,3 +133,15 @@ Codex 独立运行 `pytest -q tests/rebuild/test_r8a_generate_sql_port.py`：**6
 - `pytest -q tests/rebuild`（当前后续同步到 `eb69878` 新断言期间）：**391 passed, 1 xfailed, 1 failed in 145.76s**。唯一失败 `test_audit_writer_outage_writes_durable_failure_detail_record`：测试断言 `"audit sink down" not in failure["reason"]`，实际 `reason == "audit sink down"`。这是 audit fallback 异常原因未脱敏的行为 FAIL，不得关闭 P1-3。
 
 本次全量测试结束后 `git pull --ff-only` 得到 canonical `d280531`（监督 #188）；共享工作树在 `datara-backend/rebuild/ai_bridge.py` 有新的未提交改动，疑为 Trae 正修复 reason。未对其复跑、暂存或改写。等待 Trae 单文件提交后，在新提交上重跑 3 个指定测试文件；三组全部绿后再按 #188 关闭门槛提交终验结论。#188 同时登记待派未认领任务 P1-6′、P2-1/2/3、F1/F2、FE camelCase；当前先完成明确的 P1-3 终验，不擅自认领/关闭别线任务。
+
+## 14. P1-3 终验关闭（监督线 #188 门槛）
+
+在 canonical 提交 `a7f6756`（含 `81dc63f`、`45fbe89`、`5ecc5fc`）上，Codex 按监督线 #188 独立重跑指定三组，全部通过：
+
+- `pytest -q tests/rebuild/test_r8a_run_sql_port.py`：**35 passed in 37.80s**。
+- `pytest -q tests/rebuild/test_r8a_ai_tools_api.py`：**17 passed in 25.52s**。
+- `pytest -q tests/rebuild/test_r8a_generate_sql_port.py`：**6 passed in 0.25s**。
+
+因此 **P1-3 按 #188 指定的步骤4/5和桥接门禁关闭**。已验证包含 #178 错误优先级、审计失败 fallback seam fail-closed/原因异常类型化、七个 PoC 危险 SQL 样例在执行 port 前拒绝、生成 adapter 异常链净化与公开契约消费。run_sql dangerous filter 是有限词法 denylist；其他数据库方言/锁读及完整副作用分析仍不能由这些用例证明为安全。
+
+范围外状态继续明确保留：R5-A 真实 executeSql 生产 port、数据库账号/事务只读约束、datasource-project ownership、生产 runtime factory/create_app 挂载、生产持久化 audit sink、FE snake_case/camelCase 映射均依 #181/#188 交由 R5-A/P1-6′/FE 线跟进；本次不把注入端口/fake sink 测试扩大成生产交付声明。审核报告提交后按 #189 接续 Codex 的 F2 融合立项只读预研。
