@@ -13,10 +13,15 @@ RUN apt-get update \
     && apt-get install -y --no-install-recommends curl tzdata \
     && rm -rf /var/lib/apt/lists/*
 
-# 先装依赖再拷代码，充分利用构建缓存
-COPY requirements.txt ./
+# 先安装基础依赖再应用 AI 完整锁，避免宽松基础范围覆盖锁定版本。
+COPY requirements.txt requirements-ai-copilot.lock ./
+COPY vendor/ai_copilot/wheels/ /opt/datara/vendor/ai_copilot/wheels/
 # pip 源用 aliyun HTTPS（清华源在 1.9 容器内被 DNS 解析为纯 IPv6 且容器无 IPv6 连通，秒败 versions: none）
-RUN pip install --no-cache-dir -i https://mirrors.aliyun.com/pypi/simple/ -r requirements.txt
+RUN pip install --no-cache-dir -i https://mirrors.aliyun.com/pypi/simple/ -r requirements.txt \
+    && pip install --no-cache-dir --require-hashes -i https://mirrors.aliyun.com/pypi/simple/ \
+    --find-links=/opt/datara/vendor/ai_copilot/wheels \
+    -r requirements-ai-copilot.lock \
+    && pip check
 
 COPY . .
 
