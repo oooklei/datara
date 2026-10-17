@@ -1,4 +1,4 @@
-# DBX × 原版 SQLIDE 融合对照清单（2026-10-17，P1-7 / D9 执行令产出；v2.1 修订）
+# DBX × 原版 SQLIDE 融合对照清单（2026-10-17，P1-7 / D9 执行令产出；v2.2 修订）
 
 > 目的：落实设计 §13.17-9 D9——「全面学习和研究 DBX 代码、使用文档等相关资料，与现有原版 SQLIDE 进行融合；若存在冲突和歧义，优先级以 DBX 为准。原版 SQLIDE 在界面操作层面具备自身特色和优势，在条件允许的情况下可进行吸收融入。」
 > 输入基线：DBX=`D:\dbx-main` 本地快照（标识见 §0）；原版 SQLIDE=Datara 现行 `/ide`（`datara-web/src/views/ide/` + `datara-backend/api/ide.py`）；承接映射 v2.2（`2026-10-17-DBX-DS-源码研读与复刻映射.md`，九能力锚点不重复展开）；Codex 对象×驱动×操作矩阵与 DDL 源码复核两份 evidence（`docs/increments/evidence/R5/dbx-object-driver-operation-matrix-20261017.md`、`dbx-ddl-source-review-20261017.md`）。
@@ -6,6 +6,7 @@
 > O7 边界与证据分级：本文仅登记带源码锚点的实证结论；标注「待精读」处不落笔为事实。锚点分三级——【亲核】=Trae 主智能体直接 Read/Grep/计算实证；【补研】=Trae Explore 代理返回、主智能体已复核路径存在性但未逐行复读；【转引】=Codex 已入库 evidence 文件。本文是 A5 冻结前议程输入，不直接改 R5 契约。
 > v2 修订说明：对照 T-1 评审（`docs/increments/evidence/2026-10-17-Codex-T1-P1-7-review.md`，FAIL）五缺口与复评清单 7 项逐项闭环——缺口①→§2 新增对象×驱动矩阵；缺口②→§3 新增端到端阶段映射；缺口③→§9 重写逐项锚点表；缺口④→§1 凭证存储行+C5 改真锚；缺口⑤→§0 新增快照可复现标识；复评第 6 项（C2 DBX 优先约束）→§1 语句切分行+C2；复评第 7 项（查询执行生命周期重写）→§1 查询执行行。闭环登记总表见 §11。
 > v2.1 修订说明（复评后补差）：对照 Codex 复评回执（`docs/increments/evidence/2026-10-17-Codex-T1-P1-7-review-v2-recheck.md`，FAIL——仅第 1 项未闭环，6 项 PASS）唯一缺口，新增 §2.4 逐路由组×源码型对象（8 类排除对象+MATERIALIZED_VIEW）操作矩阵；不可实证处一律标 U/Unknown；其余六项 PASS 不回退。闭环登记见 §11 末行。
+> v2.2 修订说明（复验后补差）：对照 Codex 复验回执（`docs/increments/evidence/2026-10-17-Codex-T1-P1-7-review-v2.1-recheck.md`，FAIL——§2.4 存在未定义单元格：空缺 L/N、裸 N 歧义、合并行未证共享）逐点修正——全表每格补齐 L/G/N 三元、新增 NA 语义与 N 列统一取值规则（V=专用 builder/C=通用原文执行回退/G=N→NA/结构化定义→NA）、PACKAGE/PACKAGE_BODY 合并行补三项共享证明、声明面锚点行窗修正（L42-L110）。
 
 ## 0. DBX 快照可复现标识【亲核，v2 新增】
 
@@ -85,25 +86,30 @@
 - 回扩门槛：每类须同时具备 ①对象清单路由锚点 ②DDL 读取路由锚点 ③至少一驱动实测证据，三者齐备方可进入契约扩展提案。
 - 验收证据形态：引用本文 §2 + evidence 矩阵文件 + MetaTree 实锚行号。
 
-### 2.4 逐路由组 × 源码型对象操作矩阵（v2.1 新增，复评第 1 项闭环）【亲核】
+### 2.4 逐路由组 × 源码型对象操作矩阵（v2.2 新增：复评第 1 项闭环；v2.2 按复验回执消除空格/裸值）【亲核】
 
-补齐 evidence §1.3 未覆盖的 8 类 ObjectSourceKind（EVENT/SEQUENCE/SYNONYM/JOB/PACKAGE/PACKAGE_BODY/TYPE/TYPE_BODY）与 MATERIALIZED_VIEW 独立能力边界。行=对象类型，列=evidence §1.3 同款后端路由组合并组（不把路由说成独立适配器）；格内三元组 **L/G/N** = 发现(list) / 定义读取(get-definition) / DDL 生成(generate)；取值 **V**（源码直接路由/实现，仅证代码路径不证运行成功）/**C**（路径存在但受驱动、Agent 实现、DB 配置或版本约束）/**U**（Unknown，本次不能证明）/**N**（源码显式拒绝/空臂/只读）/**NA**，语义与 evidence §1.3 一致。
+补齐 evidence §1.3 未覆盖的 8 类 ObjectSourceKind（EVENT/SEQUENCE/SYNONYM/JOB/PACKAGE/PACKAGE_BODY/TYPE/TYPE_BODY）与 MATERIALIZED_VIEW 独立能力边界。行=对象类型，列=evidence §1.3 同款后端路由组合并组（不把路由说成独立适配器）；**每格必须为三操作各给一个状态，禁止空格与无前缀裸值**。
+
+- **L/G/N** = 发现(list) / 定义读取(get-definition) / DDL 生成(generate)。
+- **取值**：**V**（源码直接路由/实现，仅证代码路径不证运行成功）/**C**（路径存在但受驱动、Agent 实现、DB 配置或版本约束）/**U**（Unknown，本次不能证明）/**N**（源码显式拒绝：空臂/恒空过滤/显式空串）/**NA**（Not applicable：该操作对此对象×路由组入口不存在或不适用）。语义与 evidence §1.3 一致并扩充 NA。
+- **N 列取值规则（统一，避免歧义）**：①`N=V` 仅限存在专用方言 builder——全矩阵唯一处=OB Oracle×SEQUENCE（`build_executable_object_source_statements` 专用臂 `object_source_sql.rs:L130-L131`）；②`N=C` = 无专用 builder，源码保存走**通用原文执行回退**（同函数兜底臂 `object_source_sql.rs:L188-L190`，原文当 DDL 提交，非方言生成）；③`G=N`（读取不支持）→ `N=NA`（源码保存入口依赖读取通道，读取即无）；④`G=U` → `N=U`；⑤定义读取为**结构化详情而非文本源**（PG TYPE，见下）→ `N=NA`（源码编辑器不适用）。
 
 **E（edit）列统一注记**：全 9 类无逐驱动显式 editable 分派——`ObjectSource.editable` 为声明位（`types.rs:L225-L233`），native/Agent 源码路返回 `editable: None`（`schema/mod.rs:L10761,L10819`），Source Editor 读 `editable=false` 即只读（evidence 关键实现 77 行）；已证实唯一显式负声明=PG 家族 trigger `editable=false`（evidence §1.3）。故 E 列除注明外一律为 U，不重复写入格内。
 **V/D/X/R 共性注记**：validate=未发现独立 dry-run 端点（evidence 关键实现 80 行）；dependency=DependencyGraph 仅以 table 为节点、Sequence 参数未用于构图（evidence 关键实现 81 行，本 9 类均不入图）；execute=通用 SQL 执行通道 C（DDL 保存经 production guard，多语句非事务）；rollback=仅 Schema Diff 反向 DDL，source save 无自动补偿（evidence 关键实现 82 行）。
+**合并行共享证明（v2.2 新增，回应复验要求）**：PACKAGE/PACKAGE_BODY 合并行成立——①Oracle Agent 清单 SQL 单语句同取两 kind（`mod.rs:L10959-L10962` 'PACKAGE'/'PACKAGE BODY'）；②Oracle 元数据分派集合同含两 kind（`mod.rs:L9642-L9648`）；③openGauss 读取函数显式 is_body 分支（`mod.rs:L10852-L10853`）。三者证明两 kind 共享同一路由与状态，无需拆行；其余对象行均不合并。
 
-| 对象 | Native MySQL 池（mysql 及 MySQL 协议兼容） | OceanBase Oracle mode | PostgreSQL 池（PG 家族常规） | PG 特殊路由（QuestDB/Cloudberry/Redshift/openGauss） | SQLite 族专用路（SQLite/rqlite/Turso/D1/DuckDB/ClickHouse） | SQL Server 专用池 | Agent Driver（oracle/kingbase/vastbase/xugu 等） | ExternalDriver/JDBC |
+| 对象 | ① Native MySQL 池（mysql 及 MySQL 协议兼容） | ② OceanBase Oracle mode | ③ PostgreSQL 池（PG 家族常规） | ④ PG 特殊路由（QuestDB/Cloudberry/Redshift/openGauss） | ⑤ SQLite 族专用路（SQLite/rqlite/Turso/D1/DuckDB/ClickHouse） | ⑥ SQL Server 专用池 | ⑦ Agent Driver（oracle/kingbase/vastbase/xugu 等） | ⑧ ExternalDriver/JDBC |
 |---|---|---|---|---|---|---|---|---|
-| **SEQUENCE** | L=N G=N（`mysql_object_source_sql` 空臂 `mod.rs:L10379-L10385`） | L=C G=U N=C（专用 builder `object_source_sql.rs:L130`） | **L=V G=V**（pg_class relkind='S' `mod.rs:L10269-L10295`；relations 过滤 `L9590-L9603`） | L=C G=C（openGauss unwrap `L10270-L10272`；Agent PG 序列专路 `L9506-L9519`+`L10801-L10823`） | G=U（归 'routine' 查 sqlite_master 恒空 `L9979-L9993`） | L=N G=N（filter `''` `L10010`） | L=C G=C（Oracle 分派 GET_DDL('SEQUENCE') `L9642-L9648`+`L10321`+`L11876-L11877`；其余 per Agent U） | L=U G=U（per plugin） |
-| **MATERIALIZED_VIEW** | L=C G=C（Doris/StarRocks `SHOW CREATE MV` `L10392-L10394`，真 MySQL 连接 fail-loud 注记） | L=C G=U（同臂+测试 `L4474-L4491`） | **L=V G=V**（relations `L9595`；与 view 共享 source 臂，测试 `L11808`） | L=V G=C（gaussdb m_view 特判 `L10741-L10762`；QuestDB 仅 view 不含 MV `L10856-L10859`） | G=C（MV 降级 'view' `L9981`；ClickHouse 仅 VIEW `L10893`） | L=N G=N（`L10010`） | G=V（GET_DDL('MATERIALIZED_VIEW') `L10316`） | L=U G=U |
-| **EVENT** | L=C G=V（`SHOW CREATE EVENT` `L10378`、DDL 列索引 3 `L10423`、测试 `L4449-L4498`；list 分支未逐行核故 L=C） | L=N G=N（`L10385`） | L=N G=N（NULL-FALSE 臂 `L10302-L10303`） | 同 PG 池 N | G=U（'routine' 恒空） | L=N G=N（`L10010`） | L=N G=N（oracle GET_DDL 臂有 EVENT 映射 `L10320` 但声明面无驱动、分派不含） | L=U G=U |
-| **SYNONYM** | L=N G=N（`L10385`） | L=C（前端声明）**G=U**（声明与后端空臂矛盾态，如实登记 Unknown） | L=N G=N（`L10302-L10303`） | 同 PG 池 N | G=U（恒空） | L=N G=N（`L10010`） | L=C G=C（通用 Agent RPC `L10824-L10837`；`oracle_object_source_sql` 有 SYNONYM 臂 `L10322` 但 Agent 分派集 `L9642-L9648` 不含之；ALL_SYNONYMS 解析器 `L1347-L1378` 服务于表引用解析） | L=U G=U |
-| **PACKAGE / PACKAGE_BODY** | L=N G=N（`L10385`） | L=C（前端声明）G=U | L=C G=C（openGauss 专属：过滤 `L9615-L9623`、清单注记 `L7273`、`opengauss_package_source` `L10844-L10855`） | L=C G=C（openGauss 属特殊分支同左） | G=U（恒空） | L=N G=N（`L10010`） | **L=V G=V**（Oracle Agent 清单 SQL 含 PACKAGE/PACKAGE BODY `L10959-L10962`；分派 GET_DDL `L9642-L9648`+`L11868-L11873`）；xugu/transwarp/dameng per Agent C/U | L=U G=U |
-| **TYPE** | L=N G=N（`L10385`） | L=C G=U | L=C G=C（pg_type 仅 Postgres/OpenGauss/Gaussdb 启用 `L9581-L9583`+`L7268-L7283`；通用 source 臂显式拒绝 `L10302-L10303`，定义走结构化 CustomTypeDetails `L10596-L10624` 非 DDL 文本） | L=C G=C（同 PG 池门控） | G=U（恒空） | L=N G=N（`L10010`） | L=C G=C（Oracle GET_DDL('TYPE') 臂 `L10326` 存在但分派不含→Agent RPC；xugu/kingbase/vastbase per Agent） | L=U G=U |
-| **TYPE_BODY** | L=N G=N（`L10385`） | N | N（PG 声明面无） | N | G=U | L=N G=N（`L10010`） | L=C G=C（仅 xugu 声明，`L10327` GET_DDL('TYPE_BODY') 臂；per Agent） | L=U G=U |
-| **JOB** | L=N G=N（`L10385`） | N | L=N G=N（`L10302-L10303`） | N | G=U | L=N G=N（`L10010`） | L=C G=C（**仅 Xugu**：`oracle_object_source_sql` 显式空串+注记「Scheduler jobs 为 Xugu 专属 Agent 对象」`L10308-L10313`，经通用 Agent RPC `L10824-L10837`）；其余 per Agent U | L=U G=U |
+| **SEQUENCE** | L=N G=N N=NA（空臂 `mod.rs:L10379-L10385`） | L=C G=U **N=V**（专用 builder `object_source_sql.rs:L130-L131`） | L=V G=V N=C（pg_class relkind='S' `mod.rs:L10269-L10295`；relations 过滤 `L9590-L9603`；无专用 builder→通用回退） | L=C G=C N=C（openGauss unwrap `L10270-L10272`；Agent PG 序列专路 `L9506-L9519`+`L10801-L10823`） | L=N G=U N=NA（归 'routine' 查 sqlite_master 恒空 `L9979-L9993`） | L=N G=N N=NA（filter `''` `L10010`） | L=C G=V N=C（Oracle 分派 GET_DDL('SEQUENCE') `L9642-L9648`+`L10321`+`L11876-L11877`；其余 Agent per 实现降 C/U） | L=U G=U N=U |
+| **MATERIALIZED_VIEW** | L=C G=C N=C（Doris/StarRocks `SHOW CREATE MV` `L10392-L10394`，真 MySQL 连接 fail-loud 注记；MySQL builder 仅 View `L223`） | L=C G=U N=C（同臂+测试 `L4474-L4491`） | L=V G=V N=C（relations `L9595`；与 view 共享 source 臂测试 `L11808`；PG builder 仅 View `L151`） | L=V G=C N=C（gaussdb m_view 特判 `L10741-L10762`；QuestDB 仅 view 不含 MV `L10856-L10859`） | L=N G=U N=NA（MV 降级 'view' `L9981`；ClickHouse 仅 VIEW `L10893`） | L=N G=N N=NA（`L10010`） | L=C G=V N=C（GET_DDL('MATERIALIZED_VIEW') `L10316`） | L=U G=U N=U |
+| **EVENT** | L=C G=V N=C（`SHOW CREATE EVENT` `L10378`、DDL 列索引 3 `L10423`、测试 `L4449-L4498`；list 分支未逐行核故 L=C；MySQL builder 仅 Function/Procedure `L182-L186`） | L=N G=N N=NA（`L10385`） | L=N G=N N=NA（NULL-FALSE 臂 `L10302-L10303`） | L=N G=N N=NA（同③） | L=N G=U N=NA（'routine' 恒空） | L=N G=N N=NA（`L10010`） | L=U G=U N=U（声明面零声明；Oracle 分派集不含 EVENT；通用 Agent RPC 可路由但 per Agent 未证实） | L=U G=U N=U |
+| **SYNONYM** | L=N G=N N=NA（`L10385`） | L=C G=U N=U（前端声明与后端空臂矛盾态，如实登记 Unknown） | L=N G=N N=NA（`L10302-L10303`） | L=N G=N N=NA（同③） | L=N G=U N=NA（恒空） | L=N G=N N=NA（`L10010`） | L=C G=C N=C（通用 Agent RPC `L10824-L10837`；SYNONYM 臂 `L10322` 存在但分派集 `L9642-L9648` 不含之；ALL_SYNONYMS 解析器 `L1347-L1378` 服务于表引用解析非对象源） | L=U G=U N=U |
+| **PACKAGE / PACKAGE_BODY**（合并行，共享证明见上） | L=N G=N N=NA（`L10385`） | L=C G=U N=U | L=C G=C N=C（openGauss 专属：过滤 `L9615-L9623`、清单注记 `L7273`、`opengauss_package_source` `L10844-L10855`；文本源→通用回退） | L=C G=C N=C（openGauss 属特殊分支同③） | L=N G=U N=NA（恒空） | L=N G=N N=NA（`L10010`） | L=V G=V N=C（Oracle Agent 清单 SQL 同取两 kind `L10959-L10962`；分派 GET_DDL `L9642-L9648`+`L11868-L11873`；Oracle builder 仅 Function/Procedure `L172-L176`→通用回退） | L=U G=U N=U |
+| **TYPE** | L=N G=N N=NA（`L10385`） | L=C G=U N=U | L=C G=C N=NA（pg_type 仅 Postgres/OpenGauss/Gaussdb 启用 `L9581-L9583`+`L7268-L7283`；source 文本臂显式拒绝 `L10302-L10303`；定义走结构化 CustomTypeDetails `L10596-L10624` 非文本源→源码保存入口不适用） | L=C G=C N=NA（同③门控） | L=N G=U N=NA（恒空） | L=N G=N N=NA（`L10010`） | L=C G=C N=C（GET_DDL('TYPE') 臂 `L10326` 存在但分派集不含→Agent RPC；文本源→通用回退 per Agent） | L=U G=U N=U |
+| **TYPE_BODY** | L=N G=N N=NA（`L10385`） | L=N G=N N=NA（声明面无；同①空臂） | L=N G=N N=NA（声明面无；`L10302-L10303`） | L=N G=N N=NA（同③） | L=N G=U N=NA（恒空） | L=N G=N N=NA（`L10010`） | L=C G=C N=C（仅 xugu 声明；GET_DDL('TYPE_BODY') 臂 `L10327` 存在但分派集不含→Agent RPC per 实现） | L=U G=U N=U |
+| **JOB** | L=N G=N N=NA（`L10385`） | L=N G=N N=NA（声明面无；同①空臂） | L=N G=N N=NA（`L10302-L10303`） | L=N G=N N=NA（同③） | L=N G=U N=NA（恒空） | L=N G=N N=NA（`L10010`） | L=C G=C N=C（**仅 Xugu**：`oracle_object_source_sql` 显式空串+注记「Scheduler jobs 为 Xugu 专属 Agent 对象」`L10308-L10313`，经通用 Agent RPC `L10824-L10837`）；其余 per Agent U | L=U G=U N=U |
 
-声明面交叉核对（前端 `databaseObjectCapabilities.ts:L11-L29`【转引 evidence】与后端实锚的差异项，如实登记）：①JOB **零驱动声明**，后端仅 Xugu Agent 对象——声明面与后端均无通用支持；②TYPE_BODY 仅 xugu 声明；③EVENT 仅 mysql 声明（后端 getter 已实锚）；④dameng 声明集无 SYNONYM（Oracle 集合裁剪）；⑤oceanbase-oracle 声明 SYNONYM/PACKAGE/PACKAGE_BODY 但其后端 MySQL 池路由为显式空臂——声明≠后端能力（evidence 31 行既定口径），相关格如实标 U；⑥xugu 声明 TYPE/TYPE_BODY/SEQUENCE/SYNONYM/PACKAGE/PACKAGE_BODY 全集，均走 Agent RPC（C per Agent）。
+声明面交叉核对（前端 `databaseObjectCapabilities.ts:L42-L110`【转引 evidence 驱动清单表】与后端实锚的差异项，如实登记）：①JOB **零驱动声明**，后端仅 Xugu Agent 对象——声明面与后端均无通用支持；②TYPE_BODY 仅 xugu 声明；③EVENT 仅 mysql 声明（后端 getter 已实锚）；④dameng 声明集无 SYNONYM（Oracle 集合裁剪）；⑤oceanbase-oracle 声明 SYNONYM/PACKAGE/PACKAGE_BODY 但其后端 MySQL 池路由为显式空臂——声明≠后端能力（evidence 31 行既定口径），相关格如实标 U；⑥xugu 声明 TYPE/TYPE_BODY/SEQUENCE/SYNONYM/PACKAGE/PACKAGE_BODY 全集，均走 Agent RPC（C per Agent）。
 
 矩阵边界：①V 仅证代码路径，不证目标库运行成功（evidence 静态不可证明清单 1-5 项继续适用）；②前端声明集合仍不是后端能力认证（evidence 31 行）；③本表为 A5 冻结前议程输入，R5-A 契约扩展仍受 §2.3 回扩门槛约束。
 
@@ -207,5 +213,6 @@
 | 复评第 6 项：C2 DBX 优先约束 | §1 语句切分运行行 + C2（选区与语句边界冲突时 DBX 语义优先） | 判定明示，维持 A5 裁定门 |
 | 复评第 7 项：查询执行生命周期重写 | §1 查询执行行（Tauri await vs taskId+SSE 生命周期分离；SSE 定位为传输适配层；R5-A FE 冻结≠BE/A5 语义冻结） | 判定重写为冲突项 |
 | 复评（v2-recheck）第 1 项：8 类排除对象+MATERIALIZED_VIEW 逐驱动操作矩阵 | §2.4（逐路由组×9 对象 L/G/N 矩阵 + E/V/D/X/R 统一注记 + 声明面差异如实登记 6 项 + 矩阵边界）；§0 追加 object_source_sql.rs 锚点 SHA256 | 【亲核】（`schema/mod.rs` 与 `object_source_sql.rs` 行级实锚，SHA256 只读计算）；声明面【转引 evidence】 |
+| 复验（v2.1-recheck）第 1 项：矩阵单元格完备性（空缺 L/N、裸 N 歧义、合并行共享） | §2.4 v2.2 重写：每格补齐 L/G/N 三元、NA 语义与 N 列统一取值规则、PACKAGE/PACKAGE_BODY 共享三项证明、声明面锚点行窗修正 | 【亲核】（新增 builder 分派函数全貌 `object_source_sql.rs:L129-L191` 行级实锚） |
 
-- 评审分工：Codex 复评本清单 v2（P1-7 复评，回执 `2026-10-17-Codex-T1-P1-7-review-v2-recheck.md`：FAIL 仅第 1 项）；v2.1 补差后申请再次复验；裁定项进入 A5 冻结前议程。
+- 评审分工：Codex 复评本清单 v2（P1-7 复评，回执 `2026-10-17-Codex-T1-P1-7-review-v2-recheck.md`：FAIL 仅第 1 项）→ v2.1 补差 → Codex 复验（回执 `2026-10-17-Codex-T1-P1-7-review-v2.1-recheck.md`：FAIL 单元格完备性）→ v2.2 补差后申请再次复验；裁定项进入 A5 冻结前议程。
