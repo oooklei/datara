@@ -104,6 +104,7 @@ export const routes: RouteRecordRaw[] = [
   { path: '/rebuild/validation/dependency-form', name: 'rebuild-dependency-form-validation', component: () => import('../views/rebuild/validation/dependency-form/DependencyFormValidationView.vue'), meta: { title: '依赖表单验证（R4）' } },
   { path: '/rebuild/validation/resource-upload', name: 'rebuild-resource-upload-validation', component: () => import('../views/rebuild/validation/resource-upload/ResourceUploadValidationView.vue'), meta: { title: '资源上传验证（R4）' } },
   { path: '/rebuild/validation/variable', name: 'rebuild-variable-validation', component: () => import('../views/rebuild/validation/variable/VariableValidationView.vue'), meta: { title: '统一变量验证（R2）' } },
+  { path: '/rebuild/validation/ai-assistant', name: 'rebuild-ai-assistant-validation', component: () => import('../views/rebuild/validation/ai-assistant/AiAssistantValidationView.vue'), meta: { title: 'AI 悬浮助手契约验证（R8-B）' } },
 
   // ---- 部署运维 ----
   { path: '/dep/runtime', name: 'dep-runtime', component: () => import('../views/deploy/DeployRuntimeView.vue'), meta: { title: '运行时节点' } },
