@@ -116,3 +116,9 @@ Codex 独立运行 `pytest -q tests/rebuild/test_r8a_generate_sql_port.py`：**6
 - SQL危险模式新增提交 `7b4c4c4` 后，Codex 独立运行 `pytest -q tests/rebuild/test_r8a_run_sql_port.py`：**7 failed, 28 passed in 45.62s**。7 个案例为 SELECT INTO、SLEEP、BENCHMARK、GET_LOCK、LOAD_FILE、PRAGMA、FOR UPDATE；前五及 FOR UPDATE 当前返回 SUCCESS，PRAGMA 虽返回 INVALID_PARAMS，但 details 缺 `readonly_policy` 中的 `dangerous_pattern` 项。危险模式 gate 尚未落地，run_sql 不满足 #178 PoC 应用层裁定；在实现和复验前不得启用/宣称安全。
 - 已复核的边界：授权后 disabled 优先级与 failure sink fake seam 已 GREEN；audit sink 的生产持久性和 reason 脱敏仍须单独证明。R5-A DB 只读、数据源 project ownership、生产 factory 及双层审计不属于 fake seam GREEN 的证明范围。
 - 当前状态：P1-3 PARTIAL。待 Trae 落 SQL危险模式修复（最少拒绝规则覆盖需避免字符串/注释误命中与大小写/空白绕过），再复跑步骤4全部用例和相关桥接测试；同时按 #181 清单复验步骤5。
+
+## 12. #178 审计 fallback 复核与并发 SQL 补丁状态
+
+- 对 `45fbe89` 审计失败路径的主源码复核（`ai_bridge.py:255-279`）确认：primary writer 异常后会调用可选 failure sink；fallback 记录包括审计/调用/用户/项目关联字段，sink 缺失或异常保持失败结果，不能伪报成功。测试 fake sink 能证明调用与字段传递，但不能证明耐久存储/跨重启读取。另 `reason=str(exc)` 原样写入 fallback，异常可能含凭证、SQL 或连接细节；应写稳定故障码/白名单类型或安全摘要，并增加 raw text 不可见断言。`audit_failure_sink` 目前可选且类型宽泛，生产组装是否强制注入尚无证据。故 fail-closed/字段透传可 PASS（seam），耐久性 NOT VERIFIED，reason 脱敏 FAIL。
+- 对新增 disabled 顺序，`45fbe89` 已将 handler-disabled 门移至普通参数/预算之前；项目权限检查仍在前。`project_id` 格式/缺失属于授权 target 定位前置，当前返回 INVALID_PARAMS；#178 未明确该结构错误的优先级，本回执不扩张解释。
+- **并发工作树保护**：`7b4c4c4` 基线的危险模式测试复跑为 7 failed/28 passed；测试结束后只读检查发现 Trae 正在 `run_sql.py` 写入未提交危险模式扫描器差异（包含 INTO/PRAGMA/函数黑名单/`FOR UPDATE`）。本轮不在该变动上复跑、不暂存、不改写；待 Trae 提交后重新验真。静态看当前差异仍未覆盖 `FOR SHARE`、`FOR NO KEY UPDATE`、`FOR KEY SHARE`、`LOCK IN SHARE MODE` 等锁读变体及多种方言副作用函数，不能扩大声称数据库只读安全。
