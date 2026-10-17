@@ -12,3 +12,14 @@ Date: 2026-10-17 (Asia/Shanghai). Scope: persistent Chroma isolation for two val
 ## Scope limits
 
 This verifies actual persistent Chroma storage/query separation using deterministic supplied embeddings and the adapter's project path derivation. It does not exercise API authentication/project authorization, LLM embeddings, or end-to-end calls through a mounted R8-A endpoint. Storage-level cross-project isolation is **PASS**; API authorization integration remains outside this demonstration.
+
+## Audit-hook evidence supplement (2026-10-17)
+
+To address the review note that the first storage-isolation demonstration did not show audit events in the same execution, reran both paths together in the isolated lock venv with real `chromadb.PersistentClient` storage under a fresh temporary root, deterministic supplied embeddings, and a mock local Vanna/LLM boundary:
+
+- Project 11 wrote `project-11-secret` to its persistent collection and retrieved that value through `CopilotAdapter.generate_sql`.
+- Project 12 queried its distinct persistent collection and returned `NO_MATCH`; it could not retrieve the Project 11 document.
+- The same run captured six `MemoryAuditEvent`s: `add_documentation` started/succeeded for project 11, `generate_sql` started/succeeded for project 11, and `generate_sql` started/succeeded for project 12. Each carried user 7 and the corresponding project ID.
+- Result: `PASS project11='project-11-secret' project12='NO_MATCH' audit_events=6 projects=[11, 11, 11, 11, 12, 12]`; temporary Chroma clients were closed and the temporary store was removed.
+
+This closes the demonstration-level hook-evidence omission. It still does not exercise HTTP authentication, R8-A dispatch, or a production audit database; those remain separately scoped to the P1-3 bridge and P1-6' follow-up.
