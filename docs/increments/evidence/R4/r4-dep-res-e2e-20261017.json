@@ -1,0 +1,211 @@
+{
+  "login": {
+    "status": 200,
+    "hasToken": true
+  },
+  "dependency": {
+    "banner": "R4 DEPENDENCY RED 骨架（原型态）— rebuild/dependency 后端契约未接入，所有服务端 I/O 返回 R4_DEPENDENCY_NOT_WIRED",
+    "steps": [
+      {
+        "step": "add-group",
+        "ok": true
+      },
+      {
+        "step": "fill-task-id",
+        "ok": true
+      },
+      {
+        "step": "load-workflows",
+        "status": "加载候选工作流 完成",
+        "rows": 0
+      },
+      {
+        "step": "load-tasks",
+        "status": "加载工作流任务 完成",
+        "rows": 0
+      },
+      {
+        "step": "draft",
+        "draft": "wf(1) day[-1..-1]"
+      },
+      {
+        "step": "preview",
+        "status": "预览最终表达式 完成"
+      },
+      {
+        "step": "save",
+        "status": "保存依赖配置 完成"
+      },
+      {
+        "step": "evaluate",
+        "status": "预演判定 完成"
+      }
+    ],
+    "ok": true
+  },
+  "resource": {
+    "banner": "R4 RESOURCE RED 骨架（原型态）— rebuild/resources 后端契约未接入，所有服务端 I/O 返回 R4_RESOURCE_NOT_WIRED",
+    "steps": [
+      {
+        "step": "pick-file",
+        "ok": true
+      },
+      {
+        "step": "upload",
+        "status": "上传资源 完成"
+      },
+      {
+        "step": "upload-result",
+        "versionShown": "资源ID1版本1大小(Bytes)35Digest24cc550fac3aa892d5976e9b49a3f7f12fecfe4bd479da35c43e272ee8d49136上传时间2026-10-17T01:33:37.239684Z"
+      },
+      {
+        "step": "list",
+        "status": "资源列表 完成"
+      },
+      {
+        "step": "versions",
+        "status": "版本列表 完成"
+      },
+      {
+        "step": "get-version",
+        "status": "读取指定版本 完成",
+        "versionShown": "资源ID1版本1大小(Bytes)35Digest24cc550fac3aa892d5976e9b49a3f7f12fecfe4bd479da35c43e272ee8d49136上传时间2026-10-17T01:33:37.239684"
+      },
+      {
+        "step": "bind",
+        "status": "绑定确定版本 完成"
+      }
+    ],
+    "ok": true
+  },
+  "errors": [],
+  "network": [
+    {
+      "url": "/api/v1/rebuild/dependency/workflows?project_id=1",
+      "method": "GET",
+      "status": 200,
+      "body": null
+    },
+    {
+      "url": "/api/v1/rebuild/dependency/workflows/1/tasks?project_id=1&workflow_version=1",
+      "method": "GET",
+      "status": 200,
+      "body": null
+    },
+    {
+      "url": "/api/v1/rebuild/dependency/preview",
+      "method": "POST",
+      "status": 200,
+      "body": {
+        "project_id": 1,
+        "workflow_id": 1,
+        "workflow_version": 1,
+        "task_id": "clean",
+        "groups": [
+          {
+            "join": "AND",
+            "conditions": [
+              {
+                "upstream_workflow_id": 1,
+                "date_range": {
+                  "period_type": "day",
+                  "begin_offset": -1,
+                  "end_offset": -1
+                }
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "url": "/api/v1/rebuild/dependency/saves",
+      "method": "POST",
+      "status": 200,
+      "body": {
+        "project_id": 1,
+        "workflow_id": 1,
+        "workflow_version": 1,
+        "task_id": "clean",
+        "groups": [
+          {
+            "join": "AND",
+            "conditions": [
+              {
+                "upstream_workflow_id": 1,
+                "date_range": {
+                  "period_type": "day",
+                  "begin_offset": -1,
+                  "end_offset": -1
+                }
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "url": "/api/v1/rebuild/dependency/evaluate",
+      "method": "POST",
+      "status": 200,
+      "body": {
+        "project_id": 1,
+        "workflow_id": 1,
+        "workflow_version": 1,
+        "task_id": "clean",
+        "groups": [
+          {
+            "join": "AND",
+            "conditions": [
+              {
+                "upstream_workflow_id": 1,
+                "date_range": {
+                  "period_type": "day",
+                  "begin_offset": -1,
+                  "end_offset": -1
+                }
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "url": "/api/v1/rebuild/resources/uploads",
+      "method": "POST",
+      "status": 200,
+      "body": null
+    },
+    {
+      "url": "/api/v1/rebuild/resources?project_id=1&kind=sql",
+      "method": "GET",
+      "status": 200,
+      "body": null
+    },
+    {
+      "url": "/api/v1/rebuild/resources/1/versions?project_id=1",
+      "method": "GET",
+      "status": 200,
+      "body": null
+    },
+    {
+      "url": "/api/v1/rebuild/resources/1/versions/1?project_id=1",
+      "method": "GET",
+      "status": 200,
+      "body": null
+    },
+    {
+      "url": "/api/v1/rebuild/resources/bindings",
+      "method": "POST",
+      "status": 200,
+      "body": {
+        "project_id": 1,
+        "workflow_id": 1,
+        "workflow_version": 1,
+        "task_id": "clean",
+        "resource_id": 1,
+        "resource_version": 1
+      }
+    }
+  ]
+}
