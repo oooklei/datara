@@ -66,6 +66,10 @@ class TaskInstanceVariableRuntimeRecord(Base):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     instance_id: Mapped[int] = mapped_column(Integer, nullable=False)
+    # Owning project of the execution attempt (P0-7 security patch: enables
+    # project-level authorization on GET /run-snapshot). NULL rows are legacy
+    # and unreadable from every project (fail-closed).
+    project_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
     attempt_no: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
     expression: Mapped[str] = mapped_column(Text, nullable=False)
     scope: Mapped[str] = mapped_column(String(16), nullable=False)
