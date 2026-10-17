@@ -38,6 +38,19 @@ SUMMARY_FILE = os.path.join(REPO, "tools", "watchdog_summary.txt")
 # other lines' activity) + dispatch->claim closed-loop check.
 LINE_SILENCE_MIN = 15
 LINE_NOTIFY_DEDUP_MIN = 30
+
+# v4: auto-wake engine — inject the built-in wakeup text into a silent line's
+# CLI session. AUTO_WAKE_DRY_RUN=True only logs what would run (observation
+# mode; flip to False to enable real injection). Lines without a template
+# fall back to popup + manual wakeup (watchdog_summary.txt). Deduped per line.
+AUTO_WAKE_DRY_RUN = True
+AUTO_WAKE_DEDUP_MIN = 30
+WAKE_CMD_TEMPLATES = {
+    "Codex": ["codex", "exec", "{wakeup}"],
+    "Trae": None,       # deprecated line
+    "监督线": None,      # user-driven session
+    "守护线": None,      # no unattended CLI confirmed
+}
 # subject 中最早出现的标识决定归线（防监督 subject 提及 Trae/Codex 时误归线）。
 LINE_KEYS = (("AOCI守护", "守护线"), ("监督", "监督线"), ("Trae", "Trae"), ("Codex", "Codex"))
 DISPATCH_RE = re.compile(r"派单[^。\n]*→\s*(Trae|Codex)")
@@ -291,6 +304,30 @@ def line_last_commits(limit=60):
     return out
 
 
+def auto_wake(state, name, silent_min):
+    """v4: inject the built-in wakeup text into a silent line's CLI session.
+    DRY_RUN logs the would-be command only. Returns True if handled."""
+    cmd = WAKE_CMD_TEMPLATES.get(name)
+    if not cmd or name not in WAKEUP_TEXTS:
+        return False
+    aw = state.setdefault("auto_wake", {})
+    last_iso = aw.get(name)
+    if last_iso and (datetime.now() - datetime.fromisoformat(last_iso)).total_seconds() / 60.0 < AUTO_WAKE_DEDUP_MIN:
+        return True  # deduped: already handled within window
+    full_cmd = [c.replace("{wakeup}", WAKEUP_TEXTS[name]) if "{wakeup}" in c else c for c in cmd]
+    if AUTO_WAKE_DRY_RUN:
+        log("auto-wake DRY-RUN %s silent=%.0fmin would inject via: %s" % (name, silent_min, full_cmd[0]))
+    else:
+        try:
+            subprocess.Popen(full_cmd, cwd=REPO, creationflags=0x00000008)
+            log("auto-wake INJECTED %s (silent %.0fmin) via %s" % (name, silent_min, full_cmd[0]))
+        except Exception as e:
+            log("auto-wake %s inject failed (fall back to manual): %r" % (name, e))
+            return False
+    aw[name] = datetime.now().isoformat(timespec="seconds")
+    return True
+
+
 def check_line_silence(state):
     """Per-line silence: popup (not heartbeat) so one silent line cannot be
     masked by other lines still committing. Deduped per line."""
@@ -323,7 +360,10 @@ def check_line_silence(state):
                      "请在监督会话发送「继续」唤醒监督线。"
                      % (name, silent_min, t.strftime("%H:%M")))
         how = notify_popup(popup)
-        log("line-silence notify %s %.0fmin via %s" % (name, silent_min, how))
+        woke = auto_wake(state, name, silent_min)
+        log("line-silence notify %s %.0fmin via %s auto-wake=%s" % (
+            name, silent_min, how,
+            ("dry-run" if AUTO_WAKE_DRY_RUN else "injected") if woke else "n/a"))
         notified[name] = datetime.now().isoformat(timespec="seconds")
         save_state(state)
 
@@ -369,8 +409,9 @@ def check_unclaimed_dispatch(state):
 
 
 def main():
-    log("watchdog started: poll=%ds silence_alert=%dmin dedup=%dmin notify=on summary=advisory" %
-        (POLL_SEC, SILENCE_ALERT_MIN, ALERT_DEDUP_MIN))
+    log("watchdog v4 started: poll=%ds silence_alert=%dmin dedup=%dmin auto_wake=%s summary=advisory" %
+        (POLL_SEC, SILENCE_ALERT_MIN, ALERT_DEDUP_MIN,
+         "DRY-RUN(observation)" if AUTO_WAKE_DRY_RUN else "INJECT-ENABLED"))
     state = load_state()
     if "last_notified_no" not in state:
         try:
