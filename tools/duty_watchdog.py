@@ -60,15 +60,15 @@ LINE_KEYS = (("AOCI守护", "守护线"), ("监督", "监督线"), ("Trae", "Tra
 DISPATCH_RE = re.compile(r"派单[^。\n]*→\s*(Trae|Codex)")
 CLAIM_RE = r"###\s*[^\n]{0,100}%s[^\n]{0,100}(领单|接单|回执|交付)"
 WAKEUP_TEXTS = {
-    "Trae": ("【监督线唤醒令 · Trae 实施线】立即执行：① cd d:\\需求\\数据治理工具\\Datara && git pull --ff-only；"
+    "Trae": ("【监督线唤醒令 · Trae 实施线】立即执行：① cd d:\\需求\\数据治理工具\\Datara && git pull --ff-only（若因 index.lock/FETCH_HEAD 失败：等 5 秒重试一次，仍败则跳过同步直接读台账干活）；"
              "② git log --oneline -15 核对最新心跳号；③ 读 docs/handoff/2026-10-16-并行协作分工.md 尾部 60 行，"
              "认领你名下未竟派单/回执/修订，即领即做；④ 常驻值守铁律（#158/#165）：无任务落静默标记心跳、"
              "存活以 git 产出为准、30 分钟内必须回执；⑤ pathspec 单文件、零业务触碰、禁 aoci_*、禁 push。现在开始。"),
-    "Codex": ("【监督线唤醒令 · Codex 实施线】立即执行：① cd d:\\需求\\数据治理工具\\Datara && git pull --ff-only；"
+    "Codex": ("【监督线唤醒令 · Codex 实施线】立即执行：① cd d:\\需求\\数据治理工具\\Datara && git pull --ff-only（若因 index.lock/FETCH_HEAD 失败：等 5 秒重试一次，仍败则跳过同步直接读台账干活）；"
               "② git log --oneline -15 核对最新心跳号；③ 读 docs/handoff/2026-10-16-并行协作分工.md 尾部 60 行，"
               "认领你名下未竟派单/回执/评审，即领即做；④ 常驻值守铁律（#158/#165）：无任务落静默标记心跳、"
               "存活以 git 产出为准、30 分钟内必须回执；⑤ pathspec 单文件、零业务触碰、禁 aoci_*、禁 push。现在开始。"),
-    "Claude": ("【监督线唤醒令 · Claude 实施线】立即执行：① cd d:\\需求\\数据治理工具\\Datara && git pull --ff-only；"
+    "Claude": ("【监督线唤醒令 · Claude 实施线】立即执行：① cd d:\\需求\\数据治理工具\\Datara && git pull --ff-only（若因 index.lock/FETCH_HEAD 失败：等 5 秒重试一次，仍败则跳过同步直接读台账干活）；"
                "② git log --oneline -15 核对最新心跳号；③ 读 docs/handoff/2026-10-16-并行协作分工.md 尾部 60 行，"
                "认领你名下未竟派单/回执/修订，即领即做；④ 留守循环条款（#204/#210）：无任务落静默标记心跳"
                "（待命状态+轮询锚点+无活时动作），存活以 git 产出为准、30 分钟内必须回执；"
@@ -328,8 +328,13 @@ def auto_wake(state, name, silent_min):
         log("auto-wake DRY-RUN %s silent=%.0fmin would inject via: %s" % (name, silent_min, full_cmd[0]))
     else:
         try:
-            subprocess.Popen(full_cmd, cwd=REPO, creationflags=0x00000008)
-            log("auto-wake INJECTED %s (silent %.0fmin) via %s" % (name, silent_min, full_cmd[0]))
+            out_log = open(os.path.join(REPO, "tools", "auto_wake_last.log"),
+                           "w", encoding="utf-8")
+            subprocess.Popen(full_cmd, cwd=REPO, creationflags=0x00000008,
+                             stdout=out_log, stderr=subprocess.STDOUT,
+                             stdin=subprocess.DEVNULL)
+            log("auto-wake INJECTED %s (silent %.0fmin) via %s -> tools/auto_wake_last.log"
+                % (name, silent_min, full_cmd[0]))
         except Exception as e:
             log("auto-wake %s inject failed (fall back to manual): %r" % (name, e))
             return False
