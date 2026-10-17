@@ -167,6 +167,7 @@ def test_complete_check_preview_snapshot_flow():
         assert pdata["source"] == {"scope": "global", "name": "gz_user"}
 
         # snapshot: write rows directly then read through the contract endpoint
+        # (P0-7: rows carry project_id; the endpoint requires it and scopes reads)
         with app.state.session_factory() as session:
             from rebuild.variables.repository import VariableRepository
 
@@ -174,6 +175,7 @@ def test_complete_check_preview_snapshot_flow():
                 [
                     {
                         "instance_id": 9001,
+                        "project_id": project_id,
                         "attempt_no": 1,
                         "expression": "${project.batch_size}",
                         "scope": "project",
@@ -184,6 +186,7 @@ def test_complete_check_preview_snapshot_flow():
                     },
                     {
                         "instance_id": 9001,
+                        "project_id": project_id,
                         "attempt_no": 2,
                         "expression": "${project.batch_size}",
                         "scope": "project",
@@ -197,16 +200,129 @@ def test_complete_check_preview_snapshot_flow():
             session.commit()
             assert count == 2
 
-        latest = client.get("/api/v1/rebuild/variables/run-snapshot?instance_id=9001", headers=tokens["dev"])
+        latest = client.get(
+            f"/api/v1/rebuild/variables/run-snapshot?instance_id=9001&project_id={project_id}", headers=tokens["dev"]
+        )
         lrows = latest.json()["data"]
         assert len(lrows) == 1 and lrows[0]["attempt_no"] == 2 and lrows[0]["resolved_value"] == "800"
         assert lrows[0]["resolved_at"] and isinstance(lrows[0]["attempt_no"], int)
 
         first = client.get(
-            "/api/v1/rebuild/variables/run-snapshot?instance_id=9001&attempt_no=1", headers=tokens["dev"]
+            f"/api/v1/rebuild/variables/run-snapshot?instance_id=9001&project_id={project_id}&attempt_no=1",
+            headers=tokens["dev"],
         )
         frows = first.json()["data"]
         assert len(frows) == 1 and frows[0]["attempt_no"] == 1 and frows[0]["resolved_value"] == "500"
         assert frows[0]["expression"] == "${project.batch_size}"
+    finally:
+        client.__exit__(None, None, None)
+
+
+def test_run_snapshot_project_scoping_and_auth():
+    """P0-7 security patch: project-level authorization + cross-project isolation."""
+    client, app, project_id, tokens = _client()
+    try:
+        with app.state.session_factory() as session:
+            from rebuild.identity.repository import UserRepository
+            from rebuild.variables.repository import VariableRepository
+
+            # a second project owned by a fresh viewer who has no relation to project 1
+            viewer2 = UserRepository(session).create(username="viewer2", password="viewer2-pass", role=Role.VIEWER)
+            other = ProjectRecord(name="r2-other", description="", owner_id=viewer2.id)
+            session.add_all((other,))
+            session.commit()
+            other_project_id = other.id
+            repo = VariableRepository(session)
+            assert (
+                repo.write_snapshot_rows(
+                    [
+                        {
+                            "instance_id": 9100,
+                            "project_id": project_id,
+                            "expression": "${project.batch_size}",
+                            "scope": "project",
+                            "name": "batch_size",
+                            "resolved_value": "500",
+                            "value_type": "number",
+                            "source": "project",
+                        }
+                    ]
+                )
+                == 1
+            )
+            # legacy-shaped row without project_id: unreadable from any project
+            assert (
+                repo.write_snapshot_rows(
+                    [
+                        {
+                            "instance_id": 9101,
+                            "expression": "${project.batch_size}",
+                            "scope": "project",
+                            "name": "batch_size",
+                            "resolved_value": "500",
+                            "value_type": "number",
+                            "source": "project",
+                        }
+                    ]
+                )
+                == 1
+            )
+            session.commit()
+
+        # anonymous → 401
+        anon = client.get("/api/v1/rebuild/variables/run-snapshot?instance_id=9100&project_id=1")
+        assert anon.status_code == 401 and anon.json()["code"] == 1001
+
+        # missing project_id → 400 4001 (required frame field)
+        missing = client.get("/api/v1/rebuild/variables/run-snapshot?instance_id=9100", headers=tokens["dev"])
+        assert missing.status_code == 400 and missing.json()["code"] == 4001
+
+        # non-member (viewer has no relation to project 1) → 403 code 1003
+        denied = client.get(
+            f"/api/v1/rebuild/variables/run-snapshot?instance_id=9100&project_id={project_id}", headers=tokens["viewer"]
+        )
+        assert denied.status_code == 403 and denied.json()["code"] == 1003
+
+        # project member reads own-project rows
+        ok = client.get(
+            f"/api/v1/rebuild/variables/run-snapshot?instance_id=9100&project_id={project_id}", headers=tokens["dev"]
+        )
+        assert ok.status_code == 200 and len(ok.json()["data"]) == 1
+
+        # cross-project isolation: an authorized user of another project querying
+        # the same guessed instance id gets an empty list — nothing leaks
+        viewer2_login = client.post("/api/v1/rebuild/login", json={"username": "viewer2", "password": "viewer2-pass"})
+        viewer2_headers = {"token": viewer2_login.json()["data"]["token"]}
+        cross = client.get(
+            f"/api/v1/rebuild/variables/run-snapshot?instance_id=9100&project_id={other_project_id}",
+            headers=viewer2_headers,
+        )
+        assert cross.status_code == 200 and cross.json()["data"] == []
+
+        # legacy NULL rows are unreadable from any project (fail-closed)
+        legacy = client.get(
+            f"/api/v1/rebuild/variables/run-snapshot?instance_id=9101&project_id={project_id}", headers=tokens["dev"]
+        )
+        assert legacy.status_code == 200 and legacy.json()["data"] == []
+    finally:
+        client.__exit__(None, None, None)
+
+
+def test_env_completion_withholds_values():
+    """P0-7 security patch: env completion exposes names only, never values."""
+    client, _app, project_id, tokens = _client()
+    try:
+        completed = client.post(
+            "/api/v1/rebuild/variables/complete",
+            headers=tokens["dev"],
+            json={"prefix": "PAT", "context": {"project_id": project_id}},
+        )
+        assert completed.status_code == 200
+        env_items = [item for item in completed.json()["data"] if item["scope"] == "env"]
+        assert env_items, "expected at least one PATH-like env var in the test process"
+        for item in env_items:
+            assert item["current_value"] is None
+            assert item["sensitive"] is True
+            assert "withheld" in item["description"]
     finally:
         client.__exit__(None, None, None)
