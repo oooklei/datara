@@ -44,7 +44,7 @@ LINE_NOTIFY_DEDUP_MIN = 30
 # 2026-10-18 after dry-run observation; codex exec confirmed unattended-capable).
 # Lines without a template fall back to popup + manual wakeup. Deduped per line.
 AUTO_WAKE_DRY_RUN = False
-AUTO_WAKE_DEDUP_MIN = 30
+AUTO_WAKE_DEDUP_MIN = 5
 WAKE_CMD_TEMPLATES = {
     # Official desktop CLI (0.162.x, gpt-6-luna capable). The PATH codex.exe is
     # a CodeBuddy-bundled 0.146 build that 400s on ChatGPT accounts.
@@ -350,6 +350,14 @@ def check_line_silence(state):
         silent_min = (datetime.now(t.tzinfo) - t).total_seconds() / 60.0
         if silent_min < LINE_SILENCE_MIN:
             continue
+        # v4.4: templated lines (Codex/Claude) go straight to auto-wake —
+        # no popup/manual-forward, only auto_wake's own short dedup applies.
+        if WAKE_CMD_TEMPLATES.get(name) and name in WAKEUP_TEXTS:
+            woke = auto_wake(state, name, silent_min)
+            if woke:
+                log("line-silence auto-wake %s %.0fmin (%s)" % (
+                    name, silent_min, "dry-run" if AUTO_WAKE_DRY_RUN else "exec"))
+            continue
         last_iso = notified.get(name)
         if last_iso and (datetime.now() - datetime.fromisoformat(last_iso)).total_seconds() / 60.0 < LINE_NOTIFY_DEDUP_MIN:
             continue
@@ -399,9 +407,18 @@ def check_unclaimed_dispatch(state):
         return
     last_iso = state.get("unclaimed_notify_iso")
     if state.get("unclaimed_dispatch") == key and last_iso and (
-            datetime.now() - datetime.fromisoformat(last_iso)).total_seconds() / 60.0 < LINE_NOTIFY_DEDUP_MIN:
+            datetime.now() - datetime.fromisoformat(last_iso)).total_seconds() / 60.0 < AUTO_WAKE_DEDUP_MIN:
         return
-    wakeup = WAKEUP_TEXTS.get(sorted(pending)[0], "")
+    # v4.4: unclaimed dispatch on a templated line -> straight auto-wake.
+    first = sorted(pending)[0]
+    if WAKE_CMD_TEMPLATES.get(first) and first in WAKEUP_TEXTS:
+        woke = auto_wake(state, first, 0)
+        state["unclaimed_notify_iso"] = datetime.now().isoformat(timespec="seconds")
+        save_state(state)
+        log("unclaimed-dispatch auto-wake %s (%s)" % (
+            first, "dry-run" if AUTO_WAKE_DRY_RUN else "exec"))
+        return
+    wakeup = WAKEUP_TEXTS.get(first, "")
     try:
         with open(SUMMARY_FILE, "w", encoding="utf-8") as f:
             f.write("[%s] 疑似未领派单（→ %s）\n\n%s\n" % (
