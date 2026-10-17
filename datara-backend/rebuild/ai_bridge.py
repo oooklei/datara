@@ -209,12 +209,16 @@ class AiBridgePorts:
     """Injected ports for the R8-A bridge (fail-closed composition seam).
 
     ``handlers``: per-tool handler mapping; absent handler -> honest
-    DEPENDENCY_UNAVAILABLE. ``audit_writer``: required §4 sink; its absence
-    refuses bridge construction entirely.
+    TOOL_DISABLED. ``audit_writer``: required §4 sink; its absence refuses
+    bridge construction entirely. ``audit_failure_sink``: optional durable
+    fallback (ruling #178-2) receiving failure-detail records when the audit
+    writer is in outage; its absence or failure never flips write_audit to
+    success (fail-closed floor intact).
     """
 
     handlers: Mapping[str, Handler] = field(default_factory=dict)
     audit_writer: Any | None = None
+    audit_failure_sink: Any | None = None
 
 
 def build_ai_router(
@@ -253,7 +257,30 @@ def build_ai_router(
         try:
             ports.audit_writer.write(record)
             return True
-        except Exception:
+        except Exception as exc:
+            # Ruling #178-2: a writer outage is a degradation signal, never a
+            # success — a durable failure-detail record must land in the
+            # injected fallback sink (tool_call_id/user_id/project_id/reason)
+            # so the unaudited call stays traceable after the fact. Sink
+            # absence or its own failure never flips this to True.
+            if ports.audit_failure_sink is not None:
+                try:
+                    ports.audit_failure_sink.write(
+                        {
+                            "failure": "audit_write_failed",
+                            "audit_id": record.get("audit_id"),
+                            "tool_call_id": record.get("tool_call_id"),
+                            "user_id": record.get("user_id"),
+                            "roles": record.get("roles"),
+                            "project_id": record.get("project_id"),
+                            "tool": record.get("tool"),
+                            "outcome": record.get("outcome"),
+                            "error_code": record.get("error_code"),
+                            "reason": str(exc),
+                        }
+                    )
+                except Exception:
+                    pass
             return False
 
     def budget_consumption(result: Mapping[str, Any] | None) -> dict[str, Any]:
@@ -540,15 +567,18 @@ def build_ai_router(
                 if member is None or not authorize(member.role, permission):
                     return finish_error("PERMISSION_DENIED", False)
 
+        if tool not in ports.handlers:
+            # Ruling #178-3 error priority: authorization > TOOL_DISABLED > params
+            # > budget. PoC lists unwired tools but refuses them honestly — no
+            # fake results (R8A-02); param/budget shapes are never probed past
+            # this gate, so a disabled tool leaks no validation detail.
+            return finish_error("TOOL_DISABLED", False)
+
         param_problems = validate_params(tool, params)
         if param_problems:
             return finish_error("INVALID_PARAMS", False, param_problems)
         if budget_violation(tool, params):
             return finish_error("BUDGET_EXCEEDED", False)
-        if tool not in ports.handlers:
-            # Dispatch stage (R8A-05 order): PoC lists unwired tools but refuses
-            # them honestly — no fake results (R8A-02).
-            return finish_error("TOOL_DISABLED", False)
 
         handler = ports.handlers[tool]
         context: dict[str, Any] = {
