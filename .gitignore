@@ -40,3 +40,6 @@ p0_dump.txt
 .env
 .env.*
 !.env.example
+
+# R4-RESOURCE 上传内容落盘目录（DB 仅存 digest/路径；内容不入库）
+datara-backend/resource_storage/
