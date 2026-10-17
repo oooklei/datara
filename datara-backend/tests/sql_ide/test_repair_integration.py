@@ -59,6 +59,50 @@ def _dispose_app(app):
     engine.dispose()
 
 
+def _make_file_app_with_login():
+    """Create app with a real user + project; return (app, db_path, token, project_id).
+
+    The login endpoint populates active_tokens so the token is accepted by the
+    bridge's principal check.  The TestClient context is exited before return
+    but the token persists in the app's in-memory active_tokens set.
+    """
+    from rebuild.api.app import create_app
+    from rebuild.identity.models import UserRecord
+    from rebuild.identity.passwords import hash_password
+    from rebuild.project.models import ProjectRecord
+
+    tmp = tempfile.NamedTemporaryFile(suffix=".db", delete=False)
+    tmp.close()
+    db_url = f"sqlite:///{tmp.name}"
+    with patch.dict(os.environ, {
+        "REBUILD_DB_URL": db_url,
+        "REBUILD_TOKEN_SECRET": "test-secret",
+    }, clear=True):
+        app = create_app()
+        with TestClient(app) as client:
+            with app.state.session_factory() as session:
+                user = UserRecord(
+                    username="admin",
+                    password_hash=hash_password("admin-pass"),
+                    role="admin",
+                )
+                session.add(user)
+                session.commit()
+                user_id = user.id
+                project = ProjectRecord(name="test-project", owner_id=user_id)
+                session.add(project)
+                session.commit()
+                project_id = project.id
+
+            resp = client.post(
+                "/api/v1/rebuild/login",
+                json={"username": "admin", "password": "admin-pass"},
+            )
+            assert resp.status_code == 200, resp.text
+            token = resp.json()["data"]["token"]
+        return app, tmp.name, token, project_id
+
+
 # ---------------------------------------------------------------------------
 # Gap3: schema migration
 # ---------------------------------------------------------------------------
@@ -257,8 +301,8 @@ class TestRunSqlRuntime:
                 # Should get 401 (unauthorized) not 404 (not found)
                 assert response.status_code == 401
 
-    def test_bridge_not_mounted_without_explicit_ports(self):
-        """AI bridge is NOT mounted without explicit ports (fail-closed)."""
+    def test_bridge_mounted_by_default(self):
+        """AI bridge IS mounted by default (production assembly from app.state)."""
         from rebuild.api.app import create_app
 
         with patch.dict(os.environ, {
@@ -268,11 +312,123 @@ class TestRunSqlRuntime:
             app = create_app()
             with TestClient(app) as client:
                 response = client.get("/api/v1/rebuild/ai/tools")
-                # Should get 404 (not found) - bridge not mounted
-                assert response.status_code == 404
+                # 401 = mounted, auth required (production bridge from app.state)
+                assert response.status_code == 401
 
     def test_execution_port_available_for_runtime(self):
         """app.state.execution_port is available for runtime wiring."""
         app = _make_app()
         assert hasattr(app.state, "execution_port")
         assert app.state.execution_port is not None
+
+
+# ---------------------------------------------------------------------------
+# Supervisor #322: default-app production assembly integration
+# ---------------------------------------------------------------------------
+
+
+class TestDefaultAppProductionAssembly:
+    """Default app (no ai_bridge_ports) assembles production bridge from app.state.
+
+    Supervisor #322 dispatch: default create_app must mount the bridge with
+    the production execution port + audit writer from app.state; the handler
+    must actually call app.state.execution_port; audit must land via
+    app.state.audit_writer; missing dependencies stay fail-closed.
+    """
+
+    def test_default_app_mounts_bridge(self):
+        """Default app mounts the AI bridge (401 not 404)."""
+        app = _make_app()
+        with TestClient(app) as client:
+            response = client.get("/api/v1/rebuild/ai/tools")
+            assert response.status_code == 401
+
+    def test_run_sql_handler_calls_app_state_execution_port(self):
+        """run_sql handler actually calls app.state.execution_port.execute."""
+        app, db_path, token, project_id = _make_file_app_with_login()
+        try:
+            with patch.object(
+                app.state.execution_port, "execute", wraps=app.state.execution_port.execute
+            ) as spy:
+                with TestClient(app) as client:
+                    client.post(
+                        "/api/v1/rebuild/ai/tool-calls",
+                        json={
+                            "tool_call_id": "tc-001",
+                            "tool": "run_sql",
+                            "tool_version": 1,
+                            "params": {
+                                "project_id": project_id,
+                                "datasource_id": 1,
+                                "sql": "SELECT 1",
+                            },
+                        },
+                        headers={"Authorization": f"Bearer {token}"},
+                    )
+                spy.assert_called_once()
+        finally:
+            _dispose_app(app)
+            os.unlink(db_path)
+
+    def test_audit_written_via_app_state_audit_writer(self):
+        """Audit record persisted via app.state.audit_writer (real DB write)."""
+        app, db_path, token, project_id = _make_file_app_with_login()
+        try:
+            with TestClient(app) as client:
+                tool_call_id = "tc-audit-001"
+                client.post(
+                    "/api/v1/rebuild/ai/tool-calls",
+                    json={
+                        "tool_call_id": tool_call_id,
+                        "tool": "run_sql",
+                        "tool_version": 1,
+                        "params": {
+                            "project_id": project_id,
+                            "datasource_id": 1,
+                            "sql": "SELECT 1",
+                        },
+                    },
+                    headers={"Authorization": f"Bearer {token}"},
+                )
+
+            with app.state.session_factory() as session:
+                record = session.scalar(
+                    select(SqlIdeAuditRecord).where(
+                        SqlIdeAuditRecord.task_id == tool_call_id
+                    )
+                )
+                assert record is not None
+                assert record.project_id == project_id
+                assert record.datasource_id == 1
+                assert record.status in ("success", "failed")
+        finally:
+            _dispose_app(app)
+            os.unlink(db_path)
+
+    def test_missing_execution_port_fail_closed(self):
+        """Bridge not mounted when execution_port is missing (fail-closed)."""
+        from rebuild.api.app import create_app
+
+        with patch("rebuild.api.app.build_execution_port", return_value=None):
+            with patch.dict(os.environ, {
+                "REBUILD_DB_URL": "sqlite:///:memory:",
+                "REBUILD_TOKEN_SECRET": "test-secret",
+            }, clear=True):
+                app = create_app()
+                with TestClient(app) as client:
+                    response = client.get("/api/v1/rebuild/ai/tools")
+                    assert response.status_code == 404
+
+    def test_missing_audit_writer_fail_closed(self):
+        """Bridge not mounted when audit_writer is missing (fail-closed)."""
+        from rebuild.api.app import create_app
+
+        with patch("rebuild.api.app.build_audit_writer", return_value=None):
+            with patch.dict(os.environ, {
+                "REBUILD_DB_URL": "sqlite:///:memory:",
+                "REBUILD_TOKEN_SECRET": "test-secret",
+            }, clear=True):
+                app = create_app()
+                with TestClient(app) as client:
+                    response = client.get("/api/v1/rebuild/ai/tools")
+                    assert response.status_code == 404
