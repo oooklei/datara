@@ -102,6 +102,10 @@ Initialization, complete-index generation, Header generation, Entries generation
 Do not preload, guess, or reconstruct these specialized workflows. The relevant Guide, tool descriptions, model Prompt, and CLI help provide platform invocation, request format, batch limits, approval rules, index-format details, and recovery steps as needed.
 <!-- aoci:end -->
 
+### AOCI 豁免（2026-10-17 用户裁定 #85，对上方 AOCI 全节生效）
+
+质量监督线守护会话全权负责 AOCI（overview/refresh/maintain/全量传输）。**Trae 与 Codex 实施线对 AOCI 义务为零**：禁止调用任何 aoci_* 工具，不执行上方 AOCI 规则中的启动认知检查与维护流程；两线认知源 = `docs/handoff/` 心跳 + `docs/increments/` 文档。实施线若遇 AOCI 状态问题，报心跳给监督线即可，不得自行处理。
+
 ## Active handoff
 
 活跃交接：`docs/handoff/2026-10-16-并行协作分工.md`（Trae × Codex 并行开发分工与信道规则；新会话开始前必须先读）。交接过期后删除本节。
