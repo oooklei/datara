@@ -1,0 +1,9 @@
+{
+  "database": "in-memory SQLite",
+  "lifespan_entered": true,
+  "audit_table_exists_after_lifespan": true,
+  "execution_port_type": "ProductionSqlExecutionPort",
+  "audit_writer_type": "DbBackedAuditWriter",
+  "default_app_ai_bridge_routes": [],
+  "runtime_wiring_scope": "app.state DI construction verified; route handler consumption not asserted by this probe"
+}
