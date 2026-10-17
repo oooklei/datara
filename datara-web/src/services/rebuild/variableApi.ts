@@ -112,7 +112,9 @@ export interface VariableContract {
   completeVariables: (prefix: string, context: VariableContext) => Promise<VariableCompletionItem[]>
   checkReference: (expression: string, context: VariableContext) => Promise<ReferenceCheckResult>
   previewResolution: (expression: string, context: VariableContext) => Promise<ResolutionPreview>
-  getRunSnapshot: (instanceId: number, attemptNo?: number) => Promise<VariableSnapshotEntry[]>
+  // P0-7: project_id is a required frame field (server 4001 when absent) and
+  // scopes the read to the caller's project.
+  getRunSnapshot: (instanceId: number, projectId: number, attemptNo?: number) => Promise<VariableSnapshotEntry[]>
 }
 
 /* ---------- GREEN 统一原语（接线计划 §1.1；R2 固化 {code,msg,data} 包络层，其余批次沿用） ---------- */
@@ -208,8 +210,8 @@ export function createVariableContract(): VariableContract {
       sendJson<ReferenceCheckResult>('POST', '/check-reference', { expression, context }),
     previewResolution: (expression, context) =>
       sendJson<ResolutionPreview>('POST', '/preview', { expression, context }),
-    getRunSnapshot: (instanceId, attemptNo) =>
-      getJson<VariableSnapshotEntry[]>('/run-snapshot', { instanceId, attemptNo }),
+    getRunSnapshot: (instanceId, projectId, attemptNo) =>
+      getJson<VariableSnapshotEntry[]>('/run-snapshot', { instanceId, projectId, attemptNo }),
   }
 }
 
