@@ -202,7 +202,7 @@ describe('R2 variableApi contract (GREEN wired)', () => {
       },
     ])
     vi.stubGlobal('fetch', fetchMock)
-    const rows = await createVariableContract().getRunSnapshot(9, 2)
+    const rows = await createVariableContract().getRunSnapshot(9, 5, 2)
     expect(rows).toEqual([
       {
         expression: '${global.region}',
@@ -216,15 +216,15 @@ describe('R2 variableApi contract (GREEN wired)', () => {
       },
     ])
     const [url] = fetchMock.mock.calls[0] as unknown as [string]
-    expect(url).toBe('/api/v1/rebuild/variables/run-snapshot?instance_id=9&attempt_no=2')
+    expect(url).toBe('/api/v1/rebuild/variables/run-snapshot?instance_id=9&project_id=5&attempt_no=2')
   })
 
   it('getRunSnapshot omits attempt_no from the query when not provided', async () => {
     const fetchMock = stubFetchWithEnvelope([])
     vi.stubGlobal('fetch', fetchMock)
-    await expect(createVariableContract().getRunSnapshot(9)).resolves.toEqual([])
+    await expect(createVariableContract().getRunSnapshot(9, 5)).resolves.toEqual([])
     const [url] = fetchMock.mock.calls[0] as unknown as [string]
-    expect(url).toBe('/api/v1/rebuild/variables/run-snapshot?instance_id=9')
+    expect(url).toBe('/api/v1/rebuild/variables/run-snapshot?instance_id=9&project_id=5')
   })
 
   it('non-2xx maps to ContractApiError with httpStatus preserved', async () => {
