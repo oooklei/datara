@@ -1,13 +1,14 @@
 # Codex P1-6: cross-project memory isolation evidence
 
-Date: 2026-10-17 (Asia/Shanghai). Scope: compare two authenticated adapter contexts using the same user and different project IDs.
+Date: 2026-10-17 (Asia/Shanghai). Scope: persistent Chroma isolation for two valid adapter contexts with the same user and different project IDs.
 
 ## Reproducible checks
 
-- Existing test: `datara-backend/tests/ai_copilot/test_adapter_sovereignty.py::test_chroma_memory_is_partitioned_by_project_and_user` passes as part of the 12-test package run.
-- Additional in-process adapter check used `AdapterContext(user_id=7, project_id=11)` and `AdapterContext(user_id=7, project_id=12)` with a fake Vanna factory. Result: `PASS distinct_clients=True distinct_project_paths=True both_under_root=True`.
-- The adapter caches Vanna clients by immutable `(user_id, project_id)` context and derives each Chroma path beneath the managed `CHROMA_DB_PATH`; path-escape is rejected (`datara-backend/ai_copilot/adapter.py`, `_client`, `_scoped_chroma_path`, `_default_factory`).
+- Existing test `test_chroma_memory_is_partitioned_by_project_and_user` passes as part of `python -m pytest -q tests/ai_copilot` (12 passed).
+- In the isolated lock venv (`datara-p16-ai-venv-20261017`), a no-network Chroma integration check temporarily pointed `ai_copilot.adapter.CHROMA_DB_PATH` at a fresh temp directory, derived paths through `CopilotAdapter._scoped_chroma_path`, then wrote vector `a-secret` to project 11 and queried both project stores.
+- Result: `PASS project11_query=[['a-secret']] project12_query=[[]] isolated_dirs=True`. Clients were explicitly closed and the verified run cleaned its temporary store.
+- The adapter derives per-user/project Chroma paths under `CHROMA_DB_PATH` and rejects path escape (`datara-backend/ai_copilot/adapter.py`, `_scoped_chroma_path`, `_default_factory`). Lock environment setup and `pip check` evidence is in `2026-10-17-Codex-P1-6-lock-venv-install.md`.
 
-## Limit of this evidence
+## Scope limits
 
-This proves context-to-client and context-to-storage-path partitioning without making an LLM/network call. It does **not** perform real Chroma writes and cross-project searches, and the available global Python environment has no installed `chromadb` package. Therefore the P1-0 requirement for a two-project “write in A, cannot retrieve from B” demonstration remains **PARTIAL / NOT VERIFIED**. Do not claim complete vector-retrieval isolation or close P1-6 on this evidence alone.
+This verifies actual persistent Chroma storage/query separation using deterministic supplied embeddings and the adapter's project path derivation. It does not exercise API authentication/project authorization, LLM embeddings, or end-to-end calls through a mounted R8-A endpoint. Storage-level cross-project isolation is **PASS**; API authorization integration remains outside this demonstration.
