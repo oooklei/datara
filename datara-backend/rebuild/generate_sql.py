@@ -14,6 +14,8 @@ from __future__ import annotations
 
 from typing import Any, Protocol
 
+from ai_copilot.adapter import AdapterContext, VannaAdapterError
+
 
 class SqlGenerationError(RuntimeError):
     """Sanitized generation failure; third-party/LLM detail never leaks."""
@@ -28,4 +30,19 @@ class SqlGenerationPort(Protocol):
 
 def build_generate_sql_port(adapter: Any) -> SqlGenerationPort:
     """Compose a rebuild-side generation port over the injected P1-2 adapter."""
-    raise NotImplementedError("P1-3 step-5 GREEN lands in the next commit")
+    if not callable(getattr(adapter, "generate_sql", None)):
+        raise ValueError("generate_sql requires an injected adapter exposing generate_sql()")
+
+    class _AdapterGenerationPort:
+        def generate(self, question: str, *, user_id: int, project_id: int) -> str:
+            # AdapterContext validates the trusted identity; SovereigntyContextMissing
+            # (a trusted-layer programming error) propagates instead of being swallowed.
+            try:
+                return adapter.generate_sql(
+                    question, AdapterContext(user_id=user_id, project_id=project_id)
+                )
+            except VannaAdapterError as exc:
+                # sanitized mapping: adapter/LLM internals never reach rebuild callers
+                raise SqlGenerationError("generate_sql failed") from exc
+
+    return _AdapterGenerationPort()
