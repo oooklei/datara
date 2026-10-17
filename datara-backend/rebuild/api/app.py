@@ -18,7 +18,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
-from rebuild.ai_bridge import AiBridgePorts, build_ai_router
+from rebuild.ai_bridge import AiBridgePorts, build_ai_router, build_default_bridge_ports
 from rebuild.common.db import Base
 from rebuild.sql_ide.audit import SqlIdeAuditRecord, build_audit_writer
 from rebuild.sql_ide.execution import build_execution_port
@@ -746,10 +746,19 @@ def create_app(
         build_resources_router(session_factory, token_service, active_tokens, project_permission_error),
         prefix="/api/v1/rebuild/resources",
     )
-    # R8-A eight-tool bridge (P1-3): mounted ONLY with explicitly injected ports.
-    # Default construction stays bridge-free — no unaudited/ungoverned path (readiness red line).
+    # R8-A eight-tool bridge (P1-3): production assembly from app.state.
+    # Default app mounts the bridge with the production execution port + audit
+    # writer; explicit ai_bridge_ports still overrides (unit-test seam).
+    # Fail-closed: missing dependencies → bridge not mounted (no unaudited path).
     if ai_bridge_ports is not None:
         app.include_router(build_ai_router(session_factory, token_service, active_tokens, ai_bridge_ports))
+    else:
+        default_ports = build_default_bridge_ports(
+            execution_port=app.state.execution_port,
+            audit_writer=app.state.audit_writer,
+        )
+        if default_ports is not None:
+            app.include_router(build_ai_router(session_factory, token_service, active_tokens, default_ports))
 
     @app.post("/api/v1/rebuild/projects/{project_id}/members")
     def add_member(project_id: int, body: MemberRequest, authorization: str = Header(default="")):
