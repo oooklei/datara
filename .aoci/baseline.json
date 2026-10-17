@@ -1,7 +1,7 @@
 {
   "version": 1,
   "created_at": "2026-10-02T22:25:37Z",
-  "updated_at": "2026-10-17T03:19:13Z",
+  "updated_at": "2026-10-17T03:35:22Z",
   "files": {
     ".claude/plans/2026-10-16-loop-runbook.md": {
       "role": "index",
@@ -200,9 +200,9 @@
     },
     "aoci.code.txt": {
       "role": "index",
-      "sha256": "8e89a0a6b4047ec471ff687b9189d657322b8fc837b6787851a35f4150d5d701",
-      "size": 225296,
-      "normalized_sha256": "8e89a0a6b4047ec471ff687b9189d657322b8fc837b6787851a35f4150d5d701"
+      "sha256": "ed26c907c55dca50a792c9b4510486adb44bded5d253b089f38019a9d50c40a1",
+      "size": 234591,
+      "normalized_sha256": "ed26c907c55dca50a792c9b4510486adb44bded5d253b089f38019a9d50c40a1"
     },
     "aoci.meta.txt": {
       "role": "index",
@@ -2423,6 +2423,36 @@
       "size": 7722,
       "normalized_sha256": "59e3ffe7a91a1eb567c67a6b845673993955b9cdbbf6d0146f2384ab7e3c7216"
     },
+    "datara-web/deploy/r3-s9-i20-preview.cjs": {
+      "role": "index",
+      "sha256": "4ae2a6ca1846df17cc28c246a8bf4de98a6684ce0deab1882b2720247a9713e4",
+      "size": 7681,
+      "normalized_sha256": "4ae2a6ca1846df17cc28c246a8bf4de98a6684ce0deab1882b2720247a9713e4"
+    },
+    "datara-web/deploy/r3-s9-i21-preview.cjs": {
+      "role": "index",
+      "sha256": "a372d6cefe8a13f32027af8b051df64d40070a40f860d5d94904dd46443a3811",
+      "size": 8213,
+      "normalized_sha256": "a372d6cefe8a13f32027af8b051df64d40070a40f860d5d94904dd46443a3811"
+    },
+    "datara-web/deploy/r3-s9-i22-preview.cjs": {
+      "role": "index",
+      "sha256": "b8ff552f060526326d6dd6baeba85c3bd210462c6e86b3720cb5e54b2da93f04",
+      "size": 8538,
+      "normalized_sha256": "b8ff552f060526326d6dd6baeba85c3bd210462c6e86b3720cb5e54b2da93f04"
+    },
+    "datara-web/deploy/r3-s9-i23-preview.cjs": {
+      "role": "index",
+      "sha256": "8b6a5532c0bb43322525b6154560ae0bb9781e3ee83a0fe71da41d7cae3eae16",
+      "size": 8999,
+      "normalized_sha256": "8b6a5532c0bb43322525b6154560ae0bb9781e3ee83a0fe71da41d7cae3eae16"
+    },
+    "datara-web/deploy/r3-s9-import-gate.cjs": {
+      "role": "index",
+      "sha256": "529e8dc890e6eac62ccb13ca02dc065e3124230ab11044470678319fa042960e",
+      "size": 1249,
+      "normalized_sha256": "529e8dc890e6eac62ccb13ca02dc065e3124230ab11044470678319fa042960e"
+    },
     "datara-web/deploy/reconcile_b.sh": {
       "role": "index",
       "sha256": "c4ee495a25badf4debba136b1680470b25f5b62d272a75e0556adc84c99b933b",
@@ -2437,9 +2467,51 @@
     },
     "datara-web/deploy/run-r3-governance-control-smoke.ps1": {
       "role": "index",
-      "sha256": "741a5e3edf26169f81c9728cccb6f51629666a791a99e344496b5350c0e537f2",
-      "size": 1261,
-      "normalized_sha256": "741a5e3edf26169f81c9728cccb6f51629666a791a99e344496b5350c0e537f2"
+      "sha256": "a260490174fe663e5027091ec7a0074537386b2869d29a4fe97db31638530d8e",
+      "size": 1351,
+      "normalized_sha256": "a260490174fe663e5027091ec7a0074537386b2869d29a4fe97db31638530d8e"
+    },
+    "datara-web/deploy/run-r3-s9-i18-admin-headed.ps1": {
+      "role": "index",
+      "sha256": "1070c262160b857837abb9e9937f17eaa7b96b817804bafedc5386281ea400a2",
+      "size": 5861,
+      "normalized_sha256": "1070c262160b857837abb9e9937f17eaa7b96b817804bafedc5386281ea400a2"
+    },
+    "datara-web/deploy/run-r3-s9-i18-preview.ps1": {
+      "role": "index",
+      "sha256": "b35c5c156638946af3f9141c9cab630fc10dbcd4a74373964c9abdfa7f065651",
+      "size": 1055,
+      "normalized_sha256": "b35c5c156638946af3f9141c9cab630fc10dbcd4a74373964c9abdfa7f065651"
+    },
+    "datara-web/deploy/run-r3-s9-i19-preview.ps1": {
+      "role": "index",
+      "sha256": "854ddcd4237a02975b66c1205f6e62681a11106d15138ddd747cebb5f0fb648e",
+      "size": 1041,
+      "normalized_sha256": "854ddcd4237a02975b66c1205f6e62681a11106d15138ddd747cebb5f0fb648e"
+    },
+    "datara-web/deploy/run-r3-s9-i20-preview.ps1": {
+      "role": "index",
+      "sha256": "540e5919d60096e1f471fd77cdae61eff6c7df2bec7dae5213d391469c327656",
+      "size": 1041,
+      "normalized_sha256": "540e5919d60096e1f471fd77cdae61eff6c7df2bec7dae5213d391469c327656"
+    },
+    "datara-web/deploy/run-r3-s9-i21-preview.ps1": {
+      "role": "index",
+      "sha256": "c4200ed9a5c761688961d9edaa6ae2b0ae46eb55134bc9e3dbda0580f89e8fb2",
+      "size": 1041,
+      "normalized_sha256": "c4200ed9a5c761688961d9edaa6ae2b0ae46eb55134bc9e3dbda0580f89e8fb2"
+    },
+    "datara-web/deploy/run-r3-s9-i22-preview.ps1": {
+      "role": "index",
+      "sha256": "4c8f47603c4173c063beb3c80eed9eb05a2213875f8790b83351e8b3f659c39f",
+      "size": 1048,
+      "normalized_sha256": "4c8f47603c4173c063beb3c80eed9eb05a2213875f8790b83351e8b3f659c39f"
+    },
+    "datara-web/deploy/run-r3-s9-i23-preview.ps1": {
+      "role": "index",
+      "sha256": "5648d65dbc2f3452f0b54ea47a82db9efaa9a2754fc2257567b9cd302a2c7ccf",
+      "size": 1048,
+      "normalized_sha256": "5648d65dbc2f3452f0b54ea47a82db9efaa9a2754fc2257567b9cd302a2c7ccf"
     },
     "datara-web/deploy/run_sync_e2e.sh": {
       "role": "index",
@@ -2527,21 +2599,21 @@
     },
     "datara-web/package-lock.json": {
       "role": "index",
-      "sha256": "8a7181c996131d3c94edb22183ed261ed022ee511c4b3cd100c2a6dd1c385bf4",
-      "size": 100401,
-      "normalized_sha256": "8a7181c996131d3c94edb22183ed261ed022ee511c4b3cd100c2a6dd1c385bf4"
+      "sha256": "57109f2e87da36e7eb08bfde486a81efd267a524236ddb889e80a3a4edb9c0d5",
+      "size": 99762,
+      "normalized_sha256": "57109f2e87da36e7eb08bfde486a81efd267a524236ddb889e80a3a4edb9c0d5"
     },
     "datara-web/package.json": {
       "role": "index",
-      "sha256": "f7c4e7a7caf529d04eeebb00ea0c51537e45082bc9918adbb79d3eb7e6e93082",
-      "size": 1403,
-      "normalized_sha256": "f7c4e7a7caf529d04eeebb00ea0c51537e45082bc9918adbb79d3eb7e6e93082"
+      "sha256": "ed0f83dc9910958d01a8152a1a06105090e8d7d39636cc7269e6fc3d596d21e5",
+      "size": 1438,
+      "normalized_sha256": "ed0f83dc9910958d01a8152a1a06105090e8d7d39636cc7269e6fc3d596d21e5"
     },
     "datara-web/pnpm-lock.yaml": {
       "role": "index",
-      "sha256": "465cf86d039d9797da0705542d3d707f80a57782297c2129204236dca800c4a2",
-      "size": 62895,
-      "normalized_sha256": "465cf86d039d9797da0705542d3d707f80a57782297c2129204236dca800c4a2"
+      "sha256": "789b23d605b81503a003f701ad7295730b56a6985e18a98d3c6a7216a56a5a52",
+      "size": 63078,
+      "normalized_sha256": "789b23d605b81503a003f701ad7295730b56a6985e18a98d3c6a7216a56a5a52"
     },
     "datara-web/public/favicon.svg": {
       "role": "index",
@@ -2566,6 +2638,48 @@
       "sha256": "471f274b7d3d88600b94d1197f1fe1c0ccbc45734d37bc45ec9343d85f8b8d48",
       "size": 3051,
       "normalized_sha256": "471f274b7d3d88600b94d1197f1fe1c0ccbc45734d37bc45ec9343d85f8b8d48"
+    },
+    "datara-web/public/rebuild-validation-r2-12-a.html": {
+      "role": "index",
+      "sha256": "619a10ad812c946c10e010645bfbf7c49174b032d4c4f1e32415722b3103897a",
+      "size": 14243,
+      "normalized_sha256": "619a10ad812c946c10e010645bfbf7c49174b032d4c4f1e32415722b3103897a"
+    },
+    "datara-web/public/rebuild-validation-r2-12-b.html": {
+      "role": "index",
+      "sha256": "5ee71991da835a32a8cf13b23cebde6c734e93aafe02e04d6476c0643cd320fd",
+      "size": 14077,
+      "normalized_sha256": "5ee71991da835a32a8cf13b23cebde6c734e93aafe02e04d6476c0643cd320fd"
+    },
+    "datara-web/public/rebuild-validation-r3-s9-i19.html": {
+      "role": "index",
+      "sha256": "275d42add9ffb0c1bb0181fddc1431f33c2818bf2a19688cb6379146a62c162d",
+      "size": 11868,
+      "normalized_sha256": "275d42add9ffb0c1bb0181fddc1431f33c2818bf2a19688cb6379146a62c162d"
+    },
+    "datara-web/public/rebuild-validation-r3-s9-i20.html": {
+      "role": "index",
+      "sha256": "539eea65e09d0dbc06ef8ec86b6dd0e235492decc41f969e038952e350393811",
+      "size": 11296,
+      "normalized_sha256": "539eea65e09d0dbc06ef8ec86b6dd0e235492decc41f969e038952e350393811"
+    },
+    "datara-web/public/rebuild-validation-r3-s9-i21.html": {
+      "role": "index",
+      "sha256": "34bb4ac0ccb2e0caa57065bbb75e91f399ba87b351c5208b9ee6f23e1afbd818",
+      "size": 11877,
+      "normalized_sha256": "34bb4ac0ccb2e0caa57065bbb75e91f399ba87b351c5208b9ee6f23e1afbd818"
+    },
+    "datara-web/public/rebuild-validation-r3-s9-i22.html": {
+      "role": "index",
+      "sha256": "77d88cec09b40e8167db3146c8017ff153e96cfae82a6cadf050f2a1f0aaa848",
+      "size": 13939,
+      "normalized_sha256": "77d88cec09b40e8167db3146c8017ff153e96cfae82a6cadf050f2a1f0aaa848"
+    },
+    "datara-web/public/rebuild-validation-r3-s9-i23.html": {
+      "role": "index",
+      "sha256": "f7e2a97096013c502291ffa24af7193d0f361e1eb72e65e90b4756ee8deee299",
+      "size": 10370,
+      "normalized_sha256": "f7e2a97096013c502291ffa24af7193d0f361e1eb72e65e90b4756ee8deee299"
     },
     "datara-web/public/rebuild-validation-r3.html": {
       "role": "index",
