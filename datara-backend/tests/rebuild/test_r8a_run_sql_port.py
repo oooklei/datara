@@ -326,3 +326,50 @@ def test_run_sql_truncation_relayed_to_audit_budget():
         assert record["refs"]["execution_id"] == "exec-9"
     finally:
         client.__exit__(None, None, None)
+
+
+# supervisor #178 read-only ruling layer-1: lexical gate alone is NOT sufficient —
+# SELECT-leading single-statement SQL with side-effect patterns must also be
+# rejected BEFORE the port (SELECT INTO / side-effect functions / locking reads).
+@pytest.mark.parametrize(
+    "sql",
+    [
+        "SELECT * INTO new_t FROM users",
+        "SELECT SLEEP(10)",
+        "SELECT BENCHMARK(1000000, MD5('x'))",
+        "SELECT GET_LOCK('x', 10)",
+        "SELECT LOAD_FILE('/etc/passwd')",
+        "PRAGMA table_info(t)",
+        "SELECT * FROM users FOR UPDATE",
+    ],
+)
+def test_run_sql_dangerous_patterns_rejected_with_zero_port_calls(sql):
+    port = _FakePort()
+    client, project_id, tokens, _writer, _search = _bridge_app(port)
+    try:
+        response = _run_sql_call(client, tokens["dev"], project_id, sql)
+        body = response.json()
+        assert body["status"] == "ERROR"
+        assert body["error"]["code"] == "INVALID_PARAMS"
+        violations = body["error"]["details"]["readonly_policy"]
+        assert any(v["code"] == "dangerous_pattern" for v in violations)
+        assert port.calls == []  # denial precedes dispatch, zero port calls
+    finally:
+        client.__exit__(None, None, None)
+
+
+# supervisor #178 ruling-3: budget is counted only AFTER params pass, for wired
+# tools — static budget denial on the wired run_sql path with zero port calls.
+@pytest.mark.parametrize("field, value", [("row_limit", 2000), ("timeout_ms", 60000)])
+def test_run_sql_budget_static_exceeded_with_wired_tool(field, value):
+    port = _FakePort()
+    client, project_id, tokens, _writer, _search = _bridge_app(port)
+    try:
+        response = _run_sql_call(client, tokens["dev"], project_id, "SELECT 1", **{field: value})
+        body = response.json()
+        assert body["status"] == "ERROR"
+        assert body["error"]["code"] == "BUDGET_EXCEEDED"
+        assert body["error"]["retryable"] is False
+        assert port.calls == []
+    finally:
+        client.__exit__(None, None, None)
