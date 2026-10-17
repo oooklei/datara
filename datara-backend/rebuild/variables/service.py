@@ -345,18 +345,22 @@ class VariableResolver:
                     "description": item.description,
                 }
             )
-        # env scope is not catalogued; surface matching environment variables.
+        # env scope is not catalogued; surface matching environment variable
+        # NAMES only (P0-7 security patch): values are withheld (the process
+        # environment may carry secrets such as tokens/db credentials), and
+        # the item is flagged sensitive so UI treats it as masked.
         if scope_filter in (None, "env"):
             for env_name in sorted(os.environ):
-                if env_name.startswith(name_prefix):
+                # prefix was lowercased above; env names keep their process casing
+                if env_name.lower().startswith(name_prefix):
                     items.append(
                         {
                             "scope": "env",
                             "name": env_name,
                             "value_type": "string",
-                            "current_value": os.environ[env_name],
-                            "sensitive": False,
-                            "description": "process environment variable",
+                            "current_value": None,
+                            "sensitive": True,
+                            "description": "process environment variable (value withheld)",
                         }
                     )
         return items
