@@ -35,9 +35,15 @@ def test_port_delegates_question_with_trusted_adapter_context():
 
 
 def test_adapter_generation_failure_maps_sanitized_without_engine_detail():
-    port = build_generate_sql_port(_FakeAdapter(exc=VannaAdapterError("SQL generation failed")))
-    with pytest.raises(SqlGenerationError):
+    # supervisor #181 security fix: the wrapped error must carry NO underlying
+    # adapter/LLM text and NO chained cause/traceback leak path (O7 sovereignty).
+    leak_marker = "vanna-internal: secret-model-endpoint/api-key-context"
+    port = build_generate_sql_port(_FakeAdapter(exc=VannaAdapterError(leak_marker)))
+    with pytest.raises(SqlGenerationError) as excinfo:
         port.generate("how many users", user_id=3, project_id=7)
+    assert leak_marker not in str(excinfo.value)  # sanitized message only
+    assert excinfo.value.__cause__ is None  # exception chain stripped (from None)
+    assert "VannaAdapterError" not in repr(excinfo.value.__cause__)
 
 
 def test_llm_disabled_maps_sanitized():
