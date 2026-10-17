@@ -20,6 +20,8 @@ from sqlalchemy.pool import StaticPool
 
 from rebuild.ai_bridge import AiBridgePorts, build_ai_router
 from rebuild.common.db import Base
+from rebuild.sql_ide.audit import SqlIdeAuditRecord, build_audit_writer
+from rebuild.sql_ide.execution import build_execution_port
 from rebuild.identity.contracts import Permission, Role, TokenService, authorize
 from rebuild.identity.models import ProjectMemberRecord, UserRecord
 from rebuild.identity.passwords import verify_password
@@ -155,6 +157,7 @@ def create_app(
                 TaskDataErrorSampleRecord.__table__,
                 QualityRuleResultLinkRecord.__table__,
                 LineageWritebackRecord.__table__,
+                SqlIdeAuditRecord.__table__,
             ],
         )
         ensure_i1_schema()
@@ -165,6 +168,13 @@ def create_app(
     app = FastAPI(title="Datara Rebuild API", version="0.1.0", lifespan=lifespan)
     app.state.session_factory = session_factory
     app.state.datasource_engines = datasource_engines
+
+    # Production SQL IDE DI: instantiate execution port and audit writer from app services
+    app.state.execution_port = build_execution_port(
+        session_factory=session_factory,
+        engine_registry=datasource_engines,
+    )
+    app.state.audit_writer = build_audit_writer(session_factory=session_factory)
 
     def pooled_connector(project_id: int, datasource_id: int):
         return lambda draft: datasource_engines.connect(project_id, datasource_id, draft)
