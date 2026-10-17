@@ -276,7 +276,9 @@ def build_ai_router(
                             "tool": record.get("tool"),
                             "outcome": record.get("outcome"),
                             "error_code": record.get("error_code"),
-                            "reason": str(exc),
+                            # Codex #186 sanitization: exception TYPE only — raw
+                            # exc text may embed connection strings/SQL/credentials.
+                            "reason": f"audit_writer raised {type(exc).__name__}",
                         }
                     )
                 except Exception:
