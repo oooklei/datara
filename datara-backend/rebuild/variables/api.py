@@ -211,10 +211,14 @@ def build_variables_router(
         return {"code": 0, "msg": "success", "data": result}
 
     # -- 6. getRunSnapshot: GET ``/run-snapshot`` --------------------------
+    # P0-7 security patch: project_id is a required query parameter and the
+    # standard VIEW_ALL permission chain applies; snapshot rows are filtered
+    # by that project so cross-project instance ids leak nothing.
 
     @router.get("/run-snapshot")
     def get_run_snapshot(
         instance_id: int = Query(...),
+        project_id: int | None = Query(default=None),
         attempt_no: int | None = Query(default=None),
         token: str = Header(default=""),
         authorization: str = Header(default=""),
@@ -223,8 +227,12 @@ def build_variables_router(
             principal(token, authorization)
         except ValueError:
             return unauthorized()
-        with session_factory() as session:
-            entries = VariableRepository(session).read_snapshot(instance_id, attempt_no)
+        if project_id is None:
+            return JSONResponse(status_code=400, content={"code": 4001, "msg": "project_id is required", "data": None})
+        with authorized_session(project_id, Permission.VIEW_ALL, token, authorization) as outcome:
+            if isinstance(outcome, JSONResponse):
+                return outcome
+            entries = VariableRepository(outcome).read_snapshot(instance_id, attempt_no, project_id)
         return {"code": 0, "msg": "success", "data": entries}
 
     return router
