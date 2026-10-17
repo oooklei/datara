@@ -112,7 +112,7 @@ const contractMethodCount = R4_RESOURCE_CONTRACT_METHODS.length
 
 const form = reactive({ projectId: 1, kind: 'sql' as ResourceKind })
 const bind = reactive({ resourceId: 1, workflowId: 1, workflowVersion: 1, taskId: '', resourceVersion: 1 })
-const picked = ref<{ filename: string; sizeBytes: number } | null>(null)
+const picked = ref<{ filename: string; sizeBytes: number; contentBase64: string } | null>(null)
 const precheckDiagnostics = ref<ResourceDraftDiagnostic[]>([])
 const resourceVersion = ref<ResourceVersion | null>(null)
 const statusText = ref('待操作')
@@ -136,21 +136,34 @@ function guard<T>(fn: () => Promise<T>, label: string): Promise<void> {
 
 function onFilePicked(event: Event) {
   const file = (event.target as HTMLInputElement).files?.[0]
-  picked.value = file ? { filename: file.name, sizeBytes: file.size } : null
-  precheckDiagnostics.value = picked.value
-    ? validateUploadDraft(form.kind, picked.value.filename, picked.value.sizeBytes)
-    : []
-  if (picked.value && precheckDiagnostics.value.length === 0) {
-    statusText.value = `已选 ${picked.value.filename}（本地预校验通过；上传仍需后端接线）`
+  if (!file) {
+    picked.value = null
+    precheckDiagnostics.value = []
+    return
+  }
+  picked.value = { filename: file.name, sizeBytes: file.size, contentBase64: '' }
+  precheckDiagnostics.value = validateUploadDraft(form.kind, file.name, file.size)
+  if (precheckDiagnostics.value.length === 0) {
+    const reader = new FileReader()
+    reader.onload = () => {
+      if (picked.value) picked.value.contentBase64 = String(reader.result ?? '').split(',')[1] ?? ''
+    }
+    reader.readAsDataURL(file)
+    statusText.value = `已选 ${file.name}（本地预校验通过）`
   }
 }
 
 function onUpload() {
   if (!picked.value) return
-  return guard(
-    () => contract.uploadResource({ projectId: form.projectId, kind: form.kind, filename: picked.value!.filename, sizeBytes: picked.value!.sizeBytes }),
-    '上传资源',
-  )
+  return guard(async () => {
+    resourceVersion.value = await contract.uploadResource({
+      projectId: form.projectId,
+      kind: form.kind,
+      filename: picked.value!.filename,
+      sizeBytes: picked.value!.sizeBytes,
+      contentBase64: picked.value!.contentBase64,
+    })
+  }, '上传资源')
 }
 
 function onList() {
