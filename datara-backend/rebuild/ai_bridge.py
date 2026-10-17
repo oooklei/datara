@@ -188,6 +188,22 @@ ERROR_MESSAGES: dict[str, str] = {
 }
 
 
+class ToolError(Exception):
+    """Handler-raised typed error; the envelope normalizes it to §5 wire shape.
+
+    Construction refuses codes outside the frozen 12-code space — handlers can
+    never invent private error codes (§5: 禁止新增未登记错误码).
+    """
+
+    def __init__(self, code: str, *, retryable: bool = False, details: Mapping[str, Any] | None = None):
+        super().__init__(code)
+        if code not in ERROR_MESSAGES:
+            raise ValueError(f"unregistered error code: {code}")
+        self.code = code
+        self.retryable = retryable
+        self.details = details
+
+
 @dataclass(frozen=True)
 class AiBridgePorts:
     """Injected ports for the R8-A bridge (fail-closed composition seam).
@@ -249,6 +265,8 @@ def build_ai_router(
             budget["rows_returned"] = result["row_count"]
         if "truncated" in result:
             budget["truncated"] = bool(result["truncated"])
+        if isinstance(result.get("duration_ms"), int):
+            budget["duration_ms"] = result["duration_ms"]
         return budget
 
     def audit_record(
@@ -547,11 +565,21 @@ def build_ai_router(
             if isinstance(page_context, Mapping) and isinstance(page_context.get("context_ref"), Mapping)
             else {}
         )
+        tool_error: ToolError | None = None
         try:
             result = dict(handler(params, page_context, context))
             outcome, error_code = "SUCCESS", None
+        except ToolError as exc:
+            result, outcome, error_code, tool_error = None, "ERROR", exc.code, exc
         except Exception:
             result, outcome, error_code = None, "ERROR", "INTERNAL_ERROR"
+        # Handler-threaded audit refs (§7.3 run_sql: execution_id/datasource_id):
+        # merged into the audit record, stripped from the wire result.
+        refs = dict(page_refs)
+        if isinstance(result, Mapping):
+            threaded = result.pop("refs", None)
+            if isinstance(threaded, Mapping):
+                refs.update(threaded)
         record = audit_record(
             audit_id=audit_id,
             tool_call_id=tool_call_id,
@@ -563,7 +591,7 @@ def build_ai_router(
             outcome=outcome,
             error_code=error_code,
             latency_ms=int((time.perf_counter() - started) * 1000),
-            refs=page_refs,
+            refs=refs,
             started_at=server_time,
             result=result,
         )
@@ -589,6 +617,18 @@ def build_ai_router(
                 status="SUCCESS",
                 result=result,
                 error=None,
+            )
+        if tool_error is not None:
+            # typed handler error: frozen code + handler-chosen retryable/details
+            return envelope(
+                tool_call_id=tool_call_id,
+                tool=tool,
+                tool_version=tool_version,
+                audit_id=audit_id,
+                server_time=server_time,
+                status="ERROR",
+                result=None,
+                error=error_payload(tool_error.code, tool_error.retryable, tool_error.details),
             )
         return envelope(
             tool_call_id=tool_call_id,
