@@ -1,7 +1,7 @@
 {
   "version": 1,
   "created_at": "2026-10-02T22:25:37Z",
-  "updated_at": "2026-10-17T03:52:01Z",
+  "updated_at": "2026-10-17T04:25:12Z",
   "files": {
     ".claude/plans/2026-10-16-loop-runbook.md": {
       "role": "index",
@@ -200,9 +200,9 @@
     },
     "aoci.code.txt": {
       "role": "index",
-      "sha256": "f6f028f0ea904b0ef49c1d93a210dba79625b22a570afc6f9075517b5b0d71af",
-      "size": 245701,
-      "normalized_sha256": "f6f028f0ea904b0ef49c1d93a210dba79625b22a570afc6f9075517b5b0d71af"
+      "sha256": "465f387c4590869c453c72c3c0d9b9c6ae54c03042c0dae435adb4b9c46f7533",
+      "size": 256052,
+      "normalized_sha256": "465f387c4590869c453c72c3c0d9b9c6ae54c03042c0dae435adb4b9c46f7533"
     },
     "aoci.meta.txt": {
       "role": "index",
@@ -4595,11 +4595,23 @@
       "size": 1895,
       "normalized_sha256": "2ebf6c8b02bae3d6ee987c32fd3e7dcb1a82cb886dbf05e8b52204f303af803b"
     },
+    "datara-web/src/views/rebuild/validation/sync-form/SyncFormValidationView.vue": {
+      "role": "index",
+      "sha256": "beb823b70bb3cc9ea6e29c06bada4c5341e3104fba78c74510a008ef516df935",
+      "size": 31626,
+      "normalized_sha256": "beb823b70bb3cc9ea6e29c06bada4c5341e3104fba78c74510a008ef516df935"
+    },
     "datara-web/src/views/rebuild/validation/sync-form/syncComponentApi.contract.test.ts": {
       "role": "observe",
       "sha256": "e7ee74f69374f10a352e65f796314bab6c085a08def6e5d693f377531b96a101",
       "size": 3637,
       "normalized_sha256": "e7ee74f69374f10a352e65f796314bab6c085a08def6e5d693f377531b96a101"
+    },
+    "datara-web/src/views/rebuild/validation/variable/VariableValidationView.vue": {
+      "role": "index",
+      "sha256": "2b6ef7881c14158ea190f3ddb543ca9ca6c470b664eb19e4fda77eafdfa85c37",
+      "size": 14655,
+      "normalized_sha256": "2b6ef7881c14158ea190f3ddb543ca9ca6c470b664eb19e4fda77eafdfa85c37"
     },
     "datara-web/src/views/rebuild/validation/variable/variableApi.contract.test.ts": {
       "role": "observe",
@@ -5051,11 +5063,17 @@
       "size": 2799,
       "normalized_sha256": "3a26d6825db79ad3ab3f237eafcaf2fff2f2c02230bf5b29455e15814d16099a"
     },
+    "docker-compose.r2-12-d.yml": {
+      "role": "index",
+      "sha256": "025ccfea4a05f423813a6bd825abd1d90f0ba0cea93483cd9321ceac0e1c3970",
+      "size": 154,
+      "normalized_sha256": "025ccfea4a05f423813a6bd825abd1d90f0ba0cea93483cd9321ceac0e1c3970"
+    },
     "docker-compose.rebuild.yml": {
       "role": "index",
-      "sha256": "94278b115a2bbce6aec35950e2b7ea88ee0a1c7f34885e187ea1314f81785916",
-      "size": 1156,
-      "normalized_sha256": "94278b115a2bbce6aec35950e2b7ea88ee0a1c7f34885e187ea1314f81785916"
+      "sha256": "7f0c473e71cfee3da31e98c3ca23b0e81862256dac12b922f85ad6f2b7ae9842",
+      "size": 1281,
+      "normalized_sha256": "7f0c473e71cfee3da31e98c3ca23b0e81862256dac12b922f85ad6f2b7ae9842"
     },
     "docker-compose.yml": {
       "role": "index",
@@ -5157,11 +5175,101 @@
       "size": 3809,
       "normalized_sha256": "708b2e7b844d92bc2ddfe8d4cc8aca44963dc9759561557c1193a4c6b6b2f098"
     },
+    "docs/agents/multi-terminal-collaboration-paradigm.md": {
+      "role": "index",
+      "sha256": "5c638c40a2f5146ad025854d138b59426ea0825d7c345921034faba30236986c",
+      "size": 13039,
+      "normalized_sha256": "5c638c40a2f5146ad025854d138b59426ea0825d7c345921034faba30236986c"
+    },
     "docs/agents/triage-labels.md": {
       "role": "index",
       "sha256": "c78b62894eeafabef65e3bed0b75192ffd3305be5cbf776b37c838223281bcc1",
       "size": 1033,
       "normalized_sha256": "c78b62894eeafabef65e3bed0b75192ffd3305be5cbf776b37c838223281bcc1"
+    },
+    "docs/archive/superpowers/plans/2026-09-30-baseline-revision.md": {
+      "role": "index",
+      "sha256": "d11f7d4b5f56080bb58d874702f12308f8dce636e4738461c7138f57dccf8363",
+      "size": 34555,
+      "normalized_sha256": "d11f7d4b5f56080bb58d874702f12308f8dce636e4738461c7138f57dccf8363"
+    },
+    "docs/archive/superpowers/plans/2026-09-30-lineage.md": {
+      "role": "index",
+      "sha256": "31b9f6c32f92b6b257bbef7a86cd57e381f6f8efa469d0ace7494082d5c745ca",
+      "size": 7547,
+      "normalized_sha256": "31b9f6c32f92b6b257bbef7a86cd57e381f6f8efa469d0ace7494082d5c745ca"
+    },
+    "docs/archive/superpowers/plans/2026-10-01-datara-unified-hardening.md": {
+      "role": "index",
+      "sha256": "0ced59c7d3f2c3003e1a5ef24a7cfdb144cc1ec78717cfdaf0a7e4c8c7834330",
+      "size": 7135,
+      "normalized_sha256": "0ced59c7d3f2c3003e1a5ef24a7cfdb144cc1ec78717cfdaf0a7e4c8c7834330"
+    },
+    "docs/archive/superpowers/plans/2026-10-01-i13-unified-hardening.md": {
+      "role": "index",
+      "sha256": "79a4634298b81f0a900ab1e7e18a1f872e079ba930d1e83107e9055332136840",
+      "size": 1058,
+      "normalized_sha256": "d1013adbaf66a146d5ecf539aeae349d41cd2e4d27a8f35e15944594f62f66eb"
+    },
+    "docs/archive/superpowers/plans/2026-10-01-lineage-followup.md": {
+      "role": "index",
+      "sha256": "73eca368ca1f5df74e0cfb77eaff4b554f05a60d2bd9d335aaf15bb95d908bfe",
+      "size": 4158,
+      "normalized_sha256": "73eca368ca1f5df74e0cfb77eaff4b554f05a60d2bd9d335aaf15bb95d908bfe"
+    },
+    "docs/archive/superpowers/plans/2026-10-03-component-page-designer.md": {
+      "role": "index",
+      "sha256": "c03b7fb3399213be9e87a763f0ca5b03eb23f35b42ddfce935d9cbb85d46be31",
+      "size": 45370,
+      "normalized_sha256": "c03b7fb3399213be9e87a763f0ca5b03eb23f35b42ddfce935d9cbb85d46be31"
+    },
+    "docs/archive/superpowers/plans/2026-10-05-workbench-optimization.md": {
+      "role": "index",
+      "sha256": "b09db3da70508f31d2000a658b3ded3b0049954c2214e79ed422f19285d40578",
+      "size": 77596,
+      "normalized_sha256": "b09db3da70508f31d2000a658b3ded3b0049954c2214e79ed422f19285d40578"
+    },
+    "docs/archive/superpowers/plans/2026-10-09-component-reference-upgrade.md": {
+      "role": "index",
+      "sha256": "e59feba79b745e5c6b70e26e0e4a3e5ec3d681fb9339506cc0a94041135b5a32",
+      "size": 8324,
+      "normalized_sha256": "e59feba79b745e5c6b70e26e0e4a3e5ec3d681fb9339506cc0a94041135b5a32"
+    },
+    "docs/archive/superpowers/plans/2026-10-12-i18-model-p0.md": {
+      "role": "index",
+      "sha256": "e3a9c55ddf63d2c196ee94abbea6947a9e9734f79fce5a7f85d3b214c9e43678",
+      "size": 107824,
+      "normalized_sha256": "e3a9c55ddf63d2c196ee94abbea6947a9e9734f79fce5a7f85d3b214c9e43678"
+    },
+    "docs/archive/superpowers/specs/2026-09-30-baseline-revision-design.md": {
+      "role": "index",
+      "sha256": "e94ec95922ed250e301342c8b1e2b20f15b394f3c2742dcafe8e3b3fbc8fe456",
+      "size": 7011,
+      "normalized_sha256": "e94ec95922ed250e301342c8b1e2b20f15b394f3c2742dcafe8e3b3fbc8fe456"
+    },
+    "docs/archive/superpowers/specs/2026-09-30-lineage-design.md": {
+      "role": "index",
+      "sha256": "61c757a4fe5288185b8dd0590ce20b8385024c74eba920e6612679726b849029",
+      "size": 15519,
+      "normalized_sha256": "61c757a4fe5288185b8dd0590ce20b8385024c74eba920e6612679726b849029"
+    },
+    "docs/archive/superpowers/specs/2026-10-01-lineage-followup.md": {
+      "role": "index",
+      "sha256": "bf5df8e56a206196aa6a20b44afc8ae8337f184f5571d119c1b3aaf4f05c333d",
+      "size": 9639,
+      "normalized_sha256": "bf5df8e56a206196aa6a20b44afc8ae8337f184f5571d119c1b3aaf4f05c333d"
+    },
+    "docs/archive/superpowers/specs/2026-10-03-component-page-designer-design.md": {
+      "role": "index",
+      "sha256": "115a4c440ee9c7db606112ccfab00a5dede940c16167c8e709d56f89c8ab2179",
+      "size": 12548,
+      "normalized_sha256": "115a4c440ee9c7db606112ccfab00a5dede940c16167c8e709d56f89c8ab2179"
+    },
+    "docs/archive/superpowers/specs/2026-10-05-workbench-optimization-design.md": {
+      "role": "index",
+      "sha256": "08dd4fb1f1193b02b46602b75097ad5679ace366ec5bdc474e05c195b8c4efaa",
+      "size": 43937,
+      "normalized_sha256": "08dd4fb1f1193b02b46602b75097ad5679ace366ec5bdc474e05c195b8c4efaa"
     },
     "docs/build_docs.py": {
       "role": "index",
@@ -5175,11 +5283,17 @@
       "size": 46540,
       "normalized_sha256": "60b6668892877e79a42adfb7594e0691ce5eceb3d0a7bb245e6afb7d0d13a85b"
     },
+    "docs/handoff/2026-10-16-Codex-to-Trae-correction-plan.md": {
+      "role": "index",
+      "sha256": "8dc1a9ddaeecf9819906ab3af4e0755f195a59ad003da3577ed3bd9d3b7a12c5",
+      "size": 3887,
+      "normalized_sha256": "2cf450b6f8bdecd463f24ccb2b10ab0992d6bca17ade8d2b993d3528f87e61ae"
+    },
     "docs/handoff/2026-10-16-Codex-to-Trae-i18-invalid-token.md": {
       "role": "index",
-      "sha256": "2fa4503d9500d61b1aea10eeee9632d56ea0fb120f55b0b3275be04c21c78c60",
-      "size": 1422,
-      "normalized_sha256": "2fa4503d9500d61b1aea10eeee9632d56ea0fb120f55b0b3275be04c21c78c60"
+      "sha256": "eb5f09c0d4d56c0805e114012fb16cc76e7c41bbc316db8d1b0809cd4038bd23",
+      "size": 1857,
+      "normalized_sha256": "eb5f09c0d4d56c0805e114012fb16cc76e7c41bbc316db8d1b0809cd4038bd23"
     },
     "docs/handoff/2026-10-16-Codex-to-Trae-r3-s9-zero-free-bstr.md": {
       "role": "index",
