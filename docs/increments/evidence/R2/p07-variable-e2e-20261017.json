@@ -1,0 +1,58 @@
+{
+  "login": {
+    "status": 200,
+    "hasToken": true
+  },
+  "completion": {
+    "status": "搜索补全 完成",
+    "envRowCount": 2,
+    "envNames": [
+      "PATH",
+      "PATHEXT"
+    ],
+    "envValueCells": [
+      "—",
+      "—"
+    ],
+    "valuesWithheld": true
+  },
+  "snapshot": {
+    "status": "查询运行快照 完成",
+    "rowCount": 1,
+    "firstRow": [
+      "${project.batch_size}",
+      "project",
+      "batch_size",
+      "500",
+      "number",
+      "project",
+      "2026-10-17T01:50:57",
+      "1"
+    ],
+    "ok": true
+  },
+  "legacy": {
+    "status": "查询运行快照 完成",
+    "rowCount": 0,
+    "ok": true
+  },
+  "errors": [],
+  "ok": true,
+  "network": [
+    {
+      "url": "/api/v1/rebuild/variables/complete",
+      "method": "POST",
+      "status": 200
+    },
+    {
+      "url": "/api/v1/rebuild/variables/run-snapshot?instance_id=7001&project_id=1&attempt_no=1",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "url": "/api/v1/rebuild/variables/run-snapshot?instance_id=7002&project_id=1&attempt_no=1",
+      "method": "GET",
+      "status": 200
+    }
+  ]
+}
