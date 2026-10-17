@@ -41,8 +41,10 @@ def build_generate_sql_port(adapter: Any) -> SqlGenerationPort:
                 return adapter.generate_sql(
                     question, AdapterContext(user_id=user_id, project_id=project_id)
                 )
-            except VannaAdapterError as exc:
-                # sanitized mapping: adapter/LLM internals never reach rebuild callers
-                raise SqlGenerationError("generate_sql failed") from exc
+            except VannaAdapterError:
+                # sanitized mapping: adapter/LLM internals never reach rebuild
+                # callers; `from None` strips the cause/traceback chain so the
+                # underlying error text cannot leak through __cause__ either.
+                raise SqlGenerationError("generate_sql failed") from None
 
     return _AdapterGenerationPort()
