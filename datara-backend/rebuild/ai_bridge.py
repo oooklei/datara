@@ -26,6 +26,7 @@ Red lines honored here:
 
 from __future__ import annotations
 
+import hashlib
 import time
 import uuid
 from dataclasses import dataclass, field
@@ -219,6 +220,65 @@ class AiBridgePorts:
     handlers: Mapping[str, Handler] = field(default_factory=dict)
     audit_writer: Any | None = None
     audit_failure_sink: Any | None = None
+
+
+class _BridgeAuditWriterAdapter:
+    """Adapt bridge audit records to the production SQL IDE audit writer.
+
+    The bridge's ``write_audit`` calls ``ports.audit_writer.write(record)``
+    with the bridge's audit record shape (tool_call_id, outcome, refs, …).
+    The production ``DbBackedAuditWriter`` exposes ``write_execution_start``
+    / ``write_execution_end`` over the SQL IDE audit schema.  This adapter
+    maps one to the other so the bridge can consume the production writer
+    without the writer knowing about bridge record fields.
+
+    Any exception from the underlying writer propagates so the bridge's
+    fail-closed envelope rejects the success response (audit is never
+    bypassed).
+    """
+
+    def __init__(self, writer: Any) -> None:
+        self._writer = writer
+
+    def write(self, record: Mapping[str, Any]) -> None:
+        # The bridge has two audit-record shapes:
+        # - normal path: request_payload IS the tool params dict
+        # - envelope-validation path: request_payload = {"params": …, "page_context": …}
+        request_payload = record.get("request_payload", {})
+        if isinstance(request_payload, Mapping):
+            params = request_payload.get("params", request_payload)
+            if not isinstance(params, Mapping):
+                params = {}
+        else:
+            params = {}
+        refs = record.get("refs", {}) if isinstance(record.get("refs"), Mapping) else {}
+
+        project_id = record.get("project_id")
+        user_id = record.get("user_id")
+        datasource_id = refs.get("datasource_id") or (
+            params.get("datasource_id") if isinstance(params, Mapping) else None
+        )
+        sql = params.get("sql", "") if isinstance(params, Mapping) else ""
+        sql_digest = hashlib.sha256(sql.encode("utf-8")).hexdigest()[:64]
+        task_id = record.get("tool_call_id") or ""
+        status = "success" if record.get("outcome") == "SUCCESS" else "failed"
+        error_code = record.get("error_code")
+        latency_ms = record.get("latency_ms") or 0
+
+        audit_id = self._writer.write_execution_start(
+            project_id=project_id,
+            user_id=user_id,
+            datasource_id=datasource_id,
+            sql_digest=sql_digest,
+            task_id=task_id,
+        )
+        self._writer.write_execution_end(
+            audit_id=audit_id,
+            status=status,
+            stmt_count=1,
+            elapsed_ms=latency_ms,
+            error_code=error_code,
+        )
 
 
 def build_ai_router(
@@ -674,3 +734,27 @@ def build_ai_router(
         )
 
     return router
+
+
+def build_default_bridge_ports(
+    execution_port: Any,
+    audit_writer: Any,
+) -> AiBridgePorts | None:
+    """Assemble default production bridge ports from ``app.state`` services.
+
+    The default ``create_app`` production assembly: the run_sql handler is
+    composed over the production execution port, and the production audit
+    writer is adapted to the bridge's audit record format.  Returns ``None``
+    when either required dependency is missing so the caller stays
+    fail-closed (no bridge mounted → no unaudited/ungoverned path).
+    """
+    if execution_port is None or audit_writer is None:
+        return None
+    # Lazy import: rebuild.run_sql imports from rebuild.ai_bridge at module
+    # level, so a top-level import here would be circular.
+    from rebuild.run_sql import build_run_sql_handler
+
+    return AiBridgePorts(
+        handlers={"run_sql": build_run_sql_handler(execution_port)},
+        audit_writer=_BridgeAuditWriterAdapter(audit_writer),
+    )
