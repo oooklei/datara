@@ -101,3 +101,40 @@ v4 的主方向与方案裁定链基本一致，未发现删除或实质弱化�
 | N2-5 | S1、D9/R5-A 说明 | 明确全面研读及“参考不等于运行时依赖” | 待标准维护方处理 |
 
 本报告提出的条文均为评审建议。是否采纳、是否修订标准以及 v4 的生效时间，仍按标准治理流程及用户 K2 过目/裁定执行；本报告不构成默示批准。
+
+## Addendum：S3 变量引用位交互条款（#71 / 3191c0b）
+
+- 复核日期：2026-10-17
+- 新增依据：canonical handoff 心跳 #71；标准新增条款提交 `3191c0b`，随后 `1e16b7c` 将 v4 记为用户 K2 批准后的有效基线。
+- 复核范围：S3 新增“变量引用位交互完备性”验收项及 main 中现存 R2 FE/BE 服务契约；本 addendum 是对前文评审的追加，不修改标准正文，也不替代用户已批准的标准。
+
+### A. 新条款与原始核心要求/D9 的一致性
+
+新增条款规定：每个可引用变量的输入位须有校验按钮，走 `/check-reference` 并显式展示 SYNTAX、UNDEFINED、TYPE_MISMATCH、SCOPE_INVISIBLE、CYCLE 五类诊断；同时展示当前时点解析值，走 `/preview`/run-snapshot；交互随对应模块实现及前端重构阶段落地，最终逐输入位扫描验收。标准锚点为 `docs/increments/2026-10-17-核心业务功能实现规范与验收标准.md:137`，提交说明见 `3191c0b`。
+
+该补充与五项原始要求整体一致，尤其将第四项“变量体系贯穿全系统、支撑设计/运行/维护时数据透传”具体化为输入位级交互验收；也与第二项要求的真实字段、校验、交互顺序及结果反馈一致。它没有改变第一项 DBX 优先的规则、第三项 DolphinScheduler 依赖完整性、第五项 AI 助手能力或其优先级。
+
+D9 是 DBX 全面研读并融合原版 SQL IDE 的执行令，与此新增条款没有冲突：SQL IDE 中支持变量引用的实际输入位应纳入同一全域清单；这不改变 DBX 冲突优先规则，也不意味着以变量按钮/label 代替 DBX 全量研读和融合点、冲突、特色吸收项产出。S3 将交互安排在各模块前端实现/前端重构阶段，与标准 S3 的 SQL IDE 前后端分工及后端先冻结原则相容；不能据此声称目前所有模块的 FE 已完成。
+
+### B. 契约映射核对
+
+| 行为 | FE 服务契约 | BE 契约/实现锚点 | 复核判断 |
+|---|---|---|---|
+| 校验输入表达式 | `datara-web/src/services/rebuild/variableApi.ts:50-61,109-114,207-208`；POST `/check-reference` | `datara-backend/rebuild/variables/api.py:175-192`；解析诊断见 `datara-backend/rebuild/variables/service.py:234-265` | 路由和返回结构可承载 valid + diagnostics[]；应展示实际返回的诊断及消息，不应将五种码固定伪装为每次调用都会出现。 |
+| 显示当前解析值 | FE `ResolutionPreview` 与 `previewResolution`：`variableApi.ts:63-69,109-115,209-210`；POST `/preview` | `api.py:194-211`；`service.py:304-322` | `/preview` 是当前上下文的预览契约，返回 resolved_value/source/diagnostics，适合作为编辑态 label 的主要来源。 |
+| 显示某次执行时的真实解析值 | FE `getRunSnapshot`：`variableApi.ts:71-82,115,211-212`；GET `/run-snapshot?instance_id=&attempt_no=` | `api.py:213-228`；`repository.py` 的 `read_snapshot`；`test_r2_variables_api.py:169-210` | 这是指定 instance/attempt 的持久化解析快照，按契约应不可变；不是通用编辑态“当前值”接口，展示时应标注运行/attempt/解析时间。当前只读 HTTP 路由与 attempt 读取测试不能单独证明数据库层禁止快照行被直接更新。 |
+
+FE 的 context 包含 `projectId`，并可带 workflowId/workflowVersion/taskId/attemptNo（`variableApi.ts:100-107`）。`/check-reference` 与 `/preview` 在 BE 中通过 `authorized_session(context.project_id, Permission.VIEW_ALL, ...)` 限定项目，见 `variables/api.py:181-191,200-210`。这支持按真实输入位上下文进行校验和预览。
+
+### C. 需要在后续实施/验收中控制的边界与风险
+
+1. **“当前值”与 run-snapshot 不是同义词。** `/preview` 根据当前变量定义与提供的上下文进行解析；`/run-snapshot` 是某次运行已持久化的 attempt 快照。建议后续 UI 验收将标签区分为“当前解析预览”和“运行快照”，不得在没有 instance/attempt 的编辑态用历史值冒充当前值；若验收要求强不可变性，还需验证写入路径/DB 约束不会改写既有 attempt 行。
+2. **完整表达式的展开语义未完全由当前 preview 实现证明。** `VariableResolver.preview_resolution` 明确只解析表达式中的第一个引用（`service.py:304-322`）。当字段含多个变量引用或变量与普通文本组合时，当前 `resolved_value` 不等于整段表达式的完整展开结果。验收前应裁定 label 展示“每个引用的变量值”还是“整段文本完整展开值”，并使 FE 行为与 BE 契约一致。
+3. **五诊断码的自动化覆盖不等于已有测试全覆盖。** `service.py:234-265` 实现五类诊断分支；当前 `datara-backend/tests/rebuild/test_r2_variables_api.py:122-157` 明确验证 UNDEFINED、SCOPE_INVISIBLE、SYNTAX、CYCLE，但该片段没有 TYPE_MISMATCH 的 `/check-reference` 断言（保存时类型不匹配与引用校验诊断不是同一断言）。新条款要求五类结果作为 UI 能力，建议验收补齐 TYPE_MISMATCH 的 API→FE 展示用例。
+4. **敏感值 label 的显示边界必须继承已裁定口径。** v4 R2 清单 `:141` 要求业务敏感值忠实原值（仅本系统登录密码例外）；测试 `test_r2_variables_api.py:64-66` 也确认变量 API 返回敏感原值。故不能擅自掩码或替换；同时前端实现不得把现值写入 URL、常规日志、埋点或非必要持久缓存，并必须依赖项目授权。该条款增加可视性，不增加扩大访问授权的依据。
+5. **run-snapshot 当前路由授权不足以支撑跨模块通用展示。** `variables/api.py:221-228` 对 `/run-snapshot` 仅做 token principal 检查，然后按传入 instance_id/attempt_no 读取；没有通过 project_permission_error/authorized_session 校验运行实例所属项目。快照记录模型只保存 instance_id/attempt_no（`variables/models.py` 的 `TaskInstanceVariableRuntimeRecord`），未见 project_id 绑定。快照值可含原始变量值，不能让任意有效用户通过猜测 instance_id 读取。若新条款允许在页面调用 run-snapshot，必须先补运行实例到项目的归属校验和跨项目拒绝测试；否则把 run-snapshot 限于已有可信调用边界，并将编辑态 label 指向受项目授权的 `/preview`。
+6. **“任一可引用变量输入位”的验收需要清晰库存。** 该条款覆盖范围是全域文本输入位，不等同于 R2 变量验证单页完成。逐模块清单应记录输入位、变量语法是否适用、项目/工作流/任务/attempt context 的来源、校验按钮、即时预览、错误反馈和延期批次；不支持变量引用的字段应依据业务契约明确标为不适用。SQL IDE 相关输入位并入库存，但仍按 D9 的 DBX 语义和冲突规则单独验证。
+
+### D. Addendum 结论
+
+**对新增标准条文本身：有条件通过。** 方向与原始五项要求及 D9 一致，BE 的 `/check-reference`、`/preview`、`/run-snapshot` 契约在代码中存在，当前条款把未来 FE 验收义务明确化；但“当前解析值”不应把 preview 与运行快照混为一谈。若要将该条款宣称实现或验收通过，至少需澄清多引用表达式的展示语义、补齐 TYPE_MISMATCH 诊断测试，并修复/裁定 run-snapshot 的项目授权边界。上述风险是对后续实现验收的反馈，不是对用户已批准标准的改写或撤销。
