@@ -1,0 +1,23 @@
+{
+  "test_run_id": "tracka-repair-20261018",
+  "timestamp": "2026-10-18T03:00:43.292520",
+  "command": "python -m pytest tests/sql_ide/ -v --tb=short",
+  "working_directory": "datara-backend/",
+  "exit_code": 0,
+  "summary": "88 passed in 11.00s",
+  "test_groups": {
+    "test_audit_writer": 12,
+    "test_ddl_policy": 17,
+    "test_execution_port": 19,
+    "test_factory": 11,
+    "test_repair_integration": 12,
+    "test_run_sql_readonly": 17
+  },
+  "repair_scope": [
+    "Gap3: SqlIdeAuditRecord.__table__ added to lifespan create_all",
+    "Gap3: DB integration tests with real ORM (not mock)",
+    "Gap4: build_execution_port + build_audit_writer wired in create_app",
+    "Gap4: app.state.execution_port + app.state.audit_writer available"
+  ],
+  "stdout_excerpt": "unSqlErrorTypes::test_timeout_is_sql_execution_error PASSED [ 96%]\ntests/sql_ide/test_run_sql_readonly.py::TestRunSqlErrorTypes::test_cancelled_is_sql_execution_error PASSED [ 97%]\ntests/sql_ide/test_run_sql_readonly.py::TestRunSqlErrorTypes::test_dependency_unavailable_is_sql_execution_error PASSED [ 98%]\ntests/sql_ide/test_run_sql_readonly.py::TestRunSqlErrorTypes::test_failed_is_sql_execution_error PASSED [100%]\n\n============================= 88 passed in 8.46s ==============================\n"
+}
