@@ -40,10 +40,10 @@ LINE_SILENCE_MIN = 15
 LINE_NOTIFY_DEDUP_MIN = 30
 
 # v4: auto-wake engine — inject the built-in wakeup text into a silent line's
-# CLI session. AUTO_WAKE_DRY_RUN=True only logs what would run (observation
-# mode; flip to False to enable real injection). Lines without a template
-# fall back to popup + manual wakeup (watchdog_summary.txt). Deduped per line.
-AUTO_WAKE_DRY_RUN = True
+# CLI session. AUTO_WAKE_DRY_RUN=False = real injection enabled (user-approved
+# 2026-10-18 after dry-run observation; codex exec confirmed unattended-capable).
+# Lines without a template fall back to popup + manual wakeup. Deduped per line.
+AUTO_WAKE_DRY_RUN = False
 AUTO_WAKE_DEDUP_MIN = 30
 WAKE_CMD_TEMPLATES = {
     "Codex": ["codex", "exec", "{wakeup}"],
