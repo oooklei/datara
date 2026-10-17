@@ -298,7 +298,7 @@ function onComplete() {
 
 function onSnapshot() {
   return guard(async () => {
-    snapshotEntries.value = await contract.getRunSnapshot(snapshot.instanceId, snapshot.attemptNo)
+    snapshotEntries.value = await contract.getRunSnapshot(snapshot.instanceId, form.projectId, snapshot.attemptNo)
   }, '查询运行快照')
 }
 </script>
