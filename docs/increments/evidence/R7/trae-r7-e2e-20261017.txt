@@ -1,0 +1,69 @@
+# R7 metrics BE — P0-3 执行证据（2026-10-17）
+
+> 任务：P0-3 `/api/v1/rebuild/metrics` 六端点 BE 冻结契约实现 + 门禁 + 联调 + E2E。
+> 契约真源：FE `datara-web/src/services/rebuild/metricsApi.ts`（GREEN 版，P1 冻结词形）+ GREEN 接线计划 Task 5 契约面表。
+> 监督线心跳 #56 追认的 P0-2 处置方案同源适用（canonical main 冻结契约实现，correction-plan worktree 零触碰）。
+
+## 1. 交付物（提交链，pathspec 单文件逐笔）
+
+| # | 文件 | 内容 |
+|---|---|---|
+| 1 | `datara-backend/rebuild/metrics/__init__.py` | 包声明 |
+| 2 | `datara-backend/rebuild/metrics/models.py` | 6 表模型（workflow_result_stat / task_instance_data_stat / task_data_stat_segment / task_data_error_sample / quality_rule_result_link / lineage_writeback），全表 DB 生成 created_at/updated_at，MetricValue 列 Text JSON 透传 |
+| 3 | `datara-backend/rebuild/metrics/repository.py` | parse_window（from/to 必填、from<=to、offset>=0、limit∈(0,1000]）+ 六查询（时间窗过滤+分页，workflow_result_stats 按 run_date[:10]，lineage kind 校验 sql/sync/workflow/all） |
+| 4 | `datara-backend/rebuild/metrics/api.py` | build_metrics_router：六 POST 端点、{code,msg,data} 包络、token header 优先+Bearer 兼容、TimeWindowRequest alias `from`、MetricsDomainError→400 |
+| 5 | `datara-backend/rebuild/api/app.py` | import metrics 模型+create_all 建表+挂载 router 至 /api/v1/rebuild/metrics |
+| 6 | `datara-backend/tests/rebuild/test_r7_metrics_api.py` | 3 测试：六端点契约形+MetricValue 透传断言、kind 过滤与校验 400、401/Bearer 兼容 |
+| 7-9 | `docs/increments/evidence/R7/` | r7-be-e2e-20261017.json / r7-be-e2e-20261017.png / trae-r7-vite-dev-20261017.log（E2E 环境复现日志） |
+
+## 2. 门禁
+
+| 门禁 | 命令 | 结果 |
+|---|---|---|
+| BE 全量回归 | `python -m pytest tests/rebuild -q`（datara-backend） | **318 passed, 1 xfailed**（45.97s，零破坏；R2 基线 315+3 新增） |
+| FE 契约测试 | `pnpm vitest run src/views/rebuild/validation/metrics/metricsApi.contract.test.ts`（datara-web） | **11 passed**（FE metricsApi GREEN 契约层本批零改动） |
+| FE 全量/类型 | R2 批次全量 `pnpm vitest run` 859/859 + vue-tsc 0 错误仍有效（本批无 FE 变更） | 复用 R2 证据 trae-r2-vitest-full-20261017.txt |
+
+## 3. 联调与 E2E（双向锚点互证）
+
+环境：BE `uvicorn rebuild.api.app:create_app --factory --port 8000`（REBUILD_DB_URL=sqlite+pysqlite:///./rebuild_e2e_r2.db，REBUILD_TOKEN_SECRET=r2-e2e-secret）；FE vite dev 5173（--force 重新预构建以绕开内嵌 WebView 损坏的磁盘缓存，见 §5）；E2E runner=Playwright headless Chromium（独立 profile，见 §5）。
+
+种子：6 表注入演示数据（2/2/3/2/2/3 行），实例 9002 行含 unknown（{value:0,known:false}）与 estimated（{value:5000,estimated:true}）口径。
+
+E2E 走查（`http://localhost:5173/#/rebuild/validation/metrics`，登录 dev/dev-pass → token 注入 localStorage['datara_token']）：
+
+| 方法 | 端点（POST） | FE 网络 | BE uvicorn 日志 | 表格行数 | 状态栏 |
+|---|---|---|---|---|---|
+| queryWorkflowResultStats | /workflow-result-stats | 200 | 200 OK | 2 | 加载统计 完成 |
+| queryTaskInstanceDataStats | /task-instance-data-stats | 200 | 200 OK | 2 | 加载统计 完成 |
+| queryTaskDataStatSegments | /task-data-stat-segments | 200 | 200 OK | 3 | 加载统计 完成 |
+| queryTaskDataErrorSamples | /task-data-error-samples | 200 | 200 OK | 2 | 样本→加载统计 完成 |
+| listQualityRuleLinks | /quality-rule-links | 200 | 200 OK | 2 | 加载质量规则结果链 完成 |
+| listLineageWritebacks | /lineage-writebacks | 200（body kind:"all"） | 200 OK | 3 | 加载血缘回写 完成 |
+
+- 请求体全部为 TimeWindowQuery {from,to,offset,limit}（1970-01-01T00:00:00Z→2030-01-01T00:00:00Z, 0, 50），血缘额外 kind:"all"——与 FE metricsApi 契约逐字段一致。
+- unknown/estimated 透传渲染（A7 Step 1）：实例表第 2 行 rowsIn=`0（unknown）`、rowsOut=`5000（estimated）`，FE 未推导标记，BE 原样返回 JSON 包装。
+- 非法窗口（from>to）冒烟：HTTP 400 + {code:4001}。
+- 证据文件：r7-be-e2e-20261017.json（完整网络+步骤报告）、r7-be-e2e-20261017.png（整页截图）。
+
+## 4. 红线自检（runbook §7）
+
+- 显式人工确认闸：未涉及（P0-3 无人工闸项）。
+- 失败证据保留：内嵌 WebView 401 过程记录保留于 BE 日志与 §5；未删除任何失败痕迹。
+- 诚实状态标注：R7 FE 侧 GREEN（先前批次）；本批交付 BE 端点 GREEN，页面横幅「GREEN 标记待独立评审」维持原样，待监督线/Codex 独立评审 PASS 前不宣称终态 GREEN。
+- TDD 红绿顺序：BE 测试先于 E2E（test_r7_metrics_api 3 测试先行全绿，后联调）。
+- token/key 边界：E2E token 仅注入浏览器 localStorage（运行时上下文），不入任何静态产物/URL/持久存储；REBUILD_TOKEN_SECRET 仅进程环境变量。
+- 验收前不提交实现：实现+门禁+E2E 全部完成后方开始本提交链。
+- 不 push：本批全部提交仅落 main 本地。
+
+## 5. 环境事件披露（诚实留痕）
+
+- IDE 内嵌浏览器（browser_use agent×3 + 直接驱动）因 WebView profile 磁盘缓存损坏（`net::ERR_CACHE_READ_FAILURE`，新写入缓存条目读取亦失败）不可用，三次子智能体走查因预算耗尽未完成。
+- 处置：`vite --force` 重新预构建改变模块 `?v=` 缓存键仍不足以绕过（损坏在 WebView 缓存层本身）；最终改用 **Playwright headless Chromium（独立 profile，executablePath 指向 ms-playwright chromium-1243）** 完成 E2E，行为与真实用户路径一致（goto→登录→token→六按钮→表格断言→截图）。
+- runner 脚本位于临时目录（不入库）：%TEMP%\r7-e2e-runner\r7_e2e.js；vite dev 输出留痕 trae-r7-vite-dev-20261017.log。
+
+## 6. 遗留与后续
+
+- scope 持久化裁定已在 R2 #61 披露（本批无 variables 变更）。
+- 独立评审请求：随心跳 #62 发出，PASS 前 R7 不标记终态 GREEN。
+- 下一步：P1-0 R8-V PoC（34025db 计划步骤 1，不依赖 K1 的部分先行）。
