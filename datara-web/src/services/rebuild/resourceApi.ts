@@ -1,12 +1,17 @@
 /**
- * R4-RESOURCE（脚本/SQL 资源版本）契约层 — RED 阶段。
- * 端点前缀为草案（/api/v1/rebuild/resources/*），最终以后端契约为权威；
- * 本文件语义源自 docs/increments/2026-10-16-纠偏重构方案设计.md §2.2 客户要求 #4 与 §5.3：
- * 上传文件成为有身份、有版本、有大小/类型限制和权限边界的资源；
- * 工作流版本引用确定资源版本；运行时禁止隐式绑定 latest。
- * RED 约定：所有 I/O 方法在后端接入前抛 R4_RESOURCE_NOT_WIRED，不发出任何真实请求；
- * 类型/大小前端预校验等纯前端逻辑可真实运行（见 ResourceUploadValidationView）。
+ * R4-RESOURCE（脚本/SQL 资源版本）契约层 — GREEN 接线（接线计划 Task 4，R4 批次）。
+ * 端点与映射依据：docs/increments/2026-10-17-R系列GREEN接线计划.md Task 4 +
+ * A2 v2.1 冻结契约（R4-DEP-RES-API-contract-pending.md §2/§4，双线会签）；
+ * 包络 {code,msg,data} 沿 R2/R7 批次固化。
+ * uploadResource 真实实现为 multipart（project_id/kind/file）：contentBase64 → Blob，
+ * 不手工设置 Content-Type（浏览器自动带 boundary）；服务端重验 kind/扩展名/大小并自行计算 sha256。
+ * RES_* 错误码（RES_TYPE_NOT_ALLOWED/RES_SIZE_EXCEEDED/RES_KIND_UNKNOWN/RES_OBJECT_NOT_FOUND/
+ * RES_VERSION_NOT_FOUND/RES_BINDING_CONFLICT）经包络解包后以 ContractApiError 透出。
+ * R4_RESOURCE_NOT_WIRED 常量保留（View 横幅引用兼容）。
  */
+
+import { camelToSnake, ContractApiError, snakeToCamel } from './adapterKit'
+import { getToken } from '../http'
 
 /* ---------- 资源身份与版本 ---------- */
 
@@ -105,23 +110,136 @@ export interface ResourceContract {
   bindResourceVersion: (request: ResourceBindRequest) => Promise<{ bound: true; bindingId: number }>
 }
 
-/* ---------- RED 实现（后端接入前统一抛哨兵；方法清单见 R4_RESOURCE_CONTRACT_METHODS） ---------- */
+/* ---------- GREEN 统一原语（沿 R2/R7 固化版；BASE 换 resources 域，multipart 分支） ---------- */
 
-/** 异步契约方法统一实现：rejected promise（同步 throw 会在调用点直接炸出，无法被 rejects 断言捕获） */
-const notWired = async (): Promise<never> => {
-  throw new Error(R4_RESOURCE_NOT_WIRED)
+/** 端点前缀（A2 v2.1 冻结契约） */
+const BASE = '/api/v1/rebuild/resources'
+
+const TIMEOUT_MS = 15000
+
+/** 后端成功包络（rebuild 域全域实证形态） */
+interface ApiEnvelope {
+  code?: number | string
+  msg?: string
+  data?: unknown
+}
+
+/** 包络解包：rebuild 域全域 {code,msg,data}；非 2xx 但包络含 code（RES_* 错误码、4001/1001/1003/4041）时
+ * 保码透出（A2 §2/§4 错误映射），httpStatus 同步保留；非 JSON/无 code 再退回 HTTP 状态码错误 */
+async function unwrapEnvelope<T>(res: Response, path: string): Promise<T> {
+  if (!res.ok) {
+    const raw = await res.text().catch(() => '')
+    let parsed: ApiEnvelope | undefined
+    try {
+      parsed = JSON.parse(raw) as ApiEnvelope
+    } catch {
+      parsed = undefined
+    }
+    if (parsed && parsed.code !== undefined) {
+      throw new ContractApiError({ httpStatus: res.status, code: parsed.code, msg: parsed.msg ?? path, raw: parsed })
+    }
+    throw new ContractApiError({ httpStatus: res.status, code: res.status, msg: `HTTP ${res.status} ${path}`, raw })
+  }
+  const envelope = (await res.json()) as ApiEnvelope
+  if (envelope.code !== undefined && envelope.code !== 0 && envelope.code !== 200) {
+    throw new ContractApiError({ httpStatus: res.status, code: envelope.code, msg: envelope.msg ?? path, raw: envelope })
+  }
+  return (envelope.data ?? envelope) as T
+}
+
+/** 统一 JSON fetch 原语：15s AbortController 超时 + token header + 包络解包 + 归一错误 */
+async function requestJson<T>(path: string, init?: RequestInit): Promise<T> {
+  const ctrl = new AbortController()
+  const timer = setTimeout(() => ctrl.abort(), TIMEOUT_MS)
+  try {
+    const headers: Record<string, string> = { 'Content-Type': 'application/json' }
+    const token = getToken()
+    if (token) headers.token = token
+    const res = await fetch(`${BASE}${path}`, {
+      ...init,
+      method: init?.method ?? 'GET',
+      headers: { ...headers, ...(init?.headers as Record<string, string>) },
+      signal: ctrl.signal,
+    })
+    return await unwrapEnvelope<T>(res, path)
+  } catch (err) {
+    if (err instanceof DOMException && err.name === 'AbortError') {
+      throw new ContractApiError({ httpStatus: 0, code: 'TIMEOUT', msg: `请求超时（${TIMEOUT_MS / 1000}s）${path}` })
+    }
+    throw err
+  } finally {
+    clearTimeout(timer)
+  }
+}
+
+/** multipart fetch 原语：不设 Content-Type（浏览器自动带 boundary），响应 snake→camel（上传版本载荷），其余与 requestJson 同构 */
+async function requestMultipart<T>(path: string, form: FormData): Promise<T> {
+  const ctrl = new AbortController()
+  const timer = setTimeout(() => ctrl.abort(), TIMEOUT_MS)
+  try {
+    const headers: Record<string, string> = {}
+    const token = getToken()
+    if (token) headers.token = token
+    const res = await fetch(`${BASE}${path}`, { method: 'POST', headers, body: form, signal: ctrl.signal })
+    return snakeToCamel(await unwrapEnvelope<unknown>(res, path)) as T
+  } catch (err) {
+    if (err instanceof DOMException && err.name === 'AbortError') {
+      throw new ContractApiError({ httpStatus: 0, code: 'TIMEOUT', msg: `请求超时（${TIMEOUT_MS / 1000}s）${path}` })
+    }
+    throw err
+  } finally {
+    clearTimeout(timer)
+  }
+}
+
+/** POST JSON：请求体深度 camel→snake，响应深度 snake→camel（bindings） */
+async function sendJson<T>(path: string, body: unknown): Promise<T> {
+  return snakeToCamel(await requestJson<unknown>(path, { method: 'POST', body: JSON.stringify(camelToSnake(body)) })) as T
+}
+
+/** GET：query 参数展开，响应深度 snake→camel（list/versions 三查询） */
+async function getJson<T>(path: string, params: Record<string, string>): Promise<T> {
+  const query = new URLSearchParams(params).toString()
+  return snakeToCamel(await requestJson<unknown>(query ? `${path}?${query}` : path)) as T
+}
+
+/** contentBase64 → 二进制（multipart 正文）；非法 base64 由 atob 直接抛错（fail-visible） */
+function base64ToBlob(base64: string): Blob {
+  const binary = atob(base64)
+  const bytes = new Uint8Array(binary.length)
+  for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i)
+  return new Blob([bytes])
 }
 
 /**
- * R4-RESOURCE 契约工厂（原型态）：签名与类型已冻结，实现在后端就绪后按本接口逐方法替换，
- * UI 层（ResourceUploadValidationView）不感知切换。
+ * R4-RESOURCE 契约工厂 — GREEN：5 方法接线至 A2 v2.1 冻结契约的后端实现（Task 4 契约面表），
+ * 签名与返回类型不动，UI 层（ResourceUploadValidationView）不感知切换。
+ * uploadResource 为真实 multipart：contentBase64 必填（缺失即 ContractApiError，不做任何静默降级）。
  */
 export function createResourceContract(): ResourceContract {
   return {
-    uploadResource: notWired,
-    listResources: notWired,
-    listResourceVersions: notWired,
-    getResourceVersion: notWired,
-    bindResourceVersion: notWired,
+    uploadResource: (request) => {
+      if (request.contentBase64 === undefined) {
+        return Promise.reject(
+          new ContractApiError({
+            httpStatus: 0,
+            code: 'CONTRACT_VIOLATION',
+            msg: 'uploadResource requires contentBase64 (real multipart upload; metadata-only calls are not wired)',
+          }),
+        )
+      }
+      const form = new FormData()
+      form.append('project_id', String(request.projectId))
+      form.append('kind', request.kind)
+      form.append('file', base64ToBlob(request.contentBase64), request.filename)
+      return requestMultipart<ResourceVersion>('/uploads', form)
+    },
+    listResources: (projectId, kind) =>
+      getJson<ResourceMeta[]>('', kind !== undefined ? { project_id: String(projectId), kind } : { project_id: String(projectId) }),
+    listResourceVersions: (resourceId, projectId) =>
+      getJson<ResourceVersion[]>(`/${resourceId}/versions`, { project_id: String(projectId) }),
+    getResourceVersion: (resourceId, version, projectId) =>
+      getJson<ResourceVersion>(`/${resourceId}/versions/${version}`, { project_id: String(projectId) }),
+    bindResourceVersion: (request) => sendJson<{ bound: true; bindingId: number }>('/bindings', request),
   }
 }
