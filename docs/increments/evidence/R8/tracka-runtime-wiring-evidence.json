@@ -1,0 +1,28 @@
+{
+  "test_run_id": "tracka-runtime-wiring-20261018",
+  "timestamp": "2026-10-18T06:04:52.531359",
+  "command": "python -m pytest tests/sql_ide/test_repair_integration.py tests/sql_ide/test_factory.py tests/rebuild/test_r8a_ai_tools_api.py -v --tb=short",
+  "working_directory": "datara-backend/",
+  "exit_code": 0,
+  "summary": "45 passed in 55.42s",
+  "test_groups": {
+    "test_repair_integration": 17,
+    "test_factory": 11,
+    "test_r8a_ai_tools_api": 17
+  },
+  "repair_scope": [
+    "Supervisor #322 point 1: app.py create_app passes app.state.execution_port/audit_writer to AI bridge via build_default_bridge_ports factory",
+    "Supervisor #322 point 2: ai_bridge.py run_sql handler composed over production execution port; audit adapted to production writer via _BridgeAuditWriterAdapter",
+    "Supervisor #322 point 3: test_repair_integration.py adds TestDefaultAppProductionAssembly (5 tests: bridge mounted, handler calls app.state port, audit via app.state writer, 2x fail-closed)",
+    "Supervisor #322 point 3: test_factory.py + test_r8a_ai_tools_api.py updated for new default-mounted behavior",
+    "Fail-closed preserved: missing execution_port or audit_writer -> bridge not mounted (404)"
+  ],
+  "files_changed": [
+    "datara-backend/rebuild/ai_bridge.py",
+    "datara-backend/rebuild/api/app.py",
+    "datara-backend/tests/sql_ide/test_repair_integration.py",
+    "datara-backend/tests/sql_ide/test_factory.py",
+    "datara-backend/tests/rebuild/test_r8a_ai_tools_api.py"
+  ],
+  "stdout_excerpt": "tests/sql_ide/test_repair_integration.py::TestDefaultAppProductionAssembly::test_default_app_mounts_bridge PASSED\ntests/sql_ide/test_repair_integration.py::TestDefaultAppProductionAssembly::test_run_sql_handler_calls_app_state_execution_port PASSED\ntests/sql_ide/test_repair_integration.py::TestDefaultAppProductionAssembly::test_audit_written_via_app_state_audit_writer PASSED\ntests/sql_ide/test_repair_integration.py::TestDefaultAppProductionAssembly::test_missing_execution_port_fail_closed PASSED\ntests/sql_ide/test_repair_integration.py::TestDefaultAppProductionAssembly::test_missing_audit_writer_fail_closed PASSED\n... 40 more ...\n============================= 45 passed in 55.42s =============================="
+}
