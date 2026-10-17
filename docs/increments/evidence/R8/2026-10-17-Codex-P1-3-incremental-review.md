@@ -61,3 +61,31 @@
 - **范围状态 NOT VERIFIED：** 提交的 `SqlExecutionPort` 是 injected seam；当前 `create_app` 没有生产 factory 注入，仓库没有已验证的 R5-A `executeSql` 实现/绑定。步骤4 只能在 port seam 层继续，不等价于真实 SQL 执行链交付；双层审计也未验证。
 
 三名子智能体分别复核契约覆盖、安全边界、宿主/范围；主智能体已核对提交、测试失败栈与未提交实现差异。等待 Trae 提交 GREEN 实现及 R5-A 端口证据后，按 SQL-RO-01..05 再次复验。
+
+## 7. 步骤 4 GREEN 增量复验（Trae #177）
+
+复核提交 `1faf5ee`（基线包含 `487071f`、`694892f`、`3036605`、`ebcec10`）。Codex 独立运行：
+
+- `pytest -q tests/rebuild/test_r8a_run_sql_port.py`：**26 passed in 28.96s**。
+- `pytest -q tests/rebuild/test_r8a_ai_tools_api.py`：**13 passed in 19.56s**。
+
+三路只读复核由主智能体核对后采纳：
+
+- **Handler/fake-port 层 PASS：** 默认与收敛预算、一次 port 委派、四种执行错误映射及 `retryable=False`、常见 DML/DDL/多语句/词法错误在 fake port 前拒绝、审计 refs 和 rows/truncated/duration_ms 传递均有测试证据。该结果证明注入 seam 的行为，不证明生产执行器。
+- **SQL-RO-02 生产只读准备 FAIL / NOT VERIFIED：** `run_sql.py` 只要求一条语句且首 token 是 `SELECT`，没有检查 `SELECT ... INTO OUTFILE`、`FOR UPDATE/SHARE`、副作用函数/UDF 等语义；复用的 DDL scanner 是词法器，不能证明数据库只读。R5-A 尚无真实执行端口、只读事务/凭证、数据库侧拒写证据；datasource 是否归属授权 project 也未在此 seam 验证。默认 `create_app` 不接生产端口，run_sql 因而仍 disabled，这是当前必要的 fail-closed 边界。不得把 handler 级 fake port GREEN 说成真实 SQL 只读安全。
+- **错误码待裁定：** handler 把本地只读策略拒绝映射 `INVALID_PARAMS`；#177 Trae 提出此选择，请监督线按 R8-A §5/§7.3 确认并同步契约/验收表。运行错误 retryable=false 有 §6 非幂等约束和测试支持，可接受在 run_sql 域。
+- **生产项仍 NOT VERIFIED：** `SqlExecutionPort` 只是接口；无 R5-A adapter/factory 绑定、datasource-project ownership、数据库级只读约束、执行域审计与工具调用审计双链。SQL-RO-01/02/05 和 HOST-01 的生产层不得 PASS。
+
+**当前结论：步骤 4 的注入式 handler 测试层 26/26 通过；P1-3 整体仍 PARTIAL。** 等 R5-A 提供真实 port、项目/数据源授权、数据库只读执行策略和双层审计后再做生产层验收；期间维持 run_sql 默认 disabled。
+
+## 8. 监督线 #178 裁定后的门禁复核
+
+监督线 #178 已对 P1-3 相关歧义作权威裁定，优先级高于 #177 Trae 提议；按当前提交 `1faf5ee` 核验状态如下：
+
+- **错误优先级 FAIL：** 裁定顺序为“身份/项目授权 → `TOOL_DISABLED` → 参数校验 → 预算”。当前 `ai_bridge.py` 在授权后先做参数与预算，再按 handler 是否接线拒绝 disabled 工具；disabled + 坏参数/超预算时会返回 `INVALID_PARAMS`/`BUDGET_EXCEEDED`，与裁定不符。需要先移动 disabled gate，再补两个反例测试。
+- **应用层只读过滤 FAIL：** #178 明确 PoC 必须在词法器之外拒绝 `SELECT INTO`、多语句、`PRAGMA` 与已知副作用函数黑名单。当前 `run_sql.py` 仅检查单语句和首 token `SELECT`；`1faf5ee` 的 26 例没有覆盖这些危险 SELECT/PRAGMA。补完前 SQL-RO-02 不能通过，run_sql 继续默认 disabled。
+- **数据库侧只读 NOT VERIFIED：** 只读账号/事务/最小权限是 R5-A 生产装配必验项，并列入 P1-6' 验证。当前 fake port 及 handler 测试不能替代该证据。
+- **审计故障持久化 FAIL：** #178 要求 writer outage 除响应 `audit_write_failed` 外，还必须同步落耐久失败详情（tool_call_id/user_id/project_id/失败原因）；否则不得计为成功完成。当前实现只有响应标记，未见可用的 durable fallback；`1faf5ee` 测试仍是内存 fake writer。
+- **只读错误映射分层：** 应用层静态危险模式拒绝按 `INVALID_PARAMS` 断言；数据库侧只读授权拒绝按权限语义断言。禁止用应用过滤替代 DB 端只读授权。
+
+所以，独立复跑的 `26 passed` 只证明原有 fake-port 测试集通过；它未覆盖 #178 新增裁定要求。接续复核必须先检查上述测试与实现新增提交，再运行更新后的 run_sql/bridge 测试；生产层还需 R5-A 真实端口和 DB 最小权限证据。
