@@ -122,3 +122,14 @@ Codex 独立运行 `pytest -q tests/rebuild/test_r8a_generate_sql_port.py`：**6
 - 对 `45fbe89` 审计失败路径的主源码复核（`ai_bridge.py:255-279`）确认：primary writer 异常后会调用可选 failure sink；fallback 记录包括审计/调用/用户/项目关联字段，sink 缺失或异常保持失败结果，不能伪报成功。测试 fake sink 能证明调用与字段传递，但不能证明耐久存储/跨重启读取。另 `reason=str(exc)` 原样写入 fallback，异常可能含凭证、SQL 或连接细节；应写稳定故障码/白名单类型或安全摘要，并增加 raw text 不可见断言。`audit_failure_sink` 目前可选且类型宽泛，生产组装是否强制注入尚无证据。故 fail-closed/字段透传可 PASS（seam），耐久性 NOT VERIFIED，reason 脱敏 FAIL。
 - 对新增 disabled 顺序，`45fbe89` 已将 handler-disabled 门移至普通参数/预算之前；项目权限检查仍在前。`project_id` 格式/缺失属于授权 target 定位前置，当前返回 INVALID_PARAMS；#178 未明确该结构错误的优先级，本回执不扩张解释。
 - **并发工作树保护**：`7b4c4c4` 基线的危险模式测试复跑为 7 failed/28 passed；测试结束后只读检查发现 Trae 正在 `run_sql.py` 写入未提交危险模式扫描器差异（包含 INTO/PRAGMA/函数黑名单/`FOR UPDATE`）。本轮不在该变动上复跑、不暂存、不改写；待 Trae 提交后重新验真。静态看当前差异仍未覆盖 `FOR SHARE`、`FOR NO KEY UPDATE`、`FOR KEY SHARE`、`LOCK IN SHARE MODE` 等锁读变体及多种方言副作用函数，不能扩大声称数据库只读安全。
+
+## 13. #188 终验运行矩阵（截至 `d280531`）
+
+监督 #188 要求 Codex 独立重跑 run_sql / bridge / generate_sql 全部 PASS 才关闭 P1-3。当前运行证据如下（均在 datara-backend）：
+
+- `pytest -q tests/rebuild/test_r8a_run_sql_port.py`：**35 passed in 42.19s**（提交 `81dc63f` 危险模式实现之后独立运行）；七种裁定样例均有零 port 调用/危险模式断言。仅为有限词法拒绝名单，不等于生产只读安全。
+- `pytest -q tests/rebuild/test_r8a_ai_tools_api.py`：在 `45fbe89` 后 **17 passed in 27.59s**；但随后的 #186 新增脱敏断言提交 `eb69878` 后 full rebuild 复验发现新增测试失败，见下条，旧 17/17 不能代表当前 HEAD。
+- `pytest -q tests/rebuild/test_r8a_generate_sql_port.py`：**6 passed in 0.23s**（`5ecc5fc` `from None` 修复后）。`pytest -q tests/ai_copilot`：**12 passed in 0.22s**。
+- `pytest -q tests/rebuild`（当前后续同步到 `eb69878` 新断言期间）：**391 passed, 1 xfailed, 1 failed in 145.76s**。唯一失败 `test_audit_writer_outage_writes_durable_failure_detail_record`：测试断言 `"audit sink down" not in failure["reason"]`，实际 `reason == "audit sink down"`。这是 audit fallback 异常原因未脱敏的行为 FAIL，不得关闭 P1-3。
+
+本次全量测试结束后 `git pull --ff-only` 得到 canonical `d280531`（监督 #188）；共享工作树在 `datara-backend/rebuild/ai_bridge.py` 有新的未提交改动，疑为 Trae 正修复 reason。未对其复跑、暂存或改写。等待 Trae 单文件提交后，在新提交上重跑 3 个指定测试文件；三组全部绿后再按 #188 关闭门槛提交终验结论。#188 同时登记待派未认领任务 P1-6′、P2-1/2/3、F1/F2、FE camelCase；当前先完成明确的 P1-3 终验，不擅自认领/关闭别线任务。
