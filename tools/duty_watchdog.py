@@ -36,7 +36,7 @@ SUMMARY_FILE = os.path.join(REPO, "tools", "watchdog_summary.txt")
 
 # v3: per-line silence detection (a single silent line must not be masked by
 # other lines' activity) + dispatch->claim closed-loop check.
-LINE_SILENCE_MIN = 8
+LINE_SILENCE_MIN = 3
 LINE_NOTIFY_DEDUP_MIN = 30
 
 # v4: auto-wake engine — inject the built-in wakeup text into a silent line's
