@@ -79,6 +79,7 @@ class _FakeAuditWriter:
 
 
 def _fake_search_schema_handler(params, page_context, ctx):
+    _fake_search_schema_handler.calls += 1  # R8A-05: zero-call assertion on denials
     return {
         "entries": [
             {"kind": "TABLE", "schema_name": "public", "table_name": "users", "digest": "dg-1"},
@@ -86,7 +87,11 @@ def _fake_search_schema_handler(params, page_context, ctx):
     }
 
 
+_fake_search_schema_handler.calls = 0
+
+
 def _bridge_app(**port_overrides):
+    _fake_search_schema_handler.calls = 0
     ports_kwargs = {
         "handlers": {"search_schema": _fake_search_schema_handler},
         "audit_writer": _FakeAuditWriter(),
@@ -163,11 +168,17 @@ def test_get_tools_returns_frozen_registry():
         assert [entry["name"] for entry in entries] == FROZEN_TOOL_ORDER
         for entry in entries:
             assert set(entry.keys()) == REGISTRY_ENTRY_KEYS
-            assert entry["version"] == 1 and entry["enabled"] is True
+            assert entry["version"] == 1
             assert entry["timeout_ms"] == FROZEN_TIMEOUT_MS[entry["name"]]
             assert isinstance(entry["required_permissions"], list)  # §8: pre-N-C may be empty
             assert set(entry["retry_policy"].keys()) == {"max_attempts", "backoff_ms"}
         by_name = {entry["name"]: entry for entry in entries}
+        assert "generate_sql" not in by_name  # R8A-02: adapter-internal, never a registry tool
+        # R8A-02 PoC: enabled ⇔ handler wired — unwired tools listed but disabled
+        assert by_name["search_schema"]["enabled"] is True
+        assert by_name["validate_sql"]["enabled"] is False
+        assert by_name["run_sql"]["enabled"] is False
+        assert by_name["get_workflow"]["enabled"] is False
         # run_sql is non-idempotent: no auto retry (§6/§7.3)
         assert by_name["run_sql"]["retry_policy"]["max_attempts"] == 1
         for name in FROZEN_TOOL_ORDER:
@@ -277,21 +288,21 @@ def test_post_invalid_params_and_bad_page_context():
 
 
 def test_post_budget_static_enforcement():
-    client, _app, _pid, tokens, _writer = _bridge_app()
+    client, _app, project_id, tokens, writer = _bridge_app()
     try:
         cases = [
-            ("run_sql", {"project_id": 1, "datasource_id": 1, "sql": "SELECT 1", "row_limit": 2000}),
-            ("run_sql", {"project_id": 1, "datasource_id": 1, "sql": "SELECT 1", "timeout_ms": 60000}),
-            ("validate_sql", {"project_id": 1, "datasource_id": 1, "sql": "SELECT " + "1" * 102401}),
-            ("get_lineage", {"project_id": 1, "entity_type": "TABLE", "entity": "a.b", "depth": 6}),
+            ("run_sql", {"project_id": project_id, "datasource_id": 1, "sql": "SELECT 1", "row_limit": 2000}),
+            ("run_sql", {"project_id": project_id, "datasource_id": 1, "sql": "SELECT 1", "timeout_ms": 60000}),
+            ("validate_sql", {"project_id": project_id, "datasource_id": 1, "sql": "SELECT " + "1" * 102401}),
+            ("get_lineage", {"project_id": project_id, "entity_type": "TABLE", "entity": "a.b", "depth": 6}),
             (
                 "get_task_metrics",
                 {
-                    "project_id": 1,
+                    "project_id": project_id,
                     "time_window": {"from": "2026-01-01T00:00:00Z", "to": "2026-06-30T00:00:00Z"},
                 },
             ),
-            ("search_schema", {"project_id": 1, "limit": 200}),
+            ("search_schema", {"project_id": project_id, "limit": 200}),
         ]
         for tool, params in cases:
             response = _call(client, tokens["dev"], tool, params=params)
@@ -301,64 +312,84 @@ def test_post_budget_static_enforcement():
             assert body["error"]["code"] == "BUDGET_EXCEEDED", tool
             assert body["error"]["retryable"] is False, tool
             assert body["audit_id"], tool
+            record = writer.records[-1]
+            assert record["error_code"] == "BUDGET_EXCEEDED" and record["outcome"] == "ERROR", tool
     finally:
         client.__exit__(None, None, None)
 
 
-def test_post_permission_denied_no_existence_leak():
-    client, _app, project_id, tokens, writer = _bridge_app()
+def test_post_permission_denied_no_existence_leak_and_zero_side_effect():
+    """R8A-05: denial shares one code/message for ghost vs real targets; handler never runs."""
+    client, app, project_id, tokens, writer = _bridge_app()
     try:
-        viewer_real = _call(
-            client,
-            tokens["viewer"],
-            "run_sql",
-            params={"project_id": project_id, "datasource_id": 1, "sql": "SELECT 1"},
-        )
-        viewer_ghost = _call(
-            client,
-            tokens["viewer"],
-            "run_sql",
-            params={"project_id": 999999, "datasource_id": 1, "sql": "SELECT 1"},
-        )
-        for response in (viewer_real, viewer_ghost):
-            body = response.json()
+        with app.state.session_factory() as session:
+            admin = UserRepository(session).create(username="admin2", password="admin2-pass", role=Role.ADMIN)
+            foreign = ProjectRecord(name="r8a-foreign", description="", owner_id=admin.id)
+            session.add_all((foreign,))
+            session.commit()
+            foreign_id = foreign.id
+        denials = [
+            # role gate: viewer lacks RUN_INSTANCE
+            _call(
+                client,
+                tokens["viewer"],
+                "run_sql",
+                params={"project_id": project_id, "datasource_id": 1, "sql": "SELECT 1"},
+            ),
+            # membership gate: viewer lacks even VIEW_ALL on the owned project
+            _call(client, tokens["viewer"], "search_schema", params={"project_id": project_id}),
+            # cross-project: dev is not a member of the admin-owned project
+            _call(client, tokens["dev"], "search_schema", params={"project_id": foreign_id}),
+            # ghost project vs real project — same code, same message (§3 no-leak)
+            _call(
+                client,
+                tokens["viewer"],
+                "run_sql",
+                params={"project_id": 999999, "datasource_id": 1, "sql": "SELECT 1"},
+            ),
+        ]
+        bodies = [response.json() for response in denials]
+        for body in bodies:
             assert body["status"] == "ERROR"
-            assert body["error"]["code"] == "PERMISSION_DENIED"  # §3: same code, no leak
+            assert body["error"]["code"] == "PERMISSION_DENIED"
             assert body["error"]["retryable"] is False
-        assert viewer_real.json()["error"]["message"] == viewer_ghost.json()["error"]["message"]
+            assert body["result"] is None
+            assert body["audit_id"]
+        assert bodies[0]["error"]["message"] == bodies[3]["error"]["message"]
+        assert _fake_search_schema_handler.calls == 0  # zero side-effect on every denial
         record = writer.records[-1]
         assert record["outcome"] == "ERROR" and record["error_code"] == "PERMISSION_DENIED"
     finally:
         client.__exit__(None, None, None)
 
 
-def test_post_dev_run_sql_without_execution_port_dependency_unavailable():
-    client, _app, project_id, tokens, _writer = _bridge_app()
+def test_post_disabled_tool_returns_tool_disabled_not_fake():
+    """R8A-02: unwired PoC tools stay listed but disabled; calls refuse honestly."""
+    client, _app, project_id, tokens, writer = _bridge_app()
     try:
-        response = _call(
-            client,
-            tokens["dev"],
-            "run_sql",
-            params={"project_id": project_id, "datasource_id": 1, "sql": "SELECT 1"},
-        )
-        body = response.json()
-        assert body["status"] == "ERROR"
-        assert body["error"]["code"] == "DEPENDENCY_UNAVAILABLE"  # honest: port absent, no fake rows
-        assert body["error"]["retryable"] is True
-        assert body["result"] is None
+        for tool, params in (
+            ("run_sql", {"project_id": project_id, "datasource_id": 1, "sql": "SELECT 1"}),
+            ("get_workflow", {"project_id": project_id}),
+        ):
+            response = _call(client, tokens["dev"], tool, params=params)
+            body = response.json()
+            assert body["status"] == "ERROR"
+            assert body["error"]["code"] == "TOOL_DISABLED"
+            assert body["error"]["retryable"] is False
+            assert body["result"] is None
+            record = writer.records[-1]
+            assert record["error_code"] == "TOOL_DISABLED" and record["outcome"] == "ERROR"
+        assert _fake_search_schema_handler.calls == 0
     finally:
         client.__exit__(None, None, None)
 
 
-def test_post_unimplemented_tool_returns_dependency_unavailable_not_fake():
-    client, _app, project_id, tokens, _writer = _bridge_app()
+def test_post_disabled_tool_still_lists_in_registry_with_enabled_false():
+    client, _app, _pid, tokens, _writer = _bridge_app()
     try:
-        response = _call(client, tokens["dev"], "get_workflow", params={"project_id": project_id})
-        body = response.json()
-        assert body["status"] == "ERROR"
-        assert body["error"]["code"] == "DEPENDENCY_UNAVAILABLE"
-        assert body["error"]["retryable"] is True
-        assert body["result"] is None
+        entries = {entry["name"]: entry for entry in client.get(AI_TOOLS_URL, headers=tokens["dev"]).json()}
+        assert entries["run_sql"]["enabled"] is False
+        assert entries["get_workflow"]["enabled"] is False
     finally:
         client.__exit__(None, None, None)
 
