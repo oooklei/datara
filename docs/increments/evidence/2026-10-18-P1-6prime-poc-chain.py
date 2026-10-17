@@ -272,7 +272,7 @@ def main() -> int:
     section("2. REAL ADAPTER: CopilotAdapter + vanna + chroma (per-tenant scoped)")
     adapter_events: list = []
     adapter = CopilotAdapter(
-        vanna_factory=corrected_vanna_factory,  # defect workaround: adapter.py:217 missing-self
+        # vanna_factory=corrected_vanna_factory,  # DEFECT FIXED: default factory now works (adapter.py:217 self added)
         audit_hook=lambda ev: adapter_events.append(ev),
     )
     from ai_copilot.config import get_llm_settings
@@ -454,9 +454,8 @@ def main() -> int:
         log("READ-ONLY layer-1: DELETE rejected before dispatch, port untouched — OK")
 
         try:
-            # The adapter's own _default_factory cannot even construct (defect :217);
-            # the refusal semantics are proven on the corrected copy with identical run_sql.
-            vclient = corrected_vanna_factory(dev_ctx, settings)
+            # DEFECT FIXED: default factory now works; verify run_sql refusal semantics.
+            vclient = CopilotAdapter._default_factory(dev_ctx, settings)
             vclient.run_sql("SELECT 1")
             raise AssertionError("adapter client must refuse SQL execution")
         except PermissionError:

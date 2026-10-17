@@ -214,7 +214,7 @@ class CopilotAdapter:
         class _TenantVanna(ChromaDB_VectorStore, OpenAI_Chat):
             def __init__(self) -> None:
                 ChromaDB_VectorStore.__init__(self, config={"path": str(scoped_path)})
-                OpenAI_Chat.__init__(client=client, config={"model": settings.model})
+                OpenAI_Chat.__init__(self, client=client, config={"model": settings.model})
 
             def log(self, message: str, title: str = "Info") -> None:
                 # Upstream logs SQL prompts and generated SQL; Datara forbids that leakage.
