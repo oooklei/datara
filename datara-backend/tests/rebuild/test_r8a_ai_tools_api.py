@@ -222,6 +222,7 @@ def test_post_success_envelope_and_audit_thread():
         assert record["tool"] == "search_schema" and record["tool_version"] == 1
         assert record["project_id"] == project_id
         assert record["outcome"] == "SUCCESS"
+        assert record["started_at"] and record["finished_at"]  # DB-generated (§4)
         assert record["request_payload"]["keyword"] == "users"  # Q11 verbatim snapshot
         assert "run_id" in record["refs"]  # page_context threaded into refs
         assert record["user_id"]
@@ -407,6 +408,7 @@ def test_post_audit_writer_failure_never_fakes_success():
         assert body["status"] == "ERROR"
         assert body["error"]["code"] == "INTERNAL_ERROR"
         assert body["error"]["retryable"] is False
+        assert body["error"]["details"]["audit_write_failed"] is True  # traceable sink outage (§4)
         assert body["result"] is None  # handler ran, but unaudited success is forbidden
         assert writer.records == []  # nothing landed in the dead sink
     finally:
