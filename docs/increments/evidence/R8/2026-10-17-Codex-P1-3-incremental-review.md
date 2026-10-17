@@ -89,3 +89,14 @@
 - **只读错误映射分层：** 应用层静态危险模式拒绝按 `INVALID_PARAMS` 断言；数据库侧只读授权拒绝按权限语义断言。禁止用应用过滤替代 DB 端只读授权。
 
 所以，独立复跑的 `26 passed` 只证明原有 fake-port 测试集通过；它未覆盖 #178 新增裁定要求。接续复核必须先检查上述测试与实现新增提交，再运行更新后的 run_sql/bridge 测试；生产层还需 R5-A 真实端口和 DB 最小权限证据。
+
+## 9. 步骤 5 GREEN 增量复验（Trae #178 / canonical `b9a214e`）
+
+Codex 独立运行 `pytest -q tests/rebuild/test_r8a_generate_sql_port.py`：**6 passed in 0.18s**。静态复核确认 `rebuild/generate_sql.py` 只消费 `ai_copilot.adapter` 的公开 `AdapterContext` / `VannaAdapterError` / `generate_sql` 面；不导入 Vanna、不执行 SQL、不进入 R8-A 工具注册表。测试覆盖上下文委派、adapter 错误净化、主权上下文异常传播、身份前置拒绝及缺失方法 fail-closed。
+
+- **步骤 5 seam：PASS（限适配层）**。RED 链须精确表述：`753157f` 是 collection/import error；`94f104c` stub 阶段才产生可诊断行为级 RED（6 failed/NotImplementedError）；`b9a214e` 为 GREEN。首次 collection-error 不能单独充当行为级 TDD RED。
+- **端到端及生产接线：NOT VERIFIED**。全仓没有 `build_generate_sql_port` 调用方，尚未进入 R8-B 编排器、授权服务、router 或 `create_app`/生产 factory；当前测试中的 user/project 身份由测试直接提供，未证明接线后只能来自授权 principal。因此不能宣称自然语言生成→授权执行闭环完成，也不能宣称 P1-3 整体 GREEN/关闭。
+- **错误链安全：需修复后复验**。`generate_sql.py` 捕获 `VannaAdapterError` 后以 `raise SqlGenerationError("generate_sql failed") from exc` 形成显式 `__cause__`。虽然顶层文本固定，但调用方可通过异常链/traceback 访问底层第三方错误；建议改为 `from None`，并增加断言不含 cause/raw provider 错误。现有 6 项测试仅断言顶层错误语义，未证明异常链脱敏。
+- **P1-3 整体状态仍 PARTIAL**。除上述 seam 限定 PASS 外，#178 已裁定且仍待落地/复验的门禁包括：disabled 错误优先级（授权→TOOL_DISABLED→参数→预算）、audit writer outage 耐久失败详情记录、PoC SQL 危险模式拒绝；以及 R5-A 真实执行/数据库只读授权与项目数据源归属、生产 factory 注入、持久化审计 writer、FE wire 命名映射。维持未接线工具 disabled。
+
+复核依据：Trae 心跳 #178（handoff 末尾）及 commits `753157f`/`94f104c`/`b9a214e`；步骤5计划 `docs/increments/2026-10-17-R8-V-Vanna-PoC-实施计划.md`。三名子智能体只读意见经主智能体对源码、测试及调用点复核后采纳；其中步骤5范围复核未运行测试，本节独立运行证据如上。本次仅更新本增量复核回执，不改 Trae 业务代码、不改 datara-web、不调用 AOCI、无远端 push。
