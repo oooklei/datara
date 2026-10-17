@@ -1,0 +1,12 @@
+# The Datara image uses Python 3.11 on Linux; compile the full closure into
+# requirements-ai-copilot.lock and keep the vendored Vanna wheel hash checked.
+vanna[chromadb]==2.0.2
+chromadb==1.5.9
+openai==2.54.0
+python-dotenv==1.2.4
+# Keep the AI image closure compatible with the backend's passlib pin.
+bcrypt==4.0.1
+# Python 3.11 is the backend image runtime; newer NumPy releases may require 3.12.
+numpy==2.2.6
+# ONNX Runtime 1.31 dropped CPython 3.11 wheels; this line retains Linux/Py3.11 support.
+onnxruntime==1.23.2
