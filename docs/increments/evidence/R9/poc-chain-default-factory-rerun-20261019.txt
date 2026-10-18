@@ -1,0 +1,116 @@
+
+========================================================================
+== 1. FIXTURE: business SQLite + PoC durable audit writer
+========================================================================
+business_db=D:\需求\数据治理工具\p16-prime-work\run-20261018T175654Z\business.db
+audit_db=D:\需求\数据治理工具\p16-prime-work\run-20261018T175654Z\audit.db (poC §4-style fields, production writer out of scope)
+
+========================================================================
+== 2. REAL ADAPTER: CopilotAdapter + vanna + chroma (per-tenant scoped)
+========================================================================
+LLM provider=siliconflow base_url=https://api.siliconflow.cn/v1 model=deepseek-ai/DeepSeek-V4.1-Flash
+api_key configured=True
+scoped chroma A=D:\需求\数据治理工具\Datara\datara-backend\data\ai_copilot\chromadb\project-1\user-1
+scoped chroma B=D:\需求\数据治理工具\Datara\datara-backend\data\ai_copilot\chromadb\project-2\user-2
+ISOLATION: distinct durable chroma stores per (project,user) — OK
+
+========================================================================
+== 3. REAL TRAINING: DDL / documentation / question-SQL into scoped chroma
+========================================================================
+training writes OK in 5.05s (chroma path A)
+
+========================================================================
+== 4. NL -> SQL: REAL generate_sql via siliconflow
+========================================================================
+Using model deepseek-ai/DeepSeek-V4.1-Flash for 309.75 tokens (approx)
+question = 订单表里总共有多少个订单？金额合计是多少？
+generated SQL (3.9s) = SELECT COUNT(*) AS order_count, SUM(amount) AS total_amount FROM orders
+read-only gate: allowed=True violations=[]
+
+========================================================================
+== 5. AUTHORIZED EXECUTION: real R8-A bridge envelope + PoC port
+========================================================================
+users dev=1 viewer=2 outsider=3; project=1
+run_sql status=SUCCESS (0.09s) error=None
+execution_id=poc-exec-5af760c51476 columns=[{'name': 'order_count', 'type': 'TEXT'}, {'name': 'total_amount', 'type': 'TEXT'}] rows=[[5, 7561.5]]
+row_count=1 truncated=False duration_ms=0
+sql_statement_digest=1587f3d0f8b227b4… audit_id=a39f05ca-ef46-4cbc-939e-99432a62b8f5
+
+========================================================================
+== 6. RESULT INTERPRETATION: real siliconflow interpretation call
+========================================================================
+interpretation (1.9s):
+订单表共有 **5 个订单**，订单金额合计为 **7561.5**。
+
+========================================================================
+== 7. ISOLATION & SOVEREIGNTY PROOFS
+========================================================================
+cross-project run_sql (outsider): status=ERROR code=PERMISSION_DENIED
+ISOLATION: cross-project denial precedes dispatch (port untouched) — OK
+viewer run_sql (role gate): status=ERROR code=PERMISSION_DENIED
+ISOLATION: VIEWER lacks RUN_INSTANCE — denied before dispatch — OK
+write SQL run_sql: status=ERROR code=INVALID_PARAMS
+READ-ONLY layer-1: DELETE rejected before dispatch, port untouched — OK
+SOVEREIGNTY: vanna-internal run_sql refused (execution owned by authorized bridge) — OK
+
+========================================================================
+== 8. AUDIT PERSISTENCE PROOF (PoC durable SQLite writer)
+========================================================================
+audit: tool=run_sql outcome=SUCCESS code=None user=1 roles=["dev"] project=1 latency=5ms refs={"tab": "p16-prime", "execution_id": "poc-exec-5af760c51476", "datasource_id": 101}
+audit: tool=run_sql outcome=ERROR code=PERMISSION_DENIED user=3 roles=["dev"] project=1 latency=3ms refs={}
+audit: tool=run_sql outcome=ERROR code=PERMISSION_DENIED user=2 roles=["viewer"] project=1 latency=1ms refs={}
+audit: tool=run_sql outcome=ERROR code=INVALID_PARAMS user=1 roles=["dev"] project=1 latency=2ms refs={}
+audit records in memory=4 persisted_rows=4
+AUDIT: tool_call_id/user_id/roles/project_id/refs/budget threaded + persisted — OK
+
+========================================================================
+== 9. ADAPTER-LAYER AUDIT EVENTS (no content fields by design)
+========================================================================
+adapter-audit: action=add_ddl user=1 project=1 category=ddl outcome=started
+adapter-audit: action=add_ddl user=1 project=1 category=ddl outcome=succeeded
+adapter-audit: action=add_documentation user=1 project=1 category=documentation outcome=started
+adapter-audit: action=add_documentation user=1 project=1 category=documentation outcome=succeeded
+adapter-audit: action=add_question_sql user=1 project=1 category=sql outcome=started
+adapter-audit: action=add_question_sql user=1 project=1 category=sql outcome=succeeded
+adapter-audit: action=generate_sql user=1 project=1 category=memory_read_and_llm outcome=started
+adapter-audit: action=generate_sql user=1 project=1 category=memory_read_and_llm outcome=succeeded
+
+========================================================================
+== RESULT: P1-6' real-chain PoC PASS
+========================================================================
+{
+  "stamp": "20261018T175654Z",
+  "steps": {
+    "generate_sql": {
+      "question": "订单表里总共有多少个订单？金额合计是多少？",
+      "sql": "SELECT COUNT(*) AS order_count, SUM(amount) AS total_amount FROM orders",
+      "seconds": 3.9
+    },
+    "run_sql": {
+      "tool_call_id": "tc-f203723f-0e00-4e88-9a9b-3529cb4aea41",
+      "status": "SUCCESS",
+      "result": {
+        "execution_id": "poc-exec-5af760c51476",
+        "row_count": 1,
+        "truncated": false,
+        "duration_ms": 0
+      },
+      "seconds": 0.09
+    },
+    "interpretation": {
+      "text": "订单表共有 **5 个订单**，订单金额合计为 **7561.5**。",
+      "seconds": 1.9
+    },
+    "isolation": {
+      "cross_project_denied": true,
+      "viewer_denied": true,
+      "write_rejected_before_port": true,
+      "vanna_run_sql_refused": true
+    },
+    "audit": {
+      "records": 4,
+      "persisted": 4
+    },
+    "adapter_audit_events": 8
+  }
+}
