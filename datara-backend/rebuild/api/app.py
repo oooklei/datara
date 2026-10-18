@@ -21,7 +21,9 @@ from sqlalchemy.pool import StaticPool
 from rebuild.ai_bridge import AiBridgePorts, build_ai_router, build_default_bridge_ports
 from rebuild.common.db import Base
 from rebuild.sql_ide.audit import SqlIdeAuditRecord, build_audit_writer
+from rebuild.sql_ide.export_service import SqlIdeExportAuditRecord, SqlIdeExportJobRecord
 from rebuild.sql_ide.execution import build_execution_port
+from rebuild.sql_ide.result_store import SqlIdeResultSetRecord
 from rebuild.identity.contracts import Permission, Role, TokenService, authorize
 from rebuild.identity.models import ProjectMemberRecord, UserRecord
 from rebuild.identity.passwords import verify_password
@@ -48,6 +50,10 @@ from rebuild.metrics.models import (
 )
 from rebuild.variables.api import build_variables_router
 from rebuild.variables.models import TaskInstanceVariableRuntimeRecord, VariableDefinitionRecord
+from rebuild.rb.api import build_rb_router
+from rebuild.rb.facade.rb_facade import RbFacade
+from rebuild.rb.impact.impact_snapshot import ImpactSnapshotService
+from rebuild.rb.policy.policy_snapshot import PolicySnapshotService
 
 logger = logging.getLogger(__name__)
 
@@ -158,6 +164,9 @@ def create_app(
                 QualityRuleResultLinkRecord.__table__,
                 LineageWritebackRecord.__table__,
                 SqlIdeAuditRecord.__table__,
+                SqlIdeResultSetRecord.__table__,
+                SqlIdeExportJobRecord.__table__,
+                SqlIdeExportAuditRecord.__table__,
             ],
         )
         ensure_i1_schema()
@@ -745,6 +754,18 @@ def create_app(
     app.include_router(
         build_resources_router(session_factory, token_service, active_tokens, project_permission_error),
         prefix="/api/v1/rebuild/resources",
+    )
+    # P2-3 R5-B rb domain API: #22/#23 bind the real snapshot services;
+    # #24/#25 services are stage-D undelivered, the facade fails closed (502).
+    app.include_router(
+        build_rb_router(
+            RbFacade(
+                policy_snapshot_service=PolicySnapshotService(),
+                impact_snapshot_service=ImpactSnapshotService(),
+            ),
+            token_service,
+            active_tokens,
+        )
     )
     # R8-A eight-tool bridge (P1-3): production assembly from app.state.
     # Default app mounts the bridge with the production execution port + audit
