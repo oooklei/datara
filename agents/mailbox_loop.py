@@ -206,6 +206,7 @@ def main():
                 append_mail(mb, {"id": uuid.uuid4().hex[:8], "ts": now(), "from": args.role,
                                  "to": s.get("from"), "type": "ACK", "ref": s.get("id"),
                                  "body": "STOP 已确认，循环实体退出", "status": "pending"})
+            rewrite_mark_done(mb, [s.get("id") for s in stops if s.get("id")])
             log(repo, f"STOP received ({len(stops)}) — exit")
             break
 
