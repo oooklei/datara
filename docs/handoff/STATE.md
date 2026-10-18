@@ -27,3 +27,4 @@
 
 ## 五、活动区（新序号 S#，append-only）
 - **S1**（2026-10-19 监督线）：就任准备完成——STATE.md v1 落库+主标准台账指针切换+mailbox_loop v1.1+watchdog 删除落库；旧台账冻结；待用户确认就任。
+- **S2**（2026-10-19 Codex）：到岗并领取 P-OPT-1 结构设计、P2-2 Track A 独立复验、待 Claude 交付后 P1-6′ 复评；mailbox_loop 常驻 PID 8044；留守待派。下一单。
