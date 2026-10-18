@@ -20,9 +20,9 @@ from uuid import uuid4
 
 from rebuild.datasource.contracts import DataSourceDraft
 from rebuild.datasource.repository import ProjectDatasourceRepository
+from rebuild.sql_ide.errors import map_connection_error, map_driver_error
 from rebuild.run_sql import (
     SqlDependencyUnavailable,
-    SqlExecutionFailed,
     SqlExecutionPort,
 )
 
@@ -74,9 +74,7 @@ class ProductionSqlExecutionPort:
         try:
             connection = self._connection_provider(project_id, datasource_id, draft)
         except Exception as exc:
-            raise SqlDependencyUnavailable(
-                f"connection to datasource {datasource_id} failed"
-            ) from exc
+            raise map_connection_error(exc) from None
 
         # 3. Apply layer-2 read-only + execute
         try:
@@ -129,10 +127,10 @@ class ProductionSqlExecutionPort:
                 "total_rows": len(all_rows),
                 "truncated": truncated,
             }
+        except SqlDependencyUnavailable:
+            raise
         except Exception as exc:
-            raise SqlExecutionFailed(
-                f"SQL execution failed: {exc}"
-            ) from exc
+            raise map_driver_error(exc) from None
         finally:
             cursor.close()
 

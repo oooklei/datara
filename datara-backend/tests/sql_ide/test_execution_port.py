@@ -357,11 +357,11 @@ class TestErrorMapping:
     def test_connection_failure_raises_dependency_unavailable(self):
         record = _make_datasource_record()
         registry = MagicMock()
-        registry.connect.side_effect = RuntimeError("connection refused")
+        registry.connect.side_effect = RuntimeError("connection refused; password=secret")
 
         with _mock_session(record) as sf:
             port = build_execution_port(session_factory=sf, engine_registry=registry)
-            with pytest.raises(SqlDependencyUnavailable):
+            with pytest.raises(SqlDependencyUnavailable) as error:
                 port.execute(
                     project_id=1,
                     datasource_id=1,
@@ -370,15 +370,42 @@ class TestErrorMapping:
                     timeout_ms=30000,
                 )
 
-    def test_sql_error_raises_execution_failed(self):
+        assert str(error.value) == "Datasource connection unavailable"
+        assert error.value.details == {"errorCode": "DATASOURCE_UNAVAILABLE"}
+        assert error.value.__cause__ is None
+        assert error.value.__suppress_context__ is True
+
+    def test_driver_timeout_maps_to_stable_timeout_error(self):
         record = _make_datasource_record()
-        conn = _make_connection(raise_on_execute=RuntimeError("syntax error"))
+        conn = _make_connection(raise_on_execute=TimeoutError("server detail"))
         registry = MagicMock()
         registry.connect.return_value = conn
 
         with _mock_session(record) as sf:
             port = build_execution_port(session_factory=sf, engine_registry=registry)
-            with pytest.raises(SqlExecutionFailed):
+            with pytest.raises(SqlExecutionTimeout) as error:
+                port.execute(
+                    project_id=1,
+                    datasource_id=1,
+                    sql="SELECT 1",
+                    row_limit=200,
+                    timeout_ms=30000,
+                )
+
+        assert str(error.value) == "SQL execution timed out"
+        assert error.value.details == {"errorCode": "EXECUTION_TIMEOUT"}
+        assert error.value.__cause__ is None
+        assert error.value.__suppress_context__ is True
+
+    def test_sql_error_raises_execution_failed(self):
+        record = _make_datasource_record()
+        conn = _make_connection(raise_on_execute=RuntimeError("syntax error; password=secret"))
+        registry = MagicMock()
+        registry.connect.return_value = conn
+
+        with _mock_session(record) as sf:
+            port = build_execution_port(session_factory=sf, engine_registry=registry)
+            with pytest.raises(SqlExecutionFailed) as error:
                 port.execute(
                     project_id=1,
                     datasource_id=1,
@@ -386,6 +413,11 @@ class TestErrorMapping:
                     row_limit=200,
                     timeout_ms=30000,
                 )
+
+        assert str(error.value) == "SQL execution failed"
+        assert error.value.details == {"errorCode": "DRIVER_ERROR"}
+        assert error.value.__cause__ is None
+        assert error.value.__suppress_context__ is True
 
     def test_unsupported_kind_raises_dependency_unavailable(self):
         record = _make_datasource_record(kind="oracle")

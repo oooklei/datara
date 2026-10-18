@@ -1,0 +1,38 @@
+P2-2-R5A-IMPL-W1 TDD evidence
+Date: 2026-10-19 Asia/Shanghai
+
+F8 RED
+Command: rtk pytest tests/sql_ide/test_execution_port.py::TestErrorMapping::test_sql_error_raises_execution_failed -q
+Output:
+Pytest: 0 passed, 1 failed
+Failure: expected sanitized "SQL execution failed"; actual exception included the raw driver string "syntax error; password=secret".
+
+F8 expanded RED
+Command: rtk pytest tests/sql_ide/test_execution_port.py::TestErrorMapping -q
+Output:
+Pytest: 2 passed, 3 failed
+Failures: connection failure exposed no stable domain code; driver timeout did not map to SqlExecutionTimeout; SQL execution exception exposed raw driver text.
+
+F8 exception-chain RED
+Command: rtk pytest tests/sql_ide/test_execution_port.py::TestErrorMapping -q
+Output:
+Pytest: 2 passed, 3 failed
+Failures: mapped exceptions retained raw RuntimeError/TimeoutError in __cause__ for connection, timeout, and SQL execution failures.
+
+F8 GREEN
+Command: rtk pytest tests/sql_ide/test_execution_port.py -q
+Output:
+Pytest: 20 passed
+
+F1 existing implementation verification
+Command: rtk pytest tests/rebuild/test_datasource_pool.py -q
+Output:
+Pytest: 2 passed
+
+Diff check
+Command: rtk git diff --check -- rebuild/sql_ide/errors.py rebuild/sql_ide/execution.py tests/sql_ide/test_execution_port.py
+Output: no output (clean)
+
+Git pathspec commit attempt
+Command: rtk git add -- tests/sql_ide/test_execution_port.py
+Output: failed; unable to create .git/index.lock (Permission denied). No commit was created.
