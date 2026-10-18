@@ -1,0 +1,56 @@
+============================= test session starts =============================
+platform win32 -- Python 3.12.1, pytest-9.0.3, pluggy-1.6.0 -- C:\Program Files\Python312\python.exe
+cachedir: .pytest_cache
+rootdir: C:\Users\Administrator\.codex\worktrees\4de9\Datara\datara-backend
+configfile: pyproject.toml
+plugins: Faker-40.39.0, anyio-4.13.0, langsmith-0.8.16, asyncio-1.4.0
+asyncio: mode=Mode.STRICT, debug=False, asyncio_default_fixture_loop_scope=None, asyncio_default_test_loop_scope=function
+collecting ... collected 45 items
+
+tests/sql_ide/test_repair_integration.py::TestSchemaMigration::test_audit_table_exists_after_lifespan PASSED [  2%]
+tests/sql_ide/test_repair_integration.py::TestSchemaMigration::test_audit_table_has_required_columns PASSED [  4%]
+tests/sql_ide/test_repair_integration.py::TestDbIntegration::test_write_execution_start_persists_to_real_db PASSED [  6%]
+tests/sql_ide/test_repair_integration.py::TestDbIntegration::test_write_execution_end_updates_real_db PASSED [  8%]
+tests/sql_ide/test_repair_integration.py::TestDbIntegration::test_write_execution_end_with_error_code PASSED [ 11%]
+tests/sql_ide/test_repair_integration.py::TestCreateAppDI::test_execution_port_in_app_state PASSED [ 13%]
+tests/sql_ide/test_repair_integration.py::TestCreateAppDI::test_audit_writer_in_app_state PASSED [ 15%]
+tests/sql_ide/test_repair_integration.py::TestCreateAppDI::test_execution_port_is_production PASSED [ 17%]
+tests/sql_ide/test_repair_integration.py::TestCreateAppDI::test_audit_writer_is_db_backed PASSED [ 20%]
+tests/sql_ide/test_repair_integration.py::TestRunSqlRuntime::test_bridge_mounted_with_explicit_ports PASSED [ 22%]
+tests/sql_ide/test_repair_integration.py::TestRunSqlRuntime::test_bridge_mounted_by_default PASSED [ 24%]
+tests/sql_ide/test_repair_integration.py::TestRunSqlRuntime::test_execution_port_available_for_runtime PASSED [ 26%]
+tests/sql_ide/test_repair_integration.py::TestDefaultAppProductionAssembly::test_default_app_mounts_bridge PASSED [ 28%]
+tests/sql_ide/test_repair_integration.py::TestDefaultAppProductionAssembly::test_run_sql_handler_calls_app_state_execution_port PASSED [ 31%]
+tests/sql_ide/test_repair_integration.py::TestDefaultAppProductionAssembly::test_audit_written_via_app_state_audit_writer PASSED [ 33%]
+tests/sql_ide/test_repair_integration.py::TestDefaultAppProductionAssembly::test_missing_execution_port_fail_closed PASSED [ 35%]
+tests/sql_ide/test_repair_integration.py::TestDefaultAppProductionAssembly::test_missing_audit_writer_fail_closed PASSED [ 37%]
+tests/sql_ide/test_factory.py::TestFactoryAssembly::test_create_app_succeeds_with_minimal_env PASSED [ 40%]
+tests/sql_ide/test_factory.py::TestFactoryAssembly::test_execution_port_is_production_backed PASSED [ 42%]
+tests/sql_ide/test_factory.py::TestFactoryAssembly::test_audit_writer_is_db_backed PASSED [ 44%]
+tests/sql_ide/test_factory.py::TestFactoryAssembly::test_missing_db_url_raises PASSED [ 46%]
+tests/sql_ide/test_factory.py::TestFactoryAssembly::test_missing_token_secret_raises PASSED [ 48%]
+tests/sql_ide/test_factory.py::TestProductionComponentWiring::test_session_factory_in_state PASSED [ 51%]
+tests/sql_ide/test_factory.py::TestProductionComponentWiring::test_datasource_engines_in_state PASSED [ 53%]
+tests/sql_ide/test_factory.py::TestProductionComponentWiring::test_execution_port_can_be_built_from_app_state PASSED [ 55%]
+tests/sql_ide/test_factory.py::TestProductionComponentWiring::test_audit_writer_can_be_built_from_app_state PASSED [ 57%]
+tests/sql_ide/test_factory.py::TestFailClosed::test_bridge_mounted_by_default PASSED [ 60%]
+tests/sql_ide/test_factory.py::TestFailClosed::test_health_endpoint_available PASSED [ 62%]
+tests/rebuild/test_r8a_ai_tools_api.py::test_default_app_mounts_bridge_from_app_state PASSED [ 64%]
+tests/rebuild/test_r8a_ai_tools_api.py::test_bridge_without_audit_writer_fails_closed PASSED [ 66%]
+tests/rebuild/test_r8a_ai_tools_api.py::test_endpoints_require_auth_before_handler PASSED [ 68%]
+tests/rebuild/test_r8a_ai_tools_api.py::test_get_tools_returns_frozen_registry PASSED [ 71%]
+tests/rebuild/test_r8a_ai_tools_api.py::test_post_success_envelope_and_audit_thread PASSED [ 73%]
+tests/rebuild/test_r8a_ai_tools_api.py::test_post_unknown_tool_maps_tool_not_found PASSED [ 75%]
+tests/rebuild/test_r8a_ai_tools_api.py::test_post_version_mismatch_maps_tool_version_mismatch PASSED [ 77%]
+tests/rebuild/test_r8a_ai_tools_api.py::test_post_invalid_params_and_bad_page_context PASSED [ 80%]
+tests/rebuild/test_r8a_ai_tools_api.py::test_disabled_tool_precedes_params_and_budget PASSED [ 82%]
+tests/rebuild/test_r8a_ai_tools_api.py::test_post_budget_static_enforcement PASSED [ 84%]
+tests/rebuild/test_r8a_ai_tools_api.py::test_post_permission_denied_no_existence_leak_and_zero_side_effect PASSED [ 86%]
+tests/rebuild/test_r8a_ai_tools_api.py::test_post_disabled_tool_returns_tool_disabled_not_fake PASSED [ 88%]
+tests/rebuild/test_r8a_ai_tools_api.py::test_post_disabled_tool_still_lists_in_registry_with_enabled_false PASSED [ 91%]
+tests/rebuild/test_r8a_ai_tools_api.py::test_post_audit_writer_failure_never_fakes_success PASSED [ 93%]
+tests/rebuild/test_r8a_ai_tools_api.py::test_audit_writer_outage_writes_durable_failure_detail_record PASSED [ 95%]
+tests/rebuild/test_r8a_ai_tools_api.py::test_audit_writer_outage_without_failure_sink_never_fakes_success PASSED [ 97%]
+tests/rebuild/test_r8a_ai_tools_api.py::test_failure_sink_outage_still_never_fakes_success PASSED [100%]
+
+============================= 45 passed in 32.64s =============================
