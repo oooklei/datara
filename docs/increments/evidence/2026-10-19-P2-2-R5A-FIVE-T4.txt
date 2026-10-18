@@ -1,0 +1,12 @@
+﻿P2-2-R5A-FIVE T4 verification evidence
+
+Plan (three steps):
+1. Inspect existing context.py and test_context.py; artifact: implementation and test coverage inventory; verify: source assertions for explicit schema/default schema and no SQL rewriting; stop: incompatible contract or overlap with shared edits.
+2. Run focused regression tests; artifact: captured pytest result; verify: rtk proxy pytest tests/sql_ide/test_context.py -q; stop: any failure or external dependency.
+3. Report exact pathspec, HEAD, resolution and next trigger; artifact: S58 heartbeat material; verify: git status read-only; stop: any .git write required.
+
+Step results:
+1. Existing files implement ObjectRef normalization, explicit path precedence, required fallback schema, datasource matching, and parameter-only execution context; no SQL rewriting. Existing tests cover these behaviors. No files overwritten.
+2. Command: rtk proxy pytest tests/sql_ide/test_context.py -q
+Output: 5 passed in 0.18s
+3. Worktree HEAD observed at task start: cddd429; task dispatch baseline af1fcd7 differs. No commit; .git read-only; no push.

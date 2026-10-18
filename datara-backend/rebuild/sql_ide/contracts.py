@@ -9,7 +9,7 @@ Design input: docs/increments/2026-10-18-P2-2-R5-A-SQL-IDE后端设计草案.md
 
 from __future__ import annotations
 
-from typing import Any, Mapping, Protocol, runtime_checkable
+from typing import Any, Mapping, Protocol, Sequence, runtime_checkable
 
 from rebuild.sql_ide.ddl_policy import DdlPolicyResult
 
@@ -72,6 +72,20 @@ class ResultPageStore(Protocol):
 
     def get_snapshot_meta(self, *, history_id: str, stmt_index: int) -> Mapping[str, Any]:
         """Get snapshot metadata (columns, total rows, truncation flag)."""
+        ...
+
+    def save_snapshot(
+        self,
+        *,
+        project_id: int,
+        user_id: int,
+        history_id: str,
+        stmt_index: int,
+        columns: Sequence[str],
+        rows: Sequence[Sequence[Any]],
+        total_rows: int | None = None,
+    ) -> str:
+        """Persist an immutable result snapshot; returns the result_set_id."""
         ...
 
 

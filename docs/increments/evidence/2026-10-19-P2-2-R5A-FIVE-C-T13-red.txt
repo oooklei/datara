@@ -1,0 +1,18 @@
+Pytest: 3 passed, 3 failed
+
+Failures:
+1. [FAIL] test_lint_sql_reports_syntax_errors_without_throwing
+     tests\sql_ide\test_linter.py:22: in test_lint_sql_reports_syntax_errors_without_throwing
+     assert result["diagnostics"] == [
+     E   AssertionError: assert [{'code': 'SQ...ted dialect'}] == [{'code': 'SQ...ialect', ...}]
+
+2. [FAIL] test_lint_sql_reports_each_invalid_statement_with_statement_index
+     tests\sql_ide\test_linter.py:39: in test_lint_sql_reports_each_invalid_statement_with_statement_i...
+     assert [item["stmtIndex"] for item in diagnostics] == [1, 2]
+     E   KeyError: 'stmtIndex'
+
+3. [FAIL] test_lint_sql_reports_empty_input
+     tests\sql_ide\test_linter.py:48: in test_lint_sql_reports_empty_input
+     assert result == {
+     E   AssertionError: assert {'diagnostics...valid': False} == {'diagnostics...valid': False}
+[full output: "$HOME/AppData/Local/rtk/tee/1792361207_pytest.log"]

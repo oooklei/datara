@@ -1,0 +1,4 @@
+Command: rtk pytest tests/ai_copilot/test_adapter_default_factory.py tests/ai_copilot/test_adapter_sovereignty.py
+Working directory: datara-backend/
+
+Pytest: 13 passed

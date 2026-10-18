@@ -14,4 +14,7 @@ def test_chromadb_path_is_reserved_for_runtime_data_only():
 
     assert data_dir.is_dir()
     assert (data_dir / ".gitkeep").is_file()
-    assert {path.name for path in data_dir.iterdir()} <= {".gitkeep", ".gitignore"}
+    # project-* 子目录是真机验证的运行时数据（跨项目隔离演示产物），属本目录预期用途
+    assert {
+        name for name in (path.name for path in data_dir.iterdir()) if not name.startswith("project-")
+    } <= {".gitkeep", ".gitignore"}

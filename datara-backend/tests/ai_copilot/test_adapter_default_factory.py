@@ -60,6 +60,17 @@ def test_default_factory_returns_valid_tenant_vanna_instance():
     assert vanna.log("test message", title="Test") is None
 
 
+def test_default_factory_does_not_store_the_api_key_on_vanna():
+    """The credentialed OpenAI client belongs to the adapter call boundary."""
+    from ai_copilot.adapter import AdapterContext, CopilotAdapter
+
+    vanna = CopilotAdapter._default_factory(
+        AdapterContext(user_id=7, project_id=11), _test_settings()
+    )
+
+    assert not hasattr(vanna.client, "api_key")
+
+
 def test_default_factory_uses_scoped_chroma_path():
     """Verify _default_factory creates tenant-isolated chroma path."""
     from ai_copilot.adapter import AdapterContext, CopilotAdapter

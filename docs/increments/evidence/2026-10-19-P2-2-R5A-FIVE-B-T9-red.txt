@@ -1,0 +1,3 @@
+Command: rtk pytest tests/sql_ide/test_capability.py -q --tb=short
+Result: collection failed as expected (RED): ModuleNotFoundError: No module named 'rebuild.sql_ide.capability'.
+Output location: Codex terminal output from the initial T9 run (exit code 2).

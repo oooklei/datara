@@ -9,6 +9,7 @@ Datara service layer, never directly from untrusted request JSON.
 from __future__ import annotations
 
 from dataclasses import dataclass
+from contextvars import ContextVar, Token
 from pathlib import Path
 from threading import RLock
 from typing import Any, Callable, Mapping
@@ -66,6 +67,32 @@ class MemoryAuditEvent:
 AuditHook = Callable[[MemoryAuditEvent], None]
 VannaFactory = Callable[[AdapterContext, AIConfig], Any]
 
+_ACTIVE_OPENAI_CLIENT: ContextVar[Any | None] = ContextVar(
+    "datara_active_openai_client", default=None
+)
+
+
+class _CompletionProxy:
+    """Credential-free Vanna client seam; the active client lives per call."""
+
+    def create(self, *args: Any, **kwargs: Any) -> Any:
+        client = _ACTIVE_OPENAI_CLIENT.get()
+        if client is None:
+            raise RuntimeError("LLM client is available only during an adapter call")
+        return client.chat.completions.create(*args, **kwargs)
+
+
+class _ChatProxy:
+    def __init__(self) -> None:
+        self.completions = _CompletionProxy()
+
+
+class _OpenAIClientProxy:
+    """Object retained by Vanna without retaining credentials or API clients."""
+
+    def __init__(self) -> None:
+        self.chat = _ChatProxy()
+
 
 class CopilotAdapter:
     """Expose Vanna functionality through Datara's narrow sovereignty contract."""
@@ -82,7 +109,9 @@ class CopilotAdapter:
         self._audit_hook = audit_hook
         self._settings = settings
         self._vanna_factory = vanna_factory or self._default_factory
+        self._uses_default_factory = vanna_factory is None
         self._clients: dict[AdapterContext, Any] = {}
+        self._llm_clients: dict[AdapterContext, Any] = {}
         self._clients_lock = RLock()
 
     @property
@@ -100,8 +129,13 @@ class CopilotAdapter:
         if not question or not question.strip():
             raise ValueError("question must be non-empty")
         self._emit("generate_sql", trusted_context, "memory_read_and_llm", "started")
+        active_client_token: Token[Any | None] | None = None
         try:
             client = self._client(trusted_context)
+            if self._uses_default_factory:
+                active_client_token = _ACTIVE_OPENAI_CLIENT.set(
+                    self._llm_client(trusted_context, self._settings or get_llm_settings())
+                )
             sql = client.generate_sql(
                 question,
                 allow_llm_to_see_data=False,
@@ -113,6 +147,9 @@ class CopilotAdapter:
         except Exception:
             self._emit("generate_sql", trusted_context, "memory_read_and_llm", "failed")
             raise VannaAdapterError("SQL generation failed") from None
+        finally:
+            if active_client_token is not None:
+                _ACTIVE_OPENAI_CLIENT.reset(active_client_token)
         self._emit("generate_sql", trusted_context, "memory_read_and_llm", "succeeded")
         return sql
 
@@ -188,6 +225,20 @@ class CopilotAdapter:
                 self._clients[context] = client
             return client
 
+    def _llm_client(self, context: AdapterContext, settings: AIConfig) -> Any:
+        """Keep credentialed clients in the adapter, never on a Vanna instance."""
+
+        with self._clients_lock:
+            client = self._llm_clients.get(context)
+            if client is None:
+                from openai import OpenAI
+
+                client = OpenAI(
+                    api_key=settings.api_key.get_secret_value(), base_url=settings.base_url
+                )
+                self._llm_clients[context] = client
+            return client
+
     @staticmethod
     def _scoped_chroma_path(context: AdapterContext) -> Path:
         trusted_context = AdapterContext.from_value(context)
@@ -202,19 +253,18 @@ class CopilotAdapter:
     def _default_factory(context: AdapterContext, settings: AIConfig) -> Any:
         """Build a tenant-isolated Vanna instance using only Datara's data root."""
 
-        from openai import OpenAI
         from vanna.legacy.chromadb.chromadb_vector import ChromaDB_VectorStore
         from vanna.legacy.openai.openai_chat import OpenAI_Chat
 
         # Separate durable vector stores prevent any cross-user/project memory retrieval.
         scoped_path = CopilotAdapter._scoped_chroma_path(context)
 
-        client = OpenAI(api_key=settings.api_key.get_secret_value(), base_url=settings.base_url)
-
         class _TenantVanna(ChromaDB_VectorStore, OpenAI_Chat):
             def __init__(self) -> None:
                 ChromaDB_VectorStore.__init__(self, config={"path": str(scoped_path)})
-                OpenAI_Chat.__init__(self, client=client, config={"model": settings.model})
+                OpenAI_Chat.__init__(
+                    self, client=_OpenAIClientProxy(), config={"model": settings.model}
+                )
 
             def log(self, message: str, title: str = "Info") -> None:
                 # Upstream logs SQL prompts and generated SQL; Datara forbids that leakage.

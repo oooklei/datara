@@ -13,7 +13,13 @@ from sqlalchemy.orm import Mapped, Session, mapped_column
 
 from rebuild.common.db import Base
 from rebuild.sql_ide.export_service import SqlIdeExportAuditRecord, SqlIdeExportJobRecord as ExportArtifactRecord
+from rebuild.sql_ide.history_store import (
+    SqlIdeHistoryAuditRecord,
+    SqlIdeHistoryRecord,
+    SqlIdeScriptRecord,
+)
 from rebuild.sql_ide.result_store import SqlIdeExportJobRecord, SqlIdeResultSetRecord
+from rebuild.sql_ide.status_store import SqlIdeExecutionEventRecord, SqlIdeExecutionRecord
 
 MigrationUpgrade = Callable[[Engine], None]
 _LOCAL_MIGRATION_LOCK = RLock()
@@ -146,6 +152,34 @@ def _upgrade_snapshots(engine: Engine) -> None:
     )
 
 
+def _upgrade_events(engine: Engine) -> None:
+    # Import locally so snapshots.py can reuse the existing stores without a
+    # module import cycle during migration module initialization.
+    from rebuild.sql_ide.snapshots import SqlIdeEventRecord
+
+    Base.metadata.create_all(bind=engine, tables=[SqlIdeEventRecord.__table__], checkfirst=True)
+
+
+def _upgrade_history_scripts(engine: Engine) -> None:
+    Base.metadata.create_all(
+        bind=engine,
+        tables=[
+            SqlIdeHistoryRecord.__table__,
+            SqlIdeScriptRecord.__table__,
+            SqlIdeHistoryAuditRecord.__table__,
+        ],
+        checkfirst=True,
+    )
+
+
+def _upgrade_execution_status(engine: Engine) -> None:
+    Base.metadata.create_all(
+        bind=engine,
+        tables=[SqlIdeExecutionRecord.__table__, SqlIdeExecutionEventRecord.__table__],
+        checkfirst=True,
+    )
+
+
 _DDL_MANIFEST = (
     "sql_ide_0001_snapshots_and_exports v1: sql_ide_result_sets,sql_ide_export_job_handles,"
     "sql_ide_export_jobs,sql_ide_export_audit; result snapshot 24h; export job 1h"
@@ -156,6 +190,41 @@ SQL_IDE_MIGRATIONS = (
         checksum=hashlib.sha256(_DDL_MANIFEST.encode("utf-8")).hexdigest(),
         upgrade=_upgrade_snapshots,
     ),
+)
+SQL_IDE_EVENT_MIGRATIONS = (
+    SqlIdeMigration(
+        revision="sql_ide_0002_events",
+        checksum=hashlib.sha256(
+            b"sql_ide_0002_events v1: sql_ide_events; append-only payload; retention 7d"
+        ).hexdigest(),
+        upgrade=_upgrade_events,
+    ),
+)
+SQL_IDE_HISTORY_MIGRATIONS = (
+    SqlIdeMigration(
+        revision="sql_ide_0003_history_scripts",
+        checksum=hashlib.sha256(
+            b"sql_ide_0003_history_scripts v1: sql_ide_history,sql_ide_scripts,"
+            b"sql_ide_history_audit; history 365d; soft-delete tombstones 30d; audit 365d"
+        ).hexdigest(),
+        upgrade=_upgrade_history_scripts,
+    ),
+)
+SQL_IDE_STATUS_MIGRATIONS = (
+    SqlIdeMigration(
+        revision="sql_ide_0004_status_events",
+        checksum=hashlib.sha256(
+            b"sql_ide_0004_status_events v2: sql_ide_execution_status 365d; "
+            b"sql_ide_execution_events through terminal+7d"
+        ).hexdigest(),
+        upgrade=_upgrade_execution_status,
+    ),
+)
+SQL_IDE_ALL_MIGRATIONS = (
+    SQL_IDE_MIGRATIONS
+    + SQL_IDE_EVENT_MIGRATIONS
+    + SQL_IDE_HISTORY_MIGRATIONS
+    + SQL_IDE_STATUS_MIGRATIONS
 )
 
 

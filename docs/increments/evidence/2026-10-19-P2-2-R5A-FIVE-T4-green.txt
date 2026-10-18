@@ -1,0 +1,4 @@
+Command: rtk pytest tests/sql_ide/test_context.py
+Working directory: datara-backend/
+
+Pytest: 5 passed

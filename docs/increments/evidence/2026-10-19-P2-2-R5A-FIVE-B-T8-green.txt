@@ -1,0 +1,3 @@
+Command: rtk pytest tests/sql_ide/test_metadata_browser.py -q --tb=short --junitxml=../docs/increments/evidence/2026-10-19-P2-2-R5A-FIVE-B-T8-green.xml
+Result: 17 passed; exit code 0.
+Output location: `2026-10-19-P2-2-R5A-FIVE-B-T8-green.xml` and Codex terminal output.

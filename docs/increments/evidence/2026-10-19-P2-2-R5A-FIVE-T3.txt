@@ -1,0 +1,12 @@
+T3 RED — executor module missing before implementation
+Command: rtk pytest tests/sql_ide/test_batch_executor.py
+Output: %TEMP%\p22-t3-red.txt
+
+T3 RED — snapshot failure path
+Command: rtk pytest tests/sql_ide/test_batch_executor.py
+Output: %TEMP%\p22-t3-snapshot-red.txt
+
+T3 GREEN
+Command: rtk pytest tests/sql_ide/test_batch_executor.py tests/sql_ide/test_readonly_batch_preflight.py tests/sql_ide/test_execution_port.py
+Output: %TEMP%\p22-t3-green.txt
+Result: 35 passed.

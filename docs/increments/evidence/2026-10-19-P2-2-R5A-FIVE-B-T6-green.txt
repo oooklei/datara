@@ -1,0 +1,3 @@
+Command: rtk pytest tests/sql_ide/test_pagination.py -q --tb=short --junitxml=../docs/increments/evidence/2026-10-19-P2-2-R5A-FIVE-B-T6-green.xml
+Result: 11 passed; exit code 0. Includes A5 1..500 bound, rejects 501, and stable CURSOR_INVALID errors.
+Output location: `2026-10-19-P2-2-R5A-FIVE-B-T6-green.xml` and Codex terminal output.

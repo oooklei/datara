@@ -1,0 +1,30 @@
+T7 script restore RED/GREEN evidence
+Date: 2026-10-19 Asia/Shanghai
+
+RED command (before the save_script restore implementation):
+rtk proxy pytest tests/sql_ide/test_history_store.py::test_deleted_script_can_be_restored_within_retention_window -q
+
+Observed output:
+F                                                                        [100%]
+FAILED tests/sql_ide/test_history_store.py::test_deleted_script_can_be_restored_within_retention_window - ValueError: script revision conflict or script is unavailable
+1 failed in 0.57s
+Exit code: 1
+
+GREEN command (after implementation):
+rtk proxy pytest tests/sql_ide/test_history_store.py::test_deleted_script_can_be_restored_within_retention_window -q
+
+Observed output:
+.                                                                        [100%]
+1 passed in 0.26s
+Exit code: 0
+
+GREEN command (T7 target plus the shared migration regression test):
+rtk proxy pytest tests/sql_ide/test_history_store.py tests/sql_ide/test_snapshots_migration.py -q
+
+Observed output:
+..........                                                               [100%]
+10 passed in 0.94s
+Exit code: 0
+
+The RED and GREEN outputs above are from this run's terminal results. They establish the
+new restoration behavior only; they do not claim broader integration or production evidence.

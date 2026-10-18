@@ -1,0 +1,6 @@
+﻿T6 supplemental RED (fresh run)
+Command: rtk python -m pytest tests/sql_ide/test_pagination.py -q
+Working directory: datara-backend/
+Result: 3 failed, 11 passed, exit code 1.
+Failure locator: current terminal output; cases [kwargs0] (bool stmt_index accepted), [kwargs1] (float offset reaches store and raises slice TypeError), [kwargs2] (bool limit accepted).
+This supplements, and does not replace, the prior T6 RED note. The prior note points to an initial terminal output that is not retained in this evidence file.

@@ -1,0 +1,3 @@
+Command: rtk pytest -q tests/sql_ide/test_history_store.py
+Result: expected RED before implementation: four setup errors due to ModuleNotFoundError for rebuild.sql_ide.history_store.
+Output location: T7 agent's initial test-run terminal output (handoff to coordinator).

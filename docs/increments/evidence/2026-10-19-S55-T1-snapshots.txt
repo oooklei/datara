@@ -1,0 +1,6 @@
+﻿S55 T1 evidence
+RED command: pytest tests/sql_ide/test_snapshots.py tests/sql_ide/test_snapshots_migration.py -q
+RED output: 3 failed in 1.16s; 2 tests failed with ModuleNotFoundError (rebuild.sql_ide.snapshots absent); migration test observed only sql_ide_0001_snapshots_and_exports, expected sql_ide_0002_events.
+GREEN command: pytest tests/sql_ide/test_snapshots.py tests/sql_ide/test_snapshots_migration.py tests/sql_ide/test_snapshots_migrations.py tests/sql_ide/test_result_store.py -q
+GREEN output: .......... [100%]; 10 passed in 0.65s.
+Diff check: git diff --check -- <four task paths>; no output.

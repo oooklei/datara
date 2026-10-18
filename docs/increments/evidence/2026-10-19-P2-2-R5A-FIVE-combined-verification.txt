@@ -1,0 +1,6 @@
+Command:
+rtk pytest tests/sql_ide/test_exporter.py tests/sql_ide/test_batch_executor.py tests/sql_ide/test_context.py tests/ai_copilot/test_adapter_default_factory.py tests/ai_copilot/test_adapter_sovereignty.py -q
+
+Working directory: datara-backend/
+Output:
+Pytest: 33 passed

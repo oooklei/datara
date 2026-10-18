@@ -1,0 +1,8 @@
+Command: rtk proxy pytest tests/sql_ide/test_batch_executor.py -q
+Raw output:
+......                                                                   [100%]
+6 passed in 0.18s
+
+Inventory: batch_executor.py and test_batch_executor.py were already present as untracked files before this task work; no edits were made. contracts.py ResultPageStore defines fetch_page/get_snapshot_meta only, while batch_executor calls save_snapshot via getattr, so the requested Protocol contract does not declare the write method.
+Branch: main
+HEAD at inspection: 4e33925

@@ -1,0 +1,3 @@
+Command: rtk pytest tests/sql_ide/test_cancel.py -q --tb=short
+Result: collection failed as expected (RED): ModuleNotFoundError: No module named 'rebuild.sql_ide.cancel'.
+Output location: pytest output in the Codex terminal for this turn; exit code 2.

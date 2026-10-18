@@ -1,0 +1,4 @@
+Command: rtk pytest tests/sql_ide/test_pagination.py tests/sql_ide/test_history_store.py tests/sql_ide/test_metadata_browser.py tests/sql_ide/test_capability.py tests/sql_ide/test_cancel.py -q --tb=short --junitxml=../docs/increments/evidence/2026-10-19-P2-2-R5A-FIVE-B-combined.xml
+Result: 63 passed; exit code 0.
+Output location: `2026-10-19-P2-2-R5A-FIVE-B-combined.xml` and Codex terminal output.
+Additional T1b compatibility check: `rtk pytest tests/sql_ide/test_snapshots.py tests/sql_ide/test_snapshots_migration.py -q --tb=short` → 3 passed.

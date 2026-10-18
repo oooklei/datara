@@ -1,0 +1,9 @@
+T2 RED
+Command: rtk pytest tests/sql_ide/test_exporter.py -q
+Output: C:\Users\Administrator\AppData\Local\rtk\tee\1792358560_pytest.log
+Result: initial collection failed with ModuleNotFoundError for rebuild.sql_ide.exporter.
+
+T2 GREEN
+Command: rtk pytest tests/sql_ide/test_exporter.py -q --tb=short
+Output: Codex subagent terminal result for /root/p22_t2_exporter (2026-10-19 turn); 9 passed.
+Additional: ruff and scoped git diff --check passed, per same terminal result.

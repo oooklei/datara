@@ -1,0 +1,11 @@
+Command: rtk pytest tests/ai_copilot/test_adapter_default_factory.py::test_default_factory_does_not_store_the_api_key_on_vanna
+Working directory: datara-backend/
+
+Pytest: 0 passed, 1 failed
+
+Failure:
+tests\ai_copilot\test_adapter_default_factory.py:71: in test_default_factory_does_not_store_the_api_key_on_vanna
+    assert not hasattr(vanna.client, "api_key")
+E   AssertionError: assert not True
+
+This confirms the pre-fix Vanna client directly retained the credentialed OpenAI client.

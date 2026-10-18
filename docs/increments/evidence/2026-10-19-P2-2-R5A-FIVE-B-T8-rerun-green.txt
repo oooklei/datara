@@ -1,0 +1,4 @@
+Command: rtk proxy pytest tests/sql_ide/test_metadata_browser.py -q --tb=short --junitxml=../docs/increments/evidence/2026-10-19-P2-2-R5A-FIVE-B-T8-rerun-green.xml
+Result: 24 passed in 0.29s; exit code 0.
+Output location: pytest terminal output for this run and 2026-10-19-P2-2-R5A-FIVE-B-T8-rerun-green.xml.
+Note: historical T8 RED is not independently verifiable from retained terminal output.

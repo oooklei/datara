@@ -1,0 +1,16 @@
+﻿Command: rtk proxy pytest tests/sql_ide/test_capability.py -q --tb=short
+Working directory: datara-backend
+Exit code: 1 (expected RED)
+
+...F.....                                                                [100%]
+================================== FAILURES ===================================
+______ test_unverified_conditional_observation_is_downgraded_to_unknown _______
+tests\sql_ide\test_capability.py:48: in test_unverified_conditional_observation_is_downgraded_to_unknown
+    capability = CapabilityDeclaration.from_observation(
+rebuild\sql_ide\capability.py:47: in from_observation
+    raise ValueError("conditional capability requires evidence")
+E   ValueError: conditional capability requires evidence
+=========================== short test summary info ===========================
+FAILED tests/sql_ide/test_capability.py::test_unverified_conditional_observation_is_downgraded_to_unknown - ValueError: conditional capability requires evidence
+1 failed, 8 passed in 0.52s
+

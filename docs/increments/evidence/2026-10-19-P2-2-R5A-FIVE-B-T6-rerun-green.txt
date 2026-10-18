@@ -1,0 +1,7 @@
+﻿T6 supplemental GREEN (fresh run after strict integer validation)
+Command: rtk python -m pytest tests/sql_ide/test_pagination.py -q
+Working directory: datara-backend/
+Result: 14 passed in 0.25s, exit code 0.
+Output locator: current terminal output.
+Diff check: rtk git diff --check -- datara-backend/rebuild/sql_ide/pagination.py datara-backend/tests/sql_ide/test_pagination.py -> no output, exit code 0.
+Scope: pagination.py and test_pagination.py only; no commit, no push.

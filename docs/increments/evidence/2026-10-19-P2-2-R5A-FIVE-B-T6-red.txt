@@ -1,0 +1,3 @@
+Command: rtk python -m pytest tests/sql_ide/test_pagination.py -q
+Result: expected RED before implementation: ModuleNotFoundError for rebuild.sql_ide.pagination.
+Output location: T6 agent's initial test-run terminal output (handoff to coordinator).

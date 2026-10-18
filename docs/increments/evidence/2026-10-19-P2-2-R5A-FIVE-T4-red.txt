@@ -1,0 +1,15 @@
+Command: rtk pytest tests/sql_ide/test_context.py
+Working directory: datara-backend/
+
+=================================== ERRORS ====================================
+_______________ ERROR collecting tests/sql_ide/test_context.py ________________
+ImportError while importing test module 'D:\需求\数据治理工具\Datara\datara-backend\tests\sql_ide\test_context.py'.
+Traceback:
+  C:\Program Files\Python312\Lib\importlib\import.py:90: in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+tests\sql_ide\test_context.py:5: in <module>
+    from rebuild.sql_ide.context import (
+E   ModuleNotFoundError: No module named 'rebuild.sql_ide.context'
+!!!!!!!!!!!!!!!! Interrupted: 1 error during collection !!!!!!!!!!!!!!!!!!!!
+1 error in 0.40s
