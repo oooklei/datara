@@ -108,7 +108,7 @@ Do not preload, guess, or reconstruct these specialized workflows. The relevant 
 
 ## Active handoff
 
-活跃交接：`docs/handoff/2026-10-16-并行协作分工.md`（Trae × Codex 并行开发分工与信道规则；新会话开始前必须先读）。交接过期后删除本节。
+活跃交接：`docs/handoff/STATE.md`（监督线现状基线，冷启动首读；新会话开始前必须先读）。历史台账 `docs/handoff/2026-10-16-并行协作分工.md` 已冻结为考古区（#1–#352，只读不写）。交接过期后删除本节。
 
 ## Agent skills
 
