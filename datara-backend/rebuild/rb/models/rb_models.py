@@ -46,10 +46,10 @@ class PolicySnapshot:
     source_version: str  # ETag from getDefinition
     next_ddl_digest: str  # SHA-256 of nextDdlText
     policy_version: str
-    findings: list[PolicyFinding] = field(default_factory=list)
-    blocked: bool = False
-    created_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
-    expires_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
+    findings: list[PolicyFinding]
+    blocked: bool
+    created_at: datetime
+    expires_at: datetime
 
 
 @dataclass(frozen=True)
@@ -70,10 +70,10 @@ class ImpactSnapshot:
     source_version: str
     next_ddl_digest: str
     policy_snapshot_id: str  # 绑定同一 policy snapshot
-    impacts: list[ImpactItem] = field(default_factory=list)
-    unknown_reasons: list[str] = field(default_factory=list)
-    created_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
-    expires_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
+    impacts: list[ImpactItem]
+    unknown_reasons: list[str]
+    created_at: datetime
+    expires_at: datetime
 
 
 @dataclass
@@ -85,10 +85,10 @@ class ExecutionRecord:
     object_ref: ObjectRef
     action: str  # DDL action type
     script_hash: str  # SHA-256 of executed DDL
-    executed_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
-    status: str = "pending"  # success/failure/rolled-back/compensated/recovery-failed
-    failure_summary: Optional[str] = None
-    policy_snapshot_id: str = ""
-    impact_snapshot_id: str = ""
-    compensation_refs: list[str] = field(default_factory=list)
-    actor_id: int = 0
+    executed_at: datetime
+    status: str  # success/failure/rolled-back/compensated/recovery-failed
+    failure_summary: Optional[str]
+    policy_snapshot_id: str
+    impact_snapshot_id: str
+    compensation_refs: list[str]
+    actor_id: int  # user who confirmed

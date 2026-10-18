@@ -1,12 +1,12 @@
 """TDD 测试：rb_models.py（§2.1 五模型 frozen dataclass）。
 
-RED 先行：先写测试确认模型行为，再验证 GREEN。
+IMPL-B2 更新：模型去多余默认值后，测试传入所有必需字段。
 """
 from __future__ import annotations
 
 import uuid
 from dataclasses import FrozenInstanceError
-from datetime import datetime, timedelta
+from datetime import datetime, timezone, timedelta
 
 import pytest
 
@@ -20,18 +20,30 @@ from rebuild.rb.models.rb_models import (
 )
 
 
+def _make_ref() -> ObjectRef:
+    return ObjectRef(
+        datasource_id=101,
+        database="mydb",
+        catalog=None,
+        schema="public",
+        kind="table",
+        name="users",
+    )
+
+
+def _now() -> datetime:
+    return datetime.now(timezone.utc)
+
+
+def _later() -> datetime:
+    return _now() + timedelta(minutes=30)
+
+
 # ========== ObjectRef ==========
 
 class TestObjectRef:
     def test_create_frozen(self):
-        ref = ObjectRef(
-            datasource_id=101,
-            database="mydb",
-            catalog=None,
-            schema="public",
-            kind="table",
-            name="users",
-        )
+        ref = _make_ref()
         assert ref.datasource_id == 101
         assert ref.database == "mydb"
         assert ref.schema == "public"
@@ -40,14 +52,7 @@ class TestObjectRef:
         assert ref.parent is None
 
     def test_frozen_immutable(self):
-        ref = ObjectRef(
-            datasource_id=101,
-            database="mydb",
-            catalog=None,
-            schema="public",
-            kind="table",
-            name="users",
-        )
+        ref = _make_ref()
         with pytest.raises(FrozenInstanceError):
             ref.name = "other"
 
@@ -84,6 +89,7 @@ class TestPolicyFinding:
             level="info",
             code="COMMENT",
             message="Adding comment",
+            impacts=[],
         )
         assert finding.impacts == []
 
@@ -92,53 +98,61 @@ class TestPolicyFinding:
 
 class TestPolicySnapshot:
     def test_create_minimal(self):
-        ref = ObjectRef(
-            datasource_id=101,
-            database="mydb",
-            catalog=None,
-            schema="public",
-            kind="table",
-            name="users",
-        )
         snapshot = PolicySnapshot(
             snapshot_id=str(uuid.uuid4()),
             project_id=1,
             datasource_id=101,
-            object_ref=ref,
+            object_ref=_make_ref(),
             source_version="etag-abc123",
             next_ddl_digest="a" * 64,
             policy_version="1.0",
+            findings=[],
+            blocked=False,
+            created_at=_now(),
+            expires_at=_later(),
         )
         assert snapshot.blocked is False
         assert snapshot.findings == []
 
     def test_create_blocked(self):
-        ref = ObjectRef(
-            datasource_id=101,
-            database="mydb",
-            catalog=None,
-            schema="public",
-            kind="table",
-            name="users",
-        )
         finding = PolicyFinding(
             level="block",
             code="DESTRUCTIVE",
             message="Destructive operation",
+            impacts=[],
         )
         snapshot = PolicySnapshot(
             snapshot_id=str(uuid.uuid4()),
             project_id=1,
             datasource_id=101,
-            object_ref=ref,
+            object_ref=_make_ref(),
             source_version="etag-abc123",
             next_ddl_digest="a" * 64,
             policy_version="1.0",
             findings=[finding],
             blocked=True,
+            created_at=_now(),
+            expires_at=_later(),
         )
         assert snapshot.blocked is True
         assert len(snapshot.findings) == 1
+
+    def test_frozen_immutable(self):
+        snapshot = PolicySnapshot(
+            snapshot_id=str(uuid.uuid4()),
+            project_id=1,
+            datasource_id=101,
+            object_ref=_make_ref(),
+            source_version="etag-abc123",
+            next_ddl_digest="a" * 64,
+            policy_version="1.0",
+            findings=[],
+            blocked=False,
+            created_at=_now(),
+            expires_at=_later(),
+        )
+        with pytest.raises(FrozenInstanceError):
+            snapshot.blocked = True
 
 
 # ========== ImpactItem ==========
@@ -166,44 +180,35 @@ class TestImpactItem:
 
 class TestImpactSnapshot:
     def test_create_minimal(self):
-        ref = ObjectRef(
-            datasource_id=101,
-            database="mydb",
-            catalog=None,
-            schema="public",
-            kind="table",
-            name="users",
-        )
         snapshot = ImpactSnapshot(
             snapshot_id=str(uuid.uuid4()),
             project_id=1,
             datasource_id=101,
-            object_ref=ref,
+            object_ref=_make_ref(),
             source_version="etag-abc123",
             next_ddl_digest="a" * 64,
             policy_snapshot_id=str(uuid.uuid4()),
+            impacts=[],
+            unknown_reasons=[],
+            created_at=_now(),
+            expires_at=_later(),
         )
         assert snapshot.impacts == []
         assert snapshot.unknown_reasons == []
 
     def test_with_unknown(self):
-        ref = ObjectRef(
-            datasource_id=101,
-            database="mydb",
-            catalog=None,
-            schema="public",
-            kind="table",
-            name="users",
-        )
         snapshot = ImpactSnapshot(
             snapshot_id=str(uuid.uuid4()),
             project_id=1,
             datasource_id=101,
-            object_ref=ref,
+            object_ref=_make_ref(),
             source_version="etag-abc123",
             next_ddl_digest="a" * 64,
             policy_snapshot_id=str(uuid.uuid4()),
+            impacts=[],
             unknown_reasons=["dialect not supported"],
+            created_at=_now(),
+            expires_at=_later(),
         )
         assert len(snapshot.unknown_reasons) == 1
 
@@ -212,48 +217,40 @@ class TestImpactSnapshot:
 
 class TestExecutionRecord:
     def test_create_minimal(self):
-        ref = ObjectRef(
-            datasource_id=101,
-            database="mydb",
-            catalog=None,
-            schema="public",
-            kind="table",
-            name="users",
-        )
         record = ExecutionRecord(
             record_id=str(uuid.uuid4()),
             project_id=1,
             datasource_id=101,
-            object_ref=ref,
+            object_ref=_make_ref(),
             action="ALTER_TABLE",
             script_hash="a" * 64,
-            policy_snapshot_id=str(uuid.uuid4()),
-            impact_snapshot_id=str(uuid.uuid4()),
-            actor_id=1,
-        )
-        assert record.status == "pending"
-        assert record.failure_summary is None
-        assert record.compensation_refs == []
-
-    def test_create_success(self):
-        ref = ObjectRef(
-            datasource_id=101,
-            database="mydb",
-            catalog=None,
-            schema="public",
-            kind="table",
-            name="users",
-        )
-        record = ExecutionRecord(
-            record_id=str(uuid.uuid4()),
-            project_id=1,
-            datasource_id=101,
-            object_ref=ref,
-            action="ALTER_TABLE",
-            script_hash="a" * 64,
+            executed_at=_now(),
             status="success",
+            failure_summary=None,
             policy_snapshot_id=str(uuid.uuid4()),
             impact_snapshot_id=str(uuid.uuid4()),
+            compensation_refs=[],
             actor_id=1,
         )
         assert record.status == "success"
+        assert record.failure_summary is None
+        assert record.compensation_refs == []
+
+    def test_create_failure(self):
+        record = ExecutionRecord(
+            record_id=str(uuid.uuid4()),
+            project_id=1,
+            datasource_id=101,
+            object_ref=_make_ref(),
+            action="DROP_TABLE",
+            script_hash="b" * 64,
+            executed_at=_now(),
+            status="failure",
+            failure_summary="Permission denied",
+            policy_snapshot_id=str(uuid.uuid4()),
+            impact_snapshot_id=str(uuid.uuid4()),
+            compensation_refs=[],
+            actor_id=1,
+        )
+        assert record.status == "failure"
+        assert "denied" in record.failure_summary
