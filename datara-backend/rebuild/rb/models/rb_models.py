@@ -10,7 +10,7 @@
 """
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Optional
 
@@ -24,7 +24,7 @@ class ObjectRef:
     schema: Optional[str]
     kind: str  # table/view/function/procedure/trigger
     name: str
-    parent: Optional[str] = None
+    parent: Optional[str]
 
 
 @dataclass(frozen=True)
@@ -33,7 +33,7 @@ class PolicyFinding:
     level: str  # block/warn/info
     code: str
     message: str
-    impacts: list[str] = field(default_factory=list)
+    impacts: list[str]
 
 
 @dataclass(frozen=True)

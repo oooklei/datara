@@ -28,6 +28,7 @@ def _make_ref() -> ObjectRef:
         schema="public",
         kind="table",
         name="users",
+        parent=None,
     )
 
 
@@ -163,6 +164,7 @@ class TestImpactItem:
             datasource_id=101,
             database="mydb",
             catalog=None,
+            parent=None,
             schema="public",
             kind="view",
             name="user_view",
