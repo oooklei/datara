@@ -1,0 +1,16 @@
+D5-v2-EXEC execution evidence
+Time: 2026-10-19 02:54 Asia/Shanghai
+Dispatch: S29 / message #73b0f4c7; approved execution window recorded in STATE S29.
+
+Step 1 — local baseline
+Command: rtk git rev-parse HEAD
+Output: 36132da7c200e1216e8727af7aff071702ce9f83
+Command: rtk git status --short -- datara-backend/rebuild/
+Output: (empty; clean)
+Manifest: docs/increments/evidence/2026-10-19-Codex-D5-v2-baseline-36132da.txt (79 files; SHA-256 1baad24ea4308373f310193be7b36740074d2934a4bdce399bd23883b85c4172)
+
+Step 1 — remote read-only preflight
+Command: rtk proxy ssh -o BatchMode=yes -o ConnectTimeout=10 root@192.168.1.9 "hostname; date -Is; test -d /lei/datara/rebuild-source/rebuild && echo TARGET_PRESENT; docker inspect --format '{{.State.Status}}|{{.State.Health.Status}}|{{range .Mounts}}{{.Source}}:{{.Destination}} {{end}}' datara-rebuild-api"
+Output: ssh: connect to host 192.168.1.9 port 22: Permission denied (exit 255)
+
+Disposition: Stopped at step 1 per D5-v2 stop condition. No remote backup, write, sync, restart, health request, or rollback occurred. Steps 2 and 3 were not run. No push.

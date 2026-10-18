@@ -1,0 +1,17 @@
+W2-pre2/pre-3 TDD RED evidence (2026-10-19 Asia/Shanghai)
+
+Command: rtk proxy pytest tests/sql_ide/test_snapshots_migrations.py -q
+Observed output:
+FF                                                                       [100%]
+FAILED test_sql_ide_snapshot_migration_is_revisioned_and_idempotent
+ModuleNotFoundError: No module named 'rebuild.sql_ide.migrations'
+FAILED test_export_job_store_enforces_configured_limits_and_expiry
+ImportError: cannot import name 'DEFAULT_EXPORT_MAX_BYTES' from 'rebuild.sql_ide.result_store'
+2 failed in 0.50s
+
+Command: rtk proxy pytest tests/sql_ide/test_result_store.py::test_statement_can_hold_multiple_results_addressed_by_result_set_id -q
+Observed output locator: sqlalchemy.exc.IntegrityError, UNIQUE constraint failed: sql_ide_result_sets.history_id, sql_ide_result_sets.stmt_index; translated to ValueError("result snapshot is immutable for this history statement").
+1 failed in 0.91s
+
+Command: rtk proxy pytest tests/sql_ide/test_export_service.py::test_export_service_defaults_match_supervisor_limits -q
+Observed output locator: SQLAlchemy InvalidRequestError, Table 'sql_ide_export_jobs' is already defined for this MetaData instance. This surfaced the duplicate model integration conflict; after separating the generic handle table, the limit assertion was rerun and passed in the final suite.

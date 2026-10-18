@@ -1,0 +1,7 @@
+F...                                                                     [100%]
+================================== FAILURES ===================================
+___ test_router_exposes_project_scoped_a5_routes_without_app_factory_wiring ___
+tests\sql_ide\test_routes.py:35: in test_router_exposes_project_scoped_a5_routes_without_app_factory_wiring
+    assert "/api/v1/projects/{project_id}/sql-ide/lint" in paths
+E   AssertionError: assert '/api/v1/projects/{project_id}/sql-ide/lint' in {'/api/v1/projects/{projectId}/sql-ide/columns', '/api/v1/projects/{projectId}/sql-ide/databases', '/api/v1/projects/{...jects/{projectId}/sql-ide/executions/{taskId}', '/api/v1/projects/{projectId}/sql-ide/executions/{taskId}/cancel', ...}
+1 failed, 3 passed in 0.73s

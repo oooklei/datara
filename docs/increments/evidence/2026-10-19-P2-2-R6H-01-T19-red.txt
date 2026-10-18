@@ -1,0 +1,24 @@
+.FF.Fs                                                                   [100%]
+================================== FAILURES ===================================
+_ test_retry_deadline_is_persisted_and_survives_restart_without_recalculation _
+tests\rebuild\test_r8a_retry.py:123: in test_retry_deadline_is_persisted_and_survives_restart_without_recalculation
+    assert persisted.delay_until == original_deadline
+E   assert None == datetime.datetime(2026, 1, 1, 0, 1)
+E    +  where None = <common.models.TaskInstance object at 0x0000020CAB4EA720>.delay_until
+---------------------------- Captured stderr call -----------------------------
+2026-10-19 06:17:11 [INFO] [master.engine] [instance:-] 任务重试安排: task=811 attempt=2
+______ test_expired_retry_is_dispatched_immediately_during_resume_sweep _______
+tests\rebuild\test_r8a_retry.py:152: in test_expired_retry_is_dispatched_immediately_during_resume_sweep
+    assert ("dispatch", KEY, None) in runnable.events_seen
+E   AssertionError: assert ('dispatch', ('task-a', 0), None) in []
+E    +  where [] = <[AssertionError('Thread.__init__() was not called') raised in repr()] WorkflowExecuteRunnable object at 0x20cab4b3c80>.events_seen
+________ test_duplicate_concurrent_failure_only_advances_attempt_once _________
+tests\rebuild\test_r8a_retry.py:190: in test_duplicate_concurrent_failure_only_advances_attempt_once
+    assert outcomes.count(True) == 1
+E   assert 2 == 1
+E    +  where 2 = <built-in method count of list object at 0x0000020CAB5BCB00>(True)
+E    +    where <built-in method count of list object at 0x0000020CAB5BCB00> = [True, True].count
+---------------------------- Captured stderr call -----------------------------
+2026-10-19 06:17:11 [INFO] [master.engine] [instance:-] 任务重试安排: task=811 attempt=2
+2026-10-19 06:17:11 [INFO] [master.engine] [instance:-] 任务重试安排: task=811 attempt=3
+3 failed, 2 passed, 1 skipped in 0.97s

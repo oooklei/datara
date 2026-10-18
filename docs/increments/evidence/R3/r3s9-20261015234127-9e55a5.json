@@ -1,0 +1,118 @@
+{
+  "run_id": "R3S9-20261015234127-9e55a5",
+  "started_at": "2026-10-15T23:41:27.086Z",
+  "timezone": "Asia/Shanghai",
+  "url": "http://192.168.1.9:18091/rebuild-validation-r3-s9.html",
+  "browser": "chromium 153.0.4234.32",
+  "auth_mode": "protected-runner-token-exchange",
+  "project_id": 3,
+  "snapshot_digests": {
+    "source_digest": "a0227040f719c0064e51f3377378677022238d909b68c922d36275a218efbf3e",
+    "target_digest": "044e357c04b28ea09489348b913f4392915e29445cf2b2fb437db27246455b22"
+  },
+  "actions": [
+    {
+      "name": "select-project-in-page",
+      "project_id": 3,
+      "at": "2026-10-15T23:41:30.378Z"
+    },
+    {
+      "name": "click-read-only-i18-preview",
+      "at": "2026-10-15T23:41:30.442Z"
+    },
+    {
+      "name": "session-revoked-after-run",
+      "ok": true,
+      "at": "2026-10-15T23:41:32.602Z"
+    }
+  ],
+  "checks": [
+    {
+      "name": "protected-runner-token-exchange",
+      "pass": true,
+      "http_status": 200
+    },
+    {
+      "name": "validation-page-loaded",
+      "pass": true,
+      "http_status": 200
+    },
+    {
+      "name": "approved-project-3",
+      "pass": true,
+      "available_projects": 20
+    },
+    {
+      "name": "approved-i18-snapshot-digests",
+      "pass": true,
+      "source_digest": "a0227040f719c0064e51f3377378677022238d909b68c922d36275a218efbf3e",
+      "target_digest": "044e357c04b28ea09489348b913f4392915e29445cf2b2fb437db27246455b22"
+    },
+    {
+      "name": "dry-run-api-returned-success",
+      "pass": true,
+      "status": 200
+    },
+    {
+      "name": "page-rendered-live-dry-run-result",
+      "pass": true,
+      "runtime_status": "complete",
+      "stats_rendered": true,
+      "rendered_counts": [
+        "45",
+        "0",
+        "44 / 0",
+        "1",
+        "0 / 0"
+      ],
+      "visible_issue_count": 0,
+      "issue_code_counts": {},
+      "issue_samples": []
+    },
+    {
+      "name": "approved-orphan-version-is-visible-as-skipped",
+      "pass": true,
+      "skipped_count": "1",
+      "matching_rows": [
+        "t_dw_model_version1skippedapproved_missing_model_reference ｜ bd985043f51a7477682b49e94805c3b96f4a35c34871d4126996657c68b95f68"
+      ]
+    },
+    {
+      "name": "approved-relation-field-mappings-are-visible",
+      "pass": true,
+      "mapping_rows": [
+        "t_dw_model_relation1createsource order_id → order_no ｜ 82ed7cf9a894d4f6ee476cc4ad1cab4f78f3a6f8e6dc99e95dea0bd0ebd58c21",
+        "t_dw_model_relation2createtarget dt → order_date ｜ a6053e925cfe9edc2d8dda6f6912240a87e55ede71b951e3338958a358a2130b"
+      ]
+    },
+    {
+      "name": "page-reported-no-target-import",
+      "pass": true
+    },
+    {
+      "name": "run-i18-import-confirmation-ready",
+      "pass": true,
+      "confirmation_input_enabled": true,
+      "import_button_disabled_until_human_confirmation": true,
+      "confirmation_phrase_matches_live_digests": true
+    },
+    {
+      "name": "no-browser-errors",
+      "pass": true,
+      "error_count": 0
+    }
+  ],
+  "relevant_responses": [
+    {
+      "name": "project-list",
+      "status": 200
+    },
+    {
+      "name": "i18-dry-run",
+      "status": 200
+    }
+  ],
+  "errors": [],
+  "outcome": "PASS",
+  "secrets_recorded": false
+}
