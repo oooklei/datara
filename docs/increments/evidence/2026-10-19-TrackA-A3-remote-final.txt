@@ -1,0 +1,18 @@
+# Track A A3 remote-final observation - 2026-10-19
+
+Result: FAIL for remote production assembly; this is the requested terminal observation, not a GREEN claim.
+Timestamp: 2026-10-19 01:37:44-01:37:47 Asia/Shanghai (response Date headers: Sun, 18 Oct 2026 17:37:44/47 GMT).
+Target: 192.168.1.9:18091 (existing remote runtime; read-only, unauthenticated GET only).
+
+Command: Python 3.12 urllib.request.Request(url, method="GET") plus urllib.request.urlopen(..., timeout=8) for each URL below; no token, POST, deploy, or remote mutation.
+Output location: this file, "Observed HTTP results" below.
+
+Observed HTTP results:
+- GET http://192.168.1.9:18091/api/v1/rebuild/health -> HTTP 200; Content-Type: application/json; Server: nginx/1.27.5; body prefix {"code":0,"msg":"success","data":{"service":"rebuild-api","status":"ok"}}.
+- GET http://192.168.1.9:18091/api/v1/rebuild/ai/tools -> HTTP 404; Content-Type: application/json; Server: nginx/1.27.5; body prefix {"detail":"Not Found"}. The expected unauthenticated response for a mounted protected endpoint is 401; 404 shows this remote currently does not expose the Track A AI bridge.
+
+Paired local evidence identity (existing R8 runtime-wiring run; referenced, not altered):
+- JSON: docs/increments/evidence/R8/tracka-runtime-wiring-evidence.json, SHA-256 71901c5b7a36af01cf49c4a488ab012b65111ff7e9f5bada00bb6877519f2593 (records the 45-test local run, exit 0).
+- PNG: docs/increments/evidence/R8/tracka-runtime-wiring-evidence.png, SHA-256 bff31873dc440579851e0cb1c5b763f8ca0dae128056f331be0aab330b3c134f.
+
+Conclusion: remote-final observation captured; A3 remote terminal check FAIL. Track A must remain non-GREEN until remote runtime matches the already-verified local production assembly and a fresh independent review accepts the evidence.
