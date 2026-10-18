@@ -1,0 +1,30 @@
+D3 A1 RED reproduction (raw pytest output)
+Timestamp: 2026-10-19T01:37:43.850798+08:00
+Baseline commit: 39c934d (pre-fix parent of d0d45cf)
+Test source: current committed test_repair_integration.py copied into isolated baseline worktree; no tracked source changed
+Command: python -m pytest tests/sql_ide/test_repair_integration.py::TestDefaultAppProductionAssembly::test_default_app_mounts_bridge -vv --tb=short
+Working directory: C:\Users\Administrator\AppData\Local\Temp\datara-d3-a1-baseline\datara-backend
+Exit code: 1
+----- BEGIN RAW PYTEST OUTPUT -----
+============================= test session starts =============================
+platform win32 -- Python 3.12.1, pytest-9.0.3, pluggy-1.6.0 -- C:\Program Files\Python312\python.exe
+cachedir: .pytest_cache
+rootdir: C:\Users\Administrator\AppData\Local\Temp\datara-d3-a1-baseline\datara-backend
+configfile: pyproject.toml
+plugins: Faker-40.39.0, anyio-4.13.0, langsmith-0.8.16, asyncio-1.4.0
+asyncio: mode=Mode.STRICT, debug=False, asyncio_default_fixture_loop_scope=None, asyncio_default_test_loop_scope=function
+collecting ... collected 1 item
+
+tests/sql_ide/test_repair_integration.py::TestDefaultAppProductionAssembly::test_default_app_mounts_bridge FAILED [100%]
+
+================================== FAILURES ===================================
+_______ TestDefaultAppProductionAssembly.test_default_app_mounts_bridge _______
+tests\sql_ide\test_repair_integration.py:344: in test_default_app_mounts_bridge
+    assert response.status_code == 401
+E   assert 404 == 401
+E    +  where 404 = <Response [404 Not Found]>.status_code
+=========================== short test summary info ===========================
+FAILED tests/sql_ide/test_repair_integration.py::TestDefaultAppProductionAssembly::test_default_app_mounts_bridge - assert 404 == 401
+ +  where 404 = <Response [404 Not Found]>.status_code
+============================== 1 failed in 0.98s ==============================
+----- END RAW PYTEST OUTPUT -----\n
