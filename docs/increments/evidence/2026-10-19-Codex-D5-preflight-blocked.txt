@@ -1,0 +1,19 @@
+D5 远端部署预检阻塞证据
+日期：2026-10-19 Asia/Shanghai
+用户批准：批准按 D5 方案执行；本证据记录方案规定的只读预检及停止原因。
+
+1) Compose 目标服务检查
+命令：rtk ssh -o BatchMode=yes -o ConnectTimeout=10 root@192.168.1.9 "if docker compose -f /lei/datara/docker-compose.yml config --services | grep -Fxq datara-rebuild-api; then echo COMPOSE_TARGET=PRESENT; else echo COMPOSE_TARGET=MISSING; fi"
+输出：COMPOSE_TARGET=MISSING
+
+2) 目标路径与仓库元数据检查
+命令：rtk ssh -o BatchMode=yes -o ConnectTimeout=10 root@192.168.1.9 "realpath /lei/datara; git -C /lei/datara rev-parse --is-inside-work-tree"
+输出定位：realpath 返回 /lei/datara；git 返回“不是 git 仓库”，exit 128（远端无法提供方案要求的 HEAD/工作区干净状态证明）。
+路径核对：/lei/datara/docker-compose.yml 与 /lei/datara/datara-backend 存在。
+
+3) 当前容器只读状态
+命令：rtk ssh -o BatchMode=yes -o ConnectTimeout=10 root@192.168.1.9 "docker inspect --format '{{.State.Status}}|{{.State.Health.Status}}|{{.Image}}|{{.Config.Image}}' datara-rebuild-api; docker inspect --format '{{range .Mounts}}{{.Source}}:{{.Destination}} {{end}}' datara-rebuild-api"
+输出：running|healthy|sha256:43e5f5567f230d1c092cac0ba275ed664b629052d566fbbc7b0e06e9bd41bb0f|datara-backend:latest
+挂载：/lei/datara/rebuild-source/rebuild:/app/rebuild；/lei/datara/files:/datara/files；日志卷:/datara/logs。
+
+结论：按 docs/increments/2026-10-19-Codex-D5-远端部署方案.md 的预检停止条件终止。Compose 文件中目标 service 不存在，且 /lei/datara 无 Git 元数据，不能验证远端源码版本/工作区状态。容器实际加载 rebuild-source/rebuild，不等同计划的 datara-backend build context。未上传文件、未创建备份、未切换源码、未运行 compose up、未重启服务；远端无写操作。需监督线确认正确 Compose 项目/服务及可验证的源码锚，并据此修订方案后再执行。
