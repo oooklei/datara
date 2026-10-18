@@ -49,18 +49,12 @@ class TestRbPackageSkeleton:
         assert mod is not None
 
     def test_eight_subpackages_no_more(self):
-        """验证 7 子包 + migrations.py 模块，无第 8 子包。"""
+        """验证 rebuild.rb 的实际 8 个子包及 migrations.py 模块。"""
         import os
         import rebuild.rb
         rb_dir = os.path.dirname(rebuild.rb.__file__)
         subdirs = [d for d in os.listdir(rb_dir) if os.path.isdir(os.path.join(rb_dir, d)) and not d.startswith("_")]
-        assert len(subdirs) == 7
-        assert "facade" in subdirs
-        assert "policy" in subdirs
-        assert "impact" in subdirs
-        assert "executor" in subdirs
-        assert "ledger" in subdirs
-        assert "models" in subdirs
-        assert "errors" in subdirs
+        expected_subpackages = ["errors", "executor", "facade", "impact", "ledger", "lineage", "models", "policy"]
+        assert sorted(subdirs) == expected_subpackages
         assert "migrations" not in subdirs  # migrations 是 .py 不是子包
         assert os.path.isfile(os.path.join(rb_dir, "migrations.py"))

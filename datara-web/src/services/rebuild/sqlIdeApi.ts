@@ -1,9 +1,6 @@
 /**
- * R5-A（SQL IDE 只读能力）契约层 — RED 阶段。
- * 端点前缀为草案（/api/v1/rebuild/sql-ide/*），最终以 Codex A5（rebuild/sql_ide/）契约为权威；
- * 本文件语义源自 docs/increments/R5-IDE-开始前影响分析.md §3（legacy ideApi.ts 只读子集 + routines 扩展）。
- * RED 约定：所有 I/O 方法在 A5 后端接入前抛 R5A_BACKEND_NOT_WIRED，不发出任何真实请求。
- * 边界：只读子集——不包含 DDL 写路径（R5-B）、表数据编辑（rows/apply）、全局参数（params）。
+ * SQL IDE readonly contract client for the A5 rebuild/sql_ide API.
+ * Scope: query and metadata operations only; DDL, row editing, and global parameters stay outside this client.
  */
 
 /* ---------- 对象与元数据类型（design §7 对象范围 9 类） ---------- */
@@ -76,6 +73,8 @@ export interface SqlExecuteRequest {
   sql: string
   /** R5-A 只读：执行上下文默认 auto；事务型 manual 属正式 IDE 融合范围 */
   mode?: 'auto'
+  sessionId: string
+  clientRequestId: string
 }
 
 export interface SqlLogEvent {
@@ -99,7 +98,7 @@ export interface SqlResultEvent {
 }
 
 export interface SqlDoneEvent {
-  status: 'success' | 'failure' | 'canceled'
+  status: 'succeeded' | 'failed' | 'canceled'
   elapsedMs: number
   historyId: number | null
   stmtCount: number
@@ -119,7 +118,7 @@ export interface HistoryEntry {
   datasourceId: number
   db: string | null
   sqlText: string
-  status: 'success' | 'failure' | 'canceled'
+  status: 'succeeded' | 'failed' | 'canceled'
   stmtCount: number
   elapsedMs: number
   createdAt: string
@@ -139,10 +138,6 @@ export interface LintItem {
   col: number
   message: string
 }
-
-/* ---------- RED 哨兵 ---------- */
-
-export const R5A_BACKEND_NOT_WIRED = 'R5A_BACKEND_NOT_WIRED: A5 (rebuild/sql_ide) contract not connected yet'
 
 import { getToken } from '../http'
 
@@ -198,6 +193,8 @@ function openAuthenticatedEventStream(projectId: number, taskId: string): EventS
   const controller = new AbortController()
   const callbacks = new Map<string, Set<EventListenerOrEventListenerObject>>()
   let readyState: number = EventSource.CONNECTING
+  let lastEventId = ''
+  let reconnectTimer: ReturnType<typeof setTimeout> | undefined
   const stream = {
     url,
     withCredentials: false,
@@ -207,6 +204,7 @@ function openAuthenticatedEventStream(projectId: number, taskId: string): EventS
     onerror: null as ((event: Event) => void) | null,
     close() {
       controller.abort()
+      if (reconnectTimer) clearTimeout(reconnectTimer)
       readyState = EventSource.CLOSED
     },
     addEventListener(type: string, listener: EventListenerOrEventListenerObject | null) {
@@ -227,10 +225,13 @@ function openAuthenticatedEventStream(projectId: number, taskId: string): EventS
     },
   } as unknown as EventSource
 
-  const headers: Record<string, string> = { Accept: 'text/event-stream' }
-  const token = getToken()
-  if (token) headers.token = token
-  void fetch(url, { headers, signal: controller.signal }).then(async (response) => {
+  const connect = async () => {
+    const headers: Record<string, string> = { Accept: 'text/event-stream' }
+    const token = getToken()
+    if (token) headers.token = token
+    if (lastEventId) headers['Last-Event-ID'] = lastEventId
+    try {
+      const response = await fetch(url, { headers, signal: controller.signal })
     if (!response.ok || !response.body) {
       const envelope = await response.json().catch(() => null) as { code?: number; msg?: string; data?: { errorCode?: string; details?: unknown } } | null
       throw new SqlIdeApiError(envelope?.msg || `SQL IDE event stream failed (HTTP ${response.status})`, envelope?.code ?? response.status, envelope?.data?.errorCode, envelope?.data?.details)
@@ -243,7 +244,12 @@ function openAuthenticatedEventStream(projectId: number, taskId: string): EventS
     let eventName = 'message'
     let data: string[] = []
     const flush = () => {
-      if (data.length) stream.dispatchEvent(new MessageEvent(eventName, { data: data.join('\n') }))
+      if (eventName === 'reset-required') lastEventId = ''
+      if (data.length) {
+        const event = new MessageEvent(eventName, { data: data.join('\n') })
+        Object.defineProperty(event, 'lastEventId', { value: lastEventId })
+        stream.dispatchEvent(event)
+      }
       eventName = 'message'
       data = []
     }
@@ -257,14 +263,18 @@ function openAuthenticatedEventStream(projectId: number, taskId: string): EventS
         if (!line) flush()
         else if (line.startsWith('event:')) eventName = line.slice(6).trim() || 'message'
         else if (line.startsWith('data:')) data.push(line.slice(5).trimStart())
+        else if (line.startsWith('id:')) lastEventId = line.slice(3).trim()
       }
     }
-    readyState = EventSource.CLOSED
-  }).catch((error: unknown) => {
-    if (controller.signal.aborted) return
-    readyState = EventSource.CLOSED
-    stream.dispatchEvent(new ErrorEvent('error', { error, message: error instanceof Error ? error.message : String(error) }))
-  })
+    if (!controller.signal.aborted) reconnectTimer = setTimeout(() => void connect(), 250)
+    } catch (error: unknown) {
+      if (controller.signal.aborted) return
+      readyState = EventSource.CONNECTING
+      stream.dispatchEvent(new ErrorEvent('error', { error, message: error instanceof Error ? error.message : String(error) }))
+      reconnectTimer = setTimeout(() => void connect(), 250)
+    }
+  }
+  void connect()
   return stream
 }
 
@@ -312,11 +322,10 @@ export interface SqlIdeContract {
   deleteScript: (id: number) => Promise<void>
 }
 
-/* ---------- RED 实现（A5 接入前统一抛哨兵；方法清单见 R5A_CONTRACT_METHODS） ---------- */
+/* ---------- API 实现（方法清单见 R5A_CONTRACT_METHODS） ---------- */
 
 /**
- * R5-A 契约工厂（原型态）：签名与类型已冻结，实现在 Codex A5（rebuild/sql_ide/）就绪后
- * 按本接口逐方法替换，UI 层（SqlIdeReadonlyView）不感知切换。
+ * Creates the readonly SQL IDE client for the connected A5 endpoints.
  */
 export function createSqlIdeContract(projectId = 1): SqlIdeContract {
   return {
@@ -329,7 +338,10 @@ export function createSqlIdeContract(projectId = 1): SqlIdeContract {
     searchObjects: (datasourceId, keyword) => request(projectId, `/objects/search${query({ datasourceId, keyword })}`),
     lintSql: (datasourceId, sql) => request(projectId, '/lint', 'POST', { datasourceId, sql }),
     executeSql: (input) => request(projectId, '/executions', 'POST', input),
-    cancelExecution: (taskId) => request(projectId, `/executions/${encodeURIComponent(taskId)}/cancel`, 'POST'),
+    cancelExecution: async (taskId) => {
+      const response = await request<{ accepted: boolean; status: string }>(projectId, `/executions/${encodeURIComponent(taskId)}/cancel`, 'POST')
+      return { canceled: response.accepted }
+    },
     openEventStream: (taskId) => openAuthenticatedEventStream(projectId, taskId),
     fetchResultPage: (historyId, stmtIndex, offset, limit) => request(projectId, `/results/${historyId}${query({ stmtIndex, offset, limit })}`),
     listHistory: (datasourceId) => request(projectId, `/history${query({ datasourceId })}`),

@@ -1,20 +1,11 @@
 <!--
-  R5-A：SQL IDE 只读能力验证页（RED/原型态）。
+  SQL IDE readonly validation view connected through the A5 contract service.
   权威范围：plan I5（docs/superpowers/plans/2026-10-14-datara-platform-rebuild.md）
   + docs/increments/R5-IDE-开始前影响分析.md §3/§6。
-  边界：独立验证页，不改造正式 /ide SPA；契约全部经 services/rebuild/sqlIdeApi（A5 接入前抛
-  R5A_BACKEND_NOT_WIRED，UI 统一横幅提示）；不触发 R5 GREEN（真实控件验收待 A5 后端 + 人工闸）。
+  边界：独立验证页，不改造正式 /ide SPA；请求经 services/rebuild/sqlIdeApi。
 -->
 <template>
   <div class="r5a-page">
-    <el-alert v-if="false"
-      type="warning"
-      :closable="false"
-      show-icon
-      data-testid="r5a-red-banner"
-      title="R5-A RED 骨架（原型态）— rebuild/sql_ide（A5）后端契约未接入，所有 I/O 返回 R5A_BACKEND_NOT_WIRED"
-    />
-
     <div class="r5a-connection">
       <el-input-number v-model="datasourceId" :min="1" controls-position="right" aria-label="数据源 ID" />
       <el-select v-model="databaseName" placeholder="选择数据库" :loading="loadingDatabases">
@@ -112,8 +103,9 @@ defineOptions({ name: 'SqlIdeReadonlyView' })
 const projectId = 1
 const contract = createSqlIdeContract(projectId)
 const contractMethodCount = R5A_CONTRACT_METHODS.length
+const sessionId = crypto.randomUUID()
 
-/* 上下文（A5 就绪前为占位值；数据源选择接 rebuild governance catalog） */
+/* 页面上下文使用占位值；数据源选择接 rebuild governance catalog。 */
 const datasourceName = ref('SQL IDE')
 const datasourceId = ref(1)
 const databases = ref<DatabaseMeta[]>([])
@@ -156,18 +148,18 @@ onMounted(() => { void loadDatabases() })
 /* 多结果集（汇合点「分页/取消、多结果」：按 stmtIndex 页签 + 服务端分页取页） */
 const results = ref<SqlResultEvent[]>([])
 const activeStmt = ref(0)
-/** 最近一次执行的历史 ID（done 事件回填；A5 接入前为 0，fetchResultPage 走哨兵拒绝） */
+/** 最近一次执行的历史 ID，用于读取对应结果页。 */
 const historyId = ref(0)
 const activeResult = computed<SqlResultEvent>(() => results.value.find((r) => r.stmtIndex === activeStmt.value) ?? { stmtIndex: 0, columns: [], rows: [], rowsTotal: 0, elapsedMs: 0 })
 
-/* 历史抽屉打开时拉取清单（RED 下走哨兵拒绝，落状态栏） */
+/* 历史抽屉打开时拉取清单。 */
 watch(historyVisible, (visible) => {
   if (visible) {
     guard(() => contract.listHistory(0).then((entries) => (history.value = entries)), '加载历史').catch(() => undefined)
   }
 })
 
-/** NOT_WIRED 统一落横幅语义：状态栏提示 + 不中断交互 */
+/** 将服务错误显示在状态栏并保留页面交互。 */
 function guard<T>(fn: () => Promise<T>, label: string): Promise<void> {
   statusText.value = `${label}…`
   return fn()
@@ -175,7 +167,7 @@ function guard<T>(fn: () => Promise<T>, label: string): Promise<void> {
       statusText.value = `${label} 完成`
     })
     .catch((err: unknown) => {
-      statusText.value = err instanceof Error && err.message.startsWith('R5A_BACKEND_NOT_WIRED') ? 'A5 契约未接入' : `${label} 失败`
+      statusText.value = err instanceof Error ? err.message : `${label} 失败`
       throw err
     })
 }
@@ -183,15 +175,15 @@ function guard<T>(fn: () => Promise<T>, label: string): Promise<void> {
 const onExecute = () =>
   guard(
     async () => {
-      /* 执行受理：回填 taskId 供取消使用；结果行经事件流（openEventStream）接入后写入 results */
-      const r = await contract.executeSql({ datasourceId: datasourceId.value, db: databaseName.value || null, sql: sqlText.value, mode: 'auto' })
+      /* 为断线重试保持 session 与请求标识，后端可据此恢复同一执行。 */
+      const r = await contract.executeSql({ datasourceId: datasourceId.value, db: databaseName.value || null, sql: sqlText.value, mode: 'auto', sessionId, clientRequestId: crypto.randomUUID() })
       taskId.value = r.taskId
       running.value = true
       let execution: { status: string; historyId?: number | null } = { status: 'pending' }
       for (let attempt = 0; attempt < 60; attempt += 1) {
         await new Promise((resolve) => setTimeout(resolve, 500))
         execution = await getSqlIdeExecutionStatus(projectId, r.taskId)
-        if (execution.status === 'success' || execution.status === 'failure' || execution.status === 'canceled') break
+        if (execution.status === 'succeeded' || execution.status === 'failed' || execution.status === 'canceled') break
       }
       running.value = false
       historyId.value = execution.historyId ?? 0
@@ -213,7 +205,7 @@ const onCancel = () =>
 const onLint = () => guard(() => contract.lintSql(0, sqlText.value), '预检').catch(() => undefined)
 const onSearch = () => guard(() => contract.searchObjects(0, keyword.value), '检索').catch(() => undefined)
 
-/** 服务端分页取页（汇合点「分页」）：RED 下哨兵拒绝，A5 接入后回填对应 stmt 页数据 */
+/** 服务端分页取页并回填对应 stmt 的结果数据。 */
 const onPageChange = (p: number, s: number) => {
   page.value = p
   pageSize.value = s
