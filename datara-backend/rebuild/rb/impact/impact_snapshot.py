@@ -51,7 +51,7 @@ class ImpactSnapshotService:
             ImpactSnapshot 绑定 project/object/sourceVersion/DDL digest
         """
         if self._analyzer is not None:
-            impacts = self._analyzer.analyze(
+            impacts, unknown_reasons = self._analyzer.analyze(
                 datasource_id=datasource_id,
                 object_ref=object_ref,
                 source_version=source_version,
@@ -64,7 +64,6 @@ class ImpactSnapshotService:
                 )
                 for imp in impacts
             ]
-            unknown_reasons: list[str] = []
         else:
             # 无 analyzer 时返回空 impacts + unknown reason
             impact_items = []

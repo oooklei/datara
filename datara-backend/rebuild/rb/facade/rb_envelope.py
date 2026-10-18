@@ -40,10 +40,20 @@ class RbEnvelope:
     def policy_blocked(findings: list) -> dict:
         """策略阻断。"""
         return RbEnvelope.error(
-            http_code=400,
+            http_code=409,
             msg="Policy validation failed",
             error_code=RbErrorCode.POLICY_BLOCKED,
             details={"findings": findings},
+        )
+
+    @staticmethod
+    def invalid_request(msg: str, details: Optional[dict] = None) -> dict:
+        """请求无效。"""
+        return RbEnvelope.error(
+            http_code=400,
+            msg=msg,
+            error_code=RbErrorCode.INVALID_REQUEST,
+            details=details,
         )
 
     @staticmethod

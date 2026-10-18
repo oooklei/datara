@@ -2,10 +2,15 @@
 
 依 P2-3 v3 设计 §1.1/§4：
 - #21 getDefinition: 复用 R5-A shared read，不新增第二条读取路由
-- #22 validatePolicy: 调用 PolicySnapshotService（stub，阶段 C 实施）
-- #23 previewImpact: 调用 ImpactSnapshotService（stub，阶段 C 实施）
+- #22 validatePolicy: 调用 PolicySnapshotService.evaluate_and_snapshot
+- #23 previewImpact: 调用 ImpactSnapshotService.preview_and_snapshot
 - #24 submitConfirm: 调用 ConfirmGate + DdlExecutor（stub，阶段 D 实施）
 - #25 listExecutionRecords: 调用 ExecutionLedger（stub，阶段 D 实施）
+
+C5 错误映射修正：
+- validate_policy 异常: 409+POLICY_BLOCKED
+- preview_impact 异常: 422+LINEAGE_UNKNOWN
+- submit_confirm 异常: 400+INVALID_REQUEST
 
 文件域红线：只改 rebuild/rb/ 包及 tests/rebuild/test_rb_*
 """
@@ -111,22 +116,39 @@ class RbFacade:
     """R5-B facade 入口。
 
     #21 复用 R5-A shared read（不新增第二条读取路由）。
-    #22-#25 调用对应 service（当前为 stub，后续批次替换为真实实现）。
+    #22 绑定 PolicySnapshotService.evaluate_and_snapshot。
+    #23 绑定 ImpactSnapshotService.preview_and_snapshot。
+    #24-#25 调用对应 service（当前为 stub，后续批次替换为真实实现）。
     """
 
     def __init__(
         self,
         get_definition_service=None,
-        validate_policy_service=None,
-        preview_impact_service=None,
+        policy_snapshot_service=None,
+        impact_snapshot_service=None,
         submit_confirm_service=None,
         list_execution_records_service=None,
     ):
         self._get_definition = get_definition_service
-        self._validate_policy = validate_policy_service
-        self._preview_impact = preview_impact_service
+        self._policy_snapshot = policy_snapshot_service
+        self._impact_snapshot = impact_snapshot_service
         self._submit_confirm = submit_confirm_service
         self._list_execution_records = list_execution_records_service
+
+    # ========== Helper ==========
+
+    @staticmethod
+    def _to_object_ref(datasource_id: int, obj_ref_dict: dict) -> ObjectRef:
+        """将 dict 转为 ObjectRef。"""
+        return ObjectRef(
+            datasource_id=datasource_id,
+            database=obj_ref_dict.get("database", ""),
+            catalog=obj_ref_dict.get("catalog"),
+            schema=obj_ref_dict.get("schema"),
+            kind=obj_ref_dict.get("kind", "table"),
+            name=obj_ref_dict.get("name", ""),
+            parent=obj_ref_dict.get("parent"),
+        )
 
     # ========== #21 getDefinition ==========
 
@@ -159,25 +181,43 @@ class RbFacade:
     # ========== #22 validatePolicy ==========
 
     def validate_policy(self, request: ValidatePolicyRequest) -> dict:
-        """#22 validatePolicy — 策略校验。"""
-        if self._validate_policy is None:
+        """#22 validatePolicy — 策略校验。
+
+        绑定 PolicySnapshotService.evaluate_and_snapshot。
+        异常映射: 409+POLICY_BLOCKED。
+        """
+        if self._policy_snapshot is None:
             return RbEnvelope.error(
                 http_code=502,
                 msg="ValidatePolicy service not available",
                 error_code=RbErrorCode.CAPABILITY_UNSUPPORTED,
             )
         try:
-            result = self._validate_policy(
+            object_ref = self._to_object_ref(request.datasourceId, request.objectRef)
+            snapshot = self._policy_snapshot.evaluate_and_snapshot(
+                project_id=request.datasourceId,  # TODO: 用真实 project_id
                 datasource_id=request.datasourceId,
-                object_ref=request.objectRef,
+                object_ref=object_ref,
                 source_version=request.sourceVersion,
                 next_ddl_text=request.nextDdlText,
             )
-            return RbEnvelope.success(result)
+            return RbEnvelope.success({
+                "snapshotId": snapshot.snapshot_id,
+                "findings": [
+                    {
+                        "level": f.level,
+                        "code": f.code,
+                        "message": f.message,
+                        "impacts": list(f.impacts),
+                    }
+                    for f in snapshot.findings
+                ],
+                "blocked": snapshot.blocked,
+            })
         except Exception as e:
             logger.exception("validatePolicy failed")
             return RbEnvelope.error(
-                http_code=502,
+                http_code=409,
                 msg="ValidatePolicy failed",
                 error_code=RbErrorCode.POLICY_BLOCKED,
                 details={"error": type(e).__name__},
@@ -186,25 +226,50 @@ class RbFacade:
     # ========== #23 previewImpact ==========
 
     def preview_impact(self, request: PreviewImpactRequest) -> dict:
-        """#23 previewImpact — 影响预览。"""
-        if self._preview_impact is None:
+        """#23 previewImpact — 影响预览。
+
+        绑定 ImpactSnapshotService.preview_and_snapshot。
+        异常映射: 422+LINEAGE_UNKNOWN。
+        """
+        if self._impact_snapshot is None:
             return RbEnvelope.error(
                 http_code=502,
                 msg="PreviewImpact service not available",
                 error_code=RbErrorCode.CAPABILITY_UNSUPPORTED,
             )
         try:
-            result = self._preview_impact(
+            object_ref = self._to_object_ref(request.datasourceId, request.objectRef)
+            snapshot = self._impact_snapshot.preview_and_snapshot(
+                project_id=request.datasourceId,  # TODO: 用真实 project_id
                 datasource_id=request.datasourceId,
-                object_ref=request.objectRef,
+                object_ref=object_ref,
                 source_version=request.sourceVersion,
                 next_ddl_text=request.nextDdlText,
             )
-            return RbEnvelope.success(result)
+            return RbEnvelope.success({
+                "snapshotId": snapshot.snapshot_id,
+                "impacts": [
+                    {
+                        "objectRef": {
+                            "datasource_id": imp.object_ref.datasource_id,
+                            "database": imp.object_ref.database,
+                            "catalog": imp.object_ref.catalog,
+                            "schema": imp.object_ref.schema,
+                            "kind": imp.object_ref.kind,
+                            "name": imp.object_ref.name,
+                            "parent": imp.object_ref.parent,
+                        },
+                        "relationType": imp.relation_type,
+                        "detail": imp.detail,
+                    }
+                    for imp in snapshot.impacts
+                ],
+                "unknownReasons": list(snapshot.unknown_reasons),
+            })
         except Exception as e:
             logger.exception("previewImpact failed")
             return RbEnvelope.error(
-                http_code=502,
+                http_code=422,
                 msg="PreviewImpact failed",
                 error_code=RbErrorCode.LINEAGE_UNKNOWN,
                 details={"error": type(e).__name__},
@@ -216,6 +281,7 @@ class RbFacade:
         """#24 submitConfirm — 人工确认执行。
 
         人工闸能力，测试用 mock，禁止对目标库真实写入。
+        异常映射: 400+INVALID_REQUEST。
         """
         if self._submit_confirm is None:
             return RbEnvelope.error(
@@ -237,9 +303,9 @@ class RbFacade:
         except Exception as e:
             logger.exception("submitConfirm failed")
             return RbEnvelope.error(
-                http_code=502,
+                http_code=400,
                 msg="SubmitConfirm failed",
-                error_code=RbErrorCode.DDL_EXECUTION_FAILED,
+                error_code=RbErrorCode.INVALID_REQUEST,
                 details={"error": type(e).__name__},
             )
 
