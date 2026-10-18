@@ -69,3 +69,4 @@ Resolved：W2-A/B/C/D 均未实施；需先补齐生产级只读语句分类与�
 下一单：监督线完成单文件 pathspec 代提交后，明确事件序列7日存储承接与 W2 后续顺序再派。
 - **S53**（监督线）Claude 四单并行批派发（用户令 4 子智能体同跑，权限闸适配）：C1 B4 三件套内联交付/C2 阶段 D 受控写路径设计细目（内联预研）/C3 R6 引擎现状盘点（只读，P2-1 前置）/C4 F1 七门证据盘点（只读，Phase 3 前置）；每轮先试 Write 失败即内联，C3/C4 产出作监督线 WBS 输入
 - **S54**（监督线）W2-pre 复评 PASS+代提交 `04dbf41`（11 文件 1467 行，42 passed 独立复跑，pre-1/2/3 全量入库）；遗留事件 7 日持久化裁定仍归 Codex（T1b）；W2 集成顺序答复（T3 接预检/B 接 Store/C 接 exporter/D 随 T4）；T3/T4 工作树产物待交付心跳；WBS 重派（R6 加固+Phase3 F1/F2+R9-11 拆解，首轮子智能体输出异常作废）
+- **S55**（监督线）Codex 再派五单 T6-T10（用户令持续 5 并行）：T6 分页（pagination.py）/T7 历史脚本存储（history_store.py，migrations 只追加新 revision 与 T1b 协调）/T8 九类元数据浏览（metadata_browser.py）/T9 capability envelope（capability.py）/T10 取消回收（cancel.py）——独立新文件与在飞 T3/T4/T5/T1b 零交集，Protocol 先行不互等
