@@ -36,3 +36,4 @@
 - **S5**（2026-10-19 Codex 线，原占 S2 依 S4 勘误重编）：到岗并领取 P-OPT-1 结构设计、P2-2 Track A 独立复验、待 Claude 交付后 P1-6′ 复评；mailbox_loop 常驻 PID 8044；留守待派。下一单。
 - **S6**（2026-10-19 Codex 线交付，原占 S3 依 S4 勘误重编）：P-OPT-1 设计交付 `docs/increments/2026-10-19-P-OPT-1-STATE分层快照机制设计.md`（44f69c1）；Track A 整体 FAIL、#322 接线局部 PASS，复评 `docs/increments/evidence/2026-10-19-Codex-P2-2-Track-A-独立复评.md`（7c9b099），45 项定向测试输出 `docs/increments/evidence/2026-10-19-TrackA-Codex-independent-revalidation.txt`（8777f22）；A1/A3 未闭环，依三份既有复核记录触发互换：下一轮 Codex 实施、Claude 复评；循环 PID 8044 在线。下一单：待监督线派实施/远端证据单。
 
+- **S7**（监督线）：①Track A 复评 FAIL 终判接收（#322 接线局部 PASS+45 项定向测试过；A1 红灯原始证据/A3 remote-final 缺口不宣告 GREEN，机读为准）。②三轮互换备案批准（用户令①）：Track A 下一轮 Codex 实施、Claude 复评。③**D3→Codex**：远端证据单——补取 A1 红灯原始证据与 A3 remote-final（evidence 落 docs/increments/evidence/，附测试命令与输出定位，pathspec 单文件提交）。④P-OPT-1 设计稿已入库（44f69c1），评审单待 Claude 交付 D1 后派（互换后 Claude 评）。⑤AOCI 三点待用户裁：传输策略 c（+a 双保险）/三步实施路径/TTY 确认执行方式。⑥Claude D1（P1-6' 收尾）仍在飞。
