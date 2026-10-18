@@ -297,8 +297,10 @@ class ExportJobStore(Protocol):
         user_id: int,
         task_id: str,
         format: str,
+        row_count: int,
+        byte_count: int,
     ) -> Mapping[str, Any]:
-        """Create an export job. Returns {export_id, expires_at}."""
+        """Create an export job after enforcing configured row and byte limits."""
         ...
 
     def get_job(self, *, export_id: str) -> Mapping[str, Any]:

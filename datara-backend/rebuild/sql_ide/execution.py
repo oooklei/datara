@@ -21,6 +21,10 @@ from uuid import uuid4
 from rebuild.datasource.contracts import DataSourceDraft
 from rebuild.datasource.repository import ProjectDatasourceRepository
 from rebuild.sql_ide.errors import map_connection_error, map_driver_error
+from rebuild.sql_ide.readonly_preflight import (
+    ReadonlyBatchPreflightError,
+    preflight_readonly_batch,
+)
 from rebuild.run_sql import (
     SqlDependencyUnavailable,
     SqlExecutionPort,
@@ -59,6 +63,14 @@ class ProductionSqlExecutionPort:
         if record is None:
             raise SqlDependencyUnavailable(
                 f"datasource {datasource_id} not found in project {project_id}"
+            )
+        # Validate the full input before opening a target connection. This port
+        # still executes one statement per call, so safe multi-statement batches
+        # remain rejected until the sequential batch executor is introduced.
+        statements = preflight_readonly_batch(sql, dialect=dialect or record.kind)
+        if len(statements) != 1:
+            raise ReadonlyBatchPreflightError(
+                "multi-statement execution is not available on this port"
             )
         draft = DataSourceDraft(
             name=record.name,

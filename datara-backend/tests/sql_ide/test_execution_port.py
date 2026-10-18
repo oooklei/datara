@@ -148,6 +148,24 @@ class TestExecuteSnapshot:
         assert isinstance(result["execution_id"], str)
         assert len(result["execution_id"]) > 0
 
+    def test_preflights_batch_before_opening_target_connection(self):
+        from rebuild.sql_ide.readonly_preflight import ReadonlyBatchPreflightError
+
+        record = _make_datasource_record()
+        registry = MagicMock()
+        with _mock_session(record) as sf:
+            port = build_execution_port(session_factory=sf, engine_registry=registry)
+            with pytest.raises(ReadonlyBatchPreflightError):
+                port.execute(
+                    project_id=1,
+                    datasource_id=1,
+                    sql="SELECT id FROM users; DELETE FROM users",
+                    row_limit=200,
+                    timeout_ms=30000,
+                )
+
+        registry.connect.assert_not_called()
+
     def test_row_limit_truncates_results(self):
         record = _make_datasource_record()
         big_rows = [(i,) for i in range(1000)]
