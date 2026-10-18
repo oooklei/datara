@@ -1,69 +1,43 @@
-/**
- * R5-A 契约 RED 测试（node 环境，纯契约层无组件挂载）。
- * 断言：方法清单冻结、工厂实现统一抛 R5A_BACKEND_NOT_WIRED（即 A5 接入前不存在半连通状态）。
- * 组件可编译性由 `pnpm build`（vue-tsc -b）门禁保证。
- */
-import { describe, expect, it } from 'vitest'
-import {
-  R5A_BACKEND_NOT_WIRED,
-  R5A_CONTRACT_METHODS,
-  createSqlIdeContract,
-} from '../../../../services/rebuild/sqlIdeApi'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { R5A_CONTRACT_METHODS, createSqlIdeContract } from '../../../../services/rebuild/sqlIdeApi'
 
-describe('R5-A sqlIdeApi contract (RED)', () => {
-  it('contract method list is frozen to the readonly subset', () => {
+const fetchMock = vi.fn()
+
+describe('R5-A sqlIdeApi route contract', () => {
+  beforeEach(() => {
+    fetchMock.mockReset()
+    vi.stubGlobal('fetch', fetchMock)
+    vi.stubGlobal('localStorage', { getItem: () => 'test-token' })
+  })
+
+  it('keeps the frozen readonly method list', () => {
     expect(R5A_CONTRACT_METHODS).toHaveLength(17)
-    expect(R5A_CONTRACT_METHODS).toEqual(
-      expect.arrayContaining([
-        'listDatabases',
-        'listRoutines',
-        'listIndexes',
-        'lintSql',
-        'executeSql',
-        'cancelExecution',
-        'openEventStream',
-        'fetchResultPage',
-        'listHistory',
-        'listScripts',
-      ]),
-    )
   })
 
-  it('factory exposes every contract method', () => {
-    const contract = createSqlIdeContract()
-    for (const method of R5A_CONTRACT_METHODS) {
-      expect(contract, method).toHaveProperty(method)
-      expect(typeof contract[method]).toBe('function')
-    }
+  it('calls the project scoped database, execution and result routes with the A5 envelope', async () => {
+    fetchMock
+      .mockResolvedValueOnce({ ok: true, status: 200, json: async () => ({ code: 0, msg: 'success', data: [{ name: 'analytics' }] }) })
+      .mockResolvedValueOnce({ ok: true, status: 200, json: async () => ({ code: 0, msg: 'success', data: { taskId: 'task-1' } }) })
+      .mockResolvedValueOnce({ ok: true, status: 200, json: async () => ({ code: 0, msg: 'success', data: { stmtIndex: 0, columns: ['value'], rows: [[1]], rowsTotal: 1, offset: 0, limit: 50 } }) })
+    const contract = createSqlIdeContract(23)
+
+    await expect(contract.listDatabases(9)).resolves.toEqual([{ name: 'analytics' }])
+    await expect(contract.executeSql({ datasourceId: 9, db: 'analytics', sql: 'select 1', mode: 'auto' })).resolves.toEqual({ taskId: 'task-1' })
+    await expect(contract.fetchResultPage(81, 0, 0, 50)).resolves.toMatchObject({ rows: [[1]], rowsTotal: 1 })
+
+    expect(fetchMock.mock.calls.map(([url, init]) => [url, init?.method])).toEqual([
+      ['/api/v1/projects/23/sql-ide/databases?datasourceId=9', 'GET'],
+      ['/api/v1/projects/23/sql-ide/executions', 'POST'],
+      ['/api/v1/projects/23/sql-ide/results/81?stmtIndex=0&offset=0&limit=50', 'GET'],
+    ])
+    expect(JSON.parse(fetchMock.mock.calls[1][1].body)).toEqual({ datasourceId: 9, db: 'analytics', sql: 'select 1', mode: 'auto' })
+    expect(fetchMock.mock.calls[0][1].headers).toMatchObject({ token: 'test-token' })
   })
 
-  it('every I/O method refuses until A5 backend is wired', async () => {
-    const contract = createSqlIdeContract()
-    const cases: Promise<unknown>[] = [
-      contract.listDatabases(0),
-      contract.listSchemas(0, 'db'),
-      contract.listRelations(0, 'db', null, 'table'),
-      contract.listColumns(0, 'db', 't', null),
-      contract.listRoutines(0, 'db', null, 'procedure'),
-      contract.listIndexes(0, 'db', 't'),
-      contract.searchObjects(0, 'kw'),
-      contract.lintSql(0, 'SELECT 1'),
-      contract.executeSql({ datasourceId: 0, db: null, sql: 'SELECT 1', mode: 'auto' }),
-      contract.cancelExecution('task'),
-      contract.fetchResultPage(1, 0, 0, 50),
-      contract.listHistory(0),
-      contract.deleteHistory(1),
-      contract.listScripts(),
-      contract.saveScript({ name: 's', sqlText: 'SELECT 1' }),
-      contract.deleteScript(1),
-    ]
-    for (const p of cases) {
-      await expect(p).rejects.toThrow(R5A_BACKEND_NOT_WIRED)
-    }
-  })
-
-  it('openEventStream (sync factory) refuses before A5 wiring', () => {
-    const contract = createSqlIdeContract()
-    expect(() => contract.openEventStream('task')).toThrow(R5A_BACKEND_NOT_WIRED)
+  it('surfaces error_catalog envelopes as typed API errors', async () => {
+    fetchMock.mockResolvedValueOnce({ ok: false, status: 403, json: async () => ({ code: 403, msg: 'Operation is not permitted', data: { errorCode: 'PERMISSION_DENIED', details: {} } }) })
+    await expect(createSqlIdeContract(23).listDatabases(9)).rejects.toMatchObject({
+      message: 'Operation is not permitted', code: 403, errorCode: 'PERMISSION_DENIED',
+    })
   })
 })

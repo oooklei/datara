@@ -144,6 +144,130 @@ export interface LintItem {
 
 export const R5A_BACKEND_NOT_WIRED = 'R5A_BACKEND_NOT_WIRED: A5 (rebuild/sql_ide) contract not connected yet'
 
+import { getToken } from '../http'
+
+const API_BASE = '/api/v1/projects'
+
+export class SqlIdeApiError extends Error {
+  readonly code: number
+  readonly errorCode?: string
+  readonly details?: unknown
+
+  constructor(message: string, code: number, errorCode?: string, details?: unknown) {
+    super(message)
+    this.name = 'SqlIdeApiError'
+    this.code = code
+    this.errorCode = errorCode
+    this.details = details
+  }
+}
+
+async function request<T>(projectId: number, path: string, method = 'GET', body?: unknown): Promise<T> {
+  const headers: Record<string, string> = {}
+  const token = getToken()
+  if (token) headers.token = token
+  if (body !== undefined) headers['Content-Type'] = 'application/json'
+  const response = await fetch(`${API_BASE}/${projectId}/sql-ide${path}`, {
+    method,
+    headers,
+    body: body === undefined ? undefined : JSON.stringify(body),
+  })
+  const envelope = await response.json().catch(() => null) as { code?: number; msg?: string; data?: T & { errorCode?: string; details?: unknown } } | null
+  if (!envelope || !response.ok || envelope.code !== 0) {
+    throw new SqlIdeApiError(
+      envelope?.msg || `SQL IDE request failed (HTTP ${response.status})`,
+      envelope?.code ?? response.status,
+      envelope?.data?.errorCode,
+      envelope?.data?.details,
+    )
+  }
+  return envelope.data as T
+}
+
+function query(values: Record<string, string | number | boolean | null | undefined>): string {
+  const params = new URLSearchParams()
+  for (const [key, value] of Object.entries(values)) {
+    if (value !== undefined && value !== null) params.set(key, String(value))
+  }
+  const encoded = params.toString()
+  return encoded ? `?${encoded}` : ''
+}
+
+function openAuthenticatedEventStream(projectId: number, taskId: string): EventSource {
+  const url = `${API_BASE}/${projectId}/sql-ide/executions/${encodeURIComponent(taskId)}/events`
+  const controller = new AbortController()
+  const callbacks = new Map<string, Set<EventListenerOrEventListenerObject>>()
+  let readyState: number = EventSource.CONNECTING
+  const stream = {
+    url,
+    withCredentials: false,
+    get readyState() { return readyState },
+    onopen: null as ((event: Event) => void) | null,
+    onmessage: null as ((event: MessageEvent) => void) | null,
+    onerror: null as ((event: Event) => void) | null,
+    close() {
+      controller.abort()
+      readyState = EventSource.CLOSED
+    },
+    addEventListener(type: string, listener: EventListenerOrEventListenerObject | null) {
+      if (!listener) return
+      const group = callbacks.get(type) ?? new Set<EventListenerOrEventListenerObject>()
+      group.add(listener)
+      callbacks.set(type, group)
+    },
+    removeEventListener(type: string, listener: EventListenerOrEventListenerObject | null) {
+      if (listener) callbacks.get(type)?.delete(listener)
+    },
+    dispatchEvent(event: Event) {
+      const group = callbacks.get(event.type)
+      group?.forEach((listener) => typeof listener === 'function' ? listener.call(stream, event) : listener.handleEvent(event))
+      const handler = event.type === 'message' ? stream.onmessage : event.type === 'open' ? stream.onopen : event.type === 'error' ? stream.onerror : null
+      handler?.call(stream, event as MessageEvent)
+      return !event.defaultPrevented
+    },
+  } as unknown as EventSource
+
+  const headers: Record<string, string> = { Accept: 'text/event-stream' }
+  const token = getToken()
+  if (token) headers.token = token
+  void fetch(url, { headers, signal: controller.signal }).then(async (response) => {
+    if (!response.ok || !response.body) {
+      const envelope = await response.json().catch(() => null) as { code?: number; msg?: string; data?: { errorCode?: string; details?: unknown } } | null
+      throw new SqlIdeApiError(envelope?.msg || `SQL IDE event stream failed (HTTP ${response.status})`, envelope?.code ?? response.status, envelope?.data?.errorCode, envelope?.data?.details)
+    }
+    readyState = EventSource.OPEN
+    stream.dispatchEvent(new Event('open'))
+    const reader = response.body.getReader()
+    const decoder = new TextDecoder()
+    let buffer = ''
+    let eventName = 'message'
+    let data: string[] = []
+    const flush = () => {
+      if (data.length) stream.dispatchEvent(new MessageEvent(eventName, { data: data.join('\n') }))
+      eventName = 'message'
+      data = []
+    }
+    while (!controller.signal.aborted) {
+      const { value, done } = await reader.read()
+      if (done) break
+      buffer += decoder.decode(value, { stream: true })
+      const lines = buffer.split(/\r?\n/)
+      buffer = lines.pop() ?? ''
+      for (const line of lines) {
+        if (!line) flush()
+        else if (line.startsWith('event:')) eventName = line.slice(6).trim() || 'message'
+        else if (line.startsWith('data:')) data.push(line.slice(5).trimStart())
+      }
+    }
+    readyState = EventSource.CLOSED
+  }).catch((error: unknown) => {
+    if (controller.signal.aborted) return
+    readyState = EventSource.CLOSED
+    stream.dispatchEvent(new ErrorEvent('error', { error, message: error instanceof Error ? error.message : String(error) }))
+  })
+  return stream
+}
+
 /** 契约方法清单（测试与 UI 横幅共用，保持单一事实源） */
 export const R5A_CONTRACT_METHODS = [
   'listDatabases',
@@ -190,39 +314,34 @@ export interface SqlIdeContract {
 
 /* ---------- RED 实现（A5 接入前统一抛哨兵；方法清单见 R5A_CONTRACT_METHODS） ---------- */
 
-/** 异步契约方法统一实现：rejected promise（同步 throw 会在调用点直接炸出，无法被 rejects 断言捕获） */
-const notWired = async (): Promise<never> => {
-  throw new Error(R5A_BACKEND_NOT_WIRED)
-}
-
-/** 同步契约方法（openEventStream 返回 EventSource 实例，非 Promise） */
-const notWiredSync = (): never => {
-  throw new Error(R5A_BACKEND_NOT_WIRED)
-}
-
 /**
  * R5-A 契约工厂（原型态）：签名与类型已冻结，实现在 Codex A5（rebuild/sql_ide/）就绪后
  * 按本接口逐方法替换，UI 层（SqlIdeReadonlyView）不感知切换。
  */
-export function createSqlIdeContract(): SqlIdeContract {
+export function createSqlIdeContract(projectId = 1): SqlIdeContract {
   return {
-    listDatabases: notWired,
-    listSchemas: notWired,
-    listRelations: notWired,
-    listColumns: notWired,
-    listRoutines: notWired,
-    listIndexes: notWired,
-    searchObjects: notWired,
-    lintSql: notWired,
-    executeSql: notWired,
-    cancelExecution: notWired,
-    openEventStream: notWiredSync,
-    fetchResultPage: notWired,
-    listHistory: notWired,
-    deleteHistory: notWired,
-    listScripts: notWired,
-    saveScript: notWired,
-    deleteScript: notWired,
+    listDatabases: (datasourceId) => request(projectId, `/databases${query({ datasourceId })}`),
+    listSchemas: (datasourceId, database) => request(projectId, `/schemas${query({ datasourceId, database })}`),
+    listRelations: (datasourceId, database, schema, kind) => request(projectId, `/relations${query({ datasourceId, database, schema, kind })}`),
+    listColumns: (datasourceId, database, table, schema) => request(projectId, `/columns${query({ datasourceId, database, table, schema })}`),
+    listRoutines: (datasourceId, database, schema, kind) => request(projectId, `/routines${query({ datasourceId, database, schema, kind })}`),
+    listIndexes: (datasourceId, database, table) => request(projectId, `/indexes${query({ datasourceId, database, table })}`),
+    searchObjects: (datasourceId, keyword) => request(projectId, `/objects/search${query({ datasourceId, keyword })}`),
+    lintSql: (datasourceId, sql) => request(projectId, '/lint', 'POST', { datasourceId, sql }),
+    executeSql: (input) => request(projectId, '/executions', 'POST', input),
+    cancelExecution: (taskId) => request(projectId, `/executions/${encodeURIComponent(taskId)}/cancel`, 'POST'),
+    openEventStream: (taskId) => openAuthenticatedEventStream(projectId, taskId),
+    fetchResultPage: (historyId, stmtIndex, offset, limit) => request(projectId, `/results/${historyId}${query({ stmtIndex, offset, limit })}`),
+    listHistory: (datasourceId) => request(projectId, `/history${query({ datasourceId })}`),
+    deleteHistory: async (historyId) => { await request(projectId, `/history/${historyId}`, 'DELETE') },
+    listScripts: () => request(projectId, '/scripts'),
+    saveScript: (input) => request(projectId, '/scripts', 'POST', input),
+    deleteScript: async (id) => { await request(projectId, `/scripts/${id}`, 'DELETE') },
   }
+}
+
+/** Fetch execution status for the readonly page's execute → result-page flow. */
+export function getSqlIdeExecutionStatus(projectId: number, taskId: string): Promise<{ status: string; historyId?: number | null }> {
+  return request(projectId, `/executions/${encodeURIComponent(taskId)}`)
 }
 

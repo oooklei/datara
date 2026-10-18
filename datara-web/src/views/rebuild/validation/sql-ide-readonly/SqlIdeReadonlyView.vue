@@ -7,7 +7,7 @@
 -->
 <template>
   <div class="r5a-page">
-    <el-alert
+    <el-alert v-if="false"
       type="warning"
       :closable="false"
       show-icon
@@ -15,6 +15,13 @@
       title="R5-A RED 骨架（原型态）— rebuild/sql_ide（A5）后端契约未接入，所有 I/O 返回 R5A_BACKEND_NOT_WIRED"
     />
 
+    <div class="r5a-connection">
+      <el-input-number v-model="datasourceId" :min="1" controls-position="right" aria-label="数据源 ID" />
+      <el-select v-model="databaseName" placeholder="选择数据库" :loading="loadingDatabases">
+        <el-option v-for="database in databases" :key="database.name" :label="database.name" :value="database.name" />
+      </el-select>
+      <el-button size="small" :loading="loadingDatabases" @click="loadDatabases">加载数据库</el-button>
+    </div>
     <el-descriptions :column="4" size="small" border class="r5a-context">
       <el-descriptions-item label="数据源">{{ datasourceName }}</el-descriptions-item>
       <el-descriptions-item label="数据库">{{ databaseName || '—' }}</el-descriptions-item>
@@ -84,12 +91,14 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 import { Splitpanes, Pane } from 'splitpanes'
 import 'splitpanes/dist/splitpanes.css'
 import {
   R5A_CONTRACT_METHODS,
   createSqlIdeContract,
+  getSqlIdeExecutionStatus,
+  type DatabaseMeta,
   type HistoryEntry,
   type SqlResultEvent,
 } from '../../../../services/rebuild/sqlIdeApi'
@@ -100,11 +109,15 @@ import HistoryDrawer from './components/HistoryDrawer.vue'
 
 defineOptions({ name: 'SqlIdeReadonlyView' })
 
-const contract = createSqlIdeContract()
+const projectId = 1
+const contract = createSqlIdeContract(projectId)
 const contractMethodCount = R5A_CONTRACT_METHODS.length
 
 /* 上下文（A5 就绪前为占位值；数据源选择接 rebuild governance catalog） */
-const datasourceName = ref('（未接入）')
+const datasourceName = ref('SQL IDE')
+const datasourceId = ref(1)
+const databases = ref<DatabaseMeta[]>([])
+const loadingDatabases = ref(false)
 const databaseName = ref('')
 const crossSchema = ref(false)
 const keyword = ref('')
@@ -123,6 +136,22 @@ const pageSize = ref(50)
 const onContractError = (message: string) => {
   statusText.value = message
 }
+
+async function loadDatabases() {
+  if (loadingDatabases.value) return
+  loadingDatabases.value = true
+  try {
+    databases.value = await contract.listDatabases(datasourceId.value)
+    if (!databaseName.value && databases.value.length) databaseName.value = databases.value[0].name
+    statusText.value = `${databases.value.length} 个数据库已加载`
+  } catch (err) {
+    statusText.value = err instanceof Error ? err.message : '数据库加载失败'
+  } finally {
+    loadingDatabases.value = false
+  }
+}
+
+onMounted(() => { void loadDatabases() })
 
 /* 多结果集（汇合点「分页/取消、多结果」：按 stmtIndex 页签 + 服务端分页取页） */
 const results = ref<SqlResultEvent[]>([])
@@ -155,9 +184,21 @@ const onExecute = () =>
   guard(
     async () => {
       /* 执行受理：回填 taskId 供取消使用；结果行经事件流（openEventStream）接入后写入 results */
-      const r = await contract.executeSql({ datasourceId: 0, db: null, sql: sqlText.value, mode: 'auto' })
+      const r = await contract.executeSql({ datasourceId: datasourceId.value, db: databaseName.value || null, sql: sqlText.value, mode: 'auto' })
       taskId.value = r.taskId
       running.value = true
+      let execution: { status: string; historyId?: number | null } = { status: 'pending' }
+      for (let attempt = 0; attempt < 60; attempt += 1) {
+        await new Promise((resolve) => setTimeout(resolve, 500))
+        execution = await getSqlIdeExecutionStatus(projectId, r.taskId)
+        if (execution.status === 'success' || execution.status === 'failure' || execution.status === 'canceled') break
+      }
+      running.value = false
+      historyId.value = execution.historyId ?? 0
+      if (!historyId.value) throw new Error(`SQL 执行状态：${execution.status}，未返回结果 ID`)
+      const result = await contract.fetchResultPage(historyId.value, 0, 0, pageSize.value)
+      results.value = [{ stmtIndex: result.stmtIndex, columns: result.columns, rows: result.rows, rowsTotal: result.rowsTotal, elapsedMs: 0 }]
+      activeStmt.value = result.stmtIndex
     },
     '执行',
   ).catch(() => undefined)
@@ -198,6 +239,11 @@ const onPageChange = (p: number, s: number) => {
 }
 .r5a-context {
   flex: none;
+}
+.r5a-connection {
+  display: flex;
+  align-items: center;
+  gap: 8px;
 }
 .r5a-body {
   flex: 1;
