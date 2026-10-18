@@ -223,12 +223,14 @@ def _ensure_task_log_index(session, instance_id: str, task_id: int, path: str, h
 class WorkflowExecuteRunnable(threading.Thread):
     """单实例执行线程：拓扑推进 + 逻辑节点内联 + 定时器（延时/依赖/重试）。"""
 
-    def __init__(self, instance_id: str, graph: Graph, resume: bool = False):
+    def __init__(self, instance_id: str, graph: Graph, resume: bool = False, fence_token: Optional[int] = None):
         super().__init__(name="wf-run-%s" % instance_id, daemon=True)
         self.instance_id = instance_id
         self.graph = graph
         self.resume = resume
+        self.fence_token = fence_token if fence_token is not None else queue.current_master_fence()
         self.events: Queue = Queue()
+        self._retry_lock = threading.RLock()
         self.wake = threading.Event()
         self.stop_flag = False
         self.killed = False
@@ -332,6 +334,8 @@ class WorkflowExecuteRunnable(threading.Thread):
                     "attempt": int(row.attempt or 1),
                     "start_time": row.start_time,
                     "delay_until": row.delay_until,
+                    "retry_deadline": row.retry_deadline,
+                    "retry_strategy": row.retry_strategy,
                 }
                 self.by_task_id[row.id] = key
         finally:
@@ -476,6 +480,8 @@ class WorkflowExecuteRunnable(threading.Thread):
             task.start_time = row["start_time"]
             task.end_time = row.get("end_time")
             task.delay_until = row.get("delay_until")
+            task.retry_deadline = row.get("retry_deadline")
+            task.retry_strategy = row.get("retry_strategy")
             if outputs is not None:
                 task.outputs = outputs
             if log_lines:
@@ -494,6 +500,9 @@ class WorkflowExecuteRunnable(threading.Thread):
         row["state"] = st
         if st in state.TERMINAL_STATES:
             row["end_time"] = now()
+            row["retry_deadline"] = None
+            row["retry_strategy"] = None
+            row["delay_until"] = None
         self._save_row(key, outputs=outputs, log_lines=log_lines)
 
     def _mark_instance_running(self) -> None:
@@ -589,9 +598,19 @@ class WorkflowExecuteRunnable(threading.Thread):
 
     def _schedule_retry(self, key: tuple, outputs: Optional[dict] = None) -> bool:
         """失败重试：仍有余额 → 置 retry 延迟重派（返回 True 表示已安排）。"""
+        lock = getattr(self, "_retry_lock", None)
+        if lock is None:
+            lock = threading.RLock()
+            self._retry_lock = lock
+        with lock:
+            return self._schedule_retry_locked(key, outputs)
+
+    def _schedule_retry_locked(self, key: tuple, outputs: Optional[dict] = None) -> bool:
         node_id, loop_iter = key
         cons = self._constraints(node_id)
         row = self.rows[key]
+        if row["state"] != state.FAILURE:
+            return False
         details = outputs if isinstance(outputs, dict) else {}
         kind = classify_error(
             str(details.get("exceptionType") or ""),
@@ -605,7 +624,12 @@ class WorkflowExecuteRunnable(threading.Thread):
             return False
         row["attempt"] += 1
         row["state"] = state.RETRY
-        self.timers_retry[key] = now() + timedelta(seconds=decision.delay_seconds)
+        deadline = now() + timedelta(seconds=decision.delay_seconds)
+        row["retry_deadline"] = deadline
+        row["retry_strategy"] = decision.strategy
+        # Keep the historical field populated for existing delay/retry readers.
+        row["delay_until"] = deadline
+        self.timers_retry[key] = deadline
         self._save_row(
             key,
             log_lines=[
@@ -2051,7 +2075,10 @@ class WorkflowExecuteRunnable(threading.Thread):
                         "实体 %s" % pi["upstreamRef"] if pi["resolved"] else "unresolved（上游未产出该结果表）",
                     )
                 )
-        queue.add_task(msg, priority=cons["priority"])
+        if self.fence_token is None:
+            queue.add_task(msg, priority=cons["priority"])
+        else:
+            queue.add_task_fenced(msg, priority=cons["priority"], fence_token=self.fence_token)
         self._save_row(key, log_lines=log_lines)
         logger.info("任务派发: task=%s node=%s type=%s", row["id"], node_id, self._node_type(node_id))
 
@@ -2077,6 +2104,9 @@ class WorkflowExecuteRunnable(threading.Thread):
                     continue  # kill/终态后定时器不复活任务
                 row["state"] = state.SUBMITTED
                 row["start_time"] = None
+                row["retry_deadline"] = None
+                row["retry_strategy"] = None
+                row["delay_until"] = None
                 self._save_row(key)
                 self.activated.discard(key)
                 self._execute_node(key)
@@ -2208,7 +2238,19 @@ class WorkflowExecuteRunnable(threading.Thread):
             if row["state"] in state.TERMINAL_STATES:
                 self._advance_downstream(node_id, loop_iter)
             elif row["state"] == state.RETRY:
-                self.timers_retry[key] = now() + timedelta(seconds=self._constraints(node_id)["retryIntervalSec"])
+                deadline = row.get("retry_deadline")
+                if deadline is None:
+                    deadline = row.get("delay_until")
+                if deadline is None:
+                    retry_seconds = self._constraints(node_id)["retryIntervalSec"]
+                    deadline = now() + timedelta(seconds=retry_seconds)
+                    logger.warning(
+                        "legacy retry row without deadline; using current retry interval: task=%s interval=%s",
+                        row.get("id"),
+                        retry_seconds,
+                    )
+                row["retry_deadline"] = deadline
+                self.timers_retry[key] = max(now(), deadline)
             elif ntype == "delay" and row["state"] in (state.RUNNING, state.FAULT_TOLERANCE):
                 row["state"] = state.RUNNING
                 due = row.get("delay_until") or now()

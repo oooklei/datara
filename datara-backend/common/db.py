@@ -119,6 +119,8 @@ def init_db() -> None:
         "src_type",
         "VARCHAR(16) NOT NULL DEFAULT 'runtime' COMMENT '血缘来源 runtime/design（对齐边表）'",
     )
+    _ensure_column(engine, "t_task_instance", "retry_deadline", "DATETIME NULL")
+    _ensure_column(engine, "t_task_instance", "retry_strategy", "VARCHAR(16) NULL")
     _s = new_session()
     try:
         seed_dict_tables(_s)

@@ -86,7 +86,8 @@ def _bind_store(db_session, monkeypatch, store):
                 "task_row_id": row["id"],
                 "state": persisted.state,
                 "attempt": persisted.attempt,
-                "deadline": persisted.delay_until,
+                "deadline": persisted.retry_deadline,
+                "strategy": persisted.retry_strategy,
             },
         )
 
@@ -120,8 +121,14 @@ def test_retry_deadline_is_persisted_and_survives_restart_without_recalculation(
     assert runnable._schedule_retry(KEY, {"error": "connection reset"}) is True
     persisted = db_session.get(TaskInstance, TASK_ID)
     original_deadline = clock.now() + timedelta(seconds=1)
-    assert persisted.delay_until == original_deadline
+    assert persisted.retry_deadline == original_deadline
+    assert persisted.retry_strategy == "transient"
     assert store.get("task", (RUN_ID, NODE_ID, 0))["deadline"] == original_deadline
+    assert store.get("task", (RUN_ID, NODE_ID, 0))["strategy"] == "transient"
+
+    # Remove the legacy field so restart cannot pass via delay_until fallback.
+    persisted.delay_until = None
+    db_session.commit()
 
     restarted = _runnable(attempt=2, row_state=state.RETRY)
     restarted.rows = {}
@@ -130,7 +137,7 @@ def test_retry_deadline_is_persisted_and_survives_restart_without_recalculation(
     restarted._load_rows()
     restarted._resume_sweep()
 
-    assert restarted.rows[KEY]["delay_until"] == original_deadline
+    assert restarted.rows[KEY]["retry_deadline"] == original_deadline
     assert restarted.timers_retry[KEY] == original_deadline
     assert restarted.timers_retry[KEY] != clock.now() + timedelta(seconds=3600)
 

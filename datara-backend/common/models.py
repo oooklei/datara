@@ -213,6 +213,8 @@ class TaskInstance(Base):
     attempt: Mapped[int] = mapped_column(Integer, default=1, comment="重试序号")
     loop_iter: Mapped[int] = mapped_column(Integer, default=0, comment="循环迭代号（C10 每轮迭代新建行，I3）")
     delay_until: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True, comment="延时到期（C8，I3）")
+    retry_deadline: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True, comment="自动重试到期时间")
+    retry_strategy: Mapped[Optional[str]] = mapped_column(String(16), nullable=True, comment="自动重试分类策略")
     start_time: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
     end_time: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
     host: Mapped[Optional[str]] = mapped_column(String(128), nullable=True, comment="执行 host")
