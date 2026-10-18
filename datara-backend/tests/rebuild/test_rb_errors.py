@@ -24,6 +24,9 @@ class TestRbErrorCode:
         "WRITE_PERMISSION_DENIED",
         "OBJECT_AMBIGUOUS",
         "OBJECT_NOT_VISIBLE",
+        "CAPABILITY_CONDITION_NOT_MET",
+        "CAPABILITY_UNSUPPORTED",
+        "CAPABILITY_UNKNOWN",
     }
 
     def test_all_codes_exist(self):
