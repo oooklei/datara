@@ -135,3 +135,10 @@ class FakeComplementBatchStore:
 
     def record_run(self, run_id: str, batch_id: str, run_date: str) -> None:
         self.runs[run_id] = {"batch_id": batch_id, "run_date": run_date}
+
+    def get(self, kind: str, key: str) -> dict[str, Any] | None:
+        collection = {"batch": self.batches, "run": self.runs}.get(kind)
+        if collection is None:
+            raise ValueError(f"unknown complement batch record kind: {kind}")
+        record = collection.get(key)
+        return deepcopy(record) if record is not None else None

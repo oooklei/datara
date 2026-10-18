@@ -13,7 +13,9 @@ import uvicorn
 from fastapi import FastAPI
 
 from common.log import get_logger, setup_logging
+from common.db import get_engine
 from master.heartbeat import MasterHeartbeat
+from master.priority import migrate_command_priority_direction
 from master.scheduler import LeaderGate, command_loop, state_loop, timeout_loop
 from master.schedule import schedule_loop
 from master.ssh_probe import ssh_probe_loop
@@ -34,6 +36,9 @@ def main() -> None:
     setup_logging("master")
     logger = get_logger("master")
     logger.info("master 模块启动")
+
+    migrated = migrate_command_priority_direction(get_engine())
+    logger.info("workflow/task priority direction migration complete; rows=%s", migrated)
 
     heartbeat = MasterHeartbeat(port=18001)
     heartbeat.start()
