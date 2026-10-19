@@ -146,8 +146,8 @@ def _tick(cache: dict) -> None:
                 entry["next"] = following
                 continue
 
-            if misfire == "SKIP" and (len(due) > 1 or overflow):
-                fired: list[datetime] = []
+            if misfire == "SKIP":
+                fired: list[datetime] = [due[0]] if due and due[0] == current else []
             elif misfire == "FIRE_ONCE":
                 fired = [due[-1]] if due else []
             else:  # FIRE_ALL_LIMITED
@@ -156,7 +156,9 @@ def _tick(cache: dict) -> None:
             for planned in fired:
                 _fire(session, schedule, planned)
             # QUEUE retains unserved occurrences; other policies consume the missed window.
-            if concurrency == "QUEUE" and len(fired) < len(due):
+            if misfire == "SKIP":
+                entry["next"] = following
+            elif concurrency == "QUEUE" and len(fired) < len(due):
                 entry["next"] = due[len(fired)] if fired else due[0]
             else:
                 entry["next"] = following

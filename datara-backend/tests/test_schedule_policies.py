@@ -66,6 +66,90 @@ def test_misfire_policies_fire_once_skip_or_catch_up(monkeypatch, db_session):
     assert len(by_plan[plans[2].id]) == 6
 
 
+def test_skip_policy_skips_a_single_overdue_occurrence(monkeypatch, db_session):
+    fired = []
+    monkeypatch.setattr(schedule, "new_session", lambda: db_session)
+    current = datetime(2026, 10, 19, 8, 0, 30, tzinfo=schedule.ZoneInfo("Asia/Shanghai"))
+    monkeypatch.setattr(schedule, "_schedule_now", lambda _plan: current)
+    monkeypatch.setattr(schedule, "_active_for_schedule", lambda *_: 0)
+    monkeypatch.setattr(schedule, "_fire", lambda _session, plan, planned: fired.append((plan.id, planned)))
+    plan = _plan(db_session, crontab="* * * * * 0", misfire_policy="SKIP")
+    first = datetime(2026, 10, 19, 8, 0, 0, tzinfo=schedule.ZoneInfo("Asia/Shanghai"))
+    cache = _entry(plan, first)
+
+    schedule._tick(cache)
+
+    assert fired == []
+    assert cache[plan.id]["next"] == datetime(
+        2026, 10, 19, 8, 1, 0, tzinfo=schedule.ZoneInfo("Asia/Shanghai")
+    )
+
+
+def test_skip_normal_due_fires_at_exact_second(monkeypatch, db_session):
+    fired = []
+    monkeypatch.setattr(schedule, "new_session", lambda: db_session)
+    current = datetime(2026, 10, 19, 8, 0, 1, tzinfo=schedule.ZoneInfo("Asia/Shanghai"))
+    monkeypatch.setattr(schedule, "_schedule_now", lambda _plan: current)
+    monkeypatch.setattr(schedule, "_active_for_schedule", lambda *_: 0)
+    monkeypatch.setattr(schedule, "_fire", lambda _session, plan, planned: fired.append((plan.id, planned)))
+    plan = _plan(db_session, misfire_policy="SKIP")
+    cache = _entry(plan, current)
+
+    schedule._tick(cache)
+
+    assert fired == [(plan.id, current)]
+    assert cache[plan.id]["next"] == datetime(
+        2026, 10, 19, 8, 0, 2, tzinfo=schedule.ZoneInfo("Asia/Shanghai")
+    )
+
+
+def test_skip_current_equals_first_fires_at_minute_boundary(monkeypatch, db_session):
+    fired = []
+    monkeypatch.setattr(schedule, "new_session", lambda: db_session)
+    current = datetime(2026, 10, 19, 8, 0, 0, tzinfo=schedule.ZoneInfo("Asia/Shanghai"))
+    monkeypatch.setattr(schedule, "_schedule_now", lambda _plan: current)
+    monkeypatch.setattr(schedule, "_active_for_schedule", lambda *_: 0)
+    monkeypatch.setattr(schedule, "_fire", lambda _session, plan, planned: fired.append((plan.id, planned)))
+    plan = _plan(db_session, crontab="* * * * * 0", misfire_policy="SKIP")
+    cache = _entry(plan, current)
+
+    schedule._tick(cache)
+
+    assert fired == [(plan.id, current)]
+    assert cache[plan.id]["next"] == datetime(
+        2026, 10, 19, 8, 1, 0, tzinfo=schedule.ZoneInfo("Asia/Shanghai")
+    )
+
+
+def test_queue_skip_advances_after_capacity_is_released(monkeypatch, db_session):
+    fired = []
+    occupied = {"value": 1}
+    monkeypatch.setattr(schedule, "new_session", lambda: db_session)
+    current = datetime(2026, 10, 19, 8, 0, 30, tzinfo=schedule.ZoneInfo("Asia/Shanghai"))
+    monkeypatch.setattr(schedule, "_schedule_now", lambda _plan: current)
+    monkeypatch.setattr(schedule, "_active_for_schedule", lambda *_: occupied["value"])
+    monkeypatch.setattr(schedule, "_fire", lambda _session, plan, planned: fired.append((plan.id, planned)))
+    plan = _plan(
+        db_session,
+        crontab="* * * * * 0",
+        misfire_policy="SKIP",
+        concurrency_policy="QUEUE",
+    )
+    first = datetime(2026, 10, 19, 8, 0, 0, tzinfo=schedule.ZoneInfo("Asia/Shanghai"))
+    cache = _entry(plan, first)
+
+    schedule._tick(cache)
+    assert cache[plan.id]["next"] == first
+
+    occupied["value"] = 0
+    schedule._tick(cache)
+
+    assert fired == []
+    assert cache[plan.id]["next"] == datetime(
+        2026, 10, 19, 8, 1, 0, tzinfo=schedule.ZoneInfo("Asia/Shanghai")
+    )
+
+
 def test_concurrency_forbid_skips_but_queue_retains_due_time(monkeypatch, db_session):
     fired = []
     monkeypatch.setattr(schedule, "new_session", lambda: db_session)
