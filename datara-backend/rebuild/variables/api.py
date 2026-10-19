@@ -38,6 +38,15 @@ class VariableDefinitionRequest(BaseModel):
     value: str
     description: str = ""
     sensitive: bool = False
+    # Optional ids required to address workflow/task scopes (parse-key authority).
+    workflow_id: int | None = None
+    task_id: str | None = None
+    # VAR-06: definition fields (design §13.5)
+    default_value: str | None = None
+    nullable: bool = True
+    format: str | None = None
+    timezone: str | None = None
+    business_calendar: str | None = None
 
 
 class CompleteRequest(BaseModel):
@@ -100,6 +109,8 @@ def build_variables_router(
     def list_variables(
         project_id: int = Query(...),
         scopes: str = Query(default=""),
+        workflow_id: int | None = Query(default=None),
+        task_id: str | None = Query(default=None),
         token: str = Header(default=""),
         authorization: str = Header(default=""),
     ):
@@ -115,8 +126,15 @@ def build_variables_router(
                     "value": item.value,
                     "description": item.description,
                     "sensitive": item.sensitive,
+                    "default_value": item.default_value,
+                    "nullable": item.nullable,
+                    "format": item.format,
+                    "timezone": item.timezone,
+                    "business_calendar": item.business_calendar,
                 }
-                for item in VariableRepository(outcome).list_all_with_scope(project_id)
+                for item in VariableRepository(outcome).list_all_with_scope(
+                    project_id, workflow_id=workflow_id, task_id=task_id
+                )
                 if not wanted or item.scope in wanted
             ]
         return {"code": 0, "msg": "success", "data": items}
@@ -141,12 +159,19 @@ def build_variables_router(
                     )
                 VariableRepository(outcome).upsert(
                     scope=body.scope,
-                    project_id=project_id if body.scope in ("project", "tmp") else None,
+                    project_id=project_id if body.scope in ("project", "tmp", "workflow", "task") else None,
                     name=body.name,
                     value=body.value,
                     value_type=body.value_type,
                     sensitive=body.sensitive,
                     description=body.description,
+                    workflow_id=body.workflow_id,
+                    task_id=body.task_id,
+                    default_value=body.default_value,
+                    nullable=body.nullable,
+                    format=body.format,
+                    timezone=body.timezone,
+                    business_calendar=body.business_calendar,
                 )
                 outcome.commit()
         except VariableDomainError as exc:

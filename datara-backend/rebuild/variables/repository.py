@@ -24,11 +24,24 @@ class VariableRepository:
 
     # -- definitions -------------------------------------------------------
 
-    def owner_key(self, scope: str, project_id: int | None) -> str:
+    def owner_key(
+        self,
+        scope: str,
+        project_id: int | None,
+        *,
+        workflow_id: int | None = None,
+        task_id: str | None = None,
+    ) -> str:
+        """Persisted owner key, aligned with the resolver's parse keys
+        (service.py:252/287): workflow/task require workflow_id/task_id."""
         if scope == "global":
             return "global"
         if scope in ("project", "tmp") and project_id is not None:
             return f"{scope}:{project_id}"
+        if scope == "workflow" and project_id is not None and workflow_id is not None:
+            return f"workflow:{project_id}:{workflow_id}"
+        if scope == "task" and project_id is not None and task_id is not None:
+            return f"task:{project_id}:{task_id}"
         raise VariableDomainError(4001, f"scope {scope!r} cannot be persisted for this project")
 
     def list_owner(self, owner_key: str) -> list[ResolvedVariable]:
@@ -49,9 +62,16 @@ class VariableRepository:
         value_type: str,
         sensitive: bool,
         description: str,
+        workflow_id: int | None = None,
+        task_id: str | None = None,
+        default_value: str | None = None,
+        nullable: bool = True,
+        format: str | None = None,
+        timezone: str | None = None,
+        business_calendar: str | None = None,
     ) -> VariableDefinitionRecord:
         validate_definition(scope, name, value_type, value)
-        owner = self.owner_key(scope, project_id)
+        owner = self.owner_key(scope, project_id, workflow_id=workflow_id, task_id=task_id)
         row = self._session.scalar(
             select(VariableDefinitionRecord).where(
                 VariableDefinitionRecord.owner_key == owner,
@@ -68,6 +88,11 @@ class VariableRepository:
                 value_json=value,
                 sensitive=sensitive,
                 description=description,
+                default_value=default_value,
+                nullable=nullable,
+                format=format,
+                timezone=timezone,
+                business_calendar=business_calendar,
             )
             self._session.add(row)
         else:
@@ -75,6 +100,11 @@ class VariableRepository:
             row.value_json = value
             row.sensitive = sensitive
             row.description = description
+            row.default_value = default_value
+            row.nullable = nullable
+            row.format = format
+            row.timezone = timezone
+            row.business_calendar = business_calendar
             row.updated_at = _now_shanghai()
         self._session.flush()
         return row
@@ -86,11 +116,24 @@ class VariableRepository:
         items.extend(self.list_owner(f"tmp:{project_id}"))
         return items
 
-    def list_all_with_scope(self, project_id: int) -> list[ResolvedVariable]:
-        """Stored variables visible from a bare project context, including global."""
+    def list_all_with_scope(
+        self,
+        project_id: int,
+        *,
+        workflow_id: int | None = None,
+        task_id: str | None = None,
+    ) -> list[ResolvedVariable]:
+        """Stored variables visible from a bare project context, including global.
+
+        workflow/task scopes are addressable only with their ids (parse-key
+        authority); without them those scopes yield nothing."""
         items: list[ResolvedVariable] = []
         items.extend(self.list_owner(f"project:{project_id}"))
         items.extend(self.list_owner(f"tmp:{project_id}"))
+        if workflow_id is not None:
+            items.extend(self.list_owner(f"workflow:{project_id}:{workflow_id}"))
+        if task_id is not None:
+            items.extend(self.list_owner(f"task:{project_id}:{task_id}"))
         items.extend(self.list_owner("global"))
         return items
 
@@ -103,6 +146,11 @@ class VariableRepository:
             value_type=row.value_type,
             sensitive=row.sensitive,
             description=row.description,
+            default_value=row.default_value,
+            nullable=row.nullable,
+            format=row.format,
+            timezone=row.timezone,
+            business_calendar=row.business_calendar,
         )
 
     # -- run snapshots -----------------------------------------------------
