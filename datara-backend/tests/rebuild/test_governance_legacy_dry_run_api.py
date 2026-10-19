@@ -119,15 +119,19 @@ def test_validation_runner_cannot_execute_enabled_i18_import(monkeypatch):
     assert response.json()["code"] == 1003
 
 
-def test_i18_import_rejects_unapproved_project_before_opening_source(monkeypatch):
-    client, _app, _validation_headers, _project_id, other_project_id = _client(
+def test_i18_import_rejects_out_of_scope_plan_before_executing(monkeypatch):
+    # New contract: the 4099 gate validates the latest dry-run plan shape
+    # (project-agnostic) after opening the source snapshot, so the fake
+    # zero-count snapshot must be rejected before the importer runs.
+    client, app, _validation_headers, _project_id, other_project_id = _client(
         monkeypatch, import_enabled=True
     )
-    from rebuild.governance.legacy_source_reader import LegacyI18SourceReader
+    from rebuild.governance import api as governance_api
+    from rebuild.governance.snapshot_repository import LegacyI18TargetSnapshotRepository
     from rebuild.identity.models import UserRecord
     from rebuild.identity.passwords import hash_password
 
-    with _app.state.session_factory() as session, session.begin():
+    with app.state.session_factory() as session, session.begin():
         session.add(
             UserRecord(
                 id=76,
@@ -140,23 +144,38 @@ def test_i18_import_rejects_unapproved_project_before_opening_source(monkeypatch
         "/api/v1/rebuild/login",
         json={"username": "approved-scope-operator", "password": "scope-test-password"},
     )
+    assert login.status_code == 200
     headers = {"Authorization": f"Bearer {login.json()['data']['token']}"}
 
-    def must_not_open(_cls):
-        raise AssertionError("unapproved project must be rejected before source access")
+    with app.state.session_factory() as session:
+        target_digest = (
+            LegacyI18TargetSnapshotRepository(session)
+            .read_project_snapshot(other_project_id)
+            .digest
+        )
 
-    monkeypatch.setattr(LegacyI18SourceReader, "from_runtime_env", classmethod(must_not_open))
+    importer_calls = []
+    monkeypatch.setattr(
+        governance_api,
+        "execute_i18_legacy_import",
+        lambda *args, **kwargs: importer_calls.append((args, kwargs)),
+        raising=False,
+    )
     try:
         response = client.post(
             f"/api/v1/rebuild/governance/projects/{other_project_id}/legacy/i18/import",
             headers=headers,
-            json=_import_request(other_project_id, "a" * 64, "b" * 64),
+            json=_import_request(other_project_id, "b" * 64, target_digest),
         )
+        with app.state.session_factory() as session:
+            batch_count = session.scalar(select(func.count()).select_from(MigrationBatchRecord))
     finally:
         client.__exit__(None, None, None)
 
     assert response.status_code == 409
     assert response.json()["code"] == 4099
+    assert importer_calls == []
+    assert batch_count == 0
 
 
 def test_i18_import_api_checks_project_edit_before_opening_source(monkeypatch):
@@ -355,7 +374,25 @@ def test_enabled_i18_import_api_requires_fresh_digests_and_calls_service(monkeyp
 
 
 def test_i18_dry_run_api_returns_snapshot_evidence_and_plan_without_mutation(monkeypatch):
-    client, app, headers, project_id, _denied_project_id = _client(monkeypatch)
+    client, app, _validation_headers, project_id, _denied_project_id = _client(monkeypatch)
+    from rebuild.identity.models import UserRecord
+    from rebuild.identity.passwords import hash_password
+
+    with app.state.session_factory() as session, session.begin():
+        session.add(
+            UserRecord(
+                id=80,
+                username="dry-run-operator",
+                password_hash=hash_password("dry-run-password"),
+                role="admin",
+            )
+        )
+    login = client.post(
+        "/api/v1/rebuild/login",
+        json={"username": "dry-run-operator", "password": "dry-run-password"},
+    )
+    assert login.status_code == 200
+    headers = {"Authorization": f"Bearer {login.json()['data']['token']}"}
     try:
         response = client.post(
             f"/api/v1/rebuild/governance/projects/{project_id}/legacy/i18/dry-run",
@@ -399,7 +436,25 @@ def test_i18_dry_run_api_serializes_approved_skip_and_mapping_notes(monkeypatch)
     from rebuild.governance.legacy_dry_run import DryRunEntry, I18DryRunPlan
     from rebuild.governance.legacy_migration_service import I18LegacyDryRunResult
 
-    client, app, headers, project_id, _denied_project_id = _client(monkeypatch)
+    client, app, _validation_headers, project_id, _denied_project_id = _client(monkeypatch)
+    from rebuild.identity.models import UserRecord
+    from rebuild.identity.passwords import hash_password
+
+    with app.state.session_factory() as session, session.begin():
+        session.add(
+            UserRecord(
+                id=81,
+                username="dry-run-serializer-operator",
+                password_hash=hash_password("serializer-password"),
+                role="admin",
+            )
+        )
+    login = client.post(
+        "/api/v1/rebuild/login",
+        json={"username": "dry-run-serializer-operator", "password": "serializer-password"},
+    )
+    assert login.status_code == 200
+    headers = {"Authorization": f"Bearer {login.json()['data']['token']}"}
     captured_at = datetime(2026, 10, 15, tzinfo=timezone.utc)
     plan = I18DryRunPlan(
         project_id=project_id,

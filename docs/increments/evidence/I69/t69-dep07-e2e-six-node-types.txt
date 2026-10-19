@@ -1,0 +1,18 @@
+============================= test session starts =============================
+platform win32 -- Python 3.12.1, pytest-9.0.3, pluggy-1.6.0 -- C:\Program Files\Python312\python.exe
+cachedir: .pytest_cache
+rootdir: D:\需求\数据治理工具\Datara\datara-backend
+configfile: pyproject.toml
+plugins: Faker-40.39.0, anyio-4.13.0, langsmith-0.8.16, asyncio-1.4.0
+asyncio: mode=Mode.STRICT, debug=False, asyncio_default_fixture_loop_scope=None, asyncio_default_test_loop_scope=function
+collecting ... collected 7 items
+
+tests/rebuild/test_e2e_six_node_types.py::test_sql_node_formal_lifecycle_with_real_execution_port PASSED [ 14%]
+tests/rebuild/test_e2e_six_node_types.py::test_python_shell_pipeline_formal_state_machine PASSED [ 28%]
+tests/rebuild/test_e2e_six_node_types.py::test_sync_node_bridge_persists_metrics_stats_and_lineage PASSED [ 42%]
+tests/rebuild/test_e2e_six_node_types.py::test_dependency_node_evaluate_reports_pending_without_history PASSED [ 57%]
+tests/rebuild/test_e2e_six_node_types.py::test_stream_instance_job_lifecycle_and_checkpoint_roundtrip PASSED [ 71%]
+tests/rebuild/test_e2e_six_node_types.py::test_dep12_cancel_failure_guard_redispatch_and_attempt_isolation PASSED [ 85%]
+tests/rebuild/test_e2e_six_node_types.py::test_dep11_variable_reference_five_diagnostic_codes PASSED [100%]
+
+============================== 7 passed in 7.91s ==============================

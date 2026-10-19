@@ -1,0 +1,26 @@
+........................................................................ [  8%]
+..................................................................F.F... [ 16%]
+....................F.FFF............................................... [ 24%]
+......F.FFFF............................................................ [ 33%]
+........................................................................ [ 41%]
+........................................................................ [ 49%]
+........................................................................ [ 58%]
+.......................................s................................ [ 66%]
+........................................................................ [ 74%]
+........................................................................ [ 83%]
+........................................................................ [ 91%]
+........................................................................ [ 99%]
+..                                                                       [100%]
+=========================== short test summary info ===========================
+FAILED tests/rebuild/test_governance_legacy_i19_preview_api.py::test_i19_mapping_preview_is_project_scoped_read_only_and_import_disabled
+FAILED tests/rebuild/test_governance_legacy_i19_preview_api.py::test_i19_preview_never_reuses_another_projects_asset_mapping_or_returns_source_values
+FAILED tests/rebuild/test_governance_legacy_i20_preview_api.py::test_i20_mapping_preview_is_project_scoped_payload_free_and_read_only
+FAILED tests/rebuild/test_governance_legacy_i20_preview_api.py::test_i20_target_identity_lookup_does_not_cross_project_scope
+FAILED tests/rebuild/test_governance_legacy_i20_preview_api.py::test_i20_orphan_version_is_blocked_and_raw_snapshot_is_not_returned
+FAILED tests/rebuild/test_governance_legacy_i20_preview_api.py::test_i20_duplicate_metric_identity_is_blocked_instead_of_counted_as_candidate
+FAILED tests/rebuild/test_governance_legacy_i23_mapping.py::test_i23_mapper_preserves_explicit_user_identity_and_role_without_credentials
+FAILED tests/rebuild/test_governance_legacy_i23_mapping.py::test_i23_mapper_blocks_missing_and_non_equivalent_target_users
+FAILED tests/rebuild/test_governance_legacy_i23_mapping.py::test_i23_mapper_rejects_unknown_roles_states_duplicate_users_and_invalid_ids
+FAILED tests/rebuild/test_governance_legacy_i23_mapping.py::test_i23_mapper_requires_complete_source_shape_and_valid_timestamps
+FAILED tests/rebuild/test_governance_legacy_i23_preview_api.py::test_i23_capability_is_endpoint_only_and_preview_is_read_only
+11 failed, 854 passed, 1 skipped in 273.21s (0:04:33)
