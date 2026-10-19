@@ -23,6 +23,7 @@ from rebuild.common.db import Base
 from rebuild.sql_ide.audit import SqlIdeAuditRecord, build_audit_writer
 from rebuild.sql_ide.export_service import SqlIdeExportAuditRecord, SqlIdeExportJobRecord
 from rebuild.sql_ide.execution import build_execution_port
+from rebuild.sql_ide.routes import build_sql_ide_router
 from rebuild.sql_ide.result_store import SqlIdeResultSetRecord
 from rebuild.identity.contracts import Permission, Role, TokenService, authorize
 from rebuild.identity.models import ProjectMemberRecord, UserRecord
@@ -38,6 +39,8 @@ from rebuild.project.repository import ProjectRepository
 from rebuild.project.models import ProjectRecord
 from rebuild.resources.api import build_resources_router
 from rebuild.resources.models import ResourceBindingRecord, ResourceRecord, ResourceVersionRecord
+from rebuild.sync.api import build_sync_router
+from rebuild.sync.models import SyncTaskDefinitionRecord
 from rebuild.governance.api import build_governance_router
 from rebuild.metrics.api import build_metrics_router
 from rebuild.metrics.models import (
@@ -54,6 +57,15 @@ from rebuild.rb.api import build_rb_router
 from rebuild.rb.facade.rb_facade import RbFacade
 from rebuild.rb.impact.impact_snapshot import ImpactSnapshotService
 from rebuild.rb.policy.policy_snapshot import PolicySnapshotService
+from rebuild.workflow.api import build_workflow_router
+from rebuild.workflow.models import (
+    WorkflowDefinitionRecord,
+    WorkflowEdgeRecord,
+    WorkflowNodeRecord,
+    WorkflowPublishRecord,
+    WorkflowScheduleRecord,
+    WorkflowVersionRecord,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -154,6 +166,7 @@ def create_app(
                 VariableDefinitionRecord.__table__,
                 TaskInstanceVariableRuntimeRecord.__table__,
                 DependencyConfigRecord.__table__,
+                SyncTaskDefinitionRecord.__table__,
                 ResourceRecord.__table__,
                 ResourceVersionRecord.__table__,
                 ResourceBindingRecord.__table__,
@@ -167,6 +180,12 @@ def create_app(
                 SqlIdeResultSetRecord.__table__,
                 SqlIdeExportJobRecord.__table__,
                 SqlIdeExportAuditRecord.__table__,
+                WorkflowDefinitionRecord.__table__,
+                WorkflowVersionRecord.__table__,
+                WorkflowNodeRecord.__table__,
+                WorkflowEdgeRecord.__table__,
+                WorkflowScheduleRecord.__table__,
+                WorkflowPublishRecord.__table__,
             ],
         )
         ensure_i1_schema()
@@ -187,6 +206,39 @@ def create_app(
 
     def pooled_connector(project_id: int, datasource_id: int):
         return lambda draft: datasource_engines.connect(project_id, datasource_id, draft)
+
+    def sql_ide_authenticate(token: str, authorization: str) -> dict[str, object]:
+        raw = token or (authorization[7:] if authorization.startswith("Bearer ") else "")
+        if not raw or raw not in active_tokens:
+            raise ValueError("token revoked or unknown")
+        claims = token_service.verify(raw)
+        if "capability" in claims:
+            raise ValueError("scoped capability is not valid for SQL IDE routes")
+        return claims
+
+    def sql_ide_authorize(project_id, principal, permission, operation, payload):
+        del operation, payload
+        permission_value = Permission[permission]
+        with session_factory() as session:
+            return project_permission_error(session, project_id, principal, permission_value)
+
+    def sql_ide_dispatch(operation, *, project_id, principal, payload):
+        # The async execution/event service is not assembled in this host yet.
+        # Keep every SQL IDE operation fail-closed until a real service is injected.
+        del operation, project_id, principal, payload
+        return JSONResponse(
+            status_code=501,
+            content={"code": 501, "msg": "SQL IDE service is not configured", "data": None},
+        )
+
+    app.state.sql_ide_dispatch = sql_ide_dispatch
+    app.include_router(
+        build_sql_ide_router(
+            dispatch=lambda operation, **kwargs: app.state.sql_ide_dispatch(operation, **kwargs),
+            authenticate=sql_ide_authenticate,
+            authorize=sql_ide_authorize,
+        )
+    )
 
     @app.get("/api/v1/rebuild/health")
     def health() -> dict[str, object]:
@@ -754,6 +806,15 @@ def create_app(
     app.include_router(
         build_resources_router(session_factory, token_service, active_tokens, project_permission_error),
         prefix="/api/v1/rebuild/resources",
+    )
+    app.include_router(
+        build_workflow_router(session_factory, token_service, active_tokens, project_permission_error),
+        prefix="/api/v1/rebuild/workflows",
+    )
+    # R4-SYNC domain (unlocked after R3 closure): sync definition/mapping/explore.
+    app.include_router(
+        build_sync_router(session_factory, token_service, active_tokens, project_permission_error, pooled_connector),
+        prefix="/api/v1/rebuild/sync",
     )
     # P2-3 R5-B rb domain API: #22/#23 bind the real snapshot services;
     # #24/#25 services are stage-D undelivered, the facade fails closed (502).

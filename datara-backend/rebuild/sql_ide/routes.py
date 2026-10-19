@@ -9,6 +9,7 @@ moving those concerns into this module.
 from __future__ import annotations
 
 import inspect
+import hashlib
 import json
 from dataclasses import dataclass
 from typing import Any, Awaitable, Callable, Mapping
@@ -94,9 +95,13 @@ def build_sql_ide_router(
             if not isinstance(body, Mapping):
                 return _error_response(SqlIdeRouteError("INVALID_REQUEST"))
             payload.update(body)
+        token = request.headers.get("token", "")
+        authorization = request.headers.get("authorization", "")
+        if operation == "openEventStream" and not token and not authorization:
+            token = request.cookies.get(_event_cookie_name(str(path_values.get("task_id", ""))), "")
         try:
             principal = await _maybe_await(
-                authenticate(request.headers.get("token", ""), request.headers.get("authorization", ""))
+                authenticate(token, authorization)
             )
         except Exception:
             return _error_response(SqlIdeRouteError("UNAUTHENTICATED"))
@@ -114,7 +119,22 @@ def build_sql_ide_router(
             )
         except SqlIdeRouteError as exc:
             return _error_response(exc)
-        return result if isinstance(result, Response) else {"code": 0, "msg": "success", "data": result}
+        if isinstance(result, Response):
+            return result
+        response = JSONResponse(content={"code": 0, "msg": "success", "data": result})
+        if operation == "executeSql" and isinstance(result, Mapping):
+            task_id = result.get("taskId") or result.get("task_id")
+            if task_id and result.get("accepted", True):
+                response.set_cookie(
+                    key=_event_cookie_name(str(task_id)),
+                    value=token or _bearer_token(authorization),
+                    httponly=True,
+                    secure=True,
+                    samesite="strict",
+                    path=f"/api/v1/projects/{project_id}/sql-ide/executions/{task_id}/events",
+                    max_age=3600,
+                )
+        return response
 
     def make_endpoint(operation: str, permission: str, has_body: bool, path_parameters: tuple[str, ...]):
         async def endpoint(request: Request, **path_values: Any) -> Any:
@@ -150,6 +170,16 @@ def build_sql_ide_router(
 
 async def _maybe_await(value: Any) -> Any:
     return await value if inspect.isawaitable(value) else value
+
+
+def _bearer_token(authorization: str) -> str:
+    return authorization[7:] if authorization.startswith("Bearer ") else ""
+
+
+def _event_cookie_name(task_id: str) -> str:
+    # Hash the identifier so caller-controlled task IDs cannot alter cookie syntax.
+    suffix = hashlib.sha256(task_id.encode("utf-8")).hexdigest()[:24]
+    return f"sql_ide_event_{suffix}"
 
 
 def _error_response(error: SqlIdeRouteError) -> JSONResponse:

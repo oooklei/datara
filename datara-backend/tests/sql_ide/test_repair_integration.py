@@ -147,6 +147,30 @@ class TestSchemaMigration:
                 }
                 assert required.issubset(columns)
 
+    def test_result_snapshot_table_exists_after_lifespan(self):
+        from rebuild.api.app import create_app
+
+        with patch.dict(os.environ, {
+            "REBUILD_DB_URL": "sqlite:///:memory:",
+            "REBUILD_TOKEN_SECRET": "test-secret",
+        }, clear=True):
+            app = create_app()
+            with TestClient(app):
+                tables = set(inspect(app.state.session_factory.kw["bind"]).get_table_names())
+                assert "sql_ide_result_sets" in tables
+
+    def test_export_tables_exist_after_lifespan(self):
+        from rebuild.api.app import create_app
+
+        with patch.dict(os.environ, {
+            "REBUILD_DB_URL": "sqlite:///:memory:",
+            "REBUILD_TOKEN_SECRET": "test-secret",
+        }, clear=True):
+            app = create_app()
+            with TestClient(app):
+                tables = set(inspect(app.state.session_factory.kw["bind"]).get_table_names())
+                assert {"sql_ide_export_jobs", "sql_ide_export_audit"} <= tables
+
 
 # ---------------------------------------------------------------------------
 # Gap3: DB integration (real ORM, not mock)

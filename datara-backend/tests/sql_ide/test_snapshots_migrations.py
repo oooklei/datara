@@ -56,7 +56,7 @@ def test_export_job_store_enforces_configured_limits_and_expiry():
         )
         assert job["status"] == "queued"
         assert job["expires_at"] == "2026-10-19T01:00:00Z"
-        assert store.get_job(export_id=job["export_id"])["row_count"] == DEFAULT_EXPORT_MAX_ROWS
+        assert store.get_job(export_id=job["export_id"], now=now)["row_count"] == DEFAULT_EXPORT_MAX_ROWS
 
         with pytest.raises(ValueError, match="export limit exceeded"):
             store.create_job(

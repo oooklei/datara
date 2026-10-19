@@ -11,6 +11,7 @@ XAUTOCLAIM 认领 idle 超阈值的 pending 消息补执行。
 """
 
 import json
+import hashlib
 import os
 import socket
 import threading
@@ -34,6 +35,89 @@ KILL_PREFIX = "datara:kill:"
 
 MASTER_GROUP = "datara-master"
 WORKER_GROUP = "datara-worker"
+MASTER_FENCE_KEY = "datara:master:fence:epoch"
+TASK_OUTBOX_KEY = "datara:stream:tasks:outbox"
+
+
+class StaleMasterFence(RuntimeError):
+    """A dispatch was attempted by a master whose fence token is no longer current."""
+
+
+class DispatchPayloadConflict(RuntimeError):
+    """The same task attempt was replayed with a different payload."""
+
+
+_FENCED_ENQUEUE_SCRIPT = """
+local current = redis.call('GET', KEYS[1])
+if not current or tonumber(current) ~= tonumber(ARGV[1]) then
+    return redis.error_reply('STALE_MASTER_FENCE')
+end
+local previous = redis.call('HGET', KEYS[2], ARGV[2])
+if previous then
+    local separator = string.find(previous, '|', 1, true)
+    if string.sub(previous, 1, separator - 1) ~= ARGV[4] then
+        return redis.error_reply('DISPATCH_PAYLOAD_CONFLICT')
+    end
+    return string.sub(previous, separator + 1)
+end
+local message_id = redis.call('XADD', KEYS[3], '*', 'data', ARGV[3])
+redis.call('HSET', KEYS[2], ARGV[2], ARGV[4] .. '|' .. message_id)
+return message_id
+"""
+
+_active_master_fence: int | None = None
+
+
+def claim_master_fence() -> int:
+    """Allocate a monotonically increasing process fence from the shared Redis primary."""
+    return int(get_client().incr(MASTER_FENCE_KEY))
+
+
+def set_master_fence(token: int | None) -> None:
+    """Expose the current leader's immutable token to newly created runnables."""
+    global _active_master_fence
+    _active_master_fence = int(token) if token is not None else None
+
+
+def current_master_fence() -> int | None:
+    return _active_master_fence
+
+
+def add_task_fenced(payload: dict, priority: int, fence_token: int) -> str:
+    """Atomically fence, deduplicate, and enqueue one task attempt in Redis.
+
+    The Redis hash is the durable outbox receipt. Lua keeps its receipt and XADD
+    in one atomic operation, so replay after a crash returns the original ID.
+    """
+    instance_id = payload.get("instanceId")
+    task_id = payload.get("taskId")
+    attempt = payload.get("attempt")
+    if not instance_id or task_id is None or not isinstance(attempt, int) or attempt < 1:
+        raise ValueError("fenced dispatch requires instanceId, taskId, and a positive attempt")
+    dispatch_key = f"{instance_id}:{task_id}:{attempt}"
+    encoded = dumps(payload)
+    canonical = json.dumps(payload, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+    digest = hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+    try:
+        result = get_client().eval(
+            _FENCED_ENQUEUE_SCRIPT,
+            3,
+            MASTER_FENCE_KEY,
+            TASK_OUTBOX_KEY,
+            priority_stream(priority),
+            int(fence_token),
+            dispatch_key,
+            encoded,
+            digest,
+        )
+    except redis.exceptions.ResponseError as exc:
+        message = str(exc)
+        if "STALE_MASTER_FENCE" in message:
+            raise StaleMasterFence("stale leader fence") from None
+        if "DISPATCH_PAYLOAD_CONFLICT" in message:
+            raise DispatchPayloadConflict("attempt payload changed") from None
+        raise
+    return result.decode("utf-8") if isinstance(result, bytes) else str(result)
 
 
 def master_consumer() -> str:

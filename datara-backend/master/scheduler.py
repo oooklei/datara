@@ -45,25 +45,47 @@ def generate_instance_id(wf_code: int) -> str:
 # ---------------- LeaderGate ----------------
 
 
+FAILOVER_RESCAN_INTERVAL_SECONDS = 10
+
+
 class LeaderGate:
-    """选主联动闸门：仅 leader 放行；首次放行时执行一次容错恢复（线程安全单次）。"""
+    """选主联动闸门：leader 启动恢复，并周期重扫本进程失败的实例。"""
 
     def __init__(self, heartbeat):
         self.heartbeat = heartbeat
         self._lock = threading.Lock()
         self._recovered = False
+        self._last_recovery_scan: Optional[float] = None
+        self._fence_token: Optional[int] = None
 
     def check(self) -> bool:
         if not getattr(self.heartbeat, "is_master", False):
             return False
-        if not self._recovered:
+        current = time.monotonic()
+        due = self._last_recovery_scan is None or current - self._last_recovery_scan >= FAILOVER_RESCAN_INTERVAL_SECONDS
+        if not self._recovered or due:
             with self._lock:
-                if not self._recovered:
-                    self._recovered = True
+                current = time.monotonic()
+                due = (
+                    self._last_recovery_scan is None
+                    or current - self._last_recovery_scan >= FAILOVER_RESCAN_INTERVAL_SECONDS
+                )
+                if not self._recovered or due:
                     try:
-                        recover_running_instances()
+                        if self._fence_token is None:
+                            self._fence_token = queue.claim_master_fence()
+                            queue.set_master_fence(self._fence_token)
+                        recover_running_instances(fence_token=self._fence_token)
+                        self._recovered = True
                     except Exception as exc:  # noqa: BLE001 恢复失败不阻塞引擎（下轮重启可再试）
                         logger.error("容错恢复执行异常: %s", exc)
+                        if self._fence_token is None:
+                            return False
+                    finally:
+                        # The scan was attempted whether it succeeded or failed;
+                        # use the interval to throttle full-scan failures too.
+                        self._recovered = True
+                        self._last_recovery_scan = time.monotonic()
         return True
 
 
@@ -298,8 +320,7 @@ def _cmd_smoke(command: Command, param: dict) -> None:
         raise
     finally:
         session.close()
-    queue.add_task(
-        {
+    payload = {
             "taskId": task_id,
             "instanceId": instance.instance_id,
             "type": "smoke",
@@ -309,9 +330,13 @@ def _cmd_smoke(command: Command, param: dict) -> None:
             "param_resolved": param,
             "var_snapshot": {},
             "constraints": {},
-        },
-        priority=int(param.get("priority") or 3),
-    )
+        }
+    priority = int(param.get("priority") or 3)
+    fence_token = queue.current_master_fence()
+    if fence_token is None:
+        queue.add_task(payload, priority=priority)
+    else:
+        queue.add_task_fenced(payload, priority=priority, fence_token=fence_token)
     logger.info("冒烟实例已启动: %s（task %s）", instance.instance_id, task_id)
 
 

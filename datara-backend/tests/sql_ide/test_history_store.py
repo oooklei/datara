@@ -200,8 +200,8 @@ def test_history_script_migration_is_revisioned_and_idempotent():
         first = runner.apply()
         second = runner.apply()
 
-        assert first.applied[-1:] == ("sql_ide_0003_history_scripts",)
-        assert second.skipped[-1:] == ("sql_ide_0003_history_scripts",)
+        assert "sql_ide_0003_history_scripts" in first.applied
+        assert "sql_ide_0003_history_scripts" in second.skipped
         schema = inspect(engine)
         assert schema.has_table("sql_ide_history")
         assert schema.has_table("sql_ide_scripts")

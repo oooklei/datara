@@ -1,6 +1,7 @@
 """TDD 测试：rb/lineage/（B4-B lineage_analyzer）。
 
 B4-B 新增：验证血缘分析器。
+C6 = R5B-02：更新为 (impacts, unknown_reasons) 元组返回类型。
 """
 from __future__ import annotations
 
@@ -30,32 +31,35 @@ def _mock_get_definition(factory_result):
 class TestLineageAnalyzer:
     def test_analyze_no_service(self):
         analyzer = LineageAnalyzer()
-        impacts = analyzer.analyze(
+        impacts, unknown_reasons = analyzer.analyze(
             datasource_id=101,
             object_ref=_make_ref(),
             source_version="etag-abc123",
         )
         assert impacts == []
+        assert len(unknown_reasons) > 0
 
     def test_analyze_no_definition(self):
         service = _mock_get_definition(None)
         analyzer = LineageAnalyzer(get_definition_service=service)
-        impacts = analyzer.analyze(
+        impacts, unknown_reasons = analyzer.analyze(
             datasource_id=101,
             object_ref=_make_ref(),
             source_version="etag-abc123",
         )
         assert impacts == []
+        assert len(unknown_reasons) > 0
 
     def test_analyze_empty_definition(self):
         service = _mock_get_definition({"definitionText": ""})
         analyzer = LineageAnalyzer(get_definition_service=service)
-        impacts = analyzer.analyze(
+        impacts, unknown_reasons = analyzer.analyze(
             datasource_id=101,
             object_ref=_make_ref(),
             source_version="etag-abc123",
         )
         assert impacts == []
+        assert len(unknown_reasons) > 0
 
     def test_analyze_foreign_key_dependency(self):
         ddl = "CREATE TABLE orders (id INT, user_id INT, FOREIGN KEY (user_id) REFERENCES users(id));"
@@ -70,7 +74,7 @@ class TestLineageAnalyzer:
             name="orders",
             parent=None,
         )
-        impacts = analyzer.analyze(
+        impacts, unknown_reasons = analyzer.analyze(
             datasource_id=101,
             object_ref=ref,
             source_version="etag-abc123",
@@ -92,7 +96,7 @@ class TestLineageAnalyzer:
             name="user_view",
             parent=None,
         )
-        impacts = analyzer.analyze(
+        impacts, unknown_reasons = analyzer.analyze(
             datasource_id=101,
             object_ref=ref,
             source_version="etag-abc123",
@@ -119,7 +123,7 @@ class TestLineageAnalyzer:
             name="user_orders",
             parent=None,
         )
-        impacts = analyzer.analyze(
+        impacts, unknown_reasons = analyzer.analyze(
             datasource_id=101,
             object_ref=ref,
             source_version="etag-abc123",
@@ -132,7 +136,7 @@ class TestLineageAnalyzer:
         ddl = "CREATE TABLE users (id INT, parent_id INT REFERENCES users(id));"
         service = _mock_get_definition({"definitionText": ddl})
         analyzer = LineageAnalyzer(get_definition_service=service)
-        impacts = analyzer.analyze(
+        impacts, unknown_reasons = analyzer.analyze(
             datasource_id=101,
             object_ref=_make_ref(),
             source_version="etag-abc123",
@@ -153,7 +157,7 @@ class TestLineageAnalyzer:
             name="orders",
             parent=None,
         )
-        impacts = analyzer.analyze(
+        impacts, unknown_reasons = analyzer.analyze(
             datasource_id=101,
             object_ref=ref,
             source_version="etag-abc123",
