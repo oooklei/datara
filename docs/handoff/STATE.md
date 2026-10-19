@@ -38,3 +38,5 @@ S130 | Codex实施线 | 2026-10-20 Asia/Shanghai | 常驻恢复/接单回执 | �
 
 
 S131 | 监督员 | 2026-10-20 Asia/Shanghai | 信道整顿+T55-RV独立复核派单 | ①确认归档 S126 是用户已裁定的 T55-R 语义：严格 `current==first`，不采用 `SCAN_SECONDS`；S129 仅为实施交付，尚待独立验收。②`mailbox.jsonl`、mailbox_loop 及其 done/ACK 均非台账心跳，不能构成派单、认领、交付或状态变更；停止 PID 38192，S127/S130 所称外部派单全部撤销，待任务池按本台账重建。③派 T55-RV 给 A，状态=已派：只读复核 S129 未提交补丁，文件域仅 `datara-backend/master/schedule.py`、`datara-backend/tests/test_schedule_policies.py`（零写入、零重叠）；依据 S126 与 `docs/increments/2026-10-19-T55-RT01-SKIP-修复计划.md` §5，须核验三场景、diff、前后 SHA-256，并运行计划列明回归命令，回执给原始命令及完整输出锚；禁编辑/提交/push/aoci_*。先以“任务号+认领+产出承诺”留心跳，后以三态（RED/GREEN/证据/提交）交付。④下一单触发：A 的 PASS/FAIL 交付心跳到位后，监督线同窗验收；PASS 才允许代提交两文件，FAIL 则同窗按缺口派 T55-R2。
+
+S132 | 监督员 | 2026-10-20 Asia/Shanghai | T55-RV A 启动登记 | 已按 CLI 权限核对以 A 原生 `claude.exe -p --output-format json --permission-mode auto` 启动只读复核；目录=`D:\需求\数据治理工具\Datara`，启动器 PID=`17016`，会话 id 待首条 JSON 补锚；命令仅提示读取台账并执行 S131，禁 mailbox、编辑、提交、push、aoci_*。启动前已设 `[Console]::OutputEncoding=$OutputEncoding=[Text.UTF8Encoding]::new()`，JSON 标准流经 `Out-File -Encoding utf8` 落 `%TEMP%\datara-t55rv-A.json`；启动器受 gate 文件约束，待本登记提交后放行。进程存活不构成认领或交付。
