@@ -25,6 +25,7 @@ from rebuild.sql_ide.export_service import SqlIdeExportAuditRecord, SqlIdeExport
 from rebuild.sql_ide.execution import build_execution_port
 from rebuild.sql_ide.routes import build_sql_ide_router
 from rebuild.sql_ide.result_store import SqlIdeResultSetRecord
+from rebuild.execution.models import EXECUTION_TABLES
 from rebuild.identity.contracts import Permission, Role, TokenService, authorize
 from rebuild.identity.models import ProjectMemberRecord, UserRecord
 from rebuild.identity.passwords import verify_password
@@ -39,6 +40,14 @@ from rebuild.project.repository import ProjectRepository
 from rebuild.project.models import ProjectRecord
 from rebuild.resources.api import build_resources_router
 from rebuild.resources.models import ResourceBindingRecord, ResourceRecord, ResourceVersionRecord
+from rebuild.stream.api import build_stream_router
+from rebuild.stream.models import (
+    StreamCheckpointRecord,
+    StreamFailureEventRecord,
+    StreamJobRecord,
+    StreamMetricSnapshotRecord,
+    StreamRecoveryEventRecord,
+)
 from rebuild.sync.api import build_sync_router
 from rebuild.sync.models import SyncTaskDefinitionRecord
 from rebuild.governance.api import build_governance_router
@@ -66,6 +75,7 @@ from rebuild.workflow.models import (
     WorkflowScheduleRecord,
     WorkflowVersionRecord,
 )
+from rebuild.trial.models import WorkflowDraftSnapshotRecord
 
 logger = logging.getLogger(__name__)
 
@@ -186,6 +196,13 @@ def create_app(
                 WorkflowEdgeRecord.__table__,
                 WorkflowScheduleRecord.__table__,
                 WorkflowPublishRecord.__table__,
+                WorkflowDraftSnapshotRecord.__table__,
+                *EXECUTION_TABLES,
+                StreamJobRecord.__table__,
+                StreamCheckpointRecord.__table__,
+                StreamMetricSnapshotRecord.__table__,
+                StreamFailureEventRecord.__table__,
+                StreamRecoveryEventRecord.__table__,
             ],
         )
         ensure_i1_schema()
@@ -811,10 +828,26 @@ def create_app(
         build_workflow_router(session_factory, token_service, active_tokens, project_permission_error),
         prefix="/api/v1/rebuild/workflows",
     )
+    from rebuild.trial.api import build_trial_router
+
+    app.include_router(
+        build_trial_router(session_factory, token_service, active_tokens, project_permission_error),
+        prefix="/api/v1/rebuild/trial",
+    )
+    from rebuild.execution.api import build_execution_router
+
+    app.include_router(
+        build_execution_router(session_factory, token_service, active_tokens, project_permission_error),
+        prefix="/api/v1/rebuild/execution",
+    )
     # R4-SYNC domain (unlocked after R3 closure): sync definition/mapping/explore.
     app.include_router(
         build_sync_router(session_factory, token_service, active_tokens, project_permission_error, pooled_connector),
         prefix="/api/v1/rebuild/sync",
+    )
+    app.include_router(
+        build_stream_router(session_factory, token_service, active_tokens),
+        prefix="/api/v1/rebuild/stream",
     )
     # P2-3 R5-B rb domain API: #22/#23 bind the real snapshot services;
     # #24/#25 services are stage-D undelivered, the facade fails closed (502).
