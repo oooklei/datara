@@ -1,0 +1,129 @@
+"""Persistence records for the R8-STREAM stream domain.
+
+Contract source (frozen): docs/increments/2026-10-14-datara-platform-rebuild-design.md
+§8 (realtime observation chain, producer node modes, observation metrics)
++ §13.7 (stream runtime tables and the eight job states).
+
+- Four domain tables: stream_job / stream_checkpoint / stream_metric_snapshot /
+  stream_failure_event. The §13.7 attempt table folds into stream_job as an
+  attempt_no counter (four-model scope for this increment); restart increments
+  the attempt so failure samples and snapshots stay attempt-attributed.
+- stream_job carries the eight-state machine (CREATED/STARTING/RUNNING/PAUSED/
+  STOPPING/STOPPED/FAILED/RECOVERING); legal transitions are enforced by the
+  repository (see rebuild.stream.repository.STREAM_TRANSITIONS), not by triggers.
+- runtime_config holds the §8 producer-node mode configuration verbatim as JSON
+  (fixed_rate/random/abnormal/duplicate/delayed/out_of_order/burst) — no side
+  derives or reinterprets the mode payload.
+- Every table carries DB-generated non-null created_at/updated_at (design §9 /
+  §13.13 timestamp contract); runtime rows add event_time for stream-time reads.
+- Sensitive/crypt: none — checkpoints and samples are pipeline diagnostics.
+"""
+
+from datetime import datetime
+
+from sqlalchemy import DateTime, Index, Integer, String, Text, func
+from sqlalchemy.orm import Mapped, mapped_column
+
+from rebuild.common.db import Base
+
+
+class StreamJobRecord(Base):
+    """stream_job — one streaming job, independent of batch workflow instances."""
+
+    __tablename__ = "stream_job"
+    __table_args__ = (
+        Index("x_stream_job_state", "state"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    name: Mapped[str] = mapped_column(String(128), nullable=False)
+    workflow_id: Mapped[int] = mapped_column(Integer, nullable=False, index=True)
+    mq_topic: Mapped[str] = mapped_column(String(256), nullable=False)
+    # §8 producer-node mode config stored verbatim as JSON.
+    runtime_config: Mapped[str] = mapped_column(Text, nullable=False, default="{}")
+    # Eight-state machine (design §13.7); transition legality lives in the repository.
+    state: Mapped[str] = mapped_column(String(16), nullable=False, default="CREATED")
+    attempt_no: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    started_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.current_timestamp())
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime, server_default=func.current_timestamp(), server_onupdate=func.current_timestamp()
+    )
+
+
+class StreamCheckpointRecord(Base):
+    """stream_checkpoint — per-partition consumer offsets for failure recovery."""
+
+    __tablename__ = "stream_checkpoint"
+    __table_args__ = (
+        Index("x_stream_ckpt_job_partition", "job_id", "partition_id"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    job_id: Mapped[int] = mapped_column(Integer, nullable=False, index=True)
+    partition_id: Mapped[str] = mapped_column(String(128), nullable=False)
+    offset_value: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    # Recovery payload (consumer group / processor state) stored verbatim as JSON.
+    payload: Mapped[str] = mapped_column(Text, nullable=False, default="{}")
+    event_time: Mapped[datetime] = mapped_column(DateTime, nullable=False, index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.current_timestamp())
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime, server_default=func.current_timestamp(), server_onupdate=func.current_timestamp()
+    )
+
+
+class StreamMetricSnapshotRecord(Base):
+    """stream_metric_snapshot — one observation snapshot per job (design §8 metrics).
+
+    Snapshot rows are point-in-time captures; observation aggregation reads the
+    latest row in the window verbatim plus window-aggregated failure samples.
+    """
+
+    __tablename__ = "stream_metric_snapshot"
+    __table_args__ = (
+        Index("x_stream_snap_job_captured", "job_id", "captured_at"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    job_id: Mapped[int] = mapped_column(Integer, nullable=False, index=True)
+    attempt_no: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    # Rates (records per second) and cumulative counters.
+    produce_rate: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    consume_rate: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    process_rate: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    input_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    output_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    success_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    failure_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    skipped_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    duplicate_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    backlog: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    offset_value: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    # Window aggregation result (§8 窗口结果) stored verbatim as JSON.
+    window_result: Mapped[str] = mapped_column(Text, nullable=False, default="{}")
+    captured_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.current_timestamp())
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime, server_default=func.current_timestamp(), server_onupdate=func.current_timestamp()
+    )
+
+
+class StreamFailureEventRecord(Base):
+    """stream_failure_event — error sample rows for the observation page."""
+
+    __tablename__ = "stream_failure_event"
+    __table_args__ = (
+        Index("x_stream_fail_job_time", "job_id", "event_time"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    job_id: Mapped[int] = mapped_column(Integer, nullable=False, index=True)
+    attempt_no: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    error_type: Mapped[str] = mapped_column(String(64), nullable=False)
+    sample_data: Mapped[str] = mapped_column(Text, nullable=False)
+    event_time: Mapped[datetime] = mapped_column(DateTime, nullable=False, index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.current_timestamp())
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime, server_default=func.current_timestamp(), server_onupdate=func.current_timestamp()
+    )
