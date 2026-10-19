@@ -11,6 +11,7 @@
 
 from datetime import datetime
 from typing import Optional
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from croniter import croniter
 from fastapi import APIRouter, Depends
@@ -20,7 +21,7 @@ from sqlalchemy.orm import Session
 from api.auth import ApiError, get_current_user, require_perm
 from common.db import get_db
 from common.log import get_logger
-from common.models import User, WfDefinition, WfSchedule, now
+from common.models import User, WfDefinition, WfSchedule
 from common.resp import PARAM_INVALID, WF_NOT_FOUND, fmt_dt, ok
 
 logger = get_logger("api.wf_schedule")
@@ -41,11 +42,13 @@ def _parse_dt(raw: Optional[str], field: str) -> Optional[datetime]:
     raise ApiError(PARAM_INVALID, "%s 时间格式非法: %s" % (field, raw), status=400)
 
 
-def _validate_crontab(crontab: str) -> list:
+def _validate_crontab(crontab: str, timezone: str = "Asia/Shanghai") -> list:
     """crontab 校验（6 段含秒，`?` 自动替换）；返回未来 3 次触发时间（ISO 文本）。"""
     try:
-        it = croniter(crontab.replace("?", "*"), now())
+        it = croniter(crontab.replace("?", "*"), datetime.now(ZoneInfo(timezone)))
         preview = [it.get_next(datetime).strftime("%Y-%m-%d %H:%M:%S") for _ in range(3)]
+    except (ZoneInfoNotFoundError, ValueError):
+        raise ApiError(PARAM_INVALID, "timezone 非法: %s" % timezone, status=400) from None
     except Exception as exc:  # noqa: BLE001 croniter 各类异常统一转参数错误
         raise ApiError(PARAM_INVALID, "crontab 表达式非法: %s" % exc, status=400)
     return preview
@@ -81,6 +84,10 @@ def _payload(row: WfSchedule) -> dict:
         "workerGroup": row.worker_group,
         "failRetryTimes": row.fail_retry_times,
         "failRetryInterval": row.fail_retry_interval,
+        "misfirePolicy": row.misfire_policy,
+        "concurrencyPolicy": row.concurrency_policy,
+        "maxRunningInstances": row.max_running_instances,
+        "timezone": row.timezone,
         "createTime": fmt_dt(row.create_time),
         "updateTime": fmt_dt(row.update_time),
     }
@@ -95,16 +102,33 @@ class ScheduleBody(BaseModel):
     worker_group: Optional[str] = None
     fail_retry_times: int = 0
     fail_retry_interval: int = 60
+    misfire_policy: str = "FIRE_ONCE"
+    concurrency_policy: str = "ALLOW"
+    max_running_instances: int = 1
+    timezone: str = "Asia/Shanghai"
+
+    def validate_policies(self):
+        if self.misfire_policy not in {"FIRE_ONCE", "SKIP", "FIRE_ALL_LIMITED"}:
+            raise ApiError(PARAM_INVALID, "misfire_policy 非法", status=400)
+        if self.concurrency_policy not in {"ALLOW", "FORBID", "QUEUE"}:
+            raise ApiError(PARAM_INVALID, "concurrency_policy 非法", status=400)
+        if self.max_running_instances < 1:
+            raise ApiError(PARAM_INVALID, "max_running_instances 必须大于 0", status=400)
+        try:
+            ZoneInfo(self.timezone)
+        except (ZoneInfoNotFoundError, ValueError):
+            raise ApiError(PARAM_INVALID, "timezone 非法", status=400) from None
 
 
 class CrontabBody(BaseModel):
     crontab: str
+    timezone: str = "Asia/Shanghai"
 
 
 @router.post("/crontab-preview")
 def preview_crontab(body: CrontabBody, user: User = Depends(require_perm("edit_definition"))):
     """crontab 校验 + 未来 3 次触发时间预览（前端定时对话框即时预览用）。"""
-    return ok({"valid": True, "nextFireTimes": _validate_crontab(body.crontab)})
+    return ok({"valid": True, "nextFireTimes": _validate_crontab(body.crontab, body.timezone)})
 
 
 @router.get("/workflow-definitions/{wf}/schedules")
@@ -128,7 +152,8 @@ def create_schedule(
 ):
     """新建定时：crontab 校验；返回预览未来 3 次触发时间（初始 offline）。"""
     definition = _resolve_wf(db, wf)
-    preview = _validate_crontab(body.crontab)
+    preview = _validate_crontab(body.crontab, body.timezone)
+    body.validate_policies()
     schedule = WfSchedule(
         wf_code=definition.code,
         name=(body.name or "默认定时").strip(),
@@ -140,6 +165,10 @@ def create_schedule(
         worker_group=body.worker_group,
         fail_retry_times=max(0, int(body.fail_retry_times or 0)),
         fail_retry_interval=max(1, int(body.fail_retry_interval or 60)),
+        misfire_policy=body.misfire_policy,
+        concurrency_policy=body.concurrency_policy,
+        max_running_instances=body.max_running_instances,
+        timezone=body.timezone,
     )
     db.add(schedule)
     db.commit()
@@ -158,7 +187,8 @@ def update_schedule(
 ):
     """更新定时（crontab 变更重校验；update_time 变化驱动 master 缓存重算 next_fire）。"""
     schedule = _get_schedule(db, schedule_id)
-    preview = _validate_crontab(body.crontab)
+    preview = _validate_crontab(body.crontab, body.timezone)
+    body.validate_policies()
     schedule.name = (body.name or schedule.name).strip()
     schedule.crontab = body.crontab.strip()
     schedule.start_time = _parse_dt(body.start_time, "start_time")
@@ -167,6 +197,10 @@ def update_schedule(
     schedule.worker_group = body.worker_group
     schedule.fail_retry_times = max(0, int(body.fail_retry_times or 0))
     schedule.fail_retry_interval = max(1, int(body.fail_retry_interval or 60))
+    schedule.misfire_policy = body.misfire_policy
+    schedule.concurrency_policy = body.concurrency_policy
+    schedule.max_running_instances = body.max_running_instances
+    schedule.timezone = body.timezone
     db.commit()
     logger.info("定时计划更新: id=%s crontab=%s（%s）", schedule.id, schedule.crontab, user.user_name)
     return ok({**_payload(schedule), "nextFireTimes": preview})

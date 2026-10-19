@@ -386,6 +386,10 @@ class WfSchedule(Base):
     worker_group: Mapped[Optional[str]] = mapped_column(String(64), nullable=True, comment="worker 分组（I7）")
     fail_retry_times: Mapped[int] = mapped_column(Integer, default=0, comment="失败重试次数（实例任务缺省）")
     fail_retry_interval: Mapped[int] = mapped_column(Integer, default=60, comment="失败重试间隔（秒）")
+    misfire_policy: Mapped[str] = mapped_column(String(24), default="FIRE_ONCE", server_default="FIRE_ONCE")
+    concurrency_policy: Mapped[str] = mapped_column(String(16), default="ALLOW", server_default="ALLOW")
+    max_running_instances: Mapped[int] = mapped_column(Integer, default=1, server_default="1")
+    timezone: Mapped[str] = mapped_column(String(64), default="Asia/Shanghai", server_default="Asia/Shanghai")
     create_time: Mapped[datetime] = mapped_column(DateTime, default=now)
     update_time: Mapped[datetime] = mapped_column(DateTime, default=now, onupdate=now)
 

@@ -112,3 +112,38 @@ def test_same_attempt_key_rejects_changed_payload(monkeypatch):
         queue.add_task_fenced({**_payload(), "param": {"value": "changed"}}, priority=3, fence_token=fence)
 
     assert len(client.streams) == 1
+
+
+def test_failover_smoke_redispatch_uses_leader_fence(monkeypatch, db_session):
+    from common.models import TaskInstance, WorkflowInstance
+    from master import failover, state
+
+    instance = WorkflowInstance(
+        instance_id="fenced-recovery",
+        wf_code=0,
+        state=state.RUNNING,
+        variables={"priority": 3},
+    )
+    task = TaskInstance(
+        instance_id=instance.instance_id,
+        node_type="smoke",
+        name="smoke",
+        state=state.RUNNING,
+        attempt=2,
+    )
+    db_session.add_all([instance, task])
+    db_session.commit()
+    monkeypatch.setattr(failover, "new_session", lambda: db_session)
+    fenced = []
+    monkeypatch.setattr(
+        queue,
+        "add_task_fenced",
+        lambda payload, priority, fence_token: fenced.append((payload, fence_token)),
+    )
+    monkeypatch.setattr(queue, "add_task", lambda *_args, **_kwargs: pytest.fail("unfenced failover dispatch"))
+
+    failover._redispatch_smoke(instance.instance_id, fence_token=73)
+
+    assert len(fenced) == 1
+    assert fenced[0][0]["instanceId"] == instance.instance_id
+    assert fenced[0][1] == 73

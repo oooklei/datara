@@ -121,6 +121,10 @@ def init_db() -> None:
     )
     _ensure_column(engine, "t_task_instance", "retry_deadline", "DATETIME NULL")
     _ensure_column(engine, "t_task_instance", "retry_strategy", "VARCHAR(16) NULL")
+    _ensure_column(engine, "t_wf_schedule", "misfire_policy", "VARCHAR(24) NOT NULL DEFAULT 'FIRE_ONCE'")
+    _ensure_column(engine, "t_wf_schedule", "concurrency_policy", "VARCHAR(16) NOT NULL DEFAULT 'ALLOW'")
+    _ensure_column(engine, "t_wf_schedule", "max_running_instances", "INT NOT NULL DEFAULT 1")
+    _ensure_column(engine, "t_wf_schedule", "timezone", "VARCHAR(64) NOT NULL DEFAULT 'Asia/Shanghai'")
     _s = new_session()
     try:
         seed_dict_tables(_s)
