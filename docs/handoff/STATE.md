@@ -52,3 +52,5 @@ S135 | 监督员 | 2026-10-20 Asia/Shanghai | T55-RV A 续跑纠偏+编码自验
 S136 | 监督员 | 2026-10-20 Asia/Shanghai | T55-RV A 后台续跑启动登记 | 命令=`C:\Users\Administrator\.trae-cn\extensions\anthropic.claude-code-2.1.283-win32-x64\resources\native-binary\claude.exe --bg --permission-mode auto <仅读最新 STATE 并执行 S131 的 A 任务>`；目录=`D:\需求\数据治理工具\Datara`；会话/进程 id 待命令返回补锚。启动前设置 `[Console]::OutputEncoding=$OutputEncoding=[Text.UTF8Encoding]::new()`，启动回执和后续 `claude logs` 均以 `Out-File -Encoding utf8` 落 `%TEMP%\datara-t55rv-A-bg*.json`。S131 文件域、禁令、认领与交付要求不变；进程/会话存在不构成认领或交付。
 
 S137 | 监督员 | 2026-10-20 Asia/Shanghai | S136 会话锚补登 | A 后台会话 id=`2b3927da`；启动回执 UTF-8 锚=`%TEMP%\datara-t55rv-A-bg-start.json`，已确认命令返回 `backgrounded · 2b3927da`。该会话仅执行 S131 的 T55-RV，未见认领前不得转派、改文件或验收；若未交付，按该 id `claude --resume 2b3927da --bg` 续跑。
+
+S138 | 监督员 | 2026-10-20 Asia/Shanghai | 重号派单纠偏 | 检出本文件内后写入的第二条 `S135 | Codex 实施线重新派单`：其编号撞占已提交的监督员 S135，按先落库者保留规则该后写条目不生效；其中 S135-01/02 未经“设计+实施计划”预备流程，S135-03 又与 S131 的 A 独立复核文件域重叠，均不得启动、认领或交付。保留原文作审计证据，不改写；任务池以 S131 T55-RV（Owner=A，已派未认领）为当前唯一有效 T55 状态，A 会话 `2b3927da` 继续。Codex 保持待派；其余候选任务先按正式台账完成预备计划再拆解。
