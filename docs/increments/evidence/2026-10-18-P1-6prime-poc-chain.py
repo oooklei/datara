@@ -332,9 +332,9 @@ def main() -> int:
     client.__enter__()
     try:
         with app.state.session_factory() as session:
-            dev = UserRepository(session).create(username="dev", password="dev-pass", role=Role.DEV)
+            dev = UserRepository(session).create(username="dev", password="dev-pass", role=Role.DEVELOPER)
             viewer = UserRepository(session).create(username="viewer", password="viewer-pass", role=Role.VIEWER)
-            outsider = UserRepository(session).create(username="outsider", password="outsider-pass", role=Role.DEV)
+            outsider = UserRepository(session).create(username="outsider", password="outsider-pass", role=Role.DEVELOPER)
             project = ProjectRecord(name="p16-prime", description="", owner_id=dev.id)
             session.add_all((project,))
             session.commit()
@@ -482,7 +482,7 @@ def main() -> int:
         assert rec["refs"]["execution_id"] and rec["refs"]["datasource_id"] == 101
         assert rec["budget"]["rows_returned"] == result["row_count"]
         assert rec["tool_call_id"] == tool_call_id and rec["user_id"] == dev.id
-        assert rec["roles"] == ["dev"] and rec["project_id"] == project_id
+        assert rec["roles"] == ["developer"] and rec["project_id"] == project_id
         assert rec["started_at"] and rec["finished_at"] and rec["latency_ms"] is not None
         persisted = SqliteAuditWriter(audit_db).persisted_count()
         log(f"audit records in memory={len(audit_writer.records)} persisted_rows={persisted}")
