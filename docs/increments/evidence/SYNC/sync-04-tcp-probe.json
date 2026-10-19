@@ -1,0 +1,9 @@
+{
+  "target": "192.168.1.9:3306",
+  "command": "rtk python -c socket.settimeout(3); socket.connect_ex((192.168.1.9, 3306))",
+  "timeout_seconds": 3,
+  "started_at_utc": "2026-10-19T06:05:51.545020+00:00",
+  "status": "blocked",
+  "connect_ex_code": 10061,
+  "error": "WSAECONNREFUSED"
+}

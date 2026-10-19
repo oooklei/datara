@@ -84,6 +84,97 @@ def validate_mappings(mappings: Any) -> list[dict[str, Any]]:
     return mappings
 
 
+def validate_transform_config(value: Any) -> dict[str, Any]:
+    """Validate the structured §6.4 expression/filter configuration."""
+    if value is None:
+        return {}
+    if not isinstance(value, dict):
+        raise SyncDomainError(
+            "SYNC_INVALID_TRANSFORM",
+            "transform_config must be an object",
+            [{"field": "transform_config", "code": "INVALID", "message": "must be an object"}],
+        )
+    allowed = {"transform_expression", "filter_condition"}
+    diagnostics: list[dict[str, str]] = []
+    for key in value:
+        if key not in allowed:
+            diagnostics.append({"field": f"transform_config.{key}", "code": "UNKNOWN", "message": "unknown field"})
+    expressions = value.get("transform_expression", {})
+    if not isinstance(expressions, dict) or any(
+        not isinstance(column, str) or not column.strip() or not isinstance(expression, str) or not expression.strip()
+        for column, expression in expressions.items()
+    ):
+        diagnostics.append({
+            "field": "transform_config.transform_expression",
+            "code": "INVALID",
+            "message": "must map non-empty target column names to non-empty expression strings",
+        })
+    condition = value.get("filter_condition", "")
+    if not isinstance(condition, str) or len(condition) > 2000:
+        diagnostics.append({
+            "field": "transform_config.filter_condition",
+            "code": "INVALID",
+            "message": "must be a string of at most 2000 characters",
+        })
+    if diagnostics:
+        raise SyncDomainError("SYNC_INVALID_TRANSFORM", "transform_config violates its schema", diagnostics)
+    return value
+
+
+def validate_target_properties(value: Any) -> dict[str, Any]:
+    """Validate §6.4 partition/incremental, conflict, and batch settings."""
+    if value is None:
+        return {}
+    if not isinstance(value, dict):
+        raise SyncDomainError(
+            "SYNC_INVALID_TARGET_PROPS",
+            "target_properties must be an object",
+            [{"field": "target_properties", "code": "INVALID", "message": "must be an object"}],
+        )
+    allowed = {"partition_incremental", "primary_key_conflict", "batch_concurrency"}
+    diagnostics: list[dict[str, str]] = []
+    for key in value:
+        if key not in allowed:
+            diagnostics.append({"field": f"target_properties.{key}", "code": "UNKNOWN", "message": "unknown field"})
+
+    partition = value.get("partition_incremental", {})
+    if not isinstance(partition, dict):
+        diagnostics.append({"field": "target_properties.partition_incremental", "code": "INVALID", "message": "must be an object"})
+    else:
+        unknown = set(partition) - {"partition_field", "incremental_field"}
+        diagnostics.extend({"field": f"target_properties.partition_incremental.{key}", "code": "UNKNOWN", "message": "unknown field"} for key in sorted(unknown))
+        for key, field_value in partition.items():
+            if key in {"partition_field", "incremental_field"} and (not isinstance(field_value, str) or (field_value and len(field_value) > 255)):
+                diagnostics.append({"field": f"target_properties.partition_incremental.{key}", "code": "INVALID", "message": "must be a string of at most 255 characters"})
+
+    conflict = value.get("primary_key_conflict", {})
+    if not isinstance(conflict, dict):
+        diagnostics.append({"field": "target_properties.primary_key_conflict", "code": "INVALID", "message": "must be an object"})
+    else:
+        unknown = set(conflict) - {"primary_key", "conflict_strategy"}
+        diagnostics.extend({"field": f"target_properties.primary_key_conflict.{key}", "code": "UNKNOWN", "message": "unknown field"} for key in sorted(unknown))
+        primary_key = conflict.get("primary_key", [])
+        if not isinstance(primary_key, list) or any(not isinstance(column, str) or not column.strip() or len(column) > 255 for column in primary_key) or len(set(primary_key)) != len(primary_key):
+            diagnostics.append({"field": "target_properties.primary_key_conflict.primary_key", "code": "INVALID", "message": "must be a list of unique non-empty column names"})
+        strategy = conflict.get("conflict_strategy", "insert")
+        if not isinstance(strategy, str) or strategy not in {"insert", "ignore", "update", "upsert"}:
+            diagnostics.append({"field": "target_properties.primary_key_conflict.conflict_strategy", "code": "INVALID", "message": "must be insert, ignore, update, or upsert"})
+
+    batch = value.get("batch_concurrency", {})
+    if not isinstance(batch, dict):
+        diagnostics.append({"field": "target_properties.batch_concurrency", "code": "INVALID", "message": "must be an object"})
+    else:
+        unknown = set(batch) - {"batch_size", "concurrency"}
+        diagnostics.extend({"field": f"target_properties.batch_concurrency.{key}", "code": "UNKNOWN", "message": "unknown field"} for key in sorted(unknown))
+        for key, minimum, maximum in (("batch_size", 1, 10000), ("concurrency", 1, 32)):
+            number = batch.get(key)
+            if number is not None and (isinstance(number, bool) or not isinstance(number, int) or not minimum <= number <= maximum):
+                diagnostics.append({"field": f"target_properties.batch_concurrency.{key}", "code": "INVALID", "message": f"must be an integer from {minimum} to {maximum}"})
+    if diagnostics:
+        raise SyncDomainError("SYNC_INVALID_TARGET_PROPS", "target_properties violates its schema", diagnostics)
+    return value
+
+
 def generate_auto_mappings(
     source_columns: list[dict[str, Any]], target_columns: list[dict[str, Any]]
 ) -> list[dict[str, Any]]:

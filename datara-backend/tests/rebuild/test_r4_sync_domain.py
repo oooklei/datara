@@ -1,7 +1,7 @@
 """R4-SYNC domain tests — contract unlocked after R3 closure (大盘盘点 #21/#30).
 
-Gate lineage: test_r4_sync_contract_pending.py (xfail sentinel) asserted the two
-routes stay unregistered until R3 merge; R3 closed via user ruling (e217ce3),
+Gate lineage: test_r4_sync_contract_pending.py was the pre-unlock route sentinel;
+R3 closed via user ruling (e217ce3),
 governance domain accepted (大盘盘点 #30: rebuild/governance 30+ modules GREEN +
 R2-13 42-table evidence), so the domain implements the §6.4 contract:
 - capabilities exposes the 同步表单 13 字段 + 映射 8 字段 contract surface;
@@ -57,7 +57,7 @@ def _client(monkeypatch):
     client = TestClient(app)
     client.__enter__()
     with app.state.session_factory() as session:
-        dev = UserRepository(session).create(username="dev", password="dev-pass", role=Role.DEV)
+        dev = UserRepository(session).create(username="dev", password="dev-pass", role=Role.DEVELOPER)
         viewer = UserRepository(session).create(username="viewer", password="viewer-pass", role=Role.VIEWER)
         owned = ProjectRecord(name="r4-sync-owned", description="", owner_id=dev.id)
         session.add(owned)
@@ -121,14 +121,14 @@ def _plan_body(project_id, src_id, tgt_id, mappings=None, **overrides):
         "mappings": mappings
         if mappings is not None
         else [_mapping("id", "id"), _mapping("name", "name", status="ADJUSTED")],
-        "transform_config": {"filter": "dt >= '2026-10-01'", "transform": "upper(name)"},
+        "transform_config": {
+            "filter_condition": "dt >= '2026-10-01'",
+            "transform_expression": {"name": "upper(name)"},
+        },
         "target_properties": {
-            "primary_key": ["id"],
-            "conflict_strategy": "upsert",
-            "partition_field": "dt",
-            "incremental_field": "updated_at",
-            "batch_size": 1000,
-            "concurrency": 4,
+            "primary_key_conflict": {"primary_key": ["id"], "conflict_strategy": "upsert"},
+            "partition_incremental": {"partition_field": "dt", "incremental_field": "updated_at"},
+            "batch_concurrency": {"batch_size": 1000, "concurrency": 4},
         },
     }
     body.update(overrides)
@@ -141,7 +141,12 @@ def test_capabilities_exposes_design_contract_and_unlocked_routes(monkeypatch):
     assert response.status_code == 200
     data = response.json()["data"]
     # §6.4 同步表单 13 字段 + 映射 8 字段 contract surface.
-    assert len(data["form_fields"]) == 13
+    assert data["form_fields"] == [
+        "source_datasource", "source_object", "target_datasource", "target_object",
+        "column_explore", "type_explore", "auto_mapping", "manual_mapping_adjust",
+        "transform_expression", "filter_condition", "partition_incremental",
+        "primary_key_conflict", "batch_concurrency",
+    ]
     assert data["mapping_fields"] == [
         "source_column",
         "target_column",
@@ -153,7 +158,7 @@ def test_capabilities_exposes_design_contract_and_unlocked_routes(monkeypatch):
         "mapping_status",
     ]
     assert data["mapping_status"] == ["AUTO", "ADJUSTED", "UNMATCHED"]
-    # The two gate routes from the xfail sentinel are now wired into the app.
+    # The former gate routes are now part of the registered OpenAPI contract.
     # (include_router wraps mounted routes under _IncludedRouter with path=None,
     # so the app.routes set is no longer introspectable; the OpenAPI schema is
     # the authoritative contract surface and reflects the mounted routes.)
@@ -163,6 +168,7 @@ def test_capabilities_exposes_design_contract_and_unlocked_routes(monkeypatch):
     assert "get" in paths["/api/v1/rebuild/sync/capabilities"]
     assert "/api/v1/rebuild/sync/plans" in paths
     assert "post" in paths["/api/v1/rebuild/sync/plans"]
+    assert "post" in paths["/api/v1/rebuild/sync/mappings/auto"]
 
 
 def test_explore_reuses_datasource_metadata_catalog(monkeypatch):
@@ -336,6 +342,26 @@ def test_sync_routes_enforce_auth_and_permission(monkeypatch):
         f"{SYNC}/plans", json=_plan_body(project_id, src_id, 999), headers=tokens["viewer"]
     )
     assert viewer_save.status_code == 403
+    viewer_auto = client.post(
+        f"{SYNC}/mappings/auto",
+        json={
+            "project_id": project_id,
+            "source": {"datasource_id": src_id, "schema": "sales", "object": "orders"},
+            "target": {"datasource_id": 999, "schema": "dw", "object": "orders_dw"},
+        },
+        headers=tokens["viewer"],
+    )
+    assert viewer_auto.status_code == 403
+    # Automatic mapping is an edit operation and also requires an active token.
+    unauthenticated_auto = client.post(
+        f"{SYNC}/mappings/auto",
+        json={
+            "project_id": project_id,
+            "source": {"datasource_id": src_id, "schema": "sales", "object": "orders"},
+            "target": {"datasource_id": src_id, "schema": "dw", "object": "orders_dw"},
+        },
+    )
+    assert unauthenticated_auto.status_code == 401
     # Unknown datasource reference on explore → 404.
     missing = client.get(
         f"{SYNC}/explore",
@@ -344,6 +370,79 @@ def test_sync_routes_enforce_auth_and_permission(monkeypatch):
     )
     assert missing.status_code == 404
     assert missing.json()["code"] == 4042
+
+
+def test_auto_mapping_rejects_malformed_references(monkeypatch):
+    client, _app, project_id, src_id, tgt_id, tokens = _client(monkeypatch)
+    base = {
+        "project_id": project_id,
+        "source": {"datasource_id": src_id, "schema": "sales", "object": "orders"},
+        "target": {"datasource_id": tgt_id, "schema": "dw", "object": "orders_dw"},
+    }
+    malformed = [
+        {"project_id": project_id, "target": base["target"]},
+        {"project_id": project_id, "source": base["source"]},
+        {**base, "source": {**base["source"], "datasource_id": "not-an-int"}},
+        {**base, "source": {**base["source"], "schema": "s" * 256}},
+    ]
+    for body in malformed:
+        response = client.post(f"{SYNC}/mappings/auto", json=body, headers=tokens["dev"])
+        assert response.status_code == 400
+        assert response.json()["code"] == 4001
+
+
+def test_explore_marks_truncated_at_max_page_size(monkeypatch):
+    client, _app, project_id, src_id, _tgt_id, tokens = _client(monkeypatch)
+    rows = [{"column_name": f"c{i}", "data_type": "int"} for i in range(501)]
+    _install_fake_catalog(monkeypatch, {"large_table": rows}, {})
+    response = client.get(
+        f"{SYNC}/explore",
+        params={"project_id": project_id, "datasource_id": src_id, "schema": "sales", "object_name": "large_table", "limit": 500},
+        headers=tokens["dev"],
+    )
+    assert response.status_code == 200
+    assert len(response.json()["data"]["items"]) == 500
+    assert response.json()["data"]["truncated"] is True
+
+
+def test_save_plan_rejects_malformed_frames_and_structured_config(monkeypatch):
+    client, _app, project_id, src_id, tgt_id, tokens = _client(monkeypatch)
+    malformed = [
+        {key: value for key, value in _plan_body(project_id, src_id, tgt_id).items() if key != "workflow_id"},
+        {key: value for key, value in _plan_body(project_id, src_id, tgt_id).items() if key != "workflow_version"},
+        {**_plan_body(project_id, src_id, tgt_id), "task_id": "  "},
+        {**_plan_body(project_id, src_id, tgt_id), "transform_config": []},
+        {
+            **_plan_body(project_id, src_id, tgt_id),
+            "target_properties": {"batch_concurrency": {"batch_size": 10001, "concurrency": 33}},
+        },
+    ]
+    expected_codes = [4001, 4001, 4001, "SYNC_INVALID_TRANSFORM", "SYNC_INVALID_TARGET_PROPS"]
+    for body, expected in zip(malformed, expected_codes, strict=True):
+        response = client.post(f"{SYNC}/plans", json=body, headers=tokens["dev"])
+        assert response.status_code == 400
+        payload = response.json()
+        assert payload["code"] == expected
+        if isinstance(expected, str):
+            assert payload["data"]["diagnostics"]
+
+
+@pytest.mark.parametrize(
+    ("field", "value", "diagnostic"),
+    [
+        ("transform_config", {"transform_expression": ["bad"]}, "SYNC_INVALID_TRANSFORM"),
+        ("transform_config", {"unexpected": True}, "SYNC_INVALID_TRANSFORM"),
+        ("target_properties", {"batch_concurrency": {"batch_size": True}}, "SYNC_INVALID_TARGET_PROPS"),
+        ("target_properties", {"primary_key_conflict": {"conflict_strategy": "truncate"}}, "SYNC_INVALID_TARGET_PROPS"),
+    ],
+)
+def test_save_plan_rejects_invalid_structured_schema(monkeypatch, field, value, diagnostic):
+    client, _app, project_id, src_id, tgt_id, tokens = _client(monkeypatch)
+    body = _plan_body(project_id, src_id, tgt_id, **{field: value})
+    response = client.post(f"{SYNC}/plans", json=body, headers=tokens["dev"])
+    assert response.status_code == 400
+    assert response.json()["code"] == diagnostic
+    assert response.json()["data"]["diagnostics"]
 
 
 def test_mapping_field_contract_is_frozen():

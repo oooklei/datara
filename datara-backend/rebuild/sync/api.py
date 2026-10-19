@@ -35,6 +35,8 @@ from rebuild.sync.repository import (
     generate_auto_mappings,
     serialize_plan,
     validate_mappings,
+    validate_target_properties,
+    validate_transform_config,
 )
 
 logger = logging.getLogger(__name__)
@@ -221,7 +223,7 @@ def build_sync_router(
             tgt = frame_ref(body, "target")
         except MalformedRequest as exc:
             return request_error(exc)
-        with authorized_session(project_id, Permission.VIEW_ALL, token, authorization) as outcome:
+        with authorized_session(project_id, Permission.EDIT_DEFINITION, token, authorization) as outcome:
             if isinstance(outcome, JSONResponse):
                 return outcome
             try:
@@ -250,10 +252,8 @@ def build_sync_router(
             src = frame_ref(body, "source")
             tgt = frame_ref(body, "target")
             mappings = validate_mappings(body.get("mappings"))
-            transform_config = body.get("transform_config") or {}
-            target_properties = body.get("target_properties") or {}
-            if not isinstance(transform_config, dict) or not isinstance(target_properties, dict):
-                raise MalformedRequest("transform_config and target_properties must be objects")
+            transform_config = validate_transform_config(body.get("transform_config"))
+            target_properties = validate_target_properties(body.get("target_properties"))
         except (MalformedRequest, SyncDomainError) as exc:
             return request_error(exc)
         with authorized_session(project_id, Permission.EDIT_DEFINITION, token, authorization) as outcome:

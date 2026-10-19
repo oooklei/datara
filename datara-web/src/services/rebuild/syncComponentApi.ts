@@ -1,258 +1,178 @@
 /**
- * R4-SYNC（同步组件表单）契约层 — RED 阶段。
- * 端点前缀为草案（/api/v1/rebuild/sync/*），最终以后端契约为权威；
- * 本文件语义源自 docs/increments/R4-SYNC-API-contract-pending.md（Codex 草案 §2-§4）
- * 与 docs/increments/2026-10-16-纠偏重构方案设计.md §2.2 客户要求 #2：
- * 选源/目标连接 → 探查表字段 → 生成初始映射 → 用户调整 → 随工作流版本保存 → 预览/运行。
- * RED 约定：所有 I/O 方法在后端接入前抛 R4_SYNC_NOT_WIRED，不发出任何真实请求；
- * 列匹配建议、映射行编辑等纯前端逻辑可真实运行（见 SyncFormValidationView）。
+ * R4-SYNC client for the accepted rebuild/sync API (§6.4).
+ * GREEN 已接线（FE-01 修订 2026-10-19）。
+ * FE-09 前置改写（2026-10-19）：真实卡点由「R3 收口+SYNC 契约解禁」更正为
+ * 「工作流版本域数据可用性」（SyncPlanInput 需 workflow_id/workflow_version，大盘 #2）；
+ * 本契约 5 方法已接线（getCapabilities/explore/autoMap/savePlan/listPlans）。
+ * FE-09 正式页落差登记：/sync/detail 正式页仍走旧 syncApi 只读实例明细，
+ * 13 字段表单+映射 8 字段承接待工作流版本域可用后落地。
+ * 横幅状态词表见 services/rebuild/bannerStatus.ts。
  */
 
-/* ---------- 对象身份（三元组，草案 §3.1） ---------- */
+import { getToken } from '../http'
 
-export interface SyncObjectIdentity {
-  datasourceId: number
+const BASE = '/api/v1/rebuild/sync'
+const TIMEOUT_MS = 15000
+
+export interface SyncObjectRef {
+  datasource_id: number
   schema: string
-  table: string
+  object: string
 }
-
-/* ---------- 列元数据（草案 §3.1：ordinal/name/type/nullable/precision/scale/comment） ---------- */
 
 export interface SyncColumn {
-  ordinal: number
-  name: string
-  type: string
+  column_name: string
+  data_type: string
+  column_type?: string
+  is_nullable?: boolean
+  column_key?: string
+  column_comment?: string
+}
+
+export interface SyncMapping {
+  source_column: string
+  target_column: string
+  source_type: string
+  target_type: string
+  transform_expression: string
   nullable: boolean
-  precision?: number | null
-  scale?: number | null
-  comment?: string | null
+  default_value: unknown
+  mapping_status: 'AUTO' | 'ADJUSTED' | 'UNMATCHED'
 }
 
-/* ---------- 探查（POST /probes，草案 §3.1） ---------- */
-
-export type SyncProbeMode = 'source_table' | 'target_table' | 'file'
-
-export interface SyncProbeRequest {
-  projectId: number
-  mode: SyncProbeMode
-  source: SyncObjectIdentity
-  /** target-led 探查另带显式候选 schema 列表（草案 §3.1） */
-  candidateSchemas?: string[]
-}
-
-export interface SyncProbeResult {
-  mode: SyncProbeMode
-  /** 候选对象全名（target 同名跨 schema 返回全部候选，不自动选中） */
-  candidates: SyncObjectIdentity[]
-  columns: SyncColumn[]
-}
-
-/* ---------- 计划与映射（草案 §3.2） ---------- */
-
-export type SyncStrategy = 'full' | 'incremental'
-export type SyncWriteMode = 'append' | 'upsert' | 'replace_table'
-export type SyncTargetPolicy = 'existing_only' | 'create_from_source_schema'
-
-export type SyncMappingOperation = 'map' | 'constant' | 'ignore'
-
-export interface SyncMappingItem {
-  /** 目标序号显式定位（草案 §3.2） */
-  targetOrdinal: number
-  operation: SyncMappingOperation
-  sourceColumn?: string
-  targetColumn?: string
-  constantValue?: string
-  /** 允许的转换集合由能力声明提供（草案 §3.2） */
-  conversion?: string
-}
-
-export interface SyncIncrementalBoundary {
-  watermarkColumn: string
-  comparison: string
-  lowerBound?: string | null
-  upperBound?: string | null
-  lowerInclusive: boolean
-  upperInclusive: boolean
-  /** 首次运行策略固化进 plan digest，不读运行时动态值（草案 §3.2） */
-  initialPolicy: string
-}
-
-export interface SyncPlanDraft {
-  projectId: number
-  mode: SyncProbeMode
-  source: SyncObjectIdentity
-  target: SyncObjectIdentity
-  strategy: SyncStrategy
-  writeMode: SyncWriteMode
-  targetPolicy: SyncTargetPolicy
-  mapping: SyncMappingItem[]
-  incremental?: SyncIncrementalBoundary
-}
-
-export interface SyncPlanVersion {
-  planId: number
-  version: number
-  planDigest: string
-  /** 服务端重验后的字段级诊断（草案 §2 稳定错误码） */
-  diagnostics: Array<{ field: string; code: string; message: string }>
-}
-
-/* ---------- 预览（POST /plans/{plan_id}/preview，草案 §2） ---------- */
-
-/** R4 初版 preview 仅返回列元数据与统计，禁止回传源数据样本值（草案 §2） */
-export interface SyncPreviewResult {
-  planId: number
-  planVersion: number
-  planDigest: string
-  sourceColumns: SyncColumn[]
-  targetColumns: SyncColumn[]
-  mappingSummary: SyncMappingItem[]
-  rowCountEstimate: number
-}
-
-/* ---------- 运行与 attempt（草案 §2/§4） ---------- */
-
-/** Q9 已裁定（BE 权威，2026-10-16 用户授权 FE 对齐）：cancelling 为状态枚举词形；
- *  cancel_requested 仅作请求标志（非状态枚举），待 R4 契约冻结时以独立字段接入。 */
-export type SyncRunStatus = 'queued' | 'running' | 'cancelling' | 'succeeded' | 'failed' | 'cancelled'
-
-export interface SyncRunCounts {
-  sourceRead: number
-  targetWritten: number
-  inserted: number
-  updated: number
-  skipped: number
-  failed: number
-}
-
-export interface SyncRunRequest {
-  projectId: number
-  planId: number
-  planVersion: number
-  planDigest: string
-  idempotencyKey: string
-  /** workflow dispatch 必须另带四身份且属同一 project（草案 §2/§4）；手动运行可空 */
-  workflowId?: number
-  workflowVersion?: number
-  taskInstanceId?: number
-  taskId?: string
-}
-
-export interface SyncRunSummary {
-  runId: number
-  status: SyncRunStatus
-  attemptId: number
-  counts: SyncRunCounts
-  startedAt?: string | null
-  finishedAt?: string | null
-}
-
-export interface SyncAttemptDetail {
-  runId: number
-  attemptId: number
-  status: SyncRunStatus
-  counts: SyncRunCounts
-  checkpointRef?: string | null
-  errorCode?: string | null
-  createdAt: string
-  finishedAt?: string | null
-}
-
-/* ---------- checkpoint / 恢复（草案 §2） ---------- */
-
-export interface SyncCheckpoint {
-  runId: number
-  attemptId: number
-  /** opaque checkpoint（不泄漏凭据或源行 payload） */
-  checkpoint: string
-  planDigest: string
-  sourceIdentity: SyncObjectIdentity
-  watermarkRule: SyncIncrementalBoundary
-}
-
-export interface SyncResumeRequest {
-  idempotencyKey: string
-  checkpointRef: string
-}
-
-/* ---------- RED 哨兵 ---------- */
-
-export const R4_SYNC_NOT_WIRED = 'R4_SYNC_NOT_WIRED: rebuild/sync contract not connected yet'
-
-/** 契约方法清单（测试与 UI 横幅共用，保持单一事实源） */
-export const R4_SYNC_CONTRACT_METHODS = [
-  'getCapabilities',
-  'probe',
-  'savePlan',
-  'getPlan',
-  'previewPlan',
-  'runPlan',
-  'getRun',
-  'getAttempt',
-  'cancelRun',
-  'getCheckpoint',
-  'resumeRun',
-] as const
-
-export type R4SyncContractMethod = (typeof R4_SYNC_CONTRACT_METHODS)[number]
-
-export interface SyncComponentContract {
-  getCapabilities: (projectId: number) => Promise<Record<string, unknown>>
-  probe: (request: SyncProbeRequest) => Promise<SyncProbeResult>
-  savePlan: (draft: SyncPlanDraft) => Promise<SyncPlanVersion>
-  getPlan: (planId: number, projectId: number) => Promise<SyncPlanDraft & SyncPlanVersion>
-  previewPlan: (planId: number, planVersion: number, planDigest: string, projectId: number) => Promise<SyncPreviewResult>
-  runPlan: (request: SyncRunRequest) => Promise<SyncRunSummary>
-  getRun: (runId: number, projectId: number) => Promise<SyncRunSummary>
-  getAttempt: (runId: number, attemptId: number, projectId: number) => Promise<SyncAttemptDetail>
-  cancelRun: (runId: number, projectId: number) => Promise<{ accepted: boolean; status: SyncRunStatus }>
-  getCheckpoint: (runId: number, projectId: number) => Promise<SyncCheckpoint>
-  resumeRun: (runId: number, projectId: number, request: SyncResumeRequest) => Promise<SyncRunSummary>
-}
-
-/* ---------- RED 实现（后端接入前统一抛哨兵；方法清单见 R4_SYNC_CONTRACT_METHODS） ---------- */
-
-/** 异步契约方法统一实现：rejected promise（同步 throw 会在调用点直接炸出，无法被 rejects 断言捕获） */
-const notWired = async (): Promise<never> => {
-  throw new Error(R4_SYNC_NOT_WIRED)
-}
-
-/**
- * R4-SYNC 契约工厂（原型态）：签名与类型已冻结，实现在后端就绪后按本接口逐方法替换，
- * UI 层（SyncFormValidationView）不感知切换。
- */
-export function createSyncComponentContract(): SyncComponentContract {
-  return {
-    getCapabilities: notWired,
-    probe: notWired,
-    savePlan: notWired,
-    getPlan: notWired,
-    previewPlan: notWired,
-    runPlan: notWired,
-    getRun: notWired,
-    getAttempt: notWired,
-    cancelRun: notWired,
-    getCheckpoint: notWired,
-    resumeRun: notWired,
+export interface SyncPlanInput {
+  project_id: number
+  workflow_id: number
+  workflow_version: number
+  task_id: string
+  source: SyncObjectRef
+  target: SyncObjectRef
+  mappings: SyncMapping[]
+  transform_config: {
+    transform_expression?: Record<string, string>
+    filter_condition?: string
+  }
+  target_properties: {
+    partition_incremental?: { partition_field?: string; incremental_field?: string }
+    primary_key_conflict?: { primary_key?: string[]; conflict_strategy?: 'insert' | 'ignore' | 'update' | 'upsert' }
+    batch_concurrency?: { batch_size?: number; concurrency?: number }
   }
 }
 
-/* ---------- 纯前端逻辑：初始映射建议（客户 #2「生成初始映射 → 用户调整」） ---------- */
+export interface SyncPlan extends SyncPlanInput {}
 
-/**
- * 按列名（大小写不敏感）+ 序号生成初始映射建议：
- * 仅 operation=map 的建议行，用户可在 UI 调整/改为 constant/ignore。
- * 这是本地纯函数，不依赖后端；服务端保存时会重验列存在性与唯一性（草案 §3.2）。
- */
-export function suggestInitialMapping(source: SyncColumn[], target: SyncColumn[]): SyncMappingItem[] {
-  const byLowerName = new Map(source.map((col) => [col.name.toLowerCase(), col]))
+export interface SyncCapabilities {
+  form_fields: string[]
+  mapping_fields: string[]
+  mapping_status: string[]
+}
+
+export interface SyncExploreResult {
+  items: SyncColumn[]
+  truncated: boolean
+  limit: number
+}
+
+export interface SyncContract {
+  getCapabilities(): Promise<SyncCapabilities>
+  explore(projectId: number, ref: SyncObjectRef, limit?: number): Promise<SyncExploreResult>
+  autoMap(projectId: number, source: SyncObjectRef, target: SyncObjectRef): Promise<SyncMapping[]>
+  savePlan(plan: SyncPlanInput): Promise<{ saved: true; workflow_version: number; task_id: string }>
+  listPlans(projectId: number, workflowId: number, workflowVersion: number): Promise<SyncPlan[]>
+}
+
+export class SyncApiError extends Error {
+  readonly status: number
+  readonly code: number | string
+  readonly diagnostics: Array<Record<string, unknown>>
+
+  constructor(status: number, code: number | string, message: string, diagnostics: Array<Record<string, unknown>> = []) {
+    super(message)
+    this.name = 'SyncApiError'
+    this.status = status
+    this.code = code
+    this.diagnostics = diagnostics
+  }
+}
+
+async function request<T>(path: string, init?: RequestInit): Promise<T> {
+  const controller = new AbortController()
+  const timeout = setTimeout(() => controller.abort(), TIMEOUT_MS)
+  try {
+    const headers: Record<string, string> = { 'Content-Type': 'application/json' }
+    const token = getToken()
+    if (token) headers.token = token
+    const response = await fetch(`${BASE}${path}`, {
+      ...init,
+      headers: { ...headers, ...(init?.headers as Record<string, string> | undefined) },
+      signal: controller.signal,
+    })
+    const envelope = await response.json().catch(() => null) as {
+      code?: number | string
+      msg?: string
+      data?: T | null
+    } | null
+    if (!envelope) throw new SyncApiError(response.status, response.status, `无法解析 SYNC 响应（HTTP ${response.status}）`)
+    const success = response.ok && (envelope.code === 0 || envelope.code === '0')
+    if (!success) {
+      const data = envelope.data as { diagnostics?: Array<Record<string, unknown>> } | null | undefined
+      throw new SyncApiError(response.status, envelope.code ?? response.status, envelope.msg ?? 'SYNC 请求失败', data?.diagnostics ?? [])
+    }
+    return envelope.data as T
+  } catch (error) {
+    if (error instanceof DOMException && error.name === 'AbortError') {
+      throw new SyncApiError(0, 'TIMEOUT', `SYNC 请求超时（${TIMEOUT_MS / 1000}s）`)
+    }
+    throw error
+  } finally {
+    clearTimeout(timeout)
+  }
+}
+
+export function createSyncComponentContract(): SyncContract {
+  return {
+    getCapabilities: () => request<SyncCapabilities>('/capabilities'),
+    explore: (projectId, ref, limit = 200) => {
+      const query = new URLSearchParams({
+        project_id: String(projectId),
+        datasource_id: String(ref.datasource_id),
+        schema: ref.schema,
+        object_name: ref.object,
+        limit: String(limit),
+      })
+      return request<SyncExploreResult>(`/explore?${query}`)
+    },
+    autoMap: async (projectId, source, target) => {
+      const result = await request<{ mappings: SyncMapping[] }>('/mappings/auto', {
+        method: 'POST', body: JSON.stringify({ project_id: projectId, source, target }),
+      })
+      return result.mappings
+    },
+    savePlan: (plan) => request('/plans', { method: 'POST', body: JSON.stringify(plan) }),
+    listPlans: async (projectId, workflowId, workflowVersion) => {
+      const query = new URLSearchParams({
+        project_id: String(projectId), workflow_id: String(workflowId), workflow_version: String(workflowVersion),
+      })
+      const result = await request<{ items: SyncPlan[] }>(`/plans?${query}`)
+      return result.items
+    },
+  }
+}
+
+/** Local suggestion helper retained for offline editing and unit tests. */
+export function suggestInitialMapping(source: SyncColumn[], target: SyncColumn[]): SyncMapping[] {
+  const byName = new Map(source.map((column) => [column.column_name.toLocaleLowerCase(), column]))
   return target.map((targetColumn) => {
-    const matched = byLowerName.get(targetColumn.name.toLowerCase())
+    const sourceColumn = byName.get(targetColumn.column_name.toLocaleLowerCase())
     return {
-      targetOrdinal: targetColumn.ordinal,
-      operation: 'map',
-      sourceColumn: matched?.name,
-      targetColumn: targetColumn.name,
+      source_column: sourceColumn?.column_name ?? '',
+      target_column: targetColumn.column_name,
+      source_type: sourceColumn?.data_type ?? '',
+      target_type: targetColumn.data_type,
+      transform_expression: '',
+      nullable: sourceColumn?.is_nullable ?? true,
+      default_value: null,
+      mapping_status: sourceColumn ? 'AUTO' : 'UNMATCHED',
     }
   })
 }
