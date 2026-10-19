@@ -5,21 +5,39 @@
   不引入 monaco-editor，避免验证页大包。
 -->
 <template>
-  <div ref="hostRef" class="r5a-editor" data-testid="r5a-sql-editor"></div>
+  <div class="r5a-editor-wrap" data-testid="r5a-sql-editor">
+    <div ref="hostRef" class="r5a-editor"></div>
+    <div v-if="diagnostics.length" class="r5a-diagnostics" data-testid="r5a-diagnostics">
+      <div v-for="item in diagnostics" :key="`${item.stmtIndex}:${item.line}:${item.col}:${item.code}`" class="r5a-diagnostic" :class="`is-${item.severity}`" @click="goto(item.line, item.col)">
+        <el-tag size="small" :type="item.severity === 'error' ? 'danger' : item.severity === 'warning' ? 'warning' : 'info'">{{ item.severity }}</el-tag>
+        <strong>{{ item.code }}</strong><span>语句 {{ item.stmtIndex }} · {{ item.line }}:{{ item.col }}</span><span>{{ item.message }}</span>
+      </div>
+    </div>
+  </div>
 </template>
 
 <script setup lang="ts">
-import { onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { EditorView, basicSetup } from 'codemirror'
 import { EditorState } from '@codemirror/state'
 import { sql } from '@codemirror/lang-sql'
 import { oneDark } from '@codemirror/theme-one-dark'
+import type { SqlDiagnostic } from '../../../../../services/rebuild/sqlIdeApi'
 
-const props = defineProps<{ modelValue: string; readonly?: boolean }>()
+const props = withDefaults(defineProps<{ modelValue: string; readonly?: boolean; diagnostics?: SqlDiagnostic[] }>(), { diagnostics: () => [] })
 const emit = defineEmits<{ (e: 'update:modelValue', v: string): void }>()
 
 const hostRef = ref<HTMLDivElement | null>(null)
 let view: EditorView | null = null
+const diagnostics = computed(() => props.diagnostics)
+
+function goto(lineNumber: number, column: number) {
+  if (!view) return
+  const line = view.state.doc.line(Math.max(1, Math.min(lineNumber, view.state.doc.lines)))
+  const position = Math.min(line.to, line.from + Math.max(0, column - 1))
+  view.dispatch({ selection: { anchor: position }, effects: EditorView.scrollIntoView(position, { y: 'center' }) })
+  view.focus()
+}
 
 onMounted(() => {
   const state = EditorState.create({
@@ -52,8 +70,11 @@ onBeforeUnmount(() => view?.destroy())
 </script>
 
 <style scoped>
+.r5a-editor-wrap { display: flex; flex-direction: column; height: 100%; min-height: 0; }
 .r5a-editor {
   height: 100%;
+  min-height: 0;
+  flex: 1;
   overflow: auto;
   border: 1px solid var(--el-border-color-light);
   border-radius: 4px;
@@ -62,4 +83,7 @@ onBeforeUnmount(() => view?.destroy())
 .r5a-editor :deep(.cm-editor) {
   height: 100%;
 }
+.r5a-diagnostics { flex: none; max-height: 132px; overflow: auto; border-top: 1px solid var(--el-border-color); background: var(--el-bg-color); }
+.r5a-diagnostic { display: flex; align-items: center; gap: 8px; padding: 4px 8px; cursor: pointer; font-size: 12px; }
+.r5a-diagnostic:hover { background: var(--el-fill-color-light); }
 </style>

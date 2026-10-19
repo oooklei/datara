@@ -16,6 +16,8 @@ export type ObjectKind =
   | 'procedure'
   | 'trigger'
 
+export type DefinitionObjectKind = 'table' | 'view' | 'function' | 'procedure' | 'trigger'
+
 export interface DataSourceRef {
   id: number
   name: string
@@ -24,8 +26,24 @@ export interface DataSourceRef {
 }
 
 export interface DatabaseMeta {
+  id?: number
   name: string
+  capability?: string
+  constraints?: string[]
   defaultSchema?: string | null
+}
+
+export interface MetadataPage {
+  nextCursor: string | null
+  hasMore: boolean
+  pageSize?: number
+}
+
+export interface MetadataEnvelope<T> {
+  items: T[]
+  capability: 'supported' | 'conditional' | 'unsupported' | string
+  constraints: string[]
+  page: MetadataPage
 }
 
 export interface SchemaMeta {
@@ -39,6 +57,8 @@ export interface RelationMeta {
   name: string
   rowsApprox?: number | null
   comment?: string | null
+  capability?: string
+  constraints?: string[]
 }
 
 export interface ColumnMeta {
@@ -91,6 +111,7 @@ export interface SqlLogEvent {
 
 export interface SqlResultEvent {
   stmtIndex: number
+  resultSetId: string
   columns: string[]
   rows: unknown[][]
   rowsTotal: number
@@ -102,10 +123,12 @@ export interface SqlDoneEvent {
   elapsedMs: number
   historyId: number | null
   stmtCount: number
+  resultSets?: Array<{ resultSetId: string; stmtIndex: number; columns: string[]; rowsTotal: number; elapsedMs?: number }>
 }
 
 export interface SqlResultPage {
   stmtIndex: number
+  resultSetId: string
   columns: string[]
   rows: unknown[][]
   rowsTotal: number
@@ -122,6 +145,7 @@ export interface HistoryEntry {
   stmtCount: number
   elapsedMs: number
   createdAt: string
+  resultSets?: SqlDoneEvent['resultSets']
 }
 
 export interface ScriptEntry {
@@ -129,6 +153,7 @@ export interface ScriptEntry {
   name: string
   sqlText: string
   updatedAt: string
+  revision: number
 }
 
 export interface LintItem {
@@ -137,6 +162,24 @@ export interface LintItem {
   line: number
   col: number
   message: string
+  severity: 'error' | 'warning' | 'info'
+  code: string
+}
+
+export interface SqlDiagnostic {
+  stmtIndex: number
+  line: number
+  col: number
+  severity: 'error' | 'warning' | 'info'
+  code: string
+  message: string
+}
+
+export interface ExportResult {
+  exportId: string
+  status: 'ready' | 'completed' | 'pending' | 'failed'
+  expiresAt: string
+  downloadUrl?: string
 }
 
 import { getToken } from '../http'
@@ -176,7 +219,16 @@ async function request<T>(projectId: number, path: string, method = 'GET', body?
       envelope?.data?.details,
     )
   }
-  return envelope.data as T
+  return normalizeResponse(envelope.data) as T
+}
+
+function normalizeResponse(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(normalizeResponse)
+  if (!value || typeof value !== 'object') return value
+  return Object.fromEntries(Object.entries(value).map(([key, item]) => [
+    key.replace(/_([a-z])/g, (_, letter: string) => letter.toUpperCase()),
+    normalizeResponse(item),
+  ]))
 }
 
 function query(values: Record<string, string | number | boolean | null | undefined>): string {
@@ -197,7 +249,7 @@ function openAuthenticatedEventStream(projectId: number, taskId: string): EventS
   let reconnectTimer: ReturnType<typeof setTimeout> | undefined
   const stream = {
     url,
-    withCredentials: false,
+    withCredentials: true,
     get readyState() { return readyState },
     onopen: null as ((event: Event) => void) | null,
     onmessage: null as ((event: MessageEvent) => void) | null,
@@ -227,11 +279,9 @@ function openAuthenticatedEventStream(projectId: number, taskId: string): EventS
 
   const connect = async () => {
     const headers: Record<string, string> = { Accept: 'text/event-stream' }
-    const token = getToken()
-    if (token) headers.token = token
     if (lastEventId) headers['Last-Event-ID'] = lastEventId
     try {
-      const response = await fetch(url, { headers, signal: controller.signal })
+      const response = await fetch(url, { headers, credentials: 'same-origin', signal: controller.signal })
     if (!response.ok || !response.body) {
       const envelope = await response.json().catch(() => null) as { code?: number; msg?: string; data?: { errorCode?: string; details?: unknown } } | null
       throw new SqlIdeApiError(envelope?.msg || `SQL IDE event stream failed (HTTP ${response.status})`, envelope?.code ?? response.status, envelope?.data?.errorCode, envelope?.data?.details)
@@ -302,24 +352,30 @@ export const R5A_CONTRACT_METHODS = [
 export type R5AContractMethod = (typeof R5A_CONTRACT_METHODS)[number]
 
 export interface SqlIdeContract {
-  listDatabases: (datasourceId: number) => Promise<DatabaseMeta[]>
-  listSchemas: (datasourceId: number, database: string) => Promise<SchemaMeta[]>
-  listRelations: (datasourceId: number, database: string, schema: string | null, kind: 'table' | 'view') => Promise<RelationMeta[]>
-  listColumns: (datasourceId: number, database: string, table: string, schema: string | null) => Promise<ColumnMeta[]>
-  listRoutines: (datasourceId: number, database: string, schema: string | null, kind: RoutineMeta['kind']) => Promise<RoutineMeta[]>
-  listIndexes: (datasourceId: number, database: string, table: string) => Promise<IndexMeta[]>
-  searchObjects: (datasourceId: number, keyword: string) => Promise<{ kind: ObjectKind; name: string; parent: string | null }[]>
-  lintSql: (datasourceId: number, sql: string) => Promise<LintItem[]>
+  listDatabases: (datasourceId: number, cursor?: string) => Promise<MetadataEnvelope<DatabaseMeta>>
+  listSchemas: (datasourceId: number, database: string, cursor?: string) => Promise<MetadataEnvelope<SchemaMeta>>
+  listRelations: (datasourceId: number, database: string, schema: string | null, kind: 'table' | 'view', cursor?: string) => Promise<MetadataEnvelope<RelationMeta>>
+  listColumns: (datasourceId: number, database: string, table: string, schema: string | null, cursor?: string) => Promise<MetadataEnvelope<ColumnMeta>>
+  listRoutines: (datasourceId: number, database: string, schema: string | null, kind: RoutineMeta['kind'], cursor?: string) => Promise<MetadataEnvelope<RoutineMeta>>
+  listIndexes: (datasourceId: number, database: string, table: string, schema: string | null, cursor?: string) => Promise<MetadataEnvelope<IndexMeta>>
+  searchObjects: (datasourceId: number, keyword: string, cursor?: string) => Promise<MetadataEnvelope<{ kind: ObjectKind; name: string; parent: string | null }>>
+  lintSql: (datasourceId: number, sql: string) => Promise<SqlDiagnostic[]>
   executeSql: (request: SqlExecuteRequest) => Promise<{ taskId: string }>
   cancelExecution: (taskId: string) => Promise<{ canceled: boolean }>
   /** SSE 只读流：返回 EventSource（token 沿 R3 runner 注入先例，禁止落 storage） */
   openEventStream: (taskId: string) => EventSource
-  fetchResultPage: (historyId: number, stmtIndex: number, offset: number, limit: number) => Promise<SqlResultPage>
+  fetchResultPage: (historyId: number, resultSetId: string, offset: number, limit: number) => Promise<SqlResultPage>
   listHistory: (datasourceId: number) => Promise<HistoryEntry[]>
   deleteHistory: (historyId: number) => Promise<void>
   listScripts: () => Promise<ScriptEntry[]>
-  saveScript: (input: { id?: number; name: string; sqlText: string }) => Promise<ScriptEntry>
-  deleteScript: (id: number) => Promise<void>
+  saveScript: (input: { id?: number; name: string; sqlText: string; revision?: number }) => Promise<ScriptEntry>
+  deleteScript: (id: number, expectedRevision: number) => Promise<void>
+  getDefinition: (input: { datasourceId: number; database: string; objectKind: DefinitionObjectKind; objectRef: Record<string, unknown> }) => Promise<{ definition: string; capability: string; constraints: string[] }>
+  exportResult: (input: { historyId: number; resultSetId: string; format: 'csv' | 'json' | 'xlsx' }) => Promise<ExportResult>
+  exportTable: (input: { datasourceId: number; objectRef: Record<string, unknown>; format: 'csv' | 'json' | 'xlsx'; rowLimit?: number }) => Promise<ExportResult>
+  getExport: (exportId: string) => Promise<ExportResult>
+  getExportDownloadUrl: (exportId: string) => string
+  cancelExport: (exportId: string) => Promise<void>
 }
 
 /* ---------- API 实现（方法清单见 R5A_CONTRACT_METHODS） ---------- */
@@ -329,26 +385,55 @@ export interface SqlIdeContract {
  */
 export function createSqlIdeContract(projectId = 1): SqlIdeContract {
   return {
-    listDatabases: (datasourceId) => request(projectId, `/databases${query({ datasourceId })}`),
-    listSchemas: (datasourceId, database) => request(projectId, `/schemas${query({ datasourceId, database })}`),
-    listRelations: (datasourceId, database, schema, kind) => request(projectId, `/relations${query({ datasourceId, database, schema, kind })}`),
-    listColumns: (datasourceId, database, table, schema) => request(projectId, `/columns${query({ datasourceId, database, table, schema })}`),
-    listRoutines: (datasourceId, database, schema, kind) => request(projectId, `/routines${query({ datasourceId, database, schema, kind })}`),
-    listIndexes: (datasourceId, database, table) => request(projectId, `/indexes${query({ datasourceId, database, table })}`),
-    searchObjects: (datasourceId, keyword) => request(projectId, `/objects/search${query({ datasourceId, keyword })}`),
-    lintSql: (datasourceId, sql) => request(projectId, '/lint', 'POST', { datasourceId, sql }),
+    listDatabases: (datasourceId, cursor) => request(projectId, `/databases${query({ datasourceId, cursor })}`),
+    listSchemas: (datasourceId, database, cursor) => request(projectId, `/schemas${query({ datasourceId, database, cursor })}`),
+    listRelations: (datasourceId, database, schema, kind, cursor) => request(projectId, `/relations${query({ datasourceId, database, schema, kind, cursor })}`),
+    listColumns: (datasourceId, database, table, schema, cursor) => request(projectId, `/columns${query({ datasourceId, database, table, schema, cursor })}`),
+    listRoutines: (datasourceId, database, schema, kind, cursor) => request(projectId, `/routines${query({ datasourceId, database, schema, kind, cursor })}`),
+    listIndexes: (datasourceId, database, table, schema, cursor) => request(projectId, `/indexes${query({ datasourceId, database, table, schema, cursor })}`),
+    searchObjects: (datasourceId, keyword, cursor) => request(projectId, `/objects/search${query({ datasourceId, keyword, cursor })}`),
+    lintSql: async (datasourceId, sql) => {
+      const response = await request<SqlDiagnostic[] | { diagnostics: Array<SqlDiagnostic & { column?: number }> }>(projectId, '/lint', 'POST', { datasourceId, sql })
+      const items = Array.isArray(response) ? response : response.diagnostics
+      return items.map((item) => ({ ...item, col: item.col ?? (item as SqlDiagnostic & { column?: number }).column ?? 1 }))
+    },
     executeSql: (input) => request(projectId, '/executions', 'POST', input),
     cancelExecution: async (taskId) => {
       const response = await request<{ accepted: boolean; status: string }>(projectId, `/executions/${encodeURIComponent(taskId)}/cancel`, 'POST')
       return { canceled: response.accepted }
     },
     openEventStream: (taskId) => openAuthenticatedEventStream(projectId, taskId),
-    fetchResultPage: (historyId, stmtIndex, offset, limit) => request(projectId, `/results/${historyId}${query({ stmtIndex, offset, limit })}`),
+    fetchResultPage: async (historyId, resultSetId, offset, limit) => {
+      if (!resultSetId) throw new TypeError('resultSetId is required to read a result snapshot')
+      if (!Number.isInteger(offset) || offset < 0) throw new RangeError('offset must be a non-negative integer')
+      if (!Number.isInteger(limit) || limit < 1 || limit > 500) throw new RangeError('limit must be an integer from 1 to 500')
+      const result = await request<SqlResultPage & {
+        totalRows?: number
+        rowCount?: number | { value?: number; kind?: string }
+        page?: { offset?: number; limit?: number }
+      }>(projectId, `/results/${historyId}${query({ resultSetId, offset, limit })}`)
+      const rowCount = typeof result.rowCount === 'number' ? result.rowCount : result.rowCount?.value
+      return { ...result, rowsTotal: result.rowsTotal ?? rowCount ?? result.totalRows ?? 0, offset: result.offset ?? result.page?.offset ?? offset, limit: result.limit ?? result.page?.limit ?? limit }
+    },
     listHistory: (datasourceId) => request(projectId, `/history${query({ datasourceId })}`),
     deleteHistory: async (historyId) => { await request(projectId, `/history/${historyId}`, 'DELETE') },
-    listScripts: () => request(projectId, '/scripts'),
-    saveScript: (input) => request(projectId, '/scripts', 'POST', input),
-    deleteScript: async (id) => { await request(projectId, `/scripts/${id}`, 'DELETE') },
+    listScripts: async () => (await request<Array<ScriptEntry & { scriptId?: number }>>(projectId, '/scripts')).map((item) => ({ ...item, id: item.id ?? item.scriptId ?? 0 })),
+    saveScript: async (input) => {
+      const saved = await request<ScriptEntry & { scriptId?: number }>(projectId, '/scripts', 'POST', { id: input.id, name: input.name, sqlText: input.sqlText, expectedRevision: input.revision })
+      return { ...saved, id: saved.id ?? saved.scriptId ?? input.id ?? 0 }
+    },
+    deleteScript: async (id, expectedRevision) => { await request(projectId, `/scripts/${id}${query({ expectedRevision })}`, 'DELETE') },
+  getDefinition: async (input) => {
+      const result = await request<{ definition?: string; definitionText?: string; capability: string; constraints: string[] }>(projectId, '/definitions', 'POST', input)
+      const definition = result.definitionText ?? result.definition
+      if (definition === undefined) throw new SqlIdeApiError('定义响应缺少 definitionText', 502, 'INVALID_RESPONSE')
+      return { definition, capability: result.capability, constraints: result.constraints ?? [] }
+    },
+    exportResult: (input) => request(projectId, '/exports', 'POST', input),
+    exportTable: (input) => request(projectId, '/table-exports', 'POST', input),
+    getExport: (exportId) => request(projectId, `/exports/${encodeURIComponent(exportId)}`),
+    getExportDownloadUrl: (exportId) => `${API_BASE}/${projectId}/sql-ide/exports/${encodeURIComponent(exportId)}/download`,
+    cancelExport: async (exportId) => { await request(projectId, `/exports/${encodeURIComponent(exportId)}`, 'DELETE') },
   }
 }
 

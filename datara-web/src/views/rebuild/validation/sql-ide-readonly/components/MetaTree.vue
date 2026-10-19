@@ -1,86 +1,172 @@
-<!--
-  R5-A 元数据懒加载树（原型态）。
-  对象范围对齐 design §7 九类：数据库 / Schema / 表 / 视图 / 字段 / 索引 / 函数 / 存储过程 / 触发器。
-  数据全部由父组件通过 loadXxx 注入（RED 阶段返回 NOT_WIRED 错误 → 节点显示占位），组件自身不发请求。
--->
 <template>
   <el-tree
-    :data="nodes"
+    ref="treeRef"
+    :data="roots"
     :props="{ label: 'label', children: 'children', isLeaf: 'leaf' }"
     node-key="key"
     lazy
     :load="loadNode"
     :expand-on-click-node="false"
     data-testid="r5a-meta-tree"
+    @node-click="emit('select', $event)"
   >
     <template #default="{ data }">
       <span class="r5a-node">
         <el-icon :size="14"><component :is="iconOf(data.kind)" /></el-icon>
-        <span :class="{ 'r5a-node-muted': data.placeholder }">{{ data.label }}</span>
-        <el-tag v-if="data.placeholder" size="small" type="info">未接入</el-tag>
+        <span :class="{ 'r5a-node-muted': data.capability === 'unsupported' }">{{ data.label }}</span>
+        <el-tag v-if="data.capability === 'conditional'" size="small" type="warning">条件支持</el-tag>
+        <el-tag v-else-if="data.capability === 'unsupported'" size="small" type="info">不支持</el-tag>
       </span>
     </template>
   </el-tree>
 </template>
 
 <script setup lang="ts">
-import { ref } from 'vue'
+import { computed, ref } from 'vue'
 import { Coin, Folder, Grid, Key, Link, Menu, Operation, Tickets, Collection } from '@element-plus/icons-vue'
 import type { Component } from 'vue'
-import { createSqlIdeContract, type ObjectKind } from '../../../../../services/rebuild/sqlIdeApi'
+import { createSqlIdeContract, SqlIdeApiError, type MetadataEnvelope, type ObjectKind } from '../../../../../services/rebuild/sqlIdeApi'
 
 interface MetaNode {
   key: string
   label: string
-  kind: ObjectKind
+  kind: ObjectKind | 'source'
+  ref: Record<string, unknown>
+  capability?: string
+  constraints?: string[]
   leaf?: boolean
-  placeholder?: boolean
-  children?: MetaNode[]
 }
-
-const emit = defineEmits<{ (e: 'contract-error', message: string): void }>()
-
+const props = defineProps<{ datasourceId: number; keyword?: string }>()
+const emit = defineEmits<{
+  (e: 'contract-error', message: string): void
+  (e: 'select', node: MetaNode): void
+  (e: 'search-results', matches: Array<{ kind: ObjectKind; name: string; parent: string | null }>): void
+}>()
 const contract = createSqlIdeContract()
-const nodes = ref<MetaNode[]>([
-  { key: 'root-placeholder', label: '（数据源未接入 — A5 后端就绪后自动填充）', kind: 'database', leaf: true, placeholder: true },
+const searchMatches = ref<Array<{ kind: ObjectKind; name: string; parent: string | null }>>([])
+const treeRef = ref<{ setCurrentKey: (key: string) => void } | null>(null)
+const roots = computed<MetaNode[]>(() => [
+  { key: `source:${props.datasourceId}`, label: '数据库', kind: 'source', ref: { datasourceId: props.datasourceId } },
+  ...searchMatches.value.map((match) => ({ key: `search:${match.kind}:${match.parent}:${match.name}`, label: `${match.parent ? `${match.parent}.` : ''}${match.name}`, kind: match.kind, ref: { datasourceId: props.datasourceId, database: match.parent, schema: match.parent, name: match.name, objectKind: match.kind }, leaf: true })),
 ])
-
-const iconMap: Record<ObjectKind, Component> = {
-  database: Coin,
-  schema: Folder,
-  table: Grid,
-  view: Menu,
-  column: Key,
-  index: Link,
-  function: Operation,
-  procedure: Collection,
-  trigger: Tickets,
+const iconMap: Record<ObjectKind | 'source', Component> = {
+  database: Coin, schema: Folder, table: Grid, view: Menu, column: Key, index: Link,
+  function: Operation, procedure: Collection, trigger: Tickets, source: Coin,
 }
+const iconOf = (kind: ObjectKind | 'source') => iconMap[kind] ?? Folder
+async function allPages<T>(fetchPage: (cursor?: string) => Promise<MetadataEnvelope<T>>): Promise<MetadataEnvelope<T>> {
+  const items: T[] = []
+  const seen = new Set<string>()
+  let cursor: string | undefined
+  let envelope: MetadataEnvelope<T> | undefined
+  do {
+    envelope = await fetchPage(cursor)
+    items.push(...envelope.items)
+    if (!envelope.page.hasMore) break
+    const next = envelope.page.nextCursor
+    if (!next || seen.has(next)) throw new Error('元数据分页游标缺失或重复，已停止加载')
+    seen.add(next)
+    cursor = next
+  } while (true)
+  return { ...envelope!, items, page: { ...envelope!.page, nextCursor: null, hasMore: false } }
+}
+async function metadata<T extends { name: string }>(fetchPage: (cursor?: string) => Promise<MetadataEnvelope<T>>, kind: ObjectKind): Promise<MetadataEnvelope<T>> {
+  void kind
+  try { return await allPages(fetchPage) }
+  catch (error) {
+    if (!(error instanceof SqlIdeApiError) || !error.errorCode?.startsWith('CAPABILITY_')) throw error
+    const capability = error.errorCode === 'CAPABILITY_CONDITION_NOT_MET' ? 'conditional' : error.errorCode === 'CAPABILITY_UNKNOWN' ? 'unknown' : 'unsupported'
+    const details = error.details && typeof error.details === 'object' ? error.details as { constraints?: string[] } : {}
+    return { items: [], capability, constraints: details.constraints ?? [], page: { nextCursor: null, hasMore: false } }
+  }
+}
+const toNodes = <T extends { name: string; kind?: ObjectKind; schema?: string | null; capability?: string; constraints?: string[] }>(
+  envelope: MetadataEnvelope<T>, kind: ObjectKind, parent: Record<string, unknown>,
+): MetaNode[] => envelope.items.map((item) => ({
+  key: `${kind}:${String(item.schema ?? '')}:${item.name}`,
+  label: item.name,
+  kind: item.kind ?? kind,
+  ref: { ...parent, schema: item.schema ?? parent.schema, name: item.name, objectKind: item.kind ?? kind },
+  capability: item.capability ?? envelope.capability,
+  constraints: item.constraints ?? envelope.constraints,
+  leaf: item.capability === 'unsupported' || kind === 'function' || kind === 'procedure' || kind === 'trigger',
+})).concat(envelope.items.length || envelope.capability === 'supported' ? [] : [{
+  key: `capability:${kind}:${String(parent.database ?? '')}:${String(parent.schema ?? '')}`,
+  label: kind,
+  kind,
+  ref: { ...parent, schema: parent.schema, name: kind, objectKind: kind },
+  capability: envelope.capability,
+  constraints: envelope.constraints,
+  leaf: true,
+}])
 
-const iconOf = (kind: ObjectKind): Component => iconMap[kind] ?? Folder
-
-/** 懒加载：NOT_WIRED 异常统一转占位节点并上抛事件（原型态可渲染、可观测） */
-async function loadNode(node: unknown, resolve: (children: MetaNode[]) => void): Promise<void> {
-  void node
+async function loadNode(node: { data: MetaNode }, resolve: (children: MetaNode[]) => void) {
+  const current = node.data
   try {
-    // 契约调用点（RED）：真实层级装配在 A5 就绪后实现
-    void contract.listDatabases(0)
+    if (current.kind === 'source') {
+      const result = await metadata((cursor) => contract.listDatabases(props.datasourceId, cursor), 'database')
+      resolve(toNodes(result, 'database', current.ref))
+      return
+    }
+    const database = String(current.ref.database ?? (current.kind === 'database' ? current.ref.name : ''))
+    const schema = current.kind === 'schema' ? String(current.ref.name) : (current.ref.schema as string | undefined) ?? null
+    if (current.kind === 'database') {
+      const schemas = await metadata((cursor) => contract.listSchemas(props.datasourceId, database, cursor), 'schema')
+      resolve(toNodes(schemas, 'schema', { datasourceId: props.datasourceId, database }))
+      return
+    }
+    if (current.kind === 'schema') {
+      const [tables, views, functions, procedures, triggers] = await Promise.all([
+        metadata((cursor) => contract.listRelations(props.datasourceId, database, schema, 'table', cursor), 'table'),
+        metadata((cursor) => contract.listRelations(props.datasourceId, database, schema, 'view', cursor), 'view'),
+        metadata((cursor) => contract.listRoutines(props.datasourceId, database, schema, 'function', cursor), 'function'),
+        metadata((cursor) => contract.listRoutines(props.datasourceId, database, schema, 'procedure', cursor), 'procedure'),
+        metadata((cursor) => contract.listRoutines(props.datasourceId, database, schema, 'trigger', cursor), 'trigger'),
+      ])
+      resolve([
+        ...toNodes(tables, 'table', { datasourceId: props.datasourceId, database, schema }),
+        ...toNodes(views, 'view', { datasourceId: props.datasourceId, database, schema }),
+        ...toNodes(functions, 'function', { datasourceId: props.datasourceId, database, schema }),
+        ...toNodes(procedures, 'procedure', { datasourceId: props.datasourceId, database, schema }),
+        ...toNodes(triggers, 'trigger', { datasourceId: props.datasourceId, database, schema }),
+      ])
+      return
+    }
+    if (current.kind === 'table' || current.kind === 'view') {
+      const [columns, indexes] = await Promise.all([
+        metadata((cursor) => contract.listColumns(props.datasourceId, database, String(current.ref.name), schema, cursor), 'column'),
+        metadata((cursor) => contract.listIndexes(props.datasourceId, database, String(current.ref.name), schema, cursor), 'index'),
+      ])
+      resolve([
+        ...columns.items.map((item) => ({ key: `column:${item.name}`, label: item.name, kind: 'column' as const, ref: { ...current.ref, name: item.name }, capability: columns.capability, constraints: columns.constraints, leaf: true })),
+        ...indexes.items.map((item) => ({ key: `index:${item.name}`, label: item.name, kind: 'index' as const, ref: { ...current.ref, name: item.name }, capability: indexes.capability, constraints: indexes.constraints, leaf: true })),
+      ])
+      return
+    }
     resolve([])
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err)
     emit('contract-error', message)
-    resolve([{ key: `ph-${Math.random().toString(36).slice(2)}`, label: 'A5 契约未接入', kind: 'database', leaf: true, placeholder: true }])
+    resolve([])
   }
 }
+
+async function search(keyword: string) {
+  if (!keyword.trim()) { searchMatches.value = []; emit('search-results', []); return }
+  try {
+    const envelope = await allPages((cursor) => contract.searchObjects(props.datasourceId, keyword.trim(), cursor))
+    searchMatches.value = envelope.items
+    emit('search-results', searchMatches.value)
+  }
+  catch (err) { emit('contract-error', err instanceof Error ? err.message : String(err)) }
+}
+function locate(match: { kind: ObjectKind; name: string; parent: string | null }) {
+  treeRef.value?.setCurrentKey(`search:${match.kind}:${match.parent}:${match.name}`)
+}
+defineExpose({ search, locate })
 </script>
 
 <style scoped>
-.r5a-node {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-}
-.r5a-node-muted {
-  color: var(--el-text-color-secondary);
-}
+.r5a-node { display: inline-flex; align-items: center; gap: 6px; }
+.r5a-node-muted { color: var(--el-text-color-secondary); }
 </style>
