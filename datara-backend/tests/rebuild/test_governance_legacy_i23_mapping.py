@@ -12,7 +12,7 @@ def _row(**overrides):
     values = {
         "id": 1,
         "user_name": "analyst-a",
-        "user_role": "analyst",
+        "user_role": "operator",
         "state": "enabled",
         "create_time": "2026-10-01T10:00:00",
         "update_time": "2026-10-02T10:00:00",
@@ -28,7 +28,7 @@ def _snapshot(*rows):
 def _context(**overrides):
     values = {
         "target_users": {
-            "1": I23IdentityTarget(user_id=101, username="analyst-a", role="analyst", status="enabled")
+            "1": I23IdentityTarget(user_id=101, username="analyst-a", role="operator", status="enabled")
         }
     }
     values.update(overrides)
@@ -45,8 +45,8 @@ def test_i23_mapper_preserves_explicit_user_identity_and_role_without_credential
     assert record.values == {
         "user_id": 101,
         "source_username": "analyst-a",
-        "source_role": "analyst",
-        "mapped_role": "analyst",
+        "source_role": "operator",
+        "mapped_role": "operator",
         "mapping_status": "mapped",
         "source_created_at": datetime(2026, 10, 1, 10),
         "source_updated_at": datetime(2026, 10, 2, 10),
@@ -69,7 +69,7 @@ def test_i23_mapper_blocks_missing_and_non_equivalent_target_users():
         _snapshot(_row()),
         _context(
             target_users={
-                "1": I23IdentityTarget(user_id=101, username="different", role="dev", status="disabled")
+                "1": I23IdentityTarget(user_id=101, username="different", role="developer", status="disabled")
             }
         ),
     )
@@ -95,10 +95,10 @@ def test_i23_mapper_rejects_unknown_roles_states_duplicate_users_and_invalid_ids
         ),
         _context(
             target_users={
-                "1": I23IdentityTarget(user_id=101, username="analyst-a", role="analyst", status="enabled"),
-                "2": I23IdentityTarget(user_id=102, username="unknown", role="analyst", status="enabled"),
+                "1": I23IdentityTarget(user_id=101, username="analyst-a", role="operator", status="enabled"),
+                "2": I23IdentityTarget(user_id=102, username="unknown", role="operator", status="enabled"),
                 "3": I23IdentityTarget(user_id=103, username="bad-state", role="viewer", status="enabled"),
-                "4": I23IdentityTarget(user_id=101, username="analyst-a", role="analyst", status="enabled"),
+                "4": I23IdentityTarget(user_id=101, username="analyst-a", role="operator", status="enabled"),
             }
         ),
     )

@@ -27,7 +27,7 @@ from rebuild.sql_ide.routes import build_sql_ide_router
 from rebuild.sql_ide.result_store import SqlIdeResultSetRecord
 from rebuild.execution.models import EXECUTION_TABLES
 from rebuild.identity.contracts import Permission, Role, TokenService, authorize
-from rebuild.identity.models import ProjectMemberRecord, UserRecord
+from rebuild.identity.models import ActiveTokenRecord, ProjectMemberRecord, UserRecord
 from rebuild.identity.passwords import verify_password
 from rebuild.datasource.contracts import DataSourceDraft, probe_datasource, validate_datasource
 from rebuild.datasource.models import ProjectDatasourceRecord
@@ -44,6 +44,7 @@ from rebuild.stream.api import build_stream_router
 from rebuild.stream.models import (
     StreamCheckpointRecord,
     StreamFailureEventRecord,
+    StreamJobAttemptRecord,
     StreamJobRecord,
     StreamMetricSnapshotRecord,
     StreamRecoveryEventRecord,
@@ -114,6 +115,8 @@ def create_app(
     legacy_i18_import_enabled: bool | None = None,
     legacy_i19_import_enabled: bool | None = None,
     legacy_i20_import_enabled: bool | None = None,
+    legacy_i21_import_enabled: bool | None = None,
+    legacy_i22_import_enabled: bool | None = None,
     legacy_i22_source_reader_factory=None,
     legacy_i23_source_reader_factory=None,
     legacy_i19_source_reader_factory=None,
@@ -134,12 +137,22 @@ def create_app(
             "true",
         }
     if legacy_i19_import_enabled is None:
-        legacy_i19_import_enabled = os.getenv("REBUILD_LEGACY_I19_IMPORT_ENABLED", "false").strip().lower() in {
+        legacy_i19_import_enabled = os.getenv("REBUILD_LEGACY_I19_IMPORT_ENABLED", "true").strip().lower() in {
             "1",
             "true",
         }
     if legacy_i20_import_enabled is None:
-        legacy_i20_import_enabled = os.getenv("REBUILD_LEGACY_I20_IMPORT_ENABLED", "false").strip().lower() in {
+        legacy_i20_import_enabled = os.getenv("REBUILD_LEGACY_I20_IMPORT_ENABLED", "true").strip().lower() in {
+            "1",
+            "true",
+        }
+    if legacy_i21_import_enabled is None:
+        legacy_i21_import_enabled = os.getenv("REBUILD_LEGACY_I21_IMPORT_ENABLED", "true").strip().lower() in {
+            "1",
+            "true",
+        }
+    if legacy_i22_import_enabled is None:
+        legacy_i22_import_enabled = os.getenv("REBUILD_LEGACY_I22_IMPORT_ENABLED", "true").strip().lower() in {
             "1",
             "true",
         }
@@ -149,8 +162,45 @@ def create_app(
     session_factory = sessionmaker(bind=engine, expire_on_commit=False)
     token_service = TokenService(secret=token_secret)
     validation_token_service = TokenService(secret=token_secret, ttl_seconds=900)
-    active_tokens: set[str] = set()
     datasource_engines = DatasourceEngineRegistry()
+
+    class ActiveTokenStore:
+        """Database-backed active token store for cross-worker revocation."""
+
+        def add(self, token: str, *, user_id: int, username: str, role: str, capability: str | None = None, ttl_seconds: int = 86400) -> None:
+            from datetime import datetime, timedelta, timezone
+            with session_factory() as session:
+                record = ActiveTokenRecord(
+                    token=token,
+                    user_id=user_id,
+                    username=username,
+                    role=role,
+                    capability=capability,
+                    expires_at=datetime.now(timezone.utc).replace(tzinfo=None) + timedelta(seconds=ttl_seconds),
+                )
+                session.merge(record)
+                session.commit()
+
+        def discard(self, token: str) -> None:
+            with session_factory() as session:
+                record = session.get(ActiveTokenRecord, token)
+                if record is not None:
+                    session.delete(record)
+                    session.commit()
+
+        def __contains__(self, token: str) -> bool:
+            with session_factory() as session:
+                record = session.get(ActiveTokenRecord, token)
+                if record is None:
+                    return False
+                from datetime import datetime, timezone
+                if record.expires_at < datetime.now(timezone.utc).replace(tzinfo=None):
+                    session.delete(record)
+                    session.commit()
+                    return False
+                return True
+
+    active_tokens = ActiveTokenStore()
 
     def ensure_i1_schema() -> None:
         """Apply additive I1 columns to the dedicated schema without touching legacy tables."""
@@ -172,6 +222,7 @@ def create_app(
                 UserRecord.__table__,
                 ProjectRecord.__table__,
                 ProjectMemberRecord.__table__,
+                ActiveTokenRecord.__table__,
                 ProjectDatasourceRecord.__table__,
                 VariableDefinitionRecord.__table__,
                 TaskInstanceVariableRuntimeRecord.__table__,
@@ -199,6 +250,7 @@ def create_app(
                 WorkflowDraftSnapshotRecord.__table__,
                 *EXECUTION_TABLES,
                 StreamJobRecord.__table__,
+                StreamJobAttemptRecord.__table__,
                 StreamCheckpointRecord.__table__,
                 StreamMetricSnapshotRecord.__table__,
                 StreamFailureEventRecord.__table__,
@@ -211,6 +263,7 @@ def create_app(
         engine.dispose()
 
     app = FastAPI(title="Datara Rebuild API", version="0.1.0", lifespan=lifespan)
+    app.state.active_tokens = active_tokens
     app.state.session_factory = session_factory
     app.state.datasource_engines = datasource_engines
 
@@ -293,7 +346,7 @@ def create_app(
             if record is None or not verify_password(body.password, record.password_hash):
                 return JSONResponse(status_code=401, content={"code": 1001, "msg": "invalid credentials", "data": None})
             token = token_service.issue(user_id=record.id, username=record.username, role=Role(record.role))
-            active_tokens.add(token)
+            active_tokens.add(token, user_id=record.id, username=record.username, role=record.role)
             return {
                 "code": 0,
                 "msg": "success",
@@ -310,12 +363,29 @@ def create_app(
             )
         if not hmac.compare_digest(x_backend_validation_key, validation_key):
             return JSONResponse(status_code=401, content={"code": 1001, "msg": "invalid validation key", "data": None})
-        token = validation_token_service.issue(user_id=0, username="validation-runner", role=Role.DEV)
-        active_tokens.add(token)
+        token = validation_token_service.issue(
+            user_id=0,
+            username="validation-runner",
+            role=Role.VIEWER,
+            capability="validation:bootstrap",
+        )
+        active_tokens.add(
+            token,
+            user_id=0,
+            username="validation-runner",
+            role=Role.VIEWER.value,
+            capability="validation:bootstrap",
+            ttl_seconds=900,
+        )
         return {
             "code": 0,
             "msg": "success",
-            "data": {"token": token, "user": {"id": 0, "username": "validation-runner", "role": Role.DEV.value}},
+            "data": {
+                "token": token,
+                "user": {"id": 0, "username": "validation-runner", "role": Role.VIEWER.value},
+                "capability": "validation:bootstrap",
+                "expires_in": 900,
+            },
         }
 
     @app.post("/api/v1/rebuild/validation-capabilities/legacy-i23-preview")
@@ -334,7 +404,7 @@ def create_app(
             role=Role.VIEWER,
             capability="legacy:i23:preview",
         )
-        active_tokens.add(token)
+        active_tokens.add(token, user_id=0, username="i23-preview-runner", role=Role.VIEWER.value, capability="legacy:i23:preview", ttl_seconds=900)
         return {
             "code": 0,
             "msg": "success",
@@ -348,8 +418,11 @@ def create_app(
         if token not in active_tokens:
             raise ValueError("token revoked or unknown")
         claims = token_service.verify(token)
-        if "capability" in claims:
+        capability = claims.get("capability")
+        if capability is not None and capability != "validation:bootstrap":
             raise ValueError("scoped capability is not valid for ordinary API routes")
+        if capability is not None:
+            claims["capability_restricted"] = True
         return claims
 
     def project_permission_error(session, project_id: int, user: dict[str, object], permission: Permission):
@@ -372,6 +445,18 @@ def create_app(
         if member is None or not authorize(member.role, permission):
             return JSONResponse(status_code=403, content={"code": 1003, "msg": "permission denied", "data": None})
         return None
+
+    def rb_project_authorize(datasource_id: int, user: dict[str, object]):
+        """Resolve the RB API's datasource selector to its owning project before authorization."""
+        with session_factory() as session:
+            datasource = session.get(ProjectDatasourceRecord, datasource_id)
+            if datasource is None:
+                return JSONResponse(status_code=404, content={"code": 4041, "msg": "datasource not found", "data": None})
+            return project_permission_error(session, datasource.project_id, user, Permission.EDIT_DEFINITION)
+
+    def metrics_project_authorize(project_id: int, user: dict[str, object]):
+        with session_factory() as session:
+            return project_permission_error(session, project_id, user, Permission.VIEW_ALL)
 
     def datasource_payload(record: ProjectDatasourceRecord) -> dict[str, object]:
         return {
@@ -800,6 +885,8 @@ def create_app(
             legacy_i18_import_enabled=legacy_i18_import_enabled,
             legacy_i19_import_enabled=legacy_i19_import_enabled,
             legacy_i20_import_enabled=legacy_i20_import_enabled,
+            legacy_i21_import_enabled=legacy_i21_import_enabled,
+            legacy_i22_import_enabled=legacy_i22_import_enabled,
             legacy_i22_source_reader_factory=legacy_i22_source_reader_factory,
             legacy_i23_source_reader_factory=legacy_i23_source_reader_factory,
             legacy_i19_source_reader_factory=legacy_i19_source_reader_factory,
@@ -813,7 +900,7 @@ def create_app(
         prefix="/api/v1/rebuild/variables",
     )
     app.include_router(
-        build_metrics_router(session_factory, token_service, active_tokens),
+        build_metrics_router(session_factory, token_service, active_tokens, metrics_project_authorize),
         prefix="/api/v1/rebuild/metrics",
     )
     app.include_router(
@@ -856,9 +943,11 @@ def create_app(
             RbFacade(
                 policy_snapshot_service=PolicySnapshotService(),
                 impact_snapshot_service=ImpactSnapshotService(),
+                session_factory=session_factory,
             ),
             token_service,
             active_tokens,
+            rb_project_authorize,
         )
     )
     # R8-A eight-tool bridge (P1-3): production assembly from app.state.
@@ -871,6 +960,7 @@ def create_app(
         default_ports = build_default_bridge_ports(
             execution_port=app.state.execution_port,
             audit_writer=app.state.audit_writer,
+            session_factory=session_factory,
         )
         if default_ports is not None:
             app.include_router(build_ai_router(session_factory, token_service, active_tokens, default_ports))
@@ -886,9 +976,23 @@ def create_app(
         except ValueError:
             return JSONResponse(status_code=401, content={"code": 1001, "msg": "invalid token", "data": None})
         with session_factory() as session:
+            project = session.get(ProjectRecord, project_id)
+            if project is None:
+                return JSONResponse(status_code=404, content={"code": 4042, "msg": "project not found", "data": None})
             target = session.scalar(select(UserRecord).where(UserRecord.username == body.username))
             if target is None:
                 return JSONResponse(status_code=404, content={"code": 4041, "msg": "user not found", "data": None})
+            existing = session.scalar(
+                select(ProjectMemberRecord).where(
+                    ProjectMemberRecord.project_id == project_id,
+                    ProjectMemberRecord.user_id == target.id,
+                )
+            )
+            if existing is not None:
+                return JSONResponse(
+                    status_code=409,
+                    content={"code": 4091, "msg": "member already exists", "data": None},
+                )
             member = ProjectMemberRecord(project_id=project_id, user_id=target.id, role=body.role.value)
             session.add(member)
             session.commit()
@@ -896,6 +1000,90 @@ def create_app(
                 "code": 0,
                 "msg": "success",
                 "data": {"project_id": project_id, "username": body.username, "role": body.role.value},
+            }
+
+    @app.get("/api/v1/rebuild/projects/{project_id}/members")
+    def list_members(project_id: int, authorization: str = Header(default="")):
+        try:
+            user = current_user(authorization)
+            if not authorize(user["role"], Permission.MANAGE_USER):
+                raise PermissionError("permission denied")
+        except PermissionError as exc:
+            return JSONResponse(status_code=403, content={"code": 1003, "msg": str(exc), "data": None})
+        except ValueError:
+            return JSONResponse(status_code=401, content={"code": 1001, "msg": "invalid token", "data": None})
+        with session_factory() as session:
+            project = session.get(ProjectRecord, project_id)
+            if project is None:
+                return JSONResponse(status_code=404, content={"code": 4042, "msg": "project not found", "data": None})
+            members = session.scalars(
+                select(ProjectMemberRecord).where(ProjectMemberRecord.project_id == project_id)
+            ).all()
+            return {
+                "code": 0,
+                "msg": "success",
+                "data": {
+                    "list": [
+                        {"user_id": m.user_id, "role": m.role}
+                        for m in members
+                    ]
+                },
+            }
+
+    @app.delete("/api/v1/rebuild/projects/{project_id}/members/{user_id}")
+    def remove_member(project_id: int, user_id: int, authorization: str = Header(default="")):
+        try:
+            user = current_user(authorization)
+            if not authorize(user["role"], Permission.MANAGE_USER):
+                raise PermissionError("permission denied")
+        except PermissionError as exc:
+            return JSONResponse(status_code=403, content={"code": 1003, "msg": str(exc), "data": None})
+        except ValueError:
+            return JSONResponse(status_code=401, content={"code": 1001, "msg": "invalid token", "data": None})
+        with session_factory() as session:
+            project = session.get(ProjectRecord, project_id)
+            if project is None:
+                return JSONResponse(status_code=404, content={"code": 4042, "msg": "project not found", "data": None})
+            member = session.scalar(
+                select(ProjectMemberRecord).where(
+                    ProjectMemberRecord.project_id == project_id,
+                    ProjectMemberRecord.user_id == user_id,
+                )
+            )
+            if member is None:
+                return JSONResponse(status_code=404, content={"code": 4043, "msg": "member not found", "data": None})
+            session.delete(member)
+            session.commit()
+            return {"code": 0, "msg": "success", "data": None}
+
+    @app.patch("/api/v1/rebuild/projects/{project_id}/members/{user_id}")
+    def update_member(project_id: int, user_id: int, body: MemberRequest, authorization: str = Header(default="")):
+        try:
+            user = current_user(authorization)
+            if not authorize(user["role"], Permission.MANAGE_USER):
+                raise PermissionError("permission denied")
+        except PermissionError as exc:
+            return JSONResponse(status_code=403, content={"code": 1003, "msg": str(exc), "data": None})
+        except ValueError:
+            return JSONResponse(status_code=401, content={"code": 1001, "msg": "invalid token", "data": None})
+        with session_factory() as session:
+            project = session.get(ProjectRecord, project_id)
+            if project is None:
+                return JSONResponse(status_code=404, content={"code": 4042, "msg": "project not found", "data": None})
+            member = session.scalar(
+                select(ProjectMemberRecord).where(
+                    ProjectMemberRecord.project_id == project_id,
+                    ProjectMemberRecord.user_id == user_id,
+                )
+            )
+            if member is None:
+                return JSONResponse(status_code=404, content={"code": 4043, "msg": "member not found", "data": None})
+            member.role = body.role.value
+            session.commit()
+            return {
+                "code": 0,
+                "msg": "success",
+                "data": {"project_id": project_id, "user_id": user_id, "role": body.role.value},
             }
 
     return app

@@ -43,10 +43,15 @@ def _client(snapshot):
     client = TestClient(app)
     client.__enter__()
     MigrationRunner(app.state.session_factory.kw["bind"], R3_GOVERNANCE_MIGRATIONS).apply()
-    token = client.post(
-        "/api/v1/rebuild/validation-token",
-        headers={"X-Backend-Validation-Key": "legacy-i19-preview-validation-key"},
-    ).json()["data"]["token"]
+    from rebuild.identity.contracts import Role, TokenService
+    from rebuild.identity.models import UserRecord
+
+    svc = TokenService(secret="legacy-i19-preview-test-secret", ttl_seconds=3600)
+    with app.state.session_factory() as session:
+        session.add(UserRecord(id=1, username="i19-preview-admin", role=Role.DEVELOPER, password_hash="x"))
+        session.commit()
+    token = svc.issue(user_id=1, username="i19-preview-admin", role=Role.DEVELOPER)
+    app.state.active_tokens.add(token, user_id=1, username="i19-preview-admin", role=Role.DEVELOPER.value)
     headers = {"Authorization": f"Bearer {token}"}
     project = client.post("/api/v1/rebuild/projects", headers=headers, json={"name": "I19 preview"})
     assert project.status_code == 200
