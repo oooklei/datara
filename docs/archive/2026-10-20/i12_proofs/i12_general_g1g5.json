@@ -1,0 +1,69 @@
+{
+  "date": "2026-09-24",
+  "env": "1.9 datara (datara-api:8000, web :18090 隧道)",
+  "scope": "G1-G5 普通类批处理二维验证：工具建流+跑批(API取三证) + browser-use 画布逐节点/逐表单核对",
+  "tool_script": "i12_general_usecases.py",
+  "cases": {
+    "g1": {
+      "wf": "wf_dbe357ae", "code": 81, "version": 3,
+      "name": "i12_G1_shell_health_check",
+      "nodes": [
+        {"id": "s", "type": "start", "name": "开始", "checked": true},
+        {"id": "k1", "type": "shell", "name": "健康巡检", "C12": true, "script": "磁盘水位/容器状态/内存/巡检完成@date", "checked": true},
+        {"id": "k2", "type": "delay", "name": "延时60s", "C8": true, "duration": 60, "unit": "秒", "checked": true},
+        {"id": "k3", "type": "notify", "name": "仅日志通知", "C26": true, "channel": "log", "trigger": "on_success", "template": "G1 巡检完成 实例=${instance_id} 节点=${node.name} @ ${sys.now}", "checked": true},
+        {"id": "e", "type": "end", "name": "结束", "checked": true}
+      ],
+      "run": {"commandId": 160, "state": "success", "shell_output": true, "notify_log": true}
+    },
+    "g2": {
+      "wf": "wf_de86dab5", "code": 82, "version": 4,
+      "name": "i12_G2_python_clean_file",
+      "nodes": [
+        {"id": "s", "type": "start", "name": "开始", "checked": true},
+        {"id": "k1", "type": "python", "name": "CSV清洗", "C13": true, "script": "读/datara/files/i12_raw_orders.csv 写/i12_cleaned_orders.csv strip+去空行", "checked": true},
+        {"id": "k2", "type": "file", "name": "注册预览", "C22": true, "mode": "manual", "path": "/datara/files/i12_cleaned_orders.csv", "format": "csv", "encoding": "utf-8", "delimiter": ",", "register": true, "tmpName": "cleaned_orders", "kind": "table", "targetDs": "内置数仓-datara_dw", "retention": "immediate", "checked": true},
+        {"id": "e", "type": "end", "name": "结束", "checked": true}
+      ],
+      "run": {"commandId": 164, "state": "success", "clean_output": true, "csv_rows": 501}
+    },
+    "g3": {
+      "wf": "wf_53beadd0", "code": 85, "version": 2,
+      "name": "i12_G3_http_to_db_notify",
+      "nodes": [
+        {"id": "s", "type": "start", "name": "开始", "checked": true},
+        {"id": "k1", "type": "http", "name": "GET datasources", "C16": true, "method": "GET", "url": "http://datara-api:8000/api/v1/datasources", "successCodes": ["2xx"], "timeout": 15, "checked": true},
+        {"id": "k2", "type": "sql", "name": "落库", "C11": true, "datasource": "内置数仓-datara_dw", "sql": "DROP/CREATE/INSERT i12_http_snapshot 3行", "checked": true},
+        {"id": "k3", "type": "notify", "name": "webhook通知", "C26": true, "channel": "webhook", "url": "http://192.168.1.9:8000/api/v1/echo", "trigger": "on_success", "template": "${wf.name} 数据源快照写入完成 @ ${sys.now}", "checked": true},
+        {"id": "e", "type": "end", "name": "结束", "checked": true}
+      ],
+      "run": {"commandId": 167, "state": "success", "db_rows": 3, "http_log": true, "notify_log": true}
+    },
+    "g4": {
+      "wf": "wf_4e55887a", "code": 83, "version": 2,
+      "name": "i12_G4_ssh_fork_parallel",
+      "nodes": [
+        {"id": "s", "type": "start", "name": "开始", "checked": true},
+        {"id": "k1", "type": "fork", "name": "并行分叉", "C5": true, "parallel": 2, "checked": true},
+        {"id": "k2a", "type": "ssh", "name": "节点A", "C14": true, "runtimeNode": "1.9宿主机", "script": "hostname; date '+%Y-%m-%d %H:%M:%S'", "timeout": 30, "checked": true},
+        {"id": "k2b", "type": "ssh", "name": "节点B", "C14": true, "runtimeNode": "1.9宿主机", "script": "hostname; date '+%Y-%m-%d %H:%M:%S'", "timeout": 30, "checked": true},
+        {"id": "k3", "type": "join", "name": "汇合", "C6": true, "upstreams": 2, "checked": true},
+        {"id": "e", "type": "end", "name": "结束", "checked": true}
+      ],
+      "run": {"commandId": 162, "state": "success", "dual_ssh": true}
+    },
+    "g5": {
+      "wf": "wf_07a4e5cf", "code": 84, "version": 3,
+      "name": "i12_G5_data_export_archive",
+      "nodes": [
+        {"id": "s", "type": "start", "name": "开始", "checked": true},
+        {"id": "k1", "type": "sql", "name": "查询源表", "C11": true, "datasource": "内置数仓-datara_dw", "sql": "SELECT order_no, user_id, amount, create_time FROM datara_dw.ods_order ORDER BY id", "checked": true},
+        {"id": "k2", "type": "python", "name": "导出CSV", "C13": true, "script": "pymysql connect datara-mysql-dw:3306 root /datara/files/export/ods_order_archive.csv", "checked": true},
+        {"id": "k3", "type": "notify", "name": "webhook通知", "C26": true, "channel": "webhook", "url": "http://192.168.1.9:8000/api/v1/echo", "trigger": "on_success", "template": "${wf.name} 数据出仓完成 文件=ods_order_archive.csv @ ${sys.now}", "checked": true},
+        {"id": "e", "type": "end", "name": "结束", "checked": true}
+      ],
+      "run": {"commandId": 166, "state": "success", "export_output": true, "notify_log": true, "csv_rows": 250001}
+    }
+  },
+  "verdict": "G1-G5 全部 PASS：定义、运行、落库/文件/日志三证齐备"
+}

@@ -106,6 +106,12 @@ Do not preload, guess, or reconstruct these specialized workflows. The relevant 
 
 质量监督线守护会话全权负责 AOCI（overview/refresh/maintain/全量传输）。**Trae 与 Codex 实施线对 AOCI 义务为零**：禁止调用任何 aoci_* 工具，不执行上方 AOCI 规则中的启动认知检查与维护流程；两线认知源 = `docs/handoff/` 心跳 + `docs/increments/` 文档。实施线若遇 AOCI 状态问题，报心跳给监督线即可，不得自行处理。
 
+## 域规范（仍生效约束；原设计文档已归档 docs/archive/2026-10-20/，实现冲突时以本节为准）
+
+- **组件声明**：spec 纯 JSON 禁函数/脚本/回调（动态行为走 conditions/behaviors/extensions）；behaviors 动作、pick 字段（table/column/cron/sshHost）、hiddenInputs（runId/nodeId/workflowId/tenantId，执行器禁回写）、refreshOptions.remote 端点（仅 datasource.tree/datasource.topics/runtime.nodes，禁 URL）四白名单；已发版不可变，消费方 componentRef:{type,version} 固定；type 全局唯一；表单八段 DSL（inputs/outputs/params/conditions/constraints/exclusions/refs/exports）；变量解析链 节点参数>工作流变量>环境组>全局；生命周期三态 unbaseline→baselining→baselined，用户认可版本=治理基础；发布闸门 run_publish_gates() 杜绝可声明不可执行；FieldSchema.showIf/onChange/text 函数字段逐组件消灭。
+- **同步编排**：设计态禁运行态组件——sync(C17)/file_sync(C24) 标 runtimeOnly:true，palette/画布/W1 校验/保存闸门全排除；端点合一 endpoint_select(C37) 三模式 src_base/tgt_base/file_sync（替代 src_select/tgt_select）；拖边即引用——inputs 由边自动派生 nodeId:port 具名引用，field_map_union 按 :sourceRef/:targetRef port 语义识别，废除顺序索引；运行态 engine.py 检测 endpoint_select 物化 sys_exec_* 执行节点并按 baseMode 分拣；palette 数据同步组 7 项（src_base_orch/tgt_base_orch/file_sync_orch/endpoint_select/field_map/field_map_union/condition_set）。
+- **重建验证环境**：本机=代码检测/静态/类型/逻辑稽核，192.168.1.9=部署/容器/中间件/联调/browser-use E2E；前端验证入口固定 `http://192.168.1.9:18091/`（禁 8090；18090 被并行验证栈占用；Web 容器内监听 80、API 代理契约不变）；部署/E2E 验收证据必须出自 1.9 隔离工作目录；页面不设登录表单，验证 key 换短时 token 注入且 key 禁入静态产物/URL/浏览器持久存储；与权威设计冲突→暂停候批刷新契约；Agent worktree 仅代码隔离，不作文档/状态权威。
+
 ## Active handoff
 
 活跃交接：`docs/handoff/STATE.md`（监督线现状基线，冷启动首读；新会话开始前必须先读）。历史台账 `docs/handoff/2026-10-16-并行协作分工.md` 已冻结为考古区（#1–#352，只读不写）。交接过期后删除本节。

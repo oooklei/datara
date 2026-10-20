@@ -1,0 +1,20 @@
+{
+  "ok": false,
+  "base": "http://127.0.0.1:18090/",
+  "http": 200,
+  "server": "nginx/1.27.5",
+  "title": "Datara · 数据治理平台",
+  "final_url": "http://127.0.0.1:18090/#/login",
+  "dag_url": "http://127.0.0.1:18090/#/login",
+  "shot": "D:\\需求\\数据治理工具\\Datara\\datara-backend\\docs\\increments\\i12_proofs\\i12_dag_dom_proof.png",
+  "shot_bytes": 249780,
+  "h1": null,
+  "btn": 6,
+  "a": 0,
+  "table": 0,
+  "nav": [],
+  "tr": 0,
+  "th": [],
+  "body_snippet": "D\nDatara 数据治理平台\n统一登录 · 四角色权限（I1 平台基座）\n用户名\n密码\n显示\n登 录\n演示账号（点击填充）\n管理员\nadmin\nAdmin@123\n开发\ndev\nDev@123\n分析师\nanalyst\nAnalyst@123\n观察者\nviewer\nViewer@123\n登录即代表同意平台使用规范 · 会话有效期 24h",
+  "dom_kind": "login_or_home"
+}

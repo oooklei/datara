@@ -1,0 +1,15 @@
+{
+    "login":  "admin / Admin@123 (登录页演示凭据, 已实证)",
+    "item":  "板页分类目录-流徽标DOM帧",
+    "four_proof":  "①源码palettePinning CAT_LABEL+PIN_MAP+CAT_ORDER ②BoardPage/DAG profile categoryOf ③后端listCategories内置流 ④真机已登录板页分类目录-流徽标DOM帧",
+    "status":  "DONE-CLOSED",
+    "closed_at":  "2026-09-24",
+    "dom_direct":  "pal-items\u003eC18流转换\u003ep-name\u003ep-cat[流], C19流进入\u003ep-cat[流], C20流出\u003ep-cat[流], 另有多个p-cat[流]",
+    "evidence":  [
+                     "i12_board_cat_dom.png (125274B) — 流文档#80 编辑工作台整帧",
+                     "i12_board_cat_sidebar.png (125274B) — 侧栏分类徽标帧",
+                     "i12_board_cat_dom.json — body文本含流聚合/流处理/同步/ETL/通用",
+                     "i12_board_cat_dom_final.json — DOM实录: pal-items\u003epal-item\u003ep-name(流转换/流进入/流出)+p-cat徽标=[流]"
+                 ],
+    "tunnel":  "ssh -L 18090:127.0.0.1:8090 root@192.168.1.9 (nginx/1.27.5 实证)"
+}
