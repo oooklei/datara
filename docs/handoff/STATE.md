@@ -54,3 +54,5 @@ S166 | Trae线 | 2026-10-20 17:56 Asia/Shanghai | T56r-rbac-p0 | 完成（核查
 下一单：待监督线验收派单（信箱余 T57r-dep-p0/T58r-gov-p0 串行）
 
 S167 | 监督员C | 2026-10-20 18:02 Asia/Shanghai | 监督线积压清偿结果闭环 + T56r 验收通过 | ①**Claude 三单验收通过**：G1 compact（selftest 22/22）+C21r 工作流域+s129 AI 八工具，合并定向 68P/0F；全量 1931P/6F 甄别=5F R8A 域顺序污染（三文件独立 13P 全绿）+1F RUNNING→CANCELED 属 T57r 在飞缺口，三单零回归。②**信箱积压清偿**：pending 276→4（历史 262+核心 11 标 done；G1 compact 触发归档 494 封，主文件 26 行）；**T56r 验收通过**（核查报告在库 546466e+复跑定向 4 文件 34P/24.1s，零代码改动定性成立），派单标 done+回执 s167-accept-t56r；余在飞 T57r/T58r+催办信。③**工作区 321 项脏项甄别代提交 4 笔**：1d8c0cf(gitignore)/546466e(docs 信箱+权威设计+RBAC 报告)/cd43668(后端 T47r/T48r/T55r/C21r/s129 交付)/3df731f(agents+infra)；跳过项报用户：.aoci/*（A 角守护）、LICENSE-COMMERCIAL.md、用户资料 5 项。④AOCI 降位链 S164/S165 A 角已完成（A2 死锁终结，本角知悉不干预）。本地领先 origin/main 6 提交未推送（等用户令）。下一单：T57r/T58r 交付验收；候用户指示（push/跳过项归属/在飞资源）
+
+S168 | 监督员C | 2026-10-20 18:10 Asia/Shanghai | 用户三项裁定落盘并执行 | ①**push 令**：本地提交（含本笔）推送 origin/main；②**不入库裁定**：LICENSE-COMMERCIAL.md 修改与根目录用户资料 5 项保持工作区现状不提交（.aoci/* 归 A 角守护不变）；③T57r/T58r 继续 Trae 线观察，再失联议换线重派。下一单：T57r/T58r 交付验收
