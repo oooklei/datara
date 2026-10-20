@@ -120,21 +120,25 @@ class WorkflowEdgeRecord(Base):
 
 
 class WorkflowScheduleRecord(Base):
-    """workflow_schedule — per-definition schedule binding (modeling only).
-
-    The scheduler domain (T33) owns firing and resolves the latest published
-    version at fire time; this row only records the binding.
-    """
+    """workflow_schedule — configurable schedule bound to a definition."""
 
     __tablename__ = "workflow_schedule"
-    __table_args__ = (UniqueConstraint("definition_id", name="uq_workflow_schedule_definition"),)
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     definition_id: Mapped[int] = mapped_column(Integer, nullable=False, index=True)
+    name: Mapped[str] = mapped_column(String(128), nullable=False, default="默认定时")
     cron_expr: Mapped[str] = mapped_column(String(64), nullable=False)
     start_time: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     end_time: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
-    enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    priority: Mapped[int] = mapped_column(Integer, nullable=False, default=3)
+    worker_group: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    fail_retry_times: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    fail_retry_interval: Mapped[int] = mapped_column(Integer, nullable=False, default=60)
+    misfire_policy: Mapped[str] = mapped_column(String(24), nullable=False, default="FIRE_ONCE")
+    concurrency_policy: Mapped[str] = mapped_column(String(16), nullable=False, default="ALLOW")
+    max_running_instances: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
+    timezone: Mapped[str] = mapped_column(String(64), nullable=False, default="Asia/Shanghai")
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.current_timestamp())
     updated_at: Mapped[datetime] = mapped_column(
         DateTime, server_default=func.current_timestamp(), server_onupdate=func.current_timestamp()
