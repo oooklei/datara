@@ -11,7 +11,7 @@
  */
 
 import { camelToSnake, camelToSnakeKey, ContractApiError, snakeToCamel } from './adapterKit'
-import { getToken } from '../http'
+import { request } from '../http'
 
 /* ---------- 作用域与类型（设计 §5 真源，后端冻结前不改） ---------- */
 
@@ -117,50 +117,23 @@ export interface VariableContract {
   getRunSnapshot: (instanceId: number, projectId: number, attemptNo?: number) => Promise<VariableSnapshotEntry[]>
 }
 
-/* ---------- GREEN 统一原语（接线计划 §1.1；R2 固化 {code,msg,data} 包络层，其余批次沿用） ---------- */
+/* ---------- GREEN 统一原语（接线计划 §1.1；收编 1.2 http 单 BASE 底座，s231 裁示④） ---------- */
 
-/** 端点前缀（Task 2 契约面表） */
-const BASE = '/api/v1/rebuild/variables'
+/** 端点前缀（Task 2 契约面表）；1.2 底座 BASE='/api/v1'，此处仅保留 rebuild 域相对段 */
+const BASE = '/rebuild/variables'
 
-const TIMEOUT_MS = 15000
-
-/** 后端成功包络（rebuild 域全域实证形态） */
-interface ApiEnvelope {
-  code?: number
-  msg?: string
-  data?: unknown
-}
-
-/** 统一 JSON fetch 原语：15s AbortController 超时 + token header（'token'，与 http.ts 同源）+ 包络解包 + 归一错误 */
+/**
+ * 统一 JSON fetch 原语：委托 1.2 `http` 底座（token 携带 / 15s 超时 / 包络三态解包 / 归一错误）。
+ * 入参与语义同收编前：`path` 为含查询串的相对段；字符串 body 视同 JSON（自动带 `Content-Type: application/json`）。
+ */
 async function requestJson<T>(path: string, init?: RequestInit): Promise<T> {
-  const ctrl = new AbortController()
-  const timer = setTimeout(() => ctrl.abort(), TIMEOUT_MS)
-  try {
-    const headers: Record<string, string> = { 'Content-Type': 'application/json' }
-    const token = getToken()
-    if (token) headers.token = token
-    const res = await fetch(`${BASE}${path}`, {
-      ...init,
-      headers: { ...headers, ...(init?.headers as Record<string, string>) },
-      signal: ctrl.signal,
-    })
-    if (!res.ok) {
-      const raw = await res.text().catch(() => '')
-      throw new ContractApiError({ httpStatus: res.status, code: res.status, msg: `HTTP ${res.status} ${path}`, raw })
-    }
-    const envelope = (await res.json()) as ApiEnvelope
-    if (typeof envelope.code === 'number' && envelope.code !== 0 && envelope.code !== 200) {
-      throw new ContractApiError({ httpStatus: res.status, code: envelope.code, msg: envelope.msg ?? path, raw: envelope })
-    }
-    return (envelope.data ?? envelope) as T
-  } catch (err) {
-    if (err instanceof DOMException && err.name === 'AbortError') {
-      throw new ContractApiError({ httpStatus: 0, code: 'TIMEOUT', msg: `请求超时（${TIMEOUT_MS / 1000}s）${path}` })
-    }
-    throw err
-  } finally {
-    clearTimeout(timer)
-  }
+  const { method = 'GET', body, headers } = init ?? {}
+  const jsonHeaders: Record<string, string> = typeof body === 'string' ? { 'Content-Type': 'application/json' } : {}
+  return request<T>(`${BASE}${path}`, {
+    method,
+    ...(body === undefined ? {} : { body }),
+    headers: { ...jsonHeaders, ...(headers as Record<string, string> | undefined) },
+  })
 }
 
 /** GET：查询键 camel→snake 序列化（undefined 值剔除），响应深度 snake→camel */

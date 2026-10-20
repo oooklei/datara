@@ -9,7 +9,7 @@
  * mock 契约面验证走 views/rebuild/validation/ai-assistant/mockAgent.ts（假 Agent，无 LLM，隔离于 K1）。
  */
 
-import { getToken, BASE } from '../http'
+import { requestRaw } from '../http'
 
 /* ---------- §2.2 工具名单与上下文（冻结词形） ---------- */
 
@@ -194,20 +194,22 @@ export interface R8AToolsContract {
 /** 统一信封调用原语（POST /api/v1/rebuild/ai/tool-calls；信封层统一权限/审计/预算/错误归一） */
 export type R8AToolCallInvoker = (request: R8AToolCallRequest) => Promise<R8AToolCallResponse>
 
-/* ---------- HTTP 原语 ---------- */
+/* ---------- HTTP 原语（收编 1.2 http 单 BASE 底座，s231 裁示④） ---------- */
 
-const AI_TOOLS_BASE = `${BASE}/rebuild/ai`
+/** 端点前缀；1.2 底座 BASE='/api/v1'，此处仅保留 rebuild 域相对段 */
+const AI_TOOLS_BASE = '/rebuild/ai'
 
+/**
+ * R8A 走**领域包络**（非 {code,msg,data}），故用底座 `requestRaw` 原始响应通道：
+ * 不做包络解包、不做错误归一、不设超时（工具调用为 LLM 长耗时域）。
+ * token 携带与传输核心与 `request` 同源。
+ */
 async function requestJson<T>(method: string, path: string, body?: unknown): Promise<T> {
-  const headers: Record<string, string> = { 'Content-Type': 'application/json' }
-  const token = getToken()
-  if (token) headers.token = token
-  const res = await fetch(`${AI_TOOLS_BASE}${path}`, {
+  return requestRaw<T>(`${AI_TOOLS_BASE}${path}`, {
     method,
-    headers,
-    body: body === undefined ? undefined : JSON.stringify(body),
+    timeoutMs: null,
+    ...(body === undefined ? {} : { json: body }),
   })
-  return res.json() as Promise<T>
 }
 
 /* ---------- GREEN 工厂：真实 API 调用 ---------- */

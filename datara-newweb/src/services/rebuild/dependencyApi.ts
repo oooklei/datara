@@ -12,7 +12,7 @@
  */
 
 import { camelToSnake, ContractApiError, ID_NORMALIZATION_FAILED, snakeToCamel } from './adapterKit'
-import { getToken } from '../http'
+import { request } from '../http'
 
 /* ---------- 周期 / 日期范围（DolphinScheduler 依赖窗口） ---------- */
 
@@ -101,62 +101,26 @@ export interface DependencyContract {
   evaluateDependency: (request: DependencyEvaluateRequest) => Promise<DependencyExpressionPreview & { evaluatedAt: string }>
 }
 
-/* ---------- GREEN 统一原语（沿 R2/R7 固化版；BASE 换 dependency 域） ---------- */
+/* ---------- GREEN 统一原语（收编 1.2 http 单 BASE 底座，s231 裁示④） ---------- */
 
-/** 端点前缀（A2 v2.1 冻结契约） */
-const BASE = '/api/v1/rebuild/dependency'
+/** 端点前缀（A2 v2.1 冻结契约）；1.2 底座 BASE='/api/v1'，此处仅保留 rebuild 域相对段 */
+const BASE = '/rebuild/dependency'
 
-const TIMEOUT_MS = 15000
-
-/** 后端成功包络（rebuild 域全域实证形态） */
-interface ApiEnvelope {
-  code?: number | string
-  msg?: string
-  data?: unknown
-}
-
-/** 统一 JSON fetch 原语：15s AbortController 超时 + token header + 包络解包 + 归一错误 */
+/**
+ * 统一 JSON fetch 原语：委托 1.2 `http` 底座（token 携带 / 15s 超时 / 包络三态解包 / 归一错误）。
+ * `preserveEnvelopeCode: true`：非 2xx 但包络含 code（DEP_ 前缀码，及 4001 / 1001 / 1003 / 4041）时保码透出
+ * （A2 §2/§4 错误映射），httpStatus 同步保留；非 JSON/无 code 再退回 HTTP 状态码错误。
+ * 入参与语义同收编前：`path` 为含查询串的相对段；字符串 body 视同 JSON。
+ */
 async function requestJson<T>(path: string, init?: RequestInit): Promise<T> {
-  const ctrl = new AbortController()
-  const timer = setTimeout(() => ctrl.abort(), TIMEOUT_MS)
-  try {
-    const headers: Record<string, string> = { 'Content-Type': 'application/json' }
-    const token = getToken()
-    if (token) headers.token = token
-    const res = await fetch(`${BASE}${path}`, {
-      ...init,
-      method: init?.method ?? 'GET',
-      headers: { ...headers, ...(init?.headers as Record<string, string>) },
-      signal: ctrl.signal,
-    })
-    if (!res.ok) {
-      const raw = await res.text().catch(() => '')
-      // 非 2xx 但包络含 code（DEP_*/4001/1001/1003/4041）时保码透出（A2 §2/§4 错误映射），
-      // httpStatus 同步保留；非 JSON/无 code 再退回 HTTP 状态码错误。
-      let parsed: ApiEnvelope | undefined
-      try {
-        parsed = JSON.parse(raw) as ApiEnvelope
-      } catch {
-        parsed = undefined
-      }
-      if (parsed && parsed.code !== undefined) {
-        throw new ContractApiError({ httpStatus: res.status, code: parsed.code, msg: parsed.msg ?? path, raw: parsed })
-      }
-      throw new ContractApiError({ httpStatus: res.status, code: res.status, msg: `HTTP ${res.status} ${path}`, raw })
-    }
-    const envelope = (await res.json()) as ApiEnvelope
-    if (envelope.code !== undefined && envelope.code !== 0 && envelope.code !== 200) {
-      throw new ContractApiError({ httpStatus: res.status, code: envelope.code, msg: envelope.msg ?? path, raw: envelope })
-    }
-    return (envelope.data ?? envelope) as T
-  } catch (err) {
-    if (err instanceof DOMException && err.name === 'AbortError') {
-      throw new ContractApiError({ httpStatus: 0, code: 'TIMEOUT', msg: `请求超时（${TIMEOUT_MS / 1000}s）${path}` })
-    }
-    throw err
-  } finally {
-    clearTimeout(timer)
-  }
+  const { method = 'GET', body, headers } = init ?? {}
+  const jsonHeaders: Record<string, string> = typeof body === 'string' ? { 'Content-Type': 'application/json' } : {}
+  return request<T>(`${BASE}${path}`, {
+    method,
+    preserveEnvelopeCode: true,
+    ...(body === undefined ? {} : { body }),
+    headers: { ...jsonHeaders, ...(headers as Record<string, string> | undefined) },
+  })
 }
 
 /** POST：请求体深度 camel→snake，响应深度 snake→camel（preview/saves/evaluate 全 POST） */
