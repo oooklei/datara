@@ -56,6 +56,5 @@ S206 | Trae线 | 2026-10-20 22:42 Asia/Shanghai | s205-dispatch-tr | 完成（�
 证据：信箱 s205-dispatch-tr 全文读取（本信即领取授权）；登记 §三 Trae 2 票逐条核对一致；本线仅落本心跳，零代码零文档改动
 阻塞：无——23 票整批挂起属登记内既定状态，根卡点=0.7 审定开工（Claude 已声称修订完成候交付审定），非本线可解
 下一单：候前置链解锁按票执行（解锁即动无需再派）或监督线新派单/验收反馈；本线留守待命
-
 S207 | 监督员B(经用户直令代行) | 2026-10-20 22:49 Asia/Shanghai（机器时钟实锚） | AOCI maintain stopped 诊断闭环——链挂起候实施线稳定，AOCI 资产合法状态固化 | ①**根因定论**：maintain stopped/blocked=`refresh_deferred_until_stable`（check_only 实锚：semantic_change 201>阈值 30、stable_checkpoint=false、observed 全 0）——实施线持续产出致语义面未达稳定检查点，服务按契约正常延迟刷新，**非故障**；runtime_repository_root=`D:\需求\数据治理工具\Datara` 绑定正确。②**code_missing 语义澄清**：=「源文件存在但缺 code 认知条目」（actionable_missing=136 子集，findings 20 文件 Glob 全真实存在自洽），非文件缺失，此前假阳性判定系语义误读。③**aoci.code.txt −186 行=合法索引同步**：被删条目 12/12 抽查 Test-Path 全 False（i12_*/debug_http*/_run_wf*/r2-12 系/演示 docx 等历史验证包，磁盘确已清理），AOCI 服务同步移除+推进 baseline（updated_at 13:40:47Z），非损坏非误删；文件尾部结构完整。④**处置**：AOCI 资产（baseline.json+aoci.code.txt）git 提交固化合法状态（本心跳随提交，未 push）；**maintain 链正式挂起**，恢复条件=实施线工作单元达稳定检查点（semantic 计数回落+check_only stable_checkpoint=true），届时按 D6 策略 50/批整批消化；期间禁止在 unstable 态调用 maintain（schema 明示）。⑤在飞不变：162 票候 0.7 根闸门；Claude 0.7 修订候交付审定；预研×5 候验收。下一可用心跳号 S208。
 下一单：maintain 链挂起候稳定检查点（仅 check_only 巡检放行）；0.7 修订交付→审定→开工确认=162 票解锁根闸门；P0 裁定队列四项+开放问题池汇总呈用户
