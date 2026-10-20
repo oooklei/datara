@@ -14,6 +14,8 @@ from fastapi.testclient import TestClient
 from rebuild.api.app import create_app
 from rebuild.identity.contracts import Role
 from rebuild.identity.repository import UserRepository
+from rebuild.project.repository import ProjectRepository
+from rebuild.datasource.models import ProjectDatasourceRecord
 
 BASE = "/api/v1/rebuild/sql-ide-ddl"
 
@@ -30,7 +32,12 @@ def _client():
     client = TestClient(app)
     client.__enter__()
     with app.state.session_factory() as session:
-        UserRepository(session).create(username="dev", password="dev-pass", role=Role.DEV)
+        user = UserRepository(session).create(username="dev", password="dev-pass", role=Role.DEVELOPER)
+        project = ProjectRepository(session).create(name="rb-test", description="", owner_id=user.id)
+        session.add(ProjectDatasourceRecord(
+            id=101, project_id=project.id, name="test", kind="mysql", host="localhost", port=3306,
+            database_name="test", username="test", password="",
+        ))
         session.commit()
     response = client.post("/api/v1/rebuild/login", json={"username": "dev", "password": "dev-pass"})
     return client, {"token": response.json()["data"]["token"]}
@@ -61,6 +68,30 @@ def test_endpoints_reject_missing_token():
         response = client.post(f"{BASE}/validate-policy", json=REQUEST)
         assert response.status_code == 401
         assert response.json()["code"] == 1001
+    finally:
+        client.__exit__(None, None, None)
+
+
+def test_project_member_cannot_access_another_projects_rb_endpoints():
+    client, headers = _client()
+    try:
+        with client.app.state.session_factory() as session:
+            from rebuild.identity.models import UserRecord
+            from rebuild.project.models import ProjectRecord
+            from rebuild.datasource.models import ProjectDatasourceRecord
+
+            user = session.query(UserRecord).filter_by(username="dev").one()
+            other = ProjectRecord(name="other", description="", owner_id=user.id + 99)
+            session.add(other)
+            session.flush()
+            session.add(ProjectDatasourceRecord(
+                id=202, project_id=other.id, name="other", kind="mysql", host="localhost", port=3306,
+                database_name="test", username="test", password="",
+            ))
+            session.commit()
+        response = client.post(f"{BASE}/validate-policy", json={**REQUEST, "datasourceId": 202}, headers=headers)
+        assert response.status_code == 403
+        assert response.json()["code"] == 1003
     finally:
         client.__exit__(None, None, None)
 

@@ -22,7 +22,7 @@ def _client():
     client = TestClient(app)
     client.__enter__()
     with app.state.session_factory() as session:
-        dev = UserRepository(session).create(username="dev", password="dev-pass", role=Role.DEV)
+        dev = UserRepository(session).create(username="dev", password="dev-pass", role=Role.DEVELOPER)
         project = ProjectRecord(name="e2e-proj", description="", owner_id=dev.id)
         session.add(project)
         session.commit()
@@ -94,23 +94,64 @@ def test_e2e_full_chain_success():
         assert fetched.status_code == 200
         assert fetched.json()["data"]["snapshot_id"] == snapshot_data["snapshot_id"]
 
-        # 4. Promote (WF-21) — draft matches snapshot.
+        # 4. Run TRIAL (WF-26: POST /trial/runs).
+        run_resp = client.post(
+            f"{TRIAL}/runs",
+            headers=tokens["dev"],
+            json={
+                "project_id": project_id,
+                "definition_id": definition_id,
+                "snapshot_id": snapshot_data["snapshot_id"],
+            },
+        )
+        assert run_resp.status_code == 200
+        run_data = run_resp.json()["data"]
+        assert run_data["status"] == "SUCCEEDED"
+        assert run_data["task_count"] == 4
+        instance_id = run_data["instance_id"]
+
+        # 5. Get run output (WF-26: GET /trial/runs/{run_id}).
+        output_resp = client.get(
+            f"{TRIAL}/runs/{instance_id}",
+            headers=tokens["dev"],
+            params={"project_id": project_id},
+        )
+        assert output_resp.status_code == 200
+        output_data = output_resp.json()["data"]
+        assert output_data["found"] is True
+        assert output_data["instance_type"] == "TRIAL"
+        assert "logs" in output_data
+        assert "variables" in output_data
+        assert "stats" in output_data
+
+        # 6. Promote (WF-21/WF-26: POST /trial/runs/{run_id}/promote).
         promote_resp = client.post(
-            f"{TRIAL}/definitions/{definition_id}/promote",
+            f"{TRIAL}/runs/{instance_id}/promote",
             headers=tokens["dev"],
             json={"project_id": project_id, "remark": "e2e promote"},
         )
-        # The promote endpoint is at the trial router level; if not mounted,
-        # this will 404 — that's acceptable for E2E structure validation.
-        # The actual promote flow is tested in test_trial_promote.py.
+        assert promote_resp.status_code == 200
+        promote_data = promote_resp.json()["data"]
+        assert promote_data["status"] == "PUBLISHED"
+        assert promote_data["snapshot_digest"] == snapshot_data["snapshot_digest"]
 
-        # 5. Verify definition now has current_version.
+        # 7. Verify definition now has current_version.
         detail = client.get(
             f"{WORKFLOWS}/{definition_id}",
             headers=tokens["dev"],
             params={"project_id": project_id},
         )
         assert detail.status_code == 200
+        assert detail.json()["data"]["current_version"] == 1
+
+        # 8. Idempotent promote (WF-21).
+        promote_resp2 = client.post(
+            f"{TRIAL}/runs/{instance_id}/promote",
+            headers=tokens["dev"],
+            json={"project_id": project_id, "remark": "e2e promote"},
+        )
+        assert promote_resp2.status_code == 200
+        assert promote_resp2.json()["data"]["idempotent"] is True
     finally:
         client.__exit__(None, None, None)
 

@@ -14,10 +14,12 @@ must parse. Sensitive values are returned in plaintext (declaration §5 Q11).
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import date, datetime, timedelta
 import json
 import os
 import re
 from typing import Any
+from zoneinfo import ZoneInfo
 
 # Seven-level precedence chain (design §5, difference note 6: this chain is the
 # design source of truth; narrowing requires user approval).
@@ -29,9 +31,9 @@ REFERENCE_SCOPES: frozenset[str] = frozenset((*PRECEDENCE, "tmp"))
 # Scopes whose definitions can be persisted through the API. workflow/task
 # values belong to execution contexts and run/env/builtin are transient or
 # system-owned, so saving into those scopes is rejected.
-PERSISTABLE_SCOPES: frozenset[str] = frozenset(("global", "project", "tmp"))
+PERSISTABLE_SCOPES: frozenset[str] = frozenset(("global", "project", "tmp", "workflow", "task"))
 
-VALUE_TYPES: tuple[str, ...] = ("string", "number", "boolean", "json")
+VALUE_TYPES: tuple[str, ...] = ("string", "integer", "decimal", "boolean", "date", "datetime", "json", "array")
 
 _NAME = re.compile(r"^[A-Za-z_][A-Za-z0-9_]{0,127}$")
 
@@ -47,6 +49,14 @@ BUILTIN_VARIABLES: dict[str, str] = {
 }
 
 _DIAGNOSTIC_CODES = ("SYNTAX", "UNDEFINED", "TYPE_MISMATCH", "SCOPE_INVISIBLE", "CYCLE")
+
+# VAR-11: redaction marker for sensitive values in log/output contexts
+REDACTED = "***REDACTED***"
+
+
+def redact_sensitive_value(value: str, sensitive: bool = False) -> str:
+    """Return the redacted marker for sensitive values, else the original value."""
+    return REDACTED if sensitive else value
 
 
 class VariableDomainError(ValueError):
@@ -68,6 +78,20 @@ class ResolvedVariable:
     value_type: str
     sensitive: bool = False
     description: str = ""
+    # VAR-06: definition fields (design §13.5)
+    default_value: str | None = None
+    nullable: bool = True
+    format: str | None = None
+    timezone: str | None = None
+    business_calendar: str | None = None
+
+    def __repr__(self) -> str:
+        # VAR-11: redact sensitive values in repr to prevent log leakage
+        return (
+            f"ResolvedVariable(name={self.name!r}, scope={self.scope!r}, "
+            f"value={redact_sensitive_value(self.value, self.sensitive)!r}, "
+            f"value_type={self.value_type!r}, sensitive={self.sensitive!r})"
+        )
 
 
 @dataclass(frozen=True, slots=True)
@@ -131,17 +155,41 @@ def validate_definition(scope: str, name: str, value_type: str, value: str) -> N
 
 def type_mismatch(value_type: str, value: str) -> str | None:
     """Return a reason string when value does not parse as value_type, else None."""
-    if value_type == "number":
+    if value_type == "string":
+        return None
+    if value_type == "integer":
+        try:
+            int(value)
+        except ValueError:
+            return f"value {value!r} is not an integer"
+    elif value_type == "decimal":
         try:
             float(value)
         except ValueError:
-            return f"value {value!r} is not a number"
+            return f"value {value!r} is not a decimal"
     elif value_type == "boolean":
         if value.lower() not in ("true", "false"):
             return f"value {value!r} is not a boolean"
+    elif value_type == "date":
+        try:
+            datetime.strptime(value, "%Y-%m-%d")
+        except ValueError:
+            return f"value {value!r} is not a valid date (YYYY-MM-DD)"
+    elif value_type == "datetime":
+        try:
+            datetime.fromisoformat(value)
+        except ValueError:
+            return f"value {value!r} is not a valid datetime (ISO 8601)"
     elif value_type == "json":
         try:
             json.loads(value)
+        except json.JSONDecodeError:
+            return "value is not valid JSON"
+    elif value_type == "array":
+        try:
+            parsed = json.loads(value)
+            if not isinstance(parsed, list):
+                return "value is not a JSON array"
         except json.JSONDecodeError:
             return "value is not valid JSON"
     return None
@@ -168,12 +216,83 @@ def references_in(text: str) -> tuple[list[dict[str, str]], list[str], list[str]
     return refs, time_expressions, syntax_errors
 
 
+class BusinessCalendar:
+    """Business calendar for working-day-aware date arithmetic (design §13.5).
+
+    weekends are non-working days; holidays are explicit non-working dates.
+    ``add_business_days`` skips weekends and holidays in both directions.
+    """
+
+    def __init__(self, holidays: set[date] | None = None) -> None:
+        self._holidays: set[date] = holidays or set()
+
+    def add_holiday(self, d: date) -> None:
+        self._holidays.add(d)
+
+    def remove_holiday(self, d: date) -> None:
+        self._holidays.discard(d)
+
+    def is_working_day(self, d: date) -> bool:
+        return d.weekday() < 5 and d not in self._holidays
+
+    def add_business_days(self, base: date, n: int) -> date:
+        step = 1 if n >= 0 else -1
+        current = base
+        remaining = abs(n)
+        while remaining > 0:
+            current = current + timedelta(days=step)
+            if self.is_working_day(current):
+                remaining -= 1
+        return current
+
+
+def evaluate_time_expression(expression: str, tz: ZoneInfo | None = None, calendar: BusinessCalendar | None = None) -> str:
+    """Evaluate a ``$[time-expression]`` and return the formatted date string.
+
+    The expression uses ``yyyy-MM-dd``-style format tokens (design §13.5).
+    An explicit timezone can be appended after ``|`` (e.g. ``yyyy-MM-dd|UTC``);
+    when omitted the default is ``Asia/Shanghai``.
+    """
+    fmt = expression
+    if tz is None:
+        tz = ZoneInfo("Asia/Shanghai")
+    if "|" in expression:
+        fmt, _, tz_name = expression.partition("|")
+        fmt = fmt.strip()
+        tz = ZoneInfo(tz_name.strip())
+    # Business day offset: +Nbd / -Nbd (e.g. yyyy-MM-dd+1bd)
+    bd_offset = 0
+    bd_match = re.search(r"([+-]\d+)bd$", fmt)
+    if bd_match:
+        bd_offset = int(bd_match.group(1))
+        fmt = fmt[: bd_match.start()].strip()
+    # Convert design-style tokens to Python strftime tokens (single pass to
+    # avoid partial-match corruption from chained str.replace)
+    strftime_fmt = re.sub("yyyy", "%Y", fmt)
+    strftime_fmt = re.sub("MM", "%m", strftime_fmt)
+    strftime_fmt = re.sub("dd", "%d", strftime_fmt)
+    now = datetime.now(tz)
+    if bd_offset and calendar is not None:
+        from datetime import date as _date
+
+        base_date = now.date()
+        result_date = calendar.add_business_days(base_date, bd_offset)
+        return result_date.strftime(strftime_fmt)
+    return now.strftime(strftime_fmt)
+
+
 class VariableResolver:
     """Resolves variables for a context using the seven-level precedence chain."""
 
-    def __init__(self, definitions_by_owner_key: Any) -> None:
-        """``definitions_by_owner_key(owner_key) -> list[ResolvedVariable]``."""
+    def __init__(self, definitions_by_owner_key: Any, run_values: dict[str, str] | None = None) -> None:
+        """``definitions_by_owner_key(owner_key) -> list[ResolvedVariable]``.
+
+        ``run_values`` carries the runtime run-scope variables (highest
+        precedence in the chain); when present they shadow any persisted
+        definition of the same name.
+        """
         self._definitions_by_owner_key = definitions_by_owner_key
+        self._run_values: dict[str, str] = run_values or {}
 
     # -- catalog -----------------------------------------------------------
 
@@ -197,6 +316,8 @@ class VariableResolver:
         if context.task_id is not None:
             owners.append(("task", f"task:{context.project_id}:{context.task_id}"))
         catalog: dict[str, ResolvedVariable] = {}
+        for name, value in self._run_values.items():
+            catalog[name] = ResolvedVariable(name=name, scope="run", value=value, value_type="string")
         for scope, owner_key in owners:
             for item in self._definitions_by_owner_key(owner_key):
                 catalog.setdefault(item.name, item)
@@ -206,6 +327,8 @@ class VariableResolver:
 
     def resolve_name(self, scope: str, name: str, context: VariableContext) -> str | None:
         """Resolve a single (scope, name); None when absent."""
+        if scope == "run":
+            return self._run_values.get(name)
         if scope == "env":
             return os.environ.get(name)
         if scope == "builtin":
@@ -227,6 +350,8 @@ class VariableResolver:
             return f"workflow:{context.project_id}:{context.workflow_id}"
         if scope == "task" and context.task_id is not None:
             return f"task:{context.project_id}:{context.task_id}"
+        if scope == "run" and context.task_id is not None and context.attempt_no is not None:
+            return f"run:{context.project_id}:{context.task_id}:{context.attempt_no}"
         return None
 
     # -- diagnostics -------------------------------------------------------
@@ -234,9 +359,15 @@ class VariableResolver:
     def check_reference(self, expression: str, context: VariableContext) -> dict[str, Any]:
         """Full reference check producing the five diagnostic codes."""
         diagnostics: list[dict[str, str]] = []
-        refs, _time_expressions, syntax_errors = references_in(expression)
+        refs, time_expressions, syntax_errors = references_in(expression)
         for fragment in syntax_errors:
             diagnostics.append({"code": "SYNTAX", "message": f"unparsable reference fragment: {fragment}"})
+        time_values: list[str] = []
+        for time_expr in time_expressions:
+            try:
+                time_values.append(evaluate_time_expression(time_expr))
+            except Exception:
+                diagnostics.append({"code": "SYNTAX", "message": f"invalid time expression: {time_expr!r}"})
         visible = set(self.visible_scopes(context))
         for ref in refs:
             scope, name = ref["scope"], ref["name"]
@@ -262,9 +393,15 @@ class VariableResolver:
             "expression": expression,
             "valid": not diagnostics,
             "diagnostics": diagnostics,
+            "time_values": time_values,
         }
 
     def _definition_of(self, scope: str, name: str, context: VariableContext) -> ResolvedVariable | None:
+        if scope == "run":
+            value = self._run_values.get(name)
+            if value is not None:
+                return ResolvedVariable(name=name, scope="run", value=value, value_type="string")
+            return None
         owner_key = self._owner_key_for(scope, context)
         if owner_key is None:
             return None
@@ -305,7 +442,7 @@ class VariableResolver:
         """Resolve the first reference in the expression for current-value preview."""
         result = self.check_reference(expression, context)
         diagnostics = result["diagnostics"]
-        refs, _times, _errors = references_in(expression)
+        refs, time_expressions, _errors = references_in(expression)
         resolved_value: str | None = None
         source: dict[str, str] | None = None
         if refs and not any(d["code"] in ("SYNTAX", "SCOPE_INVISIBLE", "UNDEFINED", "CYCLE") for d in diagnostics):
@@ -314,6 +451,17 @@ class VariableResolver:
             if value is not None:
                 resolved_value = value
                 source = {"scope": ref["scope"], "name": ref["name"]}
+        elif not refs and time_expressions and not any(d["code"] == "SYNTAX" for d in diagnostics):
+            # Pure time expression: return evaluated result
+            try:
+                resolved_value = evaluate_time_expression(time_expressions[0])
+            except Exception:
+                pass
+        # VAR-11: redact sensitive values from preview output
+        if resolved_value is not None and source is not None:
+            item = self._definition_of(source["scope"], source["name"], context)
+            if item is not None and item.sensitive:
+                resolved_value = REDACTED
         return {
             "expression": expression,
             "resolved_value": resolved_value,
@@ -340,7 +488,8 @@ class VariableResolver:
                     "scope": item.scope,
                     "name": item.name,
                     "value_type": item.value_type,
-                    "current_value": item.value,
+                    # VAR-11: redact sensitive values from completion output
+                    "current_value": redact_sensitive_value(item.value, item.sensitive),
                     "sensitive": item.sensitive,
                     "description": item.description,
                 }

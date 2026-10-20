@@ -125,8 +125,8 @@ class SqlIdeHistoryStore:
     def list_history(
         self, *, project_id: int, user_id: int, datasource_id: int, limit: int = 100
     ) -> list[dict[str, Any]]:
-        if not 1 <= limit <= 500:
-            raise ValueError("limit must be between 1 and 500")
+        if not 1 <= limit <= 200:
+            raise ValueError("limit must be between 1 and 200")
         with self._session_factory() as session:
             rows = session.scalars(
                 select(SqlIdeHistoryRecord)
@@ -293,7 +293,7 @@ class SqlIdeHistoryStore:
         with self._session_factory() as session:
             return session.get(SqlIdeScriptRecord, script_id)
 
-    def list_audit(self, *, project_id: int, limit: int = 500) -> list[dict[str, Any]]:
+    def list_audit(self, *, project_id: int, limit: int = 200) -> list[dict[str, Any]]:
         with self._session_factory() as session:
             rows = session.scalars(
                 select(SqlIdeHistoryAuditRecord)

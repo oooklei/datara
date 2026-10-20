@@ -16,7 +16,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 BACKEND_ROOT = Path(__file__).resolve().parents[1]
 ENV_FILE = BACKEND_ROOT / ".env"
-SUPPORTED_PROVIDERS = frozenset({"siliconflow"})
+SUPPORTED_PROVIDERS = frozenset({"siliconflow", "volcengine"})
 
 
 class AIConfig(BaseSettings):

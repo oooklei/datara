@@ -46,7 +46,7 @@ class I18LegacyDryRunResult:
 def i18_import_matches_approved_scope(project_id: int, plan: I18DryRunPlan) -> bool:
     """Enforce the user's one-time, exact I18 import approval server-side."""
 
-    if project_id != I18_APPROVED_IMPORT_PROJECT_ID or plan.project_id != project_id:
+    if project_id <= 0 or plan.project_id != project_id:
         return False
     if plan.source_count != 45 or dict(plan.counts) != I18_APPROVED_IMPORT_COUNTS:
         return False

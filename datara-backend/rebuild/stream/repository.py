@@ -23,9 +23,12 @@ from sqlalchemy.orm import Session
 from rebuild.stream.models import (
     StreamCheckpointRecord,
     StreamFailureEventRecord,
+    StreamJobAttemptRecord,
     StreamJobRecord,
     StreamMetricSnapshotRecord,
+    StreamRecoveryEventRecord,
 )
+from rebuild.stream.producer_schema import validate_runtime_config
 
 STREAM_STATES = ("CREATED", "STARTING", "RUNNING", "PAUSED", "STOPPING", "STOPPED", "FAILED", "RECOVERING")
 
@@ -102,6 +105,7 @@ class StreamRepository:
         workflow_id: int,
         mq_topic: str,
         runtime_config: dict[str, Any] | str | None = None,
+        legacy_job_id: int | None = None,
     ) -> StreamJobRecord:
         if not name or not isinstance(name, str):
             raise StreamDomainError(4001, "name is required")
@@ -109,11 +113,28 @@ class StreamRepository:
             raise StreamDomainError(4001, "workflow_id must be a positive integer")
         if not mq_topic or not isinstance(mq_topic, str):
             raise StreamDomainError(4001, "mq_topic is required")
+        if legacy_job_id is not None and (isinstance(legacy_job_id, bool) or not isinstance(legacy_job_id, int) or legacy_job_id <= 0):
+            raise StreamDomainError(4001, "legacy_job_id must be a positive integer")
+        if legacy_job_id is not None and self._session.scalar(
+            select(StreamJobRecord.id).where(StreamJobRecord.legacy_job_id == legacy_job_id)
+        ) is not None:
+            raise StreamDomainError(4001, "legacy_job_id is already linked to another stream job")
+        raw_config = runtime_config or {}
+        if isinstance(raw_config, str):
+            try:
+                raw_config = json.loads(raw_config)
+            except json.JSONDecodeError as exc:
+                raise StreamDomainError(4001, "runtime_config must be valid JSON") from exc
+        try:
+            normalized_config = validate_runtime_config(raw_config)
+        except (TypeError, ValueError) as exc:
+            raise StreamDomainError(4001, f"invalid runtime_config: {exc}") from exc
         record = StreamJobRecord(
             name=name,
             workflow_id=workflow_id,
+            legacy_job_id=legacy_job_id,
             mq_topic=mq_topic,
-            runtime_config=_runtime_config_json(runtime_config),
+            runtime_config=_runtime_config_json(normalized_config),
             state="CREATED",
         )
         self._session.add(record)
@@ -132,18 +153,52 @@ class StreamRepository:
 
     def transition(self, job_id: int, action: str, *, event_time: datetime | None = None) -> StreamJobRecord:
         record = self.get_job(job_id)
-        target = STREAM_TRANSITIONS.get((record.state, action))
+        source = record.state
+        target = STREAM_TRANSITIONS.get((source, action))
         if target is None:
-            raise StreamDomainError(4002, f"illegal transition {record.state} --{action}--> ?")
-        record.state = target
+            raise StreamDomainError(4002, f"illegal transition {source} --{action}--> ?")
         now = event_time or datetime.now()
+        updates: dict[str, Any] = {"state": target}
         if action == "start":
-            record.attempt_no += 1
-            record.started_at = now
-            record.finished_at = None
+            updates.update(attempt_no=record.attempt_no + 1, started_at=now, finished_at=None)
         elif action in {"complete_stop", "fail"}:
-            record.finished_at = now
+            updates["finished_at"] = now
+        # Compare-and-set on the previous state so racing transitions cannot
+        # both succeed after reading the same state.
+        result = self._session.query(StreamJobRecord).filter(
+            StreamJobRecord.id == job_id, StreamJobRecord.state == source
+        ).update(updates, synchronize_session=False)
+        if result != 1:
+            raise StreamDomainError(4002, "concurrent state transition; reload and retry")
+        self._session.refresh(record)
+        if action == "start":
+            # DEP-05: persist the new attempt slice in the independent table;
+            # stream_job.attempt_no stays the current-attempt pointer.
+            self._session.add(StreamJobAttemptRecord(
+                job_id=job_id,
+                attempt_no=record.attempt_no,
+                status="STARTING",
+                started_at=now,
+            ))
+        elif record.attempt_no > 0:
+            self._session.query(StreamJobAttemptRecord).filter(
+                StreamJobAttemptRecord.job_id == job_id,
+                StreamJobAttemptRecord.attempt_no == record.attempt_no,
+            ).update(
+                {"status": target, "finished_at": now if action in {"complete_stop", "fail"} else None},
+                synchronize_session=False,
+            )
+        if target == "RECOVERING" or (source == "RECOVERING" and target == "RUNNING"):
+            self._session.add(StreamRecoveryEventRecord(
+                job_id=job_id,
+                kind="recovery-started" if target == "RECOVERING" else "recovery-completed",
+                detail=f"{source} --{action}--> {target}",
+                event_time=now,
+            ))
         self._session.flush()
+        if source == "RECOVERING" and target == "RUNNING":
+            from rebuild.stream.alert import evaluate_failure_alert
+            evaluate_failure_alert(self._session, job_id, now=now)
         return record
 
     @staticmethod
@@ -152,6 +207,7 @@ class StreamRepository:
             "id": record.id,
             "name": record.name,
             "workflow_id": record.workflow_id,
+            "legacy_job_id": record.legacy_job_id,
             "mq_topic": record.mq_topic,
             "runtime_config": _optional_json(record.runtime_config),
             "state": record.state,
@@ -214,6 +270,61 @@ class StreamRepository:
         for row in rows:
             newest[row.partition_id] = row
         return [self._checkpoint_payload(newest[key]) for key in sorted(newest)]
+
+    def list_attempts(self, job_id: int) -> list[dict[str, Any]]:
+        """Read attempt slices from the independent stream_job_attempt table.
+
+        DEP-05 (user ruling 方案 A): attempt history lives in its own table,
+        oldest attempt first; the folded stream_job.attempt_no counter is no
+        longer the read source.
+        """
+        self.get_job(job_id)
+        rows = self._session.scalars(
+            select(StreamJobAttemptRecord)
+            .where(StreamJobAttemptRecord.job_id == job_id)
+            .order_by(StreamJobAttemptRecord.attempt_no)
+        ).all()
+        return [
+            {
+                "job_id": row.job_id,
+                "attempt_id": row.attempt_no,
+                "started_at": row.started_at.isoformat() if row.started_at else None,
+                "ended_at": row.finished_at.isoformat() if row.finished_at else None,
+                "exit_reason": row.status if row.status in {"STOPPED", "FAILED"} else None,
+            }
+            for row in rows
+        ]
+
+    def list_metric_points(self, job_id: int, window_from: str, window_to: str, limit: int = 100) -> list[dict[str, Any]]:
+        self.get_job(job_id)
+        start, end = _window_bound(window_from), _window_bound(window_to)
+        rows = self._session.scalars(
+            select(StreamMetricSnapshotRecord)
+            .where(StreamMetricSnapshotRecord.job_id == job_id,
+                   StreamMetricSnapshotRecord.captured_at >= start,
+                   StreamMetricSnapshotRecord.captured_at <= end)
+            .order_by(StreamMetricSnapshotRecord.captured_at, StreamMetricSnapshotRecord.id)
+            .offset(0).limit(max(0, min(limit, 500)))
+        )
+        fields = ("produce_rate", "consume_rate", "process_rate", "input_count", "output_count",
+                  "success_count", "failure_count", "skipped_count", "duplicate_count", "backlog", "offset_value")
+        return [{"job_id": row.job_id, "metric": field, "value": getattr(row, field),
+                 "captured_at": row.captured_at.isoformat()}
+                for row in rows for field in fields]
+
+    def list_recovery_events(self, job_id: int, window_from: str, window_to: str, limit: int = 100) -> list[dict[str, Any]]:
+        self.get_job(job_id)
+        start, end = _window_bound(window_from), _window_bound(window_to)
+        rows = self._session.scalars(
+            select(StreamRecoveryEventRecord)
+            .where(StreamRecoveryEventRecord.job_id == job_id,
+                   StreamRecoveryEventRecord.event_time >= start,
+                   StreamRecoveryEventRecord.event_time <= end)
+            .order_by(StreamRecoveryEventRecord.event_time, StreamRecoveryEventRecord.id)
+            .limit(max(0, min(limit, 500)))
+        )
+        return [{"event_id": str(row.id), "job_id": row.job_id, "kind": row.kind,
+                 "detail": row.detail, "occurred_at": row.event_time.isoformat()} for row in rows]
 
     @staticmethod
     def _checkpoint_payload(record: StreamCheckpointRecord) -> dict[str, Any]:
@@ -294,6 +405,10 @@ class StreamRepository:
         )
         self._session.add(record)
         self._session.flush()
+        # Keep threshold alerting on the write path: the evaluator only logs
+        # locally and never performs an external notification request.
+        from rebuild.stream.alert import evaluate_failure_alert
+        evaluate_failure_alert(self._session, job_id, now=event_time)
         return {
             "job_id": record.job_id,
             "attempt_no": record.attempt_no,
@@ -368,6 +483,7 @@ class StreamRepository:
                 StreamFailureEventRecord.event_time <= bound_to,
             )
         )
+        error_samples = self.list_failures(job_id, window_from, window_to, limit=20)
         payload: dict[str, Any] = {
             "job_id": job.id,
             "name": job.name,
@@ -375,6 +491,7 @@ class StreamRepository:
             "attempt_no": job.attempt_no,
             "snapshot_count": int(snapshot_count or 0),
             "error_sample_count": int(error_sample_count or 0),
+            "error_samples": error_samples,
         }
         if latest is not None:
             payload.update(

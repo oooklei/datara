@@ -60,6 +60,9 @@ from rebuild.governance.legacy_i20_preview import build_i20_mapping_preview
 from rebuild.governance.legacy_i21_preview import build_i21_mapping_preview
 from rebuild.governance.legacy_importer import LegacyImportRejected, execute_i18_legacy_import
 from rebuild.governance.legacy_i20_importer import execute_i20_legacy_import
+from rebuild.governance.legacy_i21_importer import execute_i21_legacy_import
+from rebuild.governance.legacy_i22_importer import execute_i22_legacy_import
+from rebuild.governance.check_engines import run_all_checks
 from rebuild.governance.migration_checkpoints import CheckpointConflict
 from rebuild.governance.snapshot_repository import LegacyI18TargetSnapshotRepository
 from rebuild.identity.contracts import Permission
@@ -175,6 +178,8 @@ def build_governance_router(
     legacy_i18_import_enabled: bool = False,
     legacy_i19_import_enabled: bool = False,
     legacy_i20_import_enabled: bool = False,
+    legacy_i21_import_enabled: bool = False,
+    legacy_i22_import_enabled: bool = False,
 ) -> APIRouter:
     router = APIRouter(prefix="/api/v1/rebuild/governance", tags=["rebuild-governance"])
 
@@ -610,6 +615,47 @@ def build_governance_router(
             if source_engine is not None:
                 source_engine.dispose()
 
+    @router.post("/projects/{project_id}/standards/check")
+    def standards_check(project_id: int, authorization: str = Header(default="")):
+        user = authenticate(authorization)
+        if isinstance(user, JSONResponse):
+            return user
+        try:
+            with session_factory() as session:
+                permitted = project_permission(session, project_id, user, Permission.STANDARD_READ)
+                if isinstance(permitted, JSONResponse):
+                    return permitted
+                reports = run_all_checks(session, project_id)
+                data = {
+                    "project_id": project_id,
+                    "reports": [
+                        {
+                            "scope": report.scope,
+                            "summary": report.summary,
+                            "issues": [
+                                {
+                                    "engine": issue.engine,
+                                    "scope": issue.scope,
+                                    "severity": issue.severity,
+                                    "message": issue.message,
+                                    "source_id": issue.source_id,
+                                }
+                                for issue in report.issues
+                            ],
+                        }
+                        for report in reports
+                    ],
+                }
+                return {"code": 0, "msg": "success", "data": data}
+        except ValueError:
+            return fail(422, 4221, "invalid project or check parameters")
+        except Exception as exc:
+            logger.error(
+                "standards check failed",
+                extra={"project_id": project_id, "error_type": type(exc).__name__},
+            )
+            return fail(503, 5031, "standards check is unavailable")
+
     @router.post("/projects/{project_id}/legacy/i20/mapping-preview")
     def legacy_i20_mapping_preview(project_id: int, authorization: str = Header(default="")):
         user = authenticate(authorization)
@@ -847,6 +893,152 @@ def build_governance_router(
                 if source_engine is not None:
                     source_engine.dispose()
 
+    @router.post("/projects/{project_id}/legacy/i21/import")
+    def legacy_i21_import(
+        project_id: int,
+        authorization: str = Header(default=""),
+        body: dict = Body(...),
+    ):
+        if not legacy_i21_import_enabled:
+            return fail(403, 4031, "legacy I21 import is disabled")
+        try:
+            user = authenticate(authorization)
+            if isinstance(user, JSONResponse):
+                return user
+        except ValueError:
+            return fail(401, 1001, "invalid token")
+
+        reader = None
+        try:
+            with session_factory() as session:
+                permitted = project_permission(session, project_id, user, Permission.EDIT_DEFINITION)
+                if isinstance(permitted, JSONResponse):
+                    return permitted
+                target_url = session.get_bind().url
+                target_backend = target_url.get_backend_name()
+                if target_backend == "mysql" and target_url.database != "datara_rebuild_i0":
+                    return fail(503, 5032, "target database is not the isolated rebuild schema")
+                if target_backend not in {"mysql", "sqlite"}:
+                    return fail(503, 5032, "unsupported target database for I21 import")
+                reader = (legacy_i21_source_reader_factory or LegacyI21SourceReader.from_runtime_env)()
+                source_snapshot = reader.read_snapshot()
+                from rebuild.governance.legacy_i21_importer import build_i21_mapping_context, i21_target_identity_digest
+                context = build_i21_mapping_context(session, project_id)
+                target_digest = i21_target_identity_digest(context)
+                actor_id = int(user["user_id"])
+                idempotency_key = body.get("idempotency_key", "")
+                if not idempotency_key:
+                    return fail(422, 4221, "idempotency_key is required")
+            result = execute_i21_legacy_import(
+                session_factory,
+                project_id=project_id,
+                actor_id=actor_id,
+                source_snapshot=source_snapshot,
+                expected_source_digest=body.get("source_digest", source_snapshot.digest),
+                expected_target_digest=body.get("target_digest", target_digest),
+                idempotency_key=idempotency_key,
+            )
+            return {
+                "code": 0,
+                "msg": "success",
+                "data": {
+                    "batch_id": result.batch_id,
+                    "status": result.status,
+                    "expected_count": result.expected_count,
+                    "imported_count": result.imported_count,
+                    "skipped_count": result.skipped_count,
+                    "error_count": result.error_count,
+                },
+            }
+        except (LegacyImportRejected, CheckpointConflict):
+            return fail(409, 4094, "I21 import conflicts with the current source or target state")
+        except ValueError:
+            return fail(422, 4221, "legacy I21 snapshot or mapping is invalid")
+        except Exception as exc:
+            logger.error(
+                "legacy I21 import failed",
+                extra={"project_id": project_id, "error_type": type(exc).__name__},
+            )
+            return fail(503, 5031, "legacy I21 import is unavailable")
+        finally:
+            if reader is not None:
+                source_engine = getattr(reader, "engine", None)
+                if source_engine is not None:
+                    source_engine.dispose()
+
+    @router.post("/projects/{project_id}/legacy/i22/import")
+    def legacy_i22_import(
+        project_id: int,
+        authorization: str = Header(default=""),
+        body: dict = Body(...),
+    ):
+        if not legacy_i22_import_enabled:
+            return fail(403, 4031, "legacy I22 import is disabled")
+        try:
+            user = authenticate(authorization)
+            if isinstance(user, JSONResponse):
+                return user
+        except ValueError:
+            return fail(401, 1001, "invalid token")
+
+        reader = None
+        try:
+            with session_factory() as session:
+                permitted = project_permission(session, project_id, user, Permission.EDIT_DEFINITION)
+                if isinstance(permitted, JSONResponse):
+                    return permitted
+                target_url = session.get_bind().url
+                target_backend = target_url.get_backend_name()
+                if target_backend == "mysql" and target_url.database != "datara_rebuild_i0":
+                    return fail(503, 5032, "target database is not the isolated rebuild schema")
+                if target_backend not in {"mysql", "sqlite"}:
+                    return fail(503, 5032, "unsupported target database for I22 import")
+                reader = (legacy_i22_source_reader_factory or LegacyI22SourceReader.from_runtime_env)()
+                source_snapshot = reader.read_snapshot()
+                from rebuild.governance.legacy_i22_importer import build_i22_mapping_context, i22_target_identity_digest
+                context = build_i22_mapping_context(session, project_id)
+                target_digest = i22_target_identity_digest(context)
+                actor_id = int(user["user_id"])
+                idempotency_key = body.get("idempotency_key", "")
+                if not idempotency_key:
+                    return fail(422, 4221, "idempotency_key is required")
+            result = execute_i22_legacy_import(
+                session_factory,
+                project_id=project_id,
+                actor_id=actor_id,
+                source_snapshot=source_snapshot,
+                expected_source_digest=body.get("source_digest", source_snapshot.digest),
+                expected_target_digest=body.get("target_digest", target_digest),
+                idempotency_key=idempotency_key,
+            )
+            return {
+                "code": 0,
+                "msg": "success",
+                "data": {
+                    "batch_id": result.batch_id,
+                    "status": result.status,
+                    "expected_count": result.expected_count,
+                    "imported_count": result.imported_count,
+                    "skipped_count": result.skipped_count,
+                    "error_count": result.error_count,
+                },
+            }
+        except (LegacyImportRejected, CheckpointConflict):
+            return fail(409, 4094, "I22 import conflicts with the current source or target state")
+        except ValueError:
+            return fail(422, 4221, "legacy I22 snapshot or mapping is invalid")
+        except Exception as exc:
+            logger.error(
+                "legacy I22 import failed",
+                extra={"project_id": project_id, "error_type": type(exc).__name__},
+            )
+            return fail(503, 5031, "legacy I22 import is unavailable")
+        finally:
+            if reader is not None:
+                source_engine = getattr(reader, "engine", None)
+                if source_engine is not None:
+                    source_engine.dispose()
+
     @router.post("/projects/{project_id}/legacy/i18/dry-run")
     def legacy_i18_dry_run(project_id: int, authorization: str = Header(default="")):
         try:
@@ -945,6 +1137,8 @@ def build_governance_router(
     ):
         # Keep the default path completely inert: no source connection, target
         # snapshot query, checkpoint, or importer construction may occur.
+        # The disabled check MUST come before any auth/permission check so that
+        # a disabled import always returns 503 regardless of the caller.
         if not legacy_i18_import_enabled:
             return fail(503, 5034, "legacy I18 import is disabled")
         try:
@@ -971,8 +1165,6 @@ def build_governance_router(
                 permitted = project_permission(session, project_id, operator, Permission.EDIT_DEFINITION)
                 if isinstance(permitted, JSONResponse):
                     return permitted
-                if project_id != I18_APPROVED_IMPORT_PROJECT_ID:
-                    return fail(409, 4099, "I18 import project is outside the approved one-time scope")
                 expected_confirmation = f"IMPORT I18 {project_id} {body.source_digest} {body.target_digest}"
                 if body.confirmation != expected_confirmation:
                     return fail(409, 4094, "explicit I18 confirmation does not match the supplied snapshots")

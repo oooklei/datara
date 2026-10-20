@@ -67,6 +67,7 @@ class ExecutionRepository:
         workflow_version_id: int,
         instance_type: str,
         trigger_type: str | None = None,
+        trial_snapshot_id: int | None = None,
     ) -> WorkflowInstanceRecord:
         if instance_type not in INSTANCE_TYPES:
             raise ExecutionDomainError(4101, f"instance_type must be one of {list(INSTANCE_TYPES)}")
@@ -78,6 +79,7 @@ class ExecutionRepository:
             instance_type=instance_type,
             status="PENDING",
             trigger_type=trigger_type,
+            trial_snapshot_id=trial_snapshot_id,
         )
         self._session.add(record)
         self._session.flush()
@@ -138,22 +140,33 @@ class ExecutionRepository:
     def append_attempt(self, task_instance_id: int) -> TaskAttemptRecord:
         """Append the next retry attempt; attempt_no is isolated and monotonic per task."""
         task = self._require_task_instance(task_instance_id)
+        expected_no = task.current_attempt_no
         max_no = self._session.scalar(
             select(func.max(TaskAttemptRecord.attempt_no)).where(
                 TaskAttemptRecord.task_instance_id == task_instance_id
             )
         )
-        attempt = TaskAttemptRecord(
-            task_instance_id=task_instance_id, attempt_no=(max_no or 0) + 1, status="PENDING"
+        next_no = (max_no or 0) + 1
+        if next_no != expected_no + 1:
+            raise ExecutionDomainError(4104, "current_attempt_no is inconsistent with persisted attempts")
+        result = self._session.execute(
+            update(TaskInstanceRecord)
+            .where(TaskInstanceRecord.id == task_instance_id, TaskInstanceRecord.current_attempt_no == expected_no)
+            .values(current_attempt_no=next_no, updated_at=func.current_timestamp())
         )
+        if result.rowcount != 1:
+            raise ExecutionDomainError(4104, "concurrent attempt append detected")
+        attempt = TaskAttemptRecord(task_instance_id=task_instance_id, attempt_no=next_no, status="PENDING")
         self._session.add(attempt)
-        task.current_attempt_no = attempt.attempt_no
         self._session.flush()
+        self._session.refresh(task)
         return attempt
 
     # ---- logs / outputs / events ---------------------------------------------
 
-    def append_run_log(self, *, task_instance_id: int, attempt_no: int, message: str, level: str = "INFO") -> RunLogRecord:
+    def append_run_log(
+        self, *, task_instance_id: int, attempt_no: int, message: str, level: str = "INFO"
+    ) -> RunLogRecord:
         self._require_attempt(task_instance_id, attempt_no)
         if level not in LOG_LEVELS:
             raise ExecutionDomainError(4105, f"level must be one of {list(LOG_LEVELS)}")
@@ -224,6 +237,11 @@ class ExecutionRepository:
                 raise ExecutionDomainError(4107, f"{name} must be a non-negative integer")
         if isinstance(attempt_no, bool) or not isinstance(attempt_no, int) or attempt_no < 0:
             raise ExecutionDomainError(4107, "attempt_no must be a non-negative integer")
+        if task_instance_id is not None:
+            task = self._require_task_instance(task_instance_id)
+            if task.workflow_instance_id != workflow_instance_id:
+                raise ExecutionDomainError(4107, "task_instance does not belong to workflow_instance")
+            self._require_attempt(task_instance_id, attempt_no)
 
         receipt_filter = [
             ExecutionEventRecord.event_kind == RESULT_STAT_EVENT_KIND,
@@ -243,33 +261,34 @@ class ExecutionRepository:
             }
 
         run_date = instance.created_at.date()
-        aggregate = self._session.scalar(
-            select(WorkflowResultStatRecord).where(
-                WorkflowResultStatRecord.workflow_id == instance.workflow_id,
-                WorkflowResultStatRecord.run_date == run_date,
-            )
-        )
-        if aggregate is None:
-            self._session.add(
-                WorkflowResultStatRecord(
-                    workflow_id=instance.workflow_id,
-                    run_date=run_date,
-                    success_count=success_count,
-                    failure_count=failed_count,
-                    skipped_count=skipped_count,
+        if instance.instance_type != "TRIAL":
+            aggregate = self._session.scalar(
+                select(WorkflowResultStatRecord).where(
+                    WorkflowResultStatRecord.workflow_id == instance.workflow_id,
+                    WorkflowResultStatRecord.run_date == run_date,
                 )
             )
-        else:
-            self._session.execute(
-                update(WorkflowResultStatRecord)
-                .where(WorkflowResultStatRecord.id == aggregate.id)
-                .values(
-                    success_count=WorkflowResultStatRecord.success_count + success_count,
-                    failure_count=WorkflowResultStatRecord.failure_count + failed_count,
-                    skipped_count=WorkflowResultStatRecord.skipped_count + skipped_count,
-                    updated_at=func.current_timestamp(),
+            if aggregate is None:
+                self._session.add(
+                    WorkflowResultStatRecord(
+                        workflow_id=instance.workflow_id,
+                        run_date=run_date,
+                        success_count=success_count,
+                        failure_count=failed_count,
+                        skipped_count=skipped_count,
+                    )
                 )
-            )
+            else:
+                self._session.execute(
+                    update(WorkflowResultStatRecord)
+                    .where(WorkflowResultStatRecord.id == aggregate.id)
+                    .values(
+                        success_count=WorkflowResultStatRecord.success_count + success_count,
+                        failure_count=WorkflowResultStatRecord.failure_count + failed_count,
+                        skipped_count=WorkflowResultStatRecord.skipped_count + skipped_count,
+                        updated_at=func.current_timestamp(),
+                    )
+                )
         self._session.add(
             ExecutionEventRecord(
                 workflow_instance_id=workflow_instance_id,
@@ -283,6 +302,7 @@ class ExecutionRepository:
         return {
             "recorded": True,
             "duplicate": False,
+            "isolated": instance.instance_type == "TRIAL",
             "workflow_id": instance.workflow_id,
             "run_date": run_date.isoformat(),
             "attempt_no": attempt_no,

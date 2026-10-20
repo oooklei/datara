@@ -113,6 +113,11 @@ def test_snapshot_expires_after_contract_ttl_and_can_be_cleaned(result_store):
 
 
 def test_page_bounds_are_enforced(result_store):
+    """A5 contract §2.2/§3#12: limit must be 1..200 (aligned with pagination layer).
+
+    DEP-03: user ruling S109 unified the page limit at 200 across the whole chain
+    (result_store / pagination / history / status + A5 contract doc).
+    """
     result_store.save_snapshot(
         project_id=7,
         user_id=11,
@@ -122,6 +127,18 @@ def test_page_bounds_are_enforced(result_store):
         rows=[[1]],
     )
 
+    # limit=200 is valid (DEP-03 unified upper bound)
+    page = result_store.fetch_page(
+        project_id=7,
+        user_id=11,
+        history_id="history-bounds",
+        stmt_index=0,
+        offset=0,
+        limit=200,
+    )
+    assert page["page"]["limit"] == 200
+
+    # limit=201 exceeds the unified upper bound
     with pytest.raises(ValueError, match="limit"):
         result_store.fetch_page(
             project_id=7,

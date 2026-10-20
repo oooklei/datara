@@ -226,7 +226,7 @@ def test_project_access_is_scoped_and_denies_missing_membership():
     assert authorize_project_access(
         actor_id=10,
         owner_id=20,
-        global_role=Role.DEV,
+        global_role=Role.DEVELOPER,
         member_role=None,
         permission=Permission.VIEW_ALL,
     ) is False
@@ -240,7 +240,7 @@ def test_project_access_is_scoped_and_denies_missing_membership():
     assert authorize_project_access(
         actor_id=20,
         owner_id=20,
-        global_role=Role.DEV,
+        global_role=Role.DEVELOPER,
         member_role=None,
         permission=Permission.EDIT_DEFINITION,
     ) is True

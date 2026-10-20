@@ -122,8 +122,11 @@ def test_wf16_start_node_subgraph():
     assert result.status == "SUCCEEDED"
     # a + b + end are forward-reachable from a; start is skipped.
     assert result.task_count == 3
+    # WF-27: skipped tasks are included in the result payload.
     codes = {t["node_code"] for t in result.tasks}
-    assert "start" not in codes
+    assert "start" in codes
+    start_task = next(t for t in result.tasks if t["node_code"] == "start")
+    assert start_task["status"] == "SKIPPED"
 
 
 # WF-17: test variable overrides ------------------------------------------------

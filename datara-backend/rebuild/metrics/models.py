@@ -41,6 +41,7 @@ class WorkflowResultStatRecord(Base):
     updated_at: Mapped[datetime] = mapped_column(
         DateTime, server_default=func.current_timestamp(), server_onupdate=func.current_timestamp()
     )
+    generated_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, server_default=func.current_timestamp())
 
 
 class TaskInstanceDataStatRecord(Base):
@@ -63,6 +64,7 @@ class TaskInstanceDataStatRecord(Base):
     updated_at: Mapped[datetime] = mapped_column(
         DateTime, server_default=func.current_timestamp(), server_onupdate=func.current_timestamp()
     )
+    generated_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, server_default=func.current_timestamp())
 
 
 class TaskDataStatSegmentRecord(Base):
@@ -82,6 +84,7 @@ class TaskDataStatSegmentRecord(Base):
     updated_at: Mapped[datetime] = mapped_column(
         DateTime, server_default=func.current_timestamp(), server_onupdate=func.current_timestamp()
     )
+    generated_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, server_default=func.current_timestamp())
 
 
 class TaskDataErrorSampleRecord(Base):
@@ -102,6 +105,7 @@ class TaskDataErrorSampleRecord(Base):
     updated_at: Mapped[datetime] = mapped_column(
         DateTime, server_default=func.current_timestamp(), server_onupdate=func.current_timestamp()
     )
+    generated_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, server_default=func.current_timestamp())
 
 
 class QualityRuleResultLinkRecord(Base):
@@ -113,6 +117,7 @@ class QualityRuleResultLinkRecord(Base):
     )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    project_id: Mapped[int | None] = mapped_column(Integer, nullable=True, index=True)
     rule_id: Mapped[int] = mapped_column(Integer, nullable=False, index=True)
     rule_name: Mapped[str] = mapped_column(String(128), nullable=False)
     # Table + primary key reference to the stat record; passed through verbatim.
@@ -134,6 +139,7 @@ class LineageWritebackRecord(Base):
     )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    project_id: Mapped[int | None] = mapped_column(Integer, nullable=True, index=True)
     run_id: Mapped[str] = mapped_column(String(128), nullable=False, index=True)
     run_kind: Mapped[str] = mapped_column(String(16), nullable=False)
     source_entity: Mapped[str] = mapped_column(String(256), nullable=False)

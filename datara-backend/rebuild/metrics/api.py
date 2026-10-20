@@ -23,6 +23,7 @@ from rebuild.metrics.repository import MetricsDomainError, MetricsRepository, pa
 
 
 class TimeWindowRequest(BaseModel):
+    project_id: int = Field(ge=1)
     # `from` is a Python keyword — accept it via alias (FE contract key is `from`).
     from_: str = Field(default="", alias="from")
     to: str = ""
@@ -37,6 +38,7 @@ def build_metrics_router(
     session_factory: sessionmaker,
     token_service: Any,
     active_tokens: set[str],
+    project_authorize=None,
 ) -> APIRouter:
     router = APIRouter()
 
@@ -56,9 +58,14 @@ def build_metrics_router(
 
     def window_guard(body: TimeWindowRequest, token: str, authorization: str):
         try:
-            principal(token, authorization)
+            user = principal(token, authorization)
         except ValueError:
             return unauthorized(), None
+        if project_authorize is None:
+            return JSONResponse(status_code=403, content={"code": 1003, "msg": "project authorization unavailable", "data": None}), None
+        denied = project_authorize(body.project_id, user)
+        if denied is not None:
+            return denied, None
         try:
             return None, parse_window({"from": body.from_, "to": body.to, "offset": body.offset, "limit": body.limit})
         except MetricsDomainError as exc:
@@ -77,7 +84,7 @@ def build_metrics_router(
         if denial is not None:
             return denial
         with session_factory() as session:
-            rows = MetricsRepository(session).workflow_result_stats(*window)
+            rows = MetricsRepository(session).workflow_result_stats(*window, body.project_id)
         return respond(rows)
 
     # -- 2. task-instance-data-stats ----------------------------------------
@@ -90,7 +97,7 @@ def build_metrics_router(
         if denial is not None:
             return denial
         with session_factory() as session:
-            rows = MetricsRepository(session).task_instance_data_stats(*window)
+            rows = MetricsRepository(session).task_instance_data_stats(*window, body.project_id)
         return respond(rows)
 
     # -- 3. task-data-stat-segments -----------------------------------------
@@ -103,7 +110,7 @@ def build_metrics_router(
         if denial is not None:
             return denial
         with session_factory() as session:
-            rows = MetricsRepository(session).task_data_stat_segments(*window)
+            rows = MetricsRepository(session).task_data_stat_segments(*window, body.project_id)
         return respond(rows)
 
     # -- 4. task-data-error-samples -----------------------------------------
@@ -116,7 +123,7 @@ def build_metrics_router(
         if denial is not None:
             return denial
         with session_factory() as session:
-            rows = MetricsRepository(session).task_data_error_samples(*window)
+            rows = MetricsRepository(session).task_data_error_samples(*window, body.project_id)
         return respond(rows)
 
     # -- 5. quality-rule-links ----------------------------------------------
@@ -129,7 +136,7 @@ def build_metrics_router(
         if denial is not None:
             return denial
         with session_factory() as session:
-            rows = MetricsRepository(session).quality_rule_links(*window)
+            rows = MetricsRepository(session).quality_rule_links(*window, body.project_id)
         return respond(rows)
 
     # -- 6. lineage-writebacks ----------------------------------------------
@@ -143,7 +150,7 @@ def build_metrics_router(
             return denial
         try:
             with session_factory() as session:
-                rows = MetricsRepository(session).lineage_writebacks(*window, body.kind)
+                rows = MetricsRepository(session).lineage_writebacks(*window, body.kind, body.project_id)
         except MetricsDomainError as exc:
             return domain_error(exc)
         return respond(rows)

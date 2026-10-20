@@ -31,6 +31,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from rebuild.execution.repository import ExecutionRepository
+from rebuild.execution.models import TaskInstanceRecord
 from rebuild.trial.validator import TrialValidator
 from rebuild.trial.repository import TrialSnapshotRepository
 from rebuild.variables.models import TaskInstanceVariableRuntimeRecord
@@ -116,11 +117,15 @@ class TrialRunner:
             )
 
         # 5. Create workflow_instance.
+        # WF-28: TRIAL binds the draft snapshot via trial_snapshot_id;
+        # workflow_version_id is 0 (no published version), matching
+        # execution/api.py:197 semantics.
         instance = self._exec.create_workflow_instance(
             workflow_id=definition_id,
-            workflow_version_id=snapshot_id,  # bind snapshot, not a published version
+            workflow_version_id=0,
             instance_type="TRIAL",
             trigger_type="TRIAL",
+            trial_snapshot_id=snapshot_id,
         )
         self._session.flush()
 
@@ -154,25 +159,52 @@ class TrialRunner:
                 instance_status = "FAILED"
 
         # 8. Mark skipped tasks.
+        # WF-27: SKIPPED is a distinct terminal state (not FAILED).
         for node_code in skipped_nodes:
-            self._exec.create_task_instance(
+            task = self._exec.create_task_instance(
                 workflow_instance_id=instance.id, task_id=node_code
             )
-            # Immediately transition to a terminal skipped-like state via FAILED+log.
-            # (TRIAL has no SKIPPED state; we use FAILED with a skip marker log.)
+            attempt = self._exec.append_attempt(task.id)
+            self._exec.transition_attempt(attempt.id, "SKIPPED")
+            self._exec.transition_task_instance(task.id, "SKIPPED")
+            self._exec.append_run_log(
+                task_instance_id=task.id,
+                attempt_no=attempt.attempt_no,
+                message=f"Node {node_code!r} skipped (not in execution set)",
+                level="WARN",
+            )
 
         # 9. Finalize instance.
         self._exec.transition_workflow_instance(instance.id, instance_status)
 
         # 10. Build result.
+        # WF-29: task_id is the node_code (design §3.2 defines node types, not a
+        # separate task_id; the unique business key for a task is its node_code).
         tasks_payload = []
         for node_code in topo_order:
             task = task_records[node_code]
             tasks_payload.append(
                 {
-                    "task_id": task.id,
+                    "task_instance_id": task.id,
+                    "task_id": node_code,
                     "node_code": node_code,
                     "status": task.status,
+                }
+            )
+        # Include skipped tasks in the result payload (WF-27).
+        for node_code in skipped_nodes:
+            task = self._session.scalars(
+                select(TaskInstanceRecord).where(
+                    TaskInstanceRecord.workflow_instance_id == instance.id,
+                    TaskInstanceRecord.task_id == node_code,
+                )
+            ).one()
+            tasks_payload.append(
+                {
+                    "task_instance_id": task.id,
+                    "task_id": node_code,
+                    "node_code": node_code,
+                    "status": "SKIPPED",
                 }
             )
 

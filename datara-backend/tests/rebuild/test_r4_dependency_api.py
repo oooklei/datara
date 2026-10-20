@@ -35,7 +35,7 @@ def _client():
     client = TestClient(app)
     client.__enter__()
     with app.state.session_factory() as session:
-        dev = UserRepository(session).create(username="dev", password="dev-pass", role=Role.DEV)
+        dev = UserRepository(session).create(username="dev", password="dev-pass", role=Role.DEVELOPER)
         viewer = UserRepository(session).create(username="viewer", password="viewer-pass", role=Role.VIEWER)
         owned = ProjectRecord(name="r4-owned", description="", owner_id=dev.id)
         session.add_all((owned,))

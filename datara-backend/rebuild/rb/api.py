@@ -30,7 +30,12 @@ from rebuild.rb.facade.rb_facade import (
 )
 
 
-def build_rb_router(facade: RbFacade, token_service: Any, active_tokens: set[str]) -> APIRouter:
+def build_rb_router(
+    facade: RbFacade,
+    token_service: Any,
+    active_tokens: set[str],
+    project_authorize=None,
+) -> APIRouter:
     """Build the rb domain router; services are bound by the host via ``facade``."""
     router = APIRouter(prefix="/api/v1/rebuild/sql-ide-ddl", tags=["sql-ide-ddl"])
 
@@ -45,12 +50,14 @@ def build_rb_router(facade: RbFacade, token_service: Any, active_tokens: set[str
     def unauthorized() -> JSONResponse:
         return JSONResponse(status_code=401, content={"code": 1001, "msg": "invalid token", "data": None})
 
-    def guard(token: str, authorization: str):
+    def guard(token: str, authorization: str, datasource_id: int):
         try:
-            principal(token, authorization)
+            user = principal(token, authorization)
         except ValueError:
             return unauthorized()
-        return None
+        if project_authorize is None:
+            return JSONResponse(status_code=403, content={"code": 1003, "msg": "project authorization unavailable", "data": None})
+        return project_authorize(datasource_id, user)
 
     def respond(result: dict[str, Any]):
         code = int(result.get("code", 0))
@@ -64,7 +71,7 @@ def build_rb_router(facade: RbFacade, token_service: Any, active_tokens: set[str
         token: str = Header(default=""),
         authorization: str = Header(default=""),
     ):
-        denial = guard(token, authorization)
+        denial = guard(token, authorization, body.datasourceId)
         if denial is not None:
             return denial
         return respond(facade.validate_policy(body))
@@ -75,7 +82,7 @@ def build_rb_router(facade: RbFacade, token_service: Any, active_tokens: set[str
         token: str = Header(default=""),
         authorization: str = Header(default=""),
     ):
-        denial = guard(token, authorization)
+        denial = guard(token, authorization, body.datasourceId)
         if denial is not None:
             return denial
         return respond(facade.preview_impact(body))
@@ -86,7 +93,7 @@ def build_rb_router(facade: RbFacade, token_service: Any, active_tokens: set[str
         token: str = Header(default=""),
         authorization: str = Header(default=""),
     ):
-        denial = guard(token, authorization)
+        denial = guard(token, authorization, body.datasourceId)
         if denial is not None:
             return denial
         return respond(facade.submit_confirm(body))
@@ -97,7 +104,7 @@ def build_rb_router(facade: RbFacade, token_service: Any, active_tokens: set[str
         token: str = Header(default=""),
         authorization: str = Header(default=""),
     ):
-        denial = guard(token, authorization)
+        denial = guard(token, authorization, body.datasourceId)
         if denial is not None:
             return denial
         return respond(facade.list_execution_records(body))

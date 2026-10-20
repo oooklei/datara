@@ -35,6 +35,18 @@ class ProjectMemberRecord(Base):
     )
 
 
+class ActiveTokenRecord(Base):
+    __tablename__ = "rebuild_active_token"
+
+    token: Mapped[str] = mapped_column(String(255), primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("rebuild_user.id"), index=True)
+    username: Mapped[str] = mapped_column(String(64))
+    role: Mapped[str] = mapped_column(String(32))
+    capability: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    issued_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: _now_shanghai())
+    expires_at: Mapped[datetime] = mapped_column(DateTime)
+
+
 def _now_shanghai() -> datetime:
     return datetime.now(ZoneInfo("Asia/Shanghai")).replace(tzinfo=None)
 

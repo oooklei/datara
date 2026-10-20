@@ -10,6 +10,7 @@ from fastapi.testclient import TestClient
 from rebuild.api.app import create_app
 from rebuild.identity.contracts import Role
 from rebuild.identity.repository import UserRepository
+from rebuild.project.repository import ProjectRepository
 
 
 def _client():
@@ -17,14 +18,15 @@ def _client():
     client = TestClient(app)
     client.__enter__()
     with app.state.session_factory() as session:
-        UserRepository(session).create(username="dev", password="dev-pass", role=Role.DEV)
+        user = UserRepository(session).create(username="dev", password="dev-pass", role=Role.DEVELOPER)
+        ProjectRepository(session).create(name="metrics-test", description="", owner_id=user.id)
         session.commit()
     response = client.post("/api/v1/rebuild/login", json={"username": "dev", "password": "dev-pass"})
     headers = {"token": response.json()["data"]["token"]}
     return client, app, headers
 
 
-WINDOW = {"from": "2026-10-01T00:00:00", "to": "2026-10-31T23:59:59", "offset": 0, "limit": 100}
+WINDOW = {"project_id": 1, "from": "2026-10-01T00:00:00", "to": "2026-10-31T23:59:59", "offset": 0, "limit": 100}
 
 
 def _seed(app):
@@ -38,10 +40,17 @@ def _seed(app):
         TaskInstanceDataStatRecord,
         WorkflowResultStatRecord,
     )
+    from rebuild.execution.models import WorkflowInstanceRecord
+    from rebuild.workflow.models import WorkflowDefinitionRecord
 
     with app.state.session_factory() as session:
         session.add_all(
             (
+                WorkflowDefinitionRecord(id=7, project_id=1, name="metrics-workflow", description="", current_version=None),
+                WorkflowInstanceRecord(
+                    id=501, workflow_id=7, workflow_version_id=1, instance_type="FORMAL", status="SUCCEEDED",
+                    trigger_type="MANUAL",
+                ),
                 WorkflowResultStatRecord(
                     workflow_id=7, run_date=datetime(2026, 10, 15).date(),
                     success_count=10, failure_count=2, skipped_count=1, retry_count=3,
@@ -62,11 +71,11 @@ def _seed(app):
                     sample_data='{"col": "email", "row": 17}', captured_at=datetime(2026, 10, 15, 12, 0, 0),
                 ),
                 QualityRuleResultLinkRecord(
-                    rule_id=3, rule_name="email_not_null", stat_ref="task_instance_data_stat:501",
+                    project_id=1, rule_id=3, rule_name="email_not_null", stat_ref="task_instance_data_stat:501",
                     alert_sent=True, result_at=datetime(2026, 10, 15, 12, 5, 0),
                 ),
                 LineageWritebackRecord(
-                    run_id="9001", run_kind="sql", source_entity="ods.orders",
+                    project_id=1, run_id="9001", run_kind="sql", source_entity="ods.orders",
                     target_entity="dws.orders_daily", writeback_at=datetime(2026, 10, 15, 12, 10, 0),
                 ),
             )
@@ -149,5 +158,25 @@ def test_anonymous_is_401_and_bearer_fallback():
         assert bearer.status_code == 200
         empty = bearer.json()["data"]
         assert empty == []
+    finally:
+        client.__exit__(None, None, None)
+
+
+def test_metrics_endpoints_require_project_access():
+    client, app, headers = _client()
+    try:
+        from rebuild.project.models import ProjectRecord
+
+        with app.state.session_factory() as session:
+            foreign = ProjectRecord(name="foreign", description="", owner_id=999)
+            session.add(foreign)
+            session.commit()
+            foreign_id = foreign.id
+        response = client.post(
+            "/api/v1/rebuild/metrics/workflow-result-stats",
+            headers=headers,
+            json={**WINDOW, "project_id": foreign_id},
+        )
+        assert response.status_code == 403 and response.json()["code"] == 1003
     finally:
         client.__exit__(None, None, None)

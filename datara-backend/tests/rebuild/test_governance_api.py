@@ -19,9 +19,14 @@ def governance_client():
     )
     with TestClient(app) as client:
         MigrationRunner(app.state.session_factory.kw["bind"], R3_GOVERNANCE_MIGRATIONS).apply()
-        token = client.post(
-            "/api/v1/rebuild/validation-token", headers={"X-Backend-Validation-Key": "governance-key"}
-        ).json()["data"]["token"]
+        from rebuild.identity.contracts import Role, TokenService
+        from rebuild.identity.models import UserRecord
+        svc = TokenService(secret="governance-api-test-secret", ttl_seconds=3600)
+        with app.state.session_factory() as session:
+            session.add(UserRecord(id=1, username="gov-admin", role=Role.DEVELOPER, password_hash="x"))
+            session.commit()
+        token = svc.issue(user_id=1, username="gov-admin", role=Role.DEVELOPER)
+        app.state.active_tokens.add(token, user_id=1, username="gov-admin", role=Role.DEVELOPER.value)
         headers = {"Authorization": f"Bearer {token}"}
         for name in ("governance-project", "other-project"):
             client.post("/api/v1/rebuild/projects", headers=headers, json={"name": name})

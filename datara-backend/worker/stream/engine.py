@@ -24,6 +24,13 @@ from common.config import get_settings
 from common.db import new_session
 from common.log import get_logger
 from common.models import AlertRecord, StreamJob, StreamOffset, TaskLog, WorkflowInstance
+from rebuild.stream.legacy_bridge import (
+    LEGACY_TO_WORKFLOW_INSTANCE,
+    sync_legacy_checkpoints,
+    sync_legacy_failure,
+    sync_legacy_metrics,
+    sync_legacy_state,
+)
 from worker.stream.ops import JoinOp, WindowAggOp, build_op
 from worker.stream.sinks import build_sink
 from worker.stream.sources import SourceBase, build_source
@@ -31,13 +38,7 @@ from worker.stream.sources import SourceBase, build_source
 logger = get_logger("worker.stream.engine")
 
 # StreamJob 状态 → WorkflowInstance 状态映射
-_STREAM_TO_WI_STATE = {
-    "starting": "submitted",
-    "running": "running",
-    "reconnecting": "running",
-    "stopped": "kill",
-    "failed": "failure",
-}
+_STREAM_TO_WI_STATE = LEGACY_TO_WORKFLOW_INSTANCE
 
 CTL_CHANNEL = "datara:flink:ctl"
 METRICS_PREFIX = "datara:flink:metrics:"
@@ -376,6 +377,10 @@ class StreamEngine:
                         break
                     consecutive += 1
                     rt.status = "reconnecting"
+                    try:
+                        sync_legacy_failure(rt.job_id, type(exc).__name__, {"message": str(exc)[:1000]})
+                    except Exception as bridge_exc:  # noqa: BLE001 新域双写失败不阻断旧线重连
+                        logger.warning("新流域失败事件镜像失败: %r", bridge_exc)
                     self._db_update(rt.job_id, rt.generation, status="reconnecting", last_error=str(exc)[:2000])
                     self._log(rt.job_id, "ERROR", f"管道异常（连续第 {consecutive} 次）: {exc}")
                     if consecutive >= MAX_RETRIES:
@@ -655,11 +660,38 @@ class StreamEngine:
             self._log(rt.job_id, "WARN", "位点提交失败（下轮重试）")
         finally:
             session.close()
+        try:
+            sync_legacy_checkpoints(rt.job_id, snapshot)
+        except Exception as exc:  # noqa: BLE001 新域双写失败不阻断旧线位点提交
+            logger.warning("新流域位点镜像失败: %r", exc)
 
     def _metrics_tick(self, rt: JobRuntime, rate: float) -> None:
+        window_op = rt.window_op
+        offsets = rt.offsets_snapshot()
+        offset_value = max(
+            (value for payload in offsets.values() if isinstance(payload, dict)
+             for value in payload.values() if isinstance(value, int) and not isinstance(value, bool)),
+            default=0,
+        )
+        try:
+            sync_legacy_metrics(rt.job_id, {
+                "produce_rate": int(max(rate, 0)),
+                "consume_rate": int(max(rate, 0)),
+                "process_rate": int(max(rate, 0)),
+                "input_count": rt.total_in,
+                "output_count": rt.total_out,
+                "success_count": rt.total_out,
+                "failure_count": rt.errors,
+                "skipped_count": 0,
+                "duplicate_count": 0,
+                "backlog": 0,
+                "offset_value": offset_value,
+                "window_result": {"emits": window_op.emits if window_op is not None else 0},
+            })
+        except Exception as exc:  # noqa: BLE001 新域双写失败不阻断旧线指标/Redis
+            logger.warning("新流域指标镜像失败: %r", exc)
         try:
             client = rq.get_client()
-            window_op = rt.window_op
             client.hset(
                 METRICS_PREFIX + str(rt.job_id),
                 mapping={
@@ -695,6 +727,10 @@ class StreamEngine:
             # 同步更新 WorkflowInstance 状态（映射 StreamJob 状态 → WorkflowInstance 状态）
             if "status" in fields:
                 stream_status = fields["status"]
+                try:
+                    sync_legacy_state(job_id, stream_status)
+                except Exception as bridge_exc:  # noqa: BLE001 新域状态镜像失败不阻断旧线收口
+                    logger.warning("新流域状态镜像失败: %r", bridge_exc)
                 wi_state = _STREAM_TO_WI_STATE.get(stream_status)
                 if wi_state:
                     inst = (

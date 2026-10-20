@@ -342,7 +342,7 @@ class WarehouseModelRecord(LegacySourceMixin, Base):
     version: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
     er_position_json: Mapped[str] = mapped_column(Text, nullable=False, default="{}")
     last_ddl_snapshot: Mapped[str | None] = mapped_column(Text, nullable=True)
-    security_level: Mapped[str] = mapped_column(String(16), nullable=False, default="鍐呴儴")
+    security_level: Mapped[str] = mapped_column(String(16), nullable=False, default="内部")
     built_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     built_by: Mapped[str | None] = mapped_column(String(64), nullable=True)
     owner_name: Mapped[str] = mapped_column(String(64), nullable=False, default="")
@@ -430,7 +430,7 @@ class AssetMetadataExtensionRecord(LegacySourceMixin, Base):
     database_name: Mapped[str] = mapped_column(String(128), nullable=False)
     table_name: Mapped[str] = mapped_column(String(128), nullable=False)
     business_domain: Mapped[str] = mapped_column(String(64), nullable=False, default="")
-    security_level: Mapped[str] = mapped_column(String(16), nullable=False, default="鍐呴儴")
+    security_level: Mapped[str] = mapped_column(String(16), nullable=False, default="内部")
     owner_name: Mapped[str] = mapped_column(String(64), nullable=False, default="")
     remark: Mapped[str] = mapped_column(String(255), nullable=False, default="")
 
@@ -442,7 +442,7 @@ class LegacyTagDefinitionRecord(LegacySourceMixin, Base):
     normalized_tag_id: Mapped[int] = mapped_column(
         ForeignKey("rebuild_governance_tag.id", ondelete="RESTRICT"), nullable=False, unique=True
     )
-    tag_category: Mapped[str] = mapped_column(String(16), nullable=False, default="鐢ㄩ€?")
+    tag_category: Mapped[str] = mapped_column(String(16), nullable=False, default="用户")
     color: Mapped[str] = mapped_column(String(16), nullable=False, default="#1677ff")
     tag_description: Mapped[str] = mapped_column(String(255), nullable=False, default="")
 

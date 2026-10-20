@@ -17,7 +17,7 @@ C5 错误映射修正：
 from __future__ import annotations
 
 import logging
-from typing import Optional
+from typing import Any, Callable, Optional
 
 from pydantic import BaseModel, Field
 
@@ -128,12 +128,14 @@ class RbFacade:
         impact_snapshot_service=None,
         submit_confirm_service=None,
         list_execution_records_service=None,
+        session_factory: Callable[[], Any] | None = None,
     ):
         self._get_definition = get_definition_service
         self._policy_snapshot = policy_snapshot_service
         self._impact_snapshot = impact_snapshot_service
         self._submit_confirm = submit_confirm_service
         self._list_execution_records = list_execution_records_service
+        self._session_factory = session_factory
 
     # ========== Helper ==========
 
@@ -180,6 +182,18 @@ class RbFacade:
 
     # ========== #22 validatePolicy ==========
 
+    def _resolve_dialect(self, datasource_id: int) -> str:
+        """从 datasource 获取真实 dialect（kind 字段）。"""
+        if self._session_factory is None:
+            return "mysql"
+        try:
+            from rebuild.datasource.repository import ProjectDatasourceRepository
+            with self._session_factory() as session:
+                record = ProjectDatasourceRepository(session).get(1, datasource_id)  # TODO: 用真实 project_id
+                return record.kind if record else "mysql"
+        except Exception:
+            return "mysql"
+
     def validate_policy(self, request: ValidatePolicyRequest) -> dict:
         """#22 validatePolicy — 策略校验。
 
@@ -194,12 +208,14 @@ class RbFacade:
             )
         try:
             object_ref = self._to_object_ref(request.datasourceId, request.objectRef)
+            dialect = self._resolve_dialect(request.datasourceId)
             snapshot = self._policy_snapshot.evaluate_and_snapshot(
                 project_id=request.datasourceId,  # TODO: 用真实 project_id
                 datasource_id=request.datasourceId,
                 object_ref=object_ref,
                 source_version=request.sourceVersion,
                 next_ddl_text=request.nextDdlText,
+                dialect=dialect,
             )
             return RbEnvelope.success({
                 "snapshotId": snapshot.snapshot_id,

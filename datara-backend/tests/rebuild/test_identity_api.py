@@ -21,7 +21,7 @@ def developer_client(database_url: str):
     app = create_app(database_url, token_secret="unit-test-token-secret")
     with TestClient(app) as client:
         with app.state.session_factory() as session:
-            UserRepository(session).create(username=_TEST_USERNAME, password=_TEST_PASSWORD, role=Role.DEV)
+            UserRepository(session).create(username=_TEST_USERNAME, password=_TEST_PASSWORD, role=Role.DEVELOPER)
             session.commit()
         yield client
 
@@ -32,7 +32,7 @@ def test_login_returns_token_and_role_context():
 
     assert response.status_code == 200
     body = response.json()
-    assert body["data"]["user"]["role"] == "dev"
+    assert body["data"]["user"]["role"] == "developer"
     assert body["data"]["token"]
 
 
@@ -59,6 +59,26 @@ def test_developer_can_create_project_and_list_it():
     assert created.status_code == 200
     assert listed.json()["data"]["total"] == 1
     assert listed.json()["data"]["list"][0]["name"] == "I1验证项目"
+
+
+def test_real_app_assembly_resolves_execute_sql_permission_for_project_owner():
+    with developer_client("sqlite+pysqlite:///:memory:") as client:
+        login = client.post("/api/v1/rebuild/login", json={"username": _TEST_USERNAME, "password": _TEST_PASSWORD})
+        token = login.json()["data"]["token"]
+        project = client.post(
+            "/api/v1/rebuild/projects", headers={"Authorization": f"Bearer {token}"},
+            json={"name": "sql-permission", "description": ""},
+        ).json()["data"]["id"]
+        response = client.post(
+            f"/api/v1/projects/{project}/sql-ide/executions",
+            headers={"Authorization": f"Bearer {token}"},
+            json={"datasourceId": 1, "sql": "select 1", "mode": "auto"},
+        )
+
+    # The currently unconfigured SQL execution port is intentionally 501;
+    # reaching it proves real auth assembly resolved EXECUTE_SQL successfully.
+    assert response.status_code == 501
+    assert response.json()["msg"] == "SQL IDE service is not configured"
 
 
 def test_admin_can_list_projects_even_when_not_project_owner_or_member():
@@ -161,6 +181,95 @@ def test_logout_revokes_token_and_developer_cannot_add_member():
     assert after_logout.status_code == 401
 
 
+def test_add_member_rejects_nonexistent_project():
+    app = create_app("sqlite+pysqlite:///:memory:", token_secret="unit-test-token-secret")
+    with TestClient(app) as client:
+        with app.state.session_factory() as session:
+            UserRepository(session).create(username="rebuild-test-admin", password="admin-password", role=Role.ADMIN)
+            session.commit()
+        login = client.post(
+            "/api/v1/rebuild/login", json={"username": "rebuild-test-admin", "password": "admin-password"}
+        )
+        headers = {"Authorization": f"Bearer {login.json()['data']['token']}"}
+        response = client.post(
+            "/api/v1/rebuild/projects/99999/members",
+            headers=headers,
+            json={"username": "rebuild-test-admin", "role": "viewer"},
+        )
+
+    assert response.status_code == 404
+    assert response.json()["code"] == 4042
+
+
+def test_add_member_rejects_duplicate_member():
+    app = create_app("sqlite+pysqlite:///:memory:", token_secret="unit-test-token-secret")
+    with TestClient(app) as client:
+        with app.state.session_factory() as session:
+            UserRepository(session).create(username="rebuild-test-admin", password="admin-password", role=Role.ADMIN)
+            UserRepository(session).create(username="rebuild-test-dev2", password="dev-password", role=Role.DEVELOPER)
+            session.commit()
+        login = client.post(
+            "/api/v1/rebuild/login", json={"username": "rebuild-test-admin", "password": "admin-password"}
+        )
+        headers = {"Authorization": f"Bearer {login.json()['data']['token']}"}
+        project = client.post("/api/v1/rebuild/projects", headers=headers, json={"name": "dup-member-test"})
+        project_id = project.json()["data"]["id"]
+        first = client.post(
+            f"/api/v1/rebuild/projects/{project_id}/members",
+            headers=headers,
+            json={"username": "rebuild-test-dev2", "role": "viewer"},
+        )
+        second = client.post(
+            f"/api/v1/rebuild/projects/{project_id}/members",
+            headers=headers,
+            json={"username": "rebuild-test-dev2", "role": "viewer"},
+        )
+
+    assert first.status_code == 200
+    assert second.status_code == 409
+    assert second.json()["code"] == 4091
+
+
+def test_admin_can_list_remove_and_update_members():
+    app = create_app("sqlite+pysqlite:///:memory:", token_secret="unit-test-token-secret")
+    with TestClient(app) as client:
+        with app.state.session_factory() as session:
+            UserRepository(session).create(username="rebuild-test-admin", password="admin-password", role=Role.ADMIN)
+            UserRepository(session).create(username="rebuild-test-dev3", password="dev-password", role=Role.DEVELOPER)
+            session.commit()
+        login = client.post(
+            "/api/v1/rebuild/login", json={"username": "rebuild-test-admin", "password": "admin-password"}
+        )
+        headers = {"Authorization": f"Bearer {login.json()['data']['token']}"}
+        project = client.post("/api/v1/rebuild/projects", headers=headers, json={"name": "member-crud-test"})
+        project_id = project.json()["data"]["id"]
+        added = client.post(
+            f"/api/v1/rebuild/projects/{project_id}/members",
+            headers=headers,
+            json={"username": "rebuild-test-dev3", "role": "viewer"},
+        )
+        listed = client.get(f"/api/v1/rebuild/projects/{project_id}/members", headers=headers)
+        user_id = listed.json()["data"]["list"][0]["user_id"]
+        updated = client.patch(
+            f"/api/v1/rebuild/projects/{project_id}/members/{user_id}",
+            headers=headers,
+            json={"username": "rebuild-test-dev3", "role": "developer"},
+        )
+        removed = client.delete(
+            f"/api/v1/rebuild/projects/{project_id}/members/{user_id}",
+            headers=headers,
+        )
+        listed_after = client.get(f"/api/v1/rebuild/projects/{project_id}/members", headers=headers)
+
+    assert added.status_code == 200
+    assert listed.status_code == 200
+    assert len(listed.json()["data"]["list"]) == 1
+    assert updated.status_code == 200
+    assert updated.json()["data"]["role"] == "developer"
+    assert removed.status_code == 200
+    assert listed_after.json()["data"]["list"] == []
+
+
 def test_i2_status_returns_reconcile_summary_and_samples(tmp_path, monkeypatch):
     report = {
         "generated_at": "2026-10-14 05:34:07",
@@ -227,7 +336,7 @@ def test_validation_key_issues_short_lived_non_admin_token_and_rejects_bad_key()
     assert rejected.status_code == 401
     assert issued.status_code == 200
     assert issued.json()["data"]["user"]["username"] == "validation-runner"
-    assert issued.json()["data"]["user"]["role"] == "dev"
+    assert issued.json()["data"]["user"]["role"] == "viewer"
     assert claims["exp"] - claims["iat"] <= 900
     assert project.status_code == 200
     assert permission_denial.status_code == 403

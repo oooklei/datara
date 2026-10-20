@@ -33,7 +33,7 @@ def _client():
     )
     with app.state.session_factory() as session:
         UserRepository(session).create(username="admin", password="admin-pass", role=Role.ADMIN)
-        dev = UserRepository(session).create(username="dev", password="dev-pass", role=Role.DEV)
+        dev = UserRepository(session).create(username="dev", password="dev-pass", role=Role.DEVELOPER)
         UserRepository(session).create(username="viewer", password="viewer-pass", role=Role.VIEWER)
         project = ProjectRecord(name="exec-proj", description="", owner_id=dev.id)
         session.add(project)
@@ -117,7 +117,7 @@ def test_cancel_run():
             json={"project_id": project_id},
         )
         assert resp.status_code == 200
-        assert resp.json()["data"]["status"] == "CANCELED"
+        assert resp.json()["data"]["status"] == "CANCELLED"
     finally:
         client.__exit__(None, None, None)
 

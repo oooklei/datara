@@ -28,11 +28,13 @@ class VariableDefinitionRecord(Base):
     __tablename__ = "rebuild_variable_definition"
     __table_args__ = (
         UniqueConstraint("owner_key", "name", name="uq_variable_owner_name"),
-        CheckConstraint("scope IN ('global', 'project', 'tmp')", name="ck_variable_scope"),
+        CheckConstraint("scope IN ('global', 'project', 'tmp', 'workflow', 'task')", name="ck_variable_scope"),
         CheckConstraint(
             "(scope = 'global' AND project_id IS NULL) OR "
             "(scope = 'project' AND project_id IS NOT NULL) OR "
-            "(scope = 'tmp' AND project_id IS NOT NULL)",
+            "(scope = 'tmp' AND project_id IS NOT NULL) OR "
+            "(scope = 'workflow' AND project_id IS NOT NULL) OR "
+            "(scope = 'task' AND project_id IS NOT NULL)",
             name="ck_variable_owner_scope",
         ),
         Index("ix_variable_project_name", "project_id", "name"),
@@ -49,6 +51,12 @@ class VariableDefinitionRecord(Base):
     value_json: Mapped[str] = mapped_column(Text, nullable=False)
     sensitive: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     description: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    # VAR-06: definition fields (design §13.5)
+    default_value: Mapped[str | None] = mapped_column(Text, nullable=True)
+    nullable: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    format: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    timezone: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    business_calendar: Mapped[str | None] = mapped_column(String(64), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.current_timestamp())
     updated_at: Mapped[datetime] = mapped_column(
         DateTime, server_default=func.current_timestamp(), server_onupdate=func.current_timestamp()
@@ -78,3 +86,4 @@ class TaskInstanceVariableRuntimeRecord(Base):
     value_type: Mapped[str] = mapped_column(String(16), nullable=False, default="string")
     source: Mapped[str] = mapped_column(String(16), nullable=False)
     resolved_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.current_timestamp())
+    generated_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, server_default=func.current_timestamp())

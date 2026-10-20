@@ -210,8 +210,8 @@ class SqlIdeStatusStore:
         now: datetime | None = None,
     ) -> list[dict[str, Any]]:
         _validate_identity(project_id, user_id)
-        if not 1 <= limit <= 500 or offset < 0:
-            raise ValueError("limit must be between 1 and 500 and offset must be non-negative")
+        if not 1 <= limit <= 200 or offset < 0:
+            raise ValueError("limit must be between 1 and 200 and offset must be non-negative")
         current = _utc_naive(now or datetime.now(timezone.utc))
         with self._session_factory() as session:
             rows = session.scalars(

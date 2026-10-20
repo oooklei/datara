@@ -1,0 +1,10 @@
+.env
+.env.*
+!.env.example
+data/ai_copilot/chromadb/*
+!data/ai_copilot/chromadb/.gitkeep
+!data/ai_copilot/chromadb/.gitignore
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/

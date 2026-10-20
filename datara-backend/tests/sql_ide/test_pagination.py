@@ -117,19 +117,19 @@ def test_continuation_cursor_is_not_issued_without_snapshot_identity():
         paginate_result(store, history_id="history-1", stmt_index=0, offset=0, limit=1)
 
 
-def test_page_limit_allows_500_rows():
+def test_page_limit_allows_200_rows():
     store = MemoryPageStore()
 
-    result = paginate_result(store, history_id="history-1", stmt_index=0, limit=500)
+    result = paginate_result(store, history_id="history-1", stmt_index=0, limit=200)
 
-    assert result["page"]["limit"] == 500
+    assert result["page"]["limit"] == 200
 
 
-def test_page_limit_rejects_501_rows():
+def test_page_limit_rejects_201_rows():
     store = MemoryPageStore()
 
-    with pytest.raises(ValueError, match="1 and 500"):
-        paginate_result(store, history_id="history-1", stmt_index=0, limit=501)
+    with pytest.raises(ValueError, match="1 and 200"):
+        paginate_result(store, history_id="history-1", stmt_index=0, limit=201)
 
 
 def test_cursor_is_rejected_when_current_snapshot_identity_is_missing():

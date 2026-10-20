@@ -739,14 +739,16 @@ def build_ai_router(
 def build_default_bridge_ports(
     execution_port: Any,
     audit_writer: Any,
+    session_factory: Any = None,
 ) -> AiBridgePorts | None:
     """Assemble default production bridge ports from ``app.state`` services.
 
-    The default ``create_app`` production assembly: the run_sql handler is
-    composed over the production execution port, and the production audit
-    writer is adapted to the bridge's audit record format.  Returns ``None``
-    when either required dependency is missing so the caller stays
-    fail-closed (no bridge mounted → no unaudited/ungoverned path).
+    The default ``create_app`` production assembly: all eight tool handlers
+    are composed from the injected ports — run_sql over the production
+    execution port, the remaining seven over the session_factory.  The
+    production audit writer is adapted to the bridge's audit record format.
+    Returns ``None`` when either required dependency is missing so the caller
+    stays fail-closed (no bridge mounted → no unaudited/ungoverned path).
     """
     if execution_port is None or audit_writer is None:
         return None
@@ -754,7 +756,15 @@ def build_default_bridge_ports(
     # level, so a top-level import here would be circular.
     from rebuild.run_sql import build_run_sql_handler
 
+    handlers: dict[str, Handler] = {"run_sql": build_run_sql_handler(execution_port)}
+
+    # Wire the remaining seven tools when session_factory is available
+    if session_factory is not None:
+        from rebuild.ai_tools import build_all_handlers
+
+        handlers.update(build_all_handlers(session_factory))
+
     return AiBridgePorts(
-        handlers={"run_sql": build_run_sql_handler(execution_port)},
+        handlers=handlers,
         audit_writer=_BridgeAuditWriterAdapter(audit_writer),
     )

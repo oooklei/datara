@@ -17,7 +17,7 @@ from rebuild.common.db import Base
 RESULT_SNAPSHOT_TTL = timedelta(hours=24)
 EXPORT_JOB_TTL = timedelta(hours=1)
 DEFAULT_PAGE_LIMIT = 100
-MAX_PAGE_LIMIT = 200
+MAX_PAGE_LIMIT = 200  # A5 contract §2.2/§3#12: limit 1..200 (DEP-03 user ruling S109: unified 200)
 # Deployment limits are provisional pending D8 per-profile measurement.
 DEFAULT_EXPORT_MAX_ROWS = 100_000
 DEFAULT_EXPORT_MAX_BYTES = 50 * 1024 * 1024

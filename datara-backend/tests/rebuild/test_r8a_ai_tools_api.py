@@ -120,7 +120,7 @@ def _bridge_app(**port_overrides):
     client.__enter__()
     with app.state.session_factory() as session:
         UserRepository(session).create(username="admin", password="admin-pass", role=Role.ADMIN)
-        dev = UserRepository(session).create(username="dev", password="dev-pass", role=Role.DEV)
+        dev = UserRepository(session).create(username="dev", password="dev-pass", role=Role.DEVELOPER)
         UserRepository(session).create(username="viewer", password="viewer-pass", role=Role.VIEWER)
         owned = ProjectRecord(name="r8a-owned", description="", owner_id=dev.id)
         session.add_all((owned,))

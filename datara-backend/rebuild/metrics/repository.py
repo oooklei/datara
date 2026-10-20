@@ -23,6 +23,8 @@ from rebuild.metrics.models import (
     TaskInstanceDataStatRecord,
     WorkflowResultStatRecord,
 )
+from rebuild.execution.models import WorkflowInstanceRecord
+from rebuild.workflow.models import WorkflowDefinitionRecord
 
 
 class MetricsDomainError(ValueError):
@@ -61,10 +63,12 @@ class MetricsRepository:
     def __init__(self, session: Session) -> None:
         self._session = session
 
-    def workflow_result_stats(self, window_from: str, window_to: str, offset: int, limit: int) -> list[dict[str, Any]]:
+    def workflow_result_stats(self, window_from: str, window_to: str, offset: int, limit: int, project_id: int) -> list[dict[str, Any]]:
         rows = self._session.scalars(
             select(WorkflowResultStatRecord)
+            .join(WorkflowDefinitionRecord, WorkflowDefinitionRecord.id == WorkflowResultStatRecord.workflow_id)
             .where(WorkflowResultStatRecord.run_date >= window_from[:10], WorkflowResultStatRecord.run_date <= window_to[:10])
+            .where(WorkflowDefinitionRecord.project_id == project_id)
             .order_by(WorkflowResultStatRecord.run_date, WorkflowResultStatRecord.workflow_id, WorkflowResultStatRecord.id)
             .offset(offset)
             .limit(limit)
@@ -81,10 +85,13 @@ class MetricsRepository:
             for row in rows
         ]
 
-    def task_instance_data_stats(self, window_from: str, window_to: str, offset: int, limit: int) -> list[dict[str, Any]]:
+    def task_instance_data_stats(self, window_from: str, window_to: str, offset: int, limit: int, project_id: int) -> list[dict[str, Any]]:
         rows = self._session.scalars(
             select(TaskInstanceDataStatRecord)
+            .join(WorkflowInstanceRecord, WorkflowInstanceRecord.id == TaskInstanceDataStatRecord.instance_id)
+            .join(WorkflowDefinitionRecord, WorkflowDefinitionRecord.id == WorkflowInstanceRecord.workflow_id)
             .where(TaskInstanceDataStatRecord.created_at >= window_from, TaskInstanceDataStatRecord.created_at <= window_to)
+            .where(WorkflowDefinitionRecord.project_id == project_id)
             .order_by(TaskInstanceDataStatRecord.instance_id, TaskInstanceDataStatRecord.id)
             .offset(offset)
             .limit(limit)
@@ -101,10 +108,13 @@ class MetricsRepository:
             for row in rows
         ]
 
-    def task_data_stat_segments(self, window_from: str, window_to: str, offset: int, limit: int) -> list[dict[str, Any]]:
+    def task_data_stat_segments(self, window_from: str, window_to: str, offset: int, limit: int, project_id: int) -> list[dict[str, Any]]:
         rows = self._session.scalars(
             select(TaskDataStatSegmentRecord)
+            .join(WorkflowInstanceRecord, WorkflowInstanceRecord.id == TaskDataStatSegmentRecord.instance_id)
+            .join(WorkflowDefinitionRecord, WorkflowDefinitionRecord.id == WorkflowInstanceRecord.workflow_id)
             .where(TaskDataStatSegmentRecord.created_at >= window_from, TaskDataStatSegmentRecord.created_at <= window_to)
+            .where(WorkflowDefinitionRecord.project_id == project_id)
             .order_by(TaskDataStatSegmentRecord.instance_id, TaskDataStatSegmentRecord.segment_key, TaskDataStatSegmentRecord.id)
             .offset(offset)
             .limit(limit)
@@ -119,10 +129,13 @@ class MetricsRepository:
             for row in rows
         ]
 
-    def task_data_error_samples(self, window_from: str, window_to: str, offset: int, limit: int) -> list[dict[str, Any]]:
+    def task_data_error_samples(self, window_from: str, window_to: str, offset: int, limit: int, project_id: int) -> list[dict[str, Any]]:
         rows = self._session.scalars(
             select(TaskDataErrorSampleRecord)
+            .join(WorkflowInstanceRecord, WorkflowInstanceRecord.id == TaskDataErrorSampleRecord.instance_id)
+            .join(WorkflowDefinitionRecord, WorkflowDefinitionRecord.id == WorkflowInstanceRecord.workflow_id)
             .where(TaskDataErrorSampleRecord.captured_at >= window_from, TaskDataErrorSampleRecord.captured_at <= window_to)
+            .where(WorkflowDefinitionRecord.project_id == project_id)
             .order_by(TaskDataErrorSampleRecord.captured_at, TaskDataErrorSampleRecord.id)
             .offset(offset)
             .limit(limit)
@@ -138,10 +151,11 @@ class MetricsRepository:
             for row in rows
         ]
 
-    def quality_rule_links(self, window_from: str, window_to: str, offset: int, limit: int) -> list[dict[str, Any]]:
+    def quality_rule_links(self, window_from: str, window_to: str, offset: int, limit: int, project_id: int) -> list[dict[str, Any]]:
         rows = self._session.scalars(
             select(QualityRuleResultLinkRecord)
             .where(QualityRuleResultLinkRecord.result_at >= window_from, QualityRuleResultLinkRecord.result_at <= window_to)
+            .where(QualityRuleResultLinkRecord.project_id == project_id)
             .order_by(QualityRuleResultLinkRecord.result_at, QualityRuleResultLinkRecord.id)
             .offset(offset)
             .limit(limit)
@@ -158,13 +172,14 @@ class MetricsRepository:
         ]
 
     def lineage_writebacks(
-        self, window_from: str, window_to: str, offset: int, limit: int, kind: str
+        self, window_from: str, window_to: str, offset: int, limit: int, kind: str, project_id: int
     ) -> list[dict[str, Any]]:
         if kind not in VALID_RUN_KINDS:
             raise MetricsDomainError(4001, f"kind must be one of {list(VALID_RUN_KINDS)}")
         query = select(LineageWritebackRecord).where(
             LineageWritebackRecord.writeback_at >= window_from,
             LineageWritebackRecord.writeback_at <= window_to,
+            LineageWritebackRecord.project_id == project_id,
         )
         if kind != "all":
             query = query.where(LineageWritebackRecord.run_kind == kind)

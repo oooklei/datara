@@ -12,12 +12,12 @@ def test_user_repository_persists_hashed_user_in_isolated_database():
 
     with Session(engine) as session:
         repository = UserRepository(session)
-        created = repository.create(username="unit-dev", password="unit-test-password", role=Role.DEV)
+        created = repository.create(username="unit-dev", password="unit-test-password", role=Role.DEVELOPER)
         session.commit()
         loaded = repository.find_by_username("unit-dev")
 
     assert loaded is not None
     assert loaded.id == created.id
     assert loaded.password_hash != "unit-test-password"
-    assert loaded.role == Role.DEV.value
+    assert loaded.role == Role.DEVELOPER.value
 

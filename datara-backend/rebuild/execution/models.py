@@ -40,16 +40,18 @@ TRIGGER_TYPES = ("MANUAL", "CRON", "DEPENDENCY", "EVENT", "TRIAL")
 
 # Batch: finite lifecycle instance (design §13.3). PENDING may fail outright
 # (submission/validation failure) or be canceled before it starts.
+# SKIPPED is a distinct terminal state for nodes excluded from execution
+# (WF-27): the task was never attempted, not failed.
 BATCH_TRANSITIONS = {
-    "PENDING": {"RUNNING", "CANCELED", "FAILED"},
-    "RUNNING": {"SUCCEEDED", "FAILED", "CANCELED"},
+    "PENDING": {"RUNNING", "CANCELLED", "CANCEL_FAILED", "FAILED", "SKIPPED"},
+    "RUNNING": {"SUCCEEDED", "FAILED", "CANCELLED", "CANCEL_FAILED"},
 }
 # Stream: long-running STREAM_JOB — start/stop/failure only, no batch completion.
 STREAM_TRANSITIONS = {
     "PENDING": {"RUNNING", "FAILED"},
     "RUNNING": {"STOPPED", "FAILED"},
 }
-TERMINAL_STATUSES = frozenset({"SUCCEEDED", "FAILED", "CANCELED", "STOPPED"})
+TERMINAL_STATUSES = frozenset({"SUCCEEDED", "FAILED", "CANCELLED", "CANCEL_FAILED", "STOPPED", "SKIPPED"})
 
 
 class RunTimestampsMixin:
@@ -72,6 +74,10 @@ class WorkflowInstanceRecord(RunTimestampsMixin, Base):
     workflow_id: Mapped[int] = mapped_column(Integer, nullable=False, index=True)
     # Plain integer reference to the immutable workflow version — no workflow-domain import.
     workflow_version_id: Mapped[int] = mapped_column(Integer, nullable=False)
+    # Trial runs bind the immutable draft snapshot produced by the trial domain;
+    # formal runs bind workflow_version_id instead. Kept as a plain integer to
+    # preserve the execution domain's dependency boundary.
+    trial_snapshot_id: Mapped[int | None] = mapped_column(Integer, nullable=True, index=True)
     instance_type: Mapped[str] = mapped_column(String(16), nullable=False)  # TRIAL | FORMAL | STREAM
     status: Mapped[str] = mapped_column(String(16), nullable=False)
     # §13.3 trigger kinds (MANUAL/CRON/DEPENDENCY/EVENT/TRIAL), when known at creation.
@@ -149,3 +155,13 @@ class ExecutionEventRecord(RunTimestampsMixin, Base):
     event_kind: Mapped[str] = mapped_column(String(32), nullable=False)
     payload_json: Mapped[str | None] = mapped_column(Text, nullable=True)
     event_time: Mapped[datetime] = mapped_column(DateTime, server_default=func.current_timestamp())
+
+
+EXECUTION_TABLES = (
+    WorkflowInstanceRecord.__table__,
+    TaskInstanceRecord.__table__,
+    TaskAttemptRecord.__table__,
+    RunLogRecord.__table__,
+    RunOutputRecord.__table__,
+    ExecutionEventRecord.__table__,
+)

@@ -97,7 +97,7 @@ def _bridge_app(port):
     client = TestClient(app)
     client.__enter__()
     with app.state.session_factory() as session:
-        dev = UserRepository(session).create(username="dev", password="dev-pass", role=Role.DEV)
+        dev = UserRepository(session).create(username="dev", password="dev-pass", role=Role.DEVELOPER)
         UserRepository(session).create(username="viewer", password="viewer-pass", role=Role.VIEWER)
         owned = ProjectRecord(name="r8a-run-sql", description="", owner_id=dev.id)
         session.add_all((owned,))

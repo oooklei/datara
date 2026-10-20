@@ -6,7 +6,7 @@ from rebuild.project.contracts import Member, can_manage_project
 
 
 def test_project_owner_can_manage_members():
-    owner = Member(user_id=7, role=Role.DEV, is_owner=True)
+    owner = Member(user_id=7, role=Role.DEVELOPER, is_owner=True)
 
     assert can_manage_project(owner) is True
 

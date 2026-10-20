@@ -34,6 +34,7 @@ class PolicySnapshotService:
         object_ref: ObjectRef,
         source_version: str,
         next_ddl_text: str,
+        dialect: str = "mysql",
         current_definition: str | None = None,
         current_definition_digest: str | None = None,
     ) -> PolicySnapshot:
@@ -45,6 +46,7 @@ class PolicySnapshotService:
             object_ref: 完整对象引用
             source_version: 当前定义版本（ETag）
             next_ddl_text: 待提交的 DDL 文本
+            dialect: 数据库方言（从 datasource.kind 获取）
             current_definition: 当前定义（可选）
             current_definition_digest: 当前定义的 SHA-256 digest（可选）
 
@@ -52,7 +54,7 @@ class PolicySnapshotService:
             PolicySnapshot 绑定 project/object/sourceVersion/DDL digest
         """
         eval_result = self._evaluator.evaluate(
-            dialect="mysql",  # TODO: 从 datasource 获取真实方言
+            dialect=dialect,
             object_kind=object_ref.kind,
             current_definition=current_definition,
             current_definition_digest=current_definition_digest,

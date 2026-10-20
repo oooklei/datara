@@ -13,11 +13,11 @@ from sqlalchemy.orm import Session
 
 from rebuild.common.db import Base
 from rebuild.execution.models import (
+    EXECUTION_TABLES,
     ExecutionEventRecord,
     RunLogRecord,
     RunOutputRecord,
     TaskAttemptRecord,
-    TaskInstanceRecord,
     WorkflowInstanceRecord,
 )
 from rebuild.execution.repository import RESULT_STAT_EVENT_KIND, ExecutionDomainError, ExecutionRepository
@@ -26,7 +26,7 @@ from rebuild.metrics.models import WorkflowResultStatRecord
 
 def _repo():
     engine = create_engine("sqlite+pysqlite:///:memory:")
-    Base.metadata.create_all(engine)
+    Base.metadata.create_all(engine, tables=[*EXECUTION_TABLES, WorkflowResultStatRecord.__table__])
     session = Session(engine)
     return ExecutionRepository(session), session
 
@@ -110,7 +110,7 @@ def test_batch_instance_rejects_illegal_transitions():
     assert err.value.code == 4103  # PENDING -> SUCCEEDED is not a legal batch move
 
     repo.transition_workflow_instance(instance.id, "RUNNING")
-    repo.transition_workflow_instance(instance.id, "CANCELED")
+    repo.transition_workflow_instance(instance.id, "CANCELLED")
     with pytest.raises(ExecutionDomainError):
         repo.transition_workflow_instance(instance.id, "RUNNING")  # terminal is terminal
 
@@ -159,6 +159,19 @@ def test_attempt_no_isolated_increment():
     assert sorted(a.attempt_no for a in attempts) == [1, 2]  # isolated rows, never merged
     by_no = {a.attempt_no: a.status for a in attempts}
     assert by_no == {1: "FAILED", 2: "SUCCEEDED"}  # statuses tracked per attempt
+
+
+def test_attempt_append_rejects_stale_pointer_instead_of_overwriting_it():
+    repo, session = _repo()
+    instance = repo.create_workflow_instance(workflow_id=7, workflow_version_id=3, instance_type="FORMAL")
+    task = repo.create_task_instance(workflow_instance_id=instance.id, task_id="stale_pointer")
+    task.current_attempt_no = 1  # no attempt row exists for this pointer
+    session.flush()
+
+    with pytest.raises(ExecutionDomainError) as err:
+        repo.append_attempt(task.id)
+    assert err.value.code == 4104
+    assert task.current_attempt_no == 1
 
 
 def test_run_logs_and_outputs_are_attempt_scoped():
@@ -238,6 +251,33 @@ def test_record_result_stat_accumulates_into_metrics_aggregate():
     assert (aggregate.success_count, aggregate.failure_count, aggregate.skipped_count) == (10, 2, 1)
 
 
+def test_trial_result_stat_is_recorded_without_polluting_formal_aggregate():
+    repo, session = _repo()
+    formal = repo.create_workflow_instance(workflow_id=7, workflow_version_id=3, instance_type="FORMAL")
+    trial = repo.create_workflow_instance(workflow_id=7, workflow_version_id=3, instance_type="TRIAL")
+
+    formal_result = repo.record_result_stat(
+        workflow_instance_id=formal.id, attempt_no=0,
+        success_count=5, failed_count=1, skipped_count=0,
+    )
+    trial_result = repo.record_result_stat(
+        workflow_instance_id=trial.id, attempt_no=0,
+        success_count=100, failed_count=20, skipped_count=10,
+    )
+
+    assert formal_result["recorded"] and not formal_result.get("isolated", False)
+    assert trial_result["recorded"] and trial_result["isolated"]
+    (aggregate,) = _scalars(session, WorkflowResultStatRecord)
+    assert (aggregate.success_count, aggregate.failure_count, aggregate.skipped_count) == (5, 1, 0)
+    assert len(_scalars(session, ExecutionEventRecord)) == 2
+
+    replay = repo.record_result_stat(
+        workflow_instance_id=trial.id, attempt_no=0,
+        success_count=100, failed_count=20, skipped_count=10,
+    )
+    assert replay["duplicate"] and len(_scalars(session, WorkflowResultStatRecord)) == 1
+
+
 def test_record_result_stat_is_idempotent_per_instance_task_attempt():
     repo, session = _repo()
     instance = repo.create_workflow_instance(workflow_id=7, workflow_version_id=3, instance_type="FORMAL")
@@ -306,3 +346,35 @@ def test_record_result_stat_rejects_invalid_counts():
                 success_count=bad, failed_count=0, skipped_count=0,
             )
         assert err.value.code == 4107  # counts come from the executor contract, strictly validated
+
+
+
+
+def test_record_result_stat_rejects_foreign_task_or_missing_attempt():
+    repo, _session = _repo()
+    first = repo.create_workflow_instance(workflow_id=7, workflow_version_id=3, instance_type="FORMAL")
+    second = repo.create_workflow_instance(workflow_id=8, workflow_version_id=3, instance_type="FORMAL")
+    task = repo.create_task_instance(workflow_instance_id=second.id, task_id="foreign")
+
+    with pytest.raises(ExecutionDomainError) as foreign:
+        repo.record_result_stat(
+            workflow_instance_id=first.id,
+            task_instance_id=task.id,
+            attempt_no=1,
+            success_count=1,
+            failed_count=0,
+            skipped_count=0,
+        )
+    assert foreign.value.code == 4107
+
+    local_task = repo.create_task_instance(workflow_instance_id=first.id, task_id="local")
+    with pytest.raises(ExecutionDomainError) as missing_attempt:
+        repo.record_result_stat(
+            workflow_instance_id=first.id,
+            task_instance_id=local_task.id,
+            attempt_no=1,
+            success_count=1,
+            failed_count=0,
+            skipped_count=0,
+        )
+    assert missing_attempt.value.code == 4404

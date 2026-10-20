@@ -14,7 +14,7 @@ from typing import Any, Mapping
 from rebuild.sql_ide.contracts import ResultPageStore
 
 DEFAULT_PAGE_LIMIT = 100
-MAX_PAGE_LIMIT = 500
+MAX_PAGE_LIMIT = 200  # DEP-03 user ruling S109: unified 200 (A5 §2.2/§3#12 limit 1..200)
 
 
 class PaginationError(ValueError):

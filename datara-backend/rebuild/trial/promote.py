@@ -68,8 +68,14 @@ class TrialPromoter:
             )
 
         # 2. Get the snapshot digest bound to this instance.
-        #    The instance's workflow_version_id is the snapshot_id for TRIAL.
-        snapshot = TrialSnapshotRepository(self._session).get(instance.workflow_version_id)
+        #    WF-28: TRIAL instances bind the draft snapshot via trial_snapshot_id;
+        #    workflow_version_id is 0 (no published version).
+        if instance.trial_snapshot_id is None:
+            raise PromoteError(
+                "WF_PROMOTE_NO_SNAPSHOT",
+                f"instance {instance_id} has no trial_snapshot_id",
+            )
+        snapshot = TrialSnapshotRepository(self._session).get(instance.trial_snapshot_id)
         snapshot_digest = snapshot["snapshot_digest"]
 
         # 3. Check if a PUBLISHED version with this digest already exists (idempotent).

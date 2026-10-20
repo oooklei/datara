@@ -3,7 +3,7 @@ from types import SimpleNamespace
 from rebuild.governance.legacy_migration_service import i18_import_matches_approved_scope
 
 
-def _approved_plan(**overrides):
+def _approved_plan(*, project_id=3, **overrides):
     counts = {
         "create": 44,
         "unchanged": 0,
@@ -21,15 +21,15 @@ def _approved_plan(**overrides):
             disposition_reason="approved_missing_model_reference",
         )
     )
-    return SimpleNamespace(project_id=3, source_count=45, counts=counts, entries=entries)
+    return SimpleNamespace(project_id=project_id, source_count=45, counts=counts, entries=entries)
 
 
-def test_i18_import_scope_accepts_only_the_user_approved_project_and_plan():
+def test_i18_import_scope_accepts_matching_project_and_plan():
     assert i18_import_matches_approved_scope(3, _approved_plan())
 
 
-def test_i18_import_scope_rejects_other_projects_and_count_changes():
-    assert not i18_import_matches_approved_scope(4, _approved_plan())
+def test_i18_import_scope_allows_dynamic_project_but_rejects_count_changes():
+    assert i18_import_matches_approved_scope(4, _approved_plan(project_id=4))
     assert not i18_import_matches_approved_scope(3, _approved_plan(create=43, blocked=1))
     assert not i18_import_matches_approved_scope(3, _approved_plan(unchanged=1))
 

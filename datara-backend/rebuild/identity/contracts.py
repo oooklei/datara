@@ -13,8 +13,8 @@ from enum import StrEnum
 
 class Role(StrEnum):
     ADMIN = "admin"
-    DEV = "dev"
-    ANALYST = "analyst"
+    DEVELOPER = "developer"
+    OPERATOR = "operator"
     VIEWER = "viewer"
 
 
@@ -23,13 +23,78 @@ class Permission(StrEnum):
     EDIT_DEFINITION = "edit_definition"
     RUN_INSTANCE = "run_instance"
     VIEW_ALL = "view_all"
+    EXECUTE_SQL = "execute_sql"
+    PROJECT_READ = "project:read"
+    PROJECT_WRITE = "project:write"
+    WORKFLOW_READ = "workflow:read"
+    WORKFLOW_WRITE = "workflow:write"
+    WORKFLOW_PUBLISH = "workflow:publish"
+    WORKFLOW_RUN = "workflow:run"
+    WORKFLOW_DELETE = "workflow:delete"
+    TASK_READ = "task:read"
+    TASK_WRITE = "task:write"
+    TASK_RUN = "task:run"
+    DATASOURCE_READ = "datasource:read"
+    DATASOURCE_USE = "datasource:use"
+    DATASOURCE_MANAGE = "datasource:manage"
+    SQL_READ = "sql:read"
+    SQL_WRITE_DDL = "sql:write-ddl"
+    SCHEDULE_READ = "schedule:read"
+    SCHEDULE_MANAGE = "schedule:manage"
+    LINEAGE_READ = "lineage:read"
+    QUALITY_READ = "quality:read"
+    QUALITY_WRITE = "quality:write"
+    QUALITY_RUN = "quality:run"
+    STANDARD_READ = "standard:read"
+    STANDARD_WRITE = "standard:write"
+    STANDARD_APPROVE = "standard:approve"
+    SECURITY_READ = "security:read"
+    SECURITY_MANAGE = "security:manage"
+    AUDIT_READ = "audit:read"
 
 
 ROLE_PERMISSIONS: dict[Role, frozenset[Permission]] = {
     Role.ADMIN: frozenset(Permission),
-    Role.DEV: frozenset({Permission.EDIT_DEFINITION, Permission.RUN_INSTANCE, Permission.VIEW_ALL}),
-    Role.ANALYST: frozenset({Permission.RUN_INSTANCE, Permission.VIEW_ALL}),
-    Role.VIEWER: frozenset({Permission.VIEW_ALL}),
+    Role.DEVELOPER: frozenset({
+        Permission.EDIT_DEFINITION, Permission.RUN_INSTANCE, Permission.VIEW_ALL, Permission.EXECUTE_SQL,
+        Permission.PROJECT_READ, Permission.PROJECT_WRITE,
+        Permission.WORKFLOW_READ, Permission.WORKFLOW_WRITE, Permission.WORKFLOW_PUBLISH,
+        Permission.WORKFLOW_RUN, Permission.WORKFLOW_DELETE,
+        Permission.TASK_READ, Permission.TASK_WRITE, Permission.TASK_RUN,
+        Permission.DATASOURCE_READ, Permission.DATASOURCE_USE, Permission.DATASOURCE_MANAGE,
+        Permission.SQL_READ, Permission.SQL_WRITE_DDL,
+        Permission.SCHEDULE_READ, Permission.SCHEDULE_MANAGE,
+        Permission.LINEAGE_READ,
+        Permission.QUALITY_READ, Permission.QUALITY_WRITE, Permission.QUALITY_RUN,
+        Permission.STANDARD_READ, Permission.STANDARD_WRITE, Permission.STANDARD_APPROVE,
+        Permission.SECURITY_READ, Permission.SECURITY_MANAGE,
+        Permission.AUDIT_READ,
+    }),
+    Role.OPERATOR: frozenset({
+        Permission.RUN_INSTANCE, Permission.VIEW_ALL, Permission.EXECUTE_SQL,
+        Permission.PROJECT_READ,
+        Permission.WORKFLOW_READ, Permission.WORKFLOW_RUN,
+        Permission.TASK_READ, Permission.TASK_RUN,
+        Permission.DATASOURCE_READ, Permission.DATASOURCE_USE,
+        Permission.SQL_READ,
+        Permission.SCHEDULE_READ,
+        Permission.LINEAGE_READ,
+        Permission.QUALITY_READ, Permission.QUALITY_RUN,
+        Permission.STANDARD_READ,
+        Permission.AUDIT_READ,
+    }),
+    Role.VIEWER: frozenset({
+        Permission.VIEW_ALL,
+        Permission.PROJECT_READ,
+        Permission.WORKFLOW_READ,
+        Permission.TASK_READ,
+        Permission.DATASOURCE_READ,
+        Permission.SQL_READ,
+        Permission.SCHEDULE_READ,
+        Permission.LINEAGE_READ,
+        Permission.QUALITY_READ,
+        Permission.STANDARD_READ,
+    }),
 }
 
 
@@ -44,7 +109,7 @@ def authorize(role: Role | str, permission: Permission | str) -> bool:
 
 
 class TokenService:
-    """无状态 HMAC token 服务，后续 API 层可在外部 Redis 加入撤销/TTL。"""
+    """无状态 HMAC token 服务；撤销/TTL 由 ActiveTokenStore 数据库持久化。"""
 
     def __init__(self, secret: str, ttl_seconds: int = 86_400) -> None:
         if not secret:

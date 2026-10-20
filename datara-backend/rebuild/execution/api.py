@@ -561,7 +561,7 @@ def build_execution_router(
                 return outcome
             try:
                 repo = ExecutionRepository(outcome)
-                record = repo.transition_workflow_instance(instance_id, "CANCELED")
+                record = repo.transition_workflow_instance(instance_id, "CANCELLED")
                 outcome.commit()
                 data = {
                     "instance_id": record.id,

@@ -25,6 +25,7 @@ from common.log import get_logger
 from common.models import TRunEvent, TaskInstance, TaskLog, User, WorkflowInstance
 from common.resp import INSTANCE_NOT_FOUND, COMMAND_FAIL, PageQuery, fmt_dt, ok, page_result
 from master.state import INSTANCE_RUNNING_STATES, TERMINAL_STATES
+from rebuild.execution import legacy_bridge
 
 logger = get_logger("api.instance")
 
@@ -86,9 +87,8 @@ def list_instances(
         # 终态且无日志索引 → 悬空实例，过滤（保证前端与后端日志真实状态同步）
         log_exists = db.query(TaskLog.id).filter(TaskLog.instance_id == WorkflowInstance.instance_id).exists()
         query = query.filter(or_(WorkflowInstance.state.notin_(TERMINAL_STATES), log_exists))
-    total = query.count()
-    rows = query.order_by(WorkflowInstance.id.desc()).offset(page.offset).limit(page.page_size).all()
-    items = [
+    rows = query.order_by(WorkflowInstance.id.desc()).all()
+    legacy_items = [
         {
             "id": row.id,
             "instanceId": row.instance_id,
@@ -101,9 +101,16 @@ def list_instances(
             "endTime": fmt_dt(row.end_time),
             "host": row.host,
             "commandType": row.command_type,
+            "createdAt": row.create_time.isoformat() if row.create_time else None,
+            "source": "legacy",
         }
         for row in rows
     ]
+    execution_items = legacy_bridge.list_instances(wf_code=wf_code, state=state, run_mode=run_mode)
+    combined = legacy_items + execution_items
+    combined.sort(key=lambda item: item.get("createdAt") or item.get("startTime") or "", reverse=True)
+    total = len(combined)
+    items = combined[page.offset : page.offset + page.page_size]
     return ok(page_result(total, items))
 
 
@@ -116,6 +123,11 @@ def list_run_events(
     db: Session = Depends(get_db),
 ):
     """Return durable node/execution events, newest first unless resuming by id."""
+    if legacy_bridge.parse_execution_id(instance_id) is not None:
+        execution_events = legacy_bridge.list_events(instance_id, after_id=after_id)
+        if execution_events is not None:
+            total = len(execution_events)
+            return ok(page_result(total, execution_events[page.offset : page.offset + page.page_size]))
     _get_instance(db, instance_id)
     query = db.query(TRunEvent).filter(TRunEvent.run_id == instance_id)
     if after_id is not None:
@@ -134,6 +146,10 @@ def get_instance(
     db: Session = Depends(get_db),
 ):
     """实例详情（含 task_instances 列表；补 runMode/scheduleTime/loopIter/delayUntil，I3 §12）。"""
+    if legacy_bridge.parse_execution_id(instance_id) is not None:
+        execution_instance = legacy_bridge.get_instance(instance_id)
+        if execution_instance is not None:
+            return ok(execution_instance)
     row = _get_instance(db, instance_id)
     tasks = db.query(TaskInstance).filter(TaskInstance.instance_id == instance_id).order_by(TaskInstance.id).all()
     return ok(
@@ -181,6 +197,19 @@ def stop_instance(
     db: Session = Depends(get_db),
 ):
     """停止实例（§8）：写 STOP 命令 → master 置 kill + 未终态任务 kill 标记 → worker 中断。"""
+    if legacy_bridge.parse_execution_id(instance_id) is not None:
+        execution_instance = legacy_bridge.get_instance(instance_id)
+        if execution_instance is not None:
+            if execution_instance["state"] != "running":
+                raise ApiError(
+                    COMMAND_FAIL,
+                    "实例非运行中（%s），无需停止" % execution_instance["state"],
+                    status=400,
+                )
+            target_status = "STOPPED" if execution_instance.get("instanceType") == "STREAM" else "CANCELED"
+            result = legacy_bridge.transition(instance_id, target_status)
+            if result is not None:
+                return ok(result)
     row = _get_instance(db, instance_id)
     if row.state not in INSTANCE_RUNNING_STATES:
         raise ApiError(COMMAND_FAIL, "实例非运行中（%s），无需停止" % row.state, status=400)
@@ -197,6 +226,14 @@ def rerun_instance(
     db: Session = Depends(get_db),
 ):
     """整实例重跑（§9.3）：新 instance_id 全量新建任务行，复用原实例变量快照。"""
+    if legacy_bridge.parse_execution_id(instance_id) is not None:
+        execution_instance = legacy_bridge.get_instance(instance_id)
+        if execution_instance is not None:
+            if execution_instance["state"] not in {"success", "failure", "kill", "stopped"}:
+                raise ApiError(COMMAND_FAIL, "实例未终态（%s），不可重跑" % execution_instance["state"], status=400)
+            attempts = legacy_bridge.append_retry_attempts(instance_id, failed_only=False)
+            if attempts is not None:
+                return ok({"instanceId": instance_id, "attempts": attempts})
     row = _get_instance(db, instance_id)
     if row.state not in TERMINAL_STATES:
         raise ApiError(COMMAND_FAIL, "实例未终态（%s），不可重跑" % row.state, status=400)
@@ -213,6 +250,14 @@ def rerun_failed(
     db: Session = Depends(get_db),
 ):
     """失败节点重跑（§9.3）：仅 failure 任务及其下游重置重派，同实例内续跑。"""
+    if legacy_bridge.parse_execution_id(instance_id) is not None:
+        execution_instance = legacy_bridge.get_instance(instance_id)
+        if execution_instance is not None:
+            attempts = legacy_bridge.append_retry_attempts(instance_id, failed_only=True)
+            if attempts is not None:
+                if not attempts:
+                    raise ApiError(COMMAND_FAIL, "实例没有失败任务可重跑", status=400)
+                return ok({"instanceId": instance_id, "attempts": attempts})
     _get_instance(db, instance_id)  # 存在性校验（失败任务有无由 master 校验，缺失败置命令 fail）
     command = submit_command(db, "START_FAILURE_TASKS", {"instanceId": instance_id}, priority=body.priority)
     logger.info("失败节点重跑已提交: instance=%s commandId=%s（用户 %s）", instance_id, command.id, user.user_name)
@@ -245,6 +290,74 @@ def stream_instance(
     - 已终态实例：基线 + instance_finished 立即关流；实例中途被清理（悬空）则静默收流；
     - 鉴权 ?token= 兜底（EventSource 无法携带 header，api/auth 口径）；断线由前端降级 3s 轮询。
     """
+    if legacy_bridge.parse_execution_id(instance_id) is not None:
+        execution_instance = legacy_bridge.get_instance(instance_id)
+        if execution_instance is not None:
+            cursor = 0
+            raw_cursor = last_event_id_query if isinstance(last_event_id_query, int) else last_event_id
+            try:
+                if isinstance(raw_cursor, str) and raw_cursor.startswith("r9:"):
+                    cursor = max(0, int(raw_cursor[3:]))
+                elif raw_cursor is not None:
+                    cursor = max(0, int(raw_cursor))
+            except (TypeError, ValueError):
+                cursor = 0
+
+            def execution_gen():
+                nonlocal cursor
+                seen_tasks: dict[int, str] = {}
+                seen_state = None
+                first = True
+                idle = 0.0
+                while True:
+                    payload = legacy_bridge.get_instance(instance_id)
+                    if payload is None:
+                        return
+                    events = []
+                    for task in payload.get("taskInstances", []):
+                        if first or seen_tasks.get(task["id"]) != task["state"]:
+                            events.append(("task_state_changed", {
+                                "taskId": task["id"], "nodeId": task["nodeId"], "nodeType": task["nodeType"],
+                                "name": task["name"], "state": task["state"], "attempt": task["attempt"],
+                                "loopIter": 0, "startTime": task["startTime"], "endTime": task["endTime"],
+                            }))
+                        seen_tasks[task["id"]] = task["state"]
+                    for event in legacy_bridge.list_events(instance_id, after_id=cursor) or []:
+                        try:
+                            cursor = max(cursor, int(event["id"].split(":", 1)[1]))
+                        except (KeyError, TypeError, ValueError):
+                            pass
+                        events.append(("node_event", event))
+                    state = payload["state"]
+                    finished = state in TERMINAL_STATES or state == "stopped"
+                    if finished and (first or state != seen_state):
+                        events.append(("instance_finished", {
+                            "instanceId": instance_id, "state": state, "endTime": payload.get("endTime"),
+                        }))
+                    seen_state = state
+                    first = False
+                    if events:
+                        idle = 0.0
+                        for event_name, event_payload in events:
+                            event_id = f"id: {event_payload['id']}\n" if event_name == "node_event" else ""
+                            frame = json.dumps(event_payload, ensure_ascii=False, default=str)
+                            yield f"{event_id}event: {event_name}\ndata: {frame}\n\n"
+                        if finished:
+                            return
+                    elif finished:
+                        return
+                    else:
+                        idle += SSE_POLL_SEC
+                        if idle >= SSE_HEARTBEAT_SEC:
+                            yield ": heartbeat\n\n"
+                            idle = 0.0
+                    time.sleep(SSE_POLL_SEC)
+
+            return StreamingResponse(
+                execution_gen(), media_type="text/event-stream",
+                headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+            )
+
     row = _get_instance(db, instance_id)  # 404 闸门（存在性校验后请求级会话即还池）
 
     try:

@@ -4,10 +4,13 @@ Contract source (frozen): docs/increments/2026-10-14-datara-platform-rebuild-des
 §8 (realtime observation chain, producer node modes, observation metrics)
 + §13.7 (stream runtime tables and the eight job states).
 
-- Four domain tables: stream_job / stream_checkpoint / stream_metric_snapshot /
-  stream_failure_event. The §13.7 attempt table folds into stream_job as an
-  attempt_no counter (four-model scope for this increment); restart increments
-  the attempt so failure samples and snapshots stay attempt-attributed.
+- Five domain tables per design §13.7: stream_job / stream_job_attempt /
+  stream_checkpoint / stream_metric_snapshot / stream_failure_event. DEP-05
+  user ruling (2026-10-19, 方案 A 独立建表): attempt slices persist in the
+  independent stream_job_attempt table; stream_job.attempt_no remains only
+  the current-attempt pointer so failure samples and snapshots stay
+  attempt-attributed, and restart increments the attempt while opening a new
+  stream_job_attempt row.
 - stream_job carries the eight-state machine (CREATED/STARTING/RUNNING/PAUSED/
   STOPPING/STOPPED/FAILED/RECOVERING); legal transitions are enforced by the
   repository (see rebuild.stream.repository.STREAM_TRANSITIONS), not by triggers.
@@ -21,7 +24,7 @@ Contract source (frozen): docs/increments/2026-10-14-datara-platform-rebuild-des
 
 from datetime import datetime
 
-from sqlalchemy import DateTime, Index, Integer, String, Text, func
+from sqlalchemy import DateTime, Index, Integer, String, Text, UniqueConstraint, func
 from sqlalchemy.orm import Mapped, mapped_column
 
 from rebuild.common.db import Base
@@ -38,12 +41,41 @@ class StreamJobRecord(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     name: Mapped[str] = mapped_column(String(128), nullable=False)
     workflow_id: Mapped[int] = mapped_column(Integer, nullable=False, index=True)
+    # Explicit crosswalk to legacy common.models.StreamJob.id. Nullable keeps
+    # new-domain jobs independent; unique prevents ambiguous dual writes.
+    legacy_job_id: Mapped[int | None] = mapped_column(Integer, nullable=True, unique=True, index=True)
     mq_topic: Mapped[str] = mapped_column(String(256), nullable=False)
     # §8 producer-node mode config stored verbatim as JSON.
     runtime_config: Mapped[str] = mapped_column(Text, nullable=False, default="{}")
     # Eight-state machine (design §13.7); transition legality lives in the repository.
     state: Mapped[str] = mapped_column(String(16), nullable=False, default="CREATED")
     attempt_no: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    started_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.current_timestamp())
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime, server_default=func.current_timestamp(), server_onupdate=func.current_timestamp()
+    )
+
+class StreamJobAttemptRecord(Base):
+    """stream_job_attempt — per-retry execution slice, isolated by attempt_no.
+
+    DEP-05: Design §13.7 lists stream_job_attempt as one of five runtime tables.
+    Implementation had folded attempt into stream_job.attempt_no counter (4+1 model).
+    User ruling (2026-10-19, DEPLOY): 独立建表 (方案 A) — this independent table
+    restores the design contract; every legal ``start`` transition opens a row
+    and terminal transitions stamp its status/finished_at.
+    """
+
+    __tablename__ = "stream_job_attempt"
+    __table_args__ = (
+        UniqueConstraint("job_id", "attempt_no", name="uq_sja_job_attempt"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    job_id: Mapped[int] = mapped_column(Integer, nullable=False, index=True)
+    attempt_no: Mapped[int] = mapped_column(Integer, nullable=False)
+    status: Mapped[str] = mapped_column(String(16), nullable=False)
     started_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     finished_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.current_timestamp())
@@ -127,3 +159,32 @@ class StreamFailureEventRecord(Base):
     updated_at: Mapped[datetime] = mapped_column(
         DateTime, server_default=func.current_timestamp(), server_onupdate=func.current_timestamp()
     )
+
+
+class StreamRecoveryEventRecord(Base):
+    """Recovery lifecycle events exposed by the stream observation API."""
+
+    __tablename__ = "stream_recovery_event"
+    __table_args__ = (Index("x_stream_recovery_job_time", "job_id", "event_time"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    job_id: Mapped[int] = mapped_column(Integer, nullable=False, index=True)
+    kind: Mapped[str] = mapped_column(String(32), nullable=False)
+    detail: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    event_time: Mapped[datetime] = mapped_column(DateTime, nullable=False, index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.current_timestamp())
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime, server_default=func.current_timestamp(), server_onupdate=func.current_timestamp()
+    )
+
+
+STREAM_TABLES = (
+    StreamJobRecord.__table__,
+    StreamJobAttemptRecord.__table__,
+    StreamCheckpointRecord.__table__,
+    StreamMetricSnapshotRecord.__table__,
+    StreamFailureEventRecord.__table__,
+    StreamRecoveryEventRecord.__table__,
+)
+
+

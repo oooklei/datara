@@ -16,17 +16,19 @@ from __future__ import annotations
 
 from typing import Any
 
-from fastapi import APIRouter, Header
+from fastapi import APIRouter, Header, Query
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import sessionmaker
 
 from rebuild.stream.repository import StreamDomainError, StreamRepository
+from rebuild.stream.alert import evaluate_failure_alert
 
 
 class StreamJobCreateRequest(BaseModel):
     name: str = ""
     workflow_id: int = 0
+    legacy_job_id: int | None = Field(default=None, gt=0)
     mq_topic: str = ""
     runtime_config: dict[str, Any] = Field(default_factory=dict)
 
@@ -91,7 +93,7 @@ def build_stream_router(
             try:
                 record = StreamRepository(session).register(
                     name=body.name, workflow_id=body.workflow_id, mq_topic=body.mq_topic,
-                    runtime_config=body.runtime_config,
+                    runtime_config=body.runtime_config, legacy_job_id=body.legacy_job_id,
                 )
                 session.commit()
             except StreamDomainError as exc:
@@ -107,6 +109,68 @@ def build_stream_router(
             return denial
         with session_factory() as session:
             return respond(StreamRepository(session).list_jobs())
+
+    @router.get("/jobs/{job_id}/attempts")
+    def list_attempts(job_id: int, token: str = Header(default=""), authorization: str = Header(default="")):
+        denial = auth_guard(token, authorization)
+        if denial is not None:
+            return denial
+        with session_factory() as session:
+            try:
+                return respond(StreamRepository(session).list_attempts(job_id))
+            except StreamDomainError as exc:
+                return domain_error(exc)
+
+    @router.get("/jobs/{job_id}/checkpoints")
+    def list_checkpoints(job_id: int, token: str = Header(default=""), authorization: str = Header(default="")):
+        denial = auth_guard(token, authorization)
+        if denial is not None:
+            return denial
+        with session_factory() as session:
+            try:
+                return respond(StreamRepository(session).latest_checkpoints(job_id))
+            except StreamDomainError as exc:
+                return domain_error(exc)
+
+    @router.get("/jobs/{job_id}/metrics")
+    def list_metrics(
+        job_id: int, from_: str = Query(alias="from"), to: str = Query(), limit: int = Query(default=100),
+        token: str = Header(default=""), authorization: str = Header(default=""),
+    ):
+        denial = auth_guard(token, authorization)
+        if denial is not None:
+            return denial
+        with session_factory() as session:
+            try:
+                return respond(StreamRepository(session).list_metric_points(job_id, from_, to, limit))
+            except StreamDomainError as exc:
+                return domain_error(exc)
+
+    @router.get("/jobs/{job_id}/recovery-events")
+    def list_recovery_events(
+        job_id: int, from_: str = Query(alias="from"), to: str = Query(), limit: int = Query(default=100),
+        token: str = Header(default=""), authorization: str = Header(default=""),
+    ):
+        denial = auth_guard(token, authorization)
+        if denial is not None:
+            return denial
+        with session_factory() as session:
+            try:
+                return respond(StreamRepository(session).list_recovery_events(job_id, from_, to, limit))
+            except StreamDomainError as exc:
+                return domain_error(exc)
+
+    @router.get("/jobs/{job_id}/failure-alert")
+    def get_failure_alert(job_id: int, token: str = Header(default=""), authorization: str = Header(default="")):
+        denial = auth_guard(token, authorization)
+        if denial is not None:
+            return denial
+        with session_factory() as session:
+            try:
+                result = evaluate_failure_alert(session, job_id)
+                return respond(result)
+            except StreamDomainError as exc:
+                return domain_error(exc)
 
     # -- 3. job detail ---------------------------------------------------------
 
