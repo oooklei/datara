@@ -1,7 +1,7 @@
 {
   "version": 1,
   "created_at": "2026-10-02T22:25:37Z",
-  "updated_at": "2026-10-20T12:38:26Z",
+  "updated_at": "2026-10-20T13:40:47Z",
   "files": {
     ".gitattributes": {
       "role": "index",
@@ -141,9 +141,9 @@
     },
     "aoci.code.txt": {
       "role": "index",
-      "sha256": "04d843c4b753c8e8621e1f30dfd0c832b4b4bf5a59137246f156272938e4768b",
-      "size": 276199,
-      "normalized_sha256": "04d843c4b753c8e8621e1f30dfd0c832b4b4bf5a59137246f156272938e4768b"
+      "sha256": "a5fd2aaeb80c6d84c7499f96f374c4070f831c36c68e8b38a9219c144c302ae3",
+      "size": 235002,
+      "normalized_sha256": "a5fd2aaeb80c6d84c7499f96f374c4070f831c36c68e8b38a9219c144c302ae3"
     },
     "aoci.meta.txt": {
       "role": "index",
@@ -4969,12 +4969,6 @@
       "sha256": "87f834ff93b555afcb29f841624a250c9347a13dd863dead9a86459e815df5c0",
       "size": 2186,
       "normalized_sha256": "87f834ff93b555afcb29f841624a250c9347a13dd863dead9a86459e815df5c0"
-    },
-    "deploy/i8_ws_test.py": {
-      "role": "observe",
-      "sha256": "0bbf674a6dcb228295961f70c7f1509979ba1ca0f5e8aa83a7514bd72555b89a",
-      "size": 772,
-      "normalized_sha256": "0bbf674a6dcb228295961f70c7f1509979ba1ca0f5e8aa83a7514bd72555b89a"
     },
     "deploy/i9_seek.py": {
       "role": "index",
