@@ -116,6 +116,8 @@ Do not preload, guess, or reconstruct these specialized workflows. The relevant 
 
 活跃交接：`docs/handoff/STATE.md`（监督线现状基线，冷启动首读；新会话开始前必须先读）。历史台账 `docs/handoff/2026-10-16-并行协作分工.md` 已冻结为考古区（#1–#352，只读不写）。交接过期后删除本节。
 
+**权威序**：用户最新裁定 > `docs/increments/2026-10-19-纠偏重构前端权威设计.md`（唯一需求真源 v3）> `docs/increments/2026-10-17-核心业务功能实现规范与验收标准.md`（验收 v4）> `docs/increments/2026-10-20-单线多增量WBS开发计划.md`（WBS）> `docs/agents/协作规程.md` > 其余文档；归档区（docs/archive/、docs/increments/archive/、docs/handoff/archive/）只作考古。细目见 `docs/README.md` §1。
+
 ## Agent skills
 
 ### Issue tracker
