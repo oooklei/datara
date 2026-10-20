@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-mailbox_loop.py — 信箱循环实体程序 v1.2 (Datara 多终端协同)
+mailbox_loop.py — 信箱循环实体程序 v1.3 (Datara 多终端协同)
 
 设计（对应监督员 2026-10-19 裁定）:
   while True:
@@ -17,6 +17,13 @@ mailbox_loop.py — 信箱循环实体程序 v1.2 (Datara 多终端协同)
          {id, ts, from, to, type: MSG|STOP|ACK|REPLY, body, status: pending|done, ref, ack_ts}
   基线   docs/handoff/STATE.md   冷启动首读现状快照（新纪元唯一权威起点）
   台账   docs/handoff/2026-10-16-并行协作分工.md   历史考古区（冻结只读，辅助扫描）
+
+v1.3 增加 compact（P-OPT-1 G1，2026-10-20）：
+  --compact-threshold（默认 500）/--compact-ratio（默认 0.5）/--compact-keep（默认 20）。
+  done 消息占比超 ratio 或总行数超 threshold 时触发：除最近 keep 条外的全部 done
+  移入 docs/handoff/archive/mailbox-<日期>-compact.jsonl（同日多次触发追加写），
+  主文件保留全部 pending + 最近 keep 条 done（原行序不变）。
+  归档写入与主文件重写均采用 tmp + os.replace 原子重写，与领单/写信箱一致。
 
 用法：
   python agents/mailbox_loop.py --role 监督员 [--agent-cmd "claude -p {model}"] [--model deepseek-v4.1-flash] [--interval 3]
@@ -125,6 +132,61 @@ def rewrite_mark_done(path, done_ids):
     os.replace(tmp, path)
 
 
+def should_compact(msgs, ratio, threshold):
+    """compact 触发判定（纯函数，便于只读检查与自验）：
+    done 占比 > ratio 或总行数 > threshold 时触发。返回 (triggered, reason)。"""
+    total = len(msgs)
+    if total == 0:
+        return False, "empty mailbox"
+    n_done = sum(1 for m in msgs if m.get("status") == "done")
+    r = n_done / total
+    if r > ratio:
+        return True, f"done ratio {r:.1%} > {ratio:.0%}"
+    if total > threshold:
+        return True, f"total {total} > threshold {threshold}"
+    return False, f"done {n_done}/{total} ({r:.1%}) <= ratio {ratio:.0%}, total <= {threshold}"
+
+
+def compact_mailbox(path, archive_dir, ratio=0.5, threshold=500, keep=20):
+    """done 清出（P-OPT-1 G1）：触发时把除最近 keep 条外的全部 done 移入
+    archive_dir/mailbox-<日期>-compact.jsonl（同日多次触发追加写，不覆盖），
+    主文件保留全部 pending + 最近 keep 条 done（原行序不变）。
+    写入方式与领单/写信箱一致：tmp + os.replace 原子重写。
+    返回 (triggered, n_archived, n_kept, archive_path, reason)。"""
+    msgs = read_mail(path)
+    triggered, reason = should_compact(msgs, ratio, threshold)
+    if not triggered:
+        return False, 0, len(msgs), "", reason
+    done = [m for m in msgs if m.get("status") == "done"]
+    keep_ids = {m.get("id") for m in done[-keep:]} if keep > 0 else set()
+    archive_msgs = [m for m in done if m.get("id") not in keep_ids]
+    if not archive_msgs:
+        return False, 0, len(msgs), "", f"triggered ({reason}) but no done outside keep={keep} window"
+    os.makedirs(archive_dir, exist_ok=True)
+    archive_path = os.path.join(archive_dir, f"mailbox-{datetime.now():%Y-%m-%d}-compact.jsonl")
+    with open(archive_path, "a", encoding="utf-8") as f:
+        for m in archive_msgs:
+            f.write(json.dumps(m, ensure_ascii=False) + "\n")
+    kept = [m for m in msgs if m.get("status") != "done" or m.get("id") in keep_ids]
+    tmp = path + ".tmp"
+    with open(tmp, "w", encoding="utf-8") as f:
+        f.write("\n".join(json.dumps(m, ensure_ascii=False) for m in kept) + ("\n" if kept else ""))
+    os.replace(tmp, path)
+    return True, len(archive_msgs), len(kept), archive_path, reason
+
+
+def maybe_compact(repo, mb, ratio, threshold, keep):
+    """标 done 后顺带检查并执行 compact（P-OPT-1 G1）；仅触发时记日志。"""
+    arch_dir = os.path.join(os.path.dirname(mb), "archive")
+    try:
+        triggered, n_arch, n_kept, apath, reason = compact_mailbox(mb, arch_dir, ratio, threshold, keep)
+    except OSError as e:
+        log(repo, f"compact error: {e}")
+        return
+    if triggered:
+        log(repo, f"compact OK archived={n_arch} kept={n_kept} ({reason}) -> {apath}")
+
+
 def scan_handoff(repo, role, last_anchor):
     """扫描台账与 handoff 目录：返回含本角色关键词的新行（心跳号或文件 mtime 做增量锚点）。"""
     keywords = ("派单", "唤醒", "回执", "裁定", "请答复", "待你", role)
@@ -174,6 +236,12 @@ def main():
     ap.add_argument("--timeout", type=float, default=900.0, help="单次子智能体超时秒")
     ap.add_argument("--max-fail", type=int, default=3, help="子智能体连续失败退出阈值")
     ap.add_argument("--no-scan", action="store_true", help="关闭台账辅助扫描")
+    ap.add_argument("--compact-threshold", type=int, default=500,
+                    help="compact 触发：信箱总行数超此值（默认 500，0=禁用行数触发）")
+    ap.add_argument("--compact-ratio", type=float, default=0.5,
+                    help="compact 触发：done 消息占比超此值（默认 0.5，0=禁用占比触发）")
+    ap.add_argument("--compact-keep", type=int, default=20,
+                    help="compact 后主文件保留最近 N 条 done（默认 20）")
     ap.add_argument("--repo", default=".")
     args = ap.parse_args()
 
@@ -212,6 +280,7 @@ def main():
                                  "to": s.get("from"), "type": "ACK", "ref": s.get("id"),
                                  "body": "STOP 已确认，循环实体退出", "status": "pending"})
             rewrite_mark_done(mb, [s.get("id") for s in stops if s.get("id")])
+            maybe_compact(repo, mb, args.compact_ratio, args.compact_threshold, args.compact_keep)
             log(repo, f"STOP received ({len(stops)}) — exit")
             break
 
@@ -249,6 +318,7 @@ def main():
 
         if done_ids:
             rewrite_mark_done(mb, done_ids)
+            maybe_compact(repo, mb, args.compact_ratio, args.compact_threshold, args.compact_keep)
 
         # ---- 子智能体连续失败 → 视为子智能体停止 → 退出（保留信箱供人工接管） ----
         if fail_streak >= args.max_fail:
