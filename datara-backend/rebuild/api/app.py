@@ -12,7 +12,7 @@ from pathlib import Path
 from fastapi import FastAPI, Header, Query
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
-from sqlalchemy import create_engine, inspect, select, text
+from sqlalchemy import create_engine, func, inspect, select, text
 from sqlalchemy.engine import make_url
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import sessionmaker
@@ -569,6 +569,53 @@ def create_app(
                 "msg": "success",
                 "data": {"total": len(projects), "list": [{"id": p.id, "name": p.name} for p in projects]},
             }
+
+    @app.put("/api/v1/rebuild/projects/{project_id}")
+    def update_project(project_id: int, body: ProjectRequest, authorization: str = Header(default="")):
+        try:
+            user = current_user(authorization)
+        except ValueError:
+            return JSONResponse(status_code=401, content={"code": 1001, "msg": "invalid token", "data": None})
+        with session_factory() as session:
+            project = session.get(ProjectRecord, project_id)
+            if project is None:
+                return JSONResponse(status_code=404, content={"code": 4041, "msg": "project not found", "data": None})
+            if user.get("role") != Role.ADMIN.value and project.owner_id != int(user["user_id"]):
+                return JSONResponse(status_code=403, content={"code": 1003, "msg": "permission denied", "data": None})
+            try:
+                ProjectRepository(session).update(project, name=body.name, description=body.description)
+                session.commit()
+            except ValueError as exc:
+                session.rollback()
+                return JSONResponse(status_code=400, content={"code": 4001, "msg": str(exc), "data": None})
+            except IntegrityError:
+                session.rollback()
+                return JSONResponse(status_code=409, content={"code": 4091, "msg": "project name already exists", "data": None})
+            return {"code": 0, "msg": "success", "data": {"id": project.id, "name": project.name, "description": project.description}}
+
+    @app.delete("/api/v1/rebuild/projects/{project_id}")
+    def delete_project(project_id: int, authorization: str = Header(default="")):
+        try:
+            user = current_user(authorization)
+        except ValueError:
+            return JSONResponse(status_code=401, content={"code": 1001, "msg": "invalid token", "data": None})
+        with session_factory() as session:
+            project = session.get(ProjectRecord, project_id)
+            if project is None:
+                return JSONResponse(status_code=404, content={"code": 4041, "msg": "project not found", "data": None})
+            if user.get("role") != Role.ADMIN.value and project.owner_id != int(user["user_id"]):
+                return JSONResponse(status_code=403, content={"code": 1003, "msg": "permission denied", "data": None})
+            counts = {
+                "workflows": session.scalar(select(func.count()).select_from(WorkflowDefinitionRecord).where(WorkflowDefinitionRecord.project_id == project_id)) or 0,
+                "datasources": session.scalar(select(func.count()).select_from(ProjectDatasourceRecord).where(ProjectDatasourceRecord.project_id == project_id)) or 0,
+                "resources": session.scalar(select(func.count()).select_from(ResourceRecord).where(ResourceRecord.project_id == project_id)) or 0,
+            }
+            if any(counts.values()):
+                return JSONResponse(status_code=409, content={"code": 4091, "msg": "project not empty", "data": counts})
+            session.query(ProjectMemberRecord).filter(ProjectMemberRecord.project_id == project_id).delete()
+            ProjectRepository(session).delete(project)
+            session.commit()
+            return {"code": 0, "msg": "success", "data": {"deleted": True, "id": project_id}}
 
     @app.post("/api/v1/rebuild/datasources/validate")
     def validate_datasource_endpoint(body: DataSourceRequest, authorization: str = Header(default="")):

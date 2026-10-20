@@ -7,7 +7,7 @@
 
     <nav class="wb-nav" aria-label="快捷导航" data-workbench-nav>
       <button
-        v-for="seg in NAV_SECTIONS"
+        v-for="seg in PROJECT_MENU_SECTIONS"
         :key="seg.key"
         type="button"
         class="nav-item"
@@ -55,25 +55,16 @@
  * metrics 数据源 createMetricsContract（R7 GREEN 收编件，零修改）：queryWorkflowResultStats
  * 按 runDate 逐行呈现四计数（成功/失败/跳过/重试），不聚合（A7 Step 1 口径：FE 不加工推导）。
  * TimeWindowQuery 默认近 7 天窗 + offset 0 / limit 50（B2 缺口 #4 开放点，FE 取值候定稿）。
- * 快捷导航 push `/p/:projectId/<seg>`：路由注册归 L3-03，未匹配时 vue-router 返回
- * failure 不 crash（HomeView 卡片交互同款先例），正式菜单可达验收归 L3-03。
- * 本件为可挂载视图组件（props projectId），路由归 L3-03。
+ * 快捷导航 push `/p/:projectId/<seg>`：路由注册 L3-03 已落地（s251）。
+ * 本件为可挂载视图组件（props projectId，路由 props 注入）。
+ * 七段段名 L3-03 定稿：提升为 navigation/projectMenu.ts PROJECT_MENU_SECTIONS（s251 派令
+ * NAV 段名定稿权落点），本件与 AppShell 项目模式侧栏同源消费（DOM data-nav 锚零变化）。
  */
 import { onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { createMetricsContract } from '../services/rebuild/metricsApi'
 import type { TimeWindowQuery, WorkflowResultStatRow } from '../services/rebuild/metricsApi'
-
-/** 快捷导航七段（PRE §3.2 项目工作区路由设计表）；段 key 与 `/p/:projectId/<seg>` 对齐 */
-const NAV_SECTIONS = [
-  { key: 'dag', label: '任务中心' },
-  { key: 'datasource', label: '数据源' },
-  { key: 'resources', label: '资源管理' },
-  { key: 'ide', label: 'SQL IDE' },
-  { key: 'meta', label: '数据治理' },
-  { key: 'dep', label: '部署运维' },
-  { key: 'system', label: '系统管理' },
-] as const
+import { PROJECT_MENU_SECTIONS } from '../navigation/projectMenu'
 
 const props = defineProps<{ projectId: number }>()
 

@@ -16,6 +16,7 @@
  */
 import { describe, expect, it } from 'vitest'
 import { routes } from '../routes'
+import TaskCenterView from '../../views/TaskCenterView.vue'
 import routesSource from '../routes.ts?raw'
 import routerSource from '../index.ts?raw'
 import viteSource from '/vite.config.ts?raw'
@@ -29,8 +30,21 @@ function stripComments(source: string): string {
 const CATCH_ALL_MARKER = ':pathMatch'
 
 describe('1.4 routes 负断言（WBS 1.4 / 增量 1 退出标准 2）', () => {
-  it('routes 仅正式产品路由：/login 与 / 两条，无 demo/验证页/临时占位路由', () => {
-    expect(routes.map((r) => r.path)).toEqual(['/login', '/'])
+  it('routes 正式产品路由基线：/login、/、/dag 任务中心（s260 派令 INC4-FE-1 解锁）与 /p/:projectId 项目工作区层两条（s251 派令 L3-03 解锁），无 demo/验证页/临时占位路由', () => {
+    expect(routes.map((r) => r.path)).toEqual([
+      '/login',
+      '/',
+      '/dag',
+      '/p/:projectId',
+      '/p/:projectId/:seg',
+    ])
+  })
+
+  it('/dag 绑定 TaskCenterView 且具名（s260 INC4-FE-1：任务中心顶部视角页签框架承载）', () => {
+    const dag = routes.find((r) => r.path === '/dag')
+    expect(dag).toBeTruthy()
+    expect(dag?.name).toBe('dag-entry')
+    expect(dag?.component).toBe(TaskCenterView)
   })
 
   it('无任何路由携带 demo:true 标记（零 demo 路由）', () => {

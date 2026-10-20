@@ -2,9 +2,9 @@
 
 > 建立日期：2026-10-20 ｜ 依据：权威设计 §5.6（契约冻结登记）
 > 用途：门 1 API 契约验收直接消费；新增/变更契约文件有测试对应方可合入。
-> 最近更新：2026-10-21（增量 1.3-01/02 契约层 11 文件迁移适配落位 + 契约测试落位，Claude 实施线）
+> 最近更新：2026-10-21（INC4-BE-1 新增 M1 组件规格契约并完成全量回归，Codex 实施线）
 
-## 1. 契约文件 ↔ 测试映射表（11 文件一一对应，无缺口）
+## 1. 契约文件 ↔ 测试映射表
 
 | # | 契约文件 | 测试文件 | 状态 | 冻结方法数 | 测试数 | 说明 |
 |---|---|---|---|---|---|---|
@@ -19,8 +19,9 @@
 | 9 | `metricsApi.ts` | `services/rebuild/__tests__/metricsApi.contract.test.ts` | GREEN | 6 | 15 | R7 统计/质量/血缘（I9） |
 | 10 | `streamApi.ts` | `services/rebuild/__tests__/streamApi.contract.test.ts` + `streamApiSurface.contract.test.ts` | GREEN | 6 | 1 + 2 | I8 流处理观摩（旧库同一契约存在 services 级与 views 级两份测试，均落位） |
 | 11 | `aiToolsApi.ts` | `services/rebuild/__tests__/aiToolsApi.contract.test.ts`（+ `__tests__/mockAgent.ts` 假 Agent 适配层） | GREEN | 9 | 19 | R8-A AI 八工具（I10；契约层已接线，端到端 LLM 联调受 FV-02 阻塞，归增量 15.4） |
+| 12 | `componentSpecApi.ts` | `services/rebuild/__tests__/componentSpecApi.contract.test.ts` | GREEN | 1 | 5 | M1 组件规格例外契约：200 裸 `{items}`、强 ETag、304 空体；刷新失败仅回退最后成功响应，首次失败阻断并可重试 |
 
-> **状态快照：2026-10-21（1.3 落位实测）；GREEN 9 / RED 2；契约方法合计 64。**
+> **状态快照：2026-10-21（INC4-BE-1 落位实测）；GREEN 10 / RED 2；契约方法合计 65。**
 >
 > **与设计 §5.6 快照（GREEN 8 / RED 3）的差异**：`aiToolsApi.ts` 实测为 **GREEN**——源码无 `NOT_WIRED` 活哨兵，`createAiToolsContract()` 发起真实 API 调用（`requestJson` → `fetch`），旧库 `bannerConsistency.contract.test.ts` 断言亦为 GREEN。设计 §5.6 快照系提交 `6c0de0c`（验证域契约 GREEN 化）之前的状态。**建议监督线刷新权威设计 §5.6 快照为 GREEN 9 / RED 2。**
 
@@ -40,6 +41,7 @@
 - **门禁规则**：新增/变更契约文件（`src/services/rebuild/*.ts`）须有对应测试文件并全绿方可合入。
 - **契约冻结登记**：每契约文件冻结时登记提交号 + 测试文件 + 状态（见 §4）。
 - **基线**：`npm test`（= `vitest run`）全量绿。
+- **INC4-BE-1 回归**：`npm test -- --run` 全量 **349 passed / 0 failed（34 测试文件）**；`npm run build` 通过（1625 modules transformed）。
 
 ### 3.1 基线登记（1.3 起步）
 
@@ -97,5 +99,6 @@
 | `metricsApi.ts` | 待登记 | `__tests__/metricsApi.contract.test.ts` | GREEN | 2026-10-21 |
 | `streamApi.ts` | 待登记 | `__tests__/streamApi.contract.test.ts` + `__tests__/streamApiSurface.contract.test.ts` | GREEN | 2026-10-21 |
 | `aiToolsApi.ts` | 待登记 | `__tests__/aiToolsApi.contract.test.ts` | GREEN | 2026-10-21 |
+| `componentSpecApi.ts` | 待监督线代提交（工作区未提交） | `__tests__/componentSpecApi.contract.test.ts` | GREEN | 2026-10-21 |
 
 > 提交号由监督线代提交后回填（本包 `.git` 只读，改动全部在工作区）。

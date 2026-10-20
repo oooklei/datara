@@ -48,6 +48,7 @@
 | 9 | `datara-web/src/services/rebuild/metricsApi.ts` | `datara-newweb/src/services/rebuild/metricsApi.ts` | §3.3 A 组「工作台」+E 组「指标看板」／对标 I9／承载域 metrics | L2 | 整文件复制零改写；vitest `metricsApi.contract.test.ts` 15 passed |
 | 10 | `datara-web/src/services/rebuild/streamApi.ts` | `datara-newweb/src/services/rebuild/streamApi.ts` | §3.3 C 组「流数据处理」／对标 I8／承载域 stream | L2 | 整文件复制零改写；vitest `streamApi.contract.test.ts` 1 passed + `streamApiSurface.contract.test.ts` 2 passed |
 | 11 | `datara-web/src/services/rebuild/aiToolsApi.ts` | `datara-newweb/src/services/rebuild/aiToolsApi.ts` | §3.3 H「AI 悬浮助手」／对标 I10／承载域 ai_bridge | L2 | 整文件复制零改写；vitest `aiToolsApi.contract.test.ts` 19 passed（含 `__tests__/mockAgent.ts` 假 Agent 适配落位） |
+| 12 | `datara-backend/api/component_spec.py` + `datara-web/src/stores/componentStore.ts` | `datara-backend/rebuild/component_spec/{service.py,api.py}` + `datara-newweb/src/services/rebuild/componentSpecApi.ts` | §5A.3 组件规格一源／0.6 M1／WBS 4.1 | L1 | 后端业务映射语义迁移到独立只读域，载体改为 TokenService 与 rebuild 路由；前端仅借鉴 ETag/304 缓存流，重写为强 SHA-256 ETag、首次失败阻断、仅最后成功响应回退；pytest `test_component_spec_api.py` + vitest `componentSpecApi.contract.test.ts` |
 
 **契约测试落位（1.3-02，同包登记）**：
 

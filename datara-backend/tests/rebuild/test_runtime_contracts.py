@@ -101,6 +101,14 @@ def test_builtin_always_visible():
         assert resolver.resolve_name("builtin", name, context) == value
 
 
+def test_env_scope_resolves_process_environment(monkeypatch):
+    """VAR-08: env scope resolves a process environment variable."""
+    monkeypatch.setenv("DATARA_VAR08_ENV", "env-value")
+    resolver = _make_resolver()
+    context = VariableContext(project_id=1)
+    assert resolver.resolve_name("env", "DATARA_VAR08_ENV", context) == "env-value"
+
+
 def test_catalog_dedup_first_wins():
     """VAR-08: catalog deduplicates by name, first occurrence (highest precedence) wins."""
     resolver = _make_resolver(

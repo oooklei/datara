@@ -32,3 +32,15 @@ class ProjectRepository:
     def list_all(self) -> list[ProjectRecord]:
         return list(self._session.scalars(select(ProjectRecord).order_by(ProjectRecord.id)))
 
+    def update(self, record: ProjectRecord, *, name: str, description: str) -> ProjectRecord:
+        if not name.strip():
+            raise ValueError("project name is required")
+        record.name = name.strip()
+        record.description = description
+        self._session.flush()
+        return record
+
+    def delete(self, record: ProjectRecord) -> None:
+        self._session.delete(record)
+        self._session.flush()
+
