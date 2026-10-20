@@ -22,3 +22,10 @@ The database tunnel was reachable. With no `DATARA_T5_DS_DB` value present in `.
 The live chain was started with question “统计 dwd_i5_order_wide 中的订单总数和订单净额总和，只返回这两个汇总指标。” and `AdapterContext(user_id=1, project_id=1)`. The adapter emitted `generate_sql / memory_read_and_llm / started`, then `failed`, and raised its sanitized `VannaAdapterError`. A direct request to the configured SiliconFlow endpoint returned `APIConnectionError` (no HTTP status or provider response). No SQL was generated, no business-table query was issued, and no result explanation was produced.
 
 The prior attempt's root cause is retained: direct access to `1.9:3310` failed with `PermissionError: [WinError 10013]`; the supervisor then established `127.0.0.1:3310 → 1.9:3310`, verified `SELECT 1`, 21 tables, and `dev_ro@%`, and changed only `DATARA_T5_DS_HOST` to `127.0.0.1`. The datasource chain now passes its connection stage; the remaining blocker is network access from this execution environment to `api.siliconflow.cn`. The full natural-language → LLM `generate_sql` → datasource query → explanation chain remains unverified pending endpoint reachability.
+
+## Supervisor requested rerun (2026-10-19)
+
+- Re-ran the configured adapter's live `generate_sql` call with the task's scoped context. Audit output was `started` then `failed`; the adapter returned sanitized `VannaAdapterError: SQL generation failed`. No SQL was produced, so no generated statement was sent to the datasource and no result explanation was attempted.
+- Rechecked the datasource through the configured tunnel with a read-only session: `SELECT 1` → `1`; `CURRENT_USER()` → `dev_ro@%`; `SHOW FULL TABLES FROM ec_retail` → 21 tables.
+- Re-ran `rtk pytest tests/ai_copilot/test_adapter_sovereignty.py tests/ai_copilot/test_adapter_default_factory.py -q` → `10 passed`.
+- T21 remains blocked at live LLM SQL generation. This rerun did not execute any business-table query or database write.

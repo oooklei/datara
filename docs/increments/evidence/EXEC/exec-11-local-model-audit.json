@@ -1,0 +1,37 @@
+{
+  "task": "EXEC-11",
+  "evidence_level": "local_model_and_sqlite_only",
+  "status": "BLOCKED_REMOTE_VERIFICATION",
+  "design_source": "docs/increments/2026-10-14-datara-platform-rebuild-design.md §13.13",
+  "roster_note": {
+    "design_roster_count": 15,
+    "wbs_expected_count": 16,
+    "discrepancy": "The design §13.13 roster currently lists 15 tables; this local evidence does not invent a sixteenth table."
+  },
+  "execution_domain_scope": {
+    "tables": [
+      "workflow_instance",
+      "task_instance",
+      "task_instance_attempt",
+      "task_instance_log",
+      "task_instance_output",
+      "execution_event"
+    ],
+    "verified_contract": "created_at, updated_at, generated_at are non-null server-default columns; started_at/finished_at/event_time are separately modeled business timestamps.",
+    "verification": "SQLite inserts and SQLAlchemy model metadata assertions; not a MySQL/container verification."
+  },
+  "migration": {
+    "revision": "r9_0001_execution_tables",
+    "checksum_sha256": "033390ccac1d2f062448e1d0ca861946662620d95dc05c2db6a3568be0371106",
+    "runner": "rebuild.governance.migrations.MigrationRunner",
+    "verified": ["checksum", "repeat-apply idempotency", "running/completed/failed state handling", "MySQL GET_LOCK refusal path", "DOWN table removal"]
+  },
+  "test_command": "rtk pytest -q tests/rebuild/test_execution_domain.py tests/rebuild/test_execution_models.py tests/rebuild/test_execution_migrations.py tests/rebuild/test_execution_api.py tests/test_instance_execution_bridge.py",
+  "test_output": "Pytest: 37 passed",
+  "test_output_location": "Codex execution result for T48; focused test sources are listed above.",
+  "remote_evidence": {
+    "status": "NOT_RUN",
+    "missing": ["MySQL DDL/insert/readback per table", "container logs", "16-table completeness evidence", "PNG artifact"],
+    "reason": "Remote evidence remains an explicit environment/acceptance gate; local SQLite is not presented as equivalent."
+  }
+}
