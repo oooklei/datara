@@ -12,7 +12,18 @@
 from datetime import datetime
 from typing import Optional
 
-from sqlalchemy import JSON, Boolean, DateTime, Index, Integer, String, Text, func
+from sqlalchemy import (
+    JSON,
+    BigInteger,
+    Boolean,
+    DateTime,
+    Index,
+    Integer,
+    String,
+    Text,
+    UniqueConstraint,
+    func,
+)
 from sqlalchemy.dialects.mysql import MEDIUMTEXT
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -96,6 +107,33 @@ class DwModelRecord(Base):
     update_time: Mapped[datetime] = mapped_column(DateTime, default=_now, onupdate=_now)
 
 
+class DwModelFieldRecord(Base):
+    """模型字段（整表全量替换保存，seq 由后端重排）。
+
+    迁移源实锚：`datara-backend/common/models.py:809-830`（A6-6 详情 / A6-9 字段保存共用）。
+    """
+
+    __tablename__ = "t_dw_model_field"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    model_id: Mapped[int] = mapped_column(Integer, comment="所属模型")
+    seq: Mapped[int] = mapped_column(Integer, default=0, comment="字段序（1 起）")
+    name: Mapped[str] = mapped_column(String(128), comment="字段名")
+    data_type: Mapped[str] = mapped_column(String(64), default="VARCHAR", comment="类型（大写）")
+    length: Mapped[str] = mapped_column(String(32), default="", comment="长度/精度 p（字符串保真）")
+    precision: Mapped[str] = mapped_column(String(32), default="", comment="小数位 s")
+    nullable: Mapped[bool] = mapped_column(Boolean, default=True, comment="可空")
+    default_value: Mapped[str] = mapped_column(String(255), default="", comment="默认值")
+    comment: Mapped[str] = mapped_column(String(255), default="", comment="字段注释")
+    is_pk: Mapped[bool] = mapped_column(Boolean, default=False, comment="主键")
+    is_partition: Mapped[bool] = mapped_column(Boolean, default=False, comment="分区键（仅 doris 生效）")
+    dict_ref: Mapped[str] = mapped_column(String(128), default="", comment="关联字典/维表 code")
+    create_time: Mapped[datetime] = mapped_column(DateTime, default=_now)
+    update_time: Mapped[datetime] = mapped_column(DateTime, default=_now, onupdate=_now)
+
+    __table_args__ = (Index("idx_dwfield_model", "model_id", "seq"),)
+
+
 class DwModelRelationRecord(Base):
     """模型关系（ER 边 = 血缘声明；fields 存 JSON 文本，去重由代码比较）。
 
@@ -123,13 +161,39 @@ class DwModelRelationRecord(Base):
     )
 
 
+class DwModelVersionRecord(Base):
+    """模型版本快照（A6-12 列表 / A6-13 创建 / A6-14 diff / A6-15 回滚共用）。
+
+    迁移源实锚：`datara-backend/common/models.py:857-871`（`DwModelVersion`，列/类型/约束逐项照抄）。
+    `snapshot_json` 为**主数据 + fields + relations 全量 JSON**（旧侧 `_model_snapshot` 产物），
+    读取方为 A6-14 diff 与 A6-15 回滚（均 `json.loads`），故文本形态须与旧侧完全一致。
+    """
+
+    __tablename__ = "t_dw_model_version"
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    model_id: Mapped[int] = mapped_column(Integer, comment="所属模型")
+    version: Mapped[int] = mapped_column(Integer, comment="快照版本号")
+    snapshot_json: Mapped[str] = mapped_column(
+        MediumText, comment="主数据+fields+relations 全量 JSON"
+    )
+    change_note: Mapped[str] = mapped_column(String(255), default="", comment="变更说明")
+    created_by: Mapped[str] = mapped_column(String(64), default="", comment="操作人")
+    create_time: Mapped[datetime] = mapped_column(DateTime, default=_now)
+    update_time: Mapped[datetime] = mapped_column(DateTime, default=_now, onupdate=_now)
+
+    __table_args__ = (UniqueConstraint("model_id", "version", name="uq_dw_model_ver"),)
+
+
 # 建表清单：`Base.metadata.create_all` 按本元组逐域装配（见 `rebuild/api/app.py`）。
 MODEL_TABLES = (
     DwLayerRecord.__table__,
     BizDomainRecord.__table__,
     EngineTypeRecord.__table__,
     DwModelRecord.__table__,
+    DwModelFieldRecord.__table__,
     DwModelRelationRecord.__table__,
+    DwModelVersionRecord.__table__,
 )
 
 
