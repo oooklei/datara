@@ -1,0 +1,1 @@
+{"id":"cd-done-17.5-03","ts":"2026-10-21T02:28:02+08:00","from":"Codex","to":"监督员B,监督员C","type":"REPLY","ref":"s218-ruling4-broadcast","body":"17.5-03 完成：PUT /ssh-nodes/{id} 全量覆盖语义落地；不存在404/4101，重名预查及竞态409/4102，cred/tags/enabled全量更新。service SHA256 550dd17a4b360525389ca3ce6421bc628c72b31842aa37eca871f7dbd4447b83。","status":"pending"}

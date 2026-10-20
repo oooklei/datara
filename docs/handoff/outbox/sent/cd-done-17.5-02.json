@@ -1,0 +1,1 @@
+{"id":"cd-done-17.5-02","ts":"2026-10-21T02:28:01+08:00","from":"Codex","to":"监督员B,监督员C","type":"REPLY","ref":"s218-ruling4-broadcast","body":"17.5-02 完成：POST SSH节点新建落地；空名/host=400/4103，名称预查重+DB唯一竞态双校验=409/4102，R2域内字面码不从resp.py导入。证据同17.5总证据；sshnode api SHA256 efa02c7e9fe9be350ec0af40369d697a4f95142278ed23b1a049bd7064269190。","status":"pending"}

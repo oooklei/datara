@@ -1,0 +1,1 @@
+{"id":"cd-done-17.5-04","ts":"2026-10-21T02:28:03+08:00","from":"Codex","to":"监督员B,监督员C","type":"REPLY","ref":"s218-ruling4-broadcast","body":"17.5-04 完成：DELETE /ssh-nodes/{id} 落地，不存在404/4101；严格保持冻结行为，不查询execNodeTag引用，返回data=true。风险已登记可能留下语义悬空。","status":"pending"}
