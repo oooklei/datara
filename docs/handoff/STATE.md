@@ -33,27 +33,14 @@
 
 - S220–S229 原文归档：docs/handoff/archive/2026-10-21-STATE-S220-S229.md（B 角 2026-10-21 迁出腾位）
 
-S230 | Trae线 | 2026-10-21 02:04 Asia/Shanghai（机器时钟实锚） | s230-inc2-ratify | 完成（增量 2 系开工：2-01 菜单配置契约落地交付）
-- 知悉：L181 两项批准（增量 2 系 7 票转可开工追认+权威设计 §5.6 勘误 GREEN 9/RED 2）；L179 单写者投递制已切换——tr-ack-s230-inc2 与 tr-done-201 已投 docs/handoff/outbox/trae/（待值班角收口），不再直写 mailbox
-- 口径核对：本线 55 票不变，2-01 完成→按序自转接续 2-02；2-03/2-04/2-05/2-06/2-07 排队
-- 交付：menu.ts（四态类型+七组 A–G+future 机制组+H 挂载+BATCH_SWITCHES 全 false）+ menu.contract.test.ts；实跑 vitest src/navigation 16/16 passed、全量回归 16 files/208 passed/0 failed（既有 192 零破坏）；证据 evidence/INC2/2026-10-21-2-01-菜单配置契约-Trae.md；routes.ts/App.vue/services 零改动
-- 边界：不变——.git 只读、禁 aoci_*、R6 冻结面零触碰；R-15/R-28/R-29 裁定锚已核入配置
-- 下一单：2-02 唯一显隐过滤函数（formal 五门/future 四门+空组不渲染+未知路由不渲染）；候令自转
-S231 | Trae线 | 2026-10-21 02:07 Asia/Shanghai（机器时钟实锚） | s230-inc2-ratify | 完成（2-02 唯一显隐过滤函数交付，自转推进）
-- 知悉：无新信；三态自转 2-01→2-02 已闭环
-- 口径核对：本线 55 票，2-01/2-02 完成、2-03 接续
-- 交付：filterMenu.ts 五门四门+组组装（19 测试）；实跑 navigation 35/35、全量 227/227 零破坏；证据 evidence/INC2/2-02；报备 tr-done-202 已投 outbox/trae（待收口）
-- 边界：不变
-- 下一单：2-03 删除判定 18 项落地（deleted 审计清单+双重负断言 8 路径+对照表归档）
-S232 | Trae线 | 2026-10-21 02:09 Asia/Shanghai（机器时钟实锚） | s230-inc2-ratify | 完成（2-03 删除判定 18 项交付，自转推进）
-- 口径核对：2-01/02/03 完成，2-04 接续
-- 交付：menuAudit.ts 18 项清单+双重负断言 A/B（8 测试）；navigation 43/43、全量 235/235 零破坏；证据 INC2/2-03；报备 tr-done-203 已投 outbox
-- 边界：不变
-- 下一单：2-04 后续批次折叠组机制（foldable 复用+四纳入门+空组整组隐藏+转正保持 id；稳定键 future 持久化断言）
-S233 | Trae线 | 2026-10-21 02:11 Asia/Shanghai（机器时钟实锚） | s230-inc2-ratify | 完成（2-04 折叠组机制交付，自转推进）
-- 口径核对：2-01~04 完成，2-05 接续
-- 交付：groupFold.ts 折叠逻辑层（8 测试）；navigation 51/51、全量 243/243 零破坏；证据 INC2/2-04；报备 tr-done-204 已投 outbox
-- 边界：不变
+- S230–S233 原文归档：docs/handoff/archive/2026-10-21-STATE-S230-S233.md（B 角 2026-10-21 迁出腾位，2-01~2-04 已验收销项）
 - 下一单：2-05 AppShell 三段式布局组件（顶栏/侧栏/内容区+菜单消费+AI 挂载点接驳；测试集 6/7）
 S234 | 监督员B | 2026-10-21 02:16 Asia/Shanghai（机器时钟实锚） | 验收批×7 全 PASS+1.4 立票裁示+单写者制首轮收口闭环 | ①七票验收 PASS：7B（SHA 三件一致 c7606397/2a2d7346/3166d875，合跑 pytest 171 passed 精确吻合 20+151）、7C（SHA 一致 d93a67b6，采信复用单一发布器零改动）、1.2-1201（SHA 三件一致 26af9246/f972c504/a5259235，TSC 零错+vitest 全绿）、2-01~2-04（全量 243/243 与报备精确吻合+navigation 51/51 逐级自洽，四证据 SHA 留痕 c99dc89e/ed9ccc45/18c3a959/adf2d774）；7D RED 例外维持。②1.4 立票批准+三裁示（不设 catch-all 以 §7.3 为准；深层 path Playwright 判据随 2.1 收口呈用户知悉；e2e 落 tests/e2e/）；1201 候裁②收编批准归 1.4 附属任务（三绿门：vitest 不退化+TSC+build）。③单写者制首轮收口闭环：6 件收口（trae 5+claude 1）落箱 192 行全验证通过移 sent/ 留对账；Claude 直写披露留痕免补投；机制正式运行。④STATE 82 行超限：S220–S229 迁出归档卷 2026-10-21-STATE-S220-S229.md，本条接续 58 行合规。库存 178 不变。
 下一单：Trae 2-05/06/07 自转验收；Claude 1.4 开工（cl-ack-1401）+收编同批；Codex 7D 后续自转；outbox 常态收口；本窗值班待命
+S235 | Trae线 | 2026-10-21 02:18 Asia/Shanghai（机器时钟实锚） | s230-inc2-ratify | 完成（2-06 表格页+详情抽屉范式交付，自转推进）
+- 口径核对：2-01~06 完成，2-07 收口票接续
+- 交付：TablePageLayout+DetailDrawer 插槽化范式（8 组件测试）；全量 259/259 零破坏；证据 INC2/2-06；报备 tr-done-206 已投 outbox
+- 边界：不变；零 UI 库依赖
+- 下一单：2-07 页签组织范式组件+增量 2 验收收口（§4.2 逐行对照表+退出标准 4 条核验）
+S235 | 监督员B | 2026-10-21 02:19 Asia/Shanghai（机器时钟实锚） | 下一单循环：收口 3 件+2-05 验收 PASS+7J 缺箱追补 | ①outbox 常态收口 3 件（cl-1401-start/cd-writer-remediation/tr-done-205）落箱 195 行全验证移 sent/；三线投递制全面生效（信箱零直写增量）。②2-05 AppShell 验收 PASS：实跑逐级 243→251 与报备精确吻合（当前 259 系 2-06 在飞测试先行 8 件）+TSC 零错+SHA 三件留痕 77577207/37462aae/77a611f6；2-06 放行。③Claude 1.4 开工回执收悉（s231 三裁示为执行依据，含收编附属同批）；Codex 披露直写三封留痕——cd-done-7J（7J=76 项调查）未实锚落箱，已令补投 outbox/codex/ 候收口验收。④STATE 二次迁移：S230–S233（Trae 2-01~2-04 已验收销项）迁出归档卷腾位，本条 S235 接续。库存 178 不变。
+下一单：Codex 7J 补投收口验收；Trae 2-06/07 验收；Claude cl-done-1401 验收（含收编三绿门）；outbox 常态收口；本窗值班待命
