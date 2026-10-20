@@ -1,0 +1,142 @@
+"""I18 数仓建模字典表 ORM（五步迁移第②步：旧 `common/models.py` 照抄，业务逻辑不重构）。
+
+迁移源实锚：`datara-backend/common/models.py:743-778`（`DwLayer` / `BizDomain` / `EngineType`）。
+列定义、类型、默认值与注释逐项照抄；仅基座由旧 `common.models.Base` 换成 `rebuild.common.db.Base`，
+使新后端自有元数据可独立建表，不依赖旧 Backend 模块。
+
+- `t_dw_layer`   数仓分层字典（ODS/DWD/DWS/ADS/DIM）
+- `t_biz_domain` 业务域字典（元数据/质量/权限模块复用）
+- `t_engine_type` 建模引擎字典（`ddl` 为方言标识，`xc` 为信创徽标）
+"""
+
+from datetime import datetime
+from typing import Optional
+
+from sqlalchemy import JSON, Boolean, DateTime, Index, Integer, String, Text, func
+from sqlalchemy.dialects.mysql import MEDIUMTEXT
+from sqlalchemy.orm import Mapped, mapped_column
+
+from rebuild.common.db import Base
+
+# `last_ddl` 旧侧为 MySQL `MEDIUMTEXT`（实锚 common/models.py:799）；
+# `with_variant` 保 MySQL DDL 忠实，同时让 SQLite 测试载体可编译。
+MediumText = Text().with_variant(MEDIUMTEXT, "mysql")
+
+
+def _now() -> datetime:
+    """本地时区当前时间（与旧侧 `common/models.now()` 同口径）。"""
+    return datetime.now()
+
+
+class DwLayerRecord(Base):
+    """数仓分层字典（ODS/DWD/DWS/ADS/DIM，种子见 `rebuild.model.dicts`）。"""
+
+    __tablename__ = "t_dw_layer"
+
+    code: Mapped[str] = mapped_column(String(16), primary_key=True, comment="分层编码")
+    name: Mapped[str] = mapped_column(String(64), comment="分层名称")
+    rule: Mapped[str] = mapped_column(String(255), default="", comment="命名规范文案")
+    color: Mapped[str] = mapped_column(String(16), default="#64748b", comment="统计卡主题色")
+    seq: Mapped[int] = mapped_column(Integer, default=0, comment="展示序")
+    create_time: Mapped[datetime] = mapped_column(DateTime, default=_now)
+    update_time: Mapped[datetime] = mapped_column(DateTime, default=_now, onupdate=_now)
+
+
+class BizDomainRecord(Base):
+    """业务域字典（元数据/质量/权限模块后续复用）。"""
+
+    __tablename__ = "t_biz_domain"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    name: Mapped[str] = mapped_column(String(64), unique=True, comment="业务域名称")
+    remark: Mapped[str] = mapped_column(String(255), default="", comment="说明")
+    create_time: Mapped[datetime] = mapped_column(DateTime, default=_now)
+    update_time: Mapped[datetime] = mapped_column(DateTime, default=_now, onupdate=_now)
+
+
+class EngineTypeRecord(Base):
+    """建模引擎字典（ddl 为方言标识，xc=信创徽标）。"""
+
+    __tablename__ = "t_engine_type"
+
+    name: Mapped[str] = mapped_column(String(64), primary_key=True, comment="引擎名（Apache Doris 等）")
+    ddl: Mapped[str] = mapped_column(String(32), comment="方言标识 mysql/doris/greatdb")
+    xc: Mapped[bool] = mapped_column(Boolean, default=False, comment="信创引擎")
+    create_time: Mapped[datetime] = mapped_column(DateTime, default=_now)
+    update_time: Mapped[datetime] = mapped_column(DateTime, default=_now, onupdate=_now)
+
+
+class DwModelRecord(Base):
+    """模型主表（状态机 draft→published→built(→produced)，version 为乐观锁基准）。
+
+    迁移源实锚：`datara-backend/common/models.py:782-808`（列定义/类型/默认值逐项照抄）。
+    """
+
+    __tablename__ = "t_dw_model"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    code: Mapped[str] = mapped_column(String(64), unique=True, comment="物理表名")
+    name: Mapped[str] = mapped_column(String(255), comment="中文名")
+    layer: Mapped[str] = mapped_column(String(16), comment="分层 → t_dw_layer.code")
+    type: Mapped[str] = mapped_column(String(16), default="明细表", comment="事实表/维度表/宽表/明细表")
+    biz_domain: Mapped[str] = mapped_column(String(64), default="", comment="业务域 → t_biz_domain.name")
+    engine: Mapped[str] = mapped_column(String(64), default="", comment="引擎 → t_engine_type.name")
+    ds_id: Mapped[Optional[int]] = mapped_column(Integer, nullable=True, comment="目标数据源 → t_data_source.id")
+    db_name: Mapped[Optional[str]] = mapped_column(String(64), nullable=True, comment="目标库")
+    security_level: Mapped[str] = mapped_column(String(16), default="内部", comment="密级（I19+ sec 接入）")
+    status: Mapped[str] = mapped_column(String(16), default="draft", comment="draft/published/built/produced")
+    version: Mapped[int] = mapped_column(Integer, default=1, comment="修订号（乐观锁基准）")
+    er_pos: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True, comment="ER 画布坐标 {x,y}（ER 批）")
+    last_ddl: Mapped[Optional[str]] = mapped_column(MediumText, nullable=True, comment="最近物理化 DDL 快照")
+    built_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True, comment="最近物理化时间")
+    built_by: Mapped[Optional[str]] = mapped_column(String(64), nullable=True, comment="最近物理化操作人")
+    owner: Mapped[str] = mapped_column(String(64), default="", comment="负责人")
+    remark: Mapped[str] = mapped_column(String(255), default="", comment="备注")
+    create_time: Mapped[datetime] = mapped_column(DateTime, default=_now)
+    update_time: Mapped[datetime] = mapped_column(DateTime, default=_now, onupdate=_now)
+
+
+class DwModelRelationRecord(Base):
+    """模型关系（ER 边 = 血缘声明；fields 存 JSON 文本，去重由代码比较）。
+
+    迁移源实锚：`datara-backend/common/models.py:833-854`（A6-4/A6-5 ER 读写共用）。
+    """
+
+    __tablename__ = "t_dw_model_relation"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    src_model_id: Mapped[int] = mapped_column(Integer, comment="上游模型 id")
+    tgt_model_id: Mapped[int] = mapped_column(Integer, comment="下游模型 id")
+    rel_type: Mapped[str] = mapped_column(String(8), default="1:N", comment="1:1/1:N/N:N")
+    src_fields: Mapped[str] = mapped_column(String(512), default="[]", comment="上游字段名 JSON 数组文本")
+    tgt_fields: Mapped[str] = mapped_column(String(512), default="[]", comment="下游字段名 JSON 数组文本")
+    join_desc: Mapped[str] = mapped_column(String(255), default="", comment="关联说明")
+    created_by: Mapped[str] = mapped_column(String(64), default="", comment="创建人")
+    create_time: Mapped[datetime] = mapped_column(DateTime, default=_now)
+    update_time: Mapped[datetime] = mapped_column(DateTime, default=_now, onupdate=_now)
+
+    # 去重由应用层代码比较完成（旧侧同注）：src_fields/tgt_fields 为 JSON 文本、长度不固定，
+    # MySQL utf8mb4 下组合唯一键超 InnoDB 3072 字节单索引上限，故不建 DB 级唯一约束。
+    __table_args__ = (
+        Index("idx_dwrel_src", "src_model_id"),
+        Index("idx_dwrel_tgt", "tgt_model_id"),
+    )
+
+
+# 建表清单：`Base.metadata.create_all` 按本元组逐域装配（见 `rebuild/api/app.py`）。
+MODEL_TABLES = (
+    DwLayerRecord.__table__,
+    BizDomainRecord.__table__,
+    EngineTypeRecord.__table__,
+    DwModelRecord.__table__,
+    DwModelRelationRecord.__table__,
+)
+
+
+def dict_counts(session) -> dict[str, int]:
+    """三字典表行数（诊断/自测用；空库返回全 0，不抛错）。"""
+    return {
+        "layers": session.query(func.count()).select_from(DwLayerRecord).scalar() or 0,
+        "domains": session.query(func.count()).select_from(BizDomainRecord).scalar() or 0,
+        "engines": session.query(func.count()).select_from(EngineTypeRecord).scalar() or 0,
+    }

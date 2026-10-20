@@ -19,6 +19,7 @@ from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
 from rebuild.ai_bridge import AiBridgePorts, build_ai_router, build_default_bridge_ports
+from rebuild.component_spec import build_component_spec_router
 from rebuild.common.db import Base
 from rebuild.sql_ide.audit import SqlIdeAuditRecord, build_audit_writer
 from rebuild.sql_ide.export_service import SqlIdeExportAuditRecord, SqlIdeExportJobRecord
@@ -77,6 +78,12 @@ from rebuild.workflow.models import (
     WorkflowVersionRecord,
 )
 from rebuild.trial.models import WorkflowDraftSnapshotRecord
+from rebuild.sshnode import build_sshnode_router
+from rebuild.sshnode.models import SshNodeRecord
+from rebuild.scheduling import build_schedule_router
+from rebuild.model.api import build_model_router
+from rebuild.model.dicts import seed_model_dicts
+from rebuild.model.models import MODEL_TABLES
 
 logger = logging.getLogger(__name__)
 
@@ -212,6 +219,33 @@ def create_app(
                     if column not in columns:
                         connection.execute(text(f"ALTER TABLE rebuild_user ADD COLUMN {column} DATETIME NULL"))
 
+    def ensure_schedule_schema() -> None:
+        """Add RT-01~04 schedule policy columns to an existing rebuild DB."""
+        inspector = inspect(engine)
+        if "workflow_schedule" not in inspector.get_table_names():
+            return
+        existing = {column["name"] for column in inspector.get_columns("workflow_schedule")}
+        ddl = {
+            "name": "VARCHAR(128) NOT NULL DEFAULT '默认定时'",
+            "priority": "INTEGER NOT NULL DEFAULT 3",
+            "worker_group": "VARCHAR(128) NULL",
+            "fail_retry_times": "INTEGER NOT NULL DEFAULT 0",
+            "fail_retry_interval": "INTEGER NOT NULL DEFAULT 60",
+            "misfire_policy": "VARCHAR(24) NOT NULL DEFAULT 'FIRE_ONCE'",
+            "concurrency_policy": "VARCHAR(16) NOT NULL DEFAULT 'ALLOW'",
+            "max_running_instances": "INTEGER NOT NULL DEFAULT 1",
+            "timezone": "VARCHAR(64) NOT NULL DEFAULT 'Asia/Shanghai'",
+        }
+        with engine.begin() as connection:
+            for column, definition in ddl.items():
+                if column not in existing:
+                    connection.execute(text(f"ALTER TABLE workflow_schedule ADD COLUMN {column} {definition}"))
+
+    def ensure_model_schema() -> None:
+        """I18 dict seeds: t_dw_layer/t_biz_domain/t_engine_type (idempotent, ported from common/db.py)."""
+        with session_factory() as session:
+            seed_model_dicts(session)
+
     @asynccontextmanager
     async def lifespan(app: FastAPI):
         # I1 core tables only. R3 governance DDL is applied exclusively by its
@@ -255,9 +289,13 @@ def create_app(
                 StreamMetricSnapshotRecord.__table__,
                 StreamFailureEventRecord.__table__,
                 StreamRecoveryEventRecord.__table__,
+                SshNodeRecord.__table__,
+                *MODEL_TABLES,
             ],
         )
         ensure_i1_schema()
+        ensure_schedule_schema()
+        ensure_model_schema()
         yield
         datasource_engines.dispose_all()
         engine.dispose()
@@ -896,6 +934,10 @@ def create_app(
         )
     )
     app.include_router(
+        build_component_spec_router(session_factory, token_service, active_tokens),
+        prefix="/api/v1/rebuild/components",
+    )
+    app.include_router(
         build_variables_router(session_factory, token_service, active_tokens, project_permission_error),
         prefix="/api/v1/rebuild/variables",
     )
@@ -914,6 +956,11 @@ def create_app(
     app.include_router(
         build_workflow_router(session_factory, token_service, active_tokens, project_permission_error),
         prefix="/api/v1/rebuild/workflows",
+    )
+    app.include_router(
+        build_schedule_router(session_factory, token_service, active_tokens, project_permission_error),
+        prefix="/api/v1/rebuild",
+        tags=["rebuild-schedule"],
     )
     from rebuild.trial.api import build_trial_router
 
@@ -935,6 +982,18 @@ def create_app(
     app.include_router(
         build_stream_router(session_factory, token_service, active_tokens),
         prefix="/api/v1/rebuild/stream",
+    )
+    app.include_router(
+        build_sshnode_router(session_factory, token_service, active_tokens),
+        prefix="/api/v1/rebuild/ssh-nodes",
+    )
+    # I18 P1 model-dictionary migration (WBS 17.2): router mounted at the shared
+    # /api/v1/rebuild prefix so in-domain paths keep their legacy relative shape
+    # (A6-1 → /api/v1/rebuild/model-dicts, A6-2 → /api/v1/rebuild/models).
+    app.include_router(
+        build_model_router(session_factory, token_service, active_tokens),
+        prefix="/api/v1/rebuild",
+        tags=["rebuild-model"],
     )
     # P2-3 R5-B rb domain API: #22/#23 bind the real snapshot services;
     # #24/#25 services are stage-D undelivered, the facade fails closed (502).
