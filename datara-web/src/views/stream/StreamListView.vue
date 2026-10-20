@@ -5,7 +5,7 @@
  * 作业表格（关键字 + 状态筛选，吞吐/延迟、Checkpoint 列）；顶部工具栏：新建流作业 + 资源概览；
  * 行操作：统一工作流编排 / 详情(/stream/detail/:id) / 暂停·恢复·启动 / 停止。
  * 下方窗口计算、时间语义参考卡与核心能力说明（dataStore.windows / timeSemantics）。
- * F56d 双态：real 走 streamApi —— 列表 listStreamJobs()，行字段映射 StreamJobRow（引擎无的字段
+ * F56d 双态：real 走 streamApi —— 列表查询已换绑 rebuild/streamApi（FE-10），行字段映射 RebuildStreamJobRow（引擎无的字段
  * 显示 '-'，status 原样展示）；启停接 startStreamJob/stopStreamJob（start 用 docId，stop 用 job id）；
  * 详情路由参数 = job.id（数字，详情页 GET /stream-jobs/{id} 同口径）；新建为 mock 专有 real 下禁用。
  */
@@ -13,7 +13,8 @@ import { ref, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { dataStore, ST } from '../../services/mock/dataStore'
-import { isMock, listStreamJobs, startStreamJob, stopStreamJob, deleteStreamJob, createDefinition, STREAM_TAG } from '../../services'
+import { isMock, startStreamJob, stopStreamJob, deleteStreamJob, createDefinition, STREAM_TAG } from '../../services'
+import { createStreamContract, type StreamJobRow as RebuildStreamJobRow } from '../../services/rebuild/streamApi'
 import ListFilterPanel from '../../components/ListFilterPanel.vue'
 import type { DbUser, StreamJob, StreamWindow, TimeSemantics } from '../../services/types'
 
@@ -66,32 +67,34 @@ async function reload() {
     rows.value = [...((await dataStore.list<StreamJob>('streamJobs')) ?? [])]
     return
   }
-  /* F56d real：t_stream_job + Redis 指标镜像合并行 → 表格行模型；
-     引擎指标键（worker/stream/engine.py）：ratePerSec/totalIn/totalOut（速率/累计输入/累计输出）；
-     引擎无的数据链路/Checkpoint/并行度等字段显示 '-'；status 原样展示 */
+  /* FE-10 换绑：列表查询走 rebuild/streamApi（I8 只读观摩契约）。
+     rebuild StreamJobRow = { jobId, kind, state, startedAt }，
+     映射到视图 Row = StreamJob & { docId? } 兼容展示。
+     写操作（start/stop/delete）仍走旧 streamApi（rebuild 契约为只读，无写方法）。 */
   try {
-    const jobs = await listStreamJobs({ pageSize: 200 })
+    const contract = createStreamContract()
+    const now = Date.now()
+    const jobs: RebuildStreamJobRow[] = await contract.listStreamJobs({
+      from: new Date(now - 7 * 24 * 60 * 60 * 1000).toISOString(),
+      to: new Date(now).toISOString(),
+      offset: 0,
+      limit: 200,
+    })
     rows.value = jobs.map((j) => ({
-      id: String(j.id),
-      docId: j.docId,
-      name: j.name,
-      type: 'Flink',
+      id: j.jobId,
+      docId: j.jobId,
+      name: j.jobId,
+      type: j.kind || 'stream',
       source: '-',
       sink: '-',
-      status: j.status,
+      status: j.state,
       checkpoint: { interval: '-', mode: '-', backend: '-', lastOk: '-', successRate: '-' },
-      metrics: {
-        tps: Number(j.metrics?.ratePerSec ?? 0) || 0,
-        latency: '-',
-        inTotal: Number(j.metrics?.totalIn ?? 0) || 0,
-        outTotal: Number(j.metrics?.totalOut ?? 0) || 0,
-        watermark: '-',
-      },
+      metrics: { tps: 0, latency: '-', inTotal: 0, outTotal: 0, watermark: '-' },
       sql: '',
       owner: '-',
       parallelism: 0,
       uptime: '-',
-      createdAt: j.updatedAt,
+      createdAt: j.startedAt ?? '',
     }))
   } catch (e) {
     ElMessage.error('流任务列表加载失败：' + errMsg(e) + '（检查后端服务与登录态）')

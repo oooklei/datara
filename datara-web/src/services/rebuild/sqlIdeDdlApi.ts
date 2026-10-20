@@ -3,6 +3,8 @@
  * 语义源自 docs/increments/R5-IDE-开始前影响分析.md §4 与 plan I6（rebuild/sql_ide/ddl.py、ddl_policy.py 草案）。
  * RED 约定与 R5-A 相同：A5 接入前统一抛 R5B_BACKEND_NOT_WIRED，不发任何真实请求。
  * 红线：确认/执行/回滚全部需要用户人工闸（分工规则 5）——契约层不提供绕过通道。
+ * FE-07b 拆分登记：DDL 八步闸（编辑→管控结果→影响预览→确认闸 confirmPhrase→执行→回滚记录）。
+ * 前置：R5-B D 阶段解禁（本契约转 GREEN）；InstanceBar/GlobalParamDrawer 保留去向裁定待 D 阶段交付后。
  */
 
 /* ---------- DDL 对象与校验 ---------- */

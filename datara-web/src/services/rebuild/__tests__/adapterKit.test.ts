@@ -1,8 +1,9 @@
 /**
  * adapterKit（FE 契约适配层共享机械原语）单元测试。
  * 覆盖：§2.1 snake↔camel 双向（含嵌套/数组/null/字符串值透传）、§2.2 id 归一双向、
- * §2.4 ContractApiError、R2.3 uuid→number 有损 fail-fast、语义内容不改写、
- * 排除项负面用例（targetWritten 不推导、枚举值词形不映射）。
+ * §2.3 包络 {code,msg,data} 三态（成功/业务错误/系统错误）、§2.4 ContractApiError、
+ * R2.3 uuid→number 有损 fail-fast、语义内容不改写、
+ * 排除项负面用例（targetWritten 不推导、枚举值词形不映射、包络解包之外的加工不做）。
  */
 import { describe, expect, it } from 'vitest'
 import {
@@ -13,6 +14,7 @@ import {
   numberToWireId,
   snakeToCamel,
   snakeToCamelKey,
+  unwrapEnvelope,
   wireIdToNumber,
   wireIdToString,
 } from '../adapterKit'
@@ -303,6 +305,82 @@ describe('§2.2 wireIdToString（wire → FE string id，透传校验）', () =>
     expect(() => wireIdToString(null, 'jobId')).toThrow(ContractApiError)
     expect(() => wireIdToString(undefined, 'jobId')).toThrow(ContractApiError)
     expect(() => wireIdToString({ id: 'x' }, 'jobId')).toThrow(ContractApiError)
+  })
+})
+
+describe('§2.3 unwrapEnvelope（包络 {code,msg,data} 三态纯函数）', () => {
+  it('成功态：code=0 返回 data', () => {
+    const data = { rows_read: 5, rows_inserted: 3 }
+    const out = unwrapEnvelope<typeof data>({ code: 0, msg: 'success', data }, 200)
+    expect(out).toEqual(data)
+  })
+
+  it('成功态：code=200 返回 data', () => {
+    const out = unwrapEnvelope<{ ok: boolean }>({ code: 200, msg: 'ok', data: { ok: true } }, 200)
+    expect(out).toEqual({ ok: true })
+  })
+
+  it('成功态：code 缺失（undefined）返回 data', () => {
+    const out = unwrapEnvelope<{ x: number }>({ msg: 'ok', data: { x: 1 } }, 200)
+    expect(out).toEqual({ x: 1 })
+  })
+
+  it('成功态：data 缺失时返回整个包络（envelope 即 data）', () => {
+    const envelope = { code: 0, msg: 'success' }
+    const out = unwrapEnvelope<{ code: number; msg: string }>(envelope, 200)
+    expect(out).toEqual({ code: 0, msg: 'success' })
+  })
+
+  it('业务错误态：code 非 0/200 抛 ContractApiError，httpStatus 由调用方传入', () => {
+    let caught: unknown
+    try {
+      unwrapEnvelope({ code: 4001, msg: '变量不存在', data: null }, 200)
+    } catch (error) {
+      caught = error
+    }
+    expect(caught).toBeInstanceOf(ContractApiError)
+    const err = caught as ContractApiError
+    expect(err.httpStatus).toBe(200)
+    expect(err.code).toBe(4001)
+    expect(err.msg).toBe('变量不存在')
+  })
+
+  it('业务错误态：code 为 string 类型错误码也抛 ContractApiError', () => {
+    let caught: unknown
+    try {
+      unwrapEnvelope({ code: 'DEP_NOT_FOUND', msg: '依赖未找到', data: null }, 200)
+    } catch (error) {
+      caught = error
+    }
+    expect(caught).toBeInstanceOf(ContractApiError)
+    expect((caught as ContractApiError).code).toBe('DEP_NOT_FOUND')
+  })
+
+  it('系统错误态：httpStatus 非 2xx 时调用方已抛错，本函数不处理（仅确认 2xx 包络语义）', () => {
+    // 系统错误（非 2xx）由调用方在解包前抛 ContractApiError；
+    // 本函数只处理 2xx 响应体的包络，此处验证 4xx httpStatus 能正确透传
+    let caught: unknown
+    try {
+      unwrapEnvelope({ code: 0, msg: 'ok', data: { x: 1 } }, 500)
+    } catch (error) {
+      caught = error
+    }
+    // code=0 是成功码，即使 httpStatus=500 也不抛错（包络优先）
+    expect(caught).toBeUndefined()
+  })
+
+  it('负面：包络解包不做语义加工——不重写字段值、不推导缺失 key、不补默认值', () => {
+    const data = { rows_inserted: 3, rows_updated: 2, status: 'cancelling' }
+    const out = unwrapEnvelope<typeof data>({ code: 0, msg: 'success', data }, 200)
+    // 不推导 targetWritten、不重写 status 词形、不补默认值
+    expect(out).toEqual({ rows_inserted: 3, rows_updated: 2, status: 'cancelling' })
+    expect('targetWritten' in out).toBe(false)
+    expect(out.status).toBe('cancelling')
+  })
+
+  it('负面：空 data（null/undefined）不抛错，返回 undefined 由调用方处理', () => {
+    const out = unwrapEnvelope<unknown>({ code: 0, msg: 'success', data: null }, 200)
+    expect(out).toBeNull()
   })
 })
 

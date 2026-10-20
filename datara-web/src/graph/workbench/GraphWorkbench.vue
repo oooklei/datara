@@ -56,6 +56,7 @@ import ErrorPanel from './panels/ErrorPanel.vue' // Task 10（§3.3）：错误�
 import ShortcutHelp from './panels/ShortcutHelp.vue' // Task 11（§3.5）：快捷键帮助浮窗（`?` 唤起）
 import LogPanel from './panels/LogPanel.vue'
 import WfVarPanel from './panels/WfVarPanel.vue'
+import WfDependPanel from './panels/WfDependPanel.vue'
 import AiPanel from './panels/AiPanel.vue'
 import VersionPanel from './panels/VersionPanel.vue'
 import RunDialog from './RunDialog.vue'
@@ -178,17 +179,18 @@ function stopResize() {
   window.removeEventListener('mousemove', onResizeMove)
   window.removeEventListener('mouseup', stopResize)
 }
-/** N15 右侧边窗双 Tab：属性(Inspector) / 变量（日志已按 I11 移入「更多」浮窗，LogPanel 仍由更多菜单复用） */
-const rightTab = ref<'inspector' | 'vars'>('inspector')
-const rightTabs = computed<{ k: 'inspector' | 'vars'; label: string; icon: string }[]>(() => {
-  const tabs: { k: 'inspector' | 'vars'; label: string; icon: string }[] = [
+/** N15 右侧边窗三 Tab：属性(Inspector) / 变量 / 依赖（日志已按 I11 移入「更多」浮窗，LogPanel 仍由更多菜单复用） */
+const rightTab = ref<'inspector' | 'vars' | 'depend'>('inspector')
+const rightTabs = computed<{ k: 'inspector' | 'vars' | 'depend'; label: string; icon: string }[]>(() => {
+  const tabs: { k: 'inspector' | 'vars' | 'depend'; label: string; icon: string }[] = [
     { k: 'inspector', label: '属性', icon: '☰' },
   ]
   if (!props.hideVars) tabs.push({ k: 'vars', label: '变量', icon: '$' })
+  if (!props.hideVars) tabs.push({ k: 'depend', label: '依赖', icon: '⛓' })
   return tabs
 })
 watch(() => props.hideVars, (hide) => {
-  if (hide && rightTab.value === 'vars') rightTab.value = 'inspector'
+  if (hide && (rightTab.value === 'vars' || rightTab.value === 'depend')) rightTab.value = 'inspector'
 }, { immediate: true })
 /** N7 类型过滤（视图态，不落 doc） */
 const hiddenTypes = ref<Set<string>>(new Set())
@@ -401,7 +403,7 @@ onMounted(async () => {
     const p = JSON.parse(localStorage.getItem('datara.wb.panels') ?? '{}') as { left?: boolean; right?: boolean; rightTab?: string; leftW?: number; rightW?: number }
     if (typeof p.left === 'boolean') leftOpen.value = p.left
     if (typeof p.right === 'boolean') rightOpen.value = p.right
-    if (p.rightTab === 'inspector' || (!props.hideVars && p.rightTab === 'vars')) rightTab.value = p.rightTab
+    if (p.rightTab === 'inspector' || (!props.hideVars && (p.rightTab === 'vars' || p.rightTab === 'depend'))) rightTab.value = p.rightTab
     if (typeof p.leftW === 'number' && p.leftW >= PANEL_MIN_W && p.leftW <= PANEL_MAX_W) leftWidth.value = p.leftW
     if (typeof p.rightW === 'number' && p.rightW >= PANEL_MIN_W && p.rightW <= PANEL_MAX_W) rightWidth.value = p.rightW
   } catch { /* 忽略隐私模式 */ }
@@ -516,7 +518,7 @@ function restoreSnap() {
     if (!s || s.docId !== props.docId) return
     if (typeof s.panels?.left === 'boolean') leftOpen.value = s.panels.left
     if (typeof s.panels?.right === 'boolean') rightOpen.value = s.panels.right
-    if (s.panels?.rightTab === 'inspector' || (!props.hideVars && s.panels?.rightTab === 'vars')) rightTab.value = s.panels.rightTab
+    if (s.panels?.rightTab === 'inspector' || (!props.hideVars && (s.panels?.rightTab === 'vars' || s.panels?.rightTab === 'depend'))) rightTab.value = s.panels.rightTab
     if (typeof s.panels?.leftW === 'number' && s.panels.leftW >= PANEL_MIN_W && s.panels.leftW <= PANEL_MAX_W) leftWidth.value = s.panels.leftW
     if (typeof s.panels?.rightW === 'number' && s.panels.rightW >= PANEL_MIN_W && s.panels.rightW <= PANEL_MAX_W) rightWidth.value = s.panels.rightW
     if (s.viewport && Number.isFinite(s.viewport.x) && Number.isFinite(s.viewport.y) && Number.isFinite(s.viewport.zoom)) {
@@ -2079,6 +2081,7 @@ function ctxLayout() { onLayout(); closeCtx() }
         </div>
         <Inspector v-show="rightTab === 'inspector'" :node="selectedNode" :profile="profile" :node-errors="selectedNodeErrors" :doc-id="docId" @delete="deleteOne" />
         <div v-if="!hideVars && rightTab === 'vars'" class="wb-right-body"><WfVarPanel :doc-id="docId" /></div>
+        <div v-if="!hideVars && rightTab === 'depend'" class="wb-right-body"><WfDependPanel :doc-id="docId" /></div>
       </div>
     </div>
 

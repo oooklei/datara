@@ -1,25 +1,26 @@
 <!--
-  R4-DEPENDENCY：依赖组件表单验证页（RED/原型态）。
+  R4-DEPENDENCY：依赖组件表单验证页（GREEN 已接线，FE-01 修订 2026-10-19）。
   权威范围：docs/increments/2026-10-16-纠偏重构实施计划-执行附录.md §6 R4 行
   + 客户要求 #5（参考 DolphinScheduler：选工作流/任务、周期/日期范围、AND/OR 条件、
   执行前预览最终表达式）+ 纠偏设计 §5.3（执行前显示最终依赖表达式和解析结果）。
   边界：独立验证页，不进正式菜单；服务端契约全部经 services/rebuild/dependencyApi
-  （后端接入前抛 R4_DEPENDENCY_NOT_WIRED，UI 统一状态栏提示）；表达式草稿为本地纯前端逻辑。
+  （P1 冻结词形 R4_DEPENDENCY_CONTRACT_METHODS，5 方法接线，包络 {code,msg,data}）；
+  表达式草稿为本地纯前端逻辑。横幅状态词表见 services/rebuild/bannerStatus.ts。
 -->
 <template>
   <div class="r4-dep-page">
     <el-alert
-      type="warning"
+      :type="bannerType"
       :closable="false"
       show-icon
-      data-testid="r4-dependency-red-banner"
-      title="R4 DEPENDENCY RED 骨架（原型态）— rebuild/dependency 后端契约未接入，所有服务端 I/O 返回 R4_DEPENDENCY_NOT_WIRED"
+      data-testid="r4-dependency-green-banner"
+      :title="bannerTitle"
     />
 
     <el-descriptions :column="3" size="small" border class="r4-dep-context">
       <el-descriptions-item label="客户要求">#5 依赖表单参考 DolphinScheduler</el-descriptions-item>
       <el-descriptions-item label="判定面">满足 / 失败 / 超时 / 等待</el-descriptions-item>
-      <el-descriptions-item label="契约方法">{{ contractMethodCount }} 项（全部未接线）</el-descriptions-item>
+      <el-descriptions-item label="契约方法">{{ contractMethodCount }} 项（已接线）</el-descriptions-item>
     </el-descriptions>
 
     <!-- ① 依赖目标（本工作流/任务） -->
@@ -135,11 +136,19 @@ import {
   type DependencyCondition,
   type DependencyGroup,
 } from '../../../../services/rebuild/dependencyApi'
+import { bannerAlertType, bannerTitleFor } from '../../../../services/rebuild/bannerStatus'
 
 defineOptions({ name: 'DependencyFormValidationView' })
 
 const contract = createDependencyContract()
 const contractMethodCount = R4_DEPENDENCY_CONTRACT_METHODS.length
+
+/* 横幅状态词表（FE-01 单一事实源）：GREEN 已接线 */
+const bannerTitle = bannerTitleFor(
+  { code: 'R4', contractName: 'dependency', methodCount: contractMethodCount },
+  'GREEN',
+)
+const bannerType = bannerAlertType('GREEN')
 
 const form = reactive({ projectId: 1, workflowId: 1, workflowVersion: 1, taskId: '' })
 const groups = ref<DependencyGroup[]>([])

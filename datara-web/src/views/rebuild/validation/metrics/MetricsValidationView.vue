@@ -1,25 +1,26 @@
 <!--
-  R7：统计/质量/血缘报告验证页（契约已接线，R7 批次）。
+  R7：统计/质量/血缘报告验证页（GREEN 已接线，FE-01 修订 2026-10-19）。
   权威范围：plan I9（docs/superpowers/plans/2026-10-14-datara-platform-rebuild.md）
   + docs/increments/I7-I9-前端消费面分析.md §1/§3。
   边界：独立验证页，不进正式菜单（I11 融合）；契约全部经 services/rebuild/metricsApi
-  （P1 冻结词形 R7_CONTRACT_METHODS，{code,msg,data} 包络沿 R2 固化）；GREEN 标记待独立评审。
+  （P1 冻结词形 R7_CONTRACT_METHODS，6 方法接线，{code,msg,data} 包络沿 R2 固化）；
   legacy mock 页（IndBoardView/QcReportHubView）布局可参考，但其 mock 数据结构不进本契约。
+  横幅状态词表见 services/rebuild/bannerStatus.ts。
 -->
 <template>
   <div class="i9-page">
     <el-alert
-      type="info"
+      :type="bannerType"
       :closable="false"
       show-icon
-      data-testid="i9-red-banner"
-      title="R7 契约已接线（rebuild/metrics P1 冻结词形）— I/O 经统一包络；GREEN 标记待独立评审"
+      data-testid="r7-green-banner"
+      :title="bannerTitle"
     />
 
     <el-descriptions :column="3" size="small" border class="i9-context">
       <el-descriptions-item label="统计表面">workflow_result_stat / task_instance_data_stat / task_data_stat_segment / task_data_error_sample</el-descriptions-item>
       <el-descriptions-item label="口径透传">unknown（known=false）/ estimated 标记</el-descriptions-item>
-      <el-descriptions-item label="契约方法">{{ contractMethodCount }} 项（已接线，待独立评审）</el-descriptions-item>
+      <el-descriptions-item label="契约方法">{{ contractMethodCount }} 项（已接线）</el-descriptions-item>
     </el-descriptions>
 
     <!-- R7 深化：时间窗筛选（四表查询共用，真实可编辑） -->
@@ -150,12 +151,20 @@ import {
   type TimeWindowQuery,
   type WorkflowResultStatRow,
 } from '../../../../services/rebuild/metricsApi'
+import { bannerAlertType, bannerTitleFor } from '../../../../services/rebuild/bannerStatus'
 
 defineOptions({ name: 'MetricsValidationView' })
 
 const router = useRouter()
 const contract = createMetricsContract()
 const contractMethodCount = R7_CONTRACT_METHODS.length
+
+/* 横幅状态词表（FE-01 单一事实源）：GREEN 已接线 */
+const bannerTitle = bannerTitleFor(
+  { code: 'R7', contractName: 'metrics', methodCount: contractMethodCount },
+  'GREEN',
+)
+const bannerType = bannerAlertType('GREEN')
 
 /* 时间窗筛选（R7 深化：真实可编辑，四表 + 质量链/血缘共用） */
 const queryWindow = reactive<TimeWindowQuery>({
@@ -212,22 +221,23 @@ const statusText = ref('待操作')
 
 function onQueryStats(which: 'workflow' | 'instance' | 'segment' | 'error') {
   return guard(async () => {
-    if (which === 'workflow') workflowStats.value = await contract.queryWorkflowResultStats(queryWindow)
-    else if (which === 'instance') instanceStats.value = await contract.queryTaskInstanceDataStats(queryWindow)
-    else if (which === 'segment') segmentStats.value = await contract.queryTaskDataStatSegments(queryWindow)
-    else errorSamples.value = await contract.queryTaskDataErrorSamples(queryWindow)
+    const projectId = 1
+    if (which === 'workflow') workflowStats.value = await contract.queryWorkflowResultStats(projectId, queryWindow)
+    else if (which === 'instance') instanceStats.value = await contract.queryTaskInstanceDataStats(projectId, queryWindow)
+    else if (which === 'segment') segmentStats.value = await contract.queryTaskDataStatSegments(projectId, queryWindow)
+    else errorSamples.value = await contract.queryTaskDataErrorSamples(projectId, queryWindow)
   }, '加载统计')
 }
 
 function onQueryQuality() {
   return guard(async () => {
-    qualityLinks.value = await contract.listQualityRuleLinks(queryWindow)
+    qualityLinks.value = await contract.listQualityRuleLinks(1, queryWindow)
   }, '加载质量规则结果链')
 }
 
 function onQueryLineage() {
   return guard(async () => {
-    qualityLinks.value = await contract.listLineageWritebacks(queryWindow, 'all')
+    qualityLinks.value = await contract.listLineageWritebacks(1, queryWindow, 'all')
   }, '加载血缘回写')
 }
 </script>

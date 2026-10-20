@@ -1,11 +1,22 @@
 <!--
   SQL IDE readonly validation view connected through the A5 contract service.
+  GREEN 已接线（FE-01 修订 2026-10-19）。
   权威范围：plan I5（docs/superpowers/plans/2026-10-14-datara-platform-rebuild.md）
   + docs/increments/R5-IDE-开始前影响分析.md §3/§6。
-  边界：独立验证页，不改造正式 /ide SPA；请求经 services/rebuild/sqlIdeApi。
+  边界：独立验证页，不改造正式 /ide SPA；请求经 services/rebuild/sqlIdeApi
+  （P1 冻结词形 R5A_CONTRACT_METHODS，16 方法接线，包络 {code,msg,data}）；
+  横幅状态词表见 services/rebuild/bannerStatus.ts。
 -->
 <template>
   <div class="r5a-page">
+    <el-alert
+      :type="bannerType"
+      :closable="false"
+      show-icon
+      data-testid="r5a-green-banner"
+      :title="bannerTitle"
+    />
+
     <div class="r5a-connection">
       <el-input-number v-model="datasourceId" :min="1" controls-position="right" aria-label="数据源 ID" />
       <el-select v-model="databaseName" placeholder="选择数据库" :loading="loadingDatabases">
@@ -119,6 +130,14 @@ import MetaTree from './components/MetaTree.vue'
 import SqlEditor from './components/SqlEditor.vue'
 import ResultGrid from './components/ResultGrid.vue'
 import HistoryDrawer from './components/HistoryDrawer.vue'
+import { bannerAlertType, bannerTitleFor } from '../../../../services/rebuild/bannerStatus'
+
+/* 横幅状态词表（FE-01 单一事实源）：GREEN 已接线 */
+const bannerTitle = bannerTitleFor(
+  { code: 'R5-A', contractName: 'sql_ide', methodCount: R5A_CONTRACT_METHODS.length },
+  'GREEN',
+)
+const bannerType = bannerAlertType('GREEN')
 
 defineOptions({ name: 'SqlIdeReadonlyView' })
 

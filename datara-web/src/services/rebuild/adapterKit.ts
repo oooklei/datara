@@ -6,13 +6,14 @@
  * plan/run 字符串 ID 的归一化放 FE service adapter 层；RED 契约签名保持不动）：
  *   - §2.1 命名映射：snake_case ↔ camelCase 深度递归（仅键名级；字符串值一律透传，R1.3）
  *   - §2.2 id 归一：wire ↔ FE number/string 的无损转换与校验（R2.1–R2.4；uuid→number 有损 fail-fast，R2.3）
+ *   - §2.3 包络解包：{code,msg,data} 三态纯函数（GREEN 接线期 9 契约层实证固化，FE-01 收口确认）
  *   - §2.4 归一错误类型：ContractApiError（R4.1；R2.3 有损 id 转换抛错的统一载体）
  *
  * 明确不做（语义加工负面清单，设计文档 §1.3）：
  *   - 不做计数推导（targetWritten = inserted + updated 等，挂 R4-SYNC Q7，待冻结确认）
  *   - 不做枚举值词形映射（Q9 已裁定并以 FE 契约承接：SyncRunStatus 采用 BE 权威词形
  *     cancelling，2026-10-16 用户授权对齐；adapter 对任意词形原样透传，不做纠偏改写）
- *   - 不做成功包络解包/错误码改写（§2.3 包络是否全域统一待 Codex，开放问题 1，属 GREEN 接线期条目）
+ *   - 不做包络解包之外的语义加工（不重写字段值、不推导缺失 key、不补默认值）
  *   - 不做 DTO 字段登记表（R1.1 每 API 文件映射表属 GREEN 接线期，与契约类型同文件演进）
  *   - 不接线任何哨兵/页面；不含 fetch。
  *
@@ -20,6 +21,33 @@
  * 非 plain object（Date/Map/Set/FormData 等类实例）整体透传、不遍历其内部键。
  * 未发生任何变化的子树按原引用返回（避免不必要的对象创建）；调用方不得原地修改返回值。
  */
+
+/* ---------- §2.3 包络解包：{code,msg,data} 三态纯函数（FE-01 收口） ---------- */
+
+/** 后端成功包络（rebuild 域全域实证形态：{code:0|200, msg, data}） */
+export interface ApiEnvelope {
+  code?: number | string
+  msg?: string
+  data?: unknown
+}
+
+/**
+ * 包络解包纯函数（§2.3 冻结结论的共享原语；不含 fetch，仅处理已解析的包络对象）。
+ * 三态语义（GREEN 接线期 9 契约层实证固化，全域统一）：
+ *  - 成功：code 为 0 / 200 / '0' / '200' 或 undefined → 返回 data（data 缺失时返回整个包络）；
+ *  - 业务错误：code 存在且非成功码 → 抛 ContractApiError（httpStatus 由调用方从 Response 获取后传入）；
+ *  - 系统错误：非 2xx HTTP → 调用方在解包前已抛 ContractApiError（本函数只处理 2xx 响应体的包络）。
+ * 本函数不做包络解包之外的语义加工：不重写字段值、不推导缺失 key、不补默认值。
+ */
+export function unwrapEnvelope<T>(envelope: ApiEnvelope, httpStatus: number): T {
+  const code = envelope.code
+  const isSuccess = code === undefined || code === 0 || code === 200 || code === '0' || code === '200'
+  if (!isSuccess) {
+    throw new ContractApiError({ httpStatus, code, msg: envelope.msg ?? '', raw: envelope })
+  }
+  // data 键存在时返回 data（即使是 null）；不存在时返回整个包络
+  return ('data' in envelope ? envelope.data : envelope) as T
+}
 
 /* ---------- §2.4 R4.1 归一错误类型 ---------- */
 

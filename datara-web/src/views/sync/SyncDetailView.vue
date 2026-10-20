@@ -10,6 +10,7 @@ import { ref, computed, watch, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { listSyncTasks, listSyncInstances } from '../../services/syncApi'
 import type { SyncTaskRow, SyncInstanceRow } from '../../services/syncApi'
+import SyncFormValidationView from '../rebuild/validation/sync-form/SyncFormValidationView.vue'
 
 const route = useRoute()
 const router = useRouter()
@@ -135,6 +136,10 @@ function goEdit() {
         <span class="col-sub">{{ pageNo }} / {{ totalPages }}（共 {{ total }} 条）</span>
         <button class="op-btn" :disabled="pageNo >= totalPages" @click="goPage(pageNo + 1)">下一页</button>
       </div>
+      <section class="component-form">
+        <div class="sec-head" style="margin:14px 0 8px">同步组件配置</div>
+        <SyncFormValidationView />
+      </section>
     </div>
   </div>
 </template>

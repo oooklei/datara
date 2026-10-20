@@ -4,6 +4,10 @@
  * 本文件语义源自 docs/increments/I7-I9-前端消费面分析.md §3（契约期待草案）。
  * 事件契约模式参照 legacy views/dag/InstanceRunsView.vue 的 InstanceRow/TaskStateEvent。
  * RED 约定：所有 I/O 方法在后端接入前抛 R6_SCHEDULER_NOT_WIRED，不发出任何真实请求。
+ * FE-08 补登（2026-10-19）：Alert 记录面板（listAlerts）落位 alarm 页签（/dag/alarm），
+ * 与「调度弹窗（ScheduleDialog）+ 实例页（InstanceRunsView）」两处职责边界：
+ * - 弹窗/实例页：调度配置与运行时状态（TRIAL/FORMAL/STREAM 三态）；
+ * - alarm 页签：告警记录只读列表（级别/通道/时间），不承载调度配置编辑。
  */
 
 /* ---------- 触发注册（MANUAL/CRON/DEPENDENCY/EVENT/TRIAL，plan I7 Step） ---------- */

@@ -11,6 +11,7 @@ import {
 } from '../../../../services/rebuild/metricsApi'
 
 const window = { from: '2026-01-01T00:00:00Z', to: '2026-01-02T00:00:00Z', offset: 0, limit: 50 }
+const projectId = 1
 
 describe('R7 metricsApi contract (RED)', () => {
   it('contract method list is frozen to the metrics/quality/lineage subset', () => {
@@ -53,14 +54,14 @@ describe('R7 metricsApi contract (GREEN wired)', () => {
       { workflow_id: 7, run_date: '2026-01-01', success_count: 5, failure_count: 1, skipped_count: 2, retry_count: 3 },
     ])
     vi.stubGlobal('fetch', fetchMock)
-    const rows = await createMetricsContract().queryWorkflowResultStats(window)
+    const rows = await createMetricsContract().queryWorkflowResultStats(projectId, window)
     expect(rows).toEqual([
       { workflowId: 7, runDate: '2026-01-01', successCount: 5, failureCount: 1, skippedCount: 2, retryCount: 3 },
     ])
     const [url, init] = fetchMock.mock.calls[0] as unknown as [string, RequestInit]
     expect(url).toBe('/api/v1/rebuild/metrics/workflow-result-stats')
     expect(init.method).toBe('POST')
-    expect(JSON.parse(init.body as string)).toEqual(window)
+    expect(JSON.parse(init.body as string)).toEqual({ ...window, project_id: projectId })
   })
 
   it('queryTaskInstanceDataStats passes MetricValue through unprocessed (unknown/estimated untouched)', async () => {
@@ -75,7 +76,7 @@ describe('R7 metricsApi contract (GREEN wired)', () => {
       },
     ])
     vi.stubGlobal('fetch', fetchMock)
-    const rows = await createMetricsContract().queryTaskInstanceDataStats(window)
+    const rows = await createMetricsContract().queryTaskInstanceDataStats(projectId, window)
     expect(rows).toEqual([
       {
         instanceId: 11,
@@ -95,7 +96,7 @@ describe('R7 metricsApi contract (GREEN wired)', () => {
       { instance_id: 11, task_id: 't-1', segment_key: 'hour-00', row_count: { value: 60, known: true, estimated: false } },
     ])
     vi.stubGlobal('fetch', fetchMock)
-    const rows = await createMetricsContract().queryTaskDataStatSegments(window)
+    const rows = await createMetricsContract().queryTaskDataStatSegments(projectId, window)
     expect(rows).toEqual([
       { instanceId: 11, taskId: 't-1', segmentKey: 'hour-00', rowCount: { value: 60, known: true, estimated: false } },
     ])
@@ -108,7 +109,7 @@ describe('R7 metricsApi contract (GREEN wired)', () => {
       { instance_id: 11, task_id: 't-1', error_type: 'NOT_NULL', sample_data: 'row#8', captured_at: '2026-01-01 10:00:00' },
     ])
     vi.stubGlobal('fetch', fetchMock)
-    const rows = await createMetricsContract().queryTaskDataErrorSamples(window)
+    const rows = await createMetricsContract().queryTaskDataErrorSamples(projectId, window)
     expect(rows).toEqual([
       { instanceId: 11, taskId: 't-1', errorType: 'NOT_NULL', sampleData: 'row#8', capturedAt: '2026-01-01 10:00:00' },
     ])
@@ -121,7 +122,7 @@ describe('R7 metricsApi contract (GREEN wired)', () => {
       { rule_id: 3, rule_name: '非空校验', stat_ref: 'task_instance_data_stat:11', alert_sent: true, result_at: '2026-01-01 10:00:00' },
     ])
     vi.stubGlobal('fetch', fetchMock)
-    const rows = await createMetricsContract().listQualityRuleLinks(window)
+    const rows = await createMetricsContract().listQualityRuleLinks(projectId, window)
     expect(rows).toEqual([
       { ruleId: 3, ruleName: '非空校验', statRef: 'task_instance_data_stat:11', alertSent: true, resultAt: '2026-01-01 10:00:00' },
     ])
@@ -134,27 +135,39 @@ describe('R7 metricsApi contract (GREEN wired)', () => {
       { run_id: 42, run_kind: 'sql', source_entity: 'dwh.a', target_entity: 'dwh.b', writeback_at: '2026-01-01 10:00:00' },
     ])
     vi.stubGlobal('fetch', fetchMock)
-    const rows = await createMetricsContract().listLineageWritebacks(window, 'sql')
+    const rows = await createMetricsContract().listLineageWritebacks(projectId, window, 'sql')
     expect(rows).toEqual([
       { runId: '42', runKind: 'sql', sourceEntity: 'dwh.a', targetEntity: 'dwh.b', writebackAt: '2026-01-01 10:00:00' },
     ])
     const [url, init] = fetchMock.mock.calls[0] as unknown as [string, RequestInit]
     expect(url).toBe('/api/v1/rebuild/metrics/lineage-writebacks')
     expect(init.method).toBe('POST')
-    expect(JSON.parse(init.body as string)).toEqual({ ...window, kind: 'sql' })
+    expect(JSON.parse(init.body as string)).toEqual({ ...window, project_id: projectId, kind: 'sql' })
   })
 
   it("listLineageWritebacks passes kind 'all' through as-is", async () => {
     const fetchMock = stubFetchWithEnvelope([])
     vi.stubGlobal('fetch', fetchMock)
-    await expect(createMetricsContract().listLineageWritebacks(window, 'all')).resolves.toEqual([])
+    await expect(createMetricsContract().listLineageWritebacks(projectId, window, 'all')).resolves.toEqual([])
     const [, init] = fetchMock.mock.calls[0] as unknown as [string, RequestInit]
-    expect(JSON.parse(init.body as string)).toEqual({ ...window, kind: 'all' })
+    expect(JSON.parse(init.body as string)).toEqual({ ...window, project_id: projectId, kind: 'all' })
   })
+
+  /* FE-12 骨架（LineageWritebackPanel）kind 四态筛选面：sql/sync/workflow/all 全量透传 */
+  it.each(['sql', 'sync', 'workflow', 'all'] as const)(
+    "listLineageWritebacks passes runKind '%s' through as-is",
+    async (kind) => {
+      const fetchMock = stubFetchWithEnvelope([])
+      vi.stubGlobal('fetch', fetchMock)
+      await expect(createMetricsContract().listLineageWritebacks(projectId, window, kind)).resolves.toEqual([])
+      const [, init] = fetchMock.mock.calls[0] as unknown as [string, RequestInit]
+      expect(JSON.parse(init.body as string)).toEqual({ ...window, project_id: projectId, kind })
+    },
+  )
 
   it('non-2xx maps to ContractApiError with httpStatus preserved', async () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response('boom', { status: 500 })))
-    await expect(createMetricsContract().queryWorkflowResultStats(window)).rejects.toMatchObject({
+    await expect(createMetricsContract().queryWorkflowResultStats(projectId, window)).rejects.toMatchObject({
       httpStatus: 500,
       name: 'ContractApiError',
     })
@@ -165,7 +178,7 @@ describe('R7 metricsApi contract (GREEN wired)', () => {
       'fetch',
       vi.fn().mockResolvedValue(new Response(JSON.stringify({ code: 4001, msg: '查询失败', data: null }), { status: 200 })),
     )
-    await expect(createMetricsContract().queryWorkflowResultStats(window)).rejects.toMatchObject({
+    await expect(createMetricsContract().queryWorkflowResultStats(projectId, window)).rejects.toMatchObject({
       httpStatus: 200,
       code: 4001,
       name: 'ContractApiError',

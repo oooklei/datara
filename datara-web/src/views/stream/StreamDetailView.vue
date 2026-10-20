@@ -17,6 +17,7 @@ import { dataStore, ST } from '../../services/mock/dataStore'
 import { isMock, getStreamJob, startStreamJob, getStreamLogs } from '../../services'
 import { localTime } from '../../services/mock/timeUtil'
 import type { StreamJob, StreamWindow, TimeSemantics } from '../../services/types'
+import StreamValidationView from '../rebuild/validation/stream/StreamValidationView.vue'
 
 const route = useRoute()
 const router = useRouter()
@@ -295,6 +296,10 @@ onUnmounted(stopRt)
     </div>
 
     <template v-else>
+      <div class="card" style="padding:16px;margin-bottom:14px">
+        <div class="sub-title" style="margin-bottom:10px">R8 流运行观摩</div>
+        <StreamValidationView />
+      </div>
       <!-- 顶栏：返回 + 标题 + 操作 -->
       <div class="card" style="padding:16px">
         <div class="detail-head">

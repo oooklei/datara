@@ -1,13 +1,15 @@
 /**
- * R8-A（AI 八工具统一契约）FE 消费面 — RED 态（R8-B 悬浮助手测试页 GREEN 前证据）。
+ * R8-A（AI 八工具统一契约）FE 消费面 — GREEN 接线（P1-3 桥接后接线）。
  * 契约真源：docs/increments/2026-10-17-R8-A八工具契约.md（v1 冻结面，tool_version=1）：
  *   §2.1 端点 GET /api/v1/rebuild/ai/tools + POST /api/v1/rebuild/ai/tool-calls（统一前缀 /api/v1/rebuild/ai，监督 #147 裁定一；单一调用端点，信封层统一
  *        权限/审计/预算/错误归一）；§2.2/§2.3 请求/响应信封；§2.4 注册表条目；§5 错误码空间；
  *        §6 超时/重试/预算；§7 八工具差异契约。
- * 红线（冻结不可豁免）：八工具全部经统一调用链路，不另建执行引擎；BE 未接线（P1-3 ai_copilot
- * 桥接后接线）前本工厂全部方法拒绝 R8A_BACKEND_NOT_WIRED，不存在半连通状态。
+ * 红线（冻结不可豁免）：八工具全部经统一调用链路，不另建执行引擎；BE 接线（P1-3 ai_copilot
+ * 桥接后接线）后本工厂全部方法发起真实 API 调用，不存在半连通状态。
  * mock 契约面验证走 views/rebuild/validation/ai-assistant/mockAgent.ts（假 Agent，无 LLM，隔离于 K1）。
  */
+
+import { getToken, BASE } from '../http'
 
 /* ---------- §2.2 工具名单与上下文（冻结词形） ---------- */
 
@@ -159,9 +161,7 @@ export interface R8ARunSqlResult {
   sqlStatementDigest: string
 }
 
-/* ---------- RED 哨兵与契约方法 ---------- */
-
-export const R8A_BACKEND_NOT_WIRED = 'R8A_BACKEND_NOT_WIRED: rebuild/ai unified tool endpoint not connected yet'
+/* ---------- 契约方法清单 ---------- */
 
 /** 契约方法清单（测试与 UI 横幅共用）：八工具 + 注册表发现（§2.1 两端点） */
 export const R8A_CONTRACT_METHODS = [
@@ -194,23 +194,69 @@ export interface R8AToolsContract {
 /** 统一信封调用原语（POST /api/v1/rebuild/ai/tool-calls；信封层统一权限/审计/预算/错误归一） */
 export type R8AToolCallInvoker = (request: R8AToolCallRequest) => Promise<R8AToolCallResponse>
 
+/* ---------- HTTP 原语 ---------- */
+
+const AI_TOOLS_BASE = `${BASE}/rebuild/ai`
+
+async function requestJson<T>(method: string, path: string, body?: unknown): Promise<T> {
+  const headers: Record<string, string> = { 'Content-Type': 'application/json' }
+  const token = getToken()
+  if (token) headers.token = token
+  const res = await fetch(`${AI_TOOLS_BASE}${path}`, {
+    method,
+    headers,
+    body: body === undefined ? undefined : JSON.stringify(body),
+  })
+  return res.json() as Promise<T>
+}
+
+/* ---------- GREEN 工厂：真实 API 调用 ---------- */
+
 /**
- * RED 工厂：BE 统一端点接线前（P1-3 桥接 + 信封层落地）全部方法拒绝 R8A_BACKEND_NOT_WIRED。
- * 各方法异步 rejected promise（与既有契约「异步拒绝」形态一致，UI .catch() 链不因接线改变）。
+ * GREEN 工厂：BE 统一端点接线后（P1-3 桥接 + 信封层落地）全部方法发起真实 API 调用。
  */
-export function createAiToolsContract(): R8AToolsContract {
-  const refuse = async (): Promise<never> => {
-    throw new Error(R8A_BACKEND_NOT_WIRED)
+export function createAiToolsContract(): R8AToolsContract & { invoke: R8AToolCallInvoker } {
+  const invoke = async (request: R8AToolCallRequest): Promise<R8AToolCallResponse> => {
+    return requestJson<R8AToolCallResponse>('POST', '/tool-calls', request)
   }
+
+  const call = async <T>(
+    tool: R8ATool,
+    params: Record<string, unknown>,
+    pageContext: R8APageContext | null,
+  ): Promise<T> => {
+    const response = await invoke({
+      toolCallId: crypto.randomUUID(),
+      tool,
+      toolVersion: R8A_TOOL_VERSION,
+      params,
+      pageContext,
+    })
+    if (response.status === 'ERROR') {
+      throw new Error(response.error?.code ?? 'UNKNOWN')
+    }
+    return response.result as T
+  }
+
   return {
-    discoverRegistry: refuse,
-    searchSchema: refuse,
-    validateSql: refuse,
-    runSql: refuse,
-    getWorkflow: refuse,
-    validateWorkflow: refuse,
-    inspectWorkflowRun: refuse,
-    getTaskMetrics: refuse,
-    getLineage: refuse,
+    invoke,
+
+    discoverRegistry: () => requestJson<R8ARegistryEntry[]>('GET', '/tools'),
+
+    searchSchema: (params, pageContext) => call<R8ASearchSchemaResult>('search_schema', params, pageContext),
+
+    validateSql: (params, pageContext) => call<R8AValidateSqlResult>('validate_sql', params, pageContext),
+
+    runSql: (params, pageContext) => call<R8ARunSqlResult>('run_sql', params, pageContext),
+
+    getWorkflow: (params, pageContext) => call<Record<string, unknown>>('get_workflow', params, pageContext),
+
+    validateWorkflow: (params, pageContext) => call<Record<string, unknown>>('validate_workflow', params, pageContext),
+
+    inspectWorkflowRun: (params, pageContext) => call<Record<string, unknown>>('inspect_workflow_run', params, pageContext),
+
+    getTaskMetrics: (params, pageContext) => call<Record<string, unknown>>('get_task_metrics', params, pageContext),
+
+    getLineage: (params, pageContext) => call<Record<string, unknown>>('get_lineage', params, pageContext),
   }
 }

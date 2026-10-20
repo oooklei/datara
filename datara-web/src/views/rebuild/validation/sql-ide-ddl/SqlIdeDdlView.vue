@@ -7,11 +7,11 @@
 <template>
   <div class="r5b-page">
     <el-alert
-      type="warning"
+      :type="bannerType"
       :closable="false"
       show-icon
       data-testid="r5b-red-banner"
-      title="R5-B RED 骨架（原型态）— rebuild/sql_ide/ddl（A5）契约未接入；确认/执行/回滚均需人工闸"
+      :title="bannerTitle"
     />
 
     <splitpanes class="r5b-body" horizontal>
@@ -112,8 +112,16 @@ import {
   type DdlPolicyReport,
 } from '../../../../services/rebuild/sqlIdeDdlApi'
 import SqlEditor from '../sql-ide-readonly/components/SqlEditor.vue'
+import { bannerAlertType, bannerTitleFor } from '../../../../services/rebuild/bannerStatus'
 
 defineOptions({ name: 'SqlIdeDdlView' })
+
+/* 横幅状态词表（FE-01 单一事实源）：RED 未接线 */
+const bannerTitle = bannerTitleFor(
+  { code: 'R5-B', contractName: 'sql_ide/ddl', methodCount: 0, sentinel: R5B_BACKEND_NOT_WIRED, extra: '确认/执行/回滚均需人工闸' },
+  'RED',
+)
+const bannerType = bannerAlertType('RED')
 
 const KINDS: DdlObjectKind[] = ['table', 'view', 'function', 'procedure', 'trigger']
 const contract = createSqlIdeDdlContract()

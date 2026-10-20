@@ -21,8 +21,8 @@ export const VARIABLE_SCOPE_PRIORITY = ['run', 'task', 'workflow', 'project', 'g
 /** 语法前缀集合（设计 §5）：七级链作用域 + tmp 临时作用域 */
 export type VariableScope = (typeof VARIABLE_SCOPE_PRIORITY)[number] | 'tmp'
 
-/** 值类型草案（设计要求“变量类型”能力，具体枚举以后端契约为权威） */
-export type VariableValueType = 'string' | 'number' | 'boolean' | 'json'
+/** 值类型（设计 §13.5 八值，与后端 VALUE_TYPES 对齐） */
+export type VariableValueType = 'string' | 'integer' | 'decimal' | 'boolean' | 'date' | 'datetime' | 'json' | 'array'
 
 /* ---------- 变量定义与清单 ---------- */
 

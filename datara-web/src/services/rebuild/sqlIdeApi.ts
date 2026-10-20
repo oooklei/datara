@@ -1,6 +1,10 @@
 /**
  * SQL IDE readonly contract client for the A5 rebuild/sql_ide API.
+ * GREEN 已接线（FE-01 修订 2026-10-19）。
  * Scope: query and metadata operations only; DDL, row editing, and global parameters stay outside this client.
+ * FE-07a 拆分登记：本文件为 R5-A 只读换芯契约权威（16 方法，R5A_CONTRACT_METHODS）。
+ * 正式页 /ide 换芯（IdeView.vue → MetaTree/SqlEditor/ResultGrid/HistoryDrawer）归 FE-07a；
+ * DDL 写路径归 FE-07b（sqlIdeDdlApi.ts，待 R5-B D 阶段解禁）。
  */
 
 /* ---------- 对象与元数据类型（design §7 对象范围 9 类） ---------- */

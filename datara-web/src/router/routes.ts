@@ -42,8 +42,8 @@ export const routes: RouteRecordRaw[] = [
   // /sync/wizard 与 /batch/board 已删除（I6：独立向导/进度看板下线，同步编排模板归 C23，监控走 syncApi 列表/详情）
   // F56a：ETL/流独立列表页为演示态（数据源/同步/任务中心为真实通道），挂 demo 标识
   { path: '/etl/list', name: 'etl-list', component: () => import('../views/etl/EtlListView.vue'), meta: { title: 'ETL任务', demo: true } },
-  { path: '/stream/list', name: 'stream-list', component: () => import('../views/stream/StreamListView.vue'), meta: { title: '流数据处理', demo: true } },
-  { path: '/stream/detail/:id', name: 'stream-detail', component: () => import('../views/stream/StreamDetailView.vue'), meta: { title: '流任务详情', demo: true } },
+  { path: '/stream/list', name: 'stream-list', component: () => import('../views/stream/StreamListView.vue'), meta: { title: '流数据处理' } },
+  { path: '/stream/detail/:id', name: 'stream-detail', component: () => import('../views/stream/StreamDetailView.vue'), meta: { title: '流任务详情' } },
   // 数据开发
   { path: '/model/list', name: 'model-list', component: () => import('../views/model/ModelListView.vue'), meta: { title: '数仓建模' } },
   { path: '/model/design/:id', name: 'model-design', component: () => import('../views/model/ModelDesignView.vue'), meta: { title: '模型设计' } },

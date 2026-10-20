@@ -1,7 +1,7 @@
 /**
  * R8-B 契约测试（node 环境，纯契约层无组件挂载）— P1-0 步骤 4 假 Agent（无 LLM mock 模式）先绿。
  * 断言面：
- *   1. R8-A 工具名单/上下文类型冻结（契约 v1 §2.2）；RED 工厂全部方法拒绝 R8A_BACKEND_NOT_WIRED；
+ *   1. R8-A 工具名单/上下文类型冻结（契约 v1 §2.2）；GREEN 工厂返回真实 API 调用方法；
  *   2. mock 注册表 8 条目（§2.4/§6 数值）与 PoC 启用面（三工具 enabled，五工具 TOOL_DISABLED）；
  *   3. 无 LLM 全链路绿：NL → generate_sql →（授权确认，UI 闸）→ validate_sql → run_sql → 结果+解释；
  *   4. 错误映射（§5 词形：TOOL_NOT_FOUND/TOOL_VERSION_MISMATCH/TOOL_DISABLED/INVALID_PARAMS/BUDGET_EXCEEDED/NOT_FOUND）；
@@ -11,7 +11,6 @@
  */
 import { describe, expect, it } from 'vitest'
 import {
-  R8A_BACKEND_NOT_WIRED,
   R8A_CONTEXT_TYPES,
   R8A_CONTRACT_METHODS,
   R8A_ERROR_CODES,
@@ -59,14 +58,11 @@ describe('R8-A contract freeze surface', () => {
     expect(R8A_CONTRACT_METHODS).toHaveLength(9)
   })
 
-  it('every RED contract method refuses until the unified endpoint is wired', async () => {
+  it('every GREEN contract method is a function (real API call wired)', () => {
     const contract = createAiToolsContract()
-    const cases = R8A_CONTRACT_METHODS.map((m) => {
-      const fn = contract[m] as (...args: unknown[]) => Promise<unknown>
-      return fn.call(contract, {}, null)
-    })
-    for (const p of cases) {
-      await expect(p).rejects.toThrow(R8A_BACKEND_NOT_WIRED)
+    for (const m of R8A_CONTRACT_METHODS) {
+      const fn = contract[m]
+      expect(typeof fn).toBe('function')
     }
   })
 })

@@ -1,26 +1,26 @@
 <!--
-  R2：统一变量体系验证页（契约已接线，R2 批次）。
+  R2：统一变量体系验证页（GREEN 已接线，FE-01 修订 2026-10-19）。
   权威范围：docs/increments/2026-10-14-datara-platform-rebuild-design.md §5（设计真源）
   + 纠偏设计 §2.2（编辑变量可搜索补全；引用校验/作用域可见性/现值/来源展示；
   保存草稿与运行前一致校验；运行实例保存不可变解析快照）。
   边界：独立验证页，不进正式菜单；服务端契约全部经 services/rebuild/variableApi
-  （P1 冻结词形，{code,msg,data} 包络已实证固化）；引用语法解析为本地纯前端逻辑。
-  GREEN 标记待独立评审（心跳 #33）。
+  （P1 冻结词形 R2_VARIABLE_CONTRACT_METHODS，6 方法接线，{code,msg,data} 包络已实证固化）；
+  引用语法解析为本地纯前端逻辑。横幅状态词表见 services/rebuild/bannerStatus.ts。
 -->
 <template>
   <div class="r2-var-page">
     <el-alert
-      type="info"
+      :type="bannerType"
       :closable="false"
       show-icon
-      data-testid="r2-variable-red-banner"
-      title="R2 契约已接线（rebuild/variables P1 冻结词形）— I/O 经统一包络；GREEN 标记待独立评审"
+      data-testid="r2-variable-green-banner"
+      :title="bannerTitle"
     />
 
     <el-descriptions :column="3" size="small" border class="r2-var-context">
       <el-descriptions-item label="优先级链（设计真源）">{{ priorityChain }}</el-descriptions-item>
       <el-descriptions-item label="语法">$\{scope.name\}（global/project/workflow/task/env/run/tmp）+ $[时间表达式]</el-descriptions-item>
-      <el-descriptions-item label="契约方法">{{ contractMethodCount }} 项（已接线，待独立评审）</el-descriptions-item>
+      <el-descriptions-item label="契约方法">{{ contractMethodCount }} 项（已接线）</el-descriptions-item>
     </el-descriptions>
 
     <!-- ① 变量清单 / 编辑 -->
@@ -197,11 +197,20 @@ import {
   type VariableSnapshotEntry,
   type VariableValueType,
 } from '../../../../services/rebuild/variableApi'
+import { bannerAlertType, bannerTitleFor } from '../../../../services/rebuild/bannerStatus'
 
 defineOptions({ name: 'VariableValidationView' })
 
 const contract = createVariableContract()
 const contractMethodCount = R2_VARIABLE_CONTRACT_METHODS.length
+
+/* 横幅状态词表（FE-01 单一事实源）：GREEN 已接线 */
+const bannerTitle = bannerTitleFor(
+  { code: 'R2', contractName: 'variables', methodCount: contractMethodCount },
+  'GREEN',
+)
+const bannerType = bannerAlertType('GREEN')
+
 const priorityChain = VARIABLE_SCOPE_PRIORITY.join(' > ')
 const allScopes: VariableScope[] = [...VARIABLE_SCOPE_PRIORITY, 'tmp']
 

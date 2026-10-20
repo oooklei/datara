@@ -108,12 +108,12 @@ export const R7_CONTRACT_METHODS = [
 export type R7ContractMethod = (typeof R7_CONTRACT_METHODS)[number]
 
 export interface MetricsContract {
-  queryWorkflowResultStats: (window: TimeWindowQuery) => Promise<WorkflowResultStatRow[]>
-  queryTaskInstanceDataStats: (window: TimeWindowQuery) => Promise<TaskInstanceDataStatRow[]>
-  queryTaskDataStatSegments: (window: TimeWindowQuery) => Promise<TaskDataStatSegmentRow[]>
-  queryTaskDataErrorSamples: (window: TimeWindowQuery) => Promise<TaskDataErrorSampleRow[]>
-  listQualityRuleLinks: (window: TimeWindowQuery) => Promise<QualityRuleResultLink[]>
-  listLineageWritebacks: (window: TimeWindowQuery, kind: LineageWritebackEntry['runKind'] | 'all') => Promise<LineageWritebackEntry[]>
+  queryWorkflowResultStats: (projectId: number, window: TimeWindowQuery) => Promise<WorkflowResultStatRow[]>
+  queryTaskInstanceDataStats: (projectId: number, window: TimeWindowQuery) => Promise<TaskInstanceDataStatRow[]>
+  queryTaskDataStatSegments: (projectId: number, window: TimeWindowQuery) => Promise<TaskDataStatSegmentRow[]>
+  queryTaskDataErrorSamples: (projectId: number, window: TimeWindowQuery) => Promise<TaskDataErrorSampleRow[]>
+  listQualityRuleLinks: (projectId: number, window: TimeWindowQuery) => Promise<QualityRuleResultLink[]>
+  listLineageWritebacks: (projectId: number, window: TimeWindowQuery, kind: LineageWritebackEntry['runKind'] | 'all') => Promise<LineageWritebackEntry[]>
 }
 
 /* ---------- GREEN 统一原语（沿 R2 固化版；BASE 换 metrics 域） ---------- */
@@ -174,18 +174,18 @@ async function sendJson<T>(path: string, body: unknown): Promise<T> {
  */
 export function createMetricsContract(): MetricsContract {
   return {
-    queryWorkflowResultStats: (window) =>
-      sendJson<WorkflowResultStatRow[]>('/workflow-result-stats', window),
-    queryTaskInstanceDataStats: (window) =>
-      sendJson<TaskInstanceDataStatRow[]>('/task-instance-data-stats', window),
-    queryTaskDataStatSegments: (window) =>
-      sendJson<TaskDataStatSegmentRow[]>('/task-data-stat-segments', window),
-    queryTaskDataErrorSamples: (window) =>
-      sendJson<TaskDataErrorSampleRow[]>('/task-data-error-samples', window),
-    listQualityRuleLinks: (window) =>
-      sendJson<QualityRuleResultLink[]>('/quality-rule-links', window),
-    listLineageWritebacks: (window, kind) =>
-      sendJson<LineageWritebackEntry[]>('/lineage-writebacks', { ...window, kind }).then((rows) =>
+    queryWorkflowResultStats: (projectId, window) =>
+      sendJson<WorkflowResultStatRow[]>('/workflow-result-stats', { ...window, projectId }),
+    queryTaskInstanceDataStats: (projectId, window) =>
+      sendJson<TaskInstanceDataStatRow[]>('/task-instance-data-stats', { ...window, projectId }),
+    queryTaskDataStatSegments: (projectId, window) =>
+      sendJson<TaskDataStatSegmentRow[]>('/task-data-stat-segments', { ...window, projectId }),
+    queryTaskDataErrorSamples: (projectId, window) =>
+      sendJson<TaskDataErrorSampleRow[]>('/task-data-error-samples', { ...window, projectId }),
+    listQualityRuleLinks: (projectId, window) =>
+      sendJson<QualityRuleResultLink[]>('/quality-rule-links', { ...window, projectId }),
+    listLineageWritebacks: (projectId, window, kind) =>
+      sendJson<LineageWritebackEntry[]>('/lineage-writebacks', { ...window, projectId, kind }).then((rows) =>
         rows.map((row) => ({ ...row, runId: wireIdToString(row.runId, 'runId') })),
       ),
   }

@@ -6,6 +6,8 @@ import { dataStore } from './services/mock/dataStore'
 import { isMock } from './services'
 import { listAlertNotifications } from './services/alertApi'
 import { ROLE_LABELS } from './stores/auth'
+import { R8A_TOOL_VERSION, type R8ARunSqlResult, type R8AToolCallError } from './services/rebuild/aiToolsApi'
+import { createMockAgent, generateSqlMock, type MockAuditRecord } from './views/rebuild/validation/ai-assistant/mockAgent'
 import type { User } from './services/types'
 
 const route = useRoute()
@@ -122,6 +124,96 @@ function toggleGroup(name: string) { groupFolded.value = { ...groupFolded.value,
 const pageTitle = computed(() => (route.meta.title as string) || '')
 const isActive = (item: MenuItem) =>
   item.path === '/' ? route.path === '/' : route.path === item.path || route.path.startsWith(item.path + '/')
+
+/* ---------- FE-11a AI 悬浮入口（mock 契约面，无 LLM） ---------- */
+const mockAgent = createMockAgent()
+const aiDrawerVisible = ref(false)
+const aiContextType = ref('SQL')
+const aiContextRef = ref('{"project_id": 1, "table_name": "dw.dim_customer"}')
+const aiNlInput = ref('')
+const aiGeneratedSql = ref('')
+const aiGeneratedExplanation = ref('')
+const aiConfirmed = ref(false)
+const aiRunResult = ref<R8ARunSqlResult | null>(null)
+const aiLastError = ref<R8AToolCallError | null>(null)
+const aiAuditRows = ref<MockAuditRecord[]>([])
+
+function openAiDrawer(): void {
+  aiDrawerVisible.value = true
+  refreshAiAudit()
+}
+
+function refreshAiAudit(): void {
+  aiAuditRows.value = [...mockAgent.auditRecords()].reverse()
+}
+
+function parseAiContext(): Record<string, unknown> | null {
+  const text = aiContextRef.value.trim()
+  if (!text) return null
+  try {
+    const parsed = JSON.parse(text) as unknown
+    return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? (parsed as Record<string, unknown>) : null
+  } catch {
+    return null
+  }
+}
+
+function onAiGenerate(): void {
+  aiLastError.value = null
+  aiRunResult.value = null
+  aiConfirmed.value = false
+  aiGeneratedSql.value = ''
+  aiGeneratedExplanation.value = ''
+  const contextRef = parseAiContext()
+  try {
+    const generated = generateSqlMock(aiNlInput.value.trim(), { contextType: aiContextType.value as never, contextRef }, 'user-trae')
+    aiGeneratedSql.value = generated.sql
+    aiGeneratedExplanation.value = generated.explanation
+  } catch (e) {
+    aiLastError.value = {
+      code: 'MOCK_SOVEREIGNTY_CONTEXT_MISSING',
+      message: e instanceof Error ? e.message : String(e),
+      retryable: false,
+    }
+  }
+}
+
+async function onAiRunSql(): Promise<void> {
+  aiLastError.value = null
+  aiRunResult.value = null
+  const contextRef = parseAiContext()
+  try {
+    const res = await mockAgent.call(
+      {
+        toolCallId: `tc-ai-${Date.now()}`,
+        tool: 'run_sql',
+        toolVersion: R8A_TOOL_VERSION,
+        params: { project_id: 1, datasource_id: 'ds-1', sql: aiGeneratedSql.value },
+        pageContext: { contextType: aiContextType.value as never, contextRef },
+      },
+      { userId: 'user-trae', roles: ['DEVELOPER'] },
+    )
+    refreshAiAudit()
+    if (res.status === 'SUCCESS' && res.result) {
+      aiRunResult.value = res.result as unknown as R8ARunSqlResult
+    } else if (res.error) {
+      aiLastError.value = res.error
+    }
+  } catch (e) {
+    aiLastError.value = { code: 'INTERNAL_ERROR', message: e instanceof Error ? e.message : String(e), retryable: false }
+  }
+}
+
+const aiResultRows = computed(() => {
+  if (!aiRunResult.value) return []
+  return aiRunResult.value.rows.map((row) => {
+    const record: Record<string, unknown> = {}
+    row.forEach((cell, i) => {
+      record[String(i)] = cell
+    })
+    return record
+  })
+})
 </script>
 
 <template>
@@ -223,6 +315,108 @@ const isActive = (item: MenuItem) =>
         </transition>
       </router-view>
     </div>
+
+    <!-- FE-11a AI 悬浮入口（mock 契约面，无 LLM） -->
+    <div
+      v-if="!isLoginRoute"
+      class="ai-fab"
+      data-testid="ai-fab"
+      title="AI 助手（mock）"
+      @click="openAiDrawer"
+    >
+      <span>AI</span>
+    </div>
+    <el-drawer
+      v-model="aiDrawerVisible"
+      title="AI 助手（mock 契约面）"
+      size="46%"
+      data-testid="ai-drawer"
+    >
+      <div class="ai-drawer-body">
+        <el-form label-width="110px" size="small">
+          <el-form-item label="page_context">
+            <el-select v-model="aiContextType" style="width: 180px">
+              <el-option label="SQL" value="SQL" />
+              <el-option label="DDL" value="DDL" />
+              <el-option label="DML" value="DML" />
+            </el-select>
+            <el-input
+              v-model="aiContextRef"
+              style="width: 300px; margin-left: 8px"
+              placeholder='{"project_id":1,"table_name":"dw.dim_customer"}'
+            />
+          </el-form-item>
+          <el-form-item label="自然语言">
+            <el-input
+              v-model="aiNlInput"
+              type="textarea"
+              :rows="2"
+              placeholder="例：客户表有多少行数据 / 查询客户表的数据"
+            />
+          </el-form-item>
+          <el-form-item label="">
+            <el-button type="primary" size="small" :disabled="!aiNlInput.trim()" @click="onAiGenerate">
+              生成 SQL（mock 假 Agent）
+            </el-button>
+          </el-form-item>
+          <el-form-item v-if="aiGeneratedSql" label="生成 SQL">
+            <el-input :model-value="aiGeneratedSql" type="textarea" :rows="2" readonly />
+          </el-form-item>
+          <el-form-item v-if="aiGeneratedExplanation" label="生成解释">
+            <span class="ai-explanation">{{ aiGeneratedExplanation }}</span>
+          </el-form-item>
+          <el-form-item v-if="aiGeneratedSql" label="授权确认">
+            <el-checkbox v-model="aiConfirmed">
+              我确认经 R8-A 授权通道执行该 SQL
+            </el-checkbox>
+            <el-button
+              type="danger"
+              size="small"
+              :disabled="!aiConfirmed"
+              style="margin-left: 12px"
+              @click="onAiRunSql"
+            >
+              执行 run_sql
+            </el-button>
+          </el-form-item>
+        </el-form>
+
+        <template v-if="aiRunResult">
+          <div class="ai-panel">
+            <div class="ai-panel-head">
+              <span>执行结果（run_sql）</span>
+              <span class="ai-meta">
+                execution_id={{ aiRunResult.executionId }} / row_count={{ aiRunResult.rowCount }} / {{ aiRunResult.durationMs }}ms
+              </span>
+            </div>
+            <el-table :data="aiResultRows" size="small" max-height="240">
+              <el-table-column
+                v-for="(col, i) in aiRunResult.columns"
+                :key="col.name"
+                :prop="String(i)"
+                :label="`${col.name} (${col.type})`"
+              />
+            </el-table>
+          </div>
+          <el-alert
+            type="success"
+            :closable="false"
+            show-icon
+            :title="`结果解释：${aiGeneratedExplanation}（共 ${aiRunResult.rowCount} 行）`"
+            class="ai-status"
+          />
+        </template>
+
+        <el-alert
+          v-if="aiLastError"
+          type="error"
+          :closable="false"
+          show-icon
+          :title="`错误：${aiLastError.code}（retryable=${aiLastError.retryable}）${aiLastError.message}`"
+          class="ai-status"
+        />
+      </div>
+    </el-drawer>
   </div>
 </template>
 
@@ -242,4 +436,13 @@ const isActive = (item: MenuItem) =>
 .pop-logout:hover{background:var(--danger-bg)}
 /* F56e：顶栏演示数据标识（低饱和描边 tag，与整体风格一致） */
 .demo-tag{display:inline-flex;align-items:center;padding:1px 8px;border:1px solid var(--border);border-radius:var(--radius-lg);font-size:11px;color:var(--text-3);cursor:help;white-space:nowrap}
+/* FE-11a AI 悬浮入口 */
+.ai-fab{position:fixed;right:32px;bottom:48px;width:48px;height:48px;border-radius:50%;background:var(--el-color-primary);color:#fff;display:flex;align-items:center;justify-content:center;font-weight:700;cursor:pointer;box-shadow:var(--el-box-shadow-light);z-index:2000;transition:transform .15s}
+.ai-fab:hover{transform:scale(1.08)}
+.ai-drawer-body{display:flex;flex-direction:column;gap:12px}
+.ai-panel{border:1px solid var(--el-border-color-light);border-radius:4px;padding:8px}
+.ai-panel-head{display:flex;align-items:center;gap:8px;margin-bottom:8px;font-weight:600;font-size:13px}
+.ai-meta{font-weight:400;font-size:12px;color:var(--el-text-color-secondary)}
+.ai-explanation{font-size:12px;color:var(--el-text-color-regular)}
+.ai-status{width:100%}
 </style>

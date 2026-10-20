@@ -1,30 +1,31 @@
 <!--
-  R4-RESOURCE：脚本/SQL 资源上传验证页（RED/原型态）。
+  R4-RESOURCE：脚本/SQL 资源上传验证页（GREEN 已接线，FE-01 修订 2026-10-19）。
   权威范围：docs/increments/2026-10-16-纠偏重构实施计划-执行附录.md §6 R4 行
   + 客户要求 #4（SQL 组件上传 SQL 文件；Python/Shell 上传脚本）
   + 纠偏设计 §5.3（资源有身份有版本、大小/类型校验、工作流版本绑定确定版本、禁隐式 latest）。
   边界：独立验证页，不进正式菜单；服务端契约全部经 services/rebuild/resourceApi
-  （后端接入前抛 R4_RESOURCE_NOT_WIRED，UI 统一状态栏提示）；本地预校验真实运行。
+  （P1 冻结词形 R4_RESOURCE_CONTRACT_METHODS，5 方法接线，包络 {code,msg,data}）；
+  本地预校验真实运行。横幅状态词表见 services/rebuild/bannerStatus.ts。
 -->
 <template>
   <div class="r4-res-page">
     <el-alert
-      type="warning"
+      :type="bannerType"
       :closable="false"
       show-icon
-      data-testid="r4-resource-red-banner"
-      title="R4 RESOURCE RED 骨架（原型态）— rebuild/resources 后端契约未接入，所有服务端 I/O 返回 R4_RESOURCE_NOT_WIRED"
+      data-testid="r4-resource-green-banner"
+      :title="bannerTitle"
     />
 
     <el-descriptions :column="3" size="small" border class="r4-res-context">
       <el-descriptions-item label="客户要求">#4 SQL/Python/Shell 上传与确定版本绑定</el-descriptions-item>
       <el-descriptions-item label="硬约束">不可变版本；运行时禁止隐式 latest</el-descriptions-item>
-      <el-descriptions-item label="契约方法">{{ contractMethodCount }} 项（全部未接线）</el-descriptions-item>
+      <el-descriptions-item label="契约方法">{{ contractMethodCount }} 项（已接线）</el-descriptions-item>
     </el-descriptions>
 
     <!-- ① 上传 -->
     <div class="r4-res-panel">
-      <div class="r4-res-panel-head"><span>① 上传资源（本地预校验真实运行；服务端保存未接线）</span></div>
+      <div class="r4-res-panel-head"><span>① 上传资源（本地预校验真实运行；服务端保存经 rebuild/resources 契约）</span></div>
       <el-form inline size="small" class="r4-res-form">
         <el-form-item label="项目ID"><el-input v-model.number="form.projectId" style="width: 90px" /></el-form-item>
         <el-form-item label="类型">
@@ -77,7 +78,7 @@
           <el-button size="small" type="primary" data-testid="r4-resource-bind" @click="onBind">绑定确定版本</el-button>
         </el-form-item>
       </el-form>
-      <!-- getResourceVersion 读取结果（RED：哨兵落状态栏；成功时按 ResourceVersion 字段回显） -->
+      <!-- getResourceVersion 读取结果（成功时按 ResourceVersion 字段回显） -->
       <el-descriptions v-if="resourceVersion" :column="5" size="small" border data-testid="r4-resource-version-result" class="r4-res-version-result">
         <el-descriptions-item label="资源ID">{{ resourceVersion.resourceId }}</el-descriptions-item>
         <el-descriptions-item label="版本">{{ resourceVersion.version }}</el-descriptions-item>
@@ -104,11 +105,19 @@ import {
   type ResourceKind,
   type ResourceVersion,
 } from '../../../../services/rebuild/resourceApi'
+import { bannerAlertType, bannerTitleFor } from '../../../../services/rebuild/bannerStatus'
 
 defineOptions({ name: 'ResourceUploadValidationView' })
 
 const contract = createResourceContract()
 const contractMethodCount = R4_RESOURCE_CONTRACT_METHODS.length
+
+/* 横幅状态词表（FE-01 单一事实源）：GREEN 已接线 */
+const bannerTitle = bannerTitleFor(
+  { code: 'R4', contractName: 'resources', methodCount: contractMethodCount },
+  'GREEN',
+)
+const bannerType = bannerAlertType('GREEN')
 
 const form = reactive({ projectId: 1, kind: 'sql' as ResourceKind })
 const bind = reactive({ resourceId: 1, workflowId: 1, workflowVersion: 1, taskId: '', resourceVersion: 1 })

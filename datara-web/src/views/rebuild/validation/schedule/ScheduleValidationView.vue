@@ -6,28 +6,28 @@
   （后端接入前抛 R6_SCHEDULER_NOT_WIRED，UI 统一横幅提示）；不触发增量 GREEN。
 -->
 <template>
-  <div class="i7-page">
+  <div class="r6-page">
     <el-alert
-      type="warning"
+      :type="bannerType"
       :closable="false"
       show-icon
-      data-testid="i7-red-banner"
-      title="I7 RED 骨架（原型态）— rebuild/schedule 后端契约未接入，所有 I/O 返回 R6_SCHEDULER_NOT_WIRED"
+      data-testid="r6-red-banner"
+      :title="bannerTitle"
     />
 
-    <el-descriptions :column="3" size="small" border class="i7-context">
+    <el-descriptions :column="3" size="small" border class="r6-context">
       <el-descriptions-item label="触发类型面">MANUAL / CRON / DEPENDENCY / EVENT / TRIAL</el-descriptions-item>
       <el-descriptions-item label="观测面">misfire / 并发 / 优先级 / 超时 / 重试 / Master 分派</el-descriptions-item>
       <el-descriptions-item label="契约方法">{{ contractMethodCount }} 项（全部未接线）</el-descriptions-item>
     </el-descriptions>
 
     <!-- registerTrigger 注册表单（RED：哨兵落状态栏；成功时回显保存的 trigger） -->
-    <div class="i7-panel" data-testid="i7-register-panel">
-      <div class="i7-panel-head"><span>触发注册表单 — registerTrigger</span></div>
-      <el-form inline size="small" class="i7-form">
-        <el-form-item label="名称"><el-input v-model="registerForm.name" data-testid="i7-register-name" style="width: 140px" /></el-form-item>
+    <div class="r6-panel" data-testid="r6-register-panel">
+      <div class="r6-panel-head"><span>触发注册表单 — registerTrigger</span></div>
+      <el-form inline size="small" class="r6-form">
+        <el-form-item label="名称"><el-input v-model="registerForm.name" data-testid="r6-register-name" style="width: 140px" /></el-form-item>
         <el-form-item label="类型">
-          <el-select v-model="registerForm.kind" data-testid="i7-register-kind" style="width: 130px">
+          <el-select v-model="registerForm.kind" data-testid="r6-register-kind" style="width: 130px">
             <el-option label="MANUAL" value="MANUAL" />
             <el-option label="CRON" value="CRON" />
             <el-option label="DEPENDENCY" value="DEPENDENCY" />
@@ -35,14 +35,14 @@
             <el-option label="TRIAL" value="TRIAL" />
           </el-select>
         </el-form-item>
-        <el-form-item label="CRON"><el-input v-model="registerForm.cron" data-testid="i7-register-cron" placeholder="0 0 * * *" style="width: 140px" /></el-form-item>
-        <el-form-item label="Source"><el-input v-model="registerForm.source" data-testid="i7-register-source" placeholder="依赖工作流ID/事件源" style="width: 150px" /></el-form-item>
-        <el-form-item label="启用"><el-switch v-model="registerForm.enabled" data-testid="i7-register-enabled" /></el-form-item>
+        <el-form-item label="CRON"><el-input v-model="registerForm.cron" data-testid="r6-register-cron" placeholder="0 0 * * *" style="width: 140px" /></el-form-item>
+        <el-form-item label="Source"><el-input v-model="registerForm.source" data-testid="r6-register-source" placeholder="依赖工作流ID/事件源" style="width: 150px" /></el-form-item>
+        <el-form-item label="启用"><el-switch v-model="registerForm.enabled" data-testid="r6-register-enabled" /></el-form-item>
         <el-form-item>
-          <el-button size="small" type="primary" data-testid="i7-register-trigger" @click="onRegisterTrigger">注册触发</el-button>
+          <el-button size="small" type="primary" data-testid="r6-register-trigger" @click="onRegisterTrigger">注册触发</el-button>
         </el-form-item>
       </el-form>
-      <el-descriptions v-if="registeredTrigger" :column="4" size="small" border data-testid="i7-register-result">
+      <el-descriptions v-if="registeredTrigger" :column="4" size="small" border data-testid="r6-register-result">
         <el-descriptions-item label="ID">{{ registeredTrigger.id }}</el-descriptions-item>
         <el-descriptions-item label="名称">{{ registeredTrigger.name }}</el-descriptions-item>
         <el-descriptions-item label="类型">{{ registeredTrigger.kind }}</el-descriptions-item>
@@ -52,13 +52,13 @@
         <el-descriptions-item label="Next Fire">{{ registeredTrigger.nextFireAt ?? '—' }}</el-descriptions-item>
         <el-descriptions-item label="Misfire">{{ registeredTrigger.misfirePolicy ?? '—' }}</el-descriptions-item>
       </el-descriptions>
-      <div v-else class="i7-empty" data-testid="i7-register-empty">（未接线 — registerTrigger 后端接入前恒为空）</div>
+      <div v-else class="r6-empty" data-testid="r6-register-empty">（未接线 — registerTrigger 后端接入前恒为空）</div>
     </div>
 
     <el-row :gutter="12">
       <el-col :span="12">
-        <div class="i7-panel">
-          <div class="i7-panel-head">
+        <div class="r6-panel">
+          <div class="r6-panel-head">
             <span>触发注册</span>
             <el-button size="small" @click="onListTriggers">加载</el-button>
           </div>
@@ -71,8 +71,8 @@
         </div>
       </el-col>
       <el-col :span="12">
-        <div class="i7-panel">
-          <div class="i7-panel-head">
+        <div class="r6-panel">
+          <div class="r6-panel-head">
             <span>实例队列（并发/优先级/misfire）</span>
             <el-button size="small" @click="onListQueue">加载</el-button>
           </div>
@@ -88,8 +88,8 @@
 
     <el-row :gutter="12">
       <el-col :span="12">
-        <div class="i7-panel">
-          <div class="i7-panel-head">
+        <div class="r6-panel">
+          <div class="r6-panel-head">
             <span>超时/重试事件流（Master 分派 + Logger 事件链）</span>
             <el-button size="small" @click="onListEvents">加载</el-button>
           </div>
@@ -102,8 +102,8 @@
         </div>
       </el-col>
       <el-col :span="12">
-        <div class="i7-panel">
-          <div class="i7-panel-head">
+        <div class="r6-panel">
+          <div class="r6-panel-head">
             <span>Alert 记录</span>
             <el-button size="small" @click="onListAlerts">加载</el-button>
           </div>
@@ -120,7 +120,7 @@
       type="info"
       :closable="false"
       show-icon
-      data-testid="i7-status-bar"
+      data-testid="r6-status-bar"
       :title="statusText"
     />
   </div>
@@ -138,11 +138,19 @@ import {
   type TriggerKind,
   type TriggerRegistration,
 } from '../../../../services/rebuild/scheduleApi'
+import { bannerAlertType, bannerTitleFor } from '../../../../services/rebuild/bannerStatus'
 
 defineOptions({ name: 'ScheduleValidationView' })
 
 const contract = createScheduleContract()
 const contractMethodCount = R6_CONTRACT_METHODS.length
+
+/* 横幅状态词表（FE-01 单一事实源）：RED 未接线 */
+const bannerTitle = bannerTitleFor(
+  { code: 'R6', contractName: 'schedule', methodCount: contractMethodCount, sentinel: R6_SCHEDULER_NOT_WIRED },
+  'RED',
+)
+const bannerType = bannerAlertType('RED')
 
 /* 观测面数据（后端接入前恒为空，展示空态） */
 const triggers = ref<TriggerRegistration[]>([])
@@ -210,20 +218,20 @@ function onListAlerts() {
 </script>
 
 <style scoped>
-.i7-page {
+.r6-page {
   padding: 12px;
   display: flex;
   flex-direction: column;
   gap: 12px;
 }
 
-.i7-panel {
+.r6-panel {
   border: 1px solid var(--el-border-color-lighter);
   border-radius: 4px;
   padding: 8px;
 }
 
-.i7-panel-head {
+.r6-panel-head {
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -232,11 +240,11 @@ function onListAlerts() {
   font-weight: 600;
 }
 
-.i7-form {
+.r6-form {
   margin-bottom: 8px;
 }
 
-.i7-empty {
+.r6-empty {
   font-size: 12px;
   color: var(--el-text-color-secondary);
 }
