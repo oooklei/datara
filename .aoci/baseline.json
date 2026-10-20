@@ -1,80 +1,8 @@
 {
   "version": 1,
   "created_at": "2026-10-02T22:25:37Z",
-  "updated_at": "2026-10-17T04:25:12Z",
+  "updated_at": "2026-10-18T19:11:51Z",
   "files": {
-    ".claude/plans/2026-10-16-loop-runbook.md": {
-      "role": "index",
-      "sha256": "d8411d7fc4b3ba24fd4c506bcedce32343b6ddeeece23df35c239a5d54f61b43",
-      "size": 89823,
-      "normalized_sha256": "492da813d3c204e74d1e5c69f9c593cbaa9eedcaf384f115e9e11b8f82d4b7c4"
-    },
-    ".claude/port-ref/branch-migration_preflight.py": {
-      "role": "index",
-      "sha256": "84b84098ea1725934ce0d3268130d31894ffa9424d0ae066324e05eb47441388",
-      "size": 14164,
-      "normalized_sha256": "84b84098ea1725934ce0d3268130d31894ffa9424d0ae066324e05eb47441388"
-    },
-    ".claude/port-ref/branch-migrations.py": {
-      "role": "index",
-      "sha256": "9353b21f889e26119693cdb0766f19a838aab1dc2d2a5e92641c7d126d1403b9",
-      "size": 5781,
-      "normalized_sha256": "9353b21f889e26119693cdb0766f19a838aab1dc2d2a5e92641c7d126d1403b9"
-    },
-    ".claude/port-ref/branch-models.py": {
-      "role": "index",
-      "sha256": "45eb557e71cd3678601cfa9b8d0fccfd74045e8b58e06d3b13e052f5f2f311cf",
-      "size": 35414,
-      "normalized_sha256": "45eb557e71cd3678601cfa9b8d0fccfd74045e8b58e06d3b13e052f5f2f311cf"
-    },
-    ".claude/port-ref/branch-test_governance_migrations.py": {
-      "role": "index",
-      "sha256": "5931a2e21f9aac2af614e96929f23f3a72500ba811eead9da7f32774857c1714",
-      "size": 5968,
-      "normalized_sha256": "5931a2e21f9aac2af614e96929f23f3a72500ba811eead9da7f32774857c1714"
-    },
-    ".claude/port-ref/branch-test_governance_preflight.py": {
-      "role": "index",
-      "sha256": "1cbc1ea1d4efb7f2bdc62b07c70314b6e7a1700a937554fcaaf641e8ceaadb2a",
-      "size": 11111,
-      "normalized_sha256": "1cbc1ea1d4efb7f2bdc62b07c70314b6e7a1700a937554fcaaf641e8ceaadb2a"
-    },
-    ".claude/port-ref/branch-v0003_metadata_metric_carry_forward.py": {
-      "role": "index",
-      "sha256": "21a7b7e57ac9117ce77473497c10d0123571ceea3a071cbba8e6d5cfd0000388",
-      "size": 11984,
-      "normalized_sha256": "21a7b7e57ac9117ce77473497c10d0123571ceea3a071cbba8e6d5cfd0000388"
-    },
-    ".claude/specs/2026-10-16-loop-batches/spec.md": {
-      "role": "index",
-      "sha256": "4fe59c317d9abcf78a16078eb80292e2bbfff82676945fdc9cbb21750354dafa",
-      "size": 7082,
-      "normalized_sha256": "4fe59c317d9abcf78a16078eb80292e2bbfff82676945fdc9cbb21750354dafa"
-    },
-    ".claude/specs/2026-10-16-loop-batches/tasks.md": {
-      "role": "index",
-      "sha256": "7e85cc38e574a63cd8fc7457f69c431dba04ab30bba61d9e174787fe7c1ac94d",
-      "size": 2457,
-      "normalized_sha256": "7e85cc38e574a63cd8fc7457f69c431dba04ab30bba61d9e174787fe7c1ac94d"
-    },
-    ".claude/wip-preserve/codex-main-wip-staged-20261016.patch": {
-      "role": "index",
-      "sha256": "cde390589242f73cee374a61c16a074b0f30b149d0c6dbf0c3ef182c08ae7a00",
-      "size": 6240,
-      "normalized_sha256": "cde390589242f73cee374a61c16a074b0f30b149d0c6dbf0c3ef182c08ae7a00"
-    },
-    ".claude/wip-preserve/rebuild-validation-i2.html.codex-untracked": {
-      "role": "index",
-      "sha256": "471f274b7d3d88600b94d1197f1fe1c0ccbc45734d37bc45ec9343d85f8b8d48",
-      "size": 3051,
-      "normalized_sha256": "471f274b7d3d88600b94d1197f1fe1c0ccbc45734d37bc45ec9343d85f8b8d48"
-    },
-    ".claude/wip-preserve/run-r3-governance-control-smoke.ps1.codex-untracked": {
-      "role": "index",
-      "sha256": "741a5e3edf26169f81c9728cccb6f51629666a791a99e344496b5350c0e537f2",
-      "size": 1261,
-      "normalized_sha256": "741a5e3edf26169f81c9728cccb6f51629666a791a99e344496b5350c0e537f2"
-    },
     ".gitattributes": {
       "role": "index",
       "sha256": "21fa16a2122e2b0360b47502c577428b645437e08e9e87ffba661f84853cb476",
@@ -83,9 +11,9 @@
     },
     ".gitignore": {
       "role": "index",
-      "sha256": "0954e3a0e81c3a43bc7572d1d47823e4926587b8ea3e249afcdfdc03fca46ad6",
-      "size": 595,
-      "normalized_sha256": "0954e3a0e81c3a43bc7572d1d47823e4926587b8ea3e249afcdfdc03fca46ad6"
+      "sha256": "bb3f8bff795fc1d4d131caa73d0df8576405b3776877a2a67193d82ecfd101b2",
+      "size": 788,
+      "normalized_sha256": "bb3f8bff795fc1d4d131caa73d0df8576405b3776877a2a67193d82ecfd101b2"
     },
     ".mcp.json": {
       "role": "index",
@@ -110,69 +38,9 @@
     },
     "AGENTS.md": {
       "role": "index",
-      "sha256": "3cf6fd465743f9395f7ebf60267812c45db72572cf4b15bb5369129fa4467a7a",
-      "size": 16246,
-      "normalized_sha256": "3cf6fd465743f9395f7ebf60267812c45db72572cf4b15bb5369129fa4467a7a"
-    },
-    "Datara/docs/increments/i12_proofs/I12_verification_summary_P2.3.md": {
-      "role": "index",
-      "sha256": "6b7411d4c52292500447b7040828ba49c5cada7d6d78e4b22e39ad3508a09dd5",
-      "size": 4885,
-      "normalized_sha256": "6b7411d4c52292500447b7040828ba49c5cada7d6d78e4b22e39ad3508a09dd5"
-    },
-    "Datara/docs/increments/i12_proofs/i12_board_cat_dom.json": {
-      "role": "index",
-      "sha256": "3653331cd0721ff6786a8b2989798df068b21535d7fdca460a4feaadb0800611",
-      "size": 1970,
-      "normalized_sha256": "d0ab37c129c087e9a36d18fc67e7fbd1616afab7a24822acf3fb3c0f2ff78cc7"
-    },
-    "Datara/docs/increments/i12_proofs/i12_board_cat_dom2.json": {
-      "role": "index",
-      "sha256": "645eac0bf4b2f14f0fddf7bf56213aaaf896fb02958739435a211766c00b71bc",
-      "size": 1917,
-      "normalized_sha256": "8839fee079d14cffd4e8e659bb00c23ac4484537b99f364ac97f68c4f3fc98dd"
-    },
-    "Datara/docs/increments/i12_proofs/i12_board_cat_dom_final.json": {
-      "role": "index",
-      "sha256": "08d1057291f841f5cd78389c17c881d2bc1f3f42b0dd012f4d943290aad1b3a7",
-      "size": 5639,
-      "normalized_sha256": "717220796a787e6d389743432da9ecfadf29acb2dad8a5d2ad58d774b8340663"
-    },
-    "Datara/docs/increments/i12_proofs/i12_board_cat_sidebar2.json": {
-      "role": "index",
-      "sha256": "66574bf7c631a5e8ff1bf121f888e5943330dd8d4a04c4bb1957a634689e4f2d",
-      "size": 1973,
-      "normalized_sha256": "4f2080c233ebe3d6cbb00caad31629518286a884d41d6d575370ae2df06c1912"
-    },
-    "Datara/docs/increments/i12_proofs/i12_cat_stream_sources.json": {
-      "role": "index",
-      "sha256": "221ed866707a9b8b364e7db32b3a25e65e73dad51873b68de6bcb160a19d231f",
-      "size": 17,
-      "normalized_sha256": "573ef76b4f0e1a7901d9a77d9930e6ac4d82c6b7b3abf58c91b886004cc75721"
-    },
-    "Datara/docs/increments/i12_proofs/i12_closeout.json": {
-      "role": "index",
-      "sha256": "133e3457af36452bd5f9600fcc5e45ab9a0c661b2211d94d4bf91604a9af4ca8",
-      "size": 77,
-      "normalized_sha256": "8f15cd20c8ca10430a4d83f5c6d672c61acb198b9f13869b0a30227a8b37beb5"
-    },
-    "Datara/docs/increments/i12_proofs/i12_complete.json": {
-      "role": "index",
-      "sha256": "bbf4e5d014867b1d7005e22ae8d0445c004a02192c3129bc150700445f694e14",
-      "size": 1110,
-      "normalized_sha256": "0deba02e493eb7bf467e7867f058c82469651c7d5632d28213d74c0c65a1b98a"
-    },
-    "Datara/docs/increments/i12_proofs/i12_general_g1g5.json": {
-      "role": "index",
-      "sha256": "ca57f57a317dac80fa66e28955fc7012b058e9be20dfab6870654bb7d04906f9",
-      "size": 5182,
-      "normalized_sha256": "ca57f57a317dac80fa66e28955fc7012b058e9be20dfab6870654bb7d04906f9"
-    },
-    "Datara/docs/increments/i12_proofs/i12_handoff_dom.json": {
-      "role": "index",
-      "sha256": "e5269b263fe23bef872756e8568ff62942746d0de61cae57ea1d1f888a67a60e",
-      "size": 1368,
-      "normalized_sha256": "22ea7dc8634b7a6b3571bcb0a0ff6b799d2b1e79651465e2f2069d6d84acc0d4"
+      "sha256": "3e945cffb3cb0ed8f30b2f93e070d1edfee3293c6dd9a4d4cf8360570bf865a3",
+      "size": 16733,
+      "normalized_sha256": "3e945cffb3cb0ed8f30b2f93e070d1edfee3293c6dd9a4d4cf8360570bf865a3"
     },
     "LICENSE": {
       "role": "index",
@@ -198,11 +66,17 @@
       "size": 356,
       "normalized_sha256": "8b79c53098006f2a61f93e2cbaf21a5b276bde50fe12c11b155c612362c09df5"
     },
+    "agents/mailbox_loop.py": {
+      "role": "index",
+      "sha256": "49023e0250884e82b199e89ebc92e2142874f26230d879df6ddfef4da29b14f9",
+      "size": 12708,
+      "normalized_sha256": "2ef15ec3a5745483b5fd4178d54daf8433d87dc3af52e08cf4aa7ba1b2d0654a"
+    },
     "aoci.code.txt": {
       "role": "index",
-      "sha256": "465f387c4590869c453c72c3c0d9b9c6ae54c03042c0dae435adb4b9c46f7533",
-      "size": 256052,
-      "normalized_sha256": "465f387c4590869c453c72c3c0d9b9c6ae54c03042c0dae435adb4b9c46f7533"
+      "sha256": "04d843c4b753c8e8621e1f30dfd0c832b4b4bf5a59137246f156272938e4768b",
+      "size": 276199,
+      "normalized_sha256": "04d843c4b753c8e8621e1f30dfd0c832b4b4bf5a59137246f156272938e4768b"
     },
     "aoci.meta.txt": {
       "role": "index",
@@ -216,17 +90,41 @@
       "size": 295,
       "normalized_sha256": "5ff8c4159b2e5fed670a70a4303b9bee33d682355bb96e2adb5bd4e4a6af8d4d"
     },
+    "datara-backend/.dockerignore": {
+      "role": "index",
+      "sha256": "052b41652392d97cd4f97670b8e9267305c9e792f4b3c5680b0453c707710b45",
+      "size": 176,
+      "normalized_sha256": "052b41652392d97cd4f97670b8e9267305c9e792f4b3c5680b0453c707710b45"
+    },
     "datara-backend/Dockerfile": {
       "role": "index",
-      "sha256": "d1d802435ba7ea95832d7dc3e74f3ae8103724c8194c0c06bdda345ac31ee934",
-      "size": 979,
-      "normalized_sha256": "d1d802435ba7ea95832d7dc3e74f3ae8103724c8194c0c06bdda345ac31ee934"
+      "sha256": "8d0a3775278a6e2e5b1eeba17677bac737f36aa2ef2cd16da1388442bcce7662",
+      "size": 1326,
+      "normalized_sha256": "8d0a3775278a6e2e5b1eeba17677bac737f36aa2ef2cd16da1388442bcce7662"
     },
     "datara-backend/Dockerfile.r2-12-d": {
       "role": "index",
       "sha256": "b870bb6e93d0c277b89ff2b89c5294578e82f978a18292a03a5c8dccfc4b1d08",
       "size": 293,
       "normalized_sha256": "b870bb6e93d0c277b89ff2b89c5294578e82f978a18292a03a5c8dccfc4b1d08"
+    },
+    "datara-backend/ai_copilot/__init__.py": {
+      "role": "index",
+      "sha256": "842d42a7b19b33df6c4a8f259a8b4b4d09fbf5656d2d7ace0206d40c422ef5bc",
+      "size": 377,
+      "normalized_sha256": "842d42a7b19b33df6c4a8f259a8b4b4d09fbf5656d2d7ace0206d40c422ef5bc"
+    },
+    "datara-backend/ai_copilot/adapter.py": {
+      "role": "index",
+      "sha256": "e1f4acea930c8585ce107d768714b34334a8cb25dcb0b8219dde8d19dbf44c7d",
+      "size": 9518,
+      "normalized_sha256": "e1f4acea930c8585ce107d768714b34334a8cb25dcb0b8219dde8d19dbf44c7d"
+    },
+    "datara-backend/ai_copilot/config.py": {
+      "role": "index",
+      "sha256": "6ab5449d4ec03c905001012b5317e9ebb9d7c0859ce6ff417c40793ac68a3478",
+      "size": 3435,
+      "normalized_sha256": "6ab5449d4ec03c905001012b5317e9ebb9d7c0859ce6ff417c40793ac68a3478"
     },
     "datara-backend/alert/__init__.py": {
       "role": "index",
@@ -384,12 +282,6 @@
       "size": 4786,
       "normalized_sha256": "65548efe8a32409dcd0ee523e09d6b1492e9b6c754fa920e9ba3c191437b3d7e"
     },
-    "datara-backend/api/qc.py": {
-      "role": "index",
-      "sha256": "7ad62e64523e89213cc9f85f367cb0a3c08f1a160e54fa1d75df68fcb2ce1b0f",
-      "size": 6855,
-      "normalized_sha256": "7ad62e64523e89213cc9f85f367cb0a3c08f1a160e54fa1d75df68fcb2ce1b0f"
-    },
     "datara-backend/api/runtime_node.py": {
       "role": "index",
       "sha256": "d49e34f4da6ae2d451c78930703ff012756c88d6e5e2c5bbeff6ad15e372507c",
@@ -528,12 +420,6 @@
       "size": 3284,
       "normalized_sha256": "4da01164b8b8db69412ee1e79dd0a2fa397a7064f390a2f15ccc99f57cddfafb"
     },
-    "datara-backend/common/qc_engine.py": {
-      "role": "index",
-      "sha256": "0c805cb2ddbe93b1e4049152b5d7211b887c91082a562a9d0e938983aa0bf7a4",
-      "size": 2180,
-      "normalized_sha256": "0c805cb2ddbe93b1e4049152b5d7211b887c91082a562a9d0e938983aa0bf7a4"
-    },
     "datara-backend/common/queue.py": {
       "role": "index",
       "sha256": "cc2b9d3ad16c098fe611a55f2b9958af416dbf3ebe05aaefa297a1fd54d54648",
@@ -599,6 +485,12 @@
       "sha256": "39f123fc140e4a329955b35b432b12908d7bc67598a31146ae8c047ae512a40e",
       "size": 4939,
       "normalized_sha256": "39f123fc140e4a329955b35b432b12908d7bc67598a31146ae8c047ae512a40e"
+    },
+    "datara-backend/data/ai_copilot/chromadb/.gitignore": {
+      "role": "index",
+      "sha256": "245498699e2ac2868024dd4309d0c3452f6f2320c77e7e17e21f3b45644727eb",
+      "size": 24,
+      "normalized_sha256": "245498699e2ac2868024dd4309d0c3452f6f2320c77e7e17e21f3b45644727eb"
     },
     "datara-backend/docs/increments/D12-同步取证收口.md": {
       "role": "index",
@@ -728,15 +620,21 @@
     },
     "datara-backend/pyproject.toml": {
       "role": "index",
-      "sha256": "48eed3dc71e0b253f1877284d5f58b2d7663039020e1fa3c09f75da640b38e75",
-      "size": 476,
-      "normalized_sha256": "48eed3dc71e0b253f1877284d5f58b2d7663039020e1fa3c09f75da640b38e75"
+      "sha256": "99d7b9fd34cec3ee5b7c622d415c1bcab33973e52a412311239f23f10fbf8725",
+      "size": 697,
+      "normalized_sha256": "99d7b9fd34cec3ee5b7c622d415c1bcab33973e52a412311239f23f10fbf8725"
     },
     "datara-backend/rebuild/__init__.py": {
       "role": "index",
       "sha256": "244c893a1baa6bddfa46bab0000797aa5a46c0e6375c750bc157f5977e8c58bf",
       "size": 50,
       "normalized_sha256": "244c893a1baa6bddfa46bab0000797aa5a46c0e6375c750bc157f5977e8c58bf"
+    },
+    "datara-backend/rebuild/ai_bridge.py": {
+      "role": "index",
+      "sha256": "fe5a8261813e75911dc3ea40e1c3e0de1a6d4cf71e4fc7b8c2c0fd3388482ac3",
+      "size": 32125,
+      "normalized_sha256": "fe5a8261813e75911dc3ea40e1c3e0de1a6d4cf71e4fc7b8c2c0fd3388482ac3"
     },
     "datara-backend/rebuild/api/__init__.py": {
       "role": "index",
@@ -821,6 +719,12 @@
       "sha256": "ead0eb636d6d1b9c7aab1f731ac8a95002eb043f212244421ac16a634c400a28",
       "size": 34260,
       "normalized_sha256": "ead0eb636d6d1b9c7aab1f731ac8a95002eb043f212244421ac16a634c400a28"
+    },
+    "datara-backend/rebuild/generate_sql.py": {
+      "role": "index",
+      "sha256": "2164f5b226b5332cf43098d13dd868b8483578ecfc26ef43faa642df1d04ba45",
+      "size": 2263,
+      "normalized_sha256": "2164f5b226b5332cf43098d13dd868b8483578ecfc26ef43faa642df1d04ba45"
     },
     "datara-backend/rebuild/governance/__init__.py": {
       "role": "index",
@@ -1116,11 +1020,29 @@
       "size": 10293,
       "normalized_sha256": "3886308066ca14728fd3099a32d804a549af64c37f2950e31828219bbec9d4c8"
     },
+    "datara-backend/rebuild/run_sql.py": {
+      "role": "index",
+      "sha256": "415c58ac26ea1c7df8eabab31778b817d07406072d433a356593c547eecac12a",
+      "size": 7431,
+      "normalized_sha256": "415c58ac26ea1c7df8eabab31778b817d07406072d433a356593c547eecac12a"
+    },
     "datara-backend/rebuild/sql_ide/__init__.py": {
       "role": "index",
       "sha256": "41ffe2bb5a36f14458185a6e30061488f16e55e8666041a0182f34e7e8767249",
       "size": 609,
       "normalized_sha256": "41ffe2bb5a36f14458185a6e30061488f16e55e8666041a0182f34e7e8767249"
+    },
+    "datara-backend/rebuild/sql_ide/audit.py": {
+      "role": "index",
+      "sha256": "473b96c2425e41aaa9af4582b34dc828a1e2c7c92e604380008a4b0ddcc1ef4a",
+      "size": 3926,
+      "normalized_sha256": "473b96c2425e41aaa9af4582b34dc828a1e2c7c92e604380008a4b0ddcc1ef4a"
+    },
+    "datara-backend/rebuild/sql_ide/contracts.py": {
+      "role": "index",
+      "sha256": "521603e661cb395bf5d2d127786c9afed859c2beae6a46399b32d6ab0c834dbc",
+      "size": 8405,
+      "normalized_sha256": "521603e661cb395bf5d2d127786c9afed859c2beae6a46399b32d6ab0c834dbc"
     },
     "datara-backend/rebuild/sql_ide/ddl_diff.py": {
       "role": "index",
@@ -1139,6 +1061,12 @@
       "sha256": "c16ec6a62ffd4ae948052da8c2dc28de5874846da50e5de82535671c85d882b4",
       "size": 10029,
       "normalized_sha256": "c16ec6a62ffd4ae948052da8c2dc28de5874846da50e5de82535671c85d882b4"
+    },
+    "datara-backend/rebuild/sql_ide/execution.py": {
+      "role": "index",
+      "sha256": "85d5c1fa01ecbbda016ecab9121d198eec02c2160581d44c8bf2bc3009e746e0",
+      "size": 5074,
+      "normalized_sha256": "85d5c1fa01ecbbda016ecab9121d198eec02c2160581d44c8bf2bc3009e746e0"
     },
     "datara-backend/rebuild/variables/__init__.py": {
       "role": "index",
@@ -1169,6 +1097,18 @@
       "sha256": "880aa86748aa073a5845147e934ab5fe048d0e6ee17f59292e9040624f945660",
       "size": 15766,
       "normalized_sha256": "880aa86748aa073a5845147e934ab5fe048d0e6ee17f59292e9040624f945660"
+    },
+    "datara-backend/requirements-ai-copilot.in": {
+      "role": "index",
+      "sha256": "c3dc855c9d99ef75051be8a90ee1da0cb7400329d8ba94e689ad7ee325c00dcf",
+      "size": 520,
+      "normalized_sha256": "c3dc855c9d99ef75051be8a90ee1da0cb7400329d8ba94e689ad7ee325c00dcf"
+    },
+    "datara-backend/requirements-ai-copilot.lock": {
+      "role": "index",
+      "sha256": "b040932931ed98ce7aa23fe100d6f4ff1bf3eacf67716589ef3cfd91f139847e",
+      "size": 226690,
+      "normalized_sha256": "b040932931ed98ce7aa23fe100d6f4ff1bf3eacf67716589ef3cfd91f139847e"
     },
     "datara-backend/requirements.txt": {
       "role": "index",
@@ -1282,6 +1222,30 @@
       "role": "observe",
       "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
       "normalized_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "datara-backend/tests/ai_copilot/__init__.py": {
+      "role": "observe",
+      "sha256": "7b3f5fe6de8b72fea637c8d40c3acd03a333cc0f3cb83b39880092af179d63a4",
+      "size": 67,
+      "normalized_sha256": "7b3f5fe6de8b72fea637c8d40c3acd03a333cc0f3cb83b39880092af179d63a4"
+    },
+    "datara-backend/tests/ai_copilot/test_adapter_default_factory.py": {
+      "role": "observe",
+      "sha256": "8c072192cc3284f52b20938a3503519a3993499fa5b1385ffa0d379e43a2acda",
+      "size": 2840,
+      "normalized_sha256": "8c072192cc3284f52b20938a3503519a3993499fa5b1385ffa0d379e43a2acda"
+    },
+    "datara-backend/tests/ai_copilot/test_adapter_sovereignty.py": {
+      "role": "observe",
+      "sha256": "ec27bce5cf9d97fb81d490ec8bf160227b228fb38bc93e8243bb1430aa706f73",
+      "size": 6943,
+      "normalized_sha256": "ec27bce5cf9d97fb81d490ec8bf160227b228fb38bc93e8243bb1430aa706f73"
+    },
+    "datara-backend/tests/ai_copilot/test_skeleton.py": {
+      "role": "observe",
+      "sha256": "79845c70ac49d53ebdb423fa2a136d61f28a59d26e21b628a082a18951a273c5",
+      "size": 579,
+      "normalized_sha256": "79845c70ac49d53ebdb423fa2a136d61f28a59d26e21b628a082a18951a273c5"
     },
     "datara-backend/tests/conftest.py": {
       "role": "observe",
@@ -1600,6 +1564,65 @@
       "sha256": "da09b3787c54ba7e86af777e4adc494d711d491897735df4d8b0b126dc8dc7e6",
       "size": 6615,
       "normalized_sha256": "da09b3787c54ba7e86af777e4adc494d711d491897735df4d8b0b126dc8dc7e6"
+    },
+    "datara-backend/tests/rebuild/test_r8a_ai_tools_api.py": {
+      "role": "observe",
+      "sha256": "b755dce2acbf1d3d326e20faf263b941466a91e8ad7277cd6f3b04d93c1376d0",
+      "size": 21811,
+      "normalized_sha256": "b755dce2acbf1d3d326e20faf263b941466a91e8ad7277cd6f3b04d93c1376d0"
+    },
+    "datara-backend/tests/rebuild/test_r8a_generate_sql_port.py": {
+      "role": "observe",
+      "sha256": "a7f1f97256804871805956bc50ae852bcf745f7f9d75201b49a1e5daed5044c6",
+      "size": 3095,
+      "normalized_sha256": "a7f1f97256804871805956bc50ae852bcf745f7f9d75201b49a1e5daed5044c6"
+    },
+    "datara-backend/tests/rebuild/test_r8a_run_sql_port.py": {
+      "role": "observe",
+      "sha256": "7071a9e5774a0649e5d520d9ec0ebacfec67620a317d20e418ef6b34da6d0bca",
+      "size": 13973,
+      "normalized_sha256": "7071a9e5774a0649e5d520d9ec0ebacfec67620a317d20e418ef6b34da6d0bca"
+    },
+    "datara-backend/tests/sql_ide/__init__.py": {
+      "role": "observe",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "normalized_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "datara-backend/tests/sql_ide/test_audit_writer.py": {
+      "role": "observe",
+      "sha256": "0677204430cd2f4dda3a8737a1c82b4856fdda9c7b281ad14d5c6de8a16cb69c",
+      "size": 9058,
+      "normalized_sha256": "0677204430cd2f4dda3a8737a1c82b4856fdda9c7b281ad14d5c6de8a16cb69c"
+    },
+    "datara-backend/tests/sql_ide/test_ddl_policy.py": {
+      "role": "observe",
+      "sha256": "e1d15e4e28ee8344182458a2ac54dc9298c8764d3ce29ab8dbfb7071950b0b6e",
+      "size": 5583,
+      "normalized_sha256": "e1d15e4e28ee8344182458a2ac54dc9298c8764d3ce29ab8dbfb7071950b0b6e"
+    },
+    "datara-backend/tests/sql_ide/test_execution_port.py": {
+      "role": "observe",
+      "sha256": "af9ccfd6cd8f6504170b74e29b60ad7238a907aaee3f5521d4d2d5541b0ec2bb",
+      "size": 16524,
+      "normalized_sha256": "af9ccfd6cd8f6504170b74e29b60ad7238a907aaee3f5521d4d2d5541b0ec2bb"
+    },
+    "datara-backend/tests/sql_ide/test_factory.py": {
+      "role": "observe",
+      "sha256": "f0c092283479fe38884a2e21b82612fbbcece6421809cc3604735859181e47b8",
+      "size": 5336,
+      "normalized_sha256": "f0c092283479fe38884a2e21b82612fbbcece6421809cc3604735859181e47b8"
+    },
+    "datara-backend/tests/sql_ide/test_repair_integration.py": {
+      "role": "observe",
+      "sha256": "0b40e5e688f15f6f3e8c3d6f7e78357eaf9753c0dd617dbc457ed3f1c755b5b4",
+      "size": 17165,
+      "normalized_sha256": "0b40e5e688f15f6f3e8c3d6f7e78357eaf9753c0dd617dbc457ed3f1c755b5b4"
+    },
+    "datara-backend/tests/sql_ide/test_run_sql_readonly.py": {
+      "role": "observe",
+      "sha256": "83d3863797b09eb2bf8a5cf6d5d8da9800735d374a91b7f6c30413da40e84270",
+      "size": 4277,
+      "normalized_sha256": "83d3863797b09eb2bf8a5cf6d5d8da9800735d374a91b7f6c30413da40e84270"
     },
     "datara-backend/tests/test_alert_api.py": {
       "role": "observe",
@@ -3409,9 +3432,9 @@
     },
     "datara-web/src/router/routes.ts": {
       "role": "index",
-      "sha256": "547009e7b6d1a6f1ea00d5140bd464d4821f53177cbd23d4009ca17c90eb6a55",
-      "size": 15932,
-      "normalized_sha256": "547009e7b6d1a6f1ea00d5140bd464d4821f53177cbd23d4009ca17c90eb6a55"
+      "sha256": "38c7838949c6e1a8e99e48199dbbea14677c71579c6069d594b0312bac99207e",
+      "size": 16178,
+      "normalized_sha256": "38c7838949c6e1a8e99e48199dbbea14677c71579c6069d594b0312bac99207e"
     },
     "datara-web/src/services/__tests__/baselineApi.save.test.ts": {
       "role": "observe",
@@ -3701,6 +3724,12 @@
       "size": 9405,
       "normalized_sha256": "fd1c3297fb294832b0a833c5d08ed11651b95230b3396e95ea01f6272a98184c"
     },
+    "datara-web/src/services/rebuild/aiToolsApi.ts": {
+      "role": "index",
+      "sha256": "8efb354bff8e15401c5bdf80cbd01a8086e32dc82cc01af024bd279e8e750a20",
+      "size": 7023,
+      "normalized_sha256": "8efb354bff8e15401c5bdf80cbd01a8086e32dc82cc01af024bd279e8e750a20"
+    },
     "datara-web/src/services/rebuild/dependencyApi.ts": {
       "role": "index",
       "sha256": "0b8f54415e201ccb3111bd8b6ff19812e945d5aa3776eb6e2e8d6862bf3c3d6b",
@@ -3935,12 +3964,6 @@
       "size": 768,
       "normalized_sha256": "734658d6e834ee193e5df1af3e2dcee346eedb5a60071d9db03bb89834a764af"
     },
-    "datara-web/src/views/RebuildValidationI1View.vue": {
-      "role": "index",
-      "sha256": "90f2ce86a528ec9d367de616652e127dcbb20d6ce5c9c3a112acd6974aaa5fda",
-      "size": 6206,
-      "normalized_sha256": "90f2ce86a528ec9d367de616652e127dcbb20d6ce5c9c3a112acd6974aaa5fda"
-    },
     "datara-web/src/views/TaskCenterView.vue": {
       "role": "index",
       "sha256": "dcd041e3bdd530cda1afa932ed87e52d54d5a9f05382d4bc44c522798c63a25b",
@@ -4174,12 +4197,6 @@
       "sha256": "3914cb354c6c4ed67ee402cb306942cc06220ef63c741ef1166f709f17ba47cc",
       "size": 25166,
       "normalized_sha256": "3914cb354c6c4ed67ee402cb306942cc06220ef63c741ef1166f709f17ba47cc"
-    },
-    "datara-web/src/views/meta/ComponentDesignView.vue": {
-      "role": "index",
-      "sha256": "b9eb02610038a70e76748f9aed43e42c63c4265b2414bd248f73685a81f3481f",
-      "size": 50350,
-      "normalized_sha256": "4102f6b83620994395b23e3026e13b3568bf4d755c164e13ced6fe745cde03c9"
     },
     "datara-web/src/views/meta/ComponentHubView.vue": {
       "role": "index",
@@ -4486,6 +4503,24 @@
       "sha256": "37d091ce6de74abfb4bd6820f4a4c80810feed397b770b8bad456fa0e58de4d4",
       "size": 17192,
       "normalized_sha256": "37d091ce6de74abfb4bd6820f4a4c80810feed397b770b8bad456fa0e58de4d4"
+    },
+    "datara-web/src/views/rebuild/validation/ai-assistant/AiAssistantValidationView.vue": {
+      "role": "index",
+      "sha256": "12d2b85ac0807615f96c12dbf3f04e689ec1c7e61b3255a2adebb99d824ace5e",
+      "size": 13314,
+      "normalized_sha256": "12d2b85ac0807615f96c12dbf3f04e689ec1c7e61b3255a2adebb99d824ace5e"
+    },
+    "datara-web/src/views/rebuild/validation/ai-assistant/aiToolsApi.contract.test.ts": {
+      "role": "observe",
+      "sha256": "b491001f9628ab9f3a8342bebef6ad1b04212c9cfe87560edd798bc467c37796",
+      "size": 11227,
+      "normalized_sha256": "b491001f9628ab9f3a8342bebef6ad1b04212c9cfe87560edd798bc467c37796"
+    },
+    "datara-web/src/views/rebuild/validation/ai-assistant/mockAgent.ts": {
+      "role": "index",
+      "sha256": "b86315c4014d7f2775547c0af64d626f72c0169305b8cb13363b4227726509d4",
+      "size": 15797,
+      "normalized_sha256": "b86315c4014d7f2775547c0af64d626f72c0169305b8cb13363b4227726509d4"
     },
     "datara-web/src/views/rebuild/validation/dependency-form/DependencyFormValidationView.vue": {
       "role": "index",
@@ -5077,8 +5112,8 @@
     },
     "docker-compose.yml": {
       "role": "index",
-      "sha256": "0a482269eb18b6755678f9ba77be0415ed75f9e531c1b4cc3ed339e790edd30d",
-      "size": 11423,
+      "sha256": "7d4038e705bbdbd03e943ddab9b5b24b6a59d33d0aee685563cea0c445c36027",
+      "size": 11098,
       "normalized_sha256": "7d4038e705bbdbd03e943ddab9b5b24b6a59d33d0aee685563cea0c445c36027"
     },
     "docs/2026-10-13-功能实测报告.md": {
@@ -5271,22 +5306,10 @@
       "size": 43937,
       "normalized_sha256": "08dd4fb1f1193b02b46602b75097ad5679ace366ec5bdc474e05c195b8c4efaa"
     },
-    "docs/build_docs.py": {
-      "role": "index",
-      "sha256": "29d35e4d00f7f9ad87c62e0a5830ba05a097330fd56dbb0eec8f33ff8683f6c5",
-      "size": 51595,
-      "normalized_sha256": "29d35e4d00f7f9ad87c62e0a5830ba05a097330fd56dbb0eec8f33ff8683f6c5"
-    },
-    "docs/build_manual.py": {
-      "role": "index",
-      "sha256": "60b6668892877e79a42adfb7594e0691ce5eceb3d0a7bb245e6afb7d0d13a85b",
-      "size": 46540,
-      "normalized_sha256": "60b6668892877e79a42adfb7594e0691ce5eceb3d0a7bb245e6afb7d0d13a85b"
-    },
     "docs/handoff/2026-10-16-Codex-to-Trae-correction-plan.md": {
       "role": "index",
-      "sha256": "8dc1a9ddaeecf9819906ab3af4e0755f195a59ad003da3577ed3bd9d3b7a12c5",
-      "size": 3887,
+      "sha256": "2a776274e89f6b5ca42ff803d4e9a5a4f6ce4b2d0d0eec45b4f0b0c9b6328790",
+      "size": 3918,
       "normalized_sha256": "2cf450b6f8bdecd463f24ccb2b10ab0992d6bca17ade8d2b993d3528f87e61ae"
     },
     "docs/handoff/2026-10-16-Codex-to-Trae-i18-invalid-token.md": {
@@ -5297,15 +5320,39 @@
     },
     "docs/handoff/2026-10-16-Codex-to-Trae-r3-s9-zero-free-bstr.md": {
       "role": "index",
-      "sha256": "48f0363e1661e11add6a1d97ffd28547e66e68d7dba76ab18d65ceaf8b12e69b",
-      "size": 1401,
-      "normalized_sha256": "48f0363e1661e11add6a1d97ffd28547e66e68d7dba76ab18d65ceaf8b12e69b"
+      "sha256": "f0ff36b5abb55ed919eba3027afbbe4ab6e2dc2c07e771c25b9130e231c47441",
+      "size": 1773,
+      "normalized_sha256": "f0ff36b5abb55ed919eba3027afbbe4ab6e2dc2c07e771c25b9130e231c47441"
     },
     "docs/handoff/2026-10-16-并行协作分工.md": {
       "role": "index",
-      "sha256": "c8bc1b11ae71eaf8f97a5de24ba8f2be880f2ccca5569cfac2d142b2a54b50f4",
-      "size": 47375,
-      "normalized_sha256": "79e766b798a34be0fb8bd753ae1b0c24b3fa69724b608b8c819a6cfe6958b45f"
+      "sha256": "c90142e6b931946cf5b9ec932f24009717c06eb170008738b784001ce6d9893d",
+      "size": 147235,
+      "normalized_sha256": "422e5e6a483a4ae6f0f66186506e2c9b8146dea11d1c589725bb3a034eeb2458"
+    },
+    "docs/handoff/STATE.md": {
+      "role": "index",
+      "sha256": "26728b5e7eb1e5fdcca83b7dbedf6d45e36dd748394062c854e9b81f2d38667b",
+      "size": 21199,
+      "normalized_sha256": "05e37aae5c9c51bcc18b4f72df1e4b5435415ca94e6f80a1892259aef415a4f1"
+    },
+    "docs/handoff/archive/2026-10-16-并行协作分工-归档1.md": {
+      "role": "index",
+      "sha256": "843ebbfd45d14213c36e34f6e785294c5b0938290a4100162771465eb6f388aa",
+      "size": 404987,
+      "normalized_sha256": "d5d97d6e3272392247a9fa238b7a7690cbf21795bad6d916747d6b80ff579613"
+    },
+    "docs/handoff/archive/2026-10-19-STATE-S1-S3.md": {
+      "role": "index",
+      "sha256": "d31f5e01531af8a696888bfc121d1bed823a41c9b4e4f8494790ccaf67222286",
+      "size": 2062,
+      "normalized_sha256": "e409283e58ed5927f802894a32d414574725712f3f62db076333f8d638bf5b81"
+    },
+    "docs/handoff/mailbox.jsonl": {
+      "role": "index",
+      "sha256": "a7661f1ff3718e727e40097066e84fe50da8b2aceb46ac3e5a37df08b1449c88",
+      "size": 41625,
+      "normalized_sha256": "0e7b995cd0b706c232ac4a47e7307d7f898fc46264fb4ec2e40f13f641acc198"
     },
     "docs/increments/00-流程与记录.md": {
       "role": "index",
@@ -5325,41 +5372,287 @@
       "size": 34924,
       "normalized_sha256": "5259bdbc6f9c1337a9604437c70cd395fa145e686461cde12069ad7a38fda597"
     },
+    "docs/increments/2026-10-14-datara-platform-rebuild-design-执行附录.md": {
+      "role": "index",
+      "sha256": "ffa5ac37383cc41182360c65920e2edd37c8750bc793e0e635449a94be668752",
+      "size": 39609,
+      "normalized_sha256": "ffa5ac37383cc41182360c65920e2edd37c8750bc793e0e635449a94be668752"
+    },
     "docs/increments/2026-10-14-datara-platform-rebuild-design.md": {
       "role": "index",
-      "sha256": "e681b4959ce990844a68e88e2190c58173f1fafe486ba610fa5c5283274d4c8a",
-      "size": 26312,
-      "normalized_sha256": "e681b4959ce990844a68e88e2190c58173f1fafe486ba610fa5c5283274d4c8a"
+      "sha256": "a87d0a514b22efebe941cd091bb6496c6858be9454a03722b730a8195b8129e6",
+      "size": 33960,
+      "normalized_sha256": "a87d0a514b22efebe941cd091bb6496c6858be9454a03722b730a8195b8129e6"
+    },
+    "docs/increments/2026-10-14-datara-platform-rebuild-执行附录.md": {
+      "role": "index",
+      "sha256": "eff7711e520a445ffccf9493c4f08733eced7774471551cb61141bfc7e7562c6",
+      "size": 72917,
+      "normalized_sha256": "eff7711e520a445ffccf9493c4f08733eced7774471551cb61141bfc7e7562c6"
     },
     "docs/increments/2026-10-14-datara-platform-rebuild.md": {
       "role": "index",
-      "sha256": "50d808e626147cd8bc4ff69d81d7258ecf54b83ac073d074dcb4befb879efd60",
-      "size": 20860,
-      "normalized_sha256": "50d808e626147cd8bc4ff69d81d7258ecf54b83ac073d074dcb4befb879efd60"
+      "sha256": "f547f854e2b8dee94b3717e6a6f01b10303aae7f8702a87045d4dcaeb888cb47",
+      "size": 36337,
+      "normalized_sha256": "f547f854e2b8dee94b3717e6a6f01b10303aae7f8702a87045d4dcaeb888cb47"
     },
-    "docs/increments/I0-rebuild-impact-analysis.md": {
+    "docs/increments/2026-10-16-FE契约适配层设计.md": {
       "role": "index",
-      "sha256": "200d836e6086d080839f1dc76972250dedacd4bf996cd2c82978095634c2542a",
-      "size": 3794,
-      "normalized_sha256": "200d836e6086d080839f1dc76972250dedacd4bf996cd2c82978095634c2542a"
+      "sha256": "45d3aa0c7d0a12dc60237a6a05d4597778e180cdbcb206fc040621c606377a3e",
+      "size": 30524,
+      "normalized_sha256": "45d3aa0c7d0a12dc60237a6a05d4597778e180cdbcb206fc040621c606377a3e"
     },
-    "docs/increments/I1-rebuild-impact-analysis.md": {
+    "docs/increments/2026-10-16-O4时间戳断言清单.md": {
       "role": "index",
-      "sha256": "103657d43d969b4027cff355e757d81f1835ca53e3792f2e8875ba7504d17102",
-      "size": 6028,
-      "normalized_sha256": "103657d43d969b4027cff355e757d81f1835ca53e3792f2e8875ba7504d17102"
+      "sha256": "a275006aebb89c5dbf91f26192fc353c12620f4966d402beacf6845724d189d9",
+      "size": 11407,
+      "normalized_sha256": "a275006aebb89c5dbf91f26192fc353c12620f4966d402beacf6845724d189d9"
     },
-    "docs/increments/I1-设计文档.md": {
+    "docs/increments/2026-10-16-Q答复跟踪台账.md": {
       "role": "index",
-      "sha256": "155b2c63ea2ed67871d8fe0f54972982e0659f74dd8d035772eb3c66089664f4",
-      "size": 28926,
-      "normalized_sha256": "155b2c63ea2ed67871d8fe0f54972982e0659f74dd8d035772eb3c66089664f4"
+      "sha256": "d29410b1bfbc09f01446e2319f731126059f5d63cc8d5ec7cf9f3ad678712098",
+      "size": 43067,
+      "normalized_sha256": "d29410b1bfbc09f01446e2319f731126059f5d63cc8d5ec7cf9f3ad678712098"
     },
-    "docs/increments/I1-验证单.md": {
+    "docs/increments/2026-10-16-R1-R3验证页溯源报告.md": {
       "role": "index",
-      "sha256": "6a87dc8a4720bdf2b6dc5ac6042e8a4c0e31b64cb16e3de08b9a227078c1bb27",
-      "size": 7614,
-      "normalized_sha256": "6a87dc8a4720bdf2b6dc5ac6042e8a4c0e31b64cb16e3de08b9a227078c1bb27"
+      "sha256": "c6cd12b1669f9c2673c37c7c395c0ff8aad173ad10c1f2ab52c1433e2c77165c",
+      "size": 23562,
+      "normalized_sha256": "c6cd12b1669f9c2673c37c7c395c0ff8aad173ad10c1f2ab52c1433e2c77165c"
+    },
+    "docs/increments/2026-10-16-R2变量域契约差异对齐清单.md": {
+      "role": "index",
+      "sha256": "d2d07fda0aee8d7ac2bb8cc504c73cc725d210379fa2a864c7184dc509c54005",
+      "size": 35024,
+      "normalized_sha256": "d2d07fda0aee8d7ac2bb8cc504c73cc725d210379fa2a864c7184dc509c54005"
+    },
+    "docs/increments/2026-10-16-R4-SYNC契约差异对齐清单.md": {
+      "role": "index",
+      "sha256": "711879f0d4f8f2b78f2e101d73fc0e3f4fd636806f22d44be36636c8125ecad6",
+      "size": 41504,
+      "normalized_sha256": "711879f0d4f8f2b78f2e101d73fc0e3f4fd636806f22d44be36636c8125ecad6"
+    },
+    "docs/increments/2026-10-16-R5-IDE契约差异对齐清单.md": {
+      "role": "index",
+      "sha256": "bfea856f986b03055a44d5fe5e6bff5a50000357e975286b7b472e3c89324f67",
+      "size": 48627,
+      "normalized_sha256": "bfea856f986b03055a44d5fe5e6bff5a50000357e975286b7b472e3c89324f67"
+    },
+    "docs/increments/2026-10-16-R8观测schema提案.md": {
+      "role": "index",
+      "sha256": "55206af234d6143aefcf3f44686c15a489fff703c4769859bccecd6607d81d5d",
+      "size": 11032,
+      "normalized_sha256": "55206af234d6143aefcf3f44686c15a489fff703c4769859bccecd6607d81d5d"
+    },
+    "docs/increments/2026-10-16-R系列GREEN-runbook.md": {
+      "role": "index",
+      "sha256": "2385888bffcb9b32f6d58c94fa29becaff45cc8a9e78b349a25f82eedbf5dc30",
+      "size": 8115,
+      "normalized_sha256": "2385888bffcb9b32f6d58c94fa29becaff45cc8a9e78b349a25f82eedbf5dc30"
+    },
+    "docs/increments/2026-10-16-前端消费契约需求总表.md": {
+      "role": "index",
+      "sha256": "0c129d75c5f41f9c7d14500247b6fd6ca602bd236da87072beae4b2456540242",
+      "size": 31917,
+      "normalized_sha256": "0c129d75c5f41f9c7d14500247b6fd6ca602bd236da87072beae4b2456540242"
+    },
+    "docs/increments/2026-10-16-契约差异对齐收尾清单-DEP-RES-R7-R8.md": {
+      "role": "index",
+      "sha256": "5187eca05678a6dc8fdc8a163f57d5d3f02ed8b1dfe6e55f5c807db1bf556838",
+      "size": 81386,
+      "normalized_sha256": "5187eca05678a6dc8fdc8a163f57d5d3f02ed8b1dfe6e55f5c807db1bf556838"
+    },
+    "docs/increments/2026-10-16-客户九项要求追踪矩阵.md": {
+      "role": "index",
+      "sha256": "1dbe049e8d0f248ffcd2c563fd785a6af118528ea62bde7138114aa108931a73",
+      "size": 19093,
+      "normalized_sha256": "1dbe049e8d0f248ffcd2c563fd785a6af118528ea62bde7138114aa108931a73"
+    },
+    "docs/increments/2026-10-16-纠偏方案修订设计.md": {
+      "role": "index",
+      "sha256": "7a946b5490db99ba151f99361ed52d4639427f858155fa11bbdd19d96283292c",
+      "size": 15636,
+      "normalized_sha256": "7a946b5490db99ba151f99361ed52d4639427f858155fa11bbdd19d96283292c"
+    },
+    "docs/increments/2026-10-16-纠偏重构实施计划-执行附录.md": {
+      "role": "index",
+      "sha256": "7714636a1a65547fe4749e60fa13562e365ebb6bc7158d0dc897ae073a56ba21",
+      "size": 33695,
+      "normalized_sha256": "7714636a1a65547fe4749e60fa13562e365ebb6bc7158d0dc897ae073a56ba21"
+    },
+    "docs/increments/2026-10-16-纠偏重构方案设计.md": {
+      "role": "index",
+      "sha256": "0fb499832937aa759a58a0e0b52010d602dd2950ab483615cca559fe268d69cc",
+      "size": 21776,
+      "normalized_sha256": "0fb499832937aa759a58a0e0b52010d602dd2950ab483615cca559fe268d69cc"
+    },
+    "docs/increments/2026-10-16-阶段0-0.4差异复用矩阵.md": {
+      "role": "index",
+      "sha256": "c3a8ac67af29577e12170d6f9299602f0c75750a78b7e5b39f5fb7076d579a7f",
+      "size": 15900,
+      "normalized_sha256": "c3a8ac67af29577e12170d6f9299602f0c75750a78b7e5b39f5fb7076d579a7f"
+    },
+    "docs/increments/2026-10-17-AI助手三组件资料包索引.md": {
+      "role": "index",
+      "sha256": "112c647328a0fb08aefb9a3677318a7939e2be59fc403cd7bf95c23963dbc502",
+      "size": 4641,
+      "normalized_sha256": "112c647328a0fb08aefb9a3677318a7939e2be59fc403cd7bf95c23963dbc502"
+    },
+    "docs/increments/2026-10-17-DBX-DS-源码研读与复刻映射.md": {
+      "role": "index",
+      "sha256": "836cecd09755d973d01b87ca8b509f51fbf4f3a172be58a90d182ec1e02d15f2",
+      "size": 15430,
+      "normalized_sha256": "836cecd09755d973d01b87ca8b509f51fbf4f3a172be58a90d182ec1e02d15f2"
+    },
+    "docs/increments/2026-10-17-DBX-原版SQLIDE-融合对照清单.md": {
+      "role": "index",
+      "sha256": "b3763f31e58eeb15dd390106aa59dd3796ab112fa3ab45f6d672ed54cd98d2dd",
+      "size": 41375,
+      "normalized_sha256": "b3763f31e58eeb15dd390106aa59dd3796ab112fa3ab45f6d672ed54cd98d2dd"
+    },
+    "docs/increments/2026-10-17-LLM接入配置约定-草案.md": {
+      "role": "index",
+      "sha256": "b48318c02516f42a654a9a3cb043c4d7f7c12608008f40f03185c6a3b99fbe84",
+      "size": 7737,
+      "normalized_sha256": "b48318c02516f42a654a9a3cb043c4d7f7c12608008f40f03185c6a3b99fbe84"
+    },
+    "docs/increments/2026-10-17-P1-3-router挂载方案.md": {
+      "role": "index",
+      "sha256": "957345cbe4b7d88733b0f4015982f8361686e5477bc85d8f1f41d893a2b8b5ab",
+      "size": 6578,
+      "normalized_sha256": "957345cbe4b7d88733b0f4015982f8361686e5477bc85d8f1f41d893a2b8b5ab"
+    },
+    "docs/increments/2026-10-17-P1契约冻结宣言.md": {
+      "role": "index",
+      "sha256": "5c2b948b0b532d7d48a3e330321a77f07d95468ddcebb7937f3ffd4fb62c3ce6",
+      "size": 10785,
+      "normalized_sha256": "5c2b948b0b532d7d48a3e330321a77f07d95468ddcebb7937f3ffd4fb62c3ce6"
+    },
+    "docs/increments/2026-10-17-R4-DEP-RES-API-contract-pending.md": {
+      "role": "index",
+      "sha256": "bcd043c56ebe24b37ef13a168cbfd2047cc50467a8ef917d7059ff982fe3e6b9",
+      "size": 22033,
+      "normalized_sha256": "bcd043c56ebe24b37ef13a168cbfd2047cc50467a8ef917d7059ff982fe3e6b9"
+    },
+    "docs/increments/2026-10-17-R6-加固对照清单-预研.md": {
+      "role": "index",
+      "sha256": "3153409f3049bc079a92259b36ea67509b233b4ed76353fc4f3ca85812365704",
+      "size": 6122,
+      "normalized_sha256": "3153409f3049bc079a92259b36ea67509b233b4ed76353fc4f3ca85812365704"
+    },
+    "docs/increments/2026-10-17-R8-A八工具契约.md": {
+      "role": "index",
+      "sha256": "5d324b6d063acaa0a5cdfb918aa0585b3b75b21cac96091ebb54c492b7ef8146",
+      "size": 17247,
+      "normalized_sha256": "5d324b6d063acaa0a5cdfb918aa0585b3b75b21cac96091ebb54c492b7ef8146"
+    },
+    "docs/increments/2026-10-17-R8-V-Vanna-PoC-实施计划.md": {
+      "role": "index",
+      "sha256": "2905e619a1fe6c4321ee8a1b1c07dd83be6e916143174662de8c6c2cd10f11f1",
+      "size": 4097,
+      "normalized_sha256": "2905e619a1fe6c4321ee8a1b1c07dd83be6e916143174662de8c6c2cd10f11f1"
+    },
+    "docs/increments/2026-10-17-R8批次三组件源码锚点对照表.md": {
+      "role": "index",
+      "sha256": "f72df00eeb240a11819d76f44ecf0149d62e7b6474555a93a97c65882f11cfd9",
+      "size": 13799,
+      "normalized_sha256": "f72df00eeb240a11819d76f44ecf0149d62e7b6474555a93a97c65882f11cfd9"
+    },
+    "docs/increments/2026-10-17-R系列GREEN接线计划.md": {
+      "role": "index",
+      "sha256": "7154b8c5a36e66a762df5ca5646fa672e9824e27b29b77d6b1887b42521b14fd",
+      "size": 29820,
+      "normalized_sha256": "7154b8c5a36e66a762df5ca5646fa672e9824e27b29b77d6b1887b42521b14fd"
+    },
+    "docs/increments/2026-10-17-分阶段混合集成方案-设计.md": {
+      "role": "index",
+      "sha256": "308ea28e4df9ff090e553c5a99d8058712f96891998fea34873201ac51f44721",
+      "size": 13763,
+      "normalized_sha256": "308ea28e4df9ff090e553c5a99d8058712f96891998fea34873201ac51f44721"
+    },
+    "docs/increments/2026-10-17-核心业务功能实现规范与验收标准.md": {
+      "role": "index",
+      "sha256": "f2d2561edb1481f78dd1e826dd0c6be032153bbfa2339df9efdbbd968a41f378",
+      "size": 20213,
+      "normalized_sha256": "f2d2561edb1481f78dd1e826dd0c6be032153bbfa2339df9efdbbd968a41f378"
+    },
+    "docs/increments/2026-10-17-集成路线方案对比-自创复刻vs容器化集成.md": {
+      "role": "index",
+      "sha256": "9086feac2f69545647db04099692f27fe7bbff5e133cc0c5205df391007a1771",
+      "size": 11015,
+      "normalized_sha256": "9086feac2f69545647db04099692f27fe7bbff5e133cc0c5205df391007a1771"
+    },
+    "docs/increments/2026-10-18-A3-JSON-PNG-remote-final-归档规范-草案-v1.md": {
+      "role": "index",
+      "sha256": "1299fd80ba6de4f8fd012d1b80f993f41fff912800f820ff708d7b9bd08a768b",
+      "size": 9260,
+      "normalized_sha256": "1299fd80ba6de4f8fd012d1b80f993f41fff912800f820ff708d7b9bd08a768b"
+    },
+    "docs/increments/2026-10-18-A5-SQL-IDE后端契约-v1.0-冻结候选.md": {
+      "role": "index",
+      "sha256": "6c6fea7a9c74ff2d97705f3be0c232244b8cf22988f0ad54dd9bcae60b761d81",
+      "size": 27604,
+      "normalized_sha256": "6c6fea7a9c74ff2d97705f3be0c232244b8cf22988f0ad54dd9bcae60b761d81"
+    },
+    "docs/increments/2026-10-18-P2-2-R5-A-SQL-IDE后端设计草案.md": {
+      "role": "index",
+      "sha256": "2ab07d2fcf339b8f75563ef0e258fc6578f843ad4da0707e2a590d2c07065c12",
+      "size": 29028,
+      "normalized_sha256": "c99b40082c65df80a51351177c56cb1559350368d904ba01bd8201fb8e136f15"
+    },
+    "docs/increments/2026-10-18-P2-2实施准备盘点.md": {
+      "role": "index",
+      "sha256": "33e0caa12f48308abeaae90274bece9b64bb623813b552f44be8012f1fa8b0fa",
+      "size": 3591,
+      "normalized_sha256": "33e0caa12f48308abeaae90274bece9b64bb623813b552f44be8012f1fa8b0fa"
+    },
+    "docs/increments/2026-10-18-P2-3-R5-B写入闭环设计-v2.md": {
+      "role": "index",
+      "sha256": "6e87e7158bc3448223ea3247949890f8126f1f7101c0e998fc678036a791144e",
+      "size": 18145,
+      "normalized_sha256": "6e87e7158bc3448223ea3247949890f8126f1f7101c0e998fc678036a791144e"
+    },
+    "docs/increments/2026-10-18-R6加固清单-v1.0.md": {
+      "role": "index",
+      "sha256": "2fdda0bf44c532e3f9d850e71539cf22675adfce3b25646362a925e25961caf5",
+      "size": 35777,
+      "normalized_sha256": "2fdda0bf44c532e3f9d850e71539cf22675adfce3b25646362a925e25961caf5"
+    },
+    "docs/increments/2026-10-18-R6加固清单.md": {
+      "role": "index",
+      "sha256": "948b5a041cd87c7ef5cb2f9386fd2ca638555d60ed4ca3094a65bb7d022b5ac0",
+      "size": 35171,
+      "normalized_sha256": "948b5a041cd87c7ef5cb2f9386fd2ca638555d60ed4ca3094a65bb7d022b5ac0"
+    },
+    "docs/increments/2026-10-18-融合立项预研-F2.md": {
+      "role": "index",
+      "sha256": "fc3f18ad0d34a1a1b2fba114d8086af809d68a6b0cb6c11e0fd15a31643805ff",
+      "size": 16665,
+      "normalized_sha256": "207a8f41e75cfe41cd41e768c0260423b77029ab471ee9ddd082cfe59dbfd143"
+    },
+    "docs/increments/2026-10-19-Codex-D5-远端部署方案.md": {
+      "role": "index",
+      "sha256": "0fbd3c4078b9ec6c92dd9779f1d5263ba1bdb0c7b078ed4444cf8ddc793961a6",
+      "size": 5088,
+      "normalized_sha256": "9654291f747fe880a39ad3eb093030b68fe94a2fee92946e0eab6c10abd096c8"
+    },
+    "docs/increments/2026-10-19-P-OPT-1-STATE分层快照机制设计.md": {
+      "role": "index",
+      "sha256": "57229f7ae548fd5d7f73519ce8ae36357d2b42b4d619f2f87bdf9b4fcffc473a",
+      "size": 7922,
+      "normalized_sha256": "57229f7ae548fd5d7f73519ce8ae36357d2b42b4d619f2f87bdf9b4fcffc473a"
+    },
+    "docs/increments/2026-10-19-P-OPT-6-3-心跳与exec批量设计.md": {
+      "role": "index",
+      "sha256": "e139ecaefe33814d58ab2b3acdb8b5e2ca1bcf284590b8f96bd8919fdc40b5e8",
+      "size": 3788,
+      "normalized_sha256": "e139ecaefe33814d58ab2b3acdb8b5e2ca1bcf284590b8f96bd8919fdc40b5e8"
+    },
+    "docs/increments/2026-10-19-P1-7-DBX融合研读-Claude线.md": {
+      "role": "index",
+      "sha256": "f827de43383bf57fe469104728af4682fdf57c3bd2e1cd7857a7fa7ec7d7e5d5",
+      "size": 10479,
+      "normalized_sha256": "f827de43383bf57fe469104728af4682fdf57c3bd2e1cd7857a7fa7ec7d7e5d5"
     },
     "docs/increments/I10-设计文档.md": {
       "role": "index",
@@ -5450,30 +5743,6 @@
       "sha256": "bc3357e72c4246d0737d69372a6b6d7b0a3411f38eafb4a51078d08716d5222d",
       "size": 8797,
       "normalized_sha256": "bc3357e72c4246d0737d69372a6b6d7b0a3411f38eafb4a51078d08716d5222d"
-    },
-    "docs/increments/I19-数据开发IDE对象编辑.md": {
-      "role": "index",
-      "sha256": "d43d8dccbe93058f8d6bd36b3748c3862242d79f4d235f86674d5f7bc4e4f228",
-      "size": 1899,
-      "normalized_sha256": "d43d8dccbe93058f8d6bd36b3748c3862242d79f4d235f86674d5f7bc4e4f228"
-    },
-    "docs/increments/I2-开始前影响分析.md": {
-      "role": "index",
-      "sha256": "563761dc77fc6d71b2376668f61c2bf4b0eedea03dd8dc4238a471b0d2edc8f7",
-      "size": 3901,
-      "normalized_sha256": "563761dc77fc6d71b2376668f61c2bf4b0eedea03dd8dc4238a471b0d2edc8f7"
-    },
-    "docs/increments/I2-设计文档.md": {
-      "role": "index",
-      "sha256": "42c2d5c1161b36d7b4ebf6efe7df271483eb5fa5c02ba85041e1c604f68b843d",
-      "size": 22439,
-      "normalized_sha256": "42c2d5c1161b36d7b4ebf6efe7df271483eb5fa5c02ba85041e1c604f68b843d"
-    },
-    "docs/increments/I2-验证单.md": {
-      "role": "index",
-      "sha256": "6672ec61425606c681ada0cd6f66e535b0dd59ecba9aad449ccd7cc9a593cae9",
-      "size": 9044,
-      "normalized_sha256": "6672ec61425606c681ada0cd6f66e535b0dd59ecba9aad449ccd7cc9a593cae9"
     },
     "docs/increments/I20-指标管理设计.md": {
       "role": "index",
@@ -5649,6 +5918,36 @@
       "size": 6028,
       "normalized_sha256": "fdf330c55f738273607c2e6148ce8888dde31d72cff2998e8ab42ad20cbbecf4"
     },
+    "docs/increments/R2-12-A-数据源项目隔离与连接探测影响分析.md": {
+      "role": "index",
+      "sha256": "0d3a2d77dc3903c63f491ab0407b0850c6e77a0b152538cffa4970267283275b",
+      "size": 9232,
+      "normalized_sha256": "0d3a2d77dc3903c63f491ab0407b0850c6e77a0b152538cffa4970267283275b"
+    },
+    "docs/increments/R2-12-B-数据源跨Schema元数据树影响分析.md": {
+      "role": "index",
+      "sha256": "d56860b8caca98f47d059f076e20453149543a61e186c46d0defe990d6deade8",
+      "size": 10413,
+      "normalized_sha256": "d56860b8caca98f47d059f076e20453149543a61e186c46d0defe990d6deade8"
+    },
+    "docs/increments/R2-12-C-数据源连接池与生命周期影响分析.md": {
+      "role": "index",
+      "sha256": "2d74ecfe4f81a46111537f12315e9217475307ab2804162848e691c571f1379d",
+      "size": 8842,
+      "normalized_sha256": "2d74ecfe4f81a46111537f12315e9217475307ab2804162848e691c571f1379d"
+    },
+    "docs/increments/R2-12-D-PostgreSQL数据源探测与元数据浏览影响分析.md": {
+      "role": "index",
+      "sha256": "a6d8fc4294d3fa80c5b0560fcc4d49c1254050ff726345afb703a2a8249f8cfa",
+      "size": 9486,
+      "normalized_sha256": "a6d8fc4294d3fa80c5b0560fcc4d49c1254050ff726345afb703a2a8249f8cfa"
+    },
+    "docs/increments/R2-13-测试库供给与时间戳对账影响分析.md": {
+      "role": "index",
+      "sha256": "a700a42981357e253ba9822326dfb1a07b6d4d20946b087830ee6cfc127893bf",
+      "size": 6410,
+      "normalized_sha256": "a700a42981357e253ba9822326dfb1a07b6d4d20946b087830ee6cfc127893bf"
+    },
     "docs/increments/R2-开始前影响分析.md": {
       "role": "index",
       "sha256": "9b5fe412baa6f830d16c826d15cda0462852ab3740b2e9d567760026d9958424",
@@ -5727,6 +6026,17 @@
       "size": 5961,
       "normalized_sha256": "6793c29cad28b9ec29a5afa3ef6c01942a1812014e57daceca4b1fd099d32e46"
     },
+    "docs/increments/archive/2026-10-18-协作规范旧版三件归档.zip": {
+      "role": "index",
+      "sha256": "9581be20dcd2f4d4af931734c9ec260ebbbe58dbaac11c81cf8412ce61ffd9f7",
+      "size": 20986
+    },
+    "docs/increments/archive/2026-10-18-协作规范旧版归档-MANIFEST.md": {
+      "role": "index",
+      "sha256": "e0aa4da94e631cc125aeef5a8d12040352cd4df6cb33d727ba6e6ad8b65174e3",
+      "size": 2371,
+      "normalized_sha256": "e0aa4da94e631cc125aeef5a8d12040352cd4df6cb33d727ba6e6ad8b65174e3"
+    },
     "docs/increments/archive/legacy/I1-设计文档.md": {
       "role": "index",
       "sha256": "155b2c63ea2ed67871d8fe0f54972982e0659f74dd8d035772eb3c66089664f4",
@@ -5757,89 +6067,334 @@
       "size": 604,
       "normalized_sha256": "c1cb54849212ff9c971861bb660af7035d8c2431e4e2b1854205d141df67c1c4"
     },
-    "docs/increments/evidence/I0/browser-web-entry.txt": {
+    "docs/increments/evidence/2026-10-17-A5-SQL-IDE-contract-agenda.md": {
       "role": "index",
-      "sha256": "56715c81356b86b49c023badbe1c1d7cb73867c0a5c526baeb75239a2f4750a8",
-      "size": 945,
-      "normalized_sha256": "56715c81356b86b49c023badbe1c1d7cb73867c0a5c526baeb75239a2f4750a8"
+      "sha256": "5875ecb1213d25bae5e91a056c77ca4241b73b12f441e7acca8c98d3e6f93c3e",
+      "size": 16659,
+      "normalized_sha256": "5875ecb1213d25bae5e91a056c77ca4241b73b12f441e7acca8c98d3e6f93c3e"
     },
-    "docs/increments/evidence/I0/i18-i23-migration-inventory.md": {
+    "docs/increments/evidence/2026-10-17-Codex-48-evaluation-response.md": {
       "role": "index",
-      "sha256": "695a2680c8b221b91ee0124de70de6d5f4211f78b4da9a1579462a87341dee0c",
-      "size": 1896,
-      "normalized_sha256": "695a2680c8b221b91ee0124de70de6d5f4211f78b4da9a1579462a87341dee0c"
+      "sha256": "99b6660b1f24e486dd3102a685968db318f3d349287d887926127ff4bbbf1c9d",
+      "size": 5565,
+      "normalized_sha256": "3c64cd0818e05370946a940b5a8f6bb5958ed022ff0335280f4525f2c378cf66"
     },
-    "docs/increments/evidence/I0/local-static-inventory.txt": {
+    "docs/increments/evidence/2026-10-17-Codex-C1-C2-C4-review.md": {
       "role": "index",
-      "sha256": "e52a116bcba78e5e78c8ef7ef1db2bbdde7a1fd1a44f55d2d270a39510420831",
-      "size": 1621,
-      "normalized_sha256": "e52a116bcba78e5e78c8ef7ef1db2bbdde7a1fd1a44f55d2d270a39510420831"
+      "sha256": "1e38e2dbc41a69fda5bc17ab408c294b918e8a7ee9770cf2bcf5b9dc76688cd1",
+      "size": 12032,
+      "normalized_sha256": "1e38e2dbc41a69fda5bc17ab408c294b918e8a7ee9770cf2bcf5b9dc76688cd1"
     },
-    "docs/increments/evidence/I0/remote-compose-config.txt": {
+    "docs/increments/evidence/2026-10-17-Codex-F2-validation-page-reference-prestudy.md": {
       "role": "index",
-      "sha256": "d637cba335e6a5f31c4ac0a57f56903e5e5af1fcf968aa05b72e836d5582125c",
-      "size": 503,
-      "normalized_sha256": "d637cba335e6a5f31c4ac0a57f56903e5e5af1fcf968aa05b72e836d5582125c"
+      "sha256": "1f97ae26e80d2a36647e7837e1d8a1688e368ee5bbe86bfed60fc0cc3b714473",
+      "size": 11105,
+      "normalized_sha256": "1f97ae26e80d2a36647e7837e1d8a1688e368ee5bbe86bfed60fc0cc3b714473"
     },
-    "docs/increments/evidence/I0/remote-compose-ps.txt": {
+    "docs/increments/evidence/2026-10-17-Codex-N2-standard-v4-review.md": {
       "role": "index",
-      "sha256": "ae7adcb913a99ac2914b1aa4b0752d9d8f1d4ff1e19724c00c2f1fabf7163815",
-      "size": 783,
-      "normalized_sha256": "ae7adcb913a99ac2914b1aa4b0752d9d8f1d4ff1e19724c00c2f1fabf7163815"
+      "sha256": "d0077f1a0e1e5871275139c0b028671cb53e28871a41a9f8ad76139b47b64113",
+      "size": 17324,
+      "normalized_sha256": "d0077f1a0e1e5871275139c0b028671cb53e28871a41a9f8ad76139b47b64113"
     },
-    "docs/increments/evidence/I0/remote-resource-check.txt": {
+    "docs/increments/evidence/2026-10-17-Codex-P0-3-R7-metrics-integration-review.md": {
       "role": "index",
-      "sha256": "78424b8b98d38f083914c32427a4e21bf64d3807f949cacf99f89c329a4f24df",
-      "size": 1692,
-      "normalized_sha256": "78424b8b98d38f083914c32427a4e21bf64d3807f949cacf99f89c329a4f24df"
+      "sha256": "b999fe24ad3002f5f48c4287c0142d9ff3e805f7db23b334fafaaffc189a569b",
+      "size": 8528,
+      "normalized_sha256": "b999fe24ad3002f5f48c4287c0142d9ff3e805f7db23b334fafaaffc189a569b"
     },
-    "docs/increments/evidence/I0/remote-service-logs.txt": {
+    "docs/increments/evidence/2026-10-17-Codex-P2-1-R6-engine-hardening-source-gap-review.md": {
       "role": "index",
-      "sha256": "e8bb8e107d569156e03b15a1b42fc491775b401c8a73d704ba2d966f8713bac6",
-      "size": 1188,
-      "normalized_sha256": "e8bb8e107d569156e03b15a1b42fc491775b401c8a73d704ba2d966f8713bac6"
+      "sha256": "5cffd794d88fdc44bcd3e45572def44dbde9efab2a8166415b54371b4c9e7b84",
+      "size": 14563,
+      "normalized_sha256": "5cffd794d88fdc44bcd3e45572def44dbde9efab2a8166415b54371b4c9e7b84"
     },
-    "docs/increments/evidence/I1/browser-entry.txt": {
+    "docs/increments/evidence/2026-10-17-Codex-R2-R4-project-scope-review.md": {
       "role": "index",
-      "sha256": "caad1a681433fd3a7172b6cce1c98541a18a02bd15963ef497179feb433a1f3c",
-      "size": 532,
-      "normalized_sha256": "caad1a681433fd3a7172b6cce1c98541a18a02bd15963ef497179feb433a1f3c"
+      "sha256": "18bfcac034b5a5dd1b77865a449a39347fa461c49b5c4c7bfdd36b78e0873ed1",
+      "size": 4944,
+      "normalized_sha256": "18bfcac034b5a5dd1b77865a449a39347fa461c49b5c4c7bfdd36b78e0873ed1"
     },
-    "docs/increments/evidence/I1/local-tests.txt": {
+    "docs/increments/evidence/2026-10-17-Codex-T1-P1-7-review-v2-recheck.md": {
       "role": "index",
-      "sha256": "cc07d54e0a3a1d05a105185fefa6ebdb46137b296f3d6eddd6f68cb052513c52",
-      "size": 787,
-      "normalized_sha256": "cc07d54e0a3a1d05a105185fefa6ebdb46137b296f3d6eddd6f68cb052513c52"
+      "sha256": "9a97a453fa2738432f53de3761f2ea966156a2988efff42eda4a302f7f3c0eac",
+      "size": 4458,
+      "normalized_sha256": "9a97a453fa2738432f53de3761f2ea966156a2988efff42eda4a302f7f3c0eac"
     },
-    "docs/increments/evidence/I1/remote-deploy.txt": {
+    "docs/increments/evidence/2026-10-17-Codex-T1-P1-7-review-v2.1-recheck.md": {
       "role": "index",
-      "sha256": "48cc5ac2bddcc24bc3149063852b1836f236c0ec82b1d7cb1477d68bf9c07f83",
-      "size": 3054,
-      "normalized_sha256": "48cc5ac2bddcc24bc3149063852b1836f236c0ec82b1d7cb1477d68bf9c07f83"
+      "sha256": "b600b4eb21fc6c3491f6c92df56ae5fed85de62369284763dd3e7d145e1569c9",
+      "size": 3079,
+      "normalized_sha256": "b600b4eb21fc6c3491f6c92df56ae5fed85de62369284763dd3e7d145e1569c9"
     },
-    "docs/increments/evidence/I2/browser-validation.txt": {
+    "docs/increments/evidence/2026-10-17-Codex-T1-P1-7-review-v2.2-recheck.md": {
       "role": "index",
-      "sha256": "d176d9f7622ec91be7397633404f7e904a315c0f605dcab1e6f234d88f414769",
-      "size": 619,
-      "normalized_sha256": "d176d9f7622ec91be7397633404f7e904a315c0f605dcab1e6f234d88f414769"
+      "sha256": "2aa14d35bcc9763eea770dd1aa025c1fd2b7e73fa2501c8f9fe6ccf6c6a61875",
+      "size": 2536,
+      "normalized_sha256": "2aa14d35bcc9763eea770dd1aa025c1fd2b7e73fa2501c8f9fe6ccf6c6a61875"
     },
-    "docs/increments/evidence/I2/local-tests.txt": {
+    "docs/increments/evidence/2026-10-17-Codex-T1-P1-7-review-v2.3-recheck.md": {
       "role": "index",
-      "sha256": "b92f362aa23f5c0ba92c69d91e3654e8666b04e5a9fb4806fc03ca102c577fa4",
-      "size": 834,
-      "normalized_sha256": "b92f362aa23f5c0ba92c69d91e3654e8666b04e5a9fb4806fc03ca102c577fa4"
+      "sha256": "5259ad627440f9f0281977e56a58f0ac7b06af9e521121411fe7c302da404599",
+      "size": 2078,
+      "normalized_sha256": "5259ad627440f9f0281977e56a58f0ac7b06af9e521121411fe7c302da404599"
     },
-    "docs/increments/evidence/I2/remote-preflight.txt": {
+    "docs/increments/evidence/2026-10-17-Codex-T1-P1-7-review.md": {
       "role": "index",
-      "sha256": "5d266daa2c0ac9563a5bfeb12931438fc41552a0c61878d21f2e919d54170648",
-      "size": 1071,
-      "normalized_sha256": "5d266daa2c0ac9563a5bfeb12931438fc41552a0c61878d21f2e919d54170648"
+      "sha256": "2e132602391168707c25dc762d7beb18e55d5349b74276e3001637e8d66cde57",
+      "size": 8100,
+      "normalized_sha256": "2e132602391168707c25dc762d7beb18e55d5349b74276e3001637e8d66cde57"
     },
-    "docs/increments/evidence/I2/remote-verify.txt": {
+    "docs/increments/evidence/2026-10-17-Trae-P1-6-PoC-acceptance-materials.md": {
       "role": "index",
-      "sha256": "2296a16344e6ae9837cafb04386ff5d39c34471057b405694a8d14a06e03fce9",
-      "size": 892,
-      "normalized_sha256": "2296a16344e6ae9837cafb04386ff5d39c34471057b405694a8d14a06e03fce9"
+      "sha256": "8e0a8b35ad7b83b9204692849071500dcb567dc3149339b71b4f825311716a88",
+      "size": 5522,
+      "normalized_sha256": "8e0a8b35ad7b83b9204692849071500dcb567dc3149339b71b4f825311716a88"
+    },
+    "docs/increments/evidence/2026-10-17-standard-v2-feedback-disposition.md": {
+      "role": "index",
+      "sha256": "58494ebad19a508a3d2d9593d4bd6e20806287b5ad83fc3d6489ab2adf12ef3b",
+      "size": 20201,
+      "normalized_sha256": "58494ebad19a508a3d2d9593d4bd6e20806287b5ad83fc3d6489ab2adf12ef3b"
+    },
+    "docs/increments/evidence/2026-10-17-worktree-cleanup-report-codex.md": {
+      "role": "index",
+      "sha256": "9bc8d678d6b757f8ffba257e9f4465a87e01580e2f9aaa1a92d72116ea4b357e",
+      "size": 25180,
+      "normalized_sha256": "324fe158be4a5496330eda6a449b55bb739f4ee0d77e810583dfdab8eabf2ff2"
+    },
+    "docs/increments/evidence/2026-10-17-worktree-cleanup-report-trae-batch2.md": {
+      "role": "index",
+      "sha256": "49b2d368134036e4177c4c24d80e1516c8ddfa91201a6dca02d4502fd6d77da3",
+      "size": 2788,
+      "normalized_sha256": "49b2d368134036e4177c4c24d80e1516c8ddfa91201a6dca02d4502fd6d77da3"
+    },
+    "docs/increments/evidence/2026-10-17-worktree-cleanup-report-trae.md": {
+      "role": "index",
+      "sha256": "73aaeaabf03e99bd4746b63c6cebe64e39018ec2066804008618e15d2deed18d",
+      "size": 4273,
+      "normalized_sha256": "73aaeaabf03e99bd4746b63c6cebe64e39018ec2066804008618e15d2deed18d"
+    },
+    "docs/increments/evidence/2026-10-18-A5-SQL-IDE-v1.0-独立复核记录.md": {
+      "role": "index",
+      "sha256": "95f92d7624d2bf012408ffddd8ece666939a7ff0d39d4a6f75dfbfa3cdede67d",
+      "size": 3816,
+      "normalized_sha256": "95f92d7624d2bf012408ffddd8ece666939a7ff0d39d4a6f75dfbfa3cdede67d"
+    },
+    "docs/increments/evidence/2026-10-18-Codex-P1-7-digest-for-P2-2.md": {
+      "role": "index",
+      "sha256": "69f6c0b7ae01fa54f44d99cca8dfcc60ecb0d80cdd858c4f7013124a2af133d4",
+      "size": 14029,
+      "normalized_sha256": "98d980fd36268f0e776314748a3482baf25d3251f71850b99a9a2bc7e8368b80"
+    },
+    "docs/increments/evidence/2026-10-18-Codex-P2-1-R6-bf4578a-review.md": {
+      "role": "index",
+      "sha256": "b6bd4d8d170b1d08d4f0188dfc4e2ba750710b5275871fae34dddec34a8910cf",
+      "size": 6015,
+      "normalized_sha256": "b6bd4d8d170b1d08d4f0188dfc4e2ba750710b5275871fae34dddec34a8910cf"
+    },
+    "docs/increments/evidence/2026-10-18-Codex-P2-1-R6-checklist-review.md": {
+      "role": "index",
+      "sha256": "a4daa100e837474127bd2307f8f88efbad0c84bb49bbad25b9dc4b01705ecd2f",
+      "size": 12704,
+      "normalized_sha256": "389f7d044a864ae434832cedd7351644097f736ad55fee489df551eaf309d44b"
+    },
+    "docs/increments/evidence/2026-10-18-Codex-P2-1-R6-final-review.md": {
+      "role": "index",
+      "sha256": "5bf574c5bf308332e03b06c28a95306bbf65dcce845dfb1a9918e7b47405ceb2",
+      "size": 2065,
+      "normalized_sha256": "3433dcaaff36bcc83092de538922ba1f89ef3c62c26100ae7cbdfd6085649465"
+    },
+    "docs/increments/evidence/2026-10-18-Codex-P2-1-R6-freeze-readiness-rereview-54367d8.md": {
+      "role": "index",
+      "sha256": "2716a14c5591a5978afd87289f6a7fa8499e52bba8f23f019720d2f228d2325b",
+      "size": 3662,
+      "normalized_sha256": "751c1fe6d38f1f0f8f4c2cfd2a0bbc87b8d962ad9221266b6b839d1366256fa9"
+    },
+    "docs/increments/evidence/2026-10-18-Codex-P2-1-R6-freeze-readiness-rereview-a9b9910.md": {
+      "role": "index",
+      "sha256": "a1292a14a54d1e1c9040238b5fde838c0c2f5130b95be7b7389969b367cd78d9",
+      "size": 3794,
+      "normalized_sha256": "5d367b798d82103b4fea738a52f01cfb89928d0da4e4091b5bd2c967c4bc97dd"
+    },
+    "docs/increments/evidence/2026-10-18-Codex-P2-1-R6-freeze-readiness-review.md": {
+      "role": "index",
+      "sha256": "6d16d0d363e9be885e87f7d628f062d8f8c79795f7f2d871cb4b0e6418e516d0",
+      "size": 3284,
+      "normalized_sha256": "6d16d0d363e9be885e87f7d628f062d8f8c79795f7f2d871cb4b0e6418e516d0"
+    },
+    "docs/increments/evidence/2026-10-18-Codex-P2-1-R6-freeze-start-review.md": {
+      "role": "index",
+      "sha256": "97e42693f1a38fa3ba37cf2d1bfe2019f93cef79d2c4a08550baf5f7e31eaf33",
+      "size": 4301,
+      "normalized_sha256": "97e42693f1a38fa3ba37cf2d1bfe2019f93cef79d2c4a08550baf5f7e31eaf33"
+    },
+    "docs/increments/evidence/2026-10-18-Codex-P2-1-R6-review-round10.md": {
+      "role": "index",
+      "sha256": "62f2891cbf1745c2d29e283bc162dfbaba43436c46a8d9a8d954d3a6b0af7cc0",
+      "size": 2406,
+      "normalized_sha256": "cac85e15b1123579b2ece02197079972204138460e7d4ccc401765205a2697a4"
+    },
+    "docs/increments/evidence/2026-10-18-Codex-P2-1-R6-review-round3.md": {
+      "role": "index",
+      "sha256": "8307fd6c5d2001064def362128779a6255f5d6240b7fed7391a897c99517eb08",
+      "size": 5088,
+      "normalized_sha256": "c143c8e3695bbad1602536c922effddce3d879ea7d30ba09701d9e9963867e3d"
+    },
+    "docs/increments/evidence/2026-10-18-Codex-P2-1-R6-review-round4.md": {
+      "role": "index",
+      "sha256": "3f3bb47e30d75d17957d3941a678ed1f7c03679f818d95c6a5253eadbdce70dc",
+      "size": 4881,
+      "normalized_sha256": "2914aef7ebc6b7ee7cb2fdccb152759e7891d2922775733f60784129af30c2db"
+    },
+    "docs/increments/evidence/2026-10-18-Codex-P2-1-R6-review-round5.md": {
+      "role": "index",
+      "sha256": "abe6b9f779d6d60f85a66817589a76b01b3fb81b2e9231480c52a1b45d51de27",
+      "size": 4592,
+      "normalized_sha256": "aa788fb50b05d82568b55e41d73a833285d8c8f7d71c06317bc2ac45154e2bfc"
+    },
+    "docs/increments/evidence/2026-10-18-Codex-P2-1-R6-review-round6.md": {
+      "role": "index",
+      "sha256": "ca8349bc64ccf1e7e4aa5ddcaf8a36e3e2c30f09a8fc77e6263cf23bf367ec7c",
+      "size": 3506,
+      "normalized_sha256": "d9cb051b8c27fcba19b7aa80690d62ceaa20d27a1c1c4b646290b86bd074e87f"
+    },
+    "docs/increments/evidence/2026-10-18-Codex-P2-1-R6-review-round7.md": {
+      "role": "index",
+      "sha256": "9402052287b20189a38662b1b5ac4826e2f225554d6adcb8e5cf6751d7f1f434",
+      "size": 3267,
+      "normalized_sha256": "e396d7f1a26fbdc4b282a2046905102f738adbb8550a150ecfbd3d16f003e4ac"
+    },
+    "docs/increments/evidence/2026-10-18-Codex-P2-1-R6-review-round8.md": {
+      "role": "index",
+      "sha256": "8f6eb3c9086fad6f918d3c0ac2659e6e0c84661d902d51e6c224ece0cb93f1eb",
+      "size": 2690,
+      "normalized_sha256": "35d6fb6e27469cac9e7af9ed21c58b9251e01e9254bdf7b681698a3d82d048a6"
+    },
+    "docs/increments/evidence/2026-10-18-Codex-P2-1-R6-review-round9.md": {
+      "role": "index",
+      "sha256": "23e11d678bc28ca59218a7383bf156f75a4fd78aef2511ac9027a3427538d56f",
+      "size": 2376,
+      "normalized_sha256": "808b182ca173a5cdd3684e1be9fd9bca8134fa60308a0aa6980ab12849cb7e89"
+    },
+    "docs/increments/evidence/2026-10-18-Codex-P2-3-依赖预研复评.md": {
+      "role": "index",
+      "sha256": "05d7a9cff85fc279686b74916c6300a781f8401f5e67f7435e7a924212d6be1a",
+      "size": 9520,
+      "normalized_sha256": "05d7a9cff85fc279686b74916c6300a781f8401f5e67f7435e7a924212d6be1a"
+    },
+    "docs/increments/evidence/2026-10-18-Codex-parallel-review-P1-7-P2-2-F2.md": {
+      "role": "index",
+      "sha256": "30aebfaac46ec4ddbb74982b00b4bdc2d821c9b26a9fa78b7a875541248f397f",
+      "size": 3163,
+      "normalized_sha256": "33c485a0d990f87776c7bee71568da79940b478786022d4781fcab0d671c838e"
+    },
+    "docs/increments/evidence/2026-10-18-F2-reference-ui-research-register.md": {
+      "role": "index",
+      "sha256": "62fee209d6c247cd166b9ea4618eb369a385bd27f315ac4a14b32f3f5f26ef84",
+      "size": 13078,
+      "normalized_sha256": "62fee209d6c247cd166b9ea4618eb369a385bd27f315ac4a14b32f3f5f26ef84"
+    },
+    "docs/increments/evidence/2026-10-18-P1-6prime-poc-chain.py": {
+      "role": "index",
+      "sha256": "d21928d9a6b6a778a101ccccc9b372fabab6cf10f9a2bd4d77bcb428028360b4",
+      "size": 23982,
+      "normalized_sha256": "d21928d9a6b6a778a101ccccc9b372fabab6cf10f9a2bd4d77bcb428028360b4"
+    },
+    "docs/increments/evidence/2026-10-18-TrackA-Codex-pytest.txt": {
+      "role": "index",
+      "sha256": "e99680868629fc1329e726c631028fff5dadf2b2169395ba4883070ae8e51c20",
+      "size": 8998,
+      "normalized_sha256": "c4c152c093e6e02fa7569d30c1e80fb49551639779d8a69ab09646cfe1255a85"
+    },
+    "docs/increments/evidence/2026-10-18-TrackA-Codex-revalidate-lifespan-di.txt": {
+      "role": "index",
+      "sha256": "d69e67345be1567163491053d8d54f120d27d7a4add3301303e445ee3878342f",
+      "size": 376,
+      "normalized_sha256": "aef3398b0bebbb92486a9bd8a49887c06c3a4a99f51d4bc26ad8b28c9e3972b0"
+    },
+    "docs/increments/evidence/2026-10-18-TrackA-Codex-revalidate-pytest.txt": {
+      "role": "index",
+      "sha256": "3e137331c0a88a9857fe9490314fcbd158472663349c7dcc23119b836cf1ae13",
+      "size": 20530
+    },
+    "docs/increments/evidence/2026-10-18-TrackA-Gap1-2-A5-seam-review.md": {
+      "role": "index",
+      "sha256": "6b52f2fa4ba04f91ca7f6c77be84793ae1395b35519092f06b66e12d9341b834",
+      "size": 4530,
+      "normalized_sha256": "6b52f2fa4ba04f91ca7f6c77be84793ae1395b35519092f06b66e12d9341b834"
+    },
+    "docs/increments/evidence/2026-10-18-TrackA-Gap3-4-Codex-review.md": {
+      "role": "index",
+      "sha256": "59e759bdb42775403835f3d7b81aa51791630aae2d2d70b47832545b4dd06552",
+      "size": 7006,
+      "normalized_sha256": "59e759bdb42775403835f3d7b81aa51791630aae2d2d70b47832545b4dd06552"
+    },
+    "docs/increments/evidence/2026-10-18-TrackA-reval-pytest.txt": {
+      "role": "index",
+      "sha256": "1c1494cd08109dd3343f0a3e04f79eae373539687a18c9e9899a9e8289a7cfd0",
+      "size": 22,
+      "normalized_sha256": "f734d306a00655885bb8c476f25e9b1e9eb1991e4a42ddbab839b4787e8d41f4"
+    },
+    "docs/increments/evidence/2026-10-18-TrackA-runtime-wiring-verdict.md": {
+      "role": "index",
+      "sha256": "89cbf9023f5d6e0b30ba69336a83cd36b00e54151e812a2edc63b35686ca82d5",
+      "size": 4196,
+      "normalized_sha256": "89cbf9023f5d6e0b30ba69336a83cd36b00e54151e812a2edc63b35686ca82d5"
+    },
+    "docs/increments/evidence/2026-10-18-TrackA-复核证据包.md": {
+      "role": "index",
+      "sha256": "b4691fbe1350edea6940946a0c92358ac61e7a78acfd7df1f32e7b3e28f9c699",
+      "size": 9805,
+      "normalized_sha256": "b4691fbe1350edea6940946a0c92358ac61e7a78acfd7df1f32e7b3e28f9c699"
+    },
+    "docs/increments/evidence/2026-10-18-监督线-P1-6prime-真实执行链验证.md": {
+      "role": "index",
+      "sha256": "6d5fdc3dfa5c1af28abcebc32d5ec999f8fb98657abdb10d726bb3f4a6d7bfac",
+      "size": 5837,
+      "normalized_sha256": "6d5fdc3dfa5c1af28abcebc32d5ec999f8fb98657abdb10d726bb3f4a6d7bfac"
+    },
+    "docs/increments/evidence/2026-10-19-Codex-D5-preflight-blocked.txt": {
+      "role": "index",
+      "sha256": "8acde9598e5c718a5171e471b29c5c7d5cb7c9f357c46123b073187be953c8ab",
+      "size": 2031,
+      "normalized_sha256": "8acde9598e5c718a5171e471b29c5c7d5cb7c9f357c46123b073187be953c8ab"
+    },
+    "docs/increments/evidence/2026-10-19-Codex-D5-v2-baseline-36132da.txt": {
+      "role": "index",
+      "sha256": "1baad24ea4308373f310193be7b36740074d2934a4bdce399bd23883b85c4172",
+      "size": 9261,
+      "normalized_sha256": "968d89416af1a034b527e29dadc9bec0adfe2d9d4b1df33214f1a5c7d3de9fc2"
+    },
+    "docs/increments/evidence/2026-10-19-Codex-D5-v2-exec-blocked.txt": {
+      "role": "index",
+      "sha256": "9fe4012cef2b900eb3c1d74575ead14a8e1a15637ea31c9f6881ee87e41b9b91",
+      "size": 1105,
+      "normalized_sha256": "9fe4012cef2b900eb3c1d74575ead14a8e1a15637ea31c9f6881ee87e41b9b91"
+    },
+    "docs/increments/evidence/2026-10-19-Codex-P2-2-Track-A-独立复评.md": {
+      "role": "index",
+      "sha256": "5b65eece74ec0d319587ef3beed9a7148fabd18d028f98ebc8b5837b04138088",
+      "size": 4043,
+      "normalized_sha256": "5b65eece74ec0d319587ef3beed9a7148fabd18d028f98ebc8b5837b04138088"
+    },
+    "docs/increments/evidence/2026-10-19-TrackA-A1-red-raw.txt": {
+      "role": "index",
+      "sha256": "3ae9e93a5c35710b40dfabe3c2dce9858e54c86863995d5297f942f6cdcdc953",
+      "size": 1970,
+      "normalized_sha256": "3ae9e93a5c35710b40dfabe3c2dce9858e54c86863995d5297f942f6cdcdc953"
+    },
+    "docs/increments/evidence/2026-10-19-TrackA-A3-remote-final.txt": {
+      "role": "index",
+      "sha256": "c3be54f4ea9e7174ceb239237533bf7f56221b8e200a8ada669d30336c65c0af",
+      "size": 1794,
+      "normalized_sha256": "c3be54f4ea9e7174ceb239237533bf7f56221b8e200a8ada669d30336c65c0af"
+    },
+    "docs/increments/evidence/2026-10-19-TrackA-Codex-independent-revalidation.txt": {
+      "role": "index",
+      "sha256": "9ea67c704af91b7b5740c6b7c4d6285757dd093c6a4766fa53d90815feb5e765",
+      "size": 5546,
+      "normalized_sha256": "9ea67c704af91b7b5740c6b7c4d6285757dd093c6a4766fa53d90815feb5e765"
     },
     "docs/increments/evidence/R0/browser-web-entry.txt": {
       "role": "index",
@@ -5987,6 +6542,12 @@
       "size": 1626,
       "normalized_sha256": "1983a96979c51c2a944f07d88f6fe7bc7d186eda87373e20a95a9ac297f0df7a"
     },
+    "docs/increments/evidence/R2/browser-entry-20261015.txt": {
+      "role": "index",
+      "sha256": "4f85d1c5cd4e21e0e1388b42663c159c1c0017a7bfffbad5bd3b5c6996562f76",
+      "size": 1769,
+      "normalized_sha256": "4f85d1c5cd4e21e0e1388b42663c159c1c0017a7bfffbad5bd3b5c6996562f76"
+    },
     "docs/increments/evidence/R2/browser-validation.txt": {
       "role": "index",
       "sha256": "f4b9ee1af1f362ea0e8921fd9cbd98ff84acc55d5d7a6885296e4e965a3d3031",
@@ -5999,6 +6560,294 @@
       "size": 834,
       "normalized_sha256": "5f428f3abcb05e858b0bf02ef46467351c98dc1a0708dde0b1cf592208bab6ca"
     },
+    "docs/increments/evidence/R2/p07-variable-e2e-20261017.json": {
+      "role": "index",
+      "sha256": "9f8c4024c3c9f33d524000db64696e6c65388e917528b175dbbd478c0671184b",
+      "size": 1116,
+      "normalized_sha256": "9f8c4024c3c9f33d524000db64696e6c65388e917528b175dbbd478c0671184b"
+    },
+    "docs/increments/evidence/R2/p07-variable-e2e-20261017.png": {
+      "role": "index",
+      "sha256": "6ca9a8117fe4a68666c0bb2db18835223d8f5a7c08fe153e947bab14dd0baa60",
+      "size": 125929
+    },
+    "docs/increments/evidence/R2/r2-12-a-20261015131546.json": {
+      "role": "index",
+      "sha256": "430b65c005644c3778db0091a37db52701e2ab8ae7a42c31f7534a337a50ed93",
+      "size": 1248,
+      "normalized_sha256": "430b65c005644c3778db0091a37db52701e2ab8ae7a42c31f7534a337a50ed93"
+    },
+    "docs/increments/evidence/R2/r2-12-a-20261015131546.png": {
+      "role": "index",
+      "sha256": "c92f6abd0f762877e5ba540c7654e06575ed12e38e69c1a170631879d091da4c",
+      "size": 63714
+    },
+    "docs/increments/evidence/R2/r2-12-a-20261015131617.json": {
+      "role": "index",
+      "sha256": "87fcbe508ed00d9134a6eb71c87e568ddd4d733338e5e0c9e2f77a90203f1f61",
+      "size": 2991,
+      "normalized_sha256": "87fcbe508ed00d9134a6eb71c87e568ddd4d733338e5e0c9e2f77a90203f1f61"
+    },
+    "docs/increments/evidence/R2/r2-12-a-20261015131617.png": {
+      "role": "index",
+      "sha256": "cac47112721e82ef4af8e8e535811f41d95902cba4a66a1ec28968b6bfed1c73",
+      "size": 73059
+    },
+    "docs/increments/evidence/R2/r2-12-a-20261015131733.json": {
+      "role": "index",
+      "sha256": "e05428818fe4e10b4cccbb2b8eb43d6abf081e144db571ab783b8c1deb41ffbd",
+      "size": 3233,
+      "normalized_sha256": "e05428818fe4e10b4cccbb2b8eb43d6abf081e144db571ab783b8c1deb41ffbd"
+    },
+    "docs/increments/evidence/R2/r2-12-a-20261015131733.png": {
+      "role": "index",
+      "sha256": "7ff4d914206a1d911f0b7aa8c3e2153e7bc03b894b5c51c2dcf5b841ab3d5781",
+      "size": 73079
+    },
+    "docs/increments/evidence/R2/r2-12-a-remote-final-20261015.txt": {
+      "role": "index",
+      "sha256": "6047ab444aa29177513eecad2f34bf094007c871e0cce87aa42badd89ec0f4c6",
+      "size": 2694,
+      "normalized_sha256": "6047ab444aa29177513eecad2f34bf094007c871e0cce87aa42badd89ec0f4c6"
+    },
+    "docs/increments/evidence/R2/r2-12-b-20261015135408.json": {
+      "role": "index",
+      "sha256": "11d5895e836cd0cbb9d6e1688eb02c5e817ae3929ffac634de3ac902377a8c6a",
+      "size": 1584,
+      "normalized_sha256": "11d5895e836cd0cbb9d6e1688eb02c5e817ae3929ffac634de3ac902377a8c6a"
+    },
+    "docs/increments/evidence/R2/r2-12-b-20261015135501.json": {
+      "role": "index",
+      "sha256": "db93c32b1c30a1802ca91a2670523476548ff753f7585ef2a3b8f918a0e7f858",
+      "size": 1936,
+      "normalized_sha256": "db93c32b1c30a1802ca91a2670523476548ff753f7585ef2a3b8f918a0e7f858"
+    },
+    "docs/increments/evidence/R2/r2-12-b-20261015135501.png": {
+      "role": "index",
+      "sha256": "b92828e18a2ae00b7dee7b6f28fdde999332786092be66e0caa6fd0a0263517f",
+      "size": 43582
+    },
+    "docs/increments/evidence/R2/r2-12-b-20261015135545.json": {
+      "role": "index",
+      "sha256": "92e9d45a060968b4ba1202e582444ed7d81155687639e59639a35d908561875b",
+      "size": 2054,
+      "normalized_sha256": "92e9d45a060968b4ba1202e582444ed7d81155687639e59639a35d908561875b"
+    },
+    "docs/increments/evidence/R2/r2-12-b-20261015135545.png": {
+      "role": "index",
+      "sha256": "ba87ee117a7260b7664274baf813e5429202f512a2a96b5f6f07471724ddefc3",
+      "size": 43583
+    },
+    "docs/increments/evidence/R2/r2-12-b-20261015135652.json": {
+      "role": "index",
+      "sha256": "1872a8b705ba97464fea3a35d82d3e56624ab9d1b8254a57abcac0df96e35254",
+      "size": 2054,
+      "normalized_sha256": "1872a8b705ba97464fea3a35d82d3e56624ab9d1b8254a57abcac0df96e35254"
+    },
+    "docs/increments/evidence/R2/r2-12-b-20261015135652.png": {
+      "role": "index",
+      "sha256": "3a1a3cfc745cc98021ed644674ed2b365e646da8d07fd9fcd37b839cb80af488",
+      "size": 43409
+    },
+    "docs/increments/evidence/R2/r2-12-b-20261015135808.json": {
+      "role": "index",
+      "sha256": "044bf56eaa9ee135aa9f09111d1cfb21a65edc322a7e689360126ff40017cf2e",
+      "size": 2054,
+      "normalized_sha256": "044bf56eaa9ee135aa9f09111d1cfb21a65edc322a7e689360126ff40017cf2e"
+    },
+    "docs/increments/evidence/R2/r2-12-b-20261015135808.png": {
+      "role": "index",
+      "sha256": "cae4b0b77e388e65d5656a6412694876727acbf4f3fad3d4e52857ea5455966b",
+      "size": 44455
+    },
+    "docs/increments/evidence/R2/r2-12-b-20261015135851.json": {
+      "role": "index",
+      "sha256": "748908ee8bc96032c1b697b69f995c4eecddbc58dba0887c9e2282cc7600d76e",
+      "size": 2650,
+      "normalized_sha256": "748908ee8bc96032c1b697b69f995c4eecddbc58dba0887c9e2282cc7600d76e"
+    },
+    "docs/increments/evidence/R2/r2-12-b-20261015135851.png": {
+      "role": "index",
+      "sha256": "97b6e55b8911a94a1d3e0024592cfd1422e729e2f3cdd9062cf472a6ce020bcc",
+      "size": 45574
+    },
+    "docs/increments/evidence/R2/r2-12-b-browser-entry-20261015.txt": {
+      "role": "index",
+      "sha256": "1624a0c08a240d29a3b938bb1aa948c986d31a67cecc77fa0649d6813e8dbe60",
+      "size": 1409,
+      "normalized_sha256": "1624a0c08a240d29a3b938bb1aa948c986d31a67cecc77fa0649d6813e8dbe60"
+    },
+    "docs/increments/evidence/R2/r2-12-b-remote-final-20261015.txt": {
+      "role": "index",
+      "sha256": "d1b39a23c4330a38524f85c347456b0765de239d44ad27af86c51d7fc0337b02",
+      "size": 3363,
+      "normalized_sha256": "d1b39a23c4330a38524f85c347456b0765de239d44ad27af86c51d7fc0337b02"
+    },
+    "docs/increments/evidence/R2/r2-12-c-20261015143839.json": {
+      "role": "index",
+      "sha256": "94e4bdb56ee9156ee46cce99fe1684f0e11c21930bbda289b1744bba86a8896a",
+      "size": 1790,
+      "normalized_sha256": "94e4bdb56ee9156ee46cce99fe1684f0e11c21930bbda289b1744bba86a8896a"
+    },
+    "docs/increments/evidence/R2/r2-12-c-20261015143839.png": {
+      "role": "index",
+      "sha256": "5146443dfacdee8c7a611b079190460cb5b80f1ee44ac5ee949170341730bba9",
+      "size": 45724
+    },
+    "docs/increments/evidence/R2/r2-12-c-20261015144457.json": {
+      "role": "index",
+      "sha256": "4de61b52f80716fe9edfc87526c5fffbc6886d82505a88a05f5a3abd58f0851b",
+      "size": 2391,
+      "normalized_sha256": "4de61b52f80716fe9edfc87526c5fffbc6886d82505a88a05f5a3abd58f0851b"
+    },
+    "docs/increments/evidence/R2/r2-12-c-20261015144457.png": {
+      "role": "index",
+      "sha256": "b699f0b94d10e8c43f31d7c83dd8fadbfe35bffc75c3d9d45b23638edcbeb74b",
+      "size": 45754
+    },
+    "docs/increments/evidence/R2/r2-12-c-browser-entry-20261015.txt": {
+      "role": "index",
+      "sha256": "4deb7dea16af564f48b79d67b928e1e09542932ee66899eef6cb874080f1e873",
+      "size": 2239,
+      "normalized_sha256": "4deb7dea16af564f48b79d67b928e1e09542932ee66899eef6cb874080f1e873"
+    },
+    "docs/increments/evidence/R2/r2-12-c-remote-final-20261015.txt": {
+      "role": "index",
+      "sha256": "b9b3b8c27740574b1297c1325f15fe91999502613b523e80193fbc2fbc71dcda",
+      "size": 2872,
+      "normalized_sha256": "b9b3b8c27740574b1297c1325f15fe91999502613b523e80193fbc2fbc71dcda"
+    },
+    "docs/increments/evidence/R2/r2-12-d-20261015161750.json": {
+      "role": "index",
+      "sha256": "dac8e4560b5515e5dcd4363357c10f9ee8dccc5d81bd8f25ee9c0f3405f2a4d2",
+      "size": 774,
+      "normalized_sha256": "dac8e4560b5515e5dcd4363357c10f9ee8dccc5d81bd8f25ee9c0f3405f2a4d2"
+    },
+    "docs/increments/evidence/R2/r2-12-d-20261015161750.png": {
+      "role": "index",
+      "sha256": "58aa7677d2dd8f9aec404403944a29051529dafd6bd022bc9ada781fd6e9943b",
+      "size": 46646
+    },
+    "docs/increments/evidence/R2/r2-12-d-20261015162640.json": {
+      "role": "index",
+      "sha256": "357f1938d00e92d551c9cabd1786e04361dd5be8917fb51a8fed3a1cb7c37c66",
+      "size": 774,
+      "normalized_sha256": "357f1938d00e92d551c9cabd1786e04361dd5be8917fb51a8fed3a1cb7c37c66"
+    },
+    "docs/increments/evidence/R2/r2-12-d-20261015162640.png": {
+      "role": "index",
+      "sha256": "5aff9ce17af94d8f321860deecb91bedfb6cba8b69dd05e21f7de7f5bbeae336",
+      "size": 46756
+    },
+    "docs/increments/evidence/R2/r2-12-d-20261015162817.json": {
+      "role": "index",
+      "sha256": "aa6bec9fe51ae3b8739a331dc2e6a0d9a59f151811b010781c51a77eb06cef06",
+      "size": 774,
+      "normalized_sha256": "aa6bec9fe51ae3b8739a331dc2e6a0d9a59f151811b010781c51a77eb06cef06"
+    },
+    "docs/increments/evidence/R2/r2-12-d-20261015162817.png": {
+      "role": "index",
+      "sha256": "a773017b5251cb47cb7eb7cdd4ac94fda197dbf0aaf3027072cb03d1550eb6fe",
+      "size": 46745
+    },
+    "docs/increments/evidence/R2/r2-12-d-20261015163408.json": {
+      "role": "index",
+      "sha256": "42b2b117c5cc106938de0e9eaa2750a0e6daff127f0eb5016622767a9f8a1772",
+      "size": 1511,
+      "normalized_sha256": "42b2b117c5cc106938de0e9eaa2750a0e6daff127f0eb5016622767a9f8a1772"
+    },
+    "docs/increments/evidence/R2/r2-12-d-20261015163408.png": {
+      "role": "index",
+      "sha256": "4bf24e2267c900b8722396efa4388742dda3f123b5ba1b599fd93e1a350048fc",
+      "size": 48047
+    },
+    "docs/increments/evidence/R2/r2-12-d-20261015164635.json": {
+      "role": "index",
+      "sha256": "55705fdc5ef41856fd9bde64a0372a9e5162f72c7a2efc8ea5f4b1943f2b298e",
+      "size": 2132,
+      "normalized_sha256": "55705fdc5ef41856fd9bde64a0372a9e5162f72c7a2efc8ea5f4b1943f2b298e"
+    },
+    "docs/increments/evidence/R2/r2-12-d-20261015164635.png": {
+      "role": "index",
+      "sha256": "ad6ecedf4f5a02a45b4767068baf29b98340792e05a0a1a2ebf6d77dc42c5e3b",
+      "size": 47003
+    },
+    "docs/increments/evidence/R2/r2-12-d-browser-entry-20261015.txt": {
+      "role": "index",
+      "sha256": "289e1c3f6a3e1f65f50bf328d8a62146a1a808a31308db47dd60ae0bf544576b",
+      "size": 1806,
+      "normalized_sha256": "289e1c3f6a3e1f65f50bf328d8a62146a1a808a31308db47dd60ae0bf544576b"
+    },
+    "docs/increments/evidence/R2/r2-12-d-preflight-20261015.txt": {
+      "role": "index",
+      "sha256": "5580b50b93e19e11085a5c040efae86ba2e0c53da5b0ac834a7d571bd32601bf",
+      "size": 1910,
+      "normalized_sha256": "5580b50b93e19e11085a5c040efae86ba2e0c53da5b0ac834a7d571bd32601bf"
+    },
+    "docs/increments/evidence/R2/r2-12-d-remote-final-20261015.txt": {
+      "role": "index",
+      "sha256": "b88e753b32b9e2e2ae75a0d2163c894e3ae558a464e66abb1c92a42d74c9a034",
+      "size": 3905,
+      "normalized_sha256": "b88e753b32b9e2e2ae75a0d2163c894e3ae558a464e66abb1c92a42d74c9a034"
+    },
+    "docs/increments/evidence/R2/r2-13-20261015174726.json": {
+      "role": "index",
+      "sha256": "acf21df995ca5c9d2c612a95df9e61461e461caa2b5519e111255edf0b68accb",
+      "size": 1000,
+      "normalized_sha256": "acf21df995ca5c9d2c612a95df9e61461e461caa2b5519e111255edf0b68accb"
+    },
+    "docs/increments/evidence/R2/r2-13-20261015174752.json": {
+      "role": "index",
+      "sha256": "3a431dc365b0527375d1c8a6fbf8ff8e77f5a6a5e50c025d595dcf4991edd5c6",
+      "size": 30714,
+      "normalized_sha256": "3a431dc365b0527375d1c8a6fbf8ff8e77f5a6a5e50c025d595dcf4991edd5c6"
+    },
+    "docs/increments/evidence/R2/r2-13-20261015174953.json": {
+      "role": "index",
+      "sha256": "2a92edb14ebdcbdca6d9a8092515e75ff5f9c2918b79160c8111131c18ebd177",
+      "size": 33167,
+      "normalized_sha256": "2a92edb14ebdcbdca6d9a8092515e75ff5f9c2918b79160c8111131c18ebd177"
+    },
+    "docs/increments/evidence/R2/r2-13-20261015175206.json": {
+      "role": "index",
+      "sha256": "241c9f3574429789d98d940cc3a63521b8cfd659253148725834b2dfed89487d",
+      "size": 37176,
+      "normalized_sha256": "241c9f3574429789d98d940cc3a63521b8cfd659253148725834b2dfed89487d"
+    },
+    "docs/increments/evidence/R2/r2-13-20261015175433.json": {
+      "role": "index",
+      "sha256": "f0671f834f5fe1f45e4378ad7315cb4f3e196a2ab1bca7c0c60c9d425d253bc6",
+      "size": 38132,
+      "normalized_sha256": "f0671f834f5fe1f45e4378ad7315cb4f3e196a2ab1bca7c0c60c9d425d253bc6"
+    },
+    "docs/increments/evidence/R2/r2-13-20261015175857.json": {
+      "role": "index",
+      "sha256": "36dda9649137a0a5f7dd670aacc1c1feeb242df726ac7dfcb4a8016fcc4e6faf",
+      "size": 38238,
+      "normalized_sha256": "36dda9649137a0a5f7dd670aacc1c1feeb242df726ac7dfcb4a8016fcc4e6faf"
+    },
+    "docs/increments/evidence/R2/r2-13-20261015175857.png": {
+      "role": "index",
+      "sha256": "f62aee5c88ac54b2d0867acca1b0172d7699f8fe31dffce93df15b91a347cc74",
+      "size": 294029
+    },
+    "docs/increments/evidence/R2/r2-be-e2e-20261017.json": {
+      "role": "index",
+      "sha256": "415c7c1bd17479eb2c68bc720c1454fcd5275682c916296dccff8e3c741c4320",
+      "size": 3120,
+      "normalized_sha256": "415c7c1bd17479eb2c68bc720c1454fcd5275682c916296dccff8e3c741c4320"
+    },
+    "docs/increments/evidence/R2/r2-be-e2e-20261017.png": {
+      "role": "index",
+      "sha256": "04696c39e2eee8d4cc2b94221d7c8dab7b222f18ec02cecb1fd190cfa327f0b3",
+      "size": 77355
+    },
+    "docs/increments/evidence/R2/remote-final-20261015.txt": {
+      "role": "index",
+      "sha256": "5f12ba7cb8a1f6901c3baad4594ca8caa9d6e3ed15b7d873574fe91bd93f2391",
+      "size": 2692,
+      "normalized_sha256": "5f12ba7cb8a1f6901c3baad4594ca8caa9d6e3ed15b7d873574fe91bd93f2391"
+    },
     "docs/increments/evidence/R2/remote-preflight.txt": {
       "role": "index",
       "sha256": "1fe9406dceaa7ee0dd398ecc6b96013bab95c0b108bed31b6a0dbf903644d0b6",
@@ -6010,6 +6859,42 @@
       "sha256": "f77d79afa2d62bfe9358ae3bb166eca387030882e315e2ee7f34baf12b54f3f7",
       "size": 892,
       "normalized_sha256": "f77d79afa2d62bfe9358ae3bb166eca387030882e315e2ee7f34baf12b54f3f7"
+    },
+    "docs/increments/evidence/R2/trae-p07-security-green-20261017.md": {
+      "role": "index",
+      "sha256": "16cdb87f5f24c77ab86d00e3d590843fcfd1e765053bf0be2185a5027fb9380e",
+      "size": 5441,
+      "normalized_sha256": "16cdb87f5f24c77ab86d00e3d590843fcfd1e765053bf0be2185a5027fb9380e"
+    },
+    "docs/increments/evidence/R2/trae-r2-devserver-20261017.txt": {
+      "role": "index",
+      "sha256": "8b151722ee69c57a1e594c227d955988bfb5680ec3ce6959c287e6b6acbd900d",
+      "size": 555,
+      "normalized_sha256": "9965fcb7eedab11a5dcbc49ab8c8a4afdbe87c5cc152c9cc18c96ae4f4eec89b"
+    },
+    "docs/increments/evidence/R2/trae-r2-green-20261017.txt": {
+      "role": "index",
+      "sha256": "d108cabf38f5b066f2c492f9f08f4d37fb1a65ac91c611141067cbb9a13fa0be",
+      "size": 5571,
+      "normalized_sha256": "d108cabf38f5b066f2c492f9f08f4d37fb1a65ac91c611141067cbb9a13fa0be"
+    },
+    "docs/increments/evidence/R2/trae-r2-vitest-full-20261017.txt": {
+      "role": "index",
+      "sha256": "40a9c23c681d533c5ab4cba9dd2d852a383b7a7d41fd4d4a87937a5c24c8fd9a",
+      "size": 279144,
+      "normalized_sha256": "a8c24ab6ebbb6bacd0ad5761a5bf251cdaad414355cf2a46411ba75869cede89"
+    },
+    "docs/increments/evidence/R2/trae-r2-vue-tsc-20261017.txt": {
+      "role": "index",
+      "sha256": "751d9c2ec23645f261381e6c85d7a67dd55c3aeb01745866ede79aed6ab1aa2c",
+      "size": 97,
+      "normalized_sha256": "82d75c3dae4e679ccd85965d1f17996c7e9d8a9d53e8a08c9d9bcbd9f98fd28f"
+    },
+    "docs/increments/evidence/R2/trae-variable-red-local-20261016.txt": {
+      "role": "index",
+      "sha256": "2eb1872a480d7686df03bf750e017a3b36b4a967b6cd98c92251cbe27ce8d3cc",
+      "size": 2236,
+      "normalized_sha256": "2eb1872a480d7686df03bf750e017a3b36b4a967b6cd98c92251cbe27ce8d3cc"
     },
     "docs/increments/evidence/R3/R3V-20261014110557-a0c74c-playwright.json": {
       "role": "index",
@@ -6089,6 +6974,282 @@
       "size": 1137,
       "normalized_sha256": "120edc9befa76a8f97a52ddbc6a459fcd1f7d8d5bed1dfe140a292ce94f3e321"
     },
+    "docs/increments/evidence/R3/r3-s9-onboarding-20261015223948-notoken.png": {
+      "role": "index",
+      "sha256": "692b5b653717a3b81746b114c22d6c8ee1a8ab2b3d4b7eb469006b923214b212",
+      "size": 220993
+    },
+    "docs/increments/evidence/R3/r3-s9-onboarding-20261015223948-tokenpath.png": {
+      "role": "index",
+      "sha256": "7123d28c57302349f2cf055663d7e8a22a565ee0119b919dc75d382ee32b12d5",
+      "size": 140875
+    },
+    "docs/increments/evidence/R3/r3-s9-onboarding-20261015223948.json": {
+      "role": "index",
+      "sha256": "68127c8bd760078b57778e4a41ff3acd22473918d4d219db46aedad7d358e0a8",
+      "size": 715,
+      "normalized_sha256": "68127c8bd760078b57778e4a41ff3acd22473918d4d219db46aedad7d358e0a8"
+    },
+    "docs/increments/evidence/R3/r3-s9-onboarding-20261015224035-notoken.png": {
+      "role": "index",
+      "sha256": "4c9a9f223eb39fd46bb92d039b9b2d2d60562fa864776f3f3b1abd121664f88e",
+      "size": 139272
+    },
+    "docs/increments/evidence/R3/r3-s9-onboarding-20261015224035-tokenpath.png": {
+      "role": "index",
+      "sha256": "7123d28c57302349f2cf055663d7e8a22a565ee0119b919dc75d382ee32b12d5",
+      "size": 140875
+    },
+    "docs/increments/evidence/R3/r3-s9-onboarding-20261015224035.json": {
+      "role": "index",
+      "sha256": "1595518c247b79589910f12f8ec2bb488d9a8641115d71b84b0873c0386e22e1",
+      "size": 712,
+      "normalized_sha256": "1595518c247b79589910f12f8ec2bb488d9a8641115d71b84b0873c0386e22e1"
+    },
+    "docs/increments/evidence/R3/r3s9-20261014171712-b019de.json": {
+      "role": "index",
+      "sha256": "3929fb81d50cbc4b487873793cc03adc151e26f75a47452e0883321fbff5ea1d",
+      "size": 1496,
+      "normalized_sha256": "3929fb81d50cbc4b487873793cc03adc151e26f75a47452e0883321fbff5ea1d"
+    },
+    "docs/increments/evidence/R3/r3s9-20261014171802-61e7dd.json": {
+      "role": "index",
+      "sha256": "a501a92f981b07239aaf6b3ad27bee89de5ebfaf3e0d7cfd9b9c6b515a043cbb",
+      "size": 1384,
+      "normalized_sha256": "a501a92f981b07239aaf6b3ad27bee89de5ebfaf3e0d7cfd9b9c6b515a043cbb"
+    },
+    "docs/increments/evidence/R3/r3s9-20261014173019-c125bf.json": {
+      "role": "index",
+      "sha256": "07ee49f1b781d5cc526c386c799fd0bea14ad454ff9facb13d959cf389be5bab",
+      "size": 1385,
+      "normalized_sha256": "07ee49f1b781d5cc526c386c799fd0bea14ad454ff9facb13d959cf389be5bab"
+    },
+    "docs/increments/evidence/R3/r3s9-20261014173216-ec0b31.json": {
+      "role": "index",
+      "sha256": "5540abcc7afec0cdb341bd202d7960f9ef0d3ddd008119093dba4c68bd03f4ff",
+      "size": 1505,
+      "normalized_sha256": "5540abcc7afec0cdb341bd202d7960f9ef0d3ddd008119093dba4c68bd03f4ff"
+    },
+    "docs/increments/evidence/R3/r3s9-20261014173444-925846.json": {
+      "role": "index",
+      "sha256": "cac932023bab1c41191e1c318c320992eb914ab737c34979dbad0c32c3a8212d",
+      "size": 1463,
+      "normalized_sha256": "cac932023bab1c41191e1c318c320992eb914ab737c34979dbad0c32c3a8212d"
+    },
+    "docs/increments/evidence/R3/r3s9-20261014173522-b820b6.json": {
+      "role": "index",
+      "sha256": "0067302ff8df730fde55c98dfc8e7a80bb6724c04af2a3dc7c24f8719a6589cd",
+      "size": 1561,
+      "normalized_sha256": "0067302ff8df730fde55c98dfc8e7a80bb6724c04af2a3dc7c24f8719a6589cd"
+    },
+    "docs/increments/evidence/R3/r3s9-20261014174030-e03460.json": {
+      "role": "index",
+      "sha256": "6b8a932c1bcc6b2e978fc6193e4dabaa87625961fb1f95d14b21283658fa979d",
+      "size": 2875,
+      "normalized_sha256": "6b8a932c1bcc6b2e978fc6193e4dabaa87625961fb1f95d14b21283658fa979d"
+    },
+    "docs/increments/evidence/R3/r3s9-20261014175743-e04920.json": {
+      "role": "index",
+      "sha256": "d9bd5893978c2f87cfe43cab6ad2e6cfe17b744002ef988c5322f05806406903",
+      "size": 2820,
+      "normalized_sha256": "d9bd5893978c2f87cfe43cab6ad2e6cfe17b744002ef988c5322f05806406903"
+    },
+    "docs/increments/evidence/R3/r3s9-20261014180718-e0d5e3.json": {
+      "role": "index",
+      "sha256": "21c5db218da491faef76a780980fa1c5f1875db86abd270c1ef3cde7aa8d7a14",
+      "size": 2142,
+      "normalized_sha256": "21c5db218da491faef76a780980fa1c5f1875db86abd270c1ef3cde7aa8d7a14"
+    },
+    "docs/increments/evidence/R3/r3s9-20261014182343-86a184.json": {
+      "role": "index",
+      "sha256": "ba5a63686df4d10f1a3bd9b537977a81537bc26c511fd669c57b457d31294f35",
+      "size": 1967,
+      "normalized_sha256": "ba5a63686df4d10f1a3bd9b537977a81537bc26c511fd669c57b457d31294f35"
+    },
+    "docs/increments/evidence/R3/r3s9-20261014182427-6498d0-summary.png": {
+      "role": "index",
+      "sha256": "9e3469a56894e36ab524ed1f9add382bb4e5bab1a28c25bc571b879805fc2fa7",
+      "size": 104721
+    },
+    "docs/increments/evidence/R3/r3s9-20261014182427-6498d0.json": {
+      "role": "index",
+      "sha256": "9315f21b3615a0cc6e332dea05abb7d53cc969bc32648d0b0f0ab1c1327a85d1",
+      "size": 2185,
+      "normalized_sha256": "9315f21b3615a0cc6e332dea05abb7d53cc969bc32648d0b0f0ab1c1327a85d1"
+    },
+    "docs/increments/evidence/R3/r3s9-20261015191204-61df20.json": {
+      "role": "index",
+      "sha256": "0d6a86bcffb79c3420d9ed65656b425fcadc135ff0d2237c20a691600921c810",
+      "size": 944,
+      "normalized_sha256": "0d6a86bcffb79c3420d9ed65656b425fcadc135ff0d2237c20a691600921c810"
+    },
+    "docs/increments/evidence/R3/r3s9-20261015234106-ea0716.json": {
+      "role": "index",
+      "sha256": "1d4a9f55bfcde8c185d372d83feea77b88c4c66d69ca17d73279ea94322c7a70",
+      "size": 1689,
+      "normalized_sha256": "1d4a9f55bfcde8c185d372d83feea77b88c4c66d69ca17d73279ea94322c7a70"
+    },
+    "docs/increments/evidence/R3/r3s9-20261015234127-9e55a5.json": {
+      "role": "index",
+      "sha256": "e929d5f3e9dceebf9934c3f431ba121d612051fc037f9e76f84780eea8567fbb",
+      "size": 3200,
+      "normalized_sha256": "e929d5f3e9dceebf9934c3f431ba121d612051fc037f9e76f84780eea8567fbb"
+    },
+    "docs/increments/evidence/R3/r3s9-20261015235952-82ea91.json": {
+      "role": "index",
+      "sha256": "8bd26b0e817010bc4186475c17a02db04aed7e80d16705bb09a61816c6a1adea",
+      "size": 3233,
+      "normalized_sha256": "8bd26b0e817010bc4186475c17a02db04aed7e80d16705bb09a61816c6a1adea"
+    },
+    "docs/increments/evidence/R3/r3s9-20261016004218-7c4a23.json": {
+      "role": "index",
+      "sha256": "f50927c0ec21c0f8e08d58e40fdcee11bd5a72224e59caa3023fe6176894957d",
+      "size": 3256,
+      "normalized_sha256": "f50927c0ec21c0f8e08d58e40fdcee11bd5a72224e59caa3023fe6176894957d"
+    },
+    "docs/increments/evidence/R3/r3s9-page-only-final-deploy-20261016.txt": {
+      "role": "index",
+      "sha256": "5438a5954084acf7646b4524c11ed2f1730e8f195ae94456cdf06fe33c3572f3",
+      "size": 1191,
+      "normalized_sha256": "5438a5954084acf7646b4524c11ed2f1730e8f195ae94456cdf06fe33c3572f3"
+    },
+    "docs/increments/evidence/R3/r3s9i19-20261014231348-d48a0e.json": {
+      "role": "index",
+      "sha256": "1316ec3195cbbd0a58cefb713569997b45fc7e720c285b10f00fbfe9163d35ea",
+      "size": 553,
+      "normalized_sha256": "1316ec3195cbbd0a58cefb713569997b45fc7e720c285b10f00fbfe9163d35ea"
+    },
+    "docs/increments/evidence/R3/r3s9i19-20261014231449-1bfec9.json": {
+      "role": "index",
+      "sha256": "fe2f46a668ecb67c28c793d34858f9578c89679e2b8bec30e4a26c1e224952a1",
+      "size": 2569,
+      "normalized_sha256": "fe2f46a668ecb67c28c793d34858f9578c89679e2b8bec30e4a26c1e224952a1"
+    },
+    "docs/increments/evidence/R3/r3s9i19-20261014232132-19a437-summary.png": {
+      "role": "index",
+      "sha256": "e7a21afa85b8057ecbc875f21422c06862d8595569eb4337d6c025eeb2be1ff6",
+      "size": 85842
+    },
+    "docs/increments/evidence/R3/r3s9i19-20261014232132-19a437.json": {
+      "role": "index",
+      "sha256": "24329e1581b5d590fef96ce4bafa338837381904a7df9eddb53ff97b1dba00cd",
+      "size": 2569,
+      "normalized_sha256": "24329e1581b5d590fef96ce4bafa338837381904a7df9eddb53ff97b1dba00cd"
+    },
+    "docs/increments/evidence/R3/r3s9i20-20261014234555-81aafa-summary.png": {
+      "role": "index",
+      "sha256": "560926fd85c58e3390f913f9af364606d4bb1258a8d037cdb5351dacdc9ced8b",
+      "size": 80551
+    },
+    "docs/increments/evidence/R3/r3s9i20-20261014234555-81aafa.json": {
+      "role": "index",
+      "sha256": "e732a86230b759f526b3db5ab1f80d13424dab9f03dd98a7e2ed24608572d047",
+      "size": 2522,
+      "normalized_sha256": "e732a86230b759f526b3db5ab1f80d13424dab9f03dd98a7e2ed24608572d047"
+    },
+    "docs/increments/evidence/R3/r3s9i20-20261014235000-e0ae9c-summary.png": {
+      "role": "index",
+      "sha256": "689d8330454ec753b7dbb231340eb0bc9068c4349105eb210a83ec2273062d42",
+      "size": 80469
+    },
+    "docs/increments/evidence/R3/r3s9i20-20261014235000-e0ae9c.json": {
+      "role": "index",
+      "sha256": "66c98c426ad25b23ca4ce8efb701cb3f5686e28593280a6aa7313c11020f85dc",
+      "size": 2522,
+      "normalized_sha256": "66c98c426ad25b23ca4ce8efb701cb3f5686e28593280a6aa7313c11020f85dc"
+    },
+    "docs/increments/evidence/R3/r3s9i21-20261015002225-8ece11.json": {
+      "role": "index",
+      "sha256": "b9f8b17cc96307ebdf4178961af2195ed888916c5ed5072fee8fc4f70e7f4c3e",
+      "size": 2818,
+      "normalized_sha256": "b9f8b17cc96307ebdf4178961af2195ed888916c5ed5072fee8fc4f70e7f4c3e"
+    },
+    "docs/increments/evidence/R3/r3s9i21-20261015002853-9b122f-summary.png": {
+      "role": "index",
+      "sha256": "94f35d17eaff37229bb7cc2e836779b0c07b149b5c8103ccb94b7b653509f09f",
+      "size": 85776
+    },
+    "docs/increments/evidence/R3/r3s9i21-20261015002853-9b122f.json": {
+      "role": "index",
+      "sha256": "c1503fb4863808e0adcbb2230bf42f553e37695ea4336d2b6d2d463944c76f45",
+      "size": 3021,
+      "normalized_sha256": "c1503fb4863808e0adcbb2230bf42f553e37695ea4336d2b6d2d463944c76f45"
+    },
+    "docs/increments/evidence/R3/r3s9i22-20261014214938-2541ab.json": {
+      "role": "index",
+      "sha256": "83e40de224890c8fde6756f14652e17f2a9b76dd9325be6ea98db0b9337a037d",
+      "size": 2744,
+      "normalized_sha256": "83e40de224890c8fde6756f14652e17f2a9b76dd9325be6ea98db0b9337a037d"
+    },
+    "docs/increments/evidence/R3/r3s9i22-20261014215054-01b8e2-summary.png": {
+      "role": "index",
+      "sha256": "e7bef8f314d647aaef92a3d7fae8e9c2548be862f58fcc071cd2cccce2f59281",
+      "size": 92581
+    },
+    "docs/increments/evidence/R3/r3s9i22-20261014215054-01b8e2.json": {
+      "role": "index",
+      "sha256": "50b1d1ee090c49ef783979bbc84ebfb13944b0ad1cd038ce73d01f8c4e1791c5",
+      "size": 2913,
+      "normalized_sha256": "50b1d1ee090c49ef783979bbc84ebfb13944b0ad1cd038ce73d01f8c4e1791c5"
+    },
+    "docs/increments/evidence/R3/r3s9i23-20261014222006-439d4a.json": {
+      "role": "index",
+      "sha256": "55bc1b49d70e7018248918b8db6a78cd917bcfa84f698f7e674f98aef85846ec",
+      "size": 2842,
+      "normalized_sha256": "55bc1b49d70e7018248918b8db6a78cd917bcfa84f698f7e674f98aef85846ec"
+    },
+    "docs/increments/evidence/R3/r3s9i23-20261014222027-6725ba.json": {
+      "role": "index",
+      "sha256": "85c70ca233fdc4c7a38dc24c84f95e635a357d3acc78c3e37c2c1a83df49ee4a",
+      "size": 3139,
+      "normalized_sha256": "85c70ca233fdc4c7a38dc24c84f95e635a357d3acc78c3e37c2c1a83df49ee4a"
+    },
+    "docs/increments/evidence/R3/r3s9i23-20261014222054-d7f4ec.json": {
+      "role": "index",
+      "sha256": "891fc6d7c72020dbe8b9178e2ba224c085c7d558411ad8ea3f27c92f4e6b4397",
+      "size": 3539,
+      "normalized_sha256": "891fc6d7c72020dbe8b9178e2ba224c085c7d558411ad8ea3f27c92f4e6b4397"
+    },
+    "docs/increments/evidence/R3/r3s9i23-20261014222118-a76bf5-summary.png": {
+      "role": "index",
+      "sha256": "62bc604f64d261b738cab8c63d3a21499cc55945c1a812653c127a0155418d43",
+      "size": 91429
+    },
+    "docs/increments/evidence/R3/r3s9i23-20261014222118-a76bf5.json": {
+      "role": "index",
+      "sha256": "56dac75d73a0a38473c7df0300088de8c3cc1bbfea78171bff78f9e030434f9b",
+      "size": 3395,
+      "normalized_sha256": "56dac75d73a0a38473c7df0300088de8c3cc1bbfea78171bff78f9e030434f9b"
+    },
+    "docs/increments/evidence/R3/r3s9i23-20261014222209-50244b-summary.png": {
+      "role": "index",
+      "sha256": "a6ec0871732a2110c1b940845115bab8e12f029de08bbaf692e2ebdcee15d8f6",
+      "size": 91667
+    },
+    "docs/increments/evidence/R3/r3s9i23-20261014222209-50244b.json": {
+      "role": "index",
+      "sha256": "6db15f8379d5de8108631092ed496b1e15dd5a8884c4fe6130c11f13e537f843",
+      "size": 3525,
+      "normalized_sha256": "6db15f8379d5de8108631092ed496b1e15dd5a8884c4fe6130c11f13e537f843"
+    },
+    "docs/increments/evidence/R3/r3s9import-20261015235813-042570.json": {
+      "role": "index",
+      "sha256": "91154b46f80cb621935ffbdc09f011c0d8c2c989d3b4505c33a0010d164eca96",
+      "size": 2563,
+      "normalized_sha256": "91154b46f80cb621935ffbdc09f011c0d8c2c989d3b4505c33a0010d164eca96"
+    },
+    "docs/increments/evidence/R3/r3s9reverify-20261016082248-09aa72.json": {
+      "role": "index",
+      "sha256": "bca52960f9702526f6564b2c2a2076d5ac064b0c5b3abc32e8fedd969f9f6ef3",
+      "size": 10162,
+      "normalized_sha256": "bca52960f9702526f6564b2c2a2076d5ac064b0c5b3abc32e8fedd969f9f6ef3"
+    },
+    "docs/increments/evidence/R3/r3s9reverify-20261016084542-09aa72.json": {
+      "role": "index",
+      "sha256": "754d6e22885ba18e55c5d52f46f3765cdc94def0b5bb273b12583d9e3ccb1bb7",
+      "size": 10164,
+      "normalized_sha256": "754d6e22885ba18e55c5d52f46f3765cdc94def0b5bb273b12583d9e3ccb1bb7"
+    },
     "docs/increments/evidence/R3/remote-schema-inventory.txt": {
       "role": "index",
       "sha256": "0f96cf8b598a9535a60af38e94927fd608187c273d6e64d7793c3d325188434a",
@@ -6149,11 +7310,360 @@
       "size": 4334,
       "normalized_sha256": "b7be0a5f3e65ec67edc33cdce859065a404f9529214c13754dcbfb433429a941"
     },
+    "docs/increments/evidence/R3/s9-i18-relation-endpoint-readonly-20261015.md": {
+      "role": "index",
+      "sha256": "fc4649c8cbad3e64db208d00abafc87b5eb291356c12cbe94f3b5f7646a7d578",
+      "size": 3290,
+      "normalized_sha256": "fc4649c8cbad3e64db208d00abafc87b5eb291356c12cbe94f3b5f7646a7d578"
+    },
+    "docs/increments/evidence/R3/s9-i19-mapper-local-20261015.txt": {
+      "role": "index",
+      "sha256": "0b1a287f893a40baf2b670bab7cd5d8e5d947f447aa0874056ba2606aaded1e9",
+      "size": 2272,
+      "normalized_sha256": "0b1a287f893a40baf2b670bab7cd5d8e5d947f447aa0874056ba2606aaded1e9"
+    },
+    "docs/increments/evidence/R3/s9-i19-preview-local-20261015.txt": {
+      "role": "index",
+      "sha256": "7690bb9173dd1db8051d3d3ff3ba9c1448b18e6131cedc1d9018c21a30be2551",
+      "size": 1362,
+      "normalized_sha256": "7690bb9173dd1db8051d3d3ff3ba9c1448b18e6131cedc1d9018c21a30be2551"
+    },
+    "docs/increments/evidence/R3/s9-i19-preview-remote-20261015.txt": {
+      "role": "index",
+      "sha256": "13cb187edd052807d9e022fffd9b1d4a0e1b2b7f8219ed978100498487a14106",
+      "size": 2869,
+      "normalized_sha256": "13cb187edd052807d9e022fffd9b1d4a0e1b2b7f8219ed978100498487a14106"
+    },
+    "docs/increments/evidence/R3/s9-i19-source-reader-local-20261015.txt": {
+      "role": "index",
+      "sha256": "da1acbb24e61aeaa49cb8672ea52db266b6dc9c035b7aa82dd4df623773f6273",
+      "size": 1943,
+      "normalized_sha256": "da1acbb24e61aeaa49cb8672ea52db266b6dc9c035b7aa82dd4df623773f6273"
+    },
+    "docs/increments/evidence/R3/s9-i20-mapper-local-20261015.txt": {
+      "role": "index",
+      "sha256": "487a90ab1186b8dfbc08fd5589765950e3e98c9a3b4a239ad586445a2d905c8a",
+      "size": 2319,
+      "normalized_sha256": "487a90ab1186b8dfbc08fd5589765950e3e98c9a3b4a239ad586445a2d905c8a"
+    },
+    "docs/increments/evidence/R3/s9-i20-preview-remote-20261015.txt": {
+      "role": "index",
+      "sha256": "922a67efea3e3459d784a9cf5a9d979e80a51ff132ac39e647f5d8106183891b",
+      "size": 4543,
+      "normalized_sha256": "922a67efea3e3459d784a9cf5a9d979e80a51ff132ac39e647f5d8106183891b"
+    },
+    "docs/increments/evidence/R3/s9-i20-source-reader-local-20261015.txt": {
+      "role": "index",
+      "sha256": "01b8e871347c1c13d9268cd8ba837424f6be9650f296aa90cedf426512d78dc3",
+      "size": 2312,
+      "normalized_sha256": "01b8e871347c1c13d9268cd8ba837424f6be9650f296aa90cedf426512d78dc3"
+    },
+    "docs/increments/evidence/R3/s9-i21-live-schema-reader-fix-20261015.txt": {
+      "role": "index",
+      "sha256": "ca193e57cc070e565e8187bc02987d3ef8ec357163d0cd2074d20162dd8eaa7c",
+      "size": 1901,
+      "normalized_sha256": "ca193e57cc070e565e8187bc02987d3ef8ec357163d0cd2074d20162dd8eaa7c"
+    },
+    "docs/increments/evidence/R3/s9-i21-mapper-local-20261015.txt": {
+      "role": "index",
+      "sha256": "58eb58de61b03422f7f66eddf84cc934e947a233d3fdc42daa86c234891210ab",
+      "size": 2491,
+      "normalized_sha256": "58eb58de61b03422f7f66eddf84cc934e947a233d3fdc42daa86c234891210ab"
+    },
+    "docs/increments/evidence/R3/s9-i21-preview-remote-20261015.txt": {
+      "role": "index",
+      "sha256": "dd491292f3948a9db28ebeb578120528664c86441030b83dba31a687bece54d7",
+      "size": 5919,
+      "normalized_sha256": "dd491292f3948a9db28ebeb578120528664c86441030b83dba31a687bece54d7"
+    },
+    "docs/increments/evidence/R3/s9-i21-source-reader-local-20261015.txt": {
+      "role": "index",
+      "sha256": "531c1bc1f5cbc417219cf272d82b26ae9c2fafbb5872c808b93370eb7dc59d85",
+      "size": 2130,
+      "normalized_sha256": "531c1bc1f5cbc417219cf272d82b26ae9c2fafbb5872c808b93370eb7dc59d85"
+    },
+    "docs/increments/evidence/R3/s9-i22-live-schema-20261015.md": {
+      "role": "index",
+      "sha256": "ed3c48c517ec66207b9f0360774f9956e3cf1afd232aa54cbc954a3dc54c3e61",
+      "size": 5996,
+      "normalized_sha256": "ed3c48c517ec66207b9f0360774f9956e3cf1afd232aa54cbc954a3dc54c3e61"
+    },
+    "docs/increments/evidence/R3/s9-i22-mapper-local-20261015.txt": {
+      "role": "index",
+      "sha256": "c98167698fe7c109e1a0f70be87ef3c602307eb3f4be218e577866947b6a63d3",
+      "size": 1898,
+      "normalized_sha256": "c98167698fe7c109e1a0f70be87ef3c602307eb3f4be218e577866947b6a63d3"
+    },
+    "docs/increments/evidence/R3/s9-i22-preview-remote-deploy-20261015.txt": {
+      "role": "index",
+      "sha256": "818e45242e90534205eb4cfbfcb42eefed6b718e52df6af658a59c9c1fdb1fd9",
+      "size": 3969,
+      "normalized_sha256": "818e45242e90534205eb4cfbfcb42eefed6b718e52df6af658a59c9c1fdb1fd9"
+    },
+    "docs/increments/evidence/R3/s9-i22-reader-local-20261015.txt": {
+      "role": "index",
+      "sha256": "0748a22317fda1dd40e1c595e1727e8d8478085a29965f118b4d05468d94a78a",
+      "size": 1793,
+      "normalized_sha256": "0748a22317fda1dd40e1c595e1727e8d8478085a29965f118b4d05468d94a78a"
+    },
+    "docs/increments/evidence/R3/s9-i23-mapper-local-20261015.txt": {
+      "role": "index",
+      "sha256": "5985845b5e6107de26ac86d18110fc9443de4926e0688f336c1affd9ca2d7227",
+      "size": 1661,
+      "normalized_sha256": "5985845b5e6107de26ac86d18110fc9443de4926e0688f336c1affd9ca2d7227"
+    },
+    "docs/increments/evidence/R3/s9-i23-preview-remote-deploy-20261015.md": {
+      "role": "index",
+      "sha256": "fd4121e31863ae8e0b485cfe9e3635547b1df08ae80cab6dc99239050e817e70",
+      "size": 5045,
+      "normalized_sha256": "fd4121e31863ae8e0b485cfe9e3635547b1df08ae80cab6dc99239050e817e70"
+    },
+    "docs/increments/evidence/R3/s9-i23-reader-local-20261015.txt": {
+      "role": "index",
+      "sha256": "cad98d7b9684e54c1c6fd80d72d104054eacf201a68cd3786836ee1ff5a0912d",
+      "size": 1813,
+      "normalized_sha256": "cad98d7b9684e54c1c6fd80d72d104054eacf201a68cd3786836ee1ff5a0912d"
+    },
+    "docs/increments/evidence/R3/s9-import-api-contract-local-20261015.txt": {
+      "role": "index",
+      "sha256": "3b831a0eb5bc1dd26da948eb6613e44e17bcdc5482a90963cffcfa62c82f4bf5",
+      "size": 1804,
+      "normalized_sha256": "3b831a0eb5bc1dd26da948eb6613e44e17bcdc5482a90963cffcfa62c82f4bf5"
+    },
+    "docs/increments/evidence/R3/s9-live-dry-run-20261015.txt": {
+      "role": "index",
+      "sha256": "bef2c508daa95157844234f2d9ed8fc6ad43ecb7e42299f16535f6ade113971f",
+      "size": 4272,
+      "normalized_sha256": "bef2c508daa95157844234f2d9ed8fc6ad43ecb7e42299f16535f6ade113971f"
+    },
+    "docs/increments/evidence/R3/s9-live-reader-schema-audit-20261015.md": {
+      "role": "index",
+      "sha256": "ad55cc66d9eddb8936b55e5f7bcd1e2941d8f7e07673294674a9007624f336d5",
+      "size": 3293,
+      "normalized_sha256": "ad55cc66d9eddb8936b55e5f7bcd1e2941d8f7e07673294674a9007624f336d5"
+    },
+    "docs/increments/evidence/R3/s9-replay-integrity-local-20261015.txt": {
+      "role": "index",
+      "sha256": "13521155116aec7dd79d40f1e08296d479f9c0c1f1a82d411e0a81d0fecccc85",
+      "size": 1498,
+      "normalized_sha256": "13521155116aec7dd79d40f1e08296d479f9c0c1f1a82d411e0a81d0fecccc85"
+    },
+    "docs/increments/evidence/R3/s9-source-access-preflight.txt": {
+      "role": "index",
+      "sha256": "4d1b65d6deb1c0d14996dc81a77a2366e91e37f9f015ef58097dfe4b9935aa88",
+      "size": 2197,
+      "normalized_sha256": "4d1b65d6deb1c0d14996dc81a77a2366e91e37f9f015ef58097dfe4b9935aa88"
+    },
     "docs/increments/evidence/R3/source-reconciliation.md": {
       "role": "index",
       "sha256": "5180939a586fc0e92c2680ba29188d4e2a2a85c89401c010652b50a8959d85e4",
       "size": 2724,
       "normalized_sha256": "5180939a586fc0e92c2680ba29188d4e2a2a85c89401c010652b50a8959d85e4"
+    },
+    "docs/increments/evidence/R4/r4-dep-res-e2e-20261017.json": {
+      "role": "index",
+      "sha256": "a677af26f2d98e3a64fe40d5255c4e419d831f7dddbb912d0bef21eb54f84958",
+      "size": 5078,
+      "normalized_sha256": "a677af26f2d98e3a64fe40d5255c4e419d831f7dddbb912d0bef21eb54f84958"
+    },
+    "docs/increments/evidence/R4/r4-dep-res-e2e-dep-20261017.png": {
+      "role": "index",
+      "sha256": "89380de277dec026b843b03a4d470bc2a5266511d2da43fdb4bffd62065686d7",
+      "size": 129168
+    },
+    "docs/increments/evidence/R4/r4-dep-res-e2e-res-20261017.png": {
+      "role": "index",
+      "sha256": "5cdce5016b19495a5a7f8a406d7bada0e9649728cb0839c5a52d9ee556795dca",
+      "size": 112487
+    },
+    "docs/increments/evidence/R4/trae-r4-dep-res-green-20261017.md": {
+      "role": "index",
+      "sha256": "7ecd75d90ee4b9f1b7649af58d2bba7c772c5386c78db6f775d3366530e54295",
+      "size": 9069,
+      "normalized_sha256": "7ecd75d90ee4b9f1b7649af58d2bba7c772c5386c78db6f775d3366530e54295"
+    },
+    "docs/increments/evidence/R4/trae-red-pages-local-20261016.txt": {
+      "role": "index",
+      "sha256": "f747f2779eae49a7b04a87fa0b6d5e68fafca8c7014e633368faf255b15d27b3",
+      "size": 3860,
+      "normalized_sha256": "f747f2779eae49a7b04a87fa0b6d5e68fafca8c7014e633368faf255b15d27b3"
+    },
+    "docs/increments/evidence/R5/dbx-ddl-source-review-20261017.md": {
+      "role": "index",
+      "sha256": "ce7be2d2edbca4c366084ea0842c6045a2299295795287164e3c2401c3a47c46",
+      "size": 5898,
+      "normalized_sha256": "ce7be2d2edbca4c366084ea0842c6045a2299295795287164e3c2401c3a47c46"
+    },
+    "docs/increments/evidence/R5/dbx-object-driver-operation-matrix-20261017.md": {
+      "role": "index",
+      "sha256": "dcc2877eb25f27ac1458dabc50ab8e6eb46a3fc6db709dd2d341b8d76c9c8cfa",
+      "size": 16549,
+      "normalized_sha256": "dcc2877eb25f27ac1458dabc50ab8e6eb46a3fc6db709dd2d341b8d76c9c8cfa"
+    },
+    "docs/increments/evidence/R5/trae-ide-red-local-20261016.txt": {
+      "role": "index",
+      "sha256": "cd599994f80f9ef28e2e063de40a39b438b77a99bf992cb6dc750ff49fc37e83",
+      "size": 2236,
+      "normalized_sha256": "cd599994f80f9ef28e2e063de40a39b438b77a99bf992cb6dc750ff49fc37e83"
+    },
+    "docs/increments/evidence/R7/r7-be-e2e-20261017.json": {
+      "role": "index",
+      "sha256": "a93da7d4b03b7c3f7f3afbb00df685ba5f312c8c6d19c23d5766ffbcda74b9b7",
+      "size": 3510,
+      "normalized_sha256": "a93da7d4b03b7c3f7f3afbb00df685ba5f312c8c6d19c23d5766ffbcda74b9b7"
+    },
+    "docs/increments/evidence/R7/r7-be-e2e-20261017.png": {
+      "role": "index",
+      "sha256": "7c02848cfed7e55df8749f66e7911383eb45239b89ce5097605cc6206f0e9c49",
+      "size": 129739
+    },
+    "docs/increments/evidence/R7/trae-metrics-red-local-20261016.txt": {
+      "role": "index",
+      "sha256": "3ee29d65b9287825da46753c1257f1afd7f73be0a9c7295e8a92bc49828535ff",
+      "size": 1722,
+      "normalized_sha256": "3ee29d65b9287825da46753c1257f1afd7f73be0a9c7295e8a92bc49828535ff"
+    },
+    "docs/increments/evidence/R7/trae-r7-e2e-20261017.txt": {
+      "role": "index",
+      "sha256": "61ada33ff7877d5a92f2d19b14c2a9bd14acf90809a5efe2d6bb0c0011ffc277",
+      "size": 6271,
+      "normalized_sha256": "61ada33ff7877d5a92f2d19b14c2a9bd14acf90809a5efe2d6bb0c0011ffc277"
+    },
+    "docs/increments/evidence/R7/trae-r7-green-20261017.txt": {
+      "role": "index",
+      "sha256": "9d6c92b34edcfb221b6ed4ce33b779bc7c91e4e4c29ef9a8e3a4526381bc0ef2",
+      "size": 6156,
+      "normalized_sha256": "9d6c92b34edcfb221b6ed4ce33b779bc7c91e4e4c29ef9a8e3a4526381bc0ef2"
+    },
+    "docs/increments/evidence/R8/2026-10-17-Codex-P1-3-acceptance-assertions.md": {
+      "role": "index",
+      "sha256": "da566857a27157afe799714c0410fe3626e41eb19620227dbdcac2cbc7ab0d59",
+      "size": 12654,
+      "normalized_sha256": "9c60e0cbe0a963fba471cfb1358977e46edb258d1c5b3f33a6ba73f57b8fd2f7"
+    },
+    "docs/increments/evidence/R8/2026-10-17-Codex-P1-3-bridge-readiness.md": {
+      "role": "index",
+      "sha256": "55a48b21153378730aaf841533d5df8d7aa1a0c39ff094a19707deb890df9f7a",
+      "size": 3091,
+      "normalized_sha256": "55a48b21153378730aaf841533d5df8d7aa1a0c39ff094a19707deb890df9f7a"
+    },
+    "docs/increments/evidence/R8/2026-10-17-Codex-P1-3-incremental-review.md": {
+      "role": "index",
+      "sha256": "97caae96c39620abd0ba6407cca9f22325680e6da5046fc0c916cdf2c28281c3",
+      "size": 26589,
+      "normalized_sha256": "ec627006830f316dcaa304414d47865230c758bf4a9fd324841ced0ff6a0c5f9"
+    },
+    "docs/increments/evidence/R8/2026-10-17-Codex-P1-6-A1-tdd-timeline.md": {
+      "role": "index",
+      "sha256": "fc7947d20dff36a71aa7f6d23a19e7a65c4c027caeffe099acb2399f7609e2e3",
+      "size": 2561,
+      "normalized_sha256": "8b7b7ece8a9a7439b4dba330949dbf95c9d69fad54df14f2fca407d9d8462394"
+    },
+    "docs/increments/evidence/R8/2026-10-17-Codex-P1-6-cross-project-isolation.md": {
+      "role": "index",
+      "sha256": "48011618abc5228e29580d88acca21eefacba58ecb0ad60774802423ac9ad62b",
+      "size": 2866,
+      "normalized_sha256": "01374c081adc3d91d2a769f608145aa7740ac750706e08542fc26eaa5a61807f"
+    },
+    "docs/increments/evidence/R8/2026-10-17-Codex-P1-6-lock-freeze-review.md": {
+      "role": "index",
+      "sha256": "8c9c3bcf977be89efea26f8bfee01afec8faf12362e94bf9560fce250d80acb5",
+      "size": 4570,
+      "normalized_sha256": "8c9c3bcf977be89efea26f8bfee01afec8faf12362e94bf9560fce250d80acb5"
+    },
+    "docs/increments/evidence/R8/2026-10-17-Codex-P1-6-lock-venv-install.md": {
+      "role": "index",
+      "sha256": "15dd182713d58186b3c0225aebff9e3ab390ec6f4d48b47a998c9d7a812ac247",
+      "size": 3226,
+      "normalized_sha256": "c9a39c19f6fd84ccabd80526207bb494771ddb4618fa908f041ef930aed931c4"
+    },
+    "docs/increments/evidence/R8/2026-10-17-Codex-P1-6-main-sovereignty-test.md": {
+      "role": "index",
+      "sha256": "ded82a77474c1a881cd10d4e8aefcb8872b5983a2c697db38427712bf3d9bab5",
+      "size": 1863,
+      "normalized_sha256": "ded82a77474c1a881cd10d4e8aefcb8872b5983a2c697db38427712bf3d9bab5"
+    },
+    "docs/increments/evidence/R8/2026-10-17-Codex-T2-ai-copilot-attribution.md": {
+      "role": "index",
+      "sha256": "efdd2319c7be0955218e47dba3cd26dfce4619ff9747672a29d28e492618c44d",
+      "size": 1771,
+      "normalized_sha256": "efdd2319c7be0955218e47dba3cd26dfce4619ff9747672a29d28e492618c44d"
+    },
+    "docs/increments/evidence/R8/2026-10-17-OM-DH-reference-decision-proposal.md": {
+      "role": "index",
+      "sha256": "3eac19666f00f55dd6cba6b870add6a677ce23c3e88a3d60413d5ee0c513baff",
+      "size": 9931,
+      "normalized_sha256": "3eac19666f00f55dd6cba6b870add6a677ce23c3e88a3d60413d5ee0c513baff"
+    },
+    "docs/increments/evidence/R8/tracka-repair-evidence.json": {
+      "role": "index",
+      "sha256": "61ff0c82f6eeb5967af41471a9a5e2299486d0d739f2a3401ed76541f6ac798b",
+      "size": 1303,
+      "normalized_sha256": "99e4952c5e35e2fee19dfba61aa8e28e2367175ea191dabe44f1dd12f37522f1"
+    },
+    "docs/increments/evidence/R8/tracka-repair-evidence.png": {
+      "role": "index",
+      "sha256": "7bdf842cea9c69a651812f5d7e3c186c36a9733f40432449a542494ef4c8e261",
+      "size": 40259
+    },
+    "docs/increments/evidence/R8/tracka-runtime-wiring-evidence.json": {
+      "role": "index",
+      "sha256": "f4ef5e7a0389ce7ee2184226564f3908e800d28e777e010deedca6c3cf8a923c",
+      "size": 2274,
+      "normalized_sha256": "71901c5b7a36af01cf49c4a488ab012b65111ff7e9f5bada00bb6877519f2593"
+    },
+    "docs/increments/evidence/R8/tracka-runtime-wiring-evidence.png": {
+      "role": "index",
+      "sha256": "bff31873dc440579851e0cb1c5b763f8ca0dae128056f331be0aab330b3c134f",
+      "size": 44145
+    },
+    "docs/increments/evidence/R8/trae-r8b-assistant-testpage-green-20261017.md": {
+      "role": "index",
+      "sha256": "d6d2dd238e17ae56bde559416dcdbbfe8d0b750d0c5bbf43bef1bb25490dc26b",
+      "size": 5304,
+      "normalized_sha256": "d6d2dd238e17ae56bde559416dcdbbfe8d0b750d0c5bbf43bef1bb25490dc26b"
+    },
+    "docs/increments/evidence/R8/trae-stream-red-local-20261016.txt": {
+      "role": "index",
+      "sha256": "4b51a0203b8267d467e198cbb37bfc568453309cd19d20473ff9642cc36c4430",
+      "size": 2654,
+      "normalized_sha256": "4b51a0203b8267d467e198cbb37bfc568453309cd19d20473ff9642cc36c4430"
+    },
+    "docs/increments/evidence/R9/d8-mailbox-loop-prompt-review-20261019.md": {
+      "role": "index",
+      "sha256": "2f8d2feb5ed985a1ab446ff4dfecd97968dff4d8e74f1596e7fec6deb9bf52b5",
+      "size": 4018,
+      "normalized_sha256": "2f8d2feb5ed985a1ab446ff4dfecd97968dff4d8e74f1596e7fec6deb9bf52b5"
+    },
+    "docs/increments/evidence/R9/p16-prime-收尾取证-20261019.md": {
+      "role": "index",
+      "sha256": "7ea36984364ee3966f8f020632b6bb9e45a364d8f142d83bff75cc37e7c32fe0",
+      "size": 2969,
+      "normalized_sha256": "7ea36984364ee3966f8f020632b6bb9e45a364d8f142d83bff75cc37e7c32fe0"
+    },
+    "docs/increments/evidence/R9/poc-chain-default-factory-rerun-20261019.txt": {
+      "role": "index",
+      "sha256": "ece6cd92ed7b6776ab279a2faf119dbbee8fabe1ab836defda7f274dc220f991",
+      "size": 6396,
+      "normalized_sha256": "98bbbfdb8733ab9832ffd0e9f13f38dbe36aa5dafb1e45f3423b944077e3eb5f"
+    },
+    "docs/increments/evidence/R9/red-repro-adapter-l217.py": {
+      "role": "index",
+      "sha256": "53a808529ceb26873fafdffccf4d335a2e0d5d7093ad9484b2d066d08edc6474",
+      "size": 1337,
+      "normalized_sha256": "53a808529ceb26873fafdffccf4d335a2e0d5d7093ad9484b2d066d08edc6474"
+    },
+    "docs/increments/evidence/phase0/trae-A-worktree-inventory-20261016.md": {
+      "role": "index",
+      "sha256": "aadeabc10d29c4d3aaec0369e7febb0abf4cdeaa78e4aef02b9fff9c21f0e163",
+      "size": 5846,
+      "normalized_sha256": "aadeabc10d29c4d3aaec0369e7febb0abf4cdeaa78e4aef02b9fff9c21f0e163"
+    },
+    "docs/increments/evidence/phase0/trae-DE-supplement-20261016.md": {
+      "role": "index",
+      "sha256": "b199841d0412882fb14cff59d2d81f0565441258edb9cca4762b65c48f86956e",
+      "size": 13715,
+      "normalized_sha256": "b199841d0412882fb14cff59d2d81f0565441258edb9cca4762b65c48f86956e"
     },
     "docs/increments/i12_proofs/I12_verification_summary_P2.3.md": {
       "role": "index",
@@ -6221,107 +7731,23 @@
       "size": 64417,
       "normalized_sha256": "97796b32c8b464d03b3b091e9febbb0d6f32f8a6706bf702f87ca43fe081ec4b"
     },
+    "docs/increments/多终端多智能体项目管理标准规范-裁定索引.md": {
+      "role": "index",
+      "sha256": "0ed91a1b7d5d2b921af5ffd9dbb75647a855dbd9e55760fe36793027641a10f7",
+      "size": 10300,
+      "normalized_sha256": "0ed91a1b7d5d2b921af5ffd9dbb75647a855dbd9e55760fe36793027641a10f7"
+    },
+    "docs/increments/多终端多智能体项目管理标准规范.md": {
+      "role": "index",
+      "sha256": "5b2a855f3a87140dd844e7865e7cf5afebbf5698acc3a2afa59982b048e3a27d",
+      "size": 30399,
+      "normalized_sha256": "5b2a855f3a87140dd844e7865e7cf5afebbf5698acc3a2afa59982b048e3a27d"
+    },
     "docs/increments/重建执行约法与台账.md": {
       "role": "index",
       "sha256": "55021b5237f220cb3d6987256d20a8861b238426717d33efc2fd6db5d9147264",
       "size": 51708,
       "normalized_sha256": "55021b5237f220cb3d6987256d20a8861b238426717d33efc2fd6db5d9147264"
-    },
-    "docs/superpowers/plans/2026-09-30-baseline-revision.md": {
-      "role": "index",
-      "sha256": "d11f7d4b5f56080bb58d874702f12308f8dce636e4738461c7138f57dccf8363",
-      "size": 34555,
-      "normalized_sha256": "d11f7d4b5f56080bb58d874702f12308f8dce636e4738461c7138f57dccf8363"
-    },
-    "docs/superpowers/plans/2026-09-30-lineage.md": {
-      "role": "index",
-      "sha256": "31b9f6c32f92b6b257bbef7a86cd57e381f6f8efa469d0ace7494082d5c745ca",
-      "size": 7547,
-      "normalized_sha256": "31b9f6c32f92b6b257bbef7a86cd57e381f6f8efa469d0ace7494082d5c745ca"
-    },
-    "docs/superpowers/plans/2026-10-01-datara-unified-hardening.md": {
-      "role": "index",
-      "sha256": "0ced59c7d3f2c3003e1a5ef24a7cfdb144cc1ec78717cfdaf0a7e4c8c7834330",
-      "size": 7135,
-      "normalized_sha256": "0ced59c7d3f2c3003e1a5ef24a7cfdb144cc1ec78717cfdaf0a7e4c8c7834330"
-    },
-    "docs/superpowers/plans/2026-10-01-i13-unified-hardening.md": {
-      "role": "index",
-      "sha256": "79a4634298b81f0a900ab1e7e18a1f872e079ba930d1e83107e9055332136840",
-      "size": 1058,
-      "normalized_sha256": "d1013adbaf66a146d5ecf539aeae349d41cd2e4d27a8f35e15944594f62f66eb"
-    },
-    "docs/superpowers/plans/2026-10-01-lineage-followup.md": {
-      "role": "index",
-      "sha256": "73eca368ca1f5df74e0cfb77eaff4b554f05a60d2bd9d335aaf15bb95d908bfe",
-      "size": 4158,
-      "normalized_sha256": "73eca368ca1f5df74e0cfb77eaff4b554f05a60d2bd9d335aaf15bb95d908bfe"
-    },
-    "docs/superpowers/plans/2026-10-03-component-page-designer.md": {
-      "role": "index",
-      "sha256": "c03b7fb3399213be9e87a763f0ca5b03eb23f35b42ddfce935d9cbb85d46be31",
-      "size": 45370,
-      "normalized_sha256": "c03b7fb3399213be9e87a763f0ca5b03eb23f35b42ddfce935d9cbb85d46be31"
-    },
-    "docs/superpowers/plans/2026-10-05-workbench-optimization.md": {
-      "role": "index",
-      "sha256": "b09db3da70508f31d2000a658b3ded3b0049954c2214e79ed422f19285d40578",
-      "size": 77596,
-      "normalized_sha256": "b09db3da70508f31d2000a658b3ded3b0049954c2214e79ed422f19285d40578"
-    },
-    "docs/superpowers/plans/2026-10-09-component-reference-upgrade.md": {
-      "role": "index",
-      "sha256": "e59feba79b745e5c6b70e26e0e4a3e5ec3d681fb9339506cc0a94041135b5a32",
-      "size": 8324,
-      "normalized_sha256": "e59feba79b745e5c6b70e26e0e4a3e5ec3d681fb9339506cc0a94041135b5a32"
-    },
-    "docs/superpowers/plans/2026-10-12-i18-model-p0.md": {
-      "role": "index",
-      "sha256": "e3a9c55ddf63d2c196ee94abbea6947a9e9734f79fce5a7f85d3b214c9e43678",
-      "size": 107824,
-      "normalized_sha256": "e3a9c55ddf63d2c196ee94abbea6947a9e9734f79fce5a7f85d3b214c9e43678"
-    },
-    "docs/superpowers/plans/2026-10-14-datara-platform-rebuild.md": {
-      "role": "index",
-      "sha256": "1c9d8de50d279f48d3f32b598db7502838ec8dfaf7c5b942c57939c8bcedcfaa",
-      "size": 33421,
-      "normalized_sha256": "1c9d8de50d279f48d3f32b598db7502838ec8dfaf7c5b942c57939c8bcedcfaa"
-    },
-    "docs/superpowers/specs/2026-09-30-baseline-revision-design.md": {
-      "role": "index",
-      "sha256": "e94ec95922ed250e301342c8b1e2b20f15b394f3c2742dcafe8e3b3fbc8fe456",
-      "size": 7011,
-      "normalized_sha256": "e94ec95922ed250e301342c8b1e2b20f15b394f3c2742dcafe8e3b3fbc8fe456"
-    },
-    "docs/superpowers/specs/2026-09-30-lineage-design.md": {
-      "role": "index",
-      "sha256": "61c757a4fe5288185b8dd0590ce20b8385024c74eba920e6612679726b849029",
-      "size": 15519,
-      "normalized_sha256": "61c757a4fe5288185b8dd0590ce20b8385024c74eba920e6612679726b849029"
-    },
-    "docs/superpowers/specs/2026-10-01-lineage-followup.md": {
-      "role": "index",
-      "sha256": "bf5df8e56a206196aa6a20b44afc8ae8337f184f5571d119c1b3aaf4f05c333d",
-      "size": 9639,
-      "normalized_sha256": "bf5df8e56a206196aa6a20b44afc8ae8337f184f5571d119c1b3aaf4f05c333d"
-    },
-    "docs/superpowers/specs/2026-10-03-component-page-designer-design.md": {
-      "role": "index",
-      "sha256": "115a4c440ee9c7db606112ccfab00a5dede940c16167c8e709d56f89c8ab2179",
-      "size": 12548,
-      "normalized_sha256": "115a4c440ee9c7db606112ccfab00a5dede940c16167c8e709d56f89c8ab2179"
-    },
-    "docs/superpowers/specs/2026-10-05-workbench-optimization-design.md": {
-      "role": "index",
-      "sha256": "08dd4fb1f1193b02b46602b75097ad5679ace366ec5bdc474e05c195b8c4efaa",
-      "size": 43937,
-      "normalized_sha256": "08dd4fb1f1193b02b46602b75097ad5679ace366ec5bdc474e05c195b8c4efaa"
-    },
-    "docs/superpowers/specs/2026-10-14-datara-platform-rebuild-design.md": {
-      "role": "index",
-      "sha256": "6a78b2a7ed9392ec0ad4f85dfe45a4a8d42750fdbba5d4fb75e7b8d9a2950719",
-      "size": 24303,
-      "normalized_sha256": "6a78b2a7ed9392ec0ad4f85dfe45a4a8d42750fdbba5d4fb75e7b8d9a2950719"
     },
     "docs/use-cases/README.md": {
       "role": "index",
@@ -6619,11 +8045,6 @@
       "role": "index",
       "sha256": "9bb0029abd7b88888cefa5f3ef04390d12dd79ee1391f4fb7e8ec4490e70be6c",
       "size": 44714
-    },
-    "docs/数据开发IDE用户使用手册.pdf": {
-      "role": "index",
-      "sha256": "6ac9eefbfdc4aa81c936514faa0ab4d8fc80a13332472c4c493bab2bbab9dc97",
-      "size": 537175
     },
     "docs/数据治理工具_Datara_系统功能讲解_TTS播报.txt": {
       "role": "index",
@@ -7338,6 +8759,18 @@
       "size": 4306,
       "normalized_sha256": "af874915b59cc72b969cec86714cbbb346a0d83a045f705e66ac9e4e7b62eb49"
     },
+    "infra/r3_s9_deploy_remote.sh": {
+      "role": "index",
+      "sha256": "ec247bff73e23f21c558bfc8577f2d8a9aa9e4e0f4bf2b7c120d8b5a92d5dca3",
+      "size": 1808,
+      "normalized_sha256": "ec247bff73e23f21c558bfc8577f2d8a9aa9e4e0f4bf2b7c120d8b5a92d5dca3"
+    },
+    "infra/r3_s9_snapshot_target.sh": {
+      "role": "index",
+      "sha256": "57616a34964be28959149cabeed8d00740b1dc7984f4e4d9d5d06b5311c63a7f",
+      "size": 820,
+      "normalized_sha256": "57616a34964be28959149cabeed8d00740b1dc7984f4e4d9d5d06b5311c63a7f"
+    },
     "infra/rebuild_env_presence_check.sh": {
       "role": "index",
       "sha256": "f3b0727716479ed7f1b065d0b7124191c6901f9a04aa29150d9f4d1ca0ce5e21",
@@ -7349,6 +8782,18 @@
       "sha256": "d79a403a538fba4b260857c57c5d4bae19fa1147085534b146c1cf3035eca11f",
       "size": 13,
       "normalized_sha256": "28111b7a7b54689e8fb1ef5adf9548f2f4b847d026344074c61bcc932f2f035c"
+    },
+    "opencode.json": {
+      "role": "index",
+      "sha256": "9ef0e6995dd349e1f66b29a7a6f5d5e7b25c3d1a40d1c504bf71cbf52f82b96f",
+      "size": 272,
+      "normalized_sha256": "9ef0e6995dd349e1f66b29a7a6f5d5e7b25c3d1a40d1c504bf71cbf52f82b96f"
+    },
+    "package-lock.json": {
+      "role": "index",
+      "sha256": "4d3b44b54da1e236d381ec22683cdc839e4a32c105f561c53a62444eb81037c0",
+      "size": 85,
+      "normalized_sha256": "4d3b44b54da1e236d381ec22683cdc839e4a32c105f561c53a62444eb81037c0"
     },
     "prototype/assets/ai.js": {
       "role": "index",
@@ -7493,15 +8938,26 @@
       "size": 34310,
       "normalized_sha256": "243ea18dfc5501ecaa53bfe6dcbb3cd4e9aff4d074c31977de7f4e42b7cb130e"
     },
+    "执行附录与权威稿对比备忘-2026-10-16.md": {
+      "role": "index",
+      "sha256": "115bb80ca1f3eafa54783bd23dee0decf5781ed7834751fd3d596a77282fa5bb",
+      "size": 7213,
+      "normalized_sha256": "115bb80ca1f3eafa54783bd23dee0decf5781ed7834751fd3d596a77282fa5bb"
+    },
     "技能使用说明书.docx": {
       "role": "index",
       "sha256": "42559f4d29b34756d6ee1125ce351633ec1e60056118983757d576f33347fd4d",
       "size": 19123
+    },
+    "权威设计漂移事故复盘与教训-2026-10-16.docx": {
+      "role": "index",
+      "sha256": "20f83178d752051f275ae697c3a9e822216ee852e7d445dd382ceb59ecf6e813",
+      "size": 15079
     }
   },
   "managed_scope": {
     "version": "managed-scope-baseline/v1",
-    "policy_identity": "81421936ffa2228995783d12046110aa7b7759d131ce244b24bf0a69a61c9264",
+    "policy_identity": "ee2f8e1cb0865f447b08f53178f3ac9f5c8968caaf393965f9ccad0345ab1c89",
     "observe_change_policy": "review_required",
     "budget_policy_identity": "15e9b37a6c57e9bf03c9df3d0d049eb5b9a7f5540f9d34960408114e2538a32d",
     "budget_policy": {
