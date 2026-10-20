@@ -47,3 +47,13 @@ datara-backend/resource_storage/
 # R8-V ai_copilot chromadb 记忆数据（持久化目录只留 .gitkeep；向量数据不入库）
 datara-backend/data/ai_copilot/chromadb/*
 !datara-backend/data/ai_copilot/chromadb/.gitkeep
+
+# S163 甄别：AI 工具链运行时产物与调试杂物（不入库）
+.pytest-tmp-*/
+.agents/
+.claude/
+opencode.json
+package-lock.json
+datara-backend/_debug_routes.py
+datara-backend/_test_out.txt
+datara-backend/*.db
