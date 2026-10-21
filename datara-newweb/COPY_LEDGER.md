@@ -2,7 +2,7 @@
 
 > 建立日期：2026-10-20 ｜ 依据：权威设计 §2.3（复制准入条件）
 > 用途：登记旧前端/旧代码复制准入全量记录；每个被复制文件必须登记。
-> 最近登记：2026-10-21（增量 1.3-01 契约层 11 文件迁移适配，Claude 实施线）
+> 最近登记：2026-10-21（L18-05 终版核对：增量 1.3 迁移台账 + R-48 resource 版本下载扩展现态）
 
 ## 一、登记字段
 
@@ -40,7 +40,7 @@
 | 1 | `datara-web/src/services/rebuild/adapterKit.ts` | `datara-newweb/src/services/rebuild/adapterKit.ts` | §5.4 契约层架构共享原语（非用户功能项；承载域=rebuild 全域，10 域 API 复用） | L2 | 整文件复制零改写（`diff` 逐字节一致）；vitest `adapterKit.test.ts` 52 passed；`npm run build`（vue-tsc）通过 |
 | 2 | `datara-web/src/services/rebuild/variableApi.ts` | `datara-newweb/src/services/rebuild/variableApi.ts` | §3.3 B 组「变量管理」／对标 I2／承载域 variables | L2 | 整文件复制零改写；vitest `variableApi.contract.test.ts` 17 passed |
 | 3 | `datara-web/src/services/rebuild/dependencyApi.ts` | `datara-newweb/src/services/rebuild/dependencyApi.ts` | §3.3 B 组「依赖配置」／对标 I4／承载域 dependency | L2 | 整文件复制零改写；vitest `dependencyApi.contract.test.ts` 12 passed |
-| 4 | `datara-web/src/services/rebuild/resourceApi.ts` | `datara-newweb/src/services/rebuild/resourceApi.ts` | §3.3 C 组「资源管理」／对标 I2+I4／承载域 resources | L2 | 整文件复制 + **1 处载体适配（3 行级改动）**：`base64ToBlob(base64):Blob` → `base64ToFile(base64,filename):File`、`new Blob([bytes])` → `new File([bytes], filename)`、`form.append('file', base64ToBlob(...), request.filename)` → `form.append('file', base64ToFile(request.contentBase64, request.filename))`。成因为 happy-dom 下 `FormData.append(blob, filename)` 不采纳 filename 实参（`diff --strip-trailing-cr` 实证仅此 3 hunk）；vitest `resourceApi.contract.test.ts` 11 passed |
+| 4 | `datara-web/src/services/rebuild/resourceApi.ts` | `datara-newweb/src/services/rebuild/resourceApi.ts` | §3.3 C 组「资源管理」／对标 I2+I4／承载域 resources | L2 | 初始迁移为整文件复制 + **1 处载体适配（3 行级改动）**：`base64ToBlob(base64):Blob` → `base64ToFile(base64,filename):File`、`new Blob([bytes])` → `new File([bytes], filename)`、`form.append('file', base64ToBlob(...), request.filename)` → `form.append('file', base64ToFile(request.contentBase64, request.filename))`；其后按 R-48 新增受保护的指定版本下载方法（属新后端契约扩展，不是旧代码复制）。vitest `resourceApi.contract.test.ts` 12 passed |
 | 5 | `datara-web/src/services/rebuild/syncComponentApi.ts` | `datara-newweb/src/services/rebuild/syncComponentApi.ts` | §3.3 C 组「同步任务」／对标 I4(SYNC)／承载域 sync | L2 | 整文件复制零改写；vitest `syncComponentApi.contract.test.ts` 4 passed |
 | 6 | `datara-web/src/services/rebuild/sqlIdeApi.ts` | `datara-newweb/src/services/rebuild/sqlIdeApi.ts` | §3.3 D 组「SQL IDE 只读」／对标 I5／承载域 sql_ide | L2 | 整文件复制零改写；vitest `sqlIdeApi.contract.test.ts` 9 passed |
 | 7 | `datara-web/src/services/rebuild/sqlIdeDdlApi.ts` | `datara-newweb/src/services/rebuild/sqlIdeDdlApi.ts` | §3.3 D 组「SQL IDE DDL」／对标 I6／承载域 rb | L2 | 整文件复制零改写；vitest `sqlIdeDdlApi.contract.test.ts` 2 passed（RED 哨兵，待 R5-B 解禁） |
@@ -49,6 +49,7 @@
 | 10 | `datara-web/src/services/rebuild/streamApi.ts` | `datara-newweb/src/services/rebuild/streamApi.ts` | §3.3 C 组「流数据处理」／对标 I8／承载域 stream | L2 | 整文件复制零改写；vitest `streamApi.contract.test.ts` 1 passed + `streamApiSurface.contract.test.ts` 2 passed |
 | 11 | `datara-web/src/services/rebuild/aiToolsApi.ts` | `datara-newweb/src/services/rebuild/aiToolsApi.ts` | §3.3 H「AI 悬浮助手」／对标 I10／承载域 ai_bridge | L2 | 整文件复制零改写；vitest `aiToolsApi.contract.test.ts` 19 passed（含 `__tests__/mockAgent.ts` 假 Agent 适配落位） |
 | 12 | `datara-backend/api/component_spec.py` + `datara-web/src/stores/componentStore.ts` | `datara-backend/rebuild/component_spec/{service.py,api.py}` + `datara-newweb/src/services/rebuild/componentSpecApi.ts` | §5A.3 组件规格一源／0.6 M1／WBS 4.1 | L1 | 后端业务映射语义迁移到独立只读域，载体改为 TokenService 与 rebuild 路由；前端仅借鉴 ETag/304 缓存流，重写为强 SHA-256 ETag、首次失败阻断、仅最后成功响应回退；pytest `test_component_spec_api.py` + vitest `componentSpecApi.contract.test.ts` |
+| 13 | `datara-backend/api/monitor.py` + `datara-web/src/services/graphApi.ts`（`fetchMonitorNodes`） | `datara-backend/rebuild/monitor/{service.py,api.py}` + `datara-newweb/src/services/rebuild/monitorApi.ts` | §3 F 组「集群监控」／0.6 P2／WBS 17.3 | L1 | 业务聚合次序和降级语义照抄，载体适配为 rebuild SSH 表、TokenService 及 `/api/v1/rebuild/monitor/nodes`；pytest `test_monitor_api.py` + vitest `monitorApi.contract.test.ts`，红线扫描零命中 |
 
 **契约测试落位（1.3-02，同包登记）**：
 

@@ -16,9 +16,10 @@
  * TYPE_LABEL 去 etl 项；存量 ETL 降级映射 wf（执行前报监督线核对候批）。
  *
  * 缺位基建降级（接驳点逐处注释声明）：
- *  - GraphWorkbench 画布内核归 INC4-FE-6/7：画布区以占位组件承载 KeepAlive +
- *    :key 重挂载结构；onCloseTab dirty 信号 = 快照草稿（FE-6/7 替换
- *    graphStore.doc?.id === t.docId && graphStore.dirty）；
+ *  - 画布内核（INC4-FE-6 ③ 已接驳）：WorkflowGraphWorkbench 承载 KeepAlive +
+ *    :key 结构，workflowGraph store 单例；onCloseTab dirty 判定 held 分流
+ *    （graphStore.doc?.id === Number(t.docId) 优先，快照草稿回落），
+ *    「保存并关闭」接 graphStore.save()（失败不关闭）；
  *  - Palette 双 Tab（INC4-FE-3 组件库 + INC4-FE-4 候选池已接驳）：空态渲染
  *    <Palette default-tab="wf" :project-id="projectId"> @load-tasks=
  *    "onPickTasks"（事件同名同载荷直连）；组件库一源 loadComponentSpecs
@@ -29,15 +30,22 @@
  *    L272-274（池非空才校验，目标已删清落盘键）；
  *  - projectId 承接 route.params.projectId：/dag 过渡路由无项目段 → undefined，
  *    Palette 空态降级「候选池待项目上下文接驳」；项目路由集成即活（候裁披露）；
- *  - auth store / WfCreateDialog / createTemplate 归画布内核批次：
- *    右上「＋新建工作流 / 另存为模板」入口在位，行为提示降级。
+ *  - auth store / createTemplate 归后续批次：「另存为模板」入口在位，行为提示降级；
+ *    「＋新建工作流」FE-6 ③ 归真（ElMessageBox.prompt → createWorkflowDefinition
+ *    → loadDefPool 刷新 + openTab + switchTab('edit')）。
  */
-import { computed, defineComponent, h, nextTick, onMounted, ref, type PropType } from 'vue'
+import { computed, nextTick, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { MAX_DAG_TABS, useDagTabsStore, type DagPickItem, type DagTab, type DagProfileType } from '../stores/dagTabs'
 import Palette from '../components/Palette.vue'
-import { listWorkflowDefinitions, type WorkflowDefSummary } from '../services/rebuild/workflowApi'
+import WorkflowGraphWorkbench from '../components/WorkflowGraphWorkbench.vue'
+import {
+  createWorkflowDefinition,
+  listWorkflowDefinitions,
+  type WorkflowDefSummary,
+} from '../services/rebuild/workflowApi'
+import { useWorkflowGraphStore } from '../stores/workflowGraph'
 
 /* ---- 视角页签（蓝本照抄：TabKey / tabs 数组 / ?tab= 同步 / 默认 edit） ---- */
 type TabKey = 'edit' | 'templates' | 'runs' | 'alarm'
@@ -59,6 +67,7 @@ function switchTab(k: TabKey) {
 
 /* ---- INC4-FE-2：画布多 Tab（蓝本照抄，见头注释降级声明） ---- */
 const dagTabs = useDagTabsStore()
+const graphStore = useWorkflowGraphStore()
 const activeTab = computed(() => dagTabs.activeTab)
 
 /** 视角名（旧 taskCenterPolicy.workflowEditorProfile → dagProfile.name 'DAG 编排'；
@@ -147,11 +156,42 @@ function onPickTasks(p: { items: DagPickItem[] }) {
   switchTab('edit')
 }
 
-/* ---- edit 态右上专属操作（蓝本 L288-291 照抄；auth.canEdit / WfCreateDialog /
-   createTemplate 缺位降级见头注释，INC4-FE-6/7 画布内核批次归真） ---- */
-function onOpenCreateWf() {
-  // 蓝本：auth.canEdit 校验 → WfCreateDialog 对话框（auth store / 对话框组件随画布内核批次接驳）
-  ElMessage.info('新建工作流对话框随后续批次（画布内核）接驳')
+/* ---- edit 态右上专属操作（蓝本 L288-291 照抄；createTemplate 降级见头注释；
+   「＋新建工作流」FE-6 ③ 归真：prompt 名称 → createWorkflowDefinition → 池刷新 +
+   openTab + switchTab('edit')，重名 409/WF_NAME_CONFLICT 报错） ---- */
+async function onOpenCreateWf() {
+  if (projectId.value === undefined) {
+    ElMessage.warning('无项目上下文，新建工作流待项目路由集成（候裁披露）')
+    return
+  }
+  let name = ''
+  try {
+    const r = await ElMessageBox.prompt('请输入工作流名称', '新建工作流', {
+      confirmButtonText: '创建',
+      cancelButtonText: '取消',
+      inputPattern: /\S+/,
+      inputErrorMessage: '名称不能为空',
+    })
+    name = (r.value ?? '').trim()
+  } catch {
+    return // 取消
+  }
+  try {
+    const def = await createWorkflowDefinition(projectId.value, name)
+    await loadDefPool()
+    const meta = poolFind(String(def.id)) ?? { id: def.id, name: def.name, tags: [] }
+    const res = openTab(String(def.id), meta)
+    if (res === 'full') {
+      ElMessage.warning(`最多同时打开 ${MAX_DAG_TABS} 个画布 Tab`)
+      return
+    }
+    lsSet('datara.dag.last', String(def.id))
+    lsSet('datara.dag.lastType', 'wf')
+    switchTab('edit')
+    ElMessage.success(`已创建工作流「${def.name}」`)
+  } catch {
+    ElMessage.error('新建工作流失败（名称可能已存在）')
+  }
 }
 
 function saveActiveAsTemplate() {
@@ -174,18 +214,20 @@ function clearSnap(docId: string) {
 /**
  * 关闭画布 Tab（用户裁定：点 X 时提示保存；蓝本 L205-248 三选交互照抄）：
  * - 激活 Tab 且有未保存修改 → 三选：保存并关闭 / 放弃修改 / 取消（X/ESC = 取消）；
- * - 非激活 Tab 存在快照草稿 → 确认丢弃后关闭，否则直接关；
+ * - 非激活 Tab 存在未保存修改（快照草稿）→ 确认丢弃后关闭，否则直接关；
  * - 关闭后清理该 docId 的草稿快照（等旧实例卸载回写完成后 nextTick 清理）。
  *
- * FE-6/7 接驳点：画布内核（GraphWorkbench/graphStore）到位后，dirty 判定替换为
- * graphStore.doc?.id === t.docId && graphStore.dirty；「保存并关闭」分支接入
- * await graphStore.save()（失败 ElMessage.error('保存失败，画布未关闭') 后不关闭）。
- * 本票 dirty 信号 = 快照草稿（hasSnapDraft）；「保存并关闭」暂同放弃收尾
- * （无真保存能力，草稿随统一清理；本票无编辑内核，草稿仅测试种入可达）。
+ * FE-6 ③ 接驳归真：dirty 判定 held 分流——graphStore.doc?.id === Number(t.docId)
+ * （画布已 load 到本 store）时用 graphStore.isDirty，否则回落快照草稿信号；
+ * 「保存并关闭」在 held 时接 graphStore.save()（null/!complete → 保存失败不关闭；
+ * 成功后 graphStore.close 清 store 态）；未 held 无真保存能力，save 同放弃收尾
+ * （草稿随统一清理，仅测试种入可达）。
  */
 async function onCloseTab(t: DagTab) {
   const isActive = t.key === dagTabs.activeKey
-  if (isActive && hasSnapDraft(t.docId)) {
+  const held = graphStore.doc?.id === Number(t.docId)
+  const dirty = held ? graphStore.isDirty : hasSnapDraft(t.docId)
+  if (isActive && dirty) {
     let action: 'save' | 'discard' | null = null
     try {
       await ElMessageBox.confirm('当前画布有未保存的修改，关闭前要保存吗？', '关闭画布', {
@@ -200,8 +242,16 @@ async function onCloseTab(t: DagTab) {
       action = e === 'cancel' ? 'discard' : null
     }
     if (action === null) return // X / ESC 关闭弹窗 = 取消关闭
-    // action === 'save'：graphStore.save() 归 INC4-FE-6/7（见上接驳点注释）
-  } else if (!isActive && hasSnapDraft(t.docId)) {
+    if (action === 'save' && held) {
+      const r = await graphStore.save()
+      if (!r || !r.complete) {
+        ElMessage.error('保存失败，画布未关闭')
+        return
+      }
+      graphStore.close(Number(t.docId))
+    }
+    // action === 'save' 且 !held：无真保存能力，草稿随统一清理（见上注释）
+  } else if (!isActive && dirty) {
     try {
       await ElMessageBox.confirm(`「${t.name}」存在未保存的修改草稿，关闭将丢弃草稿。确定关闭吗？`, '关闭画布', {
         confirmButtonText: '仍要关闭',
@@ -248,20 +298,6 @@ onMounted(async () => {
     openTab(last, null) // 池不可用（未就绪/无项目上下文）：保底占位打开
   }
 })
-
-/** 画布占位组件（GraphWorkbench 本体归 INC4-FE-6/7）：承载蓝本 KeepAlive +
- *  :key 重挂载结构（§5A.1 照抄四要素），内核到位后替换为 GraphWorkbench。 */
-const CanvasPlaceholder = defineComponent({
-  name: 'CanvasPlaceholder',
-  props: { tab: { type: Object as PropType<DagTab>, required: true } },
-  setup(props) {
-    return () =>
-      h('div', { class: 'tc-canvas-slot', 'data-tc-canvas-slot': '' }, [
-        h('p', { class: 'tc-canvas-slot-title' }, `画布：${props.tab.name}`),
-        h('p', { class: 'tc-canvas-slot-sub' }, `docId ${props.tab.docId} · 画布内核随后续批次（INC4-FE-6/7）接驳`),
-      ])
-  },
-})
 </script>
 
 <template>
@@ -303,9 +339,9 @@ const CanvasPlaceholder = defineComponent({
         </div>
         <div v-if="activeTab" class="tc-canvas" data-tc-canvas>
           <!-- 蓝本 KeepAlive 缓存画布实例（切换 Tab 不销毁/重建，消除闪白与重复初始化）；
-               GraphWorkbench 本体归 INC4-FE-6/7，本票以占位组件承载 KeepAlive + :key 结构 -->
+               FE-6 ③ 已接驳画布内核（workflowGraph store 单例 × 快照兜底） -->
           <KeepAlive>
-            <CanvasPlaceholder :key="activeTab.key" :tab="activeTab" />
+            <WorkflowGraphWorkbench :key="activeTab.key" :tab="activeTab" :project-id="projectId" />
           </KeepAlive>
         </div>
         <div v-else class="tc-empty" data-tc-empty>

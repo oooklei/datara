@@ -12,7 +12,11 @@
  *  - Tab 条渲染（TYPE_LABEL 徽标 / hint n/5 / .on 激活 / 点击激活 / @click.stop 关闭钮）；
  *  - Palette 载入 onPickTasks（逐项开 Tab + last 落盘 / dup 仅激活不落盘 / full 警告截断）；
  *  - 关闭三选（激活有草稿：保存并关闭/放弃修改/X·ESC 取消；非激活：草稿确认/直关）；
- *  - KeepAlive + :key 画布区跟随 activeTab；右上专属操作降级提示（画布内核批次接驳）。
+ *  - KeepAlive + :key 画布区跟随 activeTab（FE-6 ③ 接驳真实 Workbench，测试桩化同形，
+ *    vue-flow 真挂载归 1.9 E2E）；「＋新建工作流」FE-6 ③ 归真（prompt →
+ *    createWorkflowDefinition → openTab），「另存为模板」仍降级提示；
+ *  - store-held 保存分流（FE-6 ③）：graphStore.doc?.id 命中时「保存并关闭」接
+ *    graphStore.save()（失败不关闭），未 held 回落快照草稿信号（save 同放弃收尾）。
  *
  * 依赖 mock：vue-router（useRoute.query / useRouter.replace + FE-4 params.projectId）、
  * element-plus（ElMessage / ElMessageBox spy——真实弹窗不进 DOM，断言调用参数与三选 action 路径）、
@@ -27,14 +31,18 @@ import { flushPromises, mount } from '@vue/test-utils'
 import { createPinia, setActivePinia } from 'pinia'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-const { replaceSpy, routeQuery, routeParams, poolLoad, msgInfo, msgWarning, boxConfirm, specLoad } = vi.hoisted(() => ({
+const { replaceSpy, routeQuery, routeParams, poolLoad, msgInfo, msgWarning, msgSuccess, msgError, boxConfirm, boxPrompt, wfCreate, specLoad } = vi.hoisted(() => ({
   replaceSpy: vi.fn(() => Promise.resolve()),
   routeQuery: { value: {} as Record<string, unknown> },
   routeParams: { value: {} as Record<string, unknown> },
   poolLoad: vi.fn(),
   msgInfo: vi.fn(),
   msgWarning: vi.fn(),
+  msgSuccess: vi.fn(),
+  msgError: vi.fn(),
   boxConfirm: vi.fn(() => Promise.resolve()),
+  boxPrompt: vi.fn(() => Promise.resolve({ value: '' })),
+  wfCreate: vi.fn(),
   specLoad: vi.fn(),
 }))
 
@@ -44,8 +52,8 @@ vi.mock('vue-router', () => ({
 }))
 
 vi.mock('element-plus', () => ({
-  ElMessage: { info: msgInfo, warning: msgWarning, error: vi.fn(), success: vi.fn() },
-  ElMessageBox: { confirm: boxConfirm },
+  ElMessage: { info: msgInfo, warning: msgWarning, error: msgError, success: msgSuccess },
+  ElMessageBox: { confirm: boxConfirm, prompt: boxPrompt },
 }))
 
 // FE-3 Palette 挂载于画布空态：其组件规格加载不进网络层（空快照即空目录）
@@ -54,11 +62,41 @@ vi.mock('../../services/rebuild/componentSpecApi', () => ({
   resetComponentSpecCache: vi.fn(),
 }))
 
+// FE-6 ③ TC 接驳真实画布内核：workbench SFC 桩化（vue-flow 真挂载归 1.9 E2E；
+// 桩渲染与旧 CanvasPlaceholder 同形——data-tc-canvas-slot + 「画布：{tab.name}」，
+// 保既有画布区 DOM 断言语义；SFC 内部 vue-flow/store 导入随桩化不加载）
+vi.mock('../../components/WorkflowGraphWorkbench.vue', async () => {
+  const { h } = await import('vue')
+  return {
+    default: {
+      name: 'WorkflowGraphWorkbench',
+      props: {
+        tab: { type: Object, required: true },
+        projectId: { type: Number, default: undefined },
+      },
+      setup(props: { tab: { name: string } }) {
+        return () =>
+          h('div', { class: 'tc-canvas-slot', 'data-tc-canvas-slot': '' }, [
+            h('p', { class: 'tc-canvas-slot-title' }, `画布：${props.tab.name}`),
+          ])
+      },
+    },
+  }
+})
+
 // FE-4 TC 挂载真实 Palette 子组件：其 workflowApi 全部导入符号须在 mock 中供给
 // （候选池 listWorkflowDefinitions + categories RED 哨兵系——行操作不进 DOM 不触发）
 vi.mock('../../services/rebuild/workflowApi', () => ({
   listWorkflowDefinitions: poolLoad,
+  createWorkflowDefinition: wfCreate,
   deleteWorkflowDefinition: vi.fn(),
+  // FE-6 ② workflowGraph store 模块级导入的 draft 符号（本文件不直接断言，
+  // 缺任一则 store 模块导入即失败）
+  getWorkflowDefinition: vi.fn(),
+  upsertWorkflowDraftNode: vi.fn(),
+  upsertWorkflowDraftEdge: vi.fn(),
+  deleteWorkflowDraftNode: vi.fn(),
+  deleteWorkflowDraftEdge: vi.fn(),
   WF_CATEGORIES_NOT_WIRED: 'WF_CATEGORIES_NOT_WIRED: rebuild/workflow categories contract not connected yet',
   workflowCategories: {
     listCategories: vi.fn(() => Promise.reject(new Error('WF_CATEGORIES_NOT_WIRED: rebuild/workflow categories contract not connected yet'))),
@@ -70,6 +108,7 @@ vi.mock('../../services/rebuild/workflowApi', () => ({
 
 import TaskCenterView from '../TaskCenterView.vue'
 import { useDagTabsStore } from '../../stores/dagTabs'
+import { useWorkflowGraphStore } from '../../stores/workflowGraph'
 
 function mountView() {
   // 每用例独立 pinia（store 状态隔离）；setActivePinia 供测试体种入/读取同一实例
@@ -78,7 +117,8 @@ function mountView() {
   return mount(TaskCenterView, { global: { plugins: [pinia] } })
 }
 
-/** 种入画布快照草稿（本票 dirty 信号 = hasSnapDraft；FE-6/7 接驳 graphStore 后改种 store） */
+/** 种入画布快照草稿（非 held 回落 dirty 信号：store 未持有该画布时关闭确认依据；
+ *  FE-6 ③ 接驳后 store-held 路径改由 $patch 造数走 graphStore.isDirty） */
 function seedSnap(docId: string) {
   localStorage.setItem(`datara.dag.snap.${docId}`, JSON.stringify({ draft: { nodes: [] } }))
 }
@@ -100,8 +140,13 @@ beforeEach(() => {
   replaceSpy.mockClear()
   msgInfo.mockClear()
   msgWarning.mockClear()
+  msgSuccess.mockClear()
+  msgError.mockClear()
   boxConfirm.mockReset()
   boxConfirm.mockImplementation(() => Promise.resolve())
+  boxPrompt.mockReset()
+  boxPrompt.mockImplementation(() => Promise.resolve({ value: '' }))
+  wfCreate.mockReset()
   specLoad.mockReset()
   specLoad.mockResolvedValue({ items: [], etag: '"00"', source: 'network' })
   localStorage.clear()
@@ -296,7 +341,7 @@ describe('INC4-FE-2 画布多 Tab（MAX_DAG_TABS=5，蓝本照抄 + §5A.2 收�
     expect(s.activeKey).toBe('d1')
   })
 
-  it('关闭激活 Tab（有草稿）· 确认「保存并关闭」：关闭 + snap 清理（保存接驳 FE-6/7，本票同放弃收尾）', async () => {
+  it('关闭激活 Tab（非 held 快照回落）· 确认「保存并关闭」：关闭 + snap 清理（save 同放弃收尾）', async () => {
     const w = mountView()
     const s = useDagTabsStore()
     s.open({ docId: 'd1', name: '一', type: 'wf' })
@@ -340,6 +385,42 @@ describe('INC4-FE-2 画布多 Tab（MAX_DAG_TABS=5，蓝本照抄 + §5A.2 收�
     expect(localStorage.getItem('datara.dag.snap.d1')).not.toBeNull()
   })
 
+  it('关闭激活 Tab（store held）· 保存成功：graphStore.save() 接驳 → close 清 store 态 + Tab 关闭', async () => {
+    const w = mountView()
+    const s = useDagTabsStore()
+    s.open({ docId: '1', name: '一', type: 'wf' })
+    const g = useWorkflowGraphStore()
+    g.$patch({ docId: 1, projectId: 7, name: '一', nodes: [{ nodeCode: 'n1', nodeType: 'SQL', name: null, params: null, positionX: null, positionY: null }], edges: [], baseline: { nodes: [], edges: [] } })
+    const saveSpy = vi.spyOn(g, 'save').mockResolvedValue({ outcomes: [], savedKeys: [], dirtyKeys: [], manualRecoveryKeys: [], complete: true })
+    await flushPromises()
+    await w.find('.tcd-x').trigger('click')
+    await flushPromises()
+    expect(boxConfirm).toHaveBeenCalledWith(
+      '当前画布有未保存的修改，关闭前要保存吗？',
+      '关闭画布',
+      expect.objectContaining({ confirmButtonText: '保存并关闭', distinguishCancelAndClose: true }),
+    )
+    expect(saveSpy).toHaveBeenCalledTimes(1)
+    expect(s.count).toBe(0)
+    expect(g.docId).toBeNull()
+  })
+
+  it('关闭激活 Tab（store held）· 保存失败（!complete）：不关闭 + error 提示 + Tab 留存', async () => {
+    const w = mountView()
+    const s = useDagTabsStore()
+    s.open({ docId: '1', name: '一', type: 'wf' })
+    const g = useWorkflowGraphStore()
+    g.$patch({ docId: 1, projectId: 7, name: '一', nodes: [{ nodeCode: 'n1', nodeType: 'SQL', name: null, params: null, positionX: null, positionY: null }], edges: [], baseline: { nodes: [], edges: [] } })
+    const saveSpy = vi.spyOn(g, 'save').mockResolvedValue({ outcomes: [], savedKeys: [], dirtyKeys: ['n1'], manualRecoveryKeys: [], complete: false })
+    await flushPromises()
+    await w.find('.tcd-x').trigger('click')
+    await flushPromises()
+    expect(saveSpy).toHaveBeenCalledTimes(1)
+    expect(msgError).toHaveBeenCalledWith('保存失败，画布未关闭')
+    expect(s.count).toBe(1)
+    expect(s.activeKey).toBe('1')
+  })
+
   it('关闭非激活有草稿 Tab：确认「仍要关闭」resolve → 关 + 清 snap；reject → 不关 + snap 留', async () => {
     for (const confirmed of [true, false]) {
       const w = mountView()
@@ -367,16 +448,50 @@ describe('INC4-FE-2 画布多 Tab（MAX_DAG_TABS=5，蓝本照抄 + §5A.2 收�
     }
   })
 
-  it('右上专属操作降级：新建工作流 / 另存为模板（仅激活 Tab 在位）点击均提示接驳', async () => {
+  it('新建工作流（FE-6 ③ 归真）：prompt 名称 → createWorkflowDefinition → 池刷新 + openTab + last 落盘 + edit 激活', async () => {
+    routeParams.value = { projectId: '7' }
     const w = mountView()
-    expect(w.find('.tc-save-template').exists()).toBe(false)
+    await flushPromises() // onMounted loadDefPool 消费默认空池；点击路径内二次刷新读下方池数据
+    boxPrompt.mockResolvedValueOnce({ value: '新流程' })
+    wfCreate.mockResolvedValueOnce({ id: 42, projectId: 7, name: '新流程', description: null, currentVersion: null })
+    poolLoad.mockResolvedValue([{ id: 42, name: '新流程', tags: [] }])
     await w.find('[data-testid="new-workflow"]').trigger('click')
-    expect(msgInfo).toHaveBeenCalledTimes(1)
+    await flushPromises()
+    expect(boxPrompt).toHaveBeenCalledWith(
+      '请输入工作流名称',
+      '新建工作流',
+      expect.objectContaining({ confirmButtonText: '创建', inputPattern: expect.any(RegExp), inputErrorMessage: '名称不能为空' }),
+    )
+    expect(wfCreate).toHaveBeenCalledWith(7, '新流程')
+    const s = useDagTabsStore()
+    expect(s.activeTab).toMatchObject({ docId: '42', name: '新流程', type: 'wf' })
+    expect(localStorage.getItem('datara.dag.last')).toBe('42')
+    expect(localStorage.getItem('datara.dag.lastType')).toBe('wf')
+    expect(w.find('[data-tab="edit"]').classes()).toContain('on')
+    expect(msgSuccess).toHaveBeenCalledTimes(1)
+    expect(String(msgSuccess.mock.calls[0][0])).toContain('已创建工作流「新流程」')
+  })
+
+  it('新建工作流降级与取消：无项目上下文 warning 直返；prompt 取消不建；另存为模板仍降级提示', async () => {
+    const w = mountView()
+    await w.find('[data-testid="new-workflow"]').trigger('click')
+    expect(msgWarning).toHaveBeenCalledWith(expect.stringContaining('无项目上下文'))
+    expect(boxPrompt).not.toHaveBeenCalled()
+    expect(wfCreate).not.toHaveBeenCalled()
+    // prompt 取消（reject）→ 不创建
+    routeParams.value = { projectId: '7' }
+    const w2 = mountView()
+    await flushPromises()
+    boxPrompt.mockRejectedValueOnce('cancel')
+    await w2.find('[data-testid="new-workflow"]').trigger('click')
+    await flushPromises()
+    expect(wfCreate).not.toHaveBeenCalled()
+    // 另存为模板降级保留（createTemplate 归后续批次）
     useDagTabsStore().open({ docId: 'd1', name: '一', type: 'wf' })
     await flushPromises()
-    expect(w.find('.tc-save-template').exists()).toBe(true)
-    await w.find('.tc-save-template').trigger('click')
-    expect(msgInfo).toHaveBeenCalledTimes(2)
+    expect(w2.find('.tc-save-template').exists()).toBe(true)
+    await w2.find('.tc-save-template').trigger('click')
+    expect(msgInfo).toHaveBeenCalledTimes(1)
   })
 
   it('右上专属操作仅 edit 态在位（templates/runs/alarm 不渲染）', () => {
