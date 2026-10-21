@@ -24,8 +24,9 @@
 | 14 | `scheduleCrudApi.ts` | `services/rebuild/__tests__/scheduleCrudApi.contract.test.ts` | GREEN | 7 | 9 | R6 调度 CRUD 拆分（R-22：CRUD 面 GREEN 化；观测面 `scheduleApi.ts` 保持 RED 候增量 8；9-02 GREEN 段收编 695b07a1+9f012e55 两骨架件，含 nextFireTimes 响应面 ScheduleMutationResult） |
 | 15 | `workflowApi.ts` | `services/rebuild/__tests__/workflowApi.contract.test.ts` | GREEN | 12 | 20 | FE-6 ① 工作流六模型 12 端点 FE 面（候选池/定义 CRUD/draft 节点边增量写/publish/版本读取 + workflowCategories 目录面 + WF_NODE_TYPES 托盘类型；R-25 差量保存协调器 `workflowSaveQueue.ts` 同批落位） |
 | 16 | `datasourceApi.ts` | `services/rebuild/__tests__/datasourceApi.contract.test.ts` | GREEN | 11 | 4 | 10A 正式 rebuild datasource 契约：11 端点逐项映射，项目路径隔离，权限/错误/凭据矩阵冻结（R-47） |
+| 17 | `trialApi.ts` | `services/rebuild/__tests__/trialApi.contract.test.ts` | GREEN | 7 | 13 | FE-7 trial 试运行域八能力 FE 面（WBS 4.5）：trialApi 7 方法（snapshot/run/promote×2/runs/output，run 与 run promote 携 snapshot_id）+ `stores/trialRun.ts` + `components/TrialRunPanel.vue` 同批落位 |
 
-> **状态快照：2026-10-21（L18-05 按当前冻结常量/工厂实测）；GREEN 14 / RED 2；冻结方法合计 120。**
+> **状态快照：2026-10-21（L18-05 按当前冻结常量/工厂实测）；GREEN 15 / RED 2；冻结方法合计 127。**
 >
 > **与设计 §5.6 快照（GREEN 8 / RED 3）的差异**：`aiToolsApi.ts` 实测为 **GREEN**——源码无 `NOT_WIRED` 活哨兵，`createAiToolsContract()` 发起真实 API 调用（`requestJson` → `fetch`），旧库 `bannerConsistency.contract.test.ts` 断言亦为 GREEN。设计 §5.6 快照系提交 `6c0de0c`（验证域契约 GREEN 化）之前的状态。**建议监督线刷新权威设计 §5.6 快照为 GREEN 9 / RED 2。**
 
@@ -49,6 +50,8 @@
 - **17.3-01 回归**：`npm test -- --run` 全量 **405 passed / 0 failed（39 测试文件）**；`npm run build` 通过（1629 modules transformed）。
 - **9-02 GREEN 段回归**：`vue-tsc -b` 零错；`npx vitest run` 全量 **438 passed / 0 failed（41 测试文件）**；`npm run build` 通过（1634 modules transformed / 770ms）。
 - **FE-6 ①②③ 回归**：`vue-tsc -b` 零错；`npx vitest run` 全量 **470 passed / 0 failed（42 测试文件）**（438 基线递增 +32，无退化；FE-6 三件：workflowApi 契约扩容、workflowGraph store 契约新文件、taskCenterView 宿主接驳归真）；`npm run build` 通过（1646 modules transformed / 1.04s）。
+- **FE-7 回归**：`vue-tsc -b` 零错；`npx vitest run` 全量 **515 passed / 0 failed（47 测试文件）**（470 基线递增 +45，零退化；其中 FE-7 三件贡献 +38：trialApi 契约 13 / trialRun store 12 / TrialRunPanel 13；其余 +7 为同窗并行线新增件贡献，不在本票报验面）；`npm run build` 通过（863ms）。
+- **9-03 回归**：`vue-tsc -b` 零错；`npx vitest run` 全量 **527 passed / 0 failed（48 测试文件）**（515 基线递增 +12，零退化；+12 全为本票 `components/__tests__/scheduleDialog.contract.test.ts`）；`npm run build` 通过（947ms）。本票为组件票（ScheduleDialog.vue 手工模态壳+双视图/cron 即时预览/门链校验/上线/下线），消费已冻结契约 `scheduleCrudApi.ts`（#14），契约面零变更，不新增 §1 行。
 
 ### 3.1 基线登记（1.3 起步）
 
@@ -111,5 +114,6 @@
 | `scheduleCrudApi.ts` | 待监督线代提交（工作区未提交） | `__tests__/scheduleCrudApi.contract.test.ts` | GREEN | 2026-10-21 |
 | `workflowApi.ts` | 待监督线代提交（工作区未提交） | `__tests__/workflowApi.contract.test.ts` | GREEN | 2026-10-21 |
 | `datasourceApi.ts` | 待监督线代提交（工作区未提交） | `__tests__/datasourceApi.contract.test.ts` | GREEN | 2026-10-21 |
+| `trialApi.ts` | 待监督线代提交（工作区未提交） | `__tests__/trialApi.contract.test.ts` | GREEN | 2026-10-21 |
 
 > 提交号由监督线代提交后回填（本包 `.git` 只读，改动全部在工作区）。
