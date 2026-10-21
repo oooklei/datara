@@ -62,7 +62,7 @@ def test_misfire_policies_fire_once_skip_or_catch_up(monkeypatch, db_session):
 
     by_plan = {plan.id: [when for plan_id, when in fired if plan_id == plan.id] for plan in plans}
     assert len(by_plan[plans[0].id]) == 1
-    assert by_plan[plans[1].id] == []
+    assert by_plan[plans[1].id] == [current]
     assert len(by_plan[plans[2].id]) == 6
 
 
@@ -116,6 +116,41 @@ def test_skip_current_equals_first_fires_at_minute_boundary(monkeypatch, db_sess
     schedule._tick(cache)
 
     assert fired == [(plan.id, current)]
+    assert cache[plan.id]["next"] == datetime(
+        2026, 10, 19, 8, 1, 0, tzinfo=schedule.ZoneInfo("Asia/Shanghai")
+    )
+
+
+def test_skip_fires_when_latest_due_is_inside_scan_window(monkeypatch, db_session):
+    fired = []
+    monkeypatch.setattr(schedule, "new_session", lambda: db_session)
+    current = datetime(2026, 10, 19, 8, 0, 9, tzinfo=schedule.ZoneInfo("Asia/Shanghai"))
+    monkeypatch.setattr(schedule, "_schedule_now", lambda _plan: current)
+    monkeypatch.setattr(schedule, "_active_for_schedule", lambda *_: 0)
+    monkeypatch.setattr(schedule, "_fire", lambda _session, plan, planned: fired.append((plan.id, planned)))
+    plan = _plan(db_session, crontab="* * * * * 0", misfire_policy="SKIP")
+    first = datetime(2026, 10, 19, 8, 0, 0, tzinfo=schedule.ZoneInfo("Asia/Shanghai"))
+    cache = _entry(plan, first)
+
+    schedule._tick(cache)
+
+    assert fired == [(plan.id, first)]
+
+
+def test_skip_drops_occurrence_at_scan_window_boundary(monkeypatch, db_session):
+    fired = []
+    monkeypatch.setattr(schedule, "new_session", lambda: db_session)
+    current = datetime(2026, 10, 19, 8, 0, 10, tzinfo=schedule.ZoneInfo("Asia/Shanghai"))
+    monkeypatch.setattr(schedule, "_schedule_now", lambda _plan: current)
+    monkeypatch.setattr(schedule, "_active_for_schedule", lambda *_: 0)
+    monkeypatch.setattr(schedule, "_fire", lambda _session, plan, planned: fired.append((plan.id, planned)))
+    plan = _plan(db_session, crontab="* * * * * 0", misfire_policy="SKIP")
+    first = datetime(2026, 10, 19, 8, 0, 0, tzinfo=schedule.ZoneInfo("Asia/Shanghai"))
+    cache = _entry(plan, first)
+
+    schedule._tick(cache)
+
+    assert fired == []
     assert cache[plan.id]["next"] == datetime(
         2026, 10, 19, 8, 1, 0, tzinfo=schedule.ZoneInfo("Asia/Shanghai")
     )

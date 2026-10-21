@@ -88,6 +88,12 @@ def _due_times(schedule: WfSchedule, first: datetime, current: datetime) -> tupl
     return due, cursor, len(due) > MAX_MISFIRE_CATCHUP
 
 
+def _within_scan_window(planned: datetime, current: datetime) -> bool:
+    """Treat a SKIP occurrence as on time during the current scan interval."""
+    delay = (current - planned).total_seconds()
+    return 0 <= delay < SCAN_SECONDS
+
+
 def _tick(cache: dict) -> None:
     """Scan plans, apply misfire/concurrency rules, then commit command batch."""
     session = new_session()
@@ -147,7 +153,7 @@ def _tick(cache: dict) -> None:
                 continue
 
             if misfire == "SKIP":
-                fired: list[datetime] = [due[0]] if due and due[0] == current else []
+                fired: list[datetime] = [due[-1]] if due and _within_scan_window(due[-1], current) else []
             elif misfire == "FIRE_ONCE":
                 fired = [due[-1]] if due else []
             else:  # FIRE_ALL_LIMITED
