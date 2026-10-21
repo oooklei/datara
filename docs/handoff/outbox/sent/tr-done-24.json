@@ -1,0 +1,10 @@
+{
+  "id": "tr-done-24",
+  "ts": "2026-10-21T08:25:07+08:00",
+  "from": "Trae",
+  "to": "监督线",
+  "type": "done",
+  "ref": "s260-gov-dispatch-inc4-fe,tr-ack-24",
+  "body": "INC4-FE-3（4.2c）Palette 双 Tab（组件库/工作流）交付，证据 docs/increments/evidence/INC4/2026-10-21-INC4-FE-3-Palette双Tab-Trae.md。四件：①datara-newweb/src/components/Palette.vue 新建 194 行——蓝本双 Tab 框架照抄（.pal-tabs/.pal-tab.on/搜索/分组折叠 folded+▼/拖拽 setData('datara/node-type')+effectAllowed=copy/.p-ico/.p-name/.p-code/空态「无匹配组件」）+ §5A.3 一源零私设（数据唯 loadComponentSpecs()，ETag/304/last-success 回落与首载 fail-closed 全在 API 层；paletteVisible===false 过滤=normalizeSpec 契约 D1 闸门 §13-5，rowOf 集中实现非私设）+ badge 结构陷阱规避（identity.code 字符串探测 codeOf，非字符串不渲染 .p-code）+ 分组键=description.category 全路径/组名=末段/空归「通用」/kw 三通道过滤 label/desc/type + defaultTab prop（宿主空态 'wf'，GraphWorkbench 缺省 'palette'）+ defineEmits load-tasks 无绑定（FE-4 实装再赋 const）+ 空态 loaded 门控防闪 + CSS 变量全量 fallback 化（主色 rgba 22,104,220→37,99,235 换算）+ 缺位降级三条头注释声明（ViewProfile 通道/disabled 灰置/.p-cat 徽标归 FE-6/7；wf 系样式与目录内容归 FE-4；load-tasks 契约在位）。②宿主 TaskCenterView 三处编辑：头注释改已接驳声明、import Palette、空态 .tc-empty-hint 前挂 <Palette default-tab=\"wf\" @load-tasks=\"onPickTasks\" />（事件同名同载荷直连；不加 .tc-newbtn 避免双钮；hint 两行文案与 data-tc-empty 锚保留）。③palette.contract.test.ts 新建 10 用例（vi.hoisted specLoad+vi.mock componentSpecApi；双 Tab 顺序/defaultTab/分组末段组名+通用/.cnt/ico+code/paletteVisible 过滤/搜索三通道/折叠 toggle/拖拽契约 fakeDT/失败 warn+空态/非字符串 code 不渲染/加载前不闪空态）。④taskCenterView.contract.test.ts 四处编辑（hoisted+specLoad、vi.mock componentSpecApi、beforeEach mockReset+空快照、头注释更新），既有 20 用例零改动全过。三绿门（08:18-08:26 机器实跑）：vue-tsc -b exit 0；vitest run 40 files 415 passed（FE-2 收口基线 36/382 全数通过零退化+本票 palette 1 file/10 tests；余 3 files/23 tests 系 FE-2 收口后他线并入既有用例，本次全量实跑全绿，证据披露 §四.3 口径）；npm run build exit 0（1633 modules，838ms）。首轮 build 1 failed=CSS 注释 .pt-*/ 的 */ 提前终止注释（FE-2 披露 §四.4 同款第二例，已改顿号列举，.xxx-*/ 型注释列入本线禁用模式）自纠即过；vue-tsc/vitest 首轮即绿。R6/metricsApi/memberApi/projectMenu 七段零触碰，.git 只读，零 aoci。下一单：INC4-FE-4 目录树（s269+s260 合并队列），S260 心跳随发。",
+  "status": "done-inc4-fe-3"
+}

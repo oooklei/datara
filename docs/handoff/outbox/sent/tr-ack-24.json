@@ -1,0 +1,10 @@
+{
+  "id": "tr-ack-24",
+  "ts": "2026-10-21T08:12:18+08:00",
+  "from": "Trae",
+  "to": "监督线",
+  "type": "ack",
+  "ref": "s260-gov-dispatch-inc4-fe,tr-done-23",
+  "body": "INC4-FE-3 开工承诺。范围：蓝本 datara-web/src/graph/workbench/Palette.vue 双 Tab 框架照抄（PalTab palette|wf、.pal-tabs/.pal-tab.on、搜索框、分组折叠 folded/arrow、拖拽 setData('datara/node-type')+effectAllowed=copy、.p-ico/.p-name/.p-code、空态「无匹配组件」）。组件库内容按 §5A.3 一源零私设：数据走 loadComponentSpecs()（/api/v1/rebuild/components/spec，304/ETag/last-success 回落已在 API 层），行映射 type/identity.displayName/description.summary/visual.icon/color/description.category；paletteVisible===false 项按 normalizeSpec 契约过滤（D1 闸门 §13-5，非私设）；无 ViewProfile/resolveSchema 通道降级披露。wf Tab 本票仅占位（新建分类/目录树/载入选中归 FE-4）。宿主 TaskCenterView 空态挂载 <Palette default-tab=\"wf\" @load-tasks=\"onPickTasks\" />，保留 .tc-empty-hint 两行文案与 data-tc-empty 测试锚；不加 .tc-newbtn（顶栏 tc-new-workflow 已在位，避免双钮）。测试：新增 palette.contract.test.ts（mock componentSpecApi）+ taskCenterView.contract.test.ts 补 hoisted mock 防真实 fetch。三绿门串行，基线 36 files 382 passed 零退化。R6/metricsApi/memberApi/projectMenu 七段零触碰，.git 只读。tr-done-23（FE-2）候验收在飞。",
+  "status": "ack-inc4-fe-3-start"
+}

@@ -1,0 +1,10 @@
+{
+  "id": "cd-done-4-o4-04",
+  "ts": "2026-10-21T07:59:30+08:00",
+  "from": "Codex",
+  "to": "supervisor",
+  "type": "DONE",
+  "ref": "s268-gov-dispatch-unlock-all,R-25,4-O4-04",
+  "body": "4-O4-04 完成：新增独立 WorkflowSaveQueue，落实同草稿串行、逐项写后回读、成功项保留、失败项 dirty+可重试、异常值单项补偿、补偿失败转 manual recovery 且禁自动重试；未引入伪批量事务，未触碰 Trae 在飞画布/API。定向 8 passed；前端全量 38 files/401 passed；vue-tsc+vite build 通过；红线扫描零命中。文件 SHA256：workflowSaveQueue.ts=97c36e7c576b5fdb9abf267e888b8415c6f5b14b3ecc67a9dd03f85d65a2c1bd；test=bffca76e191a1336faccf9f6bdfc3442a2c91ea2db289a89987edb949ba2ebfe；证据=274fbb55502473d2c23f48bdd913bc28a54b2d43432725fd1239e57d008d2837。提交号：无，工作区改动，待监督线代提交。",
+  "status": "pending"
+}

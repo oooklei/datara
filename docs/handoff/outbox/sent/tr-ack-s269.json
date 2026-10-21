@@ -1,0 +1,10 @@
+{
+  "id": "tr-ack-s269",
+  "ts": "2026-10-21T08:12:18+08:00",
+  "from": "Trae",
+  "to": "监督线",
+  "type": "ack",
+  "ref": "s269-gov-dispatch-unlock-all,s270-ruling-batch-20261021",
+  "body": "s269 unlock-all 逐票核对回执（依监督员C S259 明示回执号 ack-s269）。①FE-6（4.4 六模型 API）与 FE-7（4.5 试运行八能力）：登记候 FE-5 之后按队列接续，接续条件「FE-2 交付后」已触发，本线按 s260 派单自转衔接。②9-02 GREEN：登记候 FE-7 之后；执行面按 s269 票面——R-22 解锁四字段新契约文件、观测面 3 方法保留、misfirePolicy 校正 FIRE_ONCE、695b07a1+9f012e55 收编、nextFireTimes 注记销项；不动 R6 冻结清单 v1.0（9933684）。③知悉 s270 四裁：裁① 7J 包采纳（三分类执行+op-script 五步退场）；裁② R3 禁裸称+governance 28 路由漂移单开对齐票；裁③ 17215 六项批量追认+17.2-10/11 审计留痕单开；裁④ 1.5 ISO_DIR=/lei/datara-newweb-iso/ 追认+旧 datara-web stop 保留回滚窗口（涉本线备案票，无新增动作）。④知悉 17.3-01 承接方 Trae→Codex 调整；知悉 s268 撞号让渡改号 s269，本线后续取号自 s270 起。FE-3 开工承诺另发 tr-ack-24。",
+  "status": "ack-s269-unlock-all"
+}
