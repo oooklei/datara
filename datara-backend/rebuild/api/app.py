@@ -84,6 +84,7 @@ from rebuild.scheduling import build_schedule_router
 from rebuild.model.api import build_model_router
 from rebuild.model.dicts import seed_model_dicts
 from rebuild.model.models import MODEL_TABLES
+from rebuild.monitor import build_monitor_router
 
 logger = logging.getLogger(__name__)
 
@@ -130,6 +131,7 @@ def create_app(
     legacy_i20_source_reader_factory=None,
     legacy_i21_source_reader_factory=None,
     ai_bridge_ports: AiBridgePorts | None = None,
+    model_connector=None,
 ) -> FastAPI:
     database_url = database_url or os.getenv("REBUILD_DB_URL")
     if not database_url:
@@ -1034,11 +1036,21 @@ def create_app(
         build_sshnode_router(session_factory, token_service, active_tokens),
         prefix="/api/v1/rebuild/ssh-nodes",
     )
+    app.include_router(
+        build_monitor_router(
+            session_factory,
+            token_service,
+            active_tokens,
+            zk_provider=lambda: getattr(getattr(app.state, "registry", None), "zk", None),
+        ),
+        prefix="/api/v1/rebuild/monitor",
+        tags=["rebuild-monitor"],
+    )
     # I18 P1 model-dictionary migration (WBS 17.2): router mounted at the shared
     # /api/v1/rebuild prefix so in-domain paths keep their legacy relative shape
     # (A6-1 → /api/v1/rebuild/model-dicts, A6-2 → /api/v1/rebuild/models).
     app.include_router(
-        build_model_router(session_factory, token_service, active_tokens),
+        build_model_router(session_factory, token_service, active_tokens, model_connector),
         prefix="/api/v1/rebuild",
         tags=["rebuild-model"],
     )
