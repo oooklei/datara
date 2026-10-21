@@ -179,3 +179,47 @@ def test_conditional_capability_requires_explicit_condition() -> None:
 
     result = browser.list_objects("table", condition_met=True)
     assert result["capability"] == "conditional"
+
+
+class FakeVersionedPort:
+    def __init__(self, payload: dict) -> None:
+        self.payload = payload
+
+    def list_objects(self, *, driver, object_kind, parent, page_size, cursor):
+        raise AssertionError("list_objects is not expected in definition passthrough tests")
+
+    def get_definition(self, *, driver, object_kind, object_ref):
+        return dict(self.payload)
+
+
+def test_get_definition_passes_provider_source_version_through() -> None:
+    port = FakeVersionedPort(
+        {"definition": "CREATE TABLE sample (id INTEGER)", "source_version": "sv-20261021-01"}
+    )
+    browser = MetadataBrowser(
+        driver="postgresql",
+        port=port,
+        capabilities={("postgresql", "table", "getDefinition"): declaration("postgresql", "table", "getDefinition")},
+    )
+
+    result = browser.get_definition("table", {"database": "db", "schema": "public", "name": "sample"})
+
+    assert result["source_version"] == "sv-20261021-01"
+    assert result["definition"] == "CREATE TABLE sample (id INTEGER)"
+    assert result["capability"] == "supported"
+    assert result["constraints"] == []
+
+
+@pytest.mark.parametrize("bad", [None, "", 7])
+def test_get_definition_omits_unusable_source_version_and_keeps_fail_closed_path(bad) -> None:
+    port = FakeVersionedPort({"definition": "CREATE TABLE sample (id INTEGER)", "source_version": bad})
+    browser = MetadataBrowser(
+        driver="postgresql",
+        port=port,
+        capabilities={("postgresql", "table", "getDefinition"): declaration("postgresql", "table", "getDefinition")},
+    )
+
+    result = browser.get_definition("table", {"name": "sample"})
+
+    assert "source_version" not in result
+    assert result["definition"] == "CREATE TABLE sample (id INTEGER)"

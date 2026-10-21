@@ -145,11 +145,18 @@ class MetadataBrowser:
         )
         if not isinstance(payload, Mapping) or not isinstance(payload.get("definition"), str):
             raise CapabilityAccessError("METADATA_PROVIDER_INVALID_RESPONSE")
-        return {
+        result: dict[str, Any] = {
             "definition": payload["definition"],
             "capability": capability.status,
             "constraints": list(capability.constraints),
         }
+        # The DDL write chain snapshots a versioned definition. Forward the
+        # provider's source marker verbatim; omitting it keeps the caller
+        # fail-closed (no inferred or fabricated version leaves this layer).
+        source_version = payload.get("source_version")
+        if isinstance(source_version, str) and source_version.strip():
+            result["source_version"] = source_version
+        return result
 
     @staticmethod
     def _validate_kind(object_kind: str) -> None:
