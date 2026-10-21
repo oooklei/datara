@@ -8,11 +8,12 @@ import json
 import logging
 import os
 from pathlib import Path
+from typing import Literal
 
 from fastapi import FastAPI, Header, Query
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
-from sqlalchemy import create_engine, func, inspect, select, text
+from sqlalchemy import create_engine, delete, func, inspect, select, text
 from sqlalchemy.engine import make_url
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import sessionmaker
@@ -20,6 +21,7 @@ from sqlalchemy.pool import StaticPool
 
 from rebuild.ai_bridge import AiBridgePorts, build_ai_router, build_default_bridge_ports
 from rebuild.component_spec import build_component_spec_router
+from rebuild.component_spec.migrations import apply_component_spec_migrations
 from rebuild.common.db import Base
 from rebuild.sql_ide.audit import SqlIdeAuditRecord, build_audit_writer
 from rebuild.sql_ide.export_service import SqlIdeExportAuditRecord, SqlIdeExportJobRecord
@@ -27,9 +29,10 @@ from rebuild.sql_ide.execution import build_execution_port
 from rebuild.sql_ide.routes import build_sql_ide_router
 from rebuild.sql_ide.result_store import SqlIdeResultSetRecord
 from rebuild.execution.models import EXECUTION_TABLES
-from rebuild.identity.contracts import Permission, Role, TokenService, authorize
+from rebuild.identity.contracts import Permission, Role, ROLE_PERMISSIONS, TokenService, authorize
 from rebuild.identity.models import ActiveTokenRecord, ProjectMemberRecord, UserRecord
 from rebuild.identity.passwords import verify_password
+from rebuild.identity.repository import UserRepository
 from rebuild.datasource.contracts import DataSourceDraft, probe_datasource, validate_datasource
 from rebuild.datasource.models import ProjectDatasourceRecord
 from rebuild.datasource.metadata import metadata_catalog_for
@@ -80,11 +83,15 @@ from rebuild.workflow.models import (
 from rebuild.trial.models import WorkflowDraftSnapshotRecord
 from rebuild.sshnode import build_sshnode_router
 from rebuild.sshnode.models import SshNodeRecord
+from rebuild.runtime_node import build_runtime_node_router
+from rebuild.runtime_node.models import RuntimeNodeRecord
 from rebuild.scheduling import build_schedule_router
 from rebuild.model.api import build_model_router
 from rebuild.model.dicts import seed_model_dicts
 from rebuild.model.models import MODEL_TABLES
 from rebuild.monitor import build_monitor_router
+from rebuild.llm import LlmCredentialCipher, LlmModelRecord, build_llm_router
+from rebuild.llm.migrations import apply_llm_migrations
 
 logger = logging.getLogger(__name__)
 
@@ -115,6 +122,20 @@ class MemberRequest(BaseModel):
     role: Role = Role.VIEWER
 
 
+class UserCreateRequest(BaseModel):
+    username: str
+    password: str
+    role: Role = Role.VIEWER
+
+
+class UserStatusRequest(BaseModel):
+    status: Literal["enabled", "disabled"]
+
+
+class UserRoleRequest(BaseModel):
+    role: Role
+
+
 def create_app(
     database_url: str | None = None,
     *,
@@ -132,6 +153,7 @@ def create_app(
     legacy_i21_source_reader_factory=None,
     ai_bridge_ports: AiBridgePorts | None = None,
     model_connector=None,
+    llm_cipher=None,
 ) -> FastAPI:
     database_url = database_url or os.getenv("REBUILD_DB_URL")
     if not database_url:
@@ -209,6 +231,20 @@ def create_app(
                     return False
                 return True
 
+        def revoke_user(self, user_id: int, session=None) -> int:
+            """O15-03：撤销该用户全部 active token，返回删行数。
+
+            session 给定时并入调用方事务（不自行 commit，供改角色/停用端点同事务联动）；
+            缺省时自管会话立即生效。
+            """
+            if session is not None:
+                result = session.execute(delete(ActiveTokenRecord).where(ActiveTokenRecord.user_id == user_id))
+                return result.rowcount or 0
+            with session_factory() as own_session:
+                result = own_session.execute(delete(ActiveTokenRecord).where(ActiveTokenRecord.user_id == user_id))
+                own_session.commit()
+                return result.rowcount or 0
+
     active_tokens = ActiveTokenStore()
 
     def ensure_i1_schema() -> None:
@@ -248,6 +284,33 @@ def create_app(
         with session_factory() as session:
             seed_model_dicts(session)
 
+    def ensure_runtime_node_schema() -> None:
+        """B6 seed: the frozen '1.9宿主机' runtime node (idempotent, ported from infra 02_meta_i3.sql)."""
+        with session_factory() as session:
+            exists = (
+                session.query(RuntimeNodeRecord)
+                .filter(RuntimeNodeRecord.name == "1.9宿主机")
+                .one_or_none()
+            )
+            if exists is not None:
+                return
+            # 1.9 宿主机（TrueNAS）根文件系统只读，/datara 不可创建，故用 /tmp 路径。
+            session.add(
+                RuntimeNodeRecord(
+                    name="1.9宿主机",
+                    kind="远程",
+                    host="192.168.1.9",
+                    port=22,
+                    user="root",
+                    auth="",
+                    runtime_dir="/tmp/datara_runtime",
+                    tmp_dir="/tmp/datara_tmp",
+                    os="Linux",
+                    status="offline",
+                )
+            )
+            session.commit()
+
     @asynccontextmanager
     async def lifespan(app: FastAPI):
         # I1 core tables only. R3 governance DDL is applied exclusively by its
@@ -284,6 +347,7 @@ def create_app(
                 WorkflowScheduleRecord.__table__,
                 WorkflowPublishRecord.__table__,
                 WorkflowDraftSnapshotRecord.__table__,
+                LlmModelRecord.__table__,
                 *EXECUTION_TABLES,
                 StreamJobRecord.__table__,
                 StreamJobAttemptRecord.__table__,
@@ -292,12 +356,16 @@ def create_app(
                 StreamFailureEventRecord.__table__,
                 StreamRecoveryEventRecord.__table__,
                 SshNodeRecord.__table__,
+                RuntimeNodeRecord.__table__,
                 *MODEL_TABLES,
             ],
         )
+        apply_component_spec_migrations(engine)
+        apply_llm_migrations(engine)
         ensure_i1_schema()
         ensure_schedule_schema()
         ensure_model_schema()
+        ensure_runtime_node_schema()
         yield
         datasource_engines.dispose_all()
         engine.dispose()
@@ -385,6 +453,9 @@ def create_app(
             record = session.scalar(select(UserRecord).where(UserRecord.username == body.username))
             if record is None or not verify_password(body.password, record.password_hash):
                 return JSONResponse(status_code=401, content={"code": 1001, "msg": "invalid credentials", "data": None})
+            if record.status != "enabled":
+                # 停用账户凭据虽验通过，拒绝签发 token（O15-03 停用同步撤销闭环的登录侧）。
+                return JSONResponse(status_code=403, content={"code": 1006, "msg": "account disabled", "data": None})
             token = token_service.issue(user_id=record.id, username=record.username, role=Role(record.role))
             active_tokens.add(token, user_id=record.id, username=record.username, role=record.role)
             return {
@@ -1046,6 +1117,19 @@ def create_app(
         prefix="/api/v1/rebuild/monitor",
         tags=["rebuild-monitor"],
     )
+    app.include_router(
+        build_runtime_node_router(session_factory, token_service, active_tokens),
+        prefix="/api/v1/rebuild/runtime-nodes",
+        tags=["rebuild-runtime-nodes"],
+    )
+    if llm_cipher is None and os.getenv("LLM_ENCRYPTION_KEY"):
+        llm_cipher = LlmCredentialCipher.from_env()
+    if llm_cipher is not None:
+        app.include_router(
+            build_llm_router(session_factory, token_service, active_tokens, llm_cipher),
+            prefix="/api/v1/rebuild/llm-models",
+            tags=["rebuild-llm"],
+        )
     # I18 P1 model-dictionary migration (WBS 17.2): router mounted at the shared
     # /api/v1/rebuild prefix so in-domain paths keep their legacy relative shape
     # (A6-1 → /api/v1/rebuild/model-dicts, A6-2 → /api/v1/rebuild/models).
@@ -1079,6 +1163,7 @@ def create_app(
             execution_port=app.state.execution_port,
             audit_writer=app.state.audit_writer,
             session_factory=session_factory,
+            connector_factory=pooled_connector,
         )
         if default_ports is not None:
             app.include_router(build_ai_router(session_factory, token_service, active_tokens, default_ports))
@@ -1202,6 +1287,178 @@ def create_app(
                 "code": 0,
                 "msg": "success",
                 "data": {"project_id": project_id, "user_id": user_id, "role": body.role.value},
+            }
+
+    # ---- 15.1-A identity 管理面：平台层用户生命周期（O15-01/02/03）----
+
+    @app.get("/api/v1/rebuild/users")
+    def list_users_endpoint(authorization: str = Header(default="")):
+        try:
+            user = current_user(authorization)
+            if not authorize(user["role"], Permission.MANAGE_USER):
+                raise PermissionError("permission denied")
+        except PermissionError as exc:
+            return JSONResponse(status_code=403, content={"code": 1003, "msg": str(exc), "data": None})
+        except ValueError:
+            return JSONResponse(status_code=401, content={"code": 1001, "msg": "invalid token", "data": None})
+        with session_factory() as session:
+            records = UserRepository(session).list_users()
+            return {
+                "code": 0,
+                "msg": "success",
+                "data": {
+                    "list": [
+                        {
+                            "id": r.id,
+                            "username": r.username,
+                            "role": r.role,
+                            "status": r.status,
+                            "created_at": r.created_at.isoformat() if r.created_at else None,
+                        }
+                        for r in records
+                    ]
+                },
+            }
+
+    @app.post("/api/v1/rebuild/users")
+    def create_user(body: UserCreateRequest, authorization: str = Header(default="")):
+        try:
+            user = current_user(authorization)
+            if not authorize(user["role"], Permission.MANAGE_USER):
+                raise PermissionError("permission denied")
+        except PermissionError as exc:
+            return JSONResponse(status_code=403, content={"code": 1003, "msg": str(exc), "data": None})
+        except ValueError:
+            return JSONResponse(status_code=401, content={"code": 1001, "msg": "invalid token", "data": None})
+        with session_factory() as session:
+            repo = UserRepository(session)
+            if repo.find_by_username(body.username) is not None:
+                return JSONResponse(status_code=409, content={"code": 4092, "msg": "username already exists", "data": None})
+            record = repo.create(username=body.username, password=body.password, role=body.role)
+            session.commit()
+            return {
+                "code": 0,
+                "msg": "success",
+                "data": {"id": record.id, "username": record.username, "role": record.role, "status": record.status},
+            }
+
+    @app.patch("/api/v1/rebuild/users/{user_id}/status")
+    def update_user_status(user_id: int, body: UserStatusRequest, authorization: str = Header(default="")):
+        try:
+            user = current_user(authorization)
+            if not authorize(user["role"], Permission.MANAGE_USER):
+                raise PermissionError("permission denied")
+        except PermissionError as exc:
+            return JSONResponse(status_code=403, content={"code": 1003, "msg": str(exc), "data": None})
+        except ValueError:
+            return JSONResponse(status_code=401, content={"code": 1001, "msg": "invalid token", "data": None})
+        with session_factory() as session:
+            repo = UserRepository(session)
+            record = repo.find_by_id(user_id)
+            if record is None:
+                return JSONResponse(status_code=404, content={"code": 4041, "msg": "user not found", "data": None})
+            if record.status == body.status:
+                # 幂等：已处目标状态，直接返回（无需再撤销 token）。
+                return {
+                    "code": 0,
+                    "msg": "success",
+                    "data": {
+                        "id": record.id,
+                        "username": record.username,
+                        "role": record.role,
+                        "status": record.status,
+                        "revoked_tokens": 0,
+                    },
+                }
+            if body.status == "disabled" and record.role == Role.ADMIN.value:
+                # 最后 admin 保护：停用唯一启用 admin 前校验剩余启用 admin 数不少于 1。
+                if repo.count_enabled_admins_excluding(user_id) == 0:
+                    return JSONResponse(status_code=409, content={"code": 1005, "msg": "last admin protection", "data": None})
+            updated = repo.update_status(user_id, body.status)
+            # O15-03：停用与撤销 token 同一 DB 事务（session 注入，不自行 commit）。
+            revoked = active_tokens.revoke_user(user_id, session=session)
+            session.commit()
+            return {
+                "code": 0,
+                "msg": "success",
+                "data": {
+                    "id": updated.id,
+                    "username": updated.username,
+                    "role": updated.role,
+                    "status": updated.status,
+                    "revoked_tokens": revoked,
+                },
+            }
+
+    @app.patch("/api/v1/rebuild/users/{user_id}/role")
+    def update_user_role(user_id: int, body: UserRoleRequest, authorization: str = Header(default="")):
+        try:
+            user = current_user(authorization)
+            if not authorize(user["role"], Permission.MANAGE_USER):
+                raise PermissionError("permission denied")
+        except PermissionError as exc:
+            return JSONResponse(status_code=403, content={"code": 1003, "msg": str(exc), "data": None})
+        except ValueError:
+            return JSONResponse(status_code=401, content={"code": 1001, "msg": "invalid token", "data": None})
+        with session_factory() as session:
+            repo = UserRepository(session)
+            record = repo.find_by_id(user_id)
+            if record is None:
+                return JSONResponse(status_code=404, content={"code": 4041, "msg": "user not found", "data": None})
+            if record.role == Role.ADMIN.value and body.role != Role.ADMIN:
+                # 最后 admin 保护：降级唯一 admin 前校验剩余启用 admin 数不少于 1。
+                if repo.count_enabled_admins_excluding(user_id) == 0:
+                    return JSONResponse(status_code=409, content={"code": 1005, "msg": "last admin protection", "data": None})
+            updated = repo.update_role(user_id, body.role)
+            # O15-03：角色变更即撤销 token，同一 DB 事务（session 注入，不自行 commit）。
+            revoked = active_tokens.revoke_user(user_id, session=session)
+            session.commit()
+            return {
+                "code": 0,
+                "msg": "success",
+                "data": {
+                    "id": updated.id,
+                    "username": updated.username,
+                    "role": updated.role,
+                    "status": updated.status,
+                    "revoked_tokens": revoked,
+                },
+            }
+
+    # ---- 15.1-B 项目层权限矩阵只读查询（O15-02）----
+
+    @app.get("/api/v1/rebuild/projects/{project_id}/permissions")
+    def project_permissions(project_id: int, authorization: str = Header(default="")):
+        try:
+            user = current_user(authorization)
+            if not authorize(user["role"], Permission.VIEW_ALL):
+                raise PermissionError("permission denied")
+        except PermissionError as exc:
+            return JSONResponse(status_code=403, content={"code": 1003, "msg": str(exc), "data": None})
+        except ValueError:
+            return JSONResponse(status_code=401, content={"code": 1001, "msg": "invalid token", "data": None})
+        with session_factory() as session:
+            project = session.get(ProjectRecord, project_id)
+            if project is None:
+                return JSONResponse(status_code=404, content={"code": 4042, "msg": "project not found", "data": None})
+            permissions_by_role = {r.value: sorted(p.value for p in ROLE_PERMISSIONS.get(r, ())) for r in Role}
+            members = session.scalars(
+                select(ProjectMemberRecord).where(ProjectMemberRecord.project_id == project_id)
+            ).all()
+            return {
+                "code": 0,
+                "msg": "success",
+                "data": {
+                    "project_id": project_id,
+                    "members": [
+                        {
+                            "user_id": m.user_id,
+                            "role": m.role,
+                            "permissions": permissions_by_role.get(m.role, []),
+                        }
+                        for m in members
+                    ],
+                },
             }
 
     return app

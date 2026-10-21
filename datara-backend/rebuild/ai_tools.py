@@ -9,14 +9,13 @@ only implement tool-specific logic and raise ``ToolError`` for failures.
 from __future__ import annotations
 
 import hashlib
-import json
+from collections import deque
 from typing import Any, Mapping
 
 from sqlalchemy import func, select
 
 from rebuild.ai_bridge import Handler, ToolError
 from rebuild.execution.models import TaskInstanceRecord, WorkflowInstanceRecord
-from rebuild.metrics.repository import MetricsRepository
 from rebuild.sql_ide.linter import lint_sql
 from rebuild.workflow.models import (
     WorkflowDefinitionRecord,
@@ -24,7 +23,20 @@ from rebuild.workflow.models import (
     WorkflowNodeRecord,
     WorkflowVersionRecord,
 )
-from rebuild.workflow.repository import VALID_NODE_TYPES, WorkflowRepository
+from rebuild.datasource.contracts import DataSourceDraft
+from rebuild.workflow.repository import VALID_NODE_TYPES
+
+
+def _datasource_draft(record: Any) -> DataSourceDraft:
+    return DataSourceDraft(
+        name=record.name,
+        kind=record.kind,
+        host=record.host,
+        port=record.port,
+        database=record.database_name,
+        username=record.username,
+        password=record.password,
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -32,7 +44,7 @@ from rebuild.workflow.repository import VALID_NODE_TYPES, WorkflowRepository
 # ---------------------------------------------------------------------------
 
 
-def build_search_schema_handler(session_factory: Any) -> Handler:
+def build_search_schema_handler(session_factory: Any, connector_factory: Any) -> Handler:
     """Compose the search_schema handler over the metadata catalog."""
 
     def handler(
@@ -58,20 +70,32 @@ def build_search_schema_handler(session_factory: Any) -> Handler:
                 )
             )
             if datasource is None:
-                # No datasource bound — return empty result (not an error)
-                return {"entries": [], "next_cursor": None}
+                raise ToolError("NOT_FOUND")
 
             from rebuild.datasource.metadata import metadata_catalog_for
 
-            catalog = metadata_catalog_for(datasource, connector=None)
+            try:
+                catalog = metadata_catalog_for(
+                    _datasource_draft(datasource),
+                    connector=connector_factory(project_id, datasource.id),
+                )
+                objects = catalog.objects(
+                    schema_name or datasource.database_name,
+                    after=str(cursor) if cursor else None,
+                    limit=limit,
+                )
+            except Exception as exc:
+                raise ToolError(
+                    "DEPENDENCY_UNAVAILABLE", retryable=True,
+                    details={"dependency": type(exc).__name__},
+                ) from exc
             entries: list[dict[str, Any]] = []
 
-            # Search tables/views
-            objects = catalog.objects(schema_name or "public")
-            for obj in objects:
+            has_more = len(objects) > limit
+            for obj in objects[:limit]:
                 obj_name = obj.get("name", "")
-                obj_kind = obj.get("kind", "TABLE")
-                obj_schema = obj.get("schema", schema_name or "public")
+                obj_kind = obj.get("type", "table")
+                obj_schema = obj.get("schema", schema_name or datasource.database_name)
 
                 # Apply filters
                 if keyword and keyword.lower() not in obj_name.lower():
@@ -95,24 +119,30 @@ def build_search_schema_handler(session_factory: Any) -> Handler:
                         entry["columns"] = [
                             {
                                 "name": col.get("name", ""),
-                                "type": col.get("type", ""),
+                                "type": col.get("data_type", ""),
                                 "nullable": col.get("nullable", True),
                                 "comment": col.get("comment"),
                             }
                             for col in columns
                         ]
-                    except Exception:
-                        entry["columns"] = []
+                    except Exception as exc:
+                        raise ToolError(
+                            "DEPENDENCY_UNAVAILABLE", retryable=True,
+                            details={"dependency": type(exc).__name__},
+                        ) from exc
 
                 entries.append(entry)
                 if len(entries) >= limit:
                     break
 
-            next_cursor = None
-            if len(entries) >= limit and cursor is not None:
-                next_cursor = f"cursor-{len(entries)}"
+            next_cursor = entries[-1]["table_name"] if has_more and entries else None
 
-            return {"entries": entries, "next_cursor": next_cursor}
+            return {
+                "entries": entries,
+                "next_cursor": next_cursor,
+                "row_count": len(entries),
+                "truncated": has_more,
+            }
 
     return handler
 
@@ -122,7 +152,7 @@ def build_search_schema_handler(session_factory: Any) -> Handler:
 # ---------------------------------------------------------------------------
 
 
-def build_validate_sql_handler() -> Handler:
+def build_validate_sql_handler(session_factory: Any) -> Handler:
     """Compose the validate_sql handler over the sqlglot linter."""
 
     def handler(
@@ -131,7 +161,16 @@ def build_validate_sql_handler() -> Handler:
         ctx: Mapping[str, Any],
     ) -> Mapping[str, Any]:
         sql = params["sql"]
-        dialect = params.get("dialect", "postgres")
+        # datasource_id is mandatory even when the caller supplies a dialect:
+        # it is the project-isolation anchor and must never be bypassed by an
+        # optional request field.
+        from rebuild.datasource.models import ProjectDatasourceRecord
+
+        with session_factory() as session:
+            datasource = session.get(ProjectDatasourceRecord, params["datasource_id"])
+            if datasource is None or datasource.project_id != ctx["project_id"]:
+                raise ToolError("NOT_FOUND")
+            dialect = params.get("dialect") or datasource.kind
 
         result = lint_sql(sql, dialect=dialect)
         diagnostics = result.get("diagnostics", [])
@@ -435,10 +474,11 @@ def build_inspect_workflow_run_handler(session_factory: Any) -> Handler:
 
             # Verify project access via workflow definition
             wf_ver = session.get(WorkflowVersionRecord, run.workflow_version_id)
-            if wf_ver:
-                wf_def = session.get(WorkflowDefinitionRecord, wf_ver.definition_id)
-                if wf_def and wf_def.project_id != project_id:
-                    raise ToolError("NOT_FOUND")
+            if wf_ver is None:
+                raise ToolError("NOT_FOUND")
+            wf_def = session.get(WorkflowDefinitionRecord, wf_ver.definition_id)
+            if wf_def is None or wf_def.project_id != project_id:
+                raise ToolError("NOT_FOUND")
 
             tasks = None
             if include_tasks:
@@ -447,6 +487,9 @@ def build_inspect_workflow_run_handler(session_factory: Any) -> Handler:
                         TaskInstanceRecord.workflow_instance_id == run_id
                     )
                 ).all()
+                if attempt is not None and attempt != run.current_attempt_no:
+                    raise ToolError("NOT_FOUND")
+                truncated = len(task_records) > 1000
                 tasks = [
                     {
                         "task_id": t.id,
@@ -459,8 +502,10 @@ def build_inspect_workflow_run_handler(session_factory: Any) -> Handler:
                         "started_at": t.started_at.isoformat() if t.started_at else None,
                         "finished_at": t.finished_at.isoformat() if t.finished_at else None,
                     }
-                    for t in task_records
+                    for t in task_records[:1000]
                 ]
+            else:
+                truncated = False
 
             return {
                 "run_id": run.id,
@@ -470,6 +515,7 @@ def build_inspect_workflow_run_handler(session_factory: Any) -> Handler:
                 "started_at": run.started_at.isoformat() if run.started_at else None,
                 "finished_at": run.finished_at.isoformat() if run.finished_at else None,
                 "tasks": tasks,
+                "truncated": truncated,
                 "refs": {"run_id": run.id},
             }
 
@@ -495,33 +541,19 @@ def build_get_task_metrics_handler(session_factory: Any) -> Handler:
         group_by = params.get("group_by")
 
         with session_factory() as session:
-            metrics_repo = MetricsRepository(session)
-
             if run_id is not None:
-                # Get metrics for a specific run
                 run = session.get(WorkflowInstanceRecord, run_id)
                 if run is None:
                     raise ToolError("NOT_FOUND")
-                # Query task instance data stats for this run
-                stats = metrics_repo.task_instance_data_stats(
-                    window_from="2000-01-01",
-                    window_to="2099-12-31",
-                    offset=0,
-                    limit=1000,
-                    project_id=project_id,
-                )
-                buckets = _aggregate_metrics(stats, group_by)
+                # No persisted per-run status buckets exist yet. R7 forbids
+                # inventing them from task counters.
+                raise ToolError("DEPENDENCY_UNAVAILABLE", retryable=True)
             elif time_window is not None:
-                window_from = time_window.get("from", "")
-                window_to = time_window.get("to", "")
-                stats = metrics_repo.workflow_result_stats(
-                    window_from=window_from,
-                    window_to=window_to,
-                    offset=0,
-                    limit=1000,
-                    project_id=project_id,
-                )
-                buckets = _aggregate_metrics(stats, group_by)
+                # The persisted R7 rows do not contain the frozen bucket
+                # contract's total/cancelled fields.  Adding counts or filling
+                # cancelled=0 would be forbidden derivation, so stay honest
+                # until a compatible collector/storage projection exists.
+                raise ToolError("DEPENDENCY_UNAVAILABLE", retryable=True)
             else:
                 raise ToolError(
                     "INVALID_PARAMS",
@@ -535,31 +567,6 @@ def build_get_task_metrics_handler(session_factory: Any) -> Handler:
             }
 
     return handler
-
-
-def _aggregate_metrics(stats: list[dict[str, Any]], group_by: str | None) -> list[dict[str, Any]]:
-    """Aggregate metrics into buckets (no derivation, §7.7)."""
-    if not stats:
-        return []
-
-    buckets: dict[str, dict[str, Any]] = {}
-    for stat in stats:
-        key = stat.get("workflow_id", "unknown") if group_by == "task_type" else "total"
-        if key not in buckets:
-            buckets[key] = {
-                "key": key,
-                "total": 0,
-                "succeeded": 0,
-                "failed": 0,
-                "cancelled": 0,
-                "skipped": 0,
-            }
-        buckets[key]["total"] += 1
-        buckets[key]["succeeded"] += stat.get("success_count", 0)
-        buckets[key]["failed"] += stat.get("failure_count", 0)
-        buckets[key]["skipped"] += stat.get("skipped_count", 0)
-
-    return list(buckets.values())
 
 
 # ---------------------------------------------------------------------------
@@ -589,23 +596,7 @@ def build_get_lineage_handler(session_factory: Any) -> Handler:
                 details={"fields": {"entity": "must be schema.table or schema.table.column"}},
             )
 
-        schema = parts[0]
-        table = parts[1]
-        column = parts[2] if len(parts) > 2 else None
-
         with session_factory() as session:
-            # Find datasource for this project
-            from rebuild.datasource.models import ProjectDatasourceRecord
-
-            datasource = session.scalar(
-                select(ProjectDatasourceRecord).where(
-                    ProjectDatasourceRecord.project_id == project_id
-                )
-            )
-            if datasource is None:
-                raise ToolError("NOT_FOUND", details={"reason": "no datasource bound to project"})
-
-            # Query lineage from the lineage writeback table
             from rebuild.metrics.models import LineageWritebackRecord
 
             lineage_records = session.scalars(
@@ -614,28 +605,41 @@ def build_get_lineage_handler(session_factory: Any) -> Handler:
                 )
             ).all()
 
-            nodes: list[dict[str, Any]] = []
+            raw_edges = [(r.source_entity, r.target_entity, r.run_kind) for r in lineage_records]
+            if not any(entity in (source, target) for source, target, _ in raw_edges):
+                raise ToolError("NOT_FOUND")
+            node_ids = {entity}
             edges: list[dict[str, Any]] = []
+            seen_edges: set[tuple[str, str, str]] = set()
+            queue = deque([(entity, 0)])
             truncated = False
-
-            # Build a simple lineage graph from stored records
-            node_ids: set[str] = set()
-            for record in lineage_records[:500]:  # max_nodes budget
-                source = record.source_entity
-                target = record.target_entity
-
-                if source not in node_ids:
-                    node_ids.add(source)
-                    nodes.append({"id": source, "type": "TABLE", "label": source})
-                if target not in node_ids:
-                    node_ids.add(target)
-                    nodes.append({"id": target, "type": "TABLE", "label": target})
-
-                edges.append({"source": source, "target": target, "kind": record.run_kind})
-
-                if len(nodes) >= 500:
-                    truncated = True
-                    break
+            while queue:
+                current, level = queue.popleft()
+                if level >= depth:
+                    continue
+                for source, target, kind in raw_edges:
+                    follows = (
+                        direction in ("DOWNSTREAM", "BOTH") and source == current
+                    ) or (
+                        direction in ("UPSTREAM", "BOTH") and target == current
+                    )
+                    if not follows:
+                        continue
+                    edge_key = (source, target, kind)
+                    if edge_key not in seen_edges:
+                        edges.append({"source": source, "target": target, "kind": kind})
+                        seen_edges.add(edge_key)
+                    neighbour = target if source == current else source
+                    if neighbour not in node_ids:
+                        if len(node_ids) >= 500:
+                            truncated = True
+                            continue
+                        node_ids.add(neighbour)
+                        queue.append((neighbour, level + 1))
+            nodes = [
+                {"id": item, "type": entity_type, "label": item}
+                for item in sorted(node_ids)
+            ]
 
             return {
                 "root": entity,
@@ -653,15 +657,15 @@ def build_get_lineage_handler(session_factory: Any) -> Handler:
 # ---------------------------------------------------------------------------
 
 
-def build_all_handlers(session_factory: Any) -> dict[str, Handler]:
+def build_all_handlers(session_factory: Any, connector_factory: Any) -> dict[str, Handler]:
     """Build all eight tool handlers from the given session_factory.
 
     Returns a mapping of tool name to handler callable. The run_sql handler
     is composed separately (it needs the execution port, not session_factory).
     """
     return {
-        "search_schema": build_search_schema_handler(session_factory),
-        "validate_sql": build_validate_sql_handler(),
+        "search_schema": build_search_schema_handler(session_factory, connector_factory),
+        "validate_sql": build_validate_sql_handler(session_factory),
         "get_workflow": build_get_workflow_handler(session_factory),
         "validate_workflow": build_validate_workflow_handler(session_factory),
         "inspect_workflow_run": build_inspect_workflow_run_handler(session_factory),

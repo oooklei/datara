@@ -740,6 +740,7 @@ def build_default_bridge_ports(
     execution_port: Any,
     audit_writer: Any,
     session_factory: Any = None,
+    connector_factory: Any = None,
 ) -> AiBridgePorts | None:
     """Assemble default production bridge ports from ``app.state`` services.
 
@@ -759,10 +760,10 @@ def build_default_bridge_ports(
     handlers: dict[str, Handler] = {"run_sql": build_run_sql_handler(execution_port)}
 
     # Wire the remaining seven tools when session_factory is available
-    if session_factory is not None:
+    if session_factory is not None and connector_factory is not None:
         from rebuild.ai_tools import build_all_handlers
 
-        handlers.update(build_all_handlers(session_factory))
+        handlers.update(build_all_handlers(session_factory, connector_factory))
 
     return AiBridgePorts(
         handlers=handlers,
