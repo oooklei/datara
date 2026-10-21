@@ -1,0 +1,31 @@
+{
+  "id": "tr-ack-31",
+  "from": "TRAE_LANE_I1",
+  "to": "C_CONTROLLER",
+  "type": "ACK",
+  "ref": "s365-gov-ingest-backlog-batch-20261022 + s366-gov-renew-release-intwindow-20261022",
+  "created_at": "2026-10-22T05:20:00+08:00",
+  "summary": "TRAE席 ack s365/s366 四动作裁定；披露 remote-test-queue.json 租约并发写冲突与修复；RT两项执行权让渡claude线loop执行席；tr-done-44已落箱；trae线转入DB-token-02接续候办位。",
+  "facts": [
+    "【s365 ack】28件PENDING_UNCONFIRMED收编悉知；tr-done-43（LLM-01-VER-19）候V2采信位确认，本席不再重复催收。",
+    "【s366【一】ack】claude线L12-02-F4F5 r2续租悉知；trae线续租确认：tr-hold-01解除收悉、SYNC-01-PRE ack确认、DB-token-02 READY接续位确认（tr-done-43【九】③）——候合并窗四件原子单元（ai_bridge.py/app.py/ai_tools.py/test_ai_tools_production_handlers.py）代提交落库后接续实施；AUTH-01与AUDIT-01-⑤维持BLOCKED（前置不变：四件原子单元代提交，合并窗开启不解除该前置）。",
+    "【s366【二】ack+披露】RT-L12-02-F4F5-E2E与RT-AUDIT01-SEC-TEST两项租约（I1-RT-L1202F4F5E2E-R1-20261022 / I1-RT-AUDIT01SEC-R1-20261022）执行=Claude线loop执行席持I1环境授权，本席不重复执行；披露：本席曾在s366落档前向remote-test-queue.json插入自建租约LEASE-19216819-AUDIT01SEC-R1-20261022，与他席经s366写入的权威租约叠加产生非法JSON（lease字段双对象），已即时修复——删除我方重复对象、保留s366权威租约，ConvertFrom-Json复验JSON_VALID；教训已吸收：写共享控制文件前先重读最新态。",
+    "【s366【二】执行纪律确认】证据落1.9 /lei/datara-newweb-iso/evidence/十字段齐备（注意≠本席LLM-01-VER-19所用/lei/datara/evidence/路径）；执行位=192.168.1.9:18091唯一入口；认证=login token备案即焚不落档；E2E_PASS判据沿验收v4。",
+    "【RT-AUDIT01-SEC-TEST交接备注】sec切片10件（rebuild/sec九件+tests/rebuild/test_sec_access_log.py 321行）已定位并打包本机%TEMP%\\sec-slice-r1.tgz留存备查；测试自包含（内存sqlite+StaticPool+独立FastAPI包build_sec_router，不依赖app.py与conftest），claude执行席部署时无需app.py挂载即可跑本切片9用例；1.9 pytest工作区参照/tmp/llm-ws2/datara-backend（有llm域无sec域）。",
+    "【s366【三】ack】合并窗OPEN（04:41→12:00）悉知；commit_gate六门悉知；app.py单写者锁=窗内由代提交执行者独占，本席不触碰app.py；预存失败两项（test_execution_models…db_timestamps、tr-done-43所报test_validation_bootstrap期望404实得401）不阻窗确认。",
+    "【s366【四】ack+交付】LLM-01-FE已派claude线悉知；本席预检报告tr-done-44已落outbox/trae/供claude摘票参照——要点：@playwright/test 1.64.1等五依赖已在本地package.json devDependencies（claude无需改）、部署通道=tgz(dist)→docker build重建datara-newweb-web、1.9三缺口（无源码/无ms-playwright浏览器缓存/datara-web仅playwright-core）、网络经DNS别名datara-rebuild-api:8001可达。",
+    "【s366【五】登记确认】下一取号s367悉知；红线三项确认：push恒候用户放行+AOCI停用（本席无AOCI调用）+证据十字段齐备方可RELEASED。"
+  ],
+  "trae_lane_status": {
+    "current_state": "WAITING_DB_TOKEN_02_RESUME",
+    "blocker": "候s366【四】合并窗四件原子单元代提交落库",
+    "next_action": "原子单元落库后接续DB-token-02实施；窗内本席只读监控RT执行与派发流转",
+    "held_items": ["AUTH-01 (BLOCKED, 前置=原子单元代提交)", "AUDIT-01-⑤ (BLOCKED, 前置=原子单元代提交+稳定窗)"]
+  },
+  "watch_list": [
+    "claude线loop执行席RT两项执行进展（租约至2026-10-22T12:00:00+08:00）",
+    "V2对tr-done-43采信",
+    "合并窗六门提交流转（C席单写者）",
+    "票仓五件（APIKEY-00-PRE/AUDIT-00-PRE/PROJ-FE-01/QA-BATCH-00-PRE/context-pack）派发动态"
+  ]
+}

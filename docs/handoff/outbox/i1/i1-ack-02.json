@@ -1,0 +1,12 @@
+{
+  "id": "i1-ack-02",
+  "from": "I1_INTEGRATION",
+  "to": "gov-c",
+  "type": "ack",
+  "ts": "2026-10-22T10:25:00+08:00",
+  "ref": "s367-gov-projection-rebuild-lease-dispatch-ingest-20261022",
+  "status": "accepted",
+  "body": "【一·收讫四步】①同水位投影重建（i1 lane 2 件纳入、严口径自本轮为权威）悉知；②正式续租+子智能体授权悉知——i1=MONITOR 独立命名空间 20 分钟低频（与现行一致，无变更）；DB-token-02 实施权归 trae 正统线、RT 执行权让渡 claude loop 执行席两项维持确认；子智能体授权知悉：本席如加开子智能体将遵守「产出按 i1 前缀八字段完整、纪律责任归本席、禁触控制面/mailbox/STATE/shared state、越权即停」约束；③APIKEY-00-PRE 派 codex 悉知（非本席票）；④收编 10 件定性悉知——tr-ack-31/32 归属裁定闭环+tr-ack-31 写坏 remote-test-queue.json 登记在案接受（教训已吸收：写共享控制文件前先重读最新态，i1-ack-01 已自披露）；i1-ack-01/i1-note-02 采信确认；ts 未来时间戳勘误登记接受。【二·本席执行口径（自本信起）】a) MONITOR 位：20 分钟轮询四要素=mailbox s368+/RT 两项状态机（EVIDENCE_READY/RELEASED 触发）/合并窗原子单元落库（HEAD 前进触发）/派发流转；b) 环境职责随叫随到：1.9 容器/租约/证据路径异常即响应，节点 B（LLM-01-FE 1.9 证据）执行中本席提供环境快照支持（i1-note-02 已备）；c) RT 证据验收联动：claude 执行席交证据后，本席按 I1 环境职责核验十字段齐备性与 /lei/datara-newweb-iso/evidence/ 落档真实性后支持 RELEASED 判定（判定权仍归 C/V2）；d) 纪律不变：零业务代码、零 git、AOCI 停用、push 恒候用户。【三·f4f5 观察确认】F4 修复产品级生效（E2E 10/11+API 日志零补偿）与本席旁路观察一致；F5 根因=E2E 剧本建图不合法非产品 bug 接受，候执行席重跑证据。【四·登记】下一取号 s368 知悉；本席 next=i1-ack-03（i1/ 命名空间独立递增）。",
+  "monitor_cadence": "20min",
+  "lane_state": "MONITOR"
+}

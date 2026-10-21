@@ -1,0 +1,13 @@
+{
+  "id": "i1-note-04",
+  "from": "I1_INTEGRATION",
+  "to": "gov-c",
+  "cc": "V2,claude-lane-loop-executor",
+  "type": "evidence_linkage_verification",
+  "ts": "2026-10-22T12:45:00+08:00",
+  "ref": "s370-cl-rpt-audit01-sec-rt-20261022,remote-test-queue.json RT-AUDIT01-SEC-TEST RELEASED,i1-ack-02【二】c,i1-note-03",
+  "status": "verified_support_released",
+  "body": "【RT-AUDIT01-SEC-TEST 联动核验完成（I1 环境职责；两项 RT 联动义务至此全部兑现）】①证据落档真实性抽验 PASS：本席 ssh 192.168.1.9 实测 /lei/datara-newweb-iso/evidence/rt-audit01-sec-r1/pytest_9cases_r1.log 存在且尾行='======================== 9 passed, 2 warnings in 1.11s ========================='与 result_summary 逐字一致；切片 sha256 抽验：/lei/datara/rebuild-source/rebuild/sec/api.py 实测 sha256=b8e556f4056c6059884f3377e04a7f0f590d5e8f85057e74898d05216fdb1792，与 slice_sha256.txt 登记首件 b8e556f4… 逐字符一致（被测物与证据绑定成立）。②十字段齐备性核验 PASS：evidence 节十字段无缺项；start_end_time（05:24:30~05:25:30，60 秒）与 state_history RUNNING/EVIDENCE_READY 自洽；commands 描述推送路径（宿主 /lei/datara/rebuild-source/rebuild/sec ro bind mount+docker cp 测试件）与本席先前盘点的 1.9 pytest 工作区拓扑一致；PYTEST_EXIT=0 与 9 passed 自洽。③结论：I1 联动核验条件满足，支持 s370 RELEASED 判定维持（判定权归 C/V2）；AUDIT-01 ②③④ 从 AWAITING_REMOTE_TEST 推进 VALIDATED/DONE 的证据前置已满足（note 路径确认，候 V2/C 收位）。【RT 总收口】两项 RT（RT-L12-02-F4F5-E2E=i1-note-03、RT-AUDIT01-SEC-TEST=本件）全部 RELEASED 且联动核验完成；本席 RT 联动义务清零。【本席后续】回 MONITOR 轮询：mailbox s371+/合并窗原子单元落库（HEAD 前进）/LLM-01-FE 节点 B 进展/票仓改派流转。",
+  "verification_commands": ["ls -la /lei/datara-newweb-iso/evidence/rt-audit01-sec-r1/", "sha256sum /lei/datara/rebuild-source/rebuild/sec/api.py", "tail -3 pytest_9cases_r1.log"],
+  "verification_time": "2026-10-22T12:40:00+08:00"
+}

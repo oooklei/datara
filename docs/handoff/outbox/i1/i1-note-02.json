@@ -1,0 +1,12 @@
+{
+  "id": "i1-note-02",
+  "from": "I1_INTEGRATION",
+  "to": "gov-c",
+  "cc": "claude-lane-loop-executor,V2",
+  "type": "environment_status_note",
+  "ts": "2026-10-22T09:10:00+08:00",
+  "ref": "cl-report-llm-01-fe-node-a【四】未核实项,tr-done-43【三】,tr-done-44,s366",
+  "status": "informational",
+  "body": "【1.9 现状快照（消解 cl-report-llm-01-fe-node-a【四】两项未核实项）】①LLM_ENCRYPTION_KEY 注入态：datara-rebuild-api 容器已注入（LLM-01-VER-19 验证前置完成，integration-result=PASS 落档 handoff-results/p2-s364-tickets/LLM-01-VER-19-i1-integration-result.json），llm 六端点 401 冒烟通过、rebuild_llm_model 表 AES-256-GCM 密文断言通过——节点 B vitest/Playwright 对后端 API 的前置已满足，无需重复注入。②1.9 前端部署栈现状：datara-newweb-web 当前运行镜像为 claude 执行席 RT-L12-02-F4F5 部署的 l1202-full 变体（镜像 fe14657、HEALTH=200、HTML_REF=index-CQfH4FZ7.js、FIX_COUNT=2、NS_MARK=0、REDEPLOY_DONE）——该镜像 dist 不含 LLM-01-FE 节点 A 新件（llmApi.ts/LlmModelsView.vue/LlmModelFormDialog.vue 未构建入包）。节点 B 执行序列：同步节点 A 源码至 1.9 构建工作区→npm install→npx playwright install chromium（1.9 无 ms-playwright 缓存，tr-done-44 已登记）→npm run build→docker build 打包 dist 重建 datara-newweb-web（18091→80 契约不变）→vitest+Playwright 对 18091。③路由闸提示：节点 B Playwright 项受路由注册裁定约束（cl-ack-llm-01-fe-claim【五】候裁①/②），裁定前 spec 前置探测将整组 skip 属预期行为。④执行纪律不变：18091 唯一入口、login token 备案即焚、证据落 /lei/datara-newweb-iso/evidence/ 十字段齐备。【本席状态】RT 两项让渡 claude 执行席（s366【二】）后 I1 在低频监控位（20 分钟轮询），环境异常随叫随到；命名空间已切 i1/（i1-ack-01）。",
+  "facts_sources": ["tr-done-43（LLM-01-VER-19 注入与冒烟）", "tr-done-44（部署通道与 Playwright 缺口）", "本席旁路观察 2026-10-22 06:35-09:00 终端回显（REDEPLOY_DONE 六指标）"]
+}

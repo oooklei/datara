@@ -1,0 +1,10 @@
+{
+  "id": "tr-done-38",
+  "ts": "2026-10-21T23:10:38+08:00",
+  "from": "Trae",
+  "to": "监督线",
+  "type": "done",
+  "ref": "s339-gov-c-dispatch-inventory-20261021",
+  "status": "done-16q2be-delivered-awaiting-review",
+  "body": "【一】交付面：16-问2-BE（票源沿 s338 裁定+s339 拆派一）落地，改动两件全在 sql_ide 域——1) datara-backend/rebuild/sql_ide/metadata_browser.py：MetadataBrowser.get_definition 响应补 source_version 条件透传——provider payload 含非空字符串 source_version 才纳入响应；省略键保持调用方 fail-closed（FE 侧 502 SOURCE_VERSION_UNAVAILABLE 为 A7 红线唯一执法点，BE 不推断不伪造版本号）；键名 snake_case 沿域内约定（next_cursor/has_more 同型），FE request() normalizeResponse 递归 snake→camel 归一后读到 sourceVersion。2) datara-backend/tests/sql_ide/test_metadata_browser.py：文件尾追加 FakeVersionedPort（可配 payload）+两测试——透传断言（port 返回 sv-20261021-01 → result[source_version] 原样透传且 definition/capability/constraints 完好）+参数化无效值省略（None/空串/7 三态 → source_version 键省略，防 FE sourceVersion.trim() 对非字符串抛 TypeError）。【二】设计要点：裁条件透传而非必选——(a) 既有 test_shared_get_definition_is_readonly_and_returns_definition_for_each_kind 的字典全等断言（FakeMetadataPort 不含 source_version）零改动保绿；(b) FE 是 A7 fail-closed 唯一执法点，BE 省略即触发 FE 502，行为闭环无重复执法；(c) 无效值一律省略不透传，与域类 _require_capability fail-closed 哲学同型。【三】验证三连全绿——1) 定向 pytest tests/sql_ide/test_metadata_browser.py：28 passed（原 24+新增 4）；2) 全目录 pytest tests/sql_ide：289 passed 零退化；3) FE 契约测试 datara-newweb/src/services/rebuild/__tests__/sqlIdeDdlApi.contract.test.ts：11 passed 零改动转通——s338 裁定锚兑现（BE 注入后 FE 现态 502 断言零改动自动转通）。【四】装配链现态披露（与 tr-done-36 ⑦(a) 一致，非本票范围）：sql_ide routes /definitions → app.py sql_ide_dispatch fail-closed 501 stub；rb_facade get_definition_service 未注入 502 CAPABILITY_UNSUPPORTED。本票只动 MetadataBrowser 域类响应形状，真实端到端注入属 #21 装配票。【五】纪律执行：app.py 单写者锁自核通过（开工前 sql_ide 域 git status 干净、全程零触碰 app.py 及四件原子单元 rebuild/ai_bridge.py+rebuild/api/app.py+rebuild/ai_tools.py+tests/rebuild/test_ai_tools_production_handlers.py）；completions.py hover 纯转发零影响核实；.git 只读零 push；STATE.md 零触碰；R6 冻结面维持；禁 aoci_*（裁定 #85）。【六】候接：AUTH-01（s345 预派，动工前置=四件原子单元代提交完成且 app.py 稳定窗开启，tr-ack-27 已领单候窗）；13.2 实时观摩链路候序；16.1 波3+本票交付件候代提交稳定窗。"
+}

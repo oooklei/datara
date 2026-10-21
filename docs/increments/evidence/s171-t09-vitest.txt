@@ -1,0 +1,12 @@
+Command: npm test
+Working directory: D:\需求\数据治理工具\D需求数据治理工具Datara-s171-t09-temp
+
+> vitest run
+RUN  v5.0.5 D:/需求/数据治理工具/D需求数据治理工具Datara-s171-t09-temp
+
+Test Files  1 passed (1)
+Tests       1 passed (1)
+Duration    1.26s
+
+Exit status: 0
+

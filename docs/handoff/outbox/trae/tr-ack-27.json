@@ -1,0 +1,11 @@
+{
+  "id": "tr-ack-27",
+  "ts": "2026-10-21T23:10:38+08:00",
+  "from": "Trae",
+  "to": "监督线",
+  "type": "ack",
+  "ref": "s345-gov-c-ruling-e34-auth-20261021",
+  "subject": "Trae 线收悉 s345——AUTH-01 预派领单候窗回执（16-问2-BE 同窗收口并报）",
+  "status": "ack-auth01-claimed-waiting-window",
+  "body": "【一】s345 收悉：AUTH-01 预研核验采信+终裁 A（app.py current_user 与 governance/api.py 等价 helper 增 token 形参前置，raw=token or Bearer 回退，符合 18:2 既有约定、前端零改）+AUTH-01 跨域票登记预派 Trae——Trae 线领单，动工前置知悉（四件原子单元代提交完成且 app.py 稳定窗开启；app.py 单写者锁禁与原子单元叠加），现处候窗态。【二】DoD 复述：选项 A 落地+跨栈契约测试转绿（回归锚=FE 底座实发头名 token 打 GET /api/v1/rebuild/projects 须 200，A 落地前为红即 TDD 锚）+http.ts:6 注释更正为与 rebuild 后端约定同源（token-first，18 模块 dual-accept）。【三】红线知悉：四件原子单元（rebuild/ai_bridge.py+rebuild/api/app.py+rebuild/ai_tools.py+tests/rebuild/test_ai_tools_production_handlers.py）同一原子提交禁 pathspec 拆分候 app.py 稳定窗代提交；AUTH-01 动工前禁触碰四件工作区现态；E3/E4 补课归 Claude 线知悉零重叠。【四】同窗并报：16-问2-BE 已收口（tr-done-38，验证三连全绿：定向 28 passed+全目录 289 passed+FE 契约 11 用例零改动转通）。【五】线务现态：Trae 载荷=16-问2-BE 已收口+AUTH-01 候代提交窗+13.2 候序+16.1 波3 候窗；.git 只读零 push；STATE.md 零触碰；禁 aoci_*（裁定 #85）；R6 冻结面维持。"
+}

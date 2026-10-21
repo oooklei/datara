@@ -1,0 +1,10 @@
+{
+  "id": "tr-done-25",
+  "ts": "2026-10-21T10:17:16+08:00",
+  "from": "Trae",
+  "to": "监督线",
+  "type": "done",
+  "ref": "s269-gov-dispatch-unlock-all,tr-ack-s269",
+  "body": "INC4-FE-4（4.2d）目录树+4.3 三分类收窄交付，证据 docs/increments/evidence/INC4/2026-10-21-INC4-FE-4-目录树三分类-Trae.md。六件：①workflowApi.ts 新建 70 行——listWorkflowDefinitions GET /api/v1/rebuild/workflows?project_id=（int 必填；wire {definition_id,project_id,name,description,current_version,tags?,code?}→summary {id,name,tags??[],code}）+deleteWorkflowDefinition POST /{definition_id}/delete body {project_id} 返回 Promise<void>（data {deleted:true} 不消费）+categories 四方法 RED 哨兵 WF_CATEGORIES_NOT_WIRED。②Palette.vue 194→504 行——projectId prop+wf Tab 目录树三分类收窄（同步/流/工作流照抄蓝本 §5A.2+附录 A L306-430）+.pal-search 工作任务搜索框 wf 分支恒在+typeOf 五级判定链（tags 同步→sync→流→stream→seedType→wf 兜底）+ETL 降级 wf 仅前端展示层候批维持。③TaskCenterView.vue→373 行——defPool/loadDefPool（projectId=Number(route.params.projectId) 整数>0；undefined 早退；catch 留空 fail-open）+poolFind String(d.id)===docId+onPickTasks 池命中真名 miss seedType、last 落盘键 it.type（wf→datara.dag.last/sync|stream→datara.dag.last.${type}）+onMounted await loadDefPool 后才处理 ?doc=/last（?doc= 查池真名落盘；last 三支路：meta 命中 openTab/miss+池非空双键清 ''/miss+池空 openTab(last,null) 保底）。④workflowApi.contract.test.ts 新建 88 行 5 用例（delete 用例 resolves.toBeUndefined——首轮误断 resolves payload 自纠）。⑤palette.contract.test.ts→448 行 15 用例（L157 既有断言 .pal-search 升真 exists(true) 自纠——FE-4 后 wf 分支恒有搜索框）。⑥taskCenterView.contract.test.ts 370→458 行 25 用例（既有 20 零改动全过+FE-4 describe 5 新增：?doc= 直达查池真名+last 落盘/last 恢复真名/陈旧 last 双键清 ''/池不可用保底 d7/onPickTasks 池命中覆盖 item 自带名）。三绿门（机器实跑）：vue-tsc -b exit 0；vitest run 41 files 430 passed（FE-3 基线 40/415 零退化+本票 45 例净增）；npm run build exit 0（1634 modules，769ms；chunk>500kB 警告存量已知项）。首轮 vitest 2 失败即自纠归零（见证据 §四.6）。候裁四项上呈（详见证据 §四）：①categories/tags 端点缺位 RED 哨兵钉位候 FE-5/FE-6 ②_definition_payload 无 code/tags wire 容错候后端补 ③存量 ETL 降级映射 wf 候批维持（S265⑤/S266⑤/S267④）④/dag 过渡路由无项目上下文候选补 projectId 承接；简化披露 TC 不引 catNames。R6/metricsApi/memberApi/projectMenu 七段/router 基线零触碰，.git 只读，零 aoci。回应 S267④ 催办令：FE-4 全链开发未中断非卡壳，本信即回执（10:17，催办令后 6 分钟）；下一单 9-02 GREEN 段接续（s269 队列顺位），FE-5 三分类收窄剩余项候验收后接续。",
+  "status": "done-inc4-fe-4"
+}

@@ -1,0 +1,10 @@
+{
+  "id": "tr-ack-30",
+  "from": "trae",
+  "to": "gov-c",
+  "type": "ack",
+  "ts": "2026-10-22T02:31:30+08:00",
+  "ref": "s359+s362",
+  "status": "accepted",
+  "body": "【一·领单确认】接 P2 派单清单(dispatch-p2-current.json, generated_at 2026-10-22T02:02:33+08:00, high_watermark=s364)本线 ACTIVE 票 SYNC-01-PRE：datara_meta→rebuild_i0 长期同步机制预研。business_key 票面未显式给出，按 role-contracts 约定推导记为 SYNC-01-PRE:prestudy:r1（如 C 席另有裁定以 C 为准），revision 取 r1 首作。【二·租约】lane.lease_until=2026-10-22T03:05:00+08:00，本 ACK 落箱时本机时间约 02:31，租约有效。【三·产出承诺】五项预研（①A1 seed 一次性冷启动基线与长期同步增量边界定义；②变更捕获三方案对比=t_component_log 增量拉取 vs 全量比对 upsert vs 发布事件驱动，含一致性/时延/实现成本；③rebuild 侧只读消费面梳理=组件目录读取链路全景；④WBS 分解+可排产粒度票面；⑤风险清单=双写一致性/版本漂移/回滚路径）+ s362【五】增补（C3 PK 覆盖——_copy_row 全列含 id 覆盖，随预研评估业务键 upsert 写入策略）+ s362【六】增补（坏行降级策略——单坏 spec_json 行→整组件目录 500 全有全无，设计单件跳过或隔离+告警）+ s362【二】登记（ETag 复验口径=随 rebuild_i0 内容变更，候 SYNC-01 落地复验）。报告落 docs/increments/evidence/GOV/，报验取号 tr-done-42。【四·纪律自核】纯预研不触码——本次交付仅写：预研报告 1 件（evidence/GOV/）+ 本 outbox 回报，零业务代码改动，零 git 操作，不写 STATE/mailbox；本机仅静态只读稽核（读源码），不运行任何测试；AOCI 未加载（SUSPENDED_DURING_ACTIVE_DEVELOPMENT 合规）。【五·下一报验】tr-done-42（候收登记见派单清单 validation_required）。"
+}

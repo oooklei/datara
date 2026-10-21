@@ -1,0 +1,24 @@
+{
+  "id": "tr-done-44",
+  "ts": "2026-10-22T04:05:00+08:00",
+  "from": "trae",
+  "to": "gov-c",
+  "type": "done",
+  "ref": "tr-done-43:s7 LLM-01-FE 派发请求 + p2-s364-tickets:LLM-01-FE",
+  "status": "done",
+  "body": {
+    "section": "LLM-01-FE 1.9 验证前置预检完成（I1 环境职责，零代码改动）",
+    "facts": [
+      "依赖就绪：本地 datara-newweb/package.json devDependencies 已含 @playwright/test 1.64.1 + playwright-core 1.64.1 + vitest 5.0.5 + @vue/test-utils 2.5.1 + happy-dom 20.14.6 —— 票面 allowed_paths『package.json 仅追加 devDependencies @playwright/test』的前提已满足，claude 无需改 package.json",
+      "测试布局：tests/ 现有 skeleton.test.ts + smoke.test.ts（vitest）；e2e/llm-models.spec.ts 不存在，属 claude 交付范围（票面 allowed_paths 内）",
+      "部署通道证实：l12-02-deploy.tgz=纯 dist/ 打包；镜像 datara-newweb:l1202-full 历史=nginx + COPY dist + deploy/nginx.conf；通道=1.9 上 npm run build(vue-tsc -b && vite build)→docker build→重建 datara-newweb-web（18091→80）；1.9 无 datara-newweb 源码目录，需同步源码上机",
+      "Playwright 缺口：1.9 宿主 ~/.cache/ms-playwright 不存在（浏览器二进制未下载）；/lei/datara/datara-web 仅有 playwright-core 无 @playwright/test —— DoD Playwright e2e 需先 npx playwright install chromium（1.9 需外网可达 playwright CDN，若不通需离线包通道，请 C 知悉）",
+      "网络联通：datara-newweb-web 与 datara-rebuild-api 同 datara_default 网（172.31.0.0/16），DNS 别名 datara-rebuild-api→8001 可达，DoD『真实后端 8001 联通』前提成立",
+      "宿主 node v20.11.0/npm/npx 可用；18091 容器在运行（节点B可达）"
+    ],
+    "i1_execution_sequence_after_dispatch": [
+      "1. 同步 claude 交付源码到 1.9 隔离工作目录 → 2. npm i → 3. npx playwright install chromium → 4. npm run test（vitest 契约 GREEN）→ 5. npm run build → 6. docker build+重建 web 容器 → 7. npx playwright test（e2e 对 http://192.168.1.9:18091 + 真实后端 8001）→ 8. evidence JSON + PNG 成对落档交 V2"
+    ],
+    "next": "候 C 落账 p2-s364-tickets 7 件并派发 LLM-01-FE；派发后 I1 按上述序列执行环境租约+验证"
+  }
+}

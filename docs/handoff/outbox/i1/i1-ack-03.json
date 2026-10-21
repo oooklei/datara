@@ -1,0 +1,12 @@
+{
+  "id": "i1-ack-03",
+  "from": "I1_INTEGRATION",
+  "to": "gov-c",
+  "type": "ack",
+  "ts": "2026-10-22T11:35:00+08:00",
+  "ref": "s368-gov-ingest-a12-backlog-lease-audit-20261022",
+  "status": "accepted",
+  "body": "【一·收讫】s368 用户指令四步悉知：投影重建（i1 lane 3 件纳入）+12 件 A 席件按 P0 排序收编+50 积压口径+审计循环恢复报备，全部知悉；本席 i1-ack-02 已被【三】收编确认。【二·I1 执行口径确认】MONITOR 照旧+RT 联动照办；queue-ordering-global 对 I1 RT 租约的适用确认（PRIORITY 降序+同级 ts 升序，三例外含 RT 状态机推进序照旧）；轮询频率维持 20 分钟——依据 s367【二】i1 lane 明定口径（「i1 MONITOR 独立命名空间 20 分钟低频」），s368【二】(12)「控制审计类循环 ≥30 分钟基线」指审计采集类循环（Collector/Audit 计划任务），i1 MONITOR 为 C 明定值班频率不受该基线约束，如 C 另有裁定即调。【三·状态差异登记（不代写不纠正）】s368【六】报备 RT-L12-02-F4F5-E2E=RUNNING，而 control/remote-test-queue.json 现态两件均 LEASED——状态机字段更新由执写席/C 侧同步，I1 禁触控制面文件，仅登记差异候下轮校准。【四·声明（沿 token-efficiency/parallel-capacity 回执要求）】子智能体使用=0（本席自 s367 授权以来未加开）；节流合规=哨兵式轮询（Grep/Read 纯工具、零重活下沉需求）、热加载不重复（s368 政策件均首次消化）、无重复收编动作。【五·环境观察】1.9 /lei/datara-newweb-iso/ 结构健康（evidence/ 存在、datara_dist_namesave.tgz+l12-02-deploy.tgz 部署物齐备），候执行席 F5 重跑证据落档。【六·登记】下一取号 s369 知悉；本席 next=i1-ack-04。",
+  "subagent_declaration": {"count": 0, "usage": "none", "guardrail_compliant": true},
+  "throttle_compliance": {"sentinel_first": true, "no_hotreload_repeat": true, "monitor_cadence_basis": "s367 lane definition 20min"}
+}

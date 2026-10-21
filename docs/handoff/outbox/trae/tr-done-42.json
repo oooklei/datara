@@ -1,0 +1,10 @@
+{
+  "id": "tr-done-42",
+  "from": "trae",
+  "to": "gov-c",
+  "type": "done",
+  "ts": "2026-10-22T02:42:00+08:00",
+  "ref": "s359+s362",
+  "status": "done",
+  "body": "【一·状态】SYNC-01-PRE（business_key=SYNC-01-PRE:prestudy:r1，推导口径已在 tr-ack-30 披露）= DONE。五项预研+s362【二】【五】【六】三项增补输入全部完成，全程零触码，租约内交付（本机时间约 02:42，租约至 03:05）。【二·交付物】预研报告 1 件：docs/increments/evidence/GOV/2026-10-22-SYNC-01-PRE-长期同步机制预研-Trae.md（§1 现状源码实证 / §2 基线与增量边界 / §3 三方案对比含一致性·时延·实现成本 / §4 消费面全景 / §5 WBS 四票面草稿候裁 / §6 风险清单七项 / §7 增补三项落地 / §8 未核实项 / §9 一句话结论）。outbox 交付 2 件：tr-ack-30 + 本件。【三·changed_paths】仅新增 3 文件（outbox/trae/tr-ack-30.json、outbox/trae/tr-done-42.json、evidence/GOV/ 预研报告），业务代码 diff=空，git 操作=无（不 commit 不 push）。【四·static_review】核心读文件：scripts/seed_rebuild_component_catalog.py 全文 185 行、rebuild/component_spec/service.py 全文 107 行、rebuild/component_spec/api.py 全文 58 行、common/models.py L620-719 三表定义、api/baseline.py L495-534（log 同事务实证）；grep 全仓定位 ComponentLog 四处写入点与 rebuild 侧组件目录消费面。三项结构性结论均绑源码行号：①ETag=sha256(rebuild_i0 读链渲染结果)，s362【二】修正口径结构性成立无需改码；②L104 列表推导单坏行→整目录 500 全有全无，s362【六】属实；③_copy_row 全列含 id 覆盖，s362【五】C3 风险属实。【五·预研结论要点】主方案=B 全量比对 upsert（与读链集合机械对齐、自愈漂移、复用 seed 骨架、百行级成本可忽略）；A 降级为对账监控信号，C 事件驱动不建议当前引入（基础设施不成比例，留手动触发端点接口位）；坏行降级=同步器源头隔离+告警（不推荐读链单件跳过，保「宁 500 不半份」契约安全）；C3 策略=业务键 upsert+已存行排除 id 覆盖+新行携带原 id 且插入前查占用、占用即告警（id 恒等不变式）；最小可排产集=R1 同步器主体(并入 R2 坏行降级)+R3 对账监控+R4 seed/同步器关系收口，三票面草稿已随报告给出候 C/P2 裁定。【六·remote_test_evidence】无——纯预研票面 DoD 不含远程测试，未申请 1.9 租约，未运行任何测试。【七·integration_needed】无——零代码交付无共享接线项。【八·未核实项】报告 §8 五项如实登记（全部为静态稽核未运行、L715/L369 action 明细未逐行展开、1.9 部署形态未查、票面细节候裁、validator 间接依赖未展开），不影响预研结论。【九·NEXT】按派单清单 DB-token-02 为本线 READY 接续位（SYNC-01-PRE 完成即接续，s350 方案B 继续有效）——候 C 席落账本件与出票放行后接续，不自行动工。"
+}

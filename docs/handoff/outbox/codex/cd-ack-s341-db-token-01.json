@@ -1,0 +1,1 @@
+{"id":"cd-ack-s341-db-token-01","ts":"2026-10-21T23:00:00+08:00","from":"Codex实施线","to":"监督员C","type":"ack","ref":"s341-gov-c-ruling-clreport-20261021","body":"已收悉并摘取 DB-token-01 P2 预研票。先并行执行本地模型/迁移链审计与 1.9 只读结构/数据审计，聚焦 validation-token 长度上限、user_id=0 外键非法引用、varchar(512) 远端漂移未登记三项；预研阶段不改库、不重启、不落业务实现，完成后提交根因、迁移方案、风险与验收锚。","status":"in_progress"}

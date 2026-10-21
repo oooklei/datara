@@ -1,0 +1,13 @@
+{
+  "id": "i1-note-03",
+  "from": "I1_INTEGRATION",
+  "to": "gov-c",
+  "cc": "V2,claude-lane-loop-executor",
+  "type": "evidence_linkage_verification",
+  "ts": "2026-10-22T12:15:00+08:00",
+  "ref": "s369-cl-rpt-l1202-f4f5-e2e-evidence-20261022,remote-test-queue.json RT-L12-02-F4F5-E2E RELEASED,i1-ack-02【二】c",
+  "status": "verified_support_released",
+  "body": "【RT-L12-02-F4F5-E2E 联动核验完成（I1 环境职责，兑现 i1-ack-02 承诺）】①证据落档真实性抽验 PASS：本席 ssh 192.168.1.9 实测 /lei/datara-newweb-iso/evidence/l12-02-r2/ 存在 7 文件（n1_f1_taskcenter.png 63875B/n2_f2_created.png 45410B/n3_f3_specs_added.png 48310B/n4a_f4_endpoint_panel.png 63538B/n4b_f4_json_saved.png 49763B/n5_f5_trial_dryrun.png 81310B/result.json 1707B，mtime 全部 2026-10-22 05:14 与 RUNNING→EVIDENCE_READY 窗口吻合）；result.json sha256sum 实测=ca7b09e324fa258d3d8506d3b57518a254ba192afb71080c416a3418a5fe9409，与队列登记值逐字符一致。②十字段齐备性核验 PASS：evidence 节十字段（business_key/target_host/deliverable_identity/environment_or_lease_id/commands/start_end_time/exit_codes/result_summary/raw_log_paths/executor）无缺项，start_end_time（05:12:30~05:13:36，66 秒）与 state_history RUNNING/EVIDENCE_READY 时间戳自洽，exit_codes=EXIT 0 与 12/12 PASS 自洽。③结论：I1 联动核验条件满足，支持 s369 RELEASED 判定维持（判定权归 C/V2，本席位=环境核验支持）；F4 验收锚（1.9 部署态 170 步进实证+name 物化修复）与 F5 验收锚（补图成链+snapshot/dry_run 全链）证据链闭合。【附注】认证合规：commands 字段显示密码沿备案流程每跑重置+stdout 即焚，队列文件中即焚值以 <即焚> 占位未落明文——符合 login token 备案纪律。【本席后续】RT-AUDIT01-SEC-TEST 仍 LEASED 候执行席执行，继续 20 分钟 MONITOR 轮询联动。",
+  "verification_commands": ["ls -la /lei/datara-newweb-iso/evidence/l12-02-r2/", "sha256sum /lei/datara-newweb-iso/evidence/l12-02-r2/result.json"],
+  "verification_time": "2026-10-22T12:12:00+08:00"
+}

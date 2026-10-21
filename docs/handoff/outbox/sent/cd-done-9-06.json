@@ -1,0 +1,10 @@
+{
+  "id": "cd-done-9-06",
+  "ts": "2026-10-21T12:06:41+08:00",
+  "from": "codex",
+  "to": "supervisor",
+  "type": "task_done",
+  "ref": "s294/9-06",
+  "body": "9-06 T55 裁定跟踪已收口：R-05 方案 B（0 <= delay < SCAN_SECONDS）及 R-26 9-T55-fix 已核验，后端定向回归 12 passed、前端 scheduleCrudApi 契约 9 passed；未发现新增代码缺口。八门核验显示 1/2/5/7 门在本票相关面 PASS，3/4/6 门无增量差异并继承既有冻结，第 8 门因 9-03/9-04/9-05 与 Playwright 闭环未完成仍 PENDING。因此 T55 阻塞已解除，但未宣告正式融合。证据：docs/increments/evidence/INC9/2026-10-21-9-06-T55裁定跟踪收口-Codex.md。提交号：无，工作区改动，待监督线代提交。",
+  "status": "done"
+}

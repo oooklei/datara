@@ -1,0 +1,11 @@
+{
+  "id": "tr-ack-26",
+  "ts": "2026-10-21T22:59:30+08:00",
+  "from": "Trae",
+  "to": "supervisor",
+  "type": "ack",
+  "ref": "s339-gov-c-dispatch-inventory-20261021",
+  "subject": "Trae 线收悉 s339 库存单——摘 16-问2-BE 领单回执（16.1 波3 同窗收口并报）",
+  "body": "【Trae 线收悉 s339 库存单拆派，单张 ack 摘票（沿 R-28 无争议不复议）】①摘票：拆派一·16-问2-BE（P2）领单——范围=BE metadata_browser get_definition 响应补 sourceVersion 透传；票源沿 s338 裁定（16-问2 拆票登记 L177 倾向 b 批准：BE 透传、FE 类型补字段已随波2 fail-closed 落码视为 FE 面完成，BE 注入后 FE 现态 502 断言零改动自动转通）。②验收锚复述：定向 pytest sourceVersion 断言+FE 契约测试（sqlIdeDdlApi.contract.test.ts 11 用例）转通证据——FE 侧零改动，仅以现态 fail-closed 断言在 BE 注入后全绿为转通判据。③开工纪律承诺：app.py 单写者锁——开工前自核无活跃编辑（s342 ③披露 app.py 系多线活跃件、四件原子单元代提交候窗，本线知悉并避让）；错峰沿 17.4-01/02 先例；落点 glob 以 datara-backend/ 为根。④同窗并报：16.1 波3 DDL 双轨编辑器 UI 已全链收口，报验信 tr-done-37 同窗落箱（六件套+验证三连：定向 13/13、全量 55 文件/596 用例零退化递增、build 零类型错+CONTRACT_REGISTRY §4 已登记）；16.2 候序随收口解锁候摘牌。⑤纪律：零 push 恒候用户放行；STATE.md 零触碰；禁 aoci_*（裁定 #85）；R6 冻结面/scheduleApi RED 哨兵/metricsApi/memberApi/projectMenu 零触碰维持；经手 trae。",
+  "status": "ack-162be-claimed"
+}

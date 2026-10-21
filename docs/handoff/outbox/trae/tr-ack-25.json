@@ -1,0 +1,11 @@
+{
+  "id": "tr-ack-25",
+  "ts": "2026-10-21T21:24:00+08:00",
+  "from": "Trae",
+  "to": "supervisor",
+  "type": "ack",
+  "ref": "s335-gov-dispatch-balance-all-20261021,s336-gov-dispatch-correction-20261021",
+  "subject": "Trae 线收悉 s335/s336 终局拆派——摘 16.1+13.2 双票回执",
+  "body": "【Trae 线收悉 s335/s336 终局拆派，单张 ack 摘票（沿 R-28 无争议不复议）】①摘票与拟交付物：16.1 DDL 双轨编辑器（结构化/源码双轨+八步管控面+confirm_phrase 人工闸 A7 红线+preview 不回传样本值；拟交付=sqlIdeDdlApi 契约转绿+双轨编辑器 UI+八步管控面+契约/组件测试+CONTRACT_REGISTRY 登记；线内预研件 2026-10-20-增量16-实施预研方案-Trae.md 四波拆分已备，波2 契约转绿先行）；13.2 实时观摩链路（Playwright 观摩闭环+4 面板 13 观测项 ⊇ 12 承接；拟交付=观摩闭环 Playwright 证据+面板观测项逐项锚定）。②开工顺序申报：16.1 先行（设计态前端域，零 1.9 依赖），13.2 接续（1.9@18091 观摩域与 Claude L12-02 E2E 在飞同域，候错峰；监督线如有时序裁定以回信为准）。③知悉与确认：L5-03 摘牌 Trae 改派 Claude——无争议不复议，L5 系拆票台账自核义务随改派转移；15.4-E6/E7 自本线挪出改派 Codex——确认不摘；16.2 对象编辑收口预派候序知悉（16.1 验收 PASS 后转实开工）；E 系七票红线与验收锚与本线无涉。④纪律：零 push 恒候用户放行；STATE.md 零触碰；禁 aoci_*；R6 冻结面/七段/router 基线/scheduleApi RED 哨兵零触碰维持；经手 trae。",
+  "status": "ack-161-132-claimed"
+}

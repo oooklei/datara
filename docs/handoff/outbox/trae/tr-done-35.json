@@ -1,0 +1,10 @@
+{
+  "id": "tr-done-35",
+  "ts": "2026-10-21T20:12:00+08:00",
+  "from": "Trae",
+  "to": "监督线",
+  "type": "done",
+  "ref": "s285-gov-four-rulings-v2-exec-20261021,s292-gov-7j41-confirm-20261021",
+  "body": "【Trae 线：7J-41 旧组件出处甄别·三件套交付报验】①票面执行口径：承 s292 六裁定——A 包 reroute 登记申报（登记落笔归监督线候用户追认，Trae 零改权威文档）、D 包 topo 13 项剥离三分类清单落档、C 包 stream 10 项迁移映射表产出；B/C 实删本票零执行（s292■四不授权，候 1.9 现网只读快照落档后由监督线裁定派单，快照前无任何删除动作）。②件1 三分类处置清单 41 项全量落档：A=1（reroute ord11 保留候追认）+B=17（etl ord37-53 实删候快照冻结）+C=10（stream ord54-63 映射收敛）+D=13（topo ord64-76 域外剥离保留拓扑专属注册表，不按生产任务组件下线）=41 计数复核通过；live_published_state=UNKNOWN 原样保留，静态引用文件数仅参考不代替工作流实例引用数。③件2 迁移映射表 10 项：s_cdc/s_kafka→stream_input(C18)、p_filter/p_join/p_window/op_cep/op_script→stream_fuse(C19)、o_alert/o_doris/o_kafka→stream_output(C20)；正式流 type 实锚 datara-web/src/graph/profiles/dag.ts L61-62/L852/L976/L1039，page_board 显示组件不在映射域；本表为 type 级语义映射，历史图迁移+移出旧 spec=另票候快照。④件3 reroute 登记申报：转接节点=DAG 编辑器结构节点（非运行任务组件），实证 master/dag.py:16-68（发布执行前消除并桥接前后边）+dag.ts:277-286（编辑器便利节点实现）；候用户追认并补 v3 权威登记，追认前禁当无出处运行组件删除。⑤纪律：零代码改动（spec/palette/注册/catalog/worker/profiles 全域零触碰）；op_script 全局 type 冲突归 7J-op 第二票；demo_pipeline（I1/F63 回写）与 smoke（C38 工程内部工具）不在 41 项域；基线 commit ccb5640adf93903ccb6d40a580dc7e25e732614a。⑥Manifest 两件：证据件 docs/increments/evidence/INC7/2026-10-21-7J-41-旧组件出处甄别三件套-Trae.md SHA256=8406aa1f1ea17e62f59eba035662f3b8de9f413f975586ff5a9a272568820f8b/114 行；tr-done-35 信件本体（落箱 docs/handoff/outbox/trae/）。⑦三件套齐备符合 s292■六完成信要求，候验收（口径=s292■三映射全表对照+palette 剩余项核查）。⑧心跳让渡承 tr-done-34 口径，三数更新：在飞 8（9-03/9-04/9-05+17.4-01/02+17.3-01+L5-02+7J-41 候验收）/未开工 1（L5-03 候派令，未派不抢跑）/已验收 6+候销 7；FE-8/15.2-D/15.3-A/B 挂库候摘维持。",
+  "status": "done-7j-41-triage-green"
+}

@@ -1,0 +1,16 @@
+Command: npm run build
+Working directory: D:\需求\数据治理工具\D需求数据治理工具Datara-s171-t09-temp
+
+> vue-tsc -b && vite build
+vite v8.3.4 building client environment for production...
+transforming...
+✓ 1595 modules transformed.
+rendering chunks...
+computing gzip size...
+dist/index.html                     0.47 kB │ gzip:   0.30 kB
+dist/assets/index-CnPCTGiJ.css    364.27 kB │ gzip:  49.18 kB
+dist/assets/index-SbB7IUus.js   1,006.62 kB │ gzip: 324.26 kB
+✓ built in 690ms
+
+Warning: one generated chunk exceeded 500 kB after minification. Exit status was 0; this is a performance advisory and did not fail the build.
+

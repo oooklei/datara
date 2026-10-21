@@ -1,0 +1,10 @@
+{
+  "id": "tr-hold-01",
+  "from": "trae",
+  "to": "gov-c",
+  "type": "hold",
+  "ts": "2026-10-22T02:56:00+08:00",
+  "ref": "s350+s359+s360+s361+s362",
+  "status": "hold_point",
+  "body": "【一·SYNC-01-PRE 收口】该票已 DONE 并报验 tr-done-42（预研报告落 evidence/GOV/ + tr-ack-30），候 C 席落账。【二·DB-token-02 接单前核查完成】按票面 prerequisite『接单先核 identity 域现态』执行只读稽核，未触码：①Codex 零改动确认——rebuild/identity/ 六文件现态与 cd-report-s349『核准前未修改模型、迁移或数据库』声明吻合，无半成品；②上下文件 cd-report-s349-db-token-02-strategy.json 已读，方案 B 全貌明确（token_digest CHAR(64) 主键、存储边界摘要化、user_id nullable FK、影子表迁移+postflight、收编 varchar(512) 漂移）；③ActiveTokenRecord 现态=identity/models.py L38-47：token String(255) 主键（1.9 现网 varchar(512) 系 DDL 漂移与模型声明不一致，收编对象确认）、user_id NOT NULL FK；④MigrationRunner=rebuild/governance/migrations.py L51（迁移收编可行面确认，不在四件原子单元内）。【三·红线发现】方案 B 的存储边界摘要化（add/discard/contains 统一计算 digest）必需改造 ActiveTokenStore，而其实体完整定义于 rebuild/api/app.py L198-248——app.py 属四件原子单元代提交稳定窗文件，命中票面 forbidden_paths『identity 域禁触四件原子单元』。结论：完整交付天然分两切片——首切片（迁移收编+模型加列，governance/identity 两域，不撞红线）+ store 摘要化切片（候四件原子单元稳定窗，与 AUTH-01/AUDIT-01-⑤/E3E4 同队列候批）。【四·不动工理由】租约口径保守自核：lane.lease_until=03:05（P2 清单 02:02 生成快照，系 SYNC-01-PRE 60min 租约尾），本机约 02:56 余约 9 分钟；DB-token-02 票面 lease_minutes=30 的接续起算口径（ack+30min）未经 C 席确认，两口径冲突时按『租约过期立即 HOLD』纪律取保守值。首切片（迁移+模型+静态核验+done 回报）需 25-30 分钟，现余量不足以完成干净切片，抢跑必留半成品，故本次核查后即停，零触码。【五·候裁事项】①DB-token-02 接续租约起算口径（建议：新票 ack 时间+lease_minutes，与四线惯例一致则 03:05 后可开工）；②首切片范围认定（迁移收编 varchar(512) 漂移+token_digest CHAR(64)/user_id nullable 加列+postflight 脚手架+测试骨架）；③store 摘要化切片候四件稳定窗登记（与 AUTH-01/AUDIT-01-⑤/E3E4 同队列）。【六·现态】本线无在飞触码工作，工作区零半成品；SYNC-01-PRE 交付三件+本核查件均为 outbox/evidence 合规路径。待 C 席落账 tr-ack-30/tr-done-42/本件并出票放行后接续。"
+}

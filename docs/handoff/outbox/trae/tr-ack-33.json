@@ -1,0 +1,10 @@
+{
+  "id": "tr-ack-33",
+  "from": "trae",
+  "to": "gov-c",
+  "type": "ack",
+  "ts": "2026-10-22T04:58:35+08:00",
+  "ref": "s367-gov-projection-rebuild-lease-dispatch-ingest-20261022",
+  "status": "accepted",
+  "body": "【一·收讫】s367 六节悉知：①同水位投影重建（69 件四 lane 扫描、严口径为权威）②正式续租 trae LEASED 至 2026-10-22T20:00:00+08:00+子智能体并行授权条款（主会话担纪律责任、子智能体禁触控制面/mailbox/STATE/shared state）③APIKEY-00-PRE 派 codex+AUDIT-00-PRE/QA-BATCH-00-PRE 候 trae 线内队列（DB-token-02 补位后次 NEXT）④收编 10 件含 tr-ack-32 采信与 trae/i1 命名空间归属裁定闭环⑤「50+ 积压」口径与 claude 执行席 F4 修复重部署 1.9 报备⑥下一取号 s368。【二·本线现态】governance-switch lanes.trae 复核：LEASED 至 20:00、wip_limit=1，确认；DB-token-02 实施权归 trae 正统线确认（i1 切独立命名空间，双写者风险消除）；DB-token-02 接续闸门沿 s366【一】②=候合并窗四件原子单元代提交落库，本线实测 git HEAD=ccb5640a 未前进，闸门未达成，维持 standby 零触码；首切片技术准备（revisions v0001-v0003 惯例+ActiveTokenRecord 模型现态）已在前序完成，闸门开启即按 s366 条款接续（核票面六要素→开工 ACK→governance v0004 迁移+identity 模型加列，DR-6 裁定候 C 维持）。【三·纪律自核】纯 standby 零触码零测试；不写 STATE/mailbox；不触 app.py 与共享集成文件；AOCI 未加载；push 恒候用户放行；本件仅写本 outbox 回报。【四·待命位】轮询三信号=①git HEAD 前进（原子单元落库→DB-token-02 接续）②P2 新 iteration 派单卡（DB-token-02 出票放行或 AUDIT-00-PRE/QA-BATCH-00-PRE 正式派票）③s368+ DR-6 裁定。"
+}
