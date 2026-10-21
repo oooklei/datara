@@ -8,27 +8,52 @@
 
 校验次序（旧侧原样，**注意 4002 先于 8003/8002/8004**）：
 分层存在 → 引擎存在 → 编码正则 → 编码唯一 → 分层命名规范。
+
+**A6-17 物理化**（`physicalize`，实锚 `api/model.py:503-546`）：script 分支纯出文本不落库；
+exec 分支白名单仅 `CREATE`（`sqlglot` 拆语句防注释内分号误拆）+ 逐条执行 + 失败附已执行条数。
+exec 的连接面由随票下沉的 `rebuild/model/dsconn.py` 提供（pymysql 原生短连接，不进池），
+并经 `connector` 注入缝使契约测试可用 fake 连接（不触真实网络）。
+
+**A6-18 逆向扫描库表**（`reverse_scan`，实锚 `api/model.py:598-626`）：information_schema
+内省表清单（表名/注释/行数估算/列数）；`rows` 为估算值。
+
+**A6-19 逆向导入建模**（`reverse_import`，实锚 `api/model.py:642-684`）：逐表建草稿；
+已存在/校验不过计入 `skipped`，成功者落库。随票下沉两个纯助手 `_col_to_field`
+（`:562-577`，COLUMNS 行 → 契约字段 dict）与 `_reverse_create`（`:580-590`，建草稿 + 字段），
+二者均为纯函数/无外部依赖，可差分锁定。
+
+**A6-20 DDL 文件导入**（`reverse_import_ddl`，实锚 `api/model.py:687-735`）：`.sql` ≤5MB
+→ `parse_create_tables`（随票下沉 `rebuild/model/ddlparser.py`，纯函数可差分）→ ODS 草稿；
+解码兜底 `decode_ddl`（utf-8 → gbk）与 5MB 上限在 API 层（旧侧同在路由内）。
 """
 
 from __future__ import annotations
 
 import json
+import logging
 import re
 from dataclasses import dataclass
-from typing import Any, Optional
+from typing import Any, Callable, Optional
 
+import sqlglot
+from sqlglot import exp
 from sqlalchemy import or_
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from rebuild.model.ddlgen import dialect_notes, gen_ddl
+from rebuild.model.ddlparser import parse_create_tables
+from rebuild.model.dsconn import open_connection
 from rebuild.model.errors import (
+    DS_NOT_FOUND,
     MODEL_CODE_DUP,
     MODEL_CODE_INVALID,
+    MODEL_DDL_INVALID,
     MODEL_FIELDS_LOCKED,
     MODEL_NAMING_RULE,
     MODEL_NOT_FOUND,
     MODEL_IN_USE,
+    MODEL_PHYS_FAIL,
     MODEL_REV_CONFLICT,
     MODEL_STATE_CONFLICT,
     PARAM_INVALID,
@@ -40,7 +65,10 @@ from rebuild.model.models import (
     DwModelRecord,
     DwModelRelationRecord,
     DwModelVersionRecord,
+    DataSourceRecord,
     EngineTypeRecord,
+    LineageEdgeRecord,
+    _now,
 )
 from rebuild.model.repository import (
     ModelRepository,
@@ -52,6 +80,79 @@ from rebuild.model.repository import (
 )
 
 CODE_RE = re.compile(r"^[a-z][a-z0-9_]*$")
+
+# 审计留痕（旧侧 `api/model.py:38` `audit = get_logger("audit.model")`）。
+# rebuild 无 `common/log.py`，按域内既有口径用 stdlib `logging`（同 `rebuild/model/dicts.py:19`
+# 的 `logging.getLogger("rebuild.model")`）；命名挂 `rebuild.model` 之下，与旧侧
+# `audit.model` 的「建模域审计」语义一一对应。**仅落日志，无 DB 审计表**
+# （旧侧同：`common/audit.py` 不存在，`audit` 只是 logger）。
+audit = logging.getLogger("rebuild.model.audit")
+
+# 逆向导入 engine 映射：ds.type → EngineType 主键（`_require_conn_ds` 已限定仅这两种类型）。
+# 迁移源实锚 `datara-backend/api/model.py:44`（`_REV_ENGINE_MAP`）。
+# 注意：此映射**不查 EngineType 表**——旧侧逆向路径即直写字面量（见 `_reverse_create` 注记）。
+_REV_ENGINE_MAP = {"mysql": "MySQL", "greatdb": "GreatDB"}
+
+
+def _col_to_field(c: tuple) -> dict:
+    """information_schema.COLUMNS 行（10 列）→ API 契约字段 dict。
+
+    迁移源实锚 `datara-backend/api/model.py:562-577`（`_col_to_field` 逐项照抄）。
+    入参序：`name, data_type, column_type, is_nullable, default, comment, key,
+    char_len, num_p, num_s`；**`column_type` 解包后不使用**（`_column_type`），
+    与旧侧同（仅 `DATA_TYPE` 决定类型族）。
+    """
+    (name, data_type, _column_type, is_nullable, default, cmt, key,
+     char_len, num_p, num_s) = c
+    dtype = str(data_type or "varchar").upper()
+    length, precision = "", ""
+    if dtype in ("VARCHAR", "CHAR"):
+        length = str(char_len or "")
+    elif dtype in ("DECIMAL", "NUMERIC"):
+        length = str(num_p or "")
+        precision = str(num_s or "")
+    return {
+        "name": name, "dataType": dtype, "length": length, "precision": precision,
+        "nullable": is_nullable == "YES",
+        "defaultValue": str(default) if default is not None else "",
+        "comment": cmt or "", "isPk": key == "PRI", "isPartition": False, "dictRef": "",
+    }
+
+
+def decode_ddl(raw: bytes) -> str:
+    """DDL 字节流解码：`utf-8` 优先，失败退 `gbk(errors="replace")`。
+
+    迁移源实锚 `datara-backend/api/model.py:706-709`（逐行照抄）。
+    纯函数（无 IO）→ 契约测试可直接断言编码兜底行为。
+    """
+    try:
+        return raw.decode("utf-8")
+    except UnicodeDecodeError:
+        return raw.decode("gbk", errors="replace")
+
+
+def _reverse_create(session: Session, code: str, layer: str, name: str, domain: str,
+                    engine: str, owner: str, fields: list[dict], remark: str = "") -> int:
+    """逆向建草稿模型 + 字段（调用方已做 code 查重/规范校验）。
+
+    迁移源实锚 `datara-backend/api/model.py:580-590`（`_reverse_create` 逐行照抄）。
+    三处「照抄而非优化」的刻意为之：
+    ① **不做**分层/引擎存在闸——旧侧 `create_model`（`:171-174`）有此二闸，但逆向路径
+       刻意没有；`engine` 直接取 `_REV_ENGINE_MAP[ds.type]` 字面量（`"MySQL"`/`"GreatDB"`），
+       不校验该名字是否存在于 `t_engine_type`。
+    ② `flush()` 而非 `commit()`：整批循环结束由调用方统一提交（旧侧 `:682`）。
+    ③ `name=name or code`：空名回落为编码（旧侧同）。
+    """
+    m = DwModelRecord(
+        code=code, name=name or code, layer=layer, type="明细表",
+        biz_domain=domain, engine=engine, status="draft", version=1,
+        security_level="内部", owner=owner, remark=remark,
+    )
+    session.add(m)
+    session.flush()
+    for i, f in enumerate(fields, 1):
+        session.add(DwModelFieldRecord(model_id=m.id, seq=i, **_field_kwargs(f)))
+    return m.id
 
 
 @dataclass(frozen=True)
@@ -78,13 +179,39 @@ class ModelUpdateInput:
     db_name: Optional[str] = None
 
 
+@dataclass(frozen=True)
+class ReverseImportTable:
+    """A6-19 逆向导入单表入参（旧侧 `ReverseImportTable` 照抄，`:629-633`）。
+
+    `tb` 为必填；`layer` 缺省 `"ODS"`；`name` 缺省 `None`（服务侧 `t.name or ""`）。
+    """
+
+    tb: str
+    layer: str = "ODS"
+    biz_domain: str = ""
+    name: Optional[str] = None
+
+
 class ModelService:
     """建模主表写操作（本票仅 `create`；后续票按同形追加）。"""
 
-    def __init__(self, session: Session, owner: str) -> None:
+    def __init__(
+        self,
+        session: Session,
+        owner: str,
+        *,
+        connector: Optional[Callable[..., Any]] = None,
+    ) -> None:
+        """`connector` = 物理化 exec 分支的连接工厂（A6-17 注入缝）。
+
+        缺省 `rebuild.model.dsconn.open_connection`（照抄旧侧 `common/dsconn.py:38-62`）；
+        契约测试注入 fake 连接，**避免测试触真实网络**（域规范：本机只做代码/静态/类型/
+        逻辑稽核，真库联调归 192.168.1.9）。
+        """
         self.session = session
         self.owner = owner
         self.repository = ModelRepository(session)
+        self._connector = connector or open_connection
 
     def create(self, value: ModelCreateInput) -> DwModelRecord:
         code = value.code.strip()
@@ -487,13 +614,379 @@ class ModelService:
             raise ModelDomainError(MODEL_CODE_INVALID, str(exc), status=400) from None
         return {"engine": ddl_id, "ddl": ddl, "notes": dialect_notes(fields, ddl_id)}
 
-    def _check_code(self, code: str, layer: DwLayerRecord) -> None:
-        """编码正则 + 唯一 + 分层命名规范（创建/逆向共用；迁移源实锚 `api/model.py:76-85`）。"""
+    def physicalize(
+        self,
+        model_id: int,
+        engine: str,
+        ds_id: Optional[int] = None,
+        db_name: Optional[str] = None,
+        mode: str = "script",
+        ddl: Optional[str] = None,
+    ) -> dict[str, Any]:
+        """物理化（script/exec 双模式；旧侧 `api/model.py:503-546` 逐行照抄）。
+
+        ① 模型不存在 → 8001/404（**先于** mode 闸，与旧侧同序）
+        ② `mode` 闸：非 `exec`/`script` → 4002/400「mode 仅支持 exec/script」
+        ③ 引擎白名单闸：非 `mysql`/`greatdb`/`doris` → 4002/400「不支持的引擎方言: …」
+           （**注意 doris 可生成脚本但不可 exec** —— exec 分支的数据源类型闸在 ⑤）
+        ④ `ddl` 入参缺省则由 `gen_ddl` 生成；`ValueError` → 8003/400，msg 用异常原文
+        ⑤ **script 分支到此直接返回** `{script, notes}`，**不落库、不改状态**
+        ⑥ exec：数据源行缺失或 `type` 非 mysql/greatdb → 4001/400
+        ⑦ exec：`sqlglot.parse(sql, read="mysql")` 拆语句（**防注释内分号误拆**）；
+           解析异常 → 8009/400「DDL 解析失败: …」
+        ⑧ exec：白名单**仅放行 `exp.Create`**（排除法会漏 `Command` 兜底节点如 `GRANT`）；
+           含非 CREATE 或语句列表为空 → 8009/400「物理化仅允许 CREATE TABLE 语句」
+        ⑨ exec：逐条执行 + `conn.commit()`；失败 → 8009/400，
+           `data={"executed": N, "error": str(exc)}`，**状态不变**（I18 §8）
+        ⑩ exec 成功：`status="built"` + `last_ddl` + `built_at` + `built_by`，审计留痕，
+           返回 `{status: "built", executed: N}`
+
+        **不判状态闸**：旧侧对 `draft`/`published`/`built`/`produced` 一律放行物理化，
+        回草稿由 A6-15 负责 —— 照抄，不额外加闸。
+        """
+        record = self.session.get(DwModelRecord, model_id)
+        if record is None:
+            raise ModelDomainError(MODEL_NOT_FOUND, status=404)
+        if mode not in ("exec", "script"):
+            raise ModelDomainError(PARAM_INVALID, "mode 仅支持 exec/script", status=400)
+        fields = [
+            _field_row(f)
+            for f in (
+                self.session.query(DwModelFieldRecord)
+                .filter(DwModelFieldRecord.model_id == model_id)
+                .order_by(DwModelFieldRecord.seq)
+                .all()
+            )
+        ]
+        if engine not in ("mysql", "greatdb", "doris"):
+            raise ModelDomainError(PARAM_INVALID, f"不支持的引擎方言: {engine}", status=400)
+        try:
+            sql = ddl or gen_ddl(record.code, record.name, fields, engine)
+        except ValueError as exc:  # ddlgen 约定：非法标识符/类型/空字段 → 400
+            raise ModelDomainError(MODEL_CODE_INVALID, str(exc), status=400) from None
+        if mode == "script":
+            return {"script": sql, "notes": dialect_notes(fields, engine)}
+
+        ds = self.session.get(DataSourceRecord, ds_id) if ds_id else None
+        if ds is None or ds.type not in ("mysql", "greatdb"):
+            raise ModelDomainError(
+                DS_NOT_FOUND, "物理化需选择 mysql/greatdb 连接型数据源", status=400
+            )
+        try:
+            stmts = [s for s in (sqlglot.parse(sql, read="mysql") or []) if s is not None]
+        except sqlglot.errors.ParseError as exc:  # 畸形 DDL 一并 400 而非 500
+            raise ModelDomainError(MODEL_PHYS_FAIL, f"DDL 解析失败: {exc}", status=400) from None
+        bad = next((s for s in stmts if not isinstance(s, exp.Create)), None)
+        if bad is not None or not stmts:  # 白名单仅 CREATE；空语句列表同样拒绝
+            raise ModelDomainError(
+                MODEL_PHYS_FAIL, "物理化仅允许 CREATE TABLE 语句", status=400
+            )
+        executed = 0
+        try:
+            conn = self._connector(ds, db=db_name or None)
+            try:
+                with conn.cursor() as cur:
+                    for s in stmts:
+                        cur.execute(s.sql(dialect="mysql"))
+                        executed += 1
+                    conn.commit()
+            finally:
+                conn.close()
+        except Exception as exc:  # noqa: BLE001 执行失败：状态不变 + 审计 + 已执行条数
+            audit.error(
+                "model.physicalize user=%s code=%s FAIL executed=%d err=%s",
+                self.owner, record.code, executed, exc,
+            )
+            raise ModelDomainError(
+                MODEL_PHYS_FAIL,
+                f"DDL 执行失败（已执行 {executed} 条）：{exc}",
+                status=400,
+                data={"executed": executed, "error": str(exc)},
+            ) from None
+        record.status = "built"
+        record.last_ddl = sql
+        record.built_at = _now()
+        record.built_by = self.owner
+        self.session.commit()
+        audit.info(
+            "model.physicalize user=%s code=%s version=%s", self.owner, record.code, record.version
+        )
+        return {"status": "built", "executed": executed}
+
+    def _require_conn_ds(self, ds_id: int) -> DataSourceRecord:
+        """连接型数据源闸（逆向 scan/import/import-ddl 共用；旧侧 `api/model.py:552-558`）。
+
+        ① 行缺失 → 4001/400，**msg 用内置文案**（旧侧 `ApiError(DS_NOT_FOUND, status=400)` 无 msg）
+        ② `type` 非 mysql/greatdb → 4002/400「逆向导入仅支持连接型数据源（mysql/greatdb）」
+           （旧侧此处用 PARAM_INVALID 而非 DS_NOT_FOUND —— 照抄该「类型不符报 4002」口径）
+        """
+        ds = self.session.get(DataSourceRecord, ds_id)
+        if ds is None:
+            raise ModelDomainError(DS_NOT_FOUND, status=400)
+        if ds.type not in ("mysql", "greatdb"):
+            raise ModelDomainError(
+                PARAM_INVALID, "逆向导入仅支持连接型数据源（mysql/greatdb）", status=400
+            )
+        return ds
+
+    def reverse_scan(self, ds_id: int, db_name: str = "") -> dict[str, Any]:
+        """逆向内省表清单（表名/注释/行数估算/列数；旧侧 `api/model.py:572-594`）。
+
+        ① 数据源闸（`_require_conn_ds`）：4001 / 4002
+        ② `target_db = body.dbName or ds.db_name or ""` —— **falsy 链**照抄（空串库名合法）
+        ③ **连接用 `open_connection(ds)`，不传 `db`** —— 连接落在 `ds.db_name`，
+           `target_db` 只进 SQL 的 `TABLE_SCHEMA = %s`（information_schema 跨库可查）；照抄
+        ④ 两条 `information_schema` 查询（TABLES + COLUMNS 计数），`cur.close()`/`conn.close()`
+           双层 `finally` 保证释放（**游标非上下文管理器**，旧侧同）
+        ⑤ 行数/列数为 **int 兜底**（`int(r[2] or 0)`、`int(r[1] or 0)`）；`comment` `None → ""`；
+           `cols` 查不到计 0（`col_counts.get(r[0], 0)`）
+        ⑥ 出参 `{db: target_db, tables: [{tb, comment, rows, cols}]}`；表序 = SQL `ORDER BY TABLE_NAME`
+           （**不在 Python 侧重排**，照抄）
+        """
+        ds = self._require_conn_ds(ds_id)
+        target_db = db_name or ds.db_name or ""
+        conn = self._connector(ds)
+        try:
+            cur = conn.cursor()
+            try:
+                cur.execute(
+                    "SELECT TABLE_NAME, TABLE_COMMENT, TABLE_ROWS FROM information_schema.TABLES "
+                    "WHERE TABLE_SCHEMA = %s AND TABLE_TYPE = 'BASE TABLE' ORDER BY TABLE_NAME",
+                    (target_db,),
+                )
+                rows = cur.fetchall()
+                cur.execute(
+                    "SELECT TABLE_NAME, COUNT(*) FROM information_schema.COLUMNS "
+                    "WHERE TABLE_SCHEMA = %s GROUP BY TABLE_NAME",
+                    (target_db,),
+                )
+                col_counts = {r[0]: int(r[1] or 0) for r in cur.fetchall()}
+            finally:
+                cur.close()
+        finally:
+            conn.close()
+        tables = [
+            {"tb": r[0], "comment": r[1] or "", "rows": int(r[2] or 0), "cols": col_counts.get(r[0], 0)}
+            for r in rows
+        ]
+        return {"db": target_db, "tables": tables}
+
+    def reverse_import(self, ds_id: int, db_name: str,
+                       tables: list["ReverseImportTable"]) -> dict[str, Any]:
+        """逆向导入建模（逐表建草稿；已存在/校验不过计入 skipped，成功者落库）。
+
+        迁移源实锚 `datara-backend/api/model.py:642-684`（`reverse_import` 逐行照抄）。
+        逐表次序：① `code = tb.strip()` ② 同名模型 → skipped「同名模型已存在」
+        ③ `_check_code` 不过 → skipped（`reason` 取异常文案，缺省「校验未通过」）
+        ④ 内省 COLUMNS；空 → skipped「未找到列（表不存在？）」⑤ `_reverse_create`。
+        **无整批事务**：逐表 `flush` 后循环结束统一 `commit`（旧侧 `:682`）。
+        """
+        ds = self._require_conn_ds(ds_id)
+        target_db = db_name or ds.db_name or ""
+        imported, skipped = 0, []
+        conn = self._connector(ds)
+        try:
+            for t in tables:
+                code = t.tb.strip()
+                if self.repository.find_by_code(code) is not None:
+                    skipped.append({"tb": code, "reason": "同名模型已存在"})
+                    continue
+                try:
+                    self._check_code(code, self.session.get(DwLayerRecord, t.layer))
+                except ModelDomainError as exc:
+                    skipped.append({"tb": code, "reason": exc.message or "校验未通过"})
+                    continue
+                cur = conn.cursor()
+                try:
+                    cur.execute(
+                        "SELECT COLUMN_NAME, DATA_TYPE, COLUMN_TYPE, IS_NULLABLE, COLUMN_DEFAULT, "
+                        "COLUMN_COMMENT, COLUMN_KEY, CHARACTER_MAXIMUM_LENGTH, NUMERIC_PRECISION, "
+                        "NUMERIC_SCALE FROM information_schema.COLUMNS "
+                        "WHERE TABLE_SCHEMA = %s AND TABLE_NAME = %s ORDER BY ORDINAL_POSITION",
+                        (target_db, code),
+                    )
+                    cols = cur.fetchall()
+                finally:
+                    cur.close()
+                if not cols:  # 目标表不存在/无列信息 → 跳过，不建 0 字段草稿模型
+                    skipped.append({"tb": code, "reason": "未找到列（表不存在？）"})
+                    continue
+                _reverse_create(
+                    self.session, code, t.layer, t.name or "", t.biz_domain,
+                    _REV_ENGINE_MAP[ds.type], self.owner, [_col_to_field(c) for c in cols],
+                )
+                imported += 1
+        finally:
+            conn.close()
+        self.session.commit()
+        audit.info(
+            "model.reverse_import user=%s imported=%d skipped=%d",
+            self.owner, imported, len(skipped),
+        )
+        return {"imported": imported, "skipped": skipped}
+
+    def reverse_import_ddl(self, raw: bytes) -> dict[str, Any]:
+        """DDL 文件导入（`.sql`，≤5MB）：sqlglot 解析 CREATE TABLE → ODS 草稿。
+
+        迁移源实锚 `datara-backend/api/model.py:687-735`（`reverse_import_ddl`）。
+        **分层读取 + 分块上限由 API 层负责**（旧侧同在路由内）；本方法只接已读入的字节：
+        ① `decode_ddl` 解码（utf-8 → gbk 兜底）② `parse_create_tables` 解析
+        ③ 逐表：空名跳过 → 同名模型 skipped → `_check_code(code, "ODS")` 不过 skipped
+        → `_reverse_create`（engine 恒 `"MySQL"`、remark = 表注释或「DDL 导入」）
+        ④ 末尾统一 `commit`。
+        """
+        sql = decode_ddl(raw)
+        try:
+            parsed = parse_create_tables(sql)
+        except Exception as exc:  # noqa: BLE001 sqlglot ParseError → 8010/400 附行号
+            line = getattr(exc, "line", None)
+            raise ModelDomainError(
+                MODEL_DDL_INVALID,
+                f"DDL 解析失败：{exc}" + (f"（第 {line} 行）" if line else ""),
+                status=400,
+            ) from None
+        imported, skipped = 0, []
+        for t in parsed:
+            code = (t["name"] or "").strip()
+            if not code:
+                continue
+            if self.repository.find_by_code(code) is not None:
+                skipped.append({"tb": code, "reason": "同名模型已存在"})
+                continue
+            try:
+                self._check_code(code, self.session.get(DwLayerRecord, "ODS"))
+            except ModelDomainError as exc:
+                skipped.append({"tb": code, "reason": exc.message or "校验未通过"})
+                continue
+            _reverse_create(
+                self.session, code, "ODS", "", "", "MySQL", self.owner,
+                t["fields"], remark=t["comment"] or "DDL 导入",
+            )
+            imported += 1
+        self.session.commit()
+        audit.info(
+            "model.reverse_import user=%s ddl imported=%d skipped=%d",
+            self.owner, imported, len(skipped),
+        )
+        return {"imported": imported, "skipped": skipped}
+
+    def lineage(self, model_id: int) -> dict[str, Any]:
+        """血缘合并图（R4）：`declared` = `t_dw_model_relation` 双向展开；
+        `runtime` = `t_lineage_edge` 按 code 匹配（边端点归一化）。
+
+        迁移源实锚 `datara-backend/api/model.py:741-792`（`model_lineage` 逐行照抄）。
+        """
+        record = self.session.get(DwModelRecord, model_id)
+        if record is None:
+            raise ModelDomainError(MODEL_NOT_FOUND, status=404)
+        nodes = [{"id": record.code, "kind": "model", "label": f"{record.code} {record.name}"}]
+        edges: list[dict] = []
+
+        rels = (
+            self.session.query(DwModelRelationRecord)
+            .filter(or_(DwModelRelationRecord.src_model_id == model_id,
+                        DwModelRelationRecord.tgt_model_id == model_id))
+            .all()
+        )
+        rel_ids = {r.src_model_id for r in rels} | {r.tgt_model_id for r in rels}
+        name_by_id = {
+            x.id: x
+            for x in self.session.query(DwModelRecord)
+            .filter(DwModelRecord.id.in_(rel_ids)).all()
+        }
+        for r in rels:
+            s = name_by_id.get(r.src_model_id)
+            t = name_by_id.get(r.tgt_model_id)
+            if not s or not t:
+                continue
+            if s.id != model_id:
+                nodes.append({"id": s.code, "kind": "model", "label": f"{s.code} {s.name}"})
+            if t.id != model_id:
+                nodes.append({"id": t.code, "kind": "model", "label": f"{t.code} {t.name}"})
+            edges.append({"from": s.code, "to": t.code, "kind": "declared", "relType": r.rel_type or ""})
+
+        like = f"%.{record.code}"
+        run = (
+            self.session.query(LineageEdgeRecord)
+            .filter(or_(LineageEdgeRecord.from_table.like(like),
+                        LineageEdgeRecord.to_table.like(like)))
+            .limit(200).all()
+        )
+        for e in run:
+            if e.from_table and not e.from_table.endswith(f".{record.code}"):
+                nodes.append({"id": e.from_table, "kind": "ext", "label": e.from_table})
+            if e.to_table and not e.to_table.endswith(f".{record.code}"):
+                nodes.append({"id": e.to_table, "kind": "ext", "label": e.to_table})
+            # 边端点归一化：模型侧表名（db.code）映射为模型节点裸 code，保证边引用的 id 均在 nodes 中
+            edges.append({
+                "from": record.code if (e.from_table or "").endswith(f".{record.code}") else e.from_table,
+                "to": record.code if (e.to_table or "").endswith(f".{record.code}") else e.to_table,
+                "kind": "runtime",
+            })
+
+        seen: set[str] = set()
+        uniq_nodes = []
+        for n in nodes:
+            if n["id"] in seen:
+                continue
+            seen.add(n["id"])
+            uniq_nodes.append(n)
+        return {
+            "nodes": uniq_nodes,
+            "edges": edges,
+            "sources": {
+                "declared": sum(1 for e in edges if e["kind"] == "declared"),
+                "runtime": sum(1 for e in edges if e["kind"] == "runtime"),
+            },
+        }
+
+    def impact(self, model_id: int) -> dict[str, Any]:
+        """下游递归清单（声明血缘 DFS，环防护）。
+
+        迁移源实锚 `datara-backend/api/model.py:795-821`（`model_impact` 逐行照抄）。
+        **递归实现**（旧侧同）—— 深链可能触及 Python 递归上限，见候核。
+        """
+        record = self.session.get(DwModelRecord, model_id)
+        if record is None:
+            raise ModelDomainError(MODEL_NOT_FOUND, status=404)
+        nxt: dict[int, list[int]] = {}
+        for r in self.session.query(DwModelRelationRecord).all():
+            nxt.setdefault(r.src_model_id, []).append(r.tgt_model_id)
+        out: list[dict] = []
+        path = [record]
+        seen = {record.id}
+
+        def dfs(cur: DwModelRecord) -> None:
+            for t in nxt.get(cur.id, []):
+                if t in seen:
+                    continue
+                seen.add(t)
+                tm = self.session.get(DwModelRecord, t)
+                if tm is None:
+                    continue
+                path.append(tm)
+                out.append({
+                    "modelId": tm.id, "code": tm.code, "name": tm.name,
+                    "path": " → ".join(x.code for x in path),
+                })
+                dfs(tm)
+                path.pop()
+
+        dfs(record)
+        return {"list": out}
+
+    def _check_code(self, code: str, layer: Optional[DwLayerRecord]) -> None:
+        """编码正则 + 唯一 + 分层命名规范（创建/逆向共用；迁移源实锚 `api/model.py:76-85`）。
+
+        `layer` 可为 `None`：旧侧 `_check_code` 为 `l = db.get(DwLayer, layer)` 后判
+        `if l and l.rule`，**分层不存在时静默跳过命名规范**（逆向路径依赖此语义，
+        `create` 则在调用前另有存在闸 → 传得进非 `None`）。
+        """
         if not CODE_RE.match(code):
             raise ModelDomainError(MODEL_CODE_INVALID, status=400)
         if self.repository.find_by_code(code) is not None:
             raise ModelDomainError(MODEL_CODE_DUP, status=409)
-        if layer.rule:
+        if layer is not None and layer.rule:
             prefix = layer.rule.split("，")[0].split("_")[0].strip()
             if prefix and not code.startswith(prefix + "_"):
                 raise ModelDomainError(

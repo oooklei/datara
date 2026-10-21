@@ -13,8 +13,13 @@ R-32 裁定「旧 4xxx/8xxx 原样保留」；R2 注记指出旧侧 4xxx/8xxx �
 - `MODEL_REV_CONFLICT = 8006`  字段保存乐观锁冲突（旧侧 `resp.py:61`，HTTP 422，data 带 `currentRev`）
 - `MODEL_FIELDS_LOCKED = 8007`  非 draft 不可改字段，需开新修订（旧侧 `resp.py:62`，HTTP 409）
 - `MODEL_IN_USE = 8008`  模型被下游血缘引用（旧侧 `resp.py:63`，HTTP 409，data 带 `refs`）
+- `DS_NOT_FOUND = 4001`  数据源不存在/类型不符（旧侧 `resp.py:31`，A6-17 exec 分支，HTTP 400）
+- `MODEL_PHYS_FAIL = 8009`  DDL 解析/执行失败（旧侧 `resp.py:64`，A6-17 exec 分支，HTTP 400，
+  data 带 `executed`/`error`）
+- `MODEL_DDL_INVALID = 8010`  DDL 文件解析失败（旧侧 `resp.py:65`，A6-20 文件导入，HTTP 400，
+  msg 附行号）
 
-后续票（17.2-06 起）引入 8001/8005/8006/8007/8008/8009/8010 时按同法追加。
+后续票（17.2-06 起）引入 8001/8005/8006/8007/8008 时按同法追加。
 """
 
 from __future__ import annotations
@@ -31,6 +36,9 @@ MODEL_STATE_CONFLICT = 8005
 MODEL_REV_CONFLICT = 8006
 MODEL_FIELDS_LOCKED = 8007
 MODEL_IN_USE = 8008
+DS_NOT_FOUND = 4001
+MODEL_PHYS_FAIL = 8009
+MODEL_DDL_INVALID = 8010
 
 # 旧侧 `common/resp.py:66-109` `_MSGS` 的对应文案（msg 缺省回退用）。
 _MSGS: dict[int, str] = {
@@ -43,6 +51,9 @@ _MSGS: dict[int, str] = {
     MODEL_REV_CONFLICT: "字段已被他人更新，请刷新后重试",
     MODEL_FIELDS_LOCKED: "已发布模型不可修改字段，请开新修订",
     MODEL_IN_USE: "模型被下游血缘引用，不可删除",
+    DS_NOT_FOUND: "数据源不存在",
+    MODEL_PHYS_FAIL: "DDL 执行失败",
+    MODEL_DDL_INVALID: "DDL 文件解析失败",
 }
 
 
@@ -51,13 +62,21 @@ class ModelDomainError(RuntimeError):
 
     迁移源实锚：`datara-backend/api/auth.py:52-62`（`ApiError`）+
     `api/main.py:48`（`exception_handler` → `fail(code, msg, data)`）。
+
+    **`message` 保留旧侧原值（可为 `None`），不在此处回退 `_MSGS`** —— 旧侧
+    `ApiError.__init__` 为 `self.msg = msg`（原样，缺省即 `None`），回退发生在
+    响应侧 `fail()` 内（`common/resp.py:122-126` 的 `msg or _MSGS.get(code, ...)`）。
+    若在此处提前回退，调用方就无法区分「未传 msg」与「msg 恰为内置文案」——
+    A6-19 逆向导入的 `reason = e.msg or "校验未通过"`（`api/model.py:659`）正是
+    依赖该语义：8003 未传 msg → 旧侧得「校验未通过」而非内置长文案。
+    HTTP 输出不受影响（`fail()` 自带同一回退）；仅服务层 `.message` 语义对齐旧侧。
     """
 
     def __init__(self, code: int, message: Optional[str] = None, status: int = 400,
                  data: Any = None) -> None:
         super().__init__(message or _MSGS.get(code, "未知错误"))
         self.code = code
-        self.message = message or _MSGS.get(code, "未知错误")
+        self.message = message
         self.status = status
         self.data = data
 
