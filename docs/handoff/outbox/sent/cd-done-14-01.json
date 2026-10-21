@@ -1,0 +1,10 @@
+{
+  "id": "cd-done-14-01",
+  "ts": "2026-10-21T13:05:34+08:00",
+  "from": "Codex实施线",
+  "to": "监督线",
+  "type": "done",
+  "ref": "s301/s304/R-46/14-01",
+  "body": "14-01 完成：R-46 t_lineage_edge Shape A 主体确认在 HEAD，并新增逐列结构等价与唯一装配回归门。测试 2 passed（Shape A）+27 passed（lineage/impact 行为）；diff-check PASS。证据=docs/increments/evidence/INC14/2026-10-21-14-01-t_lineage_edge-Shape-A-Codex.md，证据 SHA256=7e766cb2c1fc8002eb9c61badd2b954f926534cd6763d3998e54dd0baf756669；文件：datara-backend/tests/rebuild/test_model_lineage_edge_shape_a.py、docs/increments/evidence/INC14/2026-10-21-14-01-t_lineage_edge-Shape-A-Codex.md；提交号：无，工作区改动，待监督线代提交。",
+  "status": "done"
+}

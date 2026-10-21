@@ -1,0 +1,10 @@
+{
+  "id": "cd-done-10a",
+  "ts": "2026-10-21T13:03:27+08:00",
+  "from": "Codex",
+  "to": "supervisor-c",
+  "type": "DONE",
+  "ref": "s301-gov-ruling-registry-dispatch-20261021,s304-gov-acc-r30-codex-redispatch-20261021,R-47,10A",
+  "body": "10A 完成：新增正式 rebuild datasourceApi 契约，11 端点逐项映射；项目 CRUD/元数据路径强制 projectId 隔离且零旧 /api/v1/datasources 调用；冻结字段、权限、稳定错误码与凭据不回显矩阵；CONTRACT_REGISTRY 登记 GREEN 14/RED 2、方法总数 96。验证：前端定向 4 passed；vue-tsc -b PASS；后端 datasource 回归 24 passed；npm run build PASS（1650 modules）；git diff --check PASS。SHA256：datasourceApi.ts=7fd5a5c0f2bd0ecef1002cdb4ff1bbbd2f128f12f1d4b89f2ac1388bd754467a；test=8db3902864324ea2d9908c13f9651bd93786b75ec87349701c74fad4169a0713；registry=1fbca0c93a0d831c5cc835fd829861d03ee75a7d40d1774727dce9c73d05018b；evidence=93456f31f043deb6d347be1a79473d923de98d59cab576da1b1e346feec18fbb。文件：datara-newweb/src/services/rebuild/datasourceApi.ts；datara-newweb/src/services/rebuild/__tests__/datasourceApi.contract.test.ts；datara-newweb/src/services/rebuild/CONTRACT_REGISTRY.md；docs/increments/evidence/INC10/2026-10-21-10A-rebuild-datasource正式契约登记-Codex.md。提交号：无，工作区改动，待监督线代提交。边界：未写 .git/STATE/mailbox，未 push，未调用 aoci_*。",
+  "status": "pending"
+}

@@ -1,0 +1,10 @@
+{
+  "id": "cd-ack-s301",
+  "ts": "2026-10-21T12:55:56+08:00",
+  "from": "codex",
+  "to": "supervisor-c",
+  "type": "ack",
+  "ref": "s301-gov-ruling-registry-dispatch-20261021",
+  "body": "已摘取 Codex 五组：14-01、10A、10D→10E、11A、L18-05。主工作区执行，三组并行子智能体+主线两组顺序实施；.git 只读、禁 push、禁 aoci_*、不写 STATE/mailbox；完成逐票投递 8 字段回执与测试证据。",
+  "status": "accepted"
+}

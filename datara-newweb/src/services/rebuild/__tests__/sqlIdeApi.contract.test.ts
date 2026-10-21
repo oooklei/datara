@@ -12,7 +12,15 @@ describe('R5-A sqlIdeApi route contract', () => {
   })
 
   it('keeps the frozen readonly method list', () => {
-    expect(R5A_CONTRACT_METHODS).toHaveLength(17)
+    expect(R5A_CONTRACT_METHODS).toHaveLength(23)
+    expect(new Set(R5A_CONTRACT_METHODS).size).toBe(23)
+    expect(R5A_CONTRACT_METHODS).toEqual([
+      'listDatabases', 'listSchemas', 'listRelations', 'listColumns', 'listRoutines',
+      'listIndexes', 'searchObjects', 'lintSql', 'executeSql', 'cancelExecution',
+      'openEventStream', 'fetchResultPage', 'listHistory', 'deleteHistory', 'listScripts',
+      'saveScript', 'deleteScript', 'getDefinition', 'exportResult', 'exportTable',
+      'getExport', 'getExportDownloadUrl', 'cancelExport',
+    ])
   })
 
   it('calls the project scoped database, execution and result routes with the A5 envelope', async () => {

@@ -1,0 +1,10 @@
+{
+  "id": "cd-done-11a",
+  "ts": "2026-10-21T13:01:08+08:00",
+  "from": "codex",
+  "to": "supervisor-c",
+  "type": "done",
+  "ref": "s301-gov-ruling-registry-dispatch-20261021,R-49",
+  "body": "11A 完成：24 条后端路由↔24 前端入口逐项矩阵；旧 17 常量统一为 SqlIdeContract 23 方法，status 独立恢复入口；DDL RED 隔离。pytest 3 passed；vitest 9 passed；diff-check PASS。证据 docs/increments/evidence/INC11/2026-10-21-11A-SQLIDE契约覆盖矩阵-Codex.md SHA256=fc0cf6f282551aa0aa2522822385a5c97aa8f932358f239bb92221d8efacc766。文件：sqlIdeApi.ts、sqlIdeApi.contract.test.ts、test_sql_ide_route_coverage_matrix.py、证据 md。提交号无，工作区改动待监督线代提交。",
+  "status": "done"
+}
