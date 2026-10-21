@@ -47,10 +47,18 @@ export interface CrontabPreview {
   nextFireTimes: string[]
 }
 
+/**
+ * 9-02 GREEN 段注记销项（S254⑤/S256⑤ 兑现）：create/update 响应为「行字段 + nextFireTimes」。
+ * 后端双域实锚：datara-backend/api/wf_schedule.py 与 datara-backend/rebuild/scheduling/api.py
+ * 的 create/update 均返回 {**payload(row), "nextFireTimes": preview}——nextFireTimes 字段名
+ * 由旧实证 anchor 过渡注记升格为正式契约成员。
+ */
+export type ScheduleMutationResult = ScheduleRow & { nextFireTimes: string[] }
+
 export interface ScheduleCrudContract {
   listSchedules: (wf: number | string) => Promise<ScheduleRow[]>
-  createSchedule: (wf: number | string, input: ScheduleInput) => Promise<ScheduleRow>
-  updateSchedule: (scheduleId: number, input: ScheduleInput) => Promise<ScheduleRow>
+  createSchedule: (wf: number | string, input: ScheduleInput) => Promise<ScheduleMutationResult>
+  updateSchedule: (scheduleId: number, input: ScheduleInput) => Promise<ScheduleMutationResult>
   deleteSchedule: (scheduleId: number) => Promise<void>
   onlineSchedule: (scheduleId: number) => Promise<ScheduleRow>
   offlineSchedule: (scheduleId: number) => Promise<ScheduleRow>
@@ -62,8 +70,8 @@ const key = (value: number | string) => encodeURIComponent(String(value))
 export function createScheduleCrudContract(projectId: number): ScheduleCrudContract {
   return {
     listSchedules: (wf) => request<ScheduleRow[]>(`${BASE}/workflow-definitions/${key(wf)}/schedules`),
-    createSchedule: (wf, input) => request<ScheduleRow>(`${BASE}/workflow-definitions/${key(wf)}/schedules`, { method: 'POST', json: input }),
-    updateSchedule: (id, input) => request<ScheduleRow>(`${BASE}/schedules/${id}`, { method: 'PUT', json: input }),
+    createSchedule: (wf, input) => request<ScheduleMutationResult>(`${BASE}/workflow-definitions/${key(wf)}/schedules`, { method: 'POST', json: input }),
+    updateSchedule: (id, input) => request<ScheduleMutationResult>(`${BASE}/schedules/${id}`, { method: 'PUT', json: input }),
     deleteSchedule: async (id) => { await request(`${BASE}/schedules/${id}`, { method: 'DELETE' }) },
     onlineSchedule: (id) => request<ScheduleRow>(`${BASE}/schedules/${id}/online`, { method: 'POST' }),
     offlineSchedule: (id) => request<ScheduleRow>(`${BASE}/schedules/${id}/offline`, { method: 'POST' }),

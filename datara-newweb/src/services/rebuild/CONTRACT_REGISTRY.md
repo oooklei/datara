@@ -2,7 +2,7 @@
 
 > 建立日期：2026-10-20 ｜ 依据：权威设计 §5.6（契约冻结登记）
 > 用途：门 1 API 契约验收直接消费；新增/变更契约文件有测试对应方可合入。
-> 最近更新：2026-10-21（INC4-BE-1 新增 M1 组件规格契约并完成全量回归，Codex 实施线）
+> 最近更新：2026-10-21（9-02 GREEN 段新增 scheduleCrudApi 契约，Trae 实施线）
 
 ## 1. 契约文件 ↔ 测试映射表
 
@@ -20,8 +20,10 @@
 | 10 | `streamApi.ts` | `services/rebuild/__tests__/streamApi.contract.test.ts` + `streamApiSurface.contract.test.ts` | GREEN | 6 | 1 + 2 | I8 流处理观摩（旧库同一契约存在 services 级与 views 级两份测试，均落位） |
 | 11 | `aiToolsApi.ts` | `services/rebuild/__tests__/aiToolsApi.contract.test.ts`（+ `__tests__/mockAgent.ts` 假 Agent 适配层） | GREEN | 9 | 19 | R8-A AI 八工具（I10；契约层已接线，端到端 LLM 联调受 FV-02 阻塞，归增量 15.4） |
 | 12 | `componentSpecApi.ts` | `services/rebuild/__tests__/componentSpecApi.contract.test.ts` | GREEN | 1 | 5 | M1 组件规格例外契约：200 裸 `{items}`、强 ETag、304 空体；刷新失败仅回退最后成功响应，首次失败阻断并可重试 |
+| 13 | `monitorApi.ts` | `services/rebuild/__tests__/monitorApi.contract.test.ts` | GREEN | 1 | 4 | B3 集群监控：单一 rebuild 路由；ZK 可用性、心跳三态与指标三态原样透传 |
+| 14 | `scheduleCrudApi.ts` | `services/rebuild/__tests__/scheduleCrudApi.contract.test.ts` | GREEN | 7 | 9 | R6 调度 CRUD 拆分（R-22：CRUD 面 GREEN 化；观测面 `scheduleApi.ts` 保持 RED 候增量 8；9-02 GREEN 段收编 695b07a1+9f012e55 两骨架件，含 nextFireTimes 响应面 ScheduleMutationResult） |
 
-> **状态快照：2026-10-21（INC4-BE-1 落位实测）；GREEN 10 / RED 2；契约方法合计 65。**
+> **状态快照：2026-10-21（9-02 GREEN 段落位实测）；GREEN 12 / RED 2；契约方法合计 73。**
 >
 > **与设计 §5.6 快照（GREEN 8 / RED 3）的差异**：`aiToolsApi.ts` 实测为 **GREEN**——源码无 `NOT_WIRED` 活哨兵，`createAiToolsContract()` 发起真实 API 调用（`requestJson` → `fetch`），旧库 `bannerConsistency.contract.test.ts` 断言亦为 GREEN。设计 §5.6 快照系提交 `6c0de0c`（验证域契约 GREEN 化）之前的状态。**建议监督线刷新权威设计 §5.6 快照为 GREEN 9 / RED 2。**
 
@@ -32,7 +34,7 @@
   - `code ≠ 0 / 200`（业务错误）→ `throw ContractApiError{httpStatus, code, msg, raw?}`；
   - 非 2xx（系统错误）→ 调用方解包前抛错。
 - `adapterKit.unwrapEnvelope` 为冻结结论共享原语，全域统一（含 RED 契约接线时沿用）。
-- **http 底座共享**：所有 GREEN 契约文件 `import { getToken } from '../http'`；单 BASE `'/api/v1'`。
+- **http 底座共享**：所有 GREEN 契约文件通过 `../http` 共享请求或 token 原语；单 BASE `'/api/v1'`。
   - 实测：`variableApi/dependencyApi/resourceApi/syncComponentApi/sqlIdeApi/metricsApi/streamApi` 共用 `getToken`；`aiToolsApi` 共用 `getToken` + `BASE`；`sqlIdeDdlApi/scheduleApi` 为 RED 哨兵（零 import）；`adapterKit` 自洽零 import。
   - 全库扫描：新库 `src/` 无 `LEGACY_BASE`、无 `8000` 端口残留（红线 1 / §7.1）。
 
@@ -42,6 +44,8 @@
 - **契约冻结登记**：每契约文件冻结时登记提交号 + 测试文件 + 状态（见 §4）。
 - **基线**：`npm test`（= `vitest run`）全量绿。
 - **INC4-BE-1 回归**：`npm test -- --run` 全量 **349 passed / 0 failed（34 测试文件）**；`npm run build` 通过（1625 modules transformed）。
+- **17.3-01 回归**：`npm test -- --run` 全量 **405 passed / 0 failed（39 测试文件）**；`npm run build` 通过（1629 modules transformed）。
+- **9-02 GREEN 段回归**：`vue-tsc -b` 零错；`npx vitest run` 全量 **438 passed / 0 failed（41 测试文件）**；`npm run build` 通过（1634 modules transformed / 770ms）。
 
 ### 3.1 基线登记（1.3 起步）
 
@@ -100,5 +104,7 @@
 | `streamApi.ts` | 待登记 | `__tests__/streamApi.contract.test.ts` + `__tests__/streamApiSurface.contract.test.ts` | GREEN | 2026-10-21 |
 | `aiToolsApi.ts` | 待登记 | `__tests__/aiToolsApi.contract.test.ts` | GREEN | 2026-10-21 |
 | `componentSpecApi.ts` | 待监督线代提交（工作区未提交） | `__tests__/componentSpecApi.contract.test.ts` | GREEN | 2026-10-21 |
+| `monitorApi.ts` | 待监督线代提交（工作区未提交） | `__tests__/monitorApi.contract.test.ts` | GREEN | 2026-10-21 |
+| `scheduleCrudApi.ts` | 待监督线代提交（工作区未提交） | `__tests__/scheduleCrudApi.contract.test.ts` | GREEN | 2026-10-21 |
 
 > 提交号由监督线代提交后回填（本包 `.git` 只读，改动全部在工作区）。
