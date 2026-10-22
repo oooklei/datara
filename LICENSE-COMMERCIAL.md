@@ -1,4 +1,6 @@
-# Commercial License Agreement (Unofficial Template)
+这个项目有双重许可证。 您可以在 GNU AGPLv3 下使用它 。
+免费或有偿的非商业性/开源用途
+如果AGPLv3与您的使用情况不符,则颁发商业执照.# Commercial License Agreement (Unofficial Template)
 
 > **This file is a plain-language description of the commercial licensing
 > option. It is NOT a signed legal contract.** Before issuing real commercial
@@ -17,13 +19,20 @@ requirement to release your modified source code, including for network/SaaS
 use):
 
 - You are using this project as part of a **commercial, for-profit product or
+
   service**.
+
 - You want to **keep your own source code closed-source / proprietary**.
 - You are distributing the project (or a modified version) embedded in a
+
   commercial product.
+
 - You run a **SaaS / hosted service** based on this project and do not want to
+
   offer your modified source to users (AGPLv3 §13).
+
 - You need a **warranty, indemnity, or support SLA** (the AGPLv3 comes with no
+
   warranty).
 
 ## What the commercial license grants
@@ -31,8 +40,10 @@ use):
 A paid commercial license typically grants the licensee:
 
 - A non-exclusive, worldwide, royalty-bearing (or flat-fee) right to use,
+
   copy, modify, and distribute the software **without** the AGPLv3 copyleft
   obligations.
+
 - The right to incorporate it into proprietary / closed-source products.
 - The right to offer it as part of a SaaS without disclosing derivative source.
 - (Optional, paid separately) support, maintenance, and warranty terms.

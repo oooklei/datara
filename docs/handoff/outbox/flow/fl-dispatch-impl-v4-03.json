@@ -1,0 +1,42 @@
+{
+  "schema_version": "3.0",
+  "face_id": "fl-dispatch-impl-v4-03",
+  "epoch": 3,
+  "generated_by": "Flow",
+  "generated_at": "2026-10-22T14:20:00+08:00",
+  "watermark_base": "v3-0017-dispatch-assigned-impl-v4-03",
+  "event_ref": "v3-0017-dispatch-assigned-impl-v4-03",
+  "ticket": {
+    "id": "IMPL-v4-03",
+    "title": "C 组测试基建：datara-newweb/e2e + playwright.config.ts + datara-l12-e2e",
+    "domain": "VALIDATION",
+    "base_priority": "P2",
+    "effective_priority": "P2",
+    "priority_basis": "验收链补全（决策卡 C 组）",
+    "assigned_to": "trae",
+    "assigned_at": "2026-10-22T14:20:00+08:00",
+    "state_transition": "READY->ASSIGNED",
+    "depends_on": ["DEC-v4-D02"],
+    "depends_satisfied": "v3-0006（D02 已裁定）"
+  },
+  "acceptance": "1.9 e2e 可运行并纳入验收链；npx tsc --noEmit -p tsconfig.node.json 通过",
+  "evidence_chain": "EVIDENCE_READY → 1.9 ENV_VERIFIED → PASS → 集成窗提交",
+  "execution_notes": [
+    "DEC-v4-D02 已裁定：tsconfig.node.json include += playwright.config.ts, e2e/**/*.ts（并入本票）",
+    "IMPL-v4-04 重复领取已裁定：本线 04 证据采信为独立核验旁证（v3-0014），线已释放，本票为正式指派",
+    "1.9 远测须先向 Integration 申请租约，证据落 1.9 隔离工作目录"
+  ],
+  "paths": [
+    "datara-newweb/e2e/",
+    "datara-newweb/playwright.config.ts",
+    "datara-newweb/tsconfig.node.json",
+    "datara-l12-e2e/"
+  ],
+  "boundaries": [
+    "每线 WIP=1；困难/歧义/冲突报 Ops，不弹窗用户",
+    "不写 STATE/mailbox/队列投影（Flow 单写）；不 commit、不 push（push=USER_ONLY）",
+    "AOCI 停用：不加载、不调用",
+    "本机静态/代码实现；远测经 Integration 租约于 1.9 执行"
+  ],
+  "wip_after": { "claude": 1, "codex": 0, "trae": 1 }
+}

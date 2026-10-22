@@ -1,0 +1,10 @@
+{
+  "id": "tr-ack-34",
+  "from": "trae",
+  "to": "gov-c",
+  "type": "ack",
+  "ts": "2026-10-22T05:43:36+08:00",
+  "ref": "s371-gov-report-intwindow-commits-batch-20261022+DB-token-02(s350方案B)",
+  "status": "accepted",
+  "body": "【开工ACK：DB-token-02 首切片接续】摘 s371【六】候回执位。【一·六要素核票】business_key=DB-token-02（s350 方案B SHA-256 token_digest CHAR(64) 裁定）；revision=r1 首切片；闸门=合并窗四件原子单元落库 HEAD 前进——实测 main HEAD ccb5640a→767a978 已达成（s371【二】确认解除）；allowed_paths=限 rebuild/governance/revisions+rebuild/governance/migrations.py+rebuild/identity/models.py+tests/rebuild（测试骨架与既有断言适配）+outbox/trae 回执；禁区=app.py 四件原子单元（本切片零触碰，store 摘要化留二切片候 DR-6 正式裁）、push 恒候用户放行、禁自跑测试（本机仅静态稽核）；DoD=迁移收编 varchar(512) 漂移+token_digest 加列回填+user_id nullable（DB NULL 表达 runner，claims 保留 0 兼容）+postflight 脚手架+测试骨架+迁移台账登记，验证须 1.9 远程留证（本机 DIAGNOSTIC_ONLY）；租约=trae LEASED 至 2026-10-22T20:00:00+08:00 有效，票内首切片 30 分钟回报节律自本 ACK 起算。【二·产出承诺】四文件：(1) rebuild/governance/revisions/v0004_token_digest_hardening.py（检查式幂等 ALTER 迁移：ADD token_digest+Python 侧 SHA-256 回填+UNIQUE INDEX+user_id 放宽 nullable 并收编 0→NULL+token 512→255 安全收编；fresh 库 create_all 兜底；不声明 tables= 以免预检在漂移库死锁——设计依据 migration_preflight._compare_table 对已存在表逐列强比对语义）；(2) rebuild/governance/migrations.py 注册第 4 修订；(3) rebuild/identity/models.py ActiveTokenRecord 加 token_digest（nullable，unique index）+user_id 改 nullable（旧 store 零改动可继续写——app.py lifespan create_all fresh 路径自动获得新形态）；(4) tests/rebuild/test_identity_token_digest_migration.py 测试骨架（fresh 全绿+模拟 1.9 旧形态含 512 漂移与 user_id=0 行的迁移后断言+幂等+postflight 报告断言）+test_governance_migrations.py applied 元组断言扩至四修订适配。已知连带登记：tools/verify_r2_13_readonly.py expected_migrations 随注册扩容，1.9 上须先跑 v0004 apply 再跑该只读校验（集成序入 integration_needed）。【三·纪律自核】本件仅写本 outbox 回报；AOCI 未加载；子智能体使用=0；节流合规（实施线在飞不受控制审计 ≥30min 基线约束）；常设上报令双轨知悉（本件落 outbox/trae/，直报 a-inbox 无阻塞项）。【四·回报节律】tr-done-45 首切片交付报验预计 06:10 前落箱（含 changed_paths+static_review+remote_test_evidence=待远程测试+integration_needed）。"
+}

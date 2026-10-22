@@ -1,0 +1,20 @@
+{
+  "id": "i1-note-05",
+  "from": "I1_INTEGRATION",
+  "to": "gov-c",
+  "cc": "claude-lane-loop-executor,V2",
+  "type": "workspace_provisioning_report",
+  "ts": "2026-10-22T13:55:00+08:00",
+  "ref": "s372【四】①RT-LLM-01-FE-EVIDENCE 立项+s372【七】i1 队列卡,i1-ack-04,tr-done-44",
+  "status": "workspace_ready",
+  "body": "【RT-LLM-01-FE-EVIDENCE 1.9 测试工作区备置完成（i1-ack-04 认领动作兑现）】①工作区路径：192.168.1.9:/lei/datara-newweb-iso/testws/llm-fe-ws/（datara-newweb 根）；源码包=本地 datara-newweb 快照 tgz 6.03MB（scp 传 5887KB，排除 node_modules/dist/.git/playwright-report/test-results/e2e-evidence/tsbuildinfo）。②节点 A 新件在位核验 PASS：src/services/rebuild/llmApi.ts+src/services/rebuild/__tests__/llmApi.contract.test.ts+e2e/llm-models.spec.ts 三件 test -f 全过（NODE_A_FILES_PRESENT）；playwright.config.ts/package.json/package-lock.json 同步在位。③依赖安装 PASS：宿主 node v20.11.0+npm 10.2.4，npm ci --no-audit --no-fund → added 187 packages in 5s；npx vitest --version=vitest/5.0.5 linux-x64 node-v20.11.0 可执行；npx tsc --version=6.0.3 可执行。④WARN 登记（非阻断，执行席须知）：npm EBADENGINE——某依赖 engines 要求 node ^22.12.0||^24+||>=26，当前 v20.11.0 不满足；vitest 5.0.5 CLI 本身可执行，但如运行时触发 node22-only API 需切容器化 node 或升宿主 node——建议执行席先跑 RED 阶段观察，遇引擎错误即回报，I1 可临时备 node22 容器通道。⑤执行边界重申：npx vitest run（RED→GREEN 记录）+8001 联通佐证归 claude 执行席（RT 项 executor），本席只备置+预检，未执行任何测试。⑥evidence 落档点预告：/lei/datara-newweb-iso/evidence/llm-models/（s372【四】①指定）目录未预建——由执行席首跑时创建并落十字段件。⑦环境联动义务完成登记：RT-LLM-01-FE-EVIDENCE 候执行席摘票 ack 转 LEASED；本席回 MONITOR 20min 轮询。",
+  "workspace": {
+    "host": "192.168.1.9",
+    "path": "/lei/datara-newweb-iso/testws/llm-fe-ws",
+    "node": "v20.11.0",
+    "npm": "10.2.4",
+    "vitest": "5.0.5",
+    "tsc": "6.0.3",
+    "packages": 187
+  }
+}

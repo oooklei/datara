@@ -1,60 +1,22 @@
-# STATE — 监督线现状基线（新纪元唯一权威起点）
+# Datara 运行状态
 
-> **版本**：v2（2026-10-21 监督员C 压缩重写，S209–S214 迁出归档卷）
-> **性质**：冷启动首读文件。旧台账 `2026-10-16-并行协作分工.md`（#1–#352）**冻结为历史考古区，只读不写**；本文件起用新序号 S#。
-> **维护纪律**：每监督窗由监督线更新快照+活动区追加一条；全文 ≤60 行硬上限。
+- schema: 3.0
+- epoch: 3
+- lifecycle: **RUNNING**（2026-10-22 12:28 用户授权重启，选项 1 分批收口）
+- accepting_work: true
+- current_watermark: `v3-0011-scheduler-cadence-ruled-10m`
+- previous_epoch_watermark: `s375`
+- active roles/tasks/leases: 0 / 1 / 0
+- DECISION ready 0（DEC-v4-D01..D04 已裁定，v3-0006）；IMPLEMENTATION ready 5 + assigned 1（IMPL-v4-04 ASSIGNED→claude，v3-0008）；VALIDATION / DISPATCH / INTEGRATION / REMOTE_TEST / POLICY_RECEIPT: empty；EXCEPTION ready 1（EXC-v4-01 候用户裁定）
 
-## 一、现状快照（2026-10-21 S218 时点）
-- **当前值班**：**C 角**（任务性值班；A 角 AOCI 守护、B 角并发值班互为备份互不主从；入口=`docs/handoff/监管员启动提示词.md`）
-- **权威文件**：主标准 `docs/increments/多终端多智能体项目管理标准规范.md`；裁定索引 `…-裁定索引.md`（只增不改）；需求真源=权威设计 v3（2026-10-19 纠偏重构前端权威设计）；验收 v4（2026-10-17）；WBS（2026-10-20 单线多增量）。
-- **库存口径**：执行票 178（R-24/25/26 三新票入池）三线全队列已派，0.7 五票在飞（Codex）不占口径；三态（可开工/排队/挂起）+自转规则随 s215-task-cl/tr/cd 下达。
-- **裁定**：R-01~R-43 全落地（五批：s213/s215/s215b/s218/s258-ruling6 广播）；第四批=17.1 六要点（R-30~35）+pre②（R-36）+增7 O1/O2/O3（R-37~39）经用户「ok」全批落账；第五批 R-40~R-43（L3-01 派 Codex+17.2 链三口径追认+Claude 收编 B 例外登记+并行窗单写者锁）经用户逐项点选落账；9-O1 备案确认（顶层 8000 语义收口，rebuild 8001=9-01 补建）+16-问3 八步补发完成；R1（B3/B6 补验收）已关闭。
-- **watchdog**：已彻底删除（2026-10-18 用户令）；工具=`agents/mailbox_loop.py` v1.1；信箱信道 `docs/handoff/mailbox.jsonl`。
-- **AOCI**：governance_aligned=false（S207 maintain 链挂起候稳定检查点）；实施线 AOCI 豁免（2026-10-17 用户裁定 #85），两线认知源=docs/handoff/ 心跳+docs/increments/ 文档。
+## 运行期要点
 
-## 二、在飞/候办
-1. 三线全队列自转执行（回执候 cl/tr/cd-ack-s215）；L8-02 已解锁随 Codex 队列自转（B 角拆票登记 v4 转可开工，S223-B）。
-2. 1.1-01/02 验收=**有保留通过**（子智能体 2026-10-21：16/17 PASS+⚠️落位口径认可+1 WARN favicon.svg 缺失非阻塞候 2.x 补；18092/proxy 单线 8001/BASE=/api/v1 三大硬契约实证+test 4 passed+build 绿）。
-3. 13-05 已签收（R-20，增量 13 收口）；14-07/08 补拆票登记；L8-02 已解锁（S223-B 拆票登记 v4），按代拟文档 §六+2 条补充实施。
-4. 候办滚动：L8-01 归档闭环完成+L8-02 解锁（S223-B：B 角审定 s221-l8-01-review+用户批准归档+C 角复核一致与文档标注互补）；0.7 五票验收通过销项（S224，4 观察项随 0.8 移交）；17.x 系 30 票随链自转，回执候 cl/cd-ack-s218-ruling4（tr 已收 L159）。
-
-## 三、工作区脏项
-- `datara-newweb/`（未跟踪新工程，验收有保留通过后代提交）。
-- 未提交修改：`.aoci/*`、`aoci.code.txt`（AOCI 运行时资产，归属线差异勿盲目还原）。
-- 未跟踪积压：`infra/*.sh`、evidence json、`.agents/` 等历史产物，按需纳管或 gitignore。
-
-## 四、冷启动三步
-1. 读本文件对齐现状；2. 按角色读主标准 §15 分钟上手清单+权威设计 v3；3. 裁定查裁定索引+R-01~R-21 登记件，原文考古去归档区。
-
-## 五、活动区（新序号 S#，append-only）
-- 历史活动原文归档：`docs/handoff/archive/`（2026-10-19 各卷至 `2026-10-21-STATE-S205-S208.md`、`2026-10-21-STATE-S209-S214.md`）。
-
-- S215–S263 历轮原文均已归档：docs/handoff/archive/2026-10-21-STATE-S{215..263} 分卷对应（B/C 角历轮迁出腾位记录，原指针注记随卷保留，此处合并腾位 2026-10-21 C 角）
-
-- S264–S270 原文归档：docs/handoff/archive/2026-10-21-STATE-S264-S270.md（监督员C 2026-10-21 迁出腾位；s275 终审批四票采信+17.2-17~22 派单+s277 八裁执行+S266 验收批双笔 push+S268/s281 R-44 转正+S269 双窗撞号并存+s270 两件验收机器门 PASS）
-
-- S271–S277 原文归档：docs/handoff/archive/2026-10-21-STATE-S271-S277.md（监督员C 2026-10-21 迁出腾位；四裁执行链A/B/C/D收口+用户四新裁执行收口+Trae 9-02 报验与验收PASS+笔18~21台账与push收口）
-
-- S278–S283 原文归档：docs/handoff/archive/2026-10-21-STATE-S278-S283.md（监督员C 2026-10-21 迁出腾位；R-45 落地+loop-start 启动 s294 全量派单+17.2 全链收口+笔23~28 push 兑现+9-T55-fix 验收 PASS）
-
-- S284 原文归档：docs/handoff/archive/2026-10-21-STATE-S284.md（监督员C 2026-10-21 迁出腾位；s300 移交承接+R-46~R-53 八裁登记+Codex 五组派单+9-06 验收 PASS+dedupe 销项+待核四件收口；S285 系移交让渡窗无独立主行）
-- S286–S289 原文归档：docs/handoff/archive/2026-10-21-STATE-S286-S289.md（监督员C 2026-10-21 迁出腾位；G-28/r30/11A 验收 PASS+Codex 五组回执与四组验收 s307+FE-6 Trae 报验+s305-loop A1~A6 承接+第30/31笔让渡顺延；S289 系 Trae 让渡后现役心跳一并原样迁出）
-
-- S290–S291 原文归档：docs/handoff/archive/2026-10-21-STATE-S290-S291.md（监督员C 2026-10-21 迁出腾位；s307 四组验收四证+第33笔落袋+s309 A1/A2 拆票立项 13 票增派 Codex+A5 三数 32/4/≈33）
-
-- S292–S293 原文归档：docs/handoff/archive/2026-10-21-STATE-S292-S293.md（监督员C 2026-10-21 迁出腾位；Trae FE-7 报验心跳+s310 让渡/s311 落箱/headconsistency 候裁识别；FE-7 与 1.4-01 均已验收 PASS 可迁）
-
-- S294–S298 原文归档：docs/handoff/archive/2026-10-21-STATE-S294-S298.md（监督员C 2026-10-21 迁出腾位；1.4-01/FE-7 双验收+9-0x 三票 PASS+验收批次 12 票 s328+CD-C17-03/FE-8/15.1-C 三裁收口+s332 撞号让渡+s335 第四次撞号消解+s336 终局拆派三线+17.1 冻结令）
-
-S299–S300+下一单链段 原文归档：docs/handoff/archive/2026-10-22-STATE-S299-S300.md（监督员C 2026-10-22 迁出腾位；S299=16.1 波2 验收 PASS+16-问2 自动裁+波3 放行 s338；S300=库存单全派四票拆派 s339+L12-02 F3 阻塞候裁+撞号第五次实战；下一单段=s341~s363 演进链全录含 AUDIT-01/E3/E4/DB-token-02/C-spec-01 派单与裁定链）
-
-
-
-S301 | 监督员C | 2026-10-22 04:42 Asia/Shanghai（用户四动作指令治理窗；查重 S301 零命中取号，尾行断言"下一单"预告行；mailbox 359 行尾=s366） | 用户四动作执行：收编积压28件+续租两线+RT租约分配+合并窗开启（s365+s366 双信落箱） | ①用户指令（verbatim）「收编积压 → 续租两线 → 放 I1 的 RT 租约 → 开合并窗。」本窗代 C 席执行落账；②s365-gov-ingest-backlog-batch-20261022 落箱（行358）：queue-projection 28 件 PENDING_UNCONFIRMED 逐件 disposition 收编（trae 8 件=tr-ack-25/28-31 四件 CONSUMED_BY_HISTORY+tr-ack-30 采信+tr-done-43 采信入 VALIDATION 候收位+tr-hold-01 采信；claude 13 件=f4f5-takeover/kickoff/lease-expired-hold/escalate/gap 采信+decision 三件 carry-over 收讫+done 六件 CONSUMED_BY_HISTORY+pathspec-atomic-units 采信入合并窗输入；codex 7 件=s349/s350/s352 消化 4 件+CONSUMED_BY_HISTORY 3 件）；VALIDATION 候收位五件=kickoff+c1c2-seed-fix+tr-done-42+tr-done-43（新增补位）+cd-report-s352-first-slice（未见 outbox 维持 HELD）；③s366-gov-renew-release-intwindow-20261022 落箱（行359）：【续租】claude 线 L12-02-F4F5 续租 r2（lease_until=2026-10-22T12:00+08:00，HOLD 解除，允许路径 datara-l12-e2e/+WorkflowGraphWorkbench.vue/seed_rebuild_component_catalog.py，禁区四件原子单元）+trae 线续租（SYNC-01-PRE ack 确认+DB-token-02 READY 接续位确认+tr-hold-01 解除）；【RT 租约】remote-test-queue.json 两项 REMOTE_TEST_READY→LEASED（RT-L12-02-F4F5-E2E lease_id=I1-RT-L1202F4F5E2E-R1-20261022+RT-AUDIT01-SEC-TEST lease_id=I1-RT-AUDIT01SEC-R1-20261022，lessee=I1_INTEGRATION，executor=claude-lane-loop-executor，租期至 12:00+08:00，leased_by_event=s366）；【合并窗】governance-switch.json freeze_scope 移除 INTEGRATION_MERGE+integration_window={state:OPEN,ttl_until:12:00+08:00,commit_gate 六门,push 不在窗范围恒候用户放行,app_py_writer_lock=代提交执行者独占}；【LLM-01-FE 派发】p2-s364-tickets 票仓 7 件落账有效，LLM-01-FE 派 claude 线（wip 规则 RT 在飞释放一席+纯新增文件不冲突，准领收悉回 ack），余五件候派不激活；④预存失败登记两项不阻窗：本机 pytest 基线 1F（test_execution_models_cover_the_six_run_tables_and_db_timestamps，1283 passed/1F/1 skipped@本机 11:04 DIAGNOSTIC_ONLY）+tr-done-43 所报 1F（test_validation_bootstrap 期望404实得401 已证伪与 LLM-01-VER-19 关联），修复归属实施线另票候排产；⑤F4 修复部署进态：datara_dist_f4fix.tgz（8,529,985B）已上传 1.9 部署（docker build datara-newweb:l1202-full 重建容器 HEALTH=200 Up，index.html→index-Dv-sRVOH.js 含 *170 步进修复），1.9 部署态实证验证与 RT-L12-02-F4F5-E2E 执行随窗续推，结果随 s367 报备；⑥下一取号 s367；候回执=claude 摘 LLM-01-FE ack+RT 两项 RUNNING/EVIDENCE_READY。
-
-S302 | 监督员C | 2026-10-22 04:57 Asia/Shanghai（用户治理四步指令窗②；查重 S302 零命中取号，尾行断言 S301；mailbox 360 行尾=s367） | 治理四步落账：投影同水位重建（四lane+i1纳入，PENDING归零）+正式续租三线+子智能体并行授权+P2派Codex首票+收编10件（s367落箱） | ①queue-projection.json 重建@2026-10-22T04:54:26+08:00：水位=mailbox 359/s366，扫描面 trae26/claude25/codex16/i1=69件，CONSUMED=60+PENDING=10（tr-ack-31/32+tr-done-29/30/31/44+cl-ack-llm-01-fe-claim+cl-report-llm-01-fe-node-a+i1-ack-01+i1-note-02），i1 lane 首次纳入+watermark/lanes_scanned 新字段；s367-gov-projection-rebuild-lease-dispatch-ingest-20261022 落箱（行360，尾断言 s366+查重+八字段复验全过）ref 携十件 id 后复建=CONSUMED=70/PENDING=0 归零闭环；②governance-switch.json lanes 节落账：trae/claude LEASED 至 2026-10-22T20:00+codex REVIVING 候派+i1 MONITOR 独立命名空间20分钟低频（DB-token-02 实施权归 trae 正统线+RT 让渡 claude loop 执行席维持）；子智能体并行授权（用户 2026-10-22 明示）：各线在租约与票面 allowed_paths 内可并行加开子智能体，产出按本线 id 前缀落箱八字段完整，心跳/报验/纪律责任归主会话，子智能体禁触控制面/mailbox/STATE.md/shared state；③s367【三】派 APIKEY-00-PRE→codex（OFFLINE 复活首票，纯预研文档票，allowed_paths=docs/increments/2026-10-22-API管理API-Key建模预研提案.md，DoD 五节）；AUDIT-00-PRE/QA-BATCH-00-PRE 候 trae 队列+PROJ-FE-01 候 claude 释放（WIP=1），四票 lease_until=2026-10-29T18:00+08:00；④s367【四】收编10件：tr-done-29/30/31=INC9-9-03/04/05 历史报验 s365 实体收编本轮补引转正；tr-ack-31/32=归属裁定 TRAE_LANE_I1 产出+认可 i1/ 独立命名空间+双写者披露闭环+C 认领 tr-ack-31/tr-done-43/tr-done-44 归属登记；tr-done-44 采信入 LLM-01-FE 链（playwright 1.64.1 已在 devDeps+1.9 需 install chromium）；cl-ack-llm-01-fe-claim 采信；cl-report-llm-01-fe-node-a 节点 A 采信（6新件+稽核EXIT0×2）+候裁三项维持登记（路由R1/R2+e2e tsconfig include+DR-P2-1落位，裁定前节点B spec前置探测整组skip属预期）；i1-ack-01/i1-note-02 采信+i1 未来时间戳沿 c2-001 先例落箱序勘误不改写；⑤执行席报备入信【五】：draft.save 修复产品级实证（归一化比较器+生成物化+mock镜像，E2E 10/11 PASS+API 日志零补偿+1.9 HTML_REF=index-CQfH4FZ7.js 实证上线）+F5 fatal 根因定案=E2E 剧本建图不合法 WF_TRIAL_INVALID 无START/END+孤儿节点（非产品bug），修复方向=l12-02.e2e.mjs F3段补边或START/END，即修重跑候证据；⑥「50+积压」口径登记=投影 CONSUMED 60件泛称+sent/约130件历史未跟踪；下一取号 s368；候回执=codex 摘 APIKEY-00-PRE ack+claude LLM-01-FE 节点B+RT-L12-02 F5 复跑证据+trae SYNC-01 消化进态。
-
-S303 | 监督员C | 2026-10-22 05:11 Asia/Shanghai（用户四步指令窗③；查重 S303 零命中取号，尾行断言 S302；mailbox 361 行尾=s368） | 治理四步v2：投影同水位重建（C=72/P=0）+续租两线确认+按新P0排序收编12件A席件+50积压口径+恢复审计循环（s368落箱） | ①用户指令（verbatim）「同水位重建投影 → 续租两线 → 按新 P0 排序收编 12 件 A 席件+50 积压 → 恢复审计循环」；②投影重建@05:04:47：水位360/s367，四lane 72件（trae27/claude25/codex16/i1 3），C=70/P=2（tr-ack-33+i1-ack-02 均为 s367 收讫 ack，trae standby 三信号待命+I1 MONITOR 维持+RT 证据验收联动）；s368 落箱（行361，尾断言 s367+查重+八字段复验全过，ref 搠 12 件 A 席件 id+2 件 ack）后复建=C=72/P=0 归零；base_priority 回填列入下次重建议程（沿 queue-ordering-global 存量票补级）；③12 件 A 席件按 P0 排序收编（PRIORITY 降序+同级 ts 升序）：P0×8=user-ruling-2items（D4 纳入迁移已落地——权威设计 §3.3 F 组两行+旧后端对标行注记已刷新 ⭕待裁决→✅纳入迁移候 P2 立票；DR-1 被更正）+coordination-directive（三请 C 项兑现闭环+I1 租约已领+V2 intake P0 指定维持）+policy-priority（四级制采纳：P0=V2 intake4 件+RT 两项+AUTH-01/AUDIT-01-⑤/E3-E4 合并窗首批；P1=L12-02-F4F5 在飞+DB-token-02 standby+DW-01-R1 候 P2 产票）+user-ruling-supersedes-1（更正效力采信，载体被 impl-escalation 声明作废内容一致）+hotreload（七件重载+两试行规则即刻执行）+parallel-capacity（扩编采纳，各席回执须声明子智能体使用）+notice-priority（按级收编采信+offline-2 酌升 P0）+queue-ordering-global（全局排序规则采纳，三例外照旧）；P1×3/P2×1=impl-escalation（常设上报令双轨采纳+DR-1=B 现行载体：DW-01 关闭+改立 DW-01-R1=modelApi+/model/list+22 端点联调候 P2 产票）+codex-online（机制包采信，状态被覆盖）+codex-offline-2（再下线采信+节流铁律全员长期有效；s367 派 APIKEY-00-PRE→codex 改道失效，三预研票回池候 P2 改派，lanes.codex=LANE_OFFLINE）+token-efficiency（节流三规则采纳，控制审计类 ≥30min）；④50 积压口径：协调令所指 50 件=s365 收 28+s367 收 10+本轮收 2=40 已消化，差额属口径时点差+sent/ 约 130 件历史归档维持泛称口径；⑤续租两线：LEASED 至 20:00 维持（s367 登记+双 ack 确认），P0 短租约 30min 高频续期沿政策对齐 RT 在飞；⑥恢复审计循环：AIDOS-Datara-Live-Collector（30s）+AIDOS-Datara-Governance-Audit（15min）两计划任务已重启验证产物新鲜（live latest 05:08:17+governance latest 05:07:11），前次停止 05:06:17 知悉不追责；⑦执行席主线：F5 修复落码（l12-02.e2e.mjs 补图段 API 补 START/END+3 边成链，trial validator 六检查全过+快照服务端锚定），即重跑候证据，RT-L12-02-F4F5-E2E 维持 RUNNING；⑧各席动作：P2=产 DW-01-R1 票+回池改派+D4 两监控迁移票+priority 回填；V2=intake 4 件；各线=知会上报令+节流铁律+回执声明子智能体与节流合规；下一取号 s369。
-S304 | 监督员C | 2026-10-22 05:22 Asia/Shanghai（RT 收口窗；查重 S304 零命中取号，尾行断言 S303；mailbox 362 行尾=s369） | L12-02 F4/F5 E2E 12/12 全绿+证据落档 1.9+RT-L12-02-F4F5-E2E RELEASED（s369 落箱） | ①E2E 重跑全绿：2026-10-22T05:12:30~05:13:36+08:00 toolhost 通道（BASE=192.168.1.9:18091）EXIT=0，12/12 步全 PASS（auth.login/F1.route/F2.create_sync_wf/F3.specs_whitelist 7/7/F3.add_nodes/F4.endpoint_panel/F4.json_save/draft.save/graph.patch/F5.panel/F5.snapshot snap=2 digest 0b86a5fc…/F5.dry_run DRY_RUN 任务4 plan 4 节点全链），httpErrors=[]+pageErrors=[]；②F5 修复定案=s367【五】(2) 预告兑现：根因=E2E 剧本建图不合法（UI 托盘无 START/END 入口→WF_TRIAL_INVALID）非产品 bug；修复=l12-02.e2e.mjs 补图段 API 补 e2e_start/e2e_end+3 边成链，三重依据=VALID_NODE_TYPES 含 START/END 无必填参数+SYNC+params.component 豁免+快照服务端 draft 生成 API 补图即入；③证据落档：1.9:/lei/datara-newweb-iso/evidence/l12-02-r2/ 7 文件（6 png+result.json 1707B），sha256=ca7b09e3…409，MK=0 CP=0，本机镜像 datara-l12-e2e/evidence/；④RT-L12-02-F4F5-E2E 推进 RELEASED：remote-test-queue.json 五态 state_history 留痕（LEASED@04:41 s366→RUNNING@05:12→EVIDENCE_READY@05:14→RELEASED@05:20 s369）+evidence 十字段落 queue 件；判定依据=i1-ack-02 联动条款（十字段齐备+落档真实）+E2E_PASS 沿验收 v4，本席以 C 执行身份裁定（s368 治理收编链在位）；⑤凭据即焚：e2e-runner 密码沿 s361【六】备案流程每跑重置即焚，reset_once.py 远端已删；⑥REMOTE_TEST 余项=RT-AUDIT01-SEC-TEST 维持 LEASED（lease 至 12:00）下一执行，判据=1.9 pytest rebuild/sec 切片 test_sec_access_log.py 9 passed；⑦合并窗维持 OPEN（ttl 12:00+commit_gate 六门），代提交清单随 g6 续推+push 恒候用户放行；⑧下一取号 s370。
-
-S305 | 监督员C | 2026-10-22 05:29 Asia/Shanghai（RT 收口窗②；查重 S305 零命中取号，尾行断言 S304；mailbox 363 行尾=s370） | RT-AUDIT01-SEC-TEST 1.9 复验 9 passed+RELEASED→REMOTE_TEST 两项全收口（s370 落箱） | ①1.9 复验达标：sec 切片 9 域件写入宿主 /lei/datara/rebuild-source/rebuild/sec（ro bind mount 容器即时生效）+docker cp 测试件至容器 /app/tests/rebuild/，docker exec -w /app datara-rebuild-api python -m pytest tests/rebuild/test_sec_access_log.py -v --tb=short → PYTEST_EXIT=0，9 passed, 2 warnings in 1.11s（datara-backend:latest，Python 3.11.17，pytest 9.1.1），9 用例逐条 PASSED（模型 result 约束/service 拒入+deny 行强制清零/分页倒序/api 401 鉴权/api 403 admin-only/信封+filters+422/迁移幂等 r10_0001/SQL hook 缓冲+排除自表/HTTP 中间件审计+自豁免）；②证据落档：1.9:/lei/datara-newweb-iso/evidence/rt-audit01-sec-r1/（pytest_9cases_r1.log 2035B+slice_sha256.txt 876B 含 sec 切片 9 域件+测试件 10 件逐件 sha256）；③RT-AUDIT01-SEC-TEST LEASED→RUNNING→EVIDENCE_READY→RELEASED 五态 state_history 留痕（remote-test-queue.json+evidence 十字段落件）；AUDIT-01 ②③④ 具备 AWAITING_REMOTE_TEST→VALIDATED/DONE 推进条件，入 VALIDATION 队列候 V2/C 收位（判定权 V2/C）；④REMOTE_TEST 队列收口：RT-L12-02-F4F5-E2E RELEASED（s369）+RT-AUDIT01-SEC-TEST RELEASED（s370）→s366 两项租约全收口；⑤环境披露：1.9 宿主源码树补 rebuild/sec（bind mount 持久）+容器 tests 补件（可写层随镜像重建失，证据已落档不受影响）；⑥STATE.md 腾位：S299–S300+下一单链段迁 archive/2026-10-22-STATE-S299-S300.md（60 行上限维持）；⑦下一动作：合并窗代提交（g6）清单续推候批+push 恒候用户放行；⑧下一取号 s371。
+- 分批收口清单见发布决策卡 `D:\super-develop\artifacts\datara-git-release-decision-card-2026-10-22.md`
+- 恢复闸门已满足：用户重启指令 → Flow 开运行期（v3-0002）→ 前置核查（载体/队列/路径锁/1.9/计划任务）→ Task 发布 READY 库存（v3-0004）→ 派单开放（v3-0005）
+- 停机报告 open_items 已路由：D01-D04 入 DECISION 队列，A-E 组入 IMPL-v4-01..06
+- 首批裁定（v3-0006，裁定书 artifacts/datara-decision-rulings-D01-D04-2026-10-22.md）：D01 选项① L3-04 口径（后端闸门+FE 403 错误态）；D03 llmApi.ts 正位 src/services/rebuild/；D02 tsconfig.node.json 纳入 playwright.config.ts+e2e/**（并入 IMPL-v4-03）；D04 F-1 成立注释改 409/4092（并入 IMPL-v4-01）→ IMPL-v4-01/03 依赖就绪
+- 每线 WIP 默认 1；新会话按统一启动词 v3 进入；旧会话不得续跑。归档：`archive/2026-10-22-v2-final`。
+- Flow 上线 ACK（v3-0007）：outbox 10/10 为空无可接纳件；EXC-v4-01 现场复核——本目录 STATE.md/mailbox.jsonl 实存且同步至 v3-0006（与异常登记"已移除"不符），裁定前新事件仅追加 super-develop events 投影，本 mailbox.jsonl 冻结于 v3-0006 不前进；role-contracts.json lifecycle 字段滞留 STOPPED 转 Ops。
+- 派单（v3-0008）：队首 IMPL-v4-04 ASSIGNED→claude，票面 `outbox/flow/fl-dispatch-impl-v4-04-dgroup-v3-0008.json`；下一可派 IMPL-v4-01 / IMPL-v4-03 / IMPL-v4-05，待用户启动对应实施线。
+- 常驻心跳（v3-0009..v3-0011）：用户指令创建 Flow 常驻履职循环；1 分钟被平台拒绝（最低 10 分钟），用户已裁定按 10 分钟节拍创建；无用户停止令不停；暂停/删除/周期变更仅接受用户明确指令。
+- 心跳（v3-0012..v3-0017）：接纳 outbox 13 件（各席上线 ACK 7 件、Ops 巡检/Integration 巡检/Task 库存核对 4 件、IMPL-v4-04 证据 2 件），非法 0 件、reject 0；IMPL-v4-04 状态链 ASSIGNED→EVIDENCE_READY（v3-0014，claude 主证据、trae 重复领取裁定为独立核验旁证并释放 trae 线）→PASS（v3-0015，Flow 一致性核对 8/8 全过，pathspec 圈定含 docs/handoff/archive 整目录扩展）；派单 IMPL-v4-01→claude（v3-0016）、IMPL-v4-03→trae（v3-0017），双线 WIP=1；Ops R-1..R-5 登记为 Flow 待办（R-4 已由 claude D0 修正并验证）；EXC-v4-01 双复核前提不成立，仍候用户裁定（A/B/C 或核销）。

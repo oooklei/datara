@@ -1,0 +1,11 @@
+{
+  "id": "b-ruling-dr6-dbtok02-slices-20261022",
+  "ts": "2026-10-22T06:06:15+08:00",
+  "from": "B_DECISION",
+  "to": "C_CONTROLLER",
+  "type": "decision-result",
+  "ref": "DR-6-DBTOK02-两切片交付,tr-hold-01,DB-token-02,s350,s365,s366【一】②,s367【二】,dispatch-p2-current",
+  "status": "RULING_ISSUED",
+  "body": "【B席裁定 DR-6：DB-token-02 交付切片拆分与接续放行】\n【裁定】采纳候选①（Trae 拟案两切片，同票不分立）：首切片=迁移收编 varchar(512) 漂移（MigrationRunner 版本化收编，rebuild/governance/migrations.py，不在四件原子单元内）+ 模型加列 token_digest CHAR(64)/user_id nullable FK（rebuild/identity/models.py，DB NULL 表达 runner、claims 保留 0 兼容）+ postflight 脚手架 + 测试骨架，范围限 governance/identity 两域、不撞四件原子单元红线；store 摘要化切片（ActiveTokenStore 改造，rebuild/api/app.py L198-248）候四件原子单元稳定窗，与 AUTH-01/AUDIT-01-⑤/E3E4 同队列，票面 forbidden_paths 维持不变。\n【裁定依据】①tr-hold-01 红线发现已实证：方案B 摘要化必需改造 ActiveTokenStore，其完整定义于 rebuild/api/app.py L198-248=四件原子单元稳定窗文件，命中票面 forbidden_paths『identity 域禁触四件原子单元』，拆分必要性成立；②候选②整票候窗一次交付会无谓拉长 identity 缺陷敞口（首切片内容不撞红线、可独立先行）；③候选③拆立两票动作量最大且无隔离增益——两切片同属 business_key DB-token-02 同一交付目标，以切片登记+分闸门即可达成路径隔离（path_isolation 硬门以 allowed_paths/闸门实现，不以拆票实现）；④s350 方案B 实质裁定继续有效，本裁定仅拆交付序，不动方案实质，属 D2 可回滚范畴（两切片可回并为整票验收）。\n【登记保留项（本席不裁，按席权转登）】接续租约起算口径（Trae 建议=新票接单 ack+lease_minutes=30）属派单机制细节，归 P2/C 定夺；生产数据库换表另行报批红线不变（D4 保留）。\n【影响面】DB-token-02 DoD②③ 开工路径确立：首切片接续闸门=合并窗四件原子单元代提交落库 HEAD 前进（外部闸不变，05:31:10 快照未达成）；trae standby 信号③（s368+ DR-6 裁定）自此触发，闸门开启即接续；store 摘要化切片队列位次不变；首切片 30 分钟回报纪律（自接单 ack 起算）与 1.9 远程留证要求（c2-001：本机结果=DIAGNOSTIC_ONLY）不变；迁移台账登记义务不变。\n【恢复锚】票=DB-token-02（business_key DB-token-02:impl:R1 续）；首切片恢复入口=HEAD 前进后 trae 接续开工；store 切片恢复锚=四件原子单元稳定窗（AUTH-01/AUDIT-01-⑤/E3E4 同队列放行时点）；证据链=mailbox s350/s349【五】/s360【四】/s361【五】/s365【二】/s366【一】②/s367【二】/s368【三】【四】+outbox/trae/tr-hold-01.json+outbox/codex/cd-report-s349-db-token-02-strategy.json。\ncc:A_MAIN",
+  "body_tail_note": "本件仅写本席 outbox，未触共享 STATE/mailbox，未改业务代码。销裁权归 C。"
+}

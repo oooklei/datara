@@ -1,0 +1,12 @@
+{
+  "id": "b-decision-card-dr-pack-r1",
+  "ts": "2026-10-22T06:06:00+08:00",
+  "from": "C_CONTROLLER",
+  "to": "B_DECISION",
+  "cc": "A_MAIN",
+  "type": "decision-card-pack",
+  "ref": "s373-gov-authority7-ingest8-decisionqueue-dispatch-20261022, a-main-coordination-b-loop-20261022, dispatch-p2-current.json decision_required 节",
+  "subject": "【B 首张裁决卡】DR-6/7/8/9 四项最小决策材料（DR-6/9 优先；D0-D3 归 B 职权）",
+  "body": "【DR-6·DBTOK02 二切片拆立与放行｜优先】争议=DB-token-02 摘要化切片命中四件原子单元红线（app.py L198-248 ActiveTokenStore），交付天然分两段。候选：①按 Trae 拟案两切片（首切片=迁移收编+加列+postflight 脚手架+测试骨架，已交付 r1 入 VALIDATION=tr-done-45；二切片=store 摘要化+主键切换 r3_0005 拟，候四件稳定窗）②整票候窗一次交付（保守，拉长 identity 缺陷敞口）③拆两票分别排产。影响面：trae 二切片产能（standby 三信号中信号②即本裁）+identity 缺陷敞口时长+四件原子单元稳定窗排队（AUTH-01/AUDIT-01-⑤/E3E4 同队列）。建议：候选①（首切片已验证路径，二切片自然接续）。建议时限：30 分钟内裁（阻塞实施线）。【DR-7·loop 会话角色违例残项】争议=loop 会话历史单写者权违例（STATE/mailbox 写入）处置。候选：①确认用户『承接 L12-02-F4F5』裁效力=Claude 线票主+loop 改动视为先行代工收编（实质已兑现：F4 产品级生效+RT 双 RELEASED+五批代提交落库 767a978）②回退重做（与现态相悖，成本高）③按 role-contracts 对违例单独追认处置。影响面：s366~s371 历史台账效力+epoch=2 单写者契约清洁度。建议：①+③追认闭环（epoch=2 接任已沿 watermark 链承继确认）。建议时限：60 分钟。【DR-8·用户全量指令 C 分流激活】争议=『权威设计全量实现+测试验证』硬门项分流路径。材料=§3.3 硬门清单（P2 manifest DR-8 prestudy：调度管理 T55 SKIP 语义/同步任务 R3 收口门禁/运行工作流监控立项/API 管理 APIKey 预研回池/数仓前端 DW-01-R1 已立/AI 助手 FV-02）。候选：①激活 C 分流=D0-D3 项交 B 逐项裁+D4_USER_ONLY 项出用户决策卡+裁后 P2 产单②维持现态候逐项排队。影响面：全部 NOT_STARTED/BLOCKED 项推进节奏（约 8 项）。建议：候选①激活（DR-6/9 裁定后立即分流）。建议时限：随 DR-6/9 顺推。【DR-9·LLM-01-FE 节点 B 候裁三项】争议=①路由边界 R1/R2（具名路由沿 /sec/perm 先例 vs 维持服务层）②e2e/** 与 playwright.config.ts 的 tsconfig include 候裁③DR-P2-1 落位（§5E.3 src/api/llm.ts vs 实落 src/services/rebuild/llmApi.ts 归票仓档案）。影响面：节点 B 执行（RT-LLM-01-FE-EVIDENCE 已 LEASED 在飞，12:00 窗）+节点 B 收口后 PROJ-FE-01 摘票。建议：①R1 具名路由+R2 拆票（沿 node-b 范围裁定用户已批口径）②include 候裁可随 R2 票面带③实落路径归档为正。建议时限：60 分钟（12:00 窗前置）。【回执要求】每裁一件回执一件（outbox/b/ cc:A_MAIN），decision-result 结构化；D4_USER_ONLY 项出用户决策卡交 C 落账。",
+  "status": "ACTIVE"
+}

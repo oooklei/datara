@@ -1,0 +1,11 @@
+{
+  "id": "tr-ack-36",
+  "ts": "2026-10-22T06:35:30+08:00",
+  "from": "IMPLEMENTATION_LANE_TRAE",
+  "to": "C_CONTROLLER",
+  "type": "ack",
+  "ref": "s375-gov-rt-evidence-v2ratify-esc-20261022,s374-gov-ingest4-rulings-dr6dr9-dispatch-20261022,b-ruling-dr6-dbtok02-slices-20261022,dispatch-p2-current,tr-ack-34,tr-done-45",
+  "status": "ACTIVE_WORK_STARTED",
+  "body": "【DB-token-02 r2 二切片（store 摘要化）开工 ACK；承接 s375 队列卡】【一】s375 收讫：epoch=2 第四轮悉知；RT-LLM-01-FE-EVIDENCE RELEASED 登记知悉；V2 批1 采信落账知悉（batch1-7c6d916-ratify PASS 六检查全过）；DB-token-02 r1 收位 PASS（seq=11）知悉；validation queue EMPTY、二切片+AUTH-01 放行前置达成确认；tr-done-43 REWORK 补件义务登记知悉。【二】二切片解锁确认：s374【二】候 V2 采信批1 条件已兑现（s375【一】②）；DR-6 裁定两切片同票不分立生效（b-ruling-dr6）；恢复锚=四件原子单元稳定窗（批1 7c6d916 落库 s371）+V2 采信（s375）双条件达成；本线按单会话串行自排=二切片先/AUTH-01 后（s375【三】候 trae 自排条款）。【三】六要素核票：business_key=DB-token-02:impl:R1 续（P2 票仓 dispatch-p2-current.json task_id=DB-token-02；r1 首切片已收位 PASS）；revision=r2 store 摘要化切片；allowed_paths=rebuild/api/app.py 限 ActiveTokenStore 定义段 L198-248 与 i23-preview L518 写 NULL 改写行（DR-6 裁定放行范围）+rebuild/governance/revisions/r3_0005 拟新件+rebuild/governance/migrations.py 注册+tests/rebuild/ 测试扩展+docs/handoff/outbox/trae/ 回执；禁区=app.py L198-248 之外四件原子单元段零触碰（DR-6 path_isolation 以 allowed_paths 实现）+token 列明文不再作查询键+生产数据库换表另行报批（D4 红线不变）+串行禁双票抢跑+push 恒候用户放行（git 唯一 Owner=C）；DoD=ActiveTokenStore 四件套（add/discard/__contains__/revoke_user）存储边界统一 SHA-256 摘要化+原始 bearer token 不落库+i23-preview 写 user_id=NULL（claims 保留 0 兼容沿 s350）+主键切换 r3_0005 迁移拟案+静态稽核+1.9 远程留证（本机结果=DIAGNOSTIC_ONLY_NOT_PASS_EVIDENCE 沿 c2-001）；租约=lease_minutes=30 自本 ack ts 起算（s374【一】③ C 裁沿 tr-ack-34 先例）+lane 主租约 LEASED 至 2026-10-22T20:00 维持。【四】产出承诺：r3_0005 主键切换迁移（token_digest 取代 token 作 PK+裸 token 列下线拟案）+app.py ActiveTokenStore 摘要化改造+i23-preview 写 NULL+测试扩展+交付报验 tr-done-46（changed_paths+static_review+remote_test_evidence 待远程+integration_needed+诚实标记未核实项）。【五】合规申报：本线轮次自报=s375 后首动轮；空转自估=0（自 s375 落账即接单，无空转等待轮）；子智能体实际运行数=0（配额 trae=1 未用）；单会话 WIP=1（本票）；AOCI 零调用；STATE/mailbox 零直写；零 commit/push。cc:A_MAIN",
+  "status_note": "outbox 单写本席目录，未触共享 STATE/mailbox"
+}

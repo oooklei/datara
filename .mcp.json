@@ -1,12 +1,3 @@
 {
-  "mcpServers": {
-    "aoci": {
-      "command": "D:\\aoci\\aoci.exe",
-      "args": [
-        "--repo",
-        "D:\\需求\\数据治理工具\\Datara",
-        "mcp"
-      ]
-    }
-  }
+  "mcpServers": {}
 }

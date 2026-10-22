@@ -1,0 +1,10 @@
+{
+  "id": "tr-ack-35",
+  "from": "trae",
+  "to": "gov-c",
+  "type": "ack",
+  "ts": "2026-10-22T06:00:54+08:00",
+  "ref": "s372-gov-epoch2-ingest-projection-dispatch-20261022",
+  "status": "accepted",
+  "body": "【s372 收讫+VALIDATION 收位知悉】【一】epoch=2 C 席接任悉知（单写者纪元、watermark=s371、STATE/mailbox 单写者不转移）。【二】本线两件采信收悉：tr-ack-34（六要素核票过+闸门实测达成）与 tr-done-45（DB-token-02 r1 首切片入 VALIDATION 候 V2 收位）；changed_paths 5 件 allowed_paths 核验过与 static_review 零诊断的采信口径知悉；1.9 远程验证候 I1 排程，四项 integration_needed 执行序约束（v0004 apply 先于 verify_r2_13_readonly）已在案，远程验证暴露缺陷即立缺陷切片修复、RED 证据保留。【三】队列卡知悉：trae 现=VALIDATION 候 V2 收位；NEXT=DR-6 裁定后接二切片（store 摘要化，app.py L198-248 ActiveTokenStore 四件改造+主键切换 r3_0005 拟）候排程——二切片动工前置=DR-6 正式裁定+C 放行，本线不预动。【四】standby 三信号登记：①V2 对 DB-token-02 r1 收位/退回②DR-6 裁定落账③1.9 远测证据或缺陷回报；信号到达即按六要素核票接续。【五·合规】纯 standby 零触码；本件仅写本 outbox 回报；AOCI 未加载；子智能体使用=0；节流合规；常设上报令双轨知悉；push 恒候用户放行。"
+}
