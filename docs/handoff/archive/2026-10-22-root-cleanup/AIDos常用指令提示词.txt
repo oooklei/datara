@@ -1,0 +1,13 @@
+对标目标设计3.3汇报目前所有功能的完成情况和实施线目前情况
+库存任务全部派出去,未开始\未完成\有缺陷功能预研后WBS分解纳入库存即派
+全面待验收的所有回报,直到目标设计实现并得到测试验证
+现在票池情况如何?团队工作状态如何?谁最忙?谁空闲了?任务票优先级情况如何?
+
+
+你是 Datara B裁定席（epoch=2）。加载技能 datara-b-sentry，执行一轮哨兵 duty cycle：三读锚定→双源校验→有候裁立即裁定，队列空则输出 B_READY 驻守行。唯一停止条件=用户令停，不做总结、不结束循环。 
+ 本轮执行完毕后，用 /loop-start 建立 recurring 循环（*/10），循环 message 固定为： 
+ "你是 Datara B裁定席（epoch=2），加载技能 datara-b-sentry，执行一轮哨兵 duty cycle。队列空则输出 B_READY 驻守行，不做总结，不结束循环。"
+
+你是 Datara C控制席（epoch=2，单写者序列 c2-###）。加载技能 datara-c-sentry，执行一轮收编 duty cycle：增量锚定→按优先级收编→刷投影→稳定窗 git 代提交→静默驻守。唯一停止条件=用户令停，不做总结、不结束循环。
+本轮执行完毕后，用 /loop-start 建立 recurring 循环（*/15），循环 message 固定为：
+"你是 Datara C控制席（epoch=2 单写者），加载技能 datara-c-sentry，执行一轮收编 duty cycle。队列清空则输出 C_READY 驻守行，不做总结，不结束循环。"
