@@ -17,6 +17,7 @@
 import { describe, expect, it } from 'vitest'
 import { routes } from '../routes'
 import TaskCenterView from '../../views/TaskCenterView.vue'
+import RuntimeNodeView from '../../views/depops/RuntimeNodeView.vue'
 import routesSource from '../routes.ts?raw'
 import routerSource from '../index.ts?raw'
 import viteSource from '/vite.config.ts?raw'
@@ -30,11 +31,13 @@ function stripComments(source: string): string {
 const CATCH_ALL_MARKER = ':pathMatch'
 
 describe('1.4 routes 负断言（WBS 1.4 / 增量 1 退出标准 2）', () => {
-  it('routes 正式产品路由基线：/login、/、/dag 任务中心（s260 派令 INC4-FE-1 解锁）与 /p/:projectId 项目工作区层两条（s251 派令 L3-03 解锁），无 demo/验证页/临时占位路由', () => {
+  it('routes 正式产品路由基线：/login、/、/dag 任务中心（s260 派令 INC4-FE-1 解锁）、/dep/runtime 运行节点页（IMPL-v4-17）与 /p/:projectId 项目工作区层两条（s251 派令 L3-03 解锁），无 demo/验证页/临时占位路由', () => {
     expect(routes.map((r) => r.path)).toEqual([
       '/login',
       '/',
       '/dag',
+      // 17.4 P3 运行节点迁移（IMPL-v4-17）：运行时节点页
+      '/dep/runtime',
       '/p/:projectId',
       '/p/:projectId/:seg',
     ])
@@ -45,6 +48,13 @@ describe('1.4 routes 负断言（WBS 1.4 / 增量 1 退出标准 2）', () => {
     expect(dag).toBeTruthy()
     expect(dag?.name).toBe('dag-entry')
     expect(dag?.component).toBe(TaskCenterView)
+  })
+
+  it('/dep/runtime 绑定 RuntimeNodeView 且具名（IMPL-v4-17：17.4 P3 运行节点迁移）', () => {
+    const runtime = routes.find((r) => r.path === '/dep/runtime')
+    expect(runtime).toBeTruthy()
+    expect(runtime?.name).toBe('dep-runtime')
+    expect(runtime?.component).toBe(RuntimeNodeView)
   })
 
   it('无任何路由携带 demo:true 标记（零 demo 路由）', () => {
