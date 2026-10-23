@@ -17,6 +17,7 @@
 import { describe, expect, it } from 'vitest'
 import { routes } from '../routes'
 import TaskCenterView from '../../views/TaskCenterView.vue'
+import SshNodeManagementView from '../../views/SshNodeManagementView.vue'
 import RuntimeNodeView from '../../views/depops/RuntimeNodeView.vue'
 import routesSource from '../routes.ts?raw'
 import routerSource from '../index.ts?raw'
@@ -36,6 +37,8 @@ describe('1.4 routes 负断言（WBS 1.4 / 增量 1 退出标准 2）', () => {
       '/login',
       '/',
       '/dag',
+      // 17.5 P4 SSH 节点域收口：独立挂载页
+      '/dep/ssh',
       // 17.4 P3 运行节点迁移（IMPL-v4-17）：运行时节点页
       '/dep/runtime',
       '/p/:projectId',
@@ -48,6 +51,13 @@ describe('1.4 routes 负断言（WBS 1.4 / 增量 1 退出标准 2）', () => {
     expect(dag).toBeTruthy()
     expect(dag?.name).toBe('dag-entry')
     expect(dag?.component).toBe(TaskCenterView)
+  })
+
+  it('/dep/ssh 绑定 SshNodeManagementView 且具名（17.5 P4 SSH 节点域收口：独立挂载页）', () => {
+    const ssh = routes.find((r) => r.path === '/dep/ssh')
+    expect(ssh).toBeTruthy()
+    expect(ssh?.name).toBe('dep-ssh')
+    expect(ssh?.component).toBe(SshNodeManagementView)
   })
 
   it('/dep/runtime 绑定 RuntimeNodeView 且具名（IMPL-v4-17：17.4 P3 运行节点迁移）', () => {
