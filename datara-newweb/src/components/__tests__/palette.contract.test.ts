@@ -225,7 +225,7 @@ describe('INC4-FE-3 Palette 双 Tab（组件库 / 工作流）', () => {
     expect(items[0].text()).not.toContain('运行态组件')
   })
 
-  it('门3② 逐项实测：同步编排 7 项逐项可见（拖拽契约逐项在位）+ C17 sync / C24 file_sync runtime-only 显式排除', async () => {
+  it('W1 门3② 逐项实测：同步编排 7 项逐项可见（拖拽契约逐项在位）+ C17 sync / C24 file_sync runtime-only 显式排除', async () => {
     // 权威设计（同步编排端点合一与设计态分离设计 §同步编排）：palette 数据同步组 7 项
     const SYNC_ORCH_7 = [
       'src_base_orch',
