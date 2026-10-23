@@ -67,12 +67,9 @@ def create_app() -> FastAPI:
         meta,
         meta_ops,
         model,
-        monitor,
         page_designer,
         params,
-        runtime_node,
         smoke,
-        sshnode,
         streamdata,
         streamjob,
         sync,
@@ -99,11 +96,8 @@ def create_app() -> FastAPI:
     app.include_router(meta.router, prefix="/api/v1")
     app.include_router(meta_ops.router, prefix="/api/v1")
     app.include_router(model.router, prefix="/api/v1")
-    app.include_router(monitor.router, prefix="/api/v1")
     app.include_router(params.router, prefix="/api/v1")
-    app.include_router(runtime_node.router, prefix="/api/v1")
     app.include_router(smoke.router, prefix="/api/v1")
-    app.include_router(sshnode.router, prefix="/api/v1")
     app.include_router(streamjob.router, prefix="/api/v1")
     app.include_router(streamdata.router, prefix="/api/v1")
     app.include_router(sync.router, prefix="/api/v1")
