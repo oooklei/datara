@@ -43,7 +43,11 @@ import {
 import type { DagPickItem } from '../stores/dagTabs'
 
 const props = defineProps<{ defaultTab?: 'palette' | 'wf'; projectId?: number }>()
-const emit = defineEmits<{ 'load-tasks': [{ items: DagPickItem[] }] }>()
+const emit = defineEmits<{
+  'load-tasks': [{ items: DagPickItem[] }]
+  /** 9-04 行内「定时」入口：载荷 = 工作流定义 id+name，宿主单实例 ScheduleDialog 承接 */
+  schedule: [{ id: number; name: string }]
+}>()
 
 interface PalRow { type: string; label: string; desc: string; icon: string; color: string; code: string; cat: string }
 
@@ -390,7 +394,7 @@ function onLoad() {
               <span class="pt-name" :title="d.name">
                 <span v-if="d.code != null" class="p-code mono">#{{ d.code }}</span>{{ d.name }}
               </span>
-              <!-- 真项目行操作：移动分类（下拉替换 tags）+ 删除；projectId 缺位（/dag 过渡路由）不支持 -->
+              <!-- 真项目行操作：移动分类（下拉替换 tags）+ 定时调度（9-04）+ 删除；projectId 缺位（/dag 过渡路由）不支持 -->
               <template v-if="hasProject">
                 <select
                   class="pt-move"
@@ -401,6 +405,7 @@ function onLoad() {
                 >
                   <option v-for="g2 in moveOptions" :key="g2" :value="g2">{{ g2 }}</option>
                 </select>
+                <span class="pt-cron" title="定时调度" @click.stop="emit('schedule', { id: d.id, name: d.name })">⏱</span>
                 <span class="pt-del" title="删除任务" @click.stop="deleteRow(d)">✕</span>
               </template>
             </div>
@@ -421,7 +426,7 @@ function onLoad() {
           <span class="pt-name" :title="d.name">
             <span v-if="d.code != null" class="p-code mono">#{{ d.code }}</span>{{ d.name }}
           </span>
-          <!-- 真项目行操作：移动分类（下拉替换 tags）+ 删除；projectId 缺位（/dag 过渡路由）不支持 -->
+          <!-- 真项目行操作：移动分类（下拉替换 tags）+ 定时调度（9-04）+ 删除；projectId 缺位（/dag 过渡路由）不支持 -->
           <template v-if="hasProject">
             <select
               class="pt-move"
@@ -432,6 +437,7 @@ function onLoad() {
             >
               <option v-for="g2 in moveOptions" :key="g2" :value="g2">{{ g2 }}</option>
             </select>
+            <span class="pt-cron" title="定时调度" @click.stop="emit('schedule', { id: d.id, name: d.name })">⏱</span>
             <span class="pt-del" title="删除任务" @click.stop="deleteRow(d)">✕</span>
           </template>
         </div>
@@ -482,6 +488,9 @@ function onLoad() {
 .p-code.mono{font-family:ui-monospace,SFMono-Regular,Consolas,monospace}
 .pt-move{border:1px solid var(--border-color,#e2e8f0);border-radius:var(--radius-sm,6px);font-size:11px;color:var(--text-secondary,#64748b);background:#fff;padding:1px 3px;cursor:pointer;flex-shrink:0;max-width:74px}
 .pt-move:hover{border-color:var(--primary-color,#2563eb);color:var(--primary-color,#2563eb)}
+/* 9-04 行内「定时」入口（emit schedule → 宿主 TC 单实例 ScheduleDialog） */
+.pt-cron{color:var(--text-4,#cbd5e1);font-size:11px;line-height:1;padding:1px 3px;border-radius:3px;flex-shrink:0;cursor:pointer}
+.pt-cron:hover{color:var(--primary-color,#2563eb);background:var(--primary-light,#eff6ff)}
 .pt-del{color:var(--text-4,#cbd5e1);font-size:12px;line-height:1;padding:1px 3px;border-radius:3px;flex-shrink:0;cursor:pointer}
 .pt-del:hover{color:var(--danger,#dc2626);background:var(--danger-bg,#fef2f2)}
 /* 根目录（普通工作流）平铺项 */
