@@ -225,6 +225,56 @@ describe('INC4-FE-3 Palette 双 Tab（组件库 / 工作流）', () => {
     expect(items[0].text()).not.toContain('运行态组件')
   })
 
+  it('门3② 逐项实测：同步编排 7 项逐项可见（拖拽契约逐项在位）+ C17 sync / C24 file_sync runtime-only 显式排除', async () => {
+    // 权威设计（同步编排端点合一与设计态分离设计 §同步编排）：palette 数据同步组 7 项
+    const SYNC_ORCH_7 = [
+      'src_base_orch',
+      'tgt_base_orch',
+      'file_sync_orch',
+      'endpoint_select',
+      'field_map',
+      'field_map_union',
+      'condition_set',
+    ] as const
+    specLoad.mockResolvedValue({
+      items: [
+        // 7 项逐项构造（真实 type 名 + 数据同步组 category）
+        ...SYNC_ORCH_7.map((type) =>
+          item({
+            type,
+            identity: { displayName: `同步编排·${type}` },
+            description: { category: '数据同步' },
+            visual: { icon: '⇄', color: '#2563eb' },
+          }),
+        ),
+        // C17 sync / C24 file_sync：runtimeOnly（设计态禁运行态组件）→ normalizeSpec 置 paletteVisible=false
+        item({ type: 'sync', identity: { displayName: '同步执行C17' }, visual: { paletteVisible: false } }),
+        item({ type: 'file_sync', identity: { displayName: '文件同步执行C24' }, visual: { paletteVisible: false } }),
+      ],
+      etag: '"g3"',
+      source: 'network',
+    })
+    const w = mountPalette()
+    await flushPromises()
+    // 逐项可见：9 条构造 spec 只渲染 7 项（C17/C24 被排除）
+    const items = w.findAll('.pal-item')
+    expect(items).toHaveLength(7)
+    for (const t of SYNC_ORCH_7) {
+      // .p-name 精确匹配（includes 会因 field_map ⊂ field_map_union 双命中）
+      const hit = items.filter((r) => r.find('.p-name').text() === `同步编排·${t}`)
+      expect(hit, `同步编排 7 项缺 ${t}`).toHaveLength(1)
+      // 拖拽契约逐项在位（画布 onDrop 白名单 SYNC_PALETTE_TYPES 承接前提）
+      const fakeDT = { setData: vi.fn(), effectAllowed: '' }
+      await hit[0].trigger('dragstart', { dataTransfer: fakeDT })
+      expect(fakeDT.setData).toHaveBeenCalledWith('datara/node-type', t)
+      expect(fakeDT.effectAllowed).toBe('copy')
+    }
+    // C17/C24 runtime-only 显式排除（四排除·palette 侧，字段名差异豁免：实现走 paletteVisible===false）
+    const text = w.find('.pal-list').text()
+    expect(text).not.toContain('同步执行C17')
+    expect(text).not.toContain('文件同步执行C24')
+  })
+
   it('搜索三通道：displayName / summary / type 命中，无命中渲染空态', async () => {
     specLoad.mockResolvedValue({
       items: [
@@ -360,6 +410,18 @@ describe('INC4-FE-4 工作流目录树（三分类收窄 + 行操作 RED 降级�
     // 真项目行操作在位（projectId 缺位时不渲染，见用例 11）
     expect(w.findAll('.pt-move')).toHaveLength(4)
     expect(w.findAll('.pt-del')).toHaveLength(4)
+  })
+
+  it('9-04 行内「定时」入口：4 行 .pt-cron 在位，点击 emit schedule 载荷 {id,name}（宿主单实例对话框承接）', async () => {
+    poolLoad.mockResolvedValue(POOL)
+    const w = mountPalette({ defaultTab: 'wf', projectId: 7 })
+    await flushPromises()
+    expect(w.findAll('.pt-cron')).toHaveLength(4)
+    // 目录行（同步一）与根目录行（旧ETL）各自 emit，载荷 = DefRow id+name 原样
+    await w.findAll('.pt-cron')[0].trigger('click')
+    expect(w.emitted('schedule')?.[0]).toEqual([{ id: 1, name: '同步一' }])
+    await w.findAll('.pt-cron')[3].trigger('click')
+    expect(w.emitted('schedule')?.[1]).toEqual([{ id: 4, name: '旧ETL' }])
   })
 
   it('typeOf 三分类经 onLoad：tags[同步]→sync，wire id number→String 桥接 + code 直通，载入后勾选清空', async () => {
