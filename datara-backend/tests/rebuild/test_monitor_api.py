@@ -137,3 +137,44 @@ def test_default_rebuild_app_mounts_monitor_route_and_degrades_without_registry(
         response = client.get("/api/v1/rebuild/monitor/nodes", headers={"token": token})
     assert response.status_code == 200
     assert response.json()["data"]["zkAvailable"] is False
+
+
+def test_rebuild_lifespan_wires_service_registry_into_monitor_zk_provider(monkeypatch):
+    """D-18: rebuild lifespan 必须创建 ServiceRegistry 并赋值 app.state.registry，
+    monitor 的 zk_provider 才能取到真实 ZK 连接；否则 zkAvailable 恒 false、ZK live 节点不可见。"""
+    live_zk = object()
+    lifecycle = {}
+
+    class FakeRegistry:
+        def __init__(self, module, port):
+            lifecycle["module"] = module
+            lifecycle["port"] = port
+            self.zk = live_zk
+
+        def start(self):
+            lifecycle["started"] = True
+
+        def stop(self):
+            lifecycle["stopped"] = True
+
+    monkeypatch.setattr("rebuild.api.app.ServiceRegistry", FakeRegistry)
+    # 复刻 list_live_nodes 真实语义：zk 为 None → (False, [])；有连接 → 返回 live 节点。
+    monkeypatch.setattr(
+        "rebuild.monitor.api.list_live_nodes",
+        lambda zk: (False, []) if zk is None else (True, [{"module": "master", "node": "zk-live-1"}]),
+    )
+    app = create_app("sqlite+pysqlite:///:memory:", token_secret="monitor-registry-secret")
+    with TestClient(app) as client:
+        assert isinstance(app.state.registry, FakeRegistry)
+        with app.state.session_factory() as session:
+            UserRepository(session).create(username="monitor-user", password="monitor-password", role=Role.VIEWER)
+            session.commit()
+        token = client.post(
+            "/api/v1/rebuild/login",
+            json={"username": "monitor-user", "password": "monitor-password"},
+        ).json()["data"]["token"]
+        response = client.get("/api/v1/rebuild/monitor/nodes", headers={"token": token})
+    assert response.status_code == 200
+    assert response.json()["data"]["zkAvailable"] is True
+    assert [row["node"] for row in response.json()["data"]["nodes"]] == ["zk-live-1"]
+    assert lifecycle == {"module": "api", "port": 8001, "started": True, "stopped": True}

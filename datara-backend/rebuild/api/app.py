@@ -92,6 +92,7 @@ from rebuild.model.models import MODEL_TABLES
 from rebuild.monitor import build_monitor_router
 from rebuild.llm import LlmCredentialCipher, LlmModelRecord, build_llm_router
 from rebuild.llm.migrations import apply_llm_migrations
+from common.registry import ServiceRegistry
 
 logger = logging.getLogger(__name__)
 
@@ -366,7 +367,13 @@ def create_app(
         ensure_schedule_schema()
         ensure_model_schema()
         ensure_runtime_node_schema()
+        # ZK 注册：monitor 路由经 app.state.registry 复用本连接列举 /datara/live live 节点
+        # （对齐旧侧 api/main.py 装配；ZK 连不上仅降级，后台线程重连，不阻塞启动）。
+        registry = ServiceRegistry("api", 8001)
+        registry.start()
+        app.state.registry = registry
         yield
+        registry.stop()
         datasource_engines.dispose_all()
         engine.dispose()
 
