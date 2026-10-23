@@ -51,6 +51,17 @@ def _spec_item(component: Component, version: ComponentVersion) -> dict[str, Any
     ports = spec.get("ports")
     if not isinstance(ports, dict):
         ports = render.get("ports") if isinstance(render.get("ports"), dict) else None
+    visual = {
+        "icon": spec.get("icon") or render.get("icon") or "",
+        "color": spec.get("color") if spec.get("color") is not None else render.get("color"),
+        "shape": spec.get("shape") or render.get("shape") or "default",
+        "badge": spec.get("badge"),
+    }
+    # D1 闸门 §13-5 / 同步编排设计态分离（权威设计 v3 L515）：runtime-only 组件
+    # （C17 sync / C24 file_sync，execution_model=dag-engine）显式 paletteVisible=false，
+    # 消费方 FE Palette 按此过滤（设计态禁运行态组件，四排除·palette 侧）。
+    if component.execution_model == "dag-engine":
+        visual["paletteVisible"] = False
     return {
         "type": component.type,
         "publishedVersion": component.published_version,
@@ -67,12 +78,7 @@ def _spec_item(component: Component, version: ComponentVersion) -> dict[str, Any
         },
         "inputs": fields,
         "outputs": spec.get("outputs") if isinstance(spec.get("outputs"), list) else [],
-        "visual": {
-            "icon": spec.get("icon") or render.get("icon") or "",
-            "color": spec.get("color") if spec.get("color") is not None else render.get("color"),
-            "shape": spec.get("shape") or render.get("shape") or "default",
-            "badge": spec.get("badge"),
-        },
+        "visual": visual,
         "behaviors": spec.get("behaviors"),
         "dropPolicy": spec.get("dropPolicy"),
         "extensions": spec.get("extensions"),
