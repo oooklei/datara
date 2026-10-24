@@ -12,7 +12,8 @@ import re
 from pathlib import Path
 from typing import Literal
 
-from fastapi import FastAPI, Header, Query
+from fastapi import FastAPI, Header, Query, Request
+from starlette.datastructures import MutableHeaders
 from fastapi.responses import JSONResponse, Response
 from pydantic import BaseModel
 from sqlalchemy import create_engine, delete, func, inspect, select, text
@@ -434,6 +435,23 @@ def create_app(
     app.state.active_tokens = active_tokens
     app.state.session_factory = session_factory
     app.state.datasource_engines = datasource_engines
+
+    @app.middleware("http")
+    async def normalize_token_header(request: Request, call_next):
+        """Accept the canonical SPA ``token`` header as Bearer auth.
+
+        The rebuild frontend deliberately keeps the token in an ephemeral
+        ``token`` header (the legacy API contract), while identity routes use
+        FastAPI's ``Authorization`` header dependency. Normalize at the
+        boundary so every route shares one verifier and login does not yield a
+        false 401 on the first project request.
+        """
+        if not request.headers.get("authorization"):
+            raw = request.headers.get("token", "").strip()
+            if raw:
+                headers = MutableHeaders(scope=request.scope)
+                headers["authorization"] = f"Bearer {raw}"
+        return await call_next(request)
 
     # Production SQL IDE DI: instantiate execution port and audit writer from app services
     app.state.execution_port = build_execution_port(

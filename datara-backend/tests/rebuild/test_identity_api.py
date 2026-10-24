@@ -345,6 +345,8 @@ def test_validation_key_issues_short_lived_non_admin_token_and_rejects_bad_key()
         token = issued.json()["data"]["token"]
         claims = json.loads(base64.urlsafe_b64decode(token.split(".", 1)[0] + "=="))
         headers = {"Authorization": f"Bearer {token}"}
+        token_header_projects = client.get("/api/v1/rebuild/projects", headers={"token": token})
+        assert token_header_projects.status_code == 200
         project = client.post("/api/v1/rebuild/projects", headers=headers, json={"name": "bootstrap-test"})
         permission_denial = client.post(
             f"/api/v1/rebuild/projects/{project.json()['data']['id']}/members",
