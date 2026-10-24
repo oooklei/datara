@@ -62,6 +62,32 @@ def main() -> int:
         spec_count = len(specs.get("items", []))
         if spec_count < 4:
             raise RuntimeError(f"component catalogue too small: {spec_count}")
+        # Variables are a critical workflow dependency.  Exercise the same
+        # save/list contract used by the frontend against the isolated DB;
+        # overwriting this deterministic probe keeps repeated runs harmless.
+        variable_name = "high_priority_e2e_marker"
+        saved_variable = call(
+            args.base,
+            f"/api/v1/rebuild/variables?project_id={args.project_id}",
+            token=token,
+            method="POST",
+            body={
+                "scope": "project",
+                "name": variable_name,
+                "value_type": "string",
+                "value": "isolated-ok",
+            },
+        )
+        if (saved_variable.get("data") or {}).get("saved") is not True:
+            raise RuntimeError("variable save contract failed")
+        listed_variables = call(
+            args.base,
+            f"/api/v1/rebuild/variables?project_id={args.project_id}&scopes=project",
+            token=token,
+        )
+        variable_rows = listed_variables.get("data") or []
+        if not any(row.get("name") == variable_name for row in variable_rows):
+            raise RuntimeError("saved variable was not returned by list contract")
         trial = call(
             args.base,
             f"/api/v1/rebuild/trial/definitions/{args.definition_id}/run",
@@ -108,7 +134,7 @@ def main() -> int:
         if key_logs.get("code") != 0:
             raise RuntimeError("scoped API-Key call-log read failed")
         stat_rows = stats.get("data", {}).get("items") if isinstance(stats.get("data"), dict) else stats.get("data")
-        print(json.dumps({"health": "ok", "component_count": spec_count, "trial": "SUCCEEDED", "task_count": len(trial_data["tasks"]), "run_stats": len(stat_rows or []), "stream_metrics": len(metric_rows), "llm_models": len(llm_rows or []), "api_definitions": len(api_rows or []), "api_key_call_logs": "ok"}, ensure_ascii=False))
+        print(json.dumps({"health": "ok", "component_count": spec_count, "variables": "ok", "trial": "SUCCEEDED", "task_count": len(trial_data["tasks"]), "run_stats": len(stat_rows or []), "stream_metrics": len(metric_rows), "llm_models": len(llm_rows or []), "api_definitions": len(api_rows or []), "api_key_call_logs": "ok"}, ensure_ascii=False))
         return 0
     except (HTTPError, URLError, KeyError, RuntimeError, ValueError) as exc:
         print(f"high_priority_e2e failed: {exc}")
