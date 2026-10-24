@@ -110,6 +110,7 @@ from rebuild.monitor import build_monitor_router
 from rebuild.llm import LlmCredentialCipher, build_llm_router
 from rebuild.llm.migrations import apply_llm_migrations
 from rebuild.apikey import apply_apikey_migrations, build_apikey_router
+from rebuild.openapi_admin import apply_openapi_admin_migrations, build_openapi_admin_router
 from rebuild.workflow.migrations import apply_workflow_migrations
 from rebuild.variables.migrations import apply_variable_migrations
 from common.registry import ServiceRegistry
@@ -412,6 +413,7 @@ def create_app(
         SqlIdeMigrationRunner(engine, SQL_IDE_MIGRATIONS).apply()
         apply_llm_migrations(engine)
         apply_apikey_migrations(engine)
+        apply_openapi_admin_migrations(engine)
         apply_workflow_migrations(engine)
         apply_variable_migrations(engine)
         ensure_i1_schema()
@@ -1413,6 +1415,11 @@ def create_app(
         )
     app.include_router(
         build_apikey_router(session_factory, token_service, active_tokens),
+        prefix="/api/v1/open",
+        tags=["open-api-management"],
+    )
+    app.include_router(
+        build_openapi_admin_router(session_factory, token_service, active_tokens),
         prefix="/api/v1/open",
         tags=["open-api-management"],
     )
