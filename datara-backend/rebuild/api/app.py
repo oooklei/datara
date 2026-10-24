@@ -26,7 +26,9 @@ from rebuild.common.db import Base
 from rebuild.sql_ide.audit import SqlIdeAuditRecord, build_audit_writer
 from rebuild.sql_ide.export_service import SqlIdeExportAuditRecord, SqlIdeExportJobRecord
 from rebuild.sql_ide.execution import build_execution_port
-from rebuild.sql_ide.routes import build_sql_ide_router
+from rebuild.sql_ide.history_store import SqlIdeHistoryStore
+from rebuild.sql_ide.linter import lint_sql
+from rebuild.sql_ide.routes import SqlIdeRouteError, build_sql_ide_router
 from rebuild.sql_ide.result_store import SqlIdeResultSetRecord
 from rebuild.execution.models import EXECUTION_TABLES
 from rebuild.identity.contracts import Permission, Role, ROLE_PERMISSIONS, TokenService, authorize
@@ -415,13 +417,33 @@ def create_app(
             return project_permission_error(session, project_id, principal, permission_value)
 
     def sql_ide_dispatch(operation, *, project_id, principal, payload):
-        # The async execution/event service is not assembled in this host yet.
-        # Keep every SQL IDE operation fail-closed until a real service is injected.
-        del operation, project_id, principal, payload
-        return JSONResponse(
-            status_code=501,
-            content={"code": 501, "msg": "SQL IDE service is not configured", "data": None},
-        )
+        user_id = int(principal.get("user_id", principal.get("sub", 0)))
+        history = SqlIdeHistoryStore(session_factory=session_factory)
+        if operation == "lintSql":
+            return lint_sql(str(payload.get("sql", "")), dialect=str(payload.get("dialect", "mysql")))
+        if operation == "listHistory":
+            return history.list_history(
+                project_id=project_id,
+                user_id=user_id,
+                datasource_id=int(payload.get("datasource_id", payload.get("datasourceId", 0))),
+                limit=int(payload.get("limit", 100)),
+            )
+        if operation == "listScripts":
+            return history.list_scripts(project_id=project_id, user_id=user_id)
+        if operation == "saveScript":
+            return history.save_script(
+                project_id=project_id,
+                user_id=user_id,
+                name=str(payload.get("name", "")),
+                sql_text=str(payload.get("sql_text", payload.get("sqlText", ""))),
+                script_id=payload.get("script_id", payload.get("id")),
+                expected_revision=payload.get("expected_revision", payload.get("revision")),
+            )
+        if operation == "deleteHistory":
+            if not history.delete_history(project_id=project_id, user_id=user_id, history_id=str(payload.get("history_id"))):
+                raise SqlIdeRouteError("HISTORY_NOT_FOUND")
+            return {"deleted": True}
+        raise SqlIdeRouteError("DRIVER_ERROR", message=f"SQL IDE operation {operation} is not wired")
 
     app.state.sql_ide_dispatch = sql_ide_dispatch
     app.include_router(

@@ -94,10 +94,10 @@ def test_real_app_assembly_resolves_execute_sql_permission_for_project_owner():
             json={"datasourceId": 1, "sql": "select 1", "mode": "auto"},
         )
 
-    # The currently unconfigured SQL execution port is intentionally 501;
-    # reaching it proves real auth assembly resolved EXECUTE_SQL successfully.
-    assert response.status_code == 501
-    assert response.json()["msg"] == "SQL IDE service is not configured"
+    # The assembled SQL IDE now reaches the datasource boundary; this fixture
+    # has no datasource, so the real execution path fails with a mapped 502.
+    assert response.status_code == 502
+    assert response.json()["code"] == 502
 
 
 def test_admin_can_list_projects_even_when_not_project_owner_or_member():
