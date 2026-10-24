@@ -60,7 +60,21 @@ def _upgrade_sqlite(engine: Engine) -> None:
 
 
 def _upgrade_mysql(engine: Engine) -> None:
+    columns = {column["name"] for column in inspect(engine).get_columns("rebuild_variable_definition")}
+    missing_column_ddl = {
+        "default_value": "ADD COLUMN default_value TEXT NULL",
+        "nullable": "ADD COLUMN `nullable` BOOLEAN NOT NULL DEFAULT 1",
+        "format": "ADD COLUMN `format` VARCHAR(64) NULL",
+        "timezone": "ADD COLUMN timezone VARCHAR(64) NULL",
+        "business_calendar": "ADD COLUMN business_calendar VARCHAR(64) NULL",
+    }
     with engine.begin() as connection:
+        # Early R2 deployments created the variable table before these form
+        # fields existed.  The env-scope probe references ``nullable``, so the
+        # additive columns must be restored before probing or changing checks.
+        for name, ddl in missing_column_ddl.items():
+            if name not in columns:
+                connection.execute(text(f"ALTER TABLE rebuild_variable_definition {ddl}"))
         connection.execute(text("ALTER TABLE rebuild_variable_definition DROP CHECK ck_variable_scope"))
         connection.execute(text("ALTER TABLE rebuild_variable_definition DROP CHECK ck_variable_owner_scope"))
         connection.execute(text(
