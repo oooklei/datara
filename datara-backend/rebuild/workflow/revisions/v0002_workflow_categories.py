@@ -12,7 +12,11 @@ def upgrade(engine: Engine) -> None:
         if "tags_json" not in columns:
             conn.execute(text("ALTER TABLE workflow_definition ADD COLUMN tags_json TEXT NOT NULL DEFAULT '[]'"))
         if "workflow_category" not in tables:
-            conn.execute(text("CREATE TABLE workflow_category (id INTEGER PRIMARY KEY AUTOINCREMENT, name VARCHAR(128) NOT NULL UNIQUE, created_at DATETIME DEFAULT CURRENT_TIMESTAMP)"))
+            if engine.dialect.name in {"mysql", "mariadb"}:
+                ddl = "CREATE TABLE workflow_category (id BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY, name VARCHAR(128) NOT NULL UNIQUE, created_at DATETIME DEFAULT CURRENT_TIMESTAMP)"
+            else:
+                ddl = "CREATE TABLE workflow_category (id INTEGER PRIMARY KEY AUTOINCREMENT, name VARCHAR(128) NOT NULL UNIQUE, created_at DATETIME DEFAULT CURRENT_TIMESTAMP)"
+            conn.execute(text(ddl))
 
 def validate_schema(engine: Engine) -> None:
     inspector = inspect(engine)
