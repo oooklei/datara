@@ -62,6 +62,8 @@ def _type_contract(type_, dialect):
         family = "BOOLEAN"
     elif family == "INT":
         family = "INTEGER"
+    elif family == "DECIMAL":
+        family = "NUMERIC"
     return (
         family,
         getattr(value, "length", None),
