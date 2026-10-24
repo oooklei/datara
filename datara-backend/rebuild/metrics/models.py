@@ -15,7 +15,7 @@ docs/increments/2026-10-17-R系列GREEN接线计划.md Task 5 契约面表 + des
 
 from datetime import datetime
 
-from sqlalchemy import Boolean, Date, DateTime, Index, Integer, String, Text, func
+from sqlalchemy import Boolean, Date, DateTime, Index, Integer, String, Text, UniqueConstraint, func
 from sqlalchemy.orm import Mapped, mapped_column
 
 from rebuild.common.db import Base
@@ -26,6 +26,9 @@ class WorkflowResultStatRecord(Base):
 
     __tablename__ = "workflow_result_stat"
     __table_args__ = (
+        UniqueConstraint(
+            "workflow_id", "run_date", name="uq_workflow_result_stat_workflow_run_date"
+        ),
         Index("ix_wrs_workflow_run_date", "workflow_id", "run_date"),
     )
 

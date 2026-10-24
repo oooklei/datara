@@ -57,6 +57,15 @@ def test_attempt_log_output_and_event_constraints_and_indexes():
     assert has_index(RunLogRecord, ("task_instance_id", "attempt_no"))
     assert has_index(RunOutputRecord, ("task_instance_id", "attempt_no"))
     assert has_index(ExecutionEventRecord, ("workflow_instance_id", "event_kind"))
+    receipt_identity = ExecutionEventRecord.__table__.columns["receipt_identity"]
+    assert receipt_identity.nullable is False
+    assert receipt_identity.type.length == 64
+    assert any(
+        tuple(column.name for column in constraint.columns)
+        == ("workflow_instance_id", "receipt_identity", "attempt_no", "event_kind")
+        for constraint in ExecutionEventRecord.__table__.constraints
+        if isinstance(constraint, UniqueConstraint)
+    )
 
 
 def test_task_instance_has_runtime_timestamps_and_trial_binding_is_optional():

@@ -6,7 +6,11 @@ This module registers only execution-owned tables and leaves app lifespan
 assembly to the host application.
 """
 
-from rebuild.execution.revisions import v0001_execution_tables, v0002_run_statistics
+from rebuild.execution.revisions import (
+    v0001_execution_tables,
+    v0002_run_statistics,
+    v0003_run_snapshot_contract,
+)
 from rebuild.execution.models import EXECUTION_TABLES
 from rebuild.governance.migrations import GovernanceMigration, MigrationResult, MigrationRunner
 
@@ -23,7 +27,12 @@ EXECUTION_MIGRATIONS = (
         checksum=v0002_run_statistics.checksum,
         upgrade=v0002_run_statistics.upgrade,
         tables=EXECUTION_TABLES[6:],
-        postflight=v0002_run_statistics.postflight,
+    ),
+    GovernanceMigration(
+        revision=v0003_run_snapshot_contract.revision,
+        checksum=v0003_run_snapshot_contract.checksum,
+        upgrade=v0003_run_snapshot_contract.upgrade,
+        postflight=v0003_run_snapshot_contract.postflight,
     ),
 )
 

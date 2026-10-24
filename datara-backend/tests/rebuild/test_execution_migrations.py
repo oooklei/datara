@@ -22,7 +22,11 @@ def test_execution_migration_is_checksummed_idempotent_and_downgradeable():
     first = apply_execution_migrations(engine)
     second = apply_execution_migrations(engine)
 
-    assert first.applied == ("r9_0001_execution_tables", "r9_0002_run_statistics")
+    assert first.applied == (
+        "r9_0001_execution_tables",
+        "r9_0002_run_statistics",
+        "r9_0003_run_snapshot_contract",
+    )
     assert second.skipped == first.applied
     assert {table.name for table in EXECUTION_TABLES} <= set(inspect(engine).get_table_names())
     with Session(engine) as session:

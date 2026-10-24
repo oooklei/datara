@@ -17,12 +17,23 @@ def test_metrics_and_variables_runtime_migrations_are_versioned_and_idempotent()
     )
     with engine.begin() as connection:
         for table in legacy_tables:
-            connection.execute(text(f"CREATE TABLE {table} (id INTEGER PRIMARY KEY)"))
-            connection.execute(text(f"INSERT INTO {table} (id) VALUES (1)"))
+            if table == "workflow_result_stat":
+                connection.execute(text(
+                    "CREATE TABLE workflow_result_stat (id INTEGER PRIMARY KEY, "
+                    "workflow_id INTEGER NOT NULL, run_date DATE NOT NULL, "
+                    "success_count INTEGER NOT NULL DEFAULT 0, failure_count INTEGER NOT NULL DEFAULT 0, "
+                    "skipped_count INTEGER NOT NULL DEFAULT 0, retry_count INTEGER NOT NULL DEFAULT 0)"
+                ))
+                connection.execute(text(
+                    "INSERT INTO workflow_result_stat (id,workflow_id,run_date) VALUES (1,1,'2026-10-24')"
+                ))
+            else:
+                connection.execute(text(f"CREATE TABLE {table} (id INTEGER PRIMARY KEY)"))
+                connection.execute(text(f"INSERT INTO {table} (id) VALUES (1)"))
 
     metrics = apply_metrics_migrations(engine)
     variables = apply_variable_migrations(engine)
-    assert metrics.applied == (METRICS_MIGRATIONS[0].revision,)
+    assert metrics.applied == tuple(migration.revision for migration in METRICS_MIGRATIONS)
     assert variables.applied == (VARIABLE_MIGRATIONS[0].revision,)
     assert apply_metrics_migrations(engine).skipped == metrics.applied
     assert apply_variable_migrations(engine).skipped == variables.applied

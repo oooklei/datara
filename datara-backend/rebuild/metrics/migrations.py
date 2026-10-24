@@ -1,13 +1,19 @@
 """Versioned migrations for the metrics-owned schema."""
 
 from rebuild.governance.migrations import GovernanceMigration, MigrationResult, MigrationRunner
-from rebuild.metrics.revisions import v0001_runtime_timestamps
+from rebuild.metrics.revisions import v0001_runtime_timestamps, v0002_workflow_result_unique
 
 METRICS_MIGRATIONS = (
     GovernanceMigration(
         revision=v0001_runtime_timestamps.revision,
         checksum=v0001_runtime_timestamps.checksum,
         upgrade=v0001_runtime_timestamps.upgrade,
+    ),
+    GovernanceMigration(
+        revision=v0002_workflow_result_unique.revision,
+        checksum=v0002_workflow_result_unique.checksum,
+        upgrade=v0002_workflow_result_unique.upgrade,
+        postflight=v0002_workflow_result_unique.postflight,
     ),
 )
 

@@ -161,7 +161,7 @@ class ExecutionEventRecord(RunTimestampsMixin, Base):
         Index("x_ee_instance_kind", "workflow_instance_id", "event_kind"),
         UniqueConstraint(
             "workflow_instance_id",
-            "task_instance_id",
+            "receipt_identity",
             "attempt_no",
             "event_kind",
             name="uq_ee_result_receipt",
@@ -171,6 +171,9 @@ class ExecutionEventRecord(RunTimestampsMixin, Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     workflow_instance_id: Mapped[int] = mapped_column(Integer, nullable=False)
     task_instance_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    # A non-null identity closes the NULL-distinct loophole for workflow-level
+    # RESULT_STAT receipts (``__workflow__``); task receipts use ``task:<id>``.
+    receipt_identity: Mapped[str] = mapped_column(String(64), nullable=False, server_default="__workflow__")
     attempt_no: Mapped[int | None] = mapped_column(Integer, nullable=True)
     event_kind: Mapped[str] = mapped_column(String(32), nullable=False)
     payload_json: Mapped[str | None] = mapped_column(Text, nullable=True)
