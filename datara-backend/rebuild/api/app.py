@@ -7,6 +7,7 @@ import hmac
 import json
 import logging
 import os
+import re
 from pathlib import Path
 from typing import Literal
 
@@ -58,6 +59,11 @@ from rebuild.stream.models import (
     StreamMetricSnapshotRecord,
     StreamRecoveryEventRecord,
 )
+
+_SAFE_IDENTIFIER = re.compile(r"^[A-Za-z_][A-Za-z0-9_$]*$")
+
+def _safe_identifier(value: str) -> bool:
+    return bool(_SAFE_IDENTIFIER.fullmatch(value))
 from rebuild.sync.api import build_sync_router
 from rebuild.sync.models import SyncTaskDefinitionRecord
 from rebuild.governance.api import build_governance_router
@@ -427,11 +433,34 @@ def create_app(
         history = SqlIdeHistoryStore(session_factory=session_factory)
         status_store = SqlIdeStatusStore(session_factory=session_factory)
         result_store = PersistentResultPageStore(session_factory=session_factory)
+        def read_table_for_export(*, project_id: int, datasource_id: int, object_ref: dict, row_limit: int, **_: object):
+            schema = str(object_ref.get("schema", object_ref.get("database", "")))
+            table = str(object_ref.get("object", object_ref.get("name", object_ref.get("table", ""))))
+            if not schema or not table or not _safe_identifier(schema) or not _safe_identifier(table):
+                raise ValueError("a valid schema and table are required")
+            with session_factory() as session:
+                record = ProjectDatasourceRepository(session).get(project_id, datasource_id)
+                if record is None:
+                    raise LookupError("datasource not found")
+                draft = datasource_draft(record)
+            connection = datasource_engines.connect(project_id, datasource_id, draft)
+            try:
+                cursor = connection.cursor()
+                cursor.execute(f"SELECT * FROM `{schema}`.`{table}` LIMIT %s", (int(row_limit),))
+                columns = [desc[0] for desc in cursor.description or ()]
+                return columns, cursor.fetchall()
+            finally:
+                try: connection.rollback()
+                except Exception: pass
+                try: connection.close()
+                except Exception: pass
         def export_service() -> SqlIdeExportService:
             return SqlIdeExportService(
                 session_factory=session_factory,
                 result_store=result_store,
                 authorize_result=lambda **_: True,
+                authorize_table=lambda **_: True,
+                table_reader=read_table_for_export,
             )
         def metadata_catalog(payload: Mapping[str, object]):
             datasource_id = int(payload.get("datasource_id", payload.get("datasourceId", 0)) or 0)
