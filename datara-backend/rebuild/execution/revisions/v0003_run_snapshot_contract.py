@@ -90,8 +90,8 @@ def _upgrade_sqlite(engine: Engine) -> None:
                     FROM {_EVENT}_r9_0002 e
                     WHERE e.id=(SELECT MAX(newest.id) FROM {_EVENT}_r9_0002 newest
                                 WHERE newest.workflow_instance_id=e.workflow_instance_id
-                                  AND COALESCE(newest.task_instance_id,-1)=COALESCE(e.task_instance_id,-1)
-                                  AND COALESCE(newest.attempt_no,-1)=COALESCE(e.attempt_no,-1)
+                                  AND newest.task_instance_id IS e.task_instance_id
+                                  AND newest.attempt_no IS e.attempt_no
                                   AND newest.event_kind=e.event_kind)"""
                 )
                 connection.exec_driver_sql(f"DROP TABLE {_EVENT}_r9_0002")
@@ -272,6 +272,8 @@ def _upgrade_mysql(engine: Engine) -> None:
         # connection-scoped, so a failed run can be retried from reflected state.
         stat_columns = {item["name"] for item in inspect(engine).get_columns(_STAT)}
         if "task_identity" in stat_columns:
+            connection.execute(text("DROP TEMPORARY TABLE IF EXISTS r9_0003_stat_rollup"))
+            connection.execute(text("DROP TEMPORARY TABLE IF EXISTS r9_0003_detail_rollup"))
             connection.execute(text(
                 "CREATE TEMPORARY TABLE r9_0003_stat_rollup AS "
                 f"SELECT MIN(id) keeper_id, workflow_instance_id, MIN(project_id) project_id, "

@@ -29,6 +29,10 @@ def upgrade(engine: Engine) -> None:
     with engine.begin() as connection:
         # A temporary rollup avoids MySQL error 1093 (read/write same target)
         # and keeps the DML transactional until the final guarded DDL.
+        if engine.dialect.name == "mysql":
+            connection.execute(text("DROP TEMPORARY TABLE IF EXISTS r7_0002_workflow_result_rollup"))
+        else:
+            connection.execute(text("DROP TABLE IF EXISTS r7_0002_workflow_result_rollup"))
         connection.execute(text(
             f"""CREATE TEMPORARY TABLE r7_0002_workflow_result_rollup AS
             SELECT MIN(id) keeper_id, workflow_id, run_date,
