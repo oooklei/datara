@@ -119,6 +119,12 @@ def build_sql_ide_router(
             )
         except SqlIdeRouteError as exc:
             return _error_response(exc)
+        except PermissionError as exc:
+            return _error_response(SqlIdeRouteError("PERMISSION_DENIED", message=str(exc)))
+        except LookupError as exc:
+            return _error_response(SqlIdeRouteError("HISTORY_NOT_FOUND", message=str(exc)))
+        except ValueError as exc:
+            return _error_response(SqlIdeRouteError("INVALID_REQUEST", message=str(exc)))
         if isinstance(result, Response):
             return result
         response = JSONResponse(content={"code": 0, "msg": "success", "data": result})
