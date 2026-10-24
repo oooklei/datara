@@ -13,7 +13,7 @@
 </template>
 
 <script setup lang="ts">
-import { onMounted, ref } from 'vue'
+import { ref, watch } from 'vue'
 import { createResourceContract, type ResourceKind, type ResourceMeta } from '../../services/rebuild/resourceApi'
 
 const props = defineProps<{ projectId: number }>()
@@ -29,7 +29,10 @@ async function load() {
   catch (cause) { error.value = cause instanceof Error ? cause.message : '资源加载失败' }
   finally { loading.value = false }
 }
-onMounted(load)
+// Vue reuses the segment component when only :projectId changes.  Reload on
+// prop changes as well as the initial mount so a deep-link switch never shows
+// resources from the previous project.
+watch(() => props.projectId, () => { void load() }, { immediate: true })
 </script>
 
 <style scoped>
