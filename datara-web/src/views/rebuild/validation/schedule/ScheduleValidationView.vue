@@ -60,7 +60,7 @@
         <div class="r6-panel">
           <div class="r6-panel-head">
             <span>触发注册</span>
-            <el-button size="small" @click="onListTriggers">加载</el-button>
+            <el-button size="small" :loading="loading.triggers" @click="onListTriggers">刷新</el-button>
           </div>
           <el-table :data="triggers" size="small" empty-text="（未接线）">
             <el-table-column prop="name" label="名称" />
@@ -74,7 +74,7 @@
         <div class="r6-panel">
           <div class="r6-panel-head">
             <span>实例队列（并发/优先级/misfire）</span>
-            <el-button size="small" @click="onListQueue">加载</el-button>
+            <el-button size="small" :loading="loading.queue" @click="onListQueue">刷新</el-button>
           </div>
           <el-table :data="queue" size="small" empty-text="（未接线）">
             <el-table-column prop="instanceId" label="实例" width="80" />
@@ -91,7 +91,7 @@
         <div class="r6-panel">
           <div class="r6-panel-head">
             <span>超时/重试事件流（Master 分派 + Logger 事件链）</span>
-            <el-button size="small" @click="onListEvents">加载</el-button>
+            <el-button size="small" :loading="loading.events" @click="onListEvents">刷新</el-button>
           </div>
           <el-table :data="events" size="small" empty-text="（未接线）">
             <el-table-column prop="seq" label="Seq" width="70" />
@@ -105,7 +105,7 @@
         <div class="r6-panel">
           <div class="r6-panel-head">
             <span>Alert 记录</span>
-            <el-button size="small" @click="onListAlerts">加载</el-button>
+            <el-button size="small" :loading="loading.alerts" @click="onListAlerts">刷新</el-button>
           </div>
           <el-table :data="alerts" size="small" empty-text="（未接线）">
             <el-table-column prop="level" label="级别" width="80" />
@@ -123,6 +123,7 @@
       data-testid="r6-status-bar"
       :title="statusText"
     />
+    <el-button size="small" data-testid="r6-refresh-all" :loading="loading.all" @click="refreshAll">刷新全部观测数据</el-button>
   </div>
 </template>
 
@@ -148,15 +149,16 @@ const contractMethodCount = R6_CONTRACT_METHODS.length
 /* 横幅状态词表（FE-01 单一事实源）：RED 未接线 */
 const bannerTitle = bannerTitleFor(
   { code: 'R6', contractName: 'schedule', methodCount: contractMethodCount, sentinel: R6_SCHEDULER_NOT_WIRED },
-  'RED',
+  'GREEN',
 )
-const bannerType = bannerAlertType('RED')
+const bannerType = bannerAlertType('GREEN')
 
 /* 观测面数据（后端接入前恒为空，展示空态） */
 const triggers = ref<TriggerRegistration[]>([])
 const queue = ref<ScheduleQueueEntry[]>([])
 const events = ref<ScheduleRuntimeEvent[]>([])
 const alerts = ref<ScheduleAlert[]>([])
+const loading = reactive({ triggers: false, queue: false, events: false, alerts: false, all: false })
 
 /* registerTrigger 注册表单（字段按 TriggerRegistrationInput） */
 const registerForm = reactive({ name: '', kind: 'MANUAL' as TriggerKind, cron: '', source: '', enabled: true })
@@ -180,9 +182,10 @@ function guard<T>(fn: () => Promise<T>, label: string): Promise<void> {
 const statusText = ref('待操作')
 
 function onListTriggers() {
+  loading.triggers = true
   return guard(async () => {
     triggers.value = await contract.listTriggers()
-  }, '加载触发注册')
+  }, '加载触发注册').finally(() => { loading.triggers = false })
 }
 
 function onRegisterTrigger() {
@@ -199,21 +202,30 @@ function onRegisterTrigger() {
 }
 
 function onListQueue() {
+  loading.queue = true
   return guard(async () => {
     queue.value = await contract.listQueue()
-  }, '加载实例队列')
+  }, '加载实例队列').finally(() => { loading.queue = false })
 }
 
 function onListEvents() {
+  loading.events = true
   return guard(async () => {
     events.value = await contract.listRuntimeEvents(null)
-  }, '加载事件流')
+  }, '加载事件流').finally(() => { loading.events = false })
 }
 
 function onListAlerts() {
+  loading.alerts = true
   return guard(async () => {
     alerts.value = await contract.listAlerts()
-  }, '加载 Alert')
+  }, '加载 Alert').finally(() => { loading.alerts = false })
+}
+
+async function refreshAll() {
+  loading.all = true
+  await Promise.all([onListTriggers(), onListQueue(), onListEvents(), onListAlerts()])
+  loading.all = false
 }
 </script>
 
