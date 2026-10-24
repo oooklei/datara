@@ -511,48 +511,82 @@ def create_app(
                 draft,
                 connector=lambda current: datasource_engines.connect(project_id, datasource_id, current),
             )
+        def metadata_page(items, *, limit: int, cursor: object = None):
+            """Normalize catalog rows to the frozen A5 capability/page envelope.
+
+            Catalog implementations intentionally fetch one sentinel row beyond
+            the requested limit.  Keep that sentinel out of ``items`` while
+            exposing a stable continuation cursor (the last visible name).
+            """
+            bounded = min(max(int(limit), 1), 200)
+            rows = list(items)
+            has_more = len(rows) > bounded
+            rows = rows[:bounded]
+            next_cursor = None
+            if has_more and rows:
+                last = rows[-1]
+                next_cursor = str(last.get("name") if isinstance(last, Mapping) else last)
+            return {
+                "items": rows,
+                "capability": "supported",
+                "constraints": ["read-only"],
+                "page": {"nextCursor": next_cursor, "hasMore": has_more},
+            }
         if operation == "getDefinition":
             catalog = metadata_catalog(payload)
             schema = str(payload.get("schema", payload.get("database", "")))
             object_name = str(payload.get("object", payload.get("table", payload.get("name", ""))))
             if not schema or not object_name or not hasattr(catalog, "definition"):
                 raise SqlIdeRouteError("INVALID_REQUEST", message="schema and object are required")
-            return {"definition": catalog.definition(schema, object_name), "schema": schema, "object": object_name}
+            return {"definition": catalog.definition(schema, object_name), "schema": schema, "object": object_name,
+                    "capability": "supported", "constraints": ["read-only"]}
         if operation in {"listDatabases", "listSchemas", "listRelations", "listColumns", "listIndexes", "listRoutines", "searchObjects"}:
             catalog = metadata_catalog(payload)
             if operation == "listDatabases":
-                return {"items": catalog.schemas(after=payload.get("after"), limit=int(payload.get("limit", 100)))}
+                # A datasource is currently a single-database connection.  Do
+                # not mislabel schemas as databases; expose the configured
+                # database as the root node and preserve the envelope contract.
+                datasource_id = int(payload.get("datasource_id", payload.get("datasourceId", 0)) or 0)
+                with session_factory() as session:
+                    record = ProjectDatasourceRepository(session).get(project_id, datasource_id)
+                    draft = datasource_draft(record) if record is not None else None
+                name = getattr(draft, "database", "") or ""
+                return {"items": [{"name": name, "defaultSchema": name}] if name else [],
+                        "capability": "supported", "constraints": ["read-only"],
+                        "page": {"nextCursor": None, "hasMore": False}}
             if operation == "listSchemas":
-                return {"items": catalog.schemas(after=payload.get("after"), limit=int(payload.get("limit", 100)))}
+                limit = int(payload.get("limit", 100)); rows = catalog.schemas(after=payload.get("after"), limit=limit)
+                return metadata_page(rows, limit=limit)
             if operation == "listRelations":
                 schema = str(payload.get("schema", payload.get("database", "")))
                 if not schema:
                     raise SqlIdeRouteError("INVALID_REQUEST", message="schema is required")
-                return {"items": catalog.objects(schema, after=payload.get("after"), limit=int(payload.get("limit", 100)))}
+                limit = int(payload.get("limit", 100)); return metadata_page(catalog.objects(schema, after=payload.get("after"), limit=limit), limit=limit)
             if operation == "listIndexes":
                 schema = str(payload.get("schema", "")); object_name = str(payload.get("object", payload.get("table", "")))
                 if not schema or not object_name or not hasattr(catalog, "indexes"):
                     raise SqlIdeRouteError("INVALID_REQUEST", message="schema and object are required")
-                return {"items": catalog.indexes(schema, object_name, limit=int(payload.get("limit", 200)))}
+                limit = int(payload.get("limit", 200)); return metadata_page(catalog.indexes(schema, object_name, limit=limit), limit=limit)
             if operation == "listRoutines":
                 schema = str(payload.get("schema", payload.get("database", "")))
                 if not schema or not hasattr(catalog, "routines"):
                     raise SqlIdeRouteError("INVALID_REQUEST", message="schema is required")
-                return {"items": catalog.routines(schema, limit=int(payload.get("limit", 200)))}
+                limit = int(payload.get("limit", 200)); return metadata_page(catalog.routines(schema, limit=limit), limit=limit)
             if operation == "searchObjects":
                 query = str(payload.get("q", payload.get("query", ""))).strip().lower()
                 if not query:
-                    return {"items": []}
+                    return {"items": [], "capability": "supported", "constraints": ["read-only"],
+                            "page": {"nextCursor": None, "hasMore": False}}
                 items = []
                 for schema in catalog.schemas(limit=50):
                     for item in catalog.objects(schema, limit=200):
                         if query in str(item.get("name", "")).lower():
                             items.append(item)
-                return {"items": items[:200]}
+                return metadata_page(items, limit=int(payload.get("limit", 100)))
             schema = str(payload.get("schema", "")); object_name = str(payload.get("object", payload.get("table", "")))
             if not schema or not object_name:
                 raise SqlIdeRouteError("INVALID_REQUEST", message="schema and object are required")
-            return {"items": catalog.columns(schema, object_name, limit=int(payload.get("limit", 500)))}
+            limit = int(payload.get("limit", 500)); return metadata_page(catalog.columns(schema, object_name, limit=limit), limit=limit)
         if operation == "lintSql":
             return lint_sql(str(payload.get("sql", "")), dialect=str(payload.get("dialect", "mysql")))
         if operation == "executeSql":
