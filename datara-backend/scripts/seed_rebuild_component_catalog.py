@@ -80,6 +80,21 @@ def _normalize_spec_json(value: str | None) -> str | None:
     if not isinstance(spec, dict):
         return value
     sections = ("inputs", "outputs", "params", "conditions", "constraints", "exclusions", "refs", "exports")
+
+    def normalize_legacy_picks(node):
+        if isinstance(node, dict):
+            for key in list(node):
+                if key == "pick" and not isinstance(node[key], dict):
+                    # Legacy lineage rows used the bare ``datasource`` token;
+                    # the rebuilt DSL only permits a structured pick object.
+                    node.pop(key)
+                else:
+                    normalize_legacy_picks(node[key])
+        elif isinstance(node, list):
+            for child in node:
+                normalize_legacy_picks(child)
+
+    normalize_legacy_picks(spec)
     form = spec.get("form")
     if form is None:
         spec["form"] = {section: [] for section in sections}
