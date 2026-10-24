@@ -69,6 +69,22 @@ def test_valid_draft_passes():
     assert errors == []
 
 
+def test_component_ref_graph_without_legacy_sentinels_passes():
+    """The current palette graph uses natural roots/leaves, not START/END nodes."""
+    session = _session()
+    definition_id = _make_definition(session)
+    _add_node(session, definition_id, "sql", node_type="sql", params={"sql": "SELECT 1"})
+    _add_node(session, definition_id, "python", node_type="python", params={"script": "print(1)"})
+    _add_node(session, definition_id, "shell", node_type="shell", params={"script": "printf ok"})
+    _add_node(session, definition_id, "dependent", node_type="dependent", params={})
+    _add_edge(session, definition_id, "sql", "python")
+    _add_edge(session, definition_id, "python", "shell")
+    _add_edge(session, definition_id, "shell", "dependent")
+    session.commit()
+
+    assert TrialValidator(session).validate(definition_id) == []
+
+
 def test_orphan_node_detected():
     session = _session()
     definition_id = _make_definition(session)
@@ -102,7 +118,7 @@ def test_cycle_detected():
     assert len(cycle_errors) == 1
 
 
-def test_missing_start_and_end_detected():
+def test_component_graph_does_not_require_start_and_end():
     session = _session()
     definition_id = _make_definition(session)
     _add_node(session, definition_id, "a", params={"sql": "SELECT 1"})
@@ -111,9 +127,7 @@ def test_missing_start_and_end_detected():
     session.commit()
 
     errors = TrialValidator(session).validate(definition_id)
-    messages = [e.message for e in errors]
-    assert any("START" in m for m in messages)
-    assert any("END" in m for m in messages)
+    assert errors == []
 
 
 def test_dependency_missing_target():
