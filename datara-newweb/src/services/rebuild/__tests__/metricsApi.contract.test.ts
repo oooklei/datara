@@ -1,6 +1,6 @@
 /**
  * R7 契约测试（node 环境，纯契约层无组件挂载）。
- * RED describe：方法清单冻结、工厂实现统一抛 R7_METRICS_NOT_WIRED（即后端接入前不存在半连通状态）。
+ * 结构断言：方法清单冻结、工厂暴露全部 R7 方法。
  * GREEN describe：R7 批次接线断言（接线计划 Task 5；包络 {code,msg,data} 沿 R2 固化）。
  * 组件可编译性由 `pnpm build` 门禁保证。
  */
@@ -13,7 +13,7 @@ import {
 const window = { from: '2026-01-01T00:00:00Z', to: '2026-01-02T00:00:00Z', offset: 0, limit: 50 }
 const projectId = 1
 
-describe('R7 metricsApi contract (RED)', () => {
+describe('R7 metricsApi contract (shape)', () => {
   it('contract method list is frozen to the metrics/quality/lineage subset', () => {
     expect(R7_CONTRACT_METHODS).toHaveLength(6)
     expect(R7_CONTRACT_METHODS).toEqual(

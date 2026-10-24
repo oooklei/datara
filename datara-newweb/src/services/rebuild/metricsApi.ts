@@ -9,7 +9,7 @@
  * R7_METRICS_NOT_WIRED 常量保留（View 横幅引用兼容）。
  */
 
-import { camelToSnake, ContractApiError, snakeToCamel, wireIdToString } from './adapterKit'
+import { camelToSnake, snakeToCamel, wireIdToString } from './adapterKit'
 import { request } from '../http'
 
 /* ---------- A7 Step 1 口径：unknown/estimated 标记透传 ---------- */
@@ -91,8 +91,13 @@ export interface LineageWritebackEntry {
   writebackAt: string
 }
 
-/* ---------- RED 哨兵 ---------- */
+/* ---------- GREEN wiring / backwards-compatible status marker ---------- */
 
+/**
+ * Kept for validation-view compatibility only.  The factory below is wired to
+ * the rebuild metrics API and never throws this sentinel; transport and
+ * envelope failures are surfaced as ContractApiError by the shared HTTP base.
+ */
 export const R7_METRICS_NOT_WIRED = 'R7_METRICS_NOT_WIRED: rebuild/metrics contract not connected yet'
 
 /** 契约方法清单（测试与 UI 横幅共用，保持单一事实源） */
