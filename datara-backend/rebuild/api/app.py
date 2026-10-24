@@ -32,7 +32,7 @@ from rebuild.execution.models import EXECUTION_TABLES
 from rebuild.identity.contracts import Permission, Role, ROLE_PERMISSIONS, TokenService, authorize
 from rebuild.identity.models import ActiveTokenRecord, ProjectMemberRecord, UserRecord
 from rebuild.identity.passwords import verify_password
-from rebuild.identity.repository import UserRepository
+from rebuild.identity.repository import UserRepository, digest_token
 from rebuild.datasource.contracts import DataSourceDraft, probe_datasource, validate_datasource
 from rebuild.datasource.models import ProjectDatasourceRecord
 from rebuild.datasource.metadata import metadata_catalog_for
@@ -203,7 +203,8 @@ def create_app(
             from datetime import datetime, timedelta, timezone
             with session_factory() as session:
                 record = ActiveTokenRecord(
-                    token=token,
+                    token=digest_token(token),
+                    token_digest=digest_token(token),
                     user_id=user_id,
                     username=username,
                     role=role,
@@ -215,14 +216,18 @@ def create_app(
 
         def discard(self, token: str) -> None:
             with session_factory() as session:
-                record = session.get(ActiveTokenRecord, token)
+                record = session.scalar(
+                    select(ActiveTokenRecord).where(ActiveTokenRecord.token_digest == digest_token(token))
+                )
                 if record is not None:
                     session.delete(record)
                     session.commit()
 
         def __contains__(self, token: str) -> bool:
             with session_factory() as session:
-                record = session.get(ActiveTokenRecord, token)
+                record = session.scalar(
+                    select(ActiveTokenRecord).where(ActiveTokenRecord.token_digest == digest_token(token))
+                )
                 if record is None:
                     return False
                 from datetime import datetime, timezone

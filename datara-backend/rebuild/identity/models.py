@@ -1,6 +1,6 @@
 """I1 身份持久化模型。"""
 
-from sqlalchemy import DateTime, ForeignKey, String
+from sqlalchemy import CHAR, DateTime, ForeignKey, String
 from datetime import datetime
 from zoneinfo import ZoneInfo
 from sqlalchemy.orm import Mapped, mapped_column
@@ -39,7 +39,8 @@ class ActiveTokenRecord(Base):
     __tablename__ = "rebuild_active_token"
 
     token: Mapped[str] = mapped_column(String(255), primary_key=True)
-    user_id: Mapped[int] = mapped_column(ForeignKey("rebuild_user.id"), index=True)
+    token_digest: Mapped[str] = mapped_column(CHAR(64), unique=True, index=True, nullable=False)
+    user_id: Mapped[int | None] = mapped_column(ForeignKey("rebuild_user.id"), index=True, nullable=True)
     username: Mapped[str] = mapped_column(String(64))
     role: Mapped[str] = mapped_column(String(32))
     capability: Mapped[str | None] = mapped_column(String(128), nullable=True)

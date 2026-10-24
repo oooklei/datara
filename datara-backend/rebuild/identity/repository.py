@@ -1,11 +1,18 @@
 """I1 身份持久化仓储。"""
 
+import hashlib
+
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from rebuild.identity.contracts import Role
 from rebuild.identity.models import UserRecord
 from rebuild.identity.passwords import hash_password
+
+
+def digest_token(token: str) -> str:
+    """Return the one-way lookup key used for bearer-token persistence."""
+    return hashlib.sha256(token.encode("utf-8")).hexdigest()
 
 
 class UserRepository:

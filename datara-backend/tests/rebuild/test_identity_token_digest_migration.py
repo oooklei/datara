@@ -41,6 +41,8 @@ def test_fresh_schema_has_digest_column_and_unique_index():
     indexes = {item["name"]: item for item in inspect(engine).get_indexes("rebuild_active_token")}
     assert getattr(columns["token_digest"]["type"], "length", None) == 64
     assert columns["token_digest"]["nullable"] is False
+    assert getattr(columns["token"]["type"], "length", None) == 255
+    assert columns["user_id"]["nullable"] is True
     assert bool(indexes["ix_rebuild_active_token_token_digest"]["unique"])
 
 
@@ -62,7 +64,7 @@ def test_legacy_tokens_are_backfilled_and_reapply_is_idempotent():
     first = MigrationRunner(engine, [_v0004_migration()]).apply()
     second = MigrationRunner(engine, [_v0004_migration()]).apply()
     with engine.connect() as connection:
-        rows = dict(connection.execute(text("SELECT token, token_digest FROM rebuild_active_token")))
+        rows = dict(connection.execute(text("SELECT token, token_digest FROM rebuild_active_token")).fetchall())
 
     assert rows == {token: hashlib.sha256(token.encode()).hexdigest() for token in ("legacy-a", "legacy-b")}
     assert first.applied == (v0004_token_digest_hardening.revision,)
