@@ -4,6 +4,7 @@ WfVariable（src/services/types.ts）：{id, wf, name, value, type, encrypted, o
 后端落库 t_wf_variable（wf_code 关联），API 层做 id(wf_xxx) ↔ code 映射。
 """
 
+import re
 from typing import List, Optional
 
 from fastapi import APIRouter, Depends
@@ -29,6 +30,26 @@ class VariableBody(BaseModel):
     encrypted: bool = False
     options: Optional[List[str]] = None
     desc: Optional[str] = ""
+
+
+_VARIABLE_NAME_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_.-]{0,127}$")
+
+
+def _validate_name(name: str) -> Optional[str]:
+    """Validate names at the API boundary so the resolver has one unambiguous key.
+
+    ``run.*`` and ``tmp.*`` are reserved runtime namespaces and must never be
+    shadowed by a workflow variable.  Duplicate names are rejected by the
+    create/update handlers below (the legacy schema predates a unique index).
+    """
+    value = (name or "").strip()
+    if not value:
+        return "变量名不能为空"
+    if value.startswith(("run.", "tmp.")):
+        return "变量名不能使用保留运行时命名空间"
+    if not _VARIABLE_NAME_RE.fullmatch(value):
+        return "变量名仅允许字母、数字、下划线、点和连字符，且必须以字母或下划线开头"
+    return None
 
 
 def _resolve_code(db: Session, wf: str) -> int:
@@ -67,12 +88,16 @@ def create_variable(
     db: Session = Depends(get_db),
 ):
     """新增变量。"""
-    if not body.name.strip():
-        return fail(4002, "变量名不能为空")
+    name = body.name.strip()
+    invalid = _validate_name(name)
+    if invalid:
+        return fail(4002, invalid)
     code = _resolve_code(db, body.wf)
+    if db.query(WfVariable).filter(WfVariable.wf_code == code, WfVariable.name == name).first() is not None:
+        return fail(4002, "同一工作流内变量名不能重复")
     row = WfVariable(
         wf_code=code,
-        name=body.name.strip(),
+        name=name,
         value=body.value or "",
         type=body.type,
         encrypted=body.encrypted,
@@ -96,10 +121,21 @@ def update_variable(
     row = db.get(WfVariable, var_id)
     if row is None:
         raise ApiError(4001, "变量不存在", status=404)
+    name = body.name.strip()
+    invalid = _validate_name(name)
+    if invalid:
+        return fail(4002, invalid)
     code = _resolve_code(db, body.wf)
+    if (
+        db.query(WfVariable)
+        .filter(WfVariable.wf_code == code, WfVariable.name == name, WfVariable.id != var_id)
+        .first()
+        is not None
+    ):
+        return fail(4002, "同一工作流内变量名不能重复")
     if code != row.wf_code:
         row.wf_code = code
-    row.name = body.name.strip()
+    row.name = name
     row.value = body.value or ""
     row.type = body.type
     row.encrypted = body.encrypted
