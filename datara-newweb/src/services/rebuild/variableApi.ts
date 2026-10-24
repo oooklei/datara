@@ -30,7 +30,7 @@ export interface VariableDefinition {
   scope: VariableScope
   name: string
   valueType: VariableValueType
-  value: string
+  value?: string
   description?: string
   /** 敏感值按原设计范围处理（纠偏设计 §2.2：不引入额外秘密管理范围） */
   sensitive?: boolean

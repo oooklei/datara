@@ -8,7 +8,8 @@ docs/increments/2026-10-17-R系列GREEN接线计划.md Task 2 契约面表.
 - Authentication accepts the FE ``token`` header (frozen FE contract) and, for
   internal callers, the ``Authorization: Bearer`` header.
 - Request/response keys are snake_case; the FE adapter converts camelCase.
-- Sensitive values are returned in plaintext (declaration §5 Q11).
+- Sensitive values are masked in API responses, completion, preview, and run snapshots.
+  Plaintext exists only in the in-memory execution result and is never persisted.
 """
 
 from __future__ import annotations
@@ -35,7 +36,7 @@ class VariableDefinitionRequest(BaseModel):
     scope: str
     name: str
     value_type: str = "string"
-    value: str
+    value: str | None = None
     description: str = ""
     sensitive: bool = False
     # Optional ids required to address workflow/task scopes (parse-key authority).
@@ -133,6 +134,10 @@ def build_variables_router(
                     "format": item.format,
                     "timezone": item.timezone,
                     "business_calendar": item.business_calendar,
+                    "project_id": item.project_id,
+                    "environment_group_id": item.environment_group_id,
+                    "workflow_id": item.workflow_id,
+                    "task_id": item.task_id,
                 }
                 for item in VariableRepository(outcome).list_all_with_scope(
                     project_id,
@@ -164,7 +169,7 @@ def build_variables_router(
                     )
                 VariableRepository(outcome).upsert(
                     scope=body.scope,
-                    project_id=project_id if body.scope in ("project", "env", "tmp", "workflow", "task") else None,
+                    project_id=project_id if body.scope in ("project", "env", "workflow", "task") else None,
                     name=body.name,
                     value=body.value,
                     value_type=body.value_type,
@@ -221,7 +226,7 @@ def build_variables_router(
         body: CompleteRequest, token: str = Header(default=""), authorization: str = Header(default="")
     ):
         try:
-            user = principal(token, authorization)
+            principal(token, authorization)
             context = parse_context(body.context)
         except VariableDomainError as exc:
             return domain_error(exc)
@@ -240,7 +245,7 @@ def build_variables_router(
         body: ReferenceRequest, token: str = Header(default=""), authorization: str = Header(default="")
     ):
         try:
-            user = principal(token, authorization)
+            principal(token, authorization)
             context = parse_context(body.context)
         except VariableDomainError as exc:
             return domain_error(exc)
@@ -259,7 +264,7 @@ def build_variables_router(
         body: ReferenceRequest, token: str = Header(default=""), authorization: str = Header(default="")
     ):
         try:
-            user = principal(token, authorization)
+            principal(token, authorization)
             context = parse_context(body.context)
         except VariableDomainError as exc:
             return domain_error(exc)

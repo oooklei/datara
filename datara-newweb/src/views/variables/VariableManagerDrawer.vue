@@ -62,7 +62,7 @@ function beginEdit(row: VariableDefinition) {
 }
 
 async function save() {
-  if (props.projectId === undefined || !form.value.name.trim() || !form.value.value) return
+  if (props.projectId === undefined || !form.value.name.trim() || (!form.value.value && !(editing.value && form.value.sensitive))) return
   saving.value = true
   error.value = ''
   try {

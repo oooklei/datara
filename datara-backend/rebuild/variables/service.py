@@ -30,7 +30,7 @@ REFERENCE_SCOPES: frozenset[str] = frozenset((*PRECEDENCE, "tmp"))
 # Scopes whose definitions can be persisted through the API. workflow/task
 # values belong to execution contexts and run/env/builtin are transient or
 # system-owned, so saving into those scopes is rejected.
-PERSISTABLE_SCOPES: frozenset[str] = frozenset(("global", "project", "env", "tmp", "workflow", "task"))
+PERSISTABLE_SCOPES: frozenset[str] = frozenset(("global", "project", "env", "workflow", "task"))
 
 VALUE_TYPES: tuple[str, ...] = ("string", "integer", "decimal", "boolean", "date", "datetime", "json", "array")
 
@@ -83,6 +83,10 @@ class ResolvedVariable:
     format: str | None = None
     timezone: str | None = None
     business_calendar: str | None = None
+    project_id: int | None = None
+    environment_group_id: int | None = None
+    workflow_id: int | None = None
+    task_id: str | None = None
 
     def __repr__(self) -> str:
         # VAR-11: redact sensitive values in repr to prevent log leakage
@@ -543,8 +547,9 @@ class VariableResolver:
                 item = self._definition_of(ref["scope"], ref["name"], context)
                 if item is None:
                     raise VariableDomainError(4001, f"variable {ref['scope']}.{ref['name']} is not defined")
+                resolved_item = resolve_reference(ref["scope"], ref["name"], set())
                 expression = "${" + ref["scope"] + "." + ref["name"] + "}"
-                rendered = rendered.replace(expression, item.value)
+                rendered = rendered.replace(expression, resolved_item)
                 snapshot.append(
                     {
                         "expression": expression,
@@ -557,6 +562,23 @@ class VariableResolver:
                 )
             for expression in time_expressions:
                 rendered = rendered.replace(f"$[{expression}]", evaluate_time_expression(expression))
+            return rendered
+
+        def resolve_reference(scope: str, name: str, stack: set[tuple[str, str]]) -> str:
+            key = (scope, name)
+            if key in stack or len(stack) >= 32:
+                raise VariableDomainError(4001, f"cyclic or excessively deep variable reference: {scope}.{name}")
+            item = self._definition_of(scope, name, context)
+            if item is None:
+                raise VariableDomainError(4001, f"variable {scope}.{name} is not defined")
+            stack = {*stack, key}
+            rendered = item.value
+            refs, _, _ = references_in(rendered)
+            for ref in refs:
+                rendered = rendered.replace(
+                    "${" + ref["scope"] + "." + ref["name"] + "}",
+                    resolve_reference(ref["scope"], ref["name"], stack),
+                )
             return rendered
 
         return resolve_value(parameters), snapshot

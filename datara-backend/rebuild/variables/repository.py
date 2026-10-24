@@ -61,7 +61,7 @@ class VariableRepository:
         scope: str,
         project_id: int | None,
         name: str,
-        value: str,
+        value: str | None,
         value_type: str,
         sensitive: bool,
         description: str,
@@ -74,6 +74,23 @@ class VariableRepository:
         business_calendar: str | None = None,
         environment_group_id: int | None = None,
     ) -> VariableDefinitionRecord:
+        if value is None:
+            # Editing metadata for a sensitive value must not require the
+            # caller to send the secret back over the wire.
+            owner = self.owner_key(
+                scope,
+                project_id,
+                workflow_id=workflow_id,
+                task_id=task_id,
+                environment_group_id=environment_group_id,
+            )
+            existing = self._session.scalar(select(VariableDefinitionRecord).where(
+                VariableDefinitionRecord.owner_key == owner,
+                VariableDefinitionRecord.name == name,
+            ))
+            if existing is None or not existing.sensitive:
+                raise VariableDomainError(4001, "value is required for a new or non-sensitive variable")
+            value = existing.value_json
         validate_definition(scope, name, value_type, value)
         owner = self.owner_key(
             scope,
@@ -146,10 +163,9 @@ class VariableRepository:
         return bool(result.rowcount)
 
     def list_for_project(self, project_id: int) -> list[ResolvedVariable]:
-        """Visible stored variables for a bare project context (project + tmp)."""
+        """Visible stored variables for a bare project context."""
         items: list[ResolvedVariable] = []
         items.extend(self.list_owner(f"project:{project_id}"))
-        items.extend(self.list_owner(f"tmp:{project_id}"))
         return items
 
     def list_all_with_scope(
@@ -166,7 +182,6 @@ class VariableRepository:
         authority); without them those scopes yield nothing."""
         items: list[ResolvedVariable] = []
         items.extend(self.list_owner(f"project:{project_id}"))
-        items.extend(self.list_owner(f"tmp:{project_id}"))
         if workflow_id is not None:
             items.extend(self.list_owner(f"workflow:{project_id}:{workflow_id}"))
         if task_id is not None:
@@ -178,6 +193,7 @@ class VariableRepository:
 
     @staticmethod
     def _as_resolved(row: VariableDefinitionRecord) -> ResolvedVariable:
+        parts = row.owner_key.split(":")
         return ResolvedVariable(
             name=row.name,
             scope=row.scope,
@@ -190,6 +206,10 @@ class VariableRepository:
             format=row.format,
             timezone=row.timezone,
             business_calendar=row.business_calendar,
+            project_id=row.project_id,
+            environment_group_id=int(parts[2]) if row.scope == "env" and len(parts) == 3 else None,
+            workflow_id=int(parts[2]) if row.scope == "workflow" and len(parts) == 3 else None,
+            task_id=parts[2] if row.scope == "task" and len(parts) == 3 else None,
         )
 
     # -- run snapshots -----------------------------------------------------

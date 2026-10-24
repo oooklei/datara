@@ -54,16 +54,13 @@ def test_save_and_list_variables_envelope_and_scopes():
         tmp_saved = _save(
             client, tokens["dev"], project_id, scope="tmp", name="scratch", value='{"a":1}', value_type="json", sensitive=True
         )
-        assert tmp_saved.status_code == 200
+        assert tmp_saved.status_code == 400
 
         listed = client.get(f"/api/v1/rebuild/variables?project_id={project_id}", headers=tokens["dev"])
         assert listed.status_code == 200
         rows = listed.json()["data"]
         names = {(row["scope"], row["name"]) for row in rows}
-        assert {("project", "batch_size"), ("global", "env_name"), ("tmp", "scratch")} <= names
-        scratch = next(row for row in rows if row["name"] == "scratch")
-        # Declaration §5 Q11: sensitive values return plaintext, no redaction layer.
-        assert scratch["value"] == "******" and scratch["sensitive"] is True
+        assert {("project", "batch_size"), ("global", "env_name")} <= names
         assert '{"a":1}' not in listed.text
 
         filtered = client.get(

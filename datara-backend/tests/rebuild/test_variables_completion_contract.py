@@ -79,6 +79,10 @@ def test_environment_group_crud_masks_secret_and_supports_delete() -> None:
                 "format": None,
                 "timezone": None,
                 "business_calendar": None,
+                    "project_id": project_id,
+                    "environment_group_id": 9,
+                    "workflow_id": None,
+                    "task_id": None,
             }
         ]
         assert "do-not-leak" not in listed.text

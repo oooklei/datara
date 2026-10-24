@@ -50,6 +50,7 @@ def _upgrade_sqlite(engine: Engine) -> None:
         connection.execute(text("ALTER TABLE rebuild_variable_definition RENAME TO rebuild_variable_definition_legacy"))
         # Explicit indexes retain their global names after a SQLite table rename.
         connection.execute(text("DROP INDEX IF EXISTS ix_variable_project_name"))
+        connection.execute(text("DROP INDEX IF EXISTS uq_variable_owner_name"))
         VariableDefinitionRecord.__table__.create(connection)
         connection.execute(text(
             f"INSERT INTO rebuild_variable_definition ({quoted}) "
