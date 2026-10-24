@@ -76,11 +76,13 @@ def test_real_r3_revisions_are_additive_and_create_all_normalized_legacy_tables(
         "r3_0001_governance_catalog",
         "r3_0002_legacy_governance_carryforward",
         "r3_0003_metadata_metric_carry_forward",
+        "r3_0004_token_digest_hardening",
     )
     assert expected_v1 | expected_v2 | expected_v3 <= table_names
     assert R3_GOVERNANCE_MIGRATIONS[0].checksum == v0001_governance_catalog.checksum
     assert R3_GOVERNANCE_MIGRATIONS[1].checksum == v0002_legacy_governance_carryforward.checksum
     assert R3_GOVERNANCE_MIGRATIONS[2].checksum == v0003_metadata_metric_carry_forward.checksum
+    assert R3_GOVERNANCE_MIGRATIONS[3].revision == "r3_0004_token_digest_hardening"
     assert MigrationRunner(engine, R3_GOVERNANCE_MIGRATIONS).apply().skipped == result.applied
     assert "rebuild_user" in table_names
     assert "qc_task" not in table_names

@@ -202,3 +202,33 @@ def test_unrepairable_digest_only_structure_drift_fails_closed_on_first_apply():
         ))
     with pytest.raises(MigrationApplyError, match="postflight"):
         MigrationRunner(engine, [_v0004_migration()]).apply()
+
+
+class _MysqlReflectionShape:
+    """Model MySQL reflection: PK lives in get_pk_constraint, not ReflectedColumn."""
+
+    def __init__(self, delegate, primary_key):
+        self._delegate = delegate
+        self._primary_key = primary_key
+
+    def get_columns(self, table):
+        return [{key: value for key, value in item.items() if key != "primary_key"} for item in self._delegate.get_columns(table)]
+
+    def get_pk_constraint(self, _table):
+        return {"constrained_columns": self._primary_key}
+
+    def __getattr__(self, name):
+        return getattr(self._delegate, name)
+
+
+@pytest.mark.parametrize(("primary_key", "verdict"), [(["token_digest"], "READY"), ([], "PENDING")])
+def test_postflight_uses_mysql_primary_key_constraint_reflection(monkeypatch, primary_key, verdict):
+    engine = isolated_engine()
+    MigrationRunner(engine, R3_GOVERNANCE_MIGRATIONS).apply()
+    reflected = _MysqlReflectionShape(inspect(engine), primary_key)
+    monkeypatch.setattr(v0004_token_digest_hardening, "inspect", lambda _engine: reflected)
+
+    report = v0004_token_digest_hardening.postflight(engine)
+
+    assert report["verdict"] == verdict
+    assert ("digest_not_primary_key" in report["problems"]) is (verdict == "PENDING")
