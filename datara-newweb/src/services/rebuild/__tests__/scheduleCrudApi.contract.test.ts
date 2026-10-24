@@ -16,7 +16,7 @@ import {
   type ScheduleMutationResult,
   type ScheduleRow,
 } from '../scheduleCrudApi'
-import { R6_CONTRACT_METHODS, R6_SCHEDULER_NOT_WIRED, createScheduleContract } from '../scheduleApi'
+import { R6_CONTRACT_METHODS, createScheduleContract } from '../scheduleApi'
 
 /* ---------- 测试底座：mock 全局 fetch，记录调用并回 {code,msg,data} 包络 ---------- */
 
@@ -164,15 +164,21 @@ describe('seven-endpoint wire surface', () => {
   })
 })
 
-describe('R6 unchanged subset (scheduleApi.ts stays RED after the split)', () => {
+describe('R6 observation contract (GREEN after schedule observation wiring)', () => {
   it('keeps the frozen five-method observation list', () => {
     expect([...R6_CONTRACT_METHODS]).toEqual(['listTriggers', 'registerTrigger', 'listQueue', 'listRuntimeEvents', 'listAlerts'])
   })
 
-  it('keeps the three observation methods as RED sentinels', async () => {
+  it('executes the three observation methods through the shared HTTP base', async () => {
+    const calls = installFetch(() => [])
     const obs = createScheduleContract()
-    await expect(obs.listQueue()).rejects.toThrow(R6_SCHEDULER_NOT_WIRED)
-    await expect(obs.listRuntimeEvents()).rejects.toThrow(R6_SCHEDULER_NOT_WIRED)
-    await expect(obs.listAlerts()).rejects.toThrow(R6_SCHEDULER_NOT_WIRED)
+    await expect(obs.listQueue()).resolves.toEqual([])
+    await expect(obs.listRuntimeEvents()).resolves.toEqual([])
+    await expect(obs.listAlerts()).resolves.toEqual([])
+    expect(calls.map((x) => x.url)).toEqual([
+      '/api/v1/rebuild/schedule/queue',
+      '/api/v1/rebuild/schedule/runtime-events',
+      '/api/v1/rebuild/schedule/alerts',
+    ])
   })
 })

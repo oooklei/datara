@@ -433,3 +433,7 @@ export const workflowCategories = {
     await request(`/rebuild/workflows/${definitionId}/tags`, { method: 'PUT', json: { tags } })
   },
 }
+
+// Kept as a compatibility marker for validation views; runtime methods are wired
+// to the real rebuild endpoints and no longer throw this sentinel.
+export const WF_CATEGORIES_NOT_WIRED = 'WF_CATEGORIES_NOT_WIRED: rebuild/workflow categories contract not connected yet'

@@ -42,7 +42,6 @@ import {
   updateWorkflowDefinition,
   upsertWorkflowDraftEdge,
   upsertWorkflowDraftNode,
-  WF_CATEGORIES_NOT_WIRED,
   WF_NODE_TYPES,
   workflowCategories,
 } from '../workflowApi'
@@ -104,11 +103,18 @@ describe('INC4-FE-4 workflowApi 契约（/api/v1/rebuild/workflows）', () => {
     })
   })
 
-  it('categories 系四方法全 RED：rejects WF_CATEGORIES_NOT_WIRED（端点缺位，接驳即活）', async () => {
-    await expect(workflowCategories.listCategories()).rejects.toThrow(WF_CATEGORIES_NOT_WIRED)
-    await expect(workflowCategories.createCategory('自定义目录')).rejects.toThrow(WF_CATEGORIES_NOT_WIRED)
-    await expect(workflowCategories.deleteCategory('自定义目录')).rejects.toThrow(WF_CATEGORIES_NOT_WIRED)
-    await expect(workflowCategories.setWfTags(42, ['同步'])).rejects.toThrow(WF_CATEGORIES_NOT_WIRED)
+  it('categories 系四方法通过真实 rebuild 端点接线', async () => {
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(ENV([]))
+      .mockResolvedValueOnce(ENV({ id: 1, name: '自定义目录' }))
+      .mockResolvedValueOnce(ENV(null))
+      .mockResolvedValueOnce(ENV(null))
+    vi.stubGlobal('fetch', fetchMock)
+    await expect(workflowCategories.listCategories()).resolves.toEqual([])
+    await expect(workflowCategories.createCategory('自定义目录')).resolves.toMatchObject({ id: 1 })
+    await expect(workflowCategories.deleteCategory('1')).resolves.toBeUndefined()
+    await expect(workflowCategories.setWfTags(42, ['同步'])).resolves.toBeUndefined()
+    expect(fetchMock).toHaveBeenCalledTimes(4)
   })
 })
 
