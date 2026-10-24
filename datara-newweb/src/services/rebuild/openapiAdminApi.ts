@@ -239,7 +239,14 @@ export const openapiAdminApi: OpenapiAdminApi = {
   async disable(id) { return keyRequest<ApiDefinitionRecord>(`/definitions/${id}/disable`, { method: 'POST' }) },
   async enable(id) { return keyRequest<ApiDefinitionRecord>(`/definitions/${id}/enable`, { method: 'POST' }) },
   async callLogs(query) {
-    const q = query ? '?' + Object.entries(query).filter(([, v]) => v !== undefined).map(([k, v]) => `${encodeURIComponent(k)}=${encodeURIComponent(String(v))}`).join('&') : ''
+    // The HTTP contract is snake_case on the wire (api_id/key_id/from/to/limit/offset).
+    // Keep the public TypeScript query camelCase while normalizing here instead of
+    // hand-building a mixed-shape query that the backend silently ignores.
+    const wireKeys: Record<string, string> = { apiId: 'api_id', keyId: 'key_id', from: 'from', to: 'to', limit: 'limit', offset: 'offset' }
+    const q = query ? '?' + Object.entries(query)
+      .filter(([, v]) => v !== undefined)
+      .map(([k, v]) => `${encodeURIComponent(wireKeys[k] ?? k)}=${encodeURIComponent(String(v))}`)
+      .join('&') : ''
     return keyRequest<ApiCallLogPage>(`/call-logs${q}`)
   },
 }
