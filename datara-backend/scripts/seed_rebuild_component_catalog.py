@@ -27,6 +27,7 @@ common.config.get_settings().db_url）：
 from __future__ import annotations
 
 import argparse
+import json
 import os
 import sys
 from pathlib import Path
@@ -60,6 +61,33 @@ def _copy_row(target, source) -> None:
         if key.startswith("_sa"):
             continue
         setattr(target, key, value)
+
+
+def _normalize_spec_json(value: str | None) -> str | None:
+    """Upgrade legacy catalog documents to the rebuilt eight-section form DSL.
+
+    The legacy metadata catalog predates the rebuilt component contract and
+    commonly omits ``form`` altogether.  Preserve all declared fields while
+    adding only the missing canonical sections; executable/unknown declarations
+    are still rejected by the API's normal publication validator.
+    """
+    if not value:
+        return value
+    try:
+        spec = json.loads(value)
+    except (TypeError, json.JSONDecodeError):
+        return value
+    if not isinstance(spec, dict):
+        return value
+    sections = ("inputs", "outputs", "params", "conditions", "constraints", "exclusions", "refs", "exports")
+    form = spec.get("form")
+    if form is None:
+        spec["form"] = {section: [] for section in sections}
+    elif isinstance(form, dict):
+        spec["form"] = {section: form.get(section, []) if isinstance(form.get(section, []), list) else [] for section in sections}
+    else:
+        spec["form"] = {section: [] for section in sections}
+    return json.dumps(spec, ensure_ascii=False, separators=(",", ":"))
 
 
 def main() -> int:
@@ -151,6 +179,7 @@ def main() -> int:
             else:
                 updated["version"] += 1
             _copy_row(dst, src)
+            dst.spec_json = _normalize_spec_json(dst.spec_json)
 
         # t_component_log：id 主键收敛（历史记录复制语义）
         for src in logs:
