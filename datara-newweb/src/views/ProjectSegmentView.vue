@@ -40,8 +40,17 @@ const segmentViews: Record<string, Component> = {
 }
 const segmentView = computed(() => segmentViews[props.seg])
 const heading = computed(() => section.value?.label ?? '未知功能段')
+const segmentDescriptions: Record<string, string> = {
+  dag: '工作流编排、节点组件与运行实例',
+  datasource: '数据源连接与元数据浏览',
+  resources: '项目资源与执行环境管理',
+  ide: 'SQL、Python 与 Shell 数据开发',
+  meta: '元数据目录与资产检索',
+  dep: '依赖运行节点与执行监控',
+  system: '项目权限与安全配置',
+}
 const sub = computed(() =>
-  section.value ? '该功能段尚未开放：功能页随后续批次交付' : `未知的段标识：${props.seg}`,
+  section.value ? (segmentDescriptions[props.seg] ?? '项目功能') : `未知的段标识：${props.seg}`,
 )
 </script>
 
