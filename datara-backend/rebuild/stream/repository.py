@@ -93,6 +93,18 @@ def _window_bound(bound: str) -> datetime:
         raise StreamDomainError(4001, f"invalid ISO-8601 window bound: {bound}")
 
 
+def _window_bounds(window_from: str, window_to: str) -> tuple[datetime, datetime]:
+    """Parse and validate an inclusive observation window.
+
+    A reversed range otherwise succeeds with a misleading all-zero payload;
+    reject it consistently for metrics, failures and observe endpoints.
+    """
+    start, end = _window_bound(window_from), _window_bound(window_to)
+    if end < start:
+        raise StreamDomainError(4001, "window 'to' must be greater than or equal to 'from'")
+    return start, end
+
+
 class StreamRepository:
     def __init__(self, session: Session) -> None:
         self._session = session
@@ -297,7 +309,7 @@ class StreamRepository:
 
     def list_metric_points(self, job_id: int, window_from: str, window_to: str, limit: int = 100) -> list[dict[str, Any]]:
         self.get_job(job_id)
-        start, end = _window_bound(window_from), _window_bound(window_to)
+        start, end = _window_bounds(window_from, window_to)
         rows = self._session.scalars(
             select(StreamMetricSnapshotRecord)
             .where(StreamMetricSnapshotRecord.job_id == job_id,
@@ -314,7 +326,7 @@ class StreamRepository:
 
     def list_recovery_events(self, job_id: int, window_from: str, window_to: str, limit: int = 100) -> list[dict[str, Any]]:
         self.get_job(job_id)
-        start, end = _window_bound(window_from), _window_bound(window_to)
+        start, end = _window_bounds(window_from, window_to)
         rows = self._session.scalars(
             select(StreamRecoveryEventRecord)
             .where(StreamRecoveryEventRecord.job_id == job_id,
@@ -422,7 +434,7 @@ class StreamRepository:
     ) -> list[dict[str, Any]]:
         """Failure sample query: job rows in the window, oldest first."""
         self.get_job(job_id)
-        bound_from, bound_to = _window_bound(window_from), _window_bound(window_to)
+        bound_from, bound_to = _window_bounds(window_from, window_to)
         rows = self._session.scalars(
             select(StreamFailureEventRecord)
             .where(
@@ -454,7 +466,7 @@ class StreamRepository:
         window. No other derivation happens on either side.
         """
         job = self.get_job(job_id)
-        bound_from, bound_to = _window_bound(window_from), _window_bound(window_to)
+        bound_from, bound_to = _window_bounds(window_from, window_to)
         latest = self._session.scalar(
             select(StreamMetricSnapshotRecord)
             .where(

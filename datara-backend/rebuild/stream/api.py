@@ -47,7 +47,11 @@ class StreamWindowRequest(BaseModel):
     # `from` is a Python keyword — accept it via alias (FE contract key is `from`).
     from_: str = Field(default="", alias="from")
     to: str = ""
-    limit: int = 100
+    # Keep observation/failure queries bounded at the API boundary.  The
+    # repository also caps reads, but accepting zero/negative values here
+    # produces an ambiguous empty observation and lets clients bypass the
+    # documented 500-row ceiling.
+    limit: int = Field(default=100, ge=1, le=500)
 
     model_config = {"protected_namespaces": (), "populate_by_name": True}
 

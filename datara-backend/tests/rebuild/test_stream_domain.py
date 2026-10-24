@@ -415,6 +415,25 @@ def test_api_observation_contract_endpoints(client, session_factory):
     assert events[0]["kind"] == "recovery-started"
 
 
+def test_api_observation_rejects_reversed_window_and_unbounded_limit(client):
+    created = client.post("/api/v1/rebuild/stream/jobs", json={
+        "name": "window-validation", "workflow_id": 17, "mq_topic": "topic",
+        "runtime_config": {"mode": "fixed_rate", "rows_per_sec": 1, "columns": ["id"]},
+    }).json()["data"]
+    job_id = created["id"]
+    reversed_window = client.post(
+        f"/api/v1/rebuild/stream/jobs/{job_id}/observe",
+        json={"from": "2026-10-20T00:00:00", "to": "2026-10-19T23:59:59"},
+    )
+    assert reversed_window.status_code == 400
+    assert reversed_window.json()["code"] == 4001
+    oversized = client.post(
+        f"/api/v1/rebuild/stream/jobs/{job_id}/failures",
+        json={"from": "2026-10-19T00:00:00", "to": "2026-10-19T23:59:59", "limit": 501},
+    )
+    assert oversized.status_code == 422
+
+
 def test_legacy_job_crosswalk_is_unique(repo):
     repo.register("linked", 1, "topic", {"mode": "fixed_rate", "rows_per_sec": 1, "columns": ["id"]}, legacy_job_id=77)
     with pytest.raises(StreamDomainError) as excinfo:
