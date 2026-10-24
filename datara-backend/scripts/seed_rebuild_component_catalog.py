@@ -196,6 +196,32 @@ def main() -> int:
             _copy_row(dst, src)
             dst.spec_json = _normalize_spec_json(dst.spec_json)
 
+        # The legacy metadata catalogue predates the rebuilt dependency node.
+        # Materialize the governed builtin from the shell declaration when it
+        # is absent, so NORMAL workflows have the full target palette.
+        if "dependent" not in exist_c:
+            template = exist_v.get(("shell", 1))
+            if template is not None:
+                dep = Component(
+                    type="dependent", name="依赖", category="NORMAL", profile="dag",
+                    scope="builtin", execution_model="dag-engine", executor="dependency",
+                    executable=True, state="published", published_version=1, draft_rev=0,
+                    description="工作流依赖组件", tags=["dependency"],
+                )
+                rebuild_session.add(dep)
+                rebuild_session.flush()
+                dep_spec = json.loads(template.spec_json)
+                dep_spec["summary"] = "依赖工作流或任务"
+                dep_spec["description"] = "等待依赖完成后继续执行"
+                dep_version = ComponentVersion(
+                    component_id=dep.id, type="dependent", version=1, state="published",
+                    spec_json=json.dumps(dep_spec, ensure_ascii=False, separators=(",", ":")),
+                    spec_hash=template.spec_hash, remark="generated from legacy catalogue",
+                )
+                rebuild_session.add(dep_version)
+                created["component"] += 1
+                created["version"] += 1
+
         # t_component_log：id 主键收敛（历史记录复制语义）
         for src in logs:
             dst = exist_l.get(src.id)
