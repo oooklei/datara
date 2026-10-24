@@ -35,12 +35,18 @@ from typing import Any
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
+from common.models import ComponentVersion
 from rebuild.workflow.models import (
     WorkflowDefinitionRecord,
     WorkflowEdgeRecord,
     WorkflowNodeRecord,
     WorkflowPublishRecord,
     WorkflowVersionRecord,
+)
+from rebuild.component_spec.catalogue import (
+    DESIGN_COMPONENT_TYPES,
+    RUNTIME_ONLY_TYPES,
+    WORKFLOW_COMPONENT_TYPES,
 )
 
 # Design §3.2 first-phase Palette: task types + flow components.
@@ -59,6 +65,24 @@ VALID_NODE_TYPES = (
     "WAIT",
     "SUB_WORKFLOW",
 )
+LEGACY_NODE_TYPES = frozenset(VALID_NODE_TYPES)
+
+
+def _component_ref(node_type: str, node: dict[str, Any]) -> dict[str, Any] | None:
+    ref = node.get("component_ref")
+    if not isinstance(ref, dict):
+        return None
+    if ref.get("type") != node_type:
+        return None
+    version = ref.get("version")
+    if isinstance(version, bool) or not isinstance(version, int) or version < 1:
+        return None
+    return {"type": node_type, "version": version}
+
+
+def _kind_for_component(node_type: str) -> str | None:
+    return next((kind for kind, values in WORKFLOW_COMPONENT_TYPES.items() if node_type in values), None)
+
 
 # Design §3.1 workflow version states. publish() creates PUBLISHED rows; the
 # DRAFT slot is reserved for the §4.1 结果转正式版本 path.
@@ -106,9 +130,7 @@ class WorkflowRepository:
             )
         )
         if existing is not None:
-            raise WorkflowDomainError(
-                "WF_NAME_CONFLICT", f"workflow name {name!r} already exists in project", 409
-            )
+            raise WorkflowDomainError("WF_NAME_CONFLICT", f"workflow name {name!r} already exists in project", 409)
         record = WorkflowDefinitionRecord(project_id=project_id, name=name, description=description)
         self._session.add(record)
         self._session.flush()
@@ -138,9 +160,7 @@ class WorkflowRepository:
                 )
             )
             if clash is not None:
-                raise WorkflowDomainError(
-                    "WF_NAME_CONFLICT", f"workflow name {name!r} already exists in project", 409
-                )
+                raise WorkflowDomainError("WF_NAME_CONFLICT", f"workflow name {name!r} already exists in project", 409)
             record.name = name
         if description is not None:
             record.description = description
@@ -173,14 +193,46 @@ class WorkflowRepository:
         self._definition(project_id, definition_id)
         node_code = str(node["node_code"]).strip()
         node_type = node["node_type"]
-        if node_type not in VALID_NODE_TYPES:
+        if node_type in RUNTIME_ONLY_TYPES:
+            raise WorkflowDomainError("WF_RUNTIME_ONLY", f"{node_type} cannot be saved in a design graph")
+        if node_type not in DESIGN_COMPONENT_TYPES and node_type not in LEGACY_NODE_TYPES:
+            raise WorkflowDomainError("WF_NODE_TYPE_UNKNOWN", "node_type is not in the approved component catalogue")
+        ref = _component_ref(node_type, node)
+        if node_type in DESIGN_COMPONENT_TYPES and ref is None:
             raise WorkflowDomainError(
-                "WF_NODE_TYPE_UNKNOWN", f"node_type must be one of {list(VALID_NODE_TYPES)}"
+                "WF_COMPONENT_REF_REQUIRED", "component_ref must be the immutable {type, version} pair"
             )
+        if ref is not None:
+            version_row = self._session.scalar(
+                select(ComponentVersion).where(
+                    ComponentVersion.type == ref["type"],
+                    ComponentVersion.version == ref["version"],
+                    ComponentVersion.state == "published",
+                )
+            )
+            if version_row is None:
+                raise WorkflowDomainError(
+                    "WF_COMPONENT_REF_UNKNOWN", "component_ref does not identify a published immutable version"
+                )
+        incoming_kind = _kind_for_component(node_type)
+        existing_kinds = {
+            kind
+            for row in self._draft_nodes(definition_id)
+            if row.node_code != node_code
+            for kind in [_kind_for_component(row.node_type)]
+            if kind is not None
+        }
+        if incoming_kind is not None and existing_kinds and existing_kinds != {incoming_kind}:
+            raise WorkflowDomainError(
+                "WF_WORKFLOW_TYPE_MISMATCH", f"{node_type} cannot be mixed with {sorted(existing_kinds)} components"
+            )
+        params = dict(node.get("params") or {})
+        if ref is not None:
+            params["_componentRef"] = ref
         values: dict[str, Any] = {
             "node_type": node_type,
             "name": node.get("name") or node_code,
-            "params_json": json.dumps(node.get("params") or {}, ensure_ascii=False, sort_keys=True),
+            "params_json": json.dumps(params, ensure_ascii=False, sort_keys=True),
             "position_x": node.get("position_x"),
             "position_y": node.get("position_y"),
         }
@@ -192,9 +244,7 @@ class WorkflowRepository:
             )
         )
         if existing is None:
-            record = WorkflowNodeRecord(
-                definition_id=definition_id, version_id=None, node_code=node_code, **values
-            )
+            record = WorkflowNodeRecord(definition_id=definition_id, version_id=None, node_code=node_code, **values)
             self._session.add(record)
         else:
             for key, value in values.items():
@@ -266,9 +316,7 @@ class WorkflowRepository:
             )
         )
         if record is None:
-            raise WorkflowDomainError(
-                "WF_EDGE_NOT_FOUND", f"draft edge {from_node!r}->{to_node!r} not found", 404
-            )
+            raise WorkflowDomainError("WF_EDGE_NOT_FOUND", f"draft edge {from_node!r}->{to_node!r} not found", 404)
         self._session.delete(record)
         self._session.flush()
 
@@ -290,12 +338,15 @@ class WorkflowRepository:
                     f"draft edge {edge.from_node!r}->{edge.to_node!r} references a missing node",
                 )
         node_payloads = [self._node_payload(n) for n in draft_nodes]
+        for node in node_payloads:
+            if node["node_type"] in RUNTIME_ONLY_TYPES:
+                raise WorkflowDomainError("WF_RUNTIME_ONLY", "runtime-only nodes cannot be published")
+            if node["node_type"] in DESIGN_COMPONENT_TYPES and node.get("component_ref") is None:
+                raise WorkflowDomainError("WF_COMPONENT_REF_REQUIRED", "all design nodes require component_ref")
         edge_payloads = [self._edge_payload(e) for e in draft_edges]
         digest = snapshot_digest(node_payloads, edge_payloads)
         latest = self._session.scalar(
-            select(func.max(WorkflowVersionRecord.version)).where(
-                WorkflowVersionRecord.definition_id == definition_id
-            )
+            select(func.max(WorkflowVersionRecord.version)).where(WorkflowVersionRecord.definition_id == definition_id)
         )
         version_number = int(latest or 0) + 1
         published_at = datetime.now(timezone.utc)
@@ -345,9 +396,7 @@ class WorkflowRepository:
         )
         definition.current_version = version_number
         self._session.flush()
-        return self._version_payload(
-            version_row, node_count=len(node_payloads), edge_count=len(edge_payloads)
-        )
+        return self._version_payload(version_row, node_count=len(node_payloads), edge_count=len(edge_payloads))
 
     # -- version queries -----------------------------------------------------
 
@@ -369,9 +418,7 @@ class WorkflowRepository:
             )
         )
         if row is None:
-            raise WorkflowDomainError(
-                "WF_VERSION_NOT_FOUND", f"workflow {definition_id} has no version {version}", 404
-            )
+            raise WorkflowDomainError("WF_VERSION_NOT_FOUND", f"workflow {definition_id} has no version {version}", 404)
         copy_nodes = [
             self._node_payload(n)
             for n in self._session.scalars(
@@ -429,9 +476,7 @@ class WorkflowRepository:
             )
         )
         if row is None:
-            raise WorkflowDomainError(
-                "WF_VERSION_NOT_FOUND", f"workflow {definition_id} has no version {version}", 404
-            )
+            raise WorkflowDomainError("WF_VERSION_NOT_FOUND", f"workflow {definition_id} has no version {version}", 404)
         if row.status != "DRAFT":
             raise WorkflowDomainError(
                 "WF_VERSION_IMMUTABLE",
@@ -451,11 +496,14 @@ class WorkflowRepository:
 
     @staticmethod
     def _node_payload(row: WorkflowNodeRecord) -> dict[str, Any]:
+        params = json.loads(row.params_json) if row.params_json else {}
+        component_ref = params.pop("_componentRef", None)
         return {
             "node_code": row.node_code,
             "node_type": row.node_type,
             "name": row.name,
-            "params": json.loads(row.params_json) if row.params_json else {},
+            "params": params,
+            "component_ref": component_ref,
             "position_x": row.position_x,
             "position_y": row.position_y,
         }

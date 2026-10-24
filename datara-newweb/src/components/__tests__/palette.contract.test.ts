@@ -64,6 +64,9 @@ const {
 vi.mock('../../services/rebuild/componentSpecApi', () => ({
   loadComponentSpecs: specLoad,
   resetComponentSpecCache: vi.fn(),
+  isDesignComponent: (item: { runtimeOnly: boolean; visual: Record<string, unknown>; workflowTypes: string[]; componentRef: { type: string; version: number }; type: string }, kind: string) =>
+    !item.runtimeOnly && item.visual.paletteVisible !== false && item.workflowTypes.includes(kind)
+      && item.componentRef.type === item.type && item.componentRef.version >= 1,
 }))
 
 vi.mock('../../services/rebuild/workflowApi', () => ({
@@ -92,14 +95,20 @@ function item(over: {
   identity?: Record<string, unknown>
   description?: Record<string, unknown>
   visual?: Record<string, unknown>
+  workflowTypes?: Array<'NORMAL' | 'SYNC' | 'STREAM'>
+  runtimeOnly?: boolean
 }): ComponentSpecItem {
   return {
     type: over.type,
     publishedVersion: 1,
+    componentRef: { type: over.type, version: 1 },
+    workflowTypes: over.workflowTypes ?? ['NORMAL'],
+    runtimeOnly: over.runtimeOnly ?? false,
     identity: over.identity ?? {},
     description: over.description ?? {},
     inputs: [],
     outputs: [],
+    form: { inputs: [], outputs: [], params: [], conditions: [], constraints: [], exclusions: [], refs: [], exports: [] },
     visual: over.visual ?? {},
     behaviors: [],
     dropPolicy: null,
@@ -109,7 +118,7 @@ function item(over: {
   }
 }
 
-function mountPalette(props: { defaultTab?: 'palette' | 'wf'; projectId?: number } = {}) {
+function mountPalette(props: { defaultTab?: 'palette' | 'wf'; projectId?: number; workflowType?: 'NORMAL' | 'SYNC' | 'STREAM' } = {}) {
   return mount(Palette, { props })
 }
 
@@ -245,17 +254,19 @@ describe('INC4-FE-3 Palette 双 Tab（组件库 / 工作流）', () => {
             identity: { displayName: `同步编排·${type}` },
             description: { category: '数据同步' },
             visual: { icon: '⇄', color: '#2563eb' },
+            workflowTypes: ['SYNC'],
           }),
         ),
         // C17 sync / C24 file_sync：runtimeOnly（设计态禁运行态组件）→ normalizeSpec 置 paletteVisible=false
-        item({ type: 'sync', identity: { displayName: '同步执行C17' }, visual: { paletteVisible: false } }),
-        item({ type: 'file_sync', identity: { displayName: '文件同步执行C24' }, visual: { paletteVisible: false } }),
+        item({ type: 'sync', identity: { displayName: '同步执行C17' }, visual: { paletteVisible: false }, workflowTypes: ['SYNC'], runtimeOnly: true }),
+        item({ type: 'file_sync', identity: { displayName: '文件同步执行C24' }, visual: { paletteVisible: false }, workflowTypes: ['SYNC'], runtimeOnly: true }),
       ],
       etag: '"g3"',
       source: 'network',
     })
-    const w = mountPalette()
+    const w = mountPalette({ workflowType: 'SYNC' })
     await flushPromises()
+    expect(specLoad).toHaveBeenCalledWith('SYNC')
     // 逐项可见：9 条构造 spec 只渲染 7 项（C17/C24 被排除）
     const items = w.findAll('.pal-item')
     expect(items).toHaveLength(7)

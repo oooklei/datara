@@ -7,6 +7,7 @@ from common.models import Component, ComponentVersion
 from rebuild.api.app import create_app
 from rebuild.identity.contracts import Role
 from rebuild.identity.repository import UserRepository
+from rebuild.component_spec.catalogue import WORKFLOW_COMPONENT_TYPES
 
 
 def _client():
@@ -22,17 +23,37 @@ def _client():
 
 def _component(*, identifier: int, type_name: str, published_version: int | None = 1, state: str = "published"):
     return Component(
-        id=identifier, type=type_name, name=type_name.title(), category="test", profile="dag",
-        scope="builtin", execution_model="dag-engine", executable=True,
-        state=state, published_version=published_version, draft_rev=0,
+        id=identifier,
+        type=type_name,
+        name=type_name.title(),
+        category="test",
+        profile="dag",
+        scope="builtin",
+        execution_model="dag-engine",
+        executable=True,
+        state=state,
+        published_version=published_version,
+        draft_rev=0,
     )
 
 
-def _version(*, identifier: int, component_id: int, type_name: str, version: int = 1,
-             state: str = "published", spec_json: str = '{}'):
+def _version(
+    *,
+    identifier: int,
+    component_id: int,
+    type_name: str,
+    version: int = 1,
+    state: str = "published",
+    spec_json: str = "{}",
+):
     return ComponentVersion(
-        id=identifier, component_id=component_id, type=type_name, version=version,
-        state=state, spec_json=spec_json, spec_hash="hash",
+        id=identifier,
+        component_id=component_id,
+        type=type_name,
+        version=version,
+        state=state,
+        spec_json=spec_json,
+        spec_hash="hash",
     )
 
 
@@ -53,15 +74,19 @@ def test_published_exact_join_stable_bytes_strong_etag_and_304():
         with app.state.session_factory() as session:
             Component.__table__.create(session.bind, checkfirst=True)
             ComponentVersion.__table__.create(session.bind, checkfirst=True)
-            session.add_all([
-                _component(identifier=20, type_name="python"),
-                _component(identifier=10, type_name="sql"),
-                _component(identifier=30, type_name="draft", state="draft"),
-                _version(identifier=1, component_id=10, type_name="sql", spec_json=json.dumps({"summary": "SQL"})),
-                _version(identifier=2, component_id=20, type_name="python", spec_json=json.dumps({"summary": "Python"})),
-                _version(identifier=3, component_id=30, type_name="draft"),
-                _version(identifier=4, component_id=10, type_name="sql", version=2),
-            ])
+            session.add_all(
+                [
+                    _component(identifier=20, type_name="python"),
+                    _component(identifier=10, type_name="sql"),
+                    _component(identifier=30, type_name="draft", state="draft"),
+                    _version(identifier=1, component_id=10, type_name="sql", spec_json=json.dumps({"summary": "SQL"})),
+                    _version(
+                        identifier=2, component_id=20, type_name="python", spec_json=json.dumps({"summary": "Python"})
+                    ),
+                    _version(identifier=3, component_id=30, type_name="draft"),
+                    _version(identifier=4, component_id=10, type_name="sql", version=2),
+                ]
+            )
             session.commit()
 
         first = client.get("/api/v1/rebuild/components/spec", headers=headers)
@@ -94,5 +119,27 @@ def test_invalid_published_json_fails_closed_without_empty_list_fallback():
         assert response.status_code == 500
         assert response.json()["data"] is None
         assert "ETag" not in response.headers
+    finally:
+        client.__exit__(None, None, None)
+
+
+def test_workflow_type_returns_exact_approved_group_and_rejects_unknown_type():
+    client, app, headers = _client()
+    try:
+        with app.state.session_factory() as session:
+            for index, type_name in enumerate(WORKFLOW_COMPONENT_TYPES["STREAM"], start=1):
+                session.add(_component(identifier=index, type_name=type_name))
+                session.add(_version(identifier=index, component_id=index, type_name=type_name))
+            session.add(_component(identifier=20, type_name="smoke"))
+            session.add(_version(identifier=20, component_id=20, type_name="smoke"))
+            session.commit()
+
+        response = client.get("/api/v1/rebuild/components/spec", headers=headers, params={"workflow_type": "STREAM"})
+        assert response.status_code == 200
+        assert [item["type"] for item in response.json()["items"]] == list(WORKFLOW_COMPONENT_TYPES["STREAM"])
+
+        invalid = client.get("/api/v1/rebuild/components/spec", headers=headers, params={"workflow_type": "ETL"})
+        assert invalid.status_code == 400
+        assert invalid.json()["code"] == 4001
     finally:
         client.__exit__(None, None, None)

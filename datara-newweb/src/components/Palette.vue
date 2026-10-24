@@ -33,7 +33,7 @@
  */
 import { computed, onMounted, ref, watch } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { loadComponentSpecs, type ComponentSpecItem } from '../services/rebuild/componentSpecApi'
+import { isDesignComponent, loadComponentSpecs, type ComponentSpecItem, type WorkflowType } from '../services/rebuild/componentSpecApi'
 import {
   deleteWorkflowDefinition,
   listWorkflowDefinitions,
@@ -42,7 +42,7 @@ import {
 } from '../services/rebuild/workflowApi'
 import type { DagPickItem } from '../stores/dagTabs'
 
-const props = defineProps<{ defaultTab?: 'palette' | 'wf'; projectId?: number }>()
+const props = defineProps<{ defaultTab?: 'palette' | 'wf'; projectId?: number; workflowType?: WorkflowType }>()
 const emit = defineEmits<{
   'load-tasks': [{ items: DagPickItem[] }]
   /** 9-04 行内「定时」入口：载荷 = 工作流定义 id+name，宿主单实例 ScheduleDialog 承接 */
@@ -91,17 +91,26 @@ function rowOf(it: ComponentSpecItem): PalRow | null {
 
 /** 规格目录加载：失败 console.warn + 空态（last-success 回落在 API 层；首载
  *  fail-closed 不阻断宿主渲染） */
-onMounted(async () => {
-  buildPool() // 工作流候选池初始拉取（无 projectId 置空池降级；蓝本 onMounted 调 buildPool 同构）
+async function loadRows() {
+  loaded.value = false
   try {
-    const snap = await loadComponentSpecs()
-    rows.value = snap.items.map(rowOf).filter((r): r is PalRow => r !== null)
+    const snap = await loadComponentSpecs(props.workflowType ?? 'NORMAL')
+    rows.value = snap.items
+      .filter((item) => isDesignComponent(item, props.workflowType ?? 'NORMAL'))
+      .map(rowOf).filter((r): r is PalRow => r !== null)
   } catch (e) {
     console.warn('[Palette] component specs load failed:', e)
   } finally {
     loaded.value = true
   }
+}
+
+onMounted(() => {
+  buildPool() // 工作流候选池初始拉取（无 projectId 置空池降级；蓝本 onMounted 调 buildPool 同构）
+  void loadRows()
 })
+
+watch(() => props.workflowType, () => { void loadRows() })
 
 /* ---------- 分组（蓝本 cats 结构：kw 过滤 + 折叠 + 计数） ---------- */
 const GENERIC_LABEL = '通用'

@@ -12,7 +12,7 @@
  *  5. categories 系四方法 RED 哨兵 WF_CATEGORIES_NOT_WIRED（端点缺位候裁披露①，接驳即活）。
  *
  * FE-6 扩容覆盖（六模型面：定义 CRUD + draft 节点/边 upsert/delete + 发布/版本读取）：
- *  6. WF_NODE_TYPES 13 值白名单冻结（门 2 数据模型对齐 repository.VALID_NODE_TYPES）；
+ *  6. WF_NODE_TYPES 冻结为普通工作流四个重点组件；
  *  7. create：POST / body {project_id,name,description?}（条件键展开，缺省不携带）
  *     → WorkflowDefinitionInfo 映射；
  *  8. get：GET /{id}?project_id → payload + draft snake→camel 对拍（node_code→nodeCode /
@@ -113,12 +113,11 @@ describe('INC4-FE-4 workflowApi 契约（/api/v1/rebuild/workflows）', () => {
 })
 
 describe('INC4-FE-6 workflowApi 六模型扩容契约', () => {
-  it('WF_NODE_TYPES 白名单冻结：13 值恒定（门 2 对齐 repository.VALID_NODE_TYPES）', () => {
+  it('WF_NODE_TYPES 白名单冻结：NORMAL 仅四个重点组件', () => {
     expect([...WF_NODE_TYPES]).toEqual([
-      'FLOW', 'SYNC', 'SQL', 'PYTHON', 'SHELL', 'DEPENDENCY', 'START', 'END',
-      'CONDITION', 'FORK', 'JOIN', 'WAIT', 'SUB_WORKFLOW',
+      'sql', 'python', 'shell', 'dependent',
     ])
-    expect(WF_NODE_TYPES).toHaveLength(13)
+    expect(WF_NODE_TYPES).toHaveLength(4)
   })
 
   it('create：POST / body {project_id,name,description} → WorkflowDefinitionInfo 映射', async () => {

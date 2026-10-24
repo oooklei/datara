@@ -77,12 +77,10 @@ export async function deleteWorkflowDefinition(projectId: number, definitionId: 
 
 /* ---------- FE-6：节点类型白名单（repository.VALID_NODE_TYPES 冻结，门 2 对齐） ---------- */
 
-export const WF_NODE_TYPES = [
-  'FLOW', 'SYNC', 'SQL', 'PYTHON', 'SHELL', 'DEPENDENCY', 'START', 'END',
-  'CONDITION', 'FORK', 'JOIN', 'WAIT', 'SUB_WORKFLOW',
-] as const
-
-export type WfNodeType = (typeof WF_NODE_TYPES)[number]
+export type WfNodeType = string
+export interface ComponentRef { type: string; version: number }
+/** Compatibility export for callers that need the focused NORMAL catalogue. */
+export const WF_NODE_TYPES = ['sql', 'python', 'shell', 'dependent'] as const
 
 /* ---------- FE-6：六模型 wire 形状（repository payload 直映） ---------- */
 
@@ -92,6 +90,7 @@ export interface WorkflowDraftNodeWire {
   node_type: string
   name: string | null
   params: Record<string, unknown> | null
+  component_ref?: ComponentRef | null
   position_x: number | null
   position_y: number | null
 }
@@ -146,6 +145,7 @@ export interface WorkflowDraftNode {
   nodeType: string
   name: string | null
   params: Record<string, unknown> | null
+  componentRef?: ComponentRef | null
   positionX: number | null
   positionY: number | null
 }
@@ -200,7 +200,7 @@ function mapDefInfo(w: WorkflowDefinitionWire): WorkflowDefinitionInfo {
 }
 
 function mapNode(w: WorkflowDraftNodeWire): WorkflowDraftNode {
-  return {
+  const node: WorkflowDraftNode = {
     nodeCode: w.node_code,
     nodeType: w.node_type,
     name: w.name ?? null,
@@ -208,6 +208,8 @@ function mapNode(w: WorkflowDraftNodeWire): WorkflowDraftNode {
     positionX: w.position_x ?? null,
     positionY: w.position_y ?? null,
   }
+  if (w.component_ref != null) node.componentRef = w.component_ref
+  return node
 }
 
 function mapEdge(w: WorkflowDraftEdgeWire): WorkflowDraftEdge {
@@ -301,6 +303,7 @@ export async function upsertWorkflowDraftNode(
     node_type: node.nodeType,
     name: node.name,
     params: node.params,
+    ...(node.componentRef != null ? { component_ref: node.componentRef } : {}),
     position_x: node.positionX,
     position_y: node.positionY,
   })

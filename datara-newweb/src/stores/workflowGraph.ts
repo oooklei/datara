@@ -41,7 +41,7 @@ type DraftNodeOrNull = WorkflowDraftNode | null
 
 function serializeNode(n: DraftNodeOrNull): string {
   if (n === null) return 'null'
-  return JSON.stringify([n.nodeCode, n.nodeType, n.name, n.params, n.positionX, n.positionY])
+  return JSON.stringify([n.nodeCode, n.nodeType, n.name, n.params, n.componentRef, n.positionX, n.positionY])
 }
 
 function serializeEdge(e: WorkflowDraftEdge | null): string {
@@ -283,6 +283,7 @@ export const useWorkflowGraphStore = defineStore('workflowGraph', {
       nodeType: WfNodeType
       name?: string | null
       params?: Record<string, unknown> | null
+      componentRef?: { type: string; version: number }
       positionX?: number | null
       positionY?: number | null
     }): WorkflowDraftNode {
@@ -291,6 +292,7 @@ export const useWorkflowGraphStore = defineStore('workflowGraph', {
         nodeType: input.nodeType,
         name: input.name ?? null,
         params: input.params ?? null,
+        ...(input.componentRef ? { componentRef: input.componentRef } : {}),
         positionX: input.positionX ?? null,
         positionY: input.positionY ?? null,
       }

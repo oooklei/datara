@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-import { loadComponentSpecs, resetComponentSpecCache } from '../componentSpecApi'
+import { isDesignComponent, loadComponentSpecs, resetComponentSpecCache, type ComponentSpecItem } from '../componentSpecApi'
 import { setToken } from '../../http'
 
 const ETAG = `"${'a'.repeat(64)}"`
@@ -62,6 +62,30 @@ describe('componentSpecApi exception contract', () => {
       headers: { ETag: '"short"' },
     })))
     await expect(loadComponentSpecs()).rejects.toThrow('strong SHA-256 ETag')
+  })
+
+  it('requests and caches each workflow catalogue independently', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({ items: [] }), {
+      status: 200, headers: { ETag: ETAG },
+    }))
+    vi.stubGlobal('fetch', fetchMock)
+    await loadComponentSpecs('SYNC')
+    expect(fetchMock).toHaveBeenCalledWith('/api/v1/rebuild/components/spec?workflow_type=SYNC', {
+      headers: { token: 'ordinary-token' },
+    })
+  })
+
+  it('fails closed for runtime-only, mismatched-kind, and unpinned catalogue rows', () => {
+    const base = {
+      type: 'sql', publishedVersion: 1, componentRef: { type: 'sql', version: 1 }, workflowTypes: ['NORMAL'],
+      runtimeOnly: false, identity: {}, description: {}, inputs: [], outputs: [],
+      form: { inputs: [], outputs: [], params: [], conditions: [], constraints: [], exclusions: [], refs: [], exports: [] },
+      visual: {}, behaviors: [], dropPolicy: null, extensions: {}, specVersion: 1, ports: {},
+    } as ComponentSpecItem
+    expect(isDesignComponent(base, 'NORMAL')).toBe(true)
+    expect(isDesignComponent({ ...base, runtimeOnly: true }, 'NORMAL')).toBe(false)
+    expect(isDesignComponent({ ...base, workflowTypes: ['SYNC'] }, 'NORMAL')).toBe(false)
+    expect(isDesignComponent({ ...base, componentRef: { type: 'sql', version: 0 } }, 'NORMAL')).toBe(false)
   })
 })
 

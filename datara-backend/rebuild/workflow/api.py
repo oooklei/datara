@@ -239,6 +239,7 @@ def build_workflow_router(
                 "node_type": frame_str(body, "node_type"),
                 "name": frame_optional_str(body, "name"),
                 "params": frame_optional_dict(body, "params"),
+                "component_ref": frame_optional_dict(body, "component_ref"),
                 "position_x": frame_optional_int(body, "position_x"),
                 "position_y": frame_optional_int(body, "position_y"),
             }

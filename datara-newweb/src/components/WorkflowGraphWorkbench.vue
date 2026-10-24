@@ -37,7 +37,6 @@ import { MiniMap } from '@vue-flow/minimap'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import type { DagTab } from '../stores/dagTabs'
 import {
-  WF_NODE_TYPES,
   listWorkflowVersions,
   publishWorkflowDefinition,
   type WorkflowDraftEdge,
@@ -45,6 +44,7 @@ import {
   type WorkflowVersion,
   type WfNodeType,
 } from '../services/rebuild/workflowApi'
+import { isDesignComponent, loadComponentSpecs, type ComponentSpecItem, type WorkflowType } from '../services/rebuild/componentSpecApi'
 import { useWorkflowGraphStore } from '../stores/workflowGraph'
 
 import '@vue-flow/core/dist/style.css'
@@ -62,6 +62,8 @@ const numDocId = computed(() => Number(props.tab.docId))
 const degraded = ref(props.projectId === undefined)
 const loading = ref(false)
 const loaded = ref(false)
+const availableComponents = ref<ComponentSpecItem[]>([])
+const workflowType = computed<WorkflowType>(() => props.tab.type === 'sync' ? 'SYNC' : props.tab.type === 'stream' ? 'STREAM' : 'NORMAL')
 
 /* ---------- store → vue-flow 单向映射 ---------- */
 
@@ -135,10 +137,11 @@ function onDeleteSelected() {
 
 /* ---------- 托盘（13 类型点击加节点，级联摆位） ---------- */
 
-function onAddNode(t: WfNodeType) {
+function onAddNode(component: ComponentSpecItem) {
   const n = graphStore.nodes.length
   graphStore.addNode({
-    nodeType: t,
+    nodeType: component.type as WfNodeType,
+    componentRef: component.componentRef,
     positionX: 24 + (n % 6) * 48,
     positionY: 24 + Math.floor(n / 6) * 48,
   })
@@ -191,6 +194,14 @@ async function ensureLoaded() {
     return
   }
   degraded.value = false
+  try {
+    availableComponents.value = (await loadComponentSpecs(workflowType.value)).items
+      .filter((item) => isDesignComponent(item, workflowType.value))
+  } catch {
+    availableComponents.value = []
+    ElMessage.error('组件目录加载失败')
+    return
+  }
   if (graphStore.docId === numDocId.value) {
     // 同 Tab 复活：store 仍持 doc（不 close on deactivate），清陈旧快照键即可
     clearSnap()
@@ -292,12 +303,12 @@ async function onShowVersions() {
       </div>
       <div class="wf-tray">
         <button
-          v-for="t in WF_NODE_TYPES"
-          :key="t"
+          v-for="component in availableComponents"
+          :key="component.type"
           class="wf-type"
           :disabled="!loaded"
-          @click="onAddNode(t)"
-        >{{ t }}</button>
+          @click="onAddNode(component)"
+        >{{ component.identity.displayName ?? component.type }}</button>
       </div>
     </div>
 

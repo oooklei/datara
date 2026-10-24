@@ -11,6 +11,15 @@ from sqlalchemy import and_, select
 from sqlalchemy.orm import Session
 
 from common.models import Component, ComponentVersion
+from rebuild.component_spec.catalogue import (
+    DESIGN_COMPONENT_TYPES,
+    FORM_SECTIONS,
+    RUNTIME_ONLY_TYPES,
+    WORKFLOW_COMPONENT_TYPES,
+    empty_form,
+    validate_declaration,
+    workflow_kind,
+)
 
 
 class ComponentSpecError(RuntimeError):
@@ -38,15 +47,19 @@ def _spec_item(component: Component, version: ComponentVersion) -> dict[str, Any
         raise ComponentSpecError(f"invalid published specification for {component.type}") from exc
     if not isinstance(spec, dict):
         raise ComponentSpecError(f"published specification for {component.type} must be an object")
+    violations = validate_declaration(spec)
+    if violations:
+        raise ComponentSpecError(f"invalid declaration for {component.type}: {'; '.join(violations)}")
     render = spec.get("render") if isinstance(spec.get("render"), dict) else {}
-    form = spec.get("form") if isinstance(spec.get("form"), dict) else {}
+    form = spec.get("form") if isinstance(spec.get("form"), dict) else empty_form()
+    # Historical rows without a form are exposed through the canonical eight
+    # sections; published rows that declare a form must pass the exact gate.
+    form = {section: list(form.get(section, [])) for section in FORM_SECTIONS}
     params = form.get("params") if isinstance(form.get("params"), list) else []
     fields = spec.get("fields")
     if not isinstance(fields, list):
         fields = [
-            _param_to_field(param)
-            for param in params
-            if isinstance(param, dict) and isinstance(param.get("key"), str)
+            _param_to_field(param) for param in params if isinstance(param, dict) and isinstance(param.get("key"), str)
         ]
     ports = spec.get("ports")
     if not isinstance(ports, dict):
@@ -60,11 +73,17 @@ def _spec_item(component: Component, version: ComponentVersion) -> dict[str, Any
     # D1 闸门 §13-5 / 同步编排设计态分离（权威设计 v3 L515）：runtime-only 组件
     # （C17 sync / C24 file_sync，execution_model=dag-engine）显式 paletteVisible=false，
     # 消费方 FE Palette 按此过滤（设计态禁运行态组件，四排除·palette 侧）。
-    if component.execution_model == "dag-engine":
+    runtime_only = component.type in RUNTIME_ONLY_TYPES
+    if runtime_only:
         visual["paletteVisible"] = False
     return {
         "type": component.type,
         "publishedVersion": component.published_version,
+        "componentRef": {"type": component.type, "version": component.published_version},
+        "workflowTypes": [
+            kind for kind, component_types in WORKFLOW_COMPONENT_TYPES.items() if component.type in component_types
+        ],
+        "runtimeOnly": runtime_only,
         "identity": {
             "type": component.type,
             "displayName": component.name,
@@ -78,6 +97,7 @@ def _spec_item(component: Component, version: ComponentVersion) -> dict[str, Any
         },
         "inputs": fields,
         "outputs": spec.get("outputs") if isinstance(spec.get("outputs"), list) else [],
+        "form": form,
         "visual": visual,
         "behaviors": spec.get("behaviors"),
         "dropPolicy": spec.get("dropPolicy"),
@@ -93,7 +113,10 @@ class ComponentSpecService:
     def __init__(self, session: Session) -> None:
         self._session = session
 
-    def published_document(self) -> ComponentSpecDocument:
+    def published_document(self, requested_workflow_kind: str | None = None) -> ComponentSpecDocument:
+        kind = workflow_kind(requested_workflow_kind)
+        if requested_workflow_kind is not None and kind is None:
+            raise ComponentSpecError("workflow_type must be NORMAL, SYNC, or STREAM")
         rows = self._session.execute(
             select(Component, ComponentVersion)
             .join(
@@ -107,7 +130,25 @@ class ComponentSpecService:
             .where(Component.state == "published")
             .order_by(Component.id)
         ).all()
-        payload = {"items": [_spec_item(component, version) for component, version in rows]}
+        allowed = frozenset(WORKFLOW_COMPONENT_TYPES[kind]) if kind else DESIGN_COMPONENT_TYPES
+        # Validate every published row before filtering. A corrupt hidden row
+        # is still a governance failure and must not be concealed by a narrow
+        # workflow-type request.
+        validated = [(component, _spec_item(component, version)) for component, version in rows]
+        if kind:
+            present = {component.type for component, _item in validated}
+            missing = [
+                component_type for component_type in WORKFLOW_COMPONENT_TYPES[kind] if component_type not in present
+            ]
+            if missing:
+                raise ComponentSpecError(f"{kind} catalogue is incomplete: {missing}")
+        payload = {
+            "items": [
+                item
+                for component, item in validated
+                if component.type in allowed and component.type not in RUNTIME_ONLY_TYPES
+            ]
+        }
         body = json.dumps(payload, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
         etag = f'"{hashlib.sha256(body).hexdigest()}"'
         return ComponentSpecDocument(body=body, etag=etag)

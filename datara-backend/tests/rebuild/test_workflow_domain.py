@@ -13,6 +13,7 @@ import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import select
 
+from common.models import Component, ComponentVersion
 from rebuild.api.app import create_app
 from rebuild.identity.contracts import Role
 from rebuild.identity.models import ProjectMemberRecord
@@ -62,7 +63,18 @@ def _create(client, headers, project_id, name="etl-daily", description=""):
     )
 
 
-def _add_node(client, headers, project_id, definition_id, node_code, node_type="SQL", name=None, params=None, position_x=None, position_y=None):
+def _add_node(
+    client,
+    headers,
+    project_id,
+    definition_id,
+    node_code,
+    node_type="SQL",
+    name=None,
+    params=None,
+    position_x=None,
+    position_y=None,
+):
     body = {"project_id": project_id, "node_code": node_code, "node_type": node_type}
     if name is not None:
         body["name"] = name
@@ -184,9 +196,103 @@ def test_draft_node_upsert_replaces_by_code_and_type_validation():
         assert unknown_type.json()["code"] == "WF_NODE_TYPE_UNKNOWN"
 
         missing_code = client.post(
-            f"{WORKFLOWS}/{definition_id}/nodes", headers=tokens["dev"], json={"project_id": owned_id, "node_type": "SQL"}
+            f"{WORKFLOWS}/{definition_id}/nodes",
+            headers=tokens["dev"],
+            json={"project_id": owned_id, "node_type": "SQL"},
         )
         assert missing_code.status_code == 400 and missing_code.json()["code"] == 4001
+    finally:
+        client.__exit__(None, None, None)
+
+
+def test_design_nodes_require_pinned_ref_and_cannot_mix_workflow_kinds_or_save_runtime_nodes():
+    client, app, owned_id, _other_id, tokens = _client()
+    try:
+        with app.state.session_factory() as session:
+            for identifier, type_name, version in ((701, "sql", 3), (702, "endpoint_select", 1)):
+                session.add(
+                    Component(
+                        id=identifier,
+                        type=type_name,
+                        name=type_name,
+                        category="test",
+                        profile="dag",
+                        scope="builtin",
+                        execution_model="passthrough",
+                        executable=True,
+                        state="published",
+                        published_version=version,
+                        draft_rev=0,
+                    )
+                )
+                session.add(
+                    ComponentVersion(
+                        id=identifier,
+                        component_id=identifier,
+                        type=type_name,
+                        version=version,
+                        state="published",
+                        spec_json="{}",
+                        spec_hash="hash",
+                    )
+                )
+            session.commit()
+        definition_id = _create(client, tokens["dev"], owned_id, name="catalogue-contract").json()["data"][
+            "definition_id"
+        ]
+        missing_ref = _add_node(client, tokens["dev"], owned_id, definition_id, "sql1", node_type="sql")
+        assert missing_ref.status_code == 400
+        assert missing_ref.json()["code"] == "WF_COMPONENT_REF_REQUIRED"
+
+        pinned = _add_node(
+            client,
+            tokens["dev"],
+            owned_id,
+            definition_id,
+            "sql1",
+            node_type="sql",
+            params={"component_ref": "is not the top-level contract"},
+        )
+        assert pinned.status_code == 400
+
+        pinned = client.post(
+            f"{WORKFLOWS}/{definition_id}/nodes",
+            headers=tokens["dev"],
+            json={
+                "project_id": owned_id,
+                "node_code": "sql1",
+                "node_type": "sql",
+                "component_ref": {"type": "sql", "version": 3},
+            },
+        )
+        assert pinned.status_code == 200
+        assert pinned.json()["data"]["component_ref"] == {"type": "sql", "version": 3}
+
+        mixed = client.post(
+            f"{WORKFLOWS}/{definition_id}/nodes",
+            headers=tokens["dev"],
+            json={
+                "project_id": owned_id,
+                "node_code": "ep",
+                "node_type": "endpoint_select",
+                "component_ref": {"type": "endpoint_select", "version": 1},
+            },
+        )
+        assert mixed.status_code == 400
+        assert mixed.json()["code"] == "WF_WORKFLOW_TYPE_MISMATCH"
+
+        runtime_only = client.post(
+            f"{WORKFLOWS}/{definition_id}/nodes",
+            headers=tokens["dev"],
+            json={
+                "project_id": owned_id,
+                "node_code": "runtime",
+                "node_type": "sync",
+                "component_ref": {"type": "sync", "version": 1},
+            },
+        )
+        assert runtime_only.status_code == 400
+        assert runtime_only.json()["code"] == "WF_RUNTIME_ONLY"
     finally:
         client.__exit__(None, None, None)
 
@@ -232,9 +338,7 @@ def test_publish_creates_immutable_snapshot_and_record():
     client, app, owned_id, _other_id, tokens = _client()
     try:
         definition_id = _create(client, tokens["dev"], owned_id).json()["data"]["definition_id"]
-        _add_node(
-            client, tokens["dev"], owned_id, definition_id, "task_a", name="extract", params={"sql": "SELECT 1"}
-        )
+        _add_node(client, tokens["dev"], owned_id, definition_id, "task_a", name="extract", params={"sql": "SELECT 1"})
         _add_node(client, tokens["dev"], owned_id, definition_id, "task_b", node_type="PYTHON", name="load")
         _add_edge(client, tokens["dev"], owned_id, definition_id, "task_a", "task_b")
 
@@ -359,9 +463,7 @@ def test_delete_definition_guard():
         # Draft-only definition: deletable.
         draft_only = _create(client, tokens["dev"], owned_id, name="wip-flow").json()["data"]["definition_id"]
         _add_node(client, tokens["dev"], owned_id, draft_only, "task_a")
-        deleted = client.post(
-            f"{WORKFLOWS}/{draft_only}/delete", headers=tokens["dev"], json={"project_id": owned_id}
-        )
+        deleted = client.post(f"{WORKFLOWS}/{draft_only}/delete", headers=tokens["dev"], json={"project_id": owned_id})
         assert deleted.status_code == 200 and deleted.json()["data"]["deleted"] is True
         gone = client.get(f"{WORKFLOWS}/{draft_only}", headers=tokens["dev"], params={"project_id": owned_id})
         assert gone.status_code == 404

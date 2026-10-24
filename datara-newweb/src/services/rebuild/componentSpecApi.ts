@@ -6,10 +6,14 @@ const ENDPOINT = '/api/v1/rebuild/components/spec'
 export interface ComponentSpecItem {
   type: string
   publishedVersion: number | null
+  componentRef: { type: string; version: number }
+  workflowTypes: WorkflowType[]
+  runtimeOnly: boolean
   identity: Record<string, unknown>
   description: Record<string, unknown>
   inputs: unknown[]
   outputs: unknown[]
+  form: Record<FormSection, unknown[]>
   visual: Record<string, unknown>
   behaviors: unknown
   dropPolicy: unknown
@@ -18,13 +22,16 @@ export interface ComponentSpecItem {
   ports: unknown
 }
 
+export type WorkflowType = 'NORMAL' | 'SYNC' | 'STREAM'
+export type FormSection = 'inputs' | 'outputs' | 'params' | 'conditions' | 'constraints' | 'exclusions' | 'refs' | 'exports'
+
 export interface ComponentSpecSnapshot {
   items: ComponentSpecItem[]
   etag: string
   source: 'network' | 'not-modified' | 'last-success'
 }
 
-let lastSuccess: Omit<ComponentSpecSnapshot, 'source'> | undefined
+const lastSuccess = new Map<string, Omit<ComponentSpecSnapshot, 'source'>>()
 
 function validatePayload(value: unknown): { items: ComponentSpecItem[] } {
   if (typeof value !== 'object' || value === null || Array.isArray(value)) {
@@ -36,33 +43,46 @@ function validatePayload(value: unknown): { items: ComponentSpecItem[] } {
 }
 
 export function resetComponentSpecCache(): void {
-  lastSuccess = undefined
+  lastSuccess.clear()
+}
+
+export function isDesignComponent(item: ComponentSpecItem, workflowType: WorkflowType): boolean {
+  return item.runtimeOnly !== true
+    && item.visual?.paletteVisible !== false
+    && item.workflowTypes.includes(workflowType)
+    && item.componentRef?.type === item.type
+    && Number.isInteger(item.componentRef?.version)
+    && item.componentRef.version >= 1
 }
 
 /**
  * Loads the authoritative catalog. A failed refresh may use only the last
  * successful response; the first load always fails closed and remains retryable.
  */
-export async function loadComponentSpecs(): Promise<ComponentSpecSnapshot> {
+export async function loadComponentSpecs(workflowType?: WorkflowType): Promise<ComponentSpecSnapshot> {
+  const cacheKey = workflowType ?? 'ALL'
+  const cached = lastSuccess.get(cacheKey)
   const headers: Record<string, string> = {}
   const token = getToken()
   if (token) headers[TOKEN_HEADER] = token
-  if (lastSuccess?.etag) headers['If-None-Match'] = lastSuccess.etag
+  if (cached?.etag) headers['If-None-Match'] = cached.etag
 
   try {
-    const response = await fetch(ENDPOINT, { headers })
+    const url = workflowType ? `${ENDPOINT}?workflow_type=${workflowType}` : ENDPOINT
+    const response = await fetch(url, { headers })
     if (response.status === 304) {
-      if (!lastSuccess) throw new Error('component specification returned 304 without a cached response')
-      return { ...lastSuccess, source: 'not-modified' }
+      if (!cached) throw new Error('component specification returned 304 without a cached response')
+      return { ...cached, source: 'not-modified' }
     }
     if (!response.ok) throw new Error(`component specification request failed: HTTP ${response.status}`)
     const etag = response.headers.get('ETag') ?? ''
     if (!/^"[0-9a-f]{64}"$/.test(etag)) throw new Error('component specification response has no strong SHA-256 ETag')
     const { items } = validatePayload(await response.json())
-    lastSuccess = { items, etag }
-    return { ...lastSuccess, source: 'network' }
+    const snapshot = { items, etag }
+    lastSuccess.set(cacheKey, snapshot)
+    return { ...snapshot, source: 'network' }
   } catch (error) {
-    if (lastSuccess) return { ...lastSuccess, source: 'last-success' }
+    if (cached) return { ...cached, source: 'last-success' }
     throw error
   }
 }

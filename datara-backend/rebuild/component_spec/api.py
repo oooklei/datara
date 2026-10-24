@@ -4,11 +4,12 @@ from __future__ import annotations
 
 from typing import Any
 
-from fastapi import APIRouter, Header
+from fastapi import APIRouter, Header, Query
 from fastapi.responses import JSONResponse, Response
 from sqlalchemy.orm import sessionmaker
 
 from rebuild.component_spec.service import ComponentSpecError, ComponentSpecService
+from rebuild.component_spec.catalogue import workflow_kind
 
 
 def build_component_spec_router(
@@ -28,6 +29,7 @@ def build_component_spec_router(
 
     @router.get("/spec")
     def get_component_spec(
+        workflow_type: str | None = Query(default=None),
         if_none_match: str = Header(default="", alias="If-None-Match"),
         token: str = Header(default=""),
         authorization: str = Header(default=""),
@@ -39,9 +41,14 @@ def build_component_spec_router(
                 status_code=401,
                 content={"code": 1001, "msg": "invalid token", "data": None},
             )
+        if workflow_type is not None and workflow_kind(workflow_type) is None:
+            return JSONResponse(
+                status_code=400,
+                content={"code": 4001, "msg": "workflow_type must be NORMAL, SYNC, or STREAM", "data": None},
+            )
         try:
             with session_factory() as session:
-                document = ComponentSpecService(session).published_document()
+                document = ComponentSpecService(session).published_document(workflow_type)
         except ComponentSpecError:
             return JSONResponse(
                 status_code=500,

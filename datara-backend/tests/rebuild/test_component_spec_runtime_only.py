@@ -61,8 +61,8 @@ def _fetch_items(client, headers):
     return {item["type"]: item for item in response.json()["items"]}
 
 
-def test_c17_c24_dag_engine_runtime_only_marked_palette_visible_false():
-    """C17 sync / C24 file_sync（execution_model=dag-engine）→ visual.paletteVisible=false。"""
+def test_c17_c24_runtime_only_are_absent_from_design_catalogue():
+    """C17/C24 are execution materializations and never enter design JSON."""
     client, app, headers = _client()
     try:
         _seed(app, [
@@ -74,12 +74,7 @@ def test_c17_c24_dag_engine_runtime_only_marked_palette_visible_false():
                       spec_json=json.dumps({"summary": "文件同步执行", "icon": "⇄"}))),
         ])
         items = _fetch_items(client, headers)
-        for type_name in ("sync", "file_sync"):
-            assert type_name in items, f"published spec 缺 {type_name}"
-            visual = items[type_name]["visual"]
-            assert visual.get("paletteVisible") is False, (
-                f"{type_name}（C17/C24 runtimeOnly）必须显式 paletteVisible=false（normalizeSpec 契约）"
-            )
+        assert items == {}
     finally:
         client.__exit__(None, None, None)
 
