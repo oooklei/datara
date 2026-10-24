@@ -23,7 +23,11 @@ from rebuild.governance.migrations import R3_GOVERNANCE_MIGRATIONS
 ROOT = Path(__file__).resolve().parents[2]
 EVIDENCE = ROOT / "docs" / "increments" / "evidence" / "R2"
 BASE_URL = os.getenv("REBUILD_R2_VALIDATION_BASE_URL", "http://192.168.1.9:18091").rstrip("/")
-API_ROOT = f"{BASE_URL}/api/v1/rebuild"
+# The deployed UI and isolated rebuild API may be exposed on different ports.
+# Keep the UI default pinned to the formal validation entrypoint while allowing
+# an explicitly selected isolated API for token exchange during runtime checks.
+API_BASE_URL = os.getenv("REBUILD_R2_VALIDATION_API_BASE_URL", BASE_URL).rstrip("/")
+API_ROOT = f"{API_BASE_URL}/api/v1/rebuild"
 PROJECT_ID = 8
 ASSET_IDS = (10, 11)
 REMOTE_SECRET_SOURCE = [
