@@ -116,6 +116,27 @@ describe('R2 variableApi contract (GREEN wired)', () => {
     })
   })
 
+  it('lists scoped owners and deletes a definition through the management contract', async () => {
+    const fetchMock = stubFetchWithEnvelope([])
+    vi.stubGlobal('fetch', fetchMock)
+    await createVariableContract().listVariables(7, ['env'], { environmentGroupId: 3 })
+    expect(fetchMock.mock.calls[0][0]).toBe(
+      '/api/v1/rebuild/variables?project_id=7&scopes=env&environment_group_id=3',
+    )
+
+    fetchMock.mockResolvedValueOnce(new Response(JSON.stringify({
+      code: 0,
+      msg: 'success',
+      data: { deleted: true, scope: 'env', name: 'region' },
+    }), { status: 200 }))
+    await expect(createVariableContract().deleteVariable(7, 'env', 'region', { environmentGroupId: 3 }))
+      .resolves.toEqual({ deleted: true, scope: 'env', name: 'region' })
+    expect(fetchMock.mock.calls[1][0]).toBe(
+      '/api/v1/rebuild/variables/region?project_id=7&scope=env&environment_group_id=3',
+    )
+    expect(fetchMock.mock.calls[1][1].method).toBe('DELETE')
+  })
+
   it('saveVariable rejects with ContractApiError when the backend does not confirm saved:true', async () => {
     vi.stubGlobal('fetch', stubFetchWithEnvelope({ saved: false }))
     await expect(
