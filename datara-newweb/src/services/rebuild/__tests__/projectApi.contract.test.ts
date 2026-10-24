@@ -74,7 +74,7 @@ describe('L3-02 projectApi contract (GET /api/v1/rebuild/projects)', () => {
     await createProject({ name: '新项目', description: '' })
     await updateProject(3, { name: '改名', description: 'd' })
     await deleteProject(3)
-    expect(fetchMock.mock.calls.map((x: [string, RequestInit]) => [x[0], x[1].method])).toEqual([
+    expect(fetchMock.mock.calls.map((x) => [x[0], x[1]?.method])).toEqual([
       ['/api/v1/rebuild/projects', 'POST'], ['/api/v1/rebuild/projects/3', 'PUT'], ['/api/v1/rebuild/projects/3', 'DELETE'],
     ])
   })
