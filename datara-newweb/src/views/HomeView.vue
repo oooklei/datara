@@ -13,11 +13,23 @@
 
     <ul v-else class="project-grid">
       <li v-for="p in projects" :key="p.id">
-        <button type="button" class="project-card" :data-project-id="p.id" @click="enter(p)">
+        <article
+          class="project-card"
+          :data-project-id="p.id"
+          role="button"
+          tabindex="0"
+          @click="enter(p)"
+          @keydown.enter.prevent="enter(p)"
+          @keydown.space.prevent="enter(p)"
+        >
           <span class="project-name">{{ p.name }}</span>
           <span v-if="p.ownOrJoined === 'owner'" class="project-badge">我拥有</span>
-          <span v-else-if="p.ownOrJoined === 'joined'" class="project-badge joined">我参与</span><span class="project-actions"><button type="button" data-edit-project @click.stop="openEdit(p)">编辑</button><button type="button" data-delete-project @click.stop="remove(p)">删除</button></span>
-        </button>
+          <span v-else-if="p.ownOrJoined === 'joined'" class="project-badge joined">我参与</span>
+          <span class="project-actions">
+            <button type="button" data-edit-project @click.stop="openEdit(p)">编辑</button>
+            <button type="button" data-delete-project @click.stop="remove(p)">删除</button>
+          </span>
+        </article>
       </li>
     </ul>
     <div v-if="editing" class="project-modal"><form @submit.prevent="save"><h2>{{ editingId ? '编辑项目' : '新建项目' }}</h2><label>名称<input v-model.trim="draft.name" required data-project-name></label><label>说明<textarea v-model="draft.description" data-project-description /></label><p v-if="formError" role="alert">{{ formError }}</p><footer><button type="button" @click="editing=false">取消</button><button type="submit" data-save-project>保存</button></footer></form></div>

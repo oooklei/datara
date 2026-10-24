@@ -66,6 +66,20 @@ describe('L3-02 HomeView 项目列表页', () => {
     expect(pushSpy).toHaveBeenCalledWith('/p/42')
   })
 
+  it('project card supports keyboard activation without nested interactive card button', async () => {
+    listProjectsMock.mockResolvedValue({ total: 1, list: [{ id: 7, name: 'project' }] })
+    const w = mount(HomeView)
+    await flushPromises()
+    const card = w.find('.project-card')
+    expect(card.element.tagName).toBe('ARTICLE')
+    expect(card.attributes('role')).toBe('button')
+    expect(card.findAll('button')).toHaveLength(2)
+    await card.trigger('keydown', { key: 'Enter' })
+    await card.trigger('keydown', { key: ' ' })
+    expect(pushSpy).toHaveBeenCalledTimes(2)
+    expect(pushSpy).toHaveBeenLastCalledWith('/p/7')
+  })
+
   it('空态：list 为空渲染空态文案，不渲染卡片', async () => {
     listProjectsMock.mockResolvedValue({ total: 0, list: [] })
     const w = mount(HomeView)
