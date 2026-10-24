@@ -10,7 +10,7 @@ from typing import Any
 from fastapi import APIRouter, Header
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
-from sqlalchemy import DateTime, Integer, String, Text, inspect, select
+from sqlalchemy import DateTime, Integer, String, Text, func, inspect, select
 from sqlalchemy.orm import Mapped, mapped_column
 
 from rebuild.common.db import Base
@@ -28,8 +28,8 @@ class ApiDefinitionRecord(Base):
     required_permission: Mapped[str] = mapped_column(String(128), nullable=False)
     status: Mapped[str] = mapped_column(String(16), nullable=False, default="draft")
     created_by: Mapped[str] = mapped_column(String(128), nullable=False)
-    created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, server_default="CURRENT_TIMESTAMP")
-    updated_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, server_default="CURRENT_TIMESTAMP")
+    created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, server_default=func.current_timestamp())
+    updated_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, server_default=func.current_timestamp())
 
 
 class ApiDefinitionInput(BaseModel):
