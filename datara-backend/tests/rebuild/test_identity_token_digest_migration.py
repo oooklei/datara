@@ -212,7 +212,8 @@ class _MysqlReflectionShape:
         self._primary_key = primary_key
 
     def get_columns(self, table):
-        return [{key: value for key, value in item.items() if key != "primary_key"} for item in self._delegate.get_columns(table)]
+        reflected = self._delegate.get_columns(table)
+        return [{key: value for key, value in item.items() if key != "primary_key"} for item in reflected]
 
     def get_pk_constraint(self, _table):
         return {"constrained_columns": self._primary_key}

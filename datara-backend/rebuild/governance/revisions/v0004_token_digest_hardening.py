@@ -148,6 +148,7 @@ def postflight(engine: Engine) -> dict[str, Any]:
         return {"revision": revision, "verdict": "PENDING", "problems": ["table_missing"]}
 
     columns = {column["name"]: column for column in inspector.get_columns(_TABLE)}
+    primary_key = inspector.get_pk_constraint(_TABLE).get("constrained_columns") or []
     digest = columns.get("token_digest")
     if digest is None:
         problems.append("digest_column_missing")
@@ -156,7 +157,7 @@ def postflight(engine: Engine) -> dict[str, Any]:
             problems.append("digest_type_invalid")
         if bool(digest.get("nullable")):
             problems.append("digest_nullable")
-        if not bool(digest.get("primary_key")):
+        if primary_key != ["token_digest"]:
             problems.append("digest_not_primary_key")
     if "token" in columns:
         problems.append("raw_token_column_present")
