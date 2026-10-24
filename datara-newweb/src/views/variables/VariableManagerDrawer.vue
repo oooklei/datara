@@ -53,7 +53,7 @@ function beginEdit(row: VariableDefinition) {
   scope.value = row.scope as typeof scope.value
   form.value = {
     name: row.name,
-    value: row.sensitive ? '' : row.value,
+    value: row.sensitive ? '' : (row.value ?? ''),
     valueType: row.valueType,
     sensitive: !!row.sensitive,
     description: row.description ?? '',

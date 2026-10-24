@@ -47,6 +47,7 @@ import {
 import { isDesignComponent, loadComponentSpecs, type ComponentSpecItem, type WorkflowType } from '../services/rebuild/componentSpecApi'
 import { useWorkflowGraphStore } from '../stores/workflowGraph'
 import WorkflowVariablePanel from './WorkflowVariablePanel.vue'
+import VariableReferenceInput from './VariableReferenceInput.vue'
 
 import '@vue-flow/core/dist/style.css'
 import '@vue-flow/core/dist/theme-default.css'
@@ -114,6 +115,24 @@ function onEdgesChange(changes: EdgeChange[]) {
 
 const selectedNode = ref<string | null>(null)
 const selectedEdge = ref<{ from: string; to: string } | null>(null)
+const selectedNodeRecord = computed(() => graphStore.nodes.find((node) => node.nodeCode === selectedNode.value) ?? null)
+const nodeParameterKey = computed(() => {
+  const type = selectedNodeRecord.value?.nodeType
+  if (type === 'SQL') return 'sql'
+  if (type === 'PYTHON') return 'script'
+  if (type === 'SHELL') return 'command'
+  return null
+})
+const nodeParameterValue = computed(() => {
+  const key = nodeParameterKey.value
+  return key && selectedNodeRecord.value ? String(selectedNodeRecord.value.params?.[key] ?? '') : ''
+})
+function updateNodeParameter(value: string) {
+  const node = selectedNodeRecord.value
+  const key = nodeParameterKey.value
+  if (!node || !key) return
+  graphStore.updateNode(node.nodeCode, { params: { ...(node.params ?? {}), [key]: value } })
+}
 
 function onNodeClick({ node }: NodeMouseEvent) {
   selectedNode.value = node.id
@@ -335,6 +354,17 @@ async function onShowVersions() {
       </VueFlow>
     </div>
 
+    <section v-if="selectedNodeRecord && nodeParameterKey" class="node-editor" data-node-parameter-editor>
+      <strong>{{ selectedNodeRecord.nodeType }} 参数 · {{ selectedNodeRecord.nodeCode }}</strong>
+      <VariableReferenceInput
+        :model-value="nodeParameterValue"
+        :context="{ projectId: projectId!, workflowId: numDocId }"
+        :label="nodeParameterKey"
+        :multiline="nodeParameterKey !== 'command'"
+        @update:model-value="updateNodeParameter"
+      />
+    </section>
+
     <el-dialog v-model="versionsVisible" title="版本历史" width="640px" append-to-body>
       <el-table :data="versions" size="small">
         <el-table-column prop="version" label="版本" width="80" />
@@ -435,4 +465,5 @@ async function onShowVersions() {
 .wf-flow :deep(.vue-flow) {
   height: 100%;
 }
+.node-editor{flex-shrink:0;padding:10px 14px;border-top:1px solid var(--border-color,#e2e8f0);background:#f8fafc;display:grid;gap:6px}
 </style>
