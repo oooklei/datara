@@ -54,6 +54,9 @@ def _declared_autoincrement(column) -> bool:
 def _type_contract(type_, dialect):
     value = dialect.type_descriptor(type_)
     compiled = dialect.type_compiler.process(value).upper().replace(" ", "")
+    # Reflected MySQL text types may carry table collation in the compiled
+    # spelling; that does not change the column storage contract.
+    compiled = compiled.split("COLLATE", 1)[0]
     family = compiled.split("(", 1)[0]
     if family in {"BOOL", "BOOLEAN"} or (dialect.name == "mysql" and compiled == "TINYINT(1)"):
         family = "BOOLEAN"
