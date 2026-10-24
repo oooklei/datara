@@ -146,7 +146,7 @@ def main() -> int:
             body={"expression": "value=${project." + variable_name + "}", "context": variable_context},
         )
         preview_data = preview.get("data") or {}
-        if preview_data.get("resolved_value") != "value=isolated-ok":
+        if preview_data.get("resolved_value") != "isolated-ok":
             raise RuntimeError("variable preview contract failed")
         trial = call(
             args.base,
