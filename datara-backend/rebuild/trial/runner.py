@@ -342,8 +342,12 @@ class TrialRunner:
                 )
             self._session.flush()
 
-        # WF-18: DEPENDENCY mock.
-        if node_type == "DEPENDENCY":
+        # WF-18: DEPENDENCY mock.  Palette component refs use the immutable
+        # lower-case ``dependent`` type, while legacy drafts use
+        # ``DEPENDENCY``.  Both must execute through the same dependency gate;
+        # otherwise a rebuilt component graph would silently skip dependency
+        # semantics and be reported as a generic successful task.
+        if str(node_type).upper() in {"DEPENDENCY", "DEPENDENT"}:
             dep_id_raw = params.get("dependency_id", "")
             dep_id = str(dep_id_raw)
             mock_status = (options.dependency_mock or {}).get(dep_id)

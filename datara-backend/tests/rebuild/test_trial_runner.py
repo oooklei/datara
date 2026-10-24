@@ -126,6 +126,30 @@ def test_trial_run_executes_python_and_shell_scripts():
     assert all(task.status == "SUCCEEDED" for task in outputs)
 
 
+def test_trial_run_executes_lowercase_dependent_component_with_mock():
+    """Palette ``dependent`` refs must not fall through generic execution."""
+    session = _session()
+    definition_id = _make_definition(session)
+    _add_node(session, definition_id, "sql", node_type="sql", params={"sql": "SELECT 1"})
+    _add_node(session, definition_id, "dependent", node_type="dependent", params={"dependency_id": 42})
+    _add_edge(session, definition_id, "sql", "dependent")
+    session.commit()
+    snapshot = TrialSnapshotRepository(session).create_from_draft(definition_id)
+
+    result = TrialRunner(session).run(
+        definition_id=definition_id,
+        snapshot_id=snapshot["snapshot_id"],
+        project_id=1,
+        options=TrialRunOptions(dependency_mock={"42": "SUCCEEDED"}),
+    )
+    assert result.status == "SUCCEEDED"
+    tasks = session.scalars(
+        select(TaskInstanceRecord).where(TaskInstanceRecord.workflow_instance_id == result.instance_id)
+    ).all()
+    assert {task.task_id for task in tasks} == {"sql", "dependent"}
+    assert all(task.status == "SUCCEEDED" for task in tasks)
+
+
 def test_trial_run_validation_failure_rejects():
     session = _session()
     definition_id = _make_definition(session)
