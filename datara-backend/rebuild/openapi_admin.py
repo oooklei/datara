@@ -7,10 +7,10 @@ machine so publication cannot accidentally expose drafts.
 from datetime import datetime
 from typing import Any
 
-from fastapi import APIRouter, Header
+from fastapi import APIRouter, Header, Query
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
-from sqlalchemy import DateTime, Integer, String, Text, func, inspect, select
+from sqlalchemy import DateTime, Integer, String, Text, func, inspect, select, and_
 from sqlalchemy.orm import Mapped, mapped_column
 
 from rebuild.common.db import Base
@@ -32,6 +32,28 @@ class ApiDefinitionRecord(Base):
     updated_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, server_default=func.current_timestamp())
 
 
+class ApiCallLogRecord(Base):
+    """Sanitized API gateway call log.
+
+    This table deliberately has no request/body/key columns that could retain
+    credentials or payloads.  Gateway integrations may use ``record_call``;
+    the administration surface only exposes the filtered read model.
+    """
+
+    __tablename__ = "rebuild_api_call_log"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    request_id: Mapped[str] = mapped_column(String(128), nullable=False, index=True)
+    api_id: Mapped[int] = mapped_column(Integer, nullable=False, index=True)
+    key_id: Mapped[int] = mapped_column(Integer, nullable=False, index=True)
+    principal: Mapped[str] = mapped_column(String(128), nullable=False, default="")
+    project_id: Mapped[int | None] = mapped_column(Integer, nullable=True, index=True)
+    status_code: Mapped[int] = mapped_column(Integer, nullable=False)
+    latency_ms: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    result: Mapped[str] = mapped_column(String(16), nullable=False, index=True)
+    error_code: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    requested_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, server_default=func.current_timestamp(), index=True)
+
+
 class ApiDefinitionInput(BaseModel):
     name: str = Field(min_length=1, max_length=128)
     path: str = Field(pattern=r"^/rebuild/[a-z0-9/_-]+$")
@@ -44,7 +66,9 @@ class ApiDefinitionInput(BaseModel):
 def apply_openapi_admin_migrations(engine):
     if "rebuild_api_definition" not in inspect(engine).get_table_names():
         ApiDefinitionRecord.__table__.create(bind=engine)
-    return {"created": True, "revision": "i15_0003_api_definition"}
+    if "rebuild_api_call_log" not in inspect(engine).get_table_names():
+        ApiCallLogRecord.__table__.create(bind=engine)
+    return {"created": True, "revision": "i15_0004_api_call_log"}
 
 
 def build_openapi_admin_router(session_factory, token_service: Any, active_tokens: Any) -> APIRouter:
@@ -68,6 +92,44 @@ def build_openapi_admin_router(session_factory, token_service: Any, active_token
         with session_factory() as session:
             rows = session.scalars(select(ApiDefinitionRecord).order_by(ApiDefinitionRecord.id.desc())).all()
             return _ok([_payload(r) for r in rows])
+
+    @router.get("/call-logs")
+    def list_call_logs(
+        api_id: int | None = None,
+        key_id: int | None = None,
+        from_: datetime | None = Query(default=None, alias="from"),
+        to: datetime | None = Query(default=None),
+        limit: int = Query(default=20, ge=1, le=200),
+        offset: int = Query(default=0, ge=0),
+        token: str = Header(default=""),
+        authorization: str = Header(default=""),
+    ):
+        """List sanitized gateway call records with stable pagination.
+
+        ``from``/``to`` are accepted as query parameters by FastAPI despite
+        their Python-safe aliases.  No sensitive request material is returned.
+        """
+        denial = guard(token, authorization)
+        if isinstance(denial, JSONResponse):
+            return denial
+        conditions = []
+        if api_id is not None:
+            conditions.append(ApiCallLogRecord.api_id == api_id)
+        if key_id is not None:
+            conditions.append(ApiCallLogRecord.key_id == key_id)
+        if from_ is not None:
+            conditions.append(ApiCallLogRecord.requested_at >= from_)
+        if to is not None:
+            conditions.append(ApiCallLogRecord.requested_at < to)
+        with session_factory() as session:
+            query = select(ApiCallLogRecord)
+            count_query = select(func.count()).select_from(ApiCallLogRecord)
+            if conditions:
+                query = query.where(and_(*conditions))
+                count_query = count_query.where(and_(*conditions))
+            rows = session.scalars(query.order_by(ApiCallLogRecord.requested_at.desc(), ApiCallLogRecord.id.desc()).offset(offset).limit(limit)).all()
+            total = int(session.scalar(count_query) or 0)
+            return _ok({"list": [_call_log_payload(row) for row in rows], "total": total})
 
     @router.post("/definitions", status_code=201)
     def create_definition(body: ApiDefinitionInput, token: str = Header(default=""), authorization: str = Header(default="")):
@@ -123,6 +185,21 @@ def build_openapi_admin_router(session_factory, token_service: Any, active_token
 
 def _payload(row):
     return {"id": row.id, "name": row.name, "path": row.path, "method": row.method, "version": row.version, "description": row.description, "requiredPermission": row.required_permission, "status": row.status, "createdBy": row.created_by, "createdAt": row.created_at.isoformat() if row.created_at else "", "updatedAt": row.updated_at.isoformat() if row.updated_at else ""}
+
+
+def _call_log_payload(row: ApiCallLogRecord):
+    return {
+        "requestId": row.request_id,
+        "apiId": row.api_id,
+        "keyId": row.key_id,
+        "principal": row.principal,
+        "projectId": row.project_id,
+        "statusCode": row.status_code,
+        "latencyMs": row.latency_ms,
+        "result": row.result,
+        "errorCode": row.error_code,
+        "requestedAt": row.requested_at.isoformat() if row.requested_at else "",
+    }
 
 
 def _ok(data): return {"code": 0, "msg": "success", "data": data}
