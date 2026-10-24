@@ -1,4 +1,5 @@
 from fastapi.testclient import TestClient
+import hashlib
 import json
 import base64
 from contextlib import contextmanager
@@ -6,7 +7,7 @@ from contextlib import contextmanager
 from sqlalchemy import select
 from rebuild.api.app import create_app
 import rebuild.api.app as rebuild_app
-from rebuild.identity.models import ProjectMemberRecord, UserRecord
+from rebuild.identity.models import ActiveTokenRecord, ProjectMemberRecord, UserRecord
 from rebuild.identity.contracts import Role
 from rebuild.identity.repository import UserRepository
 from rebuild.project.repository import ProjectRepository
@@ -34,6 +35,23 @@ def test_login_returns_token_and_role_context():
     body = response.json()
     assert body["data"]["user"]["role"] == "developer"
     assert body["data"]["token"]
+
+
+def test_active_token_storage_uses_digest_without_persisting_bearer_token():
+    with developer_client("sqlite+pysqlite:///:memory:") as client:
+        login = client.post("/api/v1/rebuild/login", json={"username": _TEST_USERNAME, "password": _TEST_PASSWORD})
+        token = login.json()["data"]["token"]
+        with client.app.state.session_factory() as session:
+            record = session.scalar(select(ActiveTokenRecord))
+            assert record.token_digest == hashlib.sha256(token.encode()).hexdigest()
+            assert record.token != token
+        authorized = client.get("/api/v1/rebuild/projects", headers={"Authorization": f"Bearer {token}"})
+        logged_out = client.post("/api/v1/rebuild/logout", headers={"Authorization": f"Bearer {token}"})
+        rejected = client.get("/api/v1/rebuild/projects", headers={"Authorization": f"Bearer {token}"})
+
+    assert authorized.status_code == 200
+    assert logged_out.status_code == 200
+    assert rejected.status_code == 401
 
 
 def test_wrong_password_is_rejected_with_auth_error():
