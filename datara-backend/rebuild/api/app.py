@@ -657,11 +657,16 @@ def create_app(
             current = status_store.get_execution_status(task_id=task_id, project_id=project_id, user_id=user_id)
             if current is None:
                 raise SqlIdeRouteError("EXECUTION_NOT_FOUND")
-            if current.get("status") in {"succeeded", "failed", "cancelled"}:
+            # The SQL IDE status contract uses American spelling (``canceled``)
+            # consistently across history, status, and cancellation helpers.
+            # Persisting ``cancelled`` leaves ``terminal_at`` unset because the
+            # status store's terminal set is intentionally fail-closed; a later
+            # completion callback could then overwrite a user cancellation.
+            if current.get("status") in {"succeeded", "failed", "canceled", "cancelled"}:
                 return {"cancelled": False, "status": current.get("status")}
-            status_store.append_event(task_id=task_id, project_id=project_id, user_id=user_id, event_type="cancelled", payload={"status": "cancelled"})
-            status_store.update_status(task_id=task_id, project_id=project_id, user_id=user_id, status="cancelled")
-            return {"cancelled": True, "status": "cancelled"}
+            status_store.append_event(task_id=task_id, project_id=project_id, user_id=user_id, event_type="canceled", payload={"status": "canceled"})
+            status_store.update_status(task_id=task_id, project_id=project_id, user_id=user_id, status="canceled")
+            return {"cancelled": True, "status": "canceled"}
         if operation == "openEventStream":
             return status_store.list_execution_events(task_id=str(payload.get("task_id")), project_id=project_id, user_id=user_id)
         if operation == "fetchResultPage":

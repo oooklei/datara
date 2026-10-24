@@ -124,6 +124,24 @@ def test_events_expire_seven_days_after_terminal_status_not_event_creation(statu
     ) is not None
 
 
+def test_canceled_status_is_terminal_and_cannot_be_overwritten(status_store):
+    """Cancellation uses the frozen ``canceled`` spelling and closes the task."""
+    task_id = status_store.start_execution(
+        task_id="task-canceled", project_id=3, user_id=4, status="running",
+    )
+    assert status_store.update_status(
+        task_id=task_id, project_id=3, user_id=4, status="canceled",
+    ) is True
+    row = status_store.get_execution_record(task_id=task_id, project_id=3, user_id=4)
+    assert row is not None and row.terminal_at is not None
+    assert status_store.update_status(
+        task_id=task_id, project_id=3, user_id=4, status="succeeded",
+    ) is False
+    assert status_store.get_execution_status(
+        task_id=task_id, project_id=3, user_id=4,
+    )["status"] == "canceled"
+
+
 def test_event_query_is_ordered_and_paginated(status_store):
     now = datetime(2026, 2, 1, tzinfo=timezone.utc)
     task_id = status_store.start_execution(
