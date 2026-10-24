@@ -50,6 +50,15 @@ class StreamWindowRequest(BaseModel):
     model_config = {"protected_namespaces": (), "populate_by_name": True}
 
 
+class StreamCheckpointRequest(BaseModel):
+    partition_id: str = ""
+    offset: int = Field(ge=0)
+    payload: dict[str, Any] | str | None = None
+    event_time: str = ""
+
+    model_config = {"protected_namespaces": ()}
+
+
 def build_stream_router(
     session_factory: sessionmaker,
     token_service: Any,
@@ -129,6 +138,27 @@ def build_stream_router(
         with session_factory() as session:
             try:
                 return respond(StreamRepository(session).latest_checkpoints(job_id))
+            except StreamDomainError as exc:
+                return domain_error(exc)
+
+    @router.post("/jobs/{job_id}/checkpoints")
+    def write_checkpoint(job_id: int, body: StreamCheckpointRequest, token: str = Header(default=""), authorization: str = Header(default="")):
+        denial = auth_guard(token, authorization)
+        if denial is not None:
+            return denial
+        if not body.partition_id.strip() or not body.event_time.strip():
+            return JSONResponse(status_code=400, content={"code": 4001, "msg": "partition_id and event_time are required", "data": None})
+        from datetime import datetime
+        try:
+            event_time = datetime.fromisoformat(body.event_time.replace("Z", "+00:00"))
+        except ValueError:
+            return JSONResponse(status_code=400, content={"code": 4001, "msg": "event_time must be ISO-8601", "data": None})
+        with session_factory() as session:
+            try:
+                repository = StreamRepository(session)
+                repository.write_checkpoint(job_id, body.partition_id, body.offset, body.payload, event_time)
+                session.commit()
+                return respond(repository.latest_checkpoint(job_id, body.partition_id))
             except StreamDomainError as exc:
                 return domain_error(exc)
 
