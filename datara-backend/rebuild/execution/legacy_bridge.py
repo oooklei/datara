@@ -49,6 +49,10 @@ def _status(status: str) -> str:
         "SUCCEEDED": "success",
         "FAILED": "failure",
         "CANCELLED": "kill",
+        # Legacy instances endpoint historically spelled this state with one
+        # L; keep its response contract while the rebuild API uses
+        # CANCELLED canonically.
+        "CANCELED": "kill",
         "STOPPED": "stopped",
     }.get(status, status.lower())
 

@@ -19,7 +19,7 @@ from rebuild.execution.models import (
 from rebuild.execution.repository import ExecutionDomainError, RESULT_STAT_EVENT_KIND
 from rebuild.workflow.models import WorkflowDefinitionRecord
 
-TERMINAL = ("SUCCEEDED", "FAILED", "CANCELLED", "CANCEL_FAILED", "STOPPED", "SKIPPED")
+TERMINAL = ("SUCCEEDED", "FAILED", "CANCELLED", "CANCELED", "CANCEL_FAILED", "STOPPED", "SKIPPED")
 SECRETS = ("password", "passwd", "secret", "token", "private_key", "connection_string", "credential")
 
 

@@ -54,15 +54,17 @@ TRIGGER_TYPES = ("MANUAL", "CRON", "DEPENDENCY", "EVENT", "TRIAL")
 # SKIPPED is a distinct terminal state for nodes excluded from execution
 # (WF-27): the task was never attempted, not failed.
 BATCH_TRANSITIONS = {
-    "PENDING": {"RUNNING", "CANCELLED", "CANCEL_FAILED", "FAILED", "SKIPPED"},
-    "RUNNING": {"SUCCEEDED", "FAILED", "CANCELLED", "CANCEL_FAILED"},
+    # CANCELED is retained as a legacy API spelling.  New execution APIs use
+    # CANCELLED, but the legacy instances facade must remain wire-compatible.
+    "PENDING": {"RUNNING", "CANCELLED", "CANCELED", "CANCEL_FAILED", "FAILED", "SKIPPED"},
+    "RUNNING": {"SUCCEEDED", "FAILED", "CANCELLED", "CANCELED", "CANCEL_FAILED"},
 }
 # Stream: long-running STREAM_JOB — start/stop/failure only, no batch completion.
 STREAM_TRANSITIONS = {
     "PENDING": {"RUNNING", "FAILED"},
     "RUNNING": {"STOPPED", "FAILED"},
 }
-TERMINAL_STATUSES = frozenset({"SUCCEEDED", "FAILED", "CANCELLED", "CANCEL_FAILED", "STOPPED", "SKIPPED"})
+TERMINAL_STATUSES = frozenset({"SUCCEEDED", "FAILED", "CANCELLED", "CANCELED", "CANCEL_FAILED", "STOPPED", "SKIPPED"})
 
 
 class RunTimestampsMixin:

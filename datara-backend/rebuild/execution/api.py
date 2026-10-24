@@ -309,7 +309,7 @@ def build_execution_router(
             try:
                 _resolve_instance_project(outcome, instance_id, project_id)
                 instance = ExecutionRepository(outcome).transition_workflow_instance(instance_id, status)
-                if instance.status in {"SUCCEEDED", "FAILED", "CANCELLED", "CANCEL_FAILED", "STOPPED", "SKIPPED"}:
+                if instance.status in {"SUCCEEDED", "FAILED", "CANCELLED", "CANCELED", "CANCEL_FAILED", "STOPPED", "SKIPPED"}:
                     outcome.commit()
                     try:
                         RunStatisticsService(outcome).finalize(instance.id)
@@ -336,7 +336,7 @@ def build_execution_router(
                     "instance_type": instance.instance_type,
                     "status": instance.status,
                     "run_stat_finalized": instance.status in {
-                        "SUCCEEDED", "FAILED", "CANCELLED", "CANCEL_FAILED", "STOPPED", "SKIPPED"
+                        "SUCCEEDED", "FAILED", "CANCELLED", "CANCELED", "CANCEL_FAILED", "STOPPED", "SKIPPED"
                     },
                 }
             except ExecutionDomainError as exc:
