@@ -212,8 +212,18 @@ def create_app(
     class ActiveTokenStore:
         """Database-backed active token store for cross-worker revocation."""
 
+        def __init__(self) -> None:
+            # Validation/bootstrap tokens deliberately have no persisted user row
+            # (user_id=0). Keep those short-lived tokens in process memory instead
+            # of violating the rebuild_active_token.user_id foreign key.
+            self._ephemeral: dict[str, datetime] = {}
+
         def add(self, token: str, *, user_id: int, username: str, role: str, capability: str | None = None, ttl_seconds: int = 86400) -> None:
             from datetime import datetime, timedelta, timezone
+            expires_at = datetime.now(timezone.utc).replace(tzinfo=None) + timedelta(seconds=ttl_seconds)
+            if user_id == 0:
+                self._ephemeral[digest_token(token)] = expires_at
+                return
             with session_factory() as session:
                 record = ActiveTokenRecord(
                     token_digest=digest_token(token),
@@ -221,12 +231,16 @@ def create_app(
                     username=username,
                     role=role,
                     capability=capability,
-                    expires_at=datetime.now(timezone.utc).replace(tzinfo=None) + timedelta(seconds=ttl_seconds),
+                    expires_at=expires_at,
                 )
                 session.merge(record)
                 session.commit()
 
         def discard(self, token: str) -> None:
+            digest = digest_token(token)
+            if digest in self._ephemeral:
+                self._ephemeral.pop(digest, None)
+                return
             with session_factory() as session:
                 record = session.scalar(
                     select(ActiveTokenRecord).where(ActiveTokenRecord.token_digest == digest_token(token))
@@ -236,6 +250,14 @@ def create_app(
                     session.commit()
 
         def __contains__(self, token: str) -> bool:
+            digest = digest_token(token)
+            ephemeral_expiry = self._ephemeral.get(digest)
+            if ephemeral_expiry is not None:
+                from datetime import datetime, timezone
+                if ephemeral_expiry < datetime.now(timezone.utc).replace(tzinfo=None):
+                    self._ephemeral.pop(digest, None)
+                    return False
+                return True
             with session_factory() as session:
                 record = session.scalar(
                     select(ActiveTokenRecord).where(ActiveTokenRecord.token_digest == digest_token(token))
