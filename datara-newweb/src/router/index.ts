@@ -21,7 +21,7 @@ const router = createRouter({ history:createWebHistory(), routes })
  */
 router.beforeEach(async (to) => {
   if (to.path === '/login') return getToken() ? { path:'/' } : true
-  if (!getToken()) return { path:'/login' }
+  if (!getToken()) return { path:'/login', query: { redirect: to.fullPath } }
   if (!to.path.startsWith('/p/')) return true
   const raw = to.params.projectId
   const id = Number(Array.isArray(raw) ? raw[0] : raw)
