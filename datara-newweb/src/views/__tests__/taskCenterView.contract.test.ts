@@ -196,7 +196,7 @@ describe('INC4-FE-1 任务中心顶部视角页签框架（/dag，s260 派令）
     expect(w.find('[data-tab="runs"]').classes()).toContain('on')
     expect(w.find('[data-tab="edit"]').classes()).not.toContain('on')
     expect(w.find('[data-tc-runs-slot]').exists()).toBe(true)
-    expect(w.find('[data-tc-runs-slot]').text()).toContain('增量 8')
+    expect(w.find('[data-tc-runs-slot]').text()).toContain('请先选择项目')
     expect(w.find('[data-tc-canvas-slot]').exists()).toBe(false)
     expect(w.find('[data-tc-dagbar]').exists()).toBe(false)
   })
