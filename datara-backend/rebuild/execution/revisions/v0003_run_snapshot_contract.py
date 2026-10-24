@@ -355,9 +355,17 @@ def _upgrade_mysql(engine: Engine) -> None:
                 f"ALTER TABLE {_STAT} ADD CONSTRAINT uq_wrs_workflow_instance "
                 "UNIQUE (workflow_instance_id)"
             ))
+        # Some pre-r9 production databases have the earlier aggregate table
+        # (no per-attempt columns) rather than the frozen v2 table.  Build the
+        # complete target shape before normalising values/types so this branch
+        # is resumable for both legacy lineages and for partially applied DDL.
         additions = {
+            "workflow_version_id": "BIGINT NULL",
             "dag_name": "VARCHAR(256) NOT NULL DEFAULT ''",
             "data_param_json": "TEXT NULL",
+            "source_count": "BIGINT NULL",
+            "target_count": "BIGINT NULL",
+            "skipped_count": "BIGINT NOT NULL DEFAULT 0",
             "total_count": "BIGINT NOT NULL DEFAULT 0",
         }
         current = {item["name"] for item in inspect(engine).get_columns(_STAT)}
@@ -365,6 +373,9 @@ def _upgrade_mysql(engine: Engine) -> None:
             if column not in current:
                 connection.execute(text(f"ALTER TABLE {_STAT} ADD COLUMN {column} {ddl}"))
         detail_additions = {
+            "source_count": "BIGINT NULL",
+            "target_count": "BIGINT NULL",
+            "skipped_count": "BIGINT NOT NULL DEFAULT 0",
             "data_param_json": "TEXT NULL",
             "started_at": "DATETIME NULL",
             "finished_at": "DATETIME NULL",
@@ -374,9 +385,14 @@ def _upgrade_mysql(engine: Engine) -> None:
             if column not in detail_current:
                 connection.execute(text(f"ALTER TABLE {_DETAIL} ADD COLUMN {column} {ddl}"))
         connection.execute(text(
-            f"UPDATE {_STAT} SET total_count=success_count+failure_count, "
-            "dag_name=IF(dag_name='', CONCAT('workflow-', workflow_id), dag_name), "
-            "started_at=COALESCE(started_at,created_at)"
+            f"UPDATE {_STAT} s JOIN workflow_instance w ON w.id=s.workflow_instance_id "
+            "SET s.workflow_version_id=COALESCE(s.workflow_version_id,w.workflow_version_id), "
+            "s.total_count=s.success_count+s.failure_count, "
+            "s.dag_name=IF(s.dag_name='', CONCAT('workflow-', s.workflow_id), s.dag_name), "
+            "s.started_at=COALESCE(s.started_at,s.created_at)"
+        ))
+        connection.execute(text(
+            f"ALTER TABLE {_STAT} MODIFY workflow_version_id BIGINT NOT NULL"
         ))
         for column in ("source_count", "target_count"):
             connection.execute(text(f"ALTER TABLE {_STAT} MODIFY {column} BIGINT NULL"))

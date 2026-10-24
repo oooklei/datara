@@ -215,3 +215,16 @@ def test_mysql_partial_legacy_column_cleanup_resumes_after_task_identity_was_dro
         partial_columns.remove(statement.rsplit(" ", 1)[-1])
     assert not {"task_instance_id", "task_identity", "attempt_no"} & partial_columns
     assert v0003_run_snapshot_contract._legacy_stat_drop_plan(partial_columns) == ()
+
+
+def test_mysql_upgrade_completes_the_pre_r9_aggregate_shape_before_type_normalisation():
+    source = getsource(v0003_run_snapshot_contract._upgrade_mysql)
+    for missing_target_column in (
+        '"workflow_version_id": "BIGINT NULL"',
+        '"source_count": "BIGINT NULL"',
+        '"target_count": "BIGINT NULL"',
+        '"skipped_count": "BIGINT NOT NULL DEFAULT 0"',
+    ):
+        assert missing_target_column in source
+    assert "s.workflow_version_id=COALESCE(s.workflow_version_id,w.workflow_version_id)" in source
+    assert "MODIFY workflow_version_id BIGINT NOT NULL" in source
