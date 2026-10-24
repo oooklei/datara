@@ -22,7 +22,7 @@ from rebuild.governance.migrations import (
 from rebuild.governance.models import SchemaMigrationRecord
 
 
-def test_revision_uses_frozen_tables_and_manifest_checksum() -> None:
+def test_revision_uses_frozen_tables_and_released_checksum() -> None:
     assert all(
         frozen is not evolving
         for frozen, evolving in zip(
@@ -37,7 +37,8 @@ def test_revision_uses_frozen_tables_and_manifest_checksum() -> None:
         separators=(",", ":"),
         sort_keys=True,
     ).encode("ascii")
-    assert revision.checksum == hashlib.sha256(encoded).hexdigest()
+    assert hashlib.sha256(encoded).hexdigest() == "959482177e46f8f5d6e50ea9e446cf5804dda51c1d4e161597eb6549cedb46c5"
+    assert revision.checksum == "19ed75a37416a0e3e4b463ea357c78f79601f014f7c75160470d296000c81fcf"
     assert revision.SCHEMA_MANIFEST["tables"][0]["columns"][0]["autoincrement"] is True
 
 

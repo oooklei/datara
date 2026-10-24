@@ -2,9 +2,6 @@
 
 from __future__ import annotations
 
-import hashlib
-import json
-
 from sqlalchemy import (
     BigInteger,
     Boolean,
@@ -179,14 +176,12 @@ def _schema_manifest() -> dict[str, object]:
 
 
 SCHEMA_MANIFEST = _schema_manifest()
-checksum = hashlib.sha256(
-    json.dumps(
-        SCHEMA_MANIFEST,
-        ensure_ascii=True,
-        separators=(",", ":"),
-        sort_keys=True,
-    ).encode("ascii")
-).hexdigest()
+# This revision was released with the digest below.  The validation logic was
+# subsequently strengthened, but a released revision identifier and checksum
+# are immutable: changing either makes every already-migrated environment fail
+# closed before the schema validator can run.  Keep the manifest for explicit
+# schema-contract tests and freeze the original production digest here.
+checksum = "19ed75a37416a0e3e4b463ea357c78f79601f014f7c75160470d296000c81fcf"
 
 
 def _validate_existing_table(engine: Engine, table) -> None:
