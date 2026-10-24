@@ -104,7 +104,7 @@ def test_trial_run_executes_python_and_shell_scripts():
     definition_id = _make_definition(session)
     _add_node(session, definition_id, "start", node_type="START")
     _add_node(session, definition_id, "py", node_type="PYTHON", params={"script": "print('python-ok')"})
-    _add_node(session, definition_id, "sh", node_type="SHELL", params={"script": "echo shell-ok"})
+    _add_node(session, definition_id, "sh", node_type="SHELL", params={"command": "echo shell-ok"})
     _add_node(session, definition_id, "end", node_type="END")
     _add_edge(session, definition_id, "start", "py")
     _add_edge(session, definition_id, "py", "sh")
