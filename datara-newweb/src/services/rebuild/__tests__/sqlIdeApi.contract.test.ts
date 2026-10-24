@@ -80,7 +80,9 @@ describe('R5-A sqlIdeApi route contract', () => {
     expect(fetchMock.mock.calls[1][1].headers).toMatchObject({ 'Last-Event-ID': '41' })
     expect(fetchMock.mock.calls[2][1].headers).not.toHaveProperty('Last-Event-ID')
     expect(fetchMock.mock.calls[0][1]).toMatchObject({ credentials: 'same-origin' })
-    expect(fetchMock.mock.calls[0][1].headers).not.toHaveProperty('token')
+    // SSE uses fetch (rather than native EventSource) so the short-lived
+    // validation token is carried in a header without entering the URL.
+    expect(fetchMock.mock.calls[0][1].headers).toMatchObject({ token: 'test-token' })
     stream.close()
   })
 

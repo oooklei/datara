@@ -283,6 +283,12 @@ function openAuthenticatedEventStream(projectId: number, taskId: string): EventS
 
   const connect = async () => {
     const headers: Record<string, string> = { Accept: 'text/event-stream' }
+    // EventSource cannot attach custom headers, so this authenticated SSE
+    // implementation uses fetch and must carry the same short-lived token as
+    // the regular SQL IDE requests.  Keep it in a request header only: never
+    // put the token in the stream URL, query string, or persistent storage.
+    const token = getToken()
+    if (token) headers.token = token
     if (lastEventId) headers['Last-Event-ID'] = lastEventId
     try {
       const response = await fetch(url, { headers, credentials: 'same-origin', signal: controller.signal })
