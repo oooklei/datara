@@ -11,9 +11,8 @@
 <script setup lang="ts">
 /**
  * L3-03 项目功能段占位页（/p/:projectId/:seg 承载）：
- * 七段（dag/datasource/resources/ide/meta/dep/system）对应功能页属后续批次
- * （inc4 任务中心、inc10 数据源、inc11 SQL IDE 等），本票交付 = 路由可达 +
- * 菜单挂载（AppShell 项目模式侧栏）+ 占位呈现；正式功能页随各批次逐段替换本占位。
+ * 七段（dag/datasource/resources/ide/meta/dep/system）由 segmentViews 映射承载
+ * 正式功能页，路由与 AppShell 项目模式侧栏保持同源。
  * 未知 seg（:seg 为单段动态匹配，无 catch-all——1.4 §7.3 判据保持）渲染
  * 「未知功能段」不 crash 不落首页。
  */
