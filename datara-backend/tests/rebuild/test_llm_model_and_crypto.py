@@ -53,6 +53,8 @@ def test_revision_is_frozen_and_checksum_covers_schema_manifest() -> None:
     columns = {item["name"]: item for item in revision.SCHEMA_MANIFEST["tables"][0]["columns"]}
     assert columns["id"]["autoincrement"] is True
     assert columns["api_key_cipher"]["type"][1] == 512
+    assert columns["created_at"]["server_default"] == "current_timestamp"
+    assert columns["updated_at"]["server_default"] == "current_timestamp"
 
 
 def test_model_migration_and_repository_default_guards() -> None:
@@ -119,6 +121,14 @@ def test_migration_checksum_conflict_and_schema_drift_fail_closed() -> None:
     metadata.create_all(drifted)
     with pytest.raises(MigrationApplyError, match="failed"):
         apply_llm_migrations(drifted)
+
+    missing_default = create_engine("sqlite+pysqlite:///:memory:")
+    missing_default_metadata = MetaData()
+    missing_default_table = revision.LLM_TABLES[0].to_metadata(missing_default_metadata)
+    missing_default_table.columns.created_at.server_default = None
+    missing_default_metadata.create_all(missing_default)
+    with pytest.raises(MigrationApplyError, match="failed"):
+        apply_llm_migrations(missing_default)
 
     completed_then_drifted = create_engine("sqlite+pysqlite:///:memory:")
     apply_llm_migrations(completed_then_drifted)

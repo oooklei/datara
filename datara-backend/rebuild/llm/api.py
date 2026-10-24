@@ -11,7 +11,7 @@ from sqlalchemy.exc import IntegrityError
 from rebuild.identity.contracts import Permission, authorize
 from rebuild.llm.crypto import mask_api_key
 from rebuild.llm.models import LlmModelRecord
-from rebuild.llm.provider import LlmProviderError, test_chat
+from rebuild.llm.provider import LlmProviderError, test_chat, validate_api_base
 from rebuild.llm.repository import LlmModelRepository
 
 
@@ -38,8 +38,7 @@ class LlmModelRequest(BaseModel):
     @field_validator("api_base")
     @classmethod
     def validate_api_base(cls, value: str) -> str:
-        if not value.startswith("https://"):
-            raise ValueError("api_base must use HTTPS")
+        validate_api_base(value)
         return value.rstrip("/")
 
 

@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-from urllib.error import URLError
-
 import pytest
 from fastapi.testclient import TestClient
 
@@ -94,7 +92,7 @@ def test_admin_only_probe_isolated_validation_and_pagination():
         failure = failed.json()["data"]
         assert failure["status"] == "error"
         assert failure["message"] == "LLM connectivity test failed"
-        assert failure["detail"].startswith("LLM connectivity failed:")
+        assert failure["detail"].startswith(("LLM connectivity failed:", "LLM endpoint DNS resolution failed"))
         assert isinstance(failure["elapsed_ms"], int) and failure["elapsed_ms"] >= 0
         assert client.get("/api/v1/rebuild/llm-models?limit=201", headers=headers).status_code == 422
     finally:
@@ -120,13 +118,68 @@ def test_resolver_prefers_database_then_environment(monkeypatch):
 def test_provider_failure_preserves_elapsed_time_without_secret(monkeypatch):
     ticks = iter((10.0, 10.125))
     monkeypatch.setattr(llm_provider, "monotonic", lambda: next(ticks))
+    monkeypatch.setattr(llm_provider, "_resolved_addresses", lambda *_args: frozenset({"93.184.216.34"}))
     monkeypatch.setattr(
         llm_provider,
-        "urlopen",
-        lambda *_args, **_kwargs: (_ for _ in ()).throw(URLError("provider-secret-1234")),
+        "_post_json",
+        lambda **_kwargs: (_ for _ in ()).throw(OSError("provider-secret-1234")),
     )
     with pytest.raises(LlmProviderError) as captured:
         llm_provider.test_chat("https://example.invalid/v1", "qwen", "provider-secret-1234")
     assert captured.value.elapsed_ms == 125
-    assert captured.value.detail == "LLM connectivity failed: URLError"
+    assert captured.value.detail == "LLM connectivity failed: OSError"
     assert "provider-secret" not in str(captured.value)
+
+
+@pytest.mark.parametrize(
+    "url",
+    (
+        "http://example.com/v1",
+        "https://user:pass@example.com/v1",
+        "https://example.com/v1#fragment",
+        "https://example.com/v1?query=yes",
+        "https://example.com./v1",
+    ),
+)
+def test_provider_rejects_unsafe_endpoint_shapes(url):
+    with pytest.raises(ValueError):
+        llm_provider.validate_api_base(url)
+
+
+@pytest.mark.parametrize("address", ("127.0.0.1", "10.0.0.2", "169.254.169.254", "::1"))
+def test_provider_rejects_non_public_resolution_by_default(monkeypatch, address):
+    monkeypatch.delenv("DATARA_LLM_PRIVATE_HOST_ALLOWLIST", raising=False)
+    monkeypatch.setattr(
+        llm_provider.socket,
+        "getaddrinfo",
+        lambda *_args, **_kwargs: [(2, 1, 6, "", (address, 443))],
+    )
+    with pytest.raises(LlmProviderError, match="non-public"):
+        llm_provider._resolved_addresses("internal.example", 443)
+
+
+def test_provider_allows_exact_private_host_only_when_deployment_allowlists_it(monkeypatch):
+    monkeypatch.setenv("DATARA_LLM_PRIVATE_HOST_ALLOWLIST", "llm.internal.example")
+    monkeypatch.setattr(
+        llm_provider.socket,
+        "getaddrinfo",
+        lambda *_args, **_kwargs: [(2, 1, 6, "", ("10.0.0.8", 443))],
+    )
+    assert llm_provider._resolved_addresses("llm.internal.example", 443) == frozenset({"10.0.0.8"})
+    with pytest.raises(LlmProviderError, match="non-public"):
+        llm_provider._resolved_addresses("other.internal.example", 443)
+
+
+def test_provider_pins_validated_address_and_does_not_follow_redirects(monkeypatch):
+    calls = []
+    monkeypatch.setattr(llm_provider, "_resolved_addresses", lambda *_args: frozenset({"93.184.216.34"}))
+
+    def fake_post(**kwargs):
+        calls.append(kwargs)
+        return {"choices": [{"message": {"content": "OK"}}]}
+
+    monkeypatch.setattr(llm_provider, "_post_json", fake_post)
+    result = llm_provider.test_chat("https://example.com/v1", "qwen", "secret")
+    assert result["status"] == "success"
+    assert calls[0]["address"] == "93.184.216.34"
+    assert calls[0]["path"] == "/v1/chat/completions"

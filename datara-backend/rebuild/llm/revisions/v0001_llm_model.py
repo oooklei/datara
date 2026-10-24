@@ -19,6 +19,7 @@ from sqlalchemy import (
     inspect,
     text,
 )
+from sqlalchemy.engine.default import DefaultDialect
 
 revision = "i15_0001_llm_model"
 _metadata = MetaData()
@@ -68,6 +69,15 @@ def _type_contract(type_, dialect):
     )
 
 
+def _default_contract(default, dialect) -> str | None:
+    if default is None:
+        return None
+    value = getattr(default, "arg", default)
+    compiled = str(value.compile(dialect=dialect)) if hasattr(value, "compile") else str(value)
+    normalized = re.sub(r"[\s`\"()]", "", compiled).lower()
+    return normalized or None
+
+
 def _manifest():
     return {
         "revision": revision,
@@ -80,6 +90,7 @@ def _manifest():
                         "nullable": column.nullable,
                         "primary_key": column.primary_key,
                         "autoincrement": _declared_autoincrement(column),
+                        "server_default": _default_contract(column.server_default, DefaultDialect()),
                         "type": (
                             str(column.type).upper().split("(", 1)[0],
                             getattr(column.type, "length", None),
@@ -118,6 +129,7 @@ def _validate(engine: Engine, table) -> None:
             item["nullable"],
             item["name"] in pk,
             bool(item.get("autoincrement")) if engine.dialect.name == "mysql" else None,
+            _default_contract(item.get("default"), engine.dialect),
             *_type_contract(item["type"], engine.dialect),
         )
         for item in inspector.get_columns(table.name)
@@ -127,6 +139,7 @@ def _validate(engine: Engine, table) -> None:
             column.nullable,
             column.primary_key,
             _declared_autoincrement(column) if engine.dialect.name == "mysql" else None,
+            _default_contract(column.server_default, engine.dialect),
             *_type_contract(column.type, engine.dialect),
         )
         for column in table.columns
