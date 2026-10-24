@@ -446,7 +446,11 @@ def create_app(
             connection = datasource_engines.connect(project_id, datasource_id, draft)
             try:
                 cursor = connection.cursor()
-                cursor.execute(f"SELECT * FROM `{schema}`.`{table}` LIMIT %s", (int(row_limit),))
+                if str(record.kind).lower() == "postgresql":
+                    statement = f'SELECT * FROM "{schema}"."{table}" LIMIT %s'
+                else:
+                    statement = f"SELECT * FROM `{schema}`.`{table}` LIMIT %s"
+                cursor.execute(statement, (int(row_limit),))
                 columns = [desc[0] for desc in cursor.description or ()]
                 return columns, cursor.fetchall()
             finally:
