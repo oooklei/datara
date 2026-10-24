@@ -11,14 +11,30 @@ from sqlalchemy import Engine, inspect, text
 revision = "r9_0003_run_snapshot_contract"
 down_revision = "r9_0002_run_statistics"
 _DDL_MANIFEST = (
-    "r9_0003 workflow_run_stat one-per-instance bigint checked counts fk workflow_instance;"
-    "reconcile detail unique object pair fk cascade;execution receipt_identity nonnull unique"
+    "r9_0003 workflow_run_stat latest-authoritative-rollup one-per-instance bigint checked counts;"
+    "reconcile selected-detail unique object pair fk cascade;execution receipt_identity nonnull unique"
 )
 checksum = hashlib.sha256(_DDL_MANIFEST.encode("utf-8")).hexdigest()
 
 _STAT = "workflow_run_stat"
 _DETAIL = "workflow_run_reconcile_detail"
 _EVENT = "execution_event"
+
+
+def _latest_v2_predicate(alias: str, table: str) -> str:
+    """Select an authoritative workflow rollup, else each task's latest retry."""
+    return f"""(
+      ({alias}.task_identity='workflow' AND {alias}.attempt_no=(
+         SELECT MAX(wf.attempt_no) FROM {table} wf
+         WHERE wf.workflow_instance_id={alias}.workflow_instance_id AND wf.task_identity='workflow'))
+      OR
+      (NOT EXISTS (SELECT 1 FROM {table} wr
+                   WHERE wr.workflow_instance_id={alias}.workflow_instance_id
+                     AND wr.task_identity='workflow')
+       AND {alias}.attempt_no=(SELECT MAX(latest.attempt_no) FROM {table} latest
+                              WHERE latest.workflow_instance_id={alias}.workflow_instance_id
+                                AND latest.task_identity={alias}.task_identity))
+    )"""
 
 
 def upgrade(engine: Engine) -> None:
@@ -66,16 +82,17 @@ def _upgrade_sqlite(engine: Engine) -> None:
                     f"""INSERT INTO {_EVENT}
                     (id, workflow_instance_id, task_instance_id, receipt_identity, attempt_no,
                      event_kind, payload_json, event_time, created_at, updated_at, generated_at)
-                    SELECT MIN(id), workflow_instance_id, task_instance_id,
-                           CASE WHEN task_instance_id IS NULL THEN '__workflow__'
-                                ELSE 'task:' || task_instance_id END,
-                           attempt_no, event_kind, MAX(payload_json), MIN(event_time),
-                           MIN(created_at), MAX(updated_at), MAX(generated_at)
-                    FROM {_EVENT}_r9_0002
-                    GROUP BY workflow_instance_id,
-                             CASE WHEN task_instance_id IS NULL THEN '__workflow__'
-                                  ELSE 'task:' || task_instance_id END,
-                             attempt_no, event_kind"""
+                    SELECT e.id, e.workflow_instance_id, e.task_instance_id,
+                           CASE WHEN e.task_instance_id IS NULL THEN '__workflow__'
+                                ELSE 'task:' || e.task_instance_id END,
+                           e.attempt_no, e.event_kind, e.payload_json, e.event_time,
+                           e.created_at, e.updated_at, e.generated_at
+                    FROM {_EVENT}_r9_0002 e
+                    WHERE e.id=(SELECT MAX(newest.id) FROM {_EVENT}_r9_0002 newest
+                                WHERE newest.workflow_instance_id=e.workflow_instance_id
+                                  AND COALESCE(newest.task_instance_id,-1)=COALESCE(e.task_instance_id,-1)
+                                  AND COALESCE(newest.attempt_no,-1)=COALESCE(e.attempt_no,-1)
+                                  AND newest.event_kind=e.event_kind)"""
                 )
                 connection.exec_driver_sql(f"DROP TABLE {_EVENT}_r9_0002")
             transaction.commit()
@@ -152,7 +169,7 @@ def _copy_sqlite_stats(connection, columns: set[str]) -> None:
         SELECT MIN(s.id), MIN(s.project_id), MIN(s.workflow_id), MIN(s.workflow_version_id),
                s.workflow_instance_id,
                COALESCE(MIN({expr('instance_type', 'NULL')}), MIN(w.instance_type)),
-               COALESCE(MAX({expr('status', 'NULL')}), MAX(w.status)),
+               MAX(w.status),
                COALESCE(MAX({expr('dag_name', 'NULL')}), 'workflow-' || MIN(s.workflow_id)),
                MAX({data_param}),
                CASE WHEN COUNT({source}) = 0 THEN NULL ELSE SUM({source}) END,
@@ -163,6 +180,7 @@ def _copy_sqlite_stats(connection, columns: set[str]) -> None:
                COALESCE(MIN({expr('started_at', 'NULL')}), MIN(w.started_at), MIN(s.created_at)),
                MAX({expr('finished_at', 'NULL')}), MIN(s.created_at), MAX(s.updated_at), MAX(s.generated_at)
         FROM {_STAT}_r9_0002 s JOIN workflow_instance w ON w.id = s.workflow_instance_id
+        WHERE {_latest_v2_predicate('s', f'{_STAT}_r9_0002')}
         GROUP BY s.workflow_instance_id"""
     )
 
@@ -189,6 +207,7 @@ def _copy_sqlite_details(connection) -> None:
         FROM {_DETAIL}_r9_0002 d
         JOIN {_STAT}_r9_0002 o ON o.id=d.run_stat_id
         JOIN {_STAT} n ON n.workflow_instance_id=o.workflow_instance_id
+        WHERE {_latest_v2_predicate('o', f'{_STAT}_r9_0002')}
         GROUP BY n.workflow_instance_id, d.source_object, d.target_object"""
     )
 
@@ -204,8 +223,7 @@ def _create_sqlite_event_table(connection) -> None:
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP NOT NULL,
         updated_at DATETIME DEFAULT CURRENT_TIMESTAMP NOT NULL,
         generated_at DATETIME DEFAULT CURRENT_TIMESTAMP NOT NULL,
-        CONSTRAINT uq_ee_result_receipt UNIQUE
-          (workflow_instance_id, receipt_identity, attempt_no, event_kind))"""
+        CONSTRAINT uq_ee_result_receipt UNIQUE (workflow_instance_id, receipt_identity, attempt_no, event_kind))"""
     )
     connection.exec_driver_sql(
         f"CREATE INDEX x_ee_instance_kind ON {_EVENT} (workflow_instance_id, event_kind)"
@@ -226,6 +244,15 @@ def _upgrade_mysql(engine: Engine) -> None:
         connection.execute(text(
             f"UPDATE {_EVENT} SET receipt_identity=CONCAT('task:', task_instance_id) "
             "WHERE task_instance_id IS NOT NULL AND receipt_identity='__workflow__'"
+        ))
+        # Keep the newest receipt and therefore its newest payload. This runs
+        # before replacing the legacy nullable identity unique constraint.
+        connection.execute(text(
+            f"DELETE older FROM {_EVENT} older JOIN {_EVENT} newer ON "
+            "newer.workflow_instance_id=older.workflow_instance_id "
+            "AND newer.receipt_identity=older.receipt_identity "
+            "AND newer.attempt_no <=> older.attempt_no "
+            "AND newer.event_kind=older.event_kind AND newer.id>older.id"
         ))
         uniques = {
             item.get("name"): tuple(item["column_names"])
@@ -255,7 +282,8 @@ def _upgrade_mysql(engine: Engine) -> None:
                 "SUM(skipped_count) skipped_count, MIN(created_at) started_at, "
                 "MAX(finished_at) finished_at, MIN(created_at) created_at, "
                 "MAX(updated_at) updated_at, MAX(generated_at) generated_at "
-                f"FROM {_STAT} GROUP BY workflow_instance_id"
+                f"FROM {_STAT} s WHERE {_latest_v2_predicate('s', _STAT)} "
+                "GROUP BY workflow_instance_id"
             ))
             connection.execute(text(
                 "CREATE TEMPORARY TABLE r9_0003_detail_rollup AS "
@@ -265,6 +293,7 @@ def _upgrade_mysql(engine: Engine) -> None:
                 "SUM(d.skipped_count) skipped_count, SUM(d.difference_count) difference_count, "
                 "MIN(d.created_at) created_at, MAX(d.updated_at) updated_at, MAX(d.generated_at) generated_at "
                 f"FROM {_DETAIL} d JOIN {_STAT} r ON r.id=d.run_stat_id "
+                f"WHERE {_latest_v2_predicate('r', _STAT)} "
                 "GROUP BY r.workflow_instance_id,d.source_object,d.target_object"
             ))
             connection.execute(text(f"DELETE FROM {_DETAIL}"))
@@ -276,6 +305,10 @@ def _upgrade_mysql(engine: Engine) -> None:
                 "SELECT keeper_id,project_id,workflow_id,workflow_version_id,workflow_instance_id,"
                 "'__snapshot__',0,instance_type,status,source_count,target_count,success_count,failure_count,"
                 "skipped_count,started_at,finished_at,created_at,updated_at,generated_at FROM r9_0003_stat_rollup"
+            ))
+            connection.execute(text(
+                f"UPDATE {_STAT} s JOIN workflow_instance w ON w.id=s.workflow_instance_id "
+                "SET s.status=w.status"
             ))
             connection.execute(text(
                 f"INSERT INTO {_DETAIL} (id,run_stat_id,source_object,target_object,source_count,target_count,"

@@ -11,7 +11,6 @@ from rebuild.execution.revisions import (
     v0002_run_statistics,
     v0003_run_snapshot_contract,
 )
-from rebuild.execution.models import EXECUTION_TABLES
 from rebuild.governance.migrations import GovernanceMigration, MigrationResult, MigrationRunner
 
 
@@ -20,13 +19,13 @@ EXECUTION_MIGRATIONS = (
         revision=v0001_execution_tables.revision,
         checksum=v0001_execution_tables.checksum,
         upgrade=v0001_execution_tables.upgrade,
-        tables=EXECUTION_TABLES[:6],
+        tables=v0001_execution_tables.TABLES,
     ),
     GovernanceMigration(
         revision=v0002_run_statistics.revision,
         checksum=v0002_run_statistics.checksum,
         upgrade=v0002_run_statistics.upgrade,
-        tables=EXECUTION_TABLES[6:],
+        tables=v0002_run_statistics.TABLES,
     ),
     GovernanceMigration(
         revision=v0003_run_snapshot_contract.revision,

@@ -1,5 +1,7 @@
 """Frozen revision and legacy-to-snapshot migration regression coverage."""
 
+from inspect import getsource
+
 from sqlalchemy import create_engine, inspect, text
 
 from rebuild.execution.revisions import (
@@ -11,9 +13,18 @@ from rebuild.metrics.revisions import v0002_workflow_result_unique
 
 
 def test_run_statistics_revision_checksums_are_frozen_literals():
+    assert v0001_execution_tables.checksum == "033390ccac1d2f062448e1d0ca861946662620d95dc05c2db6a3568be0371106"
     assert v0002_run_statistics.checksum == "518b0b484dc74e9fe190d8c4c0e7549670a17f7827d493e01c6afb8d1a403145"
-    assert v0003_run_snapshot_contract.checksum == "3580390bd7616a3f064e61e7b88a5ebb51df377f5d38f2e9581986bf73b98f39"
+    assert v0003_run_snapshot_contract.checksum == "d508746417917b807e5a12fa75d279dba4166969df307e4979dedba4d794272c"
     assert v0002_workflow_result_unique.checksum == "869dbe139fb56572abd9d9050a53acb7588b5d414eb4cffcd89b01bc70b83818"
+
+
+def test_v0001_is_frozen_without_later_receipt_identity_schema():
+    engine = create_engine("sqlite+pysqlite:///:memory:")
+    v0001_execution_tables.upgrade(engine)
+    event_columns = {item["name"] for item in inspect(engine).get_columns("execution_event")}
+    assert "receipt_identity" not in event_columns
+    assert not inspect(engine).get_unique_constraints("execution_event")
 
 
 def test_v0002_rows_upgrade_to_one_fk_backed_instance_snapshot_without_data_loss():
@@ -68,6 +79,69 @@ def test_snapshot_postflight_rejects_wrong_type_nullable_and_missing_constraints
     assert v0003_run_snapshot_contract.postflight(engine)["verdict"] == "BLOCKED"
 
 
+def test_v0003_selects_latest_retry_and_prefers_workflow_rollup_with_authoritative_status():
+    engine = create_engine("sqlite+pysqlite:///:memory:")
+    v0001_execution_tables.upgrade(engine)
+    v0002_run_statistics.upgrade(engine)
+    with engine.begin() as connection:
+        connection.execute(text(
+            "INSERT INTO workflow_instance "
+            "(id,workflow_id,workflow_version_id,instance_type,status,started_at) VALUES "
+            "(7,11,3,'FORMAL','SUCCEEDED','2026-10-24 10:00:00'),"
+            "(8,12,4,'FORMAL','FAILED','2026-10-24 11:00:00')"
+        ))
+        rows = (
+            (1, 7, "task-a", 1, "FAILED", 0, 9),
+            (2, 7, "task-a", 2, "SUCCEEDED", 5, 0),
+            (3, 7, "task-b", 1, "SUCCEEDED", 4, 0),
+            (4, 8, "task-a", 1, "SUCCEEDED", 100, 0),
+            (5, 8, "workflow", 1, "SUCCEEDED", 3, 1),
+            (6, 8, "workflow", 2, "SUCCEEDED", 7, 2),
+        )
+        for row_id, instance_id, identity, attempt, status, success, failure in rows:
+            connection.execute(text(
+                "INSERT INTO workflow_run_stat "
+                "(id,project_id,workflow_id,workflow_version_id,workflow_instance_id,task_identity,"
+                "attempt_no,instance_type,status,success_count,failure_count,skipped_count) "
+                "VALUES (:id,9,:workflow_id,:version,:instance,:identity,:attempt,'FORMAL',:status,:success,:failure,0)"
+            ), {
+                "id": row_id, "workflow_id": 11 if instance_id == 7 else 12,
+                "version": 3 if instance_id == 7 else 4, "instance": instance_id,
+                "identity": identity, "attempt": attempt, "status": status,
+                "success": success, "failure": failure,
+            })
+            connection.execute(text(
+                "INSERT INTO workflow_run_reconcile_detail "
+                "(id,run_stat_id,source_object,target_object,success_count,failure_count,skipped_count) "
+                "VALUES (:id,:id,'src','dst',:success,:failure,0)"
+            ), {"id": row_id, "success": success, "failure": failure})
+
+    v0003_run_snapshot_contract.upgrade(engine)
+
+    with engine.connect() as connection:
+        stats = connection.execute(text(
+            "SELECT workflow_instance_id,status,success_count,failure_count,total_count "
+            "FROM workflow_run_stat ORDER BY workflow_instance_id"
+        )).all()
+        details = connection.execute(text(
+            "SELECT s.workflow_instance_id,d.success_count,d.failure_count "
+            "FROM workflow_run_reconcile_detail d JOIN workflow_run_stat s ON s.id=d.run_stat_id "
+            "ORDER BY s.workflow_instance_id"
+        )).all()
+    assert stats == [(7, "SUCCEEDED", 9, 0, 9), (8, "FAILED", 7, 2, 9)]
+    assert details == [(7, 9, 0), (8, 7, 2)]
+
+
+def test_sqlite_and_mysql_upgrade_plans_share_the_same_latest_v2_selector():
+    source = getsource(v0003_run_snapshot_contract)
+    assert source.count("_latest_v2_predicate(") >= 5
+    predicate = v0003_run_snapshot_contract._latest_v2_predicate("row", "legacy_stats")
+    assert "row.task_identity='workflow'" in predicate
+    assert "MAX(wf.attempt_no)" in predicate
+    assert "MAX(latest.attempt_no)" in predicate
+    assert "NOT EXISTS" in predicate
+
+
 def test_workflow_level_receipt_identity_is_database_unique():
     engine = create_engine("sqlite+pysqlite:///:memory:")
     v0001_execution_tables.upgrade(engine)
@@ -75,6 +149,23 @@ def test_workflow_level_receipt_identity_is_database_unique():
     v0003_run_snapshot_contract.upgrade(engine)
     uniques = {tuple(item["column_names"]) for item in inspect(engine).get_unique_constraints("execution_event")}
     assert ("workflow_instance_id", "receipt_identity", "attempt_no", "event_kind") in uniques
+
+
+def test_receipt_upgrade_deduplicates_legacy_null_identity_and_keeps_newest_payload():
+    engine = create_engine("sqlite+pysqlite:///:memory:")
+    v0001_execution_tables.upgrade(engine)
+    v0002_run_statistics.upgrade(engine)
+    with engine.begin() as connection:
+        connection.execute(text(
+            "INSERT INTO execution_event "
+            "(id,workflow_instance_id,task_instance_id,attempt_no,event_kind,payload_json) VALUES "
+            "(1,7,NULL,1,'RESULT_STAT','old'),(2,7,NULL,1,'RESULT_STAT','new')"
+        ))
+    v0003_run_snapshot_contract.upgrade(engine)
+    with engine.connect() as connection:
+        assert connection.execute(text(
+            "SELECT id,receipt_identity,payload_json FROM execution_event"
+        )).one() == (2, "__workflow__", "new")
 
 
 def test_metrics_upgrade_merges_duplicates_and_enforces_workflow_day_identity():
@@ -96,3 +187,13 @@ def test_metrics_upgrade_merges_duplicates_and_enforces_workflow_day_identity():
         )).one()
         assert row == (5, 1, 1, 1)
     assert v0002_workflow_result_unique.postflight(engine)["verdict"] == "READY"
+
+
+def test_mysql_plans_deduplicate_receipts_and_avoid_target_table_1093():
+    execution_source = getsource(v0003_run_snapshot_contract)
+    metrics_source = getsource(v0002_workflow_result_unique)
+    assert "DELETE older FROM {_EVENT} older JOIN {_EVENT} newer" in execution_source
+    assert "newer.id>older.id" in execution_source
+    assert "CREATE TEMPORARY TABLE r7_0002_workflow_result_rollup" in metrics_source
+    assert "JOIN r7_0002_workflow_result_rollup rollup" in metrics_source
+    assert "SELECT SUM(source.success_count) FROM {_TABLE}" not in metrics_source

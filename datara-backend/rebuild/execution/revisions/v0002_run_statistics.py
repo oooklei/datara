@@ -75,10 +75,11 @@ _detail = Table(
     UniqueConstraint("run_stat_id", "source_object", "target_object", name="uq_wrrd_object_pair"),
     Index("x_wrrd_run_stat", "run_stat_id"),
 )
+TABLES = (_stat, _detail)
 
 
 def upgrade(engine: Engine) -> None:
-    _metadata.create_all(bind=engine, tables=[_stat, _detail], checkfirst=True)
+    _metadata.create_all(bind=engine, tables=list(TABLES), checkfirst=True)
 
 
 def postflight(engine: Engine) -> dict[str, object]:

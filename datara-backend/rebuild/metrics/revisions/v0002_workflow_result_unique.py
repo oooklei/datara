@@ -27,24 +27,38 @@ def upgrade(engine: Engine) -> None:
     if _unique_ready(engine):
         return
     with engine.begin() as connection:
-        # Preserve totals before deleting duplicate physical rows.
+        # A temporary rollup avoids MySQL error 1093 (read/write same target)
+        # and keeps the DML transactional until the final guarded DDL.
         connection.execute(text(
-            f"""UPDATE {_TABLE} AS target SET
-            success_count=(SELECT SUM(source.success_count) FROM {_TABLE} source
-                           WHERE source.workflow_id=target.workflow_id AND source.run_date=target.run_date),
-            failure_count=(SELECT SUM(source.failure_count) FROM {_TABLE} source
-                           WHERE source.workflow_id=target.workflow_id AND source.run_date=target.run_date),
-            skipped_count=(SELECT SUM(source.skipped_count) FROM {_TABLE} source
-                           WHERE source.workflow_id=target.workflow_id AND source.run_date=target.run_date),
-            retry_count=(SELECT SUM(source.retry_count) FROM {_TABLE} source
-                         WHERE source.workflow_id=target.workflow_id AND source.run_date=target.run_date)
-            WHERE target.id=(SELECT MIN(keeper.id) FROM {_TABLE} keeper
-                             WHERE keeper.workflow_id=target.workflow_id AND keeper.run_date=target.run_date)"""
+            f"""CREATE TEMPORARY TABLE r7_0002_workflow_result_rollup AS
+            SELECT MIN(id) keeper_id, workflow_id, run_date,
+                   SUM(success_count) success_count, SUM(failure_count) failure_count,
+                   SUM(skipped_count) skipped_count, SUM(retry_count) retry_count
+            FROM {_TABLE} GROUP BY workflow_id, run_date"""
         ))
+        if engine.dialect.name == "mysql":
+            connection.execute(text(
+                f"""UPDATE {_TABLE} target
+                JOIN r7_0002_workflow_result_rollup rollup ON rollup.keeper_id=target.id
+                SET target.success_count=rollup.success_count,
+                    target.failure_count=rollup.failure_count,
+                    target.skipped_count=rollup.skipped_count,
+                    target.retry_count=rollup.retry_count"""
+            ))
+        elif engine.dialect.name == "sqlite":
+            connection.execute(text(
+                f"""UPDATE {_TABLE} SET
+                success_count=(SELECT success_count FROM r7_0002_workflow_result_rollup WHERE keeper_id={_TABLE}.id),
+                failure_count=(SELECT failure_count FROM r7_0002_workflow_result_rollup WHERE keeper_id={_TABLE}.id),
+                skipped_count=(SELECT skipped_count FROM r7_0002_workflow_result_rollup WHERE keeper_id={_TABLE}.id),
+                retry_count=(SELECT retry_count FROM r7_0002_workflow_result_rollup WHERE keeper_id={_TABLE}.id)
+                WHERE id IN (SELECT keeper_id FROM r7_0002_workflow_result_rollup)"""
+            ))
+        else:
+            raise RuntimeError(f"unsupported metrics migration dialect: {engine.dialect.name}")
         connection.execute(text(
             f"DELETE FROM {_TABLE} WHERE id NOT IN "
-            f"(SELECT keeper_id FROM (SELECT MIN(id) AS keeper_id FROM {_TABLE} "
-            "GROUP BY workflow_id, run_date) AS keepers)"
+            "(SELECT keeper_id FROM r7_0002_workflow_result_rollup)"
         ))
         if engine.dialect.name == "sqlite":
             connection.execute(text(
@@ -54,8 +68,6 @@ def upgrade(engine: Engine) -> None:
             connection.execute(text(
                 f"ALTER TABLE {_TABLE} ADD CONSTRAINT {_UNIQUE} UNIQUE (workflow_id, run_date)"
             ))
-        else:
-            raise RuntimeError(f"unsupported metrics migration dialect: {engine.dialect.name}")
 
 
 def postflight(engine: Engine) -> dict[str, object]:
