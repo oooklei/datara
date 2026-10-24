@@ -238,6 +238,15 @@ async function ensureLoaded() {
   loading.value = true
   try {
     await graphStore.load(props.projectId, numDocId.value)
+    // load() records transport errors on the store instead of throwing so
+    // callers can keep the shared store alive.  Do not mark the canvas ready
+    // when that happened: otherwise Save/Publish become enabled for an empty
+    // graph and can overwrite a draft after a transient read failure.
+    if (graphStore.docId !== numDocId.value || graphStore.lastError) {
+      loaded.value = false
+      ElMessage.error(`画布数据加载失败：${graphStore.lastError ?? '未返回工作流草稿'}`)
+      return
+    }
     const snap = readSnap()
     if (snap) {
       // 直接状态赋值（$patch 的 _DeepPartial 对 Record<string, unknown> 索引签名不兼容）
@@ -262,7 +271,13 @@ onUnmounted(() => persistSnap())
 /* ---------- 工具栏：保存 / 发布 / 版本 ---------- */
 
 async function onSave() {
-  const r = await graphStore.save()
+  let r
+  try {
+    r = await graphStore.save()
+  } catch (error) {
+    ElMessage.error(`保存失败：${error instanceof Error ? error.message : '请求异常'}`)
+    return
+  }
   if (!r) {
     ElMessage.warning('画布未加载，无法保存')
     return
@@ -276,6 +291,20 @@ async function onSave() {
 
 async function onPublish() {
   if (props.projectId === undefined) return
+  // Publishing a stale server draft is a destructive surprise.  Flush local
+  // graph changes first and stop when the queue reports partial failure.
+  if (graphStore.isDirty) {
+    try {
+      const saved = await graphStore.save()
+      if (!saved?.complete) {
+        ElMessage.error(`发布前保存未完成：${saved?.dirtyKeys.join(', ') ?? '未知变更'}`)
+        return
+      }
+    } catch (error) {
+      ElMessage.error(`发布前保存失败：${error instanceof Error ? error.message : '请求异常'}`)
+      return
+    }
+  }
   let remark: string | undefined
   try {
     const p = await ElMessageBox.prompt('输入版本备注（可选）', '发布版本', {
@@ -291,8 +320,8 @@ async function onPublish() {
   try {
     const ver = await publishWorkflowDefinition(props.projectId, numDocId.value, remark)
     ElMessage.success(`已发布版本 v${ver.version}`)
-  } catch {
-    ElMessage.error('发布失败')
+  } catch (error) {
+    ElMessage.error(`发布失败：${error instanceof Error ? error.message : '请求异常'}`)
   }
 }
 
