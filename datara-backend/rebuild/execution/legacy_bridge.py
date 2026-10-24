@@ -250,6 +250,15 @@ def append_retry_attempts(instance_id: str, *, failed_only: bool) -> list[dict[s
         attempts = []
         for task in tasks:
             attempt = repo.append_attempt(task.id)
+            # A failed-node rerun is an in-place continuation.  The attempt
+            # append alone must not leave the task in FAILED, otherwise the
+            # dispatcher treats it as terminal and the newly-created attempt
+            # is never eligible for execution.  Clear terminal timestamps as
+            # well; they describe the previous attempt, not this retry.
+            if failed_only:
+                task.status = "PENDING"
+                task.started_at = None
+                task.finished_at = None
             attempts.append({"task_instance_id": task.id, "attempt_id": attempt.id, "attempt_no": attempt.attempt_no})
         repo.append_execution_event(
             workflow_instance_id=numeric_id,
