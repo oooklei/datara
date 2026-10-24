@@ -14,7 +14,7 @@ import {
   validateUploadDraft,
 } from '../resourceApi'
 
-describe('R4 resourceApi contract (RED)', () => {
+describe('R4 resourceApi contract (GREEN)', () => {
   it('contract method list is frozen to the resource version subset', () => {
     expect(R4_RESOURCE_CONTRACT_METHODS).toHaveLength(5)
     expect(R4_RESOURCE_CONTRACT_METHODS).toEqual(

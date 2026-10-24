@@ -7,7 +7,8 @@
  * 不手工设置 Content-Type（浏览器自动带 boundary）；服务端重验 kind/扩展名/大小并自行计算 sha256。
  * RES_* 错误码（RES_TYPE_NOT_ALLOWED/RES_SIZE_EXCEEDED/RES_KIND_UNKNOWN/RES_OBJECT_NOT_FOUND/
  * RES_VERSION_NOT_FOUND/RES_BINDING_CONFLICT）经包络解包后以 ContractApiError 透出。
- * R4_RESOURCE_NOT_WIRED 常量保留（View 横幅引用兼容）。
+ * 资源契约已完成 GREEN 接线；R4_RESOURCE_NOT_WIRED 仅作为旧验证页的兼容导出，
+ * 新页面不得据此阻断真实 I/O。
  */
 
 import { camelToSnake, ContractApiError, snakeToCamel } from './adapterKit'
@@ -89,6 +90,7 @@ export function validateUploadDraft(kind: ResourceKind, filename: string, sizeBy
 
 /* ---------- RED 哨兵 ---------- */
 
+/** @deprecated 仅兼容旧验证页文案；资源 API 已接入 rebuild/resources。 */
 export const R4_RESOURCE_NOT_WIRED = 'R4_RESOURCE_NOT_WIRED: rebuild/resources contract not connected yet'
 
 /** 契约方法清单（测试与 UI 横幅共用，保持单一事实源） */
