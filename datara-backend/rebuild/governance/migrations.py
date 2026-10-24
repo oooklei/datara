@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from threading import RLock
-from typing import Callable
+from typing import Any, Callable
 
 from sqlalchemy import Engine, select, text
 from sqlalchemy.orm import Session
@@ -23,6 +23,7 @@ from rebuild.governance.revisions import (
 
 
 MigrationUpgrade = Callable[[Engine], None]
+MigrationPostflight = Callable[[Engine], dict[str, Any]]
 _LOCAL_MIGRATION_LOCK = RLock()
 _MYSQL_LOCK_NAME = "datara_rebuild_schema_migrations"
 
@@ -33,6 +34,7 @@ class GovernanceMigration:
     checksum: str
     upgrade: MigrationUpgrade
     tables: tuple = ()
+    postflight: MigrationPostflight | None = None
 
 
 @dataclass(frozen=True)
@@ -87,16 +89,33 @@ class MigrationRunner:
         skipped: list[str] = []
         for migration in self.migrations:
             if self._prepare_revision(migration):
+                self._run_postflight(migration)
                 skipped.append(migration.revision)
                 continue
             try:
                 migration.upgrade(self.engine)
+                self._run_postflight(migration)
+            except MigrationApplyError:
+                self._finish_revision(migration.revision, status="failed", last_error="MigrationApplyError")
+                raise
             except Exception as error:  # Persist only the exception class; driver text can contain connection details.
                 self._finish_revision(migration.revision, status="failed", last_error=type(error).__name__)
                 raise MigrationApplyError(f"migration {migration.revision} failed ({type(error).__name__})") from None
             self._finish_revision(migration.revision, status="completed", last_error="")
             applied.append(migration.revision)
         return MigrationResult(applied=tuple(applied), skipped=tuple(skipped))
+
+    def _run_postflight(self, migration: GovernanceMigration) -> None:
+        if migration.postflight is None:
+            return
+        try:
+            report = migration.postflight(self.engine)
+        except Exception as error:
+            raise MigrationApplyError(
+                f"migration {migration.revision} postflight failed ({type(error).__name__})"
+            ) from None
+        if report.get("verdict") != "READY":
+            raise MigrationApplyError(f"migration {migration.revision} postflight rejected schema")
 
     def _prepare_revision(self, migration: GovernanceMigration) -> bool:
         with Session(self.engine) as session, session.begin():
@@ -154,5 +173,6 @@ R3_GOVERNANCE_MIGRATIONS = (
         revision=v0004_token_digest_hardening.revision,
         checksum=v0004_token_digest_hardening.checksum,
         upgrade=v0004_token_digest_hardening.upgrade,
+        postflight=v0004_token_digest_hardening.postflight,
     ),
 )

@@ -68,7 +68,8 @@ def test_legacy_schema_rebuilds_without_raw_tokens_and_preserves_runner():
     second = MigrationRunner(engine, [_v0004_migration()]).apply()
     with engine.connect() as connection:
         rows = connection.execute(text("SELECT token_digest, user_id FROM rebuild_active_token")).fetchall()
-    assert {row[0] for row in rows} == {hashlib.sha256(token.encode()).hexdigest() for token in ("legacy-a", "legacy-b")}
+    expected_digests = {hashlib.sha256(token.encode()).hexdigest() for token in ("legacy-a", "legacy-b")}
+    assert {row[0] for row in rows} == expected_digests
     assert {row[1] for row in rows} == {None}
     assert "token" not in {item["name"] for item in inspect(engine).get_columns("rebuild_active_token")}
     assert first.applied == (v0004_token_digest_hardening.revision,)
@@ -99,19 +100,32 @@ def test_completed_revision_fails_closed_after_schema_or_data_drift(drift_sql):
     MigrationRunner(engine, R3_GOVERNANCE_MIGRATIONS).apply()
     with engine.begin() as connection:
         connection.execute(text(
-            "INSERT INTO rebuild_active_token (token_digest, username, role, expires_at) "
-            "VALUES (:digest, 'runner', 'viewer', '2026-12-31')"
+            "INSERT INTO rebuild_active_token (token_digest, username, role, issued_at, expires_at) "
+            "VALUES (:digest, 'runner', 'viewer', '2026-01-01', '2026-12-31')"
         ), {"digest": hashlib.sha256(b"safe").hexdigest()})
         connection.execute(text(drift_sql))
     with pytest.raises(MigrationApplyError, match="postflight"):
         MigrationRunner(engine, R3_GOVERNANCE_MIGRATIONS).apply()
 
 
-def test_same_named_non_unique_wrong_column_index_does_not_pass_validation():
+def test_same_named_non_unique_wrong_column_index_is_replaced_not_skipped():
     engine = isolated_engine()
     _create_legacy_table(
         engine,
         digest_index_sql="CREATE INDEX ix_rebuild_active_token_token_digest ON rebuild_active_token (username)",
     )
-    with pytest.raises(MigrationApplyError):
+    MigrationRunner(engine, [_v0004_migration()]).apply()
+    index = {item["name"]: item for item in inspect(engine).get_indexes("rebuild_active_token")}
+    assert bool(index["ix_rebuild_active_token_token_digest"]["unique"])
+    assert index["ix_rebuild_active_token_token_digest"]["column_names"] == ["token_digest"]
+
+
+def test_unrepairable_digest_only_structure_drift_fails_closed_on_first_apply():
+    engine = isolated_engine()
+    with engine.begin() as connection:
+        connection.execute(text(
+            "CREATE TABLE rebuild_active_token (token_digest VARCHAR(32), user_id INTEGER NOT NULL, "
+            "username VARCHAR(64), role VARCHAR(32), issued_at DATETIME, expires_at DATETIME)"
+        ))
+    with pytest.raises(MigrationApplyError, match="postflight"):
         MigrationRunner(engine, [_v0004_migration()]).apply()

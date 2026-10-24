@@ -1,18 +1,21 @@
-"""Add and backfill the active-token SHA-256 digest."""
+"""Converge active tokens on a digest-only database identity."""
 
 import hashlib
+import re
+from typing import Any
 
 from sqlalchemy import Engine, inspect, text
 
 revision = "r3_0004_token_digest_hardening"
 _DDL_MANIFEST = (
-    "r3_0004 rebuild_active_token: add token_digest CHAR(64), backfill sha256, "
-    "create unique index ix_rebuild_active_token_token_digest"
+    "r3_0004 rebuild_active_token: token_digest CHAR(64) primary identity, nullable user_id, "
+    "discard legacy raw token, preserve identity fields and foreign key"
 )
-checksum = hashlib.sha256(_DDL_MANIFEST.encode("utf-8")).hexdigest()
+checksum = "6f965797d9d2aed7ca003ebd89eb31e99624e1db8382120a3a1604f875a6849f"
 
 _TABLE = "rebuild_active_token"
 _INDEX = "ix_rebuild_active_token_token_digest"
+_DIGEST_RE = re.compile(r"^[0-9a-f]{64}$")
 
 
 def upgrade(engine: Engine) -> None:
@@ -21,46 +24,118 @@ def upgrade(engine: Engine) -> None:
     if _TABLE not in inspect(engine).get_table_names():
         ActiveTokenRecord.__table__.create(engine, checkfirst=True)
         return
-
     columns = {column["name"] for column in inspect(engine).get_columns(_TABLE)}
+    if "token" not in columns:
+        return
+    if engine.dialect.name == "sqlite":
+        _rebuild_sqlite(engine)
+    elif engine.dialect.name == "mysql":
+        _upgrade_mysql(engine, columns)
+    else:
+        raise RuntimeError(f"unsupported token migration dialect: {engine.dialect.name}")
+
+
+def _rebuild_sqlite(engine: Engine) -> None:
+    with engine.begin() as connection:
+        rows = connection.execute(text(f"SELECT * FROM {_TABLE}")).mappings().all()
+        connection.execute(text(
+            "CREATE TABLE rebuild_active_token_v0004 ("
+            "token_digest CHAR(64) NOT NULL PRIMARY KEY, user_id INTEGER NULL, "
+            "username VARCHAR(64) NOT NULL, role VARCHAR(32) NOT NULL, capability VARCHAR(128), "
+            "issued_at DATETIME NOT NULL, expires_at DATETIME NOT NULL, "
+            "FOREIGN KEY(user_id) REFERENCES rebuild_user (id))"
+        ))
+        payload = []
+        for row in rows:
+            raw_token = str(row["token"])
+            payload.append({
+                "token_digest": hashlib.sha256(raw_token.encode("utf-8")).hexdigest(),
+                "user_id": None if row["user_id"] == 0 else row["user_id"],
+                "username": row["username"],
+                "role": row["role"],
+                "capability": row.get("capability"),
+                "issued_at": row.get("issued_at") or "1970-01-01 00:00:00",
+                "expires_at": row["expires_at"],
+            })
+        if payload:
+            connection.execute(text(
+                "INSERT INTO rebuild_active_token_v0004 "
+                "(token_digest, user_id, username, role, capability, issued_at, expires_at) VALUES "
+                "(:token_digest, :user_id, :username, :role, :capability, :issued_at, :expires_at)"
+            ), payload)
+        connection.execute(text(f"DROP TABLE {_TABLE}"))
+        connection.execute(text(f"ALTER TABLE rebuild_active_token_v0004 RENAME TO {_TABLE}"))
+        connection.execute(text(f"CREATE UNIQUE INDEX {_INDEX} ON {_TABLE} (token_digest)"))
+        connection.execute(text(f"CREATE INDEX ix_{_TABLE}_user_id ON {_TABLE} (user_id)"))
+
+
+def _upgrade_mysql(engine: Engine, columns: set[str]) -> None:
     with engine.begin() as connection:
         if "token_digest" not in columns:
-            connection.execute(text(f"ALTER TABLE {_TABLE} ADD COLUMN token_digest CHAR(64)"))
+            connection.execute(text(f"ALTER TABLE {_TABLE} ADD COLUMN token_digest CHAR(64) NULL"))
+        connection.execute(text(f"UPDATE {_TABLE} SET token_digest = LOWER(SHA2(token, 256))"))
+        connection.execute(text(f"ALTER TABLE {_TABLE} MODIFY user_id INT NULL"))
+        connection.execute(text(f"UPDATE {_TABLE} SET user_id = NULL WHERE user_id = 0"))
+        connection.execute(text(f"ALTER TABLE {_TABLE} MODIFY token_digest CHAR(64) NOT NULL"))
+        connection.execute(text(f"ALTER TABLE {_TABLE} DROP PRIMARY KEY, ADD PRIMARY KEY (token_digest)"))
+        connection.execute(text(f"ALTER TABLE {_TABLE} DROP COLUMN token"))
 
-        # Re-inspection matters for legacy SQLite connections: the ALTER must be
-        # visible before selecting and updating the newly added column.
-        if "token_digest" not in {column["name"] for column in inspect(connection).get_columns(_TABLE)}:
-            raise RuntimeError("token_digest column was not created")
-        rows = connection.execute(
-            text(f"SELECT token FROM {_TABLE} WHERE token_digest IS NULL OR token_digest = ''")
-        ).scalars()
-        connection.execute(
-            text(f"UPDATE {_TABLE} SET token_digest = :digest WHERE token = :token"),
-            [
-                {"token": token, "digest": hashlib.sha256(str(token).encode("utf-8")).hexdigest()}
-                for token in rows
-            ],
-        )
-
-        indexes = {index["name"] for index in inspect(connection).get_indexes(_TABLE)}
-        if _INDEX not in indexes:
+        current = {item["name"]: item for item in inspect(connection).get_indexes(_TABLE)}
+        digest_index = current.get(_INDEX)
+        if digest_index and (
+            not bool(digest_index.get("unique")) or digest_index.get("column_names") != ["token_digest"]
+        ):
+            connection.execute(text(f"DROP INDEX {_INDEX} ON {_TABLE}"))
+            digest_index = None
+        if not digest_index:
             connection.execute(text(f"CREATE UNIQUE INDEX {_INDEX} ON {_TABLE} (token_digest)"))
+        foreign_keys = inspect(connection).get_foreign_keys(_TABLE)
+        if not any(item.get("constrained_columns") == ["user_id"] for item in foreign_keys):
+            connection.execute(text(
+                f"ALTER TABLE {_TABLE} ADD CONSTRAINT fk_rebuild_active_token_user_id "
+                "FOREIGN KEY (user_id) REFERENCES rebuild_user (id)"
+            ))
 
 
-def postflight(engine: Engine) -> dict[str, object]:
+def postflight(engine: Engine) -> dict[str, Any]:
+    problems: list[str] = []
     inspector = inspect(engine)
+    if _TABLE not in inspector.get_table_names():
+        return {"revision": revision, "verdict": "PENDING", "problems": ["table_missing"]}
+
     columns = {column["name"]: column for column in inspector.get_columns(_TABLE)}
-    indexes = {index["name"]: index for index in inspector.get_indexes(_TABLE)}
-    with engine.connect() as connection:
-        pending = int(connection.scalar(text(
-            f"SELECT COUNT(*) FROM {_TABLE} WHERE token_digest IS NULL OR token_digest = ''"
-        )) or 0)
-    limitations = [] if pending == 0 else ["digest_backfill_pending"]
-    return {
-        "revision": revision,
-        "token_digest_column_present": "token_digest" in columns,
-        "unique_index_present": _INDEX in indexes and bool(indexes[_INDEX].get("unique")),
-        "digest_pending_rows": pending,
-        "limitations": limitations,
-        "verdict": "READY" if not limitations else "PENDING",
-    }
+    digest = columns.get("token_digest")
+    if digest is None:
+        problems.append("digest_column_missing")
+    else:
+        if getattr(digest.get("type"), "length", None) != 64:
+            problems.append("digest_type_invalid")
+        if bool(digest.get("nullable")):
+            problems.append("digest_nullable")
+        if not bool(digest.get("primary_key")):
+            problems.append("digest_not_primary_key")
+    if "token" in columns:
+        problems.append("raw_token_column_present")
+    if not bool(columns.get("user_id", {}).get("nullable")):
+        problems.append("user_id_not_nullable")
+
+    indexes = {item["name"]: item for item in inspector.get_indexes(_TABLE)}
+    digest_index = indexes.get(_INDEX)
+    if not digest_index or not bool(digest_index.get("unique")) or digest_index.get("column_names") != ["token_digest"]:
+        problems.append("digest_unique_index_invalid")
+
+    foreign_keys = inspector.get_foreign_keys(_TABLE)
+    if not any(
+        item.get("constrained_columns") == ["user_id"]
+        and item.get("referred_table") == "rebuild_user"
+        and item.get("referred_columns") == ["id"]
+        for item in foreign_keys
+    ):
+        problems.append("user_foreign_key_invalid")
+
+    if digest is not None:
+        with engine.connect() as connection:
+            values = connection.execute(text(f"SELECT token_digest FROM {_TABLE}")).scalars()
+            if any(not isinstance(value, str) or not _DIGEST_RE.fullmatch(value) for value in values):
+                problems.append("digest_data_invalid")
+    return {"revision": revision, "verdict": "READY" if not problems else "PENDING", "problems": problems}

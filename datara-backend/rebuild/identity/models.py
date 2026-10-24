@@ -38,8 +38,7 @@ class ProjectMemberRecord(Base):
 class ActiveTokenRecord(Base):
     __tablename__ = "rebuild_active_token"
 
-    token: Mapped[str] = mapped_column(String(255), primary_key=True)
-    token_digest: Mapped[str] = mapped_column(CHAR(64), unique=True, index=True, nullable=False)
+    token_digest: Mapped[str] = mapped_column(CHAR(64), primary_key=True, unique=True, index=True)
     user_id: Mapped[int | None] = mapped_column(ForeignKey("rebuild_user.id"), index=True, nullable=True)
     username: Mapped[str] = mapped_column(String(64))
     role: Mapped[str] = mapped_column(String(32))

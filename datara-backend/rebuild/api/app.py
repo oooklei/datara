@@ -203,7 +203,6 @@ def create_app(
             from datetime import datetime, timedelta, timezone
             with session_factory() as session:
                 record = ActiveTokenRecord(
-                    token=digest_token(token),
                     token_digest=digest_token(token),
                     user_id=user_id,
                     username=username,

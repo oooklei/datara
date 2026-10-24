@@ -44,7 +44,8 @@ def test_active_token_storage_uses_digest_without_persisting_bearer_token():
         with client.app.state.session_factory() as session:
             record = session.scalar(select(ActiveTokenRecord))
             assert record.token_digest == hashlib.sha256(token.encode()).hexdigest()
-            assert "token" not in {column["name"] for column in inspect(session.bind).get_columns("rebuild_active_token")}
+            persisted_columns = inspect(session.bind).get_columns("rebuild_active_token")
+            assert "token" not in {column["name"] for column in persisted_columns}
         authorized = client.get("/api/v1/rebuild/projects", headers={"Authorization": f"Bearer {token}"})
         logged_out = client.post("/api/v1/rebuild/logout", headers={"Authorization": f"Bearer {token}"})
         rejected = client.get("/api/v1/rebuild/projects", headers={"Authorization": f"Bearer {token}"})
