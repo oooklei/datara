@@ -1,7 +1,6 @@
 /**
- * R5-B（SQL IDE DDL 写路径）契约层 — RED 阶段。
+ * R5-B（SQL IDE DDL 写路径）契约层 — GREEN。
  * 语义源自 docs/increments/R5-IDE-开始前影响分析.md §4 与 plan I6（rebuild/sql_ide/ddl.py、ddl_policy.py 草案）。
- * RED 约定与 R5-A 相同：A5 接入前统一抛 R5B_BACKEND_NOT_WIRED，不发任何真实请求。
  * 红线：确认/执行/回滚全部需要用户人工闸（分工规则 5）——契约层不提供绕过通道。
  * FE-07b 拆分登记：DDL 八步闸（编辑→管控结果→影响预览→确认闸 confirmPhrase→执行→回滚记录）。
  * 前置：R5-B D 阶段解禁（本契约转 GREEN）；InstanceBar/GlobalParamDrawer 保留去向裁定待 D 阶段交付后。
@@ -59,6 +58,7 @@ export interface DdlExecutionRecord {
   rollbackDdl?: string | null
 }
 
+/** @deprecated 保留导出以兼容旧验证页与插件；新代码不再使用哨兵。 */
 export const R5B_BACKEND_NOT_WIRED = 'R5B_BACKEND_NOT_WIRED: A5 (rebuild/sql_ide/ddl) contract not connected yet'
 
 /* ---------- 影响预览（权威设计 §7.2 R5-B 能力面；纠偏执行附录 §2 追踪表「影响预览」） ---------- */
@@ -89,18 +89,70 @@ export interface SqlIdeDdlContract {
   listExecutionRecords: (datasourceId: number) => Promise<DdlExecutionRecord[]>
 }
 
-/* ---------- RED 实现 ---------- */
+/* ---------- GREEN HTTP 实现 ---------- */
 
-const notWired = async (): Promise<never> => {
-  throw new Error(R5B_BACKEND_NOT_WIRED)
+import { http } from '../http'
+
+export interface SqlIdeDdlContext {
+  /** 目标对象信息用于绑定策略快照；默认值仅供验证页使用。 */
+  database?: string
+  schema?: string | null
+  name?: string
+  sourceVersion?: string
+  objectKind?: DdlObjectKind
 }
 
-export function createSqlIdeDdlContract(): SqlIdeDdlContract {
+const objectRef = (datasourceId: number, kind: DdlObjectKind, schema: string | null, name: string, context: SqlIdeDdlContext) => ({
+  datasourceId,
+  database: context.database ?? '',
+  schema: context.schema ?? schema,
+  kind: context.objectKind ?? kind,
+  name: context.name ?? name,
+})
+
+export function createSqlIdeDdlContract(projectId = 1, context: SqlIdeDdlContext = {}): SqlIdeDdlContract {
+  const ref = (datasourceId: number, kind: DdlObjectKind, schema: string | null, name: string) => objectRef(datasourceId, kind, schema, name, context)
+  const sourceVersion = () => context.sourceVersion ?? 'ui-draft'
   return {
-    getDefinition: notWired,
-    validatePolicy: notWired,
-    previewImpact: notWired,
-    submitConfirm: notWired,
-    listExecutionRecords: notWired,
+    getDefinition: async (datasourceId, objectKind, schema, name) => {
+      const result = await http.post<{ objectRef?: Record<string, unknown>; sourceKind?: string; definitionText?: string; definition?: string; sourceVersion?: string; capability?: string; constraints?: string[] }>(
+        `/projects/${projectId}/sql-ide/definitions`,
+        { datasourceId, database: context.database ?? '', objectKind, objectRef: ref(datasourceId, objectKind, schema, name) },
+      )
+      return {
+        objectKind,
+        schema,
+        name,
+        ddlText: result.definitionText ?? result.definition ?? '',
+        updatedAt: result.sourceVersion ?? null,
+      }
+    },
+    validatePolicy: async (datasourceId, nextDdlText) => {
+      const result = await http.post<{ snapshotId: string; findings?: DdlPolicyFinding[]; blocked: boolean }>('/rebuild/sql-ide-ddl/validate-policy', {
+        datasourceId, projectId, objectRef: ref(datasourceId, context.objectKind ?? 'table', context.schema ?? null, context.name ?? ''), sourceVersion: sourceVersion(), nextDdlText,
+      })
+      return { snapshotId: result.snapshotId ?? null, findings: result.findings ?? [], blocked: Boolean(result.blocked) }
+    },
+    previewImpact: async (datasourceId, nextDdlText) => {
+      const result = await http.post<{ snapshotId?: string; impacts?: Array<{ objectRef?: { kind?: string; name?: string }; relationType?: string; detail?: string }> }>('/rebuild/sql-ide-ddl/preview-impact', {
+        datasourceId, projectId, objectRef: ref(datasourceId, context.objectKind ?? 'table', context.schema ?? null, context.name ?? ''), sourceVersion: sourceVersion(), nextDdlText,
+      })
+      return (result.impacts ?? []).map((item) => ({
+        kind: (item.relationType === 'dependent-routine' || item.relationType === 'lineage-downstream' || item.relationType === 'permission-scope' ? item.relationType : 'dependent-view') as DdlImpactItem['kind'],
+        name: item.objectRef?.name ?? '', detail: item.detail ?? '',
+      }))
+    },
+    submitConfirm: async (request) => {
+      const result = await http.post<{ recordId: string | number; status: DdlExecutionRecord['status'] }>('/rebuild/sql-ide-ddl/confirm', {
+        datasourceId: request.datasourceId, objectRef: ref(request.datasourceId, request.definition.objectKind, request.definition.schema, request.definition.name), sourceVersion: request.definition.updatedAt ?? sourceVersion(), nextDdlText: request.nextDdlText,
+        policySnapshotId: request.policyReport.snapshotId ?? '', impactSnapshotId: '', confirmPhrase: request.confirmPhrase,
+      })
+      const numericRecordId = Number(result.recordId)
+      return { recordId: Number.isFinite(numericRecordId) ? numericRecordId : 0, status: result.status, ddlText: request.nextDdlText, elapsedMs: 0, createdAt: new Date().toISOString() }
+    },
+    listExecutionRecords: async (datasourceId) => {
+      const result = await http.post<{ items?: Array<Record<string, unknown>> }>('/rebuild/sql-ide-ddl/execution-records', { datasourceId, page: 1, pageSize: 50 })
+      return (result.items ?? []).map((item) => ({ recordId: Number(item.recordId ?? item.id ?? 0), status: (item.status ?? 'failure') as DdlExecutionRecord['status'], ddlText: String(item.ddlText ?? ''), elapsedMs: Number(item.elapsedMs ?? 0), createdAt: String(item.createdAt ?? ''), compensationDdl: item.compensationDdl as string | null | undefined, rollbackDdl: item.rollbackDdl as string | null | undefined }))
+    },
   }
 }

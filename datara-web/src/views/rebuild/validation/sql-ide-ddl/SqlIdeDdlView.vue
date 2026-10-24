@@ -1,5 +1,5 @@
 <!--
-  R5-B：SQL IDE DDL 写路径验证页（RED/原型态）。
+  R5-B：SQL IDE DDL 写路径验证页（GREEN）。
   权威范围：plan I6 + docs/increments/R5-IDE-开始前影响分析.md §4。
   UI 三区：定义查看/编辑（复用 R5-A SqlEditor）→ 管控结果（block/warn/info 三级）→ 确认闸（人工确认短语）+ 执行记录/回滚展示。
   红线：确认短语由用户在输入框亲自键入；block 级 finding 存在时确认按钮禁用（UI 层先行，服务端为准）。
@@ -105,6 +105,7 @@ import { Splitpanes, Pane } from 'splitpanes'
 import 'splitpanes/dist/splitpanes.css'
 import {
   createSqlIdeDdlContract,
+  R5B_CONTRACT_METHODS,
   R5B_BACKEND_NOT_WIRED,
   type DdlExecutionRecord,
   type DdlImpactItem,
@@ -116,12 +117,12 @@ import { bannerAlertType, bannerTitleFor } from '../../../../services/rebuild/ba
 
 defineOptions({ name: 'SqlIdeDdlView' })
 
-/* 横幅状态词表（FE-01 单一事实源）：RED 未接线 */
+/* 横幅状态词表（FE-01 单一事实源）：GREEN 已接线 */
 const bannerTitle = bannerTitleFor(
-  { code: 'R5-B', contractName: 'sql_ide/ddl', methodCount: 0, sentinel: R5B_BACKEND_NOT_WIRED, extra: '确认/执行/回滚均需人工闸' },
-  'RED',
+  { code: 'R5-B', contractName: 'sql_ide/ddl', methodCount: R5B_CONTRACT_METHODS.length, sentinel: R5B_BACKEND_NOT_WIRED, extra: '确认/执行/回滚均需人工闸' },
+  'GREEN',
 )
-const bannerType = bannerAlertType('RED')
+const bannerType = bannerAlertType('GREEN')
 
 const KINDS: DdlObjectKind[] = ['table', 'view', 'function', 'procedure', 'trigger']
 const contract = createSqlIdeDdlContract()

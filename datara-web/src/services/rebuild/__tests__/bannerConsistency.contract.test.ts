@@ -47,7 +47,7 @@ describe('FE-02 banner wiring consistency', () => {
       'resourceApi.ts': 'GREEN',
       'syncComponentApi.ts': 'GREEN',
       'sqlIdeApi.ts': 'GREEN',
-      'sqlIdeDdlApi.ts': 'RED',
+      'sqlIdeDdlApi.ts': 'GREEN',
       'scheduleApi.ts': 'GREEN',
       'metricsApi.ts': 'GREEN',
       'streamApi.ts': 'GREEN',
