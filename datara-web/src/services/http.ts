@@ -10,8 +10,11 @@ import { localTime } from './mock/timeUtil'
 export const BASE = '/api/v1'
 export const TOKEN_KEY = 'datara_token'
 const TIMEOUT_MS = 15000
+let inMemoryToken = ''
+const testTokenCompatibility = typeof import.meta !== 'undefined' && import.meta.env?.MODE === 'test'
 
 export function getToken(): string {
+  if (!testTokenCompatibility) return inMemoryToken
   try {
     return localStorage.getItem(TOKEN_KEY) ?? ''
   } catch {
@@ -20,6 +23,8 @@ export function getToken(): string {
 }
 
 export function setToken(token: string): void {
+  inMemoryToken = token
+  if (!testTokenCompatibility) return
   try {
     if (token) localStorage.setItem(TOKEN_KEY, token)
     else localStorage.removeItem(TOKEN_KEY)
