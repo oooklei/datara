@@ -25,6 +25,7 @@ from rebuild.metrics.models import (
     WorkflowResultStatRecord,
 )
 from rebuild.project.models import ProjectRecord
+from rebuild.workflow.models import WorkflowDefinitionRecord, WorkflowNodeRecord, WorkflowVersionRecord
 
 AS_OF = "2026-10-17T12:00:00Z"
 DEPENDENCY = "/api/v1/rebuild/dependency"
@@ -140,6 +141,50 @@ def test_honest_empty_lists_and_auth_envelope():
             f"{DEPENDENCY}/workflows/7/tasks", headers=tokens["dev"], params={"project_id": owned_id}
         )
         assert tasks.status_code == 200 and tasks.json()["data"] == []
+    finally:
+        client.__exit__(None, None, None)
+
+
+def test_task_candidates_do_not_fall_back_to_draft_for_unknown_version():
+    """An explicit missing version is an empty candidate set, never draft nodes."""
+    client, app, owned_id, tokens = _client()
+    try:
+        with app.state.session_factory() as session:
+            definition = WorkflowDefinitionRecord(
+                project_id=owned_id, name="versioned", description="", workflow_type="NORMAL"
+            )
+            session.add(definition)
+            session.flush()
+            version = WorkflowVersionRecord(
+                definition_id=definition.id, version=1, status="PUBLISHED",
+                snapshot_digest="0" * 64, published_at=datetime(2026, 10, 16, 0, 0, 0),
+            )
+            session.add(version)
+            session.flush()
+            session.add_all((
+                WorkflowNodeRecord(
+                    definition_id=definition.id, version_id=None, node_code="draft",
+                    node_type="SQL", name="Draft", params_json="{}",
+                ),
+                WorkflowNodeRecord(
+                    definition_id=definition.id, version_id=version.id, node_code="published",
+                    node_type="SQL", name="Published", params_json="{}",
+                ),
+            ))
+            session.commit()
+            definition_id = definition.id
+
+        missing = client.get(
+            f"{DEPENDENCY}/workflows/{definition_id}/tasks", headers=tokens["dev"],
+            params={"project_id": owned_id, "workflow_version": 999},
+        )
+        assert missing.status_code == 200 and missing.json()["data"] == []
+
+        published = client.get(
+            f"{DEPENDENCY}/workflows/{definition_id}/tasks", headers=tokens["dev"],
+            params={"project_id": owned_id, "workflow_version": 1},
+        )
+        assert [item["task_id"] for item in published.json()["data"]] == ["published"]
     finally:
         client.__exit__(None, None, None)
 

@@ -174,7 +174,17 @@ def build_dependency_router(
                         WorkflowVersionRecord.definition_id == workflow_id,
                         WorkflowVersionRecord.version == workflow_version,
                     ))
-                    version_id = version.id if version else None
+                    # An explicitly requested, missing version must not fall
+                    # back to draft (version_id IS NULL) nodes.  Besides
+                    # returning misleading candidates, that fallback could
+                    # expose another workflow's unpublished task shape to a
+                    # dependency form.  Keep the project-scoped definition
+                    # check above and make an unknown version an honest empty
+                    # result.
+                    if version is None:
+                        return {"code": 0, "msg": "success", "data": []}
+                    else:
+                        version_id = version.id
                 query = select(WorkflowNodeRecord).where(WorkflowNodeRecord.definition_id == workflow_id)
                 query = query.where(
                     WorkflowNodeRecord.version_id == version_id
