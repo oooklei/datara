@@ -13,6 +13,9 @@ const produced = ref(0)
 const fuseKey = ref('id')
 const fuseStreams = ref('{"orders":[{"id":1,"amount":10}],"customers":[{"id":1,"name":"Ada"}]}')
 const fused = ref(0)
+const aggregateKey = ref('partition')
+const aggregateValue = ref('value')
+const aggregateWindow = ref(10)
 
 watch(() => props.jobId, (value) => {
   // Project/workflow navigation can reuse this component; never retain the
@@ -31,7 +34,11 @@ async function produce() {
   loading.value = true
   error.value = ''
   try {
-    const result = await api.produceStreamEvents(jobId.value.trim(), { count: count.value, payload: { kind: 'sample', amount: 1 } })
+    const result = await api.produceStreamEvents(jobId.value.trim(), {
+      count: count.value,
+      payload: { kind: 'sample', amount: 1 },
+      aggregate: { keyField: aggregateKey.value.trim() || 'partition', valueField: aggregateValue.value.trim() || 'value', windowSize: Math.max(1, Math.min(10000, Math.trunc(Number(aggregateWindow.value) || 1))) },
+    })
     produced.value += result.produced
     await refresh()
   } catch (cause) { error.value = cause instanceof Error ? cause.message : '生产失败' }
@@ -84,6 +91,11 @@ async function refresh() {
       <label>生产条数<input v-model.number="count" type="number" min="1" max="10000" /></label>
       <button type="button" :disabled="loading || !jobId" data-stream-produce @click="produce">生产事件</button>
     </div>
+    <div class="stream-aggregate" data-stream-aggregate>
+      <label>聚合键<input v-model="aggregateKey" data-stream-aggregate-key /></label>
+      <label>聚合值<input v-model="aggregateValue" data-stream-aggregate-value /></label>
+      <label>窗口<input v-model.number="aggregateWindow" type="number" min="1" data-stream-aggregate-window /></label>
+    </div>
     <div class="stream-fuse" data-stream-fuse>
       <label>融合键<input v-model="fuseKey" data-stream-fuse-key /></label>
       <label>流数据 JSON<textarea v-model="fuseStreams" rows="2" data-stream-fuse-streams /></label>
@@ -103,5 +115,5 @@ async function refresh() {
 </template>
 
 <style scoped>
-.stream-observation{padding:10px 14px;border-top:1px solid var(--border-color,#e2e8f0);background:#f8fafc;display:grid;gap:8px}.stream-observation header,.stream-controls,.stream-fuse,.stream-metrics{display:flex;align-items:center;gap:10px;flex-wrap:wrap}.stream-observation label{display:flex;align-items:center;gap:5px;font-size:12px}.stream-observation input{width:110px;padding:5px}.stream-fuse textarea{width:320px;min-height:34px;font:11px monospace}.stream-metrics span,.stream-fuse span{padding:4px 8px;background:#fff;border:1px solid #dbe3ef;border-radius:5px;font-size:12px}.error{color:#b91c1c;margin:0}
+.stream-observation{padding:10px 14px;border-top:1px solid var(--border-color,#e2e8f0);background:#f8fafc;display:grid;gap:8px}.stream-observation header,.stream-controls,.stream-aggregate,.stream-fuse,.stream-metrics{display:flex;align-items:center;gap:10px;flex-wrap:wrap}.stream-observation label{display:flex;align-items:center;gap:5px;font-size:12px}.stream-observation input{width:110px;padding:5px}.stream-fuse textarea{width:320px;min-height:34px;font:11px monospace}.stream-metrics span,.stream-fuse span{padding:4px 8px;background:#fff;border:1px solid #dbe3ef;border-radius:5px;font-size:12px}.error{color:#b91c1c;margin:0}
 </style>

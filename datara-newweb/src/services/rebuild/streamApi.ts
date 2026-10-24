@@ -110,6 +110,7 @@ export interface StreamProduceRequest {
   eventTime?: string
   payload?: Record<string, unknown>
   schema?: Record<string, string>
+  aggregate?: { keyField: string; valueField: string; windowSize: number }
 }
 
 export interface StreamProduceResult {
