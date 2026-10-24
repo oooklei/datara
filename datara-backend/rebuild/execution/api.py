@@ -10,6 +10,7 @@
 
 from __future__ import annotations
 
+import json
 from contextlib import contextmanager
 from datetime import datetime
 from typing import Any, Callable, Iterator
@@ -309,8 +310,14 @@ def build_execution_router(
                 _resolve_instance_project(outcome, instance_id, project_id)
                 instance = ExecutionRepository(outcome).transition_workflow_instance(instance_id, status)
                 if instance.status in {"SUCCEEDED", "FAILED", "CANCELLED", "CANCEL_FAILED", "STOPPED", "SKIPPED"}:
-                    RunStatisticsService(outcome).finalize(instance.id)
-                outcome.commit()
+                    outcome.commit()
+                    try:
+                        RunStatisticsService(outcome).finalize(instance.id)
+                        outcome.commit()
+                    except Exception:
+                        outcome.rollback()
+                else:
+                    outcome.commit()
                 data = {"instance_id": instance.id, "instance_type": instance.instance_type, "status": instance.status}
             except ExecutionDomainError as exc:
                 outcome.rollback()
@@ -438,8 +445,11 @@ def build_execution_router(
             source_count = body.get("source_count")
             target_count = body.get("target_count")
             reconcile_details = body.get("reconcile_details")
+            data_param = body.get("data_param")
             if reconcile_details is not None and not isinstance(reconcile_details, list):
                 raise MalformedRequest("reconcile_details must be an array or null")
+            if data_param is not None and not isinstance(data_param, dict):
+                raise MalformedRequest("data_param must be an object or null")
         except MalformedRequest as exc:
             return request_error(exc)
         with authorized_session(project_id, Permission.RUN_INSTANCE, token, authorization) as outcome:
@@ -457,6 +467,7 @@ def build_execution_router(
                     source_count=source_count,
                     target_count=target_count,
                     reconcile_details=reconcile_details,
+                    data_param=data_param,
                 )
                 outcome.commit()
             except ExecutionDomainError as exc:
@@ -471,8 +482,6 @@ def build_execution_router(
             "workflow_id": record.workflow_id,
             "workflow_version_id": record.workflow_version_id,
             "workflow_instance_id": record.workflow_instance_id,
-            "task_instance_id": record.task_instance_id,
-            "attempt_no": record.attempt_no,
             "instance_type": record.instance_type,
             "status": record.status,
             "source_count": record.source_count,
@@ -480,6 +489,14 @@ def build_execution_router(
             "success_count": record.success_count,
             "failure_count": record.failure_count,
             "skipped_count": record.skipped_count,
+            "total_count": record.total_count,
+            "dag_name": record.dag_name,
+            "data_param": json.loads(record.data_param_json) if record.data_param_json else None,
+            "started_at": record.started_at.isoformat(),
+            "finished_at": record.finished_at.isoformat() if record.finished_at else None,
+            "created_at": record.created_at.isoformat(),
+            "updated_at": record.updated_at.isoformat(),
+            "generated_at": record.generated_at.isoformat(),
         }
 
     @router.get("/run-stats")
@@ -487,6 +504,10 @@ def build_execution_router(
         project_id: int,
         workflow_id: int | None = None,
         workflow_instance_id: int | None = None,
+        instance_type: str | None = None,
+        status: str | None = None,
+        started_from: datetime | None = None,
+        started_to: datetime | None = None,
         offset: int = Query(default=0, ge=0),
         limit: int = Query(default=50, ge=1, le=200),
         token: str = Header(default=""),
@@ -497,7 +518,8 @@ def build_execution_router(
                 return outcome
             rows, total = RunStatisticsService(outcome).list(
                 project_id, workflow_id=workflow_id, workflow_instance_id=workflow_instance_id,
-                offset=offset, limit=limit,
+                instance_type=instance_type, status=status, started_from=started_from,
+                started_to=started_to, offset=offset, limit=limit,
             )
             data = {"total": total, "items": [_stat_payload(row) for row in rows]}
         return {"code": 0, "msg": "success", "data": data}
@@ -506,6 +528,8 @@ def build_execution_router(
     def get_run_stat(
         stat_id: int,
         project_id: int,
+        detail_offset: int = Query(default=0, ge=0),
+        detail_limit: int = Query(default=100, ge=1, le=200),
         token: str = Header(default=""),
         authorization: str = Header(default=""),
     ):
@@ -513,7 +537,8 @@ def build_execution_router(
             if isinstance(outcome, JSONResponse):
                 return outcome
             try:
-                record, details = RunStatisticsService(outcome).get(stat_id, project_id)
+                record, details, detail_total = RunStatisticsService(outcome).get(
+                    stat_id, project_id, detail_offset=detail_offset, detail_limit=detail_limit)
                 data = _stat_payload(record)
                 data["details"] = [{
                     "source_object": row.source_object,
@@ -525,6 +550,7 @@ def build_execution_router(
                     "skipped_count": row.skipped_count,
                     "difference_count": row.difference_count,
                 } for row in details]
+                data["detail_total"] = detail_total
             except ExecutionDomainError as exc:
                 return request_error(exc)
         return {"code": 0, "msg": "success", "data": data}
@@ -638,8 +664,12 @@ def build_execution_router(
             try:
                 repo = ExecutionRepository(outcome)
                 record = repo.transition_workflow_instance(instance_id, "CANCELLED")
-                RunStatisticsService(outcome).finalize(record.id)
                 outcome.commit()
+                try:
+                    RunStatisticsService(outcome).finalize(record.id)
+                    outcome.commit()
+                except Exception:
+                    outcome.rollback()
                 data = {
                     "instance_id": record.id,
                     "status": record.status,

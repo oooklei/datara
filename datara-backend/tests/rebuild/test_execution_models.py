@@ -73,5 +73,5 @@ def test_run_stat_is_one_row_per_instance_with_bigint_checked_counts():
                for constraint in table.constraints if isinstance(constraint, UniqueConstraint))
     for name in ("source_count", "target_count", "success_count", "failure_count", "skipped_count", "total_count"):
         assert isinstance(table.columns[name].type, BigInteger)
-    assert {"dag_name", "data_param_json", "total_count"} <= set(table.columns)
+    assert {"dag_name", "data_param_json", "total_count"} <= set(table.columns.keys())
     assert len([constraint for constraint in table.constraints if isinstance(constraint, CheckConstraint)]) >= 4

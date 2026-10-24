@@ -191,12 +191,16 @@ def test_run_statistics_list_and_detail_are_project_scoped():
                 workflow_instance_id=instance.id, attempt_no=0,
                 source_count=5, target_count=4, success_count=4, failed_count=1, skipped_count=0,
             )
+            ExecutionRepository(session).transition_workflow_instance(instance.id, "RUNNING")
+            ExecutionRepository(session).transition_workflow_instance(instance.id, "FAILED")
+            from rebuild.execution.run_stats import RunStatisticsService
+            RunStatisticsService(session).finalize(instance.id)
             session.commit()
         listing = client.get(f"{EXEC}/run-stats", headers=tokens["dev"], params={"project_id": project_id})
         assert listing.status_code == 200
         assert listing.json()["data"]["total"] == 1
         item = listing.json()["data"]["items"][0]
-        assert (item["source_count"], item["failure_count"], item["attempt_no"]) == (5, 1, 0)
+        assert (item["source_count"], item["failure_count"]) == (5, 1)
         detail = client.get(
             f"{EXEC}/run-stats/{item['id']}", headers=tokens["dev"], params={"project_id": project_id}
         )

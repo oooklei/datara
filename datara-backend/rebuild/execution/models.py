@@ -30,7 +30,18 @@ result contract, never derived from logs).
 
 from datetime import datetime
 
-from sqlalchemy import DateTime, ForeignKey, Index, Integer, String, Text, UniqueConstraint, func
+from sqlalchemy import (
+    BigInteger,
+    CheckConstraint,
+    DateTime,
+    ForeignKey,
+    Index,
+    Integer,
+    String,
+    Text,
+    UniqueConstraint,
+    func,
+)
 from sqlalchemy.orm import Mapped, mapped_column
 
 from rebuild.common.db import Base
@@ -146,7 +157,16 @@ class ExecutionEventRecord(RunTimestampsMixin, Base):
     """execution_event — append-only run event stream; doubles as the §5.4 stat receipt."""
 
     __tablename__ = "execution_event"
-    __table_args__ = (Index("x_ee_instance_kind", "workflow_instance_id", "event_kind"),)
+    __table_args__ = (
+        Index("x_ee_instance_kind", "workflow_instance_id", "event_kind"),
+        UniqueConstraint(
+            "workflow_instance_id",
+            "task_instance_id",
+            "attempt_no",
+            "event_kind",
+            name="uq_ee_result_receipt",
+        ),
+    )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     workflow_instance_id: Mapped[int] = mapped_column(Integer, nullable=False)
@@ -162,11 +182,14 @@ class WorkflowRunStatRecord(RunTimestampsMixin, Base):
 
     __tablename__ = "workflow_run_stat"
     __table_args__ = (
-        UniqueConstraint(
-            "workflow_instance_id", "task_identity", "attempt_no", name="uq_wrs_instance_task_attempt"
-        ),
+        UniqueConstraint("workflow_instance_id", name="uq_wrs_workflow_instance"),
         Index("x_wrs_project_created", "project_id", "created_at"),
-        Index("x_wrs_workflow_instance", "workflow_id", "workflow_instance_id"),
+        Index("x_wrs_workflow_started", "workflow_id", "started_at"),
+        Index("x_wrs_type_started", "instance_type", "started_at"),
+        CheckConstraint("success_count >= 0", name="ck_wrs_success_nonnegative"),
+        CheckConstraint("failure_count >= 0", name="ck_wrs_failure_nonnegative"),
+        CheckConstraint("skipped_count >= 0", name="ck_wrs_skipped_nonnegative"),
+        CheckConstraint("total_count = success_count + failure_count", name="ck_wrs_total_consistent"),
     )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
@@ -176,17 +199,17 @@ class WorkflowRunStatRecord(RunTimestampsMixin, Base):
     workflow_instance_id: Mapped[int] = mapped_column(
         ForeignKey("workflow_instance.id", ondelete="CASCADE"), nullable=False
     )
-    task_instance_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
-    task_identity: Mapped[str] = mapped_column(String(64), nullable=False)
-    attempt_no: Mapped[int] = mapped_column(Integer, nullable=False)
     instance_type: Mapped[str] = mapped_column(String(16), nullable=False)
     status: Mapped[str] = mapped_column(String(16), nullable=False)
-    source_count: Mapped[int | None] = mapped_column(Integer, nullable=True)
-    target_count: Mapped[int | None] = mapped_column(Integer, nullable=True)
-    success_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
-    failure_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
-    skipped_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
-    started_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    dag_name: Mapped[str] = mapped_column(String(256), nullable=False)
+    data_param_json: Mapped[str | None] = mapped_column(Text, nullable=True)
+    source_count: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
+    target_count: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
+    success_count: Mapped[int] = mapped_column(BigInteger, nullable=False, server_default="0")
+    failure_count: Mapped[int] = mapped_column(BigInteger, nullable=False, server_default="0")
+    skipped_count: Mapped[int] = mapped_column(BigInteger, nullable=False, server_default="0")
+    total_count: Mapped[int] = mapped_column(BigInteger, nullable=False, server_default="0")
+    started_at: Mapped[datetime] = mapped_column(DateTime, nullable=False)
     finished_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
 
 
@@ -200,17 +223,18 @@ class WorkflowRunReconcileDetailRecord(RunTimestampsMixin, Base):
     )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
-    run_stat_id: Mapped[int] = mapped_column(
-        ForeignKey("workflow_run_stat.id", ondelete="CASCADE"), nullable=False
-    )
+    run_stat_id: Mapped[int] = mapped_column(ForeignKey("workflow_run_stat.id", ondelete="CASCADE"), nullable=False)
     source_object: Mapped[str] = mapped_column(String(256), nullable=False)
     target_object: Mapped[str] = mapped_column(String(256), nullable=False)
-    source_count: Mapped[int | None] = mapped_column(Integer, nullable=True)
-    target_count: Mapped[int | None] = mapped_column(Integer, nullable=True)
-    success_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
-    failure_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
-    skipped_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
-    difference_count: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    source_count: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
+    target_count: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
+    success_count: Mapped[int] = mapped_column(BigInteger, nullable=False, server_default="0")
+    failure_count: Mapped[int] = mapped_column(BigInteger, nullable=False, server_default="0")
+    skipped_count: Mapped[int] = mapped_column(BigInteger, nullable=False, server_default="0")
+    difference_count: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
+    data_param_json: Mapped[str | None] = mapped_column(Text, nullable=True)
+    started_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
 
 
 EXECUTION_TABLES = (

@@ -313,8 +313,8 @@ def test_record_result_stat_distinct_attempts_accumulate_separately():
         success_count=3, failed_count=5, skipped_count=2,
     )
     (aggregate,) = _scalars(session, WorkflowResultStatRecord)
-    # Retries stay traceable per attempt (§9) and the aggregate never double counts one attempt.
-    assert (aggregate.success_count, aggregate.failure_count, aggregate.skipped_count) == (13, 5, 2)
+    # The latest reported retry replaces the older contribution; attempts remain in the event ledger.
+    assert (aggregate.success_count, aggregate.failure_count, aggregate.skipped_count) == (3, 5, 2)
 
 
 def test_record_result_stat_task_level_and_workflow_level_are_independent():

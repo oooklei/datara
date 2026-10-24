@@ -223,6 +223,7 @@ class ExecutionRepository:
         source_count: int | None = None,
         target_count: int | None = None,
         reconcile_details: list[dict[str, Any]] | None = None,
+        data_param: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         """Idempotent result-stat write-back aligned with the metrics workflow_result_stat fields.
 
@@ -260,7 +261,8 @@ class ExecutionRepository:
             receipt_filter.append(ExecutionEventRecord.task_instance_id.is_(None))
         else:
             receipt_filter.append(ExecutionEventRecord.task_instance_id == task_instance_id)
-        if self._session.scalar(select(ExecutionEventRecord.id).where(*receipt_filter)) is not None:
+        receipt = self._session.scalar(select(ExecutionEventRecord).where(*receipt_filter))
+        if receipt is not None and instance.instance_type != "STREAM":
             return {
                 "recorded": False,
                 "duplicate": True,
@@ -268,51 +270,54 @@ class ExecutionRepository:
                 "attempt_no": attempt_no,
             }
 
-        run_date = instance.created_at.date()
-        if instance.instance_type != "TRIAL":
-            aggregate = self._session.scalar(
-                select(WorkflowResultStatRecord).where(
-                    WorkflowResultStatRecord.workflow_id == instance.workflow_id,
-                    WorkflowResultStatRecord.run_date == run_date,
-                )
-            )
-            if aggregate is None:
-                self._session.add(
-                    WorkflowResultStatRecord(
-                        workflow_id=instance.workflow_id,
-                        run_date=run_date,
-                        success_count=success_count,
-                        failure_count=failed_count,
-                        skipped_count=skipped_count,
-                    )
-                )
-            else:
-                self._session.execute(
-                    update(WorkflowResultStatRecord)
-                    .where(WorkflowResultStatRecord.id == aggregate.id)
-                    .values(
-                        success_count=WorkflowResultStatRecord.success_count + success_count,
-                        failure_count=WorkflowResultStatRecord.failure_count + failed_count,
-                        skipped_count=WorkflowResultStatRecord.skipped_count + skipped_count,
-                        updated_at=func.current_timestamp(),
-                    )
-                )
+        prior_filter = [
+            ExecutionEventRecord.event_kind == RESULT_STAT_EVENT_KIND,
+            ExecutionEventRecord.workflow_instance_id == workflow_instance_id,
+        ]
+        prior_filter.append(ExecutionEventRecord.task_instance_id.is_(None) if task_instance_id is None
+                            else ExecutionEventRecord.task_instance_id == task_instance_id)
+        prior = self._session.scalar(select(ExecutionEventRecord).where(*prior_filter).order_by(
+            ExecutionEventRecord.attempt_no.desc(), ExecutionEventRecord.id.desc()))
+        prior_payload = json.loads(prior.payload_json) if prior is not None and prior.payload_json else {}
+
         event_payload = {
             **reported,
             "source_count": source_count,
             "target_count": target_count,
-            "reconcile_details": reconcile_details or [],
+            "reconcile_details": reconcile_details,
+            "data_param": data_param,
         }
-        self._session.add(
-            ExecutionEventRecord(
+        if receipt is None:
+            receipt = ExecutionEventRecord(
                 workflow_instance_id=workflow_instance_id,
                 task_instance_id=task_instance_id,
                 attempt_no=attempt_no,
                 event_kind=RESULT_STAT_EVENT_KIND,
                 payload_json=json.dumps(event_payload, ensure_ascii=False, sort_keys=True),
             )
-        )
+            self._session.add(receipt)
+        else:
+            receipt.payload_json = json.dumps(event_payload, ensure_ascii=False, sort_keys=True)
         self._session.flush()
+        if instance.instance_type != "TRIAL" and (prior is None or attempt_no >= (prior.attempt_no or 0)):
+            previous = {name: int(prior_payload.get(name, 0)) for name in reported}
+            deltas = {name: reported[name] - previous[name] for name in reported}
+            aggregate = self._session.scalar(select(WorkflowResultStatRecord).where(
+                WorkflowResultStatRecord.workflow_id == instance.workflow_id,
+                WorkflowResultStatRecord.run_date == instance.created_at.date()))
+            if aggregate is None:
+                aggregate = WorkflowResultStatRecord(
+                    workflow_id=instance.workflow_id, run_date=instance.created_at.date(),
+                    success_count=reported["success_count"], failure_count=reported["failed_count"],
+                    skipped_count=reported["skipped_count"])
+                self._session.add(aggregate)
+            else:
+                self._session.execute(update(WorkflowResultStatRecord).where(
+                    WorkflowResultStatRecord.id == aggregate.id).values(
+                    success_count=WorkflowResultStatRecord.success_count + deltas["success_count"],
+                    failure_count=WorkflowResultStatRecord.failure_count + deltas["failed_count"],
+                    skipped_count=WorkflowResultStatRecord.skipped_count + deltas["skipped_count"],
+                    updated_at=func.current_timestamp()))
         # Definitions are mandatory in API/runtime flows. A conditional keeps
         # the lower-level historical repository tests (which use detached IDs)
         # backwards compatible while all real workflow reports are persisted.
@@ -321,7 +326,8 @@ class ExecutionRepository:
         has_definitions = bind is not None and bind.dialect.has_table(
             self._session.connection(), WorkflowDefinitionRecord.__tablename__
         )
-        if has_definitions and self._session.get(WorkflowDefinitionRecord, instance.workflow_id) is not None:
+        if (instance.instance_type == "STREAM" and has_definitions
+                and self._session.get(WorkflowDefinitionRecord, instance.workflow_id) is not None):
             from rebuild.execution.run_stats import RunStatisticsService
             RunStatisticsService(self._session).upsert(
                 instance,
@@ -334,13 +340,14 @@ class ExecutionRepository:
                 skipped_count=skipped_count,
                 reconcile_details=reconcile_details,
                 stream_checkpoint=instance.instance_type == "STREAM",
+                data_param=data_param,
             )
         return {
             "recorded": True,
             "duplicate": False,
             "isolated": instance.instance_type == "TRIAL",
             "workflow_id": instance.workflow_id,
-            "run_date": run_date.isoformat(),
+            "run_date": instance.created_at.date().isoformat(),
             "attempt_no": attempt_no,
         }
 

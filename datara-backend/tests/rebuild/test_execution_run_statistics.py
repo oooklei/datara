@@ -1,4 +1,4 @@
-"""Execution-owned, log-independent per-attempt run statistics."""
+"""Execution-owned, log-independent per-instance run statistics."""
 
 import pytest
 from sqlalchemy import create_engine, select
@@ -65,6 +65,11 @@ def test_reconcile_detail_and_all_counts_reject_bool_or_negative():
         "source_count": 2, "target_count": 1, "success_count": 1,
         "failure_count": 0, "skipped_count": 0,
     }])
+    repo.transition_attempt(attempt.id, "RUNNING")
+    repo.transition_attempt(attempt.id, "SUCCEEDED")
+    repo.transition_workflow_instance(instance.id, "RUNNING")
+    repo.transition_workflow_instance(instance.id, "SUCCEEDED")
+    RunStatisticsService(session).finalize(instance.id)
     detail = session.scalar(select(WorkflowRunReconcileDetailRecord))
     assert detail is not None and detail.difference_count == -1
 
@@ -110,6 +115,9 @@ def test_list_and_detail_are_project_scoped_and_do_not_read_logs():
     repo.record_result_stat(workflow_instance_id=instance.id, attempt_no=0,
                             success_count=3, failed_count=1, skipped_count=0)
     service = RunStatisticsService(session)
+    repo.transition_workflow_instance(instance.id, "RUNNING")
+    repo.transition_workflow_instance(instance.id, "FAILED")
+    service.finalize(instance.id)
     rows, total = service.list(9)
     assert total == 1 and rows[0].workflow_instance_id == instance.id
     assert service.get(rows[0].id, 9)[0].id == rows[0].id
