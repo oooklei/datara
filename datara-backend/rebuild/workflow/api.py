@@ -184,15 +184,18 @@ def build_workflow_router(
             project_id = frame_int(body, "project_id")
             name = frame_optional_str(body, "name")
             description = frame_optional_str(body, "description")
-            if name is None and description is None:
-                raise MalformedRequest("name or description is required")
+            workflow_type = frame_optional_str(body, "workflow_type")
+            if name is None and description is None and workflow_type is None:
+                raise MalformedRequest("name, description, or workflow_type is required")
         except MalformedRequest as exc:
             return request_error(exc)
         with authorized_session(project_id, Permission.EDIT_DEFINITION, token, authorization) as outcome:
             if isinstance(outcome, JSONResponse):
                 return outcome
             try:
-                data = WorkflowRepository(outcome).update_definition(project_id, definition_id, name, description)
+                data = WorkflowRepository(outcome).update_definition(
+                    project_id, definition_id, name, description, workflow_type
+                )
                 outcome.commit()
             except WorkflowDomainError as exc:
                 return request_error(exc)

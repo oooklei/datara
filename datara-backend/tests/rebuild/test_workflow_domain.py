@@ -521,6 +521,19 @@ def test_legacy_node_is_readable_and_position_updatable_but_cannot_be_created_or
         assert updated.status_code == 200
         assert updated.json()["data"]["position_x"] == 20
 
+        hidden = client.post(
+            f"{WORKFLOWS}/{definition_id}/nodes",
+            headers=tokens["dev"],
+            json={
+                "project_id": owned_id,
+                "node_code": "legacy_sql",
+                "node_type": "SQL",
+                "params": {"nested": {"tenantId": "caller-controlled"}},
+            },
+        )
+        assert hidden.status_code == 400
+        assert hidden.json()["code"] == "WF_HIDDEN_INPUT_WRITE"
+
         created = client.post(
             f"{WORKFLOWS}/{definition_id}/nodes",
             headers=tokens["dev"],
@@ -532,6 +545,42 @@ def test_legacy_node_is_readable_and_position_updatable_but_cannot_be_created_or
         published = _publish(client, tokens["dev"], owned_id, definition_id)
         assert published.status_code == 400
         assert published.json()["code"] == "WF_LEGACY_NODE_PUBLISH_FORBIDDEN"
+    finally:
+        client.__exit__(None, None, None)
+
+
+def test_legacy_sync_definition_can_be_reclassified_but_incompatible_design_nodes_block_change():
+    client, app, owned_id, _other_id, tokens = _client()
+    try:
+        definition_id = _create(client, tokens["dev"], owned_id, name="legacy-sync").json()["data"][
+            "definition_id"
+        ]
+        with app.state.session_factory() as session:
+            session.add(
+                WorkflowNodeRecord(
+                    definition_id=definition_id,
+                    version_id=None,
+                    node_code="legacy_sync",
+                    node_type="SYNC",
+                    name="legacy sync",
+                    params_json="{}",
+                )
+            )
+            session.commit()
+        changed = client.post(
+            f"{WORKFLOWS}/{definition_id}/updates",
+            headers=tokens["dev"],
+            json={"project_id": owned_id, "workflow_type": "SYNC"},
+        )
+        assert changed.status_code == 200
+        assert changed.json()["data"]["workflow_type"] == "SYNC"
+        incompatible = client.post(
+            f"{WORKFLOWS}/{definition_id}/updates",
+            headers=tokens["dev"],
+            json={"project_id": owned_id, "workflow_type": "NORMAL"},
+        )
+        assert incompatible.status_code == 400
+        assert incompatible.json()["code"] == "WF_WORKFLOW_TYPE_MISMATCH"
     finally:
         client.__exit__(None, None, None)
 

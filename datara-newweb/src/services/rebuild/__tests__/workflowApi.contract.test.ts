@@ -197,6 +197,10 @@ describe('INC4-FE-6 workflowApi 六模型扩容契约', () => {
     await updateWorkflowDefinition(7, 42, { name: 'n', description: 'd' })
     const [, init3] = fetchMock.mock.calls[2] as [string, RequestInit]
     expect(init3.body).toBe(JSON.stringify({ project_id: 7, name: 'n', description: 'd' }))
+
+    await updateWorkflowDefinition(7, 42, { workflowType: 'SYNC' })
+    const [, init4] = fetchMock.mock.calls[3] as [string, RequestInit]
+    expect(init4.body).toBe(JSON.stringify({ project_id: 7, workflow_type: 'SYNC' }))
   })
 
   it('node upsert：POST /{id}/nodes body 六键显式携带（null 直传）+ wire→camel 回程', async () => {

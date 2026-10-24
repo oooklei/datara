@@ -23,7 +23,7 @@ Design source (frozen): docs/increments/2026-10-14-datara-platform-rebuild-desig
 
 from datetime import datetime
 
-from sqlalchemy import Boolean, DateTime, Integer, String, Text, UniqueConstraint, func
+from sqlalchemy import Boolean, CheckConstraint, DateTime, Integer, String, Text, UniqueConstraint, func
 from sqlalchemy.orm import Mapped, mapped_column
 
 from rebuild.common.db import Base
@@ -33,7 +33,10 @@ class WorkflowDefinitionRecord(Base):
     """workflow_definition — per project workflow with editing draft metadata."""
 
     __tablename__ = "workflow_definition"
-    __table_args__ = (UniqueConstraint("project_id", "name", name="uq_workflow_definition_name"),)
+    __table_args__ = (
+        UniqueConstraint("project_id", "name", name="uq_workflow_definition_name"),
+        CheckConstraint("workflow_type IN ('NORMAL','SYNC','STREAM')", name="ck_workflow_definition_type"),
+    )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     project_id: Mapped[int] = mapped_column(Integer, nullable=False, index=True)

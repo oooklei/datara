@@ -288,16 +288,17 @@ export async function getWorkflowDefinition(
   return { ...mapDefInfo(wire), draft: mapDraft(wire.draft) }
 }
 
-/** 更新定义（POST /{definition_id}/updates；两项全缺 → 后端 400/4001，调用方至少传一项） */
+/** 更新定义（POST /{definition_id}/updates；名称、描述、类型至少传一项） */
 export async function updateWorkflowDefinition(
   projectId: number,
   definitionId: number,
-  patch: { name?: string; description?: string },
+  patch: { name?: string; description?: string; workflowType?: WorkflowType },
 ): Promise<WorkflowDefinitionInfo> {
   const wire = await postJson<WorkflowDefinitionWire>(`/rebuild/workflows/${definitionId}/updates`, {
     project_id: projectId,
     ...(patch.name !== undefined ? { name: patch.name } : {}),
     ...(patch.description !== undefined ? { description: patch.description } : {}),
+    ...(patch.workflowType !== undefined ? { workflow_type: patch.workflowType } : {}),
   })
   return mapDefInfo(wire)
 }

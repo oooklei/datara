@@ -175,7 +175,12 @@ class WorkflowRepository:
         return self._definition_payload(record, include_draft=True)
 
     def update_definition(
-        self, project_id: int, definition_id: int, name: str | None = None, description: str | None = None
+        self,
+        project_id: int,
+        definition_id: int,
+        name: str | None = None,
+        description: str | None = None,
+        workflow_type: str | None = None,
     ) -> dict[str, Any]:
         record = self._definition(project_id, definition_id)
         if name is not None and name != record.name:
@@ -190,6 +195,24 @@ class WorkflowRepository:
             record.name = name
         if description is not None:
             record.description = description
+        if workflow_type is not None:
+            workflow_type = "NORMAL" if workflow_type == "ETL" else workflow_type
+            if workflow_type not in WORKFLOW_TYPES:
+                raise WorkflowDomainError("WF_WORKFLOW_TYPE_INVALID", "workflow_type must be NORMAL, SYNC, or STREAM")
+            draft_nodes = self._draft_nodes(definition_id)
+            incompatible = [
+                node.node_type
+                for node in draft_nodes
+                if (kind := _kind_for_component(node.node_type)) is not None and kind != workflow_type
+            ]
+            if workflow_type != "SYNC" and any(node.node_type == "SYNC" for node in draft_nodes):
+                incompatible.append("SYNC")
+            if incompatible:
+                raise WorkflowDomainError(
+                    "WF_WORKFLOW_TYPE_MISMATCH",
+                    f"draft contains components incompatible with {workflow_type}: {sorted(set(incompatible))}",
+                )
+            record.workflow_type = workflow_type
         self._session.flush()
         return self._definition_payload(record, include_draft=False)
 
@@ -261,12 +284,11 @@ class WorkflowRepository:
                 "WF_WORKFLOW_TYPE_MISMATCH", f"{node_type} cannot be mixed with {sorted(existing_kinds)} components"
             )
         params = dict(node.get("params") or {})
-        if node_type in DESIGN_COMPONENT_TYPES:
-            forbidden = _forbidden_hidden_paths(params)
-            if forbidden:
-                raise WorkflowDomainError(
-                    "WF_HIDDEN_INPUT_WRITE", f"executor-owned inputs cannot be saved: {forbidden}"
-                )
+        forbidden = _forbidden_hidden_paths(params)
+        if forbidden:
+            raise WorkflowDomainError(
+                "WF_HIDDEN_INPUT_WRITE", f"executor-owned inputs cannot be saved: {forbidden}"
+            )
         if ref is not None:
             params["_componentRef"] = ref
         values: dict[str, Any] = {
