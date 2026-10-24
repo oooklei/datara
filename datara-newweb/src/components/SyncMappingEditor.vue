@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { reactive, ref } from 'vue'
+import { reactive, ref, watch } from 'vue'
 import { ElMessage } from 'element-plus'
 import { createSyncComponentContract, type SyncMapping, type SyncObjectRef } from '../services/rebuild/syncComponentApi'
 
@@ -13,11 +13,34 @@ const mappings = ref<SyncMapping[]>((props.modelValue?.mappings as SyncMapping[]
 const sourceColumns = ref<string[]>([])
 const targetColumns = ref<string[]>([])
 
+function applyModel(value: Record<string, unknown> | undefined): void {
+  const nextSource = value?.source as SyncObjectRef | undefined
+  const nextTarget = value?.target as SyncObjectRef | undefined
+  Object.assign(source, nextSource ?? { datasource_id: 0, schema: '', object: '' })
+  Object.assign(target, nextTarget ?? { datasource_id: 0, schema: '', object: '' })
+  mappings.value = (value?.mappings as SyncMapping[] | undefined) ?? []
+}
+
+watch(() => props.modelValue, (value) => {
+  applyModel(value)
+  sourceColumns.value = []
+  targetColumns.value = []
+}, { deep: true })
+
+function validRefs(): boolean {
+  if (source.datasource_id < 1 || target.datasource_id < 1 || !source.object.trim() || !target.object.trim()) {
+    ElMessage.error('请完整填写源/目标数据源及对象')
+    return false
+  }
+  return true
+}
+
 function snapshot(): Record<string, unknown> {
   return { source: { ...source }, target: { ...target }, mappings: mappings.value }
 }
 function syncModel() { emit('update:modelValue', snapshot()) }
 async function explore() {
+  if (!validRefs()) return
   busy.value = true
   try {
     const [src, tgt] = await Promise.all([
@@ -32,6 +55,7 @@ async function explore() {
   finally { busy.value = false }
 }
 async function save() {
+  if (!validRefs() || !mappings.value.length) return
   busy.value = true
   try {
     await api.savePlan({

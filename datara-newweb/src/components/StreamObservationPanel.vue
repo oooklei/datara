@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref } from 'vue'
+import { ref, watch } from 'vue'
 import { createStreamContract, type StreamObservation } from '../services/rebuild/streamApi'
 
 const props = defineProps<{ jobId?: string }>()
@@ -11,8 +11,19 @@ const error = ref('')
 const observation = ref<StreamObservation | null>(null)
 const produced = ref(0)
 
+watch(() => props.jobId, (value) => {
+  // Project/workflow navigation can reuse this component; never retain the
+  // previous job id when the parent scope changes.
+  jobId.value = value ?? ''
+  observation.value = null
+  produced.value = 0
+  error.value = ''
+})
+
 async function produce() {
   if (!jobId.value.trim()) return
+  const requested = Math.max(1, Math.min(10000, Math.trunc(Number(count.value) || 1)))
+  count.value = requested
   loading.value = true
   error.value = ''
   try {
@@ -25,7 +36,17 @@ async function produce() {
 
 async function refresh() {
   if (!jobId.value.trim()) return
-  observation.value = await api.queryStreamObservation({ from: new Date(Date.now() - 3600000).toISOString(), to: new Date().toISOString(), limit: 100, offset: 0 }, jobId.value.trim())
+  loading.value = true
+  error.value = ''
+  try {
+    observation.value = await api.queryStreamObservation({ from: new Date(Date.now() - 3600000).toISOString(), to: new Date().toISOString(), limit: 100, offset: 0 }, jobId.value.trim())
+  } catch (cause) {
+    // Refresh is a user-visible operation; avoid an unhandled rejection and
+    // keep the last observation on screen while exposing the failure.
+    error.value = cause instanceof Error ? cause.message : '流观摩刷新失败'
+  } finally {
+    loading.value = false
+  }
 }
 </script>
 
