@@ -25,6 +25,7 @@ from typing import Any, Callable, Iterator
 
 from fastapi import APIRouter, Body, Header, Query
 from fastapi.responses import JSONResponse
+from sqlalchemy import select
 from sqlalchemy.orm import sessionmaker
 
 from rebuild.dependency.repository import (
@@ -36,6 +37,7 @@ from rebuild.dependency.repository import (
     parse_groups,
 )
 from rebuild.identity.contracts import Permission
+from rebuild.workflow.models import WorkflowDefinitionRecord, WorkflowNodeRecord, WorkflowVersionRecord
 
 
 class MalformedRequest(ValueError):
@@ -135,7 +137,16 @@ def build_dependency_router(
             if isinstance(outcome, JSONResponse):
                 return outcome
             # Narrow scope: no workflow registry on main — honest empty list.
-            items: list[dict[str, Any]] = []
+            definitions = outcome.scalars(
+                select(WorkflowDefinitionRecord)
+                .where(WorkflowDefinitionRecord.project_id == project_id)
+                .order_by(WorkflowDefinitionRecord.name, WorkflowDefinitionRecord.id)
+            ).all()
+            items = [
+                {"workflow_id": row.id, "name": row.name, "workflow_type": row.workflow_type,
+                 "latest_version": row.current_version}
+                for row in definitions
+            ]
         return {"code": 0, "msg": "success", "data": items}
 
     # -- 2. listWorkflowTasks: GET ``/workflows/{id}/tasks`` ---------------
@@ -155,7 +166,28 @@ def build_dependency_router(
                 return outcome
             # Narrow scope: task registry lands with the workflow domain; the
             # workflow_version default (latest published) is unenforceable yet.
-            items: list[dict[str, Any]] = []
+            definition = outcome.scalar(select(WorkflowDefinitionRecord).where(
+                WorkflowDefinitionRecord.id == workflow_id,
+                WorkflowDefinitionRecord.project_id == project_id,
+            ))
+            if definition is None:
+                items = []
+            else:
+                version_id = None
+                if workflow_version is not None:
+                    version = outcome.scalar(select(WorkflowVersionRecord).where(
+                        WorkflowVersionRecord.definition_id == workflow_id,
+                        WorkflowVersionRecord.version == workflow_version,
+                    ))
+                    version_id = version.id if version else None
+                query = select(WorkflowNodeRecord).where(WorkflowNodeRecord.definition_id == workflow_id)
+                query = query.where(
+                    WorkflowNodeRecord.version_id == version_id
+                    if version_id is not None
+                    else WorkflowNodeRecord.version_id.is_(None)
+                )
+                nodes = outcome.scalars(query.order_by(WorkflowNodeRecord.node_code)).all()
+                items = [{"task_id": node.node_code, "name": node.name, "node_type": node.node_type} for node in nodes]
         return {"code": 0, "msg": "success", "data": items}
 
     # -- 3. previewExpression: POST ``/preview`` (read-only) ---------------
