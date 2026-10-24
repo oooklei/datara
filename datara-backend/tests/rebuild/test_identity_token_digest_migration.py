@@ -38,6 +38,9 @@ def _create_legacy_table(engine, *, digest_index_sql=""):
 def test_v0004_revision_and_checksum_are_frozen_literals():
     assert v0004_token_digest_hardening.revision == "r3_0004_token_digest_hardening"
     assert v0004_token_digest_hardening.checksum == "dafcd2eadd1c59829a11be05e5a0004566c6d2b90f539135521440859eabc4cb"
+    assert hashlib.sha256(v0004_token_digest_hardening._DDL_MANIFEST.encode()).hexdigest() == (
+        v0004_token_digest_hardening.checksum
+    )
 
 
 @pytest.mark.parametrize(

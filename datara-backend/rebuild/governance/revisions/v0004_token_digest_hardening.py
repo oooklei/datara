@@ -8,10 +8,10 @@ from sqlalchemy import Engine, inspect, text
 
 revision = "r3_0004_token_digest_hardening"
 _DDL_MANIFEST = (
-    "r3_0004 rebuild_active_token: token_digest CHAR(64) primary identity, nullable user_id, "
-    "discard legacy raw token, preserve identity fields and foreign key"
+    "r3_0004 rebuild_active_token: resumable mysql steps, token_digest CHAR(64) primary identity, "
+    "nullable user_id, discard legacy raw token, preserve identity fields and foreign key"
 )
-checksum = "6f965797d9d2aed7ca003ebd89eb31e99624e1db8382120a3a1604f875a6849f"
+checksum = "dafcd2eadd1c59829a11be05e5a0004566c6d2b90f539135521440859eabc4cb"
 
 _TABLE = "rebuild_active_token"
 _INDEX = "ix_rebuild_active_token_token_digest"
@@ -25,12 +25,11 @@ def upgrade(engine: Engine) -> None:
         ActiveTokenRecord.__table__.create(engine, checkfirst=True)
         return
     columns = {column["name"] for column in inspect(engine).get_columns(_TABLE)}
-    if "token" not in columns:
-        return
     if engine.dialect.name == "sqlite":
-        _rebuild_sqlite(engine)
+        if "token" in columns:
+            _rebuild_sqlite(engine)
     elif engine.dialect.name == "mysql":
-        _upgrade_mysql(engine, columns)
+        _upgrade_mysql(engine)
     else:
         raise RuntimeError(f"unsupported token migration dialect: {engine.dialect.name}")
 
@@ -69,32 +68,70 @@ def _rebuild_sqlite(engine: Engine) -> None:
         connection.execute(text(f"CREATE INDEX ix_{_TABLE}_user_id ON {_TABLE} (user_id)"))
 
 
-def _upgrade_mysql(engine: Engine, columns: set[str]) -> None:
-    with engine.begin() as connection:
-        if "token_digest" not in columns:
-            connection.execute(text(f"ALTER TABLE {_TABLE} ADD COLUMN token_digest CHAR(64) NULL"))
-        connection.execute(text(f"UPDATE {_TABLE} SET token_digest = LOWER(SHA2(token, 256))"))
-        connection.execute(text(f"ALTER TABLE {_TABLE} MODIFY user_id INT NULL"))
-        connection.execute(text(f"UPDATE {_TABLE} SET user_id = NULL WHERE user_id = 0"))
-        connection.execute(text(f"ALTER TABLE {_TABLE} MODIFY token_digest CHAR(64) NOT NULL"))
-        connection.execute(text(f"ALTER TABLE {_TABLE} DROP PRIMARY KEY, ADD PRIMARY KEY (token_digest)"))
-        connection.execute(text(f"ALTER TABLE {_TABLE} DROP COLUMN token"))
+def _mysql_upgrade_plan(
+    *,
+    columns: set[str],
+    digest_nullable: bool | None,
+    pk: list[str],
+    index: dict[str, Any] | None,
+    fk: bool,
+) -> list[tuple[str, str]]:
+    actions: list[tuple[str, str]] = []
+    if "token_digest" not in columns:
+        if "token" not in columns:
+            return actions
+        actions.append(("add_digest", f"ALTER TABLE {_TABLE} ADD COLUMN token_digest CHAR(64) NULL"))
+    if "token" in columns:
+        actions.append(("backfill_digest", f"UPDATE {_TABLE} SET token_digest = LOWER(SHA2(token, 256))"))
+    actions.append(("canonicalize_runner", f"UPDATE {_TABLE} SET user_id = NULL WHERE user_id = 0"))
+    if digest_nullable is not False:
+        actions.append(("make_digest_required", f"ALTER TABLE {_TABLE} MODIFY token_digest CHAR(64) NOT NULL"))
+    if pk != ["token_digest"]:
+        primary_key_clause = "ADD PRIMARY KEY (token_digest)"
+        if pk:
+            primary_key_clause = f"DROP PRIMARY KEY, {primary_key_clause}"
+        actions.append((
+            "promote_digest_pk",
+            f"ALTER TABLE {_TABLE} {primary_key_clause}",
+        ))
+    if "token" in columns:
+        actions.append(("drop_raw_token", f"ALTER TABLE {_TABLE} DROP COLUMN token"))
+    if index and (not bool(index.get("unique")) or index.get("column_names") != ["token_digest"]):
+        actions.append(("drop_bad_digest_index", f"DROP INDEX {_INDEX} ON {_TABLE}"))
+        index = None
+    if not index:
+        actions.append(("create_digest_index", f"CREATE UNIQUE INDEX {_INDEX} ON {_TABLE} (token_digest)"))
+    if not fk:
+        actions.append((
+            "create_user_fk",
+            f"ALTER TABLE {_TABLE} ADD CONSTRAINT fk_rebuild_active_token_user_id "
+            "FOREIGN KEY (user_id) REFERENCES rebuild_user (id)",
+        ))
+    return actions
 
-        current = {item["name"]: item for item in inspect(connection).get_indexes(_TABLE)}
-        digest_index = current.get(_INDEX)
-        if digest_index and (
-            not bool(digest_index.get("unique")) or digest_index.get("column_names") != ["token_digest"]
-        ):
-            connection.execute(text(f"DROP INDEX {_INDEX} ON {_TABLE}"))
-            digest_index = None
-        if not digest_index:
-            connection.execute(text(f"CREATE UNIQUE INDEX {_INDEX} ON {_TABLE} (token_digest)"))
-        foreign_keys = inspect(connection).get_foreign_keys(_TABLE)
-        if not any(item.get("constrained_columns") == ["user_id"] for item in foreign_keys):
-            connection.execute(text(
-                f"ALTER TABLE {_TABLE} ADD CONSTRAINT fk_rebuild_active_token_user_id "
-                "FOREIGN KEY (user_id) REFERENCES rebuild_user (id)"
-            ))
+
+def _upgrade_mysql(engine: Engine) -> None:
+    with engine.begin() as connection:
+        inspector = inspect(connection)
+        column_info = {item["name"]: item for item in inspector.get_columns(_TABLE)}
+        indexes = {item["name"]: item for item in inspector.get_indexes(_TABLE)}
+        foreign_keys = inspector.get_foreign_keys(_TABLE)
+        state = {
+            "columns": set(column_info),
+            "digest_nullable": column_info.get("token_digest", {}).get("nullable"),
+            "pk": inspector.get_pk_constraint(_TABLE).get("constrained_columns") or [],
+            "index": indexes.get(_INDEX),
+            "fk": any(
+                item.get("constrained_columns") == ["user_id"]
+                and item.get("referred_table") == "rebuild_user"
+                and item.get("referred_columns") == ["id"]
+                for item in foreign_keys
+            ),
+        }
+        if not bool(column_info.get("user_id", {}).get("nullable")):
+            connection.execute(text(f"ALTER TABLE {_TABLE} MODIFY user_id INT NULL"))
+        for _name, statement in _mysql_upgrade_plan(**state):
+            connection.execute(text(statement))
 
 
 def postflight(engine: Engine) -> dict[str, Any]:
