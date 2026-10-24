@@ -11,7 +11,7 @@ from pathlib import Path
 from typing import Literal
 
 from fastapi import FastAPI, Header, Query
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, Response
 from pydantic import BaseModel
 from sqlalchemy import create_engine, delete, func, inspect, select, text
 from sqlalchemy.engine import make_url
@@ -24,7 +24,7 @@ from rebuild.component_spec import build_component_spec_router
 from rebuild.component_spec.migrations import apply_component_spec_migrations
 from rebuild.common.db import Base
 from rebuild.sql_ide.audit import SqlIdeAuditRecord, build_audit_writer
-from rebuild.sql_ide.export_service import SqlIdeExportAuditRecord, SqlIdeExportJobRecord
+from rebuild.sql_ide.export_service import SqlIdeExportAuditRecord, SqlIdeExportJobRecord, SqlIdeExportService
 from rebuild.sql_ide.execution import build_execution_port
 from rebuild.sql_ide.history_store import SqlIdeHistoryStore
 from rebuild.sql_ide.linter import lint_sql
@@ -427,6 +427,12 @@ def create_app(
         history = SqlIdeHistoryStore(session_factory=session_factory)
         status_store = SqlIdeStatusStore(session_factory=session_factory)
         result_store = PersistentResultPageStore(session_factory=session_factory)
+        def export_service() -> SqlIdeExportService:
+            return SqlIdeExportService(
+                session_factory=session_factory,
+                result_store=result_store,
+                authorize_result=lambda **_: True,
+            )
         def metadata_catalog(payload: Mapping[str, object]):
             datasource_id = int(payload.get("datasource_id", payload.get("datasourceId", 0)) or 0)
             if datasource_id < 1:
@@ -559,6 +565,21 @@ def create_app(
             if not history.delete_history(project_id=project_id, user_id=user_id, history_id=str(payload.get("history_id"))):
                 raise SqlIdeRouteError("HISTORY_NOT_FOUND")
             return {"deleted": True}
+        if operation == "exportResult":
+            return export_service().create_result_export(
+                project_id=project_id, user_id=user_id,
+                history_id=str(payload.get("history_id", payload.get("historyId", ""))),
+                stmt_index=payload.get("stmt_index", payload.get("stmtIndex")),
+                result_set_id=payload.get("result_set_id", payload.get("resultSetId")),
+                format=str(payload.get("format", "csv")),
+            )
+        if operation == "getExport":
+            return export_service().get_job(project_id=project_id, user_id=user_id, export_id=str(payload.get("export_id")))
+        if operation == "downloadExport":
+            body, media_type, filename = export_service().download(project_id=project_id, user_id=user_id, export_id=str(payload.get("export_id")))
+            return Response(content=body, media_type=media_type, headers={"Content-Disposition": f'attachment; filename="{filename}"'})
+        if operation == "cancelExport":
+            return {"cancelled": export_service().cancel(project_id=project_id, user_id=user_id, export_id=str(payload.get("export_id")))}
         raise SqlIdeRouteError("DRIVER_ERROR", message=f"SQL IDE operation {operation} is not wired")
 
     app.state.sql_ide_dispatch = sql_ide_dispatch
