@@ -206,7 +206,7 @@
  * 范式：手写 HTML/CSS（零 element-plus）；编辑器=轻量 textarea
  *   （codemirror 换芯登记候接，不阻塞只读态语义）。
  */
-import { computed, onMounted, ref } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import {
   createSqlIdeContract,
@@ -621,6 +621,11 @@ function refreshVarPreview(): void {
       })
   }
 }
+
+// Keep the variable reference panel in sync with edits made in the SQL editor.
+// Without this watcher the initial empty editor was parsed once on mount and
+// newly typed `${scope.name}` references remained invisible until a remount.
+watch(sqlText, refreshVarPreview)
 
 onMounted(async () => {
   if (projectId.value !== null) selected.value = String(projectId.value)

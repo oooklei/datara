@@ -31,6 +31,7 @@ const spies = vi.hoisted(() => ({
   getDefinition: vi.fn(),
   exportResult: vi.fn(),
   listDatasources: vi.fn(),
+  previewResolution: vi.fn(),
 }))
 
 vi.mock('../../services/rebuild/sqlIdeApi', async (load) => {
@@ -72,7 +73,7 @@ vi.mock('../../services/rebuild/datasourceApi', async (load) => {
 
 vi.mock('../../services/rebuild/variableApi', async (load) => {
   const actual = await load<typeof import('../../services/rebuild/variableApi')>()
-  return { ...actual, createVariableContract: () => ({ previewResolution: vi.fn().mockResolvedValue({ resolvedValue: '42', diagnostics: [] }) }) }
+  return { ...actual, createVariableContract: () => ({ previewResolution: spies.previewResolution }) }
 })
 
 vi.mock('../../services/rebuild/projectApi', async () => {
@@ -101,6 +102,7 @@ beforeEach(() => {
   spies.listColumns.mockResolvedValue({ items: [{ table: 'orders', name: 'id', dataType: 'bigint', nullable: false, key: 'PRI' }], capability: 'supported', constraints: [], page: { nextCursor: null, hasMore: false } })
   spies.listIndexes.mockResolvedValue({ items: [{ table: 'orders', name: 'PRIMARY', columns: ['id'], unique: true }], capability: 'supported', constraints: [], page: { nextCursor: null, hasMore: false } })
   spies.listHistory.mockResolvedValue([])
+  spies.previewResolution.mockResolvedValue({ resolvedValue: '42', diagnostics: [] })
   spies.fetchResultPage.mockResolvedValue({ stmtIndex: 0, resultSetId: 'rs1', columns: ['id'], rows: [[1]], rowsTotal: 1, offset: 0, limit: 50 })
   spies.executeSql.mockResolvedValue({ taskId: 'task-1' })
   spies.openEventStream.mockImplementation(() => ({
@@ -193,6 +195,20 @@ describe('/ide 数据开发 IDE 只读态（增量 11/R5-A）', () => {
     await flushPromises()
     expect(w.find('[data-status]').text()).toContain('执行成功')
     expect(spies.listHistory).toHaveBeenCalledWith(7)
+  })
+
+  it('refreshes variable references and resolution preview when SQL changes', async () => {
+    router.route.params.projectId = '1'
+    const w = mount(View)
+    await flushPromises()
+    await w.find('[data-ds-select]').setValue('7')
+    await flushPromises()
+    await w.find('[data-sql-editor]').setValue('SELECT ${workflow.biz_date}')
+    await flushPromises()
+    expect(w.find('[data-vars]').exists()).toBe(true)
+    expect(w.find('[data-vars]').text()).toContain('$workflow.biz_date')
+    expect(spies.previewResolution).toHaveBeenCalledWith('${workflow.biz_date}', { projectId: 1 })
+    expect(w.find('[data-vars]').text()).toContain('42')
   })
 
   it('cancels a running execution', async () => {
