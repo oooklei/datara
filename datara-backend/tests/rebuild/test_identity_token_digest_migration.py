@@ -11,6 +11,7 @@ from sqlalchemy.orm import Session
 from rebuild.governance.migrations import MigrationApplyError, MigrationRunner, R3_GOVERNANCE_MIGRATIONS
 from rebuild.governance.revisions import v0004_token_digest_hardening
 from rebuild.identity.models import ActiveTokenRecord, UserRecord
+from rebuild.identity.migrations import IDENTITY_MIGRATIONS, apply_identity_migrations
 from rebuild.project.models import ProjectRecord
 
 
@@ -23,6 +24,13 @@ def isolated_engine():
 
 def _v0004_migration():
     return R3_GOVERNANCE_MIGRATIONS[3]
+
+
+def test_identity_startup_registry_runs_only_required_token_revision():
+    assert IDENTITY_MIGRATIONS == (_v0004_migration(),)
+    engine = isolated_engine()
+    _create_legacy_table(engine)
+    assert apply_identity_migrations(engine).applied == ("r3_0004_token_digest_hardening",)
 
 
 def _create_legacy_table(engine, *, digest_index_sql=""):

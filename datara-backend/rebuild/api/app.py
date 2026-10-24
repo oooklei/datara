@@ -32,6 +32,7 @@ from rebuild.sql_ide.execution import build_execution_port
 from rebuild.sql_ide.history_store import SqlIdeHistoryStore
 from rebuild.sql_ide.linter import lint_sql
 from rebuild.sql_ide.migrations import SQL_IDE_MIGRATIONS, SqlIdeMigrationRunner
+from rebuild.identity.migrations import apply_identity_migrations
 from rebuild.sql_ide.routes import SqlIdeRouteError, build_sql_ide_router
 from rebuild.sql_ide.result_store import SqlIdeResultSetRecord
 from rebuild.sql_ide.result_store import PersistentResultPageStore
@@ -411,6 +412,7 @@ def create_app(
             ],
         )
         apply_component_spec_migrations(engine)
+        apply_identity_migrations(engine)
         SqlIdeMigrationRunner(engine, SQL_IDE_MIGRATIONS).apply()
         apply_llm_migrations(engine)
         apply_apikey_migrations(engine)
