@@ -410,23 +410,26 @@ export async function getWorkflowVersion(
   }
 }
 
-/* ---------- 分类目录系（RED：端点缺位） ---------- */
+/* ---------- 分类目录系 ---------- */
 
 export interface WorkflowCategoryRow {
   name: string
   builtin: boolean
 }
 
-export const WF_CATEGORIES_NOT_WIRED =
-  'WF_CATEGORIES_NOT_WIRED: rebuild/workflow categories contract not connected yet'
-
-const notWired = async (): Promise<never> => {
-  throw new Error(WF_CATEGORIES_NOT_WIRED)
-}
-
 export const workflowCategories = {
-  listCategories: (): Promise<WorkflowCategoryRow[]> => notWired(),
-  createCategory: (_name: string): Promise<WorkflowCategoryRow> => notWired(),
-  deleteCategory: (_name: string): Promise<void> => notWired(),
-  setWfTags: (_definitionId: number, _tags: string[]): Promise<void> => notWired(),
+  async listCategories(): Promise<WorkflowCategoryRow[]> {
+    const wire = await getJson<WorkflowCategoryRow[]>('/rebuild/workflows/categories')
+    return Array.isArray(wire) ? wire : []
+  },
+  async createCategory(name: string): Promise<WorkflowCategoryRow> {
+    return postJson<WorkflowCategoryRow>('/rebuild/workflows/categories', { name })
+  },
+  async deleteCategory(idOrName: string): Promise<void> {
+    const id = String(idOrName).replace(/^custom:/, '')
+    await request(`/rebuild/workflows/categories/${encodeURIComponent(id)}`, { method: 'DELETE' })
+  },
+  async setWfTags(definitionId: number, tags: string[]): Promise<void> {
+    await request(`/rebuild/workflows/${definitionId}/tags`, { method: 'PUT', json: { tags } })
+  },
 }

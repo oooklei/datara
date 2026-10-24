@@ -42,6 +42,9 @@ class WorkflowDefinitionRecord(Base):
     project_id: Mapped[int] = mapped_column(Integer, nullable=False, index=True)
     name: Mapped[str] = mapped_column(String(256), nullable=False)
     description: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    # User-facing palette/category labels.  Kept as JSON text for compatibility
+    # with the legacy workflow-definition contract and SQLite test databases.
+    tags_json: Mapped[str] = mapped_column(Text, nullable=False, default="[]", server_default="[]")
     workflow_type: Mapped[str] = mapped_column(String(16), nullable=False, default="NORMAL", server_default="NORMAL")
     # Latest published version number; NULL = never published.
     current_version: Mapped[int | None] = mapped_column(Integer, nullable=True)
@@ -49,6 +52,17 @@ class WorkflowDefinitionRecord(Base):
     updated_at: Mapped[datetime] = mapped_column(
         DateTime, server_default=func.current_timestamp(), server_onupdate=func.current_timestamp()
     )
+
+
+class WorkflowCategoryRecord(Base):
+    """Custom workflow palette categories (built-ins are code-defined)."""
+
+    __tablename__ = "workflow_category"
+    __table_args__ = (UniqueConstraint("name", name="uq_workflow_category_name"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    name: Mapped[str] = mapped_column(String(128), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.current_timestamp())
 
 
 class WorkflowVersionRecord(Base):

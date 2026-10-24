@@ -38,6 +38,7 @@ from sqlalchemy.orm import Session
 from common.models import Component, ComponentVersion
 from rebuild.workflow.models import (
     WorkflowDefinitionRecord,
+    WorkflowCategoryRecord,
     WorkflowEdgeRecord,
     WorkflowNodeRecord,
     WorkflowPublishRecord,
@@ -606,6 +607,7 @@ class WorkflowRepository:
             "description": record.description,
             "workflow_type": "NORMAL" if record.workflow_type == "ETL" else record.workflow_type,
             "current_version": record.current_version,
+            "tags": self.tags(record),
         }
         if include_draft:
             payload["draft"] = {
@@ -613,6 +615,48 @@ class WorkflowRepository:
                 "edges": [self._edge_payload(e) for e in self._draft_edges(record.id)],
             }
         return payload
+
+    @staticmethod
+    def tags(record: WorkflowDefinitionRecord) -> list[str]:
+        try:
+            value = json.loads(record.tags_json or "[]")
+            return [str(item) for item in value if isinstance(item, str) and item.strip()]
+        except (TypeError, ValueError):
+            return []
+
+    def list_categories(self) -> list[dict[str, Any]]:
+        builtins = ("同步", "ETL", "流")
+        rows = [{"id": f"builtin:{name}", "name": name, "builtin": True} for name in builtins]
+        rows.extend({"id": f"custom:{row.id}", "name": row.name, "builtin": False}
+                    for row in self._session.scalars(select(WorkflowCategoryRecord).order_by(WorkflowCategoryRecord.id)).all())
+        return rows
+
+    def create_category(self, name: str) -> dict[str, Any]:
+        name = name.strip()
+        if not name or name in {"同步", "ETL", "流"}:
+            raise WorkflowDomainError("WF_CATEGORY_INVALID", "category name is invalid")
+        if self._session.scalar(select(WorkflowCategoryRecord).where(WorkflowCategoryRecord.name == name)):
+            raise WorkflowDomainError("WF_CATEGORY_EXISTS", "category already exists", 409)
+        row = WorkflowCategoryRecord(name=name)
+        self._session.add(row); self._session.flush()
+        return {"id": f"custom:{row.id}", "name": row.name, "builtin": False}
+
+    def delete_category(self, category_id: int) -> None:
+        row = self._session.get(WorkflowCategoryRecord, category_id)
+        if row is None:
+            raise WorkflowDomainError("WF_CATEGORY_NOT_FOUND", "category not found", 404)
+        for record in self._session.scalars(select(WorkflowDefinitionRecord)).all():
+            tags = [tag for tag in self.tags(record) if tag != row.name]
+            record.tags_json = json.dumps(tags, ensure_ascii=False)
+        self._session.delete(row)
+
+    def set_tags(self, definition_id: int, tags: list[str]) -> list[str]:
+        record = self._session.get(WorkflowDefinitionRecord, definition_id)
+        if record is None:
+            raise WorkflowDomainError("WF_DEFINITION_NOT_FOUND", "workflow definition not found", 404)
+        clean = list(dict.fromkeys(tag.strip() for tag in tags if isinstance(tag, str) and tag.strip()))
+        record.tags_json = json.dumps(clean, ensure_ascii=False)
+        return clean
 
     def _validate_component_ref(self, ref: dict[str, Any]) -> None:
         version_row = self._session.scalar(

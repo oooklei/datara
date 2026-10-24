@@ -22,6 +22,7 @@ from sqlalchemy.orm import sessionmaker
 
 from rebuild.identity.contracts import Permission
 from rebuild.workflow.repository import WorkflowDomainError, WorkflowRepository
+from rebuild.workflow.models import WorkflowDefinitionRecord
 
 
 class MalformedRequest(ValueError):
@@ -106,6 +107,58 @@ def build_workflow_router(
         if not isinstance(value, dict):
             raise MalformedRequest(f"{key} must be an object")
         return value
+
+    @router.get("/categories")
+    def list_categories(token: str = Header(default=""), authorization: str = Header(default="")):
+        try:
+            principal(token, authorization)
+        except ValueError:
+            return unauthorized()
+        with session_factory() as session:
+            return {"code": 0, "msg": "success", "data": WorkflowRepository(session).list_categories()}
+
+    @router.post("/categories")
+    def create_category(body: dict[str, Any] = Body(...), token: str = Header(default=""), authorization: str = Header(default="")):
+        try:
+            name = frame_str(body, "name")
+            principal(token, authorization)
+        except ValueError as exc:
+            return unauthorized() if str(exc) in {"missing token", "token revoked or unknown"} else request_error(MalformedRequest(str(exc)))
+        with session_factory() as session:
+            try:
+                data = WorkflowRepository(session).create_category(name); session.commit()
+            except WorkflowDomainError as exc:
+                return request_error(exc)
+        return {"code": 0, "msg": "success", "data": data}
+
+    @router.delete("/categories/{category_id}")
+    def delete_category(category_id: int, token: str = Header(default=""), authorization: str = Header(default="")):
+        try:
+            principal(token, authorization)
+        except ValueError:
+            return unauthorized()
+        with session_factory() as session:
+            try:
+                WorkflowRepository(session).delete_category(category_id); session.commit()
+            except WorkflowDomainError as exc:
+                return request_error(exc)
+        return {"code": 0, "msg": "success", "data": {"deleted": True}}
+
+    @router.put("/{definition_id}/tags")
+    def set_definition_tags(definition_id: int, body: dict[str, Any] = Body(...), token: str = Header(default=""), authorization: str = Header(default="")):
+        tags = body.get("tags")
+        if not isinstance(tags, list) or any(not isinstance(tag, str) for tag in tags):
+            return request_error(MalformedRequest("tags must be an array of strings"))
+        with session_factory() as session:
+            record = session.get(WorkflowDefinitionRecord, definition_id)
+            if record is None:
+                return request_error(WorkflowDomainError("WF_DEFINITION_NOT_FOUND", "workflow definition not found", 404))
+            with authorized_session(record.project_id, Permission.EDIT_DEFINITION, token, authorization) as outcome:
+                if isinstance(outcome, JSONResponse): return outcome
+                try:
+                    clean = WorkflowRepository(outcome).set_tags(definition_id, tags); outcome.commit()
+                except WorkflowDomainError as exc: return request_error(exc)
+        return {"code": 0, "msg": "success", "data": {"tags": clean}}
 
     # -- 1. createWorkflowDefinition: POST ``""``
     #       body {project_id, name, description?} ----------------------------
