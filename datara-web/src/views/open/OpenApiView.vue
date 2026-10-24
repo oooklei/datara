@@ -13,11 +13,14 @@ import ListFilterPanel from '../../components/ListFilterPanel.vue'
 import type { Facet } from '../../components/ListFilterPanel.vue'
 import type { OpenApi } from '../../services/types'
 import { useAuthStore } from '../../stores/auth'
+import { isMock } from '../../services/apiMode'
+import { createOpenApiAdminContract, type ApiDefinition } from '../../services/rebuild/openApiAdmin'
 
 const auth = useAuthStore()
 const apis = ref<OpenApi[]>([])
 const keyword = ref('')
 const filters = ref<Record<string, string>>({ category: '', status: '' })
+const openApiContract = createOpenApiAdminContract()
 
 onMounted(async () => {
   await reload()
@@ -25,7 +28,9 @@ onMounted(async () => {
 
 async function reload() {
   // 必须展开为新数组：dataStore.save 原地修改数组，直接赋值不会触发响应式更新。
-  apis.value = [...((await dataStore.list<OpenApi>('openApis')) ?? [])]
+  if (isMock) { apis.value = [...((await dataStore.list<OpenApi>('openApis')) ?? [])]; return }
+  const defs = await openApiContract.listDefinitions()
+  apis.value = defs.map((d: ApiDefinition) => ({ id: String(d.id), name: d.name, path: d.path, method: d.method as 'GET' | 'POST', category: d.path.includes('quality') ? '数据质量' : d.path.includes('meta') ? '元数据' : '流数据', desc: d.description, status: d.status === 'published' ? 'enabled' : 'disabled', params: [], respExample: '{}', calls: 0 }))
 }
 
 const facets = computed<Facet[]>(() => [
@@ -54,6 +59,15 @@ function openView(a: OpenApi) {
 /* ---- 启用/停用 ---- */
 async function toggle(a: OpenApi) {
   if (!auth.canEdit) return
+  if (!isMock) {
+    try {
+      const id = Number(a.id)
+      if (a.status === 'enabled') await openApiContract.disable(id)
+      else await openApiContract.enable(id)
+      await reload(); ElMessage.success(`${a.name} 已${a.status === 'enabled' ? '停用' : '启用'}`)
+    } catch (error) { ElMessage.error(error instanceof Error ? error.message : '状态更新失败') }
+    return
+  }
   const next = a.status === 'enabled' ? 'disabled' : 'enabled'
   await dataStore.save('openApis', { ...a, status: next })
   await reload()
