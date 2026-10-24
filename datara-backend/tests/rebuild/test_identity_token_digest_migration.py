@@ -1,3 +1,5 @@
+"""Local migration coverage; real MySQL retry remains evidence for the final unified 1.9 integration."""
+
 import hashlib
 from datetime import datetime
 
@@ -91,6 +93,18 @@ def test_v0004_revision_and_checksum_are_frozen_literals():
                 "fk": False,
             },
             ["create_user_fk"],
+        ),
+        (
+            {
+                "columns": {"token_digest", "user_id"},
+                "digest_nullable": False,
+                "user_nullable": True,
+                "runner_zero_rows": False,
+                "pk": ["token_digest"],
+                "index": {"unique": True, "column_names": ["token_digest"]},
+                "fk": True,
+            },
+            [],
         ),
     ],
 )

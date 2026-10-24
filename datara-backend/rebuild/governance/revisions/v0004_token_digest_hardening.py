@@ -72,6 +72,8 @@ def _mysql_upgrade_plan(
     *,
     columns: set[str],
     digest_nullable: bool | None,
+    user_nullable: bool,
+    runner_zero_rows: bool,
     pk: list[str],
     index: dict[str, Any] | None,
     fk: bool,
@@ -83,7 +85,10 @@ def _mysql_upgrade_plan(
         actions.append(("add_digest", f"ALTER TABLE {_TABLE} ADD COLUMN token_digest CHAR(64) NULL"))
     if "token" in columns:
         actions.append(("backfill_digest", f"UPDATE {_TABLE} SET token_digest = LOWER(SHA2(token, 256))"))
-    actions.append(("canonicalize_runner", f"UPDATE {_TABLE} SET user_id = NULL WHERE user_id = 0"))
+    if not user_nullable:
+        actions.append(("make_user_nullable", f"ALTER TABLE {_TABLE} MODIFY user_id INT NULL"))
+    if runner_zero_rows:
+        actions.append(("canonicalize_runner", f"UPDATE {_TABLE} SET user_id = NULL WHERE user_id = 0"))
     if digest_nullable is not False:
         actions.append(("make_digest_required", f"ALTER TABLE {_TABLE} MODIFY token_digest CHAR(64) NOT NULL"))
     if pk != ["token_digest"]:
@@ -119,6 +124,10 @@ def _upgrade_mysql(engine: Engine) -> None:
         state = {
             "columns": set(column_info),
             "digest_nullable": column_info.get("token_digest", {}).get("nullable"),
+            "user_nullable": bool(column_info.get("user_id", {}).get("nullable")),
+            "runner_zero_rows": bool(connection.scalar(text(
+                f"SELECT COUNT(*) FROM {_TABLE} WHERE user_id = 0"
+            ))),
             "pk": inspector.get_pk_constraint(_TABLE).get("constrained_columns") or [],
             "index": indexes.get(_INDEX),
             "fk": any(
@@ -128,8 +137,6 @@ def _upgrade_mysql(engine: Engine) -> None:
                 for item in foreign_keys
             ),
         }
-        if not bool(column_info.get("user_id", {}).get("nullable")):
-            connection.execute(text(f"ALTER TABLE {_TABLE} MODIFY user_id INT NULL"))
         for _name, statement in _mysql_upgrade_plan(**state):
             connection.execute(text(statement))
 
