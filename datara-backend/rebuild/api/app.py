@@ -109,7 +109,7 @@ from rebuild.model.models import MODEL_TABLES
 from rebuild.monitor import build_monitor_router
 from rebuild.llm import LlmCredentialCipher, build_llm_router
 from rebuild.llm.migrations import apply_llm_migrations
-from rebuild.apikey import apply_apikey_migrations, build_apikey_router
+from rebuild.apikey import ApiKeyVerifier, apply_apikey_migrations, build_apikey_router
 from rebuild.openapi_admin import apply_openapi_admin_migrations, build_openapi_admin_router
 from rebuild.workflow.migrations import apply_workflow_migrations
 from rebuild.variables.migrations import apply_variable_migrations
@@ -1419,7 +1419,10 @@ def create_app(
         tags=["open-api-management"],
     )
     app.include_router(
-        build_openapi_admin_router(session_factory, token_service, active_tokens),
+        build_openapi_admin_router(
+            session_factory, token_service, active_tokens,
+            api_key_verifier=ApiKeyVerifier(session_factory),
+        ),
         prefix="/api/v1/open",
         tags=["open-api-management"],
     )

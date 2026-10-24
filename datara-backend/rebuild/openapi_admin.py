@@ -15,6 +15,7 @@ from sqlalchemy.orm import Mapped, mapped_column
 
 from rebuild.common.db import Base
 from rebuild.identity.contracts import Permission, authorize
+from rebuild.apikey.service import ApiKeyAuthError, ApiKeyVerifier
 
 
 class ApiDefinitionRecord(Base):
@@ -71,11 +72,24 @@ def apply_openapi_admin_migrations(engine):
     return {"created": True, "revision": "i15_0004_api_call_log"}
 
 
-def build_openapi_admin_router(session_factory, token_service: Any, active_tokens: Any) -> APIRouter:
+def build_openapi_admin_router(
+    session_factory,
+    token_service: Any,
+    active_tokens: Any,
+    api_key_verifier: ApiKeyVerifier | None = None,
+) -> APIRouter:
     router = APIRouter()
 
-    def guard(token: str, authorization: str, manage: bool = False):
+    def guard(token: str, authorization: str, manage: bool = False, api_key: str = ""):
         raw = token or (authorization[7:] if authorization.lower().startswith("bearer ") else "")
+        # API keys are an additive gateway credential. Existing bearer-token
+        # behavior remains unchanged; a key is considered only when no bearer
+        # credential was supplied and only for read-only management entries.
+        if not raw and api_key_verifier is not None and not manage and api_key:
+            try:
+                return api_key_verifier.verify(api_key, permission=Permission.SECURITY_READ.value)
+            except ApiKeyAuthError:
+                return _error(401, 1001, "invalid API key")
         try:
             claims = token_service.verify(raw)
         except Exception:
@@ -103,13 +117,14 @@ def build_openapi_admin_router(session_factory, token_service: Any, active_token
         offset: int = Query(default=0, ge=0),
         token: str = Header(default=""),
         authorization: str = Header(default=""),
+        x_api_key: str = Header(default="", alias="X-API-Key"),
     ):
         """List sanitized gateway call records with stable pagination.
 
         ``from``/``to`` are accepted as query parameters by FastAPI despite
         their Python-safe aliases.  No sensitive request material is returned.
         """
-        denial = guard(token, authorization)
+        denial = guard(token, authorization, api_key=x_api_key)
         if isinstance(denial, JSONResponse):
             return denial
         conditions = []

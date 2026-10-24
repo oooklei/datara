@@ -6,6 +6,8 @@ from rebuild.api.app import create_app
 from rebuild.identity.contracts import Role
 from rebuild.identity.repository import UserRepository
 from rebuild.openapi_admin import ApiCallLogRecord
+from rebuild.apikey.models import ApiKeyRecord
+from rebuild.apikey.service import _digest
 
 
 def test_call_log_list_is_sanitized_and_filterable():
@@ -37,4 +39,20 @@ def test_call_log_list_is_sanitized_and_filterable():
         assert row["requestId"] == "req-1"
         assert row["statusCode"] == 200
         assert "key" not in row and "body" not in row and "sql" not in row
+
+
+def test_call_log_list_accepts_scoped_api_key_without_bearer_token():
+    app = create_app("sqlite+pysqlite:///:memory:", token_secret="open-call-log-key-test")
+    with TestClient(app) as client:
+        plain = "dk_live_call-log-secret"
+        with app.state.session_factory() as session:
+            session.add(ApiKeyRecord(
+                name="call-log-reader", key_hash=_digest(plain), key_prefix=plain[:16],
+                scopes_json='{"permissions":["security:read"],"projectIds":[]}',
+                created_by="admin",
+            ))
+            session.commit()
+        response = client.get("/api/v1/open/call-logs", headers={"X-API-Key": plain})
+        assert response.status_code == 200
+        assert response.json()["code"] == 0
 
