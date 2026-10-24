@@ -159,6 +159,41 @@ def main() -> int:
         if trial_data.get("status") != "SUCCEEDED" or len(trial_data.get("tasks", [])) < 6:
             raise RuntimeError(f"trial did not succeed: {trial_data}")
         stats = call(args.base, f"/api/v1/rebuild/execution/run-stats?project_id={args.project_id}&limit=50", token=token)
+        # The stream requirement is a live producer/observer chain, not merely
+        # a read of pre-seeded metric rows.  Generate a bounded deterministic
+        # batch on the isolated running job, then observe the same window and
+        # assert that the persisted metric contains the produced records.
+        stream_window_from = "2026-10-25T00:00:00Z"
+        stream_window_to = "2026-10-25T23:59:59Z"
+        produced = call(
+            args.base,
+            f"/api/v1/rebuild/stream/jobs/{args.stream_job_id}/produce",
+            token=token,
+            method="POST",
+            body={
+                "count": 3,
+                "partition_id": "high-priority-e2e",
+                "start_offset": 0,
+                "event_time": "2026-10-25T12:00:00Z",
+                "payload": {"value": 1},
+                "schema": {"value": "integer"},
+                "aggregate": {"key_field": "partition", "value_field": "value", "window_size": 3},
+            },
+        )
+        produced_data = produced.get("data") or {}
+        if produced_data.get("produced") != 3 or (produced_data.get("metric") or {}).get("input_count") != 3:
+            raise RuntimeError("stream producer did not persist the expected batch")
+        observed = call(
+            args.base,
+            f"/api/v1/rebuild/stream/jobs/{args.stream_job_id}/observe",
+            token=token,
+            method="POST",
+            body={"from": stream_window_from, "to": stream_window_to, "limit": 500},
+        )
+        observed_data = observed.get("data") or {}
+        observed_metrics = observed_data.get("metrics") if isinstance(observed_data, dict) else observed_data
+        if not any((row.get("input_count") or 0) >= 3 for row in (observed_metrics or [])):
+            raise RuntimeError("stream observation did not include the produced batch")
         metrics = call(args.base, f"/api/v1/rebuild/stream/jobs/{args.stream_job_id}/metrics?from=2026-10-24T00:00:00Z&to=2026-10-26T00:00:00Z", token=token)
         llm = call(args.base, "/api/v1/rebuild/llm-models?offset=0&limit=50", token=token)
         api_defs = call(args.base, "/api/v1/open/definitions", token=token)
@@ -194,7 +229,7 @@ def main() -> int:
         if key_logs.get("code") != 0:
             raise RuntimeError("scoped API-Key call-log read failed")
         stat_rows = stats.get("data", {}).get("items") if isinstance(stats.get("data"), dict) else stats.get("data")
-        print(json.dumps({"health": "ok", "component_count": spec_count, "variables": "ok", "trial": "SUCCEEDED", "task_count": len(trial_data["tasks"]), "run_stats": len(stat_rows or []), "stream_metrics": len(metric_rows), "llm_models": len(llm_rows or []), "api_definitions": len(api_rows or []), "api_key_call_logs": "ok"}, ensure_ascii=False))
+        print(json.dumps({"health": "ok", "component_count": spec_count, "variables": "ok", "trial": "SUCCEEDED", "task_count": len(trial_data["tasks"]), "run_stats": len(stat_rows or []), "stream_produced": produced_data.get("produced"), "stream_metrics": len(metric_rows), "llm_models": len(llm_rows or []), "api_definitions": len(api_rows or []), "api_key_call_logs": "ok"}, ensure_ascii=False))
         return 0
     except (HTTPError, URLError, KeyError, RuntimeError, ValueError) as exc:
         print(f"high_priority_e2e failed: {exc}")
