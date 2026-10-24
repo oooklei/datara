@@ -99,6 +99,27 @@ def test_trial_run_creates_instance_and_tasks():
     assert all(t.status == "SUCCEEDED" for t in tasks)
 
 
+def test_trial_run_executes_python_and_shell_scripts():
+    session = _session()
+    definition_id = _make_definition(session)
+    _add_node(session, definition_id, "start", node_type="START")
+    _add_node(session, definition_id, "py", node_type="PYTHON", params={"script": "print('python-ok')"})
+    _add_node(session, definition_id, "sh", node_type="SHELL", params={"script": "echo shell-ok"})
+    _add_node(session, definition_id, "end", node_type="END")
+    _add_edge(session, definition_id, "start", "py")
+    _add_edge(session, definition_id, "py", "sh")
+    _add_edge(session, definition_id, "sh", "end")
+    session.commit()
+    snapshot = TrialSnapshotRepository(session).create_from_draft(definition_id)
+
+    result = TrialRunner(session).run(definition_id, snapshot["snapshot_id"], project_id=1)
+    assert result.status == "SUCCEEDED"
+    outputs = session.scalars(
+        select(TaskInstanceRecord).where(TaskInstanceRecord.workflow_instance_id == result.instance_id)
+    ).all()
+    assert all(task.status == "SUCCEEDED" for task in outputs)
+
+
 def test_trial_run_validation_failure_rejects():
     session = _session()
     definition_id = _make_definition(session)
