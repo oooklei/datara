@@ -4,7 +4,7 @@
  *   → {code:0, msg:'success', data:{total, list:[{id, name}]}}。
  */
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { listProjects } from '../projectApi'
+import { createProject, deleteProject, listProjects, updateProject } from '../projectApi'
 
 /** 后端成功包络形态（rebuild 域全域实证：{code:0,msg:'success',data}） */
 function stubFetchWithEnvelope(data: unknown): ReturnType<typeof vi.fn> {
@@ -63,6 +63,20 @@ describe('L3-02 projectApi contract (GET /api/v1/rebuild/projects)', () => {
     vi.stubGlobal('fetch', fetchMock)
 
     await expect(listProjects()).resolves.toEqual({ total: 0, list: [] })
+  })
+
+  it('wires create/update/delete project lifecycle endpoints', async () => {
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(new Response(JSON.stringify({ code: 0, msg: 'success', data: { id: 3, name: '新项目' } }), { status: 200 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ code: 0, msg: 'success', data: { id: 3, name: '改名', description: 'd' } }), { status: 200 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ code: 0, msg: 'success', data: null }), { status: 200 }))
+    vi.stubGlobal('fetch', fetchMock)
+    await createProject({ name: '新项目', description: '' })
+    await updateProject(3, { name: '改名', description: 'd' })
+    await deleteProject(3)
+    expect(fetchMock.mock.calls.map((x: [string, RequestInit]) => [x[0], x[1].method])).toEqual([
+      ['/api/v1/rebuild/projects', 'POST'], ['/api/v1/rebuild/projects/3', 'PUT'], ['/api/v1/rebuild/projects/3', 'DELETE'],
+    ])
   })
 
   it('non-2xx maps to ContractApiError with httpStatus preserved', async () => {

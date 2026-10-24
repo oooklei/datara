@@ -2,7 +2,7 @@
   <section class="home-projects" aria-label="项目列表">
     <header class="home-head">
       <h1>Datara</h1>
-      <p class="home-sub">选择一个项目进入工作区</p>
+      <p class="home-sub">选择一个项目进入工作区</p><button type="button" data-create-project @click="openCreate">新建项目</button>
     </header>
 
     <p v-if="loading" class="state state-loading" role="status">加载中…</p>
@@ -16,10 +16,11 @@
         <button type="button" class="project-card" :data-project-id="p.id" @click="enter(p)">
           <span class="project-name">{{ p.name }}</span>
           <span v-if="p.ownOrJoined === 'owner'" class="project-badge">我拥有</span>
-          <span v-else-if="p.ownOrJoined === 'joined'" class="project-badge joined">我参与</span>
+          <span v-else-if="p.ownOrJoined === 'joined'" class="project-badge joined">我参与</span><span class="project-actions"><button type="button" data-edit-project @click.stop="openEdit(p)">编辑</button><button type="button" data-delete-project @click.stop="remove(p)">删除</button></span>
         </button>
       </li>
     </ul>
+    <div v-if="editing" class="project-modal"><form @submit.prevent="save"><h2>{{ editingId ? '编辑项目' : '新建项目' }}</h2><label>名称<input v-model.trim="draft.name" required data-project-name></label><label>说明<textarea v-model="draft.description" data-project-description /></label><p v-if="formError" role="alert">{{ formError }}</p><footer><button type="button" @click="editing=false">取消</button><button type="submit" data-save-project>保存</button></footer></form></div>
   </section>
 </template>
 
@@ -32,17 +33,23 @@
  */
 import { onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
-import { listProjects } from '../services/rebuild/projectApi'
+import { createProject, deleteProject, listProjects, updateProject, type ProjectInput } from '../services/rebuild/projectApi'
 import type { ProjectSummary } from '../services/rebuild/projectApi'
 
 const router = useRouter()
 const loading = ref(true)
 const error = ref('')
 const projects = ref<ProjectSummary[]>([])
+const editing = ref(false), editingId = ref<number>(), formError = ref('')
+const draft = ref<ProjectInput>({ name: '', description: '' })
 
 function enter(p: ProjectSummary): void {
   router.push(`/p/${p.id}`)
 }
+function openCreate() { editingId.value = undefined; draft.value = { name: '', description: '' }; formError.value = ''; editing.value = true }
+function openEdit(p: ProjectSummary) { editingId.value = p.id; draft.value = { name: p.name, description: '' }; formError.value = ''; editing.value = true }
+async function save() { try { const p = editingId.value ? await updateProject(editingId.value, draft.value) : await createProject(draft.value); editing.value = false; if (editingId.value) projects.value = projects.value.map(x => x.id === p.id ? { ...x, ...p } : x); else projects.value = [...projects.value, p] } catch (err) { formError.value = err instanceof Error ? err.message : '项目保存失败' } }
+async function remove(p: ProjectSummary) { if (!globalThis.confirm(`删除项目“${p.name}”？`)) return; try { await deleteProject(p.id); projects.value = projects.value.filter(x => x.id !== p.id) } catch (err) { error.value = err instanceof Error ? err.message : '项目删除失败' } }
 
 onMounted(async () => {
   loading.value = true

@@ -8,7 +8,7 @@
  * 可选兼容位——前端不假设未交付字段，后端返回时原样透出。
  */
 
-import { getJson } from '../http'
+import { deleteJson, getJson, postJson, putJson } from '../http'
 
 export interface ProjectSummary {
   id: number
@@ -16,6 +16,8 @@ export interface ProjectSummary {
   /** 归属面标记（wire 词形以后端 3.2 最小补为准）；当前端点未返回时为 undefined。 */
   ownOrJoined?: 'owner' | 'joined'
 }
+
+export interface ProjectInput { name: string; description?: string }
 
 export interface ProjectListPage {
   total: number
@@ -25,4 +27,16 @@ export interface ProjectListPage {
 /** 拉取「我拥有/参与」的项目列表（登录后首页卡片数据源，§5A.11）。 */
 export function listProjects(): Promise<ProjectListPage> {
   return getJson<ProjectListPage>('/rebuild/projects')
+}
+
+export function createProject(input: ProjectInput): Promise<ProjectSummary> {
+  return postJson<ProjectSummary>('/rebuild/projects', input)
+}
+
+export function updateProject(projectId: number, input: ProjectInput): Promise<ProjectSummary> {
+  return putJson<ProjectSummary>(`/rebuild/projects/${projectId}`, input)
+}
+
+export function deleteProject(projectId: number): Promise<null> {
+  return deleteJson<null>(`/rebuild/projects/${projectId}`)
 }
