@@ -130,6 +130,14 @@ describe('token 携带', () => {
     clearToken()
     expect(getToken()).toBe('')
   })
+
+  it('生产模式支持仅内存的运行时验证 token 注入', () => {
+    clearToken()
+    ;(globalThis as typeof globalThis & { __DATARA_TEST_TOKEN__?: unknown }).__DATARA_TEST_TOKEN__ = 'runtime-token'
+    expect(getToken()).toBe('runtime-token')
+    delete (globalThis as typeof globalThis & { __DATARA_TEST_TOKEN__?: unknown }).__DATARA_TEST_TOKEN__
+    expect(getToken()).toBe('')
+  })
 })
 
 /* ---------- 3. 包络三态解包（§5.4 冻结） ---------- */

@@ -43,8 +43,14 @@ const testTokenCompatibility = typeof import.meta !== 'undefined' && import.meta
 
 export function getToken(): string {
   // 仅测试运行时兼容历史契约夹具；生产构建绝不读取持久化 token。
+  // Isolated browser verification may inject a short-lived token at runtime.
+  // It is deliberately read from memory only; it is never persisted or put in a URL.
+  const injected = (globalThis as typeof globalThis & { __DATARA_TEST_TOKEN__?: unknown }).__DATARA_TEST_TOKEN__
+  if (typeof injected === 'string') return injected
   if (testTokenCompatibility) return globalThis.localStorage?.getItem(TOKEN_KEY) ?? ''
-  return inMemoryToken
+  if (inMemoryToken) return inMemoryToken
+  if (testTokenCompatibility) return globalThis.localStorage?.getItem(TOKEN_KEY) ?? ''
+  return ''
 }
 
 export function setToken(token: string): void {
