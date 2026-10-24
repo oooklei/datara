@@ -113,6 +113,20 @@ def build_stream_router(
     def respond(data: Any) -> dict[str, Any]:
         return {"code": 0, "msg": "success", "data": data}
 
+    def require_running(job: Any) -> JSONResponse | None:
+        """Gate data-plane writes on the RUNNING lifecycle state.
+
+        Producer/fusion endpoints represent live stream processing, so accepting
+        events while a job is CREATED/PAUSED/STOPPED would create observations
+        outside the declared runtime state machine.
+        """
+        if job.state != "RUNNING":
+            return JSONResponse(
+                status_code=400,
+                content={"code": 4002, "msg": "stream job must be RUNNING for data-plane processing", "data": None},
+            )
+        return None
+
     # -- 1. register job ------------------------------------------------------
 
     @router.post("/jobs")
@@ -225,6 +239,9 @@ def build_stream_router(
             try:
                 repository = StreamRepository(session)
                 job = repository.get_job(job_id)
+                denial = require_running(job)
+                if denial is not None:
+                    return denial
                 offset = body.start_offset
                 events: list[dict[str, Any]] = []
                 for index in range(body.count):
@@ -277,6 +294,9 @@ def build_stream_router(
             try:
                 repository = StreamRepository(session)
                 job = repository.get_job(job_id)
+                denial = require_running(job)
+                if denial is not None:
+                    return denial
                 metric = repository.append_metric_snapshot(
                     job_id,
                     {"attempt_no": job.attempt_no, "input_count": sum(len(items) for items in body.streams.values()),

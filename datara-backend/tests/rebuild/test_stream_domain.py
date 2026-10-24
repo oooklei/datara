@@ -359,6 +359,26 @@ def test_api_lifecycle_observe_and_failures_contract(client):
     assert missing.status_code == 404 and missing.json()["code"] == 4041
 
 
+def test_api_data_plane_rejects_produce_and_fuse_until_running(client):
+    created = client.post(
+        "/api/v1/rebuild/stream/jobs",
+        json={"name": "state-gated", "workflow_id": 17, "mq_topic": "datara.stream.demo",
+              "runtime_config": {"mode": "fixed_rate", "rows_per_sec": 1, "columns": ["value"]}},
+    )
+    job_id = created.json()["data"]["id"]
+    produce = client.post(f"/api/v1/rebuild/stream/jobs/{job_id}/produce", json={"count": 1})
+    fuse = client.post(
+        f"/api/v1/rebuild/stream/jobs/{job_id}/fuse",
+        json={"key_field": "id", "streams": {"left": [{"id": 1}], "right": [{"id": 1}]}},
+    )
+    assert produce.status_code == fuse.status_code == 400
+    assert produce.json()["code"] == fuse.json()["code"] == 4002
+
+    assert client.post(f"/api/v1/rebuild/stream/jobs/{job_id}/transitions", json={"action": "start"}).status_code == 200
+    assert client.post(f"/api/v1/rebuild/stream/jobs/{job_id}/transitions", json={"action": "activate"}).status_code == 200
+    assert client.post(f"/api/v1/rebuild/stream/jobs/{job_id}/produce", json={"count": 1}).status_code == 200
+
+
 def test_api_anonymous_is_401_and_bearer_fallback(client):
     token_header = client.headers.pop("token", None)
     anonymous = client.post("/api/v1/rebuild/stream/jobs", json={"name": "x", "workflow_id": 1, "mq_topic": "t"})
