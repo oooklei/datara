@@ -6,8 +6,10 @@ import json
 
 import pytest
 from sqlalchemy import MetaData, String, create_engine, inspect, select, text
+from sqlalchemy.dialects import mysql
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
+from sqlalchemy.schema import CreateIndex
 
 from rebuild.governance.migrations import MigrationApplyError, MigrationChecksumConflict
 from rebuild.governance.models import SchemaMigrationRecord
@@ -124,6 +126,41 @@ def test_migration_checksum_conflict_and_schema_drift_fail_closed() -> None:
         connection.execute(text("DROP INDEX uq_rebuild_llm_model_single_default"))
     with pytest.raises(MigrationApplyError, match="schema validation failed"):
         apply_llm_migrations(completed_then_drifted)
+
+
+@pytest.mark.parametrize(
+    "replacement",
+    (
+        "CREATE INDEX uq_rebuild_llm_model_single_default ON rebuild_llm_model (is_default)",
+        "CREATE UNIQUE INDEX uq_rebuild_llm_model_single_default ON rebuild_llm_model (is_default)",
+    ),
+)
+def test_default_index_same_name_with_wrong_contract_is_rejected(replacement: str) -> None:
+    engine = create_engine("sqlite+pysqlite:///:memory:")
+    apply_llm_migrations(engine)
+    with engine.begin() as connection:
+        connection.execute(text("DROP INDEX uq_rebuild_llm_model_single_default"))
+        connection.execute(text(replacement))
+    with pytest.raises(MigrationApplyError, match="schema validation failed"):
+        apply_llm_migrations(engine)
+
+
+def test_mysql_reflected_default_index_requires_unique_nullif_expression() -> None:
+    dialect = mysql.dialect()
+    valid = {
+        "name": "uq_rebuild_llm_model_single_default",
+        "unique": True,
+        "column_names": [None],
+        "expressions": ["nullif(`is_default`, false)"],
+    }
+    revision._validate_default_index_contract(valid, dialect)
+    with pytest.raises(RuntimeError, match="incompatible default index"):
+        revision._validate_default_index_contract({**valid, "unique": False}, dialect)
+    with pytest.raises(RuntimeError, match="incompatible default index"):
+        revision._validate_default_index_contract({**valid, "expressions": ["is_default"]}, dialect)
+    ddl = str(CreateIndex(next(iter(revision.llm_model_table.indexes))).compile(dialect=dialect)).lower()
+    assert "create unique index" in ddl
+    assert "nullif(is_default, false)" in ddl
 
 
 def _record(name: str, *, default: bool = False, active: bool = True) -> LlmModelRecord:

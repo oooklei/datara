@@ -2,6 +2,7 @@
 
 import hashlib
 import json
+import re
 
 from sqlalchemy import (
     Boolean,
@@ -89,7 +90,7 @@ def _manifest():
                     for column in table.columns
                 ],
                 "indexes": sorted(
-                    (index.name, tuple(column.name for column in index.columns), index.unique)
+                    (index.name, tuple(str(expression) for expression in index.expressions), index.unique)
                     for index in table.indexes
                 ),
                 "unique": sorted(
@@ -132,21 +133,58 @@ def _validate(engine: Engine, table) -> None:
     }
     if actual != expected:
         raise RuntimeError(f"existing table {table.name} has an incompatible column layout")
-    indexes = {item["name"] for item in inspector.get_indexes(table.name)}
+    reflected_indexes = inspector.get_indexes(table.name)
+    indexes = {item["name"] for item in reflected_indexes}
     if engine.dialect.name == "sqlite":
         with engine.connect() as connection:
-            indexes.update(
-                connection.execute(
-                    text("SELECT name FROM sqlite_master WHERE type = 'index' AND tbl_name = :table"),
-                    {"table": table.name},
-                ).scalars()
+            sqlite_indexes = connection.execute(
+                text("SELECT name, sql FROM sqlite_master WHERE type = 'index' AND tbl_name = :table"),
+                {"table": table.name},
+            ).all()
+            indexes.update(row.name for row in sqlite_indexes)
+            default_index = next(
+                (
+                    {
+                        "name": row.name,
+                        "ddl": row.sql,
+                        "unique": bool(row.sql and "CREATE UNIQUE INDEX" in row.sql.upper()),
+                    }
+                    for row in sqlite_indexes
+                    if row.name == "uq_rebuild_llm_model_single_default"
+                ),
+                None,
             )
+    else:
+        default_index = next(
+            (item for item in reflected_indexes if item["name"] == "uq_rebuild_llm_model_single_default"),
+            None,
+        )
     if not {item.name for item in table.indexes} <= indexes:
         raise RuntimeError(f"existing table {table.name} is missing a required index")
+    _validate_default_index_contract(default_index, engine.dialect)
     unique = {tuple(item["column_names"]) for item in inspector.get_unique_constraints(table.name)}
     unique.update(tuple(item["column_names"]) for item in inspector.get_indexes(table.name) if item.get("unique"))
     if ("name",) not in unique:
         raise RuntimeError(f"existing table {table.name} is missing a required unique constraint")
+
+
+def _validate_default_index_contract(index, dialect) -> None:
+    """Require the single-default index to be unique and semantically exact."""
+    if not index or not index.get("unique"):
+        raise RuntimeError("incompatible default index: unique index required")
+    expression = ""
+    if index.get("expressions"):
+        expression = str(index["expressions"][0])
+    elif index.get("ddl"):
+        ddl = str(index["ddl"])
+        match = re.search(r"\bon\s+[^\s(]+\s*\((.*)\)\s*$", ddl, flags=re.IGNORECASE)
+        expression = match.group(1) if match else ""
+    elif index.get("column_names"):
+        expression = str(index["column_names"][0])
+    normalized = re.sub(r"[`\"\[\]\s()]", "", expression.lower())
+    accepted = {"nullifis_default,0", "nullifis_default,false"}
+    if normalized not in accepted:
+        raise RuntimeError(f"incompatible default index expression for {dialect.name}")
 
 
 def upgrade(engine: Engine) -> None:

@@ -7,7 +7,10 @@ from urllib.request import Request, urlopen
 
 
 class LlmProviderError(RuntimeError):
-    pass
+    def __init__(self, detail: str, elapsed_ms: int) -> None:
+        super().__init__(detail)
+        self.detail = detail
+        self.elapsed_ms = elapsed_ms
 
 
 def test_chat(api_base: str, model_id: str, api_key: str) -> dict[str, object]:
@@ -32,7 +35,8 @@ def test_chat(api_base: str, model_id: str, api_key: str) -> dict[str, object]:
             payload = json.loads(response.read().decode())
         content = str(payload["choices"][0]["message"]["content"])
     except (HTTPError, URLError, TimeoutError, ValueError, KeyError, IndexError, TypeError) as exc:
-        raise LlmProviderError(f"LLM connectivity failed: {type(exc).__name__}") from exc
+        elapsed_ms = int((monotonic() - started) * 1000)
+        raise LlmProviderError(f"LLM connectivity failed: {type(exc).__name__}", elapsed_ms) from exc
     return {
         "status": "success",
         "message": "LLM connectivity test succeeded",

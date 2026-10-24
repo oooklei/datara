@@ -166,8 +166,10 @@ def build_llm_router(
                 return _error(404, 4041, "LLM model not found")
             try:
                 return _ok(probe(row.api_base, row.model_id, cipher.decrypt(row.api_key_cipher)))
-            except (LlmProviderError, ValueError) as exc:
-                return _error(502, 5021, str(exc))
+            except LlmProviderError as exc:
+                return _probe_error(exc.detail, exc.elapsed_ms)
+            except ValueError as exc:
+                return _probe_error(str(exc), 0)
 
     return router
 
@@ -211,3 +213,19 @@ def _ok(data):
 
 def _error(status, code, msg):
     return JSONResponse(status_code=status, content={"code": code, "msg": msg, "data": None})
+
+
+def _probe_error(detail: str, elapsed_ms: int):
+    return JSONResponse(
+        status_code=502,
+        content={
+            "code": 5021,
+            "msg": "LLM connectivity test failed",
+            "data": {
+                "status": "error",
+                "message": "LLM connectivity test failed",
+                "detail": detail,
+                "elapsed_ms": elapsed_ms,
+            },
+        },
+    )

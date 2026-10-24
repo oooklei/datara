@@ -1,12 +1,17 @@
 from __future__ import annotations
 
+from urllib.error import URLError
+
+import pytest
 from fastapi.testclient import TestClient
 
 from rebuild.api.app import create_app
 from rebuild.identity.contracts import Role
 from rebuild.identity.repository import UserRepository
+from rebuild.llm import provider as llm_provider
 from rebuild.llm.crypto import LlmCredentialCipher
 from rebuild.llm.models import LlmModelRecord
+from rebuild.llm.provider import LlmProviderError
 from rebuild.llm.resolver import DefaultLlmResolver
 
 
@@ -86,6 +91,11 @@ def test_admin_only_probe_isolated_validation_and_pagination():
         item_id = client.post("/api/v1/rebuild/llm-models", headers=headers, json=_body()).json()["data"]["id"]
         failed = client.post(f"/api/v1/rebuild/llm-models/{item_id}/test", headers=headers)
         assert failed.status_code == 502 and "provider-secret" not in failed.text
+        failure = failed.json()["data"]
+        assert failure["status"] == "error"
+        assert failure["message"] == "LLM connectivity test failed"
+        assert failure["detail"].startswith("LLM connectivity failed:")
+        assert isinstance(failure["elapsed_ms"], int) and failure["elapsed_ms"] >= 0
         assert client.get("/api/v1/rebuild/llm-models?limit=201", headers=headers).status_code == 422
     finally:
         client.__exit__(None, None, None)
@@ -105,3 +115,18 @@ def test_resolver_prefers_database_then_environment(monkeypatch):
         assert resolved["source"] == "database" and resolved["api_key"] == "provider-secret-1234"
     finally:
         client.__exit__(None, None, None)
+
+
+def test_provider_failure_preserves_elapsed_time_without_secret(monkeypatch):
+    ticks = iter((10.0, 10.125))
+    monkeypatch.setattr(llm_provider, "monotonic", lambda: next(ticks))
+    monkeypatch.setattr(
+        llm_provider,
+        "urlopen",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(URLError("provider-secret-1234")),
+    )
+    with pytest.raises(LlmProviderError) as captured:
+        llm_provider.test_chat("https://example.invalid/v1", "qwen", "provider-secret-1234")
+    assert captured.value.elapsed_ms == 125
+    assert captured.value.detail == "LLM connectivity failed: URLError"
+    assert "provider-secret" not in str(captured.value)
