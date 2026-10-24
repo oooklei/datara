@@ -434,6 +434,81 @@ def test_api_observation_rejects_reversed_window_and_unbounded_limit(client):
     assert oversized.status_code == 422
 
 
+def test_produce_observe_survive_app_restart(tmp_path):
+    """The stream data plane must read durable state after an app restart.
+
+    The normal router fixture uses an in-memory StaticPool, which proves the
+    request contract but cannot catch an accidental process-local cache.  Use
+    a file-backed SQLite database, close the first TestClient/engine, then
+    construct a fresh router and assert the job state, checkpoint and metric
+    snapshot are still observable.
+    """
+    database = tmp_path / "stream-restart.db"
+    token_service = TokenService(secret="r8-stream-restart-secret")
+    token = token_service.issue(user_id=1, username="dev", role=Role.DEVELOPER)
+    active_tokens = {token}
+
+    def _app(engine):
+        factory = sessionmaker(bind=engine, expire_on_commit=False)
+        app = FastAPI()
+        app.include_router(
+            build_stream_router(factory, token_service, active_tokens),
+            prefix="/api/v1/rebuild/stream",
+        )
+        return app
+
+    engine = create_engine(f"sqlite+pysqlite:///{database}")
+    Base.metadata.create_all(engine, tables=STREAM_TABLES)
+    first = _app(engine)
+    with TestClient(first) as client:
+        client.headers.update({"token": token})
+        create_response = client.post(
+            "/api/v1/rebuild/stream/jobs",
+            json={
+                "name": "restart-proof",
+                "workflow_id": 17,
+                "mq_topic": "topic.restart",
+                "runtime_config": {"mode": "fixed_rate", "rows_per_sec": 1, "columns": ["value"]},
+            },
+        )
+        assert create_response.status_code == 200, create_response.text
+        job = create_response.json()["data"]
+        job_id = job["id"]
+        assert client.post(f"/api/v1/rebuild/stream/jobs/{job_id}/transitions", json={"action": "start"}).status_code == 200
+        assert client.post(f"/api/v1/rebuild/stream/jobs/{job_id}/transitions", json={"action": "activate"}).status_code == 200
+        produced = client.post(
+            f"/api/v1/rebuild/stream/jobs/{job_id}/produce",
+            json={
+                "count": 3,
+                "partition_id": "p-restart",
+                "start_offset": 40,
+                "event_time": "2026-10-20T08:00:00",
+                "payload": {"value": 7},
+            },
+        )
+        assert produced.status_code == 200, produced.text
+    engine.dispose()
+
+    reopened = create_engine(f"sqlite+pysqlite:///{database}")
+    second = _app(reopened)
+    with TestClient(second) as client:
+        client.headers.update({"token": token})
+        job = client.get(f"/api/v1/rebuild/stream/jobs/{job_id}")
+        assert job.status_code == 200 and job.json()["data"]["state"] == "RUNNING"
+        checkpoints = client.get(f"/api/v1/rebuild/stream/jobs/{job_id}/checkpoints")
+        assert checkpoints.status_code == 200
+        assert checkpoints.json()["data"][0]["offset_value"] == 42
+        observed = client.post(
+            f"/api/v1/rebuild/stream/jobs/{job_id}/observe",
+            json={"from": "2026-10-20T00:00:00", "to": "2026-10-20T23:59:59"},
+        )
+        assert observed.status_code == 200
+        data = observed.json()["data"]
+        assert data["snapshot_count"] == 1
+        assert data["input_count"] == 3 and data["output_count"] == 3
+    reopened.dispose()
+
+
 def test_legacy_job_crosswalk_is_unique(repo):
     repo.register("linked", 1, "topic", {"mode": "fixed_rate", "rows_per_sec": 1, "columns": ["id"]}, legacy_job_id=77)
     with pytest.raises(StreamDomainError) as excinfo:
