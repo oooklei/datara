@@ -97,6 +97,9 @@ def _type_contract(type_, dialect) -> tuple[object, ...]:
     """Normalize reflected/declared types while preserving storage semantics."""
     implementation = dialect.type_descriptor(type_)
     compiled = dialect.type_compiler.process(implementation).upper().replace(" ", "")
+    # MySQL reflection may append ``COLLATE...`` to LONGTEXT/TEXT type names;
+    # collation is table metadata, not a storage-layout difference.
+    compiled = compiled.split("COLLATE", 1)[0]
     family = compiled.split("(", 1)[0]
     if family in {"BOOL", "BOOLEAN"} or (dialect.name == "mysql" and compiled == "TINYINT(1)"):
         family = "BOOLEAN"
