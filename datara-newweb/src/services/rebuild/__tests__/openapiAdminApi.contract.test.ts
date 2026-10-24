@@ -12,6 +12,8 @@ import {
   OPENAPI_ADMIN_PERMISSION_MATRIX,
   OPENAPI_ADMIN_URL_PREFIX,
   createOpenapiAdminContract,
+  openapiAdminApi,
+  openapiAdminKeyApi,
   type ApiCallLogRecord,
   type ApiDefinitionInput,
   type ApiDefinitionRecord,
@@ -90,26 +92,20 @@ describe('15-P0 openapiAdminApi contract (RED)', () => {
     expect(OPENAPI_ADMIN_URL_PREFIX).toBe('/api/v1/open')
   })
 
-  it('every I/O method refuses until api_management backend is wired', async () => {
+  it('factory delegates every method to the GREEN HTTP facades', () => {
     const contract = createOpenapiAdminContract()
-    const cases: Promise<unknown>[] = [
-      contract.listApiDefinitions(),
-      contract.createApiDefinition(definitionInput),
-      contract.updateApiDefinition(1, definitionInput),
-      contract.deleteApiDefinition(1),
-      contract.publishApiDefinition(1),
-      contract.disableApiDefinition(1),
-      contract.enableApiDefinition(1),
-      contract.listApiKeys(),
-      contract.issueApiKey(keyInput),
-      contract.rotateApiKey(1),
-      contract.revokeApiKey(1),
-      contract.listCallLogs({ apiId: 1 }),
-      contract.listCallLogs(),
-    ]
-    for (const p of cases) {
-      await expect(p).rejects.toThrow(OPENAPI_ADMIN_NOT_WIRED)
-    }
+    expect(contract.listApiDefinitions).toBe(openapiAdminApi.list)
+    expect(contract.createApiDefinition).toBe(openapiAdminApi.create)
+    expect(contract.updateApiDefinition).toBe(openapiAdminApi.update)
+    expect(contract.deleteApiDefinition).toBe(openapiAdminApi.remove)
+    expect(contract.publishApiDefinition).toBe(openapiAdminApi.publish)
+    expect(contract.disableApiDefinition).toBe(openapiAdminApi.disable)
+    expect(contract.enableApiDefinition).toBe(openapiAdminApi.enable)
+    expect(contract.listApiKeys).toBe(openapiAdminKeyApi.list)
+    expect(contract.issueApiKey).toBe(openapiAdminKeyApi.issue)
+    expect(contract.rotateApiKey).toBe(openapiAdminKeyApi.rotate)
+    expect(contract.revokeApiKey).toBe(openapiAdminKeyApi.revoke)
+    expect(contract.listCallLogs).toBe(openapiAdminApi.callLogs)
   })
 
   it('sentinel wordform is frozen to OPENAPI_ADMIN_NOT_WIRED (rename regression guard)', () => {

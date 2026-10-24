@@ -251,30 +251,26 @@ export const openapiAdminApi: OpenapiAdminApi = {
   },
 }
 
-/* ---------- RED 实现（后端接入前统一抛哨兵；方法清单见 OPENAPI_ADMIN_CONTRACT_METHODS） ---------- */
-
-/** 异步契约方法统一实现：rejected promise（同步 throw 会在调用点直接炸出，无法被 rejects 断言捕获）。 */
-const notWired = async (): Promise<never> => {
-  throw new Error(OPENAPI_ADMIN_NOT_WIRED)
-}
+/* ---------- GREEN 契约工厂 ---------- */
 
 /**
- * 15-P0 契约工厂（RED 原型态）：签名与类型已冻结，实现在 15.2-A~D 后端就绪后逐方法替换，
- * UI 层不感知切换。
+ * Stable contract facade used by stores and integrations.  Keep this adapter
+ * separate from the page-oriented APIs above so callers can migrate without
+ * knowing the underlying endpoint naming.
  */
 export function createOpenapiAdminContract(): OpenapiAdminContract {
   return {
-    listApiDefinitions: notWired,
-    createApiDefinition: notWired,
-    updateApiDefinition: notWired,
-    deleteApiDefinition: notWired,
-    publishApiDefinition: notWired,
-    disableApiDefinition: notWired,
-    enableApiDefinition: notWired,
-    listApiKeys: notWired,
-    issueApiKey: notWired,
-    rotateApiKey: notWired,
-    revokeApiKey: notWired,
-    listCallLogs: notWired,
+    listApiDefinitions: openapiAdminApi.list,
+    createApiDefinition: openapiAdminApi.create,
+    updateApiDefinition: openapiAdminApi.update,
+    deleteApiDefinition: openapiAdminApi.remove,
+    publishApiDefinition: openapiAdminApi.publish,
+    disableApiDefinition: openapiAdminApi.disable,
+    enableApiDefinition: openapiAdminApi.enable,
+    listApiKeys: openapiAdminKeyApi.list,
+    issueApiKey: openapiAdminKeyApi.issue,
+    rotateApiKey: openapiAdminKeyApi.rotate,
+    revokeApiKey: openapiAdminKeyApi.revoke,
+    listCallLogs: openapiAdminApi.callLogs,
   }
 }
