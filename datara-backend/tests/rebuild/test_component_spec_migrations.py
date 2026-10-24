@@ -38,6 +38,7 @@ def test_revision_uses_frozen_tables_and_manifest_checksum() -> None:
         sort_keys=True,
     ).encode("ascii")
     assert revision.checksum == hashlib.sha256(encoded).hexdigest()
+    assert revision.SCHEMA_MANIFEST["tables"][0]["columns"][0]["autoincrement"] is True
 
 
 def _create_schema_with_column_type(column_name: str, replacement_type) -> object:
@@ -74,6 +75,55 @@ def test_mysql_type_contract_normalizes_display_width_but_preserves_length() -> 
         mysql.TINYINT(display_width=1), dialect
     )
     assert revision._type_contract(BigInteger(), dialect) != revision._type_contract(Integer(), dialect)
+
+
+def test_mysql_type_contract_preserves_text_capacity_class() -> None:
+    dialect = mysql.dialect()
+    expected = revision._type_contract(mysql.LONGTEXT(), dialect)
+
+    assert expected != revision._type_contract(mysql.TEXT(), dialect)
+    assert expected != revision._type_contract(mysql.MEDIUMTEXT(), dialect)
+    assert expected != revision._type_contract(mysql.TINYTEXT(), dialect)
+
+
+def test_mysql_existing_primary_key_without_auto_increment_is_rejected(monkeypatch) -> None:
+    dialect = mysql.dialect()
+    table = revision.COMPONENT_TABLES[0]
+    columns = [
+        {
+            "name": column.name,
+            "nullable": column.nullable,
+            "type": column.type,
+            "autoincrement": False if column.name == "id" else None,
+        }
+        for column in table.columns
+    ]
+
+    class FakeInspector:
+        def get_pk_constraint(self, _table_name):
+            return {"constrained_columns": ["id"]}
+
+        def get_columns(self, _table_name):
+            return columns
+
+        def get_indexes(self, _table_name):
+            return [
+                {"name": index.name, "column_names": [column.name for column in index.columns]}
+                for index in table.indexes
+            ]
+
+        def get_unique_constraints(self, _table_name):
+            return [{"column_names": ["type"]}]
+
+    class FakeEngine:
+        pass
+
+    engine = FakeEngine()
+    engine.dialect = dialect
+    monkeypatch.setattr(revision, "inspect", lambda _engine: FakeInspector())
+
+    with pytest.raises(RuntimeError, match="incompatible column layout"):
+        revision._validate_existing_table(engine, table)
 
 
 def test_component_spec_migration_is_checksummed_and_idempotent() -> None:

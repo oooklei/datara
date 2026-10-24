@@ -100,7 +100,7 @@ def _type_contract(type_, dialect) -> tuple[object, ...]:
     family = compiled.split("(", 1)[0]
     if family in {"BOOL", "BOOLEAN"} or (dialect.name == "mysql" and compiled == "TINYINT(1)"):
         family = "BOOLEAN"
-    elif family.endswith("TEXT"):
+    elif family.endswith("TEXT") and dialect.name != "mysql":
         family = "TEXT"
     elif family == "INT":
         family = "INTEGER"
@@ -114,11 +114,18 @@ def _type_contract(type_, dialect) -> tuple[object, ...]:
     )
 
 
+def _declared_auto_increment(column) -> bool:
+    return column.autoincrement is True or (
+        column.autoincrement == "auto" and column.primary_key and issubclass(column.type._type_affinity, Integer)
+    )
+
+
 def _column_signature(table, dialect) -> dict[str, tuple[object, ...]]:
     return {
         column.name: (
             column.nullable,
             column.primary_key,
+            _declared_auto_increment(column) if dialect.name == "mysql" else None,
             *_type_contract(column.type, dialect),
         )
         for column in table.columns
@@ -136,6 +143,7 @@ def _schema_manifest() -> dict[str, object]:
                         "name": column.name,
                         "nullable": column.nullable,
                         "primary_key": column.primary_key,
+                        "autoincrement": _declared_auto_increment(column),
                         "type": (
                             str(column.type).upper().split("(", 1)[0],
                             getattr(column.type, "length", None),
@@ -181,6 +189,7 @@ def _validate_existing_table(engine: Engine, table) -> None:
         column["name"]: (
             column["nullable"],
             column["name"] in primary_key_columns,
+            bool(column.get("autoincrement")) if engine.dialect.name == "mysql" else None,
             *_type_contract(column["type"], engine.dialect),
         )
         for column in inspector.get_columns(table.name)
