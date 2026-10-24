@@ -1,5 +1,7 @@
 """Execution-owned, log-independent per-instance run statistics."""
 
+from datetime import datetime
+
 import pytest
 from sqlalchemy import create_engine, select
 from sqlalchemy.orm import Session
@@ -94,6 +96,105 @@ def test_finalize_without_contributions_creates_zero_snapshot():
     repo.transition_workflow_instance(instance.id, "FAILED")
     record = RunStatisticsService(session).finalize(instance.id)
     assert (record.success_count, record.failure_count, record.total_count) == (0, 0, 0)
+
+
+def test_stopped_stream_is_finalized_as_a_terminal_snapshot():
+    session, repo, instance = _context("STREAM")
+    repo.record_result_stat(
+        workflow_instance_id=instance.id,
+        attempt_no=0,
+        success_count=7,
+        failed_count=1,
+        skipped_count=2,
+    )
+    repo.transition_workflow_instance(instance.id, "RUNNING")
+    repo.transition_workflow_instance(instance.id, "STOPPED")
+
+    record = RunStatisticsService(session).finalize(instance.id)
+
+    assert record.status == "STOPPED"
+    assert (record.success_count, record.failure_count, record.skipped_count) == (7, 1, 2)
+
+
+def test_workflow_level_result_replaces_task_rollup_instead_of_double_counting():
+    session, repo, instance = _context()
+    task = repo.create_task_instance(workflow_instance_id=instance.id, task_id="sync")
+    attempt = repo.append_attempt(task.id)
+    repo.record_result_stat(
+        workflow_instance_id=instance.id,
+        task_instance_id=task.id,
+        attempt_no=attempt.attempt_no,
+        success_count=4,
+        failed_count=1,
+        skipped_count=0,
+        source_count=5,
+        target_count=4,
+        reconcile_details=[{
+            "source_object": "task.source",
+            "target_object": "task.target",
+            "success_count": 4,
+            "failure_count": 1,
+        }],
+    )
+    repo.record_result_stat(
+        workflow_instance_id=instance.id,
+        task_instance_id=None,
+        attempt_no=0,
+        success_count=10,
+        failed_count=2,
+        skipped_count=3,
+        source_count=12,
+        target_count=10,
+        reconcile_details=[{
+            "source_object": "workflow.source",
+            "target_object": "workflow.target",
+            "success_count": 10,
+            "failure_count": 2,
+        }],
+    )
+    repo.transition_workflow_instance(instance.id, "RUNNING")
+    repo.transition_workflow_instance(instance.id, "FAILED")
+
+    record = RunStatisticsService(session).finalize(instance.id)
+
+    assert (record.source_count, record.target_count) == (12, 10)
+    assert (record.success_count, record.failure_count, record.skipped_count) == (10, 2, 3)
+    details = list(session.scalars(select(WorkflowRunReconcileDetailRecord)))
+    assert [(row.source_object, row.target_object) for row in details] == [
+        ("workflow.source", "workflow.target")
+    ]
+
+
+def test_reconcile_detail_times_accept_datetime_or_iso_and_reject_other_values():
+    session, _, instance = _context("STREAM")
+    service = RunStatisticsService(session)
+    common = dict(
+        task_instance_id=None,
+        attempt_no=0,
+        source_count=1,
+        target_count=1,
+        success_count=1,
+        failure_count=0,
+        skipped_count=0,
+        stream_checkpoint=True,
+    )
+    service.upsert(instance, **common, reconcile_details=[{
+        "source_object": "s.t",
+        "target_object": "d.t",
+        "started_at": "2026-10-24T08:30:00Z",
+        "finished_at": datetime(2026, 10, 24, 8, 31),
+    }])
+    detail = session.scalar(select(WorkflowRunReconcileDetailRecord))
+    assert detail.started_at == datetime(2026, 10, 24, 8, 30)
+    assert detail.finished_at == datetime(2026, 10, 24, 8, 31)
+
+    with pytest.raises(ExecutionDomainError) as error:
+        service.upsert(instance, **common, reconcile_details=[{
+            "source_object": "s.t",
+            "target_object": "d.t",
+            "started_at": "not-a-time",
+        }])
+    assert error.value.code == 4107
 
 
 def test_none_details_preserves_existing_but_explicit_empty_clears():

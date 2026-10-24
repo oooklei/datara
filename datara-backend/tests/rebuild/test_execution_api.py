@@ -190,6 +190,15 @@ def test_run_statistics_list_and_detail_are_project_scoped():
             ExecutionRepository(session).record_result_stat(
                 workflow_instance_id=instance.id, attempt_no=0,
                 source_count=5, target_count=4, success_count=4, failed_count=1, skipped_count=0,
+                data_param={"batch": "nightly"},
+                reconcile_details=[{
+                    "source_object": "ods.orders", "target_object": "dwd.orders",
+                    "source_count": 5, "target_count": 4, "success_count": 4,
+                    "failure_count": 1, "skipped_count": 0,
+                    "data_param": {"partition": "2026-10-24"},
+                    "started_at": "2026-10-24T01:00:00Z",
+                    "finished_at": "2026-10-24T01:02:00Z",
+                }],
             )
             ExecutionRepository(session).transition_workflow_instance(instance.id, "RUNNING")
             ExecutionRepository(session).transition_workflow_instance(instance.id, "FAILED")
@@ -205,6 +214,86 @@ def test_run_statistics_list_and_detail_are_project_scoped():
             f"{EXEC}/run-stats/{item['id']}", headers=tokens["dev"], params={"project_id": project_id}
         )
         assert detail.status_code == 200 and detail.json()["data"]["workflow_version_id"] == 3
+        payload = detail.json()["data"]["details"][0]
+        assert payload["id"] > 0
+        assert payload["data_param"] == {"partition": "2026-10-24"}
+        assert payload["started_at"] == "2026-10-24T01:00:00"
+        assert payload["finished_at"] == "2026-10-24T01:02:00"
+        assert payload["created_at"] and payload["updated_at"] and payload["generated_at"]
+
+        invalid_time = client.get(
+            f"{EXEC}/run-stats", headers=tokens["dev"],
+            params={"project_id": project_id, "started_from": "yesterday"},
+        )
+        assert invalid_time.status_code == 400
+        assert invalid_time.json()["code"] == 4107
+    finally:
+        client.__exit__(None, None, None)
+
+
+def test_terminal_stat_failure_is_observable_and_repair_is_scoped_and_idempotent(monkeypatch):
+    client, app, project_id, tokens = _client()
+    try:
+        with app.state.session_factory() as session:
+            definition = _add_definition(session, project_id)
+            instance = ExecutionRepository(session).create_workflow_instance(
+                workflow_id=definition.id, workflow_version_id=3, instance_type="FORMAL"
+            )
+            instance_id = instance.id
+            session.commit()
+
+        running = client.post(
+            f"{EXEC}/workflow-instances/{instance_id}/transition",
+            headers=tokens["dev"], json={"project_id": project_id, "status": "RUNNING"},
+        )
+        assert running.status_code == 200
+
+        from rebuild.execution.run_stats import RunStatisticsService
+
+        original_finalize = RunStatisticsService.finalize
+
+        def fail_finalize(self, workflow_instance_id):
+            raise RuntimeError("simulated stat storage outage")
+
+        monkeypatch.setattr(RunStatisticsService, "finalize", fail_finalize)
+        failed = client.post(
+            f"{EXEC}/workflow-instances/{instance_id}/transition",
+            headers=tokens["dev"], json={"project_id": project_id, "status": "FAILED"},
+        )
+        assert failed.status_code == 500
+        assert failed.json()["code"] == 5101
+        assert failed.json()["data"] == {
+            "instance_id": instance_id,
+            "status": "FAILED",
+            "run_stat_finalized": False,
+            "repairable": True,
+        }
+        with app.state.session_factory() as session:
+            assert ExecutionRepository(session)._require_workflow_instance(instance_id).status == "FAILED"
+
+        monkeypatch.setattr(RunStatisticsService, "finalize", original_finalize)
+        viewer = client.post(
+            f"{EXEC}/workflow-instances/{instance_id}/run-stat/finalize",
+            headers=tokens["viewer"], json={"project_id": project_id},
+        )
+        assert viewer.status_code == 403
+        wrong_project = client.post(
+            f"{EXEC}/workflow-instances/{instance_id}/run-stat/finalize",
+            headers=tokens["admin"], json={"project_id": project_id + 1},
+        )
+        assert wrong_project.status_code in {403, 404}
+
+        first = client.post(
+            f"{EXEC}/workflow-instances/{instance_id}/run-stat/finalize",
+            headers=tokens["dev"], json={"project_id": project_id},
+        )
+        second = client.post(
+            f"{EXEC}/workflow-instances/{instance_id}/run-stat/finalize",
+            headers=tokens["dev"], json={"project_id": project_id},
+        )
+        assert first.status_code == second.status_code == 200
+        assert first.json()["data"]["id"] == second.json()["data"]["id"]
+        assert second.json()["data"]["status"] == "FAILED"
     finally:
         client.__exit__(None, None, None)
 
