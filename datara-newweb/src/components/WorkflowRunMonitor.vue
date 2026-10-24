@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onMounted, ref } from 'vue'
+import { ref, watch } from 'vue'
 import { ElMessage } from 'element-plus'
 import { listWorkflowRunStats, type WorkflowRunStat } from '../services/rebuild/executionStatsApi'
 
@@ -14,7 +14,9 @@ async function load() {
   catch (reason) { error.value = reason instanceof Error ? reason.message : '运行记录加载失败'; ElMessage.error(error.value) }
   finally { loading.value = false }
 }
-onMounted(load)
+// ProjectSegmentView is kept alive while switching project routes.  Watching the
+// project id prevents the monitor from showing the previous project's run rows.
+watch(() => props.projectId, () => { void load() }, { immediate: true })
 </script>
 
 <template>
