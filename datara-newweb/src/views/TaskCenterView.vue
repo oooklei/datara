@@ -34,7 +34,7 @@
  *    「＋新建工作流」FE-6 ③ 归真（ElMessageBox.prompt → createWorkflowDefinition
  *    → loadDefPool 刷新 + openTab + switchTab('edit')）。
  */
-import { computed, nextTick, onMounted, ref } from 'vue'
+import { computed, nextTick, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { MAX_DAG_TABS, useDagTabsStore, type DagPickItem, type DagTab, type DagProfileType } from '../stores/dagTabs'
@@ -62,6 +62,21 @@ const router = useRouter()
 const qtab = String(route.query.tab ?? '')
 const tab = ref<TabKey>(tabs.some((t) => t.k === qtab) ? (qtab as TabKey) : 'edit')
 const variablesVisible = ref(false)
+
+/**
+ * Keep the active view in sync with browser history/deep links.  Clicking a
+ * tab updates local state immediately and writes `?tab=`; however, back/forward
+ * navigation changes the route without going through switchTab.  Watching the
+ * route query makes those navigation paths deterministic and falls back to the
+ * edit view for stale/invalid bookmarks.
+ */
+watch(
+  () => route.query.tab,
+  (value) => {
+    const next = String(value ?? '')
+    tab.value = tabs.some((t) => t.k === next) ? (next as TabKey) : 'edit'
+  },
+)
 
 function switchTab(k: TabKey) {
   tab.value = k

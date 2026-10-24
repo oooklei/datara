@@ -47,7 +47,12 @@ const { replaceSpy, routeQuery, routeParams, poolLoad, msgInfo, msgWarning, msgS
 }))
 
 vi.mock('vue-router', () => ({
-  useRoute: () => ({ query: routeQuery.value, params: routeParams.value }),
+  // Accessors preserve the ref dependency so route back/forward changes can
+  // exercise TaskCenterView's query watcher in this contract suite.
+  useRoute: () => ({
+    get query() { return routeQuery.value },
+    get params() { return routeParams.value },
+  }),
   useRouter: () => ({ replace: replaceSpy }),
 }))
 
@@ -221,6 +226,7 @@ describe('INC4-FE-1 任务中心顶部视角页签框架（/dag，s260 派令）
     // 本地激活态即时切换（不等路由响应）
     expect(w.find('[data-tab="runs"]').classes()).toContain('on')
   })
+
 })
 
 describe('INC4-FE-2 画布多 Tab（MAX_DAG_TABS=5，蓝本照抄 + §5A.2 收窄）', () => {
