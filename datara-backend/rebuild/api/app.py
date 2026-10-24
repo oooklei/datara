@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from contextlib import asynccontextmanager
 import hmac
+import hashlib
 import json
 import logging
 import os
@@ -38,7 +39,12 @@ from rebuild.execution.models import EXECUTION_TABLES
 from rebuild.identity.contracts import Permission, Role, ROLE_PERMISSIONS, TokenService, authorize
 from rebuild.identity.models import ActiveTokenRecord, ProjectMemberRecord, UserRecord
 from rebuild.identity.passwords import verify_password
-from rebuild.identity.repository import UserRepository, digest_token
+from rebuild.identity.repository import UserRepository
+
+
+def digest_token(token: str) -> str:
+    """Stable token digest kept local for compatibility with older identity modules."""
+    return hashlib.sha256(token.encode("utf-8")).hexdigest()
 from rebuild.datasource.contracts import DataSourceDraft, probe_datasource, validate_datasource
 from rebuild.datasource.models import ProjectDatasourceRecord
 from rebuild.datasource.metadata import metadata_catalog_for
