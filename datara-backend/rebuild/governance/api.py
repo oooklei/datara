@@ -28,6 +28,9 @@ from rebuild.governance.models import (
     LineageEdgeRecord,
     QualityRuleRecord,
     QualityRunRecord,
+    QualityExceptionRecord,
+    QualityReportRecord,
+    QualityAlarmPolicyRecord,
     SemanticMetricRecord,
     StandardDefinitionRecord,
 )
@@ -1751,6 +1754,65 @@ def build_governance_router(
                 "msg": "success",
                 "data": {"total": total, "list": [{"asset_id": r.asset_id, **quality_run_payload(r)} for r in runs]},
             }
+
+    @router.get("/projects/{project_id}/quality-exceptions")
+    def list_quality_exceptions(
+        project_id: int,
+        page: int = Query(default=1, ge=1),
+        page_size: int = Query(default=50, ge=1, le=200),
+        status: str | None = Query(default=None),
+        authorization: str = Header(default=""),
+    ):
+        """Read-only exception workbench backed by the carried-forward QC table."""
+        user = authenticate(authorization)
+        if isinstance(user, JSONResponse):
+            return user
+        with session_factory() as session:
+            permitted = project_permission(session, project_id, user, Permission.VIEW_ALL)
+            if isinstance(permitted, JSONResponse):
+                return permitted
+            query = select(QualityExceptionRecord).where(QualityExceptionRecord.project_id == project_id)
+            if status:
+                query = query.where(QualityExceptionRecord.status == status)
+            total = session.scalar(select(func.count()).select_from(query.subquery())) or 0
+            rows = session.scalars(
+                query.order_by(QualityExceptionRecord.id.desc())
+                .offset((page - 1) * page_size).limit(page_size)
+            ).all()
+            return {"code": 0, "msg": "success", "data": {"total": total, "list": [
+                {"id": row.id, "target": row.target, "run_details_id": row.run_details_id,
+                 "rule_definition_id": row.rule_definition_id, "legacy_task_id": row.legacy_task_id,
+                 "sample_sql": row.sample_sql, "hit_count": row.hit_count, "status": row.status,
+                 "fix_note": row.fix_note, "handled_by": row.handled_by, "handled_at": stamp(row.handled_at)}
+                for row in rows
+            ]}}
+
+    @router.get("/projects/{project_id}/quality-reports")
+    def list_quality_reports(project_id: int, page: int = Query(default=1, ge=1), page_size: int = Query(default=50, ge=1, le=200), authorization: str = Header(default="")):
+        user = authenticate(authorization)
+        if isinstance(user, JSONResponse): return user
+        with session_factory() as session:
+            permitted = project_permission(session, project_id, user, Permission.VIEW_ALL)
+            if isinstance(permitted, JSONResponse): return permitted
+            query = select(QualityReportRecord).where(QualityReportRecord.project_id == project_id)
+            total = session.scalar(select(func.count()).select_from(query.subquery())) or 0
+            rows = session.scalars(query.order_by(QualityReportRecord.id.desc()).offset((page - 1) * page_size).limit(page_size)).all()
+            def content(row):
+                try: return json.loads(row.content_json or "{}")
+                except (TypeError, ValueError): return {}
+            return {"code": 0, "msg": "success", "data": {"total": total, "list": [{"id": r.id, "title": r.title, "scope": r.scope, "period": r.period, "content": content(r), "created_by": r.created_by} for r in rows]}}
+
+    @router.get("/projects/{project_id}/quality-alarm-policies")
+    def list_quality_alarm_policies(project_id: int, page: int = Query(default=1, ge=1), page_size: int = Query(default=50, ge=1, le=200), authorization: str = Header(default="")):
+        user = authenticate(authorization)
+        if isinstance(user, JSONResponse): return user
+        with session_factory() as session:
+            permitted = project_permission(session, project_id, user, Permission.VIEW_ALL)
+            if isinstance(permitted, JSONResponse): return permitted
+            query = select(QualityAlarmPolicyRecord).where(QualityAlarmPolicyRecord.project_id == project_id)
+            total = session.scalar(select(func.count()).select_from(query.subquery())) or 0
+            rows = session.scalars(query.order_by(QualityAlarmPolicyRecord.id.desc()).offset((page - 1) * page_size).limit(page_size)).all()
+            return {"code": 0, "msg": "success", "data": {"total": total, "list": [{"id": r.id, "name": r.name, "scope": r.scope, "metric": r.metric, "operator": r.operator, "threshold": r.threshold, "enabled": r.enabled, "last_fired_at": stamp(r.last_fired_at)} for r in rows]}}
 
     def add_definition(
         project_id: int, body: BaseModel, user: dict[str, object], model, resource: str, fields: dict[str, object]
