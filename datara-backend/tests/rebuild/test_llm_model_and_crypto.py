@@ -57,6 +57,12 @@ def test_revision_is_frozen_and_checksum_covers_schema_manifest() -> None:
     assert columns["updated_at"]["server_default"] == "current_timestamp"
 
 
+def test_mysql_reflection_type_families_are_normalized() -> None:
+    dialect = mysql.dialect()
+    assert revision._type_contract(mysql.DECIMAL(3, 2), dialect)[0] == "NUMERIC"
+    assert revision._type_contract(mysql.INTEGER(), dialect)[0] == "INTEGER"
+
+
 def test_model_migration_and_repository_default_guards() -> None:
     engine = create_engine("sqlite+pysqlite:///:memory:")
     first_migration = apply_llm_migrations(engine)
