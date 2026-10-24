@@ -10,7 +10,10 @@ def upgrade(engine: Engine) -> None:
     tables = set(inspector.get_table_names())
     with engine.begin() as conn:
         if "tags_json" not in columns:
-            conn.execute(text("ALTER TABLE workflow_definition ADD COLUMN tags_json TEXT NOT NULL DEFAULT '[]'"))
+            if engine.dialect.name in {"mysql", "mariadb"}:
+                conn.execute(text("ALTER TABLE workflow_definition ADD COLUMN tags_json VARCHAR(4000) NOT NULL DEFAULT '[]'"))
+            else:
+                conn.execute(text("ALTER TABLE workflow_definition ADD COLUMN tags_json TEXT NOT NULL DEFAULT '[]'"))
         if "workflow_category" not in tables:
             if engine.dialect.name in {"mysql", "mariadb"}:
                 ddl = "CREATE TABLE workflow_category (id BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY, name VARCHAR(128) NOT NULL UNIQUE, created_at DATETIME DEFAULT CURRENT_TIMESTAMP)"
