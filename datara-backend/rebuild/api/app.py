@@ -643,6 +643,14 @@ def create_app(
                 result_set_id=payload.get("result_set_id", payload.get("resultSetId")),
                 format=str(payload.get("format", "csv")),
             )
+        if operation == "exportTable":
+            return export_service().create_table_export(
+                project_id=project_id, user_id=user_id,
+                datasource_id=int(payload.get("datasource_id", payload.get("datasourceId", 0))),
+                object_ref=dict(payload.get("object_ref", payload.get("objectRef", {}))),
+                format=str(payload.get("format", "csv")),
+                row_limit=int(payload.get("row_limit", payload.get("rowLimit", 10000))),
+            )
         if operation == "getExport":
             return export_service().get_job(project_id=project_id, user_id=user_id, export_id=str(payload.get("export_id")))
         if operation == "downloadExport":
