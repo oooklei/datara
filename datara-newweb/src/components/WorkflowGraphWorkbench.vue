@@ -50,6 +50,7 @@ import WorkflowVariablePanel from './WorkflowVariablePanel.vue'
 import VariableReferenceInput from './VariableReferenceInput.vue'
 import StreamObservationPanel from './StreamObservationPanel.vue'
 import SyncMappingEditor from './SyncMappingEditor.vue'
+import { createDependencyContract } from '../services/rebuild/dependencyApi'
 
 import '@vue-flow/core/dist/style.css'
 import '@vue-flow/core/dist/theme-default.css'
@@ -137,6 +138,8 @@ function updateNodeParameter(value: string) {
 }
 const isSyncMappingNode = computed(() => workflowType.value === 'SYNC' && Boolean(selectedNodeRecord.value?.nodeType && ['endpoint_select', 'field_map', 'field_map_union', 'src_base_orch', 'tgt_base_orch', 'file_sync_orch'].includes(String(selectedNodeRecord.value?.nodeType).toLowerCase())))
 const isDependentNode = computed(() => String(selectedNodeRecord.value?.nodeType ?? '').toLowerCase() === 'dependent')
+const dependencySaving = ref(false)
+const dependencySaved = ref(false)
 function dependentValue(key: string, fallback: string | number = ''): string | number {
   return selectedNodeRecord.value?.params?.[key] as string | number ?? fallback
 }
@@ -144,6 +147,40 @@ function updateDependentParam(key: string, value: string | number) {
   const node = selectedNodeRecord.value
   if (!node) return
   graphStore.updateNode(node.nodeCode, { params: { ...(node.params ?? {}), [key]: value } })
+}
+async function saveDependencyConfig() {
+  const node = selectedNodeRecord.value
+  if (!node || props.projectId === undefined) return
+  const p = node.params ?? {}
+  const dependencyId = Number(p.dependency_id)
+  if (!Number.isInteger(dependencyId) || dependencyId <= 0) {
+    ElMessage.warning('请先填写有效的依赖标识')
+    return
+  }
+  dependencySaving.value = true
+  dependencySaved.value = false
+  try {
+    await createDependencyContract().saveDependency({
+      projectId: props.projectId,
+      workflowId: numDocId.value,
+      workflowVersion: 1,
+      taskId: node.nodeCode,
+      groups: [{
+        join: String(p.relation ?? 'AND') === 'OR' ? 'OR' : 'AND',
+        conditions: [{
+          upstreamWorkflowId: dependencyId,
+          upstreamTaskCode: String(p.dependent_execute ?? 'workflow') === 'single_task' ? String(p.upstream_task_code ?? '0') : undefined,
+          dateRange: { periodType: 'day', beginOffset: -1, endOffset: 0 },
+        }],
+      }],
+    })
+    dependencySaved.value = true
+    ElMessage.success('依赖配置已保存')
+  } catch (error) {
+    ElMessage.error(`依赖配置保存失败：${error instanceof Error ? error.message : '请求异常'}`)
+  } finally {
+    dependencySaving.value = false
+  }
 }
 function updateSyncParams(value: Record<string, unknown>) {
   const node = selectedNodeRecord.value
@@ -428,6 +465,7 @@ async function onShowVersions() {
       <label>失败策略<select :value="dependentValue('failure_policy', 'fail')" @change="updateDependentParam('failure_policy', ($event.target as HTMLSelectElement).value)"><option value="fail">失败</option><option value="waiting">等待</option></select></label>
       <label v-if="dependentValue('failure_policy', 'fail') === 'waiting'">失败等待(秒)<input type="number" min="1" :value="dependentValue('failure_waiting_seconds', 60)" @input="updateDependentParam('failure_waiting_seconds', Number(($event.target as HTMLInputElement).value))" /></label>
       <label>执行范围<select :value="dependentValue('dependent_execute', 'workflow')" @change="updateDependentParam('dependent_execute', ($event.target as HTMLSelectElement).value)"><option value="workflow">整工作流</option><option value="all_tasks">全任务</option><option value="single_task">单任务</option></select></label>
+      <button type="button" class="wf-btn dependency-save" :disabled="dependencySaving" @click="saveDependencyConfig">{{ dependencySaving ? '保存中…' : dependencySaved ? '已保存' : '保存依赖配置' }}</button>
     </section>
     <StreamObservationPanel v-if="workflowType === 'STREAM' && loaded" />
     <SyncMappingEditor
@@ -545,4 +583,5 @@ async function onShowVersions() {
 .dependency-editor strong{grid-column:1/-1}
 .dependency-editor label{display:grid;gap:3px;font-size:11px;color:var(--text-secondary,#64748b)}
 .dependency-editor input,.dependency-editor select{min-width:0;border:1px solid var(--border-color,#cbd5e1);border-radius:4px;padding:4px 6px;background:#fff;font-size:12px}
+.dependency-save{justify-self:start}
 </style>
