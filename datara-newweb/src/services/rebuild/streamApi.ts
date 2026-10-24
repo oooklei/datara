@@ -103,6 +103,23 @@ export interface StreamRecoveryEventRow {
   occurredAt: string
 }
 
+export interface StreamProduceRequest {
+  count?: number
+  partitionId?: string
+  startOffset?: number
+  eventTime?: string
+  payload?: Record<string, unknown>
+  schema?: Record<string, string>
+}
+
+export interface StreamProduceResult {
+  jobId: string
+  partitionId: string
+  produced: number
+  lastOffset: number
+  metric: Record<string, unknown>
+}
+
 /* ---------- RED 哨兵 ---------- */
 
 export const I8_STREAM_NOT_WIRED = 'I8_STREAM_NOT_WIRED: rebuild/stream contract not connected yet'
@@ -115,6 +132,7 @@ export const I8_CONTRACT_METHODS = [
   'listStreamMetrics',
   'queryStreamObservation',
   'listStreamRecoveryEvents',
+  'produceStreamEvents',
 ] as const
 
 export type I8ContractMethod = (typeof I8_CONTRACT_METHODS)[number]
@@ -126,6 +144,7 @@ export interface StreamContract {
   listStreamMetrics: (window: TimeWindowQuery, jobId?: string) => Promise<StreamMetricPoint[]>
   queryStreamObservation: (window: TimeWindowQuery, jobId?: string) => Promise<StreamObservation>
   listStreamRecoveryEvents: (window: TimeWindowQuery, jobId?: string) => Promise<StreamRecoveryEventRow[]>
+  produceStreamEvents: (jobId: string, request?: StreamProduceRequest) => Promise<StreamProduceResult>
 }
 
 /* ---------- GREEN 接线；保留未挂载时的兼容哨兵 ---------- */
@@ -209,5 +228,22 @@ export function createStreamContract(): StreamContract {
     listStreamRecoveryEvents: async (window, jobId) => (await Promise.all((await jobsFor(jobId)).map((job) =>
       request<Array<{ eventId: string; jobId: number; kind: string; detail: string; occurredAt: string }>>(`/jobs/${job.id}/recovery-events${query(window)}`),
     ))).flat().map((row) => ({ ...row, eventId: wireIdToString(row.eventId, 'eventId'), jobId: wireIdToString(row.jobId, 'jobId') })),
+    produceStreamEvents: async (jobId, body = {}) => {
+      const result = await request<Record<string, unknown>>(`/jobs/${encodeURIComponent(jobId)}/produce`, 'POST', {
+        count: body.count,
+        partition_id: body.partitionId,
+        start_offset: body.startOffset,
+        event_time: body.eventTime,
+        payload: body.payload,
+        schema: body.schema,
+      })
+      return {
+        jobId: wireIdToString(result.jobId, 'jobId'),
+        partitionId: String(result.partitionId ?? 'p0'),
+        produced: Number(result.produced ?? 0),
+        lastOffset: Number(result.lastOffset ?? 0),
+        metric: (result.metric as Record<string, unknown>) ?? {},
+      }
+    },
   }
 }
