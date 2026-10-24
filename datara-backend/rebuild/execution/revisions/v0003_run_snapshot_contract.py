@@ -11,8 +11,8 @@ from sqlalchemy import Engine, inspect, text
 revision = "r9_0003_run_snapshot_contract"
 down_revision = "r9_0002_run_statistics"
 _DDL_MANIFEST = (
-    "r9_0003 workflow_run_stat latest-authoritative-rollup one-per-instance bigint checked counts;"
-    "reconcile selected-detail unique object pair fk cascade;execution receipt_identity nonnull unique"
+    "r9_0003 resumable workflow_run_stat latest-authoritative-rollup one-per-instance bigint checked counts;"
+    "selected-detail unique object pair fk cascade;execution receipt_identity nonnull unique"
 )
 checksum = hashlib.sha256(_DDL_MANIFEST.encode("utf-8")).hexdigest()
 
@@ -35,6 +35,15 @@ def _latest_v2_predicate(alias: str, table: str) -> str:
                               WHERE latest.workflow_instance_id={alias}.workflow_instance_id
                                 AND latest.task_identity={alias}.task_identity))
     )"""
+
+
+def _legacy_stat_drop_plan(columns: set[str]) -> tuple[str, ...]:
+    """Return the independently resumable cleanup plan for any v2 columns left behind."""
+    return tuple(
+        f"ALTER TABLE {_STAT} DROP COLUMN {column}"
+        for column in ("task_instance_id", "task_identity", "attempt_no")
+        if column in columns
+    )
 
 
 def upgrade(engine: Engine) -> None:
@@ -319,20 +328,26 @@ def _upgrade_mysql(engine: Engine) -> None:
                 "d.failure_count,d.skipped_count,d.difference_count,d.created_at,d.updated_at,d.generated_at "
                 f"FROM r9_0003_detail_rollup d JOIN {_STAT} s ON s.workflow_instance_id=d.workflow_instance_id"
             ))
-            stat_uniques = {
-                item.get("name"): tuple(item["column_names"])
-                for item in inspect(engine).get_unique_constraints(_STAT)
-            }
-            if "uq_wrs_instance_task_attempt" in stat_uniques:
-                connection.execute(text(f"ALTER TABLE {_STAT} DROP INDEX uq_wrs_instance_task_attempt"))
-            if stat_uniques.get("uq_wrs_workflow_instance") != ("workflow_instance_id",):
-                connection.execute(text(
-                    f"ALTER TABLE {_STAT} ADD CONSTRAINT uq_wrs_workflow_instance "
-                    "UNIQUE (workflow_instance_id)"
-                ))
-            for column in ("task_instance_id", "task_identity", "attempt_no"):
-                if column in {item["name"] for item in inspect(engine).get_columns(_STAT)}:
-                    connection.execute(text(f"ALTER TABLE {_STAT} DROP COLUMN {column}"))
+        # This cleanup is deliberately outside the rollup guard. If MySQL
+        # auto-committed one DROP before an interruption, the next run removes
+        # every remaining legacy column and then continues with target DDL.
+        stat_uniques = {
+            item.get("name"): tuple(item["column_names"])
+            for item in inspect(engine).get_unique_constraints(_STAT)
+        }
+        if "uq_wrs_instance_task_attempt" in stat_uniques:
+            connection.execute(text(f"ALTER TABLE {_STAT} DROP INDEX uq_wrs_instance_task_attempt"))
+        remaining_columns = {item["name"] for item in inspect(engine).get_columns(_STAT)}
+        for statement in _legacy_stat_drop_plan(remaining_columns):
+            connection.execute(text(statement))
+        target_uniques = {
+            tuple(item["column_names"]) for item in inspect(engine).get_unique_constraints(_STAT)
+        }
+        if ("workflow_instance_id",) not in target_uniques:
+            connection.execute(text(
+                f"ALTER TABLE {_STAT} ADD CONSTRAINT uq_wrs_workflow_instance "
+                "UNIQUE (workflow_instance_id)"
+            ))
         additions = {
             "dag_name": "VARCHAR(256) NOT NULL DEFAULT ''",
             "data_param_json": "TEXT NULL",

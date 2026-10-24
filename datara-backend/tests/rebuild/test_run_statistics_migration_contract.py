@@ -15,7 +15,7 @@ from rebuild.metrics.revisions import v0002_workflow_result_unique
 def test_run_statistics_revision_checksums_are_frozen_literals():
     assert v0001_execution_tables.checksum == "033390ccac1d2f062448e1d0ca861946662620d95dc05c2db6a3568be0371106"
     assert v0002_run_statistics.checksum == "518b0b484dc74e9fe190d8c4c0e7549670a17f7827d493e01c6afb8d1a403145"
-    assert v0003_run_snapshot_contract.checksum == "d508746417917b807e5a12fa75d279dba4166969df307e4979dedba4d794272c"
+    assert v0003_run_snapshot_contract.checksum == "e0971065bfe2808d68eada6909a091d45901326e9c2f269d49ef3638e6febf3b"
     assert v0002_workflow_result_unique.checksum == "869dbe139fb56572abd9d9050a53acb7588b5d414eb4cffcd89b01bc70b83818"
 
 
@@ -197,3 +197,21 @@ def test_mysql_plans_deduplicate_receipts_and_avoid_target_table_1093():
     assert "CREATE TEMPORARY TABLE r7_0002_workflow_result_rollup" in metrics_source
     assert "JOIN r7_0002_workflow_result_rollup rollup" in metrics_source
     assert "SELECT SUM(source.success_count) FROM {_TABLE}" not in metrics_source
+
+
+def test_mysql_partial_legacy_column_cleanup_resumes_after_task_identity_was_dropped():
+    # Represents an auto-committed partial migration: task_identity is already
+    # gone, while the first and third legacy columns still remain.
+    partial_columns = {
+        "id", "workflow_instance_id", "task_instance_id", "attempt_no",
+        "success_count", "failure_count", "skipped_count",
+    }
+    plan = v0003_run_snapshot_contract._legacy_stat_drop_plan(partial_columns)
+    assert plan == (
+        "ALTER TABLE workflow_run_stat DROP COLUMN task_instance_id",
+        "ALTER TABLE workflow_run_stat DROP COLUMN attempt_no",
+    )
+    for statement in plan:
+        partial_columns.remove(statement.rsplit(" ", 1)[-1])
+    assert not {"task_instance_id", "task_identity", "attempt_no"} & partial_columns
+    assert v0003_run_snapshot_contract._legacy_stat_drop_plan(partial_columns) == ()
