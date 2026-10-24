@@ -90,7 +90,7 @@ from rebuild.model.api import build_model_router
 from rebuild.model.dicts import seed_model_dicts
 from rebuild.model.models import MODEL_TABLES
 from rebuild.monitor import build_monitor_router
-from rebuild.llm import LlmCredentialCipher, LlmModelRecord, build_llm_router
+from rebuild.llm import LlmCredentialCipher, build_llm_router
 from rebuild.llm.migrations import apply_llm_migrations
 from common.registry import ServiceRegistry
 
@@ -348,7 +348,6 @@ def create_app(
                 WorkflowScheduleRecord.__table__,
                 WorkflowPublishRecord.__table__,
                 WorkflowDraftSnapshotRecord.__table__,
-                LlmModelRecord.__table__,
                 *EXECUTION_TABLES,
                 StreamJobRecord.__table__,
                 StreamJobAttemptRecord.__table__,
