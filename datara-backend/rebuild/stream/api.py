@@ -204,8 +204,22 @@ def build_stream_router(
         for field, expected in body.schema_.items():
             if field not in body.payload or not isinstance(expected, str):
                 return JSONResponse(status_code=400, content={"code": 4001, "msg": f"payload does not satisfy schema field {field}", "data": None})
-            actual = type(body.payload[field]).__name__
-            if expected not in {actual, "number" if isinstance(body.payload[field], (int, float)) else actual}:
+            value = body.payload[field]
+            actual = type(value).__name__
+            # The stream form uses JSON-schema-ish names while Python's
+            # runtime type names are ``int``/``float``.  Accept the common
+            # aliases so a valid integer/number payload is not rejected by
+            # the API adapter (the persisted payload remains unchanged).
+            aliases = {
+                "integer": {"int"},
+                "number": {"int", "float"},
+                "boolean": {"bool"},
+                "object": {"dict"},
+                "array": {"list"},
+                "string": {"str"},
+            }
+            accepted = aliases.get(expected, {expected})
+            if actual not in accepted:
                 return JSONResponse(status_code=400, content={"code": 4001, "msg": f"payload field {field} has type {actual}, expected {expected}", "data": None})
         with session_factory() as session:
             try:
