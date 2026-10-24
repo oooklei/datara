@@ -165,6 +165,25 @@ def main() -> int:
         # assert that the persisted metric contains the produced records.
         stream_window_from = "2026-10-25T00:00:00Z"
         stream_window_to = "2026-10-25T23:59:59Z"
+        # Seeded stream jobs are intentionally created in CREATED state.  The
+        # producer is a runtime data-plane endpoint and therefore requires the
+        # explicit CREATED -> RUNNING transition; activating here keeps the
+        # probe deterministic while respecting the lifecycle gate.
+        stream_job = call(
+            args.base,
+            f"/api/v1/rebuild/stream/jobs/{args.stream_job_id}",
+            token=token,
+        ).get("data") or {}
+        if stream_job.get("state") != "RUNNING":
+            transitioned = call(
+                args.base,
+                f"/api/v1/rebuild/stream/jobs/{args.stream_job_id}/transitions",
+                token=token,
+                method="POST",
+                body={"action": "activate"},
+            )
+            if (transitioned.get("data") or {}).get("state") != "RUNNING":
+                raise RuntimeError("stream job could not enter RUNNING state")
         produced = call(
             args.base,
             f"/api/v1/rebuild/stream/jobs/{args.stream_job_id}/produce",
