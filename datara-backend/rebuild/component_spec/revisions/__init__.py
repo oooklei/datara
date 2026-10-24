@@ -1,0 +1,1 @@
+"""Component specification schema revisions."""
