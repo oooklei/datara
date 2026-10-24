@@ -45,6 +45,7 @@ from rebuild.workflow.models import (
 )
 from rebuild.component_spec.catalogue import (
     DESIGN_COMPONENT_TYPES,
+    HIDDEN_INPUTS,
     RUNTIME_ONLY_TYPES,
     WORKFLOW_COMPONENT_TYPES,
 )
@@ -227,6 +228,12 @@ class WorkflowRepository:
                 "WF_WORKFLOW_TYPE_MISMATCH", f"{node_type} cannot be mixed with {sorted(existing_kinds)} components"
             )
         params = dict(node.get("params") or {})
+        if node_type in DESIGN_COMPONENT_TYPES:
+            forbidden = sorted(set(params) & (HIDDEN_INPUTS | {"_componentRef"}))
+            if forbidden:
+                raise WorkflowDomainError(
+                    "WF_HIDDEN_INPUT_WRITE", f"executor-owned inputs cannot be saved: {forbidden}"
+                )
         if ref is not None:
             params["_componentRef"] = ref
         values: dict[str, Any] = {

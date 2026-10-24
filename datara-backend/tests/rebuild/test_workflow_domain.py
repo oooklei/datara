@@ -268,6 +268,20 @@ def test_design_nodes_require_pinned_ref_and_cannot_mix_workflow_kinds_or_save_r
         assert pinned.status_code == 200
         assert pinned.json()["data"]["component_ref"] == {"type": "sql", "version": 3}
 
+        hidden_write = client.post(
+            f"{WORKFLOWS}/{definition_id}/nodes",
+            headers=tokens["dev"],
+            json={
+                "project_id": owned_id,
+                "node_code": "sql2",
+                "node_type": "sql",
+                "component_ref": {"type": "sql", "version": 3},
+                "params": {"runId": "caller-controlled"},
+            },
+        )
+        assert hidden_write.status_code == 400
+        assert hidden_write.json()["code"] == "WF_HIDDEN_INPUT_WRITE"
+
         mixed = client.post(
             f"{WORKFLOWS}/{definition_id}/nodes",
             headers=tokens["dev"],
