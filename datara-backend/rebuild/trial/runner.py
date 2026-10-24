@@ -24,6 +24,9 @@ The runner supports extension dimensions (WF-15~WF-20) via TrialRunOptions:
 from __future__ import annotations
 
 import json
+import os
+import subprocess
+import sys
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -382,6 +385,32 @@ class TrialRunner:
                     message=f"SQL precheck passed for: {sql[:80]}",
                 )
 
+        # NORMAL execution components: when a draft explicitly supplies code,
+        # execute it through a bounded subprocess and persist its output.  Nodes
+        # without executable content retain the deterministic trial behaviour.
+        execution_output: dict[str, Any] = {"node_code": node["node_code"], "status": "ok"}
+        if node_type in {"PYTHON", "python", "SHELL", "shell"}:
+            source = params.get("script") or params.get("code") or params.get("command")
+            if source:
+                command = [sys.executable, "-c", str(source)] if node_type.lower() == "python" else (
+                    ["cmd", "/c", str(source)] if os.name == "nt" else ["sh", "-c", str(source)]
+                )
+                completed = subprocess.run(
+                    command,
+                    capture_output=True,
+                    text=True,
+                    timeout=min(int(params.get("timeout_seconds", 30)), 120),
+                    env={**os.environ, **{str(k): str(v) for k, v in (params.get("env") or {}).items()}},
+                    check=False,
+                )
+                execution_output.update({
+                    "exit_code": completed.returncode,
+                    "stdout": completed.stdout[-20000:],
+                    "stderr": completed.stderr[-20000:],
+                })
+                if completed.returncode != 0:
+                    raise TrialRunnerError("WF_TRIAL_SCRIPT_FAILED", f"{node_type} node exited with {completed.returncode}")
+
         # Generic execution log.
         self._exec.append_run_log(
             task_instance_id=task.id,
@@ -391,7 +420,7 @@ class TrialRunner:
         self._exec.append_run_output(
             task_instance_id=task.id,
             attempt_no=attempt.attempt_no,
-            output_json=json.dumps({"node_code": node["node_code"], "status": "ok"}),
+            output_json=json.dumps(execution_output),
         )
 
         self._exec.transition_attempt(attempt.id, "SUCCEEDED")
