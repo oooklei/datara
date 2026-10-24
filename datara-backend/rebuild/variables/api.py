@@ -41,6 +41,7 @@ class VariableDefinitionRequest(BaseModel):
     # Optional ids required to address workflow/task scopes (parse-key authority).
     workflow_id: int | None = None
     task_id: str | None = None
+    environment_group_id: int | None = None
     # VAR-06: definition fields (design §13.5)
     default_value: str | None = None
     nullable: bool = True
@@ -111,6 +112,7 @@ def build_variables_router(
         scopes: str = Query(default=""),
         workflow_id: int | None = Query(default=None),
         task_id: str | None = Query(default=None),
+        environment_group_id: int | None = Query(default=None),
         token: str = Header(default=""),
         authorization: str = Header(default=""),
     ):
@@ -123,7 +125,7 @@ def build_variables_router(
                     "scope": item.scope,
                     "name": item.name,
                     "value_type": item.value_type,
-                    "value": item.value,
+                    "value": "******" if item.sensitive else item.value,
                     "description": item.description,
                     "sensitive": item.sensitive,
                     "default_value": item.default_value,
@@ -133,7 +135,10 @@ def build_variables_router(
                     "business_calendar": item.business_calendar,
                 }
                 for item in VariableRepository(outcome).list_all_with_scope(
-                    project_id, workflow_id=workflow_id, task_id=task_id
+                    project_id,
+                    workflow_id=workflow_id,
+                    task_id=task_id,
+                    environment_group_id=environment_group_id,
                 )
                 if not wanted or item.scope in wanted
             ]
@@ -159,7 +164,7 @@ def build_variables_router(
                     )
                 VariableRepository(outcome).upsert(
                     scope=body.scope,
-                    project_id=project_id if body.scope in ("project", "tmp", "workflow", "task") else None,
+                    project_id=project_id if body.scope in ("project", "env", "tmp", "workflow", "task") else None,
                     name=body.name,
                     value=body.value,
                     value_type=body.value_type,
@@ -167,6 +172,7 @@ def build_variables_router(
                     description=body.description,
                     workflow_id=body.workflow_id,
                     task_id=body.task_id,
+                    environment_group_id=body.environment_group_id,
                     default_value=body.default_value,
                     nullable=body.nullable,
                     format=body.format,
@@ -177,6 +183,36 @@ def build_variables_router(
         except VariableDomainError as exc:
             return domain_error(exc)
         return {"code": 0, "msg": "success", "data": {"saved": True, "scope": body.scope, "name": body.name}}
+
+    @router.delete("/{name}")
+    def delete_variable(
+        name: str,
+        project_id: int = Query(...),
+        scope: str = Query(...),
+        workflow_id: int | None = Query(default=None),
+        task_id: str | None = Query(default=None),
+        environment_group_id: int | None = Query(default=None),
+        token: str = Header(default=""),
+        authorization: str = Header(default=""),
+    ):
+        try:
+            with authorized_session(project_id, Permission.EDIT_DEFINITION, token, authorization) as outcome:
+                if isinstance(outcome, JSONResponse):
+                    return outcome
+                deleted = VariableRepository(outcome).delete_definition(
+                    scope=scope,
+                    project_id=project_id if scope != "global" else None,
+                    name=name,
+                    workflow_id=workflow_id,
+                    task_id=task_id,
+                    environment_group_id=environment_group_id,
+                )
+                outcome.commit()
+        except VariableDomainError as exc:
+            return domain_error(exc)
+        if not deleted:
+            return JSONResponse(status_code=404, content={"code": 4041, "msg": "variable not found", "data": None})
+        return {"code": 0, "msg": "success", "data": {"deleted": True, "scope": scope, "name": name}}
 
     # -- 3. completeVariables: POST ``/complete`` --------------------------
 

@@ -28,10 +28,11 @@ class VariableDefinitionRecord(Base):
     __tablename__ = "rebuild_variable_definition"
     __table_args__ = (
         UniqueConstraint("owner_key", "name", name="uq_variable_owner_name"),
-        CheckConstraint("scope IN ('global', 'project', 'tmp', 'workflow', 'task')", name="ck_variable_scope"),
+        CheckConstraint("scope IN ('global', 'project', 'env', 'tmp', 'workflow', 'task')", name="ck_variable_scope"),
         CheckConstraint(
             "(scope = 'global' AND project_id IS NULL) OR "
             "(scope = 'project' AND project_id IS NOT NULL) OR "
+            "(scope = 'env' AND project_id IS NOT NULL) OR "
             "(scope = 'tmp' AND project_id IS NOT NULL) OR "
             "(scope = 'workflow' AND project_id IS NOT NULL) OR "
             "(scope = 'task' AND project_id IS NOT NULL)",

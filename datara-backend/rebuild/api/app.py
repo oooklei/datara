@@ -93,6 +93,7 @@ from rebuild.monitor import build_monitor_router
 from rebuild.llm import LlmCredentialCipher, build_llm_router
 from rebuild.llm.migrations import apply_llm_migrations
 from rebuild.workflow.migrations import apply_workflow_migrations
+from rebuild.variables.migrations import apply_variable_migrations
 from common.registry import ServiceRegistry
 
 logger = logging.getLogger(__name__)
@@ -368,6 +369,7 @@ def create_app(
         apply_component_spec_migrations(engine)
         apply_llm_migrations(engine)
         apply_workflow_migrations(engine)
+        apply_variable_migrations(engine)
         ensure_i1_schema()
         ensure_schedule_schema()
         ensure_model_schema()

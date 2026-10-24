@@ -34,7 +34,7 @@ def test_metrics_and_variables_runtime_migrations_are_versioned_and_idempotent()
     metrics = apply_metrics_migrations(engine)
     variables = apply_variable_migrations(engine)
     assert metrics.applied == tuple(migration.revision for migration in METRICS_MIGRATIONS)
-    assert variables.applied == (VARIABLE_MIGRATIONS[0].revision,)
+    assert variables.applied == tuple(migration.revision for migration in VARIABLE_MIGRATIONS)
     assert apply_metrics_migrations(engine).skipped == metrics.applied
     assert apply_variable_migrations(engine).skipped == variables.applied
 

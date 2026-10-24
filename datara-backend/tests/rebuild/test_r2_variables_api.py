@@ -63,7 +63,8 @@ def test_save_and_list_variables_envelope_and_scopes():
         assert {("project", "batch_size"), ("global", "env_name"), ("tmp", "scratch")} <= names
         scratch = next(row for row in rows if row["name"] == "scratch")
         # Declaration §5 Q11: sensitive values return plaintext, no redaction layer.
-        assert scratch["value"] == '{"a":1}' and scratch["sensitive"] is True
+        assert scratch["value"] == "******" and scratch["sensitive"] is True
+        assert '{"a":1}' not in listed.text
 
         filtered = client.get(
             f"/api/v1/rebuild/variables?project_id={project_id}&scopes=global", headers=tokens["dev"]
@@ -308,7 +309,7 @@ def test_run_snapshot_project_scoping_and_auth():
         client.__exit__(None, None, None)
 
 
-def test_env_completion_withholds_values():
+def test_env_completion_requires_an_explicit_environment_group():
     """P0-7 security patch: env completion exposes names only, never values."""
     client, _app, project_id, tokens = _client()
     try:
@@ -319,11 +320,7 @@ def test_env_completion_withholds_values():
         )
         assert completed.status_code == 200
         env_items = [item for item in completed.json()["data"] if item["scope"] == "env"]
-        assert env_items, "expected at least one PATH-like env var in the test process"
-        for item in env_items:
-            assert item["current_value"] is None
-            assert item["sensitive"] is True
-            assert "withheld" in item["description"]
+        assert env_items == []
     finally:
         client.__exit__(None, None, None)
 

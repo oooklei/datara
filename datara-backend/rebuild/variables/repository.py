@@ -5,7 +5,7 @@ from __future__ import annotations
 from datetime import datetime
 from zoneinfo import ZoneInfo
 
-from sqlalchemy import select
+from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
 from rebuild.variables.models import TaskInstanceVariableRuntimeRecord, VariableDefinitionRecord
@@ -31,6 +31,7 @@ class VariableRepository:
         *,
         workflow_id: int | None = None,
         task_id: str | None = None,
+        environment_group_id: int | None = None,
     ) -> str:
         """Persisted owner key, aligned with the resolver's parse keys
         (service.py:252/287): workflow/task require workflow_id/task_id."""
@@ -38,6 +39,8 @@ class VariableRepository:
             return "global"
         if scope in ("project", "tmp") and project_id is not None:
             return f"{scope}:{project_id}"
+        if scope == "env" and project_id is not None and environment_group_id is not None:
+            return f"env:{project_id}:{environment_group_id}"
         if scope == "workflow" and project_id is not None and workflow_id is not None:
             return f"workflow:{project_id}:{workflow_id}"
         if scope == "task" and project_id is not None and task_id is not None:
@@ -69,9 +72,16 @@ class VariableRepository:
         format: str | None = None,
         timezone: str | None = None,
         business_calendar: str | None = None,
+        environment_group_id: int | None = None,
     ) -> VariableDefinitionRecord:
         validate_definition(scope, name, value_type, value)
-        owner = self.owner_key(scope, project_id, workflow_id=workflow_id, task_id=task_id)
+        owner = self.owner_key(
+            scope,
+            project_id,
+            workflow_id=workflow_id,
+            task_id=task_id,
+            environment_group_id=environment_group_id,
+        )
         row = self._session.scalar(
             select(VariableDefinitionRecord).where(
                 VariableDefinitionRecord.owner_key == owner,
@@ -109,6 +119,32 @@ class VariableRepository:
         self._session.flush()
         return row
 
+    def delete_definition(
+        self,
+        *,
+        scope: str,
+        project_id: int | None,
+        name: str,
+        workflow_id: int | None = None,
+        task_id: str | None = None,
+        environment_group_id: int | None = None,
+    ) -> bool:
+        owner = self.owner_key(
+            scope,
+            project_id,
+            workflow_id=workflow_id,
+            task_id=task_id,
+            environment_group_id=environment_group_id,
+        )
+        result = self._session.execute(
+            delete(VariableDefinitionRecord).where(
+                VariableDefinitionRecord.owner_key == owner,
+                VariableDefinitionRecord.name == name,
+            )
+        )
+        self._session.flush()
+        return bool(result.rowcount)
+
     def list_for_project(self, project_id: int) -> list[ResolvedVariable]:
         """Visible stored variables for a bare project context (project + tmp)."""
         items: list[ResolvedVariable] = []
@@ -122,6 +158,7 @@ class VariableRepository:
         *,
         workflow_id: int | None = None,
         task_id: str | None = None,
+        environment_group_id: int | None = None,
     ) -> list[ResolvedVariable]:
         """Stored variables visible from a bare project context, including global.
 
@@ -134,6 +171,8 @@ class VariableRepository:
             items.extend(self.list_owner(f"workflow:{project_id}:{workflow_id}"))
         if task_id is not None:
             items.extend(self.list_owner(f"task:{project_id}:{task_id}"))
+        if environment_group_id is not None:
+            items.extend(self.list_owner(f"env:{project_id}:{environment_group_id}"))
         items.extend(self.list_owner("global"))
         return items
 

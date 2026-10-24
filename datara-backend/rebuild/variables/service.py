@@ -16,7 +16,6 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta
 import json
-import os
 import re
 from typing import Any
 from zoneinfo import ZoneInfo
@@ -31,7 +30,7 @@ REFERENCE_SCOPES: frozenset[str] = frozenset((*PRECEDENCE, "tmp"))
 # Scopes whose definitions can be persisted through the API. workflow/task
 # values belong to execution contexts and run/env/builtin are transient or
 # system-owned, so saving into those scopes is rejected.
-PERSISTABLE_SCOPES: frozenset[str] = frozenset(("global", "project", "tmp", "workflow", "task"))
+PERSISTABLE_SCOPES: frozenset[str] = frozenset(("global", "project", "env", "tmp", "workflow", "task"))
 
 VALUE_TYPES: tuple[str, ...] = ("string", "integer", "decimal", "boolean", "date", "datetime", "json", "array")
 
@@ -99,6 +98,7 @@ class VariableContext:
     """Where references are checked/completed from (FE VariableContext)."""
 
     project_id: int
+    environment_group_id: int | None = None
     workflow_id: int | None = None
     workflow_version: int | None = None
     task_id: str | None = None
@@ -112,6 +112,7 @@ def parse_context(payload: dict[str, Any]) -> VariableContext:
         raise VariableDomainError(4001, "context.project_id must be a positive integer")
     return VariableContext(
         project_id=project_id,
+        environment_group_id=_optional_positive_int(payload.get("environment_group_id")),
         workflow_id=_optional_positive_int(payload.get("workflow_id")),
         workflow_version=_optional_positive_int(payload.get("workflow_version")),
         task_id=_optional_text(payload.get("task_id")),
@@ -303,18 +304,21 @@ class VariableResolver:
             visible.remove("workflow")
         if context.task_id is None:
             visible.remove("task")
+        if context.environment_group_id is None:
+            visible.remove("env")
         return tuple(visible)
 
     def catalog(self, context: VariableContext) -> list[ResolvedVariable]:
         """All variables visible in the context, chain order first-wins deduped."""
-        owners: list[tuple[str, str]] = [("global", "global")]
-        if context.project_id:
-            owners.insert(0, ("project", f"project:{context.project_id}"))
-            owners.append(("tmp", f"tmp:{context.project_id}"))
-        if context.workflow_id is not None:
-            owners.append(("workflow", f"workflow:{context.project_id}:{context.workflow_id}"))
+        owners: list[tuple[str, str]] = []
         if context.task_id is not None:
             owners.append(("task", f"task:{context.project_id}:{context.task_id}"))
+        if context.workflow_id is not None:
+            owners.append(("workflow", f"workflow:{context.project_id}:{context.workflow_id}"))
+        owners.append(("project", f"project:{context.project_id}"))
+        if context.environment_group_id is not None:
+            owners.append(("env", f"env:{context.project_id}:{context.environment_group_id}"))
+        owners.extend((("global", "global"), ("tmp", f"tmp:{context.project_id}")))
         catalog: dict[str, ResolvedVariable] = {}
         for name, value in self._run_values.items():
             catalog[name] = ResolvedVariable(name=name, scope="run", value=value, value_type="string")
@@ -329,8 +333,6 @@ class VariableResolver:
         """Resolve a single (scope, name); None when absent."""
         if scope == "run":
             return self._run_values.get(name)
-        if scope == "env":
-            return os.environ.get(name)
         if scope == "builtin":
             return BUILTIN_VARIABLES.get(name)
         owner_key = self._owner_key_for(scope, context)
@@ -346,12 +348,26 @@ class VariableResolver:
             return "global"
         if scope in ("project", "tmp"):
             return f"{scope}:{context.project_id}"
+        if scope == "env" and context.environment_group_id is not None:
+            return f"env:{context.project_id}:{context.environment_group_id}"
         if scope == "workflow" and context.workflow_id is not None:
             return f"workflow:{context.project_id}:{context.workflow_id}"
         if scope == "task" and context.task_id is not None:
             return f"task:{context.project_id}:{context.task_id}"
         if scope == "run" and context.task_id is not None and context.attempt_no is not None:
             return f"run:{context.project_id}:{context.task_id}:{context.attempt_no}"
+        return None
+
+    def resolve_effective_name(self, name: str, context: VariableContext) -> ResolvedVariable | None:
+        """Resolve an unqualified runtime name using the execution precedence.
+
+        Node/task parameters override workflow variables; project values remain
+        project-local defaults, followed by the selected environment group,
+        global values, and finally built-ins.
+        """
+        for item in self.catalog(context):
+            if item.name == name:
+                return item
         return None
 
     # -- diagnostics -------------------------------------------------------
@@ -498,18 +514,49 @@ class VariableResolver:
         # NAMES only (P0-7 security patch): values are withheld (the process
         # environment may carry secrets such as tokens/db credentials), and
         # the item is flagged sensitive so UI treats it as masked.
-        if scope_filter in (None, "env"):
-            for env_name in sorted(os.environ):
-                # prefix was lowercased above; env names keep their process casing
-                if env_name.lower().startswith(name_prefix):
-                    items.append(
-                        {
-                            "scope": "env",
-                            "name": env_name,
-                            "value_type": "string",
-                            "current_value": None,
-                            "sensitive": True,
-                            "description": "process environment variable (value withheld)",
-                        }
-                    )
         return items
+
+    def resolve_parameters(
+        self, parameters: dict[str, Any], context: VariableContext
+    ) -> tuple[dict[str, Any], list[dict[str, Any]]]:
+        """Resolve references recursively while producing a log-safe snapshot.
+
+        Resolved secrets are available only in the returned in-memory payload;
+        snapshot rows always contain the mask and are therefore safe to persist.
+        """
+        snapshot: list[dict[str, Any]] = []
+
+        def resolve_value(value: Any) -> Any:
+            if isinstance(value, dict):
+                return {key: resolve_value(item) for key, item in value.items()}
+            if isinstance(value, list):
+                return [resolve_value(item) for item in value]
+            if not isinstance(value, str):
+                return value
+            checked = self.check_reference(value, context)
+            if not checked["valid"]:
+                codes = ",".join(diagnostic["code"] for diagnostic in checked["diagnostics"])
+                raise VariableDomainError(4001, f"variable reference validation failed: {codes}")
+            rendered = value
+            refs, time_expressions, _ = references_in(value)
+            for ref in refs:
+                item = self._definition_of(ref["scope"], ref["name"], context)
+                if item is None:
+                    raise VariableDomainError(4001, f"variable {ref['scope']}.{ref['name']} is not defined")
+                expression = "${" + ref["scope"] + "." + ref["name"] + "}"
+                rendered = rendered.replace(expression, item.value)
+                snapshot.append(
+                    {
+                        "expression": expression,
+                        "scope": ref["scope"],
+                        "name": ref["name"],
+                        "resolved_value": redact_sensitive_value(item.value, item.sensitive).replace(REDACTED, "******"),
+                        "value_type": item.value_type,
+                        "source": f"{ref['scope']}.{ref['name']}",
+                    }
+                )
+            for expression in time_expressions:
+                rendered = rendered.replace(f"$[{expression}]", evaluate_time_expression(expression))
+            return rendered
+
+        return resolve_value(parameters), snapshot
