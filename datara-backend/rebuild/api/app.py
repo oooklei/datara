@@ -109,6 +109,7 @@ from rebuild.model.models import MODEL_TABLES
 from rebuild.monitor import build_monitor_router
 from rebuild.llm import LlmCredentialCipher, build_llm_router
 from rebuild.llm.migrations import apply_llm_migrations
+from rebuild.apikey import apply_apikey_migrations, build_apikey_router
 from rebuild.workflow.migrations import apply_workflow_migrations
 from rebuild.variables.migrations import apply_variable_migrations
 from common.registry import ServiceRegistry
@@ -410,6 +411,7 @@ def create_app(
         apply_component_spec_migrations(engine)
         SqlIdeMigrationRunner(engine, SQL_IDE_MIGRATIONS).apply()
         apply_llm_migrations(engine)
+        apply_apikey_migrations(engine)
         apply_workflow_migrations(engine)
         apply_variable_migrations(engine)
         ensure_i1_schema()
@@ -1409,6 +1411,11 @@ def create_app(
             prefix="/api/v1/rebuild/llm-models",
             tags=["rebuild-llm"],
         )
+    app.include_router(
+        build_apikey_router(session_factory, token_service, active_tokens),
+        prefix="/api/v1/open",
+        tags=["open-api-management"],
+    )
     # I18 P1 model-dictionary migration (WBS 17.2): router mounted at the shared
     # /api/v1/rebuild prefix so in-domain paths keep their legacy relative shape
     # (A6-1 → /api/v1/rebuild/model-dicts, A6-2 → /api/v1/rebuild/models).
