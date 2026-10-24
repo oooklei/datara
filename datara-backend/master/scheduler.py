@@ -353,7 +353,7 @@ def _cmd_complement(command: Command, param: dict) -> None:
     wf_code = int(param.get("wfCode") or 0)
     session = new_session()
     try:
-        definition, _graph = _load_graph(session, wf_code)
+        definition, _graph, _stream_spec = _load_graph(session, wf_code)
         current = start
         count = 0
         while current <= end:
@@ -415,7 +415,7 @@ def _cmd_repeat_running(command: Command, param: dict) -> None:
         session.add(new_instance)
         session.flush()
         if origin.wf_code:
-            _definition, graph = _load_graph(session, origin.wf_code)
+            _definition, graph, _stream_spec = _load_graph(session, origin.wf_code)
             body_nodes: set = set()
             for members in loop_bodies(graph).values():
                 body_nodes |= members
@@ -458,7 +458,7 @@ def _cmd_failure_tasks(command: Command, param: dict) -> None:
         instance = session.query(WorkflowInstance).filter(WorkflowInstance.instance_id == instance_id).first()
         if instance is None:
             raise ValueError("实例不存在: %s" % instance_id)
-        _definition, graph = _load_graph(session, instance.wf_code)
+        _definition, graph, _stream_spec = _load_graph(session, instance.wf_code)
         tasks = session.query(TaskInstance).filter(TaskInstance.instance_id == instance_id).all()
         failed_ids = {t.node_id for t in tasks if t.state == state.FAILURE and t.node_id}
         if not failed_ids:
@@ -510,7 +510,7 @@ def _cmd_resume_from(command: Command, param: dict) -> None:
             raise ValueError("实例不存在: %s" % instance_id)
         if instance.state in state.TERMINAL_STATES:
             raise ValueError("实例已处于终态，不允许续跑: %s（state=%s）" % (instance_id, instance.state))
-        _definition, graph = _load_graph(session, instance.wf_code)
+        _definition, graph, _stream_spec = _load_graph(session, instance.wf_code)
         graph_nodes = set(graph.nodes)
         unknown = requested - graph_nodes
         if unknown:
