@@ -48,6 +48,7 @@ import { isDesignComponent, loadComponentSpecs, type ComponentSpecItem, type Wor
 import { useWorkflowGraphStore } from '../stores/workflowGraph'
 import WorkflowVariablePanel from './WorkflowVariablePanel.vue'
 import VariableReferenceInput from './VariableReferenceInput.vue'
+import StreamObservationPanel from './StreamObservationPanel.vue'
 
 import '@vue-flow/core/dist/style.css'
 import '@vue-flow/core/dist/theme-default.css'
@@ -364,6 +365,7 @@ async function onShowVersions() {
         @update:model-value="updateNodeParameter"
       />
     </section>
+    <StreamObservationPanel v-if="workflowType === 'STREAM' && loaded" />
 
     <el-dialog v-model="versionsVisible" title="版本历史" width="640px" append-to-body>
       <el-table :data="versions" size="small">
