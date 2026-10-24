@@ -101,6 +101,45 @@ def _forbidden_hidden_paths(value: Any, path: str = "params") -> list[str]:
     return violations
 
 
+def _validate_sync_form_params(node_type: str, params: dict[str, Any]) -> None:
+    """Validate the serializable form contract for sync passthrough nodes.
+
+    These nodes are declarative, but malformed values otherwise survive draft
+    save and fail much later during materialization.  Keep the gate limited to
+    explicit values (empty forms remain valid for legacy drafts).
+    """
+    if node_type == "endpoint_select":
+        mode = params.get("baseMode", params.get("base_mode"))
+        if "baseMode" in params and "base_mode" in params and params["baseMode"] != params["base_mode"]:
+            raise WorkflowDomainError("WF_SYNC_FORM_INVALID", "endpoint_select baseMode aliases must agree")
+        if mode is not None and mode not in {"src_base", "tgt_base", "file_sync"}:
+            raise WorkflowDomainError("WF_SYNC_FORM_INVALID", "endpoint_select baseMode is unsupported")
+        if "fileType" in params and params["fileType"] not in {"csv", "txt", "excel"}:
+            raise WorkflowDomainError("WF_SYNC_FORM_INVALID", "endpoint_select fileType is unsupported")
+        if "fileEncoding" in params and params["fileEncoding"] not in {"utf-8", "gbk", "gb18030"}:
+            raise WorkflowDomainError("WF_SYNC_FORM_INVALID", "endpoint_select fileEncoding is unsupported")
+        if "fileHeaderRows" in params and (
+            isinstance(params["fileHeaderRows"], bool)
+            or not isinstance(params["fileHeaderRows"], int)
+            or params["fileHeaderRows"] < 0
+        ):
+            raise WorkflowDomainError("WF_SYNC_FORM_INVALID", "endpoint_select fileHeaderRows must be >= 0")
+    elif node_type in {"field_map", "field_map_union"}:
+        mappings = params.get("fieldMap")
+        if mappings is not None:
+            if not isinstance(mappings, list) or any(
+                not isinstance(item, dict)
+                or not ((isinstance(item.get("from"), str) and isinstance(item.get("to"), str))
+                        or (isinstance(item.get("key"), str) and isinstance(item.get("value"), str)))
+                for item in mappings
+            ):
+                raise WorkflowDomainError("WF_SYNC_FORM_INVALID", f"{node_type} fieldMap entries must be string pairs")
+    elif node_type == "condition_set":
+        for key in ("filterExpr", "incrementalColumn", "incrementalExpr"):
+            if key in params and params[key] is not None and not isinstance(params[key], str):
+                raise WorkflowDomainError("WF_SYNC_FORM_INVALID", f"condition_set {key} must be text")
+
+
 # Design §3.1 workflow version states. publish() creates PUBLISHED rows; the
 # DRAFT slot is reserved for the §4.1 结果转正式版本 path.
 VALID_VERSION_STATUSES = ("DRAFT", "PUBLISHED", "RUNNING", "DISABLED", "ARCHIVED")
@@ -291,6 +330,8 @@ class WorkflowRepository:
                 "WF_WORKFLOW_TYPE_MISMATCH", f"{node_type} cannot be mixed with {sorted(existing_kinds)} components"
             )
         params = dict(node.get("params") or {})
+        if node_type in {"endpoint_select", "field_map", "field_map_union", "condition_set"}:
+            _validate_sync_form_params(node_type, params)
         forbidden = _forbidden_hidden_paths(params)
         if forbidden:
             raise WorkflowDomainError(
