@@ -1,5 +1,6 @@
 <template>
-  <section class="segment-page" aria-label="项目功能段">
+  <component :is="segmentView" v-if="segmentView" :project-id="projectId" />
+  <section v-else class="segment-page" aria-label="项目功能段">
     <header class="seg-head">
       <h1>{{ heading }}</h1>
       <p class="seg-sub">{{ sub }}</p>
@@ -16,12 +17,29 @@
  * 未知 seg（:seg 为单段动态匹配，无 catch-all——1.4 §7.3 判据保持）渲染
  * 「未知功能段」不 crash 不落首页。
  */
-import { computed } from 'vue'
+import { computed, type Component } from 'vue'
 import { PROJECT_MENU_SECTIONS } from '../navigation/projectMenu'
+import TaskCenterView from './TaskCenterView.vue'
+import ProjectMembersView from './ProjectMembersView.vue'
+import PermissionMatrixView from './PermissionMatrixView.vue'
+import DataSourceListView from './datasource/DataSourceListView.vue'
+import IdeView from './ide/IdeView.vue'
+import MetadataCatalogView from './meta/MetadataCatalogView.vue'
+import MonitorView from './depops/MonitorView.vue'
 
 const props = defineProps<{ projectId: number; seg: string }>()
 
 const section = computed(() => PROJECT_MENU_SECTIONS.find((s) => s.key === props.seg))
+const segmentViews: Record<string, Component> = {
+  dag: TaskCenterView,
+  datasource: DataSourceListView,
+  resources: ProjectMembersView,
+  ide: IdeView,
+  meta: MetadataCatalogView,
+  dep: MonitorView,
+  system: PermissionMatrixView,
+}
+const segmentView = computed(() => segmentViews[props.seg])
 const heading = computed(() => section.value?.label ?? '未知功能段')
 const sub = computed(() =>
   section.value ? '该功能段尚未开放：功能页随后续批次交付' : `未知的段标识：${props.seg}`,
