@@ -25,13 +25,14 @@ const keyword = ref('')
 const filters = ref<Record<string, string>>({ status: '' })
 const apiKeyContract = createApiKeyContract()
 const openApiContract = createOpenApiAdminContract()
+const apiPermissions = ref<Record<string, string>>({})
 
 onMounted(async () => {
-  await reload()
   if (isMock) {
     apis.value = [...((await dataStore.list<OpenApi>('openApis')) ?? [])]
   } else {
     const defs = await openApiContract.listDefinitions()
+    apiPermissions.value = Object.fromEntries(defs.map((d: ApiDefinition) => [String(d.id), d.requiredPermission]))
     apis.value = defs.map((d: ApiDefinition) => ({
       id: String(d.id), name: d.name, path: d.path,
       method: d.method as 'GET' | 'POST',
@@ -40,6 +41,7 @@ onMounted(async () => {
       params: [], respExample: '{}', calls: 0,
     }))
   }
+  await reload()
 })
 
 async function reload() {
@@ -50,7 +52,8 @@ async function reload() {
   const rows = await apiKeyContract.list()
   keys.value = rows.map((row: ApiKeyRow) => ({
     id: String(row.id), name: row.name, key: row.keyPrefix,
-    apis: row.scopes?.permissions ?? [],
+    // Backend stores required permissions, while the legacy table renders API ids.
+    apis: (row.scopes?.permissions ?? []).map((permission) => Object.entries(apiPermissions.value).find(([, required]) => required === permission)?.[0] ?? permission),
     status: row.status === 'active' ? 'enabled' : 'disabled', owner: row.createdBy ?? '-',
     createdAt: row.createdAt?.replace('T', ' ').slice(0, 19) ?? '-',
     lastCalled: row.lastUsedAt?.replace('T', ' ').slice(0, 16) ?? '-', calls: 0,
@@ -104,7 +107,7 @@ async function saveCreate() {
   }
   if (!isMock) {
     try {
-      const issued = await apiKeyContract.issue(name, { permissions: [...createForm.value.apis] })
+      const issued = await apiKeyContract.issue(name, { permissions: createForm.value.apis.map((id) => apiPermissions.value[id] ?? id) })
       await reload(); createVisible.value = false
       ElMessage.success(`API-Key 已创建：${issued.key.name}`)
       await ElMessageBox.alert(`<div style="font-size:12.5px">请立即复制保存，该 Key 仅此一次完整展示：</div><div class="mono" style="margin-top:8px;padding:9px 12px;background:#0f172a;color:#d6e2f0;border-radius:var(--radius-sm);word-break:break-all">${issued.plainKey}</div>`, `新 Key — ${issued.key.name}`, { dangerouslyUseHTMLString: true, confirmButtonText: '已复制保存' })
