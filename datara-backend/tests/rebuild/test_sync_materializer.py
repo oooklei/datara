@@ -5,7 +5,11 @@ from rebuild.sync.materializer import SyncMaterializationError, materialize_endp
 
 def test_endpoint_select_materializes_runtime_node_and_preserves_design_nodes():
     result = materialize_endpoint_nodes([
-        {"node_code": "select_1", "node_type": "endpoint_select", "params": {"base_mode": "src_base", "endpoint_id": 3}},
+        {
+            "node_code": "select_1",
+            "node_type": "endpoint_select",
+            "params": {"base_mode": "src_base", "endpoint_id": 3},
+        },
         {"node_code": "map_1", "node_type": "field_map", "params": {}},
     ])
     assert result[0] == {
