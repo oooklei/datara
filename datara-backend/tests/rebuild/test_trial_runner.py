@@ -13,6 +13,7 @@ from rebuild.execution.models import TaskInstanceRecord, WorkflowInstanceRecord
 from rebuild.trial.models import WorkflowDraftSnapshotRecord
 from rebuild.trial.repository import TrialSnapshotRepository
 from rebuild.trial.runner import TrialRunner, TrialRunnerError, TrialRunOptions
+from rebuild.dependency.models import DependencyConfigRecord
 from rebuild.project.models import ProjectRecord  # noqa: F401 - register FK target table
 from rebuild.identity.models import UserRecord  # noqa: F401 - register FK target table
 from rebuild.workflow.models import (
@@ -132,6 +133,10 @@ def test_trial_run_executes_lowercase_dependent_component_with_mock():
     definition_id = _make_definition(session)
     _add_node(session, definition_id, "sql", node_type="sql", params={"sql": "SELECT 1"})
     _add_node(session, definition_id, "dependent", node_type="dependent", params={"dependency_id": 42})
+    session.add(DependencyConfigRecord(
+        id=42, project_id=1, workflow_id=definition_id, workflow_version=0,
+        task_id="dependent", groups_json="[]",
+    ))
     _add_edge(session, definition_id, "sql", "dependent")
     session.commit()
     snapshot = TrialSnapshotRepository(session).create_from_draft(definition_id)
@@ -153,10 +158,8 @@ def test_trial_run_executes_lowercase_dependent_component_with_mock():
 def test_trial_run_validation_failure_rejects():
     session = _session()
     definition_id = _make_definition(session)
-    # No START node → validation error.
-    _add_node(session, definition_id, "a", params={"sql": "SELECT 1"})
-    _add_node(session, definition_id, "b", params={"sql": "SELECT 2"})
-    _add_edge(session, definition_id, "a", "b")
+    # Dependency nodes must reference a saved dependency configuration.
+    _add_node(session, definition_id, "a", node_type="dependent", params={"dependency_id": 9999})
     session.commit()
 
     snapshot = TrialSnapshotRepository(session).create_from_draft(definition_id)
@@ -168,7 +171,7 @@ def test_trial_run_validation_failure_rejects():
             project_id=1,
         )
     assert excinfo.value.code == "WF_TRIAL_INVALID"
-    assert "START" in excinfo.value.msg
+    assert "missing dependency" in excinfo.value.msg
 
 
 def test_trial_run_with_node_subset():
