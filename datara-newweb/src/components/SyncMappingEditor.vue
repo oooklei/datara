@@ -40,6 +40,10 @@ watch(() => props.modelValue, (value) => {
   targetColumns.value = []
 }, { deep: true })
 
+// Keep the parent node draft in sync while editing the extended 13-field form;
+// otherwise switching nodes before Save would silently discard these values.
+watch([transformConfig, targetProperties], syncModel, { deep: true })
+
 function validRefs(): boolean {
   if (source.datasource_id < 1 || target.datasource_id < 1 || !source.object.trim() || !target.object.trim()) {
     ElMessage.error('请完整填写源/目标数据源及对象')
