@@ -112,7 +112,11 @@ def test_trial_run_executes_python_and_shell_scripts():
     session.commit()
     snapshot = TrialSnapshotRepository(session).create_from_draft(definition_id)
 
-    result = TrialRunner(session).run(definition_id, snapshot["snapshot_id"], project_id=1)
+    result = TrialRunner(session).run(
+        definition_id=definition_id,
+        snapshot_id=snapshot["snapshot_id"],
+        project_id=1,
+    )
     assert result.status == "SUCCEEDED"
     outputs = session.scalars(
         select(TaskInstanceRecord).where(TaskInstanceRecord.workflow_instance_id == result.instance_id)
