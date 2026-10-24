@@ -16,6 +16,7 @@ from sqlalchemy import (
     JSON,
     MetaData,
     String,
+    Text,
     Table,
     UniqueConstraint,
     inspect,
@@ -58,7 +59,10 @@ component_version_table = Table(
     Column("type", String(64), nullable=False),
     Column("version", Integer, nullable=False),
     Column("state", String(16), nullable=False),
-    Column("spec_json", LONGTEXT, nullable=False),
+    # LONGTEXT is MySQL-specific and cannot be compiled by the SQLite
+    # isolated verification database.  Keep the production storage type while
+    # providing a portable TEXT fallback for local/CI and in-memory tests.
+    Column("spec_json", Text().with_variant(LONGTEXT(), "mysql"), nullable=False),
     Column("spec_hash", String(64), nullable=False),
     Column("remark", String(512), nullable=True),
     Column("published_by", String(64), nullable=True),
