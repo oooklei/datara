@@ -331,6 +331,21 @@ def test_api_lifecycle_observe_and_failures_contract(client):
     data = observation.json()["data"]
     assert data["state"] == "RUNNING" and data["snapshot_count"] == 0 and data["produce_rate"] == 0
 
+    produced = client.post(
+        f"/api/v1/rebuild/stream/jobs/{job_id}/produce",
+        json={"count": 2, "partition_id": "p1", "start_offset": 10, "payload": {"key": "a", "amount": 3}, "aggregate": {"key_field": "key", "value_field": "amount", "window_size": 2}},
+    )
+    assert produced.status_code == 200
+    assert produced.json()["data"]["produced"] == 2
+    assert produced.json()["data"]["last_offset"] == 11
+
+    fused = client.post(
+        f"/api/v1/rebuild/stream/jobs/{job_id}/fuse",
+        json={"key_field": "id", "streams": {"left": [{"id": 1, "v": "a"}], "right": [{"id": 1, "w": "b"}]}},
+    )
+    assert fused.status_code == 200
+    assert fused.json()["data"]["fused"] == 1
+
     failures = client.post(
         f"/api/v1/rebuild/stream/jobs/{job_id}/failures",
         json={"from": "2026-10-18T00:00:00", "to": "2026-10-18T23:59:59"},
