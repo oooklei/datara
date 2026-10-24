@@ -202,6 +202,22 @@ def main() -> int:
         produced_data = produced.get("data") or {}
         if produced_data.get("produced") != 3 or (produced_data.get("metric") or {}).get("input_count") != 3:
             raise RuntimeError("stream producer did not persist the expected batch")
+        fused = call(
+            args.base,
+            f"/api/v1/rebuild/stream/jobs/{args.stream_job_id}/fuse",
+            token=token,
+            method="POST",
+            body={
+                "key_field": "id",
+                "streams": {
+                    "orders": [{"id": 1, "amount": 10}, {"id": 2, "amount": 20}],
+                    "customers": [{"id": 1, "name": "Ada"}, {"id": 2, "name": "Grace"}],
+                },
+            },
+        )
+        fused_data = fused.get("data") or {}
+        if fused_data.get("fused") != 2:
+            raise RuntimeError("stream fusion did not produce the expected joined records")
         observed = call(
             args.base,
             f"/api/v1/rebuild/stream/jobs/{args.stream_job_id}/observe",
@@ -255,7 +271,7 @@ def main() -> int:
         if key_logs.get("code") != 0:
             raise RuntimeError("scoped API-Key call-log read failed")
         stat_rows = stats.get("data", {}).get("items") if isinstance(stats.get("data"), dict) else stats.get("data")
-        print(json.dumps({"health": "ok", "component_count": spec_count, "variables": "ok", "trial": "SUCCEEDED", "task_count": len(trial_data["tasks"]), "run_stats": len(stat_rows or []), "stream_produced": produced_data.get("produced"), "stream_metrics": len(metric_rows), "llm_models": len(llm_rows or []), "api_definitions": len(api_rows or []), "api_key_call_logs": "ok"}, ensure_ascii=False))
+        print(json.dumps({"health": "ok", "component_count": spec_count, "variables": "ok", "trial": "SUCCEEDED", "task_count": len(trial_data["tasks"]), "run_stats": len(stat_rows or []), "stream_produced": produced_data.get("produced"), "stream_fused": fused_data.get("fused"), "stream_metrics": len(metric_rows), "llm_models": len(llm_rows or []), "api_definitions": len(api_rows or []), "api_key_call_logs": "ok"}, ensure_ascii=False))
         return 0
     except (HTTPError, URLError, KeyError, RuntimeError, ValueError) as exc:
         print(f"high_priority_e2e failed: {exc}")
