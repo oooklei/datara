@@ -458,7 +458,16 @@ def _cmd_failure_tasks(command: Command, param: dict) -> None:
         instance = session.query(WorkflowInstance).filter(WorkflowInstance.instance_id == instance_id).first()
         if instance is None:
             raise ValueError("实例不存在: %s" % instance_id)
-        _definition, graph, _stream_spec = _load_graph(session, instance.wf_code)
+        loaded = _load_graph(session, instance.wf_code)
+        # Keep the recovery command compatible with the lightweight graph
+        # loader used by older callers/tests.  Runtime loaders return
+        # ``(definition, graph, stream_spec)``; legacy adapters may still
+        # provide ``(definition, graph)`` because stream metadata is not used
+        # by failure-task recovery.
+        if len(loaded) == 2:
+            _definition, graph = loaded
+        else:
+            _definition, graph, _stream_spec = loaded
         tasks = session.query(TaskInstance).filter(TaskInstance.instance_id == instance_id).all()
         failed_ids = {t.node_id for t in tasks if t.state == state.FAILURE and t.node_id}
         if not failed_ids:
