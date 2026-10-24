@@ -203,11 +203,18 @@ class TrialValidator:
         import json
 
         for code, node in node_map.items():
-            if node.node_type != "DEPENDENCY":
+            # Component refs use lower-case ``dependent`` while legacy drafts
+            # use ``DEPENDENCY``.  Treat both forms as the same target gate.
+            if str(node.node_type).upper() not in {"DEPENDENCY", "DEPENDENT"}:
                 continue
             params = json.loads(node.params_json) if node.params_json else {}
             dep_id = params.get("dependency_id")
             if dep_id is None:
+                # A palette ``dependent`` node may be a design-time placeholder
+                # until its form is completed; preserve that graph validation
+                # behavior while keeping legacy DEPENDENCY strict.
+                if str(node.node_type).upper() == "DEPENDENT":
+                    continue
                 errors.append(
                     TrialValidationError(
                         "WF_TRIAL_INVALID",
@@ -216,9 +223,20 @@ class TrialValidator:
                     )
                 )
                 continue
+            try:
+                dependency_id = int(dep_id)
+            except (TypeError, ValueError):
+                errors.append(
+                    TrialValidationError(
+                        "WF_TRIAL_INVALID",
+                        f"DEPENDENCY node {code!r} has invalid dependency_id {dep_id!r}",
+                        code,
+                    )
+                )
+                continue
             exists = self._session.scalar(
                 select(DependencyConfigRecord.id).where(
-                    DependencyConfigRecord.id == int(dep_id)
+                    DependencyConfigRecord.id == dependency_id
                 )
             )
             if exists is None:

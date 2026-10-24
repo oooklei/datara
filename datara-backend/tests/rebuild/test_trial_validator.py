@@ -146,6 +146,27 @@ def test_dependency_missing_target():
     assert dep_errors[0].node_code == "dep"
 
 
+def test_component_dependent_invalid_target_is_structured_error():
+    """Lower-case palette refs must not leak ValueError from malformed IDs."""
+    session = _session()
+    definition_id = _make_definition(session)
+    _add_node(session, definition_id, "source", node_type="sql", params={"sql": "SELECT 1"})
+    _add_node(
+        session,
+        definition_id,
+        "dep",
+        node_type="dependent",
+        params={"dependency_id": "not-an-id"},
+    )
+    _add_edge(session, definition_id, "source", "dep")
+    session.commit()
+
+    errors = TrialValidator(session).validate(definition_id)
+    dep_errors = [e for e in errors if e.node_code == "dep"]
+    assert len(dep_errors) == 1
+    assert "invalid dependency_id" in dep_errors[0].message
+
+
 def test_required_params_missing():
     session = _session()
     definition_id = _make_definition(session)
