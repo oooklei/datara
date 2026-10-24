@@ -125,6 +125,36 @@ def test_cancel_run():
         client.__exit__(None, None, None)
 
 
+def test_cancel_run_hides_cross_project_instance():
+    """Cancellation must never mutate an instance outside the requested project."""
+    client, app, project_id, tokens = _client()
+    try:
+        with app.state.session_factory() as session:
+            definition = _add_definition(session, project_id)
+            instance = ExecutionRepository(session).create_workflow_instance(
+                workflow_id=definition.id, workflow_version_id=1, instance_type="FORMAL"
+            )
+            instance_id = instance.id
+            # A distinct project is enough to exercise the object-scope guard;
+            # the admin principal is authorized for both project permissions.
+            other = ProjectRecord(name="other-exec-proj", description="", owner_id=1)
+            session.add(other)
+            session.flush()
+            other_id = other.id
+            session.commit()
+        response = client.post(
+            f"{EXEC}/runs/{instance_id}/cancel",
+            headers=tokens["admin"],
+            json={"project_id": other_id},
+        )
+        assert response.status_code == 400
+        assert response.json()["code"] == 4404
+        with app.state.session_factory() as session:
+            assert ExecutionRepository(session)._require_workflow_instance(instance_id).status == "PENDING"
+    finally:
+        client.__exit__(None, None, None)
+
+
 def test_auth_and_permission_gates():
     client, app, project_id, tokens = _client()
     try:

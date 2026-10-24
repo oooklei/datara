@@ -732,6 +732,12 @@ def build_execution_router(
                 return outcome
             try:
                 repo = ExecutionRepository(outcome)
+                # Resolve the instance against the authorized project before
+                # mutating it.  Without this guard a user who can run project
+                # A could cancel an instance belonging to project B merely by
+                # supplying B's instance id (the permission check only covers
+                # the requested project id).
+                _resolve_instance_project(outcome, instance_id, project_id)
                 record = repo.transition_workflow_instance(instance_id, "CANCELLED")
                 outcome.commit()
                 try:
