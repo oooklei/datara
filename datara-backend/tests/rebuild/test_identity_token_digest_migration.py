@@ -37,7 +37,45 @@ def _create_legacy_table(engine, *, digest_index_sql=""):
 
 def test_v0004_revision_and_checksum_are_frozen_literals():
     assert v0004_token_digest_hardening.revision == "r3_0004_token_digest_hardening"
-    assert v0004_token_digest_hardening.checksum == "6f965797d9d2aed7ca003ebd89eb31e99624e1db8382120a3a1604f875a6849f"
+    assert v0004_token_digest_hardening.checksum == "dafcd2eadd1c59829a11be05e5a0004566c6d2b90f539135521440859eabc4cb"
+
+
+@pytest.mark.parametrize(
+    ("state", "required_actions", "forbidden_actions"),
+    [
+        (
+            {"columns": {"token", "user_id"}, "digest_nullable": None, "pk": ["token"], "index": None, "fk": False},
+            {"add_digest", "backfill_digest", "make_digest_required", "promote_digest_pk", "drop_raw_token"},
+            set(),
+        ),
+        (
+            {
+                "columns": {"token_digest", "user_id"},
+                "digest_nullable": False,
+                "pk": ["token_digest"],
+                "index": None,
+                "fk": False,
+            },
+            {"create_digest_index", "create_user_fk"},
+            {"backfill_digest", "drop_raw_token"},
+        ),
+        (
+            {
+                "columns": {"token_digest", "user_id"},
+                "digest_nullable": False,
+                "pk": ["token_digest"],
+                "index": {"unique": True, "column_names": ["token_digest"]},
+                "fk": False,
+            },
+            {"create_user_fk"},
+            {"create_digest_index", "backfill_digest", "drop_raw_token"},
+        ),
+    ],
+)
+def test_mysql_partial_ddl_resume_plan_only_executes_remaining_steps(state, required_actions, forbidden_actions):
+    actions = {name for name, _sql in v0004_token_digest_hardening._mysql_upgrade_plan(**state)}
+    assert required_actions <= actions
+    assert not forbidden_actions & actions
 
 
 def test_fresh_schema_converges_on_digest_primary_identity():
