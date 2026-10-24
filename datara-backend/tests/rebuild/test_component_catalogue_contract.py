@@ -90,6 +90,11 @@ def test_filtered_document_fails_closed_when_approved_group_is_incomplete(app):
         {"form": {name: [] for name in FORM_SECTIONS}, "extensions": {"hiddenInputs": ["password"]}},
         {"form": {name: [] for name in FORM_SECTIONS}, "refreshOptions": {"remote": "https://evil.invalid"}},
         {"form": {name: [] for name in FORM_SECTIONS}, "showIf": "x => true"},
+        {"form": {name: [] for name in FORM_SECTIONS}, "onChange": "callback()"},
+        {"form": {name: [] for name in FORM_SECTIONS}, "text": "javascript:alert(1)"},
+        {"form": {name: [] for name in FORM_SECTIONS}, "callback": {"name": "run"}},
+        {"form": {name: [] for name in FORM_SECTIONS}, "pick": "table"},
+        {"form": {name: [] for name in FORM_SECTIONS}, "refreshOptions": {"remote": 123}},
     ],
 )
 def test_declaration_gates_reject_non_dsl_or_non_allowlisted_values(spec):

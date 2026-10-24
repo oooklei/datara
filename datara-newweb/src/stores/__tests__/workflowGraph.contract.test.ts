@@ -74,6 +74,7 @@ const GET_DEF = (name: string, nodes: WireNode[], edges: WireEdge[]) => ({
   name,
   description: null,
   current_version: null,
+  workflow_type: 'NORMAL',
   draft: { nodes, edges },
 })
 

@@ -120,13 +120,14 @@ def build_workflow_router(
             project_id = frame_int(body, "project_id")
             name = frame_str(body, "name")
             description = frame_optional_str(body, "description") or ""
+            workflow_type = frame_optional_str(body, "workflow_type") or "NORMAL"
         except MalformedRequest as exc:
             return request_error(exc)
         with authorized_session(project_id, Permission.EDIT_DEFINITION, token, authorization) as outcome:
             if isinstance(outcome, JSONResponse):
                 return outcome
             try:
-                data = WorkflowRepository(outcome).create_definition(project_id, name, description)
+                data = WorkflowRepository(outcome).create_definition(project_id, name, description, workflow_type)
                 outcome.commit()
             except WorkflowDomainError as exc:
                 return request_error(exc)

@@ -31,7 +31,7 @@
  *  - load-tasks 事件契约在位（DagPickItem[] 同名同载荷；wire id number
  *    → DagPickItem.id string 桥接 String(id)）。
  */
-import { computed, onMounted, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { isDesignComponent, loadComponentSpecs, type ComponentSpecItem, type WorkflowType } from '../services/rebuild/componentSpecApi'
 import {
@@ -55,6 +55,8 @@ const kw = ref('')
 const folded = ref<Record<string, boolean>>({})
 const rows = ref<PalRow[]>([])
 const loaded = ref(false)
+let specLoadSeq = 0
+let specAbort: AbortController | undefined
 
 /* ---------- 顶部 Tab：组件库 + 工作流（蓝本照抄） ---------- */
 type PalTab = 'palette' | 'wf'
@@ -92,16 +94,23 @@ function rowOf(it: ComponentSpecItem): PalRow | null {
 /** 规格目录加载：失败 console.warn + 空态（last-success 回落在 API 层；首载
  *  fail-closed 不阻断宿主渲染） */
 async function loadRows() {
+  const seq = ++specLoadSeq
+  specAbort?.abort()
+  specAbort = new AbortController()
+  rows.value = []
   loaded.value = false
   try {
-    const snap = await loadComponentSpecs(props.workflowType ?? 'NORMAL')
+    const snap = await loadComponentSpecs(props.workflowType ?? 'NORMAL', specAbort.signal)
+    if (seq !== specLoadSeq) return
     rows.value = snap.items
       .filter((item) => isDesignComponent(item, props.workflowType ?? 'NORMAL'))
       .map(rowOf).filter((r): r is PalRow => r !== null)
   } catch (e) {
+    if (seq !== specLoadSeq || (e instanceof DOMException && e.name === 'AbortError')) return
+    rows.value = []
     console.warn('[Palette] component specs load failed:', e)
   } finally {
-    loaded.value = true
+    if (seq === specLoadSeq) loaded.value = true
   }
 }
 
@@ -111,6 +120,7 @@ onMounted(() => {
 })
 
 watch(() => props.workflowType, () => { void loadRows() })
+onBeforeUnmount(() => specAbort?.abort())
 
 /* ---------- 分组（蓝本 cats 结构：kw 过滤 + 折叠 + 计数） ---------- */
 const GENERIC_LABEL = '通用'
@@ -146,7 +156,7 @@ function onDragStart(e: DragEvent, row: PalRow) {
 }
 
 /* ---------- 工作流目录树（INC4-FE-4，蓝本 L74-258 照抄 + §5A.2 三分类收窄） ---------- */
-interface DefRow { id: number; name: string; tags: string[]; code?: number }
+interface DefRow { id: number; name: string; tags: string[]; code?: number; workflowType: WorkflowType }
 interface CatRow { name: string; builtin: boolean }
 
 /** 三分类收窄（§5A.2）：同步、流（蓝本 BUILTIN_LABELS 含 ETL——存量 ETL 降级映射 wf
@@ -163,9 +173,9 @@ const hasProject = computed(() => props.projectId !== undefined)
 
 /** 某任务的分类目录：内置标签优先，其次自定义目录名，兜底根目录 */
 function categoryOf(d: DefRow): string {
+  if (d.workflowType === 'SYNC') return '同步'
+  if (d.workflowType === 'STREAM') return '流'
   const t = d.tags ?? []
-  if (t.includes('同步')) return '同步'
-  if (t.includes('流')) return '流'
   const custom = catsAll.value.find((c) => !c.builtin && t.includes(c.name))
   return custom?.name ?? ROOT_LABEL
 }
@@ -205,10 +215,7 @@ const moveOptions = computed<string[]>(() => [...groupOrder.value, ROOT_LABEL])
 
 /** 任务类型推导（三分类收窄：sync、stream，兜底 wf；无 seed 体系不设 seedTypeOf） */
 function typeOf(d: DefRow): DagPickItem['type'] {
-  const t = d.tags ?? []
-  if (t.includes('同步')) return 'sync'
-  if (t.includes('流')) return 'stream'
-  return 'wf'
+  return d.workflowType === 'SYNC' ? 'sync' : d.workflowType === 'STREAM' ? 'stream' : 'wf'
 }
 
 /** 候选池构建（蓝本 buildPool 去 mock 分支）：无 projectId = 过渡态空池；

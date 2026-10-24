@@ -266,7 +266,7 @@ describe('INC4-FE-3 Palette 双 Tab（组件库 / 工作流）', () => {
     })
     const w = mountPalette({ workflowType: 'SYNC' })
     await flushPromises()
-    expect(specLoad).toHaveBeenCalledWith('SYNC')
+    expect(specLoad).toHaveBeenCalledWith('SYNC', expect.any(AbortSignal))
     // 逐项可见：9 条构造 spec 只渲染 7 项（C17/C24 被排除）
     const items = w.findAll('.pal-item')
     expect(items).toHaveLength(7)
@@ -384,14 +384,36 @@ describe('INC4-FE-3 Palette 双 Tab（组件库 / 工作流）', () => {
     expect(w.find('.pal-list').text()).not.toContain('无匹配组件')
     expect(w.findAll('.pal-item')).toHaveLength(0)
   })
+
+  it('workflowType 切换清空旧行，旧请求迟到不得覆盖新目录', async () => {
+    let resolveNormal!: (value: unknown) => void
+    const normal = new Promise((resolve) => { resolveNormal = resolve })
+    specLoad
+      .mockReturnValueOnce(normal)
+      .mockResolvedValueOnce({
+        items: [item({ type: 'stream_input', workflowTypes: ['STREAM'], identity: { displayName: '流输入' } })],
+        etag: '"stream"', source: 'network',
+      })
+    const w = mountPalette({ workflowType: 'NORMAL' })
+    await w.setProps({ workflowType: 'STREAM' })
+    await flushPromises()
+    expect(w.findAll('.pal-item').map((row) => row.text())).toEqual(['流输入'])
+    resolveNormal({
+      items: [item({ type: 'sql', workflowTypes: ['NORMAL'], identity: { displayName: 'SQL旧响应' } })],
+      etag: '"normal"', source: 'network',
+    })
+    await flushPromises()
+    expect(w.find('.pal-list').text()).toContain('流输入')
+    expect(w.find('.pal-list').text()).not.toContain('SQL旧响应')
+  })
 })
 
 describe('INC4-FE-4 工作流目录树（三分类收窄 + 行操作 RED 降级）', () => {
   const POOL = [
-    { id: 1, name: '同步一', tags: ['同步'], code: 1 },
-    { id: 2, name: '流二', tags: ['流'] },
-    { id: 3, name: '普通三', tags: [] },
-    { id: 4, name: '旧ETL', tags: ['ETL'], code: 4 },
+    { id: 1, name: '同步一', tags: ['同步'], code: 1, workflowType: 'SYNC' },
+    { id: 2, name: '流二', tags: ['流'], workflowType: 'STREAM' },
+    { id: 3, name: '普通三', tags: [], workflowType: 'NORMAL' },
+    { id: 4, name: '旧ETL', tags: ['ETL'], code: 4, workflowType: 'NORMAL' },
   ]
 
   it('目录树渲染：同步/流内置目录 + 根目录平铺（ETL 降级），.fold 默认收起 toggle，行操作门控', async () => {
@@ -436,7 +458,7 @@ describe('INC4-FE-4 工作流目录树（三分类收窄 + 行操作 RED 降级�
   })
 
   it('typeOf 三分类经 onLoad：tags[同步]→sync，wire id number→String 桥接 + code 直通，载入后勾选清空', async () => {
-    poolLoad.mockResolvedValue([{ id: 1, name: '同步一', tags: ['同步'], code: 1 }])
+    poolLoad.mockResolvedValue([{ id: 1, name: '同步一', tags: ['同步'], code: 1, workflowType: 'SYNC' }])
     const w = mountPalette({ defaultTab: 'wf', projectId: 7 })
     await flushPromises()
     // 勾选行 → 已选计数 + 载入按钮解除 disabled
@@ -471,8 +493,8 @@ describe('INC4-FE-4 工作流目录树（三分类收窄 + 行操作 RED 降级�
 
   it('目录全选 toggle：.pal-all change → toggleAll 计数 + 行 .on 态 + 载入按钮 disabled 随动', async () => {
     poolLoad.mockResolvedValue([
-      { id: 1, name: '同步一', tags: ['同步'] },
-      { id: 2, name: '同步二', tags: ['同步'] },
+      { id: 1, name: '同步一', tags: ['同步'], workflowType: 'SYNC' },
+      { id: 2, name: '同步二', tags: ['同步'], workflowType: 'SYNC' },
     ])
     const w = mountPalette({ defaultTab: 'wf', projectId: 7 })
     await flushPromises()
@@ -489,7 +511,7 @@ describe('INC4-FE-4 工作流目录树（三分类收窄 + 行操作 RED 降级�
   })
 
   it('行操作 RED：moveTo/newCategory 哨兵 reject → 候裁降级提示；内置名警告；deleteRow 确认后重拉', async () => {
-    poolLoad.mockResolvedValue([{ id: 1, name: '同步一', tags: ['同步'], code: 1 }])
+    poolLoad.mockResolvedValue([{ id: 1, name: '同步一', tags: ['同步'], code: 1, workflowType: 'SYNC' }])
     const w = mountPalette({ defaultTab: 'wf', projectId: 7 })
     await flushPromises()
     // moveTo：select 换目标目录 → setWfTags 哨兵 reject → 候裁降级提示

@@ -454,7 +454,7 @@ describe('INC4-FE-2 画布多 Tab（MAX_DAG_TABS=5，蓝本照抄 + §5A.2 收�
     await flushPromises() // onMounted loadDefPool 消费默认空池；点击路径内二次刷新读下方池数据
     boxPrompt.mockResolvedValueOnce({ value: '新流程' })
     wfCreate.mockResolvedValueOnce({ id: 42, projectId: 7, name: '新流程', description: null, currentVersion: null })
-    poolLoad.mockResolvedValue([{ id: 42, name: '新流程', tags: [] }])
+    poolLoad.mockResolvedValue([{ id: 42, name: '新流程', tags: [], workflowType: 'NORMAL' }])
     await w.find('[data-testid="new-workflow"]').trigger('click')
     await flushPromises()
     expect(boxPrompt).toHaveBeenCalledWith(
@@ -506,7 +506,7 @@ describe('INC4-FE-2 画布多 Tab（MAX_DAG_TABS=5，蓝本照抄 + §5A.2 收�
 })
 
 describe('INC4-FE-4 候选池接线（projectId 承接 route.params + 池查真名/类型）', () => {
-  const ROW = { id: 42, name: '客户画像', tags: ['同步'], code: 3 }
+  const ROW = { id: 42, name: '客户画像', tags: ['同步'], code: 3, workflowType: 'SYNC' }
 
   it('?doc= 直达查池真名：Tab name/tags 类型推导/code 直通 + last 按类型落盘', async () => {
     routeParams.value = { projectId: '7' }
@@ -559,7 +559,7 @@ describe('INC4-FE-4 候选池接线（projectId 承接 route.params + 池查真�
 
   it('onPickTasks 池命中：item 自带名/类型被池真名覆盖（PoolMeta 直通 openTab）', async () => {
     routeParams.value = { projectId: '7' }
-    poolLoad.mockResolvedValue([{ id: 42, name: '客户画像', tags: ['流'], code: 3 }])
+    poolLoad.mockResolvedValue([{ id: 42, name: '客户画像', tags: ['流'], code: 3, workflowType: 'STREAM' }])
     const w = mountView()
     await flushPromises() // onMounted loadDefPool → defPool 就绪后再 pick
     pickTasks(w, [{ id: '42', name: 'Palette 行占位名', type: 'stream' }])

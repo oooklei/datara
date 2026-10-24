@@ -39,6 +39,7 @@ class WorkflowDefinitionRecord(Base):
     project_id: Mapped[int] = mapped_column(Integer, nullable=False, index=True)
     name: Mapped[str] = mapped_column(String(256), nullable=False)
     description: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    workflow_type: Mapped[str] = mapped_column(String(16), nullable=False, default="NORMAL", server_default="NORMAL")
     # Latest published version number; NULL = never published.
     current_version: Mapped[int | None] = mapped_column(Integer, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.current_timestamp())

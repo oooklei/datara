@@ -57,16 +57,16 @@ describe('INC4-FE-4 workflowApi 契约（/api/v1/rebuild/workflows）', () => {
   it('list：GET project_id 查询串（camel→snake）+ token 头 + wire→summary 映射（纯数组）', async () => {
     localStorage.setItem('datara_token', 'wf-token')
     const data = [
-      { definition_id: 42, project_id: 7, name: '客户画像', description: null, current_version: 3, tags: ['同步'], code: 3 },
-      { definition_id: 43, project_id: 7, name: '实时清洗', description: null, current_version: 1, tags: [] },
+      { definition_id: 42, project_id: 7, name: '客户画像', description: null, current_version: 3, workflow_type: 'SYNC', tags: ['同步'], code: 3 },
+      { definition_id: 43, project_id: 7, name: '实时清洗', description: null, current_version: 1, workflow_type: 'STREAM', tags: [] },
     ]
     const fetchMock = vi.fn().mockResolvedValue(ENV(data))
     vi.stubGlobal('fetch', fetchMock)
     const rows = await listWorkflowDefinitions(7)
     expect(rows).toHaveLength(2)
-    expect(rows[0]).toEqual({ id: 42, name: '客户画像', tags: ['同步'], code: 3 })
+    expect(rows[0]).toEqual({ id: 42, name: '客户画像', tags: ['同步'], code: 3, workflowType: 'SYNC' })
     // wire tags 空数组直通 + code 缺省 → undefined（三分类收窄：[] 落根目录）
-    expect(rows[1]).toEqual({ id: 43, name: '实时清洗', tags: [], code: undefined })
+    expect(rows[1]).toEqual({ id: 43, name: '实时清洗', tags: [], code: undefined, workflowType: 'STREAM' })
     const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit]
     expect(url).toBe('/api/v1/rebuild/workflows?project_id=7')
     expect(init.method).toBe('GET')
@@ -76,7 +76,7 @@ describe('INC4-FE-4 workflowApi 契约（/api/v1/rebuild/workflows）', () => {
   it('list 容错：wire 完全缺 tags/code 字段（后端补字段前）→ tags 空数组兜底', async () => {
     vi.stubGlobal(
       'fetch',
-      vi.fn().mockResolvedValue(ENV([{ definition_id: 1, project_id: 7, name: '旧定义', description: null, current_version: null }])),
+      vi.fn().mockResolvedValue(ENV([{ definition_id: 1, project_id: 7, name: '旧定义', description: null, current_version: null, workflow_type: 'NORMAL' }])),
     )
     const rows = await listWorkflowDefinitions(7)
     expect(rows).toHaveLength(1)
@@ -122,30 +122,30 @@ describe('INC4-FE-6 workflowApi 六模型扩容契约', () => {
 
   it('create：POST / body {project_id,name,description} → WorkflowDefinitionInfo 映射', async () => {
     const fetchMock = vi.fn().mockResolvedValue(
-      ENV({ definition_id: 42, project_id: 7, name: '客户画像', description: '画像加工', current_version: null }),
+      ENV({ definition_id: 42, project_id: 7, name: '客户画像', description: '画像加工', current_version: null, workflow_type: 'NORMAL' }),
     )
     vi.stubGlobal('fetch', fetchMock)
     const info = await createWorkflowDefinition(7, '客户画像', '画像加工')
-    expect(info).toEqual({ id: 42, projectId: 7, name: '客户画像', description: '画像加工', currentVersion: null })
+    expect(info).toEqual({ id: 42, projectId: 7, name: '客户画像', description: '画像加工', currentVersion: null, workflowType: 'NORMAL' })
     const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit]
     expect(url).toBe('/api/v1/rebuild/workflows')
     expect(init.method).toBe('POST')
-    expect(init.body).toBe(JSON.stringify({ project_id: 7, name: '客户画像', description: '画像加工' }))
+    expect(init.body).toBe(JSON.stringify({ project_id: 7, name: '客户画像', description: '画像加工', workflow_type: 'NORMAL' }))
   })
 
   it('create 容错：description 缺省 → body 不携带该键（条件键展开）', async () => {
     const fetchMock = vi.fn().mockResolvedValue(
-      ENV({ definition_id: 42, project_id: 7, name: '新工作流', description: null, current_version: null }),
+      ENV({ definition_id: 42, project_id: 7, name: '新工作流', description: null, current_version: null, workflow_type: 'NORMAL' }),
     )
     vi.stubGlobal('fetch', fetchMock)
     await createWorkflowDefinition(7, '新工作流')
     const [, init] = fetchMock.mock.calls[0] as [string, RequestInit]
-    expect(init.body).toBe(JSON.stringify({ project_id: 7, name: '新工作流' }))
+    expect(init.body).toBe(JSON.stringify({ project_id: 7, name: '新工作流', workflow_type: 'NORMAL' }))
   })
 
   it('get：GET /{id}?project_id → payload + draft snake→camel 对拍（node/edge 全字段）', async () => {
     const data = {
-      definition_id: 42, project_id: 7, name: '客户画像', description: null, current_version: null,
+      definition_id: 42, project_id: 7, name: '客户画像', description: null, current_version: null, workflow_type: 'NORMAL',
       draft: {
         nodes: [
           { node_code: 'n1', node_type: 'SQL', name: null, params: { sql: 'select 1' }, position_x: 100, position_y: 200 },
@@ -158,7 +158,7 @@ describe('INC4-FE-6 workflowApi 六模型扩容契约', () => {
     vi.stubGlobal('fetch', fetchMock)
     const info = await getWorkflowDefinition(7, 42)
     expect(info).toEqual({
-      id: 42, projectId: 7, name: '客户画像', description: null, currentVersion: null,
+      id: 42, projectId: 7, name: '客户画像', description: null, currentVersion: null, workflowType: 'NORMAL',
       draft: {
         nodes: [
           { nodeCode: 'n1', nodeType: 'SQL', name: null, params: { sql: 'select 1' }, positionX: 100, positionY: 200 },
@@ -173,7 +173,7 @@ describe('INC4-FE-6 workflowApi 六模型扩容契约', () => {
 
   it('get 容错：draft 缺省 → 空 draft（nodes/edges 空数组兜底）', async () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(
-      ENV({ definition_id: 42, project_id: 7, name: '空定义', description: null, current_version: null }),
+      ENV({ definition_id: 42, project_id: 7, name: '空定义', description: null, current_version: null, workflow_type: 'NORMAL' }),
     ))
     const info = await getWorkflowDefinition(7, 42)
     expect(info.draft).toEqual({ nodes: [], edges: [] })
@@ -182,7 +182,7 @@ describe('INC4-FE-6 workflowApi 六模型扩容契约', () => {
   it('update：POST /{id}/updates body 键对拍（name 单传 / description 单传 / 双传）', async () => {
     // 多次调用须每次新建 Response（happy-dom body 一次性，不可复用实例）
     const fetchMock = vi.fn().mockImplementation(() =>
-      ENV({ definition_id: 42, project_id: 7, name: '改名', description: null, current_version: null }),
+      ENV({ definition_id: 42, project_id: 7, name: '改名', description: null, current_version: null, workflow_type: 'NORMAL' }),
     )
     vi.stubGlobal('fetch', fetchMock)
     await updateWorkflowDefinition(7, 42, { name: '改名' })

@@ -68,6 +68,7 @@ from common.resp import (
     ok,
 )
 from components.catalog import DISPATCHABLE_EXECUTORS as _CATALOG_DISPATCHABLE
+from rebuild.component_spec.catalogue import DESIGN_COMPONENT_TYPES, validate_declaration
 
 logger = get_logger("api.component_design")
 
@@ -901,6 +902,10 @@ def run_publish_gates(
     """
     checks = [
         ("pure_data", validate_spec_pure_data(spec)),
+        (
+            "catalogue_declaration",
+            validate_declaration(spec) if comp.type in DESIGN_COMPONENT_TYPES else [],
+        ),
         ("whitelist", _gate_whitelist(spec)),
         ("drop_policy", _gate_drop_policy(spec)),
         ("contract", _gate_contract(comp, spec, executor_registry)),

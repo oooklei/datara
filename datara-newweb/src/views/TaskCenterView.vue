@@ -111,14 +111,11 @@ function poolFind(docId: string): PoolMeta | null {
 const isTaskType = (v: unknown): v is DagProfileType =>
   v === 'wf' || v === 'sync' || v === 'stream'
 
-/** 类型由定义 tags 推导（蓝本 L98-108 收窄）：tags 优先，seedType 兜底。
- *  tag 值 = 后端 tags 契约值（SYNC_TAG='同步' / STREAM_TAG='流'，旧
- *  services/graphApi.ts L21/L25）；§5A.2 删 ETL 分支，存量 etl 降级映射 wf
- *  （执行前报监督线核对候批）。 */
+/** 类型只取后端持久化 workflow_type；seedType 仅用于池尚未回读的同源载荷。 */
 function typeOf(meta?: PoolMeta | null, seedType?: string): DagProfileType {
-  const t = meta?.tags ?? []
-  if (t.includes('同步')) return 'sync'
-  if (t.includes('流')) return 'stream'
+  if (meta?.workflowType === 'SYNC') return 'sync'
+  if (meta?.workflowType === 'STREAM') return 'stream'
+  if (meta?.workflowType === 'NORMAL') return 'wf'
   if (seedType === 'sync' || seedType === 'stream') return seedType
   return 'wf'
 }
@@ -179,7 +176,9 @@ async function onOpenCreateWf() {
   try {
     const def = await createWorkflowDefinition(projectId.value, name)
     await loadDefPool()
-    const meta = poolFind(String(def.id)) ?? { id: def.id, name: def.name, tags: [] }
+    const meta = poolFind(String(def.id)) ?? {
+      id: def.id, name: def.name, tags: [], workflowType: def.workflowType,
+    }
     const res = openTab(String(def.id), meta)
     if (res === 'full') {
       ElMessage.warning(`最多同时打开 ${MAX_DAG_TABS} 个画布 Tab`)

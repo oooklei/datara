@@ -41,6 +41,7 @@
  */
 
 import { getJson, postJson, request } from '../http'
+import type { WorkflowType } from './componentSpecApi'
 
 /* ---------- 列表与删除（真实接线） ---------- */
 
@@ -51,6 +52,7 @@ export interface WorkflowDefSummary {
   tags: string[]
   /** 定义序号徽标；后端补字段即活，当前 undefined */
   code?: number
+  workflowType: WorkflowType
 }
 
 interface WorkflowDefinitionWire {
@@ -59,13 +61,20 @@ interface WorkflowDefinitionWire {
   name: string
   description: string | null
   current_version: number | null
+  workflow_type: WorkflowType
   tags?: string[] | null
   code?: number
 }
 
 export async function listWorkflowDefinitions(projectId: number): Promise<WorkflowDefSummary[]> {
   const items = await getJson<WorkflowDefinitionWire[]>('/rebuild/workflows', { projectId })
-  return items.map((w) => ({ id: w.definition_id, name: w.name, tags: w.tags ?? [], code: w.code }))
+  return items.map((w) => ({
+    id: w.definition_id,
+    name: w.name,
+    tags: w.tags ?? [],
+    code: w.code,
+    workflowType: w.workflow_type,
+  }))
 }
 
 export async function deleteWorkflowDefinition(projectId: number, definitionId: number): Promise<void> {
@@ -138,6 +147,7 @@ export interface WorkflowDefinitionInfo {
   name: string
   description: string | null
   currentVersion: number | null
+  workflowType: WorkflowType
 }
 
 export interface WorkflowDraftNode {
@@ -196,6 +206,7 @@ function mapDefInfo(w: WorkflowDefinitionWire): WorkflowDefinitionInfo {
     name: w.name,
     description: w.description,
     currentVersion: w.current_version,
+    workflowType: w.workflow_type,
   }
 }
 
@@ -254,11 +265,13 @@ export async function createWorkflowDefinition(
   projectId: number,
   name: string,
   description?: string,
+  workflowType: WorkflowType = 'NORMAL',
 ): Promise<WorkflowDefinitionInfo> {
   const wire = await postJson<WorkflowDefinitionWire>('/rebuild/workflows', {
     project_id: projectId,
     name,
     ...(description !== undefined ? { description } : {}),
+    workflow_type: workflowType,
   })
   return mapDefInfo(wire)
 }

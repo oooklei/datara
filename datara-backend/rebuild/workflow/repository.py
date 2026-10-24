@@ -32,10 +32,10 @@ import json
 from datetime import datetime, timezone
 from typing import Any
 
-from sqlalchemy import func, select
+from sqlalchemy import and_, func, or_, select
 from sqlalchemy.orm import Session
 
-from common.models import ComponentVersion
+from common.models import Component, ComponentVersion
 from rebuild.workflow.models import (
     WorkflowDefinitionRecord,
     WorkflowEdgeRecord,
@@ -67,6 +67,7 @@ VALID_NODE_TYPES = (
     "SUB_WORKFLOW",
 )
 LEGACY_NODE_TYPES = frozenset(VALID_NODE_TYPES)
+WORKFLOW_TYPES = frozenset(WORKFLOW_COMPONENT_TYPES)
 
 
 def _component_ref(node_type: str, node: dict[str, Any]) -> dict[str, Any] | None:
@@ -83,6 +84,20 @@ def _component_ref(node_type: str, node: dict[str, Any]) -> dict[str, Any] | Non
 
 def _kind_for_component(node_type: str) -> str | None:
     return next((kind for kind, values in WORKFLOW_COMPONENT_TYPES.items() if node_type in values), None)
+
+
+def _forbidden_hidden_paths(value: Any, path: str = "params") -> list[str]:
+    violations: list[str] = []
+    if isinstance(value, dict):
+        for key, child in value.items():
+            child_path = f"{path}.{key}"
+            if key in HIDDEN_INPUTS or key == "_componentRef":
+                violations.append(child_path)
+            violations.extend(_forbidden_hidden_paths(child, child_path))
+    elif isinstance(value, list):
+        for index, child in enumerate(value):
+            violations.extend(_forbidden_hidden_paths(child, f"{path}[{index}]"))
+    return violations
 
 
 # Design §3.1 workflow version states. publish() creates PUBLISHED rows; the
@@ -123,7 +138,12 @@ class WorkflowRepository:
 
     # -- definitions --------------------------------------------------------
 
-    def create_definition(self, project_id: int, name: str, description: str = "") -> dict[str, Any]:
+    def create_definition(
+        self, project_id: int, name: str, description: str = "", workflow_type: str = "NORMAL"
+    ) -> dict[str, Any]:
+        workflow_type = workflow_type.strip().upper()
+        if workflow_type not in WORKFLOW_TYPES:
+            raise WorkflowDomainError("WF_TYPE_UNKNOWN", "workflow_type must be NORMAL, SYNC, or STREAM")
         existing = self._session.scalar(
             select(WorkflowDefinitionRecord).where(
                 WorkflowDefinitionRecord.project_id == project_id,
@@ -132,7 +152,12 @@ class WorkflowRepository:
         )
         if existing is not None:
             raise WorkflowDomainError("WF_NAME_CONFLICT", f"workflow name {name!r} already exists in project", 409)
-        record = WorkflowDefinitionRecord(project_id=project_id, name=name, description=description)
+        record = WorkflowDefinitionRecord(
+            project_id=project_id,
+            name=name,
+            description=description,
+            workflow_type=workflow_type,
+        )
         self._session.add(record)
         self._session.flush()
         return self._definition_payload(record, include_draft=False)
@@ -191,31 +216,39 @@ class WorkflowRepository:
     # -- draft editing (version_id NULL rows only) ---------------------------
 
     def upsert_draft_node(self, project_id: int, definition_id: int, node: dict[str, Any]) -> dict[str, Any]:
-        self._definition(project_id, definition_id)
+        definition = self._definition(project_id, definition_id)
         node_code = str(node["node_code"]).strip()
         node_type = node["node_type"]
         if node_type in RUNTIME_ONLY_TYPES:
             raise WorkflowDomainError("WF_RUNTIME_ONLY", f"{node_type} cannot be saved in a design graph")
         if node_type not in DESIGN_COMPONENT_TYPES and node_type not in LEGACY_NODE_TYPES:
             raise WorkflowDomainError("WF_NODE_TYPE_UNKNOWN", "node_type is not in the approved component catalogue")
+        existing = self._session.scalar(
+            select(WorkflowNodeRecord).where(
+                WorkflowNodeRecord.definition_id == definition_id,
+                WorkflowNodeRecord.version_id.is_(None),
+                WorkflowNodeRecord.node_code == node_code,
+            )
+        )
+        if node_type in LEGACY_NODE_TYPES:
+            if existing is None or existing.node_type != node_type:
+                raise WorkflowDomainError(
+                    "WF_LEGACY_NODE_NEW_FORBIDDEN",
+                    "legacy node types may only update an existing node of the same type",
+                )
         ref = _component_ref(node_type, node)
         if node_type in DESIGN_COMPONENT_TYPES and ref is None:
             raise WorkflowDomainError(
                 "WF_COMPONENT_REF_REQUIRED", "component_ref must be the immutable {type, version} pair"
             )
         if ref is not None:
-            version_row = self._session.scalar(
-                select(ComponentVersion).where(
-                    ComponentVersion.type == ref["type"],
-                    ComponentVersion.version == ref["version"],
-                    ComponentVersion.state == "published",
-                )
-            )
-            if version_row is None:
-                raise WorkflowDomainError(
-                    "WF_COMPONENT_REF_UNKNOWN", "component_ref does not identify a published immutable version"
-                )
+            self._validate_component_ref(ref)
         incoming_kind = _kind_for_component(node_type)
+        if incoming_kind is not None and incoming_kind != definition.workflow_type:
+            raise WorkflowDomainError(
+                "WF_WORKFLOW_TYPE_MISMATCH",
+                f"{node_type} is {incoming_kind}, definition is {definition.workflow_type}",
+            )
         existing_kinds = {
             kind
             for row in self._draft_nodes(definition_id)
@@ -229,7 +262,7 @@ class WorkflowRepository:
             )
         params = dict(node.get("params") or {})
         if node_type in DESIGN_COMPONENT_TYPES:
-            forbidden = sorted(set(params) & (HIDDEN_INPUTS | {"_componentRef"}))
+            forbidden = _forbidden_hidden_paths(params)
             if forbidden:
                 raise WorkflowDomainError(
                     "WF_HIDDEN_INPUT_WRITE", f"executor-owned inputs cannot be saved: {forbidden}"
@@ -243,13 +276,6 @@ class WorkflowRepository:
             "position_x": node.get("position_x"),
             "position_y": node.get("position_y"),
         }
-        existing = self._session.scalar(
-            select(WorkflowNodeRecord).where(
-                WorkflowNodeRecord.definition_id == definition_id,
-                WorkflowNodeRecord.version_id.is_(None),
-                WorkflowNodeRecord.node_code == node_code,
-            )
-        )
         if existing is None:
             record = WorkflowNodeRecord(definition_id=definition_id, version_id=None, node_code=node_code, **values)
             self._session.add(record)
@@ -346,10 +372,16 @@ class WorkflowRepository:
                 )
         node_payloads = [self._node_payload(n) for n in draft_nodes]
         for node in node_payloads:
+            if node["node_type"] in LEGACY_NODE_TYPES:
+                raise WorkflowDomainError(
+                    "WF_LEGACY_NODE_PUBLISH_FORBIDDEN", "migrate legacy nodes before publishing"
+                )
             if node["node_type"] in RUNTIME_ONLY_TYPES:
                 raise WorkflowDomainError("WF_RUNTIME_ONLY", "runtime-only nodes cannot be published")
             if node["node_type"] in DESIGN_COMPONENT_TYPES and node.get("component_ref") is None:
                 raise WorkflowDomainError("WF_COMPONENT_REF_REQUIRED", "all design nodes require component_ref")
+            if node.get("component_ref") is not None:
+                self._validate_component_ref(node["component_ref"])
         edge_payloads = [self._edge_payload(e) for e in draft_edges]
         digest = snapshot_digest(node_payloads, edge_payloads)
         latest = self._session.scalar(
@@ -544,6 +576,7 @@ class WorkflowRepository:
             "project_id": record.project_id,
             "name": record.name,
             "description": record.description,
+            "workflow_type": "NORMAL" if record.workflow_type == "ETL" else record.workflow_type,
             "current_version": record.current_version,
         }
         if include_draft:
@@ -552,6 +585,30 @@ class WorkflowRepository:
                 "edges": [self._edge_payload(e) for e in self._draft_edges(record.id)],
             }
         return payload
+
+    def _validate_component_ref(self, ref: dict[str, Any]) -> None:
+        version_row = self._session.scalar(
+            select(ComponentVersion)
+            .join(Component, Component.id == ComponentVersion.component_id)
+            .where(
+                Component.type == ref["type"],
+                ComponentVersion.type == ref["type"],
+                ComponentVersion.version == ref["version"],
+                Component.state.in_(("published", "offline")),
+                or_(
+                    and_(
+                        ComponentVersion.state == "published",
+                        Component.published_version == ComponentVersion.version,
+                    ),
+                    ComponentVersion.state == "offline",
+                ),
+            )
+        )
+        if version_row is None:
+            raise WorkflowDomainError(
+                "WF_COMPONENT_REF_UNKNOWN",
+                "component_ref must identify the matching published/offline immutable component version",
+            )
 
     def _definition(self, project_id: int, definition_id: int) -> WorkflowDefinitionRecord:
         record = self._session.get(WorkflowDefinitionRecord, definition_id)

@@ -73,14 +73,21 @@ def validate_declaration(spec: dict[str, Any]) -> list[str]:
 
     for path, value in _walk(spec):
         key = path.rsplit(".", 1)[-1]
-        if key in {"showIf", "onChange", "text"} and isinstance(value, str):
-            lowered = value.lower()
-            if "=>" in value or "function" in lowered:
-                errors.append(f"{path} must be declarative data, not a function")
-        if key == "pick" and isinstance(value, dict):
-            unsupported = [name for name in value if name not in PICK_FIELDS]
-            if unsupported:
-                errors.append(f"{path} has unsupported keys: {unsupported}")
+        if key in {"showIf", "onChange"} and value is not None and not isinstance(value, (dict, list, bool)):
+            errors.append(f"{path} must use declarative JSON conditions/behaviors")
+        if key == "text" and isinstance(value, str):
+            lowered = value.lower().strip()
+            if any(token in lowered for token in ("=>", "function", "callback(", "javascript:", "script:")):
+                errors.append(f"{path} must be plain text, not executable content")
+        if key in {"callback", "callbacks"}:
+            errors.append(f"{path} callback declarations are forbidden")
+        if key == "pick":
+            if not isinstance(value, dict):
+                errors.append(f"{path} must be an object")
+            else:
+                unsupported = [name for name in value if name not in PICK_FIELDS]
+                if unsupported:
+                    errors.append(f"{path} has unsupported keys: {unsupported}")
         if key == "behaviors":
             if value is not None and not isinstance(value, list):
                 errors.append("behaviors must be an array")

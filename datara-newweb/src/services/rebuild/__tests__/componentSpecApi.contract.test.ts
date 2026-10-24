@@ -4,6 +4,24 @@ import { isDesignComponent, loadComponentSpecs, resetComponentSpecCache, type Co
 import { setToken } from '../../http'
 
 const ETAG = `"${'a'.repeat(64)}"`
+const item = (type = 'sql') => ({
+  type,
+  publishedVersion: 1,
+  componentRef: { type, version: 1 },
+  workflowTypes: ['NORMAL'],
+  runtimeOnly: false,
+  identity: { displayName: type },
+  description: {},
+  inputs: [],
+  outputs: [],
+  form: { inputs: [], outputs: [], params: [], conditions: [], constraints: [], exclusions: [], refs: [], exports: [] },
+  visual: {},
+  behaviors: [],
+  dropPolicy: null,
+  extensions: {},
+  specVersion: 1,
+  ports: {},
+})
 
 describe('componentSpecApi exception contract', () => {
   beforeEach(() => {
@@ -13,14 +31,14 @@ describe('componentSpecApi exception contract', () => {
   })
 
   it('loads the naked items document with the ordinary token and records the strong ETag', async () => {
-    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({ items: [{ type: 'sql' }] }), {
+    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({ items: [item()] }), {
       status: 200,
       headers: { 'Content-Type': 'application/json', ETag: ETAG },
     }))
     vi.stubGlobal('fetch', fetchMock)
 
     await expect(loadComponentSpecs()).resolves.toMatchObject({
-      items: [{ type: 'sql' }], etag: ETAG, source: 'network',
+      items: [item()], etag: ETAG, source: 'network',
     })
     expect(fetchMock).toHaveBeenCalledWith('/api/v1/rebuild/components/spec', {
       headers: { token: 'ordinary-token' },
@@ -29,21 +47,21 @@ describe('componentSpecApi exception contract', () => {
 
   it('revalidates with If-None-Match and reuses the successful body on 304', async () => {
     const fetchMock = vi.fn()
-      .mockResolvedValueOnce(new Response(JSON.stringify({ items: [{ type: 'sql' }] }), { status: 200, headers: { ETag: ETAG } }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ items: [item()] }), { status: 200, headers: { ETag: ETAG } }))
       .mockResolvedValueOnce(new Response(null, { status: 304, headers: { ETag: ETAG } }))
     vi.stubGlobal('fetch', fetchMock)
 
     await loadComponentSpecs()
-    await expect(loadComponentSpecs()).resolves.toMatchObject({ source: 'not-modified', items: [{ type: 'sql' }] })
+    await expect(loadComponentSpecs()).resolves.toMatchObject({ source: 'not-modified', items: [item()] })
     expect(fetchMock.mock.calls[1]?.[1]).toEqual({ headers: { token: 'ordinary-token', 'If-None-Match': ETAG } })
   })
 
   it('uses only the last successful response after a refresh failure', async () => {
     vi.stubGlobal('fetch', vi.fn()
-      .mockResolvedValueOnce(new Response(JSON.stringify({ items: [{ type: 'python' }] }), { status: 200, headers: { ETag: ETAG } }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ items: [item('python')] }), { status: 200, headers: { ETag: ETAG } }))
       .mockRejectedValueOnce(new Error('offline')))
     await loadComponentSpecs()
-    await expect(loadComponentSpecs()).resolves.toMatchObject({ source: 'last-success', items: [{ type: 'python' }] })
+    await expect(loadComponentSpecs()).resolves.toMatchObject({ source: 'last-success', items: [item('python')] })
   })
 
   it('fails closed on the first request and remains retryable', async () => {
@@ -86,6 +104,22 @@ describe('componentSpecApi exception contract', () => {
     expect(isDesignComponent({ ...base, runtimeOnly: true }, 'NORMAL')).toBe(false)
     expect(isDesignComponent({ ...base, workflowTypes: ['SYNC'] }, 'NORMAL')).toBe(false)
     expect(isDesignComponent({ ...base, componentRef: { type: 'sql', version: 0 } }, 'NORMAL')).toBe(false)
+  })
+
+  it.each([
+    { ...item(), runtimeOnly: 'false' },
+    { ...item(), workflowTypes: ['ETL'] },
+    { ...item(), componentRef: { type: 'python', version: 1 } },
+    { ...item(), form: { params: [] } },
+    { ...item(), identity: null },
+  ])('rejects malformed items without poisoning the cache', async (malformed) => {
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(new Response(JSON.stringify({ items: [malformed] }), { status: 200, headers: { ETag: ETAG } }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ items: [item()] }), { status: 200, headers: { ETag: ETAG } }))
+    vi.stubGlobal('fetch', fetchMock)
+    await expect(loadComponentSpecs()).rejects.toThrow()
+    await expect(loadComponentSpecs()).resolves.toMatchObject({ source: 'network', items: [item()] })
+    expect(fetchMock).toHaveBeenCalledTimes(2)
   })
 })
 

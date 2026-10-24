@@ -21,6 +21,7 @@ from rebuild.identity.repository import UserRepository
 from rebuild.project.models import ProjectRecord
 from rebuild.workflow.models import (
     WorkflowDefinitionRecord,
+    WorkflowNodeRecord,
     WorkflowPublishRecord,
     WorkflowVersionRecord,
 )
@@ -44,6 +45,33 @@ def _client():
         owned = ProjectRecord(name="wf-owned", description="", owner_id=dev.id)
         other = ProjectRecord(name="wf-other", description="", owner_id=admin.id)
         session.add_all((owned, other))
+        for identifier, type_name in enumerate(("sql", "python", "shell", "dependent"), start=801):
+            session.add(
+                Component(
+                    id=identifier,
+                    type=type_name,
+                    name=type_name,
+                    category="test",
+                    profile="dag",
+                    scope="builtin",
+                    execution_model="dag-engine",
+                    executable=True,
+                    state="published",
+                    published_version=1,
+                    draft_rev=0,
+                )
+            )
+            session.add(
+                ComponentVersion(
+                    id=identifier,
+                    component_id=identifier,
+                    type=type_name,
+                    version=1,
+                    state="published",
+                    spec_json="{}",
+                    spec_hash="hash",
+                )
+            )
         session.commit()
         owned_id, other_id = owned.id, other.id
         session.add(ProjectMemberRecord(project_id=owned_id, user_id=viewer.id, role="viewer"))
@@ -55,11 +83,16 @@ def _client():
     return client, app, owned_id, other_id, tokens
 
 
-def _create(client, headers, project_id, name="etl-daily", description=""):
+def _create(client, headers, project_id, name="etl-daily", description="", workflow_type="NORMAL"):
     return client.post(
         WORKFLOWS,
         headers=headers,
-        json={"project_id": project_id, "name": name, "description": description},
+        json={
+            "project_id": project_id,
+            "name": name,
+            "description": description,
+            "workflow_type": workflow_type,
+        },
     )
 
 
@@ -75,7 +108,21 @@ def _add_node(
     position_x=None,
     position_y=None,
 ):
-    body = {"project_id": project_id, "node_code": node_code, "node_type": node_type}
+    mapped_type = {
+        "SQL": "sql",
+        "PYTHON": "python",
+        "SHELL": "shell",
+        "DEPENDENCY": "dependent",
+        "START": "sql",
+        "END": "sql",
+        "FLOW": "sql",
+    }.get(node_type, node_type)
+    body = {
+        "project_id": project_id,
+        "node_code": node_code,
+        "node_type": mapped_type,
+        "component_ref": {"type": mapped_type, "version": 1},
+    }
     if name is not None:
         body["name"] = name
     if params is not None:
@@ -109,6 +156,7 @@ def test_create_definition_name_uniqueness_and_list():
         data = created.json()["data"]
         assert data["name"] == "etl-daily"
         assert data["current_version"] is None  # never published
+        assert data["workflow_type"] == "NORMAL"
 
         # Same-name conflict is scoped per project (409 WF_NAME_CONFLICT).
         duplicate = _create(client, tokens["dev"], owned_id, name="etl-daily")
@@ -122,6 +170,26 @@ def test_create_definition_name_uniqueness_and_list():
         items = listing.json()["data"]
         assert [row["definition_id"] for row in items] == [data["definition_id"]]
         assert items[0]["name"] == "etl-daily"
+    finally:
+        client.__exit__(None, None, None)
+
+
+def test_workflow_type_is_persisted_and_etl_cannot_be_created():
+    client, _app, owned_id, _other_id, tokens = _client()
+    try:
+        sync = _create(client, tokens["dev"], owned_id, name="sync-flow", workflow_type="SYNC")
+        assert sync.status_code == 200
+        definition_id = sync.json()["data"]["definition_id"]
+        detail = client.get(
+            f"{WORKFLOWS}/{definition_id}", headers=tokens["dev"], params={"project_id": owned_id}
+        )
+        assert detail.json()["data"]["workflow_type"] == "SYNC"
+        listing = client.get(WORKFLOWS, headers=tokens["dev"], params={"project_id": owned_id})
+        assert listing.json()["data"][0]["workflow_type"] == "SYNC"
+
+        etl = _create(client, tokens["dev"], owned_id, name="legacy-etl", workflow_type="ETL")
+        assert etl.status_code == 400
+        assert etl.json()["code"] == "WF_TYPE_UNKNOWN"
     finally:
         client.__exit__(None, None, None)
 
@@ -186,7 +254,7 @@ def test_draft_node_upsert_replaces_by_code_and_type_validation():
         detail = client.get(f"{WORKFLOWS}/{definition_id}", headers=tokens["dev"], params={"project_id": owned_id})
         nodes = detail.json()["data"]["draft"]["nodes"]
         assert len(nodes) == 1
-        assert nodes[0]["node_type"] == "PYTHON"
+        assert nodes[0]["node_type"] == "python"
         assert nodes[0]["name"] == "clean job"
         assert nodes[0]["params"] == {"script": "clean.py"}
         assert nodes[0]["position_x"] == 120
@@ -209,49 +277,84 @@ def test_design_nodes_require_pinned_ref_and_cannot_mix_workflow_kinds_or_save_r
     client, app, owned_id, _other_id, tokens = _client()
     try:
         with app.state.session_factory() as session:
-            for identifier, type_name, version in ((701, "sql", 3), (702, "endpoint_select", 1)):
-                session.add(
-                    Component(
-                        id=identifier,
-                        type=type_name,
-                        name=type_name,
-                        category="test",
-                        profile="dag",
-                        scope="builtin",
-                        execution_model="passthrough",
-                        executable=True,
-                        state="published",
-                        published_version=version,
-                        draft_rev=0,
-                    )
+            components = {
+                row.type: row
+                for row in session.scalars(
+                    select(Component).where(Component.type.in_(("sql", "shell", "dependent", "endpoint_select")))
                 )
+            }
+            sql_component = components["sql"]
+            sql_component.published_version = 3
+            endpoint_component = components.get("endpoint_select")
+            if endpoint_component is None:
+                endpoint_component = Component(
+                    id=702,
+                    type="endpoint_select",
+                    name="endpoint_select",
+                    category="test",
+                    profile="dag",
+                    scope="builtin",
+                    execution_model="passthrough",
+                    executable=True,
+                    state="published",
+                    published_version=1,
+                    draft_rev=0,
+                )
+                session.add(endpoint_component)
                 session.add(
                     ComponentVersion(
-                        id=identifier,
-                        component_id=identifier,
-                        type=type_name,
-                        version=version,
+                        id=702,
+                        component_id=702,
+                        type="endpoint_select",
+                        version=1,
                         state="published",
                         spec_json="{}",
                         spec_hash="hash",
                     )
                 )
+            else:
+                endpoint_component.state = "published"
+                endpoint_component.published_version = 1
+                endpoint_version = session.scalar(
+                    select(ComponentVersion).where(
+                        ComponentVersion.component_id == endpoint_component.id,
+                        ComponentVersion.version == 1,
+                    )
+                )
+                assert endpoint_version is not None
+                endpoint_version.state = "published"
+            session.add(
+                ComponentVersion(
+                    id=701,
+                    component_id=sql_component.id,
+                    type="sql",
+                    version=3,
+                    state="published",
+                    spec_json="{}",
+                    spec_hash="hash",
+                )
+            )
             session.commit()
         definition_id = _create(client, tokens["dev"], owned_id, name="catalogue-contract").json()["data"][
             "definition_id"
         ]
-        missing_ref = _add_node(client, tokens["dev"], owned_id, definition_id, "sql1", node_type="sql")
+        missing_ref = client.post(
+            f"{WORKFLOWS}/{definition_id}/nodes",
+            headers=tokens["dev"],
+            json={"project_id": owned_id, "node_code": "sql1", "node_type": "sql"},
+        )
         assert missing_ref.status_code == 400
         assert missing_ref.json()["code"] == "WF_COMPONENT_REF_REQUIRED"
 
-        pinned = _add_node(
-            client,
-            tokens["dev"],
-            owned_id,
-            definition_id,
-            "sql1",
-            node_type="sql",
-            params={"component_ref": "is not the top-level contract"},
+        pinned = client.post(
+            f"{WORKFLOWS}/{definition_id}/nodes",
+            headers=tokens["dev"],
+            json={
+                "project_id": owned_id,
+                "node_code": "sql1",
+                "node_type": "sql",
+                "params": {"component_ref": "is not the top-level contract"},
+            },
         )
         assert pinned.status_code == 400
 
@@ -268,6 +371,71 @@ def test_design_nodes_require_pinned_ref_and_cannot_mix_workflow_kinds_or_save_r
         assert pinned.status_code == 200
         assert pinned.json()["data"]["component_ref"] == {"type": "sql", "version": 3}
 
+        with app.state.session_factory() as session:
+            sql_component = session.scalar(select(Component).where(Component.type == "sql"))
+            shell_component = session.scalar(select(Component).where(Component.type == "shell"))
+            session.get(ComponentVersion, 701).state = "offline"
+            assert sql_component is not None and shell_component is not None
+            sql_component.state = "offline"
+            session.add_all(
+                [
+                    ComponentVersion(
+                        id=720,
+                        component_id=shell_component.id,
+                        type="shell",
+                        version=2,
+                        state="frozen",
+                        spec_json="{}",
+                        spec_hash="hash",
+                    ),
+                    ComponentVersion(
+                        id=721,
+                        component_id=999999,
+                        type="dependent",
+                        version=2,
+                        state="published",
+                        spec_json="{}",
+                        spec_hash="hash",
+                    ),
+                    ComponentVersion(
+                        id=722,
+                        component_id=shell_component.id,
+                        type="shell",
+                        version=3,
+                        state="published",
+                        spec_json="{}",
+                        spec_hash="hash",
+                    ),
+                ]
+            )
+            session.commit()
+
+        offline_ref = client.post(
+            f"{WORKFLOWS}/{definition_id}/nodes",
+            headers=tokens["dev"],
+            json={
+                "project_id": owned_id,
+                "node_code": "sql1",
+                "node_type": "sql",
+                "component_ref": {"type": "sql", "version": 3},
+            },
+        )
+        assert offline_ref.status_code == 200
+
+        for node_type, version in (("shell", 2), ("dependent", 2), ("shell", 3)):
+            invalid_ref = client.post(
+                f"{WORKFLOWS}/{definition_id}/nodes",
+                headers=tokens["dev"],
+                json={
+                    "project_id": owned_id,
+                    "node_code": f"bad_{node_type}_{version}",
+                    "node_type": node_type,
+                    "component_ref": {"type": node_type, "version": version},
+                },
+            )
+            assert invalid_ref.status_code == 400
+            assert invalid_ref.json()["code"] == "WF_COMPONENT_REF_UNKNOWN"
+
         hidden_write = client.post(
             f"{WORKFLOWS}/{definition_id}/nodes",
             headers=tokens["dev"],
@@ -276,7 +444,7 @@ def test_design_nodes_require_pinned_ref_and_cannot_mix_workflow_kinds_or_save_r
                 "node_code": "sql2",
                 "node_type": "sql",
                 "component_ref": {"type": "sql", "version": 3},
-                "params": {"runId": "caller-controlled"},
+                "params": {"nested": [{"runId": "caller-controlled"}]},
             },
         )
         assert hidden_write.status_code == 400
@@ -307,6 +475,63 @@ def test_design_nodes_require_pinned_ref_and_cannot_mix_workflow_kinds_or_save_r
         )
         assert runtime_only.status_code == 400
         assert runtime_only.json()["code"] == "WF_RUNTIME_ONLY"
+    finally:
+        client.__exit__(None, None, None)
+
+
+def test_legacy_node_is_readable_and_position_updatable_but_cannot_be_created_or_published():
+    client, app, owned_id, _other_id, tokens = _client()
+    try:
+        definition_id = _create(client, tokens["dev"], owned_id, name="legacy-draft").json()["data"][
+            "definition_id"
+        ]
+        with app.state.session_factory() as session:
+            session.add(
+                WorkflowNodeRecord(
+                    definition_id=definition_id,
+                    version_id=None,
+                    node_code="legacy_sql",
+                    node_type="SQL",
+                    name="legacy",
+                    params_json='{"sql":"select 1"}',
+                    position_x=1,
+                    position_y=2,
+                )
+            )
+            session.commit()
+
+        detail = client.get(
+            f"{WORKFLOWS}/{definition_id}", headers=tokens["dev"], params={"project_id": owned_id}
+        )
+        assert detail.json()["data"]["draft"]["nodes"][0]["node_type"] == "SQL"
+
+        updated = client.post(
+            f"{WORKFLOWS}/{definition_id}/nodes",
+            headers=tokens["dev"],
+            json={
+                "project_id": owned_id,
+                "node_code": "legacy_sql",
+                "node_type": "SQL",
+                "name": "legacy",
+                "params": {"sql": "select 1"},
+                "position_x": 20,
+                "position_y": 30,
+            },
+        )
+        assert updated.status_code == 200
+        assert updated.json()["data"]["position_x"] == 20
+
+        created = client.post(
+            f"{WORKFLOWS}/{definition_id}/nodes",
+            headers=tokens["dev"],
+            json={"project_id": owned_id, "node_code": "new_legacy", "node_type": "SQL"},
+        )
+        assert created.status_code == 400
+        assert created.json()["code"] == "WF_LEGACY_NODE_NEW_FORBIDDEN"
+
+        published = _publish(client, tokens["dev"], owned_id, definition_id)
+        assert published.status_code == 400
+        assert published.json()["code"] == "WF_LEGACY_NODE_PUBLISH_FORBIDDEN"
     finally:
         client.__exit__(None, None, None)
 
