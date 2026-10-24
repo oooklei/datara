@@ -47,6 +47,13 @@ def _legacy_stat_drop_plan(columns: set[str]) -> tuple[str, ...]:
 
 
 def upgrade(engine: Engine) -> None:
+    # ``Base.metadata.create_all`` may already have created the authoritative
+    # v3 shape on a fresh database.  In that case rebuilding it as if it were
+    # the v2 legacy schema is both unnecessary and invalid (the v2-only copy
+    # columns no longer exist).  The same postflight contract is the canonical
+    # shape detector for startup and migration retries.
+    if postflight(engine).get("verdict") == "READY":
+        return
     if engine.dialect.name == "sqlite":
         _upgrade_sqlite(engine)
     elif engine.dialect.name == "mysql":

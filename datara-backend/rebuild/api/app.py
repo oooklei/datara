@@ -33,11 +33,11 @@ from rebuild.sql_ide.history_store import SqlIdeHistoryStore
 from rebuild.sql_ide.linter import lint_sql
 from rebuild.sql_ide.migrations import SQL_IDE_MIGRATIONS, SqlIdeMigrationRunner
 from rebuild.identity.migrations import apply_identity_migrations
+from rebuild.execution.migrations import apply_execution_migrations
 from rebuild.sql_ide.routes import SqlIdeRouteError, build_sql_ide_router
 from rebuild.sql_ide.result_store import SqlIdeResultSetRecord
 from rebuild.sql_ide.result_store import PersistentResultPageStore
 from rebuild.sql_ide.status_store import SqlIdeExecutionEventRecord, SqlIdeExecutionRecord, SqlIdeStatusStore
-from rebuild.execution.models import EXECUTION_TABLES
 from rebuild.identity.contracts import Permission, Role, ROLE_PERMISSIONS, TokenService, authorize
 from rebuild.identity.models import ActiveTokenRecord, ProjectMemberRecord, UserRecord
 from rebuild.identity.passwords import verify_password
@@ -399,7 +399,6 @@ def create_app(
                 WorkflowScheduleRecord.__table__,
                 WorkflowPublishRecord.__table__,
                 WorkflowDraftSnapshotRecord.__table__,
-                *EXECUTION_TABLES,
                 StreamJobRecord.__table__,
                 StreamJobAttemptRecord.__table__,
                 StreamCheckpointRecord.__table__,
@@ -418,6 +417,7 @@ def create_app(
         apply_apikey_migrations(engine)
         apply_openapi_admin_migrations(engine)
         apply_workflow_migrations(engine)
+        apply_execution_migrations(engine)
         apply_variable_migrations(engine)
         ensure_i1_schema()
         ensure_schedule_schema()
