@@ -37,6 +37,7 @@ from sqlalchemy.orm import Session
 
 from rebuild.execution.repository import ExecutionRepository
 from rebuild.execution.models import TaskInstanceRecord
+from rebuild.execution.run_stats import RunStatisticsService
 from rebuild.trial.validator import TrialValidator
 from rebuild.trial.repository import TrialSnapshotRepository
 from rebuild.variables.models import TaskInstanceVariableRuntimeRecord
@@ -182,6 +183,28 @@ class TrialRunner:
 
         # 9. Finalize instance.
         self._exec.transition_workflow_instance(instance.id, instance_status)
+
+        # Persist one authoritative workflow-level result receipt and the
+        # log-independent monitoring snapshot.  A trial is a real execution:
+        # its component outcomes must therefore be visible in the same run
+        # statistics table as scheduled/formal runs.
+        terminal_tasks = self._session.scalars(
+            select(TaskInstanceRecord).where(
+                TaskInstanceRecord.workflow_instance_id == instance.id
+            )
+        ).all()
+        success_count = sum(task.status == "SUCCEEDED" for task in terminal_tasks)
+        failure_count = sum(task.status == "FAILED" for task in terminal_tasks)
+        skipped_count = sum(task.status == "SKIPPED" for task in terminal_tasks)
+        self._exec.record_result_stat(
+            workflow_instance_id=instance.id,
+            task_instance_id=None,
+            attempt_no=0,
+            success_count=success_count,
+            failed_count=failure_count,
+            skipped_count=skipped_count,
+        )
+        RunStatisticsService(self._session).finalize(instance.id)
 
         # 10. Build result.
         # WF-29: task_id is the node_code (design §3.2 defines node types, not a

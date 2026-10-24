@@ -9,7 +9,7 @@ from sqlalchemy import create_engine, select
 from sqlalchemy.orm import Session
 
 from rebuild.common.db import Base
-from rebuild.execution.models import TaskInstanceRecord, WorkflowInstanceRecord
+from rebuild.execution.models import TaskInstanceRecord, WorkflowInstanceRecord, WorkflowRunStatRecord
 from rebuild.trial.models import WorkflowDraftSnapshotRecord
 from rebuild.trial.repository import TrialSnapshotRepository
 from rebuild.trial.runner import TrialRunner, TrialRunnerError, TrialRunOptions
@@ -100,6 +100,13 @@ def test_trial_run_creates_instance_and_tasks():
     ).all()
     assert len(tasks) == 3
     assert all(t.status == "SUCCEEDED" for t in tasks)
+    run_stat = session.scalar(
+        select(WorkflowRunStatRecord).where(
+            WorkflowRunStatRecord.workflow_instance_id == result.instance_id
+        )
+    )
+    assert run_stat is not None
+    assert (run_stat.success_count, run_stat.failure_count, run_stat.skipped_count) == (3, 0, 0)
 
 
 def test_trial_run_executes_python_and_shell_scripts():
