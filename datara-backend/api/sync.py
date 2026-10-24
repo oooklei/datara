@@ -23,15 +23,25 @@ SYNC_TAG = "同步"
 
 def _sync_outputs(db: Session, instance_id: str) -> dict:
     """实例内全部 sync 节点任务输出聚合（多 sync 节点求和；schemas 取并集保序）。"""
+    # Runtime materialisation emits ``sync`` for table-to-table jobs and
+    # ``file_sync`` for file-to-table jobs.  Both executors are part of the
+    # sync monitoring contract; filtering only the former silently reported
+    # zero rows for otherwise successful file imports.  Keep the query
+    # explicit (rather than a broad prefix) so unrelated task types cannot
+    # contaminate the aggregate.
     rows = (
-        db.query(TaskInstance).filter(TaskInstance.instance_id == instance_id, TaskInstance.node_type == "sync").all()
+        db.query(TaskInstance)
+        .filter(TaskInstance.instance_id == instance_id, TaskInstance.node_type.in_(("sync", "file_sync")))
+        .all()
     )
     agg = {"readRows": 0, "writeRows": 0, "badRows": 0, "batchId": instance_id, "schemas": []}
     for row in rows:
         out = row.outputs or {}
-        agg["readRows"] += int(out.get("read_rows") or 0)
-        agg["writeRows"] += int(out.get("write_rows") or 0)
-        agg["badRows"] += int(out.get("bad_rows") or 0)
+        # sync executor uses snake_case ``read_rows`` while file_sync's
+        # stable output contract uses ``rows_read``/``rows_written``.
+        agg["readRows"] += int(out.get("read_rows", out.get("rows_read")) or 0)
+        agg["writeRows"] += int(out.get("write_rows", out.get("rows_written")) or 0)
+        agg["badRows"] += int(out.get("bad_rows", out.get("rows_bad")) or 0)
         for s in out.get("schemas_included") or []:
             if s and s not in agg["schemas"]:
                 agg["schemas"].append(str(s))
