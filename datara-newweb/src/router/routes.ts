@@ -28,6 +28,7 @@ import TaskCenterView from '../views/TaskCenterView.vue'
 import SshNodeManagementView from '../views/SshNodeManagementView.vue'
 import RuntimeNodeView from '../views/depops/RuntimeNodeView.vue'
 import ApiKeyManagementView from '../views/ApiKeyManagementView.vue'
+import ApiManagementView from '../views/ApiManagementView.vue'
 
 export const routes: RouteRecordRaw[] = [
   { path: '/login', name: 'login', component: LoginView },
@@ -38,6 +39,7 @@ export const routes: RouteRecordRaw[] = [
   // （History 直链可达；菜单可见性候批——BATCH_SWITCHES.inc17 保持 false）
   { path: '/dep/runtime', name: 'dep-runtime', component: RuntimeNodeView },
   { path: '/open/key', name: 'open-key', component: ApiKeyManagementView },
+  { path: '/open/api', name: 'open-api', component: ApiManagementView },
   {
     path: '/p/:projectId',
     name: 'project-workbench',

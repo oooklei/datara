@@ -220,6 +220,30 @@ export const openapiAdminKeyApi: OpenapiAdminKeyApi = {
   async revoke(id) { return keyRequest<ApiKeyRecord>(`/api-keys/${id}/revoke`, { method: 'POST' }) },
 }
 
+export interface OpenapiAdminApi {
+  list: () => Promise<ApiDefinitionRecord[]>
+  create: (input: ApiDefinitionInput) => Promise<ApiDefinitionRecord>
+  update: (id: number, input: ApiDefinitionInput) => Promise<ApiDefinitionRecord>
+  remove: (id: number) => Promise<void>
+  publish: (id: number) => Promise<ApiDefinitionRecord>
+  disable: (id: number) => Promise<ApiDefinitionRecord>
+  enable: (id: number) => Promise<ApiDefinitionRecord>
+  callLogs: (query?: ApiCallLogQuery) => Promise<ApiCallLogPage>
+}
+export const openapiAdminApi: OpenapiAdminApi = {
+  async list() { return keyRequest<ApiDefinitionRecord[]>('/definitions') },
+  async create(input) { return keyRequest<ApiDefinitionRecord>('/definitions', { method: 'POST', body: JSON.stringify(input) }) },
+  async update(id, input) { return keyRequest<ApiDefinitionRecord>(`/definitions/${id}`, { method: 'PUT', body: JSON.stringify(input) }) },
+  async remove(id) { await keyRequest<unknown>(`/definitions/${id}`, { method: 'DELETE' }) },
+  async publish(id) { return keyRequest<ApiDefinitionRecord>(`/definitions/${id}/publish`, { method: 'POST' }) },
+  async disable(id) { return keyRequest<ApiDefinitionRecord>(`/definitions/${id}/disable`, { method: 'POST' }) },
+  async enable(id) { return keyRequest<ApiDefinitionRecord>(`/definitions/${id}/enable`, { method: 'POST' }) },
+  async callLogs(query) {
+    const q = query ? '?' + Object.entries(query).filter(([, v]) => v !== undefined).map(([k, v]) => `${encodeURIComponent(k)}=${encodeURIComponent(String(v))}`).join('&') : ''
+    return keyRequest<ApiCallLogPage>(`/call-logs${q}`)
+  },
+}
+
 /* ---------- RED 实现（后端接入前统一抛哨兵；方法清单见 OPENAPI_ADMIN_CONTRACT_METHODS） ---------- */
 
 /** 异步契约方法统一实现：rejected promise（同步 throw 会在调用点直接炸出，无法被 rejects 断言捕获）。 */
