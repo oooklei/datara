@@ -8,6 +8,7 @@ import pytest
 from sqlalchemy import create_engine, select
 from sqlalchemy.orm import Session
 
+from common.models import Base as LegacyBase, Component, ComponentVersion
 from rebuild.common.db import Base
 from rebuild.execution.models import WorkflowInstanceRecord
 from rebuild.trial.promote import PromoteError, TrialPromoter
@@ -24,7 +25,22 @@ from rebuild.workflow.models import (
 def _session():
     engine = create_engine("sqlite+pysqlite:///:memory:")
     Base.metadata.create_all(engine)
-    return Session(engine)
+    LegacyBase.metadata.create_all(
+        engine,
+        tables=[Component.__table__, ComponentVersion.__table__],
+    )
+    session = Session(engine)
+    session.add(Component(
+        id=901, type="sql", name="sql", category="test", profile="dag",
+        scope="builtin", execution_model="dag-engine", executable=True,
+        state="published", published_version=1, draft_rev=0,
+    ))
+    session.add(ComponentVersion(
+        id=901, component_id=901, type="sql", version=1,
+        state="published", spec_json="{}", spec_hash="hash",
+    ))
+    session.commit()
+    return session
 
 
 def _make_definition(session, project_id=1):
@@ -34,16 +50,17 @@ def _make_definition(session, project_id=1):
     return record.id
 
 
-def _add_node(session, definition_id, node_code, node_type="SQL", params=None):
+def _add_node(session, definition_id, node_code, node_type="sql", params=None):
     import json
 
+    governed_params = {"_componentRef": {"type": node_type, "version": 1}, **(params or {})}
     record = WorkflowNodeRecord(
         definition_id=definition_id,
         version_id=None,
         node_code=node_code,
         node_type=node_type,
         name=node_code,
-        params_json=json.dumps(params or {}),
+        params_json=json.dumps(governed_params),
     )
     session.add(record)
     session.flush()
@@ -59,9 +76,11 @@ def _add_edge(session, definition_id, from_node, to_node):
 
 def _setup_and_run(session):
     definition_id = _make_definition(session)
-    _add_node(session, definition_id, "start", node_type="START")
+    # Published drafts use immutable governed component types; legacy
+    # START/SQL/END node kinds are intentionally rejected by the publish gate.
+    _add_node(session, definition_id, "start")
     _add_node(session, definition_id, "extract", params={"sql": "SELECT 1"})
-    _add_node(session, definition_id, "end", node_type="END")
+    _add_node(session, definition_id, "end")
     _add_edge(session, definition_id, "start", "extract")
     _add_edge(session, definition_id, "extract", "end")
     session.commit()
