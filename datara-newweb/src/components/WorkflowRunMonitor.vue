@@ -7,12 +7,27 @@ const props = defineProps<{ projectId: number }>()
 const rows = ref<WorkflowRunStat[]>([])
 const loading = ref(false)
 const error = ref('')
+let loadGeneration = 0
 
 async function load() {
+  const generation = ++loadGeneration
+  const projectId = props.projectId
   loading.value = true; error.value = ''
-  try { rows.value = (await listWorkflowRunStats(props.projectId)).items }
-  catch (reason) { error.value = reason instanceof Error ? reason.message : '运行记录加载失败'; ElMessage.error(error.value) }
-  finally { loading.value = false }
+  // Clear the previous project's rows immediately.  This matters when a
+  // keep-alive project route changes: showing old counters during the request
+  // is misleading, and a slower response must never overwrite the new scope.
+  rows.value = []
+  try {
+    const result = await listWorkflowRunStats(projectId)
+    if (generation !== loadGeneration || projectId !== props.projectId) return
+    rows.value = result.items
+  } catch (reason) {
+    if (generation !== loadGeneration || projectId !== props.projectId) return
+    error.value = reason instanceof Error ? reason.message : '运行记录加载失败'
+    ElMessage.error(error.value)
+  } finally {
+    if (generation === loadGeneration) loading.value = false
+  }
 }
 // ProjectSegmentView is kept alive while switching project routes.  Watching the
 // project id prevents the monitor from showing the previous project's run rows.
