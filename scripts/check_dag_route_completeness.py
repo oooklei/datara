@@ -156,7 +156,14 @@ def main() -> int:
     workers = parse_worker_types(dag_py)
     executors = parse_executors(root / WORKER_EXEC_DIR)
 
-    routed = master | workers
+    # Worker executors are the runtime route for data-plane nodes.  The
+    # original checker only considered the inline master dispatch table and
+    # WORKER_TYPES, which made every registered executor look like a dangling
+    # palette node after the executor registry was split into
+    # ``worker/executors/*.py``.  Include the discovered executor registry in
+    # the routed set while retaining the separate worker-without-executor
+    # assertion below.
+    routed = master | workers | executors
 
     # worker 已声明但 executor 未实现（反向缺口）
     missing_executor = sorted(workers - executors)
