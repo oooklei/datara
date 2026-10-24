@@ -57,6 +57,7 @@ def test_reconcile_detail_and_all_counts_reject_bool_or_negative():
     session, repo, instance = _context()
     task = repo.create_task_instance(workflow_instance_id=instance.id, task_id="sync")
     attempt = repo.append_attempt(task.id)
+    repo.transition_attempt(attempt.id, "RUNNING")
     base = dict(workflow_instance_id=instance.id, task_instance_id=task.id, attempt_no=attempt.attempt_no,
                 success_count=1, failed_count=0, skipped_count=0)
     for field, value in (("source_count", True), ("target_count", -1)):
@@ -67,7 +68,6 @@ def test_reconcile_detail_and_all_counts_reject_bool_or_negative():
         "source_count": 2, "target_count": 1, "success_count": 1,
         "failure_count": 0, "skipped_count": 0,
     }])
-    repo.transition_attempt(attempt.id, "RUNNING")
     repo.transition_attempt(attempt.id, "SUCCEEDED")
     repo.transition_workflow_instance(instance.id, "RUNNING")
     repo.transition_workflow_instance(instance.id, "SUCCEEDED")
@@ -120,6 +120,7 @@ def test_workflow_level_result_replaces_task_rollup_instead_of_double_counting()
     session, repo, instance = _context()
     task = repo.create_task_instance(workflow_instance_id=instance.id, task_id="sync")
     attempt = repo.append_attempt(task.id)
+    repo.transition_attempt(attempt.id, "RUNNING")
     repo.record_result_stat(
         workflow_instance_id=instance.id,
         task_instance_id=task.id,
@@ -136,6 +137,7 @@ def test_workflow_level_result_replaces_task_rollup_instead_of_double_counting()
             "failure_count": 1,
         }],
     )
+    repo.transition_attempt(attempt.id, "SUCCEEDED")
     repo.record_result_stat(
         workflow_instance_id=instance.id,
         task_instance_id=None,

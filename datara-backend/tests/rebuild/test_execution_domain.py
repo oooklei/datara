@@ -83,6 +83,7 @@ def test_run_table_contract_timestamps_are_db_generated():
     for record in (instance, task, attempt, log, output, event):
         assert record.created_at is not None and record.updated_at is not None and record.generated_at is not None
     assert event.event_time is not None
+    assert event.receipt_identity == "__workflow__"
     # Execution-side stamps only appear on state transitions, never at insert.
     assert instance.started_at is None and instance.finished_at is None
 
@@ -317,7 +318,7 @@ def test_record_result_stat_distinct_attempts_accumulate_separately():
     assert (aggregate.success_count, aggregate.failure_count, aggregate.skipped_count) == (3, 5, 2)
 
 
-def test_record_result_stat_task_level_and_workflow_level_are_independent():
+def test_workflow_level_result_stat_replaces_task_rollup_in_legacy_metrics():
     repo, session = _repo()
     instance = repo.create_workflow_instance(workflow_id=7, workflow_version_id=3, instance_type="FORMAL")
     task = repo.create_task_instance(workflow_instance_id=instance.id, task_id="sync_1")
@@ -331,9 +332,40 @@ def test_record_result_stat_task_level_and_workflow_level_are_independent():
         workflow_instance_id=instance.id, task_instance_id=None, attempt_no=attempt.attempt_no,
         success_count=4, failed_count=1, skipped_count=0,
     )
-    assert workflow_level["recorded"] is True  # NULL task slot is its own idempotency slot
+    assert workflow_level["recorded"] is True
     (aggregate,) = _scalars(session, WorkflowResultStatRecord)
-    assert (aggregate.success_count, aggregate.failure_count) == (8, 2)
+    assert (aggregate.success_count, aggregate.failure_count) == (4, 1)
+    receipts = _scalars(session, ExecutionEventRecord)
+    assert {row.receipt_identity for row in receipts} == {f"task:{task.id}", "__workflow__"}
+
+
+def test_result_receipt_replay_is_safe_across_sessions(tmp_path):
+    engine = create_engine(f"sqlite+pysqlite:///{tmp_path / 'result-stat.db'}")
+    Base.metadata.create_all(engine, tables=[*EXECUTION_TABLES, WorkflowResultStatRecord.__table__])
+    with Session(engine) as seed:
+        repo = ExecutionRepository(seed)
+        instance = repo.create_workflow_instance(workflow_id=7, workflow_version_id=3, instance_type="FORMAL")
+        instance_id = instance.id
+        seed.commit()
+
+    payload = dict(
+        workflow_instance_id=instance_id,
+        task_instance_id=None,
+        attempt_no=0,
+        success_count=6,
+        failed_count=2,
+        skipped_count=1,
+    )
+    with Session(engine) as first:
+        assert ExecutionRepository(first).record_result_stat(**payload)["recorded"] is True
+        first.commit()
+    with Session(engine) as replay:
+        assert ExecutionRepository(replay).record_result_stat(**payload)["duplicate"] is True
+        replay.commit()
+    with Session(engine) as verify:
+        assert verify.query(ExecutionEventRecord).count() == 1
+        aggregate = verify.query(WorkflowResultStatRecord).one()
+        assert (aggregate.success_count, aggregate.failure_count, aggregate.skipped_count) == (6, 2, 1)
 
 
 def test_record_result_stat_rejects_invalid_counts():

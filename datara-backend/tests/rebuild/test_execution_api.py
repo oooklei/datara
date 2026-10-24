@@ -100,12 +100,15 @@ def test_get_run_detail():
 def test_cancel_run():
     client, app, project_id, tokens = _client()
     try:
+        with app.state.session_factory() as session:
+            workflow_id = _add_definition(session, project_id).id
+            session.commit()
         created = client.post(
             f"{EXEC}/runs",
             headers=tokens["dev"],
             json={
                 "project_id": project_id,
-                "workflow_id": 1,
+                "workflow_id": workflow_id,
                 "workflow_version_id": 1,
                 "instance_type": "TRIAL",
             },
