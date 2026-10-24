@@ -16,6 +16,9 @@
  *   敏感 body/完整 SQL——类型面即按此冻结，后端违反即 15.2-D 验收红。
  */
 
+import { request } from '../http'
+import { camelToSnake, snakeToCamel } from './adapterKit'
+
 /* ---------- API 定义（rebuild_api_definition：method+path+version 唯一，受控 facade only） ---------- */
 
 /** 受控 facade HTTP 方法白名单（C2：仅登记过的 Datara 受控 facade，禁任意 URL 代理）。 */
@@ -190,6 +193,31 @@ export interface OpenapiAdminContract {
   rotateApiKey: (id: number) => Promise<KeyIssuance>
   revokeApiKey: (id: number) => Promise<ApiKeyRecord>
   listCallLogs: (query?: ApiCallLogQuery) => Promise<ApiCallLogPage>
+}
+
+/** API-Key GREEN facade.  Keys are never persisted by the browser; plaintext is
+ * held only by the caller until the issuance dialog is closed. */
+export interface OpenapiAdminKeyApi {
+  list: () => Promise<ApiKeyRecord[]>
+  issue: (input: ApiKeyInput) => Promise<KeyIssuance>
+  rotate: (id: number) => Promise<KeyIssuance>
+  revoke: (id: number) => Promise<ApiKeyRecord>
+}
+
+async function keyRequest<T>(path: string, init?: RequestInit): Promise<T> {
+  const raw = await request<unknown>(`${OPENAPI_ADMIN_URL_PREFIX.replace('/api/v1', '')}${path}`, {
+    ...init,
+    ...(init?.body ? { body: JSON.stringify(camelToSnake(JSON.parse(String(init.body)))) } : {}),
+    headers: { 'Content-Type': 'application/json', ...(init?.headers as Record<string, string> | undefined) },
+  })
+  return snakeToCamel(raw) as T
+}
+
+export const openapiAdminKeyApi: OpenapiAdminKeyApi = {
+  async list() { return keyRequest<ApiKeyRecord[]>('/api-keys') },
+  async issue(input) { return keyRequest<KeyIssuance>('/api-keys', { method: 'POST', body: JSON.stringify(input) }) },
+  async rotate(id) { return keyRequest<KeyIssuance>(`/api-keys/${id}/rotate`, { method: 'POST' }) },
+  async revoke(id) { return keyRequest<ApiKeyRecord>(`/api-keys/${id}/revoke`, { method: 'POST' }) },
 }
 
 /* ---------- RED 实现（后端接入前统一抛哨兵；方法清单见 OPENAPI_ADMIN_CONTRACT_METHODS） ---------- */
