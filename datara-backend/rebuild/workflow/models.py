@@ -44,7 +44,9 @@ class WorkflowDefinitionRecord(Base):
     description: Mapped[str] = mapped_column(Text, nullable=False, default="")
     # User-facing palette/category labels.  Kept as JSON text for compatibility
     # with the legacy workflow-definition contract and SQLite test databases.
-    tags_json: Mapped[str] = mapped_column(Text, nullable=False, default="[]", server_default="[]")
+    # MySQL rejects defaults on TEXT columns; bounded text preserves the
+    # legacy payload contract while allowing fresh-schema creation.
+    tags_json: Mapped[str] = mapped_column(String(4000), nullable=False, default="[]", server_default="[]")
     workflow_type: Mapped[str] = mapped_column(String(16), nullable=False, default="NORMAL", server_default="NORMAL")
     # Latest published version number; NULL = never published.
     current_version: Mapped[int | None] = mapped_column(Integer, nullable=True)
