@@ -24,6 +24,7 @@ from sqlalchemy.orm import sessionmaker
 
 from rebuild.stream.repository import StreamDomainError, StreamRepository
 from rebuild.stream.alert import evaluate_failure_alert
+from rebuild.stream.processor import StreamProcessingError, aggregate_window
 
 
 class StreamJobCreateRequest(BaseModel):
@@ -67,6 +68,7 @@ class StreamProduceRequest(BaseModel):
     event_time: str = ""
     payload: dict[str, Any] = Field(default_factory=dict)
     schema_: dict[str, str] = Field(default_factory=dict, alias="schema")
+    aggregate: dict[str, Any] | None = None
 
     model_config = {"protected_namespaces": (), "populate_by_name": True}
 
@@ -202,9 +204,19 @@ def build_stream_router(
                 repository = StreamRepository(session)
                 job = repository.get_job(job_id)
                 offset = body.start_offset
+                events: list[dict[str, Any]] = []
                 for index in range(body.count):
                     payload = {**body.payload, "sequence": index, "partition": body.partition_id}
+                    events.append(payload)
                     repository.write_checkpoint(job_id, body.partition_id, offset + index, payload, event_time)
+                window_result: dict[str, Any] = {"producer": "deterministic", "records": body.count}
+                if body.aggregate is not None:
+                    key_field = body.aggregate.get("key_field")
+                    value_field = body.aggregate.get("value_field")
+                    window_size = body.aggregate.get("window_size", body.count)
+                    if not isinstance(key_field, str) or not isinstance(value_field, str) or not isinstance(window_size, int):
+                        raise StreamProcessingError("aggregate requires key_field, value_field, window_size")
+                    window_result["aggregate"] = aggregate_window(events, key_field=key_field, value_field=value_field, window_size=window_size)
                 metric = repository.append_metric_snapshot(
                     job_id,
                     {
@@ -217,12 +229,14 @@ def build_stream_router(
                         "success_count": body.count,
                         "failure_count": 0,
                         "offset_value": offset + body.count - 1,
-                        "window_result": {"producer": "deterministic", "records": body.count},
+                        "window_result": window_result,
                     },
                     event_time,
                 )
                 session.commit()
                 return respond({"job_id": job_id, "partition_id": body.partition_id, "produced": body.count, "last_offset": offset + body.count - 1, "metric": metric})
+            except StreamProcessingError as exc:
+                return JSONResponse(status_code=400, content={"code": 4001, "msg": str(exc), "data": None})
             except StreamDomainError as exc:
                 return domain_error(exc)
 
