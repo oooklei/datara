@@ -172,3 +172,12 @@ def test_parse_graph_passes_supply_to_materializer():
     graph, _stream_spec = parse_graph(doc, comp_versions={"endpoint_select": 7})
     node = [n for n in graph.nodes.values() if n["id"].startswith("sys_exec_")][0]
     assert node["data"]["componentRef"] == {"type": "endpoint_select", "version": 7}
+
+
+@pytest.mark.parametrize("mode", [None, "", "invalid", "SRC_BASE"])
+def test_materializer_rejects_missing_or_unknown_endpoint_mode(mode):
+    """A malformed endpoint must fail closed, never default to src_base."""
+    doc = _ep_doc()
+    doc["nodes"][0]["data"] = {} if mode is None else {"baseMode": mode}
+    with pytest.raises(ValueError, match="requires baseMode"):
+        materialize_sync_exec(doc)

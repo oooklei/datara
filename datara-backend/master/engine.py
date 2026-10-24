@@ -110,7 +110,16 @@ def materialize_sync_exec(graph_json: dict, comp_versions: Optional[dict] = None
             len(ep_nodes),
         )
         return graph_json
-    base_mode = str((ep_nodes[0].get("data") or {}).get("baseMode") or "src_base")
+    endpoint_data = ep_nodes[0].get("data") or {}
+    # endpoint_select is a declarative three-mode contract.  Never silently
+    # coerce a missing/unknown mode to src_base: doing so can read from the
+    # wrong side of a sync chain and is especially dangerous during replay.
+    base_mode = str(endpoint_data.get("baseMode") or endpoint_data.get("base_mode") or "").strip()
+    if base_mode not in {"src_base", "tgt_base", "file_sync"}:
+        raise ValueError(
+            "endpoint_select %r requires baseMode in src_base/tgt_base/file_sync"
+            % (ep_nodes[0].get("id") or "",)
+        )
     exec_type = "file_sync" if base_mode == "file_sync" else "sync"
     nid = SYS_EXEC_PREFIX + hashlib.md5(str(ep_nodes[0].get("id") or "").encode("utf-8")).hexdigest()[:8]
     doc = dict(graph_json)
