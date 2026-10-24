@@ -139,6 +139,14 @@ describe('/ide 数据开发 IDE 只读态（增量 11/R5-A）', () => {
     expect(w.find('[data-no-datasource]').exists()).toBe(true)
   })
 
+  it('loads the project supplied by ProjectSegmentView prop', async () => {
+    const w = mount(View, { props: { projectId: 1 } })
+    await flushPromises()
+    expect(spies.listDatasources).toHaveBeenCalledTimes(1)
+    expect((w.find('[data-project-select]').element as HTMLSelectElement).value).toBe('1')
+    expect(w.find('[data-no-datasource]').exists()).toBe(true)
+  })
+
   it('walks the object tree: databases → schemas → relations → columns/indexes', async () => {
     router.route.params.projectId = '1'
     const w = mount(View)

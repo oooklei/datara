@@ -225,6 +225,7 @@ import {
 import { createVariableContract, parseVariableReferences, type VariableContract } from '../../services/rebuild/variableApi'
 import { listProjects, type ProjectSummary } from '../../services/rebuild/projectApi'
 
+const props = defineProps<{ projectId?: number }>()
 const route = useRoute()
 
 const projects = ref<ProjectSummary[]>([])
@@ -286,7 +287,9 @@ const api = computed<SqlIdeContract>(() =>
 )
 const varApi = computed<VariableContract>(() => createVariableContract())
 
-/** 项目上下文：route 参数优先，其次 query，最后选择器。 */
+/** 项目上下文：项目段注入优先，其次 route 参数/query，最后选择器。
+ * ProjectSegmentView 以 prop 挂载本页；若只读取 route，会在 /p/:id/ide
+ * 下退化成「请选择项目」并且不会加载数据源。 */
 const routeProjectId = computed<number | null>(() => {
   const raw = route.params.projectId ?? route.query.projectId
   const value = Array.isArray(raw) ? raw[0] : raw
@@ -294,6 +297,7 @@ const routeProjectId = computed<number | null>(() => {
   return value !== undefined && value !== '' && Number.isInteger(n) && n > 0 ? n : null
 })
 const projectId = computed<number | null>(() => {
+  if (Number.isInteger(props.projectId) && props.projectId! > 0) return props.projectId!
   const fromRoute = routeProjectId.value
   if (fromRoute !== null) return fromRoute
   const n = Number(selected.value)
@@ -619,7 +623,7 @@ function refreshVarPreview(): void {
 }
 
 onMounted(async () => {
-  if (routeProjectId.value !== null) selected.value = String(routeProjectId.value)
+  if (projectId.value !== null) selected.value = String(projectId.value)
   await loadProjects()
   await reload()
   refreshVarPreview()
