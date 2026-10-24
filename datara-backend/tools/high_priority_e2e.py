@@ -210,7 +210,14 @@ def main() -> int:
             body={"from": stream_window_from, "to": stream_window_to, "limit": 500},
         )
         observed_data = observed.get("data") or {}
-        observed_metrics = observed_data.get("metrics") if isinstance(observed_data, dict) else observed_data
+        # The observation endpoint returns one aggregate snapshot (the metrics
+        # list is exposed by the separate /metrics endpoint).  Accept the
+        # envelope's canonical object while retaining compatibility with older
+        # deployments that returned a list.
+        if isinstance(observed_data, dict):
+            observed_metrics = observed_data.get("metrics") or [observed_data]
+        else:
+            observed_metrics = observed_data
         if not any((row.get("input_count") or 0) >= 3 for row in (observed_metrics or [])):
             raise RuntimeError("stream observation did not include the produced batch")
         metrics = call(args.base, f"/api/v1/rebuild/stream/jobs/{args.stream_job_id}/metrics?from=2026-10-24T00:00:00Z&to=2026-10-26T00:00:00Z", token=token)
