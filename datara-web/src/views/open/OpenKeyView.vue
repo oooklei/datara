@@ -16,6 +16,7 @@ import type { OpenApiKey, OpenApi } from '../../services/types'
 import { useAuthStore } from '../../stores/auth'
 import { isMock } from '../../services/apiMode'
 import { createApiKeyContract, type ApiKeyRow } from '../../services/rebuild/apikeyApi'
+import { createOpenApiAdminContract, type ApiDefinition } from '../../services/rebuild/openApiAdmin'
 
 const auth = useAuthStore()
 const keys = ref<OpenApiKey[]>([])
@@ -23,10 +24,22 @@ const apis = ref<OpenApi[]>([])
 const keyword = ref('')
 const filters = ref<Record<string, string>>({ status: '' })
 const apiKeyContract = createApiKeyContract()
+const openApiContract = createOpenApiAdminContract()
 
 onMounted(async () => {
   await reload()
-  apis.value = [...((await dataStore.list<OpenApi>('openApis')) ?? [])]
+  if (isMock) {
+    apis.value = [...((await dataStore.list<OpenApi>('openApis')) ?? [])]
+  } else {
+    const defs = await openApiContract.listDefinitions()
+    apis.value = defs.map((d: ApiDefinition) => ({
+      id: String(d.id), name: d.name, path: d.path,
+      method: d.method as 'GET' | 'POST',
+      category: d.path.includes('quality') ? '数据质量' : d.path.includes('meta') ? '元数据' : '流数据',
+      desc: d.description, status: d.status === 'published' ? 'enabled' : 'disabled',
+      params: [], respExample: '{}', calls: 0,
+    }))
+  }
 })
 
 async function reload() {
