@@ -3,7 +3,12 @@
  * 断言：方法清单冻结、工厂实现统一抛 R6_SCHEDULER_NOT_WIRED（即后端接入前不存在半连通状态）。
  * 组件可编译性由 `pnpm build` 门禁保证。
  */
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
+const { request } = vi.hoisted(() => ({ request: vi.fn(async (path: string, options?: { method?: string; json?: unknown; query?: unknown }) => {
+  if (path.endsWith('/triggers') && options?.method === 'POST') return { id: 1, name: 't', kind: 'CRON', enabled: false }
+  return []
+}) }))
+vi.mock('../../http', () => ({ request }))
 import {
   R6_CONTRACT_METHODS,
   R6_SCHEDULER_NOT_WIRED,
@@ -32,32 +37,27 @@ describe('I7 scheduleApi contract (RED)', () => {
     }
   })
 
-  it('every I/O method refuses until schedule backend is wired', async () => {
+  it('every observation method is wired to the rebuild scheduling endpoints', async () => {
     const contract = createScheduleContract()
-    const cases: Promise<unknown>[] = [
-      contract.listTriggers(),
-      contract.registerTrigger({ name: 't', kind: 'CRON', cron: '0 0 * * *' }),
-      contract.listQueue(),
-      contract.listRuntimeEvents(null),
-      contract.listRuntimeEvents(42),
-      contract.listAlerts(),
-    ]
-    for (const p of cases) {
-      await expect(p).rejects.toThrow(R6_SCHEDULER_NOT_WIRED)
-    }
+    await contract.listTriggers()
+    await contract.registerTrigger({ name: 't', kind: 'CRON', cron: '0 0 * * *' })
+    await contract.listQueue()
+    await contract.listRuntimeEvents(42)
+    await contract.listAlerts()
+    expect(request.mock.calls.map(([path]) => path)).toEqual([
+      '/rebuild/schedule/triggers', '/rebuild/schedule/triggers',
+      '/rebuild/schedule/queue', '/rebuild/schedule/runtime-events',
+      '/rebuild/schedule/alerts',
+    ])
   })
 
-  it('registerTrigger input carrying misfirePolicy placeholder still rejects uniformly', async () => {
+  it('registerTrigger forwards misfirePolicy to the backend unchanged', async () => {
     /* FE-08 骨架（ScheduleRuntimeDialog）注册表单的 misfire 占位字段面：
        RED 阶段不产生分支——带 misfirePolicy 的输入与不带同样统一抛哨兵，
        持久化域模型待核（大盘 #31）由后端建模收口后细化。 */
     const contract = createScheduleContract()
-    await expect(
-      contract.registerTrigger({ name: 't', kind: 'CRON', cron: '0 0 * * *', misfirePolicy: 'FIRE_NOW' }),
-    ).rejects.toThrow(R6_SCHEDULER_NOT_WIRED)
-    await expect(
-      contract.registerTrigger({ name: 't', kind: 'MANUAL', misfirePolicy: 'RESCHEDULE' }),
-    ).rejects.toThrow(R6_SCHEDULER_NOT_WIRED)
+    await contract.registerTrigger({ name: 't', kind: 'CRON', cron: '0 0 * * *', misfirePolicy: 'FIRE_NOW' })
+    expect(request.mock.calls.at(-1)?.[1]).toEqual(expect.objectContaining({ json: expect.objectContaining({ misfirePolicy: 'FIRE_NOW' }) }))
   })
 
   it('sentinel wordform is frozen to R6_SCHEDULER_NOT_WIRED (X13-A rename regression guard)', () => {

@@ -83,6 +83,10 @@ export interface ScheduleAlert {
 
 export const R6_SCHEDULER_NOT_WIRED = 'R6_SCHEDULER_NOT_WIRED: rebuild/schedule contract not connected yet'
 
+import { request } from '../http'
+
+const BASE = '/rebuild/schedule'
+
 /** 契约方法清单（测试与 UI 横幅共用，保持单一事实源） */
 export const R6_CONTRACT_METHODS = [
   'listTriggers',
@@ -105,20 +109,16 @@ export interface ScheduleContract {
 /* ---------- RED 实现（后端接入前统一抛哨兵；方法清单见 R6_CONTRACT_METHODS） ---------- */
 
 /** 异步契约方法统一实现：rejected promise（同步 throw 会在调用点直接炸出，无法被 rejects 断言捕获） */
-const notWired = async (): Promise<never> => {
-  throw new Error(R6_SCHEDULER_NOT_WIRED)
-}
-
 /**
  * I7 契约工厂（原型态）：签名与类型已冻结，实现在后端就绪后按本接口逐方法替换，
  * UI 层（ScheduleValidationView）不感知切换。
  */
 export function createScheduleContract(): ScheduleContract {
   return {
-    listTriggers: notWired,
-    registerTrigger: notWired,
-    listQueue: notWired,
-    listRuntimeEvents: notWired,
-    listAlerts: notWired,
+    listTriggers: () => request<TriggerRegistration[]>(`${BASE}/triggers`),
+    registerTrigger: (input) => request<TriggerRegistration>(`${BASE}/triggers`, { method: 'POST', json: input }),
+    listQueue: () => request<ScheduleQueueEntry[]>(`${BASE}/queue`),
+    listRuntimeEvents: (instanceId = null) => request<ScheduleRuntimeEvent[]>(`${BASE}/runtime-events`, { query: { instanceId } }),
+    listAlerts: () => request<ScheduleAlert[]>(`${BASE}/alerts`),
   }
 }

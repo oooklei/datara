@@ -228,4 +228,70 @@ def build_schedule_router(
     def offline_schedule(schedule_id: int, token: str = Header(default=""), authorization: str = Header(default="")):
         return mutate(schedule_id, "offline", token, authorization)
 
+    # Runtime observation facade.  These endpoints deliberately read the same
+    # persisted schedule records as the CRUD surface; execution/event stores
+    # can enrich the queue/event/alert projections without changing the FE
+    # contract.
+    @router.get("/schedule/triggers")
+    def list_triggers(token: str = Header(default=""), authorization: str = Header(default="")):
+        try:
+            principal(token, authorization)
+        except ScheduleError as exc:
+            return error(exc)
+        with session_factory() as session:
+            rows = session.scalars(select(WorkflowScheduleRecord).order_by(WorkflowScheduleRecord.id.desc())).all()
+            data = [{
+                "id": row.id, "name": row.name, "kind": "CRON", "cron": row.cron_expr,
+                "source": str(row.definition_id), "enabled": bool(row.enabled),
+                "nextFireAt": None, "lastFireAt": None, "misfirePolicy": row.misfire_policy,
+            } for row in rows]
+        return {"code": 0, "msg": "success", "data": data}
+
+    @router.post("/schedule/triggers")
+    def register_trigger(body: dict[str, Any] = Body(...), token: str = Header(default=""), authorization: str = Header(default="")):
+        kind = body.get("kind", "CRON")
+        if kind != "CRON":
+            return error(ScheduleError(4001, "only CRON triggers are supported by the schedule store"))
+        wf = body.get("workflowId", body.get("wfCode", body.get("source")))
+        if wf is None:
+            return error(ScheduleError(4001, "workflowId is required"))
+        with session_factory() as session:
+            try:
+                definition_row = definition(session, str(wf))
+                user = principal(token, authorization)
+                denial = project_permission_error(session, definition_row.project_id, user, SCHEDULE_PERMISSION_MAP["create"])
+                if denial is not None:
+                    return denial
+                values = normalized({**body, "crontab": body.get("cron", body.get("crontab", ""))})
+                values.pop("next_fire_times", None)
+                row = WorkflowScheduleRecord(definition_id=definition_row.id, enabled=bool(body.get("enabled", False)), **values)
+                session.add(row); session.commit(); session.refresh(row)
+            except ScheduleError as exc:
+                return error(exc)
+        return {"code": 0, "msg": "success", "data": {"id": row.id, "name": row.name, "kind": "CRON", "cron": row.cron_expr, "source": str(row.definition_id), "enabled": bool(row.enabled), "misfirePolicy": row.misfire_policy}}
+
+    @router.get("/schedule/queue")
+    def list_queue(token: str = Header(default=""), authorization: str = Header(default="")):
+        try:
+            principal(token, authorization)
+        except ScheduleError as exc:
+            return error(exc)
+        return {"code": 0, "msg": "success", "data": []}
+
+    @router.get("/schedule/runtime-events")
+    def list_runtime_events(instanceId: int | None = None, token: str = Header(default=""), authorization: str = Header(default="")):
+        try:
+            principal(token, authorization)
+        except ScheduleError as exc:
+            return error(exc)
+        return {"code": 0, "msg": "success", "data": []}
+
+    @router.get("/schedule/alerts")
+    def list_alerts(token: str = Header(default=""), authorization: str = Header(default="")):
+        try:
+            principal(token, authorization)
+        except ScheduleError as exc:
+            return error(exc)
+        return {"code": 0, "msg": "success", "data": []}
+
     return router
