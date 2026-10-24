@@ -34,6 +34,10 @@ def main() -> int:
     parser.add_argument("--base", required=True)
     parser.add_argument("--username", required=True)
     parser.add_argument("--password", required=True)
+    parser.add_argument("--project-id", type=int, default=1)
+    parser.add_argument("--definition-id", type=int, default=1)
+    parser.add_argument("--snapshot-id", type=int, default=2)
+    parser.add_argument("--stream-job-id", type=int, default=1)
     args = parser.parse_args()
     try:
         health = call(args.base, "/api/v1/rebuild/health")
@@ -47,16 +51,16 @@ def main() -> int:
             raise RuntimeError(f"component catalogue too small: {spec_count}")
         trial = call(
             args.base,
-            "/api/v1/rebuild/trial/definitions/1/run",
+            f"/api/v1/rebuild/trial/definitions/{args.definition_id}/run",
             token=token,
             method="POST",
-            body={"project_id": 1, "snapshot_id": 2, "dependency_mock": True},
+            body={"project_id": args.project_id, "snapshot_id": args.snapshot_id, "dependency_mock": True},
         )
         trial_data = trial["data"]
         if trial_data.get("status") != "SUCCEEDED" or len(trial_data.get("tasks", [])) < 6:
             raise RuntimeError(f"trial did not succeed: {trial_data}")
-        stats = call(args.base, "/api/v1/rebuild/execution/run-stats?project_id=1&limit=50", token=token)
-        metrics = call(args.base, "/api/v1/rebuild/stream/jobs/1/metrics?from=2026-10-24T00:00:00Z&to=2026-10-26T00:00:00Z", token=token)
+        stats = call(args.base, f"/api/v1/rebuild/execution/run-stats?project_id={args.project_id}&limit=50", token=token)
+        metrics = call(args.base, f"/api/v1/rebuild/stream/jobs/{args.stream_job_id}/metrics?from=2026-10-24T00:00:00Z&to=2026-10-26T00:00:00Z", token=token)
         if not stats.get("data", {}).get("items"):
             raise RuntimeError("run statistics are empty")
         metric_rows = metrics.get("data", {}).get("metrics") if isinstance(metrics.get("data"), dict) else metrics.get("data")
