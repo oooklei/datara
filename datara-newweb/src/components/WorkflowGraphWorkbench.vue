@@ -230,11 +230,15 @@ async function ensureLoaded() {
     ElMessage.error('组件目录加载失败')
     return
   }
-  if (graphStore.docId === numDocId.value) {
+  // Definition ids are only unique within a project.  When a keep-alive
+  // project route changes, the same numeric workflow id must be reloaded
+  // instead of reusing the previous project's draft.
+  if (graphStore.docId === numDocId.value && graphStore.projectId === props.projectId) {
     // 同 Tab 复活：store 仍持 doc（不 close on deactivate），清陈旧快照键即可
     clearSnap()
     return
   }
+  loaded.value = false
   loading.value = true
   try {
     await graphStore.load(props.projectId, numDocId.value)
