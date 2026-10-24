@@ -14,6 +14,7 @@ Design source: docs/increments/2026-10-14-datara-platform-rebuild-design.md §8
 
 from __future__ import annotations
 
+from datetime import datetime, timezone
 from typing import Any
 
 from fastapi import APIRouter, Header, Query
@@ -57,6 +58,17 @@ class StreamCheckpointRequest(BaseModel):
     event_time: str = ""
 
     model_config = {"protected_namespaces": ()}
+
+
+class StreamProduceRequest(BaseModel):
+    count: int = Field(default=1, ge=1, le=10000)
+    partition_id: str = "p0"
+    start_offset: int = Field(default=0, ge=0)
+    event_time: str = ""
+    payload: dict[str, Any] = Field(default_factory=dict)
+    schema_: dict[str, str] = Field(default_factory=dict, alias="schema")
+
+    model_config = {"protected_namespaces": (), "populate_by_name": True}
 
 
 def build_stream_router(
@@ -159,6 +171,58 @@ def build_stream_router(
                 repository.write_checkpoint(job_id, body.partition_id, body.offset, body.payload, event_time)
                 session.commit()
                 return respond(repository.latest_checkpoint(job_id, body.partition_id))
+            except StreamDomainError as exc:
+                return domain_error(exc)
+
+    @router.post("/jobs/{job_id}/produce")
+    def produce_events(job_id: int, body: StreamProduceRequest, token: str = Header(default=""), authorization: str = Header(default="")):
+        """Generate deterministic events for live observation and acceptance runs.
+
+        This endpoint is intentionally bounded and authenticated. It is a test
+        producer, not a broker replacement: every generated event is persisted
+        as a checkpoint and one cumulative metric snapshot is recorded.
+        """
+        denial = auth_guard(token, authorization)
+        if denial is not None:
+            return denial
+        if not body.partition_id.strip():
+            return JSONResponse(status_code=400, content={"code": 4001, "msg": "partition_id is required", "data": None})
+        try:
+            event_time = datetime.fromisoformat(body.event_time.replace("Z", "+00:00")) if body.event_time else datetime.now(timezone.utc)
+        except ValueError:
+            return JSONResponse(status_code=400, content={"code": 4001, "msg": "event_time must be ISO-8601", "data": None})
+        for field, expected in body.schema_.items():
+            if field not in body.payload or not isinstance(expected, str):
+                return JSONResponse(status_code=400, content={"code": 4001, "msg": f"payload does not satisfy schema field {field}", "data": None})
+            actual = type(body.payload[field]).__name__
+            if expected not in {actual, "number" if isinstance(body.payload[field], (int, float)) else actual}:
+                return JSONResponse(status_code=400, content={"code": 4001, "msg": f"payload field {field} has type {actual}, expected {expected}", "data": None})
+        with session_factory() as session:
+            try:
+                repository = StreamRepository(session)
+                job = repository.get_job(job_id)
+                offset = body.start_offset
+                for index in range(body.count):
+                    payload = {**body.payload, "sequence": index, "partition": body.partition_id}
+                    repository.write_checkpoint(job_id, body.partition_id, offset + index, payload, event_time)
+                metric = repository.append_metric_snapshot(
+                    job_id,
+                    {
+                        "attempt_no": job.attempt_no,
+                        "produce_rate": body.count,
+                        "consume_rate": body.count,
+                        "process_rate": body.count,
+                        "input_count": body.count,
+                        "output_count": body.count,
+                        "success_count": body.count,
+                        "failure_count": 0,
+                        "offset_value": offset + body.count - 1,
+                        "window_result": {"producer": "deterministic", "records": body.count},
+                    },
+                    event_time,
+                )
+                session.commit()
+                return respond({"job_id": job_id, "partition_id": body.partition_id, "produced": body.count, "last_offset": offset + body.count - 1, "metric": metric})
             except StreamDomainError as exc:
                 return domain_error(exc)
 
