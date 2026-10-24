@@ -1,7 +1,5 @@
 """Create the frozen encrypted LLM model registry schema."""
 
-import hashlib
-import json
 import re
 
 from sqlalchemy import (
@@ -121,9 +119,10 @@ def _manifest():
 
 
 SCHEMA_MANIFEST = _manifest()
-checksum = hashlib.sha256(
-    json.dumps(SCHEMA_MANIFEST, ensure_ascii=True, separators=(",", ":"), sort_keys=True).encode("ascii")
-).hexdigest()
+# Frozen digest recorded by the first production application of this
+# revision. Deriving it from SQLAlchemy-rendered type strings made the value
+# depend on the installed SQLAlchemy version and broke immutable migrations.
+checksum = "4221daed1b1f59837008d1b89e0153f6b15a26b20e5814d23b1df1917af3cb5f"
 
 
 def _validate(engine: Engine, table) -> None:

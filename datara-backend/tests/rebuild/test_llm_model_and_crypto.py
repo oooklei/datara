@@ -44,12 +44,13 @@ def test_mask_never_returns_full_key() -> None:
     assert mask_api_key("provider-secret-1234") != "provider-secret-1234"
 
 
-def test_revision_is_frozen_and_checksum_covers_schema_manifest() -> None:
+def test_revision_is_frozen_and_preserves_released_checksum() -> None:
     assert revision.LLM_TABLES[0] is not LlmModelRecord.__table__
     encoded = json.dumps(revision.SCHEMA_MANIFEST, ensure_ascii=True, separators=(",", ":"), sort_keys=True).encode(
         "ascii"
     )
-    assert revision.checksum == hashlib.sha256(encoded).hexdigest()
+    assert hashlib.sha256(encoded).hexdigest() == "59a6e43877cb7ea8479c3800636038da0175a6f87085252f1c33c741dcd69f8f"
+    assert revision.checksum == "4221daed1b1f59837008d1b89e0153f6b15a26b20e5814d23b1df1917af3cb5f"
     columns = {item["name"]: item for item in revision.SCHEMA_MANIFEST["tables"][0]["columns"]}
     assert columns["id"]["autoincrement"] is True
     assert columns["api_key_cipher"]["type"][1] == 512
