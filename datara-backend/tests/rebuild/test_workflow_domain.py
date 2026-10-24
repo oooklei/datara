@@ -585,6 +585,25 @@ def test_legacy_sync_definition_can_be_reclassified_but_incompatible_design_node
         client.__exit__(None, None, None)
 
 
+def test_published_definition_cannot_change_workflow_type():
+    client, _app, owned_id, _other_id, tokens = _client()
+    try:
+        definition_id = _create(client, tokens["dev"], owned_id, name="published-kind").json()["data"][
+            "definition_id"
+        ]
+        assert _add_node(client, tokens["dev"], owned_id, definition_id, "sql").status_code == 200
+        assert _publish(client, tokens["dev"], owned_id, definition_id).status_code == 200
+        changed = client.post(
+            f"{WORKFLOWS}/{definition_id}/updates",
+            headers=tokens["dev"],
+            json={"project_id": owned_id, "workflow_type": "SYNC"},
+        )
+        assert changed.status_code == 409
+        assert changed.json()["code"] == "WF_WORKFLOW_TYPE_IMMUTABLE"
+    finally:
+        client.__exit__(None, None, None)
+
+
 def test_draft_edge_validation_and_node_delete_cascade():
     client, app, owned_id, _other_id, tokens = _client()
     try:

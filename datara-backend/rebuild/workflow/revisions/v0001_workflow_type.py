@@ -12,8 +12,9 @@ MANIFEST = {
     "column": {"name": "workflow_type", "type": "VARCHAR(16)", "nullable": False, "default": "NORMAL"},
     "legacy_mapping": {"ETL": "NORMAL"},
     "legacy_inference": {"SYNC": "sync-design-types", "STREAM": "stream-design-types"},
+    "mixed_evidence": "fail-closed",
 }
-checksum = "0dd9efb7d3628d0d994273a14de5333debaa256cd30113dc6f68bb769bfd657b"
+checksum = "a3e983192e9fcca06bb8503b28d8c09154c90135694199b9568ba047dce36578"
 
 
 def upgrade(engine: Engine) -> None:
@@ -32,6 +33,18 @@ def upgrade(engine: Engine) -> None:
             text("UPDATE workflow_definition SET workflow_type='NORMAL' WHERE UPPER(TRIM(workflow_type))='ETL'")
         )
         if "workflow_node" in tables:
+            mixed = connection.scalar(
+                text(
+                    "SELECT COUNT(*) FROM workflow_definition d WHERE EXISTS ("
+                    "SELECT 1 FROM workflow_node n WHERE n.definition_id=d.id AND n.node_type IN ("
+                    "'SYNC','src_base_orch','tgt_base_orch','file_sync_orch','endpoint_select',"
+                    "'field_map','field_map_union','condition_set')) AND EXISTS ("
+                    "SELECT 1 FROM workflow_node n WHERE n.definition_id=d.id AND n.node_type IN ("
+                    "'stream_input','stream_fuse','stream_output','page_board'))"
+                )
+            )
+            if int(mixed or 0):
+                raise RuntimeError("workflow definitions contain mixed SYNC and STREAM component evidence")
             connection.execute(
                 text(
                     "UPDATE workflow_definition SET workflow_type='SYNC' WHERE id IN ("

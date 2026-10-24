@@ -199,6 +199,12 @@ class WorkflowRepository:
             workflow_type = "NORMAL" if workflow_type == "ETL" else workflow_type
             if workflow_type not in WORKFLOW_TYPES:
                 raise WorkflowDomainError("WF_WORKFLOW_TYPE_INVALID", "workflow_type must be NORMAL, SYNC, or STREAM")
+            if workflow_type != record.workflow_type and record.current_version is not None:
+                raise WorkflowDomainError(
+                    "WF_WORKFLOW_TYPE_IMMUTABLE",
+                    "a published workflow cannot change type; create a new definition for another workflow kind",
+                    409,
+                )
             draft_nodes = self._draft_nodes(definition_id)
             incompatible = [
                 node.node_type

@@ -20,7 +20,7 @@ def _legacy_engine():
 
 
 def test_workflow_type_migration_upgrades_legacy_table_and_is_idempotent():
-    assert v0001_workflow_type.checksum == "0dd9efb7d3628d0d994273a14de5333debaa256cd30113dc6f68bb769bfd657b"
+    assert v0001_workflow_type.checksum == "a3e983192e9fcca06bb8503b28d8c09154c90135694199b9568ba047dce36578"
     engine = _legacy_engine()
     first = apply_workflow_migrations(engine)
     assert first.applied == (v0001_workflow_type.revision,)
@@ -85,3 +85,23 @@ def test_workflow_type_migration_classifies_legacy_sync_and_rejects_wrong_defaul
         assert "failed" in str(error) or "VARCHAR(16)" in str(error)
     else:
         raise AssertionError("wrong workflow_type default must fail closed")
+
+
+def test_workflow_type_migration_rejects_mixed_sync_and_stream_evidence():
+    engine = create_engine("sqlite+pysqlite:///:memory:")
+    with engine.begin() as connection:
+        connection.execute(text("CREATE TABLE workflow_definition (id INTEGER PRIMARY KEY)"))
+        connection.execute(
+            text(
+                "CREATE TABLE workflow_node (id INTEGER PRIMARY KEY, definition_id INTEGER NOT NULL, "
+                "node_type VARCHAR(64) NOT NULL)"
+            )
+        )
+        connection.execute(text("INSERT INTO workflow_definition VALUES (1)"))
+        connection.execute(text("INSERT INTO workflow_node VALUES (1,1,'SYNC'),(2,1,'stream_input')"))
+    try:
+        apply_workflow_migrations(engine)
+    except Exception as error:
+        assert "failed" in str(error)
+    else:
+        raise AssertionError("mixed workflow kind evidence must fail closed")
