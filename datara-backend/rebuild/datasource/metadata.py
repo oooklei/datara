@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable
+import re
 from typing import Any
 
 import pymysql
@@ -11,6 +12,7 @@ from rebuild.datasource.contracts import DataSourceDraft, validate_datasource
 
 MAX_PAGE_SIZE = 200
 MAX_COLUMN_COUNT = 500
+_IDENTIFIER = re.compile(r"^[A-Za-z_][A-Za-z0-9_$]*$")
 SYSTEM_SCHEMAS = ("information_schema", "mysql", "performance_schema", "sys")
 
 
@@ -114,6 +116,14 @@ class MySQLMetadataCatalog:
         )
         return [{"schema": schema, "name": str(name), "type": str(kind).lower(), "returnType": str(data_type or "")}
                 for name, kind, data_type in rows]
+
+    def definition(self, schema: str, object_name: str) -> str:
+        self._ensure_mysql()
+        _validate_identifier(schema); _validate_identifier(object_name)
+        rows = self._query(f"SHOW CREATE TABLE `{schema}`.`{object_name}`", ())
+        if not rows:
+            raise ValueError("object definition not found")
+        return str(rows[0][1])
 
     def _ensure_mysql(self) -> None:
         validate_datasource(self._draft)
@@ -235,6 +245,23 @@ class PostgreSQLMetadataCatalog:
         return [{"schema": schema, "name": str(name), "type": str(kind).lower(), "returnType": str(data_type or "")}
                 for name, kind, data_type in rows]
 
+    def definition(self, schema: str, object_name: str) -> str:
+        self._ensure_postgresql()
+        _validate_identifier(schema); _validate_identifier(object_name)
+        rows = self._query(
+            "SELECT pg_get_viewdef(to_regclass(format('%I.%I', %s, %s)), true)",
+            (schema, object_name),
+        )
+        if rows and rows[0][0]:
+            return str(rows[0][0])
+        columns = self.columns(schema, object_name)
+        if not columns:
+            raise ValueError("object definition not found")
+        return "CREATE TABLE %s.%s (%s);" % (
+            schema, object_name,
+            ", ".join(f"{c['name']} {c['database_type']}" for c in columns),
+        )
+
     def _ensure_postgresql(self) -> None:
         validate_datasource(self._draft)
         if self._draft.kind.lower() != "postgresql":
@@ -268,3 +295,8 @@ def metadata_catalog_for(
 
 def _page_size(value: int) -> int:
     return min(max(int(value), 1), MAX_PAGE_SIZE)
+
+
+def _validate_identifier(value: str) -> None:
+    if not isinstance(value, str) or not _IDENTIFIER.fullmatch(value):
+        raise ValueError("metadata identifier is invalid")

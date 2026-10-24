@@ -446,6 +446,13 @@ def create_app(
                 draft,
                 connector=lambda current: datasource_engines.connect(project_id, datasource_id, current),
             )
+        if operation == "getDefinition":
+            catalog = metadata_catalog(payload)
+            schema = str(payload.get("schema", payload.get("database", "")))
+            object_name = str(payload.get("object", payload.get("table", payload.get("name", ""))))
+            if not schema or not object_name or not hasattr(catalog, "definition"):
+                raise SqlIdeRouteError("INVALID_REQUEST", message="schema and object are required")
+            return {"definition": catalog.definition(schema, object_name), "schema": schema, "object": object_name}
         if operation in {"listDatabases", "listSchemas", "listRelations", "listColumns", "listIndexes", "listRoutines", "searchObjects"}:
             catalog = metadata_catalog(payload)
             if operation == "listDatabases":
