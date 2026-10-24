@@ -1,9 +1,9 @@
 import { flushPromises, mount } from '@vue/test-utils'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-const { queryStreamObservation, produceStreamEvents } = vi.hoisted(() => ({ queryStreamObservation: vi.fn(), produceStreamEvents: vi.fn() }))
+const { queryStreamObservation, produceStreamEvents, fuseStreamEvents } = vi.hoisted(() => ({ queryStreamObservation: vi.fn(), produceStreamEvents: vi.fn(), fuseStreamEvents: vi.fn() }))
 vi.mock('../../services/rebuild/streamApi', () => ({
-  createStreamContract: () => ({ queryStreamObservation, produceStreamEvents }),
+  createStreamContract: () => ({ queryStreamObservation, produceStreamEvents, fuseStreamEvents }),
 }))
 import StreamObservationPanel from '../StreamObservationPanel.vue'
 
@@ -14,6 +14,7 @@ describe('stream observation panel', () => {
     vi.clearAllMocks()
     queryStreamObservation.mockResolvedValue(observation)
     produceStreamEvents.mockResolvedValue({ produced: 2 })
+    fuseStreamEvents.mockResolvedValue({ fused: 1 })
   })
 
   it('refresh exposes backend errors instead of creating an unhandled rejection', async () => {
@@ -34,5 +35,16 @@ describe('stream observation panel', () => {
     await wrapper.find('header button').trigger('click')
     await flushPromises()
     expect(queryStreamObservation).toHaveBeenLastCalledWith(expect.anything(), '8')
+  })
+
+  it('submits valid stream JSON to the fusion endpoint and reports the result', async () => {
+    const wrapper = mount(StreamObservationPanel, { props: { jobId: '7' } })
+    await wrapper.find('[data-stream-fuse-submit]').trigger('click')
+    await flushPromises()
+    expect(fuseStreamEvents).toHaveBeenCalledWith('7', 'id', {
+      orders: [{ id: 1, amount: 10 }],
+      customers: [{ id: 1, name: 'Ada' }],
+    })
+    expect(wrapper.find('[data-stream-fuse]').text()).toContain('最近融合 1')
   })
 })
