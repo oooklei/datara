@@ -4,7 +4,7 @@ import json
 import base64
 from contextlib import contextmanager
 
-from sqlalchemy import select
+from sqlalchemy import inspect, select
 from rebuild.api.app import create_app
 import rebuild.api.app as rebuild_app
 from rebuild.identity.models import ActiveTokenRecord, ProjectMemberRecord, UserRecord
@@ -44,7 +44,7 @@ def test_active_token_storage_uses_digest_without_persisting_bearer_token():
         with client.app.state.session_factory() as session:
             record = session.scalar(select(ActiveTokenRecord))
             assert record.token_digest == hashlib.sha256(token.encode()).hexdigest()
-            assert record.token != token
+            assert "token" not in {column["name"] for column in inspect(session.bind).get_columns("rebuild_active_token")}
         authorized = client.get("/api/v1/rebuild/projects", headers={"Authorization": f"Bearer {token}"})
         logged_out = client.post("/api/v1/rebuild/logout", headers={"Authorization": f"Bearer {token}"})
         rejected = client.get("/api/v1/rebuild/projects", headers={"Authorization": f"Bearer {token}"})
