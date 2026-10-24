@@ -245,11 +245,15 @@ def build_dependency_router(
         with authorized_session(project_id, Permission.EDIT_DEFINITION, token, authorization) as outcome:
             if isinstance(outcome, JSONResponse):
                 return outcome
-            DependencyRepository(outcome).save_config(
+            config_id = DependencyRepository(outcome).save_config(
                 project_id, workflow_id, workflow_version, task_id, conditions, group_relation, policy
             )
             outcome.commit()
-        return {"code": 0, "msg": "success", "data": {"saved": True, "version": workflow_version}}
+        return {
+            "code": 0,
+            "msg": "success",
+            "data": {"saved": True, "version": workflow_version, "config_id": config_id},
+        }
 
     # -- 5. evaluateDependency: POST ``/evaluate`` ------------------------
 

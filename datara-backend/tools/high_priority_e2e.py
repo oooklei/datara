@@ -31,7 +31,12 @@ def call(base: str, path: str, *, token: str | None = None, headers_extra: dict[
                 raise RuntimeError(f"{path}: HTTP {response.status}")
             return json.loads(response.read().decode())
     except HTTPError as exc:
-        raise RuntimeError(f"{path}: HTTP {exc.code}") from exc
+        try:
+            error_payload = json.loads(exc.read().decode())
+            detail = f" code={error_payload.get('code')} msg={error_payload.get('msg')}"
+        except (UnicodeDecodeError, json.JSONDecodeError, AttributeError):
+            detail = ""
+        raise RuntimeError(f"{path}: HTTP {exc.code}{detail}") from exc
 
 
 def expect_rejected(base: str, path: str, *, headers_extra: dict[str, str], statuses: tuple[int, ...] = (401, 403)) -> None:
@@ -54,6 +59,7 @@ def main() -> int:
     parser.add_argument("--definition-id", type=int, default=1)
     parser.add_argument("--snapshot-id", type=int, default=2)
     parser.add_argument("--stream-job-id", type=int, default=1)
+    parser.add_argument("--dependency-id", type=int)
     args = parser.parse_args()
     try:
         health = call(args.base, "/api/v1/rebuild/health")
@@ -156,7 +162,15 @@ def main() -> int:
             f"/api/v1/rebuild/trial/definitions/{args.definition_id}/run",
             token=token,
             method="POST",
-            body={"project_id": args.project_id, "snapshot_id": args.snapshot_id, "dependency_mock": True},
+            body={
+                "project_id": args.project_id,
+                "snapshot_id": args.snapshot_id,
+                "options": {
+                    "dependency_mock": (
+                        {str(args.dependency_id): "SUCCEEDED"} if args.dependency_id is not None else {}
+                    )
+                },
+            },
         )
         trial_data = trial["data"]
         if trial_data.get("status") != "SUCCEEDED" or len(trial_data.get("tasks", [])) < 6:

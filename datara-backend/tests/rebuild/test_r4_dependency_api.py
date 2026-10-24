@@ -389,7 +389,9 @@ def test_save_slot_replacement_policy_and_permission():
             json=_body(owned_id, check_interval_seconds=120, failure_policy="fail"),
         )
         assert saved.status_code == 200
-        assert saved.json()["data"] == {"saved": True, "version": 3}
+        assert saved.json()["data"]["saved"] is True
+        assert saved.json()["data"]["version"] == 3
+        assert isinstance(saved.json()["data"]["config_id"], int)
 
         with app.state.session_factory() as session:
             records = session.scalars(select(DependencyConfigRecord)).all()
