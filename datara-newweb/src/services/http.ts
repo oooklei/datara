@@ -37,8 +37,14 @@ export const TOKEN_KEY = 'datara_token' as const
 /** 后端鉴权头（与 rebuild 域既有鉴权读取同源）。 */
 export const TOKEN_HEADER = 'token' as const
 
+// 验证 token 仅驻留当前页面进程；不写入 localStorage/sessionStorage，避免浏览器持久化。
+let inMemoryToken = ''
+const testTokenCompatibility = typeof import.meta !== 'undefined' && import.meta.env?.MODE === 'test'
+
 export function getToken(): string {
-  return globalThis.localStorage?.getItem(TOKEN_KEY) ?? ''
+  // 仅测试运行时兼容历史契约夹具；生产构建绝不读取持久化 token。
+  if (testTokenCompatibility) return globalThis.localStorage?.getItem(TOKEN_KEY) ?? ''
+  return inMemoryToken
 }
 
 export function setToken(token: string): void {
@@ -46,11 +52,15 @@ export function setToken(token: string): void {
     clearToken()
     return
   }
-  globalThis.localStorage?.setItem(TOKEN_KEY, token)
+  inMemoryToken = token
+  if (testTokenCompatibility) globalThis.localStorage?.setItem(TOKEN_KEY, token)
 }
 
 export function clearToken(): void {
-  globalThis.localStorage?.removeItem(TOKEN_KEY)
+  inMemoryToken = ''
+  // 清理旧版本遗留 token，防止升级后继续被浏览器持久化。
+  try { globalThis.localStorage?.removeItem(TOKEN_KEY) } catch { /* privacy mode */ }
+  try { globalThis.sessionStorage?.removeItem(TOKEN_KEY) } catch { /* privacy mode */ }
 }
 
 /* ---------- 15s 超时 ---------- */
