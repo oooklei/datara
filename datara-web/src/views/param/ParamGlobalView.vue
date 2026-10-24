@@ -12,8 +12,14 @@ import { dataStore } from '../../services/mock/dataStore'
 import { localTime } from '../../services/mock/timeUtil'
 import ParamTree from './ParamTree.vue'
 import type { GlobalParam, EtlTask, Script } from '../../services/types'
+import { isMock } from '../../services/apiMode'
+import { createVariableContract, type VariableDefinition } from '../../services/rebuild/variableApi'
 
 const router = useRouter()
+const variableContract = createVariableContract()
+/** Rebuild variable API is project-scoped; legacy global-parameter page keeps the
+ * existing project selection contract until the shell exposes a project picker. */
+const PROJECT_ID = 1
 
 const params = ref<GlobalParam[]>([])
 const envName = ref('prod')
@@ -21,12 +27,30 @@ const keyword = ref('')
 const encFilter = ref('')
 
 async function reload() {
+  if (!isMock) {
+    const rows = await variableContract.listVariables(PROJECT_ID, ['global'])
+    params.value = rows.filter((row) => row.scope === 'global').map(toLegacyParam)
+    return
+  }
   // 必须展开为新数组：dataStore.save 原地修改数组，直接赋值不会触发 ref 更新
   params.value = [...((await dataStore.list<GlobalParam>('globalParams')) ?? [])]
   const env = await dataStore.get<string>('env')
   if (env) envName.value = env
 }
 onMounted(reload)
+
+function toLegacyParam(row: VariableDefinition): GlobalParam {
+  return {
+    id: `GLOBAL:${row.name}`,
+    name: row.name,
+    value: row.sensitive ? '******' : row.value,
+    type: row.valueType === 'string' ? '文本' : row.valueType,
+    encrypt: Boolean(row.sensitive),
+    desc: row.description ?? '',
+    env: envName.value,
+    updatedAt: localTime().slice(0, 10),
+  }
+}
 
 const filtered = computed(() => {
   const kw = keyword.value.trim().toLowerCase()
@@ -62,6 +86,18 @@ async function saveForm() {
   }
   if (!editing.value && params.value.some((p) => p.name === name)) {
     ElMessage.error('参数名已存在')
+    return
+  }
+  if (!isMock) {
+    const existing = editing.value
+    const value = form.value.value === '******' && existing ? existing.value : form.value.value
+    await variableContract.saveVariable(PROJECT_ID, {
+      scope: 'global', name, valueType: form.value.type === '文本' ? 'string' : (form.value.type as VariableDefinition['valueType']),
+      value, description: form.value.desc, sensitive: form.value.encrypt,
+    })
+    ElMessage.success(existing ? '参数已保存' : `参数已创建：脚本/SQL 中通过 \${${name}} 引用`)
+    formVisible.value = false
+    await reload()
     return
   }
   if (editing.value) {
@@ -133,6 +169,10 @@ function goTools() {
 
 /* ---- 删除 ---- */
 async function removeParam(p: GlobalParam) {
+  if (!isMock) {
+    ElMessage.warning('真实变量接口当前不提供删除能力；请先停用或覆盖该变量')
+    return
+  }
   try {
     await ElMessageBox.confirm(
       '确认删除参数「${' + p.name + '}」？引用该参数的任务执行时将报「参数未定义」错误，请先确认无引用。',
