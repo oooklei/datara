@@ -44,41 +44,59 @@ def test_v0004_revision_and_checksum_are_frozen_literals():
 
 
 @pytest.mark.parametrize(
-    ("state", "required_actions", "forbidden_actions"),
+    ("state", "expected_actions"),
     [
         (
-            {"columns": {"token", "user_id"}, "digest_nullable": None, "pk": ["token"], "index": None, "fk": False},
-            {"add_digest", "backfill_digest", "make_digest_required", "promote_digest_pk", "drop_raw_token"},
-            set(),
+            {
+                "columns": {"token", "user_id"},
+                "digest_nullable": None,
+                "user_nullable": False,
+                "runner_zero_rows": True,
+                "pk": ["token"],
+                "index": None,
+                "fk": False,
+            },
+            [
+                "add_digest",
+                "backfill_digest",
+                "make_user_nullable",
+                "canonicalize_runner",
+                "make_digest_required",
+                "promote_digest_pk",
+                "drop_raw_token",
+                "create_digest_index",
+                "create_user_fk",
+            ],
         ),
         (
             {
                 "columns": {"token_digest", "user_id"},
                 "digest_nullable": False,
+                "user_nullable": True,
+                "runner_zero_rows": False,
                 "pk": ["token_digest"],
                 "index": None,
                 "fk": False,
             },
-            {"create_digest_index", "create_user_fk"},
-            {"backfill_digest", "drop_raw_token"},
+            ["create_digest_index", "create_user_fk"],
         ),
         (
             {
                 "columns": {"token_digest", "user_id"},
                 "digest_nullable": False,
+                "user_nullable": True,
+                "runner_zero_rows": False,
                 "pk": ["token_digest"],
                 "index": {"unique": True, "column_names": ["token_digest"]},
                 "fk": False,
             },
-            {"create_user_fk"},
-            {"create_digest_index", "backfill_digest", "drop_raw_token"},
+            ["create_user_fk"],
         ),
     ],
 )
-def test_mysql_partial_ddl_resume_plan_only_executes_remaining_steps(state, required_actions, forbidden_actions):
-    actions = {name for name, _sql in v0004_token_digest_hardening._mysql_upgrade_plan(**state)}
-    assert required_actions <= actions
-    assert not forbidden_actions & actions
+def test_mysql_partial_ddl_resume_plan_has_exact_ordered_remaining_steps(state, expected_actions):
+    actions = [name for name, _sql in v0004_token_digest_hardening._mysql_upgrade_plan(**state)]
+    assert actions == expected_actions
 
 
 def test_fresh_schema_converges_on_digest_primary_identity():
