@@ -18,10 +18,16 @@ try {
   const page = await browser.newPage()
   page.on('requestfailed', (request) => failedRequests.push(request.url()))
   await page.addInitScript(({ value }) => { window.__DATARA_TEST_TOKEN__ = value }, { value: token })
-  const validationPath = '/rebuild-validation-i1.html'
-  await page.goto(`${base}${validationPath}`, { waitUntil: 'networkidle' })
-  const createdProjectId = null
-  console.log(JSON.stringify({ created_project_id: createdProjectId, failed_requests: failedRequests }))
+  const statuses = {}
+  for (const validationPath of ['/rebuild-validation-i1.html', '/rebuild-validation-i2.html']) {
+    await page.goto(`${base}${validationPath}`, { waitUntil: 'networkidle' })
+    const status = await page.locator('[data-status]').textContent()
+    statuses[validationPath] = status
+    if (!status || !status.includes('HTTP 200')) {
+      throw new Error(`${validationPath} failed: ${status || 'missing status'}`)
+    }
+  }
+  console.log(JSON.stringify({ statuses, failed_requests: failedRequests }))
 } finally {
   await browser.close()
 }
