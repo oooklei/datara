@@ -7,7 +7,7 @@ import {
 
 describe('I8 streamApi contract', () => {
   it('contract method list is frozen to the stream job/attempt/checkpoint/metric/observation/recovery subset', () => {
-    expect(I8_CONTRACT_METHODS).toHaveLength(6)
+    expect(I8_CONTRACT_METHODS).toHaveLength(7)
     expect(I8_CONTRACT_METHODS).toEqual(
       expect.arrayContaining([
         'listStreamJobs',
@@ -16,6 +16,7 @@ describe('I8 streamApi contract', () => {
         'listStreamMetrics',
         'queryStreamObservation',
         'listStreamRecoveryEvents',
+        'produceStreamEvents',
       ]),
     )
   })
