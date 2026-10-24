@@ -25,10 +25,13 @@ def call(base: str, path: str, *, token: str | None = None, headers_extra: dict[
     if headers_extra:
         headers.update(headers_extra)
     request = Request(base.rstrip("/") + path, data=payload, headers=headers, method=method)
-    with urlopen(request, timeout=20) as response:  # noqa: S310 - explicit validation endpoint
-        if response.status not in statuses:
-            raise RuntimeError(f"{path}: HTTP {response.status}")
-        return json.loads(response.read().decode())
+    try:
+        with urlopen(request, timeout=20) as response:  # noqa: S310 - explicit validation endpoint
+            if response.status not in statuses:
+                raise RuntimeError(f"{path}: HTTP {response.status}")
+            return json.loads(response.read().decode())
+    except HTTPError as exc:
+        raise RuntimeError(f"{path}: HTTP {exc.code}") from exc
 
 
 def expect_rejected(base: str, path: str, *, headers_extra: dict[str, str], statuses: tuple[int, ...] = (401, 403)) -> None:
