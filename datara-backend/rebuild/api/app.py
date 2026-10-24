@@ -427,6 +427,34 @@ def create_app(
         history = SqlIdeHistoryStore(session_factory=session_factory)
         status_store = SqlIdeStatusStore(session_factory=session_factory)
         result_store = PersistentResultPageStore(session_factory=session_factory)
+        def metadata_catalog(payload: Mapping[str, object]):
+            datasource_id = int(payload.get("datasource_id", payload.get("datasourceId", 0)) or 0)
+            if datasource_id < 1:
+                raise SqlIdeRouteError("INVALID_REQUEST", message="datasource_id is required")
+            with session_factory() as session:
+                record = ProjectDatasourceRepository(session).get(project_id, datasource_id)
+                if record is None:
+                    raise SqlIdeRouteError("DATASOURCE_UNAVAILABLE", message="datasource not found")
+                draft = datasource_draft(record)
+            return metadata_catalog_for(
+                draft,
+                connector=lambda current: datasource_engines.connect(project_id, datasource_id, current),
+            )
+        if operation in {"listDatabases", "listSchemas", "listRelations", "listColumns"}:
+            catalog = metadata_catalog(payload)
+            if operation == "listDatabases":
+                return {"items": catalog.schemas(after=payload.get("after"), limit=int(payload.get("limit", 100)))}
+            if operation == "listSchemas":
+                return {"items": catalog.schemas(after=payload.get("after"), limit=int(payload.get("limit", 100)))}
+            if operation == "listRelations":
+                schema = str(payload.get("schema", payload.get("database", "")))
+                if not schema:
+                    raise SqlIdeRouteError("INVALID_REQUEST", message="schema is required")
+                return {"items": catalog.objects(schema, after=payload.get("after"), limit=int(payload.get("limit", 100)))}
+            schema = str(payload.get("schema", "")); object_name = str(payload.get("object", payload.get("table", "")))
+            if not schema or not object_name:
+                raise SqlIdeRouteError("INVALID_REQUEST", message="schema and object are required")
+            return {"items": catalog.columns(schema, object_name, limit=int(payload.get("limit", 500)))}
         if operation == "lintSql":
             return lint_sql(str(payload.get("sql", "")), dialect=str(payload.get("dialect", "mysql")))
         if operation == "executeSql":
@@ -522,6 +550,11 @@ def create_app(
                 script_id=payload.get("script_id", payload.get("id")),
                 expected_revision=payload.get("expected_revision", payload.get("revision")),
             )
+        if operation == "deleteScript":
+            revision = int(payload.get("expected_revision", payload.get("revision", 0)) or 0)
+            if not history.delete_script(project_id=project_id, user_id=user_id, script_id=str(payload.get("script_id", payload.get("id", ""))), expected_revision=revision):
+                raise SqlIdeRouteError("HISTORY_NOT_FOUND")
+            return {"deleted": True}
         if operation == "deleteHistory":
             if not history.delete_history(project_id=project_id, user_id=user_id, history_id=str(payload.get("history_id"))):
                 raise SqlIdeRouteError("HISTORY_NOT_FOUND")
