@@ -450,7 +450,14 @@ def create_app(
                 stmt_count=1,
                 elapsed_ms=0,
             )
-            return {**dict(result), "history_id": history_id, "accepted": True}
+            execution_id = str(result.get("execution_id", history_id))
+            return {
+                **dict(result),
+                "task_id": execution_id,
+                "history_id": history_id,
+                "accepted": True,
+                "status": "succeeded",
+            }
         if operation == "listHistory":
             return history.list_history(
                 project_id=project_id,
