@@ -29,6 +29,7 @@ import SshNodeManagementView from '../views/SshNodeManagementView.vue'
 import RuntimeNodeView from '../views/depops/RuntimeNodeView.vue'
 import ApiKeyManagementView from '../views/ApiKeyManagementView.vue'
 import ApiManagementView from '../views/ApiManagementView.vue'
+import LlmModelManagementView from '../views/LlmModelManagementView.vue'
 
 export const routes: RouteRecordRaw[] = [
   { path: '/login', name: 'login', component: LoginView },
@@ -40,6 +41,7 @@ export const routes: RouteRecordRaw[] = [
   { path: '/dep/runtime', name: 'dep-runtime', component: RuntimeNodeView },
   { path: '/open/key', name: 'open-key', component: ApiKeyManagementView },
   { path: '/open/api', name: 'open-api', component: ApiManagementView },
+  { path: '/open/llm', name: 'open-llm', component: LlmModelManagementView },
   {
     path: '/p/:projectId',
     name: 'project-workbench',
