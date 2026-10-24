@@ -24,11 +24,15 @@ const CONFIRM_REQUEST = {
 }
 
 function okEnvelope(data: unknown) {
-  return { ok: true, status: 200, json: async () => ({ code: 0, msg: 'success', data }) }
+  return { ok: true, status: 200, text: async () => JSON.stringify({ code: 0, msg: 'success', data }) }
 }
 
 function errorEnvelope(status: number, code: number, msg: string, errorCode: string) {
-  return { ok: false, status, json: async () => ({ code, msg, data: { errorCode, details: {} } }) }
+  return {
+    ok: false,
+    status,
+    text: async () => JSON.stringify({ code, msg, data: { errorCode, details: {} } }),
+  }
 }
 
 describe('R5-B sqlIdeDdlApi route contract', () => {
