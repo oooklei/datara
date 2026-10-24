@@ -5,7 +5,7 @@
  * （job/attempt/checkpoint/metric 查询 + 观摩查询 + 故障恢复与漂移注入事件、长驻进程与位点恢复）
  * 与权威设计 §8.4 观摩查询接口结构基线（f475c76）：
  * 生产速率、消费速率、积压、偏移、窗口结果、成功/失败/跳过计数、错误样本。
- * GREEN 接线：I8_CONTRACT_METHODS 6 方法经真实 fetch + 统一包络 {code,msg,data}；
+ * GREEN 接线：I8_CONTRACT_METHODS 8 方法经真实 fetch + 统一包络 {code,msg,data}；
  * I8_STREAM_NOT_WIRED 仅保留为 404 分支错误提示（端点未挂载时），不再作为 RED 活哨兵。
  * 调用方换绑目标：正式 /stream 页应由 services/streamApi.ts（F40/F41 旧契约）换绑至本文件（FE-10 裁定）。
  */
@@ -140,6 +140,7 @@ export const I8_CONTRACT_METHODS = [
   'queryStreamObservation',
   'listStreamRecoveryEvents',
   'produceStreamEvents',
+  'fuseStreamEvents',
 ] as const
 
 export type I8ContractMethod = (typeof I8_CONTRACT_METHODS)[number]
