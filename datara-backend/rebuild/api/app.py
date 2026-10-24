@@ -511,14 +511,14 @@ def create_app(
                 draft,
                 connector=lambda current: datasource_engines.connect(project_id, datasource_id, current),
             )
-        def metadata_page(items, *, limit: int, cursor: object = None):
+        def metadata_page(items, *, limit: int, max_limit: int = 200, cursor: object = None):
             """Normalize catalog rows to the frozen A5 capability/page envelope.
 
             Catalog implementations intentionally fetch one sentinel row beyond
             the requested limit.  Keep that sentinel out of ``items`` while
             exposing a stable continuation cursor (the last visible name).
             """
-            bounded = min(max(int(limit), 1), 200)
+            bounded = min(max(int(limit), 1), max_limit)
             rows = list(items)
             has_more = len(rows) > bounded
             rows = rows[:bounded]
@@ -586,7 +586,7 @@ def create_app(
             schema = str(payload.get("schema", "")); object_name = str(payload.get("object", payload.get("table", "")))
             if not schema or not object_name:
                 raise SqlIdeRouteError("INVALID_REQUEST", message="schema and object are required")
-            limit = int(payload.get("limit", 500)); return metadata_page(catalog.columns(schema, object_name, limit=limit), limit=limit)
+            limit = int(payload.get("limit", 500)); return metadata_page(catalog.columns(schema, object_name, limit=limit), limit=limit, max_limit=500)
         if operation == "lintSql":
             return lint_sql(str(payload.get("sql", "")), dialect=str(payload.get("dialect", "mysql")))
         if operation == "executeSql":
