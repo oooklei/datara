@@ -47,7 +47,7 @@ describe('2-02 formal 五门（0.8 L75-81）', () => {
 
   it('批次关（R-15 初始态）不可见', () => {
     const item = formalItem()
-    expect(isFormalItemVisible(item, ctx({ registeredPaths: new Set(['/dag']) }))).toBe(false)
+    expect(isFormalItemVisible(item, ctx({ registeredPaths: new Set(['/dag']), batchSwitches: { inc4: false } }))).toBe(false)
     expect(isFormalItemVisible(item, ctx({
       registeredPaths: new Set(['/dag']),
       batchSwitches: { inc4: false },
@@ -156,6 +156,7 @@ describe('2-02 filterMenuGroups 组装（空组不渲染 + direct 断言 + futur
     const view = filterMenuGroups(ctx({
       registeredPaths: new Set(['/', '/login']),
       registeredRouteNames: new Set(['home', 'login']),
+      batchSwitches: { inc3: false, inc4: false, inc10: false, inc11: false, inc14: false },
     }))
     expect(view).toEqual([])
   })

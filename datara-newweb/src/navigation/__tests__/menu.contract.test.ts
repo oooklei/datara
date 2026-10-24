@@ -192,10 +192,13 @@ describe('2-01 配置纪律（0.8 L57-68 字段规则）', () => {
     }
   })
 
-  it('R-15：批次开关初始值保守关闭（全 false）', () => {
+  it('已交付批次开启，未交付批次仍保持关闭', () => {
     const keys = Object.keys(BATCH_SWITCHES)
     expect(keys.length).toBeGreaterThan(0)
-    for (const k of keys) expect(BATCH_SWITCHES[k], `batch ${k} 初始值应为 false`).toBe(false)
+    for (const k of keys) {
+      const delivered = new Set(['inc3', 'inc4', 'inc10', 'inc11', 'inc14'])
+      expect(BATCH_SWITCHES[k], `batch ${k} 开关状态`).toBe(delivered.has(k))
+    }
   })
 
   it('formal 批次键与 BATCH_SWITCHES 键域一致（无未登记批次引用）', () => {

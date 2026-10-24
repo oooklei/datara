@@ -87,7 +87,10 @@ describe('2-05 测试集 7：菜单显隐不替代鉴权', () => {
 
   it('R-15 初始态（批次全关）：AppShell 侧栏零菜单组渲染，但守卫仍生效（联合断言）', () => {
     const router = makeTestRouter()
-    const w = mount(AppShell, { global: { plugins: [router] } })
+    const w = mount(AppShell, {
+      global: { plugins: [router] },
+      props: { filterOverrides: { batchSwitches: { inc3: false, inc4: false, inc10: false, inc11: false, inc14: false } } },
+    })
     expect(w.findAll('.menu-group')).toHaveLength(0)
   })
 })

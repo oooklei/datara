@@ -61,11 +61,11 @@ export interface MenuGroupConfig {
  * 「当前批次已启用」门的数据源（0.8 §2.2 formal 五门之三），随下游增量逐项开启。
  */
 export const BATCH_SWITCHES: Readonly<Record<string, boolean>> = Object.freeze({
-  inc3: false,
-  inc4: false,
-  inc10: false,
-  inc11: false,
-  inc14: false,
+  inc3: true,
+  inc4: true,
+  inc10: true,
+  inc11: true,
+  inc14: true,
   inc15: false,
   'inc15-post': false,
   inc17: false,

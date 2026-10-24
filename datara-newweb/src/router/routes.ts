@@ -30,6 +30,20 @@ import RuntimeNodeView from '../views/depops/RuntimeNodeView.vue'
 import ApiKeyManagementView from '../views/ApiKeyManagementView.vue'
 import ApiManagementView from '../views/ApiManagementView.vue'
 import LlmModelManagementView from '../views/LlmModelManagementView.vue'
+import DataSourceListView from '../views/datasource/DataSourceListView.vue'
+import IdeView from '../views/ide/IdeView.vue'
+import MetadataCatalogView from '../views/meta/MetadataCatalogView.vue'
+import AssetMapView from '../views/meta/AssetMapView.vue'
+import LineageAnalysisView from '../views/meta/LineageAnalysisView.vue'
+import TagManagementView from '../views/meta/TagManagementView.vue'
+import StandardManagementView from '../views/std/StandardManagementView.vue'
+import IndicatorListView from '../views/ind/IndicatorListView.vue'
+import IndicatorBoardView from '../views/ind/IndicatorBoardView.vue'
+import ConsistencyCheckView from '../views/ind/ConsistencyCheckView.vue'
+import PermissionMatrixView from '../views/PermissionMatrixView.vue'
+import QualityRuleView from '../views/qc/QualityRuleView.vue'
+import QualityTaskView from '../views/qc/QualityTaskView.vue'
+import ResourceManagementView from '../views/resources/ResourceManagementView.vue'
 
 export const routes: RouteRecordRaw[] = [
   { path: '/login', name: 'login', component: LoginView },
@@ -42,6 +56,20 @@ export const routes: RouteRecordRaw[] = [
   { path: '/open/key', name: 'open-key', component: ApiKeyManagementView },
   { path: '/open/api', name: 'open-api', component: ApiManagementView },
   { path: '/open/llm', name: 'open-llm', component: LlmModelManagementView },
+  { path: '/ds/list', name: 'ds-list', component: DataSourceListView },
+  { path: '/ide', name: 'sql-ide', component: IdeView },
+  { path: '/meta/lineage', name: 'meta-lineage', component: LineageAnalysisView },
+  { path: '/meta/map', name: 'meta-map', component: AssetMapView },
+  { path: '/meta/catalog', name: 'meta-catalog', component: MetadataCatalogView },
+  { path: '/meta/tag', name: 'meta-tag', component: TagManagementView },
+  { path: '/std/element', name: 'std-element', component: StandardManagementView },
+  { path: '/ind/list', name: 'ind-list', component: IndicatorListView },
+  { path: '/ind/board', name: 'ind-board', component: IndicatorBoardView },
+  { path: '/ind/consistency', name: 'ind-consistency', component: ConsistencyCheckView },
+  { path: '/sec/perm', name: 'sec-perm', component: PermissionMatrixView },
+  { path: '/qc/rule', name: 'qc-rule', component: QualityRuleView },
+  { path: '/qc/task', name: 'qc-task', component: QualityTaskView },
+  { path: '/resources', name: 'resource-mgmt', component: ResourceManagementView },
   {
     path: '/p/:projectId',
     name: 'project-workbench',
