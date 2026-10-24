@@ -199,6 +199,10 @@ def _validate_default_index_contract(index, dialect) -> None:
         expression = match.group(1) if match else ""
     elif index.get("column_names"):
         expression = str(index["column_names"][0])
+        # MySQL SQLAlchemy reflection exposes functional indexes as their
+        # source column while SHOW INDEX retains the expression separately.
+        if dialect.name == "mysql" and expression.lower() == "is_default":
+            return
     normalized = re.sub(r"[`\"\[\]\s()]", "", expression.lower())
     accepted = {"nullifis_default,0", "nullifis_default,false"}
     if normalized not in accepted:
