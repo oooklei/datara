@@ -26,7 +26,7 @@ from rebuild.identity.contracts import Permission
 from rebuild.trial.repository import TrialSnapshotRepository
 from rebuild.workflow.models import WorkflowDefinitionRecord, WorkflowNodeRecord, WorkflowVersionRecord
 from rebuild.execution.stream_adapter import record_stream_checkpoint
-from rebuild.execution.run_stats import RunStatisticsService
+from rebuild.execution.run_stats import RunStatisticsService, normalize_datetime
 
 
 class MalformedRequest(ValueError):
@@ -316,9 +316,29 @@ def build_execution_router(
                         outcome.commit()
                     except Exception:
                         outcome.rollback()
+                        return JSONResponse(
+                            status_code=500,
+                            content={
+                                "code": 5101,
+                                "msg": "workflow reached a terminal state but run statistics finalization failed",
+                                "data": {
+                                    "instance_id": instance.id,
+                                    "status": instance.status,
+                                    "run_stat_finalized": False,
+                                    "repairable": True,
+                                },
+                            },
+                        )
                 else:
                     outcome.commit()
-                data = {"instance_id": instance.id, "instance_type": instance.instance_type, "status": instance.status}
+                data = {
+                    "instance_id": instance.id,
+                    "instance_type": instance.instance_type,
+                    "status": instance.status,
+                    "run_stat_finalized": instance.status in {
+                        "SUCCEEDED", "FAILED", "CANCELLED", "CANCEL_FAILED", "STOPPED", "SKIPPED"
+                    },
+                }
             except ExecutionDomainError as exc:
                 outcome.rollback()
                 return request_error(exc)
@@ -506,8 +526,8 @@ def build_execution_router(
         workflow_instance_id: int | None = None,
         instance_type: str | None = None,
         status: str | None = None,
-        started_from: datetime | None = None,
-        started_to: datetime | None = None,
+        started_from: str | None = None,
+        started_to: str | None = None,
         offset: int = Query(default=0, ge=0),
         limit: int = Query(default=50, ge=1, le=200),
         token: str = Header(default=""),
@@ -516,12 +536,16 @@ def build_execution_router(
         with authorized_session(project_id, Permission.VIEW_ALL, token, authorization) as outcome:
             if isinstance(outcome, JSONResponse):
                 return outcome
-            rows, total = RunStatisticsService(outcome).list(
-                project_id, workflow_id=workflow_id, workflow_instance_id=workflow_instance_id,
-                instance_type=instance_type, status=status, started_from=started_from,
-                started_to=started_to, offset=offset, limit=limit,
-            )
-            data = {"total": total, "items": [_stat_payload(row) for row in rows]}
+            try:
+                rows, total = RunStatisticsService(outcome).list(
+                    project_id, workflow_id=workflow_id, workflow_instance_id=workflow_instance_id,
+                    instance_type=instance_type, status=status,
+                    started_from=normalize_datetime(started_from, "started_from"),
+                    started_to=normalize_datetime(started_to, "started_to"), offset=offset, limit=limit,
+                )
+                data = {"total": total, "items": [_stat_payload(row) for row in rows]}
+            except ExecutionDomainError as exc:
+                return request_error(exc)
         return {"code": 0, "msg": "success", "data": data}
 
     @router.get("/run-stats/{stat_id}")
@@ -541,6 +565,7 @@ def build_execution_router(
                     stat_id, project_id, detail_offset=detail_offset, detail_limit=detail_limit)
                 data = _stat_payload(record)
                 data["details"] = [{
+                    "id": row.id,
                     "source_object": row.source_object,
                     "target_object": row.target_object,
                     "source_count": row.source_count,
@@ -549,10 +574,54 @@ def build_execution_router(
                     "failure_count": row.failure_count,
                     "skipped_count": row.skipped_count,
                     "difference_count": row.difference_count,
+                    "data_param": json.loads(row.data_param_json) if row.data_param_json else None,
+                    "started_at": row.started_at.isoformat() if row.started_at else None,
+                    "finished_at": row.finished_at.isoformat() if row.finished_at else None,
+                    "created_at": row.created_at.isoformat(),
+                    "updated_at": row.updated_at.isoformat(),
+                    "generated_at": row.generated_at.isoformat(),
                 } for row in details]
                 data["detail_total"] = detail_total
             except ExecutionDomainError as exc:
                 return request_error(exc)
+        return {"code": 0, "msg": "success", "data": data}
+
+    @router.post("/workflow-instances/{instance_id}/run-stat/finalize")
+    def finalize_run_stat(
+        instance_id: int,
+        body: dict[str, Any] = Body(...),
+        token: str = Header(default=""),
+        authorization: str = Header(default=""),
+    ):
+        try:
+            project_id = frame_int(body, "project_id")
+        except MalformedRequest as exc:
+            return request_error(exc)
+        with authorized_session(project_id, Permission.RUN_INSTANCE, token, authorization) as outcome:
+            if isinstance(outcome, JSONResponse):
+                return outcome
+            try:
+                _resolve_instance_project(outcome, instance_id, project_id)
+                record = RunStatisticsService(outcome).finalize(instance_id)
+                outcome.commit()
+                data = _stat_payload(record)
+            except ExecutionDomainError as exc:
+                outcome.rollback()
+                return request_error(exc)
+            except Exception:
+                outcome.rollback()
+                return JSONResponse(
+                    status_code=500,
+                    content={
+                        "code": 5101,
+                        "msg": "run statistics finalization failed; retry this endpoint",
+                        "data": {
+                            "instance_id": instance_id,
+                            "run_stat_finalized": False,
+                            "repairable": True,
+                        },
+                    },
+                )
         return {"code": 0, "msg": "success", "data": data}
 
     @router.post("/workflow-instances/{instance_id}/checkpoints")
@@ -670,6 +739,19 @@ def build_execution_router(
                     outcome.commit()
                 except Exception:
                     outcome.rollback()
+                    return JSONResponse(
+                        status_code=500,
+                        content={
+                            "code": 5101,
+                            "msg": "workflow reached a terminal state but run statistics finalization failed",
+                            "data": {
+                                "instance_id": record.id,
+                                "status": record.status,
+                                "run_stat_finalized": False,
+                                "repairable": True,
+                            },
+                        },
+                    )
                 data = {
                     "instance_id": record.id,
                     "status": record.status,

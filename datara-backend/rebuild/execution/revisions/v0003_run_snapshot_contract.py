@@ -223,10 +223,10 @@ def _upgrade_mysql(engine: Engine) -> None:
                 f"ALTER TABLE {_EVENT} ADD COLUMN receipt_identity VARCHAR(64) "
                 "NOT NULL DEFAULT '__workflow__' AFTER task_instance_id"
             ))
-            connection.execute(text(
-                f"UPDATE {_EVENT} SET receipt_identity=CONCAT('task:', task_instance_id) "
-                "WHERE task_instance_id IS NOT NULL"
-            ))
+        connection.execute(text(
+            f"UPDATE {_EVENT} SET receipt_identity=CONCAT('task:', task_instance_id) "
+            "WHERE task_instance_id IS NOT NULL AND receipt_identity='__workflow__'"
+        ))
         uniques = {
             item.get("name"): tuple(item["column_names"])
             for item in inspect(engine).get_unique_constraints(_EVENT)
@@ -240,14 +240,61 @@ def _upgrade_mysql(engine: Engine) -> None:
                 f"ALTER TABLE {_EVENT} ADD CONSTRAINT uq_ee_result_receipt UNIQUE "
                 "(workflow_instance_id, receipt_identity, attempt_no, event_kind)"
             ))
-        # Existing production installs may contain per-attempt rows. Keep the
-        # lowest id as the canonical instance snapshot before adding uniqueness.
+        # Existing production installs may contain per-attempt rows. Aggregate
+        # into temporary tables before destructive changes; temporary tables are
+        # connection-scoped, so a failed run can be retried from reflected state.
         stat_columns = {item["name"] for item in inspect(engine).get_columns(_STAT)}
         if "task_identity" in stat_columns:
             connection.execute(text(
-                f"DELETE s FROM {_STAT} s JOIN {_STAT} keep "
-                "ON keep.workflow_instance_id=s.workflow_instance_id AND keep.id<s.id"
+                "CREATE TEMPORARY TABLE r9_0003_stat_rollup AS "
+                f"SELECT MIN(id) keeper_id, workflow_instance_id, MIN(project_id) project_id, "
+                "MIN(workflow_id) workflow_id, MIN(workflow_version_id) workflow_version_id, "
+                "MIN(instance_type) instance_type, MAX(status) status, "
+                "SUM(source_count) source_count, SUM(target_count) target_count, "
+                "SUM(success_count) success_count, SUM(failure_count) failure_count, "
+                "SUM(skipped_count) skipped_count, MIN(created_at) started_at, "
+                "MAX(finished_at) finished_at, MIN(created_at) created_at, "
+                "MAX(updated_at) updated_at, MAX(generated_at) generated_at "
+                f"FROM {_STAT} GROUP BY workflow_instance_id"
             ))
+            connection.execute(text(
+                "CREATE TEMPORARY TABLE r9_0003_detail_rollup AS "
+                f"SELECT MIN(d.id) id, r.workflow_instance_id, d.source_object, d.target_object, "
+                "SUM(d.source_count) source_count, SUM(d.target_count) target_count, "
+                "SUM(d.success_count) success_count, SUM(d.failure_count) failure_count, "
+                "SUM(d.skipped_count) skipped_count, SUM(d.difference_count) difference_count, "
+                "MIN(d.created_at) created_at, MAX(d.updated_at) updated_at, MAX(d.generated_at) generated_at "
+                f"FROM {_DETAIL} d JOIN {_STAT} r ON r.id=d.run_stat_id "
+                "GROUP BY r.workflow_instance_id,d.source_object,d.target_object"
+            ))
+            connection.execute(text(f"DELETE FROM {_DETAIL}"))
+            connection.execute(text(f"DELETE FROM {_STAT}"))
+            connection.execute(text(
+                f"INSERT INTO {_STAT} (id,project_id,workflow_id,workflow_version_id,workflow_instance_id,"
+                "task_identity,attempt_no,instance_type,status,source_count,target_count,success_count,"
+                "failure_count,skipped_count,started_at,finished_at,created_at,updated_at,generated_at) "
+                "SELECT keeper_id,project_id,workflow_id,workflow_version_id,workflow_instance_id,"
+                "'__snapshot__',0,instance_type,status,source_count,target_count,success_count,failure_count,"
+                "skipped_count,started_at,finished_at,created_at,updated_at,generated_at FROM r9_0003_stat_rollup"
+            ))
+            connection.execute(text(
+                f"INSERT INTO {_DETAIL} (id,run_stat_id,source_object,target_object,source_count,target_count,"
+                "success_count,failure_count,skipped_count,difference_count,created_at,updated_at,generated_at) "
+                "SELECT d.id,s.id,d.source_object,d.target_object,d.source_count,d.target_count,d.success_count,"
+                "d.failure_count,d.skipped_count,d.difference_count,d.created_at,d.updated_at,d.generated_at "
+                f"FROM r9_0003_detail_rollup d JOIN {_STAT} s ON s.workflow_instance_id=d.workflow_instance_id"
+            ))
+            stat_uniques = {
+                item.get("name"): tuple(item["column_names"])
+                for item in inspect(engine).get_unique_constraints(_STAT)
+            }
+            if "uq_wrs_instance_task_attempt" in stat_uniques:
+                connection.execute(text(f"ALTER TABLE {_STAT} DROP INDEX uq_wrs_instance_task_attempt"))
+            if stat_uniques.get("uq_wrs_workflow_instance") != ("workflow_instance_id",):
+                connection.execute(text(
+                    f"ALTER TABLE {_STAT} ADD CONSTRAINT uq_wrs_workflow_instance "
+                    "UNIQUE (workflow_instance_id)"
+                ))
             for column in ("task_instance_id", "task_identity", "attempt_no"):
                 if column in {item["name"] for item in inspect(engine).get_columns(_STAT)}:
                     connection.execute(text(f"ALTER TABLE {_STAT} DROP COLUMN {column}"))
@@ -260,10 +307,62 @@ def _upgrade_mysql(engine: Engine) -> None:
         for column, ddl in additions.items():
             if column not in current:
                 connection.execute(text(f"ALTER TABLE {_STAT} ADD COLUMN {column} {ddl}"))
+        detail_additions = {
+            "data_param_json": "TEXT NULL",
+            "started_at": "DATETIME NULL",
+            "finished_at": "DATETIME NULL",
+        }
+        detail_current = {item["name"] for item in inspect(engine).get_columns(_DETAIL)}
+        for column, ddl in detail_additions.items():
+            if column not in detail_current:
+                connection.execute(text(f"ALTER TABLE {_DETAIL} ADD COLUMN {column} {ddl}"))
         connection.execute(text(
             f"UPDATE {_STAT} SET total_count=success_count+failure_count, "
-            "dag_name=IF(dag_name='', CONCAT('workflow-', workflow_id), dag_name)"
+            "dag_name=IF(dag_name='', CONCAT('workflow-', workflow_id), dag_name), "
+            "started_at=COALESCE(started_at,created_at)"
         ))
+        for column in ("source_count", "target_count"):
+            connection.execute(text(f"ALTER TABLE {_STAT} MODIFY {column} BIGINT NULL"))
+        for column in ("success_count", "failure_count", "skipped_count", "total_count"):
+            connection.execute(text(f"ALTER TABLE {_STAT} MODIFY {column} BIGINT NOT NULL DEFAULT 0"))
+        connection.execute(text(f"ALTER TABLE {_STAT} MODIFY started_at DATETIME NOT NULL"))
+        for column in ("source_count", "target_count", "difference_count"):
+            connection.execute(text(f"ALTER TABLE {_DETAIL} MODIFY {column} BIGINT NULL"))
+        for column in ("success_count", "failure_count", "skipped_count"):
+            connection.execute(text(f"ALTER TABLE {_DETAIL} MODIFY {column} BIGINT NOT NULL DEFAULT 0"))
+        stat_foreign_keys = {
+            tuple(item["constrained_columns"]): item for item in inspect(engine).get_foreign_keys(_STAT)
+        }
+        if ("workflow_instance_id",) not in stat_foreign_keys:
+            connection.execute(text(
+                f"ALTER TABLE {_STAT} ADD CONSTRAINT fk_wrs_workflow_instance "
+                "FOREIGN KEY (workflow_instance_id) REFERENCES workflow_instance(id) ON DELETE CASCADE"
+            ))
+        detail_foreign_keys = {
+            tuple(item["constrained_columns"]): item for item in inspect(engine).get_foreign_keys(_DETAIL)
+        }
+        if ("run_stat_id",) not in detail_foreign_keys:
+            connection.execute(text(
+                f"ALTER TABLE {_DETAIL} ADD CONSTRAINT fk_wrrd_run_stat "
+                "FOREIGN KEY (run_stat_id) REFERENCES workflow_run_stat(id) ON DELETE CASCADE"
+            ))
+        stat_indexes = {item["name"] for item in inspect(engine).get_indexes(_STAT)}
+        for name, columns in (
+            ("x_wrs_project_created", "project_id, created_at"),
+            ("x_wrs_workflow_started", "workflow_id, started_at"),
+            ("x_wrs_type_started", "instance_type, started_at"),
+        ):
+            if name not in stat_indexes:
+                connection.execute(text(f"CREATE INDEX {name} ON {_STAT} ({columns})"))
+        checks = {item.get("name") for item in inspect(engine).get_check_constraints(_STAT)}
+        for name, expression in (
+            ("ck_wrs_success_nonnegative", "success_count >= 0"),
+            ("ck_wrs_failure_nonnegative", "failure_count >= 0"),
+            ("ck_wrs_skipped_nonnegative", "skipped_count >= 0"),
+            ("ck_wrs_total_consistent", "total_count = success_count + failure_count"),
+        ):
+            if name not in checks:
+                connection.execute(text(f"ALTER TABLE {_STAT} ADD CONSTRAINT {name} CHECK ({expression})"))
 
 
 def _normal(sql: str | None) -> str:

@@ -26,6 +26,7 @@ import json
 from typing import Any
 
 from sqlalchemy import func, select, update
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from rebuild.execution.models import (
@@ -45,6 +46,11 @@ from rebuild.metrics.models import WorkflowResultStatRecord
 
 RESULT_STAT_EVENT_KIND = "RESULT_STAT"
 LOG_LEVELS = ("DEBUG", "INFO", "WARN", "ERROR")
+WORKFLOW_RECEIPT_IDENTITY = "__workflow__"
+
+
+def _receipt_identity(task_instance_id: int | None) -> str:
+    return WORKFLOW_RECEIPT_IDENTITY if task_instance_id is None else f"task:{task_instance_id}"
 
 
 class ExecutionDomainError(ValueError):
@@ -201,6 +207,7 @@ class ExecutionRepository:
         record = ExecutionEventRecord(
             workflow_instance_id=workflow_instance_id,
             task_instance_id=task_instance_id,
+            receipt_identity=_receipt_identity(task_instance_id),
             attempt_no=attempt_no,
             event_kind=event_kind,
             payload_json=payload_json,
@@ -234,7 +241,13 @@ class ExecutionRepository:
         (NULL-aware dedup). run_date derives from the instance's DB-generated
         created_at.
         """
-        instance = self._require_workflow_instance(workflow_instance_id)
+        instance = self._session.scalar(
+            select(WorkflowInstanceRecord)
+            .where(WorkflowInstanceRecord.id == workflow_instance_id)
+            .with_for_update()
+        )
+        if instance is None:
+            raise ExecutionDomainError(4404, f"workflow_instance {workflow_instance_id} not found")
         reported = {"success_count": success_count, "failed_count": failed_count, "skipped_count": skipped_count}
         for name, value in reported.items():
             if isinstance(value, bool) or not isinstance(value, int) or value < 0:
@@ -252,16 +265,14 @@ class ExecutionRepository:
                 raise ExecutionDomainError(4107, "task_instance does not belong to workflow_instance")
             self._require_attempt(task_instance_id, attempt_no)
 
+        identity = _receipt_identity(task_instance_id)
         receipt_filter = [
             ExecutionEventRecord.event_kind == RESULT_STAT_EVENT_KIND,
             ExecutionEventRecord.workflow_instance_id == workflow_instance_id,
+            ExecutionEventRecord.receipt_identity == identity,
             ExecutionEventRecord.attempt_no == attempt_no,
         ]
-        if task_instance_id is None:
-            receipt_filter.append(ExecutionEventRecord.task_instance_id.is_(None))
-        else:
-            receipt_filter.append(ExecutionEventRecord.task_instance_id == task_instance_id)
-        receipt = self._session.scalar(select(ExecutionEventRecord).where(*receipt_filter))
+        receipt = self._session.scalar(select(ExecutionEventRecord).where(*receipt_filter).with_for_update())
         if receipt is not None and instance.instance_type != "STREAM":
             return {
                 "recorded": False,
@@ -270,15 +281,7 @@ class ExecutionRepository:
                 "attempt_no": attempt_no,
             }
 
-        prior_filter = [
-            ExecutionEventRecord.event_kind == RESULT_STAT_EVENT_KIND,
-            ExecutionEventRecord.workflow_instance_id == workflow_instance_id,
-        ]
-        prior_filter.append(ExecutionEventRecord.task_instance_id.is_(None) if task_instance_id is None
-                            else ExecutionEventRecord.task_instance_id == task_instance_id)
-        prior = self._session.scalar(select(ExecutionEventRecord).where(*prior_filter).order_by(
-            ExecutionEventRecord.attempt_no.desc(), ExecutionEventRecord.id.desc()))
-        prior_payload = json.loads(prior.payload_json) if prior is not None and prior.payload_json else {}
+        before = self._effective_result_totals(workflow_instance_id)
 
         event_payload = {
             **reported,
@@ -291,33 +294,36 @@ class ExecutionRepository:
             receipt = ExecutionEventRecord(
                 workflow_instance_id=workflow_instance_id,
                 task_instance_id=task_instance_id,
+                receipt_identity=identity,
                 attempt_no=attempt_no,
                 event_kind=RESULT_STAT_EVENT_KIND,
                 payload_json=json.dumps(event_payload, ensure_ascii=False, sort_keys=True),
             )
-            self._session.add(receipt)
+            try:
+                with self._session.begin_nested():
+                    self._session.add(receipt)
+                    self._session.flush()
+            except IntegrityError:
+                receipt = self._session.scalar(
+                    select(ExecutionEventRecord).where(*receipt_filter).with_for_update()
+                )
+                if receipt is None:
+                    raise
+                if instance.instance_type != "STREAM":
+                    return {
+                        "recorded": False,
+                        "duplicate": True,
+                        "workflow_id": instance.workflow_id,
+                        "attempt_no": attempt_no,
+                    }
+                receipt.payload_json = json.dumps(event_payload, ensure_ascii=False, sort_keys=True)
         else:
             receipt.payload_json = json.dumps(event_payload, ensure_ascii=False, sort_keys=True)
         self._session.flush()
-        if instance.instance_type != "TRIAL" and (prior is None or attempt_no >= (prior.attempt_no or 0)):
-            previous = {name: int(prior_payload.get(name, 0)) for name in reported}
-            deltas = {name: reported[name] - previous[name] for name in reported}
-            aggregate = self._session.scalar(select(WorkflowResultStatRecord).where(
-                WorkflowResultStatRecord.workflow_id == instance.workflow_id,
-                WorkflowResultStatRecord.run_date == instance.created_at.date()))
-            if aggregate is None:
-                aggregate = WorkflowResultStatRecord(
-                    workflow_id=instance.workflow_id, run_date=instance.created_at.date(),
-                    success_count=reported["success_count"], failure_count=reported["failed_count"],
-                    skipped_count=reported["skipped_count"])
-                self._session.add(aggregate)
-            else:
-                self._session.execute(update(WorkflowResultStatRecord).where(
-                    WorkflowResultStatRecord.id == aggregate.id).values(
-                    success_count=WorkflowResultStatRecord.success_count + deltas["success_count"],
-                    failure_count=WorkflowResultStatRecord.failure_count + deltas["failed_count"],
-                    skipped_count=WorkflowResultStatRecord.skipped_count + deltas["skipped_count"],
-                    updated_at=func.current_timestamp()))
+        after = self._effective_result_totals(workflow_instance_id)
+        if instance.instance_type != "TRIAL":
+            deltas = tuple(current - previous for current, previous in zip(after, before, strict=True))
+            self._apply_metrics_delta(instance, deltas)
         # Definitions are mandatory in API/runtime flows. A conditional keeps
         # the lower-level historical repository tests (which use detached IDs)
         # backwards compatible while all real workflow reports are persisted.
@@ -350,6 +356,72 @@ class ExecutionRepository:
             "run_date": instance.created_at.date().isoformat(),
             "attempt_no": attempt_no,
         }
+
+    def _effective_result_totals(self, workflow_instance_id: int) -> tuple[int, int, int]:
+        events = list(
+            self._session.scalars(
+                select(ExecutionEventRecord)
+                .where(
+                    ExecutionEventRecord.workflow_instance_id == workflow_instance_id,
+                    ExecutionEventRecord.event_kind == RESULT_STAT_EVENT_KIND,
+                )
+                .order_by(ExecutionEventRecord.attempt_no.desc(), ExecutionEventRecord.id.desc())
+            )
+        )
+        workflow = next(
+            (event for event in events if event.receipt_identity == WORKFLOW_RECEIPT_IDENTITY), None
+        )
+        effective = [workflow] if workflow is not None else []
+        if workflow is None:
+            latest_by_task: dict[str, ExecutionEventRecord] = {}
+            for event in events:
+                latest_by_task.setdefault(event.receipt_identity, event)
+            effective = list(latest_by_task.values())
+        totals = [0, 0, 0]
+        for event in effective:
+            try:
+                payload = json.loads(event.payload_json or "{}")
+            except (TypeError, json.JSONDecodeError):
+                payload = {}
+            for index, name in enumerate(("success_count", "failed_count", "skipped_count")):
+                value = payload.get(name, 0) if isinstance(payload, dict) else 0
+                if isinstance(value, int) and not isinstance(value, bool):
+                    totals[index] += value
+        return totals[0], totals[1], totals[2]
+
+    def _apply_metrics_delta(
+        self, instance: WorkflowInstanceRecord, deltas: tuple[int, int, int]
+    ) -> None:
+        if deltas == (0, 0, 0):
+            return
+        key = (
+            WorkflowResultStatRecord.workflow_id == instance.workflow_id,
+            WorkflowResultStatRecord.run_date == instance.created_at.date(),
+        )
+        values = {
+            "success_count": WorkflowResultStatRecord.success_count + deltas[0],
+            "failure_count": WorkflowResultStatRecord.failure_count + deltas[1],
+            "skipped_count": WorkflowResultStatRecord.skipped_count + deltas[2],
+            "updated_at": func.current_timestamp(),
+        }
+        if self._session.execute(update(WorkflowResultStatRecord).where(*key).values(**values)).rowcount == 1:
+            return
+        try:
+            with self._session.begin_nested():
+                self._session.add(
+                    WorkflowResultStatRecord(
+                        workflow_id=instance.workflow_id,
+                        run_date=instance.created_at.date(),
+                        success_count=deltas[0],
+                        failure_count=deltas[1],
+                        skipped_count=deltas[2],
+                    )
+                )
+                self._session.flush()
+        except IntegrityError:
+            result = self._session.execute(update(WorkflowResultStatRecord).where(*key).values(**values))
+            if result.rowcount != 1:
+                raise
 
     # ---- lookups ---------------------------------------------------------------
 

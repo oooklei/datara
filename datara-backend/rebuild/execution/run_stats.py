@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import json
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Any
 from sqlalchemy import func, or_, select, update
 from sqlalchemy.exc import IntegrityError
@@ -19,7 +19,7 @@ from rebuild.execution.models import (
 from rebuild.execution.repository import ExecutionDomainError, RESULT_STAT_EVENT_KIND
 from rebuild.workflow.models import WorkflowDefinitionRecord
 
-TERMINAL = ("SUCCEEDED", "FAILED", "CANCELLED", "CANCEL_FAILED", "SKIPPED")
+TERMINAL = ("SUCCEEDED", "FAILED", "CANCELLED", "CANCEL_FAILED", "STOPPED", "SKIPPED")
 SECRETS = ("password", "passwd", "secret", "token", "private_key", "connection_string", "credential")
 
 
@@ -45,6 +45,24 @@ def _payload(event: ExecutionEventRecord) -> dict[str, Any]:
     except (TypeError, json.JSONDecodeError):
         return {}
     return value if isinstance(value, dict) else {}
+
+
+def normalize_datetime(value: Any, name: str, optional: bool = True) -> datetime | None:
+    """Normalize API/executor timestamps to the database's UTC-naive contract."""
+    if value is None and optional:
+        return None
+    if isinstance(value, bool):
+        raise ExecutionDomainError(4107, f"{name} must be a datetime or ISO-8601 timestamp")
+    if isinstance(value, str):
+        try:
+            value = datetime.fromisoformat(value.replace("Z", "+00:00"))
+        except ValueError as exc:
+            raise ExecutionDomainError(4107, f"{name} must be a datetime or ISO-8601 timestamp") from exc
+    if not isinstance(value, datetime):
+        raise ExecutionDomainError(4107, f"{name} must be a datetime or ISO-8601 timestamp")
+    if value.tzinfo is not None:
+        value = value.astimezone(UTC).replace(tzinfo=None)
+    return value
 
 
 class RunStatisticsService:
@@ -157,6 +175,19 @@ class RunStatisticsService:
         return row
 
     def _contributions(self, instance_id: int) -> list[dict[str, Any]]:
+        workflow_event = self._session.scalar(
+            select(ExecutionEventRecord)
+            .where(
+                ExecutionEventRecord.workflow_instance_id == instance_id,
+                ExecutionEventRecord.task_instance_id.is_(None),
+                ExecutionEventRecord.event_kind == RESULT_STAT_EVENT_KIND,
+            )
+            .order_by(ExecutionEventRecord.attempt_no.desc(), ExecutionEventRecord.id.desc())
+        )
+        # A workflow-level RESULT_STAT is the executor's authoritative rollup.
+        # Task-level receipts remain trace evidence but must not be counted again.
+        if workflow_event is not None:
+            return [_payload(workflow_event)]
         output = []
         for task in self._session.scalars(
             select(TaskInstanceRecord).where(TaskInstanceRecord.workflow_instance_id == instance_id)
@@ -178,23 +209,14 @@ class RunStatisticsService:
             )
             if event is not None:
                 output.append(_payload(event))
-        workflow_event = self._session.scalar(
-            select(ExecutionEventRecord)
-            .where(
-                ExecutionEventRecord.workflow_instance_id == instance_id,
-                ExecutionEventRecord.task_instance_id.is_(None),
-                ExecutionEventRecord.event_kind == RESULT_STAT_EVENT_KIND,
-            )
-            .order_by(ExecutionEventRecord.attempt_no.desc(), ExecutionEventRecord.id.desc())
-        )
-        if workflow_event is not None:
-            output.append(_payload(workflow_event))
         return output
 
     def finalize(self, workflow_instance_id: int) -> WorkflowRunStatRecord:
         instance = self._session.get(WorkflowInstanceRecord, workflow_instance_id)
         if instance is None:
             raise ExecutionDomainError(4404, f"workflow_instance {workflow_instance_id} not found")
+        if instance.status not in TERMINAL:
+            raise ExecutionDomainError(4108, "run statistics can only be finalized for a terminal instance")
         parts = self._contributions(instance.id)
         details = []
         params = {}
@@ -244,8 +266,8 @@ class RunStatisticsService:
                 data_param_json=json.dumps(_scrub(item.get("data_param")), ensure_ascii=False, sort_keys=True)
                 if item.get("data_param") is not None
                 else None,
-                started_at=item.get("started_at"),
-                finished_at=item.get("finished_at"),
+                started_at=normalize_datetime(item.get("started_at"), "started_at"),
+                finished_at=normalize_datetime(item.get("finished_at"), "finished_at"),
             )
             row = self._session.scalar(
                 select(WorkflowRunReconcileDetailRecord).where(
@@ -323,6 +345,8 @@ class RunStatisticsService:
         ):
             if value is not None:
                 filters.append(column == value)
+        started_from = normalize_datetime(started_from, "started_from")
+        started_to = normalize_datetime(started_to, "started_to")
         if started_from is not None:
             filters.append(WorkflowRunStatRecord.started_at >= started_from)
         if started_to is not None:
