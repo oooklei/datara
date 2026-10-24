@@ -179,6 +179,32 @@ def _add_definition(session, project_id):
     return definition
 
 
+def test_run_statistics_list_and_detail_are_project_scoped():
+    client, app, project_id, tokens = _client()
+    try:
+        with app.state.session_factory() as session:
+            definition = _add_definition(session, project_id)
+            instance = ExecutionRepository(session).create_workflow_instance(
+                workflow_id=definition.id, workflow_version_id=3, instance_type="FORMAL"
+            )
+            ExecutionRepository(session).record_result_stat(
+                workflow_instance_id=instance.id, attempt_no=0,
+                source_count=5, target_count=4, success_count=4, failed_count=1, skipped_count=0,
+            )
+            session.commit()
+        listing = client.get(f"{EXEC}/run-stats", headers=tokens["dev"], params={"project_id": project_id})
+        assert listing.status_code == 200
+        assert listing.json()["data"]["total"] == 1
+        item = listing.json()["data"]["items"][0]
+        assert (item["source_count"], item["failure_count"], item["attempt_no"]) == (5, 1, 0)
+        detail = client.get(
+            f"{EXEC}/run-stats/{item['id']}", headers=tokens["dev"], params={"project_id": project_id}
+        )
+        assert detail.status_code == 200 and detail.json()["data"]["workflow_version_id"] == 3
+    finally:
+        client.__exit__(None, None, None)
+
+
 def test_trial_instance_creation_binds_draft_snapshot_and_tasks():
     client, app, project_id, tokens = _client()
     try:

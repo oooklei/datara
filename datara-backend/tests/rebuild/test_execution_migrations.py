@@ -14,6 +14,7 @@ from rebuild.governance.migrations import (
 )
 from rebuild.governance.models import SchemaMigrationRecord
 from rebuild.execution.revisions.v0001_execution_tables import downgrade
+from rebuild.execution.revisions.v0002_run_statistics import downgrade as downgrade_run_statistics
 
 
 def test_execution_migration_is_checksummed_idempotent_and_downgradeable():
@@ -21,7 +22,7 @@ def test_execution_migration_is_checksummed_idempotent_and_downgradeable():
     first = apply_execution_migrations(engine)
     second = apply_execution_migrations(engine)
 
-    assert first.applied == ("r9_0001_execution_tables",)
+    assert first.applied == ("r9_0001_execution_tables", "r9_0002_run_statistics")
     assert second.skipped == first.applied
     assert {table.name for table in EXECUTION_TABLES} <= set(inspect(engine).get_table_names())
     with Session(engine) as session:
@@ -33,6 +34,7 @@ def test_execution_migration_is_checksummed_idempotent_and_downgradeable():
         assert record is not None and record.status == "completed"
         assert len(record.checksum) == 64
 
+    downgrade_run_statistics(engine)
     downgrade(engine)
     assert not ({table.name for table in EXECUTION_TABLES} & set(inspect(engine).get_table_names()))
 
@@ -49,6 +51,15 @@ def test_execution_migration_checksum_drift_fails_closed():
     )
     with pytest.raises(MigrationChecksumConflict):
         MigrationRunner(engine, [migration]).apply()
+
+
+def test_completed_run_statistics_migration_revalidates_schema():
+    engine = create_engine("sqlite+pysqlite:///:memory:")
+    apply_execution_migrations(engine)
+    with engine.begin() as connection:
+        connection.exec_driver_sql("DROP TABLE workflow_run_reconcile_detail")
+    with pytest.raises(MigrationApplyError, match="postflight rejected schema"):
+        apply_execution_migrations(engine)
 
 
 def test_execution_migration_failed_state_is_persisted_for_retry():

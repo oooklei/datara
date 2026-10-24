@@ -6,10 +6,10 @@ Contract source (frozen): docs/increments/2026-10-14-datara-platform-rebuild-des
 split) + 纠偏方案 §5.4 (result-stat idempotency; counts reported by the executor
 result contract, never derived from logs).
 
-- Six run tables: workflow_instance / task_instance / task_instance_attempt /
-  task_instance_log / task_instance_output / execution_event. The §9 statistic
-  tables (workflow_result_stat, task_instance_data_stat, ...) already live in
-  the metrics domain — this module must not re-model them. task_instance_variable_runtime
+- Six original run tables plus the execution-owned workflow_run_stat and
+  workflow_run_reconcile_detail result records. Historical aggregates
+  (workflow_result_stat, task_instance_data_stat, ...) remain in the metrics
+  domain and are not duplicated here. task_instance_variable_runtime
   belongs to the variables-domain runtime slice and is out of scope here.
 - Every table carries the three DB-generated non-null contract timestamps
   created_at/updated_at/generated_at (server_default only; application code is
@@ -30,7 +30,7 @@ result contract, never derived from logs).
 
 from datetime import datetime
 
-from sqlalchemy import DateTime, Index, Integer, String, Text, UniqueConstraint, func
+from sqlalchemy import DateTime, ForeignKey, Index, Integer, String, Text, UniqueConstraint, func
 from sqlalchemy.orm import Mapped, mapped_column
 
 from rebuild.common.db import Base
@@ -157,6 +157,62 @@ class ExecutionEventRecord(RunTimestampsMixin, Base):
     event_time: Mapped[datetime] = mapped_column(DateTime, server_default=func.current_timestamp())
 
 
+class WorkflowRunStatRecord(RunTimestampsMixin, Base):
+    """Log-independent executor result for one workflow/task attempt."""
+
+    __tablename__ = "workflow_run_stat"
+    __table_args__ = (
+        UniqueConstraint(
+            "workflow_instance_id", "task_identity", "attempt_no", name="uq_wrs_instance_task_attempt"
+        ),
+        Index("x_wrs_project_created", "project_id", "created_at"),
+        Index("x_wrs_workflow_instance", "workflow_id", "workflow_instance_id"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    project_id: Mapped[int] = mapped_column(Integer, nullable=False)
+    workflow_id: Mapped[int] = mapped_column(Integer, nullable=False)
+    workflow_version_id: Mapped[int] = mapped_column(Integer, nullable=False)
+    workflow_instance_id: Mapped[int] = mapped_column(
+        ForeignKey("workflow_instance.id", ondelete="CASCADE"), nullable=False
+    )
+    task_instance_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    task_identity: Mapped[str] = mapped_column(String(64), nullable=False)
+    attempt_no: Mapped[int] = mapped_column(Integer, nullable=False)
+    instance_type: Mapped[str] = mapped_column(String(16), nullable=False)
+    status: Mapped[str] = mapped_column(String(16), nullable=False)
+    source_count: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    target_count: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    success_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    failure_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    skipped_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    started_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+
+
+class WorkflowRunReconcileDetailRecord(RunTimestampsMixin, Base):
+    """Optional source/target object reconciliation for a run-stat attempt."""
+
+    __tablename__ = "workflow_run_reconcile_detail"
+    __table_args__ = (
+        UniqueConstraint("run_stat_id", "source_object", "target_object", name="uq_wrrd_object_pair"),
+        Index("x_wrrd_run_stat", "run_stat_id"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    run_stat_id: Mapped[int] = mapped_column(
+        ForeignKey("workflow_run_stat.id", ondelete="CASCADE"), nullable=False
+    )
+    source_object: Mapped[str] = mapped_column(String(256), nullable=False)
+    target_object: Mapped[str] = mapped_column(String(256), nullable=False)
+    source_count: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    target_count: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    success_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    failure_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    skipped_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    difference_count: Mapped[int | None] = mapped_column(Integer, nullable=True)
+
+
 EXECUTION_TABLES = (
     WorkflowInstanceRecord.__table__,
     TaskInstanceRecord.__table__,
@@ -164,4 +220,6 @@ EXECUTION_TABLES = (
     RunLogRecord.__table__,
     RunOutputRecord.__table__,
     ExecutionEventRecord.__table__,
+    WorkflowRunStatRecord.__table__,
+    WorkflowRunReconcileDetailRecord.__table__,
 )

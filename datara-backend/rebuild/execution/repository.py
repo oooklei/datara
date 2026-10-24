@@ -220,6 +220,9 @@ class ExecutionRepository:
         failed_count: int,
         skipped_count: int,
         task_instance_id: int | None = None,
+        source_count: int | None = None,
+        target_count: int | None = None,
+        reconcile_details: list[dict[str, Any]] | None = None,
     ) -> dict[str, Any]:
         """Idempotent result-stat write-back aligned with the metrics workflow_result_stat fields.
 
@@ -235,6 +238,11 @@ class ExecutionRepository:
         for name, value in reported.items():
             if isinstance(value, bool) or not isinstance(value, int) or value < 0:
                 raise ExecutionDomainError(4107, f"{name} must be a non-negative integer")
+        for name, value in (("source_count", source_count), ("target_count", target_count)):
+            if value is not None and (isinstance(value, bool) or not isinstance(value, int) or value < 0):
+                raise ExecutionDomainError(4107, f"{name} must be a non-negative integer")
+        if reconcile_details is not None and not isinstance(reconcile_details, list):
+            raise ExecutionDomainError(4107, "reconcile_details must be a list")
         if isinstance(attempt_no, bool) or not isinstance(attempt_no, int) or attempt_no < 0:
             raise ExecutionDomainError(4107, "attempt_no must be a non-negative integer")
         if task_instance_id is not None:
@@ -289,16 +297,44 @@ class ExecutionRepository:
                         updated_at=func.current_timestamp(),
                     )
                 )
+        event_payload = {
+            **reported,
+            "source_count": source_count,
+            "target_count": target_count,
+            "reconcile_details": reconcile_details or [],
+        }
         self._session.add(
             ExecutionEventRecord(
                 workflow_instance_id=workflow_instance_id,
                 task_instance_id=task_instance_id,
                 attempt_no=attempt_no,
                 event_kind=RESULT_STAT_EVENT_KIND,
-                payload_json=json.dumps(reported, sort_keys=True),
+                payload_json=json.dumps(event_payload, ensure_ascii=False, sort_keys=True),
             )
         )
         self._session.flush()
+        # Definitions are mandatory in API/runtime flows. A conditional keeps
+        # the lower-level historical repository tests (which use detached IDs)
+        # backwards compatible while all real workflow reports are persisted.
+        from rebuild.workflow.models import WorkflowDefinitionRecord
+        bind = self._session.get_bind()
+        has_definitions = bind is not None and bind.dialect.has_table(
+            self._session.connection(), WorkflowDefinitionRecord.__tablename__
+        )
+        if has_definitions and self._session.get(WorkflowDefinitionRecord, instance.workflow_id) is not None:
+            from rebuild.execution.run_stats import RunStatisticsService
+            RunStatisticsService(self._session).upsert(
+                instance,
+                task_instance_id=task_instance_id,
+                attempt_no=attempt_no,
+                source_count=source_count,
+                target_count=target_count,
+                success_count=success_count,
+                failure_count=failed_count,
+                skipped_count=skipped_count,
+                reconcile_details=reconcile_details,
+                stream_checkpoint=instance.instance_type == "STREAM",
+            )
         return {
             "recorded": True,
             "duplicate": False,

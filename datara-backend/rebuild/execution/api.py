@@ -14,7 +14,7 @@ from contextlib import contextmanager
 from datetime import datetime
 from typing import Any, Callable, Iterator
 
-from fastapi import APIRouter, Body, Header
+from fastapi import APIRouter, Body, Header, Query
 from fastapi.responses import JSONResponse
 from sqlalchemy import select
 from sqlalchemy.orm import Session, sessionmaker
@@ -25,6 +25,7 @@ from rebuild.identity.contracts import Permission
 from rebuild.trial.repository import TrialSnapshotRepository
 from rebuild.workflow.models import WorkflowDefinitionRecord, WorkflowNodeRecord, WorkflowVersionRecord
 from rebuild.execution.stream_adapter import record_stream_checkpoint
+from rebuild.execution.run_stats import RunStatisticsService
 
 
 class MalformedRequest(ValueError):
@@ -307,6 +308,8 @@ def build_execution_router(
             try:
                 _resolve_instance_project(outcome, instance_id, project_id)
                 instance = ExecutionRepository(outcome).transition_workflow_instance(instance_id, status)
+                if instance.status in {"SUCCEEDED", "FAILED", "CANCELLED", "CANCEL_FAILED", "STOPPED", "SKIPPED"}:
+                    RunStatisticsService(outcome).finalize(instance.id)
                 outcome.commit()
                 data = {"instance_id": instance.id, "instance_type": instance.instance_type, "status": instance.status}
             except ExecutionDomainError as exc:
@@ -432,6 +435,11 @@ def build_execution_router(
                 isinstance(task_instance_id, bool) or not isinstance(task_instance_id, int)
             ):
                 raise MalformedRequest("task_instance_id must be an integer or null")
+            source_count = body.get("source_count")
+            target_count = body.get("target_count")
+            reconcile_details = body.get("reconcile_details")
+            if reconcile_details is not None and not isinstance(reconcile_details, list):
+                raise MalformedRequest("reconcile_details must be an array or null")
         except MalformedRequest as exc:
             return request_error(exc)
         with authorized_session(project_id, Permission.RUN_INSTANCE, token, authorization) as outcome:
@@ -446,10 +454,78 @@ def build_execution_router(
                     success_count=success_count,
                     failed_count=failed_count,
                     skipped_count=skipped_count,
+                    source_count=source_count,
+                    target_count=target_count,
+                    reconcile_details=reconcile_details,
                 )
                 outcome.commit()
             except ExecutionDomainError as exc:
                 outcome.rollback()
+                return request_error(exc)
+        return {"code": 0, "msg": "success", "data": data}
+
+    def _stat_payload(record: Any) -> dict[str, Any]:
+        return {
+            "id": record.id,
+            "project_id": record.project_id,
+            "workflow_id": record.workflow_id,
+            "workflow_version_id": record.workflow_version_id,
+            "workflow_instance_id": record.workflow_instance_id,
+            "task_instance_id": record.task_instance_id,
+            "attempt_no": record.attempt_no,
+            "instance_type": record.instance_type,
+            "status": record.status,
+            "source_count": record.source_count,
+            "target_count": record.target_count,
+            "success_count": record.success_count,
+            "failure_count": record.failure_count,
+            "skipped_count": record.skipped_count,
+        }
+
+    @router.get("/run-stats")
+    def list_run_stats(
+        project_id: int,
+        workflow_id: int | None = None,
+        workflow_instance_id: int | None = None,
+        offset: int = Query(default=0, ge=0),
+        limit: int = Query(default=50, ge=1, le=200),
+        token: str = Header(default=""),
+        authorization: str = Header(default=""),
+    ):
+        with authorized_session(project_id, Permission.VIEW_ALL, token, authorization) as outcome:
+            if isinstance(outcome, JSONResponse):
+                return outcome
+            rows, total = RunStatisticsService(outcome).list(
+                project_id, workflow_id=workflow_id, workflow_instance_id=workflow_instance_id,
+                offset=offset, limit=limit,
+            )
+            data = {"total": total, "items": [_stat_payload(row) for row in rows]}
+        return {"code": 0, "msg": "success", "data": data}
+
+    @router.get("/run-stats/{stat_id}")
+    def get_run_stat(
+        stat_id: int,
+        project_id: int,
+        token: str = Header(default=""),
+        authorization: str = Header(default=""),
+    ):
+        with authorized_session(project_id, Permission.VIEW_ALL, token, authorization) as outcome:
+            if isinstance(outcome, JSONResponse):
+                return outcome
+            try:
+                record, details = RunStatisticsService(outcome).get(stat_id, project_id)
+                data = _stat_payload(record)
+                data["details"] = [{
+                    "source_object": row.source_object,
+                    "target_object": row.target_object,
+                    "source_count": row.source_count,
+                    "target_count": row.target_count,
+                    "success_count": row.success_count,
+                    "failure_count": row.failure_count,
+                    "skipped_count": row.skipped_count,
+                    "difference_count": row.difference_count,
+                } for row in details]
+            except ExecutionDomainError as exc:
                 return request_error(exc)
         return {"code": 0, "msg": "success", "data": data}
 
@@ -562,6 +638,7 @@ def build_execution_router(
             try:
                 repo = ExecutionRepository(outcome)
                 record = repo.transition_workflow_instance(instance_id, "CANCELLED")
+                RunStatisticsService(outcome).finalize(record.id)
                 outcome.commit()
                 data = {
                     "instance_id": record.id,

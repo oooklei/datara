@@ -19,9 +19,9 @@ checksum = hashlib.sha256(_DDL_MANIFEST.encode("utf-8")).hexdigest()
 def upgrade(engine: Engine) -> None:
     from rebuild.common.db import Base
 
-    Base.metadata.create_all(bind=engine, tables=list(EXECUTION_TABLES), checkfirst=True)
+    Base.metadata.create_all(bind=engine, tables=list(EXECUTION_TABLES[:6]), checkfirst=True)
 
 
 def downgrade(engine: Engine) -> None:
-    for table in reversed(EXECUTION_TABLES):
+    for table in reversed(EXECUTION_TABLES[:6]):
         table.drop(bind=engine, checkfirst=True)
