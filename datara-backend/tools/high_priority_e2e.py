@@ -62,6 +62,42 @@ def main() -> int:
         spec_count = len(specs.get("items", []))
         if spec_count < 4:
             raise RuntimeError(f"component catalogue too small: {spec_count}")
+        # Executable components must expose the version-pinned resource form
+        # contract.  This is intentionally checked against the deployed spec
+        # response (rather than the seed source) so stale catalogues fail the
+        # same high-priority regression used by the isolated environment.
+        executable_specs = {
+            item.get("type"): item
+            for item in specs.get("items", [])
+            if item.get("type") in {"sql", "python", "shell"}
+        }
+        expected_extensions = {
+            "sql": {".sql"},
+            "python": {".py", ".zip"},
+            "shell": {".sh", ".bash"},
+        }
+        if set(executable_specs) != set(expected_extensions):
+            raise RuntimeError("executable component specs are incomplete")
+        for component_type, extensions in expected_extensions.items():
+            params = {
+                row.get("key"): row
+                for row in (executable_specs[component_type].get("form") or {}).get("params", [])
+            }
+            source_mode = params.get("sourceMode")
+            resource_ref = params.get("resourceRef")
+            capability = (resource_ref or {}).get("cap") or {}
+            if (source_mode or {}).get("default") != "inline":
+                raise RuntimeError(f"{component_type}: sourceMode default contract failed")
+            if capability.get("kind") != component_type or set(capability.get("extensions") or []) != extensions:
+                raise RuntimeError(f"{component_type}: resourceRef capability contract failed")
+            if capability.get("versioned") is not True or capability.get("allowLatest") is not False:
+                raise RuntimeError(f"{component_type}: resourceRef version pinning contract failed")
+            if not any(
+                condition.get("id") == "c-resource-mode"
+                and "resourceRef" in (condition.get("show") or [])
+                for condition in (executable_specs[component_type].get("form") or {}).get("conditions", [])
+            ):
+                raise RuntimeError(f"{component_type}: resourceRef visibility condition missing")
         # Variables are a critical workflow dependency.  Exercise the same
         # save/list contract used by the frontend against the isolated DB;
         # overwriting this deterministic probe keeps repeated runs harmless.
