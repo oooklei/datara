@@ -116,3 +116,38 @@ def test_runtime_parameter_resolution_returns_snapshot_without_resolved_secret()
     secret_row = next(row for row in snapshot if row["name"] == "password")
     assert secret_row["resolved_value"] == "******"
     assert "secret-value" not in repr(snapshot)
+
+
+def test_snapshot_repository_never_persists_a_sensitive_resolved_value() -> None:
+    client, app, project_id, headers = _client()
+    try:
+        from sqlalchemy import select
+
+        from rebuild.variables.models import TaskInstanceVariableRuntimeRecord
+        from rebuild.variables.repository import VariableRepository
+
+        with app.state.session_factory() as session:
+            VariableRepository(session).write_snapshot_rows([{
+                "instance_id": 91,
+                "project_id": project_id,
+                "attempt_no": 1,
+                "expression": "${workflow.password}",
+                "scope": "workflow",
+                "name": "password",
+                "resolved_value": "must-not-persist",
+                "value_type": "string",
+                "source": "workflow.password",
+                "sensitive": True,
+            }])
+            session.commit()
+            row = session.scalar(select(TaskInstanceVariableRuntimeRecord))
+            assert row is not None and row.resolved_value == "******"
+
+        response = client.get(
+            f"/api/v1/rebuild/variables/run-snapshot?instance_id=91&project_id={project_id}", headers=headers
+        )
+        assert response.status_code == 200
+        assert response.json()["data"][0]["resolved_value"] == "******"
+        assert "must-not-persist" not in response.text
+    finally:
+        client.__exit__(None, None, None)
