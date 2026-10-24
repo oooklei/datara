@@ -20,7 +20,7 @@
 import { computed, type Component } from 'vue'
 import { PROJECT_MENU_SECTIONS } from '../navigation/projectMenu'
 import TaskCenterView from './TaskCenterView.vue'
-import ProjectMembersView from './ProjectMembersView.vue'
+import ResourceManagementView from './resources/ResourceManagementView.vue'
 import PermissionMatrixView from './PermissionMatrixView.vue'
 import DataSourceListView from './datasource/DataSourceListView.vue'
 import IdeView from './ide/IdeView.vue'
@@ -33,7 +33,7 @@ const section = computed(() => PROJECT_MENU_SECTIONS.find((s) => s.key === props
 const segmentViews: Record<string, Component> = {
   dag: TaskCenterView,
   datasource: DataSourceListView,
-  resources: ProjectMembersView,
+  resources: ResourceManagementView,
   ide: IdeView,
   meta: MetadataCatalogView,
   dep: MonitorView,
