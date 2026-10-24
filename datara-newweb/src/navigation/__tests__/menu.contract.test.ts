@@ -6,7 +6,7 @@
  *  - §4.2 七组 + H 挂载逐行「有且唯一」结论（0.8 §7 测试集 1）
  *  - 任务中心空组标题且一级直达（F56a 裁定 2A/3B）
  *  - source 非空可追溯（权威设计 §4.4 登记前置 / 红线 2）
- *  - R-15 批次开关初始值保守关闭
+ *  - R-15 批次开关与已交付页面状态一致
  *  - R-28 脱敏/审计纳入批次注记；R-29 future routeName 预留不注册
  *  - 0.8 L66 构建纪律：deleted 项不得进入运行时配置
  */
@@ -70,7 +70,7 @@ describe('2-01 菜单配置契约（0.8 §7 测试集 1：§4.2 逐行有且唯�
     expect(g.items[0]).toMatchObject({ label: '任务中心', path: '/dag', disposition: 'formal', batch: 'inc4' })
   })
 
-  it('C 组 数据集成：formal/embedded/formal+decisionGate 四项唯一落位（0.8 §3 L96-99）', () => {
+  it('C 组 数据集成：资源管理已完成路由闭环，四项唯一落位（0.8 §3 L96-99）', () => {
     const g = allGroups.find((x) => x.id === 'integration')!
     expect(g.label).toBe('数据集成')
     const byId = Object.fromEntries(g.items.map((i) => [i.id, i]))
@@ -79,11 +79,14 @@ describe('2-01 菜单配置契约（0.8 §7 测试集 1：§4.2 逐行有且唯�
     expect(byId['sync-task']).toMatchObject({ label: '同步任务', disposition: 'embedded' })
     expect(byId['sync-task'].path).toBeUndefined()
     expect(byId['stream-process']).toMatchObject({ label: '流数据处理', disposition: 'embedded' })
-    // 资源管理：formal 但路径待路由契约（增量 10 冻结）——TBD 不进运行时配置（0.8 L62），以 decisionGate 表达
-    expect(byId['resource-mgmt']).toMatchObject({ label: '资源管理', disposition: 'formal', batch: 'inc10' })
-    expect(byId['resource-mgmt'].decisionGate).toBe('route-frozen-inc10')
-    expect(byId['resource-mgmt'].path).toBeUndefined()
-    expect(byId['resource-mgmt'].routeName).toBeUndefined()
+    expect(byId['resource-mgmt']).toMatchObject({
+      label: '资源管理',
+      path: '/resources',
+      routeName: 'resource-mgmt',
+      disposition: 'formal',
+      batch: 'inc10',
+    })
+    expect(byId['resource-mgmt'].decisionGate).toBeUndefined()
   })
 
   it('D 组 数据开发：SQL IDE formal + 数仓建模 future（S175/S179；R-29 routeName 预留）', () => {
@@ -95,7 +98,7 @@ describe('2-01 菜单配置契约（0.8 §7 测试集 1：§4.2 逐行有且唯�
     expect(byId['dw-modeling'].routeName).toBe('dwModeling')
   })
 
-  it('E 组 数据治理：8 formal 已实证路径 + 5 质量项 future（0.8 §3 L102-103 / §4 #3-#7）', () => {
+  it('E 组 数据治理：质量规则/任务已正式开放，其余质量项保持 future（0.8 §3 L102-103 / §4 #3-#7）', () => {
     const g = allGroups.find((x) => x.id === 'governance')!
     expect(g.label).toBe('数据治理')
     const formal = g.items.filter((i) => i.disposition === 'formal')
@@ -109,17 +112,20 @@ describe('2-01 菜单配置契约（0.8 §7 测试集 1：§4.2 逐行有且唯�
       '/ind/list',
       '/ind/board',
       '/ind/consistency',
+      '/qc/rule',
+      '/qc/task',
     ])
-    expect(future.map((i) => i.id)).toEqual(['qc-rule', 'qc-task', 'qc-exception', 'qc-report', 'qc-alarm'])
+    expect(future.map((i) => i.id)).toEqual(['qc-exception', 'qc-report', 'qc-alarm'])
     for (const i of future) expect(i.batch).toBe('inc14')
   })
 
-  it('F 组 部署运维：运行时节点/集群监控双 future（S175/S179；0.8 §3 L104）', () => {
+  it('F 组 部署运维：运行节点、集群监控与 SSH 节点均正式开放（S175/S179；0.8 §3 L104）', () => {
     const g = allGroups.find((x) => x.id === 'operations')!
     expect(g.label).toBe('部署运维')
     expect(g.items.map((i) => [i.id, i.path, i.disposition, i.batch])).toEqual([
-      ['dep-runtime', '/dep/runtime', 'future', 'inc17'],
-      ['dep-monitor', '/dep/monitor', 'future', 'inc17'],
+      ['dep-runtime', '/dep/runtime', 'formal', 'inc17'],
+      ['dep-monitor', '/dep/monitor', 'formal', 'inc17'],
+      ['dep-ssh', '/dep/ssh', 'formal', 'inc17'],
     ])
   })
 
@@ -134,16 +140,20 @@ describe('2-01 菜单配置契约（0.8 §7 测试集 1：§4.2 逐行有且唯�
     // R-28：脱敏·审计纳入（增量 15 后追加立项，可复议）
     expect(byId['sec-mask']).toMatchObject({ label: '脱敏规则', path: '/sec/mask', disposition: 'future', batch: 'inc15-post' })
     expect(byId['sec-audit']).toMatchObject({ label: '访问审计', path: '/sec/audit', disposition: 'future', batch: 'inc15-post' })
-    expect(byId['open-api']).toMatchObject({ label: 'API 管理', path: '/open/api', disposition: 'future', batch: 'inc15' })
-    expect(byId['open-key']).toMatchObject({ label: 'API-Key 管理', path: '/open/key', disposition: 'future', batch: 'inc15' })
+    expect(byId['open-api']).toMatchObject({ label: 'API 管理', path: '/open/api', disposition: 'formal', batch: 'inc15' })
+    expect(byId['open-key']).toMatchObject({ label: 'API-Key 管理', path: '/open/key', disposition: 'formal', batch: 'inc15' })
     // #14 调用日志：并入 #12，独立页签/附属列未确认（0.8 §4 L128）
     expect(byId['api-call-log']).toMatchObject({ label: '调用日志', disposition: 'embedded' })
     expect(byId['api-call-log'].decisionGate).toBe('api-call-log-form')
     expect(byId['api-call-log'].path).toBeUndefined()
-    // LLM 模型配置：不为其编造路径（0.8 §3 L109）
-    expect(byId['llm-config']).toMatchObject({ label: 'LLM 模型配置', disposition: 'future', batch: 'inc15' })
-    expect(byId['llm-config'].decisionGate).toBe('route-frozen-inc15')
-    expect(byId['llm-config'].path).toBeUndefined()
+    expect(byId['llm-config']).toMatchObject({
+      label: 'LLM 模型配置',
+      path: '/open/llm',
+      routeName: 'open-llm',
+      disposition: 'formal',
+      batch: 'inc15',
+    })
+    expect(byId['llm-config'].decisionGate).toBeUndefined()
   })
 
   it('future 机制组：固定配置 foldable/defaultFolded，静态 items 空（0.8 §5.1；机制归 2-02/2-04）', () => {
@@ -196,7 +206,7 @@ describe('2-01 配置纪律（0.8 L57-68 字段规则）', () => {
     const keys = Object.keys(BATCH_SWITCHES)
     expect(keys.length).toBeGreaterThan(0)
     for (const k of keys) {
-      const delivered = new Set(['inc3', 'inc4', 'inc10', 'inc11', 'inc14'])
+      const delivered = new Set(['inc3', 'inc4', 'inc10', 'inc11', 'inc14', 'inc15', 'inc17'])
       expect(BATCH_SWITCHES[k], `batch ${k} 开关状态`).toBe(delivered.has(k))
     }
   })

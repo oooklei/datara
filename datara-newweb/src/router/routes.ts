@@ -27,6 +27,7 @@ import ProjectSegmentView from '../views/ProjectSegmentView.vue'
 import TaskCenterView from '../views/TaskCenterView.vue'
 import SshNodeManagementView from '../views/SshNodeManagementView.vue'
 import RuntimeNodeView from '../views/depops/RuntimeNodeView.vue'
+import MonitorView from '../views/depops/MonitorView.vue'
 import ApiKeyManagementView from '../views/ApiKeyManagementView.vue'
 import ApiManagementView from '../views/ApiManagementView.vue'
 import LlmModelManagementView from '../views/LlmModelManagementView.vue'
@@ -53,6 +54,7 @@ export const routes: RouteRecordRaw[] = [
   // 17.4 P3 运行节点迁移（IMPL-v4-17）：运行时节点注册清单 + SFTP 目录浏览页
   // （History 直链可达；菜单可见性候批——BATCH_SWITCHES.inc17 保持 false）
   { path: '/dep/runtime', name: 'dep-runtime', component: RuntimeNodeView },
+  { path: '/dep/monitor', name: 'dep-monitor', component: MonitorView },
   { path: '/open/key', name: 'open-key', component: ApiKeyManagementView },
   { path: '/open/api', name: 'open-api', component: ApiManagementView },
   { path: '/open/llm', name: 'open-llm', component: LlmModelManagementView },

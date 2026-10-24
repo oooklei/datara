@@ -19,6 +19,7 @@ import { routes } from '../routes'
 import TaskCenterView from '../../views/TaskCenterView.vue'
 import SshNodeManagementView from '../../views/SshNodeManagementView.vue'
 import RuntimeNodeView from '../../views/depops/RuntimeNodeView.vue'
+import MonitorView from '../../views/depops/MonitorView.vue'
 import routesSource from '../routes.ts?raw'
 import routerSource from '../index.ts?raw'
 import viteSource from '/vite.config.ts?raw'
@@ -41,6 +42,8 @@ describe('1.4 routes 负断言（WBS 1.4 / 增量 1 退出标准 2）', () => {
       '/dep/ssh',
       // 17.4 P3 运行节点迁移（IMPL-v4-17）：运行时节点页
       '/dep/runtime',
+      // 17.4 P3 集群监控迁移：监控页
+      '/dep/monitor',
       '/open/key',
       '/open/api',
       '/open/llm',
@@ -82,6 +85,13 @@ describe('1.4 routes 负断言（WBS 1.4 / 增量 1 退出标准 2）', () => {
     expect(runtime).toBeTruthy()
     expect(runtime?.name).toBe('dep-runtime')
     expect(runtime?.component).toBe(RuntimeNodeView)
+  })
+
+  it('/dep/monitor 绑定 MonitorView 且具名（17.4 P3 集群监控迁移）', () => {
+    const monitor = routes.find((r) => r.path === '/dep/monitor')
+    expect(monitor).toBeTruthy()
+    expect(monitor?.name).toBe('dep-monitor')
+    expect(monitor?.component).toBe(MonitorView)
   })
 
   it('无任何路由携带 demo:true 标记（零 demo 路由）', () => {
