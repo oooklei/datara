@@ -159,7 +159,6 @@ defineOptions({ name: 'MetricsValidationView' })
 
 const router = useRouter()
 const route = useRoute()
-const route = useRoute()
 const contract = createMetricsContract()
 const contractMethodCount = R7_CONTRACT_METHODS.length
 
@@ -192,16 +191,6 @@ const projectId = computed(() => {
   const parsed = Number(Array.isArray(raw) ? raw[0] : raw)
   return Number.isInteger(parsed) && parsed > 0 ? parsed : 1
 })
-const loading = ref<'' | 'workflow' | 'instance' | 'segment' | 'error' | 'quality' | 'lineage'>('')
-const errorText = ref('')
-const busy = computed(() => loading.value !== '')
-/** projectId is supplied by the route for direct validation links; keep legacy default for old bookmarks. */
-const projectId = computed(() => {
-  const raw = route.query.projectId
-  const parsed = Number(Array.isArray(raw) ? raw[0] : raw)
-  return Number.isInteger(parsed) && parsed > 0 ? parsed : 1
-})
-
 /** MetricValue 渲染：known=false 标 unknown、estimated=true 标估算（A7 Step 1 口径透传） */
 function metricFormatter(_row: Record<string, unknown>, _column: unknown, cellValue: unknown): string {
   const metric = cellValue as MetricValue
