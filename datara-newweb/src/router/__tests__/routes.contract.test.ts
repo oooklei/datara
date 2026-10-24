@@ -42,6 +42,7 @@ describe('1.4 routes 负断言（WBS 1.4 / 增量 1 退出标准 2）', () => {
       // 17.4 P3 运行节点迁移（IMPL-v4-17）：运行时节点页
       '/dep/runtime',
       '/open/key',
+      '/open/api',
       '/p/:projectId',
       '/p/:projectId/:seg',
     ])
