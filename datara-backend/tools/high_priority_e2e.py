@@ -124,6 +124,30 @@ def main() -> int:
         variable_rows = listed_variables.get("data") or []
         if not any(row.get("name") == variable_name for row in variable_rows):
             raise RuntimeError("saved variable was not returned by list contract")
+        # Exercise the resolver contract as part of the remote high-priority
+        # smoke, rather than treating a successful write/list as proof that
+        # the value is usable by IDE/workflow consumers.
+        variable_context = {"project_id": args.project_id}
+        checked = call(
+            args.base,
+            "/api/v1/rebuild/variables/check-reference",
+            token=token,
+            method="POST",
+            body={"expression": "${project." + variable_name + "}", "context": variable_context},
+        )
+        checked_data = checked.get("data") or {}
+        if checked_data.get("valid") is not True or checked_data.get("diagnostics"):
+            raise RuntimeError("variable reference resolution contract failed")
+        preview = call(
+            args.base,
+            "/api/v1/rebuild/variables/preview",
+            token=token,
+            method="POST",
+            body={"expression": "value=${project." + variable_name + "}", "context": variable_context},
+        )
+        preview_data = preview.get("data") or {}
+        if preview_data.get("resolved_value") != "value=isolated-ok":
+            raise RuntimeError("variable preview contract failed")
         trial = call(
             args.base,
             f"/api/v1/rebuild/trial/definitions/{args.definition_id}/run",
