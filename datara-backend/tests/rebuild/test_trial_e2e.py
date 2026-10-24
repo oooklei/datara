@@ -6,6 +6,7 @@ Covers: normal path, empty draft, validation failure, dry_run, variable override
 
 import pytest
 from fastapi.testclient import TestClient
+from common.models import Component, ComponentVersion
 
 from rebuild.api.app import create_app
 from rebuild.identity.contracts import Role
@@ -25,6 +26,20 @@ def _client():
         dev = UserRepository(session).create(username="dev", password="dev-pass", role=Role.DEVELOPER)
         project = ProjectRecord(name="e2e-proj", description="", owner_id=dev.id)
         session.add(project)
+        # The in-memory app intentionally does not ship catalog fixtures.
+        # Seed the four executable DAG components required by this E2E so the
+        # pinned component_ref contract is exercised instead of silently
+        # dropping legacy node requests.
+        for identifier, type_name in enumerate(("sql", "python", "shell", "dependent"), start=801):
+            session.add(Component(
+                id=identifier, type=type_name, name=type_name, category="test",
+                profile="dag", scope="builtin", execution_model="dag-engine",
+                executable=True, state="published", published_version=1, draft_rev=0,
+            ))
+            session.add(ComponentVersion(
+                id=identifier, component_id=identifier, type=type_name, version=1,
+                state="published", spec_json="{}", spec_hash="hash",
+            ))
         session.commit()
         project_id = project.id
     tokens = {}
@@ -42,10 +57,30 @@ def _create_definition(client, headers, project_id, name="e2e-flow"):
 
 
 def _add_node(client, headers, project_id, definition_id, node_code, node_type="SQL", params=None):
-    body = {"project_id": project_id, "node_code": node_code, "node_type": node_type}
+    # The design API now persists pinned component references.  Legacy START /
+    # END sentinel nodes are intentionally not created by the palette; map
+    # their historical aliases to the SQL component when a legacy scenario
+    # still exercises them.
+    component_type = {
+        "START": "sql",
+        "END": "sql",
+        "SQL": "sql",
+        "PYTHON": "python",
+        "SHELL": "shell",
+        "DEPENDENCY": "dependent",
+    }.get(node_type, str(node_type).lower())
+    component_version = 1
+    body = {
+        "project_id": project_id,
+        "node_code": node_code,
+        "node_type": component_type,
+        "component_ref": {"type": component_type, "version": component_version},
+    }
     if params is not None:
         body["params"] = params
-    return client.post(f"{WORKFLOWS}/{definition_id}/nodes", headers=headers, json=body)
+    response = client.post(f"{WORKFLOWS}/{definition_id}/nodes", headers=headers, json=body)
+    assert response.status_code == 200, response.text
+    return response
 
 
 def _add_edge(client, headers, project_id, definition_id, from_node, to_node):
@@ -70,20 +105,19 @@ def test_e2e_full_chain_success():
     try:
         # 1. Create definition + draft.
         definition_id = _create_definition(client, tokens["dev"], project_id).json()["data"]["definition_id"]
-        _add_node(client, tokens["dev"], project_id, definition_id, "start", node_type="START")
-        _add_node(client, tokens["dev"], project_id, definition_id, "extract", params={"sql": "SELECT * FROM orders"})
-        _add_node(client, tokens["dev"], project_id, definition_id, "transform", node_type="PYTHON", params={"script": "etl.py"})
-        _add_node(client, tokens["dev"], project_id, definition_id, "end", node_type="END")
-        _add_edge(client, tokens["dev"], project_id, definition_id, "start", "extract")
+        # Use executable, host-independent components: dependency mock and a
+        # shell no-op.  SQL/Python resource execution is covered by their
+        # dedicated suites and would require an external datasource/resource.
+        _add_node(client, tokens["dev"], project_id, definition_id, "extract", node_type="DEPENDENCY", params={"dependency_mock": True})
+        _add_node(client, tokens["dev"], project_id, definition_id, "transform", node_type="SHELL", params={"script": "exit 0"})
         _add_edge(client, tokens["dev"], project_id, definition_id, "extract", "transform")
-        _add_edge(client, tokens["dev"], project_id, definition_id, "transform", "end")
 
         # 2. Create snapshot.
         snapshot = _create_snapshot(client, tokens["dev"], project_id, definition_id)
         assert snapshot.status_code == 200
         snapshot_data = snapshot.json()["data"]
         assert snapshot_data["status"] == "ACTIVE"
-        assert len(snapshot_data["node_snapshot_json"]) == 4
+        assert len(snapshot_data["node_snapshot_json"]) == 2
 
         # 3. Get snapshot via API.
         fetched = client.get(
@@ -107,7 +141,7 @@ def test_e2e_full_chain_success():
         assert run_resp.status_code == 200
         run_data = run_resp.json()["data"]
         assert run_data["status"] == "SUCCEEDED"
-        assert run_data["task_count"] == 4
+        assert run_data["task_count"] == 2
         instance_id = run_data["instance_id"]
 
         # 5. Get run output (WF-26: GET /trial/runs/{run_id}).
@@ -130,7 +164,7 @@ def test_e2e_full_chain_success():
             headers=tokens["dev"],
             json={"project_id": project_id, "remark": "e2e promote"},
         )
-        assert promote_resp.status_code == 200
+        assert promote_resp.status_code == 200, promote_resp.text
         promote_data = promote_resp.json()["data"]
         assert promote_data["status"] == "PUBLISHED"
         assert promote_data["snapshot_digest"] == snapshot_data["snapshot_digest"]
@@ -195,11 +229,7 @@ def test_e2e_dry_run_plan():
     client, app, project_id, tokens = _client()
     try:
         definition_id = _create_definition(client, tokens["dev"], project_id, name="dry-flow").json()["data"]["definition_id"]
-        _add_node(client, tokens["dev"], project_id, definition_id, "start", node_type="START")
         _add_node(client, tokens["dev"], project_id, definition_id, "a", params={"sql": "SELECT 1"})
-        _add_node(client, tokens["dev"], project_id, definition_id, "end", node_type="END")
-        _add_edge(client, tokens["dev"], project_id, definition_id, "start", "a")
-        _add_edge(client, tokens["dev"], project_id, definition_id, "a", "end")
 
         snapshot = _create_snapshot(client, tokens["dev"], project_id, definition_id)
         assert snapshot.status_code == 200
@@ -213,7 +243,7 @@ def test_e2e_dry_run_plan():
             params={"project_id": project_id},
         )
         assert fetched.status_code == 200
-        assert len(fetched.json()["data"]["node_snapshot_json"]) == 3
+        assert len(fetched.json()["data"]["node_snapshot_json"]) == 1
     finally:
         client.__exit__(None, None, None)
 

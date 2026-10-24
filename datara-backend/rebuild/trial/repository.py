@@ -101,11 +101,18 @@ class TrialSnapshotRepository:
 
     @staticmethod
     def _node_payload(row: WorkflowNodeRecord) -> dict[str, Any]:
+        params = json.loads(row.params_json) if row.params_json else {}
+        # Keep trial snapshots byte-for-byte compatible with workflow publish
+        # snapshots.  The workflow repository stores the pinned component ref
+        # in the executor-only `_componentRef` params slot but exposes it as
+        # the top-level `component_ref` field for canonical digesting.
+        component_ref = params.pop("_componentRef", None)
         return {
             "node_code": row.node_code,
             "node_type": row.node_type,
             "name": row.name,
-            "params": json.loads(row.params_json) if row.params_json else {},
+            "params": params,
+            "component_ref": component_ref,
             "position_x": row.position_x,
             "position_y": row.position_y,
         }
