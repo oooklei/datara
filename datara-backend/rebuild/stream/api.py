@@ -24,7 +24,7 @@ from sqlalchemy.orm import sessionmaker
 
 from rebuild.stream.repository import StreamDomainError, StreamRepository
 from rebuild.stream.alert import evaluate_failure_alert
-from rebuild.stream.processor import StreamProcessingError, aggregate_window
+from rebuild.stream.processor import StreamProcessingError, aggregate_window, fuse_streams
 
 
 class StreamJobCreateRequest(BaseModel):
@@ -71,6 +71,14 @@ class StreamProduceRequest(BaseModel):
     aggregate: dict[str, Any] | None = None
 
     model_config = {"protected_namespaces": (), "populate_by_name": True}
+
+
+class StreamFuseRequest(BaseModel):
+    key_field: str = "id"
+    streams: dict[str, list[dict[str, Any]]] = Field(default_factory=dict)
+    event_time: str = ""
+
+    model_config = {"protected_namespaces": ()}
 
 
 def build_stream_router(
@@ -237,6 +245,33 @@ def build_stream_router(
                 return respond({"job_id": job_id, "partition_id": body.partition_id, "produced": body.count, "last_offset": offset + body.count - 1, "metric": metric})
             except StreamProcessingError as exc:
                 return JSONResponse(status_code=400, content={"code": 4001, "msg": str(exc), "data": None})
+            except StreamDomainError as exc:
+                return domain_error(exc)
+
+    @router.post("/jobs/{job_id}/fuse")
+    def fuse_events(job_id: int, body: StreamFuseRequest, token: str = Header(default=""), authorization: str = Header(default="")):
+        """Fuse two or more named event streams and persist the observation result."""
+        denial = auth_guard(token, authorization)
+        if denial is not None:
+            return denial
+        try:
+            event_time = datetime.fromisoformat(body.event_time.replace("Z", "+00:00")) if body.event_time else datetime.now(timezone.utc)
+            fused = fuse_streams(body.streams, key_field=body.key_field)
+        except (ValueError, StreamProcessingError) as exc:
+            return JSONResponse(status_code=400, content={"code": 4001, "msg": str(exc), "data": None})
+        with session_factory() as session:
+            try:
+                repository = StreamRepository(session)
+                job = repository.get_job(job_id)
+                metric = repository.append_metric_snapshot(
+                    job_id,
+                    {"attempt_no": job.attempt_no, "input_count": sum(len(items) for items in body.streams.values()),
+                     "output_count": len(fused), "success_count": len(fused), "failure_count": 0,
+                     "process_rate": len(fused), "window_result": {"fusion": fused}},
+                    event_time,
+                )
+                session.commit()
+                return respond({"job_id": job_id, "fused": len(fused), "metric": metric, "result": fused})
             except StreamDomainError as exc:
                 return domain_error(exc)
 

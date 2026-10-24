@@ -120,6 +120,13 @@ export interface StreamProduceResult {
   metric: Record<string, unknown>
 }
 
+export interface StreamFuseResult {
+  jobId: string
+  fused: number
+  metric: Record<string, unknown>
+  result: Array<Record<string, unknown>>
+}
+
 /* ---------- RED 哨兵 ---------- */
 
 export const I8_STREAM_NOT_WIRED = 'I8_STREAM_NOT_WIRED: rebuild/stream contract not connected yet'
@@ -145,6 +152,7 @@ export interface StreamContract {
   queryStreamObservation: (window: TimeWindowQuery, jobId?: string) => Promise<StreamObservation>
   listStreamRecoveryEvents: (window: TimeWindowQuery, jobId?: string) => Promise<StreamRecoveryEventRow[]>
   produceStreamEvents: (jobId: string, request?: StreamProduceRequest) => Promise<StreamProduceResult>
+  fuseStreamEvents: (jobId: string, keyField: string, streams: Record<string, Array<Record<string, unknown>>>) => Promise<StreamFuseResult>
 }
 
 /* ---------- GREEN 接线；保留未挂载时的兼容哨兵 ---------- */
@@ -243,6 +251,15 @@ export function createStreamContract(): StreamContract {
         produced: Number(result.produced ?? 0),
         lastOffset: Number(result.lastOffset ?? 0),
         metric: (result.metric as Record<string, unknown>) ?? {},
+      }
+    },
+    fuseStreamEvents: async (jobId, keyField, streams) => {
+      const result = await request<Record<string, unknown>>(`/jobs/${encodeURIComponent(jobId)}/fuse`, 'POST', { key_field: keyField, streams })
+      return {
+        jobId: wireIdToString(result.jobId, 'jobId'),
+        fused: Number(result.fused ?? 0),
+        metric: (result.metric as Record<string, unknown>) ?? {},
+        result: Array.isArray(result.result) ? result.result as Array<Record<string, unknown>> : [],
       }
     },
   }
