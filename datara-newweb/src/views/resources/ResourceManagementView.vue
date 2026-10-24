@@ -3,6 +3,10 @@
     <header class="resource-head">
       <div><h1>资源管理</h1><p>管理 SQL、Python、Shell 资源及其不可变版本。</p></div>
       <select v-model="kind" aria-label="资源类型" @change="load"><option value="">全部类型</option><option value="sql">SQL</option><option value="python">Python</option><option value="shell">Shell</option></select>
+      <label class="upload-control">Upload
+        <select v-model="uploadKind" aria-label="Upload resource type"><option value="sql">SQL</option><option value="python">Python</option><option value="shell">Shell</option></select>
+        <input type="file" :accept="acceptFor(uploadKind)" @change="onFile" />
+      </label>
     </header>
     <p v-if="error" class="error">{{ error }}</p>
     <table v-else><thead><tr><th>名称</th><th>类型</th><th>版本</th><th>状态</th><th>更新时间</th></tr></thead>
@@ -14,7 +18,7 @@
 
 <script setup lang="ts">
 import { ref, watch } from 'vue'
-import { createResourceContract, type ResourceKind, type ResourceMeta } from '../../services/rebuild/resourceApi'
+import { createResourceContract, validateUploadDraft, type ResourceKind, type ResourceMeta } from '../../services/rebuild/resourceApi'
 
 const props = defineProps<{ projectId: number }>()
 const api = createResourceContract()
@@ -22,6 +26,24 @@ const kind = ref<ResourceKind | ''>('')
 const items = ref<ResourceMeta[]>([])
 const loading = ref(false)
 const error = ref('')
+const uploadKind = ref<ResourceKind>('sql')
+const acceptFor = (value: ResourceKind) => ({ sql: '.sql', python: '.py', shell: '.sh' })[value]
+
+async function onFile(event: Event) {
+  const input = event.target as HTMLInputElement
+  const file = input.files?.[0]
+  if (!file) return
+  const diagnostics = validateUploadDraft(uploadKind.value, file.name, file.size)
+  if (diagnostics.length) { error.value = diagnostics.map((d) => d.message).join('; '); input.value = ''; return }
+  try {
+    const bytes = new Uint8Array(await file.arrayBuffer())
+    let binary = ''
+    for (const byte of bytes) binary += String.fromCharCode(byte)
+    await api.uploadResource({ projectId: props.projectId, kind: uploadKind.value, filename: file.name, sizeBytes: file.size, contentBase64: btoa(binary) })
+    await load()
+  } catch (cause) { error.value = cause instanceof Error ? cause.message : 'Upload failed' }
+  finally { input.value = '' }
+}
 
 async function load() {
   loading.value = true; error.value = ''
