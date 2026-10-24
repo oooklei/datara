@@ -24,6 +24,7 @@ from rebuild.metrics.models import (
     WorkflowResultStatRecord,
 )
 from rebuild.execution.models import WorkflowInstanceRecord
+from rebuild.execution.models import WorkflowRunStatRecord
 from rebuild.workflow.models import WorkflowDefinitionRecord
 
 
@@ -64,6 +65,41 @@ class MetricsRepository:
         self._session = session
 
     def workflow_result_stats(self, window_from: str, window_to: str, offset: int, limit: int, project_id: int) -> list[dict[str, Any]]:
+        # The execution domain is now the authoritative producer for run
+        # statistics.  Keep the legacy R7 table as a compatibility fallback,
+        # but expose canonical workflow_run_stat rows whenever they exist so
+        # the project workbench reflects the same success/failure counts as
+        # the run-monitor page (and never depends on log tables).
+        bind = self._session.get_bind()
+        if bind is not None and bind.dialect.has_table(self._session.connection(), WorkflowRunStatRecord.__tablename__):
+            canonical = list(self._session.execute(
+                select(
+                    WorkflowRunStatRecord.workflow_id,
+                    WorkflowRunStatRecord.started_at,
+                    WorkflowRunStatRecord.success_count,
+                    WorkflowRunStatRecord.failure_count,
+                    WorkflowRunStatRecord.skipped_count,
+                )
+                .join(WorkflowDefinitionRecord, WorkflowDefinitionRecord.id == WorkflowRunStatRecord.workflow_id)
+                .where(WorkflowRunStatRecord.started_at >= window_from)
+                .where(WorkflowRunStatRecord.started_at <= window_to)
+                .where(WorkflowDefinitionRecord.project_id == project_id)
+                .order_by(WorkflowRunStatRecord.started_at, WorkflowRunStatRecord.workflow_id, WorkflowRunStatRecord.id)
+            ))
+            if canonical:
+                aggregate: dict[tuple[int, str], dict[str, Any]] = {}
+                for workflow_id, started_at, success, failure, skipped in canonical:
+                    day = started_at.date().isoformat()
+                    key = (workflow_id, day)
+                    row = aggregate.setdefault(key, {
+                        "workflow_id": workflow_id, "run_date": day,
+                        "success_count": 0, "failure_count": 0,
+                        "skipped_count": 0, "retry_count": 0,
+                    })
+                    row["success_count"] += int(success or 0)
+                    row["failure_count"] += int(failure or 0)
+                    row["skipped_count"] += int(skipped or 0)
+                return list(aggregate.values())[offset:offset + limit]
         rows = self._session.scalars(
             select(WorkflowResultStatRecord)
             .join(WorkflowDefinitionRecord, WorkflowDefinitionRecord.id == WorkflowResultStatRecord.workflow_id)

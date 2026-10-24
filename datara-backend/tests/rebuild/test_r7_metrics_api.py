@@ -180,3 +180,31 @@ def test_metrics_endpoints_require_project_access():
         assert response.status_code == 403 and response.json()["code"] == 1003
     finally:
         client.__exit__(None, None, None)
+
+
+def test_workflow_result_stats_prefers_execution_run_stat_projection():
+    """The workbench metrics contract must expose execution-owned run stats."""
+    from datetime import datetime
+    from rebuild.execution.models import WorkflowRunStatRecord
+
+    client, app, headers = _client()
+    try:
+        _seed(app)
+        with app.state.session_factory() as session:
+            session.add(WorkflowRunStatRecord(
+                project_id=1, workflow_id=7, workflow_version_id=1,
+                workflow_instance_id=501, instance_type="FORMAL", status="SUCCEEDED",
+                dag_name="metrics-workflow", success_count=4, failure_count=1,
+                skipped_count=2, total_count=5,
+                started_at=datetime(2026, 10, 16, 1, 0, 0),
+            ))
+            session.commit()
+        response = client.post("/api/v1/rebuild/metrics/workflow-result-stats", headers=headers, json=WINDOW)
+        assert response.status_code == 200
+        assert response.json()["data"] == [{
+            "workflow_id": 7, "run_date": "2026-10-16",
+            "success_count": 4, "failure_count": 1,
+            "skipped_count": 2, "retry_count": 0,
+        }]
+    finally:
+        client.__exit__(None, None, None)
