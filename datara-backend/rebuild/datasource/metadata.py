@@ -217,6 +217,24 @@ class PostgreSQLMetadataCatalog:
             for name, data_type, database_type, nullable, primary_key, comment in rows
         ]
 
+    def indexes(self, schema: str, object_name: str, *, limit: int = 200) -> list[dict[str, Any]]:
+        self._ensure_postgresql()
+        rows = self._query(
+            "SELECT indexname, indexdef FROM pg_indexes WHERE schemaname=%s AND tablename=%s "
+            "ORDER BY indexname LIMIT %s", (schema, object_name, _page_size(limit))
+        )
+        return [{"schema": schema, "object": object_name, "name": str(name), "definition": str(definition)}
+                for name, definition in rows]
+
+    def routines(self, schema: str, *, limit: int = 200) -> list[dict[str, Any]]:
+        self._ensure_postgresql()
+        rows = self._query(
+            "SELECT routine_name, routine_type, data_type FROM information_schema.routines "
+            "WHERE routine_schema=%s ORDER BY routine_name LIMIT %s", (schema, _page_size(limit))
+        )
+        return [{"schema": schema, "name": str(name), "type": str(kind).lower(), "returnType": str(data_type or "")}
+                for name, kind, data_type in rows]
+
     def _ensure_postgresql(self) -> None:
         validate_datasource(self._draft)
         if self._draft.kind.lower() != "postgresql":
