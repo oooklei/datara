@@ -30,6 +30,8 @@ from rebuild.sql_ide.history_store import SqlIdeHistoryStore
 from rebuild.sql_ide.linter import lint_sql
 from rebuild.sql_ide.routes import SqlIdeRouteError, build_sql_ide_router
 from rebuild.sql_ide.result_store import SqlIdeResultSetRecord
+from rebuild.sql_ide.result_store import PersistentResultPageStore
+from rebuild.sql_ide.status_store import SqlIdeExecutionEventRecord, SqlIdeExecutionRecord, SqlIdeStatusStore
 from rebuild.execution.models import EXECUTION_TABLES
 from rebuild.identity.contracts import Permission, Role, ROLE_PERMISSIONS, TokenService, authorize
 from rebuild.identity.models import ActiveTokenRecord, ProjectMemberRecord, UserRecord
@@ -349,6 +351,8 @@ def create_app(
                 SqlIdeResultSetRecord.__table__,
                 SqlIdeExportJobRecord.__table__,
                 SqlIdeExportAuditRecord.__table__,
+                SqlIdeExecutionRecord.__table__,
+                SqlIdeExecutionEventRecord.__table__,
                 WorkflowDefinitionRecord.__table__,
                 WorkflowVersionRecord.__table__,
                 WorkflowNodeRecord.__table__,
@@ -419,6 +423,8 @@ def create_app(
     def sql_ide_dispatch(operation, *, project_id, principal, payload):
         user_id = int(principal.get("user_id", principal.get("sub", 0)))
         history = SqlIdeHistoryStore(session_factory=session_factory)
+        status_store = SqlIdeStatusStore(session_factory=session_factory)
+        result_store = PersistentResultPageStore(session_factory=session_factory)
         if operation == "lintSql":
             return lint_sql(str(payload.get("sql", "")), dialect=str(payload.get("dialect", "mysql")))
         if operation == "executeSql":
@@ -426,6 +432,8 @@ def create_app(
             sql = str(payload.get("sql", ""))
             if datasource_id < 1 or not sql.strip():
                 raise SqlIdeRouteError("INVALID_REQUEST", message="datasource_id and sql are required")
+            task_id = os.urandom(16).hex()
+            status_store.start_execution(task_id=task_id, project_id=project_id, user_id=user_id, status="running")
             try:
                 result = build_execution_port(
                     session_factory=session_factory,
@@ -439,6 +447,7 @@ def create_app(
                     dialect=payload.get("dialect"),
                 )
             except Exception as exc:
+                status_store.update_status(task_id=task_id, project_id=project_id, user_id=user_id, status="failed")
                 raise SqlIdeRouteError("DATASOURCE_UNAVAILABLE", message=str(exc)) from exc
             history_id = history.create_history(
                 project_id=project_id,
@@ -450,14 +459,49 @@ def create_app(
                 stmt_count=1,
                 elapsed_ms=0,
             )
-            execution_id = str(result.get("execution_id", history_id))
+            result_set_id = result_store.save_snapshot(
+                project_id=project_id,
+                user_id=user_id,
+                history_id=history_id,
+                stmt_index=0,
+                columns=result.get("columns", []),
+                rows=result.get("rows", []),
+                total_rows=int(result.get("total_rows", result.get("row_count", 0))),
+            )
+            status_store.append_event(
+                task_id=task_id,
+                project_id=project_id,
+                user_id=user_id,
+                event_type="done",
+                payload={"status": "succeeded", "history_id": history_id, "result_set_id": result_set_id},
+            )
+            status_store.update_status(task_id=task_id, project_id=project_id, user_id=user_id, status="succeeded")
+            execution_id = task_id
             return {
                 **dict(result),
                 "task_id": execution_id,
                 "history_id": history_id,
+                "result_set_id": result_set_id,
                 "accepted": True,
                 "status": "succeeded",
             }
+        if operation == "getExecutionStatus":
+            status = status_store.get_execution_status(task_id=str(payload.get("task_id")), project_id=project_id, user_id=user_id)
+            if status is None:
+                raise SqlIdeRouteError("EXECUTION_NOT_FOUND")
+            return status
+        if operation == "openEventStream":
+            return status_store.list_execution_events(task_id=str(payload.get("task_id")), project_id=project_id, user_id=user_id)
+        if operation == "fetchResultPage":
+            return result_store.fetch_page(
+                project_id=project_id,
+                user_id=user_id,
+                history_id=str(payload.get("history_id")),
+                result_set_id=payload.get("result_set_id"),
+                stmt_index=payload.get("stmt_index"),
+                offset=int(payload.get("offset", 0)),
+                limit=int(payload.get("limit", 100)),
+            )
         if operation == "listHistory":
             return history.list_history(
                 project_id=project_id,
