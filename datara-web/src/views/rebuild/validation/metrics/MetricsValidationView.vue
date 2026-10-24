@@ -17,6 +17,8 @@
       :title="bannerTitle"
     />
 
+    <el-alert v-if="errorText" type="error" :closable="false" show-icon data-testid="i9-error" :title="errorText" />
+
     <el-descriptions :column="3" size="small" border class="i9-context">
       <el-descriptions-item label="统计表面">workflow_result_stat / task_instance_data_stat / task_data_stat_segment / task_data_error_sample</el-descriptions-item>
       <el-descriptions-item label="口径透传">unknown（known=false）/ estimated 标记</el-descriptions-item>
@@ -136,8 +138,8 @@
 </template>
 
 <script setup lang="ts">
-import { reactive, ref } from 'vue'
-import { useRouter } from 'vue-router'
+import { computed, reactive, ref } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
 import {
   R7_CONTRACT_METHODS,
   R7_METRICS_NOT_WIRED,
@@ -156,6 +158,8 @@ import { bannerAlertType, bannerTitleFor } from '../../../../services/rebuild/ba
 defineOptions({ name: 'MetricsValidationView' })
 
 const router = useRouter()
+const route = useRoute()
+const route = useRoute()
 const contract = createMetricsContract()
 const contractMethodCount = R7_CONTRACT_METHODS.length
 
@@ -180,6 +184,23 @@ const instanceStats = ref<TaskInstanceDataStatRow[]>([])
 const segmentStats = ref<TaskDataStatSegmentRow[]>([])
 const errorSamples = ref<TaskDataErrorSampleRow[]>([])
 const qualityLinks = ref<(QualityRuleResultLink | LineageWritebackEntry)[]>([])
+const loading = ref<'' | 'workflow' | 'instance' | 'segment' | 'error' | 'quality' | 'lineage'>('')
+const errorText = ref('')
+const busy = computed(() => loading.value !== '')
+const projectId = computed(() => {
+  const raw = route.query.projectId
+  const parsed = Number(Array.isArray(raw) ? raw[0] : raw)
+  return Number.isInteger(parsed) && parsed > 0 ? parsed : 1
+})
+const loading = ref<'' | 'workflow' | 'instance' | 'segment' | 'error' | 'quality' | 'lineage'>('')
+const errorText = ref('')
+const busy = computed(() => loading.value !== '')
+/** projectId is supplied by the route for direct validation links; keep legacy default for old bookmarks. */
+const projectId = computed(() => {
+  const raw = route.query.projectId
+  const parsed = Number(Array.isArray(raw) ? raw[0] : raw)
+  return Number.isInteger(parsed) && parsed > 0 ? parsed : 1
+})
 
 /** MetricValue 渲染：known=false 标 unknown、estimated=true 标估算（A7 Step 1 口径透传） */
 function metricFormatter(_row: Record<string, unknown>, _column: unknown, cellValue: unknown): string {
@@ -203,42 +224,46 @@ function goInstance(instanceId: number) {
 }
 
 /** NOT_WIRED 统一落状态栏语义：提示 + 不中断交互 */
-function guard<T>(fn: () => Promise<T>, label: string): Promise<void> {
+function guard<T>(fn: () => Promise<T>, label: string, slot: Exclude<typeof loading.value, ''>): Promise<void> {
+  if (busy.value) return Promise.resolve()
+  loading.value = slot
+  errorText.value = ''
   statusText.value = `${label}…`
   return fn()
     .then(() => {
       statusText.value = `${label} 完成`
     })
     .catch((err: unknown) => {
+      errorText.value = err instanceof Error ? err.message : String(err)
       statusText.value =
         err instanceof Error && err.message.startsWith(R7_METRICS_NOT_WIRED)
           ? `${label}：后端未接线（${R7_METRICS_NOT_WIRED.split(':')[0]}）`
           : `${label} 失败：${err instanceof Error ? err.message : String(err)}`
     })
+    .finally(() => { loading.value = '' })
 }
 
 const statusText = ref('待操作')
 
 function onQueryStats(which: 'workflow' | 'instance' | 'segment' | 'error') {
   return guard(async () => {
-    const projectId = 1
-    if (which === 'workflow') workflowStats.value = await contract.queryWorkflowResultStats(projectId, queryWindow)
-    else if (which === 'instance') instanceStats.value = await contract.queryTaskInstanceDataStats(projectId, queryWindow)
-    else if (which === 'segment') segmentStats.value = await contract.queryTaskDataStatSegments(projectId, queryWindow)
-    else errorSamples.value = await contract.queryTaskDataErrorSamples(projectId, queryWindow)
-  }, '加载统计')
+    if (which === 'workflow') workflowStats.value = await contract.queryWorkflowResultStats(projectId.value, queryWindow)
+    else if (which === 'instance') instanceStats.value = await contract.queryTaskInstanceDataStats(projectId.value, queryWindow)
+    else if (which === 'segment') segmentStats.value = await contract.queryTaskDataStatSegments(projectId.value, queryWindow)
+    else errorSamples.value = await contract.queryTaskDataErrorSamples(projectId.value, queryWindow)
+  }, '加载统计', which)
 }
 
 function onQueryQuality() {
   return guard(async () => {
-    qualityLinks.value = await contract.listQualityRuleLinks(1, queryWindow)
-  }, '加载质量规则结果链')
+    qualityLinks.value = await contract.listQualityRuleLinks(projectId.value, queryWindow)
+  }, '加载质量规则结果链', 'quality')
 }
 
 function onQueryLineage() {
   return guard(async () => {
-    qualityLinks.value = await contract.listLineageWritebacks(1, queryWindow, 'all')
-  }, '加载血缘回写')
+    qualityLinks.value = await contract.listLineageWritebacks(projectId.value, queryWindow, 'all')
+  }, '加载血缘回写', 'lineage')
 }
 </script>
 
