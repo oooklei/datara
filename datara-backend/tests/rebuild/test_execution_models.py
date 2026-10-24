@@ -13,16 +13,17 @@ from rebuild.execution.models import (
     WorkflowInstanceRecord,
 )
 
+ORIGINAL_EXECUTION_TABLES = {
+    "workflow_instance", "task_instance", "task_instance_attempt",
+    "task_instance_log", "task_instance_output", "execution_event",
+}
+STATISTICS_TABLES = {"workflow_run_stat", "workflow_run_reconcile_detail"}
+
 
 def test_execution_models_cover_the_six_run_tables_and_db_timestamps():
-    assert {table.name for table in EXECUTION_TABLES} == {
-        "workflow_instance",
-        "task_instance",
-        "task_instance_attempt",
-        "task_instance_log",
-        "task_instance_output",
-        "execution_event",
-    }
+    names = {table.name for table in EXECUTION_TABLES}
+    assert ORIGINAL_EXECUTION_TABLES <= names
+    assert names - ORIGINAL_EXECUTION_TABLES == STATISTICS_TABLES
     models = (
         WorkflowInstanceRecord,
         TaskInstanceRecord,
