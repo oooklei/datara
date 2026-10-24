@@ -49,6 +49,7 @@ import { useWorkflowGraphStore } from '../stores/workflowGraph'
 import WorkflowVariablePanel from './WorkflowVariablePanel.vue'
 import VariableReferenceInput from './VariableReferenceInput.vue'
 import StreamObservationPanel from './StreamObservationPanel.vue'
+import SyncMappingEditor from './SyncMappingEditor.vue'
 
 import '@vue-flow/core/dist/style.css'
 import '@vue-flow/core/dist/theme-default.css'
@@ -133,6 +134,11 @@ function updateNodeParameter(value: string) {
   const key = nodeParameterKey.value
   if (!node || !key) return
   graphStore.updateNode(node.nodeCode, { params: { ...(node.params ?? {}), [key]: value } })
+}
+const isSyncMappingNode = computed(() => workflowType.value === 'SYNC' && Boolean(selectedNodeRecord.value?.nodeType && ['endpoint_select', 'field_map', 'field_map_union', 'src_base_orch', 'tgt_base_orch', 'file_sync_orch'].includes(String(selectedNodeRecord.value?.nodeType).toLowerCase())))
+function updateSyncParams(value: Record<string, unknown>) {
+  const node = selectedNodeRecord.value
+  if (node) graphStore.updateNode(node.nodeCode, { params: { ...(node.params ?? {}), ...value } })
 }
 
 function onNodeClick({ node }: NodeMouseEvent) {
@@ -366,6 +372,15 @@ async function onShowVersions() {
       />
     </section>
     <StreamObservationPanel v-if="workflowType === 'STREAM' && loaded" />
+    <SyncMappingEditor
+      v-if="isSyncMappingNode && projectId !== undefined && selectedNodeRecord"
+      :project-id="projectId"
+      :workflow-id="numDocId"
+      :workflow-version="1"
+      :task-id="selectedNodeRecord.nodeCode"
+      :model-value="selectedNodeRecord.params ?? {}"
+      @update:model-value="updateSyncParams"
+    />
 
     <el-dialog v-model="versionsVisible" title="版本历史" width="640px" append-to-body>
       <el-table :data="versions" size="small">
