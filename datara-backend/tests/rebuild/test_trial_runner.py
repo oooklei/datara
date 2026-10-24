@@ -14,6 +14,7 @@ from rebuild.trial.models import WorkflowDraftSnapshotRecord
 from rebuild.trial.repository import TrialSnapshotRepository
 from rebuild.trial.runner import TrialRunner, TrialRunnerError, TrialRunOptions
 from rebuild.project.models import ProjectRecord  # noqa: F401 - register FK target table
+from rebuild.identity.models import UserRecord  # noqa: F401 - register FK target table
 from rebuild.workflow.models import (
     WorkflowDefinitionRecord,
     WorkflowEdgeRecord,
