@@ -421,6 +421,36 @@ def create_app(
         history = SqlIdeHistoryStore(session_factory=session_factory)
         if operation == "lintSql":
             return lint_sql(str(payload.get("sql", "")), dialect=str(payload.get("dialect", "mysql")))
+        if operation == "executeSql":
+            datasource_id = int(payload.get("datasource_id", payload.get("datasourceId", 0)))
+            sql = str(payload.get("sql", ""))
+            if datasource_id < 1 or not sql.strip():
+                raise SqlIdeRouteError("INVALID_REQUEST", message="datasource_id and sql are required")
+            try:
+                result = build_execution_port(
+                    session_factory=session_factory,
+                    engine_registry=datasource_engines,
+                ).execute(
+                    project_id=project_id,
+                    datasource_id=datasource_id,
+                    sql=sql,
+                    row_limit=int(payload.get("row_limit", payload.get("rowLimit", 1000))),
+                    timeout_ms=int(payload.get("timeout_ms", payload.get("timeoutMs", 30000))),
+                    dialect=payload.get("dialect"),
+                )
+            except Exception as exc:
+                raise SqlIdeRouteError("DATASOURCE_UNAVAILABLE", message=str(exc)) from exc
+            history_id = history.create_history(
+                project_id=project_id,
+                user_id=user_id,
+                datasource_id=datasource_id,
+                db=payload.get("db"),
+                sql_text=sql,
+                status="succeeded",
+                stmt_count=1,
+                elapsed_ms=0,
+            )
+            return {**dict(result), "history_id": history_id, "accepted": True}
         if operation == "listHistory":
             return history.list_history(
                 project_id=project_id,
