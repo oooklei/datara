@@ -365,7 +365,7 @@ onMounted(async () => {
           </div>
         </div>
       </template>
-      <!-- 运行监控 = 页签占位：内容归增量 8（§5A.10），本版不实现 -->
+      <!-- 运行监控：读取 execution/run-stats 并展示成功/失败计数。 -->
       <template v-else-if="tab === 'runs'">
         <WorkflowRunMonitor v-if="projectId !== undefined" :project-id="projectId" />
         <div v-else class="tc-slot" data-tc-runs-slot><p class="tc-slot-sub">请先选择项目以查看运行记录</p></div>
@@ -415,7 +415,7 @@ onMounted(async () => {
 .tc-canvas-slot-sub{margin:0;font-size:13px;color:var(--text-secondary, #64748b)}
 .tc-empty{flex:1;display:flex;align-items:center;justify-content:center;padding:24px}
 .tc-empty-hint{display:flex;flex-direction:column;align-items:center;gap:6px;font-size:13px;color:var(--text-secondary, #64748b);text-align:center}
-/* 占位槽（runs 增量 8 注记保留） */
+/* 运行监控无项目上下文时的空状态 */
 .tc-slot{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;padding:24px}
 .tc-slot-sub{margin:0;font-size:13px;color:var(--text-secondary, #64748b)}
 </style>
