@@ -49,3 +49,38 @@ def test_metrics_and_variables_runtime_migrations_are_versioned_and_idempotent()
 def connection_has_rows_without_null(engine, table: str) -> bool:
     with engine.connect() as connection:
         return connection.scalar(text(f"SELECT COUNT(*) FROM {table} WHERE generated_at IS NULL")) == 0
+
+
+def test_variable_migration_adds_environment_group_scope_without_losing_definitions():
+    engine = create_engine("sqlite+pysqlite:///:memory:")
+    with engine.begin() as connection:
+        connection.execute(text(
+            "CREATE TABLE rebuild_variable_definition ("
+            "id INTEGER PRIMARY KEY AUTOINCREMENT, scope VARCHAR(16) NOT NULL, project_id INTEGER, "
+            "owner_key VARCHAR(64) NOT NULL, name VARCHAR(128) NOT NULL, value_type VARCHAR(16) NOT NULL, "
+            "value_json TEXT NOT NULL, sensitive BOOLEAN NOT NULL DEFAULT 0, description TEXT NOT NULL DEFAULT '', "
+            "default_value TEXT, nullable BOOLEAN NOT NULL DEFAULT 1, format VARCHAR(64), timezone VARCHAR(64), "
+            "business_calendar VARCHAR(64), created_at DATETIME DEFAULT CURRENT_TIMESTAMP, "
+            "updated_at DATETIME DEFAULT CURRENT_TIMESTAMP, "
+            "CONSTRAINT uq_variable_owner_name UNIQUE(owner_key,name), "
+            "CONSTRAINT ck_variable_scope CHECK(scope IN ('global','project','tmp','workflow','task')), "
+            "CONSTRAINT ck_variable_owner_scope CHECK((scope='global' AND project_id IS NULL) OR "
+            "(scope!='global' AND project_id IS NOT NULL)))"
+        ))
+        connection.execute(text(
+            "INSERT INTO rebuild_variable_definition "
+            "(scope,project_id,owner_key,name,value_type,value_json,sensitive,description,nullable) "
+            "VALUES ('project',7,'project:7','retained','string','yes',0,'',1)"
+        ))
+
+    result = apply_variable_migrations(engine)
+    assert len(result.applied) == 2
+    with engine.begin() as connection:
+        assert connection.scalar(text(
+            "SELECT value_json FROM rebuild_variable_definition WHERE name='retained'"
+        )) == "yes"
+        connection.execute(text(
+            "INSERT INTO rebuild_variable_definition "
+            "(scope,project_id,owner_key,name,value_type,value_json,sensitive,description,nullable) "
+            "VALUES ('env',7,'env:7:3','region','string','cn',0,'',1)"
+        ))
