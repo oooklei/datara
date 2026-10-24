@@ -25,6 +25,17 @@ from __future__ import annotations
 from unittest.mock import MagicMock
 
 import pytest
+
+
+# These scenarios target the retired legacy graph contract which created
+# START/END nodes through the design API.  The current component-ref contract
+# explicitly forbids creating legacy node types; coverage for that guard lives
+# in the component/workflow contract suites and the isolated 1.9 E2E smoke.
+pytestmark = pytest.mark.skip(
+    reason="retired legacy START/END creation contract; use component-ref DAG E2E"
+)
+
+import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import select
 from sqlalchemy.orm import Session
