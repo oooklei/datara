@@ -41,6 +41,7 @@ import { MAX_DAG_TABS, useDagTabsStore, type DagPickItem, type DagTab, type DagP
 import Palette from '../components/Palette.vue'
 import WorkflowGraphWorkbench from '../components/WorkflowGraphWorkbench.vue'
 import VariableManagerDrawer from './variables/VariableManagerDrawer.vue'
+import WorkflowRunMonitor from '../components/WorkflowRunMonitor.vue'
 import {
   createWorkflowDefinition,
   listWorkflowDefinitions,
@@ -366,9 +367,8 @@ onMounted(async () => {
       </template>
       <!-- 运行监控 = 页签占位：内容归增量 8（§5A.10），本版不实现 -->
       <template v-else-if="tab === 'runs'">
-        <div class="tc-slot" data-tc-runs-slot>
-          <p class="tc-slot-sub">运行实例与日志随后续批次（增量 8）交付</p>
-        </div>
+        <WorkflowRunMonitor v-if="projectId !== undefined" :project-id="projectId" />
+        <div v-else class="tc-slot" data-tc-runs-slot><p class="tc-slot-sub">请先选择项目以查看运行记录</p></div>
       </template>
       <!-- 模板中心 / 告警与SLA：框架保留，本版不渲染占位内容（§5A.1） -->
     </div>
