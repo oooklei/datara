@@ -10,7 +10,7 @@ from sqlalchemy import create_engine, select
 from sqlalchemy.orm import Session
 
 from rebuild.common.db import Base
-from rebuild.execution.models import TaskInstanceRecord, WorkflowInstanceRecord
+from rebuild.execution.models import RunOutputRecord, TaskAttemptRecord, TaskInstanceRecord, WorkflowInstanceRecord
 from rebuild.trial.repository import TrialSnapshotRepository
 from rebuild.trial.runner import TrialRunner, TrialRunnerError, TrialRunOptions
 from rebuild.variables.models import TaskInstanceVariableRuntimeRecord
@@ -259,3 +259,22 @@ def test_wf20_sql_precheck_passes():
     session.commit()
 
     assert result.status == "SUCCEEDED"
+
+
+def test_wf20_sql_execute_returns_real_result_set():
+    session = _session()
+    definition_id, snapshot_id = _setup_chain(session)
+
+    result = TrialRunner(session).run(
+        definition_id=definition_id,
+        snapshot_id=snapshot_id,
+        project_id=1,
+        options=TrialRunOptions(sql_execute=True),
+    )
+    session.commit()
+
+    assert result.status == "SUCCEEDED"
+    outputs = [json.loads(row.output_json) for row in session.scalars(select(RunOutputRecord)).all()]
+    sql_outputs = [row for row in outputs if row.get("sql")]
+    assert {row["row_count"] for row in sql_outputs} == {1}
+    assert all(row["rows"] in [[[1]], [[2]]] for row in sql_outputs)

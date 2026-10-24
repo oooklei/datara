@@ -19,12 +19,14 @@ The runner supports extension dimensions (WF-15~WF-20) via TrialRunOptions:
   - dependency_mock: mock results for DEPENDENCY nodes (WF-18).
   - dry_run: validate + plan only, no side effects (WF-19).
   - sql_precheck: validate SQL before execution (WF-20).
+  - sql_execute: execute explicitly opted-in SQL in an isolated SQLite runtime.
 """
 
 from __future__ import annotations
 
 import json
 import os
+import sqlite3
 import subprocess
 import sys
 from dataclasses import dataclass, field
@@ -50,6 +52,7 @@ class TrialRunOptions:
     dependency_mock: dict[str, str] | None = None  # WF-18: dep_id -> status.
     dry_run: bool = False  # WF-19: plan only.
     sql_precheck: bool = False  # WF-20: validate SQL before execution.
+    sql_execute: bool = False  # Execute SQL in an isolated SQLite runtime.
 
 
 @dataclass
@@ -393,6 +396,22 @@ class TrialRunner:
         # execute it through a bounded subprocess and persist its output.  Nodes
         # without executable content retain the deterministic trial behaviour.
         execution_output: dict[str, Any] = {"node_code": node["node_code"], "status": "ok"}
+        # Explicit SQL execution is opt-in.  The isolated SQLite runtime
+        # provides a real result set without granting trial code host or
+        # datasource access; datasource-backed execution remains in SQL IDE.
+        if str(node_type).upper() == "SQL" and (options.sql_execute or params.get("execute") is True):
+            sql = params.get("sql") or params.get("query")
+            if not sql:
+                raise TrialRunnerError("WF_TRIAL_SQL_EMPTY", "SQL node requires sql/query when execution is enabled")
+            try:
+                with sqlite3.connect(":memory:") as conn:
+                    cursor = conn.execute(str(sql))
+                    rows = cursor.fetchall() if cursor.description else []
+                    columns = [column[0] for column in (cursor.description or ())]
+                execution_output.update({"sql": str(sql), "columns": columns, "rows": rows, "row_count": len(rows)})
+            except sqlite3.Error as exc:
+                raise TrialRunnerError("WF_TRIAL_SQL_FAILED", f"SQL execution failed: {exc}") from exc
+
         if node_type in {"PYTHON", "python", "SHELL", "shell"}:
             source = params.get("script") or params.get("code") or params.get("command")
             if source:

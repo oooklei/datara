@@ -163,6 +163,7 @@ def build_trial_router(
             dependency_mock=options_raw.get("dependency_mock") if options_raw else None,
             dry_run=bool(options_raw.get("dry_run", False)) if options_raw else False,
             sql_precheck=bool(options_raw.get("sql_precheck", False)) if options_raw else False,
+            sql_execute=bool(options_raw.get("sql_execute", False)) if options_raw else False,
         )
 
         with authorized_session(project_id, Permission.EDIT_DEFINITION, token, authorization) as outcome:
@@ -267,6 +268,7 @@ def build_trial_router(
             dependency_mock=options_raw.get("dependency_mock") if options_raw else None,
             dry_run=bool(options_raw.get("dry_run", False)) if options_raw else False,
             sql_precheck=bool(options_raw.get("sql_precheck", False)) if options_raw else False,
+            sql_execute=bool(options_raw.get("sql_execute", False)) if options_raw else False,
         )
 
         with authorized_session(project_id, Permission.EDIT_DEFINITION, token, authorization) as outcome:
