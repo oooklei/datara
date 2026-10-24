@@ -162,6 +162,17 @@ def test_materializer_injects_ref_from_supply():
     assert node2["data"]["componentRef"]["version"] == 1
 
 
+def test_materializer_carries_endpoint_form_into_runtime_node():
+    doc = _ep_doc()
+    doc["nodes"][0]["data"].update(
+        {"fileType": "csv", "fieldMap": [{"from": "id", "to": "user_id"}]}
+    )
+    node = next(n for n in materialize_sync_exec(doc)["nodes"] if str(n["id"]).startswith("sys_exec_"))
+    assert node["data"]["baseMode"] == "src_base"
+    assert node["data"]["fileType"] == "csv"
+    assert node["data"]["fieldMap"] == [{"from": "id", "to": "user_id"}]
+
+
 def test_parse_graph_passes_supply_to_materializer():
     """parse_graph 透传 comp_versions（scheduler/failover 接线路径全链生效）。"""
     from master.dag import parse_graph

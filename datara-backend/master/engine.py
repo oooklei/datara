@@ -125,19 +125,24 @@ def materialize_sync_exec(graph_json: dict, comp_versions: Optional[dict] = None
     doc = dict(graph_json)
     doc["nodes"] = [dict(n) if isinstance(n, dict) else n for n in raw_nodes]
     doc["edges"] = [dict(e) for e in raw_edges if isinstance(e, dict)]
+    # Preserve endpoint form values on the runtime node.  This is required
+    # for direct endpoint->assert graphs where no passthrough output exists.
+    runtime_data = dict(endpoint_data) if isinstance(endpoint_data, dict) else {}
+    runtime_data.update(
+        {
+            "name": "文件入仓" if exec_type == "file_sync" else "同步执行",
+            "type": exec_type,
+            "componentRef": {
+                "type": "endpoint_select",
+                "version": (comp_versions or {}).get("endpoint_select") or 1,
+            },
+        }
+    )
     doc["nodes"].append(
         {
             "id": nid,
             "type": exec_type,
-            "data": {
-                "name": "文件入仓" if exec_type == "file_sync" else "同步执行",
-                "type": exec_type,
-                # §9.6：按源组件（endpoint_select）published 版本注入，缺省兜底 v1
-                "componentRef": {
-                    "type": "endpoint_select",
-                    "version": (comp_versions or {}).get("endpoint_select") or 1,
-                },
-            },
+            "data": runtime_data,
         }
     )
     edges = doc["edges"]
