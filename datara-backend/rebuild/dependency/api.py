@@ -11,10 +11,8 @@ Contract source (frozen, double-line signoff): datara-web/src/services/rebuild/d
   echoes the normalized as_of so evaluations stay deterministic.
 - ``timeout_seconds`` on preview/evaluate is the §7.3 config-policy extension;
   absent → timeout never fires (pending/terminal only from history).
-- Narrow scope (disclosed in repository.py, mirrored in handoff): no workflow
-  registry on main yet → candidate/task listing returns an honest empty list and
-  published-version immutability is not enforceable; both land with the registry
-  domain.
+- Candidate/task listing reads the workflow registry and remains project-scoped.
+  Published-version immutability is enforced at the workflow publish boundary.
 """
 
 from __future__ import annotations
@@ -136,7 +134,6 @@ def build_dependency_router(
         with authorized_session(project_id, Permission.VIEW_ALL, token, authorization) as outcome:
             if isinstance(outcome, JSONResponse):
                 return outcome
-            # Narrow scope: no workflow registry on main — honest empty list.
             definitions = outcome.scalars(
                 select(WorkflowDefinitionRecord)
                 .where(WorkflowDefinitionRecord.project_id == project_id)
@@ -164,8 +161,6 @@ def build_dependency_router(
         with authorized_session(project_id, Permission.VIEW_ALL, token, authorization) as outcome:
             if isinstance(outcome, JSONResponse):
                 return outcome
-            # Narrow scope: task registry lands with the workflow domain; the
-            # workflow_version default (latest published) is unenforceable yet.
             definition = outcome.scalar(select(WorkflowDefinitionRecord).where(
                 WorkflowDefinitionRecord.id == workflow_id,
                 WorkflowDefinitionRecord.project_id == project_id,
@@ -240,8 +235,6 @@ def build_dependency_router(
         with authorized_session(project_id, Permission.EDIT_DEFINITION, token, authorization) as outcome:
             if isinstance(outcome, JSONResponse):
                 return outcome
-            # Narrow scope: §2 "already-published version rejects rewrite" is
-            # unenforceable until the registry domain lands (disclosed).
             DependencyRepository(outcome).save_config(
                 project_id, workflow_id, workflow_version, task_id, conditions, group_relation, policy
             )
