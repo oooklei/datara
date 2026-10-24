@@ -1,5 +1,7 @@
 const { chromium } = require('playwright')
 
+(async () => {
+
 const base = process.env.BASE_URL || 'http://192.168.1.9:18091'
 const token = process.env.DATARA_TEST_TOKEN || ''
 const failedRequests = []
@@ -15,3 +17,4 @@ try {
 } finally {
   await browser.close()
 }
+})()
