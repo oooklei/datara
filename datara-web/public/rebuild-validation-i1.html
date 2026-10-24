@@ -1,0 +1,16 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Datara I1 验证</title>
+<main><h1>Datara I1 验证</h1><p data-status>等待验证</p><pre data-output></pre></main>
+<script>
+  (() => {
+    const token = window.__DATARA_TEST_TOKEN__ || ''
+    const status = document.querySelector('[data-status]')
+    const output = document.querySelector('[data-output]')
+    if (!token) { status.textContent = '未注入验证 Token'; return }
+    fetch('/api/v1/rebuild/health', { headers: { Authorization: `Bearer ${token}` } })
+      .then((r) => r.json().then((body) => ({ status: r.status, body })))
+      .then((result) => { status.textContent = `HTTP ${result.status}`; output.textContent = JSON.stringify(result.body, null, 2) })
+      .catch((error) => { status.textContent = '验证失败'; output.textContent = String(error) })
+  })()
+</script>
