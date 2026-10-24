@@ -63,7 +63,7 @@ def _copy_row(target, source) -> None:
         setattr(target, key, value)
 
 
-def _normalize_spec_json(value: str | None) -> str | None:
+def _normalize_spec_json(value: str | None, type_name: str | None = None) -> str | None:
     """Upgrade legacy catalog documents to the rebuilt eight-section form DSL.
 
     The legacy metadata catalog predates the rebuilt component contract and
@@ -102,6 +102,30 @@ def _normalize_spec_json(value: str | None) -> str | None:
         spec["form"] = {section: form.get(section, []) if isinstance(form.get(section, []), list) else [] for section in sections}
     else:
         spec["form"] = {section: [] for section in sections}
+    # Increment 7: expose immutable resource-version references for the three
+    # executable data components.  This is declarative only; the resource
+    # service validates project ownership and concrete versions at save/run.
+    resource_kind = {"sql": "sql", "python": "python", "shell": "shell"}.get((type_name or "").lower())
+    if resource_kind:
+        params = spec["form"]["params"]
+        keys = {item.get("key") for item in params if isinstance(item, dict)}
+        if "sourceMode" not in keys:
+            params.append({"key": "sourceMode", "label": "内容来源", "uiType": "select",
+                           "required": True, "visible": True, "default": "inline",
+                           "options": [{"label": "内联内容", "value": "inline"},
+                                       {"label": "资源版本", "value": "resource"}]})
+        if "resourceRef" not in keys:
+            extensions = {"sql": [".sql"], "python": [".py", ".zip"], "shell": [".sh", ".bash"]}[resource_kind]
+            params.append({"key": "resourceRef", "label": "资源版本", "uiType": "resource",
+                           "required": False, "visible": True,
+                           "cap": {"mode": "resource", "kind": resource_kind,
+                                   "extensions": extensions, "versioned": True,
+                                   "allowLatest": False}})
+        if not any(isinstance(item, dict) and item.get("id") == "c-resource-mode"
+                   for item in spec["form"]["conditions"]):
+            spec["form"]["conditions"].append({"id": "c-resource-mode",
+                "when": {"field": "sourceMode", "op": "eq", "value": "resource"},
+                "show": ["resourceRef"]})
     return json.dumps(spec, ensure_ascii=False, separators=(",", ":"))
 
 
@@ -195,7 +219,7 @@ def main() -> int:
             else:
                 updated["version"] += 1
             _copy_row(dst, src)
-            dst.spec_json = _normalize_spec_json(dst.spec_json)
+            dst.spec_json = _normalize_spec_json(dst.spec_json, src.type)
 
         # The legacy metadata catalogue predates the rebuilt dependency node.
         # Materialize the governed builtin from the shell declaration when it
