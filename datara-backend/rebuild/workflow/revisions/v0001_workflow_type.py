@@ -33,18 +33,26 @@ def upgrade(engine: Engine) -> None:
             text("UPDATE workflow_definition SET workflow_type='NORMAL' WHERE UPPER(TRIM(workflow_type))='ETL'")
         )
         if "workflow_node" in tables:
+            sync_evidence = (
+                "'SYNC','src_base_orch','tgt_base_orch','file_sync_orch','endpoint_select',"
+                "'field_map','field_map_union','condition_set'"
+            )
+            stream_evidence = "'stream_input','stream_fuse','stream_output','page_board'"
+            normal_evidence = "'SQL','PYTHON','SHELL','DEPENDENCY','sql','python','shell','dependent'"
+            evidence_sql = (
+                "EXISTS (SELECT 1 FROM workflow_node n "
+                "WHERE n.definition_id=d.id AND n.node_type IN ({values}))"
+            )
             mixed = connection.scalar(
                 text(
-                    "SELECT COUNT(*) FROM workflow_definition d WHERE EXISTS ("
-                    "SELECT 1 FROM workflow_node n WHERE n.definition_id=d.id AND n.node_type IN ("
-                    "'SYNC','src_base_orch','tgt_base_orch','file_sync_orch','endpoint_select',"
-                    "'field_map','field_map_union','condition_set')) AND EXISTS ("
-                    "SELECT 1 FROM workflow_node n WHERE n.definition_id=d.id AND n.node_type IN ("
-                    "'stream_input','stream_fuse','stream_output','page_board'))"
+                    "SELECT COUNT(*) FROM workflow_definition d WHERE "
+                    f"(({evidence_sql.format(values=sync_evidence)}) + "
+                    f" ({evidence_sql.format(values=stream_evidence)}) + "
+                    f" ({evidence_sql.format(values=normal_evidence)})) > 1"
                 )
             )
             if int(mixed or 0):
-                raise RuntimeError("workflow definitions contain mixed SYNC and STREAM component evidence")
+                raise RuntimeError("workflow definitions contain mixed NORMAL, SYNC, or STREAM component evidence")
             connection.execute(
                 text(
                     "UPDATE workflow_definition SET workflow_type='SYNC' WHERE id IN ("

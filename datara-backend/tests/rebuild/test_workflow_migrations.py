@@ -88,20 +88,23 @@ def test_workflow_type_migration_classifies_legacy_sync_and_rejects_wrong_defaul
 
 
 def test_workflow_type_migration_rejects_mixed_sync_and_stream_evidence():
-    engine = create_engine("sqlite+pysqlite:///:memory:")
-    with engine.begin() as connection:
-        connection.execute(text("CREATE TABLE workflow_definition (id INTEGER PRIMARY KEY)"))
-        connection.execute(
-            text(
-                "CREATE TABLE workflow_node (id INTEGER PRIMARY KEY, definition_id INTEGER NOT NULL, "
-                "node_type VARCHAR(64) NOT NULL)"
+    for other_type in ("stream_input", "SQL"):
+        engine = create_engine("sqlite+pysqlite:///:memory:")
+        with engine.begin() as connection:
+            connection.execute(text("CREATE TABLE workflow_definition (id INTEGER PRIMARY KEY)"))
+            connection.execute(
+                text(
+                    "CREATE TABLE workflow_node (id INTEGER PRIMARY KEY, definition_id INTEGER NOT NULL, "
+                    "node_type VARCHAR(64) NOT NULL)"
+                )
             )
-        )
-        connection.execute(text("INSERT INTO workflow_definition VALUES (1)"))
-        connection.execute(text("INSERT INTO workflow_node VALUES (1,1,'SYNC'),(2,1,'stream_input')"))
-    try:
-        apply_workflow_migrations(engine)
-    except Exception as error:
-        assert "failed" in str(error)
-    else:
-        raise AssertionError("mixed workflow kind evidence must fail closed")
+            connection.execute(text("INSERT INTO workflow_definition VALUES (1)"))
+            connection.execute(
+                text("INSERT INTO workflow_node VALUES (1,1,'SYNC'),(2,1,:other)"), {"other": other_type}
+            )
+        try:
+            apply_workflow_migrations(engine)
+        except Exception as error:
+            assert "failed" in str(error)
+        else:
+            raise AssertionError("mixed workflow kind evidence must fail closed")
