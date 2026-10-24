@@ -94,6 +94,27 @@ class MySQLMetadataCatalog:
             for name, data_type, database_type, is_nullable, column_key, comment in rows
         ]
 
+    def indexes(self, schema: str, object_name: str, *, limit: int = 200) -> list[dict[str, Any]]:
+        self._ensure_mysql()
+        rows = self._query(
+            "SELECT index_name, column_name, non_unique, seq_in_index "
+            "FROM information_schema.statistics WHERE table_schema=%s AND table_name=%s "
+            "ORDER BY index_name, seq_in_index LIMIT %s",
+            (schema, object_name, _page_size(limit)),
+        )
+        return [{"schema": schema, "object": object_name, "name": str(name), "column": str(column),
+                 "unique": not bool(non_unique), "position": int(position)}
+                for name, column, non_unique, position in rows]
+
+    def routines(self, schema: str, *, limit: int = 200) -> list[dict[str, Any]]:
+        self._ensure_mysql()
+        rows = self._query(
+            "SELECT routine_name, routine_type, data_type FROM information_schema.routines "
+            "WHERE routine_schema=%s ORDER BY routine_name LIMIT %s", (schema, _page_size(limit))
+        )
+        return [{"schema": schema, "name": str(name), "type": str(kind).lower(), "returnType": str(data_type or "")}
+                for name, kind, data_type in rows]
+
     def _ensure_mysql(self) -> None:
         validate_datasource(self._draft)
         if self._draft.kind.lower() != "mysql":

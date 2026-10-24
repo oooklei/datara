@@ -446,7 +446,7 @@ def create_app(
                 draft,
                 connector=lambda current: datasource_engines.connect(project_id, datasource_id, current),
             )
-        if operation in {"listDatabases", "listSchemas", "listRelations", "listColumns"}:
+        if operation in {"listDatabases", "listSchemas", "listRelations", "listColumns", "listIndexes", "listRoutines", "searchObjects"}:
             catalog = metadata_catalog(payload)
             if operation == "listDatabases":
                 return {"items": catalog.schemas(after=payload.get("after"), limit=int(payload.get("limit", 100)))}
@@ -457,6 +457,26 @@ def create_app(
                 if not schema:
                     raise SqlIdeRouteError("INVALID_REQUEST", message="schema is required")
                 return {"items": catalog.objects(schema, after=payload.get("after"), limit=int(payload.get("limit", 100)))}
+            if operation == "listIndexes":
+                schema = str(payload.get("schema", "")); object_name = str(payload.get("object", payload.get("table", "")))
+                if not schema or not object_name or not hasattr(catalog, "indexes"):
+                    raise SqlIdeRouteError("INVALID_REQUEST", message="schema and object are required")
+                return {"items": catalog.indexes(schema, object_name, limit=int(payload.get("limit", 200)))}
+            if operation == "listRoutines":
+                schema = str(payload.get("schema", payload.get("database", "")))
+                if not schema or not hasattr(catalog, "routines"):
+                    raise SqlIdeRouteError("INVALID_REQUEST", message="schema is required")
+                return {"items": catalog.routines(schema, limit=int(payload.get("limit", 200)))}
+            if operation == "searchObjects":
+                query = str(payload.get("q", payload.get("query", ""))).strip().lower()
+                if not query:
+                    return {"items": []}
+                items = []
+                for schema in catalog.schemas(limit=50):
+                    for item in catalog.objects(schema, limit=200):
+                        if query in str(item.get("name", "")).lower():
+                            items.append(item)
+                return {"items": items[:200]}
             schema = str(payload.get("schema", "")); object_name = str(payload.get("object", payload.get("table", "")))
             if not schema or not object_name:
                 raise SqlIdeRouteError("INVALID_REQUEST", message="schema and object are required")
