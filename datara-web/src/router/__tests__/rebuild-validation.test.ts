@@ -12,7 +12,9 @@ describe('isolated rebuild validation pages', () => {
 
     expect(runner).toContain("'/rebuild-validation-i1.html'")
     expect(runner).not.toContain('/rebuild-validation-r4.html')
-    expect(runner).toContain('created_project_id: createdProjectId')
+    expect(runner).toContain("'/rebuild-validation-i2.html'")
+    expect(runner).toContain('statuses')
+    expect(runner).toContain("status.includes('HTTP 200')")
     expect(runner).toContain('failed_requests: failedRequests')
     expect(runner).not.toMatch(/REBUILD_VALIDATION_KEY\s*=\s*['"][^'"]+['"]|X-Backend-Validation-Key\s*:\s*['"][0-9a-f]{32,}/i)
   })
