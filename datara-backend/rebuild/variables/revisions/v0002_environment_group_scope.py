@@ -29,7 +29,7 @@ def _supports_env_scope(engine: Engine) -> bool:
             connection.execute(text("SAVEPOINT variable_env_probe"))
             connection.execute(text(
                 "INSERT INTO rebuild_variable_definition "
-                "(scope,project_id,owner_key,name,value_type,value_json,sensitive,description,nullable) "
+                "(scope,project_id,owner_key,name,value_type,value_json,`sensitive`,description,nullable) "
                 "VALUES ('env',2147483000,'env:2147483000:1','__migration_probe__','string','x',0,'',1)"
             ))
             connection.execute(text("ROLLBACK TO SAVEPOINT variable_env_probe"))
