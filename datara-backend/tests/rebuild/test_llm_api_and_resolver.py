@@ -60,6 +60,12 @@ def test_admin_crud_mask_blank_key_unique_default_and_delete_guards():
         with app.state.session_factory() as session:
             row = session.get(LlmModelRecord, item_id)
             assert row.api_key_cipher == old_cipher and cipher.decrypt(row.api_key_cipher) == "provider-secret-1234"
+        # The update contract owns the default switch; explicitly clearing it
+        # must be observable in the persisted row.
+        clear_default = _body(key="", default=False)
+        assert client.put(f"/api/v1/rebuild/llm-models/{item_id}", headers=headers, json=clear_default).status_code == 200
+        with app.state.session_factory() as session:
+            assert session.get(LlmModelRecord, item_id).is_default is False
         second_id = client.post(
             "/api/v1/rebuild/llm-models", headers=headers, json=_body("second", "other-secret-5678", False)
         ).json()["data"]["id"]

@@ -110,6 +110,11 @@ def build_llm_router(
             if row is None:
                 return _error(404, 4041, "LLM model not found")
             try:
+                # Validate the state transition before mutating the row.  A default
+                # model must always remain active; this also prevents a failed
+                # request from transiently clearing the current default.
+                if body.is_default and not body.is_active:
+                    raise ValueError("default model cannot be disabled")
                 for key in ("name", "display_name", "provider", "api_base", "model_id", "max_tokens", "sort_order"):
                     setattr(row, key, getattr(body, key))
                 row.temperature = Decimal(str(body.temperature))
@@ -117,8 +122,11 @@ def build_llm_router(
                     row.api_key_cipher = cipher.encrypt(body.api_key)
                 if body.is_default:
                     repo.set_default(item_id)
-                if row.is_default and not body.is_active:
-                    raise ValueError("default model cannot be disabled")
+                else:
+                    # The form's default switch is authoritative.  Previously an
+                    # update with is_default=false left an existing default set,
+                    # making it impossible to clear the default through the API.
+                    row.is_default = False
                 row.is_active = body.is_active
                 session.commit()
                 return _ok(_payload(row, cipher))
