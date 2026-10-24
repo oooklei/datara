@@ -934,13 +934,14 @@ def test_publish_gate_page_bindings_existing_resources_ok(client, db_session):
 
 
 def test_run_publish_gates_returns_all_items_in_order():
-    """闸门纯函数：六项全评估不短路，按 §13 序返回（2/3/4/5/6/8；1、7 在端点层）。"""
+    """闸门纯函数：七项全评估不短路，按 §13 序返回（2/3/4/5/6/8 + 目录声明；1、7 在端点层）。"""
     from api.component_design import run_publish_gates
 
     comp = SimpleNamespace(type="x_demo", execution_model="demo-only", executor=None, executable=True)
     items = run_publish_gates(comp, {"fields": "bad", "tpl": "${eval(x)}"}, catalog_types=frozenset({"x_demo"}))
     assert [i["gate"] for i in items] == [
         "pure_data",
+        "catalogue_declaration",
         "whitelist",
         "drop_policy",
         "contract",
