@@ -67,6 +67,19 @@ describe('variable management product surfaces', () => {
     expect(saveVariable).toHaveBeenCalledWith(7, expect.objectContaining({ scope: 'workflow', workflowId: 11, name: 'region' }))
   })
 
+  it('allows editing a sensitive variable without re-displaying or re-entering its value', async () => {
+    listVariables.mockResolvedValueOnce([{ scope: 'project', name: 'api_key', valueType: 'string', sensitive: true }])
+    const wrapper = mount(VariableManagerDrawer, { props: { modelValue: true, projectId: 7 } })
+    await flushPromises()
+    await wrapper.find('tbody button').trigger('click')
+    const value = wrapper.find('[data-variable-value]')
+    expect(value.attributes('type')).toBe('password')
+    expect(value.attributes('required')).toBeUndefined()
+    await wrapper.find('form').trigger('submit')
+    await flushPromises()
+    expect(saveVariable).toHaveBeenCalledWith(7, expect.objectContaining({ name: 'api_key', sensitive: true, value: '' }))
+  })
+
   it('autocompletes, checks all diagnostics, and previews the current value without exposing secrets', async () => {
     completeVariables.mockResolvedValueOnce([
       { scope: 'project', name: 'region', valueType: 'string', currentValue: 'cn-east', sensitive: false },

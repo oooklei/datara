@@ -128,7 +128,10 @@ watch(() => [props.modelValue, props.projectId], load, { immediate: true })
       <label v-if="scope === 'env'">环境组 ID<input v-model.number="environmentGroupId" type="number" min="1" required /></label>
       <label>名称<input v-model="form.name" data-variable-name required /></label>
       <label>类型<select v-model="form.valueType"><option v-for="item in ['string','integer','decimal','boolean','date','datetime','json','array']" :key="item">{{ item }}</option></select></label>
-      <label>值<input v-model="form.value" data-variable-value :type="form.sensitive ? 'password' : 'text'" required /></label>
+      <!-- Sensitive values are write-only.  When editing an existing secret the
+           server must receive an empty value to keep the current secret; a
+           blanket `required` here prevented that valid update path. -->
+      <label>值<input v-model="form.value" data-variable-value :type="form.sensitive ? 'password' : 'text'" :required="!form.sensitive || !editing" :placeholder="form.sensitive && editing ? '留空表示保持原值' : ''" /></label>
       <label><input v-model="form.sensitive" type="checkbox" />敏感值</label>
       <label>描述<input v-model="form.description" /></label>
       <div><button data-variable-save type="submit" :disabled="saving">保存</button><button type="button" @click="editing = false">取消</button></div>
