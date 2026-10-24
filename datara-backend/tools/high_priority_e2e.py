@@ -61,13 +61,19 @@ def main() -> int:
             raise RuntimeError(f"trial did not succeed: {trial_data}")
         stats = call(args.base, f"/api/v1/rebuild/execution/run-stats?project_id={args.project_id}&limit=50", token=token)
         metrics = call(args.base, f"/api/v1/rebuild/stream/jobs/{args.stream_job_id}/metrics?from=2026-10-24T00:00:00Z&to=2026-10-26T00:00:00Z", token=token)
+        llm = call(args.base, "/api/v1/rebuild/llm-models?offset=0&limit=50", token=token)
+        api_defs = call(args.base, "/api/v1/open/definitions", token=token)
         if not stats.get("data", {}).get("items"):
             raise RuntimeError("run statistics are empty")
         metric_rows = metrics.get("data", {}).get("metrics") if isinstance(metrics.get("data"), dict) else metrics.get("data")
         if not metric_rows:
             raise RuntimeError("stream metrics are empty")
+        llm_rows = llm.get("data", {}).get("items") if isinstance(llm.get("data"), dict) else llm.get("data")
+        api_rows = api_defs.get("data", {}).get("items") if isinstance(api_defs.get("data"), dict) else api_defs.get("data")
+        if llm_rows is None or api_rows is None:
+            raise RuntimeError("LLM/API management read models are unavailable")
         stat_rows = stats.get("data", {}).get("items") if isinstance(stats.get("data"), dict) else stats.get("data")
-        print(json.dumps({"health": "ok", "component_count": spec_count, "trial": "SUCCEEDED", "task_count": len(trial_data["tasks"]), "run_stats": len(stat_rows or []), "stream_metrics": len(metric_rows)}, ensure_ascii=False))
+        print(json.dumps({"health": "ok", "component_count": spec_count, "trial": "SUCCEEDED", "task_count": len(trial_data["tasks"]), "run_stats": len(stat_rows or []), "stream_metrics": len(metric_rows), "llm_models": len(llm_rows or []), "api_definitions": len(api_rows or [])}, ensure_ascii=False))
         return 0
     except (HTTPError, URLError, KeyError, RuntimeError, ValueError) as exc:
         print(f"high_priority_e2e failed: {exc}")
