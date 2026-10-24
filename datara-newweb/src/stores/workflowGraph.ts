@@ -331,8 +331,28 @@ export const useWorkflowGraphStore = defineStore('workflowGraph', {
 
     /** (from,to) 身份幂等：已存在或自环 → null 不加 */
     addEdge(fromNode: string, toNode: string, name?: string | null): WorkflowDraftEdge | null {
+      // Reject dangling connections locally; Vue Flow may emit a connection
+      // while a node is being removed, and the backend would reject it later.
+      if (!this.nodes.some((n) => n.nodeCode === fromNode) || !this.nodes.some((n) => n.nodeCode === toNode)) return null
       if (fromNode === toNode) return null
       if (this.edges.some((e) => e.fromNode === fromNode && e.toNode === toNode)) return null
+      // A design workflow is a DAG. Adding from->to is cyclic when `to`
+      // already reaches `from` through the current draft.
+      const outgoing = new Map<string, string[]>()
+      for (const edge of this.edges) {
+        const next = outgoing.get(edge.fromNode) ?? []
+        next.push(edge.toNode)
+        outgoing.set(edge.fromNode, next)
+      }
+      const pending = [toNode]
+      const seen = new Set<string>()
+      while (pending.length) {
+        const current = pending.pop()!
+        if (current === fromNode) return null
+        if (seen.has(current)) continue
+        seen.add(current)
+        pending.push(...(outgoing.get(current) ?? []))
+      }
       const edge: WorkflowDraftEdge = { fromNode, toNode, name: name ?? null }
       this.edges.push(edge)
       return edge

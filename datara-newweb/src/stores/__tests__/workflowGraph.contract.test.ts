@@ -315,6 +315,16 @@ describe('INC4-FE-6 workflowGraph：load 与本地编辑', () => {
     expect(store.edges).toEqual([])
     store.removeEdge('n1', 'n2')
   })
+
+  it('addEdge：拒绝不存在端点与会形成环的连线，避免保存无效 DAG', async () => {
+    const server = makeServer([WN('n1', 'SQL'), WN('n2', 'SQL'), WN('n3', 'SQL')], [WE('n1', 'n2'), WE('n2', 'n3')])
+    const store = await loadVia(server)
+    expect(store.addEdge('n3', 'missing')).toBe(null)
+    expect(store.addEdge('missing', 'n1')).toBe(null)
+    expect(store.addEdge('n3', 'n1')).toBe(null)
+    expect(store.edges.map((e) => `${e.fromNode}->${e.toNode}`)).toEqual(['n1->n2', 'n2->n3'])
+    expect(store.isDirty).toBe(false)
+  })
 })
 
 describe('INC4-FE-6 workflowGraph：save diff 派发与 R-25 语义', () => {
