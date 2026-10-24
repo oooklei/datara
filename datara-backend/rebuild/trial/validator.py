@@ -3,7 +3,8 @@
 Design source: docs/increments/2026-10-14-datara-platform-rebuild-design.md §4.1.
 
 Validation checks (each produces a structured error with code WF_TRIAL_INVALID):
-- START/END presence: at least one START and one END node must exist.
+- Legacy graphs require START/END; component-ref graphs use graph roots/leaves
+  and deliberately do not create legacy START/END nodes.
 - Orphan nodes: every non-START node must have at least one incoming edge;
   every non-END node must have at least one outgoing edge.
 - Cycle detection: the graph must be a DAG (TRIAL runs use topological ordering).
@@ -67,13 +68,17 @@ class TrialValidator:
         node_codes = {n.node_code for n in nodes}
         node_map = {n.node_code: n for n in nodes}
 
-        # 1. START/END presence.
+        # 1. START/END presence for legacy graphs.  The component-ref contract
+        # forbids creating these synthetic nodes; such graphs are validated by
+        # their natural roots/leaves and topological ordering instead.
         has_start = any(n.node_type == "START" for n in nodes)
         has_end = any(n.node_type == "END" for n in nodes)
-        if not has_start:
-            errors.append(TrialValidationError("WF_TRIAL_INVALID", "draft must contain at least one START node"))
-        if not has_end:
-            errors.append(TrialValidationError("WF_TRIAL_INVALID", "draft must contain at least one END node"))
+        component_graph = not has_start and not has_end
+        if not component_graph:
+            if not has_start:
+                errors.append(TrialValidationError("WF_TRIAL_INVALID", "draft must contain at least one START node"))
+            if not has_end:
+                errors.append(TrialValidationError("WF_TRIAL_INVALID", "draft must contain at least one END node"))
 
         # 2. Edge endpoint integrity.
         for edge in edges:
@@ -101,7 +106,9 @@ class TrialValidator:
                 incoming[edge.to_node] += 1
 
         for node in nodes:
-            if node.node_type != "START" and incoming[node.node_code] == 0:
+            is_root = incoming[node.node_code] == 0
+            is_leaf = outgoing[node.node_code] == 0
+            if not component_graph and node.node_type != "START" and is_root:
                 errors.append(
                     TrialValidationError(
                         "WF_TRIAL_INVALID",
@@ -109,7 +116,7 @@ class TrialValidator:
                         node.node_code,
                     )
                 )
-            if node.node_type != "END" and outgoing[node.node_code] == 0:
+            if not component_graph and node.node_type != "END" and is_leaf:
                 errors.append(
                     TrialValidationError(
                         "WF_TRIAL_INVALID",
@@ -117,6 +124,23 @@ class TrialValidator:
                         node.node_code,
                     )
                 )
+
+        if component_graph:
+            roots = [code for code, count in incoming.items() if count == 0]
+            reachable = set(roots)
+            frontier = list(roots)
+            adjacency = {code: [] for code in node_codes}
+            for edge in edges:
+                if edge.from_node in adjacency and edge.to_node in adjacency:
+                    adjacency[edge.from_node].append(edge.to_node)
+            while frontier:
+                code = frontier.pop()
+                for target in adjacency[code]:
+                    if target not in reachable:
+                        reachable.add(target)
+                        frontier.append(target)
+            for code in sorted(node_codes - reachable):
+                errors.append(TrialValidationError("WF_TRIAL_INVALID", f"node {code!r} is disconnected", code))
 
         # 4. Cycle detection (DFS).
         cycle = self._detect_cycle(nodes, edges)
