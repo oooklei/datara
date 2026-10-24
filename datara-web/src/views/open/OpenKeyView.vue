@@ -14,12 +14,15 @@ import ListFilterPanel from '../../components/ListFilterPanel.vue'
 import type { Facet } from '../../components/ListFilterPanel.vue'
 import type { OpenApiKey, OpenApi } from '../../services/types'
 import { useAuthStore } from '../../stores/auth'
+import { isMock } from '../../services/apiMode'
+import { createApiKeyContract, type ApiKeyRow } from '../../services/rebuild/apikeyApi'
 
 const auth = useAuthStore()
 const keys = ref<OpenApiKey[]>([])
 const apis = ref<OpenApi[]>([])
 const keyword = ref('')
 const filters = ref<Record<string, string>>({ status: '' })
+const apiKeyContract = createApiKeyContract()
 
 onMounted(async () => {
   await reload()
@@ -27,7 +30,18 @@ onMounted(async () => {
 })
 
 async function reload() {
-  keys.value = [...((await dataStore.list<OpenApiKey>('apiKeys')) ?? [])]
+  if (isMock) {
+    keys.value = [...((await dataStore.list<OpenApiKey>('apiKeys')) ?? [])]
+    return
+  }
+  const rows = await apiKeyContract.list()
+  keys.value = rows.map((row: ApiKeyRow) => ({
+    id: String(row.id), name: row.name, key: row.keyPrefix,
+    apis: row.scopes?.permissions ?? [],
+    status: row.status === 'active' ? 'enabled' : 'disabled', owner: row.createdBy ?? '-',
+    createdAt: row.createdAt?.replace('T', ' ').slice(0, 19) ?? '-',
+    lastCalled: row.lastUsedAt?.replace('T', ' ').slice(0, 16) ?? '-', calls: 0,
+  }))
 }
 
 const facets = computed<Facet[]>(() => [
@@ -75,6 +89,15 @@ async function saveCreate() {
     ElMessage.warning('请填写 Key 名称')
     return
   }
+  if (!isMock) {
+    try {
+      const issued = await apiKeyContract.issue(name, { permissions: [...createForm.value.apis] })
+      await reload(); createVisible.value = false
+      ElMessage.success(`API-Key 已创建：${issued.key.name}`)
+      await ElMessageBox.alert(`<div style="font-size:12.5px">请立即复制保存，该 Key 仅此一次完整展示：</div><div class="mono" style="margin-top:8px;padding:9px 12px;background:#0f172a;color:#d6e2f0;border-radius:var(--radius-sm);word-break:break-all">${issued.plainKey}</div>`, `新 Key — ${issued.key.name}`, { dangerouslyUseHTMLString: true, confirmButtonText: '已复制保存' })
+    } catch (error) { ElMessage.error(error instanceof Error ? error.message : '创建 API-Key 失败') }
+    return
+  }
   const key: OpenApiKey = {
     id: nextId(),
     name,
@@ -103,6 +126,12 @@ async function saveCreate() {
 /* ---- 启用/停用 / 删除 ---- */
 async function toggle(k: OpenApiKey) {
   if (!auth.canEdit) return
+  if (!isMock) {
+    if (k.status !== 'enabled') { ElMessage.warning('后端 API-Key 已撤销，不支持重新启用'); return }
+    try { await apiKeyContract.revoke(Number(k.id)); await reload(); ElMessage.success(`${k.name} 已停用`) }
+    catch (error) { ElMessage.error(error instanceof Error ? error.message : '停用失败') }
+    return
+  }
   const next = k.status === 'enabled' ? 'disabled' : 'enabled'
   await dataStore.save('apiKeys', { ...k, status: next })
   await reload()
@@ -118,6 +147,11 @@ async function remove(k: OpenApiKey) {
       { confirmButtonText: '删除', cancelButtonText: '取消', type: 'warning' },
     )
   } catch {
+    return
+  }
+  if (!isMock) {
+    try { await apiKeyContract.revoke(Number(k.id)); await reload(); ElMessage.success(`API-Key 已撤销：${k.name}`) }
+    catch (error) { ElMessage.error(error instanceof Error ? error.message : '撤销失败') }
     return
   }
   await dataStore.remove('apiKeys', k.id)
