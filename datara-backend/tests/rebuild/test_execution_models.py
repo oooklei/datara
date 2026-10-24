@@ -1,6 +1,7 @@
 """Schema contract checks for the six §9 execution tables."""
 
 from sqlalchemy import UniqueConstraint
+from sqlalchemy import BigInteger, CheckConstraint
 
 from rebuild.execution.models import (
     EXECUTION_TABLES,
@@ -63,3 +64,14 @@ def test_task_instance_has_runtime_timestamps_and_trial_binding_is_optional():
     assert "finished_at" in TaskInstanceRecord.__table__.columns
     assert WorkflowInstanceRecord.__table__.columns["trial_snapshot_id"].nullable
     assert WorkflowInstanceRecord.__table__.columns["workflow_version_id"].nullable is False
+
+
+def test_run_stat_is_one_row_per_instance_with_bigint_checked_counts():
+    from rebuild.execution.models import WorkflowRunStatRecord
+    table = WorkflowRunStatRecord.__table__
+    assert any(tuple(column.name for column in constraint.columns) == ("workflow_instance_id",)
+               for constraint in table.constraints if isinstance(constraint, UniqueConstraint))
+    for name in ("source_count", "target_count", "success_count", "failure_count", "skipped_count", "total_count"):
+        assert isinstance(table.columns[name].type, BigInteger)
+    assert {"dag_name", "data_param_json", "total_count"} <= set(table.columns)
+    assert len([constraint for constraint in table.constraints if isinstance(constraint, CheckConstraint)]) >= 4

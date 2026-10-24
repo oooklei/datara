@@ -27,21 +27,28 @@ def _context(instance_type="FORMAL"):
     return session, repo, instance
 
 
-def test_each_retry_is_distinct_and_replay_of_same_attempt_is_idempotent():
+def test_retry_replaces_summary_and_replay_is_idempotent():
     session, repo, instance = _context()
     task = repo.create_task_instance(workflow_instance_id=instance.id, task_id="sync")
     first = repo.append_attempt(task.id)
+    repo.transition_attempt(first.id, "RUNNING")
     payload = dict(workflow_instance_id=instance.id, task_instance_id=task.id,
                    attempt_no=first.attempt_no, success_count=8, failed_count=1, skipped_count=2,
                    source_count=12, target_count=11)
     assert repo.record_result_stat(**payload)["recorded"]
     assert repo.record_result_stat(**payload)["duplicate"]
+    repo.transition_attempt(first.id, "FAILED")
     second = repo.append_attempt(task.id)
+    repo.transition_attempt(second.id, "RUNNING")
     repo.record_result_stat(**{**payload, "attempt_no": second.attempt_no, "success_count": 10})
-    rows = list(session.scalars(select(WorkflowRunStatRecord).order_by(WorkflowRunStatRecord.attempt_no)))
-    assert [(row.workflow_version_id, row.attempt_no) for row in rows] == [(7, 1), (7, 2)]
-    assert (rows[0].source_count, rows[0].target_count, rows[0].success_count,
-            rows[0].failure_count, rows[0].skipped_count) == (12, 11, 8, 1, 2)
+    repo.transition_attempt(second.id, "SUCCEEDED")
+    repo.transition_workflow_instance(instance.id, "RUNNING")
+    repo.transition_workflow_instance(instance.id, "SUCCEEDED")
+    record = RunStatisticsService(session).finalize(instance.id)
+    rows = list(session.scalars(select(WorkflowRunStatRecord)))
+    assert rows == [record]
+    assert (record.workflow_version_id, record.success_count, record.failure_count,
+            record.skipped_count) == (7, 10, 1, 2)
 
 
 def test_reconcile_detail_and_all_counts_reject_bool_or_negative():
@@ -74,6 +81,28 @@ def test_stream_updates_are_monotonic_for_one_attempt():
         service.upsert(instance, task_instance_id=None, attempt_no=0, source_count=7, target_count=7,
                        success_count=7, failure_count=0, skipped_count=0, stream_checkpoint=True)
     assert error.value.code == 4109
+
+
+def test_finalize_without_contributions_creates_zero_snapshot():
+    session, repo, instance = _context()
+    repo.transition_workflow_instance(instance.id, "RUNNING")
+    repo.transition_workflow_instance(instance.id, "FAILED")
+    record = RunStatisticsService(session).finalize(instance.id)
+    assert (record.success_count, record.failure_count, record.total_count) == (0, 0, 0)
+
+
+def test_none_details_preserves_existing_but_explicit_empty_clears():
+    session, repo, instance = _context("STREAM")
+    service = RunStatisticsService(session)
+    details = [{"source_object": "s.t", "target_object": "d.t", "source_count": 1,
+                "target_count": 1, "success_count": 1, "failure_count": 0}]
+    common = dict(task_instance_id=None, attempt_no=0, source_count=1, target_count=1,
+                  success_count=1, failure_count=0, skipped_count=0, stream_checkpoint=True)
+    service.upsert(instance, **common, reconcile_details=details)
+    service.upsert(instance, **common, reconcile_details=None)
+    assert session.scalar(select(WorkflowRunReconcileDetailRecord)) is not None
+    service.upsert(instance, **common, reconcile_details=[])
+    assert session.scalar(select(WorkflowRunReconcileDetailRecord)) is None
 
 
 def test_list_and_detail_are_project_scoped_and_do_not_read_logs():
