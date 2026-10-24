@@ -16,7 +16,7 @@ import { request } from '../http'
 /* ---------- 作用域与类型（设计 §5 真源，后端冻结前不改） ---------- */
 
 /** 七级解析优先级链（设计差异注记 6：本链为设计真源，收窄须用户批准） */
-export const VARIABLE_SCOPE_PRIORITY = ['run', 'task', 'workflow', 'project', 'global', 'env', 'builtin'] as const
+export const VARIABLE_SCOPE_PRIORITY = ['run', 'task', 'workflow', 'project', 'env', 'global', 'builtin'] as const
 
 /** 语法前缀集合（设计 §5）：七级链作用域 + tmp 临时作用域 */
 export type VariableScope = (typeof VARIABLE_SCOPE_PRIORITY)[number] | 'tmp'
@@ -34,6 +34,9 @@ export interface VariableDefinition {
   description?: string
   /** 敏感值按原设计范围处理（纠偏设计 §2.2：不引入额外秘密管理范围） */
   sensitive?: boolean
+  workflowId?: number
+  taskId?: string
+  environmentGroupId?: number
 }
 
 export interface VariableCompletionItem {
@@ -43,6 +46,8 @@ export interface VariableCompletionItem {
   /** 当前可解析值；不可用时为 null 并由 reason 说明 */
   currentValue: string | null
   unavailableReason?: string
+  sensitive?: boolean
+  description?: string
 }
 
 /* ---------- 引用校验与解析预览 ---------- */
@@ -89,6 +94,7 @@ export const R2_VARIABLE_NOT_WIRED = 'R2_VARIABLE_NOT_WIRED: rebuild/variables c
 export const R2_VARIABLE_CONTRACT_METHODS = [
   'listVariables',
   'saveVariable',
+  'deleteVariable',
   'completeVariables',
   'checkReference',
   'previewResolution',
@@ -100,6 +106,7 @@ export type R2VariableContractMethod = (typeof R2_VARIABLE_CONTRACT_METHODS)[num
 /** 引用校验上下文：决定作用域可见性与类型检查基线（后端冻结前为草案语义） */
 export interface VariableContext {
   projectId: number
+  environmentGroupId?: number
   workflowId?: number
   workflowVersion?: number
   taskId?: string
@@ -107,8 +114,18 @@ export interface VariableContext {
 }
 
 export interface VariableContract {
-  listVariables: (projectId: number, scopes?: VariableScope[]) => Promise<VariableDefinition[]>
+  listVariables: (
+    projectId: number,
+    scopes?: VariableScope[],
+    owner?: Pick<VariableContext, 'environmentGroupId' | 'workflowId' | 'taskId'>,
+  ) => Promise<VariableDefinition[]>
   saveVariable: (projectId: number, definition: VariableDefinition) => Promise<{ saved: true; scope: VariableScope; name: string }>
+  deleteVariable: (
+    projectId: number,
+    scope: VariableScope,
+    name: string,
+    owner?: Pick<VariableContext, 'environmentGroupId' | 'workflowId' | 'taskId'>,
+  ) => Promise<{ deleted: true; scope: VariableScope; name: string }>
   completeVariables: (prefix: string, context: VariableContext) => Promise<VariableCompletionItem[]>
   checkReference: (expression: string, context: VariableContext) => Promise<ReferenceCheckResult>
   previewResolution: (expression: string, context: VariableContext) => Promise<ResolutionPreview>
@@ -159,8 +176,8 @@ async function sendJson<T>(method: 'POST' | 'PUT', path: string, body: unknown):
  */
 export function createVariableContract(): VariableContract {
   return {
-    listVariables: (projectId, scopes) =>
-      getJson<VariableDefinition[]>('', { projectId, scopes: scopes?.join(',') }),
+    listVariables: (projectId, scopes, owner = {}) =>
+      getJson<VariableDefinition[]>('', { projectId, scopes: scopes?.join(','), ...owner }),
     saveVariable: async (projectId, definition) => {
       const saved = await sendJson<{ saved?: boolean; scope: VariableScope; name: string }>(
         'POST',
@@ -176,6 +193,25 @@ export function createVariableContract(): VariableContract {
         })
       }
       return { saved: true, scope: saved.scope, name: saved.name }
+    },
+    deleteVariable: async (projectId, scope, name, owner = {}) => {
+      const query = new URLSearchParams({ project_id: String(projectId), scope })
+      if (owner.environmentGroupId !== undefined) query.set('environment_group_id', String(owner.environmentGroupId))
+      if (owner.workflowId !== undefined) query.set('workflow_id', String(owner.workflowId))
+      if (owner.taskId !== undefined) query.set('task_id', owner.taskId)
+      const deleted = snakeToCamel(await requestJson<unknown>(
+        `/${encodeURIComponent(name)}?${query.toString()}`,
+        { method: 'DELETE' },
+      )) as { deleted?: boolean; scope: VariableScope; name: string }
+      if (!deleted || deleted.deleted !== true) {
+        throw new ContractApiError({
+          httpStatus: 200,
+          code: 'CONTRACT_VIOLATION',
+          msg: `deleteVariable response missing deleted:true`,
+          raw: deleted,
+        })
+      }
+      return { deleted: true, scope: deleted.scope, name: deleted.name }
     },
     completeVariables: (prefix, context) =>
       sendJson<VariableCompletionItem[]>('POST', '/complete', { prefix, context }),

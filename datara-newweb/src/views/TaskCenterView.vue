@@ -40,6 +40,7 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import { MAX_DAG_TABS, useDagTabsStore, type DagPickItem, type DagTab, type DagProfileType } from '../stores/dagTabs'
 import Palette from '../components/Palette.vue'
 import WorkflowGraphWorkbench from '../components/WorkflowGraphWorkbench.vue'
+import VariableManagerDrawer from './variables/VariableManagerDrawer.vue'
 import {
   createWorkflowDefinition,
   listWorkflowDefinitions,
@@ -59,6 +60,7 @@ const route = useRoute()
 const router = useRouter()
 const qtab = String(route.query.tab ?? '')
 const tab = ref<TabKey>(tabs.some((t) => t.k === qtab) ? (qtab as TabKey) : 'edit')
+const variablesVisible = ref(false)
 
 function switchTab(k: TabKey) {
   tab.value = k
@@ -311,6 +313,13 @@ onMounted(async () => {
       ><span class="tc-ic">{{ t.icon }}</span>{{ t.label }}</button>
       <!-- edit 态右上专属操作（蓝本 L288-291 照抄） -->
       <span class="spacer" />
+      <button
+        v-if="tab === 'edit'"
+        class="tc-variable-management"
+        data-testid="variable-management"
+        :disabled="projectId === undefined"
+        @click="variablesVisible = true"
+      >变量管理</button>
       <button v-if="tab === 'edit'" class="tc-new-workflow" data-testid="new-workflow" @click="onOpenCreateWf">＋ 新建工作流</button>
       <button v-if="tab === 'edit' && activeTab" class="tc-save-template" @click="saveActiveAsTemplate">另存为模板</button>
       <span v-if="tab === 'edit'" class="tc-view">{{ profileOf.name }}</span>
@@ -363,6 +372,7 @@ onMounted(async () => {
       </template>
       <!-- 模板中心 / 告警与SLA：框架保留，本版不渲染占位内容（§5A.1） -->
     </div>
+    <VariableManagerDrawer v-model="variablesVisible" :project-id="projectId" />
   </div>
 </template>
 
@@ -383,6 +393,9 @@ onMounted(async () => {
 .tc-new-workflow:hover{opacity:.9}
 .tc-save-template{border:1px solid var(--border-color, #e2e8f0);color:var(--primary-color, #2563eb);background:#fff;border-radius:var(--radius-sm, 6px);padding:4px 12px;font-size:12.5px;cursor:pointer}
 .tc-save-template:hover{border-color:var(--primary-color, #2563eb)}
+.tc-variable-management{border:1px solid var(--border-color, #e2e8f0);color:var(--primary-color, #2563eb);background:#fff;border-radius:var(--radius-sm, 6px);padding:4px 12px;font-size:12.5px;cursor:pointer}
+.tc-variable-management:hover:not(:disabled){border-color:var(--primary-color, #2563eb)}
+.tc-variable-management:disabled{color:var(--text-4, #cbd5e1);cursor:not-allowed}
 .tc-view{font-size:11.5px;color:var(--text-secondary, #64748b);border:1px solid var(--border-color, #e2e8f0);border-radius:var(--radius-lg, 10px);padding:2px 10px}
 .tc-body{flex:1;min-height:0;display:flex;flex-direction:column;overflow:auto}
 /* 画布 Tab 条（蓝本 .tc-dagbar、.tc-dag、.tcd-* 系列、.tc-daghint 照抄） */

@@ -62,7 +62,7 @@ describe('variable management product surfaces', () => {
     expect(wrapper.text()).toContain('biz_date')
     await wrapper.find('[data-variable-name]').setValue('region')
     await wrapper.find('[data-variable-value]').setValue('cn-east')
-    await wrapper.find('[data-variable-save]').trigger('click')
+    await wrapper.find('form').trigger('submit')
     await flushPromises()
     expect(saveVariable).toHaveBeenCalledWith(7, expect.objectContaining({ scope: 'workflow', workflowId: 11, name: 'region' }))
   })

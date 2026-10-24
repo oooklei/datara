@@ -14,15 +14,16 @@ import {
 
 describe('R2 variableApi contract (RED)', () => {
   it('freezes the seven-level priority chain from design section 5', () => {
-    expect(VARIABLE_SCOPE_PRIORITY).toEqual(['run', 'task', 'workflow', 'project', 'global', 'env', 'builtin'])
+    expect(VARIABLE_SCOPE_PRIORITY).toEqual(['run', 'task', 'workflow', 'project', 'env', 'global', 'builtin'])
   })
 
   it('contract method list is frozen to the variable service subset', () => {
-    expect(R2_VARIABLE_CONTRACT_METHODS).toHaveLength(6)
+    expect(R2_VARIABLE_CONTRACT_METHODS).toHaveLength(7)
     expect(R2_VARIABLE_CONTRACT_METHODS).toEqual(
       expect.arrayContaining([
         'listVariables',
         'saveVariable',
+        'deleteVariable',
         'completeVariables',
         'checkReference',
         'previewResolution',

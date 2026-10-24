@@ -22,7 +22,7 @@ from zoneinfo import ZoneInfo
 
 # Seven-level precedence chain (design §5, difference note 6: this chain is the
 # design source of truth; narrowing requires user approval).
-PRECEDENCE: tuple[str, ...] = ("run", "task", "workflow", "project", "global", "env", "builtin")
+PRECEDENCE: tuple[str, ...] = ("run", "task", "workflow", "project", "env", "global", "builtin")
 
 # All referenceable scope prefixes (seven-level chain + tmp transient scope).
 REFERENCE_SCOPES: frozenset[str] = frozenset((*PRECEDENCE, "tmp"))

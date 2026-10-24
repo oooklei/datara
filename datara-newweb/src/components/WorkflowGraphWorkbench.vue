@@ -46,6 +46,7 @@ import {
 } from '../services/rebuild/workflowApi'
 import { isDesignComponent, loadComponentSpecs, type ComponentSpecItem, type WorkflowType } from '../services/rebuild/componentSpecApi'
 import { useWorkflowGraphStore } from '../stores/workflowGraph'
+import WorkflowVariablePanel from './WorkflowVariablePanel.vue'
 
 import '@vue-flow/core/dist/style.css'
 import '@vue-flow/core/dist/theme-default.css'
@@ -55,6 +56,7 @@ import '@vue-flow/minimap/dist/style.css'
 const props = defineProps<{ tab: DagTab; projectId?: number }>()
 
 const graphStore = useWorkflowGraphStore()
+const variablesVisible = ref(false)
 
 /** DagTab.docId（string）→ store docId（number）桥 */
 const numDocId = computed(() => Number(props.tab.docId))
@@ -295,6 +297,7 @@ async function onShowVersions() {
         >删除选中</button>
         <button class="wf-btn" :disabled="degraded || !loaded" @click="onPublish">发布</button>
         <button class="wf-btn" :disabled="degraded || !loaded" @click="onShowVersions">版本</button>
+        <button class="wf-btn" data-workflow-variables :disabled="degraded || !loaded" @click="variablesVisible = true">工作流变量</button>
         <span
           v-if="graphStore.docId === numDocId && graphStore.isDirty"
           class="wf-dirty"
@@ -340,6 +343,12 @@ async function onShowVersions() {
         <el-table-column prop="publishedAt" label="发布时间" width="170" />
       </el-table>
     </el-dialog>
+    <WorkflowVariablePanel
+      v-if="projectId !== undefined"
+      v-model="variablesVisible"
+      :project-id="projectId"
+      :workflow-id="numDocId"
+    />
   </div>
 </template>
 

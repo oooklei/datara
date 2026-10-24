@@ -215,7 +215,7 @@ class VariableRepository:
                     expression=str(payload["expression"]),
                     scope=str(payload["scope"]),
                     name=str(payload["name"]),
-                    resolved_value=str(payload["resolved_value"]),
+                    resolved_value="******" if payload.get("sensitive") is True else str(payload["resolved_value"]),
                     value_type=str(payload["value_type"]),
                     source=str(payload["source"]),
                     resolved_at=_now_shanghai(),

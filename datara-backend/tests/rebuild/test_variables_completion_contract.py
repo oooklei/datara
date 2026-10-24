@@ -151,3 +151,39 @@ def test_snapshot_repository_never_persists_a_sensitive_resolved_value() -> None
         assert "must-not-persist" not in response.text
     finally:
         client.__exit__(None, None, None)
+
+
+def test_execution_parameter_bridge_resolves_and_persists_attempt_snapshot() -> None:
+    client, app, project_id, _headers = _client()
+    try:
+        from sqlalchemy import select
+
+        from rebuild.execution.parameter_resolver import resolve_execution_parameters
+        from rebuild.variables.models import TaskInstanceVariableRuntimeRecord
+        from rebuild.variables.repository import VariableRepository
+
+        with app.state.session_factory() as session:
+            VariableRepository(session).upsert(
+                scope="workflow",
+                project_id=project_id,
+                workflow_id=21,
+                name="table_name",
+                value="orders",
+                value_type="string",
+                sensitive=False,
+                description="",
+            )
+            payload = resolve_execution_parameters(
+                session,
+                instance_id=101,
+                attempt_no=2,
+                context=VariableContext(project_id=project_id, workflow_id=21, task_id="sql-1"),
+                parameters={"sql": "select * from ${workflow.table_name}"},
+            )
+            session.commit()
+            assert payload == {"sql": "select * from orders"}
+            row = session.scalar(select(TaskInstanceVariableRuntimeRecord))
+            assert row is not None
+            assert (row.instance_id, row.attempt_no, row.project_id, row.resolved_value) == (101, 2, project_id, "orders")
+    finally:
+        client.__exit__(None, None, None)
