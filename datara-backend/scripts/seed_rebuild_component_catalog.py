@@ -122,6 +122,7 @@ def main() -> int:
     rebuild_session = sessionmaker(bind=rebuild_engine, expire_on_commit=False)()
 
     created = {"component": 0, "version": 0, "log": 0}
+    synthetic_dependency = False
     updated = {"component": 0, "version": 0, "log": 0}
     try:
         # ---- 读侧：受控只读 datara_meta（预期 18/18/31，随搬语义=现存组件全量日志） ----
@@ -221,6 +222,7 @@ def main() -> int:
                 rebuild_session.add(dep_version)
                 created["component"] += 1
                 created["version"] += 1
+                synthetic_dependency = True
 
         # t_component_log：id 主键收敛（历史记录复制语义）
         for src in logs:
@@ -244,11 +246,13 @@ def main() -> int:
             n_c = rebuild_session.query(func.count(Component.id)).scalar()
             n_v = rebuild_session.query(func.count(ComponentVersion.id)).scalar()
             n_l = rebuild_session.query(func.count(ComponentLog.id)).scalar()
-            print(f"[verify] rebuild_i0 t_component={n_c} t_component_version={n_v} t_component_log={n_l}（预期 18/18/31）")
+            expected_c = len(components) + (1 if synthetic_dependency else 0)
+            expected_v = len(versions) + (1 if synthetic_dependency else 0)
+            print(f"[verify] rebuild_i0 t_component={n_c} t_component_version={n_v} t_component_log={n_l}（预期 {expected_c}/{expected_v}/{len(logs)}）")
             # ---- C2 复核：items==components（rebuild 侧计数须与 meta 侧种子集一致，不等即 abort） ----
-            if n_c != len(components) or n_v != len(versions):
+            if n_c != expected_c or n_v != expected_v:
                 print(
-                    f"[abort] C2 复核失败：rebuild_i0 计数 ({n_c}/{n_v}) 与 meta 侧种子集 ({len(components)}/{len(versions)}) 不一致：需人工核查",
+                    f"[abort] C2 复核失败：rebuild_i0 计数 ({n_c}/{n_v}) 与预期种子集 ({expected_c}/{expected_v}) 不一致：需人工核查",
                     file=sys.stderr,
                 )
                 return 3
