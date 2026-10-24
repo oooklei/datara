@@ -13,6 +13,8 @@ import ListFilterPanel from '../../components/ListFilterPanel.vue'
 import type { Facet } from '../../components/ListFilterPanel.vue'
 import type { OpenLog, OpenApiKey, OpenApi } from '../../services/types'
 import { useAuthStore } from '../../stores/auth'
+import { isMock } from '../../services/apiMode'
+import { createOpenApiAdminContract } from '../../services/rebuild/openApiAdmin'
 
 const auth = useAuthStore()
 const logs = ref<OpenLog[]>([])
@@ -20,6 +22,7 @@ const apis = ref<OpenApi[]>([])
 const keys = ref<OpenApiKey[]>([])
 const keyword = ref('')
 const filters = ref<Record<string, string>>({ result: '', api: '' })
+const openApiContract = createOpenApiAdminContract()
 
 onMounted(async () => {
   await reload()
@@ -32,7 +35,23 @@ onMounted(async () => {
 })
 
 async function reload() {
-  logs.value = [...((await dataStore.list<OpenLog>('openLogs')) ?? [])]
+  if (isMock) {
+    logs.value = [...((await dataStore.list<OpenLog>('openLogs')) ?? [])]
+    return
+  }
+  const [definitions, result] = await Promise.all([openApiContract.listDefinitions(), openApiContract.listCallLogs()])
+  const byId = new Map(definitions.map((item) => [item.id, item]))
+  logs.value = result.list.map((row) => {
+    const definition = byId.get(row.apiId)
+    return {
+      id: row.requestId, ts: row.requestedAt?.replace('T', ' ').slice(0, 19) ?? '-',
+      keyId: String(row.keyId), keyName: row.principal || `Key ${row.keyId}`,
+      apiId: String(row.apiId), apiPath: definition?.path ?? `API #${row.apiId}`,
+      params: '-', httpStatus: row.statusCode, costMs: row.latencyMs,
+      result: row.result === 'success' ? 'success' : row.statusCode >= 500 ? 'error' : 'denied',
+      msg: row.errorCode || (row.statusCode >= 400 ? '调用失败' : '调用成功'),
+    }
+  })
 }
 
 const facets = computed<Facet[]>(() => [
@@ -74,6 +93,7 @@ function nextLogId(): string {
 }
 
 async function doSim() {
+  if (!isMock) { ElMessage.warning('真实模式下调用日志由开放网关写入，请使用 X-API-Key 调用后刷新'); return }
   const key = keys.value.find((k) => k.id === simForm.value.keyId)
   const api = apis.value.find((a) => a.id === simForm.value.apiId)
   if (!key || !api) {
