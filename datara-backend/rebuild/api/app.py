@@ -526,6 +526,16 @@ def create_app(
             if status is None:
                 raise SqlIdeRouteError("EXECUTION_NOT_FOUND")
             return status
+        if operation == "cancelExecution":
+            task_id = str(payload.get("task_id", ""))
+            current = status_store.get_execution_status(task_id=task_id, project_id=project_id, user_id=user_id)
+            if current is None:
+                raise SqlIdeRouteError("EXECUTION_NOT_FOUND")
+            if current.get("status") in {"succeeded", "failed", "cancelled"}:
+                return {"cancelled": False, "status": current.get("status")}
+            status_store.append_event(task_id=task_id, project_id=project_id, user_id=user_id, event_type="cancelled", payload={"status": "cancelled"})
+            status_store.update_status(task_id=task_id, project_id=project_id, user_id=user_id, status="cancelled")
+            return {"cancelled": True, "status": "cancelled"}
         if operation == "openEventStream":
             return status_store.list_execution_events(task_id=str(payload.get("task_id")), project_id=project_id, user_id=user_id)
         if operation == "fetchResultPage":
