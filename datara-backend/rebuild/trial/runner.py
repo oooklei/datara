@@ -409,7 +409,10 @@ class TrialRunner:
                     "stderr": completed.stderr[-20000:],
                 })
                 if completed.returncode != 0:
-                    raise TrialRunnerError("WF_TRIAL_SCRIPT_FAILED", f"{node_type} node exited with {completed.returncode}")
+                    raise TrialRunnerError(
+                        "WF_TRIAL_SCRIPT_FAILED",
+                        f"{node_type} node exited with {completed.returncode}",
+                    )
 
         # Generic execution log.
         self._exec.append_run_log(
