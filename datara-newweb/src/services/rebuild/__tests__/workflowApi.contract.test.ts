@@ -9,7 +9,7 @@
  *  3. delete：POST /{definition_id}/delete + JSON body {project_id}（data {deleted:true}）；
  *  4. 系统错误：非 2xx（后端 project_id 缺省 → 400/4001）默认丢包络码保 HTTP 状态码
  *     （preserveEnvelopeCode 未开，与底座默认行为一致）；
- *  5. categories 系四方法 RED 哨兵 WF_CATEGORIES_NOT_WIRED（端点缺位候裁披露①，接驳即活）。
+ *  5. categories 系四方法真实接线 categories/tags 端点。
  *
  * FE-6 扩容覆盖（六模型面：定义 CRUD + draft 节点/边 upsert/delete + 发布/版本读取）：
  *  6. WF_NODE_TYPES 冻结为普通工作流四个重点组件；

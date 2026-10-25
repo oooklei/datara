@@ -13,9 +13,8 @@
  *   {definition_id, project_id, name, description, current_version}。
  *   候裁披露：wire 暂无 code/tags 字段——前端容错（tags ?? []、code undefined），后端补字段即活。
  * - delete：POST /{definition_id}/delete body {project_id} → data {deleted:true}（draft-only 定义可删）。
- * - categories 系（list/create/delete/setTags）：新后端端点缺位，RED 哨兵
- *   WF_CATEGORIES_NOT_WIRED（沿 scheduleApi notWired 异步 helper 先例）；
- *   旧蓝本端点真源：GET·POST /workflow-definitions/categories、DELETE /{numeric}、PUT /{id}/tags。
+ * - categories 系（list/create/delete/setTags）：已接线新后端 categories/tags 端点；
+ *   WF_CATEGORIES_NOT_WIRED 仅保留为兼容标记。
  *
  * FE-6 扩容面（api.py / repository.py 实锚）：
  * - create：POST /rebuild/workflows body {project_id, name, description?} → definition payload；

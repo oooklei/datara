@@ -1,6 +1,6 @@
 /**
  * 15-P0 开放 API 管理契约 RED 测试（node 环境，纯契约层无组件挂载）— IMPL-v4-08。
- * 断言：方法清单/权限矩阵/错误码/URL 前缀冻结，工厂实现统一抛 OPENAPI_ADMIN_NOT_WIRED
+ * 断言：方法清单/权限矩阵/错误码/URL 前缀冻结，工厂委托 GREEN HTTP facade。
  * （即 15.2-A~D 接入前不存在半连通状态）；一次性明文回显仅存在于 KeyIssuance 形态。
  * 组件可编译性由 `vue-tsc -b` / build 门禁保证。
  */
@@ -36,7 +36,7 @@ const keyInput: ApiKeyInput = {
   expiresAt: '2027-01-01 00:00:00',
 }
 
-describe('15-P0 openapiAdminApi contract (RED)', () => {
+describe('15-P0 openapiAdminApi contract (GREEN)', () => {
   it('contract method list is frozen to the api-management admin subset', () => {
     expect(OPENAPI_ADMIN_CONTRACT_METHODS).toHaveLength(12)
     expect([...OPENAPI_ADMIN_CONTRACT_METHODS]).toEqual(

@@ -1,5 +1,5 @@
 /**
- * 15-P0 开放 API 管理契约（RED 阶段，零 I/O）— IMPL-v4-08。
+ * 15-P0 开放 API 管理契约（GREEN，统一 HTTP 底座）— IMPL-v4-08。
  *
  * 语义来源：docs/increments/2026-10-21-增量15.2-API管理新建模立项文档-监督员C.md（C1~C4 已批）
  *   + docs/increments/evidence/PRE/2026-10-20-增量15-系统管理与AI助手预研-Codex.md §4.3。
@@ -7,9 +7,8 @@
  * 命名红线（立项 §一.5 / 预研 §7）：本域是产品「API 管理」，与 FastAPI `/openapi.json`
  *   schema 无关；后端包名建议 `api_management`，URL 前缀冻结为 `/api/v1/open`。
  *
- * RED 约定（同 scheduleApi #8 先例）：所有 I/O 方法在后端（15.2-A~D）接入前抛
- *   OPENAPI_ADMIN_NOT_WIRED 哨兵，不发出任何真实请求；未来 GREEN 接线必须经统一
- *   http 信封底座并开启 preserveEnvelopeCode。
+ * 后端 `rebuild/openapi_admin.py` 已挂载在 `/api/v1/open`；定义、Key 与调用日志均经
+ * 统一 http 信封底座接线。
  *
  * 安全红线（C4 / 验收 ④）：原始 key 仅签发/轮换响应一次性回显（KeyIssuance.plainKey），
  *   列表/详情记录（ApiKeyRecord）不含任何 key 明文或可逆形态；调用日志不落原始 key/
@@ -119,6 +118,7 @@ export interface ApiCallLogPage {
 
 /* ---------- RED 哨兵与冻结清单 ---------- */
 
+/** @deprecated 兼容旧验证文案；所有管理方法均已真实接线。 */
 export const OPENAPI_ADMIN_NOT_WIRED =
   'OPENAPI_ADMIN_NOT_WIRED: api_management contract not connected yet (awaits 15.2-A~D)'
 

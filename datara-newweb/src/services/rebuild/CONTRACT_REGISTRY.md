@@ -2,7 +2,7 @@
 
 > 建立日期：2026-10-20 ｜ 依据：权威设计 §5.6（契约冻结登记）
 > 用途：门 1 API 契约验收直接消费；新增/变更契约文件有测试对应方可合入。
-> 最近更新：2026-10-25（更正 scheduleApi.ts GREEN 化：createScheduleContract() 五方法经 request() 真实接线后端 rebuild/schedule；旧 RED 注释与实现体不一致已修正；登记簿 §1 #8 / §4 RED→GREEN；§2 底座一致性核对 scheduleApi GREEN 化；§3 门1 剩余实质阻塞收敛为 openapiAdminApi RED（后端 rebuild/openapi/api.py 不存在）+ workflowApi categories 子端点 RED）；此前 2026-10-24...
+> 最近更新：2026-10-25（契约实态校正：scheduleApi、openapiAdminApi 与 workflow categories/tags 均已由统一 HTTP 底座接线现有后端；旧 NOT_WIRED 常量仅作兼容标记，不再是活哨兵）；此前 2026-10-24...
 
 ## 1. 契约文件 ↔ 测试映射表
 
@@ -33,12 +33,12 @@
 | 23 | `authApi.ts` | `services/rebuild/__tests__/authApi.contract.test.ts` | GREEN | 2 | 5 | I1 登录域：login/logout 两方法直连 `/api/v1/rebuild/login`（UserRecord + verify_password + token 签发，`rebuild/api/app.py` L456-471）；登录态由 LoginView/AppShell 视图层消费；补测 5P（2026-10-24 DEV TDD：anonymous 请求形态/token 落 `datara_token`/401·403 冻结口径 `code=httpStatus` 不解析包络 1.2/logout 本地收敛语义——后端吊销失败不阻断清 token）。补测前缺口「独立契约测试缺位」由 6 契约补登盘点（DEV 2026-10-24）发现，当日闭环 |
 | 24 | `llmApi.ts` | `services/rebuild/__tests__/llmApi.contract.test.ts` | GREEN（条件挂载） | 6 | 5 | 15.6 §5E LLM 桥配置面（I10 邻接）：6 方法（list/create/update/remove/testModel/setDefault，`LLM_CONTRACT_METHODS` 单一事实源）+ `LLM_PROVIDERS`（siliconflow/volcengine）+ `LLM_ERROR_CODES` 冻结；后端 `rebuild/llm/api.py` 条件挂载（`LLM_ENCRYPTION_KEY` 注入时生效）；端到端 LLM 联调受 FV-02（已解除）后可实测 |
 | 25 | `memberApi.ts` | `services/rebuild/__tests__/memberApi.contract.test.ts` | GREEN | 4 | 6 | L3-04 项目成员 RBAC 面：`MEMBER_ROLES` 四角色（admin/developer/operator/viewer）+ 4 方法（listMembers/addMember/removeMember/updateMemberRole）；端点 `rebuild/api/app.py` L1009-1128；包络三态标准信封 |
-| 26 | `openapiAdminApi.ts` | `services/rebuild/__tests__/openapiAdminApi.contract.test.ts` | RED（底座策略已登记） | 12 | 9 | 15-P0 IMPL-v4-08 OpenAPI 管理面：12 方法（definitions CRUD/publish/disable/enable × 7 + ApiKeys list/issue/rotate/revoke × 4 + callLogs）+ `OPENAPI_ADMIN_PERMISSION_MATRIX`（复用 identity G 组权限点，零新增枚举）+ 错误码 + URL 前缀 `/api/v1/open` 全冻结；`OPENAPI_ADMIN_NOT_WIRED` 活哨兵零 I/O（候 15.2-A~D 接线）；9 测试为 RED 态合规断言（describe RED：方法拒发 `rejects.toThrow(NOT_WIRED)` + 哨兵词形防回归 + 安全红线类型面 hash-only key/one-shot plaintext/sanitized logs） |
+| 26 | `openapiAdminApi.ts` | `services/rebuild/__tests__/openapiAdminApi.contract.test.ts` | GREEN | 12 | 9 | API 定义、API-Key 与调用日志 12 方法经统一底座接线 `/api/v1/open`；后端 `rebuild/openapi_admin.py` 与 `rebuild/apikey` 已挂载；安全红线保持 hash-only key、one-shot plaintext 与脱敏日志。 |
 | 27 | `projectApi.ts` | `services/rebuild/__tests__/projectApi.contract.test.ts` | GREEN | 1 | 5 | L3-02 §5A.11 方案 A 项目域：listProjects 分页面（`ProjectListPage`，active 项目切换入口）；单一 rebuild 路由；包络三态标准信封 |
 
-> **门1 六契约冻结锚点补齐（2026-10-24，DEV，ruling-contract-registry-home 单一可行动作）**：`c56189b` 将 untracked 契约面整体入库（governanceApi.ts+契约测试+8 视图测试+meta/std/ind 8 页面 23 件；authApi.ts 源文件 HEAD 自洽补齐；llmApi.ts+测试；openapiAdminApi.ts+测试 RED 合规态）；§4 新增六行冻结锚点（#22 `c56189b` / #23 `5051368`+`c56189b` / #24 `c56189b` / #25 `111f464` / #26 `c56189b` / #27 `111f464`）+ 1.9 passed 记录（680P 零回归）。门1 剩余实质阻塞收敛为 openapiAdminApi RED（后端 rebuild/openapi/api.py 不存在）+ workflowApi categories 子端点 RED（后端真缺位）——2026-10-25 scheduleApi GREEN 化后，前端契约层 RED 仅 1 处（openapiAdminApi）+ workflowApi 局部子端点。
+> **门1 契约实态复核（2026-10-25）**：openapiAdminApi 已接线 `rebuild/openapi_admin.py`/`rebuild/apikey`；workflow categories/tags 已接线 `rebuild/workflow/api.py`；scheduleApi 已接线 rebuild/schedule。当前登记契约无活跃 RED 哨兵。
 >
-> **状态快照：2026-10-25（scheduleApi GREEN 化更正）**：§1 #8 scheduleApi.ts RED→GREEN，前端契约层 **GREEN 26 / RED 1**（openapiAdminApi RED + workflowApi categories 子端点 RED）；冻结方法合计 187。
+> **状态快照：2026-10-25（契约实态校正）**：前端契约层 **GREEN 27 / RED 0**；冻结方法合计 187。
 >
 > **状态快照：2026-10-24（DEV 18R2-i 补登记：§1 新增 #23~#27 五契约行——authApi GREEN 代码/测试缺位 2 方法、llmApi GREEN 条件挂载 6/5、memberApi GREEN 4/6、openapiAdminApi RED 底座策略 12/9（NOT_WIRED 活哨兵候 15.2-A~D）、projectApi GREEN 1/5；方法合计 +25）**：同日 DEV TDD 补测 #23 authApi 独立契约测试 5P（缺位缺口闭环，测试合计 +5）；2026-10-24（增量 14 治理域：§1 新增 #22 `governanceApi.ts` ↔ 契约测试 12 + 8 视图契约测试 36 = 48 测试，GREEN，冻结方法 17；不新增 rebuild 端点，契约层计数递增 17）；2026-10-24（增量 11/R5-A：§1 新增 #21 视图↔测试映射 `views/ide/IdeView.vue` ↔ `ideView.contract.test.ts`，GREEN 7 测试；不新增契约文件与方法，契约层计数不变）；2026-10-23（17.5 P4：#20 sshNodeApi 新行 GREEN，方法数 5）；GREEN 25 / RED 2；冻结方法合计 182。
 >
@@ -148,7 +148,7 @@
 | 14 治理域契约层（`governanceApi.ts` 17 方法：资产 list/get/create、标签 create/assign、血缘 create/get、标准 list/create/check、指标 list/create、审计 list、质量规则 listRules/createRule/listRuns/runRule；接 rebuild 路由 `/api/v1/rebuild/governance`；包络 `{code,msg,data}` 三态 + `preserveEnvelopeCode` 保码；`QUALITY_PERMISSION_MATRIX` / `QUALITY_ERROR_CODES` / `QUALITY_STRUCTURAL_ONLY` 冻结；structural 红线 run 四字段恒 0） | `c56189b`（门1 六契约冻结锚点入库：契约+契约测试+8 视图测试+meta/std/ind 8 页面共 23 件整体入库，DEV 2026-10-24，ruling-contract-registry-home 门1 可行动作） | `services/rebuild/__tests__/governanceApi.contract.test.ts`（12）+ 8 视图契约测试（36：`views/__tests__/{lineageAnalysisView,assetMapView,metadataCatalogView,tagManagementView,standardManagementView,indicatorListView,indicatorBoardView,consistencyCheckView}.contract.test.ts`） | GREEN | 2026-10-24 |
 | #23 authApi 登录域（login/logout 两方法直连 `/api/v1/rebuild/login`；UserRecord + verify_password + token 签发） | `5051368`（契约测试 5P，18R2-i）+ `c56189b`（authApi.ts 源文件 HEAD 自洽补齐——5051368 已提交测试依赖本源文件，HEAD 上 import 必崩，同日修复） | `services/rebuild/__tests__/authApi.contract.test.ts`（5） | GREEN | 2026-10-24 |
 | #24 llmApi LLM 桥配置面（6 方法 + `LLM_CONTRACT_METHODS` 单一事实源 + `LLM_PROVIDERS` + `LLM_ERROR_CODES` 冻结；后端条件挂载） | `c56189b`（llmApi.ts + 契约测试 5P 入库） | `services/rebuild/__tests__/llmApi.contract.test.ts`（5） | GREEN（条件挂载） | 2026-10-24 |
-| #26 openapiAdminApi OpenAPI 管理面（12 方法 + `OPENAPI_ADMIN_PERMISSION_MATRIX` + URL 前缀 `/api/v1/open` 全冻结；`OPENAPI_ADMIN_NOT_WIRED` 活哨兵候 15.2-A~D 接线） | `c56189b`（openapiAdminApi.ts + 契约测试 9P 入库，RED 合规态） | `services/rebuild/__tests__/openapiAdminApi.contract.test.ts`（9，RED 态合规断言） | RED（底座策略已登记） | 2026-10-24 |
+| #26 openapiAdminApi API 管理面（12 方法 + 权限矩阵 + `/api/v1/open`） | `c56189b` + 2026-10-25 实态校正 | `services/rebuild/__tests__/openapiAdminApi.contract.test.ts`（9） | GREEN | 2026-10-25 |
 | #25 memberApi 项目成员 RBAC 面（`MEMBER_ROLES` 四角色 + 4 方法 listMembers/addMember/removeMember/updateMemberRole；端点 `rebuild/api/app.py` L1009-1128） | `111f464`（前端三票入库 2026-10-21） | `services/rebuild/__tests__/memberApi.contract.test.ts`（6） | GREEN | 2026-10-24（锚点补登） |
 | #27 projectApi 项目域（listProjects 分页面 `ProjectListPage`；单一 rebuild 路由；包络三态标准信封） | `111f464`（前端三票入库 2026-10-21） | `services/rebuild/__tests__/projectApi.contract.test.ts`（5） | GREEN | 2026-10-24（锚点补登） |
 
