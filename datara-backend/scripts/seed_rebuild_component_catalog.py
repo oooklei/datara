@@ -225,7 +225,14 @@ def main() -> int:
         # Materialize the governed builtin from the shell declaration when it
         # is absent, so NORMAL workflows have the full target palette.
         if "dependent" not in exist_c:
-            template = exist_v.get(("shell", 1))
+            # On a fresh target ``exist_v`` is empty even though the shell row
+            # has just been staged above.  Fall back to the loaded source row
+            # so dependency creation is correct on the first apply, not only
+            # after an accidental second run.
+            template = exist_v.get(("shell", 1)) or next(
+                (row for row in versions if row.type == "shell" and row.version == 1),
+                None,
+            )
             if template is not None:
                 dep = Component(
                     type="dependent", name="依赖", category="NORMAL", profile="dag",
