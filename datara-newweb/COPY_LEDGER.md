@@ -83,3 +83,51 @@
 | 项 | 源 | 未落位原因 | 归属 |
 |---|---|---|---|
 | `bannerStatus.ts` + `bannerConsistency.contract.test.ts` | `datara-web/src/services/rebuild/` | FE-02 横幅一致性断言依赖 10 个验证页 `.vue`（B2 零验证页，本包不迁移）；`bannerStatus.ts` 为视图层词表非契约层 | 增量 2.x 视图迁移时随验证页退役一并处置 |
+
+## 七、FE-MERGE-B3 视图资产纳入（2026-10-26）
+
+源根（只读）：`D:\需求\数据治理工具\Datara`。下列 SHA-256 均按 D 盘源文件原始字节计算。
+
+| # | 源相对路径 | 目标相对路径 | 源 SHA-256 | 功能清单出处 / 处置 | 复制级别 | 验证证据 |
+|---|---|---|---|---|---|---|
+| B3-1 | `datara-newweb/src/components/FilterPanel.vue` | `datara-newweb/src/components/FilterPanel.vue` | `c98efea23e70d661cf7bc2f7291383f5cf6d6a0c897b699bd858c8c9a8029a80` | §3 E 数据治理组共享筛选承载；消费接线后续批次 | L2 | `.codex-evidence/FE-MERGE-B3/` |
+| B3-2 | `datara-newweb/src/components/VariableManagementDialog.vue` | `datara-newweb/src/components/VariableManagementDialog.vue` | `10602372f54ccba3ab0172b767dafa4a0fcc3875c464c2b1eb2e89e21569bfe5` | §5A.5 / §5B 变量管理；消费接线后续批次 | L2 | `.codex-evidence/FE-MERGE-B3/` |
+| B3-3 | `datara-newweb/src/views/GovernanceHubView.vue` | `datara-newweb/src/views/GovernanceHubView.vue` | `df2091148cd9bc002936ad2fd9f758ccb3ce5fb06f646b2e8f4ebcdd5a9ffa24` | §3 E 数据治理组八页签；接入项目 `meta` 段 | L3 | `.codex-evidence/FE-MERGE-B3/` |
+| B3-4 | `datara-newweb/src/views/qc/QualityAlarmView.vue` | `datara-newweb/src/views/qc/QualityAlarmView.vue` | `059c0076644285ee86bf95a323e99edd2b10123f0f1e51f01f8b510423f9afd5` | §4.3 质量扩展组 | L3 | `.codex-evidence/FE-MERGE-B3/` |
+| B3-5 | `datara-newweb/src/views/qc/QualityExceptionView.vue` | `datara-newweb/src/views/qc/QualityExceptionView.vue` | `534c056aa0505b450c91ea2fb766f96e13e294e558f559b2fda19b0c0efec319` | §4.3 质量扩展组 | L3 | `.codex-evidence/FE-MERGE-B3/` |
+| B3-6 | `datara-newweb/src/views/qc/QualityReportView.vue` | `datara-newweb/src/views/qc/QualityReportView.vue` | `5c1104d50c966b960bfad3db999bf342398ebdc7ae93bb2f669ea485716becb8` | §4.3 质量扩展组 | L3 | `.codex-evidence/FE-MERGE-B3/` |
+| B3-7 | `datara-newweb/src/views/sec/AccessAuditView.vue` | `datara-newweb/src/views/sec/AccessAuditView.vue` | `89d1e53234b19bd91750092171c0f3c2ca1f68172c8dc0703a67898b59144dd9` | §3 G 系统管理安全审计承载；路由待 B5 | L3 | `.codex-evidence/FE-MERGE-B3/` |
+| B3-8 | `datara-newweb/src/views/open/ApiManagementView.vue` | `datara-newweb/src/views/open/ApiManagementView.vue` | `16925350462374fb4ab3d8c04ecf724c5c3d3b117b8b4357f5174b9e4c826898` | §3.3 G API 管理；路由待 B5 | L3 | `.codex-evidence/FE-MERGE-B3/` |
+| B3-9 | `datara-newweb/src/views/open/ApiKeyManagementView.vue` | `datara-newweb/src/views/open/ApiKeyManagementView.vue` | `9a057e9977f28193fe468cb7c01294907f5da0a3fac75474a0e8428ab4141919` | §3.3 G API-Key 管理；路由待 B5 | L3 | `.codex-evidence/FE-MERGE-B3/` |
+| B3-10 | `datara-newweb/src/views/system/llm-models/LlmModelsView.vue` | `datara-newweb/src/views/system/llm-models/LlmModelsView.vue` | `2d25fe7b4f0940fa6522b03a40a4f05d2a898da5c3b09da3099aee703892b4a9` | §5E.3 LLM 模型配置目录；路由待 B5 | L3 | `.codex-evidence/FE-MERGE-B3/` |
+| B3-11 | `datara-newweb/src/views/system/llm-models/LlmModelFormDialog.vue` | `datara-newweb/src/views/system/llm-models/LlmModelFormDialog.vue` | `8f9e017ffd50991a3a1a12d929db4bdbd8370b36447153be37712e0989465962` | §5E.3 LLM 模型表单；由 B5 页面消费 | L2 | `.codex-evidence/FE-MERGE-B3/` |
+| B3-T1 | `datara-newweb/src/views/__tests__/projectSegmentView.contract.test.ts` | `datara-newweb/src/views/__tests__/projectSegmentView.contract.test.ts` | —（测试已按目标端资源默认值适配，不按源原件复制） | 治理中心项目段接线契约；保留目标资源页“全部类型”默认值 | L2 | RED/GREEN 见同目录日志 |
+
+归一说明：WBS 增量 10 指定 `src/views/resources/**` 为资源管理承载，路由继续唯一消费 `views/resources/ResourceManagementView.vue`；未纳入 D 盘重复的根级 `views/ResourceManagementView.vue`。`NodeConfigPanel.vue` 三方核对后保留目标端 fail-closed 身份覆盖顺序，未以 D 盘原件覆盖。上述页面仅消费 `services/rebuild/**`，未纳入旧 `services/*.ts` 或 demo/mock 数据层。B3 只纳入资产；`open/**`、`sec/**`、`system/llm-models/**` 的路由归一与消费接线属于 FE-MERGE-B5 待办，`FilterPanel.vue` 与 `VariableManagementDialog.vue` 的实际消费也留给 B4/B5，不在本批冒称完成。
+
+## FE-MERGE-B4 三方并集（2026-10-26）
+
+源根（只读）：`D:\需求\数据治理工具\Datara`。以下 SHA-256 均为 D-WIP 原始字节；目标以当前 HEAD 的 rebuild API、权限和时序契约为基线，经逐文件核对后吸收令牌化、三段布局、表格/抽屉/页签和新增交互，不引入旧 `services/*.ts` 或 demo/mock 数据。
+
+| 批次 | 相对路径（源=目标） | D-WIP SHA-256 | 并集说明 |
+|---|---|---|---|
+| B4-01 | `datara-newweb/src/views/meta/AssetMapView.vue` | `818cbbaf740c54834dde6b0e02a9caff8a129c9740a355c153324f14e3724916` | 保留资产 API；吸收统计、分组视图、跳转与请求序号守卫 |
+| B4-02 | `datara-newweb/src/views/meta/LineageAnalysisView.vue` | `b8c8005bb1f67af8f3ee6e8fbf1ac6cf915f782542d7fdb314047474bade09b6` | 保留血缘 API；吸收方向/深度控制、详情布局与双请求守卫 |
+| B4-03 | `datara-newweb/src/views/meta/MetadataCatalogView.vue` | `70c425d7b043725d1db4259c1508a82f142773fb7602096bb7f588551589840a` | 保留资产列表/详情 API；吸收筛选、详情抽屉和并发守卫 |
+| B4-04 | `datara-newweb/src/views/meta/TagManagementView.vue` | `683b6b73de73be4cd4035165034bbb359ef1d3efde8b501b6653f6cf9ab9863b` | 保留标签创建/绑定 API；吸收筛选、解绑交互与请求守卫 |
+| B4-05 | `datara-newweb/src/views/ind/ConsistencyCheckView.vue` | `6b90a749b2bc424088d811f4fae58965e06fb8d72871c17211efb4f18ae17fc7` | 保留一致性检查 API；新增结果抽屉、指标跳转与双请求守卫 |
+| B4-06 | `datara-newweb/src/views/ind/IndicatorBoardView.vue` | `385a7fdcfa54dbcf1936169a18150f6e1483ff8c36894d68f0cea9cf0e14dc09` | 保留指标 API；新增列表/一致性入口与请求守卫 |
+| B4-07 | `datara-newweb/src/views/ind/IndicatorListView.vue` | `1aa945811180bde7b689f51bf89dc50c3641a73de0e7744852bd4d5ce0c7cc44` | 保留指标创建 API；吸收筛选、抽屉式创建与请求守卫 |
+| B4-08 | `datara-newweb/src/views/qc/QualityRuleView.vue` | `979eb43230dd4028214d611c0b8d0e04f6b50d0dab22302958dd8d3ebf9d5e3c` | 保留规则创建/运行 API 与运行记录跳转；吸收令牌化布局 |
+| B4-09 | `datara-newweb/src/views/qc/QualityTaskView.vue` | `2ff6ad84a8ede4713380a47d66e178b784aaac68ca6eccd8f5613e093b8cf20d` | 保留质量运行列表 API；吸收筛选及状态展示 |
+| B4-10 | `datara-newweb/src/views/std/StandardManagementView.vue` | `080014f8b574379c978d5a1fff134f28a027ef6b1bbe6013b84526a1972e6fcd` | 保留标准创建/检查 API；吸收筛选、抽屉、结果页签与双请求守卫 |
+| B4-11 | `datara-newweb/src/views/depops/MonitorView.vue` | `0d38bc57a13c5367d3e823c0b41d9a8177e0b678f06ecadce292d3f36776e562` | 保留监控契约；吸收令牌化状态面板 |
+| B4-12 | `datara-newweb/src/views/depops/RuntimeNodeView.vue` | `5df86bb229a1bb55d9325df1c36bec71494920e0c87bb549ce843c6f90ddf67b` | 保留运行节点与目录浏览契约；吸收三段布局和状态样式 |
+| B4-13 | `datara-newweb/src/views/datasource/DataSourceListView.vue` | `d0cd4605f51b3a5b95f12bbc66b94d1c34c86c4c19ccba3468b79c2ce2c3ddbd` | 保留数据源 CRUD/探测/元数据 API；吸收令牌化主从布局 |
+| B4-14 | `datara-newweb/src/views/PermissionMatrixView.vue` | `b064d2893cc3a6e0f6a5d72d1eb94c3fab9fcbcd50d7c55e2d8e6b7950e0df77` | 保留权限矩阵逻辑；仅吸收设计令牌 |
+| B4-15 | `datara-newweb/src/views/ProjectMembersView.vue` | `3c8ccd5e7f12c0ac2fc0f16a3dde28c3eba4d24b6aa1fecb941633e27b4e8a7e` | 保留成员 API 与权限行为；仅吸收设计令牌 |
+| B4-16 | `datara-newweb/src/views/ProjectWorkbenchView.vue` | `b95a447382c7ffceb91d3db96e64f87fa7c46b1575dd6840daa580519909dce0` | 保留指标契约和菜单导航；吸收设计令牌 |
+| B4-17 | `datara-newweb/src/views/SshNodeManagementView.vue` | `c10dad023160537d80b0032e6df8d164f619dbe3ac1e4e00ff2adaf01c8e31de` | 保留 SSH CRUD/探测与后端回吐契约；前端默认掩码并显式揭示 |
+| B4-T1 | `datara-newweb/src/views/__tests__/consistencyCheckView.contract.test.ts` | `4d6e8d78defccfae336dfac9fdcb474b77afcad65182627df3c92ad25f2f60bf` | 新增结果抽屉与指标跳转契约 |
+| B4-T2 | `datara-newweb/src/views/__tests__/indicatorBoardView.contract.test.ts` | `08b845dad509a02ac88061ea24afa204587b70b66981e969ff0974282912f698` | 新增双入口导航契约 |
+| B4-T3 | `datara-newweb/src/views/__tests__/sshNodeManagementView.contract.test.ts` | `712b8f6abfb0b3d7fc55d99482d38a971848fc31730a9b98d5a08fc0b386ad50` | 新增凭据默认掩码与编辑器显隐契约 |

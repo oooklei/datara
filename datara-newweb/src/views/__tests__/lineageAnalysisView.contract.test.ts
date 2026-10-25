@@ -112,4 +112,42 @@ describe('/meta/lineage 血缘分析页（增量 14）', () => {
     expect(w.find('[role=alert]').text()).toContain('asset list failed')
     expect(w.find('[data-project-select]').exists()).toBe(true)
   })
+
+  it('selects and loads the asset supplied by catalog lineage navigation', async () => {
+    router.route.query = { projectId: '1', assetId: '9' }
+    vi.mocked(governanceApi.listAssets).mockResolvedValue({ total: 1, page: 1, pageSize: 50, list: [asset] })
+    vi.mocked(governanceApi.getLineage).mockResolvedValue(graph)
+    const w = mount(View)
+    await flushPromises()
+    expect(w.find<HTMLSelectElement>('[data-asset-select]').element.value).toBe('9')
+    expect(governanceApi.getLineage).toHaveBeenCalledWith(9, { direction: 'both', depth: 3 })
+    expect(w.find('[data-no-asset]').exists()).toBe(false)
+  })
+
+  it('invalidates old lineage success and failure immediately when switching projects', async () => {
+    const asset2 = { ...asset, id: 10, projectId: 2, assetName: 'customers' }
+    let resolveOld!: (value: typeof graph) => void
+    let rejectOld!: (reason: Error) => void
+    vi.mocked(listProjects).mockResolvedValue({ total: 2, list: [{ id: 1, name: 'P1' }, { id: 2, name: 'P2' }] })
+    vi.mocked(governanceApi.listAssets).mockImplementation((projectId) => Promise.resolve({ total: 1, page: 1, pageSize: 50, list: [projectId === 1 ? asset : asset2] }))
+    vi.mocked(governanceApi.getLineage)
+      .mockImplementationOnce(() => new Promise((resolve) => { resolveOld = resolve }))
+      .mockImplementationOnce(() => new Promise((_resolve, reject) => { rejectOld = reject }))
+    const w = mount(View)
+    await flushPromises()
+    await w.find('[data-project-select]').setValue('1')
+    await flushPromises()
+    await w.find('[data-asset-select]').setValue('9')
+    await w.find('[data-project-select]').setValue('2')
+    resolveOld(graph)
+    await flushPromises()
+    expect(w.find('[data-lineage-graph]').exists()).toBe(false)
+    expect(w.find('[role=alert]').exists()).toBe(false)
+    await w.find('[data-asset-select]').setValue('10')
+    await w.find('[data-project-select]').setValue('1')
+    rejectOld(new Error('stale lineage failure'))
+    await flushPromises()
+    expect(w.find('[role=alert]').exists()).toBe(false)
+    expect(w.find('[data-lineage-graph]').exists()).toBe(false)
+  })
 })

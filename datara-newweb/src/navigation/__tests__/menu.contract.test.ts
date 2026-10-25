@@ -190,6 +190,12 @@ describe('2-01 配置纪律（0.8 L57-68 字段规则）', () => {
     expect(cjk).toEqual([])
   })
 
+  it('27 个正式菜单项均提供非空图标字形', () => {
+    const formals = rows.filter((r) => r.item.disposition === 'formal')
+    expect(formals).toHaveLength(27)
+    expect(formals.filter((r) => !r.item.icon?.trim()).map((r) => r.item.id)).toEqual([])
+  })
+
   it('formal 项：批次必填且已登记于 BATCH_SWITCHES；无 decisionGate 者必有 path 或 routeName（0.8 L62）', () => {
     const formals = rows.filter((r) => r.item.disposition === 'formal')
     expect(formals.length).toBeGreaterThan(0)

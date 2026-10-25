@@ -84,6 +84,7 @@ export const menuGroups: readonly MenuGroupConfig[] = [
       {
         id: 'workbench',
         label: '工作台',
+        icon: '◆',
         path: '/',
         routeName: 'home',
         disposition: 'formal',
@@ -100,6 +101,7 @@ export const menuGroups: readonly MenuGroupConfig[] = [
       {
         id: 'task-center-entry',
         label: '任务中心',
+        icon: '⑃',
         path: '/dag',
         disposition: 'formal',
         batch: 'inc4',
@@ -114,6 +116,7 @@ export const menuGroups: readonly MenuGroupConfig[] = [
       {
         id: 'ds-list',
         label: '数据源管理',
+        icon: '⛁',
         path: '/ds/list',
         disposition: 'formal',
         batch: 'inc10',
@@ -122,12 +125,14 @@ export const menuGroups: readonly MenuGroupConfig[] = [
       {
         id: 'sync-task',
         label: '同步任务',
+        icon: '⇄',
         disposition: 'embedded',
         source: '§4.2 C 行 v3 裁定移出菜单；由 /dag 同步工作流 tab 承载（0.8 §3 L97）',
       },
       {
         id: 'stream-process',
         label: '流数据处理',
+        icon: '≈',
         disposition: 'embedded',
         source: '§4.2 C 行；§5A.2 由 /dag 流处理工作流 tab 承载（0.8 §3 L98）',
       },
@@ -136,6 +141,7 @@ export const menuGroups: readonly MenuGroupConfig[] = [
         path: '/resources',
         routeName: 'resource-mgmt',
         label: '资源管理',
+        icon: '⚑',
         disposition: 'formal',
         batch: 'inc10',
         source: '§4.2 C 行；0.8 §3 L99 路径待路由契约，增量 10 冻结，此前不显示空壳',
@@ -149,6 +155,7 @@ export const menuGroups: readonly MenuGroupConfig[] = [
       {
         id: 'sql-ide',
         label: '数据开发IDE',
+        icon: '⌨',
         path: '/ide',
         disposition: 'formal',
         batch: 'inc11',
@@ -157,6 +164,7 @@ export const menuGroups: readonly MenuGroupConfig[] = [
       {
         id: 'dw-modeling',
         label: '数仓建模',
+        icon: '▤',
         path: '/model/list',
         routeName: 'dwModeling',
         disposition: 'formal',
@@ -172,6 +180,7 @@ export const menuGroups: readonly MenuGroupConfig[] = [
       {
         id: 'meta-lineage',
         label: '血缘分析',
+        icon: '⇶',
         path: '/meta/lineage',
         disposition: 'formal',
         batch: 'inc14',
@@ -180,6 +189,7 @@ export const menuGroups: readonly MenuGroupConfig[] = [
       {
         id: 'meta-map',
         label: '资产地图',
+        icon: '◉',
         path: '/meta/map',
         disposition: 'formal',
         batch: 'inc14',
@@ -188,6 +198,7 @@ export const menuGroups: readonly MenuGroupConfig[] = [
       {
         id: 'meta-catalog',
         label: '元数据目录',
+        icon: '☰',
         path: '/meta/catalog',
         disposition: 'formal',
         batch: 'inc14',
@@ -196,6 +207,7 @@ export const menuGroups: readonly MenuGroupConfig[] = [
       {
         id: 'meta-tag',
         label: '标签',
+        icon: '⌗',
         path: '/meta/tag',
         disposition: 'formal',
         batch: 'inc14',
@@ -204,6 +216,7 @@ export const menuGroups: readonly MenuGroupConfig[] = [
       {
         id: 'std-element',
         label: '标准',
+        icon: '⌇',
         path: '/std/element',
         disposition: 'formal',
         batch: 'inc14',
@@ -212,6 +225,7 @@ export const menuGroups: readonly MenuGroupConfig[] = [
       {
         id: 'ind-list',
         label: '指标目录',
+        icon: '✦',
         path: '/ind/list',
         disposition: 'formal',
         batch: 'inc14',
@@ -220,6 +234,7 @@ export const menuGroups: readonly MenuGroupConfig[] = [
       {
         id: 'ind-board',
         label: '指标看板',
+        icon: '▦',
         path: '/ind/board',
         disposition: 'formal',
         batch: 'inc14',
@@ -228,6 +243,7 @@ export const menuGroups: readonly MenuGroupConfig[] = [
       {
         id: 'ind-consistency',
         label: '一致性检查',
+        icon: '✓',
         path: '/ind/consistency',
         disposition: 'formal',
         batch: 'inc14',
@@ -236,6 +252,7 @@ export const menuGroups: readonly MenuGroupConfig[] = [
       {
         id: 'qc-rule',
         label: '质量规则',
+        icon: '☑',
         path: '/qc/rule',
         disposition: 'formal',
         batch: 'inc14',
@@ -244,6 +261,7 @@ export const menuGroups: readonly MenuGroupConfig[] = [
       {
         id: 'qc-task',
         label: '检查任务',
+        icon: '⏱',
         path: '/qc/task',
         disposition: 'formal',
         batch: 'inc14',
@@ -252,6 +270,7 @@ export const menuGroups: readonly MenuGroupConfig[] = [
       {
         id: 'qc-exception',
         label: '异常数据核查',
+        icon: '✖',
         path: '/qc/exception',
         disposition: 'formal',
         batch: 'inc14',
@@ -260,6 +279,7 @@ export const menuGroups: readonly MenuGroupConfig[] = [
       {
         id: 'qc-report',
         label: '质量报告',
+        icon: '▣',
         path: '/qc/report',
         disposition: 'formal',
         batch: 'inc14',
@@ -268,6 +288,7 @@ export const menuGroups: readonly MenuGroupConfig[] = [
       {
         id: 'qc-alarm',
         label: '质量告警',
+        icon: '⚡',
         path: '/qc/alarm',
         disposition: 'formal',
         batch: 'inc14',
@@ -282,6 +303,7 @@ export const menuGroups: readonly MenuGroupConfig[] = [
       {
         id: 'dep-runtime',
         label: '运行时节点',
+        icon: '⌂',
         path: '/dep/runtime',
         routeName: 'depRuntime',
         disposition: 'formal',
@@ -291,6 +313,7 @@ export const menuGroups: readonly MenuGroupConfig[] = [
       {
         id: 'dep-monitor',
         label: '集群监控',
+        icon: '◈',
         path: '/dep/monitor',
         routeName: 'depMonitor',
         disposition: 'formal',
@@ -300,6 +323,7 @@ export const menuGroups: readonly MenuGroupConfig[] = [
       {
         id: 'dep-ssh',
         label: 'SSH 节点',
+        icon: '⌁',
         path: '/dep/ssh',
         routeName: 'dep-ssh',
         disposition: 'formal',
@@ -315,6 +339,7 @@ export const menuGroups: readonly MenuGroupConfig[] = [
       {
         id: 'sec-perm',
         label: '权限管理',
+        icon: '⛨',
         path: '/sec/perm',
         disposition: 'formal',
         batch: 'inc15',
@@ -323,6 +348,7 @@ export const menuGroups: readonly MenuGroupConfig[] = [
       {
         id: 'sec-audit',
         label: '访问审计',
+        icon: '⧉',
         path: '/sec/audit',
         disposition: 'formal',
         batch: 'inc15',
@@ -331,6 +357,7 @@ export const menuGroups: readonly MenuGroupConfig[] = [
       {
         id: 'open-api',
         label: 'API 管理',
+        icon: '⇋',
         path: '/open/api',
         disposition: 'formal',
         batch: 'inc15',
@@ -339,6 +366,7 @@ export const menuGroups: readonly MenuGroupConfig[] = [
       {
         id: 'open-key',
         label: 'API-Key 管理',
+        icon: '⚿',
         path: '/open/key',
         disposition: 'formal',
         batch: 'inc15',
@@ -347,6 +375,7 @@ export const menuGroups: readonly MenuGroupConfig[] = [
       {
         id: 'api-call-log',
         label: '调用日志',
+        icon: '⇢',
         disposition: 'embedded',
         decisionGate: 'api-call-log-form',
         source: '§4.3 #14 并入 #12；独立页签/附属列未确认前禁止恢复独立菜单（0.8 §4 L128）',
@@ -356,6 +385,7 @@ export const menuGroups: readonly MenuGroupConfig[] = [
         path: '/open/llm',
         routeName: 'open-llm',
         label: 'LLM 模型配置',
+        icon: '◍',
         disposition: 'formal',
         batch: 'inc15',
         source: '§4.2 G 行；0.8 §3 L109 已登记 G 组随增量 15 实现，本方案不为其编造路径',
@@ -380,6 +410,7 @@ export const globalMountedItems: readonly MenuItemConfig[] = [
   {
     id: 'ai-assistant',
     label: 'AI 助手',
+    icon: '✧',
     disposition: 'embedded',
     source: '§4.2 H 行 + §4.5；AppShell 全局挂载、单实例、登录页不挂载（0.8 §6 L182-189；增量 1 占位 / 增量 15 激活）',
   },

@@ -1,69 +1,93 @@
 <template>
-  <main class="ds-page" aria-label="数据源管理">
-    <header class="ds-head">
-      <div>
-        <h1>数据源管理</h1>
-        <p>按项目注册数据库连接并测试连通性；凭据仅写入请求体，服务端响应不回显密码。</p>
-      </div>
-      <div class="ds-actions">
-        <label class="ds-project">项目
-          <select v-model="selected" data-project-select @change="reload">
-            <option value="">请选择项目</option>
-            <option v-for="p in projects" :key="p.id" :value="String(p.id)">{{ p.name }}</option>
-          </select>
-        </label>
-        <button type="button" data-create :disabled="projectId === null" @click="openCreate">注册数据源</button>
-      </div>
+  <main class="pg" aria-label="数据源管理">
+    <header class="pg-head">
+      <h1 class="sec-head">数据源管理</h1>
+      <p class="pg-desc">按项目注册数据库连接并测试连通性；凭据仅写入请求体，服务端响应不回显密码。</p>
     </header>
 
+    <div class="toolbar">
+      <label class="field"><span>项目</span>
+        <select v-model="selected" class="kw" data-project-select @change="reload">
+          <option value="">请选择项目</option>
+          <option v-for="p in projects" :key="p.id" :value="String(p.id)">{{ p.name }}</option>
+        </select>
+      </label>
+      <button type="button" class="tb-new" data-create :disabled="projectId === null" @click="openCreate">
+        注册数据源
+      </button>
+      <span class="spacer"></span>
+      <span v-if="testMessage" class="result-line" role="status" data-test-result>{{ testMessage }}</span>
+    </div>
+
     <!-- 错误横幅独立于内容态：加载失败时无数据可渲染，操作失败时列表须保留 -->
-    <p v-if="error" role="alert" data-error>{{ error }}</p>
-    <p v-if="testMessage" role="status" data-test-result>{{ testMessage }}</p>
-    <p v-if="busy" role="status">正在加载…</p>
-    <p v-else-if="projectId === null" data-no-project>请先选择项目</p>
-    <p v-else-if="rows.length === 0 && !error" data-empty>暂无数据源</p>
+    <div v-if="error" class="err-box" role="alert" data-error>
+      <span>{{ error }}</span>
+      <button type="button" class="op-btn retry" :disabled="busy" @click="reload">重试</button>
+    </div>
 
+    <!-- 加载态：骨架屏替代「正在加载…」文本，避免布局跳动 -->
+    <div v-if="busy" class="panel" role="status" aria-live="polite">
+      <div class="skeleton sk-row" style="width: 28%"></div>
+      <div class="skeleton sk-row" style="width: 66%"></div>
+      <div class="skeleton sk-row" style="width: 48%"></div>
+    </div>
+    <div v-else-if="projectId === null" class="panel empty" data-no-project>
+      <div class="e-title">请先选择项目</div>
+      <div class="e-hint">数据源按项目隔离；在上方选择项目后加载该项目的数据源列表。</div>
+    </div>
+    <div v-else-if="rows.length === 0 && !error" class="panel empty" data-empty>
+      <div class="e-title">暂无数据源</div>
+      <div class="e-hint">点击「注册数据源」录入连接信息，随后可执行连通性测试。</div>
+    </div>
     <div v-else-if="rows.length > 0" class="ds-split">
-      <table data-ds-list>
-        <thead>
-          <tr><th>数据源</th><th>主机</th><th>用户名</th><th>状态</th><th>操作</th></tr>
-        </thead>
-        <tbody>
-          <tr v-for="row in rows" :key="row.id" :data-ds-id="row.id"
-              :class="{ active: row.id === selectedId }" @click="selectDatasource(row.id)">
-            <td>
-              <b>{{ row.name }}</b>
-              <small>#{{ row.id }} · {{ kindLabel(row.kind) }}</small>
-            </td>
-            <td>
-              <span class="mono">{{ row.host }}:{{ row.port }}</span>
-              <small>{{ row.database }}</small>
-            </td>
-            <td>{{ row.username }}</td>
-            <td>
-              <span :class="['pill', testClass(row.id)]">{{ testText(row.id) }}</span>
-            </td>
-            <td class="ds-row-actions" @click.stop>
-              <button type="button" data-test :disabled="testingId === row.id" @click="runTest(row)">
-                {{ testingId === row.id ? '测试中…' : '测试' }}
-              </button>
-              <button type="button" data-edit @click="openEdit(row)">编辑</button>
-              <button type="button" data-delete @click="removeRow(row)">删除</button>
-            </td>
-          </tr>
-        </tbody>
-      </table>
+      <div class="panel">
+        <div class="tbl-toolbar">
+          <span class="sec-head">数据源</span>
+          <span class="pill info">{{ rows.length }}</span>
+          <span class="spacer"></span>
+          <span class="hint">点击行查看元数据三级结构</span>
+        </div>
+        <table class="tbl" data-ds-list>
+          <thead>
+            <tr><th>数据源</th><th>主机</th><th>用户名</th><th>状态</th><th>操作</th></tr>
+          </thead>
+          <tbody>
+            <tr v-for="row in rows" :key="row.id" :data-ds-id="row.id"
+                :class="{ active: row.id === selectedId }" @click="selectDatasource(row.id)">
+              <td>
+                <strong>{{ row.name }}</strong>
+                <span>#{{ row.id }} · {{ kindLabel(row.kind) }}</span>
+              </td>
+              <td>
+                <span class="mono">{{ row.host }}:{{ row.port }}</span>
+                <span>{{ row.database }}</span>
+              </td>
+              <td>{{ row.username }}</td>
+              <td>
+                <span class="pill" :class="testClass(row.id)">{{ testText(row.id) }}</span>
+              </td>
+              <td class="ds-row-actions" @click.stop>
+                <button type="button" class="op-btn" data-test :disabled="testingId === row.id" @click="runTest(row)">
+                  {{ testingId === row.id ? '测试中…' : '测试' }}
+                </button>
+                <button type="button" class="op-btn" data-edit @click="openEdit(row)">编辑</button>
+                <button type="button" class="op-btn danger" data-delete @click="removeRow(row)">删除</button>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
 
-      <aside v-if="selectedId !== null" data-detail>
-        <h2>{{ selectedRow?.name ?? '数据源' }} 元数据</h2>
-        <p class="ds-meta">库（schema）/ 对象（表·视图）/ 字段三级浏览；字段仅作结构参照。</p>
+      <aside v-if="selectedId !== null" class="panel" data-detail>
+        <span class="sub-hd">{{ selectedRow?.name ?? '数据源' }} 元数据</span>
+        <p class="hint">库（schema）/ 对象（表·视图）/ 字段三级浏览；字段仅作结构参照。</p>
 
         <section>
-          <h3>库</h3>
-          <p v-if="schemas.length === 0" class="ds-muted">无库或加载失败</p>
-          <ul class="ds-tree" data-schema-list>
+          <span class="sub-hd">库</span>
+          <p v-if="schemas.length === 0" class="hint">无库或加载失败</p>
+          <ul v-else class="node-list" data-schema-list>
             <li v-for="schema in schemas" :key="schema">
-              <button type="button" :class="{ active: schema === activeSchema }" @click="selectSchema(schema)">
+              <button type="button" :class="{ on: schema === activeSchema }" @click="selectSchema(schema)">
                 {{ schema }}
               </button>
             </li>
@@ -71,21 +95,22 @@
         </section>
 
         <section v-if="activeSchema">
-          <h3>对象 · {{ activeSchema }}</h3>
-          <p v-if="objects.length === 0" class="ds-muted">无对象或加载失败</p>
-          <ul class="ds-tree" data-object-list>
+          <span class="sub-hd">对象 · {{ activeSchema }}</span>
+          <p v-if="objects.length === 0" class="hint">无对象或加载失败</p>
+          <ul v-else class="node-list" data-object-list>
             <li v-for="obj in objects" :key="`${obj.schema}.${obj.name}`">
-              <button type="button" :class="{ active: obj.name === activeObject }" @click="selectObject(obj)">
-                {{ obj.name }}<small>{{ obj.type === 'view' ? '视图' : '表' }}</small>
+              <button type="button" :class="{ on: obj.name === activeObject }" @click="selectObject(obj)">
+                <strong>{{ obj.name }}</strong>
+                <span>{{ obj.type === 'view' ? '视图' : '表' }}</span>
               </button>
             </li>
           </ul>
         </section>
 
         <section v-if="activeObject">
-          <h3>字段 · {{ activeSchema }}.{{ activeObject }}</h3>
-          <p v-if="columns.length === 0" class="ds-muted">无字段或加载失败</p>
-          <table v-else data-column-list>
+          <span class="sub-hd">字段 · {{ activeSchema }}.{{ activeObject }}</span>
+          <p v-if="columns.length === 0" class="hint">无字段或加载失败</p>
+          <table v-else class="tbl" data-column-list>
             <thead><tr><th>字段</th><th>类型</th><th>可空</th><th>主键</th></tr></thead>
             <tbody>
               <tr v-for="col in columns" :key="col.name">
@@ -101,25 +126,51 @@
     </div>
 
     <div v-if="editing" class="mask" @click.self="closeEditor">
-      <form role="dialog" aria-modal="true" aria-label="注册数据源" @submit.prevent="save">
-        <h2>{{ form.id === null ? '注册数据源' : '编辑数据源' }}</h2>
-        <label>名称<input v-model.trim="form.name" required maxlength="128" data-name></label>
-        <label>类型
-          <select v-model="form.kind" data-kind>
-            <option value="mysql">MySQL</option>
-            <option value="postgresql">PostgreSQL</option>
-          </select>
-        </label>
-        <label>主机<input v-model.trim="form.host" required maxlength="256" data-host></label>
-        <label>端口<input v-model.number="form.port" type="number" min="1" max="65535" required data-port></label>
-        <label>数据库<input v-model.trim="form.database" required maxlength="128" data-database></label>
-        <label>用户名<input v-model.trim="form.username" required maxlength="128" data-username></label>
-        <label>密码<input v-model="form.password" type="password" maxlength="256" data-password
-                   :placeholder="form.id === null ? '' : '留空则不修改'"></label>
-        <footer>
-          <button type="button" data-cancel @click="closeEditor">取消</button>
-          <button type="submit" data-save>保存</button>
-        </footer>
+      <form class="dlg" role="dialog" aria-modal="true" aria-label="注册数据源" @submit.prevent="save">
+        <div class="dlg-hd">
+          {{ form.id === null ? '注册数据源' : '编辑数据源' }}
+          <button type="button" class="x" aria-label="关闭" @click="closeEditor">×</button>
+        </div>
+        <div class="dlg-bd">
+          <div class="form-grid">
+            <label class="f-item full">
+              <span>名称</span>
+              <input v-model.trim="form.name" required maxlength="128" data-name>
+            </label>
+            <label class="f-item">
+              <span>类型</span>
+              <select v-model="form.kind" data-kind>
+                <option value="mysql">MySQL</option>
+                <option value="postgresql">PostgreSQL</option>
+              </select>
+            </label>
+            <label class="f-item">
+              <span>主机</span>
+              <input v-model.trim="form.host" required maxlength="256" data-host>
+            </label>
+            <label class="f-item">
+              <span>端口</span>
+              <input v-model.number="form.port" type="number" min="1" max="65535" required data-port>
+            </label>
+            <label class="f-item">
+              <span>数据库</span>
+              <input v-model.trim="form.database" required maxlength="128" data-database>
+            </label>
+            <label class="f-item">
+              <span>用户名</span>
+              <input v-model.trim="form.username" required maxlength="128" data-username>
+            </label>
+            <label class="f-item full">
+              <span>密码</span>
+              <input v-model="form.password" type="password" maxlength="256" data-password
+                     :placeholder="form.id === null ? '' : '留空则不修改'">
+            </label>
+          </div>
+        </div>
+        <div class="dlg-ft">
+          <button type="button" class="op-btn" data-cancel @click="closeEditor">取消</button>
+          <button type="submit" class="op-btn primary" data-save>保存</button>
+        </div>
       </form>
     </div>
   </main>
@@ -136,11 +187,15 @@
  * 项目上下文：`/ds/list` 为全局模式路由（AppShell 项目模式仅覆盖 `/p/` 前缀），
  *   故项目段从 `route.params.projectId` 或 `route.query.projectId` 承接；
  *   两者皆空时呈现选择器，不渲染空壳。
+ *
+ * 样式对标旧前端：页面壳 `.pg/.pg-head/.pg-desc/.toolbar/.panel/.tbl-toolbar/.tbl/.mask/.dlg`
+ *   全部取自 theme.css 全局令牌层，无 scoped 裸色值。
  */
 import { computed, onMounted, reactive, ref } from 'vue'
 import { useRoute } from 'vue-router'
 import {
   createDatasourceContract,
+  type DatasourceColumn,
   type DatasourceContract,
   type DatasourceDraft,
   type DatasourceKind,
@@ -165,9 +220,7 @@ const schemas = ref<string[]>([])
 const activeSchema = ref('')
 const objects = ref<{ schema: string; name: string; type: 'table' | 'view' }[]>([])
 const activeObject = ref('')
-const columns = ref<
-  { name: string; dataType: string; databaseType: string; nullable: boolean; primaryKey: boolean }[]
->([])
+const columns = ref<DatasourceColumn[]>([])
 
 type DatasourceForm = DatasourceDraft & { id: number | null }
 const blankForm = (): DatasourceForm => ({
@@ -367,38 +420,19 @@ onMounted(async () => {
 </script>
 
 <style scoped>
-.ds-page{max-width:1220px;margin:auto;padding:32px 24px;color:#172033}
-.ds-head{display:flex;align-items:center;gap:16px;flex-wrap:wrap}
-.ds-head h1{margin:0}
-.ds-head p{margin:4px 0 0;color:#64748b;flex-basis:100%}
-.ds-actions{display:flex;align-items:center;gap:12px;margin-left:auto}
-.ds-project{display:flex;align-items:center;gap:8px}
-.ds-project select{padding:7px 10px;min-width:180px}
-button{cursor:pointer;padding:7px 12px}
-button:disabled{cursor:not-allowed;opacity:.5}
-.ds-split{display:grid;grid-template-columns:minmax(520px,1fr) minmax(320px,.9fr);gap:20px;margin-top:8px;align-items:start}
-table{width:100%;border-collapse:collapse;background:#fff}
-th,td{text-align:left;padding:11px;border-bottom:1px solid #e2e8f0;vertical-align:top}
-tbody tr{cursor:pointer}
-tbody tr:hover{background:#f8fafc}
-tbody tr.active{background:#eff6ff}
+/* 仅保留全局类无法表达的布局/语义态；颜色一律走令牌 */
+.ds-split{display:grid;grid-template-columns:minmax(520px,1fr) minmax(320px,.9fr);gap:14px;align-items:start}
 .ds-row-actions{display:flex;gap:6px;white-space:nowrap}
-.mono{font-family:ui-monospace,monospace;font-size:12px}
-small{display:block;color:#64748b;font-size:11px;font-weight:400}
-.pill{display:inline-block;padding:2px 8px;border-radius:10px;font-size:11px;background:#f1f5f9;color:#64748b}
-.pill.ok{background:#dcfce7;color:#15803d}
-.pill.warn{background:#fef3c7;color:#b45309}
-aside{border:1px solid #e2e8f0;border-radius:8px;padding:16px;background:#fff}
-aside h2{margin:0 0 8px}
-aside h3{margin:16px 0 8px;font-size:14px;color:#334155}
-.ds-meta,.ds-muted{color:#64748b;font-size:12px}
-.ds-tree{list-style:none;padding:0;margin:0;display:grid;gap:4px;align-content:start}
-.ds-tree button{width:100%;text-align:left;border:1px solid #e2e8f0;background:#fff;border-radius:6px;padding:7px 9px;cursor:pointer;display:flex;justify-content:space-between;gap:8px}
-.ds-tree button.active{border-color:#2563eb;background:#eff6ff}
-.mask{position:fixed;inset:0;background:#0f172a66;display:grid;place-items:center}
-.mask form{width:min(520px,calc(100vw - 40px));display:grid;gap:12px;background:#fff;padding:24px;border-radius:10px}
-.mask label{display:grid;gap:5px}
-.mask input,.mask select{padding:8px}
-.mask footer{display:flex;justify-content:flex-end;gap:8px}
+.tbl tbody tr{cursor:pointer}
+.tbl tbody tr.active td{background:var(--primary-light)}
+td > span{display:block}
+td > span.mono{font-size:12px}
+td > span:not(.mono){font-size:11px;color:var(--text-3);margin-top:2px}
+.node-list button{width:100%;border:none;background:transparent;padding:5px 8px;border-radius:var(--radius-sm);cursor:pointer;font:inherit;font-size:12.5px;color:var(--text-2);display:flex;align-items:center;gap:8px;text-align:left}
+.node-list button:hover{background:var(--bg)}
+.node-list button.on{background:var(--primary-light);color:var(--primary);font-weight:600}
+.node-list button strong{font-weight:600}
+.node-list button span{font-size:11px;color:var(--text-3)}
+.node-list button.on span{color:var(--primary)}
 @media(max-width:900px){.ds-split{grid-template-columns:1fr}}
 </style>

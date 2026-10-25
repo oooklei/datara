@@ -14,7 +14,7 @@ vi.mock('../../services/rebuild/governanceApi', async () => {
     await vi.importActual<typeof import('../../services/rebuild/governanceApi')>(
       '../../services/rebuild/governanceApi',
     )
-  return { ...actual, governanceApi: { listAssets: vi.fn() } }
+  return { ...actual, governanceApi: { listAssets: vi.fn(), listMetrics: vi.fn(), listStandards: vi.fn() } }
 })
 
 vi.mock('../../services/rebuild/projectApi', async () => {
@@ -99,5 +99,70 @@ describe('/meta/map 资产地图页（增量 14）', () => {
     await flushPromises()
     expect(w.find('[role=alert]').text()).toContain('asset list failed')
     expect(w.find('[data-project-select]').exists()).toBe(true)
+  })
+
+  it('isolates category summaries by project, reuses per-project cache, and ignores late responses', async () => {
+    type MetricPage = Awaited<ReturnType<typeof governanceApi.listMetrics>>
+    const metric = (projectId: number, name: string) => ({ id: projectId, projectId, code: `M${projectId}`, name, formula: '1', description: '', status: 'active' as const, createdAt: null, updatedAt: null })
+    const standard = (projectId: number) => ({ id: projectId, projectId, code: `S${projectId}`, name: `P${projectId} standard`, dataType: 'string', expression: 'not_null', description: '', status: 'active' as const, createdAt: null, updatedAt: null })
+    let resolveOld!: (value: MetricPage) => void
+    const oldMetrics = new Promise<MetricPage>((resolve) => { resolveOld = resolve })
+    vi.mocked(listProjects).mockResolvedValue({ total: 2, list: [{ id: 1, name: 'P1' }, { id: 2, name: 'P2' }] })
+    vi.mocked(governanceApi.listAssets).mockResolvedValue({ total: 1, page: 1, pageSize: 50, list: [asset] })
+    vi.mocked(governanceApi.listMetrics).mockImplementation((projectId) => projectId === 1
+      ? oldMetrics
+      : Promise.resolve({ total: 2, list: [metric(2, 'P2 metric')] }))
+    vi.mocked(governanceApi.listStandards).mockImplementation((projectId) => Promise.resolve({
+      total: projectId,
+      list: [standard(projectId)],
+    }))
+    const w = mount(View)
+    await flushPromises()
+    await w.find('[data-project-select]').setValue('1')
+    await flushPromises()
+    await w.findAll('[data-asset-views] button')[2]!.trigger('click')
+    await w.find('[data-project-select]').setValue('2')
+    await flushPromises()
+    expect(w.text()).toContain('P2 metric')
+    resolveOld({ total: 99, list: [metric(1, 'STALE P1 metric')] })
+    await flushPromises()
+    expect(w.text()).not.toContain('STALE P1 metric')
+    await w.find('[data-project-select]').setValue('1')
+    await flushPromises()
+    expect(governanceApi.listMetrics).toHaveBeenCalledTimes(2)
+  })
+
+  it('does not cache failed summaries, renders unknown instead of zero, and retries', async () => {
+    router.route.params.projectId = '1'
+    vi.mocked(governanceApi.listAssets).mockResolvedValue({ total: 1, page: 1, pageSize: 50, list: [asset] })
+    vi.mocked(governanceApi.listMetrics)
+      .mockRejectedValueOnce(new Error('metrics failed'))
+      .mockResolvedValue({ total: 1, list: [{ id: 1, projectId: 1, code: 'M1', name: 'Recovered metric', formula: '1', description: '', status: 'active', createdAt: null, updatedAt: null }] })
+    vi.mocked(governanceApi.listStandards).mockResolvedValue({ total: 0, list: [] })
+    const w = mount(View)
+    await flushPromises()
+    await w.findAll('[data-asset-views] button')[2]!.trigger('click')
+    await flushPromises()
+    expect(w.text()).toContain('指标— 项')
+    await w.findAll('[data-asset-views] button')[2]!.trigger('click')
+    await flushPromises()
+    expect(governanceApi.listMetrics).toHaveBeenCalledTimes(2)
+    expect(w.text()).toContain('Recovered metric')
+  })
+
+  it('preserves project context in metric and standard navigation', async () => {
+    router.route.params.projectId = '1'
+    vi.mocked(governanceApi.listAssets).mockResolvedValue({ total: 1, page: 1, pageSize: 50, list: [asset] })
+    vi.mocked(governanceApi.listMetrics).mockResolvedValue({ total: 0, list: [] })
+    vi.mocked(governanceApi.listStandards).mockResolvedValue({ total: 0, list: [] })
+    const w = mount(View)
+    await flushPromises()
+    await w.findAll('[data-asset-views] button')[2]!.trigger('click')
+    await flushPromises()
+    const links = w.findAll('.cat-link')
+    await links[1]!.trigger('click')
+    expect(router.push).toHaveBeenCalledWith({ path: '/ind/list', query: { projectId: '1' } })
+    await links[2]!.trigger('click')
+    expect(router.push).toHaveBeenCalledWith({ path: '/std/element', query: { projectId: '1' } })
   })
 })

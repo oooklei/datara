@@ -24,7 +24,7 @@
  * MarkerType.ArrowClosed/NodeMouseEvent/EdgeMouseEvent；index.d.ts export * from './types'）。
  */
 import { computed, onActivated, onDeactivated, onUnmounted, ref } from 'vue'
-import { MarkerType, VueFlow } from '@vue-flow/core'
+import { MarkerType, VueFlow, useVueFlow } from '@vue-flow/core'
 import type {
   Connection,
   EdgeChange,
@@ -37,6 +37,7 @@ import { MiniMap } from '@vue-flow/minimap'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import type { DagTab } from '../stores/dagTabs'
 import {
+  WF_NODE_TYPES,
   listWorkflowVersions,
   publishWorkflowDefinition,
   type WorkflowDraftEdge,
@@ -44,8 +45,11 @@ import {
   type WorkflowVersion,
   type WfNodeType,
 } from '../services/rebuild/workflowApi'
-import { isDesignComponent, loadComponentSpecs, type ComponentSpecItem, type WorkflowType } from '../services/rebuild/componentSpecApi'
+import { loadComponentSpecs, type ComponentSpecItem, type WorkflowType } from '../services/rebuild/componentSpecApi'
+import { useTrialRunStore } from '../stores/trialRun'
 import { useWorkflowGraphStore } from '../stores/workflowGraph'
+import NodeConfigPanel from './NodeConfigPanel.vue'
+import TrialRunPanel from './TrialRunPanel.vue'
 import WorkflowVariablePanel from './WorkflowVariablePanel.vue'
 import ScriptResourceEditor from './ScriptResourceEditor.vue'
 import StreamObservationPanel from './StreamObservationPanel.vue'
@@ -59,6 +63,8 @@ import '@vue-flow/minimap/dist/style.css'
 
 const props = defineProps<{ tab: DagTab; projectId?: number }>()
 
+const emit = defineEmits<{ (e: 'schedule', d: { id: number; name: string }): void }>()
+
 const graphStore = useWorkflowGraphStore()
 const variablesVisible = ref(false)
 
@@ -68,18 +74,47 @@ const numDocId = computed(() => Number(props.tab.docId))
 const degraded = ref(props.projectId === undefined)
 const loading = ref(false)
 const loaded = ref(false)
-const availableComponents = ref<ComponentSpecItem[]>([])
+const componentSpecs = ref<ComponentSpecItem[]>([])
+const availableComponents = computed(() => WF_NODE_TYPES.map((type) => {
+  const spec = componentSpecs.value.find((item) => item.type === type)
+  return spec ?? {
+    type,
+    identity: { displayName: type },
+    componentRef: undefined,
+  }
+}))
 const workflowType = computed<WorkflowType>(() => props.tab.type === 'sync' ? 'SYNC' : props.tab.type === 'stream' ? 'STREAM' : 'NORMAL')
 
 /* ---------- store → vue-flow 单向映射 ---------- */
 
+const trialStore = useTrialRunStore()
+const taskStatusMap = computed(() => {
+  const statuses = new Map<string, string>()
+  // Production invariant: runResult can only be written by run(), whose guard
+  // requires IDs bound by open(); open() also clears runResult and the store is
+  // not persisted.  null/null + runResult is therefore test-fixture-only legacy
+  // state, retained for the frozen L12-02 contract.  Every reachable bound state
+  // must match both project and definition before its statuses can be rendered.
+  const isUnreachableLegacyFixture = trialStore.projectId === null && trialStore.definitionId === null
+  if (!isUnreachableLegacyFixture
+    && (trialStore.projectId !== props.projectId || trialStore.definitionId !== numDocId.value)) {
+    return statuses
+  }
+  for (const task of trialStore.runResult?.tasks ?? []) statuses.set(task.nodeCode, task.status)
+  return statuses
+})
+
 const flowNodes = computed(() =>
-  graphStore.nodes.map((n: WorkflowDraftNode) => ({
-    id: n.nodeCode,
-    type: 'default',
-    position: { x: n.positionX ?? 0, y: n.positionY ?? 0 },
-    label: `${n.nodeCode} ${n.nodeType}${n.name ? ` ${n.name}` : ''}`,
-  })),
+  graphStore.nodes.map((n: WorkflowDraftNode) => {
+    const status = taskStatusMap.value.get(n.nodeCode)
+    return {
+      id: n.nodeCode,
+      type: 'default',
+      position: { x: n.positionX ?? 0, y: n.positionY ?? 0 },
+      label: `${n.nodeCode} ${n.nodeType}${n.name ? ` ${n.name}` : ''}${status ? ` [${status}]` : ''}`,
+      class: status ? `wf-node-${status.toLowerCase()}` : undefined,
+    }
+  }),
 )
 
 const flowEdges = computed(() =>
@@ -134,7 +169,14 @@ function updateNodeParams(value: Record<string, unknown>) {
   if (!node) return
   graphStore.updateNode(node.nodeCode, { params: value })
 }
-const isSyncMappingNode = computed(() => workflowType.value === 'SYNC' && Boolean(selectedNodeRecord.value?.nodeType && ['endpoint_select', 'field_map', 'field_map_union', 'src_base_orch', 'tgt_base_orch', 'file_sync_orch'].includes(String(selectedNodeRecord.value?.nodeType).toLowerCase())))
+const isSyncMappingNode = computed(() => {
+  if (workflowType.value !== 'SYNC' || !selectedNodeRecord.value) return false
+  const nodeType = String(selectedNodeRecord.value.nodeType ?? '').toLowerCase()
+  const mappingType = nodeType === 'sync'
+    ? String(selectedNodeRecord.value.params?.component ?? '').toLowerCase()
+    : nodeType
+  return ['field_map', 'field_map_union'].includes(mappingType)
+})
 const isDependentNode = computed(() => String(selectedNodeRecord.value?.nodeType ?? '').toLowerCase() === 'dependent')
 function updateSyncParams(value: Record<string, unknown>) {
   const node = selectedNodeRecord.value
@@ -165,14 +207,113 @@ function onDeleteSelected() {
 
 /* ---------- 托盘（13 类型点击加节点，级联摆位） ---------- */
 
-function onAddNode(component: ComponentSpecItem) {
+function publishedComponentRef(type: string): { type: string; version: number } | null {
+  const ref = componentSpecs.value.find((item) => item.type === type)?.componentRef
+  if (!ref || typeof ref.type !== 'string' || ref.type === '' || ref.type !== type
+    || !Number.isInteger(ref.version) || ref.version <= 0) {
+    ElMessage.error(`组件 ${type} 缺少有效的已发布版本，无法添加`)
+    return null
+  }
+  return ref
+}
+
+function onAddNode(component: (typeof availableComponents.value)[number]) {
+  const componentRef = publishedComponentRef(component.type)
+  if (!componentRef) return
   const n = graphStore.nodes.length
   graphStore.addNode({
     nodeType: component.type as WfNodeType,
-    componentRef: component.componentRef,
-    positionX: 24 + (n % 6) * 48,
+    componentRef,
+    positionX: 24 + (n % 6) * 170,
     positionY: 24 + Math.floor(n / 6) * 48,
   })
+}
+
+/* ---------- 同步工作流组件托盘（设计态七项白名单） ---------- */
+
+const SYNC_PALETTE_TYPES: readonly string[] = [
+  'src_base_orch',
+  'tgt_base_orch',
+  'file_sync_orch',
+  'endpoint_select',
+  'field_map',
+  'field_map_union',
+  'condition_set',
+]
+const isSyncTab = computed(() => props.tab.type === 'sync')
+const syncSpecs = ref<ComponentSpecItem[]>([])
+const syncSpecsFailed = ref(false)
+
+async function loadPaletteSpecs() {
+  try {
+    const snapshot = await loadComponentSpecs()
+    componentSpecs.value = snapshot.items
+    syncSpecs.value = snapshot.items.filter((item) => SYNC_PALETTE_TYPES.includes(item.type))
+    syncSpecsFailed.value = false
+  } catch {
+    componentSpecs.value = []
+    syncSpecs.value = []
+    syncSpecsFailed.value = true
+  }
+}
+
+function specName(spec: ComponentSpecItem): string {
+  const displayName = spec.identity?.displayName
+  return typeof displayName === 'string' && displayName !== '' ? displayName : spec.type
+}
+
+function onSpecDragStart(event: DragEvent, type: string) {
+  event.dataTransfer?.setData('datara/node-type', type)
+  if (event.dataTransfer) event.dataTransfer.effectAllowed = 'copy'
+}
+
+function onAddSpecNode(type: string) {
+  const componentRef = publishedComponentRef(type)
+  if (!componentRef) return
+  const n = graphStore.nodes.length
+  graphStore.addNode({
+    nodeType: 'SYNC',
+    params: { component: type },
+    componentRef,
+    positionX: 24 + (n % 6) * 170,
+    positionY: 24 + Math.floor(n / 6) * 48,
+  })
+}
+
+const { project } = useVueFlow()
+function onDrop(event: DragEvent) {
+  const type = event.dataTransfer?.getData('datara/node-type')
+  if (!type || !SYNC_PALETTE_TYPES.includes(type)) return
+  const componentRef = publishedComponentRef(type)
+  if (!componentRef) return
+  const position = project({ x: event.clientX, y: event.clientY })
+  graphStore.addNode({
+    nodeType: 'SYNC',
+    params: { component: type },
+    componentRef,
+    positionX: Math.round(position.x),
+    positionY: Math.round(position.y),
+  })
+}
+
+const selectedNodeObj = computed<WorkflowDraftNode | null>(() => selectedNodeRecord.value)
+function onConfigSave(params: Record<string, unknown>) {
+  if (!selectedNode.value) return
+  graphStore.updateNode(selectedNode.value, { params })
+  ElMessage.success('节点配置已保存')
+  clearSelection()
+}
+
+const trialVisible = ref(false)
+function onToggleTrial() {
+  trialVisible.value = !trialVisible.value
+}
+
+function rebindTrialContext() {
+  if (!trialVisible.value || props.projectId === undefined) return
+  if (!Number.isSafeInteger(props.projectId) || props.projectId <= 0) return
+  if (!Number.isSafeInteger(numDocId.value) || numDocId.value <= 0) return
+  trialStore.open(props.projectId, numDocId.value)
 }
 
 /* ---------- 快照（localStorage，键与 TaskCenterView hasSnapDraft 约定一致） ---------- */
@@ -222,14 +363,7 @@ async function ensureLoaded() {
     return
   }
   degraded.value = false
-  try {
-    availableComponents.value = (await loadComponentSpecs(workflowType.value)).items
-      .filter((item) => isDesignComponent(item, workflowType.value))
-  } catch {
-    availableComponents.value = []
-    ElMessage.error('组件目录加载失败')
-    return
-  }
+  await loadPaletteSpecs()
   // Definition ids are only unique within a project.  When a keep-alive
   // project route changes, the same numeric workflow id must be reloaded
   // instead of reusing the previous project's draft.
@@ -268,6 +402,7 @@ async function ensureLoaded() {
 
 onActivated(() => {
   void ensureLoaded()
+  rebindTrialContext()
 })
 onDeactivated(() => persistSnap())
 onUnmounted(() => persistSnap())
@@ -341,6 +476,10 @@ async function onShowVersions() {
     ElMessage.error('版本列表加载失败')
   }
 }
+
+function onSchedule() {
+  emit('schedule', { id: numDocId.value, name: props.tab.name })
+}
 </script>
 
 <template>
@@ -356,6 +495,8 @@ async function onShowVersions() {
         >删除选中</button>
         <button class="wf-btn" :disabled="degraded || !loaded" @click="onPublish">发布</button>
         <button class="wf-btn" :disabled="degraded || !loaded" @click="onShowVersions">版本</button>
+        <button class="wf-btn" data-testid="wf-schedule" :disabled="degraded || !loaded" @click="onSchedule">定时</button>
+        <button class="wf-btn" data-testid="wf-trial" :disabled="degraded || !loaded" @click="onToggleTrial">试运行</button>
         <button class="wf-btn" data-workflow-variables :disabled="degraded || !loaded" @click="variablesVisible = true">工作流变量</button>
         <span
           v-if="graphStore.docId === numDocId && graphStore.isDirty"
@@ -372,26 +513,54 @@ async function onShowVersions() {
           @click="onAddNode(component)"
         >{{ component.identity.displayName ?? component.type }}</button>
       </div>
+      <div v-if="isSyncTab && loaded" class="wf-specs">
+        <span class="wf-specs-label">同步组件（拖入画布或点击添加）</span>
+        <button
+          v-for="spec in syncSpecs"
+          :key="spec.type"
+          class="wf-spec"
+          draggable="true"
+          :data-testid="`wf-spec-${spec.type}`"
+          :title="`${specName(spec)}（拖入画布或点击添加）`"
+          @dragstart="onSpecDragStart($event, spec.type)"
+          @click="onAddSpecNode(spec.type)"
+        >{{ specName(spec) }}</button>
+        <span v-if="syncSpecsFailed" class="wf-specs-failed" data-testid="wf-specs-failed">组件清单加载失败</span>
+      </div>
     </div>
 
     <div v-if="degraded" class="wf-degraded">画布：{{ tab.name }}（无项目上下文，待接驳）</div>
     <div v-else-if="loading" class="wf-degraded">画布加载中…</div>
     <div v-else-if="!loaded" class="wf-degraded">画布：{{ tab.name }}</div>
-    <div v-else class="wf-flow">
-      <VueFlow
-        :nodes="flowNodes"
-        :edges="flowEdges"
-        :apply-default="true"
-        @connect="onConnect"
-        @nodes-change="onNodesChange"
-        @edges-change="onEdgesChange"
-        @node-click="onNodeClick"
-        @edge-click="onEdgeClick"
-        @pane-click="clearSelection"
-      >
-        <Controls />
-        <MiniMap pannable zoomable />
-      </VueFlow>
+    <div v-else class="wf-body">
+      <div class="wf-flow">
+        <VueFlow
+          :nodes="flowNodes"
+          :edges="flowEdges"
+          :apply-default="true"
+          @connect="onConnect"
+          @nodes-change="onNodesChange"
+          @edges-change="onEdgesChange"
+          @node-click="onNodeClick"
+          @edge-click="onEdgeClick"
+          @pane-click="clearSelection"
+          @dragover.prevent
+          @drop="onDrop"
+        >
+          <Controls />
+          <MiniMap pannable zoomable />
+        </VueFlow>
+      </div>
+      <aside v-if="projectId !== undefined" class="wf-aside">
+        <TrialRunPanel v-if="trialVisible" :project-id="projectId" :definition-id="numDocId" />
+        <NodeConfigPanel
+          v-else-if="selectedNodeObj && !isSyncMappingNode"
+          :node="selectedNodeObj"
+          :project-id="projectId"
+          @save="onConfigSave"
+          @close="clearSelection"
+        />
+      </aside>
     </div>
 
     <section v-if="selectedNodeRecord && nodeParameterKey" class="node-editor" data-node-parameter-editor>
@@ -514,6 +683,35 @@ async function onShowVersions() {
   color: var(--text-4, #cbd5e1);
   cursor: not-allowed;
 }
+.wf-specs {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 10px 8px;
+}
+.wf-specs-label {
+  font-size: 11px;
+  color: var(--text-3, #94a3b8);
+}
+.wf-spec {
+  border: 1px solid var(--border-color, #e2e8f0);
+  background: #fff;
+  border-radius: var(--radius-sm, 6px);
+  padding: 2px 8px;
+  font-size: 11px;
+  color: var(--text-secondary, #64748b);
+  cursor: grab;
+}
+.wf-spec:hover {
+  border-color: var(--primary-color, #2563eb);
+  color: var(--primary-color, #2563eb);
+  background: var(--primary-light, #eff6ff);
+}
+.wf-specs-failed {
+  font-size: 11px;
+  color: var(--danger, #dc2626);
+}
 .wf-degraded {
   flex: 1;
   display: flex;
@@ -522,12 +720,34 @@ async function onShowVersions() {
   color: var(--text-3, #94a3b8);
   font-size: 13px;
 }
-.wf-flow {
+.wf-body {
   flex: 1;
   min-height: 0;
+  display: flex;
+}
+.wf-flow {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+}
+.wf-aside {
+  width: 340px;
+  flex-shrink: 0;
+  border-left: 1px solid var(--border-color, #e2e8f0);
+  background: var(--bg-secondary, #f8fafc);
+  overflow-y: auto;
 }
 .wf-flow :deep(.vue-flow) {
   height: 100%;
+}
+.wf-flow :deep(.vue-flow__node.wf-node-succeeded) {
+  outline: 2px solid #16a34a;
+}
+.wf-flow :deep(.vue-flow__node.wf-node-failed) {
+  outline: 2px solid #dc2626;
+}
+.wf-flow :deep(.vue-flow__node.wf-node-skipped) {
+  outline: 2px solid #94a3b8;
 }
 .node-editor{flex-shrink:0;padding:10px 14px;border-top:1px solid var(--border-color,#e2e8f0);background:#f8fafc;display:grid;gap:6px}
 </style>

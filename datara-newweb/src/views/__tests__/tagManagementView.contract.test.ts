@@ -2,6 +2,9 @@ import { flushPromises, mount } from '@vue/test-utils'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import View from '../meta/TagManagementView.vue'
 
+const confirmClear = vi.hoisted(() => vi.fn())
+vi.mock('element-plus', () => ({ ElMessageBox: { confirm: confirmClear } }))
+
 const router = vi.hoisted(() => ({
   route: { params: {} as Record<string, unknown>, query: {} as Record<string, unknown> },
   push: vi.fn(),
@@ -118,5 +121,73 @@ describe('/meta/tag 标签管理页（增量 14）', () => {
     await flushPromises()
     expect(w.find('[role=alert]').text()).toContain('asset list failed')
     expect(w.find('[data-project-select]').exists()).toBe(true)
+  })
+
+  it('keeps tag creation available with no assets and clears created history on project change', async () => {
+    vi.mocked(listProjects).mockResolvedValue({ total: 2, list: [{ id: 1, name: 'P1' }, { id: 2, name: 'P2' }] })
+    vi.mocked(governanceApi.listAssets).mockResolvedValue({ total: 0, page: 1, pageSize: 50, list: [] })
+    vi.mocked(governanceApi.createTag).mockResolvedValue(tag)
+    const w = mount(View)
+    await flushPromises()
+    await w.find('[data-project-select]').setValue('1')
+    await flushPromises()
+    expect(w.find('[data-no-assets]').exists()).toBe(true)
+    expect(w.find('form.create').exists()).toBe(true)
+    const inputs = w.findAll('.create input')
+    await inputs[1]!.setValue('owner')
+    await inputs[2]!.setValue('Owner')
+    await w.find('form.create').trigger('submit')
+    await flushPromises()
+    expect(w.find('.recent-list').exists()).toBe(true)
+    await w.find('[data-project-select]').setValue('2')
+    await flushPromises()
+    expect(w.find('.recent-list').exists()).toBe(false)
+  })
+
+  it('requires confirmation before clearing all tags and does nothing when cancelled', async () => {
+    const tagged = { ...asset, tags: [tag] }
+    router.route.params.projectId = '1'
+    vi.mocked(governanceApi.listAssets).mockResolvedValue({ total: 1, page: 1, pageSize: 50, list: [tagged] })
+    confirmClear.mockRejectedValue(new Error('cancel'))
+    const w = mount(View)
+    await flushPromises()
+    await w.find('.op-btn.danger').trigger('click')
+    await flushPromises()
+    expect(confirmClear).toHaveBeenCalledTimes(1)
+    expect(governanceApi.assignAssetTags).not.toHaveBeenCalled()
+  })
+
+  it('clears all tags only after confirmation succeeds', async () => {
+    const tagged = { ...asset, tags: [tag] }
+    router.route.params.projectId = '1'
+    vi.mocked(governanceApi.listAssets).mockResolvedValue({ total: 1, page: 1, pageSize: 50, list: [tagged] })
+    vi.mocked(governanceApi.assignAssetTags).mockResolvedValue({ assetId: 9, tagIds: [] })
+    confirmClear.mockResolvedValue('confirm')
+    const w = mount(View)
+    await flushPromises()
+    await w.find('.op-btn.danger').trigger('click')
+    await flushPromises()
+    expect(confirmClear).toHaveBeenCalledTimes(1)
+    expect(governanceApi.assignAssetTags).toHaveBeenCalledWith(9, [])
+  })
+
+  it('clears stale assets and selections immediately while a new project is loading', async () => {
+    let resolveP2!: (value: { total: number; page: number; pageSize: number; list: typeof asset[] }) => void
+    vi.mocked(listProjects).mockResolvedValue({ total: 2, list: [{ id: 1, name: 'P1' }, { id: 2, name: 'P2' }] })
+    vi.mocked(governanceApi.listAssets).mockImplementation((projectId) => projectId === 1
+      ? Promise.resolve({ total: 1, page: 1, pageSize: 50, list: [asset] })
+      : new Promise((resolve) => { resolveP2 = resolve }))
+    const w = mount(View)
+    await flushPromises()
+    await w.find('[data-project-select]').setValue('1')
+    await flushPromises()
+    await w.find('[data-asset-select]').setValue('9')
+    await w.find('[data-project-select]').setValue('2')
+    expect(w.find('[data-tag-assets]').exists()).toBe(false)
+    expect(w.find<HTMLSelectElement>('[data-asset-select]').element.value).toBe('')
+    expect(w.find('[data-asset-select]').attributes('disabled')).toBeDefined()
+    expect(w.find('form.create button[type="submit"]').attributes('disabled')).toBeDefined()
+    resolveP2({ total: 0, page: 1, pageSize: 50, list: [] })
+    await flushPromises()
   })
 })

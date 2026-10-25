@@ -117,7 +117,7 @@ onMounted(async () => {
 
 .wb-sub {
   margin: 0;
-  color: var(--text-secondary, #64748b);
+  color: var(--text-2);
 }
 
 .wb-nav {
@@ -129,15 +129,15 @@ onMounted(async () => {
 
 .nav-item {
   padding: 10px 18px;
-  border: 1px solid var(--border-color, #e2e8f0);
-  border-radius: 10px;
-  background: var(--bg-surface, #fff);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--card);
   cursor: pointer;
   font-size: 14px;
 }
 
 .nav-item:hover {
-  border-color: var(--primary-color, #2563eb);
+  border-color: var(--primary);
 }
 
 .wb-section-title {
@@ -148,11 +148,11 @@ onMounted(async () => {
 .state {
   padding: 32px 0;
   text-align: center;
-  color: var(--text-secondary, #64748b);
+  color: var(--text-2);
 }
 
 .state-error {
-  color: #dc2626;
+  color: var(--danger);
 }
 
 .stat-table {
@@ -162,12 +162,12 @@ onMounted(async () => {
 
 .stat-table th,
 .stat-table td {
-  border: 1px solid var(--border-color, #e2e8f0);
+  border: 1px solid var(--border);
   padding: 8px 12px;
   text-align: left;
 }
 
 .stat-table th {
-  background: var(--bg-subtle, #f8fafc);
+  background: var(--bg);
 }
 </style>

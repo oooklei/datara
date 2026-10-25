@@ -16,14 +16,16 @@ export interface ProjectMenuSection {
   /** 路由段 key：/p/:projectId/<key>；同时为 DOM data-seg 稳定锚 */
   key: string
   label: string
+  /** 侧栏图标字形（对标旧前端菜单 icon 字形表） */
+  icon: string
 }
 
 export const PROJECT_MENU_SECTIONS: readonly ProjectMenuSection[] = [
-  { key: 'dag', label: '任务中心' },
-  { key: 'datasource', label: '数据源' },
-  { key: 'resources', label: '资源管理' },
-  { key: 'ide', label: 'SQL IDE' },
-  { key: 'meta', label: '数据治理' },
-  { key: 'dep', label: '部署运维' },
-  { key: 'system', label: '系统管理' },
+  { key: 'dag', label: '任务中心', icon: '⑃' },
+  { key: 'datasource', label: '数据源', icon: '⛁' },
+  { key: 'resources', label: '资源管理', icon: '⚑' },
+  { key: 'ide', label: 'SQL IDE', icon: '⌨' },
+  { key: 'meta', label: '数据治理', icon: '⇶' },
+  { key: 'dep', label: '部署运维', icon: '⛅' },
+  { key: 'system', label: '系统管理', icon: '⛨' },
 ] as const

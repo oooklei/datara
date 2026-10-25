@@ -1,47 +1,73 @@
 <template>
-  <main class="monitor-page" aria-label="集群监控">
-    <header class="monitor-head">
-      <div>
-        <h1>集群监控</h1>
-        <p>master / worker / ssh 三类节点的心跳与指标快照。指标由节点上报聚合，非实时值。</p>
-      </div>
-      <span class="zk-badge" :data-zk="snapshot ? String(snapshot.zkAvailable) : undefined">
-        ZK：{{ snapshot ? (snapshot.zkAvailable ? '可用' : '不可用') : '—' }}
-      </span>
-      <span class="generated" data-generated>生成时间：{{ snapshot?.generatedAt || '—' }}</span>
-      <button type="button" data-refresh @click="reload">刷新</button>
+  <main class="pg" aria-label="集群监控">
+    <header class="pg-head">
+      <h1 class="sec-head">集群监控</h1>
+      <p class="pg-desc">master / worker / ssh 三类节点的心跳与指标快照。指标由节点上报聚合，非实时值。</p>
     </header>
 
+    <div class="toolbar">
+      <span class="pill" :class="snapshot && snapshot.zkAvailable ? 'ok' : 'err'" :data-zk="snapshot ? String(snapshot.zkAvailable) : undefined">
+        ZK：{{ snapshot ? (snapshot.zkAvailable ? '可用' : '不可用') : '—' }}
+      </span>
+      <span class="spacer"></span>
+      <span class="hint" data-generated>生成时间：{{ snapshot?.generatedAt || '—' }}</span>
+      <button type="button" class="op-btn" data-refresh :disabled="busy" @click="reload">刷新</button>
+    </div>
+
     <!-- 错误横幅独立于内容态：加载失败时无数据可渲染，刷新失败时表格须保留 -->
-    <p v-if="error" role="alert" data-error>{{ error }}</p>
-    <p v-if="busy" role="status">正在加载…</p>
-    <p v-else-if="!snapshot && !error" data-empty>暂无监控数据</p>
-    <p v-else-if="snapshot && snapshot.nodes.length === 0 && !error" data-empty>暂无节点上报</p>
+    <div v-if="error" class="err-box" role="alert" data-error>
+      <span>{{ error }}</span>
+      <button type="button" class="op-btn retry" :disabled="busy" @click="reload">重试</button>
+    </div>
 
-    <table v-if="snapshot && snapshot.nodes.length > 0" data-node-list>
-      <thead>
-        <tr>
-          <th>模块</th><th>节点</th><th>CPU</th><th>内存 %</th><th>内存 MB</th><th>磁盘</th>
-          <th>心跳</th><th>指标态</th><th>最近上报</th><th>标签</th>
-        </tr>
-      </thead>
-      <tbody>
-        <tr v-for="row in snapshot.nodes" :key="`${row.module}:${row.node}`" :data-node="`${row.module}:${row.node}`">
-          <td data-module>{{ moduleLabel(row.module) }}</td>
-          <td data-node-name>{{ row.node }}</td>
-          <td data-cpu>{{ percent(row.cpu) }}</td>
-          <td data-mem>{{ percent(row.mem) }}</td>
-          <td data-mem-mb>{{ memMb(row.memUsedMb, row.memTotalMb) }}</td>
-          <td data-disk>{{ percent(row.disk) }}</td>
-          <td :data-heartbeat="row.heartbeat">{{ heartbeatLabel(row.heartbeat) }}</td>
-          <td :data-metric-state="row.metricState">{{ metricStateLabel(row.metricState) }}</td>
-          <td data-last-seen>{{ row.lastSeen || '—' }}</td>
-          <td data-tags>{{ row.tags.join('、') || '—' }}</td>
-        </tr>
-      </tbody>
-    </table>
+    <div v-if="busy" class="panel" role="status" aria-live="polite">
+      <div class="skeleton sk-row" style="width:28%"></div>
+      <div class="skeleton sk-row" style="width:66%"></div>
+      <div class="skeleton sk-row" style="width:48%"></div>
+    </div>
 
-    <p class="monitor-note" role="note" data-metric-note>
+    <div v-else-if="!snapshot && !error" class="panel empty" data-empty>
+      <div class="e-title">暂无监控数据</div>
+      <div class="e-hint">还没有任何节点上报心跳或指标快照。</div>
+    </div>
+
+    <!-- 空态须让位于错误态：加载失败时不得呈现「暂无数据」空壳 -->
+    <div v-else-if="snapshot && snapshot.nodes.length === 0 && !error" class="panel empty" data-empty>
+      <div class="e-title">暂无节点上报</div>
+      <div class="e-hint">当前没有节点上报指标快照。</div>
+    </div>
+
+    <div v-else-if="snapshot && snapshot.nodes.length > 0" class="panel">
+      <div class="tbl-toolbar">
+        <span class="sec-head">节点指标</span>
+        <span class="pill info">{{ snapshot.nodes.length }}</span>
+        <span class="spacer"></span>
+      </div>
+      <table class="tbl" data-node-list>
+        <thead>
+          <tr>
+            <th>模块</th><th>节点</th><th>CPU</th><th>内存 %</th><th>内存 MB</th><th>磁盘</th>
+            <th>心跳</th><th>指标态</th><th>最近上报</th><th>标签</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr v-for="row in snapshot.nodes" :key="`${row.module}:${row.node}`" :data-node="`${row.module}:${row.node}`">
+            <td data-module>{{ moduleLabel(row.module) }}</td>
+            <td data-node-name>{{ row.node }}</td>
+            <td data-cpu>{{ percent(row.cpu) }}</td>
+            <td data-mem>{{ percent(row.mem) }}</td>
+            <td data-mem-mb>{{ memMb(row.memUsedMb, row.memTotalMb) }}</td>
+            <td data-disk>{{ percent(row.disk) }}</td>
+            <td :data-heartbeat="row.heartbeat">{{ heartbeatLabel(row.heartbeat) }}</td>
+            <td :data-metric-state="row.metricState">{{ metricStateLabel(row.metricState) }}</td>
+            <td data-last-seen>{{ row.lastSeen || '—' }}</td>
+            <td data-tags>{{ row.tags.join('、') || '—' }}</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <p class="lock-tip" role="note" data-metric-note>
       口径：空指标如实显示 —；heartbeat=unknown 表示 ZK 不可用、无法判定在线状态；指标态 过期=上报时间超出 90s TTL，不支持=该模块（ssh）不上报指标。手动刷新，不做轮询。
     </p>
   </main>
@@ -56,6 +82,9 @@
  *  - 仅经契约工厂取数，禁直连 fetch/axios；
  *  - 空指标如实显示 —，heartbeat=unknown / metricState=stale|unsupported 给可辨识文案，不虚构实时性；
  *  - 手动刷新，不做高频轮询。
+ *
+ * 样式范式：复用全局设计系统（`.pg`/`.pg-head`/`.panel`/`.tbl`/`.tbl-toolbar`/`.pill`/`.lock-tip`
+ *   + `var(--*)` 令牌），与旧前端 datara-web 监控页的 `.card.panel` + `.tbl-toolbar` + `table.tbl` 范式对齐。
  */
 import { onMounted, ref } from 'vue'
 import { createMonitorContract, type MonitorHeartbeat, type MonitorMetricState, type MonitorSnapshot } from '../../services/rebuild/monitorApi'
@@ -113,19 +142,8 @@ onMounted(reload)
 </script>
 
 <style scoped>
-.monitor-page{max-width:1180px;margin:auto;padding:32px 24px;color:#172033}
-.monitor-head{display:flex;align-items:center;gap:16px;flex-wrap:wrap}
-.monitor-head h1{margin:0}
-.monitor-head p{margin:4px 0 0;color:#64748b;flex-basis:100%}
-.zk-badge{padding:4px 10px;border-radius:999px;background:#e2e8f0;font-size:13px}
-.zk-badge[data-zk='true']{background:#dcfce7}
-.zk-badge[data-zk='false']{background:#fee2e2}
-.generated{color:#64748b;font-size:13px;margin-left:auto}
-button{cursor:pointer;padding:7px 12px}
-table{width:100%;border-collapse:collapse;background:#fff;margin-top:8px}
-th,td{text-align:left;padding:11px;border-bottom:1px solid #e2e8f0;vertical-align:top}
-td[data-heartbeat='unknown']{color:#b45309}
-td[data-metric-state='stale']{color:#b45309}
-td[data-metric-state='unsupported']{color:#64748b}
-.monitor-note{margin-top:16px;color:#475569;font-size:13px}
+/* 仅保留语义化状态着色；版式/令牌一律走全局设计系统（.pg/.tbl/.pill/.lock-tip） */
+td[data-heartbeat='unknown'] { color: var(--warn); }
+td[data-metric-state='stale'] { color: var(--warn); }
+td[data-metric-state='unsupported'] { color: var(--text-3); }
 </style>

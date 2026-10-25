@@ -91,6 +91,21 @@ describe('/ind/consistency 一致性检查页（增量 14）', () => {
     expect(w.find('[data-consistency-result]').text()).toContain('通过')
   })
 
+  it('opens the result detail drawer and navigates to the indicator list', async () => {
+    router.route.params.projectId = '1'
+    vi.mocked(governanceApi.listStandards).mockResolvedValue({ total: 1, list: [standard] })
+    vi.mocked(governanceApi.checkStandard).mockResolvedValue([checkResult])
+    const w = mount(View)
+    await flushPromises()
+    await w.find('[data-standard-select]').setValue('9')
+    await w.find('button[type="button"]').trigger('click')
+    await flushPromises()
+    await w.find('[data-consistency-result] tbody button').trigger('click')
+    expect(w.find('[role=dialog]').exists()).toBe(true)
+    await w.find('[data-goto-list]').trigger('click')
+    expect(router.push).toHaveBeenCalledWith({ path: '/ind/list', query: { projectId: '1' } })
+  })
+
   it('surfaces backend errors without dropping the picker', async () => {
     router.route.params.projectId = '1'
     vi.mocked(governanceApi.listStandards).mockRejectedValue(
