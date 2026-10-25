@@ -41,11 +41,11 @@ export interface WorkflowRunStatPage { total: number; items: WorkflowRunStat[] }
 export function listWorkflowRunStats(projectId: number, options: { workflowId?: number; limit?: number } = {}) {
   const query: Record<string, string> = { project_id: String(projectId), limit: String(options.limit ?? 50) }
   if (options.workflowId) query.workflow_id = String(options.workflowId)
-  return request<WorkflowRunStatPage>('/api/v1/rebuild/execution/run-stats', { query })
+  return request<WorkflowRunStatPage>('/rebuild/execution/run-stats', { query })
 }
 
 export function getWorkflowRunStat(projectId: number, statId: number) {
-  return request<WorkflowRunStatDetail>(`/api/v1/rebuild/execution/run-stats/${statId}`, {
+  return request<WorkflowRunStatDetail>(`/rebuild/execution/run-stats/${statId}`, {
     query: { project_id: String(projectId), detail_limit: '200' },
   })
 }
