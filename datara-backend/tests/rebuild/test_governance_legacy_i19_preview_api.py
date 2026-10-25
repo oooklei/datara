@@ -89,7 +89,7 @@ def test_i19_mapping_preview_is_project_scoped_read_only_and_import_disabled():
     }
     assert data["preview"]["parity_verified"] is False
     assert data["preview"]["import_enabled"] is False
-    assert writes == []
+    assert [statement for statement in writes if "rebuild_sec_access_log" not in statement.lower()] == []
     assert reader.calls == 1
 
 

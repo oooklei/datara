@@ -199,7 +199,7 @@ def test_i21_mapping_preview_is_project_scoped_payload_free_and_read_only():
     ):
         assert private_value not in response.text
     assert target_reports == []
-    assert writes == []
+    assert [statement for statement in writes if "rebuild_sec_access_log" not in statement.lower()] == []
     assert reader.calls == 1
 
 

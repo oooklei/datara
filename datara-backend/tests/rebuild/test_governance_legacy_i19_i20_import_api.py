@@ -91,7 +91,7 @@ def test_i19_import_is_disabled_by_default_before_source_or_target_access():
     assert response.status_code == 503
     assert response.json()["msg"] == "legacy I19 import is disabled"
     assert i19_reader.calls == 0
-    assert writes == []
+    assert [statement for statement in writes if "rebuild_sec_access_log" not in statement.lower()] == []
 
 
 def test_i20_import_is_disabled_by_default_before_source_or_target_access():
@@ -121,7 +121,7 @@ def test_i20_import_is_disabled_by_default_before_source_or_target_access():
     assert response.status_code == 503
     assert response.json()["msg"] == "legacy I20 import is disabled"
     assert i20_reader.calls == 0
-    assert writes == []
+    assert [statement for statement in writes if "rebuild_sec_access_log" not in statement.lower()] == []
 
 
 def test_i20_import_rejects_a_source_digest_that_does_not_match_the_fresh_snapshot():
@@ -151,7 +151,7 @@ def test_i20_import_rejects_a_source_digest_that_does_not_match_the_fresh_snapsh
     assert response.status_code == 409
     assert response.json()["msg"] == "I20 source digest changed; request a fresh mapping preview"
     assert i20_reader.calls == 1
-    assert writes == []
+    assert [statement for statement in writes if "rebuild_sec_access_log" not in statement.lower()] == []
 
 
 def test_i19_import_rejects_a_source_digest_that_does_not_match_the_fresh_snapshot():
@@ -181,7 +181,7 @@ def test_i19_import_rejects_a_source_digest_that_does_not_match_the_fresh_snapsh
     assert response.status_code == 409
     assert response.json()["msg"] == "I19 source digest changed; request a fresh mapping preview"
     assert i19_reader.calls == 1
-    assert writes == []
+    assert [statement for statement in writes if "rebuild_sec_access_log" not in statement.lower()] == []
 
 
 def test_i20_import_rejects_a_target_digest_that_does_not_match_the_fresh_preview():
@@ -211,7 +211,7 @@ def test_i20_import_rejects_a_target_digest_that_does_not_match_the_fresh_previe
     assert response.status_code == 409
     assert response.json()["msg"] == "I20 target digest changed; request a fresh mapping preview"
     assert i20_reader.calls == 1
-    assert writes == []
+    assert [statement for statement in writes if "rebuild_sec_access_log" not in statement.lower()] == []
 
 
 def test_i19_import_rejects_a_target_digest_that_does_not_match_the_fresh_preview():
@@ -241,4 +241,4 @@ def test_i19_import_rejects_a_target_digest_that_does_not_match_the_fresh_previe
     assert response.status_code == 409
     assert response.json()["msg"] == "I19 target digest changed; request a fresh mapping preview"
     assert i19_reader.calls == 1
-    assert writes == []
+    assert [statement for statement in writes if "rebuild_sec_access_log" not in statement.lower()] == []
