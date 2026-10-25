@@ -363,6 +363,46 @@ def test_validation_key_issues_short_lived_non_admin_token_and_rejects_bad_key()
     assert permission_denial.status_code == 403
 
 
+def test_validation_key_can_issue_short_lived_e2e_admin_token():
+    with TestClient(
+        create_app(
+            "sqlite+pysqlite:///:memory:",
+            token_secret="unit-test-secret",
+            validation_key="unit-test-key",
+        )
+    ) as client:
+        rejected = client.post(
+            "/api/v1/rebuild/validation-token",
+            headers={
+                "X-Backend-Validation-Key": "wrong-key",
+                "X-Backend-Validation-Scope": "high-priority-e2e",
+            },
+        )
+        issued = client.post(
+            "/api/v1/rebuild/validation-token",
+            headers={
+                "X-Backend-Validation-Key": "unit-test-key",
+                "X-Backend-Validation-Scope": "high-priority-e2e",
+            },
+        )
+        token = issued.json()["data"]["token"]
+        claims = json.loads(base64.urlsafe_b64decode(token.split(".", 1)[0] + "=="))
+        created = client.post(
+            "/api/v1/rebuild/users",
+            headers={"Authorization": f"Bearer {token}"},
+            json={"username": "e2e-created-user", "password": "valid-password", "role": "viewer"},
+        )
+
+    assert rejected.status_code == 401
+    assert issued.status_code == 200
+    assert issued.json()["data"]["user"]["role"] == "admin"
+    assert issued.json()["data"]["capability"] is None
+    assert claims["role"] == "admin"
+    assert "capability" not in claims
+    assert claims["exp"] - claims["iat"] <= 900
+    assert created.status_code == 200
+
+
 def test_app_requires_database_and_token_secrets_without_environment_defaults(monkeypatch):
     monkeypatch.delenv("REBUILD_DB_URL", raising=False)
     monkeypatch.delenv("REBUILD_TOKEN_SECRET", raising=False)

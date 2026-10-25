@@ -813,7 +813,10 @@ def create_app(
             }
 
     @app.post("/api/v1/rebuild/validation-token")
-    def validation_token(x_backend_validation_key: str = Header(default="")):
+    def validation_token(
+        x_backend_validation_key: str = Header(default=""),
+        x_backend_validation_scope: str = Header(default=""),
+    ):
         """Exchange a server-held validation key for a short-lived test-runner token."""
         if not validation_key:
             return JSONResponse(
@@ -822,18 +825,22 @@ def create_app(
             )
         if not hmac.compare_digest(x_backend_validation_key, validation_key):
             return JSONResponse(status_code=401, content={"code": 1001, "msg": "invalid validation key", "data": None})
+        elevated = x_backend_validation_scope == "high-priority-e2e"
+        role = Role.ADMIN if elevated else Role.VIEWER
+        capability = None if elevated else "validation:bootstrap"
+        username = "validation-e2e-runner" if elevated else "validation-runner"
         token = validation_token_service.issue(
             user_id=0,
-            username="validation-runner",
-            role=Role.VIEWER,
-            capability="validation:bootstrap",
+            username=username,
+            role=role,
+            capability=capability,
         )
         active_tokens.add(
             token,
             user_id=0,
-            username="validation-runner",
-            role=Role.VIEWER.value,
-            capability="validation:bootstrap",
+            username=username,
+            role=role.value,
+            capability=capability,
             ttl_seconds=900,
         )
         return {
@@ -841,8 +848,8 @@ def create_app(
             "msg": "success",
             "data": {
                 "token": token,
-                "user": {"id": 0, "username": "validation-runner", "role": Role.VIEWER.value},
-                "capability": "validation:bootstrap",
+                "user": {"id": 0, "username": username, "role": role.value},
+                "capability": capability,
                 "expires_in": 900,
             },
         }
