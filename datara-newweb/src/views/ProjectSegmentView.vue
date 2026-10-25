@@ -20,7 +20,7 @@ import { computed, type Component } from 'vue'
 import { PROJECT_MENU_SECTIONS } from '../navigation/projectMenu'
 import TaskCenterView from './TaskCenterView.vue'
 import ResourceManagementView from './resources/ResourceManagementView.vue'
-import PermissionMatrixView from './PermissionMatrixView.vue'
+import SystemAdminView from './system/SystemAdminView.vue'
 import DataSourceListView from './datasource/DataSourceListView.vue'
 import IdeView from './ide/IdeView.vue'
 import MetadataCatalogView from './meta/MetadataCatalogView.vue'
@@ -36,7 +36,7 @@ const segmentViews: Record<string, Component> = {
   ide: IdeView,
   meta: MetadataCatalogView,
   dep: MonitorView,
-  system: PermissionMatrixView,
+  system: SystemAdminView,
 }
 const segmentView = computed(() => segmentViews[props.seg])
 const heading = computed(() => section.value?.label ?? '未知功能段')
