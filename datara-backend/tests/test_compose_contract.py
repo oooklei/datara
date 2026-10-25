@@ -20,6 +20,14 @@ def test_kafka_is_a_persistent_healthy_default_service() -> None:
     assert "kafka-data" in compose["volumes"]
 
 
+def test_rebuild_resource_versions_use_persistent_storage() -> None:
+    compose = _compose()
+    api = compose["services"]["datara-rebuild-api"]
+    assert api["environment"]["REBUILD_RESOURCE_STORAGE_DIR"] == "/datara/resource-storage"
+    assert "datara-resource-storage:/datara/resource-storage" in api["volumes"]
+    assert "datara-resource-storage" in compose["volumes"]
+
+
 def test_worker_waits_for_kafka_and_uses_validated_address() -> None:
     compose = _compose()
     assert compose["services"]["datara-worker"]["depends_on"]["kafka"]["condition"] == "service_healthy"

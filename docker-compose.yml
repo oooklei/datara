@@ -167,9 +167,11 @@ services:
       REBUILD_TOKEN_SECRET: ${REBUILD_TOKEN_SECRET:?REBUILD_TOKEN_SECRET must be set in the runtime environment}
       REBUILD_VALIDATION_KEY: ${REBUILD_VALIDATION_KEY:-}
       REBUILD_MYSQL_SRC_URL: ${REBUILD_MYSQL_SRC_URL:-}
+      REBUILD_RESOURCE_STORAGE_DIR: /datara/resource-storage
     volumes:
       - datara-logs:/datara/logs:ro
       - ./files:/datara/files:ro
+      - datara-resource-storage:/datara/resource-storage
     depends_on:
       mysql-meta:
         condition: service_healthy
@@ -323,3 +325,4 @@ volumes:
   mysql-src-data:
   mysql-dw-data:
   datara-logs:
+  datara-resource-storage:

@@ -11,6 +11,7 @@ services:
       REBUILD_VALIDATION_KEY: ${REBUILD_VALIDATION_KEY:-}
       REBUILD_MYSQL_SRC_URL: ${REBUILD_MYSQL_SRC_URL:-}
       REBUILD_LEGACY_META_URL: ${REBUILD_LEGACY_META_URL:?REBUILD_LEGACY_META_URL must be set for the I18 read-only preview}
+      REBUILD_RESOURCE_STORAGE_DIR: /datara/resource-storage
       I2_RECONCILE_PATH: /datara/logs/datagen/reconcile.json
       I2_SAMPLES_PATH: /datara/files/samples
     depends_on:
@@ -22,6 +23,7 @@ services:
       - ./rebuild-source/rebuild:/app/rebuild:ro
       - datara-logs:/datara/logs:ro
       - ./files:/datara/files:ro
+      - datara-resource-storage:/datara/resource-storage
     healthcheck:
       test: ["CMD-SHELL", "curl -sf http://localhost:8001/api/v1/rebuild/health || exit 1"]
       interval: 10s
