@@ -64,7 +64,13 @@ def main() -> int:
     parser.add_argument("--snapshot-id", type=int, default=2)
     parser.add_argument("--stream-job-id", type=int, default=1)
     parser.add_argument("--dependency-id", type=int)
+    parser.add_argument("--fixture-file", type=Path, help="JSON output from provision_high_priority_fixture")
     args = parser.parse_args()
+    if args.fixture_file is not None:
+        fixture = json.loads(args.fixture_file.read_text(encoding="utf-8"))
+        for key in ("project_id", "definition_id", "snapshot_id", "stream_job_id", "dependency_id"):
+            if key in fixture:
+                setattr(args, key, int(fixture[key]))
     token = (
         args.token_file.read_text(encoding="utf-8").strip()
         if args.token_file is not None
