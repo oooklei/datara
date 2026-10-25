@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import argparse
 import json
+from pathlib import Path
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
@@ -54,18 +55,24 @@ def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--base", required=True)
     parser.add_argument("--username", required=True)
-    parser.add_argument("--password", required=True)
+    password_group = parser.add_mutually_exclusive_group(required=True)
+    password_group.add_argument("--password")
+    password_group.add_argument("--password-file", type=Path)
     parser.add_argument("--project-id", type=int, default=1)
     parser.add_argument("--definition-id", type=int, default=1)
     parser.add_argument("--snapshot-id", type=int, default=2)
     parser.add_argument("--stream-job-id", type=int, default=1)
     parser.add_argument("--dependency-id", type=int)
     args = parser.parse_args()
+    password = args.password
+    if args.password_file is not None:
+        password = args.password_file.read_text(encoding="utf-8").strip()
+    assert password is not None
     try:
         health = call(args.base, "/api/v1/rebuild/health")
         if health.get("code") != 0:
             raise RuntimeError("health envelope is not successful")
-        login = call(args.base, "/api/v1/rebuild/login", method="POST", body={"username": args.username, "password": args.password})
+        login = call(args.base, "/api/v1/rebuild/login", method="POST", body={"username": args.username, "password": password})
         token = login["data"]["token"]
         specs = call(args.base, "/api/v1/rebuild/components/spec", token=token)
         spec_count = len(specs.get("items", []))
