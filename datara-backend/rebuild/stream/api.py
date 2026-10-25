@@ -247,6 +247,10 @@ def build_stream_router(
                 if denial is not None:
                     return denial
                 offset = body.start_offset
+                if "start_offset" not in body.model_fields_set:
+                    checkpoint = repository.latest_checkpoint(job_id, body.partition_id)
+                    if checkpoint is not None:
+                        offset = int(checkpoint["offset_value"]) + 1
                 events: list[dict[str, Any]] = []
                 for index in range(body.count):
                     payload = {**body.payload, "sequence": index, "partition": body.partition_id}

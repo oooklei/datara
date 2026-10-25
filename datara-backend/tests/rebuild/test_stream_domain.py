@@ -339,6 +339,13 @@ def test_api_lifecycle_observe_and_failures_contract(client):
     assert produced.json()["data"]["produced"] == 2
     assert produced.json()["data"]["last_offset"] == 11
 
+    resumed = client.post(
+        f"/api/v1/rebuild/stream/jobs/{job_id}/produce",
+        json={"count": 2, "partition_id": "p1", "payload": {"key": "a", "amount": 4}},
+    )
+    assert resumed.status_code == 200
+    assert resumed.json()["data"]["last_offset"] == 13
+
     fused = client.post(
         f"/api/v1/rebuild/stream/jobs/{job_id}/fuse",
         json={"key_field": "id", "streams": {"left": [{"id": 1, "v": "a"}], "right": [{"id": 1, "w": "b"}]}},
