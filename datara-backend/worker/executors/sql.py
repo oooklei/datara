@@ -14,6 +14,8 @@ from decimal import Decimal
 from typing import Callable
 
 import pymysql
+import sqlglot
+from sqlglot import exp
 
 from worker.executor import ExecResult, register
 from worker.lineage import collect_sql_lineage
@@ -28,6 +30,8 @@ _pool_lock = threading.Lock()
 
 # 本期走 MySQL 协议的源类型（GreatDB/Doris/StarRocks 均兼容）
 _MYSQL_LIKE = frozenset({"mysql", "greatdb", "doris", "starrocks"})
+_TRANSACTION_MODES = frozenset({"none", "all", "explicit"})
+_READONLY_QUERY_TYPES = (exp.Select, exp.Union, exp.Intersect, exp.Except)
 
 
 def _split_sql(text: str) -> list:
@@ -127,9 +131,31 @@ def _run_one(conn, stmt: str, log: Callable) -> dict:
         cur.close()
 
 
+def _is_readonly_statement(stmt: str) -> bool:
+    """Return true only when a statement can be proven to be a read query."""
+    try:
+        parsed = [item for item in sqlglot.parse(stmt, read="mysql") if item is not None]
+    except (sqlglot.errors.ParseError, ValueError):
+        return False
+    if len(parsed) != 1 or not isinstance(parsed[0], _READONLY_QUERY_TYPES):
+        return False
+    for select in parsed[0].find_all(exp.Select):
+        if select.args.get("into") is not None or select.args.get("locks"):
+            return False
+    return True
+
+
+def _rollback(conn, log: Callable) -> None:
+    """Best-effort rollback which preserves the executor's original failure state."""
+    try:
+        conn.rollback()
+    except Exception as exc:  # noqa: BLE001
+        log("[sql] transaction rollback failed: %r" % exc)
+
+
 @register("sql")
 def execute(ctx) -> ExecResult:
-    """执行 pre → sql → post 多语句；outputs.results 全语句摘要 + 主查询预览。"""
+    """执行 pre → sql → post，并保留结果、血缘、统计与中断契约。"""
     param = ctx.param or {}
     ds_ref = param.get("datasource") or param.get("datasource_id")
     if not ds_ref:
@@ -141,6 +167,30 @@ def execute(ctx) -> ExecResult:
         return ExecResult(FAILURE, {}, ["[sql] 暂不支持的数据源类型: %s（本期 MySQL 协议）" % ds.type])
     ctx.log("[sql] 数据源: %s (%s:%s/%s)" % (ds.name, ds.host, ds.port, ds.db_name))
 
+    transaction_mode = str(param.get("transaction") or "none").strip().lower()
+    if transaction_mode not in _TRANSACTION_MODES:
+        ctx.log("[sql] transaction 参数无效: %s" % transaction_mode)
+        return ExecResult(FAILURE, {}, [])
+
+    phases = (
+        ("pre", "前置", _split_sql(str(param.get("pre") or ""))),
+        ("sql", "主", _split_sql(str(param.get("sql") or ""))),
+        ("post", "后置", _split_sql(str(param.get("post") or ""))),
+    )
+    if param.get("readOnly"):
+        rejected = next(
+            (
+                stmt
+                for _phase_key, _phase_label, statements in phases
+                for stmt in statements
+                if not _is_readonly_statement(stmt)
+            ),
+            None,
+        )
+        if rejected is not None:
+            ctx.log("[sql] readOnly 拒绝写操作或无法确认的语句: %s" % rejected[:200].replace("\n", " "))
+            return ExecResult(FAILURE, {}, [])
+
     try:
         conn = _get_conn(ds)
     except Exception as exc:  # noqa: BLE001 连接失败 → failure（日志含原因）
@@ -148,22 +198,37 @@ def execute(ctx) -> ExecResult:
         return ExecResult(FAILURE, {}, [])
 
     results = []
+    execution_plan = []
     executed: list = []  # 已成功执行语句（血缘采集源，I5 F24；_run_one 无异常=已提交）
     outputs_count: dict = {}  # 血缘计数（成功终态随 outputs 上报）
     killed = False
     state = SUCCESS
     try:
-        for phase, text in (("前置", param.get("pre")), ("主", param.get("sql")), ("后置", param.get("post"))):
-            for i, stmt in enumerate(_split_sql(str(text or "")), start=1):
+        if transaction_mode == "all":
+            conn.begin()
+        for phase_key, phase_label, statements in phases:
+            for i, stmt in enumerate(statements, start=1):
                 if ctx.killed():
                     killed = True
                     break
-                ctx.log("[sql] %s语句#%d: %s" % (phase, i, stmt[:200].replace("\n", " ")))
+                ctx.log("[sql] %s语句#%d: %s" % (phase_label, i, stmt[:200].replace("\n", " ")))
+                if phase_key == "sql" and param.get("explain"):
+                    plan = _run_one(conn, "EXPLAIN " + stmt, ctx.log)
+                    execution_plan.append(
+                        {"statement": stmt, "columns": plan.get("columns", []), "rows": plan.get("rows", [])}
+                    )
                 results.append(_run_one(conn, stmt, ctx.log))
                 executed.append(stmt)
             if killed:
                 break
+        if transaction_mode == "all":
+            if killed:
+                _rollback(conn, ctx.log)
+            else:
+                conn.commit()
     except Exception as exc:  # noqa: BLE001 SQL 错误 → failure
+        if transaction_mode == "all":
+            _rollback(conn, ctx.log)
         ctx.log("[sql] 执行失败: %r" % exc)
         state = FAILURE
     if killed:
@@ -180,6 +245,8 @@ def execute(ctx) -> ExecResult:
         return ExecResult(state, {}, [])
 
     outputs = {"results": results, **outputs_count}
+    if param.get("explain"):
+        outputs["execution_plan"] = execution_plan
     queries = [r for r in results if r["kind"] == "query"]
     if queries:
         last = queries[-1]
