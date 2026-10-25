@@ -104,6 +104,7 @@ describe('INC4-FE-7 trialApi 契约（/api/v1/rebuild/trial）', () => {
       nodeCodes: ['n1', 'n2'],
       startNode: 'n1',
       testVariables: { row_count: 42 },
+      environmentGroupId: 3,
       dependencyMock: { dep_1: 'SUCCEEDED', dep_2: 'FAILED' },
       dryRun: true,
       sqlPrecheck: true,
@@ -120,6 +121,7 @@ describe('INC4-FE-7 trialApi 契约（/api/v1/rebuild/trial）', () => {
           node_codes: ['n1', 'n2'],
           start_node: 'n1',
           test_variables: { row_count: 42 },
+          environment_group_id: 3,
           dependency_mock: { dep_1: 'SUCCEEDED', dep_2: 'FAILED' },
           dry_run: true,
           sql_precheck: true,
@@ -152,6 +154,15 @@ describe('INC4-FE-7 trialApi 契约（/api/v1/rebuild/trial）', () => {
         options: { start_node: 'n1', dependency_mock: { dep_1: 'FAILED' } },
       }),
     )
+  })
+
+  it('runTrial：拒绝非正整数环境组且不发请求', async () => {
+    const fetchMock = vi.fn()
+    vi.stubGlobal('fetch', fetchMock)
+    await expect(runTrial(7, 42, 9, { environmentGroupId: 0 })).rejects.toThrow(
+      'environmentGroupId must be a positive integer',
+    )
+    expect(fetchMock).not.toHaveBeenCalled()
   })
 
   it('runTrial：运行结果映射（tasks snake→camel；plan null 直存）', async () => {

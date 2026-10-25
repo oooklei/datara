@@ -44,6 +44,8 @@ from rebuild.resources.repository import storage_dir
 from rebuild.trial.validator import TrialValidator
 from rebuild.trial.repository import TrialSnapshotRepository
 from rebuild.variables.models import TaskInstanceVariableRuntimeRecord
+from rebuild.variables.repository import VariableRepository
+from rebuild.variables.service import VariableContext, VariableDomainError, VariableResolver
 
 
 @dataclass
@@ -53,6 +55,7 @@ class TrialRunOptions:
     node_codes: list[str] | None = None  # WF-15: restrict to subset.
     start_node: str | None = None  # WF-16: forward-reachable subgraph.
     test_variables: dict[str, Any] | None = None  # WF-17: runtime overrides.
+    environment_group_id: int | None = None  # Selected environment layer.
     dependency_mock: dict[str, str] | None = None  # WF-18: dep_id -> status.
     dry_run: bool = False  # WF-19: plan only.
     sql_precheck: bool = False  # WF-20: validate SQL before execution.
@@ -98,6 +101,19 @@ class TrialRunner:
     ) -> TrialRunResult:
         """Execute a TRIAL run from a draft snapshot."""
         options = options or TrialRunOptions()
+        environment_group_id = options.environment_group_id
+        if (
+            environment_group_id is not None
+            and (
+                isinstance(environment_group_id, bool)
+                or not isinstance(environment_group_id, int)
+                or environment_group_id <= 0
+            )
+        ):
+            raise TrialRunnerError(
+                "WF_TRIAL_VARIABLE_INVALID",
+                "environment_group_id must be a positive integer",
+            )
 
         # 1. Load snapshot.
         snapshot = TrialSnapshotRepository(self._session).get(snapshot_id)
@@ -352,6 +368,24 @@ class TrialRunner:
 
         node_type = node["node_type"]
         params = node.get("params") or {}
+        variable_repository = VariableRepository(self._session)
+        variable_resolver = VariableResolver(
+            lambda owner_key: variable_repository.list_owner(owner_key),
+            run_values={name: str(value) for name, value in (options.test_variables or {}).items()},
+        )
+        try:
+            params, variable_snapshot = variable_resolver.resolve_parameters(
+                params,
+                VariableContext(
+                    project_id=project_id,
+                    workflow_id=definition_id,
+                    task_id=str(node["node_code"]),
+                    environment_group_id=options.environment_group_id,
+                    attempt_no=attempt.attempt_no,
+                ),
+            )
+        except VariableDomainError as exc:
+            raise TrialRunnerError("WF_TRIAL_VARIABLE_INVALID", exc.msg) from exc
         resource_source = self._resolve_resource_source(
             project_id=project_id,
             definition_id=definition_id,
@@ -388,6 +422,33 @@ class TrialRunner:
                     )
                 )
             self._session.flush()
+
+        # Persist the variables that were actually consumed by this task.
+        # The runtime table is instance/attempt/name unique, so downstream
+        # tasks reusing the same variable must not duplicate the snapshot.
+        existing_snapshot_names = set(
+            self._session.scalars(
+                select(TaskInstanceVariableRuntimeRecord.name).where(
+                    TaskInstanceVariableRuntimeRecord.instance_id == instance_id,
+                    TaskInstanceVariableRuntimeRecord.attempt_no == attempt.attempt_no,
+                )
+            ).all()
+        )
+        snapshot_rows = []
+        for item in variable_snapshot:
+            if item["name"] in existing_snapshot_names:
+                continue
+            existing_snapshot_names.add(item["name"])
+            snapshot_rows.append(
+                {
+                    **item,
+                    "instance_id": instance_id,
+                    "project_id": project_id,
+                    "attempt_no": attempt.attempt_no,
+                }
+            )
+        if snapshot_rows:
+            variable_repository.write_snapshot_rows(snapshot_rows)
 
         # WF-18: DEPENDENCY mock.  Palette component refs use the immutable
         # lower-case ``dependent`` type, while legacy drafts use

@@ -61,6 +61,8 @@ export interface TrialRunOptions {
   startNode?: string
   /** WF-17：运行时变量覆盖（变量名 → 覆盖值） */
   testVariables?: Record<string, unknown>
+  /** Selects the environment layer used by the variable resolution chain. */
+  environmentGroupId?: number
   /** WF-18：DEPENDENCY 节点模拟（dependency_id → 模拟结果） */
   dependencyMock?: Record<string, TrialDependencyMockStatus>
   /** WF-19：仅出执行计划不落副作用（status=DRY_RUN、instance_id=0） */
@@ -342,6 +344,12 @@ function trialOptionsWire(options?: TrialRunOptions): Record<string, unknown> | 
   if (options.nodeCodes !== undefined) wire.node_codes = options.nodeCodes
   if (options.startNode !== undefined) wire.start_node = options.startNode
   if (options.testVariables !== undefined) wire.test_variables = options.testVariables
+  if (options.environmentGroupId !== undefined) {
+    if (!Number.isSafeInteger(options.environmentGroupId) || options.environmentGroupId <= 0) {
+      throw new RangeError('environmentGroupId must be a positive integer')
+    }
+    wire.environment_group_id = options.environmentGroupId
+  }
   if (options.dependencyMock !== undefined) wire.dependency_mock = options.dependencyMock
   if (options.dryRun !== undefined) wire.dry_run = options.dryRun
   if (options.sqlPrecheck !== undefined) wire.sql_precheck = options.sqlPrecheck

@@ -10,10 +10,11 @@ from sqlalchemy import create_engine, select
 from sqlalchemy.orm import Session
 
 from rebuild.common.db import Base
-from rebuild.execution.models import RunOutputRecord, TaskAttemptRecord, TaskInstanceRecord, WorkflowInstanceRecord
+from rebuild.execution.models import RunOutputRecord, TaskInstanceRecord, WorkflowInstanceRecord
 from rebuild.trial.repository import TrialSnapshotRepository
 from rebuild.trial.runner import TrialRunner, TrialRunnerError, TrialRunOptions
 from rebuild.variables.models import TaskInstanceVariableRuntimeRecord
+from rebuild.variables.repository import VariableRepository
 from rebuild.workflow.models import (
     WorkflowDefinitionRecord,
     WorkflowEdgeRecord,
@@ -157,6 +158,63 @@ def test_wf17_test_variables_recorded():
     env_var = next(v for v in variables if v.name == "env")
     assert env_var.resolved_value == "staging"
     assert env_var.source == "test_override"
+
+
+def test_wf17_resolves_workflow_environment_global_and_run_variables_before_execution():
+    session = _session()
+    definition_id = _make_definition(session)
+    _add_node(
+        session,
+        definition_id,
+        "python_vars",
+        node_type="PYTHON",
+        params={"script": 'print("${workflow.region}|${env.region}|${global.region}|${run.batch}")'},
+    )
+    repository = VariableRepository(session)
+    common = {"value_type": "string", "sensitive": False, "description": ""}
+    repository.upsert(scope="global", project_id=None, name="region", value="global", **common)
+    repository.upsert(scope="env", project_id=1, name="region", value="env", environment_group_id=9, **common)
+    repository.upsert(
+        scope="workflow", project_id=1, name="region", value="workflow", workflow_id=definition_id, **common
+    )
+    session.commit()
+    snapshot = TrialSnapshotRepository(session).create_from_draft(definition_id)
+
+    result = TrialRunner(session).run(
+        definition_id=definition_id,
+        snapshot_id=snapshot["snapshot_id"],
+        project_id=1,
+        options=TrialRunOptions(test_variables={"batch": 500}, environment_group_id=9),
+    )
+    session.commit()
+
+    assert result.status == "SUCCEEDED"
+    outputs = [json.loads(row.output_json) for row in session.scalars(select(RunOutputRecord)).all()]
+    assert any(row.get("stdout") == "workflow|env|global|500\n" for row in outputs)
+    snapshots = session.scalars(
+        select(TaskInstanceVariableRuntimeRecord).where(
+            TaskInstanceVariableRuntimeRecord.instance_id == result.instance_id
+        )
+    ).all()
+    assert {row.name for row in snapshots} == {"region", "batch"}
+
+
+def test_wf17_rejects_invalid_environment_group_before_creating_runtime_rows():
+    session = _session()
+    definition_id = _make_definition(session)
+    _add_node(session, definition_id, "python_vars", node_type="PYTHON", params={"script": "print('ok')"})
+    session.commit()
+    snapshot = TrialSnapshotRepository(session).create_from_draft(definition_id)
+
+    with pytest.raises(TrialRunnerError, match="environment_group_id must be a positive integer"):
+        TrialRunner(session).run(
+            definition_id=definition_id,
+            snapshot_id=snapshot["snapshot_id"],
+            project_id=1,
+            options=TrialRunOptions(environment_group_id=0),
+        )
+
+    assert session.scalars(select(WorkflowInstanceRecord)).all() == []
 
 
 # WF-18: dependency mock -------------------------------------------------------

@@ -71,7 +71,11 @@ function makeStore(over: Record<string, unknown> = {}) {
     projectId: 7 as number | null,
     definitionId: 42 as number | null,
     snapshot: null as unknown,
-    options: { nodeCodes: [] as string[], startNode: '', testVariables: {} as Record<string, unknown>, dependencyMock: {} as Record<string, unknown>, dryRun: false, sqlPrecheck: false },
+    options: {
+      nodeCodes: [] as string[], startNode: '', testVariables: {} as Record<string, unknown>,
+      environmentGroupId: undefined as number | undefined,
+      dependencyMock: {} as Record<string, unknown>, dryRun: false, sqlPrecheck: false,
+    },
     runResult: null as unknown,
     output: null as unknown,
     promoteResult: null as unknown,
@@ -156,7 +160,7 @@ describe('INC4-FE-7 TrialRunPanel 八能力 UI 承接', () => {
 
   it('六选项表单在位（WF-15~WF-20 六锚点）', () => {
     const w = mountPanel()
-    for (const sel of ['nodecodes', 'start-node', 'test-vars', 'dep-mock', 'dry-run', 'sql-precheck']) {
+    for (const sel of ['nodecodes', 'start-node', 'test-vars', 'environment-group-id', 'dep-mock', 'dry-run', 'sql-precheck']) {
       expect(w.find(`[data-test="${sel}"]`).exists()).toBe(true)
     }
   })
@@ -174,12 +178,32 @@ describe('INC4-FE-7 TrialRunPanel 八能力 UI 承接', () => {
     store.snapshot = SNAPSHOT
     await flushPromises()
     await w.find('[data-test="test-vars"]').setValue('{"k":1}')
+    await w.find('[data-test="environment-group-id"]').setValue('9')
     await w.find('[data-test="dep-mock"]').setValue('{"d1":"SUCCEEDED"}')
     await w.find('[data-test="run-btn"]').trigger('click')
     await flushPromises()
     expect(store.options.testVariables).toEqual({ k: 1 })
+    expect(store.options.environmentGroupId).toBe(9)
     expect(store.options.dependencyMock).toEqual({ d1: 'SUCCEEDED' })
     expect(store.run).toHaveBeenCalledTimes(1)
+  })
+
+  it('环境组 ID 清空为未选择；非正整数阻止运行', async () => {
+    store.snapshot = SNAPSHOT
+    const w = mountPanel()
+    const input = w.find('[data-test="environment-group-id"]')
+    await input.setValue('9')
+    expect(store.options.environmentGroupId).toBe(9)
+    await input.setValue('')
+    expect(store.options.environmentGroupId).toBeUndefined()
+    // Browser number controls may normalize an under-minimum value to blank;
+    // exercise the submit guard directly because stores can also be hydrated
+    // programmatically (for example from a restored draft).
+    store.options.environmentGroupId = 0
+    await w.find('[data-test="run-btn"]').trigger('click')
+    await flushPromises()
+    expect(msgWarning).toHaveBeenCalledWith('环境组 ID 需为正整数')
+    expect(store.run).not.toHaveBeenCalled()
   })
 
   it('非法 JSON：warning 提示且 run 不调用（testVariables 先挡）', async () => {

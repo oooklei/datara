@@ -16,7 +16,7 @@ from fastapi import APIRouter, Body, Header
 from fastapi.responses import JSONResponse
 from sqlalchemy.orm import sessionmaker
 
-from rebuild.execution.repository import ExecutionDomainError, ExecutionRepository
+from rebuild.execution.repository import ExecutionDomainError
 from rebuild.execution.models import WorkflowInstanceRecord
 from rebuild.identity.contracts import Permission
 from rebuild.trial.repository import TrialSnapshotDomainError, TrialSnapshotRepository
@@ -83,6 +83,12 @@ def build_trial_router(
         if isinstance(value, bool) or not isinstance(value, int) or value < minimum:
             raise MalformedRequest(f"{key} must be an integer >= {minimum}")
         return value
+
+    def frame_optional_int(payload: dict[str, Any], key: str, minimum: int = 1) -> int | None:
+        value = payload.get(key)
+        if value is None:
+            return None
+        return frame_int(payload, key, minimum)
 
     # -- POST /definitions/{definition_id}/snapshot --------------------------
 
@@ -156,15 +162,21 @@ def build_trial_router(
         if options_raw is not None and not isinstance(options_raw, dict):
             return request_error(MalformedRequest("options must be an object"))
 
-        options = TrialRunOptions(
-            node_codes=options_raw.get("node_codes") if options_raw else None,
-            start_node=options_raw.get("start_node") if options_raw else None,
-            test_variables=options_raw.get("test_variables") if options_raw else None,
-            dependency_mock=options_raw.get("dependency_mock") if options_raw else None,
-            dry_run=bool(options_raw.get("dry_run", False)) if options_raw else False,
-            sql_precheck=bool(options_raw.get("sql_precheck", False)) if options_raw else False,
-            sql_execute=bool(options_raw.get("sql_execute", False)) if options_raw else False,
-        )
+        try:
+            options = TrialRunOptions(
+                node_codes=options_raw.get("node_codes") if options_raw else None,
+                start_node=options_raw.get("start_node") if options_raw else None,
+                test_variables=options_raw.get("test_variables") if options_raw else None,
+                environment_group_id=(
+                    frame_optional_int(options_raw, "environment_group_id") if options_raw else None
+                ),
+                dependency_mock=options_raw.get("dependency_mock") if options_raw else None,
+                dry_run=bool(options_raw.get("dry_run", False)) if options_raw else False,
+                sql_precheck=bool(options_raw.get("sql_precheck", False)) if options_raw else False,
+                sql_execute=bool(options_raw.get("sql_execute", False)) if options_raw else False,
+            )
+        except MalformedRequest as exc:
+            return request_error(exc)
 
         with authorized_session(project_id, Permission.EDIT_DEFINITION, token, authorization) as outcome:
             if isinstance(outcome, JSONResponse):
@@ -261,15 +273,21 @@ def build_trial_router(
         if options_raw is not None and not isinstance(options_raw, dict):
             return request_error(MalformedRequest("options must be an object"))
 
-        options = TrialRunOptions(
-            node_codes=options_raw.get("node_codes") if options_raw else None,
-            start_node=options_raw.get("start_node") if options_raw else None,
-            test_variables=options_raw.get("test_variables") if options_raw else None,
-            dependency_mock=options_raw.get("dependency_mock") if options_raw else None,
-            dry_run=bool(options_raw.get("dry_run", False)) if options_raw else False,
-            sql_precheck=bool(options_raw.get("sql_precheck", False)) if options_raw else False,
-            sql_execute=bool(options_raw.get("sql_execute", False)) if options_raw else False,
-        )
+        try:
+            options = TrialRunOptions(
+                node_codes=options_raw.get("node_codes") if options_raw else None,
+                start_node=options_raw.get("start_node") if options_raw else None,
+                test_variables=options_raw.get("test_variables") if options_raw else None,
+                environment_group_id=(
+                    frame_optional_int(options_raw, "environment_group_id") if options_raw else None
+                ),
+                dependency_mock=options_raw.get("dependency_mock") if options_raw else None,
+                dry_run=bool(options_raw.get("dry_run", False)) if options_raw else False,
+                sql_precheck=bool(options_raw.get("sql_precheck", False)) if options_raw else False,
+                sql_execute=bool(options_raw.get("sql_execute", False)) if options_raw else False,
+            )
+        except MalformedRequest as exc:
+            return request_error(exc)
 
         with authorized_session(project_id, Permission.EDIT_DEFINITION, token, authorization) as outcome:
             if isinstance(outcome, JSONResponse):
@@ -327,12 +345,14 @@ def build_trial_router(
                 instance = outcome.get(WorkflowInstanceRecord, run_id)
                 if instance is None:
                     return JSONResponse(
-                        status_code=404, content={"code": 4404, "msg": f"workflow instance {run_id} not found", "data": None}
+                        status_code=404,
+                        content={"code": 4404, "msg": f"workflow instance {run_id} not found", "data": None},
                     )
                 definition = outcome.get(WorkflowDefinitionRecord, instance.workflow_id)
                 if definition is None or definition.project_id != project_id:
                     return JSONResponse(
-                        status_code=404, content={"code": 4404, "msg": f"workflow instance {run_id} not found", "data": None}
+                        status_code=404,
+                        content={"code": 4404, "msg": f"workflow instance {run_id} not found", "data": None},
                     )
                 aggregator = TrialOutputAggregator(outcome)
                 data = aggregator.aggregate(run_id)
@@ -367,12 +387,14 @@ def build_trial_router(
                 instance = outcome.get(WorkflowInstanceRecord, run_id)
                 if instance is None:
                     return JSONResponse(
-                        status_code=404, content={"code": 4404, "msg": f"workflow instance {run_id} not found", "data": None}
+                        status_code=404,
+                        content={"code": 4404, "msg": f"workflow instance {run_id} not found", "data": None},
                     )
                 definition = outcome.get(WorkflowDefinitionRecord, instance.workflow_id)
                 if definition is None or definition.project_id != project_id:
                     return JSONResponse(
-                        status_code=404, content={"code": 4404, "msg": f"workflow instance {run_id} not found", "data": None}
+                        status_code=404,
+                        content={"code": 4404, "msg": f"workflow instance {run_id} not found", "data": None},
                     )
                 user = principal(token, authorization)
                 user_id = int(user["user_id"])  # type: ignore[arg-type]

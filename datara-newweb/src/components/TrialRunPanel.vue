@@ -67,6 +67,14 @@ function parseObject<T extends Record<string, unknown>>(text: string, label: str
 }
 
 async function onRun(): Promise<void> {
+  const environmentGroupId = store.options.environmentGroupId
+  if (
+    environmentGroupId !== undefined
+    && (!Number.isSafeInteger(environmentGroupId) || environmentGroupId <= 0)
+  ) {
+    ElMessage.warning('环境组 ID 需为正整数')
+    return
+  }
   const tv = parseObject<Record<string, unknown>>(testVariablesText.value, '测试变量')
   if (tv === null) return
   const dm = parseObject<Record<string, TrialDependencyMockStatus>>(dependencyMockText.value, '依赖模拟')
@@ -74,6 +82,11 @@ async function onRun(): Promise<void> {
   store.options.testVariables = tv
   store.options.dependencyMock = dm
   await store.run()
+}
+
+function onEnvironmentGroupInput(event: Event): void {
+  const raw = (event.target as HTMLInputElement).value.trim()
+  store.options.environmentGroupId = raw === '' ? undefined : Number(raw)
 }
 
 async function onPromote(): Promise<void> {
@@ -126,6 +139,17 @@ const canRefreshOutput = computed(() => store.runResult !== null && store.runRes
         <label class="trp-field trp-field-wide">
           <span>测试变量覆盖（JSON，{} = 不覆盖）</span>
           <textarea v-model="testVariablesText" data-test="test-vars" rows="2"></textarea>
+        </label>
+        <label class="trp-field">
+          <span>环境组 ID（可选）</span>
+          <input
+            :value="store.options.environmentGroupId ?? ''"
+            data-test="environment-group-id"
+            type="number"
+            min="1"
+            step="1"
+            @input="onEnvironmentGroupInput"
+          />
         </label>
         <label class="trp-field trp-field-wide">
           <span>依赖模拟（JSON：dependency_id → SUCCEEDED/FAILED）</span>

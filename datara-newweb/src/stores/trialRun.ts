@@ -39,6 +39,8 @@ export interface TrialRunFormOptions {
   startNode: string
   /** WF-17：变量覆盖（变量名 → 覆盖值） */
   testVariables: Record<string, unknown>
+  /** Environment layer selected for variable resolution. */
+  environmentGroupId?: number
   /** WF-18：依赖模拟（dependency_id → 模拟结果） */
   dependencyMock: Record<string, TrialDependencyMockStatus>
   /** WF-19：仅出执行计划不落副作用 */
@@ -64,6 +66,13 @@ function effectiveOptions(form: TrialRunFormOptions): TrialRunOptions | undefine
   if (form.nodeCodes.length > 0) out.nodeCodes = [...form.nodeCodes]
   if (form.startNode !== '') out.startNode = form.startNode
   if (Object.keys(form.testVariables).length > 0) out.testVariables = { ...form.testVariables }
+  if (
+    form.environmentGroupId !== undefined
+    && Number.isSafeInteger(form.environmentGroupId)
+    && form.environmentGroupId > 0
+  ) {
+    out.environmentGroupId = form.environmentGroupId
+  }
   if (Object.keys(form.dependencyMock).length > 0) out.dependencyMock = { ...form.dependencyMock }
   if (form.dryRun) out.dryRun = true
   if (form.sqlPrecheck) out.sqlPrecheck = true
