@@ -32,6 +32,8 @@ const spies = vi.hoisted(() => ({
   exportResult: vi.fn(),
   listDatasources: vi.fn(),
   previewResolution: vi.fn(),
+  checkReference: vi.fn(),
+  completeVariables: vi.fn(),
 }))
 
 vi.mock('../../services/rebuild/sqlIdeApi', async (load) => {
@@ -73,7 +75,14 @@ vi.mock('../../services/rebuild/datasourceApi', async (load) => {
 
 vi.mock('../../services/rebuild/variableApi', async (load) => {
   const actual = await load<typeof import('../../services/rebuild/variableApi')>()
-  return { ...actual, createVariableContract: () => ({ previewResolution: spies.previewResolution }) }
+  return {
+    ...actual,
+    createVariableContract: () => ({
+      previewResolution: spies.previewResolution,
+      checkReference: spies.checkReference,
+      completeVariables: spies.completeVariables,
+    }),
+  }
 })
 
 vi.mock('../../services/rebuild/projectApi', async () => {
@@ -103,6 +112,8 @@ beforeEach(() => {
   spies.listIndexes.mockResolvedValue({ items: [{ table: 'orders', name: 'PRIMARY', columns: ['id'], unique: true }], capability: 'supported', constraints: [], page: { nextCursor: null, hasMore: false } })
   spies.listHistory.mockResolvedValue([])
   spies.previewResolution.mockResolvedValue({ resolvedValue: '42', diagnostics: [] })
+  spies.checkReference.mockResolvedValue({ expression: '', valid: true, diagnostics: [] })
+  spies.completeVariables.mockResolvedValue([{ scope: 'workflow', name: 'biz_date', valueType: 'date' }])
   spies.fetchResultPage.mockResolvedValue({ stmtIndex: 0, resultSetId: 'rs1', columns: ['id'], rows: [[1]], rowsTotal: 1, offset: 0, limit: 50 })
   spies.executeSql.mockResolvedValue({ taskId: 'task-1' })
   spies.openEventStream.mockImplementation(() => ({
@@ -229,6 +240,60 @@ describe('/ide 数据开发 IDE 只读态（增量 11/R5-A）', () => {
     expect(w.find('[data-vars]').text()).toContain('$workflow.biz_date')
     expect(spies.previewResolution).toHaveBeenCalledWith('${workflow.biz_date}', { projectId: 1 })
     expect(w.find('[data-vars]').text()).toContain('42')
+  })
+
+  it('runs the explicit variable check button and surfaces diagnostics verbatim (§5B)', async () => {
+    router.route.params.projectId = '1'
+    spies.checkReference.mockResolvedValue({
+      expression: 'SELECT ${workflow.oops}',
+      valid: false,
+      diagnostics: [{ code: 'UNDEFINED', message: '变量未定义：workflow.oops' }],
+    })
+    const w = mount(View)
+    await flushPromises()
+    await w.find('[data-ds-select]').setValue('7')
+    await flushPromises()
+    await w.find('[data-sql-editor]').setValue('SELECT ${workflow.oops}')
+    await w.find('[data-var-check]').trigger('click')
+    await flushPromises()
+    expect(spies.checkReference).toHaveBeenCalledWith('SELECT ${workflow.oops}', { projectId: 1 })
+    expect(w.find('[data-var-check-result]').exists()).toBe(true)
+    expect(w.find('[data-var-check-result]').text()).toContain('UNDEFINED')
+    expect(w.find('[data-var-check-result]').text()).toContain('变量未定义：workflow.oops')
+    expect(w.find('[data-var-check-result]').text()).toContain('变量校验未通过')
+  })
+
+  it('reports a passing variable check without diagnostics (§5B)', async () => {
+    router.route.params.projectId = '1'
+    spies.checkReference.mockResolvedValue({
+      expression: 'SELECT ${workflow.biz_date}',
+      valid: true,
+      diagnostics: [],
+    })
+    const w = mount(View)
+    await flushPromises()
+    await w.find('[data-ds-select]').setValue('7')
+    await flushPromises()
+    await w.find('[data-sql-editor]').setValue('SELECT ${workflow.biz_date}')
+    await w.find('[data-var-check]').trigger('click')
+    await flushPromises()
+    expect(w.find('[data-var-check-result]').text()).toContain('变量校验通过')
+  })
+
+  it('completes variables from the server list and inserts the reference token (§5B)', async () => {
+    router.route.params.projectId = '1'
+    const w = mount(View)
+    await flushPromises()
+    await w.find('[data-ds-select]').setValue('7')
+    await flushPromises()
+    await w.find('[data-sql-editor]').setValue('SELECT ')
+    await w.find('[data-var-complete]').trigger('click')
+    await flushPromises()
+    expect(spies.completeVariables).toHaveBeenCalledWith('', { projectId: 1 })
+    expect(w.find('[data-var-suggestions]').exists()).toBe(true)
+    expect(w.find('[data-var-suggestion]').text()).toContain('workflow.biz_date')
+    await w.find('[data-var-suggestion]').trigger('click')
+    expect((w.find('[data-sql-editor]').element as HTMLTextAreaElement).value).toContain('${workflow.biz_date}')
   })
 
   it('cancels a running execution', async () => {

@@ -120,15 +120,28 @@
         <div class="ide-editor-head">
           <span class="ide-editor-title">SQL</span>
           <button type="button" data-lint :disabled="sqlText.trim() === '' || datasourceId === null" @click="runLint">语法检查</button>
+          <button type="button" data-var-check :disabled="varCheckBusy || projectId === null || sqlText.trim() === ''" @click="checkVariableReferences">
+            {{ varCheckBusy ? '变量校验中…' : '变量校验' }}
+          </button>
+          <button type="button" data-var-complete :disabled="projectId === null" @click="toggleVarSuggestions">插入变量</button>
           <button type="button" data-save-script :disabled="sqlText.trim() === ''" @click="saveScript">存为脚本</button>
           <button type="button" data-export :disabled="lastResultSetId === null" @click="exportCurrent">导出结果</button>
         </div>
-        <textarea v-model="sqlText" data-sql-editor rows="12" spellcheck="false"
+        <textarea ref="sqlEditorEl" v-model="sqlText" data-sql-editor rows="12" spellcheck="false"
                   placeholder="SELECT … -- 支持 ${scope.name} 与 $[时间] 变量引用"></textarea>
 
         <p v-if="diagnostics.length" class="ide-diag" data-diagnostics>
           <span v-for="(d, i) in diagnostics" :key="i" :class="['pill', d.severity]">
             L{{ d.line }}:{{ d.col }} {{ d.severity }} {{ d.code }} — {{ d.message }}
+          </span>
+        </p>
+        <p v-if="varCheckError" class="ide-err" data-var-check-error>变量校验失败：{{ varCheckError }}</p>
+        <p v-else-if="varCheckResult" class="ide-diag" data-var-check-result>
+          <span :class="['pill', varCheckResult.status]">
+            {{ varCheckResult.status === 'valid' ? '变量校验通过' : '变量校验未通过' }}
+          </span>
+          <span v-for="(d, i) in varCheckResult.diagnostics" :key="i" :class="['pill', varCheckResult.status]">
+            {{ d.code }} {{ d.label }} — {{ d.message }}
           </span>
         </p>
 
@@ -142,6 +155,18 @@
           </p>
           <p v-for="e in varErrors" :key="e" class="ide-err" data-var-error>{{ e }}</p>
           <p v-if="varTimes.length" class="ide-muted">时间表达式：{{ varTimes.join('，') }}</p>
+        </section>
+
+        <section v-if="varSuggestionsOpen" class="ide-var-suggestions" data-var-suggestions>
+          <h3>插入变量引用</h3>
+          <p v-if="varSuggestions.length === 0" class="ide-muted">当前项目暂无可用变量</p>
+          <ul v-else>
+            <li v-for="s in varSuggestions" :key="`${s.scope}.${s.name}`">
+              <button type="button" data-var-suggestion @click="insertVariableRef(s)">
+                <code>${{ `${s.scope}.${s.name}` }}</code><small>{{ s.valueType }}</small>
+              </button>
+            </li>
+          </ul>
         </section>
 
         <section v-if="resultColumns.length" class="ide-result" data-result-grid>
@@ -206,7 +231,7 @@
  * 范式：手写 HTML/CSS（零 element-plus）；编辑器=轻量 textarea
  *   （codemirror 换芯登记候接，不阻塞只读态语义）。
  */
-import { computed, onMounted, ref, watch } from 'vue'
+import { computed, nextTick, onMounted, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import {
   createSqlIdeContract,
@@ -222,7 +247,17 @@ import {
   type DatasourceContract,
   type DatasourceRecord,
 } from '../../services/rebuild/datasourceApi'
-import { createVariableContract, parseVariableReferences, type VariableContract } from '../../services/rebuild/variableApi'
+import {
+  createVariableContract,
+  parseVariableReferences,
+  type VariableCompletionItem,
+  type VariableContract,
+} from '../../services/rebuild/variableApi'
+import {
+  checkVariableReferenceField,
+  defineVariableReferenceField,
+  type VariableReferenceCheckViewModel,
+} from '../../services/rebuild/variableReferenceField'
 import { listProjects, type ProjectSummary } from '../../services/rebuild/projectApi'
 
 const props = defineProps<{ projectId?: number }>()
@@ -271,6 +306,22 @@ const varRefs = ref<Array<{ scope: string; name: string }>>([])
 const varErrors = ref<string[]>([])
 const varTimes = ref<string[]>([])
 const varValues = ref<Record<string, string | null>>({})
+
+/** §5B 变量三要求（校验按钮/现时值/补全）：本编辑器作为输入位显式登记（L5-04 契约的首个 UI 消费方）。 */
+const sqlReferenceField = defineVariableReferenceField({
+  surfaceId: 'ide.sql-editor',
+  fieldPath: 'sql',
+  label: 'SQL 编辑器',
+  inputKind: 'sql',
+  allowScopedReference: true,
+  allowTimeExpression: true,
+})
+const sqlEditorEl = ref<HTMLTextAreaElement | null>(null)
+const varCheckBusy = ref(false)
+const varCheckResult = ref<VariableReferenceCheckViewModel | null>(null)
+const varCheckError = ref('')
+const varSuggestionsOpen = ref(false)
+const varSuggestions = ref<VariableCompletionItem[]>([])
 
 const history = ref<HistoryEntry[]>([])
 const historyOpen = ref(false)
@@ -632,6 +683,54 @@ function refreshVarPreview(): void {
 // newly typed `${scope.name}` references remained invisible until a remount.
 watch(sqlText, refreshVarPreview)
 
+/** §5B 三要求·校验：显式按钮触发服务端 checkReference，诊断码+消息原样透出（§5B 显式触发语义）。 */
+async function checkVariableReferences(): Promise<void> {
+  if (projectId.value === null || sqlText.value.trim() === '') return
+  varCheckBusy.value = true
+  varCheckError.value = ''
+  try {
+    varCheckResult.value = await checkVariableReferenceField(
+      sqlReferenceField,
+      sqlText.value,
+      { projectId: projectId.value },
+      varApi.value,
+    )
+  } catch (e) {
+    varCheckResult.value = null
+    varCheckError.value = message(e)
+  } finally {
+    varCheckBusy.value = false
+  }
+}
+
+/** §5B 三要求·补全：拉取当前项目可用变量清单，点选后按光标位置插入引用 token。 */
+async function toggleVarSuggestions(): Promise<void> {
+  varSuggestionsOpen.value = !varSuggestionsOpen.value
+  if (!varSuggestionsOpen.value || projectId.value === null) return
+  try {
+    varSuggestions.value = await varApi.value.completeVariables('', { projectId: projectId.value })
+  } catch (e) {
+    error.value = message(e)
+  }
+}
+
+function insertVariableRef(item: VariableCompletionItem): void {
+  const token = `\${${item.scope}.${item.name}}`
+  const el = sqlEditorEl.value
+  if (el === null) {
+    sqlText.value = `${sqlText.value}${token}`
+    return
+  }
+  const start = el.selectionStart ?? sqlText.value.length
+  const end = el.selectionEnd ?? start
+  sqlText.value = `${sqlText.value.slice(0, start)}${token}${sqlText.value.slice(end)}`
+  nextTick(() => {
+    el.focus()
+    const caret = start + token.length
+    el.setSelectionRange(caret, caret)
+  })
+}
+
 onMounted(async () => {
   if (projectId.value !== null) selected.value = String(projectId.value)
   await loadProjects()
@@ -677,6 +776,11 @@ button:disabled{cursor:not-allowed;opacity:.5}
 .ide-vars h3{margin:0 0 6px;font-size:13px}
 .ide-var{display:flex;gap:8px;margin:4px 0;font-size:12px}
 .ide-err{color:#b91c1c;font-size:12px;margin:4px 0}
+.ide-var-suggestions{margin-top:12px;border-top:1px solid #e2e8f0;padding-top:8px}
+.ide-var-suggestions h3{margin:0 0 6px;font-size:13px}
+.ide-var-suggestions ul{list-style:none;margin:0;padding:0;display:flex;flex-wrap:wrap;gap:6px}
+.ide-var-suggestions li button{display:flex;align-items:center;gap:6px;border:1px solid #e2e8f0;background:#fff;border-radius:6px;padding:5px 9px}
+.ide-var-suggestions small{color:#64748b}
 .ide-result{margin-top:16px}
 .ide-result-head{display:flex;align-items:center;gap:14px;margin-bottom:8px;flex-wrap:wrap}
 .ide-result-nav{display:flex;align-items:center;gap:8px;margin-left:auto}
