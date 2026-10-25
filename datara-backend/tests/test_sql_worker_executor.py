@@ -36,6 +36,7 @@ class FakeConnection:
     def __init__(self):
         self.statements = []
         self.transaction_calls = []
+        self.lineage_calls = []
 
     def cursor(self):
         return FakeCursor(self)
@@ -63,7 +64,18 @@ def executor_env(monkeypatch):
     )
     monkeypatch.setattr(sql_executor, "_lookup_datasource", lambda _ref: datasource)
     monkeypatch.setattr(sql_executor, "_get_conn", lambda _ds: connection)
-    monkeypatch.setattr(sql_executor, "collect_sql_lineage", lambda *_args: (2, 3))
+
+    def collect_lineage(_ctx, statements, datasource_name, database_name):
+        connection.lineage_calls.append(
+            {
+                "statements": list(statements),
+                "datasource": datasource_name,
+                "database": database_name,
+            }
+        )
+        return 2, 3
+
+    monkeypatch.setattr(sql_executor, "collect_sql_lineage", collect_lineage)
     return connection
 
 
@@ -302,3 +314,46 @@ def test_explain_skips_legal_non_explainable_statements_and_keeps_results(execut
         "SELECT 1",
         "UPDATE summary SET n=1",
     ]
+    assert result.outputs["row_count"] == 1
+    assert result.outputs["result_preview"] == {"columns": ["plan"], "rows": [[1]]}
+    assert result.outputs["lineage_edges"] == 2
+    assert result.outputs["lineage_fields"] == 3
+    assert executor_env.lineage_calls == [
+        {
+            "statements": ["SET @x=1", "SELECT 1", "UPDATE summary SET n=1"],
+            "datasource": "warehouse",
+            "database": "analytics",
+        }
+    ]
+
+
+@pytest.mark.parametrize(
+    ("statement", "expected"),
+    [
+        ("/*!40101 COMMIT */", True),
+        ("/*!40101 SET AUTOCOMMIT=0 */", True),
+        ("/* COMMIT */ SELECT 1", False),
+        ("/*+ COMMIT */ SELECT 1", False),
+    ],
+)
+def test_transaction_control_detection_understands_mysql_comment_semantics(statement, expected):
+    assert sql_executor._is_transaction_control_statement(statement) is expected
+
+
+@pytest.mark.parametrize(
+    "statement",
+    ["/*!40101 COMMIT */", "/*!40101 SET AUTOCOMMIT=0 */"],
+)
+def test_transaction_all_rejects_mysql_executable_comment_boundaries_before_execution(
+    executor_env, statement
+):
+    ctx, logs = make_context(
+        {"datasource": "warehouse", "sql": statement, "transaction": "all"}
+    )
+
+    result = sql_executor.execute(ctx)
+
+    assert result.state == FAILURE
+    assert executor_env.statements == []
+    assert executor_env.transaction_calls == []
+    assert any("transaction=all" in line for line in logs)

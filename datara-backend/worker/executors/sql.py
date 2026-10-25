@@ -149,7 +149,15 @@ def _is_readonly_statement(stmt: str) -> bool:
 
 def _is_transaction_control_statement(stmt: str) -> bool:
     """Detect statements that would escape the executor-owned all boundary."""
-    normalized = re.sub(r"/\*.*?\*/", " ", stmt, flags=re.DOTALL)
+    def replace_block_comment(match: re.Match) -> str:
+        content = match.group(1)
+        if not content.startswith("!"):
+            return " "
+        executable = content[1:].lstrip()
+        executable = re.sub(r"^\d{5,6}\s*", "", executable)
+        return " %s " % executable
+
+    normalized = re.sub(r"/\*(.*?)\*/", replace_block_comment, stmt, flags=re.DOTALL)
     normalized = re.sub(r"(?:--|#)[^\r\n]*", " ", normalized)
     normalized = " ".join(normalized.upper().split())
     if re.match(r"^(?:BEGIN|COMMIT|ROLLBACK|SAVEPOINT)\b", normalized):
