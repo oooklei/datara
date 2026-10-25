@@ -8,6 +8,7 @@
 """
 
 import threading
+import re
 from collections import OrderedDict
 from datetime import date, datetime
 from decimal import Decimal
@@ -32,6 +33,7 @@ _pool_lock = threading.Lock()
 _MYSQL_LIKE = frozenset({"mysql", "greatdb", "doris", "starrocks"})
 _TRANSACTION_MODES = frozenset({"none", "all", "explicit"})
 _READONLY_QUERY_TYPES = (exp.Select, exp.Union, exp.Intersect, exp.Except)
+_EXPLAINABLE_TYPES = _READONLY_QUERY_TYPES + (exp.Insert, exp.Update, exp.Delete)
 
 
 def _split_sql(text: str) -> list:
@@ -145,6 +147,32 @@ def _is_readonly_statement(stmt: str) -> bool:
     return True
 
 
+def _is_transaction_control_statement(stmt: str) -> bool:
+    """Detect statements that would escape the executor-owned all boundary."""
+    normalized = re.sub(r"/\*.*?\*/", " ", stmt, flags=re.DOTALL)
+    normalized = re.sub(r"(?:--|#)[^\r\n]*", " ", normalized)
+    normalized = " ".join(normalized.upper().split())
+    if re.match(r"^(?:BEGIN|COMMIT|ROLLBACK|SAVEPOINT)\b", normalized):
+        return True
+    if re.match(r"^(?:START\s+TRANSACTION|RELEASE\s+SAVEPOINT)\b", normalized):
+        return True
+    return bool(
+        re.match(
+            r"^SET\s+(?:(?:SESSION|GLOBAL)\s+|@@(?:SESSION\.|GLOBAL\.)?)?AUTOCOMMIT\b",
+            normalized,
+        )
+    )
+
+
+def _is_explainable_statement(stmt: str) -> bool:
+    """Return true for query and DML statements accepted by MySQL EXPLAIN."""
+    try:
+        parsed = [item for item in sqlglot.parse(stmt, read="mysql") if item is not None]
+    except (sqlglot.errors.ParseError, ValueError):
+        return False
+    return len(parsed) == 1 and isinstance(parsed[0], _EXPLAINABLE_TYPES)
+
+
 def _rollback(conn, log: Callable) -> None:
     """Best-effort rollback which preserves the executor's original failure state."""
     try:
@@ -177,6 +205,19 @@ def execute(ctx) -> ExecResult:
         ("sql", "主", _split_sql(str(param.get("sql") or ""))),
         ("post", "后置", _split_sql(str(param.get("post") or ""))),
     )
+    if transaction_mode == "all":
+        boundary = next(
+            (
+                stmt
+                for _phase_key, _phase_label, statements in phases
+                for stmt in statements
+                if _is_transaction_control_statement(stmt)
+            ),
+            None,
+        )
+        if boundary is not None:
+            ctx.log("[sql] transaction=all 禁止脚本内事务控制语句: %s" % boundary[:200].replace("\n", " "))
+            return ExecResult(FAILURE, {}, [])
     if param.get("readOnly"):
         rejected = next(
             (
@@ -212,7 +253,7 @@ def execute(ctx) -> ExecResult:
                     killed = True
                     break
                 ctx.log("[sql] %s语句#%d: %s" % (phase_label, i, stmt[:200].replace("\n", " ")))
-                if phase_key == "sql" and param.get("explain"):
+                if phase_key == "sql" and param.get("explain") and _is_explainable_statement(stmt):
                     plan = _run_one(conn, "EXPLAIN " + stmt, ctx.log)
                     execution_plan.append(
                         {"statement": stmt, "columns": plan.get("columns", []), "rows": plan.get("rows", [])}
@@ -221,13 +262,17 @@ def execute(ctx) -> ExecResult:
                 executed.append(stmt)
             if killed:
                 break
+        if transaction_mode in {"all", "explicit"} and not killed and ctx.killed():
+            killed = True
         if transaction_mode == "all":
             if killed:
                 _rollback(conn, ctx.log)
             else:
                 conn.commit()
+        elif transaction_mode == "explicit" and killed:
+            _rollback(conn, ctx.log)
     except Exception as exc:  # noqa: BLE001 SQL 错误 → failure
-        if transaction_mode == "all":
+        if transaction_mode in {"all", "explicit"}:
             _rollback(conn, ctx.log)
         ctx.log("[sql] 执行失败: %r" % exc)
         state = FAILURE

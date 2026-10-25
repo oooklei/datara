@@ -199,3 +199,106 @@ def test_transaction_all_rolls_back_when_killed_between_statements(executor_env)
     assert result.state != SUCCESS
     assert executor_env.statements == ["SELECT 1"]
     assert executor_env.transaction_calls == ["begin", "rollback"]
+
+
+@pytest.mark.parametrize(
+    "transaction_statement",
+    [
+        "BEGIN",
+        "START TRANSACTION",
+        "COMMIT",
+        "ROLLBACK",
+        "SAVEPOINT batch_step",
+        "RELEASE SAVEPOINT batch_step",
+        "SET AUTOCOMMIT=0",
+    ],
+)
+def test_transaction_all_rejects_embedded_transaction_boundaries_before_execution(
+    executor_env, transaction_statement
+):
+    ctx, logs = make_context(
+        {
+            "datasource": "warehouse",
+            "sql": f"SELECT 1; {transaction_statement}",
+            "transaction": "all",
+        }
+    )
+
+    result = sql_executor.execute(ctx)
+
+    assert result.state == FAILURE
+    assert executor_env.statements == []
+    assert executor_env.transaction_calls == []
+    assert any("transaction" in line for line in logs)
+
+
+def test_transaction_all_checks_kill_after_last_statement_before_commit(executor_env):
+    kill_checks = iter((False, True))
+    ctx, _logs = make_context(
+        {"datasource": "warehouse", "sql": "SELECT 1", "transaction": "all"},
+        killed=lambda: next(kill_checks),
+    )
+
+    result = sql_executor.execute(ctx)
+
+    assert result.state != SUCCESS
+    assert executor_env.statements == ["SELECT 1"]
+    assert executor_env.transaction_calls == ["begin", "rollback"]
+
+
+def test_explicit_transaction_rolls_back_connection_after_statement_failure(executor_env):
+    ctx, _logs = make_context(
+        {
+            "datasource": "warehouse",
+            "sql": "START TRANSACTION; UPDATE summary SET n=1; FAIL",
+            "transaction": "explicit",
+        }
+    )
+
+    result = sql_executor.execute(ctx)
+
+    assert result.state == FAILURE
+    assert executor_env.transaction_calls == ["rollback"]
+
+
+def test_explicit_transaction_rolls_back_connection_when_killed(executor_env):
+    kill_checks = iter((False, True))
+    ctx, _logs = make_context(
+        {
+            "datasource": "warehouse",
+            "sql": "START TRANSACTION; UPDATE summary SET n=1",
+            "transaction": "explicit",
+        },
+        killed=lambda: next(kill_checks),
+    )
+
+    result = sql_executor.execute(ctx)
+
+    assert result.state != SUCCESS
+    assert executor_env.transaction_calls == ["rollback"]
+
+
+def test_explain_skips_legal_non_explainable_statements_and_keeps_results(executor_env):
+    ctx, _logs = make_context(
+        {
+            "datasource": "warehouse",
+            "sql": "SET @x=1; SELECT 1; UPDATE summary SET n=1",
+            "explain": True,
+        }
+    )
+
+    result = sql_executor.execute(ctx)
+
+    assert result.state == SUCCESS
+    assert executor_env.statements == [
+        "SET @x=1",
+        "EXPLAIN SELECT 1",
+        "SELECT 1",
+        "EXPLAIN UPDATE summary SET n=1",
+        "UPDATE summary SET n=1",
+    ]
+    assert len(result.outputs["results"]) == 3
+    assert [item["statement"] for item in result.outputs["execution_plan"]] == [
+        "SELECT 1",
+        "UPDATE summary SET n=1",
+    ]
