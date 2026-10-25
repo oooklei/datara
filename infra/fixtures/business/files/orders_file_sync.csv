@@ -1,0 +1,4 @@
+order_no,user_name,goods_name,quantity,unit_price,order_status,pay_channel,order_date
+FX-FILE-0001,fixture_alice,Fixture 机械键盘,1,199.00,PAID,alipay,2026-10-20
+FX-FILE-0002,fixture_bob,Fixture 扩展坞,2,259.00,DONE,wechat,2026-10-21
+FX-FILE-0003,fixture_alice,Fixture 无线鼠标,1,89.00,CREATED,,2026-10-22
