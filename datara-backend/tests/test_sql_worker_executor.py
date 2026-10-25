@@ -567,6 +567,26 @@ def test_connection_is_checked_out_exclusively_and_released_after_execution(monk
 @pytest.mark.parametrize(
     "statement",
     [
+        "LOCK TABLES users READ",
+        "LOCK INSTANCE FOR BACKUP",
+        "SET SESSION TRANSACTION ISOLATION LEVEL READ COMMITTED",
+        "SET sql_mode='STRICT_ALL_TABLES'",
+        "USE analytics",
+    ],
+)
+def test_none_mode_discards_connections_after_session_affecting_statements(executor_env, statement):
+    ctx, _logs = make_context({"datasource": "warehouse", "sql": statement, "transaction": "none"})
+
+    result = sql_executor.execute(ctx)
+
+    assert result.state == SUCCESS
+    assert executor_env.close_calls == 1
+    assert 1 not in sql_executor._conn_pool
+
+
+@pytest.mark.parametrize(
+    "statement",
+    [
         "CREATE TABLE t(id INT)",
         "START REPLICA",
         "STOP REPLICA",

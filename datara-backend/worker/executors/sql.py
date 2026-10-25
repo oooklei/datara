@@ -117,6 +117,8 @@ def _release_conn(ds, conn, log: Callable) -> None:
 
 def _discard_conn(ds, conn, log: Callable) -> None:
     """Remove a possibly dirty connection from the LRU and close it."""
+    if getattr(conn, "_datara_discarded", False):
+        return
     key = int(ds.id)
     with _pool_lock:
         if _conn_pool.get(key) is conn:
@@ -419,6 +421,16 @@ def execute(ctx) -> ExecResult:
             ctx.log("[sql] readOnly 拒绝写操作或无法确认的语句: %s" % rejected[:200].replace("\n", " "))
             return ExecResult(FAILURE, {}, [])
 
+    # Only batches whose statements are known to preserve connection session
+    # state may return to the idle pool.  Explicit transactions and every
+    # unclassified statement (SET/USE/LOCK/DDL/admin/etc.) use a disposable
+    # connection so future syntax cannot leak state across workflow tasks.
+    pool_safe = transaction_mode in {"none", "all"} and all(
+        _is_transactional_statement(stmt)
+        for _phase_key, _phase_label, statements in phases
+        for stmt in statements
+    )
+
     try:
         conn = _get_conn(ds)
     except Exception as exc:  # noqa: BLE001 连接失败 → failure（日志含原因）
@@ -502,7 +514,10 @@ def execute(ctx) -> ExecResult:
             outputs_count = {"lineage_edges": edges_n, "lineage_fields": fields_n}
 
     if state != SUCCESS:
-        _release_conn(ds, conn, ctx.log)
+        if pool_safe:
+            _release_conn(ds, conn, ctx.log)
+        else:
+            _discard_conn(ds, conn, ctx.log)
         return ExecResult(state, {}, [])
 
     outputs = {"results": results, **outputs_count}
@@ -513,5 +528,8 @@ def execute(ctx) -> ExecResult:
         last = queries[-1]
         outputs["row_count"] = last["rowCount"]
         outputs["result_preview"] = {"columns": last["columns"], "rows": last["rows"]}
-    _release_conn(ds, conn, ctx.log)
+    if pool_safe:
+        _release_conn(ds, conn, ctx.log)
+    else:
+        _discard_conn(ds, conn, ctx.log)
     return ExecResult(SUCCESS, outputs, [])
