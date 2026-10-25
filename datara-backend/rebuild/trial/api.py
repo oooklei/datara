@@ -23,6 +23,7 @@ from rebuild.trial.repository import TrialSnapshotDomainError, TrialSnapshotRepo
 from rebuild.trial.runner import TrialRunner, TrialRunnerError, TrialRunOptions
 from rebuild.trial.promote import PromoteError, TrialPromoter
 from rebuild.trial.output import TrialOutputAggregator
+from rebuild.trial.sync_runtime import build_sync_driver_factory
 from rebuild.workflow.models import WorkflowDefinitionRecord
 
 
@@ -35,6 +36,7 @@ def build_trial_router(
     token_service: Any,
     active_tokens: set[str],
     project_permission_error: Callable[..., JSONResponse | None],
+    datasource_connector_factory: Callable[[int, int], Callable[[Any], Any]] | None = None,
 ) -> APIRouter:
     router = APIRouter()
 
@@ -187,7 +189,12 @@ def build_trial_router(
             except (ValueError, KeyError):
                 user_id = None
             try:
-                runner = TrialRunner(outcome)
+                sync_driver_factory = (
+                    build_sync_driver_factory(outcome, datasource_connector_factory)
+                    if datasource_connector_factory is not None
+                    else None
+                )
+                runner = TrialRunner(outcome, sync_driver_factory=sync_driver_factory)
                 result = runner.run(
                     definition_id=definition_id,
                     snapshot_id=snapshot_id,
@@ -298,7 +305,12 @@ def build_trial_router(
             except (ValueError, KeyError):
                 user_id = None
             try:
-                runner = TrialRunner(outcome)
+                sync_driver_factory = (
+                    build_sync_driver_factory(outcome, datasource_connector_factory)
+                    if datasource_connector_factory is not None
+                    else None
+                )
+                runner = TrialRunner(outcome, sync_driver_factory=sync_driver_factory)
                 result = runner.run(
                     definition_id=definition_id,
                     snapshot_id=snapshot_id,

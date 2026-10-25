@@ -4,9 +4,14 @@ Covers: TRIAL instance creation (instance_type=TRIAL, trigger=TRIAL), task count
 matches snapshot nodes, terminal status SUCCEEDED/FAILED, topological execution.
 """
 
+import sqlite3
+
 import pytest
+from fastapi import FastAPI
+from fastapi.testclient import TestClient
 from sqlalchemy import create_engine, select
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, sessionmaker
+from sqlalchemy.pool import StaticPool
 
 from rebuild.common.db import Base
 from rebuild.execution.models import RunOutputRecord, TaskInstanceRecord, WorkflowInstanceRecord, WorkflowRunStatRecord
@@ -14,13 +19,16 @@ from rebuild.resources.repository import ResourceRepository
 from rebuild.trial.repository import TrialSnapshotRepository
 from rebuild.trial.runner import TrialRunner, TrialRunnerError, TrialRunOptions
 from rebuild.dependency.models import DependencyConfigRecord
+from rebuild.datasource.models import ProjectDatasourceRecord
 from rebuild.project.models import ProjectRecord  # noqa: F401 - register FK target table
 from rebuild.identity.models import UserRecord  # noqa: F401 - register FK target table
+from rebuild.trial.api import build_trial_router
 from rebuild.workflow.models import (
     WorkflowDefinitionRecord,
     WorkflowEdgeRecord,
     WorkflowNodeRecord,
 )
+from rebuild.sync.executor import SyncBatchWriteResult
 
 
 def _session():
@@ -92,14 +100,13 @@ def test_trial_run_creates_instance_and_tasks():
     assert instance.instance_type == "TRIAL"
     assert instance.trigger_type == "TRIAL"
     assert instance.status == "SUCCEEDED"
-
     tasks = session.scalars(
         select(TaskInstanceRecord).where(
             TaskInstanceRecord.workflow_instance_id == result.instance_id
         )
     ).all()
     assert len(tasks) == 3
-    assert all(t.status == "SUCCEEDED" for t in tasks)
+    assert all(task.status == "SUCCEEDED" for task in tasks)
     run_stat = session.scalar(
         select(WorkflowRunStatRecord).where(
             WorkflowRunStatRecord.workflow_instance_id == result.instance_id
@@ -107,6 +114,267 @@ def test_trial_run_creates_instance_and_tasks():
     )
     assert run_stat is not None
     assert (run_stat.success_count, run_stat.failure_count, run_stat.skipped_count) == (3, 0, 0)
+
+
+@pytest.mark.parametrize(
+    ("fail_write", "expected_status", "expected_counts"),
+    [
+        (False, "SUCCEEDED", (3, 0, 0)),
+        (True, "FAILED", (2, 1, 0)),
+    ],
+)
+def test_trial_run_materializes_endpoint_select_and_persists_sync_counts(
+    fail_write, expected_status, expected_counts
+):
+    session = _session()
+    definition_id = _make_definition(session)
+    session.get(WorkflowDefinitionRecord, definition_id).workflow_type = "SYNC"
+    _add_node(session, definition_id, "start", node_type="START")
+    _add_node(
+        session,
+        definition_id,
+        "endpoint",
+        node_type="endpoint_select",
+        params={
+            "baseMode": "src_base",
+            "source": {"datasource_id": 11, "schema": "src", "object": "orders"},
+            "target": {"datasource_id": 12, "schema": "dw", "object": "orders_copy"},
+            "target_properties": {"batch_concurrency": {"batch_size": 100, "concurrency": 1}},
+        },
+    )
+    _add_node(
+        session,
+        definition_id,
+        "mapping",
+        node_type="field_map",
+        params={"fieldMap": [{"key": "id", "value": "user_id"}]},
+    )
+    _add_node(
+        session,
+        definition_id,
+        "condition",
+        node_type="condition_set",
+        params={"filterExpr": "id > 1"},
+    )
+    _add_node(session, definition_id, "end", node_type="END")
+    _add_edge(session, definition_id, "start", "endpoint")
+    _add_edge(session, definition_id, "endpoint", "mapping")
+    _add_edge(session, definition_id, "mapping", "condition")
+    _add_edge(session, definition_id, "condition", "end")
+    session.flush()
+    snapshot_id = TrialSnapshotRepository(session).create_from_draft(definition_id)["snapshot_id"]
+
+    class Driver:
+        conditions = []
+
+        def read_rows(self, spec, *, batch_size):
+            return ({"id": 1}, {"id": 2})
+
+        def include_row(self, condition, row):
+            self.conditions.append(condition)
+            return row["id"] > 1
+
+        def transform_value(self, expression, row):
+            raise AssertionError("no transform expected")
+
+        def write_batch(self, spec, rows):
+            if fail_write:
+                raise RuntimeError("target write failed")
+            return SyncBatchWriteResult(inserted=len(rows), success=len(rows))
+
+        def write_statistics(self, context, metrics):
+            pass
+
+        def write_lineage(self, context, edges):
+            pass
+
+    driver = Driver()
+    result = TrialRunner(session, sync_driver_factory=lambda *_args, **_kwargs: driver).run(
+        definition_id=definition_id,
+        snapshot_id=snapshot_id,
+        project_id=1,
+    )
+    session.commit()
+
+    assert result.status == expected_status
+    assert result.task_count == 3
+    sync_task = session.scalar(
+        select(TaskInstanceRecord).where(
+            TaskInstanceRecord.workflow_instance_id == result.instance_id,
+            TaskInstanceRecord.task_id.like("sys_exec_%"),
+        )
+    )
+    assert sync_task is not None
+    output = session.scalar(select(RunOutputRecord).where(RunOutputRecord.task_instance_id == sync_task.id))
+    if fail_write:
+        assert output is None
+    else:
+        assert '"success": 1' in output.output_json
+        assert '"failed": 0' in output.output_json
+        assert driver.conditions == ["id > 1", "id > 1"]
+
+    tasks = session.scalars(
+        select(TaskInstanceRecord).where(
+            TaskInstanceRecord.workflow_instance_id == result.instance_id
+        )
+    ).all()
+    assert len(tasks) == 3
+    assert sync_task.status == expected_status
+    run_stat = session.scalar(
+        select(WorkflowRunStatRecord).where(
+            WorkflowRunStatRecord.workflow_instance_id == result.instance_id
+        )
+    )
+    assert run_stat is not None
+    assert (run_stat.success_count, run_stat.failure_count, run_stat.skipped_count) == expected_counts
+
+
+def test_trial_api_uses_runtime_datasource_adapter_and_records_success_and_failure():
+    engine = create_engine(
+        "sqlite+pysqlite:///:memory:",
+        connect_args={"check_same_thread": False},
+        poolclass=StaticPool,
+    )
+    Base.metadata.create_all(engine)
+    sessions = sessionmaker(bind=engine)
+    source = sqlite3.connect(":memory:", check_same_thread=False)
+    target = sqlite3.connect(":memory:", check_same_thread=False)
+    source.execute("CREATE TABLE orders (id INTEGER NOT NULL)")
+    source.executemany("INSERT INTO orders (id) VALUES (?)", [(1,), (2,)])
+    source.commit()
+    target.execute("CREATE TABLE orders_copy (user_id INTEGER NOT NULL)")
+    target.commit()
+
+    class TokenService:
+        def verify(self, _token):
+            return {"user_id": 7}
+
+    class NonClosingConnection:
+        def __init__(self, connection):
+            self._connection = connection
+
+        def __getattr__(self, name):
+            return getattr(self._connection, name)
+
+        def cursor(self):
+            cursor = self._connection.cursor()
+
+            class Cursor:
+                def __getattr__(self, name):
+                    return getattr(cursor, name)
+
+                def execute(self, sql, parameters=()):
+                    return cursor.execute(sql.replace("%s", "?"), parameters)
+
+                def executemany(self, sql, parameters):
+                    return cursor.executemany(sql.replace("%s", "?"), parameters)
+
+            return Cursor()
+
+        def close(self):
+            pass
+
+    connections = {11: source, 12: target}
+
+    def connector_factory(_project_id, datasource_id):
+        return lambda _draft: NonClosingConnection(connections[datasource_id])
+
+    app = FastAPI()
+    app.include_router(
+        build_trial_router(
+            sessions,
+            TokenService(),
+            {"test-token"},
+            lambda *_args: None,
+            connector_factory,
+        ),
+        prefix="/api/v1/rebuild/trial",
+    )
+
+    with sessions() as session:
+        definition_id = _make_definition(session)
+        session.get(WorkflowDefinitionRecord, definition_id).workflow_type = "SYNC"
+        session.add_all(
+            [
+                ProjectDatasourceRecord(
+                    id=11, project_id=1, name="source", kind="mysql", host="source", port=3306,
+                    database_name="source", username="user", password="",
+                ),
+                ProjectDatasourceRecord(
+                    id=12, project_id=1, name="target", kind="mysql", host="target", port=3306,
+                    database_name="target", username="user", password="",
+                ),
+            ]
+        )
+        _add_node(session, definition_id, "start", node_type="START")
+        _add_node(
+            session,
+            definition_id,
+            "endpoint",
+            node_type="endpoint_select",
+            params={
+                "baseMode": "src_base",
+                "source": {"datasource_id": 11, "schema": "main", "object": "orders"},
+                "target": {"datasource_id": 12, "schema": "main", "object": "orders_copy"},
+            },
+        )
+        _add_node(
+            session,
+            definition_id,
+            "mapping",
+            node_type="field_map",
+            params={"fieldMap": [{"key": "id", "value": "user_id"}]},
+        )
+        _add_node(
+            session,
+            definition_id,
+            "condition",
+            node_type="condition_set",
+            params={"filterExpr": "id > 1"},
+        )
+        _add_node(session, definition_id, "end", node_type="END")
+        _add_edge(session, definition_id, "start", "endpoint")
+        _add_edge(session, definition_id, "endpoint", "mapping")
+        _add_edge(session, definition_id, "mapping", "condition")
+        _add_edge(session, definition_id, "condition", "end")
+        session.flush()
+        snapshot_id = TrialSnapshotRepository(session).create_from_draft(definition_id)["snapshot_id"]
+        session.commit()
+
+    client = TestClient(app)
+    request = {
+        "project_id": 1,
+        "snapshot_id": snapshot_id,
+    }
+    headers = {"token": "test-token"}
+    succeeded = client.post(
+        f"/api/v1/rebuild/trial/definitions/{definition_id}/run", json=request, headers=headers
+    ).json()["data"]
+    assert succeeded["status"] == "SUCCEEDED"
+    assert target.execute("SELECT user_id FROM orders_copy ORDER BY user_id").fetchall() == [(2,)]
+
+    target.execute("DROP TABLE orders_copy")
+    target.commit()
+    failed = client.post(
+        "/api/v1/rebuild/trial/runs",
+        json={**request, "definition_id": definition_id},
+        headers=headers,
+    ).json()["data"]
+    assert failed["status"] == "FAILED"
+
+    with sessions() as session:
+        succeeded_stat = session.scalar(
+            select(WorkflowRunStatRecord).where(
+                WorkflowRunStatRecord.workflow_instance_id == succeeded["instance_id"]
+            )
+        )
+        failed_stat = session.scalar(
+            select(WorkflowRunStatRecord).where(
+                WorkflowRunStatRecord.workflow_instance_id == failed["instance_id"]
+            )
+        )
+        assert (succeeded_stat.success_count, succeeded_stat.failure_count) == (3, 0)
+        assert (failed_stat.success_count, failed_stat.failure_count) == (2, 1)
 
 
 def test_trial_run_executes_python_and_shell_scripts():

@@ -1458,7 +1458,13 @@ def create_app(
     from rebuild.trial.api import build_trial_router
 
     app.include_router(
-        build_trial_router(session_factory, token_service, active_tokens, project_permission_error),
+        build_trial_router(
+            session_factory,
+            token_service,
+            active_tokens,
+            project_permission_error,
+            pooled_connector,
+        ),
         prefix="/api/v1/rebuild/trial",
     )
     from rebuild.execution.api import build_execution_router

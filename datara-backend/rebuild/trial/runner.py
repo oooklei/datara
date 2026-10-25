@@ -30,14 +30,17 @@ import os
 import sqlite3
 import subprocess
 import sys
+from copy import deepcopy
 from dataclasses import dataclass, field
-from typing import Any
+from typing import Any, Callable
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from rebuild.execution.repository import ExecutionRepository
-from rebuild.execution.models import TaskInstanceRecord
+from rebuild.execution.models import TaskInstanceRecord, WorkflowInstanceRecord
+from rebuild.execution.sync_executor import execute_sync_attempt
+from rebuild.sync.executor import SyncRuntimeAdapter
 from rebuild.execution.run_stats import RunStatisticsService
 from rebuild.resources.models import ResourceBindingRecord, ResourceRecord, ResourceVersionRecord
 from rebuild.resources.repository import storage_dir
@@ -86,9 +89,14 @@ class TrialRunnerError(ValueError):
 class TrialRunner:
     """Creates and executes TRIAL workflow instances."""
 
-    def __init__(self, session: Session) -> None:
+    def __init__(
+        self,
+        session: Session,
+        sync_driver_factory: Callable[..., SyncRuntimeAdapter] | None = None,
+    ) -> None:
         self._session = session
         self._exec = ExecutionRepository(session)
+        self._sync_driver_factory = sync_driver_factory
 
     def run(
         self,
@@ -127,6 +135,8 @@ class TrialRunner:
                 "WF_TRIAL_INVALID",
                 "; ".join(e.message for e in validation_errors),
             )
+
+        nodes, edges = self._materialize_sync_runtime(nodes, edges)
 
         # 3. Determine execution set.
         execution_nodes, skipped_nodes = self._resolve_execution_set(nodes, edges, options)
@@ -183,7 +193,12 @@ class TrialRunner:
                     definition_id=definition_id,
                 )
             except Exception as exc:
-                self._exec.transition_task_instance(task.id, "FAILED")
+                if task.status == "PENDING":
+                    failed_attempt = self._exec.append_attempt(task.id)
+                    self._exec.transition_attempt(failed_attempt.id, "RUNNING")
+                    self._exec.transition_attempt(failed_attempt.id, "FAILED")
+                if task.status in {"PENDING", "RUNNING"}:
+                    self._exec.transition_task_instance(task.id, "FAILED")
                 self._exec.append_run_log(
                     task_instance_id=task.id,
                     attempt_no=1,
@@ -270,6 +285,99 @@ class TrialRunner:
             task_count=len(topo_order),
             tasks=tasks_payload,
         )
+
+    @staticmethod
+    def _materialize_sync_runtime(
+        nodes: list[dict[str, Any]], edges: list[dict[str, Any]]
+    ) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+        """Insert one deterministic runtime SYNC task before the graph END.
+
+        The saved draft remains declarative. Runtime-only ``sync`` nodes are
+        derived from the single endpoint selector and its mapping/condition
+        companions for every trial, so retries bind the same task id.
+        """
+        materialized_nodes = deepcopy(nodes)
+        materialized_edges = deepcopy(edges)
+        if any(node.get("node_type") == "sync" for node in materialized_nodes):
+            return materialized_nodes, materialized_edges
+        endpoints = [node for node in materialized_nodes if node.get("node_type") == "endpoint_select"]
+        if not endpoints:
+            return materialized_nodes, materialized_edges
+        if len(endpoints) != 1:
+            raise TrialRunnerError("WF_TRIAL_SYNC_INVALID", "SYNC trial requires exactly one endpoint_select")
+        endpoint = endpoints[0]
+        params = deepcopy(endpoint.get("params") or {})
+        base_mode = params.get("baseMode") or params.get("base_mode")
+        if base_mode not in {"src_base", "tgt_base", "file_sync"}:
+            raise TrialRunnerError("WF_TRIAL_SYNC_INVALID", "SYNC endpoint baseMode is unsupported")
+        companions = [
+            node
+            for node in materialized_nodes
+            if node.get("node_type") in {"field_map", "field_map_union", "condition_set"}
+        ]
+        for companion in companions:
+            companion_params = companion.get("params") or {}
+            for key in ("source", "target", "mappings", "transform_config", "target_properties", "fieldMap"):
+                if key not in params and key in companion_params:
+                    params[key] = deepcopy(companion_params[key])
+            if companion.get("node_type") == "condition_set" and "filterExpr" in companion_params:
+                transform_config = params.setdefault("transform_config", {})
+                transform_config.setdefault("filter_condition", companion_params["filterExpr"])
+        if "mappings" not in params and isinstance(params.get("fieldMap"), list):
+            params["mappings"] = [
+                {
+                    "source_column": item.get("from", item.get("key")),
+                    "target_column": item.get("to", item.get("value")),
+                    "source_type": item.get("source_type", "string"),
+                    "target_type": item.get("target_type", "string"),
+                    "transform_expression": item.get("transform_expression", ""),
+                    "mapping_status": item.get("mapping_status", "AUTO"),
+                    "nullable": item.get("nullable", True),
+                    "default_value": item.get("default_value"),
+                }
+                for item in params["fieldMap"]
+                if isinstance(item, dict)
+            ]
+        params["_materialized_endpoint"] = endpoint["node_code"]
+        runtime_code = f"sys_exec_{endpoint['node_code']}"
+        design_codes = {endpoint["node_code"], *(node["node_code"] for node in companions)}
+        predecessors = {
+            edge["from_node"]
+            for edge in materialized_edges
+            if edge.get("to_node") in design_codes and edge.get("from_node") not in design_codes
+        }
+        successors = {
+            edge["to_node"]
+            for edge in materialized_edges
+            if edge.get("from_node") in design_codes and edge.get("to_node") not in design_codes
+        }
+        materialized_nodes = [node for node in materialized_nodes if node["node_code"] not in design_codes]
+        materialized_nodes.append(
+            {
+                "node_code": runtime_code,
+                "node_type": "file_sync" if base_mode == "file_sync" else "sync",
+                "name": "SYNC runtime",
+                "params": params,
+                "runtime_only": True,
+                "source_node_code": endpoint["node_code"],
+                "position_x": endpoint.get("position_x"),
+                "position_y": endpoint.get("position_y"),
+            }
+        )
+        materialized_edges = [
+            edge
+            for edge in materialized_edges
+            if edge.get("from_node") not in design_codes and edge.get("to_node") not in design_codes
+        ]
+        materialized_edges.extend(
+            {"from_node": predecessor, "to_node": runtime_code}
+            for predecessor in sorted(predecessors)
+        )
+        materialized_edges.extend(
+            {"from_node": runtime_code, "to_node": successor}
+            for successor in sorted(successors)
+        )
+        return materialized_nodes, materialized_edges
 
     # -- execution set resolution (WF-15/WF-16) --------------------------------
 
@@ -362,11 +470,41 @@ class TrialRunner:
         definition_id: int,
     ) -> None:
         """Execute one task instance (transition PENDING → RUNNING → SUCCEEDED)."""
+        node_type = str(node["node_type"])
+        if node_type.lower() in {"sync", "file_sync"}:
+            if self._sync_driver_factory is None:
+                raise TrialRunnerError(
+                    "WF_TRIAL_SYNC_DRIVER_MISSING",
+                    "SYNC trial requires a runtime driver",
+                )
+            instance = self._session.get(WorkflowInstanceRecord, instance_id)
+            workflow_version = int(instance.trial_snapshot_id or instance.workflow_version_id or 0)
+            sync_snapshot = {
+                **deepcopy(node.get("params") or {}),
+                "project_id": project_id,
+                "workflow_id": definition_id,
+                "workflow_version": workflow_version,
+                "task_id": str(node["node_code"]),
+            }
+            driver = self._sync_driver_factory(sync_snapshot)
+            if driver is None:
+                raise TrialRunnerError(
+                    "WF_TRIAL_SYNC_DRIVER_MISSING",
+                    "SYNC runtime driver factory returned no driver",
+                )
+            execute_sync_attempt(
+                self._session,
+                sync_snapshot,
+                workflow_instance_id=instance_id,
+                task_instance_id=task.id,
+                driver=driver,
+            )
+            return
+
         self._exec.transition_task_instance(task.id, "RUNNING")
         attempt = self._exec.append_attempt(task.id)
         self._exec.transition_attempt(attempt.id, "RUNNING")
 
-        node_type = node["node_type"]
         params = node.get("params") or {}
         variable_repository = VariableRepository(self._session)
         variable_resolver = VariableResolver(
