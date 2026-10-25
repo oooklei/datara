@@ -28,4 +28,33 @@ describe('sync mapping editor', () => {
     await flushPromises()
     expect(savePlan).toHaveBeenCalledWith(expect.objectContaining({ project_id: 7, workflow_id: 11, task_id: 'sync_1', mappings: [expect.objectContaining({ source_column: 'id_adjusted' })] }))
   })
+
+  it('将探查表单投影为 endpoint_select 可执行参数且保留 baseMode', async () => {
+    const wrapper = mount(SyncMappingEditor, {
+      props: {
+        projectId: 7,
+        workflowId: 11,
+        workflowVersion: 1,
+        taskId: 'endpoint_1',
+        modelValue: {
+          baseMode: 'src_base',
+          source: { datasource_id: 1, schema: 'ods', object: 'src' },
+          target: { datasource_id: 2, schema: 'dw', object: 'dst' },
+        },
+      },
+    })
+
+    await wrapper.find('button').trigger('click')
+    await flushPromises()
+
+    const updates = wrapper.emitted('update:modelValue') as Array<[Record<string, unknown>]>
+    expect(updates.at(-1)?.[0]).toEqual(expect.objectContaining({
+      baseMode: 'src_base',
+      srcDs: 1,
+      srcTable: 'src',
+      tgtDs: 2,
+      tgtTable: 'dst',
+      fieldMap: [expect.objectContaining({ from: 'id', to: 'id' })],
+    }))
+  })
 })

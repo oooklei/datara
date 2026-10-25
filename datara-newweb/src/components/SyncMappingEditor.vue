@@ -53,7 +53,28 @@ function validRefs(): boolean {
 }
 
 function snapshot(): Record<string, unknown> {
-  return { source: { ...source }, target: { ...target }, mappings: mappings.value, transform_config: { ...transformConfig }, target_properties: JSON.parse(JSON.stringify(targetProperties)) }
+  const fieldMap = mappings.value.map((mapping) => ({
+    from: mapping.source_column,
+    to: mapping.target_column,
+  }))
+  return {
+    ...(props.modelValue ?? {}),
+    source: { ...source },
+    target: { ...target },
+    mappings: mappings.value,
+    transform_config: { ...transformConfig },
+    target_properties: JSON.parse(JSON.stringify(targetProperties)),
+    // The rebuild SYNC API stores the rich plan above, while the existing
+    // worker contract consumes these flat keys from the saved DAG node.
+    // Keep both projections in one serializable node payload so trial/save
+    // and runtime materialization execute the exact mapping the user edited.
+    srcDs: source.datasource_id,
+    srcTable: source.object,
+    tgtDs: target.datasource_id,
+    tgtTable: target.object,
+    fieldMap,
+    filterExpr: transformConfig.filter_condition ?? '',
+  }
 }
 function syncModel() { emit('update:modelValue', snapshot()) }
 async function explore() {
