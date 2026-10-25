@@ -47,7 +47,7 @@ import {
 import { isDesignComponent, loadComponentSpecs, type ComponentSpecItem, type WorkflowType } from '../services/rebuild/componentSpecApi'
 import { useWorkflowGraphStore } from '../stores/workflowGraph'
 import WorkflowVariablePanel from './WorkflowVariablePanel.vue'
-import VariableReferenceInput from './VariableReferenceInput.vue'
+import ScriptResourceEditor from './ScriptResourceEditor.vue'
 import StreamObservationPanel from './StreamObservationPanel.vue'
 import SyncMappingEditor from './SyncMappingEditor.vue'
 import { createDependencyContract } from '../services/rebuild/dependencyApi'
@@ -120,21 +120,19 @@ const selectedNode = ref<string | null>(null)
 const selectedEdge = ref<{ from: string; to: string } | null>(null)
 const selectedNodeRecord = computed(() => graphStore.nodes.find((node) => node.nodeCode === selectedNode.value) ?? null)
 const nodeParameterKey = computed(() => {
-  const type = selectedNodeRecord.value?.nodeType
-  if (type === 'SQL') return 'sql'
-  if (type === 'PYTHON') return 'script'
-  if (type === 'SHELL') return 'command'
+  const type = String(selectedNodeRecord.value?.nodeType ?? '').toLowerCase()
+  if (type === 'sql') return 'sql'
+  if (type === 'python' || type === 'shell') return 'script'
   return null
 })
-const nodeParameterValue = computed(() => {
-  const key = nodeParameterKey.value
-  return key && selectedNodeRecord.value ? String(selectedNodeRecord.value.params?.[key] ?? '') : ''
+const scriptResourceKind = computed(() => {
+  const type = String(selectedNodeRecord.value?.nodeType ?? '').toLowerCase()
+  return type === 'sql' || type === 'python' || type === 'shell' ? type : null
 })
-function updateNodeParameter(value: string) {
+function updateNodeParams(value: Record<string, unknown>) {
   const node = selectedNodeRecord.value
-  const key = nodeParameterKey.value
-  if (!node || !key) return
-  graphStore.updateNode(node.nodeCode, { params: { ...(node.params ?? {}), [key]: value } })
+  if (!node) return
+  graphStore.updateNode(node.nodeCode, { params: value })
 }
 const isSyncMappingNode = computed(() => workflowType.value === 'SYNC' && Boolean(selectedNodeRecord.value?.nodeType && ['endpoint_select', 'field_map', 'field_map_union', 'src_base_orch', 'tgt_base_orch', 'file_sync_orch'].includes(String(selectedNodeRecord.value?.nodeType).toLowerCase())))
 const isDependentNode = computed(() => String(selectedNodeRecord.value?.nodeType ?? '').toLowerCase() === 'dependent')
@@ -458,12 +456,16 @@ async function onShowVersions() {
 
     <section v-if="selectedNodeRecord && nodeParameterKey" class="node-editor" data-node-parameter-editor>
       <strong>{{ selectedNodeRecord.nodeType }} 参数 · {{ selectedNodeRecord.nodeCode }}</strong>
-      <VariableReferenceInput
-        :model-value="nodeParameterValue"
-        :context="{ projectId: projectId!, workflowId: numDocId }"
-        :label="nodeParameterKey"
-        :multiline="nodeParameterKey !== 'command'"
-        @update:model-value="updateNodeParameter"
+      <ScriptResourceEditor
+        v-if="projectId !== undefined && scriptResourceKind"
+        :key="selectedNodeRecord.nodeCode"
+        :project-id="projectId"
+        :workflow-id="numDocId"
+        :workflow-version="1"
+        :task-id="selectedNodeRecord.nodeCode"
+        :kind="scriptResourceKind"
+        :model-value="selectedNodeRecord.params ?? {}"
+        @update:model-value="updateNodeParams"
       />
     </section>
     <section v-if="selectedNodeRecord && isDependentNode" class="node-editor dependency-editor" data-dependent-editor>
