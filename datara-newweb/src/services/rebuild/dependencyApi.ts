@@ -113,7 +113,8 @@ export interface DependencyContract {
   listCandidateWorkflows: (projectId: number) => Promise<Array<{ workflowId: number; name: string; latestVersion: number }>>
   listWorkflowTasks: (projectId: number, workflowId: number, workflowVersion?: number) => Promise<Array<{ taskCode: string; name: string }>>
   previewExpression: (projectId: number, workflowId: number, workflowVersion: number, taskId: string, groups: DependencyGroup[]) => Promise<DependencyExpressionPreview>
-  saveDependency: (input: DependencySaveInput) => Promise<{ saved: true; version: number }>
+  /** configId is the immutable dependency-config identity stored on the DAG node. */
+  saveDependency: (input: DependencySaveInput) => Promise<{ saved: true; version: number; configId: number }>
   evaluateDependency: (request: DependencyEvaluateRequest) => Promise<DependencyExpressionPreview & { evaluatedAt: string }>
 }
 
@@ -221,7 +222,7 @@ export function createDependencyContract(): DependencyContract {
         groups: groupsToWire(groups),
       }),
     saveDependency: async (input) =>
-      sendJson<{ saved: true; version: number }>('/saves', {
+      sendJson<{ saved: true; version: number; configId: number }>('/saves', {
         projectId: input.projectId,
         workflowId: input.workflowId,
         workflowVersion: input.workflowVersion,

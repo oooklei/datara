@@ -140,12 +140,13 @@ describe('R4 dependencyApi contract (GREEN wired)', () => {
     expect(fetchMock).not.toHaveBeenCalled()
   })
 
-  it('saveDependency POSTs /saves and returns saved/version', async () => {
-    const fetchMock = stubFetchWithEnvelope({ saved: true, version: 3 })
+  it('saveDependency POSTs /saves and returns the config identity required by DAG execution', async () => {
+    const fetchMock = stubFetchWithEnvelope({ saved: true, version: 3, config_id: 41 })
     vi.stubGlobal('fetch', fetchMock)
     await expect(createDependencyContract().saveDependency({ projectId: 1, workflowId: 10, workflowVersion: 3, taskId: 'clean', groups })).resolves.toEqual({
       saved: true,
       version: 3,
+      configId: 41,
     })
     const [url, init] = fetchMock.mock.calls[0] as unknown as [string, RequestInit]
     expect(url).toBe('/api/v1/rebuild/dependency/saves')

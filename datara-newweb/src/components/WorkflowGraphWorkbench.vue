@@ -50,7 +50,7 @@ import WorkflowVariablePanel from './WorkflowVariablePanel.vue'
 import ScriptResourceEditor from './ScriptResourceEditor.vue'
 import StreamObservationPanel from './StreamObservationPanel.vue'
 import SyncMappingEditor from './SyncMappingEditor.vue'
-import { createDependencyContract } from '../services/rebuild/dependencyApi'
+import DependencyNodeEditor from './DependencyNodeEditor.vue'
 
 import '@vue-flow/core/dist/style.css'
 import '@vue-flow/core/dist/theme-default.css'
@@ -136,66 +136,6 @@ function updateNodeParams(value: Record<string, unknown>) {
 }
 const isSyncMappingNode = computed(() => workflowType.value === 'SYNC' && Boolean(selectedNodeRecord.value?.nodeType && ['endpoint_select', 'field_map', 'field_map_union', 'src_base_orch', 'tgt_base_orch', 'file_sync_orch'].includes(String(selectedNodeRecord.value?.nodeType).toLowerCase())))
 const isDependentNode = computed(() => String(selectedNodeRecord.value?.nodeType ?? '').toLowerCase() === 'dependent')
-const dependencySaving = ref(false)
-const dependencySaved = ref(false)
-function dependentValue(key: string, fallback: string | number = ''): string | number {
-  return selectedNodeRecord.value?.params?.[key] as string | number ?? fallback
-}
-function updateDependentParam(key: string, value: string | number) {
-  const node = selectedNodeRecord.value
-  if (!node) return
-  graphStore.updateNode(node.nodeCode, { params: { ...(node.params ?? {}), [key]: value } })
-}
-async function saveDependencyConfig() {
-  const node = selectedNodeRecord.value
-  if (!node || props.projectId === undefined) return
-  const p = node.params ?? {}
-  const dependencyId = Number(p.dependency_id)
-  if (!Number.isInteger(dependencyId) || dependencyId <= 0) {
-    ElMessage.warning('请先填写有效的依赖标识')
-    return
-  }
-  dependencySaving.value = true
-  dependencySaved.value = false
-  try {
-    const selector = String(p.dependent_execute ?? 'workflow') as 'workflow' | 'all_tasks' | 'task'
-    const taskCode = selector === 'workflow' ? '0' : selector === 'all_tasks' ? '-1' : String(p.upstream_task_code ?? '')
-    if (selector === 'task' && (!/^\d+$/.test(taskCode) || Number(taskCode) <= 0)) {
-      ElMessage.warning('指定任务依赖需要填写正整数任务编码')
-      return
-    }
-    await createDependencyContract().saveDependency({
-      projectId: props.projectId,
-      workflowId: numDocId.value,
-      workflowVersion: 1,
-      taskId: node.nodeCode,
-      groupRelation: String(p.group_relation ?? 'AND') === 'OR' ? 'OR' : 'AND',
-      checkIntervalSeconds: Number(p.check_interval_seconds ?? 10),
-      failurePolicy: String(p.failure_policy ?? 'fail') === 'waiting' ? 'waiting' : 'fail',
-      ...(String(p.failure_policy ?? 'fail') === 'waiting' ? { failureWaitingSeconds: Number(p.failure_waiting_seconds ?? 60) } : {}),
-      timeoutSeconds: Number(p.timeout_seconds ?? 30),
-      groups: [{
-        join: String(p.relation ?? 'AND') === 'OR' ? 'OR' : 'AND',
-        conditions: [{
-          kind: selector === 'workflow' ? 'workflow' : 'task',
-          selector,
-          upstreamWorkflowId: dependencyId,
-          upstreamTaskCode: taskCode,
-          cycle: String(p.cycle ?? 'day') as 'hour' | 'day' | 'week' | 'month',
-          dateValue: String(p.date_value ?? 'last1Days'),
-          dependResult: String(p.depend_result ?? 'success') === 'failed' ? 'failed' : 'success',
-          parameterPassing: Boolean(p.parameter_passing ?? false),
-        }],
-      }],
-    })
-    dependencySaved.value = true
-    ElMessage.success('依赖配置已保存')
-  } catch (error) {
-    ElMessage.error(`依赖配置保存失败：${error instanceof Error ? error.message : '请求异常'}`)
-  } finally {
-    dependencySaving.value = false
-  }
-}
 function updateSyncParams(value: Record<string, unknown>) {
   const node = selectedNodeRecord.value
   if (node) graphStore.updateNode(node.nodeCode, { params: { ...(node.params ?? {}), ...value } })
@@ -468,30 +408,15 @@ async function onShowVersions() {
         @update:model-value="updateNodeParams"
       />
     </section>
-    <section v-if="selectedNodeRecord && isDependentNode" class="node-editor dependency-editor" data-dependent-editor>
-      <strong>依赖组件参数 · {{ selectedNodeRecord.nodeCode }}</strong>
-      <label>执行范围<select :value="dependentValue('dependent_execute', 'workflow')" @change="updateDependentParam('dependent_execute', ($event.target as HTMLSelectElement).value)">
-        <option value="workflow">整工作流</option><option value="all_tasks">全部任务</option><option value="task">指定任务</option>
-      </select></label>
-      <label>依赖类型
-        <select :value="dependentValue('kind', 'workflow')" disabled title="文件/表状态/外部任务的详细契约尚未冻结">
-          <option value="workflow">工作流/任务</option>
-        </select>
-      </label>
-      <label>依赖标识<input :value="dependentValue('dependency_id')" @input="updateDependentParam('dependency_id', ($event.target as HTMLInputElement).value)" /></label>
-      <label v-if="dependentValue('dependent_execute', 'workflow') === 'task'">任务编码<input :value="dependentValue('upstream_task_code')" @input="updateDependentParam('upstream_task_code', ($event.target as HTMLInputElement).value)" /></label>
-      <label>组内关系<select :value="dependentValue('relation', 'AND')" @change="updateDependentParam('relation', ($event.target as HTMLSelectElement).value)"><option>AND</option><option>OR</option></select></label>
-      <label>组间关系<select :value="dependentValue('group_relation', 'AND')" @change="updateDependentParam('group_relation', ($event.target as HTMLSelectElement).value)"><option>AND</option><option>OR</option></select></label>
-      <label>时间周期<select :value="dependentValue('cycle', 'day')" @change="updateDependentParam('cycle', ($event.target as HTMLSelectElement).value)"><option value="hour">小时</option><option value="day">天</option><option value="week">周</option><option value="month">月</option></select></label>
-      <label>命名窗口<input :value="dependentValue('date_value', 'last1Days')" @input="updateDependentParam('date_value', ($event.target as HTMLInputElement).value)" /></label>
-      <label>期望结果<select :value="dependentValue('depend_result', 'success')" @change="updateDependentParam('depend_result', ($event.target as HTMLSelectElement).value)"><option value="success">成功</option><option value="failed">失败</option></select></label>
-      <label>参数透传<input type="checkbox" :checked="Boolean(dependentValue('parameter_passing', 0))" @change="updateDependentParam('parameter_passing', ($event.target as HTMLInputElement).checked ? 1 : 0)" /></label>
-      <label>检查周期(秒)<input type="number" min="1" :value="dependentValue('check_interval_seconds', 10)" @input="updateDependentParam('check_interval_seconds', Number(($event.target as HTMLInputElement).value))" /></label>
-      <label>超时(秒)<input type="number" min="1" :value="dependentValue('timeout_seconds', 30)" @input="updateDependentParam('timeout_seconds', Number(($event.target as HTMLInputElement).value))" /></label>
-      <label>失败策略<select :value="dependentValue('failure_policy', 'fail')" @change="updateDependentParam('failure_policy', ($event.target as HTMLSelectElement).value)"><option value="fail">失败</option><option value="waiting">等待</option></select></label>
-      <label v-if="dependentValue('failure_policy', 'fail') === 'waiting'">失败等待(秒)<input type="number" min="1" :value="dependentValue('failure_waiting_seconds', 60)" @input="updateDependentParam('failure_waiting_seconds', Number(($event.target as HTMLInputElement).value))" /></label>
-      <button type="button" class="wf-btn dependency-save" :disabled="dependencySaving" @click="saveDependencyConfig">{{ dependencySaving ? '保存中…' : dependencySaved ? '已保存' : '保存依赖配置' }}</button>
-    </section>
+    <DependencyNodeEditor
+      v-if="selectedNodeRecord && isDependentNode && projectId !== undefined"
+      :project-id="projectId"
+      :workflow-id="numDocId"
+      :workflow-version="1"
+      :task-id="selectedNodeRecord.nodeCode"
+      :model-value="selectedNodeRecord.params ?? {}"
+      @update:model-value="updateNodeParams"
+    />
     <StreamObservationPanel v-if="workflowType === 'STREAM' && loaded" />
     <SyncMappingEditor
       v-if="isSyncMappingNode && projectId !== undefined && selectedNodeRecord"
@@ -604,9 +529,4 @@ async function onShowVersions() {
   height: 100%;
 }
 .node-editor{flex-shrink:0;padding:10px 14px;border-top:1px solid var(--border-color,#e2e8f0);background:#f8fafc;display:grid;gap:6px}
-.dependency-editor{grid-template-columns:repeat(3,minmax(130px,1fr));align-items:center}
-.dependency-editor strong{grid-column:1/-1}
-.dependency-editor label{display:grid;gap:3px;font-size:11px;color:var(--text-secondary,#64748b)}
-.dependency-editor input,.dependency-editor select{min-width:0;border:1px solid var(--border-color,#cbd5e1);border-radius:4px;padding:4px 6px;background:#fff;font-size:12px}
-.dependency-save{justify-self:start}
 </style>
