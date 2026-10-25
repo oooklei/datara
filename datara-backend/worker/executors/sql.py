@@ -421,12 +421,12 @@ def execute(ctx) -> ExecResult:
             ctx.log("[sql] readOnly 拒绝写操作或无法确认的语句: %s" % rejected[:200].replace("\n", " "))
             return ExecResult(FAILURE, {}, [])
 
-    # Only batches whose statements are known to preserve connection session
-    # state may return to the idle pool.  Explicit transactions and every
-    # unclassified statement (SET/USE/LOCK/DDL/admin/etc.) use a disposable
-    # connection so future syntax cannot leak state across workflow tasks.
+    # Only strictly read-only batches that pass the IDE's function allow-list
+    # may return to the idle pool.  DML is deliberately disposable too: values
+    # and functions inside it can have session side effects that a top-level
+    # statement-type check cannot prove safe (for example named locks or UDFs).
     pool_safe = transaction_mode in {"none", "all"} and all(
-        _is_transactional_statement(stmt)
+        _is_readonly_statement(stmt)
         for _phase_key, _phase_label, statements in phases
         for stmt in statements
     )

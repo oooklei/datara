@@ -572,6 +572,10 @@ def test_connection_is_checked_out_exclusively_and_released_after_execution(monk
         "SET SESSION TRANSACTION ISOLATION LEVEL READ COMMITTED",
         "SET sql_mode='STRICT_ALL_TABLES'",
         "USE analytics",
+        "SELECT GET_LOCK('workflow-lock', 0)",
+        "SELECT @session_value := 1",
+        "SELECT unknown_side_effect()",
+        "INSERT INTO sink(value) VALUES (unknown_side_effect())",
     ],
 )
 def test_none_mode_discards_connections_after_session_affecting_statements(executor_env, statement):
