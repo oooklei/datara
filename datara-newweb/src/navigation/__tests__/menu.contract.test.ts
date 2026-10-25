@@ -89,16 +89,16 @@ describe('2-01 菜单配置契约（0.8 §7 测试集 1：§4.2 逐行有且唯�
     expect(byId['resource-mgmt'].decisionGate).toBeUndefined()
   })
 
-  it('D 组 数据开发：SQL IDE formal + 数仓建模 future（S175/S179；R-29 routeName 预留）', () => {
+  it('D 组 数据开发：SQL IDE 与数仓建模均正式开放', () => {
     const g = allGroups.find((x) => x.id === 'development')!
     const byId = Object.fromEntries(g.items.map((i) => [i.id, i]))
     expect(Object.keys(byId).sort()).toEqual(['dw-modeling', 'sql-ide'].sort())
     expect(byId['sql-ide']).toMatchObject({ label: '数据开发IDE', path: '/ide', disposition: 'formal', batch: 'inc11' })
-    expect(byId['dw-modeling']).toMatchObject({ label: '数仓建模', path: '/model/list', disposition: 'future', batch: 'inc17' })
+    expect(byId['dw-modeling']).toMatchObject({ label: '数仓建模', path: '/model/list', disposition: 'formal', batch: 'inc17' })
     expect(byId['dw-modeling'].routeName).toBe('dwModeling')
   })
 
-  it('E 组 数据治理：质量规则/任务已正式开放，其余质量项保持 future（0.8 §3 L102-103 / §4 #3-#7）', () => {
+  it('E 组 数据治理：五个质量页面均正式开放', () => {
     const g = allGroups.find((x) => x.id === 'governance')!
     expect(g.label).toBe('数据治理')
     const formal = g.items.filter((i) => i.disposition === 'formal')
@@ -114,9 +114,11 @@ describe('2-01 菜单配置契约（0.8 §7 测试集 1：§4.2 逐行有且唯�
       '/ind/consistency',
       '/qc/rule',
       '/qc/task',
+      '/qc/exception',
+      '/qc/report',
+      '/qc/alarm',
     ])
-    expect(future.map((i) => i.id)).toEqual(['qc-exception', 'qc-report', 'qc-alarm'])
-    for (const i of future) expect(i.batch).toBe('inc14')
+    expect(future).toEqual([])
   })
 
   it('F 组 部署运维：运行节点、集群监控与 SSH 节点均正式开放（S175/S179；0.8 §3 L104）', () => {
@@ -129,17 +131,15 @@ describe('2-01 菜单配置契约（0.8 §7 测试集 1：§4.2 逐行有且唯�
     ])
   })
 
-  it('G 组 系统管理：7 项唯一落位（#9 formal + R-28 两项 + #12/13 + #14 embedded + LLM）', () => {
+  it('G 组 系统管理：脱敏按裁定移除，其余 6 项唯一落位', () => {
     const g = allGroups.find((x) => x.id === 'system')!
     expect(g.label).toBe('系统管理')
     const byId = Object.fromEntries(g.items.map((i) => [i.id, i]))
     expect(Object.keys(byId).sort()).toEqual(
-      ['sec-perm', 'sec-mask', 'sec-audit', 'open-api', 'open-key', 'api-call-log', 'llm-config'].sort(),
+      ['sec-perm', 'sec-audit', 'open-api', 'open-key', 'api-call-log', 'llm-config'].sort(),
     )
     expect(byId['sec-perm']).toMatchObject({ label: '权限管理', path: '/sec/perm', disposition: 'formal', batch: 'inc15' })
-    // R-28：脱敏·审计纳入（增量 15 后追加立项，可复议）
-    expect(byId['sec-mask']).toMatchObject({ label: '脱敏规则', path: '/sec/mask', disposition: 'future', batch: 'inc15-post' })
-    expect(byId['sec-audit']).toMatchObject({ label: '访问审计', path: '/sec/audit', disposition: 'future', batch: 'inc15-post' })
+    expect(byId['sec-audit']).toMatchObject({ label: '访问审计', path: '/sec/audit', disposition: 'formal', batch: 'inc15' })
     expect(byId['open-api']).toMatchObject({ label: 'API 管理', path: '/open/api', disposition: 'formal', batch: 'inc15' })
     expect(byId['open-key']).toMatchObject({ label: 'API-Key 管理', path: '/open/key', disposition: 'formal', batch: 'inc15' })
     // #14 调用日志：并入 #12，独立页签/附属列未确认（0.8 §4 L128）

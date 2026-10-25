@@ -54,13 +54,13 @@ describe('2-03 审计清单结构与计数（0.8 §7 测试集 2）', () => {
     expect(MENU_AUDIT_18.map((e) => e.no)).toEqual(Array.from({ length: 18 }, (_, k) => k + 1))
   })
 
-  it('逐项参数化：10 归组 + #14 内嵌 + 7 删除，数量与目标组一致（0.8 L134）', () => {
+  it('逐项参数化：脱敏裁定移除后 9 归组 + #14 内嵌 + 8 删除', () => {
     const grouped = MENU_AUDIT_18.filter((e) => e.disposition === 'formal' || e.disposition === 'future')
     const embedded = MENU_AUDIT_18.filter((e) => e.disposition === 'embedded')
     const deleted = MENU_AUDIT_18.filter((e) => e.disposition === 'deleted')
-    expect(grouped.map((e) => e.no)).toEqual([3, 4, 5, 6, 7, 9, 10, 11, 12, 13])
+    expect(grouped.map((e) => e.no)).toEqual([3, 4, 5, 6, 7, 9, 11, 12, 13])
     expect(embedded.map((e) => e.no)).toEqual([14])
-    expect(deleted.map((e) => e.no)).toEqual([1, 2, 8, 15, 16, 17, 18])
+    expect(deleted.map((e) => e.no)).toEqual([1, 2, 8, 10, 15, 16, 17, 18])
     expect({ grouped: grouped.length, embedded: embedded.length, deleted: deleted.length }).toEqual(AUDIT_COUNTS)
   })
 

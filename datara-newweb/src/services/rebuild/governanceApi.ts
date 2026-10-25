@@ -88,6 +88,44 @@ export interface QualityRunPage {
   list: QualityRunRecord[]
 }
 
+export interface QualityExceptionRecord {
+  id: number
+  target: string
+  runDetailsId: number | null
+  ruleDefinitionId: number | null
+  legacyTaskId: number | null
+  sampleSql: string | null
+  hitCount: number
+  status: string
+  fixNote: string | null
+  handledBy: string | null
+  handledAt: string | null
+}
+
+export interface QualityReportRecord {
+  id: number
+  title: string
+  scope: string
+  period: string
+  content: Record<string, unknown>
+  createdBy: string
+}
+
+export interface QualityAlarmPolicyRecord {
+  id: number
+  name: string
+  scope: string
+  metric: string
+  operator: string
+  threshold: number
+  enabled: boolean
+  lastFiredAt: string | null
+}
+
+export interface QualityExceptionPage { total: number; list: QualityExceptionRecord[] }
+export interface QualityReportPage { total: number; list: QualityReportRecord[] }
+export interface QualityAlarmPolicyPage { total: number; list: QualityAlarmPolicyRecord[] }
+
 /* ---------- 资产、标签、血缘 ---------- */
 
 export type AssetType = string
@@ -458,5 +496,37 @@ export const governanceApi = {
       PRESERVE_ERROR,
     )
     return snakeToCamel(data) as QualityRunRecord
+  },
+
+  async listExceptions(
+    projectId: number,
+    page = 1,
+    pageSize = 50,
+    status?: string,
+  ): Promise<QualityExceptionPage> {
+    const data = await getJson<unknown>(
+      `${BASE}/projects/${projectId}/quality-exceptions`,
+      { page, pageSize, status },
+      PRESERVE_ERROR,
+    )
+    return snakeToCamel(data) as QualityExceptionPage
+  },
+
+  async listReports(projectId: number, page = 1, pageSize = 50): Promise<QualityReportPage> {
+    const data = await getJson<unknown>(
+      `${BASE}/projects/${projectId}/quality-reports`,
+      { page, pageSize },
+      PRESERVE_ERROR,
+    )
+    return snakeToCamel(data) as QualityReportPage
+  },
+
+  async listAlarmPolicies(projectId: number, page = 1, pageSize = 50): Promise<QualityAlarmPolicyPage> {
+    const data = await getJson<unknown>(
+      `${BASE}/projects/${projectId}/quality-alarm-policies`,
+      { page, pageSize },
+      PRESERVE_ERROR,
+    )
+    return snakeToCamel(data) as QualityAlarmPolicyPage
   },
 }

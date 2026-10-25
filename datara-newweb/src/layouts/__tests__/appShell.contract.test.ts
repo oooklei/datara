@@ -112,7 +112,7 @@ describe('2-05 菜单消费（filterMenuGroups 接驳 + F56a direct + future 折
     expect(link.attributes('href')).toContain('/dag')
   })
 
-  it('future 组渲染：默认折叠（aria-expanded=false + items 隐藏）；展开持久化稳定键且不改路由', async () => {
+  it('所有已交付页面转正后不再渲染 future 空组', async () => {
     localStorage.clear()
     const router = makeTestRouter()
     await router.push('/a')
@@ -120,22 +120,7 @@ describe('2-05 菜单消费（filterMenuGroups 接驳 + F56a direct + future 折
       global: { plugins: [router] },
       props: { filterOverrides: { previewAllowed: new Set(['dw-modeling']) } },
     })
-    const futureGroup = w.find('.menu-group[data-group-id="future"]')
-    expect(futureGroup.exists()).toBe(true)
-    expect(futureGroup.find('.group-label').text()).toBe('后续批次')
-    const toggle = futureGroup.find('button.group-toggle')
-    expect(toggle.attributes('aria-expanded')).toBe('false')
-    // 默认折叠：items v-show=false（组标题可点开）
-    const itemsUl = futureGroup.find('ul.menu-items')
-    expect((itemsUl.element as HTMLElement).style.display).toBe('none')
-    const routeBefore = router.currentRoute.value.fullPath
-    await toggle.trigger('click')
-    await w.vm.$nextTick()
-    expect(toggle.attributes('aria-expanded')).toBe('true')
-    expect((itemsUl.element as HTMLElement).style.display).not.toBe('none')
-    expect(loadGroupFolded('future', true)).toBe(false)
-    // 展开不改变路由（0.8 §7 测试集 4 组件级）
-    expect(router.currentRoute.value.fullPath).toBe(routeBefore)
+    expect(w.find('.menu-group[data-group-id="future"]').exists()).toBe(false)
   })
 
   it('future 组空时整组不渲染（0.8 §5.2 组件级闭环）', () => {

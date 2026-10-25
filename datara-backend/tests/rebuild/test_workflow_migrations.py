@@ -2,6 +2,7 @@ from sqlalchemy import create_engine, inspect, text
 
 from rebuild.workflow.migrations import apply_workflow_migrations
 from rebuild.workflow.revisions import v0001_workflow_type
+from rebuild.workflow.revisions import v0002_workflow_categories
 
 
 def _legacy_engine():
@@ -23,13 +24,17 @@ def test_workflow_type_migration_upgrades_legacy_table_and_is_idempotent():
     assert v0001_workflow_type.checksum == "a3e983192e9fcca06bb8503b28d8c09154c90135694199b9568ba047dce36578"
     engine = _legacy_engine()
     first = apply_workflow_migrations(engine)
-    assert first.applied == (v0001_workflow_type.revision,)
+    expected_revisions = (
+        v0001_workflow_type.revision,
+        v0002_workflow_categories.revision,
+    )
+    assert first.applied == expected_revisions
     columns = {column["name"]: column for column in inspect(engine).get_columns("workflow_definition")}
     assert columns["workflow_type"]["nullable"] is False
     with engine.connect() as connection:
         assert connection.scalar(text("SELECT workflow_type FROM workflow_definition WHERE id=1")) == "NORMAL"
     second = apply_workflow_migrations(engine)
-    assert second.skipped == (v0001_workflow_type.revision,)
+    assert second.skipped == expected_revisions
 
 
 def test_workflow_type_migration_maps_etl_and_postflight_rejects_drift():

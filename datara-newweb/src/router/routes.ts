@@ -42,9 +42,12 @@ import IndicatorListView from '../views/ind/IndicatorListView.vue'
 import IndicatorBoardView from '../views/ind/IndicatorBoardView.vue'
 import ConsistencyCheckView from '../views/ind/ConsistencyCheckView.vue'
 import PermissionMatrixView from '../views/PermissionMatrixView.vue'
+import SecAuditView from '../views/SecAuditView.vue'
 import QualityRuleView from '../views/qc/QualityRuleView.vue'
 import QualityTaskView from '../views/qc/QualityTaskView.vue'
+import QualityReadOnlyView from '../views/qc/QualityReadOnlyView.vue'
 import ResourceManagementView from '../views/resources/ResourceManagementView.vue'
+import ModelListView from '../views/dwmodel/ModelListView.vue'
 
 export const routes: RouteRecordRaw[] = [
   { path: '/login', name: 'login', component: LoginView },
@@ -60,6 +63,7 @@ export const routes: RouteRecordRaw[] = [
   { path: '/open/llm', name: 'open-llm', component: LlmModelManagementView },
   { path: '/ds/list', name: 'ds-list', component: DataSourceListView },
   { path: '/ide', name: 'sql-ide', component: IdeView },
+  { path: '/model/list', name: 'dwModeling', component: ModelListView },
   { path: '/meta/lineage', name: 'meta-lineage', component: LineageAnalysisView },
   { path: '/meta/map', name: 'meta-map', component: AssetMapView },
   { path: '/meta/catalog', name: 'meta-catalog', component: MetadataCatalogView },
@@ -69,8 +73,12 @@ export const routes: RouteRecordRaw[] = [
   { path: '/ind/board', name: 'ind-board', component: IndicatorBoardView },
   { path: '/ind/consistency', name: 'ind-consistency', component: ConsistencyCheckView },
   { path: '/sec/perm', name: 'sec-perm', component: PermissionMatrixView },
+  { path: '/sec/audit', name: 'sec-audit', component: SecAuditView },
   { path: '/qc/rule', name: 'qc-rule', component: QualityRuleView },
   { path: '/qc/task', name: 'qc-task', component: QualityTaskView },
+  { path: '/qc/exception', name: 'qc-exception', component: QualityReadOnlyView, props: { kind: 'exceptions' } },
+  { path: '/qc/report', name: 'qc-report', component: QualityReadOnlyView, props: { kind: 'reports' } },
+  { path: '/qc/alarm', name: 'qc-alarm', component: QualityReadOnlyView, props: { kind: 'alarms' } },
   { path: '/resources', name: 'resource-mgmt', component: ResourceManagementView },
   {
     path: '/p/:projectId',

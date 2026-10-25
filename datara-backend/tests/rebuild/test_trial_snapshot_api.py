@@ -6,6 +6,7 @@ auth/permission gates (401/403), frame validation (4001).
 
 from fastapi.testclient import TestClient
 
+from common.models import Component, ComponentVersion
 from rebuild.api.app import create_app
 from rebuild.identity.contracts import Role
 from rebuild.identity.repository import UserRepository
@@ -25,6 +26,15 @@ def _client():
         viewer = UserRepository(session).create(username="viewer", password="viewer-pass", role=Role.VIEWER)
         project = ProjectRecord(name="trial-snap-proj", description="", owner_id=dev.id)
         session.add(project)
+        session.add(Component(
+            id=901, type="sql", name="sql", category="test", profile="dag",
+            scope="builtin", execution_model="dag-engine", executable=True,
+            state="published", published_version=1, draft_rev=0,
+        ))
+        session.add(ComponentVersion(
+            id=901, component_id=901, type="sql", version=1,
+            state="published", spec_json="{}", spec_hash="hash",
+        ))
         session.commit()
         project_id = project.id
     tokens = {}
@@ -43,11 +53,18 @@ def _create_definition(client, headers, project_id, name="trial-flow"):
 
 
 def _add_node(client, headers, project_id, definition_id, node_code):
-    return client.post(
+    response = client.post(
         f"/api/v1/rebuild/workflows/{definition_id}/nodes",
         headers=headers,
-        json={"project_id": project_id, "node_code": node_code, "node_type": "SQL"},
+        json={
+            "project_id": project_id,
+            "node_code": node_code,
+            "node_type": "sql",
+            "component_ref": {"type": "sql", "version": 1},
+        },
     )
+    assert response.status_code == 200, response.text
+    return response
 
 
 def test_create_snapshot_success_and_idempotent():

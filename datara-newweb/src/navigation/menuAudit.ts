@@ -5,7 +5,7 @@
  * 纪律：deleted 项仅存在于本审计清单，构建时不得进入 MenuGroupConfig.items（0.8 L66，
  *       menu.ts 已由测试负断言保证）；deleted ≠ 永久拒绝，未来裁定纳入须按 §4.4 作为
  *       新菜单重新登记（0.8 L131），不复活旧演示项。
- * 计数校验（0.8 L134）：迁入正式语义组 10 项（#3~#7、#9~#13）+ #14 并入 #12 + 删除 7 项（#1、#2、#8、#15~#18）。
+ * 计数校验：#10 脱敏规则已被 2026-10-21 用户裁定移出本版，故归组 9 项、内嵌 1 项、删除 8 项。
  */
 import type { MenuDisposition } from './menu'
 
@@ -65,7 +65,7 @@ export const MENU_AUDIT_18: readonly MenuAuditEntry[] = [
     no: 5,
     legacyLabel: '异常数据核查',
     legacyPath: '/qc/exception',
-    disposition: 'future',
+    disposition: 'formal',
     target: 'E 数据治理组',
     targetItemId: 'qc-exception',
     note: '同 #3 口径（0.8 L119）',
@@ -74,7 +74,7 @@ export const MENU_AUDIT_18: readonly MenuAuditEntry[] = [
     no: 6,
     legacyLabel: '质量报告',
     legacyPath: '/qc/report',
-    disposition: 'future',
+    disposition: 'formal',
     target: 'E 数据治理组',
     targetItemId: 'qc-report',
     note: '同 #3 口径（0.8 L120）',
@@ -83,7 +83,7 @@ export const MENU_AUDIT_18: readonly MenuAuditEntry[] = [
     no: 7,
     legacyLabel: '质量告警',
     legacyPath: '/qc/alarm',
-    disposition: 'future',
+    disposition: 'formal',
     target: 'E 数据治理组',
     targetItemId: 'qc-alarm',
     note: '同 #3 口径（0.8 L121）',
@@ -109,19 +109,18 @@ export const MENU_AUDIT_18: readonly MenuAuditEntry[] = [
     no: 10,
     legacyLabel: '脱敏规则',
     legacyPath: '/sec/mask',
-    disposition: 'future',
-    target: 'G 系统管理组',
-    targetItemId: 'sec-mask',
-    note: '承载域/批次未闭合前不进正式组；R-28 裁定纳入（增量 15 后追加立项）（0.8 L124）',
+    disposition: 'deleted',
+    target: '移除本版范围',
+    note: '用户裁定 2026-10-21：客户暂不考虑；页面不开发（权威设计 §3.3/§4.3 #10）',
   },
   {
     no: 11,
     legacyLabel: '访问审计',
     legacyPath: '/sec/audit',
-    disposition: 'future',
+    disposition: 'formal',
     target: 'G 系统管理组',
     targetItemId: 'sec-audit',
-    note: '同 #10 口径（0.8 L125）',
+    note: '后端 rebuild/sec/api.py 已就绪 + migrations 已应用（2026-10-25 解锁）',
   },
   {
     no: 12,
@@ -185,7 +184,7 @@ export const MENU_AUDIT_18: readonly MenuAuditEntry[] = [
 ]
 
 /** 计数校验常量（0.8 L134 与权威设计 §4.3 小结一致） */
-export const AUDIT_COUNTS = { grouped: 10, embedded: 1, deleted: 7 } as const
+export const AUDIT_COUNTS = { grouped: 9, embedded: 1, deleted: 8 } as const
 
 /** 双重负断言的 8 条旧路径（拆票登记 2-03 验收锚；WBS 退出标准 2 口径） */
 export const DELETED_LEGACY_PATHS: readonly string[] = [

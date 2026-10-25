@@ -75,6 +75,7 @@ def _safe_identifier(value: str) -> bool:
 from rebuild.sync.api import build_sync_router
 from rebuild.sync.models import SyncTaskDefinitionRecord
 from rebuild.governance.api import build_governance_router
+from rebuild.governance.migrations import MigrationRunner as GovernanceMigrationRunner, R3_GOVERNANCE_MIGRATIONS
 from rebuild.metrics.api import build_metrics_router
 from rebuild.metrics.models import (
     LineageWritebackRecord,
@@ -113,6 +114,9 @@ from rebuild.llm import LlmCredentialCipher, build_llm_router
 from rebuild.llm.migrations import apply_llm_migrations
 from rebuild.apikey import ApiKeyVerifier, apply_apikey_migrations, build_apikey_router
 from rebuild.openapi_admin import apply_openapi_admin_migrations, build_openapi_admin_router
+from rebuild.sec.api import build_sec_router
+from rebuild.sec.middleware import SecAuditMiddleware
+from rebuild.sec.migrations import MigrationRunner as SecMigrationRunner, S1_SEC_MIGRATIONS
 from rebuild.workflow.migrations import apply_workflow_migrations
 from rebuild.variables.migrations import apply_variable_migrations
 from common.registry import ServiceRegistry
@@ -419,6 +423,8 @@ def create_app(
         apply_workflow_migrations(engine)
         apply_execution_migrations(engine)
         apply_variable_migrations(engine)
+        GovernanceMigrationRunner(engine, R3_GOVERNANCE_MIGRATIONS).apply()
+        SecMigrationRunner(engine, S1_SEC_MIGRATIONS).apply()
         ensure_i1_schema()
         ensure_schedule_schema()
         ensure_model_schema()
@@ -877,6 +883,24 @@ def create_app(
         if capability is not None:
             claims["capability_restricted"] = True
         return claims
+
+    def audit_user(request: Request) -> str:
+        authorization = request.headers.get("authorization", "").strip()
+        if not authorization:
+            token = request.headers.get("token", "").strip()
+            if token:
+                authorization = f"Bearer {token}"
+        try:
+            claims = current_user(authorization)
+        except ValueError:
+            return "anonymous"
+        return str(claims.get("username") or "anonymous")
+
+    app.add_middleware(
+        SecAuditMiddleware,
+        session_factory=session_factory,
+        user_extractor=audit_user,
+    )
 
     def project_permission_error(session, project_id: int, user: dict[str, object], permission: Permission):
         project = session.get(ProjectRecord, project_id)
@@ -1463,6 +1487,11 @@ def create_app(
         build_runtime_node_router(session_factory, token_service, active_tokens),
         prefix="/api/v1/rebuild/runtime-nodes",
         tags=["rebuild-runtime-nodes"],
+    )
+    # G-system access audit (admin-only, no project scoping).
+    app.include_router(
+        build_sec_router(session_factory, current_user),
+        tags=["rebuild-sec"],
     )
     if llm_cipher is None and os.getenv("LLM_ENCRYPTION_KEY"):
         llm_cipher = LlmCredentialCipher.from_env()

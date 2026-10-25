@@ -1,13 +1,17 @@
 /**
- * I7（调度运行时）契约层 — RED 阶段。
- * 端点前缀为草案（/api/v1/rebuild/schedule/*），最终以后端契约为权威；
+ * I7（调度运行时）契约层 — GREEN 阶段（2026-10-25 更正）。
+ * 端点前缀 /api/v1/rebuild/schedule/*，经 http 底座统一信封接线；
  * 本文件语义源自 docs/increments/I7-I9-前端消费面分析.md §3（契约期待草案）。
  * 事件契约模式参照 legacy views/dag/InstanceRunsView.vue 的 InstanceRow/TaskStateEvent。
- * RED 约定：所有 I/O 方法在后端接入前抛 R6_SCHEDULER_NOT_WIRED，不发出任何真实请求。
+ *
  * FE-08 补登（2026-10-19）：Alert 记录面板（listAlerts）落位 alarm 页签（/dag/alarm），
  * 与「调度弹窗（ScheduleDialog）+ 实例页（InstanceRunsView）」两处职责边界：
  * - 弹窗/实例页：调度配置与运行时状态（TRIAL/FORMAL/STREAM 三态）；
  * - alarm 页签：告警记录只读列表（级别/通道/时间），不承载调度配置编辑。
+ *
+ * 更正（2026-10-25）：旧 RED 注释已过时——createScheduleContract() 五方法经 request()
+ * 真实接线后端 rebuild/schedule；R6_SCHEDULER_NOT_WIRED 常量仅保留作 View 横幅兼容引用，
+ * 不再是活哨兵（原 L6/L109 RED 约定注释与实现体不一致已修正）。
  */
 
 /* ---------- 触发注册（MANUAL/CRON/DEPENDENCY/EVENT/TRIAL，plan I7 Step） ---------- */
@@ -79,8 +83,9 @@ export interface ScheduleAlert {
   createdAt: string
 }
 
-/* ---------- RED 哨兵 ---------- */
+/* ---------- 兼容常量（GREEN 接线后保留，供旧 View 横幅引用；非活哨兵） ---------- */
 
+/** @deprecated VIEW 横幅兼容引用；契约已 GREEN，不再作哨兵抛出 */
 export const R6_SCHEDULER_NOT_WIRED = 'R6_SCHEDULER_NOT_WIRED: rebuild/schedule contract not connected yet'
 
 import { request } from '../http'
@@ -106,12 +111,11 @@ export interface ScheduleContract {
   listAlerts: () => Promise<ScheduleAlert[]>
 }
 
-/* ---------- RED 实现（后端接入前统一抛哨兵；方法清单见 R6_CONTRACT_METHODS） ---------- */
+/* ---------- GREEN 实现（经 http 底座统一信封接线后端 rebuild/schedule） ---------- */
 
-/** 异步契约方法统一实现：rejected promise（同步 throw 会在调用点直接炸出，无法被 rejects 断言捕获） */
 /**
- * I7 契约工厂（原型态）：签名与类型已冻结，实现在后端就绪后按本接口逐方法替换，
- * UI 层（ScheduleValidationView）不感知切换。
+ * I7 契约工厂（已活态）：签名与类型已冻结，五方法经 request() 真实接线；
+ * UI 层（ScheduleValidationView）不感知切换。R6_SCHEDULER_NOT_WIRED 保留仅作兼容引用。
  */
 export function createScheduleContract(): ScheduleContract {
   return {

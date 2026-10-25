@@ -204,16 +204,13 @@ describe('2-02 filterMenuGroups 组装（空组不渲染 + direct 断言 + futur
     expect(view.find((g) => g.group.id === 'future')).toBeUndefined()
   })
 
-  it('future 项四门全过：收集进 future 组且 defaultFolded:true 透传（默认折叠）', () => {
+  it('数仓建模转正后进入数据开发组且不再进入 future 组', () => {
     const view = filterMenuGroups(ctx({
       registeredRouteNames: new Set(['dwModeling']),
       previewAllowed: new Set(['dw-modeling']),
     }))
-    const f = view.find((g) => g.group.id === 'future')
-    expect(f).toBeDefined()
-    expect(f!.group.foldable).toBe(true)
-    expect(f!.group.defaultFolded).toBe(true)
-    expect(f!.items.map((i) => i.id)).toEqual(['dw-modeling'])
+    expect(view.find((g) => g.group.id === 'future')).toBeUndefined()
+    expect(view.find((g) => g.group.id === 'development')?.items.map((i) => i.id)).toContain('dw-modeling')
   })
 
   it('embedded/disposition 非法项不因任何开关回流菜单（含 globalMounted 隔离）', () => {

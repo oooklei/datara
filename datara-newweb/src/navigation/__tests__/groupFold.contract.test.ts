@@ -71,16 +71,10 @@ describe('2-04 折叠态存取（0.8 §7 测试集 4）', () => {
 })
 
 describe('2-04 future 组组装闭环（过滤视图 × 折叠态联合断言）', () => {
-  it('非空：组存在+默认折叠+foldable 透传；折叠态读 defaultFolded', () => {
+  it('数仓建模转正后 future 组为空且隐藏', () => {
     localStorage.clear()
     const view = filterMenuGroups(ctx(['dw-modeling']))
-    const f = view.find((g) => g.group.id === 'future')
-    expect(f).toBeDefined()
-    expect(f!.items.map((i) => i.id)).toEqual(['dw-modeling'])
-    expect(f!.group.foldable).toBe(true)
-    expect(f!.group.defaultFolded).toBe(true)
-    // 渲染层初始折叠态来源：loadGroupFolded('future', defaultFolded) = true
-    expect(loadGroupFolded('future', f!.group.defaultFolded === true)).toBe(true)
+    expect(view.find((g) => g.group.id === 'future')).toBeUndefined()
   })
 
   it('空：整组隐藏（previewAllowed 清空即消失，不渲染空折叠组）', () => {

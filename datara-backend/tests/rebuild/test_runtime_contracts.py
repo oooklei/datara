@@ -1,7 +1,7 @@
 """VAR-08: seven-level precedence chain tests (design §5).
 
-Verifies that the precedence chain ``run > task > workflow > project > global >
-env > builtin`` is correctly enforced: when the same variable name exists in
+Verifies that the precedence chain ``run > task > workflow > project > env >
+global > builtin`` is correctly enforced: when the same variable name exists in
 multiple scopes, the highest-precedence scope wins.
 """
 
@@ -24,7 +24,7 @@ def _make_resolver(
 
 def test_precedence_chain_order():
     """VAR-08: PRECEDENCE tuple matches the design chain."""
-    assert PRECEDENCE == ("run", "task", "workflow", "project", "global", "env", "builtin")
+    assert PRECEDENCE == ("run", "task", "workflow", "project", "env", "global", "builtin")
 
 
 def test_run_overrides_all():
@@ -101,12 +101,15 @@ def test_builtin_always_visible():
         assert resolver.resolve_name("builtin", name, context) == value
 
 
-def test_env_scope_resolves_process_environment(monkeypatch):
-    """VAR-08: env scope resolves a process environment variable."""
-    monkeypatch.setenv("DATARA_VAR08_ENV", "env-value")
-    resolver = _make_resolver()
-    context = VariableContext(project_id=1)
-    assert resolver.resolve_name("env", "DATARA_VAR08_ENV", context) == "env-value"
+def test_env_scope_resolves_selected_environment_group():
+    """VAR-08: env scope resolves the explicitly selected project environment group."""
+    resolver = _make_resolver(
+        definitions={
+            "env:1:9": [ResolvedVariable(name="region", scope="env", value="cn-east", value_type="string")],
+        },
+    )
+    context = VariableContext(project_id=1, environment_group_id=9)
+    assert resolver.resolve_name("env", "region", context) == "cn-east"
 
 
 def test_catalog_dedup_first_wins():
@@ -139,8 +142,8 @@ def test_catalog_ordering_run_first():
     assert "g" in names
 
 
-def test_visible_scopes_without_workflow_task():
-    """VAR-08: workflow/task scopes are hidden when ids are absent."""
+def test_visible_scopes_without_workflow_task_or_environment_group():
+    """VAR-08: contextual scopes are hidden when their identifiers are absent."""
     resolver = _make_resolver()
     context = VariableContext(project_id=1)
     visible = resolver.visible_scopes(context)
@@ -149,7 +152,7 @@ def test_visible_scopes_without_workflow_task():
     assert "run" in visible
     assert "project" in visible
     assert "global" in visible
-    assert "env" in visible
+    assert "env" not in visible
     assert "builtin" in visible
 
 

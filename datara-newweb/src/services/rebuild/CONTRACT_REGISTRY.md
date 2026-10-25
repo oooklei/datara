@@ -2,7 +2,7 @@
 
 > 建立日期：2026-10-20 ｜ 依据：权威设计 §5.6（契约冻结登记）
 > 用途：门 1 API 契约验收直接消费；新增/变更契约文件有测试对应方可合入。
-> 最近更新：2026-10-24（增量 14 治理域收口：§1 新增 #22 `governanceApi.ts` ↔ `governanceApi.contract.test.ts`（12）+ 8 视图契约测试（36）映射（GREEN，17 方法，消费 rebuild 路由 `/api/v1/rebuild/governance`；inc14 meta/std/ind 8 页接线）；§3 追加「14 治理域回归」；§4 追加「14 治理域契约层」冻结行）；此前 2026-10-24（增量 11/R5-A 数据开发 IDE 只读态页面收口：§1 新增 #21 `views/ide/IdeView.vue` ↔ `ideView.contract.test.ts` 映射（GREEN，7 测试，消费 `sqlIdeApi.ts` #6 23 方法 + `datasourceApi.ts` #16 + `variableApi.ts` #2；路由 `/ide` 接驳经 `routes.contract.test.ts`；菜单可见性候批 `BATCH_SWITCHES.inc11` 保持 false，直链可达）；此前 2026-10-23（17.6 五步迁移⑤下线登记（dq2-T004）：§4 冻结记录 17.3/17.4/17.5 三行提交号回填——17.4=`891c9403`（dq2-T001 后端 15 件）、17.5=`7e7e5ff7`（dq2-T002 前端 6 件）、17.3=`8e8c11d`（dq2-T009 前端 4 件，QA dq2-0067）、后端 monitor/sshnode 域件入库=`c65096a`、D-18 wiring 修复=`19ba1ce`（QA dq2-0073）；此前 17.5 P4 SSH 节点域收口：`sshNodeApi.ts` 五方法 GREEN 新行 #20 + `SshNodeManagementView.vue` 独立挂载页 + 路由 `/dep/ssh` 接驳断言；此前 17.4 P3 运行节点迁移：`runtimeNodeApi.ts` 两方法 GREEN 新行 #19 + `RuntimeNodeView.vue` 页面 + 路由 `/dep/runtime` 接驳；此前 16.1 波2：sqlIdeDdlApi 契约转绿——R5-B 五方法接 BE rb 四端点 + R5-A definitions 复用，A7 红线落码；此前 S320 FE-8：SYNC / SQL IDE / STREAM 收编统一 http 信封底座，SCHEDULE 保持业务 RED）
+> 最近更新：2026-10-25（更正 scheduleApi.ts GREEN 化：createScheduleContract() 五方法经 request() 真实接线后端 rebuild/schedule；旧 RED 注释与实现体不一致已修正；登记簿 §1 #8 / §4 RED→GREEN；§2 底座一致性核对 scheduleApi GREEN 化；§3 门1 剩余实质阻塞收敛为 openapiAdminApi RED（后端 rebuild/openapi/api.py 不存在）+ workflowApi categories 子端点 RED）；此前 2026-10-24...
 
 ## 1. 契约文件 ↔ 测试映射表
 
@@ -15,7 +15,7 @@
 | 5 | `syncComponentApi.ts` | `services/rebuild/__tests__/syncComponentApi.contract.test.ts` | GREEN | 5（+ `suggestInitialMapping` 纯函数） | 5 | R4 同步组件；统一 `http.request` 信封与 5 操作权限矩阵 |
 | 6 | `sqlIdeApi.ts` | `services/rebuild/__tests__/sqlIdeApi.contract.test.ts` | GREEN | 23 | 9 | R5-A SQL IDE 只读（I5；23 方法对应 24 后端路由，执行状态轮询为独立入口） |
 | 7 | `sqlIdeDdlApi.ts` | `services/rebuild/__tests__/sqlIdeDdlApi.contract.test.ts` | GREEN | 5 | 11 | R5-B DDL 写路径 GREEN（16.1 波2）：5 方法接 rb 四端点（validate-policy/preview-impact/confirm/execution-records 全 POST）+ R5-A definitions 复用；A6 权限矩阵冻结；A7 红线（空短语拒发/无样本值/sourceVersion fail-closed）落码 |
-| 8 | `scheduleApi.ts` | `services/rebuild/__tests__/scheduleApi.contract.test.ts` | RED（底座策略已登记） | 5 | 6 | R6 调度观测面；5 操作权限矩阵已冻结，业务端点未接线、零 I/O |
+| 8 | `scheduleApi.ts` | `services/rebuild/__tests__/scheduleApi.contract.test.ts` | GREEN | 5 | 6 | R6 调度观测面 GREEN（2026-10-25 更正）：5 方法经 `request()` 真实接线后端 rebuild/schedule；`R6_SCHEDULER_NOT_WIRED` 仅作 View 横幅兼容常量保留（`@deprecated`），非活哨兵；旧 RED 注释与实现体不一致已修正；`scheduleCrudApi.ts`（#14）同域 CRUD 面已 GREEN，两处契约互补 |
 | 9 | `metricsApi.ts` | `services/rebuild/__tests__/metricsApi.contract.test.ts` | GREEN | 6 | 15 | R7 统计/质量/血缘（I9） |
 | 10 | `streamApi.ts` | `services/rebuild/__tests__/streamApi.contract.test.ts` + `streamApiSurface.contract.test.ts` | GREEN | 6 | 1 + 2 | I8 流处理观摩（旧库同一契约存在 services 级与 views 级两份测试，均落位） |
 | 11 | `aiToolsApi.ts` | `services/rebuild/__tests__/aiToolsApi.contract.test.ts`（+ `__tests__/mockAgent.ts` 假 Agent 适配层） | GREEN | 9 | 19 | R8-A AI 八工具（I10；契约层已接线，端到端 LLM 联调受 FV-02 阻塞，归增量 15.4） |
@@ -36,9 +36,11 @@
 | 26 | `openapiAdminApi.ts` | `services/rebuild/__tests__/openapiAdminApi.contract.test.ts` | RED（底座策略已登记） | 12 | 9 | 15-P0 IMPL-v4-08 OpenAPI 管理面：12 方法（definitions CRUD/publish/disable/enable × 7 + ApiKeys list/issue/rotate/revoke × 4 + callLogs）+ `OPENAPI_ADMIN_PERMISSION_MATRIX`（复用 identity G 组权限点，零新增枚举）+ 错误码 + URL 前缀 `/api/v1/open` 全冻结；`OPENAPI_ADMIN_NOT_WIRED` 活哨兵零 I/O（候 15.2-A~D 接线）；9 测试为 RED 态合规断言（describe RED：方法拒发 `rejects.toThrow(NOT_WIRED)` + 哨兵词形防回归 + 安全红线类型面 hash-only key/one-shot plaintext/sanitized logs） |
 | 27 | `projectApi.ts` | `services/rebuild/__tests__/projectApi.contract.test.ts` | GREEN | 1 | 5 | L3-02 §5A.11 方案 A 项目域：listProjects 分页面（`ProjectListPage`，active 项目切换入口）；单一 rebuild 路由；包络三态标准信封 |
 
-> **门1 六契约冻结锚点补齐（2026-10-24，DEV，ruling-contract-registry-home 单一可行动作）**：`c56189b` 将 untracked 契约面整体入库（governanceApi.ts+契约测试+8 视图测试+meta/std/ind 8 页面 23 件；authApi.ts 源文件 HEAD 自洽补齐；llmApi.ts+测试；openapiAdminApi.ts+测试 RED 合规态）；§4 新增六行冻结锚点（#22 `c56189b` / #23 `5051368`+`c56189b` / #24 `c56189b` / #25 `111f464` / #26 `c56189b` / #27 `111f464`）+ 1.9 passed 记录（680P 零回归）。门1 剩余实质阻塞收敛为 scheduleApi RED（候增量 8，他线）。
+> **门1 六契约冻结锚点补齐（2026-10-24，DEV，ruling-contract-registry-home 单一可行动作）**：`c56189b` 将 untracked 契约面整体入库（governanceApi.ts+契约测试+8 视图测试+meta/std/ind 8 页面 23 件；authApi.ts 源文件 HEAD 自洽补齐；llmApi.ts+测试；openapiAdminApi.ts+测试 RED 合规态）；§4 新增六行冻结锚点（#22 `c56189b` / #23 `5051368`+`c56189b` / #24 `c56189b` / #25 `111f464` / #26 `c56189b` / #27 `111f464`）+ 1.9 passed 记录（680P 零回归）。门1 剩余实质阻塞收敛为 openapiAdminApi RED（后端 rebuild/openapi/api.py 不存在）+ workflowApi categories 子端点 RED（后端真缺位）——2026-10-25 scheduleApi GREEN 化后，前端契约层 RED 仅 1 处（openapiAdminApi）+ workflowApi 局部子端点。
 >
-> **状态快照：2026-10-24（DEV 18R2-i 补登记：§1 新增 #23~#27 五契约行——authApi GREEN 代码/测试缺位 2 方法、llmApi GREEN 条件挂载 6/5、memberApi GREEN 4/6、openapiAdminApi RED 底座策略 12/9（NOT_WIRED 活哨兵候 15.2-A~D）、projectApi GREEN 1/5；方法合计 +25）；同日 DEV TDD 补测 #23 authApi 独立契约测试 5P（缺位缺口闭环，测试合计 +5）；2026-10-24（增量 14 治理域：§1 新增 #22 `governanceApi.ts` ↔ 契约测试 12 + 8 视图契约测试 36 = 48 测试，GREEN，冻结方法 17；不新增 rebuild 端点，契约层计数递增 17）；2026-10-24（增量 11/R5-A：§1 新增 #21 视图↔测试映射 `views/ide/IdeView.vue` ↔ `ideView.contract.test.ts`，GREEN 7 测试；不新增契约文件与方法，契约层计数不变）；2026-10-23（17.5 P4：#20 sshNodeApi 新行 GREEN，方法数 5）；GREEN 25 / RED 2；冻结方法合计 182。**
+> **状态快照：2026-10-25（scheduleApi GREEN 化更正）**：§1 #8 scheduleApi.ts RED→GREEN，前端契约层 **GREEN 26 / RED 1**（openapiAdminApi RED + workflowApi categories 子端点 RED）；冻结方法合计 187。
+>
+> **状态快照：2026-10-24（DEV 18R2-i 补登记：§1 新增 #23~#27 五契约行——authApi GREEN 代码/测试缺位 2 方法、llmApi GREEN 条件挂载 6/5、memberApi GREEN 4/6、openapiAdminApi RED 底座策略 12/9（NOT_WIRED 活哨兵候 15.2-A~D）、projectApi GREEN 1/5；方法合计 +25）**：同日 DEV TDD 补测 #23 authApi 独立契约测试 5P（缺位缺口闭环，测试合计 +5）；2026-10-24（增量 14 治理域：§1 新增 #22 `governanceApi.ts` ↔ 契约测试 12 + 8 视图契约测试 36 = 48 测试，GREEN，冻结方法 17；不新增 rebuild 端点，契约层计数递增 17）；2026-10-24（增量 11/R5-A：§1 新增 #21 视图↔测试映射 `views/ide/IdeView.vue` ↔ `ideView.contract.test.ts`，GREEN 7 测试；不新增契约文件与方法，契约层计数不变）；2026-10-23（17.5 P4：#20 sshNodeApi 新行 GREEN，方法数 5）；GREEN 25 / RED 2；冻结方法合计 182。
 >
 > **与设计 §5.6 快照（GREEN 8 / RED 3）的差异**：`aiToolsApi.ts` 实测为 **GREEN**——源码无 `NOT_WIRED` 活哨兵，`createAiToolsContract()` 发起真实 API 调用（`requestJson` → `fetch`），旧库 `bannerConsistency.contract.test.ts` 断言亦为 GREEN。设计 §5.6 快照系提交 `6c0de0c`（验证域契约 GREEN 化）之前的状态。**建议监督线刷新权威设计 §5.6 快照为 GREEN 9 / RED 2。**
 
@@ -50,8 +52,9 @@
   - 非 2xx（系统错误）→ 调用方解包前抛错。
 - `adapterKit.unwrapEnvelope` 为冻结结论共享原语，全域统一（含 RED 契约接线时沿用）。
 - **http 底座共享**：所有 GREEN 契约文件通过 `../http` 的 `request`（JSON）或 `requestResponse`（SSE）共享单 BASE、token、超时和信封策略；单 BASE `'/api/v1'`。
-  - S320 FE-8 实测：`syncComponentApi/sqlIdeApi/streamApi` 已移除本地 JSON fetch/解包通道；SQL IDE SSE 经 `requestResponse`，不存在认证旁路；`sqlIdeDdlApi/scheduleApi` 为 RED 哨兵、零 I/O，但未来接线权限矩阵已登记且必须使用同一底座。
-  - 16.1 波2 实测：`sqlIdeDdlApi` 已移除 RED 哨兵，经同一 `http.request` 底座真实接线（rb 四端点 validate-policy/preview-impact/confirm/execution-records + R5-A definitions 复用）；`scheduleApi` 仍为 RED 哨兵（R6 冻结面零触碰）。
+  - S320 FE-8 实测：`syncComponentApi/sqlIdeApi/streamApi` 已移除本地 JSON fetch/解包通道；SQL IDE SSE 经 `requestResponse`，不存在认证旁路。
+  - 16.1 波2 实测：`sqlIdeDdlApi` 已移除 RED 哨兵，经同一 `http.request` 底座真实接线（rb 四端点 validate-policy/preview-impact/confirm/execution-records + R5-A definitions 复用）。
+  - 2026-10-25 更正：`scheduleApi.ts` 已 GREEN 化——`createScheduleContract()` 五方法经 `request()` 真实接线后端 rebuild/schedule；`R6_SCHEDULER_NOT_WIRED` 仅作兼容常量保留（`@deprecated`），非活哨兵；旧 RED 注释已修正。
   - 全库扫描：新库 `src/` 无 `LEGACY_BASE`、无 `8000` 端口残留（红线 1 / §7.1）。
 
 ## 3. CI 门禁说明
@@ -126,7 +129,7 @@
 | `syncComponentApi.ts` | 待登记 | `__tests__/syncComponentApi.contract.test.ts` | GREEN | 2026-10-21 |
 | `sqlIdeApi.ts` | 待登记 | `__tests__/sqlIdeApi.contract.test.ts` | GREEN | 2026-10-21 |
 | `sqlIdeDdlApi.ts` | 待登记 | `__tests__/sqlIdeDdlApi.contract.test.ts` | GREEN（16.1 波2 转绿） | 2026-10-21 |
-| `scheduleApi.ts` | 待登记 | `__tests__/scheduleApi.contract.test.ts` | RED | 2026-10-21 |
+| `scheduleApi.ts` | 待登记 | `__tests__/scheduleApi.contract.test.ts` | GREEN（2026-10-25 更正；createScheduleContract() 五方法经 request() 真实接线；NOT_WIRED 仅兼容常量） | 2026-10-21 |
 | `metricsApi.ts` | 待登记 | `__tests__/metricsApi.contract.test.ts` | GREEN | 2026-10-21 |
 | `streamApi.ts` | 待登记 | `__tests__/streamApi.contract.test.ts` + `__tests__/streamApiSurface.contract.test.ts` | GREEN | 2026-10-21 |
 | `aiToolsApi.ts` | 待登记 | `__tests__/aiToolsApi.contract.test.ts` | GREEN | 2026-10-21 |

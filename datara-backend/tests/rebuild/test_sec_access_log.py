@@ -1,9 +1,8 @@
 """Tests for the access-audit domain (rebuild/sec).
 
-The sec router is not yet mounted on the application factory (route
-registration is a pending single-writer-window integration step), so API
-tests build a standalone FastAPI instance around ``build_sec_router`` with
-an in-memory session factory, keeping the slice domain-self-contained.
+The domain tests use a standalone FastAPI instance while the integration test
+proves the production application factory applies the migration, mounts the
+router, and records authenticated HTTP activity.
 """
 
 from __future__ import annotations
@@ -20,8 +19,11 @@ from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
 from rebuild.common.db import Base
+from rebuild.api.app import create_app
 from rebuild.governance.migrations import MigrationRunner
 from rebuild.governance.models import SchemaMigrationRecord
+from rebuild.identity.contracts import Role
+from rebuild.identity.repository import UserRepository
 from rebuild.sec.api import build_sec_router
 from rebuild.sec.middleware import SecAuditMiddleware, SecSqlAccessRecorder, install_sql_access_hook
 from rebuild.sec.migrations import S1_SEC_MIGRATIONS
@@ -319,3 +321,29 @@ def test_http_middleware_records_audited_requests_and_skips_self():
             "http_status_403",
         )
         assert all(row.user_name == "audited-user" for row in rows)
+
+
+def test_application_factory_mounts_sec_audit_and_records_authenticated_user():
+    app = create_app("sqlite+pysqlite:///:memory:", token_secret="sec-integration-secret")
+    with TestClient(app) as client:
+        with app.state.session_factory() as session:
+            UserRepository(session).create(username="audit-admin", password="admin-pass", role=Role.ADMIN)
+            session.commit()
+
+        login = client.post(
+            "/api/v1/rebuild/login",
+            json={"username": "audit-admin", "password": "admin-pass"},
+        )
+        token = login.json()["data"]["token"]
+        headers = {"Authorization": f"Bearer {token}"}
+        assert client.get("/api/v1/rebuild/projects", headers=headers).status_code == 200
+
+        response = client.get("/api/v1/rebuild/sec/access-logs", headers=headers)
+        assert response.status_code == 200
+        rows = response.json()["data"]["list"]
+        assert any(
+            row["user_name"] == "audit-admin"
+            and row["target"] == "/api/v1/rebuild/projects"
+            and row["result"] == "allow"
+            for row in rows
+        )

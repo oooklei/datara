@@ -28,6 +28,7 @@ import { PROJECT_MENU_SECTIONS } from '../navigation/projectMenu'
 import { loadGroupFolded, toggleGroupFolded } from '../navigation/groupFold'
 import { menuGroups } from '../navigation/menu'
 import { listProjects } from '../services/rebuild/projectApi'
+import AiAssistantPanel from '../components/AiAssistantPanel.vue'
 
 const props = defineProps<{
   /** 测试/后续增量注入覆盖（如批次开关/预览许可）；生产不传，走 R-15 保守关闭 */
@@ -153,11 +154,12 @@ defineExpose({ menuView, aiContext })
       </template>
     </aside>
     <main class="app-content"><RouterView /></main>
-    <div
+    <AiAssistantPanel
       v-if="globalMounts.length > 0"
       id="ai-assistant-global-mount"
       aria-label="AI 助手全局挂载点"
-    ></div>
+      :page-context="aiContext"
+    />
   </div>
 </template>
 
