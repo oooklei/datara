@@ -1,8 +1,16 @@
 from __future__ import annotations
 
+from types import SimpleNamespace
+
 import pytest
 from fastapi.testclient import TestClient
 
+from rebuild.ai_bridge import (
+    AiBridgePorts,
+    LlmConfigUnavailable,
+    build_default_bridge_ports,
+    resolve_bridge_llm,
+)
 from rebuild.api.app import create_app
 from rebuild.identity.contracts import Role
 from rebuild.identity.repository import UserRepository
@@ -127,6 +135,70 @@ def test_resolver_prefers_database_then_environment(monkeypatch):
         assert resolved["source"] == "database" and resolved["api_key"] == "provider-secret-1234"
     finally:
         client.__exit__(None, None, None)
+
+
+def test_bridge_llm_seam_database_first_then_environment_fail_closed(monkeypatch):
+    """T2（D-02 / §5E.4 FV-02 解阻链闭合）：ai_bridge 消费侧读取默认模型凭证。
+
+    链路：LLM 配置页写库 → DefaultLlmResolver（db 优先 env 兜底）→
+    resolve_bridge_llm（bridge 消费侧唯一入口）→ AI 调用链可发起真实 LLM 调用。
+    任何环节缺失均 fail-closed 抛 LlmConfigUnavailable，不伪造配置。
+    """
+    for name in ("LLM_PROVIDER", "LLM_BASE_URL", "LLM_MODEL", "LLM_API_KEY"):
+        monkeypatch.delenv(name, raising=False)
+    client, app, cipher, headers = _client()
+    try:
+        # create_app 装配：llm_cipher 注入时 app.state.llm_resolver 必在位
+        assert app.state.llm_resolver is not None
+        # fail-closed：resolver 未接线
+        with pytest.raises(LlmConfigUnavailable):
+            resolve_bridge_llm(AiBridgePorts(handlers={}, audit_writer=object()))
+        # fail-closed：已接线但库与 env 均无配置
+        wired = AiBridgePorts(handlers={}, audit_writer=object(), llm_resolver=app.state.llm_resolver)
+        with pytest.raises(LlmConfigUnavailable):
+            resolve_bridge_llm(wired)
+        # db 优先：LLM 配置页创建默认模型 → bridge 消费侧立即可读（FV-02 解除）
+        created = client.post("/api/v1/rebuild/llm-models", headers=headers, json=_body())
+        assert created.status_code == 201
+        config = resolve_bridge_llm(wired)
+        assert config == {
+            "provider": "siliconflow",
+            "base_url": "https://example.invalid/v1",
+            "model": "qwen",
+            "api_key": "provider-secret-1234",
+            "source": "database",
+        }
+        # 生产装配透传：build_default_bridge_ports(llm_resolver=…) 消费同一读取面
+        ports = build_default_bridge_ports(
+            execution_port=SimpleNamespace(execute=lambda *args, **kwargs: {}),
+            audit_writer=object(),
+            session_factory=app.state.session_factory,
+            connector_factory=None,
+            llm_resolver=app.state.llm_resolver,
+        )
+        assert ports is not None and resolve_bridge_llm(ports) == config
+        # 不经端口直连 resolver 的兜底口径不回归
+        assert DefaultLlmResolver(app.state.session_factory, cipher).resolve() == config
+    finally:
+        client.__exit__(None, None, None)
+    # env 兜底：空库 + ai_copilot 四变量（SUPPORTED_PROVIDERS 含 longcat）
+    client_env, app_env, _cipher_env, _ = _client()
+    try:
+        monkeypatch.setenv("LLM_PROVIDER", "longcat")
+        monkeypatch.setenv("LLM_BASE_URL", "https://env.invalid/v1")
+        monkeypatch.setenv("LLM_MODEL", "env-model")
+        monkeypatch.setenv("LLM_API_KEY", "env-key")
+        wired_env = AiBridgePorts(handlers={}, audit_writer=object(), llm_resolver=app_env.state.llm_resolver)
+        env_config = resolve_bridge_llm(wired_env)
+        assert env_config == {
+            "provider": "longcat",
+            "base_url": "https://env.invalid/v1",
+            "model": "env-model",
+            "api_key": "env-key",
+            "source": "environment",
+        }
+    finally:
+        client_env.__exit__(None, None, None)
 
 
 def test_provider_failure_preserves_elapsed_time_without_secret(monkeypatch):

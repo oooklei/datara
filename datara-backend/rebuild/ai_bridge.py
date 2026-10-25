@@ -214,12 +214,44 @@ class AiBridgePorts:
     bridge construction entirely. ``audit_failure_sink``: optional durable
     fallback (ruling #178-2) receiving failure-detail records when the audit
     writer is in outage; its absence or failure never flips write_audit to
-    success (fail-closed floor intact).
+    success (fail-closed floor intact). ``llm_resolver``: optional §5E.4
+    FV-02 consumption seam — the AI call chain reads the default model
+    credentials through it (database first, environment fallback); consumers
+    must go through :func:`resolve_bridge_llm`, which fails closed when the
+    resolver is unwired or nothing is configured.
     """
 
     handlers: Mapping[str, Handler] = field(default_factory=dict)
     audit_writer: Any | None = None
     audit_failure_sink: Any | None = None
+    llm_resolver: Any | None = None
+
+
+class LlmConfigUnavailable(RuntimeError):
+    """Fail-closed signal for the §5E.4 default-LLM read path.
+
+    Raised by :func:`resolve_bridge_llm` when the resolver is not wired into
+    the bridge or when neither the database default model nor the four
+    ``LLM_*`` environment variables yield a complete configuration. Callers
+    must refuse to start an LLM call chain on this error — never fabricate a
+    default, never mask the outage as success.
+    """
+
+
+def resolve_bridge_llm(ports: AiBridgePorts) -> dict[str, str]:
+    """§5E.4 FV-02 解阻链：AI 调用链（bridge 消费侧）读取默认模型凭证。
+
+    Resolution order mirrors ``DefaultLlmResolver``: database default model
+    first, then the ``ai_copilot`` four-variable environment fallback. The
+    returned mapping carries the **plaintext** api_key for the outbound call
+    header only — callers must never log, persist, or serialize it.
+    """
+    if ports.llm_resolver is None:
+        raise LlmConfigUnavailable("LLM resolver is not wired into the bridge")
+    config = ports.llm_resolver.resolve()
+    if config is None:
+        raise LlmConfigUnavailable("no default LLM model configured (database and environment both empty)")
+    return config
 
 
 class _BridgeAuditWriterAdapter:
@@ -741,6 +773,7 @@ def build_default_bridge_ports(
     audit_writer: Any,
     session_factory: Any = None,
     connector_factory: Any = None,
+    llm_resolver: Any = None,
 ) -> AiBridgePorts | None:
     """Assemble default production bridge ports from ``app.state`` services.
 
@@ -750,6 +783,9 @@ def build_default_bridge_ports(
     production audit writer is adapted to the bridge's audit record format.
     Returns ``None`` when either required dependency is missing so the caller
     stays fail-closed (no bridge mounted → no unaudited/ungoverned path).
+    ``llm_resolver`` threads the §5E.4 FV-02 read seam through to
+    :func:`resolve_bridge_llm`; it stays optional because the bridge itself
+    never calls an LLM — only the AI call chain consuming the bridge does.
     """
     if execution_port is None or audit_writer is None:
         return None
@@ -768,4 +804,5 @@ def build_default_bridge_ports(
     return AiBridgePorts(
         handlers=handlers,
         audit_writer=_BridgeAuditWriterAdapter(audit_writer),
+        llm_resolver=llm_resolver,
     )

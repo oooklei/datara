@@ -112,6 +112,7 @@ from rebuild.model.models import MODEL_TABLES
 from rebuild.monitor import build_monitor_router
 from rebuild.llm import LlmCredentialCipher, build_llm_router
 from rebuild.llm.migrations import apply_llm_migrations
+from rebuild.llm.resolver import DefaultLlmResolver
 from rebuild.apikey import ApiKeyVerifier, apply_apikey_migrations, build_apikey_router
 from rebuild.openapi_admin import apply_openapi_admin_migrations, build_openapi_admin_router
 from rebuild.sec.api import build_sec_router
@@ -1508,7 +1509,12 @@ def create_app(
     )
     if llm_cipher is None and os.getenv("LLM_ENCRYPTION_KEY"):
         llm_cipher = LlmCredentialCipher.from_env()
+    # §5E.4 FV-02：LLM 配置页产品化解阻链——默认模型凭证读取器（db 优先 env 兜底）。
+    # 常驻 app.state 供 AI 调用链（bridge 消费侧）经 resolve_bridge_llm 读取；
+    # llm_cipher 缺位时保持 None，resolve 侧 fail-closed，绝不伪造配置。
+    llm_resolver = DefaultLlmResolver(session_factory, llm_cipher) if llm_cipher is not None else None
     if llm_cipher is not None:
+        app.state.llm_resolver = llm_resolver
         app.include_router(
             build_llm_router(session_factory, token_service, active_tokens, llm_cipher),
             prefix="/api/v1/rebuild/llm-models",
@@ -1561,6 +1567,7 @@ def create_app(
             audit_writer=app.state.audit_writer,
             session_factory=session_factory,
             connector_factory=pooled_connector,
+            llm_resolver=llm_resolver,
         )
         if default_ports is not None:
             app.include_router(build_ai_router(session_factory, token_service, active_tokens, default_ports))
