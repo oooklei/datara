@@ -33,6 +33,7 @@ import { useDagTabsStore, MAX_DAG_TABS } from '../stores/dagTabs'
 import type { DagPickItem, DagProfileType, DagTab } from '../stores/dagTabs'
 import { useGraphStore } from '../stores/graph'
 import { useAuthStore } from '../stores/auth'
+import VariablesManageDialog from './variables/VariablesManageDialog.vue'
 import { createTemplate } from '../services/templateApi'
 import { resolveTemplateSourceDoc } from './templateSource'
 import { workflowEditorProfile } from './taskCenterPolicy'
@@ -159,6 +160,9 @@ function onPickTasks(p: { items: DagPickItem[] }) {
 
 /* ---- 新建工作流（GraphWorkbench 工具栏 / 空态入口）：对话框创建 → 开画布 Tab → 刷新候选池 ---- */
 const wfCreateVisible = ref(false)
+
+/* ---- 变量管理（L5-02，§5A.5 入口=任务中心主页面按钮布局，全页签常驻） ---- */
+const varsVisible = ref(false)
 const TYPE_TAG: Record<DagProfileType, string[]> = { wf: [], sync: [SYNC_TAG], etl: [ETL_TAG], stream: [STREAM_TAG] }
 
 function onOpenCreateWf() {
@@ -286,6 +290,7 @@ onMounted(async () => {
         @click="switchTab(t.k)"
       ><span class="tc-ic">{{ t.icon }}</span>{{ t.label }}</button>
       <span class="spacer" />
+      <button class="tc-vars" data-testid="open-variables" @click="varsVisible = true">Σ 变量管理</button>
       <button v-if="tab === 'edit'" class="tc-new-workflow" data-testid="new-workflow" @click="onOpenCreateWf">＋ 新建工作流</button>
       <button v-if="tab === 'edit' && activeTab" class="tc-save-template" @click="saveActiveAsTemplate">另存为模板</button>
       <span v-if="tab === 'edit'" class="tc-view">{{ profileOf.name }}</span>
@@ -358,8 +363,9 @@ onMounted(async () => {
 
     <!-- 新建工作流对话框（GraphWorkbench 工具栏 / 空态按钮共用）：创建成功后由宿主开画布 Tab -->
     <WfCreateDialog v-model="wfCreateVisible" @created="onWfCreated" />
-  </div>
-</template>
+    <VariablesManageDialog v-model="varsVisible" />
+    </div>
+  </template>
 
 <style scoped>
 .tc{display:flex;flex-direction:column;height:100%}
@@ -372,6 +378,9 @@ onMounted(async () => {
 .spacer{flex:1}
 .tc-new-workflow{border:none;background:var(--primary);color:#fff;border-radius:var(--radius-sm);padding:6px 12px;margin-right:8px;cursor:pointer;font-size:12px;font-weight:600}
 .tc-new-workflow:hover{background:var(--primary-hover)}
+/* 变量管理入口（L5-02）：描边中性色次级入口，全页签常驻 */
+.tc-vars{border:1px solid var(--border);background:#fff;color:var(--text-2);border-radius:var(--radius-sm);padding:5px 10px;margin-right:8px;cursor:pointer;font-size:12px;font-weight:500;transition:color var(--dur-base) var(--ease),border-color var(--dur-base) var(--ease)}
+.tc-vars:hover{color:var(--primary);border-color:var(--primary)}
 .tc-save-template{border:1px solid var(--border);background:#fff;color:var(--primary);border-radius:var(--radius-sm);padding:5px 10px;margin-right:8px;cursor:pointer}
 /* 当前画布视角（Profile 名）：类型页签移除后，此处与画布标题徽标一同标识当前视角 */
 .tc-view{font-size:11.5px;color:var(--text-3);border:1px solid var(--border);border-radius:var(--radius-lg);padding:2px 10px}

@@ -256,3 +256,56 @@ describe('R2 variableApi contract (GREEN wired)', () => {
     })
   })
 })
+
+/* ---------- L5-02 管理面契约补强（票源：WBS 5.1 七级逐级 + §5A.5 分层承载 + 后端 PERSISTABLE_SCOPES 实锚） ---------- */
+
+describe('L5-02 manage-plane contract additions', () => {
+  it('listVariables passes each of the seven namespace scopes without narrowing', async () => {
+    stubTokenStorage()
+    const contract = createVariableContract()
+    for (const scope of VARIABLE_SCOPE_PRIORITY) {
+      const fetchMock = stubFetchWithEnvelope([])
+      vi.stubGlobal('fetch', fetchMock)
+      await contract.listVariables(1, [scope])
+      const [url] = fetchMock.mock.calls[0] as unknown as [string]
+      expect(url).toBe(`/api/v1/rebuild/variables?project_id=1&scopes=${encodeURIComponent(scope)}`)
+    }
+  })
+
+  it('saveVariable relays backend 4001 for non-persistable scopes (run/env/builtin)', async () => {
+    stubTokenStorage()
+    for (const scope of ['run', 'env', 'builtin'] as const) {
+      vi.stubGlobal(
+        'fetch',
+        vi.fn().mockResolvedValue(
+          new Response(JSON.stringify({ code: 4001, msg: `scope '${scope}' is not persistable`, data: null }), {
+            status: 200,
+          }),
+        ),
+      )
+      await expect(
+        createVariableContract().saveVariable(1, { scope, name: 'x', valueType: 'string', value: 'y' }),
+      ).rejects.toMatchObject({ code: 4001, name: 'ContractApiError' })
+    }
+  })
+
+  it('saveVariable is an upsert: resaving the same scope+name succeeds again with saved:true', async () => {
+    stubTokenStorage()
+    // mockImplementation 而非 mockResolvedValue：Response body 只能读一次，upsert 二次调用需新建实例
+    const fetchMock = vi.fn().mockImplementation(() =>
+      Promise.resolve(new Response(JSON.stringify({ code: 0, msg: 'success', data: { saved: true, scope: 'project', name: 'region' } }), { status: 200 })),
+    )
+    vi.stubGlobal('fetch', fetchMock)
+    const contract = createVariableContract()
+    const definition = { scope: 'project' as const, name: 'region', valueType: 'string' as const, value: 'cn' }
+    await expect(contract.saveVariable(1, definition)).resolves.toEqual({ saved: true, scope: 'project', name: 'region' })
+    await expect(contract.saveVariable(1, definition)).resolves.toEqual({ saved: true, scope: 'project', name: 'region' })
+    expect(fetchMock).toHaveBeenCalledTimes(2)
+  })
+
+  it('contract exposes no delete method (backend six-endpoint surface has no DELETE; manage plane is list+upsert)', () => {
+    const contract = createVariableContract() as unknown as Record<string, unknown>
+    expect(contract.deleteVariable).toBeUndefined()
+    expect(contract.removeVariable).toBeUndefined()
+  })
+})
