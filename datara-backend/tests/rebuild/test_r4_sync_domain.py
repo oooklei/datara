@@ -1,7 +1,9 @@
 """R4-SYNC domain tests — contract unlocked after R3 closure (大盘盘点 #21/#30).
 
 Gate lineage: test_r4_sync_contract_pending.py was the pre-unlock route sentinel;
-R3 closed via user ruling (e217ce3),
+R3 closed via user ruling (e217ce3 — commit e217ce37, main-reachable; ruling trail
+in docs/handoff/archive/2026-10-16-并行协作分工-归档1.md, 追认确认单
+docs/increments/2026-10-26-sync-R3-裁定确认单.md),
 governance domain accepted (大盘盘点 #30: rebuild/governance 30+ modules GREEN +
 R2-13 42-table evidence), so the domain implements the §6.4 contract:
 - capabilities exposes the 同步表单 13 字段 + 映射 8 字段 contract surface;

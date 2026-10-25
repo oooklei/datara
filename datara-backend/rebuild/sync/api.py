@@ -1,6 +1,8 @@
 """R4-SYNC API — sync node definition/mapping/explore contract (design 正本 §6.4).
 
-Unlocked after R3 closure (user ruling e217ce3; 大盘盘点 #21 排序约束解除).
+Unlocked after R3 closure (user ruling e217ce3 — commit e217ce37, main-reachable,
+ruling trail in docs/handoff/archive/2026-10-16-并行协作分工-归档1.md; 用户追认见
+docs/increments/2026-10-26-sync-R3-裁定确认单.md; 大盘盘点 #21 排序约束解除).
 - Base path ``/api/v1/rebuild/sync`` (mounted by app.py); envelope ``{code, msg, data}``.
 - ``GET  /capabilities`` — static §6.4 contract surface (13 form fields + 8 mapping fields).
 - ``GET  /explore``      — 字段/类型探查 via the datasource domain metadata catalog
