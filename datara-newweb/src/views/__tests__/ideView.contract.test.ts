@@ -141,6 +141,26 @@ describe('/ide 数据开发 IDE 只读态（增量 11/R5-A）', () => {
     expect(w.find('[data-no-datasource]').exists()).toBe(true)
   })
 
+  it('discards a stale database response after the datasource changes', async () => {
+    router.route.params.projectId = '1'
+    spies.listDatasources.mockResolvedValue({ items: [datasource, { ...datasource, id: 8, name: '数仓库' }] })
+    let resolveFirst!: (value: Awaited<ReturnType<typeof spies.listDatabases>>) => void
+    spies.listDatabases
+      .mockImplementationOnce(() => new Promise((resolve) => { resolveFirst = resolve }))
+      .mockResolvedValueOnce({ items: [{ name: 'warehouse' }], capability: 'supported', constraints: [], page: { nextCursor: null, hasMore: false } })
+    const w = mount(View)
+    await flushPromises()
+
+    await w.find('[data-ds-select]').setValue('7')
+    await w.find('[data-ds-select]').setValue('8')
+    await flushPromises()
+    resolveFirst({ items: [{ name: 'orders' }], capability: 'supported', constraints: [], page: { nextCursor: null, hasMore: false } })
+    await flushPromises()
+
+    expect(w.find('[data-database-list]').text()).toContain('warehouse')
+    expect(w.find('[data-database-list]').text()).not.toContain('orders')
+  })
+
   it('loads the project supplied by ProjectSegmentView prop', async () => {
     const w = mount(View, { props: { projectId: 1 } })
     await flushPromises()

@@ -274,6 +274,7 @@ const varValues = ref<Record<string, string | null>>({})
 
 const history = ref<HistoryEntry[]>([])
 const historyOpen = ref(false)
+let datasourceGeneration = 0
 
 const ROUTINE_LABEL: Record<RoutineMeta['kind'], string> = { function: '函数', procedure: '存储过程', trigger: '触发器' }
 const routineLabel = (k: RoutineMeta['kind']): string => ROUTINE_LABEL[k] ?? k
@@ -324,6 +325,7 @@ async function loadProjects(): Promise<void> {
 }
 
 function clearTree(): void {
+  datasourceGeneration += 1
   databases.value = []
   activeDatabase.value = ''
   schemas.value = []
@@ -352,13 +354,16 @@ async function reload(): Promise<void> {
 
 async function selectDatasource(id: number): Promise<void> {
   clearTree()
+  const generation = datasourceGeneration
   if (projectId.value === null) return
   try {
     const page = await api.value.listDatabases(id)
+    if (generation !== datasourceGeneration || datasourceId.value !== id) return
     databases.value = page.items.map((d) => d.name)
     treeCapability.value = page.capability
     treeConstraints.value = page.constraints
   } catch (e) {
+    if (generation !== datasourceGeneration || datasourceId.value !== id) return
     error.value = message(e)
   }
 }
