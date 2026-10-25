@@ -28,12 +28,18 @@ export interface DependencyDateRange {
 /* ---------- 依赖条件与组 ---------- */
 
 export interface DependencyCondition {
+  kind?: 'workflow' | 'task' | 'file' | 'table_state' | 'external_task'
+  selector?: 'workflow' | 'all_tasks' | 'task'
   upstreamWorkflowId: number
   /** 固定上游版本；缺省表示随上游最新已发布版本（后端冻结前为草案语义） */
   upstreamWorkflowVersion?: number
   /** 可选：依赖上游某具体任务；缺省为整工作流成功 */
   upstreamTaskCode?: string
-  dateRange: DependencyDateRange
+  dateRange?: DependencyDateRange
+  cycle?: DependencyPeriodType
+  dateValue?: string
+  dependResult?: 'success' | 'failed'
+  parameterPassing?: boolean
 }
 
 /** 组内条件按 join 连接；多组之间约定为 AND（草案语义，后端冻结前不改） */
@@ -66,6 +72,14 @@ export interface DependencySaveInput {
   workflowVersion: number
   taskId: string
   groups: DependencyGroup[]
+  groupRelation?: 'AND' | 'OR'
+  checkIntervalSeconds?: number
+  failurePolicy?: 'fail' | 'waiting'
+  failureWaitingSeconds?: number
+  timeoutSeconds?: number
+  dependentWaitTimeoutEnabled?: boolean
+  dependentWaitTimeoutSeconds?: number
+  dependentWaitTimeoutStrategies?: Array<'warn' | 'failed'>
 }
 
 export interface DependencyEvaluateRequest {
@@ -76,6 +90,8 @@ export interface DependencyEvaluateRequest {
   groups: DependencyGroup[]
   /** 预演时刻（ISO 字符串），用于服务端解析窗口 */
   asOf?: string
+  groupRelation?: 'AND' | 'OR'
+  timeoutSeconds?: number
 }
 
 /* ---------- RED 哨兵 ---------- */
@@ -165,6 +181,19 @@ function groupsToWire(groups: DependencyGroup[]): Array<{ join: string; conditio
   return groups.map((group) => ({ join: group.join, conditions: group.conditions.map(conditionToWire) }))
 }
 
+function policyToWire(input: DependencySaveInput | DependencyEvaluateRequest): Record<string, unknown> {
+  return {
+    ...(input.groupRelation !== undefined ? { groupRelation: input.groupRelation } : {}),
+    ...(input.timeoutSeconds !== undefined ? { timeoutSeconds: input.timeoutSeconds } : {}),
+    ...('checkIntervalSeconds' in input && input.checkIntervalSeconds !== undefined ? { checkIntervalSeconds: input.checkIntervalSeconds } : {}),
+    ...('failurePolicy' in input && input.failurePolicy !== undefined ? { failurePolicy: input.failurePolicy } : {}),
+    ...('failureWaitingSeconds' in input && input.failureWaitingSeconds !== undefined ? { failureWaitingSeconds: input.failureWaitingSeconds } : {}),
+    ...('dependentWaitTimeoutEnabled' in input && input.dependentWaitTimeoutEnabled !== undefined ? { dependentWaitTimeoutEnabled: input.dependentWaitTimeoutEnabled } : {}),
+    ...('dependentWaitTimeoutSeconds' in input && input.dependentWaitTimeoutSeconds !== undefined ? { dependentWaitTimeoutSeconds: input.dependentWaitTimeoutSeconds } : {}),
+    ...('dependentWaitTimeoutStrategies' in input && input.dependentWaitTimeoutStrategies !== undefined ? { dependentWaitTimeoutStrategies: input.dependentWaitTimeoutStrategies } : {}),
+  }
+}
+
 /**
  * R4-DEPENDENCY 契约工厂 — GREEN：5 方法接线至 A2 v2.1 冻结契约的后端实现（Task 4 契约面表），
  * 签名与返回类型不动，UI 层（DependencyFormValidationView）不感知切换。
@@ -198,6 +227,7 @@ export function createDependencyContract(): DependencyContract {
         workflowVersion: input.workflowVersion,
         taskId: input.taskId,
         groups: groupsToWire(input.groups),
+        ...policyToWire(input),
       }),
     evaluateDependency: async (request) =>
       sendJson<DependencyExpressionPreview & { evaluatedAt: string }>('/evaluate', {
@@ -206,6 +236,7 @@ export function createDependencyContract(): DependencyContract {
         workflowVersion: request.workflowVersion,
         taskId: request.taskId,
         groups: groupsToWire(request.groups),
+        ...policyToWire(request),
         ...(request.asOf !== undefined ? { asOf: request.asOf } : {}),
       }),
   }
@@ -215,8 +246,11 @@ export function createDependencyContract(): DependencyContract {
 
 function describeCondition(condition: DependencyCondition): string {
   const task = condition.upstreamTaskCode ? ` task(${condition.upstreamTaskCode})` : ''
-  const { periodType, beginOffset, endOffset } = condition.dateRange
-  return `wf(${condition.upstreamWorkflowId})${task} ${periodType}[${beginOffset}..${endOffset}]`
+  if (condition.dateRange) {
+    const { periodType, beginOffset, endOffset } = condition.dateRange
+    return `wf(${condition.upstreamWorkflowId})${task} ${periodType}[${beginOffset}..${endOffset}]`
+  }
+  return `wf(${condition.upstreamWorkflowId})${task} ${condition.cycle ?? 'day'}:${condition.dateValue ?? 'today'}`
 }
 
 /**

@@ -168,6 +168,51 @@ describe('R4 dependencyApi contract (GREEN wired)', () => {
     })
   })
 
+  it('saveDependency preserves the complete dependency policy and DS condition semantics', async () => {
+    const fetchMock = stubFetchWithEnvelope({ saved: true, version: 3 })
+    vi.stubGlobal('fetch', fetchMock)
+    await createDependencyContract().saveDependency({
+      projectId: 1,
+      workflowId: 10,
+      workflowVersion: 3,
+      taskId: 'dependent-node',
+      groupRelation: 'OR',
+      checkIntervalSeconds: 10,
+      failurePolicy: 'waiting',
+      failureWaitingSeconds: 120,
+      timeoutSeconds: 30,
+      groups: [{
+        join: 'AND',
+        conditions: [{
+          kind: 'task',
+          selector: 'all_tasks',
+          upstreamWorkflowId: 7,
+          upstreamTaskCode: '-1',
+          cycle: 'day',
+          dateValue: 'last1Days',
+          dependResult: 'failed',
+          parameterPassing: true,
+        }],
+      }],
+    })
+    const [, init] = fetchMock.mock.calls[0] as unknown as [string, RequestInit]
+    expect(JSON.parse(init.body as string)).toMatchObject({
+      group_relation: 'OR',
+      check_interval_seconds: 10,
+      failure_policy: 'waiting',
+      failure_waiting_seconds: 120,
+      timeout_seconds: 30,
+      groups: [{
+        join: 'AND',
+        conditions: [{
+          kind: 'task', selector: 'all_tasks', upstream_workflow_id: 7,
+          upstream_task_code: -1, cycle: 'day', date_value: 'last1Days',
+          depend_result: 'failed', parameter_passing: true,
+        }],
+      }],
+    })
+  })
+
   it('evaluateDependency maps evaluated_at to evaluatedAt and passes asOf through', async () => {
     const fetchMock = stubFetchWithEnvelope({
       expression: 'wf(1) day[-1..-1]',
