@@ -12,7 +12,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Any, Callable
 from uuid import uuid4
 
-from sqlalchemy import DateTime, Integer, String, delete, or_, select, update
+from sqlalchemy import DateTime, Integer, String, Text, delete, or_, select, update
 from sqlalchemy.orm import Mapped, mapped_column
 
 from rebuild.common.db import Base
@@ -33,7 +33,7 @@ class SqlIdeHistoryRecord(Base):
     user_id: Mapped[int] = mapped_column(Integer, nullable=False, index=True)
     datasource_id: Mapped[int] = mapped_column(Integer, nullable=False, index=True)
     db: Mapped[str | None] = mapped_column(String(256), nullable=True)
-    sql_text: Mapped[str] = mapped_column(String, nullable=False)
+    sql_text: Mapped[str] = mapped_column(Text, nullable=False)
     status: Mapped[str] = mapped_column(String(16), nullable=False)
     stmt_count: Mapped[int] = mapped_column(Integer, nullable=False)
     elapsed_ms: Mapped[int] = mapped_column(Integer, nullable=False)
@@ -50,7 +50,7 @@ class SqlIdeScriptRecord(Base):
     script_id: Mapped[str] = mapped_column(String(36), primary_key=True)
     project_id: Mapped[int] = mapped_column(Integer, nullable=False, index=True)
     name: Mapped[str] = mapped_column(String(256), nullable=False)
-    sql_text: Mapped[str] = mapped_column(String, nullable=False)
+    sql_text: Mapped[str] = mapped_column(Text, nullable=False)
     revision: Mapped[int] = mapped_column(Integer, nullable=False)
     created_by: Mapped[int] = mapped_column(Integer, nullable=False)
     updated_by: Mapped[int] = mapped_column(Integer, nullable=False)

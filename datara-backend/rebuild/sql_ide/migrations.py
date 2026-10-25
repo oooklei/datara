@@ -8,7 +8,7 @@ from datetime import datetime
 from threading import RLock
 from typing import Callable
 
-from sqlalchemy import DateTime, Engine, Integer, String, func, select, text
+from sqlalchemy import DateTime, Engine, Integer, String, func, inspect, select, text
 from sqlalchemy.orm import Mapped, Session, mapped_column
 
 from rebuild.common.db import Base
@@ -31,6 +31,7 @@ class SqlIdeMigration:
     revision: str
     checksum: str
     upgrade: MigrationUpgrade
+    required_tables: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -75,7 +76,10 @@ class SqlIdeMigrationRunner:
         with _LOCAL_MIGRATION_LOCK:
             if self.engine.dialect.name == "mysql":
                 with self.engine.connect() as connection:
-                    acquired = connection.scalar(text("SELECT GET_LOCK(:lock_name, 30)"), {"lock_name": _MYSQL_LOCK_NAME})
+                    acquired = connection.scalar(
+                        text("SELECT GET_LOCK(:lock_name, 30)"),
+                        {"lock_name": _MYSQL_LOCK_NAME},
+                    )
                     if acquired != 1:
                         raise SqlIdeMigrationError("could not acquire SQL IDE schema migration lock")
                     try:
@@ -94,6 +98,9 @@ class SqlIdeMigrationRunner:
                 continue
             try:
                 migration.upgrade(self.engine)
+                missing_tables = self._missing_tables(migration)
+                if missing_tables:
+                    raise RuntimeError(f"required tables missing: {','.join(missing_tables)}")
             except Exception as error:
                 self._finish_revision(migration.revision, "failed", type(error).__name__)
                 raise SqlIdeMigrationError(
@@ -111,7 +118,14 @@ class SqlIdeMigrationRunner:
             if record is not None and record.checksum != migration.checksum:
                 raise SqlIdeMigrationChecksumConflict(f"migration checksum changed for {migration.revision}")
             if record is not None and record.status == "completed":
-                return True
+                if not self._missing_tables(migration):
+                    return True
+                record.status = "running"
+                record.attempt_count += 1
+                record.started_at = text("CURRENT_TIMESTAMP")
+                record.finished_at = None
+                record.last_error = ""
+                return False
             if record is None:
                 session.add(
                     SqlIdeMigrationRecord(
@@ -128,6 +142,10 @@ class SqlIdeMigrationRunner:
                 record.finished_at = None
                 record.last_error = ""
         return False
+
+    def _missing_tables(self, migration: SqlIdeMigration) -> tuple[str, ...]:
+        table_names = set(inspect(self.engine).get_table_names())
+        return tuple(name for name in migration.required_tables if name not in table_names)
 
     def _finish_revision(self, revision: str, status: str, last_error: str) -> None:
         with Session(self.engine) as session, session.begin():
@@ -189,6 +207,12 @@ SQL_IDE_MIGRATIONS = (
         revision="sql_ide_0001_snapshots_and_exports",
         checksum=hashlib.sha256(_DDL_MANIFEST.encode("utf-8")).hexdigest(),
         upgrade=_upgrade_snapshots,
+        required_tables=(
+            "sql_ide_result_sets",
+            "sql_ide_export_job_handles",
+            "sql_ide_export_jobs",
+            "sql_ide_export_audit",
+        ),
     ),
 )
 SQL_IDE_EVENT_MIGRATIONS = (
@@ -198,6 +222,7 @@ SQL_IDE_EVENT_MIGRATIONS = (
             b"sql_ide_0002_events v1: sql_ide_events; append-only payload; retention 7d"
         ).hexdigest(),
         upgrade=_upgrade_events,
+        required_tables=("sql_ide_events",),
     ),
 )
 SQL_IDE_HISTORY_MIGRATIONS = (
@@ -208,6 +233,7 @@ SQL_IDE_HISTORY_MIGRATIONS = (
             b"sql_ide_history_audit; history 365d; soft-delete tombstones 30d; audit 365d"
         ).hexdigest(),
         upgrade=_upgrade_history_scripts,
+        required_tables=("sql_ide_history", "sql_ide_scripts", "sql_ide_history_audit"),
     ),
 )
 SQL_IDE_STATUS_MIGRATIONS = (
@@ -218,6 +244,7 @@ SQL_IDE_STATUS_MIGRATIONS = (
             b"sql_ide_execution_events through terminal+7d"
         ).hexdigest(),
         upgrade=_upgrade_execution_status,
+        required_tables=("sql_ide_execution_status", "sql_ide_execution_events"),
     ),
 )
 SQL_IDE_ALL_MIGRATIONS = (
