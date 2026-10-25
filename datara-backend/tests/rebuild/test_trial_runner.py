@@ -9,8 +9,8 @@ from sqlalchemy import create_engine, select
 from sqlalchemy.orm import Session
 
 from rebuild.common.db import Base
-from rebuild.execution.models import TaskInstanceRecord, WorkflowInstanceRecord, WorkflowRunStatRecord
-from rebuild.trial.models import WorkflowDraftSnapshotRecord
+from rebuild.execution.models import RunOutputRecord, TaskInstanceRecord, WorkflowInstanceRecord, WorkflowRunStatRecord
+from rebuild.resources.repository import ResourceRepository
 from rebuild.trial.repository import TrialSnapshotRepository
 from rebuild.trial.runner import TrialRunner, TrialRunnerError, TrialRunOptions
 from rebuild.dependency.models import DependencyConfigRecord
@@ -132,6 +132,99 @@ def test_trial_run_executes_python_and_shell_scripts():
         select(TaskInstanceRecord).where(TaskInstanceRecord.workflow_instance_id == result.instance_id)
     ).all()
     assert all(task.status == "SUCCEEDED" for task in outputs)
+
+
+def test_trial_run_executes_explicitly_bound_resource_versions(monkeypatch, tmp_path):
+    monkeypatch.setenv("REBUILD_RESOURCE_STORAGE_DIR", str(tmp_path))
+    session = _session()
+    definition_id = _make_definition(session)
+    repository = ResourceRepository(session)
+    uploaded = repository.save_upload(1, "python", "bound.py", b"print('resource-python-ok')")
+    _add_node(session, definition_id, "py", node_type="python", params={
+        "sourceMode": "resource",
+        "resourceRef": {"resourceId": uploaded["resource_id"], "version": uploaded["version"]},
+    })
+    repository.bind(1, definition_id, 1, "py", uploaded["resource_id"], uploaded["version"])
+    session.commit()
+    snapshot = TrialSnapshotRepository(session).create_from_draft(definition_id)
+
+    result = TrialRunner(session).run(
+        definition_id=definition_id,
+        snapshot_id=snapshot["snapshot_id"],
+        project_id=1,
+    )
+
+    task = session.scalar(select(TaskInstanceRecord).where(
+        TaskInstanceRecord.workflow_instance_id == result.instance_id,
+        TaskInstanceRecord.task_id == "py",
+    ))
+    output = session.scalar(select(RunOutputRecord).where(RunOutputRecord.task_instance_id == task.id))
+    assert result.status == "SUCCEEDED"
+    assert "resource-python-ok" in output.output_json
+
+
+@pytest.mark.parametrize(
+    ("kind", "filename", "content", "expected", "options"),
+    [
+        ("sql", "bound.sql", b"select 7 as resource_value", '"resource_value"', TrialRunOptions(sql_execute=True)),
+        ("shell", "bound.sh", b"echo resource-shell-ok", "resource-shell-ok", None),
+    ],
+)
+def test_trial_run_executes_sql_and_shell_resource_versions(
+    monkeypatch, tmp_path, kind, filename, content, expected, options
+):
+    monkeypatch.setenv("REBUILD_RESOURCE_STORAGE_DIR", str(tmp_path))
+    session = _session()
+    definition_id = _make_definition(session)
+    uploaded = ResourceRepository(session).save_upload(1, kind, filename, content)
+    _add_node(session, definition_id, "task", node_type=kind, params={
+        "sourceMode": "resource",
+        "resourceRef": {"resourceId": uploaded["resource_id"], "version": uploaded["version"]},
+    })
+    ResourceRepository(session).bind(
+        1, definition_id, 1, "task", uploaded["resource_id"], uploaded["version"]
+    )
+    session.commit()
+    snapshot = TrialSnapshotRepository(session).create_from_draft(definition_id)
+
+    result = TrialRunner(session).run(
+        definition_id=definition_id,
+        snapshot_id=snapshot["snapshot_id"],
+        project_id=1,
+        options=options,
+    )
+
+    task = session.scalar(select(TaskInstanceRecord).where(
+        TaskInstanceRecord.workflow_instance_id == result.instance_id,
+        TaskInstanceRecord.task_id == "task",
+    ))
+    output = session.scalar(select(RunOutputRecord).where(RunOutputRecord.task_instance_id == task.id))
+    assert result.status == "SUCCEEDED"
+    assert expected in output.output_json
+
+
+def test_trial_run_rejects_tampered_bound_resource(monkeypatch, tmp_path):
+    monkeypatch.setenv("REBUILD_RESOURCE_STORAGE_DIR", str(tmp_path))
+    session = _session()
+    definition_id = _make_definition(session)
+    repository = ResourceRepository(session)
+    uploaded = repository.save_upload(1, "shell", "bound.sh", b"echo safe")
+    _add_node(session, definition_id, "sh", node_type="shell", params={
+        "sourceMode": "resource",
+        "resourceRef": {"resourceId": uploaded["resource_id"], "version": uploaded["version"]},
+    })
+    repository.bind(1, definition_id, 1, "sh", uploaded["resource_id"], uploaded["version"])
+    (tmp_path / "1" / "v1").write_text("echo tampered", encoding="utf-8")
+    session.commit()
+    snapshot = TrialSnapshotRepository(session).create_from_draft(definition_id)
+
+    result = TrialRunner(session).run(
+        definition_id=definition_id,
+        snapshot_id=snapshot["snapshot_id"],
+        project_id=1,
+    )
+
+    assert result.status == "FAILED"
 
 
 def test_trial_run_executes_lowercase_dependent_component_with_mock():
