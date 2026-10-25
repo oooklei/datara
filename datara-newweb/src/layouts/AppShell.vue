@@ -28,6 +28,7 @@ import { PROJECT_MENU_SECTIONS } from '../navigation/projectMenu'
 import { loadGroupFolded, toggleGroupFolded } from '../navigation/groupFold'
 import { menuGroups } from '../navigation/menu'
 import { listProjects } from '../services/rebuild/projectApi'
+import { logout } from '../services/rebuild/authApi'
 import AiAssistantPanel from '../components/AiAssistantPanel.vue'
 
 const props = defineProps<{
@@ -37,6 +38,18 @@ const props = defineProps<{
 
 const route = useRoute()
 const router = useRouter()
+const loggingOut = ref(false)
+
+async function onLogout(): Promise<void> {
+  if (loggingOut.value) return
+  loggingOut.value = true
+  try {
+    await logout()
+    await router.replace('/login')
+  } finally {
+    loggingOut.value = false
+  }
+}
 
 // ---- 项目模式判定与顶栏项目名（L3-03；守卫归属校验归 L3-05 路由守卫） ----
 const isProjectScope = computed(() => route.path.startsWith('/p/'))
@@ -111,6 +124,13 @@ defineExpose({ menuView, aiContext })
         <span class="topbar-project-name" :data-project-name="String(projectId)">{{ projectName }}</span>
         <RouterLink to="/" class="topbar-project-exit" data-project-exit>返回项目列表</RouterLink>
       </span>
+      <button
+        type="button"
+        class="topbar-logout"
+        data-shell-logout
+        :disabled="loggingOut"
+        @click="onLogout"
+      >{{ loggingOut ? '退出中…' : '退出登录' }}</button>
     </header>
     <aside class="app-sidebar" aria-label="主导航">
       <nav
@@ -171,7 +191,8 @@ defineExpose({ menuView, aiContext })
 .topbar-project{display:flex;align-items:center;gap:12px;margin-left:auto}
 .topbar-project-name{font-weight:600}
 .app-sidebar{grid-area:aside;overflow-y:auto}
-.app-content{grid-area:main;min-width:0}
+.app-content{grid-area:main;min-width:0;overflow-x:auto}
+.topbar-logout{margin-left:auto;border:1px solid var(--border,#dfe5ef);border-radius:6px;background:#fff;color:var(--text-2,#536174);padding:6px 12px;cursor:pointer}.topbar-logout:disabled{opacity:.6;cursor:not-allowed}
 /* 菜单组渲染（0.8 §7：空组标题不显示由 v-if=!direct 保证；future 组 caret 折叠语义复刻） */
 .group-title{display:flex;align-items:center;justify-content:space-between}
 .menu-items{list-style:none;margin:0;padding:0}
@@ -180,4 +201,12 @@ defineExpose({ menuView, aiContext })
 /* 项目模式七段导航（L3-03）：与全局菜单互斥渲染，DOM 锚 data-project-nav/data-seg */
 .project-nav{display:flex;flex-direction:column;padding:8px 0}
 .project-nav-link{display:block;padding:0 12px;line-height:32px}
+@media (max-width:640px){
+  .app-shell{grid-template:"header" 56px "aside" auto "main" minmax(0,1fr)/minmax(0,1fr);width:100%;max-width:100vw;overflow-x:hidden}
+  .app-topbar{min-width:0;gap:8px;padding-inline:12px;overflow:hidden}.topbar-brand,.topbar-logout{flex:0 0 auto}
+  .topbar-project{min-width:0;flex:1;margin-left:0;gap:8px;overflow:hidden}.topbar-project-name{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.topbar-project-exit{flex:0 0 auto;white-space:nowrap}
+  .app-sidebar{overflow-x:auto;overflow-y:hidden}.project-nav{flex-direction:row;width:max-content}.project-nav-link{white-space:nowrap}
+  .app-content{width:100%;max-width:100vw}
+}
+@media (max-width:480px){.topbar-project-name{display:none}}
 </style>

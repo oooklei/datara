@@ -9,6 +9,7 @@
  */
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { login, logout } from '../authApi'
+import { clearToken, getToken, setToken } from '../../http'
 
 function stubFetchWith(status: number, body: unknown): ReturnType<typeof vi.fn> {
   return vi
@@ -18,11 +19,11 @@ function stubFetchWith(status: number, body: unknown): ReturnType<typeof vi.fn> 
 
 afterEach(() => {
   vi.unstubAllGlobals()
-  globalThis.localStorage?.removeItem('datara_token')
+  clearToken()
 })
 
 describe('I1 authApi contract (POST /api/v1/rebuild/login)', () => {
-  it('login POSTs anonymous {username,password}, stores datara_token, unwraps account', async () => {
+  it('login POSTs anonymous {username,password}, keeps token in memory only, unwraps account', async () => {
     const fetchMock = stubFetchWith(200, {
       code: 0,
       msg: 'success',
@@ -43,7 +44,8 @@ describe('I1 authApi contract (POST /api/v1/rebuild/login)', () => {
     expect(url).toBe('/api/v1/rebuild/login')
     expect(init.method).toBe('POST')
     expect(JSON.parse(String(init.body))).toEqual({ username: 'admin', password: 'secret-1' })
-    expect(globalThis.localStorage?.getItem('datara_token')).toBe('tok-login-1')
+    expect(getToken()).toBe('tok-login-1')
+    expect(globalThis.localStorage?.getItem('datara_token')).toBeNull()
   })
 
   it('invalid credentials (401) maps to ContractApiError with httpStatus as code (1.2 冻结：非 2xx 不解析包络), no token stored', async () => {
@@ -77,7 +79,7 @@ describe('I1 authApi contract (POST /api/v1/rebuild/login)', () => {
 
 describe('I1 authApi contract (POST /api/v1/rebuild/logout)', () => {
   it('logout POSTs with token header then clears datara_token', async () => {
-    globalThis.localStorage?.setItem('datara_token', 'tok-out-1')
+    setToken('tok-out-1')
     const fetchMock = stubFetchWith(200, { code: 0, msg: 'success', data: null })
     vi.stubGlobal('fetch', fetchMock)
 
@@ -87,17 +89,19 @@ describe('I1 authApi contract (POST /api/v1/rebuild/logout)', () => {
     expect(url).toBe('/api/v1/rebuild/logout')
     expect(init.method).toBe('POST')
     expect((init.headers as Record<string, string>).token).toBe('tok-out-1')
+    expect(getToken()).toBe('')
     expect(globalThis.localStorage?.getItem('datara_token')).toBeNull()
   })
 
   it('backend revoke failure does not block local token cleanup (local state must converge)', async () => {
-    globalThis.localStorage?.setItem('datara_token', 'tok-out-2')
+    setToken('tok-out-2')
     vi.stubGlobal(
       'fetch',
       vi.fn().mockResolvedValue(new Response('boom', { status: 500 })),
     )
 
     await expect(logout()).resolves.toBeUndefined()
+    expect(getToken()).toBe('')
     expect(globalThis.localStorage?.getItem('datara_token')).toBeNull()
   })
 })

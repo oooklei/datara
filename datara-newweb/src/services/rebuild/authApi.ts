@@ -32,7 +32,7 @@ interface LoginWire {
 }
 
 /**
- * 登录：成功即落 token（localStorage `datara_token`），返回账号信息供 UI 展示。
+ * 登录：成功后 token 仅驻留当前页面内存，返回账号信息供 UI 展示。
  * 匿名请求（登录端点无鉴权），故显式 `anonymous`。
  */
 export function login(username: string, password: string): Promise<LoginResult> {

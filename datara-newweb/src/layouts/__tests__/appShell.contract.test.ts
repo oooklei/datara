@@ -7,14 +7,15 @@
  * 注：组件测试用独立 memory router + stub 视图，不改产品 routes.ts；
  *     测试集 7 之 1 用产品真实 router（index.ts default）验证守卫本身。
  */
-import { describe, expect, it } from 'vitest'
-import { mount } from '@vue/test-utils'
+import { describe, expect, it, vi } from 'vitest'
+import { flushPromises, mount } from '@vue/test-utils'
 import { createRouter, createMemoryHistory } from 'vue-router'
 import AppShell from '../AppShell.vue'
 import App from '../../App.vue'
-import { clearToken, setToken } from '../../services/http'
+import { clearToken, getToken, setToken } from '../../services/http'
 import productRouter from '../../router'
 import { loadGroupFolded } from '../../navigation/groupFold'
+import appShellSource from '../AppShell.vue?raw'
 
 function stubView(tag: string) {
   return { template: `<div data-stub="${tag}">${tag}</div>` }
@@ -128,5 +129,32 @@ describe('2-05 菜单消费（filterMenuGroups 接驳 + F56a direct + future 折
     const router = makeTestRouter()
     const w = mount(AppShell, { global: { plugins: [router] } })
     expect(w.find('.menu-group[data-group-id="future"]').exists()).toBe(false)
+  })
+})
+
+describe('AUTH-UI-02 authenticated shell', () => {
+  it('顶栏提供可见登出控件，并清除内存 token 后进入安全引导页', async () => {
+    const router = makeTestRouter()
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(JSON.stringify({ code: 0, data: null }), { status: 200 })))
+    setToken('runtime-session')
+    await router.push('/a')
+    const w = mount(AppShell, { global: { plugins: [router] } })
+
+    const logout = w.get('[data-shell-logout]')
+    expect(logout.text()).toBe('退出登录')
+    await logout.trigger('click')
+    await flushPromises()
+
+    expect(getToken()).toBe('')
+    expect(router.currentRoute.value.path).toBe('/login')
+    vi.unstubAllGlobals()
+  })
+
+  it('375px 下壳切为单列并把宽工作流内容的横向滚动约束在 main 内', () => {
+    expect(appShellSource).toMatch(/@media\s*\(max-width:\s*640px\)/)
+    expect(appShellSource).toMatch(/grid-template:\s*"header"[^;]*"aside"[^;]*"main"/)
+    expect(appShellSource).toMatch(/\.app-content\{[^}]*overflow-x:auto/)
+    expect(appShellSource).toMatch(/\.app-topbar\{[^}]*overflow:hidden/)
+    expect(appShellSource).toMatch(/@media\s*\(max-width:\s*480px\)\{\.topbar-project-name\{display:none/)
   })
 })

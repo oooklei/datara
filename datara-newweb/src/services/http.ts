@@ -41,13 +41,24 @@ export const TOKEN_HEADER = 'token' as const
 let inMemoryToken = ''
 const testTokenCompatibility = typeof import.meta !== 'undefined' && import.meta.env?.MODE === 'test'
 
+function clearPersistedToken(): void {
+  try { globalThis.localStorage?.removeItem(TOKEN_KEY) } catch { /* privacy mode */ }
+  try { globalThis.sessionStorage?.removeItem(TOKEN_KEY) } catch { /* privacy mode */ }
+}
+
+// 升级到仅内存会话时立即擦除旧版本遗留值；它们不再参与生产鉴权。
+clearPersistedToken()
+
 export function getToken(): string {
   // 仅测试运行时兼容历史契约夹具；生产构建绝不读取持久化 token。
   // Isolated browser verification may inject a short-lived token at runtime.
   // It is deliberately read from memory only; it is never persisted or put in a URL.
   const injected = (globalThis as typeof globalThis & { __DATARA_TEST_TOKEN__?: unknown }).__DATARA_TEST_TOKEN__
-  if (typeof injected === 'string') return injected
-  if (testTokenCompatibility) return globalThis.localStorage?.getItem(TOKEN_KEY) ?? ''
+  if (typeof injected === 'string') {
+    inMemoryToken = injected
+    delete (globalThis as typeof globalThis & { __DATARA_TEST_TOKEN__?: unknown }).__DATARA_TEST_TOKEN__
+    return inMemoryToken
+  }
   if (inMemoryToken) return inMemoryToken
   if (testTokenCompatibility) return globalThis.localStorage?.getItem(TOKEN_KEY) ?? ''
   return ''
@@ -58,15 +69,15 @@ export function setToken(token: string): void {
     clearToken()
     return
   }
+  clearPersistedToken()
   inMemoryToken = token
-  if (testTokenCompatibility) globalThis.localStorage?.setItem(TOKEN_KEY, token)
 }
 
 export function clearToken(): void {
   inMemoryToken = ''
+  delete (globalThis as typeof globalThis & { __DATARA_TEST_TOKEN__?: unknown }).__DATARA_TEST_TOKEN__
   // 清理旧版本遗留 token，防止升级后继续被浏览器持久化。
-  try { globalThis.localStorage?.removeItem(TOKEN_KEY) } catch { /* privacy mode */ }
-  try { globalThis.sessionStorage?.removeItem(TOKEN_KEY) } catch { /* privacy mode */ }
+  clearPersistedToken()
 }
 
 /* ---------- 15s 超时 ---------- */

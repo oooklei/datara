@@ -52,6 +52,7 @@ let fetchStub: FetchStub
 beforeEach(() => {
   fetchStub = vi.fn()
   vi.stubGlobal('fetch', fetchStub)
+  clearToken()
   localStorage.clear()
   setLoginRedirector(null)
 })
@@ -90,7 +91,7 @@ describe('单 BASE 底座与一源红线（§7.1 / 红线 1）', () => {
 /* ---------- 2. token 携带 ---------- */
 
 describe('token 携带', () => {
-  it('localStorage 有 token 时自动携带 token 头', async () => {
+  it('仅内存 token 自动携带 token 头', async () => {
     setToken('tok-abc')
     fetchStub.mockResolvedValue(envelopeResponse(200, { code: 0, msg: 'success', data: { ok: true } }))
 
@@ -119,11 +120,14 @@ describe('token 携带', () => {
     expect((init.headers as Record<string, string>).token).toBeUndefined()
   })
 
-  it('setToken / getToken / clearToken 与 TOKEN_KEY 落位一致', () => {
+  it('setToken / getToken / clearToken 仅操作内存并清理历史存储残留', () => {
     expect(TOKEN_KEY).toBe('datara_token')
-    expect(getToken()).toBe('')
+    localStorage.setItem(TOKEN_KEY, 'legacy-local')
+    sessionStorage.setItem(TOKEN_KEY, 'legacy-session')
     setToken('tok-1')
     expect(getToken()).toBe('tok-1')
+    expect(localStorage.getItem(TOKEN_KEY)).toBeNull()
+    expect(sessionStorage.getItem(TOKEN_KEY)).toBeNull()
     setToken('')
     expect(getToken()).toBe('')
     setToken('tok-2')
@@ -131,12 +135,21 @@ describe('token 携带', () => {
     expect(getToken()).toBe('')
   })
 
-  it('生产模式支持仅内存的运行时验证 token 注入', () => {
+  it('运行时验证 token 一次读取后转入模块内存并删除全局注入槽', () => {
     clearToken()
     ;(globalThis as typeof globalThis & { __DATARA_TEST_TOKEN__?: unknown }).__DATARA_TEST_TOKEN__ = 'runtime-token'
     expect(getToken()).toBe('runtime-token')
-    delete (globalThis as typeof globalThis & { __DATARA_TEST_TOKEN__?: unknown }).__DATARA_TEST_TOKEN__
+    expect('__DATARA_TEST_TOKEN__' in globalThis).toBe(false)
+    expect(getToken()).toBe('runtime-token')
+  })
+
+  it('clearToken 同时清除当前页面内存中的运行时注入 token', () => {
+    ;(globalThis as typeof globalThis & { __DATARA_TEST_TOKEN__?: unknown }).__DATARA_TEST_TOKEN__ = 'runtime-token'
+
+    clearToken()
+
     expect(getToken()).toBe('')
+    expect('__DATARA_TEST_TOKEN__' in globalThis).toBe(false)
   })
 })
 
