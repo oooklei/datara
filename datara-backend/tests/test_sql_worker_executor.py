@@ -1,3 +1,4 @@
+import threading
 from types import SimpleNamespace
 
 import pytest
@@ -15,7 +16,7 @@ class FakeCursor:
 
     def execute(self, statement):
         self.connection.statements.append(statement)
-        if statement == "FAIL":
+        if statement == "FAIL" or statement in self.connection.fail_statements:
             raise RuntimeError("statement failed")
         if statement.upper().startswith(("SELECT", "EXPLAIN")):
             self.description = (("plan",),)
@@ -37,6 +38,11 @@ class FakeConnection:
         self.statements = []
         self.transaction_calls = []
         self.lineage_calls = []
+        self.close_calls = 0
+        self.rollback_error = None
+        self.autocommit_error = None
+        self.autocommit_enabled = True
+        self.fail_statements = set()
 
     def cursor(self):
         return FakeCursor(self)
@@ -49,6 +55,22 @@ class FakeConnection:
 
     def rollback(self):
         self.transaction_calls.append("rollback")
+        if self.rollback_error:
+            raise self.rollback_error
+
+    def get_autocommit(self):
+        return self.autocommit_enabled
+
+    def autocommit(self, enabled):
+        if self.autocommit_error:
+            raise self.autocommit_error
+        self.autocommit_enabled = enabled
+
+    def thread_id(self):
+        return 73
+
+    def close(self):
+        self.close_calls += 1
 
 
 @pytest.fixture()
@@ -61,6 +83,8 @@ def executor_env(monkeypatch):
         host="db",
         port=3306,
         db_name="analytics",
+        user="runner",
+        pwd="secret",
     )
     monkeypatch.setattr(sql_executor, "_lookup_datasource", lambda _ref: datasource)
     monkeypatch.setattr(sql_executor, "_get_conn", lambda _ds: connection)
@@ -100,9 +124,9 @@ def test_transaction_all_commits_after_every_phase_succeeds(executor_env):
     ctx, _logs = make_context(
         {
             "datasource": "warehouse",
-            "pre": "SET @x=1",
+            "pre": "SELECT 0",
             "sql": "SELECT 1; UPDATE summary SET n=1",
-            "post": "SET @x=NULL",
+            "post": "DELETE FROM summary WHERE n=0",
             "transaction": "all",
         }
     )
@@ -111,15 +135,21 @@ def test_transaction_all_commits_after_every_phase_succeeds(executor_env):
 
     assert result.state == SUCCESS
     assert executor_env.transaction_calls == ["begin", "commit"]
-    assert executor_env.statements == ["SET @x=1", "SELECT 1", "UPDATE summary SET n=1", "SET @x=NULL"]
+    assert executor_env.statements == [
+        "SELECT 0",
+        "SELECT 1",
+        "UPDATE summary SET n=1",
+        "DELETE FROM summary WHERE n=0",
+    ]
 
 
 def test_transaction_all_rolls_back_every_phase_when_a_statement_fails(executor_env):
+    executor_env.fail_statements.add("UPDATE broken SET n=1")
     ctx, _logs = make_context(
         {
             "datasource": "warehouse",
             "pre": "INSERT INTO audit VALUES (1)",
-            "sql": "UPDATE summary SET n=1; FAIL; UPDATE summary SET n=2",
+            "sql": "UPDATE summary SET n=1; UPDATE broken SET n=1; UPDATE summary SET n=2",
             "post": "DELETE FROM audit",
             "transaction": "all",
         }
@@ -129,7 +159,11 @@ def test_transaction_all_rolls_back_every_phase_when_a_statement_fails(executor_
 
     assert result.state == FAILURE
     assert executor_env.transaction_calls == ["begin", "rollback"]
-    assert executor_env.statements == ["INSERT INTO audit VALUES (1)", "UPDATE summary SET n=1", "FAIL"]
+    assert executor_env.statements == [
+        "INSERT INTO audit VALUES (1)",
+        "UPDATE summary SET n=1",
+        "UPDATE broken SET n=1",
+    ]
 
 
 def test_read_only_rejects_entire_batch_before_any_statement_executes(executor_env):
@@ -485,3 +519,119 @@ def test_transaction_none_reports_kill_arriving_after_last_statement(executor_en
     assert result.state == KILL
     assert executor_env.statements == ["UPDATE summary SET n=1"]
     assert executor_env.transaction_calls == []
+
+
+@pytest.mark.parametrize(
+    "statement",
+    [
+        "CREATE TABLE t(id INT)",
+        "START REPLICA",
+        "STOP REPLICA",
+        "CHANGE REPLICATION SOURCE TO SOURCE_HOST='db'",
+        "SET sql_mode='STRICT_ALL_TABLES'",
+        "XA START 'job-1'",
+    ],
+)
+def test_transaction_all_fail_closed_allowlist_rejects_non_dml_before_connection(
+    monkeypatch, statement
+):
+    datasource = SimpleNamespace(id=1, name="warehouse", type="mysql", host="db", port=3306, db_name="analytics")
+    monkeypatch.setattr(sql_executor, "_lookup_datasource", lambda _ref: datasource)
+    called = []
+    monkeypatch.setattr(sql_executor, "_get_conn", lambda _ds: called.append(True))
+    ctx, _logs = make_context({"datasource": "warehouse", "sql": statement, "transaction": "all"})
+
+    result = sql_executor.execute(ctx)
+
+    assert result.state == FAILURE
+    assert called == []
+
+
+@pytest.mark.parametrize(
+    ("statement", "effect"),
+    [
+        ("SET LOCAL autocommit=0", "autocommit_off"),
+        ("SET @@LOCAL.autocommit=0", "autocommit_off"),
+        ("SET @@SESSION.autocommit=1", "autocommit_on"),
+    ],
+)
+def test_explicit_transaction_tracks_autocommit_scope_aliases(statement, effect):
+    assert sql_executor._explicit_transaction_effect(statement) == effect
+
+
+def test_explicit_rejects_xa_before_connection(monkeypatch):
+    datasource = SimpleNamespace(id=1, name="warehouse", type="mysql", host="db", port=3306, db_name="analytics")
+    monkeypatch.setattr(sql_executor, "_lookup_datasource", lambda _ref: datasource)
+    called = []
+    monkeypatch.setattr(sql_executor, "_get_conn", lambda _ds: called.append(True))
+    ctx, _logs = make_context({"datasource": "warehouse", "sql": "XA START 'job-1'", "transaction": "explicit"})
+
+    result = sql_executor.execute(ctx)
+
+    assert result.state == FAILURE
+    assert called == []
+
+
+def test_explicit_cleanup_discards_connection_when_rollback_fails(executor_env, monkeypatch):
+    executor_env.rollback_error = RuntimeError("rollback lost")
+    monkeypatch.setitem(sql_executor._conn_pool, 1, executor_env)
+    ctx, _logs = make_context({
+        "datasource": "warehouse", "sql": "START TRANSACTION; FAIL", "transaction": "explicit",
+    })
+
+    result = sql_executor.execute(ctx)
+
+    assert result.state == FAILURE
+    assert executor_env.close_calls == 1
+    assert 1 not in sql_executor._conn_pool
+
+
+def test_explicit_cleanup_discards_connection_when_autocommit_restore_fails(executor_env, monkeypatch):
+    executor_env.autocommit_enabled = False
+    executor_env.autocommit_error = RuntimeError("restore lost")
+    monkeypatch.setitem(sql_executor._conn_pool, 1, executor_env)
+    ctx, _logs = make_context({
+        "datasource": "warehouse", "sql": "START TRANSACTION; SELECT 1", "transaction": "explicit",
+    })
+
+    result = sql_executor.execute(ctx)
+
+    assert result.state == FAILURE
+    assert executor_env.close_calls == 1
+    assert 1 not in sql_executor._conn_pool
+
+
+def test_blocking_statement_is_cancelled_through_control_connection(executor_env, monkeypatch):
+    started = threading.Event()
+    released = threading.Event()
+    original_run_one = sql_executor._run_one
+
+    def blocking_run_one(conn, stmt, log):
+        started.set()
+        assert released.wait(2)
+        return original_run_one(conn, stmt, log)
+
+    class ControlCursor:
+        def execute(self, statement):
+            assert statement == "KILL QUERY 73"
+            released.set()
+        def close(self):
+            pass
+
+    class ControlConnection:
+        def cursor(self):
+            return ControlCursor()
+        def close(self):
+            pass
+
+    monkeypatch.setattr(sql_executor, "_run_one", blocking_run_one)
+    monkeypatch.setattr(sql_executor.pymysql, "connect", lambda **_kwargs: ControlConnection())
+    ctx, _logs = make_context(
+        {"datasource": "warehouse", "sql": "SELECT SLEEP(60)"},
+        killed=lambda: started.is_set(),
+    )
+
+    result = sql_executor.execute(ctx)
+
+    assert result.state == KILL
+    assert released.is_set()

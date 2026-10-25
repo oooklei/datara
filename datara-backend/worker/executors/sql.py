@@ -37,6 +37,7 @@ _MYSQL_LIKE = frozenset({"mysql", "greatdb", "doris", "starrocks"})
 _TRANSACTION_MODES = frozenset({"none", "all", "explicit"})
 _READONLY_QUERY_TYPES = (exp.Select, exp.Union, exp.Intersect, exp.Except)
 _EXPLAINABLE_TYPES = _READONLY_QUERY_TYPES + (exp.Insert, exp.Update, exp.Delete)
+_TRANSACTIONAL_TYPES = _EXPLAINABLE_TYPES
 
 
 def _split_sql(text: str) -> list:
@@ -95,6 +96,18 @@ def _get_conn(ds):
             except Exception:  # noqa: BLE001
                 pass
     return conn
+
+
+def _discard_conn(ds, conn, log: Callable) -> None:
+    """Remove a possibly dirty connection from the LRU and close it."""
+    key = int(ds.id)
+    with _pool_lock:
+        if _conn_pool.get(key) is conn:
+            _conn_pool.pop(key, None)
+    try:
+        conn.close()
+    except Exception as exc:  # noqa: BLE001
+        log("[sql] dirty connection close failed: %r" % exc)
 
 
 def _jsonable(value):
@@ -167,13 +180,13 @@ def _normalize_policy_sql(stmt: str) -> str:
 def _is_transaction_control_statement(stmt: str) -> bool:
     """Detect statements that would escape the executor-owned all boundary."""
     normalized = _normalize_policy_sql(stmt)
-    if re.match(r"^(?:BEGIN|COMMIT|ROLLBACK|SAVEPOINT)\b", normalized):
+    if re.match(r"^(?:BEGIN|COMMIT|ROLLBACK|SAVEPOINT|XA)\b", normalized):
         return True
     if re.match(r"^(?:START\s+TRANSACTION|RELEASE\s+SAVEPOINT)\b", normalized):
         return True
     return bool(
         re.match(
-            r"^SET\s+(?:(?:SESSION|GLOBAL)\s+|@@(?:SESSION\.|GLOBAL\.)?)?AUTOCOMMIT\b",
+            r"^SET\s+(?:(?:SESSION|LOCAL|GLOBAL)\s+|@@(?:(?:SESSION|LOCAL|GLOBAL)\.)?)?AUTOCOMMIT\b",
             normalized,
         )
     )
@@ -201,12 +214,23 @@ def _explicit_transaction_effect(stmt: str) -> str | None:
     if re.match(r"^ROLLBACK\b", normalized) and not re.match(r"^ROLLBACK(?:\s+WORK)?\s+TO\b", normalized):
         return "close"
     autocommit = re.match(
-        r"^SET\s+(?:(?:SESSION|GLOBAL)\s+|@@(?:SESSION\.|GLOBAL\.)?)?AUTOCOMMIT\s*(?:=|:=)\s*(\w+)",
+        r"^SET\s+(?:(?:SESSION|LOCAL|GLOBAL)\s+|@@(?:(?:SESSION|LOCAL|GLOBAL)\.)?)?AUTOCOMMIT\s*(?:=|:=)\s*(\w+)",
         normalized,
     )
     if autocommit:
         return "autocommit_on" if autocommit.group(1) in {"1", "ON", "TRUE"} else "autocommit_off"
     return None
+
+
+def _is_transactional_statement(stmt: str) -> bool:
+    """Fail-closed allow-list for transaction=all (query and transactional DML only)."""
+    try:
+        parsed = [item for item in sqlglot.parse(stmt, read="mysql") if item is not None]
+    except (sqlglot.errors.ParseError, ValueError):
+        return False
+    if len(parsed) == 1 and isinstance(parsed[0], _TRANSACTIONAL_TYPES):
+        return True
+    return bool(re.match(r"^REPLACE\s+(?:INTO\s+)?", _normalize_policy_sql(stmt)))
 
 
 def _is_explainable_statement(stmt: str) -> bool:
@@ -218,22 +242,83 @@ def _is_explainable_statement(stmt: str) -> bool:
     return len(parsed) == 1 and isinstance(parsed[0], _EXPLAINABLE_TYPES)
 
 
-def _rollback(conn, log: Callable) -> None:
+def _rollback(conn, log: Callable) -> bool:
     """Best-effort rollback which preserves the executor's original failure state."""
     try:
         conn.rollback()
+        return True
     except Exception as exc:  # noqa: BLE001
         log("[sql] transaction rollback failed: %r" % exc)
+        return False
 
 
-def _cleanup_explicit_connection(conn, log: Callable) -> None:
+def _cleanup_explicit_connection(ds, conn, log: Callable) -> bool:
     """Rollback explicit work and restore the pool's autocommit invariant when observable."""
-    _rollback(conn, log)
+    if not _rollback(conn, log):
+        _discard_conn(ds, conn, log)
+        return False
     try:
         if hasattr(conn, "get_autocommit") and not conn.get_autocommit():
             conn.autocommit(True)
     except Exception as exc:  # noqa: BLE001
         log("[sql] explicit transaction autocommit restore failed: %r" % exc)
+        _discard_conn(ds, conn, log)
+        return False
+    return True
+
+
+def _cancel_query(ds, conn, log: Callable) -> None:
+    """Cancel an in-flight PyMySQL query through a short-lived control connection."""
+    try:
+        thread_id = int(conn.thread_id())
+        control = pymysql.connect(
+            host=ds.host, port=int(ds.port or 3306), user=ds.user or "root",
+            password=ds.pwd or "", database=ds.db_name or None, charset="utf8mb4",
+            autocommit=True, connect_timeout=5,
+        )
+        try:
+            cursor = control.cursor()
+            try:
+                cursor.execute("KILL QUERY %d" % thread_id)
+            finally:
+                cursor.close()
+        finally:
+            control.close()
+    except Exception as exc:  # noqa: BLE001
+        log("[sql] KILL QUERY failed; discarding worker connection: %r" % exc)
+        _discard_conn(ds, conn, log)
+
+
+def _run_one_interruptible(conn, ds, stmt: str, log: Callable, killed: Callable) -> tuple[dict | None, bool]:
+    """Run one statement while polling cancellation outside the blocking driver call."""
+    done = threading.Event()
+    outcome: dict[str, object] = {}
+
+    def target() -> None:
+        try:
+            outcome["result"] = _run_one(conn, stmt, log)
+        except BaseException as exc:  # propagate in the caller thread
+            outcome["error"] = exc
+        finally:
+            done.set()
+
+    worker = threading.Thread(target=target, name="sql-statement", daemon=True)
+    worker.start()
+    cancelled = False
+    while not done.wait(0.1):
+        if killed():
+            cancelled = True
+            _cancel_query(ds, conn, log)
+            break
+    if cancelled:
+        done.wait(5)
+        if not done.is_set():
+            _discard_conn(ds, conn, log)
+        return None, True
+    error = outcome.get("error")
+    if error is not None:
+        raise error
+    return outcome["result"], False  # type: ignore[return-value]
 
 
 @register("sql")
@@ -270,12 +355,21 @@ def execute(ctx) -> ExecResult:
                 stmt
                 for _phase_key, _phase_label, statements in phases
                 for stmt in statements
-                if _is_transaction_control_statement(stmt) or _is_implicit_commit_statement(stmt)
+                if not _is_transactional_statement(stmt)
             ),
             None,
         )
         if unsafe is not None:
             ctx.log("[sql] transaction=all 禁止事务控制或隐式提交语句: %s" % unsafe[:200].replace("\n", " "))
+            return ExecResult(FAILURE, {}, [])
+    if transaction_mode == "explicit":
+        unsupported = next(
+            (stmt for _key, _label, statements in phases for stmt in statements
+             if re.match(r"^XA\b", _normalize_policy_sql(stmt))),
+            None,
+        )
+        if unsupported is not None:
+            ctx.log("[sql] transaction=explicit 暂不支持 XA 事务")
             return ExecResult(FAILURE, {}, [])
     if param.get("readOnly"):
         rejected = next(
@@ -299,7 +393,7 @@ def execute(ctx) -> ExecResult:
 
     results = []
     execution_plan = []
-    executed: list = []  # 已成功执行语句（血缘采集源，I5 F24；_run_one 无异常=已提交）
+    executed: list = []  # 已成功执行语句（血缘采集源；提交边界由 transaction 模式决定）
     outputs_count: dict = {}  # 血缘计数（成功终态随 outputs 上报）
     killed = False
     explicit_transaction_open = False
@@ -315,11 +409,18 @@ def execute(ctx) -> ExecResult:
                     break
                 ctx.log("[sql] %s语句#%d: %s" % (phase_label, i, stmt[:200].replace("\n", " ")))
                 if phase_key == "sql" and param.get("explain") and _is_explainable_statement(stmt):
-                    plan = _run_one(conn, "EXPLAIN " + stmt, ctx.log)
+                    plan, cancelled = _run_one_interruptible(conn, ds, "EXPLAIN " + stmt, ctx.log, ctx.killed)
+                    if cancelled:
+                        killed = True
+                        break
                     execution_plan.append(
                         {"statement": stmt, "columns": plan.get("columns", []), "rows": plan.get("rows", [])}
                     )
-                results.append(_run_one(conn, stmt, ctx.log))
+                result, cancelled = _run_one_interruptible(conn, ds, stmt, ctx.log, ctx.killed)
+                if cancelled:
+                    killed = True
+                    break
+                results.append(result)
                 executed.append(stmt)
                 if transaction_mode == "explicit":
                     effect = _explicit_transaction_effect(stmt)
@@ -334,27 +435,26 @@ def execute(ctx) -> ExecResult:
                         explicit_autocommit_disabled = False
             if killed:
                 break
-        # PyMySQL exposes no safe same-connection cancellation while cursor.execute/fetchmany
-        # is blocked. Kill is therefore cooperative between statements and immediately after
-        # the final statement; an auxiliary control connection would be required for KILL QUERY.
         if not killed and ctx.killed():
             killed = True
         if transaction_mode == "all":
             if killed:
-                _rollback(conn, ctx.log)
+                if not _rollback(conn, ctx.log):
+                    _discard_conn(ds, conn, ctx.log)
             else:
                 conn.commit()
         elif transaction_mode == "explicit" and killed:
-            _cleanup_explicit_connection(conn, ctx.log)
+            _cleanup_explicit_connection(ds, conn, ctx.log)
         elif transaction_mode == "explicit" and (explicit_transaction_open or explicit_autocommit_disabled):
-            _cleanup_explicit_connection(conn, ctx.log)
+            _cleanup_explicit_connection(ds, conn, ctx.log)
             ctx.log("[sql] explicit 事务未闭合，已回滚并拒绝成功终态")
             state = FAILURE
     except Exception as exc:  # noqa: BLE001 SQL 错误 → failure
         if transaction_mode == "all":
-            _rollback(conn, ctx.log)
+            if not _rollback(conn, ctx.log):
+                _discard_conn(ds, conn, ctx.log)
         elif transaction_mode == "explicit":
-            _cleanup_explicit_connection(conn, ctx.log)
+            _cleanup_explicit_connection(ds, conn, ctx.log)
         ctx.log("[sql] 执行失败: %r" % exc)
         state = FAILURE
     if killed:
