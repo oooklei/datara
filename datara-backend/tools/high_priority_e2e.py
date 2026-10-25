@@ -54,26 +54,41 @@ def expect_rejected(base: str, path: str, *, headers_extra: dict[str, str], stat
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--base", required=True)
-    parser.add_argument("--username", required=True)
-    password_group = parser.add_mutually_exclusive_group(required=True)
+    parser.add_argument("--username")
+    password_group = parser.add_mutually_exclusive_group()
     password_group.add_argument("--password")
     password_group.add_argument("--password-file", type=Path)
+    parser.add_argument("--token-file", type=Path, help="pre-issued short-lived bearer token")
     parser.add_argument("--project-id", type=int, default=1)
     parser.add_argument("--definition-id", type=int, default=1)
     parser.add_argument("--snapshot-id", type=int, default=2)
     parser.add_argument("--stream-job-id", type=int, default=1)
     parser.add_argument("--dependency-id", type=int)
     args = parser.parse_args()
-    password = args.password
-    if args.password_file is not None:
-        password = args.password_file.read_text(encoding="utf-8").strip()
-    assert password is not None
+    token = (
+        args.token_file.read_text(encoding="utf-8").strip()
+        if args.token_file is not None
+        else ""
+    )
+    password = (
+        args.password_file.read_text(encoding="utf-8").strip()
+        if args.password_file is not None
+        else args.password
+    )
+    if not token and (not args.username or password is None):
+        parser.error("provide --token-file or both --username and --password/--password-file")
     try:
         health = call(args.base, "/api/v1/rebuild/health")
         if health.get("code") != 0:
             raise RuntimeError("health envelope is not successful")
-        login = call(args.base, "/api/v1/rebuild/login", method="POST", body={"username": args.username, "password": password})
-        token = login["data"]["token"]
+        if not token:
+            login = call(
+                args.base,
+                "/api/v1/rebuild/login",
+                method="POST",
+                body={"username": args.username, "password": password},
+            )
+            token = login["data"]["token"]
         specs = call(args.base, "/api/v1/rebuild/components/spec", token=token)
         spec_count = len(specs.get("items", []))
         if spec_count < 4:
