@@ -448,7 +448,8 @@ async function onShowVersions() {
 <style scoped>
 /* 根布局 flex column：工具栏（动作行 + 托盘行）+ 流容器 flex:1（VueFlow 需显式高度） */
 .wf-workbench {
-  height: 100%;
+  flex: 1 1 0;
+  min-height: 0;
   display: flex;
   flex-direction: column;
   background: #fff;
