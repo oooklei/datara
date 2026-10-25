@@ -39,6 +39,7 @@ import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { MAX_DAG_TABS, useDagTabsStore, type DagPickItem, type DagTab, type DagProfileType } from '../stores/dagTabs'
 import Palette from '../components/Palette.vue'
+import ScheduleDialog from '../components/ScheduleDialog.vue'
 import WorkflowGraphWorkbench from '../components/WorkflowGraphWorkbench.vue'
 import VariableManagerDrawer from './variables/VariableManagerDrawer.vue'
 import WorkflowRunMonitor from '../components/WorkflowRunMonitor.vue'
@@ -169,6 +170,16 @@ function onPickTasks(p: { items: DagPickItem[] }) {
     }
   }
   switchTab('edit')
+}
+
+/** 9-04 行内「定时」入口承接：Palette emit schedule → 宿主单实例 ScheduleDialog
+ *  承接（§5A.4 调度管理=工作流尾随配置）；缺项目上下文时忽略（Palette 降级态同语义） */
+const scheduleTarget = ref<{ id: number; name: string } | null>(null)
+const scheduleOpen = ref(false)
+function onSchedule(p: { id: number; name: string }) {
+  if (projectId.value === undefined) return
+  scheduleTarget.value = p
+  scheduleOpen.value = true
 }
 
 /* ---- edit 态右上专属操作（蓝本 L288-291 照抄；createTemplate 降级见头注释；
@@ -373,7 +384,7 @@ onMounted(async () => {
                + INC4-FE-4 候选池均已接驳，:project-id 承接项目上下文（缺位降级
                空态，候裁披露）；load-tasks 事件同名同载荷直连 onPickTasks；
                不加 .tc-newbtn（顶栏已有，避免双钮）；hint 两行文案保留 -->
-          <Palette default-tab="wf" :project-id="projectId" @load-tasks="onPickTasks" />
+          <Palette default-tab="wf" :project-id="projectId" @load-tasks="onPickTasks" @schedule="onSchedule" />
           <div class="tc-empty-hint">
             <div>暂无打开的画布</div>
             <div>在左侧 Palette「工作流」中勾选任务后点「载入选中」，每个任务开一个画布 Tab。</div>
@@ -388,6 +399,13 @@ onMounted(async () => {
       <!-- 模板中心 / 告警与SLA：框架保留，本版不渲染占位内容（§5A.1） -->
     </div>
     <VariableManagerDrawer v-model="variablesVisible" :project-id="projectId" />
+    <ScheduleDialog
+      v-if="scheduleTarget !== null && projectId !== undefined"
+      v-model="scheduleOpen"
+      :project-id="projectId"
+      :wf="scheduleTarget.id"
+      :wf-name="scheduleTarget.name"
+    />
   </div>
 </template>
 

@@ -112,6 +112,7 @@ vi.mock('../../services/rebuild/workflowApi', () => ({
 }))
 
 import TaskCenterView from '../TaskCenterView.vue'
+import ScheduleDialog from '../../components/ScheduleDialog.vue'
 import { useDagTabsStore } from '../../stores/dagTabs'
 import { useWorkflowGraphStore } from '../../stores/workflowGraph'
 
@@ -289,6 +290,27 @@ describe('INC4-FE-2 画布多 Tab（MAX_DAG_TABS=5，蓝本照抄 + §5A.2 收�
     s.activate('d1')
     await flushPromises()
     expect(w.find('[data-tc-canvas-slot]').text()).toContain('画布：任务一')
+  })
+
+  it('承接 Palette 行内「定时」：schedule 事件打开单实例 ScheduleDialog（§5A.4，T6）', async () => {
+    routeParams.value = { projectId: '7' }
+    const w = mountView()
+    await flushPromises()
+    ;(w.vm.$ as unknown as { setupState: { onSchedule: (p: { id: number; name: string }) => void } })
+      .setupState.onSchedule({ id: 42, name: '日增量' })
+    await flushPromises()
+    const dialog = w.findComponent(ScheduleDialog)
+    expect(dialog.exists()).toBe(true)
+    expect(dialog.props('wf')).toBe(42)
+    expect(dialog.props('wfName')).toBe('日增量')
+    expect(dialog.props('projectId')).toBe(7)
+  })
+
+  it('缺项目上下文时忽略「定时」入口（与 Palette 降级态同语义，T6）', () => {
+    const w = mountView()
+    ;(w.vm.$ as unknown as { setupState: { onSchedule: (p: { id: number; name: string }) => void } })
+      .setupState.onSchedule({ id: 42, name: '日增量' })
+    expect(w.findComponent(ScheduleDialog).exists()).toBe(false)
   })
 
   it('Palette 载入（onPickTasks）：逐项开 Tab + last 按类型落盘 + lastType 落盘 + 切回 edit', async () => {
