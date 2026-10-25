@@ -61,16 +61,13 @@ def _lookup_datasource(ref):
 
 
 def _get_conn(ds):
-    """LRU 连接池取连接：命中 ping 自愈；未命中新建；超限淘汰最旧。"""
+    """Checkout one connection exclusively; callers must release or discard it."""
     key = int(ds.id)
     with _pool_lock:
         conn = _conn_pool.pop(key, None)
     if conn is not None:
         try:
             conn.ping(reconnect=True)
-            with _pool_lock:
-                _conn_pool[key] = conn
-                _conn_pool.move_to_end(key)
             return conn
         except Exception:  # noqa: BLE001 断连失效 → 重建
             try:
@@ -87,15 +84,35 @@ def _get_conn(ds):
         autocommit=True,
         connect_timeout=10,
     )
+    return conn
+
+
+def _release_conn(ds, conn, log: Callable) -> None:
+    """Return a healthy autocommit connection to the bounded idle LRU."""
+    if getattr(conn, "_datara_discarded", False):
+        return
+    try:
+        conn.ping(reconnect=False)
+        if hasattr(conn, "get_autocommit") and not conn.get_autocommit():
+            raise RuntimeError("connection autocommit invariant is false")
+    except Exception as exc:  # noqa: BLE001
+        log("[sql] connection is not reusable: %r" % exc)
+        _discard_conn(ds, conn, log)
+        return
+    stale_connections = []
     with _pool_lock:
-        _conn_pool[key] = conn
+        previous = _conn_pool.pop(int(ds.id), None)
+        if previous is not None and previous is not conn:
+            stale_connections.append(previous)
+        _conn_pool[int(ds.id)] = conn
         while len(_conn_pool) > POOL_MAX:
             _key, stale = _conn_pool.popitem(last=False)
-            try:
-                stale.close()
-            except Exception:  # noqa: BLE001
-                pass
-    return conn
+            stale_connections.append(stale)
+    for stale in stale_connections:
+        try:
+            stale.close()
+        except Exception:  # noqa: BLE001
+            pass
 
 
 def _discard_conn(ds, conn, log: Callable) -> None:
@@ -104,6 +121,10 @@ def _discard_conn(ds, conn, log: Callable) -> None:
     with _pool_lock:
         if _conn_pool.get(key) is conn:
             _conn_pool.pop(key, None)
+    try:
+        setattr(conn, "_datara_discarded", True)
+    except Exception:  # noqa: BLE001
+        pass
     try:
         conn.close()
     except Exception as exc:  # noqa: BLE001
@@ -362,6 +383,19 @@ def execute(ctx) -> ExecResult:
         if unsafe is not None:
             ctx.log("[sql] transaction=all 禁止事务控制或隐式提交语句: %s" % unsafe[:200].replace("\n", " "))
             return ExecResult(FAILURE, {}, [])
+    if transaction_mode == "none":
+        boundary = next(
+            (
+                stmt
+                for _phase_key, _phase_label, statements in phases
+                for stmt in statements
+                if _is_transaction_control_statement(stmt)
+            ),
+            None,
+        )
+        if boundary is not None:
+            ctx.log("[sql] transaction=none 禁止显式事务或 autocommit 控制语句")
+            return ExecResult(FAILURE, {}, [])
     if transaction_mode == "explicit":
         unsupported = next(
             (stmt for _key, _label, statements in phases for stmt in statements
@@ -468,6 +502,7 @@ def execute(ctx) -> ExecResult:
             outputs_count = {"lineage_edges": edges_n, "lineage_fields": fields_n}
 
     if state != SUCCESS:
+        _release_conn(ds, conn, ctx.log)
         return ExecResult(state, {}, [])
 
     outputs = {"results": results, **outputs_count}
@@ -478,4 +513,5 @@ def execute(ctx) -> ExecResult:
         last = queries[-1]
         outputs["row_count"] = last["rowCount"]
         outputs["result_preview"] = {"columns": last["columns"], "rows": last["rows"]}
+    _release_conn(ds, conn, ctx.log)
     return ExecResult(SUCCESS, outputs, [])

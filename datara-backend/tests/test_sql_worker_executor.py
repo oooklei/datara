@@ -72,9 +72,13 @@ class FakeConnection:
     def close(self):
         self.close_calls += 1
 
+    def ping(self, reconnect=False):
+        del reconnect
+
 
 @pytest.fixture()
 def executor_env(monkeypatch):
+    sql_executor._conn_pool.clear()
     connection = FakeConnection()
     datasource = SimpleNamespace(
         id=1,
@@ -100,7 +104,8 @@ def executor_env(monkeypatch):
         return 2, 3
 
     monkeypatch.setattr(sql_executor, "collect_sql_lineage", collect_lineage)
-    return connection
+    yield connection
+    sql_executor._conn_pool.clear()
 
 
 def make_context(param, *, killed=lambda: False):
@@ -519,6 +524,44 @@ def test_transaction_none_reports_kill_arriving_after_last_statement(executor_en
     assert result.state == KILL
     assert executor_env.statements == ["UPDATE summary SET n=1"]
     assert executor_env.transaction_calls == []
+
+
+@pytest.mark.parametrize(
+    "statement",
+    ["START TRANSACTION", "BEGIN", "COMMIT", "ROLLBACK", "SET autocommit=0", "SET @@LOCAL.autocommit=0"],
+)
+def test_transaction_none_rejects_transaction_boundaries_before_connection(monkeypatch, statement):
+    datasource = SimpleNamespace(id=1, name="warehouse", type="mysql", host="db", port=3306, db_name="analytics")
+    monkeypatch.setattr(sql_executor, "_lookup_datasource", lambda _ref: datasource)
+    called = []
+    monkeypatch.setattr(sql_executor, "_get_conn", lambda _ds: called.append(True))
+    ctx, _logs = make_context({"datasource": "warehouse", "sql": statement, "transaction": "none"})
+
+    result = sql_executor.execute(ctx)
+
+    assert result.state == FAILURE
+    assert called == []
+
+
+def test_connection_is_checked_out_exclusively_and_released_after_execution(monkeypatch):
+    datasource = SimpleNamespace(
+        id=91, name="warehouse", type="mysql", host="db", port=3306,
+        db_name="analytics", user="runner", pwd="secret",
+    )
+    connection = FakeConnection()
+    monkeypatch.setattr(sql_executor, "_lookup_datasource", lambda _ref: datasource)
+    monkeypatch.setitem(sql_executor._conn_pool, 91, connection)
+    checked_out = sql_executor._get_conn(datasource)
+    assert checked_out is connection
+    assert 91 not in sql_executor._conn_pool
+    monkeypatch.setattr(sql_executor, "_get_conn", lambda _ds: checked_out)
+    monkeypatch.setattr(sql_executor, "collect_sql_lineage", lambda *_args: (0, 0))
+    ctx, _logs = make_context({"datasource": "warehouse", "sql": "SELECT 1"})
+
+    result = sql_executor.execute(ctx)
+
+    assert result.state == SUCCESS
+    assert sql_executor._conn_pool[91] is connection
 
 
 @pytest.mark.parametrize(
