@@ -10,7 +10,6 @@ GET /trial/runs/{run_id} aggregates:
 
 from __future__ import annotations
 
-import json
 from typing import Any
 
 from sqlalchemy import select
@@ -18,7 +17,6 @@ from sqlalchemy.orm import Session
 
 from rebuild.execution.models import (
     RunLogRecord,
-    RunOutputRecord,
     TaskInstanceRecord,
     WorkflowInstanceRecord,
 )
@@ -116,25 +114,11 @@ class TrialOutputAggregator:
         # The stats are stored in execution_event with event_kind=RESULT_STAT
         # and in the metrics workflow_result_stat table. For trial runs, we
         # aggregate from the execution_event receipts.
-        from rebuild.execution.models import ExecutionEventRecord
-        from rebuild.execution.repository import RESULT_STAT_EVENT_KIND
+        from rebuild.execution.repository import ExecutionRepository
 
-        events = self._session.scalars(
-            select(ExecutionEventRecord).where(
-                ExecutionEventRecord.workflow_instance_id == instance_id,
-                ExecutionEventRecord.event_kind == RESULT_STAT_EVENT_KIND,
-            )
-        ).all()
-
-        total_success = 0
-        total_failed = 0
-        total_skipped = 0
-        for event in events:
-            if event.payload_json:
-                payload = json.loads(event.payload_json)
-                total_success += payload.get("success_count", 0)
-                total_failed += payload.get("failed_count", 0)
-                total_skipped += payload.get("skipped_count", 0)
+        total_success, total_failed, total_skipped = ExecutionRepository(
+            self._session
+        ).result_totals(instance_id)
 
         return {
             "success_count": total_success,

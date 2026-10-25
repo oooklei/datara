@@ -281,7 +281,7 @@ class ExecutionRepository:
                 "attempt_no": attempt_no,
             }
 
-        before = self._effective_result_totals(workflow_instance_id)
+        before = self.result_totals(workflow_instance_id)
 
         event_payload = {
             **reported,
@@ -320,7 +320,7 @@ class ExecutionRepository:
         else:
             receipt.payload_json = json.dumps(event_payload, ensure_ascii=False, sort_keys=True)
         self._session.flush()
-        after = self._effective_result_totals(workflow_instance_id)
+        after = self.result_totals(workflow_instance_id)
         if instance.instance_type != "TRIAL":
             deltas = tuple(current - previous for current, previous in zip(after, before, strict=True))
             self._apply_metrics_delta(instance, deltas)
@@ -357,7 +357,8 @@ class ExecutionRepository:
             "attempt_no": attempt_no,
         }
 
-    def _effective_result_totals(self, workflow_instance_id: int) -> tuple[int, int, int]:
+    def result_totals(self, workflow_instance_id: int) -> tuple[int, int, int]:
+        """Return authoritative success/failure/skipped totals without log parsing."""
         events = list(
             self._session.scalars(
                 select(ExecutionEventRecord)

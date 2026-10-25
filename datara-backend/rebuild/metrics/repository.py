@@ -9,7 +9,7 @@ returned verbatim (A7 Step 1: no derivation on either side).
 from __future__ import annotations
 
 import json
-from datetime import date, datetime
+from datetime import datetime, timezone
 from typing import Any
 
 from sqlalchemy import select
@@ -38,7 +38,7 @@ class MetricsDomainError(ValueError):
 VALID_RUN_KINDS = ("sql", "sync", "workflow", "all")
 
 
-def parse_window(payload: dict[str, Any]) -> tuple[str, str, int, int]:
+def parse_window(payload: dict[str, Any]) -> tuple[datetime, datetime, int, int]:
     """Validate the TimeWindowQuery body; return (from, to, offset, limit)."""
     window_from = payload.get("from")
     window_to = payload.get("to")
@@ -46,13 +46,24 @@ def parse_window(payload: dict[str, Any]) -> tuple[str, str, int, int]:
     limit = payload.get("limit", 100)
     if not isinstance(window_from, str) or not isinstance(window_to, str) or not window_from or not window_to:
         raise MetricsDomainError(4001, "from/to are required ISO strings")
-    if window_from > window_to:
+    def normalize(value: str, name: str) -> datetime:
+        try:
+            parsed = datetime.fromisoformat(value[:-1] + "+00:00" if value.endswith("Z") else value)
+        except ValueError as exc:
+            raise MetricsDomainError(4001, f"{name} must be an ISO datetime") from exc
+        if parsed.tzinfo is not None:
+            parsed = parsed.astimezone(timezone.utc).replace(tzinfo=None)
+        return parsed
+
+    normalized_from = normalize(window_from, "from")
+    normalized_to = normalize(window_to, "to")
+    if normalized_from > normalized_to:
         raise MetricsDomainError(4001, "from must not be after to")
     if isinstance(offset, bool) or not isinstance(offset, int) or offset < 0:
         raise MetricsDomainError(4001, "offset must be a non-negative integer")
     if isinstance(limit, bool) or not isinstance(limit, int) or limit <= 0 or limit > 1000:
         raise MetricsDomainError(4001, "limit must be an integer within (0, 1000]")
-    return window_from, window_to, offset, limit
+    return normalized_from, normalized_to, offset, limit
 
 
 def _metric_json(raw: str) -> dict[str, Any]:
@@ -64,12 +75,31 @@ class MetricsRepository:
     def __init__(self, session: Session) -> None:
         self._session = session
 
-    def workflow_result_stats(self, window_from: str, window_to: str, offset: int, limit: int, project_id: int) -> list[dict[str, Any]]:
-        # The execution domain is now the authoritative producer for run
-        # statistics.  Keep the legacy R7 table as a compatibility fallback,
-        # but expose canonical workflow_run_stat rows whenever they exist so
-        # the project workbench reflects the same success/failure counts as
-        # the run-monitor page (and never depends on log tables).
+    def workflow_result_stats(self, window_from: datetime, window_to: datetime, offset: int, limit: int, project_id: int) -> list[dict[str, Any]]:
+        # Merge by workflow/day during the execution-stat rollout. A canonical
+        # projection overrides the same legacy key, but must not hide unrelated
+        # legacy days merely because one new run-stat row exists.
+        aggregate: dict[tuple[int, str], dict[str, Any]] = {}
+        legacy = self._session.scalars(
+            select(WorkflowResultStatRecord)
+            .join(WorkflowDefinitionRecord, WorkflowDefinitionRecord.id == WorkflowResultStatRecord.workflow_id)
+            .where(
+                WorkflowResultStatRecord.run_date >= window_from.date(),
+                WorkflowResultStatRecord.run_date <= window_to.date(),
+            )
+            .where(WorkflowDefinitionRecord.project_id == project_id)
+        )
+        for row in legacy:
+            day = row.run_date.isoformat()
+            aggregate[(row.workflow_id, day)] = {
+                "workflow_id": row.workflow_id,
+                "run_date": day,
+                "success_count": row.success_count,
+                "failure_count": row.failure_count,
+                "skipped_count": row.skipped_count,
+                "retry_count": row.retry_count,
+            }
+
         bind = self._session.get_bind()
         if bind is not None and bind.dialect.has_table(self._session.connection(), WorkflowRunStatRecord.__tablename__):
             canonical = list(self._session.execute(
@@ -87,11 +117,11 @@ class MetricsRepository:
                 .order_by(WorkflowRunStatRecord.started_at, WorkflowRunStatRecord.workflow_id, WorkflowRunStatRecord.id)
             ))
             if canonical:
-                aggregate: dict[tuple[int, str], dict[str, Any]] = {}
+                projected: dict[tuple[int, str], dict[str, Any]] = {}
                 for workflow_id, started_at, success, failure, skipped in canonical:
                     day = started_at.date().isoformat()
                     key = (workflow_id, day)
-                    row = aggregate.setdefault(key, {
+                    row = projected.setdefault(key, {
                         "workflow_id": workflow_id, "run_date": day,
                         "success_count": 0, "failure_count": 0,
                         "skipped_count": 0, "retry_count": 0,
@@ -99,29 +129,11 @@ class MetricsRepository:
                     row["success_count"] += int(success or 0)
                     row["failure_count"] += int(failure or 0)
                     row["skipped_count"] += int(skipped or 0)
-                return list(aggregate.values())[offset:offset + limit]
-        rows = self._session.scalars(
-            select(WorkflowResultStatRecord)
-            .join(WorkflowDefinitionRecord, WorkflowDefinitionRecord.id == WorkflowResultStatRecord.workflow_id)
-            .where(WorkflowResultStatRecord.run_date >= window_from[:10], WorkflowResultStatRecord.run_date <= window_to[:10])
-            .where(WorkflowDefinitionRecord.project_id == project_id)
-            .order_by(WorkflowResultStatRecord.run_date, WorkflowResultStatRecord.workflow_id, WorkflowResultStatRecord.id)
-            .offset(offset)
-            .limit(limit)
-        )
-        return [
-            {
-                "workflow_id": row.workflow_id,
-                "run_date": row.run_date.isoformat(),
-                "success_count": row.success_count,
-                "failure_count": row.failure_count,
-                "skipped_count": row.skipped_count,
-                "retry_count": row.retry_count,
-            }
-            for row in rows
-        ]
+                aggregate.update(projected)
+        ordered_keys = sorted(aggregate, key=lambda key: (key[1], key[0]))
+        return [aggregate[key] for key in ordered_keys][offset:offset + limit]
 
-    def task_instance_data_stats(self, window_from: str, window_to: str, offset: int, limit: int, project_id: int) -> list[dict[str, Any]]:
+    def task_instance_data_stats(self, window_from: datetime, window_to: datetime, offset: int, limit: int, project_id: int) -> list[dict[str, Any]]:
         rows = self._session.scalars(
             select(TaskInstanceDataStatRecord)
             .join(WorkflowInstanceRecord, WorkflowInstanceRecord.id == TaskInstanceDataStatRecord.instance_id)
@@ -144,7 +156,7 @@ class MetricsRepository:
             for row in rows
         ]
 
-    def task_data_stat_segments(self, window_from: str, window_to: str, offset: int, limit: int, project_id: int) -> list[dict[str, Any]]:
+    def task_data_stat_segments(self, window_from: datetime, window_to: datetime, offset: int, limit: int, project_id: int) -> list[dict[str, Any]]:
         rows = self._session.scalars(
             select(TaskDataStatSegmentRecord)
             .join(WorkflowInstanceRecord, WorkflowInstanceRecord.id == TaskDataStatSegmentRecord.instance_id)
@@ -165,7 +177,7 @@ class MetricsRepository:
             for row in rows
         ]
 
-    def task_data_error_samples(self, window_from: str, window_to: str, offset: int, limit: int, project_id: int) -> list[dict[str, Any]]:
+    def task_data_error_samples(self, window_from: datetime, window_to: datetime, offset: int, limit: int, project_id: int) -> list[dict[str, Any]]:
         rows = self._session.scalars(
             select(TaskDataErrorSampleRecord)
             .join(WorkflowInstanceRecord, WorkflowInstanceRecord.id == TaskDataErrorSampleRecord.instance_id)
@@ -187,7 +199,7 @@ class MetricsRepository:
             for row in rows
         ]
 
-    def quality_rule_links(self, window_from: str, window_to: str, offset: int, limit: int, project_id: int) -> list[dict[str, Any]]:
+    def quality_rule_links(self, window_from: datetime, window_to: datetime, offset: int, limit: int, project_id: int) -> list[dict[str, Any]]:
         rows = self._session.scalars(
             select(QualityRuleResultLinkRecord)
             .where(QualityRuleResultLinkRecord.result_at >= window_from, QualityRuleResultLinkRecord.result_at <= window_to)
@@ -208,7 +220,7 @@ class MetricsRepository:
         ]
 
     def lineage_writebacks(
-        self, window_from: str, window_to: str, offset: int, limit: int, kind: str, project_id: int
+        self, window_from: datetime, window_to: datetime, offset: int, limit: int, kind: str, project_id: int
     ) -> list[dict[str, Any]]:
         if kind not in VALID_RUN_KINDS:
             raise MetricsDomainError(4001, f"kind must be one of {list(VALID_RUN_KINDS)}")

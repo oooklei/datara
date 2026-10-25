@@ -5,22 +5,14 @@ empty arrays (not 404); missing instance returns found=False.
 """
 
 import json
-import pytest
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session
 
 from rebuild.common.db import Base
-from rebuild.execution.models import (
-    ExecutionEventRecord,
-    RunLogRecord,
-    TaskInstanceRecord,
-    WorkflowInstanceRecord,
-)
-from rebuild.execution.repository import ExecutionRepository, RESULT_STAT_EVENT_KIND
+from rebuild.execution.repository import ExecutionRepository
 from rebuild.trial.output import TrialOutputAggregator
 from rebuild.trial.repository import TrialSnapshotRepository
 from rebuild.trial.runner import TrialRunner
-from rebuild.variables.models import TaskInstanceVariableRuntimeRecord
 from rebuild.workflow.models import (
     WorkflowDefinitionRecord,
     WorkflowEdgeRecord,
@@ -149,3 +141,40 @@ def test_aggregate_missing_instance_returns_not_found():
     assert output["found"] is False
     assert output["logs"] == []
     assert output["variables"] == []
+
+
+def test_aggregate_uses_workflow_receipt_instead_of_double_counting_task_receipts():
+    session = _session()
+    definition_id = _make_definition(session)
+    repo = ExecutionRepository(session)
+    instance = repo.create_workflow_instance(
+        workflow_id=definition_id,
+        workflow_version_id=1,
+        instance_type="TRIAL",
+    )
+    task = repo.create_task_instance(workflow_instance_id=instance.id, task_id="sync")
+    attempt = repo.append_attempt(task.id)
+    repo.record_result_stat(
+        workflow_instance_id=instance.id,
+        task_instance_id=task.id,
+        attempt_no=attempt.attempt_no,
+        success_count=4,
+        failed_count=1,
+        skipped_count=0,
+    )
+    repo.record_result_stat(
+        workflow_instance_id=instance.id,
+        task_instance_id=None,
+        attempt_no=0,
+        success_count=10,
+        failed_count=2,
+        skipped_count=3,
+    )
+
+    output = TrialOutputAggregator(session).aggregate(instance.id)
+
+    assert output["stats"] == {
+        "success_count": 10,
+        "failed_count": 2,
+        "skipped_count": 3,
+    }

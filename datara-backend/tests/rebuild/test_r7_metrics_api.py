@@ -5,11 +5,14 @@ methods, MetricValue verbatim passthrough (A7 Step 1), kind filter, window
 validation, snake_case keys.
 """
 
+from datetime import datetime
+
 from fastapi.testclient import TestClient
 
 from rebuild.api.app import create_app
 from rebuild.identity.contracts import Role
 from rebuild.identity.repository import UserRepository
+from rebuild.metrics.repository import parse_window
 from rebuild.project.repository import ProjectRepository
 
 
@@ -27,6 +30,19 @@ def _client():
 
 
 WINDOW = {"project_id": 1, "from": "2026-10-01T00:00:00", "to": "2026-10-31T23:59:59", "offset": 0, "limit": 100}
+
+
+def test_time_window_normalizes_iso_z_values_for_datetime_columns():
+    window_from, window_to, offset, limit = parse_window({
+        "from": "1970-01-01T00:00:00Z",
+        "to": "2030-01-01T08:00:00+08:00",
+        "offset": 0,
+        "limit": 50,
+    })
+
+    assert window_from == datetime(1970, 1, 1)
+    assert window_to == datetime(2030, 1, 1)
+    assert (offset, limit) == (0, 50)
 
 
 def _seed(app):
@@ -182,8 +198,8 @@ def test_metrics_endpoints_require_project_access():
         client.__exit__(None, None, None)
 
 
-def test_workflow_result_stats_prefers_execution_run_stat_projection():
-    """The workbench metrics contract must expose execution-owned run stats."""
+def test_workflow_result_stats_merges_legacy_days_and_prefers_execution_projection_per_day():
+    """A partial run-stat rollout must not hide legacy workflow/day aggregates."""
     from datetime import datetime
     from rebuild.execution.models import WorkflowRunStatRecord
 
@@ -191,20 +207,52 @@ def test_workflow_result_stats_prefers_execution_run_stat_projection():
     try:
         _seed(app)
         with app.state.session_factory() as session:
-            session.add(WorkflowRunStatRecord(
-                project_id=1, workflow_id=7, workflow_version_id=1,
-                workflow_instance_id=501, instance_type="FORMAL", status="SUCCEEDED",
-                dag_name="metrics-workflow", success_count=4, failure_count=1,
-                skipped_count=2, total_count=5,
-                started_at=datetime(2026, 10, 16, 1, 0, 0),
+            from rebuild.metrics.models import WorkflowResultStatRecord
+            from rebuild.workflow.models import WorkflowDefinitionRecord
+
+            session.add_all((
+                WorkflowDefinitionRecord(
+                    id=8,
+                    project_id=1,
+                    name="second-metrics-workflow",
+                    description="",
+                    current_version=None,
+                ),
+                WorkflowResultStatRecord(
+                    workflow_id=8, run_date=datetime(2026, 10, 15).date(),
+                    success_count=1, failure_count=0, skipped_count=0, retry_count=0,
+                ),
+                WorkflowResultStatRecord(
+                    workflow_id=7, run_date=datetime(2026, 10, 16).date(),
+                    success_count=99, failure_count=99, skipped_count=99, retry_count=9,
+                ),
+                WorkflowRunStatRecord(
+                    project_id=1, workflow_id=7, workflow_version_id=1,
+                    workflow_instance_id=501, instance_type="FORMAL", status="SUCCEEDED",
+                    dag_name="metrics-workflow", success_count=4, failure_count=1,
+                    skipped_count=2, total_count=5,
+                    started_at=datetime(2026, 10, 16, 1, 0, 0),
+                ),
             ))
             session.commit()
         response = client.post("/api/v1/rebuild/metrics/workflow-result-stats", headers=headers, json=WINDOW)
         assert response.status_code == 200
-        assert response.json()["data"] == [{
-            "workflow_id": 7, "run_date": "2026-10-16",
-            "success_count": 4, "failure_count": 1,
-            "skipped_count": 2, "retry_count": 0,
-        }]
+        assert response.json()["data"] == [
+            {
+                "workflow_id": 7, "run_date": "2026-10-15",
+                "success_count": 10, "failure_count": 2,
+                "skipped_count": 1, "retry_count": 3,
+            },
+            {
+                "workflow_id": 8, "run_date": "2026-10-15",
+                "success_count": 1, "failure_count": 0,
+                "skipped_count": 0, "retry_count": 0,
+            },
+            {
+                "workflow_id": 7, "run_date": "2026-10-16",
+                "success_count": 4, "failure_count": 1,
+                "skipped_count": 2, "retry_count": 0,
+            },
+        ]
     finally:
         client.__exit__(None, None, None)
