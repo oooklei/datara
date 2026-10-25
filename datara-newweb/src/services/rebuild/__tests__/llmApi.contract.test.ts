@@ -69,7 +69,7 @@ describe('15.6 rebuild llm-models contract (§5E)', () => {
   it('freezes exactly the six §5E methods', () => {
     expect(LLM_CONTRACT_METHODS).toEqual(['list', 'create', 'update', 'remove', 'testModel', 'setDefault'])
     expect(Object.keys(llmApi)).toEqual([...LLM_CONTRACT_METHODS])
-    expect(LLM_PROVIDERS).toEqual(['siliconflow', 'volcengine'])
+    expect(LLM_PROVIDERS).toEqual(['siliconflow', 'volcengine', 'longcat'])
   })
 
   it('maps the six methods onto the six §5E routes with the contracted verbs', async () => {

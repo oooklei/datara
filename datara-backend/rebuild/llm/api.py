@@ -31,7 +31,7 @@ class LlmModelRequest(BaseModel):
     @field_validator("provider")
     @classmethod
     def validate_provider(cls, value: str) -> str:
-        if value not in {"siliconflow", "volcengine"}:
+        if value not in {"longcat", "siliconflow", "volcengine"}:
             raise ValueError("unsupported LLM provider")
         return value
 

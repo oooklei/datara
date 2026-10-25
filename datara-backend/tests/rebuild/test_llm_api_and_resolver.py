@@ -92,6 +92,14 @@ def test_admin_only_probe_isolated_validation_and_pagination():
         insecure["api_base"] = "http://example.invalid/v1"
         assert client.post("/api/v1/rebuild/llm-models", headers=headers, json=unsupported).status_code == 422
         assert client.post("/api/v1/rebuild/llm-models", headers=headers, json=insecure).status_code == 422
+        # T1（D-03 白名单单源）：longcat 与 ai_copilot/config.py SUPPORTED_PROVIDERS 对齐后必须可创建。
+        longcat = _body(name="longcat-probe", key="longcat-secret-9999", default=False)
+        longcat["provider"] = "longcat"
+        longcat_created = client.post("/api/v1/rebuild/llm-models", headers=headers, json=longcat)
+        assert longcat_created.status_code == 201
+        assert longcat_created.json()["data"]["provider"] == "longcat"
+        longcat_id = longcat_created.json()["data"]["id"]
+        assert client.delete(f"/api/v1/rebuild/llm-models/{longcat_id}", headers=headers).status_code == 200
         item_id = client.post("/api/v1/rebuild/llm-models", headers=headers, json=_body()).json()["data"]["id"]
         failed = client.post(f"/api/v1/rebuild/llm-models/{item_id}/test", headers=headers)
         assert failed.status_code == 502 and "provider-secret" not in failed.text

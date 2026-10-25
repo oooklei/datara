@@ -13,8 +13,8 @@
 import { deleteJson, getJson, postJson, putJson } from '../http'
 import { camelToSnake, snakeToCamel } from './adapterKit'
 
-/** provider 白名单（对齐 `rebuild/llm/api.py` `LlmModelRequest.validate_provider`）。 */
-export const LLM_PROVIDERS = ['siliconflow', 'volcengine'] as const
+/** provider 白名单（对齐 `rebuild/llm/api.py` `LlmModelRequest.validate_provider` 与 `ai_copilot/config.py` `SUPPORTED_PROVIDERS`——三方单源）。 */
+export const LLM_PROVIDERS = ['siliconflow', 'volcengine', 'longcat'] as const
 export type LlmProvider = (typeof LLM_PROVIDERS)[number]
 
 export interface LlmModelDraft {

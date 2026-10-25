@@ -9,7 +9,7 @@
     </table>
     <div v-if="editing" class="mask" @click.self="editing=false"><form role="dialog" aria-modal="true" aria-label="LLM 模型编辑" @submit.prevent="save"><h2>{{ editingId ? '编辑模型' : '新建模型' }}</h2>
       <label>名称<input v-model.trim="draft.name" required data-name></label><label>显示名称<input v-model.trim="draft.displayName" required data-display-name></label>
-      <label>提供商<select v-model="draft.provider" data-provider><option value="siliconflow">siliconflow</option><option value="volcengine">volcengine</option></select></label>
+      <label>提供商<select v-model="draft.provider" data-provider><option v-for="p in LLM_PROVIDERS" :key="p" :value="p">{{ p }}</option></select></label>
       <label>API 地址<input v-model.trim="draft.apiBase" type="url" required data-api-base></label><label>模型 ID<input v-model.trim="draft.modelId" required data-model-id></label>
       <label>API Key <small>编辑时留空表示保留现有密钥</small><input v-model="draft.apiKey" type="password" autocomplete="new-password" data-api-key></label>
       <div class="grid"><label>最大 Token<input v-model.number="draft.maxTokens" type="number" min="1" data-max-tokens></label><label>温度<input v-model.number="draft.temperature" type="number" min="0" max="2" step="0.1" data-temperature></label></div>
@@ -20,7 +20,7 @@
 </template>
 <script setup lang="ts">
 import { onMounted, reactive, ref } from 'vue'
-import { llmApi, type LlmModelDraft, type LlmModelRecord, type LlmProvider } from '../services/rebuild/llmApi'
+import { llmApi, LLM_PROVIDERS, type LlmModelDraft, type LlmModelRecord } from '../services/rebuild/llmApi'
 const items = ref<LlmModelRecord[]>([]), busy = ref(false), error = ref(''), notice = ref(''), editing = ref(false), editingId = ref<number>()
 const blank = (): LlmModelDraft => ({ name: '', displayName: '', provider: 'siliconflow', apiBase: 'https://api.siliconflow.cn/v1', modelId: '', apiKey: '', maxTokens: 4096, temperature: 0.7, isActive: true, isDefault: false, sortOrder: 0 })
 const draft = reactive<LlmModelDraft>(blank())
