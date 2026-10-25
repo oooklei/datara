@@ -3,7 +3,7 @@ from types import SimpleNamespace
 import pytest
 
 from worker.executors import sql as sql_executor
-from worker.state import FAILURE, SUCCESS
+from worker.state import FAILURE, KILL, SUCCESS
 
 
 class FakeCursor:
@@ -208,7 +208,7 @@ def test_transaction_all_rolls_back_when_killed_between_statements(executor_env)
 
     result = sql_executor.execute(ctx)
 
-    assert result.state != SUCCESS
+    assert result.state == KILL
     assert executor_env.statements == ["SELECT 1"]
     assert executor_env.transaction_calls == ["begin", "rollback"]
 
@@ -253,7 +253,7 @@ def test_transaction_all_checks_kill_after_last_statement_before_commit(executor
 
     result = sql_executor.execute(ctx)
 
-    assert result.state != SUCCESS
+    assert result.state == KILL
     assert executor_env.statements == ["SELECT 1"]
     assert executor_env.transaction_calls == ["begin", "rollback"]
 
@@ -286,7 +286,7 @@ def test_explicit_transaction_rolls_back_connection_when_killed(executor_env):
 
     result = sql_executor.execute(ctx)
 
-    assert result.state != SUCCESS
+    assert result.state == KILL
     assert executor_env.transaction_calls == ["rollback"]
 
 
@@ -357,3 +357,131 @@ def test_transaction_all_rejects_mysql_executable_comment_boundaries_before_exec
     assert executor_env.statements == []
     assert executor_env.transaction_calls == []
     assert any("transaction=all" in line for line in logs)
+
+
+@pytest.mark.parametrize(
+    "statement",
+    [
+        "CREATE TABLE new_table (id INT)",
+        "ALTER TABLE users ADD COLUMN active INT",
+        "DROP TABLE users",
+        "TRUNCATE TABLE users",
+        "RENAME TABLE users TO old_users",
+        "LOCK TABLES users READ",
+        "LOCK INSTANCE FOR BACKUP",
+        "UNLOCK TABLES",
+        "GRANT SELECT ON db.* TO reader",
+        "REVOKE SELECT ON db.* FROM reader",
+        "ANALYZE TABLE users",
+        "SET PASSWORD FOR reader = 'secret'",
+    ],
+)
+def test_transaction_all_rejects_implicit_commit_statements_before_execution(executor_env, statement):
+    ctx, logs = make_context(
+        {"datasource": "warehouse", "sql": statement, "transaction": "all"}
+    )
+
+    result = sql_executor.execute(ctx)
+
+    assert result.state == FAILURE
+    assert executor_env.statements == []
+    assert executor_env.transaction_calls == []
+    assert any("transaction=all" in line for line in logs)
+
+
+@pytest.mark.parametrize(
+    "statement",
+    [
+        "SELECT GET_LOCK('resource', 1)",
+        "SELECT unknown_side_effect(1)",
+        "SELECT @session_value := 1",
+    ],
+)
+def test_read_only_rejects_unsafe_functions_and_session_assignment_before_execution(
+    executor_env, statement
+):
+    ctx, logs = make_context(
+        {"datasource": "warehouse", "sql": statement, "readOnly": True}
+    )
+
+    result = sql_executor.execute(ctx)
+
+    assert result.state == FAILURE
+    assert executor_env.statements == []
+    assert any("readOnly" in line for line in logs)
+
+
+def test_read_only_allows_whitelisted_safe_select(executor_env):
+    ctx, _logs = make_context(
+        {"datasource": "warehouse", "sql": "SELECT ABS(1)", "readOnly": True}
+    )
+
+    result = sql_executor.execute(ctx)
+
+    assert result.state == SUCCESS
+    assert executor_env.statements == ["SELECT ABS(1)"]
+
+
+def test_explicit_transaction_fails_and_cleans_up_when_script_leaves_transaction_open(executor_env):
+    ctx, logs = make_context(
+        {
+            "datasource": "warehouse",
+            "sql": "START TRANSACTION; SELECT 1",
+            "transaction": "explicit",
+        }
+    )
+
+    result = sql_executor.execute(ctx)
+
+    assert result.state == FAILURE
+    assert executor_env.statements == ["START TRANSACTION", "SELECT 1"]
+    assert executor_env.transaction_calls == ["rollback"]
+    assert any("未闭合" in line for line in logs)
+
+
+def test_explicit_rollback_to_savepoint_does_not_count_as_transaction_close(executor_env):
+    ctx, logs = make_context(
+        {
+            "datasource": "warehouse",
+            "sql": "START TRANSACTION; SAVEPOINT before_write; ROLLBACK TO SAVEPOINT before_write",
+            "transaction": "explicit",
+        }
+    )
+
+    result = sql_executor.execute(ctx)
+
+    assert result.state == FAILURE
+    assert executor_env.transaction_calls == ["rollback"]
+    assert any("未闭合" in line for line in logs)
+
+
+def test_split_sql_respects_semicolons_inside_strings_and_comments():
+    assert sql_executor._split_sql("SELECT 'a;b'; SELECT 1 /* ; retained */;") == [
+        "SELECT 'a;b'",
+        "SELECT 1 /* ; retained */",
+    ]
+
+
+def test_executor_uses_lexical_statement_boundaries(executor_env):
+    ctx, _logs = make_context(
+        {"datasource": "warehouse", "sql": "SELECT 'a;b'; SELECT 1 /* ; retained */;"}
+    )
+
+    result = sql_executor.execute(ctx)
+
+    assert result.state == SUCCESS
+    assert executor_env.statements == ["SELECT 'a;b'", "SELECT 1 /* ; retained */"]
+
+
+def test_transaction_none_reports_kill_arriving_after_last_statement(executor_env):
+    kill_checks = iter((False, True))
+    ctx, _logs = make_context(
+        {"datasource": "warehouse", "sql": "UPDATE summary SET n=1", "transaction": "none"},
+        killed=lambda: next(kill_checks),
+    )
+
+    result = sql_executor.execute(ctx)
+
+    assert result.state == KILL
+    assert executor_env.statements == ["UPDATE summary SET n=1"]
+    assert executor_env.transaction_calls == []

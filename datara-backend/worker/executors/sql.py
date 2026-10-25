@@ -1,14 +1,15 @@
 """C11 SQL 执行器（I3 设计文档 §7.2）：pymysql 连 t_data_source。
 
 - 数据源解析：param.datasource（名称，前端字段）→ t_data_source；数字串兜底按 id
-- 多语句分号拆分顺序执行：前置 pre → 主 sql → 后置 post；autocommit 逐语句提交
+- 多语句按仓内词法器安全拆分并顺序执行：前置 pre → 主 sql → 后置 post
+- transaction 支持 none/all/explicit；all 仅接受可事务化语句，explicit 必须自行闭合边界
 - 查询：row_count 全量计数 + result_preview 前 200 行；非查询/DDL：影响行数
 - 连接池：按数据源 id LRU（maxsize=8），取用时 ping 自愈断连
 - 变量占位已在 master 侧替换下发（param_resolved），worker 零解析
 """
 
-import threading
 import re
+import threading
 from collections import OrderedDict
 from datetime import date, datetime
 from decimal import Decimal
@@ -18,6 +19,8 @@ import pymysql
 import sqlglot
 from sqlglot import exp
 
+from rebuild.sql_ide.readonly_preflight import ReadonlyBatchPreflightError, preflight_readonly_batch
+from rebuild.sql_ide.statement_splitter import StatementSplitError, split_sql_statements
 from worker.executor import ExecResult, register
 from worker.lineage import collect_sql_lineage
 from worker.state import FAILURE, KILL, SUCCESS
@@ -37,8 +40,8 @@ _EXPLAINABLE_TYPES = _READONLY_QUERY_TYPES + (exp.Insert, exp.Update, exp.Delete
 
 
 def _split_sql(text: str) -> list:
-    """多语句分号拆分（空语句剔除，保序）。"""
-    return [part.strip() for part in (text or "").split(";") if part.strip()]
+    """按 SQL 词法边界安全拆分语句，保留字符串与注释内的分号。"""
+    return [statement.sql for statement in split_sql_statements(text or "", dialect="mysql")]
 
 
 def _lookup_datasource(ref):
@@ -134,21 +137,20 @@ def _run_one(conn, stmt: str, log: Callable) -> dict:
 
 
 def _is_readonly_statement(stmt: str) -> bool:
-    """Return true only when a statement can be proven to be a read query."""
+    """复用 SQL IDE 的安全函数白名单，并额外拒绝 MySQL 会话变量赋值。"""
     try:
+        preflight_readonly_batch(stmt, dialect="mysql")
         parsed = [item for item in sqlglot.parse(stmt, read="mysql") if item is not None]
-    except (sqlglot.errors.ParseError, ValueError):
+    except (ReadonlyBatchPreflightError, sqlglot.errors.ParseError, ValueError):
         return False
-    if len(parsed) != 1 or not isinstance(parsed[0], _READONLY_QUERY_TYPES):
-        return False
-    for select in parsed[0].find_all(exp.Select):
-        if select.args.get("into") is not None or select.args.get("locks"):
-            return False
-    return True
+    return len(parsed) == 1 and not any(
+        isinstance(node, exp.PropertyEQ) and isinstance(node.this, exp.Parameter)
+        for node in parsed[0].walk()
+    )
 
 
-def _is_transaction_control_statement(stmt: str) -> bool:
-    """Detect statements that would escape the executor-owned all boundary."""
+def _normalize_policy_sql(stmt: str) -> str:
+    """Expose MySQL executable comments while discarding ordinary comments and hints."""
     def replace_block_comment(match: re.Match) -> str:
         content = match.group(1)
         if not content.startswith("!"):
@@ -159,7 +161,12 @@ def _is_transaction_control_statement(stmt: str) -> bool:
 
     normalized = re.sub(r"/\*(.*?)\*/", replace_block_comment, stmt, flags=re.DOTALL)
     normalized = re.sub(r"(?:--|#)[^\r\n]*", " ", normalized)
-    normalized = " ".join(normalized.upper().split())
+    return " ".join(normalized.upper().split())
+
+
+def _is_transaction_control_statement(stmt: str) -> bool:
+    """Detect statements that would escape the executor-owned all boundary."""
+    normalized = _normalize_policy_sql(stmt)
     if re.match(r"^(?:BEGIN|COMMIT|ROLLBACK|SAVEPOINT)\b", normalized):
         return True
     if re.match(r"^(?:START\s+TRANSACTION|RELEASE\s+SAVEPOINT)\b", normalized):
@@ -170,6 +177,36 @@ def _is_transaction_control_statement(stmt: str) -> bool:
             normalized,
         )
     )
+
+
+def _is_implicit_commit_statement(stmt: str) -> bool:
+    """Detect MySQL statements that cannot participate in an atomic all-mode batch."""
+    normalized = _normalize_policy_sql(stmt)
+    return bool(
+        re.match(
+            r"^(?:CREATE|ALTER|DROP|TRUNCATE|RENAME|GRANT|REVOKE|LOCK|UNLOCK|ANALYZE|CACHE|CHECK|FLUSH|"
+            r"OPTIMIZE|REPAIR|RESET|INSTALL|UNINSTALL|LOAD)\b|^SET\s+PASSWORD\b",
+            normalized,
+        )
+    )
+
+
+def _explicit_transaction_effect(stmt: str) -> str | None:
+    """Classify explicit transaction state changes for pooled-connection cleanup."""
+    normalized = _normalize_policy_sql(stmt)
+    if re.match(r"^(?:BEGIN|START\s+TRANSACTION)\b", normalized):
+        return "open"
+    if re.match(r"^COMMIT\b", normalized):
+        return "close"
+    if re.match(r"^ROLLBACK\b", normalized) and not re.match(r"^ROLLBACK(?:\s+WORK)?\s+TO\b", normalized):
+        return "close"
+    autocommit = re.match(
+        r"^SET\s+(?:(?:SESSION|GLOBAL)\s+|@@(?:SESSION\.|GLOBAL\.)?)?AUTOCOMMIT\s*(?:=|:=)\s*(\w+)",
+        normalized,
+    )
+    if autocommit:
+        return "autocommit_on" if autocommit.group(1) in {"1", "ON", "TRUE"} else "autocommit_off"
+    return None
 
 
 def _is_explainable_statement(stmt: str) -> bool:
@@ -187,6 +224,16 @@ def _rollback(conn, log: Callable) -> None:
         conn.rollback()
     except Exception as exc:  # noqa: BLE001
         log("[sql] transaction rollback failed: %r" % exc)
+
+
+def _cleanup_explicit_connection(conn, log: Callable) -> None:
+    """Rollback explicit work and restore the pool's autocommit invariant when observable."""
+    _rollback(conn, log)
+    try:
+        if hasattr(conn, "get_autocommit") and not conn.get_autocommit():
+            conn.autocommit(True)
+    except Exception as exc:  # noqa: BLE001
+        log("[sql] explicit transaction autocommit restore failed: %r" % exc)
 
 
 @register("sql")
@@ -208,23 +255,27 @@ def execute(ctx) -> ExecResult:
         ctx.log("[sql] transaction 参数无效: %s" % transaction_mode)
         return ExecResult(FAILURE, {}, [])
 
-    phases = (
-        ("pre", "前置", _split_sql(str(param.get("pre") or ""))),
-        ("sql", "主", _split_sql(str(param.get("sql") or ""))),
-        ("post", "后置", _split_sql(str(param.get("post") or ""))),
-    )
+    try:
+        phases = (
+            ("pre", "前置", _split_sql(str(param.get("pre") or ""))),
+            ("sql", "主", _split_sql(str(param.get("sql") or ""))),
+            ("post", "后置", _split_sql(str(param.get("post") or ""))),
+        )
+    except StatementSplitError as exc:
+        ctx.log("[sql] SQL 词法分句失败: %s" % exc)
+        return ExecResult(FAILURE, {}, [])
     if transaction_mode == "all":
-        boundary = next(
+        unsafe = next(
             (
                 stmt
                 for _phase_key, _phase_label, statements in phases
                 for stmt in statements
-                if _is_transaction_control_statement(stmt)
+                if _is_transaction_control_statement(stmt) or _is_implicit_commit_statement(stmt)
             ),
             None,
         )
-        if boundary is not None:
-            ctx.log("[sql] transaction=all 禁止脚本内事务控制语句: %s" % boundary[:200].replace("\n", " "))
+        if unsafe is not None:
+            ctx.log("[sql] transaction=all 禁止事务控制或隐式提交语句: %s" % unsafe[:200].replace("\n", " "))
             return ExecResult(FAILURE, {}, [])
     if param.get("readOnly"):
         rejected = next(
@@ -251,6 +302,8 @@ def execute(ctx) -> ExecResult:
     executed: list = []  # 已成功执行语句（血缘采集源，I5 F24；_run_one 无异常=已提交）
     outputs_count: dict = {}  # 血缘计数（成功终态随 outputs 上报）
     killed = False
+    explicit_transaction_open = False
+    explicit_autocommit_disabled = False
     state = SUCCESS
     try:
         if transaction_mode == "all":
@@ -268,9 +321,23 @@ def execute(ctx) -> ExecResult:
                     )
                 results.append(_run_one(conn, stmt, ctx.log))
                 executed.append(stmt)
+                if transaction_mode == "explicit":
+                    effect = _explicit_transaction_effect(stmt)
+                    if effect == "open":
+                        explicit_transaction_open = True
+                    elif effect == "close":
+                        explicit_transaction_open = False
+                    elif effect == "autocommit_off":
+                        explicit_autocommit_disabled = True
+                    elif effect == "autocommit_on":
+                        explicit_transaction_open = False
+                        explicit_autocommit_disabled = False
             if killed:
                 break
-        if transaction_mode in {"all", "explicit"} and not killed and ctx.killed():
+        # PyMySQL exposes no safe same-connection cancellation while cursor.execute/fetchmany
+        # is blocked. Kill is therefore cooperative between statements and immediately after
+        # the final statement; an auxiliary control connection would be required for KILL QUERY.
+        if not killed and ctx.killed():
             killed = True
         if transaction_mode == "all":
             if killed:
@@ -278,10 +345,16 @@ def execute(ctx) -> ExecResult:
             else:
                 conn.commit()
         elif transaction_mode == "explicit" and killed:
-            _rollback(conn, ctx.log)
+            _cleanup_explicit_connection(conn, ctx.log)
+        elif transaction_mode == "explicit" and (explicit_transaction_open or explicit_autocommit_disabled):
+            _cleanup_explicit_connection(conn, ctx.log)
+            ctx.log("[sql] explicit 事务未闭合，已回滚并拒绝成功终态")
+            state = FAILURE
     except Exception as exc:  # noqa: BLE001 SQL 错误 → failure
-        if transaction_mode in {"all", "explicit"}:
+        if transaction_mode == "all":
             _rollback(conn, ctx.log)
+        elif transaction_mode == "explicit":
+            _cleanup_explicit_connection(conn, ctx.log)
         ctx.log("[sql] 执行失败: %r" % exc)
         state = FAILURE
     if killed:
