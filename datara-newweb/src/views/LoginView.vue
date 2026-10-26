@@ -39,8 +39,9 @@ async function recheckSession() {
 </template>
 
 <style scoped>
-.login-wrap{min-height:100vh;display:flex;align-items:center;justify-content:center;background:linear-gradient(135deg,var(--primary-light,#eef5ff),var(--bg,#f7f9fc));padding:20px}
-.login-card{width:400px;max-width:94vw;background:#fff;border:1px solid var(--border,#dfe5ef);border-radius:12px;box-shadow:0 8px 30px rgba(20,50,90,.1);padding:28px}
-.brand{display:flex;align-items:center;gap:12px;margin-bottom:24px}.brand-mark{width:40px;height:40px;border-radius:10px;background:var(--primary,#2563eb);color:#fff;font-weight:700;font-size:20px;display:grid;place-items:center}.brand h1{font-size:17px;margin:0}.brand p{font-size:12px;color:var(--text-3,#7b8798);margin:3px 0 0}
-.session-guide{display:grid;gap:12px;color:var(--text-2,#536174);font-size:13px;line-height:1.6}.session-guide p{margin:0}.status{padding:9px 10px;border-radius:6px;background:var(--primary-light,#eef5ff);color:var(--text,#263244)}.submit{width:100%;border:0;border-radius:6px;padding:10px;background:var(--primary,#2563eb);color:#fff;font-size:14px;font-weight:600;cursor:pointer}.foot{text-align:center;margin:18px 0 0;color:var(--text-3,#7b8798);font-size:11px}
+/* 设计令牌：由全局 styles/theme.css 的 :root 提供（§4.4.3 风格统一），本文件无 fallback 十六进制。 */
+.login-wrap{min-height:100vh;display:flex;align-items:center;justify-content:center;background:linear-gradient(135deg,var(--primary-light),var(--bg));padding:20px}
+.login-card{width:400px;max-width:94vw;background:var(--card);border:1px solid var(--border);border-radius:12px;box-shadow:0 8px 30px rgba(20,50,90,.1);padding:28px}
+.brand{display:flex;align-items:center;gap:12px;margin-bottom:24px}.brand-mark{width:40px;height:40px;border-radius:var(--radius-lg);background:var(--primary);color:var(--card);font-weight:700;font-size:20px;display:grid;place-items:center}.brand h1{font-size:17px;margin:0}.brand p{font-size:12px;color:var(--text-3);margin:3px 0 0}
+.session-guide{display:grid;gap:12px;color:var(--text-2);font-size:13px;line-height:1.6}.session-guide p{margin:0}.status{padding:9px 10px;border-radius:var(--radius-sm);background:var(--primary-light);color:var(--text)}.submit{width:100%;border:0;border-radius:var(--radius-sm);padding:10px;background:var(--primary);color:var(--card);font-size:14px;font-weight:600;cursor:pointer}.foot{text-align:center;margin:18px 0 0;color:var(--text-3);font-size:11px}
 </style>
