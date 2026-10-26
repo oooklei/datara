@@ -133,7 +133,7 @@ def test_component_spec_migration_is_checksummed_and_idempotent() -> None:
     first = apply_component_spec_migrations(engine)
     second = apply_component_spec_migrations(engine)
 
-    assert first.applied == ("i4_0001_component_catalog",)
+    assert first.applied == ("i4_0001_component_catalog", "i4_0002_component_catalog_upload")
     assert second.skipped == first.applied
     assert {"t_component", "t_component_version", "t_component_log"} <= set(inspect(engine).get_table_names())
     inspector = inspect(engine)
