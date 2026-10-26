@@ -23,7 +23,7 @@ import ResourceManagementView from './resources/ResourceManagementView.vue'
 import SystemAdminView from './system/SystemAdminView.vue'
 import DataSourceListView from './datasource/DataSourceListView.vue'
 import IdeView from './ide/IdeView.vue'
-import MetadataCatalogView from './meta/MetadataCatalogView.vue'
+import GovernanceHubView from './GovernanceHubView.vue'
 import MonitorView from './depops/MonitorView.vue'
 
 const props = defineProps<{ projectId: number; seg: string }>()
@@ -34,7 +34,7 @@ const segmentViews: Record<string, Component> = {
   datasource: DataSourceListView,
   resources: ResourceManagementView,
   ide: IdeView,
-  meta: MetadataCatalogView,
+  meta: GovernanceHubView,
   dep: MonitorView,
   system: SystemAdminView,
 }

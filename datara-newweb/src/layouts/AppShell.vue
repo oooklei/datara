@@ -145,7 +145,7 @@ defineExpose({ menuView, aiContext })
           :to="`/p/${projectId}/${seg.key}`"
           class="project-nav-link"
           :data-seg="seg.key"
-        >{{ seg.label }}</RouterLink>
+        ><span class="ico">{{ seg.icon }}</span><span class="lbl">{{ seg.label }}</span></RouterLink>
       </nav>
       <template v-else>
       <div
@@ -166,8 +166,8 @@ defineExpose({ menuView, aiContext })
         </div>
         <ul v-show="!entry.group.foldable || !folded[entry.group.id]" class="menu-items">
           <li v-for="item in entry.items" :key="item.id" class="menu-item">
-            <RouterLink v-if="item.path" :to="item.path" class="menu-link">{{ item.label }}</RouterLink>
-            <span v-else class="menu-plain">{{ item.label }}</span>
+            <RouterLink v-if="item.path" :to="item.path" class="menu-link"><span v-if="item.icon" class="ico">{{ item.icon }}</span><span class="lbl">{{ item.label }}</span></RouterLink>
+            <span v-else class="menu-plain"><span v-if="item.icon" class="ico">{{ item.icon }}</span><span class="lbl">{{ item.label }}</span></span>
           </li>
         </ul>
       </div>
@@ -197,10 +197,12 @@ defineExpose({ menuView, aiContext })
 .group-title{display:flex;align-items:center;justify-content:space-between}
 .menu-items{list-style:none;margin:0;padding:0}
 .menu-item{line-height:32px}
-.menu-link,.menu-plain{display:block;padding:0 12px}
+.menu-link,.menu-plain{display:flex;align-items:center;gap:10px;padding:0 12px}
+/* 图标字形（对标旧前端菜单 .menu-item .ico/.lbl 渲染范式） */
+.menu-link .ico,.menu-plain .ico,.project-nav-link .ico{display:inline-block;width:18px;text-align:center;font-size:14px;opacity:.85;flex:0 0 auto}
 /* 项目模式七段导航（L3-03）：与全局菜单互斥渲染，DOM 锚 data-project-nav/data-seg */
 .project-nav{display:flex;flex-direction:column;padding:8px 0}
-.project-nav-link{display:block;padding:0 12px;line-height:32px}
+.project-nav-link{display:flex;align-items:center;gap:10px;padding:0 12px;line-height:32px}
 @media (max-width:640px){
   .app-shell{grid-template:"header" 56px "aside" auto "main" minmax(0,1fr)/minmax(0,1fr);width:100%;max-width:100vw;overflow-x:hidden}
   .app-topbar{min-width:0;gap:8px;padding-inline:12px;overflow:hidden}.topbar-brand,.topbar-logout{flex:0 0 auto}

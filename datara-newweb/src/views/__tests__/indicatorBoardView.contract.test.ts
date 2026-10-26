@@ -76,6 +76,17 @@ describe('/ind/board 指标看板页（增量 14）', () => {
     expect(w.find('[data-ind-board]').exists()).toBe(false)
   })
 
+  it('navigates to indicator list and consistency check from the toolbar links', async () => {
+    router.route.params.projectId = '1'
+    vi.mocked(governanceApi.listMetrics).mockResolvedValue({ total: 1, list: [metric] })
+    const w = mount(View)
+    await flushPromises()
+    await w.find('[data-goto-list]').trigger('click')
+    expect(router.push).toHaveBeenCalledWith('/ind/list')
+    await w.find('[data-goto-consistency]').trigger('click')
+    expect(router.push).toHaveBeenCalledWith('/ind/consistency')
+  })
+
   it('surfaces backend errors without dropping the picker', async () => {
     router.route.params.projectId = '1'
     vi.mocked(governanceApi.listMetrics).mockRejectedValue(

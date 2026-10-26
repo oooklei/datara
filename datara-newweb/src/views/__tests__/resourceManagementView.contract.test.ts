@@ -17,7 +17,7 @@ describe('resource project scope', () => {
       .mockResolvedValueOnce([{ resourceId: 2, name: 'b.py', kind: 'python', sizeBytes: 8, latestVersion: 1 }])
     const wrapper = mount(View, { props: { projectId: 11 } })
     await flushPromises()
-    expect(list).toHaveBeenNthCalledWith(1, 11, undefined)
+    expect(list).toHaveBeenNthCalledWith(1, 11, 'sql')
     expect(wrapper.text()).toContain('a.sql')
     listVersions.mockResolvedValue([{ resourceId: 1, version: 1, sizeBytes: 4, digest: 'sha256:a', uploadedAt: '' }])
     await wrapper.get('[data-view-versions]').trigger('click')
@@ -26,7 +26,7 @@ describe('resource project scope', () => {
 
     await wrapper.setProps({ projectId: 12 })
     await flushPromises()
-    expect(list).toHaveBeenNthCalledWith(2, 12, undefined)
+    expect(list).toHaveBeenNthCalledWith(2, 12, 'sql')
     expect(wrapper.text()).toContain('b.py')
     expect(wrapper.find('[role="dialog"]').exists()).toBe(false)
   })
@@ -57,7 +57,7 @@ describe('resource project scope', () => {
     await flushPromises()
 
     expect(wrapper.find('[data-project-select]').exists()).toBe(true)
-    expect(list).toHaveBeenCalledWith(7, undefined)
+    expect(list).toHaveBeenCalledWith(7, 'sql')
     expect(wrapper.text()).toContain('job.sh')
   })
 })

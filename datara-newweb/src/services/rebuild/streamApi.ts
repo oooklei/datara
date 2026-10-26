@@ -146,6 +146,22 @@ export const I8_CONTRACT_METHODS = [
 
 export type I8ContractMethod = (typeof I8_CONTRACT_METHODS)[number]
 
+/**
+ * I8 契约方法 → 权限点映射（与 syncComponentApi 同范式，单一事实源）。
+ * 读类方法要求 VIEW_ALL，写类（produce/fuse）要求 EDIT_DEFINITION。
+ * 键顺序必须与 I8_CONTRACT_METHODS 严格一致（测试按 Object.keys 对齐）。
+ */
+export const I8_PERMISSION_MATRIX = {
+  listStreamJobs: 'VIEW_ALL',
+  listStreamAttempts: 'VIEW_ALL',
+  listStreamCheckpoints: 'VIEW_ALL',
+  listStreamMetrics: 'VIEW_ALL',
+  queryStreamObservation: 'VIEW_ALL',
+  listStreamRecoveryEvents: 'VIEW_ALL',
+  produceStreamEvents: 'EDIT_DEFINITION',
+  fuseStreamEvents: 'EDIT_DEFINITION',
+} as const satisfies Record<I8ContractMethod, 'VIEW_ALL' | 'EDIT_DEFINITION'>
+
 export interface StreamContract {
   listStreamJobs: (window: TimeWindowQuery) => Promise<StreamJobRow[]>
   listStreamAttempts: (window: TimeWindowQuery, jobId?: string) => Promise<StreamAttemptRow[]>

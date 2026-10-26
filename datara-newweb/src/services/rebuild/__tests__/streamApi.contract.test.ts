@@ -1,17 +1,18 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { createStreamContract } from '../streamApi'
+import { I8_CONTRACT_METHODS, I8_PERMISSION_MATRIX, createStreamContract } from '../streamApi'
 
 const response = (data: unknown, status = 200) => ({
   ok: status >= 200 && status < 300,
   status,
   json: async () => ({ code: 0, msg: 'success', data }),
-  text: async () => '',
+  text: async () => JSON.stringify({ code: 0, msg: 'success', data }),
 })
 
 describe('stream API contract', () => {
   afterEach(() => vi.restoreAllMocks())
 
   it('wires all six methods to the stream router and normalizes responses', async () => {
+    expect(Object.keys(I8_PERMISSION_MATRIX)).toEqual(I8_CONTRACT_METHODS)
     const fetchMock = vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, init) => {
       const url = String(input)
       if (url.endsWith('/jobs')) return response([{ id: 7, name: 'demo', workflow_id: 1, mq_topic: 'topic', runtime_config: { mode: 'fixed_rate' }, state: 'RUNNING', attempt_no: 1, started_at: null, finished_at: null }]) as Response

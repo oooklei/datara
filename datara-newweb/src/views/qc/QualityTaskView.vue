@@ -1,42 +1,69 @@
 <template>
-  <main class="qc-task-page" aria-label="检查任务">
-    <header class="qc-head">
-      <div>
-        <h1>检查任务</h1>
-        <p>质量规则执行记录。structural 口径下行级四字段恒 0，本页只呈现结构与状态，不推断行级结果。</p>
-      </div>
-      <label class="qc-project">项目
-        <select v-model="selected" data-project-select @change="reload">
+  <main class="pg" aria-label="检查任务">
+    <header class="pg-head">
+      <h1 class="sec-head">检查任务</h1>
+      <p class="pg-desc">质量规则执行记录。structural 口径下行级四字段恒 0，本页只呈现结构与状态，不推断行级结果。</p>
+    </header>
+
+    <div class="toolbar">
+      <label class="field"><span>项目</span>
+        <select v-model="selected" class="kw" data-project-select @change="reload">
           <option value="">请选择项目</option>
           <option v-for="p in projects" :key="p.id" :value="String(p.id)">{{ p.name }}</option>
         </select>
       </label>
-      <button type="button" data-refresh @click="reload">刷新</button>
-    </header>
+      <button type="button" class="op-btn" data-refresh :disabled="busy" @click="reload">刷新</button>
+      <span class="spacer"></span>
+      <span v-if="projectId !== null" class="hint">共 {{ total }} 条</span>
+    </div>
 
     <!-- 错误横幅独立于内容态：加载失败时无数据可渲染，刷新失败时列表须保留 -->
-    <p v-if="error" role="alert" data-error>{{ error }}</p>
-    <p v-if="busy" role="status">正在加载…</p>
-    <p v-else-if="projectId === null" data-no-project>请先选择项目</p>
-    <p v-else-if="runs.length === 0 && !error" data-empty>暂无检查任务</p>
+    <div v-if="error" class="err-box" role="alert" data-error>
+      <span>{{ error }}</span>
+      <button type="button" class="op-btn retry" :disabled="busy" @click="reload">重试</button>
+    </div>
 
-    <table v-else-if="runs.length > 0" data-run-list>
-      <thead>
-        <tr><th>ID</th><th>规则</th><th>资产</th><th>状态</th><th>摘要</th><th>生成时间</th></tr>
-      </thead>
-      <tbody>
-        <tr v-for="run in runs" :key="run.id" :data-run-id="run.id">
-          <td data-run-id-cell>{{ run.id }}</td>
-          <td data-rule>#{{ run.ruleId ?? '—' }}</td>
-          <td data-asset>#{{ run.assetId }}</td>
-          <td :data-status="run.status">{{ statusLabel(run.status) }}</td>
-          <td data-summary>{{ summaryText(run) }}</td>
-          <td data-generated>{{ run.generatedAt || '—' }}</td>
-        </tr>
-      </tbody>
-    </table>
+    <div v-if="busy" class="panel" role="status" aria-live="polite">
+      <div class="skeleton sk-row" style="width:28%"></div>
+      <div class="skeleton sk-row" style="width:66%"></div>
+      <div class="skeleton sk-row" style="width:48%"></div>
+    </div>
 
-    <p class="qc-note" role="note" data-structural-note>
+    <div v-else-if="projectId === null" class="panel empty" data-no-project>
+      <div class="e-title">请先选择项目</div>
+      <div class="e-hint">在上方下拉框选择项目后，即可加载检查任务。</div>
+    </div>
+
+    <!-- 空态须让位于错误态：加载失败时不得呈现「暂无数据」空壳 -->
+    <div v-else-if="runs.length === 0 && !error" class="panel empty" data-empty>
+      <div class="e-title">暂无检查任务</div>
+      <div class="e-hint">当前项目下还没有质量规则执行记录。</div>
+    </div>
+
+    <div v-else-if="runs.length > 0" class="panel">
+      <div class="tbl-toolbar">
+        <span class="sec-head">执行记录</span>
+        <span class="pill info">{{ runs.length }}</span>
+        <span class="spacer"></span>
+      </div>
+      <table class="tbl" data-run-list>
+        <thead>
+          <tr><th>ID</th><th>规则</th><th>资产</th><th>状态</th><th>摘要</th><th>生成时间</th></tr>
+        </thead>
+        <tbody>
+          <tr v-for="run in runs" :key="run.id" :data-run-id="run.id">
+            <td data-run-id-cell><span class="code-chip">#{{ run.id }}</span></td>
+            <td data-rule><span class="code-chip">#{{ run.ruleId ?? '—' }}</span></td>
+            <td data-asset><span class="code-chip">#{{ run.assetId }}</span></td>
+            <td><span class="st" :class="statusClass(run.status)" :data-status="run.status"><span class="dot"></span>{{ statusLabel(run.status) }}</span></td>
+            <td data-summary>{{ summaryText(run) }}</td>
+            <td data-generated>{{ run.generatedAt || '—' }}</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <p v-if="projectId !== null" class="lock-tip" role="note" data-structural-note>
       structural 口径：执行仅做结构谓词校验，行级四字段恒 0；行级采样需绑定数据源。
     </p>
   </main>
@@ -53,6 +80,9 @@
  *
  * structural 红线（验收 ④）：本页**不**呈现 `checkedRows/successRows/failedRows/skippedRows`
  *   行级计数，只呈现后端 `status` 与 `summary`（engine/message/issues）。
+ *
+ * 样式范式：复用全局设计系统（`.pg`/`.panel`/`.tbl`/`.st`/`.code-chip` + `var(--*)` 令牌），
+ *   与旧前端 datara-web QcTaskView 的 `.card.panel` + `.tbl-toolbar` + `table.tbl` 范式对齐。
  */
 import { computed, onMounted, ref } from 'vue'
 import { useRoute } from 'vue-router'
@@ -69,6 +99,7 @@ const route = useRoute()
 const projects = ref<ProjectSummary[]>([])
 const selected = ref('')
 const runs = ref<QualityRunRecord[]>([])
+const total = ref(0)
 const busy = ref(false)
 const error = ref('')
 
@@ -94,6 +125,14 @@ const STATUS_LABEL: Record<QualityRunStatus, string> = {
   cancelled: '已取消',
 }
 const statusLabel = (s: QualityRunStatus): string => STATUS_LABEL[s] ?? s
+const STATUS_CLASS: Record<QualityRunStatus, string> = {
+  queued: 'st-blue',
+  running: 'st-blue',
+  succeeded: 'st-green',
+  failed: 'st-red',
+  cancelled: 'st-gray',
+}
+const statusClass = (s: QualityRunStatus): string => STATUS_CLASS[s] ?? 'st-gray'
 
 /** structural 摘要文案：engine + message + 命中禁用词；不含行级计数。 */
 const summaryText = (run: QualityRunRecord): string => {
@@ -115,6 +154,7 @@ async function loadProjects(): Promise<void> {
 async function reload(): Promise<void> {
   if (projectId.value === null) {
     runs.value = []
+    total.value = 0
     return
   }
   busy.value = true
@@ -122,6 +162,7 @@ async function reload(): Promise<void> {
   try {
     const page = await governanceApi.listRuns(projectId.value)
     runs.value = page.list
+    total.value = page.total
   } catch (e) {
     error.value = message(e)
   } finally {
@@ -135,16 +176,3 @@ onMounted(async () => {
   await reload()
 })
 </script>
-
-<style scoped>
-.qc-task-page{max-width:1180px;margin:auto;padding:32px 24px;color:#172033}
-.qc-head{display:flex;align-items:center;gap:16px;flex-wrap:wrap}
-.qc-head h1{margin:0}
-.qc-head p{margin:4px 0 0;color:#64748b;flex-basis:100%}
-.qc-project{display:flex;align-items:center;gap:8px;margin-left:auto}
-.qc-project select{padding:7px 10px;min-width:180px}
-button{cursor:pointer;padding:7px 12px}
-table{width:100%;border-collapse:collapse;background:#fff;margin-top:8px}
-th,td{text-align:left;padding:11px;border-bottom:1px solid #e2e8f0;vertical-align:top}
-.qc-note{margin-top:16px;color:#475569;font-size:13px}
-</style>

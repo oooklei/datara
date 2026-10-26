@@ -109,7 +109,7 @@ describe('2-05 菜单消费（filterMenuGroups 接驳 + F56a direct + future 折
     expect(groups[0].attributes('data-group-id')).toBe('task-center')
     expect(groups[0].find('.group-title').exists()).toBe(false)
     const link = groups[0].find('a.menu-link')
-    expect(link.text()).toBe('任务中心')
+    expect(link.text()).toBe('⑃任务中心')
     expect(link.attributes('href')).toContain('/dag')
   })
 

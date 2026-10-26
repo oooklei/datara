@@ -157,7 +157,7 @@ async function onRemove(member: MemberEntry): Promise<void> {
 
 .member-table th,
 .member-table td {
-  border: 1px solid #d9d9d9;
+  border: 1px solid var(--border);
   padding: 6px 10px;
   text-align: left;
 }

@@ -1,70 +1,103 @@
 <template>
-  <main class="qc-rule-page" aria-label="质量规则">
-    <header class="qc-head">
-      <div>
-        <h1>质量规则</h1>
-        <p>按数据资产维护质量规则并执行结构校验；行级结果需绑定数据源，属后续批次。</p>
-      </div>
-      <label class="qc-project">项目
-        <select v-model="selected" data-project-select @change="reload">
+  <main class="pg" aria-label="质量规则">
+    <header class="pg-head">
+      <h1 class="sec-head">质量规则</h1>
+      <p class="pg-desc">按数据资产维护质量规则并执行结构校验；行级结果需绑定数据源，属后续批次。</p>
+    </header>
+
+    <div class="toolbar">
+      <label class="field"><span>项目</span>
+        <select v-model="selected" class="kw" data-project-select @change="reload">
           <option value="">请选择项目</option>
           <option v-for="p in projects" :key="p.id" :value="String(p.id)">{{ p.name }}</option>
         </select>
       </label>
-      <button type="button" data-create :disabled="projectId === null" @click="openCreate">新建规则</button>
-    </header>
+      <button type="button" class="tb-new" data-create :disabled="projectId === null || saving" @click="openCreate">新建规则</button>
+      <span class="spacer"></span>
+      <span v-if="projectId !== null" class="hint">共 {{ total }} 条</span>
+    </div>
 
     <!-- 错误横幅独立于内容态：加载失败时无数据可渲染，执行失败时列表须保留 -->
-    <p v-if="error" role="alert" data-error>{{ error }}</p>
-    <p v-if="busy" role="status">正在加载…</p>
-    <p v-else-if="projectId === null" data-no-project>请先选择项目</p>
-    <p v-else-if="rules.length === 0 && !error" data-empty>暂无质量规则</p>
+    <div v-if="error" class="err-box" role="alert" data-error>
+      <span>{{ error }}</span>
+      <button type="button" class="op-btn retry" :disabled="busy || saving" @click="reload">重试</button>
+    </div>
 
-    <table v-else-if="rules.length > 0" data-rule-list>
-      <thead>
-        <tr><th>名称</th><th>资产</th><th>表达式</th><th>严重级</th><th>状态</th><th>更新时间</th><th>操作</th></tr>
-      </thead>
-      <tbody>
-        <tr v-for="rule in rules" :key="rule.id" :data-rule-id="rule.id">
-          <td>{{ rule.name }}</td>
-          <td data-asset>#{{ rule.assetId }}</td>
-          <td data-expr>{{ rule.expression }}</td>
-          <td :data-severity="rule.severity">{{ severityLabel(rule.severity) }}</td>
-          <td>{{ rule.enabled ? '启用' : '停用' }}</td>
-          <td>{{ rule.updatedAt || rule.createdAt || '—' }}</td>
-          <td class="actions">
-            <button type="button" data-run :disabled="running === rule.id" @click="run(rule)">
-              {{ running === rule.id ? '执行中…' : '执行' }}
-            </button>
-            <button type="button" data-goto-runs @click="gotoRuns">运行记录</button>
-          </td>
-        </tr>
-      </tbody>
-    </table>
+    <div v-if="busy" class="panel" role="status" aria-live="polite">
+      <div class="skeleton sk-row" style="width:34%"></div>
+      <div class="skeleton sk-row" style="width:74%"></div>
+      <div class="skeleton sk-row" style="width:58%"></div>
+    </div>
 
-    <p v-if="runMessage" role="status" data-run-result>{{ runMessage }}</p>
-    <p class="qc-note" role="note" data-structural-note>
+    <div v-else-if="projectId === null" class="panel empty" data-no-project>
+      <div class="e-title">请先选择项目</div>
+      <div class="e-hint">在上方下拉框选择项目后，即可加载质量规则。</div>
+    </div>
+
+    <!-- 空态须让位于错误态：加载失败时不得呈现「暂无数据」空壳 -->
+    <div v-else-if="rules.length === 0 && !error" class="panel empty" data-empty>
+      <div class="e-title">暂无质量规则</div>
+      <div class="e-hint">当前项目下还没有质量规则，点击「新建规则」创建。</div>
+    </div>
+
+    <div v-else-if="rules.length > 0" class="panel">
+      <div class="tbl-toolbar">
+        <span class="sec-head">质量规则</span>
+        <span class="pill info">{{ rules.length }}</span>
+        <span class="spacer"></span>
+        <button type="button" class="op-btn" data-goto-runs @click="gotoRuns">运行记录</button>
+      </div>
+      <table class="tbl" data-rule-list>
+        <thead>
+          <tr><th>名称</th><th>资产</th><th>表达式</th><th>严重级</th><th>状态</th><th>更新时间</th><th style="width:140px">操作</th></tr>
+        </thead>
+        <tbody>
+          <tr v-for="rule in rules" :key="rule.id" :data-rule-id="rule.id">
+            <td>{{ rule.name }}</td>
+            <td data-asset><span class="code-chip">#{{ rule.assetId }}</span></td>
+            <td data-expr><span class="code-chip">{{ rule.expression }}</span></td>
+            <td><span class="pill" :class="severityClass(rule.severity)" :data-severity="rule.severity">{{ severityLabel(rule.severity) }}</span></td>
+            <td><span class="st" :class="rule.enabled ? 'st-green' : 'st-gray'"><span class="dot"></span>{{ rule.enabled ? '启用' : '停用' }}</span></td>
+            <td>{{ rule.updatedAt || rule.createdAt || '—' }}</td>
+            <td class="actions">
+              <button type="button" class="op-btn" data-run :disabled="running === rule.id" @click="run(rule)">
+                {{ running === rule.id ? '执行中…' : '执行' }}
+              </button>
+            </td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <p v-if="runMessage" class="result-line" role="status" data-run-result>{{ runMessage }}</p>
+    <p v-if="projectId !== null" class="lock-tip" role="note" data-structural-note>
       structural 口径：执行仅做结构谓词校验，行级四字段恒 0；行级采样需绑定数据源。
     </p>
 
     <div v-if="editing" class="mask" @click.self="closeEditor">
-      <form role="dialog" aria-modal="true" aria-label="新建质量规则" @submit.prevent="save">
-        <h2>新建质量规则</h2>
-        <label>名称<input v-model.trim="draft.name" required maxlength="128" data-name></label>
-        <label>资产 ID<input v-model.number="draft.assetId" type="number" min="1" required data-asset-input></label>
-        <label>表达式<textarea v-model.trim="draft.expression" required data-expr-input></textarea></label>
-        <label>严重级
-          <select v-model="draft.severity" data-severity-select>
-            <option value="info">info</option>
-            <option value="warning">warning</option>
-            <option value="error">error</option>
-          </select>
-        </label>
-        <label class="check"><input v-model="draft.enabled" type="checkbox" data-enabled>启用</label>
-        <footer>
-          <button type="button" data-cancel @click="closeEditor">取消</button>
-          <button type="submit" data-save>保存</button>
-        </footer>
+      <form class="dlg" role="dialog" aria-modal="true" aria-label="新建质量规则" @submit.prevent="save">
+        <div class="dlg-hd">新建质量规则<button type="button" class="x" aria-label="关闭" @click="closeEditor">×</button></div>
+        <div class="dlg-bd">
+          <div class="form-grid">
+            <label class="f-item"><span>名称</span><input v-model.trim="draft.name" required maxlength="128" data-name :disabled="saving"></label>
+            <label class="f-item"><span>资产 ID</span><input v-model.number="draft.assetId" type="number" min="1" required data-asset-input :disabled="saving"></label>
+            <label class="f-item full"><span>表达式</span><textarea v-model.trim="draft.expression" required data-expr-input :disabled="saving"></textarea></label>
+            <label class="f-item"><span>严重级</span>
+              <select v-model="draft.severity" data-severity-select :disabled="saving">
+                <option value="info">info</option>
+                <option value="warning">warning</option>
+                <option value="error">error</option>
+              </select>
+            </label>
+            <label class="field"><span>启用</span><input v-model="draft.enabled" type="checkbox" data-enabled :disabled="saving"></label>
+          </div>
+        </div>
+        <div class="dlg-ft">
+          <button type="button" class="op-btn" data-cancel :disabled="saving" @click="closeEditor">取消</button>
+          <button type="submit" class="tb-new" data-save :disabled="saving || draft.name === '' || draft.assetId < 1 || draft.expression === ''">
+            {{ saving ? '保存中…' : '保存' }}
+          </button>
+        </div>
       </form>
     </div>
   </main>
@@ -82,6 +115,10 @@
  * structural 红线（验收 ④）：执行结果只呈现后端 `summary` 与 `status`，
  *   **不**渲染 `checkedRows/successRows/failedRows/skippedRows` 为行级结论——
  *   该四字段在后端恒 0（api.py L1785-1793），行级采样属后续增量。
+ *
+ * 样式范式：复用全局设计系统（`.pg`/`.panel`/`.tbl`/`.pill`/`.op-btn`/`.tb-new`
+ *   + `var(--*)` 令牌），与旧前端 datara-web QcRuleView 的
+ *   `.page` + `.card.page-head` + `.card.panel` + `.tbl-toolbar` + `table.tbl` 范式对齐。
  */
 import { computed, onMounted, reactive, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
@@ -100,7 +137,9 @@ const router = useRouter()
 const projects = ref<ProjectSummary[]>([])
 const selected = ref('')
 const rules = ref<QualityRuleRecord[]>([])
+const total = ref(0)
 const busy = ref(false)
+const saving = ref(false)
 const error = ref('')
 const runMessage = ref('')
 const running = ref<number | null>(null)
@@ -130,6 +169,8 @@ const projectId = computed<number | null>(() => {
 
 const SEVERITY_LABEL: Record<QualitySeverity, string> = { info: '提示', warning: '警告', error: '错误' }
 const severityLabel = (s: QualitySeverity): string => SEVERITY_LABEL[s] ?? s
+const SEVERITY_CLASS: Record<QualitySeverity, string> = { info: 'info', warning: 'warn', error: 'err' }
+const severityClass = (s: QualitySeverity): string => SEVERITY_CLASS[s] ?? 'info'
 const message = (e: unknown): string => (e instanceof Error ? e.message : String(e))
 
 async function loadProjects(): Promise<void> {
@@ -144,6 +185,7 @@ async function loadProjects(): Promise<void> {
 async function reload(): Promise<void> {
   if (projectId.value === null) {
     rules.value = []
+    total.value = 0
     return
   }
   busy.value = true
@@ -151,6 +193,7 @@ async function reload(): Promise<void> {
   try {
     const page = await governanceApi.listRules(projectId.value)
     rules.value = page.list
+    total.value = page.total
   } catch (e) {
     error.value = message(e)
   } finally {
@@ -159,6 +202,7 @@ async function reload(): Promise<void> {
 }
 
 function openCreate(): void {
+  saving.value = false
   Object.assign(draft, { assetId: 0, name: '', expression: '', severity: 'warning', enabled: true })
   editing.value = true
 }
@@ -168,7 +212,8 @@ function closeEditor(): void {
 }
 
 async function save(): Promise<void> {
-  if (projectId.value === null) return
+  if (projectId.value === null || saving.value) return
+  saving.value = true
   error.value = ''
   try {
     await governanceApi.createRule(projectId.value, { ...draft })
@@ -176,6 +221,8 @@ async function save(): Promise<void> {
     await reload()
   } catch (e) {
     error.value = message(e)
+  } finally {
+    saving.value = false
   }
 }
 
@@ -213,23 +260,5 @@ onMounted(async () => {
 </script>
 
 <style scoped>
-.qc-rule-page{max-width:1180px;margin:auto;padding:32px 24px;color:#172033}
-.qc-head{display:flex;align-items:center;gap:16px;flex-wrap:wrap}
-.qc-head h1{margin:0}
-.qc-head p{margin:4px 0 0;color:#64748b;flex-basis:100%}
-.qc-project{display:flex;align-items:center;gap:8px;margin-left:auto}
-.qc-project select{padding:7px 10px;min-width:180px}
-button{cursor:pointer;padding:7px 12px}
-button:disabled{cursor:not-allowed;opacity:.5}
-table{width:100%;border-collapse:collapse;background:#fff;margin-top:8px}
-th,td{text-align:left;padding:11px;border-bottom:1px solid #e2e8f0;vertical-align:top}
 .actions{display:flex;gap:6px}
-.qc-note{margin-top:16px;color:#475569;font-size:13px}
-.mask{position:fixed;inset:0;background:#0f172a66;display:grid;place-items:center}
-.mask form{width:min(520px,calc(100vw - 40px));display:grid;gap:12px;background:#fff;padding:24px;border-radius:10px}
-.mask label{display:grid;gap:5px}
-.mask input,.mask textarea,.mask select{padding:8px}
-.mask textarea{min-height:88px;resize:vertical}
-.mask .check{display:flex;align-items:center;gap:8px}
-.mask footer{display:flex;justify-content:flex-end;gap:8px}
 </style>

@@ -40,19 +40,19 @@ import { PERMISSION_ORDER, ROLE_ORDER, roleHasPermission } from '../services/reb
 </script>
 
 <style scoped>
-.perm-page{max-width:1080px;margin:auto;padding:32px 24px;color:#172033}
+.perm-page{max-width:1080px;margin:auto;padding:32px 24px;color:var(--text)}
 .perm-header{display:flex;align-items:center;justify-content:space-between}
 .perm-page h1{margin:0}
-.perm-header p{color:#64748b}
-.perm-legend{display:flex;gap:18px;margin:14px 0;color:#475569;font-size:13px}
+.perm-header p{color:var(--text-2)}
+.perm-legend{display:flex;gap:18px;margin:14px 0;color:var(--text-2);font-size:13px}
 .perm-legend .mark{font-style:normal;margin-right:4px}
-.perm-legend .mark.yes{color:#15803d}
-.perm-legend .mark.no{color:#94a3b8}
-table{width:100%;border-collapse:collapse;background:#fff;font-size:14px}
-th,td{padding:9px 11px;border-bottom:1px solid #e2e8f0;text-align:left}
-thead th{background:#f1f5f9}
+.perm-legend .mark.yes{color:var(--success)}
+.perm-legend .mark.no{color:var(--text-3)}
+table{width:100%;border-collapse:collapse;background:var(--card);font-size:14px}
+th,td{padding:9px 11px;border-bottom:1px solid var(--border);text-align:left}
+thead th{background:var(--bg)}
 .perm-col{width:280px;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:13px}
 td.cell{text-align:center}
-td[data-granted="yes"]{color:#15803d}
-td[data-granted="no"]{color:#cbd5e1}
+td[data-granted="yes"]{color:var(--success)}
+td[data-granted="no"]{color:var(--text-3)}
 </style>
