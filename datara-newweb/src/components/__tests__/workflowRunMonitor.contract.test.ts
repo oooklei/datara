@@ -38,6 +38,27 @@ describe('workflow run monitor project scope', () => {
     expect(wrapper.find('tbody').text()).toContain('2')
   })
 
+  it('filters the monitor by the required TRIAL, FORMAL and STREAM instance types', async () => {
+    const wrapper = mount(WorkflowRunMonitor, { props: { projectId: 7 } })
+    await flushPromises()
+    const filter = wrapper.get('[data-run-instance-type]')
+    expect(filter.findAll('option').map((option) => option.attributes('value'))).toEqual(['', 'TRIAL', 'FORMAL', 'STREAM'])
+    await filter.setValue('STREAM')
+    await flushPromises()
+    expect(listWorkflowRunStats).toHaveBeenLastCalledWith(7, { instanceType: 'STREAM' })
+  })
+
+  it('pages through all persisted run statistics instead of truncating at fifty rows', async () => {
+    listWorkflowRunStats.mockResolvedValueOnce({ total: 51, items: [{ id: 1, workflow_id: 3, workflow_instance_id: 9, instance_type: 'FORMAL', status: 'SUCCEEDED', success_count: 1, failure_count: 0, skipped_count: 0, total_count: 1, started_at: '2026-10-25T00:00:00Z' }] })
+      .mockResolvedValueOnce({ total: 51, items: [{ id: 2, workflow_id: 4, workflow_instance_id: 10, instance_type: 'FORMAL', status: 'SUCCEEDED', success_count: 1, failure_count: 0, skipped_count: 0, total_count: 1, started_at: '2026-10-25T01:00:00Z' }] })
+    const wrapper = mount(WorkflowRunMonitor, { props: { projectId: 7 } })
+    await flushPromises()
+    expect(wrapper.get('[data-run-next]').attributes('disabled')).toBeUndefined()
+    await wrapper.get('[data-run-next]').trigger('click')
+    await flushPromises()
+    expect(listWorkflowRunStats).toHaveBeenLastCalledWith(7, { offset: 50, limit: 50 })
+  })
+
   it('discards a late response from the previous project scope', async () => {
     let resolveOld!: (value: { items: WorkflowRunStat[] }) => void
     const oldResponse = new Promise<{ items: WorkflowRunStat[] }>((resolve) => { resolveOld = resolve })

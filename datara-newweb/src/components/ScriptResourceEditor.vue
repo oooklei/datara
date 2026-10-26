@@ -7,6 +7,7 @@ import {
   type ResourceMeta,
   type ResourceVersion,
 } from '../services/rebuild/resourceApi'
+import { createDatasourceContract, type DatasourceRecord } from '../services/rebuild/datasourceApi'
 import VariableReferenceInput from './VariableReferenceInput.vue'
 
 const props = defineProps<{
@@ -20,9 +21,11 @@ const props = defineProps<{
 
 const emit = defineEmits<{ 'update:modelValue': [value: Record<string, unknown>] }>()
 const api = createResourceContract()
+const currentParams = ref<Record<string, unknown>>({ ...props.modelValue })
 const mode = ref<'inline' | 'resource'>(props.modelValue.sourceMode === 'resource' ? 'resource' : 'inline')
 const resources = ref<ResourceMeta[]>([])
 const versions = ref<ResourceVersion[]>([])
+const datasources = ref<DatasourceRecord[]>([])
 const resourceId = ref('')
 const resourceVersion = ref('')
 const loading = ref(false)
@@ -31,18 +34,24 @@ const error = ref('')
 const status = ref('')
 let resourceSeq = 0
 let versionSeq = 0
+let datasourceSeq = 0
 
 const sourceKey = computed<'sql' | 'script'>(() => props.kind === 'sql' ? 'sql' : 'script')
 const inlineValue = computed(() => String(props.modelValue[sourceKey.value] ?? ''))
 const accept = computed(() => ({ sql: '.sql', python: '.py', shell: '.sh' })[props.kind])
 
 function paramsWithoutResourceRef(): Record<string, unknown> {
-  const { resourceRef: _resourceRef, ...rest } = props.modelValue
+  const { resourceRef: _resourceRef, ...rest } = currentParams.value
   return rest
 }
 
+function emitValue(value: Record<string, unknown>) {
+  currentParams.value = value
+  emit('update:modelValue', value)
+}
+
 function updateInline(value: string) {
-  emit('update:modelValue', {
+  emitValue({
     ...paramsWithoutResourceRef(),
     sourceMode: 'inline',
     [sourceKey.value]: value,
@@ -53,10 +62,65 @@ function changeMode() {
   error.value = ''
   status.value = ''
   if (mode.value === 'inline') {
-    emit('update:modelValue', { ...paramsWithoutResourceRef(), sourceMode: 'inline' })
+    emitValue({ ...paramsWithoutResourceRef(), sourceMode: 'inline' })
   } else {
-    emit('update:modelValue', { ...props.modelValue, sourceMode: 'resource' })
+    emitValue({ ...currentParams.value, sourceMode: 'resource' })
   }
+}
+
+async function loadDatasources() {
+  if (props.kind !== 'sql') {
+    datasources.value = []
+    return
+  }
+  const seq = ++datasourceSeq
+  try {
+    const page = await createDatasourceContract(props.projectId).listDatasources()
+    if (seq === datasourceSeq) datasources.value = page.items
+  } catch (cause) {
+    if (seq === datasourceSeq) error.value = cause instanceof Error ? cause.message : '数据源加载失败'
+  }
+}
+
+function updateParam(key: string, value: unknown) {
+  const next = { ...currentParams.value }
+  if (value === '') delete next[key]
+  else next[key] = value
+  error.value = ''
+  status.value = '已更新执行参数'
+  emitValue(next)
+}
+
+function onDatasource(event: Event) {
+  const value = (event.target as HTMLSelectElement).value
+  updateParam('datasource', value ? Number(value) : '')
+}
+
+function onTextParam(key: string, event: Event) {
+  updateParam(key, (event.target as HTMLTextAreaElement).value)
+}
+
+function envText(): string {
+  const env = currentParams.value.env
+  if (!env || typeof env !== 'object' || Array.isArray(env)) return ''
+  return Object.entries(env as Record<string, unknown>).map(([key, value]) => `${key}=${String(value)}`).join('\n')
+}
+
+function onEnv(event: Event) {
+  const text = (event.target as HTMLTextAreaElement).value
+  const env: Record<string, string> = {}
+  for (const rawLine of text.split(/\r?\n/)) {
+    const line = rawLine.trim()
+    if (!line) continue
+    const separator = line.indexOf('=')
+    if (separator <= 0 || !/^[A-Za-z_][A-Za-z0-9_]*$/.test(line.slice(0, separator).trim())) {
+      error.value = '环境变量必须使用 KEY=VALUE 格式'
+      status.value = ''
+      return
+    }
+    env[line.slice(0, separator).trim()] = line.slice(separator + 1)
+  }
+  updateParam('env', Object.keys(env).length ? env : '')
 }
 
 async function loadResources() {
@@ -156,8 +220,8 @@ async function bindVersion() {
       resourceId: id,
       resourceVersion: version,
     })
-    emit('update:modelValue', {
-      ...props.modelValue,
+    emitValue({
+      ...currentParams.value,
       sourceMode: 'resource',
       resourceRef: { resourceId: id, version },
     })
@@ -180,11 +244,15 @@ function hydrateSelection() {
   void loadVersions().then((applied) => { if (applied) resourceVersion.value = String(version) })
 }
 
-watch(() => [props.projectId, props.kind] as const, () => { void loadResources() })
+watch(() => [props.projectId, props.kind] as const, () => {
+  void loadResources()
+  void loadDatasources()
+})
+watch(() => props.modelValue, (value) => { currentParams.value = { ...value } }, { deep: true })
 watch(() => props.modelValue.sourceMode, (value) => { mode.value = value === 'resource' ? 'resource' : 'inline' })
 watch(() => props.modelValue.resourceRef, () => hydrateSelection(), { deep: true })
 onMounted(async () => {
-  await loadResources()
+  await Promise.all([loadResources(), loadDatasources()])
   hydrateSelection()
 })
 </script>
@@ -207,7 +275,31 @@ onMounted(async () => {
       @update:model-value="updateInline"
     />
 
-    <div v-else class="resource-fields">
+    <div v-if="kind === 'sql'" class="execution-fields" data-sql-execution-fields>
+      <label>数据源
+        <select data-sql-datasource :value="String(currentParams.datasource ?? '')" @change="onDatasource">
+          <option value="">使用执行环境默认数据源</option>
+          <option v-for="item in datasources" :key="item.id" :value="String(item.id)">{{ item.name }} · {{ item.kind }}</option>
+        </select>
+      </label>
+      <label>前置 SQL
+        <textarea data-sql-pre rows="2" :value="String(currentParams.pre ?? '')" @input="onTextParam('pre', $event)" />
+      </label>
+      <label>后置 SQL
+        <textarea data-sql-post rows="2" :value="String(currentParams.post ?? '')" @input="onTextParam('post', $event)" />
+      </label>
+    </div>
+
+    <div v-if="kind === 'python' || kind === 'shell'" class="execution-fields" data-script-execution-fields>
+      <label v-if="kind === 'python'">Python 依赖（每行一个 requirement）
+        <textarea data-python-requirements rows="2" :value="String(currentParams.requirements ?? '')" @input="onTextParam('requirements', $event)" />
+      </label>
+      <label>环境变量（每行 KEY=VALUE）
+        <textarea data-script-env rows="3" :value="envText()" @change="onEnv" />
+      </label>
+    </div>
+
+    <div v-if="mode === 'resource'" class="resource-fields">
       <label>资源
         <select v-model="resourceId" data-resource-select :disabled="loading" @change="loadVersions">
           <option value="">请选择资源</option>
@@ -235,8 +327,9 @@ onMounted(async () => {
 </template>
 
 <style scoped>
-.script-resource-editor{display:grid;gap:8px}.mode-field,.resource-fields label{display:grid;gap:3px;font-size:11px;color:var(--text-secondary,#64748b)}
+.script-resource-editor{display:grid;gap:8px}.mode-field,.resource-fields label,.execution-fields label{display:grid;gap:3px;font-size:11px;color:var(--text-secondary,#64748b)}
 .mode-field{max-width:220px}.resource-fields{display:grid;grid-template-columns:repeat(2,minmax(180px,1fr));gap:8px;align-items:end}
-.resource-fields select,.mode-field select{border:1px solid var(--border-color,#cbd5e1);border-radius:4px;padding:5px 7px;background:#fff;font-size:12px}
+.resource-fields select,.mode-field select,.execution-fields select,.execution-fields textarea{border:1px solid var(--border-color,#cbd5e1);border-radius:4px;padding:5px 7px;background:#fff;font-size:12px}
+.execution-fields{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:8px}.execution-fields textarea{resize:vertical;font-family:ui-monospace,SFMono-Regular,Consolas,monospace}
 .upload-field{grid-column:1/2}.resource-error,.resource-status{margin:0;font-size:12px}.resource-error{color:#b91c1c}.resource-status{color:#15803d}
 </style>

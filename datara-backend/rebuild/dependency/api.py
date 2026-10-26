@@ -1,4 +1,4 @@
-"""R4-DEPENDENCY API — five endpoints matching the frozen FE contract (A2 v2.1).
+"""R4-DEPENDENCY API — dependency configuration, evaluation and observations.
 
 Contract source (frozen, double-line signoff): datara-web/src/services/rebuild/dependencyApi.ts
 + docs/increments/2026-10-17-R4-DEP-RES-API-contract-pending.md §2/§3.1/§7.
@@ -26,6 +26,7 @@ from fastapi.responses import JSONResponse
 from sqlalchemy import select
 from sqlalchemy.orm import sessionmaker
 
+from rebuild.dependency.models import DependencyObservationRecord
 from rebuild.dependency.repository import (
     DependencyDomainError,
     DependencyRepository,
@@ -218,7 +219,7 @@ def build_dependency_router(
                 return outcome
             expression = compose_expression(conditions, group_relation)
             overall, resolved = evaluate_expression(
-                conditions, group_relation, as_of, timeout_seconds, metrics_history_lookup(outcome)
+                conditions, group_relation, as_of, timeout_seconds, metrics_history_lookup(outcome, project_id)
             )
         return {
             "code": 0,
@@ -255,7 +256,45 @@ def build_dependency_router(
             "data": {"saved": True, "version": workflow_version, "config_id": config_id},
         }
 
-    # -- 5. evaluateDependency: POST ``/evaluate`` ------------------------
+    # -- Extension observation ingestion: POST ``/observations`` ----------
+
+    @router.post("/observations")
+    def record_observation(
+        body: dict[str, Any] = Body(...),
+        token: str = Header(default=""),
+        authorization: str = Header(default=""),
+    ):
+        try:
+            project_id = frame_int(body, "project_id")
+            kind = body.get("kind")
+            if kind not in ("file", "table_state", "external_task"):
+                raise MalformedRequest("kind must be file, table_state or external_task")
+            target_key = body.get("target_key")
+            if not isinstance(target_key, str) or not target_key.strip() or len(target_key.strip()) > 512:
+                raise MalformedRequest("target_key must be a non-empty string of at most 512 characters")
+            state = body.get("state")
+            if state not in ("success", "failed"):
+                raise MalformedRequest("state must be success or failed")
+            observed_at = parse_as_of(body.get("observed_at"))
+        except MalformedRequest as exc:
+            return request_error(exc)
+        with authorized_session(project_id, Permission.RUN_INSTANCE, token, authorization) as outcome:
+            if isinstance(outcome, JSONResponse):
+                return outcome
+            record = DependencyObservationRecord(
+                project_id=project_id,
+                kind=kind,
+                target_key=target_key.strip(),
+                state=state,
+                observed_at=observed_at.replace(tzinfo=None),
+            )
+            outcome.add(record)
+            outcome.flush()
+            record_id = record.id
+            outcome.commit()
+        return {"code": 0, "msg": "success", "data": {"recorded": True, "observation_id": record_id}}
+
+    # -- evaluateDependency: POST ``/evaluate`` ---------------------------
 
     @router.post("/evaluate")
     def evaluate_dependency(
@@ -278,7 +317,7 @@ def build_dependency_router(
                 return outcome
             expression = compose_expression(conditions, group_relation)
             overall, resolved = evaluate_expression(
-                conditions, group_relation, as_of, timeout_seconds, metrics_history_lookup(outcome)
+                conditions, group_relation, as_of, timeout_seconds, metrics_history_lookup(outcome, project_id)
             )
         return {
             "code": 0,

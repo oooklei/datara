@@ -586,7 +586,12 @@ function onSchedule() {
       :model-value="selectedNodeRecord.params ?? {}"
       @update:model-value="updateNodeParams"
     />
-    <StreamObservationPanel v-if="workflowType === 'STREAM' && loaded" />
+    <StreamObservationPanel
+      v-if="workflowType === 'STREAM' && loaded"
+      :project-id="projectId"
+      :workflow-id="numDocId"
+      :workflow-name="tab.name"
+    />
     <SyncMappingEditor
       v-if="isSyncMappingNode && projectId !== undefined && selectedNodeRecord"
       :project-id="projectId"

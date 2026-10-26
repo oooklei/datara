@@ -319,6 +319,17 @@ describe('WorkflowGraphWorkbench L12-02 同步工作流契约', () => {
     expect(trialMock.actions.open).toHaveBeenCalledWith(7, 42)
   })
 
+  it('流工作流把当前定义绑定到实时观摩面板', async () => {
+    const { wrapper } = makeWorkbench('stream')
+    await flushPromises()
+
+    const panel = wrapper.findComponent({ name: 'StreamObservationPanel' })
+    expect(panel.exists()).toBe(true)
+    expect(panel.props('projectId')).toBe(7)
+    expect(panel.props('workflowId')).toBe(42)
+    expect(panel.props('workflowName')).toBe('同步工作流A')
+  })
+
   it('用例8 状态标注：runResult.tasks → flowNodes label [STATUS] + wf-node-{status} class', async () => {
     trialMock.state.runResult = {
       status: 'SUCCEEDED',

@@ -84,4 +84,29 @@ describe('DependencyNodeEditor contract', () => {
     expect(condition).not.toHaveProperty('cycle')
     expect(condition).not.toHaveProperty('dateValue')
   })
+
+  it('saves a file dependency with its explicit target identifier', async () => {
+    const wrapper = mount(DependencyNodeEditor, {
+      props: {
+        projectId: 7,
+        workflowId: 12,
+        taskId: 'dep_file',
+        modelValue: { kind: 'file', file_id: 'landing/orders.done' },
+      },
+    })
+
+    expect(wrapper.get('[data-test="dependency-kind"]').findAll('option')).toHaveLength(5)
+    expect(wrapper.get('[data-test="dependency-target"]').element).toHaveProperty('value', 'landing/orders.done')
+    await wrapper.get('[data-test="save-dependency"]').trigger('click')
+    await flushPromises()
+
+    const condition = saveDependency.mock.calls[0][0].groups[0].conditions[0]
+    expect(condition).toEqual(expect.objectContaining({
+      kind: 'file',
+      fileId: 'landing/orders.done',
+      cycle: 'day',
+      dateValue: 'last1Days',
+    }))
+    expect(condition).not.toHaveProperty('upstreamWorkflowId')
+  })
 })

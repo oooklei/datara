@@ -53,7 +53,7 @@ from rebuild.datasource.metadata import metadata_catalog_for
 from rebuild.datasource.pool import DatasourceEngineRegistry
 from rebuild.datasource.repository import ProjectDatasourceRepository
 from rebuild.dependency.api import build_dependency_router
-from rebuild.dependency.models import DependencyConfigRecord
+from rebuild.dependency.models import DependencyConfigRecord, DependencyObservationRecord
 from rebuild.project.repository import ProjectRepository
 from rebuild.project.models import ProjectRecord
 from rebuild.resources.api import build_resources_router
@@ -381,6 +381,7 @@ def create_app(
                 VariableDefinitionRecord.__table__,
                 TaskInstanceVariableRuntimeRecord.__table__,
                 DependencyConfigRecord.__table__,
+                DependencyObservationRecord.__table__,
                 SyncTaskDefinitionRecord.__table__,
                 ResourceRecord.__table__,
                 ResourceVersionRecord.__table__,
@@ -1480,7 +1481,7 @@ def create_app(
         prefix="/api/v1/rebuild/sync",
     )
     app.include_router(
-        build_stream_router(session_factory, token_service, active_tokens),
+        build_stream_router(session_factory, token_service, active_tokens, project_permission_error),
         prefix="/api/v1/rebuild/stream",
     )
     app.include_router(

@@ -25,9 +25,11 @@ from sqlalchemy.orm import sessionmaker
 from rebuild.stream.repository import StreamDomainError, StreamRepository
 from rebuild.stream.alert import evaluate_failure_alert
 from rebuild.stream.processor import StreamProcessingError, aggregate_window, fuse_streams
+from rebuild.identity.contracts import Permission
 
 
 class StreamJobCreateRequest(BaseModel):
+    project_id: int = Field(default=0, ge=0)
     name: str = ""
     workflow_id: int = 0
     legacy_job_id: int | None = Field(default=None, gt=0)
@@ -89,6 +91,7 @@ def build_stream_router(
     session_factory: sessionmaker,
     token_service: Any,
     active_tokens: set[str],
+    project_permission_error: Any | None = None,
 ) -> APIRouter:
     router = APIRouter()
 
@@ -107,11 +110,30 @@ def build_stream_router(
         status = 404 if exc.code == 4041 else 400
         return JSONResponse(status_code=status, content={"code": exc.code, "msg": exc.msg, "data": None})
 
-    def auth_guard(token: str, authorization: str) -> JSONResponse | None:
+    def auth_guard(
+        token: str,
+        authorization: str,
+        *,
+        project_id: int | None = None,
+        job_id: int | None = None,
+        permission: Permission = Permission.VIEW_ALL,
+    ) -> JSONResponse | None:
         try:
-            principal(token, authorization)
+            claims = principal(token, authorization)
         except ValueError:
             return unauthorized()
+        if project_permission_error is None:
+            return None
+        if project_id is not None and project_id <= 0:
+            return JSONResponse(status_code=400, content={"code": 4001, "msg": "project_id is required", "data": None})
+        with session_factory() as session:
+            try:
+                scoped_project_id = project_id if project_id is not None else StreamRepository(session).job_project_id(int(job_id))
+            except StreamDomainError as exc:
+                return domain_error(exc)
+            denial = project_permission_error(session, scoped_project_id, claims, permission)
+            if denial is not None:
+                return denial
         return None
 
     def respond(data: Any) -> dict[str, Any]:
@@ -135,7 +157,7 @@ def build_stream_router(
 
     @router.post("/jobs")
     def register_job(body: StreamJobCreateRequest, token: str = Header(default=""), authorization: str = Header(default="")):
-        denial = auth_guard(token, authorization)
+        denial = auth_guard(token, authorization, project_id=body.project_id, permission=Permission.EDIT_DEFINITION)
         if denial is not None:
             return denial
         with session_factory() as session:
@@ -143,6 +165,7 @@ def build_stream_router(
                 record = StreamRepository(session).register(
                     name=body.name, workflow_id=body.workflow_id, mq_topic=body.mq_topic,
                     runtime_config=body.runtime_config, legacy_job_id=body.legacy_job_id,
+                    project_id=body.project_id if project_permission_error is not None else None,
                 )
                 session.commit()
             except StreamDomainError as exc:
@@ -152,16 +175,16 @@ def build_stream_router(
     # -- 2. list jobs ----------------------------------------------------------
 
     @router.get("/jobs")
-    def list_jobs(token: str = Header(default=""), authorization: str = Header(default="")):
-        denial = auth_guard(token, authorization)
+    def list_jobs(project_id: int = Query(default=0, ge=0), token: str = Header(default=""), authorization: str = Header(default="")):
+        denial = auth_guard(token, authorization, project_id=project_id)
         if denial is not None:
             return denial
         with session_factory() as session:
-            return respond(StreamRepository(session).list_jobs())
+            return respond(StreamRepository(session).list_jobs(project_id if project_permission_error is not None else None))
 
     @router.get("/jobs/{job_id}/attempts")
     def list_attempts(job_id: int, token: str = Header(default=""), authorization: str = Header(default="")):
-        denial = auth_guard(token, authorization)
+        denial = auth_guard(token, authorization, job_id=job_id)
         if denial is not None:
             return denial
         with session_factory() as session:
@@ -172,7 +195,7 @@ def build_stream_router(
 
     @router.get("/jobs/{job_id}/checkpoints")
     def list_checkpoints(job_id: int, token: str = Header(default=""), authorization: str = Header(default="")):
-        denial = auth_guard(token, authorization)
+        denial = auth_guard(token, authorization, job_id=job_id)
         if denial is not None:
             return denial
         with session_factory() as session:
@@ -183,7 +206,7 @@ def build_stream_router(
 
     @router.post("/jobs/{job_id}/checkpoints")
     def write_checkpoint(job_id: int, body: StreamCheckpointRequest, token: str = Header(default=""), authorization: str = Header(default="")):
-        denial = auth_guard(token, authorization)
+        denial = auth_guard(token, authorization, job_id=job_id)
         if denial is not None:
             return denial
         if not body.partition_id.strip() or not body.event_time.strip():
@@ -210,7 +233,7 @@ def build_stream_router(
         producer, not a broker replacement: every generated event is persisted
         as a checkpoint and one cumulative metric snapshot is recorded.
         """
-        denial = auth_guard(token, authorization)
+        denial = auth_guard(token, authorization, job_id=job_id)
         if denial is not None:
             return denial
         if not body.partition_id.strip():
@@ -290,7 +313,7 @@ def build_stream_router(
     @router.post("/jobs/{job_id}/fuse")
     def fuse_events(job_id: int, body: StreamFuseRequest, token: str = Header(default=""), authorization: str = Header(default="")):
         """Fuse two or more named event streams and persist the observation result."""
-        denial = auth_guard(token, authorization)
+        denial = auth_guard(token, authorization, job_id=job_id)
         if denial is not None:
             return denial
         try:
@@ -322,7 +345,7 @@ def build_stream_router(
         job_id: int, from_: str = Query(alias="from"), to: str = Query(), limit: int = Query(default=100),
         token: str = Header(default=""), authorization: str = Header(default=""),
     ):
-        denial = auth_guard(token, authorization)
+        denial = auth_guard(token, authorization, job_id=job_id)
         if denial is not None:
             return denial
         with session_factory() as session:
@@ -336,7 +359,7 @@ def build_stream_router(
         job_id: int, from_: str = Query(alias="from"), to: str = Query(), limit: int = Query(default=100),
         token: str = Header(default=""), authorization: str = Header(default=""),
     ):
-        denial = auth_guard(token, authorization)
+        denial = auth_guard(token, authorization, job_id=job_id)
         if denial is not None:
             return denial
         with session_factory() as session:
@@ -347,7 +370,7 @@ def build_stream_router(
 
     @router.get("/jobs/{job_id}/failure-alert")
     def get_failure_alert(job_id: int, token: str = Header(default=""), authorization: str = Header(default="")):
-        denial = auth_guard(token, authorization)
+        denial = auth_guard(token, authorization, job_id=job_id)
         if denial is not None:
             return denial
         with session_factory() as session:
@@ -361,7 +384,7 @@ def build_stream_router(
 
     @router.get("/jobs/{job_id}")
     def get_job(job_id: int, token: str = Header(default=""), authorization: str = Header(default="")):
-        denial = auth_guard(token, authorization)
+        denial = auth_guard(token, authorization, job_id=job_id)
         if denial is not None:
             return denial
         with session_factory() as session:
@@ -377,7 +400,7 @@ def build_stream_router(
     def transition_job(
         job_id: int, body: StreamTransitionRequest, token: str = Header(default=""), authorization: str = Header(default="")
     ):
-        denial = auth_guard(token, authorization)
+        denial = auth_guard(token, authorization, job_id=job_id)
         if denial is not None:
             return denial
         with session_factory() as session:
@@ -394,7 +417,7 @@ def build_stream_router(
     def observe_job(
         job_id: int, body: StreamWindowRequest, token: str = Header(default=""), authorization: str = Header(default="")
     ):
-        denial = auth_guard(token, authorization)
+        denial = auth_guard(token, authorization, job_id=job_id)
         if denial is not None:
             return denial
         if not body.from_ or not body.to or body.from_ > body.to:
@@ -411,7 +434,7 @@ def build_stream_router(
     def list_failures(
         job_id: int, body: StreamWindowRequest, token: str = Header(default=""), authorization: str = Header(default="")
     ):
-        denial = auth_guard(token, authorization)
+        denial = auth_guard(token, authorization, job_id=job_id)
         if denial is not None:
             return denial
         if not body.from_ or not body.to or body.from_ > body.to:

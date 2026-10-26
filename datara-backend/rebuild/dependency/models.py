@@ -17,7 +17,7 @@ Contract source (frozen, A2 v2.1): docs/increments/2026-10-17-R4-DEP-RES-API-con
 
 from datetime import datetime
 
-from sqlalchemy import Boolean, DateTime, Integer, String, Text, UniqueConstraint, func
+from sqlalchemy import Boolean, DateTime, Index, Integer, String, Text, UniqueConstraint, func
 from sqlalchemy.orm import Mapped, mapped_column
 
 from rebuild.common.db import Base
@@ -58,3 +58,26 @@ class DependencyConfigRecord(Base):
     updated_at: Mapped[datetime] = mapped_column(
         DateTime, server_default=func.current_timestamp(), server_onupdate=func.current_timestamp()
     )
+
+
+class DependencyObservationRecord(Base):
+    """Project-scoped state observation consumed by extension dependency kinds."""
+
+    __tablename__ = "dependency_observation"
+    __table_args__ = (
+        Index(
+            "ix_dependency_observation_lookup",
+            "project_id",
+            "kind",
+            "target_key",
+            "observed_at",
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    project_id: Mapped[int] = mapped_column(Integer, nullable=False, index=True)
+    kind: Mapped[str] = mapped_column(String(32), nullable=False)
+    target_key: Mapped[str] = mapped_column(String(512), nullable=False)
+    state: Mapped[str] = mapped_column(String(16), nullable=False)
+    observed_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.current_timestamp())

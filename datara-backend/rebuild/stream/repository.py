@@ -29,6 +29,7 @@ from rebuild.stream.models import (
     StreamRecoveryEventRecord,
 )
 from rebuild.stream.producer_schema import validate_runtime_config
+from rebuild.workflow.models import WorkflowDefinitionRecord
 
 STREAM_STATES = ("CREATED", "STARTING", "RUNNING", "PAUSED", "STOPPING", "STOPPED", "FAILED", "RECOVERING")
 
@@ -118,6 +119,7 @@ class StreamRepository:
         mq_topic: str,
         runtime_config: dict[str, Any] | str | None = None,
         legacy_job_id: int | None = None,
+        project_id: int | None = None,
     ) -> StreamJobRecord:
         if not name or not isinstance(name, str):
             raise StreamDomainError(4001, "name is required")
@@ -125,6 +127,13 @@ class StreamRepository:
             raise StreamDomainError(4001, "workflow_id must be a positive integer")
         if not mq_topic or not isinstance(mq_topic, str):
             raise StreamDomainError(4001, "mq_topic is required")
+        if project_id is not None and self._session.scalar(
+            select(WorkflowDefinitionRecord.id).where(
+                WorkflowDefinitionRecord.id == workflow_id,
+                WorkflowDefinitionRecord.project_id == project_id,
+            )
+        ) is None:
+            raise StreamDomainError(4041, "workflow not found in project")
         if legacy_job_id is not None and (isinstance(legacy_job_id, bool) or not isinstance(legacy_job_id, int) or legacy_job_id <= 0):
             raise StreamDomainError(4001, "legacy_job_id must be a positive integer")
         if legacy_job_id is not None and self._session.scalar(
@@ -153,15 +162,37 @@ class StreamRepository:
         self._session.flush()
         return record
 
-    def get_job(self, job_id: int) -> StreamJobRecord:
-        record = self._session.get(StreamJobRecord, job_id)
+    def get_job(self, job_id: int, project_id: int | None = None) -> StreamJobRecord:
+        query = select(StreamJobRecord).where(StreamJobRecord.id == job_id)
+        if project_id is not None:
+            query = query.join(
+                WorkflowDefinitionRecord,
+                WorkflowDefinitionRecord.id == StreamJobRecord.workflow_id,
+            ).where(WorkflowDefinitionRecord.project_id == project_id)
+        record = self._session.scalar(query)
         if record is None:
             raise StreamDomainError(4041, f"stream job {job_id} not found")
         return record
 
-    def list_jobs(self) -> list[dict[str, Any]]:
-        rows = self._session.scalars(select(StreamJobRecord).order_by(StreamJobRecord.id))
+    def list_jobs(self, project_id: int | None = None) -> list[dict[str, Any]]:
+        query = select(StreamJobRecord)
+        if project_id is not None:
+            query = query.join(
+                WorkflowDefinitionRecord,
+                WorkflowDefinitionRecord.id == StreamJobRecord.workflow_id,
+            ).where(WorkflowDefinitionRecord.project_id == project_id)
+        rows = self._session.scalars(query.order_by(StreamJobRecord.id))
         return [self.job_payload(row) for row in rows]
+
+    def job_project_id(self, job_id: int) -> int:
+        project_id = self._session.scalar(
+            select(WorkflowDefinitionRecord.project_id)
+            .join(StreamJobRecord, StreamJobRecord.workflow_id == WorkflowDefinitionRecord.id)
+            .where(StreamJobRecord.id == job_id)
+        )
+        if project_id is None:
+            raise StreamDomainError(4041, f"stream job {job_id} not found")
+        return int(project_id)
 
     def transition(self, job_id: int, action: str, *, event_time: datetime | None = None) -> StreamJobRecord:
         record = self.get_job(job_id)

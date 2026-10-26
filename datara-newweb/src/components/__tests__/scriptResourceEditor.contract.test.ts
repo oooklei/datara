@@ -1,11 +1,12 @@
 import { flushPromises, mount } from '@vue/test-utils'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-const { uploadResource, listResources, listResourceVersions, bindResourceVersion } = vi.hoisted(() => ({
+const { uploadResource, listResources, listResourceVersions, bindResourceVersion, listDatasources } = vi.hoisted(() => ({
   uploadResource: vi.fn(),
   listResources: vi.fn(),
   listResourceVersions: vi.fn(),
   bindResourceVersion: vi.fn(),
+  listDatasources: vi.fn(),
 }))
 
 vi.mock('../../services/rebuild/resourceApi', async (original) => {
@@ -21,6 +22,10 @@ vi.mock('../../services/rebuild/resourceApi', async (original) => {
     }),
   }
 })
+
+vi.mock('../../services/rebuild/datasourceApi', () => ({
+  createDatasourceContract: () => ({ listDatasources }),
+}))
 
 import ScriptResourceEditor from '../ScriptResourceEditor.vue'
 
@@ -38,6 +43,9 @@ describe('script resource editor', () => {
       { resourceId: 8, version: 2, sizeBytes: 10, digest: 'sha-2', uploadedAt: '2026-10-25T00:00:00Z' },
       { resourceId: 8, version: 3, sizeBytes: 12, digest: 'sha-3', uploadedAt: '2026-10-25T01:00:00Z' },
     ])
+    listDatasources.mockResolvedValue({
+      items: [{ id: 7, projectId: 7, name: 'orders', kind: 'mysql', host: 'db', port: 3306, database: 'orders', username: 'reader', createdAt: '', updatedAt: '' }],
+    })
     bindResourceVersion.mockResolvedValue({ bound: true, bindingId: 19 })
   })
 
@@ -124,6 +132,39 @@ describe('script resource editor', () => {
     await flushPromises()
     expect(wrapper.find('[data-resource-select]').text()).toContain('project-two.py')
     expect(wrapper.find('[data-resource-select]').text()).not.toContain('project-one.py')
+  })
+
+  it('SQL 表单加载项目数据源并把执行参数写回草稿', async () => {
+    const wrapper = mount(ScriptResourceEditor, {
+      props: { projectId: 7, workflowId: 11, workflowVersion: 1, taskId: 'sql_1', kind: 'sql', modelValue: { sourceMode: 'inline', sql: 'select 1' } },
+      global: { stubs: { VariableReferenceInput: variableInputStub } },
+    })
+    await flushPromises()
+
+    expect(listDatasources).toHaveBeenCalledOnce()
+    await wrapper.find('[data-sql-datasource]').setValue('7')
+    await wrapper.find('[data-sql-pre]').setValue('set time_zone = "+00:00"')
+    await wrapper.find('[data-sql-post]').setValue('commit')
+
+    expect(wrapper.emitted('update:modelValue')?.at(-1)?.[0]).toEqual({
+      sourceMode: 'inline', sql: 'select 1', datasource: 7, pre: 'set time_zone = "+00:00"', post: 'commit',
+    })
+    expect(wrapper.find('[role="status"]').text()).toContain('已更新')
+  })
+
+  it('Python 表单校验环境变量并保留 requirements 执行参数', async () => {
+    const wrapper = mount(ScriptResourceEditor, {
+      props: { projectId: 7, workflowId: 11, workflowVersion: 1, taskId: 'python_1', kind: 'python', modelValue: { sourceMode: 'inline', script: 'print(1)' } },
+      global: { stubs: { VariableReferenceInput: variableInputStub } },
+    })
+    await wrapper.find('[data-python-requirements]').setValue('requests==2.32.3')
+    await wrapper.find('[data-script-env]').setValue('API_URL=https://example.test\nBROKEN')
+    expect(wrapper.find('[role="alert"]').text()).toContain('KEY=VALUE')
+
+    await wrapper.find('[data-script-env]').setValue('API_URL=https://example.test\nRETRIES=3')
+    expect(wrapper.emitted('update:modelValue')?.at(-1)?.[0]).toEqual({
+      sourceMode: 'inline', script: 'print(1)', requirements: 'requests==2.32.3', env: { API_URL: 'https://example.test', RETRIES: '3' },
+    })
   })
 
 })

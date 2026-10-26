@@ -3,15 +3,21 @@
 from types import SimpleNamespace
 
 import pytest
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, select
 from sqlalchemy.orm import Session
 
 import api.instance as legacy_instances
 from common.resp import PageQuery
 from rebuild.execution.legacy_bridge import _session_factory
-from rebuild.execution.models import EXECUTION_TABLES, TaskInstanceRecord, WorkflowInstanceRecord
+from rebuild.execution.models import (
+    EXECUTION_TABLES,
+    TaskInstanceRecord,
+    WorkflowInstanceRecord,
+    WorkflowRunStatRecord,
+)
 from rebuild.execution.repository import ExecutionRepository
 from rebuild.common.db import Base as RebuildBase
+from rebuild.workflow.models import WorkflowDefinitionRecord
 
 
 USER = SimpleNamespace(id=1, user_name="bridge-test", user_role="dev")
@@ -23,8 +29,20 @@ def execution_store(tmp_path, monkeypatch):
     monkeypatch.setenv("REBUILD_DB_URL", database_url)
     _session_factory.cache_clear()
     engine = create_engine(database_url)
-    RebuildBase.metadata.create_all(engine, tables=list(EXECUTION_TABLES))
+    RebuildBase.metadata.create_all(
+        engine, tables=[WorkflowDefinitionRecord.__table__, *EXECUTION_TABLES]
+    )
     with Session(engine) as session:
+        session.add(
+            WorkflowDefinitionRecord(
+                id=17,
+                project_id=1,
+                name="bridge-workflow",
+                description="",
+                tags_json="[]",
+                workflow_type="NORMAL",
+            )
+        )
         repo = ExecutionRepository(session)
         instance = repo.create_workflow_instance(
             workflow_id=17, workflow_version_id=3, instance_type="FORMAL", trigger_type="MANUAL"
@@ -85,6 +103,13 @@ def test_legacy_stop_and_rerun_commands_map_to_execution_transitions_and_attempt
     with Session(_engine) as session:
         instance = session.get(WorkflowInstanceRecord, numeric_id)
         assert instance is not None and instance.status == "CANCELED"
+        stat = session.scalar(
+            select(WorkflowRunStatRecord).where(
+                WorkflowRunStatRecord.workflow_instance_id == numeric_id
+            )
+        )
+        assert stat is not None
+        assert (stat.success_count, stat.failure_count, stat.skipped_count) == (0, 0, 0)
         instance.status = "SUCCEEDED"
         task = session.get(TaskInstanceRecord, task_id)
         assert task is not None

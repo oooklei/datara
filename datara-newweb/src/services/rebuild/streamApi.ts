@@ -5,7 +5,7 @@
  * （job/attempt/checkpoint/metric 查询 + 观摩查询 + 故障恢复与漂移注入事件、长驻进程与位点恢复）
  * 与权威设计 §8.4 观摩查询接口结构基线（f475c76）：
  * 生产速率、消费速率、积压、偏移、窗口结果、成功/失败/跳过计数、错误样本。
- * GREEN 接线：I8_CONTRACT_METHODS 8 方法经真实 fetch + 统一包络 {code,msg,data}；
+ * GREEN 接线：I8_CONTRACT_METHODS 九键经真实 fetch + 统一包络 {code,msg,data}；
  * I8_STREAM_NOT_WIRED 仅保留为 404 分支错误提示（端点未挂载时），不再作为 RED 活哨兵。
  * 调用方换绑目标：正式 /stream 页应由 services/streamApi.ts（F40/F41 旧契约）换绑至本文件（FE-10 裁定）。
  */
@@ -25,6 +25,14 @@ export interface StreamJobRow {
   /** running / paused / stopped / failed 等 */
   state: string
   startedAt: string | null
+}
+
+export interface StreamJobCreateInput {
+  projectId: number
+  workflowId: number
+  name: string
+  mqTopic: string
+  runtimeConfig: Record<string, unknown>
 }
 
 /** 作业尝试（含重启历史） */
@@ -142,6 +150,7 @@ export const I8_CONTRACT_METHODS = [
   'listStreamRecoveryEvents',
   'produceStreamEvents',
   'fuseStreamEvents',
+  'provisionStreamJob',
 ] as const
 
 export type I8ContractMethod = (typeof I8_CONTRACT_METHODS)[number]
@@ -160,6 +169,7 @@ export const I8_PERMISSION_MATRIX = {
   listStreamRecoveryEvents: 'VIEW_ALL',
   produceStreamEvents: 'EDIT_DEFINITION',
   fuseStreamEvents: 'EDIT_DEFINITION',
+  provisionStreamJob: 'EDIT_DEFINITION',
 } as const satisfies Record<I8ContractMethod, 'VIEW_ALL' | 'EDIT_DEFINITION'>
 
 export interface StreamContract {
@@ -171,6 +181,7 @@ export interface StreamContract {
   listStreamRecoveryEvents: (window: TimeWindowQuery, jobId?: string) => Promise<StreamRecoveryEventRow[]>
   produceStreamEvents: (jobId: string, request?: StreamProduceRequest) => Promise<StreamProduceResult>
   fuseStreamEvents: (jobId: string, keyField: string, streams: Record<string, Array<Record<string, unknown>>>) => Promise<StreamFuseResult>
+  provisionStreamJob: (input: StreamJobCreateInput) => Promise<StreamJobRow>
 }
 
 /* ---------- GREEN 接线；保留未挂载时的兼容哨兵 ---------- */
@@ -204,33 +215,34 @@ const metric = (value: unknown): MetricValue => ({
 
 const query = (window: TimeWindowQuery) => `?from=${encodeURIComponent(window.from)}&to=${encodeURIComponent(window.to)}&limit=${window.limit}`
 
-async function jobsFor(jobId?: string): Promise<Array<{ id: number; name: string; workflowId: number; mqTopic: string; runtimeConfig: Record<string, unknown>; state: string; attemptNo: number; startedAt: string | null; finishedAt: string | null }>> {
-  const jobs = await request<Array<{ id: number; name: string; workflowId: number; mqTopic: string; runtimeConfig: Record<string, unknown>; state: string; attemptNo: number; startedAt: string | null; finishedAt: string | null }>>('/jobs')
+async function jobsFor(projectId: number | undefined, jobId?: string): Promise<Array<{ id: number; name: string; workflowId: number; mqTopic: string; runtimeConfig: Record<string, unknown>; state: string; attemptNo: number; startedAt: string | null; finishedAt: string | null }>> {
+  if (!Number.isSafeInteger(projectId) || Number(projectId) <= 0) throw new Error('stream projectId is required')
+  const jobs = await request<Array<{ id: number; name: string; workflowId: number; mqTopic: string; runtimeConfig: Record<string, unknown>; state: string; attemptNo: number; startedAt: string | null; finishedAt: string | null }>>(`/jobs?project_id=${projectId}`)
   return jobId ? jobs.filter((job) => String(job.id) === jobId) : jobs
 }
 
 /**
  * I8 契约工厂：端点统一使用 /api/v1/rebuild/stream，UI 继续依赖原契约接口。
  */
-export function createStreamContract(): StreamContract {
+export function createStreamContract(projectId?: number): StreamContract {
   return {
-    listStreamJobs: async () => (await jobsFor()).map((job) => ({
+    listStreamJobs: async () => (await jobsFor(projectId)).map((job) => ({
       jobId: wireIdToString(job.id, 'jobId'), kind: String(job.runtimeConfig.mode ?? 'stream'), state: job.state, startedAt: job.startedAt,
     })),
-    listStreamAttempts: async (_window, jobId) => (await Promise.all((await jobsFor(jobId)).map((job) =>
+    listStreamAttempts: async (_window, jobId) => (await Promise.all((await jobsFor(projectId, jobId)).map((job) =>
       request<Array<{ jobId: number; attemptId: number; startedAt: string | null; endedAt: string | null; exitReason: string | null }>>(`/jobs/${job.id}/attempts`),
     ))).flat().map((row) => ({ ...row, jobId: wireIdToString(row.jobId, 'jobId'), startedAt: row.startedAt ?? '', endedAt: row.endedAt })),
-    listStreamCheckpoints: async (_window, jobId) => (await Promise.all((await jobsFor(jobId)).map((job) =>
+    listStreamCheckpoints: async (_window, jobId) => (await Promise.all((await jobsFor(projectId, jobId)).map((job) =>
       request<Array<{ jobId: number; partitionId: string; offsetValue: number; eventTime: string }>>(`/jobs/${job.id}/checkpoints`),
     ))).flat().map((row) => ({
       jobId: wireIdToString(row.jobId, 'jobId'), partition: row.partitionId,
       committedOffset: metric(row.offsetValue), currentOffset: metric(row.offsetValue), checkpointedAt: row.eventTime,
     })),
-    listStreamMetrics: async (window, jobId) => (await Promise.all((await jobsFor(jobId)).map((job) =>
+    listStreamMetrics: async (window, jobId) => (await Promise.all((await jobsFor(projectId, jobId)).map((job) =>
       request<Array<{ jobId: number; metric: string; value: number; capturedAt: string }>>(`/jobs/${job.id}/metrics${query(window)}`),
     ))).flat().map((row) => ({ ...row, jobId: wireIdToString(row.jobId, 'jobId'), value: metric(row.value) })),
     queryStreamObservation: async (window, jobId) => {
-      const jobs = await jobsFor(jobId)
+      const jobs = await jobsFor(projectId, jobId)
       const job = jobs[0]
       if (!job) throw new Error('stream job not found')
       const raw = await request<Record<string, unknown>>(`/jobs/${job.id}/observe`, 'POST', { from: window.from, to: window.to })
@@ -251,7 +263,7 @@ export function createStreamContract(): StreamContract {
         })),
       }
     },
-    listStreamRecoveryEvents: async (window, jobId) => (await Promise.all((await jobsFor(jobId)).map((job) =>
+    listStreamRecoveryEvents: async (window, jobId) => (await Promise.all((await jobsFor(projectId, jobId)).map((job) =>
       request<Array<{ eventId: string; jobId: number; kind: string; detail: string; occurredAt: string }>>(`/jobs/${job.id}/recovery-events${query(window)}`),
     ))).flat().map((row) => ({ ...row, eventId: wireIdToString(row.eventId, 'eventId'), jobId: wireIdToString(row.jobId, 'jobId') })),
     produceStreamEvents: async (jobId, body = {}) => {
@@ -278,6 +290,28 @@ export function createStreamContract(): StreamContract {
         fused: Number(result.fused ?? 0),
         metric: (result.metric as Record<string, unknown>) ?? {},
         result: Array.isArray(result.result) ? result.result as Array<Record<string, unknown>> : [],
+      }
+    },
+    provisionStreamJob: async (input) => {
+      const job = await request<{ id: number; runtimeConfig: Record<string, unknown>; state: string; startedAt: string | null }>(
+        '/jobs',
+        'POST',
+        { project_id: input.projectId, name: input.name, workflow_id: input.workflowId, mq_topic: input.mqTopic, runtime_config: input.runtimeConfig },
+      )
+      const jobId = wireIdToString(job.id, 'jobId')
+      await request<Record<string, unknown>>(
+        `/jobs/${encodeURIComponent(jobId)}/transitions`,
+        'POST',
+        { action: 'start' },
+      )
+      const active = await request<{ id: number; runtimeConfig: Record<string, unknown>; state: string; startedAt: string | null }>(
+        `/jobs/${encodeURIComponent(jobId)}/transitions`, 'POST', { action: 'activate' },
+      )
+      return {
+        jobId: wireIdToString(active.id, 'jobId'),
+        kind: String(active.runtimeConfig?.mode ?? 'stream'),
+        state: active.state,
+        startedAt: active.startedAt,
       }
     },
   }

@@ -32,9 +32,11 @@ from rebuild.stream.models import (
     StreamRecoveryEventRecord,
 )
 from rebuild.stream.repository import STREAM_STATES, STREAM_TRANSITIONS, StreamDomainError, StreamRepository
+from rebuild.workflow.models import WorkflowDefinitionRecord
 
 
 STREAM_TABLES = (
+    WorkflowDefinitionRecord.__table__,
     StreamJobRecord.__table__,
     StreamJobAttemptRecord.__table__,
     StreamCheckpointRecord.__table__,
@@ -70,6 +72,28 @@ def _register(repo, name="obs-demo"):
         mq_topic="datara.stream.demo",
         runtime_config={"mode": "fixed_rate", "rows_per_sec": 100, "columns": ["value"]},
     )
+
+
+def test_repository_scopes_jobs_to_workflow_project(session_factory):
+    with session_factory() as session:
+        first_workflow = WorkflowDefinitionRecord(project_id=7, name="stream-a", workflow_type="STREAM")
+        second_workflow = WorkflowDefinitionRecord(project_id=8, name="stream-b", workflow_type="STREAM")
+        session.add_all([first_workflow, second_workflow])
+        session.flush()
+        repository = StreamRepository(session)
+        first = repository.register(
+            "job-a", first_workflow.id, "topic.a",
+            {"mode": "fixed_rate", "rows_per_sec": 1, "columns": ["value"]}, project_id=7,
+        )
+        second = repository.register(
+            "job-b", second_workflow.id, "topic.b",
+            {"mode": "fixed_rate", "rows_per_sec": 1, "columns": ["value"]}, project_id=8,
+        )
+        assert [row["id"] for row in repository.list_jobs(7)] == [first.id]
+        assert [row["id"] for row in repository.list_jobs(8)] == [second.id]
+        with pytest.raises(StreamDomainError) as denial:
+            repository.get_job(second.id, project_id=7)
+        assert denial.value.code == 4041
 
 
 # -- 1. register defaults ---------------------------------------------------
