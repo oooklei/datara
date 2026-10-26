@@ -170,7 +170,8 @@ describe('L12-02 full 段 ProjectSegmentView dag 接驳（s326 裁定④方案 A
     await flushPromises()
     expect(w.find('[data-tc-tabs]').exists()).toBe(false)
     expect(w.find('.segment-page').exists()).toBe(false)
-    expect(resourceList).toHaveBeenCalledWith(7, undefined)
+    // 第二参为 kind 默认值：裁定 fix#4 后 resources 默认 sql（对齐 resourceManagementView 契约 L60）
+    expect(resourceList).toHaveBeenCalledWith(7, 'sql')
   })
 
   it("seg='meta' 挂 GovernanceHubView（治理 8 页页签接入，不再落「尚未开放」占位）", () => {
