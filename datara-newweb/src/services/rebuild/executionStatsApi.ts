@@ -38,9 +38,26 @@ export interface WorkflowRunStatDetail extends WorkflowRunStat {
 
 export interface WorkflowRunStatPage { total: number; items: WorkflowRunStat[] }
 
-export function listWorkflowRunStats(projectId: number, options: { workflowId?: number; limit?: number } = {}) {
+export type WorkflowInstanceType = 'TRIAL' | 'FORMAL' | 'STREAM'
+
+export interface WorkflowRunStatQuery {
+  workflowId?: number
+  instanceType?: WorkflowInstanceType
+  status?: string
+  startedFrom?: string
+  startedTo?: string
+  offset?: number
+  limit?: number
+}
+
+export function listWorkflowRunStats(projectId: number, options: WorkflowRunStatQuery = {}) {
   const query: Record<string, string> = { project_id: String(projectId), limit: String(options.limit ?? 50) }
   if (options.workflowId) query.workflow_id = String(options.workflowId)
+  if (options.instanceType) query.instance_type = options.instanceType
+  if (options.status) query.status = options.status
+  if (options.startedFrom) query.started_from = options.startedFrom
+  if (options.startedTo) query.started_to = options.startedTo
+  if (options.offset !== undefined) query.offset = String(options.offset)
   return request<WorkflowRunStatPage>('/rebuild/execution/run-stats', { query })
 }
 

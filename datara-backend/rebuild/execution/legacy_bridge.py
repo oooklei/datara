@@ -23,10 +23,12 @@ from rebuild.execution.models import (
     EXECUTION_TABLES,
     ExecutionEventRecord,
     RunOutputRecord,
+    TERMINAL_STATUSES,
     TaskInstanceRecord,
     WorkflowInstanceRecord,
 )
 from rebuild.execution.repository import ExecutionRepository
+from rebuild.execution.run_stats import RunStatisticsService
 
 LEGACY_EXECUTION_PREFIX = "r9-"
 
@@ -233,6 +235,8 @@ def transition(instance_id: str, new_status: str) -> dict[str, Any] | None:
         if row.instance_type == "STREAM" and new_status == "CANCELLED":
             new_status = "STOPPED"
         row = repo.transition_workflow_instance(numeric_id, new_status)
+        if row.status in TERMINAL_STATUSES:
+            RunStatisticsService(session).finalize(row.id)
         session.commit()
         return {"instanceId": instance_id, "state": _status(row.status)}
 

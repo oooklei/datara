@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
 import { ElMessage } from 'element-plus'
-import { createDependencyContract } from '../services/rebuild/dependencyApi'
+import { createDependencyContract, type DependencyCondition } from '../services/rebuild/dependencyApi'
 
 const props = defineProps<{
   projectId: number
@@ -16,6 +16,12 @@ const saving = ref(false)
 const saved = ref(false)
 const selector = computed(() => String(props.modelValue.dependent_execute ?? 'workflow'))
 const windowMode = computed(() => String(props.modelValue.window_mode ?? 'named') === 'range' ? 'range' : 'named')
+type DependencyKind = NonNullable<DependencyCondition['kind']>
+const kind = computed<DependencyKind>(() => {
+  const candidate = String(props.modelValue.kind ?? '')
+  if (['workflow', 'task', 'file', 'table_state', 'external_task'].includes(candidate)) return candidate as DependencyKind
+  return selector.value === 'workflow' ? 'workflow' : 'task'
+})
 
 function value(key: string, fallback: string | number = ''): string | number {
   return props.modelValue[key] as string | number ?? fallback
@@ -26,18 +32,54 @@ function update(key: string, next: unknown) {
   emit('update:modelValue', { ...props.modelValue, [key]: next })
 }
 
-async function save() {
-  const upstreamWorkflowId = Number(props.modelValue.upstream_workflow_id)
-  if (!Number.isInteger(upstreamWorkflowId) || upstreamWorkflowId <= 0) {
-    ElMessage.warning('请先填写有效的上游工作流 ID')
-    return
-  }
+function updateKind(next: DependencyKind) {
+  saved.value = false
+  const value: Record<string, unknown> = { ...props.modelValue, kind: next }
+  if (next === 'workflow') value.dependent_execute = 'workflow'
+  if (next === 'task' && selector.value === 'workflow') value.dependent_execute = 'all_tasks'
+  emit('update:modelValue', value)
+}
 
-  const selectedScope = selector.value as 'workflow' | 'all_tasks' | 'task'
-  const taskCode = selectedScope === 'workflow' ? '0' : selectedScope === 'all_tasks' ? '-1' : String(props.modelValue.upstream_task_code ?? '')
-  if (selectedScope === 'task' && (!/^\d+$/.test(taskCode) || Number(taskCode) <= 0)) {
-    ElMessage.warning('指定任务依赖需要填写正整数任务编码')
-    return
+function updateScope(next: 'workflow' | 'all_tasks' | 'task') {
+  saved.value = false
+  emit('update:modelValue', {
+    ...props.modelValue,
+    kind: next === 'workflow' ? 'workflow' : 'task',
+    dependent_execute: next,
+  })
+}
+
+async function save() {
+  const selectedKind = kind.value
+  const condition: DependencyCondition = { kind: selectedKind }
+  let upstreamWorkflowId: number | undefined
+  if (selectedKind === 'workflow' || selectedKind === 'task') {
+    upstreamWorkflowId = Number(props.modelValue.upstream_workflow_id)
+    if (!Number.isInteger(upstreamWorkflowId) || upstreamWorkflowId <= 0) {
+      ElMessage.warning('请先填写有效的上游工作流 ID')
+      return
+    }
+    const selectedScope = selectedKind === 'workflow'
+      ? 'workflow'
+      : (selector.value === 'task' ? 'task' : 'all_tasks')
+    const taskCode = selectedScope === 'workflow' ? '0' : selectedScope === 'all_tasks' ? '-1' : String(props.modelValue.upstream_task_code ?? '')
+    if (selectedScope === 'task' && (!/^\d+$/.test(taskCode) || Number(taskCode) <= 0)) {
+      ElMessage.warning('指定任务依赖需要填写正整数任务编码')
+      return
+    }
+    condition.selector = selectedScope
+    condition.upstreamWorkflowId = upstreamWorkflowId
+    condition.upstreamTaskCode = taskCode
+  } else {
+    const field = selectedKind === 'file' ? 'file_id' : selectedKind === 'table_state' ? 'table_id' : 'external_key'
+    const target = String(props.modelValue[field] ?? '').trim()
+    if (!target || target.length > 512) {
+      ElMessage.warning('扩展依赖目标标识不能为空且不得超过 512 个字符')
+      return
+    }
+    if (selectedKind === 'file') condition.fileId = target
+    else if (selectedKind === 'table_state') condition.tableId = target
+    else condition.externalKey = target
   }
   const windowInput = windowMode.value === 'range'
     ? (() => {
@@ -60,6 +102,10 @@ async function save() {
     ElMessage.warning('相对窗口要求起止偏移为整数，且结束偏移不得早于开始偏移')
     return
   }
+  Object.assign(condition, windowInput, {
+    dependResult: String(props.modelValue.depend_result ?? 'success') === 'failed' ? 'failed' : 'success',
+    parameterPassing: Boolean(props.modelValue.parameter_passing ?? false),
+  })
 
   saving.value = true
   saved.value = false
@@ -77,20 +123,12 @@ async function save() {
       timeoutSeconds: Number(props.modelValue.timeout_seconds ?? 30),
       groups: [{
         join: String(props.modelValue.relation ?? 'AND') === 'OR' ? 'OR' : 'AND',
-        conditions: [{
-          kind: selectedScope === 'workflow' ? 'workflow' : 'task',
-          selector: selectedScope,
-          upstreamWorkflowId,
-          upstreamTaskCode: taskCode,
-          ...windowInput,
-          dependResult: String(props.modelValue.depend_result ?? 'success') === 'failed' ? 'failed' : 'success',
-          parameterPassing: Boolean(props.modelValue.parameter_passing ?? false),
-        }],
+        conditions: [condition],
       }],
     })
     emit('update:modelValue', {
       ...props.modelValue,
-      upstream_workflow_id: upstreamWorkflowId,
+      ...(upstreamWorkflowId !== undefined ? { upstream_workflow_id: upstreamWorkflowId } : {}),
       dependency_id: result.configId,
     })
     saved.value = true
@@ -106,13 +144,18 @@ async function save() {
 <template>
   <section class="dependency-editor" data-dependent-editor>
     <strong>依赖组件参数 · {{ taskId }}</strong>
-    <label>执行范围<select data-test="dependency-scope" :value="selector" @change="update('dependent_execute', ($event.target as HTMLSelectElement).value)">
+    <label>依赖类型<select data-test="dependency-kind" :value="kind" @change="updateKind(($event.target as HTMLSelectElement).value as DependencyKind)">
+      <option value="workflow">工作流</option><option value="task">任务</option><option value="file">文件</option><option value="table_state">表状态</option><option value="external_task">外部任务</option>
+    </select></label>
+    <label v-if="kind === 'workflow' || kind === 'task'">执行范围<select data-test="dependency-scope" :value="selector" @change="updateScope(($event.target as HTMLSelectElement).value as 'workflow' | 'all_tasks' | 'task')">
       <option value="workflow">整工作流</option><option value="all_tasks">全部任务</option><option value="task">指定任务</option>
     </select></label>
-    <label>依赖类型<select :value="value('kind', 'workflow')" disabled title="文件/表状态/外部任务的详细契约尚未冻结"><option value="workflow">工作流/任务</option></select></label>
-    <label>上游工作流 ID<input data-test="upstream-workflow" :value="value('upstream_workflow_id')" @input="update('upstream_workflow_id', ($event.target as HTMLInputElement).value)" /></label>
+    <label v-if="kind === 'workflow' || kind === 'task'">上游工作流 ID<input data-test="upstream-workflow" :value="value('upstream_workflow_id')" @input="update('upstream_workflow_id', ($event.target as HTMLInputElement).value)" /></label>
+    <label v-else-if="kind === 'file'">文件标识<input data-test="dependency-target" :value="value('file_id')" @input="update('file_id', ($event.target as HTMLInputElement).value)" /></label>
+    <label v-else-if="kind === 'table_state'">表状态标识<input data-test="dependency-target" :value="value('table_id')" @input="update('table_id', ($event.target as HTMLInputElement).value)" /></label>
+    <label v-else>外部任务标识<input data-test="dependency-target" :value="value('external_key')" @input="update('external_key', ($event.target as HTMLInputElement).value)" /></label>
     <small v-if="value('dependency_id')" data-test="dependency-id">已绑定依赖配置 #{{ value('dependency_id') }}</small>
-    <label v-if="selector === 'task'">任务编码<input data-test="upstream-task" :value="value('upstream_task_code')" @input="update('upstream_task_code', ($event.target as HTMLInputElement).value)" /></label>
+    <label v-if="kind === 'task' && selector === 'task'">任务编码<input data-test="upstream-task" :value="value('upstream_task_code')" @input="update('upstream_task_code', ($event.target as HTMLInputElement).value)" /></label>
     <label>组内关系<select :value="value('relation', 'AND')" @change="update('relation', ($event.target as HTMLSelectElement).value)"><option>AND</option><option>OR</option></select></label>
     <label>组间关系<select :value="value('group_relation', 'AND')" @change="update('group_relation', ($event.target as HTMLSelectElement).value)"><option>AND</option><option>OR</option></select></label>
     <label>时间窗模式<select data-test="dependency-window-mode" :value="windowMode" @change="update('window_mode', ($event.target as HTMLSelectElement).value)"><option value="named">命名窗口</option><option value="range">相对范围</option></select></label>

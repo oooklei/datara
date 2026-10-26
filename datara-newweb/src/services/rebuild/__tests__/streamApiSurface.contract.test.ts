@@ -7,7 +7,7 @@ import {
 
 describe('I8 streamApi contract', () => {
   it('contract method list includes live production and fusion operations', () => {
-    expect(I8_CONTRACT_METHODS).toHaveLength(8)
+    expect(I8_CONTRACT_METHODS).toHaveLength(9)
     expect(I8_CONTRACT_METHODS).toEqual(
       expect.arrayContaining([
         'listStreamJobs',
@@ -18,6 +18,7 @@ describe('I8 streamApi contract', () => {
         'listStreamRecoveryEvents',
         'produceStreamEvents',
         'fuseStreamEvents',
+        'provisionStreamJob',
       ]),
     )
   })

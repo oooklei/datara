@@ -30,11 +30,14 @@ export interface DependencyDateRange {
 export interface DependencyCondition {
   kind?: 'workflow' | 'task' | 'file' | 'table_state' | 'external_task'
   selector?: 'workflow' | 'all_tasks' | 'task'
-  upstreamWorkflowId: number
+  upstreamWorkflowId?: number
   /** 固定上游版本；缺省表示随上游最新已发布版本（后端冻结前为草案语义） */
   upstreamWorkflowVersion?: number
   /** 可选：依赖上游某具体任务；缺省为整工作流成功 */
   upstreamTaskCode?: string
+  fileId?: string
+  tableId?: string
+  externalKey?: string
   dateRange?: DependencyDateRange
   cycle?: DependencyPeriodType
   dateValue?: string
@@ -246,12 +249,19 @@ export function createDependencyContract(): DependencyContract {
 /* ---------- 纯前端逻辑：表达式草稿拼装（执行前预览的本地草稿，非服务端终判） ---------- */
 
 function describeCondition(condition: DependencyCondition): string {
-  const task = condition.upstreamTaskCode ? ` task(${condition.upstreamTaskCode})` : ''
+  const kind = condition.kind ?? 'workflow'
+  const target = kind === 'file'
+    ? `file(${condition.fileId ?? ''})`
+    : kind === 'table_state'
+      ? `table_state(${condition.tableId ?? ''})`
+      : kind === 'external_task'
+        ? `external_task(${condition.externalKey ?? ''})`
+        : `wf(${condition.upstreamWorkflowId})${condition.upstreamTaskCode ? ` task(${condition.upstreamTaskCode})` : ''}`
   if (condition.dateRange) {
     const { periodType, beginOffset, endOffset } = condition.dateRange
-    return `wf(${condition.upstreamWorkflowId})${task} ${periodType}[${beginOffset}..${endOffset}]`
+    return `${target} ${periodType}[${beginOffset}..${endOffset}]`
   }
-  return `wf(${condition.upstreamWorkflowId})${task} ${condition.cycle ?? 'day'}:${condition.dateValue ?? 'today'}`
+  return `${target} ${condition.cycle ?? 'day'}:${condition.dateValue ?? 'today'}`
 }
 
 /**

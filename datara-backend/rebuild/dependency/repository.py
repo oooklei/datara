@@ -26,7 +26,7 @@ from typing import Any, Callable
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from rebuild.dependency.models import DependencyConfigRecord
+from rebuild.dependency.models import DependencyConfigRecord, DependencyObservationRecord
 from rebuild.metrics.models import (
     TaskDataErrorSampleRecord,
     TaskInstanceDataStatRecord,
@@ -146,13 +146,34 @@ def validate_condition(condition: Any, group_index: int, cond_index: int) -> dic
     if kind is not None and kind not in VALID_KINDS:
         diagnostics.append(_diag(f"{index_path}.kind", "INVALID", f"kind must be one of {VALID_KINDS}"))
     if kind in ("file", "table_state", "external_task"):
-        # §7.1: extension kinds are frozen as enum values only; per-kind parameter
-        # structure lands with the BE implementation design follow-up ("再确认").
-        raise DependencyDomainError(
-            "DEP_INVALID_WINDOW",
-            f"condition kind={kind} parameter structure is not frozen yet",
-            [_diag(f"{index_path}.kind", "NOT_FROZEN", f"kind={kind} detailed fields land with the R4 follow-up freeze")],
-        )
+        target_field = {
+            "file": "file_id",
+            "table_state": "table_id",
+            "external_task": "external_key",
+        }[kind]
+        target_value = condition.get(target_field)
+        if not isinstance(target_value, str) or not target_value.strip() or len(target_value.strip()) > 512:
+            diagnostics.append(
+                _diag(f"{index_path}.{target_field}", "REQUIRED", f"{target_field} must be a non-empty string of at most 512 characters")
+            )
+        depend_result = condition.get("depend_result", "success")
+        if depend_result not in VALID_DEPEND_RESULTS:
+            diagnostics.append(_diag(f"{index_path}.depend_result", "INVALID", f"depend_result must be one of {VALID_DEPEND_RESULTS}"))
+        parameter_passing = condition.get("parameter_passing", False)
+        if not isinstance(parameter_passing, bool):
+            diagnostics.append(_diag(f"{index_path}.parameter_passing", "INVALID", "parameter_passing must be a boolean"))
+        _validate_window(condition, index_path, diagnostics)
+        if diagnostics:
+            raise DependencyDomainError("DEP_INVALID_WINDOW", "condition validation failed", diagnostics)
+        return {
+            "kind": kind,
+            target_field: target_value.strip(),
+            "cycle": condition.get("cycle"),
+            "date_value": condition.get("date_value"),
+            "date_range": condition.get("date_range") if isinstance(condition.get("date_range"), dict) else None,
+            "depend_result": depend_result,
+            "parameter_passing": parameter_passing,
+        }
 
     upstream_workflow_id = _as_int(condition.get("upstream_workflow_id"), f"{index_path}.upstream_workflow_id", diagnostics, minimum=1)
     if upstream_workflow_id is None:
@@ -442,9 +463,9 @@ def compose_expression(conditions: list[dict[str, Any]], group_relation: str) ->
     joins: dict[int, str] = {}
     for condition in conditions:
         task_part = ""
-        if condition["selector"] == "task":
+        if condition.get("selector") == "task":
             task_part = f" task({condition['upstream_task_code']})"
-        elif condition["selector"] == "all_tasks":
+        elif condition.get("selector") == "all_tasks":
             task_part = " task(ALL)"
         polarity = "" if condition["depend_result"] == "success" else "! "
         if condition.get("date_range") is not None:
@@ -452,9 +473,13 @@ def compose_expression(conditions: list[dict[str, Any]], group_relation: str) ->
             window = f"{date_range['period_type']}[{date_range['begin_offset']}..{date_range['end_offset']}]"
         else:
             window = f"{condition['cycle']}:{condition['date_value']}"
-        groups.setdefault(int(condition["group_index"]), []).append(
-            f"{polarity}wf({condition['upstream_workflow_id']}){task_part} {window}"
-        )
+        kind = str(condition.get("kind", "workflow"))
+        if kind in ("file", "table_state", "external_task"):
+            field = {"file": "file_id", "table_state": "table_id", "external_task": "external_key"}[kind]
+            target = f"{kind}({condition[field]})"
+        else:
+            target = f"wf({condition['upstream_workflow_id']}){task_part}"
+        groups.setdefault(int(condition["group_index"]), []).append(f"{polarity}{target} {window}")
         joins[int(condition["group_index"])] = condition["group_join"]
     rendered = [
         (parts[0] if len(parts) == 1 else "(" + f" {joins[index]} ".join(parts) + ")")
@@ -519,12 +544,18 @@ def evaluate_expression(
         verdict = evaluate_condition_static(condition, window_start, window_end, as_of, timeout_seconds, lookup)
         group_results.setdefault(int(condition["group_index"]), []).append(verdict)
         entry: dict[str, Any] = {
-            "upstream_workflow_id": condition["upstream_workflow_id"],
             "window_start": window_start,
             "window_end": window_end,
             "verdict": verdict,
         }
-        if condition["selector"] == "task":
+        kind = str(condition.get("kind", "workflow"))
+        if kind in ("file", "table_state", "external_task"):
+            field = {"file": "file_id", "table_state": "table_id", "external_task": "external_key"}[kind]
+            entry["kind"] = kind
+            entry[field] = condition[field]
+        else:
+            entry["upstream_workflow_id"] = condition["upstream_workflow_id"]
+        if condition.get("selector") == "task":
             entry["upstream_task_code"] = str(condition["upstream_task_code"])
         resolved.append(entry)
     overall = combine_verdicts(
@@ -541,7 +572,7 @@ def conditions_group_join(conditions: list[dict[str, Any]], group_index: int) ->
     return "AND"
 
 
-def metrics_history_lookup(session: Session) -> HistoryLookup:
+def metrics_history_lookup(session: Session, project_id: int) -> HistoryLookup:
     """Live history source over the R7 metric tables (narrow-scope, disclosed).
 
     - selector=workflow: workflow_result_stat rows for the upstream workflow in
@@ -558,6 +589,24 @@ def metrics_history_lookup(session: Session) -> HistoryLookup:
         end_date = date.fromisoformat(window_end[:10])
         start_dt = datetime.fromisoformat(window_start.replace("Z", "+00:00")).replace(tzinfo=None)
         end_dt = datetime.fromisoformat(window_end.replace("Z", "+00:00")).replace(tzinfo=None)
+        kind = str(condition.get("kind", "workflow"))
+        if kind in ("file", "table_state", "external_task"):
+            field = {"file": "file_id", "table_state": "table_id", "external_task": "external_key"}[kind]
+            row = session.scalar(
+                select(DependencyObservationRecord)
+                .where(
+                    DependencyObservationRecord.project_id == project_id,
+                    DependencyObservationRecord.kind == kind,
+                    DependencyObservationRecord.target_key == str(condition[field]),
+                    DependencyObservationRecord.observed_at >= start_dt,
+                    DependencyObservationRecord.observed_at < end_dt,
+                )
+                .order_by(DependencyObservationRecord.observed_at.desc(), DependencyObservationRecord.id.desc())
+                .limit(1)
+            )
+            if row is None:
+                return "no_record"
+            return "satisfied" if row.state == condition["depend_result"] else "failed"
         if condition["selector"] == "workflow":
             # Day-granularity history proxy (disclosed): an hour-cycle window on
             # a single day cannot match a date column and falls through to

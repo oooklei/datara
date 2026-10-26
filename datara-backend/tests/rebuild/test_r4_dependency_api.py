@@ -339,12 +339,12 @@ def test_validation_failure_families():
         )
         assert mismatch.status_code == 400 and mismatch.json()["code"] == "DEP_INVALID_WINDOW"
 
-        not_frozen = client.post(
+        missing_extension_target = client.post(
             f"{DEPENDENCY}/preview", headers=tokens["dev"],
             json=_body(owned_id, groups=[{"join": "AND", "conditions": [_condition(kind="file")]}]),
         )
-        assert not_frozen.status_code == 400
-        assert any(d["code"] == "NOT_FROZEN" for d in not_frozen.json()["data"]["diagnostics"])
+        assert missing_extension_target.status_code == 400
+        assert any(d["field"].endswith(".file_id") for d in missing_extension_target.json()["data"]["diagnostics"])
 
         mutex = client.post(
             f"{DEPENDENCY}/preview", headers=tokens["dev"],
@@ -377,6 +377,49 @@ def test_validation_failure_families():
             f"{DEPENDENCY}/preview", headers=tokens["dev"], json=_body(owned_id, groups=[])
         )
         assert empty_groups.status_code == 400 and empty_groups.json()["code"] == "DEP_INVALID_WINDOW"
+    finally:
+        client.__exit__(None, None, None)
+
+
+def test_extension_dependency_observation_roundtrip():
+    client, app, owned_id, tokens = _client()
+    try:
+        for kind, field, target in (
+            ("file", "file_id", "landing/orders.done"),
+            ("table_state", "table_id", "warehouse.orders:ready"),
+            ("external_task", "external_key", "airflow:orders:20261016"),
+        ):
+            condition = {
+                "kind": kind,
+                field: target,
+                "cycle": "day",
+                "date_value": "last1Days",
+                "depend_result": "success",
+                "parameter_passing": False,
+            }
+            observation = client.post(
+                f"{DEPENDENCY}/observations",
+                headers=tokens["dev"],
+                json={
+                    "project_id": owned_id,
+                    "kind": kind,
+                    "target_key": target,
+                    "state": "success",
+                    "observed_at": "2026-10-16T10:00:00Z",
+                },
+            )
+            assert observation.status_code == 200
+            assert observation.json()["data"]["recorded"] is True
+
+            evaluated = client.post(
+                f"{DEPENDENCY}/evaluate",
+                headers=tokens["dev"],
+                json=_body(owned_id, groups=[{"join": "AND", "conditions": [condition]}]),
+            )
+            assert evaluated.status_code == 200
+            payload = evaluated.json()["data"]
+            assert payload["verdict"] == "satisfied"
+            assert payload["resolved"][0][field] == target
     finally:
         client.__exit__(None, None, None)
 
