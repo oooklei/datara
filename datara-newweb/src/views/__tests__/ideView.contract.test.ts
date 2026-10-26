@@ -1,6 +1,7 @@
 import { flushPromises, mount } from '@vue/test-utils'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import View from '../ide/IdeView.vue'
+import ideSource from '../ide/IdeView.vue?raw'
 
 const router = vi.hoisted(() => ({
   route: { params: {} as Record<string, unknown>, query: {} as Record<string, unknown> },
@@ -134,13 +135,41 @@ function dispatch(type: string, payload: unknown): void {
 }
 
 describe('/ide 数据开发 IDE 只读态（增量 11/R5-A）', () => {
+  it('uses the shared r6 theme tokens instead of page-local hex colors', () => {
+    expect(ideSource).not.toMatch(/#[0-9a-fA-F]{3,8}\b/)
+    expect(ideSource).toContain('var(--')
+  })
+
   it('renders project picker and skips the query when no project is in context', async () => {
     const w = mount(View)
     await flushPromises()
     expect(w.find('[data-project-select]').exists()).toBe(true)
+    expect(w.find('[data-variable-manage]').attributes('disabled')).toBeDefined()
     expect(w.find('[data-no-project]').exists()).toBe(true)
     expect(w.find('[data-object-panel]').exists()).toBe(false)
     expect(spies.listDatasources).not.toHaveBeenCalled()
+  })
+
+  it('opens variable management with the active project and closes through v-model', async () => {
+    router.route.params.projectId = '1'
+    const w = mount(View, {
+      global: {
+        stubs: {
+          VariableManagementDialog: {
+            props: ['modelValue', 'projectId'],
+            emits: ['update:modelValue'],
+            template: '<div v-if="modelValue" data-variable-management-dialog-stub :data-project-id="projectId"><button data-close-variable-management @click="$emit(\'update:modelValue\', false)">关闭</button></div>',
+          },
+        },
+      },
+    })
+    await flushPromises()
+
+    expect(w.find('[data-variable-management-dialog-stub]').exists()).toBe(false)
+    await w.find('[data-variable-manage]').trigger('click')
+    expect(w.find('[data-variable-management-dialog-stub]').attributes('data-project-id')).toBe('1')
+    await w.find('[data-close-variable-management]').trigger('click')
+    expect(w.find('[data-variable-management-dialog-stub]').exists()).toBe(false)
   })
 
   it('lists datasources for the project carried by route params', async () => {

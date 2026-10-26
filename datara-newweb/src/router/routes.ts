@@ -30,7 +30,7 @@ import RuntimeNodeView from '../views/depops/RuntimeNodeView.vue'
 import MonitorView from '../views/depops/MonitorView.vue'
 import ApiKeyManagementView from '../views/ApiKeyManagementView.vue'
 import ApiManagementView from '../views/ApiManagementView.vue'
-import LlmModelManagementView from '../views/LlmModelManagementView.vue'
+import LlmModelsView from '../views/system/llm-models/LlmModelsView.vue'
 import DataSourceListView from '../views/datasource/DataSourceListView.vue'
 import IdeView from '../views/ide/IdeView.vue'
 import MetadataCatalogView from '../views/meta/MetadataCatalogView.vue'
@@ -42,7 +42,7 @@ import IndicatorListView from '../views/ind/IndicatorListView.vue'
 import IndicatorBoardView from '../views/ind/IndicatorBoardView.vue'
 import ConsistencyCheckView from '../views/ind/ConsistencyCheckView.vue'
 import PermissionMatrixView from '../views/PermissionMatrixView.vue'
-import SecAuditView from '../views/SecAuditView.vue'
+import AccessAuditView from '../views/sec/AccessAuditView.vue'
 import QualityRuleView from '../views/qc/QualityRuleView.vue'
 import QualityTaskView from '../views/qc/QualityTaskView.vue'
 import QualityReadOnlyView from '../views/qc/QualityReadOnlyView.vue'
@@ -60,7 +60,7 @@ export const routes: RouteRecordRaw[] = [
   { path: '/dep/monitor', name: 'dep-monitor', component: MonitorView },
   { path: '/open/key', name: 'open-key', component: ApiKeyManagementView },
   { path: '/open/api', name: 'open-api', component: ApiManagementView },
-  { path: '/open/llm', name: 'open-llm', component: LlmModelManagementView },
+  { path: '/open/llm', name: 'open-llm', component: LlmModelsView },
   { path: '/ds/list', name: 'ds-list', component: DataSourceListView },
   { path: '/ide', name: 'sql-ide', component: IdeView },
   { path: '/model/list', name: 'dwModeling', component: ModelListView },
@@ -73,7 +73,7 @@ export const routes: RouteRecordRaw[] = [
   { path: '/ind/board', name: 'ind-board', component: IndicatorBoardView },
   { path: '/ind/consistency', name: 'ind-consistency', component: ConsistencyCheckView },
   { path: '/sec/perm', name: 'sec-perm', component: PermissionMatrixView },
-  { path: '/sec/audit', name: 'sec-audit', component: SecAuditView },
+  { path: '/sec/audit', name: 'sec-audit', component: AccessAuditView },
   { path: '/qc/rule', name: 'qc-rule', component: QualityRuleView },
   { path: '/qc/task', name: 'qc-task', component: QualityTaskView },
   { path: '/qc/exception', name: 'qc-exception', component: QualityReadOnlyView, props: { kind: 'exceptions' } },

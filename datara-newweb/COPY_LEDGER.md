@@ -131,3 +131,31 @@
 | B4-T1 | `datara-newweb/src/views/__tests__/consistencyCheckView.contract.test.ts` | `4d6e8d78defccfae336dfac9fdcb474b77afcad65182627df3c92ad25f2f60bf` | 新增结果抽屉与指标跳转契约 |
 | B4-T2 | `datara-newweb/src/views/__tests__/indicatorBoardView.contract.test.ts` | `08b845dad509a02ac88061ea24afa204587b70b66981e969ff0974282912f698` | 新增双入口导航契约 |
 | B4-T3 | `datara-newweb/src/views/__tests__/sshNodeManagementView.contract.test.ts` | `712b8f6abfb0b3d7fc55d99482d38a971848fc31730a9b98d5a08fc0b386ad50` | 新增凭据默认掩码与编辑器显隐契约 |
+
+## FE-MERGE-B5 冲突件并集（2026-10-26）
+
+源根（只读）：`D:\需求\数据治理工具\Datara`。下列 SHA-256 均为 D-WIP 原始字节；目标端没有机械覆盖，而是在当前安全、鉴权和竞态契约上做语义并集。
+
+| 批次 | 源相对路径 | D-WIP SHA-256 | 目标处置 / 并集说明 |
+|---|---|---|---|
+| B5-01 | `datara-newweb/src/services/rebuild/syncComponentApi.ts` | `58bb6b1b22974adee919cf549f3842f0882397280dde5d35331cf2fbfee66cda` | 吸收共享 `http.request`、`preserveEnvelopeCode` 与五操作权限矩阵；保留 `SyncApiError` 领域错误、诊断透传、15 秒超时和内存 token 底座。 |
+| B5-T1 | `datara-newweb/src/services/rebuild/__tests__/syncComponentApi.contract.test.ts` | `83714a54150c9b256b439f4163ef345aa2dee947ee6c28d73a242bbaf8b6aeac` | 吸收权限面断言并强化为五个操作逐项精确映射；原请求路径、载荷、token 与诊断测试全部保留。 |
+| B5-02 | `datara-newweb/src/views/ide/IdeView.vue` | `bc0f72f9a9828f140d06c64da576fc112e8b3c03f6903c40ce1227dd2ed0a437` | 保留变量校验、现时值预览、补全、SQL 编辑执行和 metadata 请求序号守卫；仅将页内硬编码色值归一为 r6 共享主题令牌。 |
+| B5-03 | `datara-newweb/src/router/routes.ts` | `2d4ca5c799834ce2a77d665aacef0ab23755090bec7288289d5a3d0a5131a88c` | 保留现有路由集合与守卫边界；按用户裁定将 `/open/llm` 绑定 `views/system/llm-models/LlmModelsView.vue`、`/sec/audit` 绑定 `views/sec/AccessAuditView.vue`。两正本源文件 SHA 已登记于 B3-7/B3-10。 |
+
+B5 新增/调整的 IDE、路由与 B3 消费合同测试为目标端验证代码，不冒充 D-WIP 原件；RED/GREEN、全量测试、类型检查和差异核验见 `.codex-evidence/FE-MERGE-B5/implementation/`。
+
+## FE-MERGE-B6 测试资产筛选纳入（2026-10-26）
+
+源根（只读）：`D:\需求\数据治理工具\Datara`。以下 SHA-256 为 D-WIP 原始字节；目标测试保留业务闭环，但按现行安全裁定移除 localStorage token 注入，统一改为应用已有 `__DATARA_TEST_TOKEN__` 一次性内存通道与请求期鉴权头。生成物、报告和证据目录仅加忽略规则，不纳入仓库。
+
+| 批次 | 源相对路径 | D-WIP SHA-256 | 目标处置 / 筛选说明 |
+|---|---|---|---|
+| B6-01 | `datara-newweb/playwright.config.ts` | `03fc2b3da96cac415008fd3a1c82c0601f1cd2d8b7b165da2e2118096f28a801` | 保留 1.9/18091、单 worker、零重试；删除持久化 token 叙述，不启动本机 webServer |
+| B6-02 | `datara-newweb/e2e/llm-models.spec.ts` | `e3a90e8a93d843d08d5f878d9332dd04f2d94794f68d9491c0c1c3348a5eda89` | 保留配置/掩码/连通性/删除闭环；路由归一为 `/open/llm`；凭据仅运行时存在 |
+| B6-03 | `datara-newweb/e2e/qc.spec.ts` | `07ee38ff192135a7295d3df5ade5f7bd95296bc3e8b994111553c21dac3666ea` | 保留规则创建、structural 运行与项目上下文跳转；移除浏览器持久化读取 |
+| B6-04 | `datara-newweb/e2e/sshNode.spec.ts` | `c80d71d6459ea4989dc8c3d3443fb9718972d2d5575b08dc760b788457666bf2` | 保留创建、凭据遮罩、探测与删除；移除浏览器持久化读取 |
+| B6-05 | `datara-newweb/deploy/DEPLOY-1.9.md` | `f962a4746833db3fb09b755893acf84aa06f883bc52241f3bba543ec67809a4b` | 收敛为 1.9 隔离部署、SCP、短时内存鉴权与证据边界，清除旧本机运行口径 |
+| B6-T1 | 目标新增 `datara-newweb/e2e/support/auth.ts` | —（目标安全适配） | 登录 token 不入 URL/静态产物/报告/浏览器存储；document-start 内存注入后由应用消费并删除 |
+
+明确排除：`playwright-report/**`、`test-results/**`、`playwright.config.js`、`playwright.config.d.ts`、`e2e/**/*.js`、`e2e/**/*.d.ts`、`e2e/evidence/**`；对应精确规则见 `datara-newweb/.gitignore`。

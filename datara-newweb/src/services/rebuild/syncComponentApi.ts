@@ -9,10 +9,9 @@
  * 横幅状态词表见 services/rebuild/bannerStatus.ts。
  */
 
-import { getToken } from '../http'
+import { ContractApiError, request as httpRequest } from '../http'
 
-const BASE = '/api/v1/rebuild/sync'
-const TIMEOUT_MS = 15000
+const BASE = '/rebuild/sync'
 
 export interface SyncObjectRef {
   datasource_id: number
@@ -81,6 +80,14 @@ export interface SyncContract {
   listPlans(projectId: number, workflowId: number, workflowVersion: number): Promise<SyncPlan[]>
 }
 
+export const SYNC_PERMISSION_MATRIX = {
+  getCapabilities: 'VIEW_ALL',
+  explore: 'VIEW_ALL',
+  autoMap: 'EDIT_DEFINITION',
+  savePlan: 'EDIT_DEFINITION',
+  listPlans: 'VIEW_ALL',
+} as const satisfies Record<keyof SyncContract, 'VIEW_ALL' | 'EDIT_DEFINITION'>
+
 export class SyncApiError extends Error {
   readonly status: number
   readonly code: number | string
@@ -95,37 +102,15 @@ export class SyncApiError extends Error {
   }
 }
 
-async function request<T>(path: string, init?: RequestInit): Promise<T> {
-  const controller = new AbortController()
-  const timeout = setTimeout(() => controller.abort(), TIMEOUT_MS)
+async function request<T>(path: string, method = 'GET', body?: unknown): Promise<T> {
   try {
-    const headers: Record<string, string> = { 'Content-Type': 'application/json' }
-    const token = getToken()
-    if (token) headers.token = token
-    const response = await fetch(`${BASE}${path}`, {
-      ...init,
-      headers: { ...headers, ...(init?.headers as Record<string, string> | undefined) },
-      signal: controller.signal,
-    })
-    const envelope = await response.json().catch(() => null) as {
-      code?: number | string
-      msg?: string
-      data?: T | null
-    } | null
-    if (!envelope) throw new SyncApiError(response.status, response.status, `无法解析 SYNC 响应（HTTP ${response.status}）`)
-    const success = response.ok && (envelope.code === 0 || envelope.code === '0')
-    if (!success) {
-      const data = envelope.data as { diagnostics?: Array<Record<string, unknown>> } | null | undefined
-      throw new SyncApiError(response.status, envelope.code ?? response.status, envelope.msg ?? 'SYNC 请求失败', data?.diagnostics ?? [])
-    }
-    return envelope.data as T
+    return await httpRequest<T>(`${BASE}${path}`, { method, json: body, preserveEnvelopeCode: true })
   } catch (error) {
-    if (error instanceof DOMException && error.name === 'AbortError') {
-      throw new SyncApiError(0, 'TIMEOUT', `SYNC 请求超时（${TIMEOUT_MS / 1000}s）`)
+    if (error instanceof ContractApiError) {
+      const raw = error.raw as { data?: { diagnostics?: Array<Record<string, unknown>> } } | undefined
+      throw new SyncApiError(error.httpStatus, error.code, error.message, raw?.data?.diagnostics ?? [])
     }
     throw error
-  } finally {
-    clearTimeout(timeout)
   }
 }
 
@@ -143,12 +128,10 @@ export function createSyncComponentContract(): SyncContract {
       return request<SyncExploreResult>(`/explore?${query}`)
     },
     autoMap: async (projectId, source, target) => {
-      const result = await request<{ mappings: SyncMapping[] }>('/mappings/auto', {
-        method: 'POST', body: JSON.stringify({ project_id: projectId, source, target }),
-      })
+      const result = await request<{ mappings: SyncMapping[] }>('/mappings/auto', 'POST', { project_id: projectId, source, target })
       return result.mappings
     },
-    savePlan: (plan) => request('/plans', { method: 'POST', body: JSON.stringify(plan) }),
+    savePlan: (plan) => request('/plans', 'POST', plan),
     listPlans: async (projectId, workflowId, workflowVersion) => {
       const query = new URLSearchParams({
         project_id: String(projectId), workflow_id: String(workflowId), workflow_version: String(workflowVersion),

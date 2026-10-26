@@ -237,13 +237,15 @@ async function init(): Promise<void> {
 onMounted(init)
 
 async function reloadAssets(): Promise<void> {
+  const seq = ++assetSeq
+  assetLoading.value = false
   lineageSeq += 1
   lineageLoading.value = false
   graph.value = null
+  assets.value = []
   selectedAsset.value = ''
   error.value = ''
-  if (projectId.value === null) { assets.value = []; return }
-  const seq = ++assetSeq
+  if (projectId.value === null) return
   assetLoading.value = true
   error.value = ''
   try {

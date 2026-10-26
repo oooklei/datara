@@ -7,7 +7,7 @@
 
     <div class="toolbar">
       <label class="field"><span>项目</span>
-        <select v-model="selectedProject" class="kw" data-project-select :disabled="loading || creating" @change="reloadAssets">
+        <select v-model="selectedProject" class="kw" data-project-select :disabled="loading || creating || assigning || clearingId !== null" @change="reloadAssets">
           <option value="">请选择项目</option>
           <option v-for="p in projects" :key="p.id" :value="String(p.id)">{{ p.name }}</option>
         </select>
@@ -236,6 +236,8 @@ async function init(): Promise<void> {
 onMounted(init)
 
 let assetSeq = 0
+let assignSeq = 0
+let clearSeq = 0
 let loadedProjectId: number | null = null
 /** 拉取资产列表；reset=true 用于切换项目（清空选择/结果），false 用于挂载后刷新（保留选择与结果）。 */
 async function loadAssets(reset: boolean): Promise<void> {
@@ -245,6 +247,10 @@ async function loadAssets(reset: boolean): Promise<void> {
     loadedProjectId = pid
   }
   if (reset) {
+    assignSeq += 1
+    clearSeq += 1
+    assigning.value = false
+    clearingId.value = null
     assets.value = []
     selectedAsset.value = ''
     tagIds.value = ''
@@ -294,7 +300,8 @@ async function create(): Promise<void> {
 }
 
 async function assign(): Promise<void> {
-  if (loading.value || assigning.value) return
+  const requestedProjectId = projectId.value
+  if (requestedProjectId === null || loading.value || assigning.value) return
   assignHint.value = ''
   const id = Number(selectedAsset.value)
   const raw = tagIds.value.split(',').map((s) => s.trim()).filter((s) => s !== '')
@@ -303,16 +310,22 @@ async function assign(): Promise<void> {
     assignHint.value = '标签 ID 需为逗号分隔的正整数（如 1,2），请检查后重试。'
     return
   }
+  const seq = ++assignSeq
   assigning.value = true
   error.value = ''
   try {
     const res = await governanceApi.assignAssetTags(id, ids)
+    if (seq !== assignSeq || projectId.value !== requestedProjectId) return
     lastResult.value = `资产 #${res.assetId} 已挂载标签：${res.tagIds.join(', ')}`
     await loadAssets(false)
   } catch (e) {
-    error.value = message(e)
-    retry.value = assign
-  } finally { assigning.value = false }
+    if (seq === assignSeq && projectId.value === requestedProjectId) {
+      error.value = message(e)
+      retry.value = assign
+    }
+  } finally {
+    if (seq === assignSeq && projectId.value === requestedProjectId) assigning.value = false
+  }
 }
 
 /** 行操作：把该资产带入挂载面板（复用既有挂载流程，不重复造写接口）。 */
@@ -325,21 +338,30 @@ function focusAssign(a: AssetRecord): void {
 /** 行操作：清空该资产全部标签（assignAssetTags(id, []) 为后端既有替换语义）。 */
 async function clearTags(a: AssetRecord): Promise<void> {
   if (loading.value || assigning.value || clearingId.value !== null) return
+  const requestedProjectId = projectId.value
+  if (requestedProjectId === null) return
   try {
     await ElMessageBox.confirm(`确认清空资产“${a.displayName || a.assetName}”的全部标签？`, '清空标签', { type: 'warning' })
   } catch {
     return
   }
+  if (projectId.value !== requestedProjectId) return
+  const seq = ++clearSeq
   clearingId.value = a.id
   error.value = ''
   try {
     await governanceApi.assignAssetTags(a.id, [])
+    if (seq !== clearSeq || projectId.value !== requestedProjectId) return
     lastResult.value = `资产 #${a.id} 已清空标签`
     await loadAssets(false)
   } catch (e) {
-    error.value = message(e)
-    retry.value = () => clearTags(a)
-  } finally { clearingId.value = null }
+    if (seq === clearSeq && projectId.value === requestedProjectId) {
+      error.value = message(e)
+      retry.value = () => clearTags(a)
+    }
+  } finally {
+    if (seq === clearSeq && projectId.value === requestedProjectId) clearingId.value = null
+  }
 }
 </script>
 

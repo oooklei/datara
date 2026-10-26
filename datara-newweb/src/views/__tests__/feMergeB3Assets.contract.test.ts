@@ -44,16 +44,10 @@ describe('FE-MERGE-B3 asset intake', () => {
     expect(routesSource).not.toContain("../views/ResourceManagementView.vue")
   })
 
-  it('leaves B3 route normalization for B5 instead of claiming early consumption', () => {
-    for (const deferredView of [
-      '../views/open/ApiManagementView.vue',
-      '../views/open/ApiKeyManagementView.vue',
-      '../views/sec/AccessAuditView.vue',
-      '../views/system/llm-models/LlmModelsView.vue',
-    ]) {
-      expect(routesSource).not.toContain(deferredView)
-    }
-    expect(ledgerSource).toContain('路由归一与消费接线属于 FE-MERGE-B5 待办')
+  it('binds the B5-normalized LLM and access-audit canonical views', () => {
+    expect(routesSource).toContain("../views/sec/AccessAuditView.vue")
+    expect(routesSource).toContain("../views/system/llm-models/LlmModelsView.vue")
+    expect(ledgerSource).toContain('FE-MERGE-B5 冲突件并集')
   })
 
   it('records the D-drive source root, relative paths and SHA-256 for all 11 assets', () => {

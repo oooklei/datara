@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { createSyncComponentContract, SyncApiError, suggestInitialMapping, type SyncColumn } from '../syncComponentApi'
+import { createSyncComponentContract, SYNC_PERMISSION_MATRIX, SyncApiError, suggestInitialMapping, type SyncColumn } from '../syncComponentApi'
 
 const source = { datasource_id: 7, schema: 'sales', object: 'orders' }
 const target = { datasource_id: 8, schema: 'dw', object: 'orders_v2' }
@@ -11,6 +11,16 @@ function ok(data: unknown): Response {
 afterEach(() => vi.unstubAllGlobals())
 
 describe('R4 SYNC API adapter', () => {
+  it('registers every operation permission on the shared envelope surface', () => {
+    expect(SYNC_PERMISSION_MATRIX).toEqual({
+      getCapabilities: 'VIEW_ALL',
+      explore: 'VIEW_ALL',
+      autoMap: 'EDIT_DEFINITION',
+      savePlan: 'EDIT_DEFINITION',
+      listPlans: 'VIEW_ALL',
+    })
+  })
+
   it('gets capabilities and explores both the schema and wire fields', async () => {
     vi.stubGlobal('localStorage', { getItem: (key: string) => key === 'datara_token' ? 'validation-token' : null })
     const fetchMock = vi.fn()

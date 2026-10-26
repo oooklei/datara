@@ -150,4 +150,68 @@ describe('/meta/lineage 血缘分析页（增量 14）', () => {
     expect(w.find('[role=alert]').exists()).toBe(false)
     expect(w.find('[data-lineage-graph]').exists()).toBe(false)
   })
+
+  it('drops old project assets before a replacement project asset request fails', async () => {
+    let rejectP2!: (reason: Error) => void
+    vi.mocked(listProjects).mockResolvedValue({ total: 2, list: [{ id: 1, name: 'P1' }, { id: 2, name: 'P2' }] })
+    vi.mocked(governanceApi.listAssets).mockImplementation((projectId) => projectId === 1
+      ? Promise.resolve({ total: 1, page: 1, pageSize: 50, list: [asset] })
+      : new Promise((_resolve, reject) => { rejectP2 = reject }))
+    vi.mocked(governanceApi.getLineage).mockResolvedValue(graph)
+    const w = mount(View)
+    await flushPromises()
+    await w.find('[data-project-select]').setValue('1')
+    await flushPromises()
+    await w.find('[data-asset-select]').setValue('9')
+    await flushPromises()
+    expect(governanceApi.getLineage).toHaveBeenCalledTimes(1)
+
+    await w.find('[data-project-select]').setValue('2')
+    expect(w.find('[data-asset-select] option[value="9"]').exists()).toBe(false)
+    expect(w.find<HTMLSelectElement>('[data-asset-select]').element.value).toBe('')
+    rejectP2(new Error('new project assets failed'))
+    await flushPromises()
+
+    expect(w.find('[role=alert]').text()).toContain('new project assets failed')
+    expect(w.find('[data-asset-select] option[value="9"]').exists()).toBe(false)
+    expect(governanceApi.getLineage).toHaveBeenCalledTimes(1)
+  })
+
+  it.each(['success', 'failure'] as const)(
+    'invalidates a pending asset-list %s when the project context becomes empty',
+    async (outcome) => {
+      let resolveOld!: (value: { total: number; page: number; pageSize: number; list: typeof asset[] }) => void
+      let rejectOld!: (reason: Error) => void
+      router.route.query = { assetId: '9' }
+      vi.mocked(governanceApi.listAssets).mockImplementation(() => new Promise((resolve, reject) => {
+        resolveOld = resolve
+        rejectOld = reject
+      }))
+      vi.mocked(governanceApi.getLineage).mockResolvedValue(graph)
+      const w = mount(View)
+      await flushPromises()
+
+      await w.find('[data-project-select]').setValue('1')
+      expect(w.find('[role=status]').exists()).toBe(true)
+      const setup = (w.vm.$ as unknown as {
+        setupState: { selectedProject: string; reloadAssets: () => Promise<void> }
+      }).setupState
+      setup.selectedProject = ''
+      await setup.reloadAssets()
+      expect(w.find('[role=status]').exists()).toBe(false)
+
+      if (outcome === 'success') {
+        resolveOld({ total: 1, page: 1, pageSize: 50, list: [asset] })
+      } else {
+        rejectOld(new Error('stale asset-list failure'))
+      }
+      await flushPromises()
+
+      expect(w.find('[data-no-project]').exists()).toBe(true)
+      expect(w.find('[data-asset-select] option[value="9"]').exists()).toBe(false)
+      expect(w.find('[role=alert]').exists()).toBe(false)
+      expect(w.find('[role=status]').exists()).toBe(false)
+      expect(governanceApi.getLineage).not.toHaveBeenCalled()
+    },
+  )
 })

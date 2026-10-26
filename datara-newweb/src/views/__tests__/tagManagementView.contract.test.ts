@@ -190,4 +190,74 @@ describe('/meta/tag 标签管理页（增量 14）', () => {
     resolveP2({ total: 0, page: 1, pageSize: 50, list: [] })
     await flushPromises()
   })
+
+  it('keeps the project locked during assignment and ignores a stale success including its finally', async () => {
+    const asset2 = { ...asset, id: 10, projectId: 2, assetName: 'customers' }
+    let resolveOld!: (value: { assetId: number; tagIds: number[] }) => void
+    let resolveCurrent!: (value: { assetId: number; tagIds: number[] }) => void
+    vi.mocked(listProjects).mockResolvedValue({ total: 2, list: [{ id: 1, name: 'P1' }, { id: 2, name: 'P2' }] })
+    vi.mocked(governanceApi.listAssets).mockImplementation((projectId) => Promise.resolve({
+      total: 1, page: 1, pageSize: 50, list: [projectId === 1 ? asset : asset2],
+    }))
+    vi.mocked(governanceApi.assignAssetTags).mockImplementation((assetId) => assetId === 9
+      ? new Promise((resolve) => { resolveOld = resolve })
+      : new Promise((resolve) => { resolveCurrent = resolve }))
+    const w = mount(View)
+    await flushPromises()
+    await w.find('[data-project-select]').setValue('1')
+    await flushPromises()
+    await w.find('[data-asset-select]').setValue('9')
+    await w.find('input[placeholder="1,2,3"]').setValue('1')
+    await w.find('.assign button[type="button"]').trigger('click')
+    expect(w.find('[data-project-select]').attributes('disabled')).toBeDefined()
+
+    const setup = (w.vm.$ as unknown as {
+      setupState: { selectedProject: string; reloadAssets: () => Promise<void> }
+    }).setupState
+    setup.selectedProject = '2'
+    await setup.reloadAssets()
+    await flushPromises()
+    await w.find('[data-asset-select]').setValue('10')
+    await w.find('input[placeholder="1,2,3"]').setValue('2')
+    await w.find('.assign button[type="button"]').trigger('click')
+    resolveOld({ assetId: 9, tagIds: [1] })
+    await flushPromises()
+    expect(w.find('[data-project-select]').attributes('disabled')).toBeDefined()
+    expect(w.find('[data-assign-result]').exists()).toBe(false)
+
+    resolveCurrent({ assetId: 10, tagIds: [2] })
+    await flushPromises()
+    expect(w.find('[data-assign-result]').text()).toContain('#10')
+    expect(w.find('[data-project-select]').attributes('disabled')).toBeUndefined()
+  })
+
+  it('locks the project during clear and ignores a stale clear failure after project replacement', async () => {
+    const tagged = { ...asset, tags: [tag] }
+    const tagged2 = { ...tagged, id: 10, projectId: 2, assetName: 'customers' }
+    let rejectOld!: (reason: Error) => void
+    vi.mocked(listProjects).mockResolvedValue({ total: 2, list: [{ id: 1, name: 'P1' }, { id: 2, name: 'P2' }] })
+    vi.mocked(governanceApi.listAssets).mockImplementation((projectId) => Promise.resolve({
+      total: 1, page: 1, pageSize: 50, list: [projectId === 1 ? tagged : tagged2],
+    }))
+    vi.mocked(governanceApi.assignAssetTags).mockImplementation(() => new Promise((_resolve, reject) => { rejectOld = reject }))
+    confirmClear.mockResolvedValue('confirm')
+    const w = mount(View)
+    await flushPromises()
+    await w.find('[data-project-select]').setValue('1')
+    await flushPromises()
+    await w.find('.op-btn.danger').trigger('click')
+    await flushPromises()
+    expect(w.find('[data-project-select]').attributes('disabled')).toBeDefined()
+
+    const setup = (w.vm.$ as unknown as {
+      setupState: { selectedProject: string; reloadAssets: () => Promise<void> }
+    }).setupState
+    setup.selectedProject = '2'
+    await setup.reloadAssets()
+    await flushPromises()
+    rejectOld(new Error('stale clear failure'))
+    await flushPromises()
+    expect(w.find('[role=alert]').exists()).toBe(false)
+    expect(w.text()).toContain('customers')
+  })
 })

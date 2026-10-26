@@ -57,13 +57,20 @@ interface Row {
 const rows = ref<Row[]>([])
 const loading = ref(false)
 const loadError = ref('')
+let loadSeq = 0
 
 async function loadRows(): Promise<void> {
-  if (props.projectId === undefined) return
-  loading.value = true
+  const seq = ++loadSeq
+  rows.value = []
   loadError.value = ''
+  if (props.projectId === undefined) {
+    loading.value = false
+    return
+  }
+  loading.value = true
   try {
     const items = await api.listVariables(props.projectId, ['global', 'project'])
+    if (seq !== loadSeq) return
     rows.value = items.map((i) => ({
       scope: i.scope,
       name: i.name,
@@ -73,21 +80,11 @@ async function loadRows(): Promise<void> {
       description: i.description ?? '',
     }))
   } catch (e) {
-    loadError.value = '变量列表加载失败：' + (e instanceof Error ? e.message : String(e))
+    if (seq === loadSeq) loadError.value = '变量列表加载失败：' + (e instanceof Error ? e.message : String(e))
   } finally {
-    loading.value = false
+    if (seq === loadSeq) loading.value = false
   }
 }
-
-watch(
-  () => [props.modelValue, props.projectId] as const,
-  () => {
-    if (!props.modelValue) return
-    resetForm()
-    void loadRows()
-  },
-  { immediate: true },
-)
 
 const form = reactive({
   scope: 'global',
@@ -111,6 +108,16 @@ function resetForm(): void {
   editing.value = false
   formError.value = ''
 }
+
+watch(
+  () => [props.modelValue, props.projectId] as const,
+  () => {
+    if (!props.modelValue) return
+    resetForm()
+    void loadRows()
+  },
+  { immediate: true },
+)
 
 function close(): void {
   if (submitting.value) return
