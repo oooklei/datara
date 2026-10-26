@@ -1,12 +1,19 @@
 <script setup lang="ts">
-import { reactive, ref, watch } from 'vue'
+import { computed, reactive, ref, watch } from 'vue'
 import { ElMessage } from 'element-plus'
 import { createSyncComponentContract, type SyncMapping, type SyncObjectRef } from '../services/rebuild/syncComponentApi'
+import VariableReferenceInput from './VariableReferenceInput.vue'
 
 const props = defineProps<{ projectId: number; workflowId: number; workflowVersion: number; taskId: string; modelValue?: Record<string, unknown> }>()
 const emit = defineEmits<{ 'update:modelValue': [value: Record<string, unknown>]; saved: [] }>()
 const api = createSyncComponentContract()
 const busy = ref(false)
+const variableContext = computed(() => ({
+  projectId: props.projectId,
+  workflowId: props.workflowId,
+  workflowVersion: props.workflowVersion,
+  taskId: props.taskId,
+}))
 const source = reactive<SyncObjectRef>({ ...(props.modelValue?.source as SyncObjectRef | undefined ?? { datasource_id: 0, schema: '', object: '' }) })
 const target = reactive<SyncObjectRef>({ ...(props.modelValue?.target as SyncObjectRef | undefined ?? { datasource_id: 0, schema: '', object: '' }) })
 const mappings = ref<SyncMapping[]>((props.modelValue?.mappings as SyncMapping[] | undefined) ?? [])
@@ -77,6 +84,10 @@ function snapshot(): Record<string, unknown> {
   }
 }
 function syncModel() { emit('update:modelValue', snapshot()) }
+function updatePrimaryKeys(value: string): void {
+  targetProperties.primary_key_conflict.primary_key = value.split(',').map((item) => item.trim()).filter(Boolean)
+  syncModel()
+}
 async function explore() {
   if (!validRefs()) return
   busy.value = true
@@ -112,24 +123,24 @@ async function save() {
     <strong>同步组件表单 · 探查映射</strong>
     <div class="sync-ref-grid">
       <label>源数据源 <input v-model.number="source.datasource_id" type="number" min="1" /></label>
-      <label>源 Schema <input v-model="source.schema" /></label>
-      <label>源对象 <input v-model="source.object" /></label>
+      <VariableReferenceInput data-variable-field="source-schema" :model-value="source.schema" :context="variableContext" label="源 Schema" @update:model-value="source.schema = $event; syncModel()" />
+      <VariableReferenceInput data-variable-field="source-object" :model-value="source.object" :context="variableContext" label="源对象" @update:model-value="source.object = $event; syncModel()" />
       <label>目标数据源 <input v-model.number="target.datasource_id" type="number" min="1" /></label>
-      <label>目标 Schema <input v-model="target.schema" /></label>
-      <label>目标对象 <input v-model="target.object" /></label>
+      <VariableReferenceInput data-variable-field="target-schema" :model-value="target.schema" :context="variableContext" label="目标 Schema" @update:model-value="target.schema = $event; syncModel()" />
+      <VariableReferenceInput data-variable-field="target-object" :model-value="target.object" :context="variableContext" label="目标对象" @update:model-value="target.object = $event; syncModel()" />
     </div>
     <div class="sync-options">
-      <label>过滤条件 <input v-model="transformConfig.filter_condition" placeholder="可选 WHERE 条件" /></label>
-      <label>分区字段 <input v-model="targetProperties.partition_incremental.partition_field" placeholder="可选" /></label>
-      <label>增量字段 <input v-model="targetProperties.partition_incremental.incremental_field" placeholder="可选" /></label>
-      <label>主键（逗号分隔） <input :value="(targetProperties.primary_key_conflict.primary_key ?? []).join(',')" @input="targetProperties.primary_key_conflict.primary_key = ($event.target as HTMLInputElement).value.split(',').map((x: string) => x.trim()).filter(Boolean)" /></label>
+      <VariableReferenceInput data-variable-field="filter-condition" :model-value="String(transformConfig.filter_condition ?? '')" :context="variableContext" label="过滤条件" @update:model-value="transformConfig.filter_condition = $event; syncModel()" />
+      <VariableReferenceInput data-variable-field="partition-field" :model-value="String(targetProperties.partition_incremental.partition_field ?? '')" :context="variableContext" label="分区字段" @update:model-value="targetProperties.partition_incremental.partition_field = $event; syncModel()" />
+      <VariableReferenceInput data-variable-field="incremental-field" :model-value="String(targetProperties.partition_incremental.incremental_field ?? '')" :context="variableContext" label="增量字段" @update:model-value="targetProperties.partition_incremental.incremental_field = $event; syncModel()" />
+      <VariableReferenceInput data-variable-field="primary-keys" :model-value="(targetProperties.primary_key_conflict.primary_key ?? []).join(',')" :context="variableContext" label="主键（逗号分隔）" @update:model-value="updatePrimaryKeys" />
       <label>冲突策略 <select v-model="targetProperties.primary_key_conflict.conflict_strategy"><option value="insert">insert</option><option value="ignore">ignore</option><option value="update">update</option><option value="upsert">upsert</option></select></label>
       <label>批大小 <input v-model.number="targetProperties.batch_concurrency.batch_size" type="number" min="1" /></label>
       <label>并发数 <input v-model.number="targetProperties.batch_concurrency.concurrency" type="number" min="1" /></label>
     </div>
-    <div class="sync-actions"><button :disabled="busy" @click="explore">探查并自动映射</button><button :disabled="busy || !mappings.length" @click="save">保存映射</button></div>
+    <div class="sync-actions"><button data-test="sync-explore" :disabled="busy" @click="explore">探查并自动映射</button><button data-test="sync-save" :disabled="busy || !mappings.length" @click="save">保存映射</button></div>
     <p v-if="sourceColumns.length || targetColumns.length" class="sync-meta">源字段 {{ sourceColumns.length }} · 目标字段 {{ targetColumns.length }} · 映射 {{ mappings.length }}</p>
-    <table v-if="mappings.length"><thead><tr><th>源字段</th><th>目标字段</th><th>转换表达式</th><th>可空</th><th>默认值</th><th>状态</th></tr></thead><tbody><tr v-for="(mapping, index) in mappings" :key="`${mapping.target_column}-${index}`"><td><input v-model="mapping.source_column" @change="syncModel" /></td><td>{{ mapping.target_column }}</td><td><input v-model="mapping.transform_expression" @change="syncModel" /></td><td><input v-model="mapping.nullable" type="checkbox" @change="syncModel" /></td><td><input v-model="mapping.default_value" @change="syncModel" /></td><td>{{ mapping.mapping_status }}</td></tr></tbody></table>
+    <table v-if="mappings.length"><thead><tr><th>源字段</th><th>目标字段</th><th>转换表达式</th><th>可空</th><th>默认值</th><th>状态</th></tr></thead><tbody><tr v-for="(mapping, index) in mappings" :key="`${mapping.target_column}-${index}`"><td><VariableReferenceInput :data-variable-field="`mapping-source-${index}`" :model-value="mapping.source_column" :context="variableContext" @update:model-value="mapping.source_column = $event; syncModel()" /></td><td>{{ mapping.target_column }}</td><td><VariableReferenceInput :data-variable-field="`mapping-transform-${index}`" :model-value="mapping.transform_expression" :context="variableContext" @update:model-value="mapping.transform_expression = $event; syncModel()" /></td><td><input v-model="mapping.nullable" type="checkbox" @change="syncModel" /></td><td><VariableReferenceInput :data-variable-field="`mapping-default-${index}`" :model-value="String(mapping.default_value ?? '')" :context="variableContext" @update:model-value="mapping.default_value = $event; syncModel()" /></td><td>{{ mapping.mapping_status }}</td></tr></tbody></table>
   </section>
 </template>
 

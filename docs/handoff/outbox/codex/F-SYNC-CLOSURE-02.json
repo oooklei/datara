@@ -1,0 +1,10 @@
+{
+  "id": "F-SYNC-CLOSURE-02",
+  "ts": "2026-10-26T17:20:00+08:00",
+  "from": "codex",
+  "to": "flow",
+  "type": "implementation_receipt",
+  "ref": ".codex-evidence/FE-MERGE-F-SYNC-CLOSURE-02/summary.md",
+  "body": "完成同步组件表单契约收口：文件同步端点的 fileHeaderRows 在页面侧强制为非负整数并与后端 WF_SYNC_FORM_INVALID 规则一致。RED/GREEN 已留证；同步样例 materializer/executor/execution bridge 9 用例通过，前端全量 99 文件/850 用例、vue-tsc、Vite build 与 diff check 全部通过。",
+  "status": "done"
+}

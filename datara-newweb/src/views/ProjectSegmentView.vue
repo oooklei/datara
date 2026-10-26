@@ -72,6 +72,6 @@ const sub = computed(() =>
 
 .seg-sub {
   margin: 0;
-  color: var(--text-secondary, #64748b);
+  color: var(--text-secondary, var(--text-2));
 }
 </style>

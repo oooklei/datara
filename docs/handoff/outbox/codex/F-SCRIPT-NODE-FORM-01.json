@@ -1,0 +1,10 @@
+{
+  "id": "F-SCRIPT-NODE-FORM-01",
+  "ts": "2026-10-26T11:25:43+08:00",
+  "from": "codex",
+  "to": "flow",
+  "type": "implementation_receipt",
+  "ref": ".codex-evidence/FE-MERGE-SCRIPT-NODE-FORM-01/summary.md",
+  "body": "SQL/Python/Shell 节点表单已补齐执行参数：SQL 项目数据源、前置/后置 SQL，Python requirements，Python/Shell KEY=VALUE 环境变量校验；所有变更写回工作流节点 params，资源版本选择与绑定闭环保持不变。目标测试 6/6、全量 98 文件 844 用例、vue-tsc 均通过。",
+  "status": "done"
+}

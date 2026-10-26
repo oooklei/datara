@@ -1,0 +1,23 @@
+{
+  "id": "F-DEPENDENCY-TYPE-01",
+  "ts": "2026-10-26T11:12:05+08:00",
+  "from": "codex",
+  "to": "flow",
+  "type": "implementation-receipt",
+  "ref": "dependency-node-editor-dependent-execute-type-gate",
+  "body": {
+    "completed": [
+      "Declared the mutable dependency form value as Record<string, unknown>",
+      "Preserved workflow/task dependent_execute behavior without widening the API contract"
+    ],
+    "verification": {
+      "target": "1 file / 4 tests passed",
+      "vue_tsc": "EXIT=0",
+      "vitest_full": "98 files / 838 tests passed",
+      "diff_check": "PASS"
+    },
+    "next": "Global frontend type and unit-test gates are restored; select the next target-design gap as a new ticket/session.",
+    "evidence": ".codex-evidence/FE-MERGE-DEPENDENCY-TYPE-01/"
+  },
+  "status": "DONE"
+}

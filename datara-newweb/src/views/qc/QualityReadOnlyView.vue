@@ -91,8 +91,16 @@ const alarmRows = computed(() => rows.value as QualityAlarmPolicyRecord[])
 const compactJson = (value: Record<string, unknown>) => JSON.stringify(value)
 const message = (cause: unknown) => cause instanceof Error ? cause.message : String(cause)
 
+let requestSeq = 0
 async function reload() {
-  if (projectId.value === null) { rows.value = []; total.value = 0; return }
+  const seq = ++requestSeq
+  if (projectId.value === null) {
+    rows.value = []
+    total.value = 0
+    error.value = ''
+    busy.value = false
+    return
+  }
   busy.value = true
   error.value = ''
   try {
@@ -101,14 +109,16 @@ async function reload() {
       : kind.value === 'reports'
         ? await governanceApi.listReports(projectId.value, page.value, pageSize)
         : await governanceApi.listAlarmPolicies(projectId.value, page.value, pageSize)
+    if (seq !== requestSeq) return
     rows.value = result.list
     total.value = result.total
   } catch (cause) {
+    if (seq !== requestSeq) return
     error.value = message(cause)
     rows.value = []
     total.value = 0
   } finally {
-    busy.value = false
+    if (seq === requestSeq) busy.value = false
   }
 }
 
@@ -120,8 +130,13 @@ onMounted(async () => {
   try {
     const result = await listProjects()
     projects.value = result.list
-    const queryId = Number(route.query.projectId)
-    const initial = projects.value.find((project) => project.id === queryId) ?? projects.value[0]
+    const parseProjectId = (raw: unknown): number | null => {
+      const value = Array.isArray(raw) ? raw[0] : raw
+      const id = Number(value)
+      return value !== undefined && value !== '' && Number.isInteger(id) && id > 0 ? id : null
+    }
+    const requestedId = parseProjectId(route.params.projectId) ?? parseProjectId(route.query.projectId)
+    const initial = projects.value.find((project) => project.id === requestedId) ?? projects.value[0]
     if (initial) selectedProject.value = String(initial.id)
     await reload()
   } catch (cause) {
@@ -131,5 +146,5 @@ onMounted(async () => {
 </script>
 
 <style scoped>
-.quality-page{max-width:1280px;margin:auto;padding:32px 24px;color:#172033}.page-head{display:flex;align-items:center;gap:16px;flex-wrap:wrap}.page-head>div{margin-right:auto}.page-head h1{margin:0}.page-head p{margin:6px 0 0;color:#64748b}.page-head label{display:flex;align-items:center;gap:8px}.page-head select,.page-head input,button{padding:7px 10px}table{width:100%;border-collapse:collapse;background:#fff;margin-top:18px}th,td{text-align:left;padding:11px;border-bottom:1px solid #e2e8f0;vertical-align:top}code{white-space:pre-wrap;word-break:break-word}.error{color:#b91c1c}.pager{display:flex;justify-content:flex-end;align-items:center;gap:12px;margin-top:16px}
+.quality-page{max-width:1280px;margin:auto;padding:32px 24px;color:var(--text)}.page-head{display:flex;align-items:center;gap:16px;flex-wrap:wrap}.page-head>div{margin-right:auto}.page-head h1{margin:0}.page-head p{margin:6px 0 0;color:var(--text-2)}.page-head label{display:flex;align-items:center;gap:8px}.page-head select,.page-head input,button{padding:7px 10px}table{width:100%;border-collapse:collapse;background:var(--card);margin-top:18px}th,td{text-align:left;padding:11px;border-bottom:1px solid var(--border);vertical-align:top}code{white-space:pre-wrap;word-break:break-word}.error{color:var(--danger)}.pager{display:flex;justify-content:flex-end;align-items:center;gap:12px;margin-top:16px}
 </style>

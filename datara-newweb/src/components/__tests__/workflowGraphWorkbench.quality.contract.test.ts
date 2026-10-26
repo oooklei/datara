@@ -138,7 +138,12 @@ function mountWorkbench() {
     slots: { default: () => h(WorkflowGraphWorkbench, { tab, projectId: 7 }) },
     global: {
       plugins: [pinia],
-      stubs: { WorkflowVariablePanel: true, TrialRunPanel: true },
+      stubs: {
+        WorkflowVariablePanel: true,
+        TrialRunPanel: true,
+        ScriptResourceEditor: { template: '<div data-testid="script-resource-editor-stub" />' },
+        DependencyNodeEditor: { template: '<div data-testid="dependency-node-editor-stub" />' },
+      },
       components: {
         'el-dialog': { render: () => null },
         'el-table': { render: () => null },
@@ -254,6 +259,26 @@ describe('WorkflowGraphWorkbench quality regressions', () => {
     }
   })
 
+  it('keeps raw JSON fallback closed when a core node has a variable-aware specialized editor', async () => {
+    const { wrapper, graph } = mountWorkbench()
+    await flushPromises()
+    const flow = wrapper.findComponent({ name: 'VueFlow' })
+
+    const sql = graph.addNode({ nodeType: 'sql', params: { component: 'sql', sql: 'select 1' } })
+    await nextTick()
+    flow.vm.$emit('nodeClick', { node: { id: sql.nodeCode } })
+    await nextTick()
+    expect(wrapper.find('[data-testid="script-resource-editor-stub"]').exists()).toBe(true)
+    expect(wrapper.find('[data-testid="node-config-panel"]').exists()).toBe(false)
+
+    const dependency = graph.addNode({ nodeType: 'dependent', params: { component: 'dependent' } })
+    await nextTick()
+    flow.vm.$emit('nodeClick', { node: { id: dependency.nodeCode } })
+    await nextTick()
+    expect(wrapper.find('[data-testid="dependency-node-editor-stub"]').exists()).toBe(true)
+    expect(wrapper.find('[data-testid="node-config-panel"]').exists()).toBe(false)
+  })
+
   it('rebinds an open trial panel when KeepAlive activates the workflow again', async () => {
     const { wrapper, visible } = mountToggleHost()
     await flushPromises()
@@ -283,8 +308,71 @@ describe('WorkflowGraphWorkbench quality regressions', () => {
       },
     })
 
-    await wrapper.find('[data-testid="ncp-json"]').setValue('{"component":"endpoint_select","value":1}')
+    expect(wrapper.find('[data-variable-field="ncp-json"]').exists()).toBe(true)
+    await wrapper.get('[data-testid="ncp-json"]').get('textarea').setValue('{"component":"endpoint_select","value":1}')
     await wrapper.find('[data-testid="ncp-save"]').trigger('click')
     expect(wrapper.emitted('save')?.[0]?.[0]).toEqual({ component: 'field_map', value: 1 })
+  })
+
+  it('routes endpoint_select text parameters through the unified variable input', async () => {
+    const wrapper = mount(NodeConfigPanel, {
+      props: {
+        projectId: 7,
+        workflowId: 42,
+        node: {
+          nodeCode: 'endpoint-vars',
+          nodeType: 'SYNC',
+          name: null,
+          params: { component: 'endpoint_select', baseMode: 'src_base', srcDs: 'source', srcTable: 'orders', tgtDs: 'target' },
+          positionX: 0,
+          positionY: 0,
+        },
+      },
+      global: {
+        stubs: {
+          VariableReferenceInput: {
+            props: ['modelValue', 'context', 'label'],
+            emits: ['update:modelValue'],
+            template: '<button data-variable-input @click="$emit(\'update:modelValue\', \'${project.source_table}\')">{{ label }}</button>',
+          },
+        },
+      },
+    })
+
+    await wrapper.get('[data-variable-field="ncp-srcTable"]').trigger('click')
+    await wrapper.get('[data-testid="ncp-save"]').trigger('click')
+
+    expect(wrapper.emitted('save')?.[0]?.[0]).toEqual(expect.objectContaining({
+      srcTable: '${project.source_table}',
+    }))
+  })
+
+  it('rejects a negative file header row count before saving endpoint_select', async () => {
+    const wrapper = mount(NodeConfigPanel, {
+      props: {
+        projectId: 7,
+        node: {
+          nodeCode: 'file-endpoint',
+          nodeType: 'SYNC',
+          name: '文件端点',
+          params: {
+            component: 'endpoint_select',
+            baseMode: 'file_sync',
+            filePath: 'samples/orders.csv',
+            fileHeaderRows: 1,
+            tgtDs: 'warehouse',
+          },
+          positionX: 0,
+          positionY: 0,
+        },
+      },
+    })
+    await flushPromises()
+
+    await wrapper.find('[data-testid="ncp-fileHeaderRows"]').setValue('-1')
+    await wrapper.find('[data-testid="ncp-save"]').trigger('click')
+
+    expect(fixtures.messages.warning).toHaveBeenCalledWith('表头行数不能小于 0')
+    expect(wrapper.emitted('save')).toBeUndefined()
   })
 })

@@ -95,17 +95,17 @@ onMounted(async () => {
 
 .home-sub {
   margin: 0;
-  color: var(--text-secondary, #64748b);
+  color: var(--text-secondary, var(--text-2));
 }
 
 .state {
   padding: 48px 0;
   text-align: center;
-  color: var(--text-secondary, #64748b);
+  color: var(--text-secondary, var(--text-2));
 }
 
 .state-error {
-  color: #dc2626;
+  color: var(--danger);
 }
 
 .project-grid {
@@ -124,15 +124,15 @@ onMounted(async () => {
   justify-content: space-between;
   gap: 8px;
   padding: 20px 16px;
-  border: 1px solid var(--border-color, #e2e8f0);
+  border: 1px solid var(--border-color, var(--border));
   border-radius: 10px;
-  background: var(--bg-surface, #fff);
+  background: var(--bg-surface, var(--card));
   cursor: pointer;
   text-align: left;
 }
 
 .project-card:hover {
-  border-color: var(--primary-color, #2563eb);
+  border-color: var(--primary-color, var(--primary));
 }
 
 .project-name {
@@ -144,11 +144,11 @@ onMounted(async () => {
   padding: 2px 8px;
   border-radius: 999px;
   font-size: 12px;
-  background: var(--primary-color, #2563eb);
-  color: #fff;
+  background: var(--primary-color, var(--primary));
+  color: var(--card);
 }
 
 .project-badge.joined {
-  background: var(--text-secondary, #64748b);
+  background: var(--text-secondary, var(--text-2));
 }
 </style>

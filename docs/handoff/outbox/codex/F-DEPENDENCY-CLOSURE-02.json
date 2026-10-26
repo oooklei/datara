@@ -1,0 +1,10 @@
+{
+  "id": "F-DEPENDENCY-CLOSURE-02",
+  "ts": "2026-10-26T17:31:00+08:00",
+  "from": "codex",
+  "to": "flow",
+  "type": "implementation_receipt",
+  "ref": ".codex-evidence/FE-MERGE-F-DEPENDENCY-CLOSURE-02/summary.md",
+  "body": "完成依赖组件关键九能力收口：失败等待恢复 DS 正整数分钟输入并按 ×60 保存为契约秒，兼容既有秒值；检查周期与超时在前端强制为正整数。两组 RED/GREEN 已留证，目标 6 用例、R4 API/失败重跑样例 11 用例、前端全量 99 文件/853 用例、vue-tsc、Vite build 与 diff check 全部通过。",
+  "status": "done"
+}

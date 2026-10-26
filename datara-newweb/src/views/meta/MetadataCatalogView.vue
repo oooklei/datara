@@ -191,7 +191,7 @@ const retry = ref<() => void>(() => reload)
 let reqSeq = 0
 let detailSeq = 0
 
-const DOMAIN_COLORS = ['#1668dc', '#7c3aed', '#0891b2', '#16a34a', '#d97706', '#e5484d']
+const DOMAIN_COLORS = ['var(--primary)', 'var(--purple)', 'var(--cyan)', 'var(--success)', 'var(--warn)', 'var(--danger)']
 
 const routeProjectId = computed<number | null>(() => {
   const raw = route.params.projectId ?? route.query.projectId

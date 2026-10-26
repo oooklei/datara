@@ -5,8 +5,8 @@ import variableDialogSource from '../../components/VariableManagementDialog.vue?
 import { LLM_PROVIDERS } from '../../services/rebuild/llmApi'
 import routesSource from '../../router/routes.ts?raw'
 import governanceHubSource from '../GovernanceHubView.vue?raw'
-import apiKeyManagementSource from '../open/ApiKeyManagementView.vue?raw'
-import apiManagementSource from '../open/ApiManagementView.vue?raw'
+import apiKeyManagementSource from '../ApiKeyManagementView.vue?raw'
+import apiManagementSource from '../ApiManagementView.vue?raw'
 import qualityAlarmSource from '../qc/QualityAlarmView.vue?raw'
 import qualityExceptionSource from '../qc/QualityExceptionView.vue?raw'
 import qualityReportSource from '../qc/QualityReportView.vue?raw'
@@ -22,8 +22,8 @@ const assets = [
   ['views/qc/QualityExceptionView.vue', qualityExceptionSource],
   ['views/qc/QualityReportView.vue', qualityReportSource],
   ['views/sec/AccessAuditView.vue', accessAuditSource],
-  ['views/open/ApiManagementView.vue', apiManagementSource],
-  ['views/open/ApiKeyManagementView.vue', apiKeyManagementSource],
+  ['views/ApiManagementView.vue', apiManagementSource],
+  ['views/ApiKeyManagementView.vue', apiKeyManagementSource],
   ['views/system/llm-models/LlmModelsView.vue', llmModelsSource],
   ['views/system/llm-models/LlmModelFormDialog.vue', llmModelFormDialogSource],
 ] as const
@@ -48,6 +48,26 @@ describe('FE-MERGE-B3 asset intake', () => {
     expect(routesSource).toContain("../views/sec/AccessAuditView.vue")
     expect(routesSource).toContain("../views/system/llm-models/LlmModelsView.vue")
     expect(ledgerSource).toContain('FE-MERGE-B5 冲突件并集')
+  })
+
+  it('keeps one canonical API/API-Key view with the approved feature union', () => {
+    const retiredOpenCopies = import.meta.glob('../open/*.vue')
+    expect(Object.keys(retiredOpenCopies)).toEqual([])
+    expect(routesSource).toContain("../views/ApiManagementView.vue")
+    expect(routesSource).toContain("../views/ApiKeyManagementView.vue")
+
+    for (const marker of ['data-create', 'data-edit', 'data-publish', 'data-disable', 'data-enable', 'data-delete', 'data-goto-key', 'data-api-count']) {
+      expect(apiManagementSource, marker).toContain(marker)
+    }
+    for (const marker of ['data-issue', 'data-rotate', 'data-revoke', 'data-copy-key', 'data-goto-api', 'data-apikey-count']) {
+      expect(apiKeyManagementSource, marker).toContain(marker)
+    }
+  })
+
+  it('never persists or places one-time API keys in browser storage or URLs', () => {
+    expect(apiKeyManagementSource).not.toMatch(/localStorage|sessionStorage|indexedDB|URLSearchParams/)
+    expect(apiKeyManagementSource).toContain('data-plain-key')
+    expect(apiKeyManagementSource).toContain('data-close-key')
   })
 
   it('records the D-drive source root, relative paths and SHA-256 for all 11 assets', () => {

@@ -1,0 +1,10 @@
+{
+  "id": "T-B-OPEN-VIEW-CONSOLIDATION-01",
+  "ts": "2026-10-26T16:21:18+08:00",
+  "from": "codex",
+  "to": "flow",
+  "type": "implementation_receipt",
+  "ref": ".codex-evidence/FE-MERGE-T-B-OPEN-VIEW-CONSOLIDATION-01/summary.md",
+  "body": "已按方案 B 将 views/open 的 API/API-Key 页面增量并入根目录路由正本，保留 API CRUD 与发布状态操作、Key 签发/轮换/撤销，并补齐旧版布局、互相导航、计数、刷新、错误/空态及一次性 Key 复制反馈；两份 open 副本已退役，COPY_LEDGER 路径和 SHA 已刷新。明文 Key 仅驻留内存，关闭即清零，不进入浏览器持久化、URL 或静态产物。目标 11 用例、全量 98/846、vue-tsc、Vite build、diff check 均通过。",
+  "status": "done"
+}

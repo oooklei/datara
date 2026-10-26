@@ -1,0 +1,10 @@
+{
+  "id": "F-STREAM-PRODUCER-CLOSURE-02",
+  "ts": "2026-10-26T17:36:00+08:00",
+  "from": "codex",
+  "to": "flow",
+  "type": "implementation_receipt",
+  "ref": ".codex-evidence/FE-MERGE-F-STREAM-PRODUCER-CLOSURE-02/summary.md",
+  "body": "完成实时流生产观摩作用域收口：流面板跨项目切换时重新绑定当前 projectId 的 API contract，生产、聚合、融合、观测、checkpoint/recovery 不再串到旧项目。RED/GREEN 已留证；流生产与处理逻辑样例 120 用例、前端全量 99 文件/854 用例、vue-tsc、Vite build 与 diff check 全部通过；真实运行 E2E 按约束留至 192.168.1.9 总联调票。",
+  "status": "done"
+}

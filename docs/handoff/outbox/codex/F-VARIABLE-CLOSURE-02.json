@@ -1,0 +1,10 @@
+{
+  "id": "F-VARIABLE-CLOSURE-02",
+  "ts": "2026-10-26T17:26:00+08:00",
+  "from": "codex",
+  "to": "flow",
+  "type": "implementation_receipt",
+  "ref": ".codex-evidence/FE-MERGE-F-VARIABLE-CLOSURE-02/summary.md",
+  "body": "修复变量管理敏感值破坏风险：任务中心抽屉与 IDE 弹窗编辑敏感变量且未输入新值时不再提交空串或掩码，而是省略 value，由后端保留真实原值；显式新值仍正常更新。两组 RED/GREEN 已留证，前端目标 6 用例、R2 后端 46 用例、前端全量 99 文件/851 用例、vue-tsc、Vite build 和 diff check 全部通过。",
+  "status": "done"
+}

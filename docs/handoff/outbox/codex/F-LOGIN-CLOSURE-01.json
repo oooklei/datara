@@ -1,0 +1,26 @@
+{
+  "id": "F-LOGIN-CLOSURE-01",
+  "ts": "2026-10-26T11:17:46+08:00",
+  "from": "codex",
+  "to": "flow",
+  "type": "implementation-receipt",
+  "ref": "secure-login-session-recheck-and-return",
+  "body": {
+    "completed": [
+      "Preserved the legacy-inspired login card, brand, layout and color treatment",
+      "Validated an injected in-memory token against the backend before redirecting",
+      "Kept revoked or expired sessions on the login page with an actionable status",
+      "Rejected protocol-relative redirect targets and fell back to the project home",
+      "Retained the no-credential-input and no-browser-persistence security contract"
+    ],
+    "verification": {
+      "target": "3 files / 17 tests passed",
+      "vue_tsc": "EXIT=0",
+      "vitest_full": "98 files / 842 tests passed",
+      "diff_check": "PASS"
+    },
+    "next": "Select the next target-design gap as a separate ticket/session; perform real login/session E2E only in the unified 192.168.1.9 pass.",
+    "evidence": ".codex-evidence/FE-MERGE-LOGIN-CLOSURE-01/"
+  },
+  "status": "DONE"
+}

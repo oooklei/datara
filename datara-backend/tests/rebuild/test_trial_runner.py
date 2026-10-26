@@ -4,6 +4,7 @@ Covers: TRIAL instance creation (instance_type=TRIAL, trigger=TRIAL), task count
 matches snapshot nodes, terminal status SUCCEEDED/FAILED, topological execution.
 """
 
+import json
 import sqlite3
 
 import pytest
@@ -400,6 +401,60 @@ def test_trial_run_executes_python_and_shell_scripts():
         select(TaskInstanceRecord).where(TaskInstanceRecord.workflow_instance_id == result.instance_id)
     ).all()
     assert all(task.status == "SUCCEEDED" for task in outputs)
+
+
+def test_priority_components_execute_in_one_six_node_workflow_sample():
+    """SQL/Python/Shell/dependent must close one observable workflow together."""
+    session = _session()
+    definition_id = _make_definition(session)
+    dependency = DependencyConfigRecord(
+        project_id=1,
+        workflow_id=definition_id,
+        workflow_version=0,
+        task_id="wait_upstream",
+        groups_json="[]",
+    )
+    session.add(dependency)
+    session.flush()
+
+    nodes = (
+        ("start", "START", None),
+        ("query", "sql", {"sql": "SELECT 7 AS result", "execute": True}),
+        ("transform", "python", {"script": "print('python-ok')"}),
+        ("publish", "shell", {"script": "echo shell-ok"}),
+        ("wait_upstream", "dependent", {"dependency_id": dependency.id}),
+        ("end", "END", None),
+    )
+    for node_code, node_type, params in nodes:
+        _add_node(session, definition_id, node_code, node_type=node_type, params=params)
+    for source, target in zip(nodes, nodes[1:]):
+        _add_edge(session, definition_id, source[0], target[0])
+    session.commit()
+    snapshot = TrialSnapshotRepository(session).create_from_draft(definition_id)
+
+    result = TrialRunner(session).run(
+        definition_id=definition_id,
+        snapshot_id=snapshot["snapshot_id"],
+        project_id=1,
+        options=TrialRunOptions(
+            sql_execute=True,
+            dependency_mock={str(dependency.id): "SUCCEEDED"},
+        ),
+    )
+
+    tasks = session.scalars(
+        select(TaskInstanceRecord).where(TaskInstanceRecord.workflow_instance_id == result.instance_id)
+    ).all()
+    outputs = {
+        task.task_id: json.loads(output.output_json)
+        for task in tasks
+        if (output := session.scalar(select(RunOutputRecord).where(RunOutputRecord.task_instance_id == task.id)))
+    }
+    assert result.status == "SUCCEEDED"
+    assert len(tasks) == 6 and all(task.status == "SUCCEEDED" for task in tasks)
+    assert outputs["query"]["rows"] == [[7]]
+    assert outputs["transform"]["stdout"].strip() == "python-ok"
+    assert outputs["publish"]["stdout"].strip() == "shell-ok"
 
 
 def test_trial_run_executes_explicitly_bound_resource_versions(monkeypatch, tmp_path):

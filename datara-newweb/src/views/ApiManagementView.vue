@@ -1,3 +1,65 @@
-<template><main class="api-page" aria-label="API 管理"><header><div><h1>API 管理</h1><p>登记受控 Datara Facade，并查看脱敏调用日志。</p></div><nav><button :class="{active:tab==='definitions'}" @click="tab='definitions'">API 定义</button><button :class="{active:tab==='logs'}" @click="tab='logs'">调用日志</button></nav><button v-if="tab==='definitions'" data-create @click="openCreate">新建 API</button><button v-else type="button" data-refresh-logs @click="load">刷新日志</button></header><p v-if="error" role="alert">{{error}}</p><p v-if="busy" role="status">正在加载…</p><section v-if="tab==='definitions'"><p v-if="!busy&&!items.length" data-empty>暂无 API 定义</p><table v-else data-api-list><thead><tr><th>名称</th><th>方法</th><th>路径</th><th>版本</th><th>权限</th><th>状态</th><th>操作</th></tr></thead><tbody><tr v-for="x in items" :key="x.id"><td>{{x.name}}</td><td>{{x.method}}</td><td><code>{{x.path}}</code></td><td>{{x.version}}</td><td>{{x.requiredPermission}}</td><td>{{x.status}}</td><td><button data-edit @click="edit(x)">编辑</button><button v-if="x.status==='draft'||x.status==='disabled'" data-publish @click="action(x,'publish')">发布</button><button v-if="x.status==='published'" data-disable @click="action(x,'disable')">停用</button><button v-if="x.status==='disabled'" data-enable @click="action(x,'enable')">启用</button><button data-delete @click="remove(x)">删除</button></td></tr></tbody></table></section><section v-else><p v-if="!busy&&!logs.length" data-log-empty>暂无调用日志</p><table v-else data-log-list><thead><tr><th>请求 ID</th><th>API</th><th>主体</th><th>状态码</th><th>延迟</th><th>结果</th><th>时间</th></tr></thead><tbody><tr v-for="x in logs" :key="x.requestId"><td>{{x.requestId}}</td><td>{{x.apiId}}</td><td>{{x.principal}}</td><td>{{x.statusCode}}</td><td>{{x.latencyMs}}ms</td><td>{{x.result}}</td><td>{{x.requestedAt}}</td></tr></tbody></table></section><div v-if="editing" class="mask" data-editor-mask @click.self="editing=false"><form role="dialog" aria-modal="true" aria-label="API 定义编辑" @submit.prevent="save"><h2>{{editingId?'编辑 API':'新建 API'}}</h2><label>名称<input v-model.trim="draft.name" required data-name></label><label>路径<input v-model.trim="draft.path" required data-path placeholder="/rebuild/..."></label><label>方法<select v-model="draft.method"><option>GET</option><option>POST</option><option>PUT</option><option>DELETE</option></select></label><label>版本<input v-model.trim="draft.version" required></label><label>权限<input v-model.trim="draft.requiredPermission" required></label><label>说明<textarea v-model="draft.description" /></label><footer><button type="button" @click="editing=false">取消</button><button data-save>保存</button></footer></form></div></main></template>
-<script setup lang="ts">import{onMounted,reactive,ref,watch}from'vue';import{openapiAdminApi,type ApiDefinitionInput,type ApiDefinitionRecord,type ApiCallLogRecord}from'../services/rebuild/openapiAdminApi';const tab=ref<'definitions'|'logs'>('definitions'),items=ref<ApiDefinitionRecord[]>([]),logs=ref<ApiCallLogRecord[]>([]),busy=ref(false),error=ref(''),editing=ref(false),editingId=ref<number>();const draft=reactive<ApiDefinitionInput>({name:'',path:'/rebuild/',method:'GET',version:'v1',description:'',requiredPermission:'security:read'});const msg=(e:unknown)=>e instanceof Error?e.message:String(e);async function load(){busy.value=true;error.value='';try{if(tab.value==='definitions')items.value=await openapiAdminApi.list();else logs.value=(await openapiAdminApi.callLogs({limit:100})).list}catch(e){error.value=msg(e)}finally{busy.value=false}}watch(tab,load);function openCreate(){error.value='';editingId.value=undefined;Object.assign(draft,{name:'',path:'/rebuild/',method:'GET',version:'v1',description:'',requiredPermission:'security:read'});editing.value=true}function edit(x:ApiDefinitionRecord){error.value='';editingId.value=x.id;Object.assign(draft,x);editing.value=true}async function save(){error.value='';try{editingId.value?await openapiAdminApi.update(editingId.value,{...draft}):await openapiAdminApi.create({...draft});editing.value=false;await load()}catch(e){error.value=msg(e)}}async function action(x:ApiDefinitionRecord,a:'publish'|'disable'|'enable'){error.value='';try{await openapiAdminApi[a](x.id);await load()}catch(e){error.value=msg(e)}}async function remove(x:ApiDefinitionRecord){if(!confirm(`删除“${x.name}”？`))return;error.value='';try{await openapiAdminApi.remove(x.id);await load()}catch(e){error.value=msg(e)}}onMounted(load)</script>
-<style scoped>.api-page{max-width:1200px;margin:auto;padding:32px 24px;color:#172033}.api-page>header{display:flex;align-items:center;gap:18px}.api-page header>div{margin-right:auto}.api-page h1{margin:0}.api-page p{color:#64748b}button{padding:7px 12px;cursor:pointer}.active{background:#1e40af;color:#fff}table{width:100%;border-collapse:collapse;background:#fff}th,td{text-align:left;padding:10px;border-bottom:1px solid #e2e8f0}.mask{position:fixed;inset:0;background:#0f172a66;display:grid;place-items:center}.mask form{width:min(500px,calc(100vw - 40px));display:grid;gap:12px;background:#fff;padding:24px}.mask label{display:grid;gap:5px}.mask input,.mask select,.mask textarea{padding:8px}.mask footer{display:flex;justify-content:flex-end;gap:8px}</style>
+<template>
+  <main class="pg" aria-label="API 管理">
+    <header class="pg-head">
+      <div><h1>API 管理</h1><p>登记受控 Datara Facade，并查看脱敏调用日志。</p></div>
+      <a class="op-btn" href="/open/key" data-goto-key>API-Key 管理</a>
+    </header>
+    <nav class="tabs" aria-label="API 管理视图">
+      <button type="button" :class="{ active: tab === 'definitions' }" data-tab="api" @click="tab = 'definitions'">API 定义</button>
+      <button type="button" :class="{ active: tab === 'logs' }" data-tab="log" @click="tab = 'logs'">调用日志</button>
+    </nav>
+    <section v-if="tab === 'definitions'">
+      <div class="toolbar"><span class="hint" data-api-count>API {{ items.length }} 条</span><span class="spacer"></span><button type="button" data-refresh :disabled="busy" @click="load">刷新</button><button type="button" class="primary" data-create @click="openCreate">+ 新建 API</button></div>
+      <p v-if="error" class="err-box" role="alert" data-error>{{ error }}</p><p v-if="busy" role="status">正在加载…</p>
+      <div v-else-if="!items.length" class="panel empty" data-empty>暂无 API 定义</div>
+      <table v-else data-api-list><thead><tr><th>名称</th><th>方法与路径</th><th>版本</th><th>权限</th><th>状态</th><th>操作</th></tr></thead>
+        <tbody><tr v-for="item in items" :key="item.id" :data-api-id="item.id"><td>{{ item.name }}</td><td><code data-api-path>{{ item.method }} {{ item.path }}</code></td><td>{{ item.version }}</td><td>{{ item.requiredPermission }}</td><td><span class="pill">{{ item.status }}</span></td><td class="actions"><button type="button" data-edit @click="edit(item)">编辑</button><button v-if="item.status === 'draft' || item.status === 'disabled'" type="button" data-publish @click="action(item, 'publish')">发布</button><button v-if="item.status === 'published'" type="button" data-disable @click="action(item, 'disable')">停用</button><button v-if="item.status === 'disabled'" type="button" data-enable @click="action(item, 'enable')">启用</button><button type="button" class="danger" data-delete @click="remove(item)">删除</button></td></tr></tbody>
+      </table>
+    </section>
+    <section v-else>
+      <div class="toolbar"><span class="hint" data-logs-count>日志 {{ logs.length }} 条</span><span class="spacer"></span><button type="button" data-logs-refresh data-refresh-logs :disabled="busy" @click="load">刷新日志</button></div>
+      <p v-if="error" class="err-box" role="alert" data-logs-error>{{ error }}</p><p v-if="busy" role="status">正在加载…</p>
+      <div v-else-if="!logs.length" class="panel empty" data-logs-empty data-log-empty>暂无调用日志</div>
+      <table v-else data-call-log-list data-log-list><thead><tr><th>请求 ID</th><th>API</th><th>主体</th><th>状态码</th><th>延迟</th><th>结果</th><th>时间</th></tr></thead><tbody><tr v-for="item in logs" :key="item.requestId"><td><code data-request-id>{{ item.requestId }}</code></td><td>{{ item.apiId }}</td><td>{{ item.principal }}</td><td>{{ item.statusCode }}</td><td>{{ item.latencyMs }}ms</td><td>{{ item.result }}</td><td>{{ item.requestedAt }}</td></tr></tbody></table>
+    </section>
+    <div v-if="editing" class="mask" data-editor-mask @click.self="editing = false"><form role="dialog" aria-modal="true" aria-label="API 定义编辑" @submit.prevent="save"><h2>{{ editingId ? '编辑 API' : '新建 API' }}</h2><label>名称<input v-model.trim="draft.name" required data-name></label><label>路径<input v-model.trim="draft.path" required data-path placeholder="/rebuild/..."></label><label>方法<select v-model="draft.method"><option>GET</option><option>POST</option><option>PUT</option><option>DELETE</option></select></label><label>版本<input v-model.trim="draft.version" required></label><label>权限<input v-model.trim="draft.requiredPermission" required></label><label>说明<textarea v-model="draft.description" /></label><footer><button type="button" @click="editing = false">取消</button><button class="primary" data-save>保存</button></footer></form></div>
+  </main>
+</template>
+
+<script setup lang="ts">
+import { onMounted, reactive, ref, watch } from 'vue'
+import { openapiAdminApi, type ApiCallLogRecord, type ApiDefinitionInput, type ApiDefinitionRecord } from '../services/rebuild/openapiAdminApi'
+
+const tab = ref<'definitions' | 'logs'>('definitions')
+const items = ref<ApiDefinitionRecord[]>([])
+const logs = ref<ApiCallLogRecord[]>([])
+const busy = ref(false)
+const error = ref('')
+const editing = ref(false)
+const editingId = ref<number>()
+const draft = reactive<ApiDefinitionInput>({ name: '', path: '/rebuild/', method: 'GET', version: 'v1', description: '', requiredPermission: 'security:read' })
+const message = (cause: unknown) => cause instanceof Error ? cause.message : String(cause)
+
+async function load() {
+  busy.value = true
+  error.value = ''
+  try {
+    if (tab.value === 'definitions') items.value = await openapiAdminApi.list()
+    else logs.value = (await openapiAdminApi.callLogs({ limit: 100 })).list
+  } catch (cause) { error.value = message(cause) } finally { busy.value = false }
+}
+watch(tab, load)
+function openCreate() { error.value = ''; editingId.value = undefined; Object.assign(draft, { name: '', path: '/rebuild/', method: 'GET', version: 'v1', description: '', requiredPermission: 'security:read' }); editing.value = true }
+function edit(item: ApiDefinitionRecord) { error.value = ''; editingId.value = item.id; Object.assign(draft, item); editing.value = true }
+async function save() {
+  error.value = ''
+  try { if (editingId.value) await openapiAdminApi.update(editingId.value, { ...draft }); else await openapiAdminApi.create({ ...draft }); editing.value = false; await load() } catch (cause) { error.value = message(cause) }
+}
+async function action(item: ApiDefinitionRecord, operation: 'publish' | 'disable' | 'enable') { error.value = ''; try { await openapiAdminApi[operation](item.id); await load() } catch (cause) { error.value = message(cause) } }
+async function remove(item: ApiDefinitionRecord) { if (!globalThis.confirm(`删除“${item.name}”？`)) return; error.value = ''; try { await openapiAdminApi.remove(item.id); await load() } catch (cause) { error.value = message(cause) } }
+onMounted(load)
+</script>
+
+<style scoped>
+.pg{max-width:1200px;margin:auto;padding:28px 24px;color:var(--text)}.pg-head,.toolbar,.tabs,.actions{display:flex;align-items:center;gap:10px}.pg-head{justify-content:space-between}.pg-head h1{margin:0}.pg-head p,.hint{color:var(--text-2)}.tabs{margin:18px 0;border-bottom:1px solid var(--border-strong)}.tabs button{border:0;border-bottom:2px solid transparent;background:transparent}.tabs .active{border-color:var(--primary);color:var(--primary)}.toolbar{margin:12px 0}.spacer{flex:1}.panel,table{background:var(--card);border:1px solid var(--border);border-radius:7px}.empty{padding:36px;text-align:center;color:var(--text-2)}table{width:100%;border-collapse:collapse}th,td{text-align:left;padding:10px;border-bottom:1px solid var(--border)}button,.op-btn{padding:7px 12px;border:1px solid var(--border-strong);border-radius:5px;background:var(--card);color:inherit;cursor:pointer;text-decoration:none}.primary{background:var(--primary);color:var(--card);border-color:var(--primary)}.danger{color:var(--danger)}.pill{padding:2px 7px;border-radius:999px;background:var(--border)}.err-box{padding:9px 12px;background:var(--danger-bg);color:var(--danger)}.mask{position:fixed;inset:0;background:color-mix(in srgb, var(--text) 40%, transparent);display:grid;place-items:center;z-index:30}.mask form{width:min(500px,calc(100vw - 40px));display:grid;gap:12px;background:var(--card);padding:24px;border-radius:8px}.mask label{display:grid;gap:5px}.mask input,.mask select,.mask textarea{padding:8px}.mask footer{display:flex;justify-content:flex-end;gap:8px}
+</style>

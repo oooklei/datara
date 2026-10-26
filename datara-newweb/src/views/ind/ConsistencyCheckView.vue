@@ -66,15 +66,15 @@
         <div class="page-main">
           <div class="stat-row">
             <div class="stat-card">
-              <span class="type-icon" style="background:#1668dc">⇋</span>
+              <span class="type-icon" style="background:var(--primary)">⇋</span>
               <div><div class="stat-num">{{ results.length }}</div><div class="stat-label">检查项数</div></div>
             </div>
             <div class="stat-card">
-              <span class="type-icon" style="background:#16a34a">✓</span>
+              <span class="type-icon" style="background:var(--success)">✓</span>
               <div><div class="stat-num" style="color:var(--success)">{{ passCount }}</div><div class="stat-label">通过</div></div>
             </div>
             <div class="stat-card">
-              <span class="type-icon" style="background:#e5484d">✗</span>
+              <span class="type-icon" style="background:var(--danger)">✗</span>
               <div><div class="stat-num" style="color:var(--danger)">{{ failCount }}</div><div class="stat-label">未通过</div></div>
             </div>
           </div>
@@ -296,6 +296,6 @@ async function runCheck(): Promise<void> {
 .stat-card{display:flex;align-items:center;gap:10px;background:var(--card);border:1px solid var(--border);border-radius:var(--radius-lg);padding:14px 16px;box-shadow:var(--shadow)}
 .stat-num{font-size:22px;font-weight:700}
 .stat-label{font-size:11.5px;color:var(--text-3)}
-.type-icon{width:34px;height:34px;border-radius:var(--radius);display:flex;align-items:center;justify-content:center;color:#fff;font-size:14px;flex-shrink:0}
+.type-icon{width:34px;height:34px;border-radius:var(--radius);display:flex;align-items:center;justify-content:center;color:var(--card);font-size:14px;flex-shrink:0}
 .finding-list{margin:0;padding-left:18px;display:flex;flex-direction:column;gap:6px;font-size:12px;color:var(--text-2)}
 </style>

@@ -1,0 +1,10 @@
+{
+  "id": "D-06-VARIABLE-FULL-SURFACE-01",
+  "ts": "2026-10-26T20:19:51+08:00",
+  "from": "codex",
+  "to": "flow",
+  "type": "implementation_receipt",
+  "ref": ".codex-evidence/D-06-VARIABLE-FULL-SURFACE-01/summary.md",
+  "body": "共享变量引用输入已修复补全覆盖整段脚本与无占位符误请求问题；SQL/Python/Shell 内联源获得光标范围替换、显式校验、五类诊断和当前值预览契约。目标 26/26、全量 100/862、vue-tsc EXIT=0。依赖与同步专用文本字段作为下一独立票处理。",
+  "status": "completed"
+}

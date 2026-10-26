@@ -1,0 +1,10 @@
+{
+  "id": "T-B-RETIRED-VIEW-CLEANUP-02",
+  "ts": "2026-10-26T20:02:27+08:00",
+  "from": "codex",
+  "to": "flow",
+  "type": "ticket_receipt",
+  "ref": ".codex-evidence/FE-MERGE-M4-AUDIT-01",
+  "body": "Completed the approved retired-page cleanup by preserving deletion of the superseded root SecAuditView and LlmModelManagementView plus their obsolete view tests. Active routes remain bound to views/sec/AccessAuditView.vue and views/system/llm-models/LlmModelsView.vue. The focused fusion contract passed 1 file/8 tests and vue-tsc exited 0.",
+  "status": "DONE"
+}

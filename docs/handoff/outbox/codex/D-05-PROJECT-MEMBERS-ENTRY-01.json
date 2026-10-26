@@ -1,0 +1,10 @@
+{
+  "id": "D-05-PROJECT-MEMBERS-ENTRY-01",
+  "ts": "2026-10-26T20:12:10+08:00",
+  "from": "codex",
+  "to": "flow",
+  "type": "ticket_receipt",
+  "ref": ".codex-evidence/D-05-PROJECT-MEMBERS-ENTRY-01",
+  "body": "The project workspace system segment already exposes member management and forwards projectId, with real add/remove/role APIs. Fixed the remaining route-context leak: ProjectMembersView now reloads when projectId changes, clears the old project's rows immediately, resets operation errors, and uses a request sequence guard so late responses from the previous project cannot overwrite the current member list or loading state. RED reproduced listMembers remaining on project 1 after switching to project 2. GREEN: target 3 files/18 tests. Full frontend baseline: 99 files/859 tests. vue-tsc and git diff check exited 0.",
+  "status": "DONE"
+}

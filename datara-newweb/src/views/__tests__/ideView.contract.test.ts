@@ -97,11 +97,13 @@ import { listProjects } from '../../services/rebuild/projectApi'
 const datasource = { id: 7, projectId: 1, name: '订单库', kind: 'mysql', host: '10.0.0.1', port: 3306, database: 'orders', username: 'reader', createdAt: '', updatedAt: '' }
 
 const listeners: Record<string, Array<(ev: { data: string }) => void>> = {}
+const streamClose = vi.fn()
 
 beforeEach(() => {
   router.route.params = {}
   router.route.query = {}
   for (const spy of Object.values(spies)) spy.mockReset()
+  streamClose.mockReset()
   for (const key of Object.keys(listeners)) delete listeners[key]
   vi.mocked(listProjects).mockResolvedValue({ total: 1, list: [{ id: 1, name: '订单库' }] })
   spies.listDatasources.mockResolvedValue({ items: [datasource] })
@@ -112,13 +114,14 @@ beforeEach(() => {
   spies.listColumns.mockResolvedValue({ items: [{ table: 'orders', name: 'id', dataType: 'bigint', nullable: false, key: 'PRI' }], capability: 'supported', constraints: [], page: { nextCursor: null, hasMore: false } })
   spies.listIndexes.mockResolvedValue({ items: [{ table: 'orders', name: 'PRIMARY', columns: ['id'], unique: true }], capability: 'supported', constraints: [], page: { nextCursor: null, hasMore: false } })
   spies.listHistory.mockResolvedValue([])
+  spies.listScripts.mockResolvedValue([])
   spies.previewResolution.mockResolvedValue({ resolvedValue: '42', diagnostics: [] })
   spies.checkReference.mockResolvedValue({ expression: '', valid: true, diagnostics: [] })
   spies.completeVariables.mockResolvedValue([{ scope: 'workflow', name: 'biz_date', valueType: 'date' }])
   spies.fetchResultPage.mockResolvedValue({ stmtIndex: 0, resultSetId: 'rs1', columns: ['id'], rows: [[1]], rowsTotal: 1, offset: 0, limit: 50 })
   spies.executeSql.mockResolvedValue({ taskId: 'task-1' })
   spies.openEventStream.mockImplementation(() => ({
-    close: vi.fn(),
+    close: streamClose,
     addEventListener: (type: string, cb: (ev: { data: string }) => void) => {
       ;(listeners[type] ??= []).push(cb)
     },
@@ -257,6 +260,29 @@ describe('/ide 数据开发 IDE 只读态（增量 11/R5-A）', () => {
     expect(spies.listHistory).toHaveBeenCalledWith(7)
   })
 
+  it('keeps the execution live while the authenticated SSE stream reconnects', async () => {
+    router.route.params.projectId = '1'
+    const w = mount(View)
+    await flushPromises()
+    await w.find('[data-ds-select]').setValue('7')
+    await flushPromises()
+    await w.find('[data-sql-editor]').setValue('SELECT 1')
+    await w.find('[data-execute]').trigger('click')
+    await flushPromises()
+
+    dispatch('error', { message: 'temporary disconnect' })
+    await flushPromises()
+
+    expect(streamClose).not.toHaveBeenCalled()
+    expect(w.find('[data-cancel]').attributes('disabled')).toBeUndefined()
+    expect(w.find('[data-status]').text()).toContain('事件流连接中断，正在恢复')
+
+    dispatch('done', { status: 'succeeded', elapsedMs: 9, historyId: 56, stmtCount: 1 })
+    await flushPromises()
+    expect(streamClose).toHaveBeenCalledTimes(1)
+    expect(w.find('[data-status]').text()).toContain('执行成功')
+  })
+
   it('refreshes variable references and resolution preview when SQL changes', async () => {
     router.route.params.projectId = '1'
     const w = mount(View)
@@ -354,6 +380,30 @@ describe('/ide 数据开发 IDE 只读态（增量 11/R5-A）', () => {
     expect(w.find('[data-history]').exists()).toBe(true)
     await w.find('.ide-history-item').trigger('click')
     expect((w.find('[data-sql-editor]').element as HTMLTextAreaElement).value).toContain('SELECT 1')
+  })
+
+  it('lists, restores, and deletes saved SQL assets', async () => {
+    router.route.params.projectId = '1'
+    spies.listScripts.mockResolvedValue([
+      { id: 12, name: '订单日报', sqlText: 'SELECT * FROM orders', updatedAt: '', revision: 3 },
+    ])
+    spies.deleteScript.mockResolvedValue(undefined)
+    const w = mount(View)
+    await flushPromises()
+    await w.find('[data-ds-select]').setValue('7')
+    await flushPromises()
+
+    await w.find('[data-scripts-toggle]').trigger('click')
+    await flushPromises()
+    expect(spies.listScripts).toHaveBeenCalledTimes(1)
+    expect(w.find('[data-scripts]').text()).toContain('订单日报')
+
+    await w.find('[data-script-open]').trigger('click')
+    expect((w.find('[data-sql-editor]').element as HTMLTextAreaElement).value).toBe('SELECT * FROM orders')
+
+    await w.find('[data-script-delete]').trigger('click')
+    await flushPromises()
+    expect(spies.deleteScript).toHaveBeenCalledWith(12, 3)
   })
 
   it('surfaces backend errors without dropping the editor', async () => {

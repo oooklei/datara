@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref } from 'vue'
+import { nextTick, ref } from 'vue'
 import { createVariableContract, type VariableCompletionItem, type VariableContext, type VariableDiagnostic } from '../services/rebuild/variableApi'
 
 const props = defineProps<{ modelValue: string; context: VariableContext; label?: string; multiline?: boolean }>()
@@ -10,19 +10,40 @@ const diagnostics = ref<VariableDiagnostic[]>([])
 const currentValue = ref<string | null>(null)
 const loading = ref(false)
 const error = ref('')
+const editor = ref<HTMLInputElement | HTMLTextAreaElement | null>(null)
+const completion = ref<{ source: string; start: number; end: number } | null>(null)
 
 async function onInput(event: Event) {
-  const value = (event.target as HTMLInputElement).value
+  const target = event.target as HTMLInputElement | HTMLTextAreaElement
+  const value = target.value
+  const cursor = target.selectionStart ?? value.length
   emit('update:modelValue', value)
   error.value = ''
-  try { suggestions.value = await api.completeVariables(value.slice(value.lastIndexOf('${')), props.context) }
+  const start = value.lastIndexOf('${', cursor)
+  const query = start >= 0 ? value.slice(start, cursor) : ''
+  if (start < 0 || !/^\$\{[A-Za-z0-9_.-]*$/.test(query)) {
+    completion.value = null
+    suggestions.value = []
+    return
+  }
+  completion.value = { source: value, start, end: cursor }
+  try { suggestions.value = await api.completeVariables(query, props.context) }
   catch { suggestions.value = []; error.value = '补全加载失败' }
 }
 
 function choose(item: VariableCompletionItem) {
-  const value = `\${${item.scope}.${item.name}}`
+  const active = completion.value
+  if (active === null) return
+  const token = `\${${item.scope}.${item.name}}`
+  const value = `${active.source.slice(0, active.start)}${token}${active.source.slice(active.end)}`
   emit('update:modelValue', value)
   suggestions.value = []
+  completion.value = null
+  nextTick(() => {
+    const caret = active.start + token.length
+    editor.value?.focus()
+    editor.value?.setSelectionRange(caret, caret)
+  })
 }
 
 async function check() {
@@ -44,8 +65,8 @@ async function check() {
   <div class="variable-reference-input" data-variable-reference-input>
     <label v-if="label">{{ label }}</label>
     <div class="input-row">
-      <textarea v-if="multiline" :value="modelValue" @input="onInput" />
-      <input v-else :value="modelValue" @input="onInput" />
+      <textarea v-if="multiline" ref="editor" :value="modelValue" @input="onInput" />
+      <input v-else ref="editor" :value="modelValue" @input="onInput" />
       <button data-variable-check type="button" :disabled="loading" @click="check">校验</button>
     </div>
     <div v-if="suggestions.length" class="suggestions" role="listbox">

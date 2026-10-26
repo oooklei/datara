@@ -77,7 +77,8 @@ describe('variable management product surfaces', () => {
     expect(value.attributes('required')).toBeUndefined()
     await wrapper.find('form').trigger('submit')
     await flushPromises()
-    expect(saveVariable).toHaveBeenCalledWith(7, expect.objectContaining({ name: 'api_key', sensitive: true, value: '' }))
+    expect(saveVariable).toHaveBeenCalledWith(7, expect.objectContaining({ name: 'api_key', sensitive: true }))
+    expect(saveVariable.mock.calls[0]?.[1]).not.toHaveProperty('value')
   })
 
   it('autocompletes, checks all diagnostics, and previews the current value without exposing secrets', async () => {

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, watch } from 'vue'
+import { computed, ref, watch } from 'vue'
 import {
   createStreamContract,
   type StreamCheckpointRow,
@@ -8,7 +8,7 @@ import {
 } from '../services/rebuild/streamApi'
 
 const props = defineProps<{ jobId?: string; projectId?: number; workflowId?: number; workflowName?: string }>()
-const api = createStreamContract(props.projectId)
+const api = computed(() => createStreamContract(props.projectId))
 const jobId = ref(props.jobId ?? '')
 const count = ref(10)
 const loading = ref(false)
@@ -49,7 +49,7 @@ async function produce() {
   error.value = ''
   detailWarning.value = ''
   try {
-    const result = await api.produceStreamEvents(jobId.value.trim(), {
+    const result = await api.value.produceStreamEvents(jobId.value.trim(), {
       count: count.value,
       payload: { kind: 'sample', amount: 1 },
       aggregate: { keyField: aggregateKey.value.trim() || 'partition', valueField: aggregateValue.value.trim() || 'value', windowSize: Math.max(1, Math.min(10000, Math.trunc(Number(aggregateWindow.value) || 1))) },
@@ -69,7 +69,7 @@ async function provisionLiveObservation() {
   loading.value = true
   error.value = ''
   try {
-    const active = await api.provisionStreamJob({
+    const active = await api.value.provisionStreamJob({
       projectId: Number(props.projectId),
       workflowId,
       name: `${props.workflowName?.trim() || `workflow-${workflowId}`}-live`,
@@ -104,7 +104,7 @@ async function fuse() {
   loading.value = true
   error.value = ''
   try {
-    const result = await api.fuseStreamEvents(jobId.value.trim(), fuseKey.value.trim(), streams)
+    const result = await api.value.fuseStreamEvents(jobId.value.trim(), fuseKey.value.trim(), streams)
     fused.value = result.fused
     await refresh()
   } catch (cause) { error.value = cause instanceof Error ? cause.message : '流融合失败' }
@@ -120,9 +120,9 @@ async function refresh() {
   try {
     const window = { from: new Date(Date.now() - 3600000).toISOString(), to: new Date().toISOString(), limit: 100, offset: 0 }
     const [observationOutcome, checkpointOutcome, recoveryOutcome] = await Promise.allSettled([
-      api.queryStreamObservation(window, requestedJobId),
-      api.listStreamCheckpoints(window, requestedJobId),
-      api.listStreamRecoveryEvents(window, requestedJobId),
+      api.value.queryStreamObservation(window, requestedJobId),
+      api.value.listStreamCheckpoints(window, requestedJobId),
+      api.value.listStreamRecoveryEvents(window, requestedJobId),
     ])
     if (seq !== observationSeq) return
     if (observationOutcome.status === 'rejected') throw observationOutcome.reason

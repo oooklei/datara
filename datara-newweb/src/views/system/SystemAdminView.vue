@@ -43,7 +43,7 @@ defineProps<{ projectId: number }>()
 
 .system-hint {
   margin: 0 0 12px;
-  color: var(--text-secondary, #64748b);
+  color: var(--text-secondary, var(--text-2));
   font-size: 13px;
 }
 </style>

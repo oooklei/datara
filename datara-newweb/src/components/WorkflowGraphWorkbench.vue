@@ -554,9 +554,11 @@ function onSchedule() {
       <aside v-if="projectId !== undefined" class="wf-aside">
         <TrialRunPanel v-if="trialVisible" :project-id="projectId" :definition-id="numDocId" />
         <NodeConfigPanel
-          v-else-if="selectedNodeObj && !isSyncMappingNode"
+          v-else-if="selectedNodeObj && !isSyncMappingNode && !scriptResourceKind && !isDependentNode"
           :node="selectedNodeObj"
           :project-id="projectId"
+          :workflow-id="numDocId"
+          :workflow-version="1"
           @save="onConfigSave"
           @close="clearSelection"
         />

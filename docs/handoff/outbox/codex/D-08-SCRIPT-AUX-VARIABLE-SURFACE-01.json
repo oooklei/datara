@@ -1,0 +1,10 @@
+{
+  "id": "D-08-SCRIPT-AUX-VARIABLE-SURFACE-01",
+  "ts": "2026-10-26T20:29:55+08:00",
+  "from": "codex",
+  "to": "flow",
+  "type": "implementation_receipt",
+  "ref": ".codex-evidence/D-08-SCRIPT-AUX-VARIABLE-SURFACE-01/summary.md",
+  "body": "SQL 前置/后置语句、Python requirements、Python/Shell 环境变量均已接入统一变量补全、校验和现时值预览，并保持原参数序列化与 KEY=VALUE 校验。目标 10/10、全量 100/865、vue-tsc EXIT=0。",
+  "status": "completed"
+}

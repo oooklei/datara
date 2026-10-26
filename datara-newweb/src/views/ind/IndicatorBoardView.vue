@@ -122,9 +122,9 @@ const projectId = computed<number | null>(() => {
 const countOf = (s: DefinitionStatus): number => page.value.list.filter((m) => m.status === s).length
 /** 状态分布（真实计数）→ 环形图 + 图例；状态为契约冻结枚举 draft/active/retired，不造演示数据 */
 const DIST_META: { key: DefinitionStatus; label: string; color: string }[] = [
-  { key: 'active', label: '启用中', color: '#16a34a' },
-  { key: 'draft', label: '草稿', color: '#d97706' },
-  { key: 'retired', label: '已停用', color: '#8c94a6' },
+  { key: 'active', label: '启用中', color: 'var(--success)' },
+  { key: 'draft', label: '草稿', color: 'var(--warn)' },
+  { key: 'retired', label: '已停用', color: 'var(--text-3)' },
 ]
 const dist = computed(() => DIST_META.map((m) => ({ ...m, count: countOf(m.key) })))
 const donutGradient = computed<string>(() => {

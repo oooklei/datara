@@ -1,0 +1,10 @@
+{
+  "id": "T-C-GATE1-ISOLATION-01",
+  "ts": "2026-10-26T15:58:02+08:00",
+  "from": "codex",
+  "to": "flow",
+  "type": "implementation_receipt",
+  "ref": ".codex-evidence/FE-MERGE-T-C-GATE1-ISOLATION-01/summary.md",
+  "body": "已按 handoff-2026-10-26.md 将 test_component_catalog.py 的 sys.modules common.* 原视图保存与 finally 恢复修复精确移植到 c63c。修复前 r8a 为 5 failed/83 passed/1 skipped，修复后为 88 passed/1 skipped；目标文件 24 passed；当前 c63c 后端全量 2573 passed/8 skipped/0 failed。目标文件与 D 盘修复源 SHA-256 完全一致。",
+  "status": "done"
+}
