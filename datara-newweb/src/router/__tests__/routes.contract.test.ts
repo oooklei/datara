@@ -20,6 +20,8 @@ import TaskCenterView from '../../views/TaskCenterView.vue'
 import SshNodeManagementView from '../../views/SshNodeManagementView.vue'
 import RuntimeNodeView from '../../views/depops/RuntimeNodeView.vue'
 import MonitorView from '../../views/depops/MonitorView.vue'
+import AccessAuditView from '../../views/sec/AccessAuditView.vue'
+import LlmModelsView from '../../views/system/llm-models/LlmModelsView.vue'
 import routesSource from '../routes.ts?raw'
 import routerSource from '../index.ts?raw'
 import viteSource from '/vite.config.ts?raw'
@@ -97,6 +99,11 @@ describe('1.4 routes 负断言（WBS 1.4 / 增量 1 退出标准 2）', () => {
     expect(monitor).toBeTruthy()
     expect(monitor?.name).toBe('dep-monitor')
     expect(monitor?.component).toBe(MonitorView)
+  })
+
+  it('LLM 与访问审计路由绑定归一后的唯一正本', () => {
+    expect(routes.find((r) => r.path === '/open/llm')?.component).toBe(LlmModelsView)
+    expect(routes.find((r) => r.path === '/sec/audit')?.component).toBe(AccessAuditView)
   })
 
   it('无任何路由携带 demo:true 标记（零 demo 路由）', () => {

@@ -210,10 +210,10 @@ const filtered = computed<MetricDefinition[]>(() => {
 
 /** 顶部/行内「一致性检查」「趋势」入口：跳转既有治理页面（真实路由）。 */
 function gotoConsistency(): void {
-  router.push('/ind/consistency')
+  router.push({ path: '/ind/consistency', query: projectId.value === null ? {} : { projectId: String(projectId.value) } })
 }
 function gotoBoard(): void {
-  router.push('/ind/board')
+  router.push({ path: '/ind/board', query: projectId.value === null ? {} : { projectId: String(projectId.value) } })
 }
 
 async function init(): Promise<void> {

@@ -100,4 +100,15 @@ describe('/ind/list 指标目录页（增量 14）', () => {
     expect(w.find('[role=alert]').text()).toContain('metric list failed')
     expect(w.find('[data-project-select]').exists()).toBe(true)
   })
+
+  it('preserves project context in consistency and board navigation', async () => {
+    router.route.params.projectId = '1'
+    vi.mocked(governanceApi.listMetrics).mockResolvedValue({ total: 1, list: [metric] })
+    const w = mount(View)
+    await flushPromises()
+    await w.find('.tbl-toolbar button').trigger('click')
+    expect(router.push).toHaveBeenCalledWith({ path: '/ind/consistency', query: { projectId: '1' } })
+    await w.find('[data-ind-list] tbody tr button:last-child').trigger('click')
+    expect(router.push).toHaveBeenCalledWith({ path: '/ind/board', query: { projectId: '1' } })
+  })
 })

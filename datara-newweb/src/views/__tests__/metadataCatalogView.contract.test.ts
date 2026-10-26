@@ -110,4 +110,13 @@ describe('/meta/catalog 元数据目录页（增量 14）', () => {
     expect(w.find('[data-empty]').exists()).toBe(true)
     expect(w.find('[data-catalog-list]').exists()).toBe(false)
   })
+
+  it('navigates row-level lineage with the clicked asset and project context', async () => {
+    router.route.params.projectId = '1'
+    vi.mocked(governanceApi.listAssets).mockResolvedValue({ total: 1, page: 1, pageSize: 50, list: [asset] })
+    const w = mount(View)
+    await flushPromises()
+    await w.findAll('[data-catalog-list] tbody button')[2]!.trigger('click')
+    expect(router.push).toHaveBeenCalledWith({ path: '/meta/lineage', query: { projectId: '1', assetId: '9' } })
+  })
 })

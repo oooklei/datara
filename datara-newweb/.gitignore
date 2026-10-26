@@ -7,5 +7,12 @@ vite.config.js
 vite.config.d.ts
 vitest.config.js
 vitest.config.d.ts
+playwright-report/
+test-results/
+playwright.config.js
+playwright.config.d.ts
+e2e/**/*.js
+e2e/**/*.d.ts
+e2e/evidence/
 .idea/
 .vscode/

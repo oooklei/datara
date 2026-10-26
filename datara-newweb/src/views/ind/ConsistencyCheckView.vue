@@ -232,7 +232,7 @@ function closeDetail(): void {
 }
 /** 顶部/行内「指标目录」入口：跳转既有治理页面（真实路由）。 */
 function gotoList(): void {
-  router.push('/ind/list')
+  router.push({ path: '/ind/list', query: projectId.value === null ? {} : { projectId: String(projectId.value) } })
 }
 
 async function init(): Promise<void> {

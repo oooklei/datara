@@ -81,8 +81,11 @@ export interface SyncContract {
 }
 
 export const SYNC_PERMISSION_MATRIX = {
-  getCapabilities: 'VIEW_ALL', explore: 'VIEW_ALL', autoMap: 'EDIT_DEFINITION',
-  savePlan: 'EDIT_DEFINITION', listPlans: 'VIEW_ALL',
+  getCapabilities: 'VIEW_ALL',
+  explore: 'VIEW_ALL',
+  autoMap: 'EDIT_DEFINITION',
+  savePlan: 'EDIT_DEFINITION',
+  listPlans: 'VIEW_ALL',
 } as const satisfies Record<keyof SyncContract, 'VIEW_ALL' | 'EDIT_DEFINITION'>
 
 export class SyncApiError extends Error {

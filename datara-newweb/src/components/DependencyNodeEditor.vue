@@ -15,6 +15,7 @@ const emit = defineEmits<{ 'update:modelValue': [value: Record<string, unknown>]
 const saving = ref(false)
 const saved = ref(false)
 const selector = computed(() => String(props.modelValue.dependent_execute ?? 'workflow'))
+const windowMode = computed(() => String(props.modelValue.window_mode ?? 'named') === 'range' ? 'range' : 'named')
 
 function value(key: string, fallback: string | number = ''): string | number {
   return props.modelValue[key] as string | number ?? fallback
@@ -36,6 +37,27 @@ async function save() {
   const taskCode = selectedScope === 'workflow' ? '0' : selectedScope === 'all_tasks' ? '-1' : String(props.modelValue.upstream_task_code ?? '')
   if (selectedScope === 'task' && (!/^\d+$/.test(taskCode) || Number(taskCode) <= 0)) {
     ElMessage.warning('指定任务依赖需要填写正整数任务编码')
+    return
+  }
+  const windowInput = windowMode.value === 'range'
+    ? (() => {
+        const beginOffset = Number(props.modelValue.begin_offset ?? 0)
+        const endOffset = Number(props.modelValue.end_offset ?? 0)
+        if (!Number.isInteger(beginOffset) || !Number.isInteger(endOffset) || endOffset < beginOffset) return null
+        return {
+          dateRange: {
+            periodType: String(props.modelValue.period_type ?? 'day') as 'hour' | 'day' | 'week' | 'month',
+            beginOffset,
+            endOffset,
+          },
+        }
+      })()
+    : {
+        cycle: String(props.modelValue.cycle ?? 'day') as 'hour' | 'day' | 'week' | 'month',
+        dateValue: String(props.modelValue.date_value ?? 'last1Days'),
+      }
+  if (windowInput === null) {
+    ElMessage.warning('相对窗口要求起止偏移为整数，且结束偏移不得早于开始偏移')
     return
   }
 
@@ -60,8 +82,7 @@ async function save() {
           selector: selectedScope,
           upstreamWorkflowId,
           upstreamTaskCode: taskCode,
-          cycle: String(props.modelValue.cycle ?? 'day') as 'hour' | 'day' | 'week' | 'month',
-          dateValue: String(props.modelValue.date_value ?? 'last1Days'),
+          ...windowInput,
           dependResult: String(props.modelValue.depend_result ?? 'success') === 'failed' ? 'failed' : 'success',
           parameterPassing: Boolean(props.modelValue.parameter_passing ?? false),
         }],
@@ -94,8 +115,16 @@ async function save() {
     <label v-if="selector === 'task'">任务编码<input data-test="upstream-task" :value="value('upstream_task_code')" @input="update('upstream_task_code', ($event.target as HTMLInputElement).value)" /></label>
     <label>组内关系<select :value="value('relation', 'AND')" @change="update('relation', ($event.target as HTMLSelectElement).value)"><option>AND</option><option>OR</option></select></label>
     <label>组间关系<select :value="value('group_relation', 'AND')" @change="update('group_relation', ($event.target as HTMLSelectElement).value)"><option>AND</option><option>OR</option></select></label>
-    <label>时间周期<select :value="value('cycle', 'day')" @change="update('cycle', ($event.target as HTMLSelectElement).value)"><option value="hour">小时</option><option value="day">天</option><option value="week">周</option><option value="month">月</option></select></label>
-    <label>命名窗口<input :value="value('date_value', 'last1Days')" @input="update('date_value', ($event.target as HTMLInputElement).value)" /></label>
+    <label>时间窗模式<select data-test="dependency-window-mode" :value="windowMode" @change="update('window_mode', ($event.target as HTMLSelectElement).value)"><option value="named">命名窗口</option><option value="range">相对范围</option></select></label>
+    <template v-if="windowMode === 'named'">
+      <label>时间周期<select :value="value('cycle', 'day')" @change="update('cycle', ($event.target as HTMLSelectElement).value)"><option value="hour">小时</option><option value="day">天</option><option value="week">周</option><option value="month">月</option></select></label>
+      <label>命名窗口<input :value="value('date_value', 'last1Days')" @input="update('date_value', ($event.target as HTMLInputElement).value)" /></label>
+    </template>
+    <template v-else>
+      <label>范围周期<select :value="value('period_type', 'day')" @change="update('period_type', ($event.target as HTMLSelectElement).value)"><option value="hour">小时</option><option value="day">天</option><option value="week">周</option><option value="month">月</option></select></label>
+      <label>开始偏移<input type="number" step="1" :value="value('begin_offset', 0)" @input="update('begin_offset', Number(($event.target as HTMLInputElement).value))" /></label>
+      <label>结束偏移<input type="number" step="1" :value="value('end_offset', 0)" @input="update('end_offset', Number(($event.target as HTMLInputElement).value))" /></label>
+    </template>
     <label>期望结果<select :value="value('depend_result', 'success')" @change="update('depend_result', ($event.target as HTMLSelectElement).value)"><option value="success">成功</option><option value="failed">失败</option></select></label>
     <label>参数透传<input type="checkbox" :checked="Boolean(value('parameter_passing', 0))" @change="update('parameter_passing', ($event.target as HTMLInputElement).checked)" /></label>
     <label>检查周期(秒)<input type="number" min="1" :value="value('check_interval_seconds', 10)" @input="update('check_interval_seconds', Number(($event.target as HTMLInputElement).value))" /></label>

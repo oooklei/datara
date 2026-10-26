@@ -181,6 +181,12 @@ const routeProjectId = computed<number | null>(() => {
   const n = Number(value)
   return value !== undefined && value !== '' && Number.isInteger(n) && n > 0 ? n : null
 })
+const routeAssetId = computed<number | null>(() => {
+  const raw = route.query.assetId
+  const value = Array.isArray(raw) ? raw[0] : raw
+  const n = Number(value)
+  return value !== undefined && value !== '' && Number.isInteger(n) && n > 0 ? n : null
+})
 const projectId = computed<number | null>(() => {
   const fromRoute = routeProjectId.value
   if (fromRoute !== null) return fromRoute
@@ -231,16 +237,26 @@ async function init(): Promise<void> {
 onMounted(init)
 
 async function reloadAssets(): Promise<void> {
-  graph.value = null
-  selectedAsset.value = ''
-  if (projectId.value === null) { assets.value = []; return }
   const seq = ++assetSeq
+  assetLoading.value = false
+  lineageSeq += 1
+  lineageLoading.value = false
+  graph.value = null
+  assets.value = []
+  selectedAsset.value = ''
+  error.value = ''
+  if (projectId.value === null) return
   assetLoading.value = true
   error.value = ''
   try {
     const page = await governanceApi.listAssets(projectId.value)
     if (seq !== assetSeq) return
     assets.value = page.list
+    const requested = routeAssetId.value
+    if (requested !== null && page.list.some((asset) => asset.id === requested)) {
+      selectedAsset.value = String(requested)
+      await reloadLineage()
+    }
   } catch (e) {
     if (seq === assetSeq) {
       error.value = message(e)

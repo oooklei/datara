@@ -106,4 +106,24 @@ describe('script resource editor', () => {
     expect((wrapper.find('[data-version-select]').element as HTMLSelectElement).value).toBe('4')
     expect(bindResourceVersion).not.toHaveBeenCalled()
   })
+
+  it('项目切换后丢弃旧项目迟到的资源清单', async () => {
+    let resolveOld!: (items: Array<{ resourceId: number; name: string; kind: string; sizeBytes: number; latestVersion: number }>) => void
+    listResources
+      .mockImplementationOnce(() => new Promise((resolve) => { resolveOld = resolve }))
+      .mockResolvedValueOnce([{ resourceId: 22, name: 'project-two.py', kind: 'python', sizeBytes: 12, latestVersion: 1 }])
+    const wrapper = mount(ScriptResourceEditor, {
+      props: { projectId: 1, workflowId: 11, workflowVersion: 1, taskId: 'python_1', kind: 'python', modelValue: { sourceMode: 'resource' } },
+      global: { stubs: { VariableReferenceInput: variableInputStub } },
+    })
+    await wrapper.setProps({ projectId: 2 })
+    await flushPromises()
+    expect(wrapper.find('[data-resource-select]').text()).toContain('project-two.py')
+
+    resolveOld([{ resourceId: 11, name: 'project-one.py', kind: 'python', sizeBytes: 12, latestVersion: 1 }])
+    await flushPromises()
+    expect(wrapper.find('[data-resource-select]').text()).toContain('project-two.py')
+    expect(wrapper.find('[data-resource-select]').text()).not.toContain('project-one.py')
+  })
+
 })

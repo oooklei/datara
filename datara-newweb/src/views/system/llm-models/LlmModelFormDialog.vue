@@ -3,7 +3,7 @@
  * 增量 15.6 / 权威设计 §5E：LLM 模型 新建/编辑 模态表单。
  *
  * 后端事实源：`datara-backend/rebuild/llm/api.py`（`LlmModelRequest` 校验 + 各端点错误分支）：
- *  - `provider` 白名单 {siliconflow, volcengine}（L36）；`api_base` 必须 https://（L43，后端另做 rstrip('/')）
+ *  - `provider` 白名单 {siliconflow, volcengine, longcat}；`api_base` 必须 https://（后端另做 rstrip('/')）
  *  - `name` / `display_name` 1..64；`max_tokens` ≥1（默认 10000）；`temperature` 0..2（默认 0.7）
  *  - `api_key`：新建必填（L79 → 400/4001）；编辑留空 = **不覆盖**既有密文（L98）
  *  - 默认模型不可停用（L100 → 409/4092）；停用模型不可设为默认（repository L45 → 409/4092）
@@ -33,6 +33,7 @@ const emit = defineEmits<{
 const PROVIDER_LABELS: Record<LlmProvider, string> = {
   siliconflow: '硅基流动 SiliconFlow',
   volcengine: '火山引擎 Volcengine',
+  longcat: 'LongCat',
 }
 
 interface LlmFormState {

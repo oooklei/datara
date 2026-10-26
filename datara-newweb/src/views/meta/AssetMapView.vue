@@ -209,10 +209,13 @@ const metricCnt = ref<number | null>(null)
 const standardCnt = ref<number | null>(null)
 const metricSamples = ref<string[]>([])
 const standardSamples = ref<string[]>([])
+type CategorySummary = { metricCnt: number | null; standardCnt: number | null; metricSamples: string[]; standardSamples: string[] }
+const categoryCache = new Map<number, CategorySummary>()
 /** 错误框「重试」绑定操作：按错误来源设定（默认重载资产，避免重试错配） */
 const retry = ref<() => void>(() => reload)
 
 let reqSeq = 0
+let categorySeq = 0
 
 const DOMAIN_COLORS = ['#1668dc', '#7c3aed', '#0891b2', '#16a34a', '#d97706', '#e5484d']
 const SYSTEM_COLORS = ['#1668dc', '#0891b2', '#7c3aed', '#16a34a', '#d97706', '#e5484d', '#0ea5e9']
@@ -306,20 +309,20 @@ const categoryGroups = computed(() => {
       name: '指标',
       ico: '✦',
       color: '#7c3aed',
-      cnt: metricCnt.value ?? 0,
+      cnt: metricCnt.value ?? '—',
       unit: '项',
       items: metricSamples.value,
-      link: () => router.push('/ind/list'),
+      link: () => router.push({ path: '/ind/list', query: projectId.value === null ? {} : { projectId: String(projectId.value) } }),
       linkTxt: '指标目录',
     },
     {
       name: '标准',
       ico: '§',
       color: '#16a34a',
-      cnt: standardCnt.value ?? 0,
+      cnt: standardCnt.value ?? '—',
       unit: '项',
       items: standardSamples.value,
-      link: () => router.push('/std/element'),
+      link: () => router.push({ path: '/std/element', query: projectId.value === null ? {} : { projectId: String(projectId.value) } }),
       linkTxt: '标准管理',
     },
   ]
@@ -336,9 +339,14 @@ function setView(next: ViewKey) {
 
 /** 懒加载指标/标准计数与样本：接口缺失或失败时保持 null（显示「—」），不影响主视图 */
 async function loadCategoryCounts(): Promise<void> {
-  if (metricCnt.value !== null || standardCnt.value !== null) return
   const pid = projectId.value
   if (pid === null) return
+  const cached = categoryCache.get(pid)
+  if (cached) {
+    applyCategorySummary(cached)
+    return
+  }
+  const seq = ++categorySeq
   const safe = async (
     run: (() => Promise<unknown>) | undefined,
   ): Promise<{ total: number | null; names: string[] } | null> => {
@@ -354,10 +362,21 @@ async function loadCategoryCounts(): Promise<void> {
     }
   }
   const [m, s] = await Promise.all([safe(() => governanceApi.listMetrics(pid, 1, 5)), safe(() => governanceApi.listStandards(pid, 1, 5))])
-  metricCnt.value = m?.total ?? null
-  standardCnt.value = s?.total ?? null
-  metricSamples.value = m?.names ?? []
-  standardSamples.value = s?.names ?? []
+  const summary: CategorySummary = {
+    metricCnt: m?.total ?? null,
+    standardCnt: s?.total ?? null,
+    metricSamples: m?.names ?? [],
+    standardSamples: s?.names ?? [],
+  }
+  if (m !== null && s !== null) categoryCache.set(pid, summary)
+  if (seq === categorySeq && projectId.value === pid) applyCategorySummary(summary)
+}
+
+function applyCategorySummary(summary?: CategorySummary): void {
+  metricCnt.value = summary?.metricCnt ?? null
+  standardCnt.value = summary?.standardCnt ?? null
+  metricSamples.value = summary?.metricSamples ?? []
+  standardSamples.value = summary?.standardSamples ?? []
 }
 
 function goCatalog() {
@@ -385,15 +404,19 @@ async function init(): Promise<void> {
 onMounted(init)
 
 async function reload(): Promise<void> {
-  if (projectId.value === null) {
+  const pid = projectId.value
+  categorySeq += 1
+  applyCategorySummary(pid === null ? undefined : categoryCache.get(pid))
+  if (pid === null) {
     page.value = { total: 0, page: 1, pageSize: 50, list: [] }
     return
   }
+  if (view.value === 'category' && !categoryCache.has(pid)) void loadCategoryCounts()
   const seq = ++reqSeq
   loading.value = true
   error.value = ''
   try {
-    const data = await governanceApi.listAssets(projectId.value, { q: keyword.value || undefined })
+    const data = await governanceApi.listAssets(pid, { q: keyword.value || undefined })
     if (seq !== reqSeq) return
     page.value = data
   } catch (e) {

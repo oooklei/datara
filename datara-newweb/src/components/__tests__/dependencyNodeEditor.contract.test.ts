@@ -58,4 +58,30 @@ describe('DependencyNodeEditor contract', () => {
     expect(warning).toHaveBeenCalledWith('指定任务依赖需要填写正整数任务编码')
     expect(saveDependency).toHaveBeenCalledTimes(1)
   })
+
+  it('saves the relative range window without also sending the named window', async () => {
+    const wrapper = mount(DependencyNodeEditor, {
+      props: {
+        projectId: 7,
+        workflowId: 12,
+        taskId: 'dep_1',
+        modelValue: {
+          upstream_workflow_id: 9,
+          window_mode: 'range',
+          period_type: 'day',
+          begin_offset: -2,
+          end_offset: 0,
+        },
+      },
+    })
+
+    await wrapper.get('[data-test="save-dependency"]').trigger('click')
+    await flushPromises()
+    const condition = saveDependency.mock.calls[0][0].groups[0].conditions[0]
+    expect(condition).toEqual(expect.objectContaining({
+      dateRange: { periodType: 'day', beginOffset: -2, endOffset: 0 },
+    }))
+    expect(condition).not.toHaveProperty('cycle')
+    expect(condition).not.toHaveProperty('dateValue')
+  })
 })

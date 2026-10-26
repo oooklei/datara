@@ -113,7 +113,7 @@
                     <td style="color:var(--text-3)"><span class="mono" style="font-size:11.5px">{{ a.updatedAt || '—' }}</span></td>
                     <td>
                       <button type="button" class="op-btn primary" :disabled="detailLoading" @click="select(a.id)">详情</button>
-                      <button type="button" class="op-btn" :disabled="detailLoading" @click="goLineage">血缘</button>
+                      <button type="button" class="op-btn" :disabled="detailLoading" @click="goLineage(a.id)">血缘</button>
                     </td>
                   </tr>
                   <tr v-if="filtered.length === 0">
@@ -253,8 +253,8 @@ function toggleDomain(name: string) {
   expanded.value = next
 }
 
-function goLineage() {
-  const q = projectId.value !== null ? { projectId: String(projectId.value) } : {}
+function goLineage(assetId: number) {
+  const q = projectId.value !== null ? { projectId: String(projectId.value), assetId: String(assetId) } : { assetId: String(assetId) }
   router.push({ path: '/meta/lineage', query: q })
 }
 

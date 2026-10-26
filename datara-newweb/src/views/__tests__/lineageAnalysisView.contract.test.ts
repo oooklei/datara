@@ -112,4 +112,106 @@ describe('/meta/lineage 血缘分析页（增量 14）', () => {
     expect(w.find('[role=alert]').text()).toContain('asset list failed')
     expect(w.find('[data-project-select]').exists()).toBe(true)
   })
+
+  it('selects and loads the asset supplied by catalog lineage navigation', async () => {
+    router.route.query = { projectId: '1', assetId: '9' }
+    vi.mocked(governanceApi.listAssets).mockResolvedValue({ total: 1, page: 1, pageSize: 50, list: [asset] })
+    vi.mocked(governanceApi.getLineage).mockResolvedValue(graph)
+    const w = mount(View)
+    await flushPromises()
+    expect(w.find<HTMLSelectElement>('[data-asset-select]').element.value).toBe('9')
+    expect(governanceApi.getLineage).toHaveBeenCalledWith(9, { direction: 'both', depth: 3 })
+    expect(w.find('[data-no-asset]').exists()).toBe(false)
+  })
+
+  it('invalidates old lineage success and failure immediately when switching projects', async () => {
+    const asset2 = { ...asset, id: 10, projectId: 2, assetName: 'customers' }
+    let resolveOld!: (value: typeof graph) => void
+    let rejectOld!: (reason: Error) => void
+    vi.mocked(listProjects).mockResolvedValue({ total: 2, list: [{ id: 1, name: 'P1' }, { id: 2, name: 'P2' }] })
+    vi.mocked(governanceApi.listAssets).mockImplementation((projectId) => Promise.resolve({ total: 1, page: 1, pageSize: 50, list: [projectId === 1 ? asset : asset2] }))
+    vi.mocked(governanceApi.getLineage)
+      .mockImplementationOnce(() => new Promise((resolve) => { resolveOld = resolve }))
+      .mockImplementationOnce(() => new Promise((_resolve, reject) => { rejectOld = reject }))
+    const w = mount(View)
+    await flushPromises()
+    await w.find('[data-project-select]').setValue('1')
+    await flushPromises()
+    await w.find('[data-asset-select]').setValue('9')
+    await w.find('[data-project-select]').setValue('2')
+    resolveOld(graph)
+    await flushPromises()
+    expect(w.find('[data-lineage-graph]').exists()).toBe(false)
+    expect(w.find('[role=alert]').exists()).toBe(false)
+    await w.find('[data-asset-select]').setValue('10')
+    await w.find('[data-project-select]').setValue('1')
+    rejectOld(new Error('stale lineage failure'))
+    await flushPromises()
+    expect(w.find('[role=alert]').exists()).toBe(false)
+    expect(w.find('[data-lineage-graph]').exists()).toBe(false)
+  })
+
+  it('drops old project assets before a replacement project asset request fails', async () => {
+    let rejectP2!: (reason: Error) => void
+    vi.mocked(listProjects).mockResolvedValue({ total: 2, list: [{ id: 1, name: 'P1' }, { id: 2, name: 'P2' }] })
+    vi.mocked(governanceApi.listAssets).mockImplementation((projectId) => projectId === 1
+      ? Promise.resolve({ total: 1, page: 1, pageSize: 50, list: [asset] })
+      : new Promise((_resolve, reject) => { rejectP2 = reject }))
+    vi.mocked(governanceApi.getLineage).mockResolvedValue(graph)
+    const w = mount(View)
+    await flushPromises()
+    await w.find('[data-project-select]').setValue('1')
+    await flushPromises()
+    await w.find('[data-asset-select]').setValue('9')
+    await flushPromises()
+    expect(governanceApi.getLineage).toHaveBeenCalledTimes(1)
+
+    await w.find('[data-project-select]').setValue('2')
+    expect(w.find('[data-asset-select] option[value="9"]').exists()).toBe(false)
+    expect(w.find<HTMLSelectElement>('[data-asset-select]').element.value).toBe('')
+    rejectP2(new Error('new project assets failed'))
+    await flushPromises()
+
+    expect(w.find('[role=alert]').text()).toContain('new project assets failed')
+    expect(w.find('[data-asset-select] option[value="9"]').exists()).toBe(false)
+    expect(governanceApi.getLineage).toHaveBeenCalledTimes(1)
+  })
+
+  it.each(['success', 'failure'] as const)(
+    'invalidates a pending asset-list %s when the project context becomes empty',
+    async (outcome) => {
+      let resolveOld!: (value: { total: number; page: number; pageSize: number; list: typeof asset[] }) => void
+      let rejectOld!: (reason: Error) => void
+      router.route.query = { assetId: '9' }
+      vi.mocked(governanceApi.listAssets).mockImplementation(() => new Promise((resolve, reject) => {
+        resolveOld = resolve
+        rejectOld = reject
+      }))
+      vi.mocked(governanceApi.getLineage).mockResolvedValue(graph)
+      const w = mount(View)
+      await flushPromises()
+
+      await w.find('[data-project-select]').setValue('1')
+      expect(w.find('[role=status]').exists()).toBe(true)
+      const setup = (w.vm.$ as unknown as {
+        setupState: { selectedProject: string; reloadAssets: () => Promise<void> }
+      }).setupState
+      setup.selectedProject = ''
+      await setup.reloadAssets()
+      expect(w.find('[role=status]').exists()).toBe(false)
+
+      if (outcome === 'success') {
+        resolveOld({ total: 1, page: 1, pageSize: 50, list: [asset] })
+      } else {
+        rejectOld(new Error('stale asset-list failure'))
+      }
+      await flushPromises()
+
+      expect(w.find('[data-no-project]').exists()).toBe(true)
+      expect(w.find('[data-asset-select] option[value="9"]').exists()).toBe(false)
+      expect(w.find('[role=alert]').exists()).toBe(false)
+      expect(w.find('[role=status]').exists()).toBe(false)
+      expect(governanceApi.getLineage).not.toHaveBeenCalled()
+    },
+  )
 })

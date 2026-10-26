@@ -17,6 +17,7 @@ const api = createVariableContract()
 const rows = ref<VariableDefinition[]>([])
 const loading = ref(false)
 const error = ref('')
+let loadSeq = 0
 const scope = ref<Extract<VariableScope, 'global' | 'project' | 'env'>>('project')
 const environmentGroupId = ref<number | undefined>()
 const editing = ref(false)
@@ -28,19 +29,25 @@ const owner = computed(() => scope.value === 'env' && environmentGroupId.value
   : {})
 
 async function load() {
-  if (!props.modelValue || props.projectId === undefined) return
-  loading.value = true
+  const seq = ++loadSeq
+  rows.value = []
   error.value = ''
+  if (!props.modelValue || props.projectId === undefined) {
+    loading.value = false
+    return
+  }
+  loading.value = true
   try {
-    rows.value = await api.listVariables(
+    const items = await api.listVariables(
       props.projectId,
       ['global', 'project', 'env'],
       environmentGroupId.value ? { environmentGroupId: environmentGroupId.value } : {},
     )
+    if (seq === loadSeq) rows.value = items
   } catch {
-    error.value = '变量加载失败，请重试'
+    if (seq === loadSeq) error.value = '变量加载失败，请重试'
   } finally {
-    loading.value = false
+    if (seq === loadSeq) loading.value = false
   }
 }
 

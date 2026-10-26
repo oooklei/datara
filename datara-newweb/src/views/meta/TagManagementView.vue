@@ -7,7 +7,7 @@
 
     <div class="toolbar">
       <label class="field"><span>项目</span>
-        <select v-model="selectedProject" class="kw" data-project-select :disabled="loading || creating" @change="reloadAssets">
+        <select v-model="selectedProject" class="kw" data-project-select :disabled="loading || creating || assigning || clearingId !== null" @change="reloadAssets">
           <option value="">请选择项目</option>
           <option v-for="p in projects" :key="p.id" :value="String(p.id)">{{ p.name }}</option>
         </select>
@@ -31,13 +31,8 @@
       <div class="e-hint">在上方下拉框选择项目后，即可创建标签并挂载资产。</div>
     </div>
 
-    <div v-else-if="assets.length === 0" class="panel empty" data-no-assets>
-      <div class="e-title">暂无资产</div>
-      <div class="e-hint">当前项目下没有资产，无法挂载标签；可先在左侧创建标签。</div>
-    </div>
-
     <!-- 左筛选面板 + 右内容（对标旧前端 ListFilterPanel 两栏范式） -->
-    <div v-else class="split filter">
+    <div v-if="projectId !== null" class="split filter">
       <FilterPanel
         v-model:keyword="keyword"
         v-model:filters="filters"
@@ -48,7 +43,11 @@
       />
 
       <div class="page-main">
-        <section class="panel">
+        <section v-if="assets.length === 0" class="panel empty" data-no-assets>
+          <div class="e-title">暂无资产</div>
+          <div class="e-hint">当前项目下没有资产，无法挂载标签；仍可在下方创建标签。</div>
+        </section>
+        <section v-else class="panel">
           <div class="tbl-toolbar">
             <span class="sec-head">资产标签</span>
             <span class="pill info">{{ filteredAssets.length }} / {{ assets.length }}</span>
@@ -76,11 +75,11 @@
                   <span v-else class="hint">未打标</span>
                 </td>
                 <td>
-                  <button type="button" class="op-btn primary" :disabled="assigning" @click="focusAssign(a)">打标</button>
+                  <button type="button" class="op-btn primary" :disabled="loading || assigning" @click="focusAssign(a)">打标</button>
                   <button
                     type="button"
                     class="op-btn danger"
-                    :disabled="assigning || clearingId !== null || (a.tags ?? []).length === 0"
+                    :disabled="loading || assigning || clearingId !== null || (a.tags ?? []).length === 0"
                     @click="clearTags(a)"
                   >{{ clearingId === a.id ? '清空中…' : '清空' }}</button>
                 </td>
@@ -104,7 +103,7 @@
             <div class="form-hint">创建成功后可在右侧资产挂载面板引用该标签 ID。</div>
             <div class="dlg-ft">
               <button type="button" class="op-btn" :disabled="creating" @click="resetForm">清空</button>
-              <button type="submit" class="tb-new" :disabled="creating || form.tagKey === '' || form.displayName === ''">
+              <button type="submit" class="tb-new" :disabled="loading || creating || form.tagKey === '' || form.displayName === ''">
                 {{ creating ? '创建中…' : '创建' }}
               </button>
             </div>
@@ -113,7 +112,7 @@
           <section class="assign panel">
             <div class="panel-hd">资产挂载</div>
             <label class="field"><span>资产</span>
-              <select v-model="selectedAsset" class="kw" data-asset-select :disabled="assigning || creating">
+              <select v-model="selectedAsset" class="kw" data-asset-select :disabled="loading || assigning || creating">
                 <option value="">请选择资产</option>
                 <option v-for="a in assets" :key="a.id" :value="String(a.id)">{{ a.databaseName }}.{{ a.assetName }}</option>
               </select>
@@ -124,7 +123,7 @@
             </label>
             <p v-if="assignHint" class="hint" data-assign-hint>{{ assignHint }}</p>
             <div class="dlg-ft">
-              <button type="button" class="tb-new" :disabled="selectedAsset === '' || tagIds === '' || assigning || creating" @click="assign">
+              <button type="button" class="tb-new" :disabled="loading || selectedAsset === '' || tagIds === '' || assigning || creating" @click="assign">
                 {{ assigning ? '挂载中…' : '挂载' }}
               </button>
             </div>
@@ -151,6 +150,7 @@
 
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref } from 'vue'
+import { ElMessageBox } from 'element-plus'
 import { useRoute } from 'vue-router'
 import FilterPanel, { type Facet } from '../../components/FilterPanel.vue'
 import { governanceApi, type AssetRecord, type GovernanceTagDefinition } from '../../services/rebuild/governanceApi'
@@ -236,20 +236,33 @@ async function init(): Promise<void> {
 onMounted(init)
 
 let assetSeq = 0
+let assignSeq = 0
+let clearSeq = 0
+let loadedProjectId: number | null = null
 /** 拉取资产列表；reset=true 用于切换项目（清空选择/结果），false 用于挂载后刷新（保留选择与结果）。 */
 async function loadAssets(reset: boolean): Promise<void> {
+  const pid = projectId.value
+  if (pid !== loadedProjectId) {
+    created.value = []
+    loadedProjectId = pid
+  }
   if (reset) {
+    assignSeq += 1
+    clearSeq += 1
+    assigning.value = false
+    clearingId.value = null
+    assets.value = []
     selectedAsset.value = ''
     tagIds.value = ''
     assignHint.value = ''
     lastResult.value = ''
   }
-  if (projectId.value === null) { assets.value = []; return }
+  if (pid === null) { assets.value = []; return }
   const seq = ++assetSeq
   loading.value = true
   error.value = ''
   try {
-    const page = await governanceApi.listAssets(projectId.value)
+    const page = await governanceApi.listAssets(pid)
     if (seq !== assetSeq) return
     assets.value = page.list
   } catch (e) {
@@ -268,7 +281,7 @@ function resetForm(): void {
 }
 
 async function create(): Promise<void> {
-  if (projectId.value === null || creating.value) return
+  if (projectId.value === null || loading.value || creating.value) return
   creating.value = true
   error.value = ''
   try {
@@ -287,7 +300,8 @@ async function create(): Promise<void> {
 }
 
 async function assign(): Promise<void> {
-  if (assigning.value) return
+  const requestedProjectId = projectId.value
+  if (requestedProjectId === null || loading.value || assigning.value) return
   assignHint.value = ''
   const id = Number(selectedAsset.value)
   const raw = tagIds.value.split(',').map((s) => s.trim()).filter((s) => s !== '')
@@ -296,37 +310,58 @@ async function assign(): Promise<void> {
     assignHint.value = '标签 ID 需为逗号分隔的正整数（如 1,2），请检查后重试。'
     return
   }
+  const seq = ++assignSeq
   assigning.value = true
   error.value = ''
   try {
     const res = await governanceApi.assignAssetTags(id, ids)
+    if (seq !== assignSeq || projectId.value !== requestedProjectId) return
     lastResult.value = `资产 #${res.assetId} 已挂载标签：${res.tagIds.join(', ')}`
     await loadAssets(false)
   } catch (e) {
-    error.value = message(e)
-    retry.value = assign
-  } finally { assigning.value = false }
+    if (seq === assignSeq && projectId.value === requestedProjectId) {
+      error.value = message(e)
+      retry.value = assign
+    }
+  } finally {
+    if (seq === assignSeq && projectId.value === requestedProjectId) assigning.value = false
+  }
 }
 
 /** 行操作：把该资产带入挂载面板（复用既有挂载流程，不重复造写接口）。 */
 function focusAssign(a: AssetRecord): void {
+  if (loading.value) return
   selectedAsset.value = String(a.id)
   assignHint.value = ''
 }
 
 /** 行操作：清空该资产全部标签（assignAssetTags(id, []) 为后端既有替换语义）。 */
 async function clearTags(a: AssetRecord): Promise<void> {
-  if (assigning.value || clearingId.value !== null) return
+  if (loading.value || assigning.value || clearingId.value !== null) return
+  const requestedProjectId = projectId.value
+  if (requestedProjectId === null) return
+  try {
+    await ElMessageBox.confirm(`确认清空资产“${a.displayName || a.assetName}”的全部标签？`, '清空标签', { type: 'warning' })
+  } catch {
+    return
+  }
+  if (projectId.value !== requestedProjectId) return
+  const seq = ++clearSeq
   clearingId.value = a.id
   error.value = ''
   try {
     await governanceApi.assignAssetTags(a.id, [])
+    if (seq !== clearSeq || projectId.value !== requestedProjectId) return
     lastResult.value = `资产 #${a.id} 已清空标签`
     await loadAssets(false)
   } catch (e) {
-    error.value = message(e)
-    retry.value = () => clearTags(a)
-  } finally { clearingId.value = null }
+    if (seq === clearSeq && projectId.value === requestedProjectId) {
+      error.value = message(e)
+      retry.value = () => clearTags(a)
+    }
+  } finally {
+    if (seq === clearSeq && projectId.value === requestedProjectId) clearingId.value = null
+  }
 }
 </script>
 

@@ -82,9 +82,9 @@ describe('/ind/board 指标看板页（增量 14）', () => {
     const w = mount(View)
     await flushPromises()
     await w.find('[data-goto-list]').trigger('click')
-    expect(router.push).toHaveBeenCalledWith('/ind/list')
+    expect(router.push).toHaveBeenCalledWith({ path: '/ind/list', query: { projectId: '1' } })
     await w.find('[data-goto-consistency]').trigger('click')
-    expect(router.push).toHaveBeenCalledWith('/ind/consistency')
+    expect(router.push).toHaveBeenCalledWith({ path: '/ind/consistency', query: { projectId: '1' } })
   })
 
   it('surfaces backend errors without dropping the picker', async () => {

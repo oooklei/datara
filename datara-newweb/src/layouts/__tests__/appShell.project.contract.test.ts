@@ -62,7 +62,6 @@ describe('L3-03：AppShell 项目模式——侧栏七段导航', () => {
       const seg = PROJECT_MENU_SECTIONS[i]
       expect(links[i].attributes('data-seg')).toBe(seg.key)
       expect(links[i].attributes('href')).toBe(`/p/9/${seg.key}`)
-      // 图标字形 + 标签分两 span 渲染（对标旧前端菜单 icon 字形表）
       expect(links[i].find('span.ico').text()).toBe(seg.icon)
       expect(links[i].find('span.lbl').text()).toBe(seg.label)
     }

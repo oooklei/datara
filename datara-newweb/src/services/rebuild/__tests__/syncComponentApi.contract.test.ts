@@ -12,8 +12,15 @@ afterEach(() => vi.unstubAllGlobals())
 
 describe('R4 SYNC API adapter', () => {
   it('registers every operation permission on the shared envelope surface', () => {
-    expect(Object.keys(SYNC_PERMISSION_MATRIX)).toHaveLength(5)
+    expect(SYNC_PERMISSION_MATRIX).toEqual({
+      getCapabilities: 'VIEW_ALL',
+      explore: 'VIEW_ALL',
+      autoMap: 'EDIT_DEFINITION',
+      savePlan: 'EDIT_DEFINITION',
+      listPlans: 'VIEW_ALL',
+    })
   })
+
   it('gets capabilities and explores both the schema and wire fields', async () => {
     vi.stubGlobal('localStorage', { getItem: (key: string) => key === 'datara_token' ? 'validation-token' : null })
     const fetchMock = vi.fn()

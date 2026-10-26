@@ -103,7 +103,7 @@ describe('/ind/consistency 一致性检查页（增量 14）', () => {
     await w.find('[data-consistency-result] tbody button').trigger('click')
     expect(w.find('[role=dialog]').exists()).toBe(true)
     await w.find('[data-goto-list]').trigger('click')
-    expect(router.push).toHaveBeenCalledWith('/ind/list')
+    expect(router.push).toHaveBeenCalledWith({ path: '/ind/list', query: { projectId: '1' } })
   })
 
   it('surfaces backend errors without dropping the picker', async () => {

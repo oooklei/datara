@@ -211,6 +211,8 @@ onMounted(init)
 
 let reqSeq = 0
 async function reload(): Promise<void> {
+  checkSeq += 1
+  checkingId.value = null
   checkResult.value = null
   if (projectId.value === null) { page.value = { total: 0, list: [] }; return }
   const seq = ++reqSeq
@@ -256,12 +258,13 @@ async function save(): Promise<void> {
 let checkSeq = 0
 async function check(s: StandardDefinition): Promise<void> {
   if (projectId.value === null || checkingId.value !== null) return
+  const pid = projectId.value
   const seq = ++checkSeq
   checkingId.value = s.id
   error.value = ''
   try {
-    const res = await governanceApi.checkStandard(projectId.value, { standardId: s.id })
-    if (seq !== checkSeq) return
+    const res = await governanceApi.checkStandard(pid, { standardId: s.id })
+    if (seq !== checkSeq || projectId.value !== pid) return
     checkResult.value = res[0] ?? null
   } catch (e) {
     if (seq === checkSeq) {

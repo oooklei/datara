@@ -29,6 +29,8 @@ const loading = ref(false)
 const binding = ref(false)
 const error = ref('')
 const status = ref('')
+let resourceSeq = 0
+let versionSeq = 0
 
 const sourceKey = computed<'sql' | 'script'>(() => props.kind === 'sql' ? 'sql' : 'script')
 const inlineValue = computed(() => String(props.modelValue[sourceKey.value] ?? ''))
@@ -58,30 +60,43 @@ function changeMode() {
 }
 
 async function loadResources() {
+  const seq = ++resourceSeq
+  versionSeq += 1
+  resources.value = []
+  versions.value = []
+  resourceId.value = ''
+  resourceVersion.value = ''
   loading.value = true
   error.value = ''
   try {
-    resources.value = await api.listResources(props.projectId, props.kind)
+    const items = await api.listResources(props.projectId, props.kind)
+    if (seq !== resourceSeq) return
+    resources.value = items
   } catch (cause) {
-    error.value = cause instanceof Error ? cause.message : '资源加载失败'
+    if (seq === resourceSeq) error.value = cause instanceof Error ? cause.message : '资源加载失败'
   } finally {
-    loading.value = false
+    if (seq === resourceSeq) loading.value = false
   }
 }
 
 async function loadVersions() {
+  const seq = ++versionSeq
   versions.value = []
   resourceVersion.value = ''
   const id = Number(resourceId.value)
-  if (!Number.isInteger(id) || id <= 0) return
+  if (!Number.isInteger(id) || id <= 0) return false
   loading.value = true
   error.value = ''
   try {
-    versions.value = await api.listResourceVersions(id, props.projectId)
+    const items = await api.listResourceVersions(id, props.projectId)
+    if (seq !== versionSeq || Number(resourceId.value) !== id) return false
+    versions.value = items
+    return true
   } catch (cause) {
-    error.value = cause instanceof Error ? cause.message : '资源版本加载失败'
+    if (seq === versionSeq) error.value = cause instanceof Error ? cause.message : '资源版本加载失败'
+    return false
   } finally {
-    loading.value = false
+    if (seq === versionSeq) loading.value = false
   }
 }
 
@@ -162,7 +177,7 @@ function hydrateSelection() {
   const version = Number(candidate.version)
   if (!Number.isInteger(id) || id <= 0 || !Number.isInteger(version) || version <= 0) return
   resourceId.value = String(id)
-  void loadVersions().then(() => { resourceVersion.value = String(version) })
+  void loadVersions().then((applied) => { if (applied) resourceVersion.value = String(version) })
 }
 
 watch(() => [props.projectId, props.kind] as const, () => { void loadResources() })

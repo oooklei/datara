@@ -145,8 +145,9 @@ const statusLabel = (s: DefinitionStatus): string =>
   s === 'active' ? '启用中' : s === 'retired' ? '已停用' : '草稿'
 
 /** 真实路由入口（routes.ts 已登记），非死链 */
-function gotoList(): void { router.push('/ind/list') }
-function gotoConsistency(): void { router.push('/ind/consistency') }
+function projectQuery(): Record<string, string> { return projectId.value === null ? {} : { projectId: String(projectId.value) } }
+function gotoList(): void { router.push({ path: '/ind/list', query: projectQuery() }) }
+function gotoConsistency(): void { router.push({ path: '/ind/consistency', query: projectQuery() }) }
 
 async function init(): Promise<void> {
   try {
