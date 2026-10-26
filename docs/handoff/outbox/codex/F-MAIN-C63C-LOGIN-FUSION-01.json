@@ -1,0 +1,10 @@
+{
+  "id": "F-MAIN-C63C-LOGIN-FUSION-01",
+  "ts": "2026-10-26T22:49:04+08:00",
+  "from": "codex",
+  "to": "flow",
+  "type": "implementation_receipt",
+  "ref": ".codex-evidence/F-MAIN-C63C-LOGIN-FUSION-01/summary.md",
+  "body": "Recovered the legacy credential login into datara-newweb with preset demo accounts while preserving in-memory token recheck and safe redirect behavior; frontend full suite and typecheck pass.",
+  "status": "done"
+}

@@ -1,0 +1,10 @@
+{
+  "id": "NEXT-MODEL-FUSION-01",
+  "ts": "2026-10-26T23:41:56+08:00",
+  "from": "codex",
+  "to": "codex-next-session",
+  "type": "incremental_handoff",
+  "ref": "docs/handoff/outbox/codex/F-REMOTE-IDENTITY-PROJECT-UI-01.json",
+  "body": "Previous ticket is complete and deployed. Verified: four demo logins HTTP 200; all see both e-commerce projects; web/API health 200; frontend 100 files/870 tests green; vue-tsc EXIT=0. Next ticket: selectively fuse the four main-working-tree model routes and views (/model/design, /model/version, /model/lineage, /model/er) into c63c without overwriting its variable/sync/dependency/infra enhancements. Start from current worktree and this receipt; do not reread full historical documents. Target tests: datara-newweb/src/router/__tests__/routes.contract.test.ts plus new model route/view contract tests. Preserve all existing dirty files and three stash layers; no git commit.",
+  "status": "ready"
+}

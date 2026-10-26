@@ -157,6 +157,7 @@ def test_wf17_test_variables_recorded():
     assert "batch_size" in names
     env_var = next(v for v in variables if v.name == "env")
     assert env_var.resolved_value == "staging"
+    assert env_var.expression == "${run.env}"
     assert env_var.source == "test_override"
 
 

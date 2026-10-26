@@ -14,7 +14,7 @@ sample count is aggregated from stream_failure_event rows in the window.
 from __future__ import annotations
 
 import json
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any
 
 from sqlalchemy import func, select
@@ -200,7 +200,10 @@ class StreamRepository:
         target = STREAM_TRANSITIONS.get((source, action))
         if target is None:
             raise StreamDomainError(4002, f"illegal transition {source} --{action}--> ?")
-        now = event_time or datetime.now()
+        # Stream metric/checkpoint APIs use UTC event time.  Persist transition
+        # events with the same UTC wall-clock convention because the schema's
+        # DateTime columns are intentionally timezone-naive across SQLite/MySQL.
+        now = event_time or datetime.now(timezone.utc).replace(tzinfo=None)
         updates: dict[str, Any] = {"state": target}
         if action == "start":
             updates.update(attempt_no=record.attempt_no + 1, started_at=now, finished_at=None)

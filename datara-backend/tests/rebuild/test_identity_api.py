@@ -403,6 +403,98 @@ def test_validation_key_can_issue_short_lived_e2e_admin_token():
     assert created.status_code == 200
 
 
+def test_admin_can_list_users_and_developer_is_forbidden():
+    app = create_app(
+        "sqlite+pysqlite:///:memory:",
+        token_secret="unit-test-token-secret",
+        validation_key="unit-test-key",
+    )
+    with TestClient(app) as client:
+        with app.state.session_factory() as session:
+            UserRepository(session).create(username="listed-admin", password="unit-test-password", role=Role.ADMIN)
+            UserRepository(session).create(username="listed-viewer", password="unit-test-password", role=Role.VIEWER)
+            session.commit()
+        issued = client.post(
+            "/api/v1/rebuild/validation-token",
+            headers={
+                "X-Backend-Validation-Key": "unit-test-key",
+                "X-Backend-Validation-Scope": "high-priority-e2e",
+            },
+        )
+        token = issued.json()["data"]["token"]
+        listed = client.get("/api/v1/rebuild/users", headers={"Authorization": f"Bearer {token}"})
+        missing_token = client.get("/api/v1/rebuild/users")
+
+    assert listed.status_code == 200
+    body = listed.json()
+    assert body["code"] == 0
+    usernames = {item["username"] for item in body["data"]["list"]}
+    assert {"listed-admin", "listed-viewer"} <= usernames
+    assert missing_token.status_code == 401
+
+    with developer_client("sqlite+pysqlite:///:memory:") as client:
+        login = client.post(
+            "/api/v1/rebuild/login",
+            json={"username": _TEST_USERNAME, "password": _TEST_PASSWORD},
+        )
+        token = login.json()["data"]["token"]
+        denied = client.get("/api/v1/rebuild/users", headers={"Authorization": f"Bearer {token}"})
+
+    assert denied.status_code == 403
+    assert denied.json()["code"] == 1003
+
+
+def test_admin_can_reset_demo_user_password_and_developer_is_forbidden():
+    app = create_app(
+        "sqlite+pysqlite:///:memory:",
+        token_secret="unit-test-token-secret",
+        validation_key="unit-test-key",
+    )
+    with TestClient(app) as client:
+        with app.state.session_factory() as session:
+            target = UserRepository(session).create(
+                username="demo-viewer", password="old-password", role=Role.VIEWER
+            )
+            target_id = target.id
+            session.commit()
+        issued = client.post(
+            "/api/v1/rebuild/validation-token",
+            headers={
+                "X-Backend-Validation-Key": "unit-test-key",
+                "X-Backend-Validation-Scope": "high-priority-e2e",
+            },
+        )
+        token = issued.json()["data"]["token"]
+        changed = client.patch(
+            f"/api/v1/rebuild/users/{target_id}/password",
+            headers={"Authorization": f"Bearer {token}"},
+            json={"password": "short7"},
+        )
+        old_login = client.post(
+            "/api/v1/rebuild/login", json={"username": "demo-viewer", "password": "old-password"}
+        )
+        new_login = client.post(
+            "/api/v1/rebuild/login", json={"username": "demo-viewer", "password": "short7"}
+        )
+
+    assert changed.status_code == 200
+    assert changed.json()["data"]["username"] == "demo-viewer"
+    assert old_login.status_code == 401
+    assert new_login.status_code == 200
+
+    with developer_client("sqlite+pysqlite:///:memory:") as client:
+        login = client.post(
+            "/api/v1/rebuild/login", json={"username": _TEST_USERNAME, "password": _TEST_PASSWORD}
+        )
+        denied = client.patch(
+            "/api/v1/rebuild/users/1/password",
+            headers={"Authorization": f"Bearer {login.json()['data']['token']}"},
+            json={"password": "blocked-password"},
+        )
+
+    assert denied.status_code == 403
+
+
 def test_app_requires_database_and_token_secrets_without_environment_defaults(monkeypatch):
     monkeypatch.delenv("REBUILD_DB_URL", raising=False)
     monkeypatch.delenv("REBUILD_TOKEN_SECRET", raising=False)

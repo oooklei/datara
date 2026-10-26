@@ -74,7 +74,7 @@ def test_variable_migration_adds_environment_group_scope_without_losing_definiti
         ))
 
     result = apply_variable_migrations(engine)
-    assert len(result.applied) == 2
+    assert len(result.applied) == len(VARIABLE_MIGRATIONS)
     with engine.begin() as connection:
         assert connection.scalar(text(
             "SELECT value_json FROM rebuild_variable_definition WHERE name='retained'"

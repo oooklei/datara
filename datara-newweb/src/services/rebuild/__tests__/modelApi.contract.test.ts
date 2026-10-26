@@ -7,6 +7,12 @@ const envelope = (data: unknown) => new Response(JSON.stringify({ code: 0, msg: 
 })
 
 describe('model API', () => {
+  it('normalizes the field-save revision envelope to a number', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(envelope({ rev: 3 })))
+
+    await expect(modelApi.updateFields(8, { rev: 2, fields: [] })).resolves.toBe(3)
+  })
+
   it('connects list, create, lifecycle, DDL, and delete operations', async () => {
     const fetchMock = vi.fn()
       .mockResolvedValueOnce(envelope({ total: 0, list: [], layers: [], domains: [] }))
@@ -27,5 +33,31 @@ describe('model API', () => {
     expect(String(fetchMock.mock.calls[2]?.[0])).toContain('/models/8/publish')
     expect(String(fetchMock.mock.calls[3]?.[0])).toContain('/models/8/ddl?engine=mysql')
     expect(fetchMock.mock.calls[4]?.[1]?.method).toBe('DELETE')
+  })
+
+  it('connects design, versions, lineage, ER, and physicalization operations', async () => {
+    const fetchMock = vi.fn().mockImplementation(() => Promise.resolve(envelope({})))
+    vi.stubGlobal('fetch', fetchMock)
+
+    await modelApi.detail(8)
+    await modelApi.updateFields(8, { rev: 2, fields: [] })
+    await modelApi.listVersions(8)
+    await modelApi.createVersion(8, { changeNote: '字段调整' })
+    await modelApi.diffVersion(8, 3, 2)
+    await modelApi.rollbackVersion(8, 3)
+    await modelApi.getEr({ layer: 'DWD', domain: '交易域' })
+    await modelApi.putEr({ positions: {}, relations: { removed: [], added: [], updated: [] } })
+    await modelApi.lineage(8)
+    await modelApi.impact(8)
+    await modelApi.physicalize(8, { engine: 'mysql', mode: 'script' })
+
+    expect(String(fetchMock.mock.calls[0]?.[0])).toContain('/models/8')
+    expect(fetchMock.mock.calls[1]?.[1]?.method).toBe('PUT')
+    expect(String(fetchMock.mock.calls[4]?.[0])).toContain('/versions/3/diff?base=2')
+    expect(String(fetchMock.mock.calls[6]?.[0])).toContain('/models/er?layer=DWD&domain=')
+    expect(fetchMock.mock.calls[7]?.[1]?.method).toBe('PUT')
+    expect(String(fetchMock.mock.calls[8]?.[0])).toContain('/models/8/lineage')
+    expect(String(fetchMock.mock.calls[9]?.[0])).toContain('/models/8/impact')
+    expect(String(fetchMock.mock.calls[10]?.[0])).toContain('/models/8/physicalize')
   })
 })

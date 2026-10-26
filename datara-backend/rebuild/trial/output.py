@@ -88,17 +88,19 @@ class TrialOutputAggregator:
         return result
 
     def _collect_variables(self, instance_id: int) -> list[dict[str, Any]]:
-        """Collect terminal variable runtime snapshots (last value per name)."""
+        """Collect terminal variable runtime snapshots (last value per reference)."""
         rows = self._session.scalars(
             select(TaskInstanceVariableRuntimeRecord)
             .where(TaskInstanceVariableRuntimeRecord.instance_id == instance_id)
             .order_by(TaskInstanceVariableRuntimeRecord.attempt_no, TaskInstanceVariableRuntimeRecord.id)
         ).all()
 
-        # Keep the last value per (name, attempt_no) — simplified: last per name.
-        terminal: dict[str, dict[str, Any]] = {}
+        # Keep the last value per (scope, name, attempt_no).  Scope must be part
+        # of the key: ``project.fixture_key`` and ``run.fixture_key`` are
+        # different references and collapsing them would hide the override.
+        terminal: dict[tuple[str, str, int], dict[str, Any]] = {}
         for row in rows:
-            terminal[row.name] = {
+            terminal[(row.scope, row.name, row.attempt_no)] = {
                 "name": row.name,
                 "expression": row.expression,
                 "scope": row.scope,

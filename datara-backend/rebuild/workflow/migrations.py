@@ -1,6 +1,6 @@
 """Versioned workflow-domain migrations."""
 
-from rebuild.governance.migrations import GovernanceMigration, MigrationResult, MigrationRunner
+from rebuild.common.migrations import GovernanceMigration, MigrationResult, MigrationRunner
 from rebuild.workflow.revisions import v0001_workflow_type
 from rebuild.workflow.revisions import v0002_workflow_categories
 

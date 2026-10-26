@@ -11,7 +11,7 @@ from rebuild.execution.revisions import (
     v0002_run_statistics,
     v0003_run_snapshot_contract,
 )
-from rebuild.governance.migrations import GovernanceMigration, MigrationResult, MigrationRunner
+from rebuild.common.migrations import GovernanceMigration, MigrationResult, MigrationRunner
 
 
 EXECUTION_MIGRATIONS = (

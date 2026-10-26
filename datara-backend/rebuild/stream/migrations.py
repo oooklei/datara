@@ -16,7 +16,7 @@ import sys
 
 from sqlalchemy import create_engine
 
-from rebuild.governance.migrations import GovernanceMigration, MigrationResult, MigrationRunner
+from rebuild.common.migrations import GovernanceMigration, MigrationResult, MigrationRunner
 from rebuild.stream.revisions import v0001_legacy_job_mapping, v0002_stream_job_attempt
 
 

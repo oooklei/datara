@@ -8,6 +8,7 @@
       </select>
       <button type="button" data-search @click="reload">查询</button>
       <button type="button" data-create @click="beginCreate">新建模型</button>
+      <button type="button" data-open-er @click="router.push({ path: '/model/er' })">ER 图</button>
     </header>
 
     <p v-if="error" role="alert" class="error" data-error>{{ error }}</p>
@@ -19,6 +20,9 @@
           <td><code>{{ row.code }}</code></td><td>{{ row.name }}</td><td>{{ row.layer }}</td><td>{{ row.bizDomain || '—' }}</td>
           <td>{{ row.engine }}</td><td>{{ row.status }}</td><td>v{{ row.version }}</td><td>{{ row.owner || '—' }}</td>
           <td class="actions">
+            <button type="button" data-open-design @click="router.push({ path: '/model/design', query: { modelId: row.id } })">设计</button>
+            <button type="button" data-open-version @click="router.push({ path: '/model/version', query: { modelId: row.id } })">版本</button>
+            <button type="button" data-open-lineage @click="router.push({ path: '/model/lineage', query: { modelId: row.id } })">血缘</button>
             <button type="button" @click="beginEdit(row)">编辑</button>
             <button v-if="row.status === 'draft'" type="button" @click="publish(row)">发布</button>
             <button v-else type="button" @click="redraft(row)">重新起草</button>
@@ -53,8 +57,10 @@
 
 <script setup lang="ts">
 import { onMounted, reactive, ref } from 'vue'
+import { useRouter } from 'vue-router'
 import { modelApi, type ModelRow } from '../../services/rebuild/modelApi'
 
+const router = useRouter()
 const rows = ref<ModelRow[]>([])
 const busy = ref(false)
 const saving = ref(false)

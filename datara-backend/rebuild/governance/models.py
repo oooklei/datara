@@ -16,6 +16,7 @@ from sqlalchemy import (
 from sqlalchemy.orm import Mapped, mapped_column
 
 from rebuild.common.db import Base
+from rebuild.common.migrations import SchemaMigrationRecord
 
 
 class GovernanceTimestampMixin:
@@ -267,24 +268,6 @@ class AuditEventRecord(RuntimeTimestampMixin, Base):
     request_id: Mapped[str] = mapped_column(String(128), nullable=False, default="")
     before_json: Mapped[str] = mapped_column(Text, nullable=False, default="{}")
     after_json: Mapped[str] = mapped_column(Text, nullable=False, default="{}")
-
-
-class SchemaMigrationRecord(RuntimeTimestampMixin, Base):
-    __tablename__ = "rebuild_schema_migration"
-    __table_args__ = (
-        UniqueConstraint("revision", name="uq_rebuild_schema_migration_revision"),
-        CheckConstraint("status IN ('running', 'completed', 'failed')", name="ck_rebuild_schema_migration_status"),
-        CheckConstraint("attempt_count > 0", name="ck_rebuild_schema_migration_attempts"),
-    )
-
-    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
-    revision: Mapped[str] = mapped_column(String(128), nullable=False)
-    checksum: Mapped[str] = mapped_column(String(64), nullable=False)
-    status: Mapped[str] = mapped_column(String(16), nullable=False)
-    attempt_count: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
-    started_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, server_default=func.current_timestamp())
-    finished_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
-    last_error: Mapped[str] = mapped_column(String(128), nullable=False, default="")
 
 
 class GovernanceDomainRecord(LegacySourceMixin, Base):

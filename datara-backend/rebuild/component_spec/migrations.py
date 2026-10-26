@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from rebuild.component_spec.revisions import v0001_component_spec_tables
-from rebuild.governance.migrations import (
+from rebuild.common.migrations import (
     GovernanceMigration,
     MigrationApplyError,
     MigrationResult,

@@ -1,6 +1,6 @@
 """Explicit versioned migration entry point for the SSH node registry."""
 
-from rebuild.governance.migrations import GovernanceMigration, MigrationResult, MigrationRunner
+from rebuild.common.migrations import GovernanceMigration, MigrationResult, MigrationRunner
 from rebuild.sshnode.revisions import v0001_ssh_node_registry
 
 SSH_NODE_MIGRATIONS = (

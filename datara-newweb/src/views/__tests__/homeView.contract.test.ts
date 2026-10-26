@@ -54,6 +54,25 @@ describe('L3-02 HomeView 项目列表页', () => {
     expect(cards[1].attributes('data-project-id')).toBe('2')
   })
 
+  it('融合旧版工作台统计卡片与快捷入口，同时保留项目空间', async () => {
+    listProjectsMock.mockResolvedValue({
+      total: 2,
+      list: [
+        { id: 1, name: '电商数据治理', ownOrJoined: 'owner' },
+        { id: 2, name: '分析项目', ownOrJoined: 'joined' },
+      ],
+    })
+    const w = mount(HomeView)
+    await flushPromises()
+
+    expect(w.findAll('[data-dashboard-stat]')).toHaveLength(4)
+    expect(w.get('[data-stat-projects]').text()).toContain('2')
+    expect(w.findAll('[data-quick-entry]')).toHaveLength(4)
+    expect(w.text()).toContain('项目空间')
+    await w.get('[data-quick-entry="/ide"]').trigger('click')
+    expect(pushSpy).toHaveBeenCalledWith('/ide')
+  })
+
   it('卡片点击 → router.push(/p/:projectId)', async () => {
     listProjectsMock.mockResolvedValue({
       total: 1,
