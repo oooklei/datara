@@ -1,0 +1,11 @@
+B2 smoke 2026-10-28 07:26 (+08:00)
+scope: B2 收口（T8/T2/T3/T4/T5/T6/T7/T9/D9/KeepAlive 三护栏/G10 后容器重建冒烟）
+build: vue-tsc -b + vite build OK（vitest 999 绿 / 117 文件，tsc 0 错）
+image: datara-newweb-frontend:local rebuilt（context deploy/wsl-frontend，dist 87.7MB）
+container: datara-newweb-fe Up, 0.0.0.0:18092->80/tcp
+SPA index /: 200 (350B)
+SPA fallback /dag: 200
+new bundle in container: /assets/index-D0DyGoQp.js 200，index.html 引用一致（确认新产物非旧镜像）
+GET /api/v1/rebuild/health via container(18092): 200
+GET /api/v1/rebuild/health direct 192.168.1.9:18091: 200（parity）
+POST /api/v1/rebuild/login via container: 422 validation（proxy+body passthrough OK）
