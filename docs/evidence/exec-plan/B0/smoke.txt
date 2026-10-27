@@ -1,0 +1,9 @@
+B0 smoke 2026-10-28 04:28:48
+build: vue-tsc -b && vite build OK (2513 modules, 2.77s)
+image: datara-newweb-frontend:local (context deploy/wsl-frontend, dist 78MB)
+container: datara-newweb-fe Up, 0.0.0.0:18092->80/tcp
+SPA index /: 200 (0.35kB)
+SPA fallback /dag: 200
+GET /api/v1/projects/33/sql-ide/databases via container: 404 (hidden-404 auth semantic)
+GET direct 192.168.1.9:18090 same path: 404 (parity)
+POST /api/v1/login via container: 422 validation (proxy+body passthrough OK)

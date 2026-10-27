@@ -1,0 +1,7 @@
+services:
+  newweb:
+    image: datara-newweb-frontend:local
+    container_name: datara-newweb-fe
+    ports:
+      - "18092:80"
+    restart: unless-stopped
