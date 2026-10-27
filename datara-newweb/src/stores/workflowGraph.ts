@@ -89,6 +89,53 @@ function nextNodeCode(nodes: WorkflowDraftNode[]): string {
   return `n${max + 1}`
 }
 
+/* ---------- T3 拖边即引用：inputs 派生与清理（nodeId:port 具名引用） ---------- */
+
+/** 组件 spec 未定义 ports 时的默认端口约定：source 端固定 ':out' */
+function sourceRefOf(fromNode: string): string {
+  return `${fromNode}:out`
+}
+
+function inputRefsOf(node: WorkflowDraftNode): Record<string, unknown> {
+  const inputs = node.params?.inputs
+  return typeof inputs === 'object' && inputs !== null && !Array.isArray(inputs)
+    ? { ...(inputs as Record<string, unknown>) }
+    : {}
+}
+
+function nextInputKey(inputs: Record<string, unknown>): string {
+  const keys = new Set(Object.keys(inputs))
+  if (!keys.has('in')) return 'in'
+  let n = 2
+  while (keys.has(`in${n}`)) n += 1
+  return `in${n}`
+}
+
+function deriveInputRef(nodes: WorkflowDraftNode[], toNode: string, fromNode: string): void {
+  const target = nodes.find((n) => n.nodeCode === toNode)
+  if (!target) return
+  const inputs = inputRefsOf(target)
+  inputs[nextInputKey(inputs)] = sourceRefOf(fromNode)
+  target.params = { ...(target.params ?? {}), inputs }
+}
+
+/** 删除 from→target 触边后回收 target params.inputs 里的悬挂引用（值前缀 nodeId: 匹配） */
+function pruneInputRefs(nodes: WorkflowDraftNode[], toNode: string, fromNode: string): void {
+  const target = nodes.find((n) => n.nodeCode === toNode)
+  if (!target || !target.params) return
+  const inputs = inputRefsOf(target)
+  const prefix = `${fromNode}:`
+  let changed = false
+  for (const key of Object.keys(inputs)) {
+    if (typeof inputs[key] === 'string' && (inputs[key] as string).startsWith(prefix)) {
+      delete inputs[key]
+      changed = true
+    }
+  }
+  if (!changed) return
+  target.params = { ...target.params, inputs }
+}
+
 /* ---------- delta 构造（write 调 workflowApi；read 权威读回该项；compensate 仅恢复该项） ---------- */
 
 function nodeUpsertDelta(
@@ -305,12 +352,15 @@ export const useWorkflowGraphStore = defineStore('workflowGraph', {
       return node
     },
 
-    /** 本地级联删触边（服务端 nodes/delete 同语义；diff 派发删除 delta） */
+    /** 本地级联删触边（服务端 nodes/delete 同语义；diff 派发删除 delta）；
+     *  被 source 端删除触发的触边同步回收 target 的 inputs 引用 */
     removeNode(nodeCode: string): void {
       const idx = this.nodes.findIndex((n) => n.nodeCode === nodeCode)
       if (idx === -1) return
+      const downstreamTargets = [...new Set(this.edges.filter((e) => e.fromNode === nodeCode).map((e) => e.toNode))]
       this.nodes.splice(idx, 1)
       this.edges = this.edges.filter((e) => e.fromNode !== nodeCode && e.toNode !== nodeCode)
+      for (const target of downstreamTargets) pruneInputRefs(this.nodes, target, nodeCode)
     },
 
     updateNode(
@@ -360,11 +410,16 @@ export const useWorkflowGraphStore = defineStore('workflowGraph', {
       }
       const edge: WorkflowDraftEdge = { fromNode, toNode, name: name ?? null }
       this.edges.push(edge)
+      // T3 拖边即引用：边即具名引用（nodeId:port），派生进 target params.inputs；
+      // port 约定 source 端 ':out'（spec 未定义 ports 时的默认端口）
+      deriveInputRef(this.nodes, toNode, fromNode)
       return edge
     },
 
     removeEdge(fromNode: string, toNode: string): void {
+      const existed = this.edges.some((e) => e.fromNode === fromNode && e.toNode === toNode)
       this.edges = this.edges.filter((e) => !(e.fromNode === fromNode && e.toNode === toNode))
+      if (existed) pruneInputRefs(this.nodes, toNode, fromNode)
     },
 
     /**

@@ -325,6 +325,35 @@ describe('INC4-FE-6 workflowGraph：load 与本地编辑', () => {
     expect(store.edges.map((e) => `${e.fromNode}->${e.toNode}`)).toEqual(['n1->n2', 'n2->n3'])
     expect(store.isDirty).toBe(false)
   })
+
+  it('T3 拖边即引用：addEdge 派生 target params.inputs（nodeId:out 具名引用）+ removeEdge/removeNode 回收', async () => {
+    const server = makeServer(
+      [WN('n1', 'SQL'), WN('n2', 'SQL'), WN('n3', 'SQL', { params: { sql: 'select 1' } })],
+      [],
+    )
+    const store = await loadVia(server)
+    store.addEdge('n1', 'n2')
+    const n2 = store.nodes.find((n) => n.nodeCode === 'n2')!
+    expect(n2.params).toEqual({ inputs: { in: 'n1:out' } })
+
+    // 多来源入边：入端口键递增 in2
+    store.addEdge('n3', 'n2')
+    expect(n2.params?.inputs).toEqual({ in: 'n1:out', in2: 'n3:out' })
+
+    // target 已有业务参数：inputs 合并保留原 params
+    const n3 = store.nodes.find((n) => n.nodeCode === 'n3')!
+    store.addEdge('n1', 'n3')
+    expect(n3.params).toEqual({ sql: 'select 1', inputs: { in: 'n1:out' } })
+
+    // 删边回收对应来源的引用
+    store.removeEdge('n3', 'n2')
+    expect(n2.params?.inputs).toEqual({ in: 'n1:out' })
+
+    // 删 source 节点级联回收 target 的悬挂引用
+    store.removeNode('n1')
+    expect(n3.params?.inputs).toEqual({})
+    expect(n2.params?.inputs).toEqual({})
+  })
 })
 
 describe('INC4-FE-6 workflowGraph：save diff 派发与 R-25 语义', () => {
@@ -367,7 +396,7 @@ describe('INC4-FE-6 workflowGraph：save diff 派发与 R-25 语义', () => {
     ])
     expect(server.calls[1].body).toEqual({ project_id: 7, from_node: 'n1', to_node: 'n2' })
     expect(server.calls[3].body).toEqual({ project_id: 7, node_code: 'n1', node_type: 'SQL', name: null, params: null, position_x: 10, position_y: 20 })
-    expect(server.calls[5].body).toEqual({ project_id: 7, node_code: 'n3', node_type: 'SQL', name: '新节点', params: null, position_x: null, position_y: null })
+    expect(server.calls[5].body).toEqual({ project_id: 7, node_code: 'n3', node_type: 'SQL', name: '新节点', params: { inputs: { in: 'n2:out' } }, position_x: null, position_y: null })
     expect(server.calls[7].body).toEqual({ project_id: 7, from_node: 'n2', to_node: 'n3', name: '串行' })
     // complete 收口：baseline 更新、lastError 清、isDirty=false、lastSaveResult 记录
     expect(store.isDirty).toBe(false)

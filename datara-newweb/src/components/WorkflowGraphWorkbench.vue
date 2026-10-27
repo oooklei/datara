@@ -398,13 +398,13 @@ function specName(spec: ComponentSpecItem): string {
 
 /* ---------- T2 configure-first：未配置节点判定与闸门 ---------- */
 
-/** 设计态组件节点必须有除 component 归属标记外的业务参数才视为已配置；
- *  START/END 等 legacy 流程节点不参与判定 */
+/** 设计态组件节点必须有除 component 归属标记、inputs 结构派生引用外的业务参数
+ *  才视为已配置；START/END 等 legacy 流程节点不参与判定 */
 const DESIGN_NODE_TYPES = new Set<string>([...WF_NODE_TYPES, ...SYNC_PALETTE_TYPES, ...STREAM_PALETTE_TYPES])
 function isNodeConfigured(node: WorkflowDraftNode): boolean {
   if (!DESIGN_NODE_TYPES.has(node.nodeType)) return true
   const params = node.params ?? {}
-  return Object.keys(params).some((key) => key !== 'component')
+  return Object.keys(params).some((key) => key !== 'component' && key !== 'inputs')
 }
 const unconfiguredNodeNames = computed(() =>
   graphStore.nodes.filter((node) => !isNodeConfigured(node)).map((node) => `${node.nodeCode}${node.name ? `（${node.name}）` : ''}`),
