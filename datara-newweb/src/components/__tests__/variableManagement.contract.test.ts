@@ -55,11 +55,18 @@ describe('variable management product surfaces', () => {
   })
 
   it('provides a workflow-scoped canvas panel with real CRUD wiring', async () => {
-    listVariables.mockResolvedValueOnce([{ scope: 'workflow', name: 'biz_date', valueType: 'date', value: '2026-10-24' }])
+    // T7 分域：画布面板按解析链拉取 workflow/project/env/global 四域清单
+    listVariables.mockResolvedValueOnce([
+      { scope: 'workflow', name: 'biz_date', valueType: 'date', value: '2026-10-24' },
+      { scope: 'project', name: 'owner', valueType: 'string', value: 'datara' },
+    ])
     const wrapper = mount(WorkflowVariablePanel, { props: { projectId: 7, workflowId: 11, modelValue: true } })
     await flushPromises()
-    expect(listVariables).toHaveBeenCalledWith(7, ['workflow'], { workflowId: 11 })
+    expect(listVariables).toHaveBeenCalledWith(7, ['workflow', 'project', 'env', 'global'], { workflowId: 11 })
     expect(wrapper.text()).toContain('biz_date')
+    // 分域裁定：workflow 域保留删除（画布管理面）；上游域只读无删除
+    expect(wrapper.find('[data-scope-group="workflow"] [data-variable-remove="biz_date"]').exists()).toBe(true)
+    expect(wrapper.find('[data-scope-group="project"] [data-variable-remove]').exists()).toBe(false)
     await wrapper.find('[data-variable-name]').setValue('region')
     await wrapper.find('[data-variable-value]').setValue('cn-east')
     await wrapper.find('form').trigger('submit')
