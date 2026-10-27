@@ -113,3 +113,38 @@ def test_chat(api_base: str, model_id: str, api_key: str) -> dict[str, object]:
         "reply": content[:200],
         "elapsed_ms": int((monotonic() - started) * 1000),
     }
+
+
+def chat_completion(
+    *,
+    api_base: str,
+    model_id: str,
+    api_key: str,
+    messages: list[dict[str, object]],
+    tools: object,
+) -> dict[str, object]:
+    """Issue one non-streaming OpenAI-compatible assistant turn."""
+    try:
+        host, port = validate_api_base(api_base)
+    except ValueError as exc:
+        raise LlmProviderError(str(exc), 0) from exc
+    initial_addresses = _resolved_addresses(host, port)
+    body = json.dumps({
+        "model": model_id,
+        "messages": messages,
+        "tools": tools,
+        "tool_choice": "auto",
+        "max_tokens": 1200,
+        "temperature": 0.2,
+        "stream": False,
+    }, ensure_ascii=False).encode()
+    parsed = urlsplit(api_base)
+    path = parsed.path.rstrip("/") + "/chat/completions"
+    return _post_json(
+        host=host,
+        port=port,
+        address=next(iter(initial_addresses)),
+        path=path,
+        body=body,
+        headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
+    )

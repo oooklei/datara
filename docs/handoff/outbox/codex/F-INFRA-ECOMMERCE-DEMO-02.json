@@ -1,0 +1,10 @@
+{
+  "id": "F-INFRA-ECOMMERCE-DEMO-02",
+  "ts": "2026-10-27T08:59:28+08:00",
+  "from": "codex",
+  "to": "flow",
+  "type": "implementation_receipt",
+  "ref": ".codex-evidence/F-INFRA-ECOMMERCE-DEMO-02/summary.md",
+  "body": "Published missing STREAM catalogue via versioned migration; seeded project 33 with idempotent NORMAL/SYNC/STREAM ecommerce samples; verified real stream production/fusion observations and all three workflows visible in deployed UI on 192.168.1.9.",
+  "status": "done"
+}

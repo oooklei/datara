@@ -82,8 +82,9 @@ async function loadProjectName(): Promise<void> {
 watch(
   [isProjectScope, projectId],
   () => {
+    projectName.value = ''
     if (isProjectScope.value) void loadProjectName()
-    else projectName.value = ''
+    else nameReqSeq += 1
   },
   { immediate: true },
 )
@@ -179,6 +180,7 @@ defineExpose({ menuView, aiContext })
       id="ai-assistant-global-mount"
       aria-label="AI 助手全局挂载点"
       :page-context="aiContext"
+      :project-id="projectId"
     />
   </div>
 </template>

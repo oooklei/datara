@@ -12,6 +12,22 @@ vi.mock('../../services/rebuild/resourceApi', async (load) => {
 vi.mock('../../services/rebuild/projectApi', () => ({ listProjects: projects }))
 
 describe('resource project scope', () => {
+  it('ignores a stale resource response after the project changes', async () => {
+    let resolveOld!: (value: Awaited<ReturnType<typeof list>>) => void
+    let resolveNew!: (value: Awaited<ReturnType<typeof list>>) => void
+    list.mockReturnValueOnce(new Promise((resolve) => { resolveOld = resolve }))
+      .mockReturnValueOnce(new Promise((resolve) => { resolveNew = resolve }))
+    const wrapper = mount(View, { props: { projectId: 11 } })
+    await wrapper.setProps({ projectId: 12 })
+    resolveNew([{ resourceId: 2, name: 'new.py', kind: 'python', sizeBytes: 8, latestVersion: 1 }])
+    await flushPromises()
+    resolveOld([{ resourceId: 1, name: 'stale.sql', kind: 'sql', sizeBytes: 4, latestVersion: 1 }])
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('new.py')
+    expect(wrapper.text()).not.toContain('stale.sql')
+  })
+
   it('loads the supplied project and reloads when projectId changes', async () => {
     list.mockResolvedValueOnce([{ resourceId: 1, name: 'a.sql', kind: 'sql', sizeBytes: 4, latestVersion: 1 }])
       .mockResolvedValueOnce([{ resourceId: 2, name: 'b.py', kind: 'python', sizeBytes: 8, latestVersion: 1 }])

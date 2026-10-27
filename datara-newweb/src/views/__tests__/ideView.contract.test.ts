@@ -260,6 +260,23 @@ describe('/ide 数据开发 IDE 只读态（增量 11/R5-A）', () => {
     expect(spies.listHistory).toHaveBeenCalledWith(7)
   })
 
+  it('enables the next result page when the first SSE batch is partial', async () => {
+    router.route.params.projectId = '1'
+    const w = mount(View)
+    await flushPromises()
+    await w.find('[data-ds-select]').setValue('7')
+    await flushPromises()
+    await w.find('[data-sql-editor]').setValue('SELECT id FROM orders')
+    await w.find('[data-execute]').trigger('click')
+    await flushPromises()
+
+    dispatch('result', { stmtIndex: 0, resultSetId: 'rs1', columns: ['id'], rows: [[1]], rowsTotal: 51, elapsedMs: 5 })
+    await flushPromises()
+
+    const next = w.findAll('[data-result-grid] .ide-result-nav button')[1]
+    expect(next.attributes('disabled')).toBeUndefined()
+  })
+
   it('keeps the execution live while the authenticated SSE stream reconnects', async () => {
     router.route.params.projectId = '1'
     const w = mount(View)

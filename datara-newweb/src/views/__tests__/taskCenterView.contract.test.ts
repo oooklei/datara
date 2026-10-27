@@ -433,6 +433,24 @@ describe('INC4-FE-2 画布多 Tab（MAX_DAG_TABS=5，蓝本照抄 + §5A.2 收�
     expect(g.docId).toBeNull()
   })
 
+  it("关闭激活 Tab（store held）· 放弃修改：close 清除 dirty store，重开不得复活草稿", async () => {
+    const w = mountView()
+    const s = useDagTabsStore()
+    s.open({ docId: '1', name: '一', type: 'wf' })
+    const g = useWorkflowGraphStore()
+    g.$patch({ docId: 1, projectId: 7, name: '一', nodes: [{ nodeCode: 'n1', nodeType: 'SQL', name: null, params: null, positionX: null, positionY: null }], edges: [], baseline: { nodes: [], edges: [] } })
+    boxConfirm.mockRejectedValueOnce('cancel')
+
+    await flushPromises()
+    await w.find('.tcd-x').trigger('click')
+    await flushPromises()
+
+    expect(s.count).toBe(0)
+    expect(g.docId).toBeNull()
+    expect(g.nodes).toEqual([])
+    expect(g.isDirty).toBe(false)
+  })
+
   it('关闭激活 Tab（store held）· 保存失败（!complete）：不关闭 + error 提示 + Tab 留存', async () => {
     const w = mountView()
     const s = useDagTabsStore()

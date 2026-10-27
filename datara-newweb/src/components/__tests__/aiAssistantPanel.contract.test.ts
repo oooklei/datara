@@ -5,19 +5,33 @@
  *   1. 挂载 → FAB 按钮显隐（open=false 默认态）
  *   2. 点击 FAB → 面板展开/收起；close 按钮同效
  *   3. run_sql：参数表单封装 → contract.invoke() 调用；信封 SUCCESS → 结果呈现
- *   4. 七工具 NOT_WIRED：按钮禁用 + badge "候 FV-02" + 占位文案
+ *   4. 注册表动态启停 + 七工具统一参数调用
  *   5. 信封 ERROR → 错误态呈现
  *
  * 测试策略：纯 Vue Test Utils mount + 假契约注入（contractOverride），隔离于真实后端。
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { mount } from '@vue/test-utils'
+import { flushPromises, mount } from '@vue/test-utils'
 import AiAssistantPanel from '../AiAssistantPanel.vue'
-import { R8A_TOOLS, type R8AToolsContract } from '../../services/rebuild/aiToolsApi'
+import { R8A_TOOLS, type R8ARegistryEntry, type R8AToolsContract } from '../../services/rebuild/aiToolsApi'
+import type { AiAgentContract } from '../../services/rebuild/aiAgentApi'
+
+function registry(enabled: readonly string[] = R8A_TOOLS): R8ARegistryEntry[] {
+  return R8A_TOOLS.map((name) => ({
+    name,
+    version: 1,
+    description: name,
+    enabled: enabled.includes(name),
+    requiredPermissions: [],
+    timeoutMs: 30_000,
+    retryPolicy: { maxAttempts: 1, backoffMs: 0 },
+    budget: {},
+  }))
+}
 
 function makeFakeContract(overrides: Partial<R8AToolsContract> = {}): R8AToolsContract {
   return {
-    discoverRegistry: vi.fn().mockResolvedValue([]),
+    discoverRegistry: vi.fn().mockResolvedValue(registry()),
     searchSchema: vi.fn(),
     validateSql: vi.fn(),
     runSql: vi.fn(),
@@ -30,9 +44,9 @@ function makeFakeContract(overrides: Partial<R8AToolsContract> = {}): R8AToolsCo
   }
 }
 
-function mountPanel(contract: R8AToolsContract, pageContext?: string | null) {
+function mountPanel(contract: R8AToolsContract, pageContext?: string | null, agent?: AiAgentContract, projectId?: number) {
   return mount(AiAssistantPanel, {
-    props: { contractOverride: contract, pageContext: pageContext ?? undefined },
+    props: { contractOverride: contract, agentOverride: agent, projectId, pageContext: pageContext ?? undefined },
     global: { stubs: { teleport: true } },
   })
 }
@@ -142,43 +156,46 @@ describe('AiAssistantPanel 契约（R8-A 八工具 UI 接线）', () => {
     })
   })
 
-  describe('七工具 NOT_WIRED', () => {
-    it('非 run_sql 七工具：按钮禁用 + badge "候 FV-02"', async () => {
-      const w = mountPanel(fakeContract)
+  describe('八工具生产桥接', () => {
+    it('按服务端注册表动态启停，不再硬编码仅 run_sql', async () => {
+      const c = makeFakeContract({ discoverRegistry: vi.fn().mockResolvedValue(registry(['run_sql', 'search_schema'])) })
+      const w = mountPanel(c)
       await w.find('[data-ai-fab]').trigger('click')
-      // R8A_TOOLS 共 8 个，run_sql 是唯一活的
-      const nonLive = R8A_TOOLS.filter((t) => t !== 'run_sql')
-      for (const tool of nonLive) {
-        const item = w.find(`[data-tool="${tool}"]`)
-        expect(item.attributes('data-tool-enabled')).toBe('no')
-        const btn = item.find('button')
-        expect(btn.attributes('disabled')).toBeDefined()
-        expect(item.find('.ai-tool-badge').text()).toContain('候 FV-02')
-      }
+      await flushPromises()
+      expect(w.find('[data-tool="run_sql"]').attributes('data-tool-enabled')).toBe('yes')
+      expect(w.find('[data-tool="search_schema"]').attributes('data-tool-enabled')).toBe('yes')
+      expect(w.find('[data-tool="get_lineage"]').attributes('data-tool-enabled')).toBe('no')
+      expect(w.find('[data-tool="get_lineage"] .ai-tool-badge').text()).toContain('不可用')
     })
 
-    it('点击活工具 run_sql → enabled；数据属性 yes', async () => {
-      const w = mountPanel(fakeContract)
+    it('七工具使用契约预置 JSON 参数并调用对应方法', async () => {
+      const searchSchema = vi.fn().mockResolvedValue({ entries: [], nextCursor: null })
+      const w = mountPanel(makeFakeContract({ searchSchema }))
       await w.find('[data-ai-fab]').trigger('click')
-      const item = w.find('[data-tool="run_sql"]')
-      expect(item.attributes('data-tool-enabled')).toBe('yes')
+      await flushPromises()
+      const item = w.find('[data-tool="search_schema"]')
       await item.find('button').trigger('click')
       expect(item.attributes('data-tool-active')).toBe('yes')
+      const input = w.find('textarea[data-ai-json-input]')
+      expect(input.element.getAttribute('placeholder')).toContain('project_id')
+      await input.setValue('{"project_id":35,"keyword":"orders"}')
+      await w.find('button[data-ai-run]').trigger('click')
+      await flushPromises()
+      expect(searchSchema).toHaveBeenCalledWith({ project_id: 35, keyword: 'orders' }, null)
+      expect(w.find('[data-ai-result]').text()).toContain('entries')
     })
 
-    it('NOT_WIRED 占位文案存在', async () => {
-      const w = mountPanel(fakeContract)
+    it('非法 JSON 参数在前端拦截，不发送工具请求', async () => {
+      const searchSchema = vi.fn()
+      const w = mountPanel(makeFakeContract({ searchSchema }))
       await w.find('[data-ai-fab]').trigger('click')
-      // 选 validate_sql（NOT_WIRED）——但按钮禁用，无法点击
-      // 直接检查 run_sql 外的工具是否禁用即可（已在上面覆盖）
-      // 这里验证占位文案逻辑：构造直接设置 activeTool
-      await w.setProps({ contractOverride: fakeContract })
-      const nonLive = R8A_TOOLS.filter((t) => t !== 'run_sql')
-      for (const tool of nonLive) {
-        // 验证 disabled 按钮不会有 data-tool-active="yes"
-        const item = w.find(`[data-tool="${tool}"]`)
-        expect(item.attributes('data-tool-active')).not.toBe('yes')
-      }
+      await flushPromises()
+      await w.find('[data-tool="search_schema"] button').trigger('click')
+      await w.find('textarea[data-ai-json-input]').setValue('{bad json')
+      const run = w.find('button[data-ai-run]')
+      expect(run.attributes('disabled')).toBeDefined()
+      await run.trigger('click')
+      expect(searchSchema).not.toHaveBeenCalled()
     })
   })
 
@@ -194,6 +211,30 @@ describe('AiAssistantPanel 契约（R8-A 八工具 UI 接线）', () => {
       const w = mountPanel(fakeContract, null)
       await w.find('[data-ai-fab]').trigger('click')
       expect(w.find('.ai-context').exists()).toBe(false)
+    })
+  })
+
+  describe('自然语言 Agent 对话链', () => {
+    it('LLM 选择工具后经统一契约执行，再回送工具结果并展示最终回答', async () => {
+      const complete = vi.fn()
+        .mockResolvedValueOnce({
+          message: { role: 'assistant', content: null, toolCalls: [{ id: 'call-1', type: 'function', function: { name: 'search_schema', arguments: '{"project_id":999,"keyword":"order"}' } }] },
+          model: 'agent-model', usage: {},
+        })
+        .mockResolvedValueOnce({ message: { role: 'assistant', content: '找到订单表。' }, model: 'agent-model', usage: {} })
+      const searchSchema = vi.fn().mockResolvedValue({ entries: [{ tableName: 'orders' }] })
+      const w = mountPanel(makeFakeContract({ searchSchema }), null, { complete }, 35)
+      await w.find('[data-ai-fab]').trigger('click')
+      await flushPromises()
+      await w.find('[data-ai-chat-input]').setValue('查找订单表')
+      await w.find('[data-ai-chat-send]').trigger('click')
+      await flushPromises()
+      await flushPromises()
+
+      expect(searchSchema).toHaveBeenCalledWith({ project_id: 35, keyword: 'order' }, null)
+      expect(complete).toHaveBeenCalledTimes(2)
+      expect(w.find('[data-ai-chat-transcript]').text()).toContain('search_schema')
+      expect(w.find('[data-ai-chat-transcript]').text()).toContain('找到订单表。')
     })
   })
 })

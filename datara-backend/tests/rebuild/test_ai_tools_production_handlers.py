@@ -10,6 +10,7 @@ from rebuild.ai_tools import (
     build_inspect_workflow_run_handler,
     build_validate_sql_handler,
 )
+from rebuild.ai_bridge import R8A_TOOLS, _BridgeAuditWriterAdapter, build_default_bridge_ports
 from rebuild.execution.models import WorkflowInstanceRecord
 from rebuild.workflow.models import WorkflowVersionRecord
 
@@ -30,6 +31,61 @@ class _Session:
 
 def _factory(records=None):
     return lambda: _Session(records)
+
+
+def test_default_bridge_wires_all_eight_production_tools() -> None:
+    class _ExecutionPort:
+        def execute(self, _request):
+            raise AssertionError("assembly test must not execute SQL")
+
+    ports = build_default_bridge_ports(
+        execution_port=_ExecutionPort(),
+        audit_writer=object(),
+        session_factory=_factory(),
+        connector_factory=object(),
+    )
+
+    assert ports is not None
+    assert set(ports.handlers) == set(R8A_TOOLS)
+
+
+def test_non_sql_bridge_audit_uses_governance_sink() -> None:
+    stored = []
+
+    class _AuditSession:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args):
+            return None
+
+        def add(self, record):
+            stored.append(record)
+
+        def commit(self):
+            return None
+
+    class _SqlWriter:
+        def write_execution_start(self, **_kwargs):
+            raise AssertionError("non-SQL tools must not pollute SQL IDE audit")
+
+    adapter = _BridgeAuditWriterAdapter(_SqlWriter(), lambda: _AuditSession())
+    adapter.write({
+        "audit_id": "audit-1",
+        "tool_call_id": "call-1",
+        "tool": "search_schema",
+        "tool_version": 1,
+        "user_id": 7,
+        "project_id": 35,
+        "request_payload": {"project_id": 35, "keyword": "order"},
+        "outcome": "SUCCESS",
+        "error_code": None,
+        "refs": {"project_id": 35},
+    })
+
+    assert len(stored) == 1
+    assert stored[0].resource_type == "ai_tool_call"
+    assert stored[0].resource_id == "call-1"
 
 
 def test_validate_sql_checks_datasource_project_even_with_explicit_dialect() -> None:

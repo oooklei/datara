@@ -7,6 +7,10 @@ const listProjects = vi.hoisted(() => vi.fn())
 const listExceptions = vi.hoisted(() => vi.fn())
 const listReports = vi.hoisted(() => vi.fn())
 const listAlarmPolicies = vi.hoisted(() => vi.fn())
+const disposeException = vi.hoisted(() => vi.fn())
+const createReport = vi.hoisted(() => vi.fn())
+const createAlarmPolicy = vi.hoisted(() => vi.fn())
+const setAlarmPolicyEnabled = vi.hoisted(() => vi.fn())
 
 function deferred<T>() {
   let resolve!: (value: T) => void
@@ -17,7 +21,10 @@ function deferred<T>() {
 
 vi.mock('../../services/rebuild/projectApi', () => ({ listProjects }))
 vi.mock('../../services/rebuild/governanceApi', () => ({
-  governanceApi: { listExceptions, listReports, listAlarmPolicies },
+  governanceApi: {
+    listExceptions, listReports, listAlarmPolicies,
+    disposeException, createReport, createAlarmPolicy, setAlarmPolicyEnabled,
+  },
 }))
 
 describe('quality read-only views', () => {
@@ -26,10 +33,18 @@ describe('quality read-only views', () => {
     listExceptions.mockReset()
     listReports.mockReset()
     listAlarmPolicies.mockReset()
+    disposeException.mockReset()
+    createReport.mockReset()
+    createAlarmPolicy.mockReset()
+    setAlarmPolicyEnabled.mockReset()
     listProjects.mockResolvedValue({ total: 2, list: [{ id: 7, name: '质量项目' }, { id: 11, name: '项目工作区' }] })
     listExceptions.mockResolvedValue({ total: 1, list: [{ id: 1, target: 'orders', status: 'open', hitCount: 2, sampleSql: 'select 1' }] })
     listReports.mockResolvedValue({ total: 0, list: [] })
     listAlarmPolicies.mockResolvedValue({ total: 0, list: [] })
+    disposeException.mockResolvedValue({ id: 1, status: 'resolved' })
+    createReport.mockResolvedValue({ id: 2, title: '质量日报' })
+    createAlarmPolicy.mockResolvedValue({ id: 3, name: '失败行告警', enabled: true })
+    setAlarmPolicyEnabled.mockResolvedValue({ id: 3, name: '失败行告警', enabled: false })
   })
 
   it('selects the first authorized project and renders exception data', async () => {
@@ -42,6 +57,20 @@ describe('quality read-only views', () => {
     expect(listExceptions).toHaveBeenCalledWith(7, 1, 50, undefined)
     expect(wrapper.find('[data-quality-view="exceptions"]').exists()).toBe(true)
     expect(wrapper.find('[data-quality-table]').text()).toContain('orders')
+  })
+
+  it('resets pagination before loading a newly selected project', async () => {
+    listExceptions.mockResolvedValue({ total: 100, list: [{ id: 1, target: 'orders' }] })
+    const router = createRouter({ history: createMemoryHistory(), routes: [{ path: '/', component: { template: '<div />' } }] })
+    await router.push('/')
+    await router.isReady()
+    const wrapper = mount(View, { props: { kind: 'exceptions' }, global: { plugins: [router] } })
+    await flushPromises()
+    await wrapper.findAll('footer button')[1].trigger('click')
+    await wrapper.get('[data-project-select]').setValue('11')
+    await flushPromises()
+
+    expect(listExceptions).toHaveBeenLastCalledWith(11, 1, 50, undefined)
   })
 
   it('prefers the project route param over a conflicting query project', async () => {
@@ -137,5 +166,48 @@ describe('quality read-only views', () => {
     expect(wrapper.text()).toContain('latest-page-one')
     expect(wrapper.text()).not.toContain('stale-page-two')
     expect(wrapper.find('footer').exists()).toBe(false)
+  })
+
+  it('disposes an open exception with a mandatory note and refreshes', async () => {
+    const router = createRouter({ history: createMemoryHistory(), routes: [{ path: '/', component: { template: '<div />' } }] })
+    await router.push('/'); await router.isReady()
+    const wrapper = mount(View, { props: { kind: 'exceptions' }, global: { plugins: [router] } })
+    await flushPromises()
+    await wrapper.get('[data-exception-note="1"]').setValue('已修复')
+    await wrapper.get('[data-exception-dispose="1"]').trigger('click')
+    await flushPromises()
+    expect(disposeException).toHaveBeenCalledWith(7, 1, { status: 'resolved', fixNote: '已修复' })
+    expect(listExceptions).toHaveBeenCalledTimes(2)
+  })
+
+  it('generates a persisted report and refreshes the report list', async () => {
+    const router = createRouter({ history: createMemoryHistory(), routes: [{ path: '/', component: { template: '<div />' } }] })
+    await router.push('/'); await router.isReady()
+    const wrapper = mount(View, { props: { kind: 'reports' }, global: { plugins: [router] } })
+    await flushPromises()
+    await wrapper.get('[data-report-title]').setValue('质量日报')
+    await wrapper.get('[data-report-create]').trigger('click')
+    await flushPromises()
+    expect(createReport).toHaveBeenCalledWith(7, { title: '质量日报', scope: 'project', period: 'daily' })
+    expect(listReports).toHaveBeenCalledTimes(2)
+  })
+
+  it('creates and disables an alarm policy from the alarm view', async () => {
+    listAlarmPolicies
+      .mockResolvedValueOnce({ total: 1, list: [{ id: 3, name: '失败行告警', scope: 'project', metric: 'failed_rows', operator: '>', threshold: 0, enabled: true }] })
+      .mockResolvedValue({ total: 1, list: [{ id: 3, name: '失败行告警', scope: 'project', metric: 'failed_rows', operator: '>', threshold: 0, enabled: true }] })
+    const router = createRouter({ history: createMemoryHistory(), routes: [{ path: '/', component: { template: '<div />' } }] })
+    await router.push('/'); await router.isReady()
+    const wrapper = mount(View, { props: { kind: 'alarms' }, global: { plugins: [router] } })
+    await flushPromises()
+    await wrapper.get('[data-alarm-name]').setValue('失败行告警')
+    await wrapper.get('[data-alarm-create]').trigger('click')
+    await flushPromises()
+    expect(createAlarmPolicy).toHaveBeenCalledWith(7, {
+      name: '失败行告警', scope: 'project', metric: 'failed_rows', operator: '>', threshold: 0, enabled: true,
+    })
+    await wrapper.get('[data-alarm-toggle="3"]').trigger('click')
+    await flushPromises()
+    expect(setAlarmPolicyEnabled).toHaveBeenCalledWith(7, 3, false)
   })
 })

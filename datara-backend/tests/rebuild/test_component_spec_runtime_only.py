@@ -15,6 +15,7 @@
 import json
 
 from fastapi.testclient import TestClient
+from sqlalchemy import delete
 
 from common.models import Component, ComponentVersion
 from rebuild.api.app import create_app
@@ -50,6 +51,8 @@ def _version(*, identifier: int, component_id: int, type_name: str, spec_json: s
 
 def _seed(app, rows):
     with app.state.session_factory() as session:
+        session.execute(delete(ComponentVersion))
+        session.execute(delete(Component))
         for component, version in rows:
             session.add_all([component, version])
         session.commit()

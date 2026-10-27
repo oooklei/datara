@@ -9,11 +9,11 @@
       <button type="button" :class="{ active: tab === 'logs' }" data-tab="log" @click="tab = 'logs'">调用日志</button>
     </nav>
     <section v-if="tab === 'definitions'">
-      <div class="toolbar"><span class="hint" data-api-count>API {{ items.length }} 条</span><span class="spacer"></span><button type="button" data-refresh :disabled="busy" @click="load">刷新</button><button type="button" class="primary" data-create @click="openCreate">+ 新建 API</button></div>
+      <div class="toolbar"><span class="hint" data-api-count>API {{ items.length }} 条</span><span class="spacer"></span><button type="button" data-refresh :disabled="busy" @click="load">刷新</button><button type="button" class="primary" data-create :disabled="mutationBusy" @click="openCreate">+ 新建 API</button></div>
       <p v-if="error" class="err-box" role="alert" data-error>{{ error }}</p><p v-if="busy" role="status">正在加载…</p>
       <div v-else-if="!items.length" class="panel empty" data-empty>暂无 API 定义</div>
       <table v-else data-api-list><thead><tr><th>名称</th><th>方法与路径</th><th>版本</th><th>权限</th><th>状态</th><th>操作</th></tr></thead>
-        <tbody><tr v-for="item in items" :key="item.id" :data-api-id="item.id"><td>{{ item.name }}</td><td><code data-api-path>{{ item.method }} {{ item.path }}</code></td><td>{{ item.version }}</td><td>{{ item.requiredPermission }}</td><td><span class="pill">{{ item.status }}</span></td><td class="actions"><button type="button" data-edit @click="edit(item)">编辑</button><button v-if="item.status === 'draft' || item.status === 'disabled'" type="button" data-publish @click="action(item, 'publish')">发布</button><button v-if="item.status === 'published'" type="button" data-disable @click="action(item, 'disable')">停用</button><button v-if="item.status === 'disabled'" type="button" data-enable @click="action(item, 'enable')">启用</button><button type="button" class="danger" data-delete @click="remove(item)">删除</button></td></tr></tbody>
+        <tbody><tr v-for="item in items" :key="item.id" :data-api-id="item.id"><td>{{ item.name }}</td><td><code data-api-path>{{ item.method }} {{ item.path }}</code></td><td>{{ item.version }}</td><td>{{ item.requiredPermission }}</td><td><span class="pill">{{ item.status }}</span></td><td class="actions"><button type="button" data-edit :disabled="mutationBusy" @click="edit(item)">编辑</button><button v-if="item.status === 'draft' || item.status === 'disabled'" type="button" data-publish :disabled="mutationBusy" @click="action(item, 'publish')">发布</button><button v-if="item.status === 'published'" type="button" data-disable :disabled="mutationBusy" @click="action(item, 'disable')">停用</button><button v-if="item.status === 'disabled'" type="button" data-enable :disabled="mutationBusy" @click="action(item, 'enable')">启用</button><button type="button" class="danger" data-delete :disabled="mutationBusy" @click="remove(item)">删除</button></td></tr></tbody>
       </table>
     </section>
     <section v-else>
@@ -22,7 +22,7 @@
       <div v-else-if="!logs.length" class="panel empty" data-logs-empty data-log-empty>暂无调用日志</div>
       <table v-else data-call-log-list data-log-list><thead><tr><th>请求 ID</th><th>API</th><th>主体</th><th>状态码</th><th>延迟</th><th>结果</th><th>时间</th></tr></thead><tbody><tr v-for="item in logs" :key="item.requestId"><td><code data-request-id>{{ item.requestId }}</code></td><td>{{ item.apiId }}</td><td>{{ item.principal }}</td><td>{{ item.statusCode }}</td><td>{{ item.latencyMs }}ms</td><td>{{ item.result }}</td><td>{{ item.requestedAt }}</td></tr></tbody></table>
     </section>
-    <div v-if="editing" class="mask" data-editor-mask @click.self="editing = false"><form role="dialog" aria-modal="true" aria-label="API 定义编辑" @submit.prevent="save"><h2>{{ editingId ? '编辑 API' : '新建 API' }}</h2><label>名称<input v-model.trim="draft.name" required data-name></label><label>路径<input v-model.trim="draft.path" required data-path placeholder="/rebuild/..."></label><label>方法<select v-model="draft.method"><option>GET</option><option>POST</option><option>PUT</option><option>DELETE</option></select></label><label>版本<input v-model.trim="draft.version" required></label><label>权限<input v-model.trim="draft.requiredPermission" required></label><label>说明<textarea v-model="draft.description" /></label><footer><button type="button" @click="editing = false">取消</button><button class="primary" data-save>保存</button></footer></form></div>
+    <div v-if="editing" class="mask" data-editor-mask @click.self="editing = false"><form role="dialog" aria-modal="true" aria-label="API 定义编辑" @submit.prevent="save"><h2>{{ editingId ? '编辑 API' : '新建 API' }}</h2><label>名称<input v-model.trim="draft.name" required data-name></label><label>路径<input v-model.trim="draft.path" required data-path placeholder="/rebuild/..."></label><label>方法<select v-model="draft.method"><option>GET</option><option>POST</option><option>PUT</option><option>DELETE</option></select></label><label>版本<input v-model.trim="draft.version" required></label><label>权限<input v-model.trim="draft.requiredPermission" required></label><label>说明<textarea v-model="draft.description" /></label><footer><button type="button" :disabled="mutationBusy" @click="editing = false">取消</button><button class="primary" data-save :disabled="mutationBusy">保存</button></footer></form></div>
   </main>
 </template>
 
@@ -34,6 +34,7 @@ const tab = ref<'definitions' | 'logs'>('definitions')
 const items = ref<ApiDefinitionRecord[]>([])
 const logs = ref<ApiCallLogRecord[]>([])
 const busy = ref(false)
+const mutationBusy = ref(false)
 const error = ref('')
 const editing = ref(false)
 const editingId = ref<number>()
@@ -52,11 +53,13 @@ watch(tab, load)
 function openCreate() { error.value = ''; editingId.value = undefined; Object.assign(draft, { name: '', path: '/rebuild/', method: 'GET', version: 'v1', description: '', requiredPermission: 'security:read' }); editing.value = true }
 function edit(item: ApiDefinitionRecord) { error.value = ''; editingId.value = item.id; Object.assign(draft, item); editing.value = true }
 async function save() {
+  if (mutationBusy.value) return
+  mutationBusy.value = true
   error.value = ''
-  try { if (editingId.value) await openapiAdminApi.update(editingId.value, { ...draft }); else await openapiAdminApi.create({ ...draft }); editing.value = false; await load() } catch (cause) { error.value = message(cause) }
+  try { if (editingId.value) await openapiAdminApi.update(editingId.value, { ...draft }); else await openapiAdminApi.create({ ...draft }); editing.value = false; await load() } catch (cause) { error.value = message(cause) } finally { mutationBusy.value = false }
 }
-async function action(item: ApiDefinitionRecord, operation: 'publish' | 'disable' | 'enable') { error.value = ''; try { await openapiAdminApi[operation](item.id); await load() } catch (cause) { error.value = message(cause) } }
-async function remove(item: ApiDefinitionRecord) { if (!globalThis.confirm(`删除“${item.name}”？`)) return; error.value = ''; try { await openapiAdminApi.remove(item.id); await load() } catch (cause) { error.value = message(cause) } }
+async function action(item: ApiDefinitionRecord, operation: 'publish' | 'disable' | 'enable') { if (mutationBusy.value) return; mutationBusy.value = true; error.value = ''; try { await openapiAdminApi[operation](item.id); await load() } catch (cause) { error.value = message(cause) } finally { mutationBusy.value = false } }
+async function remove(item: ApiDefinitionRecord) { if (mutationBusy.value || !globalThis.confirm(`删除“${item.name}”？`)) return; mutationBusy.value = true; error.value = ''; try { await openapiAdminApi.remove(item.id); await load() } catch (cause) { error.value = message(cause) } finally { mutationBusy.value = false } }
 onMounted(load)
 </script>
 

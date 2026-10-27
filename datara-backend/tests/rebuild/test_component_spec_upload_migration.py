@@ -89,7 +89,7 @@ def test_all_executable_components_gain_upload_declaration() -> None:
 
     with engine.connect() as connection:
         rows = connection.execute(
-            text("SELECT type, spec_json FROM t_component_version ORDER BY type")
+            text("SELECT type, spec_json FROM t_component_version WHERE type IN ('sql','python','shell') ORDER BY type")
         ).mappings().all()
     assert {row["type"] for row in rows} == {"sql", "python", "shell"}
     for row in rows:
@@ -106,7 +106,7 @@ def test_v0002_is_registered_and_applied() -> None:
 
     result = apply_component_spec_migrations(engine)
 
-    assert result.applied == ("i4_0001_component_catalog", "i4_0002_component_catalog_upload")
+    assert result.applied == tuple(migration.revision for migration in COMPONENT_SPEC_MIGRATIONS)
     assert result.skipped == ()
     with Session(engine) as session:
         record = session.scalar(
@@ -126,7 +126,7 @@ def test_repeated_apply_is_skipped() -> None:
     result = apply_component_spec_migrations(engine)
 
     assert result.applied == ()
-    assert result.skipped == ("i4_0001_component_catalog", "i4_0002_component_catalog_upload")
+    assert result.skipped == tuple(migration.revision for migration in COMPONENT_SPEC_MIGRATIONS)
 
 
 def test_validate_schema_accepts_normalized_rows() -> None:

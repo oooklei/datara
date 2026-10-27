@@ -276,7 +276,6 @@ async function onCloseTab(t: DagTab) {
         ElMessage.error('保存失败，画布未关闭')
         return
       }
-      graphStore.close(Number(t.docId))
     }
     // action === 'save' 且 !held：无真保存能力，草稿随统一清理（见上注释）
   } else if (!isActive && dirty) {
@@ -288,6 +287,7 @@ async function onCloseTab(t: DagTab) {
       })
     } catch { return }
   }
+  if (isActive) graphStore.close(Number(t.docId))
   dagTabs.remove(t.key)
   await nextTick() // 等旧实例 onBeforeUnmount saveSnap 回写完成再清理
   clearSnap(t.docId)

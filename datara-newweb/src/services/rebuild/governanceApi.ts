@@ -24,7 +24,7 @@
  */
 
 import { camelToSnake, snakeToCamel } from './adapterKit'
-import { deleteJson, getJson, postJson, putJson } from '../http'
+import { deleteJson, getJson, patchJson, postJson, putJson } from '../http'
 
 /* ---------- 类型面 ---------- */
 
@@ -125,6 +125,26 @@ export interface QualityAlarmPolicyRecord {
 export interface QualityExceptionPage { total: number; list: QualityExceptionRecord[] }
 export interface QualityReportPage { total: number; list: QualityReportRecord[] }
 export interface QualityAlarmPolicyPage { total: number; list: QualityAlarmPolicyRecord[] }
+
+export interface QualityExceptionDispositionInput {
+  status: 'resolved' | 'ignored'
+  fixNote: string
+}
+
+export interface QualityReportCreateInput {
+  title: string
+  scope: string
+  period: string
+}
+
+export interface QualityAlarmPolicyCreateInput {
+  name: string
+  scope: string
+  metric: 'checked_rows' | 'success_rows' | 'failed_rows' | 'skipped_rows' | 'failure_rate' | 'score'
+  operator: '>' | '>=' | '<' | '<=' | '=='
+  threshold: number
+  enabled: boolean
+}
 
 /* ---------- 资产、标签、血缘 ---------- */
 
@@ -528,5 +548,52 @@ export const governanceApi = {
       PRESERVE_ERROR,
     )
     return snakeToCamel(data) as QualityAlarmPolicyPage
+  },
+
+  async disposeException(
+    projectId: number,
+    exceptionId: number,
+    input: QualityExceptionDispositionInput,
+  ): Promise<QualityExceptionRecord> {
+    const data = await patchJson<unknown>(
+      `${BASE}/projects/${projectId}/quality-exceptions/${exceptionId}`,
+      camelToSnake(input),
+      PRESERVE_ERROR,
+    )
+    return snakeToCamel(data) as QualityExceptionRecord
+  },
+
+  async createReport(projectId: number, input: QualityReportCreateInput): Promise<QualityReportRecord> {
+    const data = await postJson<unknown>(
+      `${BASE}/projects/${projectId}/quality-reports`,
+      camelToSnake(input),
+      PRESERVE_ERROR,
+    )
+    return snakeToCamel(data) as QualityReportRecord
+  },
+
+  async createAlarmPolicy(
+    projectId: number,
+    input: QualityAlarmPolicyCreateInput,
+  ): Promise<QualityAlarmPolicyRecord> {
+    const data = await postJson<unknown>(
+      `${BASE}/projects/${projectId}/quality-alarm-policies`,
+      camelToSnake(input),
+      PRESERVE_ERROR,
+    )
+    return snakeToCamel(data) as QualityAlarmPolicyRecord
+  },
+
+  async setAlarmPolicyEnabled(
+    projectId: number,
+    policyId: number,
+    enabled: boolean,
+  ): Promise<QualityAlarmPolicyRecord> {
+    const data = await patchJson<unknown>(
+      `${BASE}/projects/${projectId}/quality-alarm-policies/${policyId}/enabled`,
+      { enabled },
+      PRESERVE_ERROR,
+    )
+    return snakeToCamel(data) as QualityAlarmPolicyRecord
   },
 }

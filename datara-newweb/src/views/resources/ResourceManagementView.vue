@@ -51,6 +51,7 @@ const versions = ref<ResourceVersion[]>([])
 const versionsLoading = ref(false)
 const versionError = ref('')
 let versionsRequest = 0
+let listRequest = 0
 const uploadKind = ref<ResourceKind>('sql')
 const acceptFor = (value: ResourceKind) => ({ sql: '.sql', python: '.py', shell: '.sh' })[value]
 const hasProjectProp = computed(() => Number.isInteger(props.projectId) && Number(props.projectId) > 0)
@@ -78,11 +79,18 @@ async function onFile(event: Event) {
 }
 
 async function load() {
-  if (projectId.value === null) { items.value = []; return }
+  const request = ++listRequest
+  const targetProjectId = projectId.value
+  if (targetProjectId === null) { items.value = []; loading.value = false; return }
   loading.value = true; error.value = ''
-  try { items.value = await api.listResources(projectId.value, kind.value || undefined) }
-  catch (cause) { error.value = cause instanceof Error ? cause.message : '资源加载失败' }
-  finally { loading.value = false }
+  try {
+    const result = await api.listResources(targetProjectId, kind.value || undefined)
+    if (request === listRequest) items.value = result
+  } catch (cause) {
+    if (request === listRequest) error.value = cause instanceof Error ? cause.message : '资源加载失败'
+  } finally {
+    if (request === listRequest) loading.value = false
+  }
 }
 
 async function openVersions(resource: ResourceMeta) {

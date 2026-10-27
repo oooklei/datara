@@ -10,6 +10,7 @@
  */
 
 import { requestRaw } from '../http'
+import { camelToSnake, snakeToCamel } from './adapterKit'
 
 /* ---------- §2.2 工具名单与上下文（冻结词形） ---------- */
 
@@ -205,11 +206,12 @@ const AI_TOOLS_BASE = '/rebuild/ai'
  * token 携带与传输核心与 `request` 同源。
  */
 async function requestJson<T>(method: string, path: string, body?: unknown): Promise<T> {
-  return requestRaw<T>(`${AI_TOOLS_BASE}${path}`, {
+  const response = await requestRaw<unknown>(`${AI_TOOLS_BASE}${path}`, {
     method,
     timeoutMs: null,
-    ...(body === undefined ? {} : { json: body }),
+    ...(body === undefined ? {} : { json: camelToSnake(body) }),
   })
+  return snakeToCamel(response) as T
 }
 
 /* ---------- GREEN 工厂：真实 API 调用 ---------- */

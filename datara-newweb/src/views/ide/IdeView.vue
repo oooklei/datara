@@ -592,6 +592,7 @@ function openStream(taskId: string): void {
       : [...resultSetIds.value, data.resultSetId]
     lastResultSetId.value = data.resultSetId
     resultPage.value = 1
+    resultHasMore.value = data.rows.length < data.rowsTotal
   })
   es.addEventListener('done', (ev: MessageEvent) => {
     es.close()

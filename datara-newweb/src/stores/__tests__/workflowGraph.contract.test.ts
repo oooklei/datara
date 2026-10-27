@@ -454,6 +454,25 @@ describe('INC4-FE-6 workflowGraph：save diff 派发与 R-25 语义', () => {
 })
 
 describe('INC4-FE-6 workflowGraph：close', () => {
+  it('close：使在途 load 失效，迟到响应不得回填已关闭文档', async () => {
+    let resolveFetch!: (response: Response) => void
+    vi.stubGlobal('fetch', vi.fn().mockReturnValue(new Promise<Response>((resolve) => {
+      resolveFetch = resolve
+    })))
+    const store = useWorkflowGraphStore()
+
+    const pending = store.load(7, 42)
+    expect(store.loading).toBe(true)
+    store.close(42)
+    expect(store.loading).toBe(false)
+    resolveFetch(ENV(GET_DEF('迟到响应', [WN('late', 'SQL')], [])))
+    await pending
+
+    expect(store.doc).toBe(null)
+    expect(store.nodes).toEqual([])
+    expect(store.loading).toBe(false)
+  })
+
   it('close：docId 匹配才清态（不匹配不动）；关后 doc=null、save=null', async () => {
     const server = makeServer([WN('n1', 'SQL')], [])
     const store = await loadVia(server)

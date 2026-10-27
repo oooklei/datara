@@ -4,7 +4,7 @@
  * 覆盖（真源 trialApi 七端点 + runner.TrialRunOptions WF-15~WF-20 + promote WF-21/WF-26）：
  *  1. 守卫：未 open（projectId null）四动作全 null 零请求；无 snapshot → run null；
  *     无 runResult → refreshOutput/promote null；
- *  2. open：绑定上下文 + 全量清态；二次进入换 definition 清旧态；
+ *  2. open：绑定上下文；同上下文 KeepAlive 重激活保留会话，换 definition 清旧态；
  *  3. createSnapshot：POST body {project_id} → 快照 snake→camel 落地（含 SKIPPED 形状无关，
  *     深拷贝锚定）；
  *  4. options 归一化：空表单 run body 无 options 键；部分键（仅 dryRun）→ options 单键；
@@ -156,6 +156,24 @@ describe('INC4-FE-7 trialRun：守卫与 open', () => {
     expect(store.promoteResult).toBe(null)
     expect(store.lastError).toBe(null)
     expect(store.running).toBe(false)
+  })
+
+  it('open：同上下文 KeepAlive 重激活不清空试运行会话', async () => {
+    const server = makeTrialServer()
+    const store = openVia(server)
+    await store.createSnapshot()
+    await store.run()
+    await store.refreshOutput()
+    store.options.dryRun = true
+    const loadSeq = store.loadSeq
+
+    store.open(7, 42)
+
+    expect(store.snapshot?.snapshotId).toBe(501)
+    expect(store.runResult?.instanceId).toBe(9001)
+    expect(store.output?.found).toBe(true)
+    expect(store.options.dryRun).toBe(true)
+    expect(store.loadSeq).toBe(loadSeq)
   })
 })
 
