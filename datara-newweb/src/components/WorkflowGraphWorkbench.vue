@@ -154,6 +154,8 @@ const availableComponents = computed(() => WF_NODE_TYPES.map((type) => {
   }
 }))
 const workflowType = computed<WorkflowType>(() => props.tab.type === 'sync' ? 'SYNC' : props.tab.type === 'stream' ? 'STREAM' : 'NORMAL')
+const isSyncTab = computed(() => props.tab.type === 'sync')
+const isStreamTab = computed(() => props.tab.type === 'stream')
 
 /* ---------- store → vue-flow 单向映射 ---------- */
 
@@ -207,12 +209,13 @@ function layoutFlowNodes(nodes: CanvasNode[], edges: WorkflowDraftEdge[]): Canva
 const flowNodes = computed(() =>
   layoutFlowNodes(graphStore.nodes.map((n: WorkflowDraftNode) => {
     const status = taskStatusMap.value.get(n.nodeCode)
+    const unconfigured = !isNodeConfigured(n)
     return {
       id: n.nodeCode,
       type: 'default',
       position: { x: n.positionX ?? 0, y: n.positionY ?? 0 },
-      label: `${n.nodeCode} ${n.nodeType}${n.name ? ` ${n.name}` : ''}${status ? ` [${status}]` : ''}`,
-      class: status ? `wf-node-${status.toLowerCase()}` : undefined,
+      label: `${n.nodeCode} ${n.nodeType}${n.name ? ` ${n.name}` : ''}${unconfigured ? ' ⚠未配置' : ''}${status ? ` [${status}]` : ''}`,
+      class: [status ? `wf-node-${status.toLowerCase()}` : '', unconfigured ? 'wf-node-unconfigured' : ''].filter(Boolean).join(' ') || undefined,
     }
   }), graphStore.edges),
 )
@@ -321,15 +324,16 @@ function onAddNode(component: (typeof availableComponents.value)[number]) {
   const componentRef = publishedComponentRef(component.type)
   if (!componentRef) return
   const n = graphStore.nodes.length
-  graphStore.addNode({
+  const added = graphStore.addNode({
     nodeType: component.type as WfNodeType,
     componentRef,
     positionX: 24 + (n % 6) * 170,
     positionY: 24 + Math.floor(n / 6) * 48,
   })
+  selectForConfig(added.nodeCode)
 }
 
-/* ---------- 同步工作流组件托盘（设计态七项白名单） ---------- */
+/* ---------- 设计态组件托盘（后端 catalogue 冻结白名单；node_type 必须是组件 type 本身） ---------- */
 
 const SYNC_PALETTE_TYPES: readonly string[] = [
   'src_base_orch',
@@ -340,9 +344,22 @@ const SYNC_PALETTE_TYPES: readonly string[] = [
   'field_map_union',
   'condition_set',
 ]
-const isSyncTab = computed(() => props.tab.type === 'sync')
-const syncSpecs = ref<ComponentSpecItem[]>([])
-const syncSpecsFailed = ref(false)
+const STREAM_PALETTE_TYPES: readonly string[] = [
+  'stream_input',
+  'stream_fuse',
+  'stream_output',
+  'page_board',
+]
+/** 当前宿主的托盘白名单：SYNC→7 项、STREAM→4 项；NORMAL 宿主用顶部 4 按钮通道 */
+const designPaletteTypes = computed<readonly string[]>(() => {
+  if (workflowType.value === 'SYNC') return SYNC_PALETTE_TYPES
+  if (workflowType.value === 'STREAM') return STREAM_PALETTE_TYPES
+  return []
+})
+const isSpecTrayVisible = computed(() => isSyncTab.value || isStreamTab.value)
+const specTrayLabel = computed(() => (isStreamTab.value ? '流组件（拖入画布或点击添加）' : '同步组件（拖入画布或点击添加）'))
+const paletteSpecs = ref<ComponentSpecItem[]>([])
+const paletteSpecsFailed = ref(false)
 let specRequestController: AbortController | null = null
 let specRequestSequence = 0
 
@@ -355,14 +372,14 @@ async function loadPaletteSpecs() {
     const snapshot = await loadComponentSpecs(undefined, controller.signal)
     if (controller.signal.aborted || sequence !== specRequestSequence) return
     componentSpecs.value = snapshot.items
-    syncSpecs.value = snapshot.items.filter((item) => SYNC_PALETTE_TYPES.includes(item.type))
-    syncSpecsFailed.value = false
+    paletteSpecs.value = snapshot.items.filter((item) => designPaletteTypes.value.includes(item.type))
+    paletteSpecsFailed.value = false
   } catch (error) {
     if (controller.signal.aborted || sequence !== specRequestSequence
       || (error instanceof DOMException && error.name === 'AbortError')) return
     componentSpecs.value = []
-    syncSpecs.value = []
-    syncSpecsFailed.value = true
+    paletteSpecs.value = []
+    paletteSpecsFailed.value = true
   } finally {
     if (sequence === specRequestSequence) specRequestController = null
   }
@@ -379,38 +396,74 @@ function specName(spec: ComponentSpecItem): string {
   return typeof displayName === 'string' && displayName !== '' ? displayName : spec.type
 }
 
+/* ---------- T2 configure-first：未配置节点判定与闸门 ---------- */
+
+/** 设计态组件节点必须有除 component 归属标记外的业务参数才视为已配置；
+ *  START/END 等 legacy 流程节点不参与判定 */
+const DESIGN_NODE_TYPES = new Set<string>([...WF_NODE_TYPES, ...SYNC_PALETTE_TYPES, ...STREAM_PALETTE_TYPES])
+function isNodeConfigured(node: WorkflowDraftNode): boolean {
+  if (!DESIGN_NODE_TYPES.has(node.nodeType)) return true
+  const params = node.params ?? {}
+  return Object.keys(params).some((key) => key !== 'component')
+}
+const unconfiguredNodeNames = computed(() =>
+  graphStore.nodes.filter((node) => !isNodeConfigured(node)).map((node) => `${node.nodeCode}${node.name ? `（${node.name}）` : ''}`),
+)
+function guardUnconfigured(): boolean {
+  if (unconfiguredNodeNames.value.length === 0) return true
+  ElMessage.error(`存在未配置节点：${unconfiguredNodeNames.value.join('、')}；请先完成配置（配置先行）`)
+  return false
+}
+
+/** configure-first 交互：新增节点立即选中（Inspector 随选中呈现配置面板） */
+function selectForConfig(nodeCode: string) {
+  selectedNode.value = nodeCode
+  selectedEdge.value = null
+}
+
 function onSpecDragStart(event: DragEvent, type: string) {
   event.dataTransfer?.setData('datara/node-type', type)
   if (event.dataTransfer) event.dataTransfer.effectAllowed = 'copy'
 }
 
-function onAddSpecNode(type: string) {
+/** 托盘点击添加：node_type 直传组件 type（后端 catalogue 校验只认组件 type，
+ *  'SYNC' 之类宿主类别会被 WF_NODE_TYPE_UNKNOWN 拒绝）；SYNC/STREAM 保留
+ *  params.component 供画布内专项编辑器分流 */
+function addComponentByType(type: string) {
   const componentRef = publishedComponentRef(type)
   if (!componentRef) return
   const n = graphStore.nodes.length
-  graphStore.addNode({
-    nodeType: 'SYNC',
-    params: { component: type },
+  const keepComponentParam = SYNC_PALETTE_TYPES.includes(type) || STREAM_PALETTE_TYPES.includes(type)
+  const added = graphStore.addNode({
+    nodeType: type,
     componentRef,
+    params: keepComponentParam ? { component: type } : undefined,
     positionX: 24 + (n % 6) * 170,
     positionY: 24 + Math.floor(n / 6) * 48,
   })
+  selectForConfig(added.nodeCode)
 }
 
 const { project } = useVueFlow()
 function onDrop(event: DragEvent) {
   const type = event.dataTransfer?.getData('datara/node-type')
-  if (!type || !SYNC_PALETTE_TYPES.includes(type)) return
+  if (!type) return
+  // Palette 承载全部设计态组件（NORMAL 4 + SYNC 7 + STREAM 4）；drop 白名单与宿主无关，
+  // 画布节点归属由 definition.workflowType 决定，拖入非本类组件由 W1 校验/发布闸门拦截
+  const droppable = designPaletteTypes.value.includes(type) || WF_NODE_TYPES.includes(type as (typeof WF_NODE_TYPES)[number])
+  if (!droppable) return
   const componentRef = publishedComponentRef(type)
   if (!componentRef) return
   const position = project({ x: event.clientX, y: event.clientY })
-  graphStore.addNode({
-    nodeType: 'SYNC',
-    params: { component: type },
+  const keepComponentParam = SYNC_PALETTE_TYPES.includes(type) || STREAM_PALETTE_TYPES.includes(type)
+  const added = graphStore.addNode({
+    nodeType: type,
     componentRef,
+    params: keepComponentParam ? { component: type } : undefined,
     positionX: Math.round(position.x),
     positionY: Math.round(position.y),
   })
+  selectForConfig(added.nodeCode)
 }
 
 const selectedNodeObj = computed<WorkflowDraftNode | null>(() => selectedNodeRecord.value)
@@ -529,6 +582,7 @@ onUnmounted(() => {
 /* ---------- 工具栏：保存 / 发布 / 版本 ---------- */
 
 async function onSave() {
+  if (!guardUnconfigured()) return
   let r
   try {
     r = await graphStore.save()
@@ -549,6 +603,7 @@ async function onSave() {
 
 async function onPublish() {
   if (props.projectId === undefined) return
+  if (!guardUnconfigured()) return
   // Publishing a stale server draft is a destructive surprise.  Flush local
   // graph changes first and stop when the queue reports partial failure.
   if (graphStore.isDirty) {
@@ -632,19 +687,19 @@ function onSchedule() {
           @click="onAddNode(component)"
         >{{ component.identity.displayName ?? component.type }}</button>
       </div>
-      <div v-if="isSyncTab && loaded" class="wf-specs">
-        <span class="wf-specs-label">同步组件（拖入画布或点击添加）</span>
+      <div v-if="isSpecTrayVisible && loaded" class="wf-specs">
+        <span class="wf-specs-label">{{ specTrayLabel }}</span>
         <button
-          v-for="spec in syncSpecs"
+          v-for="spec in paletteSpecs"
           :key="spec.type"
           class="wf-spec"
           draggable="true"
           :data-testid="`wf-spec-${spec.type}`"
           :title="`${specName(spec)}（拖入画布或点击添加）`"
           @dragstart="onSpecDragStart($event, spec.type)"
-          @click="onAddSpecNode(spec.type)"
+          @click="addComponentByType(spec.type)"
         >{{ specName(spec) }}</button>
-        <span v-if="syncSpecsFailed" class="wf-specs-failed" data-testid="wf-specs-failed">组件清单加载失败</span>
+        <span v-if="paletteSpecsFailed" class="wf-specs-failed" data-testid="wf-specs-failed">组件清单加载失败</span>
       </div>
     </div>
 
@@ -653,7 +708,7 @@ function onSchedule() {
     <div v-else-if="!loaded" class="wf-degraded">画布：{{ tab.name }}</div>
     <div v-else class="wf-body" :style="splitStyle">
       <div class="wf-palette-pane" data-dag-palette>
-        <Palette :project-id="projectId" :workflow-type="workflowType" />
+        <Palette :project-id="projectId" :workflow-type="workflowType" @add-component="addComponentByType($event.type)" />
       </div>
       <button
         type="button"

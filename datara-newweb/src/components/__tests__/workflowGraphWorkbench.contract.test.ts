@@ -44,10 +44,7 @@ const DRAFT_EDGES = [
   { fromNode: 'n2', toNode: 'n3', name: null },
 ]
 
-const WF_NODE_TYPES_MOCK = [
-  'FLOW', 'SYNC', 'SQL', 'PYTHON', 'SHELL', 'DEPENDENCY', 'START', 'END',
-  'CONDITION', 'FORK', 'JOIN', 'WAIT', 'SUB_WORKFLOW',
-]
+const WF_NODE_TYPES_MOCK = ['sql', 'python', 'shell', 'dependent']
 
 /** 7 白名单 + 1 白名单外（runtime_only_c17 断言不渲染） */
 function specItem(type: string, displayName?: string): ComponentSpecItem {
@@ -69,6 +66,7 @@ function specItem(type: string, displayName?: string): ComponentSpecItem {
 }
 
 const SPECS = [
+  specItem('sql', 'SQL脚本'),
   specItem('src_base_orch', '源表基准'),
   specItem('tgt_base_orch', '目标表基准'),
   specItem('file_sync_orch', '文件同步'),
@@ -76,6 +74,10 @@ const SPECS = [
   specItem('field_map', '字段映射'),
   specItem('field_map_union', '字段合并映射'),
   specItem('condition_set', '条件集'),
+  specItem('stream_input', '流输入'),
+  specItem('stream_fuse', '流融合'),
+  specItem('stream_output', '流输出'),
+  specItem('page_board', '观测看板'),
   specItem('runtime_only_c17'),
 ]
 
@@ -222,7 +224,7 @@ it('aborts the component catalogue subscription when the workbench unmounts', as
 })
 
 describe('WorkflowGraphWorkbench L12-02 同步工作流契约', () => {
-  it('用例1 加载完成：wf-body 在位 + VueFlow 收到 3 节点 2 边 + 托盘 13 类型 + 非 sync tab 无组件侧栏', async () => {
+  it('用例1 加载完成：wf-body 在位 + VueFlow 收到 3 节点 2 边 + 托盘 4 组件 + 非 spec 宿主无组件侧栏', async () => {
     const { wrapper } = makeWorkbench('wf')
     await flushPromises()
 
@@ -231,7 +233,7 @@ describe('WorkflowGraphWorkbench L12-02 同步工作流契约', () => {
     expect(vf.exists()).toBe(true)
     expect((vf.props('nodes') as unknown[]).length).toBe(3)
     expect((vf.props('edges') as unknown[]).length).toBe(2)
-    expect(wrapper.findAll('.wf-type').length).toBe(13)
+    expect(wrapper.findAll('.wf-type').length).toBe(4)
     expect(wrapper.find('.wf-specs').exists()).toBe(false)
   })
 
@@ -255,7 +257,7 @@ describe('WorkflowGraphWorkbench L12-02 同步工作流契约', () => {
     expect(wrapper.find('.wf-spec').exists()).toBe(false)
   })
 
-  it('用例4 画布 drop 承接：datara/node-type → addNode SYNC + component 参数 + Math.round 坐标', async () => {
+  it('用例4 画布 drop 承接：datara/node-type → nodeType=组件type（catalogue 冻结语义）+ Math.round 坐标', async () => {
     const { wrapper, graph } = makeWorkbench('sync')
     await flushPromises()
 
@@ -269,14 +271,14 @@ describe('WorkflowGraphWorkbench L12-02 同步工作流契约', () => {
     expect(graph.nodes.length).toBe(4)
     expect(graph.nodes[3]).toMatchObject({
       nodeCode: 'n4',
-      nodeType: 'SYNC',
+      nodeType: 'endpoint_select',
       params: { component: 'endpoint_select' },
       positionX: 101,
       positionY: 200,
     })
   })
 
-  it('用例5 spec 点击兜底添加：params.component + 级联摆位 534/24', async () => {
+  it('用例5 spec 点击兜底添加：nodeType=组件type + params.component + 级联摆位 534/24', async () => {
     const { wrapper, graph } = makeWorkbench('sync')
     await flushPromises()
 
@@ -285,11 +287,107 @@ describe('WorkflowGraphWorkbench L12-02 同步工作流契约', () => {
     expect(graph.nodes.length).toBe(4)
     expect(graph.nodes[3]).toMatchObject({
       nodeCode: 'n4',
-      nodeType: 'SYNC',
+      nodeType: 'field_map',
       params: { component: 'field_map' },
       positionX: 534,
       positionY: 24,
     })
+  })
+
+  it('用例5b stream 宿主组件托盘：4 白名单项渲染 + drop 承接 nodeType=stream_input', async () => {
+    const { wrapper, graph } = makeWorkbench('stream')
+    await flushPromises()
+
+    expect(wrapper.find('.wf-specs').exists()).toBe(true)
+    expect(wrapper.findAll('.wf-spec').length).toBe(4)
+    expect(wrapper.find('[data-testid="wf-spec-page_board"]').exists()).toBe(true)
+    expect(wrapper.find('[data-testid="wf-spec-endpoint_select"]').exists()).toBe(false)
+
+    await wrapper.find('.vf-stub').trigger('drop', {
+      clientX: 60.2,
+      clientY: 90.8,
+      dataTransfer: { getData: () => 'stream_input' },
+    })
+    await nextTick()
+
+    expect(graph.nodes.length).toBe(4)
+    expect(graph.nodes[3]).toMatchObject({
+      nodeType: 'stream_input',
+      params: { component: 'stream_input' },
+      positionX: 60,
+      positionY: 91,
+    })
+  })
+
+  it('用例5c NORMAL 组件经 Palette 拖入承接：nodeType=sql 且不带 params.component', async () => {
+    const { wrapper, graph } = makeWorkbench('wf')
+    await flushPromises()
+
+    await wrapper.find('.vf-stub').trigger('drop', {
+      clientX: 10.4,
+      clientY: 20.6,
+      dataTransfer: { getData: () => 'sql' },
+    })
+    await nextTick()
+
+    expect(graph.nodes.length).toBe(4)
+    expect(graph.nodes[3]).toMatchObject({
+      nodeType: 'sql',
+      componentRef: { type: 'sql', version: 1 },
+      positionX: 10,
+      positionY: 21,
+    })
+    expect(graph.nodes[3].params?.component).toBeUndefined()
+  })
+
+  it('用例5d configure-first：新增节点立即选中并呈现配置面板', async () => {
+    const { wrapper } = makeWorkbench('sync')
+    await flushPromises()
+    expect(wrapper.find('[data-testid="node-config-panel"]').exists()).toBe(false)
+
+    await wrapper.find('[data-testid="wf-spec-endpoint_select"]').trigger('click')
+
+    expect(wrapper.find('[data-testid="node-config-panel"]').exists()).toBe(true)
+  })
+
+  it('用例5e 未配置节点徽标：新拖入节点 label 带 ⚠未配置 + class wf-node-unconfigured', async () => {
+    const { wrapper, graph } = makeWorkbench('sync')
+    await flushPromises()
+
+    await wrapper.find('.vf-stub').trigger('drop', {
+      clientX: 30,
+      clientY: 40,
+      dataTransfer: { getData: () => 'field_map' },
+    })
+    await nextTick()
+    const vf = wrapper.findComponent({ name: 'VueFlow' })
+    const added = (vf.props('nodes') as { id: string; label: string; class?: string }[]).at(-1)!
+    expect(added.label).toContain('⚠未配置')
+    expect(added.class).toContain('wf-node-unconfigured')
+
+    // 配置回写业务参数后徽标解除（component 归属标记不计入业务参数）
+    graph.updateNode(added.id, { params: { component: 'field_map', baseMode: 'src_base' } })
+    await nextTick()
+    const configured = (vf.props('nodes') as { id: string; label: string; class?: string }[]).find((n) => n.id === added.id)!
+    expect(configured.label).not.toContain('⚠未配置')
+  })
+
+  it('用例5f 保存闸门：存在未配置节点时 onSave 拦截（不进入保存流程）', async () => {
+    const { wrapper, graph } = makeWorkbench('sync')
+    await flushPromises()
+    const saveSpy = vi.spyOn(graph, 'save').mockResolvedValue({ complete: true, dirtyKeys: [] })
+
+    await wrapper.find('.vf-stub').trigger('drop', {
+      clientX: 30,
+      clientY: 40,
+      dataTransfer: { getData: () => 'field_map' },
+    })
+    await nextTick()
+
+    await wrapper.find('.wf-btn').trigger('click')
+    expect(saveSpy).not.toHaveBeenCalled()
+    const { ElMessage } = await import('element-plus')
+    expect(ElMessage.error).toHaveBeenCalledWith(expect.stringContaining('存在未配置节点'))
   })
 
   it('用例6 节点配置闭环：nodeClick → NodeConfigPanel 预填 → 保存回写 params + 面板关闭', async () => {

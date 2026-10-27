@@ -47,6 +47,8 @@ const emit = defineEmits<{
   'load-tasks': [{ items: DagPickItem[] }]
   /** 9-04 行内「定时」入口：载荷 = 工作流定义 id+name，宿主单实例 ScheduleDialog 承接 */
   schedule: [{ id: number; name: string }]
+  /** T8：组件库行点击添加（与拖拽同载荷语义，宿主 addComponentByType 承接） */
+  'add-component': [{ type: string }]
 }>()
 
 interface PalRow { type: string; label: string; desc: string; icon: string; color: string; code: string; cat: string }
@@ -361,7 +363,9 @@ function onLoad() {
               class="pal-item"
               :title="row.desc"
               :draggable="true"
+              :data-testid="`pal-item-${row.type}`"
               @dragstart="onDragStart($event, row)"
+              @click="emit('add-component', { type: row.type })"
             >
               <div class="p-ico" :style="{ background: row.color }">{{ row.icon }}</div>
               <div style="min-width:0">

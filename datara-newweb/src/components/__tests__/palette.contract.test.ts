@@ -350,6 +350,18 @@ describe('INC4-FE-3 Palette 双 Tab（组件库 / 工作流）', () => {
     expect(fakeDT.effectAllowed).toBe('copy')
   })
 
+  it('T8 点击添加：组件库行 click emit add-component({type})（与拖拽同载荷语义）', async () => {
+    specLoad.mockResolvedValue({
+      items: [item({ type: 'sql', identity: { displayName: 'SQL脚本' } })],
+      etag: '"ee"',
+      source: 'network',
+    })
+    const w = mountPalette()
+    await flushPromises()
+    await w.find('[data-testid="pal-item-sql"]').trigger('click')
+    expect(w.emitted('add-component')).toEqual([[{ type: 'sql' }]])
+  })
+
   it('规格加载失败：console.warn + 空态「无匹配组件」（首载 fail-closed 不阻断宿主）', async () => {
     const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
     specLoad.mockRejectedValue(new Error('spec endpoint unreachable'))
