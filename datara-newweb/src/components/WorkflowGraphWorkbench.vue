@@ -50,7 +50,9 @@ import { loadComponentSpecs, type ComponentSpecItem, type WorkflowType } from '.
 import { ContractApiError } from '../services/http'
 import { useTrialRunStore } from '../stores/trialRun'
 import { useWorkflowGraphStore } from '../stores/workflowGraph'
+import { validateWorkflowDraft, isNodeUnconfigured, type ValidationIssue } from '../stores/workflowGraphValidators'
 import NodeConfigPanel from './NodeConfigPanel.vue'
+import SpecBlockPanel from './SpecBlockPanel.vue'
 import TrialRunPanel from './TrialRunPanel.vue'
 import WorkflowVariablePanel from './WorkflowVariablePanel.vue'
 import ScriptResourceEditor from './ScriptResourceEditor.vue'
@@ -400,12 +402,10 @@ function specName(spec: ComponentSpecItem): string {
 /* ---------- T2 configure-first：未配置节点判定与闸门 ---------- */
 
 /** 设计态组件节点必须有除 component 归属标记、inputs 结构派生引用外的业务参数
- *  才视为已配置；START/END 等 legacy 流程节点不参与判定 */
+ *  才视为已配置；START/END 等 legacy 流程节点不参与判定（判定单源：validators 模块） */
 const DESIGN_NODE_TYPES = new Set<string>([...WF_NODE_TYPES, ...SYNC_PALETTE_TYPES, ...STREAM_PALETTE_TYPES])
 function isNodeConfigured(node: WorkflowDraftNode): boolean {
-  if (!DESIGN_NODE_TYPES.has(node.nodeType)) return true
-  const params = node.params ?? {}
-  return Object.keys(params).some((key) => key !== 'component' && key !== 'inputs')
+  return !isNodeUnconfigured(node, DESIGN_NODE_TYPES)
 }
 const unconfiguredNodeNames = computed(() =>
   graphStore.nodes.filter((node) => !isNodeConfigured(node)).map((node) => `${node.nodeCode}${node.name ? `（${node.name}）` : ''}`),
@@ -468,11 +468,39 @@ function onDrop(event: DragEvent) {
 }
 
 const selectedNodeObj = computed<WorkflowDraftNode | null>(() => selectedNodeRecord.value)
+/** T4/G07：选中节点的活体 spec（六区块框架层与组件级校验共用） */
+const selectedNodeSpec = computed<ComponentSpecItem | null>(() =>
+  componentSpecs.value.find((item) => item.type === selectedNodeRecord.value?.nodeType) ?? null)
 function onConfigSave(params: Record<string, unknown>) {
   if (!selectedNode.value) return
   graphStore.updateNode(selectedNode.value, { params })
   ElMessage.success('节点配置已保存')
   clearSelection()
+}
+
+/* ---------- T4/G07 W1 校验器：11 validators + 校验面板 + 保存闸门 ---------- */
+
+const specMap = computed(() => new Map(componentSpecs.value.map((item) => [item.type, item])))
+const validationIssues = computed<ValidationIssue[]>(() =>
+  validateWorkflowDraft(graphStore.nodes, graphStore.edges, { specs: specMap.value, designTypes: DESIGN_NODE_TYPES }))
+const validationErrorCount = computed(() => validationIssues.value.filter((issue) => issue.level === 'error').length)
+const validationWarnCount = computed(() => validationIssues.value.filter((issue) => issue.level === 'warn').length)
+const validationVisible = ref(false)
+
+/** W1 保存闸门：error 级阻止并打开校验面板（warn 只计数不阻断；必填缺失由 T2 闸门先行拦截） */
+function gateOnValidation(): boolean {
+  const errors = validationIssues.value.filter((issue) => issue.level === 'error')
+  if (errors.length === 0) return true
+  validationVisible.value = true
+  ElMessage.error(`画布校验未通过（${errors.length} 项错误，如：${errors[0].msg}）`)
+  return false
+}
+
+/** 校验面板行点击定位：选中对应节点并打开配置面板 */
+function locateIssue(issue: ValidationIssue) {
+  if (!issue.nodeCode) return
+  selectForConfig(issue.nodeCode)
+  validationVisible.value = false
 }
 
 function rebindTrialContext() {
@@ -590,6 +618,7 @@ function isVersionConflict(error: unknown): boolean {
 
 async function onSave() {
   if (!guardUnconfigured()) return
+  if (!gateOnValidation()) return
   let r
   try {
     r = await graphStore.save()
@@ -631,6 +660,7 @@ function publishErrorMessage(error: unknown): string {
 async function onPublish() {
   if (props.projectId === undefined) return
   if (!guardUnconfigured()) return
+  if (!gateOnValidation()) return
   // Publishing a stale server draft is a destructive surprise.  Flush local
   // graph changes first and stop when the queue reports partial failure.
   if (graphStore.isDirty) {
@@ -707,6 +737,13 @@ function onSchedule() {
         <button class="wf-btn" data-testid="wf-schedule" :disabled="degraded || !loaded" @click="onSchedule">定时</button>
         <button class="wf-btn" data-testid="wf-trial" :disabled="degraded || !loaded" @click="activateInspectorTab('trial')">试运行</button>
         <button class="wf-btn" data-workflow-variables :disabled="degraded || !loaded" @click="activateInspectorTab('variables')">工作流变量</button>
+        <button
+          class="wf-btn"
+          data-testid="wf-validate"
+          :disabled="!loaded"
+          title="W1 画布校验（11 validators）"
+          @click="validationVisible = true"
+        >校验<span v-if="validationErrorCount" class="wf-badge wf-badge-error" data-testid="wf-validate-error-badge">{{ validationErrorCount }}</span><span v-else-if="validationWarnCount" class="wf-badge wf-badge-warn" data-testid="wf-validate-warn-badge">{{ validationWarnCount }}</span></button>
         <span
           v-if="graphStore.docId === numDocId && graphStore.isDirty"
           class="wf-dirty"
@@ -799,37 +836,44 @@ function onSchedule() {
         </div>
 
         <section id="workflow-inspector-panel-properties" v-show="activeInspectorTab === 'properties'" role="tabpanel" tabindex="0" aria-labelledby="workflow-inspector-tab-properties">
-          <NodeConfigPanel
-            v-if="selectedNodeObj && !isSyncMappingNode && !scriptResourceKind && !isDependentNode"
-            :node="selectedNodeObj"
-            :project-id="projectId"
-            :workflow-id="numDocId"
-            :workflow-version="1"
-            @save="onConfigSave"
-            @close="clearSelection"
-          />
-          <section v-else-if="selectedNodeRecord && nodeParameterKey && scriptResourceKind" class="node-editor" data-node-parameter-editor>
-            <strong>{{ selectedNodeRecord.nodeType }} 参数 · {{ selectedNodeRecord.nodeCode }}</strong>
-            <ScriptResourceEditor
-              :key="selectedNodeRecord.nodeCode"
-              :project-id="projectId"
-              :workflow-id="numDocId"
-              :workflow-version="1"
-              :task-id="selectedNodeRecord.nodeCode"
-              :kind="scriptResourceKind"
-              :model-value="selectedNodeRecord.params ?? {}"
-              @update:model-value="updateNodeParams"
-            />
-          </section>
-          <SyncMappingEditor
-            v-else-if="isSyncMappingNode && selectedNodeRecord"
-            :project-id="projectId"
-            :workflow-id="numDocId"
-            :workflow-version="1"
-            :task-id="selectedNodeRecord.nodeCode"
-            :model-value="selectedNodeRecord.params ?? {}"
-            @update:model-value="updateSyncParams"
-          />
+          <SpecBlockPanel v-if="selectedNodeObj" :node="selectedNodeObj" :spec="selectedNodeSpec">
+            <template #params>
+              <NodeConfigPanel
+                v-if="!isSyncMappingNode && !scriptResourceKind && !isDependentNode"
+                :node="selectedNodeObj"
+                :project-id="projectId"
+                :workflow-id="numDocId"
+                :workflow-version="1"
+                @save="onConfigSave"
+                @close="clearSelection"
+              />
+              <section v-else-if="nodeParameterKey && scriptResourceKind" class="node-editor" data-node-parameter-editor>
+                <strong>{{ selectedNodeObj.nodeType }} 参数 · {{ selectedNodeObj.nodeCode }}</strong>
+                <ScriptResourceEditor
+                  :key="selectedNodeObj.nodeCode"
+                  :project-id="projectId"
+                  :workflow-id="numDocId"
+                  :workflow-version="1"
+                  :task-id="selectedNodeObj.nodeCode"
+                  :kind="scriptResourceKind"
+                  :model-value="selectedNodeObj.params ?? {}"
+                  @update:model-value="updateNodeParams"
+                />
+              </section>
+              <SyncMappingEditor
+                v-else-if="isSyncMappingNode"
+                :project-id="projectId"
+                :workflow-id="numDocId"
+                :workflow-version="1"
+                :task-id="selectedNodeObj.nodeCode"
+                :model-value="selectedNodeObj.params ?? {}"
+                @update:model-value="updateSyncParams"
+              />
+              <div v-else class="inspector-empty">
+                <span>◇</span><strong>当前节点无专项编辑器</strong><small>参数声明见上方 spec 区块</small>
+              </div>
+            </template>
+          </SpecBlockPanel>
           <StreamObservationPanel
             v-else-if="workflowType === 'STREAM'"
             :project-id="projectId"
@@ -880,6 +924,31 @@ function onSchedule() {
         <el-table-column prop="publishedAt" label="发布时间" width="170" />
       </el-table>
     </el-dialog>
+
+    <div v-if="validationVisible" class="validation-overlay" data-testid="validation-overlay" @click.self="validationVisible = false">
+      <div class="validation-panel" role="dialog" aria-modal="true" aria-label="画布校验">
+        <header class="validation-head">
+          <strong>画布校验（W1 · 11 validators）</strong>
+          <button class="wf-btn" data-testid="validation-close" @click="validationVisible = false">关闭</button>
+        </header>
+        <p v-if="!validationIssues.length" class="validation-pass" data-testid="validation-pass">校验通过：11 项 validators 无错误无告警</p>
+        <ul v-else class="validation-list" data-testid="validation-list">
+          <li
+            v-for="(issue, index) in validationIssues"
+            :key="`${issue.code}-${index}`"
+            class="validation-issue"
+            :class="`validation-issue-${issue.level}`"
+            :data-testid="`validation-issue-${issue.code}`"
+            :title="issue.nodeCode ? '点击定位到节点' : ''"
+            @click="locateIssue(issue)"
+          >
+            <em>{{ issue.level === 'error' ? '错误' : '告警' }}</em>
+            <code>{{ issue.code }}</code>
+            <span>{{ issue.msg }}</span>
+          </li>
+        </ul>
+      </div>
+    </div>
   </div>
 </template>
 
@@ -1056,6 +1125,23 @@ function onSchedule() {
   outline: 2px solid #94a3b8;
 }
 .node-editor{flex-shrink:0;padding:10px 14px;border-top:1px solid var(--border-color,#e2e8f0);background:#f8fafc;display:grid;gap:6px}
+
+/* T4/G07 校验徽标与校验面板 */
+.wf-badge{display:inline-block;margin-left:4px;min-width:16px;border-radius:8px;padding:0 5px;font-size:11px;line-height:16px;text-align:center;color:#fff}
+.wf-badge-error{background:var(--el-color-danger,#f56c6c)}
+.wf-badge-warn{background:var(--el-color-warning,#e6a23c)}
+.validation-pass{color:var(--el-color-success,#67c23a);font-weight:600}
+.validation-overlay{position:fixed;inset:0;z-index:2000;background:rgba(0,0,0,.35);display:flex;align-items:center;justify-content:center}
+.validation-panel{background:#fff;border-radius:8px;box-shadow:0 8px 32px rgba(0,0,0,.18);width:min(720px,92vw);max-height:80vh;display:flex;flex-direction:column;padding:12px 16px;gap:8px}
+.validation-head{display:flex;align-items:center;justify-content:space-between}
+.validation-list{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:6px;max-height:52vh;overflow:auto}
+.validation-issue{display:flex;align-items:baseline;gap:8px;padding:6px 10px;border-radius:6px;border:1px solid var(--el-border-color-lighter,#e4e7ed);cursor:pointer;font-size:13px}
+.validation-issue-error{border-left:3px solid var(--el-color-danger,#f56c6c)}
+.validation-issue-warn{border-left:3px solid var(--el-color-warning,#e6a23c)}
+.validation-issue em{font-style:normal;font-size:11px;flex-shrink:0}
+.validation-issue-error em{color:var(--el-color-danger,#f56c6c)}
+.validation-issue-warn em{color:var(--el-color-warning,#e6a23c)}
+.validation-issue code{background:var(--el-fill-color-light,#f5f7fa);border-radius:3px;padding:0 4px;font-size:12px;color:var(--el-text-color-regular,#606266);flex-shrink:0}
 
 @media (min-width: 768px) and (max-width: 1024px) {
   .wf-palette-pane{width:clamp(176px,var(--dag-left),220px);flex-basis:clamp(176px,var(--dag-left),220px)}

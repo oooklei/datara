@@ -25,7 +25,7 @@ describe('WorkflowGraphWorkbench layout contract', () => {
     expect(source).toMatch(/if \(type === 'sql'\) return 'sql'/)
     expect(source).toMatch(/if \(type === 'python' \|\| type === 'shell'\) return 'script'/)
     expect(source).toMatch(/type === 'sql' \|\| type === 'python' \|\| type === 'shell' \? type : null/)
-    expect(source).toContain('v-else-if="selectedNodeRecord && nodeParameterKey && scriptResourceKind"')
+    expect(source).toContain('v-else-if="nodeParameterKey && scriptResourceKind"')
     expect(source).toContain(':kind="scriptResourceKind"')
     expect(source).toMatch(/nodeType \?\? ''\)\.toLowerCase\(\) === 'dependent'/)
     expect(source).toContain('v-show="activeInspectorTab === \'dependencies\'"')

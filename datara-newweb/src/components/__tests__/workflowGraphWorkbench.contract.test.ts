@@ -85,7 +85,17 @@ const SPECS = [
   return { DRAFT_NODES, DRAFT_EDGES, WF_NODE_TYPES_MOCK, SPECS }
 })
 
-const specMock = vi.hoisted(() => ({ loadComponentSpecs: vi.fn() }))
+const specMock = vi.hoisted(() => ({
+  loadComponentSpecs: vi.fn(),
+  // Palette.loadRows 过滤用（与 componentSpecApi.isDesignComponent 同口径）
+  isDesignComponent: (item: { type?: string; runtimeOnly?: boolean; visual?: { paletteVisible?: boolean }; workflowTypes?: string[]; componentRef?: { type?: string; version?: number } }, workflowType: string) =>
+    item.runtimeOnly !== true
+    && item.visual?.paletteVisible !== false
+    && (item.workflowTypes ?? []).includes(workflowType)
+    && item.componentRef?.type === item.type
+    && Number.isInteger(item.componentRef?.version)
+    && (item.componentRef?.version ?? 0) >= 1,
+}))
 const dsMock = vi.hoisted(() => ({
   createDatasourceContract: vi.fn(() => ({
     listDatasources: vi.fn(async () => ({ items: [{ name: 'mysql-main' }, { name: 'pg-warehouse' }] })),
@@ -439,6 +449,66 @@ describe('WorkflowGraphWorkbench L12-02 同步工作流契约', () => {
     await wrapper.findAll('.wf-btn').at(2)!.trigger('click')
     const { ElMessage } = await import('element-plus')
     expect(ElMessage.error).toHaveBeenCalledWith('发布被校验闸门拒绝（可声明不可执行）：依赖节点缺失')
+  })
+
+  it('用例T4a 校验徽标与面板：合法画布零计数 + 点开校验面板呈现通过态（T4/G07）', async () => {
+    const { wrapper } = makeWorkbench('wf')
+    await flushPromises()
+
+    expect(wrapper.find('[data-testid="wf-validate-error-badge"]').exists()).toBe(false)
+    expect(wrapper.find('[data-testid="wf-validate-warn-badge"]').exists()).toBe(false)
+
+    await wrapper.find('[data-testid="wf-validate"]').trigger('click')
+    expect(wrapper.find('[data-testid="validation-overlay"]').exists()).toBe(true)
+    expect(wrapper.find('[data-testid="validation-pass"]').exists()).toBe(true)
+    await wrapper.find('[data-testid="validation-close"]').trigger('click')
+    expect(wrapper.find('[data-testid="validation-overlay"]').exists()).toBe(false)
+  })
+
+  it('用例T4b W1 保存闸门：画布成环 → 保存拦截 + 校验面板 CYCLE 行 + 点击定位节点（T4/G07）', async () => {
+    const { wrapper, graph } = makeWorkbench('wf')
+    await flushPromises()
+    const saveSpy = vi.spyOn(graph, 'save').mockResolvedValue({ complete: true, dirtyKeys: [], savedKeys: [], outcomes: [], manualRecoveryKeys: [] })
+    // 展开坐标绕开 dagre 自动布局（聚焦闸门语义），直写边模拟成环脏数据
+    graph.moveNode('n1', 0, 0)
+    graph.moveNode('n2', 300, 0)
+    graph.moveNode('n3', 600, 0)
+    const added = graph.addNode({
+      nodeType: 'sql',
+      componentRef: { type: 'sql', version: 1 },
+      params: { component: 'sql', sql: 'SELECT 1' },
+      positionX: 900,
+      positionY: 0,
+    })
+    graph.edges.push({ fromNode: 'n3', toNode: added.nodeCode, name: null }, { fromNode: added.nodeCode, toNode: 'n1', name: null })
+    await nextTick()
+
+    expect(wrapper.find('[data-testid="wf-validate-error-badge"]').exists()).toBe(true)
+
+    await wrapper.find('.wf-btn').trigger('click') // 保存
+    expect(saveSpy).not.toHaveBeenCalled()
+    const { ElMessage } = await import('element-plus')
+    expect(ElMessage.error).toHaveBeenCalledWith(expect.stringContaining('画布校验未通过'))
+    expect(wrapper.find('[data-testid="validation-overlay"]').exists()).toBe(true)
+    const cycleRow = wrapper.find('[data-testid="validation-issue-CYCLE"]')
+    expect(cycleRow.exists()).toBe(true)
+
+    await cycleRow.trigger('click')
+    expect(wrapper.find('[data-testid="node-config-panel"]').exists()).toBe(true)
+    expect(wrapper.find('[data-testid="validation-overlay"]').exists()).toBe(false)
+  })
+
+  it('用例T4c 六区块框架层：选中组件节点 → spec-blocks 六区块 + 参数插槽承载 NodeConfigPanel（T4/G07）', async () => {
+    const { wrapper } = makeWorkbench('wf')
+    await flushPromises()
+
+    wrapper.findComponent({ name: 'VueFlow' }).vm.$emit('nodeClick', { node: { id: 'n2' } })
+    await nextTick()
+
+    for (const id of ['inputs', 'outputs', 'params', 'conditions', 'constraints', 'exclusions']) {
+      expect(wrapper.find(`[data-testid="spec-block-${id}"]`).exists(), id).toBe(true)
+    }
+    expect(wrapper.find('[data-testid="spec-block-params"]').findComponent({ name: 'NodeConfigPanel' }).exists()).toBe(true)
   })
 
   it('用例6 节点配置闭环：nodeClick → NodeConfigPanel 预填 → 保存回写 params + 面板关闭', async () => {
