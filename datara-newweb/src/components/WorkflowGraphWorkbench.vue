@@ -47,6 +47,7 @@ import {
   type WfNodeType,
 } from '../services/rebuild/workflowApi'
 import { loadComponentSpecs, type ComponentSpecItem, type WorkflowType } from '../services/rebuild/componentSpecApi'
+import { ContractApiError } from '../services/http'
 import { useTrialRunStore } from '../stores/trialRun'
 import { useWorkflowGraphStore } from '../stores/workflowGraph'
 import NodeConfigPanel from './NodeConfigPanel.vue'
@@ -581,12 +582,22 @@ onUnmounted(() => {
 
 /* ---------- 工具栏：保存 / 发布 / 版本 ---------- */
 
+/** T5：保存项失败的并发冲突（后端 409/WF_VERSION_CONFLICT=2005 乐观锁）专门呈现，
+ *  与普通 dirty 失败区分 */
+function isVersionConflict(error: unknown): boolean {
+  return error instanceof ContractApiError && (error.httpStatus === 409 || String(error.code) === '2005')
+}
+
 async function onSave() {
   if (!guardUnconfigured()) return
   let r
   try {
     r = await graphStore.save()
   } catch (error) {
+    if (isVersionConflict(error)) {
+      ElMessage.error('版本冲突（2005）：草稿已被并发修改，请刷新页面后重试')
+      return
+    }
     ElMessage.error(`保存失败：${error instanceof Error ? error.message : '请求异常'}`)
     return
   }
@@ -598,7 +609,23 @@ async function onSave() {
     ElMessage.success('保存成功')
     return
   }
+  const conflict = r.outcomes.some((o) => isVersionConflict(o.error))
+  if (conflict) {
+    ElMessage.error('版本冲突（2005）：草稿已被并发修改，请刷新页面后重试')
+    return
+  }
   ElMessage.error(`保存未完成：${r.dirtyKeys.join(', ')}`)
+}
+
+/** T5：发布被闸门拒绝的语义化呈现（400=声明闸门拒绝；404=定义不存在；409=版本冲突） */
+function publishErrorMessage(error: unknown): string {
+  if (error instanceof ContractApiError) {
+    if (error.httpStatus === 409 || String(error.code) === '2005') return '版本冲突（2005）：草稿已被并发修改，请刷新页面后重试'
+    if (error.httpStatus === 400) return `发布被校验闸门拒绝（可声明不可执行）：${error.msg}`
+    if (error.httpStatus === 404) return '工作流定义不存在，请刷新列表'
+    return `发布失败：${error.msg}`
+  }
+  return `发布失败：${error instanceof Error ? error.message : '请求异常'}`
 }
 
 async function onPublish() {
@@ -610,10 +637,18 @@ async function onPublish() {
     try {
       const saved = await graphStore.save()
       if (!saved?.complete) {
+        if (saved?.outcomes.some((o) => isVersionConflict(o.error))) {
+          ElMessage.error('版本冲突（2005）：草稿已被并发修改，请刷新页面后重试')
+          return
+        }
         ElMessage.error(`发布前保存未完成：${saved?.dirtyKeys.join(', ') ?? '未知变更'}`)
         return
       }
     } catch (error) {
+      if (isVersionConflict(error)) {
+        ElMessage.error('版本冲突（2005）：草稿已被并发修改，请刷新页面后重试')
+        return
+      }
       ElMessage.error(`发布前保存失败：${error instanceof Error ? error.message : '请求异常'}`)
       return
     }
@@ -634,7 +669,7 @@ async function onPublish() {
     const ver = await publishWorkflowDefinition(props.projectId, numDocId.value, remark)
     ElMessage.success(`已发布版本 v${ver.version}`)
   } catch (error) {
-    ElMessage.error(`发布失败：${error instanceof Error ? error.message : '请求异常'}`)
+    ElMessage.error(publishErrorMessage(error))
   }
 }
 

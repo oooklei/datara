@@ -14,6 +14,7 @@ import { flushPromises, mount, type VueWrapper } from '@vue/test-utils'
 import { createPinia, setActivePinia } from 'pinia'
 import WorkflowGraphWorkbench from '../WorkflowGraphWorkbench.vue'
 import { useWorkflowGraphStore } from '../../stores/workflowGraph'
+import { ContractApiError } from '../../services/http'
 import type { DagTab, DagProfileType } from '../../stores/dagTabs'
 import type { ComponentSpecItem } from '../../services/rebuild/componentSpecApi'
 
@@ -375,7 +376,7 @@ describe('WorkflowGraphWorkbench L12-02 同步工作流契约', () => {
   it('用例5f 保存闸门：存在未配置节点时 onSave 拦截（不进入保存流程）', async () => {
     const { wrapper, graph } = makeWorkbench('sync')
     await flushPromises()
-    const saveSpy = vi.spyOn(graph, 'save').mockResolvedValue({ complete: true, dirtyKeys: [] })
+    const saveSpy = vi.spyOn(graph, 'save').mockResolvedValue({ complete: true, dirtyKeys: [], savedKeys: [], outcomes: [], manualRecoveryKeys: [] })
 
     await wrapper.find('.vf-stub').trigger('drop', {
       clientX: 30,
@@ -388,6 +389,56 @@ describe('WorkflowGraphWorkbench L12-02 同步工作流契约', () => {
     expect(saveSpy).not.toHaveBeenCalled()
     const { ElMessage } = await import('element-plus')
     expect(ElMessage.error).toHaveBeenCalledWith(expect.stringContaining('存在未配置节点'))
+  })
+
+  it('用例5g 保存并发冲突：save outcome 含 409 ContractApiError → 2005 语义化文案（T5）', async () => {
+    const { wrapper, graph } = makeWorkbench('sync')
+    await flushPromises()
+    const conflict = new ContractApiError({ httpStatus: 409, code: 2005, msg: 'version conflict' })
+    vi.spyOn(graph, 'save').mockResolvedValue({
+      complete: false,
+      dirtyKeys: ['n2'],
+      savedKeys: [],
+      outcomes: [{ key: 'n2', status: 'retryable-failed', dirty: true, retryable: true, error: conflict }],
+      manualRecoveryKeys: [],
+    })
+
+    await wrapper.find('.wf-btn').trigger('click')
+    const { ElMessage } = await import('element-plus')
+    expect(ElMessage.error).toHaveBeenCalledWith('版本冲突（2005）：草稿已被并发修改，请刷新页面后重试')
+  })
+
+  it('用例5h 发布前 flush save 遭遇 2005：拦截发布并呈现 2005 文案（T5）', async () => {
+    const { wrapper, graph } = makeWorkbench('sync')
+    await flushPromises()
+    graph.moveNode('n2', 210, 80) // 置 isDirty → onPublish 先 flush save
+    const conflict = new ContractApiError({ httpStatus: 409, code: 2005, msg: 'version conflict' })
+    vi.spyOn(graph, 'save').mockResolvedValue({
+      complete: false,
+      dirtyKeys: ['n2'],
+      savedKeys: [],
+      outcomes: [{ key: 'n2', status: 'retryable-failed', dirty: true, retryable: true, error: conflict }],
+      manualRecoveryKeys: [],
+    })
+    const { publishWorkflowDefinition } = await import('../../services/rebuild/workflowApi')
+
+    await wrapper.findAll('.wf-btn').at(2)!.trigger('click')
+    const { ElMessage } = await import('element-plus')
+    expect(ElMessage.error).toHaveBeenCalledWith('版本冲突（2005）：草稿已被并发修改，请刷新页面后重试')
+    expect(publishWorkflowDefinition).not.toHaveBeenCalled()
+  })
+
+  it('用例5i 发布被闸门拒绝：publish 400 → 可声明不可执行语义化文案（T5）', async () => {
+    const { wrapper } = makeWorkbench('wf')
+    await flushPromises()
+    const { publishWorkflowDefinition } = await import('../../services/rebuild/workflowApi')
+    vi.mocked(publishWorkflowDefinition).mockRejectedValueOnce(
+      new ContractApiError({ httpStatus: 400, code: 'WF_GATE_REJECTED', msg: '依赖节点缺失' }),
+    )
+
+    await wrapper.findAll('.wf-btn').at(2)!.trigger('click')
+    const { ElMessage } = await import('element-plus')
+    expect(ElMessage.error).toHaveBeenCalledWith('发布被校验闸门拒绝（可声明不可执行）：依赖节点缺失')
   })
 
   it('用例6 节点配置闭环：nodeClick → NodeConfigPanel 预填 → 保存回写 params + 面板关闭', async () => {
