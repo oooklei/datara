@@ -1,0 +1,142 @@
+{
+  "ticket": "COMP-E2E-03",
+  "base": "http://192.168.1.9:18091",
+  "validation_token": {
+    "issued": true,
+    "expires_in": 900,
+    "persisted": false
+  },
+  "reused": {
+    "project_id": 26,
+    "source_workflow_id": 25
+  },
+  "health": "ok",
+  "resource_versions": {
+    "sql": {
+      "resource_id": 7,
+      "version": 1,
+      "digest": "c1e20c9477db99477d5ade34f214eb7298a1adfed0f1229538ac6ee015300c7f",
+      "size_bytes": 27
+    },
+    "python": {
+      "resource_id": 8,
+      "version": 1,
+      "digest": "fe536d60f409d037efbe0f72c98da267814c734b1e3f66a93f6e6c6e46e34f31",
+      "size_bytes": 28
+    },
+    "shell": {
+      "resource_id": 9,
+      "version": 1,
+      "digest": "2f475d4734b5d884e2760ddbc750cd06a72ed19c49b7b3b65f74d397e027c712",
+      "size_bytes": 25
+    }
+  },
+  "isolated_workflow_id": 33,
+  "dependency_id": 5,
+  "variable_precedence": {
+    "node": {
+      "scope": "task",
+      "value": "node-value"
+    },
+    "workflow": {
+      "scope": "workflow",
+      "value": "workflow-value"
+    },
+    "environment_group": {
+      "scope": "env",
+      "value": "env-value"
+    },
+    "global": {
+      "scope": "global",
+      "value": "global-value"
+    }
+  },
+  "resource_bindings": {
+    "sql": 16,
+    "python": 17,
+    "shell": 18
+  },
+  "snapshot": {
+    "snapshot_id": 13,
+    "digest": "e65ad86a40d3b4c34e60048e2d66eea44f8b81acf817c27487070efccb2bc1ab",
+    "node_count": 5,
+    "resource_refs_pinned": true
+  },
+  "runs": {
+    "success": {
+      "instance_id": 11,
+      "status": "SUCCEEDED",
+      "task_statuses": {
+        "sql_resource": "SUCCEEDED",
+        "python_resource": "SUCCEEDED",
+        "shell_resource": "SUCCEEDED",
+        "variable_probe": "SUCCEEDED",
+        "dependency_gate": "SUCCEEDED"
+      },
+      "output_checks": {
+        "sql_row_count": 1,
+        "python_stdout": "resource-python-e2e",
+        "shell_stdout": "resource-shell-e2e",
+        "variable_probe_stdout": "NODE=node-value|WORKFLOW=workflow-value|ENV=env-value|GLOBAL=global-value"
+      },
+      "runtime_snapshot": {
+        "expression": "${task.c3_164802}",
+        "scope": "task",
+        "name": "c3_164802",
+        "resolved_value": "node-value",
+        "value_type": "string",
+        "source": "task.c3_164802",
+        "resolved_at": "2026-10-26T00:48:06",
+        "attempt_no": 1
+      },
+      "run_stats": {
+        "success_count": 5,
+        "failure_count": 0,
+        "skipped_count": 0,
+        "total_count": 5
+      },
+      "dependency_log_verified": true
+    },
+    "failure": {
+      "instance_id": 12,
+      "status": "FAILED",
+      "task_statuses": {
+        "sql_resource": "SUCCEEDED",
+        "python_resource": "SUCCEEDED",
+        "shell_resource": "SUCCEEDED",
+        "variable_probe": "SUCCEEDED",
+        "dependency_gate": "FAILED"
+      },
+      "output_checks": {
+        "sql_row_count": 1,
+        "python_stdout": "resource-python-e2e",
+        "shell_stdout": "resource-shell-e2e",
+        "variable_probe_stdout": "NODE=node-value|WORKFLOW=workflow-value|ENV=env-value|GLOBAL=global-value"
+      },
+      "runtime_snapshot": {
+        "expression": "${task.c3_164802}",
+        "scope": "task",
+        "name": "c3_164802",
+        "resolved_value": "node-value",
+        "value_type": "string",
+        "source": "task.c3_164802",
+        "resolved_at": "2026-10-26T00:48:07",
+        "attempt_no": 1
+      },
+      "run_stats": {
+        "success_count": 4,
+        "failure_count": 1,
+        "skipped_count": 0,
+        "total_count": 5
+      },
+      "dependency_log_verified": true
+    }
+  },
+  "result": "PASS",
+  "variable_cleanup": {
+    "deleted": 4,
+    "errors": []
+  },
+  "logout": true,
+  "token_revoked": true
+}

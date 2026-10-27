@@ -1,0 +1,7 @@
+Pytest: 21 passed, 4 failed
+
+Failures:
+     tests\test_sql_worker_executor.py:340: in test_transaction_control_detection_understands_mysql_co...
+     assert sql_executor._is_transaction_control_statement(statement) is expected
+     E   AssertionError: assert False is True
+[full output: "$HOME/AppData/Local/rtk/tee/1792896811_pytest.log"]

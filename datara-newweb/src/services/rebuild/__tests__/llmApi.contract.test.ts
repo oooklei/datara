@@ -66,6 +66,19 @@ function installFetch(dataFor: (url: string, init?: RequestInit) => unknown): Re
 }
 
 describe('15.6 rebuild llm-models contract (§5E)', () => {
+  it('does not apply the generic 15-second HTTP timeout to an external provider probe', async () => {
+    vi.useFakeTimers()
+    globalThis.fetch = vi.fn((_input: RequestInfo | URL, init?: RequestInit) => new Promise<Response>((resolve, reject) => {
+      init?.signal?.addEventListener('abort', () => reject(new DOMException('aborted', 'AbortError')))
+      setTimeout(() => resolve(new Response(JSON.stringify({ code: 0, msg: 'success', data: testResultWire }), { status: 200 })), 20_000)
+    })) as typeof fetch
+    const probe = llmApi.testModel(3)
+    await vi.advanceTimersByTimeAsync(15_100)
+    await vi.advanceTimersByTimeAsync(5_000)
+    await expect(probe).resolves.toMatchObject({ status: 'success' })
+    vi.useRealTimers()
+  })
+
   it('freezes exactly the six §5E methods', () => {
     expect(LLM_CONTRACT_METHODS).toEqual(['list', 'create', 'update', 'remove', 'testModel', 'setDefault'])
     expect(Object.keys(llmApi)).toEqual([...LLM_CONTRACT_METHODS])

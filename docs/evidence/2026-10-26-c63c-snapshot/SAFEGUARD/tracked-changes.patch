@@ -1,0 +1,1035 @@
+diff --git a/datara-newweb/.gitignore b/datara-newweb/.gitignore
+index de1ecc38..42e43336 100644
+--- a/datara-newweb/.gitignore
++++ b/datara-newweb/.gitignore
+@@ -7,5 +7,12 @@ vite.config.js
+ vite.config.d.ts
+ vitest.config.js
+ vitest.config.d.ts
++playwright-report/
++test-results/
++playwright.config.js
++playwright.config.d.ts
++e2e/**/*.js
++e2e/**/*.d.ts
++e2e/evidence/
+ .idea/
+ .vscode/
+diff --git a/datara-newweb/COPY_LEDGER.md b/datara-newweb/COPY_LEDGER.md
+index 27e6229e..c4188800 100644
+--- a/datara-newweb/COPY_LEDGER.md
++++ b/datara-newweb/COPY_LEDGER.md
+@@ -131,3 +131,31 @@
+ | B4-T1 | `datara-newweb/src/views/__tests__/consistencyCheckView.contract.test.ts` | `4d6e8d78defccfae336dfac9fdcb474b77afcad65182627df3c92ad25f2f60bf` | 新增结果抽屉与指标跳转契约 |
+ | B4-T2 | `datara-newweb/src/views/__tests__/indicatorBoardView.contract.test.ts` | `08b845dad509a02ac88061ea24afa204587b70b66981e969ff0974282912f698` | 新增双入口导航契约 |
+ | B4-T3 | `datara-newweb/src/views/__tests__/sshNodeManagementView.contract.test.ts` | `712b8f6abfb0b3d7fc55d99482d38a971848fc31730a9b98d5a08fc0b386ad50` | 新增凭据默认掩码与编辑器显隐契约 |
++
++## FE-MERGE-B5 冲突件并集（2026-10-26）
++
++源根（只读）：`D:\需求\数据治理工具\Datara`。下列 SHA-256 均为 D-WIP 原始字节；目标端没有机械覆盖，而是在当前安全、鉴权和竞态契约上做语义并集。
++
++| 批次 | 源相对路径 | D-WIP SHA-256 | 目标处置 / 并集说明 |
++|---|---|---|---|
++| B5-01 | `datara-newweb/src/services/rebuild/syncComponentApi.ts` | `58bb6b1b22974adee919cf549f3842f0882397280dde5d35331cf2fbfee66cda` | 吸收共享 `http.request`、`preserveEnvelopeCode` 与五操作权限矩阵；保留 `SyncApiError` 领域错误、诊断透传、15 秒超时和内存 token 底座。 |
++| B5-T1 | `datara-newweb/src/services/rebuild/__tests__/syncComponentApi.contract.test.ts` | `83714a54150c9b256b439f4163ef345aa2dee947ee6c28d73a242bbaf8b6aeac` | 吸收权限面断言并强化为五个操作逐项精确映射；原请求路径、载荷、token 与诊断测试全部保留。 |
++| B5-02 | `datara-newweb/src/views/ide/IdeView.vue` | `bc0f72f9a9828f140d06c64da576fc112e8b3c03f6903c40ce1227dd2ed0a437` | 保留变量校验、现时值预览、补全、SQL 编辑执行和 metadata 请求序号守卫；仅将页内硬编码色值归一为 r6 共享主题令牌。 |
++| B5-03 | `datara-newweb/src/router/routes.ts` | `2d4ca5c799834ce2a77d665aacef0ab23755090bec7288289d5a3d0a5131a88c` | 保留现有路由集合与守卫边界；按用户裁定将 `/open/llm` 绑定 `views/system/llm-models/LlmModelsView.vue`、`/sec/audit` 绑定 `views/sec/AccessAuditView.vue`。两正本源文件 SHA 已登记于 B3-7/B3-10。 |
++
++B5 新增/调整的 IDE、路由与 B3 消费合同测试为目标端验证代码，不冒充 D-WIP 原件；RED/GREEN、全量测试、类型检查和差异核验见 `.codex-evidence/FE-MERGE-B5/implementation/`。
++
++## FE-MERGE-B6 测试资产筛选纳入（2026-10-26）
++
++源根（只读）：`D:\需求\数据治理工具\Datara`。以下 SHA-256 为 D-WIP 原始字节；目标测试保留业务闭环，但按现行安全裁定移除 localStorage token 注入，统一改为应用已有 `__DATARA_TEST_TOKEN__` 一次性内存通道与请求期鉴权头。生成物、报告和证据目录仅加忽略规则，不纳入仓库。
++
++| 批次 | 源相对路径 | D-WIP SHA-256 | 目标处置 / 筛选说明 |
++|---|---|---|---|
++| B6-01 | `datara-newweb/playwright.config.ts` | `03fc2b3da96cac415008fd3a1c82c0601f1cd2d8b7b165da2e2118096f28a801` | 保留 1.9/18091、单 worker、零重试；删除持久化 token 叙述，不启动本机 webServer |
++| B6-02 | `datara-newweb/e2e/llm-models.spec.ts` | `e3a90e8a93d843d08d5f878d9332dd04f2d94794f68d9491c0c1c3348a5eda89` | 保留配置/掩码/连通性/删除闭环；路由归一为 `/open/llm`；凭据仅运行时存在 |
++| B6-03 | `datara-newweb/e2e/qc.spec.ts` | `07ee38ff192135a7295d3df5ade5f7bd95296bc3e8b994111553c21dac3666ea` | 保留规则创建、structural 运行与项目上下文跳转；移除浏览器持久化读取 |
++| B6-04 | `datara-newweb/e2e/sshNode.spec.ts` | `c80d71d6459ea4989dc8c3d3443fb9718972d2d5575b08dc760b788457666bf2` | 保留创建、凭据遮罩、探测与删除；移除浏览器持久化读取 |
++| B6-05 | `datara-newweb/deploy/DEPLOY-1.9.md` | `f962a4746833db3fb09b755893acf84aa06f883bc52241f3bba543ec67809a4b` | 收敛为 1.9 隔离部署、SCP、短时内存鉴权与证据边界，清除旧本机运行口径 |
++| B6-T1 | 目标新增 `datara-newweb/e2e/support/auth.ts` | —（目标安全适配） | 登录 token 不入 URL/静态产物/报告/浏览器存储；document-start 内存注入后由应用消费并删除 |
++
++明确排除：`playwright-report/**`、`test-results/**`、`playwright.config.js`、`playwright.config.d.ts`、`e2e/**/*.js`、`e2e/**/*.d.ts`、`e2e/evidence/**`；对应精确规则见 `datara-newweb/.gitignore`。
+diff --git a/datara-newweb/src/components/DependencyNodeEditor.vue b/datara-newweb/src/components/DependencyNodeEditor.vue
+index 595e1623..d632254f 100644
+--- a/datara-newweb/src/components/DependencyNodeEditor.vue
++++ b/datara-newweb/src/components/DependencyNodeEditor.vue
+@@ -15,6 +15,7 @@ const emit = defineEmits<{ 'update:modelValue': [value: Record<string, unknown>]
+ const saving = ref(false)
+ const saved = ref(false)
+ const selector = computed(() => String(props.modelValue.dependent_execute ?? 'workflow'))
++const windowMode = computed(() => String(props.modelValue.window_mode ?? 'named') === 'range' ? 'range' : 'named')
+ 
+ function value(key: string, fallback: string | number = ''): string | number {
+   return props.modelValue[key] as string | number ?? fallback
+@@ -38,6 +39,27 @@ async function save() {
+     ElMessage.warning('指定任务依赖需要填写正整数任务编码')
+     return
+   }
++  const windowInput = windowMode.value === 'range'
++    ? (() => {
++        const beginOffset = Number(props.modelValue.begin_offset ?? 0)
++        const endOffset = Number(props.modelValue.end_offset ?? 0)
++        if (!Number.isInteger(beginOffset) || !Number.isInteger(endOffset) || endOffset < beginOffset) return null
++        return {
++          dateRange: {
++            periodType: String(props.modelValue.period_type ?? 'day') as 'hour' | 'day' | 'week' | 'month',
++            beginOffset,
++            endOffset,
++          },
++        }
++      })()
++    : {
++        cycle: String(props.modelValue.cycle ?? 'day') as 'hour' | 'day' | 'week' | 'month',
++        dateValue: String(props.modelValue.date_value ?? 'last1Days'),
++      }
++  if (windowInput === null) {
++    ElMessage.warning('相对窗口要求起止偏移为整数，且结束偏移不得早于开始偏移')
++    return
++  }
+ 
+   saving.value = true
+   saved.value = false
+@@ -60,8 +82,7 @@ async function save() {
+           selector: selectedScope,
+           upstreamWorkflowId,
+           upstreamTaskCode: taskCode,
+-          cycle: String(props.modelValue.cycle ?? 'day') as 'hour' | 'day' | 'week' | 'month',
+-          dateValue: String(props.modelValue.date_value ?? 'last1Days'),
++          ...windowInput,
+           dependResult: String(props.modelValue.depend_result ?? 'success') === 'failed' ? 'failed' : 'success',
+           parameterPassing: Boolean(props.modelValue.parameter_passing ?? false),
+         }],
+@@ -94,8 +115,16 @@ async function save() {
+     <label v-if="selector === 'task'">任务编码<input data-test="upstream-task" :value="value('upstream_task_code')" @input="update('upstream_task_code', ($event.target as HTMLInputElement).value)" /></label>
+     <label>组内关系<select :value="value('relation', 'AND')" @change="update('relation', ($event.target as HTMLSelectElement).value)"><option>AND</option><option>OR</option></select></label>
+     <label>组间关系<select :value="value('group_relation', 'AND')" @change="update('group_relation', ($event.target as HTMLSelectElement).value)"><option>AND</option><option>OR</option></select></label>
+-    <label>时间周期<select :value="value('cycle', 'day')" @change="update('cycle', ($event.target as HTMLSelectElement).value)"><option value="hour">小时</option><option value="day">天</option><option value="week">周</option><option value="month">月</option></select></label>
+-    <label>命名窗口<input :value="value('date_value', 'last1Days')" @input="update('date_value', ($event.target as HTMLInputElement).value)" /></label>
++    <label>时间窗模式<select data-test="dependency-window-mode" :value="windowMode" @change="update('window_mode', ($event.target as HTMLSelectElement).value)"><option value="named">命名窗口</option><option value="range">相对范围</option></select></label>
++    <template v-if="windowMode === 'named'">
++      <label>时间周期<select :value="value('cycle', 'day')" @change="update('cycle', ($event.target as HTMLSelectElement).value)"><option value="hour">小时</option><option value="day">天</option><option value="week">周</option><option value="month">月</option></select></label>
++      <label>命名窗口<input :value="value('date_value', 'last1Days')" @input="update('date_value', ($event.target as HTMLInputElement).value)" /></label>
++    </template>
++    <template v-else>
++      <label>范围周期<select :value="value('period_type', 'day')" @change="update('period_type', ($event.target as HTMLSelectElement).value)"><option value="hour">小时</option><option value="day">天</option><option value="week">周</option><option value="month">月</option></select></label>
++      <label>开始偏移<input type="number" step="1" :value="value('begin_offset', 0)" @input="update('begin_offset', Number(($event.target as HTMLInputElement).value))" /></label>
++      <label>结束偏移<input type="number" step="1" :value="value('end_offset', 0)" @input="update('end_offset', Number(($event.target as HTMLInputElement).value))" /></label>
++    </template>
+     <label>期望结果<select :value="value('depend_result', 'success')" @change="update('depend_result', ($event.target as HTMLSelectElement).value)"><option value="success">成功</option><option value="failed">失败</option></select></label>
+     <label>参数透传<input type="checkbox" :checked="Boolean(value('parameter_passing', 0))" @change="update('parameter_passing', ($event.target as HTMLInputElement).checked)" /></label>
+     <label>检查周期(秒)<input type="number" min="1" :value="value('check_interval_seconds', 10)" @input="update('check_interval_seconds', Number(($event.target as HTMLInputElement).value))" /></label>
+diff --git a/datara-newweb/src/components/ScriptResourceEditor.vue b/datara-newweb/src/components/ScriptResourceEditor.vue
+index 6c4f2fc1..83e749bb 100644
+--- a/datara-newweb/src/components/ScriptResourceEditor.vue
++++ b/datara-newweb/src/components/ScriptResourceEditor.vue
+@@ -29,6 +29,8 @@ const loading = ref(false)
+ const binding = ref(false)
+ const error = ref('')
+ const status = ref('')
++let resourceSeq = 0
++let versionSeq = 0
+ 
+ const sourceKey = computed<'sql' | 'script'>(() => props.kind === 'sql' ? 'sql' : 'script')
+ const inlineValue = computed(() => String(props.modelValue[sourceKey.value] ?? ''))
+@@ -58,30 +60,43 @@ function changeMode() {
+ }
+ 
+ async function loadResources() {
++  const seq = ++resourceSeq
++  versionSeq += 1
++  resources.value = []
++  versions.value = []
++  resourceId.value = ''
++  resourceVersion.value = ''
+   loading.value = true
+   error.value = ''
+   try {
+-    resources.value = await api.listResources(props.projectId, props.kind)
++    const items = await api.listResources(props.projectId, props.kind)
++    if (seq !== resourceSeq) return
++    resources.value = items
+   } catch (cause) {
+-    error.value = cause instanceof Error ? cause.message : '资源加载失败'
++    if (seq === resourceSeq) error.value = cause instanceof Error ? cause.message : '资源加载失败'
+   } finally {
+-    loading.value = false
++    if (seq === resourceSeq) loading.value = false
+   }
+ }
+ 
+ async function loadVersions() {
++  const seq = ++versionSeq
+   versions.value = []
+   resourceVersion.value = ''
+   const id = Number(resourceId.value)
+-  if (!Number.isInteger(id) || id <= 0) return
++  if (!Number.isInteger(id) || id <= 0) return false
+   loading.value = true
+   error.value = ''
+   try {
+-    versions.value = await api.listResourceVersions(id, props.projectId)
++    const items = await api.listResourceVersions(id, props.projectId)
++    if (seq !== versionSeq || Number(resourceId.value) !== id) return false
++    versions.value = items
++    return true
+   } catch (cause) {
+-    error.value = cause instanceof Error ? cause.message : '资源版本加载失败'
++    if (seq === versionSeq) error.value = cause instanceof Error ? cause.message : '资源版本加载失败'
++    return false
+   } finally {
+-    loading.value = false
++    if (seq === versionSeq) loading.value = false
+   }
+ }
+ 
+@@ -162,7 +177,7 @@ function hydrateSelection() {
+   const version = Number(candidate.version)
+   if (!Number.isInteger(id) || id <= 0 || !Number.isInteger(version) || version <= 0) return
+   resourceId.value = String(id)
+-  void loadVersions().then(() => { resourceVersion.value = String(version) })
++  void loadVersions().then((applied) => { if (applied) resourceVersion.value = String(version) })
+ }
+ 
+ watch(() => [props.projectId, props.kind] as const, () => { void loadResources() })
+diff --git a/datara-newweb/src/components/VariableManagementDialog.vue b/datara-newweb/src/components/VariableManagementDialog.vue
+index e7915fc2..65dfc98f 100644
+--- a/datara-newweb/src/components/VariableManagementDialog.vue
++++ b/datara-newweb/src/components/VariableManagementDialog.vue
+@@ -57,13 +57,20 @@ interface Row {
+ const rows = ref<Row[]>([])
+ const loading = ref(false)
+ const loadError = ref('')
++let loadSeq = 0
+ 
+ async function loadRows(): Promise<void> {
+-  if (props.projectId === undefined) return
+-  loading.value = true
++  const seq = ++loadSeq
++  rows.value = []
+   loadError.value = ''
++  if (props.projectId === undefined) {
++    loading.value = false
++    return
++  }
++  loading.value = true
+   try {
+     const items = await api.listVariables(props.projectId, ['global', 'project'])
++    if (seq !== loadSeq) return
+     rows.value = items.map((i) => ({
+       scope: i.scope,
+       name: i.name,
+@@ -73,22 +80,12 @@ async function loadRows(): Promise<void> {
+       description: i.description ?? '',
+     }))
+   } catch (e) {
+-    loadError.value = '变量列表加载失败：' + (e instanceof Error ? e.message : String(e))
++    if (seq === loadSeq) loadError.value = '变量列表加载失败：' + (e instanceof Error ? e.message : String(e))
+   } finally {
+-    loading.value = false
++    if (seq === loadSeq) loading.value = false
+   }
+ }
+ 
+-watch(
+-  () => [props.modelValue, props.projectId] as const,
+-  () => {
+-    if (!props.modelValue) return
+-    resetForm()
+-    void loadRows()
+-  },
+-  { immediate: true },
+-)
+-
+ const form = reactive({
+   scope: 'global',
+   name: '',
+@@ -112,6 +109,16 @@ function resetForm(): void {
+   formError.value = ''
+ }
+ 
++watch(
++  () => [props.modelValue, props.projectId] as const,
++  () => {
++    if (!props.modelValue) return
++    resetForm()
++    void loadRows()
++  },
++  { immediate: true },
++)
++
+ function close(): void {
+   if (submitting.value) return
+   visible.value = false
+diff --git a/datara-newweb/src/components/__tests__/dependencyNodeEditor.contract.test.ts b/datara-newweb/src/components/__tests__/dependencyNodeEditor.contract.test.ts
+index 4169e859..457d5d3b 100644
+--- a/datara-newweb/src/components/__tests__/dependencyNodeEditor.contract.test.ts
++++ b/datara-newweb/src/components/__tests__/dependencyNodeEditor.contract.test.ts
+@@ -58,4 +58,30 @@ describe('DependencyNodeEditor contract', () => {
+     expect(warning).toHaveBeenCalledWith('指定任务依赖需要填写正整数任务编码')
+     expect(saveDependency).toHaveBeenCalledTimes(1)
+   })
++
++  it('saves the relative range window without also sending the named window', async () => {
++    const wrapper = mount(DependencyNodeEditor, {
++      props: {
++        projectId: 7,
++        workflowId: 12,
++        taskId: 'dep_1',
++        modelValue: {
++          upstream_workflow_id: 9,
++          window_mode: 'range',
++          period_type: 'day',
++          begin_offset: -2,
++          end_offset: 0,
++        },
++      },
++    })
++
++    await wrapper.get('[data-test="save-dependency"]').trigger('click')
++    await flushPromises()
++    const condition = saveDependency.mock.calls[0][0].groups[0].conditions[0]
++    expect(condition).toEqual(expect.objectContaining({
++      dateRange: { periodType: 'day', beginOffset: -2, endOffset: 0 },
++    }))
++    expect(condition).not.toHaveProperty('cycle')
++    expect(condition).not.toHaveProperty('dateValue')
++  })
+ })
+diff --git a/datara-newweb/src/components/__tests__/scriptResourceEditor.contract.test.ts b/datara-newweb/src/components/__tests__/scriptResourceEditor.contract.test.ts
+index 363e08ab..8f70f781 100644
+--- a/datara-newweb/src/components/__tests__/scriptResourceEditor.contract.test.ts
++++ b/datara-newweb/src/components/__tests__/scriptResourceEditor.contract.test.ts
+@@ -106,4 +106,24 @@ describe('script resource editor', () => {
+     expect((wrapper.find('[data-version-select]').element as HTMLSelectElement).value).toBe('4')
+     expect(bindResourceVersion).not.toHaveBeenCalled()
+   })
++
++  it('项目切换后丢弃旧项目迟到的资源清单', async () => {
++    let resolveOld!: (items: Array<{ resourceId: number; name: string; kind: string; sizeBytes: number; latestVersion: number }>) => void
++    listResources
++      .mockImplementationOnce(() => new Promise((resolve) => { resolveOld = resolve }))
++      .mockResolvedValueOnce([{ resourceId: 22, name: 'project-two.py', kind: 'python', sizeBytes: 12, latestVersion: 1 }])
++    const wrapper = mount(ScriptResourceEditor, {
++      props: { projectId: 1, workflowId: 11, workflowVersion: 1, taskId: 'python_1', kind: 'python', modelValue: { sourceMode: 'resource' } },
++      global: { stubs: { VariableReferenceInput: variableInputStub } },
++    })
++    await wrapper.setProps({ projectId: 2 })
++    await flushPromises()
++    expect(wrapper.find('[data-resource-select]').text()).toContain('project-two.py')
++
++    resolveOld([{ resourceId: 11, name: 'project-one.py', kind: 'python', sizeBytes: 12, latestVersion: 1 }])
++    await flushPromises()
++    expect(wrapper.find('[data-resource-select]').text()).toContain('project-two.py')
++    expect(wrapper.find('[data-resource-select]').text()).not.toContain('project-one.py')
++  })
++
+ })
+diff --git a/datara-newweb/src/router/__tests__/routes.contract.test.ts b/datara-newweb/src/router/__tests__/routes.contract.test.ts
+index f13dd1f2..140cf180 100644
+--- a/datara-newweb/src/router/__tests__/routes.contract.test.ts
++++ b/datara-newweb/src/router/__tests__/routes.contract.test.ts
+@@ -20,6 +20,8 @@ import TaskCenterView from '../../views/TaskCenterView.vue'
+ import SshNodeManagementView from '../../views/SshNodeManagementView.vue'
+ import RuntimeNodeView from '../../views/depops/RuntimeNodeView.vue'
+ import MonitorView from '../../views/depops/MonitorView.vue'
++import AccessAuditView from '../../views/sec/AccessAuditView.vue'
++import LlmModelsView from '../../views/system/llm-models/LlmModelsView.vue'
+ import routesSource from '../routes.ts?raw'
+ import routerSource from '../index.ts?raw'
+ import viteSource from '/vite.config.ts?raw'
+@@ -99,6 +101,11 @@ describe('1.4 routes 负断言（WBS 1.4 / 增量 1 退出标准 2）', () => {
+     expect(monitor?.component).toBe(MonitorView)
+   })
+ 
++  it('LLM 与访问审计路由绑定归一后的唯一正本', () => {
++    expect(routes.find((r) => r.path === '/open/llm')?.component).toBe(LlmModelsView)
++    expect(routes.find((r) => r.path === '/sec/audit')?.component).toBe(AccessAuditView)
++  })
++
+   it('无任何路由携带 demo:true 标记（零 demo 路由）', () => {
+     const demoRoutes = routes.filter((r) => (r as { demo?: boolean }).demo === true)
+     expect(demoRoutes).toHaveLength(0)
+diff --git a/datara-newweb/src/router/routes.ts b/datara-newweb/src/router/routes.ts
+index eaf869c2..1cb7672c 100644
+--- a/datara-newweb/src/router/routes.ts
++++ b/datara-newweb/src/router/routes.ts
+@@ -30,7 +30,7 @@ import RuntimeNodeView from '../views/depops/RuntimeNodeView.vue'
+ import MonitorView from '../views/depops/MonitorView.vue'
+ import ApiKeyManagementView from '../views/ApiKeyManagementView.vue'
+ import ApiManagementView from '../views/ApiManagementView.vue'
+-import LlmModelManagementView from '../views/LlmModelManagementView.vue'
++import LlmModelsView from '../views/system/llm-models/LlmModelsView.vue'
+ import DataSourceListView from '../views/datasource/DataSourceListView.vue'
+ import IdeView from '../views/ide/IdeView.vue'
+ import MetadataCatalogView from '../views/meta/MetadataCatalogView.vue'
+@@ -42,7 +42,7 @@ import IndicatorListView from '../views/ind/IndicatorListView.vue'
+ import IndicatorBoardView from '../views/ind/IndicatorBoardView.vue'
+ import ConsistencyCheckView from '../views/ind/ConsistencyCheckView.vue'
+ import PermissionMatrixView from '../views/PermissionMatrixView.vue'
+-import SecAuditView from '../views/SecAuditView.vue'
++import AccessAuditView from '../views/sec/AccessAuditView.vue'
+ import QualityRuleView from '../views/qc/QualityRuleView.vue'
+ import QualityTaskView from '../views/qc/QualityTaskView.vue'
+ import QualityReadOnlyView from '../views/qc/QualityReadOnlyView.vue'
+@@ -60,7 +60,7 @@ export const routes: RouteRecordRaw[] = [
+   { path: '/dep/monitor', name: 'dep-monitor', component: MonitorView },
+   { path: '/open/key', name: 'open-key', component: ApiKeyManagementView },
+   { path: '/open/api', name: 'open-api', component: ApiManagementView },
+-  { path: '/open/llm', name: 'open-llm', component: LlmModelManagementView },
++  { path: '/open/llm', name: 'open-llm', component: LlmModelsView },
+   { path: '/ds/list', name: 'ds-list', component: DataSourceListView },
+   { path: '/ide', name: 'sql-ide', component: IdeView },
+   { path: '/model/list', name: 'dwModeling', component: ModelListView },
+@@ -73,7 +73,7 @@ export const routes: RouteRecordRaw[] = [
+   { path: '/ind/board', name: 'ind-board', component: IndicatorBoardView },
+   { path: '/ind/consistency', name: 'ind-consistency', component: ConsistencyCheckView },
+   { path: '/sec/perm', name: 'sec-perm', component: PermissionMatrixView },
+-  { path: '/sec/audit', name: 'sec-audit', component: SecAuditView },
++  { path: '/sec/audit', name: 'sec-audit', component: AccessAuditView },
+   { path: '/qc/rule', name: 'qc-rule', component: QualityRuleView },
+   { path: '/qc/task', name: 'qc-task', component: QualityTaskView },
+   { path: '/qc/exception', name: 'qc-exception', component: QualityReadOnlyView, props: { kind: 'exceptions' } },
+diff --git a/datara-newweb/src/services/rebuild/__tests__/syncComponentApi.contract.test.ts b/datara-newweb/src/services/rebuild/__tests__/syncComponentApi.contract.test.ts
+index 92078383..65b89b85 100644
+--- a/datara-newweb/src/services/rebuild/__tests__/syncComponentApi.contract.test.ts
++++ b/datara-newweb/src/services/rebuild/__tests__/syncComponentApi.contract.test.ts
+@@ -1,5 +1,5 @@
+ import { afterEach, describe, expect, it, vi } from 'vitest'
+-import { createSyncComponentContract, SyncApiError, suggestInitialMapping, type SyncColumn } from '../syncComponentApi'
++import { createSyncComponentContract, SYNC_PERMISSION_MATRIX, SyncApiError, suggestInitialMapping, type SyncColumn } from '../syncComponentApi'
+ 
+ const source = { datasource_id: 7, schema: 'sales', object: 'orders' }
+ const target = { datasource_id: 8, schema: 'dw', object: 'orders_v2' }
+@@ -11,6 +11,16 @@ function ok(data: unknown): Response {
+ afterEach(() => vi.unstubAllGlobals())
+ 
+ describe('R4 SYNC API adapter', () => {
++  it('registers every operation permission on the shared envelope surface', () => {
++    expect(SYNC_PERMISSION_MATRIX).toEqual({
++      getCapabilities: 'VIEW_ALL',
++      explore: 'VIEW_ALL',
++      autoMap: 'EDIT_DEFINITION',
++      savePlan: 'EDIT_DEFINITION',
++      listPlans: 'VIEW_ALL',
++    })
++  })
++
+   it('gets capabilities and explores both the schema and wire fields', async () => {
+     vi.stubGlobal('localStorage', { getItem: (key: string) => key === 'datara_token' ? 'validation-token' : null })
+     const fetchMock = vi.fn()
+diff --git a/datara-newweb/src/services/rebuild/syncComponentApi.ts b/datara-newweb/src/services/rebuild/syncComponentApi.ts
+index d8df8f40..5833b443 100644
+--- a/datara-newweb/src/services/rebuild/syncComponentApi.ts
++++ b/datara-newweb/src/services/rebuild/syncComponentApi.ts
+@@ -9,10 +9,9 @@
+  * 横幅状态词表见 services/rebuild/bannerStatus.ts。
+  */
+ 
+-import { getToken } from '../http'
++import { ContractApiError, request as httpRequest } from '../http'
+ 
+-const BASE = '/api/v1/rebuild/sync'
+-const TIMEOUT_MS = 15000
++const BASE = '/rebuild/sync'
+ 
+ export interface SyncObjectRef {
+   datasource_id: number
+@@ -81,6 +80,14 @@ export interface SyncContract {
+   listPlans(projectId: number, workflowId: number, workflowVersion: number): Promise<SyncPlan[]>
+ }
+ 
++export const SYNC_PERMISSION_MATRIX = {
++  getCapabilities: 'VIEW_ALL',
++  explore: 'VIEW_ALL',
++  autoMap: 'EDIT_DEFINITION',
++  savePlan: 'EDIT_DEFINITION',
++  listPlans: 'VIEW_ALL',
++} as const satisfies Record<keyof SyncContract, 'VIEW_ALL' | 'EDIT_DEFINITION'>
++
+ export class SyncApiError extends Error {
+   readonly status: number
+   readonly code: number | string
+@@ -95,37 +102,15 @@ export class SyncApiError extends Error {
+   }
+ }
+ 
+-async function request<T>(path: string, init?: RequestInit): Promise<T> {
+-  const controller = new AbortController()
+-  const timeout = setTimeout(() => controller.abort(), TIMEOUT_MS)
++async function request<T>(path: string, method = 'GET', body?: unknown): Promise<T> {
+   try {
+-    const headers: Record<string, string> = { 'Content-Type': 'application/json' }
+-    const token = getToken()
+-    if (token) headers.token = token
+-    const response = await fetch(`${BASE}${path}`, {
+-      ...init,
+-      headers: { ...headers, ...(init?.headers as Record<string, string> | undefined) },
+-      signal: controller.signal,
+-    })
+-    const envelope = await response.json().catch(() => null) as {
+-      code?: number | string
+-      msg?: string
+-      data?: T | null
+-    } | null
+-    if (!envelope) throw new SyncApiError(response.status, response.status, `无法解析 SYNC 响应（HTTP ${response.status}）`)
+-    const success = response.ok && (envelope.code === 0 || envelope.code === '0')
+-    if (!success) {
+-      const data = envelope.data as { diagnostics?: Array<Record<string, unknown>> } | null | undefined
+-      throw new SyncApiError(response.status, envelope.code ?? response.status, envelope.msg ?? 'SYNC 请求失败', data?.diagnostics ?? [])
+-    }
+-    return envelope.data as T
++    return await httpRequest<T>(`${BASE}${path}`, { method, json: body, preserveEnvelopeCode: true })
+   } catch (error) {
+-    if (error instanceof DOMException && error.name === 'AbortError') {
+-      throw new SyncApiError(0, 'TIMEOUT', `SYNC 请求超时（${TIMEOUT_MS / 1000}s）`)
++    if (error instanceof ContractApiError) {
++      const raw = error.raw as { data?: { diagnostics?: Array<Record<string, unknown>> } } | undefined
++      throw new SyncApiError(error.httpStatus, error.code, error.message, raw?.data?.diagnostics ?? [])
+     }
+     throw error
+-  } finally {
+-    clearTimeout(timeout)
+   }
+ }
+ 
+@@ -143,12 +128,10 @@ export function createSyncComponentContract(): SyncContract {
+       return request<SyncExploreResult>(`/explore?${query}`)
+     },
+     autoMap: async (projectId, source, target) => {
+-      const result = await request<{ mappings: SyncMapping[] }>('/mappings/auto', {
+-        method: 'POST', body: JSON.stringify({ project_id: projectId, source, target }),
+-      })
++      const result = await request<{ mappings: SyncMapping[] }>('/mappings/auto', 'POST', { project_id: projectId, source, target })
+       return result.mappings
+     },
+-    savePlan: (plan) => request('/plans', { method: 'POST', body: JSON.stringify(plan) }),
++    savePlan: (plan) => request('/plans', 'POST', plan),
+     listPlans: async (projectId, workflowId, workflowVersion) => {
+       const query = new URLSearchParams({
+         project_id: String(projectId), workflow_id: String(workflowId), workflow_version: String(workflowVersion),
+diff --git a/datara-newweb/src/views/__tests__/feMergeB3Assets.contract.test.ts b/datara-newweb/src/views/__tests__/feMergeB3Assets.contract.test.ts
+index a0db079c..d2b32c09 100644
+--- a/datara-newweb/src/views/__tests__/feMergeB3Assets.contract.test.ts
++++ b/datara-newweb/src/views/__tests__/feMergeB3Assets.contract.test.ts
+@@ -44,16 +44,10 @@ describe('FE-MERGE-B3 asset intake', () => {
+     expect(routesSource).not.toContain("../views/ResourceManagementView.vue")
+   })
+ 
+-  it('leaves B3 route normalization for B5 instead of claiming early consumption', () => {
+-    for (const deferredView of [
+-      '../views/open/ApiManagementView.vue',
+-      '../views/open/ApiKeyManagementView.vue',
+-      '../views/sec/AccessAuditView.vue',
+-      '../views/system/llm-models/LlmModelsView.vue',
+-    ]) {
+-      expect(routesSource).not.toContain(deferredView)
+-    }
+-    expect(ledgerSource).toContain('路由归一与消费接线属于 FE-MERGE-B5 待办')
++  it('binds the B5-normalized LLM and access-audit canonical views', () => {
++    expect(routesSource).toContain("../views/sec/AccessAuditView.vue")
++    expect(routesSource).toContain("../views/system/llm-models/LlmModelsView.vue")
++    expect(ledgerSource).toContain('FE-MERGE-B5 冲突件并集')
+   })
+ 
+   it('records the D-drive source root, relative paths and SHA-256 for all 11 assets', () => {
+diff --git a/datara-newweb/src/views/__tests__/ideView.contract.test.ts b/datara-newweb/src/views/__tests__/ideView.contract.test.ts
+index f8e66ebf..b079b36e 100644
+--- a/datara-newweb/src/views/__tests__/ideView.contract.test.ts
++++ b/datara-newweb/src/views/__tests__/ideView.contract.test.ts
+@@ -1,6 +1,7 @@
+ import { flushPromises, mount } from '@vue/test-utils'
+ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+ import View from '../ide/IdeView.vue'
++import ideSource from '../ide/IdeView.vue?raw'
+ 
+ const router = vi.hoisted(() => ({
+   route: { params: {} as Record<string, unknown>, query: {} as Record<string, unknown> },
+@@ -134,15 +135,43 @@ function dispatch(type: string, payload: unknown): void {
+ }
+ 
+ describe('/ide 数据开发 IDE 只读态（增量 11/R5-A）', () => {
++  it('uses the shared r6 theme tokens instead of page-local hex colors', () => {
++    expect(ideSource).not.toMatch(/#[0-9a-fA-F]{3,8}\b/)
++    expect(ideSource).toContain('var(--')
++  })
++
+   it('renders project picker and skips the query when no project is in context', async () => {
+     const w = mount(View)
+     await flushPromises()
+     expect(w.find('[data-project-select]').exists()).toBe(true)
++    expect(w.find('[data-variable-manage]').attributes('disabled')).toBeDefined()
+     expect(w.find('[data-no-project]').exists()).toBe(true)
+     expect(w.find('[data-object-panel]').exists()).toBe(false)
+     expect(spies.listDatasources).not.toHaveBeenCalled()
+   })
+ 
++  it('opens variable management with the active project and closes through v-model', async () => {
++    router.route.params.projectId = '1'
++    const w = mount(View, {
++      global: {
++        stubs: {
++          VariableManagementDialog: {
++            props: ['modelValue', 'projectId'],
++            emits: ['update:modelValue'],
++            template: '<div v-if="modelValue" data-variable-management-dialog-stub :data-project-id="projectId"><button data-close-variable-management @click="$emit(\'update:modelValue\', false)">关闭</button></div>',
++          },
++        },
++      },
++    })
++    await flushPromises()
++
++    expect(w.find('[data-variable-management-dialog-stub]').exists()).toBe(false)
++    await w.find('[data-variable-manage]').trigger('click')
++    expect(w.find('[data-variable-management-dialog-stub]').attributes('data-project-id')).toBe('1')
++    await w.find('[data-close-variable-management]').trigger('click')
++    expect(w.find('[data-variable-management-dialog-stub]').exists()).toBe(false)
++  })
++
+   it('lists datasources for the project carried by route params', async () => {
+     router.route.params.projectId = '1'
+     const w = mount(View)
+diff --git a/datara-newweb/src/views/__tests__/lineageAnalysisView.contract.test.ts b/datara-newweb/src/views/__tests__/lineageAnalysisView.contract.test.ts
+index 5bdfbd9b..0d18f42d 100644
+--- a/datara-newweb/src/views/__tests__/lineageAnalysisView.contract.test.ts
++++ b/datara-newweb/src/views/__tests__/lineageAnalysisView.contract.test.ts
+@@ -150,4 +150,68 @@ describe('/meta/lineage 血缘分析页（增量 14）', () => {
+     expect(w.find('[role=alert]').exists()).toBe(false)
+     expect(w.find('[data-lineage-graph]').exists()).toBe(false)
+   })
++
++  it('drops old project assets before a replacement project asset request fails', async () => {
++    let rejectP2!: (reason: Error) => void
++    vi.mocked(listProjects).mockResolvedValue({ total: 2, list: [{ id: 1, name: 'P1' }, { id: 2, name: 'P2' }] })
++    vi.mocked(governanceApi.listAssets).mockImplementation((projectId) => projectId === 1
++      ? Promise.resolve({ total: 1, page: 1, pageSize: 50, list: [asset] })
++      : new Promise((_resolve, reject) => { rejectP2 = reject }))
++    vi.mocked(governanceApi.getLineage).mockResolvedValue(graph)
++    const w = mount(View)
++    await flushPromises()
++    await w.find('[data-project-select]').setValue('1')
++    await flushPromises()
++    await w.find('[data-asset-select]').setValue('9')
++    await flushPromises()
++    expect(governanceApi.getLineage).toHaveBeenCalledTimes(1)
++
++    await w.find('[data-project-select]').setValue('2')
++    expect(w.find('[data-asset-select] option[value="9"]').exists()).toBe(false)
++    expect(w.find<HTMLSelectElement>('[data-asset-select]').element.value).toBe('')
++    rejectP2(new Error('new project assets failed'))
++    await flushPromises()
++
++    expect(w.find('[role=alert]').text()).toContain('new project assets failed')
++    expect(w.find('[data-asset-select] option[value="9"]').exists()).toBe(false)
++    expect(governanceApi.getLineage).toHaveBeenCalledTimes(1)
++  })
++
++  it.each(['success', 'failure'] as const)(
++    'invalidates a pending asset-list %s when the project context becomes empty',
++    async (outcome) => {
++      let resolveOld!: (value: { total: number; page: number; pageSize: number; list: typeof asset[] }) => void
++      let rejectOld!: (reason: Error) => void
++      router.route.query = { assetId: '9' }
++      vi.mocked(governanceApi.listAssets).mockImplementation(() => new Promise((resolve, reject) => {
++        resolveOld = resolve
++        rejectOld = reject
++      }))
++      vi.mocked(governanceApi.getLineage).mockResolvedValue(graph)
++      const w = mount(View)
++      await flushPromises()
++
++      await w.find('[data-project-select]').setValue('1')
++      expect(w.find('[role=status]').exists()).toBe(true)
++      const setup = (w.vm.$ as unknown as {
++        setupState: { selectedProject: string; reloadAssets: () => Promise<void> }
++      }).setupState
++      setup.selectedProject = ''
++      await setup.reloadAssets()
++      expect(w.find('[role=status]').exists()).toBe(false)
++
++      if (outcome === 'success') {
++        resolveOld({ total: 1, page: 1, pageSize: 50, list: [asset] })
++      } else {
++        rejectOld(new Error('stale asset-list failure'))
++      }
++      await flushPromises()
++
++      expect(w.find('[data-no-project]').exists()).toBe(true)
++      expect(w.find('[data-asset-select] option[value="9"]').exists()).toBe(false)
++      expect(w.find('[role=alert]').exists()).toBe(false)
++      expect(w.find('[role=status]').exists()).toBe(false)
++      expect(governanceApi.getLineage).not.toHaveBeenCalled()
++    },
++  )
+ })
+diff --git a/datara-newweb/src/views/__tests__/tagManagementView.contract.test.ts b/datara-newweb/src/views/__tests__/tagManagementView.contract.test.ts
+index a1e9c236..4720ec1b 100644
+--- a/datara-newweb/src/views/__tests__/tagManagementView.contract.test.ts
++++ b/datara-newweb/src/views/__tests__/tagManagementView.contract.test.ts
+@@ -190,4 +190,74 @@ describe('/meta/tag 标签管理页（增量 14）', () => {
+     resolveP2({ total: 0, page: 1, pageSize: 50, list: [] })
+     await flushPromises()
+   })
++
++  it('keeps the project locked during assignment and ignores a stale success including its finally', async () => {
++    const asset2 = { ...asset, id: 10, projectId: 2, assetName: 'customers' }
++    let resolveOld!: (value: { assetId: number; tagIds: number[] }) => void
++    let resolveCurrent!: (value: { assetId: number; tagIds: number[] }) => void
++    vi.mocked(listProjects).mockResolvedValue({ total: 2, list: [{ id: 1, name: 'P1' }, { id: 2, name: 'P2' }] })
++    vi.mocked(governanceApi.listAssets).mockImplementation((projectId) => Promise.resolve({
++      total: 1, page: 1, pageSize: 50, list: [projectId === 1 ? asset : asset2],
++    }))
++    vi.mocked(governanceApi.assignAssetTags).mockImplementation((assetId) => assetId === 9
++      ? new Promise((resolve) => { resolveOld = resolve })
++      : new Promise((resolve) => { resolveCurrent = resolve }))
++    const w = mount(View)
++    await flushPromises()
++    await w.find('[data-project-select]').setValue('1')
++    await flushPromises()
++    await w.find('[data-asset-select]').setValue('9')
++    await w.find('input[placeholder="1,2,3"]').setValue('1')
++    await w.find('.assign button[type="button"]').trigger('click')
++    expect(w.find('[data-project-select]').attributes('disabled')).toBeDefined()
++
++    const setup = (w.vm.$ as unknown as {
++      setupState: { selectedProject: string; reloadAssets: () => Promise<void> }
++    }).setupState
++    setup.selectedProject = '2'
++    await setup.reloadAssets()
++    await flushPromises()
++    await w.find('[data-asset-select]').setValue('10')
++    await w.find('input[placeholder="1,2,3"]').setValue('2')
++    await w.find('.assign button[type="button"]').trigger('click')
++    resolveOld({ assetId: 9, tagIds: [1] })
++    await flushPromises()
++    expect(w.find('[data-project-select]').attributes('disabled')).toBeDefined()
++    expect(w.find('[data-assign-result]').exists()).toBe(false)
++
++    resolveCurrent({ assetId: 10, tagIds: [2] })
++    await flushPromises()
++    expect(w.find('[data-assign-result]').text()).toContain('#10')
++    expect(w.find('[data-project-select]').attributes('disabled')).toBeUndefined()
++  })
++
++  it('locks the project during clear and ignores a stale clear failure after project replacement', async () => {
++    const tagged = { ...asset, tags: [tag] }
++    const tagged2 = { ...tagged, id: 10, projectId: 2, assetName: 'customers' }
++    let rejectOld!: (reason: Error) => void
++    vi.mocked(listProjects).mockResolvedValue({ total: 2, list: [{ id: 1, name: 'P1' }, { id: 2, name: 'P2' }] })
++    vi.mocked(governanceApi.listAssets).mockImplementation((projectId) => Promise.resolve({
++      total: 1, page: 1, pageSize: 50, list: [projectId === 1 ? tagged : tagged2],
++    }))
++    vi.mocked(governanceApi.assignAssetTags).mockImplementation(() => new Promise((_resolve, reject) => { rejectOld = reject }))
++    confirmClear.mockResolvedValue('confirm')
++    const w = mount(View)
++    await flushPromises()
++    await w.find('[data-project-select]').setValue('1')
++    await flushPromises()
++    await w.find('.op-btn.danger').trigger('click')
++    await flushPromises()
++    expect(w.find('[data-project-select]').attributes('disabled')).toBeDefined()
++
++    const setup = (w.vm.$ as unknown as {
++      setupState: { selectedProject: string; reloadAssets: () => Promise<void> }
++    }).setupState
++    setup.selectedProject = '2'
++    await setup.reloadAssets()
++    await flushPromises()
++    rejectOld(new Error('stale clear failure'))
++    await flushPromises()
++    expect(w.find('[role=alert]').exists()).toBe(false)
++    expect(w.text()).toContain('customers')
++  })
+ })
+diff --git a/datara-newweb/src/views/ide/IdeView.vue b/datara-newweb/src/views/ide/IdeView.vue
+index 14447f03..8b058307 100644
+--- a/datara-newweb/src/views/ide/IdeView.vue
++++ b/datara-newweb/src/views/ide/IdeView.vue
+@@ -18,6 +18,7 @@
+             <option v-for="d in datasources" :key="d.id" :value="String(d.id)">{{ d.name }}</option>
+           </select>
+         </label>
++        <button type="button" data-variable-manage :disabled="projectId === null" @click="variableManagementOpen = true">变量管理</button>
+         <button type="button" data-execute :disabled="!canExecute" @click="runSql">
+           {{ executing ? '执行中…' : '执行' }}
+         </button>
+@@ -212,6 +213,10 @@
+       </ul>
+     </aside>
+     <button v-else type="button" class="ide-history-open" data-history-toggle @click="openHistory">执行历史</button>
++    <VariableManagementDialog
++      v-model="variableManagementOpen"
++      :project-id="projectId ?? undefined"
++    />
+   </main>
+ </template>
+ 
+@@ -233,6 +238,7 @@
+  */
+ import { computed, nextTick, onMounted, ref, watch } from 'vue'
+ import { useRoute } from 'vue-router'
++import VariableManagementDialog from '../../components/VariableManagementDialog.vue'
+ import {
+   createSqlIdeContract,
+   type HistoryEntry,
+@@ -264,6 +270,7 @@ const props = defineProps<{ projectId?: number }>()
+ const route = useRoute()
+ 
+ const projects = ref<ProjectSummary[]>([])
++const variableManagementOpen = ref(false)
+ const selected = ref('')
+ const datasources = ref<DatasourceRecord[]>([])
+ const selectedDs = ref('')
+@@ -741,57 +748,58 @@ onMounted(async () => {
+ </script>
+ 
+ <style scoped>
+-.ide-page{max-width:1400px;margin:auto;padding:32px 24px;color:#172033}
++/* FE-MERGE-B5: visual values come from the shared r6 token foundation. */
++.ide-page{max-width:1400px;margin:auto;padding:32px 24px;color:var(--text)}
+ .ide-head{display:flex;align-items:center;gap:16px;flex-wrap:wrap}
+ .ide-head h1{margin:0}
+-.ide-head p{margin:4px 0 0;color:#64748b;flex-basis:100%;font-size:13px}
++.ide-head p{margin:4px 0 0;color:var(--text-2);flex-basis:100%;font-size:13px}
+ .ide-actions{display:flex;align-items:center;gap:10px;margin-left:auto;flex-wrap:wrap}
+ .ide-project,.ide-ds{display:flex;align-items:center;gap:6px}
+ .ide-project select,.ide-ds select{padding:7px 10px;min-width:150px}
+ button{cursor:pointer;padding:7px 12px}
+ button:disabled{cursor:not-allowed;opacity:.5}
+ .ide-split{display:grid;grid-template-columns:minmax(300px,.7fr) minmax(520px,1.3fr);gap:20px;margin-top:16px;align-items:start}
+-.ide-left,.ide-right{border:1px solid #e2e8f0;border-radius:8px;padding:16px;background:#fff}
++.ide-left,.ide-right{border:1px solid var(--border);border-radius:var(--radius);padding:16px;background:var(--card)}
+ .ide-left h2{margin:0 0 8px;font-size:15px}
+-.ide-left h3{margin:16px 0 8px;font-size:13px;color:#334155}
+-.ide-search{display:flex;flex-direction:column;gap:4px;font-size:12px;color:#475569}
++.ide-left h3{margin:16px 0 8px;font-size:13px;color:var(--text)}
++.ide-search{display:flex;flex-direction:column;gap:4px;font-size:12px;color:var(--text-2)}
+ .ide-search input{padding:6px 8px}
+-.ide-cap{font-size:12px;color:#2563eb;margin:8px 0 0}
+-.ide-muted{color:#64748b;font-size:12px;margin:6px 0 0}
++.ide-cap{font-size:12px;color:var(--primary);margin:8px 0 0}
++.ide-muted{color:var(--text-2);font-size:12px;margin:6px 0 0}
+ .ide-tree{list-style:none;padding:0;margin:0;display:grid;gap:4px;align-content:start}
+-.ide-tree button{width:100%;text-align:left;border:1px solid #e2e8f0;background:#fff;border-radius:6px;padding:6px 9px;cursor:pointer;display:flex;justify-content:space-between;gap:8px}
+-.ide-tree button.active{border-color:#2563eb;background:#eff6ff}
++.ide-tree button{width:100%;text-align:left;border:1px solid var(--border);background:var(--card);border-radius:var(--radius-sm);padding:6px 9px;cursor:pointer;display:flex;justify-content:space-between;gap:8px}
++.ide-tree button.active{border-color:var(--primary);background:var(--primary-light)}
+ .ide-search-result{display:flex;flex-wrap:wrap;gap:6px}
+-.ide-search-result span{border:1px solid #e2e8f0;border-radius:6px;padding:4px 8px;display:flex;flex-direction:column}
+-.ide-search-result small{color:#64748b}
++.ide-search-result span{border:1px solid var(--border);border-radius:var(--radius-sm);padding:4px 8px;display:flex;flex-direction:column}
++.ide-search-result small{color:var(--text-2)}
+ .ide-editor-head{display:flex;align-items:center;gap:10px;margin-bottom:8px}
+ .ide-editor-title{font-weight:600}
+-.ide-right textarea{width:100%;box-sizing:border-box;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:13px;line-height:1.5;padding:8px;border:1px solid #cbd5e1;border-radius:6px;color:#172033;background:#fff}
++.ide-right textarea{width:100%;box-sizing:border-box;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:13px;line-height:1.5;padding:8px;border:1px solid var(--border-strong);border-radius:var(--radius-sm);color:var(--text);background:var(--card)}
+ .ide-diag{display:flex;flex-wrap:wrap;gap:6px;margin:8px 0 0}
+-.pill{display:inline-block;padding:2px 8px;border-radius:10px;font-size:11px;background:#f1f5f9;color:#64748b}
+-.pill.error{background:#fee2e2;color:#b91c1c}
+-.pill.warning{background:#fef3c7;color:#b45309}
+-.pill.info{background:#dbeafe;color:#1d4ed8}
+-.ide-vars{margin-top:12px;border-top:1px solid #e2e8f0;padding-top:8px}
++.pill{display:inline-block;padding:2px 8px;border-radius:10px;font-size:11px;background:var(--bg-deep);color:var(--text-2)}
++.pill.error,.pill.invalid{background:var(--danger-bg);color:var(--danger)}
++.pill.warning{background:var(--warn-bg);color:var(--warn)}
++.pill.info,.pill.valid{background:var(--info-bg);color:var(--info)}
++.ide-vars{margin-top:12px;border-top:1px solid var(--border);padding-top:8px}
+ .ide-vars h3{margin:0 0 6px;font-size:13px}
+ .ide-var{display:flex;gap:8px;margin:4px 0;font-size:12px}
+-.ide-err{color:#b91c1c;font-size:12px;margin:4px 0}
+-.ide-var-suggestions{margin-top:12px;border-top:1px solid #e2e8f0;padding-top:8px}
++.ide-err{color:var(--danger);font-size:12px;margin:4px 0}
++.ide-var-suggestions{margin-top:12px;border-top:1px solid var(--border);padding-top:8px}
+ .ide-var-suggestions h3{margin:0 0 6px;font-size:13px}
+ .ide-var-suggestions ul{list-style:none;margin:0;padding:0;display:flex;flex-wrap:wrap;gap:6px}
+-.ide-var-suggestions li button{display:flex;align-items:center;gap:6px;border:1px solid #e2e8f0;background:#fff;border-radius:6px;padding:5px 9px}
+-.ide-var-suggestions small{color:#64748b}
++.ide-var-suggestions li button{display:flex;align-items:center;gap:6px;border:1px solid var(--border);background:var(--card);border-radius:var(--radius-sm);padding:5px 9px}
++.ide-var-suggestions small{color:var(--text-2)}
+ .ide-result{margin-top:16px}
+ .ide-result-head{display:flex;align-items:center;gap:14px;margin-bottom:8px;flex-wrap:wrap}
+ .ide-result-nav{display:flex;align-items:center;gap:8px;margin-left:auto}
+-table{width:100%;border-collapse:collapse;background:#fff}
+-th,td{text-align:left;padding:9px;border-bottom:1px solid #e2e8f0;font-size:12px;vertical-align:top}
+-.ide-history{border:1px solid #e2e8f0;border-radius:8px;padding:16px;background:#fff;margin-top:16px}
++table{width:100%;border-collapse:collapse;background:var(--card)}
++th,td{text-align:left;padding:9px;border-bottom:1px solid var(--border);font-size:12px;vertical-align:top}
++.ide-history{border:1px solid var(--border);border-radius:var(--radius);padding:16px;background:var(--card);margin-top:16px}
+ .ide-history header{display:flex;align-items:center;justify-content:space-between}
+ .ide-history h2{margin:0;font-size:15px}
+ .ide-history ul{list-style:none;padding:0;margin:8px 0 0;display:grid;gap:6px}
+ .ide-history li{display:flex;align-items:center;gap:8px}
+-.ide-history-item{flex:1;display:flex;flex-direction:column;gap:2px;text-align:left;border:1px solid #e2e8f0;background:#fff;border-radius:6px;padding:6px 9px;cursor:pointer}
++.ide-history-item{flex:1;display:flex;flex-direction:column;gap:2px;text-align:left;border:1px solid var(--border);background:var(--card);border-radius:var(--radius-sm);padding:6px 9px;cursor:pointer}
+ .ide-history-del{flex:none}
+ .ide-history-open{margin-top:16px}
+ .mono,code{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12px}
+diff --git a/datara-newweb/src/views/meta/LineageAnalysisView.vue b/datara-newweb/src/views/meta/LineageAnalysisView.vue
+index 9d23f36b..6a451239 100644
+--- a/datara-newweb/src/views/meta/LineageAnalysisView.vue
++++ b/datara-newweb/src/views/meta/LineageAnalysisView.vue
+@@ -237,13 +237,15 @@ async function init(): Promise<void> {
+ onMounted(init)
+ 
+ async function reloadAssets(): Promise<void> {
++  const seq = ++assetSeq
++  assetLoading.value = false
+   lineageSeq += 1
+   lineageLoading.value = false
+   graph.value = null
++  assets.value = []
+   selectedAsset.value = ''
+   error.value = ''
+-  if (projectId.value === null) { assets.value = []; return }
+-  const seq = ++assetSeq
++  if (projectId.value === null) return
+   assetLoading.value = true
+   error.value = ''
+   try {
+diff --git a/datara-newweb/src/views/meta/TagManagementView.vue b/datara-newweb/src/views/meta/TagManagementView.vue
+index 77a36290..df083400 100644
+--- a/datara-newweb/src/views/meta/TagManagementView.vue
++++ b/datara-newweb/src/views/meta/TagManagementView.vue
+@@ -7,7 +7,7 @@
+ 
+     <div class="toolbar">
+       <label class="field"><span>项目</span>
+-        <select v-model="selectedProject" class="kw" data-project-select :disabled="loading || creating" @change="reloadAssets">
++        <select v-model="selectedProject" class="kw" data-project-select :disabled="loading || creating || assigning || clearingId !== null" @change="reloadAssets">
+           <option value="">请选择项目</option>
+           <option v-for="p in projects" :key="p.id" :value="String(p.id)">{{ p.name }}</option>
+         </select>
+@@ -236,6 +236,8 @@ async function init(): Promise<void> {
+ onMounted(init)
+ 
+ let assetSeq = 0
++let assignSeq = 0
++let clearSeq = 0
+ let loadedProjectId: number | null = null
+ /** 拉取资产列表；reset=true 用于切换项目（清空选择/结果），false 用于挂载后刷新（保留选择与结果）。 */
+ async function loadAssets(reset: boolean): Promise<void> {
+@@ -245,6 +247,10 @@ async function loadAssets(reset: boolean): Promise<void> {
+     loadedProjectId = pid
+   }
+   if (reset) {
++    assignSeq += 1
++    clearSeq += 1
++    assigning.value = false
++    clearingId.value = null
+     assets.value = []
+     selectedAsset.value = ''
+     tagIds.value = ''
+@@ -294,7 +300,8 @@ async function create(): Promise<void> {
+ }
+ 
+ async function assign(): Promise<void> {
+-  if (loading.value || assigning.value) return
++  const requestedProjectId = projectId.value
++  if (requestedProjectId === null || loading.value || assigning.value) return
+   assignHint.value = ''
+   const id = Number(selectedAsset.value)
+   const raw = tagIds.value.split(',').map((s) => s.trim()).filter((s) => s !== '')
+@@ -303,16 +310,22 @@ async function assign(): Promise<void> {
+     assignHint.value = '标签 ID 需为逗号分隔的正整数（如 1,2），请检查后重试。'
+     return
+   }
++  const seq = ++assignSeq
+   assigning.value = true
+   error.value = ''
+   try {
+     const res = await governanceApi.assignAssetTags(id, ids)
++    if (seq !== assignSeq || projectId.value !== requestedProjectId) return
+     lastResult.value = `资产 #${res.assetId} 已挂载标签：${res.tagIds.join(', ')}`
+     await loadAssets(false)
+   } catch (e) {
+-    error.value = message(e)
+-    retry.value = assign
+-  } finally { assigning.value = false }
++    if (seq === assignSeq && projectId.value === requestedProjectId) {
++      error.value = message(e)
++      retry.value = assign
++    }
++  } finally {
++    if (seq === assignSeq && projectId.value === requestedProjectId) assigning.value = false
++  }
+ }
+ 
+ /** 行操作：把该资产带入挂载面板（复用既有挂载流程，不重复造写接口）。 */
+@@ -325,21 +338,30 @@ function focusAssign(a: AssetRecord): void {
+ /** 行操作：清空该资产全部标签（assignAssetTags(id, []) 为后端既有替换语义）。 */
+ async function clearTags(a: AssetRecord): Promise<void> {
+   if (loading.value || assigning.value || clearingId.value !== null) return
++  const requestedProjectId = projectId.value
++  if (requestedProjectId === null) return
+   try {
+     await ElMessageBox.confirm(`确认清空资产“${a.displayName || a.assetName}”的全部标签？`, '清空标签', { type: 'warning' })
+   } catch {
+     return
+   }
++  if (projectId.value !== requestedProjectId) return
++  const seq = ++clearSeq
+   clearingId.value = a.id
+   error.value = ''
+   try {
+     await governanceApi.assignAssetTags(a.id, [])
++    if (seq !== clearSeq || projectId.value !== requestedProjectId) return
+     lastResult.value = `资产 #${a.id} 已清空标签`
+     await loadAssets(false)
+   } catch (e) {
+-    error.value = message(e)
+-    retry.value = () => clearTags(a)
+-  } finally { clearingId.value = null }
++    if (seq === clearSeq && projectId.value === requestedProjectId) {
++      error.value = message(e)
++      retry.value = () => clearTags(a)
++    }
++  } finally {
++    if (seq === clearSeq && projectId.value === requestedProjectId) clearingId.value = null
++  }
+ }
+ </script>
+ 
+diff --git a/datara-newweb/src/views/variables/VariableManagerDrawer.vue b/datara-newweb/src/views/variables/VariableManagerDrawer.vue
+index de8a7e74..070c5b22 100644
+--- a/datara-newweb/src/views/variables/VariableManagerDrawer.vue
++++ b/datara-newweb/src/views/variables/VariableManagerDrawer.vue
+@@ -17,6 +17,7 @@ const api = createVariableContract()
+ const rows = ref<VariableDefinition[]>([])
+ const loading = ref(false)
+ const error = ref('')
++let loadSeq = 0
+ const scope = ref<Extract<VariableScope, 'global' | 'project' | 'env'>>('project')
+ const environmentGroupId = ref<number | undefined>()
+ const editing = ref(false)
+@@ -28,19 +29,25 @@ const owner = computed(() => scope.value === 'env' && environmentGroupId.value
+   : {})
+ 
+ async function load() {
+-  if (!props.modelValue || props.projectId === undefined) return
+-  loading.value = true
++  const seq = ++loadSeq
++  rows.value = []
+   error.value = ''
++  if (!props.modelValue || props.projectId === undefined) {
++    loading.value = false
++    return
++  }
++  loading.value = true
+   try {
+-    rows.value = await api.listVariables(
++    const items = await api.listVariables(
+       props.projectId,
+       ['global', 'project', 'env'],
+       environmentGroupId.value ? { environmentGroupId: environmentGroupId.value } : {},
+     )
++    if (seq === loadSeq) rows.value = items
+   } catch {
+-    error.value = '变量加载失败，请重试'
++    if (seq === loadSeq) error.value = '变量加载失败，请重试'
+   } finally {
+-    loading.value = false
++    if (seq === loadSeq) loading.value = false
+   }
+ }
+ 

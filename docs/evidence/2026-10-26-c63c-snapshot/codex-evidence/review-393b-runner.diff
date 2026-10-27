@@ -1,0 +1,148 @@
+commit 393b225c170b4791c6f6ebdf678698357f06dab4
+Author:     oooklei <oooklei@sohu.com>
+AuthorDate: Sun Oct 25 18:02:21 2026 +0800
+Commit:     oooklei <oooklei@sohu.com>
+CommitDate: Sun Oct 25 18:02:21 2026 +0800
+
+    feat(workflow): execute pinned script resources
+
+diff --git a/datara-backend/rebuild/trial/runner.py b/datara-backend/rebuild/trial/runner.py
+index 1c535ca0..a2af1cb1 100644
+--- a/datara-backend/rebuild/trial/runner.py
++++ b/datara-backend/rebuild/trial/runner.py
+@@ -25,6 +25,7 @@ The runner supports extension dimensions (WF-15~WF-20) via TrialRunOptions:
+ from __future__ import annotations
+ 
+ import json
++import hashlib
+ import os
+ import sqlite3
+ import subprocess
+@@ -38,6 +39,8 @@ from sqlalchemy.orm import Session
+ from rebuild.execution.repository import ExecutionRepository
+ from rebuild.execution.models import TaskInstanceRecord
+ from rebuild.execution.run_stats import RunStatisticsService
++from rebuild.resources.models import ResourceBindingRecord, ResourceRecord, ResourceVersionRecord
++from rebuild.resources.repository import storage_dir
+ from rebuild.trial.validator import TrialValidator
+ from rebuild.trial.repository import TrialSnapshotRepository
+ from rebuild.variables.models import TaskInstanceVariableRuntimeRecord
+@@ -154,7 +157,15 @@ class TrialRunner:
+             node = next(n for n in execution_nodes if n["node_code"] == node_code)
+             task = task_records[node_code]
+             try:
+-                self._execute_task(instance.id, task, node, edges, options)
++                self._execute_task(
++                    instance.id,
++                    task,
++                    node,
++                    edges,
++                    options,
++                    project_id=project_id,
++                    definition_id=definition_id,
++                )
+             except Exception as exc:
+                 self._exec.transition_task_instance(task.id, "FAILED")
+                 self._exec.append_run_log(
+@@ -330,6 +341,9 @@ class TrialRunner:
+         node: dict[str, Any],
+         edges: list[dict[str, Any]],
+         options: TrialRunOptions,
++        *,
++        project_id: int,
++        definition_id: int,
+     ) -> None:
+         """Execute one task instance (transition PENDING → RUNNING → SUCCEEDED)."""
+         self._exec.transition_task_instance(task.id, "RUNNING")
+@@ -338,6 +352,13 @@ class TrialRunner:
+ 
+         node_type = node["node_type"]
+         params = node.get("params") or {}
++        resource_source = self._resolve_resource_source(
++            project_id=project_id,
++            definition_id=definition_id,
++            task_id=str(node["node_code"]),
++            node_type=str(node_type),
++            params=params,
++        )
+ 
+         # WF-17: record test variable overrides.
+         # Skip names already recorded for this (instance, attempt) to respect the
+@@ -423,7 +444,7 @@ class TrialRunner:
+         # provides a real result set without granting trial code host or
+         # datasource access; datasource-backed execution remains in SQL IDE.
+         if str(node_type).upper() == "SQL" and (options.sql_execute or params.get("execute") is True):
+-            sql = params.get("sql") or params.get("query")
++            sql = resource_source or params.get("sql") or params.get("query")
+             if not sql:
+                 raise TrialRunnerError("WF_TRIAL_SQL_EMPTY", "SQL node requires sql/query when execution is enabled")
+             try:
+@@ -436,7 +457,7 @@ class TrialRunner:
+                 raise TrialRunnerError("WF_TRIAL_SQL_FAILED", f"SQL execution failed: {exc}") from exc
+ 
+         if node_type in {"PYTHON", "python", "SHELL", "shell"}:
+-            source = params.get("script") or params.get("code") or params.get("command")
++            source = resource_source or params.get("script") or params.get("code") or params.get("command")
+             if source:
+                 command = [sys.executable, "-c", str(source)] if node_type.lower() == "python" else (
+                     ["cmd", "/c", str(source)] if os.name == "nt" else ["sh", "-c", str(source)]
+@@ -474,3 +495,59 @@ class TrialRunner:
+ 
+         self._exec.transition_attempt(attempt.id, "SUCCEEDED")
+         self._exec.transition_task_instance(task.id, "SUCCEEDED")
++
++    def _resolve_resource_source(
++        self,
++        *,
++        project_id: int,
++        definition_id: int,
++        task_id: str,
++        node_type: str,
++        params: dict[str, Any],
++    ) -> str | None:
++        """Resolve one explicitly pinned script resource and verify its immutable content."""
++        if params.get("sourceMode", "inline") != "resource":
++            return None
++        ref = params.get("resourceRef")
++        if not isinstance(ref, dict):
++            raise TrialRunnerError("WF_TRIAL_RESOURCE_REF", "resourceRef is required in resource mode")
++        resource_id = ref.get("resourceId")
++        version = ref.get("version")
++        if not isinstance(resource_id, int) or resource_id <= 0 or not isinstance(version, int) or version <= 0:
++            raise TrialRunnerError("WF_TRIAL_RESOURCE_REF", "resourceRef requires positive resourceId and version")
++        resource = self._session.get(ResourceRecord, resource_id)
++        expected_kind = node_type.lower()
++        if resource is None or resource.project_id != project_id or resource.kind != expected_kind:
++            raise TrialRunnerError("WF_TRIAL_RESOURCE_REF", "resourceRef does not match the project and component kind")
++        binding = self._session.scalar(
++            select(ResourceBindingRecord).where(
++                ResourceBindingRecord.project_id == project_id,
++                ResourceBindingRecord.workflow_id == definition_id,
++                ResourceBindingRecord.workflow_version == 1,
++                ResourceBindingRecord.task_id == task_id,
++                ResourceBindingRecord.resource_id == resource_id,
++                ResourceBindingRecord.resource_version == version,
++            )
++        )
++        if binding is None:
++            raise TrialRunnerError("WF_TRIAL_RESOURCE_BINDING", "resourceRef is not bound to this workflow task")
++        version_row = self._session.scalar(
++            select(ResourceVersionRecord).where(
++                ResourceVersionRecord.resource_id == resource_id,
++                ResourceVersionRecord.version == version,
++            )
++        )
++        if version_row is None:
++            raise TrialRunnerError("WF_TRIAL_RESOURCE_REF", "resource version does not exist")
++        path = os.path.join(storage_dir(), version_row.storage_path)
++        try:
++            with open(path, "rb") as handle:
++                content = handle.read()
++        except OSError as exc:
++            raise TrialRunnerError("WF_TRIAL_RESOURCE_STORAGE", "resource content is unavailable") from exc
++        if len(content) != version_row.size_bytes or hashlib.sha256(content).hexdigest() != version_row.digest:
++            raise TrialRunnerError("WF_TRIAL_RESOURCE_INTEGRITY", "resource content failed integrity verification")
++        try:
++            return content.decode("utf-8")
++        except UnicodeDecodeError as exc:
++            raise TrialRunnerError("WF_TRIAL_RESOURCE_ENCODING", "script resource must be UTF-8") from exc

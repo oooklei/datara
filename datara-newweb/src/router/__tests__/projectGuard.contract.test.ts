@@ -11,15 +11,28 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { clearToken, setToken } from '../../services/http'
 import productRouter from '../index'
 
-const { listProjectsSpy } = vi.hoisted(() => ({ listProjectsSpy: vi.fn() }))
+const { listProjectsSpy, currentSessionSpy, authAccountStub } = vi.hoisted(() => ({
+  listProjectsSpy: vi.fn(),
+  currentSessionSpy: vi.fn(),
+  authAccountStub: { value: null as null | { id: number; username: string; role: string } },
+}))
 
 vi.mock('../../services/rebuild/projectApi', () => ({
   listProjects: listProjectsSpy,
 }))
 
+vi.mock('../../services/rebuild/authApi', () => ({
+  authAccount: authAccountStub,
+  currentSession: currentSessionSpy,
+}))
+
 beforeEach(() => {
+  localStorage.clear()
   setToken('t-guard-project')
   listProjectsSpy.mockReset()
+  currentSessionSpy.mockReset()
+  authAccountStub.value = null
+  currentSessionSpy.mockRejectedValue(new Error('no session cookie'))
   listProjectsSpy.mockResolvedValue({
     total: 2,
     list: [
@@ -56,6 +69,22 @@ describe('L3-05：路由守卫 projectId 归属校验（越权负断言）', () 
     expect(listProjectsSpy).not.toHaveBeenCalled()
   })
 
+  it('内存 token 丢失时通过 HttpOnly 会话恢复原深链接', async () => {
+    clearToken()
+    currentSessionSpy.mockResolvedValue({ id: 1, username: 'admin', role: 'admin' })
+    await productRouter.push('/p/9/ide')
+    expect(productRouter.currentRoute.value.path).toBe('/p/9/ide')
+    expect(currentSessionSpy).toHaveBeenCalledTimes(1)
+    expect(listProjectsSpy).toHaveBeenCalledTimes(1)
+  })
+
+  it('匿名访问登录页不探测会话，避免产生预期内但污染控制台的 401', async () => {
+    clearToken()
+    await productRouter.push('/login')
+    expect(productRouter.currentRoute.value.path).toBe('/login')
+    expect(currentSessionSpy).not.toHaveBeenCalled()
+  })
+
   it('fail-closed：listProjects 请求失败 → 拦截回 /（守护正确性优先于可达性）', async () => {
     listProjectsSpy.mockRejectedValue(new Error('HTTP 500 /rebuild/projects'))
     await productRouter.push('/p/9')
@@ -72,5 +101,24 @@ describe('L3-05：路由守卫 projectId 归属校验（越权负断言）', () 
     await productRouter.push('/')
     expect(productRouter.currentRoute.value.path).toBe('/')
     expect(listProjectsSpy).not.toHaveBeenCalled()
+  })
+
+  it('旧项目业务入口使用首个可见项目归一到项目作用域', async () => {
+    await productRouter.push('/ide')
+    expect(productRouter.currentRoute.value.path).toBe('/p/9/ide')
+    expect(localStorage.getItem('datara.active-project')).toBe('9')
+  })
+
+  it('旧任务中心入口优先使用最近活动且仍可见的项目', async () => {
+    localStorage.setItem('datara.active-project', '10')
+    await productRouter.push('/dag')
+    expect(productRouter.currentRoute.value.path).toBe('/p/10/dag')
+  })
+
+  it('部署运维与系统管理保持全局路径，不发生项目归一', async () => {
+    await productRouter.push('/dep/runtime')
+    expect(productRouter.currentRoute.value.path).toBe('/dep/runtime')
+    await productRouter.push('/sys')
+    expect(productRouter.currentRoute.value.path).toBe('/sys')
   })
 })

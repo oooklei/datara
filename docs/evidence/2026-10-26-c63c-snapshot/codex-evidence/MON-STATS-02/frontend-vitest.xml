@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<testsuites name="vitest tests" tests="15" failures="0" errors="0" time="0.0472816">
+    <testsuite name="src/views/rebuild/validation/metrics/metricsApi.contract.test.ts" timestamp="2026-10-25T16:21:24.623Z" hostname="DESKTOP-SI67FHF" tests="15" failures="0" errors="0" skipped="0" time="0.0472816">
+        <testcase classname="src/views/rebuild/validation/metrics/metricsApi.contract.test.ts" name="R7 metricsApi contract (RED) &gt; contract method list is frozen to the metrics/quality/lineage subset" time="0.0052369">
+        </testcase>
+        <testcase classname="src/views/rebuild/validation/metrics/metricsApi.contract.test.ts" name="R7 metricsApi contract (RED) &gt; factory exposes every contract method" time="0.0017083">
+        </testcase>
+        <testcase classname="src/views/rebuild/validation/metrics/metricsApi.contract.test.ts" name="R7 metricsApi contract (GREEN wired) &gt; queryWorkflowResultStats POSTs /workflow-result-stats and maps stat rows snake-to-camel" time="0.0266863">
+        </testcase>
+        <testcase classname="src/views/rebuild/validation/metrics/metricsApi.contract.test.ts" name="R7 metricsApi contract (GREEN wired) &gt; queryTaskInstanceDataStats passes MetricValue through unprocessed (unknown/estimated untouched)" time="0.0007217">
+        </testcase>
+        <testcase classname="src/views/rebuild/validation/metrics/metricsApi.contract.test.ts" name="R7 metricsApi contract (GREEN wired) &gt; queryTaskDataStatSegments maps segment_key to segmentKey" time="0.0006359">
+        </testcase>
+        <testcase classname="src/views/rebuild/validation/metrics/metricsApi.contract.test.ts" name="R7 metricsApi contract (GREEN wired) &gt; queryTaskDataErrorSamples maps sample_data and captured_at" time="0.0008315">
+        </testcase>
+        <testcase classname="src/views/rebuild/validation/metrics/metricsApi.contract.test.ts" name="R7 metricsApi contract (GREEN wired) &gt; listQualityRuleLinks maps rule fields and stat_ref (table+pk reference passthrough)" time="0.0012984">
+        </testcase>
+        <testcase classname="src/views/rebuild/validation/metrics/metricsApi.contract.test.ts" name="R7 metricsApi contract (GREEN wired) &gt; listLineageWritebacks sends kind filter and normalizes numeric run_id to string" time="0.0014375">
+        </testcase>
+        <testcase classname="src/views/rebuild/validation/metrics/metricsApi.contract.test.ts" name="R7 metricsApi contract (GREEN wired) &gt; listLineageWritebacks passes kind &apos;all&apos; through as-is" time="0.0015643">
+        </testcase>
+        <testcase classname="src/views/rebuild/validation/metrics/metricsApi.contract.test.ts" name="R7 metricsApi contract (GREEN wired) &gt; listLineageWritebacks passes runKind &apos;sql&apos; through as-is" time="0.0018333">
+        </testcase>
+        <testcase classname="src/views/rebuild/validation/metrics/metricsApi.contract.test.ts" name="R7 metricsApi contract (GREEN wired) &gt; listLineageWritebacks passes runKind &apos;sync&apos; through as-is" time="0.0005877">
+        </testcase>
+        <testcase classname="src/views/rebuild/validation/metrics/metricsApi.contract.test.ts" name="R7 metricsApi contract (GREEN wired) &gt; listLineageWritebacks passes runKind &apos;workflow&apos; through as-is" time="0.0007195">
+        </testcase>
+        <testcase classname="src/views/rebuild/validation/metrics/metricsApi.contract.test.ts" name="R7 metricsApi contract (GREEN wired) &gt; listLineageWritebacks passes runKind &apos;all&apos; through as-is" time="0.0003088">
+        </testcase>
+        <testcase classname="src/views/rebuild/validation/metrics/metricsApi.contract.test.ts" name="R7 metricsApi contract (GREEN wired) &gt; non-2xx maps to ContractApiError with httpStatus preserved" time="0.0011427">
+        </testcase>
+        <testcase classname="src/views/rebuild/validation/metrics/metricsApi.contract.test.ts" name="R7 metricsApi contract (GREEN wired) &gt; envelope business error (code !== 0) maps to ContractApiError with the backend code" time="0.0003908">
+        </testcase>
+    </testsuite>
+</testsuites>

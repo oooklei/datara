@@ -1,0 +1,203 @@
+859 matches in 218 files:
+
+datara-backend\rebuild\ai_tools.py:19:from rebuild.sql_ide.linter import lint_sql
+datara-backend\rebuild\api\app.py:29:from rebuild.sql_ide.audit import SqlIdeAuditRecord, build_audit_writer
+datara-backend\rebuild\api\app.py:30:from rebuild.sql_ide.export_service import SqlIdeExportAuditRecord, SqlIdeExp...
+datara-backend\rebuild\api\app.py:31:from rebuild.sql_ide.execution import build_execution_port
+datara-backend\rebuild\api\app.py:32:from rebuild.sql_ide.history_store import SqlIdeHistoryStore
+datara-backend\rebuild\api\app.py:33:from rebuild.sql_ide.linter import lint_sql
+datara-backend\rebuild\api\app.py:34:from rebuild.sql_ide.migrations import SQL_IDE_MIGRATIONS, SqlIdeMigrationRunner
+datara-backend\rebuild\api\app.py:37:from rebuild.sql_ide.routes import SqlIdeRouteError, build_sql_ide_router
+datara-backend\rebuild\api\app.py:38:from rebuild.sql_ide.result_store import SqlIdeResultSetRecord
+datara-backend\rebuild\api\app.py:39:from rebuild.sql_ide.result_store import PersistentResultPageStore
+datara-backend\rebuild\api\app.py:40:from rebuild.sql_ide.status_store import SqlIdeExecutionEventRecord, SqlIdeEx...
+datara-backend\rebuild\api\app.py:474:def sql_ide_authenticate(token: str, authorization: str) -> dict[str, object]:
+datara-backend\rebuild\api\app.py:483:def sql_ide_authorize(project_id, principal, permission, operation, payload):
+datara-backend\rebuild\api\app.py:489:def sql_ide_dispatch(operation, *, project_id, principal, payload):
+datara-backend\rebuild\api\app.py:760:app.state.sql_ide_dispatch = sql_ide_dispatch
+datara-backend\rebuild\api\app.py:762:build_sql_ide_router(
+datara-backend\rebuild\api\app.py:763:dispatch=lambda operation, **kwargs: app.state.sql_ide_dispatch(operation, **...
+datara-backend\rebuild\api\app.py:764:authenticate=sql_ide_authenticate,
+datara-backend\rebuild\api\app.py:765:authorize=sql_ide_authorize,
+datara-backend\rebuild\api\app.py:815:@app.post("/api/v1/rebuild/validation-token")
+datara-backend\rebuild\rb\api.py:6:``/api/v1/rebuild/sql-ide-ddl/*``）
+datara-backend\rebuild\rb\api.py:40:router = APIRouter(prefix="/api/v1/rebuild/sql-ide-ddl", tags=["sql-ide-ddl"])
+datara-backend\rebuild\rb\policy\policy_evaluator.py:12:from rebuild.sql_ide.ddl_policy import evaluate_ddl_policy
+datara-backend\rebuild\run_sql.py:11:the sql_ide conservative lexical scanner (one tokenizer, never a SQL parser).
+datara-backend\rebuild\run_sql.py:21:from rebuild.sql_ide.ddl_policy import sql_tokens_and_statement_count
+datara-backend\rebuild\sql_ide\audit.py:6:Satisfies the AuditWriter Protocol (rebuild.sql_ide.contracts):
+datara-backend\rebuild\sql_ide\audit.py:30:__tablename__ = "rebuild_sql_ide_audit"
+datara-backend\rebuild\sql_ide\batch_executor.py:7:from rebuild.sql_ide.contracts import ResultPageStore, SqlExecutionSession
+datara-backend\rebuild\sql_ide\batch_executor.py:8:from rebuild.sql_ide.readonly_preflight import preflight_readonly_batch
+datara-backend\rebuild\sql_ide\contracts.py:14:from rebuild.sql_ide.ddl_policy import DdlPolicyResult
+datara-backend\rebuild\sql_ide\execution.py:23:from rebuild.sql_ide.errors import map_connection_error, map_driver_error
+datara-backend\rebuild\sql_ide\execution.py:24:from rebuild.sql_ide.readonly_preflight import (
+datara-backend\rebuild\sql_ide\export_service.py:18:from rebuild.sql_ide.result_store import MAX_PAGE_LIMIT, PersistentResultPage...
+datara-backend\rebuild\sql_ide\export_service.py:30:__tablename__ = "sql_ide_export_jobs"
+datara-backend\rebuild\sql_ide\export_service.py:49:__tablename__ = "sql_ide_export_audit"
+datara-backend\rebuild\sql_ide\export_service.py:288:return content_type, f"sql-ide-export.{normalized_format}", payload
+datara-backend\rebuild\sql_ide\exporter.py:20:from rebuild.sql_ide.contracts import ExportJobStore
+datara-backend\rebuild\sql_ide\history_store.py:29:__tablename__ = "sql_ide_history"
+datara-backend\rebuild\sql_ide\history_store.py:48:__tablename__ = "sql_ide_scripts"
+datara-backend\rebuild\sql_ide\history_store.py:66:__tablename__ = "sql_ide_history_audit"
+datara-backend\rebuild\sql_ide\janitor.py:77:id="sql_ide_cleanup_sweep",
+datara-backend\rebuild\sql_ide\metadata_browser.py:7:from rebuild.sql_ide.capability import (
+datara-backend\rebuild\sql_ide\migrations.py:15:from rebuild.sql_ide.export_service import SqlIdeExportAuditRecord, SqlIdeExp...
+datara-backend\rebuild\sql_ide\migrations.py:16:from rebuild.sql_ide.history_store import (
+datara-backend\rebuild\sql_ide\migrations.py:21:from rebuild.sql_ide.result_store import SqlIdeExportJobRecord, SqlIdeResultS...
+datara-backend\rebuild\sql_ide\migrations.py:22:from rebuild.sql_ide.status_store import SqlIdeExecutionEventRecord, SqlIdeEx...
+datara-backend\rebuild\sql_ide\migrations.py:26:_MYSQL_LOCK_NAME = "datara_sql_ide_schema_migrations"
+datara-backend\rebuild\sql_ide\migrations.py:51:__tablename__ = "sql_ide_schema_migrations"
+datara-backend\rebuild\sql_ide\migrations.py:158:from rebuild.sql_ide.snapshots import SqlIdeEventRecord
+datara-backend\rebuild\sql_ide\migrations.py:184:"sql_ide_0001_snapshots_and_exports v1: sql_ide_result_sets,sql_ide_export_jo...
+datara-backend\rebuild\sql_ide\migrations.py:185:"sql_ide_export_jobs,sql_ide_export_audit; result snapshot 24h; export job 1h"
+datara-backend\rebuild\sql_ide\migrations.py:189:revision="sql_ide_0001_snapshots_and_exports",
+datara-backend\rebuild\sql_ide\migrations.py:196:revision="sql_ide_0002_events",
+datara-backend\rebuild\sql_ide\migrations.py:198:b"sql_ide_0002_events v1: sql_ide_events; append-only payload; retention 7d"
+datara-backend\rebuild\sql_ide\migrations.py:205:revision="sql_ide_0003_history_scripts",
+datara-backend\rebuild\sql_ide\migrations.py:207:b"sql_ide_0003_history_scripts v1: sql_ide_history,sql_ide_scripts,"
+datara-backend\rebuild\sql_ide\migrations.py:208:b"sql_ide_history_audit; history 365d; soft-delete tombstones 30d; audit 365d"
+datara-backend\rebuild\sql_ide\migrations.py:215:revision="sql_ide_0004_status_events",
+datara-backend\rebuild\sql_ide\migrations.py:217:b"sql_ide_0004_status_events v2: sql_ide_execution_status 365d; "
+datara-backend\rebuild\sql_ide\migrations.py:218:b"sql_ide_execution_events through terminal+7d"
+datara-backend\rebuild\sql_ide\pagination.py:14:from rebuild.sql_ide.contracts import ResultPageStore
+datara-backend\rebuild\sql_ide\result_store.py:29:__tablename__ = "sql_ide_result_sets"
+datara-backend\rebuild\sql_ide\result_store.py:45:__tablename__ = "sql_ide_export_job_handles"
+datara-backend\rebuild\sql_ide\routes.py:20:from rebuild.sql_ide.error_catalog import build_error_envelope, http_status_for
+datara-backend\rebuild\sql_ide\routes.py:69:def build_sql_ide_router(
+datara-backend\rebuild\sql_ide\routes.py:84:router = APIRouter(prefix="/api/v1/projects/{project_id}/sql-ide", tags=["sql...
+datara-backend\rebuild\sql_ide\routes.py:140:path=f"/api/v1/projects/{project_id}/sql-ide/executions/{task_id}/events",
+datara-backend\rebuild\sql_ide\routes.py:162:endpoint.__name__ = f"sql_ide_{operation}"
+datara-backend\rebuild\sql_ide\routes.py:188:return f"sql_ide_event_{suffix}"
+datara-backend\rebuild\sql_ide\snapshots.py:13:from rebuild.sql_ide.result_store import PersistentExportJobStore as ExportJo...
+datara-backend\rebuild\sql_ide\snapshots.py:14:from rebuild.sql_ide.result_store import PersistentResultPageStore as ResultP...
+datara-backend\rebuild\sql_ide\snapshots.py:22:__tablename__ = "sql_ide_events"
+datara-backend\rebuild\sql_ide\status_store.py:22:__tablename__ = "sql_ide_execution_status"
+datara-backend\rebuild\sql_ide\status_store.py:37:__tablename__ = "sql_ide_execution_events"
+datara-backend\rebuild\sql_ide\status_store.py:41:String(36), ForeignKey("sql_ide_execution_status.task_id"), nullable=False, i...
+datara-backend\tests\fv\test_fv_06_readonly_gate.py:15:from rebuild.sql_ide.error_catalog import build_error_envelope, http_status_for
+datara-backend\tests\fv\test_fv_06_readonly_gate.py:16:from rebuild.sql_ide.errors import map_connection_error, map_driver_error
+datara-backend\tests\fv\test_fv_06_readonly_gate.py:17:from rebuild.sql_ide.readonly_preflight import (
+datara-backend\tests\fv\test_fv_07_session_lifecycle.py:20:from rebuild.sql_ide.cancel import CancellationResult, request_cancellation
+datara-backend\tests\fv\test_fv_07_session_lifecycle.py:21:from rebuild.sql_ide.session_store import InMemoryExecutionSessionStore
+datara-backend\tests\fv\test_fv_08_statement_splitter.py:16:from rebuild.sql_ide.diagnostics import (
+datara-backend\tests\fv\test_fv_08_statement_splitter.py:21:from rebuild.sql_ide.readonly_preflight import ReadonlyBatchPreflightError
+datara-backend\tests\fv\test_fv_08_statement_splitter.py:22:from rebuild.sql_ide.statement_splitter import (
+datara-backend\tests\fv\test_fv_08_statement_splitter.py:206:from rebuild.sql_ide.batch_executor import BatchSqlExecutor
+datara-backend\tests\fv\test_fv_08_statement_splitter.py:234:from rebuild.sql_ide.batch_executor import BatchSqlExecutor
+datara-backend\tests\fv\test_fv_08_statement_splitter.py:235:from rebuild.sql_ide.readonly_preflight import ReadonlyBatchPreflightError
+datara-backend\tests\fv\test_fv_08_statement_splitter.py:263:from rebuild.sql_ide.batch_executor import BatchSqlExecutor
+datara-backend\tests\fv\test_fv_08_statement_splitter.py:291:from rebuild.sql_ide.batch_executor import BatchSqlExecutor
+datara-backend\tests\fv\test_fv_17_regression_gate.py:36:def test_sql_ide_test_directory_exists(self):
+datara-backend\tests\fv\test_fv_17_regression_gate.py:37:test_dir = BACKEND / "tests" / "sql_ide"
+datara-backend\tests\fv\test_fv_17_regression_gate.py:40:def test_sql_ide_test_files_present(self):
+datara-backend\tests\fv\test_fv_17_regression_gate.py:41:test_dir = BACKEND / "tests" / "sql_ide"
+datara-backend\tests\fv\test_fv_17_regression_gate.py:85:# A5 是 SQL IDE 后端契约，在 rebuild/sql_ide 中有实现
+datara-backend\tests\fv\test_fv_17_regression_gate.py:86:sql_ide_dir = BACKEND / "rebuild" / "sql_ide"
+datara-backend\tests\fv\test_fv_17_regression_gate.py:87:assert sql_ide_dir.is_dir()
+datara-backend\tests\fv\test_fv_17_regression_gate.py:91:error_catalog = BACKEND / "rebuild" / "sql_ide" / "error_catalog.py"
+datara-backend\tests\fv\test_fv_17_regression_gate.py:96:contracts = BACKEND / "rebuild" / "sql_ide" / "contracts.py"
+datara-backend\tests\fv\test_fv_17_regression_gate.py:101:ddl_policy = BACKEND / "rebuild" / "sql_ide" / "ddl_policy.py"
+datara-backend\tests\fv\test_fv_17_regression_gate.py:106:preflight = BACKEND / "rebuild" / "sql_ide" / "readonly_preflight.py"
+datara-backend\tests\fv\test_fv_17_regression_gate.py:116:("tests/fv/test_fv_06_readonly_gate.py", "rebuild/sql_ide/readonly_preflight....
+datara-backend\tests\fv\test_fv_17_regression_gate.py:117:("tests/fv/test_fv_07_session_lifecycle.py", "rebuild/sql_ide/session_store.p...
+datara-backend\tests\fv\test_fv_17_regression_gate.py:118:("tests/fv/test_fv_08_statement_splitter.py", "rebuild/sql_ide/statement_spli...
+datara-backend\tests\rebuild\test_e2e_six_node_types.py:57:from rebuild.sql_ide.execution import build_execution_port
+datara-backend\tests\rebuild\test_governance_legacy_dry_run_api.py:52:"/api/v1/rebuild/validation-token",
+datara-backend\tests\rebuild\test_governance_legacy_i23_preview_api.py:126:"/api/v1/rebuild/validation-token",
+datara-backend\tests\rebuild\test_identity_api.py:92:f"/api/v1/projects/{project}/sql-ide/executions",
+datara-backend\tests\rebuild\test_identity_api.py:321:"/api/v1/rebuild/validation-token",
+datara-backend\tests\rebuild\test_identity_api.py:338:"/api/v1/rebuild/validation-token",
+datara-backend\tests\rebuild\test_identity_api.py:342:"/api/v1/rebuild/validation-token",
+datara-backend\tests\rebuild\test_identity_api.py:375:"/api/v1/rebuild/validation-token",
+datara-backend\tests\rebuild\test_identity_api.py:382:"/api/v1/rebuild/validation-token",
+datara-backend\tests\rebuild\test_identity_api.py:444:"/api/v1/rebuild/validation-token",
+datara-backend\tests\rebuild\test_r2_13_readonly_runner.py:15:{"method": "POST", "path": "/api/v1/rebuild/validation-token", "status": 200},
+datara-backend\tests\rebuild\test_r5b_ddl_api.py:20:BASE = "/api/v1/rebuild/sql-ide-ddl"
+datara-backend\tests\rebuild\test_sql_ide_dispatch_coverage.py:6:from rebuild.sql_ide.routes import _ROUTE_SPECS
+datara-backend\tests\rebuild\test_sql_ide_dispatch_coverage.py:12:def test_every_sql_ide_operation_has_a_dispatch_branch() -> None:
+datara-backend\tests\rebuild\test_sql_ide_dispatch_coverage.py:16:if isinstance(node, ast.FunctionDef) and node.name == "sql_ide_dispatch"
+datara-backend\tests\rebuild\test_sql_ide_route_coverage_matrix.py:6:from rebuild.sql_ide.routes import _ROUTE_SPECS
+datara-backend\tests\sql_ide\test_audit_writer.py:18:from rebuild.sql_ide.audit import (
+datara-backend\tests\sql_ide\test_audit_writer.py:218:from rebuild.sql_ide.contracts import AuditWriter
+datara-backend\tests\sql_ide\test_batch_executor.py:7:from rebuild.sql_ide.batch_executor import BatchSqlExecutor
+datara-backend\tests\sql_ide\test_batch_executor.py:8:from rebuild.sql_ide.readonly_preflight import ReadonlyBatchPreflightError
+datara-backend\tests\sql_ide\test_cancel.py:7:from rebuild.sql_ide.cancel import CancellationResult, request_cancellation
+datara-backend\tests\sql_ide\test_capability.py:5:from rebuild.sql_ide.capability import (
+datara-backend\tests\sql_ide\test_completions.py:5:from rebuild.sql_ide.capability import CapabilityAccessError
+datara-backend\tests\sql_ide\test_completions.py:6:from rebuild.sql_ide.completions import CompletionService
+datara-backend\tests\sql_ide\test_context.py:5:from rebuild.sql_ide.context import (
+datara-backend\tests\sql_ide\test_ddl_policy.py:1:"""Tests for rebuild.sql_ide.ddl_policy — conservative DDL preview policy.
+datara-backend\tests\sql_ide\test_ddl_policy.py:11:from rebuild.sql_ide.ddl_policy import (
+datara-backend\tests\sql_ide\test_diagnostics.py:3:from rebuild.sql_ide.diagnostics import (
+datara-backend\tests\sql_ide\test_error_catalog.py:5:from rebuild.sql_ide.error_catalog import (
+datara-backend\tests\sql_ide\test_execution_port.py:19:from rebuild.sql_ide.execution import (
+datara-backend\tests\sql_ide\test_execution_port.py:152:from rebuild.sql_ide.readonly_preflight import ReadonlyBatchPreflightError
+datara-backend\tests\sql_ide\test_export_service.py:10:from rebuild.sql_ide.result_store import PersistentResultPageStore
+datara-backend\tests\sql_ide\test_export_service.py:14:from rebuild.sql_ide.export_service import MAX_EXPORT_BYTES, MAX_EXPORT_ROWS
+datara-backend\tests\sql_ide\test_export_service.py:48:assert find_spec("rebuild.sql_ide.export_service") is not None
+datara-backend\tests\sql_ide\test_export_service.py:53:if find_spec("rebuild.sql_ide.export_service") is None:
+datara-backend\tests\sql_ide\test_export_service.py:55:from rebuild.sql_ide.export_service import SqlIdeExportAuditRecord, SqlIdeExp...
+datara-backend\tests\sql_ide\test_exporter.py:6:from rebuild.sql_ide.exporter import DEFAULT_MAX_EXPORT_BYTES, DEFAULT_MAX_EX...
+datara-backend\tests\sql_ide\test_factory.py:20:from rebuild.sql_ide.audit import DbBackedAuditWriter
+datara-backend\tests\sql_ide\test_factory.py:21:from rebuild.sql_ide.execution import ProductionSqlExecutionPort
+datara-backend\tests\sql_ide\test_factory.py:100:from rebuild.sql_ide.execution import build_execution_port
+datara-backend\tests\sql_ide\test_factory.py:111:from rebuild.sql_ide.audit import build_audit_writer
+datara-backend\tests\sql_ide\test_history_store.py:14:from rebuild.sql_ide.history_store import SqlIdeHistoryStore
+datara-backend\tests\sql_ide\test_history_store.py:24:from rebuild.sql_ide.history_store import SqlIdeHistoryRecord
+datara-backend\tests\sql_ide\test_history_store.py:63:from rebuild.sql_ide.history_store import SqlIdeHistoryAuditRecord
+datara-backend\tests\sql_ide\test_history_store.py:81:from rebuild.sql_ide.history_store import SCRIPT_TOMBSTONE_TTL
+datara-backend\tests\sql_ide\test_history_store.py:113:from rebuild.sql_ide.history_store import AUDIT_MIN_TTL, HISTORY_TOMBSTONE_TT...
+datara-backend\tests\sql_ide\test_history_store.py:140:from rebuild.sql_ide.history_store import HISTORY_TOMBSTONE_TTL, HISTORY_TTL
+datara-backend\tests\sql_ide\test_history_store.py:155:from rebuild.sql_ide.history_store import AUDIT_MIN_TTL, SCRIPT_TOMBSTONE_TTL
+datara-backend\tests\sql_ide\test_history_store.py:195:from rebuild.sql_ide.migrations import SQL_IDE_ALL_MIGRATIONS, SqlIdeMigratio...
+datara-backend\tests\sql_ide\test_history_store.py:203:assert "sql_ide_0003_history_scripts" in first.applied
+datara-backend\tests\sql_ide\test_history_store.py:204:assert "sql_ide_0003_history_scripts" in second.skipped
+datara-backend\tests\sql_ide\test_history_store.py:206:assert schema.has_table("sql_ide_history")
+datara-backend\tests\sql_ide\test_history_store.py:207:assert schema.has_table("sql_ide_scripts")
+datara-backend\tests\sql_ide\test_history_store.py:208:assert schema.has_table("sql_ide_history_audit")
+datara-backend\tests\sql_ide\test_janitor.py:7:from rebuild.sql_ide.janitor import cleanup_sweep, register_cleanup_sweep
+datara-backend\tests\sql_ide\test_janitor.py:8:from rebuild.sql_ide.result_store import PersistentExportJobStore, Persistent...
+datara-backend\tests\sql_ide\test_janitor.py:9:from rebuild.sql_ide.snapshots import SqlIdeEventStore
+datara-backend\tests\sql_ide\test_janitor.py:10:from rebuild.sql_ide.status_store import SqlIdeStatusStore
+datara-backend\tests\sql_ide\test_janitor.py:76:"id": "sql_ide_cleanup_sweep",
+datara-backend\tests\sql_ide\test_linter.py:3:from rebuild.sql_ide.linter import lint_sql
+datara-backend\tests\sql_ide\test_metadata_browser.py:5:from rebuild.sql_ide.capability import CapabilityAccessError, CapabilityDecla...
+datara-backend\tests\sql_ide\test_metadata_browser.py:6:from rebuild.sql_ide.metadata_browser import MetadataBrowser
+datara-backend\tests\sql_ide\test_pagination.py:8:from rebuild.sql_ide.pagination import PaginationError, paginate_result
+datara-backend\tests\sql_ide\test_readonly_batch_preflight.py:5:from rebuild.sql_ide.readonly_preflight import ReadonlyBatchPreflightError, p...
+datara-backend\tests\sql_ide\test_repair_integration.py:21:from rebuild.sql_ide.audit import SqlIdeAuditRecord, build_audit_writer
+datara-backend\tests\sql_ide\test_repair_integration.py:22:from rebuild.sql_ide.execution import build_execution_port
+datara-backend\tests\sql_ide\test_repair_integration.py:128:assert "rebuild_sql_ide_audit" in table_names
+datara-backend\tests\sql_ide\test_repair_integration.py:142:columns = {col["name"] for col in inspector.get_columns("rebuild_sql_ide_audi...
+datara-backend\tests\sql_ide\test_repair_integration.py:160:assert "sql_ide_result_sets" in tables
+datara-backend\tests\sql_ide\test_repair_integration.py:172:assert {"sql_ide_export_jobs", "sql_ide_export_audit"} <= tables
+datara-backend\tests\sql_ide\test_repair_integration.py:287:from rebuild.sql_ide.execution import ProductionSqlExecutionPort
+datara-backend\tests\sql_ide\test_repair_integration.py:294:from rebuild.sql_ide.audit import DbBackedAuditWriter
+datara-backend\tests\sql_ide\test_result_store.py:14:assert find_spec("rebuild.sql_ide.result_store") is not None
+datara-backend\tests\sql_ide\test_result_store.py:18:if find_spec("rebuild.sql_ide.result_store") is None:
+datara-backend\tests\sql_ide\test_result_store.py:20:from rebuild.sql_ide.result_store import PersistentResultPageStore
+datara-backend\tests\sql_ide\test_routes.py:6:from rebuild.sql_ide.routes import build_sql_ide_router
+datara-backend\tests\sql_ide\test_routes.py:25:router = build_sql_ide_router(
+datara-backend\tests\sql_ide\test_routes.py:37:assert "/api/v1/projects/{project_id}/sql-ide/lint" in paths
+datara-backend\tests\sql_ide\test_routes.py:38:assert "/api/v1/projects/{project_id}/sql-ide/executions/{task_id}/events" in...
+datara-backend\tests\sql_ide\test_routes.py:39:assert "/api/v1/projects/{project_id}/sql-ide/results/{history_id}" in paths
+datara-backend\tests\sql_ide\test_routes.py:40:assert "/api/v1/projects/{project_id}/sql-ide/scripts/{script_id}" in paths
+datara-backend\tests\sql_ide\test_routes.py:46:"/api/v1/projects/23/sql-ide/lint",
+datara-backend\tests\sql_ide\test_routes.py:61:"/api/v1/projects/23/sql-ide/executions",
+datara-backend\tests\sql_ide\test_routes.py:75:"/api/v1/projects/23/sql-ide/results/81?resultSetId=rs-9&offset=500&limit=500",
+datara-backend\tests\sql_ide\test_routes.py:85:"/api/v1/projects/23/sql-ide/scripts",
+datara-backend\tests\sql_ide\test_routes.py:94:"/api/v1/projects/23/sql-ide/scripts/8?expectedRevision=4", headers=headers
+datara-backend\tests\sql_ide\test_routes.py:101:"/api/v1/projects/23/sql-ide/exports",
+datara-backend\tests\sql_ide\test_routes.py:118:build_sql_ide_router(
+datara-backend\tests\sql_ide\test_routes.py:125:"/api/v1/projects/23/sql-ide/history/44", headers={"token": "test-token"}
+datara-backend\tests\sql_ide\test_routes.py:142:build_sql_ide_router(
+datara-backend\tests\sql_ide\test_routes.py:155:"/api/v1/projects/23/sql-ide/executions",
+datara-backend\tests\sql_ide\test_routes.py:164:assert "Path=/api/v1/projects/23/sql-ide/executions/task-1/events" in cookie
+datara-backend\tests\sql_ide\test_routes.py:166:events = client.get("/api/v1/projects/23/sql-ide/executions/task-1/events")
+datara-backend\tests\sql_ide\test_routes.py:168:assert client.get("/api/v1/projects/23/sql-ide/executions/task-2/events").sta...
+datara-backend\tests\sql_ide\test_routes.py:172:def test_application_factory_mounts_project_scoped_sql_ide_routes():
+datara-backend\tests\sql_ide\test_routes.py:182:assert client.get("/api/v1/projects/1/sql-ide/results/1").status_code == 401
+datara-backend\tests\sql_ide\test_routes.py:183:assert client.get("/api/v1/projects/1/sql-ide/scripts").status_code == 401
+datara-backend\tests\sql_ide\test_routes.py:184:assert client.get("/api/v1/projects/1/sql-ide/exports/export-1/download").sta...
++164 more files [see remaining: tail -n +1 "$HOME/AppData/Local/rtk/tee/1792926365_grep_skipped.log"]

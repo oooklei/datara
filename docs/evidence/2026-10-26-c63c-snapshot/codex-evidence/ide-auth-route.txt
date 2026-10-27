@@ -1,0 +1,46 @@
+
+    async def invoke(request: Request, project_id: int, operation: str, permission: str,
+                     has_body: bool, path_values: Mapping[str, Any]) -> Any:
+        payload: dict[str, Any] = dict(request.query_params)
+        payload.update(path_values)
+        if has_body:
+            try:
+                body = await request.json()
+            except (json.JSONDecodeError, UnicodeDecodeError):
+                return _error_response(SqlIdeRouteError("INVALID_REQUEST"))
+            if not isinstance(body, Mapping):
+                return _error_response(SqlIdeRouteError("INVALID_REQUEST"))
+            payload.update(body)
+        token = request.headers.get("token", "")
+        authorization = request.headers.get("authorization", "")
+        if operation == "openEventStream" and not token and not authorization:
+            token = request.cookies.get(_event_cookie_name(str(path_values.get("task_id", ""))), "")
+        try:
+            principal = await _maybe_await(
+                authenticate(token, authorization)
+            )
+        except Exception:
+            return _error_response(SqlIdeRouteError("UNAUTHENTICATED"))
+        try:
+            denial = await _maybe_await(authorize(project_id, principal, permission, operation, payload))
+        except Exception:
+            return _error_response(SqlIdeRouteError("PERMISSION_DENIED"))
+        if isinstance(denial, Response):
+            return denial
+        if denial is not None:
+            return _error_response(SqlIdeRouteError("PERMISSION_DENIED"))
+        try:
+            result = await _maybe_await(
+                dispatch(operation, project_id=project_id, principal=principal, payload=payload)
+            )
+        except SqlIdeRouteError as exc:
+            return _error_response(exc)
+        except PermissionError as exc:
+            return _error_response(SqlIdeRouteError("PERMISSION_DENIED", message=str(exc)))
+        except LookupError as exc:
+            return _error_response(SqlIdeRouteError("HISTORY_NOT_FOUND", message=str(exc)))
+        except ValueError as exc:
+            return _error_response(SqlIdeRouteError("INVALID_REQUEST", message=str(exc)))
+        if isinstance(result, Response):
+            return result
+        response = JSONResponse(content={"code": 0, "msg": "success", "data": result})

@@ -54,6 +54,7 @@ datara-backend/data/ai_copilot/chromadb/*
 .claude/
 opencode.json
 package-lock.json
+!datara-newweb/package-lock.json
 datara-backend/_debug_routes.py
 datara-backend/_test_out.txt
 datara-backend/*.db

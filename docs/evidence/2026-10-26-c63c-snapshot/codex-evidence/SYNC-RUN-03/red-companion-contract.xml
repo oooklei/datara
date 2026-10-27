@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?><testsuites name="pytest tests"><testsuite name="pytest" errors="0" failures="1" skipped="0" tests="2" time="1.185" timestamp="2026-10-26T00:24:52.814111+08:00" hostname="DESKTOP-SI67FHF"><testcase classname="tests.rebuild.test_trial_runner" name="test_trial_run_materializes_endpoint_select_and_persists_sync_counts[False-SUCCEEDED-expected_counts0]" time="0.347"><failure message="AssertionError: assert 'FAILED' == 'SUCCEEDED'&#10;  &#10;  - SUCCEEDED&#10;  + FAILED">tests\rebuild\test_trial_runner.py:178: in test_trial_run_materializes_endpoint_select_and_persists_sync_counts
+    assert result.status == expected_status
+E   AssertionError: assert 'FAILED' == 'SUCCEEDED'
+E     
+E     - SUCCEEDED
+E     + FAILED</failure></testcase><testcase classname="tests.rebuild.test_trial_runner" name="test_trial_run_materializes_endpoint_select_and_persists_sync_counts[True-FAILED-expected_counts1]" time="0.201" /></testsuite></testsuites>

@@ -1,0 +1,34 @@
+{
+  "schema_version": "3.0",
+  "event_id": "v3-0085-lane-policy-updated-d-parallel-2",
+  "business_key": "flow:lane-policy-updated:d-parallel-2",
+  "epoch": 3,
+  "ts": "2026-10-24T03:50:00+08:00",
+  "actor": "Flow",
+  "type": "LANE_POLICY_UPDATED",
+  "receipt_kind": "FLOW_RECEIPT",
+  "lifecycle": "RUNNING",
+  "directive": "D-PARALLEL-2",
+  "source": "docs/handoff/outbox/监督/2026-10-23-ops-directive-remote-test-2-lane-parallel-v3-0080.md",
+  "source_watermark": "v3-0080",
+  "authorization": "用户直接授权（2026-10-23T03:10+08:00 原话：解除串行，授予你监督员角色，发布指令，可以 2 条线并行，但不能有相互覆盖冲突，开展前必须先按契约登记）",
+  "action_taken": [
+    "Flow 落 LANE_POLICY_UPDATED 事件 v3-0085（本回执）",
+    "snapshot.json 与 remote-test-queue.json REMOTE_TEST 各项写入 lane 字段（A/B）",
+    "REMOTE_TEST 段头/顶层写入 concurrency_limit=2 与 lane_policy",
+    "governance-state.json mailbox_watermark → v3-0086"
+  ],
+  "lane_mapping": {
+    "A": ["RT-IMPL-V4-01-A-GROUP", "RT-IMPL-V4-03-C-GROUP"],
+    "B": ["RT-IMPL-V4-02a-SSHNODE-DOMAIN", "RT-IMPL-V4-07-QC-BATCH-A", "RT-IMPL-V4-16-MONITOR-COMPONENT", "RT-IMPL-V4-08-OPENAPI-CONTRACT"]
+  },
+  "hard_redline": "任一时刻只允许 1 条线触碰 rebuild_llm_model",
+  "pending_owner_actions": [
+    "Integration：线 A/B 独立租约（isolated_tree/evidence_dir 互不重叠）",
+    "O10：各线首执行前同步制品并绑定 commit",
+    "执行席：登记件明示并发安全声明"
+  ],
+  "circuit_breaker": "并发互污 → Ops 立即回收单槽串行（并发上限降回 1）",
+  "watchdog": "两线各自独立心跳，实施线 30 分钟静默判治理异常",
+  "next": "循环 next：哨兵检查 + 候 Integration 落线 A/B 独立租约"
+}

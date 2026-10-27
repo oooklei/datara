@@ -6,12 +6,6 @@
     </header>
 
     <div class="toolbar">
-      <label class="field"><span>项目</span>
-        <select v-model="selectedProject" class="kw" data-project-select :disabled="loading || detailLoading" @change="reload">
-          <option value="">请选择项目</option>
-          <option v-for="p in projects" :key="p.id" :value="String(p.id)">{{ p.name }}</option>
-        </select>
-      </label>
       <label class="field"><span>类型</span>
         <input v-model.trim="assetType" class="kw" placeholder="table/view" :disabled="loading || detailLoading" @keyup.enter="reload">
       </label>

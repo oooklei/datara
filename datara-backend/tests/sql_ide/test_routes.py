@@ -165,6 +165,7 @@ def test_execution_sets_task_scoped_secure_cookie_and_events_authenticate_from_i
 
     events = client.get("/api/v1/projects/23/sql-ide/executions/task-1/events")
     assert events.status_code == 200
+    assert events.headers["content-type"].startswith("text/event-stream")
     assert client.get("/api/v1/projects/23/sql-ide/executions/task-2/events").status_code == 401
     assert authenticated == [("test-token", ""), ("test-token", ""), ("", "")]
 

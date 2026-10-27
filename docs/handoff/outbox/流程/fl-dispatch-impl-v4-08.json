@@ -1,0 +1,48 @@
+{
+  "schema_version": "3.0",
+  "ticket": "IMPL-v4-08",
+  "type": "FLOW_DISPATCH_FACE",
+  "epoch": 3,
+  "generated_at": "2026-10-22T18:45:00+08:00",
+  "generated_by": "Flow",
+  "dispatch_anchor_events": [
+    "v3-0051-outbox-reports-admitted-batch-9",
+    "v3-0053-dispatch-assigned-impl-v4-08"
+  ],
+  "assigned_to": "trae",
+  "state_transition": "READY->ASSIGNED",
+  "title": "API 管理 15-P0 契约冻结：三表模型 + 端点清单 + 权限/错误码 + Key hash-only + 调用日志脱敏",
+  "domain": "DELIVERY",
+  "priority": {
+    "base": "P2",
+    "effective": "P2",
+    "basis": "15.2 立项 C1~C4 已于 2026-10-21 全批（s322 解锁六票）；15-P0 是 15.2-A 建模唯一未满足前置（门 1/门 7）；G 组非当前发布关键路径，但为六票链头",
+    "override": null
+  },
+  "authority": "USER_EXPLICIT_INSTRUCTION（Ops 转达用户指令「02a 派 claude，Task 同步立下一批」；Task 增量 10 §四 发布 READY 票面，§六-1 建议 08→trae 线；Flow 按 READY 库存正常派单）",
+  "depends_on": [],
+  "depends_satisfied": "15.2 立项批准（含 C1 调用日志页内页签、C2 受控 facade、C3 scope、C4 fail-closed/90 天/脱敏）；不依赖 01/02a/03",
+  "acceptance": "① 冻结 rebuild_api_definition / rebuild_api_key / rebuild_api_call_log 三表字段、约束、时间戳；② 端点清单（定义 CRUD/发布/启停、Key 签发/轮换/吊销、调用网关/日志查询）与状态机；③ 权限矩阵与错误码；④ 安全红线：原始 key 仅签发响应一次、库内 hash-only、日志不落原始 key/敏感 body/完整 SQL；⑤ Acceptance 独立评审 PASS（A2）；⑥ 契约测试在 1.9 GREEN；⑦ 不建表、不写业务实现",
+  "evidence_requirements": [
+    "冻结文档（含三表 DDL 级字段表/端点表/错误码表）",
+    "独立评审记录（Acceptance A2）",
+    "1.9 契约测试输出（经 Integration 租约；租约请求先于任何 1.9 执行）",
+    "NO_SECRET 预检（0 实际命中口径）",
+    "CONTRACT_REGISTRY RED 行文本（不改 CONTRACT_REGISTRY.md，随证据交付）"
+  ],
+  "completion_chain": "EVIDENCE_READY → ENV_VERIFIED（Integration 租约）→ PASS（Acceptance 独立评审）→ Flow 集成窗提交 → RELEASED/DONE",
+  "paths": [
+    "datara-newweb/src/services/rebuild/openapiAdminApi.ts（RED 契约骨架，零 I/O）",
+    "datara-newweb/src/services/rebuild/__tests__/openapiAdminApi.contract.test.ts",
+    "docs/increments/evidence/API/2026-10-22-15-P0-契约冻结.md（新）"
+  ],
+  "boundaries": [
+    "契约细节属立项批准内 D2，无需再次上呈用户；若实施/评审发现越出 C1~C4，转 Decision D2/D3",
+    "API 域命名红线：openapiAdminApi 是产品「API 管理」契约，不得与 FastAPI /openapi.json schema 混淆；包名建议 api_management，URL 前缀 /api/v1/open 以本票冻结为准",
+    "不建表、不写业务实现（RED 契约骨架，零 I/O）",
+    "本机=静态稽核；1.9 契约测试须先取得 Integration 租约回执",
+    "无 commit、无 push（USER_ONLY）；变更留工作区候集成窗 pathspec 圈定"
+  ],
+  "wip_note": "trae 线：03 仅候 1.9 租约回执（本机契约面无动作），本票本地段不冲突；trae 线静默约 3h（Ops A1 WATCH），若派单后仍无 ACK，按 A1 升级路径交任务席评估重派",
+  "no_secret": "证据面提交前执行 NO_SECRET 预检（0 实际命中口径）"
+}

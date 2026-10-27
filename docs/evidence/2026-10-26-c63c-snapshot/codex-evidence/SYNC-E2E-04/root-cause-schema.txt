@@ -1,0 +1,9 @@
+mysql: [Warning] Using a password on the command line interface can be insecure.
+id	int	NO	PRI	NULL	auto_increment
+run_id	varchar(128)	NO	MUL	NULL	
+run_kind	varchar(16)	NO	MUL	NULL	
+source_entity	varchar(256)	NO		NULL	
+target_entity	varchar(256)	NO		NULL	
+writeback_at	datetime	NO	MUL	NULL	
+created_at	datetime	NO		CURRENT_TIMESTAMP	DEFAULT_GENERATED
+updated_at	datetime	NO		CURRENT_TIMESTAMP	DEFAULT_GENERATED

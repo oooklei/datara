@@ -1,0 +1,41 @@
+84 matches in 2 files:
+
+datara-backend/rebuild/api/app.py:32:from rebuild.sql_ide.history_store import SqlIdeHistoryStore
+datara-backend/rebuild/api/app.py:38:from rebuild.sql_ide.result_store import SqlIdeResultSetRecord
+datara-backend/rebuild/api/app.py:39:from rebuild.sql_ide.result_store import PersistentResultPageStore
+datara-backend/rebuild/api/app.py:295:result = session.execute(delete(ActiveTokenRecord).where(ActiveTokenRecord.us...
+datara-backend/rebuild/api/app.py:296:return result.rowcount or 0
+datara-backend/rebuild/api/app.py:298:result = own_session.execute(delete(ActiveTokenRecord).where(ActiveTokenRecor...
+datara-backend/rebuild/api/app.py:300:return result.rowcount or 0
+datara-backend/rebuild/api/app.py:312:connection.execute(text(f"ALTER TABLE rebuild_user ADD COLUMN {column} DATETI...
+datara-backend/rebuild/api/app.py:334:connection.execute(text(f"ALTER TABLE workflow_schedule ADD COLUMN {column} {...
+datara-backend/rebuild/api/app.py:491:history = SqlIdeHistoryStore(session_factory=session_factory)
+datara-backend/rebuild/api/app.py:493:result_store = PersistentResultPageStore(session_factory=session_factory)
+datara-backend/rebuild/api/app.py:511:cursor.execute(statement, (int(row_limit),))
+datara-backend/rebuild/api/app.py:522:result_store=result_store,
+datara-backend/rebuild/api/app.py:523:authorize_result=lambda **_: True,
+datara-backend/rebuild/api/app.py:618:if operation == "executeSql":
+datara-backend/rebuild/api/app.py:626:result = build_execution_port(
+datara-backend/rebuild/api/app.py:629:).execute(
+datara-backend/rebuild/api/app.py:640:history_id = history.create_history(
+datara-backend/rebuild/api/app.py:650:result_set_id = result_store.save_snapshot(
+datara-backend/rebuild/api/app.py:653:history_id=history_id,
+datara-backend/rebuild/api/app.py:655:columns=result.get("columns", []),
+datara-backend/rebuild/api/app.py:656:rows=result.get("rows", []),
+datara-backend/rebuild/api/app.py:657:total_rows=int(result.get("total_rows", result.get("row_count", 0))),
+datara-backend/rebuild/api/app.py:664:payload={"status": "succeeded", "history_id": history_id, "result_set_id": re...
+datara-backend/rebuild/api/app.py:669:**dict(result),
+  +46 more in datara-backend/rebuild/api/app.py [see remaining: tail -n +26 "$HOME/AppData/Local/rtk/tee/1792926382_grep_0_atara_backend_rebuild_api_app_py.log"]
+datara-backend/rebuild/sql_ide/routes.py:51:("POST", "/executions", "executeSql", "EXECUTE_SQL", True),
+datara-backend/rebuild/sql_ide/routes.py:52:("POST", "/executions/{task_id}/cancel", "cancelExecution", "EXECUTE_SQL", Fa...
+datara-backend/rebuild/sql_ide/routes.py:55:("GET", "/results/{history_id}", "fetchResultPage", "VIEW_ALL", False),
+datara-backend/rebuild/sql_ide/routes.py:56:("GET", "/history", "listHistory", "VIEW_ALL", False),
+datara-backend/rebuild/sql_ide/routes.py:57:("DELETE", "/history/{history_id}", "deleteHistory", "EDIT_DEFINITION", False),
+datara-backend/rebuild/sql_ide/routes.py:65:("DELETE", "/exports/{export_id}", "cancelExport", "VIEW_ALL", False),
+datara-backend/rebuild/sql_ide/routes.py:117:result = await _maybe_await(
+datara-backend/rebuild/sql_ide/routes.py:128:if isinstance(result, Response):
+datara-backend/rebuild/sql_ide/routes.py:129:return result
+datara-backend/rebuild/sql_ide/routes.py:130:response = JSONResponse(content={"code": 0, "msg": "success", "data": result})
+datara-backend/rebuild/sql_ide/routes.py:131:if operation == "executeSql" and isinstance(result, Mapping):
+datara-backend/rebuild/sql_ide/routes.py:132:task_id = result.get("taskId") or result.get("task_id")
+datara-backend/rebuild/sql_ide/routes.py:133:if task_id and result.get("accepted", True):

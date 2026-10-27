@@ -1,0 +1,29 @@
+{
+  "id": "F-UX-V3-P4",
+  "ts": "2026-10-27T14:16:46+08:00",
+  "from": "codex",
+  "to": "flow",
+  "type": "implementation-receipt",
+  "ref": "docs/increments/2026-10-27-前端UX-v3评审与新设计目标.md#25-sql-ide",
+  "body": {
+    "completed": [
+      "CodeMirror 6 取代可见 textarea，保持 v-model 和光标位置变量插入",
+      "splitpanes 承载元数据树/编辑器/结果区，尺寸持久化至 datara.ide.split.v1",
+      "保留真实执行、取消、语法检查、变量校验/管理、脚本、历史、分页、CSV 导出",
+      "新增本地 sql-formatter 格式化与项目血缘页跳转"
+    ],
+    "verification": {
+      "target": "2 files / 20 tests passed",
+      "vitest": "107 files / 901 tests passed",
+      "vueTsc": "EXIT=0",
+      "evidence": ".codex-evidence/F-UX-V3-P4-*.log"
+    },
+    "next": [
+      "P5 真实用户会话与旧全局业务路由归一",
+      "按钮/角色/空错加载状态矩阵",
+      "固化 LongCat provider 后端镜像",
+      "192.168.1.9 最终统一部署与核心 E2E"
+    ]
+  },
+  "status": "completed"
+}

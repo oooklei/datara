@@ -1,0 +1,50 @@
+{
+  "schema_version": "3.0",
+  "ticket": "IMPL-v4-02a",
+  "type": "FLOW_DISPATCH_FACE",
+  "epoch": 3,
+  "generated_at": "2026-10-22T15:39:59+08:00",
+  "generated_by": "Flow",
+  "dispatch_anchor_events": [
+    "v3-0035-user-directive-02a-claude-next-batch-registered",
+    "v3-0040-task-inventory-06-07-02a-face-landed",
+    "v3-0041-dispatch-assigned-impl-v4-02a"
+  ],
+  "assigned_to": "claude",
+  "state_transition": "READY->ASSIGNED",
+  "title": "B 组前端收口 02a 段：sshNode service + SshNodeManagement/ResourceManagement 视图 + NodeConfigPanel/ScheduleDialog + views/system",
+  "domain": "DELIVERY",
+  "priority": {
+    "base": "P1",
+    "effective": "P1",
+    "basis": "前端关键路径 02a 段；v3-0031 用户授权部分解耦先行段",
+    "override": null
+  },
+  "authority": "USER_EXPLICIT_INSTRUCTION（v3-0035 Ops 转达：02a 指名派 claude；02a/02b 边界闸门由 Task 增量 06 §3 票面 + 增量 07 §3 确认满足，零修订承接）",
+  "depends_on": [],
+  "depends_satisfied": "无票面依赖；不挂 IMPL-v4-01 链",
+  "acceptance": "sshNode 域契约测试 + 本机静态校验 + 1.9 端到端 GREEN（sshNode 域）",
+  "evidence_requirements": [
+    "契约测试记录",
+    "本机静态校验输出（vue-tsc/tsc + NO_SECRET 预检 0 实际命中）",
+    "1.9 e2e 证据（经 Integration 租约；租约请求先于任何 1.9 执行）"
+  ],
+  "completion_chain": "EVIDENCE_READY → ENV_VERIFIED（Integration 租约）→ PASS（Acceptance）→ Flow 集成窗提交 → RELEASED/DONE",
+  "paths": [
+    "datara-newweb/src/services/rebuild/sshNodeApi.ts",
+    "datara-newweb/src/views/SshNodeManagementView.vue",
+    "datara-newweb/src/views/ResourceManagementView.vue",
+    "datara-newweb/src/components/NodeConfigPanel.vue",
+    "datara-newweb/src/components/ScheduleDialog.vue",
+    "datara-newweb/src/views/system/"
+  ],
+  "boundaries": [
+    "02a/02b 路径互斥无交叠；02b（datasourceApi/rolePermissions/PermissionMatrixView）候 IMPL-v4-01 契约冻结，不得顺带实施",
+    "若实施期发现对 datasourceApi/rolePermissions 的编译期依赖，经 Ops 路由 Decision（D0-D2）处置，不静默扩边",
+    "02a paths 不含 datara-newweb/e2e/；若需新增 sshNode 用例文件，经 Ops 路由避免与 IMPL-v4-03（e2e/ 属主）路径碰撞，不静默扩边",
+    "本机=代码检测/静态/类型/逻辑稽核；1.9（192.168.1.9）执行须先取得 Integration 租约回执；验证入口固定 18091（禁 8090/18090）",
+    "无 commit、无 push（USER_ONLY）；变更留工作区候集成窗 pathspec 圈定"
+  ],
+  "wip_note": "claude 线：IMPL-v4-01（REWORK）剩余工作为 1.9 租约候执（回执前无本地动作），02a 本地段实施不与其冲突；用户指令指名 02a→claude，WIP 记账依 v3-0035 为准",
+  "no_secret": "证据面提交前执行 NO_SECRET 预检（0 实际命中口径）"
+}

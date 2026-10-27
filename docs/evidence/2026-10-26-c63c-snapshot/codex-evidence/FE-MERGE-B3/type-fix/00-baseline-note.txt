@@ -1,0 +1,11 @@
+FE-MERGE-B3-TYPE-FIX baseline note
+
+At task start, the shared worktree already contained both requested fixes:
+- feMergeB3Assets.contract.test.ts used Vite ?raw imports and had no node:fs,
+  node:path, or process dependency; no implicit-any diagnostic was present.
+- LlmModelFormDialog.vue contained the longcat label, and the B3 contract test
+  locked LLM_PROVIDERS, the LongCat label, and select rendering via the provider loop.
+
+Therefore the requested initial vue-tsc RED could not be reproduced safely.
+The first unmodified vue-tsc -b run exited 0. No correct shared changes were reverted
+to manufacture a failing result, and no business/source file was changed by this task.

@@ -1,0 +1,10 @@
+{
+  "url": "http://127.0.0.1:18091/p/33/dag",
+  "visibleWorkflows": [
+    "电商订单离线加工样例",
+    "电商订单同步入仓样例",
+    "电商实时订单流观摩样例"
+  ],
+  "consoleErrors": [],
+  "verdict": "PASS"
+}

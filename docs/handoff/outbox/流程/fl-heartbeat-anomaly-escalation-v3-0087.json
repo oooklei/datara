@@ -1,0 +1,26 @@
+{
+  "schema_version": "3.0",
+  "event_id": "v3-0087-heartbeat-anomaly-escalation",
+  "business_key": "flow:governance:heartbeat-anomaly",
+  "epoch": 3,
+  "ts": "2026-10-24T04:05:00+08:00",
+  "actor": "Flow",
+  "type": "NOTICE_BROADCAST",
+  "receipt_kind": "FLOW_RECEIPT",
+  "lifecycle": "RUNNING",
+  "rule": "§7.1 心跳看门狗：控制/审计类静默 >60 分钟视为治理异常，自动升级 A→用户",
+  "silent_roles_count": 6,
+  "max_silent_hours": 25.3,
+  "silent_roles": ["Integration", "Acceptance", "Claude/EXEC-1", "Task", "Decision", "Supervisor"],
+  "deadlock": "epoch=3 队列全部候 Integration 落线 A/B 独立租约；Integration 席自 2026-10-23T02:53 静默（早于 D-PARALLEL-2 v3-0080 发布），未执行租约落位",
+  "1.9_reachable": true,
+  "flow_state": "Flow 唯一活跃；已补落 D-PARALLEL-2 lane 政策（v3-0085）+ LEASE-01 过期披露（v3-0086）",
+  "escalation": "A→用户",
+  "user_decision_needed": [
+    "是否唤醒 Integration 席落线 A/B 独立租约（D-PARALLEL-2 前置）",
+    "是否授权 Flow 代为登记租约（若 Integration 席不可用）",
+    "是否调整 epoch=3 运行模式（单写者 vs 多角色并行）"
+  ],
+  "projection_effect": "governance-state + snapshot watermark → v3-0087",
+  "next": "继续哨兵循环直至用户指令或外部输入"
+}

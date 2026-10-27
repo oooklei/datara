@@ -5,12 +5,6 @@
         <h1>{{ title }}</h1>
         <p>{{ description }}</p>
       </div>
-      <label>项目
-<select v-model="selectedProject" data-project-select @change="changeProject">
-          <option value="">请选择项目</option>
-          <option v-for="project in projects" :key="project.id" :value="String(project.id)">{{ project.name }}</option>
-        </select>
-      </label>
       <label v-if="kind === 'exceptions'">状态
         <input v-model.trim="status" data-status-filter placeholder="全部状态">
       </label>

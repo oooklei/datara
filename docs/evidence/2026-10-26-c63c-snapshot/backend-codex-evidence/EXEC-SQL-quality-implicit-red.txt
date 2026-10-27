@@ -1,0 +1,7 @@
+Pytest: 9 passed, 3 failed
+
+Failures:
+     tests\test_sql_worker_executor.py:386: in test_transaction_all_rejects_implicit_commit_statements...
+     assert result.state == FAILURE
+     E   AssertionError: assert 'success' == 'failure'
+[full output: "$HOME/AppData/Local/rtk/tee/1792897235_pytest.log"]

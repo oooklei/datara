@@ -1,0 +1,280 @@
+{
+  "projects": {
+    "http": 200,
+    "body": {
+      "code": 0,
+      "msg": "success",
+      "data": {
+        "total": 31,
+        "list": [
+          {
+            "id": 1,
+            "name": "I1浏览器验证项目"
+          },
+          {
+            "id": 2,
+            "name": "I1静态验证项目"
+          },
+          {
+            "id": 3,
+            "name": "R1 validation r1-20261014101447"
+          },
+          {
+            "id": 4,
+            "name": "R1 validation r1-20261014101526"
+          },
+          {
+            "id": 5,
+            "name": "R1 validation r1-20261014101553"
+          },
+          {
+            "id": 6,
+            "name": "R1 validation r1-20261014101615"
+          },
+          {
+            "id": 7,
+            "name": "R3 governance validation R3V-20261014110557-a0c74c"
+          },
+          {
+            "id": 8,
+            "name": "R3 governance validation R3V-20261014110900-fe0cee"
+          },
+          {
+            "id": 9,
+            "name": "R3 governance validation R3V-20261014132657-466f99"
+          },
+          {
+            "id": 10,
+            "name": "R1 validation r1-20261014141528"
+          },
+          {
+            "id": 11,
+            "name": "R1 validation r1-20261014142424"
+          },
+          {
+            "id": 12,
+            "name": "R1 validation r1-20261014143004"
+          },
+          {
+            "id": 13,
+            "name": "R1 validation r1-20261014143128"
+          },
+          {
+            "id": 14,
+            "name": "R1 validation r1-20261014143228"
+          },
+          {
+            "id": 15,
+            "name": "r2-12-a-validation-fixture"
+          },
+          {
+            "id": 16,
+            "name": "r2-12-a-isolation-fixture"
+          },
+          {
+            "id": 17,
+            "name": "r2-12-b-validation-fixture"
+          },
+          {
+            "id": 18,
+            "name": "r2-12-b-isolation-fixture"
+          },
+          {
+            "id": 19,
+            "name": "r2-12-c-validation-fixture"
+          },
+          {
+            "id": 20,
+            "name": "r2-12-c-isolation-fixture"
+          },
+          {
+            "id": 21,
+            "name": "r2-12-d-validation-fixture"
+          },
+          {
+            "id": 22,
+            "name": "r2-12-d-isolation-fixture"
+          },
+          {
+            "id": 23,
+            "name": "L12-02-E2E-20261021"
+          },
+          {
+            "id": 24,
+            "name": "resource-e2e-20261025181125"
+          },
+          {
+            "id": 25,
+            "name": "resource-e2e-20261025182920"
+          },
+          {
+            "id": 26,
+            "name": "resource-e2e-20261025190515"
+          },
+          {
+            "id": 27,
+            "name": "IDE-E2E-01-20261025191001"
+          },
+          {
+            "id": 28,
+            "name": "stream-formal-e2e-20261025225925"
+          },
+          {
+            "id": 29,
+            "name": "stream-formal-e2e-20261025225945"
+          },
+          {
+            "id": 30,
+            "name": "stream-formal-e2e-20261025230024"
+          },
+          {
+            "id": 31,
+            "name": "stream-formal-e2e-20261025230117"
+          }
+        ]
+      }
+    }
+  },
+  "workflow25_project26": {
+    "http": 200,
+    "body": {
+      "code": 0,
+      "msg": "success",
+      "data": {
+        "definition_id": 25,
+        "project_id": 26,
+        "name": "resource-chain-20261025190515",
+        "description": "",
+        "workflow_type": "NORMAL",
+        "current_version": null,
+        "tags": [],
+        "draft": {
+          "nodes": [
+            {
+              "node_code": "sql_task",
+              "node_type": "sql",
+              "name": "sql_task",
+              "params": {
+                "execute": true,
+                "resourceRef": {
+                  "resourceId": 7,
+                  "version": 1
+                },
+                "sourceMode": "resource"
+              },
+              "component_ref": {
+                "type": "sql",
+                "version": 2
+              },
+              "position_x": null,
+              "position_y": null
+            },
+            {
+              "node_code": "python_task",
+              "node_type": "python",
+              "name": "python_task",
+              "params": {
+                "resourceRef": {
+                  "resourceId": 8,
+                  "version": 1
+                },
+                "sourceMode": "resource"
+              },
+              "component_ref": {
+                "type": "python",
+                "version": 1
+              },
+              "position_x": null,
+              "position_y": null
+            },
+            {
+              "node_code": "shell_task",
+              "node_type": "shell",
+              "name": "shell_task",
+              "params": {
+                "resourceRef": {
+                  "resourceId": 9,
+                  "version": 1
+                },
+                "sourceMode": "resource"
+              },
+              "component_ref": {
+                "type": "shell",
+                "version": 1
+              },
+              "position_x": null,
+              "position_y": null
+            }
+          ],
+          "edges": []
+        }
+      }
+    }
+  },
+  "workflows_project26": {
+    "http": 200,
+    "body": {
+      "code": 0,
+      "msg": "success",
+      "data": [
+        {
+          "definition_id": 25,
+          "project_id": 26,
+          "name": "resource-chain-20261025190515",
+          "description": "",
+          "workflow_type": "NORMAL",
+          "current_version": null,
+          "tags": []
+        }
+      ]
+    }
+  },
+  "resources_sql": {
+    "http": 200,
+    "body": {
+      "code": 0,
+      "msg": "success",
+      "data": [
+        {
+          "resource_id": 7,
+          "name": "bound.sql",
+          "kind": "sql",
+          "size_bytes": 27,
+          "latest_version": 1
+        }
+      ]
+    }
+  },
+  "resources_python": {
+    "http": 200,
+    "body": {
+      "code": 0,
+      "msg": "success",
+      "data": [
+        {
+          "resource_id": 8,
+          "name": "bound.py",
+          "kind": "python",
+          "size_bytes": 28,
+          "latest_version": 1
+        }
+      ]
+    }
+  },
+  "resources_shell": {
+    "http": 200,
+    "body": {
+      "code": 0,
+      "msg": "success",
+      "data": [
+        {
+          "resource_id": 9,
+          "name": "bound.sh",
+          "kind": "shell",
+          "size_bytes": 25,
+          "latest_version": 1
+        }
+      ]
+    }
+  }
+}

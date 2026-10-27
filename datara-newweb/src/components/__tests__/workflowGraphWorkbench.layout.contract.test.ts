@@ -25,9 +25,24 @@ describe('WorkflowGraphWorkbench layout contract', () => {
     expect(source).toMatch(/if \(type === 'sql'\) return 'sql'/)
     expect(source).toMatch(/if \(type === 'python' \|\| type === 'shell'\) return 'script'/)
     expect(source).toMatch(/type === 'sql' \|\| type === 'python' \|\| type === 'shell' \? type : null/)
-    expect(source).toContain('v-if="projectId !== undefined && scriptResourceKind"')
+    expect(source).toContain('v-else-if="selectedNodeRecord && nodeParameterKey && scriptResourceKind"')
     expect(source).toContain(':kind="scriptResourceKind"')
     expect(source).toMatch(/nodeType \?\? ''\)\.toLowerCase\(\) === 'dependent'/)
-    expect(source).toContain('v-if="selectedNodeRecord && isDependentNode && projectId !== undefined"')
+    expect(source).toContain('v-else-if="selectedNodeRecord && isDependentNode"')
+  })
+
+  it('keeps palette, canvas, and inspector reachable below the 768px breakpoint', () => {
+    const narrow = source.match(/@media\s*\(max-width:\s*767px\)\s*\{([\s\S]*)\}\s*<\/style>/)?.[1] ?? ''
+
+    expect(narrow).toMatch(/\.wf-body\s*\{[^}]*grid-template-rows:/s)
+    expect(narrow).toMatch(/\.wf-flow\s*\{[^}]*min-height:\s*360px/s)
+    expect(narrow).toMatch(/\.wf-aside\s*\{[^}]*width:\s*auto/s)
+    expect(narrow).toMatch(/\.wf-splitter\s*\{[^}]*display:\s*none/s)
+  })
+
+  it('uses dagre when persisted node coordinates overlap', () => {
+    expect(source).toContain("from '@dagrejs/dagre'")
+    expect(source).toContain('layoutFlowNodes(')
+    expect(source).toMatch(/graph\.setGraph\(\{\s*rankdir:\s*'LR'/)
   })
 })

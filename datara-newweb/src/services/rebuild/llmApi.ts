@@ -114,7 +114,7 @@ export const llmApi = {
 
   /** `POST /rebuild/llm-models/{id}/test` —— 连通性测试（无请求体；502/5021 为出站失败）。 */
   async testModel(id: number): Promise<LlmTestResult> {
-    return fromWire<LlmTestResult>(await postJson(`${BASE}/${id}/test`, undefined, PRESERVE_ERROR))
+    return fromWire<LlmTestResult>(await postJson(`${BASE}/${id}/test`, undefined, { ...PRESERVE_ERROR, timeoutMs: null }))
   },
 
   /** `PUT /rebuild/llm-models/{id}/default` —— 设为默认（无请求体；404/4041）。 */

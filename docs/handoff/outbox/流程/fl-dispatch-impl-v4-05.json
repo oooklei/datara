@@ -1,0 +1,44 @@
+{
+  "schema_version": "3.0",
+  "face_id": "fl-dispatch-impl-v4-05",
+  "epoch": 3,
+  "generated_by": "Flow",
+  "generated_at": "2026-10-22T14:40:00+08:00",
+  "watermark_base": "v3-0023-user-rulings-relayed-exc-v4-01-A-push-preauth",
+  "event_ref": "v3-0024-dispatch-assigned-impl-v4-05",
+  "ticket": {
+    "id": "IMPL-v4-05",
+    "title": "E 组清理归档：一次性脚本与杂项（anchor_cycle.ps1 / append_s375.ps1 / check_outbox.ps1 / check_outbox_result.txt / state_s310.ps1 / AIDos常用指令提示词.txt / 2 个 docx / 备忘 md / workflows/）",
+    "domain": "MAINTENANCE",
+    "base_priority": "P2",
+    "effective_priority": "P2",
+    "priority_basis": "仓库根部卫生（决策卡 E 组）；归档优先、删除须用户裁定",
+    "assigned_to": "trae",
+    "assigned_at": "2026-10-22T14:40:00+08:00",
+    "state_transition": "READY->ASSIGNED",
+    "depends_on": [],
+    "depends_satisfied": "无依赖，立即可执行"
+  },
+  "acceptance": "仓库根部无散落未跟踪杂项；归档位置登记",
+  "evidence_chain": "静态审查 + 位置登记（纯本机作业，无远测需求）",
+  "execution_notes": [
+    "归档优先：移入既有归档区并逐件登记归宿位置；任何物理删除须候用户裁定，不得自行删除",
+    "workflows/ 目录先盘点内容再定处置；AIDos常用指令提示词.txt、2 个 docx、备忘 md 一并登记归宿",
+    "不写 STATE/mailbox/队列投影/注册表（Flow 单写）；不 commit、不 push（push=USER_ONLY）",
+    "AOCI 停用：不加载、不调用",
+    "证据包落本席位 outbox（outbox/trae/），文件名含票据号 IMPL-v4-05"
+  ],
+  "paths": [
+    "anchor_cycle.ps1",
+    "append_s375.ps1",
+    "check_outbox.ps1",
+    "check_outbox_result.txt",
+    "state_s310.ps1",
+    "workflows/"
+  ],
+  "boundaries": [
+    "每线 WIP=1；困难/歧义/冲突报 Ops，不弹窗用户",
+    "纯本机静态作业：无 1.9 需求，不申请租约；git 只读盘点可用，不做变更类 git 操作"
+  ],
+  "wip_after": { "claude": 1, "codex": 0, "trae": 1 }
+}

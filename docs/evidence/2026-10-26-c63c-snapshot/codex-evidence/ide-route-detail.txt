@@ -1,0 +1,15 @@
+48-    ("GET", "/objects/search", "searchObjects", "VIEW_ALL", False),
+49-    ("POST", "/definitions", "getDefinition", "VIEW_ALL", True),
+50-    ("POST", "/lint", "lintSql", "VIEW_ALL", True),
+51:    ("POST", "/executions", "executeSql", "EXECUTE_SQL", True),
+52-    ("POST", "/executions/{task_id}/cancel", "cancelExecution", "EXECUTE_SQL", False),
+53-    ("GET", "/executions/{task_id}/events", "openEventStream", "VIEW_ALL", False),
+54-    ("GET", "/executions/{task_id}", "getExecutionStatus", "VIEW_ALL", False),
+--
+128-        if isinstance(result, Response):
+129-            return result
+130-        response = JSONResponse(content={"code": 0, "msg": "success", "data": result})
+131:        if operation == "executeSql" and isinstance(result, Mapping):
+132-            task_id = result.get("taskId") or result.get("task_id")
+133-            if task_id and result.get("accepted", True):
+134-                response.set_cookie(

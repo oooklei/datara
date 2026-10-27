@@ -258,6 +258,7 @@ def test_provider_allows_exact_private_host_only_when_deployment_allowlists_it(m
 
 
 def test_provider_pins_validated_address_and_does_not_follow_redirects(monkeypatch):
+    assert getattr(llm_provider, "PROVIDER_TIMEOUT_SECONDS", 0) >= 60
     calls = []
     monkeypatch.setattr(llm_provider, "_resolved_addresses", lambda *_args: frozenset({"93.184.216.34"}))
 
@@ -270,6 +271,51 @@ def test_provider_pins_validated_address_and_does_not_follow_redirects(monkeypat
     assert result["status"] == "success"
     assert calls[0]["address"] == "93.184.216.34"
     assert calls[0]["path"] == "/v1/chat/completions"
+    probe_body = json.loads(calls[0]["body"])
+    assert probe_body["max_tokens"] >= 1000
+    assert probe_body["thinking"] == {"type": "disabled"}
+
+
+def test_provider_reports_success_status_error_payload_without_keyerror(monkeypatch):
+    monkeypatch.setattr(llm_provider, "_resolved_addresses", lambda *_args: frozenset({"93.184.216.34"}))
+    monkeypatch.setattr(
+        llm_provider,
+        "_post_json",
+        lambda **_kwargs: {"error": {"code": "invalid_api_key", "message": "credential rejected"}},
+    )
+
+    with pytest.raises(LlmProviderError, match="invalid_api_key.*credential rejected") as exc:
+        llm_provider.test_chat("https://example.com/v1", "qwen", "provider-secret")
+    assert "provider-secret" not in exc.value.detail
+
+
+def test_provider_probe_retries_transient_upstream_5xx(monkeypatch):
+    calls = []
+    monkeypatch.setattr(llm_provider, "_resolved_addresses", lambda *_args: frozenset({"93.184.216.34"}))
+
+    def flaky(**_kwargs):
+        calls.append(1)
+        if len(calls) < 3:
+            raise LlmProviderError("LLM connectivity failed: HTTP 500", 0)
+        return {"choices": [{"message": {"content": "OK"}}]}
+
+    monkeypatch.setattr(llm_provider, "_post_json", flaky)
+    monkeypatch.setattr(llm_provider, "sleep", lambda *_args: None)
+    result = llm_provider.test_chat("https://example.com/v1", "qwen", "secret")
+    assert result["status"] == "success"
+    assert len(calls) == 3
+
+
+def test_provider_http_failure_is_bounded_and_sanitized():
+    failure = llm_provider._provider_http_failure(
+        500,
+        b'{"error":{"code":"model_not_found","message":"configured model is unavailable"}}',
+    )
+
+    assert failure == (
+        "LLM connectivity failed: HTTP 500; "
+        "LLM provider rejected request: model_not_found: configured model is unavailable"
+    )
 
 
 def test_provider_chat_completion_sends_non_streaming_tool_contract(monkeypatch):

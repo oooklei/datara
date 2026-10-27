@@ -1,0 +1,19 @@
+DAG-VIS-02 verification
+
+Command: npm test -- --reporter=dot
+Working directory: datara-newweb
+Exit code: 0
+Result: 91 test files passed; 758 tests passed
+Full output: vitest-dot.log
+SHA-256: E7CB3D8CBDCE9978A19D727618CC30AB8711CDE1D60A0A8B758F644A097D4FA6
+
+Command: npx vue-tsc -b
+Working directory: datara-newweb
+Exit code: 0
+Result: success with no diagnostics
+Full output: vue-tsc.log (zero bytes because the successful command emitted no output)
+SHA-256: E3B0C44298FC1C149AFBF4C8996FB92427AE41E4649B934CA495991B7852B855
+
+Remote deployment/E2E: not run. This CSS-only repair is covered by the local layout contract;
+the repository's existing 18091 deployment path targets /lei/datara and would overwrite the
+shared stack, which is outside this ticket's isolated-deployment constraint.

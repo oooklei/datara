@@ -1,0 +1,37 @@
+.../src/services/rebuild/__tests__/dependencyApi.contract.test.ts    | 5 +++--
+ datara-newweb/src/services/rebuild/dependencyApi.ts                  | 5 +++--
+ 2 files changed, 6 insertions(+), 4 deletions(-)
+
+Changes:
+
+datara-newweb/src/services/rebuild/__tests__/dependencyApi.contract.test.ts
+  @@ -140,12 +140,13 @@ describe('R4 dependencyApi contract (GREEN wired)', () => {
+  -  it('saveDependency POSTs /saves and returns saved/version', async () => {
+  -    const fetchMock = stubFetchWithEnvelope({ saved: true, version: 3 })
+  +  it('saveDependency POSTs /saves and returns the config identity required by DAG execution', async () => {
+  +    const fetchMock = stubFetchWithEnvelope({ saved: true, version: 3, config_id: 41 })
+       vi.stubGlobal('fetch', fetchMock)
+       await expect(createDependencyContract().saveDependency({ projectId: 1, workflowId: 10, workflowVersion: 3, taskId: 'clean', groups })).resolves.toEqual({
+         saved: true,
+         version: 3,
+  +      configId: 41,
+       })
+       const [url, init] = fetchMock.mock.calls[0] as unknown as [string, RequestInit]
+       expect(url).toBe('/api/v1/rebuild/dependency/saves')
+  +3 -2
+
+datara-newweb/src/services/rebuild/dependencyApi.ts
+  @@ -113,7 +113,8 @@ export interface DependencyContract {
+  -  saveDependency: (input: DependencySaveInput) => Promise<{ saved: true; version: number }>
+  +  /** configId is the immutable dependency-config identity stored on the DAG node. */
+  +  saveDependency: (input: DependencySaveInput) => Promise<{ saved: true; version: number; configId: number }>
+     evaluateDependency: (request: DependencyEvaluateRequest) => Promise<DependencyExpressionPreview & { evaluatedAt: string }>
+   }
+   
+  @@ -221,7 +222,7 @@ export function createDependencyContract(): DependencyContract {
+  -      sendJson<{ saved: true; version: number }>('/saves', {
+  +      sendJson<{ saved: true; version: number; configId: number }>('/saves', {
+           projectId: input.projectId,
+           workflowId: input.workflowId,
+           workflowVersion: input.workflowVersion,
+  +3 -2

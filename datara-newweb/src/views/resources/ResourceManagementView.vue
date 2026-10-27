@@ -2,12 +2,6 @@
   <section class="resource-page" aria-label="资源管理">
     <header class="resource-head">
       <div><h1>资源管理</h1><p>管理 SQL、Python、Shell 资源及其不可变版本。</p></div>
-      <label v-if="!hasProjectProp">项目
-        <select v-model="selectedProject" data-project-select @change="load">
-          <option value="">请选择项目</option>
-          <option v-for="project in projects" :key="project.id" :value="String(project.id)">{{ project.name }}</option>
-        </select>
-      </label>
       <select v-model="kind" aria-label="资源类型" @change="load"><option value="">全部类型</option><option value="sql">SQL</option><option value="python">Python</option><option value="shell">Shell</option></select>
       <label class="upload-control">Upload
         <select v-model="uploadKind" aria-label="Upload resource type"><option value="sql">SQL</option><option value="python">Python</option><option value="shell">Shell</option></select>

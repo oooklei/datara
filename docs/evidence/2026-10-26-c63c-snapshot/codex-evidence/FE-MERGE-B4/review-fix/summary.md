@@ -1,0 +1,13 @@
+# FE-MERGE-B4 review-fix
+- Status: DONE.
+- AssetMap summaries are cached by project; switching swaps/clears state and late responses cannot overwrite the active project.
+- SSH editor credential visibility resets on open, close, and node switch.
+- Tag clear requires ElMessageBox confirmation; cancellation performs no write.
+- Empty asset state is scoped to the asset area; tag creation remains available; created history resets per project.
+- Standard reload/project switch invalidates in-flight checks.
+- Indicator board/list/consistency navigation preserves projectId query.
+- Catalog lineage carries assetId; lineage preselects it and loads the graph.
+- RED: 10 failed / 40 passed across 9 files.
+- GREEN targeted: 9 files / 51 tests.
+- Full Vitest: 96 files / 812 tests.
+- vue-tsc: PASS. Diff check: PASS.

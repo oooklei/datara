@@ -11,7 +11,8 @@ from typing import Any
 
 import requests
 
-PROJECT_NAME = "电商数据全域治理项目"
+PROJECT_NAME = "电商全域数据治理项目"
+LEGACY_PROJECT_NAMES = {"电商数据全域治理项目"}
 
 
 def build_blueprints() -> list[dict[str, Any]]:
@@ -21,10 +22,10 @@ def build_blueprints() -> list[dict[str, Any]]:
             "description": "SQL 抽取 → Python 质量处理 → Shell 归档 → 依赖闸门",
             "workflow_type": "NORMAL",
             "nodes": [
-                {"code": "sql_extract_orders", "type": "sql", "name": "抽取订单", "params": {"sourceMode": "inline", "sql": "SELECT order_id, user_id, amount, order_time FROM ods_orders WHERE amount >= 0"}},
+                {"code": "sql_extract_orders", "type": "sql", "name": "抽取订单", "params": {"sourceMode": "inline", "execute": True, "sql": "SELECT 1001 AS order_id, 7 AS user_id, 88.8 AS amount, '2026-10-27T00:00:00Z' AS order_time"}},
                 {"code": "python_quality", "type": "python", "name": "订单质量处理", "params": {"sourceMode": "inline", "script": "print('validate amount, currency and order_time')"}},
                 {"code": "shell_archive", "type": "shell", "name": "归档批次", "params": {"sourceMode": "inline", "script": "printf 'archive ecommerce order batch\\n'"}},
-                {"code": "dependency_gate", "type": "dependent", "name": "上游成功依赖", "params": {}},
+                {"code": "dependency_gate", "type": "dependent", "name": "上游成功依赖", "params": {"dependency_id": "configured-at-seed"}},
             ],
         },
         {
@@ -85,7 +86,7 @@ def _project_rows(payload: Any) -> list[dict[str, Any]]:
 
 def reconcile_demo(api: Any) -> dict[str, Any]:
     projects = _project_rows(api.get("/api/v1/rebuild/projects"))
-    project = next((row for row in projects if row.get("name") == PROJECT_NAME), None)
+    project = next((row for row in projects if row.get("name") in {PROJECT_NAME, *LEGACY_PROJECT_NAMES}), None)
     if project is None:
         project = api.post("/api/v1/rebuild/projects", {
             "name": PROJECT_NAME,
@@ -94,6 +95,7 @@ def reconcile_demo(api: Any) -> dict[str, Any]:
     project_id = int(project["id"])
     existing = {row["name"]: row for row in api.get("/api/v1/rebuild/workflows", {"project_id": project_id})}
     workflow_ids: dict[str, int] = {}
+    normal_dependency_id: int | None = None
 
     for blueprint in build_blueprints():
         versions_payload = api.get("/api/v1/rebuild/components/spec", {"workflow_type": blueprint["workflow_type"]})
@@ -108,15 +110,40 @@ def reconcile_demo(api: Any) -> dict[str, Any]:
             })
         workflow_id = int(workflow["definition_id"])
         workflow_ids[blueprint["workflow_type"]] = workflow_id
+        if blueprint["workflow_type"] == "NORMAL":
+            dependency = api.post("/api/v1/rebuild/dependency/saves", {
+                "project_id": project_id,
+                "workflow_id": workflow_id,
+                "workflow_version": 1,
+                "task_id": "dependency_gate",
+                "groups": [{
+                    "join": "AND",
+                    "conditions": [{
+                        "kind": "workflow",
+                        "upstream_workflow_id": workflow_id,
+                        "upstream_workflow_version": 1,
+                        "upstream_task_code": 0,
+                        "selector": "workflow",
+                        "cycle": "day",
+                        "date_value": "last1Days",
+                        "depend_result": "success",
+                        "parameter_passing": False,
+                    }],
+                }],
+            })
+            normal_dependency_id = int(dependency["config_id"])
         x = 80
         for node in blueprint["nodes"]:
+            params = dict(node["params"])
+            if node["type"] == "dependent":
+                params["dependency_id"] = normal_dependency_id
             api.post(f"/api/v1/rebuild/workflows/{workflow_id}/nodes", {
                 "project_id": project_id,
                 "node_code": node["code"],
                 "node_type": node["type"],
                 "name": node["name"],
                 "component_ref": {"type": node["type"], "version": versions[node["type"]]},
-                "params": node["params"],
+                "params": params,
                 "position_x": x,
                 "position_y": 160,
             })
@@ -144,6 +171,7 @@ def reconcile_demo(api: Any) -> dict[str, Any]:
         "project_id": project_id,
         "project_name": PROJECT_NAME,
         "workflow_ids": workflow_ids,
+        "normal_dependency_id": normal_dependency_id,
         "stream_job_id": int(job["id"]),
         "stream_job_created": job_created,
         "stream_job_state": str(job.get("state") or "CREATED").upper(),
@@ -186,6 +214,31 @@ def prime_stream_observation(api: HttpApi, result: dict[str, Any]) -> None:
     })
 
 
+def run_normal_sample(api: Any, *, project_id: int, workflow_id: int, dependency_id: int) -> dict[str, Any]:
+    """Execute SQL/Python/Shell/dependency in the seeded NORMAL graph and expose persisted counts."""
+    snapshot = api.post(f"/api/v1/rebuild/trial/definitions/{workflow_id}/snapshot", {
+        "project_id": project_id,
+    })
+    run = api.post("/api/v1/rebuild/trial/runs", {
+        "project_id": project_id,
+        "definition_id": workflow_id,
+        "snapshot_id": int(snapshot["snapshot_id"]),
+        "options": {
+            "dependency_mock": {str(dependency_id): "SUCCEEDED"},
+            "sql_execute": True,
+            "sql_precheck": True,
+        },
+    })
+    output = api.get(f"/api/v1/rebuild/trial/runs/{int(run['instance_id'])}", {"project_id": project_id})
+    return {
+        "instance_id": int(run["instance_id"]),
+        "status": str(run["status"]),
+        "task_count": int(run["task_count"]),
+        "tasks": run.get("tasks") or [],
+        "stats": output.get("stats") or {},
+    }
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--base-url", default="http://127.0.0.1:18091")
@@ -213,6 +266,12 @@ def main() -> int:
         result["workflow_node_types"][row["name"]] = sorted(
             str(node.get("node_type") or node.get("type")) for node in nodes
         )
+    result["normal_trial"] = run_normal_sample(
+        api,
+        project_id=result["project_id"],
+        workflow_id=result["workflow_ids"]["NORMAL"],
+        dependency_id=result["normal_dependency_id"],
+    )
     stream_job = api.get(f"/api/v1/rebuild/stream/jobs/{result['stream_job_id']}")
     result["stream_job_state"] = stream_job["state"]
     observed_at = datetime.now(timezone.utc)
@@ -228,6 +287,11 @@ def main() -> int:
         and all(result["workflow_node_types"].get(name) == types for name, types in expected.items())
         and result["stream_job_state"] == "RUNNING"
         and int(observation.get("success_count") or 0) > 0
+        and result["normal_trial"]["status"] == "SUCCEEDED"
+        and result["normal_trial"]["task_count"] == 4
+        and all(task.get("status") == "SUCCEEDED" for task in result["normal_trial"]["tasks"])
+        and int(result["normal_trial"]["stats"].get("success_count") or 0) == 4
+        and int(result["normal_trial"]["stats"].get("failed_count") or 0) == 0
     ) else "FAIL"
     args.output.parent.mkdir(parents=True, exist_ok=True)
     args.output.write_text(json.dumps(result, ensure_ascii=False, indent=2), encoding="utf-8")

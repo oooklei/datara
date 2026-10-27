@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?><testsuites name="pytest tests"><testsuite name="pytest" errors="0" failures="2" skipped="0" tests="2" time="3.416" timestamp="2026-10-26T00:20:04.598286+08:00" hostname="DESKTOP-SI67FHF"><testcase classname="tests.rebuild.test_r7_metrics_api" name="test_workflow_result_stats_merges_legacy_days_and_prefers_execution_projection_per_day" time="1.674"><failure message="AssertionError: assert [{'failure_co...unt': 2, ...}] == [{'failure_co...unt': 2, ...}]&#10;  &#10;  At index 0 diff: {'workflow_id': 7, 'run_date': '2026-10-16', 'success_count': 4, 'failure_count': 1, 'skipped_count': 2, 'retry_count': 0} != {'workflow_id': 7, 'run_date': '2026-10-15', 'success_count': 10, 'failure_count': 2, 'skipped_count': 1, 'retry_count': 3}&#10;  Right contains one more item: {'failure_count': 1, 'retry_count': 0, 'run_date': '2026-10-16', 'skipped_count': 2, ...}&#10;  Use -v to get more diff">tests\rebuild\test_r7_metrics_api.py:212: in test_workflow_result_stats_merges_legacy_days_and_prefers_execution_projection_per_day
+    assert response.json()["data"] == [
+E   AssertionError: assert [{'failure_co...unt': 2, ...}] == [{'failure_co...unt': 2, ...}]
+E     
+E     At index 0 diff: {'workflow_id': 7, 'run_date': '2026-10-16', 'success_count': 4, 'failure_count': 1, 'skipped_count': 2, 'retry_count': 0} != {'workflow_id': 7, 'run_date': '2026-10-15', 'success_count': 10, 'failure_count': 2, 'skipped_count': 1, 'retry_count': 3}
+E     Right contains one more item: {'failure_count': 1, 'retry_count': 0, 'run_date': '2026-10-16', 'skipped_count': 2, ...}
+E     Use -v to get more diff</failure></testcase><testcase classname="tests.rebuild.test_trial_output" name="test_aggregate_uses_workflow_receipt_instead_of_double_counting_task_receipts" time="0.103"><failure message="AssertionError: assert {'failed_coun...ss_count': 14} == {'failed_coun...ss_count': 10}&#10;  &#10;  Omitting 1 identical items, use -vv to show&#10;  Differing items:&#10;  {'failed_count': 3} != {'failed_count': 2}&#10;  {'success_count': 14} != {'success_count': 10}&#10;  Use -v to get more diff">tests\rebuild\test_trial_output.py:184: in test_aggregate_uses_workflow_receipt_instead_of_double_counting_task_receipts
+    assert output["stats"] == {
+E   AssertionError: assert {'failed_coun...ss_count': 14} == {'failed_coun...ss_count': 10}
+E     
+E     Omitting 1 identical items, use -vv to show
+E     Differing items:
+E     {'failed_count': 3} != {'failed_count': 2}
+E     {'success_count': 14} != {'success_count': 10}
+E     Use -v to get more diff</failure></testcase></testsuite></testsuites>

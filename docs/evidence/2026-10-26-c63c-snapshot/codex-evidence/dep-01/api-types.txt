@@ -1,0 +1,120 @@
+1:/**
+2: * R4-DEPENDENCY（依赖组件表单）契约层 — GREEN 接线（接线计划 Task 4，R4 批次）。
+3: * 端点与映射依据：docs/increments/2026-10-17-R系列GREEN接线计划.md Task 4 +
+4: * A2 v2.1 冻结契约（R4-DEP-RES-API-contract-pending.md §2/§3.1/§7，双线会签）；
+5: * 包络 {code,msg,data} 沿 R2/R7 批次固化。
+6: * upstreamTaskCode 为 FE string 契约、BE int 哨兵（0=workflow / -1=all_tasks / 正数=task code），
+7: * 接线时 Number() 转换（非十进制整数字符串 fail-fast 抛 ID_NORMALIZATION_FAILED）；
+8: * resolved.upstream_task_code 由 BE 仅在 selector=task 时以 string 下发，键名 snake→camel 归一。
+9: * 窄口径披露（与 BE 侧一致）：main 暂无 workflow 注册表/执行域，
+10: * listCandidateWorkflows/listWorkflowTasks 返回诚实空列表，随注册表域落地补真实数据。
+11: * R4_DEPENDENCY_NOT_WIRED 常量保留（View 横幅引用兼容）。
+12: */
+13:
+14:import { camelToSnake, ContractApiError, ID_NORMALIZATION_FAILED, snakeToCamel } from './adapterKit'
+15:import { request } from '../http'
+16:
+17:/* ---------- 周期 / 日期范围（DolphinScheduler 依赖窗口） ---------- */
+18:
+19:export type DependencyPeriodType = 'hour' | 'day' | 'week' | 'month'
+20:
+21:/** 相对上游任务计划时间的窗口：offset 0=当前周期，-1=上一周期（day/hour/week/month 各自解释） */
+22:export interface DependencyDateRange {
+23:  periodType: DependencyPeriodType
+24:  beginOffset: number
+25:  endOffset: number
+26:}
+27:
+28:/* ---------- 依赖条件与组 ---------- */
+29:
+30:export interface DependencyCondition {
+31:  kind?: 'workflow' | 'task' | 'file' | 'table_state' | 'external_task'
+32:  selector?: 'workflow' | 'all_tasks' | 'task'
+33:  upstreamWorkflowId: number
+34:  /** 固定上游版本；缺省表示随上游最新已发布版本（后端冻结前为草案语义） */
+35:  upstreamWorkflowVersion?: number
+36:  /** 可选：依赖上游某具体任务；缺省为整工作流成功 */
+37:  upstreamTaskCode?: string
+38:  dateRange?: DependencyDateRange
+39:  cycle?: DependencyPeriodType
+40:  dateValue?: string
+41:  dependResult?: 'success' | 'failed'
+42:  parameterPassing?: boolean
+43:}
+44:
+45:/** 组内条件按 join 连接；多组之间约定为 AND（草案语义，后端冻结前不改） */
+46:export interface DependencyGroup {
+47:  join: 'AND' | 'OR'
+48:  conditions: DependencyCondition[]
+49:}
+50:
+51:/* ---------- 表达式预览 / 判定 ---------- */
+52:
+53:export type DependencyVerdict = 'satisfied' | 'pending' | 'failed' | 'timeout'
+54:
+55:export interface DependencyExpressionPreview {
+56:  /** 服务端拼装的最终依赖表达式（执行前所见即执行所判） */
+57:  expression: string
+58:  resolved: Array<{
+59:    upstreamWorkflowId: number
+60:    upstreamTaskCode?: string
+61:    windowStart: string
+62:    windowEnd: string
+63:    verdict: DependencyVerdict
+64:  }>
+65:  verdict: DependencyVerdict
+66:}
+67:
+68:export interface DependencySaveInput {
+69:  projectId: number
+70:  /** 依赖配置随工作流版本保存（客户 #2/#5 同语义） */
+71:  workflowId: number
+72:  workflowVersion: number
+73:  taskId: string
+74:  groups: DependencyGroup[]
+75:  groupRelation?: 'AND' | 'OR'
+76:  checkIntervalSeconds?: number
+77:  failurePolicy?: 'fail' | 'waiting'
+78:  failureWaitingSeconds?: number
+79:  timeoutSeconds?: number
+80:  dependentWaitTimeoutEnabled?: boolean
+81:  dependentWaitTimeoutSeconds?: number
+82:  dependentWaitTimeoutStrategies?: Array<'warn' | 'failed'>
+83:}
+84:
+85:export interface DependencyEvaluateRequest {
+86:  projectId: number
+87:  workflowId: number
+88:  workflowVersion: number
+89:  taskId: string
+90:  groups: DependencyGroup[]
+91:  /** 预演时刻（ISO 字符串），用于服务端解析窗口 */
+92:  asOf?: string
+93:  groupRelation?: 'AND' | 'OR'
+94:  timeoutSeconds?: number
+95:}
+96:
+97:/* ---------- RED 哨兵 ---------- */
+98:
+99:export const R4_DEPENDENCY_NOT_WIRED = 'R4_DEPENDENCY_NOT_WIRED: rebuild/dependency contract not connected yet'
+100:
+101:/** 契约方法清单（测试与 UI 横幅共用，保持单一事实源） */
+102:export const R4_DEPENDENCY_CONTRACT_METHODS = [
+103:  'listCandidateWorkflows',
+104:  'listWorkflowTasks',
+105:  'previewExpression',
+106:  'saveDependency',
+107:  'evaluateDependency',
+108:] as const
+109:
+110:export type R4DependencyContractMethod = (typeof R4_DEPENDENCY_CONTRACT_METHODS)[number]
+111:
+112:export interface DependencyContract {
+113:  listCandidateWorkflows: (projectId: number) => Promise<Array<{ workflowId: number; name: string; latestVersion: number }>>
+114:  listWorkflowTasks: (projectId: number, workflowId: number, workflowVersion?: number) => Promise<Array<{ taskCode: string; name: string }>>
+115:  previewExpression: (projectId: number, workflowId: number, workflowVersion: number, taskId: string, groups: DependencyGroup[]) => Promise<DependencyExpressionPreview>
+116:  /** configId is the immutable dependency-config identity stored on the DAG node. */
+117:  saveDependency: (input: DependencySaveInput) => Promise<{ saved: true; version: number; configId: number }>
+118:  evaluateDependency: (request: DependencyEvaluateRequest) => Promise<DependencyExpressionPreview & { evaluatedAt: string }>
+119:}
+120:

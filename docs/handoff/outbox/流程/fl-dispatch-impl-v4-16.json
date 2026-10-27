@@ -1,0 +1,35 @@
+{
+  "schema_version": "3.0",
+  "ticket": "IMPL-v4-16",
+  "epoch": 3,
+  "issued_by": "Flow",
+  "issued_at": "2026-10-23T02:08:26+08:00",
+  "event_ref": "v3-0060-dispatch-assigned-impl-v4-16",
+  "assigned_to": "claude (EXEC-3)",
+  "state_transition": "READY->ASSIGNED",
+  "title": "17.3 集群监控页组件段（不含路由/菜单壳）：MonitorView.vue + 组件契约测试",
+  "domain": "DELIVERY",
+  "base_priority": "P2",
+  "effective_priority": "P2",
+  "priority_basis": "WBS 17.3「P2 集群监控迁移」（用户裁定纳入，权威设计 §3.3 F 组）；后端 monitor 已挂载、monitorApi 契约 GREEN（REGISTRY #13）；07/08 后唯一可立即开工的合法补位",
+  "priority_override": null,
+  "depends_on": [],
+  "depends_satisfied": "17.1 B3 契约冻结已验收；后端挂载与认证链已存在；无未满足票面依赖",
+  "acceptance": [
+    "MonitorView.vue 仅经 createMonitorContract().fetchMonitorNodes() 取数，禁直连 fetch/axios",
+    "展示 zkAvailable/generatedAt 与 master/worker/ssh 三类节点行，字段覆盖 module/node/cpu/mem/memUsedMb/memTotalMb/disk/heartbeat/metricState/lastSeen/tags",
+    "空指标如实显示 —；heartbeat=unknown、metricState=stale/unsupported 须有可辨识文案，不虚构实时性",
+    "加载/空/错误三态齐备，非 0 包络码展示错误信息；手动刷新，不做高频轮询",
+    "组件测试覆盖：成功（混合模块）/空/错误/空指标/stale/unsupported/刷新",
+    "本机 vue-tsc -b / tsc --noEmit / NO_SECRET 通过；1.9 组件测试 GREEN（经 Integration 租约）",
+    "不得改 router/routes.ts、navigation/menu.ts（FE-SHELL 锁在 07）；不得改后端/monitorApi.ts（契约缺陷即停票上报）"
+  ],
+  "evidence_requirements": "路径实存清单；静态检查输出 EXIT=0；1.9 vitest 输出（经租约，请求先于执行）；NO_SECRET 0 命中；组件测试清单与用例数；无越界路径声明",
+  "paths": [
+    "datara-newweb/src/views/depops/MonitorView.vue（新）",
+    "datara-newweb/src/views/__tests__/monitorView.contract.test.ts（新）"
+  ],
+  "boundaries": "本票为 17.3 组件段，不含 /dep/monitor 路由注册与菜单转正（由 IMPL-v4-17 收口）；1.9 e2e 不在本票（无路由不可达），仅组件测试；组件测试执行移交 1.9 面（TEST-ENVIRONMENT-POLICY）",
+  "completion_chain": "EVIDENCE_READY -> ENV_VERIFIED（1.9 组件测试租约）-> PASS -> Flow 集成窗提交 -> RELEASED/DONE",
+  "wip_note": "claude 线 EXEC-3 已上线自报空闲（WIP 0/1），本票落 EXEC-3；与 07/08 路径零交叠"
+}

@@ -1,0 +1,38 @@
+{
+  "schema_version": "3.0",
+  "ticket": "IMPL-v4-13a",
+  "epoch": 3,
+  "issued_by": "Flow",
+  "issued_at": "2026-10-23T02:47:33+08:00",
+  "event_ref": "v3-0079-dispatch-assigned-impl-v4-13a",
+  "assigned_to": "claude (EXEC-2)",
+  "state_transition": "READY->ASSIGNED",
+  "title": "质量批 B 组件段（异常核查/报告/告警三页 + 契约测试，不含壳）",
+  "domain": "DELIVERY",
+  "base_priority": "P2",
+  "effective_priority": "P2",
+  "priority_basis": "WBS 14.4 批 B；DEC-v4-D05 已裁（Q2=C 前端聚合先行、Q3=A alertSent 展示）；07 批 A 已交付同域口径；不占 1.9 窗口",
+  "priority_override": null,
+  "depends_on": [],
+  "depends_satisfied": "DEC-v4-D05 已裁（v3-0071 采信入投影）；无其它票面依赖",
+  "acceptance": [
+    "异常核查页：消费既有 GET quality-runs（客户端筛 failed/非成功态），checked_rows=failed_rows+success_rows+skipped_rows 恒等如实展示",
+    "报告页（Q2=C）：前端聚合明示统计窗口与样本数；分页取尽（page_size≤200）或显式标注「基于前 N 条」，禁止静默截断；禁止客户端高频轮询；窗口运行数>5000 或触分页上限 → 记录触发日志并报 Ops 立项 A 端点票，本票不得扩界",
+    "告警页（Q3=A）：仅展示/筛选 alertSent（metricsApi.listQualityRuleLinks），页面明示「告警为状态展示，不含通知投递」，零建模零投递",
+    "三件契约测试 GREEN；vue-tsc -b / tsc --noEmit EXIT 0；NO_SECRET 0 命中",
+    "1.9 组件测试经租约（建议 RT-13A，排 RT-16 后）出具权威证据；本机结果 DIAGNOSTIC_ONLY_NOT_PASS_EVIDENCE"
+  ],
+  "evidence_requirements": "本地静态三项 + 契约测试输出；远端证据绑定租约/制品 commit/命令/时间戳/退出码/日志/执行者；聚合口径实证留痕",
+  "paths": [
+    "datara-newweb/src/views/qc/QualityExceptionView.vue（新）",
+    "datara-newweb/src/views/qc/QualityReportView.vue（新）",
+    "datara-newweb/src/views/qc/QualityAlarmView.vue（新）",
+    "datara-newweb/src/views/__tests__/qualityExceptionView.contract.test.ts（新）",
+    "datara-newweb/src/views/__tests__/qualityReportView.contract.test.ts（新）",
+    "datara-newweb/src/views/__tests__/qualityAlarmView.contract.test.ts（新）",
+    "（可选，仅当聚合逻辑抽出）datara-newweb/src/views/qc/qualityAggregation.ts"
+  ],
+  "boundaries": "禁触 governanceApi.ts、metricsApi.ts（只读消费）、router/routes.ts、navigation/menu*.ts、e2e/（13b/03 域）；壳激活由 13b 收口；本机仅静态校验（A5-E2）",
+  "completion_chain": "EVIDENCE_READY → ENV_VERIFIED（1.9 组件测试租约）→ PASS → Flow 集成窗提交 → RELEASED/DONE",
+  "wip_note": "claude 线 EXEC-2 本地 WIP 0（07 候远测窗不占本地位）；本票落 EXEC-2；路径全为新文件零锁冲突"
+}

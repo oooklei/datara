@@ -69,10 +69,25 @@
   --el-font-size-base:13px;
 }
 
+:root[data-theme='dark']{
+  color-scheme:dark;
+  --bg:#101722; --bg-deep:#0b111b; --card:#172131; --border:#27364a; --border-strong:#3a4a61;
+  --text:#eef4ff; --text-2:#b3c0d4; --text-3:#7f90a8;
+  --primary:#5b9cff; --primary-hover:#79adff; --primary-light:#1c3559; --primary-dark:#8ab8ff; --primary-active:#4387ed;
+  --sidebar:#071422; --sidebar-2:#081a2d; --sidebar-text:#b9c8dc;
+  --success:#4ade80; --success-bg:#153c2a; --danger:#fb7185; --danger-bg:#48202a;
+  --warn:#fbbf24; --warn-bg:#473716; --info:#60a5fa; --info-bg:#193859;
+  --shadow:0 1px 3px rgba(0,0,0,.35); --shadow-md:0 6px 18px rgba(0,0,0,.32); --shadow-lg:0 12px 32px rgba(0,0,0,.42);
+  --el-color-primary:#5b9cff; --el-bg-color:#172131; --el-bg-color-overlay:#1b2739;
+  --el-fill-color-light:#1d2a3d; --el-fill-color-lighter:#1a2637;
+  --el-border-color:#27364a; --el-border-color-light:#27364a; --el-border-color-lighter:#223044;
+  --el-text-color-primary:#eef4ff; --el-text-color-regular:#b3c0d4; --el-text-color-secondary:#7f90a8;
+}
+
 /* ---------- 基础重置 / 排版 / 滚动条 ---------- */
 *{margin:0;padding:0;box-sizing:border-box}
 html,body,#app{height:100%}
-body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Hiragino Sans GB","Microsoft YaHei",sans-serif;background:var(--bg);color:var(--text);font-size:13px;line-height:1.6;-webkit-font-smoothing:antialiased}
+body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Hiragino Sans GB","Microsoft YaHei",sans-serif;background:var(--bg);color:var(--text);font-size:13px;line-height:1.6;-webkit-font-smoothing:antialiased;transition:background var(--dur-base) var(--ease),color var(--dur-base) var(--ease)}
 a{color:var(--primary);text-decoration:none;cursor:pointer}
 a:hover{color:var(--primary-hover)}
 ::-webkit-scrollbar{width:8px;height:8px}

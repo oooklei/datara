@@ -1,0 +1,112 @@
+<template>
+  <main class="er-page" aria-label="ER 图" data-er-canvas-page>
+    <header class="page-head">
+      <div><h1>ER 图</h1><p>模型关系画布，可拖拽调整布局并保存。</p></div>
+      <button type="button" data-er-save :disabled="busy" @click="save">保存布局</button>
+    </header>
+
+    <p v-if="dirty" class="notes" data-er-dirty>有未保存的布局变更</p>
+
+    <p v-if="error" role="alert" class="error" data-error>{{ error }}</p>
+    <p v-if="busy" role="status" data-loading>正在加载…</p>
+    <p v-else-if="!graph || graph.nodes.length === 0" class="empty" data-empty>暂无模型，请先在建模页创建。</p>
+
+    <section v-else class="canvas-card" data-er-canvas>
+      <svg :viewBox="`0 0 ${canvas.w} ${canvas.h}`" :width="canvas.w" :height="canvas.h" class="canvas"
+           @pointermove="onMove" @pointerup="onUp" @pointerleave="onUp">
+        <line
+          v-for="edge in graph.edges" :key="edge.id"
+          :x1="pos(edge.source).x" :y1="pos(edge.source).y"
+          :x2="pos(edge.target).x" :y2="pos(edge.target).y"
+          stroke="var(--primary)" stroke-width="1.5" data-er-edge
+        />
+        <text
+          v-for="edge in graph.edges" :key="`t-${edge.id}`"
+          :x="(pos(edge.source).x + pos(edge.target).x) / 2"
+          :y="(pos(edge.source).y + pos(edge.target).y) / 2"
+          text-anchor="middle" fill="var(--text-2)" font-size="11"
+        >{{ edge.relType }}{{ edge.srcFields ? ` (${edge.srcFields}→${edge.tgtFields})` : '' }}</text>
+        <g v-for="node in graph.nodes" :key="node.id" :transform="`translate(${pos(node.id).x},${pos(node.id).y})`"
+           class="node" data-er-node @pointerdown="onDown(node.id, $event)">
+          <rect :x="-70" :y="-18" width="140" height="36" rx="var(--radius)" fill="var(--card)" stroke="var(--border-strong)" />
+          <text text-anchor="middle" dominant-baseline="middle" fill="var(--text)">{{ node.model.name }}</text>
+        </g>
+      </svg>
+    </section>
+  </main>
+</template>
+
+<script setup lang="ts">
+import { computed, onMounted, reactive, ref } from 'vue'
+import { useRoute } from 'vue-router'
+import { modelApi, type ErGraph, type ErSavePayload } from '../../services/rebuild/modelApi'
+
+const props = defineProps<{ layer?: string; domain?: string }>()
+const route = useRoute()
+const routeQuery = (key: string) => {
+  const raw = route?.query?.[key]
+  const value = Array.isArray(raw) ? raw[0] : raw
+  return typeof value === 'string' && value ? value : ''
+}
+const layer = computed(() => props.layer ?? routeQuery('layer'))
+const domain = computed(() => props.domain ?? routeQuery('domain'))
+
+const graph = ref<ErGraph | null>(null)
+const positions = reactive<Record<string, { x: number; y: number }>>({})
+const busy = ref(false)
+const dirty = ref(false)
+const error = ref('')
+const canvas = { w: 1000, h: 420 }
+const dragging = ref<string | null>(null)
+const message = (cause: unknown) => cause instanceof Error ? cause.message : String(cause)
+
+const pos = (id: string) => positions[id] ?? { x: canvas.w / 2, y: canvas.h / 2 }
+
+function onDown(id: string, event: PointerEvent) {
+  dragging.value = id
+  ;(event.currentTarget as Element)?.setPointerCapture?.(event.pointerId)
+}
+
+function onMove(event: PointerEvent) {
+  if (!dragging.value) return
+  const svg = (event.currentTarget as SVGSVGElement)
+  const point = svg.createSVGPoint()
+  point.x = event.clientX
+  point.y = event.clientY
+  const local = point.matrixTransform(svg.getScreenCTM()?.inverse())
+  positions[dragging.value] = { x: Math.round(local.x), y: Math.round(local.y) }
+  dirty.value = true
+}
+
+function onUp() { dragging.value = null }
+
+async function load() {
+  busy.value = true; error.value = ''
+  try {
+    const data = await modelApi.getEr({ layer: layer.value, domain: domain.value })
+    graph.value = data
+    for (const node of data.nodes) positions[node.id] = { x: node.erPos?.x ?? 0, y: node.erPos?.y ?? 0 }
+    dirty.value = false
+  } catch (cause) { error.value = message(cause); graph.value = null }
+  finally { busy.value = false }
+}
+
+async function save() {
+  busy.value = true; error.value = ''
+  try {
+    const payload: ErSavePayload = {
+      positions: { ...positions },
+      relations: { removed: [], added: [], updated: [] },
+    }
+    await modelApi.putEr(payload)
+    dirty.value = false
+  } catch (cause) { error.value = message(cause) }
+  finally { busy.value = false }
+}
+
+onMounted(load)
+</script>
+
+<style scoped>
+.er-page{max-width:1440px;margin:auto;padding:32px 24px;color:var(--text)}.page-head{display:flex;gap:12px;align-items:center;flex-wrap:wrap}.page-head>div{margin-right:auto}.page-head h1{margin:0}.page-head p{margin:6px 0 0;color:var(--text-2)}button{padding:7px 10px}.error{color:var(--danger)}.empty{color:var(--text-3)}.canvas-card{background:var(--card);border:1px solid var(--border);border-radius:var(--radius-lg);padding:18px;margin-top:18px;overflow:auto}.canvas{display:block}.node{cursor:grab}
+</style>

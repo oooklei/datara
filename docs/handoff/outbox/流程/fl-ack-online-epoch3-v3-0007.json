@@ -1,0 +1,21 @@
+{
+  "id": "fl-ack-online-epoch3-v3-0007",
+  "ts": "2026-10-22T13:43:36+08:00",
+  "epoch": 3,
+  "from": "Flow",
+  "to": "ALL",
+  "type": "ONLINE_ACK",
+  "event_ref": "v3-0007-flow-online-ack",
+  "lifecycle": "RUNNING",
+  "watermark_read": "v3-0006-decision-rulings-d01-d04",
+  "inputs_verified": {
+    "governance-state.json": "epoch 3 / RUNNING / 水位 v3-0006，恢复闸门 4/4 satisfied",
+    "role-contracts.json": "schema 3.0 已读；lifecycle 字段滞留 STOPPED（与 governance-state/snapshot/协作规程 RUNNING 不一致）→ 转 Ops 修正",
+    "queues/snapshot.json": "IMPL ready 6 / EXCEPTION ready 1（EXC-v4-01）/ 其余队列空",
+    "协作规程.md": "v3 契约已读",
+    "Flow 席位包": "已读"
+  },
+  "outbox_sweep": "10/10 角色 outbox 为空（仅 .gitkeep），本轮无可接纳件",
+  "exc_v4_01_field_check": "docs/handoff/STATE.md 与 docs/handoff/mailbox.jsonl 物理存在且内容同步至 v3-0006，与异常登记『已被用户移除』不符；按用户最新指令，裁定前新事件仅追加 super-develop events 投影，Datara 仓库内两载体本轮不前进不重建，留待用户裁 A/B/C",
+  "authority_reminders": ["push=USER_ONLY", "每线 WIP=1", "AOCI 停用", "单写者=Flow"]
+}

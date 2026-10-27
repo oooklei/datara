@@ -125,7 +125,7 @@ export interface SqlResultEvent {
 export interface SqlDoneEvent {
   status: 'succeeded' | 'failed' | 'canceled'
   elapsedMs: number
-  historyId: number | null
+  historyId: string | number | null
   stmtCount: number
   resultSets?: Array<{ resultSetId: string; stmtIndex: number; columns: string[]; rowsTotal: number; elapsedMs?: number }>
 }
@@ -141,7 +141,7 @@ export interface SqlResultPage {
 }
 
 export interface HistoryEntry {
-  historyId: number
+  historyId: string | number
   datasourceId: number
   db: string | null
   sqlText: string
@@ -376,18 +376,26 @@ export interface SqlIdeContract {
   listIndexes: (datasourceId: number, database: string, table: string, schema: string | null, cursor?: string) => Promise<MetadataEnvelope<IndexMeta>>
   searchObjects: (datasourceId: number, keyword: string, cursor?: string) => Promise<MetadataEnvelope<{ kind: ObjectKind; name: string; parent: string | null }>>
   lintSql: (datasourceId: number, sql: string) => Promise<SqlDiagnostic[]>
-  executeSql: (request: SqlExecuteRequest) => Promise<{ taskId: string }>
+  executeSql: (request: SqlExecuteRequest) => Promise<{
+    taskId: string
+    historyId?: string | number
+    resultSetId?: string
+    columns?: string[]
+    rows?: unknown[][]
+    totalRows?: number
+    rowCount?: number
+  }>
   cancelExecution: (taskId: string) => Promise<{ canceled: boolean }>
   /** SSE 只读流：返回 EventSource（token 沿 R3 runner 注入先例，禁止落 storage） */
   openEventStream: (taskId: string) => EventSource
-  fetchResultPage: (historyId: number, resultSetId: string, offset: number, limit: number) => Promise<SqlResultPage>
+  fetchResultPage: (historyId: string | number, resultSetId: string, offset: number, limit: number) => Promise<SqlResultPage>
   listHistory: (datasourceId: number) => Promise<HistoryEntry[]>
-  deleteHistory: (historyId: number) => Promise<void>
+  deleteHistory: (historyId: string | number) => Promise<void>
   listScripts: () => Promise<ScriptEntry[]>
   saveScript: (input: { id?: number; name: string; sqlText: string; revision?: number }) => Promise<ScriptEntry>
   deleteScript: (id: number, expectedRevision: number) => Promise<void>
   getDefinition: (input: { datasourceId: number; database: string; objectKind: DefinitionObjectKind; objectRef: Record<string, unknown> }) => Promise<{ definition: string; capability: string; constraints: string[] }>
-  exportResult: (input: { historyId: number; resultSetId: string; format: 'csv' | 'json' | 'xlsx' }) => Promise<ExportResult>
+  exportResult: (input: { historyId: string | number; resultSetId: string; format: 'csv' | 'json' | 'xlsx' }) => Promise<ExportResult>
   exportTable: (input: { datasourceId: number; objectRef: Record<string, unknown>; format: 'csv' | 'json' | 'xlsx'; rowLimit?: number }) => Promise<ExportResult>
   getExport: (exportId: string) => Promise<ExportResult>
   getExportDownloadUrl: (exportId: string) => string
@@ -454,7 +462,7 @@ export function createSqlIdeContract(projectId = 1): SqlIdeContract {
 }
 
 /** Fetch execution status for the readonly page's execute → result-page flow. */
-export function getSqlIdeExecutionStatus(projectId: number, taskId: string): Promise<{ status: string; historyId?: number | null }> {
+export function getSqlIdeExecutionStatus(projectId: number, taskId: string): Promise<{ status: string; historyId?: string | number | null }> {
   return request(projectId, `/executions/${encodeURIComponent(taskId)}`)
 }
 

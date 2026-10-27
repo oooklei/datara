@@ -1,0 +1,8 @@
+17:from fastapi import APIRouter, Request
+41:_ROUTE_SPECS = (
+55:    ("GET", "/results/{history_id}", "fetchResultPage", "VIEW_ALL", False),
+56:    ("GET", "/history", "listHistory", "VIEW_ALL", False),
+57:    ("DELETE", "/history/{history_id}", "deleteHistory", "EDIT_DEFINITION", False),
+74:) -> APIRouter:
+84:    router = APIRouter(prefix="/api/v1/projects/{project_id}/sql-ide", tags=["sql-ide"])
+165:    for method, suffix, operation, permission, has_body in _ROUTE_SPECS:

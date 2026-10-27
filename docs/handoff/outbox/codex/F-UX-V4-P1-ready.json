@@ -1,0 +1,10 @@
+{
+  "id": "F-UX-V4-P1",
+  "ts": "2026-10-27T20:21:54.5656748+08:00",
+  "from": "codex",
+  "to": "codex-next",
+  "type": "implementation_ready",
+  "ref": "D:/需求/数据治理工具/Datara/docs/increments/2026-10-27-部署版核查报告.md",
+  "body": "用户最新裁定：项目管理/工作空间是全局唯一项目入口，删除18个子视图 data-project-select；数据源管理和 SQL IDE 操作逻辑对标旧前端但适配新后端；1.9 删除其余测试项目，仅保留并命名为‘电商数据全域治理项目’。报告优先修复 B-1 DAG 窄屏、B-2 全局项目上下文、B-3 dagre；随后 B-4 空态、B-5 请求取消、B-6 导出/取消、B-7 窄屏退出。P0 已在 1.9 最终 E2E PASS，证据 .codex-evidence/F-UX-V4-P0-e2e-final.json。",
+  "status": "ready"
+}

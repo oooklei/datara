@@ -1,6 +1,16 @@
 <template>
   <div class="system-admin" aria-label="系统管理">
-    <section class="system-block" aria-label="项目成员管理">
+    <section v-if="isAdmin" class="system-block system-links" aria-label="系统能力" data-system-links>
+      <h1>系统管理</h1>
+      <nav><RouterLink to="/open/key">API Key</RouterLink><RouterLink to="/open/api">API 管理</RouterLink><RouterLink to="/open/llm">LLM 模型</RouterLink><RouterLink to="/sec/audit">访问审计</RouterLink></nav>
+    </section>
+    <section v-if="isAdmin" class="system-block" aria-label="平台用户管理">
+      <h2>平台用户管理</h2>
+      <p class="system-hint">账号创建、角色、启停和密码生命周期；权限与最后管理员保护由后端强制执行。</p>
+      <UserManagementView />
+    </section>
+    <p v-else class="system-notice" data-admin-required>平台用户、API Key、API 与 LLM 配置仅管理员可操作；当前账号可查看权限矩阵。</p>
+    <section v-if="projectId !== undefined" class="system-block" aria-label="项目成员管理">
       <h2>项目成员管理</h2>
       <p class="system-hint">项目内成员增删与角色调整；owner/ADMIN 可管理（权限闸门在后端，403 呈现为错误态）。</p>
       <ProjectMembersView :project-id="projectId" />
@@ -21,10 +31,14 @@
  * 依设计定位「项目权限与安全配置」组合进 system 段，零破坏段序与 data-seg 锚；
  * ProjectMembersView 为 L3-04 既有组件（prop 驱动），此处只补 UI 入口。
  */
+import { computed } from 'vue'
 import PermissionMatrixView from '../PermissionMatrixView.vue'
 import ProjectMembersView from '../ProjectMembersView.vue'
+import UserManagementView from './UserManagementView.vue'
+import { authAccount } from '../../services/rebuild/authApi'
 
-defineProps<{ projectId: number }>()
+defineProps<{ projectId?: number }>()
+const isAdmin = computed(() => authAccount.value?.role === 'admin')
 </script>
 
 <style scoped>
@@ -40,6 +54,8 @@ defineProps<{ projectId: number }>()
   margin: 0 0 4px;
   font-size: 18px;
 }
+.system-links h1{margin:0}.system-links nav{display:flex;flex-wrap:wrap;gap:8px;margin-top:12px}.system-links a{padding:8px 12px;border:1px solid var(--border);border-radius:7px;background:var(--card);color:var(--primary);text-decoration:none}
+.system-notice{margin:0;padding:12px;border:1px solid var(--border);border-radius:8px;background:var(--card);color:var(--text-2)}
 
 .system-hint {
   margin: 0 0 12px;

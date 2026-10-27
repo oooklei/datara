@@ -1,0 +1,36 @@
+    @app.post("/api/v1/rebuild/projects")
+    def create_project(body: ProjectRequest, authorization: str = Header(default="")):
+        try:
+            user = current_user(authorization)
+        except ValueError:
+            return JSONResponse(status_code=401, content={"code": 1001, "msg": "invalid token", "data": None})
+        with session_factory() as session:
+            project = ProjectRepository(session).create(
+                name=body.name, description=body.description, owner_id=int(user["user_id"])
+            )
+            session.commit()
+            return {"code": 0, "msg": "success", "data": {"id": project.id, "name": project.name}}
+
+    @app.get("/api/v1/rebuild/projects")
+    def list_projects(authorization: str = Header(default="")):
+        try:
+            user = current_user(authorization)
+        except ValueError:
+            return JSONResponse(status_code=401, content={"code": 1001, "msg": "invalid token", "data": None})
+        with session_factory() as session:
+            repository = ProjectRepository(session)
+            projects = (
+                repository.list_all()
+                if user.get("role") == Role.ADMIN.value
+                else repository.list_for_user(int(user["user_id"]))
+            )
+            return {
+                "code": 0,
+                "msg": "success",
+                "data": {"total": len(projects), "list": [{"id": p.id, "name": p.name} for p in projects]},
+            }
+
+    @app.put("/api/v1/rebuild/projects/{project_id}")
+    def update_project(project_id: int, body: ProjectRequest, authorization: str = Header(default="")):
+        try:
+            user = current_user(authorization)

@@ -449,6 +449,8 @@ def create_app(
     app.state.active_tokens = active_tokens
     app.state.session_factory = session_factory
     app.state.datasource_engines = datasource_engines
+    session_cookie_name = "datara_session"
+    session_cookie_secure = os.getenv("REBUILD_SESSION_COOKIE_SECURE", "false").strip().lower() in {"1", "true"}
 
     @app.middleware("http")
     async def normalize_token_header(request: Request, call_next):
@@ -461,7 +463,7 @@ def create_app(
         false 401 on the first project request.
         """
         if not request.headers.get("authorization"):
-            raw = request.headers.get("token", "").strip()
+            raw = request.headers.get("token", "").strip() or request.cookies.get(session_cookie_name, "").strip()
             if raw:
                 headers = MutableHeaders(scope=request.scope)
                 headers["authorization"] = f"Bearer {raw}"
@@ -667,7 +669,13 @@ def create_app(
                 project_id=project_id,
                 user_id=user_id,
                 event_type="done",
-                payload={"status": "succeeded", "history_id": history_id, "result_set_id": result_set_id},
+                payload={
+                    "status": "succeeded",
+                    "history_id": history_id,
+                    "result_set_id": result_set_id,
+                    "stmt_count": 1,
+                    "elapsed_ms": 0,
+                },
             )
             status_store.update_status(task_id=task_id, project_id=project_id, user_id=user_id, status="succeeded")
             execution_id = task_id
@@ -706,8 +714,8 @@ def create_app(
                 project_id=project_id,
                 user_id=user_id,
                 history_id=str(payload.get("history_id")),
-                result_set_id=payload.get("result_set_id"),
-                stmt_index=payload.get("stmt_index"),
+                result_set_id=payload.get("result_set_id", payload.get("resultSetId")),
+                stmt_index=payload.get("stmt_index", payload.get("stmtIndex")),
                 offset=int(payload.get("offset", 0)),
                 limit=int(payload.get("limit", 100)),
             )
@@ -812,11 +820,21 @@ def create_app(
                 return JSONResponse(status_code=403, content={"code": 1006, "msg": "account disabled", "data": None})
             token = token_service.issue(user_id=record.id, username=record.username, role=Role(record.role))
             active_tokens.add(token, user_id=record.id, username=record.username, role=record.role)
-            return {
+            response = JSONResponse(content={
                 "code": 0,
                 "msg": "success",
                 "data": {"token": token, "user": {"id": record.id, "username": record.username, "role": record.role}},
-            }
+            })
+            response.set_cookie(
+                key=session_cookie_name,
+                value=token,
+                httponly=True,
+                secure=session_cookie_secure,
+                samesite="strict",
+                path="/api/v1",
+                max_age=3600,
+            )
+            return response
 
     @app.post("/api/v1/rebuild/validation-token")
     def validation_token(
@@ -896,6 +914,23 @@ def create_app(
         if capability is not None:
             claims["capability_restricted"] = True
         return claims
+
+    @app.get("/api/v1/rebuild/session")
+    def authenticated_session(authorization: str = Header(default="")):
+        """Return the authoritative account behind the current in-memory token."""
+        try:
+            claims = current_user(authorization)
+        except ValueError:
+            return JSONResponse(status_code=401, content={"code": 1001, "msg": "invalid token", "data": None})
+        return {
+            "code": 0,
+            "msg": "success",
+            "data": {
+                "id": int(claims["user_id"]),
+                "username": str(claims["username"]),
+                "role": str(claims["role"]),
+            },
+        }
 
     def audit_user(request: Request) -> str:
         authorization = request.headers.get("authorization", "").strip()
@@ -988,7 +1023,9 @@ def create_app(
     def logout(authorization: str = Header(default="")):
         if authorization.startswith("Bearer "):
             active_tokens.discard(authorization[7:])
-        return {"code": 0, "msg": "success", "data": None}
+        response = JSONResponse(content={"code": 0, "msg": "success", "data": None})
+        response.delete_cookie(key=session_cookie_name, path="/api/v1", samesite="strict")
+        return response
 
     @app.post("/api/v1/rebuild/projects")
     def create_project(body: ProjectRequest, authorization: str = Header(default="")):

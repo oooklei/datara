@@ -1,0 +1,2 @@
+PASS ruff check rebuild/execution/repository.py rebuild/metrics/repository.py rebuild/trial/output.py tests/rebuild/test_r7_metrics_api.py tests/rebuild/test_trial_output.py --select F821,E999,F401,I001
+PASS git diff --check -- rebuild/execution/repository.py rebuild/metrics/repository.py rebuild/trial/output.py tests/rebuild/test_r7_metrics_api.py tests/rebuild/test_trial_output.py

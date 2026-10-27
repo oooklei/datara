@@ -7,12 +7,6 @@
 
     <div class="toolbar">
       <div class="std-actions">
-        <label class="field"><span>项目</span>
-          <select v-model="selectedProject" class="kw" data-project-select @change="reload">
-            <option value="">请选择项目</option>
-            <option v-for="p in projects" :key="p.id" :value="String(p.id)">{{ p.name }}</option>
-          </select>
-        </label>
         <button type="button" class="tb-new" :disabled="projectId === null || saving" @click="openCreate">新建标准</button>
       </div>
       <span class="spacer"></span>

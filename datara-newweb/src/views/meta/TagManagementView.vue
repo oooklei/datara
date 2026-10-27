@@ -6,12 +6,6 @@
     </header>
 
     <div class="toolbar">
-      <label class="field"><span>项目</span>
-        <select v-model="selectedProject" class="kw" data-project-select :disabled="loading || creating || assigning || clearingId !== null" @change="reloadAssets">
-          <option value="">请选择项目</option>
-          <option v-for="p in projects" :key="p.id" :value="String(p.id)">{{ p.name }}</option>
-        </select>
-      </label>
       <span class="spacer"></span>
       <span v-if="projectId !== null" class="hint">资产 {{ assets.length }} 个 · 本次创建 {{ created.length }} 个</span>
     </div>

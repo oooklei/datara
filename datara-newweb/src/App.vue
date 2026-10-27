@@ -9,9 +9,12 @@ import { computed } from 'vue'
 import { useRoute } from 'vue-router'
 import AppShell from './layouts/AppShell.vue'
 import { getToken } from './services/http'
+import { authAccount } from './services/rebuild/authApi'
 
 const route = useRoute()
-const shellActive = computed(() => route.path !== '/login' && getToken() !== '')
+const shellActive = computed(
+  () => route.path !== '/login' && (getToken() !== '' || authAccount.value !== null),
+)
 </script>
 
 <template>

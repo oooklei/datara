@@ -12,7 +12,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { flushPromises, mount } from '@vue/test-utils'
 import { createRouter, createMemoryHistory } from 'vue-router'
 import AppShell from '../AppShell.vue'
-import { PROJECT_MENU_SECTIONS } from '../../navigation/projectMenu'
+import { PROJECT_MENU_GROUPS, PROJECT_MENU_ITEMS, projectItemPath } from '../../navigation/projectMenu'
 
 const { listProjectsSpy } = vi.hoisted(() => ({ listProjectsSpy: vi.fn() }))
 
@@ -32,7 +32,9 @@ function makeTestRouter() {
       { path: '/', component: stubView('home') },
       { path: '/dag', component: stubView('dag') },
       { path: '/p/:projectId', component: stubView('wb') },
-      { path: '/p/:projectId/:seg', component: stubView('seg') },
+      { path: '/p/:projectId/:pathMatch(.*)*', component: stubView('seg') },
+      { path: '/dep/runtime', component: stubView('runtime') },
+      { path: '/sys', component: stubView('system') },
     ],
   })
 }
@@ -48,8 +50,8 @@ beforeEach(() => {
   })
 })
 
-describe('L3-03：AppShell 项目模式——侧栏七段导航', () => {
-  it('项目模式侧栏：data-project-nav 七段 RouterLink，href=/p/:projectId/<key>、label 与定稿一致', async () => {
+describe('UX v3：AppShell 项目模式——侧栏五组十九项导航', () => {
+  it('项目模式侧栏：五组十九项 RouterLink，路径与 label 一致', async () => {
     const router = makeTestRouter()
     await router.push('/p/9')
     const w = mount(AppShell, { global: { plugins: [router] } })
@@ -57,13 +59,14 @@ describe('L3-03：AppShell 项目模式——侧栏七段导航', () => {
     const nav = w.find('[data-project-nav]')
     expect(nav.exists()).toBe(true)
     const links = nav.findAll('a.project-nav-link')
-    expect(links).toHaveLength(7)
-    for (let i = 0; i < 7; i++) {
-      const seg = PROJECT_MENU_SECTIONS[i]
-      expect(links[i].attributes('data-seg')).toBe(seg.key)
-      expect(links[i].attributes('href')).toBe(`/p/9/${seg.key}`)
-      expect(links[i].find('span.ico').text()).toBe(seg.icon)
-      expect(links[i].find('span.lbl').text()).toBe(seg.label)
+    expect(nav.findAll('[data-project-group]')).toHaveLength(PROJECT_MENU_GROUPS.length)
+    expect(links).toHaveLength(19)
+    for (let i = 0; i < PROJECT_MENU_ITEMS.length; i++) {
+      const item = PROJECT_MENU_ITEMS[i]
+      expect(links[i].attributes('data-seg')).toBe(item.id)
+      expect(links[i].attributes('href')).toBe(projectItemPath(9, item))
+      expect(links[i].find('span.ico').text()).toBe(item.icon)
+      expect(links[i].find('span.lbl').text()).toBe(item.label)
     }
   })
 
@@ -89,6 +92,19 @@ describe('L3-03：AppShell 项目模式——侧栏七段导航', () => {
 })
 
 describe('L3-03：AppShell 项目模式——顶栏当前项目与返回', () => {
+  it('全局工作空间切换项目时保留当前功能段', async () => {
+    const router = makeTestRouter()
+    await router.push('/p/9/ide')
+    const w = mount(AppShell, { global: { plugins: [router] } })
+    await flushPromises()
+
+    await w.get('[data-project-switcher]').trigger('click')
+    await w.findAll('[data-project-option]')[1].trigger('click')
+    await flushPromises()
+
+    expect(router.currentRoute.value.fullPath).toBe('/p/10/ide')
+  })
+
   it('顶栏项目名：data-project-name=<projectId>，文本=listProjects 按 id 匹配的 name', async () => {
     const router = makeTestRouter()
     await router.push('/p/9')
@@ -106,6 +122,8 @@ describe('L3-03：AppShell 项目模式——顶栏当前项目与返回', () =>
     const exit = w.find('[data-project-exit]')
     expect(exit.exists()).toBe(true)
     expect(exit.attributes('href')).toBe('/')
+    expect(w.find('[data-global-operations]').attributes('href')).toBe('/dep/runtime')
+    expect(w.find('[data-global-system]').attributes('href')).toBe('/sys')
   })
 
   it('项目切换跟随：push /p/10 后顶栏锚与项目名同步切换', async () => {
@@ -193,6 +211,7 @@ describe('L3-03：AppShell 全局模式——项目元素零渲染（互斥分�
     expect(w.find('[data-project-nav]').exists()).toBe(false)
     expect(w.find('[data-project-name]').exists()).toBe(false)
     expect(w.find('[data-project-exit]').exists()).toBe(false)
+    expect(w.find('[data-global-project]').attributes('href')).toBe('/')
     expect(listProjectsSpy).not.toHaveBeenCalled()
     // 全局菜单语义保持（inc4 批次开 → task-center 组正常渲染）
     expect(w.findAll('.menu-group')).toHaveLength(1)

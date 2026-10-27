@@ -1,0 +1,17 @@
+{
+  "menu_count": 27,
+  "visited": 28,
+  "route_errors": 1,
+  "http_errors": 0,
+  "console_errors": 0,
+  "page_errors": 0,
+  "modal_checks": [
+    {
+      "path": "/resources",
+      "opened": false,
+      "reason": "no eligible row action"
+    }
+  ],
+  "security_ok": true,
+  "logout_status": 200
+}

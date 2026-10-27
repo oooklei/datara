@@ -8,6 +8,7 @@
  * 登记簿 #23（2026-10-24 18R2-i 补登记时标注「测试缺位」缺口，本文件即补测）。
  */
 import { afterEach, describe, expect, it, vi } from 'vitest'
+import * as authApi from '../authApi'
 import { login, logout } from '../authApi'
 import { clearToken, getToken, setToken } from '../../http'
 
@@ -23,6 +24,23 @@ afterEach(() => {
 })
 
 describe('I1 authApi contract (POST /api/v1/rebuild/login)', () => {
+  it('restores the current account from the authenticated session endpoint', async () => {
+    const api = authApi as unknown as Record<string, unknown>
+    expect(typeof api.currentSession).toBe('function')
+    const fetchMock = stubFetchWith(200, {
+      code: 0,
+      msg: 'success',
+      data: { id: 7, username: 'analyst', role: 'operator' },
+    })
+    vi.stubGlobal('fetch', fetchMock)
+    setToken('tok-session-1')
+
+    const account = await (api.currentSession as () => Promise<unknown>)()
+
+    expect(account).toEqual({ id: 7, username: 'analyst', role: 'operator' })
+    expect(fetchMock).toHaveBeenCalledWith('/api/v1/rebuild/session', expect.objectContaining({ method: 'GET' }))
+  })
+
   it('login POSTs anonymous {username,password}, keeps token in memory only, unwraps account', async () => {
     const fetchMock = stubFetchWith(200, {
       code: 0,

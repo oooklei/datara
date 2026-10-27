@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?><testsuites name="pytest tests"><testsuite name="pytest" errors="0" failures="2" skipped="0" tests="2" time="1.131" timestamp="2026-10-26T00:21:09.143361+08:00" hostname="DESKTOP-SI67FHF"><testcase classname="tests.rebuild.test_trial_runner" name="test_trial_run_materializes_endpoint_select_and_persists_sync_counts[False-SUCCEEDED-expected_counts0]" time="0.341"><failure message="AssertionError: assert 6 == 3&#10; +  where 6 = TrialRunResult(instance_id=1, status='SUCCEEDED', task_count=6, tasks=[{'task_instance_id': 1, 'task_id': 'start', 'no...tatus': 'SUCCEEDED'}, {'task_instance_id': 6, 'task_id': 'end', 'node_code': 'end', 'status': 'SUCCEEDED'}], plan=None).task_count">tests\rebuild\test_trial_runner.py:173: in test_trial_run_materializes_endpoint_select_and_persists_sync_counts
+    assert result.task_count == 3
+E   AssertionError: assert 6 == 3
+E    +  where 6 = TrialRunResult(instance_id=1, status='SUCCEEDED', task_count=6, tasks=[{'task_instance_id': 1, 'task_id': 'start', 'no...tatus': 'SUCCEEDED'}, {'task_instance_id': 6, 'task_id': 'end', 'node_code': 'end', 'status': 'SUCCEEDED'}], plan=None).task_count</failure></testcase><testcase classname="tests.rebuild.test_trial_runner" name="test_trial_run_materializes_endpoint_select_and_persists_sync_counts[True-FAILED-expected_counts1]" time="0.165"><failure message="AssertionError: assert 'SUCCEEDED' == 'FAILED'&#10;  &#10;  - FAILED&#10;  + SUCCEEDED">tests\rebuild\test_trial_runner.py:172: in test_trial_run_materializes_endpoint_select_and_persists_sync_counts
+    assert result.status == expected_status
+E   AssertionError: assert 'SUCCEEDED' == 'FAILED'
+E     
+E     - FAILED
+E     + SUCCEEDED</failure></testcase></testsuite></testsuites>

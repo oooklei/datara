@@ -6,12 +6,6 @@
         <p>R5-A 只读态：对象树（库·Schema·表/视图/例程/索引）→ 写 SQL（含变量引用）→ 执行 → 结果网格 → 历史。DDL 写路径归增量 16/R5-B。</p>
       </div>
       <div class="ide-actions">
-        <label class="ide-project">项目
-          <select v-model="selected" data-project-select @change="reload">
-            <option value="">请选择项目</option>
-            <option v-for="p in projects" :key="p.id" :value="String(p.id)">{{ p.name }}</option>
-          </select>
-        </label>
         <label class="ide-ds">数据源
           <select v-model="selectedDs" data-ds-select @change="selectDatasource(Number(selectedDs))">
             <option value="">请选择数据源</option>
@@ -28,11 +22,13 @@
 
     <!-- 错误横幅独立于内容态：加载失败不丢上下文，执行失败保留编辑器 -->
     <p v-if="error" role="alert" data-error>{{ error }}</p>
+    <p v-if="contractError" role="alert" data-contract-error>{{ contractError }}</p>
     <p v-if="status" role="status" data-status>{{ status }}</p>
-    <p v-else-if="projectId === null" data-no-project>请先选择项目</p>
+    <p v-if="projectId === null" data-no-project>请先选择项目</p>
     <p v-else-if="datasourceId === null" data-no-datasource>请先选择数据源</p>
 
-    <div v-else class="ide-split">
+    <Splitpanes v-else class="ide-split" data-ide-workspace @resized="onIdeResize('workspace', $event)">
+      <Pane :size="ideSplit.workspace[0]">
       <aside class="ide-left" data-object-panel>
         <section>
           <h2>对象树</h2>
@@ -116,20 +112,26 @@
           <span v-for="s in searched" :key="`${s.kind}.${s.name}`">{{ s.name }}<small>{{ s.kind }}</small></span>
         </p>
       </aside>
+      </Pane>
 
+      <Pane :size="ideSplit.workspace[1]">
       <section class="ide-right">
+        <Splitpanes horizontal class="ide-editor-split" @resized="onIdeResize('editor', $event)">
+        <Pane :size="ideSplit.editor[0]">
+        <div class="ide-editor-pane">
         <div class="ide-editor-head">
           <span class="ide-editor-title">SQL</span>
           <button type="button" data-lint :disabled="sqlText.trim() === '' || datasourceId === null" @click="runLint">语法检查</button>
+          <button type="button" data-format :disabled="sqlText.trim() === ''" @click="formatCurrentSql">格式化</button>
           <button type="button" data-var-check :disabled="varCheckBusy || projectId === null || sqlText.trim() === ''" @click="checkVariableReferences">
             {{ varCheckBusy ? '变量校验中…' : '变量校验' }}
           </button>
           <button type="button" data-var-complete :disabled="projectId === null" @click="toggleVarSuggestions">插入变量</button>
           <button type="button" data-save-script :disabled="sqlText.trim() === ''" @click="saveScript">存为脚本</button>
           <button type="button" data-export :disabled="lastResultSetId === null" @click="exportCurrent">导出结果</button>
+          <button type="button" data-lineage :disabled="projectId === null" @click="openLineage">查看血缘</button>
         </div>
-        <textarea ref="sqlEditorEl" v-model="sqlText" data-sql-editor rows="12" spellcheck="false"
-                  placeholder="SELECT … -- 支持 ${scope.name} 与 $[时间] 变量引用"></textarea>
+        <SqlCodeEditor ref="sqlEditorEl" v-model="sqlText" placeholder="SELECT … -- 支持变量引用" />
 
         <p v-if="diagnostics.length" class="ide-diag" data-diagnostics>
           <span v-for="(d, i) in diagnostics" :key="i" :class="['pill', d.severity]">
@@ -169,7 +171,11 @@
             </li>
           </ul>
         </section>
+        </div>
+        </Pane>
 
+        <Pane :size="ideSplit.editor[1]">
+        <div class="ide-results-pane" :data-result-column-count="resultColumns.length">
         <section v-if="resultColumns.length" class="ide-result" data-result-grid>
           <header class="ide-result-head">
             <span>结果集 {{ currentResultSetIndex + 1 }} / {{ resultSetIds.length }}</span>
@@ -192,10 +198,15 @@
           </table>
           <p v-else class="ide-muted">无数据行</p>
         </section>
+        <div v-else class="ide-result-empty">执行 SQL 后在此查看分页结果</div>
+        </div>
+        </Pane>
+        </Splitpanes>
       </section>
-    </div>
+      </Pane>
+    </Splitpanes>
 
-    <aside v-if="historyOpen" class="ide-history" data-history>
+    <aside v-if="historyOpen" class="ide-history" data-history data-history-drawer>
       <header>
         <h2>执行历史</h2>
         <button type="button" data-history-toggle @click="historyOpen = false">收起</button>
@@ -232,7 +243,7 @@
       </ul>
     </aside>
     <button v-else type="button" class="ide-scripts-open" data-scripts-toggle @click="openScripts">SQL 资产</button>
-    <VariableManagementDialog
+    <GlobalParamDrawer
       v-model="variableManagementOpen"
       :project-id="projectId ?? undefined"
     />
@@ -252,12 +263,15 @@
  * 项目上下文：`/ide` 为全局模式路由（AppShell 项目模式仅覆盖 `/p/` 前缀），
  *   故项目段从 `route.params.projectId` 或 `route.query.projectId` 承接；
  *   两者皆空时呈现选择器，不渲染空壳。
- * 范式：手写 HTML/CSS（零 element-plus）；编辑器=轻量 textarea
- *   （codemirror 换芯登记候接，不阻塞只读态语义）。
+ * 范式：CodeMirror 6 编辑器 + splitpanes 持久化工作区，业务操作仍只调用真实后端契约。
  */
-import { computed, nextTick, onMounted, ref, watch } from 'vue'
-import { useRoute } from 'vue-router'
-import VariableManagementDialog from '../../components/VariableManagementDialog.vue'
+import { computed, onMounted, ref, watch } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
+import { Pane, Splitpanes, type SplitpanesResizedPayload } from 'splitpanes'
+import { format } from 'sql-formatter'
+import GlobalParamDrawer from '../../components/VariableManagementDialog.vue'
+import SqlCodeEditor from './SqlCodeEditor.vue'
+import 'splitpanes/dist/splitpanes.css'
 import {
   createSqlIdeContract,
   type HistoryEntry,
@@ -288,6 +302,27 @@ import { listProjects, type ProjectSummary } from '../../services/rebuild/projec
 
 const props = defineProps<{ projectId?: number }>()
 const route = useRoute()
+const router = useRouter()
+
+const IDE_SPLIT_KEY = 'datara.ide.split.v1'
+function initialIdeSplit(): { workspace: [number, number]; editor: [number, number] } {
+  try {
+    const value = JSON.parse(localStorage.getItem(IDE_SPLIT_KEY) ?? '{}') as { workspace?: number[]; editor?: number[] }
+    return {
+      workspace: value.workspace?.length === 2 ? [value.workspace[0], value.workspace[1]] : [25, 75],
+      editor: value.editor?.length === 2 ? [value.editor[0], value.editor[1]] : [58, 42],
+    }
+  } catch {
+    return { workspace: [25, 75], editor: [58, 42] }
+  }
+}
+const ideSplit = ref(initialIdeSplit())
+
+function onIdeResize(area: 'workspace' | 'editor', payload: SplitpanesResizedPayload) {
+  if (!Array.isArray(payload.panes) || payload.panes.length !== 2) return
+  ideSplit.value = { ...ideSplit.value, [area]: [payload.panes[0].size, payload.panes[1].size] }
+  localStorage.setItem(IDE_SPLIT_KEY, JSON.stringify(ideSplit.value))
+}
 
 const projects = ref<ProjectSummary[]>([])
 const variableManagementOpen = ref(false)
@@ -323,7 +358,7 @@ const resultRows = ref<unknown[][]>([])
 const resultRowsTotal = ref(0)
 const resultSetIds = ref<string[]>([])
 const currentResultSetIndex = ref(0)
-const lastHistoryId = ref<number | null>(null)
+const lastHistoryId = ref<string | number | null>(null)
 const lastResultSetId = ref<string | null>(null)
 const resultPage = ref(1)
 const resultPageSize = 50
@@ -343,7 +378,7 @@ const sqlReferenceField = defineVariableReferenceField({
   allowScopedReference: true,
   allowTimeExpression: true,
 })
-const sqlEditorEl = ref<HTMLTextAreaElement | null>(null)
+const sqlEditorEl = ref<{ insertText: (text: string) => void; focus: () => void } | null>(null)
 const varCheckBusy = ref(false)
 const varCheckResult = ref<VariableReferenceCheckViewModel | null>(null)
 const varCheckError = ref('')
@@ -564,7 +599,7 @@ async function runSql(): Promise<void> {
   clearResult()
   currentTaskId.value = `ide-${Date.now()}`
   try {
-    const { taskId } = await api.value.executeSql({
+    const execution = await api.value.executeSql({
       datasourceId: datasourceId.value as number,
       db: activeDatabase.value || null,
       sql: sqlText.value,
@@ -572,7 +607,28 @@ async function runSql(): Promise<void> {
       sessionId: currentTaskId.value,
       clientRequestId: `req-${Date.now()}`,
     })
+    const { taskId } = execution
     currentTaskId.value = taskId
+    if (execution.historyId !== undefined && execution.resultSetId) {
+      const result = await api.value.fetchResultPage(execution.historyId, execution.resultSetId, 0, resultPageSize)
+      resultColumns.value = result.columns
+      resultRows.value = result.rows
+      resultRowsTotal.value = result.rowsTotal
+      lastHistoryId.value = execution.historyId
+      lastResultSetId.value = result.resultSetId
+      resultSetIds.value = [result.resultSetId]
+      resultPage.value = 1
+      resultHasMore.value = result.rows.length < result.rowsTotal
+    } else if (execution.columns?.length) {
+      resultColumns.value = execution.columns
+      resultRows.value = execution.rows ?? []
+      resultRowsTotal.value = execution.totalRows ?? execution.rowCount ?? resultRows.value.length
+      lastHistoryId.value = execution.historyId ?? null
+      lastResultSetId.value = execution.resultSetId ?? null
+      resultSetIds.value = execution.resultSetId ? [execution.resultSetId] : []
+      resultPage.value = 1
+      resultHasMore.value = resultRows.value.length < resultRowsTotal.value
+    }
     openStream(taskId)
   } catch (e) {
     contractError.value = message(e)
@@ -594,11 +650,39 @@ function openStream(taskId: string): void {
     resultPage.value = 1
     resultHasMore.value = data.rows.length < data.rowsTotal
   })
-  es.addEventListener('done', (ev: MessageEvent) => {
+  es.addEventListener('done', async (ev: MessageEvent) => {
     es.close()
     executing.value = false
-    const data = JSON.parse(ev.data) as SqlDoneEvent
+    const wire = JSON.parse(ev.data) as SqlDoneEvent & {
+      history_id?: string | number | null
+      result_set_id?: string
+      elapsed_ms?: number
+      stmt_count?: number
+    }
+    const data: SqlDoneEvent = {
+      ...wire,
+      historyId: wire.historyId ?? wire.history_id ?? null,
+      elapsedMs: wire.elapsedMs ?? wire.elapsed_ms ?? 0,
+      stmtCount: wire.stmtCount ?? wire.stmt_count ?? wire.resultSets?.length ?? resultSetIds.value.length,
+    }
     lastHistoryId.value = data.historyId
+    const fallbackResultSetId = wire.result_set_id ?? data.resultSets?.[0]?.resultSetId ?? null
+    if (resultColumns.value.length === 0 && data.historyId !== null && fallbackResultSetId) {
+      try {
+        const result = await api.value.fetchResultPage(data.historyId, fallbackResultSetId, 0, resultPageSize)
+        resultColumns.value = result.columns
+        resultRows.value = result.rows
+        resultRowsTotal.value = result.rowsTotal
+        lastResultSetId.value = result.resultSetId
+        resultSetIds.value = resultSetIds.value.includes(result.resultSetId)
+          ? resultSetIds.value
+          : [...resultSetIds.value, result.resultSetId]
+        resultPage.value = 1
+        resultHasMore.value = result.rows.length < result.rowsTotal
+      } catch (e) {
+        error.value = message(e)
+      }
+    }
     if (data.status === 'succeeded') {
       status.value = `执行成功：${data.stmtCount} 语句 · ${data.elapsedMs}ms`
     } else if (data.status === 'canceled') {
@@ -660,7 +744,7 @@ function restoreHistory(h: HistoryEntry): void {
   sqlText.value = h.sqlText
 }
 
-async function removeHistory(historyId: number): Promise<void> {
+async function removeHistory(historyId: string | number): Promise<void> {
   try {
     await api.value.deleteHistory(historyId)
     await loadHistory()
@@ -714,6 +798,20 @@ async function exportCurrent(): Promise<void> {
   } catch (e) {
     error.value = message(e)
   }
+}
+
+function formatCurrentSql(): void {
+  try {
+    sqlText.value = format(sqlText.value, { language: 'sql', keywordCase: 'upper' })
+    status.value = 'SQL 格式化完成'
+  } catch (e) {
+    error.value = `SQL 格式化失败：${message(e)}`
+  }
+}
+
+function openLineage(): void {
+  if (projectId.value === null) return
+  void router.push({ path: `/p/${projectId.value}/meta/lineage`, query: activeRelation.value ? { object: activeRelation.value } : {} })
 }
 
 /** 变量引用：本地语法归类 + 服务端现时解析预览（best-effort）。 */
@@ -775,19 +873,8 @@ async function toggleVarSuggestions(): Promise<void> {
 
 function insertVariableRef(item: VariableCompletionItem): void {
   const token = `\${${item.scope}.${item.name}}`
-  const el = sqlEditorEl.value
-  if (el === null) {
-    sqlText.value = `${sqlText.value}${token}`
-    return
-  }
-  const start = el.selectionStart ?? sqlText.value.length
-  const end = el.selectionEnd ?? start
-  sqlText.value = `${sqlText.value.slice(0, start)}${token}${sqlText.value.slice(end)}`
-  nextTick(() => {
-    el.focus()
-    const caret = start + token.length
-    el.setSelectionRange(caret, caret)
-  })
+  if (sqlEditorEl.value) sqlEditorEl.value.insertText(token)
+  else sqlText.value = `${sqlText.value}${token}`
 }
 
 onMounted(async () => {
@@ -810,8 +897,10 @@ onMounted(async () => {
 .ide-project select,.ide-ds select{padding:7px 10px;min-width:150px}
 button{cursor:pointer;padding:7px 12px}
 button:disabled{cursor:not-allowed;opacity:.5}
-.ide-split{display:grid;grid-template-columns:minmax(300px,.7fr) minmax(520px,1.3fr);gap:20px;margin-top:16px;align-items:start}
-.ide-left,.ide-right{border:1px solid var(--border);border-radius:var(--radius);padding:16px;background:var(--card)}
+.ide-split{height:calc(100vh - 190px);min-height:520px;margin-top:16px;border:1px solid var(--border);border-radius:var(--radius);background:var(--card);overflow:hidden}
+.ide-split :deep(.splitpanes__splitter){position:relative;background:var(--border);min-width:5px;min-height:5px}.ide-split :deep(.splitpanes__splitter:hover){background:var(--primary)}
+.ide-left,.ide-right{height:100%;min-width:0;box-sizing:border-box;background:var(--card)}
+.ide-left{padding:16px;overflow:auto}.ide-right{overflow:hidden}.ide-editor-split{height:100%}.ide-editor-pane,.ide-results-pane{height:100%;box-sizing:border-box;padding:12px;overflow:auto}.ide-editor-pane{display:flex;flex-direction:column}.ide-editor-pane .sql-code-editor{flex:1;min-height:220px}
 .ide-left h2{margin:0 0 8px;font-size:15px}
 .ide-left h3{margin:16px 0 8px;font-size:13px;color:var(--text)}
 .ide-search{display:flex;flex-direction:column;gap:4px;font-size:12px;color:var(--text-2)}
@@ -826,7 +915,6 @@ button:disabled{cursor:not-allowed;opacity:.5}
 .ide-search-result small{color:var(--text-2)}
 .ide-editor-head{display:flex;align-items:center;gap:10px;margin-bottom:8px}
 .ide-editor-title{font-weight:600}
-.ide-right textarea{width:100%;box-sizing:border-box;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:13px;line-height:1.5;padding:8px;border:1px solid var(--border-strong);border-radius:var(--radius-sm);color:var(--text);background:var(--card)}
 .ide-diag{display:flex;flex-wrap:wrap;gap:6px;margin:8px 0 0}
 .pill{display:inline-block;padding:2px 8px;border-radius:10px;font-size:11px;background:var(--bg-deep);color:var(--text-2)}
 .pill.error,.pill.invalid{background:var(--danger-bg);color:var(--danger)}
@@ -841,12 +929,14 @@ button:disabled{cursor:not-allowed;opacity:.5}
 .ide-var-suggestions ul{list-style:none;margin:0;padding:0;display:flex;flex-wrap:wrap;gap:6px}
 .ide-var-suggestions li button{display:flex;align-items:center;gap:6px;border:1px solid var(--border);background:var(--card);border-radius:var(--radius-sm);padding:5px 9px}
 .ide-var-suggestions small{color:var(--text-2)}
-.ide-result{margin-top:16px}
+.ide-result{min-height:100%}
+.ide-result-empty{display:grid;place-items:center;height:100%;color:var(--text-3);font-size:13px}
 .ide-result-head{display:flex;align-items:center;gap:14px;margin-bottom:8px;flex-wrap:wrap}
 .ide-result-nav{display:flex;align-items:center;gap:8px;margin-left:auto}
 table{width:100%;border-collapse:collapse;background:var(--card)}
 th,td{text-align:left;padding:9px;border-bottom:1px solid var(--border);font-size:12px;vertical-align:top}
 .ide-history{border:1px solid var(--border);border-radius:var(--radius);padding:16px;background:var(--card);margin-top:16px}
+[data-history-drawer]{position:fixed;z-index:80;top:58px;right:0;bottom:0;width:min(420px,92vw);margin:0;border-radius:var(--radius) 0 0 var(--radius);box-shadow:var(--shadow-lg);overflow:auto}
 .ide-history header{display:flex;align-items:center;justify-content:space-between}
 .ide-history h2{margin:0;font-size:15px}
 .ide-history ul{list-style:none;padding:0;margin:8px 0 0;display:grid;gap:6px}
@@ -855,5 +945,5 @@ th,td{text-align:left;padding:9px;border-bottom:1px solid var(--border);font-siz
 .ide-history-del{flex:none}
 .ide-history-open,.ide-scripts-open{margin-top:16px}
 .mono,code{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12px}
-@media(max-width:900px){.ide-split{grid-template-columns:1fr}}
+@media(max-width:900px){.ide-split{height:auto;min-height:0;overflow:visible}.ide-split:deep(>.splitpanes__pane){width:100%!important}.ide-split{display:block}.ide-left{max-height:320px}.ide-right{height:720px}}
 </style>

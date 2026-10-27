@@ -1,0 +1,33 @@
+        try:
+            user = current_user(authorization)
+            draft = DataSourceDraft(**body.model_dump(exclude={"probe"}))
+            validate_datasource(draft)
+        except ValueError as exc:
+            if "token" in str(exc):
+                return JSONResponse(status_code=401, content={"code": 1001, "msg": "invalid token", "data": None})
+            return JSONResponse(status_code=400, content={"code": 4001, "msg": str(exc), "data": None})
+        with session_factory() as session:
+            denied = project_permission_error(session, project_id, user, Permission.EDIT_DEFINITION)
+            if denied is not None:
+                return denied
+            repository = ProjectDatasourceRepository(session)
+            try:
+                record = repository.create(project_id, draft)
+                session.commit()
+            except IntegrityError:
+                session.rollback()
+                return JSONResponse(
+                    status_code=409,
+                    content={"code": 4091, "msg": "datasource name already exists in project", "data": None},
+                )
+            return JSONResponse(
+                status_code=201, content={"code": 0, "msg": "success", "data": datasource_payload(record)}
+            )
+
+    @app.get("/api/v1/rebuild/projects/{project_id}/datasources/{datasource_id}")
+    def get_project_datasource(project_id: int, datasource_id: int, authorization: str = Header(default="")):
+        try:
+            user = current_user(authorization)
+        except ValueError:
+            return JSONResponse(status_code=401, content={"code": 1001, "msg": "invalid token", "data": None})
+        with session_factory() as session:

@@ -11,6 +11,7 @@ from rebuild.identity.models import ActiveTokenRecord, ProjectMemberRecord, User
 from rebuild.identity.contracts import Role
 from rebuild.identity.repository import UserRepository
 from rebuild.project.repository import ProjectRepository
+from rebuild.sql_ide.result_store import PersistentResultPageStore
 
 
 _TEST_USERNAME = "rebuild-test-dev"
@@ -35,6 +36,36 @@ def test_login_returns_token_and_role_context():
     body = response.json()
     assert body["data"]["user"]["role"] == "developer"
     assert body["data"]["token"]
+
+
+def test_authenticated_session_returns_current_account():
+    with developer_client("sqlite+pysqlite:///:memory:") as client:
+        login = client.post("/api/v1/rebuild/login", json={"username": _TEST_USERNAME, "password": _TEST_PASSWORD})
+        token = login.json()["data"]["token"]
+        response = client.get("/api/v1/rebuild/session", headers={"Authorization": f"Bearer {token}"})
+
+    assert response.status_code == 200
+    assert response.json()["data"] == {
+        "id": 1,
+        "username": _TEST_USERNAME,
+        "role": "developer",
+    }
+
+
+def test_login_cookie_restores_session_and_logout_clears_it():
+    with developer_client("sqlite+pysqlite:///:memory:") as client:
+        login = client.post("/api/v1/rebuild/login", json={"username": _TEST_USERNAME, "password": _TEST_PASSWORD})
+        cookie = login.headers["set-cookie"]
+        restored = client.get("/api/v1/rebuild/session")
+        logged_out = client.post("/api/v1/rebuild/logout")
+        rejected = client.get("/api/v1/rebuild/session")
+
+    assert "HttpOnly" in cookie
+    assert "SameSite=strict" in cookie
+    assert restored.status_code == 200
+    assert restored.json()["data"]["username"] == _TEST_USERNAME
+    assert logged_out.status_code == 200
+    assert rejected.status_code == 401
 
 
 def test_active_token_storage_uses_digest_without_persisting_bearer_token():
@@ -98,6 +129,37 @@ def test_real_app_assembly_resolves_execute_sql_permission_for_project_owner():
     # has no datasource, so the real execution path fails with a mapped 502.
     assert response.status_code == 502
     assert response.json()["code"] == 502
+
+
+def test_sql_result_page_accepts_frontend_camel_case_result_set_id():
+    with developer_client("sqlite+pysqlite:///:memory:") as client:
+        login = client.post("/api/v1/rebuild/login", json={"username": _TEST_USERNAME, "password": _TEST_PASSWORD})
+        token = login.json()["data"]["token"]
+        user_id = login.json()["data"]["user"]["id"]
+        project_id = client.post(
+            "/api/v1/rebuild/projects",
+            headers={"Authorization": f"Bearer {token}"},
+            json={"name": "sql-result-contract", "description": ""},
+        ).json()["data"]["id"]
+        result_set_id = PersistentResultPageStore(
+            session_factory=client.app.state.session_factory,
+        ).save_snapshot(
+            project_id=project_id,
+            user_id=user_id,
+            history_id="history-camel",
+            stmt_index=0,
+            columns=["ok"],
+            rows=[[1]],
+        )
+
+        response = client.get(
+            f"/api/v1/projects/{project_id}/sql-ide/results/history-camel",
+            headers={"Authorization": f"Bearer {token}"},
+            params={"resultSetId": result_set_id, "offset": 0, "limit": 50},
+        )
+
+    assert response.status_code == 200
+    assert response.json()["data"]["rows"] == [[1]]
 
 
 def test_admin_can_list_projects_even_when_not_project_owner_or_member():

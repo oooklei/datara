@@ -1,0 +1,2 @@
+FROM datara-backend:rba-browser-T001
+RUN python3 -m playwright install-deps chromium

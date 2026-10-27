@@ -1,0 +1,14 @@
+{
+  "issued": 200,
+  "gateway": [
+    404,
+    "application/json",
+    "{\"detail\":\"Not Found\"}"
+  ],
+  "legacy": [
+    200,
+    "application/json",
+    "{\"code\":0,\"msg\":\"success\",\"data\":{\"total\":29,\"list\":[{\"id\":\"wf_71f23742\",\"code\":117,\"name\":\"i3_2_ssh_fixture_1791943935975\",\"version\":2,\"releaseState\":\"offline\",\"owner\":\"admin\",\"updatedAt\":\"2026-10-14 10:12:13\",\"tags\":[\"i3-2-validation\"],\"cron\":null,\"nodeCount\":3},{\"id\":\"wf_e5aa30bc\",\"code\":116,\"name\":\"i3_2_shell_fixture_1791943427862\",\"version\":2,\"releaseState\":\"offline\",\"owner\":\"admin\",\"updatedAt\":\"2026-10-14 10:03:44\",\"tags\":[\"i3-2-validation\"],\"cron\":null,\"nodeCount\":3},{\"id\":\"wf_58657632\",\""
+  ],
+  "token_persisted": false
+}

@@ -1,0 +1,38 @@
+datara-backend/rebuild\api\app.py:1056:                "datasources": session.scalar(select(func.count()).select_from(ProjectDatasourceRecord).where(ProjectDatasourceRecord.project_id == project_id)) or 0,
+datara-backend/rebuild\api\app.py:1066:    @app.post("/api/v1/rebuild/datasources/validate")
+datara-backend/rebuild\api\app.py:1093:    @app.post("/api/v1/rebuild/datasources/profiles/{profile_id}/probe")
+datara-backend/rebuild\api\app.py:1130:    @app.get("/api/v1/rebuild/projects/{project_id}/datasources")
+datara-backend/rebuild\api\app.py:1131:    def list_project_datasources(project_id: int, authorization: str = Header(default="")):
+datara-backend/rebuild\api\app.py:1143:    @app.post("/api/v1/rebuild/projects/{project_id}/datasources", status_code=201)
+datara-backend/rebuild\api\app.py:1171:    @app.get("/api/v1/rebuild/projects/{project_id}/datasources/{datasource_id}")
+datara-backend/rebuild\api\app.py:1188:    @app.put("/api/v1/rebuild/projects/{project_id}/datasources/{datasource_id}")
+datara-backend/rebuild\api\app.py:1222:    @app.delete("/api/v1/rebuild/projects/{project_id}/datasources/{datasource_id}")
+datara-backend/rebuild\api\app.py:1243:    @app.post("/api/v1/rebuild/projects/{project_id}/datasources/{datasource_id}/test")
+datara-backend/rebuild\api\app.py:1278:    @app.get("/api/v1/rebuild/projects/{project_id}/datasources/{datasource_id}/schemas")
+datara-backend/rebuild\api\app.py:1321:    @app.get("/api/v1/rebuild/projects/{project_id}/datasources/{datasource_id}/objects")
+datara-backend/rebuild\api\app.py:1369:    @app.get("/api/v1/rebuild/projects/{project_id}/datasources/{datasource_id}/columns")
+datara-newweb/src\views\datasource\DataSourceListView.vue:135: *   本契约不调用旧 `/datasources` API，password 仅出现在写请求体。
+datara-newweb/src\views\ide\IdeView.vue:18:            <option v-for="d in datasources" :key="d.id" :value="String(d.id)">{{ d.name }}</option>
+datara-newweb/src\views\ide\IdeView.vue:233:const datasources = ref<DatasourceRecord[]>([])
+datara-newweb/src\views\ide\IdeView.vue:344:  datasources.value = []
+datara-newweb/src\views\ide\IdeView.vue:349:    datasources.value = (await dsApi.value.listDatasources()).items
+datara-backend/rebuild\sync\models.py:9:  point at registered project datasources + schema/object names.
+datara-newweb/src\views\__tests__\ideView.contract.test.ts:135:  it('lists datasources for the project carried by route params', async () => {
+datara-newweb/src\views\__tests__\dataSourceListView.contract.test.ts:113:  it('lists datasources for the project carried by route params', async () => {
+datara-newweb/src\services\rebuild\datasourceApi.ts:5: * 本契约不调用旧 `/datasources` API；项目数据始终由 URL 中的 projectId 隔离。
+datara-newweb/src\services\rebuild\datasourceApi.ts:118:const PROJECT_BASE = (projectId: number) => `/rebuild/projects/${projectId}/datasources`
+datara-newweb/src\services\rebuild\datasourceApi.ts:148:      fromWire(await postJson('/rebuild/datasources/validate', { ...toWireDraft(input), probe: false }, PRESERVE_ERROR)),
+datara-newweb/src\services\rebuild\datasourceApi.ts:150:      fromWire(await postJson(`/rebuild/datasources/profiles/${encodeURIComponent(profileId)}/probe`, undefined, PRESERVE_ERROR)),
+datara-newweb/src\services\rebuild\__tests__\datasourceApi.contract.test.ts:56:      if (url.endsWith('/datasources')) return { items: [recordWire] }
+datara-newweb/src\services\rebuild\__tests__\datasourceApi.contract.test.ts:74:      ['/api/v1/rebuild/datasources/validate', 'POST'],
+datara-newweb/src\services\rebuild\__tests__\datasourceApi.contract.test.ts:75:      ['/api/v1/rebuild/datasources/profiles/mysql-src/probe', 'POST'],
+datara-newweb/src\services\rebuild\__tests__\datasourceApi.contract.test.ts:76:      ['/api/v1/rebuild/projects/7/datasources', 'GET'],
+datara-newweb/src\services\rebuild\__tests__\datasourceApi.contract.test.ts:77:      ['/api/v1/rebuild/projects/7/datasources', 'POST'],
+datara-newweb/src\services\rebuild\__tests__\datasourceApi.contract.test.ts:78:      ['/api/v1/rebuild/projects/7/datasources/9', 'GET'],
+datara-newweb/src\services\rebuild\__tests__\datasourceApi.contract.test.ts:79:      ['/api/v1/rebuild/projects/7/datasources/9', 'PUT'],
+datara-newweb/src\services\rebuild\__tests__\datasourceApi.contract.test.ts:80:      ['/api/v1/rebuild/projects/7/datasources/9', 'DELETE'],
+datara-newweb/src\services\rebuild\__tests__\datasourceApi.contract.test.ts:81:      ['/api/v1/rebuild/projects/7/datasources/9/test', 'POST'],
+datara-newweb/src\services\rebuild\__tests__\datasourceApi.contract.test.ts:82:      ['/api/v1/rebuild/projects/7/datasources/9/schemas?limit=100', 'GET'],
+datara-newweb/src\services\rebuild\__tests__\datasourceApi.contract.test.ts:83:      ['/api/v1/rebuild/projects/7/datasources/9/objects?schema=warehouse&limit=100', 'GET'],
+datara-newweb/src\services\rebuild\__tests__\datasourceApi.contract.test.ts:84:      ['/api/v1/rebuild/projects/7/datasources/9/columns?schema=warehouse&object_name=orders&limit=200', 'GET'],
+datara-newweb/src\services\rebuild\__tests__\datasourceApi.contract.test.ts:86:    expect(calls.every(({ url }) => !url.startsWith('/api/v1/datasources'))).toBe(true)

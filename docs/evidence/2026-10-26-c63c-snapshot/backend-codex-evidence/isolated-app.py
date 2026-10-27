@@ -1,0 +1,1824 @@
+"""I1 身份 API 工厂，独立于旧 api/main.py。"""
+
+from __future__ import annotations
+
+from contextlib import asynccontextmanager
+import hmac
+import hashlib
+import json
+import logging
+import os
+import re
+from pathlib import Path
+from typing import Literal
+
+from fastapi import FastAPI, Header, Query, Request
+from starlette.datastructures import MutableHeaders
+from fastapi.responses import JSONResponse, Response
+from pydantic import BaseModel
+from sqlalchemy import create_engine, delete, func, inspect, select, text
+from sqlalchemy.engine import make_url
+from sqlalchemy.exc import IntegrityError
+from sqlalchemy.orm import sessionmaker
+from sqlalchemy.pool import StaticPool
+
+from rebuild.ai_bridge import AiBridgePorts, build_ai_router, build_default_bridge_ports
+from rebuild.component_spec import build_component_spec_router
+from rebuild.component_spec.migrations import apply_component_spec_migrations
+from rebuild.common.db import Base
+from rebuild.sql_ide.audit import SqlIdeAuditRecord, build_audit_writer
+from rebuild.sql_ide.export_service import SqlIdeExportAuditRecord, SqlIdeExportJobRecord, SqlIdeExportService
+from rebuild.sql_ide.execution import build_execution_port
+from rebuild.sql_ide.history_store import SqlIdeHistoryStore
+from rebuild.sql_ide.linter import lint_sql
+from rebuild.sql_ide.migrations import SQL_IDE_MIGRATIONS, SqlIdeMigrationRunner
+from rebuild.sql_ide.routes import SqlIdeRouteError, build_sql_ide_router
+from rebuild.sql_ide.result_store import SqlIdeResultSetRecord
+from rebuild.sql_ide.result_store import PersistentResultPageStore
+from rebuild.sql_ide.status_store import SqlIdeExecutionEventRecord, SqlIdeExecutionRecord, SqlIdeStatusStore
+from rebuild.execution.models import EXECUTION_TABLES
+from rebuild.identity.contracts import Permission, Role, ROLE_PERMISSIONS, TokenService, authorize
+from rebuild.identity.models import ActiveTokenRecord, ProjectMemberRecord, UserRecord
+from rebuild.identity.passwords import verify_password
+from rebuild.identity.repository import UserRepository
+
+
+def digest_token(token: str) -> str:
+    """Stable token digest kept local for compatibility with older identity modules."""
+    return hashlib.sha256(token.encode("utf-8")).hexdigest()
+from rebuild.datasource.contracts import DataSourceDraft, probe_datasource, validate_datasource
+from rebuild.datasource.models import ProjectDatasourceRecord
+from rebuild.datasource.metadata import metadata_catalog_for
+from rebuild.datasource.pool import DatasourceEngineRegistry
+from rebuild.datasource.repository import ProjectDatasourceRepository
+from rebuild.dependency.api import build_dependency_router
+from rebuild.dependency.models import DependencyConfigRecord
+from rebuild.project.repository import ProjectRepository
+from rebuild.project.models import ProjectRecord
+from rebuild.resources.api import build_resources_router
+from rebuild.resources.models import ResourceBindingRecord, ResourceRecord, ResourceVersionRecord
+from rebuild.stream.api import build_stream_router
+from rebuild.stream.models import (
+    StreamCheckpointRecord,
+    StreamFailureEventRecord,
+    StreamJobAttemptRecord,
+    StreamJobRecord,
+    StreamMetricSnapshotRecord,
+    StreamRecoveryEventRecord,
+)
+
+_SAFE_IDENTIFIER = re.compile(r"^[A-Za-z_][A-Za-z0-9_$]*$")
+
+def _safe_identifier(value: str) -> bool:
+    return bool(_SAFE_IDENTIFIER.fullmatch(value))
+from rebuild.sync.api import build_sync_router
+from rebuild.sync.models import SyncTaskDefinitionRecord
+from rebuild.governance.api import build_governance_router
+from rebuild.metrics.api import build_metrics_router
+from rebuild.metrics.models import (
+    LineageWritebackRecord,
+    QualityRuleResultLinkRecord,
+    TaskDataErrorSampleRecord,
+    TaskDataStatSegmentRecord,
+    TaskInstanceDataStatRecord,
+    WorkflowResultStatRecord,
+)
+from rebuild.variables.api import build_variables_router
+from rebuild.variables.models import TaskInstanceVariableRuntimeRecord, VariableDefinitionRecord
+from rebuild.rb.api import build_rb_router
+from rebuild.rb.facade.rb_facade import RbFacade
+from rebuild.rb.impact.impact_snapshot import ImpactSnapshotService
+from rebuild.rb.policy.policy_snapshot import PolicySnapshotService
+from rebuild.workflow.api import build_workflow_router
+from rebuild.workflow.models import (
+    WorkflowDefinitionRecord,
+    WorkflowEdgeRecord,
+    WorkflowNodeRecord,
+    WorkflowPublishRecord,
+    WorkflowScheduleRecord,
+    WorkflowVersionRecord,
+)
+from rebuild.trial.models import WorkflowDraftSnapshotRecord
+from rebuild.sshnode import build_sshnode_router
+from rebuild.sshnode.models import SshNodeRecord
+from rebuild.runtime_node import build_runtime_node_router
+from rebuild.runtime_node.models import RuntimeNodeRecord
+from rebuild.scheduling import build_schedule_router
+from rebuild.model.api import build_model_router
+from rebuild.model.dicts import seed_model_dicts
+from rebuild.model.models import MODEL_TABLES
+from rebuild.monitor import build_monitor_router
+from rebuild.llm import LlmCredentialCipher, build_llm_router
+from rebuild.llm.migrations import apply_llm_migrations
+from rebuild.apikey import ApiKeyVerifier, apply_apikey_migrations, build_apikey_router
+from rebuild.openapi_admin import apply_openapi_admin_migrations, build_openapi_admin_router
+from rebuild.workflow.migrations import apply_workflow_migrations
+from rebuild.variables.migrations import apply_variable_migrations
+from common.registry import ServiceRegistry
+
+logger = logging.getLogger(__name__)
+
+
+class LoginRequest(BaseModel):
+    username: str
+    password: str
+
+
+class ProjectRequest(BaseModel):
+    name: str
+    description: str = ""
+
+
+class DataSourceRequest(BaseModel):
+    name: str
+    kind: str
+    host: str
+    port: int
+    database: str
+    username: str
+    password: str = ""
+    probe: bool = False
+
+
+class MemberRequest(BaseModel):
+    username: str
+    role: Role = Role.VIEWER
+
+
+class UserCreateRequest(BaseModel):
+    username: str
+    password: str
+    role: Role = Role.VIEWER
+
+
+class UserStatusRequest(BaseModel):
+    status: Literal["enabled", "disabled"]
+
+
+class UserRoleRequest(BaseModel):
+    role: Role
+
+
+def create_app(
+    database_url: str | None = None,
+    *,
+    token_secret: str | None = None,
+    validation_key: str | None = None,
+    legacy_i18_import_enabled: bool | None = None,
+    legacy_i19_import_enabled: bool | None = None,
+    legacy_i20_import_enabled: bool | None = None,
+    legacy_i21_import_enabled: bool | None = None,
+    legacy_i22_import_enabled: bool | None = None,
+    legacy_i22_source_reader_factory=None,
+    legacy_i23_source_reader_factory=None,
+    legacy_i19_source_reader_factory=None,
+    legacy_i20_source_reader_factory=None,
+    legacy_i21_source_reader_factory=None,
+    ai_bridge_ports: AiBridgePorts | None = None,
+    model_connector=None,
+    llm_cipher=None,
+) -> FastAPI:
+    database_url = database_url or os.getenv("REBUILD_DB_URL")
+    if not database_url:
+        raise RuntimeError("REBUILD_DB_URL must be configured")
+    token_secret = token_secret or os.getenv("REBUILD_TOKEN_SECRET")
+    if not token_secret:
+        raise RuntimeError("REBUILD_TOKEN_SECRET must be configured")
+    validation_key = validation_key if validation_key is not None else os.getenv("REBUILD_VALIDATION_KEY")
+    if legacy_i18_import_enabled is None:
+        legacy_i18_import_enabled = os.getenv("REBUILD_LEGACY_I18_IMPORT_ENABLED", "false").strip().lower() in {
+            "1",
+            "true",
+        }
+    if legacy_i19_import_enabled is None:
+        legacy_i19_import_enabled = os.getenv("REBUILD_LEGACY_I19_IMPORT_ENABLED", "true").strip().lower() in {
+            "1",
+            "true",
+        }
+    if legacy_i20_import_enabled is None:
+        legacy_i20_import_enabled = os.getenv("REBUILD_LEGACY_I20_IMPORT_ENABLED", "true").strip().lower() in {
+            "1",
+            "true",
+        }
+    if legacy_i21_import_enabled is None:
+        legacy_i21_import_enabled = os.getenv("REBUILD_LEGACY_I21_IMPORT_ENABLED", "true").strip().lower() in {
+            "1",
+            "true",
+        }
+    if legacy_i22_import_enabled is None:
+        legacy_i22_import_enabled = os.getenv("REBUILD_LEGACY_I22_IMPORT_ENABLED", "true").strip().lower() in {
+            "1",
+            "true",
+        }
+    connect_args = {"check_same_thread": False} if database_url.startswith("sqlite") else {}
+    pool_args = {"poolclass": StaticPool} if database_url.endswith(":memory:") else {}
+    engine = create_engine(database_url, connect_args=connect_args, pool_pre_ping=True, **pool_args)
+    session_factory = sessionmaker(bind=engine, expire_on_commit=False)
+    token_service = TokenService(secret=token_secret)
+    validation_token_service = TokenService(secret=token_secret, ttl_seconds=900)
+    datasource_engines = DatasourceEngineRegistry()
+
+    class ActiveTokenStore:
+        """Database-backed active token store for cross-worker revocation."""
+
+        def __init__(self) -> None:
+            # Validation/bootstrap tokens deliberately have no persisted user row
+            # (user_id=0). Keep those short-lived tokens in process memory instead
+            # of violating the rebuild_active_token.user_id foreign key.
+            self._ephemeral: dict[str, datetime] = {}
+
+        def add(self, token: str, *, user_id: int, username: str, role: str, capability: str | None = None, ttl_seconds: int = 86400) -> None:
+            from datetime import datetime, timedelta, timezone
+            expires_at = datetime.now(timezone.utc).replace(tzinfo=None) + timedelta(seconds=ttl_seconds)
+            if user_id == 0:
+                self._ephemeral[digest_token(token)] = expires_at
+                return
+            with session_factory() as session:
+                record = ActiveTokenRecord(
+                    token_digest=digest_token(token),
+                    user_id=user_id,
+                    username=username,
+                    role=role,
+                    capability=capability,
+                    expires_at=expires_at,
+                )
+                session.merge(record)
+                session.commit()
+
+        def discard(self, token: str) -> None:
+            digest = digest_token(token)
+            if digest in self._ephemeral:
+                self._ephemeral.pop(digest, None)
+                return
+            with session_factory() as session:
+                record = session.scalar(
+                    select(ActiveTokenRecord).where(ActiveTokenRecord.token_digest == digest_token(token))
+                )
+                if record is not None:
+                    session.delete(record)
+                    session.commit()
+
+        def __contains__(self, token: str) -> bool:
+            digest = digest_token(token)
+            ephemeral_expiry = self._ephemeral.get(digest)
+            if ephemeral_expiry is not None:
+                from datetime import datetime, timezone
+                if ephemeral_expiry < datetime.now(timezone.utc).replace(tzinfo=None):
+                    self._ephemeral.pop(digest, None)
+                    return False
+                return True
+            with session_factory() as session:
+                record = session.scalar(
+                    select(ActiveTokenRecord).where(ActiveTokenRecord.token_digest == digest_token(token))
+                )
+                if record is None:
+                    return False
+                from datetime import datetime, timezone
+                if record.expires_at < datetime.now(timezone.utc).replace(tzinfo=None):
+                    session.delete(record)
+                    session.commit()
+                    return False
+                return True
+
+        def revoke_user(self, user_id: int, session=None) -> int:
+            """O15-03：撤销该用户全部 active token，返回删行数。
+
+            session 给定时并入调用方事务（不自行 commit，供改角色/停用端点同事务联动）；
+            缺省时自管会话立即生效。
+            """
+            if session is not None:
+                result = session.execute(delete(ActiveTokenRecord).where(ActiveTokenRecord.user_id == user_id))
+                return result.rowcount or 0
+            with session_factory() as own_session:
+                result = own_session.execute(delete(ActiveTokenRecord).where(ActiveTokenRecord.user_id == user_id))
+                own_session.commit()
+                return result.rowcount or 0
+
+    active_tokens = ActiveTokenStore()
+
+    def ensure_i1_schema() -> None:
+        """Apply additive I1 columns to the dedicated schema without touching legacy tables."""
+        inspector = inspect(engine)
+        with engine.begin() as connection:
+            if "rebuild_user" in inspector.get_table_names():
+                columns = {column["name"] for column in inspector.get_columns("rebuild_user")}
+                for column in ("created_at", "updated_at"):
+                    if column not in columns:
+                        connection.execute(text(f"ALTER TABLE rebuild_user ADD COLUMN {column} DATETIME NULL"))
+
+    def ensure_schedule_schema() -> None:
+        """Add RT-01~04 schedule policy columns to an existing rebuild DB."""
+        inspector = inspect(engine)
+        if "workflow_schedule" not in inspector.get_table_names():
+            return
+        existing = {column["name"] for column in inspector.get_columns("workflow_schedule")}
+        ddl = {
+            "name": "VARCHAR(128) NOT NULL DEFAULT '默认定时'",
+            "priority": "INTEGER NOT NULL DEFAULT 3",
+            "worker_group": "VARCHAR(128) NULL",
+            "fail_retry_times": "INTEGER NOT NULL DEFAULT 0",
+            "fail_retry_interval": "INTEGER NOT NULL DEFAULT 60",
+            "misfire_policy": "VARCHAR(24) NOT NULL DEFAULT 'FIRE_ONCE'",
+            "concurrency_policy": "VARCHAR(16) NOT NULL DEFAULT 'ALLOW'",
+            "max_running_instances": "INTEGER NOT NULL DEFAULT 1",
+            "timezone": "VARCHAR(64) NOT NULL DEFAULT 'Asia/Shanghai'",
+        }
+        with engine.begin() as connection:
+            for column, definition in ddl.items():
+                if column not in existing:
+                    connection.execute(text(f"ALTER TABLE workflow_schedule ADD COLUMN {column} {definition}"))
+
+    def ensure_model_schema() -> None:
+        """I18 dict seeds: t_dw_layer/t_biz_domain/t_engine_type (idempotent, ported from common/db.py)."""
+        with session_factory() as session:
+            seed_model_dicts(session)
+
+    def ensure_runtime_node_schema() -> None:
+        """B6 seed: the frozen '1.9宿主机' runtime node (idempotent, ported from infra 02_meta_i3.sql)."""
+        with session_factory() as session:
+            exists = (
+                session.query(RuntimeNodeRecord)
+                .filter(RuntimeNodeRecord.name == "1.9宿主机")
+                .one_or_none()
+            )
+            if exists is not None:
+                return
+            # 1.9 宿主机（TrueNAS）根文件系统只读，/datara 不可创建，故用 /tmp 路径。
+            session.add(
+                RuntimeNodeRecord(
+                    name="1.9宿主机",
+                    kind="远程",
+                    host="192.168.1.9",
+                    port=22,
+                    user="root",
+                    auth="",
+                    runtime_dir="/tmp/datara_runtime",
+                    tmp_dir="/tmp/datara_tmp",
+                    os="Linux",
+                    status="offline",
+                )
+            )
+            session.commit()
+
+    @asynccontextmanager
+    async def lifespan(app: FastAPI):
+        # I1 core tables only. R3 governance DDL is applied exclusively by its
+        # versioned MigrationRunner after the R3-S7 remote gate.
+        Base.metadata.create_all(
+            engine,
+            tables=[
+                UserRecord.__table__,
+                ProjectRecord.__table__,
+                ProjectMemberRecord.__table__,
+                ActiveTokenRecord.__table__,
+                ProjectDatasourceRecord.__table__,
+                VariableDefinitionRecord.__table__,
+                TaskInstanceVariableRuntimeRecord.__table__,
+                DependencyConfigRecord.__table__,
+                SyncTaskDefinitionRecord.__table__,
+                ResourceRecord.__table__,
+                ResourceVersionRecord.__table__,
+                ResourceBindingRecord.__table__,
+                WorkflowResultStatRecord.__table__,
+                TaskInstanceDataStatRecord.__table__,
+                TaskDataStatSegmentRecord.__table__,
+                TaskDataErrorSampleRecord.__table__,
+                QualityRuleResultLinkRecord.__table__,
+                LineageWritebackRecord.__table__,
+                SqlIdeAuditRecord.__table__,
+                SqlIdeResultSetRecord.__table__,
+                SqlIdeExportJobRecord.__table__,
+                SqlIdeExportAuditRecord.__table__,
+                SqlIdeExecutionRecord.__table__,
+                SqlIdeExecutionEventRecord.__table__,
+                WorkflowDefinitionRecord.__table__,
+                WorkflowVersionRecord.__table__,
+                WorkflowNodeRecord.__table__,
+                WorkflowEdgeRecord.__table__,
+                WorkflowScheduleRecord.__table__,
+                WorkflowPublishRecord.__table__,
+                WorkflowDraftSnapshotRecord.__table__,
+                *EXECUTION_TABLES,
+                StreamJobRecord.__table__,
+                StreamJobAttemptRecord.__table__,
+                StreamCheckpointRecord.__table__,
+                StreamMetricSnapshotRecord.__table__,
+                StreamFailureEventRecord.__table__,
+                StreamRecoveryEventRecord.__table__,
+                SshNodeRecord.__table__,
+                RuntimeNodeRecord.__table__,
+                *MODEL_TABLES,
+            ],
+        )
+        apply_component_spec_migrations(engine)
+        SqlIdeMigrationRunner(engine, SQL_IDE_MIGRATIONS).apply()
+        apply_llm_migrations(engine)
+        apply_apikey_migrations(engine)
+        apply_openapi_admin_migrations(engine)
+        apply_workflow_migrations(engine)
+        apply_variable_migrations(engine)
+        ensure_i1_schema()
+        ensure_schedule_schema()
+        ensure_model_schema()
+        ensure_runtime_node_schema()
+        # ZK 注册：monitor 路由经 app.state.registry 复用本连接列举 /datara/live live 节点
+        # （对齐旧侧 api/main.py 装配；ZK 连不上仅降级，后台线程重连，不阻塞启动）。
+        registry = ServiceRegistry("api", 8001)
+        registry.start()
+        app.state.registry = registry
+        yield
+        registry.stop()
+        datasource_engines.dispose_all()
+        engine.dispose()
+
+    app = FastAPI(title="Datara Rebuild API", version="0.1.0", lifespan=lifespan)
+    app.state.active_tokens = active_tokens
+    app.state.session_factory = session_factory
+    app.state.datasource_engines = datasource_engines
+
+    @app.middleware("http")
+    async def normalize_token_header(request: Request, call_next):
+        """Accept the canonical SPA ``token`` header as Bearer auth.
+
+        The rebuild frontend deliberately keeps the token in an ephemeral
+        ``token`` header (the legacy API contract), while identity routes use
+        FastAPI's ``Authorization`` header dependency. Normalize at the
+        boundary so every route shares one verifier and login does not yield a
+        false 401 on the first project request.
+        """
+        if not request.headers.get("authorization"):
+            raw = request.headers.get("token", "").strip()
+            if raw:
+                headers = MutableHeaders(scope=request.scope)
+                headers["authorization"] = f"Bearer {raw}"
+        return await call_next(request)
+
+    # Production SQL IDE DI: instantiate execution port and audit writer from app services
+    app.state.execution_port = build_execution_port(
+        session_factory=session_factory,
+        engine_registry=datasource_engines,
+    )
+    app.state.audit_writer = build_audit_writer(session_factory=session_factory)
+
+    def pooled_connector(project_id: int, datasource_id: int):
+        return lambda draft: datasource_engines.connect(project_id, datasource_id, draft)
+
+    def sql_ide_authenticate(token: str, authorization: str) -> dict[str, object]:
+        raw = token or (authorization[7:] if authorization.startswith("Bearer ") else "")
+        if not raw or raw not in active_tokens:
+            raise ValueError("token revoked or unknown")
+        claims = token_service.verify(raw)
+        if "capability" in claims:
+            raise ValueError("scoped capability is not valid for SQL IDE routes")
+        return claims
+
+    def sql_ide_authorize(project_id, principal, permission, operation, payload):
+        del operation, payload
+        permission_value = Permission[permission]
+        with session_factory() as session:
+            return project_permission_error(session, project_id, principal, permission_value)
+
+    def sql_ide_dispatch(operation, *, project_id, principal, payload):
+        user_id = int(principal.get("user_id", principal.get("sub", 0)))
+        history = SqlIdeHistoryStore(session_factory=session_factory)
+        status_store = SqlIdeStatusStore(session_factory=session_factory)
+        result_store = PersistentResultPageStore(session_factory=session_factory)
+        def read_table_for_export(*, project_id: int, datasource_id: int, object_ref: dict, row_limit: int, **_: object):
+            schema = str(object_ref.get("schema", object_ref.get("database", "")))
+            table = str(object_ref.get("object", object_ref.get("name", object_ref.get("table", ""))))
+            if not schema or not table or not _safe_identifier(schema) or not _safe_identifier(table):
+                raise ValueError("a valid schema and table are required")
+            with session_factory() as session:
+                record = ProjectDatasourceRepository(session).get(project_id, datasource_id)
+                if record is None:
+                    raise LookupError("datasource not found")
+                draft = datasource_draft(record)
+            connection = datasource_engines.connect(project_id, datasource_id, draft)
+            try:
+                cursor = connection.cursor()
+                if str(record.kind).lower() == "postgresql":
+                    statement = f'SELECT * FROM "{schema}"."{table}" LIMIT %s'
+                else:
+                    statement = f"SELECT * FROM `{schema}`.`{table}` LIMIT %s"
+                cursor.execute(statement, (int(row_limit),))
+                columns = [desc[0] for desc in cursor.description or ()]
+                return columns, cursor.fetchall()
+            finally:
+                try: connection.rollback()
+                except Exception: pass
+                try: connection.close()
+                except Exception: pass
+        def export_service() -> SqlIdeExportService:
+            return SqlIdeExportService(
+                session_factory=session_factory,
+                result_store=result_store,
+                authorize_result=lambda **_: True,
+                authorize_table=lambda **_: True,
+                table_reader=read_table_for_export,
+            )
+        def metadata_catalog(payload: Mapping[str, object]):
+            datasource_id = int(payload.get("datasource_id", payload.get("datasourceId", 0)) or 0)
+            if datasource_id < 1:
+                raise SqlIdeRouteError("INVALID_REQUEST", message="datasource_id is required")
+            with session_factory() as session:
+                record = ProjectDatasourceRepository(session).get(project_id, datasource_id)
+                if record is None:
+                    raise SqlIdeRouteError("DATASOURCE_UNAVAILABLE", message="datasource not found")
+                draft = datasource_draft(record)
+            return metadata_catalog_for(
+                draft,
+                connector=lambda current: datasource_engines.connect(project_id, datasource_id, current),
+            )
+        def metadata_page(items, *, limit: int, max_limit: int = 200, cursor: object = None):
+            """Normalize catalog rows to the frozen A5 capability/page envelope.
+
+            Catalog implementations intentionally fetch one sentinel row beyond
+            the requested limit.  Keep that sentinel out of ``items`` while
+            exposing a stable continuation cursor (the last visible name).
+            """
+            bounded = min(max(int(limit), 1), max_limit)
+            rows = list(items)
+            has_more = len(rows) > bounded
+            rows = rows[:bounded]
+            next_cursor = None
+            if has_more and rows:
+                last = rows[-1]
+                next_cursor = str(last.get("name") if isinstance(last, Mapping) else last)
+            return {
+                "items": rows,
+                "capability": "supported",
+                "constraints": ["read-only"],
+                "page": {"nextCursor": next_cursor, "hasMore": has_more},
+            }
+        if operation == "getDefinition":
+            catalog = metadata_catalog(payload)
+            schema = str(payload.get("schema", payload.get("database", "")))
+            object_name = str(payload.get("object", payload.get("table", payload.get("name", ""))))
+            if not schema or not object_name or not hasattr(catalog, "definition"):
+                raise SqlIdeRouteError("INVALID_REQUEST", message="schema and object are required")
+            return {"definition": catalog.definition(schema, object_name), "schema": schema, "object": object_name,
+                    "capability": "supported", "constraints": ["read-only"]}
+        if operation in {"listDatabases", "listSchemas", "listRelations", "listColumns", "listIndexes", "listRoutines", "searchObjects"}:
+            catalog = metadata_catalog(payload)
+            if operation == "listDatabases":
+                # A datasource is currently a single-database connection.  Do
+                # not mislabel schemas as databases; expose the configured
+                # database as the root node and preserve the envelope contract.
+                datasource_id = int(payload.get("datasource_id", payload.get("datasourceId", 0)) or 0)
+                with session_factory() as session:
+                    record = ProjectDatasourceRepository(session).get(project_id, datasource_id)
+                    draft = datasource_draft(record) if record is not None else None
+                name = getattr(draft, "database", "") or ""
+                return {"items": [{"name": name, "defaultSchema": name}] if name else [],
+                        "capability": "supported", "constraints": ["read-only"],
+                        "page": {"nextCursor": None, "hasMore": False}}
+            if operation == "listSchemas":
+                limit = int(payload.get("limit", 100)); rows = catalog.schemas(after=payload.get("after"), limit=limit)
+                return metadata_page(rows, limit=limit)
+            if operation == "listRelations":
+                schema = str(payload.get("schema", payload.get("database", "")))
+                if not schema:
+                    raise SqlIdeRouteError("INVALID_REQUEST", message="schema is required")
+                limit = int(payload.get("limit", 100)); return metadata_page(catalog.objects(schema, after=payload.get("after"), limit=limit), limit=limit)
+            if operation == "listIndexes":
+                schema = str(payload.get("schema", "")); object_name = str(payload.get("object", payload.get("table", "")))
+                if not schema or not object_name or not hasattr(catalog, "indexes"):
+                    raise SqlIdeRouteError("INVALID_REQUEST", message="schema and object are required")
+                limit = int(payload.get("limit", 200)); return metadata_page(catalog.indexes(schema, object_name, limit=limit), limit=limit)
+            if operation == "listRoutines":
+                schema = str(payload.get("schema", payload.get("database", "")))
+                if not schema or not hasattr(catalog, "routines"):
+                    raise SqlIdeRouteError("INVALID_REQUEST", message="schema is required")
+                limit = int(payload.get("limit", 200)); return metadata_page(catalog.routines(schema, limit=limit), limit=limit)
+            if operation == "searchObjects":
+                query = str(payload.get("q", payload.get("query", ""))).strip().lower()
+                if not query:
+                    return {"items": [], "capability": "supported", "constraints": ["read-only"],
+                            "page": {"nextCursor": None, "hasMore": False}}
+                items = []
+                for schema in catalog.schemas(limit=50):
+                    for item in catalog.objects(schema, limit=200):
+                        if query in str(item.get("name", "")).lower():
+                            items.append(item)
+                return metadata_page(items, limit=int(payload.get("limit", 100)))
+            schema = str(payload.get("schema", "")); object_name = str(payload.get("object", payload.get("table", "")))
+            if not schema or not object_name:
+                raise SqlIdeRouteError("INVALID_REQUEST", message="schema and object are required")
+            limit = int(payload.get("limit", 500)); return metadata_page(catalog.columns(schema, object_name, limit=limit), limit=limit, max_limit=500)
+        if operation == "lintSql":
+            return lint_sql(str(payload.get("sql", "")), dialect=str(payload.get("dialect", "mysql")))
+        if operation == "executeSql":
+            datasource_id = int(payload.get("datasource_id", payload.get("datasourceId", 0)))
+            sql = str(payload.get("sql", ""))
+            if datasource_id < 1 or not sql.strip():
+                raise SqlIdeRouteError("INVALID_REQUEST", message="datasource_id and sql are required")
+            task_id = os.urandom(16).hex()
+            status_store.start_execution(task_id=task_id, project_id=project_id, user_id=user_id, status="running")
+            try:
+                result = build_execution_port(
+                    session_factory=session_factory,
+                    engine_registry=datasource_engines,
+                ).execute(
+                    project_id=project_id,
+                    datasource_id=datasource_id,
+                    sql=sql,
+                    row_limit=int(payload.get("row_limit", payload.get("rowLimit", 1000))),
+                    timeout_ms=int(payload.get("timeout_ms", payload.get("timeoutMs", 30000))),
+                    dialect=payload.get("dialect"),
+                )
+            except Exception as exc:
+                status_store.update_status(task_id=task_id, project_id=project_id, user_id=user_id, status="failed")
+                raise SqlIdeRouteError("DATASOURCE_UNAVAILABLE", message=str(exc)) from exc
+            history_id = history.create_history(
+                project_id=project_id,
+                user_id=user_id,
+                datasource_id=datasource_id,
+                db=payload.get("db"),
+                sql_text=sql,
+                status="succeeded",
+                stmt_count=1,
+                elapsed_ms=0,
+            )
+            result_set_id = result_store.save_snapshot(
+                project_id=project_id,
+                user_id=user_id,
+                history_id=history_id,
+                stmt_index=0,
+                columns=result.get("columns", []),
+                rows=result.get("rows", []),
+                total_rows=int(result.get("total_rows", result.get("row_count", 0))),
+            )
+            status_store.append_event(
+                task_id=task_id,
+                project_id=project_id,
+                user_id=user_id,
+                event_type="done",
+                payload={"status": "succeeded", "history_id": history_id, "result_set_id": result_set_id},
+            )
+            status_store.update_status(task_id=task_id, project_id=project_id, user_id=user_id, status="succeeded")
+            execution_id = task_id
+            return {
+                **dict(result),
+                "task_id": execution_id,
+                "history_id": history_id,
+                "result_set_id": result_set_id,
+                "accepted": True,
+                "status": "succeeded",
+            }
+        if operation == "getExecutionStatus":
+            status = status_store.get_execution_status(task_id=str(payload.get("task_id")), project_id=project_id, user_id=user_id)
+            if status is None:
+                raise SqlIdeRouteError("EXECUTION_NOT_FOUND")
+            return status
+        if operation == "cancelExecution":
+            task_id = str(payload.get("task_id", ""))
+            current = status_store.get_execution_status(task_id=task_id, project_id=project_id, user_id=user_id)
+            if current is None:
+                raise SqlIdeRouteError("EXECUTION_NOT_FOUND")
+            # The SQL IDE status contract uses American spelling (``canceled``)
+            # consistently across history, status, and cancellation helpers.
+            # Persisting ``cancelled`` leaves ``terminal_at`` unset because the
+            # status store's terminal set is intentionally fail-closed; a later
+            # completion callback could then overwrite a user cancellation.
+            if current.get("status") in {"succeeded", "failed", "canceled", "cancelled"}:
+                return {"cancelled": False, "status": current.get("status")}
+            status_store.append_event(task_id=task_id, project_id=project_id, user_id=user_id, event_type="canceled", payload={"status": "canceled"})
+            status_store.update_status(task_id=task_id, project_id=project_id, user_id=user_id, status="canceled")
+            return {"cancelled": True, "status": "canceled"}
+        if operation == "openEventStream":
+            return status_store.list_execution_events(task_id=str(payload.get("task_id")), project_id=project_id, user_id=user_id)
+        if operation == "fetchResultPage":
+            return result_store.fetch_page(
+                project_id=project_id,
+                user_id=user_id,
+                history_id=str(payload.get("history_id")),
+                result_set_id=payload.get("result_set_id"),
+                stmt_index=payload.get("stmt_index"),
+                offset=int(payload.get("offset", 0)),
+                limit=int(payload.get("limit", 100)),
+            )
+        if operation == "listHistory":
+            return history.list_history(
+                project_id=project_id,
+                user_id=user_id,
+                datasource_id=int(payload.get("datasource_id", payload.get("datasourceId", 0))),
+                limit=int(payload.get("limit", 100)),
+            )
+        if operation == "listScripts":
+            return history.list_scripts(project_id=project_id, user_id=user_id)
+        if operation == "saveScript":
+            return history.save_script(
+                project_id=project_id,
+                user_id=user_id,
+                name=str(payload.get("name", "")),
+                sql_text=str(payload.get("sql_text", payload.get("sqlText", ""))),
+                script_id=payload.get("script_id", payload.get("id")),
+                expected_revision=payload.get("expected_revision", payload.get("revision")),
+            )
+        if operation == "deleteScript":
+            revision = int(payload.get("expected_revision", payload.get("revision", 0)) or 0)
+            if not history.delete_script(project_id=project_id, user_id=user_id, script_id=str(payload.get("script_id", payload.get("id", ""))), expected_revision=revision):
+                raise SqlIdeRouteError("HISTORY_NOT_FOUND")
+            return {"deleted": True}
+        if operation == "deleteHistory":
+            if not history.delete_history(project_id=project_id, user_id=user_id, history_id=str(payload.get("history_id"))):
+                raise SqlIdeRouteError("HISTORY_NOT_FOUND")
+            return {"deleted": True}
+        if operation == "exportResult":
+            return export_service().create_result_export(
+                project_id=project_id, user_id=user_id,
+                history_id=str(payload.get("history_id", payload.get("historyId", ""))),
+                stmt_index=payload.get("stmt_index", payload.get("stmtIndex")),
+                result_set_id=payload.get("result_set_id", payload.get("resultSetId")),
+                format=str(payload.get("format", "csv")),
+            )
+        if operation == "exportTable":
+            return export_service().create_table_export(
+                project_id=project_id, user_id=user_id,
+                datasource_id=int(payload.get("datasource_id", payload.get("datasourceId", 0))),
+                object_ref=dict(payload.get("object_ref", payload.get("objectRef", {}))),
+                format=str(payload.get("format", "csv")),
+                row_limit=int(payload.get("row_limit", payload.get("rowLimit", 10000))),
+            )
+        if operation == "getExport":
+            return export_service().get_job(project_id=project_id, user_id=user_id, export_id=str(payload.get("export_id")))
+        if operation == "downloadExport":
+            body, media_type, filename = export_service().download(project_id=project_id, user_id=user_id, export_id=str(payload.get("export_id")))
+            return Response(content=body, media_type=media_type, headers={"Content-Disposition": f'attachment; filename="{filename}"'})
+        if operation == "cancelExport":
+            return {"cancelled": export_service().cancel(project_id=project_id, user_id=user_id, export_id=str(payload.get("export_id")))}
+        raise SqlIdeRouteError("DRIVER_ERROR", message=f"SQL IDE operation {operation} is not wired")
+
+    app.state.sql_ide_dispatch = sql_ide_dispatch
+    app.include_router(
+        build_sql_ide_router(
+            dispatch=lambda operation, **kwargs: app.state.sql_ide_dispatch(operation, **kwargs),
+            authenticate=sql_ide_authenticate,
+            authorize=sql_ide_authorize,
+        )
+    )
+
+    @app.get("/api/v1/rebuild/health")
+    def health() -> dict[str, object]:
+        return {"code": 0, "msg": "success", "data": {"service": "rebuild-api", "status": "ok"}}
+
+    @app.get("/api/v1/rebuild/i2/status")
+    def i2_status(authorization: str = Header(default="")):
+        """Expose the latest I2 data-base evidence to the isolated validation page."""
+        try:
+            current_user(authorization)
+        except ValueError:
+            return JSONResponse(status_code=401, content={"code": 1001, "msg": "invalid token", "data": None})
+        report_path = Path(os.getenv("I2_RECONCILE_PATH", "/datara/logs/datagen/reconcile.json"))
+        if not report_path.is_file():
+            return JSONResponse(
+                status_code=404,
+                content={"code": 4042, "msg": "I2 reconcile report not found", "data": None},
+            )
+        report = json.loads(report_path.read_text(encoding="utf-8"))
+        samples_dir = Path(os.getenv("I2_SAMPLES_PATH", "/datara/files/samples"))
+        data = {
+            "generated_at": report.get("generated_at"),
+            "mode": report.get("mode"),
+            "seed": report.get("seed"),
+            "summary": report.get("summary", {}),
+            "databases": sorted(report.get("databases", {}).keys()),
+            "samples": sorted(path.name for path in samples_dir.glob("orders_part.*")) if samples_dir.is_dir() else [],
+        }
+        return {"code": 0, "msg": "success", "data": data}
+
+    @app.post("/api/v1/rebuild/login")
+    def login(body: LoginRequest):
+        with session_factory() as session:
+            record = session.scalar(select(UserRecord).where(UserRecord.username == body.username))
+            if record is None or not verify_password(body.password, record.password_hash):
+                return JSONResponse(status_code=401, content={"code": 1001, "msg": "invalid credentials", "data": None})
+            if record.status != "enabled":
+                # 停用账户凭据虽验通过，拒绝签发 token（O15-03 停用同步撤销闭环的登录侧）。
+                return JSONResponse(status_code=403, content={"code": 1006, "msg": "account disabled", "data": None})
+            token = token_service.issue(user_id=record.id, username=record.username, role=Role(record.role))
+            active_tokens.add(token, user_id=record.id, username=record.username, role=record.role)
+            return {
+                "code": 0,
+                "msg": "success",
+                "data": {"token": token, "user": {"id": record.id, "username": record.username, "role": record.role}},
+            }
+
+    @app.post("/api/v1/rebuild/validation-token")
+    def validation_token(
+        x_backend_validation_key: str = Header(default=""),
+        x_backend_validation_scope: str = Header(default=""),
+    ):
+        """Exchange a server-held validation key for a short-lived test-runner token."""
+        if not validation_key:
+            return JSONResponse(
+                status_code=404,
+                content={"code": 4043, "msg": "validation bootstrap disabled", "data": None},
+            )
+        if not hmac.compare_digest(x_backend_validation_key, validation_key):
+            return JSONResponse(status_code=401, content={"code": 1001, "msg": "invalid validation key", "data": None})
+        elevated = x_backend_validation_scope == "high-priority-e2e"
+        role = Role.ADMIN if elevated else Role.VIEWER
+        capability = None if elevated else "validation:bootstrap"
+        username = "validation-e2e-runner" if elevated else "validation-runner"
+        token = validation_token_service.issue(
+            user_id=0,
+            username=username,
+            role=role,
+            capability=capability,
+        )
+        active_tokens.add(
+            token,
+            user_id=0,
+            username=username,
+            role=role.value,
+            capability=capability,
+            ttl_seconds=900,
+        )
+        return {
+            "code": 0,
+            "msg": "success",
+            "data": {
+                "token": token,
+                "user": {"id": 0, "username": username, "role": role.value},
+                "capability": capability,
+                "expires_in": 900,
+            },
+        }
+
+    @app.post("/api/v1/rebuild/validation-capabilities/legacy-i23-preview")
+    def issue_i23_preview_capability(x_backend_validation_key: str = Header(default="")):
+        """Exchange the protected runner key for an I23-preview-only token."""
+        if not validation_key:
+            return JSONResponse(
+                status_code=404,
+                content={"code": 4043, "msg": "validation bootstrap disabled", "data": None},
+            )
+        if not hmac.compare_digest(x_backend_validation_key, validation_key):
+            return JSONResponse(status_code=401, content={"code": 1001, "msg": "invalid validation key", "data": None})
+        token = validation_token_service.issue(
+            user_id=0,
+            username="i23-preview-runner",
+            role=Role.VIEWER,
+            capability="legacy:i23:preview",
+        )
+        active_tokens.add(token, user_id=0, username="i23-preview-runner", role=Role.VIEWER.value, capability="legacy:i23:preview", ttl_seconds=900)
+        return {
+            "code": 0,
+            "msg": "success",
+            "data": {"token": token, "capability": "legacy:i23:preview", "expires_in": 900},
+        }
+
+    def current_user(authorization: str) -> dict[str, object]:
+        if not authorization.startswith("Bearer "):
+            raise ValueError("missing bearer token")
+        token = authorization[7:]
+        if token not in active_tokens:
+            raise ValueError("token revoked or unknown")
+        claims = token_service.verify(token)
+        capability = claims.get("capability")
+        if capability is not None and capability != "validation:bootstrap":
+            raise ValueError("scoped capability is not valid for ordinary API routes")
+        if capability is not None:
+            claims["capability_restricted"] = True
+        return claims
+
+    def project_permission_error(session, project_id: int, user: dict[str, object], permission: Permission):
+        project = session.get(ProjectRecord, project_id)
+        if project is None:
+            return JSONResponse(status_code=404, content={"code": 4041, "msg": "project not found", "data": None})
+        if user.get("role") == Role.ADMIN.value:
+            return None
+        if not authorize(user.get("role", ""), permission):
+            return JSONResponse(status_code=403, content={"code": 1003, "msg": "permission denied", "data": None})
+        user_id = int(user["user_id"])
+        if project.owner_id == user_id:
+            return None
+        member = session.scalar(
+            select(ProjectMemberRecord).where(
+                ProjectMemberRecord.project_id == project_id,
+                ProjectMemberRecord.user_id == user_id,
+            )
+        )
+        if member is None or not authorize(member.role, permission):
+            return JSONResponse(status_code=403, content={"code": 1003, "msg": "permission denied", "data": None})
+        return None
+
+    def rb_project_authorize(datasource_id: int, user: dict[str, object]):
+        """Resolve the RB API's datasource selector to its owning project before authorization."""
+        with session_factory() as session:
+            datasource = session.get(ProjectDatasourceRecord, datasource_id)
+            if datasource is None:
+                return JSONResponse(status_code=404, content={"code": 4041, "msg": "datasource not found", "data": None})
+            return project_permission_error(session, datasource.project_id, user, Permission.EDIT_DEFINITION)
+
+    def metrics_project_authorize(project_id: int, user: dict[str, object]):
+        with session_factory() as session:
+            return project_permission_error(session, project_id, user, Permission.VIEW_ALL)
+
+    def datasource_payload(record: ProjectDatasourceRecord) -> dict[str, object]:
+        return {
+            "id": record.id,
+            "project_id": record.project_id,
+            "name": record.name,
+            "kind": record.kind,
+            "host": record.host,
+            "port": record.port,
+            "database": record.database_name,
+            "username": record.username,
+            "created_at": record.created_at.isoformat(),
+            "updated_at": record.updated_at.isoformat(),
+        }
+
+    def datasource_draft(record: ProjectDatasourceRecord) -> DataSourceDraft:
+        return DataSourceDraft(
+            name=record.name,
+            kind=record.kind,
+            host=record.host,
+            port=record.port,
+            database=record.database_name,
+            username=record.username,
+            password=record.password,
+        )
+
+    def current_i23_preview_capability(authorization: str) -> dict[str, object]:
+        if not authorization.startswith("Bearer "):
+            raise ValueError("missing bearer token")
+        token = authorization[7:]
+        if token not in active_tokens:
+            raise ValueError("token revoked or unknown")
+        claims = validation_token_service.verify(token)
+        if claims.get("capability") != "legacy:i23:preview":
+            raise PermissionError("I23 preview capability required")
+        return claims
+
+    @app.post("/api/v1/rebuild/logout")
+    def logout(authorization: str = Header(default="")):
+        if authorization.startswith("Bearer "):
+            active_tokens.discard(authorization[7:])
+        return {"code": 0, "msg": "success", "data": None}
+
+    @app.post("/api/v1/rebuild/projects")
+    def create_project(body: ProjectRequest, authorization: str = Header(default="")):
+        try:
+            user = current_user(authorization)
+        except ValueError:
+            return JSONResponse(status_code=401, content={"code": 1001, "msg": "invalid token", "data": None})
+        with session_factory() as session:
+            project = ProjectRepository(session).create(
+                name=body.name, description=body.description, owner_id=int(user["user_id"])
+            )
+            session.commit()
+            return {"code": 0, "msg": "success", "data": {"id": project.id, "name": project.name}}
+
+    @app.get("/api/v1/rebuild/projects")
+    def list_projects(authorization: str = Header(default="")):
+        try:
+            user = current_user(authorization)
+        except ValueError:
+            return JSONResponse(status_code=401, content={"code": 1001, "msg": "invalid token", "data": None})
+        with session_factory() as session:
+            repository = ProjectRepository(session)
+            projects = (
+                repository.list_all()
+                if user.get("role") == Role.ADMIN.value
+                else repository.list_for_user(int(user["user_id"]))
+            )
+            return {
+                "code": 0,
+                "msg": "success",
+                "data": {"total": len(projects), "list": [{"id": p.id, "name": p.name} for p in projects]},
+            }
+
+    @app.put("/api/v1/rebuild/projects/{project_id}")
+    def update_project(project_id: int, body: ProjectRequest, authorization: str = Header(default="")):
+        try:
+            user = current_user(authorization)
+        except ValueError:
+            return JSONResponse(status_code=401, content={"code": 1001, "msg": "invalid token", "data": None})
+        with session_factory() as session:
+            project = session.get(ProjectRecord, project_id)
+            if project is None:
+                return JSONResponse(status_code=404, content={"code": 4041, "msg": "project not found", "data": None})
+            if user.get("role") != Role.ADMIN.value and project.owner_id != int(user["user_id"]):
+                return JSONResponse(status_code=403, content={"code": 1003, "msg": "permission denied", "data": None})
+            try:
+                ProjectRepository(session).update(project, name=body.name, description=body.description)
+                session.commit()
+            except ValueError as exc:
+                session.rollback()
+                return JSONResponse(status_code=400, content={"code": 4001, "msg": str(exc), "data": None})
+            except IntegrityError:
+                session.rollback()
+                return JSONResponse(status_code=409, content={"code": 4091, "msg": "project name already exists", "data": None})
+            return {"code": 0, "msg": "success", "data": {"id": project.id, "name": project.name, "description": project.description}}
+
+    @app.delete("/api/v1/rebuild/projects/{project_id}")
+    def delete_project(project_id: int, authorization: str = Header(default="")):
+        try:
+            user = current_user(authorization)
+        except ValueError:
+            return JSONResponse(status_code=401, content={"code": 1001, "msg": "invalid token", "data": None})
+        with session_factory() as session:
+            project = session.get(ProjectRecord, project_id)
+            if project is None:
+                return JSONResponse(status_code=404, content={"code": 4041, "msg": "project not found", "data": None})
+            if user.get("role") != Role.ADMIN.value and project.owner_id != int(user["user_id"]):
+                return JSONResponse(status_code=403, content={"code": 1003, "msg": "permission denied", "data": None})
+            counts = {
+                "workflows": session.scalar(select(func.count()).select_from(WorkflowDefinitionRecord).where(WorkflowDefinitionRecord.project_id == project_id)) or 0,
+                "datasources": session.scalar(select(func.count()).select_from(ProjectDatasourceRecord).where(ProjectDatasourceRecord.project_id == project_id)) or 0,
+                "resources": session.scalar(select(func.count()).select_from(ResourceRecord).where(ResourceRecord.project_id == project_id)) or 0,
+            }
+            if any(counts.values()):
+                return JSONResponse(status_code=409, content={"code": 4091, "msg": "project not empty", "data": counts})
+            session.query(ProjectMemberRecord).filter(ProjectMemberRecord.project_id == project_id).delete()
+            ProjectRepository(session).delete(project)
+            session.commit()
+            return {"code": 0, "msg": "success", "data": {"deleted": True, "id": project_id}}
+
+    @app.post("/api/v1/rebuild/datasources/validate")
+    def validate_datasource_endpoint(body: DataSourceRequest, authorization: str = Header(default="")):
+        try:
+            current_user(authorization)
+            if body.probe:
+                return JSONResponse(
+                    status_code=400,
+                    content={
+                        "code": 4002,
+                        "msg": "register a project datasource before testing its connection",
+                        "data": None,
+                    },
+                )
+            draft = DataSourceDraft(**body.model_dump(exclude={"probe"}))
+            result = validate_datasource(draft)
+        except ValueError as exc:
+            code = 1001 if "token" in str(exc) else 4001
+            status = 401 if code == 1001 else 400
+            return JSONResponse(status_code=status, content={"code": code, "msg": str(exc), "data": None})
+        if body.probe:
+            return {"code": 0, "msg": "success", "data": result}
+        return {
+            "code": 0,
+            "msg": "success",
+            "data": {"name": result.draft.name, "kind": result.draft.kind, "capabilities": sorted(result.capabilities)},
+        }
+
+    @app.post("/api/v1/rebuild/datasources/profiles/{profile_id}/probe")
+    def probe_datasource_profile(profile_id: str, authorization: str = Header(default="")):
+        try:
+            user = current_user(authorization)
+        except ValueError:
+            return JSONResponse(status_code=401, content={"code": 1001, "msg": "invalid token", "data": None})
+        if user.get("role") != Role.ADMIN.value:
+            return JSONResponse(status_code=403, content={"code": 1003, "msg": "permission denied", "data": None})
+        if profile_id != "mysql-src":
+            return JSONResponse(
+                status_code=404,
+                content={"code": 4041, "msg": "datasource profile not found", "data": None},
+            )
+        connection_url = os.getenv("REBUILD_MYSQL_SRC_URL", "")
+        if not connection_url:
+            return JSONResponse(
+                status_code=503,
+                content={"code": 5031, "msg": "mysql-src runtime profile is not configured", "data": None},
+            )
+        try:
+            parsed = make_url(connection_url)
+            if parsed.get_backend_name() != "mysql" or not parsed.host or not parsed.database or not parsed.username:
+                raise ValueError("invalid mysql-src profile")
+            draft = DataSourceDraft(
+                name="mysql-src",
+                kind="mysql",
+                host=parsed.host,
+                port=parsed.port or 3306,
+                database=parsed.database,
+                username=parsed.username,
+                password=parsed.password or "",
+            )
+            result = probe_datasource(draft)
+        except ValueError as exc:
+            return JSONResponse(status_code=400, content={"code": 4001, "msg": str(exc), "data": None})
+        return {"code": 0, "msg": "success", "data": result}
+
+    @app.get("/api/v1/rebuild/projects/{project_id}/datasources")
+    def list_project_datasources(project_id: int, authorization: str = Header(default="")):
+        try:
+            user = current_user(authorization)
+        except ValueError:
+            return JSONResponse(status_code=401, content={"code": 1001, "msg": "invalid token", "data": None})
+        with session_factory() as session:
+            denied = project_permission_error(session, project_id, user, Permission.VIEW_ALL)
+            if denied is not None:
+                return denied
+            records = ProjectDatasourceRepository(session).list_for_project(project_id)
+            return {"code": 0, "msg": "success", "data": {"items": [datasource_payload(r) for r in records]}}
+
+    @app.post("/api/v1/rebuild/projects/{project_id}/datasources", status_code=201)
+    def create_project_datasource(project_id: int, body: DataSourceRequest, authorization: str = Header(default="")):
+        try:
+            user = current_user(authorization)
+            draft = DataSourceDraft(**body.model_dump(exclude={"probe"}))
+            validate_datasource(draft)
+        except ValueError as exc:
+            if "token" in str(exc):
+                return JSONResponse(status_code=401, content={"code": 1001, "msg": "invalid token", "data": None})
+            return JSONResponse(status_code=400, content={"code": 4001, "msg": str(exc), "data": None})
+        with session_factory() as session:
+            denied = project_permission_error(session, project_id, user, Permission.EDIT_DEFINITION)
+            if denied is not None:
+                return denied
+            repository = ProjectDatasourceRepository(session)
+            try:
+                record = repository.create(project_id, draft)
+                session.commit()
+            except IntegrityError:
+                session.rollback()
+                return JSONResponse(
+                    status_code=409,
+                    content={"code": 4091, "msg": "datasource name already exists in project", "data": None},
+                )
+            return JSONResponse(
+                status_code=201, content={"code": 0, "msg": "success", "data": datasource_payload(record)}
+            )
+
+    @app.get("/api/v1/rebuild/projects/{project_id}/datasources/{datasource_id}")
+    def get_project_datasource(project_id: int, datasource_id: int, authorization: str = Header(default="")):
+        try:
+            user = current_user(authorization)
+        except ValueError:
+            return JSONResponse(status_code=401, content={"code": 1001, "msg": "invalid token", "data": None})
+        with session_factory() as session:
+            denied = project_permission_error(session, project_id, user, Permission.VIEW_ALL)
+            if denied is not None:
+                return denied
+            record = ProjectDatasourceRepository(session).get(project_id, datasource_id)
+            if record is None:
+                return JSONResponse(
+                    status_code=404, content={"code": 4042, "msg": "datasource not found", "data": None}
+                )
+            return {"code": 0, "msg": "success", "data": datasource_payload(record)}
+
+    @app.put("/api/v1/rebuild/projects/{project_id}/datasources/{datasource_id}")
+    def update_project_datasource(
+        project_id: int, datasource_id: int, body: DataSourceRequest, authorization: str = Header(default="")
+    ):
+        try:
+            user = current_user(authorization)
+            draft = DataSourceDraft(**body.model_dump(exclude={"probe"}))
+            validate_datasource(draft)
+        except ValueError as exc:
+            if "token" in str(exc):
+                return JSONResponse(status_code=401, content={"code": 1001, "msg": "invalid token", "data": None})
+            return JSONResponse(status_code=400, content={"code": 4001, "msg": str(exc), "data": None})
+        with session_factory() as session:
+            denied = project_permission_error(session, project_id, user, Permission.EDIT_DEFINITION)
+            if denied is not None:
+                return denied
+            repository = ProjectDatasourceRepository(session)
+            record = repository.get(project_id, datasource_id)
+            if record is None:
+                return JSONResponse(
+                    status_code=404, content={"code": 4042, "msg": "datasource not found", "data": None}
+                )
+            repository.update(record, draft)
+            try:
+                session.commit()
+            except IntegrityError:
+                session.rollback()
+                return JSONResponse(
+                    status_code=409,
+                    content={"code": 4091, "msg": "datasource name already exists in project", "data": None},
+                )
+            datasource_engines.invalidate(project_id, datasource_id)
+            return {"code": 0, "msg": "success", "data": datasource_payload(record)}
+
+    @app.delete("/api/v1/rebuild/projects/{project_id}/datasources/{datasource_id}")
+    def delete_project_datasource(project_id: int, datasource_id: int, authorization: str = Header(default="")):
+        try:
+            user = current_user(authorization)
+        except ValueError:
+            return JSONResponse(status_code=401, content={"code": 1001, "msg": "invalid token", "data": None})
+        with session_factory() as session:
+            denied = project_permission_error(session, project_id, user, Permission.EDIT_DEFINITION)
+            if denied is not None:
+                return denied
+            repository = ProjectDatasourceRepository(session)
+            record = repository.get(project_id, datasource_id)
+            if record is None:
+                return JSONResponse(
+                    status_code=404, content={"code": 4042, "msg": "datasource not found", "data": None}
+                )
+            repository.delete(record)
+            session.commit()
+            datasource_engines.invalidate(project_id, datasource_id)
+            return {"code": 0, "msg": "success", "data": {"deleted": True, "id": datasource_id}}
+
+    @app.post("/api/v1/rebuild/projects/{project_id}/datasources/{datasource_id}/test")
+    def test_project_datasource(project_id: int, datasource_id: int, authorization: str = Header(default="")):
+        try:
+            user = current_user(authorization)
+        except ValueError:
+            return JSONResponse(status_code=401, content={"code": 1001, "msg": "invalid token", "data": None})
+        with session_factory() as session:
+            denied = project_permission_error(session, project_id, user, Permission.EDIT_DEFINITION)
+            if denied is not None:
+                return denied
+            record = ProjectDatasourceRepository(session).get(project_id, datasource_id)
+            if record is None:
+                return JSONResponse(
+                    status_code=404, content={"code": 4042, "msg": "datasource not found", "data": None}
+                )
+            draft = DataSourceDraft(
+                name=record.name,
+                kind=record.kind,
+                host=record.host,
+                port=record.port,
+                database=record.database_name,
+                username=record.username,
+                password=record.password,
+            )
+        try:
+            result = probe_datasource(draft, connector=pooled_connector(project_id, datasource_id))
+        except ValueError as exc:
+            return JSONResponse(status_code=400, content={"code": 4001, "msg": str(exc), "data": None})
+        except Exception:
+            return JSONResponse(
+                status_code=502,
+                content={"code": 5021, "msg": "datasource connection test failed", "data": None},
+            )
+        return {"code": 0, "msg": "success", "data": result}
+
+    @app.get("/api/v1/rebuild/projects/{project_id}/datasources/{datasource_id}/schemas")
+    def browse_datasource_schemas(
+        project_id: int,
+        datasource_id: int,
+        after: str | None = None,
+        limit: int = Query(default=100, ge=1, le=200),
+        authorization: str = Header(default=""),
+    ):
+        try:
+            user = current_user(authorization)
+        except ValueError:
+            return JSONResponse(status_code=401, content={"code": 1001, "msg": "invalid token", "data": None})
+        with session_factory() as session:
+            denied = project_permission_error(session, project_id, user, Permission.VIEW_ALL)
+            if denied is not None:
+                return denied
+            record = ProjectDatasourceRepository(session).get(project_id, datasource_id)
+            if record is None:
+                return JSONResponse(
+                    status_code=404,
+                    content={"code": 4042, "msg": "datasource not found", "data": None},
+                )
+            draft = datasource_draft(record)
+        try:
+            rows = metadata_catalog_for(draft, connector=pooled_connector(project_id, datasource_id)).schemas(
+                after=after, limit=limit
+            )
+        except ValueError as exc:
+            return JSONResponse(status_code=400, content={"code": 4001, "msg": str(exc), "data": None})
+        except Exception as exc:
+            logger.warning(
+                "metadata_browse_failed operation=schemas exception_type=%s sqlstate=%s",
+                type(exc).__name__,
+                getattr(exc, "sqlstate", None) or "-",
+            )
+            return JSONResponse(status_code=502, content={"code": 5022, "msg": "metadata browse failed", "data": None})
+        items = rows[:limit]
+        return {
+            "code": 0,
+            "msg": "success",
+            "data": {"items": items, "next_after": items[-1] if len(rows) > limit else None, "limit": limit},
+        }
+
+    @app.get("/api/v1/rebuild/projects/{project_id}/datasources/{datasource_id}/objects")
+    def browse_datasource_objects(
+        project_id: int,
+        datasource_id: int,
+        schema: str = Query(min_length=1, max_length=255),
+        after: str | None = Query(default=None, max_length=255),
+        limit: int = Query(default=100, ge=1, le=200),
+        authorization: str = Header(default=""),
+    ):
+        try:
+            user = current_user(authorization)
+        except ValueError:
+            return JSONResponse(status_code=401, content={"code": 1001, "msg": "invalid token", "data": None})
+        with session_factory() as session:
+            denied = project_permission_error(session, project_id, user, Permission.VIEW_ALL)
+            if denied is not None:
+                return denied
+            record = ProjectDatasourceRepository(session).get(project_id, datasource_id)
+            if record is None:
+                return JSONResponse(
+                    status_code=404,
+                    content={"code": 4042, "msg": "datasource not found", "data": None},
+                )
+            draft = datasource_draft(record)
+        try:
+            rows = metadata_catalog_for(draft, connector=pooled_connector(project_id, datasource_id)).objects(
+                schema, after=after, limit=limit
+            )
+        except ValueError as exc:
+            return JSONResponse(status_code=400, content={"code": 4001, "msg": str(exc), "data": None})
+        except Exception as exc:
+            logger.warning(
+                "metadata_browse_failed operation=objects exception_type=%s sqlstate=%s",
+                type(exc).__name__,
+                getattr(exc, "sqlstate", None) or "-",
+            )
+            return JSONResponse(status_code=502, content={"code": 5022, "msg": "metadata browse failed", "data": None})
+        items = rows[:limit]
+        return {
+            "code": 0,
+            "msg": "success",
+            "data": {
+                "items": items,
+                "next_after": items[-1]["name"] if len(rows) > limit else None,
+                "limit": limit,
+            },
+        }
+
+    @app.get("/api/v1/rebuild/projects/{project_id}/datasources/{datasource_id}/columns")
+    def browse_datasource_columns(
+        project_id: int,
+        datasource_id: int,
+        schema: str = Query(min_length=1, max_length=255),
+        object_name: str = Query(min_length=1, max_length=255),
+        limit: int = Query(default=200, ge=1, le=500),
+        authorization: str = Header(default=""),
+    ):
+        try:
+            user = current_user(authorization)
+        except ValueError:
+            return JSONResponse(status_code=401, content={"code": 1001, "msg": "invalid token", "data": None})
+        with session_factory() as session:
+            denied = project_permission_error(session, project_id, user, Permission.VIEW_ALL)
+            if denied is not None:
+                return denied
+            record = ProjectDatasourceRepository(session).get(project_id, datasource_id)
+            if record is None:
+                return JSONResponse(
+                    status_code=404,
+                    content={"code": 4042, "msg": "datasource not found", "data": None},
+                )
+            draft = datasource_draft(record)
+        try:
+            rows = metadata_catalog_for(draft, connector=pooled_connector(project_id, datasource_id)).columns(
+                schema, object_name, limit=limit
+            )
+        except ValueError as exc:
+            return JSONResponse(status_code=400, content={"code": 4001, "msg": str(exc), "data": None})
+        except Exception as exc:
+            logger.warning(
+                "metadata_browse_failed operation=columns exception_type=%s sqlstate=%s",
+                type(exc).__name__,
+                getattr(exc, "sqlstate", None) or "-",
+            )
+            return JSONResponse(status_code=502, content={"code": 5022, "msg": "metadata browse failed", "data": None})
+        return {
+            "code": 0,
+            "msg": "success",
+            "data": {"items": rows[:limit], "truncated": len(rows) > limit, "limit": limit},
+        }
+
+    app.include_router(
+        build_governance_router(
+            session_factory,
+            current_user,
+            legacy_i18_import_enabled=legacy_i18_import_enabled,
+            legacy_i19_import_enabled=legacy_i19_import_enabled,
+            legacy_i20_import_enabled=legacy_i20_import_enabled,
+            legacy_i21_import_enabled=legacy_i21_import_enabled,
+            legacy_i22_import_enabled=legacy_i22_import_enabled,
+            legacy_i22_source_reader_factory=legacy_i22_source_reader_factory,
+            legacy_i23_source_reader_factory=legacy_i23_source_reader_factory,
+            legacy_i19_source_reader_factory=legacy_i19_source_reader_factory,
+            legacy_i20_source_reader_factory=legacy_i20_source_reader_factory,
+            legacy_i21_source_reader_factory=legacy_i21_source_reader_factory,
+            legacy_i23_preview_user=current_i23_preview_capability,
+        )
+    )
+    app.include_router(
+        build_component_spec_router(session_factory, token_service, active_tokens),
+        prefix="/api/v1/rebuild/components",
+    )
+    app.include_router(
+        build_variables_router(session_factory, token_service, active_tokens, project_permission_error),
+        prefix="/api/v1/rebuild/variables",
+    )
+    app.include_router(
+        build_metrics_router(session_factory, token_service, active_tokens, metrics_project_authorize),
+        prefix="/api/v1/rebuild/metrics",
+    )
+    app.include_router(
+        build_dependency_router(session_factory, token_service, active_tokens, project_permission_error),
+        prefix="/api/v1/rebuild/dependency",
+    )
+    app.include_router(
+        build_resources_router(session_factory, token_service, active_tokens, project_permission_error),
+        prefix="/api/v1/rebuild/resources",
+    )
+    app.include_router(
+        build_workflow_router(session_factory, token_service, active_tokens, project_permission_error),
+        prefix="/api/v1/rebuild/workflows",
+    )
+    app.include_router(
+        build_schedule_router(session_factory, token_service, active_tokens, project_permission_error),
+        prefix="/api/v1/rebuild",
+        tags=["rebuild-schedule"],
+    )
+    from rebuild.trial.api import build_trial_router
+
+    app.include_router(
+        build_trial_router(session_factory, token_service, active_tokens, project_permission_error),
+        prefix="/api/v1/rebuild/trial",
+    )
+    from rebuild.execution.api import build_execution_router
+
+    app.include_router(
+        build_execution_router(session_factory, token_service, active_tokens, project_permission_error),
+        prefix="/api/v1/rebuild/execution",
+    )
+    # R4-SYNC domain (unlocked after R3 closure): sync definition/mapping/explore.
+    app.include_router(
+        build_sync_router(session_factory, token_service, active_tokens, project_permission_error, pooled_connector),
+        prefix="/api/v1/rebuild/sync",
+    )
+    app.include_router(
+        build_stream_router(session_factory, token_service, active_tokens),
+        prefix="/api/v1/rebuild/stream",
+    )
+    app.include_router(
+        build_sshnode_router(session_factory, token_service, active_tokens),
+        prefix="/api/v1/rebuild/ssh-nodes",
+    )
+    app.include_router(
+        build_monitor_router(
+            session_factory,
+            token_service,
+            active_tokens,
+            zk_provider=lambda: getattr(getattr(app.state, "registry", None), "zk", None),
+        ),
+        prefix="/api/v1/rebuild/monitor",
+        tags=["rebuild-monitor"],
+    )
+    app.include_router(
+        build_runtime_node_router(session_factory, token_service, active_tokens),
+        prefix="/api/v1/rebuild/runtime-nodes",
+        tags=["rebuild-runtime-nodes"],
+    )
+    if llm_cipher is None and os.getenv("LLM_ENCRYPTION_KEY"):
+        llm_cipher = LlmCredentialCipher.from_env()
+    if llm_cipher is not None:
+        app.include_router(
+            build_llm_router(session_factory, token_service, active_tokens, llm_cipher),
+            prefix="/api/v1/rebuild/llm-models",
+            tags=["rebuild-llm"],
+        )
+    app.include_router(
+        build_apikey_router(session_factory, token_service, active_tokens),
+        prefix="/api/v1/open",
+        tags=["open-api-management"],
+    )
+    app.include_router(
+        build_openapi_admin_router(
+            session_factory, token_service, active_tokens,
+            api_key_verifier=ApiKeyVerifier(session_factory),
+        ),
+        prefix="/api/v1/open",
+        tags=["open-api-management"],
+    )
+    # I18 P1 model-dictionary migration (WBS 17.2): router mounted at the shared
+    # /api/v1/rebuild prefix so in-domain paths keep their legacy relative shape
+    # (A6-1 → /api/v1/rebuild/model-dicts, A6-2 → /api/v1/rebuild/models).
+    app.include_router(
+        build_model_router(session_factory, token_service, active_tokens, model_connector),
+        prefix="/api/v1/rebuild",
+        tags=["rebuild-model"],
+    )
+    # P2-3 R5-B rb domain API: #22/#23 bind the real snapshot services;
+    # #24/#25 services are stage-D undelivered, the facade fails closed (502).
+    app.include_router(
+        build_rb_router(
+            RbFacade(
+                policy_snapshot_service=PolicySnapshotService(),
+                impact_snapshot_service=ImpactSnapshotService(),
+                session_factory=session_factory,
+            ),
+            token_service,
+            active_tokens,
+            rb_project_authorize,
+        )
+    )
+    # R8-A eight-tool bridge (P1-3): production assembly from app.state.
+    # Default app mounts the bridge with the production execution port + audit
+    # writer; explicit ai_bridge_ports still overrides (unit-test seam).
+    # Fail-closed: missing dependencies → bridge not mounted (no unaudited path).
+    if ai_bridge_ports is not None:
+        app.include_router(build_ai_router(session_factory, token_service, active_tokens, ai_bridge_ports))
+    else:
+        default_ports = build_default_bridge_ports(
+            execution_port=app.state.execution_port,
+            audit_writer=app.state.audit_writer,
+            session_factory=session_factory,
+            connector_factory=pooled_connector,
+        )
+        if default_ports is not None:
+            app.include_router(build_ai_router(session_factory, token_service, active_tokens, default_ports))
+
+    @app.post("/api/v1/rebuild/projects/{project_id}/members")
+    def add_member(project_id: int, body: MemberRequest, authorization: str = Header(default="")):
+        try:
+            user = current_user(authorization)
+            if not authorize(user["role"], Permission.MANAGE_USER):
+                raise PermissionError("permission denied")
+        except PermissionError as exc:
+            return JSONResponse(status_code=403, content={"code": 1003, "msg": str(exc), "data": None})
+        except ValueError:
+            return JSONResponse(status_code=401, content={"code": 1001, "msg": "invalid token", "data": None})
+        with session_factory() as session:
+            project = session.get(ProjectRecord, project_id)
+            if project is None:
+                return JSONResponse(status_code=404, content={"code": 4042, "msg": "project not found", "data": None})
+            target = session.scalar(select(UserRecord).where(UserRecord.username == body.username))
+            if target is None:
+                return JSONResponse(status_code=404, content={"code": 4041, "msg": "user not found", "data": None})
+            existing = session.scalar(
+                select(ProjectMemberRecord).where(
+                    ProjectMemberRecord.project_id == project_id,
+                    ProjectMemberRecord.user_id == target.id,
+                )
+            )
+            if existing is not None:
+                return JSONResponse(
+                    status_code=409,
+                    content={"code": 4091, "msg": "member already exists", "data": None},
+                )
+            member = ProjectMemberRecord(project_id=project_id, user_id=target.id, role=body.role.value)
+            session.add(member)
+            session.commit()
+            return {
+                "code": 0,
+                "msg": "success",
+                "data": {"project_id": project_id, "username": body.username, "role": body.role.value},
+            }
+
+    @app.get("/api/v1/rebuild/projects/{project_id}/members")
+    def list_members(project_id: int, authorization: str = Header(default="")):
+        try:
+            user = current_user(authorization)
+            if not authorize(user["role"], Permission.MANAGE_USER):
+                raise PermissionError("permission denied")
+        except PermissionError as exc:
+            return JSONResponse(status_code=403, content={"code": 1003, "msg": str(exc), "data": None})
+        except ValueError:
+            return JSONResponse(status_code=401, content={"code": 1001, "msg": "invalid token", "data": None})
+        with session_factory() as session:
+            project = session.get(ProjectRecord, project_id)
+            if project is None:
+                return JSONResponse(status_code=404, content={"code": 4042, "msg": "project not found", "data": None})
+            members = session.scalars(
+                select(ProjectMemberRecord).where(ProjectMemberRecord.project_id == project_id)
+            ).all()
+            return {
+                "code": 0,
+                "msg": "success",
+                "data": {
+                    "list": [
+                        {"user_id": m.user_id, "role": m.role}
+                        for m in members
+                    ]
+                },
+            }
+
+    @app.delete("/api/v1/rebuild/projects/{project_id}/members/{user_id}")
+    def remove_member(project_id: int, user_id: int, authorization: str = Header(default="")):
+        try:
+            user = current_user(authorization)
+            if not authorize(user["role"], Permission.MANAGE_USER):
+                raise PermissionError("permission denied")
+        except PermissionError as exc:
+            return JSONResponse(status_code=403, content={"code": 1003, "msg": str(exc), "data": None})
+        except ValueError:
+            return JSONResponse(status_code=401, content={"code": 1001, "msg": "invalid token", "data": None})
+        with session_factory() as session:
+            project = session.get(ProjectRecord, project_id)
+            if project is None:
+                return JSONResponse(status_code=404, content={"code": 4042, "msg": "project not found", "data": None})
+            member = session.scalar(
+                select(ProjectMemberRecord).where(
+                    ProjectMemberRecord.project_id == project_id,
+                    ProjectMemberRecord.user_id == user_id,
+                )
+            )
+            if member is None:
+                return JSONResponse(status_code=404, content={"code": 4043, "msg": "member not found", "data": None})
+            session.delete(member)
+            session.commit()
+            return {"code": 0, "msg": "success", "data": None}
+
+    @app.patch("/api/v1/rebuild/projects/{project_id}/members/{user_id}")
+    def update_member(project_id: int, user_id: int, body: MemberRequest, authorization: str = Header(default="")):
+        try:
+            user = current_user(authorization)
+            if not authorize(user["role"], Permission.MANAGE_USER):
+                raise PermissionError("permission denied")
+        except PermissionError as exc:
+            return JSONResponse(status_code=403, content={"code": 1003, "msg": str(exc), "data": None})
+        except ValueError:
+            return JSONResponse(status_code=401, content={"code": 1001, "msg": "invalid token", "data": None})
+        with session_factory() as session:
+            project = session.get(ProjectRecord, project_id)
+            if project is None:
+                return JSONResponse(status_code=404, content={"code": 4042, "msg": "project not found", "data": None})
+            member = session.scalar(
+                select(ProjectMemberRecord).where(
+                    ProjectMemberRecord.project_id == project_id,
+                    ProjectMemberRecord.user_id == user_id,
+                )
+            )
+            if member is None:
+                return JSONResponse(status_code=404, content={"code": 4043, "msg": "member not found", "data": None})
+            member.role = body.role.value
+            session.commit()
+            return {
+                "code": 0,
+                "msg": "success",
+                "data": {"project_id": project_id, "user_id": user_id, "role": body.role.value},
+            }
+
+    # ---- 15.1-A identity 管理面：平台层用户生命周期（O15-01/02/03）----
+
+    @app.get("/api/v1/rebuild/users")
+    def list_users_endpoint(authorization: str = Header(default="")):
+        try:
+            user = current_user(authorization)
+            if not authorize(user["role"], Permission.MANAGE_USER):
+                raise PermissionError("permission denied")
+        except PermissionError as exc:
+            return JSONResponse(status_code=403, content={"code": 1003, "msg": str(exc), "data": None})
+        except ValueError:
+            return JSONResponse(status_code=401, content={"code": 1001, "msg": "invalid token", "data": None})
+        with session_factory() as session:
+            records = UserRepository(session).list_users()
+            return {
+                "code": 0,
+                "msg": "success",
+                "data": {
+                    "list": [
+                        {
+                            "id": r.id,
+                            "username": r.username,
+                            "role": r.role,
+                            "status": r.status,
+                            "created_at": r.created_at.isoformat() if r.created_at else None,
+                        }
+                        for r in records
+                    ]
+                },
+            }
+
+    @app.post("/api/v1/rebuild/users")
+    def create_user(body: UserCreateRequest, authorization: str = Header(default="")):
+        try:
+            user = current_user(authorization)
+            if not authorize(user["role"], Permission.MANAGE_USER):
+                raise PermissionError("permission denied")
+        except PermissionError as exc:
+            return JSONResponse(status_code=403, content={"code": 1003, "msg": str(exc), "data": None})
+        except ValueError:
+            return JSONResponse(status_code=401, content={"code": 1001, "msg": "invalid token", "data": None})
+        with session_factory() as session:
+            repo = UserRepository(session)
+            if repo.find_by_username(body.username) is not None:
+                return JSONResponse(status_code=409, content={"code": 4092, "msg": "username already exists", "data": None})
+            record = repo.create(username=body.username, password=body.password, role=body.role)
+            session.commit()
+            return {
+                "code": 0,
+                "msg": "success",
+                "data": {"id": record.id, "username": record.username, "role": record.role, "status": record.status},
+            }
+
+    @app.patch("/api/v1/rebuild/users/{user_id}/status")
+    def update_user_status(user_id: int, body: UserStatusRequest, authorization: str = Header(default="")):
+        try:
+            user = current_user(authorization)
+            if not authorize(user["role"], Permission.MANAGE_USER):
+                raise PermissionError("permission denied")
+        except PermissionError as exc:
+            return JSONResponse(status_code=403, content={"code": 1003, "msg": str(exc), "data": None})
+        except ValueError:
+            return JSONResponse(status_code=401, content={"code": 1001, "msg": "invalid token", "data": None})
+        with session_factory() as session:
+            repo = UserRepository(session)
+            record = repo.find_by_id(user_id)
+            if record is None:
+                return JSONResponse(status_code=404, content={"code": 4041, "msg": "user not found", "data": None})
+            if record.status == body.status:
+                # 幂等：已处目标状态，直接返回（无需再撤销 token）。
+                return {
+                    "code": 0,
+                    "msg": "success",
+                    "data": {
+                        "id": record.id,
+                        "username": record.username,
+                        "role": record.role,
+                        "status": record.status,
+                        "revoked_tokens": 0,
+                    },
+                }
+            if body.status == "disabled" and record.role == Role.ADMIN.value:
+                # 最后 admin 保护：停用唯一启用 admin 前校验剩余启用 admin 数不少于 1。
+                if repo.count_enabled_admins_excluding(user_id) == 0:
+                    return JSONResponse(status_code=409, content={"code": 1005, "msg": "last admin protection", "data": None})
+            updated = repo.update_status(user_id, body.status)
+            # O15-03：停用与撤销 token 同一 DB 事务（session 注入，不自行 commit）。
+            revoked = active_tokens.revoke_user(user_id, session=session)
+            session.commit()
+            return {
+                "code": 0,
+                "msg": "success",
+                "data": {
+                    "id": updated.id,
+                    "username": updated.username,
+                    "role": updated.role,
+                    "status": updated.status,
+                    "revoked_tokens": revoked,
+                },
+            }
+
+    @app.patch("/api/v1/rebuild/users/{user_id}/role")
+    def update_user_role(user_id: int, body: UserRoleRequest, authorization: str = Header(default="")):
+        try:
+            user = current_user(authorization)
+            if not authorize(user["role"], Permission.MANAGE_USER):
+                raise PermissionError("permission denied")
+        except PermissionError as exc:
+            return JSONResponse(status_code=403, content={"code": 1003, "msg": str(exc), "data": None})
+        except ValueError:
+            return JSONResponse(status_code=401, content={"code": 1001, "msg": "invalid token", "data": None})
+        with session_factory() as session:
+            repo = UserRepository(session)
+            record = repo.find_by_id(user_id)
+            if record is None:
+                return JSONResponse(status_code=404, content={"code": 4041, "msg": "user not found", "data": None})
+            if record.role == Role.ADMIN.value and body.role != Role.ADMIN:
+                # 最后 admin 保护：降级唯一 admin 前校验剩余启用 admin 数不少于 1。
+                if repo.count_enabled_admins_excluding(user_id) == 0:
+                    return JSONResponse(status_code=409, content={"code": 1005, "msg": "last admin protection", "data": None})
+            updated = repo.update_role(user_id, body.role)
+            # O15-03：角色变更即撤销 token，同一 DB 事务（session 注入，不自行 commit）。
+            revoked = active_tokens.revoke_user(user_id, session=session)
+            session.commit()
+            return {
+                "code": 0,
+                "msg": "success",
+                "data": {
+                    "id": updated.id,
+                    "username": updated.username,
+                    "role": updated.role,
+                    "status": updated.status,
+                    "revoked_tokens": revoked,
+                },
+            }
+
+    # ---- 15.1-B 项目层权限矩阵只读查询（O15-02）----
+
+    @app.get("/api/v1/rebuild/projects/{project_id}/permissions")
+    def project_permissions(project_id: int, authorization: str = Header(default="")):
+        try:
+            user = current_user(authorization)
+            if not authorize(user["role"], Permission.VIEW_ALL):
+                raise PermissionError("permission denied")
+        except PermissionError as exc:
+            return JSONResponse(status_code=403, content={"code": 1003, "msg": str(exc), "data": None})
+        except ValueError:
+            return JSONResponse(status_code=401, content={"code": 1001, "msg": "invalid token", "data": None})
+        with session_factory() as session:
+            project = session.get(ProjectRecord, project_id)
+            if project is None:
+                return JSONResponse(status_code=404, content={"code": 4042, "msg": "project not found", "data": None})
+            permissions_by_role = {r.value: sorted(p.value for p in ROLE_PERMISSIONS.get(r, ())) for r in Role}
+            members = session.scalars(
+                select(ProjectMemberRecord).where(ProjectMemberRecord.project_id == project_id)
+            ).all()
+            return {
+                "code": 0,
+                "msg": "success",
+                "data": {
+                    "project_id": project_id,
+                    "members": [
+                        {
+                            "user_id": m.user_id,
+                            "role": m.role,
+                            "permissions": permissions_by_role.get(m.role, []),
+                        }
+                        for m in members
+                    ],
+                },
+            }
+
+    return app

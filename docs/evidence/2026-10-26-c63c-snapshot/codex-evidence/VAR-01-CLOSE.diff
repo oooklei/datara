@@ -1,0 +1,223 @@
+datara-backend/rebuild/trial/api.py                |  2 +
+ datara-backend/rebuild/trial/runner.py             | 48 ++++++++++++++++++++++
+ .../tests/rebuild/test_trial_runner_extensions.py  | 40 ++++++++++++++++++
+ datara-newweb/src/components/TrialRunPanel.vue     |  4 ++
+ .../__tests__/trialRunPanel.contract.test.ts       | 10 ++++-
+ .../rebuild/__tests__/trialApi.contract.test.ts    |  2 +
+ datara-newweb/src/services/rebuild/trialApi.ts     |  3 ++
+ datara-newweb/src/stores/trialRun.ts               |  3 ++
+ 8 files changed, 110 insertions(+), 2 deletions(-)
+
+Changes:
+
+datara-backend/rebuild/trial/api.py
+  @@ -160,6 +160,7 @@ def build_trial_router(
+  +            environment_group_id=options_raw.get("environment_group_id") if options_raw else None,
+               dependency_mock=options_raw.get("dependency_mock") if options_raw else None,
+               dry_run=bool(options_raw.get("dry_run", False)) if options_raw else False,
+               sql_precheck=bool(options_raw.get("sql_precheck", False)) if options_raw else False,
+  @@ -265,6 +266,7 @@ def build_trial_router(
+  +            environment_group_id=options_raw.get("environment_group_id") if options_raw else None,
+               dependency_mock=options_raw.get("dependency_mock") if options_raw else None,
+               dry_run=bool(options_raw.get("dry_run", False)) if options_raw else False,
+               sql_precheck=bool(options_raw.get("sql_precheck", False)) if options_raw else False,
+  +2 -0
+
+datara-backend/rebuild/trial/runner.py
+  @@ -44,6 +44,8 @@ from rebuild.resources.repository import storage_dir
+  +from rebuild.variables.repository import VariableRepository
+  +from rebuild.variables.service import VariableContext, VariableDomainError, VariableResolver
+   
+   
+   @dataclass
+  @@ -53,6 +55,7 @@ class TrialRunOptions:
+  +    environment_group_id: int | None = None  # Selected environment layer.
+       dependency_mock: dict[str, str] | None = None  # WF-18: dep_id -> status.
+       dry_run: bool = False  # WF-19: plan only.
+       sql_precheck: bool = False  # WF-20: validate SQL before execution.
+  @@ -352,6 +355,24 @@ class TrialRunner:
+  +        variable_repository = VariableRepository(self._session)
+  +        variable_resolver = VariableResolver(
+  +            lambda owner_key: variable_repository.list_owner(owner_key),
+  +            run_values={name: str(value) for name, value in (options.test_variables or {}).items()},
+  +        )
+  +        try:
+  +            params, variable_snapshot = variable_resolver.resolve_parameters(
+  +                params,
+  +                VariableContext(
+  +                    project_id=project_id,
+  +                    workflow_id=definition_id,
+  +                    task_id=str(node["node_code"]),
+  +                    environment_group_id=options.environment_group_id,
+  +                    attempt_no=attempt.attempt_no,
+  +                ),
+  +            )
+  +        except VariableDomainError as exc:
+  +            raise TrialRunnerError("WF_TRIAL_VARIABLE_INVALID", exc.msg) from exc
+           resource_source = self._resolve_resource_source(
+               project_id=project_id,
+               definition_id=definition_id,
+  @@ -389,6 +410,33 @@ class TrialRunner:
+  +        # Persist the variables that were actually consumed by this task.
+  +        # The runtime table is instance/attempt/name unique, so downstream
+  +        # tasks reusing the same variable must not duplicate the snapshot.
+  +        existing_snapshot_names = set(
+  +            self._session.scalars(
+  +                select(TaskInstanceVariableRuntimeRecord.name).where(
+  +                    TaskInstanceVariableRuntimeRecord.instance_id == instance_id,
+  +                    TaskInstanceVariableRuntimeRecord.attempt_no == attempt.attempt_no,
+  +                )
+  +            ).all()
+  +        )
+  +        snapshot_rows = []
+  +        for item in variable_snapshot:
+  +            if item["name"] in existing_snapshot_names:
+  +                continue
+  +            existing_snapshot_names.add(item["name"])
+  +            snapshot_rows.append(
+  +                {
+  +                    **item,
+  +                    "instance_id": instance_id,
+  +                    "project_id": project_id,
+  +                    "attempt_no": attempt.attempt_no,
+  +                }
+  +            )
+  +        if snapshot_rows:
+  +            variable_repository.write_snapshot_rows(snapshot_rows)
+  +
+           # WF-18: DEPENDENCY mock.  Palette component refs use the immutable
+           # lower-case ``dependent`` type, while legacy drafts use
+           # ``DEPENDENCY``.  Both must execute through the same dependency gate;
+  +48 -0
+
+datara-backend/tests/rebuild/test_trial_runner_extensions.py
+  @@ -14,6 +14,7 @@ from rebuild.execution.models import RunOutputRecord, TaskAttemptRecord, TaskIns
+  +from rebuild.variables.repository import VariableRepository
+   from rebuild.workflow.models import (
+       WorkflowDefinitionRecord,
+       WorkflowEdgeRecord,
+  @@ -159,6 +160,45 @@ def test_wf17_test_variables_recorded():
+  +def test_wf17_resolves_workflow_environment_global_and_run_variables_before_execution():
+  +    session = _session()
+  +    definition_id = _make_definition(session)
+  +    _add_node(
+  +        session,
+  +        definition_id,
+  +        "python_vars",
+  +        node_type="PYTHON",
+  +        params={"script": 'print("${workflow.region}|${env.region}|${global.region}|${run.batch}")'},
+  +    )
+  +    repository = VariableRepository(session)
+  +    common = {"value_type": "string", "sensitive": False, "description": ""}
+  +    repository.upsert(scope="global", project_id=None, name="region", value="global", **common)
+  +    repository.upsert(scope="env", project_id=1, name="region", value="env", environment_group_id=9, **common)
+  +    repository.upsert(
+  +        scope="workflow", project_id=1, name="region", value="workflow", workflow_id=definition_id, **common
+  +    )
+  +    session.commit()
+  +    snapshot = TrialSnapshotRepository(session).create_from_draft(definition_id)
+  +
+  +    result = TrialRunner(session).run(
+  +        definition_id=definition_id,
+  +        snapshot_id=snapshot["snapshot_id"],
+  +        project_id=1,
+  +        options=TrialRunOptions(test_variables={"batch": 500}, environment_group_id=9),
+  +    )
+  +    session.commit()
+  +
+  +    assert result.status == "SUCCEEDED"
+  +    outputs = [json.loads(row.output_json) for row in session.scalars(select(RunOutputRecord)).all()]
+  +    assert any(row.get("stdout") == "workflow|env|global|500\n" for row in outputs)
+  +    snapshots = session.scalars(
+  +        select(TaskInstanceVariableRuntimeRecord).where(
+  +            TaskInstanceVariableRuntimeRecord.instance_id == result.instance_id
+  +        )
+  +    ).all()
+  +    assert {row.name for row in snapshots} == {"region", "batch"}
+  +
+  +
+   # WF-18: dependency mock -------------------------------------------------------
+   
+   
+  +40 -0
+
+datara-newweb/src/components/TrialRunPanel.vue
+  @@ -127,6 +127,10 @@ const canRefreshOutput = computed(() => store.runResult !== null && store.runRes
+  +        <label class="trp-field">
+  +          <span>环境组 ID（可选）</span>
+  +          <input v-model.number="store.options.environmentGroupId" data-test="environment-group-id" type="number" min="1" />
+  +        </label>
+           <label class="trp-field trp-field-wide">
+             <span>依赖模拟（JSON：dependency_id → SUCCEEDED/FAILED）</span>
+             <textarea v-model="dependencyMockText" data-test="dep-mock" rows="2"></textarea>
+  +4 -0
+
+datara-newweb/src/components/__tests__/trialRunPanel.contract.test.ts
+  @@ -71,7 +71,11 @@ function makeStore(over: Record<string, unknown> = {}) {
+  -    options: { nodeCodes: [] as string[], startNode: '', testVariables: {} as Record<string, unknown>, dependencyMock: {} as Record<string, unknown>, dryRun: false, sqlPrecheck: false },
+  +    options: {
+  +      nodeCodes: [] as string[], startNode: '', testVariables: {} as Record<string, unknown>,
+  +      environmentGroupId: undefined as number | undefined,
+  +      dependencyMock: {} as Record<string, unknown>, dryRun: false, sqlPrecheck: false,
+  +    },
+       runResult: null as unknown,
+       output: null as unknown,
+       promoteResult: null as unknown,
+  @@ -156,7 +160,7 @@ describe('INC4-FE-7 TrialRunPanel 八能力 UI 承接', () => {
+  -    for (const sel of ['nodecodes', 'start-node', 'test-vars', 'dep-mock', 'dry-run', 'sql-precheck']) {
+  +    for (const sel of ['nodecodes', 'start-node', 'test-vars', 'environment-group-id', 'dep-mock', 'dry-run', 'sql-precheck']) {
+         expect(w.find(`[data-test="${sel}"]`).exists()).toBe(true)
+       }
+     })
+  @@ -174,10 +178,12 @@ describe('INC4-FE-7 TrialRunPanel 八能力 UI 承接', () => {
+  +    await w.find('[data-test="environment-group-id"]').setValue('9')
+       await w.find('[data-test="dep-mock"]').setValue('{"d1":"SUCCEEDED"}')
+       await w.find('[data-test="run-btn"]').trigger('click')
+       await flushPromises()
+       expect(store.options.testVariables).toEqual({ k: 1 })
+  +    expect(store.options.environmentGroupId).toBe(9)
+       expect(store.options.dependencyMock).toEqual({ d1: 'SUCCEEDED' })
+       expect(store.run).toHaveBeenCalledTimes(1)
+     })
+  +8 -2
+
+datara-newweb/src/services/rebuild/__tests__/trialApi.contract.test.ts
+  @@ -104,6 +104,7 @@ describe('INC4-FE-7 trialApi 契约（/api/v1/rebuild/trial）', () => {
+  +      environmentGroupId: 3,
+         dependencyMock: { dep_1: 'SUCCEEDED', dep_2: 'FAILED' },
+         dryRun: true,
+         sqlPrecheck: true,
+  @@ -120,6 +121,7 @@ describe('INC4-FE-7 trialApi 契约（/api/v1/rebuild/trial）', () => {
+  +          environment_group_id: 3,
+             dependency_mock: { dep_1: 'SUCCEEDED', dep_2: 'FAILED' },
+             dry_run: true,
+             sql_precheck: true,
+  +2 -0
+
+datara-newweb/src/services/rebuild/trialApi.ts
+  @@ -61,6 +61,8 @@ export interface TrialRunOptions {
+  +  /** Selects the environment layer used by the variable resolution chain. */
+  +  environmentGroupId?: number
+     /** WF-18：DEPENDENCY 节点模拟（dependency_id → 模拟结果） */
+     dependencyMock?: Record<string, TrialDependencyMockStatus>
+     /** WF-19：仅出执行计划不落副作用（status=DRY_RUN、instance_id=0） */
+  @@ -342,6 +344,7 @@ function trialOptionsWire(options?: TrialRunOptions): Record<string, unknown> |
+  +  if (options.environmentGroupId !== undefined) wire.environment_group_id = options.environmentGroupId
+     if (options.dependencyMock !== undefined) wire.dependency_mock = options.dependencyMock
+     if (options.dryRun !== undefined) wire.dry_run = options.dryRun
+     if (options.sqlPrecheck !== undefined) wire.sql_precheck = options.sqlPrecheck
+  +3 -0
+
+datara-newweb/src/stores/trialRun.ts
+  @@ -39,6 +39,8 @@ export interface TrialRunFormOptions {
+  +  /** Environment layer selected for variable resolution. */
+  +  environmentGroupId?: number
+     /** WF-18：依赖模拟（dependency_id → 模拟结果） */
+     dependencyMock: Record<string, TrialDependencyMockStatus>
+     /** WF-19：仅出执行计划不落副作用 */
+  @@ -64,6 +66,7 @@ function effectiveOptions(form: TrialRunFormOptions): TrialRunOptions | undefine
+  +  if (form.environmentGroupId !== undefined) out.environmentGroupId = form.environmentGroupId
+     if (Object.keys(form.dependencyMock).length > 0) out.dependencyMock = { ...form.dependencyMock }
+     if (form.dryRun) out.dryRun = true
+     if (form.sqlPrecheck) out.sqlPrecheck = true
+  +3 -0

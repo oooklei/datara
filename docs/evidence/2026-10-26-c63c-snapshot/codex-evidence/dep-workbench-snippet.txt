@@ -1,0 +1,90 @@
+45:  type WfNodeType,
+46:} from '../services/rebuild/workflowApi'
+47:import { isDesignComponent, loadComponentSpecs, type ComponentSpecItem, type WorkflowType } from '../services/rebuild/componentSpecApi'
+48:import { useWorkflowGraphStore } from '../stores/workflowGraph'
+49:import WorkflowVariablePanel from './WorkflowVariablePanel.vue'
+50:import ScriptResourceEditor from './ScriptResourceEditor.vue'
+51:import StreamObservationPanel from './StreamObservationPanel.vue'
+52:import SyncMappingEditor from './SyncMappingEditor.vue'
+53:import { createDependencyContract } from '../services/rebuild/dependencyApi'
+54:
+55:import '@vue-flow/core/dist/style.css'
+56:import '@vue-flow/core/dist/theme-default.css'
+57:import '@vue-flow/controls/dist/style.css'
+58:import '@vue-flow/minimap/dist/style.css'
+59:
+60:const props = defineProps<{ tab: DagTab; projectId?: number }>()
+130:  return type === 'sql' || type === 'python' || type === 'shell' ? type : null
+131:})
+132:function updateNodeParams(value: Record<string, unknown>) {
+133:  const node = selectedNodeRecord.value
+134:  if (!node) return
+135:  graphStore.updateNode(node.nodeCode, { params: value })
+136:}
+137:const isSyncMappingNode = computed(() => workflowType.value === 'SYNC' && Boolean(selectedNodeRecord.value?.nodeType && ['endpoint_select', 'field_map', 'field_map_union', 'src_base_orch', 'tgt_base_orch', 'file_sync_orch'].includes(String(selectedNodeRecord.value?.nodeType).toLowerCase())))
+138:const isDependentNode = computed(() => String(selectedNodeRecord.value?.nodeType ?? '').toLowerCase() === 'dependent')
+139:const dependencySaving = ref(false)
+140:const dependencySaved = ref(false)
+141:function dependentValue(key: string, fallback: string | number = ''): string | number {
+142:  return selectedNodeRecord.value?.params?.[key] as string | number ?? fallback
+143:}
+144:function updateDependentParam(key: string, value: string | number) {
+145:  const node = selectedNodeRecord.value
+146:  if (!node) return
+147:  graphStore.updateNode(node.nodeCode, { params: { ...(node.params ?? {}), [key]: value } })
+148:}
+149:async function saveDependencyConfig() {
+150:  const node = selectedNodeRecord.value
+151:  if (!node || props.projectId === undefined) return
+152:  const p = node.params ?? {}
+153:  const upstreamWorkflowId = Number(p.upstream_workflow_id)
+154:  if (!Number.isInteger(upstreamWorkflowId) || upstreamWorkflowId <= 0) {
+155:    ElMessage.warning('请先填写有效的依赖标识')
+156:    return
+157:  }
+158:  dependencySaving.value = true
+159:  dependencySaved.value = false
+160:  try {
+161:    const selector = String(p.dependent_execute ?? 'workflow') as 'workflow' | 'all_tasks' | 'task'
+162:    const taskCode = selector === 'workflow' ? '0' : selector === 'all_tasks' ? '-1' : String(p.upstream_task_code ?? '')
+163:    if (selector === 'task' && (!/^\d+$/.test(taskCode) || Number(taskCode) <= 0)) {
+164:      ElMessage.warning('指定任务依赖需要填写正整数任务编码')
+165:      return
+166:    }
+167:    const saved = await createDependencyContract().saveDependency({
+168:      projectId: props.projectId,
+169:      workflowId: numDocId.value,
+170:      workflowVersion: 1,
+171:      taskId: node.nodeCode,
+172:      groupRelation: String(p.group_relation ?? 'AND') === 'OR' ? 'OR' : 'AND',
+173:      checkIntervalSeconds: Number(p.check_interval_seconds ?? 10),
+174:      failurePolicy: String(p.failure_policy ?? 'fail') === 'waiting' ? 'waiting' : 'fail',
+175:      ...(String(p.failure_policy ?? 'fail') === 'waiting' ? { failureWaitingSeconds: Number(p.failure_waiting_seconds ?? 60) } : {}),
+176:      timeoutSeconds: Number(p.timeout_seconds ?? 30),
+177:      groups: [{
+178:        join: String(p.relation ?? 'AND') === 'OR' ? 'OR' : 'AND',
+179:        conditions: [{
+180:          kind: selector === 'workflow' ? 'workflow' : 'task',
+181:          selector,
+182:          upstreamWorkflowId,
+183:          upstreamTaskCode: taskCode,
+184:          cycle: String(p.cycle ?? 'day') as 'hour' | 'day' | 'week' | 'month',
+185:          dateValue: String(p.date_value ?? 'last1Days'),
+186:          dependResult: String(p.depend_result ?? 'success') === 'failed' ? 'failed' : 'success',
+187:          parameterPassing: Boolean(p.parameter_passing ?? false),
+188:        }],
+189:      }],
+190:    })
+191:    // dependency_id is the saved config identity consumed by validation and
+192:    // execution.  Keep the upstream workflow identity in a distinct field;
+193:    // conflating the two makes trial runs validate an unrelated record.
+194:    graphStore.updateNode(node.nodeCode, {
+195:      params: { ...(node.params ?? {}), upstream_workflow_id: upstreamWorkflowId, dependency_id: saved.configId },
+196:    })
+197:    dependencySaved.value = true
+198:    ElMessage.success('依赖配置已保存')
+199:  } catch (error) {
+200:    ElMessage.error(`依赖配置保存失败：${error instanceof Error ? error.message : '请求异常'}`)
+201:  } finally {
+202:    dependencySaving.value = false
+203:  }

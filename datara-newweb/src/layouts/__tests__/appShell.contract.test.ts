@@ -152,11 +152,11 @@ describe('AUTH-UI-02 authenticated shell', () => {
     vi.unstubAllGlobals()
   })
 
-  it('375px 下壳切为单列并把宽工作流内容的横向滚动约束在 main 内', () => {
-    expect(appShellSource).toMatch(/@media\s*\(max-width:\s*640px\)/)
-    expect(appShellSource).toMatch(/grid-template:\s*"header"[^;]*"aside"[^;]*"main"/)
-    expect(appShellSource).toMatch(/\.app-content\{[^}]*overflow-x:auto/)
-    expect(appShellSource).toMatch(/\.app-topbar\{[^}]*overflow:hidden/)
-    expect(appShellSource).toMatch(/@media\s*\(max-width:\s*480px\)\{\.topbar-project-name\{display:none/)
+  it('767px 下壳切换为可开合抽屉，遮罩与内容区不产生页面级横向滚动', () => {
+    expect(appShellSource).toMatch(/@media\(max-width:767px\)/)
+    expect(appShellSource).toMatch(/\.app-sidebar\{position:fixed[^}]*transform:translateX\(-10[02]%\)/)
+    expect(appShellSource).toMatch(/\.app-sidebar\.open\{transform:translateX\(0\)/)
+    expect(appShellSource).toMatch(/\.sidebar-backdrop\{display:block/)
+    expect(appShellSource).toMatch(/\.app-content\{[^}]*min-width:0/)
   })
 })

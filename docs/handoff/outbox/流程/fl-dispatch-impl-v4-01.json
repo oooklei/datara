@@ -1,0 +1,48 @@
+{
+  "schema_version": "3.0",
+  "face_id": "fl-dispatch-impl-v4-01",
+  "epoch": 3,
+  "generated_by": "Flow",
+  "generated_at": "2026-10-22T14:20:00+08:00",
+  "watermark_base": "v3-0017-dispatch-assigned-impl-v4-03",
+  "event_ref": "v3-0016-dispatch-assigned-impl-v4-01",
+  "ticket": {
+    "id": "IMPL-v4-01",
+    "title": "A 组后端收口：LLM-01-FE 节点 A 八文件 + rebuild/llm + runtime_node + run_stats + revisions v0002/v0004 + component_spec 迁移 + 8 个配套 test",
+    "domain": "DELIVERY",
+    "base_priority": "P1",
+    "effective_priority": "P1",
+    "priority_basis": "权威设计关键路径 LLM 域；停机在飞残留首位（决策卡 A 组）",
+    "assigned_to": "claude",
+    "assigned_at": "2026-10-22T14:20:00+08:00",
+    "state_transition": "READY->ASSIGNED",
+    "depends_on": ["DEC-v4-D03", "DEC-v4-D04"],
+    "depends_satisfied": "v3-0006（D03/D04 已裁定）"
+  },
+  "acceptance": "1.9 全量 pytest GREEN；节点 A/B 证据链闭合；F-1 注释串修正（409/4091→409/4092）",
+  "evidence_chain": "EVIDENCE_READY → 1.9 ENV_VERIFIED → PASS → 集成窗提交",
+  "execution_notes": [
+    "DEC-v4-D03 勘误登记（§5E.3/WBS15.6）须随证据包一并提交",
+    "若节点 A 范围触及 L3-04，按 DEC-v4-D01 选项①执行（后端闸门 + FE 403 显式错误态）",
+    "F-1：llmApi.ts L110 注释串 409/4091→409/4092（DEC-v4-D04，并入本票）",
+    "1.9 远测须先向 Integration 申请租约，证据落 1.9 隔离工作目录"
+  ],
+  "paths": [
+    "datara-backend/rebuild/llm/",
+    "datara-backend/rebuild/runtime_node/",
+    "datara-backend/rebuild/execution/run_stats.py",
+    "datara-backend/rebuild/execution/revisions/v0002_run_statistics.py",
+    "datara-backend/rebuild/governance/revisions/v0004_token_digest_hardening.py",
+    "datara-backend/rebuild/component_spec/migrations.py",
+    "datara-backend/rebuild/component_spec/revisions/",
+    "datara-newweb/src/services/rebuild/llmApi.ts",
+    "datara-newweb/src/services/rebuild/__tests__/llmApi.contract.test.ts"
+  ],
+  "boundaries": [
+    "每线 WIP=1；困难/歧义/冲突报 Ops，不弹窗用户",
+    "不写 STATE/mailbox/队列投影（Flow 单写）；不 commit、不 push（push=USER_ONLY）",
+    "AOCI 停用：不加载、不调用",
+    "本机静态/代码实现；远测经 Integration 租约于 1.9 执行"
+  ],
+  "wip_after": { "claude": 1, "codex": 0, "trae": 1 }
+}

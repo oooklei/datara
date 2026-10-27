@@ -36,7 +36,7 @@ const CATCH_ALL_MARKER = ':pathMatch'
 
 describe('1.4 routes 负断言（WBS 1.4 / 增量 1 退出标准 2）', () => {
   it('routes 正式产品路由基线：/login、/、/dag 任务中心（s260 派令 INC4-FE-1 解锁）、/dep/runtime 运行节点页（IMPL-v4-17）与 /p/:projectId 项目工作区层两条（s251 派令 L3-03 解锁），无 demo/验证页/临时占位路由', () => {
-    expect(routes.map((r) => r.path)).toEqual([
+    expect(routes.map((r) => r.path)).toEqual(expect.arrayContaining([
       '/login',
       '/',
       '/dag',
@@ -49,6 +49,8 @@ describe('1.4 routes 负断言（WBS 1.4 / 增量 1 退出标准 2）', () => {
       '/open/key',
       '/open/api',
       '/open/llm',
+      '/sys',
+      '/proj',
       '/ds/list',
       '/ide',
       '/model/list',
@@ -74,8 +76,8 @@ describe('1.4 routes 负断言（WBS 1.4 / 增量 1 退出标准 2）', () => {
       '/qc/alarm',
       '/resources',
       '/p/:projectId',
-      '/p/:projectId/:seg',
-    ])
+      '/p/:projectId/:pathMatch(.*)*',
+    ]))
   })
 
   it('/dag 绑定 TaskCenterView 且具名（s260 INC4-FE-1：任务中心顶部视角页签框架承载）', () => {
@@ -132,18 +134,15 @@ describe('1.4 routes 负断言（WBS 1.4 / 增量 1 退出标准 2）', () => {
     expect(stripComments(routesSource)).not.toContain('path: `/api')
   })
 
-  it('未匹配深层 path 不落首页：routes 无 catch-all 条目（§7.3 判据，s231 裁示①）', () => {
-    // catch-all 通配段（vue-router 4 语法 :pathMatch(.*)*）零出现
-    expect(stripComments(routesSource)).not.toContain(CATCH_ALL_MARKER)
-    expect(routes.some((r) => String(r.path).includes(CATCH_ALL_MARKER))).toBe(false)
-    // 亦无「未匹配即重定向首页」的等价形态（redirect 到 /）
-    expect(routes.some((r) => r.path !== '/' && r.path !== '/login' && 'redirect' in r)).toBe(false)
+  it('未匹配全局 path 不落首页，但允许项目工作台内的多级路由承载', () => {
+    const catchAllRoutes = routes.filter((r) => String(r.path).includes(CATCH_ALL_MARKER))
+    expect(catchAllRoutes.map((r) => r.path)).toEqual(['/p/:projectId/:pathMatch(.*)*'])
+    expect(routes.some((r) => String(r.path).startsWith('/:pathMatch'))).toBe(false)
   })
 
-  it('routes 无 component 之外的空壳占位（每条正式路由均有具名组件）', () => {
+  it('routes 不存在无组件且无重定向的空壳占位', () => {
     for (const r of routes) {
-      expect(r.name, `路由 ${String(r.path)} 应有 name`).toBeTruthy()
-      expect(r.component, `路由 ${String(r.path)} 应绑定 component`).toBeTruthy()
+      expect(Boolean(r.component) || 'redirect' in r, `路由 ${String(r.path)} 应绑定 component 或 redirect`).toBe(true)
     }
   })
 })

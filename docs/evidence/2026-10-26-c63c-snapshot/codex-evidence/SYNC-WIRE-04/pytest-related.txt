@@ -1,0 +1,16 @@
+Cannot resolve zookeeper: [Errno 11001] getaddrinfo failed
+2026-10-26 00:35:44 [WARNING] [common.registry] [instance:-] ZK 不可用，降级运行（10s 后自动重连）: Connection time-out
+...........................                                              [100%]
+============================== warnings summary ===============================
+tests/rebuild/test_trial_e2e.py: 6 warnings
+tests/rebuild/test_trial_snapshot_api.py: 4 warnings
+  C:\Users\Administrator\.codex\worktrees\c63c\Datara\datara-backend\rebuild\llm\revisions\v0001_llm_model.py:153: SAWarning: Skipped unsupported reflection of expression-based index uq_rebuild_llm_model_single_default
+    reflected_indexes = inspector.get_indexes(table.name)
+
+tests/rebuild/test_trial_e2e.py: 6 warnings
+tests/rebuild/test_trial_snapshot_api.py: 4 warnings
+  C:\Users\Administrator\.codex\worktrees\c63c\Datara\datara-backend\rebuild\llm\revisions\v0001_llm_model.py:182: SAWarning: Skipped unsupported reflection of expression-based index uq_rebuild_llm_model_single_default
+    unique = {tuple(item["column_names"]) for item in inspector.get_unique_constraints(table.name)}
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+27 passed, 20 warnings in 25.66s

@@ -1,0 +1,182 @@
+{
+  "project_id": 33,
+  "project_name": "电商全域数据治理项目",
+  "workflow_ids": {
+    "NORMAL": 38,
+    "SYNC": 39,
+    "STREAM": 40
+  },
+  "normal_dependency_id": 6,
+  "stream_job_id": 16,
+  "stream_job_created": false,
+  "stream_job_state": "RUNNING",
+  "workflow_count": 3,
+  "workflow_names": [
+    "电商实时订单流观摩样例",
+    "电商订单同步入仓样例",
+    "电商订单离线加工样例"
+  ],
+  "workflow_node_types": {
+    "电商订单离线加工样例": [
+      "dependent",
+      "python",
+      "shell",
+      "sql"
+    ],
+    "电商订单同步入仓样例": [
+      "condition_set",
+      "endpoint_select",
+      "field_map",
+      "field_map_union",
+      "file_sync_orch",
+      "src_base_orch",
+      "tgt_base_orch"
+    ],
+    "电商实时订单流观摩样例": [
+      "page_board",
+      "stream_fuse",
+      "stream_input",
+      "stream_output"
+    ]
+  },
+  "normal_trial": {
+    "instance_id": 23,
+    "status": "SUCCEEDED",
+    "task_count": 4,
+    "tasks": [
+      {
+        "task_instance_id": 66,
+        "task_id": "sql_extract_orders",
+        "node_code": "sql_extract_orders",
+        "status": "SUCCEEDED"
+      },
+      {
+        "task_instance_id": 67,
+        "task_id": "python_quality",
+        "node_code": "python_quality",
+        "status": "SUCCEEDED"
+      },
+      {
+        "task_instance_id": 68,
+        "task_id": "shell_archive",
+        "node_code": "shell_archive",
+        "status": "SUCCEEDED"
+      },
+      {
+        "task_instance_id": 69,
+        "task_id": "dependency_gate",
+        "node_code": "dependency_gate",
+        "status": "SUCCEEDED"
+      }
+    ],
+    "stats": {
+      "success_count": 4,
+      "failed_count": 0,
+      "skipped_count": 0
+    }
+  },
+  "stream_observation": {
+    "job_id": 16,
+    "name": "电商实时订单流观摩",
+    "state": "RUNNING",
+    "attempt_no": 1,
+    "snapshot_count": 19,
+    "error_sample_count": 0,
+    "error_samples": [],
+    "produce_rate": 0,
+    "consume_rate": 0,
+    "process_rate": 6,
+    "input_count": 12,
+    "output_count": 6,
+    "success_count": 6,
+    "failure_count": 0,
+    "skipped_count": 0,
+    "duplicate_count": 0,
+    "backlog": 0,
+    "offset_value": 0,
+    "window_result": {
+      "fusion": [
+        {
+          "key": 1000,
+          "sources": {
+            "orders": {
+              "order_id": 1000,
+              "amount": 20
+            },
+            "payments": {
+              "order_id": 1000,
+              "paid": true
+            }
+          }
+        },
+        {
+          "key": 1001,
+          "sources": {
+            "orders": {
+              "order_id": 1001,
+              "amount": 21
+            },
+            "payments": {
+              "order_id": 1001,
+              "paid": true
+            }
+          }
+        },
+        {
+          "key": 1002,
+          "sources": {
+            "orders": {
+              "order_id": 1002,
+              "amount": 22
+            },
+            "payments": {
+              "order_id": 1002,
+              "paid": true
+            }
+          }
+        },
+        {
+          "key": 1003,
+          "sources": {
+            "orders": {
+              "order_id": 1003,
+              "amount": 23
+            },
+            "payments": {
+              "order_id": 1003,
+              "paid": true
+            }
+          }
+        },
+        {
+          "key": 1004,
+          "sources": {
+            "orders": {
+              "order_id": 1004,
+              "amount": 24
+            },
+            "payments": {
+              "order_id": 1004,
+              "paid": true
+            }
+          }
+        },
+        {
+          "key": 1005,
+          "sources": {
+            "orders": {
+              "order_id": 1005,
+              "amount": 25
+            },
+            "payments": {
+              "order_id": 1005,
+              "paid": true
+            }
+          }
+        }
+      ]
+    },
+    "captured_at": "2026-10-27T10:37:43"
+  },
+  "verdict": "PASS"
+}

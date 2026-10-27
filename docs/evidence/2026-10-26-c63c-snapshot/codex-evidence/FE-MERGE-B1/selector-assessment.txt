@@ -1,0 +1,11 @@
+Theme selector assessment (FE-MERGE-B1)
+
+All Vue SFC style blocks under datara-newweb/src are scoped, so same-name local
+selectors have higher specificity than the global theme fallback selectors.
+
+Concern: the theme still contributes properties that local scoped rules do not
+redeclare. In particular, global .field adds align-items:center to the DDL editor
+labels, global .empty adds padding/text-align to DDL empty states, and global
+.card adds background/shadow/hover behavior to IndicatorBoardView cards.
+Because theme.css must remain byte-identical to the D-drive WIP, this ticket does
+not alter those selectors. This should receive visual/E2E review before acceptance.

@@ -6,12 +6,6 @@
     </header>
 
     <div class="toolbar">
-      <label class="field"><span>项目</span>
-        <select v-model="selectedProject" class="kw" data-project-select :disabled="loading || running" @change="loadStandards">
-          <option value="">请选择项目</option>
-          <option v-for="p in projects" :key="p.id" :value="String(p.id)">{{ p.name }}</option>
-        </select>
-      </label>
       <label class="field"><span>标准</span>
         <select v-model="selectedStd" class="kw" data-standard-select :disabled="standards.length === 0 || running">
           <option value="">请选择标准</option>

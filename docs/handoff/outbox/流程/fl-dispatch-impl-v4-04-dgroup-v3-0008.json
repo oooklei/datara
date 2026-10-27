@@ -1,0 +1,42 @@
+{
+  "id": "fl-dispatch-impl-v4-04-dgroup-v3-0008",
+  "ts": "2026-10-22T13:44:00+08:00",
+  "epoch": 3,
+  "from": "Flow",
+  "to": "claude",
+  "type": "DISPATCH",
+  "ref": "IMPL-v4-04",
+  "event_ref": "v3-0008-dispatch-assigned-impl-v4-04",
+  "title": "D 组治理载体入库：STATE/mailbox/协作规程/AGENTS.md/.mcp.json/outbox 结构/archive v2-final 一次性集成窗提交",
+  "state": "ASSIGNED",
+  "domain": "CONTROL",
+  "priority": {
+    "base_priority": "P1",
+    "effective_priority": "P1",
+    "priority_basis": "基线完整性：epoch 3 运行期载体须入库（决策卡 D 组）",
+    "priority_override": null
+  },
+  "depends_on": [],
+  "scope_paths": [
+    "docs/handoff/STATE.md",
+    "docs/handoff/mailbox.jsonl",
+    "docs/agents/协作规程.md",
+    "AGENTS.md",
+    ".mcp.json",
+    "LICENSE-COMMERCIAL.md",
+    "docs/handoff/README.md",
+    "docs/handoff/outbox/",
+    "docs/handoff/archive/2026-10-22-v2-final/",
+    "docs/agents/archive/"
+  ],
+  "acceptance": "Flow 一致性核对（与 super-develop 权威载体一致）+ 静态审查 PASS",
+  "evidence_chain": "EVIDENCE_READY → Acceptance PASS（纯载体，无远测需求，无需 1.9 租约）",
+  "boundaries": [
+    "纯载体入库：不改写载体内容，只做一致性核对与入库准备（含 git 暂存清单与逐文件校验）",
+    "EXC-v4-01 未裁前：docs/handoff/mailbox.jsonl 与 STATE.md 按当前盘面原样入库（内容止于 v3-0006）；事件流权威在 super-develop events 投影，实施线不得自行重建或改写两载体",
+    "git 提交动作留待集成窗一次性执行；实施线不 commit 不 push（push=USER_ONLY）",
+    "禁 AOCI；本机仅静态校验/审查；问题统一交 Ops，不弹窗用户",
+    "单线 WIP=1；完成报备 outbox/claude/cl-done-impl-v4-04"
+  ],
+  "startup": "统一启动词 v3 进入后领取本票（queue snapshot: IMPL-v4-04 ASSIGNED→claude）"
+}

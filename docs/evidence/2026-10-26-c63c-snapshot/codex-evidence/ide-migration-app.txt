@@ -1,0 +1,27 @@
+28-from rebuild.common.db import Base
+29-from rebuild.sql_ide.audit import SqlIdeAuditRecord, build_audit_writer
+30-from rebuild.sql_ide.export_service import SqlIdeExportAuditRecord, SqlIdeExportJobRecord, SqlIdeExportService
+31-from rebuild.sql_ide.execution import build_execution_port
+32-from rebuild.sql_ide.history_store import SqlIdeHistoryStore
+33-from rebuild.sql_ide.linter import lint_sql
+34:from rebuild.sql_ide.migrations import SQL_IDE_MIGRATIONS, SqlIdeMigrationRunner
+35-from rebuild.identity.migrations import apply_identity_migrations
+36-from rebuild.execution.migrations import apply_execution_migrations
+37-from rebuild.sql_ide.routes import SqlIdeRouteError, build_sql_ide_router
+38-from rebuild.sql_ide.result_store import SqlIdeResultSetRecord
+39-from rebuild.sql_ide.result_store import PersistentResultPageStore
+40-from rebuild.sql_ide.status_store import SqlIdeExecutionEventRecord, SqlIdeExecutionRecord, SqlIdeStatusStore
+--
+413-                RuntimeNodeRecord.__table__,
+414-                *MODEL_TABLES,
+415-            ],
+416-        )
+417-        apply_component_spec_migrations(engine)
+418-        apply_identity_migrations(engine)
+419:        SqlIdeMigrationRunner(engine, SQL_IDE_MIGRATIONS).apply()
+420-        apply_llm_migrations(engine)
+421-        apply_apikey_migrations(engine)
+422-        apply_openapi_admin_migrations(engine)
+423-        apply_workflow_migrations(engine)
+424-        apply_execution_migrations(engine)
+425-        apply_variable_migrations(engine)

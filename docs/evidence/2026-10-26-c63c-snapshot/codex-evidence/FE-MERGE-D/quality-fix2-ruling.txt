@@ -1,0 +1,15 @@
+FE-MERGE-D quality-fix2 fixture ruling
+
+Authority conflict:
+- The copied L12-02 contract fixture omitted componentRef while cases 4/5 expected
+  sync nodes to be created.
+- The current AGENTS.md domain rule requires consumers to pin
+  componentRef:{type,version}, and quality review requires every add path to
+  fail closed when no valid published componentRef exists.
+- Flow authorized a fixture-only correction: add
+  componentRef:{type,version:1} in specItem(), without changing test structure
+  or behavioral assertions.
+
+workflowGraphWorkbench.contract.test.ts SHA-256:
+- Before: 74dded6b7d2c6a6cd9eee58fe36c13797c0f1a694a827e49f591ceb0d4af10c8
+- After:  0440ff2bb7fc7a4a53110216e575b24e876b9f1ee637f5ddc63d96147c09d7bd

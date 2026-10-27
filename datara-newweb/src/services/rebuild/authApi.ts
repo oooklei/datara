@@ -11,7 +11,8 @@
  * 与旧前端（datara-web）的 admin/dev/analyst/viewer 不同名，本页与 UI 一律消费后端词形。
  */
 
-import { clearToken, postJson, setToken } from '../http'
+import { shallowRef } from 'vue'
+import { clearToken, getJson, postJson, setToken } from '../http'
 
 export type AuthRole = 'admin' | 'developer' | 'operator' | 'viewer'
 
@@ -26,6 +27,8 @@ export interface LoginResult {
   account: AuthAccount
 }
 
+export const authAccount = shallowRef<AuthAccount | null>(null)
+
 interface LoginWire {
   token: string
   user: { id: number; username: string; role: AuthRole }
@@ -38,11 +41,20 @@ interface LoginWire {
 export function login(username: string, password: string): Promise<LoginResult> {
   return postJson<LoginWire>('/rebuild/login', { username, password }, { anonymous: true }).then((d) => {
     setToken(d.token)
-    return {
+    const result = {
       token: d.token,
       account: { id: d.user.id, username: d.user.username, role: d.user.role },
     }
+    authAccount.value = result.account
+    return result
   })
+}
+
+/** Resolve injected/reloaded in-memory tokens to a real account for the shell. */
+export async function currentSession(): Promise<AuthAccount> {
+  const account = await getJson<AuthAccount>('/rebuild/session')
+  authAccount.value = account
+  return account
 }
 
 /**
@@ -55,6 +67,7 @@ export async function logout(): Promise<void> {
   } catch {
     // 后端吊销失败（网络/已失效）不阻断本地清理
   } finally {
+    authAccount.value = null
     clearToken()
   }
 }

@@ -1,0 +1,1033 @@
+E402 Module level import not at top of file
+  --> rebuild\api\app.py:50:1
+   |
+48 |     """Stable token digest kept local for compatibility with older identity modules."""
+49 |     return hashlib.sha256(token.encode("utf-8")).hexdigest()
+50 | from rebuild.datasource.contracts import DataSourceDraft, probe_datasource, validate_datasource
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+51 | from rebuild.datasource.models import ProjectDatasourceRecord
+52 | from rebuild.datasource.metadata import metadata_catalog_for
+   |
+help: Move module level imports to top of file
+
+E402 Module level import not at top of file
+  --> rebuild\api\app.py:51:1
+   |
+49 |     return hashlib.sha256(token.encode("utf-8")).hexdigest()
+50 | from rebuild.datasource.contracts import DataSourceDraft, probe_datasource, validate_datasource
+51 | from rebuild.datasource.models import ProjectDatasourceRecord
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+52 | from rebuild.datasource.metadata import metadata_catalog_for
+53 | from rebuild.datasource.pool import DatasourceEngineRegistry
+   |
+help: Move module level imports to top of file
+
+E402 Module level import not at top of file
+  --> rebuild\api\app.py:52:1
+   |
+50 | from rebuild.datasource.contracts import DataSourceDraft, probe_datasource, validate_datasource
+51 | from rebuild.datasource.models import ProjectDatasourceRecord
+52 | from rebuild.datasource.metadata import metadata_catalog_for
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+53 | from rebuild.datasource.pool import DatasourceEngineRegistry
+54 | from rebuild.datasource.repository import ProjectDatasourceRepository
+   |
+help: Move module level imports to top of file
+
+E402 Module level import not at top of file
+  --> rebuild\api\app.py:53:1
+   |
+51 | from rebuild.datasource.models import ProjectDatasourceRecord
+52 | from rebuild.datasource.metadata import metadata_catalog_for
+53 | from rebuild.datasource.pool import DatasourceEngineRegistry
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+54 | from rebuild.datasource.repository import ProjectDatasourceRepository
+55 | from rebuild.dependency.api import build_dependency_router
+   |
+help: Move module level imports to top of file
+
+E402 Module level import not at top of file
+  --> rebuild\api\app.py:54:1
+   |
+52 | from rebuild.datasource.metadata import metadata_catalog_for
+53 | from rebuild.datasource.pool import DatasourceEngineRegistry
+54 | from rebuild.datasource.repository import ProjectDatasourceRepository
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+55 | from rebuild.dependency.api import build_dependency_router
+56 | from rebuild.dependency.models import DependencyConfigRecord
+   |
+help: Move module level imports to top of file
+
+E402 Module level import not at top of file
+  --> rebuild\api\app.py:55:1
+   |
+53 | from rebuild.datasource.pool import DatasourceEngineRegistry
+54 | from rebuild.datasource.repository import ProjectDatasourceRepository
+55 | from rebuild.dependency.api import build_dependency_router
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+56 | from rebuild.dependency.models import DependencyConfigRecord
+57 | from rebuild.project.repository import ProjectRepository
+   |
+help: Move module level imports to top of file
+
+E402 Module level import not at top of file
+  --> rebuild\api\app.py:56:1
+   |
+54 | from rebuild.datasource.repository import ProjectDatasourceRepository
+55 | from rebuild.dependency.api import build_dependency_router
+56 | from rebuild.dependency.models import DependencyConfigRecord
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+57 | from rebuild.project.repository import ProjectRepository
+58 | from rebuild.project.models import ProjectRecord
+   |
+help: Move module level imports to top of file
+
+E402 Module level import not at top of file
+  --> rebuild\api\app.py:57:1
+   |
+55 | from rebuild.dependency.api import build_dependency_router
+56 | from rebuild.dependency.models import DependencyConfigRecord
+57 | from rebuild.project.repository import ProjectRepository
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+58 | from rebuild.project.models import ProjectRecord
+59 | from rebuild.resources.api import build_resources_router
+   |
+help: Move module level imports to top of file
+
+E402 Module level import not at top of file
+  --> rebuild\api\app.py:58:1
+   |
+56 | from rebuild.dependency.models import DependencyConfigRecord
+57 | from rebuild.project.repository import ProjectRepository
+58 | from rebuild.project.models import ProjectRecord
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+59 | from rebuild.resources.api import build_resources_router
+60 | from rebuild.resources.models import ResourceBindingRecord, ResourceRecord, ResourceVersionRecord
+   |
+help: Move module level imports to top of file
+
+E402 Module level import not at top of file
+  --> rebuild\api\app.py:59:1
+   |
+57 | from rebuild.project.repository import ProjectRepository
+58 | from rebuild.project.models import ProjectRecord
+59 | from rebuild.resources.api import build_resources_router
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+60 | from rebuild.resources.models import ResourceBindingRecord, ResourceRecord, ResourceVersionRecord
+61 | from rebuild.stream.api import build_stream_router
+   |
+help: Move module level imports to top of file
+
+E402 Module level import not at top of file
+  --> rebuild\api\app.py:60:1
+   |
+58 | from rebuild.project.models import ProjectRecord
+59 | from rebuild.resources.api import build_resources_router
+60 | from rebuild.resources.models import ResourceBindingRecord, ResourceRecord, ResourceVersionRecord
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+61 | from rebuild.stream.api import build_stream_router
+62 | from rebuild.stream.models import (
+   |
+help: Move module level imports to top of file
+
+E402 Module level import not at top of file
+  --> rebuild\api\app.py:61:1
+   |
+59 | from rebuild.resources.api import build_resources_router
+60 | from rebuild.resources.models import ResourceBindingRecord, ResourceRecord, ResourceVersionRecord
+61 | from rebuild.stream.api import build_stream_router
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+62 | from rebuild.stream.models import (
+63 |     StreamCheckpointRecord,
+   |
+help: Move module level imports to top of file
+
+E402 Module level import not at top of file
+  --> rebuild\api\app.py:62:1
+   |
+60 |   from rebuild.resources.models import ResourceBindingRecord, ResourceRecord, ResourceVersionRecord
+61 |   from rebuild.stream.api import build_stream_router
+62 | / from rebuild.stream.models import (
+63 | |     StreamCheckpointRecord,
+64 | |     StreamFailureEventRecord,
+65 | |     StreamJobAttemptRecord,
+66 | |     StreamJobRecord,
+67 | |     StreamMetricSnapshotRecord,
+68 | |     StreamRecoveryEventRecord,
+69 | | )
+   | |_^
+70 |
+71 |   _SAFE_IDENTIFIER = re.compile(r"^[A-Za-z_][A-Za-z0-9_$]*$")
+   |
+help: Move module level imports to top of file
+
+E402 Module level import not at top of file
+  --> rebuild\api\app.py:75:1
+   |
+73 | def _safe_identifier(value: str) -> bool:
+74 |     return bool(_SAFE_IDENTIFIER.fullmatch(value))
+75 | from rebuild.sync.api import build_sync_router
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+76 | from rebuild.sync.models import SyncTaskDefinitionRecord
+77 | from rebuild.governance.api import build_governance_router
+   |
+help: Move module level imports to top of file
+
+E402 Module level import not at top of file
+  --> rebuild\api\app.py:76:1
+   |
+74 |     return bool(_SAFE_IDENTIFIER.fullmatch(value))
+75 | from rebuild.sync.api import build_sync_router
+76 | from rebuild.sync.models import SyncTaskDefinitionRecord
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+77 | from rebuild.governance.api import build_governance_router
+78 | from rebuild.governance.migrations import MigrationRunner as GovernanceMigrationRunner, R3_GOVERNANCE_MIGRATIONS
+   |
+help: Move module level imports to top of file
+
+E402 Module level import not at top of file
+  --> rebuild\api\app.py:77:1
+   |
+75 | from rebuild.sync.api import build_sync_router
+76 | from rebuild.sync.models import SyncTaskDefinitionRecord
+77 | from rebuild.governance.api import build_governance_router
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+78 | from rebuild.governance.migrations import MigrationRunner as GovernanceMigrationRunner, R3_GOVERNANCE_MIGRATIONS
+79 | from rebuild.metrics.api import build_metrics_router
+   |
+help: Move module level imports to top of file
+
+E402 Module level import not at top of file
+  --> rebuild\api\app.py:78:1
+   |
+76 | from rebuild.sync.models import SyncTaskDefinitionRecord
+77 | from rebuild.governance.api import build_governance_router
+78 | from rebuild.governance.migrations import MigrationRunner as GovernanceMigrationRunner, R3_GOVERNANCE_MIGRATIONS
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+79 | from rebuild.metrics.api import build_metrics_router
+80 | from rebuild.metrics.models import (
+   |
+help: Move module level imports to top of file
+
+E402 Module level import not at top of file
+  --> rebuild\api\app.py:79:1
+   |
+77 | from rebuild.governance.api import build_governance_router
+78 | from rebuild.governance.migrations import MigrationRunner as GovernanceMigrationRunner, R3_GOVERNANCE_MIGRATIONS
+79 | from rebuild.metrics.api import build_metrics_router
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+80 | from rebuild.metrics.models import (
+81 |     LineageWritebackRecord,
+   |
+help: Move module level imports to top of file
+
+E402 Module level import not at top of file
+  --> rebuild\api\app.py:80:1
+   |
+78 |   from rebuild.governance.migrations import MigrationRunner as GovernanceMigrationRunner, R3_GOVERNANCE_MIGRATIONS
+79 |   from rebuild.metrics.api import build_metrics_router
+80 | / from rebuild.metrics.models import (
+81 | |     LineageWritebackRecord,
+82 | |     QualityRuleResultLinkRecord,
+83 | |     TaskDataErrorSampleRecord,
+84 | |     TaskDataStatSegmentRecord,
+85 | |     TaskInstanceDataStatRecord,
+86 | |     WorkflowResultStatRecord,
+87 | | )
+   | |_^
+88 |   from rebuild.variables.api import build_variables_router
+89 |   from rebuild.variables.models import TaskInstanceVariableRuntimeRecord, VariableDefinitionRecord
+   |
+help: Move module level imports to top of file
+
+E402 Module level import not at top of file
+  --> rebuild\api\app.py:88:1
+   |
+86 |     WorkflowResultStatRecord,
+87 | )
+88 | from rebuild.variables.api import build_variables_router
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+89 | from rebuild.variables.models import TaskInstanceVariableRuntimeRecord, VariableDefinitionRecord
+90 | from rebuild.rb.api import build_rb_router
+   |
+help: Move module level imports to top of file
+
+E402 Module level import not at top of file
+  --> rebuild\api\app.py:89:1
+   |
+87 | )
+88 | from rebuild.variables.api import build_variables_router
+89 | from rebuild.variables.models import TaskInstanceVariableRuntimeRecord, VariableDefinitionRecord
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+90 | from rebuild.rb.api import build_rb_router
+91 | from rebuild.rb.facade.rb_facade import RbFacade
+   |
+help: Move module level imports to top of file
+
+E402 Module level import not at top of file
+  --> rebuild\api\app.py:90:1
+   |
+88 | from rebuild.variables.api import build_variables_router
+89 | from rebuild.variables.models import TaskInstanceVariableRuntimeRecord, VariableDefinitionRecord
+90 | from rebuild.rb.api import build_rb_router
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+91 | from rebuild.rb.facade.rb_facade import RbFacade
+92 | from rebuild.rb.impact.impact_snapshot import ImpactSnapshotService
+   |
+help: Move module level imports to top of file
+
+E402 Module level import not at top of file
+  --> rebuild\api\app.py:91:1
+   |
+89 | from rebuild.variables.models import TaskInstanceVariableRuntimeRecord, VariableDefinitionRecord
+90 | from rebuild.rb.api import build_rb_router
+91 | from rebuild.rb.facade.rb_facade import RbFacade
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+92 | from rebuild.rb.impact.impact_snapshot import ImpactSnapshotService
+93 | from rebuild.rb.policy.policy_snapshot import PolicySnapshotService
+   |
+help: Move module level imports to top of file
+
+E402 Module level import not at top of file
+  --> rebuild\api\app.py:92:1
+   |
+90 | from rebuild.rb.api import build_rb_router
+91 | from rebuild.rb.facade.rb_facade import RbFacade
+92 | from rebuild.rb.impact.impact_snapshot import ImpactSnapshotService
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+93 | from rebuild.rb.policy.policy_snapshot import PolicySnapshotService
+94 | from rebuild.workflow.api import build_workflow_router
+   |
+help: Move module level imports to top of file
+
+E402 Module level import not at top of file
+  --> rebuild\api\app.py:93:1
+   |
+91 | from rebuild.rb.facade.rb_facade import RbFacade
+92 | from rebuild.rb.impact.impact_snapshot import ImpactSnapshotService
+93 | from rebuild.rb.policy.policy_snapshot import PolicySnapshotService
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+94 | from rebuild.workflow.api import build_workflow_router
+95 | from rebuild.workflow.models import (
+   |
+help: Move module level imports to top of file
+
+E402 Module level import not at top of file
+  --> rebuild\api\app.py:94:1
+   |
+92 | from rebuild.rb.impact.impact_snapshot import ImpactSnapshotService
+93 | from rebuild.rb.policy.policy_snapshot import PolicySnapshotService
+94 | from rebuild.workflow.api import build_workflow_router
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+95 | from rebuild.workflow.models import (
+96 |     WorkflowDefinitionRecord,
+   |
+help: Move module level imports to top of file
+
+E402 Module level import not at top of file
+   --> rebuild\api\app.py:95:1
+    |
+ 93 |   from rebuild.rb.policy.policy_snapshot import PolicySnapshotService
+ 94 |   from rebuild.workflow.api import build_workflow_router
+ 95 | / from rebuild.workflow.models import (
+ 96 | |     WorkflowDefinitionRecord,
+ 97 | |     WorkflowEdgeRecord,
+ 98 | |     WorkflowNodeRecord,
+ 99 | |     WorkflowPublishRecord,
+100 | |     WorkflowScheduleRecord,
+101 | |     WorkflowVersionRecord,
+102 | | )
+    | |_^
+103 |   from rebuild.trial.models import WorkflowDraftSnapshotRecord
+104 |   from rebuild.sshnode import build_sshnode_router
+    |
+help: Move module level imports to top of file
+
+E402 Module level import not at top of file
+   --> rebuild\api\app.py:103:1
+    |
+101 |     WorkflowVersionRecord,
+102 | )
+103 | from rebuild.trial.models import WorkflowDraftSnapshotRecord
+    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+104 | from rebuild.sshnode import build_sshnode_router
+105 | from rebuild.sshnode.models import SshNodeRecord
+    |
+help: Move module level imports to top of file
+
+E402 Module level import not at top of file
+   --> rebuild\api\app.py:104:1
+    |
+102 | )
+103 | from rebuild.trial.models import WorkflowDraftSnapshotRecord
+104 | from rebuild.sshnode import build_sshnode_router
+    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+105 | from rebuild.sshnode.models import SshNodeRecord
+106 | from rebuild.runtime_node import build_runtime_node_router
+    |
+help: Move module level imports to top of file
+
+E402 Module level import not at top of file
+   --> rebuild\api\app.py:105:1
+    |
+103 | from rebuild.trial.models import WorkflowDraftSnapshotRecord
+104 | from rebuild.sshnode import build_sshnode_router
+105 | from rebuild.sshnode.models import SshNodeRecord
+    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+106 | from rebuild.runtime_node import build_runtime_node_router
+107 | from rebuild.runtime_node.models import RuntimeNodeRecord
+    |
+help: Move module level imports to top of file
+
+E402 Module level import not at top of file
+   --> rebuild\api\app.py:106:1
+    |
+104 | from rebuild.sshnode import build_sshnode_router
+105 | from rebuild.sshnode.models import SshNodeRecord
+106 | from rebuild.runtime_node import build_runtime_node_router
+    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+107 | from rebuild.runtime_node.models import RuntimeNodeRecord
+108 | from rebuild.scheduling import build_schedule_router
+    |
+help: Move module level imports to top of file
+
+E402 Module level import not at top of file
+   --> rebuild\api\app.py:107:1
+    |
+105 | from rebuild.sshnode.models import SshNodeRecord
+106 | from rebuild.runtime_node import build_runtime_node_router
+107 | from rebuild.runtime_node.models import RuntimeNodeRecord
+    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+108 | from rebuild.scheduling import build_schedule_router
+109 | from rebuild.model.api import build_model_router
+    |
+help: Move module level imports to top of file
+
+E402 Module level import not at top of file
+   --> rebuild\api\app.py:108:1
+    |
+106 | from rebuild.runtime_node import build_runtime_node_router
+107 | from rebuild.runtime_node.models import RuntimeNodeRecord
+108 | from rebuild.scheduling import build_schedule_router
+    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+109 | from rebuild.model.api import build_model_router
+110 | from rebuild.model.dicts import seed_model_dicts
+    |
+help: Move module level imports to top of file
+
+E402 Module level import not at top of file
+   --> rebuild\api\app.py:109:1
+    |
+107 | from rebuild.runtime_node.models import RuntimeNodeRecord
+108 | from rebuild.scheduling import build_schedule_router
+109 | from rebuild.model.api import build_model_router
+    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+110 | from rebuild.model.dicts import seed_model_dicts
+111 | from rebuild.model.models import MODEL_TABLES
+    |
+help: Move module level imports to top of file
+
+E402 Module level import not at top of file
+   --> rebuild\api\app.py:110:1
+    |
+108 | from rebuild.scheduling import build_schedule_router
+109 | from rebuild.model.api import build_model_router
+110 | from rebuild.model.dicts import seed_model_dicts
+    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+111 | from rebuild.model.models import MODEL_TABLES
+112 | from rebuild.monitor import build_monitor_router
+    |
+help: Move module level imports to top of file
+
+E402 Module level import not at top of file
+   --> rebuild\api\app.py:111:1
+    |
+109 | from rebuild.model.api import build_model_router
+110 | from rebuild.model.dicts import seed_model_dicts
+111 | from rebuild.model.models import MODEL_TABLES
+    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+112 | from rebuild.monitor import build_monitor_router
+113 | from rebuild.llm import LlmCredentialCipher, build_llm_router
+    |
+help: Move module level imports to top of file
+
+E402 Module level import not at top of file
+   --> rebuild\api\app.py:112:1
+    |
+110 | from rebuild.model.dicts import seed_model_dicts
+111 | from rebuild.model.models import MODEL_TABLES
+112 | from rebuild.monitor import build_monitor_router
+    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+113 | from rebuild.llm import LlmCredentialCipher, build_llm_router
+114 | from rebuild.llm.migrations import apply_llm_migrations
+    |
+help: Move module level imports to top of file
+
+E402 Module level import not at top of file
+   --> rebuild\api\app.py:113:1
+    |
+111 | from rebuild.model.models import MODEL_TABLES
+112 | from rebuild.monitor import build_monitor_router
+113 | from rebuild.llm import LlmCredentialCipher, build_llm_router
+    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+114 | from rebuild.llm.migrations import apply_llm_migrations
+115 | from rebuild.apikey import ApiKeyVerifier, apply_apikey_migrations, build_apikey_router
+    |
+help: Move module level imports to top of file
+
+E402 Module level import not at top of file
+   --> rebuild\api\app.py:114:1
+    |
+112 | from rebuild.monitor import build_monitor_router
+113 | from rebuild.llm import LlmCredentialCipher, build_llm_router
+114 | from rebuild.llm.migrations import apply_llm_migrations
+    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+115 | from rebuild.apikey import ApiKeyVerifier, apply_apikey_migrations, build_apikey_router
+116 | from rebuild.openapi_admin import apply_openapi_admin_migrations, build_openapi_admin_router
+    |
+help: Move module level imports to top of file
+
+E402 Module level import not at top of file
+   --> rebuild\api\app.py:115:1
+    |
+113 | from rebuild.llm import LlmCredentialCipher, build_llm_router
+114 | from rebuild.llm.migrations import apply_llm_migrations
+115 | from rebuild.apikey import ApiKeyVerifier, apply_apikey_migrations, build_apikey_router
+    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+116 | from rebuild.openapi_admin import apply_openapi_admin_migrations, build_openapi_admin_router
+117 | from rebuild.sec.api import build_sec_router
+    |
+help: Move module level imports to top of file
+
+E402 Module level import not at top of file
+   --> rebuild\api\app.py:116:1
+    |
+114 | from rebuild.llm.migrations import apply_llm_migrations
+115 | from rebuild.apikey import ApiKeyVerifier, apply_apikey_migrations, build_apikey_router
+116 | from rebuild.openapi_admin import apply_openapi_admin_migrations, build_openapi_admin_router
+    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+117 | from rebuild.sec.api import build_sec_router
+118 | from rebuild.sec.middleware import SecAuditMiddleware
+    |
+help: Move module level imports to top of file
+
+E402 Module level import not at top of file
+   --> rebuild\api\app.py:117:1
+    |
+115 | from rebuild.apikey import ApiKeyVerifier, apply_apikey_migrations, build_apikey_router
+116 | from rebuild.openapi_admin import apply_openapi_admin_migrations, build_openapi_admin_router
+117 | from rebuild.sec.api import build_sec_router
+    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+118 | from rebuild.sec.middleware import SecAuditMiddleware
+119 | from rebuild.sec.migrations import MigrationRunner as SecMigrationRunner, S1_SEC_MIGRATIONS
+    |
+help: Move module level imports to top of file
+
+E402 Module level import not at top of file
+   --> rebuild\api\app.py:118:1
+    |
+116 | from rebuild.openapi_admin import apply_openapi_admin_migrations, build_openapi_admin_router
+117 | from rebuild.sec.api import build_sec_router
+118 | from rebuild.sec.middleware import SecAuditMiddleware
+    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+119 | from rebuild.sec.migrations import MigrationRunner as SecMigrationRunner, S1_SEC_MIGRATIONS
+120 | from rebuild.workflow.migrations import apply_workflow_migrations
+    |
+help: Move module level imports to top of file
+
+E402 Module level import not at top of file
+   --> rebuild\api\app.py:119:1
+    |
+117 | from rebuild.sec.api import build_sec_router
+118 | from rebuild.sec.middleware import SecAuditMiddleware
+119 | from rebuild.sec.migrations import MigrationRunner as SecMigrationRunner, S1_SEC_MIGRATIONS
+    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+120 | from rebuild.workflow.migrations import apply_workflow_migrations
+121 | from rebuild.variables.migrations import apply_variable_migrations
+    |
+help: Move module level imports to top of file
+
+E402 Module level import not at top of file
+   --> rebuild\api\app.py:120:1
+    |
+118 | from rebuild.sec.middleware import SecAuditMiddleware
+119 | from rebuild.sec.migrations import MigrationRunner as SecMigrationRunner, S1_SEC_MIGRATIONS
+120 | from rebuild.workflow.migrations import apply_workflow_migrations
+    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+121 | from rebuild.variables.migrations import apply_variable_migrations
+122 | from common.registry import ServiceRegistry
+    |
+help: Move module level imports to top of file
+
+E402 Module level import not at top of file
+   --> rebuild\api\app.py:121:1
+    |
+119 | from rebuild.sec.migrations import MigrationRunner as SecMigrationRunner, S1_SEC_MIGRATIONS
+120 | from rebuild.workflow.migrations import apply_workflow_migrations
+121 | from rebuild.variables.migrations import apply_variable_migrations
+    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+122 | from common.registry import ServiceRegistry
+    |
+help: Move module level imports to top of file
+
+E402 Module level import not at top of file
+   --> rebuild\api\app.py:122:1
+    |
+120 | from rebuild.workflow.migrations import apply_workflow_migrations
+121 | from rebuild.variables.migrations import apply_variable_migrations
+122 | from common.registry import ServiceRegistry
+    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+123 |
+124 | logger = logging.getLogger(__name__)
+    |
+help: Move module level imports to top of file
+
+F821 Undefined name `datetime`
+   --> rebuild\api\app.py:233:40
+    |
+231 | …         # (user_id=0). Keep those short-lived tokens in process memory instead
+232 | …         # of violating the rebuild_active_token.user_id foreign key.
+233 | …         self._ephemeral: dict[str, datetime] = {}
+    |                                      ^^^^^^^^
+234 | …
+235 | …     def add(self, token: str, *, user_id: int, username: str, role: str, capability: str | None = None, ttl_seconds: int = 86400) -…
+    |
+
+E501 Line too long (142 > 120)
+   --> rebuild\api\app.py:235:121
+    |
+233 | …
+234 | …
+235 | … role: str, capability: str | None = None, ttl_seconds: int = 86400) -> None:
+    |                                                         ^^^^^^^^^^^^^^^^^^^^^^
+236 | …
+237 | …o=None) + timedelta(seconds=ttl_seconds)
+    |
+
+E501 Line too long (121 > 120)
+   --> rebuild\api\app.py:494:121
+    |
+492 |         status_store = SqlIdeStatusStore(session_factory=session_factory)
+493 |         result_store = PersistentResultPageStore(session_factory=session_factory)
+494 |         def read_table_for_export(*, project_id: int, datasource_id: int, object_ref: dict, row_limit: int, **_: object):
+    |                                                                                                                         ^
+495 |             schema = str(object_ref.get("schema", object_ref.get("database", "")))
+496 |             table = str(object_ref.get("object", object_ref.get("name", object_ref.get("table", ""))))
+    |
+
+E701 Multiple statements on one line (colon)
+   --> rebuild\api\app.py:515:20
+    |
+513 |                 return columns, cursor.fetchall()
+514 |             finally:
+515 |                 try: connection.rollback()
+    |                    ^
+516 |                 except Exception: pass
+517 |                 try: connection.close()
+    |
+
+E701 Multiple statements on one line (colon)
+   --> rebuild\api\app.py:516:33
+    |
+514 |             finally:
+515 |                 try: connection.rollback()
+516 |                 except Exception: pass
+    |                                 ^
+517 |                 try: connection.close()
+518 |                 except Exception: pass
+    |
+
+E701 Multiple statements on one line (colon)
+   --> rebuild\api\app.py:517:20
+    |
+515 |                 try: connection.rollback()
+516 |                 except Exception: pass
+517 |                 try: connection.close()
+    |                    ^
+518 |                 except Exception: pass
+519 |         def export_service() -> SqlIdeExportService:
+    |
+
+E701 Multiple statements on one line (colon)
+   --> rebuild\api\app.py:518:33
+    |
+516 |                 except Exception: pass
+517 |                 try: connection.close()
+518 |                 except Exception: pass
+    |                                 ^
+519 |         def export_service() -> SqlIdeExportService:
+520 |             return SqlIdeExportService(
+    |
+
+F821 Undefined name `Mapping`
+   --> rebuild\api\app.py:527:39
+    |
+525 |                 table_reader=read_table_for_export,
+526 |             )
+527 |         def metadata_catalog(payload: Mapping[str, object]):
+    |                                       ^^^^^^^
+528 |             datasource_id = int(payload.get("datasource_id", payload.get("datasourceId", 0)) or 0)
+529 |             if datasource_id < 1:
+    |
+
+F821 Undefined name `Mapping`
+   --> rebuild\api\app.py:554:72
+    |
+552 |             if has_more and rows:
+553 |                 last = rows[-1]
+554 |                 next_cursor = str(last.get("name") if isinstance(last, Mapping) else last)
+    |                                                                        ^^^^^^^
+555 |             return {
+556 |                 "items": rows,
+    |
+
+E501 Line too long (137 > 120)
+   --> rebuild\api\app.py:569:121
+    |
+567 | …ject_name), "schema": schema, "object": object_name,
+568 | …"read-only"]}
+569 | …elations", "listColumns", "listIndexes", "listRoutines", "searchObjects"}:
+    |                                                           ^^^^^^^^^^^^^^^^^
+570 | …
+571 | …
+    |
+
+E702 Multiple statements on one line (semicolon)
+   --> rebuild\api\app.py:584:55
+    |
+582 |                         "page": {"nextCursor": None, "hasMore": False}}
+583 |             if operation == "listSchemas":
+584 |                 limit = int(payload.get("limit", 100)); rows = catalog.schemas(after=payload.get("after"), limit=limit)
+    |                                                       ^
+585 |                 return metadata_page(rows, limit=limit)
+586 |             if operation == "listRelations":
+    |
+
+E702 Multiple statements on one line (semicolon)
+   --> rebuild\api\app.py:590:55
+    |
+588 | …         if not schema:
+589 | …             raise SqlIdeRouteError("INVALID_REQUEST", message="schema is required")
+590 | …         limit = int(payload.get("limit", 100)); return metadata_page(catalog.objects(schema, after=payload.get("after"), limit=limi…
+    |                                                 ^
+591 | …     if operation == "listIndexes":
+592 | …         schema = str(payload.get("schema", "")); object_name = str(payload.get("object", payload.get("table", "")))
+    |
+
+E501 Line too long (155 > 120)
+   --> rebuild\api\app.py:590:121
+    |
+588 | …
+589 | …chema is required")
+590 | …page(catalog.objects(schema, after=payload.get("after"), limit=limit), limit=limit)
+    |                                                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+591 | …
+592 | …tr(payload.get("object", payload.get("table", "")))
+    |
+
+E702 Multiple statements on one line (semicolon)
+   --> rebuild\api\app.py:592:56
+    |
+590 | …         limit = int(payload.get("limit", 100)); return metadata_page(catalog.objects(schema, after=payload.get("after"), limit=limi…
+591 | …     if operation == "listIndexes":
+592 | …         schema = str(payload.get("schema", "")); object_name = str(payload.get("object", payload.get("table", "")))
+    |                                                  ^
+593 | …         if not schema or not object_name or not hasattr(catalog, "indexes"):
+594 | …             raise SqlIdeRouteError("INVALID_REQUEST", message="schema and object are required")
+    |
+
+E501 Line too long (123 > 120)
+   --> rebuild\api\app.py:592:121
+    |
+590 | …         limit = int(payload.get("limit", 100)); return metadata_page(catalog.objects(schema, after=payload.get("after"), limit=limi…
+591 | …     if operation == "listIndexes":
+592 | …         schema = str(payload.get("schema", "")); object_name = str(payload.get("object", payload.get("table", "")))
+    |                                                                                                                   ^^^
+593 | …         if not schema or not object_name or not hasattr(catalog, "indexes"):
+594 | …             raise SqlIdeRouteError("INVALID_REQUEST", message="schema and object are required")
+    |
+
+E702 Multiple statements on one line (semicolon)
+   --> rebuild\api\app.py:595:55
+    |
+593 | …         if not schema or not object_name or not hasattr(catalog, "indexes"):
+594 | …             raise SqlIdeRouteError("INVALID_REQUEST", message="schema and object are required")
+595 | …         limit = int(payload.get("limit", 200)); return metadata_page(catalog.indexes(schema, object_name, limit=limit), limit=limit)
+    |                                                 ^
+596 | …     if operation == "listRoutines":
+597 | …         schema = str(payload.get("schema", payload.get("database", "")))
+    |
+
+E501 Line too long (140 > 120)
+   --> rebuild\api\app.py:595:121
+    |
+593 | …catalog, "indexes"):
+594 | …ssage="schema and object are required")
+595 | …etadata_page(catalog.indexes(schema, object_name, limit=limit), limit=limit)
+    |                                                          ^^^^^^^^^^^^^^^^^^^^
+596 | …
+597 | …database", "")))
+    |
+
+E702 Multiple statements on one line (semicolon)
+   --> rebuild\api\app.py:600:55
+    |
+598 |                 if not schema or not hasattr(catalog, "routines"):
+599 |                     raise SqlIdeRouteError("INVALID_REQUEST", message="schema is required")
+600 |                 limit = int(payload.get("limit", 200)); return metadata_page(catalog.routines(schema, limit=limit), limit=limit)
+    |                                                       ^
+601 |             if operation == "searchObjects":
+602 |                 query = str(payload.get("q", payload.get("query", ""))).strip().lower()
+    |
+
+E501 Line too long (128 > 120)
+   --> rebuild\api\app.py:600:121
+    |
+598 |                 if not schema or not hasattr(catalog, "routines"):
+599 |                     raise SqlIdeRouteError("INVALID_REQUEST", message="schema is required")
+600 |                 limit = int(payload.get("limit", 200)); return metadata_page(catalog.routines(schema, limit=limit), limit=limit)
+    |                                                                                                                         ^^^^^^^^
+601 |             if operation == "searchObjects":
+602 |                 query = str(payload.get("q", payload.get("query", ""))).strip().lower()
+    |
+
+E702 Multiple statements on one line (semicolon)
+   --> rebuild\api\app.py:612:52
+    |
+610 |                             items.append(item)
+611 |                 return metadata_page(items, limit=int(payload.get("limit", 100)))
+612 |             schema = str(payload.get("schema", "")); object_name = str(payload.get("object", payload.get("table", "")))
+    |                                                    ^
+613 |             if not schema or not object_name:
+614 |                 raise SqlIdeRouteError("INVALID_REQUEST", message="schema and object are required")
+    |
+
+E702 Multiple statements on one line (semicolon)
+   --> rebuild\api\app.py:615:51
+    |
+613 | …         if not schema or not object_name:
+614 | …             raise SqlIdeRouteError("INVALID_REQUEST", message="schema and object are required")
+615 | …         limit = int(payload.get("limit", 500)); return metadata_page(catalog.columns(schema, object_name, limit=limit), limit=limit…
+    |                                                 ^
+616 | …     if operation == "lintSql":
+617 | …         return lint_sql(str(payload.get("sql", "")), dialect=str(payload.get("dialect", "mysql")))
+    |
+
+E501 Line too long (151 > 120)
+   --> rebuild\api\app.py:615:121
+    |
+613 | …
+614 | …ema and object are required")
+615 | …ge(catalog.columns(schema, object_name, limit=limit), limit=limit, max_limit=500)
+    |                                                    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+616 | …
+617 | …ayload.get("dialect", "mysql")))
+    |
+
+E501 Line too long (131 > 120)
+   --> rebuild\api\app.py:677:121
+    |
+675 |             }
+676 |         if operation == "getExecutionStatus":
+677 |             status = status_store.get_execution_status(task_id=str(payload.get("task_id")), project_id=project_id, user_id=user_id)
+    |                                                                                                                         ^^^^^^^^^^^
+678 |             if status is None:
+679 |                 raise SqlIdeRouteError("EXECUTION_NOT_FOUND")
+    |
+
+E501 Line too long (149 > 120)
+   --> rebuild\api\app.py:693:121
+    |
+691 | …eled", "cancelled"}:
+692 | …atus")}
+693 | …ject_id, user_id=user_id, event_type="canceled", payload={"status": "canceled"})
+    |                                                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+694 | …oject_id, user_id=user_id, status="canceled")
+695 | …
+    |
+
+E501 Line too long (130 > 120)
+   --> rebuild\api\app.py:697:121
+    |
+695 |             return {"cancelled": True, "status": "canceled"}
+696 |         if operation == "openEventStream":
+697 |             return status_store.list_execution_events(task_id=str(payload.get("task_id")), project_id=project_id, user_id=user_id)
+    |                                                                                                                         ^^^^^^^^^^
+698 |         if operation == "fetchResultPage":
+699 |             return result_store.fetch_page(
+    |
+
+E501 Line too long (173 > 120)
+   --> rebuild\api\app.py:728:121
+    |
+726 | …
+727 | …", 0)) or 0)
+728 | …script_id=str(payload.get("script_id", payload.get("id", ""))), expected_revision=revision):
+    |                                         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+729 | …
+730 | …
+    |
+
+E501 Line too long (125 > 120)
+   --> rebuild\api\app.py:732:121
+    |
+730 |             return {"deleted": True}
+731 |         if operation == "deleteHistory":
+732 |             if not history.delete_history(project_id=project_id, user_id=user_id, history_id=str(payload.get("history_id"))):
+    |                                                                                                                         ^^^^^
+733 |                 raise SqlIdeRouteError("HISTORY_NOT_FOUND")
+734 |             return {"deleted": True}
+    |
+
+E501 Line too long (124 > 120)
+   --> rebuild\api\app.py:752:121
+    |
+750 | …         )
+751 | …     if operation == "getExport":
+752 | …         return export_service().get_job(project_id=project_id, user_id=user_id, export_id=str(payload.get("export_id")))
+    |                                                                                                                       ^^^^
+753 | …     if operation == "downloadExport":
+754 | …         body, media_type, filename = export_service().download(project_id=project_id, user_id=user_id, export_id=str(payload.get("e…
+    |
+
+E501 Line too long (147 > 120)
+   --> rebuild\api\app.py:754:121
+    |
+752 | …ser_id=user_id, export_id=str(payload.get("export_id")))
+753 | …
+754 | …roject_id=project_id, user_id=user_id, export_id=str(payload.get("export_id")))
+    |                                                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+755 | …ders={"Content-Disposition": f'attachment; filename="{filename}"'})
+756 | …
+    |
+
+E501 Line too long (135 > 120)
+   --> rebuild\api\app.py:755:121
+    |
+753 | …
+754 | …load(project_id=project_id, user_id=user_id, export_id=str(payload.get("export_id")))
+755 | …e, headers={"Content-Disposition": f'attachment; filename="{filename}"'})
+    |                                                            ^^^^^^^^^^^^^^^
+756 | …
+757 | …ct_id=project_id, user_id=user_id, export_id=str(payload.get("export_id")))}
+    |
+
+E501 Line too long (138 > 120)
+   --> rebuild\api\app.py:757:121
+    |
+755 | …, headers={"Content-Disposition": f'attachment; filename="{filename}"'})
+756 | …
+757 | …t_id=project_id, user_id=user_id, export_id=str(payload.get("export_id")))}
+    |                                                           ^^^^^^^^^^^^^^^^^^
+758 | …E operation {operation} is not wired")
+    |
+
+E501 Line too long (148 > 120)
+   --> rebuild\api\app.py:873:121
+    |
+871 | …
+872 | …
+873 | …nner", role=Role.VIEWER.value, capability="legacy:i23:preview", ttl_seconds=900)
+    |                                                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+874 | …
+875 | …
+    |
+
+E501 Line too long (121 > 120)
+   --> rebuild\api\app.py:938:121
+    |
+936 |             datasource = session.get(ProjectDatasourceRecord, datasource_id)
+937 |             if datasource is None:
+938 |                 return JSONResponse(status_code=404, content={"code": 4041, "msg": "datasource not found", "data": None})
+    |                                                                                                                         ^
+939 |             return project_permission_error(session, datasource.project_id, user, Permission.EDIT_DEFINITION)
+    |
+
+E501 Line too long (128 > 120)
+    --> rebuild\api\app.py:1039:121
+     |
+1037 | …     except IntegrityError:
+1038 | …         session.rollback()
+1039 | …         return JSONResponse(status_code=409, content={"code": 4091, "msg": "project name already exists", "data": None})
+     |                                                                                                                   ^^^^^^^^
+1040 | …     return {"code": 0, "msg": "success", "data": {"id": project.id, "name": project.name, "description": project.description}}
+     |
+
+E501 Line too long (134 > 120)
+    --> rebuild\api\app.py:1040:121
+     |
+1038 | …
+1039 | …"code": 4091, "msg": "project name already exists", "data": None})
+1040 | …: project.id, "name": project.name, "description": project.description}}
+     |                                                            ^^^^^^^^^^^^^^
+1041 | …
+1042 | …
+     |
+
+E501 Line too long (166 > 120)
+    --> rebuild\api\app.py:1055:121
+     |
+1053 | …sg": "permission denied", "data": None})
+1054 | …
+1055 | …orkflowDefinitionRecord).where(WorkflowDefinitionRecord.project_id == project_id)) or 0,
+     |                                            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+1056 | …(ProjectDatasourceRecord).where(ProjectDatasourceRecord.project_id == project_id)) or 0,
+1057 | …esourceRecord).where(ResourceRecord.project_id == project_id)) or 0,
+     |
+
+E501 Line too long (166 > 120)
+    --> rebuild\api\app.py:1056:121
+     |
+1054 | …
+1055 | …orkflowDefinitionRecord).where(WorkflowDefinitionRecord.project_id == project_id)) or 0,
+1056 | …(ProjectDatasourceRecord).where(ProjectDatasourceRecord.project_id == project_id)) or 0,
+     |                                            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+1057 | …esourceRecord).where(ResourceRecord.project_id == project_id)) or 0,
+1058 | …
+     |
+
+E501 Line too long (146 > 120)
+    --> rebuild\api\app.py:1057:121
+     |
+1055 | …ect_from(WorkflowDefinitionRecord).where(WorkflowDefinitionRecord.project_id == project_id)) or 0,
+1056 | …elect_from(ProjectDatasourceRecord).where(ProjectDatasourceRecord.project_id == project_id)) or 0,
+1057 | …ect_from(ResourceRecord).where(ResourceRecord.project_id == project_id)) or 0,
+     |                                                      ^^^^^^^^^^^^^^^^^^^^^^^^^^
+1058 | …
+1059 | …
+     |
+
+E501 Line too long (124 > 120)
+    --> rebuild\api\app.py:1733:121
+     |
+1731 |             repo = UserRepository(session)
+1732 |             if repo.find_by_username(body.username) is not None:
+1733 |                 return JSONResponse(status_code=409, content={"code": 4092, "msg": "username already exists", "data": None})
+     |                                                                                                                         ^^^^
+1734 |             record = repo.create(username=body.username, password=body.password, role=body.role)
+1735 |             session.commit()
+     |
+
+E501 Line too long (126 > 120)
+    --> rebuild\api\app.py:1773:121
+     |
+1771 |                 # 最后 admin 保护：停用唯一启用 admin 前校验剩余启用 admin 数不少于 1。
+1772 |                 if repo.count_enabled_admins_excluding(user_id) == 0:
+1773 |                     return JSONResponse(status_code=409, content={"code": 1005, "msg": "last admin protection", "data": None})
+     |                                                                                                                         ^^^^^^
+1774 |             updated = repo.update_status(user_id, body.status)
+1775 |             # O15-03：停用与撤销 token 同一 DB 事务（session 注入，不自行 commit）。
+     |
+
+E501 Line too long (126 > 120)
+    --> rebuild\api\app.py:1808:121
+     |
+1806 |                 # 最后 admin 保护：降级唯一 admin 前校验剩余启用 admin 数不少于 1。
+1807 |                 if repo.count_enabled_admins_excluding(user_id) == 0:
+1808 |                     return JSONResponse(status_code=409, content={"code": 1005, "msg": "last admin protection", "data": None})
+     |                                                                                                                         ^^^^^^
+1809 |             updated = repo.update_role(user_id, body.role)
+1810 |             # O15-03：角色变更即撤销 token，同一 DB 事务（session 注入，不自行 commit）。
+     |
+
+Found 88 errors.

@@ -1,0 +1,169 @@
+datara-backend/rebuild/api/app.py-219-    pool_args = {"poolclass": StaticPool} if database_url.endswith(":memory:") else {}
+datara-backend/rebuild/api/app.py-220-    engine = create_engine(database_url, connect_args=connect_args, pool_pre_ping=True, **pool_args)
+datara-backend/rebuild/api/app.py-221-    session_factory = sessionmaker(bind=engine, expire_on_commit=False)
+datara-backend/rebuild/api/app.py-222-    token_service = TokenService(secret=token_secret)
+datara-backend/rebuild/api/app.py:223:    validation_token_service = TokenService(secret=token_secret, ttl_seconds=900)
+datara-backend/rebuild/api/app.py-224-    datasource_engines = DatasourceEngineRegistry()
+datara-backend/rebuild/api/app.py-225-
+datara-backend/rebuild/api/app.py-226-    class ActiveTokenStore:
+datara-backend/rebuild/api/app.py-227-        """Database-backed active token store for cross-worker revocation."""
+--
+datara-backend/rebuild/api/app.py-811-                "msg": "success",
+datara-backend/rebuild/api/app.py-812-                "data": {"token": token, "user": {"id": record.id, "username": record.username, "role": record.role}},
+datara-backend/rebuild/api/app.py-813-            }
+datara-backend/rebuild/api/app.py-814-
+datara-backend/rebuild/api/app.py:815:    @app.post("/api/v1/rebuild/validation-token")
+datara-backend/rebuild/api/app.py:816:    def validation_token(
+datara-backend/rebuild/api/app.py-817-        x_backend_validation_key: str = Header(default=""),
+datara-backend/rebuild/api/app.py-818-        x_backend_validation_scope: str = Header(default=""),
+datara-backend/rebuild/api/app.py-819-    ):
+datara-backend/rebuild/api/app.py-820-        """Exchange a server-held validation key for a short-lived test-runner token."""
+--
+datara-backend/rebuild/api/app.py-828-        elevated = x_backend_validation_scope == "high-priority-e2e"
+datara-backend/rebuild/api/app.py-829-        role = Role.ADMIN if elevated else Role.VIEWER
+datara-backend/rebuild/api/app.py-830-        capability = None if elevated else "validation:bootstrap"
+datara-backend/rebuild/api/app.py-831-        username = "validation-e2e-runner" if elevated else "validation-runner"
+datara-backend/rebuild/api/app.py:832:        token = validation_token_service.issue(
+datara-backend/rebuild/api/app.py-833-            user_id=0,
+datara-backend/rebuild/api/app.py-834-            username=username,
+datara-backend/rebuild/api/app.py-835-            role=role,
+datara-backend/rebuild/api/app.py-836-            capability=capability,
+--
+datara-backend/rebuild/api/app.py-863-                content={"code": 4043, "msg": "validation bootstrap disabled", "data": None},
+datara-backend/rebuild/api/app.py-864-            )
+datara-backend/rebuild/api/app.py-865-        if not hmac.compare_digest(x_backend_validation_key, validation_key):
+datara-backend/rebuild/api/app.py-866-            return JSONResponse(status_code=401, content={"code": 1001, "msg": "invalid validation key", "data": None})
+datara-backend/rebuild/api/app.py:867:        token = validation_token_service.issue(
+datara-backend/rebuild/api/app.py-868-            user_id=0,
+datara-backend/rebuild/api/app.py-869-            username="i23-preview-runner",
+datara-backend/rebuild/api/app.py-870-            role=Role.VIEWER,
+datara-backend/rebuild/api/app.py-871-            capability="legacy:i23:preview",
+--
+datara-backend/rebuild/api/app.py-972-            raise ValueError("missing bearer token")
+datara-backend/rebuild/api/app.py-973-        token = authorization[7:]
+datara-backend/rebuild/api/app.py-974-        if token not in active_tokens:
+datara-backend/rebuild/api/app.py-975-            raise ValueError("token revoked or unknown")
+datara-backend/rebuild/api/app.py:976:        claims = validation_token_service.verify(token)
+datara-backend/rebuild/api/app.py-977-        if claims.get("capability") != "legacy:i23:preview":
+datara-backend/rebuild/api/app.py-978-            raise PermissionError("I23 preview capability required")
+datara-backend/rebuild/api/app.py-979-        return claims
+datara-backend/rebuild/api/app.py-980-
+--
+datara-backend/tests/rebuild\test_governance_legacy_dry_run_api.py-48-    client = TestClient(app)
+datara-backend/tests/rebuild\test_governance_legacy_dry_run_api.py-49-    client.__enter__()
+datara-backend/tests/rebuild\test_governance_legacy_dry_run_api.py-50-    MigrationRunner(app.state.session_factory.kw["bind"], R3_GOVERNANCE_MIGRATIONS).apply()
+datara-backend/tests/rebuild\test_governance_legacy_dry_run_api.py-51-    token = client.post(
+datara-backend/tests/rebuild\test_governance_legacy_dry_run_api.py:52:        "/api/v1/rebuild/validation-token",
+datara-backend/tests/rebuild\test_governance_legacy_dry_run_api.py:53:        headers={"X-Backend-Validation-Key": "legacy-dry-run-api-key"},
+datara-backend/tests/rebuild\test_governance_legacy_dry_run_api.py-54-    ).json()["data"]["token"]
+datara-backend/tests/rebuild\test_governance_legacy_dry_run_api.py-55-    headers = {"Authorization": f"Bearer {token}"}
+datara-backend/tests/rebuild\test_governance_legacy_dry_run_api.py-56-    first = client.post("/api/v1/rebuild/projects", headers=headers, json={"name": "I18 target"})
+datara-backend/tests/rebuild\test_governance_legacy_dry_run_api.py-57-    second = client.post("/api/v1/rebuild/projects", headers=headers, json={"name": "I18 denied"})
+--
+datara-backend/tests/rebuild\test_identity_api.py-317-
+datara-backend/tests/rebuild\test_identity_api.py-318-def test_validation_bootstrap_is_disabled_when_no_runtime_key_is_configured():
+datara-backend/tests/rebuild\test_identity_api.py-319-    with TestClient(create_app("sqlite+pysqlite:///:memory:", token_secret="unit-test-secret")) as client:
+datara-backend/tests/rebuild\test_identity_api.py-320-        response = client.post(
+datara-backend/tests/rebuild\test_identity_api.py:321:            "/api/v1/rebuild/validation-token",
+datara-backend/tests/rebuild\test_identity_api.py:322:            headers={"X-Backend-Validation-Key": "unit-test-key"},
+datara-backend/tests/rebuild\test_identity_api.py-323-        )
+datara-backend/tests/rebuild\test_identity_api.py-324-
+datara-backend/tests/rebuild\test_identity_api.py-325-    assert response.status_code == 404
+datara-backend/tests/rebuild\test_identity_api.py-326-    assert response.json()["code"] == 4043
+--
+datara-backend/tests/rebuild\test_identity_api.py-334-            validation_key="unit-test-key",
+datara-backend/tests/rebuild\test_identity_api.py-335-        )
+datara-backend/tests/rebuild\test_identity_api.py-336-    ) as client:
+datara-backend/tests/rebuild\test_identity_api.py-337-        rejected = client.post(
+datara-backend/tests/rebuild\test_identity_api.py:338:            "/api/v1/rebuild/validation-token",
+datara-backend/tests/rebuild\test_identity_api.py:339:            headers={"X-Backend-Validation-Key": "wrong-key"},
+datara-backend/tests/rebuild\test_identity_api.py-340-        )
+datara-backend/tests/rebuild\test_identity_api.py-341-        issued = client.post(
+datara-backend/tests/rebuild\test_identity_api.py:342:            "/api/v1/rebuild/validation-token",
+datara-backend/tests/rebuild\test_identity_api.py:343:            headers={"X-Backend-Validation-Key": "unit-test-key"},
+datara-backend/tests/rebuild\test_identity_api.py-344-        )
+datara-backend/tests/rebuild\test_identity_api.py-345-        token = issued.json()["data"]["token"]
+datara-backend/tests/rebuild\test_identity_api.py-346-        claims = json.loads(base64.urlsafe_b64decode(token.split(".", 1)[0] + "=="))
+datara-backend/tests/rebuild\test_identity_api.py-347-        headers = {"Authorization": f"Bearer {token}"}
+--
+datara-backend/tests/rebuild\test_identity_api.py-371-            validation_key="unit-test-key",
+datara-backend/tests/rebuild\test_identity_api.py-372-        )
+datara-backend/tests/rebuild\test_identity_api.py-373-    ) as client:
+datara-backend/tests/rebuild\test_identity_api.py-374-        rejected = client.post(
+datara-backend/tests/rebuild\test_identity_api.py:375:            "/api/v1/rebuild/validation-token",
+datara-backend/tests/rebuild\test_identity_api.py-376-            headers={
+datara-backend/tests/rebuild\test_identity_api.py:377:                "X-Backend-Validation-Key": "wrong-key",
+datara-backend/tests/rebuild\test_identity_api.py:378:                "X-Backend-Validation-Scope": "high-priority-e2e",
+datara-backend/tests/rebuild\test_identity_api.py-379-            },
+datara-backend/tests/rebuild\test_identity_api.py-380-        )
+datara-backend/tests/rebuild\test_identity_api.py-381-        issued = client.post(
+datara-backend/tests/rebuild\test_identity_api.py:382:            "/api/v1/rebuild/validation-token",
+datara-backend/tests/rebuild\test_identity_api.py-383-            headers={
+datara-backend/tests/rebuild\test_identity_api.py:384:                "X-Backend-Validation-Key": "unit-test-key",
+datara-backend/tests/rebuild\test_identity_api.py:385:                "X-Backend-Validation-Scope": "high-priority-e2e",
+datara-backend/tests/rebuild\test_identity_api.py-386-            },
+datara-backend/tests/rebuild\test_identity_api.py-387-        )
+datara-backend/tests/rebuild\test_identity_api.py-388-        token = issued.json()["data"]["token"]
+datara-backend/tests/rebuild\test_identity_api.py-389-        claims = json.loads(base64.urlsafe_b64decode(token.split(".", 1)[0] + "=="))
+--
+datara-backend/tests/rebuild\test_identity_api.py-440-        with client.app.state.session_factory() as session:
+datara-backend/tests/rebuild\test_identity_api.py-441-            UserRepository(session).create(username="datasource-admin", password="admin-password", role=Role.ADMIN)
+datara-backend/tests/rebuild\test_identity_api.py-442-            session.commit()
+datara-backend/tests/rebuild\test_identity_api.py-443-        runner_token = client.post(
+datara-backend/tests/rebuild\test_identity_api.py:444:            "/api/v1/rebuild/validation-token",
+datara-backend/tests/rebuild\test_identity_api.py:445:            headers={"X-Backend-Validation-Key": "unit-test-key"},
+datara-backend/tests/rebuild\test_identity_api.py-446-        ).json()["data"]["token"]
+datara-backend/tests/rebuild\test_identity_api.py-447-        runner_denied = client.post(
+datara-backend/tests/rebuild\test_identity_api.py-448-            "/api/v1/rebuild/datasources/profiles/mysql-src/probe",
+datara-backend/tests/rebuild\test_identity_api.py-449-            headers={"Authorization": f"Bearer {runner_token}"},
+--
+datara-backend/tests/rebuild\test_governance_legacy_i23_preview_api.py-52-
+datara-backend/tests/rebuild\test_governance_legacy_i23_preview_api.py-53-def _issue_i23_capability(client):
+datara-backend/tests/rebuild\test_governance_legacy_i23_preview_api.py-54-    return client.post(
+datara-backend/tests/rebuild\test_governance_legacy_i23_preview_api.py-55-        "/api/v1/rebuild/validation-capabilities/legacy-i23-preview",
+datara-backend/tests/rebuild\test_governance_legacy_i23_preview_api.py:56:        headers={"X-Backend-Validation-Key": "i23-validation-key"},
+datara-backend/tests/rebuild\test_governance_legacy_i23_preview_api.py-57-    )
+datara-backend/tests/rebuild\test_governance_legacy_i23_preview_api.py-58-
+datara-backend/tests/rebuild\test_governance_legacy_i23_preview_api.py-59-
+datara-backend/tests/rebuild\test_governance_legacy_i23_preview_api.py-60-def test_i23_capability_is_endpoint_only_and_preview_is_read_only():
+--
+datara-backend/tests/rebuild\test_governance_legacy_i23_preview_api.py-122-def test_i23_preview_rejects_dev_token_before_reading_source():
+datara-backend/tests/rebuild\test_governance_legacy_i23_preview_api.py-123-    client, _app, reader = _client()
+datara-backend/tests/rebuild\test_governance_legacy_i23_preview_api.py-124-    try:
+datara-backend/tests/rebuild\test_governance_legacy_i23_preview_api.py-125-        ordinary = client.post(
+datara-backend/tests/rebuild\test_governance_legacy_i23_preview_api.py:126:            "/api/v1/rebuild/validation-token",
+datara-backend/tests/rebuild\test_governance_legacy_i23_preview_api.py:127:            headers={"X-Backend-Validation-Key": "i23-validation-key"},
+datara-backend/tests/rebuild\test_governance_legacy_i23_preview_api.py-128-        )
+datara-backend/tests/rebuild\test_governance_legacy_i23_preview_api.py-129-        token = ordinary.json()["data"]["token"]
+datara-backend/tests/rebuild\test_governance_legacy_i23_preview_api.py-130-        response = client.post(
+datara-backend/tests/rebuild\test_governance_legacy_i23_preview_api.py-131-            "/api/v1/rebuild/governance/legacy/i23/identity-preview",
+--
+datara-backend/tests/rebuild\test_governance_legacy_i23_preview_api.py-189-    client, _app, reader = _client(validation_key="")
+datara-backend/tests/rebuild\test_governance_legacy_i23_preview_api.py-190-    try:
+datara-backend/tests/rebuild\test_governance_legacy_i23_preview_api.py-191-        response = client.post(
+datara-backend/tests/rebuild\test_governance_legacy_i23_preview_api.py-192-            "/api/v1/rebuild/validation-capabilities/legacy-i23-preview",
+datara-backend/tests/rebuild\test_governance_legacy_i23_preview_api.py:193:            headers={"X-Backend-Validation-Key": "anything"},
+datara-backend/tests/rebuild\test_governance_legacy_i23_preview_api.py-194-        )
+datara-backend/tests/rebuild\test_governance_legacy_i23_preview_api.py-195-    finally:
+datara-backend/tests/rebuild\test_governance_legacy_i23_preview_api.py-196-        client.__exit__(None, None, None)
+datara-backend/tests/rebuild\test_governance_legacy_i23_preview_api.py-197-
+--
+datara-backend/tests/rebuild\test_governance_legacy_i23_preview_api.py-204-    client, _app, reader = _client()
+datara-backend/tests/rebuild\test_governance_legacy_i23_preview_api.py-205-    try:
+datara-backend/tests/rebuild\test_governance_legacy_i23_preview_api.py-206-        response = client.post(
+datara-backend/tests/rebuild\test_governance_legacy_i23_preview_api.py-207-            "/api/v1/rebuild/validation-capabilities/legacy-i23-preview",
+datara-backend/tests/rebuild\test_governance_legacy_i23_preview_api.py:208:            headers={"X-Backend-Validation-Key": "wrong-key"},
+datara-backend/tests/rebuild\test_governance_legacy_i23_preview_api.py-209-        )
+datara-backend/tests/rebuild\test_governance_legacy_i23_preview_api.py-210-    finally:
+datara-backend/tests/rebuild\test_governance_legacy_i23_preview_api.py-211-        client.__exit__(None, None, None)
+datara-backend/tests/rebuild\test_governance_legacy_i23_preview_api.py-212-
+--
+datara-backend/tests/rebuild\test_r2_13_readonly_runner.py-11-
+datara-backend/tests/rebuild\test_r2_13_readonly_runner.py-12-def test_read_only_response_policy_allows_token_bootstrap_and_gets() -> None:
+datara-backend/tests/rebuild\test_r2_13_readonly_runner.py-13-    assert_read_only_responses(
+datara-backend/tests/rebuild\test_r2_13_readonly_runner.py-14-        [
+datara-backend/tests/rebuild\test_r2_13_readonly_runner.py:15:            {"method": "POST", "path": "/api/v1/rebuild/validation-token", "status": 200},
+datara-backend/tests/rebuild\test_r2_13_readonly_runner.py-16-            {"method": "GET", "path": "/api/v1/rebuild/projects", "status": 200},
+datara-backend/tests/rebuild\test_r2_13_readonly_runner.py-17-            {"method": "GET", "path": "/api/v1/rebuild/governance/projects/8/assets", "status": 200},
+datara-backend/tests/rebuild\test_r2_13_readonly_runner.py-18-        ]
+datara-backend/tests/rebuild\test_r2_13_readonly_runner.py-19-    )

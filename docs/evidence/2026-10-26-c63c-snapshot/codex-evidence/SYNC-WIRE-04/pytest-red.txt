@@ -1,0 +1,56 @@
+F                                                                        [100%]
+================================== FAILURES ===================================
+_ test_trial_api_uses_runtime_datasource_adapter_and_records_success_and_failure _
+
+    def test_trial_api_uses_runtime_datasource_adapter_and_records_success_and_failure():
+        engine = create_engine(
+            "sqlite+pysqlite:///:memory:",
+            connect_args={"check_same_thread": False},
+            poolclass=StaticPool,
+        )
+        Base.metadata.create_all(engine)
+        sessions = sessionmaker(bind=engine)
+        source = sqlite3.connect(":memory:", check_same_thread=False)
+        target = sqlite3.connect(":memory:", check_same_thread=False)
+        source.execute("CREATE TABLE orders (id INTEGER NOT NULL)")
+        source.executemany("INSERT INTO orders (id) VALUES (?)", [(1,), (2,)])
+        source.commit()
+        target.execute("CREATE TABLE orders_copy (user_id INTEGER NOT NULL)")
+        target.commit()
+    
+        class TokenService:
+            def verify(self, _token):
+                return {"user_id": 7}
+    
+        class NonClosingConnection:
+            def __init__(self, connection):
+                self._connection = connection
+    
+            def __getattr__(self, name):
+                return getattr(self._connection, name)
+    
+            def close(self):
+                pass
+    
+        connections = {11: source, 12: target}
+    
+        def connector_factory(_project_id, datasource_id):
+            return lambda _draft: NonClosingConnection(connections[datasource_id])
+    
+        app = FastAPI()
+        app.include_router(
+>           build_trial_router(
+                sessions,
+                TokenService(),
+                {"test-token"},
+                lambda *_args: None,
+                connector_factory,
+            ),
+            prefix="/api/v1/rebuild/trial",
+        )
+E       TypeError: build_trial_router() takes 4 positional arguments but 5 were given
+
+tests\rebuild\test_trial_runner.py:255: TypeError
+=========================== short test summary info ===========================
+FAILED tests/rebuild/test_trial_runner.py::test_trial_api_uses_runtime_datasource_adapter_and_records_success_and_failure
+1 failed, 13 deselected in 0.94s

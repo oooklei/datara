@@ -1,0 +1,14 @@
+# SYNC-RUN-03
+- Scope: `rebuild/trial/runner.py`, `tests/rebuild/test_trial_runner.py` only.
+- RED baseline: 11 passed, 1 failed; SYNC runtime output lacked success/failed metrics.
+- RED companion contract: endpoint/field-map/condition graph failed real execution.
+- Root cause: materialized SYNC node fell through generic no-op execution; declarative nodes stayed executable; preflight failures lacked an attempt.
+- Fix: collapse endpoint/mapping/condition nodes into one deterministic runtime node and rewire graph boundaries.
+- Fix: normalize `fieldMap` and `condition_set.filterExpr` into the persisted SYNC snapshot.
+- Fix: invoke `execute_sync_attempt` through the injected runtime driver and retain its metrics/output/lineage path.
+- Fix: create a failed attempt for preflight errors so workflow statistics remain writable.
+- GREEN: `test_trial_runner.py` = 13 passed.
+- GREEN related: sync bridge + materializer + trial extensions = 18 passed.
+- Static: Ruff passed; `git diff --check` passed.
+- Deployment/E2E: not run; no 192.168.1.9 deployment or token lifecycle was needed for this local backend ticket.
+- Commit: none.

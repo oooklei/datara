@@ -133,8 +133,8 @@ afterEach(() => {
   vi.unstubAllGlobals()
 })
 
-function dispatch(type: string, payload: unknown): void {
-  for (const cb of listeners[type] ?? []) cb({ data: JSON.stringify(payload) })
+async function dispatch(type: string, payload: unknown): Promise<void> {
+  await Promise.all((listeners[type] ?? []).map((cb) => cb({ data: JSON.stringify(payload) })))
 }
 
 describe('/ide 数据开发 IDE 只读态（增量 11/R5-A）', () => {
@@ -143,10 +143,10 @@ describe('/ide 数据开发 IDE 只读态（增量 11/R5-A）', () => {
     expect(ideSource).toContain('var(--')
   })
 
-  it('renders project picker and skips the query when no project is in context', async () => {
+  it('uses only the global workspace picker and skips the query when no project is in context', async () => {
     const w = mount(View)
     await flushPromises()
-    expect(w.find('[data-project-select]').exists()).toBe(true)
+    expect(w.find('[data-project-select]').exists()).toBe(false)
     expect(w.find('[data-variable-manage]').attributes('disabled')).toBeDefined()
     expect(w.find('[data-no-project]').exists()).toBe(true)
     expect(w.find('[data-object-panel]').exists()).toBe(false)
@@ -158,7 +158,7 @@ describe('/ide 数据开发 IDE 只读态（增量 11/R5-A）', () => {
     const w = mount(View, {
       global: {
         stubs: {
-          VariableManagementDialog: {
+          GlobalParamDrawer: {
             props: ['modelValue', 'projectId'],
             emits: ['update:modelValue'],
             template: '<div v-if="modelValue" data-variable-management-dialog-stub :data-project-id="projectId"><button data-close-variable-management @click="$emit(\'update:modelValue\', false)">关闭</button></div>',
@@ -208,7 +208,7 @@ describe('/ide 数据开发 IDE 只读态（增量 11/R5-A）', () => {
     const w = mount(View, { props: { projectId: 1 } })
     await flushPromises()
     expect(spies.listDatasources).toHaveBeenCalledTimes(1)
-    expect((w.find('[data-project-select]').element as HTMLSelectElement).value).toBe('1')
+    expect(w.find('[data-project-select]').exists()).toBe(false)
     expect(w.find('[data-no-datasource]').exists()).toBe(true)
   })
 
@@ -257,7 +257,56 @@ describe('/ide 数据开发 IDE 只读态（增量 11/R5-A）', () => {
     dispatch('done', { status: 'succeeded', elapsedMs: 9, historyId: 55, stmtCount: 1 })
     await flushPromises()
     expect(w.find('[data-status]').text()).toContain('执行成功')
+    expect(w.find('[data-result-grid]').exists()).toBe(true)
     expect(spies.listHistory).toHaveBeenCalledWith(7)
+  })
+
+  it('loads the first result page when the backend emits only a snake_case done event', async () => {
+    router.route.params.projectId = '1'
+    const w = mount(View)
+    await flushPromises()
+    await w.find('[data-ds-select]').setValue('7')
+    await flushPromises()
+    await w.find('[data-sql-editor]').setValue('SELECT 1 AS ok')
+    await w.find('[data-execute]').trigger('click')
+    await flushPromises()
+
+    await dispatch('done', {
+      status: 'succeeded',
+      history_id: 'history-1',
+      result_set_id: 'rs1',
+      elapsed_ms: 9,
+      stmt_count: 1,
+    })
+    await flushPromises()
+
+    expect(spies.fetchResultPage).toHaveBeenCalledWith('history-1', 'rs1', 0, 50)
+    expect((w.vm as unknown as { resultColumns?: string[] }).resultColumns).toEqual(['id'])
+    expect((w.vm as unknown as { executing?: boolean }).executing).toBe(false)
+  })
+
+  it('renders an inline result returned by the synchronous execution adapter', async () => {
+    spies.fetchResultPage.mockResolvedValueOnce({
+      stmtIndex: 0, resultSetId: 'rs-inline', columns: ['ok'], rows: [[1]], rowsTotal: 1, offset: 0, limit: 50,
+    })
+    spies.executeSql.mockResolvedValueOnce({
+      taskId: 'task-inline',
+      historyId: 'history-inline',
+      resultSetId: 'rs-inline',
+      columns: ['ok'],
+      rows: [[1]],
+      totalRows: 1,
+    })
+    router.route.params.projectId = '1'
+    const w = mount(View)
+    await flushPromises()
+    await w.find('[data-ds-select]').setValue('7')
+    await w.find('[data-sql-editor]').setValue('SELECT 1 AS ok')
+    await w.find('[data-execute]').trigger('click')
+    await flushPromises()
+
+    expect(w.find('[data-result-grid]').exists()).toBe(true)
+    expect(w.find('[data-result-grid]').text()).toContain('ok')
   })
 
   it('enables the next result page when the first SSE batch is partial', async () => {

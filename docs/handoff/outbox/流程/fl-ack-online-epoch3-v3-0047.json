@@ -1,0 +1,17 @@
+{
+  "face_type": "flow-online-ack",
+  "epoch": 3,
+  "lifecycle": "RUNNING",
+  "ts": "2026-10-22T18:19:30+08:00",
+  "event_id": "v3-0047-flow-online-ack",
+  "watermark_read": "v3-0046-outbox-reports-admitted-batch-7",
+  "event_stream_authority": "D:/super-develop/runtime/datara-live/events/2026-10-22-restart.jsonl (46 lines, tail v3-0046)",
+  "single_instance_check": {
+    "ruling": "EXC-v4-03 user direct ruling 2026-10-22T17:55+08:00",
+    "method": "no other active Flow heartbeat found: last flow event v3-0046 at 16:03:12, last flow outbox file 15:41, now 18:18:29 — over 2h quiet, no concurrent writer",
+    "conclusion": "this session proceeds as the sole Flow instance"
+  },
+  "outbox_sweep": "1 pending file: docs/handoff/outbox/集成/INT-PATROL-2026-10-22-v3-0045.md (16:04:06); content idempotent vs current projection, to be admitted as v3-0048 batch-8",
+  "dispatch_review": "IMPLEMENTATION ready=0, DISPATCH ready=0; REMOTE_TEST RT-IMPL-V4-03-C-GROUP READY serial behind LEASE-IMPL-V4-01-A-GROUP (lease_until 20:00:00+08:00), lease receipt owned by Integration — no Flow dispatch action available",
+  "next": "admit v3-0047/v3-0048, advance watermark to v3-0048, then standby heartbeat"
+}

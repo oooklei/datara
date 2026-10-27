@@ -1,0 +1,2 @@
+PASS: git diff --check (tracked scoped files)
+PASS: git diff --no-index --check (new sync_runtime.py)

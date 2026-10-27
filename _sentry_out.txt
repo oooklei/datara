@@ -1,0 +1,12 @@
+NOW=2026-10-24T04:13:36+08:00
+EV_LINES=87
+WATERMARK=v3-0087-heartbeat-anomaly-escalation
+LIFECYCLE=RUNNING ACCEPTING=True
+SN_WM=v3-0087-heartbeat-anomaly-escalation CONC=
+FLOW_HB=10/24/2026 04:05:00 state=BATCH17-ADMITTED watermark v3-0087 heartbeat-anomaly-escalation non-flow-roles-silent-25h deadlock-disclosed 1.9-reachable
+HB[集成] @{timestamp=2026-10-23T02:53+08:00; state=INT:ACTIVE:RT08-DEFERRED}.timestamp silent_h=25.3
+HB[验收] @{timestamp=10/23/2026 02:46:30; state=STANDBY_SENTINEL_DELTA_v3-0074_NO_PENDING}.timestamp silent_h=25.5
+HB[claude] @{timestamp=10/23/2026 03:06:57; state=EXEC-1:PAUSED:SENTINEL-NC}.timestamp silent_h=25.1
+HB[任务] @{timestamp=10/23/2026 02:53:00; state=ROUND19_STANDBY v3-0080}.timestamp silent_h=25.3
+HB[裁定] @{timestamp=2026-10-23T05:00+08:00; state=哨兵:水位v3-0074,裁定已获Flow采信(v3-0071),无新候裁,待命}.timestamp silent_h=23.2
+HB[监督] @{timestamp=2026-10-23T03:10+08:00; state=双线并行发布+trae异常+15派单:v3-0080}.timestamp silent_h=25.1

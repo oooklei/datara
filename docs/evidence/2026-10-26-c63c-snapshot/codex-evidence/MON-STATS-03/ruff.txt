@@ -1,0 +1,21 @@
+rebuild\metrics\repository.py:78:121: E501 Line too long (146 > 120)
+rebuild\metrics\repository.py:135:121: E501 Line too long (149 > 120)
+rebuild\metrics\repository.py:140:121: E501 Line too long (124 > 120)
+rebuild\metrics\repository.py:158:121: E501 Line too long (148 > 120)
+rebuild\metrics\repository.py:163:121: E501 Line too long (122 > 120)
+rebuild\metrics\repository.py:165:121: E501 Line too long (129 > 120)
+rebuild\metrics\repository.py:179:121: E501 Line too long (148 > 120)
+rebuild\metrics\repository.py:184:121: E501 Line too long (124 > 120)
+rebuild\metrics\repository.py:201:121: E501 Line too long (143 > 120)
+rebuild\metrics\repository.py:204:121: E501 Line too long (124 > 120)
+rebuild\trial\output.py:20:5: F401 [*] `rebuild.execution.models.RunOutputRecord` imported but unused
+tests\rebuild\test_r7_metrics_api.py:65:121: E501 Line too long (124 > 120)
+tests\rebuild\test_trial_output.py:8:8: F401 [*] `pytest` imported but unused
+tests\rebuild\test_trial_output.py:14:5: F401 [*] `rebuild.execution.models.ExecutionEventRecord` imported but unused
+tests\rebuild\test_trial_output.py:15:5: F401 [*] `rebuild.execution.models.RunLogRecord` imported but unused
+tests\rebuild\test_trial_output.py:16:5: F401 [*] `rebuild.execution.models.TaskInstanceRecord` imported but unused
+tests\rebuild\test_trial_output.py:17:5: F401 [*] `rebuild.execution.models.WorkflowInstanceRecord` imported but unused
+tests\rebuild\test_trial_output.py:19:63: F401 [*] `rebuild.execution.repository.RESULT_STAT_EVENT_KIND` imported but unused
+tests\rebuild\test_trial_output.py:23:38: F401 [*] `rebuild.variables.models.TaskInstanceVariableRuntimeRecord` imported but unused
+Found 19 errors.
+[*] 8 fixable with the `--fix` option.

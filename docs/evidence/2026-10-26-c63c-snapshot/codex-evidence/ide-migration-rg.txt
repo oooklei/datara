@@ -1,0 +1,49 @@
+datara-backend/rebuild/sql_ide/migrations.py-60-    finished_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+datara-backend/rebuild/sql_ide/migrations.py-61-    last_error: Mapped[str] = mapped_column(String(256), nullable=False, default="")
+datara-backend/rebuild/sql_ide/migrations.py-62-
+datara-backend/rebuild/sql_ide/migrations.py-63-
+datara-backend/rebuild/sql_ide/migrations.py:64:class SqlIdeMigrationRunner:
+datara-backend/rebuild/sql_ide/migrations.py-65-    def __init__(self, engine: Engine, migrations: tuple[SqlIdeMigration, ...] | list[SqlIdeMigration]):
+datara-backend/rebuild/sql_ide/migrations.py-66-        self.engine = engine
+datara-backend/rebuild/sql_ide/migrations.py-67-        self.migrations = tuple(migrations)
+datara-backend/rebuild/sql_ide/migrations.py-68-        revisions = [migration.revision for migration in self.migrations]
+--
+datara-backend/rebuild/sql_ide/migrations.py-183-_DDL_MANIFEST = (
+datara-backend/rebuild/sql_ide/migrations.py-184-    "sql_ide_0001_snapshots_and_exports v1: sql_ide_result_sets,sql_ide_export_job_handles,"
+datara-backend/rebuild/sql_ide/migrations.py-185-    "sql_ide_export_jobs,sql_ide_export_audit; result snapshot 24h; export job 1h"
+datara-backend/rebuild/sql_ide/migrations.py-186-)
+datara-backend/rebuild/sql_ide/migrations.py:187:SQL_IDE_MIGRATIONS = (
+datara-backend/rebuild/sql_ide/migrations.py-188-    SqlIdeMigration(
+datara-backend/rebuild/sql_ide/migrations.py-189-        revision="sql_ide_0001_snapshots_and_exports",
+datara-backend/rebuild/sql_ide/migrations.py-190-        checksum=hashlib.sha256(_DDL_MANIFEST.encode("utf-8")).hexdigest(),
+datara-backend/rebuild/sql_ide/migrations.py-191-        upgrade=_upgrade_snapshots,
+--
+datara-backend/rebuild/sql_ide/migrations.py-220-        upgrade=_upgrade_execution_status,
+datara-backend/rebuild/sql_ide/migrations.py-221-    ),
+datara-backend/rebuild/sql_ide/migrations.py-222-)
+datara-backend/rebuild/sql_ide/migrations.py-223-SQL_IDE_ALL_MIGRATIONS = (
+datara-backend/rebuild/sql_ide/migrations.py:224:    SQL_IDE_MIGRATIONS
+datara-backend/rebuild/sql_ide/migrations.py-225-    + SQL_IDE_EVENT_MIGRATIONS
+datara-backend/rebuild/sql_ide/migrations.py-226-    + SQL_IDE_HISTORY_MIGRATIONS
+datara-backend/rebuild/sql_ide/migrations.py-227-    + SQL_IDE_STATUS_MIGRATIONS
+datara-backend/rebuild/sql_ide/migrations.py-228-)
+--
+datara-backend/rebuild/api/app.py-30-from rebuild.sql_ide.export_service import SqlIdeExportAuditRecord, SqlIdeExportJobRecord, SqlIdeExportService
+datara-backend/rebuild/api/app.py-31-from rebuild.sql_ide.execution import build_execution_port
+datara-backend/rebuild/api/app.py-32-from rebuild.sql_ide.history_store import SqlIdeHistoryStore
+datara-backend/rebuild/api/app.py-33-from rebuild.sql_ide.linter import lint_sql
+datara-backend/rebuild/api/app.py:34:from rebuild.sql_ide.migrations import SQL_IDE_MIGRATIONS, SqlIdeMigrationRunner
+datara-backend/rebuild/api/app.py-35-from rebuild.identity.migrations import apply_identity_migrations
+datara-backend/rebuild/api/app.py-36-from rebuild.execution.migrations import apply_execution_migrations
+datara-backend/rebuild/api/app.py-37-from rebuild.sql_ide.routes import SqlIdeRouteError, build_sql_ide_router
+datara-backend/rebuild/api/app.py-38-from rebuild.sql_ide.result_store import SqlIdeResultSetRecord
+--
+datara-backend/rebuild/api/app.py-415-            ],
+datara-backend/rebuild/api/app.py-416-        )
+datara-backend/rebuild/api/app.py-417-        apply_component_spec_migrations(engine)
+datara-backend/rebuild/api/app.py-418-        apply_identity_migrations(engine)
+datara-backend/rebuild/api/app.py:419:        SqlIdeMigrationRunner(engine, SQL_IDE_MIGRATIONS).apply()
+datara-backend/rebuild/api/app.py-420-        apply_llm_migrations(engine)
+datara-backend/rebuild/api/app.py-421-        apply_apikey_migrations(engine)
+datara-backend/rebuild/api/app.py-422-        apply_openapi_admin_migrations(engine)
+datara-backend/rebuild/api/app.py-423-        apply_workflow_migrations(engine)

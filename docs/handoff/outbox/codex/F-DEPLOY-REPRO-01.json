@@ -1,0 +1,10 @@
+{
+  "id": "F-DEPLOY-REPRO-01",
+  "ts": "2026-10-27T12:29:23+08:00",
+  "from": "codex",
+  "to": "flow",
+  "type": "completion",
+  "ref": ".codex-evidence/F-DEPLOY-REPRO-01/summary.md",
+  "body": "前端部署链已收敛为 Node 24.15.0 多阶段可重复构建，锁文件、dockerignore、健康检查及契约测试落地；1.9 从不含 dist 的源码成功构建并切换 18091，健康与真实浏览器冒烟 PASS。",
+  "status": "done"
+}

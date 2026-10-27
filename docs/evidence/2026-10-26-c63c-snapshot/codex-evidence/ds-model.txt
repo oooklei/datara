@@ -1,0 +1,49 @@
+datara-backend/rebuild\api\app.py-128-    username: str
+datara-backend/rebuild\api\app.py-129-    password: str
+datara-backend/rebuild\api\app.py-130-
+datara-backend/rebuild\api\app.py-131-
+datara-backend/rebuild\api\app.py:132:class ProjectRequest(BaseModel):
+datara-backend/rebuild\api\app.py-133-    name: str
+datara-backend/rebuild\api\app.py-134-    description: str = ""
+datara-backend/rebuild\api\app.py-135-
+datara-backend/rebuild\api\app.py-136-
+datara-backend/rebuild\api\app.py:137:class DataSourceRequest(BaseModel):
+datara-backend/rebuild\api\app.py-138-    name: str
+datara-backend/rebuild\api\app.py-139-    kind: str
+datara-backend/rebuild\api\app.py-140-    host: str
+datara-backend/rebuild\api\app.py-141-    port: int
+--
+datara-backend/rebuild\datasource\contracts.py-7-import pymysql
+datara-backend/rebuild\datasource\contracts.py-8-
+datara-backend/rebuild\datasource\contracts.py-9-
+datara-backend/rebuild\datasource\contracts.py-10-@dataclass(frozen=True)
+datara-backend/rebuild\datasource\contracts.py:11:class DataSourceDraft:
+datara-backend/rebuild\datasource\contracts.py-12-    name: str
+datara-backend/rebuild\datasource\contracts.py-13-    kind: str
+datara-backend/rebuild\datasource\contracts.py-14-    host: str
+datara-backend/rebuild\datasource\contracts.py-15-    port: int
+--
+datara-backend\rebuild\api\app.py-128-    username: str
+datara-backend\rebuild\api\app.py-129-    password: str
+datara-backend\rebuild\api\app.py-130-
+datara-backend\rebuild\api\app.py-131-
+datara-backend\rebuild\api\app.py:132:class ProjectRequest(BaseModel):
+datara-backend\rebuild\api\app.py-133-    name: str
+datara-backend\rebuild\api\app.py-134-    description: str = ""
+datara-backend\rebuild\api\app.py-135-
+datara-backend\rebuild\api\app.py-136-
+datara-backend\rebuild\api\app.py:137:class DataSourceRequest(BaseModel):
+datara-backend\rebuild\api\app.py-138-    name: str
+datara-backend\rebuild\api\app.py-139-    kind: str
+datara-backend\rebuild\api\app.py-140-    host: str
+datara-backend\rebuild\api\app.py-141-    port: int
+--
+datara-backend\rebuild\datasource\contracts.py-7-import pymysql
+datara-backend\rebuild\datasource\contracts.py-8-
+datara-backend\rebuild\datasource\contracts.py-9-
+datara-backend\rebuild\datasource\contracts.py-10-@dataclass(frozen=True)
+datara-backend\rebuild\datasource\contracts.py:11:class DataSourceDraft:
+datara-backend\rebuild\datasource\contracts.py-12-    name: str
+datara-backend\rebuild\datasource\contracts.py-13-    kind: str
+datara-backend\rebuild\datasource\contracts.py-14-    host: str
+datara-backend\rebuild\datasource\contracts.py-15-    port: int

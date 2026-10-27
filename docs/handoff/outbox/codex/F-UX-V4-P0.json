@@ -1,0 +1,10 @@
+{
+  "id": "F-UX-V4-P0",
+  "ts": "2026-10-27T20:21:54.5656748+08:00",
+  "from": "codex",
+  "to": "flow",
+  "type": "implementation_receipt",
+  "ref": "docs/increments/2026-10-27-前端UX-v4真实功能闭环目标.md",
+  "body": "完成 UX v3 融合后的 P0 真实闭环：默认电商项目、HttpOnly 会话刷新恢复、AppShell 恢复、SQL IDE 真 SSE/分页结果、运行监控 tab 路由。前端全量 110 files/920 tests，vue-tsc EXIT=0；后端目标 31 tests；192.168.1.9 E2E PASS，SQL SELECT 1 返回 1 行，console/HTTP failures=0。部署镜像 datara-newweb:ux-v4-p0-final-20261027 与 datara-backend:ux-v4-p0-final-20261027。下一票按部署版核查报告和用户裁定实施全局唯一项目入口、旧版数据源/SQL IDE 操作逻辑适配、仅保留电商数据全域治理项目。",
+  "status": "done"
+}

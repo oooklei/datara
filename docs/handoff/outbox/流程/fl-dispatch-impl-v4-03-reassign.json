@@ -1,0 +1,39 @@
+{
+  "schema_version": "3.0",
+  "ticket": "IMPL-v4-03",
+  "epoch": 3,
+  "issued_by": "Flow",
+  "issued_at": "2026-10-24T03:34:00+08:00",
+  "event_ref": "v3-0081-dispatch-reassigned-impl-v4-03",
+  "assigned_to": "claude (EXEC-3)",
+  "reassigned_from": "trae",
+  "state_transition": "ASSIGNED->ASSIGNED（重派，票面 v1.1 零变更）",
+  "serialization": "first_ack_wins；trae 不得再触 03 路径",
+  "title": "C 组测试基建：datara-newweb/e2e + playwright.config.ts + datara-l12-e2e（含 sshNode/qc 两用例件）",
+  "domain": "VALIDATION",
+  "base_priority": "P2",
+  "effective_priority": "P2",
+  "priority_basis": "验收链补全（决策卡 C 组）；e2e 用例件为 RT-02a/RT-07 串行窗口前置",
+  "priority_override": null,
+  "depends_on": ["DEC-v4-D02"],
+  "depends_satisfied": "v3-0006（D02 已裁定）",
+  "reassign_reason": "trae 静默 >11h（A1 升级，Ops v3-0080 exception-triage）；窗口前无 ACK，沿用 R3/R4 重派口径；票面 v1.1（v3-0073）零变更，仅执行席 trae→claude(EXEC-3)",
+  "acceptance": [
+    "1.9 e2e 可运行并纳入验收链；npx tsc --noEmit -p tsconfig.node.json 通过",
+    "e2e/sshNode.spec.ts、e2e/qc.spec.ts 两纯测试件实存（先于 RT-02a/RT-07 窗口）",
+    "1.9 实跑经 Integration 租约出具权威证据；本机结果 DIAGNOSTIC_ONLY_NOT_PASS_EVIDENCE"
+  ],
+  "evidence_requirements": "本地静态校验 + 1.9 e2e 实跑证据（绑定租约/制品 commit/命令/时间戳/退出码/日志/执行者）",
+  "paths": [
+    "datara-newweb/e2e/",
+    "datara-newweb/playwright.config.ts",
+    "datara-newweb/tsconfig.node.json",
+    "datara-l12-e2e/",
+    "datara-newweb/e2e/sshNode.spec.ts（纯测试件）",
+    "datara-newweb/e2e/qc.spec.ts（纯测试件）"
+  ],
+  "boundaries": "每线 WIP=1；不写 STATE/mailbox/队列投影（Flow 单写）；不 commit、不 push（push=USER_ONLY）；AOCI 停用；远测经 Integration 租约于 1.9 执行",
+  "completion_chain": "EVIDENCE_READY → ENV_VERIFIED（1.9 e2e 租约）→ PASS → Flow 集成窗提交 → RELEASED/DONE",
+  "face_version": "v1.1",
+  "wip_note": "EXEC-3 本地 WIP：03（重派接手）→ 15（对账段）串行"
+}

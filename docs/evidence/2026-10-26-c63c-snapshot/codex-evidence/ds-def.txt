@@ -1,0 +1,39 @@
+468-    )
+469-    app.state.audit_writer = build_audit_writer(session_factory=session_factory)
+470-
+471:    def pooled_connector(project_id: int, datasource_id: int):
+472-        return lambda draft: datasource_engines.connect(project_id, datasource_id, draft)
+473-
+474-    def sql_ide_authenticate(token: str, authorization: str) -> dict[str, object]:
+--
+491-        history = SqlIdeHistoryStore(session_factory=session_factory)
+492-        status_store = SqlIdeStatusStore(session_factory=session_factory)
+493-        result_store = PersistentResultPageStore(session_factory=session_factory)
+494:        def read_table_for_export(*, project_id: int, datasource_id: int, object_ref: dict, row_limit: int, **_: object):
+495-            schema = str(object_ref.get("schema", object_ref.get("database", "")))
+496-            table = str(object_ref.get("object", object_ref.get("name", object_ref.get("table", ""))))
+497-            if not schema or not table or not _safe_identifier(schema) or not _safe_identifier(table):
+--
+930-            return JSONResponse(status_code=403, content={"code": 1003, "msg": "permission denied", "data": None})
+931-        return None
+932-
+933:    def rb_project_authorize(datasource_id: int, user: dict[str, object]):
+934-        """Resolve the RB API's datasource selector to its owning project before authorization."""
+935-        with session_factory() as session:
+936-            datasource = session.get(ProjectDatasourceRecord, datasource_id)
+--
+942-        with session_factory() as session:
+943-            return project_permission_error(session, project_id, user, Permission.VIEW_ALL)
+944-
+945:    def datasource_payload(record: ProjectDatasourceRecord) -> dict[str, object]:
+946-        return {
+947-            "id": record.id,
+948-            "project_id": record.project_id,
+--
+956-            "updated_at": record.updated_at.isoformat(),
+957-        }
+958-
+959:    def datasource_draft(record: ProjectDatasourceRecord) -> DataSourceDraft:
+960-        return DataSourceDraft(
+961-            name=record.name,
+962-            kind=record.kind,

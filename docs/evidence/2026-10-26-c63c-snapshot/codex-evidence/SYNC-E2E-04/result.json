@@ -1,0 +1,153 @@
+{
+  "ticket": "SYNC-E2E-04",
+  "api_base": "http://172.31.0.8:8001",
+  "token_persisted": false,
+  "direct_actual_sql_write": false,
+  "legacy_redis_api_used": false,
+  "token_issue_http": 200,
+  "project": {
+    "id": 32,
+    "created": false
+  },
+  "datasources": {
+    "source": {
+      "id": 18,
+      "created": false,
+      "test": {
+        "connected": true,
+        "database": "ec_retail",
+        "server_version": "8.0.46",
+        "capabilities": [
+          "cross_schema",
+          "metadata",
+          "query"
+        ]
+      }
+    },
+    "target": {
+      "id": 19,
+      "created": false,
+      "test": {
+        "connected": true,
+        "database": "datara_dw",
+        "server_version": "8.0.46",
+        "capabilities": [
+          "cross_schema",
+          "metadata",
+          "query"
+        ]
+      }
+    }
+  },
+  "workflow": {
+    "id": 30,
+    "created": false,
+    "type": "SYNC",
+    "node_types": [
+      "endpoint_select",
+      "field_map",
+      "condition_set"
+    ],
+    "edge_count": 2
+  },
+  "component_versions": {
+    "endpoint_select": 1,
+    "field_map": 1,
+    "condition_set": 1
+  },
+  "snapshot_id": 12,
+  "instance_id": 10,
+  "trial": {
+    "instance_id": 10,
+    "status": "FAILED",
+    "task_count": 1,
+    "tasks": [
+      {
+        "task_instance_id": 45,
+        "task_id": "sys_exec_endpoint",
+        "node_code": "sys_exec_endpoint",
+        "status": "FAILED"
+      }
+    ],
+    "plan": null
+  },
+  "trial_detail": {
+    "logs": [
+      {
+        "task_id": 45,
+        "task_code": "sys_exec_endpoint",
+        "logs": [
+          {
+            "attempt_no": 1,
+            "level": "ERROR",
+            "message": "(pymysql.err.OperationalError) (1054, \"Unknown column 'project_id' in 'field list'\")\n[SQL: INSERT INTO lineage_writeback (project_id, run_id, run_kind, source_entity, target_entity, writeback_at) VALUES (%(project_id)s, %(run_id)s, %(run_kind)s, %(source_entity)s, %(target_entity)s, CURRENT_TIMESTAMP)]\n[parameters: {'project_id': 32, 'run_id': '10:45:1', 'run_kind': 'sync', 'source_entity': '18:ec_retail.fixture_order_detail_source', 'target_entity': '19:datara_dw.fixture_order_detail_actual'}]\n(Background on this error at: https://sqlalche.me/e/21/e3q8)"
+          },
+          {
+            "attempt_no": 1,
+            "level": "ERROR",
+            "message": "(pymysql.err.OperationalError) (1054, \"Unknown column 'project_id' in 'field list'\")\n[SQL: INSERT INTO lineage_writeback (project_id, run_id, run_kind, source_entity, target_entity, writeback_at) VALUES (%(project_id)s, %(run_id)s, %(run_kind)s, %(source_entity)s, %(target_entity)s, CURRENT_TIMESTAMP)]\n[parameters: {'project_id': 32, 'run_id': '10:45:1', 'run_kind': 'sync', 'source_entity': '18:ec_retail.fixture_order_detail_source', 'target_entity': '19:datara_dw.fixture_order_detail_actual'}]\n(Background on this error at: https://sqlalche.me/e/21/e3q8)"
+          }
+        ]
+      }
+    ],
+    "variables": [],
+    "stats": {
+      "success_count": 0,
+      "failed_count": 1,
+      "skipped_count": 0
+    },
+    "found": true,
+    "instance_type": "TRIAL",
+    "status": "FAILED"
+  },
+  "attempts": {
+    "attempts": [
+      {
+        "attempt_id": 44,
+        "task_instance_id": 45,
+        "attempt_no": 1,
+        "status": "FAILED"
+      }
+    ]
+  },
+  "run_stats": [
+    {
+      "id": 6,
+      "project_id": 32,
+      "workflow_id": 30,
+      "workflow_version_id": 0,
+      "workflow_instance_id": 10,
+      "instance_type": "TRIAL",
+      "status": "FAILED",
+      "source_count": null,
+      "target_count": null,
+      "success_count": 0,
+      "failure_count": 1,
+      "skipped_count": 0,
+      "total_count": 1,
+      "dag_name": "SYNC-E2E-04 fixture sync",
+      "data_param": null,
+      "started_at": "2026-10-26T00:47:54",
+      "finished_at": "2026-10-26T00:47:54",
+      "created_at": "2026-10-26T00:47:54",
+      "updated_at": "2026-10-26T00:47:54",
+      "generated_at": "2026-10-26T00:47:54"
+    }
+  ],
+  "verify_synced": {
+    "exit_code": 0,
+    "stdout": "[INFRA-DATA-01] verified synced baseline: 4 target rows exactly match expected values",
+    "stderr": ""
+  },
+  "acceptance": {
+    "trial_succeeded": false,
+    "target_matches_expected": true,
+    "workflow_success_4_failure_0": false,
+    "trial_stats_success_4_failure_0": false
+  },
+  "status": "FAIL",
+  "logout": {
+    "http": 200,
+    "code": 0
+  }
+}

@@ -1,6 +1,8 @@
 import { createRouter, createWebHistory } from 'vue-router'
 import { getToken } from '../services/http'
 import { listProjects } from '../services/rebuild/projectApi'
+import { authAccount, currentSession } from '../services/rebuild/authApi'
+import { PROJECT_SCOPED_ALIASES, rememberActiveProject, selectActiveProject } from '../navigation/projectMenu'
 import { routes } from './routes'
 
 const router = createRouter({ history:createWebHistory(), routes })
@@ -19,16 +21,42 @@ const router = createRouter({ history:createWebHistory(), routes })
  * 纪律：认证守卫保持先行（增量 1 基线零变化）；归属校验失败 fail-closed 拦截回 /
  * （守护正确性优先于可达性）。
  */
+async function hasAuthenticatedSession(): Promise<boolean> {
+  if (getToken() || authAccount.value) return true
+  try {
+    await currentSession()
+    return true
+  } catch {
+    return false
+  }
+}
+
 router.beforeEach(async (to) => {
-  if (to.path === '/login') return getToken() ? { path:'/' } : true
-  if (!getToken()) return { path:'/login', query: { redirect: to.fullPath } }
+  if (to.path === '/login') {
+    return getToken() || authAccount.value ? { path:'/' } : true
+  }
+  const authenticated = await hasAuthenticatedSession()
+  if (!authenticated) return { path:'/login', query: { redirect: to.fullPath } }
+  if (PROJECT_SCOPED_ALIASES.has(to.path)) {
+    try {
+      const page = await listProjects()
+      const activeId = selectActiveProject(page.list)
+      return activeId === null
+        ? { path: '/' }
+        : { path: `/p/${activeId}${to.path}`, query: to.query, hash: to.hash }
+    } catch {
+      return { path: '/' }
+    }
+  }
   if (!to.path.startsWith('/p/')) return true
   const raw = to.params.projectId
   const id = Number(Array.isArray(raw) ? raw[0] : raw)
   if (!Number.isInteger(id)) return { path:'/' }
   try {
     const page = await listProjects()
-    return page.list.some((p) => p.id === id) ? true : { path:'/' }
+    if (!page.list.some((p) => p.id === id)) return { path:'/' }
+    rememberActiveProject(id)
+    return true
   } catch {
     return { path:'/' }
   }

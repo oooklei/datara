@@ -15,7 +15,7 @@ from dataclasses import dataclass
 from typing import Any, Awaitable, Callable, Mapping
 
 from fastapi import APIRouter, Request
-from fastapi.responses import JSONResponse, Response
+from fastapi.responses import JSONResponse, Response, StreamingResponse
 
 from rebuild.sql_ide.error_catalog import build_error_envelope, http_status_for
 
@@ -32,6 +32,31 @@ class SqlIdeRouteError(Exception):
         return self.message or self.error_code
 
 
+def _event_stream_response(result: object) -> StreamingResponse:
+    """Translate the finite event snapshot returned by the SQL service to SSE."""
+    source = result.get("events", []) if isinstance(result, Mapping) else result
+    events = source if isinstance(source, list) else []
+
+    def generate():
+        if not events:
+            yield ": keep-alive\n\n"
+            return
+        for item in events:
+            if not isinstance(item, Mapping):
+                continue
+            event_id = item.get("event_id") or item.get("eventId")
+            event_type = item.get("event_type") or item.get("eventType") or "message"
+            payload = item.get("payload", {})
+            if event_id:
+                yield f"id: {event_id}\n"
+            yield f"event: {event_type}\n"
+            yield f"data: {json.dumps(payload, ensure_ascii=False, separators=(',', ':'))}\n\n"
+
+    return StreamingResponse(
+        generate(),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )
 Authenticate = Callable[[str, str], Any | Awaitable[Any]]
 Authorize = Callable[[int, Any, str, str, Mapping[str, Any]], Any | Awaitable[Any]]
 Dispatch = Callable[..., Any | Awaitable[Any]]
@@ -127,6 +152,8 @@ def build_sql_ide_router(
             return _error_response(SqlIdeRouteError("INVALID_REQUEST", message=str(exc)))
         if isinstance(result, Response):
             return result
+        if operation == "openEventStream":
+            return _event_stream_response(result)
         response = JSONResponse(content={"code": 0, "msg": "success", "data": result})
         if operation == "executeSql" and isinstance(result, Mapping):
             task_id = result.get("taskId") or result.get("task_id")

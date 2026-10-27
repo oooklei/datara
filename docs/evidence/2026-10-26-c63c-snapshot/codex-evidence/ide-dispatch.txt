@@ -1,0 +1,67 @@
+610-                            items.append(item)
+611-                return metadata_page(items, limit=int(payload.get("limit", 100)))
+612-            schema = str(payload.get("schema", "")); object_name = str(payload.get("object", payload.get("table", "")))
+613-            if not schema or not object_name:
+614-                raise SqlIdeRouteError("INVALID_REQUEST", message="schema and object are required")
+615-            limit = int(payload.get("limit", 500)); return metadata_page(catalog.columns(schema, object_name, limit=limit), limit=limit, max_limit=500)
+616-        if operation == "lintSql":
+617-            return lint_sql(str(payload.get("sql", "")), dialect=str(payload.get("dialect", "mysql")))
+618:        if operation == "executeSql":
+619-            datasource_id = int(payload.get("datasource_id", payload.get("datasourceId", 0)))
+620-            sql = str(payload.get("sql", ""))
+621-            if datasource_id < 1 or not sql.strip():
+622-                raise SqlIdeRouteError("INVALID_REQUEST", message="datasource_id and sql are required")
+623-            task_id = os.urandom(16).hex()
+624-            status_store.start_execution(task_id=task_id, project_id=project_id, user_id=user_id, status="running")
+625-            try:
+626-                result = build_execution_port(
+--
+668-            return {
+669-                **dict(result),
+670-                "task_id": execution_id,
+671-                "history_id": history_id,
+672-                "result_set_id": result_set_id,
+673-                "accepted": True,
+674-                "status": "succeeded",
+675-            }
+676:        if operation == "getExecutionStatus":
+677-            status = status_store.get_execution_status(task_id=str(payload.get("task_id")), project_id=project_id, user_id=user_id)
+678-            if status is None:
+679-                raise SqlIdeRouteError("EXECUTION_NOT_FOUND")
+680-            return status
+681:        if operation == "cancelExecution":
+682-            task_id = str(payload.get("task_id", ""))
+683-            current = status_store.get_execution_status(task_id=task_id, project_id=project_id, user_id=user_id)
+684-            if current is None:
+685-                raise SqlIdeRouteError("EXECUTION_NOT_FOUND")
+686-            # The SQL IDE status contract uses American spelling (``canceled``)
+687-            # consistently across history, status, and cancellation helpers.
+688-            # Persisting ``cancelled`` leaves ``terminal_at`` unset because the
+689-            # status store's terminal set is intentionally fail-closed; a later
+690-            # completion callback could then overwrite a user cancellation.
+691-            if current.get("status") in {"succeeded", "failed", "canceled", "cancelled"}:
+692-                return {"cancelled": False, "status": current.get("status")}
+693-            status_store.append_event(task_id=task_id, project_id=project_id, user_id=user_id, event_type="canceled", payload={"status": "canceled"})
+694-            status_store.update_status(task_id=task_id, project_id=project_id, user_id=user_id, status="canceled")
+695-            return {"cancelled": True, "status": "canceled"}
+696-        if operation == "openEventStream":
+697-            return status_store.list_execution_events(task_id=str(payload.get("task_id")), project_id=project_id, user_id=user_id)
+698:        if operation == "fetchResultPage":
+699-            return result_store.fetch_page(
+700-                project_id=project_id,
+701-                user_id=user_id,
+702-                history_id=str(payload.get("history_id")),
+703-                result_set_id=payload.get("result_set_id"),
+704-                stmt_index=payload.get("stmt_index"),
+705-                offset=int(payload.get("offset", 0)),
+706-                limit=int(payload.get("limit", 100)),
+707-            )
+708:        if operation == "listHistory":
+709-            return history.list_history(
+710-                project_id=project_id,
+711-                user_id=user_id,
+712-                datasource_id=int(payload.get("datasource_id", payload.get("datasourceId", 0))),
+713-                limit=int(payload.get("limit", 100)),
+714-            )
+715-        if operation == "listScripts":
+716-            return history.list_scripts(project_id=project_id, user_id=user_id)

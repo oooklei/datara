@@ -1,0 +1,27 @@
+{
+  "schema_version": "3.0",
+  "event_id": "flow-pause-declaration-v3-0086",
+  "business_key": "flow:pause-declaration:v3-0086",
+  "epoch": 3,
+  "ts": "2026-10-24T03:59:53+08:00",
+  "actor": "Flow",
+  "type": "FLOW_PAUSE_DECLARATION",
+  "state": "IDLE_WAIT",
+  "watermark": "v3-0086-lane-policy-d-parallel-2",
+  "reason": "无票可消费：epoch=3 队列全部候外部角色（Integration 落线 A/B 独立租约、用户授权 push 终局、执行席产出证据）",
+  "wake_conditions": [
+    "事件流出现 > v3-0086 的新事件（Integration 租约 / 执行席证据 / Ops 指令）",
+    "outbox 出现非 Flow 角色的新回执",
+    "用户明确指令（lifecycle 切换 / 纪元创建 / 派单授权）",
+    "租约状态变化（Integration 重授 / 核销）"
+  ],
+  "blocker_inventory": {
+    "IMPL-v4-01": "REWORK → 候线 A 重授租约",
+    "IMPL-v4-03": "REWORK → 候线 A 独立租约 + claude/EXEC-3 执行",
+    "IMPL-v4-02a/07/16/08": "EVIDENCE_READY → 候线 B 租约",
+    "IMPL-v4-13a": "ASSIGNED → claude/EXEC-2",
+    "IMPL-v4-15": "ASSIGNED → claude/EXEC-3"
+  },
+  "loop_policy": "每 10 秒哨兵检查一次；命中唤醒条件即恢复 duty cycle；未命中则续等（用户指令：循环直至目标达成）",
+  "note": "本声明不引入 CAS；不代替其他角色动作；仅登记唤醒条件与阻塞清单"
+}

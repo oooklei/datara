@@ -6,12 +6,6 @@
     </header>
 
     <div class="toolbar">
-      <label class="field"><span>项目</span>
-        <select v-model="selectedProject" class="kw" data-project-select @change="reload">
-          <option value="">请选择项目</option>
-          <option v-for="p in projects" :key="p.id" :value="String(p.id)">{{ p.name }}</option>
-        </select>
-      </label>
       <button type="button" class="op-btn" data-refresh :disabled="loading" @click="reload">刷新</button>
       <span class="spacer"></span>
       <span v-if="projectId !== null" class="hint">异常 {{ failedRuns.length }} / 共 {{ runs.length }}</span>

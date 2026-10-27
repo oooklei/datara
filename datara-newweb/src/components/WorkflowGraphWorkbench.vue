@@ -35,6 +35,7 @@ import type {
 import { Controls } from '@vue-flow/controls'
 import { MiniMap } from '@vue-flow/minimap'
 import { ElMessage, ElMessageBox } from 'element-plus'
+import dagre from '@dagrejs/dagre'
 import type { DagTab } from '../stores/dagTabs'
 import {
   WF_NODE_TYPES,
@@ -55,6 +56,7 @@ import ScriptResourceEditor from './ScriptResourceEditor.vue'
 import StreamObservationPanel from './StreamObservationPanel.vue'
 import SyncMappingEditor from './SyncMappingEditor.vue'
 import DependencyNodeEditor from './DependencyNodeEditor.vue'
+import Palette from './Palette.vue'
 
 import '@vue-flow/core/dist/style.css'
 import '@vue-flow/core/dist/theme-default.css'
@@ -67,6 +69,46 @@ const emit = defineEmits<{ (e: 'schedule', d: { id: number; name: string }): voi
 
 const graphStore = useWorkflowGraphStore()
 const variablesVisible = ref(false)
+
+const SPLIT_STORAGE_KEY = 'datara.dag.split.v1'
+function initialSplit(): { left: number; right: number } {
+  try {
+    const value = JSON.parse(localStorage.getItem(SPLIT_STORAGE_KEY) ?? '{}') as { left?: number; right?: number }
+    return {
+      left: Math.min(360, Math.max(196, Number(value.left) || 232)),
+      right: Math.min(520, Math.max(280, Number(value.right) || 340)),
+    }
+  } catch {
+    return { left: 232, right: 340 }
+  }
+}
+const split = initialSplit()
+const leftWidth = ref(split.left)
+const rightWidth = ref(split.right)
+const splitStyle = computed(() => ({ '--dag-left': `${leftWidth.value}px`, '--dag-right': `${rightWidth.value}px` }))
+let stopResize: (() => void) | undefined
+
+function beginResize(side: 'left' | 'right', event: PointerEvent) {
+  event.preventDefault()
+  const startX = event.clientX
+  const startWidth = side === 'left' ? leftWidth.value : rightWidth.value
+  const onMove = (move: PointerEvent) => {
+    const delta = move.clientX - startX
+    if (side === 'left') leftWidth.value = Math.min(360, Math.max(196, startWidth + delta))
+    else rightWidth.value = Math.min(520, Math.max(280, startWidth - delta))
+  }
+  const onUp = () => {
+    localStorage.setItem(SPLIT_STORAGE_KEY, JSON.stringify({ left: leftWidth.value, right: rightWidth.value }))
+    stopResize?.()
+  }
+  window.addEventListener('pointermove', onMove)
+  window.addEventListener('pointerup', onUp, { once: true })
+  stopResize = () => {
+    window.removeEventListener('pointermove', onMove)
+    window.removeEventListener('pointerup', onUp)
+    stopResize = undefined
+  }
+}
 
 /** DagTab.docId（string）→ store docId（number）桥 */
 const numDocId = computed(() => Number(props.tab.docId))
@@ -104,8 +146,38 @@ const taskStatusMap = computed(() => {
   return statuses
 })
 
+type CanvasNode = {
+  id: string
+  type: string
+  position: { x: number; y: number }
+  label: string
+  class?: string
+}
+
+function layoutFlowNodes(nodes: CanvasNode[], edges: WorkflowDraftEdge[]): CanvasNode[] {
+  const overlaps = nodes.some((node, index) => nodes.slice(index + 1).some((other) =>
+    Math.abs(node.position.x - other.position.x) < 168
+      && Math.abs(node.position.y - other.position.y) < 64,
+  ))
+  if (!overlaps) return nodes
+
+  const graph = new dagre.graphlib.Graph()
+  graph.setGraph({ rankdir: 'LR', nodesep: 36, ranksep: 72, marginx: 28, marginy: 28 })
+  graph.setDefaultEdgeLabel(() => ({}))
+  for (const node of nodes) graph.setNode(node.id, { width: 168, height: 54 })
+  for (const edge of edges) graph.setEdge(edge.fromNode, edge.toNode)
+  dagre.layout(graph)
+
+  return nodes.map((node) => {
+    const point = graph.node(node.id) as { x: number; y: number } | undefined
+    return point
+      ? { ...node, position: { x: Math.round(point.x - 84), y: Math.round(point.y - 27) } }
+      : node
+  })
+}
+
 const flowNodes = computed(() =>
-  graphStore.nodes.map((n: WorkflowDraftNode) => {
+  layoutFlowNodes(graphStore.nodes.map((n: WorkflowDraftNode) => {
     const status = taskStatusMap.value.get(n.nodeCode)
     return {
       id: n.nodeCode,
@@ -114,7 +186,7 @@ const flowNodes = computed(() =>
       label: `${n.nodeCode} ${n.nodeType}${n.name ? ` ${n.name}` : ''}${status ? ` [${status}]` : ''}`,
       class: status ? `wf-node-${status.toLowerCase()}` : undefined,
     }
-  }),
+  }), graphStore.edges),
 )
 
 const flowEdges = computed(() =>
@@ -405,7 +477,10 @@ onActivated(() => {
   rebindTrialContext()
 })
 onDeactivated(() => persistSnap())
-onUnmounted(() => persistSnap())
+onUnmounted(() => {
+  stopResize?.()
+  persistSnap()
+})
 
 /* ---------- 工具栏：保存 / 发布 / 版本 ---------- */
 
@@ -532,8 +607,19 @@ function onSchedule() {
     <div v-if="degraded" class="wf-degraded">画布：{{ tab.name }}（无项目上下文，待接驳）</div>
     <div v-else-if="loading" class="wf-degraded">画布加载中…</div>
     <div v-else-if="!loaded" class="wf-degraded">画布：{{ tab.name }}</div>
-    <div v-else class="wf-body">
-      <div class="wf-flow">
+    <div v-else class="wf-body" :style="splitStyle">
+      <div class="wf-palette-pane" data-dag-palette>
+        <Palette :project-id="projectId" :workflow-type="workflowType" />
+      </div>
+      <button
+        type="button"
+        class="wf-splitter"
+        role="separator"
+        aria-label="调整组件面板宽度"
+        aria-orientation="vertical"
+        @pointerdown="beginResize('left', $event)"
+      />
+      <div class="wf-flow" data-dag-canvas>
         <VueFlow
           :nodes="flowNodes"
           :edges="flowEdges"
@@ -551,7 +637,16 @@ function onSchedule() {
           <MiniMap pannable zoomable />
         </VueFlow>
       </div>
-      <aside v-if="projectId !== undefined" class="wf-aside">
+      <button
+        type="button"
+        class="wf-splitter"
+        role="separator"
+        aria-label="调整属性面板宽度"
+        aria-orientation="vertical"
+        @pointerdown="beginResize('right', $event)"
+      />
+      <aside v-if="projectId !== undefined" class="wf-aside" data-dag-inspector>
+        <header class="inspector-head"><strong>属性检查器</strong><small>{{ selectedNodeRecord?.nodeCode ?? '画布' }}</small></header>
         <TrialRunPanel v-if="trialVisible" :project-id="projectId" :definition-id="numDocId" />
         <NodeConfigPanel
           v-else-if="selectedNodeObj && !isSyncMappingNode && !scriptResourceKind && !isDependentNode"
@@ -562,47 +657,49 @@ function onSchedule() {
           @save="onConfigSave"
           @close="clearSelection"
         />
+        <section v-else-if="selectedNodeRecord && nodeParameterKey && scriptResourceKind" class="node-editor" data-node-parameter-editor>
+          <strong>{{ selectedNodeRecord.nodeType }} 参数 · {{ selectedNodeRecord.nodeCode }}</strong>
+          <ScriptResourceEditor
+            v-if="scriptResourceKind"
+            :key="selectedNodeRecord.nodeCode"
+            :project-id="projectId"
+            :workflow-id="numDocId"
+            :workflow-version="1"
+            :task-id="selectedNodeRecord.nodeCode"
+            :kind="scriptResourceKind"
+            :model-value="selectedNodeRecord.params ?? {}"
+            @update:model-value="updateNodeParams"
+          />
+        </section>
+        <DependencyNodeEditor
+          v-else-if="selectedNodeRecord && isDependentNode"
+          :project-id="projectId"
+          :workflow-id="numDocId"
+          :workflow-version="1"
+          :task-id="selectedNodeRecord.nodeCode"
+          :model-value="selectedNodeRecord.params ?? {}"
+          @update:model-value="updateNodeParams"
+        />
+        <SyncMappingEditor
+          v-else-if="isSyncMappingNode && selectedNodeRecord"
+          :project-id="projectId"
+          :workflow-id="numDocId"
+          :workflow-version="1"
+          :task-id="selectedNodeRecord.nodeCode"
+          :model-value="selectedNodeRecord.params ?? {}"
+          @update:model-value="updateSyncParams"
+        />
+        <StreamObservationPanel
+          v-else-if="workflowType === 'STREAM'"
+          :project-id="projectId"
+          :workflow-id="numDocId"
+          :workflow-name="tab.name"
+        />
+        <div v-else class="inspector-empty">
+          <span>◇</span><strong>选择一个节点以编辑配置</strong><small>节点参数由已发布组件 spec 动态生成</small>
+        </div>
       </aside>
     </div>
-
-    <section v-if="selectedNodeRecord && nodeParameterKey" class="node-editor" data-node-parameter-editor>
-      <strong>{{ selectedNodeRecord.nodeType }} 参数 · {{ selectedNodeRecord.nodeCode }}</strong>
-      <ScriptResourceEditor
-        v-if="projectId !== undefined && scriptResourceKind"
-        :key="selectedNodeRecord.nodeCode"
-        :project-id="projectId"
-        :workflow-id="numDocId"
-        :workflow-version="1"
-        :task-id="selectedNodeRecord.nodeCode"
-        :kind="scriptResourceKind"
-        :model-value="selectedNodeRecord.params ?? {}"
-        @update:model-value="updateNodeParams"
-      />
-    </section>
-    <DependencyNodeEditor
-      v-if="selectedNodeRecord && isDependentNode && projectId !== undefined"
-      :project-id="projectId"
-      :workflow-id="numDocId"
-      :workflow-version="1"
-      :task-id="selectedNodeRecord.nodeCode"
-      :model-value="selectedNodeRecord.params ?? {}"
-      @update:model-value="updateNodeParams"
-    />
-    <StreamObservationPanel
-      v-if="workflowType === 'STREAM' && loaded"
-      :project-id="projectId"
-      :workflow-id="numDocId"
-      :workflow-name="tab.name"
-    />
-    <SyncMappingEditor
-      v-if="isSyncMappingNode && projectId !== undefined && selectedNodeRecord"
-      :project-id="projectId"
-      :workflow-id="numDocId"
-      :workflow-version="1"
-      :task-id="selectedNodeRecord.nodeCode"
-      :model-value="selectedNodeRecord.params ?? {}"
-      @update:model-value="updateSyncParams"
-    />
 
     <el-dialog v-model="versionsVisible" title="版本历史" width="640px" append-to-body>
       <el-table :data="versions" size="small">
@@ -731,6 +828,37 @@ function onSchedule() {
   flex: 1;
   min-height: 0;
   display: flex;
+  background: var(--bg, #f5f7fb);
+}
+.wf-palette-pane {
+  width: var(--dag-left);
+  min-width: 0;
+  flex: 0 0 var(--dag-left);
+  overflow: hidden;
+  border-right: 1px solid var(--border-color, #e2e8f0);
+}
+.wf-palette-pane :deep(.wb-palette) {
+  width: 100%;
+  height: 100%;
+  border-right: 0;
+}
+.wf-splitter {
+  position: relative;
+  z-index: 3;
+  width: 6px;
+  flex: 0 0 6px;
+  padding: 0;
+  border: 0;
+  border-left: 1px solid transparent;
+  border-right: 1px solid transparent;
+  background: transparent;
+  cursor: col-resize;
+}
+.wf-splitter:hover,
+.wf-splitter:focus-visible {
+  border-color: var(--primary, #2563eb);
+  background: color-mix(in srgb, var(--primary, #2563eb) 12%, transparent);
+  outline: 0;
 }
 .wf-flow {
   flex: 1;
@@ -738,12 +866,15 @@ function onSchedule() {
   min-height: 0;
 }
 .wf-aside {
-  width: 340px;
-  flex-shrink: 0;
+  width: var(--dag-right);
+  flex: 0 0 var(--dag-right);
   border-left: 1px solid var(--border-color, #e2e8f0);
-  background: var(--bg-secondary, #f8fafc);
+  background: var(--card, #fff);
   overflow-y: auto;
 }
+.inspector-head{position:sticky;top:0;z-index:2;display:flex;justify-content:space-between;align-items:center;height:42px;padding:0 14px;border-bottom:1px solid var(--border-color,#e2e8f0);background:var(--card,#fff)}
+.inspector-head strong{font-size:13px;color:var(--text,#172033)}.inspector-head small{font-family:var(--font-mono,monospace);color:var(--text-3,#94a3b8)}
+.inspector-empty{display:grid;place-items:center;gap:7px;padding:72px 20px;text-align:center;color:var(--text-3,#94a3b8)}.inspector-empty span{font-size:28px;color:var(--primary,#2563eb)}.inspector-empty strong{font-size:13px;color:var(--text-2,#64748b)}.inspector-empty small{font-size:11px}
 .wf-flow :deep(.vue-flow) {
   height: 100%;
 }
@@ -757,4 +888,19 @@ function onSchedule() {
   outline: 2px solid #94a3b8;
 }
 .node-editor{flex-shrink:0;padding:10px 14px;border-top:1px solid var(--border-color,#e2e8f0);background:#f8fafc;display:grid;gap:6px}
+
+@media (min-width: 768px) and (max-width: 1024px) {
+  .wf-palette-pane{width:clamp(176px,var(--dag-left),220px);flex-basis:clamp(176px,var(--dag-left),220px)}
+  .wf-aside{width:clamp(260px,var(--dag-right),320px);flex-basis:clamp(260px,var(--dag-right),320px)}
+}
+
+@media (max-width: 767px) {
+  .wf-workbench{min-height:760px;overflow:auto}
+  .wf-actions{align-items:flex-start;overflow-x:auto}
+  .wf-body{display:grid;grid-template-columns:minmax(0,1fr);grid-template-rows:minmax(150px,28vh) minmax(360px,52vh) minmax(260px,42vh);overflow:visible}
+  .wf-palette-pane{width:auto;max-height:28vh;flex:none;border-right:0;border-bottom:1px solid var(--border-color,#e2e8f0);overflow:auto}
+  .wf-flow{min-height:360px;width:100%}
+  .wf-aside{width:auto;min-height:260px;max-height:42vh;flex:none;border-left:0;border-top:1px solid var(--border-color,#e2e8f0)}
+  .wf-splitter{display:none}
+}
 </style>

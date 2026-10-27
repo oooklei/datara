@@ -1,0 +1,69 @@
+{
+  "base": "http://192.168.1.9:18091",
+  "projectId": 23,
+  "at": "2026-10-21T21:13:35.720Z",
+  "results": [
+    {
+      "step": "auth.login",
+      "ok": true,
+      "detail": "code=0 token_len=208"
+    },
+    {
+      "step": "F1.route",
+      "ok": true,
+      "detail": "data-tc-tabs 在位, data-tab=edit x1"
+    },
+    {
+      "step": "F2.create_sync_wf",
+      "ok": true,
+      "detail": "name=E2E-L12-02-full-1792617212329 .tcd-type=同步"
+    },
+    {
+      "step": "F3.specs_whitelist",
+      "ok": true,
+      "detail": "7 项在位 7/7"
+    },
+    {
+      "step": "F3.add_nodes",
+      "ok": true,
+      "detail": "节点 0 -> 2"
+    },
+    {
+      "step": "F4.endpoint_panel",
+      "ok": true,
+      "detail": "结构化表单渲染（srcDs 可见=true，ds 加载失败横幅=0）"
+    },
+    {
+      "step": "F4.json_save",
+      "ok": true,
+      "detail": "field_map JSON 兜底保存 → 「节点配置已保存」+ 面板随选中清空收起"
+    },
+    {
+      "step": "draft.save",
+      "ok": true,
+      "detail": "画布草稿保存成功"
+    },
+    {
+      "step": "graph.patch",
+      "ok": true,
+      "detail": "START/END+3边补图 e2e_start→n1→n2→e2e_end"
+    },
+    {
+      "step": "F5.panel",
+      "ok": true,
+      "detail": "试运行面板渲染（.wf-aside 承接）"
+    },
+    {
+      "step": "F5.snapshot",
+      "ok": true,
+      "detail": "snap=2 0b86a5fcdee65831ebdef1248acdb92ab9569418edce3c1b5571b247f2f17c00 ACTIVE"
+    },
+    {
+      "step": "F5.dry_run",
+      "ok": true,
+      "detail": "instance_id=0 DRY_RUN 任务 4 | plan: 执行计划（4 节点）： e2e_start → n1 → n2 → e2e_end"
+    }
+  ],
+  "httpErrors": [],
+  "pageErrors": []
+}

@@ -1,22 +1,5 @@
 <script setup lang="ts">
-/**
- * AppShell 三段式布局组件（增量 2 / 票 2-05；L3-03 s251 增补项目模式分流）
- *
- * 蓝本：0.8 方案 §6（AI 全局挂载规则）/ §7 落点表（AppShell.vue 职责=三段式布局、
- * 菜单消费、AI 全局挂载）；权威设计 §4.1 L304（页面布局骨架=§4 抄袭范畴，§5D 语义复刻）；
- * 0.7 §2.2 节点 8（增量 1 最小壳填充承接）。
- * L3-03 增补（权威设计 §3.3 L571/L575）：route.path 以 /p/ 前缀互斥分流——
- *  - 项目模式：侧栏渲染七段功能导航（PROJECT_MENU_SECTIONS 同源消费，段名定稿
- *    navigation/projectMenu.ts），顶栏呈现当前项目名（listProjects 按 id 匹配）与
- *    返回项目列表链接；项目名请求带序号守卫（nameReqSeq）防项目切换乱序串显。
- *  - 全局模式：菜单消费/AI 挂载/折叠行为语义完全保持（增量 2 验收锚零变化）。
- * 纪律：
- *  - 菜单唯一消费 filterMenuGroups（2-02），组件零散落显隐判断；折叠接驳 groupFold（2-04）
- *  - AI 挂载点与 <RouterView/> 同级、单实例、登录页不挂载（登录页不进本组件——App.vue 守门）
- *  - 菜单显隐不替代鉴权：路由守卫（router/index.ts）仍是访问控制真源（L3-05 落守卫）
- *  - filterOverrides 仅测试/后续增量注入用；生产缺省走 BATCH_SWITCHES 保守关闭（R-15）
- */
-import { computed, reactive, ref, watch } from 'vue'
+import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import {
   filterGlobalMounts,
@@ -24,21 +7,51 @@ import {
   type MenuFilterContext,
   type RenderableMenuGroup,
 } from '../navigation/filterMenu'
-import { PROJECT_MENU_SECTIONS } from '../navigation/projectMenu'
+import {
+  PROJECT_MENU_GROUPS,
+  PROJECT_MENU_ITEMS,
+  projectItemPath,
+  rememberActiveProject,
+} from '../navigation/projectMenu'
 import { loadGroupFolded, toggleGroupFolded } from '../navigation/groupFold'
 import { menuGroups } from '../navigation/menu'
-import { listProjects } from '../services/rebuild/projectApi'
-import { logout } from '../services/rebuild/authApi'
+import { listProjects, type ProjectSummary } from '../services/rebuild/projectApi'
+import { authAccount, currentSession, logout, type AuthRole } from '../services/rebuild/authApi'
+import { getToken } from '../services/http'
 import AiAssistantPanel from '../components/AiAssistantPanel.vue'
 
-const props = defineProps<{
-  /** 测试/后续增量注入覆盖（如批次开关/预览许可）；生产不传，走 R-15 保守关闭 */
-  filterOverrides?: Partial<MenuFilterContext>
-}>()
-
+const props = defineProps<{ filterOverrides?: Partial<MenuFilterContext> }>()
 const route = useRoute()
 const router = useRouter()
+
 const loggingOut = ref(false)
+const projectPopoverOpen = ref(false)
+const sidebarOpen = ref(false)
+const projects = ref<ProjectSummary[]>([])
+const projectName = ref('')
+const theme = ref<'light' | 'dark'>(readInitialTheme())
+const ROLE_LABEL: Record<AuthRole, string> = { admin: '管理员', developer: '开发者', operator: '分析师', viewer: '观察者' }
+const accountLabel = computed(() => authAccount.value?.username ?? '会话用户')
+const roleLabel = computed(() => authAccount.value ? ROLE_LABEL[authAccount.value.role] : '会话检测中')
+const avatarText = computed(() => accountLabel.value.slice(0, 1).toUpperCase())
+
+function readInitialTheme(): 'light' | 'dark' {
+  const saved = globalThis.localStorage?.getItem('datara.theme')
+  if (saved === 'dark' || saved === 'light') return saved
+  return globalThis.matchMedia?.('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'
+}
+
+function applyTheme(next: 'light' | 'dark'): void {
+  theme.value = next
+  document.documentElement.dataset.theme = next
+  globalThis.localStorage?.setItem('datara.theme', next)
+}
+
+function toggleTheme(): void {
+  applyTheme(theme.value === 'light' ? 'dark' : 'light')
+}
+
+applyTheme(theme.value)
 
 async function onLogout(): Promise<void> {
   if (loggingOut.value) return
@@ -51,50 +64,64 @@ async function onLogout(): Promise<void> {
   }
 }
 
-// ---- 项目模式判定与顶栏项目名（L3-03；守卫归属校验归 L3-05 路由守卫） ----
 const isProjectScope = computed(() => route.path.startsWith('/p/'))
 const projectId = computed<number | null>(() => {
   if (!isProjectScope.value) return null
   const raw = route.params.projectId
-  const n = Number(Array.isArray(raw) ? raw[0] : raw)
-  return Number.isInteger(n) ? n : null
+  const value = Number(Array.isArray(raw) ? raw[0] : raw)
+  return Number.isInteger(value) ? value : null
 })
 
-const projectName = ref('')
-// 竞态守卫：连续切换项目时旧请求返回序号已过期，直接丢弃防乱序串显
+const activeProjectItem = computed(() => {
+  const id = projectId.value
+  if (id === null) return null
+  return PROJECT_MENU_ITEMS.find((item) => projectItemPath(id, item) === route.path) ?? null
+})
+
+const breadcrumb = computed(() => activeProjectItem.value?.label ?? (isProjectScope.value ? '工作台' : '全局管理'))
 let nameReqSeq = 0
 
-async function loadProjectName(): Promise<void> {
+async function loadProjectContext(): Promise<void> {
   const id = projectId.value
   if (id === null) return
   const seq = ++nameReqSeq
   try {
     const page = await listProjects()
     if (seq !== nameReqSeq) return
-    const hit = page.list.find((p) => p.id === id)
-    projectName.value = hit?.name ?? `项目 #${id}`
+    projects.value = page.list
+    projectName.value = page.list.find((project) => project.id === id)?.name ?? `项目 #${id}`
   } catch {
     if (seq !== nameReqSeq) return
+    projects.value = []
     projectName.value = `项目 #${id}`
   }
 }
 
-watch(
-  [isProjectScope, projectId],
-  () => {
-    projectName.value = ''
-    if (isProjectScope.value) void loadProjectName()
-    else nameReqSeq += 1
-  },
-  { immediate: true },
-)
+async function selectProject(id: number): Promise<void> {
+  projectPopoverOpen.value = false
+  sidebarOpen.value = false
+  rememberActiveProject(id)
+  const segment = route.path.match(/^\/p\/[^/]+(\/.*)?$/)?.[1] ?? ''
+  await router.push({ path: `/p/${id}${segment}`, query: route.query, hash: route.hash })
+}
+
+onMounted(() => {
+  if (getToken() && !authAccount.value) void currentSession().catch(() => undefined)
+})
+
+watch([isProjectScope, projectId], () => {
+  projectName.value = ''
+  projectPopoverOpen.value = false
+  sidebarOpen.value = false
+  if (isProjectScope.value) void loadProjectContext()
+  else nameReqSeq += 1
+}, { immediate: true })
 
 function buildCtx(): MenuFilterContext {
   const resolved = router.getRoutes()
   return {
-    registeredRouteNames: new Set(resolved.map((r) => String(r.name ?? '')).filter((s) => s !== '')),
-    registeredPaths: new Set(resolved.map((r) => r.path)),
-    // RBAC 归增量 15：未配置 permission 的项视为通过（0.8 §2.2 门五）
+    registeredRouteNames: new Set(resolved.map((record) => String(record.name ?? '')).filter(Boolean)),
+    registeredPaths: new Set(resolved.map((record) => record.path)),
     permissions: new Set<string>(),
     ...props.filterOverrides,
   }
@@ -102,115 +129,108 @@ function buildCtx(): MenuFilterContext {
 
 const menuView = computed<readonly RenderableMenuGroup[]>(() => filterMenuGroups(buildCtx()))
 const globalMounts = computed(() => filterGlobalMounts(buildCtx()))
-
-// 折叠态初始化：组 id 稳定键读取（2-04），future 组缺省 defaultFolded:true
 const folded = reactive<Record<string, boolean>>({})
-for (const g of menuGroups) folded[g.id] = loadGroupFolded(g.id, g.defaultFolded === true)
-
+for (const group of menuGroups) folded[group.id] = loadGroupFolded(group.id, group.defaultFolded === true)
 function onToggle(groupId: string): void {
   folded[groupId] = toggleGroupFolded(groupId, folded[groupId] ?? false)
 }
 
-// AI 上下文随路由元信息更新（0.8 §6 规则 3；挂载点跨路由保持不重建）
 const aiContext = computed(() => route.fullPath)
-
 defineExpose({ menuView, aiContext })
 </script>
 
 <template>
-  <div class="app-shell">
-    <header class="app-topbar">
-      <span class="topbar-brand">Datara</span>
-      <span v-if="isProjectScope" class="topbar-project">
-        <span class="topbar-project-name" :data-project-name="String(projectId)">{{ projectName }}</span>
-        <RouterLink to="/" class="topbar-project-exit" data-project-exit>返回项目列表</RouterLink>
-      </span>
-      <button
-        type="button"
-        class="topbar-logout"
-        data-shell-logout
-        :disabled="loggingOut"
-        @click="onLogout"
-      >{{ loggingOut ? '退出中…' : '退出登录' }}</button>
-    </header>
-    <aside class="app-sidebar" aria-label="主导航">
-      <nav
-        v-if="isProjectScope"
-        class="project-nav"
-        aria-label="项目功能导航"
-        data-project-nav
-      >
-        <RouterLink
-          v-for="seg in PROJECT_MENU_SECTIONS"
-          :key="seg.key"
-          :to="`/p/${projectId}/${seg.key}`"
-          class="project-nav-link"
-          :data-seg="seg.key"
-        ><span class="ico">{{ seg.icon }}</span><span class="lbl">{{ seg.label }}</span></RouterLink>
+  <div class="app-shell" :class="{ 'sidebar-open': sidebarOpen }">
+    <aside class="app-sidebar" :class="{ open: sidebarOpen }" aria-label="主导航">
+      <RouterLink to="/" class="brand" aria-label="Datara 项目管理">
+        <span class="brand-mark">◆</span><span>Datara</span>
+      </RouterLink>
+
+      <nav v-if="isProjectScope" class="project-nav" aria-label="项目功能导航" data-project-nav>
+        <section v-for="group in PROJECT_MENU_GROUPS" :key="group.id" class="project-menu-group" :data-project-group="group.id">
+          <h2>{{ group.label }}</h2>
+          <RouterLink
+            v-for="item in group.items"
+            :key="item.id"
+            :to="projectItemPath(projectId!, item)"
+            class="project-nav-link"
+            :data-seg="item.id"
+            @click="sidebarOpen = false"
+          ><span class="ico">{{ item.icon }}</span><span class="lbl">{{ item.label }}</span></RouterLink>
+        </section>
       </nav>
-      <template v-else>
-      <div
-        v-for="entry in menuView"
-        :key="entry.group.id"
-        class="menu-group"
-        :data-group-id="entry.group.id"
-      >
-        <div v-if="!entry.group.direct" class="group-title">
-          <span class="group-label">{{ entry.group.label }}</span>
-          <button
-            v-if="entry.group.foldable"
-            type="button"
-            class="group-toggle"
-            :aria-expanded="!folded[entry.group.id]"
-            @click="onToggle(entry.group.id)"
-          >{{ folded[entry.group.id] ? '▸' : '▾' }}</button>
+
+      <nav v-else class="global-nav" aria-label="全局功能导航">
+        <div v-for="entry in menuView" :key="entry.group.id" class="menu-group" :data-group-id="entry.group.id">
+          <div v-if="!entry.group.direct" class="group-title">
+            <span>{{ entry.group.label }}</span>
+            <button v-if="entry.group.foldable" type="button" :aria-expanded="!folded[entry.group.id]" @click="onToggle(entry.group.id)">{{ folded[entry.group.id] ? '▸' : '▾' }}</button>
+          </div>
+          <ul v-show="!entry.group.foldable || !folded[entry.group.id]" class="menu-items">
+            <li v-for="item in entry.items" :key="item.id">
+              <RouterLink v-if="item.path" :to="item.path" class="menu-link"><span class="ico">{{ item.icon }}</span><span class="lbl">{{ item.label }}</span></RouterLink>
+            </li>
+          </ul>
         </div>
-        <ul v-show="!entry.group.foldable || !folded[entry.group.id]" class="menu-items">
-          <li v-for="item in entry.items" :key="item.id" class="menu-item">
-            <RouterLink v-if="item.path" :to="item.path" class="menu-link"><span v-if="item.icon" class="ico">{{ item.icon }}</span><span class="lbl">{{ item.label }}</span></RouterLink>
-            <span v-else class="menu-plain"><span v-if="item.icon" class="ico">{{ item.icon }}</span><span class="lbl">{{ item.label }}</span></span>
-          </li>
-        </ul>
-      </div>
-      </template>
+      </nav>
+      <p class="sidebar-foot">v3 · 数据治理工作台</p>
     </aside>
+
+    <header class="app-topbar">
+      <button type="button" class="icon-button mobile-menu" data-sidebar-toggle :aria-expanded="sidebarOpen" aria-label="切换导航" @click="sidebarOpen = !sidebarOpen">☰</button>
+      <div v-if="isProjectScope" class="project-switcher-wrap">
+        <button type="button" class="project-switcher" data-project-switcher :aria-expanded="projectPopoverOpen" @click="projectPopoverOpen = !projectPopoverOpen">
+          <span class="geo-dot"></span><strong :data-project-name="String(projectId)">{{ projectName }}</strong><span>⌄</span>
+        </button>
+        <div v-if="projectPopoverOpen" class="project-popover" role="menu">
+          <button v-for="project in projects" :key="project.id" type="button" data-project-option :class="{ active: project.id === projectId }" @click="selectProject(project.id)">
+            <span>{{ project.name }}</span><small>#{{ project.id }}</small>
+          </button>
+          <RouterLink to="/" class="project-manage">项目管理 · 全局顶层</RouterLink>
+        </div>
+      </div>
+      <RouterLink v-if="isProjectScope" to="/" class="project-manager-entry" data-project-exit>项目管理</RouterLink>
+      <RouterLink v-else to="/" class="project-manager-entry" data-global-project>项目管理</RouterLink>
+
+      <div class="breadcrumb"><b>{{ projectName || 'Datara' }}</b><span>/</span><span>{{ breadcrumb }}</span></div>
+      <div class="topbar-actions">
+        <RouterLink to="/dep/runtime" class="icon-button" data-global-operations title="部署运维" aria-label="部署运维">☁</RouterLink>
+        <RouterLink to="/sys" class="icon-button" data-global-system title="系统管理" aria-label="系统管理">⚙</RouterLink>
+        <button type="button" class="icon-button" data-theme-toggle :title="theme === 'dark' ? '切换浅色主题' : '切换深色主题'" @click="toggleTheme">{{ theme === 'dark' ? '☀' : '☾' }}</button>
+        <div class="user-chip" data-current-user>
+          <span class="avatar">{{ avatarText }}</span><span class="user-copy"><b>{{ accountLabel }}</b><small>{{ roleLabel }}</small></span>
+          <button type="button" class="logout-button" data-shell-logout :disabled="loggingOut" @click="onLogout">{{ loggingOut ? '…' : '退出登录' }}</button>
+        </div>
+      </div>
+    </header>
+
     <main class="app-content"><RouterView /></main>
-    <AiAssistantPanel
-      v-if="globalMounts.length > 0"
-      id="ai-assistant-global-mount"
-      aria-label="AI 助手全局挂载点"
-      :page-context="aiContext"
-      :project-id="projectId"
-    />
+    <button v-if="sidebarOpen" type="button" class="sidebar-backdrop" aria-label="关闭导航" @click="sidebarOpen = false"></button>
+    <AiAssistantPanel v-if="globalMounts.length > 0" id="ai-assistant-global-mount" aria-label="AI 助手全局挂载点" :page-context="aiContext" :project-id="projectId" />
   </div>
 </template>
 
 <style scoped>
-/* 三段式 grid（增量 1 最小壳语义保持：header/aside/main） */
-.app-shell{display:grid;grid-template:"header header" 56px "aside main" 1fr/240px 1fr;min-height:100vh}
-.app-topbar{grid-area:header;display:flex;align-items:center;gap:16px;padding:0 16px}
-.topbar-brand{font-weight:700}
-.topbar-project{display:flex;align-items:center;gap:12px;margin-left:auto}
-.topbar-project-name{font-weight:600}
-.app-sidebar{grid-area:aside;overflow-y:auto}
-.app-content{grid-area:main;min-width:0;overflow-x:auto}
-.topbar-logout{margin-left:auto;border:1px solid var(--border,#dfe5ef);border-radius:6px;background:#fff;color:var(--text-2,#536174);padding:6px 12px;cursor:pointer}.topbar-logout:disabled{opacity:.6;cursor:not-allowed}
-/* 菜单组渲染（0.8 §7：空组标题不显示由 v-if=!direct 保证；future 组 caret 折叠语义复刻） */
-.group-title{display:flex;align-items:center;justify-content:space-between}
-.menu-items{list-style:none;margin:0;padding:0}
-.menu-item{line-height:32px}
-.menu-link,.menu-plain{display:flex;align-items:center;gap:10px;padding:0 12px}
-/* 图标字形（对标旧前端菜单 .menu-item .ico/.lbl 渲染范式） */
-.menu-link .ico,.menu-plain .ico,.project-nav-link .ico{display:inline-block;width:18px;text-align:center;font-size:14px;opacity:.85;flex:0 0 auto}
-/* 项目模式七段导航（L3-03）：与全局菜单互斥渲染，DOM 锚 data-project-nav/data-seg */
-.project-nav{display:flex;flex-direction:column;padding:8px 0}
-.project-nav-link{display:flex;align-items:center;gap:10px;padding:0 12px;line-height:32px}
-@media (max-width:640px){
-  .app-shell{grid-template:"header" 56px "aside" auto "main" minmax(0,1fr)/minmax(0,1fr);width:100%;max-width:100vw;overflow-x:hidden}
-  .app-topbar{min-width:0;gap:8px;padding-inline:12px;overflow:hidden}.topbar-brand,.topbar-logout{flex:0 0 auto}
-  .topbar-project{min-width:0;flex:1;margin-left:0;gap:8px;overflow:hidden}.topbar-project-name{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.topbar-project-exit{flex:0 0 auto;white-space:nowrap}
-  .app-sidebar{overflow-x:auto;overflow-y:hidden}.project-nav{flex-direction:row;width:max-content}.project-nav-link{white-space:nowrap}
-  .app-content{width:100%;max-width:100vw}
+.app-shell{display:grid;grid-template:"aside header" 48px "aside main" minmax(0,1fr)/228px minmax(0,1fr);height:100vh;overflow:hidden;background:var(--bg);color:var(--text)}
+.app-sidebar{grid-area:aside;display:flex;flex-direction:column;min-height:0;background:linear-gradient(180deg,#0b1c33,#08182c 64%,#0c2135);color:var(--sidebar-text);z-index:30}
+.brand{height:56px;display:flex;align-items:center;gap:10px;padding:0 18px;color:#fff;font-size:15px;font-weight:700;letter-spacing:.3px;border-bottom:1px solid rgba(255,255,255,.07)}
+.brand-mark{display:grid;place-items:center;width:28px;height:28px;border-radius:8px;background:linear-gradient(135deg,var(--primary),var(--purple));box-shadow:0 4px 14px rgba(22,104,220,.35);font-size:11px}
+.project-nav,.global-nav{flex:1;min-height:0;overflow:auto;padding:8px 0 18px}
+.project-menu-group h2,.group-title{margin:0;padding:13px 26px 5px;color:#5f7d9e;font-size:10px;font-weight:700;letter-spacing:1.1px;text-transform:uppercase}
+.project-nav-link,.menu-link{display:flex;align-items:center;gap:10px;margin:2px 10px;padding:7px 12px;border-radius:8px;color:var(--sidebar-text);font-size:12.5px;line-height:20px}
+.project-nav-link:hover,.menu-link:hover{background:rgba(255,255,255,.07);color:#fff}
+.project-nav-link.router-link-exact-active{color:#fff;background:linear-gradient(90deg,rgba(22,104,220,.95),rgba(65,116,223,.7));box-shadow:0 3px 12px rgba(0,87,210,.28)}
+.ico{width:18px;text-align:center;flex:0 0 18px}.lbl{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.menu-items{list-style:none}.group-title{display:flex;justify-content:space-between}.group-title button{border:0;background:none;color:inherit}
+.sidebar-foot{padding:12px 18px;color:#527293;font-size:10.5px;border-top:1px solid rgba(255,255,255,.06)}
+.app-topbar{grid-area:header;display:flex;align-items:center;gap:12px;min-width:0;padding:0 16px;background:var(--card);border-bottom:1px solid var(--border);box-shadow:0 1px 2px rgba(16,24,40,.03);z-index:20}
+.project-switcher-wrap{position:relative}.project-switcher{display:flex;align-items:center;gap:8px;max-width:310px;height:32px;padding:0 11px;border:1px solid var(--border-strong);border-radius:8px;background:var(--card);color:var(--text);cursor:pointer}.project-switcher strong{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:12.5px}.geo-dot{width:7px;height:7px;border-radius:2px;background:linear-gradient(135deg,var(--primary),var(--purple));flex:0 0 auto}
+.project-popover{position:absolute;top:38px;left:0;width:280px;padding:7px;background:var(--card);border:1px solid var(--border);border-radius:10px;box-shadow:var(--shadow-lg);z-index:60}.project-popover button{display:flex;justify-content:space-between;width:100%;padding:8px;border:0;border-radius:7px;background:none;color:var(--text);text-align:left;cursor:pointer}.project-popover button:hover,.project-popover button.active{background:var(--primary-light);color:var(--primary)}.project-popover small{color:var(--text-3)}.project-manage{display:block;margin-top:5px;padding:8px;border-top:1px solid var(--border);font-size:12px}
+.breadcrumb{display:flex;align-items:center;gap:7px;min-width:0;color:var(--text-3);font-size:12px}.breadcrumb::before{content:'';width:3px;height:14px;border-radius:2px;background:linear-gradient(var(--primary),var(--purple))}.breadcrumb b{max-width:230px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--text)}
+.topbar-actions{display:flex;align-items:center;gap:7px;margin-left:auto}.icon-button{display:grid;place-items:center;width:30px;height:30px;padding:0;border:1px solid var(--border);border-radius:7px;background:var(--card);color:var(--text-2);cursor:pointer}.icon-button:hover{border-color:var(--primary);color:var(--primary)}.mobile-menu{display:none}
+.user-chip{display:flex;align-items:center;gap:7px;height:34px;padding:0 7px;border:1px solid var(--border);border-radius:9px;background:var(--card)}.avatar{display:grid;place-items:center;width:24px;height:24px;border-radius:50%;background:linear-gradient(135deg,var(--primary),var(--cyan));color:#fff}.user-copy{display:flex;flex-direction:column;line-height:1.05}.user-copy b{font-size:11px}.user-copy small{font-size:8px;color:var(--danger)}.logout-button{border:0;background:none;color:var(--text-3);font-size:10px;cursor:pointer}
+.app-content{grid-area:main;min-width:0;min-height:0;overflow:auto;background:var(--bg)}.sidebar-backdrop{display:none}
+@media(max-width:767px){
+  .app-shell{grid-template:"header" 48px "main" minmax(0,1fr)/minmax(0,1fr)}.app-sidebar{position:fixed;inset:0 auto 0 0;width:min(86vw,288px);transform:translateX(-102%);transition:transform .2s var(--ease);box-shadow:var(--shadow-xl)}.app-sidebar.open{transform:translateX(0)}.mobile-menu{display:grid}.sidebar-backdrop{display:block;position:fixed;inset:0;border:0;background:rgba(6,16,30,.48);z-index:25}.project-switcher{max-width:170px}.breadcrumb{display:none}.user-copy,.logout-button{display:none}.topbar-actions{gap:4px}.app-topbar{padding:0 8px}.project-manager-entry{font-size:12px}
 }
-@media (max-width:480px){.topbar-project-name{display:none}}
 </style>

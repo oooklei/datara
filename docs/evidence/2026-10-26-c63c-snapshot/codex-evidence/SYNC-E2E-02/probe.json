@@ -1,0 +1,151 @@
+{
+  "token_status": 200,
+  "projects": [
+    200,
+    {
+      "code": 0,
+      "msg": "success",
+      "data": {
+        "total": 27,
+        "list": [
+          {
+            "id": 1,
+            "name": "I1浏览器验证项目"
+          },
+          {
+            "id": 2,
+            "name": "I1静态验证项目"
+          },
+          {
+            "id": 3,
+            "name": "R1 validation r1-20261014101447"
+          },
+          {
+            "id": 4,
+            "name": "R1 validation r1-20261014101526"
+          },
+          {
+            "id": 5,
+            "name": "R1 validation r1-20261014101553"
+          },
+          {
+            "id": 6,
+            "name": "R1 validation r1-20261014101615"
+          },
+          {
+            "id": 7,
+            "name": "R3 governance validation R3V-20261014110557-a0c74c"
+          },
+          {
+            "id": 8,
+            "name": "R3 governance validation R3V-20261014110900-fe0cee"
+          },
+          {
+            "id": 9,
+            "name": "R3 governance validation R3V-20261014132657-466f99"
+          },
+          {
+            "id": 10,
+            "name": "R1 validation r1-20261014141528"
+          },
+          {
+            "id": 11,
+            "name": "R1 validation r1-20261014142424"
+          },
+          {
+            "id": 12,
+            "name": "R1 validation r1-20261014143004"
+          },
+          {
+            "id": 13,
+            "name": "R1 validation r1-20261014143128"
+          },
+          {
+            "id": 14,
+            "name": "R1 validation r1-20261014143228"
+          },
+          {
+            "id": 15,
+            "name": "r2-12-a-validation-fixture"
+          },
+          {
+            "id": 16,
+            "name": "r2-12-a-isolation-fixture"
+          },
+          {
+            "id": 17,
+            "name": "r2-12-b-validation-fixture"
+          },
+          {
+            "id": 18,
+            "name": "r2-12-b-isolation-fixture"
+          },
+          {
+            "id": 19,
+            "name": "r2-12-c-validation-fixture"
+          },
+          {
+            "id": 20,
+            "name": "r2-12-c-isolation-fixture"
+          },
+          {
+            "id": 21,
+            "name": "r2-12-d-validation-fixture"
+          },
+          {
+            "id": 22,
+            "name": "r2-12-d-isolation-fixture"
+          },
+          {
+            "id": 23,
+            "name": "L12-02-E2E-20261021"
+          },
+          {
+            "id": 24,
+            "name": "resource-e2e-20261025181125"
+          },
+          {
+            "id": 25,
+            "name": "resource-e2e-20261025182920"
+          },
+          {
+            "id": 26,
+            "name": "resource-e2e-20261025190515"
+          },
+          {
+            "id": 27,
+            "name": "IDE-E2E-01-20261025191001"
+          }
+        ]
+      }
+    }
+  ],
+  "workflows": [
+    200,
+    {
+      "code": 0,
+      "msg": "success",
+      "data": [
+        {
+          "definition_id": 25,
+          "project_id": 26,
+          "name": "resource-chain-20261025190515",
+          "description": "",
+          "workflow_type": "NORMAL",
+          "current_version": null,
+          "tags": []
+        }
+      ]
+    }
+  ],
+  "datasources": [
+    200,
+    {
+      "code": 0,
+      "msg": "success",
+      "data": {
+        "items": []
+      }
+    }
+  ]
+}

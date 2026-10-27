@@ -1,0 +1,54 @@
+{
+  "schema_version": "3.0",
+  "ticket": "IMPL-v4-07",
+  "type": "FLOW_DISPATCH_FACE",
+  "epoch": 3,
+  "generated_at": "2026-10-22T18:45:00+08:00",
+  "generated_by": "Flow",
+  "dispatch_anchor_events": [
+    "v3-0051-outbox-reports-admitted-batch-9",
+    "v3-0052-dispatch-assigned-impl-v4-07"
+  ],
+  "assigned_to": "claude",
+  "state_transition": "READY->ASSIGNED",
+  "title": "质量五项批 A：质量规则页 /qc/rule + 检查任务页 /qc/task + governanceApi 契约 + 菜单转正",
+  "domain": "DELIVERY",
+  "priority": {
+    "base": "P2",
+    "effective": "P2",
+    "basis": "WBS 增量 14 包 14.4 批 A；后端端点已齐备（quality-rules CRUD/run + quality-runs 查询），§3.3 E 组质量面唯一无裁定缺口可交付段；非当前发布关键路径",
+    "override": null
+  },
+  "authority": "USER_EXPLICIT_INSTRUCTION（Ops 转达用户指令「02a 派 claude，Task 同步立下一批」；Task 增量 10 §四 发布 READY 票面，§六-1 建议 07→claude 线；Flow 按 READY 库存正常派单）",
+  "depends_on": [],
+  "depends_satisfied": "无票面依赖：项目管理层已交付（增量 10 §三-2）；qc-rule/qc-task 菜单条目已在 menu.ts（future）；FE-SHELL-01 路径锁由本票独占（增量 10 §三-4）",
+  "acceptance": "① governanceApi 覆盖 POST/GET /projects/{id}/quality-rules、POST /quality-rules/{rule_id}/run、GET /projects/{id}/quality-runs，包络三态与错误码对齐；② 契约测试 GREEN；③ Playwright：建规则→执行→quality-runs 查询闭环；④ structural 语义如实呈现（行级四字段恒 0，不虚构行级结果）；⑤ 菜单 future→formal 且无空壳；⑥ 全量 vitest 基线不退化；⑦ 1.9 端到端 GREEN",
+  "evidence_requirements": [
+    "路径实存清单",
+    "vue-tsc -b + tsc --noEmit + NO_SECRET 预检（0 实际命中口径）",
+    "契约测试输出",
+    "1.9 Playwright 证据成对（经 Integration 租约；租约请求先于任何 1.9 执行）",
+    "CONTRACT_REGISTRY 待登记行文本（不改 CONTRACT_REGISTRY.md，随证据交付）",
+    "菜单 diff 仅两行"
+  ],
+  "completion_chain": "EVIDENCE_READY → ENV_VERIFIED（Integration 租约）→ PASS（Acceptance）→ Flow 集成窗提交 → RELEASED/DONE",
+  "paths": [
+    "datara-newweb/src/services/rebuild/governanceApi.ts",
+    "datara-newweb/src/services/rebuild/__tests__/governanceApi.contract.test.ts",
+    "datara-newweb/src/views/qc/QualityRuleView.vue",
+    "datara-newweb/src/views/qc/QualityTaskView.vue",
+    "datara-newweb/src/views/__tests__/qualityRuleView.contract.test.ts",
+    "datara-newweb/src/views/__tests__/qualityTaskView.contract.test.ts",
+    "datara-newweb/src/router/routes.ts（仅 qc 两路由）",
+    "datara-newweb/src/navigation/menu.ts（仅 qc-rule/qc-task 两行）"
+  ],
+  "boundaries": [
+    "FE-SHELL 路径锁（routes.ts/menu.ts）由本票独占；12（API 页面）须待本票释放后取锁",
+    "CONTRACT_REGISTRY.md 不进入本票可写路径；台账行以证据包文本交付，由 Integration 集成窗单点追加",
+    "structural 语义：run 端点只做结构校验（行级四字段恒 0），前端不得虚构行级结果",
+    "本机=代码检测/静态/类型/逻辑稽核；1.9 执行须先取得 Integration 租约回执；验证入口固定 18091（禁 8090/18090）",
+    "无 commit、无 push（USER_ONLY）；变更留工作区候集成窗 pathspec 圈定"
+  ],
+  "wip_note": "claude 线：01 剩余为 1.9 租约候执段、02a 本地段已 EVIDENCE_READY（1.9 段候回执），本地动作面空闲；EXEC-2（claude 载体线 2）空闲候票，本票落 claude 线后由线内分配承接；线别归属歧义（EXEC-2 报告 E-1/E-2）已交 Ops 分诊，Ops A5 核可 WIP 暂维持口径",
+  "no_secret": "证据面提交前执行 NO_SECRET 预检（0 实际命中口径）"
+}

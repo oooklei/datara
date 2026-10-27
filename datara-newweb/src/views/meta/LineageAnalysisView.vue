@@ -6,12 +6,6 @@
     </header>
 
     <div class="toolbar">
-      <label class="field"><span>项目</span>
-        <select v-model="selectedProject" class="kw" data-project-select :disabled="assetLoading" @change="reloadAssets">
-          <option value="">请选择项目</option>
-          <option v-for="p in projects" :key="p.id" :value="String(p.id)">{{ p.name }}</option>
-        </select>
-      </label>
       <label class="field"><span>资产</span>
         <select v-model="selectedAsset" class="kw" data-asset-select :disabled="assetLoading || lineageLoading || assets.length === 0" @change="reloadLineage">
           <option value="">请选择资产</option>

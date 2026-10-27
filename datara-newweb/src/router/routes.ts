@@ -52,6 +52,7 @@ import ModelDesignView from '../views/dwmodel/ModelDesignView.vue'
 import ModelVersionView from '../views/dwmodel/ModelVersionView.vue'
 import ModelLineageView from '../views/dwmodel/ModelLineageView.vue'
 import ErCanvasView from '../views/dwmodel/ErCanvasView.vue'
+import SystemAdminView from '../views/system/SystemAdminView.vue'
 
 export const routes: RouteRecordRaw[] = [
   { path: '/login', name: 'login', component: LoginView },
@@ -65,6 +66,8 @@ export const routes: RouteRecordRaw[] = [
   { path: '/open/key', name: 'open-key', component: ApiKeyManagementView },
   { path: '/open/api', name: 'open-api', component: ApiManagementView },
   { path: '/open/llm', name: 'open-llm', component: LlmModelsView },
+  { path: '/sys', name: 'system-admin', component: SystemAdminView },
+  { path: '/proj', redirect: '/' },
   { path: '/ds/list', name: 'ds-list', component: DataSourceListView },
   { path: '/ide', name: 'sql-ide', component: IdeView },
   { path: '/model/list', name: 'dwModeling', component: ModelListView },
@@ -95,12 +98,30 @@ export const routes: RouteRecordRaw[] = [
     props: (route) => ({ projectId: Number(route.params.projectId) }),
   },
   {
-    path: '/p/:projectId/:seg',
+    path: '/p/:projectId/datasource',
+    redirect: (route) => `/p/${route.params.projectId}/ds/list`,
+  },
+  {
+    path: '/p/:projectId/meta',
+    redirect: (route) => `/p/${route.params.projectId}/meta/catalog`,
+  },
+  {
+    path: '/p/:projectId/dep',
+    redirect: '/dep/monitor',
+  },
+  {
+    path: '/p/:projectId/system',
+    redirect: '/sys',
+  },
+  {
+    path: '/p/:projectId/:pathMatch(.*)*',
     name: 'project-segment',
     component: ProjectSegmentView,
     props: (route) => ({
       projectId: Number(route.params.projectId),
-      seg: String(route.params.seg ?? ''),
+      segmentPath: Array.isArray(route.params.pathMatch)
+        ? route.params.pathMatch.join('/')
+        : String(route.params.pathMatch ?? ''),
     }),
   },
 ]

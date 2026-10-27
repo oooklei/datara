@@ -1,0 +1,34 @@
+{
+  "schema_version": "3.0",
+  "ticket": "IMPL-v4-15",
+  "epoch": 3,
+  "issued_by": "Flow",
+  "issued_at": "2026-10-24T03:34:00+08:00",
+  "event_ref": "v3-0082-dispatch-assigned-impl-v4-15",
+  "assigned_to": "claude (EXEC-3)",
+  "state_transition": "READY->ASSIGNED",
+  "serialization": "queued behind IMPL-v4-03 local segment on EXEC-3; codex primary unavailable (not online/ACKed)",
+  "title": "迁移挂载死码对账（对账表 + 命名/映射定稿；零代码改动）",
+  "domain": "MAINTENANCE",
+  "base_priority": "P3",
+  "effective_priority": "P3",
+  "priority_basis": "MAINTENANCE；裁定后由候裁转可开工纯对账段；MAINTENANCE 序（CONTROL→DELIVERY→VALIDATION→MAINTENANCE）",
+  "priority_override": null,
+  "depends_on": [],
+  "depends_satisfied": "DEC-migration-direction 已裁（v3-0071 采信）；不再依赖 IMPL-v4-01（对账段零代码，挂载移入 18）",
+  "acceptance": [
+    "对账表全量映射（v0001_* 锚 ↔ i17_*/r*）+ 挂载状态矩阵四态",
+    "窗口实施顺序与回滚落点",
+    "git diff 于 datara-backend/** 为空 + NO_SECRET 0 命中",
+    "Acceptance 独立复核 PASS"
+  ],
+  "evidence_requirements": "纯文档段，本机即权威、无需 1.9；证据=对账文档 + 静态三项 + Acceptance 复核回执",
+  "paths": [
+    "docs/increments/evidence/2026-10-23-F2-F3-migration-reconciliation.md（新）",
+    "只读引用：datara-backend/rebuild/*/migrations.py、*/revisions/、app.py（禁改）"
+  ],
+  "boundaries": "禁触 app.py 及 datara-backend/** 任何代码（对账段零代码）；挂载窗口另立 IMPL-v4-18；不写 STATE/mailbox/队列投影（Flow 单写）；不 commit、不 push（push=USER_ONLY）；AOCI 停用",
+  "completion_chain": "EVIDENCE_READY → Acceptance 独立复核 PASS（纯文档无远测）→ Flow 集成窗提交 → RELEASED/DONE",
+  "face_version": "v1.0（对账段，显式升版替代增量 10 v1.3 票面）",
+  "wip_note": "EXEC-3 本地 WIP：03（重派接手）→ 15（对账段）串行；codex 首选不可用已降级 EXEC-3"
+}

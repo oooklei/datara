@@ -1,0 +1,538 @@
+{
+  "ticket": "FE-NAV-E2E-02",
+  "base": "http://192.168.1.9:18091",
+  "startedAt": "2026-10-25T16:17:46.416Z",
+  "auth": {
+    "anonymousRedirect": "/login",
+    "loginFormVisible": true,
+    "injectedLanding": "/",
+    "visibleLogoutControl": false,
+    "logout": {
+      "logoutStatus": 200,
+      "revokedStatus": 401
+    },
+    "postLogoutPath": "/login"
+  },
+  "globalRoutes": [
+    {
+      "kind": "global",
+      "expectedPath": "/",
+      "path": "/",
+      "title": "Datara",
+      "heading": "Datara",
+      "buttons": 64,
+      "links": 27,
+      "dialogs": 0,
+      "canvases": 0,
+      "alerts": [],
+      "body": "Datara\n总览\n工作台\n任务中心\n数据集成\n数据源管理\n资源管理\n数据开发\n数据开发IDE\n数仓建模\n数据治理\n血缘分析\n资产地图\n元数据目录\n标签\n标准\n指标目录\n指标看板\n一致性检查\n质量规则\n检查任务\n异常数据核查\n质量报告\n质量告警\n部署运维\n运行时节点\n集群监控\nSSH 节点\n系统管理\n权限管理\n访问审计\nAPI 管理\nAPI-Key 管理\nLLM 模型配置\nDatara\n\n选择一个项目进入工作区\n\n新建项目\nI1浏览器验证项目\n编辑删除\nI1静态验证项目\n编辑"
+    },
+    {
+      "kind": "global",
+      "expectedPath": "/dag",
+      "path": "/dag",
+      "title": "Datara",
+      "heading": "",
+      "buttons": 11,
+      "links": 27,
+      "dialogs": 0,
+      "canvases": 0,
+      "alerts": [],
+      "body": "Datara\n总览\n工作台\n任务中心\n数据集成\n数据源管理\n资源管理\n数据开发\n数据开发IDE\n数仓建模\n数据治理\n血缘分析\n资产地图\n元数据目录\n标签\n标准\n指标目录\n指标看板\n一致性检查\n质量规则\n检查任务\n异常数据核查\n质量报告\n质量告警\n部署运维\n运行时节点\n集群监控\nSSH 节点\n系统管理\n权限管理\n访问审计\nAPI 管理\nAPI-Key 管理\nLLM 模型配置\n⑃\n任务编排\n▦\n模板中心\n▶\n运行监控\n🖂\n告警与SLA\n变量管理\n＋ 新建工作流\nDAG 编排\n组"
+    },
+    {
+      "kind": "global",
+      "expectedPath": "/ds/list",
+      "path": "/ds/list",
+      "title": "Datara",
+      "heading": "数据源管理",
+      "buttons": 2,
+      "links": 27,
+      "dialogs": 0,
+      "canvases": 0,
+      "alerts": [],
+      "body": "Datara\n总览\n工作台\n任务中心\n数据集成\n数据源管理\n资源管理\n数据开发\n数据开发IDE\n数仓建模\n数据治理\n血缘分析\n资产地图\n元数据目录\n标签\n标准\n指标目录\n指标看板\n一致性检查\n质量规则\n检查任务\n异常数据核查\n质量报告\n质量告警\n部署运维\n运行时节点\n集群监控\nSSH 节点\n系统管理\n权限管理\n访问审计\nAPI 管理\nAPI-Key 管理\nLLM 模型配置\n数据源管理\n\n按项目注册数据库连接并测试连通性；凭据仅写入请求体，服务端响应不回显密码。\n\n项目\n请选择"
+    },
+    {
+      "kind": "global",
+      "expectedPath": "/resources",
+      "path": "/resources",
+      "title": "Datara",
+      "heading": "资源管理",
+      "buttons": 1,
+      "links": 27,
+      "dialogs": 0,
+      "canvases": 0,
+      "alerts": [],
+      "body": "Datara\n总览\n工作台\n任务中心\n数据集成\n数据源管理\n资源管理\n数据开发\n数据开发IDE\n数仓建模\n数据治理\n血缘分析\n资产地图\n元数据目录\n标签\n标准\n指标目录\n指标看板\n一致性检查\n质量规则\n检查任务\n异常数据核查\n质量报告\n质量告警\n部署运维\n运行时节点\n集群监控\nSSH 节点\n系统管理\n权限管理\n访问审计\nAPI 管理\nAPI-Key 管理\nLLM 模型配置\n资源管理\n\n管理 SQL、Python、Shell 资源及其不可变版本。\n\n项目 \n请选择项目\nI1浏览"
+    },
+    {
+      "kind": "global",
+      "expectedPath": "/ide",
+      "path": "/ide",
+      "title": "Datara",
+      "heading": "数据开发 IDE",
+      "buttons": 4,
+      "links": 27,
+      "dialogs": 0,
+      "canvases": 0,
+      "alerts": [],
+      "body": "Datara\n总览\n工作台\n任务中心\n数据集成\n数据源管理\n资源管理\n数据开发\n数据开发IDE\n数仓建模\n数据治理\n血缘分析\n资产地图\n元数据目录\n标签\n标准\n指标目录\n指标看板\n一致性检查\n质量规则\n检查任务\n异常数据核查\n质量报告\n质量告警\n部署运维\n运行时节点\n集群监控\nSSH 节点\n系统管理\n权限管理\n访问审计\nAPI 管理\nAPI-Key 管理\nLLM 模型配置\n数据开发 IDE\n\nR5-A 只读态：对象树（库·Schema·表/视图/例程/索引）→ 写 SQL（含"
+    },
+    {
+      "kind": "global",
+      "expectedPath": "/model/list",
+      "path": "/model/list",
+      "title": "Datara",
+      "heading": "数仓建模",
+      "buttons": 3,
+      "links": 27,
+      "dialogs": 0,
+      "canvases": 0,
+      "alerts": [],
+      "body": "Datara\n总览\n工作台\n任务中心\n数据集成\n数据源管理\n资源管理\n数据开发\n数据开发IDE\n数仓建模\n数据治理\n血缘分析\n资产地图\n元数据目录\n标签\n标准\n指标目录\n指标看板\n一致性检查\n质量规则\n检查任务\n异常数据核查\n质量报告\n质量告警\n部署运维\n运行时节点\n集群监控\nSSH 节点\n系统管理\n权限管理\n访问审计\nAPI 管理\nAPI-Key 管理\nLLM 模型配置\n数仓建模\n\n管理模型定义、生命周期与 DDL 预览。\n\n全部状态\n草稿\n已发布\n已构建\n查询\n新建模型\n"
+    },
+    {
+      "kind": "global",
+      "expectedPath": "/meta/lineage",
+      "path": "/meta/lineage",
+      "title": "Datara",
+      "heading": "血缘分析",
+      "buttons": 1,
+      "links": 27,
+      "dialogs": 0,
+      "canvases": 0,
+      "alerts": [],
+      "body": "Datara\n总览\n工作台\n任务中心\n数据集成\n数据源管理\n资源管理\n数据开发\n数据开发IDE\n数仓建模\n数据治理\n血缘分析\n资产地图\n元数据目录\n标签\n标准\n指标目录\n指标看板\n一致性检查\n质量规则\n检查任务\n异常数据核查\n质量报告\n质量告警\n部署运维\n运行时节点\n集群监控\nSSH 节点\n系统管理\n权限管理\n访问审计\nAPI 管理\nAPI-Key 管理\nLLM 模型配置\n血缘分析\n\n按资产查看上下游血缘图谱（assets/{id}/lineage）。\n\n项目 \n请选择项目\n"
+    },
+    {
+      "kind": "global",
+      "expectedPath": "/meta/map",
+      "path": "/meta/map",
+      "title": "Datara",
+      "heading": "资产地图",
+      "buttons": 2,
+      "links": 27,
+      "dialogs": 0,
+      "canvases": 0,
+      "alerts": [],
+      "body": "Datara\n总览\n工作台\n任务中心\n数据集成\n数据源管理\n资源管理\n数据开发\n数据开发IDE\n数仓建模\n数据治理\n血缘分析\n资产地图\n元数据目录\n标签\n标准\n指标目录\n指标看板\n一致性检查\n质量规则\n检查任务\n异常数据核查\n质量报告\n质量告警\n部署运维\n运行时节点\n集群监控\nSSH 节点\n系统管理\n权限管理\n访问审计\nAPI 管理\nAPI-Key 管理\nLLM 模型配置\n资产地图\n\n按库/域聚合资产分布（projects/{id}/assets）。\n\n项目 \n请选择项目\nI"
+    },
+    {
+      "kind": "global",
+      "expectedPath": "/meta/catalog",
+      "path": "/meta/catalog",
+      "title": "Datara",
+      "heading": "元数据目录",
+      "buttons": 2,
+      "links": 27,
+      "dialogs": 0,
+      "canvases": 0,
+      "alerts": [],
+      "body": "Datara\n总览\n工作台\n任务中心\n数据集成\n数据源管理\n资源管理\n数据开发\n数据开发IDE\n数仓建模\n数据治理\n血缘分析\n资产地图\n元数据目录\n标签\n标准\n指标目录\n指标看板\n一致性检查\n质量规则\n检查任务\n异常数据核查\n质量报告\n质量告警\n部署运维\n运行时节点\n集群监控\nSSH 节点\n系统管理\n权限管理\n访问审计\nAPI 管理\nAPI-Key 管理\nLLM 模型配置\n元数据目录\n\n资产与字段清单（assets/{id} 明细）。\n\n项目 \n请选择项目\nI1浏览器验证项目"
+    },
+    {
+      "kind": "global",
+      "expectedPath": "/meta/tag",
+      "path": "/meta/tag",
+      "title": "Datara",
+      "heading": "标签管理",
+      "buttons": 1,
+      "links": 27,
+      "dialogs": 0,
+      "canvases": 0,
+      "alerts": [],
+      "body": "Datara\n总览\n工作台\n任务中心\n数据集成\n数据源管理\n资源管理\n数据开发\n数据开发IDE\n数仓建模\n数据治理\n血缘分析\n资产地图\n元数据目录\n标签\n标准\n指标目录\n指标看板\n一致性检查\n质量规则\n检查任务\n异常数据核查\n质量报告\n质量告警\n部署运维\n运行时节点\n集群监控\nSSH 节点\n系统管理\n权限管理\n访问审计\nAPI 管理\nAPI-Key 管理\nLLM 模型配置\n标签管理\n\n创建项目标签并挂载到资产（tags / assets/{id}/tags）。\n\n项目\n请选择"
+    },
+    {
+      "kind": "global",
+      "expectedPath": "/std/element",
+      "path": "/std/element",
+      "title": "Datara",
+      "heading": "标准管理",
+      "buttons": 2,
+      "links": 27,
+      "dialogs": 0,
+      "canvases": 0,
+      "alerts": [],
+      "body": "Datara\n总览\n工作台\n任务中心\n数据集成\n数据源管理\n资源管理\n数据开发\n数据开发IDE\n数仓建模\n数据治理\n血缘分析\n资产地图\n元数据目录\n标签\n标准\n指标目录\n指标看板\n一致性检查\n质量规则\n检查任务\n异常数据核查\n质量报告\n质量告警\n部署运维\n运行时节点\n集群监控\nSSH 节点\n系统管理\n权限管理\n访问审计\nAPI 管理\nAPI-Key 管理\nLLM 模型配置\n标准管理\n\n数据标准定义与结构校验（standards / standards/check）。\n\n项目 "
+    },
+    {
+      "kind": "global",
+      "expectedPath": "/ind/list",
+      "path": "/ind/list",
+      "title": "Datara",
+      "heading": "指标目录",
+      "buttons": 2,
+      "links": 27,
+      "dialogs": 0,
+      "canvases": 0,
+      "alerts": [],
+      "body": "Datara\n总览\n工作台\n任务中心\n数据集成\n数据源管理\n资源管理\n数据开发\n数据开发IDE\n数仓建模\n数据治理\n血缘分析\n资产地图\n元数据目录\n标签\n标准\n指标目录\n指标看板\n一致性检查\n质量规则\n检查任务\n异常数据核查\n质量报告\n质量告警\n部署运维\n运行时节点\n集群监控\nSSH 节点\n系统管理\n权限管理\n访问审计\nAPI 管理\nAPI-Key 管理\nLLM 模型配置\n指标目录\n\n语义指标定义（governance metrics）。\n\n项目 \n请选择项目\nI1浏览器验证"
+    },
+    {
+      "kind": "global",
+      "expectedPath": "/ind/board",
+      "path": "/ind/board",
+      "title": "Datara",
+      "heading": "指标看板",
+      "buttons": 1,
+      "links": 27,
+      "dialogs": 0,
+      "canvases": 0,
+      "alerts": [],
+      "body": "Datara\n总览\n工作台\n任务中心\n数据集成\n数据源管理\n资源管理\n数据开发\n数据开发IDE\n数仓建模\n数据治理\n血缘分析\n资产地图\n元数据目录\n标签\n标准\n指标目录\n指标看板\n一致性检查\n质量规则\n检查任务\n异常数据核查\n质量报告\n质量告警\n部署运维\n运行时节点\n集群监控\nSSH 节点\n系统管理\n权限管理\n访问审计\nAPI 管理\nAPI-Key 管理\nLLM 模型配置\n指标看板\n\n指标目录的看板视图（当前无指标结果端点，按定义卡片呈现）。\n\n项目 \n请选择项目\nI1浏览器"
+    },
+    {
+      "kind": "global",
+      "expectedPath": "/ind/consistency",
+      "path": "/ind/consistency",
+      "title": "Datara",
+      "heading": "一致性检查",
+      "buttons": 2,
+      "links": 27,
+      "dialogs": 0,
+      "canvases": 0,
+      "alerts": [],
+      "body": "Datara\n总览\n工作台\n任务中心\n数据集成\n数据源管理\n资源管理\n数据开发\n数据开发IDE\n数仓建模\n数据治理\n血缘分析\n资产地图\n元数据目录\n标签\n标准\n指标目录\n指标看板\n一致性检查\n质量规则\n检查任务\n异常数据核查\n质量报告\n质量告警\n部署运维\n运行时节点\n集群监控\nSSH 节点\n系统管理\n权限管理\n访问审计\nAPI 管理\nAPI-Key 管理\nLLM 模型配置\n一致性检查\n\n按标准执行结构校验（当前复用 standards/check；跨源一致性端点候后端补齐）。"
+    },
+    {
+      "kind": "global",
+      "expectedPath": "/qc/rule",
+      "path": "/qc/rule",
+      "title": "Datara",
+      "heading": "质量规则",
+      "buttons": 2,
+      "links": 27,
+      "dialogs": 0,
+      "canvases": 0,
+      "alerts": [],
+      "body": "Datara\n总览\n工作台\n任务中心\n数据集成\n数据源管理\n资源管理\n数据开发\n数据开发IDE\n数仓建模\n数据治理\n血缘分析\n资产地图\n元数据目录\n标签\n标准\n指标目录\n指标看板\n一致性检查\n质量规则\n检查任务\n异常数据核查\n质量报告\n质量告警\n部署运维\n运行时节点\n集群监控\nSSH 节点\n系统管理\n权限管理\n访问审计\nAPI 管理\nAPI-Key 管理\nLLM 模型配置\n质量规则\n\n按数据资产维护质量规则并执行结构校验；行级结果需绑定数据源，属后续批次。\n\n项目\n请选择项目"
+    },
+    {
+      "kind": "global",
+      "expectedPath": "/qc/task",
+      "path": "/qc/task",
+      "title": "Datara",
+      "heading": "检查任务",
+      "buttons": 2,
+      "links": 27,
+      "dialogs": 0,
+      "canvases": 0,
+      "alerts": [],
+      "body": "Datara\n总览\n工作台\n任务中心\n数据集成\n数据源管理\n资源管理\n数据开发\n数据开发IDE\n数仓建模\n数据治理\n血缘分析\n资产地图\n元数据目录\n标签\n标准\n指标目录\n指标看板\n一致性检查\n质量规则\n检查任务\n异常数据核查\n质量报告\n质量告警\n部署运维\n运行时节点\n集群监控\nSSH 节点\n系统管理\n权限管理\n访问审计\nAPI 管理\nAPI-Key 管理\nLLM 模型配置\n检查任务\n\n质量规则执行记录。structural 口径下行级四字段恒 0，本页只呈现结构与状态，不推断"
+    },
+    {
+      "kind": "global",
+      "expectedPath": "/qc/exception",
+      "path": "/qc/exception",
+      "title": "Datara",
+      "heading": "异常核查",
+      "buttons": 2,
+      "links": 27,
+      "dialogs": 0,
+      "canvases": 0,
+      "alerts": [],
+      "body": "Datara\n总览\n工作台\n任务中心\n数据集成\n数据源管理\n资源管理\n数据开发\n数据开发IDE\n数仓建模\n数据治理\n血缘分析\n资产地图\n元数据目录\n标签\n标准\n指标目录\n指标看板\n一致性检查\n质量规则\n检查任务\n异常数据核查\n质量报告\n质量告警\n部署运维\n运行时节点\n集群监控\nSSH 节点\n系统管理\n权限管理\n访问审计\nAPI 管理\nAPI-Key 管理\nLLM 模型配置\n异常核查\n\n只读核查质量异常、命中样例与处理状态。\n\n项目\n请选择项目\nI1浏览器验证项目\nI1静态验证"
+    },
+    {
+      "kind": "global",
+      "expectedPath": "/qc/report",
+      "path": "/qc/report",
+      "title": "Datara",
+      "heading": "质量报告",
+      "buttons": 2,
+      "links": 27,
+      "dialogs": 0,
+      "canvases": 0,
+      "alerts": [],
+      "body": "Datara\n总览\n工作台\n任务中心\n数据集成\n数据源管理\n资源管理\n数据开发\n数据开发IDE\n数仓建模\n数据治理\n血缘分析\n资产地图\n元数据目录\n标签\n标准\n指标目录\n指标看板\n一致性检查\n质量规则\n检查任务\n异常数据核查\n质量报告\n质量告警\n部署运维\n运行时节点\n集群监控\nSSH 节点\n系统管理\n权限管理\n访问审计\nAPI 管理\nAPI-Key 管理\nLLM 模型配置\n质量报告\n\n查看已生成的质量报告及其统计内容。\n\n项目\n请选择项目\nI1浏览器验证项目\nI1静态验证项目"
+    },
+    {
+      "kind": "global",
+      "expectedPath": "/qc/alarm",
+      "path": "/qc/alarm",
+      "title": "Datara",
+      "heading": "质量告警",
+      "buttons": 2,
+      "links": 27,
+      "dialogs": 0,
+      "canvases": 0,
+      "alerts": [],
+      "body": "Datara\n总览\n工作台\n任务中心\n数据集成\n数据源管理\n资源管理\n数据开发\n数据开发IDE\n数仓建模\n数据治理\n血缘分析\n资产地图\n元数据目录\n标签\n标准\n指标目录\n指标看板\n一致性检查\n质量规则\n检查任务\n异常数据核查\n质量报告\n质量告警\n部署运维\n运行时节点\n集群监控\nSSH 节点\n系统管理\n权限管理\n访问审计\nAPI 管理\nAPI-Key 管理\nLLM 模型配置\n质量告警\n\n查看质量告警策略、阈值与最近触发时间。\n\n项目\n请选择项目\nI1浏览器验证项目\nI1静态验证"
+    },
+    {
+      "kind": "global",
+      "expectedPath": "/dep/runtime",
+      "path": "/dep/runtime",
+      "title": "Datara",
+      "heading": "运行时节点",
+      "buttons": 2,
+      "links": 27,
+      "dialogs": 0,
+      "canvases": 0,
+      "alerts": [],
+      "body": "Datara\n总览\n工作台\n任务中心\n数据集成\n数据源管理\n资源管理\n数据开发\n数据开发IDE\n数仓建模\n数据治理\n血缘分析\n资产地图\n元数据目录\n标签\n标准\n指标目录\n指标看板\n一致性检查\n质量规则\n检查任务\n异常数据核查\n质量报告\n质量告警\n部署运维\n运行时节点\n集群监控\nSSH 节点\n系统管理\n权限管理\n访问审计\nAPI 管理\nAPI-Key 管理\nLLM 模型配置\n运行时节点\n\n运行时节点注册清单（只读，不含凭据）。点击节点浏览其运行时目录；目录浏览经 SFTP 实时"
+    },
+    {
+      "kind": "global",
+      "expectedPath": "/dep/monitor",
+      "path": "/dep/monitor",
+      "title": "Datara",
+      "heading": "集群监控",
+      "buttons": 2,
+      "links": 27,
+      "dialogs": 0,
+      "canvases": 0,
+      "alerts": [],
+      "body": "Datara\n总览\n工作台\n任务中心\n数据集成\n数据源管理\n资源管理\n数据开发\n数据开发IDE\n数仓建模\n数据治理\n血缘分析\n资产地图\n元数据目录\n标签\n标准\n指标目录\n指标看板\n一致性检查\n质量规则\n检查任务\n异常数据核查\n质量报告\n质量告警\n部署运维\n运行时节点\n集群监控\nSSH 节点\n系统管理\n权限管理\n访问审计\nAPI 管理\nAPI-Key 管理\nLLM 模型配置\n集群监控\n\nmaster / worker / ssh 三类节点的心跳与指标快照。指标由节点上报聚合，非"
+    },
+    {
+      "kind": "global",
+      "expectedPath": "/dep/ssh",
+      "path": "/dep/ssh",
+      "title": "Datara",
+      "heading": "SSH 节点",
+      "buttons": 2,
+      "links": 27,
+      "dialogs": 0,
+      "canvases": 0,
+      "alerts": [],
+      "body": "Datara\n总览\n工作台\n任务中心\n数据集成\n数据源管理\n资源管理\n数据开发\n数据开发IDE\n数仓建模\n数据治理\n血缘分析\n资产地图\n元数据目录\n标签\n标准\n指标目录\n指标看板\n一致性检查\n质量规则\n检查任务\n异常数据核查\n质量报告\n质量告警\n部署运维\n运行时节点\n集群监控\nSSH 节点\n系统管理\n权限管理\n访问审计\nAPI 管理\nAPI-Key 管理\nLLM 模型配置\nSSH 节点\n\n独立维护部署运维使用的 SSH 连接节点。\n\n新建节点\n\n暂无 SSH 节点\n\nAI"
+    },
+    {
+      "kind": "global",
+      "expectedPath": "/sec/perm",
+      "path": "/sec/perm",
+      "title": "Datara",
+      "heading": "权限矩阵",
+      "buttons": 1,
+      "links": 27,
+      "dialogs": 0,
+      "canvases": 0,
+      "alerts": [],
+      "body": "Datara\n总览\n工作台\n任务中心\n数据集成\n数据源管理\n资源管理\n数据开发\n数据开发IDE\n数仓建模\n数据治理\n血缘分析\n资产地图\n元数据目录\n标签\n标准\n指标目录\n指标看板\n一致性检查\n质量规则\n检查任务\n异常数据核查\n质量报告\n质量告警\n部署运维\n运行时节点\n集群监控\nSSH 节点\n系统管理\n权限管理\n访问审计\nAPI 管理\nAPI-Key 管理\nLLM 模型配置\n权限矩阵\n\n四角色 × 32 权限点只读快照（权威源 rebuild/identity/contract"
+    },
+    {
+      "kind": "global",
+      "expectedPath": "/sec/audit",
+      "path": "/sec/audit",
+      "title": "Datara",
+      "heading": "访问审计",
+      "buttons": 6,
+      "links": 27,
+      "dialogs": 0,
+      "canvases": 0,
+      "alerts": [],
+      "body": "Datara\n总览\n工作台\n任务中心\n数据集成\n数据源管理\n资源管理\n数据开发\n数据开发IDE\n数仓建模\n数据治理\n血缘分析\n资产地图\n元数据目录\n标签\n标准\n指标目录\n指标看板\n一致性检查\n质量规则\n检查任务\n异常数据核查\n质量报告\n质量告警\n部署运维\n运行时节点\n集群监控\nSSH 节点\n系统管理\n权限管理\n访问审计\nAPI 管理\nAPI-Key 管理\nLLM 模型配置\n访问审计\n\n管理员专属 · 记录所有用户对数据资产的访问尝试及结果\n\n刷新\n用户\n动作\n结果\n全部\n放行"
+    },
+    {
+      "kind": "global",
+      "expectedPath": "/open/api",
+      "path": "/open/api",
+      "title": "Datara",
+      "heading": "API 管理",
+      "buttons": 4,
+      "links": 27,
+      "dialogs": 0,
+      "canvases": 0,
+      "alerts": [],
+      "body": "Datara\n总览\n工作台\n任务中心\n数据集成\n数据源管理\n资源管理\n数据开发\n数据开发IDE\n数仓建模\n数据治理\n血缘分析\n资产地图\n元数据目录\n标签\n标准\n指标目录\n指标看板\n一致性检查\n质量规则\n检查任务\n异常数据核查\n质量报告\n质量告警\n部署运维\n运行时节点\n集群监控\nSSH 节点\n系统管理\n权限管理\n访问审计\nAPI 管理\nAPI-Key 管理\nLLM 模型配置\nAPI 管理\n\n登记受控 Datara Facade，并查看脱敏调用日志。\n\nAPI 定义调用日志\n新建"
+    },
+    {
+      "kind": "global",
+      "expectedPath": "/open/key",
+      "path": "/open/key",
+      "title": "Datara",
+      "heading": "API-Key 管理",
+      "buttons": 8,
+      "links": 27,
+      "dialogs": 0,
+      "canvases": 0,
+      "alerts": [],
+      "body": "Datara\n总览\n工作台\n任务中心\n数据集成\n数据源管理\n资源管理\n数据开发\n数据开发IDE\n数仓建模\n数据治理\n血缘分析\n资产地图\n元数据目录\n标签\n标准\n指标目录\n指标看板\n一致性检查\n质量规则\n检查任务\n异常数据核查\n质量报告\n质量告警\n部署运维\n运行时节点\n集群监控\nSSH 节点\n系统管理\n权限管理\n访问审计\nAPI 管理\nAPI-Key 管理\nLLM 模型配置\nAPI-Key 管理\n\n管理受控 API 的访问凭据；原始 Key 仅在签发或轮换后显示一次。\n\n签发 "
+    },
+    {
+      "kind": "global",
+      "expectedPath": "/open/llm",
+      "path": "/open/llm",
+      "title": "Datara",
+      "heading": "LLM 配置",
+      "buttons": 2,
+      "links": 27,
+      "dialogs": 0,
+      "canvases": 0,
+      "alerts": [],
+      "body": "Datara\n总览\n工作台\n任务中心\n数据集成\n数据源管理\n资源管理\n数据开发\n数据开发IDE\n数仓建模\n数据治理\n血缘分析\n资产地图\n元数据目录\n标签\n标准\n指标目录\n指标看板\n一致性检查\n质量规则\n检查任务\n异常数据核查\n质量报告\n质量告警\n部署运维\n运行时节点\n集群监控\nSSH 节点\n系统管理\n权限管理\n访问审计\nAPI 管理\nAPI-Key 管理\nLLM 模型配置\nLLM 配置\n\n管理模型提供商、默认模型与连通性。密钥仅在提交时传输，不写入浏览器存储。\n\n新建模型\n\n"
+    }
+  ],
+  "projectRoutes": [
+    {
+      "kind": "project",
+      "expectedPath": "/p/27/dag",
+      "path": "/p/27/dag",
+      "title": "Datara",
+      "heading": "",
+      "buttons": 11,
+      "links": 8,
+      "dialogs": 0,
+      "canvases": 0,
+      "alerts": [],
+      "body": "Datara\nIDE-E2E-01-20261025191001\n返回项目列表\n任务中心\n数据源\n资源管理\nSQL IDE\n数据治理\n部署运维\n系统管理\n⑃\n任务编排\n▦\n模板中心\n▶\n运行监控\n🖂\n告警与SLA\n变量管理\n＋ 新建工作流\nDAG 编排\n组件\n工作流\n＋ 新建分类\n已选 0\n载入选中 (0)\n暂无工作任务（后端定义未就绪）\n暂无打开的画布\n在左侧 Palette「工作流」中勾选任务后点「载入选中」，每个任务开一个画布 Tab。\nAI"
+    },
+    {
+      "kind": "project",
+      "expectedPath": "/p/27/datasource",
+      "path": "/p/27/datasource",
+      "title": "Datara",
+      "heading": "",
+      "buttons": 1,
+      "links": 27,
+      "dialogs": 0,
+      "canvases": 0,
+      "alerts": [],
+      "body": "Datara\n总览\n工作台\n任务中心\n数据集成\n数据源管理\n资源管理\n数据开发\n数据开发IDE\n数仓建模\n数据治理\n血缘分析\n资产地图\n元数据目录\n标签\n标准\n指标目录\n指标看板\n一致性检查\n质量规则\n检查任务\n异常数据核查\n质量报告\n质量告警\n部署运维\n运行时节点\n集群监控\nSSH 节点\n系统管理\n权限管理\n访问审计\nAPI 管理\nAPI-Key 管理\nLLM 模型配置\nAI"
+    },
+    {
+      "kind": "project",
+      "expectedPath": "/p/27/resources",
+      "path": "/p/27/resources",
+      "title": "Datara",
+      "heading": "资源管理",
+      "buttons": 1,
+      "links": 8,
+      "dialogs": 0,
+      "canvases": 0,
+      "alerts": [],
+      "body": "Datara\nIDE-E2E-01-20261025191001\n返回项目列表\n任务中心\n数据源\n资源管理\nSQL IDE\n数据治理\n部署运维\n系统管理\n资源管理\n\n管理 SQL、Python、Shell 资源及其不可变版本。\n\n全部类型\nSQL\nPython\nShell\nUpload \nSQL\nPython\nShell\n名称\t类型\t版本\t状态\t大小\t操作\n暂无资源\nAI"
+    },
+    {
+      "kind": "project",
+      "expectedPath": "/p/27/ide",
+      "path": "/p/27/ide",
+      "title": "Datara",
+      "heading": "数据开发 IDE",
+      "buttons": 4,
+      "links": 8,
+      "dialogs": 0,
+      "canvases": 0,
+      "alerts": [],
+      "body": "Datara\nIDE-E2E-01-20261025191001\n返回项目列表\n任务中心\n数据源\n资源管理\nSQL IDE\n数据治理\n部署运维\n系统管理\n数据开发 IDE\n\nR5-A 只读态：对象树（库·Schema·表/视图/例程/索引）→ 写 SQL（含变量引用）→ 执行 → 结果网格 → 历史。DDL 写路径归增量 16/R5-B。\n\n项目\n请选择项目\nI1浏览器验证项目\nI1静态验证项目\nR1 validation r1-20261014101447\nR1 valid"
+    },
+    {
+      "kind": "project",
+      "expectedPath": "/p/27/meta",
+      "path": "/p/27/meta",
+      "title": "Datara",
+      "heading": "元数据目录",
+      "buttons": 2,
+      "links": 8,
+      "dialogs": 0,
+      "canvases": 0,
+      "alerts": [],
+      "body": "Datara\nIDE-E2E-01-20261025191001\n返回项目列表\n任务中心\n数据源\n资源管理\nSQL IDE\n数据治理\n部署运维\n系统管理\n元数据目录\n\n资产与字段清单（assets/{id} 明细）。\n\n项目 \n请选择项目\nI1浏览器验证项目\nI1静态验证项目\nR1 validation r1-20261014101447\nR1 validation r1-20261014101526\nR1 validation r1-20261014101553\nR1 va"
+    },
+    {
+      "kind": "project",
+      "expectedPath": "/p/27/dep",
+      "path": "/p/27/dep",
+      "title": "Datara",
+      "heading": "集群监控",
+      "buttons": 2,
+      "links": 8,
+      "dialogs": 0,
+      "canvases": 0,
+      "alerts": [],
+      "body": "Datara\nIDE-E2E-01-20261025191001\n返回项目列表\n任务中心\n数据源\n资源管理\nSQL IDE\n数据治理\n部署运维\n系统管理\n集群监控\n\nmaster / worker / ssh 三类节点的心跳与指标快照。指标由节点上报聚合，非实时值。\n\nZK：可用\n生成时间：2026-10-26 00:18:20\n刷新\n模块\t节点\tCPU\t内存 %\t内存 MB\t磁盘\t心跳\t指标态\t最近上报\t标签\nmaster\t172.31.0.10:18001\t—\t—\t—\t—"
+    },
+    {
+      "kind": "project",
+      "expectedPath": "/p/27/system",
+      "path": "/p/27/system",
+      "title": "Datara",
+      "heading": "权限矩阵",
+      "buttons": 1,
+      "links": 8,
+      "dialogs": 0,
+      "canvases": 0,
+      "alerts": [],
+      "body": "Datara\nIDE-E2E-01-20261025191001\n返回项目列表\n任务中心\n数据源\n资源管理\nSQL IDE\n数据治理\n部署运维\n系统管理\n权限矩阵\n\n四角色 × 32 权限点只读快照（权威源 rebuild/identity/contracts.py ROLE_PERMISSIONS）。\n\n✓ 已授权\n— 未授权（authorize() 默认拒绝）\n权限点\tadmin\tdeveloper\toperator\tviewer\nmanage_user\t✓\t—\t—\t—\n"
+    }
+  ],
+  "interactions": [
+    {
+      "name": "project-create-dialog-open-cancel",
+      "ok": true
+    },
+    {
+      "name": "workflow-tabs-and-variable-drawer",
+      "ok": true
+    },
+    {
+      "name": "workflow-canvas-surface",
+      "ok": true
+    },
+    {
+      "name": "resource-list-empty-state",
+      "ok": true
+    },
+    {
+      "name": "ide-project-context-auto",
+      "ok": true,
+      "selectedProject": "27"
+    },
+    {
+      "name": "ide-editor-and-lint",
+      "ok": true
+    },
+    {
+      "name": "meta-project-context-auto",
+      "ok": true,
+      "selectedProject": "27"
+    },
+    {
+      "name": "mobile-overflow-check",
+      "ok": false,
+      "scrollWidth": 657,
+      "clientWidth": 375
+    }
+  ],
+  "consoleErrors": [
+    "Failed to load resource: the server responded with a status of 500 (Internal Server Error)"
+  ],
+  "pageErrors": [],
+  "httpErrors": [
+    {
+      "status": 500,
+      "path": "/api/v1/rebuild/metrics/workflow-result-stats"
+    }
+  ],
+  "storage": {
+    "anonymous": {
+      "localToken": null,
+      "sessionToken": null
+    },
+    "authenticated": {
+      "localToken": null,
+      "sessionToken": null,
+      "runtimeTokenPresent": true
+    },
+    "afterLogout": {
+      "localToken": null,
+      "sessionToken": null
+    }
+  },
+  "projectId": 27,
+  "fixture": {
+    "datasourceCount": 1
+  },
+  "completedAt": "2026-10-25T16:18:23.421Z",
+  "summary": {
+    "globalRouteCount": 27,
+    "projectRouteCount": 7,
+    "interactionCount": 8,
+    "httpErrorCount": 1,
+    "consoleErrorCount": 1,
+    "pageErrorCount": 0
+  }
+}

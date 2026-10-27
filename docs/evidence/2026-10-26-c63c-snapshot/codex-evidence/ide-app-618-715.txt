@@ -1,0 +1,98 @@
+            task_id = os.urandom(16).hex()
+            status_store.start_execution(task_id=task_id, project_id=project_id, user_id=user_id, status="running")
+            try:
+                result = build_execution_port(
+                    session_factory=session_factory,
+                    engine_registry=datasource_engines,
+                ).execute(
+                    project_id=project_id,
+                    datasource_id=datasource_id,
+                    sql=sql,
+                    row_limit=int(payload.get("row_limit", payload.get("rowLimit", 1000))),
+                    timeout_ms=int(payload.get("timeout_ms", payload.get("timeoutMs", 30000))),
+                    dialect=payload.get("dialect"),
+                )
+            except Exception as exc:
+                status_store.update_status(task_id=task_id, project_id=project_id, user_id=user_id, status="failed")
+                raise SqlIdeRouteError("DATASOURCE_UNAVAILABLE", message=str(exc)) from exc
+            history_id = history.create_history(
+                project_id=project_id,
+                user_id=user_id,
+                datasource_id=datasource_id,
+                db=payload.get("db"),
+                sql_text=sql,
+                status="succeeded",
+                stmt_count=1,
+                elapsed_ms=0,
+            )
+            result_set_id = result_store.save_snapshot(
+                project_id=project_id,
+                user_id=user_id,
+                history_id=history_id,
+                stmt_index=0,
+                columns=result.get("columns", []),
+                rows=result.get("rows", []),
+                total_rows=int(result.get("total_rows", result.get("row_count", 0))),
+            )
+            status_store.append_event(
+                task_id=task_id,
+                project_id=project_id,
+                user_id=user_id,
+                event_type="done",
+                payload={"status": "succeeded", "history_id": history_id, "result_set_id": result_set_id},
+            )
+            status_store.update_status(task_id=task_id, project_id=project_id, user_id=user_id, status="succeeded")
+            execution_id = task_id
+            return {
+                **dict(result),
+                "task_id": execution_id,
+                "history_id": history_id,
+                "result_set_id": result_set_id,
+                "accepted": True,
+                "status": "succeeded",
+            }
+        if operation == "getExecutionStatus":
+            status = status_store.get_execution_status(task_id=str(payload.get("task_id")), project_id=project_id, user_id=user_id)
+            if status is None:
+                raise SqlIdeRouteError("EXECUTION_NOT_FOUND")
+            return status
+        if operation == "cancelExecution":
+            task_id = str(payload.get("task_id", ""))
+            current = status_store.get_execution_status(task_id=task_id, project_id=project_id, user_id=user_id)
+            if current is None:
+                raise SqlIdeRouteError("EXECUTION_NOT_FOUND")
+            # The SQL IDE status contract uses American spelling (``canceled``)
+            # consistently across history, status, and cancellation helpers.
+            # Persisting ``cancelled`` leaves ``terminal_at`` unset because the
+            # status store's terminal set is intentionally fail-closed; a later
+            # completion callback could then overwrite a user cancellation.
+            if current.get("status") in {"succeeded", "failed", "canceled", "cancelled"}:
+                return {"cancelled": False, "status": current.get("status")}
+            status_store.append_event(task_id=task_id, project_id=project_id, user_id=user_id, event_type="canceled", payload={"status": "canceled"})
+            status_store.update_status(task_id=task_id, project_id=project_id, user_id=user_id, status="canceled")
+            return {"cancelled": True, "status": "canceled"}
+        if operation == "openEventStream":
+            return status_store.list_execution_events(task_id=str(payload.get("task_id")), project_id=project_id, user_id=user_id)
+        if operation == "fetchResultPage":
+            return result_store.fetch_page(
+                project_id=project_id,
+                user_id=user_id,
+                history_id=str(payload.get("history_id")),
+                result_set_id=payload.get("result_set_id"),
+                stmt_index=payload.get("stmt_index"),
+                offset=int(payload.get("offset", 0)),
+                limit=int(payload.get("limit", 100)),
+            )
+        if operation == "listHistory":
+            return history.list_history(
+                project_id=project_id,
+                user_id=user_id,
+                datasource_id=int(payload.get("datasource_id", payload.get("datasourceId", 0))),
+                limit=int(payload.get("limit", 100)),
+            )
+        if operation == "listScripts":
+            return history.list_scripts(project_id=project_id, user_id=user_id)
+        if operation == "saveScript":
+            return history.save_script(
+                project_id=project_id,
+                user_id=user_id,

@@ -1,0 +1,12 @@
+INFRA-DATA-01 static evidence (2026-10-26)
+Scope: infra/fixtures/business only; existing backend/frontend changes untouched.
+PASS: Python fixture contract suite, 5 tests.
+PASS: bash -n for common.sh, check.sh, prepare.sh, verify.sh (Git Bash).
+PASS: git diff --check.
+PASS: secret literal scan of new executable/data assets returned no matches.
+Source baseline: 2 users, 3 goods, 3 orders, 4 order items, 2 payments.
+Target baseline: 4 expected rows; dedicated actual table is reset by prepare.
+File baseline: UTF-8 CSV, 3 data rows, paid/done/created coverage.
+Idempotency: reserved 910... IDs + source upsert + fixture-key-scoped target reset.
+Runtime container check: NOT RUN locally; scripts hard-stop unless host has 192.168.1.9.
+Next runtime evidence: check.sh container -> prepare.sh -> verify.sh prepared/synced on 1.9.

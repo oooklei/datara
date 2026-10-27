@@ -1,119 +1,83 @@
-/**
- * L3-06 组件测试：ProjectWorkbenchView 项目工作台页（A 组工作台承载）。
- * 覆盖：metrics 查询→展示闭环（workflow-result-stats 四计数表格）、加载/错误/空三态、
- * 快捷导航七段渲染与点击 push、导航区独立于 metrics 加载先渲染。
- * 依赖 mock：vue-router.useRouter（/p/:projectId/* 路由注册归 L3-03）、
- * metricsApi.createMetricsContract（R7 GREEN 收编件；契约层 13 例由
- * services/rebuild/__tests__/metricsApi.contract.test.ts 锁定，本文件不重复）。
- */
 import { flushPromises, mount } from '@vue/test-utils'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-const { pushSpy, statsSpy } = vi.hoisted(() => ({
+const { pushSpy, loadDashboardSpy, setOptionSpy, disposeSpy } = vi.hoisted(() => ({
   pushSpy: vi.fn(),
-  statsSpy: vi.fn(),
+  loadDashboardSpy: vi.fn(),
+  setOptionSpy: vi.fn(),
+  disposeSpy: vi.fn(),
 }))
 
-vi.mock('vue-router', () => ({
-  useRouter: () => ({ push: pushSpy }),
-}))
-
-vi.mock('../../services/rebuild/metricsApi', () => ({
-  createMetricsContract: () => ({ queryWorkflowResultStats: statsSpy }),
-}))
+vi.mock('vue-router', () => ({ useRouter: () => ({ push: pushSpy }) }))
+vi.mock('../../services/rebuild/projectDashboard', () => ({ loadProjectDashboard: loadDashboardSpy }))
+vi.mock('echarts', () => ({ init: () => ({ setOption: setOptionSpy, dispose: disposeSpy, resize: vi.fn() }) }))
 
 import ProjectWorkbenchView from '../ProjectWorkbenchView.vue'
 
-function mountView(props: { projectId: number } = { projectId: 9 }) {
-  return mount(ProjectWorkbenchView, { props })
+const dashboard = {
+  workflowTypes: { normal: 1, sync: 1, stream: 1 },
+  runTotals: { success: 13, failure: 1, skipped: 2, retry: 1, running: 1 },
+  governance: { datasources: 4, resources: 7, assets: 20, standards: 6, metrics: 9, qualityRules: 5, openExceptions: 2 },
+  dailyStats: [
+    { workflowId: 1, runDate: '2026-10-26', successCount: 8, failureCount: 1, skippedCount: 2, retryCount: 1 },
+    { workflowId: 2, runDate: '2026-10-27', successCount: 5, failureCount: 0, skippedCount: 0, retryCount: 0 },
+  ],
+  recentRuns: [
+    { id: 9, workflow_id: 3, workflow_instance_id: 19, instance_type: 'STREAM', status: 'RUNNING', success_count: 3, failure_count: 0, skipped_count: 0, total_count: 3, started_at: '2026-10-27T10:00:00Z', dag_name: '电商实时订单流观摩样例' },
+  ],
+  partialFailures: [],
 }
 
 beforeEach(() => {
-  pushSpy.mockClear()
-  statsSpy.mockReset()
+  pushSpy.mockReset()
+  loadDashboardSpy.mockReset()
+  setOptionSpy.mockReset()
+  disposeSpy.mockReset()
 })
 
-describe('L3-06 ProjectWorkbenchView 项目工作台页', () => {
-  it('加载态：metrics 查询 pending 时渲染 role=status，且快捷导航已先渲染可交互', async () => {
-    statsSpy.mockReturnValue(new Promise(() => {}))
-    const w = mountView()
-    expect(w.find('[role="status"]').exists()).toBe(true)
-    expect(w.find('[data-loading]').exists()).toBe(true)
-    const nav = w.find('[data-workbench-nav]')
-    expect(nav.exists()).toBe(true)
-    expect(nav.findAll('.nav-item')).toHaveLength(7)
-  })
-
-  it('metrics 查询→展示闭环：queryWorkflowResultStats(projectId, window) → 四计数表格逐行呈现', async () => {
-    statsSpy.mockResolvedValue([
-      { workflowId: 7, runDate: '2026-10-20', successCount: 5, failureCount: 1, skippedCount: 2, retryCount: 3 },
-      { workflowId: 7, runDate: '2026-10-21', successCount: 8, failureCount: 0, skippedCount: 0, retryCount: 1 },
-    ])
-    const w = mountView()
+describe('UX v3：项目工作台', () => {
+  it('加载真实聚合并渲染双 KPI 带、三图和最近运行', async () => {
+    loadDashboardSpy.mockResolvedValue(dashboard)
+    const wrapper = mount(ProjectWorkbenchView, { props: { projectId: 33 } })
     await flushPromises()
-    expect(statsSpy).toHaveBeenCalledTimes(1)
-    const [calledProjectId, calledWindow] = statsSpy.mock.calls[0] as unknown as [
-      number,
-      { from: string; to: string; offset: number; limit: number },
-    ]
-    expect(calledProjectId).toBe(9)
-    expect(typeof calledWindow.from).toBe('string')
-    expect(typeof calledWindow.to).toBe('string')
-    expect(calledWindow.offset).toBe(0)
-    expect(calledWindow.limit).toBe(50)
-    expect(w.find('[data-metrics-table]').exists()).toBe(true)
-    const rows = w.findAll('[data-metric-row]')
-    expect(rows).toHaveLength(2)
-    expect(rows[0].attributes('data-metric-row')).toBe('2026-10-20')
-    expect(rows[0].text()).toContain('5')
-    expect(rows[0].text()).toContain('1')
-    expect(rows[0].text()).toContain('2')
-    expect(rows[0].text()).toContain('3')
-    expect(rows[1].attributes('data-metric-row')).toBe('2026-10-21')
+    expect(loadDashboardSpy).toHaveBeenCalledWith(33)
+    expect(wrapper.findAll('[data-pipeline-kpi]')).toHaveLength(6)
+    expect(wrapper.findAll('[data-governance-kpi]')).toHaveLength(7)
+    expect(wrapper.text()).not.toContain('标签数量')
+    expect(wrapper.findAll('[data-dashboard-chart]')).toHaveLength(3)
+    expect(setOptionSpy).toHaveBeenCalledTimes(3)
+    expect(wrapper.findAll('[data-recent-run]')).toHaveLength(1)
+    expect(wrapper.text()).toContain('电商实时订单流观摩样例')
   })
 
-  it('metrics 空态：查询结果为空渲染 data-empty，不渲染表格', async () => {
-    statsSpy.mockResolvedValue([])
-    const w = mountView()
+  it('部分接口失败时保留可用数据并明确提示', async () => {
+    loadDashboardSpy.mockResolvedValue({ ...dashboard, partialFailures: ['资产', '标准'] })
+    const wrapper = mount(ProjectWorkbenchView, { props: { projectId: 33 } })
     await flushPromises()
-    expect(w.find('[data-empty]').exists()).toBe(true)
-    expect(w.find('[data-metrics-table]').exists()).toBe(false)
-    expect(w.find('[role="status"]').exists()).toBe(false)
+    expect(wrapper.get('[data-partial-warning]').text()).toContain('资产、标准')
+    expect(wrapper.findAll('[data-pipeline-kpi]')).toHaveLength(6)
   })
 
-  it('metrics 错误态：查询 reject → role=alert 呈现错误信息，不渲染表格', async () => {
-    statsSpy.mockRejectedValue(new Error('HTTP 500 /rebuild/metrics/workflow-result-stats'))
-    const w = mountView()
+  it('聚合请求完全失败时提供重试入口', async () => {
+    loadDashboardSpy.mockRejectedValueOnce(new Error('服务暂不可用')).mockResolvedValueOnce(dashboard)
+    const wrapper = mount(ProjectWorkbenchView, { props: { projectId: 33 } })
     await flushPromises()
-    expect(w.find('[role="alert"]').exists()).toBe(true)
-    expect(w.find('[data-metrics-error]').text()).toContain('HTTP 500')
-    expect(w.find('[data-metrics-table]').exists()).toBe(false)
-  })
-
-  it('快捷导航渲染：PRE §3.2 七段锚点齐全（dag/datasource/resources/ide/meta/dep/system）', () => {
-    statsSpy.mockResolvedValue([])
-    const w = mountView()
-    for (const key of ['dag', 'datasource', 'resources', 'ide', 'meta', 'dep', 'system']) {
-      expect(w.find(`[data-nav="${key}"]`).exists()).toBe(true)
-    }
-  })
-
-  it('快捷导航点击 → router.push(/p/:projectId/<seg>)', async () => {
-    statsSpy.mockResolvedValue([])
-    const w = mountView()
-    await w.find('[data-nav="dag"]').trigger('click')
-    await w.find('[data-nav="system"]').trigger('click')
-    expect(pushSpy).toHaveBeenCalledTimes(2)
-    expect(pushSpy).toHaveBeenNthCalledWith(1, '/p/9/dag')
-    expect(pushSpy).toHaveBeenNthCalledWith(2, '/p/9/system')
-  })
-
-  it('projectId 透传：不同 props 下查询与导航均携带该项目 id', async () => {
-    statsSpy.mockResolvedValue([])
-    const w = mountView({ projectId: 42 })
+    expect(wrapper.get('[data-dashboard-error]').text()).toContain('服务暂不可用')
+    await wrapper.get('[data-dashboard-retry]').trigger('click')
     await flushPromises()
-    expect(statsSpy.mock.calls[0][0]).toBe(42)
-    await w.find('[data-nav="meta"]').trigger('click')
-    expect(pushSpy).toHaveBeenCalledWith('/p/42/meta')
+    expect(loadDashboardSpy).toHaveBeenCalledTimes(2)
+    expect(wrapper.find('[data-dashboard-error]').exists()).toBe(false)
+  })
+
+  it('指标卡与最近运行进入对应业务页面', async () => {
+    loadDashboardSpy.mockResolvedValue(dashboard)
+    const wrapper = mount(ProjectWorkbenchView, { props: { projectId: 33 } })
+    await flushPromises()
+    await wrapper.get('[data-kpi-route="dag?tab=runs&status=SUCCESS"]').trigger('click')
+    await wrapper.get('[data-recent-run]').trigger('click')
+    await wrapper.get('[data-run-monitor]').trigger('click')
+    expect(pushSpy).toHaveBeenNthCalledWith(1, '/p/33/dag?tab=runs&status=SUCCESS')
+    expect(pushSpy).toHaveBeenNthCalledWith(2, '/p/33/dag?tab=runs&runId=9')
+    expect(pushSpy).toHaveBeenNthCalledWith(3, '/p/33/dag?tab=runs')
   })
 })

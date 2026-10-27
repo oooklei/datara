@@ -1,0 +1,9 @@
+COMP-E2E-03 incidental boundary observation
+Time: 2026-10-26 Asia/Shanghai
+Endpoint: POST /api/v1/rebuild/trial/definitions/32/run
+Observed: HTTP 500 after the variables API accepted marker comp_e2e_03_20261025164737.
+Root exception: pymysql.err.DataError (1406), Data too long for column 'source' at row 1.
+Failing persistence: task_instance_variable_runtime.source = task.<marker>.
+Secondary exception: PendingRollbackError while the runner attempted to mark the task failed.
+Security: validation token was logged out and revocation was verified; no credential is recorded here.
+Disposition: non-blocking for the requested ordinary-name precedence chain; product defect candidate.

@@ -1,0 +1,1052 @@
+{
+  "searches": {
+    "sync": [
+      200,
+      {
+        "code": 0,
+        "msg": "success",
+        "data": {
+          "total": 4,
+          "list": [
+            {
+              "id": "wf_092b8688",
+              "code": 98,
+              "name": "M-B1-file-sync-test",
+              "version": 2,
+              "releaseState": "offline",
+              "owner": "admin",
+              "updatedAt": "2026-09-29 11:25:45",
+              "tags": [],
+              "cron": null,
+              "nodeCount": 4
+            },
+            {
+              "id": "wf_8182a5d0",
+              "code": 97,
+              "name": "M-B1-sync-test",
+              "version": 5,
+              "releaseState": "offline",
+              "owner": "admin",
+              "updatedAt": "2026-09-29 11:25:45",
+              "tags": [
+                "同步"
+              ],
+              "cron": null,
+              "nodeCount": 6
+            },
+            {
+              "id": "wf_cc17e22b",
+              "code": 96,
+              "name": "M-B1-sync-test",
+              "version": 1,
+              "releaseState": "offline",
+              "owner": "admin",
+              "updatedAt": "2026-09-28 15:15:23",
+              "tags": [],
+              "cron": null,
+              "nodeCount": 0
+            },
+            {
+              "id": "wf_5d181f01",
+              "code": 95,
+              "name": "M-B1-sync-test",
+              "version": 1,
+              "releaseState": "offline",
+              "owner": "admin",
+              "updatedAt": "2026-09-28 15:14:39",
+              "tags": [],
+              "cron": null,
+              "nodeCount": 0
+            }
+          ]
+        }
+      }
+    ],
+    "同步": [
+      200,
+      {
+        "code": 0,
+        "msg": "success",
+        "data": {
+          "total": 3,
+          "list": [
+            {
+              "id": "wf_orch_src_base",
+              "code": 110,
+              "name": "源表基准同步编排用例",
+              "version": 4,
+              "releaseState": "offline",
+              "owner": "admin",
+              "updatedAt": "2026-10-13 16:54:20",
+              "tags": [
+                "同步"
+              ],
+              "cron": null,
+              "nodeCount": 8
+            },
+            {
+              "id": "wf_orch_tgt_base",
+              "code": 111,
+              "name": "目标表基准同步编排用例",
+              "version": 3,
+              "releaseState": "offline",
+              "owner": "admin",
+              "updatedAt": "2026-10-13 15:39:27",
+              "tags": [
+                "同步"
+              ],
+              "cron": null,
+              "nodeCount": 8
+            },
+            {
+              "id": "wf_orch_file_sync",
+              "code": 112,
+              "name": "文件同步编排用例",
+              "version": 1,
+              "releaseState": "offline",
+              "owner": "admin",
+              "updatedAt": "2026-10-12 09:49:21",
+              "tags": [
+                "同步"
+              ],
+              "cron": null,
+              "nodeCount": 8
+            }
+          ]
+        }
+      }
+    ]
+  },
+  "details": {
+    "wf_092b8688": [
+      200,
+      {
+        "code": 0,
+        "msg": "success",
+        "data": {
+          "id": "wf_092b8688",
+          "name": "M-B1-file-sync-test",
+          "nodes": [
+            {
+              "id": "n_start",
+              "type": "start",
+              "x": 100,
+              "y": 200,
+              "data": {
+                "componentRef": {
+                  "type": "start",
+                  "version": 1
+                }
+              }
+            },
+            {
+              "id": "n_endpoint",
+              "type": "endpoint_select",
+              "x": 300,
+              "y": 200,
+              "data": {
+                "baseMode": "file_sync",
+                "filePath": "mb1_test.csv",
+                "fileType": "csv",
+                "headerRows": 1,
+                "tgtDs": 4,
+                "tgtTable": "dwd_file_sync_test",
+                "autoCreate": true,
+                "componentRef": {
+                  "type": "endpoint_select",
+                  "version": 1
+                }
+              }
+            },
+            {
+              "id": "n_assert",
+              "type": "assert",
+              "x": 500,
+              "y": 200,
+              "data": {
+                "componentRef": {
+                  "type": "assert",
+                  "version": 1
+                }
+              }
+            },
+            {
+              "id": "n_end",
+              "type": "end",
+              "x": 700,
+              "y": 200,
+              "data": {
+                "componentRef": {
+                  "type": "end",
+                  "version": 1
+                }
+              }
+            }
+          ],
+          "edges": [
+            {
+              "source": "n_start",
+              "target": "n_endpoint"
+            },
+            {
+              "source": "n_endpoint",
+              "target": "n_assert"
+            },
+            {
+              "source": "n_assert",
+              "target": "n_end",
+              "sourceHandle": "success"
+            }
+          ],
+          "version": 2
+        }
+      }
+    ],
+    "wf_8182a5d0": [
+      200,
+      {
+        "code": 0,
+        "msg": "success",
+        "data": {
+          "id": "wf_8182a5d0",
+          "name": "M-B1-sync-test",
+          "nodes": [
+            {
+              "id": "n_start",
+              "type": "start",
+              "x": 100,
+              "y": 200,
+              "data": {
+                "componentRef": {
+                  "type": "start",
+                  "version": 1
+                }
+              }
+            },
+            {
+              "id": "n_endpoint",
+              "type": "endpoint_select",
+              "x": 300,
+              "y": 200,
+              "data": {
+                "baseMode": "src_base",
+                "srcDs": 9,
+                "srcTable": "ods_order",
+                "tgtDs": 4,
+                "tgtTable": "dwd_order_sync_test",
+                "autoCreate": true,
+                "componentRef": {
+                  "type": "endpoint_select",
+                  "version": 1
+                }
+              }
+            },
+            {
+              "id": "n_fmap",
+              "type": "field_map",
+              "x": 500,
+              "y": 200,
+              "data": {
+                "componentRef": {
+                  "type": "field_map",
+                  "version": 1
+                }
+              }
+            },
+            {
+              "id": "n_cond",
+              "type": "condition_set",
+              "x": 700,
+              "y": 200,
+              "data": {
+                "componentRef": {
+                  "type": "condition_set",
+                  "version": 1
+                }
+              }
+            },
+            {
+              "id": "n_assert",
+              "type": "assert",
+              "x": 900,
+              "y": 200,
+              "data": {
+                "componentRef": {
+                  "type": "assert",
+                  "version": 1
+                }
+              }
+            },
+            {
+              "id": "n_end",
+              "type": "end",
+              "x": 1100,
+              "y": 200,
+              "data": {
+                "componentRef": {
+                  "type": "end",
+                  "version": 1
+                }
+              }
+            }
+          ],
+          "edges": [
+            {
+              "source": "n_start",
+              "target": "n_endpoint"
+            },
+            {
+              "source": "n_endpoint",
+              "target": "n_fmap"
+            },
+            {
+              "source": "n_fmap",
+              "target": "n_cond"
+            },
+            {
+              "source": "n_cond",
+              "target": "n_assert"
+            },
+            {
+              "source": "n_assert",
+              "target": "n_end",
+              "sourceHandle": "success"
+            }
+          ],
+          "version": 5
+        }
+      }
+    ],
+    "wf_cc17e22b": [
+      200,
+      {
+        "code": 0,
+        "msg": "success",
+        "data": {
+          "id": "wf_cc17e22b",
+          "name": "M-B1-sync-test",
+          "version": 1,
+          "meta": {
+            "profile": "dag"
+          },
+          "nodes": [],
+          "edges": []
+        }
+      }
+    ],
+    "wf_5d181f01": [
+      200,
+      {
+        "code": 0,
+        "msg": "success",
+        "data": {
+          "id": "wf_5d181f01",
+          "name": "M-B1-sync-test",
+          "version": 1,
+          "meta": {
+            "profile": "dag"
+          },
+          "nodes": [],
+          "edges": []
+        }
+      }
+    ],
+    "wf_orch_src_base": [
+      200,
+      {
+        "code": 0,
+        "msg": "success",
+        "data": {
+          "id": "wf_orch_src_base",
+          "name": "源表基准同步编排用例",
+          "version": 4,
+          "meta": {
+            "profile": "dag"
+          },
+          "nodes": [
+            {
+              "id": "nd_start",
+              "type": "start",
+              "position": {
+                "x": 100,
+                "y": 100
+              },
+              "data": {
+                "name": "开始"
+              }
+            },
+            {
+              "id": "nd_prep",
+              "type": "sql",
+              "position": {
+                "x": 300,
+                "y": 100
+              },
+              "data": {
+                "datasource": "内置数仓-datara_dw",
+                "pre": "",
+                "post": "",
+                "sql": "DROP TABLE IF EXISTS ods_order_sync",
+                "name": "前置清理",
+                "outputs": {
+                  "params": [],
+                  "tables": []
+                },
+                "params": [],
+                "exclude": {},
+                "componentRef": {
+                  "type": "sql",
+                  "version": 2
+                }
+              }
+            },
+            {
+              "id": "nd_ep",
+              "type": "endpoint_select",
+              "position": {
+                "x": 520,
+                "y": 100
+              },
+              "data": {
+                "baseMode": "src_base",
+                "srcDs": "内置源库-ec_retail",
+                "srcTable": "ods_order",
+                "tgtDs": "内置数仓-datara_dw",
+                "tgtTable": "ods_order_sync",
+                "autoCreate": true,
+                "name": "端点选择",
+                "outputs": {
+                  "params": [],
+                  "tables": []
+                },
+                "params": [],
+                "exclude": {},
+                "componentRef": {
+                  "type": "endpoint_select",
+                  "version": 1
+                }
+              }
+            },
+            {
+              "id": "nd_map",
+              "type": "field_map",
+              "position": {
+                "x": 740,
+                "y": 100
+              },
+              "data": {
+                "inputs": [
+                  "nd_ep:sourceRef",
+                  "nd_ep:targetRef"
+                ],
+                "fieldMap": [],
+                "name": "字段映射-复制",
+                "outputs": {
+                  "params": [],
+                  "tables": []
+                },
+                "params": [],
+                "exclude": {},
+                "componentRef": {
+                  "type": "field_map",
+                  "version": 1
+                }
+              }
+            },
+            {
+              "id": "nd_cond",
+              "type": "condition_set",
+              "position": {
+                "x": 960,
+                "y": 100
+              },
+              "data": {
+                "inputs": [
+                  "nd_map:"
+                ],
+                "filterExpr": "status = 'PAID'",
+                "name": "条件设定",
+                "outputs": {
+                  "params": [],
+                  "tables": []
+                },
+                "params": [],
+                "exclude": {},
+                "componentRef": {
+                  "type": "condition_set",
+                  "version": 1
+                },
+                "incrementalColumn": "order_date",
+                "incrementalExpr": ">=${date-test}"
+              }
+            },
+            {
+              "id": "nd_assert",
+              "type": "assert",
+              "position": {
+                "x": 1180,
+                "y": 100
+              },
+              "data": {
+                "assertSrc": "upstream",
+                "rules": [
+                  {
+                    "key": "rows",
+                    "value": "min=1"
+                  }
+                ],
+                "onFail": "warn",
+                "name": "对账校验",
+                "outputs": {
+                  "params": [],
+                  "tables": []
+                },
+                "params": [],
+                "exclude": {},
+                "componentRef": {
+                  "type": "assert",
+                  "version": 1
+                }
+              }
+            },
+            {
+              "id": "nd_end",
+              "type": "end",
+              "position": {
+                "x": 1400,
+                "y": 100
+              },
+              "data": {
+                "name": "结束",
+                "outputs": {
+                  "params": [],
+                  "tables": []
+                },
+                "params": [],
+                "exclude": {}
+              }
+            },
+            {
+              "id": "nd_notify",
+              "type": "notify",
+              "position": {
+                "x": 1400,
+                "y": 260
+              },
+              "data": {
+                "template": "同步对账未通过",
+                "name": "消息通知",
+                "outputs": {
+                  "params": [],
+                  "tables": []
+                },
+                "params": [],
+                "exclude": {},
+                "componentRef": {
+                  "type": "notify",
+                  "version": 1
+                }
+              }
+            }
+          ],
+          "edges": [
+            {
+              "id": "e_nd_start_nd_prep",
+              "source": "nd_start",
+              "target": "nd_prep",
+              "kind": "flow"
+            },
+            {
+              "id": "e_nd_prep_nd_ep",
+              "source": "nd_prep",
+              "target": "nd_ep",
+              "kind": "flow"
+            },
+            {
+              "id": "e_nd_ep_nd_map",
+              "source": "nd_ep",
+              "target": "nd_map",
+              "kind": "flow",
+              "sourceHandle": "sourceRef"
+            },
+            {
+              "id": "e_nd_map_nd_cond",
+              "source": "nd_map",
+              "target": "nd_cond",
+              "kind": "flow"
+            },
+            {
+              "id": "e_nd_cond_nd_assert",
+              "source": "nd_cond",
+              "target": "nd_assert",
+              "kind": "flow"
+            },
+            {
+              "id": "e_nd_assert_nd_end",
+              "source": "nd_assert",
+              "target": "nd_end",
+              "kind": "branch_true",
+              "sourceHandle": "success",
+              "label": "通过"
+            },
+            {
+              "id": "e_nd_assert_nd_notify",
+              "source": "nd_assert",
+              "target": "nd_notify",
+              "kind": "branch_false",
+              "sourceHandle": "failure",
+              "label": "不通过"
+            }
+          ]
+        }
+      }
+    ],
+    "wf_orch_tgt_base": [
+      200,
+      {
+        "code": 0,
+        "msg": "success",
+        "data": {
+          "id": "wf_orch_tgt_base",
+          "name": "目标表基准同步编排用例",
+          "version": 3,
+          "meta": {
+            "profile": "dag"
+          },
+          "nodes": [
+            {
+              "id": "nd_start",
+              "type": "start",
+              "position": {
+                "x": 150,
+                "y": 40
+              },
+              "data": {
+                "name": "开始"
+              }
+            },
+            {
+              "id": "nd_prep",
+              "type": "sql",
+              "position": {
+                "x": 150,
+                "y": 158
+              },
+              "data": {
+                "datasource": "内置数仓-datara_dw",
+                "pre": "",
+                "post": "",
+                "sql": "DROP TABLE IF EXISTS ods_order_multi",
+                "name": "前置清理",
+                "outputs": {
+                  "params": [],
+                  "tables": []
+                },
+                "params": [],
+                "exclude": {},
+                "componentRef": {
+                  "type": "sql",
+                  "version": 2
+                }
+              }
+            },
+            {
+              "id": "nd_ep",
+              "type": "endpoint_select",
+              "position": {
+                "x": 150,
+                "y": 276
+              },
+              "data": {
+                "baseMode": "tgt_base",
+                "srcDs": "内置源库-ec_retail",
+                "probe": true,
+                "matchType": "exact",
+                "tgtDs": "内置数仓-datara_dw",
+                "tgtTable": "ods_order_multi",
+                "probeResult": [
+                  {
+                    "schema": "ec_retail",
+                    "table": "ods_order"
+                  },
+                  {
+                    "schema": "ec_retail_east",
+                    "table": "ods_order"
+                  },
+                  {
+                    "schema": "ec_retail_south",
+                    "table": "ods_order"
+                  }
+                ],
+                "name": "端点选择",
+                "outputs": {
+                  "params": [],
+                  "tables": []
+                },
+                "params": [],
+                "exclude": {},
+                "componentRef": {
+                  "type": "endpoint_select",
+                  "version": 1
+                }
+              }
+            },
+            {
+              "id": "nd_map",
+              "type": "field_map_union",
+              "position": {
+                "x": 150,
+                "y": 394
+              },
+              "data": {
+                "inputs": [
+                  "nd_ep:sourceRef"
+                ],
+                "fieldMap": [],
+                "addSchemaFlag": true,
+                "srcSchemaField": "src_schema",
+                "aggOperator": "union_all",
+                "name": "字段映射-联合",
+                "outputs": {
+                  "params": [],
+                  "tables": []
+                },
+                "params": [],
+                "exclude": {},
+                "componentRef": {
+                  "type": "field_map_union",
+                  "version": 1
+                }
+              }
+            },
+            {
+              "id": "nd_cond",
+              "type": "condition_set",
+              "position": {
+                "x": 150,
+                "y": 512
+              },
+              "data": {
+                "inputs": [
+                  "nd_map:"
+                ],
+                "name": "条件设定",
+                "outputs": {
+                  "params": [],
+                  "tables": []
+                },
+                "params": [],
+                "exclude": {},
+                "componentRef": {
+                  "type": "condition_set",
+                  "version": 1
+                }
+              }
+            },
+            {
+              "id": "nd_assert",
+              "type": "assert",
+              "position": {
+                "x": 150,
+                "y": 630
+              },
+              "data": {
+                "assertSrc": "upstream",
+                "rules": [
+                  {
+                    "key": "rows",
+                    "value": "min=1"
+                  }
+                ],
+                "onFail": "warn",
+                "name": "对账校验",
+                "outputs": {
+                  "params": [],
+                  "tables": []
+                },
+                "params": [],
+                "exclude": {},
+                "componentRef": {
+                  "type": "assert",
+                  "version": 1
+                }
+              }
+            },
+            {
+              "id": "nd_end",
+              "type": "end",
+              "position": {
+                "x": 260,
+                "y": 748
+              },
+              "data": {
+                "name": "结束",
+                "outputs": {
+                  "params": [],
+                  "tables": []
+                },
+                "params": [],
+                "exclude": {}
+              }
+            },
+            {
+              "id": "nd_notify",
+              "type": "notify",
+              "position": {
+                "x": 40,
+                "y": 748
+              },
+              "data": {
+                "template": "同步对账未通过",
+                "name": "消息通知",
+                "outputs": {
+                  "params": [],
+                  "tables": []
+                },
+                "params": [],
+                "exclude": {},
+                "componentRef": {
+                  "type": "notify",
+                  "version": 1
+                }
+              }
+            }
+          ],
+          "edges": [
+            {
+              "id": "e_nd_start_nd_prep",
+              "source": "nd_start",
+              "target": "nd_prep",
+              "kind": "flow"
+            },
+            {
+              "id": "e_nd_prep_nd_ep",
+              "source": "nd_prep",
+              "target": "nd_ep",
+              "kind": "flow"
+            },
+            {
+              "id": "e_nd_ep_nd_map",
+              "source": "nd_ep",
+              "target": "nd_map",
+              "kind": "flow",
+              "sourceHandle": "sourceRef"
+            },
+            {
+              "id": "e_nd_map_nd_cond",
+              "source": "nd_map",
+              "target": "nd_cond",
+              "kind": "flow"
+            },
+            {
+              "id": "e_nd_cond_nd_assert",
+              "source": "nd_cond",
+              "target": "nd_assert",
+              "kind": "flow"
+            },
+            {
+              "id": "e_nd_assert_nd_end",
+              "source": "nd_assert",
+              "target": "nd_end",
+              "kind": "branch_true",
+              "sourceHandle": "success",
+              "label": "通过"
+            },
+            {
+              "id": "e_nd_assert_nd_notify",
+              "source": "nd_assert",
+              "target": "nd_notify",
+              "kind": "branch_false",
+              "sourceHandle": "failure",
+              "label": "不通过"
+            }
+          ]
+        }
+      }
+    ],
+    "wf_orch_file_sync": [
+      200,
+      {
+        "code": 0,
+        "msg": "success",
+        "data": {
+          "id": "wf_orch_file_sync",
+          "name": "文件同步编排用例",
+          "version": 1,
+          "meta": {
+            "profile": "dag"
+          },
+          "nodes": [
+            {
+              "id": "nd_start",
+              "type": "start",
+              "position": {
+                "x": 100,
+                "y": 100
+              },
+              "data": {
+                "name": "开始"
+              }
+            },
+            {
+              "id": "nd_prep",
+              "type": "sql",
+              "position": {
+                "x": 300,
+                "y": 100
+              },
+              "data": {
+                "datasource": "内置数仓-datara_dw",
+                "pre": "",
+                "post": "",
+                "sql": "DROP TABLE IF EXISTS ods_order_file",
+                "name": "前置清理"
+              }
+            },
+            {
+              "id": "nd_ep",
+              "type": "endpoint_select",
+              "position": {
+                "x": 520,
+                "y": 100
+              },
+              "data": {
+                "baseMode": "file_sync",
+                "filePath": "samples/orders_part.csv",
+                "fileType": "csv",
+                "fileDelimiter": ",",
+                "fileEncoding": "utf-8",
+                "fileHeaderRows": 1,
+                "tgtDs": "内置数仓-datara_dw",
+                "tgtTable": "ods_order_file",
+                "autoCreate": true,
+                "name": "端点选择"
+              }
+            },
+            {
+              "id": "nd_map",
+              "type": "field_map",
+              "position": {
+                "x": 740,
+                "y": 100
+              },
+              "data": {
+                "inputs": [
+                  "nd_ep:sourceRef"
+                ],
+                "fieldMap": [],
+                "name": "字段映射-复制"
+              }
+            },
+            {
+              "id": "nd_cond",
+              "type": "condition_set",
+              "position": {
+                "x": 960,
+                "y": 100
+              },
+              "data": {
+                "inputs": [
+                  "nd_map:"
+                ],
+                "name": "条件设定"
+              }
+            },
+            {
+              "id": "nd_assert",
+              "type": "assert",
+              "position": {
+                "x": 1180,
+                "y": 100
+              },
+              "data": {
+                "assertSrc": "upstream",
+                "rules": [
+                  {
+                    "key": "rows",
+                    "value": "min=1"
+                  }
+                ],
+                "onFail": "warn",
+                "name": "对账校验"
+              }
+            },
+            {
+              "id": "nd_end",
+              "type": "end",
+              "position": {
+                "x": 1400,
+                "y": 100
+              },
+              "data": {
+                "name": "结束"
+              }
+            },
+            {
+              "id": "nd_notify",
+              "type": "notify",
+              "position": {
+                "x": 1400,
+                "y": 260
+              },
+              "data": {
+                "template": "同步对账未通过",
+                "name": "消息通知"
+              }
+            }
+          ],
+          "edges": [
+            {
+              "id": "e_nd_start_nd_prep",
+              "source": "nd_start",
+              "target": "nd_prep",
+              "kind": "flow"
+            },
+            {
+              "id": "e_nd_prep_nd_ep",
+              "source": "nd_prep",
+              "target": "nd_ep",
+              "kind": "flow"
+            },
+            {
+              "id": "e_nd_ep_nd_map",
+              "source": "nd_ep",
+              "target": "nd_map",
+              "kind": "flow",
+              "sourceHandle": "sourceRef"
+            },
+            {
+              "id": "e_nd_map_nd_cond",
+              "source": "nd_map",
+              "target": "nd_cond",
+              "kind": "flow"
+            },
+            {
+              "id": "e_nd_cond_nd_assert",
+              "source": "nd_cond",
+              "target": "nd_assert",
+              "kind": "flow"
+            },
+            {
+              "id": "e_nd_assert_nd_end",
+              "source": "nd_assert",
+              "target": "nd_end",
+              "kind": "branch_true",
+              "sourceHandle": "success",
+              "label": "通过"
+            },
+            {
+              "id": "e_nd_assert_nd_notify",
+              "source": "nd_assert",
+              "target": "nd_notify",
+              "kind": "branch_false",
+              "sourceHandle": "failure",
+              "label": "不通过"
+            }
+          ]
+        }
+      }
+    ]
+  },
+  "token_persisted": false
+}

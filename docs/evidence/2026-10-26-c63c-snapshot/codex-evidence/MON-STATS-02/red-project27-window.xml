@@ -1,0 +1,4 @@
+<?xml version="1.0" encoding="utf-8"?><testsuites name="pytest tests"><testsuite name="pytest" errors="0" failures="1" skipped="0" tests="1" time="2.027" timestamp="2026-10-26T00:24:18.202917+08:00" hostname="DESKTOP-SI67FHF"><testcase classname="tests.rebuild.test_r7_metrics_api" name="test_time_window_normalizes_iso_z_values_for_datetime_columns" time="0.125"><failure message="AssertionError: assert '1970-01-01T00:00:00Z' == datetime.datetime(1970, 1, 1, 0, 0)&#10; +  where datetime.datetime(1970, 1, 1, 0, 0) = datetime(1970, 1, 1)">tests\rebuild\test_r7_metrics_api.py:43: in test_time_window_normalizes_iso_z_values_for_datetime_columns
+    assert window_from == datetime(1970, 1, 1)
+E   AssertionError: assert '1970-01-01T00:00:00Z' == datetime.datetime(1970, 1, 1, 0, 0)
+E    +  where datetime.datetime(1970, 1, 1, 0, 0) = datetime(1970, 1, 1)</failure></testcase></testsuite></testsuites>

@@ -1,0 +1,14 @@
+{
+  "ticket": "SYNC-E2E-04",
+  "api_base": "http://172.31.0.8:8001",
+  "token_persisted": false,
+  "direct_actual_sql_write": false,
+  "legacy_redis_api_used": false,
+  "token_issue_http": 200,
+  "status": "ERROR",
+  "error": "KeyError: 'id'",
+  "logout": {
+    "http": 200,
+    "code": 0
+  }
+}

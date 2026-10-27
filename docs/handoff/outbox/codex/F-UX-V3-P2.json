@@ -1,0 +1,31 @@
+{
+  "id": "F-UX-V3-P2",
+  "ts": "2026-10-27T14:09:25+08:00",
+  "from": "codex",
+  "to": "flow",
+  "type": "implementation-receipt",
+  "ref": "docs/increments/2026-10-27-前端UX-v3评审与新设计目标.md",
+  "body": {
+    "completed": [
+      "UX v3 项目壳层：5 组 19 项导航、项目切换、响应式抽屉、暗色主题",
+      "项目域多级路由映射至 18 个真实业务页",
+      "真实仪表盘聚合：13 项 KPI、3 张 ECharts、最近运行与部分失败降级",
+      "192.168.1.9:18091 已切换 datara-newweb:ux-v3-p2-v2",
+      "LongCat-2.5-Preview 已配为唯一默认模型并连通成功"
+    ],
+    "verification": {
+      "vitest": "105 files / 897 tests passed",
+      "vueTsc": "EXIT=0",
+      "browserSmoke": "5 groups / 19 nav items / 13 KPI / 3 charts / zero console errors",
+      "evidence": ".codex-evidence/F-UX-V3-P2/"
+    },
+    "remaining": [
+      "P3 DAG 画布融合",
+      "P4 SQL IDE 专业化",
+      "直接访问旧全局业务路由时的活动项目归一",
+      "顶栏当前登录用户真实会话信息",
+      "LongCat provider 修复随下次后端镜像固化"
+    ]
+  },
+  "status": "completed"
+}

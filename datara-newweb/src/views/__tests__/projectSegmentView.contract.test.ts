@@ -111,21 +111,27 @@ vi.mock('../../services/rebuild/resourceApi', async (load) => {
 })
 
 // meta 段治理枢纽桩化：8 页各自治理 API 链不进本契约（页签接入为唯一断言面）
-vi.mock('../../views/GovernanceHubView.vue', () => ({
+vi.mock('../../views/meta/MetadataCatalogView.vue', () => ({
   default: {
-    name: 'GovernanceHubView',
-    template: '<div class="gov-hub" data-gov-hub=""></div>',
+    name: 'MetadataCatalogView',
+    template: '<div class="meta-catalog" data-meta-catalog=""></div>',
   },
 }))
 
 // ide 段正式页桩化：IdeView 的 IDE API 链（数据源/对象浏览/执行）不进本契约，
 // 本用例只断言 seg 映射（s326 裁定④：ide 已交付正式页，不再落占位）
-vi.mock('../../views/ide/IdeView.vue', () => ({
-  default: {
-    name: 'IdeView',
-    template: '<div class="ide-stub" data-ide-view=""></div>',
-  },
-}))
+vi.mock('../../views/ide/IdeView.vue', async () => {
+  const { getCurrentInstance } = await import('vue')
+  return {
+    default: {
+      name: 'IdeView',
+      setup() {
+        return { instanceId: getCurrentInstance()?.uid }
+      },
+      template: '<div class="ide-stub" data-ide-view :data-instance-id="instanceId"></div>',
+    },
+  }
+})
 
 import ProjectSegmentView from '../ProjectSegmentView.vue'
 
@@ -174,9 +180,20 @@ describe('L12-02 full 段 ProjectSegmentView dag 接驳（s326 裁定④方案 A
     expect(resourceList).toHaveBeenCalledWith(7, 'sql')
   })
 
-  it("seg='meta' 挂 GovernanceHubView（治理 8 页页签接入，不再落「尚未开放」占位）", () => {
-    const w = mountSeg('meta')
-    expect(w.find('[data-gov-hub]').exists()).toBe(true)
+  it('切换全局项目后重挂同一功能段并按新 projectId 重新加载', async () => {
+    const w = mountSeg('resources', 7)
+    await flushPromises()
+    resourceList.mockClear()
+
+    await w.setProps({ projectId: 8, seg: 'resources' })
+    await flushPromises()
+
+    expect(resourceList).toHaveBeenCalledWith(8, 'sql')
+  })
+
+  it("segmentPath='meta/catalog' 直达元数据目录（治理页面不再经过粗粒度枢纽）", () => {
+    const w = mountSeg('meta/catalog')
+    expect(w.find('[data-meta-catalog]').exists()).toBe(true)
     expect(w.find('.segment-page').exists()).toBe(false)
   })
 
@@ -187,11 +204,20 @@ describe('L12-02 full 段 ProjectSegmentView dag 接驳（s326 裁定④方案 A
     expect(w.find('[data-tc-tabs]').exists()).toBe(false)
   })
 
-  it("未知 seg（'bogus'）占位「未知的段标识」不 crash（1.4 §7.3 判据保持）", () => {
+  it('remounts the active feature when the workspace project changes', async () => {
+    const w = mountSeg('ide', 7)
+    const firstInstance = w.get('[data-ide-view]').attributes('data-instance-id')
+
+    await w.setProps({ projectId: 8, seg: 'ide' })
+
+    expect(w.get('[data-ide-view]').attributes('data-instance-id')).not.toBe(firstInstance)
+  })
+
+  it("未知 segmentPath（'bogus'）提供可返回项目工作台的 404 状态", () => {
     const w = mountSeg('bogus')
     expect(w.find('.segment-page').exists()).toBe(true)
-    expect(w.find('h1').text()).toBe('未知功能段')
-    expect(w.find('.seg-sub').text()).toBe('未知的段标识：bogus')
+    expect(w.find('h1').text()).toBe('未找到项目功能')
+    expect(w.text()).toContain('bogus')
     expect(w.find('[data-tc-tabs]').exists()).toBe(false)
   })
 })
