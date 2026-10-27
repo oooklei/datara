@@ -533,25 +533,33 @@ class TrialRunner:
         )
 
         # WF-17: record test variable overrides.
-        # Skip names already recorded for this (instance, attempt) to respect the
-        # unique constraint (instance_id, attempt_no, name).
+        # Dedupe on (scope, name): a run-scope override and a persisted
+        # project/workflow definition of the same name are distinct references
+        # and both belong in the immutable snapshot (design §3.4).
         if options.test_variables:
-            existing_rows = self._session.scalars(
-                select(TaskInstanceVariableRuntimeRecord.name).where(
+            existing_rows = self._session.execute(
+                select(
+                    TaskInstanceVariableRuntimeRecord.scope,
+                    TaskInstanceVariableRuntimeRecord.name,
+                ).where(
                     TaskInstanceVariableRuntimeRecord.instance_id == instance_id,
                     TaskInstanceVariableRuntimeRecord.attempt_no == attempt.attempt_no,
                 )
             ).all()
-            existing_names = set(existing_rows)
+            existing_keys = {(scope, name) for scope, name in existing_rows}
             for name, value in options.test_variables.items():
-                if name in existing_names:
+                if ("run", name) in existing_keys:
                     continue
+                existing_keys.add(("run", name))
                 self._session.add(
                     TaskInstanceVariableRuntimeRecord(
                         instance_id=instance_id,
-                        project_id=None,
+                        # The override row belongs to the instance's project so
+                        # GET /run-snapshot can return it; cross-project reads
+                        # stay filtered (P0-7 fail-closed).
+                        project_id=project_id,
                         attempt_no=attempt.attempt_no,
-                        expression="${" + name + "}",
+                        expression="${run." + name + "}",
                         scope="run",
                         name=name,
                         resolved_value=str(value),
@@ -562,21 +570,26 @@ class TrialRunner:
             self._session.flush()
 
         # Persist the variables that were actually consumed by this task.
-        # The runtime table is instance/attempt/name unique, so downstream
-        # tasks reusing the same variable must not duplicate the snapshot.
-        existing_snapshot_names = set(
-            self._session.scalars(
-                select(TaskInstanceVariableRuntimeRecord.name).where(
+        # The runtime table is (instance, attempt, scope, name) unique, so
+        # downstream tasks reusing the same reference must not duplicate it.
+        existing_snapshot_keys = {
+            (scope, name)
+            for scope, name in self._session.execute(
+                select(
+                    TaskInstanceVariableRuntimeRecord.scope,
+                    TaskInstanceVariableRuntimeRecord.name,
+                ).where(
                     TaskInstanceVariableRuntimeRecord.instance_id == instance_id,
                     TaskInstanceVariableRuntimeRecord.attempt_no == attempt.attempt_no,
                 )
             ).all()
-        )
+        }
         snapshot_rows = []
         for item in variable_snapshot:
-            if item["name"] in existing_snapshot_names:
+            key = (item["scope"], item["name"])
+            if key in existing_snapshot_keys:
                 continue
-            existing_snapshot_names.add(item["name"])
+            existing_snapshot_keys.add(key)
             snapshot_rows.append(
                 {
                     **item,

@@ -1,0 +1,10 @@
+{
+  "id": "F-REMOTE-IDENTITY-PROJECT-UI-01",
+  "ts": "2026-10-26T23:40:03+08:00",
+  "from": "codex",
+  "to": "flow",
+  "type": "fix_deploy_receipt",
+  "ref": ".codex-evidence/F-REMOTE-IDENTITY-PROJECT-UI-01/summary.md",
+  "body": "Fixed and deployed four demo-account login, e-commerce project membership visibility, and the legacy-style dashboard/home visual fusion; all four accounts now authenticate and see both e-commerce projects on 192.168.1.9:18091.",
+  "status": "done"
+}

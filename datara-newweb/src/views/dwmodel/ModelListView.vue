@@ -8,6 +8,7 @@
       </select>
       <button type="button" data-search @click="reload">查询</button>
       <button type="button" data-create @click="beginCreate">新建模型</button>
+      <button type="button" data-open-er @click="router.push({ path: '/model/er' })">ER 图</button>
     </header>
 
     <p v-if="error" role="alert" class="error" data-error>{{ error }}</p>
@@ -19,6 +20,9 @@
           <td><code>{{ row.code }}</code></td><td>{{ row.name }}</td><td>{{ row.layer }}</td><td>{{ row.bizDomain || '—' }}</td>
           <td>{{ row.engine }}</td><td>{{ row.status }}</td><td>v{{ row.version }}</td><td>{{ row.owner || '—' }}</td>
           <td class="actions">
+            <button type="button" data-open-design @click="router.push({ path: '/model/design', query: { modelId: row.id } })">设计</button>
+            <button type="button" data-open-version @click="router.push({ path: '/model/version', query: { modelId: row.id } })">版本</button>
+            <button type="button" data-open-lineage @click="router.push({ path: '/model/lineage', query: { modelId: row.id } })">血缘</button>
             <button type="button" @click="beginEdit(row)">编辑</button>
             <button v-if="row.status === 'draft'" type="button" @click="publish(row)">发布</button>
             <button v-else type="button" @click="redraft(row)">重新起草</button>
@@ -53,8 +57,10 @@
 
 <script setup lang="ts">
 import { onMounted, reactive, ref } from 'vue'
+import { useRouter } from 'vue-router'
 import { modelApi, type ModelRow } from '../../services/rebuild/modelApi'
 
+const router = useRouter()
 const rows = ref<ModelRow[]>([])
 const busy = ref(false)
 const saving = ref(false)
@@ -113,5 +119,5 @@ onMounted(reload)
 </script>
 
 <style scoped>
-.model-page{max-width:1440px;margin:auto;padding:32px 24px;color:var(--text)}.page-head{display:flex;gap:12px;align-items:center;flex-wrap:wrap}.page-head>div{margin-right:auto}.page-head h1{margin:0}.page-head p{margin:6px 0 0;color:var(--text-2)}input,select,textarea,button{padding:7px 10px}table{width:100%;border-collapse:collapse;background:var(--card);margin-top:18px}th,td{text-align:left;padding:10px;border-bottom:1px solid var(--border)}.actions{display:flex;gap:6px;flex-wrap:wrap}.danger,.error{color:var(--danger)}.dialog{position:fixed;z-index:20;left:50%;top:50%;transform:translate(-50%,-50%);width:min(760px,calc(100vw - 48px));max-height:80vh;overflow:auto;background:var(--card);border:1px solid var(--border-strong);border-radius:var(--radius-lg);box-shadow:var(--shadow-lg);padding:20px}.dialog header,.dialog footer{display:flex;align-items:center;justify-content:space-between}.form-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin:18px 0}.form-grid label{display:flex;flex-direction:column;gap:6px}.form-grid .wide{grid-column:1/-1}.dialog pre{white-space:pre-wrap;background:var(--sidebar);color:var(--sidebar-text);padding:16px;overflow:auto}
+.model-page{max-width:1440px;margin:auto;padding:32px 24px;color:var(--text)}.page-head{display:flex;gap:12px;align-items:center;flex-wrap:wrap}.page-head>div{margin-right:auto}.page-head h1{margin:0}.page-head p{margin:6px 0 0;color:var(--text-2)}input,select,textarea,button{padding:7px 10px}table{width:100%;border-collapse:collapse;background:var(--card);margin-top:18px}th,td{text-align:left;padding:10px;border-bottom:1px solid var(--border)}.actions{display:flex;gap:6px;flex-wrap:wrap}.danger,.error{color:var(--danger)}.dialog{position:fixed;z-index:20;left:50%;top:50%;transform:translate(-50%,-50%);width:min(760px,calc(100vw - 48px));max-height:80vh;overflow:auto;background:var(--card);border:1px solid var(--border-strong);border-radius:10px;box-shadow:0 20px 60px color-mix(in srgb, var(--text) 20%, transparent);padding:20px}.dialog header,.dialog footer{display:flex;align-items:center;justify-content:space-between}.form-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin:18px 0}.form-grid label{display:flex;flex-direction:column;gap:6px}.form-grid .wide{grid-column:1/-1}.dialog pre{white-space:pre-wrap;background:var(--text);color:var(--border);padding:16px;overflow:auto}
 </style>

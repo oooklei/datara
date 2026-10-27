@@ -2,6 +2,7 @@
 import { computed, ref } from 'vue'
 import { ElMessage } from 'element-plus'
 import { createDependencyContract, type DependencyCondition } from '../services/rebuild/dependencyApi'
+import VariableReferenceInput from './VariableReferenceInput.vue'
 
 const props = defineProps<{
   projectId: number
@@ -14,14 +15,37 @@ const props = defineProps<{
 const emit = defineEmits<{ 'update:modelValue': [value: Record<string, unknown>] }>()
 const saving = ref(false)
 const saved = ref(false)
+const variableContext = computed(() => ({
+  projectId: props.projectId,
+  workflowId: props.workflowId,
+  workflowVersion: props.workflowVersion ?? 1,
+  taskId: props.taskId,
+}))
 const selector = computed(() => String(props.modelValue.dependent_execute ?? 'workflow'))
 const windowMode = computed(() => String(props.modelValue.window_mode ?? 'named') === 'range' ? 'range' : 'named')
+const failureWaitingMinutes = computed(() => {
+  const explicit = props.modelValue.failure_waiting_minutes
+  if (explicit !== undefined && explicit !== null && explicit !== '') return Number(explicit)
+  return Number(props.modelValue.failure_waiting_seconds ?? 60) / 60
+})
 type DependencyKind = NonNullable<DependencyCondition['kind']>
+type DependencyCycle = NonNullable<DependencyCondition['cycle']>
+const DATE_VALUES: Record<DependencyCycle, readonly string[]> = {
+  hour: ['currentHour', 'last1Hour', 'last2Hours', 'last3Hours', 'last24Hours'],
+  day: ['today', 'last1Days', 'last2Days', 'last3Days', 'last7Days'],
+  week: ['thisWeek', 'lastWeek', 'lastMonday', 'lastTuesday', 'lastWednesday', 'lastThursday', 'lastFriday', 'lastSaturday', 'lastSunday'],
+  month: ['thisMonth', 'thisMonthBegin', 'lastMonth', 'lastMonthBegin', 'lastMonthEnd'],
+}
 const kind = computed<DependencyKind>(() => {
   const candidate = String(props.modelValue.kind ?? '')
   if (['workflow', 'task', 'file', 'table_state', 'external_task'].includes(candidate)) return candidate as DependencyKind
   return selector.value === 'workflow' ? 'workflow' : 'task'
 })
+const cycle = computed<DependencyCycle>(() => {
+  const candidate = String(props.modelValue.cycle ?? 'day')
+  return ['hour', 'day', 'week', 'month'].includes(candidate) ? candidate as DependencyCycle : 'day'
+})
+const namedDateValues = computed(() => DATE_VALUES[cycle.value])
 
 function value(key: string, fallback: string | number = ''): string | number {
   return props.modelValue[key] as string | number ?? fallback
@@ -30,6 +54,23 @@ function value(key: string, fallback: string | number = ''): string | number {
 function update(key: string, next: unknown) {
   saved.value = false
   emit('update:modelValue', { ...props.modelValue, [key]: next })
+}
+
+function updateCycle(next: DependencyCycle) {
+  const currentDateValue = String(props.modelValue.date_value ?? '')
+  emit('update:modelValue', {
+    ...props.modelValue,
+    cycle: next,
+    date_value: DATE_VALUES[next].includes(currentDateValue) ? currentDateValue : DATE_VALUES[next][0],
+  })
+  saved.value = false
+}
+
+function updateFailureWaitingMinutes(next: number) {
+  saved.value = false
+  const value: Record<string, unknown> = { ...props.modelValue, failure_waiting_minutes: next }
+  delete value.failure_waiting_seconds
+  emit('update:modelValue', value)
 }
 
 function updateKind(next: DependencyKind) {
@@ -107,20 +148,37 @@ async function save() {
     parameterPassing: Boolean(props.modelValue.parameter_passing ?? false),
   })
 
+  const checkIntervalSeconds = Number(props.modelValue.check_interval_seconds ?? 10)
+  const timeoutSeconds = Number(props.modelValue.timeout_seconds ?? 30)
+  if (!Number.isInteger(checkIntervalSeconds) || checkIntervalSeconds <= 0
+    || !Number.isInteger(timeoutSeconds) || timeoutSeconds <= 0) {
+    ElMessage.warning('检查周期和超时必须是正整数秒')
+    return
+  }
+  const failurePolicy = String(props.modelValue.failure_policy ?? 'fail') === 'waiting' ? 'waiting' : 'fail'
+  let failureWaitingSeconds: number | undefined
+  if (failurePolicy === 'waiting') {
+    const minutes = failureWaitingMinutes.value
+    if (!Number.isInteger(minutes) || minutes <= 0) {
+      ElMessage.warning('失败等待时长必须是正整数分钟')
+      return
+    }
+    failureWaitingSeconds = minutes * 60
+  }
+
   saving.value = true
   saved.value = false
   try {
-    const failurePolicy = String(props.modelValue.failure_policy ?? 'fail') === 'waiting' ? 'waiting' : 'fail'
     const result = await createDependencyContract().saveDependency({
       projectId: props.projectId,
       workflowId: props.workflowId,
       workflowVersion: props.workflowVersion ?? 1,
       taskId: props.taskId,
       groupRelation: String(props.modelValue.group_relation ?? 'AND') === 'OR' ? 'OR' : 'AND',
-      checkIntervalSeconds: Number(props.modelValue.check_interval_seconds ?? 10),
+      checkIntervalSeconds,
       failurePolicy,
-      ...(failurePolicy === 'waiting' ? { failureWaitingSeconds: Number(props.modelValue.failure_waiting_seconds ?? 60) } : {}),
-      timeoutSeconds: Number(props.modelValue.timeout_seconds ?? 30),
+      ...(failureWaitingSeconds !== undefined ? { failureWaitingSeconds } : {}),
+      timeoutSeconds,
       groups: [{
         join: String(props.modelValue.relation ?? 'AND') === 'OR' ? 'OR' : 'AND',
         conditions: [condition],
@@ -150,18 +208,18 @@ async function save() {
     <label v-if="kind === 'workflow' || kind === 'task'">执行范围<select data-test="dependency-scope" :value="selector" @change="updateScope(($event.target as HTMLSelectElement).value as 'workflow' | 'all_tasks' | 'task')">
       <option value="workflow">整工作流</option><option value="all_tasks">全部任务</option><option value="task">指定任务</option>
     </select></label>
-    <label v-if="kind === 'workflow' || kind === 'task'">上游工作流 ID<input data-test="upstream-workflow" :value="value('upstream_workflow_id')" @input="update('upstream_workflow_id', ($event.target as HTMLInputElement).value)" /></label>
-    <label v-else-if="kind === 'file'">文件标识<input data-test="dependency-target" :value="value('file_id')" @input="update('file_id', ($event.target as HTMLInputElement).value)" /></label>
-    <label v-else-if="kind === 'table_state'">表状态标识<input data-test="dependency-target" :value="value('table_id')" @input="update('table_id', ($event.target as HTMLInputElement).value)" /></label>
-    <label v-else>外部任务标识<input data-test="dependency-target" :value="value('external_key')" @input="update('external_key', ($event.target as HTMLInputElement).value)" /></label>
+    <label v-if="kind === 'workflow' || kind === 'task'">上游工作流 ID<input data-test="upstream-workflow" type="number" min="1" step="1" :value="value('upstream_workflow_id')" @input="update('upstream_workflow_id', ($event.target as HTMLInputElement).value)" /></label>
+    <VariableReferenceInput v-else-if="kind === 'file'" data-test="dependency-target" data-variable-field="dependency-target" :model-value="String(value('file_id'))" :context="variableContext" label="文件标识" @update:model-value="update('file_id', $event)" />
+    <VariableReferenceInput v-else-if="kind === 'table_state'" data-test="dependency-target" data-variable-field="dependency-target" :model-value="String(value('table_id'))" :context="variableContext" label="表状态标识" @update:model-value="update('table_id', $event)" />
+    <VariableReferenceInput v-else data-test="dependency-target" data-variable-field="dependency-target" :model-value="String(value('external_key'))" :context="variableContext" label="外部任务标识" @update:model-value="update('external_key', $event)" />
     <small v-if="value('dependency_id')" data-test="dependency-id">已绑定依赖配置 #{{ value('dependency_id') }}</small>
-    <label v-if="kind === 'task' && selector === 'task'">任务编码<input data-test="upstream-task" :value="value('upstream_task_code')" @input="update('upstream_task_code', ($event.target as HTMLInputElement).value)" /></label>
+    <label v-if="kind === 'task' && selector === 'task'">任务编码<input data-test="upstream-task" type="number" min="1" step="1" :value="value('upstream_task_code')" @input="update('upstream_task_code', ($event.target as HTMLInputElement).value)" /></label>
     <label>组内关系<select :value="value('relation', 'AND')" @change="update('relation', ($event.target as HTMLSelectElement).value)"><option>AND</option><option>OR</option></select></label>
     <label>组间关系<select :value="value('group_relation', 'AND')" @change="update('group_relation', ($event.target as HTMLSelectElement).value)"><option>AND</option><option>OR</option></select></label>
     <label>时间窗模式<select data-test="dependency-window-mode" :value="windowMode" @change="update('window_mode', ($event.target as HTMLSelectElement).value)"><option value="named">命名窗口</option><option value="range">相对范围</option></select></label>
     <template v-if="windowMode === 'named'">
-      <label>时间周期<select :value="value('cycle', 'day')" @change="update('cycle', ($event.target as HTMLSelectElement).value)"><option value="hour">小时</option><option value="day">天</option><option value="week">周</option><option value="month">月</option></select></label>
-      <label>命名窗口<input :value="value('date_value', 'last1Days')" @input="update('date_value', ($event.target as HTMLInputElement).value)" /></label>
+      <label>时间周期<select data-test="dependency-cycle" :value="cycle" @change="updateCycle(($event.target as HTMLSelectElement).value as DependencyCycle)"><option value="hour">小时</option><option value="day">天</option><option value="week">周</option><option value="month">月</option></select></label>
+      <label>命名窗口<select data-test="dependency-date-value" :value="value('date_value', namedDateValues[0])" @change="update('date_value', ($event.target as HTMLSelectElement).value)"><option v-for="item in namedDateValues" :key="item" :value="item">{{ item }}</option></select></label>
     </template>
     <template v-else>
       <label>范围周期<select :value="value('period_type', 'day')" @change="update('period_type', ($event.target as HTMLSelectElement).value)"><option value="hour">小时</option><option value="day">天</option><option value="week">周</option><option value="month">月</option></select></label>
@@ -173,7 +231,7 @@ async function save() {
     <label>检查周期(秒)<input type="number" min="1" :value="value('check_interval_seconds', 10)" @input="update('check_interval_seconds', Number(($event.target as HTMLInputElement).value))" /></label>
     <label>超时(秒)<input type="number" min="1" :value="value('timeout_seconds', 30)" @input="update('timeout_seconds', Number(($event.target as HTMLInputElement).value))" /></label>
     <label>失败策略<select :value="value('failure_policy', 'fail')" @change="update('failure_policy', ($event.target as HTMLSelectElement).value)"><option value="fail">失败</option><option value="waiting">等待</option></select></label>
-    <label v-if="value('failure_policy', 'fail') === 'waiting'">失败等待(秒)<input type="number" min="1" :value="value('failure_waiting_seconds', 60)" @input="update('failure_waiting_seconds', Number(($event.target as HTMLInputElement).value))" /></label>
+    <label v-if="value('failure_policy', 'fail') === 'waiting'">失败等待(分钟)<input data-test="failure-waiting-minutes" type="number" min="1" step="1" :value="failureWaitingMinutes" @input="updateFailureWaitingMinutes(Number(($event.target as HTMLInputElement).value))" /></label>
     <button type="button" class="wf-btn dependency-save" data-test="save-dependency" :disabled="saving" @click="save">{{ saving ? '保存中…' : saved ? '已保存' : '保存依赖配置' }}</button>
   </section>
 </template>

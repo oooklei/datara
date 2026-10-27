@@ -8,6 +8,7 @@ case "$mode" in
     command -v python3 >/dev/null 2>&1 || die "python3 is required for fixture contract checks"
     "$BASH" -n "$FIXTURE_DIR/common.sh" "$FIXTURE_DIR/check.sh" "$FIXTURE_DIR/prepare.sh" "$FIXTURE_DIR/verify.sh"
     python3 "$FIXTURE_DIR/test_fixture_contract.py"
+    python3 "$FIXTURE_DIR/seed_product_fixture.py" --dry-run >/dev/null
     log "static fixture contract and shell syntax checks passed"
     ;;
   container)

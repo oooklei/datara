@@ -165,6 +165,10 @@ class UserRoleRequest(BaseModel):
     role: Role
 
 
+class UserPasswordRequest(BaseModel):
+    password: str
+
+
 def create_app(
     database_url: str | None = None,
     *,
@@ -1790,6 +1794,42 @@ def create_app(
                     "id": updated.id,
                     "username": updated.username,
                     "role": updated.role,
+                    "status": updated.status,
+                    "revoked_tokens": revoked,
+                },
+            }
+
+    @app.patch("/api/v1/rebuild/users/{user_id}/password")
+    def update_user_password(
+        user_id: int, body: UserPasswordRequest, authorization: str = Header(default="")
+    ):
+        try:
+            user = current_user(authorization)
+            if not authorize(user["role"], Permission.MANAGE_USER):
+                raise PermissionError("permission denied")
+        except PermissionError as exc:
+            return JSONResponse(status_code=403, content={"code": 1003, "msg": str(exc), "data": None})
+        except ValueError:
+            return JSONResponse(status_code=401, content={"code": 1001, "msg": "invalid token", "data": None})
+        if not body.password:
+            return JSONResponse(
+                status_code=422,
+                content={"code": 1002, "msg": "password is required", "data": None},
+            )
+        with session_factory() as session:
+            repo = UserRepository(session)
+            record = repo.find_by_id(user_id)
+            if record is None:
+                return JSONResponse(status_code=404, content={"code": 4041, "msg": "user not found", "data": None})
+            updated = repo.update_password(user_id, body.password)
+            revoked = active_tokens.revoke_user(user_id, session=session)
+            session.commit()
+            return {
+                "code": 0,
+                "msg": "success",
+                "data": {
+                    "id": updated.id,
+                    "username": updated.username,
                     "status": updated.status,
                     "revoked_tokens": revoked,
                 },

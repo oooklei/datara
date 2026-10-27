@@ -197,6 +197,26 @@ describe('/ds/list 数据源管理页（增量 10/10A）', () => {
     expect(w.find('[data-column-list]').text()).toContain('id')
   })
 
+  it('discards a stale schema response after selecting another datasource', async () => {
+    router.route.params.projectId = '1'
+    spies.list.mockResolvedValue({ items: [row, { ...row, id: 2, name: '数仓库' }] })
+    let resolveFirst!: (value: { items: string[]; nextAfter: null; limit: number }) => void
+    spies.schemas
+      .mockImplementationOnce(() => new Promise((resolve) => { resolveFirst = resolve }))
+      .mockResolvedValueOnce({ items: ['warehouse'], nextAfter: null, limit: 100 })
+    const w = mount(View)
+    await flushPromises()
+
+    await w.find('[data-ds-id="1"]').trigger('click')
+    await w.find('[data-ds-id="2"]').trigger('click')
+    await flushPromises()
+    resolveFirst({ items: ['stale_orders'], nextAfter: null, limit: 100 })
+    await flushPromises()
+
+    expect(w.find('[data-schema-list]').text()).toContain('warehouse')
+    expect(w.find('[data-schema-list]').text()).not.toContain('stale_orders')
+  })
+
   it('surfaces backend errors without dropping the list', async () => {
     router.route.params.projectId = '1'
     spies.test.mockRejectedValue(Object.assign(new Error('connection failed'), { code: 5021 }))

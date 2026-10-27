@@ -6,7 +6,7 @@ it independently runnable so API startup does not need to apply the unrelated
 governance catalogue migrations.
 """
 
-from rebuild.governance.migrations import GovernanceMigration, MigrationResult, MigrationRunner
+from rebuild.common.migrations import GovernanceMigration, MigrationResult, MigrationRunner
 from rebuild.governance.revisions import v0004_token_digest_hardening
 
 

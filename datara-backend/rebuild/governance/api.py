@@ -128,6 +128,30 @@ class QualityRuleInput(BaseModel):
     enabled: bool = True
 
 
+class QualityExceptionDispositionInput(BaseModel):
+    status: str = Field(pattern="^(resolved|ignored)$")
+    fix_note: str = Field(min_length=1, max_length=255)
+
+
+class QualityReportCreateInput(BaseModel):
+    title: str = Field(min_length=1, max_length=128)
+    scope: str = Field(default="project", min_length=1, max_length=128)
+    period: str = Field(default="manual", min_length=1, max_length=64)
+
+
+class QualityAlarmPolicyInput(BaseModel):
+    name: str = Field(min_length=1, max_length=128)
+    scope: str = Field(default="project", min_length=1, max_length=128)
+    metric: str = Field(pattern="^(checked_rows|success_rows|failed_rows|skipped_rows|failure_rate|score)$")
+    operator: str = Field(pattern="^(>|>=|<|<=|==)$")
+    threshold: float
+    enabled: bool = True
+
+
+class QualityAlarmEnabledInput(BaseModel):
+    enabled: bool
+
+
 class LegacyI18ImportInput(BaseModel):
     source_digest: str = Field(pattern="^[0-9a-f]{64}$")
     target_digest: str = Field(pattern="^[0-9a-f]{64}$")
@@ -1874,6 +1898,50 @@ def build_governance_router(
                 for row in rows
             ]}}
 
+    @router.patch("/projects/{project_id}/quality-exceptions/{exception_id}")
+    def dispose_quality_exception(
+        project_id: int,
+        exception_id: int,
+        body: QualityExceptionDispositionInput,
+        authorization: str = Header(default=""),
+    ):
+        user = authenticate(authorization)
+        if isinstance(user, JSONResponse):
+            return user
+        with session_factory() as session:
+            permitted = project_permission(session, project_id, user, Permission.EDIT_DEFINITION)
+            if isinstance(permitted, JSONResponse):
+                return permitted
+            record = session.scalar(select(QualityExceptionRecord).where(
+                QualityExceptionRecord.id == exception_id,
+                QualityExceptionRecord.project_id == project_id,
+            ))
+            if record is None:
+                return fail(404, 4041, "quality exception not found")
+            if record.status != "open":
+                return fail(409, 4091, "quality exception has already been handled")
+            record.status = body.status
+            record.fix_note = body.fix_note
+            record.handled_by = str(user.get("username") or user["user_id"])
+            record.handled_at = datetime.now(ZoneInfo("Asia/Shanghai")).replace(tzinfo=None)
+            write_audit(
+                session,
+                user=user,
+                project_id=project_id,
+                action="quality_exception.dispose",
+                resource_type="quality_exception",
+                resource_id=str(record.id),
+                after={"status": record.status, "fix_note": record.fix_note},
+            )
+            session.commit()
+            return {"code": 0, "msg": "success", "data": {
+                "id": record.id, "target": record.target, "run_details_id": record.run_details_id,
+                "rule_definition_id": record.rule_definition_id, "legacy_task_id": record.legacy_task_id,
+                "sample_sql": record.sample_sql, "hit_count": record.hit_count, "status": record.status,
+                "fix_note": record.fix_note, "handled_by": record.handled_by,
+                "handled_at": stamp(record.handled_at),
+            }}
+
     @router.get("/projects/{project_id}/quality-reports")
     def list_quality_reports(project_id: int, page: int = Query(default=1, ge=1), page_size: int = Query(default=50, ge=1, le=200), authorization: str = Header(default="")):
         user = authenticate(authorization)
@@ -1889,6 +1957,48 @@ def build_governance_router(
                 except (TypeError, ValueError): return {}
             return {"code": 0, "msg": "success", "data": {"total": total, "list": [{"id": r.id, "title": r.title, "scope": r.scope, "period": r.period, "content": content(r), "created_by": r.created_by} for r in rows]}}
 
+    @router.post("/projects/{project_id}/quality-reports", status_code=201)
+    def create_quality_report(
+        project_id: int,
+        body: QualityReportCreateInput,
+        authorization: str = Header(default=""),
+    ):
+        user = authenticate(authorization)
+        if isinstance(user, JSONResponse):
+            return user
+        with session_factory() as session:
+            permitted = project_permission(session, project_id, user, Permission.EDIT_DEFINITION)
+            if isinstance(permitted, JSONResponse):
+                return permitted
+            totals = session.execute(select(
+                func.count(QualityRunRecord.id),
+                func.coalesce(func.sum(QualityRunRecord.checked_rows), 0),
+                func.coalesce(func.sum(QualityRunRecord.success_rows), 0),
+                func.coalesce(func.sum(QualityRunRecord.failed_rows), 0),
+                func.coalesce(func.sum(QualityRunRecord.skipped_rows), 0),
+            ).where(QualityRunRecord.project_id == project_id)).one()
+            content = {
+                "run_count": int(totals[0]), "checked_rows": int(totals[1]),
+                "success_rows": int(totals[2]), "failed_rows": int(totals[3]),
+                "skipped_rows": int(totals[4]),
+            }
+            record = QualityReportRecord(
+                project_id=project_id, title=body.title, scope=body.scope, period=body.period,
+                content_json=json.dumps(content, ensure_ascii=False, separators=(",", ":")),
+                created_by=str(user.get("username") or user["user_id"]),
+            )
+            session.add(record)
+            session.flush()
+            write_audit(
+                session, user=user, project_id=project_id, action="quality_report.create",
+                resource_type="quality_report", resource_id=str(record.id), after=content,
+            )
+            session.commit()
+            return {"code": 0, "msg": "success", "data": {
+                "id": record.id, "title": record.title, "scope": record.scope,
+                "period": record.period, "content": content, "created_by": record.created_by,
+            }}
+
     @router.get("/projects/{project_id}/quality-alarm-policies")
     def list_quality_alarm_policies(project_id: int, page: int = Query(default=1, ge=1), page_size: int = Query(default=50, ge=1, le=200), authorization: str = Header(default="")):
         user = authenticate(authorization)
@@ -1900,6 +2010,71 @@ def build_governance_router(
             total = session.scalar(select(func.count()).select_from(query.subquery())) or 0
             rows = session.scalars(query.order_by(QualityAlarmPolicyRecord.id.desc()).offset((page - 1) * page_size).limit(page_size)).all()
             return {"code": 0, "msg": "success", "data": {"total": total, "list": [{"id": r.id, "name": r.name, "scope": r.scope, "metric": r.metric, "operator": r.operator, "threshold": r.threshold, "enabled": r.enabled, "last_fired_at": stamp(r.last_fired_at)} for r in rows]}}
+
+    @router.post("/projects/{project_id}/quality-alarm-policies", status_code=201)
+    def create_quality_alarm_policy(
+        project_id: int,
+        body: QualityAlarmPolicyInput,
+        authorization: str = Header(default=""),
+    ):
+        user = authenticate(authorization)
+        if isinstance(user, JSONResponse): return user
+        with session_factory() as session:
+            permitted = project_permission(session, project_id, user, Permission.EDIT_DEFINITION)
+            if isinstance(permitted, JSONResponse): return permitted
+            existing = session.scalar(select(QualityAlarmPolicyRecord.id).where(
+                QualityAlarmPolicyRecord.project_id == project_id,
+                QualityAlarmPolicyRecord.name == body.name,
+            ))
+            if existing is not None:
+                return fail(409, 4091, "quality alarm policy name already exists")
+            record = QualityAlarmPolicyRecord(project_id=project_id, **body.model_dump())
+            session.add(record)
+            session.flush()
+            write_audit(
+                session, user=user, project_id=project_id, action="quality_alarm_policy.create",
+                resource_type="quality_alarm_policy", resource_id=str(record.id),
+                after={"name": record.name, "enabled": record.enabled},
+            )
+            session.commit()
+            return {"code": 0, "msg": "success", "data": {
+                "id": record.id, "name": record.name, "scope": record.scope,
+                "metric": record.metric, "operator": record.operator,
+                "threshold": record.threshold, "enabled": record.enabled,
+                "last_fired_at": stamp(record.last_fired_at),
+            }}
+
+    @router.patch("/projects/{project_id}/quality-alarm-policies/{policy_id}/enabled")
+    def set_quality_alarm_policy_enabled(
+        project_id: int,
+        policy_id: int,
+        body: QualityAlarmEnabledInput,
+        authorization: str = Header(default=""),
+    ):
+        user = authenticate(authorization)
+        if isinstance(user, JSONResponse): return user
+        with session_factory() as session:
+            permitted = project_permission(session, project_id, user, Permission.EDIT_DEFINITION)
+            if isinstance(permitted, JSONResponse): return permitted
+            record = session.scalar(select(QualityAlarmPolicyRecord).where(
+                QualityAlarmPolicyRecord.id == policy_id,
+                QualityAlarmPolicyRecord.project_id == project_id,
+            ))
+            if record is None:
+                return fail(404, 4041, "quality alarm policy not found")
+            record.enabled = body.enabled
+            write_audit(
+                session, user=user, project_id=project_id, action="quality_alarm_policy.set_enabled",
+                resource_type="quality_alarm_policy", resource_id=str(record.id),
+                after={"enabled": record.enabled},
+            )
+            session.commit()
+            return {"code": 0, "msg": "success", "data": {
+                "id": record.id, "name": record.name, "scope": record.scope,
+                "metric": record.metric, "operator": record.operator,
+                "threshold": record.threshold, "enabled": record.enabled,
+                "last_fired_at": stamp(record.last_fired_at),
+            }}
 
     def add_definition(
         project_id: int, body: BaseModel, user: dict[str, object], model, resource: str, fields: dict[str, object]

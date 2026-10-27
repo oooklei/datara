@@ -1,0 +1,10 @@
+{
+  "id": "F-FRONTEND-SURFACE-CLOSURE-03",
+  "ts": "2026-10-26T18:33:06+08:00",
+  "from": "codex",
+  "to": "flow",
+  "type": "ticket_receipt",
+  "ref": ".codex-evidence/FE-MERGE-F-FRONTEND-SURFACE-CLOSURE-03",
+  "body": "Project governance now exposes all 13 formal E-group pages: the existing eight governance views plus quality rule, task, exception, report, and alarm. Quality read-only tabs preserve project context with params over query over authorized-project fallback, use independent KeepAlive identities, and reject stale success, error, and finally updates across project, kind, and pagination changes. The accepted B5 /sec/audit AccessAuditView route remains unchanged. Target tests: 3 files/13 passed. Full frontend baseline: 100 files/860 tests. vue-tsc, Vite build, and git diff check exited 0. Independent spec and quality reviews approved.",
+  "status": "DONE"
+}

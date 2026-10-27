@@ -167,4 +167,28 @@ describe('script resource editor', () => {
     })
   })
 
+  it('routes every script auxiliary text parameter through the unified variable input', async () => {
+    const sql = mount(ScriptResourceEditor, {
+      props: { projectId: 7, workflowId: 11, workflowVersion: 1, taskId: 'sql_vars', kind: 'sql', modelValue: { sourceMode: 'inline', sql: 'select 1' } },
+      global: { stubs: { VariableReferenceInput: variableInputStub } },
+    })
+    await sql.get('[data-variable-field="sql-pre"]').setValue('${project.pre_sql}')
+    await sql.get('[data-variable-field="sql-post"]').setValue('${project.post_sql}')
+    expect(sql.emitted('update:modelValue')?.at(-1)?.[0]).toEqual(expect.objectContaining({
+      pre: '${project.pre_sql}',
+      post: '${project.post_sql}',
+    }))
+
+    const python = mount(ScriptResourceEditor, {
+      props: { projectId: 7, workflowId: 11, workflowVersion: 1, taskId: 'python_vars', kind: 'python', modelValue: { sourceMode: 'inline', script: 'print(1)' } },
+      global: { stubs: { VariableReferenceInput: variableInputStub } },
+    })
+    await python.get('[data-variable-field="python-requirements"]').setValue('${project.requirements}')
+    await python.get('[data-variable-field="script-env"]').setValue('API_URL=${env.api_url}')
+    expect(python.emitted('update:modelValue')?.at(-1)?.[0]).toEqual(expect.objectContaining({
+      requirements: '${project.requirements}',
+      env: { API_URL: '${env.api_url}' },
+    }))
+  })
+
 })

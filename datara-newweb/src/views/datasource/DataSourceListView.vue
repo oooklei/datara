@@ -217,6 +217,7 @@ const testingId = ref<number | null>(null)
 const testMessage = ref('')
 
 const schemas = ref<string[]>([])
+let schemaRequest = 0
 const activeSchema = ref('')
 const objects = ref<{ schema: string; name: string; type: 'table' | 'view' }[]>([])
 const activeObject = ref('')
@@ -272,6 +273,7 @@ async function loadProjects(): Promise<void> {
 }
 
 async function reload(): Promise<void> {
+  schemaRequest += 1
   selectedId.value = null
   schemas.value = []
   activeSchema.value = ''
@@ -297,6 +299,7 @@ async function reload(): Promise<void> {
 
 /** 选中数据源：清空元数据态，加载库列表（测试信息不回写行）。 */
 async function selectDatasource(id: number): Promise<void> {
+  const request = ++schemaRequest
   selectedId.value = id
   schemas.value = []
   activeSchema.value = ''
@@ -307,8 +310,10 @@ async function selectDatasource(id: number): Promise<void> {
   if (projectId.value === null) return
   try {
     const page = await api.value.listSchemas(id)
+    if (request !== schemaRequest || selectedId.value !== id) return
     schemas.value = page.items
   } catch (e) {
+    if (request !== schemaRequest || selectedId.value !== id) return
     error.value = message(e)
   }
 }

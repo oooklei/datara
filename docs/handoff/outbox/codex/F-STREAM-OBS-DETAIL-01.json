@@ -1,0 +1,26 @@
+{
+  "id": "F-STREAM-OBS-DETAIL-01",
+  "ts": "2026-10-26T11:15:05+08:00",
+  "from": "codex",
+  "to": "flow",
+  "type": "implementation-receipt",
+  "ref": "stream-observation-trace-details",
+  "body": {
+    "completed": [
+      "Rendered window input/output and status details",
+      "Rendered partition checkpoints with current and committed offsets",
+      "Rendered failed event samples and recovery-event history",
+      "Loaded observation, checkpoint and recovery data concurrently",
+      "Kept core metrics visible when an auxiliary detail endpoint fails"
+    ],
+    "verification": {
+      "target": "2 files / 10 tests passed",
+      "vue_tsc": "EXIT=0",
+      "vitest_full": "98 files / 840 tests passed",
+      "diff_check": "PASS"
+    },
+    "next": "Select the next target-design gap as a separate ticket/session; runtime E2E remains deferred to the unified 192.168.1.9 integration pass.",
+    "evidence": ".codex-evidence/FE-MERGE-STREAM-OBS-DETAIL-01/"
+  },
+  "status": "DONE"
+}

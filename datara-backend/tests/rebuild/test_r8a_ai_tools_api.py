@@ -15,13 +15,14 @@ Frozen assertions:
 - readiness red line: default create_app mounts no bridge (404) — no unaudited path.
 """
 
+import json
 import uuid
 from datetime import datetime
 
 import pytest
 from fastapi.testclient import TestClient
 
-from rebuild.ai_bridge import AiBridgePorts
+from rebuild.ai_bridge import AiBridgePorts, R8A_TOOLS
 from rebuild.api.app import create_app
 from rebuild.identity.contracts import Role
 from rebuild.identity.repository import UserRepository
@@ -29,6 +30,7 @@ from rebuild.project.models import ProjectRecord
 
 AI_TOOLS_URL = "/api/v1/rebuild/ai/tools"
 AI_TOOL_CALLS_URL = "/api/v1/rebuild/ai/tool-calls"
+AI_CHAT_URL = "/api/v1/rebuild/ai/chat"
 
 FROZEN_TOOL_ORDER = [
     "search_schema",
@@ -142,6 +144,63 @@ def _call(client, headers, tool, *, tool_version=1, params=None, page_context=No
         "page_context": page_context,
     }
     return client.post(AI_TOOL_CALLS_URL, headers=headers, json=body)
+
+
+def test_agent_chat_uses_default_llm_and_server_owned_eight_tool_schema():
+    calls = []
+
+    class _Resolver:
+        def resolve(self):
+            return {"provider": "test", "base_url": "https://llm.example/v1", "model": "agent-model", "api_key": "secret"}
+
+    def fake_chat(config, messages, tools):
+        calls.append((config, messages, tools))
+        return {
+            "id": "chat-1",
+            "model": config["model"],
+            "choices": [{"message": {"role": "assistant", "content": "已完成分析"}}],
+            "usage": {"total_tokens": 12},
+        }
+
+    client, _app, project_id, tokens, _writer = _bridge_app(
+        llm_resolver=_Resolver(),
+        llm_chat=fake_chat,
+    )
+    try:
+        response = client.post(
+            AI_CHAT_URL,
+            headers=tokens["dev"],
+            json={"project_id": project_id, "messages": [{"role": "user", "content": "检查订单表"}]},
+        )
+        assert response.status_code == 200
+        assert response.json()["message"]["content"] == "已完成分析"
+        assert len(calls) == 1
+        assert calls[0][0]["api_key"] == "secret"
+        assert "project_id" in calls[0][1][0]["content"]
+        assert {item["function"]["name"] for item in calls[0][2]} == set(R8A_TOOLS)
+        agent_audits = [record for record in _writer.records if record.get("tool") == "agent_chat"]
+        assert len(agent_audits) == 1 and agent_audits[0]["outcome"] == "SUCCESS"
+        assert "secret" not in json.dumps(agent_audits[0])
+    finally:
+        client.__exit__(None, None, None)
+
+
+def test_agent_chat_fails_closed_without_default_llm():
+    class _Resolver:
+        def resolve(self):
+            return None
+
+    client, _app, project_id, tokens, _writer = _bridge_app(llm_resolver=_Resolver())
+    try:
+        response = client.post(
+            AI_CHAT_URL,
+            headers=tokens["dev"],
+            json={"project_id": project_id, "messages": [{"role": "user", "content": "检查工作流"}]},
+        )
+        assert response.status_code == 503
+        assert response.json()["code"] == "LLM_UNAVAILABLE"
+    finally:
+        client.__exit__(None, None, None)
 
 
 def test_default_app_mounts_bridge_from_app_state():

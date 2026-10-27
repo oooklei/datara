@@ -1,0 +1,10 @@
+{
+  "id": "AUDIT-TARGET-MAIN-RUNTIME-01",
+  "ts": "2026-10-26T22:29:35+08:00",
+  "from": "codex",
+  "to": "flow",
+  "type": "audit_receipt",
+  "ref": ".codex-evidence/AUDIT-TARGET-MAIN-RUNTIME-01/summary.md",
+  "body": "完成目标、c63c、项目主目录及 192.168.1.9 运行态对照。确认代码成果分叉、18091 部署不是两边完整并集；基础设施与业务夹具存在，运行统计已有数据；持久开发 key 与当前 API 容器 key 不一致，存储 key 换令牌为 401，是当前人工登录实测的直接阻塞。c63c 当前前端 100/868、vue-tsc EXIT=0。",
+  "status": "completed"
+}

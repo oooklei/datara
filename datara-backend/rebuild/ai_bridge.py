@@ -27,6 +27,7 @@ Red lines honored here:
 from __future__ import annotations
 
 import hashlib
+import json
 import time
 import uuid
 from dataclasses import dataclass, field
@@ -225,6 +226,7 @@ class AiBridgePorts:
     audit_writer: Any | None = None
     audit_failure_sink: Any | None = None
     llm_resolver: Any | None = None
+    llm_chat: Any | None = None
 
 
 class LlmConfigUnavailable(RuntimeError):
@@ -269,10 +271,28 @@ class _BridgeAuditWriterAdapter:
     bypassed).
     """
 
-    def __init__(self, writer: Any) -> None:
+    def __init__(self, writer: Any, session_factory: Any) -> None:
         self._writer = writer
+        self._session_factory = session_factory
 
     def write(self, record: Mapping[str, Any]) -> None:
+        if record.get("tool") != "run_sql":
+            from rebuild.governance.models import AuditEventRecord
+
+            with self._session_factory() as session:
+                session.add(AuditEventRecord(
+                    actor_id=int(record.get("user_id") or 0),
+                    project_id=int(record["project_id"]) if record.get("project_id") is not None else None,
+                    action=f"ai_tool.{str(record.get('outcome') or 'UNKNOWN').lower()}",
+                    resource_type="ai_tool_call",
+                    resource_id=str(record.get("tool_call_id") or ""),
+                    request_id=str(record.get("audit_id") or ""),
+                    before_json="{}",
+                    after_json=json.dumps(dict(record), ensure_ascii=False, separators=(",", ":"), default=str),
+                ))
+                session.commit()
+            return
+
         # The bridge has two audit-record shapes:
         # - normal path: request_payload IS the tool params dict
         # - envelope-validation path: request_payload = {"params": …, "page_context": …}
@@ -335,6 +355,23 @@ def build_ai_router(
         if raw not in active_tokens:
             raise ValueError("token revoked or unknown")
         return token_service.verify(raw)
+
+    def can_access_project(user: Mapping[str, object], project_id: int, permission: Permission) -> bool:
+        role = str(user.get("role", ""))
+        user_id = int(user.get("user_id", 0))
+        if not authorize(role, permission):
+            return False
+        with session_factory() as session:
+            project = session.get(ProjectRecord, project_id)
+            if project is None:
+                return False
+            if role == Role.ADMIN.value or project.owner_id == user_id:
+                return True
+            member = session.scalar(select(ProjectMemberRecord).where(
+                ProjectMemberRecord.project_id == project_id,
+                ProjectMemberRecord.user_id == user_id,
+            ))
+            return member is not None and authorize(member.role, permission)
 
     def unauthorized() -> JSONResponse:
         return JSONResponse(status_code=401, content={"code": 1001, "msg": "invalid token", "data": None})
@@ -527,6 +564,62 @@ def build_ai_router(
             return unauthorized()
         # enabled ⇔ handler wired: PoC lists unwired tools but reports them disabled (R8A-02)
         return [{**entry, "enabled": entry["name"] in ports.handlers} for entry in TOOL_REGISTRY]
+
+    @router.post("/api/v1/rebuild/ai/chat")
+    def agent_chat(
+        body: Mapping[str, Any] = Body(default={}),
+        token: str = Header(default=""),
+        authorization: str = Header(default=""),
+    ):
+        started = time.perf_counter()
+        audit_id = str(uuid.uuid4())
+        started_at = server_time_now()
+        try:
+            user = principal(token, authorization)
+        except ValueError:
+            return unauthorized()
+        project_id = body.get("project_id")
+        messages = body.get("messages")
+        if not isinstance(project_id, int) or not isinstance(messages, list):
+            return JSONResponse(status_code=422, content={"code": "INVALID_REQUEST", "message": "project_id and messages are required"})
+        if not can_access_project(user, project_id, Permission.PROJECT_READ):
+            return JSONResponse(status_code=403, content={"code": "PERMISSION_DENIED", "message": "permission denied"})
+        if ports.llm_chat is None:
+            return JSONResponse(status_code=503, content={"code": "LLM_UNAVAILABLE", "message": "LLM chat transport is not configured"})
+
+        def audit_chat(outcome: str, error_code: str | None, result: Mapping[str, Any] | None = None) -> bool:
+            return write_audit(audit_record(
+                audit_id=audit_id,
+                tool_call_id=f"agent-chat-{audit_id}",
+                tool="agent_chat",
+                tool_version=1,
+                user=user,
+                project_id=project_id,
+                request_payload={"project_id": project_id, "messages": messages},
+                outcome=outcome,
+                error_code=error_code,
+                latency_ms=int((time.perf_counter() - started) * 1000),
+                refs={"project_id": project_id},
+                started_at=started_at,
+                result=result,
+            ))
+
+        try:
+            config = resolve_bridge_llm(ports)
+            from rebuild.ai_agent import AgentRequestError, complete_agent_turn
+            result = complete_agent_turn(config=config, project_id=project_id, messages=messages, transport=ports.llm_chat)
+            if not audit_chat("SUCCESS", None, result):
+                return JSONResponse(status_code=503, content={"code": "AUDIT_UNAVAILABLE", "message": "AI conversation audit failed"})
+            return result
+        except LlmConfigUnavailable:
+            audit_chat("ERROR", "LLM_UNAVAILABLE")
+            return JSONResponse(status_code=503, content={"code": "LLM_UNAVAILABLE", "message": "no active default LLM model"})
+        except AgentRequestError as exc:
+            audit_chat("ERROR", "INVALID_REQUEST")
+            return JSONResponse(status_code=422, content={"code": "INVALID_REQUEST", "message": str(exc)})
+        except Exception:
+            audit_chat("ERROR", "LLM_PROVIDER_ERROR")
+            return JSONResponse(status_code=502, content={"code": "LLM_PROVIDER_ERROR", "message": "LLM request failed"})
 
     @router.post("/api/v1/rebuild/ai/tool-calls")
     def invoke_tool(
@@ -801,8 +894,20 @@ def build_default_bridge_ports(
 
         handlers.update(build_all_handlers(session_factory, connector_factory))
 
+    from rebuild.llm.provider import chat_completion
+
+    def llm_chat(config: Mapping[str, Any], messages: list[dict[str, Any]], tools: Any) -> Mapping[str, Any]:
+        return chat_completion(
+            api_base=str(config["base_url"]),
+            model_id=str(config["model"]),
+            api_key=str(config["api_key"]),
+            messages=messages,
+            tools=tools,
+        )
+
     return AiBridgePorts(
         handlers=handlers,
-        audit_writer=_BridgeAuditWriterAdapter(audit_writer),
+        audit_writer=_BridgeAuditWriterAdapter(audit_writer, session_factory),
         llm_resolver=llm_resolver,
+        llm_chat=llm_chat,
     )

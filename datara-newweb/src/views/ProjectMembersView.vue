@@ -6,7 +6,7 @@
  * 域契约 can_manage_project），本页不做客户端权限判定，403 以错误态呈现。
  * 路由挂载归 L3-03（routes 冻结面零触碰，本件为可挂载视图组件）。
  */
-import { onMounted, ref } from 'vue'
+import { ref, watch } from 'vue'
 import {
   MEMBER_ROLES,
   addMember,
@@ -25,21 +25,34 @@ const members = ref<MemberEntry[]>([])
 const newUsername = ref('')
 const newRole = ref<MemberRole>('viewer')
 const actionError = ref('')
+let requestSeq = 0
 
 async function reload(): Promise<void> {
+  const requestId = ++requestSeq
+  const projectId = props.projectId
+  loading.value = true
+  members.value = []
   try {
-    const page = await listMembers(props.projectId)
+    const page = await listMembers(projectId)
+    if (requestId !== requestSeq) return
     members.value = page.list
     error.value = ''
   } catch (err) {
+    if (requestId !== requestSeq) return
     error.value = err instanceof Error ? err.message : '成员列表加载失败'
+  } finally {
+    if (requestId === requestSeq) loading.value = false
   }
 }
 
-onMounted(async () => {
-  await reload()
-  loading.value = false
-})
+watch(
+  () => props.projectId,
+  () => {
+    actionError.value = ''
+    void reload()
+  },
+  { immediate: true },
+)
 
 async function onAdd(): Promise<void> {
   const username = newUsername.value.trim()

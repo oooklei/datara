@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from types import SimpleNamespace
 
 import pytest
@@ -269,3 +270,25 @@ def test_provider_pins_validated_address_and_does_not_follow_redirects(monkeypat
     assert result["status"] == "success"
     assert calls[0]["address"] == "93.184.216.34"
     assert calls[0]["path"] == "/v1/chat/completions"
+
+
+def test_provider_chat_completion_sends_non_streaming_tool_contract(monkeypatch):
+    calls = []
+    monkeypatch.setattr(llm_provider, "_resolved_addresses", lambda *_args: frozenset({"93.184.216.34"}))
+    monkeypatch.setattr(llm_provider, "_post_json", lambda **kwargs: calls.append(kwargs) or {
+        "model": "qwen", "choices": [{"message": {"role": "assistant", "content": "ok"}}],
+    })
+
+    result = llm_provider.chat_completion(
+        api_base="https://example.com/v1",
+        model_id="qwen",
+        api_key="secret",
+        messages=[{"role": "user", "content": "检查"}],
+        tools=[{"type": "function", "function": {"name": "search_schema"}}],
+    )
+
+    body = json.loads(calls[0]["body"])
+    assert result["model"] == "qwen"
+    assert calls[0]["path"] == "/v1/chat/completions"
+    assert body["stream"] is False and body["tool_choice"] == "auto"
+    assert body["tools"][0]["function"]["name"] == "search_schema"

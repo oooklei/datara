@@ -217,8 +217,8 @@ const retry = ref<() => void>(() => reload)
 let reqSeq = 0
 let categorySeq = 0
 
-const DOMAIN_COLORS = ['#1668dc', '#7c3aed', '#0891b2', '#16a34a', '#d97706', '#e5484d']
-const SYSTEM_COLORS = ['#1668dc', '#0891b2', '#7c3aed', '#16a34a', '#d97706', '#e5484d', '#0ea5e9']
+const DOMAIN_COLORS = ['var(--primary)', 'var(--purple)', 'var(--cyan)', 'var(--success)', 'var(--warn)', 'var(--danger)']
+const SYSTEM_COLORS = ['var(--primary)', 'var(--cyan)', 'var(--purple)', 'var(--success)', 'var(--warn)', 'var(--danger)', 'var(--cyan)']
 
 const routeProjectId = computed<number | null>(() => {
   const raw = route.params.projectId ?? route.query.projectId
@@ -298,7 +298,7 @@ const categoryGroups = computed(() => {
     {
       name: '数据表',
       ico: '▤',
-      color: '#1668dc',
+      color: 'var(--primary)',
       cnt: list.length,
       unit: '个',
       items: list.slice(0, 5).map((a) => a.displayName || a.assetName),
@@ -308,7 +308,7 @@ const categoryGroups = computed(() => {
     {
       name: '指标',
       ico: '✦',
-      color: '#7c3aed',
+      color: 'var(--purple)',
       cnt: metricCnt.value ?? '—',
       unit: '项',
       items: metricSamples.value,
@@ -318,7 +318,7 @@ const categoryGroups = computed(() => {
     {
       name: '标准',
       ico: '§',
-      color: '#16a34a',
+      color: 'var(--success)',
       cnt: standardCnt.value ?? '—',
       unit: '项',
       items: standardSamples.value,

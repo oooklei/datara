@@ -320,9 +320,9 @@ def test_python_shell_pipeline_formal_state_machine():
         }
         assert all(task["status"] == "PENDING" for task in data["tasks"])
 
-        # PENDING → RUNNING → SUCCEEDED across the full node set. Per-node
-        # PYTHON/SHELL executors are not landed yet (pre-study risk §5.3); the
-        # lifecycle contract is what this test freezes.
+        # PENDING → RUNNING → SUCCEEDED across the full node set. Real
+        # PYTHON/SHELL subprocess execution is covered by the TrialRunner
+        # six-node priority-component sample; this case freezes FORMAL state.
         _transition(client, headers, project_id, instance_id, "RUNNING")
         detail = _instance_detail(client, headers, project_id, instance_id)
         assert detail["status"] == "RUNNING"

@@ -1,30 +1,110 @@
 <template>
-  <main class="key-page" aria-label="API-Key 管理">
-    <header><div><h1>API-Key 管理</h1><p>管理受控 API 的访问凭据；原始 Key 仅在签发或轮换后显示一次。</p></div><button type="button" data-issue @click="openIssue">签发 API-Key</button></header>
-    <p v-if="busy" role="status">正在加载…</p><p v-if="error" role="alert">{{ error }}</p>
-    <p v-if="!busy && !keys.length" data-empty>暂无 API-Key</p>
-    <table v-else data-key-list><thead><tr><th>名称</th><th>前缀</th><th>权限范围</th><th>项目范围</th><th>状态</th><th>过期时间</th><th>操作</th></tr></thead>
-      <tbody><tr v-for="key in keys" :key="key.id" :data-key-id="key.id"><td>{{ key.name }}</td><td><code>{{ key.keyPrefix }}</code></td><td>{{ key.scopes.permissions.join(', ') || '—' }}</td><td>{{ key.scopes.projectIds.join(', ') || '全局' }}</td><td>{{ key.status === 'active' ? '启用' : '已撤销' }}</td><td>{{ key.expiresAt || '永不过期' }}</td><td class="actions"><button type="button" data-rotate :disabled="key.status !== 'active'" @click="rotate(key)">轮换</button><button type="button" data-revoke :disabled="key.status !== 'active'" @click="revoke(key)">撤销</button></td></tr></tbody>
+  <main class="pg" aria-label="API-Key 管理">
+    <header class="pg-head">
+      <div><h1>API-Key 管理</h1><p>管理受控 API 的访问凭据；原始 Key 仅在签发或轮换后显示一次。</p></div>
+      <a class="op-btn" href="/open/api" data-goto-api>API 管理</a>
+    </header>
+    <div class="toolbar">
+      <span class="hint" data-apikey-count>Key {{ keys.length }} 条</span><span class="spacer"></span>
+      <button type="button" data-refresh :disabled="busy" @click="reload">刷新</button>
+      <button type="button" class="primary" data-create data-issue @click="openIssue">+ 签发 API-Key</button>
+    </div>
+    <p v-if="error" class="err-box" role="alert" data-error>{{ error }}</p>
+    <p v-if="busy" role="status">正在加载…</p>
+    <div v-else-if="!keys.length" class="panel empty" data-empty>暂无 API-Key</div>
+    <table v-else data-apikey-list data-key-list>
+      <thead><tr><th>名称</th><th>前缀</th><th>权限范围</th><th>项目范围</th><th>状态</th><th>过期时间</th><th>操作</th></tr></thead>
+      <tbody><tr v-for="key in keys" :key="key.id" :data-key-id="key.id">
+        <td>{{ key.name }}</td><td><code data-key-prefix>{{ key.keyPrefix }}</code></td><td>{{ key.scopes.permissions.join(', ') || '—' }}</td>
+        <td>{{ key.scopes.projectIds.join(', ') || '全局' }}</td><td><span class="pill">{{ key.status }}</span></td><td>{{ key.expiresAt || '永不过期' }}</td>
+        <td class="actions"><button type="button" data-rotate :disabled="key.status !== 'active' || busy" @click="rotate(key)">轮换</button><button type="button" class="danger" data-revoke :disabled="key.status !== 'active' || busy" @click="revoke(key)">撤销</button></td>
+      </tr></tbody>
     </table>
-    <div v-if="plainKey" class="mask" @click.self="plainKey = ''"><section role="dialog" aria-modal="true" aria-label="一次性 API-Key"><h2>请立即复制 API-Key</h2><p>关闭后无法再次查看原始凭据。</p><code data-plain-key>{{ plainKey }}</code><button type="button" data-close-key @click="plainKey = ''">已复制，关闭</button></section></div>
-    <div v-if="editing" class="mask" @click.self="editing = false"><form role="dialog" aria-modal="true" aria-label="签发 API-Key" @submit.prevent="issue"><h2>签发 API-Key</h2><label>名称<input v-model.trim="draft.name" required data-name></label><label>权限范围<input v-model.trim="permissionsText" placeholder="security:read, workflow:run" data-permissions></label><label>项目 ID<input v-model.trim="projectIdsText" placeholder="逗号分隔，留空为全局" data-projects></label><label>过期时间<input v-model="draft.expiresAt" type="datetime-local" data-expires></label><footer><button type="button" @click="editing = false">取消</button><button type="submit" data-save>签发</button></footer></form></div>
+
+    <div v-if="plainKey" class="mask" @click.self="closePlainKey">
+      <section class="issued" role="dialog" aria-modal="true" aria-label="一次性 API-Key" data-issued>
+        <h2>请立即保存 API-Key</h2><p>关闭后无法再次查看，系统和浏览器均不会持久化明文。</p>
+        <code data-plain-key>{{ plainKey }}</code>
+        <p v-if="copyStatus" class="hint" role="status">{{ copyStatus }}</p>
+        <footer><button type="button" data-copy-key @click="copyPlainKey">复制</button><button type="button" class="primary" data-close-key @click="closePlainKey">已保存，关闭</button></footer>
+      </section>
+    </div>
+
+    <div v-if="editing" class="mask" @click.self="editing = false">
+      <form role="dialog" aria-modal="true" aria-label="签发 API-Key" @submit.prevent="issue">
+        <h2>签发 API-Key</h2>
+        <label>名称<input v-model.trim="draft.name" required data-name></label>
+        <label>权限（逗号分隔）<input v-model="permissionsText" required data-permissions placeholder="security:read,workflow:run"></label>
+        <label>项目 ID（逗号分隔，留空表示全局）<input v-model="projectIdsText" data-projects inputmode="numeric"></label>
+        <label>过期时间<input v-model="expiresText" data-expires type="datetime-local"></label>
+        <footer><button type="button" @click="editing = false">取消</button><button class="primary" data-save :disabled="busy">签发</button></footer>
+      </form>
+    </div>
   </main>
 </template>
+
 <script setup lang="ts">
 import { onMounted, reactive, ref } from 'vue'
 import { openapiAdminKeyApi, type ApiKeyInput, type ApiKeyRecord } from '../services/rebuild/openapiAdminApi'
-const keys = ref<ApiKeyRecord[]>([]), busy = ref(false), error = ref(''), editing = ref(false), plainKey = ref('')
-const permissionsText = ref(''), projectIdsText = ref('')
+
+const keys = ref<ApiKeyRecord[]>([])
+const busy = ref(false)
+const error = ref('')
+const editing = ref(false)
+const plainKey = ref('')
+const copyStatus = ref('')
+const permissionsText = ref('')
+const projectIdsText = ref('')
+const expiresText = ref('')
 const draft = reactive<ApiKeyInput>({ name: '', scopes: { permissions: [], projectIds: [] }, expiresAt: null })
-const message = (e: unknown) => e instanceof Error ? e.message : String(e)
-async function reload() { busy.value = true; error.value = ''; try { keys.value = await openapiAdminKeyApi.list() } catch (e) { error.value = message(e) } finally { busy.value = false } }
-function openIssue() { draft.name = ''; draft.expiresAt = null; permissionsText.value = ''; projectIdsText.value = ''; editing.value = true }
-async function issue() { try { draft.scopes = { permissions: permissionsText.value.split(',').map(v => v.trim()).filter(Boolean), projectIds: projectIdsText.value.split(',').map(v => v.trim()).filter(Boolean).map(Number).filter(Number.isInteger) }; const result = await openapiAdminKeyApi.issue({ ...draft, scopes: { ...draft.scopes } }); editing.value = false; plainKey.value = result.plainKey; await reload() } catch (e) { error.value = message(e) } }
-async function rotate(key: ApiKeyRecord) { if (!globalThis.confirm(`轮换 API-Key“${key.name}”？`)) return; try { plainKey.value = (await openapiAdminKeyApi.rotate(key.id)).plainKey; await reload() } catch (e) { error.value = message(e) } }
-async function revoke(key: ApiKeyRecord) { if (!globalThis.confirm(`撤销 API-Key“${key.name}”？`)) return; try { await openapiAdminKeyApi.revoke(key.id); await reload() } catch (e) { error.value = message(e) } }
+const message = (cause: unknown) => cause instanceof Error ? cause.message : String(cause)
+
+async function reload() {
+  busy.value = true
+  error.value = ''
+  try { keys.value = await openapiAdminKeyApi.list() } catch (cause) { error.value = message(cause) } finally { busy.value = false }
+}
+function openIssue() {
+  draft.name = ''
+  draft.expiresAt = null
+  permissionsText.value = ''
+  projectIdsText.value = ''
+  expiresText.value = ''
+  editing.value = true
+}
+async function issue() {
+  error.value = ''
+  busy.value = true
+  try {
+    draft.scopes = {
+      permissions: permissionsText.value.split(',').map((value) => value.trim()).filter(Boolean),
+      projectIds: projectIdsText.value.split(',').map((value) => Number(value.trim())).filter((value) => Number.isInteger(value) && value > 0),
+    }
+    draft.expiresAt = expiresText.value ? new Date(expiresText.value).toISOString() : null
+    const result = await openapiAdminKeyApi.issue({ ...draft, scopes: { ...draft.scopes } })
+    plainKey.value = result.plainKey
+    copyStatus.value = ''
+    editing.value = false
+    await reload()
+  } catch (cause) { error.value = message(cause) } finally { busy.value = false }
+}
+async function rotate(key: ApiKeyRecord) {
+  if (!globalThis.confirm(`轮换 API-Key“${key.name}”？旧 Key 将立即失效。`)) return
+  error.value = ''
+  try { const result = await openapiAdminKeyApi.rotate(key.id); plainKey.value = result.plainKey; copyStatus.value = ''; await reload() } catch (cause) { error.value = message(cause) }
+}
+async function revoke(key: ApiKeyRecord) {
+  if (!globalThis.confirm(`撤销 API-Key“${key.name}”？`)) return
+  error.value = ''
+  try { await openapiAdminKeyApi.revoke(key.id); await reload() } catch (cause) { error.value = message(cause) }
+}
+async function copyPlainKey() {
+  try { await navigator.clipboard.writeText(plainKey.value); copyStatus.value = '已复制到剪贴板' } catch { copyStatus.value = '复制失败，请手动复制' }
+}
+function closePlainKey() { plainKey.value = ''; copyStatus.value = '' }
 onMounted(reload)
 </script>
+
 <style scoped>
-/* 设计令牌：由全局 styles/theme.css 的 :root 提供（§4.4.3 风格统一），本文件不再就地重复定义。 */
-.key-page{max-width:1180px;margin:auto;padding:32px 24px;color:var(--text)}.key-page>header{display:flex;justify-content:space-between;align-items:center}.key-page h1{margin:0}.key-page header p{color:var(--text-3)}button{cursor:pointer;padding:7px 12px}button:disabled{cursor:not-allowed;opacity:.5}table{width:100%;border-collapse:collapse;background:var(--card)}th,td{text-align:left;padding:11px;border-bottom:1px solid var(--border)}.actions{display:flex;gap:6px}.mask form,.mask section{width:min(500px,calc(100vw - 40px));display:grid;gap:12px;background:var(--card);padding:24px;border-radius:var(--radius-lg)}.mask label{display:grid;gap:5px}.mask input{padding:8px}.mask code{word-break:break-all;padding:12px;background:var(--bg);border-radius:var(--radius-sm)}.mask footer{display:flex;justify-content:flex-end;gap:8px}
+.pg{max-width:1180px;margin:auto;padding:28px 24px;color:var(--text)}.pg-head,.toolbar,.actions{display:flex;align-items:center;gap:10px}.pg-head{justify-content:space-between}.pg-head h1{margin:0}.pg-head p,.hint{color:var(--text-2)}.toolbar{margin:18px 0}.spacer{flex:1}.panel,table{background:var(--card);border:1px solid var(--border);border-radius:7px}.empty{padding:36px;text-align:center;color:var(--text-2)}table{width:100%;border-collapse:collapse}th,td{text-align:left;padding:10px;border-bottom:1px solid var(--border)}button,.op-btn{padding:7px 12px;border:1px solid var(--border-strong);border-radius:5px;background:var(--card);color:inherit;cursor:pointer;text-decoration:none}.primary{background:var(--primary);color:var(--card);border-color:var(--primary)}.danger{color:var(--danger)}.pill{padding:2px 7px;border-radius:999px;background:var(--border)}.err-box{padding:9px 12px;background:var(--danger-bg);color:var(--danger)}.mask{position:fixed;inset:0;background:color-mix(in srgb, var(--text) 40%, transparent);display:grid;place-items:center;z-index:30}.mask form,.issued{width:min(560px,calc(100vw - 40px));display:grid;gap:12px;background:var(--card);padding:24px;border-radius:8px}.mask label{display:grid;gap:5px}.mask input{padding:8px}.mask footer{display:flex;justify-content:flex-end;gap:8px}.issued code{display:block;padding:12px;background:var(--bg);overflow-wrap:anywhere}
 </style>

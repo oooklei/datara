@@ -1,0 +1,10 @@
+{
+  "id": "F-RUN-RESULT-METRICS-01",
+  "ts": "2026-10-26T16:40:00+08:00",
+  "from": "codex",
+  "to": "flow",
+  "type": "implementation_receipt",
+  "ref": ".codex-evidence/FE-MERGE-RUN-RESULT-METRICS-01/summary.md",
+  "body": "已完成工作流运行结果统计闭环核验：终态 standard API、取消 API、legacy bridge 与 trial runner 均触发 RunStatisticsService.finalize，统计表持久化 success_count/failure_count/skipped_count；legacy 桥目标单测 3 passed，并复用实现入快照后的后端全量 2573 passed/8 skipped 证据，未重复执行全量。",
+  "status": "done"
+}

@@ -10,7 +10,7 @@ the stream router is deliberately NOT mounted in rebuild.api.app by this
 increment (mounting is collected by the supervision line).
 """
 
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 
 import pytest
 from fastapi import FastAPI
@@ -408,6 +408,39 @@ def test_api_data_plane_rejects_produce_and_fuse_until_running(client):
     assert client.post(f"/api/v1/rebuild/stream/jobs/{job_id}/transitions", json={"action": "start"}).status_code == 200
     assert client.post(f"/api/v1/rebuild/stream/jobs/{job_id}/transitions", json={"action": "activate"}).status_code == 200
     assert client.post(f"/api/v1/rebuild/stream/jobs/{job_id}/produce", json={"count": 1}).status_code == 200
+
+
+def test_api_recovery_events_are_visible_in_current_utc_window(client):
+    window_from = (datetime.now(timezone.utc) - timedelta(minutes=1)).isoformat()
+    created = client.post(
+        "/api/v1/rebuild/stream/jobs",
+        json={
+            "name": "utc-recovery",
+            "workflow_id": 10018,
+            "mq_topic": "datara.stream.utc",
+            "runtime_config": {"mode": "fixed_rate", "rows_per_sec": 1, "columns": ["value"]},
+        },
+    )
+    assert created.status_code == 200, created.text
+    job_id = created.json()["data"]["id"]
+    for action in ("start", "activate", "fail", "recover", "activate"):
+        assert client.post(
+            f"/api/v1/rebuild/stream/jobs/{job_id}/transitions", json={"action": action}
+        ).status_code == 200
+
+    response = client.get(
+        f"/api/v1/rebuild/stream/jobs/{job_id}/recovery-events",
+        params={
+            "from": window_from,
+            "to": (datetime.now(timezone.utc) + timedelta(minutes=1)).isoformat(),
+        },
+    )
+
+    assert response.status_code == 200
+    assert [row["kind"] for row in response.json()["data"]] == [
+        "recovery-started",
+        "recovery-completed",
+    ]
 
 
 def test_api_anonymous_is_401_and_bearer_fallback(client):

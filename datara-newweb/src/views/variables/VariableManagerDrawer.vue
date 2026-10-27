@@ -21,6 +21,7 @@ let loadSeq = 0
 const scope = ref<Extract<VariableScope, 'global' | 'project' | 'env'>>('project')
 const environmentGroupId = ref<number | undefined>()
 const editing = ref(false)
+const preserveExistingValue = ref(false)
 const saving = ref(false)
 const form = ref({ name: '', value: '', valueType: 'string' as VariableValueType, sensitive: false, description: '' })
 
@@ -53,6 +54,7 @@ async function load() {
 
 function beginCreate() {
   form.value = { name: '', value: '', valueType: 'string', sensitive: false, description: '' }
+  preserveExistingValue.value = false
   editing.value = true
 }
 
@@ -65,6 +67,7 @@ function beginEdit(row: VariableDefinition) {
     sensitive: !!row.sensitive,
     description: row.description ?? '',
   }
+  preserveExistingValue.value = !!row.sensitive
   editing.value = true
 }
 
@@ -73,11 +76,15 @@ async function save() {
   saving.value = true
   error.value = ''
   try {
-    await api.saveVariable(props.projectId, {
+    const definition: VariableDefinition = {
       scope: scope.value,
       ...form.value,
       ...owner.value,
-    })
+    }
+    if (preserveExistingValue.value && definition.sensitive && definition.value === '') {
+      delete definition.value
+    }
+    await api.saveVariable(props.projectId, definition)
     editing.value = false
     await load()
   } catch {
@@ -147,7 +154,6 @@ watch(() => [props.modelValue, props.projectId], load, { immediate: true })
 </template>
 
 <style scoped>
-/* 设计令牌：由全局 styles/theme.css 的 :root 提供（§4.4.3 风格统一），本文件不再就地重复定义。 */
-.variable-drawer{position:fixed;z-index:2000;inset:56px 0 0 auto;width:min(720px,94vw);background:var(--card);border-left:1px solid var(--border);box-shadow:-12px 0 32px rgba(15,23,42,.12);padding:18px;overflow:auto}
+.variable-drawer{position:fixed;z-index:2000;inset:56px 0 0 auto;width:min(720px,94vw);background:var(--card);border-left:1px solid var(--border-strong);box-shadow:-12px 0 32px color-mix(in srgb, var(--text) 12%, transparent);padding:18px;overflow:auto}
 header,.toolbar,header>div,.editor>div{display:flex;align-items:center;justify-content:space-between;gap:12px}h2,p{margin:0}.toolbar{justify-content:flex-start;margin:16px 0}.notice{padding:8px;background:var(--bg)}.error{color:var(--danger);padding:12px;background:var(--danger-bg)}table{width:100%;border-collapse:collapse}th,td{text-align:left;padding:9px;border-bottom:1px solid var(--border)}.editor{margin-top:18px;padding:14px;background:var(--bg);display:grid;gap:10px}.editor label{display:grid;gap:4px}input,select,button{font:inherit;padding:6px 9px}
 </style>

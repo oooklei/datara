@@ -1,0 +1,10 @@
+{
+  "id": "F-MAIN-C63C-LOGIN-FUSION-DEPLOY-01",
+  "ts": "2026-10-26T22:59:34+08:00",
+  "from": "codex",
+  "to": "flow",
+  "type": "deployment_receipt",
+  "ref": ".codex-evidence/F-MAIN-C63C-LOGIN-FUSION-01/summary.md",
+  "body": "Deployed the login-fusion frontend image to 192.168.1.9:18091 with web/API health 200 and retained the prior container and image for immediate rollback.",
+  "status": "done"
+}

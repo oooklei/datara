@@ -1,0 +1,10 @@
+{
+  "id": "F-QUALITY-B-WRITE-01",
+  "ts": "2026-10-27T03:47:38+08:00",
+  "from": "codex",
+  "to": "flow",
+  "type": "implementation_receipt",
+  "ref": ".codex-evidence/F-QUALITY-B-WRITE-01/summary.md",
+  "body": "质量批次 B 写侧闭环完成：异常处置、报告快照创建、告警策略新增与启停均已实现并接入前端；后端全量 2616 passed/8 skipped，前端全量 101 files/881 tests，vue-tsc 与 build EXIT=0；192.168.1.9 实例三项真实联调全部 PASS，证据与回滚路径已固化。",
+  "status": "done"
+}

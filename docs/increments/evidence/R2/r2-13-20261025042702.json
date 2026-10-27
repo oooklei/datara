@@ -1,0 +1,893 @@
+{
+  "run_id": "r2-13-20261025042702",
+  "generated_at": "2026-10-25T04:27:02.442186+08:00",
+  "timezone": "Asia/Shanghai",
+  "url": "http://192.168.1.9:18101/rebuild-validation-r3.html",
+  "project_id": 8,
+  "expected_asset_ids": [
+    10,
+    11
+  ],
+  "browser": "Chromium via Playwright",
+  "browser_use_fallback": {
+    "status": "BLOCKED",
+    "attempts": [
+      "same-page bind/navigation timed out at 30s",
+      "same-page retry timed out at 60s"
+    ],
+    "fallback": "Playwright controlled the deployed R3 page at the same 192.168.1.9:18091 URL"
+  },
+  "token_source": "192.168.1.9 running rebuild-api environment over BatchMode SSH",
+  "actions": [],
+  "assertions": [],
+  "responses": [
+    {
+      "method": "POST",
+      "status": 200,
+      "path": "/api/v1/rebuild/validation-token"
+    }
+  ],
+  "page_errors": [],
+  "console_errors": [],
+  "failed_requests": [],
+  "screenshot": null,
+  "result": "FAIL",
+  "mutation_policy": "Only POST /api/v1/rebuild/validation-token is allowed; all page requests must be GET.",
+  "notes": [
+    "The key and short-lived token are excluded from this report, URL, page storage, and screenshot."
+  ],
+  "remote_runtime": {
+    "services": [
+      "datara-newweb-web-codex|Up About an hour|nginx:1.27-alpine",
+      "datara-legacy-sync-codex|Up 2 hours|datara-backend:latest",
+      "datara-rebuild-api-codex|Up About an hour|datara-backend:latest",
+      "datara-newweb-web|Up 26 hours|datara-newweb:inc14",
+      "datara-rebuild-api|Up 4 hours (healthy)|datara-backend:latest",
+      "datara-api|Up 10 days (healthy)|datara-backend:latest",
+      "datara-worker|Up 10 days (healthy)|c909b592272d",
+      "datara-master|Up 10 days (healthy)|c909b592272d",
+      "datara-logger|Up 10 days (healthy)|c909b592272d",
+      "datara-alert|Up 10 days (healthy)|c909b592272d",
+      "datara-mysql-src|Up 13 days (healthy)|mysql:8.0",
+      "datara-mysql-meta|Up 13 days (healthy)|mysql:8.0",
+      "datara-mysql-dw|Up 13 days (healthy)|mysql:8.0",
+      "datara-redis|Up 13 days (healthy)|redis:7",
+      "datara-kafka|Up 13 days (healthy)|bitnami/kafka:3.7",
+      "datara-zookeeper|Up 13 days (healthy)|zookeeper:3.9"
+    ],
+    "rebuild_api_access_log_lines": [
+      "INFO:     172.31.0.13:48842 - \"POST /api/v1/rebuild/validation-token HTTP/1.0\" 404 Not Found"
+    ],
+    "remote_commands": "docker ps and filtered docker logs only; no restart/deploy/mutation"
+  },
+  "remote_health": {
+    "web": {
+      "url": "http://192.168.1.9:18101/rebuild-validation-r3.html",
+      "status": 200,
+      "body_bytes": 350
+    },
+    "api": {
+      "url": "http://192.168.1.9:18098/api/v1/rebuild/health",
+      "status": 200,
+      "body_bytes": 73
+    }
+  },
+  "target_database": {
+    "database_identity": "datara_rebuild_i0\t8.0.46\t2026-10-25 04:27:01",
+    "tables": [
+      "dependency_config",
+      "execution_event",
+      "lineage_writeback",
+      "quality_rule_result_link",
+      "rebuild_active_token",
+      "rebuild_governance_asset",
+      "rebuild_governance_asset_field",
+      "rebuild_governance_asset_metadata_extension",
+      "rebuild_governance_asset_tag",
+      "rebuild_governance_audit_event",
+      "rebuild_governance_domain",
+      "rebuild_governance_legacy_identity_mapping",
+      "rebuild_governance_legacy_tag_definition",
+      "rebuild_governance_legacy_tag_reference",
+      "rebuild_governance_lineage_edge",
+      "rebuild_governance_migration_batch",
+      "rebuild_governance_migration_item",
+      "rebuild_governance_model_engine",
+      "rebuild_governance_quality_alarm_policy",
+      "rebuild_governance_quality_exception",
+      "rebuild_governance_quality_report",
+      "rebuild_governance_quality_rule",
+      "rebuild_governance_quality_rule_definition",
+      "rebuild_governance_quality_run",
+      "rebuild_governance_quality_run_legacy_details",
+      "rebuild_governance_quality_task",
+      "rebuild_governance_quality_task_rule",
+      "rebuild_governance_semantic_metric",
+      "rebuild_governance_semantic_metric_dimension",
+      "rebuild_governance_semantic_metric_profile",
+      "rebuild_governance_semantic_metric_version",
+      "rebuild_governance_standard",
+      "rebuild_governance_standard_approval",
+      "rebuild_governance_standard_check_report",
+      "rebuild_governance_standard_code_set",
+      "rebuild_governance_standard_code_value",
+      "rebuild_governance_standard_element",
+      "rebuild_governance_standard_mapping",
+      "rebuild_governance_standard_naming_rule",
+      "rebuild_governance_tag",
+      "rebuild_governance_warehouse_layer",
+      "rebuild_governance_warehouse_model",
+      "rebuild_governance_warehouse_model_field",
+      "rebuild_governance_warehouse_model_relation",
+      "rebuild_governance_warehouse_model_relation_field",
+      "rebuild_governance_warehouse_model_version",
+      "rebuild_llm_model",
+      "rebuild_project",
+      "rebuild_project_datasource",
+      "rebuild_project_member",
+      "rebuild_runtime_node",
+      "rebuild_schema_migration",
+      "rebuild_sql_ide_audit",
+      "rebuild_ssh_node",
+      "rebuild_user",
+      "rebuild_variable_definition",
+      "resource_binding",
+      "resource_version",
+      "resources",
+      "sql_ide_execution_events",
+      "sql_ide_execution_status",
+      "sql_ide_export_audit",
+      "sql_ide_export_jobs",
+      "sql_ide_result_sets",
+      "stream_checkpoint",
+      "stream_failure_event",
+      "stream_job",
+      "stream_job_attempt",
+      "stream_metric_snapshot",
+      "stream_recovery_event",
+      "sync_task_definition",
+      "t_biz_domain",
+      "t_component",
+      "t_component_log",
+      "t_component_version",
+      "t_data_source",
+      "t_dw_layer",
+      "t_dw_model",
+      "t_dw_model_field",
+      "t_dw_model_relation",
+      "t_dw_model_version",
+      "t_engine_type",
+      "t_lineage_edge",
+      "task_data_error_sample",
+      "task_data_stat_segment",
+      "task_instance",
+      "task_instance_attempt",
+      "task_instance_data_stat",
+      "task_instance_log",
+      "task_instance_output",
+      "task_instance_variable_runtime",
+      "workflow_definition",
+      "workflow_draft_snapshot",
+      "workflow_edge",
+      "workflow_instance",
+      "workflow_node",
+      "workflow_publish_record",
+      "workflow_result_stat",
+      "workflow_run_reconcile_detail",
+      "workflow_run_stat",
+      "workflow_schedule",
+      "workflow_version"
+    ],
+    "other_tables_in_same_isolated_schema_not_inspected": [
+      "dependency_config",
+      "execution_event",
+      "lineage_writeback",
+      "quality_rule_result_link",
+      "rebuild_active_token",
+      "rebuild_llm_model",
+      "rebuild_project",
+      "rebuild_project_datasource",
+      "rebuild_project_member",
+      "rebuild_runtime_node",
+      "rebuild_sql_ide_audit",
+      "rebuild_ssh_node",
+      "rebuild_user",
+      "rebuild_variable_definition",
+      "resource_binding",
+      "resource_version",
+      "resources",
+      "sql_ide_execution_events",
+      "sql_ide_execution_status",
+      "sql_ide_export_audit",
+      "sql_ide_export_jobs",
+      "sql_ide_result_sets",
+      "stream_checkpoint",
+      "stream_failure_event",
+      "stream_job",
+      "stream_job_attempt",
+      "stream_metric_snapshot",
+      "stream_recovery_event",
+      "sync_task_definition",
+      "t_biz_domain",
+      "t_component",
+      "t_component_log",
+      "t_component_version",
+      "t_data_source",
+      "t_dw_layer",
+      "t_dw_model",
+      "t_dw_model_field",
+      "t_dw_model_relation",
+      "t_dw_model_version",
+      "t_engine_type",
+      "t_lineage_edge",
+      "task_data_error_sample",
+      "task_data_stat_segment",
+      "task_instance",
+      "task_instance_attempt",
+      "task_instance_data_stat",
+      "task_instance_log",
+      "task_instance_output",
+      "task_instance_variable_runtime",
+      "workflow_definition",
+      "workflow_draft_snapshot",
+      "workflow_edge",
+      "workflow_instance",
+      "workflow_node",
+      "workflow_publish_record",
+      "workflow_result_stat",
+      "workflow_run_reconcile_detail",
+      "workflow_run_stat",
+      "workflow_schedule",
+      "workflow_version"
+    ],
+    "timestamp_column_metadata": [
+      "dependency_config\tcreated_at\tNO\tCURRENT_TIMESTAMP",
+      "dependency_config\tupdated_at\tNO\tCURRENT_TIMESTAMP",
+      "execution_event\tcreated_at\tNO\tCURRENT_TIMESTAMP",
+      "execution_event\tupdated_at\tNO\tCURRENT_TIMESTAMP",
+      "execution_event\tgenerated_at\tNO\tCURRENT_TIMESTAMP",
+      "lineage_writeback\tcreated_at\tNO\tCURRENT_TIMESTAMP",
+      "lineage_writeback\tupdated_at\tNO\tCURRENT_TIMESTAMP",
+      "quality_rule_result_link\tcreated_at\tNO\tCURRENT_TIMESTAMP",
+      "quality_rule_result_link\tupdated_at\tNO\tCURRENT_TIMESTAMP",
+      "rebuild_governance_asset\tcreated_at\tNO\tCURRENT_TIMESTAMP",
+      "rebuild_governance_asset\tupdated_at\tNO\tCURRENT_TIMESTAMP",
+      "rebuild_governance_asset_field\tcreated_at\tNO\tCURRENT_TIMESTAMP",
+      "rebuild_governance_asset_field\tupdated_at\tNO\tCURRENT_TIMESTAMP",
+      "rebuild_governance_asset_metadata_extension\tgenerated_at\tNO\tCURRENT_TIMESTAMP",
+      "rebuild_governance_asset_metadata_extension\tcreated_at\tNO\tCURRENT_TIMESTAMP",
+      "rebuild_governance_asset_metadata_extension\tupdated_at\tNO\tCURRENT_TIMESTAMP",
+      "rebuild_governance_asset_tag\tcreated_at\tNO\tCURRENT_TIMESTAMP",
+      "rebuild_governance_asset_tag\tupdated_at\tNO\tCURRENT_TIMESTAMP",
+      "rebuild_governance_audit_event\tgenerated_at\tNO\tCURRENT_TIMESTAMP",
+      "rebuild_governance_audit_event\tcreated_at\tNO\tCURRENT_TIMESTAMP",
+      "rebuild_governance_audit_event\tupdated_at\tNO\tCURRENT_TIMESTAMP",
+      "rebuild_governance_domain\tgenerated_at\tNO\tCURRENT_TIMESTAMP",
+      "rebuild_governance_domain\tcreated_at\tNO\tCURRENT_TIMESTAMP",
+      "rebuild_governance_domain\tupdated_at\tNO\tCURRENT_TIMESTAMP",
+      "rebuild_governance_legacy_identity_mapping\tgenerated_at\tNO\tCURRENT_TIMESTAMP",
+      "rebuild_governance_legacy_identity_mapping\tcreated_at\tNO\tCURRENT_TIMESTAMP",
+      "rebuild_governance_legacy_identity_mapping\tupdated_at\tNO\tCURRENT_TIMESTAMP",
+      "rebuild_governance_legacy_tag_definition\tgenerated_at\tNO\tCURRENT_TIMESTAMP",
+      "rebuild_governance_legacy_tag_definition\tcreated_at\tNO\tCURRENT_TIMESTAMP",
+      "rebuild_governance_legacy_tag_definition\tupdated_at\tNO\tCURRENT_TIMESTAMP",
+      "rebuild_governance_legacy_tag_reference\tgenerated_at\tNO\tCURRENT_TIMESTAMP",
+      "rebuild_governance_legacy_tag_reference\tcreated_at\tNO\tCURRENT_TIMESTAMP",
+      "rebuild_governance_legacy_tag_reference\tupdated_at\tNO\tCURRENT_TIMESTAMP",
+      "rebuild_governance_lineage_edge\tcreated_at\tNO\tCURRENT_TIMESTAMP",
+      "rebuild_governance_lineage_edge\tupdated_at\tNO\tCURRENT_TIMESTAMP",
+      "rebuild_governance_migration_batch\tgenerated_at\tNO\tCURRENT_TIMESTAMP",
+      "rebuild_governance_migration_batch\tcreated_at\tNO\tCURRENT_TIMESTAMP",
+      "rebuild_governance_migration_batch\tupdated_at\tNO\tCURRENT_TIMESTAMP",
+      "rebuild_governance_migration_item\tgenerated_at\tNO\tCURRENT_TIMESTAMP",
+      "rebuild_governance_migration_item\tcreated_at\tNO\tCURRENT_TIMESTAMP",
+      "rebuild_governance_migration_item\tupdated_at\tNO\tCURRENT_TIMESTAMP",
+      "rebuild_governance_model_engine\tgenerated_at\tNO\tCURRENT_TIMESTAMP",
+      "rebuild_governance_model_engine\tcreated_at\tNO\tCURRENT_TIMESTAMP",
+      "rebuild_governance_model_engine\tupdated_at\tNO\tCURRENT_TIMESTAMP",
+      "rebuild_governance_quality_alarm_policy\tgenerated_at\tNO\tCURRENT_TIMESTAMP",
+      "rebuild_governance_quality_alarm_policy\tcreated_at\tNO\tCURRENT_TIMESTAMP",
+      "rebuild_governance_quality_alarm_policy\tupdated_at\tNO\tCURRENT_TIMESTAMP",
+      "rebuild_governance_quality_exception\tgenerated_at\tNO\tCURRENT_TIMESTAMP",
+      "rebuild_governance_quality_exception\tcreated_at\tNO\tCURRENT_TIMESTAMP",
+      "rebuild_governance_quality_exception\tupdated_at\tNO\tCURRENT_TIMESTAMP",
+      "rebuild_governance_quality_report\tgenerated_at\tNO\tCURRENT_TIMESTAMP",
+      "rebuild_governance_quality_report\tcreated_at\tNO\tCURRENT_TIMESTAMP",
+      "rebuild_governance_quality_report\tupdated_at\tNO\tCURRENT_TIMESTAMP",
+      "rebuild_governance_quality_rule\tcreated_at\tNO\tCURRENT_TIMESTAMP",
+      "rebuild_governance_quality_rule\tupdated_at\tNO\tCURRENT_TIMESTAMP",
+      "rebuild_governance_quality_rule_definition\tgenerated_at\tNO\tCURRENT_TIMESTAMP",
+      "rebuild_governance_quality_rule_definition\tcreated_at\tNO\tCURRENT_TIMESTAMP",
+      "rebuild_governance_quality_rule_definition\tupdated_at\tNO\tCURRENT_TIMESTAMP",
+      "rebuild_governance_quality_run\tgenerated_at\tNO\tCURRENT_TIMESTAMP",
+      "rebuild_governance_quality_run\tcreated_at\tNO\tCURRENT_TIMESTAMP",
+      "rebuild_governance_quality_run\tupdated_at\tNO\tCURRENT_TIMESTAMP",
+      "rebuild_governance_quality_run_legacy_details\tstarted_at\tYES\t<NULL>",
+      "rebuild_governance_quality_run_legacy_details\tfinished_at\tYES\t<NULL>",
+      "rebuild_governance_quality_run_legacy_details\tgenerated_at\tNO\tCURRENT_TIMESTAMP",
+      "rebuild_governance_quality_run_legacy_details\tcreated_at\tNO\tCURRENT_TIMESTAMP",
+      "rebuild_governance_quality_run_legacy_details\tupdated_at\tNO\tCURRENT_TIMESTAMP",
+      "rebuild_governance_quality_task\tgenerated_at\tNO\tCURRENT_TIMESTAMP",
+      "rebuild_governance_quality_task\tcreated_at\tNO\tCURRENT_TIMESTAMP",
+      "rebuild_governance_quality_task\tupdated_at\tNO\tCURRENT_TIMESTAMP",
+      "rebuild_governance_quality_task_rule\tgenerated_at\tNO\tCURRENT_TIMESTAMP",
+      "rebuild_governance_quality_task_rule\tcreated_at\tNO\tCURRENT_TIMESTAMP",
+      "rebuild_governance_quality_task_rule\tupdated_at\tNO\tCURRENT_TIMESTAMP",
+      "rebuild_governance_semantic_metric\tcreated_at\tNO\tCURRENT_TIMESTAMP",
+      "rebuild_governance_semantic_metric\tupdated_at\tNO\tCURRENT_TIMESTAMP",
+      "rebuild_governance_semantic_metric_dimension\tgenerated_at\tNO\tCURRENT_TIMESTAMP",
+      "rebuild_governance_semantic_metric_dimension\tcreated_at\tNO\tCURRENT_TIMESTAMP",
+      "rebuild_governance_semantic_metric_dimension\tupdated_at\tNO\tCURRENT_TIMESTAMP",
+      "rebuild_governance_semantic_metric_profile\tgenerated_at\tNO\tCURRENT_TIMESTAMP",
+      "rebuild_governance_semantic_metric_profile\tcreated_at\tNO\tCURRENT_TIMESTAMP",
+      "rebuild_governance_semantic_metric_profile\tupdated_at\tNO\tCURRENT_TIMESTAMP",
+      "rebuild_governance_semantic_metric_version\tgenerated_at\tNO\tCURRENT_TIMESTAMP",
+      "rebuild_governance_semantic_metric_version\tcreated_at\tNO\tCURRENT_TIMESTAMP",
+      "rebuild_governance_semantic_metric_version\tupdated_at\tNO\tCURRENT_TIMESTAMP",
+      "rebuild_governance_standard\tcreated_at\tNO\tCURRENT_TIMESTAMP",
+      "rebuild_governance_standard\tupdated_at\tNO\tCURRENT_TIMESTAMP",
+      "rebuild_governance_standard_approval\tgenerated_at\tNO\tCURRENT_TIMESTAMP",
+      "rebuild_governance_standard_approval\tcreated_at\tNO\tCURRENT_TIMESTAMP",
+      "rebuild_governance_standard_approval\tupdated_at\tNO\tCURRENT_TIMESTAMP",
+      "rebuild_governance_standard_check_report\tgenerated_at\tNO\tCURRENT_TIMESTAMP",
+      "rebuild_governance_standard_check_report\tcreated_at\tNO\tCURRENT_TIMESTAMP",
+      "rebuild_governance_standard_check_report\tupdated_at\tNO\tCURRENT_TIMESTAMP",
+      "rebuild_governance_standard_code_set\tgenerated_at\tNO\tCURRENT_TIMESTAMP",
+      "rebuild_governance_standard_code_set\tcreated_at\tNO\tCURRENT_TIMESTAMP",
+      "rebuild_governance_standard_code_set\tupdated_at\tNO\tCURRENT_TIMESTAMP",
+      "rebuild_governance_standard_code_value\tgenerated_at\tNO\tCURRENT_TIMESTAMP",
+      "rebuild_governance_standard_code_value\tcreated_at\tNO\tCURRENT_TIMESTAMP",
+      "rebuild_governance_standard_code_value\tupdated_at\tNO\tCURRENT_TIMESTAMP",
+      "rebuild_governance_standard_element\tgenerated_at\tNO\tCURRENT_TIMESTAMP",
+      "rebuild_governance_standard_element\tcreated_at\tNO\tCURRENT_TIMESTAMP",
+      "rebuild_governance_standard_element\tupdated_at\tNO\tCURRENT_TIMESTAMP",
+      "rebuild_governance_standard_mapping\tgenerated_at\tNO\tCURRENT_TIMESTAMP",
+      "rebuild_governance_standard_mapping\tcreated_at\tNO\tCURRENT_TIMESTAMP",
+      "rebuild_governance_standard_mapping\tupdated_at\tNO\tCURRENT_TIMESTAMP",
+      "rebuild_governance_standard_naming_rule\tgenerated_at\tNO\tCURRENT_TIMESTAMP",
+      "rebuild_governance_standard_naming_rule\tcreated_at\tNO\tCURRENT_TIMESTAMP",
+      "rebuild_governance_standard_naming_rule\tupdated_at\tNO\tCURRENT_TIMESTAMP",
+      "rebuild_governance_tag\tcreated_at\tNO\tCURRENT_TIMESTAMP",
+      "rebuild_governance_tag\tupdated_at\tNO\tCURRENT_TIMESTAMP",
+      "rebuild_governance_warehouse_layer\tgenerated_at\tNO\tCURRENT_TIMESTAMP",
+      "rebuild_governance_warehouse_layer\tcreated_at\tNO\tCURRENT_TIMESTAMP",
+      "rebuild_governance_warehouse_layer\tupdated_at\tNO\tCURRENT_TIMESTAMP",
+      "rebuild_governance_warehouse_model\tgenerated_at\tNO\tCURRENT_TIMESTAMP",
+      "rebuild_governance_warehouse_model\tcreated_at\tNO\tCURRENT_TIMESTAMP",
+      "rebuild_governance_warehouse_model\tupdated_at\tNO\tCURRENT_TIMESTAMP",
+      "rebuild_governance_warehouse_model_field\tgenerated_at\tNO\tCURRENT_TIMESTAMP",
+      "rebuild_governance_warehouse_model_field\tcreated_at\tNO\tCURRENT_TIMESTAMP",
+      "rebuild_governance_warehouse_model_field\tupdated_at\tNO\tCURRENT_TIMESTAMP",
+      "rebuild_governance_warehouse_model_relation\tgenerated_at\tNO\tCURRENT_TIMESTAMP",
+      "rebuild_governance_warehouse_model_relation\tcreated_at\tNO\tCURRENT_TIMESTAMP",
+      "rebuild_governance_warehouse_model_relation\tupdated_at\tNO\tCURRENT_TIMESTAMP",
+      "rebuild_governance_warehouse_model_relation_field\tgenerated_at\tNO\tCURRENT_TIMESTAMP",
+      "rebuild_governance_warehouse_model_relation_field\tcreated_at\tNO\tCURRENT_TIMESTAMP",
+      "rebuild_governance_warehouse_model_relation_field\tupdated_at\tNO\tCURRENT_TIMESTAMP",
+      "rebuild_governance_warehouse_model_version\tgenerated_at\tNO\tCURRENT_TIMESTAMP",
+      "rebuild_governance_warehouse_model_version\tcreated_at\tNO\tCURRENT_TIMESTAMP",
+      "rebuild_governance_warehouse_model_version\tupdated_at\tNO\tCURRENT_TIMESTAMP",
+      "rebuild_llm_model\tcreated_at\tNO\tCURRENT_TIMESTAMP",
+      "rebuild_llm_model\tupdated_at\tNO\tCURRENT_TIMESTAMP",
+      "rebuild_project\tcreated_at\tNO\t<NULL>",
+      "rebuild_project\tupdated_at\tNO\t<NULL>",
+      "rebuild_project_datasource\tcreated_at\tNO\t<NULL>",
+      "rebuild_project_datasource\tupdated_at\tNO\t<NULL>",
+      "rebuild_project_member\tcreated_at\tNO\t<NULL>",
+      "rebuild_project_member\tupdated_at\tNO\t<NULL>",
+      "rebuild_schema_migration\tstarted_at\tNO\tCURRENT_TIMESTAMP",
+      "rebuild_schema_migration\tfinished_at\tYES\t<NULL>",
+      "rebuild_schema_migration\tgenerated_at\tNO\tCURRENT_TIMESTAMP",
+      "rebuild_schema_migration\tcreated_at\tNO\tCURRENT_TIMESTAMP",
+      "rebuild_schema_migration\tupdated_at\tNO\tCURRENT_TIMESTAMP",
+      "rebuild_sql_ide_audit\tcreated_at\tNO\t<NULL>",
+      "rebuild_sql_ide_audit\tupdated_at\tNO\t<NULL>",
+      "rebuild_ssh_node\tcreated_at\tNO\tCURRENT_TIMESTAMP",
+      "rebuild_ssh_node\tupdated_at\tNO\tCURRENT_TIMESTAMP",
+      "rebuild_user\tcreated_at\tYES\t<NULL>",
+      "rebuild_user\tupdated_at\tYES\t<NULL>",
+      "rebuild_variable_definition\tcreated_at\tNO\tCURRENT_TIMESTAMP",
+      "rebuild_variable_definition\tupdated_at\tNO\tCURRENT_TIMESTAMP",
+      "resource_binding\tcreated_at\tNO\tCURRENT_TIMESTAMP",
+      "resource_binding\tupdated_at\tNO\tCURRENT_TIMESTAMP",
+      "resource_version\tcreated_at\tNO\tCURRENT_TIMESTAMP",
+      "resource_version\tupdated_at\tNO\tCURRENT_TIMESTAMP",
+      "resources\tcreated_at\tNO\tCURRENT_TIMESTAMP",
+      "resources\tupdated_at\tNO\tCURRENT_TIMESTAMP",
+      "sql_ide_execution_events\tcreated_at\tNO\t<NULL>",
+      "sql_ide_execution_status\tcreated_at\tNO\t<NULL>",
+      "sql_ide_execution_status\tupdated_at\tNO\t<NULL>",
+      "sql_ide_export_audit\tcreated_at\tNO\t<NULL>",
+      "sql_ide_export_jobs\tcreated_at\tNO\t<NULL>",
+      "sql_ide_result_sets\tcreated_at\tNO\t<NULL>",
+      "stream_checkpoint\tcreated_at\tNO\tCURRENT_TIMESTAMP",
+      "stream_checkpoint\tupdated_at\tNO\tCURRENT_TIMESTAMP",
+      "stream_failure_event\tcreated_at\tNO\tCURRENT_TIMESTAMP",
+      "stream_failure_event\tupdated_at\tNO\tCURRENT_TIMESTAMP",
+      "stream_job\tstarted_at\tYES\t<NULL>",
+      "stream_job\tfinished_at\tYES\t<NULL>",
+      "stream_job\tcreated_at\tNO\tCURRENT_TIMESTAMP",
+      "stream_job\tupdated_at\tNO\tCURRENT_TIMESTAMP",
+      "stream_job_attempt\tstarted_at\tYES\t<NULL>",
+      "stream_job_attempt\tfinished_at\tYES\t<NULL>",
+      "stream_job_attempt\tcreated_at\tNO\tCURRENT_TIMESTAMP",
+      "stream_job_attempt\tupdated_at\tNO\tCURRENT_TIMESTAMP",
+      "stream_metric_snapshot\tcreated_at\tNO\tCURRENT_TIMESTAMP",
+      "stream_metric_snapshot\tupdated_at\tNO\tCURRENT_TIMESTAMP",
+      "stream_recovery_event\tcreated_at\tNO\tCURRENT_TIMESTAMP",
+      "stream_recovery_event\tupdated_at\tNO\tCURRENT_TIMESTAMP",
+      "sync_task_definition\tcreated_at\tNO\tCURRENT_TIMESTAMP",
+      "sync_task_definition\tupdated_at\tNO\tCURRENT_TIMESTAMP",
+      "task_data_error_sample\tcreated_at\tNO\tCURRENT_TIMESTAMP",
+      "task_data_error_sample\tupdated_at\tNO\tCURRENT_TIMESTAMP",
+      "task_data_stat_segment\tcreated_at\tNO\tCURRENT_TIMESTAMP",
+      "task_data_stat_segment\tupdated_at\tNO\tCURRENT_TIMESTAMP",
+      "task_instance\tstarted_at\tYES\t<NULL>",
+      "task_instance\tfinished_at\tYES\t<NULL>",
+      "task_instance\tcreated_at\tNO\tCURRENT_TIMESTAMP",
+      "task_instance\tupdated_at\tNO\tCURRENT_TIMESTAMP",
+      "task_instance\tgenerated_at\tNO\tCURRENT_TIMESTAMP",
+      "task_instance_attempt\tstarted_at\tYES\t<NULL>",
+      "task_instance_attempt\tfinished_at\tYES\t<NULL>",
+      "task_instance_attempt\tcreated_at\tNO\tCURRENT_TIMESTAMP",
+      "task_instance_attempt\tupdated_at\tNO\tCURRENT_TIMESTAMP",
+      "task_instance_attempt\tgenerated_at\tNO\tCURRENT_TIMESTAMP",
+      "task_instance_data_stat\tcreated_at\tNO\tCURRENT_TIMESTAMP",
+      "task_instance_data_stat\tupdated_at\tNO\tCURRENT_TIMESTAMP",
+      "task_instance_log\tcreated_at\tNO\tCURRENT_TIMESTAMP",
+      "task_instance_log\tupdated_at\tNO\tCURRENT_TIMESTAMP",
+      "task_instance_log\tgenerated_at\tNO\tCURRENT_TIMESTAMP",
+      "task_instance_output\tcreated_at\tNO\tCURRENT_TIMESTAMP",
+      "task_instance_output\tupdated_at\tNO\tCURRENT_TIMESTAMP",
+      "task_instance_output\tgenerated_at\tNO\tCURRENT_TIMESTAMP",
+      "workflow_definition\tcreated_at\tNO\tCURRENT_TIMESTAMP",
+      "workflow_definition\tupdated_at\tNO\tCURRENT_TIMESTAMP",
+      "workflow_draft_snapshot\tcreated_at\tNO\tCURRENT_TIMESTAMP",
+      "workflow_draft_snapshot\tupdated_at\tNO\tCURRENT_TIMESTAMP",
+      "workflow_edge\tcreated_at\tNO\tCURRENT_TIMESTAMP",
+      "workflow_edge\tupdated_at\tNO\tCURRENT_TIMESTAMP",
+      "workflow_instance\tstarted_at\tYES\t<NULL>",
+      "workflow_instance\tfinished_at\tYES\t<NULL>",
+      "workflow_instance\tcreated_at\tNO\tCURRENT_TIMESTAMP",
+      "workflow_instance\tupdated_at\tNO\tCURRENT_TIMESTAMP",
+      "workflow_instance\tgenerated_at\tNO\tCURRENT_TIMESTAMP",
+      "workflow_node\tcreated_at\tNO\tCURRENT_TIMESTAMP",
+      "workflow_node\tupdated_at\tNO\tCURRENT_TIMESTAMP",
+      "workflow_publish_record\tcreated_at\tNO\tCURRENT_TIMESTAMP",
+      "workflow_publish_record\tupdated_at\tNO\tCURRENT_TIMESTAMP",
+      "workflow_result_stat\tcreated_at\tNO\tCURRENT_TIMESTAMP",
+      "workflow_result_stat\tupdated_at\tNO\tCURRENT_TIMESTAMP",
+      "workflow_run_reconcile_detail\tstarted_at\tYES\t<NULL>",
+      "workflow_run_reconcile_detail\tfinished_at\tYES\t<NULL>",
+      "workflow_run_reconcile_detail\tcreated_at\tNO\tCURRENT_TIMESTAMP",
+      "workflow_run_reconcile_detail\tupdated_at\tNO\tCURRENT_TIMESTAMP",
+      "workflow_run_reconcile_detail\tgenerated_at\tNO\tCURRENT_TIMESTAMP",
+      "workflow_run_stat\tstarted_at\tNO\t<NULL>",
+      "workflow_run_stat\tfinished_at\tYES\t<NULL>",
+      "workflow_run_stat\tcreated_at\tNO\tCURRENT_TIMESTAMP",
+      "workflow_run_stat\tupdated_at\tNO\tCURRENT_TIMESTAMP",
+      "workflow_run_stat\tgenerated_at\tNO\tCURRENT_TIMESTAMP",
+      "workflow_schedule\tcreated_at\tNO\tCURRENT_TIMESTAMP",
+      "workflow_schedule\tupdated_at\tNO\tCURRENT_TIMESTAMP",
+      "workflow_version\tcreated_at\tNO\tCURRENT_TIMESTAMP",
+      "workflow_version\tupdated_at\tNO\tCURRENT_TIMESTAMP"
+    ],
+    "row_and_null_timestamp_counts": [
+      {
+        "table": "rebuild_governance_asset",
+        "rows": 15,
+        "null_timestamp_counts": {
+          "created_at": 0,
+          "updated_at": 0
+        }
+      },
+      {
+        "table": "rebuild_governance_asset_field",
+        "rows": 30,
+        "null_timestamp_counts": {
+          "created_at": 0,
+          "updated_at": 0
+        }
+      },
+      {
+        "table": "rebuild_governance_asset_metadata_extension",
+        "rows": 0,
+        "null_timestamp_counts": {
+          "created_at": 0,
+          "updated_at": 0,
+          "generated_at": 0
+        }
+      },
+      {
+        "table": "rebuild_governance_asset_tag",
+        "rows": 7,
+        "null_timestamp_counts": {
+          "created_at": 0,
+          "updated_at": 0
+        }
+      },
+      {
+        "table": "rebuild_governance_audit_event",
+        "rows": 48,
+        "null_timestamp_counts": {
+          "created_at": 0,
+          "updated_at": 0,
+          "generated_at": 0
+        }
+      },
+      {
+        "table": "rebuild_governance_domain",
+        "rows": 4,
+        "null_timestamp_counts": {
+          "created_at": 0,
+          "updated_at": 0,
+          "generated_at": 0
+        }
+      },
+      {
+        "table": "rebuild_governance_legacy_identity_mapping",
+        "rows": 0,
+        "null_timestamp_counts": {
+          "created_at": 0,
+          "updated_at": 0,
+          "generated_at": 0
+        }
+      },
+      {
+        "table": "rebuild_governance_legacy_tag_definition",
+        "rows": 0,
+        "null_timestamp_counts": {
+          "created_at": 0,
+          "updated_at": 0,
+          "generated_at": 0
+        }
+      },
+      {
+        "table": "rebuild_governance_legacy_tag_reference",
+        "rows": 0,
+        "null_timestamp_counts": {
+          "created_at": 0,
+          "updated_at": 0,
+          "generated_at": 0
+        }
+      },
+      {
+        "table": "rebuild_governance_lineage_edge",
+        "rows": 6,
+        "null_timestamp_counts": {
+          "created_at": 0,
+          "updated_at": 0
+        }
+      },
+      {
+        "table": "rebuild_governance_migration_batch",
+        "rows": 1,
+        "null_timestamp_counts": {
+          "created_at": 0,
+          "updated_at": 0,
+          "generated_at": 0
+        }
+      },
+      {
+        "table": "rebuild_governance_migration_item",
+        "rows": 45,
+        "null_timestamp_counts": {
+          "created_at": 0,
+          "updated_at": 0,
+          "generated_at": 0
+        }
+      },
+      {
+        "table": "rebuild_governance_model_engine",
+        "rows": 3,
+        "null_timestamp_counts": {
+          "created_at": 0,
+          "updated_at": 0,
+          "generated_at": 0
+        }
+      },
+      {
+        "table": "rebuild_governance_quality_alarm_policy",
+        "rows": 0,
+        "null_timestamp_counts": {
+          "created_at": 0,
+          "updated_at": 0,
+          "generated_at": 0
+        }
+      },
+      {
+        "table": "rebuild_governance_quality_exception",
+        "rows": 0,
+        "null_timestamp_counts": {
+          "created_at": 0,
+          "updated_at": 0,
+          "generated_at": 0
+        }
+      },
+      {
+        "table": "rebuild_governance_quality_report",
+        "rows": 0,
+        "null_timestamp_counts": {
+          "created_at": 0,
+          "updated_at": 0,
+          "generated_at": 0
+        }
+      },
+      {
+        "table": "rebuild_governance_quality_rule",
+        "rows": 7,
+        "null_timestamp_counts": {
+          "created_at": 0,
+          "updated_at": 0
+        }
+      },
+      {
+        "table": "rebuild_governance_quality_rule_definition",
+        "rows": 0,
+        "null_timestamp_counts": {
+          "created_at": 0,
+          "updated_at": 0,
+          "generated_at": 0
+        }
+      },
+      {
+        "table": "rebuild_governance_quality_run",
+        "rows": 0,
+        "null_timestamp_counts": {
+          "created_at": 0,
+          "updated_at": 0,
+          "generated_at": 0
+        }
+      },
+      {
+        "table": "rebuild_governance_quality_run_legacy_details",
+        "rows": 0,
+        "null_timestamp_counts": {
+          "created_at": 0,
+          "updated_at": 0,
+          "generated_at": 0
+        }
+      },
+      {
+        "table": "rebuild_governance_quality_task",
+        "rows": 0,
+        "null_timestamp_counts": {
+          "created_at": 0,
+          "updated_at": 0,
+          "generated_at": 0
+        }
+      },
+      {
+        "table": "rebuild_governance_quality_task_rule",
+        "rows": 0,
+        "null_timestamp_counts": {
+          "created_at": 0,
+          "updated_at": 0,
+          "generated_at": 0
+        }
+      },
+      {
+        "table": "rebuild_governance_semantic_metric",
+        "rows": 5,
+        "null_timestamp_counts": {
+          "created_at": 0,
+          "updated_at": 0
+        }
+      },
+      {
+        "table": "rebuild_governance_semantic_metric_dimension",
+        "rows": 0,
+        "null_timestamp_counts": {
+          "created_at": 0,
+          "updated_at": 0,
+          "generated_at": 0
+        }
+      },
+      {
+        "table": "rebuild_governance_semantic_metric_profile",
+        "rows": 0,
+        "null_timestamp_counts": {
+          "created_at": 0,
+          "updated_at": 0,
+          "generated_at": 0
+        }
+      },
+      {
+        "table": "rebuild_governance_semantic_metric_version",
+        "rows": 0,
+        "null_timestamp_counts": {
+          "created_at": 0,
+          "updated_at": 0,
+          "generated_at": 0
+        }
+      },
+      {
+        "table": "rebuild_governance_standard",
+        "rows": 5,
+        "null_timestamp_counts": {
+          "created_at": 0,
+          "updated_at": 0
+        }
+      },
+      {
+        "table": "rebuild_governance_standard_approval",
+        "rows": 0,
+        "null_timestamp_counts": {
+          "created_at": 0,
+          "updated_at": 0,
+          "generated_at": 0
+        }
+      },
+      {
+        "table": "rebuild_governance_standard_check_report",
+        "rows": 0,
+        "null_timestamp_counts": {
+          "created_at": 0,
+          "updated_at": 0,
+          "generated_at": 0
+        }
+      },
+      {
+        "table": "rebuild_governance_standard_code_set",
+        "rows": 0,
+        "null_timestamp_counts": {
+          "created_at": 0,
+          "updated_at": 0,
+          "generated_at": 0
+        }
+      },
+      {
+        "table": "rebuild_governance_standard_code_value",
+        "rows": 0,
+        "null_timestamp_counts": {
+          "created_at": 0,
+          "updated_at": 0,
+          "generated_at": 0
+        }
+      },
+      {
+        "table": "rebuild_governance_standard_element",
+        "rows": 0,
+        "null_timestamp_counts": {
+          "created_at": 0,
+          "updated_at": 0,
+          "generated_at": 0
+        }
+      },
+      {
+        "table": "rebuild_governance_standard_mapping",
+        "rows": 0,
+        "null_timestamp_counts": {
+          "created_at": 0,
+          "updated_at": 0,
+          "generated_at": 0
+        }
+      },
+      {
+        "table": "rebuild_governance_standard_naming_rule",
+        "rows": 0,
+        "null_timestamp_counts": {
+          "created_at": 0,
+          "updated_at": 0,
+          "generated_at": 0
+        }
+      },
+      {
+        "table": "rebuild_governance_tag",
+        "rows": 7,
+        "null_timestamp_counts": {
+          "created_at": 0,
+          "updated_at": 0
+        }
+      },
+      {
+        "table": "rebuild_governance_warehouse_layer",
+        "rows": 5,
+        "null_timestamp_counts": {
+          "created_at": 0,
+          "updated_at": 0,
+          "generated_at": 0
+        }
+      },
+      {
+        "table": "rebuild_governance_warehouse_model",
+        "rows": 3,
+        "null_timestamp_counts": {
+          "created_at": 0,
+          "updated_at": 0,
+          "generated_at": 0
+        }
+      },
+      {
+        "table": "rebuild_governance_warehouse_model_field",
+        "rows": 27,
+        "null_timestamp_counts": {
+          "created_at": 0,
+          "updated_at": 0,
+          "generated_at": 0
+        }
+      },
+      {
+        "table": "rebuild_governance_warehouse_model_relation",
+        "rows": 2,
+        "null_timestamp_counts": {
+          "created_at": 0,
+          "updated_at": 0,
+          "generated_at": 0
+        }
+      },
+      {
+        "table": "rebuild_governance_warehouse_model_relation_field",
+        "rows": 2,
+        "null_timestamp_counts": {
+          "created_at": 0,
+          "updated_at": 0,
+          "generated_at": 0
+        }
+      },
+      {
+        "table": "rebuild_governance_warehouse_model_version",
+        "rows": 0,
+        "null_timestamp_counts": {
+          "created_at": 0,
+          "updated_at": 0,
+          "generated_at": 0
+        }
+      },
+      {
+        "table": "rebuild_schema_migration",
+        "rows": 4,
+        "null_timestamp_counts": {
+          "created_at": 0,
+          "updated_at": 0,
+          "generated_at": 0
+        }
+      }
+    ],
+    "migration_records": [
+      "i15_0001_llm_model\t4221daed1b1f59837008d1b89e0153f6b15a26b20e5814d23b1df1917af3cb5f\tcompleted\t1\t2026-10-22 03:08:57\t2026-10-22 03:08:57",
+      "i4_0001_component_catalog\t19ed75a37416a0e3e4b463ea357c78f79601f014f7c75160470d296000c81fcf\tcompleted\t7\t2026-10-21 20:24:15\t2026-10-21 20:24:17",
+      "r3_0001_governance_catalog\t4fdfd619453f4784b28da8f95551df1a48913ada99ca7fc461ed8f333bc5b897\tcompleted\t1\t2026-10-14 18:54:40\t2026-10-14 18:54:44",
+      "r3_0002_legacy_governance_carryforward\t9d5359d2926f5e407df05a4e07f9f1c7a3c2d35ca6a08221181d9faf2efd0e93\tcompleted\t1\t2026-10-15 01:22:24\t2026-10-15 01:23:01"
+    ],
+    "existing_assets": [
+      "10\tr3v_20261014112022_4fc8a6_orders_src\t<NULL>\t2026-10-14 19:20:23",
+      "11\tr3v_20261014112022_4fc8a6_orders_dw\t<NULL>\t2026-10-14 19:20:23"
+    ],
+    "audit_events": [
+      "31\t2026-10-14 19:20:25\tmetric.create\tmetric\t3",
+      "30\t2026-10-14 19:20:25\tstandard.create\tstandard\t5",
+      "29\t2026-10-14 19:20:24\tlineage.create\tlineage_edge\t4",
+      "28\t2026-10-14 19:20:24\tquality_rule.create\tquality_rule\t5",
+      "27\t2026-10-14 19:20:24\ttag.create_and_attach\ttag\t5",
+      "26\t2026-10-14 19:20:23\tasset.create\tasset\t11",
+      "25\t2026-10-14 19:20:23\tasset.create\tasset\t10",
+      "24\t2026-10-14 19:19:20\tmetric.create\tmetric\t2",
+      "23\t2026-10-14 19:19:19\tstandard.create\tstandard\t3",
+      "22\t2026-10-14 19:19:18\tlineage.create\tlineage_edge\t3",
+      "21\t2026-10-14 19:19:18\tquality_rule.create\tquality_rule\t4",
+      "20\t2026-10-14 19:19:18\ttag.create_and_attach\ttag\t4",
+      "19\t2026-10-14 19:19:17\tasset.create\tasset\t9",
+      "18\t2026-10-14 19:19:17\tasset.create\tasset\t8",
+      "17\t2026-10-14 19:18:28\tquality_rule.create\tquality_rule\t3",
+      "16\t2026-10-14 19:18:27\ttag.create_and_attach\ttag\t3",
+      "15\t2026-10-14 19:18:27\tasset.create\tasset\t7",
+      "14\t2026-10-14 19:18:27\tasset.create\tasset\t6",
+      "13\t2026-10-14 19:13:28\tmetric.create\tmetric\t1",
+      "12\t2026-10-14 19:13:28\tstandard.create\tstandard\t1",
+      "11\t2026-10-14 19:13:27\tlineage.create\tlineage_edge\t2",
+      "10\t2026-10-14 19:13:27\tquality_rule.create\tquality_rule\t2",
+      "9\t2026-10-14 19:13:27\ttag.create_and_attach\ttag\t2",
+      "8\t2026-10-14 19:13:26\tasset.create\tasset\t5",
+      "7\t2026-10-14 19:13:26\tasset.create\tasset\t4",
+      "6\t2026-10-14 19:11:42\tlineage.create\tlineage_edge\t1",
+      "5\t2026-10-14 19:11:41\tquality_rule.create\tquality_rule\t1",
+      "4\t2026-10-14 19:11:41\ttag.create_and_attach\ttag\t1",
+      "3\t2026-10-14 19:11:40\tasset.create\tasset\t3",
+      "2\t2026-10-14 19:11:40\tasset.create\tasset\t2",
+      "1\t2026-10-14 19:09:00\tasset.create\tasset\t1"
+    ],
+    "query_policy": "SELECT-only; database fixed to datara_rebuild_i0; no source or warehouse schemas queried"
+  },
+  "failure": "AssertionError: database-applied migration revisions/checksums differ from the current backend"
+}

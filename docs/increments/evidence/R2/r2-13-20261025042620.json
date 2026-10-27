@@ -1,0 +1,34 @@
+{
+  "run_id": "r2-13-20261025042620",
+  "generated_at": "2026-10-25T04:26:20.230959+08:00",
+  "timezone": "Asia/Shanghai",
+  "url": "http://192.168.1.9:18091/rebuild-validation-r3.html",
+  "project_id": 8,
+  "expected_asset_ids": [
+    10,
+    11
+  ],
+  "browser": "Chromium via Playwright",
+  "browser_use_fallback": {
+    "status": "BLOCKED",
+    "attempts": [
+      "same-page bind/navigation timed out at 30s",
+      "same-page retry timed out at 60s"
+    ],
+    "fallback": "Playwright controlled the deployed R3 page at the same 192.168.1.9:18091 URL"
+  },
+  "token_source": "not resolved",
+  "actions": [],
+  "assertions": [],
+  "responses": [],
+  "page_errors": [],
+  "console_errors": [],
+  "failed_requests": [],
+  "screenshot": null,
+  "result": "FAIL",
+  "mutation_policy": "Only POST /api/v1/rebuild/validation-token is allowed; all page requests must be GET.",
+  "notes": [
+    "The key and short-lived token are excluded from this report, URL, page storage, and screenshot."
+  ],
+  "failure": "RuntimeError: validation-token exchange returned HTTP 404"
+}

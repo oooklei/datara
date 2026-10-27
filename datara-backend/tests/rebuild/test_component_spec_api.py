@@ -2,6 +2,7 @@ import hashlib
 import json
 
 from fastapi.testclient import TestClient
+from sqlalchemy import delete
 
 from common.models import Component, ComponentVersion
 from rebuild.api.app import create_app
@@ -57,6 +58,12 @@ def _version(
     )
 
 
+def _clear_catalog(session) -> None:
+    """Keep hand-seeded catalogue cases isolated from startup migrations."""
+    session.execute(delete(ComponentVersion))
+    session.execute(delete(Component))
+
+
 def test_requires_active_ordinary_token_before_reading_database():
     client, _, _ = _client()
     try:
@@ -72,6 +79,7 @@ def test_published_exact_join_stable_bytes_strong_etag_and_304():
     client, app, headers = _client()
     try:
         with app.state.session_factory() as session:
+            _clear_catalog(session)
             Component.__table__.create(session.bind, checkfirst=True)
             ComponentVersion.__table__.create(session.bind, checkfirst=True)
             session.add_all(
@@ -110,6 +118,7 @@ def test_invalid_published_json_fails_closed_without_empty_list_fallback():
     client, app, headers = _client()
     try:
         with app.state.session_factory() as session:
+            _clear_catalog(session)
             Component.__table__.create(session.bind, checkfirst=True)
             ComponentVersion.__table__.create(session.bind, checkfirst=True)
             session.add(_component(identifier=1, type_name="broken"))
@@ -127,6 +136,7 @@ def test_workflow_type_returns_exact_approved_group_and_rejects_unknown_type():
     client, app, headers = _client()
     try:
         with app.state.session_factory() as session:
+            _clear_catalog(session)
             for index, type_name in enumerate(WORKFLOW_COMPONENT_TYPES["STREAM"], start=1):
                 session.add(_component(identifier=index, type_name=type_name))
                 session.add(_version(identifier=index, component_id=index, type_name=type_name))

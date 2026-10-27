@@ -37,6 +37,12 @@ let versionSeq = 0
 let datasourceSeq = 0
 
 const sourceKey = computed<'sql' | 'script'>(() => props.kind === 'sql' ? 'sql' : 'script')
+const variableContext = computed(() => ({
+  projectId: props.projectId,
+  workflowId: props.workflowId,
+  workflowVersion: props.workflowVersion,
+  taskId: props.taskId,
+}))
 const inlineValue = computed(() => String(props.modelValue[sourceKey.value] ?? ''))
 const accept = computed(() => ({ sql: '.sql', python: '.py', shell: '.sh' })[props.kind])
 
@@ -96,18 +102,13 @@ function onDatasource(event: Event) {
   updateParam('datasource', value ? Number(value) : '')
 }
 
-function onTextParam(key: string, event: Event) {
-  updateParam(key, (event.target as HTMLTextAreaElement).value)
-}
-
 function envText(): string {
   const env = currentParams.value.env
   if (!env || typeof env !== 'object' || Array.isArray(env)) return ''
   return Object.entries(env as Record<string, unknown>).map(([key, value]) => `${key}=${String(value)}`).join('\n')
 }
 
-function onEnv(event: Event) {
-  const text = (event.target as HTMLTextAreaElement).value
+function updateEnv(text: string) {
   const env: Record<string, string> = {}
   for (const rawLine of text.split(/\r?\n/)) {
     const line = rawLine.trim()
@@ -269,7 +270,7 @@ onMounted(async () => {
     <VariableReferenceInput
       v-if="mode === 'inline'"
       :model-value="inlineValue"
-      :context="{ projectId, workflowId }"
+      :context="variableContext"
       :label="sourceKey"
       :multiline="true"
       @update:model-value="updateInline"
@@ -282,21 +283,13 @@ onMounted(async () => {
           <option v-for="item in datasources" :key="item.id" :value="String(item.id)">{{ item.name }} · {{ item.kind }}</option>
         </select>
       </label>
-      <label>前置 SQL
-        <textarea data-sql-pre rows="2" :value="String(currentParams.pre ?? '')" @input="onTextParam('pre', $event)" />
-      </label>
-      <label>后置 SQL
-        <textarea data-sql-post rows="2" :value="String(currentParams.post ?? '')" @input="onTextParam('post', $event)" />
-      </label>
+      <VariableReferenceInput data-sql-pre data-variable-field="sql-pre" :model-value="String(currentParams.pre ?? '')" :context="variableContext" label="前置 SQL" :multiline="true" @update:model-value="updateParam('pre', $event)" />
+      <VariableReferenceInput data-sql-post data-variable-field="sql-post" :model-value="String(currentParams.post ?? '')" :context="variableContext" label="后置 SQL" :multiline="true" @update:model-value="updateParam('post', $event)" />
     </div>
 
     <div v-if="kind === 'python' || kind === 'shell'" class="execution-fields" data-script-execution-fields>
-      <label v-if="kind === 'python'">Python 依赖（每行一个 requirement）
-        <textarea data-python-requirements rows="2" :value="String(currentParams.requirements ?? '')" @input="onTextParam('requirements', $event)" />
-      </label>
-      <label>环境变量（每行 KEY=VALUE）
-        <textarea data-script-env rows="3" :value="envText()" @change="onEnv" />
-      </label>
+      <VariableReferenceInput v-if="kind === 'python'" data-python-requirements data-variable-field="python-requirements" :model-value="String(currentParams.requirements ?? '')" :context="variableContext" label="Python 依赖（每行一个 requirement）" :multiline="true" @update:model-value="updateParam('requirements', $event)" />
+      <VariableReferenceInput data-script-env data-variable-field="script-env" :model-value="envText()" :context="variableContext" label="环境变量（每行 KEY=VALUE）" :multiline="true" @update:model-value="updateEnv" />
     </div>
 
     <div v-if="mode === 'resource'" class="resource-fields">

@@ -1,6 +1,6 @@
 """Explicit versioned migration entry point for the runtime node registry."""
 
-from rebuild.governance.migrations import GovernanceMigration, MigrationResult, MigrationRunner
+from rebuild.common.migrations import GovernanceMigration, MigrationResult, MigrationRunner
 from rebuild.runtime_node.revisions import v0001_runtime_node_registry
 
 RUNTIME_NODE_MIGRATIONS = (

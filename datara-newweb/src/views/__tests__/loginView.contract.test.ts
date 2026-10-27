@@ -1,12 +1,13 @@
 import { mount } from '@vue/test-utils'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-const { getTokenMock, replaceMock, listProjectsMock, routeQuery } = vi.hoisted(() => ({ getTokenMock: vi.fn(), replaceMock: vi.fn(), listProjectsMock: vi.fn(), routeQuery: { redirect: '/p/7/ide' } }))
+const { getTokenMock, loginMock, replaceMock, listProjectsMock, routeQuery } = vi.hoisted(() => ({ getTokenMock: vi.fn(), loginMock: vi.fn(), replaceMock: vi.fn(), listProjectsMock: vi.fn(), routeQuery: { redirect: '/p/7/ide' } }))
 vi.mock('vue-router', () => ({
   useRouter: () => ({ replace: replaceMock }),
   useRoute: () => ({ query: routeQuery }),
 }))
 vi.mock('../../services/http', () => ({ getToken: getTokenMock }))
+vi.mock('../../services/rebuild/authApi', () => ({ login: loginMock }))
 vi.mock('../../services/rebuild/projectApi', () => ({ listProjects: listProjectsMock }))
 
 import LoginView from '../LoginView.vue'
@@ -14,18 +15,30 @@ import LoginView from '../LoginView.vue'
 describe('AUTH-UI-02 LoginView 安全验证入口', () => {
   beforeEach(() => {
     getTokenMock.mockReset().mockReturnValue('')
+    loginMock.mockReset().mockResolvedValue({ token: 'runtime-token', account: { id: 1, username: 'admin', role: 'admin' } })
     replaceMock.mockReset()
     listProjectsMock.mockReset().mockResolvedValue({ list: [] })
     routeQuery.redirect = '/p/7/ide'
   })
 
-  it('匿名页不提供账号、密码、验证 key 或 token 输入面', () => {
+  it('恢复旧版账号密码表单并预置初始化管理员凭据', () => {
     const wrapper = mount(LoginView)
 
-    expect(wrapper.find('form').exists()).toBe(false)
-    expect(wrapper.findAll('input')).toHaveLength(0)
-    expect(wrapper.text()).not.toMatch(/用户名|密码/)
-    expect(wrapper.text()).toContain('短时令牌')
+    expect(wrapper.find('form').exists()).toBe(true)
+    expect(wrapper.get<HTMLInputElement>('[data-login-username]').element.value).toBe('admin')
+    expect(wrapper.get<HTMLInputElement>('[data-login-password]').element.value).toBe('Admin@123')
+    expect(wrapper.text()).toContain('演示账号')
+    expect(wrapper.findAll('[data-demo-account]')).toHaveLength(4)
+    expect(wrapper.find('[data-validation-key]').exists()).toBe(false)
+  })
+
+  it('账号密码登录成功后回到原始业务地址', async () => {
+    const wrapper = mount(LoginView)
+
+    await wrapper.get('form').trigger('submit')
+
+    expect(loginMock).toHaveBeenCalledWith('admin', 'Admin@123')
+    expect(replaceMock).toHaveBeenCalledWith('/p/7/ide')
   })
 
   it('仅检测当前页面内存中的运行时 token，并回到原始业务地址', async () => {
@@ -59,7 +72,7 @@ describe('AUTH-UI-02 LoginView 安全验证入口', () => {
     expect(replaceMock).toHaveBeenCalledWith('/')
   })
 
-  it('未注入 token 时保持在引导页且不给出凭据输入控件', async () => {
+  it('未注入 token 时复检保持在登录页', async () => {
     const wrapper = mount(LoginView)
 
     await wrapper.get('[data-recheck-session]').trigger('click')

@@ -1,6 +1,6 @@
 """Versioned migration entry point for the LLM domain."""
 
-from rebuild.governance.migrations import GovernanceMigration, MigrationApplyError, MigrationResult, MigrationRunner
+from rebuild.common.migrations import GovernanceMigration, MigrationApplyError, MigrationResult, MigrationRunner
 from rebuild.llm.revisions import v0001_llm_model
 
 LLM_MIGRATIONS = (

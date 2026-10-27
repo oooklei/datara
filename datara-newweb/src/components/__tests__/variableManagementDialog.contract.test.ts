@@ -48,4 +48,24 @@ describe('VariableManagementDialog contract', () => {
     expect(wrapper.text()).not.toContain('old-project-variable')
     expect(api.listVariables).toHaveBeenNthCalledWith(2, 2, ['global', 'project'])
   })
+
+  it('preserves an existing sensitive value when metadata is saved unchanged', async () => {
+    api.listVariables.mockResolvedValue([
+      { ...variable('api_key'), value: '******', sensitive: true },
+    ])
+    api.saveVariable.mockResolvedValue({ saved: true })
+    const wrapper = mount(VariableManagementDialog, {
+      props: { modelValue: true, projectId: 1 },
+      global: { stubs: { Teleport: true } },
+    })
+    await flushPromises()
+
+    await wrapper.find('[data-testid="variables-edit"]').trigger('click')
+    expect((wrapper.find('[data-testid="variables-value"]').element as HTMLInputElement).value).toBe('')
+    await wrapper.find('[data-testid="variables-form"]').trigger('submit')
+    await flushPromises()
+
+    expect(api.saveVariable).toHaveBeenCalledWith(1, expect.objectContaining({ name: 'api_key', sensitive: true }))
+    expect(api.saveVariable.mock.calls[0]?.[1]).not.toHaveProperty('value')
+  })
 })

@@ -239,6 +239,7 @@ export const useWorkflowGraphStore = defineStore('workflowGraph', {
     edges: [] as WorkflowDraftEdge[],
     baseline: null as { nodes: WorkflowDraftNode[]; edges: WorkflowDraftEdge[] } | null,
     loading: false,
+    loadingDefinitionId: null as number | null,
     loadSeq: 0,
     lastError: null as string | null,
     lastSaveResult: null as WorkflowSaveResult | null,
@@ -261,6 +262,7 @@ export const useWorkflowGraphStore = defineStore('workflowGraph', {
     async load(projectId: number, definitionId: number): Promise<void> {
       const seq = ++this.loadSeq
       this.loading = true
+      this.loadingDefinitionId = definitionId
       this.lastError = null
       try {
         const info = await getWorkflowDefinition(projectId, definitionId)
@@ -275,7 +277,10 @@ export const useWorkflowGraphStore = defineStore('workflowGraph', {
         if (seq !== this.loadSeq) return
         this.lastError = error instanceof Error ? error.message : String(error)
       } finally {
-        if (seq === this.loadSeq) this.loading = false
+        if (seq === this.loadSeq) {
+          this.loading = false
+          this.loadingDefinitionId = null
+        }
       }
     },
 
@@ -390,7 +395,10 @@ export const useWorkflowGraphStore = defineStore('workflowGraph', {
 
     /** 宿主关 Tab 时调用：docId 匹配才清态（不匹配不动） */
     close(definitionId: number): void {
-      if (this.docId !== definitionId) return
+      if (this.docId !== definitionId && this.loadingDefinitionId !== definitionId) return
+      this.loadSeq += 1
+      this.loading = false
+      this.loadingDefinitionId = null
       this.docId = null
       this.projectId = null
       this.name = ''

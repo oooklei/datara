@@ -7,7 +7,7 @@ Reuses the governance migration machinery (``MigrationRunner`` /
 
 from __future__ import annotations
 
-from rebuild.governance.migrations import GovernanceMigration, MigrationRunner
+from rebuild.common.migrations import GovernanceMigration, MigrationRunner
 from rebuild.sec.models import SEC_TABLES
 from rebuild.sec.revisions import v0001_sec_access_log
 

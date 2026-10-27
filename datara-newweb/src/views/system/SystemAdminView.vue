@@ -28,7 +28,6 @@ defineProps<{ projectId: number }>()
 </script>
 
 <style scoped>
-/* 设计令牌：由全局 styles/theme.css 的 :root 提供（§4.4.3 风格统一），本文件不再就地重复定义。 */
 .system-admin {
   max-width: 1280px;
   margin: 0 auto;
@@ -44,7 +43,7 @@ defineProps<{ projectId: number }>()
 
 .system-hint {
   margin: 0 0 12px;
-  color: var(--text-secondary);
+  color: var(--text-secondary, var(--text-2));
   font-size: 13px;
 }
 </style>

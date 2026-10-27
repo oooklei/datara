@@ -9,7 +9,7 @@
  *   6. 审计回链（§4：audit_id 回显 + 字段齐备 + 成功失败均落）。
  * 隔离于 K1：零 LLM、零网络（无 fetch stub）。
  */
-import { describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import {
   R8A_CONTEXT_TYPES,
   R8A_CONTRACT_METHODS,
@@ -28,6 +28,8 @@ import {
 const PAGE_CONTEXT = { contextType: 'SQL' as const, contextRef: { project_id: 1, table_name: 'dw.dim_customer' } }
 const CTX = { userId: 'user-trae', roles: ['DEVELOPER'] }
 
+afterEach(() => vi.unstubAllGlobals())
+
 function callId(seq: number): string {
   return `tc-test-${String(seq).padStart(4, '0')}`
 }
@@ -35,6 +37,21 @@ function callId(seq: number): string {
 /* ---------- 1. 冻结面与 RED 工厂 ---------- */
 
 describe('R8-A contract freeze surface', () => {
+  it('HTTP transport recursively maps camelCase envelope to snake_case wire and back', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({
+      tool_call_id: 'wire-1', tool: 'search_schema', tool_version: 1, status: 'SUCCESS',
+      result: { next_cursor: null }, audit_id: 'audit-1', server_time: '2026-10-27T00:00:00Z',
+    }), { status: 200, headers: { 'Content-Type': 'application/json' } }))
+    vi.stubGlobal('fetch', fetchMock)
+    const response = await createAiToolsContract().invoke({
+      toolCallId: 'wire-1', tool: 'search_schema', toolVersion: 1,
+      params: { projectId: 35 }, pageContext: { contextType: 'PROJECT', contextRef: { projectId: 35 } },
+    })
+    const body = JSON.parse(String(fetchMock.mock.calls[0][1].body))
+    expect(body).toMatchObject({ tool_call_id: 'wire-1', tool_version: 1, params: { project_id: 35 } })
+    expect(response).toMatchObject({ toolCallId: 'wire-1', auditId: 'audit-1', result: { nextCursor: null } })
+  })
+
   it('tool list is frozen to the eight tools in contract order', () => {
     expect(R8A_TOOLS).toHaveLength(8)
     expect([...R8A_TOOLS]).toEqual([

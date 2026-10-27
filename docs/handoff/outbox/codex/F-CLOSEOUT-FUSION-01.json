@@ -1,0 +1,10 @@
+{
+  "id": "F-CLOSEOUT-FUSION-01",
+  "ts": "2026-10-27T03:47:38+08:00",
+  "from": "codex",
+  "to": "flow",
+  "type": "integration_receipt",
+  "ref": ".codex-evidence/F-CLOSEOUT-FUSION-01/summary.md",
+  "body": "已核查并纳入 handoff-2026-10-27-datara-closeout.md：增量 18 收口报告和 TRAECLOSE-18-01 回执一致，D-09 迁移已在当前 worktree，迁移定向测试 21 passed；交接无独立补丁需要复制，既有成果保持不回退。",
+  "status": "done"
+}

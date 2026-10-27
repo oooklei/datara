@@ -69,7 +69,14 @@ class TaskInstanceVariableRuntimeRecord(Base):
 
     __tablename__ = "task_instance_variable_runtime"
     __table_args__ = (
-        UniqueConstraint("instance_id", "attempt_no", "name", name="uq_variable_runtime_instance_attempt_name"),
+        # A variable is identified by its scope AND name: ``project.fixture_key``
+        # and ``run.fixture_key`` are distinct references that must both survive
+        # in the immutable snapshot (design §3.4).  Keying on name alone let a
+        # run-scope test override silently evict the persisted project-scope row.
+        UniqueConstraint(
+            "instance_id", "attempt_no", "scope", "name",
+            name="uq_variable_runtime_instance_attempt_scope_name",
+        ),
         Index("ix_variable_runtime_instance_attempt", "instance_id", "attempt_no"),
     )
 
@@ -85,6 +92,9 @@ class TaskInstanceVariableRuntimeRecord(Base):
     name: Mapped[str] = mapped_column(String(128), nullable=False)
     resolved_value: Mapped[str] = mapped_column(Text, nullable=False)
     value_type: Mapped[str] = mapped_column(String(16), nullable=False, default="string")
-    source: Mapped[str] = mapped_column(String(16), nullable=False)
+    # Resolution provenance.  Scope-qualified references are persisted as
+    # ``{scope}.{name}`` (e.g. ``project.fixture_key``), so the column must be
+    # wider than the 16-character scope enum.
+    source: Mapped[str] = mapped_column(String(160), nullable=False)
     resolved_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.current_timestamp())
     generated_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, server_default=func.current_timestamp())

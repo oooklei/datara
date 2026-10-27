@@ -42,7 +42,7 @@ const props = defineProps<{ projectId?: number }>()
 const api = createResourceContract()
 const projects = ref<ProjectSummary[]>([])
 const selectedProject = ref('')
-const kind = ref<ResourceKind | ''>('sql')
+const kind = ref<ResourceKind | ''>('')
 const items = ref<ResourceMeta[]>([])
 const loading = ref(false)
 const error = ref('')
@@ -51,6 +51,7 @@ const versions = ref<ResourceVersion[]>([])
 const versionsLoading = ref(false)
 const versionError = ref('')
 let versionsRequest = 0
+let listRequest = 0
 const uploadKind = ref<ResourceKind>('sql')
 const acceptFor = (value: ResourceKind) => ({ sql: '.sql', python: '.py', shell: '.sh' })[value]
 const hasProjectProp = computed(() => Number.isInteger(props.projectId) && Number(props.projectId) > 0)
@@ -78,11 +79,18 @@ async function onFile(event: Event) {
 }
 
 async function load() {
-  if (projectId.value === null) { items.value = []; return }
+  const request = ++listRequest
+  const targetProjectId = projectId.value
+  if (targetProjectId === null) { items.value = []; loading.value = false; return }
   loading.value = true; error.value = ''
-  try { items.value = await api.listResources(projectId.value, kind.value || undefined) }
-  catch (cause) { error.value = cause instanceof Error ? cause.message : '资源加载失败' }
-  finally { loading.value = false }
+  try {
+    const result = await api.listResources(targetProjectId, kind.value || undefined)
+    if (request === listRequest) items.value = result
+  } catch (cause) {
+    if (request === listRequest) error.value = cause instanceof Error ? cause.message : '资源加载失败'
+  } finally {
+    if (request === listRequest) loading.value = false
+  }
 }
 
 async function openVersions(resource: ResourceMeta) {
@@ -131,6 +139,5 @@ onMounted(async () => {
 </script>
 
 <style scoped>
-/* 设计令牌：由全局 styles/theme.css 的 :root 提供（§4.4.3 风格统一），本文件不再就地重复定义。 */
-.resource-page{padding:24px}.resource-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:18px}.resource-head h1{margin:0 0 6px}.resource-head p{margin:0;color:var(--text-3)}.resource-head select{padding:8px 12px}table{width:100%;border-collapse:collapse;background:var(--card)}th,td{padding:10px 12px;border-bottom:1px solid var(--border);text-align:left}.error{color:var(--danger)}.mask{position:fixed;inset:0;z-index:30;display:grid;place-items:center;padding:24px;background:rgba(15,23,42,.4)}.version-dialog{width:min(880px,100%);max-height:calc(100vh - 48px);overflow:auto;padding:22px;background:var(--card);border-radius:var(--radius-lg);box-shadow:0 20px 45px rgba(15,23,42,.2)}.version-dialog>header{display:flex;align-items:flex-start;justify-content:space-between;gap:16px;margin-bottom:16px}.version-dialog h2,.version-dialog p{margin:0}.version-dialog header p{color:var(--text-3)}.version-dialog code{overflow-wrap:anywhere}
+.resource-page{padding:24px}.resource-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:18px}.resource-head h1{margin:0 0 6px}.resource-head p{margin:0;color:var(--text-2)}.resource-head select{padding:8px 12px}table{width:100%;border-collapse:collapse;background:var(--card)}th,td{padding:10px 12px;border-bottom:1px solid var(--border);text-align:left}.error{color:var(--danger)}.mask{position:fixed;inset:0;z-index:30;display:grid;place-items:center;padding:24px;background:color-mix(in srgb, var(--text) 40%, transparent)}.version-dialog{width:min(880px,100%);max-height:calc(100vh - 48px);overflow:auto;padding:22px;background:var(--card);border-radius:10px;box-shadow:0 20px 45px color-mix(in srgb, var(--text) 20%, transparent)}.version-dialog>header{display:flex;align-items:flex-start;justify-content:space-between;gap:16px;margin-bottom:16px}.version-dialog h2,.version-dialog p{margin:0}.version-dialog header p{color:var(--text-2)}.version-dialog code{overflow-wrap:anywhere}
 </style>

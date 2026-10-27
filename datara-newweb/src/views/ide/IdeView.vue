@@ -213,6 +213,25 @@
       </ul>
     </aside>
     <button v-else type="button" class="ide-history-open" data-history-toggle @click="openHistory">执行历史</button>
+
+    <aside v-if="scriptsOpen" class="ide-history" data-scripts>
+      <header>
+        <h2>SQL 资产</h2>
+        <button type="button" data-scripts-toggle @click="scriptsOpen = false">收起</button>
+      </header>
+      <p v-if="scripts.length === 0" class="ide-muted">暂无已保存脚本</p>
+      <ul v-else>
+        <li v-for="script in scripts" :key="script.id">
+          <button type="button" class="ide-history-item" data-script-open @click="restoreScript(script)">
+            <b>{{ script.name }}</b>
+            <code>{{ script.sqlText.slice(0, 60) }}</code>
+            <small>版本 {{ script.revision }}</small>
+          </button>
+          <button type="button" class="ide-history-del" data-script-delete @click="removeScript(script)">删除</button>
+        </li>
+      </ul>
+    </aside>
+    <button v-else type="button" class="ide-scripts-open" data-scripts-toggle @click="openScripts">SQL 资产</button>
     <VariableManagementDialog
       v-model="variableManagementOpen"
       :project-id="projectId ?? undefined"
@@ -243,6 +262,7 @@ import {
   createSqlIdeContract,
   type HistoryEntry,
   type RoutineMeta,
+  type ScriptEntry,
   type SqlDiagnostic,
   type SqlDoneEvent,
   type SqlResultEvent,
@@ -332,6 +352,8 @@ const varSuggestions = ref<VariableCompletionItem[]>([])
 
 const history = ref<HistoryEntry[]>([])
 const historyOpen = ref(false)
+const scripts = ref<ScriptEntry[]>([])
+const scriptsOpen = ref(false)
 let datasourceGeneration = 0
 
 const ROUTINE_LABEL: Record<RoutineMeta['kind'], string> = { function: '函数', procedure: '存储过程', trigger: '触发器' }
@@ -570,6 +592,7 @@ function openStream(taskId: string): void {
       : [...resultSetIds.value, data.resultSetId]
     lastResultSetId.value = data.resultSetId
     resultPage.value = 1
+    resultHasMore.value = data.rows.length < data.rowsTotal
   })
   es.addEventListener('done', (ev: MessageEvent) => {
     es.close()
@@ -586,9 +609,9 @@ function openStream(taskId: string): void {
     if (datasourceId.value !== null) void loadHistory()
   })
   es.addEventListener('error', () => {
-    es.close()
-    executing.value = false
-    contractError.value = 'SSE 事件流异常断开'
+    // The authenticated SSE adapter owns Last-Event-ID replay and retries.
+    // Keep this run cancellable until a terminal `done` event arrives.
+    status.value = '事件流连接中断，正在恢复…'
   })
 }
 
@@ -628,6 +651,7 @@ async function loadHistory(): Promise<void> {
 }
 
 async function openHistory(): Promise<void> {
+  scriptsOpen.value = false
   historyOpen.value = true
   await loadHistory()
 }
@@ -649,6 +673,34 @@ async function saveScript(): Promise<void> {
   try {
     await api.value.saveScript({ name: `脚本-${new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-')}`, sqlText: sqlText.value })
     status.value = '脚本已保存'
+    if (scriptsOpen.value) await loadScripts()
+  } catch (e) {
+    error.value = message(e)
+  }
+}
+
+async function loadScripts(): Promise<void> {
+  try {
+    scripts.value = await api.value.listScripts()
+  } catch (e) {
+    error.value = message(e)
+  }
+}
+
+async function openScripts(): Promise<void> {
+  historyOpen.value = false
+  scriptsOpen.value = true
+  await loadScripts()
+}
+
+function restoreScript(script: ScriptEntry): void {
+  sqlText.value = script.sqlText
+}
+
+async function removeScript(script: ScriptEntry): Promise<void> {
+  try {
+    await api.value.deleteScript(script.id, script.revision)
+    await loadScripts()
   } catch (e) {
     error.value = message(e)
   }
@@ -801,7 +853,7 @@ th,td{text-align:left;padding:9px;border-bottom:1px solid var(--border);font-siz
 .ide-history li{display:flex;align-items:center;gap:8px}
 .ide-history-item{flex:1;display:flex;flex-direction:column;gap:2px;text-align:left;border:1px solid var(--border);background:var(--card);border-radius:var(--radius-sm);padding:6px 9px;cursor:pointer}
 .ide-history-del{flex:none}
-.ide-history-open{margin-top:16px}
+.ide-history-open,.ide-scripts-open{margin-top:16px}
 .mono,code{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12px}
 @media(max-width:900px){.ide-split{grid-template-columns:1fr}}
 </style>

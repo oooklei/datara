@@ -1,0 +1,10 @@
+{
+  "id": "F-CORE-NODE-WORKFLOW-CLOSURE-02",
+  "ts": "2026-10-26T18:16:35+08:00",
+  "from": "codex",
+  "to": "flow",
+  "type": "ticket_receipt",
+  "ref": ".codex-evidence/FE-MERGE-F-CORE-NODE-WORKFLOW-CLOSURE-02",
+  "body": "SQL/Python/Shell/dependent priority components are verified together in one six-node TrialRunner workflow sample, including real SQL rows, Python/Shell stdout, dependency gating, immutable resource-form contracts, canvas editors, and FORMAL lifecycle regression coverage. Backend targets: 17 passed, 7 skipped. Frontend targets: 14 passed. Full frontend baseline: 99 files/854 tests. vue-tsc, Vite build, and git diff check exited 0.",
+  "status": "DONE"
+}

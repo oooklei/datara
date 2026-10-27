@@ -142,6 +142,27 @@ describe('L3-03：AppShell 项目模式——顶栏当前项目与返回', () =>
     expect(w.find('[data-project-name="10"]').text()).toBe('项目十')
   })
 
+  it('离开项目域作废在途项目名请求，再进入其他项目不闪显旧名', async () => {
+    let resolveOld!: (v: unknown) => void
+    listProjectsSpy.mockImplementationOnce(
+      () => new Promise((res) => { resolveOld = res }),
+    )
+    listProjectsSpy.mockImplementationOnce(() => new Promise(() => {}))
+    const router = makeTestRouter()
+    await router.push('/p/9')
+    const w = mount(AppShell, { global: { plugins: [router] } })
+    await flushPromises()
+
+    await router.push('/')
+    await flushPromises()
+    resolveOld({ total: 1, list: [{ id: 9, name: '项目九' }] })
+    await flushPromises()
+
+    await router.push('/p/10')
+    await flushPromises()
+    expect(w.find('[data-project-name="10"]').text()).toBe('')
+  })
+
   it('回退文案：listProjects 失败 → 项目 #<id>；可见集合无该 id → 项目 #<id>', async () => {
     listProjectsSpy.mockRejectedValue(new Error('HTTP 500 /rebuild/projects'))
     const router = makeTestRouter()

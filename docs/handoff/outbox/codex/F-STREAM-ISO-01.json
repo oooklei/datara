@@ -1,0 +1,28 @@
+{
+  "id": "F-STREAM-ISO-01",
+  "ts": "2026-10-26T11:10:32+08:00",
+  "from": "codex",
+  "to": "flow",
+  "type": "implementation-receipt",
+  "ref": "stream-project-isolation-and-i8-nine-key",
+  "body": {
+    "completed": [
+      "I8_CONTRACT_METHODS restored to the approved nine-key surface",
+      "provisionStreamJob encapsulates register/start/activate without exposing extra contract keys",
+      "stream job registration and listing are scoped by workflow project",
+      "job-specific routes authorize against the owning workflow project",
+      "stream workbench passes project and workflow context into live observation"
+    ],
+    "verification": {
+      "frontend_target": "3 files / 10 tests passed",
+      "workbench_target": "1 file / 9 tests passed",
+      "backend_target": "90 passed",
+      "vitest_full": "98 files / 838 tests passed",
+      "diff_check": "PASS",
+      "vue_tsc": "EXIT=1: DependencyNodeEditor.vue lines 38-39 dependent_execute type is missing"
+    },
+    "next": "Open a separate ticket/session to repair DependencyNodeEditor condition typing, then rerun vue-tsc once. Do not modify stream files unless that ticket exposes a direct regression.",
+    "evidence": ".codex-evidence/FE-MERGE-STREAM-ISO-01/"
+  },
+  "status": "IMPLEMENTED_GATE_FAILED"
+}

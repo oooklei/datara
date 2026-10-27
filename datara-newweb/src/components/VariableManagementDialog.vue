@@ -128,7 +128,9 @@ function onEditRow(r: Row): void {
   form.scope = r.scope
   form.name = r.name
   form.valueType = r.valueType as VariableValueType
-  form.value = r.value
+  // Never round-trip the masked list value. Omitting a blank sensitive value
+  // tells the backend repository to preserve the stored secret.
+  form.value = r.sensitive ? '' : r.value
   form.sensitive = r.sensitive
   form.description = r.description
   editing.value = true
@@ -161,9 +163,11 @@ async function submit(): Promise<void> {
       scope: form.scope as VariableDefinition['scope'],
       name,
       valueType: form.valueType,
-      value: form.value,
       sensitive: form.sensitive,
       description: form.description,
+    }
+    if (!(editing.value && form.sensitive && form.value === '')) {
+      definition.value = form.value
     }
     await api.saveVariable(props.projectId, definition)
     ElMessage.success(`变量 ${form.scope}.${name} 已保存`)

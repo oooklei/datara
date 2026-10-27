@@ -1,6 +1,6 @@
 """Versioned migrations for the metrics-owned schema."""
 
-from rebuild.governance.migrations import GovernanceMigration, MigrationResult, MigrationRunner
+from rebuild.common.migrations import GovernanceMigration, MigrationResult, MigrationRunner
 from rebuild.metrics.revisions import v0001_runtime_timestamps, v0002_workflow_result_unique
 
 METRICS_MIGRATIONS = (

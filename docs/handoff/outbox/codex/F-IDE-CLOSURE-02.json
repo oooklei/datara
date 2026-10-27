@@ -1,0 +1,10 @@
+{
+  "id": "F-IDE-CLOSURE-02",
+  "ts": "2026-10-26T17:14:00+08:00",
+  "from": "codex",
+  "to": "flow",
+  "type": "implementation_receipt",
+  "ref": ".codex-evidence/FE-MERGE-F-IDE-CLOSURE-02/summary.md",
+  "body": "完成数据开发 IDE 两项 R5-A 缺口修复：临时 SSE 断连不再关闭具备 Last-Event-ID 重放的认证流，执行保持可取消并等待终态；SQL 资产补齐列表、恢复编辑与 revision 删除。两组 RED/GREEN 已留证，目标 17 用例、全量前端 99 文件/849 用例、vue-tsc、Vite build 与 diff check 均通过。",
+  "status": "done"
+}

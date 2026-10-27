@@ -31,15 +31,19 @@ class FixtureContractTest(unittest.TestCase):
         self.assertEqual({row["order_status"] for row in rows}, {"PAID", "DONE", "CREATED"})
 
     def test_scripts_do_not_embed_sensitive_values(self):
-        scripts = "\n".join((ROOT / name).read_text(encoding="utf-8") for name in ("common.sh", "check.sh", "prepare.sh", "verify.sh"))
+        scripts = "\n".join((ROOT / name).read_text(encoding="utf-8") for name in ("common.sh", "check.sh", "prepare.sh", "verify.sh", "seed_product_fixture.py"))
         for forbidden in ("REBUILD_VALIDATION_KEY=", "DATARA_ACCESS_TOKEN=", "-pdatara_", "token: "):
             self.assertNotIn(forbidden, scripts)
         self.assertIn('$MYSQL_ROOT_PASSWORD', scripts)
 
     def test_api_entry_points_are_documented(self):
         readme = (ROOT / "README.md").read_text(encoding="utf-8")
-        for path in ("/api/v1/rebuild/workflows", "/api/v1/rebuild/variables", "/api/v1/rebuild/resources/uploads", "/api/v1/rebuild/stream/jobs"):
+        for path in ("/api/v1/rebuild/validation-token", "/api/v1/rebuild/projects", "/api/v1/rebuild/variables"):
             self.assertIn(path, readme)
+        self.assertIn("baseMode=file_sync", readme)
+        self.assertIn("filePath=/datara/files/fixtures/orders_file_sync.csv", readme)
+        self.assertIn("fileType=csv", readme)
+        self.assertNotIn("/api/v1/rebuild/resources/uploads", readme)
 
 
 if __name__ == "__main__":

@@ -276,7 +276,6 @@ async function onCloseTab(t: DagTab) {
         ElMessage.error('保存失败，画布未关闭')
         return
       }
-      graphStore.close(Number(t.docId))
     }
     // action === 'save' 且 !held：无真保存能力，草稿随统一清理（见上注释）
   } else if (!isActive && dirty) {
@@ -288,6 +287,7 @@ async function onCloseTab(t: DagTab) {
       })
     } catch { return }
   }
+  if (isActive) graphStore.close(Number(t.docId))
   dagTabs.remove(t.key)
   await nextTick() // 等旧实例 onBeforeUnmount saveSnap 回写完成再清理
   clearSnap(t.docId)
@@ -410,46 +410,45 @@ onMounted(async () => {
 </template>
 
 <style scoped>
-/* 设计令牌：由全局 styles/theme.css 的 :root 提供（§4.4.3 风格统一），本文件不再就地重复定义。 */
 /* 蓝本 .tc/.tc-tabs/.tc-tab/.tc-ic/.tc-body 照抄；高度适配新壳（AppShell header 56px
    grid 行，主内容区无 height 上下文，蓝本 height:100% 改 min-height:calc(100vh - 56px)）。
    CSS 变量沿新前端惯例（var(--x, fallback)，无全局 token 定义）。 */
 .tc{display:flex;flex-direction:column;min-height:calc(100vh - 56px)}
-.tc-tabs{display:flex;align-items:center;gap:2px;padding:0 14px;background:var(--card);border-bottom:1px solid var(--border-color);flex-shrink:0}
-.tc-tab{border:none;background:none;padding:11px 16px;font-size:13px;color:var(--text-secondary);cursor:pointer;border-bottom:2px solid transparent;display:flex;align-items:center;gap:6px;transition:color .15s ease,border-color .15s ease}
-.tc-tab:hover{color:var(--primary-color)}
-.tc-tab.on{color:var(--primary-color);border-bottom-color:var(--primary-color);font-weight:600}
+.tc-tabs{display:flex;align-items:center;gap:2px;padding:0 14px;background:var(--card);border-bottom:1px solid var(--border-color, var(--border));flex-shrink:0}
+.tc-tab{border:none;background:none;padding:11px 16px;font-size:13px;color:var(--text-secondary, var(--text-2));cursor:pointer;border-bottom:2px solid transparent;display:flex;align-items:center;gap:6px;transition:color .15s ease,border-color .15s ease}
+.tc-tab:hover{color:var(--primary-color, var(--primary))}
+.tc-tab.on{color:var(--primary-color, var(--primary));border-bottom-color:var(--primary-color, var(--primary));font-weight:600}
 .tc-ic{font-size:12px;opacity:.75}
 .tc-tab.on .tc-ic{opacity:1}
 /* 右上专属操作（蓝本 .spacer/.tc-new-workflow/.tc-save-template/.tc-view 照抄） */
 .spacer{flex:1}
-.tc-new-workflow{background:var(--primary-color);color:var(--card);border:none;border-radius:var(--radius-sm);padding:5px 12px;font-size:12.5px;cursor:pointer}
+.tc-new-workflow{background:var(--primary-color, var(--primary));color:var(--card);border:none;border-radius:var(--radius-sm, 6px);padding:5px 12px;font-size:12.5px;cursor:pointer}
 .tc-new-workflow:hover{opacity:.9}
-.tc-save-template{border:1px solid var(--border-color);color:var(--primary-color);background:var(--card);border-radius:var(--radius-sm);padding:4px 12px;font-size:12.5px;cursor:pointer}
-.tc-save-template:hover{border-color:var(--primary-color)}
-.tc-variable-management{border:1px solid var(--border-color);color:var(--primary-color);background:var(--card);border-radius:var(--radius-sm);padding:4px 12px;font-size:12.5px;cursor:pointer}
-.tc-variable-management:hover:not(:disabled){border-color:var(--primary-color)}
-.tc-variable-management:disabled{color:var(--text-4);cursor:not-allowed}
-.tc-view{font-size:11.5px;color:var(--text-secondary);border:1px solid var(--border-color);border-radius:var(--radius-lg);padding:2px 10px}
+.tc-save-template{border:1px solid var(--border-color, var(--border));color:var(--primary-color, var(--primary));background:var(--card);border-radius:var(--radius-sm, 6px);padding:4px 12px;font-size:12.5px;cursor:pointer}
+.tc-save-template:hover{border-color:var(--primary-color, var(--primary))}
+.tc-variable-management{border:1px solid var(--border-color, var(--border));color:var(--primary-color, var(--primary));background:var(--card);border-radius:var(--radius-sm, 6px);padding:4px 12px;font-size:12.5px;cursor:pointer}
+.tc-variable-management:hover:not(:disabled){border-color:var(--primary-color, var(--primary))}
+.tc-variable-management:disabled{color:var(--text-4, var(--border-strong));cursor:not-allowed}
+.tc-view{font-size:11.5px;color:var(--text-secondary, var(--text-2));border:1px solid var(--border-color, var(--border));border-radius:var(--radius-lg, 10px);padding:2px 10px}
 .tc-body{flex:1;min-height:0;display:flex;flex-direction:column;overflow:auto}
 /* 画布 Tab 条（蓝本 .tc-dagbar、.tc-dag、.tcd-* 系列、.tc-daghint 照抄） */
-.tc-dagbar{display:flex;align-items:center;gap:6px;padding:6px 12px;background:var(--card);border-bottom:1px solid var(--border-color);flex-shrink:0;overflow-x:auto}
-.tc-dag{display:flex;align-items:center;gap:6px;border:1px solid var(--border-color);background:var(--bg-secondary);color:var(--text-secondary);border-radius:var(--radius-sm);padding:4px 10px;font-size:12.5px;cursor:pointer;max-width:260px;white-space:nowrap}
-.tc-dag.on{color:var(--primary-color);border-color:var(--primary-color);background:var(--primary-light)}
-.tcd-code{font-size:11px;background:var(--primary-light);color:var(--primary-color);border-radius:4px;padding:0 4px}
+.tc-dagbar{display:flex;align-items:center;gap:6px;padding:6px 12px;background:var(--card);border-bottom:1px solid var(--border-color, var(--border));flex-shrink:0;overflow-x:auto}
+.tc-dag{display:flex;align-items:center;gap:6px;border:1px solid var(--border-color, var(--border));background:var(--bg-secondary, var(--bg));color:var(--text-secondary, var(--text-2));border-radius:var(--radius-sm, 6px);padding:4px 10px;font-size:12.5px;cursor:pointer;max-width:260px;white-space:nowrap}
+.tc-dag.on{color:var(--primary-color, var(--primary));border-color:var(--primary-color, var(--primary));background:var(--primary-light, var(--primary-light))}
+.tcd-code{font-size:11px;background:var(--primary-light, var(--primary-light));color:var(--primary-color, var(--primary));border-radius:4px;padding:0 4px}
 .tcd-name{overflow:hidden;text-overflow:ellipsis;flex-shrink:1;min-width:0}
-.tcd-type{font-size:10.5px;color:var(--text-3);border:1px solid var(--border-color);border-radius:9px;padding:0 6px;flex-shrink:0}
-.tcd-x{color:var(--text-4);border-radius:4px;padding:0 3px;font-size:13px;line-height:1}
-.tcd-x:hover{color:var(--danger);background:var(--danger-bg)}
-.tc-daghint{font-size:11px;color:var(--text-4);margin-left:2px}
+.tcd-type{font-size:10.5px;color:var(--text-3, var(--text-3));border:1px solid var(--border-color, var(--border));border-radius:9px;padding:0 6px;flex-shrink:0}
+.tcd-x{color:var(--text-4, var(--border-strong));border-radius:4px;padding:0 3px;font-size:13px;line-height:1}
+.tcd-x:hover{color:var(--danger, var(--danger));background:var(--danger-bg, var(--danger-bg))}
+.tc-daghint{font-size:11px;color:var(--text-4, var(--border-strong));margin-left:2px}
 /* 画布区 / 空态（蓝本 .tc-canvas/.tc-empty/.tc-empty-hint 照抄） */
 .tc-canvas{flex:1;min-height:0;display:flex;flex-direction:column}
 .tc-canvas-slot{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;padding:24px}
-.tc-canvas-slot-title{margin:0;font-size:15px;font-weight:600;color:var(--text-primary)}
-.tc-canvas-slot-sub{margin:0;font-size:13px;color:var(--text-secondary)}
+.tc-canvas-slot-title{margin:0;font-size:15px;font-weight:600;color:var(--text-primary, var(--text))}
+.tc-canvas-slot-sub{margin:0;font-size:13px;color:var(--text-secondary, var(--text-2))}
 .tc-empty{flex:1;display:flex;align-items:center;justify-content:center;padding:24px}
-.tc-empty-hint{display:flex;flex-direction:column;align-items:center;gap:6px;font-size:13px;color:var(--text-secondary);text-align:center}
+.tc-empty-hint{display:flex;flex-direction:column;align-items:center;gap:6px;font-size:13px;color:var(--text-secondary, var(--text-2));text-align:center}
 /* 运行监控无项目上下文时的空状态 */
 .tc-slot{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;padding:24px}
-.tc-slot-sub{margin:0;font-size:13px;color:var(--text-secondary)}
+.tc-slot-sub{margin:0;font-size:13px;color:var(--text-secondary, var(--text-2))}
 </style>

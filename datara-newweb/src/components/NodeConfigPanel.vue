@@ -22,8 +22,9 @@ import { ElMessage } from 'element-plus'
 
 import type { WorkflowDraftNode } from '../services/rebuild/workflowApi'
 import { createDatasourceContract } from '../services/rebuild/datasourceApi'
+import VariableReferenceInput from './VariableReferenceInput.vue'
 
-const props = defineProps<{ node: WorkflowDraftNode; projectId: number }>()
+const props = defineProps<{ node: WorkflowDraftNode; projectId: number; workflowId?: number; workflowVersion?: number }>()
 const emit = defineEmits<{
   (e: 'save', params: Record<string, unknown>): void
   (e: 'close'): void
@@ -41,6 +42,12 @@ const componentType = computed(() => {
   return typeof c === 'string' ? c : ''
 })
 const isEndpointSelect = computed(() => componentType.value === 'endpoint_select')
+const variableContext = computed(() => ({
+  projectId: props.projectId,
+  ...(props.workflowId !== undefined ? { workflowId: props.workflowId } : {}),
+  ...(props.workflowVersion !== undefined ? { workflowVersion: props.workflowVersion } : {}),
+  taskId: props.node.nodeCode,
+}))
 /** SYNC 组件节点（带 component 键）才有配置面；START/END/普通类型只读 */
 const isSyncComponent = computed(() => componentType.value !== '')
 
@@ -194,6 +201,11 @@ watch(
 /* ---------- 保存 ---------- */
 
 function validateEndpointSelect(): string | null {
+  if (fieldVisible('fileHeaderRows')) {
+    const headerRows = Number(form.fileHeaderRows)
+    if (!Number.isInteger(headerRows)) return '表头行数必须是整数'
+    if (headerRows < 0) return '表头行数不能小于 0'
+  }
   for (const f of EP_FIELDS) {
     if (f.type === 'bool' || !fieldVisible(f.key)) continue
     const required = f.required === true || (f.key === 'tgtTable' && form.baseMode === 'tgt_base')
@@ -289,11 +301,21 @@ function onSave(): void {
           <input type="checkbox" v-model="form[f.key]" :data-testid="`ncp-${f.key}`" />
           <span>{{ f.label }}</span>
         </label>
+        <VariableReferenceInput
+          v-else-if="f.type === 'text'"
+          :data-variable-field="`ncp-${f.key}`"
+          :model-value="String(form[f.key] ?? '')"
+          :context="variableContext"
+          :label="f.label"
+          @update:model-value="form[f.key] = $event"
+        />
         <input
           v-else
           v-model="form[f.key]"
           class="ncp-input"
-          :type="f.type === 'number' ? 'number' : 'text'"
+          type="number"
+          :min="0"
+          :step="1"
           :placeholder="f.placeholder"
           :data-testid="`ncp-${f.key}`"
         />
@@ -303,7 +325,15 @@ function onSave(): void {
     <!-- 其他 SYNC 组件：params JSON 兜底 -->
     <template v-else>
       <p class="ncp-hint">组件 {{ componentType }} 结构化表单待规格下发，暂以 params JSON 编辑。</p>
-      <textarea v-model="jsonText" rows="10" class="ncp-input" data-testid="ncp-json"></textarea>
+      <VariableReferenceInput
+        data-testid="ncp-json"
+        data-variable-field="ncp-json"
+        :model-value="jsonText"
+        :context="variableContext"
+        label="params JSON"
+        :multiline="true"
+        @update:model-value="jsonText = $event"
+      />
     </template>
 
     <footer v-if="isSyncComponent" class="ncp-foot">

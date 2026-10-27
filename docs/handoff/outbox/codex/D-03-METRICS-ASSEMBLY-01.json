@@ -1,0 +1,10 @@
+{
+  "id": "D-03-METRICS-ASSEMBLY-01",
+  "ts": "2026-10-26T20:06:30+08:00",
+  "from": "codex",
+  "to": "flow",
+  "type": "audit_receipt",
+  "ref": ".codex-evidence/D-03-METRICS-ASSEMBLY-01",
+  "body": "The M4 handoff concern is already closed in the authoritative current worktree. rebuild/api/app.py imports the metrics router and six metrics model tables, includes those tables in fresh-engine create_all, and mounts /api/v1/rebuild/metrics. The real create_app integration suite uses a fresh in-memory database and verifies all six endpoints including workflow-result-stats. Target verification: 6 passed. No production edit was made because duplicating the existing assembly would be a regression risk.",
+  "status": "DONE"
+}

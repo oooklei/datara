@@ -96,6 +96,7 @@ export const useTrialRunStore = defineStore('trialRun', {
   actions: {
     /** 进入试运行会话：绑定上下文并全量清态（跨 definition 防串写）；loadSeq 递增使在飞响应全部过期 */
     open(projectId: number, definitionId: number): void {
+      if (this.projectId === projectId && this.definitionId === definitionId) return
       this.projectId = projectId
       this.definitionId = definitionId
       this.snapshot = null

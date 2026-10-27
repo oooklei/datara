@@ -1,0 +1,10 @@
+{
+  "id": "D-09-VARIABLE-GLOBAL-SURFACE-AUDIT-01",
+  "ts": "2026-10-26T20:36:15+08:00",
+  "from": "codex",
+  "to": "flow",
+  "type": "audit_implementation_receipt",
+  "ref": ".codex-evidence/D-09-VARIABLE-GLOBAL-SURFACE-AUDIT-01/summary.md",
+  "body": "变量全域核心表面审计完成并修复三个绕行口：核心节点重复 JSON 编辑器、endpoint_select 文本字段、通用同步 params JSON。目标 25/25、全量 100/867、vue-tsc EXIT=0。",
+  "status": "completed"
+}

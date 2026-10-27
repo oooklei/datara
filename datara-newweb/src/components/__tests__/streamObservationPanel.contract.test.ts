@@ -1,9 +1,12 @@
 import { flushPromises, mount } from '@vue/test-utils'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-const { queryStreamObservation, listStreamCheckpoints, listStreamRecoveryEvents, produceStreamEvents, fuseStreamEvents, provisionStreamJob } = vi.hoisted(() => ({ queryStreamObservation: vi.fn(), listStreamCheckpoints: vi.fn(), listStreamRecoveryEvents: vi.fn(), produceStreamEvents: vi.fn(), fuseStreamEvents: vi.fn(), provisionStreamJob: vi.fn() }))
+const { createStreamContractSpy, queryStreamObservation, listStreamCheckpoints, listStreamRecoveryEvents, produceStreamEvents, fuseStreamEvents, provisionStreamJob } = vi.hoisted(() => ({ createStreamContractSpy: vi.fn(), queryStreamObservation: vi.fn(), listStreamCheckpoints: vi.fn(), listStreamRecoveryEvents: vi.fn(), produceStreamEvents: vi.fn(), fuseStreamEvents: vi.fn(), provisionStreamJob: vi.fn() }))
 vi.mock('../../services/rebuild/streamApi', () => ({
-  createStreamContract: () => ({ queryStreamObservation, listStreamCheckpoints, listStreamRecoveryEvents, produceStreamEvents, fuseStreamEvents, provisionStreamJob }),
+  createStreamContract: (projectId?: number) => {
+    createStreamContractSpy(projectId)
+    return { queryStreamObservation, listStreamCheckpoints, listStreamRecoveryEvents, produceStreamEvents, fuseStreamEvents, provisionStreamJob }
+  },
 }))
 import StreamObservationPanel from '../StreamObservationPanel.vue'
 
@@ -102,6 +105,16 @@ describe('stream observation panel', () => {
     expect(provisionStreamJob).toHaveBeenCalledWith(expect.objectContaining({ projectId: 7, workflowId: 9, name: 'orders-live' }))
     expect(produceStreamEvents).toHaveBeenCalledWith('17', expect.objectContaining({ count: 10 }))
     expect(wrapper.get('[data-stream-job-id]').element).toHaveProperty('value', '17')
+  })
+
+  it('rebinds the stream API client after navigating to another project', async () => {
+    const wrapper = mount(StreamObservationPanel, { props: { projectId: 7, workflowId: 9, workflowName: 'orders' } })
+    await wrapper.setProps({ projectId: 8, workflowId: 10, workflowName: 'invoices' })
+    await wrapper.get('[data-stream-provision]').trigger('click')
+    await flushPromises()
+
+    expect(createStreamContractSpy).toHaveBeenLastCalledWith(8)
+    expect(provisionStreamJob).toHaveBeenCalledWith(expect.objectContaining({ projectId: 8, workflowId: 10 }))
   })
 
   it('submits valid stream JSON to the fusion endpoint and reports the result', async () => {

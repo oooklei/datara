@@ -14,6 +14,12 @@ vi.mock('element-plus', () => ({ ElMessage: { success, warning, error: vi.fn() }
 
 import DependencyNodeEditor from '../DependencyNodeEditor.vue'
 
+const variableInputStub = {
+  props: ['modelValue', 'context', 'label'],
+  emits: ['update:modelValue'],
+  template: '<button data-variable-input :data-label="label" @click="$emit(\'update:modelValue\', \'${project.dynamic_target}\')">{{ label }}</button>',
+}
+
 describe('DependencyNodeEditor contract', () => {
   beforeEach(() => {
     vi.clearAllMocks()
@@ -96,7 +102,7 @@ describe('DependencyNodeEditor contract', () => {
     })
 
     expect(wrapper.get('[data-test="dependency-kind"]').findAll('option')).toHaveLength(5)
-    expect(wrapper.get('[data-test="dependency-target"]').element).toHaveProperty('value', 'landing/orders.done')
+    expect(wrapper.get('[data-test="dependency-target"]').get('input').element).toHaveProperty('value', 'landing/orders.done')
     await wrapper.get('[data-test="save-dependency"]').trigger('click')
     await flushPromises()
 
@@ -108,5 +114,85 @@ describe('DependencyNodeEditor contract', () => {
       dateValue: 'last1Days',
     }))
     expect(condition).not.toHaveProperty('upstreamWorkflowId')
+  })
+
+  it('converts the DS failure waiting duration from minutes to contract seconds', async () => {
+    const wrapper = mount(DependencyNodeEditor, {
+      props: {
+        projectId: 7,
+        workflowId: 12,
+        taskId: 'dep_waiting',
+        modelValue: {
+          upstream_workflow_id: 9,
+          failure_policy: 'waiting',
+          failure_waiting_minutes: 2,
+        },
+      },
+    })
+
+    await wrapper.get('[data-test="save-dependency"]').trigger('click')
+    await flushPromises()
+
+    expect(saveDependency).toHaveBeenCalledWith(expect.objectContaining({
+      failurePolicy: 'waiting',
+      failureWaitingSeconds: 120,
+    }))
+  })
+
+  it('blocks non-positive polling and timeout values before calling the backend', async () => {
+    const wrapper = mount(DependencyNodeEditor, {
+      props: {
+        projectId: 7,
+        workflowId: 12,
+        taskId: 'dep_invalid_policy',
+        modelValue: { upstream_workflow_id: 9, check_interval_seconds: 0, timeout_seconds: 30 },
+      },
+    })
+
+    await wrapper.get('[data-test="save-dependency"]').trigger('click')
+
+    expect(warning).toHaveBeenCalledWith('检查周期和超时必须是正整数秒')
+    expect(saveDependency).not.toHaveBeenCalled()
+  })
+
+  it('uses the unified variable contract for string dependency targets', async () => {
+    const wrapper = mount(DependencyNodeEditor, {
+      props: {
+        projectId: 7,
+        workflowId: 12,
+        taskId: 'dep_file',
+        modelValue: { kind: 'file', file_id: '/landing/ready.flag' },
+      },
+      global: { stubs: { VariableReferenceInput: variableInputStub } },
+    })
+
+    await wrapper.get('[data-variable-field="dependency-target"]').trigger('click')
+
+    expect(wrapper.emitted('update:modelValue')?.at(-1)?.[0]).toEqual(expect.objectContaining({
+      file_id: '${project.dynamic_target}',
+    }))
+  })
+
+  it('uses positive integer identifiers and the frozen backend named-window value domain', async () => {
+    const wrapper = mount(DependencyNodeEditor, {
+      props: {
+        projectId: 7,
+        workflowId: 12,
+        taskId: 'dep_domain',
+        modelValue: { kind: 'task', dependent_execute: 'task', cycle: 'day', date_value: 'last1Days' },
+      },
+    })
+
+    expect(wrapper.get('[data-test="upstream-workflow"]').attributes()).toEqual(expect.objectContaining({ type: 'number', min: '1', step: '1' }))
+    expect(wrapper.get('[data-test="upstream-task"]').attributes()).toEqual(expect.objectContaining({ type: 'number', min: '1', step: '1' }))
+    expect(wrapper.get('[data-test="dependency-date-value"]').findAll('option').map((item) => item.attributes('value'))).toEqual([
+      'today', 'last1Days', 'last2Days', 'last3Days', 'last7Days',
+    ])
+
+    await wrapper.get('[data-test="dependency-cycle"]').setValue('hour')
+    expect(wrapper.emitted('update:modelValue')?.at(-1)?.[0]).toEqual(expect.objectContaining({
+      cycle: 'hour',
+      date_value: 'currentHour',
+    }))
   })
 })

@@ -65,6 +65,47 @@ describe('ProjectMembersView（项目成员管理页）', () => {
     expect((row9.find('[data-role-select]').element as HTMLSelectElement).value).toBe('viewer')
   })
 
+  it('项目路由切换后重新加载新项目成员且不保留旧项目列表', async () => {
+    let resolveSecond!: (value: { list: Array<{ userId: number; role: string }> }) => void
+    listSpy
+      .mockResolvedValueOnce({ list: [{ userId: 7, role: 'developer' }] })
+      .mockReturnValueOnce(new Promise((resolve) => { resolveSecond = resolve }))
+
+    const wrapper = mountView({ projectId: 1 })
+    await flushPromises()
+    expect(wrapper.find('[data-member-id="7"]').exists()).toBe(true)
+
+    await wrapper.setProps({ projectId: 2 })
+    await wrapper.vm.$nextTick()
+    expect(listSpy).toHaveBeenLastCalledWith(2)
+    expect(wrapper.find('[data-loading]').exists()).toBe(true)
+    expect(wrapper.find('[data-member-id="7"]').exists()).toBe(false)
+
+    resolveSecond({ list: [{ userId: 8, role: 'viewer' }] })
+    await flushPromises()
+    expect(wrapper.find('[data-member-id="8"]').exists()).toBe(true)
+  })
+
+  it('快速切换项目时丢弃旧项目迟到的成员响应', async () => {
+    let resolveFirst!: (value: { list: Array<{ userId: number; role: string }> }) => void
+    let resolveSecond!: (value: { list: Array<{ userId: number; role: string }> }) => void
+    listSpy
+      .mockReturnValueOnce(new Promise((resolve) => { resolveFirst = resolve }))
+      .mockReturnValueOnce(new Promise((resolve) => { resolveSecond = resolve }))
+
+    const wrapper = mountView({ projectId: 1 })
+    await wrapper.setProps({ projectId: 2 })
+    await wrapper.vm.$nextTick()
+
+    resolveSecond({ list: [{ userId: 8, role: 'viewer' }] })
+    await flushPromises()
+    resolveFirst({ list: [{ userId: 7, role: 'admin' }] })
+    await flushPromises()
+
+    expect(wrapper.find('[data-member-id="8"]').exists()).toBe(true)
+    expect(wrapper.find('[data-member-id="7"]').exists()).toBe(false)
+  })
+
   it('添加成员：提交 → addMember(projectId, {username, role})，成功后重载并清空输入', async () => {
     listSpy.mockResolvedValue({ list: [] })
     addSpy.mockResolvedValue({ projectId: 1, username: 'bob', role: 'developer' })

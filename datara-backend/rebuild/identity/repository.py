@@ -28,3 +28,17 @@ class UserRepository:
     def find_by_username(self, username: str) -> UserRecord | None:
         return self._session.scalar(select(UserRecord).where(UserRecord.username == username))
 
+    def find_by_id(self, user_id: int) -> UserRecord | None:
+        return self._session.get(UserRecord, user_id)
+
+    def list_users(self) -> list[UserRecord]:
+        return list(self._session.scalars(select(UserRecord).order_by(UserRecord.id)).all())
+
+    def update_password(self, user_id: int, password: str) -> UserRecord:
+        record = self._session.get(UserRecord, user_id)
+        if record is None:
+            raise ValueError("user not found")
+        record.password_hash = hash_password(password)
+        self._session.flush()
+        return record
+
