@@ -1,0 +1,6 @@
+Known pre-existing unrelated regression command result:
+python -m pytest -q tests/rebuild/test_r4_dependency_api.py tests/rebuild/test_trial_runner.py
+Exit: 1; 1 failed, 24 passed.
+Failure: test_honest_empty_lists_and_auth_envelope expected anonymous 401 but received 200; also emitted zookeeper DNS warnings. The target trial runner suite remained green and no auth/API code was changed.
+
+History semantics remain those of metrics_history_lookup: workflow history is day-granularity workflow_result_stat, while task history uses the documented task metrics/error-sample proxy.

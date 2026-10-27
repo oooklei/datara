@@ -59,20 +59,6 @@ describe('quality read-only views', () => {
     expect(wrapper.find('[data-quality-table]').text()).toContain('orders')
   })
 
-  it('resets pagination before loading a newly selected project', async () => {
-    listExceptions.mockResolvedValue({ total: 100, list: [{ id: 1, target: 'orders' }] })
-    const router = createRouter({ history: createMemoryHistory(), routes: [{ path: '/', component: { template: '<div />' } }] })
-    await router.push('/')
-    await router.isReady()
-    const wrapper = mount(View, { props: { kind: 'exceptions' }, global: { plugins: [router] } })
-    await flushPromises()
-    await wrapper.findAll('footer button')[1].trigger('click')
-    await wrapper.get('[data-project-select]').setValue('11')
-    await flushPromises()
-
-    expect(listExceptions).toHaveBeenLastCalledWith(11, 1, 50, undefined)
-  })
-
   it('prefers the project route param over a conflicting query project', async () => {
     const router = createRouter({
       history: createMemoryHistory(),
@@ -97,28 +83,6 @@ describe('quality read-only views', () => {
     await flushPromises()
 
     expect(listExceptions).toHaveBeenCalledWith(11, 1, 50, undefined)
-  })
-
-  it('keeps the latest project request loading and ignores an older successful response', async () => {
-    const oldRequest = deferred<{ total: number; list: Array<Record<string, unknown>> }>()
-    const latestRequest = deferred<{ total: number; list: Array<Record<string, unknown>> }>()
-    listExceptions.mockImplementationOnce(() => oldRequest.promise).mockImplementationOnce(() => latestRequest.promise)
-    const router = createRouter({ history: createMemoryHistory(), routes: [{ path: '/', component: { template: '<div />' } }] })
-    await router.push('/')
-    await router.isReady()
-    const wrapper = mount(View, { props: { kind: 'exceptions' }, global: { plugins: [router] } })
-    await flushPromises()
-
-    await wrapper.get('[data-project-select]').setValue('11')
-    oldRequest.resolve({ total: 99, list: [{ id: 70, target: 'stale-project' }] })
-    await flushPromises()
-    expect(wrapper.find('[role="status"]').exists()).toBe(true)
-    expect(wrapper.text()).not.toContain('stale-project')
-
-    latestRequest.resolve({ total: 1, list: [{ id: 110, target: 'latest-project' }] })
-    await flushPromises()
-    expect(wrapper.text()).toContain('latest-project')
-    expect(wrapper.find('footer').exists()).toBe(false)
   })
 
   it('ignores an older kind request error after the latest kind succeeds', async () => {

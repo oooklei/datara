@@ -1,0 +1,19 @@
+{
+  "id": "F-UX-V4-P1-INSPECTOR-4TAB",
+  "ts": "2026-10-28T03:26:43.7729553+08:00",
+  "from": "codex",
+  "to": "datara-main",
+  "type": "implementation-receipt",
+  "ref": "docs/increments/2026-10-28-前端开发构建方案.md#P1-任务中心闭环",
+  "body": {
+    "scope": "WorkflowGraphWorkbench 右侧 Inspector 四 Tab：属性、变量、依赖、试运行",
+    "implementation": "四 Tab 固定可达；支持点击、ArrowLeft/ArrowRight/Home/End 与焦点移动；工具栏变量/试运行入口改为激活 Tab；变量和试运行首次访问后保持挂载；依赖节点真实编辑，非适用节点显示空态",
+    "accessibility": "tablist/tab/tabpanel ARIA 完整，roving tabindex，四个 tabpanel 均可聚焦",
+    "target_test": "5 files / 44 tests passed；最终类型修正目标测试 1 file / 5 tests passed",
+    "full_test": "112 files / 932 tests passed",
+    "typecheck": "vue-tsc EXIT=0",
+    "reviews": "spec approved; code quality approved",
+    "evidence": ".codex-evidence/F-UX-V4-P1-INSPECTOR-4TAB/"
+  },
+  "status": "done"
+}

@@ -31,6 +31,7 @@ const spies = vi.hoisted(() => ({
   deleteScript: vi.fn(),
   getDefinition: vi.fn(),
   exportResult: vi.fn(),
+  getExportDownloadUrl: vi.fn(),
   listDatasources: vi.fn(),
   previewResolution: vi.fn(),
   checkReference: vi.fn(),
@@ -63,7 +64,7 @@ vi.mock('../../services/rebuild/sqlIdeApi', async (load) => {
       exportResult: spies.exportResult,
       exportTable: vi.fn(),
       getExport: vi.fn(),
-      getExportDownloadUrl: vi.fn(),
+      getExportDownloadUrl: spies.getExportDownloadUrl,
       cancelExport: vi.fn(),
     }),
   }
@@ -120,6 +121,7 @@ beforeEach(() => {
   spies.completeVariables.mockResolvedValue([{ scope: 'workflow', name: 'biz_date', valueType: 'date' }])
   spies.fetchResultPage.mockResolvedValue({ stmtIndex: 0, resultSetId: 'rs1', columns: ['id'], rows: [[1]], rowsTotal: 1, offset: 0, limit: 50 })
   spies.executeSql.mockResolvedValue({ taskId: 'task-1' })
+  spies.getExportDownloadUrl.mockReturnValue('/api/exports/export-1/download')
   spies.openEventStream.mockImplementation(() => ({
     close: streamClose,
     addEventListener: (type: string, cb: (ev: { data: string }) => void) => {
@@ -430,6 +432,69 @@ describe('/ide 数据开发 IDE 只读态（增量 11/R5-A）', () => {
     await w.find('[data-cancel]').trigger('click')
     await flushPromises()
     expect(spies.cancelExecution).toHaveBeenCalledWith('task-1')
+    expect(streamClose).toHaveBeenCalledTimes(1)
+    expect(w.find('[data-cancel]').attributes('disabled')).toBeDefined()
+    expect(w.find('[data-status]').text()).toContain('取消')
+  })
+
+  it('keeps the execution cancellable and reports a failed cancel request', async () => {
+    router.route.params.projectId = '1'
+    spies.cancelExecution.mockRejectedValue(new Error('cancel rejected'))
+    const w = mount(View)
+    await flushPromises()
+    await w.find('[data-ds-select]').setValue('7')
+    await w.find('[data-sql-editor]').setValue('SELECT 1')
+    await w.find('[data-execute]').trigger('click')
+    await flushPromises()
+    await w.find('[data-cancel]').trigger('click')
+    await flushPromises()
+
+    expect(w.find('[data-error]').text()).toContain('cancel rejected')
+    expect(w.find('[data-cancel]').attributes('disabled')).toBeUndefined()
+    expect(streamClose).not.toHaveBeenCalled()
+  })
+
+  it('creates and downloads a ready result export', async () => {
+    router.route.params.projectId = '1'
+    spies.exportResult.mockResolvedValue({ exportId: 'export-1', status: 'ready', expiresAt: '2030-01-01T00:00:00Z' })
+    const open = vi.fn()
+    vi.stubGlobal('open', open)
+    const w = mount(View)
+    await flushPromises()
+    await w.find('[data-ds-select]').setValue('7')
+    await w.find('[data-sql-editor]').setValue('SELECT 1')
+    await w.find('[data-execute]').trigger('click')
+    await flushPromises()
+    await dispatch('result', { stmtIndex: 0, resultSetId: 'rs1', columns: ['id'], rows: [[1]], rowsTotal: 1, elapsedMs: 5 })
+    await dispatch('done', { status: 'succeeded', elapsedMs: 9, historyId: 55, stmtCount: 1 })
+    await flushPromises()
+    await w.find('[data-export]').trigger('click')
+    await flushPromises()
+
+    expect(spies.exportResult).toHaveBeenCalledWith({ historyId: 55, resultSetId: 'rs1', format: 'csv' })
+    expect(spies.getExportDownloadUrl).toHaveBeenCalledWith('export-1')
+    expect(open).toHaveBeenCalledWith('/api/exports/export-1/download', '_blank', 'noopener,noreferrer')
+    expect(w.find('[data-status]').text()).toContain('导出下载已打开')
+  })
+
+  it('reports an export failure without discarding the result grid', async () => {
+    router.route.params.projectId = '1'
+    spies.exportResult.mockRejectedValue(new Error('export unavailable'))
+    const w = mount(View)
+    await flushPromises()
+    await w.find('[data-ds-select]').setValue('7')
+    await w.find('[data-sql-editor]').setValue('SELECT 1')
+    await w.find('[data-execute]').trigger('click')
+    await flushPromises()
+    await dispatch('result', { stmtIndex: 0, resultSetId: 'rs1', columns: ['id'], rows: [[1]], rowsTotal: 1, elapsedMs: 5 })
+    await dispatch('done', { status: 'succeeded', elapsedMs: 9, historyId: 55, stmtCount: 1 })
+    await flushPromises()
+    await w.find('[data-export]').trigger('click')
+    await flushPromises()
+
+    expect(w.find('[data-error]').text()).toContain('export unavailable')
+    expect(w.find('[data-result-grid]').exists()).toBe(true)
+    expect(w.find('[data-export]').attributes('disabled')).toBeUndefined()
   })
 
   it('loads and restores execution history', async () => {

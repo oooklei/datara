@@ -1,0 +1,12 @@
+Reused dependency domain implementation in rebuild/dependency/repository.py:
+- parse_groups: validates and normalizes the saved dependency contract.
+- evaluate_expression: applies the existing two-level four-state verdict rules.
+- metrics_history_lookup: queries workflow_result_stat/task metric history and observations.
+
+Trial behavior:
+- explicit SUCCEEDED/FAILED dependency_mock remains supported.
+- without a matching mock, the dependency config must be bound to the same project, draft workflow, and task.
+- satisfied succeeds; failed/pending/timeout fail closed with bounded WF_TRIAL_DEPENDENCY_* codes.
+- dependency attempt/task terminal states feed workflow success_count/failure_count.
+- dependency evaluation uses an injected UTC clock so history rows and verdict windows share one deterministic as_of in tests.
+- TrialRunnerError logs are observable as stable `CODE: message`; unrelated exception log text is unchanged.

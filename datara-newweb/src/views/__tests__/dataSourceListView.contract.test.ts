@@ -64,6 +64,7 @@ const row = {
   createdAt: '2026-10-22T10:00:00Z',
   updatedAt: '2026-10-22T10:00:00Z',
 }
+const row2 = { ...row, id: 2, name: '仓库', kind: 'postgresql' as const, host: '10.0.0.2', port: 5432, database: 'warehouse' }
 
 const column = {
   schema: 'public',
@@ -91,6 +92,7 @@ beforeEach(() => {
   spies.columns.mockResolvedValue({ items: [column], nextAfter: null, limit: 200 })
   spies.test.mockResolvedValue({ connected: true, database: 'orders', serverVersion: '8.0.35', capabilities: [] })
   spies.create.mockResolvedValue({ ...row })
+  spies.update.mockResolvedValue({ ...row })
   spies.remove.mockResolvedValue({ deleted: true, id: 1 })
   vi.stubGlobal('confirm', vi.fn(() => true))
 })
@@ -104,7 +106,7 @@ describe('/ds/list 数据源管理页（增量 10/10A）', () => {
   it('renders project picker and skips the query when no project is in context', async () => {
     const w = mount(View)
     await flushPromises()
-    expect(w.find('[data-project-select]').exists()).toBe(true)
+    expect(w.find('[data-project-select]').exists()).toBe(false)
     expect(w.find('[data-no-project]').exists()).toBe(true)
     expect(w.find('[data-ds-list]').exists()).toBe(false)
     expect(spies.list).not.toHaveBeenCalled()
@@ -118,6 +120,52 @@ describe('/ds/list 数据源管理页（增量 10/10A）', () => {
     expect(w.find('[data-ds-list]').exists()).toBe(true)
     expect(w.find('[data-ds-id="1"]').text()).toContain('订单库')
     expect(w.find('[data-ds-id="1"]').text()).toContain('10.0.0.1:3306')
+  })
+
+  it('filters the datasource list by keyword, kind, and connectivity state', async () => {
+    router.route.params.projectId = '1'
+    spies.list.mockResolvedValue({ items: [row, row2] })
+    const w = mount(View)
+    await flushPromises()
+
+    await w.find('[data-filter-keyword]').setValue('仓库')
+    expect(w.findAll('[data-ds-id]')).toHaveLength(1)
+    expect(w.find('[data-ds-id="2"]').exists()).toBe(true)
+    await w.find('[data-filter-keyword]').setValue('')
+    await w.find('[data-filter-kind]').setValue('postgresql')
+    expect(w.findAll('[data-ds-id]')).toHaveLength(1)
+
+    await w.find('[data-filter-kind]').setValue('')
+    await w.find('[data-ds-id="1"] [data-test]').trigger('click')
+    await flushPromises()
+    await w.find('[data-filter-status]').setValue('online')
+    expect(w.findAll('[data-ds-id]')).toHaveLength(1)
+    expect(w.find('[data-ds-id="1"]').exists()).toBe(true)
+  })
+
+  it('opens datasource metadata through the explicit detail action', async () => {
+    router.route.params.projectId = '1'
+    const w = mount(View)
+    await flushPromises()
+
+    await w.find('[data-detail-action]').trigger('click')
+    await flushPromises()
+    expect(spies.schemas).toHaveBeenCalledWith(1)
+    expect(w.find('[data-detail]').exists()).toBe(true)
+  })
+
+  it('edits a datasource without resending a blank password', async () => {
+    router.route.params.projectId = '1'
+    const w = mount(View)
+    await flushPromises()
+
+    await w.find('[data-edit]').trigger('click')
+    await w.find('[data-host]').setValue('10.0.0.8')
+    await w.find('form').trigger('submit')
+    await flushPromises()
+
+    expect(spies.update).toHaveBeenCalledWith(1, expect.objectContaining({ host: '10.0.0.8', password: undefined }))
+    expect(spies.list).toHaveBeenCalledTimes(2)
   })
 
   it('registers a datasource through the dialog and reloads the list', async () => {
@@ -215,6 +263,28 @@ describe('/ds/list 数据源管理页（增量 10/10A）', () => {
 
     expect(w.find('[data-schema-list]').text()).toContain('warehouse')
     expect(w.find('[data-schema-list]').text()).not.toContain('stale_orders')
+  })
+
+  it('discards a stale object response after selecting another schema', async () => {
+    router.route.params.projectId = '1'
+    let resolvePublic!: (value: { items: Array<{ schema: string; name: string; type: 'table' }>; nextAfter: null; limit: number }) => void
+    spies.objects.mockImplementation((_id: number, schema: string) => schema === 'public'
+      ? new Promise((resolve) => { resolvePublic = resolve })
+      : Promise.resolve({ items: [{ schema: 'ods', name: 'customers', type: 'table' }], nextAfter: null, limit: 100 }))
+    const w = mount(View)
+    await flushPromises()
+    await w.find('[data-ds-id="1"]').trigger('click')
+    await flushPromises()
+
+    const schemaButtons = w.findAll('[data-schema-list] button')
+    await schemaButtons[0]!.trigger('click')
+    await schemaButtons[1]!.trigger('click')
+    await flushPromises()
+    resolvePublic({ items: [{ schema: 'public', name: 'stale_orders', type: 'table' }], nextAfter: null, limit: 100 })
+    await flushPromises()
+
+    expect(w.find('[data-object-list]').text()).toContain('customers')
+    expect(w.find('[data-object-list]').text()).not.toContain('stale_orders')
   })
 
   it('surfaces backend errors without dropping the list', async () => {

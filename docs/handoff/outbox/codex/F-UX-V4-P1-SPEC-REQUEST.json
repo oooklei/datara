@@ -1,0 +1,32 @@
+{
+  "id": "F-UX-V4-P1-SPEC-REQUEST",
+  "ts": "2026-10-28T02:27:00+08:00",
+  "from": "codex",
+  "to": "flow",
+  "type": "completion_receipt",
+  "ref": "docs/increments/2026-10-27-部署版核查报告.md#B5",
+  "body": {
+    "summary": "组件规格目录实现同键并发去重、订阅者级取消、最后订阅者中止网络、AbortError 禁止缓存回退；工作台停用或卸载会取消订阅并隔离过期响应。",
+    "files": [
+      "datara-newweb/src/services/rebuild/componentSpecApi.ts",
+      "datara-newweb/src/services/rebuild/__tests__/componentSpecApi.contract.test.ts",
+      "datara-newweb/src/components/WorkflowGraphWorkbench.vue",
+      "datara-newweb/src/components/__tests__/workflowGraphWorkbench.contract.test.ts"
+    ],
+    "validation": {
+      "red": "2 failed / 13 passed; workbench abort contract failed as expected",
+      "target": "2 files / 25 tests passed",
+      "full": "111 files / 920 tests passed",
+      "vueTsc": "EXIT=0"
+    },
+    "evidence": [
+      ".codex-evidence/F-UX-V4-P1-SPEC-REQUEST-red.log",
+      ".codex-evidence/F-UX-V4-P1-SPEC-REQUEST-workbench-red.log",
+      ".codex-evidence/F-UX-V4-P1-SPEC-REQUEST-target-green.log",
+      ".codex-evidence/F-UX-V4-P1-SPEC-REQUEST-full.log",
+      ".codex-evidence/F-UX-V4-P1-SPEC-REQUEST-tsc.log"
+    ],
+    "next": "F-UX-V4-P1-IDE-EXPORT：补齐 SQL IDE 查询取消、结果导出和错误反馈。"
+  },
+  "status": "done"
+}

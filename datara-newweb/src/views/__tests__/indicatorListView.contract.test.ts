@@ -50,7 +50,7 @@ describe('/ind/list 指标目录页（增量 14）', () => {
   it('renders project picker and skips the metric query when no project is in context', async () => {
     const w = mount(View)
     await flushPromises()
-    expect(w.find('[data-project-select]').exists()).toBe(true)
+    expect(w.find('[data-project-select]').exists()).toBe(false)
     expect(w.find('[data-no-project]').exists()).toBe(true)
     expect(w.find('[data-ind-list]').exists()).toBe(false)
     expect(governanceApi.listMetrics).not.toHaveBeenCalled()
@@ -98,7 +98,7 @@ describe('/ind/list 指标目录页（增量 14）', () => {
     const w = mount(View)
     await flushPromises()
     expect(w.find('[role=alert]').text()).toContain('metric list failed')
-    expect(w.find('[data-project-select]').exists()).toBe(true)
+    expect(w.find('[data-project-select]').exists()).toBe(false)
   })
 
   it('preserves project context in consistency and board navigation', async () => {

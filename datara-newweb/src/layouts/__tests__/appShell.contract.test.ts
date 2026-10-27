@@ -159,4 +159,15 @@ describe('AUTH-UI-02 authenticated shell', () => {
     expect(appShellSource).toMatch(/\.sidebar-backdrop\{display:block/)
     expect(appShellSource).toMatch(/\.app-content\{[^}]*min-width:0/)
   })
+
+  it('keeps the logout action visible and touchable below the 768px breakpoint', () => {
+    const mobile = appShellSource.match(/@media\(max-width:767px\)\{([\s\S]*)\}\s*<\/style>/)?.[1] ?? ''
+
+    expect(mobile).not.toMatch(/\.logout-button\s*\{[^}]*display\s*:\s*none/)
+    expect(mobile).toMatch(/\.logout-button\s*\{[^}]*display\s*:\s*inline-flex/)
+    expect(mobile).toMatch(/\.logout-button\s*\{[^}]*min-height\s*:\s*32px/)
+    expect(mobile).toMatch(/\.project-manager-entry\s*\{[^}]*display\s*:\s*none/)
+    expect(mobile).toMatch(/\.user-chip \.avatar,\.user-copy\s*\{[^}]*display\s*:\s*none/)
+    expect(mobile).toMatch(/\.project-switcher\s*\{[^}]*max-width\s*:\s*110px/)
+  })
 })

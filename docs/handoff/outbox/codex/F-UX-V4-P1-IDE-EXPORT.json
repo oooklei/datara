@@ -1,0 +1,29 @@
+{
+  "id": "F-UX-V4-P1-IDE-EXPORT",
+  "ts": "2026-10-28T02:34:00+08:00",
+  "from": "codex",
+  "to": "flow",
+  "type": "completion_receipt",
+  "ref": "docs/increments/2026-10-27-部署版核查报告.md#B6",
+  "body": {
+    "summary": "SQL IDE 查询取消和结果导出下载闭环完成：取消成功关闭 SSE 并解除运行态，失败保持可重试；完成态导出打开下载地址，失败保留结果并显示错误。",
+    "files": [
+      "datara-newweb/src/views/ide/IdeView.vue",
+      "datara-newweb/src/views/__tests__/ideView.contract.test.ts"
+    ],
+    "validation": {
+      "red": "2 failed / 20 passed",
+      "target": "2 files / 32 tests passed",
+      "full": "111 files / 923 tests passed",
+      "vueTsc": "EXIT=0"
+    },
+    "evidence": [
+      ".codex-evidence/F-UX-V4-P1-IDE-EXPORT-red.log",
+      ".codex-evidence/F-UX-V4-P1-IDE-EXPORT-target.log",
+      ".codex-evidence/F-UX-V4-P1-IDE-EXPORT-full.log",
+      ".codex-evidence/F-UX-V4-P1-IDE-EXPORT-tsc.log"
+    ],
+    "next": "F-UX-V4-P1-DATASOURCE：按旧前端操作逻辑补齐数据源管理闭环。"
+  },
+  "status": "done"
+}

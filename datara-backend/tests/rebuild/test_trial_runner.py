@@ -6,6 +6,7 @@ matches snapshot nodes, terminal status SUCCEEDED/FAILED, topological execution.
 
 import json
 import sqlite3
+from datetime import datetime, timezone
 
 import pytest
 from fastapi import FastAPI
@@ -15,7 +16,14 @@ from sqlalchemy.orm import Session, sessionmaker
 from sqlalchemy.pool import StaticPool
 
 from rebuild.common.db import Base
-from rebuild.execution.models import RunOutputRecord, TaskInstanceRecord, WorkflowInstanceRecord, WorkflowRunStatRecord
+from rebuild.execution.models import (
+    RunLogRecord,
+    RunOutputRecord,
+    TaskAttemptRecord,
+    TaskInstanceRecord,
+    WorkflowInstanceRecord,
+    WorkflowRunStatRecord,
+)
 from rebuild.resources.repository import ResourceRepository
 from rebuild.trial.repository import TrialSnapshotRepository
 from rebuild.trial.runner import TrialRunner, TrialRunnerError, TrialRunOptions
@@ -23,6 +31,7 @@ from rebuild.dependency.models import DependencyConfigRecord
 from rebuild.datasource.models import ProjectDatasourceRecord
 from rebuild.project.models import ProjectRecord  # noqa: F401 - register FK target table
 from rebuild.identity.models import UserRecord  # noqa: F401 - register FK target table
+from rebuild.metrics.models import WorkflowResultStatRecord
 from rebuild.trial.api import build_trial_router
 from rebuild.workflow.models import (
     WorkflowDefinitionRecord,
@@ -576,6 +585,104 @@ def test_trial_run_executes_lowercase_dependent_component_with_mock():
     ).all()
     assert {task.task_id for task in tasks} == {"sql", "dependent"}
     assert all(task.status == "SUCCEEDED" for task in tasks)
+
+
+def test_trial_run_executes_lowercase_dependent_component_with_real_verdict_and_stats():
+    """A real dependency verdict must gate the task and its workflow statistics."""
+    as_of = datetime(2026, 10, 28, 12, tzinfo=timezone.utc)
+    cases = (
+        ("success", "valid", "today", 1, 0, "SUCCEEDED", None, (2, 0)),
+        ("failed", "valid", "today", 0, 1, "FAILED", "WF_TRIAL_DEPENDENCY_FAILED", (1, 1)),
+        ("pending", "valid", "today", None, None, "FAILED", "WF_TRIAL_DEPENDENCY_PENDING", (1, 1)),
+        ("timeout", "valid", "past", None, None, "FAILED", "WF_TRIAL_DEPENDENCY_TIMEOUT", (1, 1)),
+        ("missing", "missing", "today", None, None, "FAILED", "WF_TRIAL_DEPENDENCY_CONFIG_INVALID", (1, 1)),
+        ("invalid", "invalid", "today", None, None, "FAILED", "WF_TRIAL_DEPENDENCY_CONFIG_INVALID", (1, 1)),
+    )
+    for (
+        label,
+        config_state,
+        window,
+        upstream_successes,
+        upstream_failures,
+        expected_status,
+        expected_code,
+        expected_counts,
+    ) in cases:
+        session = _session()
+        definition_id = _make_definition(session)
+        upstream_workflow_id = 700 + len(label)
+        dependency = None
+        if config_state != "missing":
+            condition = {
+                "upstream_workflow_id": upstream_workflow_id,
+                "upstream_task_code": 0,
+                "depend_result": "success",
+                **(
+                    {"date_range": {"period_type": "day", "begin_offset": -2, "end_offset": -2}}
+                    if window == "past"
+                    else {"cycle": "day", "date_value": "today"}
+                ),
+            }
+            dependency = DependencyConfigRecord(
+                project_id=1,
+                workflow_id=definition_id,
+                workflow_version=0,
+                task_id="dependent",
+                groups_json=(
+                    "not-json"
+                    if config_state == "invalid"
+                    else json.dumps([{"join": "AND", "conditions": [condition]}])
+                ),
+                group_relation="AND",
+                timeout_seconds=1 if window == "past" else None,
+            )
+            session.add(dependency)
+            session.flush()
+        _add_node(session, definition_id, "sql", node_type="sql", params={"sql": "SELECT 1"})
+        _add_node(
+            session,
+            definition_id,
+            "dependent",
+            node_type="dependent",
+            params={"dependency_id": dependency.id} if dependency is not None else {},
+        )
+        _add_edge(session, definition_id, "sql", "dependent")
+        if upstream_successes is not None:
+            session.add(WorkflowResultStatRecord(
+                workflow_id=upstream_workflow_id,
+                run_date=as_of.date(),
+                success_count=upstream_successes,
+                failure_count=upstream_failures,
+            ))
+        session.commit()
+        snapshot = TrialSnapshotRepository(session).create_from_draft(definition_id)
+
+        result = TrialRunner(session, clock=lambda: as_of).run(
+            definition_id=definition_id,
+            snapshot_id=snapshot["snapshot_id"],
+            project_id=1,
+        )
+
+        assert result.status == expected_status, label
+        stat = session.scalar(select(WorkflowRunStatRecord).where(
+            WorkflowRunStatRecord.workflow_instance_id == result.instance_id
+        ))
+        assert (stat.success_count, stat.failure_count) == expected_counts, label
+        dependent_task = session.scalar(select(TaskInstanceRecord).where(
+            TaskInstanceRecord.workflow_instance_id == result.instance_id,
+            TaskInstanceRecord.task_id == "dependent",
+        ))
+        dependent_attempt = session.scalar(select(TaskAttemptRecord).where(
+            TaskAttemptRecord.task_instance_id == dependent_task.id
+        ))
+        assert dependent_task.status == expected_status, label
+        assert dependent_attempt.status == expected_status, label
+        if expected_code is not None:
+            error_logs = session.scalars(select(RunLogRecord).where(
+                RunLogRecord.task_instance_id == dependent_task.id,
+                RunLogRecord.level == "ERROR",
+            )).all()
+            assert any(log.message.startswith(f"{expected_code}: ") for log in error_logs), label
 
 
 def test_trial_run_validation_failure_rejects():

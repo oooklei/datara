@@ -1,0 +1,23 @@
+{
+  "id": "F-UX-V4-P1-BASELINE",
+  "ts": "2026-10-28T02:11:00+08:00",
+  "from": "codex",
+  "to": "flow",
+  "type": "completion_receipt",
+  "ref": "docs/increments/2026-10-27-部署版核查报告.md",
+  "body": {
+    "summary": "合并后前端测试契约已对齐全局唯一工作空间入口，子页面不再假设或操作局部项目选择器。",
+    "validation": {
+      "target": "13 files / 75 tests passed",
+      "full": "111 files / 915 tests passed",
+      "vueTsc": "EXIT=0"
+    },
+    "evidence": [
+      ".codex-evidence/F-UX-V4-P1-BASELINE-stage2.log",
+      ".codex-evidence/F-UX-V4-P1-BASELINE-full.log",
+      ".codex-evidence/F-UX-V4-P1-BASELINE-tsc.log"
+    ],
+    "next": "F-UX-V4-P1-MOBILE：修复并验证窄屏退出入口。"
+  },
+  "status": "done"
+}

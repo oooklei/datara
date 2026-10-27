@@ -1,0 +1,21 @@
+{
+  "id": "F-UX-V4-P1-DEPLOY-E2E",
+  "ts": "2026-10-28T03:01:21.5979176+08:00",
+  "from": "codex",
+  "to": "datara-main",
+  "type": "implementation-receipt",
+  "ref": "F-UX-V4-P1-DEPLOY-E2E",
+  "body": {
+    "deployment": "http://192.168.1.9:18091/",
+    "image": "datara-newweb:ux-v4-p1-20261028-r1",
+    "health": "root=200 api=200 running healthy",
+    "fix": "移动端顶栏压缩项目入口并隐藏冗余头像，保证退出按钮完整位于375px视口内",
+    "target_test": "appShell.contract.test.ts 11 passed",
+    "full_test": "111 files / 927 tests passed",
+    "typecheck": "vue-tsc EXIT=0",
+    "e2e": "唯一电商项目、全局项目入口、数据源筛选详情、SQL执行结果与导出、DAG与移动端布局全部通过；控制台/API失败为0",
+    "evidence": ".codex-evidence/F-UX-V4-P1-DEPLOY-E2E/",
+    "rollback": "datara-newweb-web-rollback-p1-20261028"
+  },
+  "status": "done"
+}

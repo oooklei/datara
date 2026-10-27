@@ -1,0 +1,15 @@
+Exact command: cd datara-backend; python -m pytest -q tests/rebuild/test_trial_runner.py::test_priority_components_execute_in_one_six_node_workflow_sample tests/rebuild/test_trial_runner.py::test_trial_run_executes_lowercase_dependent_component_with_real_verdict_and_stats
+Exit: 0
+Result: 2 passed in 0.94s
+
+Regression: cd datara-backend; python -m pytest -q tests/rebuild/test_trial_runner.py
+Exit: 0
+Result: 16 passed in 2.91s
+
+Syntax: cd datara-backend; python -m py_compile rebuild/trial/runner.py tests/rebuild/test_trial_runner.py
+Exit: 0
+
+Quality-review GREEN:
+Exact target command exit 0: 2 passed in 1.13s
+test_trial_runner.py exit 0: 16 passed in 2.17s
+python -m ruff check rebuild/trial/runner.py tests/rebuild/test_trial_runner.py exit 0: All checks passed!

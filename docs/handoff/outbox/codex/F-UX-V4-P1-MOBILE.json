@@ -1,0 +1,29 @@
+{
+  "id": "F-UX-V4-P1-MOBILE",
+  "ts": "2026-10-28T02:21:00+08:00",
+  "from": "codex",
+  "to": "flow",
+  "type": "completion_receipt",
+  "ref": "docs/increments/2026-10-27-部署版核查报告.md#B7",
+  "body": {
+    "summary": "AppShell 窄屏退出入口不再隐藏，保留原生按钮语义并提供 32px 最小触控高度。",
+    "files": [
+      "datara-newweb/src/layouts/AppShell.vue",
+      "datara-newweb/src/layouts/__tests__/appShell.contract.test.ts"
+    ],
+    "validation": {
+      "red": "1 failed / 10 passed",
+      "target": "1 file / 11 tests passed",
+      "full": "111 files / 916 tests passed",
+      "vueTsc": "EXIT=0"
+    },
+    "evidence": [
+      ".codex-evidence/F-UX-V4-P1-MOBILE-red.log",
+      ".codex-evidence/F-UX-V4-P1-MOBILE-green.log",
+      ".codex-evidence/F-UX-V4-P1-MOBILE-full.log",
+      ".codex-evidence/F-UX-V4-P1-MOBILE-tsc.log"
+    ],
+    "next": "F-UX-V4-P1-SPEC-REQUEST：组件规格请求取消、去重与过期响应隔离。"
+  },
+  "status": "done"
+}

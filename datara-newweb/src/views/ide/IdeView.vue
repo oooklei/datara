@@ -16,7 +16,7 @@
         <button type="button" data-execute :disabled="!canExecute" @click="runSql">
           {{ executing ? '执行中…' : '执行' }}
         </button>
-        <button type="button" data-cancel :disabled="!executing" @click="cancelRun">取消</button>
+        <button type="button" data-cancel :disabled="!executing || cancelBusy" @click="cancelRun">{{ cancelBusy ? '取消中…' : '取消' }}</button>
       </div>
     </header>
 
@@ -128,7 +128,7 @@
           </button>
           <button type="button" data-var-complete :disabled="projectId === null" @click="toggleVarSuggestions">插入变量</button>
           <button type="button" data-save-script :disabled="sqlText.trim() === ''" @click="saveScript">存为脚本</button>
-          <button type="button" data-export :disabled="lastResultSetId === null" @click="exportCurrent">导出结果</button>
+          <button type="button" data-export :disabled="lastResultSetId === null || exportBusy" @click="exportCurrent">{{ exportBusy ? '导出中…' : '导出结果' }}</button>
           <button type="button" data-lineage :disabled="projectId === null" @click="openLineage">查看血缘</button>
         </div>
         <SqlCodeEditor ref="sqlEditorEl" v-model="sqlText" placeholder="SELECT … -- 支持变量引用" />
@@ -265,7 +265,7 @@
  *   两者皆空时呈现选择器，不渲染空壳。
  * 范式：CodeMirror 6 编辑器 + splitpanes 持久化工作区，业务操作仍只调用真实后端契约。
  */
-import { computed, onMounted, ref, watch } from 'vue'
+import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { Pane, Splitpanes, type SplitpanesResizedPayload } from 'splitpanes'
 import { format } from 'sql-formatter'
@@ -348,6 +348,9 @@ const treeConstraints = ref<string[]>([])
 const sqlText = ref('')
 const executing = ref(false)
 const currentTaskId = ref('')
+const currentEventStream = ref<EventSource | null>(null)
+const cancelBusy = ref(false)
+const exportBusy = ref(false)
 const diagnostics = ref<SqlDiagnostic[]>([])
 const contractError = ref('')
 const error = ref('')
@@ -637,7 +640,9 @@ async function runSql(): Promise<void> {
 }
 
 function openStream(taskId: string): void {
+  currentEventStream.value?.close()
   const es = api.value.openEventStream(taskId)
+  currentEventStream.value = es
   es.addEventListener('result', (ev: MessageEvent) => {
     const data = JSON.parse(ev.data) as SqlResultEvent
     resultColumns.value = data.columns
@@ -652,6 +657,7 @@ function openStream(taskId: string): void {
   })
   es.addEventListener('done', async (ev: MessageEvent) => {
     es.close()
+    if (currentEventStream.value === es) currentEventStream.value = null
     executing.value = false
     const wire = JSON.parse(ev.data) as SqlDoneEvent & {
       history_id?: string | number | null
@@ -701,12 +707,24 @@ function openStream(taskId: string): void {
 
 async function cancelRun(): Promise<void> {
   const taskId = currentTaskId.value
-  if (!taskId) return
+  if (!taskId || cancelBusy.value) return
+  cancelBusy.value = true
+  error.value = ''
   try {
-    await api.value.cancelExecution(taskId)
-    status.value = '已请求取消'
+    const result = await api.value.cancelExecution(taskId)
+    if (!result.canceled) {
+      status.value = '取消请求未被接受，任务仍在运行'
+      return
+    }
+    currentEventStream.value?.close()
+    currentEventStream.value = null
+    executing.value = false
+    currentTaskId.value = ''
+    status.value = '执行已取消'
   } catch (e) {
     error.value = message(e)
+  } finally {
+    cancelBusy.value = false
   }
 }
 
@@ -791,12 +809,23 @@ async function removeScript(script: ScriptEntry): Promise<void> {
 }
 
 async function exportCurrent(): Promise<void> {
-  if (lastHistoryId.value === null || lastResultSetId.value === null) return
+  if (lastHistoryId.value === null || lastResultSetId.value === null || exportBusy.value) return
+  exportBusy.value = true
+  error.value = ''
   try {
     const result = await api.value.exportResult({ historyId: lastHistoryId.value, resultSetId: lastResultSetId.value, format: 'csv' })
-    status.value = `导出已创建：${result.exportId}`
+    if (result.status === 'failed') throw new Error(`导出失败：${result.exportId}`)
+    if (result.status === 'ready' || result.status === 'completed') {
+      const downloadUrl = result.downloadUrl || api.value.getExportDownloadUrl(result.exportId)
+      globalThis.open(downloadUrl, '_blank', 'noopener,noreferrer')
+      status.value = `导出下载已打开：${result.exportId}`
+    } else {
+      status.value = `导出任务已创建：${result.exportId}，正在生成`
+    }
   } catch (e) {
     error.value = message(e)
+  } finally {
+    exportBusy.value = false
   }
 }
 
@@ -884,6 +913,7 @@ onMounted(async () => {
   refreshVarPreview()
   if (datasourceId.value !== null) await loadHistory()
 })
+onUnmounted(() => currentEventStream.value?.close())
 </script>
 
 <style scoped>

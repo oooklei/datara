@@ -58,7 +58,7 @@ describe('/qc/task 检查任务页（IMPL-v4-07）', () => {
   it('renders project picker and skips the run query when no project is in context', async () => {
     const w = mount(View)
     await flushPromises()
-    expect(w.find('[data-project-select]').exists()).toBe(true)
+    expect(w.find('[data-project-select]').exists()).toBe(false)
     expect(w.find('[data-no-project]').exists()).toBe(true)
     expect(w.find('[data-run-list]').exists()).toBe(false)
     expect(governanceApi.listRuns).not.toHaveBeenCalled()

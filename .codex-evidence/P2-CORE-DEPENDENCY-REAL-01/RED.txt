@@ -1,0 +1,10 @@
+Command: cd datara-backend; python -m pytest -q tests/rebuild/test_trial_runner.py::test_priority_components_execute_in_one_six_node_workflow_sample tests/rebuild/test_trial_runner.py::test_trial_run_executes_lowercase_dependent_component_with_real_verdict_and_stats
+Exit: 1
+Result: 1 failed, 1 passed in 1.58s
+Expected failure: real upstream failure case returned SUCCEEDED instead of FAILED at test_trial_runner.py:640.
+
+Quality-review RED:
+Command: cd datara-backend; python -m pytest -q tests/rebuild/test_trial_runner.py::test_priority_components_execute_in_one_six_node_workflow_sample tests/rebuild/test_trial_runner.py::test_trial_run_executes_lowercase_dependent_component_with_real_verdict_and_stats
+Exit: 1
+Result: 1 failed, 1 passed in 0.88s
+Expected failure: TrialRunner did not yet accept the deterministic clock required by the expanded verdict/code test.

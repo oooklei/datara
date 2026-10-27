@@ -28,7 +28,8 @@ describe('WorkflowGraphWorkbench layout contract', () => {
     expect(source).toContain('v-else-if="selectedNodeRecord && nodeParameterKey && scriptResourceKind"')
     expect(source).toContain(':kind="scriptResourceKind"')
     expect(source).toMatch(/nodeType \?\? ''\)\.toLowerCase\(\) === 'dependent'/)
-    expect(source).toContain('v-else-if="selectedNodeRecord && isDependentNode"')
+    expect(source).toContain('v-show="activeInspectorTab === \'dependencies\'"')
+    expect(source).toContain('v-if="selectedNodeRecord && isDependentNode"')
   })
 
   it('keeps palette, canvas, and inspector reachable below the 768px breakpoint', () => {

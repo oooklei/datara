@@ -1,0 +1,19 @@
+{
+  "id": "P2-CORE-DEPENDENCY-REAL-01",
+  "ts": "2026-10-28T03:45:09.0206745+08:00",
+  "from": "codex",
+  "to": "datara-main",
+  "type": "implementation-receipt",
+  "ref": "docs/increments/2026-10-28-前端开发构建方案.md#P2-样例闭环",
+  "body": {
+    "scope": "依赖工作流组件无 mock 时执行真实依赖判定并回写运行统计",
+    "implementation": "读取 DependencyConfigRecord，复用 parse_groups/evaluate_expression/metrics_history_lookup；仅 satisfied 成功，failed/pending/timeout/config missing/config invalid 均 fail-closed",
+    "observability": "TrialRunnerError 以稳定 CODE: message 写入错误日志；attempt/task/workflow 终态与 success_count/failure_count 一致",
+    "determinism": "TrialRunner 支持注入 UTC clock，消除跨 UTC 零点测试抖动",
+    "verification": "test_trial_runner.py + test_dependency_failure_fixture.py: 18 passed; Ruff EXIT=0; py_compile EXIT=0",
+    "reviews": "spec approved; code quality approved",
+    "p2_status": "partial: dependency real execution completed; sync seven structured forms and stream aggregate request closure remain",
+    "evidence": ".codex-evidence/P2-CORE-DEPENDENCY-REAL-01/"
+  },
+  "status": "done"
+}

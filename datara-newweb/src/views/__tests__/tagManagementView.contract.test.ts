@@ -63,7 +63,7 @@ describe('/meta/tag 标签管理页（增量 14）', () => {
   it('renders project picker and skips the asset query when no project is in context', async () => {
     const w = mount(View)
     await flushPromises()
-    expect(w.find('[data-project-select]').exists()).toBe(true)
+    expect(w.find('[data-project-select]').exists()).toBe(false)
     expect(w.find('[data-no-project]').exists()).toBe(true)
     expect(w.find('[data-asset-select]').exists()).toBe(false)
     expect(governanceApi.listAssets).not.toHaveBeenCalled()
@@ -120,16 +120,14 @@ describe('/meta/tag 标签管理页（增量 14）', () => {
     const w = mount(View)
     await flushPromises()
     expect(w.find('[role=alert]').text()).toContain('asset list failed')
-    expect(w.find('[data-project-select]').exists()).toBe(true)
+    expect(w.find('[data-project-select]').exists()).toBe(false)
   })
 
-  it('keeps tag creation available with no assets and clears created history on project change', async () => {
-    vi.mocked(listProjects).mockResolvedValue({ total: 2, list: [{ id: 1, name: 'P1' }, { id: 2, name: 'P2' }] })
+  it('keeps tag creation available with no assets in the routed project', async () => {
+    router.route.params.projectId = '1'
     vi.mocked(governanceApi.listAssets).mockResolvedValue({ total: 0, page: 1, pageSize: 50, list: [] })
     vi.mocked(governanceApi.createTag).mockResolvedValue(tag)
     const w = mount(View)
-    await flushPromises()
-    await w.find('[data-project-select]').setValue('1')
     await flushPromises()
     expect(w.find('[data-no-assets]').exists()).toBe(true)
     expect(w.find('form.create').exists()).toBe(true)
@@ -139,9 +137,6 @@ describe('/meta/tag 标签管理页（增量 14）', () => {
     await w.find('form.create').trigger('submit')
     await flushPromises()
     expect(w.find('.recent-list').exists()).toBe(true)
-    await w.find('[data-project-select]').setValue('2')
-    await flushPromises()
-    expect(w.find('.recent-list').exists()).toBe(false)
   })
 
   it('requires confirmation before clearing all tags and does nothing when cancelled', async () => {
@@ -171,93 +166,4 @@ describe('/meta/tag 标签管理页（增量 14）', () => {
     expect(governanceApi.assignAssetTags).toHaveBeenCalledWith(9, [])
   })
 
-  it('clears stale assets and selections immediately while a new project is loading', async () => {
-    let resolveP2!: (value: { total: number; page: number; pageSize: number; list: typeof asset[] }) => void
-    vi.mocked(listProjects).mockResolvedValue({ total: 2, list: [{ id: 1, name: 'P1' }, { id: 2, name: 'P2' }] })
-    vi.mocked(governanceApi.listAssets).mockImplementation((projectId) => projectId === 1
-      ? Promise.resolve({ total: 1, page: 1, pageSize: 50, list: [asset] })
-      : new Promise((resolve) => { resolveP2 = resolve }))
-    const w = mount(View)
-    await flushPromises()
-    await w.find('[data-project-select]').setValue('1')
-    await flushPromises()
-    await w.find('[data-asset-select]').setValue('9')
-    await w.find('[data-project-select]').setValue('2')
-    expect(w.find('[data-tag-assets]').exists()).toBe(false)
-    expect(w.find<HTMLSelectElement>('[data-asset-select]').element.value).toBe('')
-    expect(w.find('[data-asset-select]').attributes('disabled')).toBeDefined()
-    expect(w.find('form.create button[type="submit"]').attributes('disabled')).toBeDefined()
-    resolveP2({ total: 0, page: 1, pageSize: 50, list: [] })
-    await flushPromises()
-  })
-
-  it('keeps the project locked during assignment and ignores a stale success including its finally', async () => {
-    const asset2 = { ...asset, id: 10, projectId: 2, assetName: 'customers' }
-    let resolveOld!: (value: { assetId: number; tagIds: number[] }) => void
-    let resolveCurrent!: (value: { assetId: number; tagIds: number[] }) => void
-    vi.mocked(listProjects).mockResolvedValue({ total: 2, list: [{ id: 1, name: 'P1' }, { id: 2, name: 'P2' }] })
-    vi.mocked(governanceApi.listAssets).mockImplementation((projectId) => Promise.resolve({
-      total: 1, page: 1, pageSize: 50, list: [projectId === 1 ? asset : asset2],
-    }))
-    vi.mocked(governanceApi.assignAssetTags).mockImplementation((assetId) => assetId === 9
-      ? new Promise((resolve) => { resolveOld = resolve })
-      : new Promise((resolve) => { resolveCurrent = resolve }))
-    const w = mount(View)
-    await flushPromises()
-    await w.find('[data-project-select]').setValue('1')
-    await flushPromises()
-    await w.find('[data-asset-select]').setValue('9')
-    await w.find('input[placeholder="1,2,3"]').setValue('1')
-    await w.find('.assign button[type="button"]').trigger('click')
-    expect(w.find('[data-project-select]').attributes('disabled')).toBeDefined()
-
-    const setup = (w.vm.$ as unknown as {
-      setupState: { selectedProject: string; reloadAssets: () => Promise<void> }
-    }).setupState
-    setup.selectedProject = '2'
-    await setup.reloadAssets()
-    await flushPromises()
-    await w.find('[data-asset-select]').setValue('10')
-    await w.find('input[placeholder="1,2,3"]').setValue('2')
-    await w.find('.assign button[type="button"]').trigger('click')
-    resolveOld({ assetId: 9, tagIds: [1] })
-    await flushPromises()
-    expect(w.find('[data-project-select]').attributes('disabled')).toBeDefined()
-    expect(w.find('[data-assign-result]').exists()).toBe(false)
-
-    resolveCurrent({ assetId: 10, tagIds: [2] })
-    await flushPromises()
-    expect(w.find('[data-assign-result]').text()).toContain('#10')
-    expect(w.find('[data-project-select]').attributes('disabled')).toBeUndefined()
-  })
-
-  it('locks the project during clear and ignores a stale clear failure after project replacement', async () => {
-    const tagged = { ...asset, tags: [tag] }
-    const tagged2 = { ...tagged, id: 10, projectId: 2, assetName: 'customers' }
-    let rejectOld!: (reason: Error) => void
-    vi.mocked(listProjects).mockResolvedValue({ total: 2, list: [{ id: 1, name: 'P1' }, { id: 2, name: 'P2' }] })
-    vi.mocked(governanceApi.listAssets).mockImplementation((projectId) => Promise.resolve({
-      total: 1, page: 1, pageSize: 50, list: [projectId === 1 ? tagged : tagged2],
-    }))
-    vi.mocked(governanceApi.assignAssetTags).mockImplementation(() => new Promise((_resolve, reject) => { rejectOld = reject }))
-    confirmClear.mockResolvedValue('confirm')
-    const w = mount(View)
-    await flushPromises()
-    await w.find('[data-project-select]').setValue('1')
-    await flushPromises()
-    await w.find('.op-btn.danger').trigger('click')
-    await flushPromises()
-    expect(w.find('[data-project-select]').attributes('disabled')).toBeDefined()
-
-    const setup = (w.vm.$ as unknown as {
-      setupState: { selectedProject: string; reloadAssets: () => Promise<void> }
-    }).setupState
-    setup.selectedProject = '2'
-    await setup.reloadAssets()
-    await flushPromises()
-    rejectOld(new Error('stale clear failure'))
-    await flushPromises()
-    expect(w.find('[role=alert]').exists()).toBe(false)
-    expect(w.text()).toContain('customers')
-  })
 })

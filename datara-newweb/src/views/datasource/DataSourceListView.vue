@@ -12,6 +12,20 @@
       <span class="spacer"></span>
       <span v-if="testMessage" class="result-line" role="status" data-test-result>{{ testMessage }}</span>
     </div>
+    <div class="toolbar ds-filters" aria-label="数据源筛选">
+      <input v-model.trim="filterKeyword" data-filter-keyword placeholder="搜索名称、主机或数据库">
+      <select v-model="filterKind" data-filter-kind aria-label="数据源类型">
+        <option value="">全部类型</option>
+        <option value="mysql">MySQL</option>
+        <option value="postgresql">PostgreSQL</option>
+      </select>
+      <select v-model="filterStatus" data-filter-status aria-label="连通状态">
+        <option value="">全部状态</option>
+        <option value="online">在线</option>
+        <option value="offline">离线</option>
+        <option value="untested">未测试</option>
+      </select>
+    </div>
 
     <!-- 错误横幅独立于内容态：加载失败时无数据可渲染，操作失败时列表须保留 -->
     <div v-if="error" class="err-box" role="alert" data-error>
@@ -37,7 +51,7 @@
       <div class="panel">
         <div class="tbl-toolbar">
           <span class="sec-head">数据源</span>
-          <span class="pill info">{{ rows.length }}</span>
+          <span class="pill info">{{ filteredRows.length }} / {{ rows.length }}</span>
           <span class="spacer"></span>
           <span class="hint">点击行查看元数据三级结构</span>
         </div>
@@ -46,7 +60,7 @@
             <tr><th>数据源</th><th>主机</th><th>用户名</th><th>状态</th><th>操作</th></tr>
           </thead>
           <tbody>
-            <tr v-for="row in rows" :key="row.id" :data-ds-id="row.id"
+            <tr v-for="row in filteredRows" :key="row.id" :data-ds-id="row.id"
                 :class="{ active: row.id === selectedId }" @click="selectDatasource(row.id)">
               <td>
                 <strong>{{ row.name }}</strong>
@@ -61,6 +75,7 @@
                 <span class="pill" :class="testClass(row.id)">{{ testText(row.id) }}</span>
               </td>
               <td class="ds-row-actions" @click.stop>
+                <button type="button" class="op-btn" data-detail-action @click="selectDatasource(row.id)">详情</button>
                 <button type="button" class="op-btn" data-test :disabled="testingId === row.id" @click="runTest(row)">
                   {{ testingId === row.id ? '测试中…' : '测试' }}
                 </button>
@@ -195,12 +210,9 @@ import {
   type DatasourceKind,
   type DatasourceRecord,
 } from '../../services/rebuild/datasourceApi'
-import { listProjects, type ProjectSummary } from '../../services/rebuild/projectApi'
 
 const route = useRoute()
 
-const projects = ref<ProjectSummary[]>([])
-const selected = ref('')
 const rows = ref<DatasourceRecord[]>([])
 const busy = ref(false)
 const error = ref('')
@@ -209,9 +221,15 @@ const editing = ref(false)
 const selectedId = ref<number | null>(null)
 const testingId = ref<number | null>(null)
 const testMessage = ref('')
+const testStates = ref<Record<number, 'online' | 'offline'>>({})
+const filterKeyword = ref('')
+const filterKind = ref<'' | DatasourceKind>('')
+const filterStatus = ref<'' | 'online' | 'offline' | 'untested'>('')
 
 const schemas = ref<string[]>([])
 let schemaRequest = 0
+let objectRequest = 0
+let columnRequest = 0
 const activeSchema = ref('')
 const objects = ref<{ schema: string; name: string; type: 'table' | 'view' }[]>([])
 const activeObject = ref('')
@@ -246,28 +264,28 @@ const routeProjectId = computed<number | null>(() => {
   return value !== undefined && value !== '' && Number.isInteger(n) && n > 0 ? n : null
 })
 const projectId = computed<number | null>(() => {
-  const fromRoute = routeProjectId.value
-  if (fromRoute !== null) return fromRoute
-  const n = Number(selected.value)
-  return selected.value !== '' && Number.isInteger(n) && n > 0 ? n : null
+  return routeProjectId.value
 })
 
 const selectedRow = computed(() => rows.value.find((row) => row.id === selectedId.value) ?? null)
+const filteredRows = computed(() => {
+  const keyword = filterKeyword.value.toLowerCase()
+  return rows.value.filter((row) => {
+    const state = testStates.value[row.id] ?? 'untested'
+    return (!keyword || `${row.name} ${row.host} ${row.database} ${row.username}`.toLowerCase().includes(keyword))
+      && (!filterKind.value || row.kind === filterKind.value)
+      && (!filterStatus.value || state === filterStatus.value)
+  })
+})
 
 const testClass = (id: number): string =>
-  testingId.value === id ? 'warn' : testMessage.value && selectedId.value === id ? 'ok' : 'off'
-const testText = (id: number): string => (testingId.value === id ? '测试中' : '未测试')
-
-async function loadProjects(): Promise<void> {
-  try {
-    projects.value = (await listProjects()).list
-  } catch (e) {
-    error.value = message(e)
-  }
-}
+  testingId.value === id ? 'warn' : testStates.value[id] === 'online' ? 'ok' : testStates.value[id] === 'offline' ? 'danger' : 'off'
+const testText = (id: number): string => testingId.value === id ? '测试中' : testStates.value[id] === 'online' ? '在线' : testStates.value[id] === 'offline' ? '离线' : '未测试'
 
 async function reload(): Promise<void> {
   schemaRequest += 1
+  objectRequest += 1
+  columnRequest += 1
   selectedId.value = null
   schemas.value = []
   activeSchema.value = ''
@@ -294,6 +312,8 @@ async function reload(): Promise<void> {
 /** 选中数据源：清空元数据态，加载库列表（测试信息不回写行）。 */
 async function selectDatasource(id: number): Promise<void> {
   const request = ++schemaRequest
+  objectRequest += 1
+  columnRequest += 1
   selectedId.value = id
   schemas.value = []
   activeSchema.value = ''
@@ -313,26 +333,33 @@ async function selectDatasource(id: number): Promise<void> {
 }
 
 async function selectSchema(schema: string): Promise<void> {
+  const request = ++objectRequest
+  columnRequest += 1
   activeSchema.value = schema
   activeObject.value = ''
   columns.value = []
   if (projectId.value === null || selectedId.value === null) return
   try {
     const page = await api.value.listObjects(selectedId.value, schema)
+    if (request !== objectRequest || activeSchema.value !== schema) return
     objects.value = page.items
   } catch (e) {
+    if (request !== objectRequest || activeSchema.value !== schema) return
     error.value = message(e)
   }
 }
 
 async function selectObject(obj: { schema: string; name: string; type: 'table' | 'view' }): Promise<void> {
+  const request = ++columnRequest
   activeObject.value = obj.name
   columns.value = []
   if (projectId.value === null || selectedId.value === null) return
   try {
     const page = await api.value.listColumns(selectedId.value, obj.schema, obj.name)
+    if (request !== columnRequest || activeSchema.value !== obj.schema || activeObject.value !== obj.name) return
     columns.value = page.items
   } catch (e) {
+    if (request !== columnRequest || activeSchema.value !== obj.schema || activeObject.value !== obj.name) return
     error.value = message(e)
   }
 }
@@ -345,9 +372,11 @@ async function runTest(row: DatasourceRecord): Promise<void> {
   let failure = ''
   try {
     const probe = await api.value.testDatasource(row.id)
+    testStates.value = { ...testStates.value, [row.id]: 'online' }
     testMessage.value = `连通成功：${probe.database} · ${probe.serverVersion}`
   } catch (e) {
     failure = message(e)
+    testStates.value = { ...testStates.value, [row.id]: 'offline' }
   } finally {
     testingId.value = null
     if (failure !== '') error.value = failure
@@ -412,8 +441,6 @@ async function removeRow(row: DatasourceRecord): Promise<void> {
 }
 
 onMounted(async () => {
-  if (routeProjectId.value !== null) selected.value = String(routeProjectId.value)
-  await loadProjects()
   await reload()
 })
 </script>
@@ -422,6 +449,7 @@ onMounted(async () => {
 /* 仅保留全局类无法表达的布局/语义态；颜色一律走令牌 */
 .ds-split{display:grid;grid-template-columns:minmax(520px,1fr) minmax(320px,.9fr);gap:14px;align-items:start}
 .ds-row-actions{display:flex;gap:6px;white-space:nowrap}
+.ds-filters{justify-content:flex-start}.ds-filters input{min-width:240px}.ds-filters input,.ds-filters select{padding:7px 10px;border:1px solid var(--border);border-radius:var(--radius-sm);background:var(--card);color:var(--text)}
 .tbl tbody tr{cursor:pointer}
 .tbl tbody tr.active td{background:var(--primary-light)}
 td > span{display:block}

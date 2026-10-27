@@ -55,7 +55,7 @@ describe('/meta/map 资产地图页（增量 14）', () => {
   it('renders project picker and skips the asset query when no project is in context', async () => {
     const w = mount(View)
     await flushPromises()
-    expect(w.find('[data-project-select]').exists()).toBe(true)
+    expect(w.find('[data-project-select]').exists()).toBe(false)
     expect(w.find('[data-no-project]').exists()).toBe(true)
     expect(w.find('[data-asset-table]').exists()).toBe(false)
     expect(governanceApi.listAssets).not.toHaveBeenCalled()
@@ -98,38 +98,7 @@ describe('/meta/map 资产地图页（增量 14）', () => {
     const w = mount(View)
     await flushPromises()
     expect(w.find('[role=alert]').text()).toContain('asset list failed')
-    expect(w.find('[data-project-select]').exists()).toBe(true)
-  })
-
-  it('isolates category summaries by project, reuses per-project cache, and ignores late responses', async () => {
-    type MetricPage = Awaited<ReturnType<typeof governanceApi.listMetrics>>
-    const metric = (projectId: number, name: string) => ({ id: projectId, projectId, code: `M${projectId}`, name, formula: '1', description: '', status: 'active' as const, createdAt: null, updatedAt: null })
-    const standard = (projectId: number) => ({ id: projectId, projectId, code: `S${projectId}`, name: `P${projectId} standard`, dataType: 'string', expression: 'not_null', description: '', status: 'active' as const, createdAt: null, updatedAt: null })
-    let resolveOld!: (value: MetricPage) => void
-    const oldMetrics = new Promise<MetricPage>((resolve) => { resolveOld = resolve })
-    vi.mocked(listProjects).mockResolvedValue({ total: 2, list: [{ id: 1, name: 'P1' }, { id: 2, name: 'P2' }] })
-    vi.mocked(governanceApi.listAssets).mockResolvedValue({ total: 1, page: 1, pageSize: 50, list: [asset] })
-    vi.mocked(governanceApi.listMetrics).mockImplementation((projectId) => projectId === 1
-      ? oldMetrics
-      : Promise.resolve({ total: 2, list: [metric(2, 'P2 metric')] }))
-    vi.mocked(governanceApi.listStandards).mockImplementation((projectId) => Promise.resolve({
-      total: projectId,
-      list: [standard(projectId)],
-    }))
-    const w = mount(View)
-    await flushPromises()
-    await w.find('[data-project-select]').setValue('1')
-    await flushPromises()
-    await w.findAll('[data-asset-views] button')[2]!.trigger('click')
-    await w.find('[data-project-select]').setValue('2')
-    await flushPromises()
-    expect(w.text()).toContain('P2 metric')
-    resolveOld({ total: 99, list: [metric(1, 'STALE P1 metric')] })
-    await flushPromises()
-    expect(w.text()).not.toContain('STALE P1 metric')
-    await w.find('[data-project-select]').setValue('1')
-    await flushPromises()
-    expect(governanceApi.listMetrics).toHaveBeenCalledTimes(2)
+    expect(w.find('[data-project-select]').exists()).toBe(false)
   })
 
   it('does not cache failed summaries, renders unknown instead of zero, and retries', async () => {

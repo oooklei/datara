@@ -60,7 +60,7 @@ describe('/ind/consistency 一致性检查页（增量 14）', () => {
   it('renders project picker and skips the standard query when no project is in context', async () => {
     const w = mount(View)
     await flushPromises()
-    expect(w.find('[data-project-select]').exists()).toBe(true)
+    expect(w.find('[data-project-select]').exists()).toBe(false)
     expect(w.find('[data-no-project]').exists()).toBe(true)
     expect(w.find('[data-consistency-result]').exists()).toBe(false)
     expect(governanceApi.listStandards).not.toHaveBeenCalled()
@@ -114,6 +114,6 @@ describe('/ind/consistency 一致性检查页（增量 14）', () => {
     const w = mount(View)
     await flushPromises()
     expect(w.find('[role=alert]').text()).toContain('standard list failed')
-    expect(w.find('[data-project-select]').exists()).toBe(true)
+    expect(w.find('[data-project-select]').exists()).toBe(false)
   })
 })

@@ -32,6 +32,7 @@ import subprocess
 import sys
 from copy import deepcopy
 from dataclasses import dataclass, field
+from datetime import datetime, timezone
 from typing import Any, Callable
 
 from sqlalchemy import select
@@ -42,6 +43,13 @@ from rebuild.execution.models import TaskInstanceRecord, WorkflowInstanceRecord
 from rebuild.execution.sync_executor import execute_sync_attempt
 from rebuild.sync.executor import SyncRuntimeAdapter
 from rebuild.execution.run_stats import RunStatisticsService
+from rebuild.dependency.models import DependencyConfigRecord
+from rebuild.dependency.repository import (
+    DependencyDomainError,
+    evaluate_expression,
+    metrics_history_lookup,
+    parse_groups,
+)
 from rebuild.resources.models import ResourceBindingRecord, ResourceRecord, ResourceVersionRecord
 from rebuild.resources.repository import storage_dir
 from rebuild.trial.validator import TrialValidator
@@ -93,10 +101,12 @@ class TrialRunner:
         self,
         session: Session,
         sync_driver_factory: Callable[..., SyncRuntimeAdapter] | None = None,
+        clock: Callable[[], datetime] | None = None,
     ) -> None:
         self._session = session
         self._exec = ExecutionRepository(session)
         self._sync_driver_factory = sync_driver_factory
+        self._clock = clock or (lambda: datetime.now(timezone.utc))
 
     def run(
         self,
@@ -202,7 +212,11 @@ class TrialRunner:
                 self._exec.append_run_log(
                     task_instance_id=task.id,
                     attempt_no=1,
-                    message=str(exc),
+                    message=(
+                        f"{exc.code}: {exc.msg}"
+                        if isinstance(exc, TrialRunnerError)
+                        else str(exc)
+                    ),
                     level="ERROR",
                 )
                 instance_status = "FAILED"
@@ -609,6 +623,11 @@ class TrialRunner:
         if str(node_type).upper() in {"DEPENDENCY", "DEPENDENT"}:
             dep_id_raw = params.get("dependency_id", "")
             dep_id = str(dep_id_raw)
+            def fail_dependency(code: str, message: str) -> None:
+                self._exec.transition_attempt(attempt.id, "FAILED")
+                self._exec.transition_task_instance(task.id, "FAILED")
+                raise TrialRunnerError(code, message)
+
             mock_status = (options.dependency_mock or {}).get(dep_id)
             if mock_status is None:
                 # Also try the raw value (int) as key.
@@ -626,17 +645,72 @@ class TrialRunner:
                     message=f"DEPENDENCY {dep_id} mock=FAILED",
                     level="ERROR",
                 )
-                raise TrialRunnerError("WF_TRIAL_DEPENDENCY_FAILED", f"dependency {dep_id} mock failed")
+                fail_dependency("WF_TRIAL_DEPENDENCY_FAILED", f"dependency {dep_id} mock failed")
             else:
+                try:
+                    dependency_id = int(dep_id_raw)
+                except (TypeError, ValueError):
+                    fail_dependency(
+                        "WF_TRIAL_DEPENDENCY_CONFIG_INVALID",
+                        f"dependency {dep_id!r} is not a valid dependency config id",
+                    )
+                dependency = self._session.get(DependencyConfigRecord, dependency_id)
+                if (
+                    dependency is None
+                    or dependency.project_id != project_id
+                    or dependency.workflow_id != definition_id
+                    or dependency.workflow_version != 0
+                    or dependency.task_id != str(node["node_code"])
+                ):
+                    fail_dependency(
+                        "WF_TRIAL_DEPENDENCY_CONFIG_INVALID",
+                        f"dependency {dependency_id} is not bound to this workflow task",
+                    )
+                try:
+                    dependency_payload = {
+                        "groups": json.loads(dependency.groups_json),
+                        "group_relation": dependency.group_relation,
+                        "check_interval_seconds": dependency.check_interval_seconds,
+                        "failure_policy": dependency.failure_policy,
+                        "failure_waiting_seconds": dependency.failure_waiting_seconds,
+                        "timeout_seconds": dependency.timeout_seconds,
+                        "dependent_wait_timeout_enabled": dependency.dependent_wait_timeout_enabled,
+                        "dependent_wait_timeout_seconds": dependency.dependent_wait_timeout_seconds,
+                        "dependent_wait_timeout_strategies": (
+                            json.loads(dependency.dependent_wait_timeout_strategies_json)
+                            if dependency.dependent_wait_timeout_strategies_json is not None
+                            else None
+                        ),
+                    }
+                    conditions, group_relation, policy = parse_groups(dependency_payload)
+                    verdict, _resolved = evaluate_expression(
+                        conditions,
+                        group_relation,
+                        self._clock(),
+                        policy.get("timeout_seconds"),
+                        metrics_history_lookup(self._session, project_id),
+                    )
+                except (DependencyDomainError, json.JSONDecodeError, TypeError, ValueError) as exc:
+                    fail_dependency(
+                        "WF_TRIAL_DEPENDENCY_CONFIG_INVALID",
+                        f"dependency {dependency_id} configuration is invalid: {exc}",
+                    )
                 self._exec.append_run_log(
                     task_instance_id=task.id,
                     attempt_no=attempt.attempt_no,
-                    message=f"DEPENDENCY {dep_id} has no mock; skipped",
-                    level="WARN",
+                    message=f"DEPENDENCY {dependency_id} verdict={verdict}",
+                    level="INFO" if verdict == "satisfied" else "ERROR",
                 )
-                self._exec.transition_attempt(attempt.id, "SUCCEEDED")
-                self._exec.transition_task_instance(task.id, "SUCCEEDED")
-                return
+                if verdict != "satisfied":
+                    code = {
+                        "failed": "WF_TRIAL_DEPENDENCY_FAILED",
+                        "pending": "WF_TRIAL_DEPENDENCY_PENDING",
+                        "timeout": "WF_TRIAL_DEPENDENCY_TIMEOUT",
+                    }.get(verdict, "WF_TRIAL_DEPENDENCY_UNSATISFIED")
+                    fail_dependency(
+                        code,
+                        f"dependency {dependency_id} verdict is {verdict}",
+                    )
 
         # WF-20: SQL precheck.
         if node_type == "SQL" and options.sql_precheck:

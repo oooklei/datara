@@ -23,6 +23,13 @@ const item = (type = 'sql') => ({
   ports: {},
 })
 
+function deferred<T>() {
+  let resolve!: (value: T) => void
+  let reject!: (reason?: unknown) => void
+  const promise = new Promise<T>((res, rej) => { resolve = res; reject = rej })
+  return { promise, resolve, reject }
+}
+
 describe('componentSpecApi exception contract', () => {
   beforeEach(() => {
     resetComponentSpecCache()
@@ -40,9 +47,10 @@ describe('componentSpecApi exception contract', () => {
     await expect(loadComponentSpecs()).resolves.toMatchObject({
       items: [item()], etag: ETAG, source: 'network',
     })
-    expect(fetchMock).toHaveBeenCalledWith('/api/v1/rebuild/components/spec', {
+    expect(fetchMock).toHaveBeenCalledWith('/api/v1/rebuild/components/spec', expect.objectContaining({
       headers: { token: 'ordinary-token' },
-    })
+      signal: expect.any(AbortSignal),
+    }))
   })
 
   it('revalidates with If-None-Match and reuses the successful body on 304', async () => {
@@ -53,7 +61,10 @@ describe('componentSpecApi exception contract', () => {
 
     await loadComponentSpecs()
     await expect(loadComponentSpecs()).resolves.toMatchObject({ source: 'not-modified', items: [item()] })
-    expect(fetchMock.mock.calls[1]?.[1]).toEqual({ headers: { token: 'ordinary-token', 'If-None-Match': ETAG } })
+    expect(fetchMock.mock.calls[1]?.[1]).toEqual(expect.objectContaining({
+      headers: { token: 'ordinary-token', 'If-None-Match': ETAG },
+      signal: expect.any(AbortSignal),
+    }))
   })
 
   it('uses only the last successful response after a refresh failure', async () => {
@@ -88,9 +99,69 @@ describe('componentSpecApi exception contract', () => {
     }))
     vi.stubGlobal('fetch', fetchMock)
     await loadComponentSpecs('SYNC')
-    expect(fetchMock).toHaveBeenCalledWith('/api/v1/rebuild/components/spec?workflow_type=SYNC', {
+    expect(fetchMock).toHaveBeenCalledWith('/api/v1/rebuild/components/spec?workflow_type=SYNC', expect.objectContaining({
       headers: { token: 'ordinary-token' },
+      signal: expect.any(AbortSignal),
+    }))
+  })
+
+  it('deduplicates concurrent requests for the same catalogue', async () => {
+    const response = deferred<Response>()
+    const fetchMock = vi.fn().mockReturnValue(response.promise)
+    vi.stubGlobal('fetch', fetchMock)
+
+    const first = loadComponentSpecs('NORMAL')
+    const second = loadComponentSpecs('NORMAL')
+
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+    response.resolve(new Response(JSON.stringify({ items: [item()] }), {
+      status: 200,
+      headers: { ETag: ETAG },
+    }))
+    const [firstSnapshot, secondSnapshot] = await Promise.all([first, second])
+    expect(firstSnapshot.items).toEqual(secondSnapshot.items)
+  })
+
+  it('aborts the network request when its only subscriber cancels', async () => {
+    let requestSignal: AbortSignal | undefined
+    const fetchMock = vi.fn().mockImplementation((_url: string, init?: RequestInit) => {
+      requestSignal = init?.signal ?? undefined
+      return new Promise<Response>((_resolve, reject) => {
+        requestSignal?.addEventListener('abort', () => reject(new DOMException('aborted', 'AbortError')))
+      })
     })
+    vi.stubGlobal('fetch', fetchMock)
+    const controller = new AbortController()
+
+    const pending = loadComponentSpecs('NORMAL', controller.signal)
+    controller.abort()
+
+    await expect(pending).rejects.toMatchObject({ name: 'AbortError' })
+    expect(requestSignal?.aborted).toBe(true)
+  })
+
+  it('keeps a shared request alive while another subscriber still needs it', async () => {
+    const response = deferred<Response>()
+    let requestSignal: AbortSignal | undefined
+    const fetchMock = vi.fn().mockImplementation((_url: string, init?: RequestInit) => {
+      requestSignal = init?.signal ?? undefined
+      return response.promise
+    })
+    vi.stubGlobal('fetch', fetchMock)
+    const cancelled = new AbortController()
+
+    const first = loadComponentSpecs('NORMAL', cancelled.signal)
+    const second = loadComponentSpecs('NORMAL')
+    cancelled.abort()
+
+    await expect(first).rejects.toMatchObject({ name: 'AbortError' })
+    expect(requestSignal?.aborted).toBe(false)
+    response.resolve(new Response(JSON.stringify({ items: [item()] }), {
+      status: 200,
+      headers: { ETag: ETAG },
+    }))
+    await expect(second).resolves.toMatchObject({ source: 'network' })
+    expect(fetchMock).toHaveBeenCalledTimes(1)
   })
 
   it('fails closed for runtime-only, mismatched-kind, and unpinned catalogue rows', () => {

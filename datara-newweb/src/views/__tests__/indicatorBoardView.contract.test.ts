@@ -50,7 +50,7 @@ describe('/ind/board 指标看板页（增量 14）', () => {
   it('renders project picker and skips the metric query when no project is in context', async () => {
     const w = mount(View)
     await flushPromises()
-    expect(w.find('[data-project-select]').exists()).toBe(true)
+    expect(w.find('[data-project-select]').exists()).toBe(false)
     expect(w.find('[data-no-project]').exists()).toBe(true)
     expect(w.find('[data-ind-board]').exists()).toBe(false)
     expect(governanceApi.listMetrics).not.toHaveBeenCalled()
@@ -95,6 +95,6 @@ describe('/ind/board 指标看板页（增量 14）', () => {
     const w = mount(View)
     await flushPromises()
     expect(w.find('[role=alert]').text()).toContain('metric board failed')
-    expect(w.find('[data-project-select]').exists()).toBe(true)
+    expect(w.find('[data-project-select]').exists()).toBe(false)
   })
 })

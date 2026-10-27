@@ -72,7 +72,7 @@ describe('resource project scope', () => {
     const wrapper = mount(View)
     await flushPromises()
 
-    expect(wrapper.find('[data-project-select]').exists()).toBe(true)
+    expect(wrapper.find('[data-project-select]').exists()).toBe(false)
     expect(list).toHaveBeenCalledWith(7, 'sql')
     expect(wrapper.text()).toContain('job.sh')
   })

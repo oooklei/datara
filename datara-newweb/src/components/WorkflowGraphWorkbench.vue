@@ -23,7 +23,7 @@
  * 类型实锚：@vue-flow/core 1.48.2 dist/types（NodeChange/EdgeChange/Connection/
  * MarkerType.ArrowClosed/NodeMouseEvent/EdgeMouseEvent；index.d.ts export * from './types'）。
  */
-import { computed, onActivated, onDeactivated, onUnmounted, ref } from 'vue'
+import { computed, nextTick, onActivated, onDeactivated, onUnmounted, ref } from 'vue'
 import { MarkerType, VueFlow, useVueFlow } from '@vue-flow/core'
 import type {
   Connection,
@@ -68,7 +68,35 @@ const props = defineProps<{ tab: DagTab; projectId?: number }>()
 const emit = defineEmits<{ (e: 'schedule', d: { id: number; name: string }): void }>()
 
 const graphStore = useWorkflowGraphStore()
-const variablesVisible = ref(false)
+const INSPECTOR_TABS = [
+  { id: 'properties', label: '属性' },
+  { id: 'variables', label: '变量' },
+  { id: 'dependencies', label: '依赖' },
+  { id: 'trial', label: '试运行' },
+] as const
+type InspectorTabId = (typeof INSPECTOR_TABS)[number]['id']
+const activeInspectorTab = ref<InspectorTabId>('properties')
+const variablesPanelMounted = ref(false)
+const trialPanelMounted = ref(false)
+
+function activateInspectorTab(tab: InspectorTabId) {
+  activeInspectorTab.value = tab
+  if (tab === 'variables') variablesPanelMounted.value = true
+  if (tab === 'trial') trialPanelMounted.value = true
+}
+
+function onInspectorKeydown(event: KeyboardEvent, index: number) {
+  let nextIndex = index
+  if (event.key === 'ArrowRight') nextIndex = (index + 1) % INSPECTOR_TABS.length
+  else if (event.key === 'ArrowLeft') nextIndex = (index - 1 + INSPECTOR_TABS.length) % INSPECTOR_TABS.length
+  else if (event.key === 'Home') nextIndex = 0
+  else if (event.key === 'End') nextIndex = INSPECTOR_TABS.length - 1
+  else return
+  event.preventDefault()
+  const nextTab = INSPECTOR_TABS[nextIndex]
+  activateInspectorTab(nextTab.id)
+  void nextTick(() => document.getElementById(`workflow-inspector-tab-${nextTab.id}`)?.focus())
+}
 
 const SPLIT_STORAGE_KEY = 'datara.dag.split.v1'
 function initialSplit(): { left: number; right: number } {
@@ -315,18 +343,35 @@ const SYNC_PALETTE_TYPES: readonly string[] = [
 const isSyncTab = computed(() => props.tab.type === 'sync')
 const syncSpecs = ref<ComponentSpecItem[]>([])
 const syncSpecsFailed = ref(false)
+let specRequestController: AbortController | null = null
+let specRequestSequence = 0
 
 async function loadPaletteSpecs() {
+  specRequestController?.abort()
+  const controller = new AbortController()
+  const sequence = ++specRequestSequence
+  specRequestController = controller
   try {
-    const snapshot = await loadComponentSpecs()
+    const snapshot = await loadComponentSpecs(undefined, controller.signal)
+    if (controller.signal.aborted || sequence !== specRequestSequence) return
     componentSpecs.value = snapshot.items
     syncSpecs.value = snapshot.items.filter((item) => SYNC_PALETTE_TYPES.includes(item.type))
     syncSpecsFailed.value = false
-  } catch {
+  } catch (error) {
+    if (controller.signal.aborted || sequence !== specRequestSequence
+      || (error instanceof DOMException && error.name === 'AbortError')) return
     componentSpecs.value = []
     syncSpecs.value = []
     syncSpecsFailed.value = true
+  } finally {
+    if (sequence === specRequestSequence) specRequestController = null
   }
+}
+
+function abortPaletteSpecs() {
+  specRequestSequence += 1
+  specRequestController?.abort()
+  specRequestController = null
 }
 
 function specName(spec: ComponentSpecItem): string {
@@ -376,13 +421,8 @@ function onConfigSave(params: Record<string, unknown>) {
   clearSelection()
 }
 
-const trialVisible = ref(false)
-function onToggleTrial() {
-  trialVisible.value = !trialVisible.value
-}
-
 function rebindTrialContext() {
-  if (!trialVisible.value || props.projectId === undefined) return
+  if (activeInspectorTab.value !== 'trial' || props.projectId === undefined) return
   if (!Number.isSafeInteger(props.projectId) || props.projectId <= 0) return
   if (!Number.isSafeInteger(numDocId.value) || numDocId.value <= 0) return
   trialStore.open(props.projectId, numDocId.value)
@@ -476,8 +516,12 @@ onActivated(() => {
   void ensureLoaded()
   rebindTrialContext()
 })
-onDeactivated(() => persistSnap())
+onDeactivated(() => {
+  abortPaletteSpecs()
+  persistSnap()
+})
 onUnmounted(() => {
+  abortPaletteSpecs()
   stopResize?.()
   persistSnap()
 })
@@ -571,8 +615,8 @@ function onSchedule() {
         <button class="wf-btn" :disabled="degraded || !loaded" @click="onPublish">发布</button>
         <button class="wf-btn" :disabled="degraded || !loaded" @click="onShowVersions">版本</button>
         <button class="wf-btn" data-testid="wf-schedule" :disabled="degraded || !loaded" @click="onSchedule">定时</button>
-        <button class="wf-btn" data-testid="wf-trial" :disabled="degraded || !loaded" @click="onToggleTrial">试运行</button>
-        <button class="wf-btn" data-workflow-variables :disabled="degraded || !loaded" @click="variablesVisible = true">工作流变量</button>
+        <button class="wf-btn" data-testid="wf-trial" :disabled="degraded || !loaded" @click="activateInspectorTab('trial')">试运行</button>
+        <button class="wf-btn" data-workflow-variables :disabled="degraded || !loaded" @click="activateInspectorTab('variables')">工作流变量</button>
         <span
           v-if="graphStore.docId === numDocId && graphStore.isDirty"
           class="wf-dirty"
@@ -646,58 +690,95 @@ function onSchedule() {
         @pointerdown="beginResize('right', $event)"
       />
       <aside v-if="projectId !== undefined" class="wf-aside" data-dag-inspector>
-        <header class="inspector-head"><strong>属性检查器</strong><small>{{ selectedNodeRecord?.nodeCode ?? '画布' }}</small></header>
-        <TrialRunPanel v-if="trialVisible" :project-id="projectId" :definition-id="numDocId" />
-        <NodeConfigPanel
-          v-else-if="selectedNodeObj && !isSyncMappingNode && !scriptResourceKind && !isDependentNode"
-          :node="selectedNodeObj"
-          :project-id="projectId"
-          :workflow-id="numDocId"
-          :workflow-version="1"
-          @save="onConfigSave"
-          @close="clearSelection"
-        />
-        <section v-else-if="selectedNodeRecord && nodeParameterKey && scriptResourceKind" class="node-editor" data-node-parameter-editor>
-          <strong>{{ selectedNodeRecord.nodeType }} 参数 · {{ selectedNodeRecord.nodeCode }}</strong>
-          <ScriptResourceEditor
-            v-if="scriptResourceKind"
-            :key="selectedNodeRecord.nodeCode"
+        <header class="inspector-head"><strong>检查器</strong><small>{{ selectedNodeRecord?.nodeCode ?? '画布' }}</small></header>
+        <div class="inspector-tabs" role="tablist" aria-label="工作流检查器">
+          <button
+            v-for="(item, index) in INSPECTOR_TABS"
+            :id="`workflow-inspector-tab-${item.id}`"
+            :key="item.id"
+            type="button"
+            role="tab"
+            class="inspector-tab"
+            :class="{ active: activeInspectorTab === item.id }"
+            :aria-selected="activeInspectorTab === item.id"
+            :aria-controls="`workflow-inspector-panel-${item.id}`"
+            :tabindex="activeInspectorTab === item.id ? 0 : -1"
+            @click="activateInspectorTab(item.id)"
+            @keydown="onInspectorKeydown($event, index)"
+          >{{ item.label }}</button>
+        </div>
+
+        <section id="workflow-inspector-panel-properties" v-show="activeInspectorTab === 'properties'" role="tabpanel" tabindex="0" aria-labelledby="workflow-inspector-tab-properties">
+          <NodeConfigPanel
+            v-if="selectedNodeObj && !isSyncMappingNode && !scriptResourceKind && !isDependentNode"
+            :node="selectedNodeObj"
+            :project-id="projectId"
+            :workflow-id="numDocId"
+            :workflow-version="1"
+            @save="onConfigSave"
+            @close="clearSelection"
+          />
+          <section v-else-if="selectedNodeRecord && nodeParameterKey && scriptResourceKind" class="node-editor" data-node-parameter-editor>
+            <strong>{{ selectedNodeRecord.nodeType }} 参数 · {{ selectedNodeRecord.nodeCode }}</strong>
+            <ScriptResourceEditor
+              :key="selectedNodeRecord.nodeCode"
+              :project-id="projectId"
+              :workflow-id="numDocId"
+              :workflow-version="1"
+              :task-id="selectedNodeRecord.nodeCode"
+              :kind="scriptResourceKind"
+              :model-value="selectedNodeRecord.params ?? {}"
+              @update:model-value="updateNodeParams"
+            />
+          </section>
+          <SyncMappingEditor
+            v-else-if="isSyncMappingNode && selectedNodeRecord"
             :project-id="projectId"
             :workflow-id="numDocId"
             :workflow-version="1"
             :task-id="selectedNodeRecord.nodeCode"
-            :kind="scriptResourceKind"
+            :model-value="selectedNodeRecord.params ?? {}"
+            @update:model-value="updateSyncParams"
+          />
+          <StreamObservationPanel
+            v-else-if="workflowType === 'STREAM'"
+            :project-id="projectId"
+            :workflow-id="numDocId"
+            :workflow-name="tab.name"
+          />
+          <div v-else class="inspector-empty">
+            <span>◇</span><strong>选择一个节点以编辑配置</strong><small>节点参数由已发布组件 spec 动态生成</small>
+          </div>
+        </section>
+
+        <section id="workflow-inspector-panel-variables" v-show="activeInspectorTab === 'variables'" class="inspector-panel" role="tabpanel" tabindex="0" aria-labelledby="workflow-inspector-tab-variables">
+          <WorkflowVariablePanel
+            v-if="variablesPanelMounted"
+            :model-value="true"
+            :project-id="projectId"
+            :workflow-id="numDocId"
+            @update:model-value="activateInspectorTab('properties')"
+          />
+        </section>
+
+        <section id="workflow-inspector-panel-dependencies" v-show="activeInspectorTab === 'dependencies'" class="inspector-panel" role="tabpanel" tabindex="0" aria-labelledby="workflow-inspector-tab-dependencies">
+          <DependencyNodeEditor
+            v-if="selectedNodeRecord && isDependentNode"
+            :project-id="projectId"
+            :workflow-id="numDocId"
+            :workflow-version="1"
+            :task-id="selectedNodeRecord.nodeCode"
             :model-value="selectedNodeRecord.params ?? {}"
             @update:model-value="updateNodeParams"
           />
+          <div v-else class="inspector-empty">
+            <span>◇</span><strong>当前节点不支持依赖配置</strong><small>请选择 dependent 类型节点</small>
+          </div>
         </section>
-        <DependencyNodeEditor
-          v-else-if="selectedNodeRecord && isDependentNode"
-          :project-id="projectId"
-          :workflow-id="numDocId"
-          :workflow-version="1"
-          :task-id="selectedNodeRecord.nodeCode"
-          :model-value="selectedNodeRecord.params ?? {}"
-          @update:model-value="updateNodeParams"
-        />
-        <SyncMappingEditor
-          v-else-if="isSyncMappingNode && selectedNodeRecord"
-          :project-id="projectId"
-          :workflow-id="numDocId"
-          :workflow-version="1"
-          :task-id="selectedNodeRecord.nodeCode"
-          :model-value="selectedNodeRecord.params ?? {}"
-          @update:model-value="updateSyncParams"
-        />
-        <StreamObservationPanel
-          v-else-if="workflowType === 'STREAM'"
-          :project-id="projectId"
-          :workflow-id="numDocId"
-          :workflow-name="tab.name"
-        />
-        <div v-else class="inspector-empty">
-          <span>◇</span><strong>选择一个节点以编辑配置</strong><small>节点参数由已发布组件 spec 动态生成</small>
-        </div>
+
+        <section id="workflow-inspector-panel-trial" v-show="activeInspectorTab === 'trial'" class="inspector-panel" role="tabpanel" tabindex="0" aria-labelledby="workflow-inspector-tab-trial">
+          <TrialRunPanel v-if="trialPanelMounted" :project-id="projectId" :definition-id="numDocId" />
+        </section>
       </aside>
     </div>
 
@@ -709,12 +790,6 @@ function onSchedule() {
         <el-table-column prop="publishedAt" label="发布时间" width="170" />
       </el-table>
     </el-dialog>
-    <WorkflowVariablePanel
-      v-if="projectId !== undefined"
-      v-model="variablesVisible"
-      :project-id="projectId"
-      :workflow-id="numDocId"
-    />
   </div>
 </template>
 
@@ -874,6 +949,9 @@ function onSchedule() {
 }
 .inspector-head{position:sticky;top:0;z-index:2;display:flex;justify-content:space-between;align-items:center;height:42px;padding:0 14px;border-bottom:1px solid var(--border-color,#e2e8f0);background:var(--card,#fff)}
 .inspector-head strong{font-size:13px;color:var(--text,#172033)}.inspector-head small{font-family:var(--font-mono,monospace);color:var(--text-3,#94a3b8)}
+.inspector-tabs{position:sticky;top:42px;z-index:2;display:grid;grid-template-columns:repeat(4,minmax(0,1fr));border-bottom:1px solid var(--border-color,#e2e8f0);background:var(--card,#fff)}
+.inspector-tab{padding:9px 4px;border:0;border-bottom:2px solid transparent;background:transparent;color:var(--text-2,#64748b);font:inherit;font-size:12px;cursor:pointer}.inspector-tab.active{border-bottom-color:var(--primary,#2563eb);color:var(--primary,#2563eb);font-weight:600}.inspector-tab:focus-visible{outline:2px solid var(--primary,#2563eb);outline-offset:-2px}
+.inspector-panel{min-height:0}.inspector-panel :deep(.workflow-variable-panel){position:static;width:auto;border:0;border-radius:0;box-shadow:none}
 .inspector-empty{display:grid;place-items:center;gap:7px;padding:72px 20px;text-align:center;color:var(--text-3,#94a3b8)}.inspector-empty span{font-size:28px;color:var(--primary,#2563eb)}.inspector-empty strong{font-size:13px;color:var(--text-2,#64748b)}.inspector-empty small{font-size:11px}
 .wf-flow :deep(.vue-flow) {
   height: 100%;

@@ -207,6 +207,20 @@ beforeEach(() => {
   trialMock.state.runResult = null
 })
 
+it('aborts the component catalogue subscription when the workbench unmounts', async () => {
+  let signal: AbortSignal | undefined
+  specMock.loadComponentSpecs.mockImplementation((_workflowType?: string, requestSignal?: AbortSignal) => {
+    signal = requestSignal
+    return new Promise(() => undefined)
+  })
+  const { wrapper } = makeWorkbench('wf')
+  await nextTick()
+
+  expect(signal).toBeInstanceOf(AbortSignal)
+  wrapper.unmount()
+  expect(signal?.aborted).toBe(true)
+})
+
 describe('WorkflowGraphWorkbench L12-02 同步工作流契约', () => {
   it('用例1 加载完成：wf-body 在位 + VueFlow 收到 3 节点 2 边 + 托盘 13 类型 + 非 sync tab 无组件侧栏', async () => {
     const { wrapper } = makeWorkbench('wf')

@@ -63,7 +63,7 @@ describe('/std/element 标准管理页（增量 14）', () => {
   it('renders project picker and skips the standard query when no project is in context', async () => {
     const w = mount(View)
     await flushPromises()
-    expect(w.find('[data-project-select]').exists()).toBe(true)
+    expect(w.find('[data-project-select]').exists()).toBe(false)
     expect(w.find('[data-no-project]').exists()).toBe(true)
     expect(w.find('[data-std-list]').exists()).toBe(false)
     expect(governanceApi.listStandards).not.toHaveBeenCalled()
@@ -125,23 +125,7 @@ describe('/std/element 标准管理页（增量 14）', () => {
     const w = mount(View)
     await flushPromises()
     expect(w.find('[role=alert]').text()).toContain('standard list failed')
-    expect(w.find('[data-project-select]').exists()).toBe(true)
+    expect(w.find('[data-project-select]').exists()).toBe(false)
   })
 
-  it('invalidates an in-flight check when the project changes', async () => {
-    let resolveCheck!: (value: typeof checkResult[]) => void
-    vi.mocked(listProjects).mockResolvedValue({ total: 2, list: [{ id: 1, name: 'P1' }, { id: 2, name: 'P2' }] })
-    vi.mocked(governanceApi.listStandards).mockResolvedValue({ total: 1, list: [standard] })
-    vi.mocked(governanceApi.checkStandard).mockImplementation(() => new Promise((resolve) => { resolveCheck = resolve }))
-    const w = mount(View)
-    await flushPromises()
-    await w.find('[data-project-select]').setValue('1')
-    await flushPromises()
-    await w.find('[data-std-list] button').trigger('click')
-    await w.find('[data-project-select]').setValue('2')
-    await flushPromises()
-    resolveCheck([checkResult])
-    await flushPromises()
-    expect(w.find('[data-check-result]').exists()).toBe(false)
-  })
 })

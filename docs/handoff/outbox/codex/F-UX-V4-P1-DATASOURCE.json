@@ -1,0 +1,30 @@
+{
+  "id": "F-UX-V4-P1-DATASOURCE",
+  "ts": "2026-10-28T02:38:00+08:00",
+  "from": "codex",
+  "to": "flow",
+  "type": "completion_receipt",
+  "ref": "docs/increments/2026-10-27-部署版核查报告.md#数据源管理",
+  "body": {
+    "summary": "数据源管理按旧前端操作链补齐筛选、明确详情、行级连通状态及编辑安全语义，并移除页面内残留项目加载逻辑；元数据快速切换隔离过期响应。",
+    "files": [
+      "datara-newweb/src/views/datasource/DataSourceListView.vue",
+      "datara-newweb/src/views/__tests__/dataSourceListView.contract.test.ts"
+    ],
+    "validation": {
+      "red": "filter/detail 2 failed; stale object response 1 failed",
+      "target": "2 files / 16 tests passed",
+      "full": "111 files / 927 tests passed",
+      "vueTsc": "EXIT=0"
+    },
+    "evidence": [
+      ".codex-evidence/F-UX-V4-P1-DATASOURCE-red.log",
+      ".codex-evidence/F-UX-V4-P1-DATASOURCE-race-red.log",
+      ".codex-evidence/F-UX-V4-P1-DATASOURCE-target.log",
+      ".codex-evidence/F-UX-V4-P1-DATASOURCE-full.log",
+      ".codex-evidence/F-UX-V4-P1-DATASOURCE-tsc.log"
+    ],
+    "next": "部署到 192.168.1.9 并执行 P1 统一浏览器验收。"
+  },
+  "status": "done"
+}

@@ -32,6 +32,12 @@ export interface ComponentSpecSnapshot {
 }
 
 const lastSuccess = new Map<string, Omit<ComponentSpecSnapshot, 'source'>>()
+interface PendingRequest {
+  controller: AbortController
+  promise: Promise<ComponentSpecSnapshot>
+  subscribers: number
+}
+const pendingRequests = new Map<string, PendingRequest>()
 const WORKFLOW_TYPES = new Set<WorkflowType>(['NORMAL', 'SYNC', 'STREAM'])
 const FORM_SECTIONS: FormSection[] = ['inputs', 'outputs', 'params', 'conditions', 'constraints', 'exclusions', 'refs', 'exports']
 
@@ -81,6 +87,8 @@ function validatePayload(value: unknown): { items: ComponentSpecItem[] } {
 }
 
 export function resetComponentSpecCache(): void {
+  pendingRequests.forEach((pending) => pending.controller.abort())
+  pendingRequests.clear()
   lastSuccess.clear()
 }
 
@@ -97,7 +105,35 @@ export function isDesignComponent(item: ComponentSpecItem, workflowType: Workflo
  * Loads the authoritative catalog. A failed refresh may use only the last
  * successful response; the first load always fails closed and remains retryable.
  */
-export async function loadComponentSpecs(
+function abortError(): DOMException {
+  return new DOMException('component specification request aborted', 'AbortError')
+}
+
+function subscribe(pending: PendingRequest, signal?: AbortSignal): Promise<ComponentSpecSnapshot> {
+  if (signal?.aborted) return Promise.reject(abortError())
+  pending.subscribers += 1
+  return new Promise((resolve, reject) => {
+    let settled = false
+    const release = () => {
+      if (settled) return
+      settled = true
+      pending.subscribers -= 1
+      signal?.removeEventListener('abort', onAbort)
+    }
+    const onAbort = () => {
+      release()
+      if (pending.subscribers === 0) pending.controller.abort()
+      reject(abortError())
+    }
+    signal?.addEventListener('abort', onAbort, { once: true })
+    pending.promise.then(
+      (snapshot) => { release(); resolve(snapshot) },
+      (error: unknown) => { release(); reject(error) },
+    )
+  })
+}
+
+async function requestComponentSpecs(
   workflowType?: WorkflowType,
   signal?: AbortSignal,
 ): Promise<ComponentSpecSnapshot> {
@@ -123,8 +159,36 @@ export async function loadComponentSpecs(
     lastSuccess.set(cacheKey, snapshot)
     return { ...snapshot, source: 'network' }
   } catch (error) {
+    if (error instanceof DOMException && error.name === 'AbortError') throw error
     if (cached) return { ...cached, source: 'last-success' }
     throw error
   }
+}
+
+export function loadComponentSpecs(
+  workflowType?: WorkflowType,
+  signal?: AbortSignal,
+): Promise<ComponentSpecSnapshot> {
+  if (signal?.aborted) return Promise.reject(abortError())
+  const cacheKey = workflowType ?? 'ALL'
+  let pending = pendingRequests.get(cacheKey)
+  if (pending?.controller.signal.aborted) {
+    pendingRequests.delete(cacheKey)
+    pending = undefined
+  }
+  if (!pending) {
+    const controller = new AbortController()
+    const created: PendingRequest = {
+      controller,
+      subscribers: 0,
+      promise: Promise.resolve({ items: [], etag: '', source: 'network' }),
+    }
+    created.promise = requestComponentSpecs(workflowType, controller.signal).finally(() => {
+      if (pendingRequests.get(cacheKey) === created) pendingRequests.delete(cacheKey)
+    })
+    pendingRequests.set(cacheKey, created)
+    pending = created
+  }
+  return subscribe(pending, signal)
 }
 
