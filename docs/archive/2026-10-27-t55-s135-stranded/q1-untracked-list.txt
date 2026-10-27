@@ -1,0 +1,2 @@
+.s9-operator-runner.cjs
+docs/increments/evidence/R3/r3s9-20261015235317-b7b6e9.json

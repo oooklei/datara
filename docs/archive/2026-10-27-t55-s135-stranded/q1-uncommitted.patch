@@ -1,0 +1,15 @@
+diff --git a/datara-web/tests/perf/last-bench.json b/datara-web/tests/perf/last-bench.json
+index 02a1d31b..1e066557 100644
+--- a/datara-web/tests/perf/last-bench.json
++++ b/datara-web/tests/perf/last-bench.json
+@@ -1,7 +1,7 @@
+ {
+-  "generatedAt": "2026-10-06T18:52:53.217Z",
++  "generatedAt": "2026-10-16T00:00:33.168Z",
+   "nodeCount": 200,
+   "edgeCount": 400,
+-  "cloneDoc100Ms": 57.05,
+-  "undoSnapshot50Ms": 43.95
++  "cloneDoc100Ms": 171.56,
++  "undoSnapshot50Ms": 103.28
+ }

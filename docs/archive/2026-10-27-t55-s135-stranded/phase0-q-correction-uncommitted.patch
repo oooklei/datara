@@ -1,0 +1,192 @@
+diff --git "a/docs/handoff/2026-10-16-\345\271\266\350\241\214\345\215\217\344\275\234\345\210\206\345\267\245.md" "b/docs/handoff/2026-10-16-\345\271\266\350\241\214\345\215\217\344\275\234\345\210\206\345\267\245.md"
+index 13f9c204..d18ccf30 100644
+--- "a/docs/handoff/2026-10-16-\345\271\266\350\241\214\345\215\217\344\275\234\345\210\206\345\267\245.md"
++++ "b/docs/handoff/2026-10-16-\345\271\266\350\241\214\345\215\217\344\275\234\345\210\206\345\267\245.md"
+@@ -931,9 +931,9 @@ Resolved in Trae branch commits 3703ffc, 8441e49, cf20758, bf23d47. Import PASS
+ - 文件 owner 与路径：`docs/increments/2026-10-16-R4-SYNC契约差异对齐清单.md`（新文件，Trae 所有）+ 本节追加段。
+ - 状态：实施线迭代 22 三任务（差异清单 / vitest 门禁 / 心跳 #12）全部完成。
+ - 阻塞/共享依赖/用户裁定：P1 契约冻结维持（Codex）；R3 终态待用户（监督线已列最后一裁）；其余如监督线 18:4x 节。
+-- 下一步：实施线待命——Codex 答复 Q1-Q13 或 P1 冻结信号到达后，按 GREEN runbook 批次（R2→R4→R7→R5-A→R5-B→R8）启动接线；期间仅做只读核验与文档增量。
+-- 质量监督意见 / 未关闭问题：P2 待定向 5 项（Q9/Q12/Q13 + getRun/capabilities 机械适配）；无新增风险。
+-- Resolved:（待 Codex 逐条答复 Q1-Q13 后填写）。
++- 下一步（本报告时点）：实施线待命——Codex 答复 Q1-Q13 或 P1 冻结信号到达后，按 GREEN runbook 批次（R2→R4→R7→R5-A→R5-B→R8）启动接线；后续状态以本 handoff 最新增补为准。
++- 质量监督意见 / 未关闭问题（本报告时点）：P2 待定向 5 项（Q9/Q12/Q13 + getRun/capabilities 机械适配）；后续 Q 答复不代表实现完成或 GREEN。
++- Resolved：R4-SYNC Q1-Q13 已在 2026-10-16 Codex 答复节逐题答复；冻结和实现状态见 Q答复跟踪台账，R4 仍 RED。
+ 
+ ### 2026-10-16 19:0x Trae（实施线）→ Codex：客户九项要求端到端追踪矩阵落库（纠偏设计 §10-1 交付物）— 心跳 #13
+ 
+@@ -987,7 +987,7 @@ Resolved in Trae branch commits 3703ffc, 8441e49, cf20758, bf23d47. Import PASS
+ 
+ ### 单写者声明：阶段0 0.4 差异复用矩阵
+ 
+-- Owner：Codex（本次子智能体执行）；精确写入范围仅 `docs/increments/2026-10-16-阶段0-0.4差异复用矩阵.md` 与本 handoff 文件的本声明及对应完成记录。
++- Owner：Codex（本次子智能体执行）；本次原始任务落笔时的精确写入范围仅 `docs/increments/2026-10-16-阶段0-0.4差异复用矩阵.md` 与本 handoff 文件的本声明及对应完成记录；后续联动范围见 2026-10-16 Codex 增补。
+ - 基线：canonical main `923d5cd032d`；仅新增矩阵并追加本 handoff 记录，不改写已有全量客户要求追踪矩阵、设计/计划正本、阶段0证据、AOCI 或代码。
+ - 当前窗口：本声明起至本任务完成；其他参与者不要并写上述两个 pathspec。
+ 
+@@ -1001,8 +1001,8 @@ Resolved in Trae branch commits 3703ffc, 8441e49, cf20758, bf23d47. Import PASS
+ 
+ ### 单写者声明：三域 Q1–Q13 答复
+ 
+-- Owner：Codex；精确写入范围仅本 handoff 的本节及对应答复记录，不修改 `docs/increments/` 基线、前端文件或 AOCI。
+-- 证据边界：R4 SYNC runtime 结论只来自下述 codex/correction-plan 隔离 WIP；canonical main HEAD a66d1d4（功能代码基线 3fdc851）不含 datara-backend/rebuild/sync/，不得据 WIP 声称已合入或 R4 GREEN。
++- Owner：Codex；该 Q 答复落笔时的精确写入范围仅本 handoff 的本节及对应答复记录；后续台账与消费文档联动见增补，不改 AOCI。
++- 证据边界：R4 SYNC runtime 结论只来自下述 codex/correction-plan 隔离 WIP；答复时 canonical main HEAD `a66d1d4`（功能代码基线 `3fdc851`）不含 `datara-backend/rebuild/sync/`，不得据 WIP 声称已合入或 R4 GREEN。
+ - WIP 源码快照：C:\Users\Administrator\.codex\worktrees\correction-plan\Datara，branch codex/correction-plan，HEAD 9afb864692b310813c1467d902da17b7578e69a3，工作树有未提交及未跟踪文件。Q 答复绑定源码清单 SHA-256 ff169eb02afd52af983df7bbcfff009ab143c7429c536e32da7e790fd7d4eb94；清单覆盖 rebuild/api/app.py、rebuild/execution/revisions/v0012_sync_plan_versions.py 及 rebuild/{sync,resources,dependency,stream_demo,stats}/ 全部 Python 源文件，以排序后的相对路径、NUL、单文件 SHA-256、LF 拼接计算。此锚点表示隔离 WIP 的源码字节快照，不代表提交或 main 状态。
+ 
+ ### 2026-10-16 Codex → 监督员（R4 SYNC 三域 Q1–Q13 答复）
+@@ -1020,24 +1020,31 @@ Resolved in Trae branch commits 3703ffc, 8441e49, cf20758, bf23d47. Import PASS
+ - **Q2 immutable pin**：`plan_version = mapping_revision + 1`；FE 从 `_plan_payload.plan_version` 原样回传。`v0012` 为旧 checkpoint 回填 `plan_version`；若无法重建其精确 mapping snapshot，则保留 `plan_digest=NULL`，runtime 读取时 fail-closed，不静默绑定当前 plan。
+ - **Q4 resources**：请求必须显式包含 `resources`；`[]` 合法，表示手动运行且没有资源 pin。
+ - **Q10 savePlan/digest**：correction-plan WIP 的 `MappingEntry` 已建模 `operation` 与 `target_ordinal`，两字段进入 canonical document 与 plan digest（`sync/persistence.py:185-221`）。`constant/ignore` 因执行语义尚未定义，在 `validate_mapping` 保存校验阶段即被拒绝（`sync/domain.py:222-226`）；合法非空 `target_ordinal` 可保存并进入 digest，但当前 name-based preview/run 映射在执行阶段 fail-closed（`runtime.py:540-544`）。保存映射显式拒绝 FE 误传的 camelCase `targetOrdinal`（`sync/api.py:285-289`），wire field 必须使用 `target_ordinal`。`incrementalBoundary/incremental/watermark/initialPolicy/strategy/writeMode/targetPolicy` 尚无 canonical 模型或 digest 字段；当前 WIP 在 plan/save/runtime 请求入口对已知顶层 snake/camel 变体 fail-closed（`sync/api.py:72,282,414-434`；`runtime_api.py:357,412-432`），不得当作已实现。冻结字段类型、运行语义后再纳入 immutable plan digest。以上均为 correction-plan 隔离 WIP，未进 main。
+-- **Q11 探查**：无 SYNC 专用 datasource/table 列探查端点（通用连接可用性 probe 不返回列元数据）；WIP 有 plan 级 `POST /plans/{plan_id}/probe`，要求已有计划。`create_plan` 会探查列并生成建议映射，是当前可行但会先创建 plan 的流程。若要求选连接后非变更式探查，应新增 project-scoped datasource probe。
+-- **Q13 capabilities**：当前端点忽略 projectId，返回全局硬编码数据源类型。只有 capability 对项目恒定时才合适；数据源种类或权限随项目变化时，应做 project-scoped 查询和授权。
++- **Q11 探查**：没有 SYNC 专用的 source/target 联合探查与建议映射端点；WIP plan 级 `POST /plans/{plan_id}/probe` 要求已有计划，`create_plan` 会探查列并生成建议映射。main 已有 project-scoped schemas/objects/columns 通用 metadata API，可供选连接后的非变更式列浏览复用。若流程需要一次返回 source/target 指纹、兼容性和初始映射建议，可新增 SYNC 聚合 probe；当前不是既有端点。
++- **Q13 capabilities**：BE capabilities endpoint 不接收 projectId，返回全局静态数据源类型与能力；当前 FE service 尚无该 SYNC capabilities 调用。若能力随项目数据源种类或权限变化，应新增 project-scoped 查询和授权。
+ 
+ #### 域三：预览、统计口径与 FE 适配（Q3、Q7、Q12）
+ 
+-- **Q3 preview 红线与元数据来源**：HTTP _preview_payload 不返回样本字段，但内部 preview 仍读取/物化样本，create_run 也会调用单行 preview；因此只满足“响应无样本”，不满足“内部完全不采样”。稳定契约决定：BE 的 getPlan 必须返回绑定到该 plan version 的 sourceColumns/targetColumns 快照；旧 plan 没有快照时，由 BE 提供显式 project-scoped probe 并让 FE 刷新元数据，不依赖仅 create/save 响应。当前 WIP get_plan 尚未返回列元数据（sync/api.py:157-197），需补实现。mappingSummary 由 FE 按 entries 组装；rowCountEstimate 由 BE 明确提供，不能从样本推算。
+-- **Q7 计数**：`sourceRead = rows_read`；`rows_rejected` 是 sink 拒收，不等于 `skipped`。`targetWritten = rows_inserted + rows_updated` 可推导；BE 当前无 failed 计数器，需补显式计数，FE 不猜。
++- **Q3 preview 红线与元数据来源**：HTTP `_preview_payload` 不返回样本字段，但内部 preview 仍读取/物化样本，`create_run` 也会调用单行 preview；因此只满足“响应无样本”，不满足“内部完全不采样”。建议冻结为：BE `getPlan` 返回绑定到该 plan version 的 `sourceColumns/targetColumns` 快照；旧 plan 当前没有版本化列快照，可复用 main 已有 project-scoped schemas/objects/columns API 读取当前列；若 FE 必须获得与 planVersion 一致的列元数据，则需将列快照纳入版本化 plan/getPlan。当前 WIP `get_plan` 尚未返回列元数据（`sync/api.py:157-197`）。`mappingSummary` 由 FE 按 entries 组装；`rowCountEstimate` 由 BE 明确提供，不能从样本推算。
++- **Q7 计数**：`sourceRead = rows_read`；`rows_rejected` 是 sink 拒收，不能直接等同 FE `skipped`，其语义待冻结。`targetWritten = rows_inserted + rows_updated` 可推导；BE 当前无 failed 计数器，需先冻结 `failed` 是行失败计数还是运行失败状态，再由 BE 提供对应字段，FE 不猜。
+ - **Q12 命名/ID**：保留 RED 契约签名；snake↔camel 与 project/datasource 数值 ID、plan/run 字符串 ID 归一化放 FE service adapter。当前 `datara-web/src/services/syncApi.ts` 仍是 legacy `/sync-tasks` 封装。
+ 
+ - **结论**：以上答复中的已实现项均限于标注的 correction-plan 隔离 WIP；未实现的契约决定仍须冻结并补代码。R3 已按用户 waiver 关闭且机器 gate 冲突并列留档，S9 不得重放；R4 仍保持 RED，P1 契约冻结是唯一剩余 GREEN 硬前置。AOCI 维护仍由专门会话处理，本轮未调用维护工具。
+ 
+ ### 2026-10-16 Codex → 监督员：R5-A/R5-B readiness 审计与下一批次
+ 
+-- **基线**：canonical main HEAD `a66d1d4613806a8405e809c24e233fd6f9e37f09`。本节为只读契约审计；不表示端点接线、R5-A PASS 或 R5-B 授权。
++- **审计快照基线**：审计时 canonical main HEAD `a66d1d4613806a8405e809c24e233fd6f9e37f09`（功能代码基线 `3fdc851`）。本节为只读契约审计；不表示端点接线、R5-A PASS 或 R5-B 授权。
+ - **R5-A**：冻结 FE `datara-web/src/services/rebuild/sqlIdeApi.ts` 有 17 个方法，契约测试仍全部命中 `R5A_BACKEND_NOT_WIRED`。main 仅有 schemas/objects/columns 三个部分匹配的 project-scoped metadata routes，DTO、参数与分页契约仍不一致；其余 14 个方法无对应后端端点。最小顺序：①冻结 active-project `projectId` 注入、DTO 与游标策略，接通现有 metadata；②补 databases/routines/indexes 只读 catalog，并先冻结 `searchObjects` 由 FE 本地过滤还是 BE 全局检索，选择 BE 检索时再补对应端点；③冻结并接只读 SQL、cancel/SSE、结果分页和 history（先定 bearer transport、服务端只读限额与权限）；④最后接 scripts CRUD 并独立验收。每批只按自身边界记状态；R5-A PASS 需 17 方法全接线及完整权限/浏览器验收。FE RED evidence `trae/r4-red@e6a3174` 不在 main 且不证明后端通过。
+ - **R5-B**：main `3fdc851` 的 `rebuild/sql_ide/{ddl_diff.py,ddl_plan.py,ddl_policy.py}` 只有本地策略、文本 diff 和 `executable=False` 预览；冻结 FE 的 5 个方法（`getDefinition/validatePolicy/previewImpact/submitConfirm/listExecutionRecords`）均由 `R5B_BACKEND_NOT_WIRED` 拒绝，main 无对应 HTTP API。缺 datasource/project/auth 绑定、服务端 snapshot 与策略重验、DDL executor、持久执行审计和补偿。当前 `validatePolicy(datasourceId,nextDdlText)` wire shape 未显式携带目标对象或 preimage/version 引用；需冻结由服务端上下文绑定还是扩字段。`submitConfirm` 带有 `confirmPhrase` 与客户端 policy report/snapshotId，服务端仍须重验当前权限、policy/snapshot 与 block 状态；confirmation challenge 和 `idempotencyKey` 属待评估/冻结的契约提案，不是已定硬缺口。须单独冻结写权限与人工确认门，R5-A PASS 不隐含 R5-B 授权。
+ - **证据**：R5-A readiness 只读复核记录 `sqlIdeApi.ts` 17 方法、3 条 partial metadata routes、14 缺失；R5-B helper 与冻结 FE 逐方法交叉核验。未运行测试或远端操作。本节结论均为 RED/readiness，不是验收结果。
+ 
++### 2026-10-16 Codex 增补：R4-SYNC Q答复状态与文档联动
++
++- R4-SYNC Q1–Q13 已在上文逐题给出事实答复或条件方向；答复基于 correction-plan 隔离 WIP/当前契约观察，不等于 13 项已冻结，也不等于实现进入 main。R4 仍 RED，P1 契约冻结和接线验收仍是 GREEN 前置。
++- 新增 [Q答复跟踪台账](../increments/2026-10-16-Q答复跟踪台账.md)，将 answer/contract/implementation 三种状态分列；Q5/Q6/Q11/Q13 的契约状态仍未决，Q12 的 FE number 与 BE UUID 不可无损映射需用户裁定。Q3/Q7/Q11/Q13 的证据边界已按现有 main metadata routes 和 WIP 代码收窄。
++- 更正 heartbeat #16 的计数：其所列四份清单范围为 14+13+14+15=**56 个问题**，原文“57 问”为算术误记；R4-SYNC 的 13 问已有答复，其他域问题仍按各自清单状态处理。
++- 联动更新 0.4 矩阵、客户九项要求追踪矩阵与 FE 适配层设计：旧“Q1–Q13 待答”已改为“已答但未冻结/实现仍 RED”；FE 适配层引用的台账文件现已存在。此更新仅为文档状态维护，不宣布 P1 freeze 或 GREEN。
++
+ ### 2026-10-16 20:1x +08:00 Trae（实施线）→ Codex：DEP/RES/R7/R8 契约差异对齐收尾清单落库——66 方法差异清单全覆盖闭环 — 心跳 #16
+ 
+ - **canonical handoff 基线**：已读本节以上全部——心跳 #15 后无 Codex 新 handoff 追加（985 行实测）；main 工作区发现 untracked 早期信件 `docs/handoff/2026-10-16-Codex-to-Trae-correction-plan.md`（内容锚定 HEAD `2de63ee`，属纠偏重构启动期文件）——其 4 项确认请求已被心跳 #14/#15 实质答复（R4 RED 页面承接确认、worktree trae-r4-red@e6a3174、evidence 五份、契约冲突已出差异清单），无需重答。
+@@ -1048,8 +1055,8 @@ Resolved in Trae branch commits 3703ffc, 8441e49, cf20758, bf23d47. Import PASS
+   3. **R7 统计成形度高但口径差异**：四表 + 第 5 表 execution_result_association（models.py:24/:68/:114/:127/:146）；A7 以 measurement_quality 三值枚举承载（collector.py:79-80 逐字 exact/estimated/unknown）非 FE MetricValue 结构；retryCount 无 BE 列——6 方法全差异 P1×4/P2×2。
+   4. **R8 为 66 方法中最重缺失域**：6 方法＝差异 1（观摩 report 缺窗口 status/recordsIn/recordsOut，低于 FE 信息完备度红线 streamApi.ts:74-75）+ 缺失 5；设计 L750-756 五表中 stream_metric_snapshot/stream_failure_event 无表无端点；checkpoint 为 worker-only 声明性边界（runtime_api.py:23 逐字）；rebuild 树 Kafka 字样零命中（producer.py 仅 DemoProducerConfig:16）。
+ - **矩阵联动（main `344ab92`）**：追踪矩阵 v3——req4/req5/req7/req8 四行升级深核实态 + 切片 2/3/4 刷新 + §1 锚点/§4 索引/O7-2 同步；DEP 绑定无 workflow_version（binding_domain.py:22-29）与 RESOURCE 红线注记随行落记。
+-- **请 Codex**：收尾清单 Q1-Q14 与 R4-SYNC Q1-Q13、R2 Q1-Q14、R5-IDE Q1-Q15 同批心跳逐条答复（合计 57 问）；其中 P1 高频横切三题建议优先——projectId/scope 维度（R5 Q1 等）、上传 multipart 与 5MB↔20MB（收尾清单）、行计数口径（R4-SYNC Q7 / B2 缺口 #9 / 收尾清单 Q7 同源）——答复后即可解锁 P1 契约冻结。
++- **请 Codex（原报告请求，后续状态见上方增补）**：收尾清单 Q1-Q14 与 R4-SYNC Q1-Q13、R2 Q1-Q14、R5-IDE Q1-Q15 合计 56 问（原文误记 57，已由上方增补更正）；其中 P1 高频横切三题建议优先——projectId/scope 维度（R5 Q1 等）、上传 multipart 与 5MB↔20MB（收尾清单）、行计数口径（R4-SYNC Q7 / B2 缺口 #9 / 收尾清单 Q7 同源）。R4-SYNC Q1-Q13 后续已答，冻结与实现仍未闭环。
+ - **质量口径**：起草 agent 通读 + 实施线独立抽核全通过——resources/api.py 6 端点行号、content:str（:30/:36）、app.py:100（5*1024*1024）与 :706-721 装配、stats 4+2 端点行号、models.py 五表行号、runtime_api.py:23 worker-only 逐字、collector.py:79-80 三值枚举逐字、binding_domain.py 无 workflow_version grep、rebuild 树 Kafka 零命中、run_due_schedules_once worker.py:28 逐字、dependency 无 APIRouter 零命中；stream persistence.py 行号存在 ±1 在飞漂移（清单头注 L9 已声明以符号名为锚，三表存在性双重实测确凿）。BE 行号快照 20:0x（porcelain 62 条）。
+ - worktree / 分支 / HEAD：canonical main 本批三笔 pathspec 提交（`7353304` 收尾清单 + `344ab92` 矩阵 v3 + 本节）；Trae worktree 不变 `e6a3174`；correction-plan 只读零触碰、无远端 push。
+-- 状态：实施线迭代 26 完成——**纠偏重构设计/计划层产出全部落地**（契约差异清单 4 篇全覆盖 66 方法 + FE 适配层设计 + 追踪矩阵 v3 + B2 总表）。下一队列全部为 Codex 闸（57 问 Q 答复、P1 契约冻结、0.4 基线合并）与外部事件 → 实施线转入待命（S1），恢复条件＝handoff 新消息 / main 前进 / 用户输入。
++- **原报告时的状态**：实施线迭代 26 完成——**纠偏重构设计/计划层产出全部落地**（契约差异清单 4 篇全覆盖 66 方法 + FE 适配层设计 + 追踪矩阵 v3 + B2 总表）。当时下一队列为 Codex 闸（56 问答复、P1 契约冻结、0.4 基线合并）与外部事件；R4-SYNC Q1-Q13 已在后续答复，其他域按各自台账推进。
+ - Resolved:（待 Codex 知悉后填写）。
+diff --git "a/docs/increments/2026-10-16-FE\345\245\221\347\272\246\351\200\202\351\205\215\345\261\202\350\256\276\350\256\241.md" "b/docs/increments/2026-10-16-FE\345\245\221\347\272\246\351\200\202\351\205\215\345\261\202\350\256\276\350\256\241.md"
+index bee0cd43..e508eace 100644
+--- "a/docs/increments/2026-10-16-FE\345\245\221\347\272\246\351\200\202\351\205\215\345\261\202\350\256\276\350\256\241.md"
++++ "b/docs/increments/2026-10-16-FE\345\245\221\347\272\246\351\200\202\351\205\215\345\261\202\350\256\276\350\256\241.md"
+@@ -3,7 +3,7 @@
+ - **日期**：2026-10-16
+ - **作者**：Trae 实施线（起草 agent 初稿 + 实施线抽核修订）
+ - **性质声明**：本文为 **FE 域设计提案（Trae 域），非裁定**；**不改变 FE RED 契约签名与哨兵机制**。
+-- **更新记录**：2026-10-16 20:3x——R4-SYNC Q7/Q9/Q12 已获 Codex 答复（handoff「单写者声明：三域 Q1–Q13 答复」节），相关条目已就地注记（§1.3、§2.1-R1.5、§2.1 例子 2、§4 第 1 行、§5.1、§6 开放问题 4）；答复状态追踪见[Q 答复跟踪台账](2026-10-16-Q答复跟踪台账.md)。适配层 = P1（后端共享契约冻结）后 GREEN 接线期，在 `datara-web/src/services/rebuild/` 内实施的**机械映射**设计——只做「BE 实态 → FE 冻结契约」的形态转换，**不做语义加工**。凡涉及 BE 行为语义的条目一律标注「待 Codex Q 答复」并挂对应清单 Q 编号。
++- **更新记录**：2026-10-16 20:3x——R4-SYNC Q7/Q9/Q12 已获 Codex 答复（handoff「单写者声明：三域 Q1–Q13 答复」节），相关条目已就地注记（§1.3、§2.1-R1.5、§2.1 例子 2、§4 第 1 行、§5.1、§6 开放问题 4）；答复状态追踪见[Q 答复跟踪台账](2026-10-16-Q答复跟踪台账.md)。适配层 = P1（后端共享契约冻结）后 GREEN 接线期，在 `datara-web/src/services/rebuild/` 内实施的**机械映射**设计——只做「BE 实态 → FE 冻结契约」的形态转换，**不做语义加工**。凡涉及 BE 行为语义的条目一律标注对应 Q 编号和答复/冻结状态。
+ - **输入基线**：
+   - [前端消费契约需求总表](2026-10-16-前端消费契约需求总表.md)（下称 B2）：9 页 66 方法 + 12 缺口，方法级全量基座；
+   - [R4-SYNC 契约差异对齐清单](2026-10-16-R4-SYNC契约差异对齐清单.md)：§3-E 命名/类型横切与 Q12（snake→camel、string id、包络映射的原始提出处）；
+@@ -20,7 +20,7 @@
+ 2. **唯一职责**：BE 实态（P1 冻结产物）→ FE 冻结契约（`trae/r4-red` worktree 的 9 个 `.ts` 契约文件，签名与类型已冻结）之间的**机械映射**。映射范围限六类：命名、id 归一、包络解包、错误归一、SSE 事件归一、分页归一（§2）。
+ 3. **不做的事（语义加工负面清单）**：
+    - 不做枚举同义词映射（如 FE `cancel_requested` ↔ BE `cancelling`，挂 R4-SYNC Q9——**Q9 已裁定（2026-10-16）：BE `cancelling` 为权威状态、`cancel_requested` 仅布尔请求标记，FE 应统一用 `cancelling`**；词形落点在 FE 契约与页面层对齐（GREEN 前按裁定改词形，非适配层职责），适配层仍不做值映射表）；
+-   - 不做计数推导/口径折算（如 `targetWritten = inserted + updated`、`rows_rejected ≡ skipped`，挂 R4-SYNC Q7——**Q7 已答复（2026-10-16）：`targetWritten = rows_inserted + rows_updated` 可推导获 BE 确认（FE 推导可行）；`rows_rejected` 是 sink 拒收 ≠ `skipped`，二者等号不成立；`failed` 无 BE 计数器需补显式计数，FE 不猜**。targetWritten 推导式以冻结确认形式补充进 §2 后方可实施，届时属机械规则而非当期臆断；`skipped` 的 BE 来源与 `failed` 计数仍待冻结裁定）；
++   - 不做计数推导/口径折算（如 `targetWritten = inserted + updated`、`rows_rejected ≡ skipped`，挂 R4-SYNC Q7——**Q7 已答复（2026-10-16）：`targetWritten = rows_inserted + rows_updated` 可推导；`rows_rejected` 是 sink 拒收，不能映射为 FE `skipped`；BE 当前无 `failed` 计数，需先冻结其粒度/含义（行失败数或运行失败状态），再由 BE 提供对应字段，FE 不猜**。targetWritten 推导式以冻结确认形式补充进 §2 后方可实施，届时属机械规则而非当期臆断；`skipped` 来源及 `failed` 粒度仍待冻结）；
+    - 不补默认值、不裁剪字段语义、不代写 `confirmPhrase`（sqlIdeDdlApi.ts:45 红线：用户下发，agent 不得代写——适配层对该字段仅透传）；
+    - 不解决语义差异本身：语义差异仍走各域清单 Q 答复（§5）。
+ 4. **生效时点**：本文规则在 P1 冻结产物到达并经各域「冻结确认」后，进入 GREEN runbook 逐方法实施；RED 期间不写任何实现代码。
+@@ -44,7 +44,7 @@
+ 
+ **真实例子 1（响应方向，第一手 BE 实证）**：BE `_definition_payload` 返回 `{name, value, value_type, scope, sensitive}`（`rebuild/variables/api.py:185-193`）→ FE `VariableDefinition { scope, name, valueType, value, description?, sensitive? }`（variableApi.ts:26-34）。映射表：`value_type → valueType`；`description` 无 BE 对应列（挂 R2 Q12）。
+ 
+-**真实例子 2（响应方向，引自 R4-SYNC 清单）**：BE checkpoint payload 计数字段 `rows_read/rows_inserted/rows_updated/rows_rejected`（R4-SYNC 清单 §3-D 引 runtime.py:450-453）→ FE `SyncRunCounts { sourceRead, targetWritten, inserted, updated, skipped, failed }`（syncComponentApi.ts:117-124）。`rows_read → sourceRead` 为纯命名映射；`rows_rejected → skipped`、`targetWritten/failed` 为**语义条目，挂 R4-SYNC Q7**，不得由命名规则收编。**Q7 已答复（2026-10-16）**：`targetWritten = rows_inserted + rows_updated`（FE 推导，冻结确认后进 §2 机械规则）；`rows_rejected ≠ skipped`（sink 拒收非跳过，`skipped` BE 来源待冻结）；`failed` 需 BE 补计数、FE 不猜。
++**真实例子 2（响应方向，引自 R4-SYNC 清单）**：BE checkpoint payload 计数字段 `rows_read/rows_inserted/rows_updated/rows_rejected`（R4-SYNC 清单 §3-D 引 runtime.py:450-453）→ FE `SyncRunCounts { sourceRead, targetWritten, inserted, updated, skipped, failed }`（syncComponentApi.ts:117-124）。`rows_read → sourceRead` 为纯命名映射；`rows_rejected → skipped`、`targetWritten/failed` 为**语义条目，挂 R4-SYNC Q7**，不得由命名规则收编。**Q7 已答复（2026-10-16）**：`targetWritten = rows_inserted + rows_updated`（FE 推导，冻结确认后进 §2 机械规则）；`rows_rejected` 是 sink 拒收，不等于 FE `skipped`（其来源待冻结）；`failed` 粒度待冻结后由 BE 提供相应计数，FE 不猜。
+ 
+ ### §2.2 id 归一：BE 数值/string id ↔ FE number/string id
+ 
+@@ -149,7 +149,7 @@ getRun: async (runId, projectId) => {
+ 
+ | # | 页（哨兵 / 方法数） | 命名横切点 | id 归一点 | 包络点 | 特殊项 |
+ |---|---|---|---|---|---|
+-| 1 | SYNC（`R4_SYNC_NOT_WIRED` / 11） | checkpoint payload `rows_read/rows_inserted/rows_updated` → `sourceRead/inserted/updated`；`rows_rejected→skipped` 与 `targetWritten/failed` 语义——**Q7 已答复（2026-10-16）：targetWritten=inserted+updated 可推导、rows_rejected≠skipped、failed 需 BE 补**（推导式待冻结确认进 §2） | `planId/runId: number`（syncComponentApi.ts:93/:140）vs BE uuid/run_id 字符串（R4-SYNC Q12——**Q12 已答复：保留 RED 契约签名，snake↔camel 与 ID 归一化放 FE service adapter**；uuid→number 有损情形 R2.3 仍 fail-fast，开放问题 3 未闭） | sync 域成功包络待确认（开放问题 1）；`_error(503,5031,…)` 形态见 R4-SYNC 清单 §3-A | 枚举词 `cancel_requested`↔`cancelling` **Q9 已裁定：FE 统一用 `cancelling`**（词形修正落 FE 契约/页面层，适配层不做值映射）；preview 列元数据组装待 Q3（**Q3 已答复：getPlan 须返回 sourceColumns/targetColumns 快照，BE get_plan 需补实现**）；两段式 create→execute 编排待 Q8（**Q8 已答复：run_id 可承载客户端幂等 ID，create→execute 两段式可行**） |
++| 1 | SYNC（`R4_SYNC_NOT_WIRED` / 11） | checkpoint payload `rows_read/rows_inserted/rows_updated` → `sourceRead/inserted/updated`；`rows_rejected→skipped` 与 `targetWritten/failed` 语义——**Q7 已答复（2026-10-16）：targetWritten=inserted+updated 可推导、rows_rejected≠skipped；failed 粒度待冻结后由 BE 提供对应计数，FE 不猜**（推导式待冻结确认进 §2） | `planId/runId: number`（syncComponentApi.ts:93/:140）vs BE uuid/run_id 字符串（R4-SYNC Q12——**Q12 已答复：保留 RED 契约签名，snake↔camel 与 ID 归一化放 FE service adapter**；uuid→number 有损情形 R2.3 仍 fail-fast，开放问题 3 未闭） | sync 域成功包络待确认（开放问题 1）；`_error(503,5031,…)` 形态见 R4-SYNC 清单 §3-A | 枚举词 `cancel_requested`↔`cancelling` **Q9 已裁定：FE 统一用 `cancelling`**（词形修正落 FE 契约/页面层，适配层不做值映射）；preview 列元数据 Q3 已答、getPlan 快照待冻结/实现，旧 plan 可复用既有 schemas/objects/columns API 读取当前列；两段式 create→execute 编排待 Q8 冻结确认（**Q8 已答复：run_id 可承载客户端幂等 ID，create→execute 两段式可行**） |
+ | 2 | DEPENDENCY（`R4_DEPENDENCY_NOT_WIRED` / 5） | 全部待 Codex 草案（B2 缺口 #2：无草案文件） | `workflowId/workflowVersion: number`（dependencyApi.ts:25-27）；`upstreamWorkflowVersion` 缺省语义待草案 | 待草案 | `asOf` ISO 格式、组间 AND 约定待冻结（B2 缺口 #2）；`composeExpressionDraft` 为本地纯函数，不涉及适配 |
+ | 3 | RESOURCE（`R4_RESOURCE_NOT_WIRED` / 5） | 待 Codex 草案（B2 缺口 #2） | `resourceId/resourceVersion: number`（resourceApi.ts:16/:50） | 待草案 | 上传真实实现为 multipart（resourceApi.ts:39 注释逐字；`contentBase64` 仅元数据）——接线期由 fetch 传输形态承载，适配层不变换正文；20MB 常量待冻结（B2 缺口 #3） |
+ | 4 | SCHEDULE（`I7_SCHEDULER_NOT_WIRED` / 5） | BE `_serialize` 键形待对照（R4-SYNC 清单 §4：BE 有 `misfire_policy/next_fire_at` 等） | `TriggerRegistration.id: number`（scheduleApi.ts:14） | BE schedule 面为 CRUD（R4-SYNC 清单 §4.2），包络待确认 | **语义差异非适配层可解**：FE `TriggerKind` 5 种 vs BE 仅 `"CRON"` 固定；`listQueue/listRuntimeEvents/listAlerts` BE 无端点；无分页/projectId（B2 缺口 #4/#12） |
+@@ -163,9 +163,9 @@ getRun: async (runId, projectId) => {
+ 
+ ## §5 与 P1 冻结联动
+ 
+-1. **适配层不解决语义差异**：本文 §2 各规则表中的「待 Codex Q 答复」标记是语义差异进入适配层的**唯一通道**——各域清单（R4-SYNC §5 Q1-Q13、R2 §5 Q1-Q14 等）答复后，逐条判断：属机械映射的，以「冻结确认」注记补进 §2 规则表；属语义差异的，回到契约/设计差异注记流程（FE 契约类型变更须用户批准，B2 红线），适配层不私改。
++1. **适配层不解决语义差异**：本文 §2 各规则表中的 Q 编号标记是语义差异进入适配层的**唯一通道**——R4-SYNC §5 Q1-Q13 已在 handoff 逐题答复，仍按台账逐项区分已答、待冻结与需裁定；R2 §5 Q1-Q14 等其他域问题收到答复后也按同一流程处理。属机械映射的，以「冻结确认」注记补进 §2 规则表；属语义差异的，回到契约/设计差异注记流程（FE 契约类型变更须用户批准，B2 红线），适配层不私改。
+    - **Q12 设计路径确认（2026-10-16）**：Codex 答复确认「保留 RED 契约签名；snake↔camel 与 project/datasource 数值 ID、plan/run 字符串 ID 归一化放 FE service adapter」——即本文 §3.2 混合式架构与 §2.1/§2.2 规则路径获答复背书；但 uuid→number 有损情形（R2.3 fail-fast、开放问题 3）答复未触及，仍待 Codex + 用户裁定。
+-   - **R4-SYNC 其余已答复问的归类**：Q7（targetWritten 推导）属机械映射候选，待冻结确认补进 §2；Q9（cancelling 词形）落 FE 契约/页面层对齐，不进适配层；Q3/Q5/Q6/Q10/Q11/Q13 属 BE 需新增/补实现，与适配层无关。
++   - **R4-SYNC 其余已答复问的归类**：Q7（targetWritten 推导）属机械映射候选，待冻结确认补进 §2；`skipped` 来源与 `failed` 粒度仍待冻结。Q9（cancelling 词形）落 FE 契约/页面层对齐，不进适配层。Q3 的 version-bound columns 需 BE 补实现，旧 plan 可复用既有 project-scoped schemas/objects/columns API 读取当前列；Q5/Q6/Q10 的实体、checkpointRef/replay、Mapping 语义仍待冻结/实现；Q11 复用既有 metadata routes 做列浏览，只有需要单次 source/target 联合校验和建议映射时才补 SYNC 聚合 probe；Q13 仅在 capabilities 随项目数据源/权限变化时才需 project-scoped 查询。
+ 2. **R5-IDE 清单增量合入**：[R5-IDE 契约差异对齐清单](2026-10-16-R5-IDE契约差异对齐清单.md)同日并行起草中（本文起草时尚未落盘，故不引用其行号）。其落库后若命名横切证据有增量（A5 域 snake/camel 实况、SSE 帧结构、`rolled-back` 等枚举词形、id 词形），在**实施期**合入 §2 规则与 §4 第 7/8 行，并在该文件与本文件互挂链接。
+ 3. **GREEN runbook 前置条件**：P1 冻结产物（9 域端点/DTO/枚举/分页/错误结构）+ 本文件 §2 规则逐域「冻结确认」完成 + 各域 Q 答复闭环，三者齐备后适配层规则方可进入 GREEN runbook 按 §3.3 替换形态实施。
+ 4. **变更纪律**：P1 冻结后 BE 若再演进（Codex 在飞编辑常态），以符号名为锚重跑差异清单复核（R4-SYNC 清单附注口径），适配层映射表随之增量修订；禁止凭记忆改映射。
+diff --git "a/docs/increments/2026-10-16-\345\256\242\346\210\267\344\271\235\351\241\271\350\246\201\346\261\202\350\277\275\350\270\252\347\237\251\351\230\265.md" "b/docs/increments/2026-10-16-\345\256\242\346\210\267\344\271\235\351\241\271\350\246\201\346\261\202\350\277\275\350\270\252\347\237\251\351\230\265.md"
+index 12fa988b..f46499f4 100644
+--- "a/docs/increments/2026-10-16-\345\256\242\346\210\267\344\271\235\351\241\271\350\246\201\346\261\202\350\277\275\350\270\252\347\237\251\351\230\265.md"
++++ "b/docs/increments/2026-10-16-\345\256\242\346\210\267\344\271\235\351\241\271\350\246\201\346\261\202\350\277\275\350\270\252\347\237\251\351\230\265.md"
+@@ -27,7 +27,7 @@
+ | # | 客户要求（纠偏设计 §2.2） | 权威设计条款 | 计划增量（执行附录 §6） | FE 验证页/契约面 | FE 状态 | BE 实态（快照锚点） | 现有证据 | 剩余缺口 | 责任方 |
+ |---|---|---|---|---|---|---|---|---|---|
+ | 1 | 数据开发 IDE 参考 DBX；存储过程/函数编辑；表/视图跨 schema 查询 | 设计正本 §7（§7.1 对象范围 / §7.2 跨 Schema 查询 / §7.3 结果网格）+ §13.6 SQL IDE 结果与 DDL 管控 | R5-IDE（R5-A 只读 → R5-B DDL 独立授权门），依赖 R1/R2 | 2 页 22 方法：`sql-ide-readonly`（sqlIdeApi 17，哨兵 `R5A_BACKEND_NOT_WIRED`）+ `sql-ide-ddl`（sqlIdeDdlApi 5，哨兵 `R5B_BACKEND_NOT_WIRED`） | RED | 深核实态（[R5-IDE 差异清单](2026-10-16-R5-IDE契约差异对齐清单.md)，`e80a614`，19:4x 快照）：`rebuild/sql_ide/` 仅 metadata.py——3 只读元数据端点 schemas/objects/columns（app.py:50/:590 装配 + 5 测试），无执行/SSE/历史/脚本/DDL 任何端点（metadata.py:5 docstring 声明性边界）；22 方法分布＝BE 缺失 19 + DTO 差异 3，P1×14/P2×8（Q1-Q15）；catalog 仅 mysql/postgresql，九类对象中 database/routines/indexes 无数据面；legacy /ide 13 路由进程内任务表并存（Q14） | `evidence/R5/trae-ide-red-local-20261016.txt`（worktree）；[R5-IDE 差异清单](2026-10-16-R5-IDE契约差异对齐清单.md)（Q1-Q15）；[FE 适配层设计](2026-10-16-FE契约适配层设计.md)；B2 §一.7/§一.8 | R5-A/R5-B 后端域：Q1-Q15 待 Codex 逐条答复（P1 六问＝Q1 projectId 维度/Q6 lint/Q7 执行链规划/Q8 分页口径/Q9 SSE/Q11 DDL 域草案）；DDL 安全生命周期；A5 SSE；DBX 对照版本 UI 验收前记录（§2.3 已通过） | BE=Codex；FE=Trae |
+-| 2 | 同步组件表单重做：探查源/目标映射与用户调整 | 设计正本 §6.4 同步 | R4-SYNC | `sync-form` 1 页 11 方法（syncComponentApi，哨兵 `R4_SYNC_NOT_WIRED`） | RED | 最深入域：11 方法分布＝BE 缺失 4 / DTO 5 / 语义 1 / 语义+DTO 1；immutable pin 已实现（`_plan_snapshot` runtime_api.py:291-327 + `_checkpoint_plan_digest` :330-346）；preview 样本红线已解（`_preview_payload` :449-461）；剩余 P1＝factory 宿主装配（Q1）/attempt（Q5）/checkpointRef（Q6）/行计数（Q7）/幂等两段式（Q8）/savePlan（Q10）/probe 端点（Q11） | `evidence/R4/trae-red-pages-local-20261016.txt`；[R4-SYNC 差异清单](2026-10-16-R4-SYNC契约差异对齐清单.md)（d5173bf，Q1-Q13） | Q1-Q13 待 Codex 逐条答复；P1 契约冻结 | BE=Codex；FE=Trae（Q12 适配层） |
++| 2 | 同步组件表单重做：探查源/目标映射与用户调整 | 设计正本 §6.4 同步 | R4-SYNC | `sync-form` 1 页 11 方法（syncComponentApi，哨兵 `R4_SYNC_NOT_WIRED`） | RED | correction-plan WIP 深核实：11 方法分布＝BE 缺失 4 / DTO 5 / 语义 1 / 语义+DTO 1；immutable pin 与 preview 响应无样本已有 WIP 答复，但内部仍采样；`getPlan` 版本化列快照、durable replay、attempt/checkpointRef、计数和 Mapping 扩展等尚未实现/冻结，详见 R4-SYNC Q答复台账。 | `evidence/R4/trae-red-pages-local-20261016.txt`；[R4-SYNC 差异清单](2026-10-16-R4-SYNC契约差异对齐清单.md)（Q1-Q13）；[Q答复跟踪台账](2026-10-16-Q答复跟踪台账.md) | Q1-Q13 已在 handoff 逐题给出事实答复/条件方向；答复不等于冻结或 GREEN。仍需 P1 契约冻结与 canonical main 实现/验收。 | BE=Codex；FE=Trae（Q12 适配层） |
+ | 3 | 统一全局/工作流变量规范：校验、现值、补全 | 设计正本 §5 变量规范（七级作用域）+ §13.5 变量类型和生命周期 | R2（VariableService）+ 全部消费者 R4/R5/R6/R8 | `variable` 1 页 6 方法（variableApi，哨兵 `R2_VARIABLE_NOT_WIRED`） | RED | correction-plan 有 `rebuild/variables/` 目录 + `tests/rebuild/test_variable_api.py` + `test_variable_repository.py`（存在性实证 18:5x）；语义深核已出：6 方法分布＝BE 缺失 2（previewResolution/getRunSnapshot）+checkReference 表达式级语义不足+DTO/语义差异 3，P1×6/P2×6（[R2 差异清单](2026-10-16-R2变量域契约差异对齐清单.md)，4a7b6b7，Q1-Q14）；七级链序 BE/FE/设计逐字对齐 | `evidence/R2/trae-variable-red-local-20261016.txt`（worktree）；[R2 差异清单](2026-10-16-R2变量域契约差异对齐清单.md)；B2 §一.5 | Q1-Q14 待 Codex 逐条答复（含 B2 缺口 #6→Q5、#11→Q6）；value_type 三套口径裁定（Q6）；P1 契约冻结 | BE=Codex；FE=Trae |
+ | 4 | SQL 上传文件；Python/Shell 上传脚本 | 设计正本 §1.1（L27「SQL、Python、Shell 支持上传文件」）+ §6.1 L241（SQL 文件）+ §6.2 L248（.py/.zip）+ §6.3 L257（.sh/.bash） | R4 资源版本服务 + SQL/Python/Shell 三执行器 | `resource-upload` 1 页 5 方法（resourceApi，哨兵 `R4_RESOURCE_NOT_WIRED`；20MB 为前端草案常量，multipart 口径待定＝B2 缺口 #3） | RED | 深核实态（[收尾清单](2026-10-16-契约差异对齐收尾清单-DEP-RES-R7-R8.md)，20:0x）：resources/api.py 6 端点已实现（:55/:90/:131/:155/:195/:230，app.py:706-714 装配）；上传 JSON body `content: str`（api.py:26-31）非 multipart、BE 默认 5MB（app.py:100）vs FE 冻结 20MB——双向偏差；版本+SHA 显式绑定、禁隐式 latest 为红线 | `evidence/R4/trae-red-pages-local-20261016.txt`；B2 §一.3；[收尾清单](2026-10-16-契约差异对齐收尾清单-DEP-RES-R7-R8.md) | B2 缺口 #2 口径修正（RESOURCE 草案已实现在飞）；上传 multipart/分片口径、5MB↔20MB 对齐（收尾清单 Q） | BE=Codex（冻结）；FE=Trae |
+ | 5 | 依赖组件表单参考 DolphinScheduler | 设计正本 §6.5 依赖 | R4 Dependency 表单/执行器 | `dependency-form` 1 页 5 方法（dependencyApi，哨兵 `R4_DEPENDENCY_NOT_WIRED`） | RED | 深核实态（[收尾清单](2026-10-16-契约差异对齐收尾清单-DEP-RES-R7-R8.md)，20:0x）：dependency/ 纯库级 8 文件、无 api.py/无 APIRouter（grep 零命中）——5 方法 BE 全缺失 P1×5；库级语义在飞（preview_dependency/evaluate_dependency，domain.py:420/:343，与 FE 同源）；绑定无 workflow_version（binding_domain.py:22-29）；DolphinScheduler 仅对照表单组织方式（纠偏设计 §2.3 边界） | `evidence/R4/trae-red-pages-local-20261016.txt`；B2 §一.2；[收尾清单](2026-10-16-契约差异对齐收尾清单-DEP-RES-R7-R8.md) | HTTP 面 5 端点草案（P1）；upstreamWorkflowVersion 缺省语义/组间 AND/asOf 格式（收尾清单 Q）；B2 缺口 #2 口径修正（库级在飞非「无草案」） | BE=Codex（出草案+冻结）；FE=Trae |
+@@ -54,7 +54,7 @@
+ - **RED 五份（worktree `trae-r4-red` 内，未合 main；合并时自然对齐）**：`evidence/R2/trae-variable-red-local-20261016.txt`、`evidence/R4/trae-red-pages-local-20261016.txt`、`evidence/R5/trae-ide-red-local-20261016.txt`、`evidence/R7/trae-metrics-red-local-20261016.txt`、`evidence/R8/trae-stream-red-local-20261016.txt`。
+ - **S9 复合证据**：`evidence/R3/r3s9import-20261015235813-042570.json`（原始机器 gate，`import_completed=false` 冲突并列登记）+ `evidence/R3/r3s9reverify-20261016084542-09aa72.json`（终态 44 unchanged/0 conflict/1 skipped）；用户复合 PASS 裁定见 handoff 08:45 节；禁止重放。
+ - **门禁证据**：FE vitest 92 files/798 tests 全绿（18:4x，实施线实跑）；后端基线 848（main）/854（std 七文件后）/646（correction-plan 隔离分支）passed——后两项标注沿用未复跑。
+-- **对齐文档**：B2 总表（66 方法+12 缺口）、R4-SYNC 差异清单（Q1-Q13）、R2 变量域差异清单（Q1-Q14）、R5-IDE 差异清单（Q1-Q15）、[FE 适配层设计](2026-10-16-FE契约适配层设计.md)（六类机械映射规则，R4-SYNC Q12 解法）、R8 schema 提案、O4 时间戳清单、[DEP-RES-R7-R8 收尾清单](2026-10-16-契约差异对齐收尾清单-DEP-RES-R7-R8.md)（22 方法 P1×20/P2×2、B2 缺口 #2 口径修正——至此 66 方法差异清单全覆盖）、GREEN runbook（批次 R2→R4→R7→R5-A→R5-B→R8）。
++- **对齐文档**：B2 总表（66 方法+12 缺口）、R4-SYNC 差异清单（Q1-Q13）及[Q答复跟踪台账](2026-10-16-Q答复跟踪台账.md)、R2 变量域差异清单（Q1-Q14）、R5-IDE 差异清单（Q1-Q15）、[FE 适配层设计](2026-10-16-FE契约适配层设计.md)（六类机械映射规则；R4-SYNC Q12 的机械映射方向已答，但 UUID→number 有损转换仍需裁定）、R8 schema 提案、O4 时间戳清单、[DEP-RES-R7-R8 收尾清单](2026-10-16-契约差异对齐收尾清单-DEP-RES-R7-R8.md)（22 方法 P1×20/P2×2、B2 缺口 #2 口径修正——至此 66 方法差异清单全覆盖）、GREEN runbook（批次 R2→R4→R7→R5-A→R5-B→R8）。
+ 
+ ## 5. 诚实状态声明（O7）
+ 
+diff --git "a/docs/increments/2026-10-16-\351\230\266\346\256\2650-0.4\345\267\256\345\274\202\345\244\215\347\224\250\347\237\251\351\230\265.md" "b/docs/increments/2026-10-16-\351\230\266\346\256\2650-0.4\345\267\256\345\274\202\345\244\215\347\224\250\347\237\251\351\230\265.md"
+index 7838926a..c746e2fa 100644
+--- "a/docs/increments/2026-10-16-\351\230\266\346\256\2650-0.4\345\267\256\345\274\202\345\244\215\347\224\250\347\237\251\351\230\265.md"
++++ "b/docs/increments/2026-10-16-\351\230\266\346\256\2650-0.4\345\267\256\345\274\202\345\244\215\347\224\250\347\237\251\351\230\265.md"
+@@ -1,6 +1,6 @@
+ # 阶段0 0.4 差异与复用矩阵
+ 
+-> 初始快照：canonical main 923d5cd032d（2026-10-16）；当前文档 HEAD 为 canonical main a66d1d4，功能代码基线为 3fdc851，见 §3.1。本表把全量客户要求追踪矩阵作为需求基线，并补充每个要求对应的旧实现、隔离 WIP、RED 前端资产及复用处置。它是执行附录 §3.0.4 的差异矩阵，不替代或改写全量客户要求矩阵、产品设计正本或执行计划正本。
++> 初始快照：canonical main 923d5cd032d（2026-10-16）；本次复核文档快照为 canonical main `4c7200a`，功能代码基线为 `3fdc851`，见 §3.1。本表把全量客户要求追踪矩阵作为需求基线，并补充每个要求对应的旧实现、隔离 WIP、RED 前端资产及复用处置。它是执行附录 §3.0.4 的差异矩阵，不替代或改写全量客户要求矩阵、产品设计正本或执行计划正本。
+ >
+ > 证据边界：只把 canonical main 当前树中的对象记为“main 已有”；分支或 worktree 内容明确标为“隔离 WIP”。旧实现用于行为参考不代表新系统已交付。文件存在、契约骨架和本地测试均不等同 GREEN。
+ 
+@@ -20,7 +20,7 @@
+ | # | 全量基线要求 | main 已有 | 隔离 WIP / RED | 复用与重建处置 | 未决项 |
+ |---|---|---|---|---|---|
+ | 1 | 数据开发 IDE：跨 schema 浏览/查询、函数与存储过程编辑，按 R5-IDE 分 R5-A / R5-B 门禁。 | main 有 SQL IDE API/页面相关既有资产；这只证明历史/验证界面在库，不证明新 R5-A 查询、结果流、历史或 R5-B DDL 生命周期接通。 | 9 页 RED 前端集及 R5-A/B 契约位于 `trae/r4-red@e6a3174`；R5 BE 检查所依据的 `codex/correction-plan@9afb864` 属隔离 WIP，清单记录 22 方法中 BE 缺失 19、DTO 差异 3（`2026-10-16-R5-IDE契约差异对齐清单.md`）。 | legacy IDE/`/ide` 只作行为参考；RED 页与契约可作为待审集成输入；新 project-scoped 元数据、执行、SSE、历史和 R5-B 安全 DDL 链路按新契约重建。R5-A PASS 不授权 R5-B。 | RED 分支尚未合 main；`/ide` 与新 R5 域的并存/退役边界待 Q14；DDL 需单独风险门禁。 |
+-| 2 | SYNC 组件表单：探查源/目标、生成并调整映射、计划版本、预览和执行。 | main 有 legacy `/sync-tasks` 监控视图/接口与旧执行器；二者不是新配置表单。 | `codex/r4-sync-contract@68e2c4f` 与 `trae/r4-red@e6a3174` 均未包含在 main；后端 SYNC 模块在 correction-plan WIP，非 main。R4 清单 `d5173bf` 给出 Q1–Q13。 | legacy sync/file_sync 行为及监控数据仅供行为参考；RED 表单契约作为待审输入；新 mapping、immutable plan、run/attempt/checkpoint、持久 target receipt 和宿主接线须按冻结契约重建。 | WIP 与 18:11 对 mutable revision、宿主 factory 的自述快照不同于后续清单；按最新代码证据逐条答 Q1–Q13，未冻结前保持 RED。 |
++| 2 | SYNC 组件表单：探查源/目标、生成并调整映射、计划版本、预览和执行。 | main 有 legacy `/sync-tasks` 监控视图/接口与旧执行器；二者不是新配置表单。 | `codex/r4-sync-contract@68e2c4f` 与 `trae/r4-red@e6a3174` 均未包含在 main；后端 SYNC 模块在 correction-plan WIP，非 main。R4 清单 `d5173bf` 给出 Q1–Q13。 | legacy sync/file_sync 行为及监控数据仅供行为参考；RED 表单契约作为待审输入；新 mapping、immutable plan、run/attempt/checkpoint、持久 target receipt 和宿主接线须按冻结契约重建。 | Q1–Q13 已在 handoff 逐题答复；答复基于隔离 WIP 或决策建议，不代表 main 实现、P1 契约冻结或 GREEN。剩余冻结/实现项见 [Q答复跟踪台账](2026-10-16-Q答复跟踪台账.md)。 |
+ | 3 | VariableService：七级作用域、校验、现值、补全及运行快照。 | main 有 legacy `api/wf_variable.py` 与 `master/variables.py`；这些是旧变量接口/实现，不证明新 VariableService 已实现。 | 变量 RED 页在 `trae/r4-red@e6a3174`；rebuild/variables 在 correction-plan WIP。R2 清单 `4a7b6b7`/矩阵刷新 `98f66a9` 记录 6 方法差异及 Q1–Q14。 | 旧语法和实现仅作行为参考；七级优先级以权威设计为准；新校验、解析、敏感值处理和 run snapshot 依 R2 契约重建。 | `value_type`、快照身份/行模型与 legacy `/workflow-variables` 并存问题按 R2 Q 清单 pending。 |
+ | 4 | SQL/Python/Shell 文件上传，资源不可变版本、权限/大小/类型约束，运行显式绑定版本。 | main 3fdc851 仍无新 resources API；legacy file_sync 不能证明满足版本与 SHA pin。 | correction-plan WIP resources/api.py:55,90,131,155,199,231 已有资源创建、版本追加/列表/读取、任务绑定/读取；domain.py:80-122 校验显式版本与 SHA，binding_repository.py:24-46 校验项目/工作流范围与摘要。均为隔离 WIP。 | 复用候选：版本元数据、SHA pin、任务绑定；接入 main 前仍需契约审查。按新契约补齐权限/类型/大小约束及执行器集成。WIP 上传体为 JSON 内容且默认上限 5 MB（resources/api.py:27-31, rebuild/api/app.py:100），与 FE 20 MB 草案及 multipart 口径未对齐；不得把这些 WIP 记作 main 已有。保留旧资源迁移兼容。 | multipart/分片、5 MB↔20 MB、权限策略与旧资源引用迁移仍 pending。 |
+ | 5 | Dependency 表单/运行：依赖工作流/任务、周期范围、AND/OR 条件预览与执行。 | main legacy scheduler/engine 有运行时依赖判断逻辑，但没有新结构化配置/预览闭环的证据。 | correction-plan WIP dependency/domain.py:343,374,420 已有依赖求值与周期窗口预览；gate.py、poller.py、persistence.py、scheduler.py、worker.py 有库级执行/持久化组件。该目录无 api.py/APIRouter，未形成 FE 所需 HTTP 面。 | 复用候选：依赖表达式、窗口解析/预览与求值核心；按新契约补项目权限绑定、HTTP CRUD/preview、workflow version 语义及持久执行接线。legacy 行为只作参考；WIP 不计入 main。 | upstream workflow version、缺省语义、组间 AND/OR 与 asOf 格式仍 pending；HTTP 面草案待冻结。 |
+@@ -40,9 +40,9 @@
+ | D/E 槽审计材料。 | `trae-D-sync-dependency-resource-etl.md` 与 `trae-E-stream-stats.md` 仅存在于 `trae/phase0-audit@76d540c`；`git branch --contains 76d540c` 仅列该分支，main 的 `docs/increments/evidence/phase0/` 无文件。两份报告都把盘点范围表述为“五个域”，但其锚点树 `059b5f9` 已含 `rebuild/project/`，目录清单未列；报告也未附原始 stdout/stderr、环境信息与文件清单摘要。 | D/E 报告提交及父提交可追溯报告文本与代码基线，但不证明保存了实际命令输出或环境/文件摘要；报告不作为全量基线或可复现验收。本矩阵暂不合入原报告，保留来源 SHA 与上述限制。若后续补齐范围、命令输出和快照摘要，再按文档 pathspec 纳入专属 evidence；不能声称已在 main。 |
+ | 心跳称“本次仅 handoff pathspec 集成”，并引用阶段0 A/B 补账。 | main 有 handoff 心跳段，但没有 A/B/C 阶段0逐资产盘点报告；全量客户追踪矩阵只覆盖九项要求，不含逐资产复用判定。 | 18:11 内容继续作为历史声明引用；A/B/C 明细证据缺口保持 pending，不据此补造逐文件结论。 |
+ 
+-## 3.1 当前基线增量（canonical main 文档 HEAD a66d1d4；功能代码基线 3fdc851）
++## 3.1 当前基线增量（复核快照文档 HEAD 4c7200a；功能代码基线 3fdc851）
+ 
+-本矩阵最初以 923d5cd032d 为 main 快照；功能代码增量实测至 3fdc851，文档修订提交为 a66d1d4（只更新 handoff 与本矩阵），本节追加这些差异，避免把历史快照冒充当前 main。
++本矩阵最初以 923d5cd032d 为 main 快照；功能代码增量实测至 3fdc851，文档复核快照为 4c7200a（该 HEAD 仅追加 FE adapter 设计更新），本节追加这些差异，避免把历史快照冒充当前 main。
+ 
+ - 完整需求基线 v3：344ab92 的 docs/increments/2026-10-16-客户九项要求追踪矩阵.md 更新 req4/5/7/9 为深核实状态（req4 L32、req5 L33、req7 L35、req9 L37）。本矩阵相应修订上表，仍区分 main 与 correction-plan WIP。
+ - handoff #16：6ca8c94 的 docs/handoff/2026-10-16-并行协作分工.md 记 DEP/RES/R7/R8 收尾清单 7353304：RESOURCE 有版本/SHA pin 但上传尺寸与 multipart 不一致；DEPENDENCY 有库级语义但缺 HTTP API；STREAM 有单流查询但缺其余列表/快照/失败事件端点与 Kafka 链路；统计表/API 已有 WIP 实现，契约及执行器接线仍有差异。以上证据只描述 correction-plan 隔离 WIP，不代表 main 已集成。
