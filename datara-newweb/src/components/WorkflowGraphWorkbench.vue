@@ -51,6 +51,8 @@ import { ContractApiError } from '../services/http'
 import { useTrialRunStore } from '../stores/trialRun'
 import { useWorkflowGraphStore } from '../stores/workflowGraph'
 import { validateWorkflowDraft, isNodeUnconfigured, type ValidationIssue } from '../stores/workflowGraphValidators'
+import { useDraggable } from '../composables/useDraggable'
+import { useOverlayStack } from '../composables/useOverlayStack'
 import NodeConfigPanel from './NodeConfigPanel.vue'
 import SpecBlockPanel from './SpecBlockPanel.vue'
 import TrialRunPanel from './TrialRunPanel.vue'
@@ -485,13 +487,17 @@ const validationIssues = computed<ValidationIssue[]>(() =>
   validateWorkflowDraft(graphStore.nodes, graphStore.edges, { specs: specMap.value, designTypes: DESIGN_NODE_TYPES }))
 const validationErrorCount = computed(() => validationIssues.value.filter((issue) => issue.level === 'error').length)
 const validationWarnCount = computed(() => validationIssues.value.filter((issue) => issue.level === 'warn').length)
-const validationVisible = ref(false)
+/* D9/G08：校验面板接入受控 overlay 栈（zIndex=2000+序×10 / Esc 关栈顶）+ 头部拖拽（位置记忆 datara.drag.wf.validation） */
+const { zIndex: validationZIndex, isOpened: validationVisible, open: openValidation, close: closeValidation } = useOverlayStack('wf-validation')
+const validationPanelRef = ref<HTMLElement | null>(null)
+const validationHandleRef = ref<HTMLElement | null>(null)
+const { dragStyle: validationDragStyle, onHandlePointerdown: onValidationDragStart } = useDraggable(validationPanelRef, validationHandleRef, { storageKey: 'wf.validation' })
 
 /** W1 保存闸门：error 级阻止并打开校验面板（warn 只计数不阻断；必填缺失由 T2 闸门先行拦截） */
 function gateOnValidation(): boolean {
   const errors = validationIssues.value.filter((issue) => issue.level === 'error')
   if (errors.length === 0) return true
-  validationVisible.value = true
+  openValidation()
   ElMessage.error(`画布校验未通过（${errors.length} 项错误，如：${errors[0].msg}）`)
   return false
 }
@@ -500,7 +506,7 @@ function gateOnValidation(): boolean {
 function locateIssue(issue: ValidationIssue) {
   if (!issue.nodeCode) return
   selectForConfig(issue.nodeCode)
-  validationVisible.value = false
+  closeValidation()
 }
 
 function rebindTrialContext() {
@@ -742,7 +748,7 @@ function onSchedule() {
           data-testid="wf-validate"
           :disabled="!loaded"
           title="W1 画布校验（11 validators）"
-          @click="validationVisible = true"
+          @click="openValidation"
         >校验<span v-if="validationErrorCount" class="wf-badge wf-badge-error" data-testid="wf-validate-error-badge">{{ validationErrorCount }}</span><span v-else-if="validationWarnCount" class="wf-badge wf-badge-warn" data-testid="wf-validate-warn-badge">{{ validationWarnCount }}</span></button>
         <span
           v-if="graphStore.docId === numDocId && graphStore.isDirty"
@@ -925,11 +931,18 @@ function onSchedule() {
       </el-table>
     </el-dialog>
 
-    <div v-if="validationVisible" class="validation-overlay" data-testid="validation-overlay" @click.self="validationVisible = false">
-      <div class="validation-panel" role="dialog" aria-modal="true" aria-label="画布校验">
-        <header class="validation-head">
+    <div v-if="validationVisible" class="validation-overlay" data-testid="validation-overlay" @click.self="closeValidation">
+      <div
+        ref="validationPanelRef"
+        class="validation-panel"
+        role="dialog"
+        aria-modal="true"
+        aria-label="画布校验"
+        :style="[{ zIndex: validationZIndex }, validationDragStyle]"
+      >
+        <header ref="validationHandleRef" class="validation-head" @pointerdown="onValidationDragStart">
           <strong>画布校验（W1 · 11 validators）</strong>
-          <button class="wf-btn" data-testid="validation-close" @click="validationVisible = false">关闭</button>
+          <button class="wf-btn" data-testid="validation-close" @pointerdown.stop @click="closeValidation">关闭</button>
         </header>
         <p v-if="!validationIssues.length" class="validation-pass" data-testid="validation-pass">校验通过：11 项 validators 无错误无告警</p>
         <ul v-else class="validation-list" data-testid="validation-list">
