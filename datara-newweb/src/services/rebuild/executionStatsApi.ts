@@ -67,3 +67,54 @@ export function getWorkflowRunStat(projectId: number, statId: number) {
   })
 }
 
+/* ---------- T6 运行监控日志通道（审计弹窗 #9 LogPanel 数据源） ----------
+ * 后端契约（rebuild/execution/api.py 实测）：
+ *  - GET  /runs/{instance_id}            → 实例详情 + logs（后端 LIMIT 200 条）；
+ *  - POST /runs/{instance_id}/cancel     → 终态 CANCELLED（带项目归属校验）；
+ *  - POST /workflow-instances            → 重跑入口（TRIAL 自动草稿快照 / STREAM version=0；
+ *                                          FORMAL 必须给 published version_id，run-stats 行无此
+ *                                          字段不可还原 → FORMAL 重跑不提供此入口）。
+ * 通道形态：日志走 3s 轮询（RUNNING/PENDING 持续、终态单拉即停）；SSE 待后端端点立项后切换。
+ */
+
+/** 运行实例日志行 */
+export interface WorkflowRunLogLine {
+  task_instance_id: number
+  attempt_no: number
+  level: string
+  message: string
+}
+
+/** 运行实例详情 + 日志 */
+export interface WorkflowRunInstanceDetail {
+  instance_id: number
+  workflow_id: number
+  instance_type: string
+  status: string
+  trigger_type?: string | null
+  logs: WorkflowRunLogLine[]
+}
+
+/** 运行实例详情与日志（RUNNING 轮询 3s / 终态单拉） */
+export function getWorkflowRunLogs(projectId: number, instanceId: number) {
+  return request<WorkflowRunInstanceDetail>(`/rebuild/execution/runs/${instanceId}`, {
+    query: { project_id: String(projectId) },
+  })
+}
+
+/** 停止运行实例（transition → CANCELLED 并 finalize 统计） */
+export function cancelWorkflowRun(projectId: number, instanceId: number) {
+  return request<{ instance_id: number; status: string }>(`/rebuild/execution/runs/${instanceId}/cancel`, {
+    method: 'POST',
+    json: { project_id: projectId },
+  })
+}
+
+/** 重跑（TRIAL 自动以当前草稿快照发起 / STREAM version=0；FORMAL 不提供此入口） */
+export function rerunWorkflowInstance(projectId: number, workflowId: number, instanceType: 'TRIAL' | 'STREAM') {
+  return request<{ instance_id: number; status: string }>('/rebuild/execution/workflow-instances', {
+    method: 'POST',
+    json: { project_id: projectId, workflow_id: workflowId, instance_type: instanceType, trigger_type: 'RERUN' },
+  })
+}
+

@@ -1,10 +1,14 @@
 <script setup lang="ts">
-import { ref, watch } from 'vue'
-import { ElMessage } from 'element-plus'
+import { computed, onBeforeUnmount, ref, watch } from 'vue'
+import { ElMessage, ElMessageBox } from 'element-plus'
 import {
+  cancelWorkflowRun,
+  getWorkflowRunLogs,
   getWorkflowRunStat,
   listWorkflowRunStats,
+  rerunWorkflowInstance,
   type WorkflowInstanceType,
+  type WorkflowRunLogLine,
   type WorkflowRunStatQuery,
   type WorkflowRunReconcileDetail,
   type WorkflowRunStat,
@@ -33,12 +37,129 @@ const details = ref<WorkflowRunReconcileDetail[]>([])
 const detailLoading = ref(false)
 const detailError = ref('')
 
+/* ---- T6 运行监控日志通道（审计弹窗 #9 LogPanel）----
+ * 后端无 SSE 端点 → 日志走 3s 轮询：RUNNING/PENDING 持续轮询，终态单拉即停。
+ * generation + projectId + instanceId 三重守卫，迟到的轮询响应一律丢弃。
+ */
+const LOG_POLL_MS = 3000
+const RUN_TERMINAL_STATUSES = new Set(['SUCCEEDED', 'FAILED', 'CANCELLED', 'SKIPPED'])
+const RUN_ACTIVE_STATUSES = new Set(['RUNNING', 'PENDING'])
+const logs = ref<WorkflowRunLogLine[]>([])
+const logsInstanceId = ref<number | null>(null)
+const runStatus = ref('')
+const logsLoading = ref(false)
+const logsError = ref('')
+let logGeneration = 0
+let logTimer: number | null = null
+
+const logsText = computed(() => logs.value.map((line) => `[${line.level}] ${line.message}`).join('\n'))
+const logLive = computed(() => logsInstanceId.value !== null && !RUN_TERMINAL_STATUSES.has(runStatus.value))
+
+function stopLogPolling() {
+  if (logTimer !== null) {
+    window.clearInterval(logTimer)
+    logTimer = null
+  }
+}
+
+async function refreshLogs(projectId: number, instanceId: number, generation: number) {
+  logsLoading.value = true
+  try {
+    const result = await getWorkflowRunLogs(projectId, instanceId)
+    if (generation !== logGeneration || projectId !== props.projectId || logsInstanceId.value !== instanceId) return
+    logs.value = result.logs
+    runStatus.value = result.status
+    logsError.value = ''
+    if (RUN_TERMINAL_STATUSES.has(result.status)) stopLogPolling()
+  } catch (reason) {
+    if (generation !== logGeneration || projectId !== props.projectId || logsInstanceId.value !== instanceId) return
+    logsError.value = reason instanceof Error ? reason.message : '运行日志加载失败'
+  } finally {
+    if (generation === logGeneration) logsLoading.value = false
+  }
+}
+
+function openLogs(row: WorkflowRunStat) {
+  const instanceId = row.workflow_instance_id
+  stopLogPolling()
+  logGeneration += 1
+  logsInstanceId.value = instanceId
+  runStatus.value = row.status
+  logs.value = []
+  logsError.value = ''
+  void refreshLogs(props.projectId, instanceId, logGeneration)
+  if (!RUN_TERMINAL_STATUSES.has(row.status)) {
+    logTimer = window.setInterval(() => {
+      void refreshLogs(props.projectId, instanceId, logGeneration)
+    }, LOG_POLL_MS)
+  }
+}
+
+function closeLogs() {
+  stopLogPolling()
+  logGeneration += 1
+  logsInstanceId.value = null
+  runStatus.value = ''
+  logs.value = []
+  logsLoading.value = false
+  logsError.value = ''
+}
+
+function refreshLogsManually() {
+  const instanceId = logsInstanceId.value
+  if (instanceId === null) return
+  void refreshLogs(props.projectId, instanceId, logGeneration)
+}
+
+onBeforeUnmount(stopLogPolling)
+
+function isStoppable(row: WorkflowRunStat) {
+  return RUN_ACTIVE_STATUSES.has(row.status)
+}
+
+function isRerunnable(row: WorkflowRunStat) {
+  // FORMAL 重跑需要 published version_id（run-stats 行不含该字段，无法还原）→ 不提供入口
+  return (row.instance_type === 'TRIAL' || row.instance_type === 'STREAM') && !RUN_ACTIVE_STATUSES.has(row.status)
+}
+
+async function onStopRun(row: WorkflowRunStat) {
+  try {
+    await ElMessageBox.confirm(`停止运行实例 #${row.workflow_instance_id}？`, '停止运行', { type: 'warning' })
+  } catch {
+    return
+  }
+  try {
+    await cancelWorkflowRun(props.projectId, row.workflow_instance_id)
+    ElMessage.success('已发出停止指令，实例将进入 CANCELLED')
+    await load()
+  } catch (reason) {
+    ElMessage.error(reason instanceof Error ? reason.message : '停止失败')
+  }
+}
+
+async function onRerunRun(row: WorkflowRunStat) {
+  const rerunType: 'TRIAL' | 'STREAM' = row.instance_type === 'STREAM' ? 'STREAM' : 'TRIAL'
+  try {
+    await ElMessageBox.confirm(`重跑${rerunType === 'STREAM' ? '流处理' : '试运行'}（工作流 #${row.workflow_id}）？`, '重跑', { type: 'info' })
+  } catch {
+    return
+  }
+  try {
+    await rerunWorkflowInstance(props.projectId, row.workflow_id, rerunType)
+    ElMessage.success('已发起新一轮运行')
+    await load()
+  } catch (reason) {
+    ElMessage.error(reason instanceof Error ? reason.message : '重跑失败')
+  }
+}
+
 function resetDetails() {
   detailGeneration += 1
   expandedId.value = null
   details.value = []
   detailLoading.value = false
   detailError.value = ''
+  closeLogs()
 }
 
 async function load() {
@@ -111,6 +232,7 @@ async function toggleDetails(row: WorkflowRunStat) {
   details.value = []
   detailError.value = ''
   detailLoading.value = true
+  openLogs(row)
   try {
     const result = await getWorkflowRunStat(projectId, row.id)
     if (generation !== detailGeneration || projectId !== props.projectId || expandedId.value !== row.id) return
@@ -170,14 +292,25 @@ watch(() => [props.initialStatus, props.initialRunId] as const, ([nextStatus, ne
     <p v-if="loading" data-run-loading>加载中…</p>
     <p v-else-if="error" data-run-error>{{ error }} <button @click="load">重试</button></p>
     <p v-else-if="!rows.length" data-run-empty>暂无运行记录</p>
-    <table v-else><thead><tr><th>工作流</th><th>类型</th><th>状态</th><th>源数据量</th><th>目标数据量</th><th>成功</th><th>失败</th><th>跳过</th><th>总数</th><th>开始时间</th><th>对账</th></tr></thead><tbody>
+    <table v-else><thead><tr><th>工作流</th><th>类型</th><th>状态</th><th>源数据量</th><th>目标数据量</th><th>成功</th><th>失败</th><th>跳过</th><th>总数</th><th>开始时间</th><th>对账</th><th>操作</th></tr></thead><tbody>
       <template v-for="row in rows" :key="row.id">
-        <tr><td>{{ row.dag_name || `#${row.workflow_id}` }}</td><td>{{ row.instance_type }}</td><td>{{ row.status }}</td><td>{{ row.source_count ?? '—' }}</td><td>{{ row.target_count ?? '—' }}</td><td>{{ row.success_count }}</td><td>{{ row.failure_count }}</td><td>{{ row.skipped_count }}</td><td>{{ row.total_count }}</td><td>{{ row.started_at }}</td><td><button type="button" :aria-expanded="expandedId === row.id" @click="toggleDetails(row)">{{ expandedId === row.id ? '收起' : '查看明细' }}</button></td></tr>
-        <tr v-if="expandedId === row.id" class="detail-row" data-run-stat-details><td colspan="11">
+        <tr><td>{{ row.dag_name || `#${row.workflow_id}` }}</td><td>{{ row.instance_type }}</td><td>{{ row.status }}</td><td>{{ row.source_count ?? '—' }}</td><td>{{ row.target_count ?? '—' }}</td><td>{{ row.success_count }}</td><td>{{ row.failure_count }}</td><td>{{ row.skipped_count }}</td><td>{{ row.total_count }}</td><td>{{ row.started_at }}</td><td><button type="button" :aria-expanded="expandedId === row.id" @click="toggleDetails(row)">{{ expandedId === row.id ? '收起' : '查看明细' }}</button></td><td class="run-actions"><button v-if="isStoppable(row)" type="button" data-run-stop @click="onStopRun(row)">停止</button><button v-if="isRerunnable(row)" type="button" data-run-rerun @click="onRerunRun(row)">重跑</button></td></tr>
+        <tr v-if="expandedId === row.id" class="detail-row" data-run-stat-details><td colspan="12">
           <p v-if="detailLoading">明细加载中…</p>
           <p v-else-if="detailError" data-detail-error>{{ detailError }}</p>
           <p v-else-if="!details.length" data-detail-empty>本次运行无表级对账明细</p>
           <table v-else class="detail-table"><thead><tr><th>源对象</th><th>目标对象</th><th>源数据量</th><th>目标数据量</th><th>成功</th><th>失败</th><th>差异</th></tr></thead><tbody><tr v-for="detail in details" :key="detail.id"><td>{{ detail.source_object }}</td><td>{{ detail.target_object }}</td><td>{{ detail.source_count ?? '—' }}</td><td>{{ detail.target_count ?? '—' }}</td><td>{{ detail.success_count }}</td><td>{{ detail.failure_count }}</td><td>{{ detail.difference_count ?? '—' }}</td></tr></tbody></table>
+          <div class="run-logs" data-run-logs>
+            <header class="run-logs-header">
+              <strong>运行日志</strong>
+              <span v-if="logLive" class="run-logs-live" data-run-logs-live>轮询中（3s）</span>
+              <button type="button" data-run-logs-refresh @click="refreshLogsManually">刷新</button>
+            </header>
+            <p v-if="logsLoading" data-run-logs-loading>日志加载中…</p>
+            <p v-else-if="logsError" data-run-logs-error>{{ logsError }}</p>
+            <p v-else-if="!logs.length" data-run-logs-empty>暂无日志</p>
+            <pre v-else class="run-logs-body" data-run-logs-body>{{ logsText }}</pre>
+          </div>
         </td></tr>
       </template>
     </tbody></table>
@@ -201,4 +334,9 @@ button { border: 1px solid #cbd5e1; background: #fff; border-radius: 5px; paddin
 table { width: 100%; border-collapse: collapse; font-size: 13px; } th, td { padding: 8px; text-align: left; border-bottom: 1px solid #e5e7eb; }
 .detail-row > td { padding: 12px 16px; background: #f8fafc; }
 .detail-table th, .detail-table td { padding: 6px 8px; }
+.run-actions { white-space: nowrap; }
+.run-logs { margin-top: 10px; }
+.run-logs-header { display: flex; align-items: center; gap: 10px; margin-bottom: 6px; font-size: 12px; color: #475569; }
+.run-logs-live { color: #2563eb; }
+.run-logs-body { margin: 0; padding: 8px 10px; background: #0f172a; color: #e2e8f0; border-radius: 5px; font-size: 12px; line-height: 1.6; max-height: 240px; overflow: auto; white-space: pre-wrap; }
 </style>

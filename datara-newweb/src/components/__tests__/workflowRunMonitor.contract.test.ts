@@ -1,11 +1,36 @@
 import { flushPromises, mount } from '@vue/test-utils'
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
-const { getWorkflowRunStat, listWorkflowRunStats } = vi.hoisted(() => ({
+const {
+  getWorkflowRunStat,
+  listWorkflowRunStats,
+  getWorkflowRunLogs,
+  cancelWorkflowRun,
+  rerunWorkflowInstance,
+  messageSuccess,
+  messageError,
+  messageBoxConfirm,
+} = vi.hoisted(() => ({
   getWorkflowRunStat: vi.fn(),
   listWorkflowRunStats: vi.fn(),
+  getWorkflowRunLogs: vi.fn(),
+  cancelWorkflowRun: vi.fn(),
+  rerunWorkflowInstance: vi.fn(),
+  messageSuccess: vi.fn(),
+  messageError: vi.fn(),
+  messageBoxConfirm: vi.fn(),
 }))
-vi.mock('../../services/rebuild/executionStatsApi', () => ({ getWorkflowRunStat, listWorkflowRunStats }))
+vi.mock('../../services/rebuild/executionStatsApi', () => ({
+  getWorkflowRunStat,
+  listWorkflowRunStats,
+  getWorkflowRunLogs,
+  cancelWorkflowRun,
+  rerunWorkflowInstance,
+}))
+vi.mock('element-plus', () => ({
+  ElMessage: { success: messageSuccess, error: messageError },
+  ElMessageBox: { confirm: messageBoxConfirm },
+}))
 
 import WorkflowRunMonitor from '../WorkflowRunMonitor.vue'
 import type { WorkflowRunReconcileDetail, WorkflowRunStat } from '../../services/rebuild/executionStatsApi'
@@ -16,6 +41,18 @@ describe('workflow run monitor project scope', () => {
     listWorkflowRunStats.mockResolvedValue({ items: [] })
     getWorkflowRunStat.mockReset()
     getWorkflowRunStat.mockResolvedValue({ details: [], detail_total: 0 })
+    getWorkflowRunLogs.mockReset()
+    getWorkflowRunLogs.mockResolvedValue({ instance_id: 0, workflow_id: 0, instance_type: 'FORMAL', status: 'SUCCEEDED', logs: [] })
+    cancelWorkflowRun.mockReset()
+    rerunWorkflowInstance.mockReset()
+    messageSuccess.mockReset()
+    messageError.mockReset()
+    messageBoxConfirm.mockReset()
+    messageBoxConfirm.mockResolvedValue('confirm')
+  })
+
+  afterEach(() => {
+    vi.useRealTimers()
   })
 
   it('loads immediately and reloads when the kept-alive project changes', async () => {
@@ -132,5 +169,91 @@ describe('workflow run monitor project scope', () => {
     getWorkflowRunStat.mockResolvedValueOnce({ id: 12, workflow_id: 3, workflow_instance_id: 15, instance_type: 'FORMAL', status: 'SUCCEEDED', success_count: 1, failure_count: 0, skipped_count: 0, total_count: 1, started_at: '2026-10-26T01:00:00Z', details: [], detail_total: 0 })
     await flushPromises()
     expect(getWorkflowRunStat).toHaveBeenLastCalledWith(7, 12)
+  })
+
+  /* ---- T6 运行监控日志通道（审计弹窗 #9 LogPanel）：3s 轮询 / 终态即停 / 停止与重跑 ---- */
+
+  function rowOf(overrides: Partial<WorkflowRunStat>): WorkflowRunStat {
+    return { id: 5, workflow_id: 3, workflow_instance_id: 9, instance_type: 'FORMAL', status: 'SUCCEEDED', success_count: 0, failure_count: 0, skipped_count: 0, total_count: 0, started_at: '2026-10-26T00:00:00Z', ...overrides }
+  }
+
+  it('polls run logs every three seconds while the instance is running', async () => {
+    // 仅 fake interval：flushPromises 依赖 setImmediate/setTimeout，必须保持真实
+    vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval'] })
+    listWorkflowRunStats.mockResolvedValueOnce({ items: [rowOf({ status: 'RUNNING' })] })
+    getWorkflowRunLogs.mockResolvedValue({ instance_id: 9, workflow_id: 3, instance_type: 'FORMAL', status: 'RUNNING', logs: [{ task_instance_id: 1, attempt_no: 1, level: 'INFO', message: 'run started' }] })
+    const wrapper = mount(WorkflowRunMonitor, { props: { projectId: 7 } })
+    await flushPromises()
+    await wrapper.get('button[aria-expanded="false"]').trigger('click')
+    await flushPromises()
+    expect(getWorkflowRunLogs).toHaveBeenCalledWith(7, 9)
+    expect(getWorkflowRunLogs).toHaveBeenCalledTimes(1)
+    expect(wrapper.get('[data-run-logs-body]').text()).toContain('run started')
+    expect(wrapper.find('[data-run-logs-live]').exists()).toBe(true)
+    await vi.advanceTimersByTimeAsync(3000)
+    await flushPromises()
+    expect(getWorkflowRunLogs).toHaveBeenCalledTimes(2)
+    await vi.advanceTimersByTimeAsync(3000)
+    await flushPromises()
+    expect(getWorkflowRunLogs).toHaveBeenCalledTimes(3)
+  })
+
+  it('fetches logs once and stops polling once the run reaches a terminal state', async () => {
+    vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval'] })
+    listWorkflowRunStats.mockResolvedValueOnce({ items: [rowOf({ status: 'FAILED' })] })
+    getWorkflowRunLogs.mockResolvedValue({ instance_id: 9, workflow_id: 3, instance_type: 'FORMAL', status: 'FAILED', logs: [{ task_instance_id: 1, attempt_no: 1, level: 'ERROR', message: 'boom' }] })
+    const wrapper = mount(WorkflowRunMonitor, { props: { projectId: 7 } })
+    await flushPromises()
+    await wrapper.get('button[aria-expanded="false"]').trigger('click')
+    await flushPromises()
+    expect(getWorkflowRunLogs).toHaveBeenCalledTimes(1)
+    expect(wrapper.find('[data-run-logs-live]').exists()).toBe(false)
+    await vi.advanceTimersByTimeAsync(9000)
+    await flushPromises()
+    expect(getWorkflowRunLogs).toHaveBeenCalledTimes(1)
+  })
+
+  it('stops a running instance after confirmation and reloads the monitor', async () => {
+    listWorkflowRunStats.mockResolvedValueOnce({ items: [rowOf({ status: 'RUNNING' })] })
+    cancelWorkflowRun.mockResolvedValue({ instance_id: 9, status: 'CANCELLED' })
+    const wrapper = mount(WorkflowRunMonitor, { props: { projectId: 7 } })
+    await flushPromises()
+    expect(wrapper.get('[data-run-stop]').text()).toBe('停止')
+    await wrapper.get('[data-run-stop]').trigger('click')
+    await flushPromises()
+    expect(messageBoxConfirm).toHaveBeenCalledTimes(1)
+    expect(cancelWorkflowRun).toHaveBeenCalledWith(7, 9)
+    expect(messageSuccess).toHaveBeenCalledTimes(1)
+    expect(listWorkflowRunStats).toHaveBeenCalledTimes(2)
+  })
+
+  it('keeps the run untouched when the stop confirmation is dismissed', async () => {
+    listWorkflowRunStats.mockResolvedValueOnce({ items: [rowOf({ status: 'RUNNING' })] })
+    messageBoxConfirm.mockRejectedValueOnce('cancel')
+    const wrapper = mount(WorkflowRunMonitor, { props: { projectId: 7 } })
+    await flushPromises()
+    await wrapper.get('[data-run-stop]').trigger('click')
+    await flushPromises()
+    expect(cancelWorkflowRun).not.toHaveBeenCalled()
+    expect(listWorkflowRunStats).toHaveBeenCalledTimes(1)
+  })
+
+  it('offers rerun only for finished TRIAL or STREAM runs and posts the rerun request', async () => {
+    listWorkflowRunStats.mockResolvedValueOnce({ items: [
+      rowOf({ id: 1, workflow_id: 3, workflow_instance_id: 9, instance_type: 'TRIAL', status: 'FAILED' }),
+      rowOf({ id: 2, workflow_id: 4, workflow_instance_id: 10, instance_type: 'FORMAL', status: 'SUCCEEDED' }),
+      rowOf({ id: 3, workflow_id: 5, workflow_instance_id: 11, instance_type: 'STREAM', status: 'RUNNING' }),
+    ] })
+    rerunWorkflowInstance.mockResolvedValue({ instance_id: 20, status: 'PENDING' })
+    const wrapper = mount(WorkflowRunMonitor, { props: { projectId: 7 } })
+    await flushPromises()
+    const rerunButtons = wrapper.findAll('[data-run-rerun]')
+    // TRIAL FAILED 可重跑；FORMAL 终态不提供重跑（无 published version_id 可还原）；STREAM RUNNING 仅停止
+    expect(rerunButtons).toHaveLength(1)
+    expect(wrapper.findAll('[data-run-stop]')).toHaveLength(1)
+    await rerunButtons[0]!.trigger('click')
+    await flushPromises()
+    expect(rerunWorkflowInstance).toHaveBeenCalledWith(7, 3, 'TRIAL')
+    expect(messageSuccess).toHaveBeenCalledTimes(1)
   })
 })
