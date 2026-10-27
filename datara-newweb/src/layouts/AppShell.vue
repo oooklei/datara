@@ -137,10 +137,42 @@ function onToggle(groupId: string): void {
 
 const aiContext = computed(() => route.fullPath)
 defineExpose({ menuView, aiContext })
+
+/* ---- D5/G10 侧边栏拖宽（§7.1.7 超越项，用户裁定）：pointer 拖拽右缘把手 +
+ * localStorage 持久化（datara.shell.sidebarWidth），钳制 200–420px；
+ * 移动端 media query 单列布局覆盖，不受影响。 ---- */
+const SIDEBAR_WIDTH_KEY = 'datara.shell.sidebarWidth'
+const SIDEBAR_MIN_WIDTH = 200
+const SIDEBAR_MAX_WIDTH = 420
+const DEFAULT_SIDEBAR_WIDTH = 228
+
+function readSidebarWidth(): number {
+  const raw = globalThis.localStorage?.getItem(SIDEBAR_WIDTH_KEY)
+  const value = Number(raw)
+  return Number.isFinite(value) && value > 0
+    ? Math.min(SIDEBAR_MAX_WIDTH, Math.max(SIDEBAR_MIN_WIDTH, value))
+    : DEFAULT_SIDEBAR_WIDTH
+}
+
+const sidebarWidth = ref(readSidebarWidth())
+
+function onSidebarResizeStart(event: PointerEvent): void {
+  if (event.button !== 0) return
+  event.preventDefault()
+  window.addEventListener('pointermove', onSidebarResizeMove)
+  window.addEventListener('pointerup', onSidebarResizeEnd, { once: true })
+}
+function onSidebarResizeMove(event: PointerEvent): void {
+  sidebarWidth.value = Math.min(SIDEBAR_MAX_WIDTH, Math.max(SIDEBAR_MIN_WIDTH, event.clientX))
+}
+function onSidebarResizeEnd(): void {
+  window.removeEventListener('pointermove', onSidebarResizeMove)
+  try { globalThis.localStorage?.setItem(SIDEBAR_WIDTH_KEY, String(sidebarWidth.value)) } catch { /* 忽略隐私模式 */ }
+}
 </script>
 
 <template>
-  <div class="app-shell" :class="{ 'sidebar-open': sidebarOpen }">
+  <div class="app-shell" :class="{ 'sidebar-open': sidebarOpen }" :style="{ '--sidebar-w': `${sidebarWidth}px` }">
     <aside class="app-sidebar" :class="{ open: sidebarOpen }" aria-label="主导航">
       <RouterLink to="/" class="brand" aria-label="Datara 项目管理">
         <span class="brand-mark">◆</span><span>Datara</span>
@@ -174,6 +206,7 @@ defineExpose({ menuView, aiContext })
         </div>
       </nav>
       <p class="sidebar-foot">v3 · 数据治理工作台</p>
+      <span class="sidebar-resize" aria-hidden="true" data-sidebar-resize @pointerdown="onSidebarResizeStart"></span>
     </aside>
 
     <header class="app-topbar">
@@ -211,8 +244,10 @@ defineExpose({ menuView, aiContext })
 </template>
 
 <style scoped>
-.app-shell{display:grid;grid-template:"aside header" 48px "aside main" minmax(0,1fr)/228px minmax(0,1fr);height:100vh;overflow:hidden;background:var(--bg);color:var(--text)}
-.app-sidebar{grid-area:aside;display:flex;flex-direction:column;min-height:0;background:linear-gradient(180deg,#0b1c33,#08182c 64%,#0c2135);color:var(--sidebar-text);z-index:30}
+.app-shell{display:grid;grid-template:"aside header" 48px "aside main" minmax(0,1fr)/var(--sidebar-w,228px) minmax(0,1fr);height:100vh;overflow:hidden;background:var(--bg);color:var(--text)}
+.app-sidebar{grid-area:aside;position:relative;display:flex;flex-direction:column;min-height:0;background:linear-gradient(180deg,#0b1c33,#08182c 64%,#0c2135);color:var(--sidebar-text);z-index:30}
+.sidebar-resize{position:absolute;top:0;right:-3px;width:6px;height:100%;cursor:col-resize;touch-action:none;z-index:40}
+.sidebar-resize:hover{background:rgba(255,255,255,.14)}
 .brand{height:56px;display:flex;align-items:center;gap:10px;padding:0 18px;color:#fff;font-size:15px;font-weight:700;letter-spacing:.3px;border-bottom:1px solid rgba(255,255,255,.07)}
 .brand-mark{display:grid;place-items:center;width:28px;height:28px;border-radius:8px;background:linear-gradient(135deg,var(--primary),var(--purple));box-shadow:0 4px 14px rgba(22,104,220,.35);font-size:11px}
 .project-nav,.global-nav{flex:1;min-height:0;overflow:auto;padding:8px 0 18px}

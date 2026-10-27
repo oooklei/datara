@@ -8,7 +8,7 @@
  *    useVueFlow().project 恒等映射（drop 坐标断言直取 clientX/Y 的 Math.round）；
  *  - KeepAlive 首挂载触发 onActivated（ensureLoaded + loadSyncSpecs 的唯一入口）。
  */
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { KeepAlive, h, nextTick } from 'vue'
 import { flushPromises, mount, type VueWrapper } from '@vue/test-utils'
 import { createPinia, setActivePinia } from 'pinia'
@@ -191,7 +191,7 @@ vi.mock('@vue-flow/minimap', () => ({ MiniMap: { name: 'MiniMap', render: () => 
 /** 模板解析走全局注册链（非 element-plus 模块导入），mount 时注册桩消噪 Failed to resolve component */
 const ElStub = { name: 'ElStub', render: () => null }
 
-function makeWorkbench(tabType: DagProfileType = 'wf'): {
+function makeWorkbench(tabType: DagProfileType = 'wf', attach = false): {
   wrapper: VueWrapper
   graph: ReturnType<typeof useWorkflowGraphStore>
 } {
@@ -199,6 +199,9 @@ function makeWorkbench(tabType: DagProfileType = 'wf'): {
   setActivePinia(pinia)
   const tab: DagTab = { key: '42', docId: '42', name: '同步工作流A', type: tabType }
   const wrapper = mount(KeepAlive, {
+    // 快捷键用例需 attach：onPageKeydown 实例活性守卫按 rootEl.isConnected 判定，
+    // 未 attach 的实例（含既有用例泄漏的历史监听器）一律不响应
+    ...(attach ? { attachTo: document.body } : {}),
     slots: { default: () => h(WorkflowGraphWorkbench, { tab, projectId: 7 }) },
     global: {
       plugins: [pinia],
@@ -218,6 +221,10 @@ beforeEach(() => {
   vi.clearAllMocks()
   specMock.loadComponentSpecs.mockResolvedValue({ items: SPECS, etag: '"00"', source: 'network' })
   trialMock.state.runResult = null
+})
+
+afterEach(() => {
+  document.body.replaceChildren()
 })
 
 it('aborts the component catalogue subscription when the workbench unmounts', async () => {
@@ -625,5 +632,66 @@ describe('WorkflowGraphWorkbench L12-02 同步工作流契约', () => {
     expect(nodes[1].class).toBeUndefined()
     expect(nodes[2].label).toBe('n3 END [FAILED]')
     expect(nodes[2].class).toBe('wf-node-failed')
+  })
+
+  it('用例KA1 画布快捷键 Del/Backspace：选中节点 → confirm 确认链删除；无选中不触发（§7.1.4 护栏1b）', async () => {
+    const { wrapper, graph } = makeWorkbench('wf', true)
+    await flushPromises()
+    const { ElMessageBox } = await import('element-plus')
+
+    // 无选中：keydown 不进确认链
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Delete' }))
+    await flushPromises()
+    expect(ElMessageBox.confirm).not.toHaveBeenCalled()
+
+    // 选中 n2 → Delete → confirm（mock 默认 resolve）→ 删除
+    wrapper.findComponent({ name: 'VueFlow' }).vm.$emit('nodeClick', { node: { id: 'n2' } })
+    await nextTick()
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Delete' }))
+    await flushPromises()
+    expect(ElMessageBox.confirm).toHaveBeenCalledTimes(1)
+    expect(graph.nodes.length).toBe(2)
+  })
+
+  it('用例KA2 快捷键输入控件拦截：INPUT 内 Delete 冒泡到 window 也不进删除链', async () => {
+    const { wrapper } = makeWorkbench('wf', true)
+    await flushPromises()
+    wrapper.findComponent({ name: 'VueFlow' }).vm.$emit('nodeClick', { node: { id: 'n2' } })
+    await nextTick()
+    const { ElMessageBox } = await import('element-plus')
+
+    const input = document.createElement('input')
+    document.body.appendChild(input)
+    input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Delete', bubbles: true }))
+    await flushPromises()
+    expect(ElMessageBox.confirm).not.toHaveBeenCalled()
+    input.remove()
+  })
+
+  it('用例KA3 canvas-state 500ms 防抖槽：编辑期内不落盘、到期落盘；读前 flush（卸载即落最新）', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+    try {
+      const { wrapper, graph } = makeWorkbench('wf')
+      await flushPromises()
+
+      graph.moveNode('n2', 210, 80)
+      await nextTick() // watcher（flush pre）回调执行 → 注册 500ms fake timer
+      expect(localStorage.getItem('datara.dag.snap.42')).toBe(null) // 防抖未到期不落盘
+
+      vi.advanceTimersByTime(500)
+      const snap = localStorage.getItem('datara.dag.snap.42')
+      expect(snap).not.toBe(null)
+      expect(JSON.parse(snap ?? '{}').draft.nodes).toHaveLength(3)
+
+      // 再编辑 → 未到期（差 1ms）→ 卸载 flush 立即落盘最新位置（读前 flush 语义）
+      graph.moveNode('n2', 220, 90)
+      await nextTick()
+      vi.advanceTimersByTime(499)
+      wrapper.unmount()
+      const final = JSON.parse(localStorage.getItem('datara.dag.snap.42') ?? '{}')
+      expect(final.draft.nodes[1].positionX).toBe(220)
+    } finally {
+      vi.useRealTimers()
+    }
   })
 })

@@ -171,3 +171,44 @@ describe('AUTH-UI-02 authenticated shell', () => {
     expect(mobile).toMatch(/\.project-switcher\s*\{[^}]*max-width\s*:\s*110px/)
   })
 })
+
+describe('D5/G10 侧边栏拖宽（§7.1.7 超越项，用户裁定）', () => {
+  it('拖拽把手实时改宽（钳制 200–420px）+ pointerup 落盘 localStorage', async () => {
+    localStorage.clear()
+    const router = makeTestRouter()
+    await router.push('/a')
+    const w = mount(AppShell, { global: { plugins: [router] } })
+
+    await w.find('[data-sidebar-resize]').trigger('pointerdown', { button: 0 })
+    window.dispatchEvent(new MouseEvent('pointermove', { clientX: 320 }))
+    await w.vm.$nextTick()
+    expect(w.attributes('style')).toMatch(/--sidebar-w:\s*320px/)
+
+    // 下限钳制：40 → 200
+    window.dispatchEvent(new MouseEvent('pointermove', { clientX: 40 }))
+    await w.vm.$nextTick()
+    expect(w.attributes('style')).toMatch(/--sidebar-w:\s*200px/)
+
+    // 上限钳制：900 → 420
+    window.dispatchEvent(new MouseEvent('pointermove', { clientX: 900 }))
+    await w.vm.$nextTick()
+    expect(w.attributes('style')).toMatch(/--sidebar-w:\s*420px/)
+
+    window.dispatchEvent(new MouseEvent('pointerup'))
+    expect(localStorage.getItem('datara.shell.sidebarWidth')).toBe('420')
+    w.unmount()
+  })
+
+  it('持久化恢复：越界 999 → 420px 钳制；非法值回退默认 228px', async () => {
+    localStorage.setItem('datara.shell.sidebarWidth', '999')
+    const router = makeTestRouter()
+    const w = mount(AppShell, { global: { plugins: [router] } })
+    expect(w.attributes('style')).toMatch(/--sidebar-w:\s*420px/)
+    w.unmount()
+
+    localStorage.setItem('datara.shell.sidebarWidth', 'abc')
+    const w2 = mount(AppShell, { global: { plugins: [router] } })
+    expect(w2.attributes('style')).toMatch(/--sidebar-w:\s*228px/)
+    w2.unmount()
+  })
+})

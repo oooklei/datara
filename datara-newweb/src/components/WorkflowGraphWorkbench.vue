@@ -23,7 +23,7 @@
  * 类型实锚：@vue-flow/core 1.48.2 dist/types（NodeChange/EdgeChange/Connection/
  * MarkerType.ArrowClosed/NodeMouseEvent/EdgeMouseEvent；index.d.ts export * from './types'）。
  */
-import { computed, nextTick, onActivated, onDeactivated, onUnmounted, ref } from 'vue'
+import { computed, getCurrentInstance, nextTick, onActivated, onDeactivated, onUnmounted, ref, watch } from 'vue'
 import { MarkerType, VueFlow, useVueFlow } from '@vue-flow/core'
 import type {
   Connection,
@@ -341,6 +341,31 @@ const legendPanelRef = ref<HTMLElement | null>(null)
 const legendHandleRef = ref<HTMLElement | null>(null)
 const { dragStyle: legendDragStyle, onHandlePointerdown: onLegendDragStart } = useDraggable(legendPanelRef, legendHandleRef, { storageKey: 'wf.legend' })
 
+/* ---------- §7.1.4 护栏 1b：画布快捷键 window keydown 幂等重挂 ----------
+ * Del/Backspace = 删除选中（复用 T9 确认链）；isTypingTarget 拦截（输入控件内不触发）；
+ * onActivated 先摘后挂（幂等，防 KeepAlive 重复激活叠加监听）、
+ * onDeactivated/onUnmounted 摘除（后台画布不响应前台按键）。 */
+const kaInstance = getCurrentInstance()
+function onPageKeydown(event: KeyboardEvent) {
+  if (event.key !== 'Delete' && event.key !== 'Backspace') return
+  // 实例活性守卫：KeepAlive 后台实例/已卸载实例 DOM 离开文档不响应（与护栏 2 owner 过滤同源，
+  // 兜底 onDeactivated/onUnmounted 摘除时机之外的任何监听器滞留）
+  const rootEl = kaInstance?.subTree?.el
+  if (rootEl && !(rootEl as Node).isConnected) return
+  const target = event.target as HTMLElement | null
+  if (target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.tagName === 'SELECT' || target.isContentEditable)) return
+  if (!selectedNode.value && !selectedEdge.value) return
+  event.preventDefault()
+  void onDeleteSelectedConfirmed()
+}
+function bindPageShortcuts() {
+  window.removeEventListener('keydown', onPageKeydown)
+  window.addEventListener('keydown', onPageKeydown)
+}
+function unbindPageShortcuts() {
+  window.removeEventListener('keydown', onPageKeydown)
+}
+
 /* ---------- 托盘（13 类型点击加节点，级联摆位） ---------- */
 
 function publishedComponentRef(type: string): { type: string; version: number } | null {
@@ -585,6 +610,30 @@ function persistSnap() {
 
 /* ---------- 生命周期（KeepAlive） ---------- */
 
+/* §7.1.4 护栏 3：canvas-state 按 docId 独立防抖槽（500ms，读前 flush）——
+ * 编辑中 500ms 防抖持续写 datara.dag.snap.{docId}（崩溃/刷新保护）；
+ * 槽键按 docId 独立、timer 每实例独立；onDeactivated/onUnmounted 同步 flush。 */
+const SNAP_DEBOUNCE_MS = 500
+let snapTimer: number | null = null
+function flushSnapDebounce() {
+  if (snapTimer !== null) {
+    window.clearTimeout(snapTimer)
+    snapTimer = null
+  }
+}
+watch(
+  () => [graphStore.nodes, graphStore.edges, graphStore.isDirty] as const,
+  () => {
+    if (!loaded.value) return
+    flushSnapDebounce()
+    snapTimer = window.setTimeout(() => {
+      snapTimer = null
+      persistSnap()
+    }, SNAP_DEBOUNCE_MS)
+  },
+  { deep: true },
+)
+
 async function ensureLoaded() {
   if (props.projectId === undefined) {
     degraded.value = true
@@ -631,14 +680,19 @@ async function ensureLoaded() {
 onActivated(() => {
   void ensureLoaded()
   rebindTrialContext()
+  bindPageShortcuts()
 })
 onDeactivated(() => {
+  unbindPageShortcuts()
   abortPaletteSpecs()
+  flushSnapDebounce()
   persistSnap()
 })
 onUnmounted(() => {
+  unbindPageShortcuts()
   abortPaletteSpecs()
   stopResize?.()
+  flushSnapDebounce()
   persistSnap()
 })
 

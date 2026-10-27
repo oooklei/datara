@@ -1,9 +1,11 @@
 /**
- * useOverlayStack（D9/G08）契约测试：zIndex 递增、栈顶判定、Esc 关栈顶、幂等、卸载自动出栈。
+ * useOverlayStack（D9/G08）契约测试：zIndex 递增、栈顶判定、Esc 关栈顶、幂等、卸载自动出栈、
+ * owner 前台过滤（§7.1.4 护栏 2）。
  * 模块级栈跨用例共享：每用例结束时 unmount 全部 overlay 保证隔离；
  * zIndex 断言用相对关系（差值 10），不依赖 openSequence 绝对值。
+ * 挂载须 attachTo document：owner 过滤以根 DOM isConnected 为据（真实环境恒在文档内）。
  */
-import { describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it } from 'vitest'
 import { nextTick } from 'vue'
 import { defineComponent, h } from 'vue'
 import { mount } from '@vue/test-utils'
@@ -23,9 +25,10 @@ const Harness = defineComponent({
 })
 
 function mountOverlay(id: string) {
-  return mount(Harness, { props: { id } }) as unknown as {
+  return mount(Harness, { props: { id }, attachTo: document.body }) as unknown as {
     vm: OverlayVm
     unmount: () => void
+    element: HTMLElement
   }
 }
 
@@ -34,6 +37,10 @@ function pressEscape(): void {
 }
 
 describe('useOverlayStack', () => {
+  afterEach(() => {
+    document.body.replaceChildren()
+  })
+
   it('open 幂等 + zIndex 按 2000+序×10 递增 + 栈顶判定', () => {
     const a = mountOverlay('a')
     const b = mountOverlay('b')
@@ -92,6 +99,21 @@ describe('useOverlayStack', () => {
     expect(b.vm.ov.isTop.value).toBe(true)
     b.unmount()
     expect(a.vm.ov.isTop.value).toBe(true)
+    a.unmount()
+  })
+
+  it('owner 过滤：KeepAlive 后台实例（DOM 离开文档）的浮窗不响应 Esc，复活后恢复（§7.1.4 护栏 2）', async () => {
+    const a = mountOverlay('a')
+    a.vm.ov.open()
+    await nextTick()
+    // 模拟 KeepAlive deactivated：宿主 DOM 被移出文档
+    a.element.remove()
+    pressEscape()
+    expect(a.vm.ov.isOpened.value).toBe(true) // 后台不关闭
+    // 复活（activated）：DOM 重新插入文档
+    document.body.appendChild(a.element)
+    pressEscape()
+    expect(a.vm.ov.isOpened.value).toBe(false)
     a.unmount()
   })
 })

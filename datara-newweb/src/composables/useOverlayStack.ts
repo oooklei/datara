@@ -12,7 +12,7 @@
  * 若用深层 ref，`stack.value = [...stack.value, entry]` 展开时元素会被 reactive 重新
  * 包装为代理，导致 includes/filter 的 raw 身份比对失配（元素"丢失"假象）。
  */
-import { computed, onBeforeUnmount, shallowRef, watch } from 'vue'
+import { computed, getCurrentInstance, onBeforeUnmount, shallowRef, watch } from 'vue'
 
 interface OverlayEntry {
   id: string
@@ -26,6 +26,8 @@ const BASE_Z_INDEX = 2000
 export function useOverlayStack(id: string) {
   const entry: OverlayEntry = { id, zIndex: 0 }
   let opened = false
+  // setup 期捕获实例，用于 Esc 的 owner 前台判定（§7.1.4 护栏 2）
+  const instance = getCurrentInstance()
 
   const zIndex = computed(() => stack.value.find((item) => item === entry)?.zIndex ?? 0)
   const isOpened = computed(() => stack.value.includes(entry))
@@ -48,8 +50,20 @@ export function useOverlayStack(id: string) {
     stack.value = stack.value.filter((item) => item !== entry)
   }
 
+  /**
+   * §7.1.4 护栏 2（浮窗 owner 过滤防后台泄漏）：KeepAlive 后台实例（deactivated）
+   * 的 DOM 已被移出文档，其浮窗不得响应前台按键的 Esc 关闭。
+   * 判定 = 宿主根 DOM 的 isConnected；无实例/根信息时不过滤（保持非组件用法兼容）。
+   */
+  function ownerInDocument(): boolean {
+    const el = instance?.subTree?.el
+    return !el || (el as Node).isConnected
+  }
+
   function onKeydown(event: KeyboardEvent): void {
-    if (event.key === 'Escape' && isTop.value) close()
+    if (event.key !== 'Escape' || !isTop.value) return
+    if (!ownerInDocument()) return
+    close()
   }
 
   watch(isTop, (top) => {
