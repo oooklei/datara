@@ -158,7 +158,7 @@ vi.mock('../../stores/trialRun', () => ({
 
 vi.mock('element-plus', () => ({
   ElMessage: { success: vi.fn(), warning: vi.fn(), error: vi.fn(), info: vi.fn() },
-  ElMessageBox: { prompt: vi.fn(async () => ({ value: '' })) },
+  ElMessageBox: { prompt: vi.fn(async () => ({ value: '' })), confirm: vi.fn(async () => 'confirm') },
   ElDialog: { name: 'ElDialog', props: ['modelValue', 'title', 'width'], render: () => null },
   ElTable: { name: 'ElTable', props: ['data'], render: () => null },
   ElTableColumn: { name: 'ElTableColumn', render: () => null },
@@ -539,6 +539,45 @@ describe('WorkflowGraphWorkbench L12-02 同步工作流契约', () => {
     })
     // 保存后 clearSelection → 面板关闭
     expect(wrapper.find('[data-testid="node-config-panel"]').exists()).toBe(false)
+  })
+
+  it('用例T9a 连线图例浮层：wf-legend → 五类图例 → 关闭（T9 弹窗 #10，D9 overlay 栈第二消费者）', async () => {
+    const { wrapper } = makeWorkbench('wf')
+    await flushPromises()
+
+    expect(wrapper.find('[data-testid="wf-legend-panel"]').exists()).toBe(false)
+    await wrapper.find('[data-testid="wf-legend"]').trigger('click')
+    await nextTick()
+    expect(wrapper.find('[data-testid="wf-legend-panel"]').exists()).toBe(true)
+    for (const id of ['flow', 'branch', 'branch_true', 'branch_false', 'dep']) {
+      expect(wrapper.find(`[data-testid="legend-item-${id}"]`).exists(), id).toBe(true)
+    }
+    await wrapper.find('[data-testid="wf-legend-close"]').trigger('click')
+    await nextTick()
+    expect(wrapper.find('[data-testid="wf-legend-panel"]').exists()).toBe(false)
+  })
+
+  it('用例T9b 删除确认：选中节点 → 删除选中 → confirm 确认删 / 取消不删（审计弹窗 #7）', async () => {
+    const { wrapper, graph } = makeWorkbench('wf')
+    await flushPromises()
+    const before = graph.nodes.length
+
+    wrapper.findComponent({ name: 'VueFlow' }).vm.$emit('nodeClick', { node: { id: 'n2' } })
+    await nextTick()
+
+    const { ElMessageBox } = await import('element-plus')
+    // 取消（reject）→ 不删
+    vi.mocked(ElMessageBox.confirm).mockRejectedValueOnce('cancel')
+    await wrapper.find('button[title="删除选中节点/连线"]').trigger('click')
+    await flushPromises()
+    expect(graph.nodes.length).toBe(before)
+
+    // 确认 → 删除 + 置脏
+    vi.mocked(ElMessageBox.confirm).mockResolvedValueOnce('confirm' as unknown as Awaited<ReturnType<typeof ElMessageBox.confirm>>)
+    await wrapper.find('button[title="删除选中节点/连线"]').trigger('click')
+    await flushPromises()
+    expect(graph.nodes.length).toBe(before - 1)
+    expect(graph.isDirty).toBe(true)
   })
 
   it('用例7 试运行入口：wf-trial → TrialRunPanel 挂载并 open(7, 42)', async () => {

@@ -237,11 +237,12 @@ async function onOpenCreateWf() {
   }
 }
 
-function saveActiveAsTemplate() {
-  if (!activeTab.value) return
-  // 蓝本：resolveTemplateSourceDoc → ElMessageBox.prompt('模板名称') → createTemplate（契约随画布内核批次接驳）
-  ElMessage.info('另存为模板随后续批次（画布内核）接驳')
-}
+/**
+ * G09 死按钮清理（2026-10-28 方案 G09：无契约隐藏并注明原因）：
+ * 「另存为模板」按钮移除——createTemplate 模板 CRUD 契约未立项（后端支撑面外），
+ * 降级提示亦属死按钮伪装，直接隐藏；模板中心/告警与SLA 页签保留导航（蓝本信息架构），
+ * 内容区空态注明原因。
+ */
 
 /** 快照草稿是否存在（关闭非激活 Tab 时确认丢弃的依据；键名 datara.dag.snap.{docId} 继承） */
 function hasSnapDraft(docId: string): boolean {
@@ -363,7 +364,7 @@ onMounted(async () => {
         @click="variablesVisible = true"
       >变量管理</button>
       <button v-if="tab === 'edit'" class="tc-new-workflow" data-testid="new-workflow" @click="onOpenCreateWf">＋ 新建工作流</button>
-      <button v-if="tab === 'edit' && activeTab" class="tc-save-template" @click="saveActiveAsTemplate">另存为模板</button>
+      <!-- G09：「另存为模板」按钮移除（createTemplate 契约未立项，无契约隐藏并注明原因——见模板中心空态） -->
       <span v-if="tab === 'edit'" class="tc-view">{{ profileOf.name }}</span>
     </div>
 
@@ -411,7 +412,20 @@ onMounted(async () => {
         <WorkflowRunMonitor v-if="projectId !== undefined" :project-id="projectId" :initial-status="drillStatus" :initial-run-id="drillRunId" />
         <div v-else class="tc-slot" data-tc-runs-slot><p class="tc-slot-sub">请先选择项目以查看运行记录</p></div>
       </template>
-      <!-- 模板中心 / 告警与SLA：框架保留，本版不渲染占位内容（§5A.1） -->
+      <!-- G09：模板中心 / 告警与SLA——无后端契约（模板 CRUD / SLA 策略 API 未立项），
+           保留蓝本导航页签、隐藏功能内容并注明原因（G09：无契约隐藏并注明原因） -->
+      <template v-else-if="tab === 'templates'">
+        <div class="tc-slot" data-tc-templates-slot>
+          <p class="tc-slot-title">模板中心暂未开放</p>
+          <p class="tc-slot-sub">模板 CRUD 契约未立项（后端支撑面外）：「另存为模板」入口已按 G09 隐藏，待契约立项后随批补齐。</p>
+        </div>
+      </template>
+      <template v-else-if="tab === 'alarm'">
+        <div class="tc-slot" data-tc-alarm-slot>
+          <p class="tc-slot-title">告警与 SLA 暂未开放</p>
+          <p class="tc-slot-sub">告警/SLA 策略契约未立项（后端支撑面外），按 G09 注明原因，待契约立项后随批补齐。</p>
+        </div>
+      </template>
     </div>
     <VariableManagerDrawer v-model="variablesVisible" :project-id="projectId" />
     <ScheduleDialog
@@ -463,7 +477,8 @@ onMounted(async () => {
 .tc-canvas-slot-sub{margin:0;font-size:13px;color:var(--text-secondary, var(--text-2))}
 .tc-empty{flex:1;display:flex;align-items:center;justify-content:center;padding:24px}
 .tc-empty-hint{display:flex;flex-direction:column;align-items:center;gap:6px;font-size:13px;color:var(--text-secondary, var(--text-2));text-align:center}
-/* 运行监控无项目上下文时的空状态 */
+/* 运行监控无项目上下文时的空状态；G09 模板中心/告警SLA 空态共用 */
 .tc-slot{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;padding:24px}
-.tc-slot-sub{margin:0;font-size:13px;color:var(--text-secondary, var(--text-2))}
+.tc-slot-title{margin:0;font-size:15px;font-weight:600;color:var(--text-primary, var(--text))}
+.tc-slot-sub{margin:0;font-size:13px;color:var(--text-secondary, var(--text-2));max-width:560px;text-align:center}
 </style>

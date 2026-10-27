@@ -313,6 +313,34 @@ function onDeleteSelected() {
   }
 }
 
+/* ---------- T9/G09：删除确认 + 连线图例浮层（D9 overlay 栈第二消费者） ---------- */
+
+/** 审计弹窗 #7：删除节点/边需确认（确认→删+置脏；取消/X/ESC 不动） */
+async function onDeleteSelectedConfirmed() {
+  const target = selectedNode.value
+    ? `节点「${selectedNode.value}」`
+    : selectedEdge.value
+      ? `连线 ${selectedEdge.value.from} → ${selectedEdge.value.to}`
+      : ''
+  if (!target) return
+  try {
+    await ElMessageBox.confirm(`确认删除${target}？`, '删除确认', {
+      type: 'warning',
+      confirmButtonText: '删除',
+      cancelButtonText: '取消',
+    })
+  } catch {
+    return
+  }
+  onDeleteSelected()
+}
+
+/* D9：连线图例浮层——overlay 栈第二消费者（与校验面板共存，zIndex/Esc 由栈裁决） */
+const { zIndex: legendZIndex, isOpened: legendVisible, open: openLegend, close: closeLegend } = useOverlayStack('wf-legend')
+const legendPanelRef = ref<HTMLElement | null>(null)
+const legendHandleRef = ref<HTMLElement | null>(null)
+const { dragStyle: legendDragStyle, onHandlePointerdown: onLegendDragStart } = useDraggable(legendPanelRef, legendHandleRef, { storageKey: 'wf.legend' })
+
 /* ---------- 托盘（13 类型点击加节点，级联摆位） ---------- */
 
 function publishedComponentRef(type: string): { type: string; version: number } | null {
@@ -736,7 +764,7 @@ function onSchedule() {
           class="wf-btn"
           :disabled="!loaded || (!selectedNode && !selectedEdge)"
           title="删除选中节点/连线"
-          @click="onDeleteSelected"
+          @click="onDeleteSelectedConfirmed"
         >删除选中</button>
         <button class="wf-btn" :disabled="degraded || !loaded" @click="onPublish">发布</button>
         <button class="wf-btn" :disabled="degraded || !loaded" @click="onShowVersions">版本</button>
@@ -750,6 +778,7 @@ function onSchedule() {
           title="W1 画布校验（11 validators）"
           @click="openValidation"
         >校验<span v-if="validationErrorCount" class="wf-badge wf-badge-error" data-testid="wf-validate-error-badge">{{ validationErrorCount }}</span><span v-else-if="validationWarnCount" class="wf-badge wf-badge-warn" data-testid="wf-validate-warn-badge">{{ validationWarnCount }}</span></button>
+        <button class="wf-btn" data-testid="wf-legend" :disabled="!loaded" title="连线图例（可拖动）" @click="openLegend">图例</button>
         <span
           v-if="graphStore.docId === numDocId && graphStore.isDirty"
           class="wf-dirty"
@@ -929,6 +958,7 @@ function onSchedule() {
         <el-table-column prop="remark" label="备注" />
         <el-table-column prop="publishedAt" label="发布时间" width="170" />
       </el-table>
+      <p class="wf-version-note">版本历史只读（每次保存生成新版本快照）；版本回滚待后端契约（rebuild 暂无 rollback 端点）后接入。</p>
     </el-dialog>
 
     <div v-if="validationVisible" class="validation-overlay" data-testid="validation-overlay" @click.self="closeValidation">
@@ -961,6 +991,29 @@ function onSchedule() {
           </li>
         </ul>
       </div>
+    </div>
+
+    <!-- T9 弹窗 #10 连线图例：非模态浮层，D9 overlay 栈 + 头部拖拽（位置记忆 wf.legend） -->
+    <div
+      v-if="legendVisible"
+      ref="legendPanelRef"
+      class="wf-legend-panel"
+      data-testid="wf-legend-panel"
+      role="dialog"
+      aria-label="连线图例"
+      :style="[{ zIndex: legendZIndex }, legendDragStyle]"
+    >
+      <header ref="legendHandleRef" class="wf-legend-head" @pointerdown="onLegendDragStart">
+        <strong>连线图例</strong>
+        <button class="wf-btn" data-testid="wf-legend-close" aria-label="关闭图例" @pointerdown.stop @click="closeLegend">×</button>
+      </header>
+      <ul class="wf-legend-list">
+        <li data-testid="legend-item-flow"><code class="lg-flow">━━▶</code><span><b>flow 数据流</b>：上游输出 → 下游输入（拖边即引用 nodeId:port 具名引用）</span></li>
+        <li data-testid="legend-item-branch"><code class="lg-branch">━━▶</code><span><b>branch 条件分支</b>：condition_set 的出边（无出边仅告警不阻断）</span></li>
+        <li data-testid="legend-item-branch_true"><code class="lg-branch-true">━━▶</code><span><b>branch_true 条件真</b>：满足条件走的分支</span></li>
+        <li data-testid="legend-item-branch_false"><code class="lg-branch-false">━━▶</code><span><b>branch_false 条件假</b>：不满足条件走的分支</span></li>
+        <li data-testid="legend-item-dep"><code class="lg-dep">╌╌▶</code><span><b>dep 依赖</b>：依赖组件的上游引用（调度顺序，无数据传递）</span></li>
+      </ul>
     </div>
   </div>
 </template>
@@ -1170,4 +1223,20 @@ function onSchedule() {
   .wf-aside{width:auto;min-height:260px;max-height:42vh;flex:none;border-left:0;border-top:1px solid var(--border-color,#e2e8f0)}
   .wf-splitter{display:none}
 }
+
+/* T9 弹窗 #8 版本历史只读说明 */
+.wf-version-note{margin:8px 0 0;font-size:12px;color:var(--el-text-color-secondary,#909399)}
+
+/* T9 弹窗 #10 连线图例浮层（D9：非模态、可拖拽；zIndex 由 overlay 栈绑定覆盖） */
+.wf-legend-panel{position:fixed;top:64px;right:16px;width:min(360px,92vw);max-height:60vh;overflow-y:auto;background:#fff;border:1px solid var(--border-color,#e2e8f0);border-radius:8px;box-shadow:0 8px 32px rgba(0,0,0,.18);padding:10px 14px;z-index:2000;display:flex;flex-direction:column;gap:8px}
+.wf-legend-head{display:flex;align-items:center;justify-content:space-between;cursor:move;user-select:none}
+.wf-legend-list{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:6px}
+.wf-legend-list li{display:flex;align-items:flex-start;gap:8px;font-size:12px;line-height:1.6}
+.wf-legend-list code{flex:none;font-weight:700;font-size:12px}
+.wf-legend-list b{font-weight:600}
+.lg-flow{color:var(--el-color-primary,#409eff)}
+.lg-branch{color:var(--el-color-warning,#e6a23c)}
+.lg-branch-true{color:var(--el-color-success,#67c23a)}
+.lg-branch-false{color:var(--el-color-danger,#f56c6c)}
+.lg-dep{color:var(--el-text-color-secondary,#909399)}
 </style>

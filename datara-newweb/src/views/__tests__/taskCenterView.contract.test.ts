@@ -14,7 +14,7 @@
  *  - 关闭三选（激活有草稿：保存并关闭/放弃修改/X·ESC 取消；非激活：草稿确认/直关）；
  *  - KeepAlive + :key 画布区跟随 activeTab（FE-6 ③ 接驳真实 Workbench，测试桩化同形，
  *    vue-flow 真挂载归 1.9 E2E）；「＋新建工作流」FE-6 ③ 归真（prompt →
- *    createWorkflowDefinition → openTab），「另存为模板」仍降级提示；
+ *    createWorkflowDefinition → openTab），「另存为模板」按 G09 隐藏（无契约）；
  *  - store-held 保存分流（FE-6 ③）：graphStore.doc?.id 命中时「保存并关闭」接
  *    graphStore.save()（失败不关闭），未 held 回落快照草稿信号（save 同放弃收尾）。
  *
@@ -229,14 +229,15 @@ describe('INC4-FE-1 任务中心顶部视角页签框架（/dag，s260 派令）
     expect(runStatsList).not.toHaveBeenCalled()
   })
 
-  it('?tab=templates / ?tab=alarm：页签激活态正确，框架保留且 body 不渲染占位内容', () => {
+  it('?tab=templates / ?tab=alarm：页签激活态正确，G09 空态注明原因（无契约保留页签）', () => {
     for (const k of ['templates', 'alarm']) {
       routeQuery.value = { tab: k }
       const w = mountView()
       expect(w.find(`[data-tab="${k}"]`).classes()).toContain('on')
       expect(w.find('[data-tc-canvas-slot]').exists()).toBe(false)
       expect(w.find('[data-tc-runs-slot]').exists()).toBe(false)
-      expect(w.find('[data-tc-body]').text()).toBe('')
+      // G09 空态渲染（2026-10-28 起占位内容 = 注明原因的空态）
+      expect(w.find('[data-tc-body]').text()).toContain('G09')
     }
   })
 
@@ -540,7 +541,7 @@ describe('INC4-FE-2 画布多 Tab（MAX_DAG_TABS=5，蓝本照抄 + §5A.2 收�
     expect(String(msgSuccess.mock.calls[0][0])).toContain('已创建工作流「新流程」')
   })
 
-  it('新建工作流降级与取消：无项目上下文 warning 直返；prompt 取消不建；另存为模板仍降级提示', async () => {
+  it('新建工作流降级与取消：无项目上下文 warning 直返；prompt 取消不建；另存为模板按 G09 隐藏', async () => {
     const w = mountView()
     await w.find('[data-testid="new-workflow"]').trigger('click')
     expect(msgWarning).toHaveBeenCalledWith(expect.stringContaining('无项目上下文'))
@@ -554,12 +555,24 @@ describe('INC4-FE-2 画布多 Tab（MAX_DAG_TABS=5，蓝本照抄 + §5A.2 收�
     await w2.find('[data-testid="new-workflow"]').trigger('click')
     await flushPromises()
     expect(wfCreate).not.toHaveBeenCalled()
-    // 另存为模板降级保留（createTemplate 归后续批次）
+    // G09：createTemplate 契约未立项，「另存为模板」按钮隐藏（edit 态有 Tab 也不存在）
     useDagTabsStore().open({ docId: 'd1', name: '一', type: 'wf' })
     await flushPromises()
-    expect(w2.find('.tc-save-template').exists()).toBe(true)
-    await w2.find('.tc-save-template').trigger('click')
-    expect(msgInfo).toHaveBeenCalledTimes(1)
+    expect(w2.find('.tc-save-template').exists()).toBe(false)
+    expect(msgInfo).not.toHaveBeenCalled()
+  })
+
+  it('G09：模板中心/告警与SLA 空态注明原因（保留页签、隐藏功能内容）', () => {
+    routeQuery.value = { tab: 'templates' }
+    const wt = mountView()
+    expect(wt.find('[data-tc-templates-slot]').exists()).toBe(true)
+    expect(wt.text()).toContain('模板中心暂未开放')
+    expect(wt.text()).toContain('G09')
+    routeQuery.value = { tab: 'alarm' }
+    const wa = mountView()
+    expect(wa.find('[data-tc-alarm-slot]').exists()).toBe(true)
+    expect(wa.text()).toContain('告警与 SLA 暂未开放')
+    expect(wa.text()).toContain('G09')
   })
 
   it('右上专属操作仅 edit 态在位（templates/runs/alarm 不渲染）', () => {
