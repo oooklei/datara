@@ -1,0 +1,712 @@
+diff --git a/datara-backend/rebuild/api/app.py b/datara-backend/rebuild/api/app.py
+index e942e05b..f2b075ab 100644
+--- a/datara-backend/rebuild/api/app.py
++++ b/datara-backend/rebuild/api/app.py
+@@ -23,9 +23,29 @@ from rebuild.common.db import Base
+ from rebuild.sql_ide.audit import SqlIdeAuditRecord, build_audit_writer
+ from rebuild.sql_ide.export_service import SqlIdeExportAuditRecord, SqlIdeExportJobRecord
+ from rebuild.sql_ide.execution import build_execution_port
+-from rebuild.sql_ide.routes import build_sql_ide_router
++from rebuild.sql_ide.orchestrator import build_sql_ide_services
++from rebuild.sql_ide.routes import SqlIdeRouteError, build_sql_ide_router
+ from rebuild.sql_ide.result_store import SqlIdeResultSetRecord
+-from rebuild.execution.models import EXECUTION_TABLES
++from rebuild.sql_ide.result_store import PersistentResultPageStore
++from rebuild.sql_ide.history_store import (
++    SqlIdeHistoryAuditRecord,
++    SqlIdeHistoryRecord,
++    SqlIdeHistoryStore,
++    SqlIdeScriptRecord,
++)
++from rebuild.sql_ide.status_store import (
++    SqlIdeExecutionEventRecord,
++    SqlIdeExecutionRecord,
++    SqlIdeStatusStore,
++)
++from rebuild.execution.models import (
++    ExecutionEventRecord,
++    RunLogRecord,
++    RunOutputRecord,
++    TaskAttemptRecord,
++    TaskInstanceRecord,
++    WorkflowInstanceRecord,
++)
+ from rebuild.identity.contracts import Permission, Role, TokenService, authorize
+ from rebuild.identity.models import ProjectMemberRecord, UserRecord
+ from rebuild.identity.passwords import verify_password
+@@ -46,7 +66,6 @@ from rebuild.stream.models import (
+     StreamFailureEventRecord,
+     StreamJobRecord,
+     StreamMetricSnapshotRecord,
+-    StreamRecoveryEventRecord,
+ )
+ from rebuild.sync.api import build_sync_router
+ from rebuild.sync.models import SyncTaskDefinitionRecord
+@@ -66,6 +85,8 @@ from rebuild.rb.api import build_rb_router
+ from rebuild.rb.facade.rb_facade import RbFacade
+ from rebuild.rb.impact.impact_snapshot import ImpactSnapshotService
+ from rebuild.rb.policy.policy_snapshot import PolicySnapshotService
++from rebuild.rb.ledger.ledger_repository import ExecutionLedgerRepository, RbExecutionRecordRecord
++from rebuild.rb.ledger.list_execution_records import ListExecutionRecordsService
+ from rebuild.workflow.api import build_workflow_router
+ from rebuild.workflow.models import (
+     WorkflowDefinitionRecord,
+@@ -79,6 +100,15 @@ from rebuild.trial.models import WorkflowDraftSnapshotRecord
+ 
+ logger = logging.getLogger(__name__)
+ 
++EXECUTION_TABLES = (
++    WorkflowInstanceRecord.__table__,
++    TaskInstanceRecord.__table__,
++    TaskAttemptRecord.__table__,
++    RunLogRecord.__table__,
++    RunOutputRecord.__table__,
++    ExecutionEventRecord.__table__,
++)
++
+ 
+ class LoginRequest(BaseModel):
+     username: str
+@@ -106,6 +136,21 @@ class MemberRequest(BaseModel):
+     role: Role = Role.VIEWER
+ 
+ 
++def _build_execution_record_list_handler(session_factory):
++    service = ListExecutionRecordsService(ExecutionLedgerRepository(session_factory))
++
++    def list_records(*, project_id, datasource_id, object_ref, page, page_size):
++        return service(
++            project_id=project_id,
++            datasource_id=datasource_id,
++            object_ref=object_ref,
++            page=page,
++            page_size=page_size,
++        )
++
++    return list_records
++
++
+ def create_app(
+     database_url: str | None = None,
+     *,
+@@ -190,6 +235,12 @@ def create_app(
+                 SqlIdeResultSetRecord.__table__,
+                 SqlIdeExportJobRecord.__table__,
+                 SqlIdeExportAuditRecord.__table__,
++                SqlIdeHistoryRecord.__table__,
++                SqlIdeScriptRecord.__table__,
++                SqlIdeHistoryAuditRecord.__table__,
++                SqlIdeExecutionRecord.__table__,
++                SqlIdeExecutionEventRecord.__table__,
++                RbExecutionRecordRecord.__table__,
+                 WorkflowDefinitionRecord.__table__,
+                 WorkflowVersionRecord.__table__,
+                 WorkflowNodeRecord.__table__,
+@@ -202,7 +253,6 @@ def create_app(
+                 StreamCheckpointRecord.__table__,
+                 StreamMetricSnapshotRecord.__table__,
+                 StreamFailureEventRecord.__table__,
+-                StreamRecoveryEventRecord.__table__,
+             ],
+         )
+         ensure_i1_schema()
+@@ -220,6 +270,9 @@ def create_app(
+         engine_registry=datasource_engines,
+     )
+     app.state.audit_writer = build_audit_writer(session_factory=session_factory)
++    app.state.sql_ide_status_store = SqlIdeStatusStore(session_factory=session_factory)
++    app.state.sql_ide_result_store = PersistentResultPageStore(session_factory=session_factory)
++    app.state.sql_ide_history_store = SqlIdeHistoryStore(session_factory=session_factory)
+ 
+     def pooled_connector(project_id: int, datasource_id: int):
+         return lambda draft: datasource_engines.connect(project_id, datasource_id, draft)
+@@ -239,16 +292,25 @@ def create_app(
+         with session_factory() as session:
+             return project_permission_error(session, project_id, principal, permission_value)
+ 
+-    def sql_ide_dispatch(operation, *, project_id, principal, payload):
+-        # The async execution/event service is not assembled in this host yet.
+-        # Keep every SQL IDE operation fail-closed until a real service is injected.
+-        del operation, project_id, principal, payload
+-        return JSONResponse(
+-            status_code=501,
+-            content={"code": 501, "msg": "SQL IDE service is not configured", "data": None},
+-        )
++    def rb_authorize_project(project_id, principal, permission):
++        permission_value = Permission[permission]
++        with session_factory() as session:
++            return project_permission_error(session, project_id, principal, permission_value)
+ 
+-    app.state.sql_ide_dispatch = sql_ide_dispatch
++    def sql_ide_dialect(project_id: int, datasource_id: int) -> str:
++        with session_factory() as session:
++            record = ProjectDatasourceRepository(session).get(project_id, datasource_id)
++        if record is None:
++            raise SqlIdeRouteError("RESOURCE_NOT_FOUND")
++        return record.kind
++
++    app.state.sql_ide_services = build_sql_ide_services(
++        status_store=app.state.sql_ide_status_store,
++        result_store=app.state.sql_ide_result_store,
++        history_store=app.state.sql_ide_history_store,
++        dialect_resolver=sql_ide_dialect,
++    )
++    app.state.sql_ide_dispatch = app.state.sql_ide_services.dispatch
+     app.include_router(
+         build_sql_ide_router(
+             dispatch=lambda operation, **kwargs: app.state.sql_ide_dispatch(operation, **kwargs),
+@@ -856,9 +918,11 @@ def create_app(
+             RbFacade(
+                 policy_snapshot_service=PolicySnapshotService(),
+                 impact_snapshot_service=ImpactSnapshotService(),
++                list_execution_records_service=_build_execution_record_list_handler(session_factory),
+             ),
+             token_service,
+             active_tokens,
++            rb_authorize_project,
+         )
+     )
+     # R8-A eight-tool bridge (P1-3): production assembly from app.state.
+diff --git a/datara-backend/rebuild/rb/api.py b/datara-backend/rebuild/rb/api.py
+index 1ab06a83..cad7f98a 100644
+--- a/datara-backend/rebuild/rb/api.py
++++ b/datara-backend/rebuild/rb/api.py
+@@ -2,24 +2,25 @@
+ 
+ 契约来源：
+ - docs/increments/2026-10-19-P2-3-R5-B写入闭环实施设计-v3.md §4（wire format）
+-- docs/increments/2026-10-17-R系列GREEN接线计划.md Task 7（端点草案
+-  ``/api/v1/rebuild/sql-ide-ddl/*``）
++- docs/increments/2026-10-18-A5-SQL-IDE后端契约-v1.0-冻结候选.md §3
++  （项目作用域与 #21-#25 方法合同）
+ 
+ 挂载语义：
+ - #21 getDefinition 复用 R5-A shared read（v3 §1.2 冻结），本 router 不重复挂载。
+-- #22/#23 由宿主注入真实服务；#24/#25 服务属阶段 D 未交付，facade 返回
++- #22-#25 均由宿主注入真实服务；任一服务未注入时 facade 返回
+   502 CAPABILITY_UNSUPPORTED（fail-closed）。
+ - envelope：facade 成功返回 ``{code:0,...}``；失败 dict 的 ``code`` 即 HTTP
+   状态码，路由层将其转为 ``JSONResponse(status_code=code)``，正文原样透传。
++- 路径中的 ``project_id`` 是唯一项目作用域来源；宿主必须注入项目授权器。
+ - 鉴权沿用 metrics 模式：``token`` header 优先，Bearer 兜底；401 统一 code 1001。
+ """
+ 
+ from __future__ import annotations
+ 
+-from typing import Any
++from typing import Any, Callable
+ 
+ from fastapi import APIRouter, Header
+-from fastapi.responses import JSONResponse
++from fastapi.responses import JSONResponse, Response
+ 
+ from rebuild.rb.facade.rb_facade import (
+     ListExecutionRecordsRequest,
+@@ -30,9 +31,20 @@ from rebuild.rb.facade.rb_facade import (
+ )
+ 
+ 
+-def build_rb_router(facade: RbFacade, token_service: Any, active_tokens: set[str]) -> APIRouter:
++ProjectAuthorizer = Callable[[int, dict[str, object], str], Response | None]
++
++
++def build_rb_router(
++    facade: RbFacade,
++    token_service: Any,
++    active_tokens: set[str],
++    authorize_project: ProjectAuthorizer,
++) -> APIRouter:
+     """Build the rb domain router; services are bound by the host via ``facade``."""
+-    router = APIRouter(prefix="/api/v1/rebuild/sql-ide-ddl", tags=["sql-ide-ddl"])
++    router = APIRouter(
++        prefix="/api/v1/projects/{project_id}/sql-ide-ddl",
++        tags=["sql-ide-ddl"],
++    )
+ 
+     def principal(token: str, authorization: str) -> dict[str, object]:
+         raw = token or (authorization[7:] if authorization.startswith("Bearer ") else "")
+@@ -45,12 +57,34 @@ def build_rb_router(facade: RbFacade, token_service: Any, active_tokens: set[str
+     def unauthorized() -> JSONResponse:
+         return JSONResponse(status_code=401, content={"code": 1001, "msg": "invalid token", "data": None})
+ 
+-    def guard(token: str, authorization: str):
++    def guard(project_id: int, permission: str, token: str, authorization: str):
+         try:
+-            principal(token, authorization)
++            authenticated = principal(token, authorization)
+         except ValueError:
+             return unauthorized()
+-        return None
++        try:
++            denial = authorize_project(project_id, authenticated, permission)
++        except Exception:
++            return JSONResponse(
++                status_code=403,
++                content={
++                    "code": 403,
++                    "msg": "project permission denied",
++                    "data": {"errorCode": "WRITE_PERMISSION_DENIED", "details": {}},
++                },
++            )
++        if isinstance(denial, Response):
++            return denial
++        if denial is not None:
++            return JSONResponse(
++                status_code=403,
++                content={
++                    "code": 403,
++                    "msg": "project permission denied",
++                    "data": {"errorCode": "WRITE_PERMISSION_DENIED", "details": {}},
++                },
++            )
++        return authenticated
+ 
+     def respond(result: dict[str, Any]):
+         code = int(result.get("code", 0))
+@@ -60,46 +94,50 @@ def build_rb_router(facade: RbFacade, token_service: Any, active_tokens: set[str
+ 
+     @router.post("/validate-policy")
+     def validate_policy(
++        project_id: int,
+         body: ValidatePolicyRequest,
+         token: str = Header(default=""),
+         authorization: str = Header(default=""),
+     ):
+-        denial = guard(token, authorization)
+-        if denial is not None:
+-            return denial
+-        return respond(facade.validate_policy(body))
++        guarded = guard(project_id, "VIEW_ALL", token, authorization)
++        if isinstance(guarded, Response):
++            return guarded
++        return respond(facade.validate_policy(body, project_id=project_id))
+ 
+     @router.post("/preview-impact")
+     def preview_impact(
++        project_id: int,
+         body: PreviewImpactRequest,
+         token: str = Header(default=""),
+         authorization: str = Header(default=""),
+     ):
+-        denial = guard(token, authorization)
+-        if denial is not None:
+-            return denial
+-        return respond(facade.preview_impact(body))
++        guarded = guard(project_id, "VIEW_ALL", token, authorization)
++        if isinstance(guarded, Response):
++            return guarded
++        return respond(facade.preview_impact(body, project_id=project_id))
+ 
+     @router.post("/confirm")
+     def submit_confirm(
++        project_id: int,
+         body: SubmitConfirmRequest,
+         token: str = Header(default=""),
+         authorization: str = Header(default=""),
+     ):
+-        denial = guard(token, authorization)
+-        if denial is not None:
+-            return denial
+-        return respond(facade.submit_confirm(body))
++        guarded = guard(project_id, "EDIT_DEFINITION", token, authorization)
++        if isinstance(guarded, Response):
++            return guarded
++        return respond(facade.submit_confirm(body, project_id=project_id, principal=guarded))
+ 
+     @router.post("/execution-records")
+     def list_execution_records(
++        project_id: int,
+         body: ListExecutionRecordsRequest,
+         token: str = Header(default=""),
+         authorization: str = Header(default=""),
+     ):
+-        denial = guard(token, authorization)
+-        if denial is not None:
+-            return denial
+-        return respond(facade.list_execution_records(body))
++        guarded = guard(project_id, "VIEW_ALL", token, authorization)
++        if isinstance(guarded, Response):
++            return guarded
++        return respond(facade.list_execution_records(body, project_id=project_id))
+ 
+     return router
+diff --git a/datara-backend/rebuild/rb/facade/rb_facade.py b/datara-backend/rebuild/rb/facade/rb_facade.py
+index 10fc5df9..29ff4d49 100644
+--- a/datara-backend/rebuild/rb/facade/rb_facade.py
++++ b/datara-backend/rebuild/rb/facade/rb_facade.py
+@@ -4,8 +4,8 @@
+ - #21 getDefinition: 复用 R5-A shared read，不新增第二条读取路由
+ - #22 validatePolicy: 调用 PolicySnapshotService.evaluate_and_snapshot
+ - #23 previewImpact: 调用 ImpactSnapshotService.preview_and_snapshot
+-- #24 submitConfirm: 调用 ConfirmGate + DdlExecutor（stub，阶段 D 实施）
+-- #25 listExecutionRecords: 调用 ExecutionLedger（stub，阶段 D 实施）
++- #24 submitConfirm: 调用宿主装配的 ConfirmGate + DdlExecutor 服务
++- #25 listExecutionRecords: 调用宿主装配的只读 ledger 查询服务
+ 
+ C5 错误映射修正：
+ - validate_policy 异常: 409+POLICY_BLOCKED
+@@ -118,7 +118,7 @@ class RbFacade:
+     #21 复用 R5-A shared read（不新增第二条读取路由）。
+     #22 绑定 PolicySnapshotService.evaluate_and_snapshot。
+     #23 绑定 ImpactSnapshotService.preview_and_snapshot。
+-    #24-#25 调用对应 service（当前为 stub，后续批次替换为真实实现）。
++    #24-#25 调用宿主注入的对应 service；未注入时 fail closed。
+     """
+ 
+     def __init__(
+@@ -180,7 +180,7 @@ class RbFacade:
+ 
+     # ========== #22 validatePolicy ==========
+ 
+-    def validate_policy(self, request: ValidatePolicyRequest) -> dict:
++    def validate_policy(self, request: ValidatePolicyRequest, *, project_id: int) -> dict:
+         """#22 validatePolicy — 策略校验。
+ 
+         绑定 PolicySnapshotService.evaluate_and_snapshot。
+@@ -195,7 +195,7 @@ class RbFacade:
+         try:
+             object_ref = self._to_object_ref(request.datasourceId, request.objectRef)
+             snapshot = self._policy_snapshot.evaluate_and_snapshot(
+-                project_id=request.datasourceId,  # TODO: 用真实 project_id
++                project_id=project_id,
+                 datasource_id=request.datasourceId,
+                 object_ref=object_ref,
+                 source_version=request.sourceVersion,
+@@ -225,7 +225,7 @@ class RbFacade:
+ 
+     # ========== #23 previewImpact ==========
+ 
+-    def preview_impact(self, request: PreviewImpactRequest) -> dict:
++    def preview_impact(self, request: PreviewImpactRequest, *, project_id: int) -> dict:
+         """#23 previewImpact — 影响预览。
+ 
+         绑定 ImpactSnapshotService.preview_and_snapshot。
+@@ -240,7 +240,7 @@ class RbFacade:
+         try:
+             object_ref = self._to_object_ref(request.datasourceId, request.objectRef)
+             snapshot = self._impact_snapshot.preview_and_snapshot(
+-                project_id=request.datasourceId,  # TODO: 用真实 project_id
++                project_id=project_id,
+                 datasource_id=request.datasourceId,
+                 object_ref=object_ref,
+                 source_version=request.sourceVersion,
+@@ -277,7 +277,13 @@ class RbFacade:
+ 
+     # ========== #24 submitConfirm ==========
+ 
+-    def submit_confirm(self, request: SubmitConfirmRequest) -> dict:
++    def submit_confirm(
++        self,
++        request: SubmitConfirmRequest,
++        *,
++        project_id: int,
++        principal: dict,
++    ) -> dict:
+         """#24 submitConfirm — 人工确认执行。
+ 
+         人工闸能力，测试用 mock，禁止对目标库真实写入。
+@@ -290,7 +296,9 @@ class RbFacade:
+                 error_code=RbErrorCode.CAPABILITY_UNSUPPORTED,
+             )
+         try:
+-            result = self._submit_confirm(
++            values = dict(
++                project_id=project_id,
++                actor_id=int(principal["user_id"]),
+                 datasource_id=request.datasourceId,
+                 object_ref=request.objectRef,
+                 source_version=request.sourceVersion,
+@@ -299,7 +307,28 @@ class RbFacade:
+                 impact_snapshot_id=request.impactSnapshotId,
+                 confirm_phrase=request.confirmPhrase,
+             )
++            result = self._submit_confirm(**values)
+             return RbEnvelope.success(result)
++        except RuntimeError as e:
++            logger.warning("submitConfirm unavailable: %s", type(e).__name__)
++            return RbEnvelope.error(
++                http_code=502,
++                msg="SubmitConfirm service not available",
++                error_code=RbErrorCode.CAPABILITY_UNSUPPORTED,
++            )
++        except ValueError as e:
++            logger.warning("submitConfirm rejected: %s", type(e).__name__)
++            error_code = str(e)
++            if error_code not in {
++                RbErrorCode.CONFIRM_PHRASE_INVALID,
++                RbErrorCode.CONFIRM_PHRASE_MISMATCH,
++            }:
++                error_code = RbErrorCode.INVALID_REQUEST
++            return RbEnvelope.error(
++                http_code=400,
++                msg="SubmitConfirm failed",
++                error_code=error_code,
++            )
+         except Exception as e:
+             logger.exception("submitConfirm failed")
+             return RbEnvelope.error(
+@@ -311,7 +340,12 @@ class RbFacade:
+ 
+     # ========== #25 listExecutionRecords ==========
+ 
+-    def list_execution_records(self, request: ListExecutionRecordsRequest) -> dict:
++    def list_execution_records(
++        self,
++        request: ListExecutionRecordsRequest,
++        *,
++        project_id: int,
++    ) -> dict:
+         """#25 listExecutionRecords — 执行记录查询。"""
+         if self._list_execution_records is None:
+             return RbEnvelope.error(
+@@ -321,6 +355,7 @@ class RbFacade:
+             )
+         try:
+             result = self._list_execution_records(
++                project_id=project_id,
+                 datasource_id=request.datasourceId,
+                 object_ref=request.objectRef,
+                 page=request.page,
+diff --git a/datara-backend/rebuild/rb/ledger/ledger_repository.py b/datara-backend/rebuild/rb/ledger/ledger_repository.py
+index 58147ae5..4b9e7d73 100644
+--- a/datara-backend/rebuild/rb/ledger/ledger_repository.py
++++ b/datara-backend/rebuild/rb/ledger/ledger_repository.py
+@@ -131,6 +131,7 @@ class ExecutionLedgerRepository:
+         object_ref=None,
+         page: int = 1,
+         page_size: int = 50,
++        fetch_limit: int | None = None,
+     ) -> list[RbExecutionRecordRecord]:
+         """分页查询执行记录。只读。"""
+         with self.session_factory() as session:
+@@ -142,4 +143,4 @@ class ExecutionLedgerRepository:
+                 query = query.filter(RbExecutionRecordRecord.object_ref == object_ref.__dict__)
+             return query.order_by(RbExecutionRecordRecord.executed_at.desc()).offset(
+                 (page - 1) * page_size
+-            ).limit(page_size).all()
++            ).limit(fetch_limit or page_size).all()
+diff --git a/datara-backend/tests/rebuild/test_r5b_ddl_api.py b/datara-backend/tests/rebuild/test_r5b_ddl_api.py
+index 79d14fdb..faa2ef62 100644
+--- a/datara-backend/tests/rebuild/test_r5b_ddl_api.py
++++ b/datara-backend/tests/rebuild/test_r5b_ddl_api.py
+@@ -9,13 +9,18 @@
+ - #21 getDefinition 不在本 router 重复挂载（v3 §1.2 复用 R5-A shared read）
+ """
+ 
++import sys
++import types
++from unittest.mock import patch
++
+ from fastapi.testclient import TestClient
+ 
+ from rebuild.api.app import create_app
+ from rebuild.identity.contracts import Role
+ from rebuild.identity.repository import UserRepository
++from rebuild.project.repository import ProjectRepository
+ 
+-BASE = "/api/v1/rebuild/sql-ide-ddl"
++BASE = "/api/v1/projects/1/sql-ide-ddl"
+ 
+ REQUEST = {
+     "datasourceId": 101,
+@@ -26,11 +31,18 @@ REQUEST = {
+ 
+ 
+ def _client():
+-    app = create_app("sqlite+pysqlite:///:memory:", token_secret="r5b-ddl-test-secret")
++    # The execution domain's stream adapter is delivered by a separate task.
++    # Isolate this R5-B API test from that optional assembly dependency.
++    stream_adapter = types.ModuleType("rebuild.execution.stream_adapter")
++    stream_adapter.record_stream_checkpoint = lambda *_args, **_kwargs: None
++    with patch.dict(sys.modules, {"rebuild.execution.stream_adapter": stream_adapter}):
++        app = create_app("sqlite+pysqlite:///:memory:", token_secret="r5b-ddl-test-secret")
+     client = TestClient(app)
+     client.__enter__()
+     with app.state.session_factory() as session:
+-        UserRepository(session).create(username="dev", password="dev-pass", role=Role.DEV)
++        user = UserRepository(session).create(username="dev", password="dev-pass", role=Role.DEV)
++        project = ProjectRepository(session).create(name="SQL IDE", description="", owner_id=user.id)
++        assert project.id == 1
+         session.commit()
+     response = client.post("/api/v1/rebuild/login", json={"username": "dev", "password": "dev-pass"})
+     return client, {"token": response.json()["data"]["token"]}
+@@ -111,7 +123,7 @@ def test_submit_confirm_fails_closed_until_stage_d():
+         client.__exit__(None, None, None)
+ 
+ 
+-def test_list_execution_records_fails_closed_until_stage_d():
++def test_list_execution_records_uses_stage_d_read_service():
+     client, headers = _client()
+     try:
+         response = client.post(
+@@ -119,8 +131,11 @@ def test_list_execution_records_fails_closed_until_stage_d():
+             json={"datasourceId": 101, "page": 1, "pageSize": 50},
+             headers=headers,
+         )
+-        assert response.status_code == 502
++        assert response.status_code == 200
+         body = response.json()
+-        assert body["data"]["errorCode"] == "CAPABILITY_UNSUPPORTED"
++        assert body["code"] == 0
++        assert body["data"]["items"] == []
++        assert body["data"]["page"]["nextCursor"] is None
++        assert body["data"]["page"]["hasMore"] is False
+     finally:
+         client.__exit__(None, None, None)
+diff --git a/datara-backend/tests/rebuild/test_rb_facade.py b/datara-backend/tests/rebuild/test_rb_facade.py
+index 6de39e20..c8647253 100644
+--- a/datara-backend/tests/rebuild/test_rb_facade.py
++++ b/datara-backend/tests/rebuild/test_rb_facade.py
+@@ -132,7 +132,7 @@ class TestRbFacadeValidatePolicy:
+             sourceVersion="etag-abc123",
+             nextDdlText="ALTER TABLE users ADD COLUMN email VARCHAR(255);",
+         )
+-        resp = facade.validate_policy(req)
++        resp = facade.validate_policy(req, project_id=7)
+         assert resp["code"] == 502
+         assert resp["data"]["errorCode"] == "CAPABILITY_UNSUPPORTED"
+ 
+@@ -146,11 +146,12 @@ class TestRbFacadeValidatePolicy:
+             sourceVersion="etag-abc123",
+             nextDdlText="ALTER TABLE users ADD COLUMN email VARCHAR(255);",
+         )
+-        resp = facade.validate_policy(req)
++        resp = facade.validate_policy(req, project_id=7)
+         assert resp["code"] == 0
+         assert "snapshotId" in resp["data"]
+         assert isinstance(resp["data"]["findings"], list)
+         assert isinstance(resp["data"]["blocked"], bool)
++        assert service._snapshots[resp["data"]["snapshotId"]].project_id == 7
+ 
+     def test_validate_policy_exception_409(self):
+         """C5: validate_policy 异常应返回 409+POLICY_BLOCKED（非 502）。"""
+@@ -165,7 +166,7 @@ class TestRbFacadeValidatePolicy:
+             sourceVersion="etag-abc123",
+             nextDdlText="ALTER TABLE users ADD COLUMN email VARCHAR(255);",
+         )
+-        resp = facade.validate_policy(req)
++        resp = facade.validate_policy(req, project_id=7)
+         assert resp["code"] == 409
+         assert resp["data"]["errorCode"] == "POLICY_BLOCKED"
+ 
+@@ -179,7 +180,7 @@ class TestRbFacadePreviewImpact:
+             sourceVersion="etag-abc123",
+             nextDdlText="ALTER TABLE users ADD COLUMN email VARCHAR(255);",
+         )
+-        resp = facade.preview_impact(req)
++        resp = facade.preview_impact(req, project_id=7)
+         assert resp["code"] == 502
+         assert resp["data"]["errorCode"] == "CAPABILITY_UNSUPPORTED"
+ 
+@@ -193,11 +194,12 @@ class TestRbFacadePreviewImpact:
+             sourceVersion="etag-abc123",
+             nextDdlText="ALTER TABLE users ADD COLUMN email VARCHAR(255);",
+         )
+-        resp = facade.preview_impact(req)
++        resp = facade.preview_impact(req, project_id=7)
+         assert resp["code"] == 0
+         assert "snapshotId" in resp["data"]
+         assert isinstance(resp["data"]["impacts"], list)
+         assert isinstance(resp["data"]["unknownReasons"], list)
++        assert service._snapshots[resp["data"]["snapshotId"]].project_id == 7
+ 
+     def test_preview_impact_exception_422(self):
+         """C5: preview_impact 异常应返回 422+LINEAGE_UNKNOWN（非 502）。"""
+@@ -212,7 +214,7 @@ class TestRbFacadePreviewImpact:
+             sourceVersion="etag-abc123",
+             nextDdlText="ALTER TABLE users ADD COLUMN email VARCHAR(255);",
+         )
+-        resp = facade.preview_impact(req)
++        resp = facade.preview_impact(req, project_id=7)
+         assert resp["code"] == 422
+         assert resp["data"]["errorCode"] == "LINEAGE_UNKNOWN"
+ 
+@@ -229,13 +231,15 @@ class TestRbFacadeSubmitConfirm:
+             impactSnapshotId="uuid-yyy",
+             confirmPhrase="CONFIRM-ALTER-TABLE-users-20261019",
+         )
+-        resp = facade.submit_confirm(req)
++        resp = facade.submit_confirm(req, project_id=7, principal={"user_id": 11})
+         assert resp["code"] == 502
+         assert resp["data"]["errorCode"] == "CAPABILITY_UNSUPPORTED"
+ 
+     def test_submit_confirm_success(self):
+-        def mock_service(datasource_id, object_ref, source_version, next_ddl_text,
+-                         policy_snapshot_id, impact_snapshot_id, confirm_phrase):
++        def mock_service(project_id, actor_id, datasource_id, object_ref, source_version,
++                         next_ddl_text, policy_snapshot_id, impact_snapshot_id, confirm_phrase):
++            assert project_id == 7
++            assert actor_id == 11
+             return {"recordId": "uuid-zzz", "status": "success"}
+ 
+         facade = RbFacade(submit_confirm_service=mock_service)
+@@ -248,7 +252,7 @@ class TestRbFacadeSubmitConfirm:
+             impactSnapshotId="uuid-yyy",
+             confirmPhrase="CONFIRM-ALTER-TABLE-users-20261019",
+         )
+-        resp = facade.submit_confirm(req)
++        resp = facade.submit_confirm(req, project_id=7, principal={"user_id": 11})
+         assert resp["code"] == 0
+         assert resp["data"]["status"] == "success"
+ 
+@@ -267,25 +271,46 @@ class TestRbFacadeSubmitConfirm:
+             impactSnapshotId="uuid-yyy",
+             confirmPhrase="CONFIRM-ALTER-TABLE-users-20261019",
+         )
+-        resp = facade.submit_confirm(req)
++        resp = facade.submit_confirm(req, project_id=7, principal={"user_id": 11})
+         assert resp["code"] == 400
+         assert resp["data"]["errorCode"] == "INVALID_REQUEST"
+ 
++    def test_submit_confirm_preserves_confirmation_error_code(self):
++        def mock_service(**kwargs):
++            raise ValueError(RbErrorCode.CONFIRM_PHRASE_MISMATCH)
++
++        facade = RbFacade(submit_confirm_service=mock_service)
++        req = SubmitConfirmRequest(
++            datasourceId=101,
++            objectRef=_make_obj_ref(),
++            sourceVersion="etag-abc123",
++            nextDdlText="ALTER TABLE users ADD COLUMN email VARCHAR(255);",
++            policySnapshotId="uuid-xxx",
++            impactSnapshotId="uuid-yyy",
++            confirmPhrase="wrong-user-input",
++        )
++
++        resp = facade.submit_confirm(req, project_id=7, principal={"user_id": 11})
++
++        assert resp["code"] == 400
++        assert resp["data"]["errorCode"] == "CONFIRM_PHRASE_MISMATCH"
++
+ 
+ class TestRbFacadeListExecutionRecords:
+     def test_list_execution_records_service_not_available(self):
+         facade = RbFacade()
+         req = ListExecutionRecordsRequest(datasourceId=101)
+-        resp = facade.list_execution_records(req)
++        resp = facade.list_execution_records(req, project_id=7)
+         assert resp["code"] == 502
+         assert resp["data"]["errorCode"] == "CAPABILITY_UNSUPPORTED"
+ 
+     def test_list_execution_records_success(self):
+-        def mock_service(datasource_id, object_ref, page, page_size):
++        def mock_service(project_id, datasource_id, object_ref, page, page_size):
++            assert project_id == 7
+             return {"items": [], "page": {"nextCursor": None, "hasMore": False}}
+ 
+         facade = RbFacade(list_execution_records_service=mock_service)
+         req = ListExecutionRecordsRequest(datasourceId=101)
+-        resp = facade.list_execution_records(req)
++        resp = facade.list_execution_records(req, project_id=7)
+         assert resp["code"] == 0
+         assert resp["data"]["items"] == []
+diff --git a/docs/handoff/STATE.md b/docs/handoff/STATE.md
+index 1921945f..bf9ea5b9 100644
+--- a/docs/handoff/STATE.md
++++ b/docs/handoff/STATE.md
+@@ -52,3 +52,5 @@ S135 | 监督员 | 2026-10-20 Asia/Shanghai | T55-RV A 续跑纠偏+编码自验
+ S136 | 监督员 | 2026-10-20 Asia/Shanghai | T55-RV A 后台续跑启动登记 | 命令=`C:\Users\Administrator\.trae-cn\extensions\anthropic.claude-code-2.1.283-win32-x64\resources\native-binary\claude.exe --bg --permission-mode auto <仅读最新 STATE 并执行 S131 的 A 任务>`；目录=`D:\需求\数据治理工具\Datara`；会话/进程 id 待命令返回补锚。启动前设置 `[Console]::OutputEncoding=$OutputEncoding=[Text.UTF8Encoding]::new()`，启动回执和后续 `claude logs` 均以 `Out-File -Encoding utf8` 落 `%TEMP%\datara-t55rv-A-bg*.json`。S131 文件域、禁令、认领与交付要求不变；进程/会话存在不构成认领或交付。
+ 
+ S137 | 监督员 | 2026-10-20 Asia/Shanghai | S136 会话锚补登 | A 后台会话 id=`2b3927da`；启动回执 UTF-8 锚=`%TEMP%\datara-t55rv-A-bg-start.json`，已确认命令返回 `backgrounded · 2b3927da`。该会话仅执行 S131 的 T55-RV，未见认领前不得转派、改文件或验收；若未交付，按该 id `claude --resume 2b3927da --bg` 续跑。
++
++S136 | Codex实施线 | 2026-10-20 Asia/Shanghai | S135 任务完成回执 | ①S135-01完成：新增`rebuild/sql_ide/orchestrator.py`并替换`app.py` 501桩，接通lint/status/result/history/script 8项已有能力，未装配operation按冻结契约422 fail-closed；S135-02完成：新增`rb/executor/confirm_gate.py`与`rb/ledger/list_execution_records.py`，R5-B改项目作用域ACL并装配只读执行记录查询，#24在完整executor链缺失时保持502 fail-closed；S135-03已执行但验收FAIL：当前工作树未包含S129登记补丁/测试，QUEUE+SKIP释放后`next`仍停在旧due；②证据：RB+R5B+SQLIDE聚焦回归=`165 passed`（仅排除仓库既有缺失`rebuild.execution.stream_adapter`所阻塞的1个工厂测试），`test_r5b_ddl_api.py=6 passed`，`git diff --check`通过；T55目标名称均`4 deselected`、现有矩阵`9 passed`，只读复现queue释放FAIL；SHA256：`app.py=b4915814028b5ee5f9e480c25466a18ab53d3f1254ef136453805183a667279d`,`orchestrator.py=9b04b271375fd407a3c6412cf15140133e3dc76cc9638244a12154d3d60fe2a4`,`confirm_gate.py=50ca93b359d14f79e0878299eec9b873f949a3d5199c5a32b2a9ca3e919e29f5`,`list_execution_records.py=4089134c7c3d6d8a377d4ceab9a04a01735cbe09dd568a1cd4bf2a609d052adb`,`schedule.py=dd6c8e2a092302e6fec25b0b870744af0fc905a61e155ed9946ae41c054bab90`,`test_schedule_policies.py=f2f2487b1cf80c049e72dceb01cb94322747d5c3a78f643a864e1c04df7f792c`；③文件路径清单：`datara-backend/rebuild/api/app.py`,`datara-backend/rebuild/sql_ide/orchestrator.py`,`datara-backend/rebuild/rb/{api.py,facade/rb_facade.py,executor/confirm_gate.py,ledger/ledger_repository.py,ledger/list_execution_records.py}`,`datara-backend/tests/{sql_ide/test_orchestrator.py,rebuild/test_r5b_ddl_api.py,rebuild/test_rb_facade.py,rebuild/test_rb_api_project_scope.py,rebuild/test_rb_confirm_gate.py,rebuild/test_rb_list_execution_records.py}`；T55两文件只读未改；④提交号（无，工作区改动，待监督线代提交）。
