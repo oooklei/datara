@@ -89,7 +89,7 @@ const pipelineKpis = computed(() => {
   const total = current.workflowTypes.normal + current.workflowTypes.sync + current.workflowTypes.stream
   return [
     { key: 'workflows', label: '工作流总数', value: total, detail: `普通 ${current.workflowTypes.normal} · 同步 ${current.workflowTypes.sync} · 流 ${current.workflowTypes.stream}`, route: 'dag', tone: '' },
-    { key: 'success', label: '近 7 天成功', value: current.runTotals.success, detail: '已处理成功记录', route: 'dag?tab=runs&status=SUCCESS', tone: 'success' },
+    { key: 'success', label: '近 7 天成功', value: current.runTotals.success, detail: '已处理成功记录', route: 'dag?tab=runs&status=SUCCEEDED', tone: 'success' },
     { key: 'failure', label: '近 7 天失败', value: current.runTotals.failure, detail: '点击进入失败实例', route: 'dag?tab=runs&status=FAILED', tone: current.runTotals.failure ? 'danger' : '' },
     { key: 'running', label: '运行中实例', value: current.runTotals.running, detail: '包含实时流任务', route: 'dag?tab=runs&status=RUNNING', tone: 'primary' },
     { key: 'skipped', label: '跳过记录', value: current.runTotals.skipped, detail: '近 7 天累计', route: 'dag?tab=runs', tone: '' },

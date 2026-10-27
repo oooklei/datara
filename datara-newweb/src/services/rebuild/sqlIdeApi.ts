@@ -350,6 +350,7 @@ export const R5A_CONTRACT_METHODS = [
   'lintSql',
   'executeSql',
   'cancelExecution',
+  'getExecutionStatus',
   'openEventStream',
   'fetchResultPage',
   'listHistory',
@@ -386,6 +387,8 @@ export interface SqlIdeContract {
     rowCount?: number
   }>
   cancelExecution: (taskId: string) => Promise<{ canceled: boolean }>
+  /** 执行状态查询（终态兜底轮询用）：GET /executions/{task_id} */
+  getExecutionStatus: (taskId: string) => Promise<{ taskId: string; status: string; createdAt?: string; updatedAt?: string }>
   /** SSE 只读流：返回 EventSource（token 沿 R3 runner 注入先例，禁止落 storage） */
   openEventStream: (taskId: string) => EventSource
   fetchResultPage: (historyId: string | number, resultSetId: string, offset: number, limit: number) => Promise<SqlResultPage>
@@ -426,6 +429,7 @@ export function createSqlIdeContract(projectId = 1): SqlIdeContract {
       const response = await request<{ accepted: boolean; status: string }>(projectId, `/executions/${encodeURIComponent(taskId)}/cancel`, 'POST')
       return { canceled: response.accepted }
     },
+    getExecutionStatus: (taskId) => request(projectId, `/executions/${encodeURIComponent(taskId)}`),
     openEventStream: (taskId) => openAuthenticatedEventStream(projectId, taskId),
     fetchResultPage: async (historyId, resultSetId, offset, limit) => {
       if (!resultSetId) throw new TypeError('resultSetId is required to read a result snapshot')
@@ -459,10 +463,5 @@ export function createSqlIdeContract(projectId = 1): SqlIdeContract {
     getExportDownloadUrl: (exportId) => `${API_BASE}/${projectId}/sql-ide/exports/${encodeURIComponent(exportId)}/download`,
     cancelExport: async (exportId) => { await request(projectId, `/exports/${encodeURIComponent(exportId)}`, 'DELETE') },
   }
-}
-
-/** Fetch execution status for the readonly page's execute → result-page flow. */
-export function getSqlIdeExecutionStatus(projectId: number, taskId: string): Promise<{ status: string; historyId?: string | number | null }> {
-  return request(projectId, `/executions/${encodeURIComponent(taskId)}`)
 }
 

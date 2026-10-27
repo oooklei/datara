@@ -100,4 +100,37 @@ describe('workflow run monitor project scope', () => {
     expect(wrapper.find('[data-run-stat-details]').exists()).toBe(false)
     expect(wrapper.text()).not.toContain('old.source')
   })
+
+  /* ---- D8 下钻契约（G02）：工作台 KPI/最近实例 ?status=/?runId= 透传 ---- */
+
+  it('applies the D8 initial status filter to the backend list query', async () => {
+    const wrapper = mount(WorkflowRunMonitor, { props: { projectId: 7, initialStatus: 'SUCCEEDED' } })
+    await flushPromises()
+    expect(wrapper.get('[data-run-status]').element as HTMLSelectElement).toBeTruthy()
+    expect((wrapper.get('[data-run-status]').element as HTMLSelectElement).value).toBe('SUCCEEDED')
+    expect(listWorkflowRunStats).toHaveBeenLastCalledWith(7, { status: 'SUCCEEDED' })
+  })
+
+  it('locates a single drilled run by id instead of listing', async () => {
+    getWorkflowRunStat.mockResolvedValueOnce({ id: 9, workflow_id: 3, workflow_instance_id: 12, instance_type: 'FORMAL', status: 'FAILED', success_count: 0, failure_count: 2, skipped_count: 0, total_count: 2, started_at: '2026-10-26T00:00:00Z', dag_name: 'daily', details: [], detail_total: 0 })
+    const wrapper = mount(WorkflowRunMonitor, { props: { projectId: 7, initialRunId: 9 } })
+    await flushPromises()
+    expect(getWorkflowRunStat).toHaveBeenCalledWith(7, 9)
+    expect(listWorkflowRunStats).not.toHaveBeenCalled()
+    expect(wrapper.find('tbody').text()).toContain('daily')
+    expect(wrapper.find('[data-run-pagination]').exists()).toBe(false)
+  })
+
+  it('reloads when the D8 drill props change while kept alive', async () => {
+    const wrapper = mount(WorkflowRunMonitor, { props: { projectId: 7 } })
+    await flushPromises()
+    listWorkflowRunStats.mockClear()
+    await wrapper.setProps({ initialStatus: 'FAILED' })
+    await flushPromises()
+    expect(listWorkflowRunStats).toHaveBeenLastCalledWith(7, { status: 'FAILED' })
+    await wrapper.setProps({ initialStatus: undefined, initialRunId: 12 })
+    getWorkflowRunStat.mockResolvedValueOnce({ id: 12, workflow_id: 3, workflow_instance_id: 15, instance_type: 'FORMAL', status: 'SUCCEEDED', success_count: 1, failure_count: 0, skipped_count: 0, total_count: 1, started_at: '2026-10-26T01:00:00Z', details: [], detail_total: 0 })
+    await flushPromises()
+    expect(getWorkflowRunStat).toHaveBeenLastCalledWith(7, 12)
+  })
 })

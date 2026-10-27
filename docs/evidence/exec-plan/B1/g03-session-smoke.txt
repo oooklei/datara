@@ -1,0 +1,31 @@
+B1 G03 会话恢复 + B0 反代目标修正 冒烟 2026-10-28
+
+== 1.9 rebuild 后端入口判定（活体探测） ==
+GET 192.168.1.9:18090/api/v1/rebuild/login  -> 404（18090=旧后端，rebuild 域不存在）
+GET 192.168.1.9:18090/api/v1/rebuild/health -> 404
+GET 192.168.1.9:18090/api/v1/login          -> 200（旧后端 user_name/user_pwd 通道）
+GET 192.168.1.9:18091/api/v1/rebuild/health -> 200 {"service":"rebuild-api","status":"ok"}
+GET 192.168.1.9:18091/api/v1/projects/33/sql-ide/databases -> 401（未认证，真实认证语义）
+结论：rebuild 后端唯一外部入口 = 1.9:18091；B0 nginx proxy_pass 指向 18090 系判定错误，已修正为 18091（deploy/wsl-frontend/nginx.conf）。
+
+== rebuild 登录 + cookie 会话恢复（G03 门禁：四账号） ==
+POST 18091 /api/v1/rebuild/login admin/Admin@123    -> 200 + Set-Cookie datara_session(HttpOnly, Path=/api/v1, Max-Age=3600, SameSite=strict) + token
+POST 18091 /api/v1/rebuild/login dev/Dev@123        -> 200
+POST 18091 /api/v1/rebuild/login analyst/Analyst@123 -> 200
+POST 18091 /api/v1/rebuild/login viewer/Viewer@123  -> 200
+GET  18091 /api/v1/rebuild/session（仅凭 cookie，无 token header）-> 200 {"id":3,"username":"admin","role":"admin"}
+GET  18091 /api/v1/projects/33/sql-ide/databases?datasourceId=20（仅凭 cookie）-> 200
+
+== 本机容器全链路（重建镜像 e7ec3bba，18092） ==
+build: vue-tsc -b && vite build OK（2513 modules，含 G01/G02 修改）
+docker build datara-newweb-frontend:local -> sha256:e7ec3bba...
+SPA /: 200；SPA fallback /dag: 200
+GET localhost:18092/api/v1/rebuild/health -> 200 {"service":"rebuild-api","status":"ok"}
+POST localhost:18092/api/v1/rebuild/login -> 200
+GET localhost:18092/api/v1/rebuild/session（仅凭容器下发的 cookie）-> 200 {"id":3,"username":"admin","role":"admin"}
+GET localhost:18092/api/v1/projects/33/sql-ide/databases?datasourceId=20（仅凭 cookie）-> 200
+
+== G03 结论 ==
+浏览器 → 本机 WSL Docker nginx(18092) → 192.168.1.9:18091(rebuild) 全链路会话闭环成立：
+登录下发 HttpOnly cookie → 刷新/新请求仅凭 cookie 恢复身份 → sql-ide 业务路由 cookie 认证可用。
+前端守卫 hasAuthenticatedSession() 主树已接线（既有测试覆盖），无需代码改动。

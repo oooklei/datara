@@ -22,6 +22,7 @@ const spies = vi.hoisted(() => ({
   lintSql: vi.fn(),
   executeSql: vi.fn(),
   cancelExecution: vi.fn(),
+  getExecutionStatus: vi.fn(),
   openEventStream: vi.fn(),
   fetchResultPage: vi.fn(),
   listHistory: vi.fn(),
@@ -53,6 +54,7 @@ vi.mock('../../services/rebuild/sqlIdeApi', async (load) => {
       lintSql: spies.lintSql,
       executeSql: spies.executeSql,
       cancelExecution: spies.cancelExecution,
+      getExecutionStatus: spies.getExecutionStatus,
       openEventStream: spies.openEventStream,
       fetchResultPage: spies.fetchResultPage,
       listHistory: spies.listHistory,
@@ -349,6 +351,116 @@ describe('/ide 数据开发 IDE 只读态（增量 11/R5-A）', () => {
     await flushPromises()
     expect(streamClose).toHaveBeenCalledTimes(1)
     expect(w.find('[data-status]').text()).toContain('执行成功')
+  })
+
+  it('polls execution status after SSE drops and settles on a terminal status', async () => {
+    vi.useFakeTimers()
+    try {
+      router.route.params.projectId = '1'
+      const w = mount(View)
+      await flushPromises()
+      await w.find('[data-ds-select]').setValue('7')
+      await flushPromises()
+      await w.find('[data-sql-editor]').setValue('SELECT 1')
+      await w.find('[data-execute]').trigger('click')
+      await flushPromises()
+
+      dispatch('error', { message: 'temporary disconnect' })
+      await flushPromises()
+
+      spies.getExecutionStatus.mockResolvedValue({ taskId: 'task-1', status: 'succeeded' })
+      await vi.advanceTimersByTimeAsync(2000)
+      await flushPromises()
+
+      expect(spies.getExecutionStatus).toHaveBeenCalledWith('task-1')
+      expect(streamClose).toHaveBeenCalledTimes(1)
+      expect(w.find('[data-cancel]').attributes('disabled')).toBeDefined()
+      expect(w.find('[data-status]').text()).toContain('执行完成')
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('stops waiting after consecutive status polling failures', async () => {
+    vi.useFakeTimers()
+    try {
+      router.route.params.projectId = '1'
+      const w = mount(View)
+      await flushPromises()
+      await w.find('[data-ds-select]').setValue('7')
+      await flushPromises()
+      await w.find('[data-sql-editor]').setValue('SELECT 1')
+      await w.find('[data-execute]').trigger('click')
+      await flushPromises()
+
+      dispatch('error', { message: 'temporary disconnect' })
+      await flushPromises()
+
+      spies.getExecutionStatus.mockRejectedValue(new Error('status unavailable'))
+      await vi.advanceTimersByTimeAsync(10000)
+      await flushPromises()
+
+      expect(spies.getExecutionStatus).toHaveBeenCalledTimes(5)
+      expect(w.find('[data-cancel]').attributes('disabled')).toBeDefined()
+      expect(w.find('[data-contract-error]').text()).toContain('执行状态查询连续失败')
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('stops status polling once the SSE stream reconnects', async () => {
+    vi.useFakeTimers()
+    try {
+      router.route.params.projectId = '1'
+      const w = mount(View)
+      await flushPromises()
+      await w.find('[data-ds-select]').setValue('7')
+      await flushPromises()
+      await w.find('[data-sql-editor]').setValue('SELECT 1')
+      await w.find('[data-execute]').trigger('click')
+      await flushPromises()
+
+      dispatch('error', { message: 'temporary disconnect' })
+      await flushPromises()
+
+      spies.getExecutionStatus.mockResolvedValue({ taskId: 'task-1', status: 'running' })
+      await vi.advanceTimersByTimeAsync(2000)
+      await flushPromises()
+      const callsAtReconnect = spies.getExecutionStatus.mock.calls.length
+
+      dispatch('open', {})
+      await flushPromises()
+      await vi.advanceTimersByTimeAsync(6000)
+      await flushPromises()
+
+      expect(spies.getExecutionStatus.mock.calls.length).toBe(callsAtReconnect)
+      expect(w.find('[data-cancel]').attributes('disabled')).toBeUndefined()
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('keeps a long running execution cancellable and tells the user after the wait threshold', async () => {
+    vi.useFakeTimers()
+    try {
+      router.route.params.projectId = '1'
+      const w = mount(View)
+      await flushPromises()
+      await w.find('[data-ds-select]').setValue('7')
+      await flushPromises()
+      await w.find('[data-sql-editor]').setValue('SELECT 1')
+      await w.find('[data-execute]').trigger('click')
+      await flushPromises()
+
+      await vi.advanceTimersByTimeAsync(60000)
+      await flushPromises()
+
+      expect(w.find('[data-status]').text()).toContain('可点击取消')
+      expect(w.find('[data-cancel]').attributes('disabled')).toBeUndefined()
+      w.unmount()
+    } finally {
+      vi.useRealTimers()
+    }
   })
 
   it('refreshes variable references and resolution preview when SQL changes', async () => {

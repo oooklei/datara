@@ -1,0 +1,41 @@
+B1 G04/G05/G06 数据前置 冒烟 2026-10-28（通道：1.9 rebuild 公开 API，零后端代码改动）
+
+== G05 电商项目改名（幂等 PUT） ==
+PUT 18091 /api/v1/rebuild/projects/33 {"name":"电商全域数据治理项目"}
+-> 200 {"id":33,"name":"电商全域数据治理项目","description":"电商全域数据治理演示项目"}
+ID=33、归属、关联（工作流/数据源）不变；重跑同名不产生副作用。
+
+== G04 默认项目与验证项目 ==
+GET /api/v1/rebuild/projects（admin）-> total=1，仅 id=33 '电商全域数据治理项目'
+- 裁定名已达成（G05 联动），"业务项目列表只留可演示项"当前即满足。
+- 「项目下拉混入 34 个验证项目」为 18091 旧部署态观察（2026-10-27 核查报告），当前 rebuild 库不存在该批数据。
+- 「验证项目迁独立测试库」：当前无可迁对象；该项涉及 1.9 数据库隔离运维窗口（方案风险 4），记入待裁决清单——不阻塞。
+
+== G06 幂等 seed（版本 ≥1 + 变量） ==
+组件版本依据：GET /components/spec publishedVersion：sql v2、python/shell/dependent v1、SYNC 7 组件 v1、STREAM 4 组件 v1。
+
+工作流发布（publish 闸门 WF_DRAFT_EMPTY/WF_COMPONENT_REF_REQUIRED/_validate_component_ref 全通过）：
+- wf 38 电商订单离线加工样例（NORMAL）：v1(临时含重复) + v2 精炼 4 节点 3 边
+  sql_extract_orders(sql v2) -> python_quality(python v1) -> shell_archive(shell v1) -> dependency_gate(dependent v1)
+- wf 39 电商订单同步入仓样例（SYNC）：v1 + v2 精炼 7 节点 6 边
+  source_base/endpoint/mapping/mapping_union/conditions/target_base/file_route（SYNC 七组件 v1）
+- wf 40 电商实时订单流观摩样例（STREAM）：v1 + v2 精炼 4 节点 3 边
+  order_stream/stream_fuse/order_output/observation（STREAM 四组件 v1）
+- 修正记录：首轮 seed 未识别 draft 既有合法节点（查询层级误读），v1 快照混入重复节点；
+  已删除重复节点并发布 v2 精炼快照；draft 终态仅保留原合法节点。
+- 垃圾项清理：wf 41 'test'（空 NORMAL）已 POST /41/delete -> 200。
+
+变量 seed（POST /variables?project_id=33，upsert 幂等）：
+- global：biz_date (date, 2026-10-28)
+- project：dw_name (string, datara_dw)、retry_max (integer, 3)
+- env：env_profile (string, prod, environment_group_id=1)
+-> 4/4 保存成功。
+
+运行快照（G06 第三项）：GET /variables/run-snapshot 需 instance_id（运行实例维度），
+当前无运行实例；该项随 B2 运行监控三通道（T6）以真实试运行验证。
+
+== 终态 ==
+- 项目列表：仅 33（裁定名）——G04 达成
+- 工作流：3 个演示工作流，current_version 均 ≥1（v2）——G06 版本项达成
+- 变量：global/project/env 三域 4 个——G06 变量项达成
+- 待裁决清单：①验证项目迁独立测试库（当前无可迁对象，涉 1.9 运维窗口）

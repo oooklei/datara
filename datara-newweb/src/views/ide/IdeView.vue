@@ -592,6 +592,69 @@ function clearResult(): void {
   resultHasMore.value = false
 }
 
+/** G01 终态兜底：SSE 无心跳事件，断线期间用 status 端点轮询收敛，避免 executing 永久悬挂。 */
+const TERMINAL_EXECUTION_STATUSES = new Set(['succeeded', 'failed', 'partial_failure', 'canceled', 'timed_out'])
+const EXECUTION_POLL_MS = 2000
+const EXECUTION_POLL_MAX_FAILURES = 5
+const EXECUTION_LONG_WAIT_MS = 60000
+let statusPollTimer: ReturnType<typeof setInterval> | null = null
+let statusPollFailures = 0
+let longWaitTimer: ReturnType<typeof setTimeout> | null = null
+
+function stopStatusPolling(): void {
+  if (statusPollTimer !== null) {
+    clearInterval(statusPollTimer)
+    statusPollTimer = null
+  }
+  statusPollFailures = 0
+}
+
+function clearLongWaitTimer(): void {
+  if (longWaitTimer !== null) {
+    clearTimeout(longWaitTimer)
+    longWaitTimer = null
+  }
+}
+
+function settleExecution(terminalStatus: string | null): void {
+  stopStatusPolling()
+  clearLongWaitTimer()
+  currentEventStream.value?.close()
+  currentEventStream.value = null
+  executing.value = false
+  if (terminalStatus === 'succeeded') {
+    status.value = '执行完成（状态查询确认）；结果集请见执行历史'
+  } else if (terminalStatus === 'canceled') {
+    status.value = '执行已取消'
+  } else if (terminalStatus !== null) {
+    contractError.value = '执行失败'
+  } else {
+    contractError.value = '执行状态查询连续失败，已停止等待；结果可在执行历史中确认'
+  }
+  if (datasourceId.value !== null) void loadHistory()
+}
+
+function startStatusPolling(taskId: string): void {
+  if (statusPollTimer !== null) return
+  statusPollFailures = 0
+  statusPollTimer = setInterval(() => {
+    void (async () => {
+      try {
+        const result = await api.value.getExecutionStatus(taskId)
+        if (!executing.value || currentTaskId.value !== taskId) {
+          stopStatusPolling()
+          return
+        }
+        statusPollFailures = 0
+        if (TERMINAL_EXECUTION_STATUSES.has(result.status)) settleExecution(result.status)
+      } catch {
+        statusPollFailures += 1
+        if (statusPollFailures >= EXECUTION_POLL_MAX_FAILURES) settleExecution(null)
+      }
+    })()
+  }, EXECUTION_POLL_MS)
+}
+
 async function runSql(): Promise<void> {
   if (!canExecute.value) return
   executing.value = true
@@ -641,8 +704,14 @@ async function runSql(): Promise<void> {
 
 function openStream(taskId: string): void {
   currentEventStream.value?.close()
+  stopStatusPolling()
+  clearLongWaitTimer()
   const es = api.value.openEventStream(taskId)
   currentEventStream.value = es
+  es.addEventListener('open', () => {
+    if (status.value.startsWith('事件流连接中断')) status.value = ''
+    stopStatusPolling()
+  })
   es.addEventListener('result', (ev: MessageEvent) => {
     const data = JSON.parse(ev.data) as SqlResultEvent
     resultColumns.value = data.columns
@@ -657,6 +726,8 @@ function openStream(taskId: string): void {
   })
   es.addEventListener('done', async (ev: MessageEvent) => {
     es.close()
+    stopStatusPolling()
+    clearLongWaitTimer()
     if (currentEventStream.value === es) currentEventStream.value = null
     executing.value = false
     const wire = JSON.parse(ev.data) as SqlDoneEvent & {
@@ -700,9 +771,14 @@ function openStream(taskId: string): void {
   })
   es.addEventListener('error', () => {
     // The authenticated SSE adapter owns Last-Event-ID replay and retries.
-    // Keep this run cancellable until a terminal `done` event arrives.
+    // Keep this run cancellable until a terminal `done` event arrives; while
+    // the stream is down, poll the status endpoint as a heartbeat fallback.
     status.value = '事件流连接中断，正在恢复…'
+    startStatusPolling(taskId)
   })
+  longWaitTimer = setTimeout(() => {
+    if (executing.value) status.value = '执行时间较长，可点击取消；执行完成后结果将保留在执行历史'
+  }, EXECUTION_LONG_WAIT_MS)
 }
 
 async function cancelRun(): Promise<void> {
@@ -718,6 +794,8 @@ async function cancelRun(): Promise<void> {
     }
     currentEventStream.value?.close()
     currentEventStream.value = null
+    stopStatusPolling()
+    clearLongWaitTimer()
     executing.value = false
     currentTaskId.value = ''
     status.value = '执行已取消'
@@ -913,7 +991,11 @@ onMounted(async () => {
   refreshVarPreview()
   if (datasourceId.value !== null) await loadHistory()
 })
-onUnmounted(() => currentEventStream.value?.close())
+onUnmounted(() => {
+  currentEventStream.value?.close()
+  stopStatusPolling()
+  clearLongWaitTimer()
+})
 </script>
 
 <style scoped>

@@ -67,6 +67,16 @@ vi.mock('../../services/rebuild/componentSpecApi', () => ({
   resetComponentSpecCache: vi.fn(),
 }))
 
+// D8 下钻契约（G02）：runs 页签真挂载 WorkflowRunMonitor，其执行统计 API 不进网络层
+const { runStatsList, runStatGet } = vi.hoisted(() => ({
+  runStatsList: vi.fn(),
+  runStatGet: vi.fn(),
+}))
+vi.mock('../../services/rebuild/executionStatsApi', () => ({
+  listWorkflowRunStats: runStatsList,
+  getWorkflowRunStat: runStatGet,
+}))
+
 // FE-6 ③ TC 接驳真实画布内核：workbench SFC 桩化（vue-flow 真挂载归 1.9 E2E；
 // 桩渲染与旧 CanvasPlaceholder 同形——data-tc-canvas-slot + 「画布：{tab.name}」，
 // 保既有画布区 DOM 断言语义；SFC 内部 vue-flow/store 导入随桩化不加载）
@@ -205,6 +215,18 @@ describe('INC4-FE-1 任务中心顶部视角页签框架（/dag，s260 派令）
     expect(w.find('[data-tc-runs-slot]').text()).toContain('请先选择项目')
     expect(w.find('[data-tc-canvas-slot]').exists()).toBe(false)
     expect(w.find('[data-tc-dagbar]').exists()).toBe(false)
+  })
+
+  it('D8 下钻：?tab=runs&status=&runId= 在有项目上下文时透传运行监控（G02）', async () => {
+    routeQuery.value = { tab: 'runs', status: 'FAILED', runId: '9' }
+    routeParams.value = { projectId: '33' }
+    runStatGet.mockResolvedValue({ id: 9, workflow_id: 3, workflow_instance_id: 12, instance_type: 'FORMAL', status: 'FAILED', success_count: 0, failure_count: 2, skipped_count: 0, total_count: 2, started_at: '2026-10-26T00:00:00Z', details: [], detail_total: 0 })
+    const w = mountView()
+    await flushPromises()
+    expect(w.find('[data-workflow-run-monitor]').exists()).toBe(true)
+    expect((w.get('[data-run-status]').element as HTMLSelectElement).value).toBe('FAILED')
+    expect(runStatGet).toHaveBeenCalledWith(33, 9)
+    expect(runStatsList).not.toHaveBeenCalled()
   })
 
   it('?tab=templates / ?tab=alarm：页签激活态正确，框架保留且 body 不渲染占位内容', () => {

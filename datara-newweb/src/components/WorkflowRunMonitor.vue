@@ -10,11 +10,19 @@ import {
   type WorkflowRunStat,
 } from '../services/rebuild/executionStatsApi'
 
-const props = defineProps<{ projectId: number }>()
+const props = defineProps<{
+  projectId: number
+  /** D8 下钻契约：来自工作台/深链 ?status= 的初始状态过滤（后端词形 SUCCEEDED/FAILED/RUNNING…） */
+  initialStatus?: string
+  /** D8 下钻契约：来自最近实例 ?runId= 的单实例定位（单查 run-stats/{id}，不走列表过滤） */
+  initialRunId?: number
+}>()
 const rows = ref<WorkflowRunStat[]>([])
 const loading = ref(false)
 const error = ref('')
 const instanceType = ref<'' | WorkflowInstanceType>('')
+const statusFilter = ref(props.initialStatus ?? '')
+const drillRunId = ref<number | null>(props.initialRunId ?? null)
 const pageOffset = ref(0)
 const pageSize = 50
 const total = ref(0)
@@ -43,8 +51,18 @@ async function load() {
   rows.value = []
   resetDetails()
   try {
+    // D8 runId 契约：单实例定位走 run-stats/{id} 单查（后端列表无 run_id 过滤参数），
+    // 拉平为单行展示且可展开对账明细；任何单查失败都回落空态而不是整页报错。
+    if (drillRunId.value !== null) {
+      const one = await getWorkflowRunStat(projectId, drillRunId.value)
+      if (generation !== loadGeneration || projectId !== props.projectId) return
+      rows.value = [one]
+      total.value = 1
+      return
+    }
     const options: WorkflowRunStatQuery = {}
     if (instanceType.value) options.instanceType = instanceType.value
+    if (statusFilter.value) options.status = statusFilter.value
     if (pageOffset.value > 0) {
       options.offset = pageOffset.value
       options.limit = pageSize
@@ -111,6 +129,19 @@ watch(() => props.projectId, () => {
   total.value = 0
   void load()
 }, { immediate: true })
+
+// D8 深链变化（KeepAlive 下 route.query.status/runId 变化经 props 透传进来）：
+// 重置过滤与翻页后按新契约重载，保证书签/工作台下钻始终落到当前参数。
+watch(() => [props.initialStatus, props.initialRunId] as const, ([nextStatus, nextRunId]) => {
+  const next = nextStatus ?? ''
+  const nextId = nextRunId ?? null
+  if (next === statusFilter.value && nextId === drillRunId.value) return
+  statusFilter.value = next
+  drillRunId.value = nextId
+  pageOffset.value = 0
+  total.value = 0
+  void load()
+})
 </script>
 
 <template>
@@ -123,6 +154,16 @@ watch(() => props.projectId, () => {
           <option value="TRIAL">试运行</option>
           <option value="FORMAL">正式运行</option>
           <option value="STREAM">流处理</option>
+        </select>
+      </label>
+      <label>状态
+        <select v-model="statusFilter" data-run-status @change="applyFilters">
+          <option value="">全部</option>
+          <option value="SUCCEEDED">成功</option>
+          <option value="FAILED">失败</option>
+          <option value="RUNNING">运行中</option>
+          <option value="PENDING">等待中</option>
+          <option value="CANCELLED">已取消</option>
         </select>
       </label>
     </div>

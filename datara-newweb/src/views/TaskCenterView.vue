@@ -84,6 +84,21 @@ function switchTab(k: TabKey) {
   router.replace({ query: { ...route.query, tab: k } }).catch(() => {})
 }
 
+/* ---- D8 下钻契约（G02）：工作台 KPI/最近实例写入 ?status=/?runId=，本页透传运行监控。
+ * 词形 = 后端 run-stats 状态机（SUCCEEDED/FAILED/RUNNING/PENDING/CANCELLED）；
+ * runId 仅接受正整数（非法值回落列表态，不假设）。 ---- */
+const drillStatus = computed<string | undefined>(() => {
+  const raw = route.query.status
+  const value = Array.isArray(raw) ? String(raw[0] ?? '') : String(raw ?? '')
+  return value || undefined
+})
+const drillRunId = computed<number | undefined>(() => {
+  const raw = route.query.runId
+  const value = Array.isArray(raw) ? String(raw[0] ?? '') : String(raw ?? '')
+  const n = Number(value)
+  return Number.isInteger(n) && n > 0 ? n : undefined
+})
+
 /* ---- INC4-FE-2：画布多 Tab（蓝本照抄，见头注释降级声明） ---- */
 const dagTabs = useDagTabsStore()
 const graphStore = useWorkflowGraphStore()
@@ -393,7 +408,7 @@ onMounted(async () => {
       </template>
       <!-- 运行监控：读取 execution/run-stats 并展示成功/失败计数。 -->
       <template v-else-if="tab === 'runs'">
-        <WorkflowRunMonitor v-if="projectId !== undefined" :project-id="projectId" />
+        <WorkflowRunMonitor v-if="projectId !== undefined" :project-id="projectId" :initial-status="drillStatus" :initial-run-id="drillRunId" />
         <div v-else class="tc-slot" data-tc-runs-slot><p class="tc-slot-sub">请先选择项目以查看运行记录</p></div>
       </template>
       <!-- 模板中心 / 告警与SLA：框架保留，本版不渲染占位内容（§5A.1） -->

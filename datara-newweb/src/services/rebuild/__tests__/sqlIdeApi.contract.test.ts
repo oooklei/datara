@@ -12,15 +12,24 @@ describe('R5-A sqlIdeApi route contract', () => {
   })
 
   it('keeps the frozen readonly method list', () => {
-    expect(R5A_CONTRACT_METHODS).toHaveLength(23)
-    expect(new Set(R5A_CONTRACT_METHODS).size).toBe(23)
+    expect(R5A_CONTRACT_METHODS).toHaveLength(24)
+    expect(new Set(R5A_CONTRACT_METHODS).size).toBe(24)
     expect(R5A_CONTRACT_METHODS).toEqual([
       'listDatabases', 'listSchemas', 'listRelations', 'listColumns', 'listRoutines',
       'listIndexes', 'searchObjects', 'lintSql', 'executeSql', 'cancelExecution',
-      'openEventStream', 'fetchResultPage', 'listHistory', 'deleteHistory', 'listScripts',
-      'saveScript', 'deleteScript', 'getDefinition', 'exportResult', 'exportTable',
-      'getExport', 'getExportDownloadUrl', 'cancelExport',
+      'getExecutionStatus', 'openEventStream', 'fetchResultPage', 'listHistory', 'deleteHistory',
+      'listScripts', 'saveScript', 'deleteScript', 'getDefinition', 'exportResult',
+      'exportTable', 'getExport', 'getExportDownloadUrl', 'cancelExport',
     ])
+  })
+
+  it('queries the project-scoped execution status route for terminal-state fallback', async () => {
+    fetchMock.mockResolvedValueOnce({ ok: true, status: 200, json: async () => ({ code: 0, msg: 'success', data: { task_id: 'task-1', status: 'running', created_at: '2026-10-28T00:00:00Z', updated_at: '2026-10-28T00:00:05Z' } }) })
+
+    await expect(createSqlIdeContract(23).getExecutionStatus('task-1')).resolves.toEqual({
+      taskId: 'task-1', status: 'running', createdAt: '2026-10-28T00:00:00Z', updatedAt: '2026-10-28T00:00:05Z',
+    })
+    expect(fetchMock.mock.calls[0][0]).toBe('/api/v1/projects/23/sql-ide/executions/task-1')
   })
 
   it('calls the project scoped database, execution and result routes with the A5 envelope', async () => {
