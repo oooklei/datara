@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 from collections import deque
 from datetime import datetime
 from typing import Callable
@@ -1677,6 +1678,92 @@ def build_governance_router(
                     "updated_at": stamp(rule.updated_at),
                 },
             }
+
+    _QUALITY_EXPRESSION_FORBIDDEN_PATTERNS: tuple[tuple[str, str], ...] = (
+        ("statement_separator", r";"),
+        ("ddl_keyword", r"\b(drop|delete|truncate|alter|create|rename)\b"),
+        ("dml_keyword", r"\b(insert|update|merge|replace)\b"),
+        ("privilege_keyword", r"\b(grant|revoke)\b"),
+        ("procedure_keyword", r"\b(exec|execute|call)\b"),
+        ("set_operator", r"\bunion\b"),
+        ("into_clause", r"\binto\b"),
+        ("comment_marker", r"--|/\*"),
+        ("system_call", r"\b(xp_cmdshell|load_file|benchmark)\b\s*\("),
+    )
+
+    def quality_expression_issues(expression: str) -> list[dict[str, str]]:
+        """Flag SQL fragments the quality runner must never execute.
+
+        The quality rule expression is only ever evaluated as a structural
+        predicate; it is never sent to a datasource. This gate keeps dangerous
+        fragments (statement separators, DDL/DML, privilege changes, procedure
+        calls) from ever reaching the runner and is deliberately conservative.
+        """
+        return [
+            {"code": code, "pattern": pattern}
+            for code, pattern in _QUALITY_EXPRESSION_FORBIDDEN_PATTERNS
+            if re.search(pattern, expression, re.IGNORECASE)
+        ]
+
+    @router.post("/projects/{project_id}/quality-rules/{rule_id}/run", status_code=201)
+    def run_quality_rule(project_id: int, rule_id: int, authorization: str = Header(default="")):
+        user = authenticate(authorization)
+        if isinstance(user, JSONResponse):
+            return user
+        with session_factory() as session:
+            permitted = project_permission(session, project_id, user, Permission.EDIT_DEFINITION)
+            if isinstance(permitted, JSONResponse):
+                return permitted
+            rule = session.scalar(
+                select(QualityRuleRecord).where(
+                    QualityRuleRecord.id == rule_id,
+                    QualityRuleRecord.project_id == project_id,
+                )
+            )
+            if rule is None:
+                return fail(404, 4041, "quality rule not found in project")
+            if not rule.enabled:
+                return fail(409, 4091, "quality rule is disabled")
+            issues = quality_expression_issues(rule.expression)
+            if issues:
+                status = "failed"
+                summary: dict[str, object] = {
+                    "engine": "structural",
+                    "message": "quality expression rejected by safety gate; no rows were checked",
+                    "issues": issues,
+                }
+            else:
+                status = "succeeded"
+                summary = {
+                    "engine": "structural",
+                    "message": "structural predicate validation only; row-level sampling requires a bound datasource",
+                    "issues": [],
+                }
+            run = QualityRunRecord(
+                project_id=project_id,
+                asset_id=rule.asset_id,
+                rule_id=rule.id,
+                status=status,
+                checked_rows=0,
+                success_rows=0,
+                failed_rows=0,
+                skipped_rows=0,
+                summary_json=json.dumps(summary, ensure_ascii=False, separators=(",", ":")),
+            )
+            session.add(run)
+            session.flush()
+            write_audit(
+                session,
+                user=user,
+                project_id=project_id,
+                action="quality_rule.run",
+                resource_type="quality_rule",
+                resource_id=str(rule.id),
+                after={"run_id": run.id, "status": status, "expression": rule.expression},
+            )
+            session.commit()
+            session.refresh(run)
+            return {"code": 0, "msg": "success", "data": quality_run_payload(run)}
 
     @router.get("/projects/{project_id}/quality-rules")
     def list_quality_rules(

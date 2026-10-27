@@ -41,7 +41,7 @@ from rebuild.governance.models import (
     StandardNamingRuleRecord,
 )
 from rebuild.governance.service import GovernanceService
-from rebuild.governance.legacy_source_reader import LegacyI22SourceSnapshot, _json_safe
+from rebuild.governance.legacy_source_reader import I22_SOURCE_COLUMNS, LegacyI22SourceSnapshot, _json_safe
 from rebuild.identity.contracts import Permission
 from rebuild.identity.models import UserRecord
 
@@ -102,7 +102,9 @@ def build_i22_mapping_context(session: Session, project_id: int) -> object:
             target_ids[("t_std_code", row.source_id)] = row.id
 
     code_value_rows = session.execute(
-        select(StandardCodeValueRecord).where(StandardCodeValueRecord.project_id == project_id)
+        select(StandardCodeValueRecord)
+        .join(StandardCodeSetRecord, StandardCodeValueRecord.code_set_id == StandardCodeSetRecord.id)
+        .where(StandardCodeSetRecord.project_id == project_id)
     ).all()
     for row in code_value_rows:
         if row.source_id:

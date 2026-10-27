@@ -10,6 +10,12 @@ AND state='published'）及审计日志收敛复制到 rebuild_i0，使 rebuild 
 两侧同构：rebuild/component_spec/revisions/v0001_component_catalog.py 即用
 common.models 三类建表，故本脚本单模型集双引擎操作两侧。
 
+职责边界（D-09）：upload 能力（sourceMode/resourceRef/c-resource-mode）的
+**结构性保证**由版本化迁移 rebuild/component_spec/revisions/
+v0002_component_catalog_upload.py 承担；本 seed 仅灌入演示数据，其
+_normalize_spec_json 仍做等价归一化以保持演示数据形状与读链一致，但不作为
+upload 能力的权威来源。
+
 幂等（先查后写，主键级 UPDATE 收敛）：
 - t_component        按 type 唯一键（uk：type）
 - t_component_version 按 uk_comp_type_ver(type, version)
@@ -105,6 +111,8 @@ def _normalize_spec_json(value: str | None, type_name: str | None = None) -> str
     # Increment 7: expose immutable resource-version references for the three
     # executable data components.  This is declarative only; the resource
     # service validates project ownership and concrete versions at save/run.
+    # D-09：此处归一化仅服务于演示数据形状；upload 能力的结构性保证由版本化
+    # 迁移 v0002_component_catalog_upload 承担（见模块 docstring 职责边界）。
     resource_kind = {"sql": "sql", "python": "python", "shell": "shell"}.get((type_name or "").lower())
     if resource_kind:
         params = spec["form"]["params"]

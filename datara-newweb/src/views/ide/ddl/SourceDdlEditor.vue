@@ -31,14 +31,15 @@ function onInput(event: Event) {
 </script>
 
 <style scoped>
-.source-editor{border:1px solid #e2e8f0;border-radius:8px;padding:16px;background:#fff}
+/* 设计令牌：由全局 styles/theme.css 的 :root 提供（§4.4.3 风格统一），本文件不再就地重复定义。 */
+.source-editor{border:1px solid var(--border);border-radius:var(--radius);padding:16px;background:var(--card)}
 .track-head h2{margin:0 0 4px;font-size:16px}
-.track-head p{margin:0 0 12px;color:#64748b;font-size:13px}
-.empty{color:#94a3b8;font-size:13px;margin:0 0 12px}
+.track-head p{margin:0 0 12px;color:var(--text-3);font-size:13px}
+.empty{color:var(--text-3);font-size:13px;margin:0 0 12px}
 .field{display:flex;flex-direction:column;gap:4px;margin-bottom:10px;font-size:13px}
 .field.wide{width:100%}
-.field span{color:#475569}
-textarea{width:100%;box-sizing:border-box;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:13px;line-height:1.5;padding:8px;border:1px solid #cbd5e1;border-radius:6px;color:#172033;background:#fff}
-textarea[readonly]{background:#f8fafc;color:#475569}
-textarea:disabled{background:#f1f5f9;color:#94a3b8}
+.field span{color:var(--text-2)}
+textarea{width:100%;box-sizing:border-box;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:13px;line-height:1.5;padding:8px;border:1px solid var(--border-strong);border-radius:var(--radius-sm);color:var(--text);background:var(--card)}
+textarea[readonly]{background:var(--bg);color:var(--text-2)}
+textarea:disabled{background:var(--bg);color:var(--text-3)}
 </style>

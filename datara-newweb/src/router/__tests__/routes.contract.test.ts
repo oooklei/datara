@@ -52,6 +52,11 @@ describe('1.4 routes 负断言（WBS 1.4 / 增量 1 退出标准 2）', () => {
       '/ds/list',
       '/ide',
       '/model/list',
+      // 数仓建模增量16 前端收口（M2a）：详情/版本/血缘/ER 四页
+      '/model/design',
+      '/model/version',
+      '/model/lineage',
+      '/model/er',
       '/meta/lineage',
       '/meta/map',
       '/meta/catalog',

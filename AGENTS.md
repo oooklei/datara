@@ -14,7 +14,7 @@
 
 ## Active handoff
 
-活跃运行控制只读 `D:\super-develop\runtime\datara-live\control\authority-carrier-registry.json` 中标为 `ACTIVE` 的载体；入口为 `governance-state.json`、`role-contracts.json` 与 `queues/snapshot.json`。当前为 `RUNNING / epoch 3`（2026-10-22 12:28 用户授权重启）。lifecycle 切换、纪元创建与派单开放仅由 Flow 依用户明确指令执行；未持用户明确指令时，所有角色不得派单、实施、测试、验收、裁定或写共享状态。只有流程控制 Flow 可按水位增量写入 `docs/handoff/STATE.md`、`mailbox.jsonl` 和队列投影；其他角色使用本角色最小队列卡，禁止用完整台账或归档冷启动。旧运行材料已移入 `docs/handoff/archive/2026-10-22-v2-final`，只作追溯。
+活跃运行控制只读 `D:\super-develop\runtime\datara-live\control\authority-carrier-registry.json` 中标为 `ACTIVE` 的载体；入口为 `governance-state.json`、`role-contracts.json` 与 `queues/snapshot.json`。当前为 `RUNNING / epoch 3`（2026-10-22 12:28 用户授权重启）。lifecycle 切换、纪元创建与派单开放仅由流程依用户明确指令执行；未持用户明确指令时，所有角色不得派单、实施、测试、验收、裁定或写共享状态。只有流程可按水位增量写入 `docs/handoff/STATE.md`、`mailbox.jsonl` 和队列投影；其他角色使用本角色最小队列卡，禁止用完整台账或归档冷启动。旧运行材料已移入 `docs/handoff/archive/2026-10-22-v2-final`，只作追溯。
 
 **权威序**：用户最新裁定 > `docs/increments/2026-10-19-纠偏重构前端权威设计.md`（唯一需求真源 v3）> `docs/increments/2026-10-17-核心业务功能实现规范与验收标准.md`（验收 v4）> `docs/increments/2026-10-20-单线多增量WBS开发计划.md`（WBS）> `docs/agents/协作规程.md` > 其余文档；归档区（docs/archive/、docs/increments/archive/、docs/handoff/archive/）只作考古。细目见 `docs/README.md` §1。
 

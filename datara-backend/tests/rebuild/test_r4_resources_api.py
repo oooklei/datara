@@ -264,3 +264,27 @@ def test_viewer_and_anonymous_gates(tmp_path, monkeypatch):
         assert viewer_list.status_code == 200 and viewer_list.json()["data"] == []  # VIEW_ALL is enough to read
     finally:
         client.__exit__(None, None, None)
+
+
+def test_version_download_is_binary_and_project_permission_protected(tmp_path, monkeypatch):
+    monkeypatch.setenv("REBUILD_RESOURCE_STORAGE_DIR", str(tmp_path))
+    client, app, owned_id, other_id, tokens = _client()
+    try:
+        content = b"SELECT secret_column FROM source;\n"
+        upload = _upload(client, tokens["dev"], owned_id, filename="download.sql", content=content)
+        resource_id = upload.json()["data"]["resource_id"]
+        url = f"{RESOURCES}/{resource_id}/versions/1/download"
+
+        downloaded = client.get(url, headers=tokens["viewer"], params={"project_id": owned_id})
+        assert downloaded.status_code == 200
+        assert downloaded.content == content
+        assert downloaded.headers["content-type"] == "application/octet-stream"
+        assert "download.sql" in downloaded.headers["content-disposition"]
+
+        assert client.get(url, params={"project_id": owned_id}).status_code == 401
+        foreign = client.get(url, headers=tokens["admin"], params={"project_id": other_id})
+        assert foreign.status_code == 404 and foreign.json()["code"] == "RES_OBJECT_NOT_FOUND"
+        missing_project = client.get(url, headers=tokens["dev"])
+        assert missing_project.status_code == 400 and missing_project.json()["code"] == 4001
+    finally:
+        client.__exit__(None, None, None)

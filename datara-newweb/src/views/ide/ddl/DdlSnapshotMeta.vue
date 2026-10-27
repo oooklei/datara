@@ -24,14 +24,15 @@ const writable = computed(() => props.snapshot.capability === 'supported' || pro
 </script>
 
 <style scoped>
-.snap-meta{margin:0 0 12px;padding:10px 12px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:6px;font-size:13px}
+/* 设计令牌：由全局 styles/theme.css 的 :root 提供（§4.4.3 风格统一），本文件不再就地重复定义。 */
+.snap-meta{margin:0 0 12px;padding:10px 12px;background:var(--bg);border:1px solid var(--border);border-radius:var(--radius-sm);font-size:13px}
 .meta-row{display:flex;gap:10px;align-items:baseline;padding:3px 0}
-.meta-row dt{min-width:110px;color:#64748b}
-.meta-row dd{margin:0;color:#172033}
-code{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12.5px;background:#eef2f7;padding:1px 5px;border-radius:3px}
+.meta-row dt{min-width:110px;color:var(--text-3)}
+.meta-row dd{margin:0;color:var(--text)}
+code{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12.5px;background:var(--bg);padding:1px 5px;border-radius:3px}
 [data-write-allowed]{margin-left:8px;font-size:12px}
-[data-write-allowed="yes"]{color:#15803d}
-[data-write-allowed="no"]{color:#b91c1c}
+[data-write-allowed="yes"]{color:var(--success)}
+[data-write-allowed="no"]{color:var(--danger)}
 [data-constraint-list]{margin:0;padding-left:16px}
-[data-constraint]{color:#92400e}
+[data-constraint]{color:var(--warn)}
 </style>

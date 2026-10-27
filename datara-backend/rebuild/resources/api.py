@@ -1,4 +1,4 @@
-"""R4-RESOURCE API — five endpoints matching the frozen FE contract (A2 v2.1).
+"""R4-RESOURCE API — frozen FE contract plus the R-48 version download endpoint.
 
 Contract source (frozen): datara-web/src/services/rebuild/resourceApi.ts
 + docs/increments/2026-10-17-R4-DEP-RES-API-contract-pending.md §2/§4 + B2 §3.
@@ -20,7 +20,7 @@ from contextlib import contextmanager
 from typing import Any, Callable, Iterator
 
 from fastapi import APIRouter, Body, File, Form, Header, Query, UploadFile
-from fastapi.responses import JSONResponse
+from fastapi.responses import FileResponse, JSONResponse
 from sqlalchemy.orm import sessionmaker
 
 from rebuild.identity.contracts import Permission
@@ -187,7 +187,28 @@ def build_resources_router(
             return request_error(exc)
         return {"code": 0, "msg": "success", "data": data}
 
-    # -- 5. bindResourceVersion: POST ``/bindings`` ------------------------
+    # -- 5. downloadResourceVersion: project-scoped binary response --------
+
+    @router.get("/{resource_id}/versions/{version}/download")
+    def download_resource_version(
+        resource_id: int,
+        version: int,
+        project_id: int | None = Query(default=None),
+        token: str = Header(default=""),
+        authorization: str = Header(default=""),
+    ):
+        if project_id is None:
+            return JSONResponse(status_code=400, content={"code": 4001, "msg": "project_id is required", "data": None})
+        try:
+            with authorized_session(project_id, Permission.VIEW_ALL, token, authorization) as outcome:
+                if isinstance(outcome, JSONResponse):
+                    return outcome
+                path, filename = ResourceRepository(outcome).get_version_file(project_id, resource_id, version)
+        except ResourceDomainError as exc:
+            return request_error(exc)
+        return FileResponse(path, media_type="application/octet-stream", filename=filename)
+
+    # -- 6. bindResourceVersion: POST ``/bindings`` ------------------------
 
     @router.post("/bindings")
     def bind_resource_version(

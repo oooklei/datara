@@ -123,6 +123,8 @@ describe('/qc/rule 质量规则页（IMPL-v4-07）', () => {
     await flushPromises()
 
     expect(governanceApi.runRule).toHaveBeenCalledWith(1, 1)
+    // 执行后须刷新列表（reload → listRules 二次调用），避免展示陈旧状态
+    expect(governanceApi.listRules).toHaveBeenCalledTimes(2)
     const text = w.find('[data-run-result]').text()
     expect(text).toContain('succeeded')
     expect(text).toContain('structural')

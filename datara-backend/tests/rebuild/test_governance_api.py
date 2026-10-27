@@ -168,6 +168,105 @@ def test_quality_standards_metrics_are_real_records_and_mutations_audited():
     assert isinstance(generated, datetime)
 
 
+def test_quality_rule_run_executes_and_persists_result():
+    with governance_client() as (client, app, headers):
+        project_id = client.get("/api/v1/rebuild/projects", headers=headers).json()["data"]["list"][0]["id"]
+        asset = client.post(
+            f"/api/v1/rebuild/governance/projects/{project_id}/assets",
+            headers=headers,
+            json={
+                "source_system": "mysql-src",
+                "database_name": "warehouse",
+                "schema_name": "dwd",
+                "asset_name": "fact_orders_run",
+                "asset_type": "table",
+            },
+        ).json()["data"]
+        rule = client.post(
+            f"/api/v1/rebuild/governance/projects/{project_id}/quality-rules",
+            headers=headers,
+            json={"asset_id": asset["id"], "name": "run-ok", "expression": "order_id IS NOT NULL"},
+        ).json()["data"]
+        resp = client.post(
+            f"/api/v1/rebuild/governance/projects/{project_id}/quality-rules/{rule['id']}/run",
+            headers=headers,
+        )
+        runs = client.get(f"/api/v1/rebuild/governance/projects/{project_id}/quality-runs", headers=headers)
+        audit = client.get(f"/api/v1/rebuild/governance/projects/{project_id}/audit", headers=headers)
+
+    assert resp.status_code == 201
+    data = resp.json()["data"]
+    assert data["rule_id"] == rule["id"]
+    assert data["status"] == "succeeded"
+    assert data["summary"]["engine"] == "structural"
+    assert data["checked_rows"] == data["success_rows"] == data["failed_rows"] == data["skipped_rows"] == 0
+    assert runs.json()["data"]["total"] == 1
+    assert runs.json()["data"]["list"][0]["status"] == "succeeded"
+    assert audit.json()["data"]["total"] == 3
+
+
+def test_quality_rule_run_flags_forbidden_expression_as_failed():
+    with governance_client() as (client, app, headers):
+        project_id = client.get("/api/v1/rebuild/projects", headers=headers).json()["data"]["list"][0]["id"]
+        asset = client.post(
+            f"/api/v1/rebuild/governance/projects/{project_id}/assets",
+            headers=headers,
+            json={
+                "source_system": "mysql-src",
+                "database_name": "warehouse",
+                "schema_name": "dwd",
+                "asset_name": "fact_orders_bad",
+                "asset_type": "table",
+            },
+        ).json()["data"]
+        rule = client.post(
+            f"/api/v1/rebuild/governance/projects/{project_id}/quality-rules",
+            headers=headers,
+            json={"asset_id": asset["id"], "name": "run-bad", "expression": "1=1; DROP TABLE t"},
+        ).json()["data"]
+        resp = client.post(
+            f"/api/v1/rebuild/governance/projects/{project_id}/quality-rules/{rule['id']}/run",
+            headers=headers,
+        )
+
+    assert resp.status_code == 201
+    data = resp.json()["data"]
+    assert data["status"] == "failed"
+    assert data["summary"]["issues"]
+
+
+def test_quality_rule_run_guards_missing_and_disabled():
+    with governance_client() as (client, app, headers):
+        project_id = client.get("/api/v1/rebuild/projects", headers=headers).json()["data"]["list"][0]["id"]
+        missing = client.post(
+            f"/api/v1/rebuild/governance/projects/{project_id}/quality-rules/99999/run",
+            headers=headers,
+        )
+        asset = client.post(
+            f"/api/v1/rebuild/governance/projects/{project_id}/assets",
+            headers=headers,
+            json={
+                "source_system": "mysql-src",
+                "database_name": "warehouse",
+                "schema_name": "dwd",
+                "asset_name": "fact_orders_disabled",
+                "asset_type": "table",
+            },
+        ).json()["data"]
+        disabled = client.post(
+            f"/api/v1/rebuild/governance/projects/{project_id}/quality-rules",
+            headers=headers,
+            json={"asset_id": asset["id"], "name": "run-off", "expression": "1=1", "enabled": False},
+        ).json()["data"]
+        denied = client.post(
+            f"/api/v1/rebuild/governance/projects/{project_id}/quality-rules/{disabled['id']}/run",
+            headers=headers,
+        )
+
+    assert missing.status_code == 404
+    assert denied.status_code == 409
+
+
 def test_failed_tag_assignment_rolls_back_without_audit_event():
     with governance_client() as (client, app, headers):
         project_id = client.get("/api/v1/rebuild/projects", headers=headers).json()["data"]["list"][0]["id"]

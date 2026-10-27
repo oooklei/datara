@@ -400,47 +400,48 @@ watch([kind, datasourceId, database, schema, objectName], () => { resetChain() }
 </script>
 
 <style scoped>
-.ddl-editor{max-width:980px;margin:0 auto;padding:20px 16px 48px;color:#172033;font-size:14px}
+/* 设计令牌：由全局 styles/theme.css 的 :root 提供（§4.4.3 风格统一），本文件不再就地重复定义。 */
+.ddl-editor{max-width:980px;margin:0 auto;padding:20px 16px 48px;color:var(--text);font-size:14px}
 .view-head h1{margin:0 0 6px;font-size:20px}
-.view-head p{margin:0 0 16px;color:#64748b;font-size:13px;line-height:1.6}
-.locator{display:flex;gap:12px;flex-wrap:wrap;align-items:flex-end;border:1px solid #e2e8f0;border-radius:8px;padding:12px 14px;margin-bottom:10px;background:#fff}
+.view-head p{margin:0 0 16px;color:var(--text-3);font-size:13px;line-height:1.6}
+.locator{display:flex;gap:12px;flex-wrap:wrap;align-items:flex-end;border:1px solid var(--border);border-radius:var(--radius);padding:12px 14px;margin-bottom:10px;background:var(--card)}
 .locator .field{margin:0}
 .locator .field.actions{margin-left:auto}
 .field{display:flex;flex-direction:column;gap:4px;font-size:13px;margin:0 0 10px}
-.field span{color:#475569}
-input,select{padding:6px 8px;border:1px solid #cbd5e1;border-radius:6px;font-size:13px;color:#172033;background:#fff;min-width:140px}
-button{padding:7px 14px;border:1px solid #cbd5e1;border-radius:6px;background:#f1f5f9;color:#172033;font-size:13px;cursor:pointer}
-button:hover:not(:disabled){background:#e2e8f0}
-button:disabled{color:#94a3b8;cursor:not-allowed}
-.note{margin:8px 0;color:#92400e;font-size:13px}
-.error{margin:8px 0;padding:8px 12px;border:1px solid #fecaca;border-radius:6px;background:#fef2f2;color:#b91c1c;font-size:13px}
-.empty-hint{color:#94a3b8;font-size:13px}
-.control-panel{margin-top:18px;border:1px solid #e2e8f0;border-radius:8px;padding:14px 16px;background:#fff}
+.field span{color:var(--text-2)}
+input,select{padding:6px 8px;border:1px solid var(--border-strong);border-radius:var(--radius-sm);font-size:13px;color:var(--text);background:var(--card);min-width:140px}
+button{padding:7px 14px;border:1px solid var(--border-strong);border-radius:var(--radius-sm);background:var(--bg);color:var(--text);font-size:13px;cursor:pointer}
+button:hover:not(:disabled){background:var(--border)}
+button:disabled{color:var(--text-3);cursor:not-allowed}
+.note{margin:8px 0;color:var(--warn);font-size:13px}
+.error{margin:8px 0;padding:8px 12px;border:1px solid rgba(229,72,77,.25);border-radius:var(--radius-sm);background:var(--danger-bg);color:var(--danger);font-size:13px}
+.empty-hint{color:var(--text-3);font-size:13px}
+.control-panel{margin-top:18px;border:1px solid var(--border);border-radius:var(--radius);padding:14px 16px;background:var(--card)}
 .control-panel h2{margin:0 0 12px;font-size:16px}
 .steps{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:10px}
-.steps li{border:1px solid #e2e8f0;border-left-width:4px;border-radius:6px;padding:10px 12px}
-.steps li[data-step-state="done"]{border-left-color:#15803d}
-.steps li[data-step-state="active"]{border-left-color:#2563eb}
-.steps li[data-step-state="pending"]{border-left-color:#cbd5e1}
-.steps li[data-step-state="blocked"]{border-left-color:#b91c1c}
+.steps li{border:1px solid var(--border);border-left-width:4px;border-radius:var(--radius-sm);padding:10px 12px}
+.steps li[data-step-state="done"]{border-left-color:var(--success)}
+.steps li[data-step-state="active"]{border-left-color:var(--primary)}
+.steps li[data-step-state="pending"]{border-left-color:var(--border-strong)}
+.steps li[data-step-state="blocked"]{border-left-color:var(--danger)}
 .step-head{display:flex;gap:10px;align-items:baseline}
 .step-title{font-size:14px;font-weight:600}
-.step-state{font-size:12px;color:#64748b}
-.step-detail{margin:4px 0 8px;color:#64748b;font-size:12.5px}
+.step-state{font-size:12px;color:var(--text-3)}
+.step-detail{margin:4px 0 8px;color:var(--text-3);font-size:12.5px}
 .findings,.impacts,.exec-status{list-style:none;margin:0 0 8px;padding:0;display:flex;flex-direction:column;gap:4px;font-size:13px}
 .findings li,.impacts li,.exec-status li{display:flex;gap:10px;flex-wrap:wrap;align-items:baseline}
-code{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12.5px;background:#eef2f7;padding:1px 5px;border-radius:3px}
-[data-finding-level="block"]{color:#b91c1c}
-[data-finding-level="warn"]{color:#92400e}
-[data-finding-level="info"]{color:#475569}
-[data-impact-relation]{color:#2563eb}
+code{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12.5px;background:var(--bg);padding:1px 5px;border-radius:3px}
+[data-finding-level="block"]{color:var(--danger)}
+[data-finding-level="warn"]{color:var(--warn)}
+[data-finding-level="info"]{color:var(--text-2)}
+[data-impact-relation]{color:var(--primary)}
 [data-impact-object]{font-family:ui-monospace,SFMono-Regular,Menlo,monospace}
-[data-impact-detail]{color:#64748b}
-[data-policy-blocked="yes"]{color:#b91c1c}
-[data-policy-blocked="no"]{color:#15803d}
+[data-impact-detail]{color:var(--text-3)}
+[data-policy-blocked="yes"]{color:var(--danger)}
+[data-policy-blocked="no"]{color:var(--success)}
 .outcome{display:flex;gap:12px;margin:0 0 8px;font-size:13px}
 table{width:100%;border-collapse:collapse;font-size:13px;margin-bottom:8px}
-th,td{border:1px solid #e2e8f0;padding:5px 8px;text-align:left}
-th{background:#f1f5f9;color:#475569;font-weight:600}
-.guard{margin:8px 0 0;color:#64748b;font-size:12px}
+th,td{border:1px solid var(--border);padding:5px 8px;text-align:left}
+th{background:var(--bg);color:var(--text-2);font-weight:600}
+.guard{margin:8px 0 0;color:var(--text-3);font-size:12px}
 </style>

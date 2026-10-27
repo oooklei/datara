@@ -55,6 +55,7 @@ const sub = computed(() =>
 </script>
 
 <style scoped>
+/* 设计令牌：由全局 styles/theme.css 的 :root 提供（§4.4.3 风格统一），本文件不再就地重复定义。 */
 .segment-page {
   max-width: 960px;
   margin: 0 auto;
@@ -72,6 +73,6 @@ const sub = computed(() =>
 
 .seg-sub {
   margin: 0;
-  color: var(--text-secondary, #64748b);
+  color: var(--text-secondary);
 }
 </style>

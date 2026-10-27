@@ -48,6 +48,10 @@ import QualityTaskView from '../views/qc/QualityTaskView.vue'
 import QualityReadOnlyView from '../views/qc/QualityReadOnlyView.vue'
 import ResourceManagementView from '../views/resources/ResourceManagementView.vue'
 import ModelListView from '../views/dwmodel/ModelListView.vue'
+import ModelDesignView from '../views/dwmodel/ModelDesignView.vue'
+import ModelVersionView from '../views/dwmodel/ModelVersionView.vue'
+import ModelLineageView from '../views/dwmodel/ModelLineageView.vue'
+import ErCanvasView from '../views/dwmodel/ErCanvasView.vue'
 
 export const routes: RouteRecordRaw[] = [
   { path: '/login', name: 'login', component: LoginView },
@@ -64,6 +68,10 @@ export const routes: RouteRecordRaw[] = [
   { path: '/ds/list', name: 'ds-list', component: DataSourceListView },
   { path: '/ide', name: 'sql-ide', component: IdeView },
   { path: '/model/list', name: 'dwModeling', component: ModelListView },
+  { path: '/model/design', name: 'dwModelDesign', component: ModelDesignView },
+  { path: '/model/version', name: 'dwModelVersion', component: ModelVersionView },
+  { path: '/model/lineage', name: 'dwModelLineage', component: ModelLineageView },
+  { path: '/model/er', name: 'dwModelEr', component: ErCanvasView },
   { path: '/meta/lineage', name: 'meta-lineage', component: LineageAnalysisView },
   { path: '/meta/map', name: 'meta-map', component: AssetMapView },
   { path: '/meta/catalog', name: 'meta-catalog', component: MetadataCatalogView },

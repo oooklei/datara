@@ -190,6 +190,22 @@ class ResourceRepository:
             raise ResourceDomainError("RES_VERSION_NOT_FOUND", f"resource {resource_id} has no version {version}", 404)
         return self._version_payload(row)
 
+    def get_version_file(self, project_id: int, resource_id: int, version: int) -> tuple[str, str]:
+        """Resolve a project-owned immutable version to path and download name."""
+        resource = self._resource(project_id, resource_id)
+        row = self._session.scalar(
+            select(ResourceVersionRecord).where(
+                ResourceVersionRecord.resource_id == resource_id,
+                ResourceVersionRecord.version == version,
+            )
+        )
+        if row is None:
+            raise ResourceDomainError("RES_VERSION_NOT_FOUND", f"resource {resource_id} has no version {version}", 404)
+        path = os.path.join(storage_dir(), row.storage_path)
+        if not os.path.isfile(path):
+            raise ResourceDomainError("RES_VERSION_NOT_FOUND", f"resource {resource_id} version {version} content is missing", 404)
+        return path, resource.name
+
     @staticmethod
     def _version_payload(row: ResourceVersionRecord) -> dict[str, Any]:
         return {

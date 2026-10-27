@@ -78,6 +78,7 @@ onMounted(async () => {
 </script>
 
 <style scoped>
+/* 设计令牌：由全局 styles/theme.css 的 :root 提供（§4.4.3 风格统一），本文件不再就地重复定义。 */
 .home-projects {
   max-width: 960px;
   margin: 0 auto;
@@ -95,17 +96,17 @@ onMounted(async () => {
 
 .home-sub {
   margin: 0;
-  color: var(--text-secondary, #64748b);
+  color: var(--text-secondary);
 }
 
 .state {
   padding: 48px 0;
   text-align: center;
-  color: var(--text-secondary, #64748b);
+  color: var(--text-secondary);
 }
 
 .state-error {
-  color: #dc2626;
+  color: var(--danger);
 }
 
 .project-grid {
@@ -124,15 +125,15 @@ onMounted(async () => {
   justify-content: space-between;
   gap: 8px;
   padding: 20px 16px;
-  border: 1px solid var(--border-color, #e2e8f0);
-  border-radius: 10px;
-  background: var(--bg-surface, #fff);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-lg);
+  background: var(--bg-surface);
   cursor: pointer;
   text-align: left;
 }
 
 .project-card:hover {
-  border-color: var(--primary-color, #2563eb);
+  border-color: var(--primary-color);
 }
 
 .project-name {
@@ -144,11 +145,11 @@ onMounted(async () => {
   padding: 2px 8px;
   border-radius: 999px;
   font-size: 12px;
-  background: var(--primary-color, #2563eb);
-  color: #fff;
+  background: var(--primary-color);
+  color: var(--card);
 }
 
 .project-badge.joined {
-  background: var(--text-secondary, #64748b);
+  background: var(--text-secondary);
 }
 </style>

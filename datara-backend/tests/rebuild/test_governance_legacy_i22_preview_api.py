@@ -1,16 +1,20 @@
 from types import SimpleNamespace
 from datetime import datetime, timezone
+import hashlib
+import json
 
 from fastapi.testclient import TestClient
 from sqlalchemy import func, select
 
 from rebuild.api.app import create_app
-from rebuild.governance.legacy_source_reader import I22_SOURCE_COLUMNS
+from rebuild.governance.legacy_source_reader import I22_SOURCE_COLUMNS, _json_safe
 from rebuild.governance.migrations import MigrationRunner, R3_GOVERNANCE_MIGRATIONS
 from rebuild.governance.models import StandardApprovalRecord, StandardElementRecord
 
 
-def _source_snapshot():
+def _source_snapshot(*, approval_biz_id: int = 2):
+    # The default dangling biz_id=2 keeps one blocked row for preview assertions;
+    # the import end-to-end path passes approval_biz_id=1 so every reference resolves.
     captured = datetime(2026, 10, 15)
     snapshot_time = captured.replace(tzinfo=timezone.utc)
     rows = {table: [] for table in I22_SOURCE_COLUMNS}
@@ -32,7 +36,7 @@ def _source_snapshot():
         {
             "id": 1,
             "biz_type": "code",
-            "biz_id": 2,
+            "biz_id": approval_biz_id,
             "action": "submit",
             "payload_json": {"opaque": "SECRET_PAYLOAD"},
             "status": "review",
@@ -100,6 +104,16 @@ class _Reader:
     def read_snapshot(self):
         self.calls += 1
         return self.snapshot
+
+
+def _payload_digest(snapshot):
+    """Recompute the importer's tamper-evident digest for a snapshot fixture."""
+    payload = {
+        "schema": snapshot.schema,
+        "rows": {table: [_json_safe(row) for row in snapshot.rows[table]] for table in I22_SOURCE_COLUMNS},
+    }
+    encoded = json.dumps(payload, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode("utf-8")
+    return hashlib.sha256(encoded).hexdigest()
 
 
 def _client(snapshot):
@@ -198,3 +212,39 @@ def test_i22_target_identity_lookup_cannot_cross_project_boundary():
     assert data["target"]["counts"]["t_std_element"] == 0
     element = next(item for item in data["preview"]["entries"] if item["source_table"] == "t_std_element")
     assert element["disposition"] == "new_identity_candidate"
+
+
+def test_i22_import_end_to_end_routes_parses_and_persists():
+    snapshot = _source_snapshot(approval_biz_id=1)
+    snapshot.digest = _payload_digest(snapshot)
+    client, app, reader, headers, project_id = _client(snapshot)
+    try:
+        response = client.post(
+            f"/api/v1/rebuild/governance/projects/{project_id}/legacy/i22/import",
+            headers=headers,
+            json={"source_digest": snapshot.digest, "idempotency_key": "i22-import-e2e"},
+        )
+        assert response.status_code == 200
+        data = response.json()["data"]
+        assert data["batch_id"] > 0
+        assert data["imported_count"] >= 1
+        with app.state.session_factory() as session:
+            elements = session.scalar(select(func.count()).select_from(StandardElementRecord))
+    finally:
+        client.__exit__(None, None, None)
+    assert elements >= 1
+
+
+def test_i22_import_requires_idempotency_key():
+    snapshot = _source_snapshot()
+    snapshot.digest = _payload_digest(snapshot)
+    client, _app, _reader, headers, project_id = _client(snapshot)
+    try:
+        response = client.post(
+            f"/api/v1/rebuild/governance/projects/{project_id}/legacy/i22/import",
+            headers=headers,
+            json={"source_digest": snapshot.digest},
+        )
+    finally:
+        client.__exit__(None, None, None)
+    assert response.status_code == 422

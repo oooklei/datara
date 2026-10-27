@@ -313,6 +313,7 @@ async function select(id: number): Promise<void> {
 </script>
 
 <style scoped>
+/* 设计令牌：由全局 styles/theme.css 的 :root 提供（§4.4.3 风格统一），本文件不再就地重复定义。 */
 .link-btn{border:none;background:none;padding:0;color:var(--primary);cursor:pointer;text-align:left}
 .link-btn:hover{text-decoration:underline}
 .link-btn:disabled{opacity:.45;cursor:not-allowed}

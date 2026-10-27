@@ -34,16 +34,27 @@ if str(BACKEND) not in sys.path:
     sys.path.insert(0, str(BACKEND))
 
 # `tests/test_stream_i11.py` 在**模块导入期**用 stub 覆盖 sys.modules['common'] 与
-# ['common.db']（只给 new_session，无 init_db）且从不恢复。这会污染任何随后需要
+# ['common.db']（只给 new_session，无 init_db）。这会污染任何随后需要
 # 真实 common.* / api.main 的用例。本模块两者都需要，故：
 #   1) 先清掉可能被 stub 污染的 common.*；
 #   2) 在**模块导入期**（而非 fixture 内）急切导入 api.main，使其在任何 stub
-#      安装之前就完成解析并留在 sys.modules 中。
-# 这样无论 pytest 的收集顺序如何，本用例都能拿到真实 app。
-for _n in [n for n in sys.modules if n == "common" or n.startswith("common.")]:
+#      安装之前就完成解析并留在 sys.modules 中；
+#   3) **导入后恢复 sys.modules 原视图**——否则 pop 掉的真实 common.* 会被
+#      api.main 重新 import 出的**新模块对象**顶替，同进程后续用例的
+#      `from common import queue` 就会与既有绑定分裂成两个对象，
+#      monkeypatch 只命中其一而失效（实测表现为 failover 用例连真实 Redis）。
+# 这样无论 pytest 的收集顺序如何，本用例都能拿到真实 app，且不泄漏污染。
+_saved_common = {
+    n: m for n, m in sys.modules.items() if n == "common" or n.startswith("common.")
+}
+for _n in list(_saved_common):
     sys.modules.pop(_n, None)
-
-from api.main import create_app  # noqa: E402
+try:
+    from api.main import create_app  # noqa: E402
+finally:
+    for _n in [n for n in sys.modules if n == "common" or n.startswith("common.")]:
+        sys.modules.pop(_n, None)
+    sys.modules.update(_saved_common)
 
 
 @pytest.fixture(scope="module")

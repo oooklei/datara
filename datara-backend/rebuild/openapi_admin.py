@@ -4,10 +4,12 @@ Definitions are metadata for Datara-owned facades; arbitrary proxy URLs are
 never accepted.  The table is intentionally small and uses an explicit status
 machine so publication cannot accidentally expose drafts.
 """
+import time
+import uuid
 from datetime import datetime
 from typing import Any
 
-from fastapi import APIRouter, Header, Query
+from fastapi import APIRouter, Header, Query, Request
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 from sqlalchemy import DateTime, Integer, String, Text, func, inspect, select, and_
@@ -70,6 +72,32 @@ def apply_openapi_admin_migrations(engine):
     if "rebuild_api_call_log" not in inspect(engine).get_table_names():
         ApiCallLogRecord.__table__.create(bind=engine)
     return {"created": True, "revision": "i15_0004_api_call_log"}
+
+
+def record_call(session, *, request_id: str, api_id: int, key_id: int,
+                principal: str, project_id: int | None, status_code: int,
+                latency_ms: int, result: str, error_code: str | None = None):
+    """Append one sanitized gateway call record.
+
+    The record never carries the raw key, request body, or SQL text (C4).  The
+    caller owns the transaction boundary; gateway integrations should treat a
+    failure here as a fail-closed condition rather than a silent success.
+    """
+    row = ApiCallLogRecord(
+        request_id=request_id,
+        api_id=api_id,
+        key_id=key_id,
+        principal=principal,
+        project_id=project_id,
+        status_code=status_code,
+        latency_ms=latency_ms,
+        result=result,
+        error_code=error_code,
+    )
+    session.add(row)
+    session.commit()
+    session.refresh(row)
+    return row
 
 
 def build_openapi_admin_router(
@@ -195,6 +223,82 @@ def build_openapi_admin_router(
     def disable_definition(definition_id: int, token: str = Header(default=""), authorization: str = Header(default="")): return transition(definition_id, "disabled", token, authorization)
     @router.post("/definitions/{definition_id}/enable")
     def enable_definition(definition_id: int, token: str = Header(default=""), authorization: str = Header(default="")): return transition(definition_id, "draft", token, authorization)
+
+    def _key_denial(message: str):
+        """Map an ApiKeyVerifier failure onto the frozen gateway error codes."""
+        if "expired" in message:
+            return _error(403, 4093, "API key has expired")
+        if "not active" in message:
+            return _error(403, 4094, "API key is revoked")
+        if "scope denied" in message:
+            return _error(403, 4095, "insufficient scope")
+        return _error(401, 1001, "invalid API key")
+
+    @router.api_route("/gateway/{api_path:path}", methods=["GET", "POST", "PUT", "DELETE"])
+    def gateway_invoke(api_path: str, request: Request, x_api_key: str = Header(default="", alias="X-API-Key")):
+        """Invoke a controlled facade on behalf of an external API-key caller.
+
+        Minimal closure: the definition is resolved by ``(path, method)`` and the
+        key is authorized against the definition's ``required_permission``; no
+        arbitrary URL proxying is performed (C2).  A sanitized call record is
+        written for every resolved attempt, and a logging failure on the success
+        path fails closed (5041) instead of faking an audited success (C4).
+        """
+        started = time.perf_counter()
+        if api_key_verifier is None:
+            return _error(503, 5041, "facade unavailable")
+        if not x_api_key:
+            return _error(401, 1001, "invalid API key")
+        try:
+            principal = api_key_verifier.verify(x_api_key)
+        except ApiKeyAuthError as exc:
+            return _key_denial(str(exc))
+
+        normalized = api_path if api_path.startswith("/") else f"/{api_path}"
+        method = request.method.upper()
+        with session_factory() as session:
+            row = session.scalar(select(ApiDefinitionRecord).where(
+                ApiDefinitionRecord.path == normalized,
+                ApiDefinitionRecord.method == method,
+            ))
+            if row is None:
+                return _error(404, 4041, "API definition not found")
+            project_id = min(principal.project_ids) if principal.project_ids else None
+            denial = None
+            if row.status == "draft":
+                denial = (404, 4041, "API definition not published")
+            elif row.status == "disabled":
+                denial = (409, 4092, "API definition disabled")
+            elif not principal.allows(row.required_permission, project_id):
+                denial = (403, 4095, "insufficient scope")
+            if denial is not None:
+                status_code, error_code, message = denial
+                try:
+                    record_call(session, request_id=uuid.uuid4().hex, api_id=row.id,
+                                key_id=principal.key_id, principal=f"apikey:{principal.key_id}",
+                                project_id=project_id, status_code=status_code,
+                                latency_ms=int((time.perf_counter() - started) * 1000),
+                                result="denied", error_code=str(error_code))
+                except Exception:
+                    pass
+                return _error(status_code, error_code, message)
+            request_id = uuid.uuid4().hex
+            latency_ms = int((time.perf_counter() - started) * 1000)
+            try:
+                record_call(session, request_id=request_id, api_id=row.id, key_id=principal.key_id,
+                            principal=f"apikey:{principal.key_id}", project_id=project_id,
+                            status_code=200, latency_ms=latency_ms, result="success")
+            except Exception:
+                return _error(503, 5041, "facade unavailable")
+            return _ok({
+                "requestId": request_id,
+                "apiId": row.id,
+                "apiPath": row.path,
+                "method": row.method,
+                "definition": {"id": row.id, "name": row.name, "version": row.version, "requiredPermission": row.required_permission},
+                "facade": "registered",
+                "result": None,
+            })
     return router
 
 

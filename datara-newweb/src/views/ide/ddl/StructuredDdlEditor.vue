@@ -65,16 +65,17 @@ watch(() => props.modelValue, (value) => {
 </script>
 
 <style scoped>
-.structured-editor{border:1px solid #e2e8f0;border-radius:8px;padding:16px;background:#fff}
+/* 设计令牌：由全局 styles/theme.css 的 :root 提供（§4.4.3 风格统一），本文件不再就地重复定义。 */
+.structured-editor{border:1px solid var(--border);border-radius:var(--radius);padding:16px;background:var(--card)}
 .track-head h2{margin:0 0 4px;font-size:16px}
-.track-head p{margin:0 0 12px;color:#64748b;font-size:13px}
-.empty{color:#94a3b8;font-size:13px;margin:0 0 12px}
-.ops{border:1px solid #e2e8f0;border-radius:6px;padding:10px 12px;margin:0 0 10px;display:flex;gap:12px;flex-wrap:wrap}
-.ops legend{color:#475569;font-size:13px;padding:0 4px}
+.track-head p{margin:0 0 12px;color:var(--text-3);font-size:13px}
+.empty{color:var(--text-3);font-size:13px;margin:0 0 12px}
+.ops{border:1px solid var(--border);border-radius:var(--radius-sm);padding:10px 12px;margin:0 0 10px;display:flex;gap:12px;flex-wrap:wrap}
+.ops legend{color:var(--text-2);font-size:13px;padding:0 4px}
 .field{display:flex;flex-direction:column;gap:4px;font-size:13px}
 .field.wide{width:100%}
-.field span{color:#475569}
-input,select{padding:6px 8px;border:1px solid #cbd5e1;border-radius:6px;font-size:13px;color:#172033;background:#fff}
-textarea{width:100%;box-sizing:border-box;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:13px;line-height:1.5;padding:8px;border:1px solid #cbd5e1;border-radius:6px;color:#172033;background:#f8fafc}
-fieldset:disabled input,fieldset:disabled select{background:#f1f5f9;color:#94a3b8}
+.field span{color:var(--text-2)}
+input,select{padding:6px 8px;border:1px solid var(--border-strong);border-radius:var(--radius-sm);font-size:13px;color:var(--text);background:var(--card)}
+textarea{width:100%;box-sizing:border-box;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:13px;line-height:1.5;padding:8px;border:1px solid var(--border-strong);border-radius:var(--radius-sm);color:var(--text);background:var(--bg)}
+fieldset:disabled input,fieldset:disabled select{background:var(--bg);color:var(--text-3)}
 </style>

@@ -147,6 +147,7 @@ watch(() => [props.modelValue, props.projectId], load, { immediate: true })
 </template>
 
 <style scoped>
-.variable-drawer{position:fixed;z-index:2000;inset:56px 0 0 auto;width:min(720px,94vw);background:#fff;border-left:1px solid #dbe3ef;box-shadow:-12px 0 32px #0f172a1f;padding:18px;overflow:auto}
-header,.toolbar,header>div,.editor>div{display:flex;align-items:center;justify-content:space-between;gap:12px}h2,p{margin:0}.toolbar{justify-content:flex-start;margin:16px 0}.notice{padding:8px;background:#f8fafc}.error{color:#b91c1c;padding:12px;background:#fef2f2}table{width:100%;border-collapse:collapse}th,td{text-align:left;padding:9px;border-bottom:1px solid #e2e8f0}.editor{margin-top:18px;padding:14px;background:#f8fafc;display:grid;gap:10px}.editor label{display:grid;gap:4px}input,select,button{font:inherit;padding:6px 9px}
+/* 设计令牌：由全局 styles/theme.css 的 :root 提供（§4.4.3 风格统一），本文件不再就地重复定义。 */
+.variable-drawer{position:fixed;z-index:2000;inset:56px 0 0 auto;width:min(720px,94vw);background:var(--card);border-left:1px solid var(--border);box-shadow:-12px 0 32px rgba(15,23,42,.12);padding:18px;overflow:auto}
+header,.toolbar,header>div,.editor>div{display:flex;align-items:center;justify-content:space-between;gap:12px}h2,p{margin:0}.toolbar{justify-content:flex-start;margin:16px 0}.notice{padding:8px;background:var(--bg)}.error{color:var(--danger);padding:12px;background:var(--danger-bg)}table{width:100%;border-collapse:collapse}th,td{text-align:left;padding:9px;border-bottom:1px solid var(--border)}.editor{margin-top:18px;padding:14px;background:var(--bg);display:grid;gap:10px}.editor label{display:grid;gap:4px}input,select,button{font:inherit;padding:6px 9px}
 </style>
