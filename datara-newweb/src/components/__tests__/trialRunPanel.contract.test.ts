@@ -74,7 +74,7 @@ function makeStore(over: Record<string, unknown> = {}) {
     options: {
       nodeCodes: [] as string[], startNode: '', testVariables: {} as Record<string, unknown>,
       environmentGroupId: undefined as number | undefined,
-      dependencyMock: {} as Record<string, unknown>, dryRun: false, sqlPrecheck: false,
+      dependencyMock: {} as Record<string, unknown>, dryRun: false, sqlPrecheck: false, sqlExecute: false,
     },
     runResult: null as unknown,
     output: null as unknown,
@@ -158,9 +158,9 @@ describe('INC4-FE-7 TrialRunPanel 八能力 UI 承接', () => {
     expect(w.find('[data-test="promote-btn"]').attributes('disabled')).toBeDefined()
   })
 
-  it('六选项表单在位（WF-15~WF-20 六锚点）', () => {
+  it('六选项表单在位（WF-15~WF-20 六锚点 + B3 sql-execute）', () => {
     const w = mountPanel()
-    for (const sel of ['nodecodes', 'start-node', 'test-vars', 'environment-group-id', 'dep-mock', 'dry-run', 'sql-precheck']) {
+    for (const sel of ['nodecodes', 'start-node', 'test-vars', 'environment-group-id', 'dep-mock', 'dry-run', 'sql-precheck', 'sql-execute']) {
       expect(w.find(`[data-test="${sel}"]`).exists()).toBe(true)
     }
   })
@@ -233,6 +233,26 @@ describe('INC4-FE-7 TrialRunPanel 八能力 UI 承接', () => {
     await w.find('[data-test="sql-precheck"]').setValue(true)
     expect(store.options.dryRun).toBe(true)
     expect(store.options.sqlPrecheck).toBe(true)
+  })
+
+  it('B3：SQL 真实执行开关双向绑定 + tasks 节点状态明细表渲染', async () => {
+    const w = mountPanel()
+    await w.find('[data-test="sql-execute"]').setValue(true)
+    expect(store.options.sqlExecute).toBe(true)
+
+    store.runResult = {
+      ...RUN_OK,
+      tasks: [
+        { taskInstanceId: 11, taskId: 'n1', nodeCode: 'n1', status: 'SUCCEEDED' },
+        { taskInstanceId: 12, taskId: 'n2', nodeCode: 'n2', status: 'FAILED' },
+      ],
+    }
+    const w2 = mountPanel()
+    const table = w2.find('[data-test="tasks-table"]')
+    expect(table.exists()).toBe(true)
+    expect(table.text()).toContain('n1')
+    expect(table.text()).toContain('SUCCEEDED')
+    expect(table.text()).toContain('FAILED')
   })
 
   it('runResult 渲染（SUCCEEDED）；DRY_RUN：plan 渲染 + 刷新输出入口不渲染', () => {

@@ -69,6 +69,8 @@ export interface TrialRunOptions {
   dryRun?: boolean
   /** WF-20：执行前 SQL 预检 */
   sqlPrecheck?: boolean
+  /** B3：SQL 节点真实执行（隔离 SQLite 内存库，runner opt-in options.sql_execute） */
+  sqlExecute?: boolean
 }
 
 /* ---------- wire 形状（snake_case，后端 payload 直映） ---------- */
@@ -353,6 +355,7 @@ function trialOptionsWire(options?: TrialRunOptions): Record<string, unknown> | 
   if (options.dependencyMock !== undefined) wire.dependency_mock = options.dependencyMock
   if (options.dryRun !== undefined) wire.dry_run = options.dryRun
   if (options.sqlPrecheck !== undefined) wire.sql_precheck = options.sqlPrecheck
+  if (options.sqlExecute !== undefined) wire.sql_execute = options.sqlExecute
   return Object.keys(wire).length > 0 ? wire : undefined
 }
 

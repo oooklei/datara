@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import {
   createStreamContract,
   type StreamCheckpointRow,
@@ -21,6 +21,7 @@ const produced = ref(0)
 const fuseKey = ref('id')
 const fuseStreams = ref('{"orders":[{"id":1,"amount":10}],"customers":[{"id":1,"name":"Ada"}]}')
 const fused = ref(0)
+const fuseResult = ref<Array<Record<string, unknown>>>([])
 const aggregateKey = ref('partition')
 const aggregateValue = ref('value')
 const aggregateWindow = ref(10)
@@ -36,10 +37,60 @@ watch(() => [props.projectId, props.jobId] as const, ([, value]) => {
   recoveryEvents.value = []
   produced.value = 0
   fused.value = 0
+  fuseResult.value = []
   error.value = ''
   detailWarning.value = ''
   loading.value = false
-})
+  void bindRunningJob()
+}, { immediate: true })
+
+/* ---------- B3：自动定位 running job（G12 载入后观摩面板定位实时状态） ---------- */
+
+/** jobId 为空时按 workflow 自动绑定既有 running job（listStreamJobs 透传 workflowId）；
+ * 失败静默——不阻断手动输入/手动创建流程 */
+async function bindRunningJob() {
+  if (jobId.value.trim()) return
+  if (!Number.isSafeInteger(props.projectId) || Number(props.projectId) <= 0) return
+  try {
+    const jobs = await api.value.listStreamJobs({ from: new Date(Date.now() - 86400000).toISOString(), to: new Date().toISOString(), limit: 100, offset: 0 })
+    if (jobId.value.trim()) return
+    const running = jobs.find((j) => j.state === 'running'
+      && (props.workflowId === undefined || j.workflowId === undefined || j.workflowId === Number(props.workflowId)))
+    if (running) {
+      jobId.value = running.jobId
+      await refresh()
+    }
+  } catch { /* 自动绑定失败保持空态，走手动创建 */ }
+}
+
+/* ---------- B3：自动轮询（jobId 就绪后 5s 观摩刷新，卸载/换 job 停止） ---------- */
+
+const STREAM_POLL_MS = 5000
+const polling = ref(false)
+let pollTimer: number | null = null
+
+function stopPolling(): void {
+  if (pollTimer !== null) {
+    window.clearInterval(pollTimer)
+    pollTimer = null
+  }
+  polling.value = false
+}
+
+function startPolling(): void {
+  if (pollTimer !== null) return
+  pollTimer = window.setInterval(() => {
+    if (!loading.value && jobId.value.trim()) void refresh()
+  }, STREAM_POLL_MS)
+  polling.value = true
+}
+
+watch(jobId, (value) => {
+  if (value.trim()) startPolling()
+  else stopPolling()
+}, { immediate: true })
+
+onBeforeUnmount(stopPolling)
 
 async function produce() {
   if (!jobId.value.trim()) return
@@ -106,6 +157,7 @@ async function fuse() {
   try {
     const result = await api.value.fuseStreamEvents(jobId.value.trim(), fuseKey.value.trim(), streams)
     fused.value = result.fused
+    fuseResult.value = result.result
     await refresh()
   } catch (cause) { error.value = cause instanceof Error ? cause.message : '流融合失败' }
   finally { loading.value = false }
@@ -163,6 +215,16 @@ async function refresh() {
       <label>流数据 JSON<textarea v-model="fuseStreams" rows="2" data-stream-fuse-streams /></label>
       <button type="button" :disabled="loading || !jobId" data-stream-fuse-submit @click="fuse">融合流</button>
       <span>最近融合 {{ fused }}</span>
+      <span v-if="polling" class="live" data-stream-live>自动刷新（5s）</span>
+    </div>
+    <div v-if="fuseResult.length" class="stream-detail" data-stream-fuse-result>
+      <h4>融合结果行（{{ fuseResult.length }}）</h4>
+      <table><thead><tr><th>融合键</th><th>行数据</th></tr></thead><tbody>
+        <tr v-for="(row, index) in fuseResult" :key="index">
+          <td>{{ row[fuseKey.trim()] ?? '—' }}</td>
+          <td><code>{{ JSON.stringify(row) }}</code></td>
+        </tr>
+      </tbody></table>
     </div>
     <p v-if="error" class="error" data-stream-error>{{ error }}</p>
     <p v-if="detailWarning" class="warning" data-stream-detail-warning>部分观测明细暂不可用：{{ detailWarning }}</p>
@@ -228,5 +290,5 @@ async function refresh() {
 </template>
 
 <style scoped>
-.stream-observation{padding:10px 14px;border-top:1px solid var(--border-color,#e2e8f0);background:#f8fafc;display:grid;gap:8px}.stream-observation header,.stream-controls,.stream-aggregate,.stream-fuse{display:flex;align-items:center;gap:10px;flex-wrap:wrap}.stream-observation label{display:flex;align-items:center;gap:5px;font-size:12px}.stream-observation input{width:110px;padding:5px}.stream-fuse textarea{width:320px;min-height:34px;font:11px monospace}.stream-fuse span{padding:4px 8px;background:#fff;border:1px solid #dbe3ef;border-radius:5px;font-size:12px}.stream-observation-grid,.stream-detail-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px}.stream-metric-panel,.stream-detail{padding:9px;background:#fff;border:1px solid #dbe3ef;border-radius:7px}.stream-metric-panel{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:6px}.stream-metric-panel h4{grid-column:1/-1;margin:0;color:#334155;font-size:12px}.stream-metric-panel span,.stream-metric-panel small{padding:4px 6px;border-radius:4px;background:#f8fafc;font-size:12px;white-space:nowrap}.stream-metric-panel small{grid-column:1/-1;color:#64748b}.stream-detail{min-width:0;overflow:auto}.stream-detail h4{margin:0 0 7px;color:#334155;font-size:12px}.stream-detail p{margin:0;color:#94a3b8;font-size:12px}.stream-detail table{width:100%;border-collapse:collapse;font-size:11px;white-space:nowrap}.stream-detail th,.stream-detail td{padding:4px 5px;text-align:left;border-bottom:1px solid #edf2f7}.stream-detail code{font-size:10px}.error,.warning{margin:0}.error{color:#b91c1c}.warning{color:#a16207;font-size:12px}@media(max-width:1100px){.stream-observation-grid,.stream-detail-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}@media(max-width:680px){.stream-observation-grid,.stream-detail-grid{grid-template-columns:1fr}}
+.stream-observation{padding:10px 14px;border-top:1px solid var(--border-color,#e2e8f0);background:#f8fafc;display:grid;gap:8px}.stream-observation header,.stream-controls,.stream-aggregate,.stream-fuse{display:flex;align-items:center;gap:10px;flex-wrap:wrap}.stream-observation label{display:flex;align-items:center;gap:5px;font-size:12px}.stream-observation input{width:110px;padding:5px}.stream-fuse textarea{width:320px;min-height:34px;font:11px monospace}.stream-fuse span{padding:4px 8px;background:#fff;border:1px solid #dbe3ef;border-radius:5px;font-size:12px}.stream-fuse span.live{background:#ecfdf5;border-color:#6ee7b7;color:#047857}.stream-observation-grid,.stream-detail-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px}.stream-metric-panel,.stream-detail{padding:9px;background:#fff;border:1px solid #dbe3ef;border-radius:7px}.stream-metric-panel{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:6px}.stream-metric-panel h4{grid-column:1/-1;margin:0;color:#334155;font-size:12px}.stream-metric-panel span,.stream-metric-panel small{padding:4px 6px;border-radius:4px;background:#f8fafc;font-size:12px;white-space:nowrap}.stream-metric-panel small{grid-column:1/-1;color:#64748b}.stream-detail{min-width:0;overflow:auto}.stream-detail h4{margin:0 0 7px;color:#334155;font-size:12px}.stream-detail p{margin:0;color:#94a3b8;font-size:12px}.stream-detail table{width:100%;border-collapse:collapse;font-size:11px;white-space:nowrap}.stream-detail th,.stream-detail td{padding:4px 5px;text-align:left;border-bottom:1px solid #edf2f7}.stream-detail code{font-size:10px}.error,.warning{margin:0}.error{color:#b91c1c}.warning{color:#a16207;font-size:12px}@media(max-width:1100px){.stream-observation-grid,.stream-detail-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}@media(max-width:680px){.stream-observation-grid,.stream-detail-grid{grid-template-columns:1fr}}
 </style>

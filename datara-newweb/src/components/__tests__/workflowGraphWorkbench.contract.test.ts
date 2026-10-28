@@ -694,4 +694,36 @@ describe('WorkflowGraphWorkbench L12-02 同步工作流契约', () => {
       vi.useRealTimers()
     }
   })
+
+  it('用例B3a condition_set 结构化表单：三字段承接 + 增量列显隐 + 保存回写 params（B3）', async () => {
+    // attach 必需：isVisible 基于 getComputedStyle，detached 元素恒判可见
+    const { wrapper, graph } = makeWorkbench('sync', true)
+    await flushPromises()
+
+    await wrapper.find('.vf-stub').trigger('drop', {
+      clientX: 70,
+      clientY: 80,
+      dataTransfer: { getData: () => 'condition_set' },
+    })
+    await nextTick()
+    expect(wrapper.find('[data-testid="node-config-panel"]').exists()).toBe(true)
+
+    // 三 params 在位；incrementalExpr 依赖增量列（c-incr-expr notEmpty）默认隐藏
+    expect(wrapper.find('[data-testid="ncp-filterExpr"]').exists()).toBe(true)
+    expect(wrapper.find('[data-testid="ncp-incrementalColumn"]').exists()).toBe(true)
+    expect(wrapper.find('[data-field="incrementalExpr"]').isVisible()).toBe(false)
+
+    // 填增量列 → 增量表达式显现；保存收集非空可见键（filterExpr 留空不携带）
+    await wrapper.find('[data-testid="ncp-incrementalColumn"] input').setValue('create_time')
+    await nextTick()
+    expect(wrapper.find('[data-field="incrementalExpr"]').isVisible()).toBe(true)
+    await wrapper.find('[data-testid="ncp-incrementalExpr"] input').setValue('yyyyMMdd-1')
+    await wrapper.find('[data-testid="ncp-save"]').trigger('click')
+    await flushPromises()
+
+    expect(graph.nodes[3]).toMatchObject({
+      nodeType: 'condition_set',
+      params: { component: 'condition_set', incrementalColumn: 'create_time', incrementalExpr: 'yyyyMMdd-1' },
+    })
+  })
 })

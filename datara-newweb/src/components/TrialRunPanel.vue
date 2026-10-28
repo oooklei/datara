@@ -164,6 +164,10 @@ const canRefreshOutput = computed(() => store.runResult !== null && store.runRes
         <input v-model="store.options.sqlPrecheck" type="checkbox" data-test="sql-precheck" />
         <span>SQL 预检查（执行前校验表/字段可访问性）</span>
       </label>
+      <label class="trp-check">
+        <input v-model="store.options.sqlExecute" type="checkbox" data-test="sql-execute" />
+        <span>SQL 真实执行（隔离 SQLite 内存库，不触项目数据源）</span>
+      </label>
     </div>
 
     <!-- ③ 运行 + 结果 + 输出 + 转正式 -->
@@ -198,6 +202,21 @@ const canRefreshOutput = computed(() => store.runResult !== null && store.runRes
         <span class="trp-hint">执行计划（{{ store.runResult.plan.length }} 节点）：</span>
         <span class="mono">{{ store.runResult.plan.join(' → ') }}</span>
       </div>
+      <table
+        v-if="store.runResult !== null && store.runResult.tasks.length > 0"
+        class="trp-tasks"
+        data-test="tasks-table"
+      >
+        <thead>
+          <tr><th>节点</th><th>状态</th></tr>
+        </thead>
+        <tbody>
+          <tr v-for="t in store.runResult.tasks" :key="t.taskInstanceId">
+            <td class="mono">{{ t.nodeCode }}</td>
+            <td :class="['trp-status', t.status.toLowerCase()]">{{ t.status }}</td>
+          </tr>
+        </tbody>
+      </table>
 
       <div v-if="store.output !== null" class="trp-out" data-test="out-panel">
         <div class="trp-stats" data-test="out-stats">
@@ -374,6 +393,21 @@ const canRefreshOutput = computed(() => store.runResult !== null && store.runRes
   display: flex;
   flex-direction: column;
   gap: 2px;
+}
+.trp-tasks {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 11.5px;
+}
+.trp-tasks th,
+.trp-tasks td {
+  border: 1px solid var(--border, #e5e7eb);
+  padding: 3px 8px;
+  text-align: left;
+}
+.trp-tasks th {
+  background: #f9fafb;
+  font-weight: 600;
 }
 .trp-actions {
   display: flex;

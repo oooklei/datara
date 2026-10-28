@@ -47,6 +47,8 @@ export interface TrialRunFormOptions {
   dryRun: boolean
   /** WF-20：执行前 SQL 预检 */
   sqlPrecheck: boolean
+  /** B3：SQL 节点真实执行（隔离 SQLite 内存库） */
+  sqlExecute: boolean
 }
 
 function emptyFormOptions(): TrialRunFormOptions {
@@ -57,6 +59,7 @@ function emptyFormOptions(): TrialRunFormOptions {
     dependencyMock: {},
     dryRun: false,
     sqlPrecheck: false,
+    sqlExecute: false,
   }
 }
 
@@ -76,6 +79,7 @@ function effectiveOptions(form: TrialRunFormOptions): TrialRunOptions | undefine
   if (Object.keys(form.dependencyMock).length > 0) out.dependencyMock = { ...form.dependencyMock }
   if (form.dryRun) out.dryRun = true
   if (form.sqlPrecheck) out.sqlPrecheck = true
+  if (form.sqlExecute) out.sqlExecute = true
   return Object.keys(out).length > 0 ? out : undefined
 }
 

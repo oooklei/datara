@@ -25,6 +25,8 @@ export interface StreamJobRow {
   /** running / paused / stopped / failed 等 */
   state: string
   startedAt: string | null
+  /** B3：所属工作流（观摩面板按 workflow 自动定位 running job 用） */
+  workflowId?: number
 }
 
 export interface StreamJobCreateInput {
@@ -227,7 +229,7 @@ async function jobsFor(projectId: number | undefined, jobId?: string): Promise<A
 export function createStreamContract(projectId?: number): StreamContract {
   return {
     listStreamJobs: async () => (await jobsFor(projectId)).map((job) => ({
-      jobId: wireIdToString(job.id, 'jobId'), kind: String(job.runtimeConfig.mode ?? 'stream'), state: job.state, startedAt: job.startedAt,
+      jobId: wireIdToString(job.id, 'jobId'), kind: String(job.runtimeConfig.mode ?? 'stream'), state: job.state, startedAt: job.startedAt, workflowId: job.workflowId,
     })),
     listStreamAttempts: async (_window, jobId) => (await Promise.all((await jobsFor(projectId, jobId)).map((job) =>
       request<Array<{ jobId: number; attemptId: number; startedAt: string | null; endedAt: string | null; exitReason: string | null }>>(`/jobs/${job.id}/attempts`),

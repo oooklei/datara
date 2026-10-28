@@ -42,6 +42,7 @@ const componentType = computed(() => {
   return typeof c === 'string' ? c : ''
 })
 const isEndpointSelect = computed(() => componentType.value === 'endpoint_select')
+const isConditionSet = computed(() => componentType.value === 'condition_set')
 const variableContext = computed(() => ({
   projectId: props.projectId,
   ...(props.workflowId !== undefined ? { workflowId: props.workflowId } : {}),
@@ -131,6 +132,27 @@ const form = reactive<Record<string, string | number | boolean>>({})
 const datasources = ref<{ name: string }[]>([])
 const dsFailed = ref(false)
 
+/* ---------- condition_set 结构化表单（CONDITION_SET_SPEC 三 params 逐键镜像） ---------- */
+
+/** B3：condition_set spec.params = filterExpr（multiline）/incrementalColumn/incrementalExpr，
+ * c-incr-expr：incrementalColumn notEmpty → show incrementalExpr；
+ * refs：filterExpr 支持 wf/time 变量、incrementalExpr 支持 time（VariableReferenceInput 承接） */
+const CS_FIELDS: FieldDef[] = [
+  { key: 'filterExpr', label: '筛选条件（WHERE，留空=全量同步）', type: 'text', placeholder: '如 create_time > last_sync_time AND status = 1' },
+  { key: 'incrementalColumn', label: '增量列名（留空=全量同步）', type: 'text', placeholder: '必须是上游真实存在的列' },
+  { key: 'incrementalExpr', label: '增量条件表达式', type: 'text', placeholder: '如 yyyyMMdd-1' },
+]
+
+function csFieldVisible(key: string): boolean {
+  if (key === 'incrementalExpr') return String(form.incrementalColumn ?? '').trim() !== ''
+  return true
+}
+
+function initConditionSetForm(): void {
+  const obj = paramsObject()
+  for (const f of CS_FIELDS) form[f.key] = typeof obj[f.key] === 'string' ? String(obj[f.key]) : ''
+}
+
 async function loadDatasources(): Promise<void> {
   try {
     const r = await createDatasourceContract(props.projectId).listDatasources()
@@ -190,6 +212,8 @@ watch(
     if (isEndpointSelect.value) {
       initForm()
       void loadDatasources()
+    } else if (isConditionSet.value) {
+      initConditionSetForm()
     } else if (isSyncComponent.value) {
       const { component: _component, ...rest } = paramsObject()
       jsonText.value = JSON.stringify(rest, null, 2)
@@ -235,6 +259,17 @@ function onSave(): void {
       const v = form[f.key]
       if (v === '' || v === undefined) continue
       params[f.key] = f.type === 'number' ? Number(v) : v
+    }
+    emit('save', params)
+    return
+  }
+  if (isConditionSet.value) {
+    // spec 三 params 全部可选（required: false）：收集非空可见键（c-incr-expr 显隐语义）
+    const params: Record<string, unknown> = { component: 'condition_set' }
+    for (const f of CS_FIELDS) {
+      if (!csFieldVisible(f.key)) continue
+      const v = String(form[f.key] ?? '').trim()
+      if (v !== '') params[f.key] = v
     }
     emit('save', params)
     return
@@ -320,6 +355,29 @@ function onSave(): void {
           :data-testid="`ncp-${f.key}`"
         />
       </div>
+    </template>
+
+    <!-- condition_set 结构化表单（CONDITION_SET_SPEC 三 params） -->
+    <template v-else-if="isConditionSet">
+      <div
+        v-for="f in CS_FIELDS"
+        :key="f.key"
+        v-show="csFieldVisible(f.key)"
+        class="ncp-field"
+        :data-field="f.key"
+      >
+        <label class="ncp-label">{{ f.label }}</label>
+        <VariableReferenceInput
+          :data-testid="`ncp-${f.key}`"
+          :data-variable-field="`ncp-${f.key}`"
+          :model-value="String(form[f.key] ?? '')"
+          :context="variableContext"
+          :label="f.label"
+          :multiline="f.key === 'filterExpr'"
+          @update:model-value="form[f.key] = $event"
+        />
+      </div>
+      <p class="ncp-hint" data-testid="ncp-cs-hint">筛选/增量均留空 = 全量同步；增量列填写后增量条件表达式生效。</p>
     </template>
 
     <!-- 其他 SYNC 组件：params JSON 兜底 -->
