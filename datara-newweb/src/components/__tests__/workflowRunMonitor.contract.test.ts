@@ -256,4 +256,23 @@ describe('workflow run monitor project scope', () => {
     expect(rerunWorkflowInstance).toHaveBeenCalledWith(7, 3, 'TRIAL')
     expect(messageSuccess).toHaveBeenCalledTimes(1)
   })
+
+  it('D13 列表搜索：关键字对当前页运行记录前端过滤，不触发后端', async () => {
+    listWorkflowRunStats.mockResolvedValueOnce({ items: [
+      rowOf({ id: 1, dag_name: 'daily-etl' }),
+      rowOf({ id: 2, workflow_id: 4, workflow_instance_id: 10, dag_name: 'nightly-load' }),
+    ] })
+    const wrapper = mount(WorkflowRunMonitor, { props: { projectId: 7 } })
+    await flushPromises()
+
+    expect(wrapper.findAll('tbody > tr')).toHaveLength(2)
+    await wrapper.get('[data-run-keyword]').setValue('daily')
+    const rows = wrapper.findAll('tbody > tr')
+    expect(rows).toHaveLength(1)
+    expect(rows[0]!.text()).toContain('daily-etl')
+    expect(listWorkflowRunStats).toHaveBeenCalledTimes(1)
+
+    await wrapper.get('[data-run-keyword]').setValue('zzz')
+    expect(wrapper.find('tbody').text()).toContain('无匹配运行记录')
+  })
 })

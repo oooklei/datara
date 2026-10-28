@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onMounted, reactive, ref } from 'vue'
+import { computed, onMounted, reactive, ref } from 'vue'
 import {
   createUser,
   listUsers,
@@ -12,6 +12,16 @@ import {
 import type { AuthRole } from '../../services/rebuild/authApi'
 
 const rows = ref<PlatformUser[]>([])
+const filterKeyword = ref('')
+/** D13 列表搜索：前端过滤 username/role/status，不触发后端。 */
+const visibleRows = computed(() => {
+  const keyword = filterKeyword.value.toLowerCase()
+  if (keyword === '') return rows.value
+  return rows.value.filter((row) =>
+    row.username.toLowerCase().includes(keyword) ||
+    row.role.toLowerCase().includes(keyword) ||
+    row.status.toLowerCase().includes(keyword))
+})
 const loading = ref(false)
 const error = ref('')
 const feedback = ref('')
@@ -73,21 +83,25 @@ onMounted(load)
     <p v-if="feedback" role="status" class="ok">{{ feedback }}</p>
     <div v-if="error" role="alert" class="error"><span>{{ error }}</span><button type="button" @click="load">重试</button></div>
     <p v-if="loading">用户加载中…</p>
-    <p v-else-if="!error && rows.length === 0" class="empty">暂无平台用户</p>
-    <div v-else class="table-wrap">
-      <table>
-        <thead><tr><th>账号</th><th>角色</th><th>状态</th><th>创建时间</th><th>操作</th></tr></thead>
-        <tbody>
-          <tr v-for="row in rows" :key="row.id" :data-user-row="row.id">
-            <td><b>{{ row.username }}</b><small>#{{ row.id }}</small></td>
-            <td><select :value="row.role" :data-user-role="row.id" @change="changeRole(row, $event)"><option v-for="role in USER_ROLES" :key="role">{{ role }}</option></select></td>
-            <td><span :class="['status', row.status]">{{ row.status === 'enabled' ? '启用' : '停用' }}</span></td>
-            <td>{{ row.createdAt || '—' }}</td>
-            <td class="actions"><button type="button" :data-user-status="row.id" @click="toggleStatus(row)">{{ row.status === 'enabled' ? '停用' : '启用' }}</button><button type="button" @click="resetPassword(row)">重置密码</button></td>
-          </tr>
-        </tbody>
-      </table>
-    </div>
+    <template v-else-if="!error && rows.length === 0"><p class="empty">暂无平台用户</p></template>
+    <template v-else>
+      <input v-model.trim="filterKeyword" data-filter-keyword placeholder="搜索账号、角色或状态" />
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>账号</th><th>角色</th><th>状态</th><th>创建时间</th><th>操作</th></tr></thead>
+          <tbody>
+            <tr v-for="row in visibleRows" :key="row.id" :data-user-row="row.id">
+              <td><b>{{ row.username }}</b><small>#{{ row.id }}</small></td>
+              <td><select :value="row.role" :data-user-role="row.id" @change="changeRole(row, $event)"><option v-for="role in USER_ROLES" :key="role">{{ role }}</option></select></td>
+              <td><span :class="['status', row.status]">{{ row.status === 'enabled' ? '启用' : '停用' }}</span></td>
+              <td>{{ row.createdAt || '—' }}</td>
+              <td class="actions"><button type="button" :data-user-status="row.id" @click="toggleStatus(row)">{{ row.status === 'enabled' ? '停用' : '启用' }}</button><button type="button" @click="resetPassword(row)">重置密码</button></td>
+            </tr>
+            <tr v-if="visibleRows.length === 0"><td colspan="5">无匹配用户</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </template>
   </div>
 </template>
 

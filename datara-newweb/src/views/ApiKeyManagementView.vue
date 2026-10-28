@@ -5,7 +5,8 @@
       <a class="op-btn" href="/open/api" data-goto-api>API 管理</a>
     </header>
     <div class="toolbar">
-      <span class="hint" data-apikey-count>Key {{ keys.length }} 条</span><span class="spacer"></span>
+      <input v-model.trim="filterKeyword" data-filter-keyword placeholder="搜索名称、前缀或状态">
+      <span class="hint" data-apikey-count>Key {{ visibleKeys.length }} 条</span><span class="spacer"></span>
       <button type="button" data-refresh :disabled="busy" @click="reload">刷新</button>
       <button type="button" class="primary" data-create data-issue @click="openIssue">+ 签发 API-Key</button>
     </div>
@@ -14,11 +15,11 @@
     <div v-else-if="!keys.length" class="panel empty" data-empty>暂无 API-Key</div>
     <table v-else data-apikey-list data-key-list>
       <thead><tr><th>名称</th><th>前缀</th><th>权限范围</th><th>项目范围</th><th>状态</th><th>过期时间</th><th>操作</th></tr></thead>
-      <tbody><tr v-for="key in keys" :key="key.id" :data-key-id="key.id">
+      <tbody><tr v-for="key in visibleKeys" :key="key.id" :data-key-id="key.id">
         <td>{{ key.name }}</td><td><code data-key-prefix>{{ key.keyPrefix }}</code></td><td>{{ key.scopes.permissions.join(', ') || '—' }}</td>
         <td>{{ key.scopes.projectIds.join(', ') || '全局' }}</td><td><span class="pill">{{ key.status }}</span></td><td>{{ key.expiresAt || '永不过期' }}</td>
         <td class="actions"><button type="button" data-rotate :disabled="key.status !== 'active' || busy" @click="rotate(key)">轮换</button><button type="button" class="danger" data-revoke :disabled="key.status !== 'active' || busy" @click="revoke(key)">撤销</button></td>
-      </tr></tbody>
+      </tr><tr v-if="visibleKeys.length === 0"><td colspan="7">无匹配 Key</td></tr></tbody>
     </table>
 
     <div v-if="plainKey" class="mask" @click.self="closePlainKey">
@@ -44,10 +45,20 @@
 </template>
 
 <script setup lang="ts">
-import { onMounted, reactive, ref } from 'vue'
+import { computed, onMounted, reactive, ref } from 'vue'
 import { openapiAdminKeyApi, type ApiKeyInput, type ApiKeyRecord } from '../services/rebuild/openapiAdminApi'
 
 const keys = ref<ApiKeyRecord[]>([])
+const filterKeyword = ref('')
+/** D13 列表搜索：前端过滤 name/keyPrefix/status，不触发后端。 */
+const visibleKeys = computed(() => {
+  const keyword = filterKeyword.value.toLowerCase()
+  if (keyword === '') return keys.value
+  return keys.value.filter((key) =>
+    key.name.toLowerCase().includes(keyword) ||
+    key.keyPrefix.toLowerCase().includes(keyword) ||
+    key.status.toLowerCase().includes(keyword))
+})
 const busy = ref(false)
 const error = ref('')
 const editing = ref(false)

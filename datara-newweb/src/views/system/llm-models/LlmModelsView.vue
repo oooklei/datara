@@ -19,7 +19,7 @@
  * 壳范式锚：表单模态沿 ScheduleDialog.vue 手工 Teleport+遮罩（禁 el-dialog，happy-dom 不可测）；
  * 瞬时反馈用 ElMessage / 二次确认用 ElMessageBox（§5E.3「与既有页面一致」）。
  */
-import { onMounted, ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import {
   LLM_ERROR_CODES,
@@ -42,6 +42,20 @@ const editing = ref<LlmModelRecord | null>(null)
 
 /** 连通性测试结果按行暂存（后端不持久化测试结果，仅会话内回显）。 */
 const testResults = ref<Record<number, LlmTestResult>>({})
+
+/** D13 列表搜索：前端过滤模型行，不触发后端。 */
+const filterKeyword = ref('')
+const filteredRows = computed(() => {
+  const keyword = filterKeyword.value.toLowerCase()
+  if (keyword === '') return rows.value
+  return rows.value.filter(
+    (row) =>
+      row.name.toLowerCase().includes(keyword) ||
+      row.displayName.toLowerCase().includes(keyword) ||
+      row.provider.toLowerCase().includes(keyword) ||
+      row.modelId.toLowerCase().includes(keyword),
+  )
+})
 
 function isBusy(id: number): boolean {
   return busyIds.value.has(id)
@@ -207,6 +221,11 @@ onMounted(reload)
       <button type="button" class="llm-btn llm-btn--primary" data-test="llm-create" @click="openCreate">新建模型</button>
     </header>
 
+    <!-- D13 列表搜索：仅在已有数据时呈现 -->
+    <div v-if="rows.length > 0" class="llm-toolbar">
+      <input v-model.trim="filterKeyword" data-filter-keyword placeholder="搜索名称、显示名称、Provider 或模型 ID">
+    </div>
+
     <p v-if="loading" role="status" data-test="llm-loading">正在加载…</p>
     <p v-else-if="loadError" role="alert" class="llm-alert" data-test="llm-error">{{ loadError }}</p>
     <p v-else-if="rows.length === 0" class="llm-empty" data-test="llm-empty">暂无 LLM 模型</p>
@@ -226,7 +245,7 @@ onMounted(reload)
         </tr>
       </thead>
       <tbody>
-        <tr v-for="row in rows" :key="row.id" :data-llm-id="row.id" :data-llm-name="row.name" data-test="llm-row">
+        <tr v-for="row in filteredRows" :key="row.id" :data-llm-id="row.id" :data-llm-name="row.name" data-test="llm-row">
           <td data-test="llm-name">{{ row.name }}</td>
           <td data-test="llm-display-name">{{ row.displayName }}</td>
           <td data-test="llm-provider">{{ row.provider }}</td>
@@ -280,6 +299,7 @@ onMounted(reload)
             >删除</button>
           </td>
         </tr>
+        <tr v-if="filteredRows.length === 0"><td colspan="9">无匹配模型</td></tr>
       </tbody>
     </table>
 
@@ -328,6 +348,10 @@ onMounted(reload)
   margin: 6px 0 0;
   color: var(--text-3);
   font-size: 13px;
+}
+.llm-toolbar {
+  margin-top: 18px;
+  display: flex;
 }
 .llm-table {
   width: 100%;

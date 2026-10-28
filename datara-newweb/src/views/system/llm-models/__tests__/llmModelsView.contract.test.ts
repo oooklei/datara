@@ -70,4 +70,23 @@ describe('LLM 模型正式管理页删除保护', () => {
     expect(mocks.confirm).toHaveBeenCalledOnce()
     expect(mocks.remove).toHaveBeenCalledWith(2)
   })
+
+  it('D13 列表搜索：关键字前端过滤模型行，不触发后端', async () => {
+    const wrapper = mount(LlmModelsView, {
+      global: { stubs: { LlmModelFormDialog: true } },
+    })
+    await flushPromises()
+
+    expect(wrapper.findAll('[data-test="llm-row"]')).toHaveLength(2)
+    expect(mocks.list).toHaveBeenCalledTimes(1)
+
+    await wrapper.get('[data-filter-keyword]').setValue('model-2')
+    const rows = wrapper.findAll('[data-test="llm-row"]')
+    expect(rows).toHaveLength(1)
+    expect(rows[0]!.attributes('data-llm-id')).toBe('2')
+    expect(mocks.list).toHaveBeenCalledTimes(1)
+
+    await wrapper.get('[data-filter-keyword]').setValue('不存在')
+    expect(wrapper.get('[data-test="llm-list"] tbody').text()).toContain('无匹配模型')
+  })
 })

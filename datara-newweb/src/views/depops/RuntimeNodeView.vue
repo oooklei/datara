@@ -31,7 +31,8 @@
     <div v-else-if="nodes.length > 0" class="panel">
       <div class="tbl-toolbar">
         <span class="sec-head">节点清单</span>
-        <span class="pill info">{{ nodes.length }}</span>
+        <span class="pill info">{{ visibleNodes.length }}</span>
+        <input v-model.trim="filterKeyword" data-filter-keyword placeholder="搜索名称、类型或主机">
         <span class="spacer"></span>
       </div>
       <table class="tbl" data-node-list>
@@ -43,7 +44,7 @@
         </thead>
         <tbody>
           <tr
-            v-for="row in nodes"
+            v-for="row in visibleNodes"
             :key="row.id"
             :data-node="String(row.id)"
             :data-selected="String(selectedId === row.id)"
@@ -58,6 +59,7 @@
             <td :data-node-status="row.status">{{ row.status || '—' }}</td>
             <td data-node-heartbeat>{{ row.lastHeartbeat || '—' }}</td>
           </tr>
+          <tr v-if="visibleNodes.length === 0"><td colspan="8">无匹配节点</td></tr>
         </tbody>
       </table>
     </div>
@@ -136,6 +138,16 @@ import {
 const runtime = createRuntimeNodeContract()
 
 const nodes = ref<RuntimeNode[]>([])
+const filterKeyword = ref('')
+/** D13 列表搜索：前端过滤 name/kind/host，不触发后端。 */
+const visibleNodes = computed(() => {
+  const keyword = filterKeyword.value.toLowerCase()
+  if (keyword === '') return nodes.value
+  return nodes.value.filter((row) =>
+    row.name.toLowerCase().includes(keyword) ||
+    (row.kind ?? '').toLowerCase().includes(keyword) ||
+    (row.host ?? '').toLowerCase().includes(keyword))
+})
 const selectedId = ref<number | null>(null)
 const requestedPath = ref('')
 const listing = ref<RuntimeNodeDirListing | null>(null)

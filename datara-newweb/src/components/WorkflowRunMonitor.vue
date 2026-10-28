@@ -24,6 +24,19 @@ const props = defineProps<{
 const rows = ref<WorkflowRunStat[]>([])
 const loading = ref(false)
 const error = ref('')
+/** D13 列表搜索：对当前页运行记录前端过滤，不触发后端。 */
+const filterKeyword = ref('')
+const filteredRows = computed(() => {
+  const keyword = filterKeyword.value.toLowerCase()
+  if (keyword === '') return rows.value
+  return rows.value.filter(
+    (row) =>
+      (row.dag_name || `#${row.workflow_id}`).toLowerCase().includes(keyword) ||
+      String(row.workflow_id).toLowerCase().includes(keyword) ||
+      row.instance_type.toLowerCase().includes(keyword) ||
+      row.status.toLowerCase().includes(keyword),
+  )
+})
 const instanceType = ref<'' | WorkflowInstanceType>('')
 const statusFilter = ref(props.initialStatus ?? '')
 const drillRunId = ref<number | null>(props.initialRunId ?? null)
@@ -288,12 +301,16 @@ watch(() => [props.initialStatus, props.initialRunId] as const, ([nextStatus, ne
           <option value="CANCELLED">已取消</option>
         </select>
       </label>
+      <label>关键字
+        <input v-model.trim="filterKeyword" data-filter-keyword data-run-keyword placeholder="搜索工作流、ID、类型或状态">
+      </label>
     </div>
     <p v-if="loading" data-run-loading>加载中…</p>
     <p v-else-if="error" data-run-error>{{ error }} <button @click="load">重试</button></p>
     <p v-else-if="!rows.length" data-run-empty>暂无运行记录</p>
     <table v-else><thead><tr><th>工作流</th><th>类型</th><th>状态</th><th>源数据量</th><th>目标数据量</th><th>成功</th><th>失败</th><th>跳过</th><th>总数</th><th>开始时间</th><th>对账</th><th>操作</th></tr></thead><tbody>
-      <template v-for="row in rows" :key="row.id">
+      <tr v-if="filteredRows.length === 0"><td colspan="12">无匹配运行记录</td></tr>
+      <template v-for="row in filteredRows" :key="row.id">
         <tr><td>{{ row.dag_name || `#${row.workflow_id}` }}</td><td>{{ row.instance_type }}</td><td>{{ row.status }}</td><td>{{ row.source_count ?? '—' }}</td><td>{{ row.target_count ?? '—' }}</td><td>{{ row.success_count }}</td><td>{{ row.failure_count }}</td><td>{{ row.skipped_count }}</td><td>{{ row.total_count }}</td><td>{{ row.started_at }}</td><td><button type="button" :aria-expanded="expandedId === row.id" @click="toggleDetails(row)">{{ expandedId === row.id ? '收起' : '查看明细' }}</button></td><td class="run-actions"><button v-if="isStoppable(row)" type="button" data-run-stop @click="onStopRun(row)">停止</button><button v-if="isRerunnable(row)" type="button" data-run-rerun @click="onRerunRun(row)">重跑</button></td></tr>
         <tr v-if="expandedId === row.id" class="detail-row" data-run-stat-details><td colspan="12">
           <p v-if="detailLoading">明细加载中…</p>

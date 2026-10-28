@@ -195,6 +195,9 @@ button,.btn,.el-button,a,.menu-item,.card,.stat{transition:all var(--dur-base) v
 .tb-new:disabled{opacity:.5;cursor:not-allowed;box-shadow:none}
 .kw{border:1px solid var(--border-strong);border-radius:6px;padding:6px 10px;font-size:12.5px;outline:none;color:var(--text);font-family:inherit;box-sizing:border-box;background:#fff}
 .kw:focus{border-color:var(--primary)}
+/* D13 列表搜索框：各列表页统一 keyword 输入锚（data-filter-keyword），全局兜底，替代逐页 scoped 重复 */
+[data-filter-keyword]{width:min(280px,100%);border:1px solid var(--border-strong);border-radius:6px;padding:6px 10px;font-size:12.5px;outline:none;color:var(--text);font-family:inherit;box-sizing:border-box;background:#fff}
+[data-filter-keyword]:focus{border-color:var(--primary)}
 .sec-head{display:inline-flex;align-items:center;gap:8px;font-weight:700;font-size:14px}
 .sec-head::before{content:'';width:3px;height:14px;border-radius:2px;background:linear-gradient(180deg,var(--primary),var(--purple));flex-shrink:0}
 

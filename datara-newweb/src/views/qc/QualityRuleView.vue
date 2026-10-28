@@ -37,7 +37,8 @@
     <div v-else-if="rules.length > 0" class="panel">
       <div class="tbl-toolbar">
         <span class="sec-head">质量规则</span>
-        <span class="pill info">{{ rules.length }}</span>
+        <span class="pill info">{{ filteredRules.length }}</span>
+        <input v-model.trim="filterKeyword" data-filter-keyword placeholder="搜索名称、资产或表达式">
         <span class="spacer"></span>
         <button type="button" class="op-btn" data-goto-runs @click="gotoRuns">运行记录</button>
       </div>
@@ -46,7 +47,7 @@
           <tr><th>名称</th><th>资产</th><th>表达式</th><th>严重级</th><th>状态</th><th>更新时间</th><th style="width:140px">操作</th></tr>
         </thead>
         <tbody>
-          <tr v-for="rule in rules" :key="rule.id" :data-rule-id="rule.id">
+          <tr v-for="rule in filteredRules" :key="rule.id" :data-rule-id="rule.id">
             <td>{{ rule.name }}</td>
             <td data-asset><span class="code-chip">#{{ rule.assetId }}</span></td>
             <td data-expr><span class="code-chip">{{ rule.expression }}</span></td>
@@ -59,6 +60,7 @@
               </button>
             </td>
           </tr>
+          <tr v-if="filteredRules.length === 0"><td colspan="7">无匹配规则</td></tr>
         </tbody>
       </table>
     </div>
@@ -131,6 +133,16 @@ const router = useRouter()
 const projects = ref<ProjectSummary[]>([])
 const selected = ref('')
 const rules = ref<QualityRuleRecord[]>([])
+const filterKeyword = ref('')
+/** D13 列表搜索：前端过滤 name/assetId/expression，不触发后端。 */
+const filteredRules = computed(() => {
+  const keyword = filterKeyword.value.toLowerCase()
+  if (keyword === '') return rules.value
+  return rules.value.filter((rule) =>
+    rule.name.toLowerCase().includes(keyword) ||
+    String(rule.assetId).includes(keyword) ||
+    rule.expression.toLowerCase().includes(keyword))
+})
 const total = ref(0)
 const busy = ref(false)
 const saving = ref(false)

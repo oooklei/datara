@@ -97,4 +97,25 @@ describe('/ind/board 指标看板页（增量 14）', () => {
     expect(w.find('[role=alert]').text()).toContain('metric board failed')
     expect(w.find('[data-project-select]').exists()).toBe(false)
   })
+
+  it('D13 列表搜索：关键字前端过滤指标卡片，状态分布保持全量口径', async () => {
+    router.route.params.projectId = '1'
+    vi.mocked(governanceApi.listMetrics).mockResolvedValue({
+      total: 2,
+      list: [metric, { ...metric, id: 6, code: 'DAU', name: '日活跃' }],
+    })
+    const w = mount(View)
+    await flushPromises()
+
+    expect(w.findAll('.board-card')).toHaveLength(2)
+    await w.get('[data-filter-keyword]').setValue('GMV')
+    expect(w.findAll('.board-card')).toHaveLength(1)
+    expect(w.find('[data-ind-board]').text()).not.toContain('日活跃')
+    expect(governanceApi.listMetrics).toHaveBeenCalledTimes(1)
+    // donut 中心计数保持全量口径
+    expect(w.find('[data-ind-donut]').text()).toContain('2')
+
+    await w.get('[data-filter-keyword]').setValue('不存在')
+    expect(w.find('[data-ind-board]').text()).toContain('无匹配指标')
+  })
 })

@@ -34,7 +34,8 @@
       <!-- 列表工具栏（对标旧版 .tbl-toolbar + .sec-head + .spacer + op-btn 入口） -->
       <div class="tbl-toolbar">
         <span class="sec-head">指标定义</span>
-        <span class="pill info">{{ page.list.length }} 项</span>
+        <span class="pill info">{{ filteredMetrics.length }} 项</span>
+        <input v-model.trim="filterKeyword" data-filter-keyword placeholder="搜索名称或编码">
         <span class="spacer"></span>
         <button type="button" class="op-btn" data-goto-list @click="gotoList">指标目录</button>
         <button type="button" class="op-btn" data-goto-consistency @click="gotoConsistency">一致性检查</button>
@@ -43,7 +44,8 @@
       <!-- 两栏：左 指标定义卡（对标旧版 .board-grid 1.5fr）/ 右 状态分布 -->
       <section class="board-grid" data-ind-board>
         <div class="board-main">
-          <article v-for="m in page.list" :key="m.id" class="board-card">
+          <p v-if="filteredMetrics.length === 0" class="board-nomatch">无匹配指标</p>
+          <article v-for="m in filteredMetrics" :key="m.id" class="board-card">
             <div class="b-t">{{ m.name }}</div>
             <div class="b-code mono">{{ m.code }}</div>
             <div class="b-formula">{{ m.formula }}</div>
@@ -133,6 +135,16 @@ const donutGradient = computed<string>(() => {
   return `conic-gradient(${segs.join(',')})`
 })
 const message = (e: unknown): string => (e instanceof Error ? e.message : String(e))
+
+/** D13 列表搜索：前端过滤指标卡片，不触发后端；状态分布统计口径保持全量。 */
+const filterKeyword = ref('')
+const filteredMetrics = computed(() => {
+  const keyword = filterKeyword.value.toLowerCase()
+  if (keyword === '') return page.value.list
+  return page.value.list.filter(
+    (m) => m.name.toLowerCase().includes(keyword) || m.code.toLowerCase().includes(keyword),
+  )
+})
 const statusClass = (s: DefinitionStatus): string =>
   s === 'active' ? 'st-green' : s === 'retired' ? 'st-gray' : 'st-orange'
 const statusLabel = (s: DefinitionStatus): string =>
@@ -176,6 +188,7 @@ async function reload(): Promise<void> {
 /* 对标旧版 IndBoardView：两栏 board-grid（1.5fr / 1fr），左定义卡、右状态分布 */
 .board-grid{grid-template-columns:1.5fr 1fr;align-items:start}
 .board-main{display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:12px}
+.board-nomatch{grid-column:1/-1;color:var(--text-3);text-align:center;padding:24px 0;font-size:13px}
 /* 环形图（对标旧版 IndBoardView scoped 取值：150px donut + 96px center + legend） */
 .donut-wrap{display:flex;gap:16px;align-items:center}
 .donut{width:150px;height:150px;border-radius:50%;flex-shrink:0;display:flex;align-items:center;justify-content:center}

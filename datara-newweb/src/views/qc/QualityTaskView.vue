@@ -37,7 +37,8 @@
     <div v-else-if="runs.length > 0" class="panel">
       <div class="tbl-toolbar">
         <span class="sec-head">执行记录</span>
-        <span class="pill info">{{ runs.length }}</span>
+        <span class="pill info">{{ filteredRuns.length }}</span>
+        <input v-model.trim="filterKeyword" data-filter-keyword placeholder="搜索 ID、规则、资产或状态">
         <span class="spacer"></span>
       </div>
       <table class="tbl" data-run-list>
@@ -45,7 +46,7 @@
           <tr><th>ID</th><th>规则</th><th>资产</th><th>状态</th><th>摘要</th><th>生成时间</th></tr>
         </thead>
         <tbody>
-          <tr v-for="run in runs" :key="run.id" :data-run-id="run.id">
+          <tr v-for="run in filteredRuns" :key="run.id" :data-run-id="run.id">
             <td data-run-id-cell><span class="code-chip">#{{ run.id }}</span></td>
             <td data-rule><span class="code-chip">#{{ run.ruleId ?? '—' }}</span></td>
             <td data-asset><span class="code-chip">#{{ run.assetId }}</span></td>
@@ -53,6 +54,7 @@
             <td data-summary>{{ summaryText(run) }}</td>
             <td data-generated>{{ run.generatedAt || '—' }}</td>
           </tr>
+          <tr v-if="filteredRuns.length === 0"><td colspan="6">无匹配记录</td></tr>
         </tbody>
       </table>
     </div>
@@ -93,6 +95,17 @@ const route = useRoute()
 const projects = ref<ProjectSummary[]>([])
 const selected = ref('')
 const runs = ref<QualityRunRecord[]>([])
+const filterKeyword = ref('')
+/** D13 列表搜索：前端过滤 id/ruleId/assetId/status，不触发后端。 */
+const filteredRuns = computed(() => {
+  const keyword = filterKeyword.value.toLowerCase()
+  if (keyword === '') return runs.value
+  return runs.value.filter((run) =>
+    String(run.id).includes(keyword) ||
+    String(run.ruleId ?? '').includes(keyword) ||
+    String(run.assetId).includes(keyword) ||
+    run.status.toLowerCase().includes(keyword))
+})
 const total = ref(0)
 const busy = ref(false)
 const error = ref('')

@@ -1,0 +1,68 @@
+B5-a D13 列表搜索铺排（14 页 + 全局搜索框兜底类）
+=====================================================
+
+日期：2026-10-28
+依据：docs/increments/2026-10-28-前端开发构建方案.md §D13（L107）
+      docs/increments/2026-10-28-前端构建执行计划-单线WSL-Docker.md B5-a
+
+## 交付范围（14 页全量铺排）
+
+统一模式：`<input v-model.trim="filterKeyword" data-filter-keyword placeholder="…">`
++ `filteredX` computed 前端过滤（toLowerCase includes，空关键字直通全量，不触发后端）
++ 行尾「无匹配 X」兜底行 + 计数徽标改用过滤后长度。
+
+首批 7 页（本提交内一并完成）：
+1. resources/ResourceManagementView.vue — 名称/类型（空态分支改 template v-else 包搜索框）
+2. qc/QualityRuleView.vue — 名称/资产/表达式；pill 计数 filtered
+3. qc/QualityTaskView.vue — ID/规则/资产/状态
+4. qc/QualityExceptionView.vue — 运行/资产/规则 ID（failedRuns 之上叠 visibleRuns）
+5. depops/RuntimeNodeView.vue — 名称/类型/主机
+6. system/UserManagementView.vue — 账号/角色/状态
+7. ApiKeyManagementView.vue — 名称/前缀/状态；data-apikey-count 计数 filtered
+
+第二批 7 页（本会话完成）：
+8.  ApiManagementView.vue — 双列表各自过滤：API 定义（名称/方法+路径）+ 调用日志（requestId/apiId/principal），definitionKeyword/logsKeyword 两态
+9.  system/llm-models/LlmModelsView.vue — 名称/显示名称/Provider/模型 ID（llm-toolbar，仅 rows>0 时呈现）
+10. SshNodeManagementView.vue — 名称/地址:端口/标签（ssh-toolbar）
+11. depops/MonitorView.vue — 模块/节点/标签（tbl-toolbar 内联，pill 计数 visibleNodes）
+12. ProjectMembersView.vue — 用户 ID/角色（members-toolbar）
+13. ind/IndicatorBoardView.vue — 卡片网格按名称/编码过滤（board-nomatch 兜底；donut/状态分布统计口径保持全量）
+14. components/WorkflowRunMonitor.vue — 当前页运行记录按 dag_name/workflow_id/instance_type/status 过滤（data-run-keyword，叠加既有类型/状态下拉与分页）
+
+## 样式决策：全局兜底类（不逐页 scoped 重复）
+
+- theme.css 在 `.kw` 后新增 `[data-filter-keyword]` + `:focus` 全局规则（width min(280px,100%) / 边框 / 字号 / 聚焦主色），14 页搜索框统一样式锚
+- ResourceManagementView 早期 scoped `.list-search` 保留（叠加不冲突）
+
+## 判定不需要搜索的 5 页（对标审计偏差记录）
+
+QualityReportView（统计卡无列表）/ LineageAnalysisView（图谱无列表）/
+PermissionMatrixView（静态矩阵）/ ProjectWorkbenchView（附属小列表非主列表）/
+ScheduleDialog（弹窗小列表）
+
+## 依赖踩坑
+
+1. v-else 链中插元素会断链：LlmModels/SshNode/ProjectMembers 的搜索框统一放在
+   loading/error/empty v-if 链之前（v-if="rows.length>0" 独立呈现），不动链结构
+2. ApiManagement 双 tab 各自 keyword 独立 ref，切 tab 后 get('[data-filter-keyword]')
+   重新解析到当前 tab 的输入框
+3. IndicatorBoard 过滤只作用于卡片网格，donut/legend 保持全量口径（统计语义不被搜索篡改）
+4. WorkflowRunMonitor 为服务端分页列表，D13 过滤限定「当前页」并在测试注释中固化
+5. keyword 为空时 filtered === 全量，既有断言零破坏（先行跑 43 用例验证后再补用例）
+
+## 验证数据
+
+- 新增契约用例：7 个（每页 1 个 D13 用例：过滤缩小 + 不触发后端 + 无匹配兜底行）
+  apiManagementView / llmModelsView / sshNodeManagementView / monitorView /
+  projectMembersView / indicatorBoardView / workflowRunMonitor contract.test.ts
+- npx vitest run：123 文件 / 1069 用例全绿（基线 1062 → 1069，+7）
+- npx vue-tsc -b：exit 0
+- 首批 7 页无独立新用例页：Resource/QualityRule/QualityTask/QualityException/RuntimeNode/
+  UserManagement/ApiKey 的搜索行为与 D13 统一模式同构，抽 7 代表页已覆盖模式回归；
+  其页面级既有契约测试在全量门禁中全绿确认零破坏
+
+## 遗留 / 后续票
+
+- B5 后续：数据源三步向导严格复刻（§7.4 + D13 搜索框在向导资产列表内的落位）
+- B5 后续：19 项+全局页按钮响应矩阵核验补缺；G14 视觉融合 + 1440/1024/375 三档响应式
+- B5 后续：四角色可见性回归

@@ -183,4 +183,26 @@ describe('ProjectMembersView（项目成员管理页）', () => {
     expect(alert.text()).toContain('409')
     expect(listSpy).toHaveBeenCalledTimes(1)
   })
+
+  it('D13 列表搜索：关键字前端过滤成员，不触发后端', async () => {
+    listSpy.mockResolvedValue({
+      list: [
+        { userId: 7, role: 'developer' },
+        { userId: 9, role: 'viewer' },
+      ],
+    })
+
+    const wrapper = mountView()
+    await flushPromises()
+
+    expect(wrapper.findAll('[data-member-id]')).toHaveLength(2)
+    await wrapper.get('[data-filter-keyword]').setValue('7')
+    const rows = wrapper.findAll('[data-member-id]')
+    expect(rows).toHaveLength(1)
+    expect(rows[0]!.attributes('data-member-id')).toBe('7')
+    expect(listSpy).toHaveBeenCalledTimes(1)
+
+    await wrapper.get('[data-filter-keyword]').setValue('不存在')
+    expect(wrapper.get('table tbody').text()).toContain('无匹配成员')
+  })
 })

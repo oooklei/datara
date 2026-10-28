@@ -149,4 +149,20 @@ describe('集群监控组件段（IMPL-v4-16，无路由直挂）', () => {
     // 红线：无定时轮询（仅挂载 1 次 + 手动 1 次）
     expect(fetchMonitorNodes).toHaveBeenCalledTimes(2)
   })
+
+  it('D13 列表搜索：关键字前端过滤节点行，不触发后端', async () => {
+    fetchMonitorNodes.mockResolvedValue(snapshot([masterFresh, sshUnsupported]))
+    const w = mount(View)
+    await flushPromises()
+
+    expect(w.findAll('[data-node-list] tbody tr')).toHaveLength(2)
+    await w.get('[data-filter-keyword]').setValue('prod-jump')
+    const rows = w.findAll('[data-node-list] tbody tr')
+    expect(rows).toHaveLength(1)
+    expect(rows[0]!.text()).toContain('prod-jump')
+    expect(fetchMonitorNodes).toHaveBeenCalledTimes(1)
+
+    await w.get('[data-filter-keyword]').setValue('不存在')
+    expect(w.find('[data-node-list] tbody').text()).toContain('无匹配节点')
+  })
 })

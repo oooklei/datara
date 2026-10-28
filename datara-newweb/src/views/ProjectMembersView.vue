@@ -6,7 +6,7 @@
  * 域契约 can_manage_project），本页不做客户端权限判定，403 以错误态呈现。
  * 路由挂载归 L3-03（routes 冻结面零触碰，本件为可挂载视图组件）。
  */
-import { ref, watch } from 'vue'
+import { computed, ref, watch } from 'vue'
 import {
   MEMBER_ROLES,
   addMember,
@@ -25,6 +25,17 @@ const members = ref<MemberEntry[]>([])
 const newUsername = ref('')
 const newRole = ref<MemberRole>('viewer')
 const actionError = ref('')
+/** D13 列表搜索：前端过滤成员，不触发后端。 */
+const filterKeyword = ref('')
+const filteredMembers = computed(() => {
+  const keyword = filterKeyword.value.toLowerCase()
+  if (keyword === '') return members.value
+  return members.value.filter(
+    (member) =>
+      String(member.userId).toLowerCase().includes(keyword) ||
+      member.role.toLowerCase().includes(keyword),
+  )
+})
 let requestSeq = 0
 
 async function reload(): Promise<void> {
@@ -115,6 +126,9 @@ async function onRemove(member: MemberEntry): Promise<void> {
       </form>
       <p v-if="actionError" role="alert" data-action-error>{{ actionError }}</p>
 
+      <div v-if="members.length > 0" class="members-toolbar">
+        <input v-model.trim="filterKeyword" data-filter-keyword placeholder="搜索用户 ID 或角色">
+      </div>
       <p v-if="members.length === 0" data-empty>暂无成员：请先添加项目成员</p>
       <table v-else class="member-table">
         <thead>
@@ -122,7 +136,7 @@ async function onRemove(member: MemberEntry): Promise<void> {
         </thead>
         <tbody>
           <tr
-            v-for="member in members"
+            v-for="member in filteredMembers"
             :key="member.userId"
             :data-member-id="member.userId"
           >
@@ -141,6 +155,7 @@ async function onRemove(member: MemberEntry): Promise<void> {
               <button type="button" data-remove-btn @click="onRemove(member)">移除</button>
             </td>
           </tr>
+          <tr v-if="filteredMembers.length === 0"><td colspan="3">无匹配成员</td></tr>
         </tbody>
       </table>
     </template>
@@ -161,6 +176,10 @@ async function onRemove(member: MemberEntry): Promise<void> {
 .add-form input,
 .add-form select {
   padding: 4px 8px;
+}
+
+.members-toolbar {
+  margin-bottom: 10px;
 }
 
 .member-table {

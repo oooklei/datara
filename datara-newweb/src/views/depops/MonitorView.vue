@@ -40,7 +40,8 @@
     <div v-else-if="snapshot && snapshot.nodes.length > 0" class="panel">
       <div class="tbl-toolbar">
         <span class="sec-head">节点指标</span>
-        <span class="pill info">{{ snapshot.nodes.length }}</span>
+        <span class="pill info">{{ visibleNodes.length }}</span>
+        <input v-model.trim="filterKeyword" data-filter-keyword placeholder="搜索节点、模块或标签">
         <span class="spacer"></span>
       </div>
       <table class="tbl" data-node-list>
@@ -51,7 +52,7 @@
           </tr>
         </thead>
         <tbody>
-          <tr v-for="row in snapshot.nodes" :key="`${row.module}:${row.node}`" :data-node="`${row.module}:${row.node}`">
+          <tr v-for="row in visibleNodes" :key="`${row.module}:${row.node}`" :data-node="`${row.module}:${row.node}`">
             <td data-module>{{ moduleLabel(row.module) }}</td>
             <td data-node-name>{{ row.node }}</td>
             <td data-cpu>{{ percent(row.cpu) }}</td>
@@ -63,6 +64,7 @@
             <td data-last-seen>{{ row.lastSeen || '—' }}</td>
             <td data-tags>{{ row.tags.join('、') || '—' }}</td>
           </tr>
+          <tr v-if="visibleNodes.length === 0"><td colspan="10">无匹配节点</td></tr>
         </tbody>
       </table>
     </div>
@@ -86,7 +88,7 @@
  * 样式范式：复用全局设计系统（`.pg`/`.pg-head`/`.panel`/`.tbl`/`.tbl-toolbar`/`.pill`/`.lock-tip`
  *   + `var(--*)` 令牌），与旧前端 datara-web 监控页的 `.card.panel` + `.tbl-toolbar` + `table.tbl` 范式对齐。
  */
-import { onMounted, ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import { createMonitorContract, type MonitorHeartbeat, type MonitorMetricState, type MonitorSnapshot } from '../../services/rebuild/monitorApi'
 
 const monitor = createMonitorContract()
@@ -94,6 +96,20 @@ const monitor = createMonitorContract()
 const snapshot = ref<MonitorSnapshot | null>(null)
 const busy = ref(false)
 const error = ref('')
+
+/** D13 列表搜索：前端过滤节点行，不触发后端。 */
+const filterKeyword = ref('')
+const visibleNodes = computed(() => {
+  const keyword = filterKeyword.value.toLowerCase()
+  const nodes = snapshot.value?.nodes ?? []
+  if (keyword === '') return nodes
+  return nodes.filter(
+    (row) =>
+      row.module.toLowerCase().includes(keyword) ||
+      row.node.toLowerCase().includes(keyword) ||
+      row.tags.join('、').toLowerCase().includes(keyword),
+  )
+})
 
 const MODULE_LABEL: Record<string, string> = { master: 'master', worker: 'worker', ssh: 'ssh' }
 const moduleLabel = (m: string): string => MODULE_LABEL[m] ?? m

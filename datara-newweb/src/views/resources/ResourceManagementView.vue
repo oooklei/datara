@@ -10,9 +10,12 @@
     </header>
     <p v-if="error" class="error">{{ error }}</p>
     <p v-else-if="projectId === null" data-no-project>请先选择项目</p>
-    <table v-else><thead><tr><th>名称</th><th>类型</th><th>版本</th><th>状态</th><th>大小</th><th>操作</th></tr></thead>
-      <tbody><tr v-for="item in items" :key="item.resourceId"><td>{{ item.name }}</td><td>{{ item.kind }}</td><td>v{{ item.latestVersion }}</td><td>active</td><td>{{ item.sizeBytes }} bytes</td><td><button type="button" data-view-versions @click="openVersions(item)">查看版本</button></td></tr><tr v-if="!loading && !items.length"><td colspan="6">暂无资源</td></tr></tbody>
-    </table>
+    <template v-else>
+      <input v-model.trim="filterKeyword" data-filter-keyword class="list-search" placeholder="搜索名称或类型">
+      <table><thead><tr><th>名称</th><th>类型</th><th>版本</th><th>状态</th><th>大小</th><th>操作</th></tr></thead>
+        <tbody><tr v-for="item in filteredItems" :key="item.resourceId"><td>{{ item.name }}</td><td>{{ item.kind }}</td><td>v{{ item.latestVersion }}</td><td>active</td><td>{{ item.sizeBytes }} bytes</td><td><button type="button" data-view-versions @click="openVersions(item)">查看版本</button></td></tr><tr v-if="!loading && !filteredItems.length"><td colspan="6">{{ items.length ? '无匹配资源' : '暂无资源' }}</td></tr></tbody>
+      </table>
+    </template>
     <p v-if="loading">加载中…</p>
     <div v-if="selectedResource" class="mask" data-version-mask @click.self="closeVersions">
       <section class="version-dialog" role="dialog" aria-modal="true" :aria-label="`${selectedResource.name} 版本历史`">
@@ -38,6 +41,13 @@ const projects = ref<ProjectSummary[]>([])
 const selectedProject = ref('')
 const kind = ref<ResourceKind | ''>('sql')
 const items = ref<ResourceMeta[]>([])
+const filterKeyword = ref('')
+/** D13 列表搜索：前端过滤 name/kind，不触发后端。 */
+const filteredItems = computed(() => {
+  const keyword = filterKeyword.value.toLowerCase()
+  if (keyword === '') return items.value
+  return items.value.filter((item) => item.name.toLowerCase().includes(keyword) || item.kind.toLowerCase().includes(keyword))
+})
 const loading = ref(false)
 const error = ref('')
 const selectedResource = ref<ResourceMeta | null>(null)
@@ -133,5 +143,5 @@ onMounted(async () => {
 </script>
 
 <style scoped>
-.resource-page{padding:24px}.resource-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:18px}.resource-head h1{margin:0 0 6px}.resource-head p{margin:0;color:var(--text-2)}.resource-head select{padding:8px 12px}table{width:100%;border-collapse:collapse;background:var(--card)}th,td{padding:10px 12px;border-bottom:1px solid var(--border);text-align:left}.error{color:var(--danger)}.mask{position:fixed;inset:0;z-index:30;display:grid;place-items:center;padding:24px;background:color-mix(in srgb, var(--text) 40%, transparent)}.version-dialog{width:min(880px,100%);max-height:calc(100vh - 48px);overflow:auto;padding:22px;background:var(--card);border-radius:10px;box-shadow:0 20px 45px color-mix(in srgb, var(--text) 20%, transparent)}.version-dialog>header{display:flex;align-items:flex-start;justify-content:space-between;gap:16px;margin-bottom:16px}.version-dialog h2,.version-dialog p{margin:0}.version-dialog header p{color:var(--text-2)}.version-dialog code{overflow-wrap:anywhere}
+.resource-page{padding:24px}.resource-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:18px}.resource-head h1{margin:0 0 6px}.resource-head p{margin:0;color:var(--text-2)}.resource-head select{padding:8px 12px}.list-search{width:min(320px,100%);padding:8px 12px;margin-bottom:12px;border:1px solid var(--border);border-radius:8px;background:var(--card);color:var(--text)}table{width:100%;border-collapse:collapse;background:var(--card)}th,td{padding:10px 12px;border-bottom:1px solid var(--border);text-align:left}.error{color:var(--danger)}.mask{position:fixed;inset:0;z-index:30;display:grid;place-items:center;padding:24px;background:color-mix(in srgb, var(--text) 40%, transparent)}.version-dialog{width:min(880px,100%);max-height:calc(100vh - 48px);overflow:auto;padding:22px;background:var(--card);border-radius:10px;box-shadow:0 20px 45px color-mix(in srgb, var(--text) 20%, transparent)}.version-dialog>header{display:flex;align-items:flex-start;justify-content:space-between;gap:16px;margin-bottom:16px}.version-dialog h2,.version-dialog p{margin:0}.version-dialog header p{color:var(--text-2)}.version-dialog code{overflow-wrap:anywhere}
 </style>

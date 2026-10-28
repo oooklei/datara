@@ -37,7 +37,8 @@
     <div v-else-if="failedRuns.length > 0" class="panel">
       <div class="tbl-toolbar">
         <span class="sec-head">异常记录</span>
-        <span class="pill err">{{ failedRuns.length }}</span>
+        <span class="pill err">{{ visibleRuns.length }}</span>
+        <input v-model.trim="filterKeyword" data-filter-keyword placeholder="搜索运行、资产或规则 ID">
         <span class="spacer"></span>
       </div>
       <table class="tbl" data-exception-list>
@@ -45,7 +46,7 @@
           <tr><th>运行</th><th>资产</th><th>规则</th><th>状态</th><th>命中项</th><th>生成时间</th></tr>
         </thead>
         <tbody>
-          <tr v-for="r in failedRuns" :key="r.id">
+          <tr v-for="r in visibleRuns" :key="r.id">
             <td><span class="code-chip">#{{ r.id }}</span></td>
             <td><span class="code-chip">#{{ r.assetId }}</span></td>
             <td><span class="code-chip">{{ r.ruleId === null ? '结构基线' : '#' + r.ruleId }}</span></td>
@@ -53,6 +54,7 @@
             <td>{{ hitText(r) }}</td>
             <td>{{ r.generatedAt || '—' }}</td>
           </tr>
+          <tr v-if="visibleRuns.length === 0"><td colspan="6">无匹配记录</td></tr>
         </tbody>
       </table>
     </div>
@@ -103,6 +105,16 @@ const projectId = computed<number | null>(() => {
   return selectedProject.value !== '' && Number.isInteger(n) && n > 0 ? n : null
 })
 const failedRuns = computed(() => runs.value.filter((r) => r.status !== 'succeeded'))
+const filterKeyword = ref('')
+/** D13 列表搜索：在异常集合上前端过滤 id/assetId/ruleId，不触发后端。 */
+const visibleRuns = computed(() => {
+  const keyword = filterKeyword.value.toLowerCase()
+  if (keyword === '') return failedRuns.value
+  return failedRuns.value.filter((r) =>
+    String(r.id).includes(keyword) ||
+    String(r.assetId).includes(keyword) ||
+    String(r.ruleId ?? '').includes(keyword))
+})
 
 const STATUS_LABEL: Record<QualityRunStatus, string> = {
   queued: '排队中',
