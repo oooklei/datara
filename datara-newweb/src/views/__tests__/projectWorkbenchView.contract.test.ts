@@ -40,7 +40,8 @@ describe('UX v3：项目工作台', () => {
     loadDashboardSpy.mockResolvedValue(dashboard)
     const wrapper = mount(ProjectWorkbenchView, { props: { projectId: 33 } })
     await flushPromises()
-    expect(loadDashboardSpy).toHaveBeenCalledWith(33)
+    // §2 裁决 2：loadProjectDashboard 现接收 AbortSignal 作第二参数（协作式取消）
+    expect(loadDashboardSpy).toHaveBeenCalledWith(33, expect.any(AbortSignal))
     expect(wrapper.findAll('[data-pipeline-kpi]')).toHaveLength(6)
     expect(wrapper.findAll('[data-governance-kpi]')).toHaveLength(7)
     expect(wrapper.text()).not.toContain('标签数量')

@@ -137,18 +137,25 @@ function renderCharts(): void {
 async function load(): Promise<void> {
   loading.value = true
   error.value = ''
+  // §2 裁决 2：AbortController 协作式取消——切页/卸载时 fan-out 剩余批次跳过
+  const fresh = new AbortController()
   try {
-    model.value = await loadProjectDashboard(props.projectId)
+    loadAbort.abort() // 取消上一次（若在飞）
+    loadAbort = fresh
+    model.value = await loadProjectDashboard(props.projectId, fresh.signal)
     await nextTick()
     renderCharts()
   } catch (reason) {
-    error.value = reason instanceof Error ? reason.message : '项目工作台加载失败'
+    if (!fresh.signal.aborted) {
+      error.value = reason instanceof Error ? reason.message : '项目工作台加载失败'
+    }
   } finally { loading.value = false }
 }
 
 function resizeCharts(): void { charts.forEach((chart) => chart.resize()) }
+let loadAbort = new AbortController() // load() 复用；onBeforeUnmount abort 跳 fan-out 剩余批次
 onMounted(() => { void load(); window.addEventListener('resize', resizeCharts) })
-onBeforeUnmount(() => { window.removeEventListener('resize', resizeCharts); charts.splice(0).forEach((chart) => chart.dispose()) })
+onBeforeUnmount(() => { loadAbort.abort(); window.removeEventListener('resize', resizeCharts); charts.splice(0).forEach((chart) => chart.dispose()) })
 </script>
 
 <style scoped>

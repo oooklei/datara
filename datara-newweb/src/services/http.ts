@@ -219,12 +219,18 @@ export async function request<T = unknown>(path: string, options: RequestOptions
     // 系统错误：非 2xx 在解包前抛错（包络三态之第三态）
     if (!res.ok) {
       const raw = await res.text().catch(() => '')
+      // G03 硬契约补全：后端 rebuild 域 401 实际形态 = HTTP 401 + 包络 code 1xxx
+      // （metrics/api.py L54、governance/api.py L221 全域同构），两通道任一命中即触发跳登录
+      // 修前仅 2xx 包络 code 1xxx 生效，HTTP 401 永不触发——会话过期后页面静默空数据
+      const parsedRaw = parseEnvelope(raw)
+      if (res.status === 401 || (parsedRaw && isAuthErrorCode(parsedRaw.code))) {
+        loginRedirector(LOGIN_PATH)
+      }
       // 保码透出（preserveEnvelopeCode）：非 2xx 但包络含 code 时保留后端码（A2 §2/§4 错误映射）；
       // 包络无 code 或非 JSON 时退回 HTTP 状态码错误（与默认行为一致）。
       if (preserveEnvelopeCode) {
-        const parsed = parseEnvelope(raw)
-        if (parsed && parsed.code !== undefined) {
-          throw new ContractApiError({ httpStatus: res.status, code: parsed.code, msg: parsed.msg ?? path, raw: parsed })
+        if (parsedRaw && parsedRaw.code !== undefined) {
+          throw new ContractApiError({ httpStatus: res.status, code: parsedRaw.code, msg: parsedRaw.msg ?? path, raw: parsedRaw })
         }
       }
       throw new ContractApiError({ httpStatus: res.status, code: res.status, msg: `HTTP ${res.status} ${path}`, raw })
@@ -284,6 +290,10 @@ export async function requestRaw<T = unknown>(path: string, options: RawRequestO
       ...(json !== undefined ? { body: JSON.stringify(json) } : body !== undefined ? { body } : {}),
     }
     const res = await fetch(url, init)
+    // G03 原始响应通道补全：非匿名路径 401 同样触发跳登录（与 request 通道对称）
+    if (!anonymous && res.status === 401) {
+      loginRedirector(LOGIN_PATH)
+    }
     const text = await res.text()
     if (text.trim() === '') return undefined as T
     return JSON.parse(text) as T
