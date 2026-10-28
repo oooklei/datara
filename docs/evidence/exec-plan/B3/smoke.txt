@@ -1,0 +1,14 @@
+B3 smoke 2026-10-28 08:16 (+08:00)
+scope: B3 第一批收口（condition_set 表单 + TrialRunPanel sql_execute/tasks + StreamObservationPanel 自动绑定/5s 轮询/融合结果）
+build: vue-tsc -b + vite build OK（vitest 1004 绿 / 117 文件，tsc 0 错）
+image: datara-newweb-frontend:local rebuilt sha256:e200393f（context deploy/wsl-frontend）
+container: datara-newweb-fe Up, 0.0.0.0:18092->80/tcp
+SPA index /: 200 (350B)
+SPA fallback /dag: 200
+new bundle in container: assets/index-BvD4fZw6.js 200（index.html 引用一致）
+GET /api/v1/rebuild/health via container(18092): 200 = direct 192.168.1.9:18091: 200（parity）
+B3 验收矩阵剩余项（需 1.9 真实执行，已上报候裁）：
+- 同步样例运行成功（src_base 模式全链路后端已具备，待 1.9 联调验证）
+- 四组件真实执行回写计数（runner 真执行已具备；SQL row_count 呈现缺 run_output 下发）
+- 流闭环 UI 生产→聚合/融合→观摩（面板 REST 闭环已具备，1.9 实测待做）
+- file_sync（baseMode=file_sync）无文件读取驱动——后端缺口候裁
