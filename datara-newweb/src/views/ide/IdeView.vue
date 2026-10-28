@@ -94,6 +94,10 @@
           <button type="button" data-save-script :disabled="sqlText.trim() === ''" @click="saveScript">存为脚本</button>
           <button type="button" data-export :disabled="lastResultSetId === null || exportBusy" @click="exportCurrent">{{ exportBusy ? '导出中…' : '导出结果' }}</button>
           <button type="button" data-lineage :disabled="projectId === null" @click="openLineage">查看血缘</button>
+          <button type="button" data-undo title="撤销（Ctrl+Z）" @click="sqlEditorEl?.undo()">↩ 撤销</button>
+          <button type="button" data-redo title="重做（Ctrl+Y）" @click="sqlEditorEl?.redo()">↪ 重做</button>
+          <button type="button" data-toggle-comment title="注释/取消注释选中行（Ctrl+/）" @click="sqlEditorEl?.toggleComment()">💬 注释</button>
+          <button type="button" data-clear-editor title="清空编辑器" @click="clearEditor">🧹 清空</button>
         </div>
         <SqlCodeEditor
           ref="sqlEditorEl"
@@ -511,6 +515,7 @@ const visibleNodes = computed(() => {
 })
 
 const KIND_LABEL: Partial<Record<TreeKind, string>> = {
+  source: '数据源', database: '库', schema: 'Schema',
   table: '表', view: '视图', function: '函数', procedure: '存储过程', trigger: '触发器', column: '字段', index: '索引',
 }
 const kindLabel = (k: TreeKind): string => KIND_LABEL[k] ?? ''
@@ -758,7 +763,7 @@ const sqlReferenceField = defineVariableReferenceField({
   allowScopedReference: true,
   allowTimeExpression: true,
 })
-const sqlEditorEl = ref<{ insertText: (text: string) => void; focus: () => void } | null>(null)
+const sqlEditorEl = ref<{ insertText: (text: string) => void; focus: () => void; undo: () => boolean; redo: () => boolean; toggleComment: () => boolean; clear: () => void } | null>(null)
 const varCheckBusy = ref(false)
 const varCheckResult = ref<VariableReferenceCheckViewModel | null>(null)
 const varCheckError = ref('')
@@ -1024,6 +1029,15 @@ function fillFromSearch(item: { kind: string; name: string; parent: string | nul
 /** G11 空态引导：一键填充示例查询（仅填充不执行）。 */
 function fillSampleQuery(): void {
   fillEditor('SELECT 1 AS ok;')
+}
+
+/** G12 编辑器清空：清空当前 Tab SQL 并重置编辑器历史（对标旧前端 🧹 清空）。 */
+function clearEditor(): void {
+  if (sqlText.value.trim() === '') return
+  if (!confirm('确认清空当前编辑器内容？（无法通过撤销恢复）')) return
+  sqlText.value = ''
+  sqlEditorEl.value?.clear()
+  status.value = '编辑器已清空'
 }
 
 async function runLint(): Promise<void> {

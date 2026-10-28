@@ -61,8 +61,10 @@ def _ty(f: dict) -> str:
         raise ValueError(f"不合法的长度: {length!r}")
     if precision and not _ARG_RE.match(precision):
         raise ValueError(f"不合法的精度: {precision!r}")
-    if precision and not length:
-        raise ValueError("精度需与长度同时填写")
+    # DECIMAL 特殊处理：precision 有值但 length 空时自动补默认长度 10
+    # （MySQL DECIMAL 默认 precision=10, scale=0；DECIMAL(10,2) 是最常见的金额场景）
+    if t == "DECIMAL" and precision and not length:
+        length = "10"
     if t in ("VARCHAR", "CHAR") and length:
         return f"{t}({length})"
     if t == "DECIMAL" and length:

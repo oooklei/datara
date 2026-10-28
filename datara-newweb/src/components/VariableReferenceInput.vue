@@ -71,7 +71,15 @@ async function check() {
     </div>
     <div v-if="suggestions.length" class="suggestions" role="listbox">
       <button v-for="item in suggestions" :key="`${item.scope}.${item.name}`" data-variable-suggestion type="button" @click="choose(item)">
-        {{ '${' + item.scope + '.' + item.name + '}' }} <small>{{ item.valueType }}</small>
+        <div class="var-row">
+          <code class="var-token">{{ '${' + item.scope + '.' + item.name + '}' }}</code>
+          <small class="var-type">{{ item.valueType }}</small>
+          <small v-if="item.unavailableReason" class="var-unavailable" data-unavailable>{{ item.unavailableReason }}</small>
+        </div>
+        <div v-if="item.description || item.currentValue !== undefined" class="var-hint">
+          <span v-if="item.description" class="var-desc">{{ item.description }}</span>
+          <span v-if="item.currentValue !== undefined && item.currentValue !== null" class="var-current">现值：<code>{{ String(item.currentValue) }}</code></span>
+        </div>
       </button>
     </div>
     <ul v-if="diagnostics.length" class="diagnostics"><li v-for="item in diagnostics" :key="`${item.code}:${item.message}`"><strong>{{ item.code }}</strong> {{ item.message }}</li></ul>
@@ -81,5 +89,12 @@ async function check() {
 </template>
 
 <style scoped>
-.variable-reference-input{display:grid;gap:6px}.input-row{display:flex;gap:6px}.input-row input,.input-row textarea{flex:1}.suggestions{display:grid;border:1px solid #dbe3ef;background:#fff}.suggestions button{text-align:left;border:0;border-bottom:1px solid #eef2f7;background:#fff;padding:6px}.diagnostics{margin:0;padding-left:20px;color:#b45309}.error{color:#b91c1c;margin:0}
+.variable-reference-input{display:grid;gap:6px}.input-row{display:flex;gap:6px}.input-row input,.input-row textarea{flex:1}
+.suggestions{display:grid;border:1px solid var(--border,#dbe3ef);background:var(--card,#fff);border-radius:4px;max-height:320px;overflow:auto}
+.suggestions button{text-align:left;border:0;border-bottom:1px solid var(--border,#eef2f7);background:transparent;padding:8px 10px;cursor:pointer}
+.suggestions button:last-child{border-bottom:0}
+.suggestions button:hover{background:var(--surface-hover,#f5f9ff)}
+.var-row{display:flex;gap:6px;align-items:baseline}.var-token{font-family:ui-monospace,monospace;color:var(--text,#1f2937)}.var-type{color:var(--text-2,#6b7280)}.var-unavailable{color:#dc2626}
+.var-hint{display:flex;gap:12px;margin-top:4px;font-size:12px;color:var(--text-2,#6b7280)}.var-desc{flex:1}.var-current code{background:var(--surface,#f3f4f6);padding:1px 4px;border-radius:3px;color:var(--text,#374151);max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;display:inline-block;vertical-align:bottom}
+.diagnostics{margin:0;padding-left:20px;color:#b45309}.error{color:#b91c1c;margin:0}
 </style>

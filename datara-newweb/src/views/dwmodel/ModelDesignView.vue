@@ -55,10 +55,34 @@ const ddlOpen = ref(false); const ddlPreview = ref<ModelDdlPreview | null>(null)
 const phys = reactive({ engine: 'mysql', mode: 'script', dsId: undefined as number | undefined, dbName: '' })
 const message = (cause: unknown) => cause instanceof Error ? cause.message : String(cause)
 async function load() { const id = targetId.value; if (!id) { model.value = null; fields.value = []; return } busy.value = true; error.value = ''; try { const detail = await modelApi.detail(id); model.value = detail; fields.value = detail.fields.map((field) => ({ ...field })) } catch (cause) { error.value = message(cause); model.value = null; fields.value = [] } finally { busy.value = false } }
-async function saveFields() { const id = targetId.value; if (!id) return; saving.value = true; error.value = ''; try { const rev = await modelApi.updateFields(id, { rev: model.value?.version ?? 0, fields: fields.value }); if (model.value) model.value.version = rev } catch (cause) { error.value = message(cause) } finally { saving.value = false } }
+async function saveFields() {
+  const id = targetId.value; if (!id) return
+  // DECIMAL 字段防御性校验：precision 有值但 length 空 → 补 length 默认值 10
+  fields.value.forEach((f) => {
+    const type = String(f.dataType || '').toUpperCase()
+    if (type === 'DECIMAL' && f.precision && !f.length) {
+      f.length = 10
+    }
+  })
+  saving.value = true; error.value = ''
+  try { const rev = await modelApi.updateFields(id, { rev: model.value?.version ?? 0, fields: fields.value }); if (model.value) model.value.version = rev } catch (cause) { error.value = message(cause) } finally { saving.value = false }
+}
 async function publish() { const id = targetId.value; if (!id) return; busy.value = true; error.value = ''; try { await modelApi.publish(id); await load() } catch (cause) { error.value = message(cause) } finally { busy.value = false } }
 async function redraft() { const id = targetId.value; if (!id) return; busy.value = true; error.value = ''; try { await modelApi.redraft(id); await load() } catch (cause) { error.value = message(cause) } finally { busy.value = false } }
-async function previewDdl() { const id = targetId.value; if (!id) return; busy.value = true; error.value = ''; try { ddlPreview.value = await modelApi.ddl(id, model.value?.engine); ddlOpen.value = true } catch (cause) { error.value = message(cause) } finally { busy.value = false } }
+async function previewDdl() {
+  const id = targetId.value; if (!id) return
+  ddlPreview.value = null
+  busy.value = true; error.value = ''
+  try { ddlPreview.value = await modelApi.ddl(id, model.value?.engine); ddlOpen.value = true }
+  catch (cause) {
+    const msg = message(cause)
+    // 把错误塞进弹窗（不只是顶部 banner），引导用户
+    ddlPreview.value = { engine: model.value?.engine || '', ddl: '', notes: [msg.includes('精度') ? `${msg}。请检查 DECIMAL 字段是否同时填写了长度和精度。` : msg] }
+    ddlOpen.value = true
+    error.value = msg
+  }
+  finally { busy.value = false }
+}
 async function doPhysicalize() { const id = targetId.value; if (!id) return; saving.value = true; error.value = ''; try { const result = await modelApi.physicalize(id, { engine: phys.engine, mode: phys.mode, dsId: phys.dsId, dbName: phys.dbName || undefined }); physResult.value = result.script ?? (result.status ? `已执行 ${result.executed ?? 0} 条` : '完成') } catch (cause) { error.value = message(cause) } finally { saving.value = false } }
 onMounted(load)
 </script>

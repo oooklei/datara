@@ -105,7 +105,7 @@ _ERROR_CASES = [
     ("dwd_x", "x", [_field("a", data_type="FOO")], "mysql"),            # 类型不在白名单
     ("dwd_x", "x", [_field("a", data_type="VARCHAR", length="abc")], "mysql"),
     ("dwd_x", "x", [_field("a", data_type="VARCHAR", length="1234567890")], "mysql"),
-    ("dwd_x", "x", [_field("a", data_type="DECIMAL", precision="2")], "mysql"),
+    # ("dwd_x", "x", [_field("a", data_type="DECIMAL", precision="2")], "mysql"), — 已迁移至 SUCCESS_CASES：新 ddlgen 自动补默认 length=10
     ("dwd_x", "x", [_field("a", data_type="DECIMAL", length="18", precision="x")], "mysql"),
     ("dwd_x", "x", [_field("bad name")], "mysql"),                      # 非法字段标识符
     ("dwd_x", "x", [_field("")], "mysql"),                              # 空字段名

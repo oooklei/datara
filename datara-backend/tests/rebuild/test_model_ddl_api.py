@@ -354,17 +354,19 @@ def test_ddl_oversized_length_is_400():
         client.__exit__(None, None, None)
 
 
-def test_ddl_precision_without_length_is_400():
-    """有精度无长度 → 8003/400「精度需与长度同时填写」。"""
+def test_ddl_precision_without_length_defaults_to_10():
+    """有精度无长度 → ddlgen 自动补默认 length=10，生成 DECIMAL(10,2)。"""
     client, app, headers = _client()
     try:
         with app.state.session_factory() as session:
             _seed_engine(session, name="MySQL", ddl="mysql")
-            model = _seed(session, fields=[_field("a", data_type="DECIMAL", precision="2")])
+            model = _seed(session, code="dwd_x", name="x", fields=[_field("a", data_type="DECIMAL", precision="2")])
             model_id = model.id
         response = _ddl(client, headers, model_id)
-        assert response.status_code == 400
-        assert response.json()["msg"] == "精度需与长度同时填写"
+        assert response.status_code == 200
+        ddl_text = response.json()["data"]["ddl"]
+        assert "DECIMAL(10,2)" in ddl_text
+        assert "CREATE TABLE" in ddl_text
     finally:
         client.__exit__(None, None, None)
 

@@ -50,7 +50,8 @@
 
     <section v-if="ddlOpen" class="dialog" data-ddl-dialog>
       <header><h2>DDL 预览 · {{ ddlModelName }}</h2><button type="button" @click="ddlOpen=false">关闭</button></header>
-      <pre>{{ ddlText }}</pre>
+      <p v-if="ddlError" class="error" data-ddl-error>{{ ddlError }}</p>
+      <pre v-else>{{ ddlText }}</pre>
     </section>
   </main>
 </template>
@@ -69,6 +70,7 @@ const editorOpen = ref(false)
 const ddlOpen = ref(false)
 const editingId = ref<number | null>(null)
 const ddlText = ref('')
+const ddlError = ref('')
 const ddlModelName = ref('')
 const layers = ['ODS', 'DWD', 'DWS', 'ADS', 'DIM']
 const engines = ['mysql', 'doris', 'greatdb']
@@ -109,10 +111,19 @@ async function remove(row: ModelRow) {
   try { await modelApi.remove(row.id); await reload() } catch (cause) { error.value = message(cause) }
 }
 async function previewDdl(row: ModelRow) {
+  ddlError.value = ''
   try {
     const preview = await modelApi.ddl(row.id, row.engine)
     ddlModelName.value = row.name; ddlText.value = preview.ddl; ddlOpen.value = true
-  } catch (cause) { error.value = message(cause) }
+  } catch (cause) {
+    const msg = message(cause)
+    // 把错误塞进弹窗（不只是顶部 banner），引导用户
+    ddlError.value = msg.includes('精度')
+      ? `DDL 生成失败：${msg}。请在"设计"页面为 DECIMAL 字段同时填写长度和精度。`
+      : msg
+    ddlOpen.value = true
+    error.value = msg
+  }
 }
 
 onMounted(reload)

@@ -230,10 +230,13 @@ async function request<T>(projectId: number, path: string, method = 'GET', body?
 function normalizeResponse(value: unknown): unknown {
   if (Array.isArray(value)) return value.map(normalizeResponse)
   if (!value || typeof value !== 'object') return value
-  return Object.fromEntries(Object.entries(value).map(([key, item]) => [
+  const mapped = Object.fromEntries(Object.entries(value).map(([key, item]) => [
     key.replace(/_([a-z])/g, (_, letter: string) => letter.toUpperCase()),
     normalizeResponse(item),
-  ]))
+  ])) as Record<string, unknown>
+  // 后端 relations/routines 返回 `type` 字段，前端 RelationMeta/RoutineMeta 定义为 `kind`——统一补齐
+  if (typeof mapped.type === 'string' && mapped.kind === undefined) mapped.kind = mapped.type
+  return mapped
 }
 
 /** 递归 camel→snake（处理 query 键 / body 键）：sql-ide 后端契约统一下划线词形。 */

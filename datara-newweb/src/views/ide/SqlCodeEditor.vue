@@ -9,6 +9,7 @@ import type { DecorationSet } from '@codemirror/view'
 import { linter } from '@codemirror/lint'
 import type { Diagnostic } from '@codemirror/lint'
 import { oneDark } from '@codemirror/theme-one-dark'
+import { undo, redo, selectAll, toggleComment, canUndoSelection, canRedoSelection } from '@codemirror/commands'
 
 /**
  * S1/S7 编辑器能力面（CodeMirror 6 内核，用户裁定冻结）：
@@ -251,7 +252,27 @@ function insertText(text: string) {
   view.focus()
 }
 
-defineExpose({ insertText, focus: () => view?.focus(), getView: () => view })
+/** G12 工具栏暴露 API：撤销/重做/全选/注释 toggle/清空（对标旧前端工具栏完整度）。 */
+function exposeUndo(): boolean { return view ? undo(view) : false }
+function exposeRedo(): boolean { return view ? redo(view) : false }
+function exposeSelectAll(): boolean { return view ? selectAll(view) : false }
+function exposeToggleComment(): boolean { return view ? toggleComment(view) : false }
+function exposeClear(): void { if (view) view.dispatch({ changes: { from: 0, to: view.state.doc.length, insert: '' } }) }
+function exposeCanUndo(): boolean { return view ? canUndoSelection(view.state) : false }
+function exposeCanRedo(): boolean { return view ? canRedoSelection(view.state) : false }
+
+defineExpose({
+  insertText,
+  focus: () => view?.focus(),
+  getView: () => view,
+  undo: exposeUndo,
+  redo: exposeRedo,
+  selectAll: exposeSelectAll,
+  toggleComment: exposeToggleComment,
+  clear: exposeClear,
+  canUndo: exposeCanUndo,
+  canRedo: exposeCanRedo,
+})
 onBeforeUnmount(() => {
   hoverCache.clear()
   view?.destroy()
