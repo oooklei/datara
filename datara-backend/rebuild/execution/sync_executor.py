@@ -180,6 +180,7 @@ def execute_sync_attempt(
     workflow_instance_id: int,
     task_instance_id: int,
     driver: SyncRuntimeAdapter,
+    allow_file_source: bool = False,
 ) -> SyncExecutionMetrics:
     """Run one SYNC snapshot as a persisted execution attempt.
 
@@ -193,7 +194,7 @@ def execute_sync_attempt(
     # task code and prevents attaching a plan to a different task instance.
     from rebuild.sync.executor import prepare_sync_execution
 
-    spec = prepare_sync_execution(snapshot)
+    spec = prepare_sync_execution(snapshot, allow_file_source=allow_file_source)
     repository = ExecutionRepository(session)
     workflow_instance = session.get(WorkflowInstanceRecord, workflow_instance_id)
     task_instance = session.get(TaskInstanceRecord, task_instance_id)

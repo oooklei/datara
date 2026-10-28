@@ -10,6 +10,7 @@ GET /trial/runs/{run_id} aggregates:
 
 from __future__ import annotations
 
+import json
 from typing import Any
 
 from sqlalchemy import select
@@ -17,6 +18,7 @@ from sqlalchemy.orm import Session
 
 from rebuild.execution.models import (
     RunLogRecord,
+    RunOutputRecord,
     TaskInstanceRecord,
     WorkflowInstanceRecord,
 )
@@ -41,11 +43,13 @@ class TrialOutputAggregator:
         logs = self._collect_logs(instance_id)
         variables = self._collect_variables(instance_id)
         stats = self._collect_stats(instance_id)
+        node_outputs = self._collect_outputs(instance_id)
 
         return {
             "logs": logs,
             "variables": variables,
             "stats": stats,
+            "node_outputs": node_outputs,
             "found": True,
             "instance_type": instance.instance_type,
             "status": instance.status,
@@ -127,6 +131,39 @@ class TrialOutputAggregator:
             "failed_count": total_failed,
             "skipped_count": total_skipped,
         }
+
+    def _collect_outputs(self, instance_id: int) -> list[dict[str, Any]]:
+        """Collect per-node executor outputs (task_instance_output, verbatim JSON).
+
+        2026-10-28 用户裁决「输出面补 run_output 下发」：SQL row_count / Python
+        exit_code / stdout 等执行产物在此透传，前端渲染执行产物明细。
+        """
+        task_ids = self._instance_task_ids(instance_id)
+        if not task_ids:
+            return []
+
+        rows = self._session.scalars(
+            select(RunOutputRecord)
+            .where(RunOutputRecord.task_instance_id.in_(task_ids))
+            .order_by(RunOutputRecord.task_instance_id, RunOutputRecord.attempt_no, RunOutputRecord.id)
+        ).all()
+
+        task_map = self._task_map(instance_id)
+        result: list[dict[str, Any]] = []
+        for row in rows:
+            try:
+                payload: Any = json.loads(row.output_json)
+            except (TypeError, ValueError):
+                payload = {"raw": row.output_json}
+            result.append(
+                {
+                    "task_id": row.task_instance_id,
+                    "task_code": task_map.get(row.task_instance_id, row.task_instance_id),
+                    "attempt_no": row.attempt_no,
+                    "output": payload,
+                }
+            )
+        return result
 
     def _instance_task_ids(self, instance_id: int) -> list[int]:
         return list(

@@ -217,6 +217,18 @@ const canRefreshOutput = computed(() => store.runResult !== null && store.runRes
           </tr>
         </tbody>
       </table>
+      <div v-if="store.output !== null && store.output.nodeOutputs.length > 0" class="trp-artifacts" data-test="node-outputs">
+        <div class="trp-hint">执行产物（{{ store.output.nodeOutputs.length }} 节点）：</div>
+        <div v-for="o in store.output.nodeOutputs" :key="`${o.taskId}-${o.attemptNo}`" class="trp-artifact" data-node-output>
+          <div class="trp-artifact-head">
+            <span class="mono">{{ o.taskCode }}</span>
+            <span v-if="typeof o.output.row_count === 'number'" class="mono" data-artifact-row-count>row_count: {{ o.output.row_count }}</span>
+            <span v-if="typeof o.output.exit_code === 'number'" class="mono" data-artifact-exit-code>exit_code: {{ o.output.exit_code }}</span>
+            <span v-if="typeof o.output.columns === 'object'" class="mono">columns: {{ (o.output.columns as string[]).join(', ') }}</span>
+          </div>
+          <pre v-if="typeof o.output.stdout === 'string' && o.output.stdout" class="trp-artifact-body">{{ o.output.stdout }}</pre>
+        </div>
+      </div>
 
       <div v-if="store.output !== null" class="trp-out" data-test="out-panel">
         <div class="trp-stats" data-test="out-stats">
@@ -408,6 +420,31 @@ const canRefreshOutput = computed(() => store.runResult !== null && store.runRes
 .trp-tasks th {
   background: #f9fafb;
   font-weight: 600;
+}
+.trp-artifacts {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.trp-artifact {
+  border: 1px solid var(--border, #e5e7eb);
+  border-radius: 4px;
+  padding: 4px 8px;
+  font-size: 11.5px;
+}
+.trp-artifact-head {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.trp-artifact-body {
+  margin: 4px 0 0;
+  max-height: 120px;
+  overflow: auto;
+  white-space: pre-wrap;
+  background: #f8fafc;
+  padding: 4px;
+  border-radius: 3px;
 }
 .trp-actions {
   display: flex;

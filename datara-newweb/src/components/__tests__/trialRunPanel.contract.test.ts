@@ -56,6 +56,7 @@ const OUTPUT = {
     { name: 'cnt', expression: '1', scope: 'node', resolvedValue: 1, valueType: 'int', source: 'literal', attemptNo: 1 },
   ],
   stats: { successCount: 1, failedCount: 0, skippedCount: 0 },
+  nodeOutputs: [] as Array<{ taskId: number; taskCode: string; attemptNo: number; output: Record<string, unknown> }>,
   found: true,
   instanceType: 'TRIAL',
   status: 'SUCCEEDED',
@@ -287,6 +288,26 @@ describe('INC4-FE-7 TrialRunPanel 八能力 UI 承接', () => {
     expect(textOf(w2, '[data-test="out-stats"]')).toContain('成功 1')
     expect(textOf(w2, '[data-test="out-logs"]')).toContain('n1')
     expect(textOf(w2, '[data-test="out-vars"]')).toContain('cnt = 1')
+  })
+
+  it('B3 裁决落地：node_outputs 执行产物渲染（row_count/exit_code/columns/stdout）', () => {
+    store.output = {
+      ...OUTPUT,
+      nodeOutputs: [
+        { taskId: 12, taskCode: 'n2', attemptNo: 1, output: { node_code: 'n2', status: 'ok', sql: 'SELECT 1', columns: ['one'], rows: [[1]], row_count: 1 } },
+        { taskId: 13, taskCode: 'n3', attemptNo: 1, output: { node_code: 'n3', status: 'ok', exit_code: 0, stdout: 'hello artifact' } },
+      ],
+    }
+    const w = mountPanel()
+    const artifacts = w.find('[data-test="node-outputs"]')
+    expect(artifacts.exists()).toBe(true)
+    expect(artifacts.text()).toContain('执行产物（2 节点）')
+    const rows = w.findAll('[data-node-output]')
+    expect(rows).toHaveLength(2)
+    expect(rows[0].text()).toContain('row_count: 1')
+    expect(rows[0].text()).toContain('columns: one')
+    expect(rows[1].text()).toContain('exit_code: 0')
+    expect(rows[1].text()).toContain('hello artifact')
   })
 
   it('promote：remark 带/不带参数对拍（空 → undefined）；promoteResult 渲染含幂等文案', async () => {

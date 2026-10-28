@@ -506,12 +506,15 @@ class TrialRunner:
                     "WF_TRIAL_SYNC_DRIVER_MISSING",
                     "SYNC runtime driver factory returned no driver",
                 )
+            # file_sync 变体：factory 会向 sync_snapshot 合成 file source/target 引用
+            # （dict 可变副作用是此边界的契约），prepare 校验放宽 file_path 源。
             execute_sync_attempt(
                 self._session,
                 sync_snapshot,
                 workflow_instance_id=instance_id,
                 task_instance_id=task.id,
                 driver=driver,
+                allow_file_source=node_type.lower() == "file_sync",
             )
             return
 

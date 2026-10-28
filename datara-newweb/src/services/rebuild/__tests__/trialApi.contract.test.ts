@@ -247,6 +247,9 @@ describe('INC4-FE-7 trialApi 契约（/api/v1/rebuild/trial）', () => {
           { name: 'row_count', expression: '{{out.n1.count}}', scope: 'INSTANCE', resolved_value: 42, value_type: 'int', source: 'task', attempt_no: 1 },
         ],
         stats: { success_count: 2, failed_count: 0, skipped_count: 1 },
+        node_outputs: [
+          { task_id: 102, task_code: 'n2', attempt_no: 1, output: { node_code: 'n2', status: 'ok', row_count: 3 } },
+        ],
         found: true,
         instance_type: 'TRIAL',
         status: 'SUCCEEDED',
@@ -260,6 +263,9 @@ describe('INC4-FE-7 trialApi 契约（/api/v1/rebuild/trial）', () => {
         { name: 'row_count', expression: '{{out.n1.count}}', scope: 'INSTANCE', resolvedValue: 42, valueType: 'int', source: 'task', attemptNo: 1 },
       ],
       stats: { successCount: 2, failedCount: 0, skippedCount: 1 },
+      nodeOutputs: [
+        { taskId: 102, taskCode: 'n2', attemptNo: 1, output: { node_code: 'n2', status: 'ok', row_count: 3 } },
+      ],
       found: true,
       instanceType: 'TRIAL',
       status: 'SUCCEEDED',
@@ -277,6 +283,7 @@ describe('INC4-FE-7 trialApi 契约（/api/v1/rebuild/trial）', () => {
     expect(output.found).toBe(false)
     expect(output.instanceType).toBeNull()
     expect(output.status).toBeNull()
+    expect(output.nodeOutputs).toEqual([])
   })
 
   it('promoteRunById（WF-26）：POST /runs/{id}/promote body {project_id, remark?}；幂等 idempotent=true 直返', async () => {

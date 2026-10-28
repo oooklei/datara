@@ -85,8 +85,13 @@ class SyncRuntimeAdapter(Protocol):
     def write_lineage(self, context: Mapping[str, Any], edges: Sequence[SyncLineageEdge]) -> None: ...
 
 
-def prepare_sync_execution(snapshot: Mapping[str, Any]) -> SyncExecutionSpec:
-    """Validate and freeze the persisted plan snapshot before any I/O begins."""
+def prepare_sync_execution(snapshot: Mapping[str, Any], *, allow_file_source: bool = False) -> SyncExecutionSpec:
+    """Validate and freeze the persisted plan snapshot before any I/O begins.
+
+    ``allow_file_source``（2026-10-28 裁决「file_sync 补文件源驱动」）：file_sync
+    变体的 source 是文件描述符（file_path/schema/object），不含 datasource_id；
+    target 仍必须是数据源引用（由 factory 预先合成 schema 兜底）。
+    """
     required_ints = ("project_id", "workflow_id", "workflow_version")
     for name in required_ints:
         value = snapshot.get(name)
@@ -99,6 +104,13 @@ def prepare_sync_execution(snapshot: Mapping[str, Any]) -> SyncExecutionSpec:
     if not isinstance(source, Mapping) or not isinstance(target, Mapping):
         raise ValueError("source and target must be objects")
     for label, ref in (("source", source), ("target", target)):
+        if allow_file_source and label == "source" and "file_path" in ref:
+            # file_sync 变体：文件源引用（路径安全由 driver 侧 resolve_file_path 兜底）
+            for field in ("file_path", "schema", "object"):
+                value = ref.get(field)
+                if not isinstance(value, str) or not value.strip() or len(value) > 512:
+                    raise ValueError(f"{label}.{field} must be a non-empty string of at most 512 characters")
+            continue
         datasource_id = ref.get("datasource_id")
         if isinstance(datasource_id, bool) or not isinstance(datasource_id, int) or datasource_id < 1:
             raise ValueError(f"{label}.datasource_id must be an integer >= 1")

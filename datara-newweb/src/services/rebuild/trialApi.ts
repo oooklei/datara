@@ -148,10 +148,20 @@ export interface TrialVariableWire {
 }
 
 /** 输出面（output.aggregate；实例缺属分支无 instance_type/status，stats 为空对象） */
+export interface TrialNodeOutputWire {
+  task_id: number
+  task_code: number | string
+  attempt_no: number
+  /** 执行器 verbatim JSON 透传（SQL row_count / Python exit_code 等） */
+  output: Record<string, unknown>
+}
+
 export interface TrialRunOutputWire {
   logs: TrialTaskLogsWire[]
   variables: TrialVariableWire[]
   stats: { success_count?: number; failed_count?: number; skipped_count?: number }
+  /** 2026-10-28 裁决：输出面补 run_output 下发（每节点执行产物 verbatim） */
+  node_outputs?: TrialNodeOutputWire[]
   found: boolean
   instance_type?: string
   status?: string
@@ -241,10 +251,18 @@ export interface TrialRunStats {
   skippedCount: number
 }
 
+export interface TrialNodeOutput {
+  taskId: number
+  taskCode: number | string
+  attemptNo: number
+  output: Record<string, unknown>
+}
+
 export interface TrialRunOutput {
   logs: TrialTaskLogs[]
   variables: TrialRunVariable[]
   stats: TrialRunStats
+  nodeOutputs: TrialNodeOutput[]
   found: boolean
   instanceType: string | null
   status: string | null
@@ -333,6 +351,12 @@ function mapOutput(w: TrialRunOutputWire): TrialRunOutput {
       failedCount: w.stats?.failed_count ?? 0,
       skippedCount: w.stats?.skipped_count ?? 0,
     },
+    nodeOutputs: (w.node_outputs ?? []).map((o) => ({
+      taskId: o.task_id,
+      taskCode: o.task_code,
+      attemptNo: o.attempt_no,
+      output: o.output ?? {},
+    })),
     found: w.found,
     instanceType: w.instance_type ?? null,
     status: w.status ?? null,

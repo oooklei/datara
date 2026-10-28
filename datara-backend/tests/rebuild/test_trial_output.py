@@ -131,6 +131,40 @@ def test_aggregate_empty_run_returns_empty_arrays():
     assert isinstance(output["logs"], list)
     assert isinstance(output["variables"], list)
     assert isinstance(output["stats"], dict)
+    # runner 通用路径对每个节点（含 START/END）都写 verbatim 产物（node_code/status）
+    node_outputs = output["node_outputs"]
+    assert isinstance(node_outputs, list) and len(node_outputs) == 2
+    assert all(set(o) >= {"task_id", "task_code", "attempt_no", "output"} for o in node_outputs)
+
+
+def test_aggregate_node_outputs_carries_execution_artifacts():
+    """2026-10-28 裁决「输出面补 run_output 下发」：SQL 真执行产物（row_count 等）透传。"""
+    from rebuild.trial.runner import TrialRunOptions
+
+    session = _session()
+    definition_id = _make_definition(session)
+    _add_node(session, definition_id, "start", node_type="START")
+    _add_node(session, definition_id, "a", params={"sql": "SELECT 1 AS one UNION ALL SELECT 2"})
+    _add_node(session, definition_id, "end", node_type="END")
+    _add_edge(session, definition_id, "start", "a")
+    _add_edge(session, definition_id, "a", "end")
+    session.commit()
+
+    snapshot = TrialSnapshotRepository(session).create_from_draft(definition_id)
+    result = TrialRunner(session).run(
+        definition_id=definition_id,
+        snapshot_id=snapshot["snapshot_id"],
+        project_id=1,
+        options=TrialRunOptions(sql_execute=True),
+    )
+    session.commit()
+
+    output = TrialOutputAggregator(session).aggregate(result.instance_id)
+    node_outputs = output["node_outputs"]
+    assert isinstance(node_outputs, list) and len(node_outputs) >= 1
+    sql_output = next(o for o in node_outputs if o["task_code"] == "a")
+    assert sql_output["output"]["row_count"] == 2
+    assert sql_output["output"]["columns"] == ["one"]
 
 
 def test_aggregate_missing_instance_returns_not_found():
@@ -141,6 +175,7 @@ def test_aggregate_missing_instance_returns_not_found():
     assert output["found"] is False
     assert output["logs"] == []
     assert output["variables"] == []
+    assert output["stats"] == {}
 
 
 def test_aggregate_uses_workflow_receipt_instead_of_double_counting_task_receipts():
