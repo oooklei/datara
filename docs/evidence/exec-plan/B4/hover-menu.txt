@@ -1,0 +1,93 @@
+B4-d 悬浮菜单 11 项（S5/S6）验证记录
+========================================
+日期：2026-10-28
+增量：B4-d（执行计划 §B4 S5 树懒加载+悬浮菜单 11 项 / S6 前端展示 ddl 反馈）
+用户裁决：① KA3 flake → 授权修复（提交 0677f77c）；② B4-d 后端缺口 → 「补后端，11 项全量」（同 STREAM/file_sync 修补模式）
+
+一、交付范围（11 项菜单 + 4 端点 + 3 弹窗 + S5 搜索合并）
+------------------------------------------------------------
+后端（rebuild-api）：
+- 新建 rebuild/sql_ide/table_data.py：四函数服务模块（事务自管，连接由接线层关闭；
+  标识符全部经 safe_identifier 校验，值全走绑定参数）
+  1. read_table_rows：SELECT * LIMIT/OFFSET + COUNT(*) + 主键探测
+     （mysql: INFORMATION_SCHEMA.KEY_COLUMN_USAGE / postgres: pg_index indisprimary）
+     → {columns, rows(数组形态，对齐 executeSql), total, primaryKeys, offset}
+  2. apply_table_changes：{inserts,updates,deletes} 先编译校验（try 外，ValueError 直达
+     INVALID_REQUEST）再单事务执行；总量 >1000 拦截；失败整体回滚 → STATEMENT_EXECUTION_FAILED
+     ；updates 禁改主键列；deletes/updates.keys 必须精确覆盖主键集合
+  3. import_csv_rows：前端解析后的整批 JSON rows；>100_000 拦截；单事务 executemany 语义
+  4. audit_table_op：op∈{drop,truncate}；information_schema 存在性 block（TABLE_NOT_FOUND）
+     + COUNT(*) 行数规模告警（>10_000 → ROW_COUNT_LARGE warning）；恒附 DESTRUCTIVE_OP
+     warning；verdict {status: pass|block, findings, row_count}
+  设计要点：rows 采用数组形态而非对象键——HTTP 适配层 normalizeResponse 会把对象键
+  snake→camel 改写（created_at→createdAt），对象形态会污染 apply/import 的列名回路。
+- rebuild/sql_ide/routes.py：_ROUTE_SPECS 23→27
+  ("GET", "/rows", "listTableRows", "VIEW_ALL", False)
+  ("POST", "/rows/apply", "applyTableRows", "EXECUTE_SQL", True)
+  ("POST", "/import-csv", "importCsv", "EXECUTE_SQL", True)
+  ("POST", "/audit", "auditTable", "EXECUTE_SQL", True)
+- rebuild/api/app.py：sql_ide_dispatch 接线四 operation（datasource 解析 + dialect 判定
+  postgresql→postgres + TableDataError→SqlIdeRouteError 转译 + finally rollback/close）
+
+前端（datara-newweb）：
+- sqlIdeApi.ts：契约 24→28 方法（listTableRows GET query / applyTableRows / importCsv /
+  auditTable POST body）+ TableRowsPage/TableAuditResult/TableAuditFinding 类型
+- IdeView.vue：G10 悬浮菜单（hover 触发、teleport body、fixed 定位、260ms 延迟隐藏、
+  底部固定提示「预制 SQL 仅填充编辑器，不自动执行」）
+  table=11 项全量；view=前 7 项（DROP/TRUNCATE TABLE 对视图无语义，不生成非法 SQL——
+  与审计 #8-#11 的偏差已在此记录）
+  稽核交互（S6）：audit status=block → alert 硬阻断（不 confirm 不填充）；
+  pass → confirm（稽核校验项附 findings 明细 + 行数）→ 仅填充 DROP/TRUNCATE，绝不自动执行
+  无条件项（#8/#10）同样先过 audit，差异仅在 confirm 文案是否附明细
+- TableDataDialog.vue（§6.4/G23）：86% 宽 top5vh；主键提示/无主键黄条（仅追加行）；
+  行内编辑（变更黄框 var(--warn)）/删行↔恢复/追加行/移除；翻页 200 行；>1000 拦截；
+  apply 成功 →「应用成功：增/改/删 a/b/c 条」+重载；失败 →「应用失败，已整体回滚」
+- CsvImportDialog.vue（§6.5/G24）：720px；.csv 文件选择 + 首行为表头 + 行数统计与超限
+  预警（>100_000 前端拦截不发请求）+ 首 3 行预览 + 列映射（表字段→CSV 列，可跳过，
+  无映射拦截）；RFC 4180 感知解析器独立成 csvParse.ts（引号/双写转义/CRLF/带引号换行）
+- S5 搜索合并：searchObjects 后端结果 + 本地已加载树节点匹配（标「已加载」var(--success)），
+  各限 50 条本地在前；命中行点击 → 仅填充 `SELECT * FROM parent.name LIMIT 100;`
+- §6.2 创建列（440px，纯前端生成 ALTER 仅填充；类型 10 项，长度仅 VARCHAR/CHAR/DECIMAL 启用）
+- §6.3 创建索引（440px，默认 idx_{表名}，唯一索引 checkbox，仅填充）
+
+二、依赖踩坑（5 条）
+------------------------------------------------------------
+1. normalizeResponse 键改写：HTTP 适配层全局 snake→camel。字符串数组不受影响，但对象键
+   会改写——rows 必须用数组形态传输（已在后端固化并注释），列映射数据用 listColumns 的
+   items.name（键不变、值不变）规避。
+2. TableDataError 转译边界：参数校验（ValueError）必须在事务 try 块外完成，否则被
+   except Exception 吞掉转成 STATEMENT_EXECUTION_FAILED，前端无法区分「请求错」与「执行失败」。
+   apply/import 均改为「先编译计划（校验）→ 再事务执行」两阶段。
+3. happy-dom 无原生 prompt/alert/confirm：vi.spyOn(window, 'prompt') 报 undefined；
+   组件侧须用裸全局调用（prompt()/confirm()/alert()），测试侧 vi.stubGlobal 挂 globalThis，
+   两者才解析到同一函数。
+4. S9 树默认展开第一个根节点：测试里再点 source:7 会触发折叠（onNodeClick expanded→collapse），
+   mountWithTree 必须直接从 db 节点开始。
+5. r6 token 规则（ideView 契约用例）：IdeView.vue 源码禁 hex 色字面量。新样式
+   #3a9d5d/#fff/#d9a400/#c0392b 全部改 var(--success)/var(--card)/var(--warn)/var(--danger)。
+
+三、验证数据
+------------------------------------------------------------
+后端（本机=代码检测/静态/类型/逻辑稽核）：
+- python -m pytest tests/sql_ide -q → 309 passed（含新 test_table_data.py 16 用例：
+  标识符校验/rows 数组形态/方言引号/主键探测/JSON 安全值转换/limit 与标识符拦截/
+  驱动失败映射/apply 三类变更 SQL 形态/主键保护/批量上限/回滚语义/import 校验与
+  上限/audit pass+warning/block/未知 op/路由注册权限位）
+- python -m ruff check rebuild/sql_ide/table_data.py tests/sql_ide/test_table_data.py → All checks passed
+  （app.py/routes.py 的既有 E402/E701/F821 为历史风格，不在本票扩大范围）
+
+前端：
+- npx vitest run 全量 → 122 文件 / 1050 用例全绿
+  （新增 ideHoverMenu.contract.test.ts 13 用例：11/7 项菜单与底部提示、260ms 延迟隐藏
+  （fake timers + nextTick）、prompt 行数上限填充与非法拦截、getDefinition DDL 填充、
+  编辑数据弹窗接线（listTableRows 调用 + 主键提示 + 2 行渲染）、CSV 弹窗列映射接线、
+  audit block 硬阻断（alert 且不 confirm 不填充）、pass+明细 confirm→填充 DROP、
+  无条件项同样过 audit、创建列/创建索引生成、S5 本地已加载合并 + 点击填充；
+  csvParse.test.ts 4 用例：简单行/引号逗号与双写转义/CRLF/带引号换行/空行过滤）
+- npx vue-tsc -b → exit 0
+
+四、遗留
+------------------------------------------------------------
+- B4-e 执行期联动/历史导出（S8）待实施
+- B5 全页面 UX 收口 → B6 统一验收（1.9 部署/E2E，含重写 skipped 的 stream e2e）
+- 部署前提（1.9 时）：rebuild-api 重建镜像（本票新增 table_data 路由）

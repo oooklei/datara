@@ -45,7 +45,9 @@
                     :data-node-kind="item.node.meta.kind"
                     :class="{ active: item.node.meta.key === activeNodeKey, denied: item.node.denied }"
                     :style="{ paddingLeft: `${item.depth * 14 + 8}px` }"
-                    @click="onNodeClick(item.node)">
+                    @click="onNodeClick(item.node)"
+                    @mouseenter="onTreeNodeEnter(item.node, $event)"
+                    @mouseleave="scheduleMenuHide">
               <span class="ide-tree-arrow">{{ item.node.meta.expandable ? (item.node.expanded ? '▾' : '▸') : '' }}</span>
               <span class="ide-tree-label">{{ item.node.meta.label }}<small v-if="kindLabel(item.node.meta.kind)">{{ kindLabel(item.node.meta.kind) }}</small></span>
               <span v-if="item.node.loading" class="ide-muted">加载中…</span>
@@ -55,7 +57,11 @@
         </ul>
 
         <p v-if="searched.length" class="ide-search-result" data-search-result>
-          <span v-for="s in searched" :key="`${s.kind}.${s.name}`">{{ s.name }}<small>{{ s.kind }}</small></span>
+          <button v-for="s in searched" :key="`${s.local ? 'l' : 'r'}.${s.kind}.${s.name}`" type="button"
+                  :data-search-hit="s.name" :disabled="s.kind !== 'table' && s.kind !== 'view'"
+                  @click="fillFromSearch(s)">
+            {{ s.name }}<small>{{ s.kind }}</small><small v-if="s.local" class="ide-loaded">已加载</small>
+          </button>
         </p>
       </aside>
       </Pane>
@@ -241,6 +247,69 @@
       </ul>
     </aside>
     <button v-else type="button" class="ide-scripts-open" data-scripts-toggle @click="openScripts">SQL 资产</button>
+    <!-- G10 表/视图悬浮菜单：hover 触发、teleport body、fixed 定位、260ms 延迟隐藏；
+         预制 SQL 语义 = 仅填充编辑器，绝不自动执行（底部固定提示）。 -->
+    <Teleport to="body">
+      <div v-if="hoverMenuNode" class="ide-hover-menu" data-hover-menu
+           :style="{ left: `${hoverMenuPos.x}px`, top: `${hoverMenuPos.y}px` }"
+           @mouseenter="cancelMenuHide" @mouseleave="scheduleMenuHide">
+        <button v-for="item in hoverMenuItems" :key="item.key" type="button"
+                :data-menu-item="item.key" @click="item.run()">{{ item.label }}</button>
+        <p class="ide-menu-foot">预制 SQL 仅填充编辑器，不自动执行</p>
+      </div>
+    </Teleport>
+
+    <!-- §6.2 创建列（440px）：纯前端生成 ALTER，仅填充不执行 -->
+    <div v-if="addColumnOpen" class="ide-dialog-mask" data-add-column-dialog @click.self="addColumnOpen = false">
+      <section class="ide-dialog ide-dialog-form" role="dialog" aria-label="创建列">
+        <header class="ide-dialog-head">
+          <h3>创建列 · {{ relationLabel }}</h3>
+          <button type="button" @click="addColumnOpen = false">×</button>
+        </header>
+        <div class="ide-dialog-body ide-form-grid">
+          <label>目标表<input :value="relationLabel" readonly data-target-table /></label>
+          <label>字段名<input v-model.trim="addColumnForm.name" data-column-name placeholder="字段名" /></label>
+          <label>类型
+            <select v-model="addColumnForm.type" data-column-type>
+              <option v-for="t in COLUMN_TYPES" :key="t" :value="t">{{ t }}</option>
+            </select>
+          </label>
+          <label>长度
+            <input v-model.trim="addColumnForm.length" data-column-length
+                   :disabled="!lengthEnabled" placeholder="如 64" />
+          </label>
+          <label>默认值<input v-model="addColumnForm.defaultValue" data-column-default placeholder="可空" /></label>
+          <label class="ide-form-check"><input type="checkbox" v-model="addColumnForm.nullable" data-column-nullable /> 允许 NULL</label>
+        </div>
+        <footer class="ide-dialog-foot">
+          <button type="button" data-generate-column @click="generateAddColumn">生成 SQL</button>
+        </footer>
+      </section>
+    </div>
+
+    <!-- §6.3 创建索引（440px）：纯前端生成 CREATE INDEX，仅填充不执行 -->
+    <div v-if="addIndexOpen" class="ide-dialog-mask" data-add-index-dialog @click.self="addIndexOpen = false">
+      <section class="ide-dialog ide-dialog-form" role="dialog" aria-label="创建索引">
+        <header class="ide-dialog-head">
+          <h3>创建索引 · {{ relationLabel }}</h3>
+          <button type="button" @click="addIndexOpen = false">×</button>
+        </header>
+        <div class="ide-dialog-body ide-form-grid">
+          <label>索引名<input v-model.trim="addIndexForm.name" data-index-name placeholder="idx_表名" /></label>
+          <label>字段（逗号分隔）<input v-model.trim="addIndexForm.columns" data-index-columns placeholder="col1,col2" /></label>
+          <label class="ide-form-check"><input type="checkbox" v-model="addIndexForm.unique" data-index-unique /> 唯一索引</label>
+        </div>
+        <footer class="ide-dialog-foot">
+          <button type="button" data-generate-index @click="generateAddIndex">生成 SQL</button>
+        </footer>
+      </section>
+    </div>
+
+    <TableDataDialog v-model:open="editDataOpen" :api="api" :datasource-id="datasourceId"
+                     :schema="dialogSchema" :table="dialogTable" @applied="onDialogNotice" />
+    <CsvImportDialog v-model:open="csvImportOpen" :api="api" :datasource-id="datasourceId"
+                     :schema="dialogSchema" :table="dialogTable" @imported="onDialogNotice" />
+
     <GlobalParamDrawer
       v-model="variableManagementOpen"
       :project-id="projectId ?? undefined"
@@ -273,6 +342,8 @@ import { format } from 'sql-formatter'
 import GlobalParamDrawer from '../../components/VariableManagementDialog.vue'
 import SqlCodeEditor from './SqlCodeEditor.vue'
 import ResultGrid from './ResultGrid.vue'
+import TableDataDialog from './TableDataDialog.vue'
+import CsvImportDialog from './CsvImportDialog.vue'
 import 'splitpanes/dist/splitpanes.css'
 import {
   createSqlIdeContract,
@@ -408,7 +479,7 @@ const KIND_LABEL: Partial<Record<TreeKind, string>> = {
 }
 const kindLabel = (k: TreeKind): string => KIND_LABEL[k] ?? ''
 
-const searched = ref<Array<{ kind: string; name: string; parent: string | null }>>([])
+const searched = ref<Array<{ kind: string; name: string; parent: string | null; local: boolean }>>([])
 const keyword = ref('')
 
 const treeCapability = ref('')
@@ -851,11 +922,37 @@ async function showDefinition(node: TreeNode): Promise<void> {
 async function runSearch(): Promise<void> {
   if (datasourceId.value === null || keyword.value === '') return
   try {
+    // S5 搜索合并（对标审计-03 §2.1）：后端 searchObjects（树未加载也能查）
+    // + 本地已加载树节点匹配（标「已加载」），各限 50 条，本地在前。
     const page = await api.value.searchObjects(datasourceId.value, keyword.value)
-    searched.value = page.items.map((o) => ({ kind: o.kind, name: o.name, parent: o.parent }))
+    const backend = page.items
+      .slice(0, 50)
+      .map((o) => ({ kind: o.kind, name: o.name, parent: o.parent, local: false }))
+    const needle = keyword.value.toLowerCase()
+    const local: typeof backend = []
+    const walk = (nodes: TreeNode[]): void => {
+      for (const node of nodes) {
+        const k = node.meta.kind
+        if ((k === 'table' || k === 'view' || k === 'function' || k === 'procedure' || k === 'trigger')
+          && node.meta.label.toLowerCase().includes(needle)) {
+          local.push({ kind: k, name: node.meta.label, parent: node.meta.schema, local: true })
+          if (local.length >= 50) return
+        }
+        if (node.expanded) walk(node.children)
+      }
+    }
+    walk(tree.value)
+    searched.value = [...local, ...backend]
   } catch (e) {
     error.value = message(e)
   }
+}
+
+/** 搜索命中行点击：仅填充 `SELECT * FROM parent.name LIMIT 100;`，不自动执行 */
+function fillFromSearch(item: { kind: string; name: string; parent: string | null }): void {
+  if (item.kind !== 'table' && item.kind !== 'view') return
+  const parent = item.parent ?? ''
+  fillEditor(parent ? `SELECT * FROM ${parent}.${item.name} LIMIT 100;` : `SELECT * FROM ${item.name} LIMIT 100;`)
 }
 
 async function runLint(): Promise<void> {
@@ -1545,6 +1642,198 @@ function onIdeKeydown(event: KeyboardEvent): void {
   }
 }
 
+/* ---------- G10 表/视图悬浮菜单（B4-d S5/S6，对标审计-03 §2.1/§6.2-6.5） ---------- */
+
+const COLUMN_TYPES = ['INT', 'BIGINT', 'TINYINT', 'VARCHAR', 'CHAR', 'TEXT', 'DECIMAL', 'DATE', 'DATETIME', 'BOOLEAN'] as const
+const MENU_HIDE_DELAY_MS = 260
+
+interface MenuTarget { schema: string; table: string; label: string }
+
+const hoverMenuNode = ref<TreeNode | null>(null)
+const hoverMenuPos = ref({ x: 0, y: 0 })
+let menuHideTimer: ReturnType<typeof setTimeout> | undefined
+
+const editDataOpen = ref(false)
+const csvImportOpen = ref(false)
+const addColumnOpen = ref(false)
+const addIndexOpen = ref(false)
+const dialogSchema = ref('')
+const dialogTable = ref('')
+const dialogLabel = ref('')
+
+const addColumnForm = ref({ name: '', type: 'VARCHAR', length: '', defaultValue: '', nullable: true })
+const addIndexForm = ref({ name: '', columns: '', unique: false })
+
+const lengthEnabled = computed(() => ['VARCHAR', 'CHAR', 'DECIMAL'].includes(addColumnForm.value.type))
+const relationLabel = computed(() => dialogLabel.value)
+
+function onTreeNodeEnter(node: TreeNode, event: MouseEvent): void {
+  if (node.meta.kind !== 'table' && node.meta.kind !== 'view') return
+  cancelMenuHide()
+  hoverMenuNode.value = node
+  const x = Math.min(event.clientX + 8, window.innerWidth - 200)
+  const y = Math.min(event.clientY + 8, window.innerHeight - 340)
+  hoverMenuPos.value = { x: Math.max(8, x), y: Math.max(8, y) }
+}
+
+function scheduleMenuHide(): void {
+  clearTimeout(menuHideTimer)
+  menuHideTimer = setTimeout(() => { hoverMenuNode.value = null }, MENU_HIDE_DELAY_MS)
+}
+
+function cancelMenuHide(): void {
+  clearTimeout(menuHideTimer)
+}
+
+function closeMenu(): void {
+  clearTimeout(menuHideTimer)
+  hoverMenuNode.value = null
+}
+
+function menuTarget(node: TreeNode): MenuTarget | null {
+  const m = node.meta
+  if (!m.schema) return null
+  return { schema: m.schema, table: m.label, label: `${m.schema}.${m.label}` }
+}
+
+/** 所有菜单动作统一的填充语义：仅覆写编辑器内容，绝不自动执行 */
+function fillEditor(sql: string): void {
+  sqlText.value = sql
+  closeMenu()
+  status.value = '已填充 SQL（未执行）'
+}
+
+interface HoverMenuItem { key: string; label: string; run: () => void }
+
+const hoverMenuItems = computed<HoverMenuItem[]>(() => {
+  const node = hoverMenuNode.value
+  if (!node) return []
+  const target = menuTarget(node)
+  if (!target) return []
+  const openDialog = (kind: 'edit' | 'csv' | 'column' | 'index'): void => {
+    dialogSchema.value = target.schema
+    dialogTable.value = target.table
+    dialogLabel.value = target.label
+    if (kind === 'edit') editDataOpen.value = true
+    else if (kind === 'csv') csvImportOpen.value = true
+    else if (kind === 'column') { resetColumnForm(); addColumnOpen.value = true }
+    else { resetIndexForm(); addIndexOpen.value = true }
+    closeMenu()
+  }
+  const items: HoverMenuItem[] = [
+    { key: 'select', label: '查询数据（可限定行数）', run: () => void promptSelectRows(node, target) },
+    { key: 'edit', label: '编辑数据', run: () => openDialog('edit') },
+    { key: 'ddl', label: '结构（DDL）', run: () => void fillDdl(node, target) },
+    { key: 'count', label: '行数统计', run: () => fillEditor(`SELECT COUNT(*) AS cnt FROM ${target.schema}.${target.table};`) },
+    { key: 'add-column', label: '创建列', run: () => openDialog('column') },
+    { key: 'add-index', label: '创建索引', run: () => openDialog('index') },
+    { key: 'csv', label: '导入数据（CSV）', run: () => openDialog('csv') },
+  ]
+  // DROP/TRUNCATE 仅对表开放（视图无截断语义）；无条件项同样先过稽核，
+  // 差异只在 confirm 文案是否附稽核明细（对标审计-03 #8-#11）。
+  if (node.meta.kind === 'table') {
+    const auditAndFill = (op: 'drop' | 'truncate', withDetail: boolean): void => {
+      void runDestructive(node, target, op, withDetail)
+    }
+    items.push(
+      { key: 'drop', label: '删除表（无条件）', run: () => auditAndFill('drop', false) },
+      { key: 'drop-audit', label: '删除表（稽核校验）', run: () => auditAndFill('drop', true) },
+      { key: 'truncate', label: '截断表（无条件）', run: () => auditAndFill('truncate', false) },
+      { key: 'truncate-audit', label: '截断表（稽核校验）', run: () => auditAndFill('truncate', true) },
+    )
+  }
+  return items
+})
+
+async function promptSelectRows(node: TreeNode, target: MenuTarget): Promise<void> {
+  const input = prompt(`查询 ${target.label}（行数上限）`, '100')
+  if (input === null) return
+  const rows = input.trim()
+  if (!/^\d+$/.test(rows)) {
+    closeMenu()
+    error.value = '行数上限须为非负整数'
+    return
+  }
+  fillEditor(`SELECT * FROM ${target.schema}.${target.table} LIMIT ${rows};`)
+}
+
+async function fillDdl(node: TreeNode, target: MenuTarget): Promise<void> {
+  try {
+    const def = await api.value.getDefinition({
+      datasourceId: node.meta.dsId,
+      database: node.meta.db ?? '',
+      objectKind: node.meta.kind as DefinitionObjectKind,
+      objectRef: { schema: target.schema, name: target.table },
+    })
+    fillEditor(`-- ${target.label} 结构\n${def.definition};`)
+  } catch (e) {
+    closeMenu()
+    error.value = message(e)
+  }
+}
+
+/** S6 稽核交互：audit pass → confirm → 仅填充；block → 硬阻断 alert */
+async function runDestructive(node: TreeNode, target: MenuTarget, op: 'drop' | 'truncate', withDetail: boolean): Promise<void> {
+  closeMenu()
+  try {
+    const audit = await api.value.auditTable({
+      datasourceId: node.meta.dsId, schema: target.schema, table: target.table, op,
+    })
+    if (audit.status === 'block') {
+      alert(`稽核未通过，已硬阻断：\n${audit.findings.map((f) => `${f.code}: ${f.message}`).join('\n')}`)
+      return
+    }
+    const detail = withDetail
+      ? `\n稽核明细：\n${audit.findings.map((f) => `- [${f.severity}] ${f.code}: ${f.message}`).join('\n')}\n`
+      : ''
+    const rowCount = audit.rowCount === null ? '' : `（约 ${audit.rowCount} 行）`
+    const statement = op === 'drop'
+      ? `DROP TABLE ${target.schema}.${target.table};`
+      : `TRUNCATE TABLE ${target.schema}.${target.table};`
+    if (confirm(`${op === 'drop' ? '删除' : '截断'} ${target.label}${rowCount}${detail}\n确认后仅填充 SQL，不自动执行。`)) {
+      fillEditor(statement)
+    }
+  } catch (e) {
+    error.value = message(e)
+  }
+}
+
+function resetColumnForm(): void {
+  addColumnForm.value = { name: '', type: 'VARCHAR', length: '', defaultValue: '', nullable: true }
+}
+
+function resetIndexForm(): void {
+  addIndexForm.value = { name: '', columns: '', unique: false }
+}
+
+/** §6.2 生成 ALTER TABLE ADD COLUMN（仅填充，不执行） */
+function generateAddColumn(): void {
+  const name = addColumnForm.value.name
+  if (!name) { error.value = '字段名不能为空'; return }
+  const t = addColumnForm.value.type
+  const length = addColumnForm.value.length.trim()
+  const typed = (t === 'VARCHAR' || t === 'CHAR' || t === 'DECIMAL') && length !== '' ? `${t}(${length})` : t
+  const nullable = addColumnForm.value.nullable ? '' : ' NOT NULL'
+  const def = addColumnForm.value.defaultValue.trim()
+  const defaultPart = def !== '' ? ` DEFAULT ${def}` : ''
+  fillEditor(`ALTER TABLE ${dialogSchema.value}.${dialogTable.value} ADD COLUMN ${name} ${typed}${nullable}${defaultPart};`)
+  addColumnOpen.value = false
+}
+
+/** §6.3 生成 CREATE [UNIQUE] INDEX（仅填充，不执行） */
+function generateAddIndex(): void {
+  const name = addIndexForm.value.name || `idx_${dialogTable.value}`
+  const columns = addIndexForm.value.columns.split(',').map((c) => c.trim()).filter(Boolean)
+  if (columns.length === 0) { error.value = '索引字段不能为空'; return }
+  const unique = addIndexForm.value.unique ? 'UNIQUE ' : ''
+  fillEditor(`CREATE ${unique}INDEX ${name} ON ${dialogSchema.value}.${dialogTable.value} (${columns.join(', ')});`)
+  addIndexOpen.value = false
+}
+
+function onDialogNotice(text: string): void {
+  status.value = text
+}
+
 function bindIdeShortcuts(): void {
   window.removeEventListener('keydown', onIdeKeydown)
   window.addEventListener('keydown', onIdeKeydown)
@@ -1577,6 +1866,7 @@ onUnmounted(() => {
   currentEventStream.value?.close()
   stopStatusPolling()
   clearLongWaitTimer()
+  clearTimeout(menuHideTimer)
 })
 </script>
 
@@ -1660,4 +1950,25 @@ onUnmounted(() => {
 .ide-history-open,.ide-scripts-open{margin-top:16px}
 .mono,code{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12px}
 @media(max-width:900px){.ide-split{height:auto;min-height:0;overflow:visible}.ide-split:deep(>.splitpanes__pane){width:100%!important}.ide-split{display:block}.ide-left{max-height:320px}.ide-right{height:720px}}
+
+/* B4-d：G10 悬浮菜单 + §6.2/§6.3 表单弹窗 */
+.ide-hover-menu{position:fixed;z-index:70;display:flex;flex-direction:column;min-width:200px;background:var(--card);border:1px solid var(--border);border-radius:var(--radius);box-shadow:0 8px 24px rgba(0,0,0,.18);padding:4px}
+.ide-hover-menu button{border:none;background:transparent;color:var(--text);text-align:left;padding:7px 12px;font-size:13px;cursor:pointer;border-radius:4px}
+.ide-hover-menu button:hover{background:var(--primary);color:var(--card)}
+.ide-menu-foot{margin:4px 8px 2px;padding-top:6px;border-top:1px solid var(--border);color:var(--text-2);font-size:11px;white-space:nowrap}
+.ide-search-result{display:flex;flex-wrap:wrap;gap:6px}
+.ide-search-result button{border:1px solid var(--border);background:transparent;color:var(--text);border-radius:4px;padding:2px 8px;font-size:12px;cursor:pointer}
+.ide-search-result button:disabled{cursor:default;opacity:.55}
+.ide-search-result .ide-loaded{color:var(--success);margin-left:4px}
+.ide-dialog-mask{position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:60;display:flex;align-items:flex-start;justify-content:center}
+.ide-dialog-form{background:var(--card);color:var(--text);border:1px solid var(--border);border-radius:var(--radius);margin-top:12vh;width:440px;max-width:92vw}
+.ide-dialog-form .ide-dialog-head{display:flex;align-items:center;justify-content:space-between;padding:12px 16px;border-bottom:1px solid var(--border)}
+.ide-dialog-form .ide-dialog-head h3{margin:0;font-size:15px}
+.ide-dialog-form .ide-dialog-head button{border:none;background:transparent;color:var(--text-2);font-size:18px;cursor:pointer}
+.ide-form-grid{display:flex;flex-direction:column;gap:10px;padding:14px 16px}
+.ide-form-grid label{display:flex;flex-direction:column;gap:4px;font-size:12px;color:var(--text-2)}
+.ide-form-grid input,.ide-form-grid select{border:1px solid var(--border);background:var(--card);color:var(--text);border-radius:4px;padding:6px 8px;font-size:13px}
+.ide-form-grid input[readonly]{color:var(--text-2)}
+.ide-form-check{flex-direction:row!important;align-items:center;gap:6px!important}
+.ide-dialog-form .ide-dialog-foot{display:flex;justify-content:flex-end;gap:10px;padding:12px 16px;border-top:1px solid var(--border)}
 </style>

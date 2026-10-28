@@ -12,15 +12,40 @@ describe('R5-A sqlIdeApi route contract', () => {
   })
 
   it('keeps the frozen readonly method list', () => {
-    expect(R5A_CONTRACT_METHODS).toHaveLength(24)
-    expect(new Set(R5A_CONTRACT_METHODS).size).toBe(24)
+    expect(R5A_CONTRACT_METHODS).toHaveLength(28)
+    expect(new Set(R5A_CONTRACT_METHODS).size).toBe(28)
     expect(R5A_CONTRACT_METHODS).toEqual([
       'listDatabases', 'listSchemas', 'listRelations', 'listColumns', 'listRoutines',
       'listIndexes', 'searchObjects', 'lintSql', 'executeSql', 'cancelExecution',
       'getExecutionStatus', 'openEventStream', 'fetchResultPage', 'listHistory', 'deleteHistory',
       'listScripts', 'saveScript', 'deleteScript', 'getDefinition', 'exportResult',
       'exportTable', 'getExport', 'getExportDownloadUrl', 'cancelExport',
+      'listTableRows', 'applyTableRows', 'importCsv', 'auditTable',
     ])
+  })
+
+  it('wires the B4-d table-data routes for the floating menu dialogs', async () => {
+    fetchMock
+      .mockResolvedValueOnce({ ok: true, status: 200, json: async () => ({ code: 0, msg: 'success', data: { columns: ['id'], rows: [[1]], total: 1, primary_keys: ['id'], offset: 0, capability: 'supported', constraints: ['read-only'] } }) })
+      .mockResolvedValueOnce({ ok: true, status: 200, json: async () => ({ code: 0, msg: 'success', data: { inserted: 1, updated: 0, deleted: 0 } }) })
+      .mockResolvedValueOnce({ ok: true, status: 200, json: async () => ({ code: 0, msg: 'success', data: { imported: 2 } }) })
+      .mockResolvedValueOnce({ ok: true, status: 200, json: async () => ({ code: 0, msg: 'success', data: { status: 'pass', op: 'drop', schema: 'app', table: 'users', row_count: 12, findings: [{ severity: 'warning', code: 'DESTRUCTIVE_OP', message: 'destroys data' }] } }) })
+    const contract = createSqlIdeContract(23)
+
+    await expect(contract.listTableRows({ datasourceId: 9, schema: 'app', table: 'users', limit: 200, offset: 0 })).resolves.toMatchObject({ total: 1, primaryKeys: ['id'] })
+    await expect(contract.applyTableRows({ datasourceId: 9, schema: 'app', table: 'users', primaryKeys: ['id'], inserts: [{ id: 2 }], updates: [], deletes: [] })).resolves.toEqual({ inserted: 1, updated: 0, deleted: 0 })
+    await expect(contract.importCsv({ datasourceId: 9, schema: 'app', table: 'users', columns: ['id'], rows: [[1], [2]] })).resolves.toEqual({ imported: 2 })
+    await expect(contract.auditTable({ datasourceId: 9, schema: 'app', table: 'users', op: 'drop' })).resolves.toMatchObject({ status: 'pass', rowCount: 12, findings: [{ code: 'DESTRUCTIVE_OP' }] })
+
+    expect(fetchMock.mock.calls.map(([url, init]) => [url, init?.method])).toEqual([
+      ['/api/v1/projects/23/sql-ide/rows?datasourceId=9&schema=app&table=users&limit=200&offset=0', 'GET'],
+      ['/api/v1/projects/23/sql-ide/rows/apply', 'POST'],
+      ['/api/v1/projects/23/sql-ide/import-csv', 'POST'],
+      ['/api/v1/projects/23/sql-ide/audit', 'POST'],
+    ])
+    expect(JSON.parse(fetchMock.mock.calls[1][1].body)).toEqual({
+      datasourceId: 9, schema: 'app', table: 'users', primaryKeys: ['id'], inserts: [{ id: 2 }], updates: [], deletes: [],
+    })
   })
 
   it('queries the project-scoped execution status route for terminal-state fallback', async () => {

@@ -38,6 +38,13 @@ from rebuild.sql_ide.routes import SqlIdeRouteError, build_sql_ide_router
 from rebuild.sql_ide.result_store import SqlIdeResultSetRecord
 from rebuild.sql_ide.result_store import PersistentResultPageStore
 from rebuild.sql_ide.status_store import SqlIdeExecutionEventRecord, SqlIdeExecutionRecord, SqlIdeStatusStore
+from rebuild.sql_ide.table_data import (
+    TableDataError,
+    apply_table_changes,
+    audit_table_op,
+    import_csv_rows,
+    read_table_rows,
+)
 from rebuild.identity.contracts import Permission, Role, ROLE_PERMISSIONS, TokenService, authorize
 from rebuild.identity.models import ActiveTokenRecord, ProjectMemberRecord, UserRecord
 from rebuild.identity.passwords import verify_password
@@ -769,6 +776,32 @@ def create_app(
             return Response(content=body, media_type=media_type, headers={"Content-Disposition": f'attachment; filename="{filename}"'})
         if operation == "cancelExport":
             return {"cancelled": export_service().cancel(project_id=project_id, user_id=user_id, export_id=str(payload.get("export_id")))}
+        if operation in {"listTableRows", "applyTableRows", "importCsv", "auditTable"}:
+            datasource_id = int(payload.get("datasource_id", payload.get("datasourceId", 0)) or 0)
+            if datasource_id < 1:
+                raise SqlIdeRouteError("INVALID_REQUEST", message="datasource_id is required")
+            with session_factory() as session:
+                record = ProjectDatasourceRepository(session).get(project_id, datasource_id)
+                if record is None:
+                    raise SqlIdeRouteError("DATASOURCE_UNAVAILABLE", message="datasource not found")
+                draft = datasource_draft(record)
+            dialect = "postgres" if str(record.kind).lower() == "postgresql" else "mysql"
+            connection = datasource_engines.connect(project_id, datasource_id, draft)
+            try:
+                if operation == "listTableRows":
+                    return read_table_rows(connection, dialect=dialect, payload=payload)
+                if operation == "applyTableRows":
+                    return apply_table_changes(connection, dialect=dialect, payload=payload)
+                if operation == "importCsv":
+                    return import_csv_rows(connection, dialect=dialect, payload=payload)
+                return audit_table_op(connection, dialect=dialect, payload=payload)
+            except TableDataError as exc:
+                raise SqlIdeRouteError(exc.error_code, message=exc.message) from exc
+            finally:
+                try: connection.rollback()
+                except Exception: pass
+                try: connection.close()
+                except Exception: pass
         raise SqlIdeRouteError("DRIVER_ERROR", message=f"SQL IDE operation {operation} is not wired")
 
     app.state.sql_ide_dispatch = sql_ide_dispatch

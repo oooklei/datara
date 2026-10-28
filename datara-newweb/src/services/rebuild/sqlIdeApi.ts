@@ -364,6 +364,10 @@ export const R5A_CONTRACT_METHODS = [
   'getExport',
   'getExportDownloadUrl',
   'cancelExport',
+  'listTableRows',
+  'applyTableRows',
+  'importCsv',
+  'auditTable',
 ] as const
 
 export type R5AContractMethod = (typeof R5A_CONTRACT_METHODS)[number]
@@ -403,6 +407,48 @@ export interface SqlIdeContract {
   getExport: (exportId: string) => Promise<ExportResult>
   getExportDownloadUrl: (exportId: string) => string
   cancelExport: (exportId: string) => Promise<void>
+  /** 编辑数据弹窗分页读取（B4-d / 审计 §6.4） */
+  listTableRows: (input: { datasourceId: number; schema: string; table: string; limit?: number; offset?: number }) => Promise<TableRowsPage>
+  /** 编辑数据弹窗整批提交：单事务、后端 1000 行硬上限（审计 §6.4） */
+  applyTableRows: (input: {
+    datasourceId: number
+    schema: string
+    table: string
+    primaryKeys: string[]
+    inserts: Array<Record<string, unknown>>
+    updates: Array<{ keys: Record<string, unknown>; set: Record<string, unknown> }>
+    deletes: Array<Record<string, unknown>>
+  }) => Promise<{ inserted: number; updated: number; deleted: number }>
+  /** CSV 导入：前端解析后整批 JSON 提交，后端 10 万行硬上限（审计 §6.5） */
+  importCsv: (input: { datasourceId: number; schema: string; table: string; columns: string[]; rows: unknown[][] }) => Promise<{ imported: number }>
+  /** DROP/TRUNCATE 预检：存在性 + 行数规模告警，block 级前端硬阻断（S6） */
+  auditTable: (input: { datasourceId: number; schema: string; table: string; op: 'drop' | 'truncate' }) => Promise<TableAuditResult>
+}
+
+export interface TableRowsPage {
+  columns: string[]
+  /** 与 columns 对齐的行数组（对象键会被 HTTP 适配层 snake→camel 改写，禁用） */
+  rows: unknown[][]
+  total: number
+  primaryKeys: string[]
+  offset: number
+  capability: string
+  constraints: string[]
+}
+
+export interface TableAuditFinding {
+  severity: string
+  code: string
+  message: string
+}
+
+export interface TableAuditResult {
+  status: string
+  op: string
+  schema: string
+  table: string
+  rowCount: number | null
+  findings: TableAuditFinding[]
 }
 
 /* ---------- API 实现（方法清单见 R5A_CONTRACT_METHODS） ---------- */
@@ -462,6 +508,10 @@ export function createSqlIdeContract(projectId = 1): SqlIdeContract {
     getExport: (exportId) => request(projectId, `/exports/${encodeURIComponent(exportId)}`),
     getExportDownloadUrl: (exportId) => `${API_BASE}/${projectId}/sql-ide/exports/${encodeURIComponent(exportId)}/download`,
     cancelExport: async (exportId) => { await request(projectId, `/exports/${encodeURIComponent(exportId)}`, 'DELETE') },
+    listTableRows: ({ datasourceId, schema, table, limit, offset }) => request(projectId, `/rows${query({ datasourceId, schema, table, limit, offset })}`),
+    applyTableRows: (input) => request(projectId, '/rows/apply', 'POST', input),
+    importCsv: (input) => request(projectId, '/import-csv', 'POST', input),
+    auditTable: (input) => request(projectId, '/audit', 'POST', input),
   }
 }
 
