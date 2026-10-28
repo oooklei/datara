@@ -141,7 +141,7 @@ async function dispatch(type: string, payload: unknown): Promise<void> {
   await Promise.all((listeners[type] ?? []).map((cb) => cb({ data: JSON.stringify(payload) })))
 }
 
-describe('/ide 数据开发 IDE 只读态（增量 11/R5-A）', () => {
+describe('/ide 数据开发 IDE（S9 树根节点化）', () => {
   it('uses the shared r6 theme tokens instead of page-local hex colors', () => {
     expect(ideSource).not.toMatch(/#[0-9a-fA-F]{3,8}\b/)
     expect(ideSource).toContain('var(--')
@@ -179,16 +179,20 @@ describe('/ide 数据开发 IDE 只读态（增量 11/R5-A）', () => {
     expect(w.find('[data-variable-management-dialog-stub]').exists()).toBe(false)
   })
 
-  it('lists datasources for the project carried by route params', async () => {
+  it('renders authorized datasources as tree roots without a selector (S9)', async () => {
     router.route.params.projectId = '1'
     const w = mount(View)
     await flushPromises()
     expect(spies.listDatasources).toHaveBeenCalledTimes(1)
-    expect(w.find('[data-ds-select]').exists()).toBe(true)
-    expect(w.find('[data-no-datasource]').exists()).toBe(true)
+    expect(w.find('[data-ds-select]').exists()).toBe(false)
+    expect(w.find('[data-no-datasource]').exists()).toBe(false)
+    expect(w.find('[data-tree-node="source:7"]').exists()).toBe(true)
+    expect(w.find('[data-node-kind="source"]').exists()).toBe(true)
+    expect(spies.listDatabases).toHaveBeenCalledWith(7)
+    expect(w.find('[data-tree-node="db:7:orders"]').exists()).toBe(true)
   })
 
-  it('discards a stale database response after the datasource changes', async () => {
+  it('keeps per-root children isolated when a slow root responds after another root expanded', async () => {
     router.route.params.projectId = '1'
     spies.listDatasources.mockResolvedValue({ items: [datasource, { ...datasource, id: 8, name: '数仓库' }] })
     let resolveFirst!: (value: Awaited<ReturnType<typeof spies.listDatabases>>) => void
@@ -198,14 +202,16 @@ describe('/ide 数据开发 IDE 只读态（增量 11/R5-A）', () => {
     const w = mount(View)
     await flushPromises()
 
-    await w.find('[data-ds-select]').setValue('7')
-    await w.find('[data-ds-select]').setValue('8')
+    // 默认展开第一个根节点（source:7）时 listDatabases 挂起；点击第二个根节点（source:8）先完成
+    await w.find('[data-tree-node="source:8"]').trigger('click')
     await flushPromises()
+    expect(w.find('[data-tree-node="db:8:warehouse"]').exists()).toBe(true)
+
     resolveFirst({ items: [{ name: 'orders' }], capability: 'supported', constraints: [], page: { nextCursor: null, hasMore: false } })
     await flushPromises()
 
-    expect(w.find('[data-database-list]').text()).toContain('warehouse')
-    expect(w.find('[data-database-list]').text()).not.toContain('orders')
+    expect(w.find('[data-tree-node="db:7:orders"]').exists()).toBe(true)
+    expect(w.find('[data-tree-node="db:8:warehouse"]').exists()).toBe(true)
   })
 
   it('loads the project supplied by ProjectSegmentView prop', async () => {
@@ -213,39 +219,72 @@ describe('/ide 数据开发 IDE 只读态（增量 11/R5-A）', () => {
     await flushPromises()
     expect(spies.listDatasources).toHaveBeenCalledTimes(1)
     expect(w.find('[data-project-select]').exists()).toBe(false)
-    expect(w.find('[data-no-datasource]').exists()).toBe(true)
+    expect(w.find('[data-tree-node="source:7"]').exists()).toBe(true)
+    expect(w.find('[data-tree-node="db:7:orders"]').exists()).toBe(true)
   })
 
-  it('walks the object tree: databases → schemas → relations → columns/indexes', async () => {
+  it('walks the object tree: datasource root → databases → schemas → relations → columns/indexes (S9)', async () => {
     router.route.params.projectId = '1'
     const w = mount(View)
     await flushPromises()
-    await w.find('[data-ds-select]').setValue('7')
-    await flushPromises()
+    expect(w.find('[data-ds-select]').exists()).toBe(false)
     expect(spies.listDatabases).toHaveBeenCalledWith(7)
-    expect(w.find('[data-database-list]').exists()).toBe(true)
+    expect(w.find('[data-tree-node="db:7:orders"]').exists()).toBe(true)
 
-    await w.find('[data-database-list] button').trigger('click')
+    await w.find('[data-tree-node="db:7:orders"]').trigger('click')
     await flushPromises()
     expect(spies.listSchemas).toHaveBeenCalledWith(7, 'orders')
 
-    await w.find('[data-schema-list] button').trigger('click')
+    await w.find('[data-tree-node="schema:7:orders:public"]').trigger('click')
     await flushPromises()
     expect(spies.listRelations).toHaveBeenCalledWith(7, 'orders', 'public', 'table')
 
-    await w.find('[data-relation-list] button').trigger('click')
+    await w.find('[data-tree-node="rel:7:orders:public:table:orders"]').trigger('click')
     await flushPromises()
     expect(spies.listColumns).toHaveBeenCalledWith(7, 'orders', 'orders', 'public')
     expect(spies.listIndexes).toHaveBeenCalledWith(7, 'orders', 'orders', 'public')
-    expect(w.find('[data-column-list]').text()).toContain('id')
-    expect(w.find('[data-index-list]').text()).toContain('PRIMARY')
+    expect(w.find('[data-tree-node="col:7:orders:public:orders:id"]').exists()).toBe(true)
+    expect(w.find('[data-tree-node="idx:7:orders:public:orders:PRIMARY"]').exists()).toBe(true)
+  })
+
+  it('marks a datasource root denied when expansion is rejected with 403 and blocks re-expansion (S9)', async () => {
+    router.route.params.projectId = '1'
+    spies.listDatasources.mockResolvedValue({ items: [datasource, { ...datasource, id: 8, name: '数仓库' }] })
+    spies.listDatabases.mockRejectedValueOnce(Object.assign(new Error('forbidden'), { code: 403 }))
+    const w = mount(View)
+    await flushPromises()
+
+    expect(w.find('[data-node-denied]').text()).toContain('无权限访问该数据源')
+    expect(w.find('[data-tree-node="db:7:orders"]').exists()).toBe(false)
+
+    // denied 节点不可再展开：重复点击不触发新的鉴权请求
+    await w.find('[data-tree-node="source:7"]').trigger('click')
+    await flushPromises()
+    expect(spies.listDatabases).toHaveBeenCalledTimes(1)
+
+    // 另一个有权限根节点可正常展开
+    await w.find('[data-tree-node="source:8"]').trigger('click')
+    await flushPromises()
+    expect(spies.listDatabases).toHaveBeenCalledTimes(2)
+    expect(w.find('[data-tree-node="db:8:orders"]').exists()).toBe(true)
+  })
+
+  it('switches the execution context when clicking another datasource root (S9)', async () => {
+    router.route.params.projectId = '1'
+    spies.listDatasources.mockResolvedValue({ items: [datasource, { ...datasource, id: 8, name: '数仓库' }] })
+    const w = mount(View)
+    await flushPromises()
+    expect((w.vm as unknown as { datasourceId: number | null }).datasourceId).toBe(7)
+
+    await w.find('[data-tree-node="source:8"]').trigger('click')
+    await flushPromises()
+    expect((w.vm as unknown as { datasourceId: number | null }).datasourceId).toBe(8)
+    expect(w.find('[data-tree-node="db:8:orders"]').exists()).toBe(true)
   })
 
   it('executes SQL over SSE and renders the result grid', async () => {
     router.route.params.projectId = '1'
     const w = mount(View)
-    await flushPromises()
-    await w.find('[data-ds-select]').setValue('7')
     await flushPromises()
     await w.find('[data-sql-editor]').setValue('SELECT id FROM orders')
     await w.find('[data-execute]').trigger('click')
@@ -268,8 +307,6 @@ describe('/ide 数据开发 IDE 只读态（增量 11/R5-A）', () => {
   it('loads the first result page when the backend emits only a snake_case done event', async () => {
     router.route.params.projectId = '1'
     const w = mount(View)
-    await flushPromises()
-    await w.find('[data-ds-select]').setValue('7')
     await flushPromises()
     await w.find('[data-sql-editor]').setValue('SELECT 1 AS ok')
     await w.find('[data-execute]').trigger('click')
@@ -304,7 +341,6 @@ describe('/ide 数据开发 IDE 只读态（增量 11/R5-A）', () => {
     router.route.params.projectId = '1'
     const w = mount(View)
     await flushPromises()
-    await w.find('[data-ds-select]').setValue('7')
     await w.find('[data-sql-editor]').setValue('SELECT 1 AS ok')
     await w.find('[data-execute]').trigger('click')
     await flushPromises()
@@ -316,8 +352,6 @@ describe('/ide 数据开发 IDE 只读态（增量 11/R5-A）', () => {
   it('enables the next result page when the first SSE batch is partial', async () => {
     router.route.params.projectId = '1'
     const w = mount(View)
-    await flushPromises()
-    await w.find('[data-ds-select]').setValue('7')
     await flushPromises()
     await w.find('[data-sql-editor]').setValue('SELECT id FROM orders')
     await w.find('[data-execute]').trigger('click')
@@ -333,8 +367,6 @@ describe('/ide 数据开发 IDE 只读态（增量 11/R5-A）', () => {
   it('keeps the execution live while the authenticated SSE stream reconnects', async () => {
     router.route.params.projectId = '1'
     const w = mount(View)
-    await flushPromises()
-    await w.find('[data-ds-select]').setValue('7')
     await flushPromises()
     await w.find('[data-sql-editor]').setValue('SELECT 1')
     await w.find('[data-execute]').trigger('click')
@@ -358,8 +390,6 @@ describe('/ide 数据开发 IDE 只读态（增量 11/R5-A）', () => {
     try {
       router.route.params.projectId = '1'
       const w = mount(View)
-      await flushPromises()
-      await w.find('[data-ds-select]').setValue('7')
       await flushPromises()
       await w.find('[data-sql-editor]').setValue('SELECT 1')
       await w.find('[data-execute]').trigger('click')
@@ -387,8 +417,6 @@ describe('/ide 数据开发 IDE 只读态（增量 11/R5-A）', () => {
       router.route.params.projectId = '1'
       const w = mount(View)
       await flushPromises()
-      await w.find('[data-ds-select]').setValue('7')
-      await flushPromises()
       await w.find('[data-sql-editor]').setValue('SELECT 1')
       await w.find('[data-execute]').trigger('click')
       await flushPromises()
@@ -413,8 +441,6 @@ describe('/ide 数据开发 IDE 只读态（增量 11/R5-A）', () => {
     try {
       router.route.params.projectId = '1'
       const w = mount(View)
-      await flushPromises()
-      await w.find('[data-ds-select]').setValue('7')
       await flushPromises()
       await w.find('[data-sql-editor]').setValue('SELECT 1')
       await w.find('[data-execute]').trigger('click')
@@ -446,8 +472,6 @@ describe('/ide 数据开发 IDE 只读态（增量 11/R5-A）', () => {
       router.route.params.projectId = '1'
       const w = mount(View)
       await flushPromises()
-      await w.find('[data-ds-select]').setValue('7')
-      await flushPromises()
       await w.find('[data-sql-editor]').setValue('SELECT 1')
       await w.find('[data-execute]').trigger('click')
       await flushPromises()
@@ -467,8 +491,6 @@ describe('/ide 数据开发 IDE 只读态（增量 11/R5-A）', () => {
     router.route.params.projectId = '1'
     const w = mount(View)
     await flushPromises()
-    await w.find('[data-ds-select]').setValue('7')
-    await flushPromises()
     await w.find('[data-sql-editor]').setValue('SELECT ${workflow.biz_date}')
     await flushPromises()
     expect(w.find('[data-vars]').exists()).toBe(true)
@@ -485,8 +507,6 @@ describe('/ide 数据开发 IDE 只读态（增量 11/R5-A）', () => {
       diagnostics: [{ code: 'UNDEFINED', message: '变量未定义：workflow.oops' }],
     })
     const w = mount(View)
-    await flushPromises()
-    await w.find('[data-ds-select]').setValue('7')
     await flushPromises()
     await w.find('[data-sql-editor]').setValue('SELECT ${workflow.oops}')
     await w.find('[data-var-check]').trigger('click')
@@ -507,8 +527,6 @@ describe('/ide 数据开发 IDE 只读态（增量 11/R5-A）', () => {
     })
     const w = mount(View)
     await flushPromises()
-    await w.find('[data-ds-select]').setValue('7')
-    await flushPromises()
     await w.find('[data-sql-editor]').setValue('SELECT ${workflow.biz_date}')
     await w.find('[data-var-check]').trigger('click')
     await flushPromises()
@@ -518,8 +536,6 @@ describe('/ide 数据开发 IDE 只读态（增量 11/R5-A）', () => {
   it('completes variables from the server list and inserts the reference token (§5B)', async () => {
     router.route.params.projectId = '1'
     const w = mount(View)
-    await flushPromises()
-    await w.find('[data-ds-select]').setValue('7')
     await flushPromises()
     await w.find('[data-sql-editor]').setValue('SELECT ')
     await w.find('[data-var-complete]').trigger('click')
@@ -535,8 +551,6 @@ describe('/ide 数据开发 IDE 只读态（增量 11/R5-A）', () => {
     router.route.params.projectId = '1'
     spies.cancelExecution.mockResolvedValue({ canceled: true })
     const w = mount(View)
-    await flushPromises()
-    await w.find('[data-ds-select]').setValue('7')
     await flushPromises()
     await w.find('[data-sql-editor]').setValue('SELECT 1')
     await w.find('[data-execute]').trigger('click')
@@ -554,7 +568,6 @@ describe('/ide 数据开发 IDE 只读态（增量 11/R5-A）', () => {
     spies.cancelExecution.mockRejectedValue(new Error('cancel rejected'))
     const w = mount(View)
     await flushPromises()
-    await w.find('[data-ds-select]').setValue('7')
     await w.find('[data-sql-editor]').setValue('SELECT 1')
     await w.find('[data-execute]').trigger('click')
     await flushPromises()
@@ -573,7 +586,6 @@ describe('/ide 数据开发 IDE 只读态（增量 11/R5-A）', () => {
     vi.stubGlobal('open', open)
     const w = mount(View)
     await flushPromises()
-    await w.find('[data-ds-select]').setValue('7')
     await w.find('[data-sql-editor]').setValue('SELECT 1')
     await w.find('[data-execute]').trigger('click')
     await flushPromises()
@@ -594,7 +606,6 @@ describe('/ide 数据开发 IDE 只读态（增量 11/R5-A）', () => {
     spies.exportResult.mockRejectedValue(new Error('export unavailable'))
     const w = mount(View)
     await flushPromises()
-    await w.find('[data-ds-select]').setValue('7')
     await w.find('[data-sql-editor]').setValue('SELECT 1')
     await w.find('[data-execute]').trigger('click')
     await flushPromises()
@@ -616,8 +627,6 @@ describe('/ide 数据开发 IDE 只读态（增量 11/R5-A）', () => {
     ])
     const w = mount(View)
     await flushPromises()
-    await w.find('[data-ds-select]').setValue('7')
-    await flushPromises()
     await w.find('[data-history-toggle]').trigger('click')
     await flushPromises()
     expect(w.find('[data-history]').exists()).toBe(true)
@@ -632,8 +641,6 @@ describe('/ide 数据开发 IDE 只读态（增量 11/R5-A）', () => {
     ])
     spies.deleteScript.mockResolvedValue(undefined)
     const w = mount(View)
-    await flushPromises()
-    await w.find('[data-ds-select]').setValue('7')
     await flushPromises()
 
     await w.find('[data-scripts-toggle]').trigger('click')
@@ -653,8 +660,6 @@ describe('/ide 数据开发 IDE 只读态（增量 11/R5-A）', () => {
     router.route.params.projectId = '1'
     spies.listDatabases.mockRejectedValue(Object.assign(new Error('metadata browse failed'), { code: 5022 }))
     const w = mount(View)
-    await flushPromises()
-    await w.find('[data-ds-select]').setValue('7')
     await flushPromises()
     expect(w.find('[role=alert]').text()).toContain('metadata browse failed')
     expect(w.find('[data-sql-editor]').exists()).toBe(true)

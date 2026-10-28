@@ -3,15 +3,9 @@
     <header class="ide-head">
       <div>
         <h1>数据开发 IDE</h1>
-        <p>R5-A 只读态：对象树（库·Schema·表/视图/例程/索引）→ 写 SQL（含变量引用）→ 执行 → 结果网格 → 历史。DDL 写路径归增量 16/R5-B。</p>
+        <p>对象树（数据源 · 库 · Schema · 表/视图/例程 · 字段/索引）→ 编写 SQL（含变量引用）→ 执行 → 结果网格 → 历史。</p>
       </div>
       <div class="ide-actions">
-        <label class="ide-ds">数据源
-          <select v-model="selectedDs" data-ds-select @change="selectDatasource(Number(selectedDs))">
-            <option value="">请选择数据源</option>
-            <option v-for="d in datasources" :key="d.id" :value="String(d.id)">{{ d.name }}</option>
-          </select>
-        </label>
         <button type="button" data-variable-manage :disabled="projectId === null" @click="variableManagementOpen = true">变量管理</button>
         <button type="button" data-execute :disabled="!canExecute" @click="runSql">
           {{ executing ? '执行中…' : '执行' }}
@@ -25,7 +19,6 @@
     <p v-if="contractError" role="alert" data-contract-error>{{ contractError }}</p>
     <p v-if="status" role="status" data-status>{{ status }}</p>
     <p v-if="projectId === null" data-no-project>请先选择项目</p>
-    <p v-else-if="datasourceId === null" data-no-datasource>请先选择数据源</p>
 
     <Splitpanes v-else class="ide-split" data-ide-workspace @resized="onIdeResize('workspace', $event)">
       <Pane :size="ideSplit.workspace[0]">
@@ -36,77 +29,30 @@
             <input v-model.trim="keyword" data-search-input placeholder="表 / 视图 / 例程名"
                    @keyup.enter="runSearch" />
           </label>
-          <button type="button" data-search :disabled="keyword === ''" @click="runSearch">搜索</button>
+          <button type="button" data-search :disabled="keyword === '' || datasourceId === null" @click="runSearch">搜索</button>
           <p v-if="treeCapability" class="ide-cap" data-capability>能力分级：{{ treeCapability }}</p>
           <p v-if="treeConstraints.length" class="ide-muted">{{ treeConstraints.join('；') }}</p>
         </section>
 
-        <section v-if="databases.length">
-          <h3>库</h3>
-          <ul class="ide-tree" data-database-list>
-            <li v-for="db in databases" :key="db">
-              <button type="button" :class="{ active: db === activeDatabase }" @click="openDatabase(db)">{{ db }}</button>
-            </li>
-          </ul>
-        </section>
-
-        <section v-if="schemas.length">
-          <h3>Schema · {{ activeDatabase }}</h3>
-          <ul class="ide-tree" data-schema-list>
-            <li v-for="s in schemas" :key="s">
-              <button type="button" :class="{ active: s === activeSchema }" @click="openSchema(s)">{{ s }}</button>
-            </li>
-          </ul>
-        </section>
-
-        <section v-if="relations.length">
-          <h3>对象 · {{ activeSchema }}</h3>
-          <ul class="ide-tree" data-relation-list>
-            <li v-for="r in relations" :key="`${r.kind}.${r.name}`">
-              <button type="button" :class="{ active: r.name === activeRelation }" @click="openRelation(r)">
-                {{ r.name }}<small>{{ r.kind === 'view' ? '视图' : '表' }}</small>
-              </button>
-            </li>
-          </ul>
-        </section>
-
-        <section v-if="routines.length">
-          <h3>例程 · {{ activeSchema }}</h3>
-          <ul class="ide-tree" data-routine-list>
-            <li v-for="r in routines" :key="`${r.kind}.${r.name}`">
-              <button type="button" @click="showDefinition(r)">{{ r.name }}<small>{{ routineLabel(r.kind) }}</small></button>
-            </li>
-          </ul>
-        </section>
-
-        <section v-if="columns.length">
-          <h3>字段 · {{ activeSchema }}.{{ activeRelation }}</h3>
-          <table data-column-list>
-            <thead><tr><th>字段</th><th>类型</th><th>可空</th><th>键</th></tr></thead>
-            <tbody>
-              <tr v-for="c in columns" :key="c.name">
-                <td>{{ c.name }}</td>
-                <td>{{ c.dataType }}</td>
-                <td>{{ c.nullable ? '是' : '否' }}</td>
-                <td>{{ c.key ?? '' }}</td>
-              </tr>
-            </tbody>
-          </table>
-        </section>
-
-        <section v-if="indexes.length">
-          <h3>索引 · {{ activeRelation }}</h3>
-          <table data-index-list>
-            <thead><tr><th>索引</th><th>列</th><th>唯一</th></tr></thead>
-            <tbody>
-              <tr v-for="i in indexes" :key="i.name">
-                <td>{{ i.name }}</td>
-                <td>{{ i.columns.join(', ') }}</td>
-                <td>{{ i.unique ? '是' : '否' }}</td>
-              </tr>
-            </tbody>
-          </table>
-        </section>
+        <!-- S9 树根节点化（用户裁定 2026-10-28）：无数据源选择器；根节点 = 当前用户
+             有权限访问的全部数据源；点击根节点切换执行上下文；展开时后端逐级鉴权，
+             403 节点提示"无权限访问该数据源"且不可展开；默认展开第一个根节点。 -->
+        <p v-if="tree.length === 0" class="ide-muted" data-tree-empty>暂无有权限数据源</p>
+        <ul v-else class="ide-tree" data-object-tree>
+          <li v-for="item in visibleNodes" :key="item.node.meta.key">
+            <button type="button"
+                    :data-tree-node="item.node.meta.key"
+                    :data-node-kind="item.node.meta.kind"
+                    :class="{ active: item.node.meta.key === activeNodeKey, denied: item.node.denied }"
+                    :style="{ paddingLeft: `${item.depth * 14 + 8}px` }"
+                    @click="onNodeClick(item.node)">
+              <span class="ide-tree-arrow">{{ item.node.meta.expandable ? (item.node.expanded ? '▾' : '▸') : '' }}</span>
+              <span class="ide-tree-label">{{ item.node.meta.label }}<small v-if="kindLabel(item.node.meta.kind)">{{ kindLabel(item.node.meta.kind) }}</small></span>
+              <span v-if="item.node.loading" class="ide-muted">加载中…</span>
+              <span v-else-if="item.node.denied" class="ide-denied" data-node-denied>{{ item.node.deniedText }}</span>
+            </button>
+          </li>
+        </ul>
 
         <p v-if="searched.length" class="ide-search-result" data-search-result>
           <span v-for="s in searched" :key="`${s.kind}.${s.name}`">{{ s.name }}<small>{{ s.kind }}</small></span>
@@ -252,7 +198,7 @@
 
 <script setup lang="ts">
 /**
- * 增量 11：数据开发 IDE 只读态（`/ide`）。
+ * 数据开发 IDE（`/ide`）。
  *
  * 契约面：`sqlIdeApi`（createSqlIdeContract，R5-A 只读 23 方法）——
  *   对象树 listDatabases/Schemas/Relations/Columns/Routines/Indexes/searchObjects、
@@ -261,8 +207,11 @@
  * 数据源列表复用 `datasourceApi`（createDatasourceContract.listDatasources）。
  * 唯一后端事实源为 rebuild-api(8001)；项目数据由 URL 中的 projectId 隔离。
  * 项目上下文：`/ide` 为全局模式路由（AppShell 项目模式仅覆盖 `/p/` 前缀），
- *   故项目段从 `route.params.projectId` 或 `route.query.projectId` 承接；
- *   两者皆空时呈现选择器，不渲染空壳。
+ *   故项目段从 `route.params.projectId` 或 `route.query.projectId` 承接。
+ * S9 树根节点化（用户裁定 2026-10-28）：对象树为单棵懒加载树，根节点 =
+ *   当前用户有权限访问的全部数据源（listDatasources 项目域即权限过滤面）；
+ *   点击根节点切换执行上下文；展开时后端逐级鉴权（sql_ide 路由 + datasource
+ *   rb 授权），403 节点提示"无权限访问该数据源"且不可展开；默认展开第一个根。
  * 范式：CodeMirror 6 编辑器 + splitpanes 持久化工作区，业务操作仍只调用真实后端契约。
  */
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
@@ -274,8 +223,8 @@ import SqlCodeEditor from './SqlCodeEditor.vue'
 import 'splitpanes/dist/splitpanes.css'
 import {
   createSqlIdeContract,
+  type DefinitionObjectKind,
   type HistoryEntry,
-  type RoutineMeta,
   type ScriptEntry,
   type SqlDiagnostic,
   type SqlDoneEvent,
@@ -327,18 +276,84 @@ function onIdeResize(area: 'workspace' | 'editor', payload: SplitpanesResizedPay
 const projects = ref<ProjectSummary[]>([])
 const variableManagementOpen = ref(false)
 const selected = ref('')
-const datasources = ref<DatasourceRecord[]>([])
-const selectedDs = ref('')
 
-const databases = ref<string[]>([])
+/* ---------- S9 对象树：根节点 = 有权限数据源，懒加载逐级展开 ---------- */
+
+type TreeKind =
+  | 'source' | 'database' | 'schema'
+  | 'table' | 'view' | 'function' | 'procedure' | 'trigger'
+  | 'column' | 'index'
+
+interface TreeMeta {
+  key: string
+  kind: TreeKind
+  label: string
+  dsId: number
+  db: string | null
+  schema: string | null
+  name: string
+  expandable: boolean
+}
+
+interface TreeNode {
+  meta: TreeMeta
+  expanded: boolean
+  loading: boolean
+  denied: boolean
+  deniedText: string
+  children: TreeNode[]
+}
+
+type NodeInit = { kind: TreeKind; label: string; dsId: number; db?: string | null; schema?: string | null; name?: string; expandable: boolean }
+
+function nodeKey(m: Omit<TreeMeta, 'key'>): string {
+  switch (m.kind) {
+    case 'source': return `source:${m.dsId}`
+    case 'database': return `db:${m.dsId}:${m.label}`
+    case 'schema': return `schema:${m.dsId}:${m.db}:${m.label}`
+    case 'table': case 'view': return `rel:${m.dsId}:${m.db}:${m.schema}:${m.kind}:${m.label}`
+    case 'function': case 'procedure': case 'trigger': return `rtn:${m.dsId}:${m.db}:${m.schema}:${m.kind}:${m.label}`
+    case 'column': return `col:${m.dsId}:${m.db}:${m.schema}:${m.name}:${m.label}`
+    default: return `idx:${m.dsId}:${m.db}:${m.schema}:${m.name}:${m.label}`
+  }
+}
+
+function makeNode(init: NodeInit): TreeNode {
+  const m = {
+    kind: init.kind,
+    label: init.label,
+    dsId: init.dsId,
+    db: init.db ?? null,
+    schema: init.schema ?? null,
+    name: init.name ?? init.label,
+    expandable: init.expandable,
+  }
+  return { meta: { ...m, key: nodeKey(m) }, expanded: false, loading: false, denied: false, deniedText: '', children: [] }
+}
+
+const tree = ref<TreeNode[]>([])
+const activeNodeKey = ref('')
 const activeDatabase = ref('')
-const schemas = ref<string[]>([])
 const activeSchema = ref('')
-const relations = ref<Array<{ kind: 'table' | 'view'; name: string }>>([])
 const activeRelation = ref('')
-const columns = ref<Array<{ name: string; dataType: string; nullable: boolean; key?: string | null }>>([])
-const indexes = ref<Array<{ name: string; columns: string[]; unique: boolean }>>([])
-const routines = ref<RoutineMeta[]>([])
+
+const visibleNodes = computed(() => {
+  const out: Array<{ node: TreeNode; depth: number }> = []
+  const walk = (nodes: TreeNode[], depth: number): void => {
+    for (const node of nodes) {
+      out.push({ node, depth })
+      if (node.expanded && node.children.length > 0) walk(node.children, depth + 1)
+    }
+  }
+  walk(tree.value, 0)
+  return out
+})
+
+const KIND_LABEL: Partial<Record<TreeKind, string>> = {
+  table: '表', view: '视图', function: '函数', procedure: '存储过程', trigger: '触发器', column: '字段', index: '索引',
+}
+const kindLabel = (k: TreeKind): string => KIND_LABEL[k] ?? ''
+
 const searched = ref<Array<{ kind: string; name: string; parent: string | null }>>([])
 const keyword = ref('')
 
@@ -392,11 +407,15 @@ const history = ref<HistoryEntry[]>([])
 const historyOpen = ref(false)
 const scripts = ref<ScriptEntry[]>([])
 const scriptsOpen = ref(false)
-let datasourceGeneration = 0
 
-const ROUTINE_LABEL: Record<RoutineMeta['kind'], string> = { function: '函数', procedure: '存储过程', trigger: '触发器' }
-const routineLabel = (k: RoutineMeta['kind']): string => ROUTINE_LABEL[k] ?? k
 const message = (e: unknown): string => (e instanceof Error ? e.message : String(e))
+
+/** 403 鉴权失败判定：SqlIdeApiError.code === 403（sql_ide PERMISSION_DENIED 包络）；ContractApiError.httpStatus === 403。 */
+function isPermissionError(e: unknown): boolean {
+  const code = (e as { code?: unknown } | null)?.code
+  const httpStatus = (e as { httpStatus?: unknown } | null)?.httpStatus
+  return code === 403 || httpStatus === 403
+}
 
 const dsApi = computed<DatasourceContract>(() =>
   projectId.value === null ? ({} as DatasourceContract) : createDatasourceContract(projectId.value),
@@ -422,10 +441,8 @@ const projectId = computed<number | null>(() => {
   const n = Number(selected.value)
   return selected.value !== '' && Number.isInteger(n) && n > 0 ? n : null
 })
-const datasourceId = computed<number | null>(() => {
-  const n = Number(selectedDs.value)
-  return selectedDs.value !== '' && Number.isInteger(n) && n > 0 ? n : null
-})
+/** 执行上下文：点击根节点（source:*）切换；默认展开第一个根节点时即建立。 */
+const datasourceId = ref<number | null>(null)
 const canExecute = computed(() => datasourceId.value !== null && sqlText.value.trim() !== '' && !executing.value)
 
 const formatCell = (cell: unknown): string => {
@@ -442,119 +459,141 @@ async function loadProjects(): Promise<void> {
   }
 }
 
-function clearTree(): void {
-  datasourceGeneration += 1
-  databases.value = []
-  activeDatabase.value = ''
-  schemas.value = []
-  activeSchema.value = ''
-  relations.value = []
-  activeRelation.value = ''
-  columns.value = []
-  indexes.value = []
-  routines.value = []
-  searched.value = []
+/** S9：根节点 = 当前用户有权限访问的全部数据源；默认展开第一个根节点。 */
+async function loadTree(): Promise<void> {
+  tree.value = []
   treeCapability.value = ''
   treeConstraints.value = []
-}
-
-async function reload(): Promise<void> {
-  datasources.value = []
-  selectedDs.value = ''
-  clearTree()
-  if (projectId.value === null) return
-  try {
-    datasources.value = (await dsApi.value.listDatasources()).items
-  } catch (e) {
-    error.value = message(e)
-  }
-}
-
-async function selectDatasource(id: number): Promise<void> {
-  clearTree()
-  const generation = datasourceGeneration
-  if (projectId.value === null) return
-  try {
-    const page = await api.value.listDatabases(id)
-    if (generation !== datasourceGeneration || datasourceId.value !== id) return
-    databases.value = page.items.map((d) => d.name)
-    treeCapability.value = page.capability
-    treeConstraints.value = page.constraints
-  } catch (e) {
-    if (generation !== datasourceGeneration || datasourceId.value !== id) return
-    error.value = message(e)
-  }
-}
-
-async function openDatabase(db: string): Promise<void> {
-  activeDatabase.value = db
-  schemas.value = []
+  datasourceId.value = null
+  activeNodeKey.value = ''
+  activeDatabase.value = ''
   activeSchema.value = ''
-  relations.value = []
   activeRelation.value = ''
-  columns.value = []
-  indexes.value = []
-  routines.value = []
-  if (datasourceId.value === null) return
+  if (projectId.value === null) return
   try {
-    const page = await api.value.listSchemas(datasourceId.value, db)
-    schemas.value = page.items.map((s) => s.name)
+    const items = (await dsApi.value.listDatasources()).items
+    tree.value = items.map((d: DatasourceRecord) => makeNode({ kind: 'source', label: d.name, dsId: d.id, expandable: true }))
+    if (tree.value.length > 0) {
+      const first = tree.value[0]
+      activateDatasource(first)
+      await expandNode(first)
+    }
   } catch (e) {
     error.value = message(e)
   }
 }
 
-async function openSchema(schema: string): Promise<void> {
-  activeSchema.value = schema
-  relations.value = []
-  activeRelation.value = ''
-  columns.value = []
-  indexes.value = []
-  routines.value = []
-  if (datasourceId.value === null) return
+function activateDatasource(node: TreeNode): void {
+  if (datasourceId.value !== node.meta.dsId) {
+    datasourceId.value = node.meta.dsId
+    treeCapability.value = ''
+    treeConstraints.value = []
+    activeDatabase.value = ''
+    activeSchema.value = ''
+    activeRelation.value = ''
+  }
+  activeNodeKey.value = node.meta.key
+}
+
+function syncActiveContext(node: TreeNode): void {
+  activeNodeKey.value = node.meta.key
+  if (node.meta.kind === 'database') {
+    activeDatabase.value = node.meta.name
+  } else if (node.meta.kind === 'schema') {
+    activeDatabase.value = node.meta.db ?? ''
+    activeSchema.value = node.meta.name
+  } else if (node.meta.kind === 'table' || node.meta.kind === 'view') {
+    activeDatabase.value = node.meta.db ?? ''
+    activeSchema.value = node.meta.schema ?? ''
+    activeRelation.value = node.meta.name
+  }
+}
+
+async function onNodeClick(node: TreeNode): Promise<void> {
+  if (node.denied || node.loading) return
+  if (!node.meta.expandable) {
+    activeNodeKey.value = node.meta.key
+    if (node.meta.kind === 'function' || node.meta.kind === 'procedure' || node.meta.kind === 'trigger') {
+      await showDefinition(node)
+    }
+    return
+  }
+  if (node.meta.kind === 'source') activateDatasource(node)
+  else syncActiveContext(node)
+  if (node.expanded) {
+    node.expanded = false
+    return
+  }
+  await expandNode(node)
+}
+
+async function expandNode(node: TreeNode): Promise<void> {
+  if (node.loading || node.denied || node.expanded) return
+  node.loading = true
   try {
+    node.children = await loadChildren(node)
+    node.expanded = true
+  } catch (e) {
+    if (isPermissionError(e)) {
+      node.denied = true
+      node.deniedText = node.meta.kind === 'source' ? '无权限访问该数据源' : '无权限访问'
+    } else {
+      error.value = message(e)
+    }
+  } finally {
+    node.loading = false
+  }
+}
+
+async function loadChildren(node: TreeNode): Promise<TreeNode[]> {
+  const m = node.meta
+  if (m.kind === 'source') {
+    const page = await api.value.listDatabases(m.dsId)
+    if (m.dsId === datasourceId.value) {
+      treeCapability.value = page.capability
+      treeConstraints.value = page.constraints
+    }
+    return page.items.map((d) => makeNode({ kind: 'database', label: d.name, dsId: m.dsId, db: d.name, expandable: true }))
+  }
+  if (m.kind === 'database') {
+    const page = await api.value.listSchemas(m.dsId, m.name)
+    return page.items.map((s) => makeNode({ kind: 'schema', label: s.name, dsId: m.dsId, db: m.db, expandable: true }))
+  }
+  if (m.kind === 'schema') {
+    const db = m.db ?? ''
     const [tables, views, funcs, procs, triggers] = await Promise.all([
-      api.value.listRelations(datasourceId.value, activeDatabase.value, schema, 'table'),
-      api.value.listRelations(datasourceId.value, activeDatabase.value, schema, 'view'),
-      api.value.listRoutines(datasourceId.value, activeDatabase.value, schema, 'function'),
-      api.value.listRoutines(datasourceId.value, activeDatabase.value, schema, 'procedure'),
-      api.value.listRoutines(datasourceId.value, activeDatabase.value, schema, 'trigger'),
+      api.value.listRelations(m.dsId, db, m.name, 'table'),
+      api.value.listRelations(m.dsId, db, m.name, 'view'),
+      api.value.listRoutines(m.dsId, db, m.name, 'function'),
+      api.value.listRoutines(m.dsId, db, m.name, 'procedure'),
+      api.value.listRoutines(m.dsId, db, m.name, 'trigger'),
     ])
-    relations.value = [...tables.items, ...views.items].map((r) => ({ kind: r.kind, name: r.name }))
-    routines.value = [...funcs.items, ...procs.items, ...triggers.items]
-  } catch (e) {
-    error.value = message(e)
+    return [
+      ...[...tables.items, ...views.items].map((r) => makeNode({ kind: r.kind, label: r.name, dsId: m.dsId, db, schema: m.name, expandable: true })),
+      ...[...funcs.items, ...procs.items, ...triggers.items].map((r) => makeNode({ kind: r.kind, label: r.name, dsId: m.dsId, db, schema: m.name, expandable: false })),
+    ]
   }
+  // table / view → 字段 + 索引（叶子）
+  const [cols, idx] = await Promise.all([
+    api.value.listColumns(m.dsId, m.db ?? '', m.name, m.schema ?? ''),
+    api.value.listIndexes(m.dsId, m.db ?? '', m.name, m.schema ?? ''),
+  ])
+  return [
+    ...cols.items.map((c) => makeNode({ kind: 'column', label: c.name, dsId: m.dsId, db: m.db, schema: m.schema, name: m.name, expandable: false })),
+    ...idx.items.map((i) => makeNode({ kind: 'index', label: i.name, dsId: m.dsId, db: m.db, schema: m.schema, name: m.name, expandable: false })),
+  ]
 }
 
-async function openRelation(r: { kind: 'table' | 'view'; name: string }): Promise<void> {
-  activeRelation.value = r.name
-  columns.value = []
-  indexes.value = []
-  if (datasourceId.value === null) return
-  try {
-    const [cols, idx] = await Promise.all([
-      api.value.listColumns(datasourceId.value, activeDatabase.value, r.name, activeSchema.value),
-      api.value.listIndexes(datasourceId.value, activeDatabase.value, r.name, activeSchema.value),
-    ])
-    columns.value = cols.items.map((c) => ({ name: c.name, dataType: c.dataType, nullable: c.nullable, key: c.key }))
-    indexes.value = idx.items.map((i) => ({ name: i.name, columns: i.columns, unique: i.unique }))
-  } catch (e) {
-    error.value = message(e)
-  }
-}
-
-async function showDefinition(r: RoutineMeta): Promise<void> {
-  if (datasourceId.value === null) return
+async function showDefinition(node: TreeNode): Promise<void> {
   try {
     const def = await api.value.getDefinition({
-      datasourceId: datasourceId.value,
-      database: activeDatabase.value,
-      objectKind: r.kind,
-      objectRef: { schema: activeSchema.value, name: r.name },
+      datasourceId: node.meta.dsId,
+      database: node.meta.db ?? '',
+      objectKind: node.meta.kind as DefinitionObjectKind,
+      objectRef: { schema: node.meta.schema ?? '', name: node.meta.name },
     })
     sqlText.value = def.definition
-    status.value = `已载入定义：${r.name}（${def.capability}）`
+    status.value = `已载入定义：${node.meta.name}（${def.capability}）`
   } catch (e) {
     error.value = message(e)
   }
@@ -987,7 +1026,7 @@ function insertVariableRef(item: VariableCompletionItem): void {
 onMounted(async () => {
   if (projectId.value !== null) selected.value = String(projectId.value)
   await loadProjects()
-  await reload()
+  await loadTree()
   refreshVarPreview()
   if (datasourceId.value !== null) await loadHistory()
 })
@@ -1005,10 +1044,6 @@ onUnmounted(() => {
 .ide-head h1{margin:0}
 .ide-head p{margin:4px 0 0;color:var(--text-2);flex-basis:100%;font-size:13px}
 .ide-actions{display:flex;align-items:center;gap:10px;margin-left:auto;flex-wrap:wrap}
-.ide-project,.ide-ds{display:flex;align-items:center;gap:6px}
-.ide-project select,.ide-ds select{padding:7px 10px;min-width:150px}
-button{cursor:pointer;padding:7px 12px}
-button:disabled{cursor:not-allowed;opacity:.5}
 .ide-split{height:calc(100vh - 190px);min-height:520px;margin-top:16px;border:1px solid var(--border);border-radius:var(--radius);background:var(--card);overflow:hidden}
 .ide-split :deep(.splitpanes__splitter){position:relative;background:var(--border);min-width:5px;min-height:5px}.ide-split :deep(.splitpanes__splitter:hover){background:var(--primary)}
 .ide-left,.ide-right{height:100%;min-width:0;box-sizing:border-box;background:var(--card)}
@@ -1019,9 +1054,14 @@ button:disabled{cursor:not-allowed;opacity:.5}
 .ide-search input{padding:6px 8px}
 .ide-cap{font-size:12px;color:var(--primary);margin:8px 0 0}
 .ide-muted{color:var(--text-2);font-size:12px;margin:6px 0 0}
-.ide-tree{list-style:none;padding:0;margin:0;display:grid;gap:4px;align-content:start}
-.ide-tree button{width:100%;text-align:left;border:1px solid var(--border);background:var(--card);border-radius:var(--radius-sm);padding:6px 9px;cursor:pointer;display:flex;justify-content:space-between;gap:8px}
+.ide-tree{list-style:none;padding:0;margin:0;display:grid;gap:2px;align-content:start}
+.ide-tree button{width:100%;text-align:left;border:1px solid var(--border);background:var(--card);border-radius:var(--radius-sm);padding:6px 9px;cursor:pointer;display:flex;align-items:center;gap:8px}
 .ide-tree button.active{border-color:var(--primary);background:var(--primary-light)}
+.ide-tree button.denied{color:var(--text-3);cursor:not-allowed}
+.ide-tree-arrow{flex:none;width:12px;display:inline-block}
+.ide-tree-label{display:flex;align-items:center;gap:6px;min-width:0;flex:1}
+.ide-tree-label small{color:var(--text-2)}
+.ide-denied{flex:none;color:var(--warn);font-size:11px}
 .ide-search-result{display:flex;flex-wrap:wrap;gap:6px}
 .ide-search-result span{border:1px solid var(--border);border-radius:var(--radius-sm);padding:4px 8px;display:flex;flex-direction:column}
 .ide-search-result small{color:var(--text-2)}
