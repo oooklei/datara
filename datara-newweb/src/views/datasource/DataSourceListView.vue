@@ -652,5 +652,7 @@ td > span:not(.mono){font-size:11px;color:var(--text-3);margin-top:2px}
 .node-list button strong{font-weight:600}
 .node-list button span{font-size:11px;color:var(--text-3)}
 .node-list button.on span{color:var(--primary)}
-@media(max-width:900px){.ds-split{grid-template-columns:1fr}}
+/* B6 375 档修复：单列后 1fr 的 min=auto 仍被 .panel 内容 min-content（543px）撑破，
+   钳为 0 + panel 横滚兜底，内容可达且不失控 */
+@media(max-width:900px){.ds-split{grid-template-columns:minmax(0,1fr)}.ds-split .panel{max-width:100%;overflow-x:auto}}
 </style>

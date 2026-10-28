@@ -482,6 +482,8 @@ onMounted(async () => {
 .tcd-x{color:var(--text-4, var(--border-strong));border-radius:4px;padding:0 3px;font-size:13px;line-height:1}
 .tcd-x:hover{color:var(--danger, var(--danger));background:var(--danger-bg, var(--danger-bg))}
 .tc-daghint{font-size:11px;color:var(--text-4, var(--border-strong));margin-left:2px}
+/* B6 375 档修复：tab 行 + 右侧操作组 min-content 403px 撑破视口，<768 允许换行收缩 */
+@media(max-width:768px){.tc-tabs{flex-wrap:wrap;padding:0 8px}.tc-tab{padding:10px 10px}}
 /* 画布区 / 空态（蓝本 .tc-canvas/.tc-empty/.tc-empty-hint 照抄） */
 .tc-canvas{flex:1;min-height:0;display:flex;flex-direction:column}
 .tc-canvas-slot{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;padding:24px}

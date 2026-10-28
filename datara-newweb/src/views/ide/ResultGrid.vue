@@ -27,7 +27,9 @@ const gridColumns = computed(() => [
     title: c,
     sortable: true,
     resizable: true,
-    showOverflow: 'tooltip' as const,
+    // 原生 title 溢出提示（grid 级 showOverflow:true 统一承接）——B6 控制台
+    // 零未处理错误：vxe v4 列级 'tooltip' 模式需 vxe-tooltip 组件且与网格级
+    // show-overflow=true 冲突（双警告），title 模式零依赖等效
     minWidth: 96,
   })),
 ])

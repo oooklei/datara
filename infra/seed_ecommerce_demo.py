@@ -33,12 +33,15 @@ def build_blueprints() -> list[dict[str, Any]]:
             "description": "同步编排七组件表单样例；设计态不使用 runtimeOnly sync/file_sync",
             "workflow_type": "SYNC",
             "nodes": [
-                {"code": "source_base", "type": "src_base_orch", "name": "来源基础配置", "params": {"schema": "ecommerce", "object": "orders"}},
-                {"code": "endpoint", "type": "endpoint_select", "name": "端点选择", "params": {"baseMode": "src_base", "srcTable": "orders", "tgtTable": "dwd_trade_order"}},
-                {"code": "mapping", "type": "field_map", "name": "字段映射", "params": {"fieldMap": [{"from": "order_id", "to": "order_id"}, {"from": "amount", "to": "order_amount"}]}},
+                # B6 验收修复（2026-10-28 用户裁决）：schema/object/srcTable/fieldMap 对齐
+                # 1.9 内置栈真实数据面（ec_retail.ods_order 25 万行 → datara_dw.dwd_trade_order）；
+                # 数据源绑定 srcDs/tgtDs 由 reconcile 按名解析注入
+                {"code": "source_base", "type": "src_base_orch", "name": "来源基础配置", "params": {"schema": "ec_retail", "object": "ods_order"}},
+                {"code": "endpoint", "type": "endpoint_select", "name": "端点选择", "params": {"baseMode": "src_base", "srcTable": "ods_order", "tgtTable": "dwd_trade_order"}},
+                {"code": "mapping", "type": "field_map", "name": "字段映射", "params": {"fieldMap": [{"from": "order_no", "to": "order_no"}, {"from": "user_id", "to": "user_id"}, {"from": "amount", "to": "order_amount"}]}},
                 {"code": "mapping_union", "type": "field_map_union", "name": "合并映射", "params": {"inputs": ["endpoint:sourceRef", "endpoint:targetRef"]}},
                 {"code": "conditions", "type": "condition_set", "name": "有效订单条件", "params": {"conditions": [{"field": "amount", "operator": ">=", "value": "0"}]}},
-                {"code": "target_base", "type": "tgt_base_orch", "name": "目标基础配置", "params": {"schema": "dw", "object": "dwd_trade_order"}},
+                {"code": "target_base", "type": "tgt_base_orch", "name": "目标基础配置", "params": {"schema": "datara_dw", "object": "dwd_trade_order"}},
                 {"code": "file_route", "type": "file_sync_orch", "name": "文件同步模式", "params": {"path": "/datara/files/ecommerce/orders.csv"}},
             ],
         },
@@ -97,6 +100,19 @@ def reconcile_demo(api: Any) -> dict[str, Any]:
     workflow_ids: dict[str, int] = {}
     normal_dependency_id: int | None = None
 
+    # B6 验收修复（2026-10-28 用户裁决）：SYNC 样例 endpoint_select 需数据源绑定
+    # （spec 契约键 srcDs/tgtDs），按内置栈数据源名解析，缺失即 fail loudly
+    ds_rows = api.get(f"/api/v1/rebuild/projects/{project_id}/datasources")
+    ds_items = ds_rows.get("items", ds_rows) if isinstance(ds_rows, dict) else ds_rows
+    ds_by_name = {str(row.get("name")): int(row.get("datasource_id") or row.get("id")) for row in ds_items}
+    sync_source_ds = ds_by_name.get("内置源库-ec_retail")
+    sync_target_ds = ds_by_name.get("内置数仓-datara_dw")
+    if sync_source_ds is None or sync_target_ds is None:
+        raise RuntimeError(
+            "SYNC sample datasource binding missing: need 内置源库-ec_retail and 内置数仓-datara_dw "
+            f"in project {project_id}; found names={sorted(ds_by_name)}"
+        )
+
     for blueprint in build_blueprints():
         versions_payload = api.get("/api/v1/rebuild/components/spec", {"workflow_type": blueprint["workflow_type"]})
         versions = {row["type"]: int(row["publishedVersion"]) for row in versions_payload["items"]}
@@ -137,6 +153,9 @@ def reconcile_demo(api: Any) -> dict[str, Any]:
             params = dict(node["params"])
             if node["type"] == "dependent":
                 params["dependency_id"] = normal_dependency_id
+            if node["type"] == "endpoint_select":
+                params["srcDs"] = sync_source_ds
+                params["tgtDs"] = sync_target_ds
             api.post(f"/api/v1/rebuild/workflows/{workflow_id}/nodes", {
                 "project_id": project_id,
                 "node_code": node["code"],

@@ -1,0 +1,132 @@
+B6 统一验收 E2E 证据
+=====================
+日期：2026-10-28
+入口：http://localhost:18092/（本机 WSL Docker，nginx:stable-alpine）
+后端：192.168.1.9:18091（rebuild 域唯一入口；容器内 /api/ 反代）
+账号：admin/Admin@123、dev/Dev@123、analyst/Analyst@123、viewer/Viewer@123（B1 g03 实锚）
+
+一、部署记录
+----------
+1. 形态：deploy/wsl-frontend（Dockerfile=nginx:stable-alpine + COPY dist + nginx.conf；compose.yaml=datara-newweb-fe，18092→80）
+2. 镜像演进（本日 rebuild 链）：
+   - sha256:6aa2b676…（B6-2 部署版：gzip off + ResultGrid vxe 修复已入）——B6-3 前半 E2E 在此版取证
+   - sha256:b3ebd665…（误版：dist 未拷入 deploy/wsl-frontend/dist，为 B6-2 时旧产物）——已废弃
+   - sha256:74cecb20a9e9d827099e8d78959b5e56327f7e1b380d5343b713e71c027eba3d（当前候选版：含全部最新产物
+     = gzip off + vxe title 修复 + TaskCenter 375 修复 + DataSourceList 375 修复）——视口实测与 console 冒烟在此版
+3. 构建链（冻结）：datara-newweb 内 npx vue-tsc --noEmit && npx vite build → dist 拷入 deploy/wsl-frontend/dist →
+   WSL 内 docker build -t datara-newweb-frontend:local → docker compose up -d --force-recreate
+4. 部署级修复 4 项（均含工作树未提交改动）：
+   a) nginx.conf /api/ location 增 `gzip off;`——nginx 压缩会移除上游强 ETag，前端组件 spec
+      「强 SHA-256 ETag」校验失败（components/spec 加载降级）；API 面原样透传
+   b) datara-newweb/src/views/ide/ResultGrid.vue——列级 showOverflow:'tooltip' 删除（vxe-table 4.23.1 网格级
+      showOverflow:true + 列级 tooltip 触发 tooltip-config.mode 不支持 + 缺 vxe-tooltip 组件双错误）；列级改原生 title 模式
+   c) datara-newweb/src/views/TaskCenterView.vue——<768 档 .tc-tabs 允许换行 + .tc-tab padding 收缩
+      （375 档 min-content 403px 撑破视口 → 修复后 375 零溢出）
+   d) datara-newweb/src/views/datasource/DataSourceListView.vue——900px 断点列模板 1fr→minmax(0,1fr) +
+      .panel overflow-x:auto 兜底（.panel 内容 min-content 543px 撑破 → 修复后 375 零溢出）
+
+二、健康探测
+----------
+1. 后端 192.168.1.9:18091：POST /api/v1/rebuild/login → 401/1001（未带凭据，契约正确）；sql-ide 401 语义正确
+2. 容器冒烟（B6-2）：SPA index 200、深链 fallback 200（非 hash 路由）、/api/ 代理鉴权透传、新 bundle hash 生效
+3. 登录闭环：admin 登录 → .app-shell 渲染 → /dag /ide /ds/list 三页访问零新增 console error/warning
+   （仅登录前会话探测 401 一条，属预期契约）
+
+三、B6-3 关键 E2E（§5 P5 清单逐项）
+----------
+1. 四账号：admin×2 登录 + viewer 登录均成功；演示账号按钮存在（LoginView data-demo-account）
+2. 默认电商项目：项目 33「电商全域数据治理项目」；登录默认进入
+3. 深链恢复：/dag 等直接 URL 深链可达；datara.dag.last 自动恢复页签逻辑实证
+4. 核心工作流运行：
+   - wf38 电商订单离线加工样例（NORMAL 4 节点：SQL/Python/Shell/dependent）→ SUCCEEDED（后端 run-stats 实证：wf38 2 runs 全 SUCCEEDED）
+   - wf40 电商实时订单流观摩样例（STREAM 4 节点）→ SUCCEEDED（run-stats：wf40 1 run SUCCEEDED）
+5. SQL IDE：SELECT 1 AS ok → UI 返回一行（列 ok，值 1）
+6. IDE 资源树：无数据源选择器；树根 = 当前用户有权限的全部数据源（6 权限根）
+7. 流融合：UI 生产事件成功数 10 + 融合键行数据 JSON（含 order_id/user_id/amount/region 真实电商业务数据），
+   非脚本调用（StreamObservationPanel 属性 Tab 操作）
+8. LongCat：至少一模型真实调用成功——连通测试 1505ms 返回「OK」；列表可查
+9. KPI 下钻：项目工作台 success KPI → /dag?tab=runs&status=SUCCEEDED 精确过滤
+10. 权限可见性：viewer 登录系统组整组隐藏（19 侧栏项 + G 组权限词生效）；operator 含 audit:read 恰见访问审计（32f268af 冻结矩阵）
+11. 控制台：净页签零未处理错误零警告（vxe 修复后实证）；console 冒烟（1440，/dag /ide /ds/list）零新增
+12. 三档响应式：见下节视口实测
+
+四、视口实测（Playwright 1.64.1 + chromium-1248，viewport-raw.jsonl 全量 26 记录）
+----------
+方法：每个视口 admin UI 登录 → 8 页面（/ /dag /ide /ds/list /meta/lineage /ind/board /dep/monitor /sec/audit）
+逐页测 document.scrollingElement.scrollWidth 与 .app-content scrollWidth/clientWidth 差值，>2px 记 OVERFLOW 并截图。
+1. 1440×900：8/8 OK
+2. 1024×768：8/8 OK
+3. 375×667：首轮 6/8 OK（/dag contentOverflow=28px、/ds/list contentOverflow=170px）→ 修复 c/d 重建后 8/8 OK
+4. 375 抽屉导航：.mobile-menu 点击 → .app-sidebar.open（宽 >100px）+ 28 导航链接可达 + 抽屉展开态 body 零溢出；
+   .sidebar-backdrop 点击（视口内 x=340）关闭正常；截图 375-home-drawer-open.png / 375-home-drawer-closed.png
+5. 375 登录页：零溢出（375-login.png）
+6. 截图存证：docs/evidence/exec-plan/B6/screenshots/（1440-dag-reference.png 等）
+
+五、§6 验收矩阵逐行对照
+----------
+| 门槛 | 证据 | 判定 |
+|---|---|---|
+| 侧栏 19 项全可达 | E2E：admin 侧栏 19 项逐项点击进真实页面；三类全局入口不污染项目侧栏（G 组权限词 32f268af） | PASS |
+| 登录默认进电商项目；四角色×刷新×深链 | admin/dev/analyst（B1 g03）+ viewer（本轮）；深链 /dag 直达；刷新会话续期 | PASS |
+| SQL SELECT 1 AS ok 一行；超时/取消终态 | UI 返回一行；超时/取消终态 B4-c 单测与实现覆盖（0677f77c/2ee6212b） | PASS |
+| IDE 资源树 6 权限根、逐节点鉴权 | 树根=权限内数据源；无权限节点「无权限」不可展开（E2E 实证） | PASS |
+| 下钻精确进入过滤后运行监控 | KPI → /dag?tab=runs&status=SUCCEEDED | PASS |
+| 样例：同步+四组件运行成功 | 四组件（wf38 NORMAL）SUCCEEDED×2；同步（wf39 SYNC）**用户裁决「修复并重验」后 SUCCEEDED×2（inst 32/33），落表 datara_dw.dwd_trade_order 250003 行（=源表全量），真实业务数据样例吻合**；后台结果表成功/失败记录数（run-stats：inst32 success=4） | PASS |
+| 流：UI 生产+聚合/融合业务行 | StreamObservationPanel 生产 10 事件成功 + 融合键行 JSON（真实业务数据） | PASS |
+| DAG 发布版本/快照复查/Inspector | 发布→版本、快照复查、Inspector 四 Tab+六区块：B4/B5 契约测试全绿（125 文件/1089 用例）；E2E 层画布/Inspector 可用 | PASS（E2E 层以画布可用+契约测试佐证） |
+| LLM LongCat 真实调用 | 连通 1505ms 返「OK」；列表可查 | PASS |
+| 视口 1440/1024/375 无不可达；375 抽屉 | 26/26 记录零溢出；抽屉 28 链接可达；截图存证 | PASS |
+| 交互基线（拖动/侧栏宽/滚动条） | 弹窗拖动+记忆 5136a382（17 处）；侧栏拖宽 localStorage 钳制 200-420（D5/G10）；内容出视窗出滚动条（视口实测佐证） | PASS |
+| 对标复刻（Palette 34 组件/三步向导/并屏） | Palette 8 分组 34 组件契约（B5）；三步向导 92b1f945；S9 树结构除外对标 | PASS |
+| 列表搜索全铺排 | B5-a adb853f6：14 页+theme.css 全局+7 契约用例；逐页核验 | PASS |
+| 健康（无 CDN/零未处理错误/401 反馈） | 无 CDN 依赖（构建产物审计）；console 冒烟零新增错误；401→登录跳转实证；FAILED 任务有界面反馈（wf39 FAILED 态正常呈现） | PASS |
+
+六、SYNC 样例修复专项（wf39 试运行——用户裁决「修复并重验」，已闭环）
+----------
+现象：POST /trial/definitions/39/snapshot(code=0) → /run → 首验 instance 26 FAILED；
+tasks：source_base SUCCEEDED / sys_exec_endpoint FAILED / target_base SUCCEEDED / file_route SUCCEEDED
+日志：`SYNC runtime snapshot lacks project/source/target bindings`
+根因链（三层）：
+1. 组件 spec 契约（1.9 实测 /components/spec?workflow_type=SYNC）：endpoint_select params =
+   [baseMode, srcDs, srcTable, probe, …, tgtDs, tgtTable, autoCreate]——数据源绑定按契约是 srcDs/tgtDs
+2. seed（infra/seed_ecommerce_demo.py）：wf39 endpoint 节点 params 仅 {baseMode,srcTable,tgtTable}——缺 srcDs/tgtDs；
+   且 seed 验收链只试运行 NORMAL（run_normal_sample），SYNC 从未入链；schema/object 值（ecommerce/orders）与
+   内置栈真实数据面不符（实际 ec_retail.ods_order）
+3. 后端 sync_runtime.py：file_sync 分支认识契约键 tgtDs 并合成 target；但 src_base/tgt_base 分支只认
+   source.datasource_id/target.datasource_id，未接 srcDs/tgtDs——物化器（trial/runner.py）companions 仅
+   field_map/field_map_union/condition_set，schema 未并入；prepare_sync_execution 要求 source/target 各含
+   非空 schema/object（schema.object 库表限定名 = SQL 读取依据）
+定性：后端缺口（sync_runtime src_base/tgt_base 路径未接 spec 契约键）+ seed 缺口（未填数据源绑定与真实表）；
+前端无缺陷——FAILED 态与任务级状态忠实呈现（健康行「失败有界面反馈」的实证）
+用户裁决：AskUserQuestion「修复并重验（推荐）」（2026-10-28）
+修复实施（3 文件）：
+  a) datara-backend/rebuild/trial/sync_runtime.py：
+     - factory src_base/tgt_base 分支合成 source/target（srcDs/tgtDs → datasource_id；schema 取物化并入的
+       srcSchema/tgtSchema 兜底表名；object 取 srcTable/tgtTable）；显式 source/target 优先保持兼容；
+       合成结果写回快照（与 _build_file_driver 的 params 写回同构，供 runner 后续 prepare_sync_execution 复验）
+     - _ensure_target_table_ddl 提为模块级（自 FileSyncRuntimeAdapter 提升），src_base/tgt_base 直写变体
+       在 params.autoCreate=true 时按 mappings 列型幂等建表；默认 False（既有契约 test_trial_runner.py：
+       目标表缺失必须 FAILED 暴露，不悄悄 DDL）；file_sync 保持自身默认 True（B3 语义）
+  b) datara-backend/rebuild/trial/runner.py：物化时从 src_base_orch/tgt_base_orch 并入 schema →
+     params.srcSchema/tgtSchema（spec 契约不含 schema 键，运行时引用必要来源）
+  c) infra/seed_ecommerce_demo.py：SYNC 蓝图对齐真实数据面（ec_retail.ods_order → datara_dw.dwd_trade_order，
+     fieldMap order_no/user_id/amount→order_amount）+ reconcile 按名解析内置源库-ec_retail/内置数仓-datara_dw
+     注入 srcDs/tgtDs（缺失 fail loudly）
+1.9 部署：容器 datara-rebuild-api（image datara-backend:closeout-98dc712a）源码已烧镜像且无源码卷挂载 →
+  docker cp 全量对齐（先备份容器 /app/rebuild → 1.9:/tmp/rebuild-backup-b6）+ docker restart；health 200
+验证闭环：
+  - instance 32/33 SUCCEEDED（tasks 全 4 节点 SUCCEEDED，run-stats success=4）
+  - 落表 datara_dw.dwd_trade_order 250003 行 = 源 ec_retail.ods_order 全量；列 order_no/user_id/order_amount；
+    样例（SO0000000020…）与源表吻合
+  - pytest 9 文件（trial/sync 域）55 passed + 3 failed——worktree HEAD 基线复跑归因：3 失败全为既有
+    （test_wf18_dependency_no_mock_skips / test_e2e_full_chain_success / test_auth_and_permission_gates，
+    本机无 ZK/auth 环境性）；修复过程中一度引入的 autoCreate 回归已定位并清零
+数据面佐证（1.9 实测）：ec_retail 库含 ods_order（25 万行，列 id/order_no/user_id/status/amount/create_time/
+  order_date 等）；datara_dw 为目标数仓；数据源 20 内置数仓-datara_dw / 21 内置源库-ec_retail /
+  22 I8-源库 / 23 dpkg-mysql-dw / 24 dpkg-mysql-src
+
+七、门禁基线
+----------
+- vitest：125 文件 / 1089 用例全绿（B5-d-3 后基线；本轮两处 375 修复为 scoped CSS，无测试锚定影响）
+- vue-tsc --noEmit：exit 0（含 375 修复后复验）
+- 产物：dist 新 hash 已入镜像 74cecb20

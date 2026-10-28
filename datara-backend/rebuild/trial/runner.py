@@ -337,6 +337,18 @@ class TrialRunner:
             if companion.get("node_type") == "condition_set" and "filterExpr" in companion_params:
                 transform_config = params.setdefault("transform_config", {})
                 transform_config.setdefault("filter_condition", companion_params["filterExpr"])
+        # B6 验收修复（2026-10-28 用户裁决）：src_base_orch/tgt_base_orch 携带的 schema 是
+        # SYNC 运行时引用（schema.object 库表限定名）的必要来源；endpoint_select spec 契约
+        # 不含 schema 键，物化时并入 srcSchema/tgtSchema 供 sync_runtime 合成 source/target
+        for orch in materialized_nodes:
+            orch_type = orch.get("node_type")
+            if orch_type not in {"src_base_orch", "tgt_base_orch"}:
+                continue
+            orch_params = orch.get("params") or {}
+            schema_value = orch_params.get("schema")
+            binding_key = "srcSchema" if orch_type == "src_base_orch" else "tgtSchema"
+            if binding_key not in params and isinstance(schema_value, str) and schema_value.strip():
+                params[binding_key] = schema_value.strip()
         if "mappings" not in params and isinstance(params.get("fieldMap"), list):
             params["mappings"] = [
                 {
