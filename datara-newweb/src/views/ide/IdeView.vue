@@ -107,6 +107,7 @@
           :relation-names="relationNames"
           :lint-provider="editorLintProvider"
           :hover-provider="editorHoverProvider"
+          :readonly="codeReadOnly"
         />
 
         <p v-if="diagnostics.length" class="ide-diag" data-diagnostics>
@@ -983,8 +984,11 @@ async function showDefinition(node: TreeNode): Promise<void> {
       objectKind: node.meta.kind as DefinitionObjectKind,
       objectRef: { schema: node.meta.schema ?? '', name: node.meta.name },
     })
+    // 代码类对象（函数/存储过程/触发器）只读查看，禁止编辑
+    codeReadOnly.value = _CODE_MENU_KINDS.includes(node.meta.kind as typeof _CODE_MENU_KINDS[number])
     sqlText.value = def.definition
-    status.value = `已载入定义：${node.meta.name}（${def.capability}）`
+    status.value = `已载入定义：${node.meta.name}（${def.capability}）${codeReadOnly.value ? ' · 只读' : ''}`
+    closeMenu()
   } catch (e) {
     error.value = message(e)
   }
@@ -1035,6 +1039,7 @@ function fillSampleQuery(): void {
 function clearEditor(): void {
   if (sqlText.value.trim() === '') return
   if (!confirm('确认清空当前编辑器内容？（无法通过撤销恢复）')) return
+  codeReadOnly.value = false
   sqlText.value = ''
   sqlEditorEl.value?.clear()
   status.value = '编辑器已清空'
@@ -1822,12 +1827,16 @@ function onIdeKeydown(event: KeyboardEvent): void {
 /* ---------- G10 表/视图悬浮菜单（B4-d S5/S6，对标审计-03 §2.1/§6.2-6.5） ---------- */
 
 const COLUMN_TYPES = ['INT', 'BIGINT', 'TINYINT', 'VARCHAR', 'CHAR', 'TEXT', 'DECIMAL', 'DATE', 'DATETIME', 'BOOLEAN'] as const
+const _TABLE_MENU_KINDS = ['table', 'view']
+const _CODE_MENU_KINDS = ['function', 'procedure', 'trigger']
+const MENU_KINDS = [..._TABLE_MENU_KINDS, ..._CODE_MENU_KINDS] as const
 const MENU_HIDE_DELAY_MS = 260
 
 interface MenuTarget { schema: string; table: string; label: string }
 
 const hoverMenuNode = ref<TreeNode | null>(null)
 const hoverMenuPos = ref({ x: 0, y: 0 })
+const codeReadOnly = ref(false)
 let menuHideTimer: ReturnType<typeof setTimeout> | undefined
 
 const editDataOpen = ref(false)
@@ -1853,7 +1862,7 @@ const lengthEnabled = computed(() => ['VARCHAR', 'CHAR', 'DECIMAL'].includes(add
 const relationLabel = computed(() => dialogLabel.value)
 
 function onTreeNodeEnter(node: TreeNode, event: MouseEvent): void {
-  if (node.meta.kind !== 'table' && node.meta.kind !== 'view') return
+  if (!MENU_KINDS.includes(node.meta.kind as typeof MENU_KINDS[number])) return
   cancelMenuHide()
   hoverMenuNode.value = node
   const x = Math.min(event.clientX + 8, window.innerWidth - 200)
@@ -1883,6 +1892,7 @@ function menuTarget(node: TreeNode): MenuTarget | null {
 
 /** 所有菜单动作统一的填充语义：仅覆写编辑器内容，绝不自动执行 */
 function fillEditor(sql: string): void {
+  codeReadOnly.value = false
   sqlText.value = sql
   closeMenu()
   status.value = '已填充 SQL（未执行）'
@@ -1890,17 +1900,19 @@ function fillEditor(sql: string): void {
 
 interface HoverMenuItem { key: string; label: string; run: () => void }
 
-const hoverMenuItems = computed<HoverMenuItem[]>(() => {
-  const node = hoverMenuNode.value
-  if (!node) return []
-  const target = menuTarget(node)
-  if (!target) return []
-  const openDialog = (kind: 'edit' | 'csv' | 'column' | 'index'): void => {
+/** 代码类对象（函数/存储过程/触发器）菜单——只有查看定义和 DDL，无数据操作 */
+const CODE_MENU_ITEMS: HoverMenuItemGenerator = (node, target) => [
+  { key: 'code-def', label: '查看定义（只读）', run: () => void showDefinition(node) },
+  { key: 'code-ddl', label: '结构（DDL）', run: () => void fillDdl(node, target) },
+]
+
+/** 表/视图菜单——含数据操作 + 结构 + 元数据操作；CSV 导入暂不实现已移除 */
+const TABLE_MENU_ITEMS: HoverMenuItemGenerator = (node, target) => {
+  const openDialog = (kind: 'edit' | 'column' | 'index'): void => {
     dialogSchema.value = target.schema
     dialogTable.value = target.table
     dialogLabel.value = target.label
     if (kind === 'edit') editDataOpen.value = true
-    else if (kind === 'csv') csvImportOpen.value = true
     else if (kind === 'column') { resetColumnForm(); addColumnOpen.value = true }
     else { resetIndexForm(); addIndexOpen.value = true }
     closeMenu()
@@ -1912,10 +1924,8 @@ const hoverMenuItems = computed<HoverMenuItem[]>(() => {
     { key: 'count', label: '行数统计', run: () => fillEditor(`SELECT COUNT(*) AS cnt FROM ${target.schema}.${target.table};`) },
     { key: 'add-column', label: '创建列', run: () => openDialog('column') },
     { key: 'add-index', label: '创建索引', run: () => openDialog('index') },
-    { key: 'csv', label: '导入数据（CSV）', run: () => openDialog('csv') },
   ]
-  // DROP/TRUNCATE 仅对表开放（视图无截断语义）；无条件项同样先过稽核，
-  // 差异只在 confirm 文案是否附稽核明细（对标审计-03 #8-#11）。
+  // DROP/TRUNCATE 仅对表开放（视图无截断语义）
   if (node.meta.kind === 'table') {
     const auditAndFill = (op: 'drop' | 'truncate', withDetail: boolean): void => {
       void runDestructive(node, target, op, withDetail)
@@ -1928,6 +1938,18 @@ const hoverMenuItems = computed<HoverMenuItem[]>(() => {
     )
   }
   return items
+}
+
+type HoverMenuItemGenerator = (node: TreeNode, target: MenuTarget) => HoverMenuItem[]
+
+const hoverMenuItems = computed<HoverMenuItem[]>(() => {
+  const node = hoverMenuNode.value
+  if (!node) return []
+  const target = menuTarget(node)
+  if (!target) return []
+  const kind = node.meta.kind
+  if (_CODE_MENU_KINDS.includes(kind as typeof _CODE_MENU_KINDS[number])) return CODE_MENU_ITEMS(node, target)
+  return TABLE_MENU_ITEMS(node, target)
 })
 
 async function promptSelectRows(node: TreeNode, target: MenuTarget): Promise<void> {

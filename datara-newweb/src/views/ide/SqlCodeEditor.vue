@@ -40,6 +40,8 @@ const props = defineProps<{
   lintProvider?: (sql: string) => Promise<EditorLintItem[]>
   /** S7：变量解析 hover 提供方（previewResolution 包装）；null = 未定义 */
   hoverProvider?: (expression: string) => Promise<string | null>
+  /** 代码类对象只读模式（存储过程/函数/触发器定义查看） */
+  readonly?: boolean
 }>()
 const emit = defineEmits<{ 'update:modelValue': [value: string] }>()
 const host = ref<HTMLElement | null>(null)
@@ -204,7 +206,9 @@ watch(() => props.variables, () => {
   view?.dispatch({ effects: rebuildVarDecos.of(null) })
 })
 
-onMounted(() => {
+onMounted(() => { _buildView(props.modelValue) })
+
+function _buildView(doc: string): void {
   if (!host.value) return
   const sqlSupport = sql()
   // 变量/关系补全走语言数据挂载（.of() 返回的 facet 扩展须进 extensions 才生效），
@@ -226,16 +230,26 @@ onMounted(() => {
       '.cm-scroller': { fontFamily: 'var(--font-mono, ui-monospace, monospace)', overflow: 'auto' },
     }),
   ]
+  if (props.readonly) extensions.push(EditorView.editable.of(false))
   if (document.documentElement.dataset.theme === 'dark') extensions.push(oneDark)
   view = new EditorView({
     parent: host.value,
-    state: EditorState.create({ doc: props.modelValue, extensions }),
+    state: EditorState.create({ doc, extensions }),
   })
-})
+}
 
 watch(() => props.modelValue, (value) => {
   if (!view || value === view.state.doc.toString()) return
   view.dispatch({ changes: { from: 0, to: view.state.doc.length, insert: value } })
+})
+
+/** readonly 切换时重建 view（CodeMirror 的 editable 是初始化扩展，不支持运行时切换） */
+watch(() => props.readonly, () => {
+  if (!host.value) return
+  const currentDoc = view ? view.state.doc.toString() : props.modelValue
+  view?.destroy()
+  host.value.innerHTML = ''
+  _buildView(currentDoc)
 })
 
 function updateFromBridge(event: Event) {
