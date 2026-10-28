@@ -1,0 +1,59 @@
+B4-b 编辑器能力面（S1 补全/lint 防抖/变量分色/hover + S7 变量联动 + 快捷键三件套 + G11 票尾）
+================================================================================
+日期：2026-10-28
+批次：exec-plan B4-b（执行计划 docs/increments/2026-10-28-前端构建执行计划-单线WSL-Docker.md L74-75）
+设计真源：docs/increments/2026-10-28-前端开发构建方案.md §7.1.5（L198）§7.3 S1/S7（L222/L228）P3（L153-154）
+
+## 方案
+
+- **S1 编辑器内核能力面**（SqlCodeEditor.vue 重写，CodeMirror 6 内核维持用户裁定冻结）：
+  - 补全：`sql().language.data.of({ autocomplete })` 挂载语言数据源（`.of()` 返回的 facet 扩展
+    必须进 extensions 数组才生效——本批实测踩坑）；变量 `${scope.name}` 补全 + 对象树关系名
+    （表/视图）word 补全，与 basicSetup autocompletion + lang-sql 关键字补全叠加共存。
+  - lint：`@codemirror/lint` linter `{ delay: 500 }`（500ms 防抖达标），后端 lintSql 诊断映射为
+    编辑器内下划线（line/col 1-based → CM 绝对偏移，空行/越界 fail-safe 跳过），provider 注入
+    （组件不直接持有契约），provider 异常吞掉不进编辑器。
+  - 变量分色三态：合法引用 `cm-var-token`（info 色）/ 未定义 `cm-var-undefined`（warning 色虚线）
+    / 语法异常 `cm-var-syntax-error`（danger 色波浪线）；正则与 variableApi.parseVariableReferences
+    对齐（REF_PATTERN：`/[a-zA-Z]+\.[a-zA-Z0-9_.]+/`）；ViewPlugin 按可视域重建 + StateEffect
+    响应 variables prop 变化。
+  - hover：`hoverTooltip` 悬停变量引用展示 previewResolution 现时解析值（300ms hoverTime），
+    未定义显示提示；缓存 Map + variables 变化时失效。
+- **S7 变量联动（编辑器侧）**：IdeView 新增 editorVariables（completeVariables 挂载+projectId 切换
+  重载）驱动补全/分色/未定义警告；editorHoverProvider 包装 previewResolution；六点联动中的
+  全局参数抽屉（GlobalParamDrawer）与快照回显已有，本批补齐编辑器内补全/hover/未定义三环。
+- **快捷键三件套（§7.1.5）**：权威键位出自旧版对标审计-03 L129/L153——Ctrl+Enter runSql（canExecute
+  守卫）、Ctrl+S saveScript（始终 preventDefault 阻浏览器保存，空文本跳过保存）、Ctrl+Shift+F
+  formatCurrentSql（对纯 INPUT/TEXTAREA/SELECT 退避，CodeMirror contentEditable 放行；Ctrl 组合键
+  不产生字符输入故其余场景全页面生效）。实现沿用 §7.1.4 页面层模式：window keydown 幂等挂载 +
+  getCurrentInstance().subTree.el isConnected 实例活性守卫 + onMounted 绑定/onUnmounted 摘除。
+- **G11 票尾**：IdeView 头注释 "R5-A 只读 23 方法" → "23 方法"（研发票据用语清除；S9 批次已删
+  页面副标题票据文案，本批核对无残留）。
+- 依赖显式化：@codemirror/autocomplete@^6.18.6 / @codemirror/lint@^6.8.4 / @codemirror/view@^6.36.4
+  由传递依赖升为直接依赖（package.json + lock）。
+
+## 修复（本批实测踩坑）
+
+1. 语言数据补全不生效：`language.data.of()` 返回 facet 扩展，须加入 extensions 数组（原写法调用
+   后丢弃返回值 → 只有 lang-sql 关键字补全）。修复后变量/关系补全与关键字补全共存。
+2. 快捷键测试全空转：测试未 attachTo document → rootEl.isConnected false → 活性守卫拦截全部按键
+   （生产路由视图天然挂载无此问题）。测试统一 `mountIde()`（attachTo: document.body）修复。
+
+## 验证
+
+- `npx vue-tsc -b` 通过（exit 0）。
+- 新增契约测试：
+  - src/views/__tests__/sqlCodeEditor.contract.test.ts（6 用例）：变量补全选项（S7）/关系名补全
+    （S1）/分色三态（定义+未定义+语法异常+文档变更重算）/无 variables 时全视为已定义/防抖 lint
+    渲染 cm-lintRange-error/lint provider 异常吞掉。
+  - src/views/__tests__/ideShortcuts.contract.test.ts（7 用例，独立文件避免同文件多实例 window
+    监听串扰）：Ctrl+Enter 执行（datasourceId 7）/无上下文跳过/Ctrl+S 保存+阻浏览器保存（defaultPrevented
+    断言）/Ctrl+S 空文本只拦截不保存/Ctrl+Shift+F 大写格式化/纯输入控件退避/卸载后不响应。
+- 全量回归：vitest run 119 文件 1020 用例全绿（0 失败）。
+
+## 遗留
+
+- hover 的 jsdom 交互路径（mousemove → coordsAtPos）依赖真实布局，未做自动化；逻辑已由
+  hoverProvider 注入与缓存失效测试间接覆盖，1.9 E2E（B6）补人工/浏览器验证。
+- 快捷键为页面级实现，键位冲突（浏览器 Ctrl+S）已用 preventDefault 全拦截；与未来 DBX 可配置
+  键位需求在 B5 UX 收口时再评估。

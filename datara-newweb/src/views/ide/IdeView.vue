@@ -77,7 +77,15 @@
           <button type="button" data-export :disabled="lastResultSetId === null || exportBusy" @click="exportCurrent">{{ exportBusy ? '导出中…' : '导出结果' }}</button>
           <button type="button" data-lineage :disabled="projectId === null" @click="openLineage">查看血缘</button>
         </div>
-        <SqlCodeEditor ref="sqlEditorEl" v-model="sqlText" placeholder="SELECT … -- 支持变量引用" />
+        <SqlCodeEditor
+          ref="sqlEditorEl"
+          v-model="sqlText"
+          placeholder="SELECT … -- 支持变量引用"
+          :variables="editorVariables"
+          :relation-names="relationNames"
+          :lint-provider="editorLintProvider"
+          :hover-provider="editorHoverProvider"
+        />
 
         <p v-if="diagnostics.length" class="ide-diag" data-diagnostics>
           <span v-for="(d, i) in diagnostics" :key="i" :class="['pill', d.severity]">
@@ -200,7 +208,7 @@
 /**
  * 数据开发 IDE（`/ide`）。
  *
- * 契约面：`sqlIdeApi`（createSqlIdeContract，R5-A 只读 23 方法）——
+ * 契约面：`sqlIdeApi`（createSqlIdeContract，23 方法）——
  *   对象树 listDatabases/Schemas/Relations/Columns/Routines/Indexes/searchObjects、
  *   lintSql、executeSql + openEventStream(SSE) + fetchResultPage 分页、
  *   listHistory/deleteHistory、listScripts/saveScript、exportResult/getExportDownloadUrl。
@@ -214,7 +222,7 @@
  *   rb 授权），403 节点提示"无权限访问该数据源"且不可展开；默认展开第一个根。
  * 范式：CodeMirror 6 编辑器 + splitpanes 持久化工作区，业务操作仍只调用真实后端契约。
  */
-import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
+import { computed, getCurrentInstance, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { Pane, Splitpanes, type SplitpanesResizedPayload } from 'splitpanes'
 import { format } from 'sql-formatter'
@@ -1023,14 +1031,110 @@ function insertVariableRef(item: VariableCompletionItem): void {
   else sqlText.value = `${sqlText.value}${token}`
 }
 
+/* ---------- B4-b S1/S7：编辑器能力面数据源（补全/分色/lint 防抖/hover provider 注入） ----------
+ * 变量清单驱动编辑器内 ${scope.name} 补全/分色/未定义警告（S7 六点联动的编辑器侧）；
+ * lint/hover 以 provider 注入编辑器组件，后端契约仍唯一出自 sqlIdeApi/variableApi。 */
+const editorVariables = ref<VariableCompletionItem[]>([])
+
+async function loadEditorVariables(): Promise<void> {
+  if (projectId.value === null) {
+    editorVariables.value = []
+    return
+  }
+  try {
+    editorVariables.value = await varApi.value.completeVariables('', { projectId: projectId.value })
+  } catch {
+    editorVariables.value = []
+  }
+}
+
+watch(projectId, () => void loadEditorVariables())
+
+/** S1 关系补全清单：对象树已加载的关系节点（表/视图）名。 */
+const relationNames = computed<string[]>(() => {
+  const names = new Set<string>()
+  const walk = (nodes: TreeNode[]): void => {
+    for (const node of nodes) {
+      if (node.meta.kind === 'table' || node.meta.kind === 'view') names.add(node.meta.label)
+      if (node.children.length > 0) walk(node.children)
+    }
+  }
+  walk(tree.value)
+  return [...names]
+})
+
+const editorLintProvider = async (
+  sql: string,
+): Promise<Array<{ line: number; col: number; severity: 'error' | 'warning' | 'info'; message: string }>> => {
+  if (datasourceId.value === null) return []
+  try {
+    return await api.value.lintSql(datasourceId.value, sql)
+  } catch {
+    return []
+  }
+}
+
+const editorHoverProvider = async (expression: string): Promise<string | null> => {
+  if (projectId.value === null) return null
+  try {
+    const preview = await varApi.value.previewResolution(expression, { projectId: projectId.value })
+    return preview.resolvedValue
+  } catch {
+    return null
+  }
+}
+
+/* ---------- §7.1.5 快捷键三件套：Ctrl+Enter 执行 / Ctrl+S 存脚本 / Ctrl+Shift+F 格式化 ----------
+ * 权威键位出自旧版对标审计-03（L129/L153）：Ctrl+Enter runSql、Ctrl+S saveScript、Ctrl+Shift+F fmtSql。
+ * window keydown 幂等挂载 + 实例活性守卫（后台/已卸载实例不响应）；
+ * Ctrl 组合键不产生字符输入，故仅 Ctrl+Shift+F 对纯输入控件（INPUT/TEXTAREA/SELECT）退避，
+ * CodeMirror 的 contentEditable 不在退避之列；Ctrl+S 始终 preventDefault 阻止浏览器保存。 */
+const kaInstance = getCurrentInstance()
+
+function onIdeKeydown(event: KeyboardEvent): void {
+  const rootEl = kaInstance?.subTree?.el
+  if (rootEl && !(rootEl as Node).isConnected) return
+  const ctrl = event.ctrlKey || event.metaKey
+  if (ctrl && !event.shiftKey && !event.altKey && event.key === 'Enter') {
+    if (!canExecute.value) return
+    event.preventDefault()
+    void runSql()
+    return
+  }
+  if (ctrl && !event.shiftKey && !event.altKey && (event.key === 's' || event.key === 'S')) {
+    event.preventDefault()
+    if (sqlText.value.trim() !== '') void saveScript()
+    return
+  }
+  if (ctrl && event.shiftKey && (event.key === 'F' || event.key === 'f')) {
+    const target = event.target as HTMLElement | null
+    if (target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.tagName === 'SELECT')) return
+    if (sqlText.value.trim() === '') return
+    event.preventDefault()
+    formatCurrentSql()
+  }
+}
+
+function bindIdeShortcuts(): void {
+  window.removeEventListener('keydown', onIdeKeydown)
+  window.addEventListener('keydown', onIdeKeydown)
+}
+
+function unbindIdeShortcuts(): void {
+  window.removeEventListener('keydown', onIdeKeydown)
+}
+
 onMounted(async () => {
   if (projectId.value !== null) selected.value = String(projectId.value)
   await loadProjects()
   await loadTree()
+  void loadEditorVariables()
   refreshVarPreview()
   if (datasourceId.value !== null) await loadHistory()
+  bindIdeShortcuts()
 })
 onUnmounted(() => {
+  unbindIdeShortcuts()
   currentEventStream.value?.close()
   stopStatusPolling()
   clearLongWaitTimer()
