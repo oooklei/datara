@@ -1,0 +1,76 @@
+B3 票尾证据：STREAM 图执行链修补（裁决项 3）
+=====================================================
+
+日期：2026-10-28
+提交：b3a033ee「后端修补裁决3落地：STREAM 图执行链（新域实例→legacy 图执行→桥观测）」
+
+一、缺口与裁决
+-----------------------------------------------------
+新域 POST /api/v1/rebuild/execution/workflow-instances 的 STREAM 分支
+此前仅校验并落实例行，不触发任何执行（僵尸实例）。前会话用户裁决：
+「STREAM 无图执行器 → 列入本轮后端修补」。
+
+二、方案（Option B：独立 legacy 引擎复用完整 legacy 链）
+-----------------------------------------------------
+- rebuild 会话（datara_rebuild_i0 库）不能直接写 legacy 表（datara_meta），
+  双库隔离不可跨会话混用 → rebuild-api 侧另建独立 legacy 引擎，
+  env REBUILD_LEGACY_DB_URL 注入；未配置时 fail-closed 抛 5031，
+  不静默产生僵尸实例。
+- 复用 api/streamjob.py 完整 legacy 链零改动：extract_stream_spec
+  （混编/缺源汇/入边校验）+ preflight_stream（引用数据源校验）+
+  register_stream_job（t_stream_job upsert + legacy 实例/任务/日志行 +
+  Redis 广播 datara:flink:ctl）。
+- doc_id 命名空间："rebuild-{workflow_id}"（legacy 画布为数字 id，
+  零撞号；worker 完全不读 doc_id，只消费 spec_json + jobId）。
+- 观测面打通：StreamJobRecord 按 legacy_job_id 幂等注册（重跑复用），
+  worker engine 主动回报四类镜像（state/checkpoints/metrics/failure）
+  经 legacy_bridge 落新域 STREAM 域表。
+- 实例行与桥记录同事务落库；legacy 链失败整体回滚，不残留实例行。
+
+三、关键修复
+-----------------------------------------------------
+api/streamjob.py instance_id 改毫秒精度：新前端一键重跑同秒可达，
+旧秒级时间戳 stream-{id}-{ts} 撞 t_workflow_instance.instance_id
+唯一约束（真实健壮性修复，由重跑用例暴露）。
+
+部署面：docker-compose.yml / docker-compose.rebuild.yml 为 rebuild-api
+注入 REBUILD_LEGACY_DB_URL；日志卷 datara-logs ro→rw
+（register_stream_job 需在共享日志卷建 TaskLog 目录）。
+
+四、验证
+-----------------------------------------------------
+1) 新增 tests/rebuild/test_stream_execution_start.py 7 用例全绿：
+   - happy path：doc_id=="rebuild-{id}"、legacy generation==1、
+     spec 节点边一致、Redis 广播 payload、桥记录
+     （legacy_job_id/workflow_id/state=="CREATED"）、legacy
+     WorkflowInstance run_mode=="stream"
+   - mq_topic 推导：kafka 源取 params.topic；非 kafka 回落
+     datara.stream.{workflow_id}
+   - 重跑：upsert generation==2、桥记录仍 1 条（幂等）、广播 2 次
+   - fail-closed：无 REBUILD_LEGACY_DB_URL → 5031；
+     非 STREAM 定义 → 4001；混编画布 → 4001；缺 stream_output → 4001
+2) tests/rebuild/test_execution_api.py 两 STREAM 用例配通道桩，
+   并断言响应 data.stream.mq_topic。
+3) 定向回归 6 文件（stream_execution_start / execution_api /
+   stream_domain / stream_legacy_bridge / streamjob_extract /
+   engine_stream_dispatch）：
+   143 passed + 1 failed + 22 warnings，37s。
+   唯一失败 test_execution_api.py::test_auth_and_permission_gates
+   （403 vs 401）为存量 auth 闸门家族失败，与本批无关（见下节对照）。
+
+五、43 存量失败 stash 对照结论（隔离性证据）
+-----------------------------------------------------
+全量回归曾现 43 failed。按存量化隔离方法论验证：
+1. git stash 本批改动 → 在 HEAD 复跑同批失败用例 → 失败集合一致；
+2. pytest --lf（lastfailed 缓存）在 HEAD 精确复现同 43 个。
+构成：auth 闸门家族约 39（匿名 401 断言实得 403/200/404）+
+SQL IDE 矩阵 2 + e2e 2；Zookeeper DNS 解析失败为环境噪音。
+结论：43 个全部存量，与本两批修补（133b3dfd、b3a033ee）零关联。
+
+六、遗留
+-----------------------------------------------------
+- tests/e2e test_e2e_six_node_types.py 的 stream 生命周期用例处于
+  SKIPPED（编码旧「僵尸创建」语义：NORMAL 定义 + STREAM 实例 → 200），
+  留待 B6 统一验收时按新语义重写。
+- 1.9 部署前提：rebuild-api 注入 REBUILD_LEGACY_DB_URL、日志卷读写、
+  重建 rebuild 镜像。
