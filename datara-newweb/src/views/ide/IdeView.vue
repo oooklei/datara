@@ -7,10 +7,6 @@
       </div>
       <div class="ide-actions">
         <button type="button" data-variable-manage :disabled="projectId === null" @click="variableManagementOpen = true">变量管理</button>
-        <button type="button" data-execute :disabled="!canExecute" @click="runSql">
-          {{ executing ? '执行中…' : '执行' }}
-        </button>
-        <button type="button" data-cancel :disabled="!executing || cancelBusy" @click="cancelRun">{{ cancelBusy ? '取消中…' : '取消' }}</button>
       </div>
     </header>
 
@@ -105,6 +101,11 @@
           <button type="button" data-redo title="重做（Ctrl+Y）" @click="sqlEditorEl?.redo()">↪ 重做</button>
           <button type="button" data-toggle-comment title="注释/取消注释选中行（Ctrl+/）" @click="sqlEditorEl?.toggleComment()">💬 注释</button>
           <button type="button" data-clear-editor title="清空编辑器" @click="clearEditor">🧹 清空</button>
+          <span class="ide-editor-sep"></span>
+          <button type="button" data-cancel :disabled="!executing || cancelBusy" @click="cancelRun" class="ide-editor-cancel">{{ cancelBusy ? '取消中…' : '取消' }}</button>
+          <button type="button" data-execute :disabled="!canExecute" @click="runSql" class="ide-editor-execute">
+            {{ executing ? '执行中…' : '▶ 执行' }}
+          </button>
         </div>
         <SqlCodeEditor
           ref="sqlEditorEl"
@@ -2178,6 +2179,11 @@ onUnmounted(() => {
 .ide-search-result small{color:var(--text-2)}
 .ide-editor-head{display:flex;align-items:center;gap:10px;margin-bottom:8px}
 .ide-editor-title{font-weight:600}
+.ide-editor-sep{width:1px;height:18px;background:var(--border);margin:0 4px}
+.ide-editor-cancel{color:var(--text-2)}
+.ide-editor-execute{background:var(--primary,#2563eb);color:#fff;border-color:var(--primary,#2563eb);font-weight:600;box-shadow:0 1px 2px rgba(37,99,235,.2)}
+.ide-editor-execute:hover:not(:disabled){background:#1d4ed8;border-color:#1d4ed8}
+.ide-editor-execute:disabled{opacity:.5;cursor:not-allowed}
 .ide-diag{display:flex;flex-wrap:wrap;gap:6px;margin:8px 0 0}
 .pill{display:inline-block;padding:2px 8px;border-radius:10px;font-size:11px;background:var(--bg-deep);color:var(--text-2)}
 .pill.error,.pill.invalid{background:var(--danger-bg);color:var(--danger)}
