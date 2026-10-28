@@ -208,11 +208,12 @@ async function request<T>(projectId: number, path: string, method = 'GET', body?
   const headers: Record<string, string> = {}
   const token = getToken()
   if (token) headers.token = token
-  if (body !== undefined) headers['Content-Type'] = 'application/json'
+  const snakeBody = body !== undefined ? camelToSnakeDeep(body) : undefined
+  if (snakeBody !== undefined) headers['Content-Type'] = 'application/json'
   const response = await fetch(`${API_BASE}/${projectId}/sql-ide${path}`, {
     method,
     headers,
-    body: body === undefined ? undefined : JSON.stringify(body),
+    body: snakeBody === undefined ? undefined : JSON.stringify(snakeBody),
   })
   const envelope = await response.json().catch(() => null) as { code?: number; msg?: string; data?: T & { errorCode?: string; details?: unknown } } | null
   if (!envelope || !response.ok || envelope.code !== 0) {
@@ -235,10 +236,25 @@ function normalizeResponse(value: unknown): unknown {
   ]))
 }
 
+/** 递归 camel→snake（处理 query 键 / body 键）：sql-ide 后端契约统一下划线词形。 */
+function camelToSnakeDeep(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(camelToSnakeDeep)
+  if (!value || typeof value !== 'object' || value instanceof Date) return value
+  return Object.fromEntries(
+    Object.entries(value as Record<string, unknown>).map(([k, v]) => [
+      k.replace(/[A-Z]/g, (letter) => `_${letter.toLowerCase()}`).replace(/^_/, ''),
+      camelToSnakeDeep(v),
+    ]),
+  )
+}
+
 function query(values: Record<string, string | number | boolean | null | undefined>): string {
   const params = new URLSearchParams()
   for (const [key, value] of Object.entries(values)) {
-    if (value !== undefined && value !== null) params.set(key, String(value))
+    if (value !== undefined && value !== null) {
+      const snakeKey = key.replace(/[A-Z]/g, (l) => `_${l.toLowerCase()}`).replace(/^_/, '')
+      params.set(snakeKey, String(value))
+    }
   }
   const encoded = params.toString()
   return encoded ? `?${encoded}` : ''

@@ -942,7 +942,8 @@ async function loadChildren(node: TreeNode): Promise<TreeNode[]> {
   }
   if (m.kind === 'database') {
     const page = await api.value.listSchemas(m.dsId, m.name)
-    return page.items.map((s) => makeNode({ kind: 'schema', label: s.name, dsId: m.dsId, db: m.db, expandable: true }))
+    // 后端 schemas.items = string[]（纯 schema 名），不是 { name } 对象
+    return page.items.map((s) => makeNode({ kind: 'schema', label: typeof s === 'string' ? s : s.name, dsId: m.dsId, db: m.db, expandable: true }))
   }
   if (m.kind === 'schema') {
     const db = m.db ?? ''

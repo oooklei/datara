@@ -37,14 +37,15 @@ describe('R5-A sqlIdeApi route contract', () => {
     await expect(contract.importCsv({ datasourceId: 9, schema: 'app', table: 'users', columns: ['id'], rows: [[1], [2]] })).resolves.toEqual({ imported: 2 })
     await expect(contract.auditTable({ datasourceId: 9, schema: 'app', table: 'users', op: 'drop' })).resolves.toMatchObject({ status: 'pass', rowCount: 12, findings: [{ code: 'DESTRUCTIVE_OP' }] })
 
+    // 后端契约统一 snake_case（修复前 query/body 漏 camel→snake，后端收到 datasourceId → 400）
     expect(fetchMock.mock.calls.map(([url, init]) => [url, init?.method])).toEqual([
-      ['/api/v1/projects/23/sql-ide/rows?datasourceId=9&schema=app&table=users&limit=200&offset=0', 'GET'],
+      ['/api/v1/projects/23/sql-ide/rows?datasource_id=9&schema=app&table=users&limit=200&offset=0', 'GET'],
       ['/api/v1/projects/23/sql-ide/rows/apply', 'POST'],
       ['/api/v1/projects/23/sql-ide/import-csv', 'POST'],
       ['/api/v1/projects/23/sql-ide/audit', 'POST'],
     ])
     expect(JSON.parse(fetchMock.mock.calls[1][1].body)).toEqual({
-      datasourceId: 9, schema: 'app', table: 'users', primaryKeys: ['id'], inserts: [{ id: 2 }], updates: [], deletes: [],
+      datasource_id: 9, schema: 'app', table: 'users', primary_keys: ['id'], inserts: [{ id: 2 }], updates: [], deletes: [],
     })
   })
 
@@ -68,12 +69,13 @@ describe('R5-A sqlIdeApi route contract', () => {
     await expect(contract.executeSql({ datasourceId: 9, db: 'analytics', sql: 'select 1', mode: 'auto', sessionId: 'session-1', clientRequestId: 'request-1' })).resolves.toEqual({ taskId: 'task-1' })
     await expect(contract.fetchResultPage(81, 'rs-9', 0, 50)).resolves.toMatchObject({ resultSetId: 'rs-9', rows: [[1]], rowsTotal: 1, offset: 0, limit: 50 })
 
+    // URL query / POST body 必须转 snake（后端字段名 = datasource_id）
     expect(fetchMock.mock.calls.map(([url, init]) => [url, init?.method])).toEqual([
-      ['/api/v1/projects/23/sql-ide/databases?datasourceId=9', 'GET'],
+      ['/api/v1/projects/23/sql-ide/databases?datasource_id=9', 'GET'],
       ['/api/v1/projects/23/sql-ide/executions', 'POST'],
-      ['/api/v1/projects/23/sql-ide/results/81?resultSetId=rs-9&offset=0&limit=50', 'GET'],
+      ['/api/v1/projects/23/sql-ide/results/81?result_set_id=rs-9&offset=0&limit=50', 'GET'],
     ])
-    expect(JSON.parse(fetchMock.mock.calls[1][1].body)).toEqual({ datasourceId: 9, db: 'analytics', sql: 'select 1', mode: 'auto', sessionId: 'session-1', clientRequestId: 'request-1' })
+    expect(JSON.parse(fetchMock.mock.calls[1][1].body)).toEqual({ datasource_id: 9, db: 'analytics', sql: 'select 1', mode: 'auto', session_id: 'session-1', client_request_id: 'request-1' })
     expect(fetchMock.mock.calls[0][1].headers).toMatchObject({ token: 'test-token' })
   })
 
@@ -83,14 +85,14 @@ describe('R5-A sqlIdeApi route contract', () => {
     await expect(contract.fetchResultPage(81, 'rs-9', 0, 501)).rejects.toThrow('1 to 500')
     fetchMock.mockResolvedValueOnce({ ok: true, status: 200, json: async () => ({ code: 0, msg: 'success', data: { result_set_id: 'rs-9', row_count: { kind: 'exact', value: 1 }, rows: [[1]], page: { offset: 0, limit: 500 } } }) })
     await expect(contract.fetchResultPage(81, 'rs-9', 0, 500)).resolves.toMatchObject({ resultSetId: 'rs-9', rowsTotal: 1, limit: 500 })
-    expect(fetchMock.mock.calls[0][0]).toBe('/api/v1/projects/23/sql-ide/results/81?resultSetId=rs-9&offset=0&limit=500')
+    expect(fetchMock.mock.calls[0][0]).toBe('/api/v1/projects/23/sql-ide/results/81?result_set_id=rs-9&offset=0&limit=500')
   })
 
   it('replays a result snapshot by statement index when the resultSetId is unknown (S8)', async () => {
     fetchMock.mockResolvedValueOnce({ ok: true, status: 200, json: async () => ({ code: 0, msg: 'success', data: { stmt_index: 2, result_set_id: 'rs-3', columns: ['id'], rows: [], row_count: { kind: 'exact', value: 7 }, page: { offset: 0, limit: 1 } } }) })
     const contract = createSqlIdeContract(23)
     await expect(contract.fetchResultPage(81, null, 0, 1, 2)).resolves.toMatchObject({ resultSetId: 'rs-3', rowsTotal: 7 })
-    expect(fetchMock.mock.calls[0][0]).toBe('/api/v1/projects/23/sql-ide/results/81?stmtIndex=2&offset=0&limit=1')
+    expect(fetchMock.mock.calls[0][0]).toBe('/api/v1/projects/23/sql-ide/results/81?stmt_index=2&offset=0&limit=1')
   })
 
   it('adapts the backend cancellation response to the readonly UI contract', async () => {
@@ -135,9 +137,10 @@ describe('R5-A sqlIdeApi route contract', () => {
 
     await expect(contract.listDatabases(9)).resolves.toMatchObject({ capability: 'conditional', constraints: ['requires read access'], page: { nextCursor: 'next-2', hasMore: true } })
     await expect(contract.searchObjects(9, 'event', 'cursor-1')).resolves.toMatchObject({ items: [{ kind: 'table', name: 'events' }], page: { hasMore: false } })
+    // query 必须 snake（后端 datasource_id）
     expect(fetchMock.mock.calls.map(([url]) => url)).toEqual([
-      '/api/v1/projects/23/sql-ide/databases?datasourceId=9',
-      '/api/v1/projects/23/sql-ide/objects/search?datasourceId=9&keyword=event&cursor=cursor-1',
+      '/api/v1/projects/23/sql-ide/databases?datasource_id=9',
+      '/api/v1/projects/23/sql-ide/objects/search?datasource_id=9&keyword=event&cursor=cursor-1',
     ])
   })
 
@@ -173,8 +176,9 @@ describe('R5-A sqlIdeApi route contract', () => {
     await expect(contract.lintSql(9, 'select 1')).resolves.toMatchObject([{ stmtIndex: 2, line: 4, col: 7, severity: 'warning', code: 'W001' }])
     await expect(contract.saveScript({ id: 8, name: 'daily', sqlText: 'select 1', revision: 3 })).resolves.toMatchObject({ id: 8, revision: 4 })
     await expect(contract.deleteScript(8, 4)).resolves.toBeUndefined()
-    expect(JSON.parse(fetchMock.mock.calls[1][1].body)).toEqual({ id: 8, name: 'daily', sqlText: 'select 1', expectedRevision: 3 })
-    expect(fetchMock.mock.calls[2][0]).toBe('/api/v1/projects/23/sql-ide/scripts/8?expectedRevision=4')
+    // POST body / DELETE query 必须 snake
+    expect(JSON.parse(fetchMock.mock.calls[1][1].body)).toEqual({ id: 8, name: 'daily', sql_text: 'select 1', expected_revision: 3 })
+    expect(fetchMock.mock.calls[2][0]).toBe('/api/v1/projects/23/sql-ide/scripts/8?expected_revision=4')
     expect(fetchMock.mock.calls[2][1].method).toBe('DELETE')
   })
 })
