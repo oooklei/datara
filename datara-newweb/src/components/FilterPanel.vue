@@ -101,4 +101,6 @@ const dirty = computed(
 .lfp-foot{display:flex;align-items:center;justify-content:space-between;font-size:11px;color:var(--text-3);border-top:1px dashed var(--border);padding-top:10px;margin-top:auto}
 .lfp-reset{border:none;background:none;color:var(--primary);font-size:11.5px;cursor:pointer;padding:0}
 .lfp-reset:hover{text-decoration:underline}
+/* B5-d-2：<768 单列降档（配合 theme.css .split.filter 单列），定宽取消 */
+@media (max-width:768px){.lfp{width:100%;position:static}}
 </style>

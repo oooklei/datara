@@ -386,7 +386,7 @@ button,.btn,.el-button,a,.menu-item,.card,.stat{transition:all var(--dur-base) v
 .f-item{display:flex;flex-direction:column;gap:4px}
 .f-item.full{grid-column:1 / -1}
 .f-item label{font-size:11.5px;color:var(--text-2)}
-.f-item input,.f-item select,.f-item textarea{width:100%;border:1px solid var(--border-strong);border-radius:6px;padding:6px 9px;font-size:12.5px;font-family:inherit;color:var(--text);background:#fff;outline:none;transition:border-color .15s}
+.f-item input,.f-item select,.f-item textarea{width:100%;border:1px solid var(--border-strong);border-radius:6px;padding:6px 9px;font-size:12.5px;font-family:inherit;color:var(--text);background:var(--card);outline:none;transition:border-color .15s}
 .f-item input:focus,.f-item select:focus,.f-item textarea:focus{border-color:var(--primary);box-shadow:0 0 0 2px rgba(22,104,220,.1)}
 .f-item textarea{min-height:64px;resize:vertical}
 
@@ -408,7 +408,7 @@ button,.btn,.el-button,a,.menu-item,.card,.stat{transition:all var(--dur-base) v
 
 /* 分页 */
 .pager{display:flex;align-items:center;gap:8px;justify-content:flex-end;padding:10px 0;font-size:12.5px;color:var(--text-2)}
-.pager button{border:1px solid var(--border-strong);background:#fff;border-radius:var(--radius-sm);padding:3px 10px;cursor:pointer;color:var(--text-2)}
+.pager button{border:1px solid var(--border-strong);background:var(--card);border-radius:var(--radius-sm);padding:3px 10px;cursor:pointer;color:var(--text-2)}
 .pager button:hover:not(:disabled){border-color:var(--primary);color:var(--primary)}
 .pager button:disabled{opacity:.45;cursor:not-allowed}
 
@@ -487,3 +487,24 @@ select.kw{cursor:pointer;min-width:150px}
 .recent-list li{display:flex;align-items:center;gap:8px;font-size:12.5px;padding:6px 8px;border:1px dashed var(--border);border-radius:var(--radius-sm);background:var(--bg)}
 .recent-list li .mono{font-size:11.5px;color:var(--text-2)}
 .recent-list li .r-time{margin-left:auto;font-size:11px;color:var(--text-3)}
+
+/* ==== B5-d-2 三档响应式：<768 全局降档（1440/1024 桌面布局不动；375 无横向失控） ==== */
+@media (max-width:768px){
+  /* 宽表格兜底：块化 + 容器内横向滚动，全部自研表格统一生效（排除 Element 内部表 el-table__header/body） */
+  table:not([class*="el-table"]){display:block;overflow-x:auto}
+  /* 治理页两栏骨架单列堆叠（.split 280px 侧栏 / .split.filter 220px / .split.even 均变单列） */
+  .split{grid-template-columns:1fr}
+  .split.even{grid-template-columns:1fr}
+  .split.filter{grid-template-columns:1fr}
+  /* 目录/树两栏纵向堆叠 */
+  .catalog{flex-direction:column}
+  .catalog .tree{width:100%;max-height:280px}
+  /* 资产卡片网格单列（minmax(360px,1fr) 在 375 视口放不下两列） */
+  .box-grid{grid-template-columns:1fr}
+  /* 表单网格单列 */
+  .form-grid{grid-template-columns:1fr}
+  /* 统计网格降档（scoped 覆盖如 HomeView 自带 560px 断点不受影响） */
+  .stat-grid{grid-template-columns:repeat(2,1fr)}
+  .stat-row{grid-template-columns:1fr}
+  .stat-line{grid-template-columns:repeat(2,1fr)}
+}

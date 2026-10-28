@@ -1,0 +1,69 @@
+B5-d-2 三档响应式（§2.3：1440 像素级 / 1024 全部功能可用 / <768 抽屉 + 375 无横向失控）
+================================================================================
+日期：2026-10-28  批次：B5-d-2  提交：见 git log（B5-d-2）
+
+一、<768 全局降档（theme.css 末尾新增 @media (max-width:768px) 块）
+--------------------------------------------------------------------------------
+1. 宽表格兜底（38 个消费 <table> 的视图统一生效）：
+   table:not([class*="el-table"]){display:block;overflow-x:auto}
+   - 块化 + 容器内横向滚动，375 视口宽表格不再撑破页面（PermissionMatrixView 5 列
+     perm-col 280px、ApiManagementView API 定义/调用日志、QualityException、
+     SshNodeManagement、MonitorView、AccessAudit、LlmModels、ProjectMembers 等）。
+   - 排除 Element Plus 内部表 el-table__header/el-table__body（仅 WorkflowGraphWorkbench
+     使用 el-table），避免破坏其 colgroup 同步布局。
+   - 已有 .table-wrap{overflow:auto} 的页面（UserManagement/ProjectWorkbench/
+     StreamObservation .stream-detail 等）双保险，行为兼容。
+2. 两栏骨架单列堆叠：.split{1fr} / .split.even{1fr} / .split.filter{1fr}
+   —— 治理 8 页共用骨架（280px/220px 定宽侧栏在 375 失控点全部消除）。
+3. 目录/树纵排：.catalog{flex-direction:column} + .catalog .tree{width:100%;max-height:280px}
+   —— 元数据目录/资产地图左树 230px 定宽降档。
+4. 网格降档：.box-grid{1fr}（资产卡片 minmax(360px,1fr) 在 375 放不下两列）、
+   .form-grid{1fr}（表单单列）、.stat-grid{2 列}/.stat-row{1 列}/.stat-line{2 列}。
+5. FilterPanel 自身 scoped 降档（.lfp width:220px 定宽取消，sticky 取消）：
+   @media (max-width:768px){.lfp{width:100%;position:static}}
+   —— scoped 特异性高于全局，必须在组件内降档；配合 .split.filter 单列。
+6. 桌面档不受影响：全部规则只在 max-width:768px 媒体查询内（契约测试锚定
+   "降档规则不出现在媒体查询之外"）。
+
+二、375 专项排查结论（其余失控点清零）
+--------------------------------------------------------------------------------
+- 全库 grep width:[4-9]\d\dpx：LoginView 400px(94vw)、IdeView 对话框 440px(92vw)、
+  CsvImportDialog 720px(94vw) 均带 max-width 兜底；StreamObservationPanel textarea
+  320px 在 375 可容纳且面板自带 680px 断点。
+- 全库 grep min-width:[3-9]\d\dpx：零命中。
+- 弹窗体系：theme .dlg 560px max-width:calc(100vw-48px)、.mask form
+  min(500px,calc(100vw-40px))、.drawer 520px max-width:92vw、AiAssistantPanel
+  width:min(380px,calc(100vw-32px))（B5-d-1 已修）——全部自适应。
+- HomeView/Dashboard 自带 900px/560px scoped 断点，优先级高于全局（scoped 特异性），
+  不冲突；DataSourceListView .ds-split 自带 900px 断点；AppShell 侧栏自带 767px 断点。
+
+三、1024 档核验（§2.3「全部功能可用」，静态排查）
+--------------------------------------------------------------------------------
+- 侧栏 230px + 内容 ~760px：列表页/治理页 .split(280px 侧栏) 均可容纳。
+- 固定宽面板均有兜底：.drawer/.dlg/AiAssistantPanel 同上；IDE splitpanes 用户可拖宽
+  自持久化 + 自带 900px 降档（左栏 320px 上限/右栏 720px）；Workbench 图例/校验面板
+  为可拖动浮窗（B5-d-1 已接线 useDraggable）。
+- 权限矩阵 .perm-page max-width:1080px 居中自适应。
+- 结论：1024 档全部功能可达，无遮挡/截断失控点；像素级验收按 §2.3 仅约束 1440。
+
+四、顺手项（暗色硬编码清零延续）
+--------------------------------------------------------------------------------
+- theme.css .f-item input/select/textarea background:#fff → var(--card)
+- theme.css .pager button background:#fff → var(--card)
+- 残余已知项（记录不阻塞）：StreamObservationPanel（STREAM 面板，已列本轮后端修补，
+  待后端补 STREAM 下发时一并 token 化）；theme.css .skeleton 渐变/错误态局部 hex
+  为亮色语义固定值，暗色主题下可接受。
+
+五、契约测试
+--------------------------------------------------------------------------------
+新增 src/styles/__tests__/themeResponsive.contract.test.ts（5 用例，node:fs 直读
+theme.css 源断言——本仓 Vitest 对 *.css?raw 返回空串）：
+1) <768 降档块存在；2) 宽表格块化兜底（排除 el-table）；3) .split 三变体/.catalog/
+.box-grid/.form-grid 降档锚；4) 统计网格降档锚；5) 桌面档不受影响（降档规则不得
+出现在媒体查询之外）。
+
+六、验证数据
+--------------------------------------------------------------------------------
+- npx vitest run：Test Files 124 passed (124)，Tests 1080 passed (1080)
+  （基线 123/1075 + 新增 1 文件 5 用例，零回归）
+- npx vue-tsc -b：exit 0
