@@ -1,0 +1,72 @@
+B5-b 数据源三步向导严格复刻（§7.4 + D13 搜索框 + 行内操作闭环）
+=====================================================
+
+日期：2026-10-28
+依据：docs/increments/2026-10-28-前端开发构建方案.md §7.4（L235 处置裁定）+ 导航映射总表 L251
+真源：datara-web/src/views/datasource/DataSourceWizard.vue（旧前端三步向导实证）
+
+## 交付内容
+
+改造 `datara-newweb/src/views/datasource/DataSourceListView.vue`：单步表单弹窗 → 三步向导。
+
+### 三步结构（严格复刻旧形态）
+
+- 步骤条「选择类型 / 连接信息 / 保存并测试」（ol.wiz-steps，on/done 双态）
+- ① 选择类型：分组卡片（连接型数据库：MySQL 3306 / PostgreSQL 5432），选中即带出默认端口
+  + 数据源名称输入；未选类型/未填名称的步进校验（「请先选择数据源类型」「请填写数据源名称」）
+- ② 连接信息：主机/端口/数据库/用户名/密码（密码眼睛切换明文密文 data-pwd-eye）；
+  步进校验逐字段（主机/端口/数据库名/用户名）
+- ③ 保存并测试：摘要（类型/名称/目标 host:port / database）+ 按钮文案三态
+  （完成注册并测试 / 保存修改并测试 / 保存并重新测试）+ 结果 banner（ok/fail）
+  + 失败提示「可返回上一步调整参数后点重新测试」
+
+### 编辑链路（复刻）
+
+- 行内编辑按钮直开向导，**跳过类型选择直进连接步**，窗口标题「编辑数据源」
+- 密码不回填，placeholder「留空则保持原密码」（password: draft.password || undefined）
+- 注册流程填名称后标题「注册数据源:xxx」（复刻旧 dialogTitle）
+
+### 保存并测试闭环（复刻 + 新契约语义适配）
+
+- create/update → testDatasource；连通成功关窗 + 列表刷新 + testMessage 透出
+- 测试失败：向导保持打开 + banner 呈现失败原因 + 已注册 #id 提示
+- savedId 固化首建行：失败后重试走 update（不重复 create，避免 4091 名称已存在误报）
+- retestOnly：仅重测入口（data-retest，不改参不触发 create/update）
+- 新契约 testDatasource 失败走异常（5021 connectionFailed），banner 直接呈现 error message
+
+### 类型卡片边界（G09 注明）
+
+- 旧前端 7 类型（mysql/greatdb/kafka/redis/mqtt/http/file）中，新后端 rebuild datasource
+  契约仅支持 mysql/postgresql（datara-backend/rebuild/datasource/contracts.py L49
+  `kind not in {"mysql","postgresql"}`；pool.py L104 同口径）
+- Kafka/Redis/MQTT/HTTP 流源与文件源注册无 rebuild 端点 → 按 G09 隐藏，
+  向导步骤①内注明「暂无 rebuild 注册契约，按 G09 隐藏」
+- 新契约无 env/group 字段（旧前端有）→ 不造假字段，严格按 DatasourceDraft 契约
+
+### D13 + 行内操作闭环（已在位确认）
+
+- 列表搜索：filterKeyword（data-filter-keyword）+ filterKind + filterStatus 三过滤器
+- 行内操作：详情/测试/编辑/删除四操作闭环 + 元数据三级浏览（库·对象·字段）
+
+## 测试
+
+- 重写 2 用例（锚定旧单步表单 → 三步向导）：
+  - edits...jumping straight to the connection step（编辑直进 + aria-label=编辑数据源）
+  - registers...through the 3-step wizard（三步全流程 + 标题带名 + 默认端口带出 + 保存并测试关窗刷新）
+- 新增 2 用例：
+  - guards wizard steps and supports param retest（步进校验链 + 首测失败 banner + retestOnly 不重复 create）
+  - keeps the wizard open for param fixes（失败保持打开 → prev 改参 → update 保存重测成功关窗）
+- 数据源页：14 用例全绿（原 12 → 14）
+- 全量门禁：npx vitest run 123 文件 / 1071 用例全绿（1069 → 1071，+2）
+- npx vue-tsc -b：exit 0
+
+## 验证环境说明
+
+本票为设计态交互改造，验证于本机（代码检测/静态/类型/逻辑稽核）；
+1.9 部署/E2E 归 B6 统一验收（approval gate 前汇报）。
+
+## 遗留 / 后续票
+
+- B5 后续：19 项+全局页按钮响应矩阵核验补缺
+- B5 后续：G14 视觉融合 + 1440/1024/375 三档响应式 + 四角色可见性回归
+- 旧向导的共享卷文件选择器（listDataFiles）随文件源注册契约一并缺失，同属 G09 隐藏范围

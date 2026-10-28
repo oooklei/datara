@@ -154,35 +154,51 @@ describe('/ds/list 数据源管理页（增量 10/10A）', () => {
     expect(w.find('[data-detail]').exists()).toBe(true)
   })
 
-  it('edits a datasource without resending a blank password', async () => {
+  it('edits a datasource by jumping straight to the connection step without resending a blank password', async () => {
     router.route.params.projectId = '1'
     const w = mount(View)
     await flushPromises()
 
     await w.find('[data-edit]').trigger('click')
-    await w.find('[data-host]').setValue('10.0.0.8')
-    await w.find('form').trigger('submit')
+    // 编辑直进连接步（§7.4），标题「编辑数据源」
+    expect(w.get('[data-wizard]').attributes('aria-label')).toBe('编辑数据源')
+    expect(w.find('[data-wiz-step-conn]').exists()).toBe(true)
+    await w.get('[data-host]').setValue('10.0.0.8')
+    await w.get('[data-wiz-next]').trigger('click')
+    await w.get('[data-save-test]').trigger('click')
     await flushPromises()
 
     expect(spies.update).toHaveBeenCalledWith(1, expect.objectContaining({ host: '10.0.0.8', password: undefined }))
+    expect(spies.test).toHaveBeenCalledWith(1)
     expect(spies.list).toHaveBeenCalledTimes(2)
   })
 
-  it('registers a datasource through the dialog and reloads the list', async () => {
+  it('registers a datasource through the 3-step wizard and reloads the list', async () => {
     router.route.params.projectId = '1'
     const w = mount(View)
     await flushPromises()
     expect(w.find('[data-create]').attributes('disabled')).toBeUndefined()
 
     await w.find('[data-create]').trigger('click')
-    await w.find('[data-name]').setValue('订单库')
-    await w.find('[data-kind]').setValue('postgresql')
-    await w.find('[data-host]').setValue('10.0.0.9')
-    await w.find('[data-port]').setValue('5432')
-    await w.find('[data-database]').setValue('warehouse')
-    await w.find('[data-username]').setValue('etl')
-    await w.find('[data-password]').setValue('secret')
-    await w.find('form').trigger('submit')
+    // ① 类型选择：标题先为「注册数据源」
+    expect(w.get('[data-wizard]').attributes('aria-label')).toBe('注册数据源')
+    await w.get('[data-wiz-type="postgresql"]').trigger('click')
+    await w.get('[data-wiz-name]').setValue('订单库')
+    // 注册流程标题带上名称（复刻旧 dialogTitle）
+    expect(w.get('[data-wizard]').attributes('aria-label')).toBe('注册数据源:订单库')
+    await w.get('[data-wiz-next]').trigger('click')
+    // ② 连接信息：选中类型带出默认端口 5432
+    expect(w.find('[data-wiz-step-conn]').exists()).toBe(true)
+    expect(Number((w.get('[data-port]').element as HTMLInputElement).value)).toBe(5432)
+    await w.get('[data-host]').setValue('10.0.0.9')
+    await w.get('[data-port]').setValue('5432')
+    await w.get('[data-database]').setValue('warehouse')
+    await w.get('[data-username]').setValue('etl')
+    await w.get('[data-password]').setValue('secret')
+    await w.get('[data-wiz-next]').trigger('click')
+    // ③ 保存并测试：连通成功即关窗并刷新列表
+    expect(w.find('[data-wiz-step-test]').exists()).toBe(true)
+    await w.get('[data-save-test]').trigger('click')
     await flushPromises()
 
     expect(spies.create).toHaveBeenCalledWith({
@@ -194,9 +210,82 @@ describe('/ds/list 数据源管理页（增量 10/10A）', () => {
       username: 'etl',
       password: 'secret',
     })
+    expect(spies.test).toHaveBeenCalledWith(1)
     expect(w.find('[role=dialog]').exists()).toBe(false)
     // 保存后刷新列表
     expect(spies.list.mock.calls.length).toBeGreaterThanOrEqual(2)
+  })
+
+  it('guards wizard steps and supports param retest after a failed save-and-test', async () => {
+    router.route.params.projectId = '1'
+    const w = mount(View)
+    await flushPromises()
+
+    await w.find('[data-create]').trigger('click')
+    // 未选类型 / 未填名称不得进入连接步
+    await w.get('[data-wiz-next]').trigger('click')
+    expect(w.find('[data-wiz-error]').text()).toContain('数据源类型')
+    await w.get('[data-wiz-type="mysql"]').trigger('click')
+    await w.get('[data-wiz-next]').trigger('click')
+    expect(w.find('[data-wiz-error]').text()).toContain('名称')
+    await w.get('[data-wiz-name]').setValue('流复制源')
+    await w.get('[data-wiz-next]').trigger('click')
+    expect(w.find('[data-wiz-step-conn]').exists()).toBe(true)
+    await w.get('[data-wiz-next]').trigger('click')
+    expect(w.find('[data-wiz-error]').text()).toContain('主机')
+    await w.get('[data-host]').setValue('10.0.0.5')
+    await w.get('[data-port]').setValue('3306')
+    await w.get('[data-database]').setValue('biz')
+    await w.get('[data-username]').setValue('etl')
+    await w.get('[data-wiz-next]').trigger('click')
+
+    // 首测失败：banner 呈现 + 已注册提示；create 仅 1 次（savedId 固化防重复创建）
+    spies.test.mockRejectedValueOnce(Object.assign(new Error('connection refused'), { code: 5021 }))
+    await w.get('[data-save-test]').trigger('click')
+    await flushPromises()
+    expect(spies.create).toHaveBeenCalledTimes(1)
+    const banner = w.get('[data-wiz-banner]')
+    expect(banner.text()).toContain('连通失败')
+    expect(banner.text()).toContain('connection refused')
+    expect(w.text()).toContain('可返回上一步调整参数')
+
+    // 仅重测（不改参）：不再触发 create/update
+    await w.get('[data-retest]').trigger('click')
+    await flushPromises()
+    expect(spies.test).toHaveBeenCalledTimes(2)
+    expect(w.find('[role=dialog]').exists()).toBe(false)
+  })
+
+  it('keeps the wizard open for param fixes after a failed save-and-test (retest loop)', async () => {
+    router.route.params.projectId = '1'
+    const w = mount(View)
+    await flushPromises()
+
+    await w.find('[data-create]').trigger('click')
+    await w.get('[data-wiz-type="mysql"]').trigger('click')
+    await w.get('[data-wiz-name]').setValue('离线库')
+    await w.get('[data-wiz-next]').trigger('click')
+    await w.get('[data-host]').setValue('10.0.0.5')
+    await w.get('[data-database]').setValue('biz')
+    await w.get('[data-username]').setValue('etl')
+    await w.get('[data-wiz-next]').trigger('click')
+
+    spies.test.mockRejectedValueOnce(Object.assign(new Error('connection refused'), { code: 5021 }))
+    await w.get('[data-save-test]').trigger('click')
+    await flushPromises()
+    expect(w.find('[role=dialog]').exists()).toBe(true)
+
+    // 返回上一步改参后再次保存并测试：走 update（savedId），成功后关窗
+    await w.get('[data-wiz-prev]').trigger('click')
+    await w.get('[data-host]').setValue('10.0.0.6')
+    await w.get('[data-wiz-next]').trigger('click')
+    await w.get('[data-save-test]').trigger('click')
+    await flushPromises()
+    expect(spies.create).toHaveBeenCalledTimes(1)
+    expect(spies.update).toHaveBeenCalledTimes(1)
+    expect(spies.update).toHaveBeenCalledWith(1, expect.objectContaining({ host: '10.0.0.6' }))
+    expect(spies.test).toHaveBeenCalledTimes(2)
+    expect(w.find('[role=dialog]').exists()).toBe(false)
   })
 
   it('runs a connectivity test and reports the probe result', async () => {
