@@ -191,6 +191,11 @@ vi.mock('@vue-flow/minimap', () => ({ MiniMap: { name: 'MiniMap', render: () => 
 /** 模板解析走全局注册链（非 element-plus 模块导入），mount 时注册桩消噪 Failed to resolve component */
 const ElStub = { name: 'ElStub', render: () => null }
 
+/** 本文件挂载过的工作台实例。变更用例（drop/删除/移动）遗留的真实 500ms canvas-state
+ * 防抖定时器随实例存活，跨用例到点落盘会污染共享 localStorage（KA3 的 null 断言），
+ * afterEach 统一卸载以同步 flushSnapDebounce 清定时器。 */
+const liveWorkbenches: VueWrapper[] = []
+
 function makeWorkbench(tabType: DagProfileType = 'wf', attach = false): {
   wrapper: VueWrapper
   graph: ReturnType<typeof useWorkflowGraphStore>
@@ -212,6 +217,7 @@ function makeWorkbench(tabType: DagProfileType = 'wf', attach = false): {
       },
     },
   })
+  liveWorkbenches.push(wrapper)
   return { wrapper, graph: useWorkflowGraphStore() }
 }
 
@@ -224,6 +230,17 @@ beforeEach(() => {
 })
 
 afterEach(() => {
+  // 先卸载再清 DOM：onUnmounted 同步 flushSnapDebounce 清掉变更用例遗留的真实
+  // 500ms 防抖定时器；卸载触发的 persistSnap 落盘由下一用例 beforeEach 的
+  // localStorage.clear() 兜底清除
+  while (liveWorkbenches.length > 0) {
+    const w = liveWorkbenches.pop()
+    try {
+      w?.unmount()
+    } catch {
+      // 首个用例已在用例内手动 unmount，重复卸载忽略
+    }
+  }
   document.body.replaceChildren()
 })
 
