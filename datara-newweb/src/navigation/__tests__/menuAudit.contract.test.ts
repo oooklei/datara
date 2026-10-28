@@ -14,6 +14,7 @@ import {
   DELETED_LEGACY_PATHS,
   MENU_AUDIT_18,
 } from '../menuAudit'
+import { PERMISSION_ORDER } from '../../services/rebuild/rolePermissions'
 import { routes } from '../../router/routes'
 
 function collectRoutePaths(records: readonly RouteRecordRaw[], acc: string[] = []): string[] {
@@ -41,7 +42,8 @@ function extremeCtx(): MenuFilterContext {
   return {
     registeredPaths: paths,
     registeredRouteNames: names,
-    permissions: new Set<string>(),
+    // B5-d-3：G 组已声明 permission 权限词，极限语境须携带全量权限点才是真正的「一切门全开」
+    permissions: new Set<string>(PERMISSION_ORDER),
     batchSwitches: { inc3: true, inc4: true, inc10: true, inc11: true, inc14: true, inc15: true, 'inc15-post': true, inc17: true },
     resolvedDecisionGates: gates,
     previewAllowed: futureIds,

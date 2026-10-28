@@ -1,0 +1,58 @@
+B5-d-3 四角色可见性回归（方案 §5 L161：admin/dev/analyst/viewer 不只验登录）
+================================================================================
+日期：2026-10-28  批次：B5-d-3  提交：见 git log（B5-d-3）
+角色词形：admin / developer / operator / viewer（后端 contracts.py Role，与旧前端 admin/dev/analyst/viewer 不同名）
+
+一、判定链三段接线（menu 过滤只管导航呈现；路由守卫/后端 authorize() 仍是访问控制真源）
+--------------------------------------------------------------------------------
+1. ① 冻结矩阵（既有，无改动）：rolePermissions.ts ROLE_PERMISSIONS——四角色 × 32 权限点
+   （admin 32 / developer 31 / operator 17 / viewer 10）。
+2. ② 菜单过滤接线（menu.ts G 组 permission 声明 + AppShell buildCtx 注入）：
+   - AppShell.buildCtx：permissions 由恒空集改为
+     `new Set<string>(role ? ROLE_PERMISSIONS[role] : [])`（authAccount.role × 冻结矩阵；
+     会话未就绪空集 fail-closed）。filterMenu.permissionPassed 链路自此生效。
+   - menu.ts 系统管理组（G 组）五 formal 项声明权限词（唯一有冻结映射的域，不作推测性映射）：
+       sec-perm    → security:read    （admin/developer）
+       sec-audit   → audit:read       （admin/developer/operator）
+       open-api    → security:manage  （admin/developer）
+       open-key    → security:manage  （admin/developer）
+       llm-config  → security:manage  （admin/developer）
+   - menuAudit.contract.test.ts extremeCtx 同步：permissions 空集 → 全量 PERMISSION_ORDER
+     （G 组声明权限词后，「一切门全开」语义要求携带全量权限点，双重负断言语义不变）。
+3. ③ 组件消费接线（TaskCenterView → VariableManagerDrawer）：
+   - 调用点补 `:can-edit="canEditVariables"`；canEditVariables = roleHasPermission(role,'task:write')
+     （admin/developer true；operator/viewer false → 抽屉只读态「当前角色仅可查看变量」，
+     新建/编辑/删除按钮 disabled——此前调用点未传 canEdit 默认 true，viewer 亦见可写按钮，判
+     定链断点已闭合）。
+
+二、四角色可见性矩阵（filterMenuGroups 实测，roleVisibility.contract.test.ts 锚定）
+--------------------------------------------------------------------------------
+                 admin      developer      operator       viewer
+  总览/任务中心/集成/开发/治理/运维 六组      全可见          全可见         全可见        全可见
+  系统管理组   5 项全量      5 项全量      仅访问审计      整组隐藏
+  （差异面唯一收敛在系统管理组；其余组冻结矩阵无权限词映射，不推测声明）
+  变量抽屉写按钮    可用        可用         只读态         只读态
+
+三、路由层裁定（不新增 meta.roles，记录理由）
+--------------------------------------------------------------------------------
+- /sys 非管理员直达：SystemAdminView 自守卫（isAdmin v-if 平台用户/API 区块 →
+  「仅管理员可操作」通知 + 权限矩阵只读区保留），无越权面、无闪烁问题，视图级门即设计形态。
+- UserManagementView 仅由 SystemAdminView 内嵌（全库唯一消费点），被 isAdmin 区块覆盖。
+- DdlEditorView 的 props.role 判定（edit_definition）为独立编辑器视图，当前无路由挂载，不接线。
+- 其余域（model/metric/deploy 等）冻结矩阵无对应权限词，不编造映射（G09 同口径）。
+
+四、契约测试（新增 src/navigation/__tests__/roleVisibility.contract.test.ts，8 用例）
+--------------------------------------------------------------------------------
+- 判定链①：G 组五项权限词逐项对拍 + 权限词 ∈ PERMISSION_ORDER（禁漂移词形）
+- 判定链②：admin/developer 全量 5 项；operator 恰 ['sec-audit']；viewer 整组隐藏；
+  其余六组四角色均可见（角色差异只收敛在系统管理面）
+- 判定链③：AppShell buildCtx 注入锚（?raw 源断言）+ TaskCenter canEditVariables/task:write
+  接线锚 + task:write 四角色冒烟
+- 修正过程记录：初版误判 operator 整组隐藏——冻结矩阵 operator 17 项含 audit:read
+  （rolePermissions.ts L115 实锚），按矩阵修正为「operator 恰见访问审计单项」
+
+五、验证数据
+--------------------------------------------------------------------------------
+- npx vitest run：Test Files 125 passed (125)，Tests 1089 passed (1089)
+  （基线 124/1080 + 新增 1 文件 8 用例，零回归）
+- npx vue-tsc -b：exit 0

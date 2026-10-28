@@ -48,6 +48,8 @@ import {
   listWorkflowDefinitions,
   type WorkflowDefSummary,
 } from '../services/rebuild/workflowApi'
+import { authAccount } from '../services/rebuild/authApi'
+import { roleHasPermission } from '../services/rebuild/rolePermissions'
 import { useWorkflowGraphStore } from '../stores/workflowGraph'
 
 /* ---- 视角页签（蓝本照抄：TabKey / tabs 数组 / ?tab= 同步 / 默认 edit） ---- */
@@ -63,6 +65,16 @@ const router = useRouter()
 const qtab = String(route.query.tab ?? '')
 const tab = ref<TabKey>(tabs.some((t) => t.k === qtab) ? (qtab as TabKey) : 'edit')
 const variablesVisible = ref(false)
+
+/**
+ * B5-d-3 四角色判定链接线：变量抽屉写操作按钮由冻结矩阵 task:write 判定
+ * （viewer/operator 无 task:write → 抽屉只读态「当前角色仅可查看变量」；
+ * 后端 authorize() 仍是最终裁决，此处仅收敛 UI 可用性）。
+ */
+const canEditVariables = computed(() => {
+  const role = authAccount.value?.role
+  return !!role && roleHasPermission(role, 'task:write')
+})
 
 /**
  * Keep the active view in sync with browser history/deep links.  Clicking a
@@ -427,7 +439,7 @@ onMounted(async () => {
         </div>
       </template>
     </div>
-    <VariableManagerDrawer v-model="variablesVisible" :project-id="projectId" />
+    <VariableManagerDrawer v-model="variablesVisible" :project-id="projectId" :can-edit="canEditVariables" />
     <ScheduleDialog
       v-if="scheduleTarget !== null && projectId !== undefined"
       v-model="scheduleOpen"

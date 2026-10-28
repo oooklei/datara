@@ -17,6 +17,7 @@ import { loadGroupFolded, toggleGroupFolded } from '../navigation/groupFold'
 import { menuGroups } from '../navigation/menu'
 import { listProjects, type ProjectSummary } from '../services/rebuild/projectApi'
 import { authAccount, currentSession, logout, type AuthRole } from '../services/rebuild/authApi'
+import { ROLE_PERMISSIONS } from '../services/rebuild/rolePermissions'
 import { getToken } from '../services/http'
 import AiAssistantPanel from '../components/AiAssistantPanel.vue'
 
@@ -119,10 +120,13 @@ watch([isProjectScope, projectId], () => {
 
 function buildCtx(): MenuFilterContext {
   const resolved = router.getRoutes()
+  // B5-d-3 四角色判定链接线：菜单过滤上下文携带当前角色的冻结权限集
+  // （rolePermissions.ts ROLE_PERMISSIONS × authAccount.role；会话未就绪时空集 fail-closed）
+  const role = authAccount.value?.role
   return {
     registeredRouteNames: new Set(resolved.map((record) => String(record.name ?? '')).filter(Boolean)),
     registeredPaths: new Set(resolved.map((record) => record.path)),
-    permissions: new Set<string>(),
+    permissions: new Set<string>(role ? ROLE_PERMISSIONS[role] : []),
     ...props.filterOverrides,
   }
 }

@@ -343,6 +343,10 @@ export const menuGroups: readonly MenuGroupConfig[] = [
         path: '/sec/perm',
         disposition: 'formal',
         batch: 'inc15',
+        // B5-d-3 四角色判定链：G 组权限词取自冻结矩阵（rolePermissions.ts ↔ contracts.py）；
+        // security:read 仅 admin/developer 持有（operator 经 audit:read 仍可见访问审计；
+        // viewer 整组隐藏；权限矩阵仍可经 /sys 查看）
+        permission: 'security:read',
         source: '§4.3 #9（I1/RBAC）；旧 routes.ts L91 已实证',
       },
       {
@@ -352,6 +356,7 @@ export const menuGroups: readonly MenuGroupConfig[] = [
         path: '/sec/audit',
         disposition: 'formal',
         batch: 'inc15',
+        permission: 'audit:read',
         source: '§4.3 #11；后端 rebuild/sec/api.py GET /access-logs 已就绪 + migrations 已应用（2026-10-25 解锁）',
       },
       {
@@ -361,6 +366,7 @@ export const menuGroups: readonly MenuGroupConfig[] = [
         path: '/open/api',
         disposition: 'formal',
         batch: 'inc15',
+        permission: 'security:manage',
         source: '§4.3 #12；已裁定纳入但新后端待建模，实现并验收后转正式（0.8 §4 L126）',
       },
       {
@@ -370,6 +376,7 @@ export const menuGroups: readonly MenuGroupConfig[] = [
         path: '/open/key',
         disposition: 'formal',
         batch: 'inc15',
+        permission: 'security:manage',
         source: '§4.3 #13；同 #12 口径',
       },
       {
@@ -388,6 +395,7 @@ export const menuGroups: readonly MenuGroupConfig[] = [
         icon: '◍',
         disposition: 'formal',
         batch: 'inc15',
+        permission: 'security:manage',
         source: '§4.2 G 行；0.8 §3 L109 已登记 G 组随增量 15 实现，本方案不为其编造路径',
       },
     ],
