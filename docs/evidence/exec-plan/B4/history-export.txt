@@ -1,0 +1,63 @@
+B4-e 执行期联动/历史导出（S8 + S7 快照回显）票尾证据
+=====================================================
+
+日期：2026-10-28
+批次：B4-e（前端构建执行计划 B4 段收尾票）
+设计锚点：
+- 方案 §7.3：S7 = 六点联动（补全/hover/未定义警告/全局参数抽屉/快照回显）；S8 = 历史抽屉逐语句详情 + 后端重放分页 + 结果导出
+- 对标审计-03 §6.7（完整版 HistoryDrawer）、§6.10（R5A 专有简版差异点：删除 emit 未接线）
+- 执行计划 L74-75：B4 段 = S1–S8 能力面 + S9 树根节点化 + S6 block 反馈 + 去票据文案 + 快捷键三件套
+
+交付范围
+--------
+1. S8 历史抽屉升级（IdeView.vue，§6.7 核心子集）：
+   - 过滤行：关键字输入回车应用（sqlText/db/status 包含匹配，前端内存过滤）+ 刷新按钮（重新 listHistory）
+   - 分页 20 条/页（前端内存分页，上一页/下一页 + 页码指示；删除后末页单条自动回退）
+   - 行内容升级：#全局序号 / 状态徽标（succeeded 绿 is-ok / canceled·timed_out 黄 is-warn / failed 红 is-fail，
+     全 token 配色）/ 库（null 显示「默认库」）/ 语句数·耗时 / 格式化时间（ISO→YYYY-MM-DD HH:mm:ss）/ SQL 预览
+   - 四操作（§6.7 拆分语义）：查看=行点击就地展开逐语句详情（toggle）；编辑=载入编辑器不执行；
+     再执行=仅当前数据源可用（跨源按钮禁用），confirm「按当前模式再次执行该历史 SQL？」后重跑；
+     删除=confirm「确认删除该条执行历史？」后软删 + 刷新
+   - 逐语句详情双源：
+     a) 本会话执行捕获——runSql 重置缓冲，SSE result/log（query/exec/error）按 stmtIndex upsert，
+        done 落历史时以 historyId 固化（内存 Map，不受 normalizeResponse 键改写影响）
+     b) 重载条目重放——内存无捕获时按语句序 sqlText.split(';') 逐条 fetchResultPage(historyId, null, 0, 1, stmtIndex)
+        探测快照（查询有快照→「N 行」；非查询/快照过期→回退显示历史终态）
+   - done 增量刷新：执行完成后 loadHistory + historyPage 重置第 1 页（§6.7 historyDirtyN 联动的 R5A 等价实现）
+2. S7 快照回显（六点联动收尾）：runSql 时固化变量快照（编辑器 ${scope.name} 引用清单 + 现时解析值，
+   previewResolution best-effort），随 historyId 存档，在历史详情中以「变量快照：${global.rate} = 42」回显。
+   六点现状：补全/hover/分色（B4-b 已交付）、未定义警告（checkVariableReferences + lint provider）、
+   全局参数抽屉（GlobalParamDrawer 挂载）、快照回显（本票）——六点齐。
+3. 契约扩展（sqlIdeApi.ts，唯一改动点）：fetchResultPage 增加可选 stmtIndex 参数并放宽 resultSetId 为 string|null，
+   resultSetId 未知时以 ?stmtIndex=&offset=&limit= 重放（后端 fetch_page 本就支持 stmt_index fallback，零后端改动）。
+
+不做/裁剪（与审计偏差记录）
+---------------------------
+- §6.7「实例下拉过滤」：R5A listHistory 本就按 datasourceId 隔离（顶部树切换即切实例上下文），
+  抽屉内不再重复实例下拉；关键字+刷新承担过滤闭环。
+- §6.7「行数·改数拆分统计/已导出徽标」：R5A 后端历史记录无 affected 聚合与导出关联字段，
+  详情以逐语句 affected/rowsTotal 呈现；徽标留 B5 UX 收口统一评估。
+- §6.6 导出弹窗（480px 三格式）：B4-c 已以双按钮覆盖同一闭环（工具栏「导出结果」=全部原始后端重放；
+  结果 Tab「导出 CSV」=筛选子集前端内存 BOM），格式选择器留 B5。
+- §6.10 HistoryDrawerR5A「删除 emit 未接线」差异点：本票在 IdeView 内联抽屉中直接接线（confirm→deleteHistory→刷新）。
+
+依赖踩坑
+--------
+1. 挂载预载：IdeView onMounted 即按当前数据源 loadHistory 一次（L2016），测试计数需含这次；
+2. mock 状态化：删除回退用例的 listHistory 必须用 mockImplementation + deleted Set（mockResolvedValue 不收缩会导致
+   删除后重取仍是 21 条，页码不回退）；
+3. 旧用例语义迁移：ideView.contract.test.ts「loads and restores execution history」原行点击=载入，
+   §6.7 拆分后行点击=查看详情，改点 data-history-edit（编辑）保留原断言意图；
+4. fetchResultPage 契约放宽（string|null）对既有调用方无影响（changePage 调用前已判空）；
+5. r6 token：新增样式全走 var(--success/--warn/--danger/--border/--card/--text/--text-2/--radius-sm)，无 hex 字面量。
+
+验证数据
+--------
+- 前端全量门禁：npx vitest run → 123 文件 / 1061 用例全通过（新增 ideHistoryDrawer.contract.test.ts 10 用例 +
+  sqlIdeApi.contract.test.ts 1 用例 = +11）；npx vue-tsc -b → exit 0
+- 本票零后端改动（fetchResultPage stmt_index 重放走既有 /results/{historyId} 路由），无 1.9 镜像重建依赖
+
+遗留
+----
+- B5：导出弹窗三格式 UI 化、历史「已导出」徽标、§6.7 与 18093 并屏对照剩余差异项
+- B6：统一验收（关键 E2E + 验收矩阵逐行取证 + 候选镜像固化）

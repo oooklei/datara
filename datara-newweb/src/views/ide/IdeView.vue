@@ -213,19 +213,53 @@
     <aside v-if="historyOpen" class="ide-history" data-history data-history-drawer>
       <header>
         <h2>执行历史</h2>
-        <button type="button" data-history-toggle @click="historyOpen = false">收起</button>
+        <span class="ide-history-actions">
+          <button type="button" data-history-refresh @click="loadHistory">刷新</button>
+          <button type="button" data-history-toggle @click="historyOpen = false">收起</button>
+        </span>
       </header>
-      <p v-if="history.length === 0" class="ide-muted">暂无历史</p>
+      <div class="ide-history-filter">
+        <input v-model="historyKeywordInput" data-history-keyword placeholder="关键字过滤（回车应用）" @keydown.enter="applyHistoryFilter">
+      </div>
+      <p v-if="historyPaged.length === 0" class="ide-muted">暂无历史</p>
       <ul v-else>
-        <li v-for="h in history" :key="h.historyId">
-          <button type="button" class="ide-history-item" @click="restoreHistory(h)">
-            <b>{{ h.status }}</b>
+        <li v-for="(h, i) in historyPaged" :key="h.historyId">
+          <button type="button" class="ide-history-item" data-history-view @click="toggleHistoryDetail(h)">
+            <span class="ide-history-meta">
+              <b class="ide-history-status" :class="historyStatusClass(h.status)" data-history-status>{{ h.status }}</b>
+              <small>#{{ (historyPage - 1) * HISTORY_PAGE_SIZE + i + 1 }}</small>
+              <small>{{ h.db ?? '默认库' }}</small>
+              <small>{{ h.stmtCount }} 语句 · {{ h.elapsedMs }}ms</small>
+              <small>{{ formatHistoryTime(h.createdAt) }}</small>
+            </span>
             <code>{{ h.sqlText.slice(0, 60) }}</code>
-            <small>{{ h.stmtCount }} 语句 · {{ h.elapsedMs }}ms</small>
           </button>
-          <button type="button" class="ide-history-del" @click="removeHistory(h.historyId)">删除</button>
+          <span class="ide-history-ops">
+            <button type="button" data-history-edit @click="restoreHistory(h)">编辑</button>
+            <button type="button" data-history-rerun :disabled="h.datasourceId !== datasourceId" @click="rerunHistory(h)">再执行</button>
+            <button type="button" class="ide-history-del" data-history-del @click="removeHistory(h)">删除</button>
+          </span>
+          <div v-if="historyExpandedId === h.historyId" class="ide-history-detail" data-history-detail>
+            <ol class="ide-history-stmts">
+              <li v-for="d in execStmtDetails[String(h.historyId)] ?? []" :key="d.stmtIndex" data-history-stmt>
+                <b>{{ d.kind === 'query' ? '查询' : d.kind === 'exec' ? '执行' : '错误' }} #{{ d.stmtIndex + 1 }}</b>
+                <small v-if="d.kind === 'query'">{{ d.rowsTotal ?? 0 }} 行 · {{ d.elapsedMs }}ms</small>
+                <small v-else-if="d.kind === 'exec' && d.affected !== null">affected {{ d.affected }} · {{ d.elapsedMs }}ms</small>
+                <small v-else>{{ d.status }}{{ d.error ? ` · ${d.error}` : '' }}</small>
+                <code>{{ d.sql.slice(0, 80) }}</code>
+              </li>
+            </ol>
+            <p v-if="(execVarSnapshots[String(h.historyId)] ?? []).length > 0" class="ide-history-vars" data-history-vars>
+              变量快照：{{ (execVarSnapshots[String(h.historyId)] ?? []).join('；') }}
+            </p>
+          </div>
         </li>
       </ul>
+      <div v-if="historyTotalPages > 1" class="ide-history-pager">
+        <button type="button" :disabled="historyPage <= 1" @click="historyPage -= 1">上一页</button>
+        <span>{{ historyPage }} / {{ historyTotalPages }}</span>
+        <button type="button" :disabled="historyPage >= historyTotalPages" @click="historyPage += 1">下一页</button>
+      </div>
     </aside>
     <button v-else type="button" class="ide-history-open" data-history-toggle @click="openHistory">执行历史</button>
 
@@ -731,6 +765,35 @@ const varSuggestions = ref<VariableCompletionItem[]>([])
 
 const history = ref<HistoryEntry[]>([])
 const historyOpen = ref(false)
+
+/* ---------- S8 历史抽屉（§6.7 核心子集）：关键字过滤/20 条分页/状态徽标/四操作/逐语句详情 ----------
+ * 逐语句详情双源：本会话执行时捕获 SSE 日志（内存），重载条目回退 fetchResultPage(stmtIndex) 重放；
+ * 变量快照 = 执行时把编辑器引用的 ${scope.name}（含现时解析值）随 historyId 存档（S7 快照回显落点）。 */
+interface StatementDetail {
+  stmtIndex: number
+  sql: string
+  kind: 'query' | 'exec' | 'error'
+  status: string
+  affected: number | null
+  rowsTotal: number | null
+  elapsedMs: number
+  error: string
+}
+const HISTORY_PAGE_SIZE = 20
+const historyKeyword = ref('')
+const historyKeywordInput = ref('')
+const historyPage = ref(1)
+const historyExpandedId = ref<string | number | null>(null)
+const execStmtDetails = ref<Record<string, StatementDetail[]>>({})
+const execVarSnapshots = ref<Record<string, string[]>>({})
+let pendingStmtDetails: StatementDetail[] = []
+let pendingVarSnapshot: string[] = []
+
+function recordStmtDetail(detail: StatementDetail): void {
+  const at = pendingStmtDetails.findIndex((d) => d.stmtIndex === detail.stmtIndex)
+  if (at >= 0) pendingStmtDetails[at] = { ...pendingStmtDetails[at], ...detail }
+  else pendingStmtDetails.push(detail)
+}
 const scripts = ref<ScriptEntry[]>([])
 const scriptsOpen = ref(false)
 
@@ -1142,6 +1205,13 @@ async function runSql(): Promise<void> {
   status.value = ''
   diagnostics.value = []
   clearResult()
+  // S8/S7：清空逐语句捕获缓冲，并固化变量快照（引用清单 + 现时解析值，若可得）
+  pendingStmtDetails = []
+  pendingVarSnapshot = varRefs.value.map((r) => {
+    const key = `${r.scope}.${r.name}`
+    const value = varValues.value[key]
+    return value === undefined ? `\${${key}}` : `\${${key}} = ${String(value)}`
+  })
   currentTaskId.value = `ide-${Date.now()}`
   try {
     const execution = await api.value.executeSql({
@@ -1198,6 +1268,16 @@ function openStream(taskId: string): void {
   })
   es.addEventListener('result', (ev: MessageEvent) => {
     const data = JSON.parse(ev.data) as SqlResultEvent
+    recordStmtDetail({
+      stmtIndex: data.stmtIndex,
+      sql: stmtSqlCache[data.stmtIndex] ?? '',
+      kind: 'query',
+      status: 'succeeded',
+      affected: null,
+      rowsTotal: data.rowsTotal,
+      elapsedMs: data.elapsedMs,
+      error: '',
+    })
     appendQueryTab({
       stmtIndex: data.stmtIndex,
       resultSetId: data.resultSetId,
@@ -1214,8 +1294,10 @@ function openStream(taskId: string): void {
     resultLogs.value = [...resultLogs.value, data]
     const stmtSql = stmtSqlCache[data.stmtIndex ?? -1] ?? sqlText.value
     if (data.type === 'error') {
+      recordStmtDetail({ stmtIndex: data.stmtIndex ?? -1, sql: data.sql ?? stmtSql, kind: 'error', status: 'failed', affected: null, rowsTotal: null, elapsedMs: data.elapsedMs ?? 0, error: data.error ?? '执行出错' })
       appendErrorTab({ stmtIndex: data.stmtIndex ?? -1, message: data.error ?? '执行出错', sql: data.sql ?? stmtSql })
     } else if (data.kind === 'exec' && typeof data.affected === 'number') {
+      recordStmtDetail({ stmtIndex: data.stmtIndex ?? -1, sql: data.sql ?? stmtSql, kind: 'exec', status: 'succeeded', affected: data.affected, rowsTotal: null, elapsedMs: data.elapsedMs ?? 0, error: '' })
       appendDmlTab({ stmtIndex: data.stmtIndex ?? -1, affected: data.affected, elapsedMs: data.elapsedMs ?? 0, sql: data.sql ?? stmtSql })
     }
   })
@@ -1238,6 +1320,14 @@ function openStream(taskId: string): void {
       stmtCount: wire.stmtCount ?? wire.stmt_count ?? wire.resultSets?.length ?? resultTabs.value.filter((t) => t.kind === 'query').length,
     }
     bindHistoryToTabs(data.historyId)
+    // S8：落历史后固化本会话逐语句捕获与变量快照；执行 done 增量刷新回到第 1 页（§6.7）
+    if (data.historyId !== null) {
+      execStmtDetails.value = { ...execStmtDetails.value, [String(data.historyId)]: pendingStmtDetails }
+      if (pendingVarSnapshot.length > 0) {
+        execVarSnapshots.value = { ...execVarSnapshots.value, [String(data.historyId)]: pendingVarSnapshot }
+      }
+    }
+    historyPage.value = 1
     const fallbackResultSetId = wire.result_set_id ?? data.resultSets?.[0]?.resultSetId ?? null
     if (resultTabs.value.every((t) => t.kind !== 'query') && data.historyId !== null && fallbackResultSetId) {
       try {
@@ -1367,10 +1457,37 @@ async function exportCsv(): Promise<void> {
   }
 }
 
+const historyFiltered = computed(() => {
+  const keyword = historyKeyword.value.trim().toLowerCase()
+  if (keyword === '') return history.value
+  return history.value.filter((h) =>
+    h.sqlText.toLowerCase().includes(keyword) ||
+    (h.db ?? '').toLowerCase().includes(keyword) ||
+    h.status.toLowerCase().includes(keyword))
+})
+const historyTotalPages = computed(() => Math.max(1, Math.ceil(historyFiltered.value.length / HISTORY_PAGE_SIZE)))
+const historyPaged = computed(() => historyFiltered.value.slice((historyPage.value - 1) * HISTORY_PAGE_SIZE, historyPage.value * HISTORY_PAGE_SIZE))
+
+function historyStatusClass(status: string): string {
+  if (status === 'succeeded') return 'is-ok'
+  if (status === 'canceled' || status === 'timed_out') return 'is-warn'
+  return 'is-fail'
+}
+
+function formatHistoryTime(value: string): string {
+  return value.replace('T', ' ').slice(0, 19)
+}
+
+function applyHistoryFilter(): void {
+  historyKeyword.value = historyKeywordInput.value
+  historyPage.value = 1
+}
+
 async function loadHistory(): Promise<void> {
   if (datasourceId.value === null) return
   try {
     history.value = await api.value.listHistory(datasourceId.value)
+    historyPage.value = Math.min(historyPage.value, historyTotalPages.value)
   } catch (e) {
     error.value = message(e)
   }
@@ -1382,14 +1499,52 @@ async function openHistory(): Promise<void> {
   await loadHistory()
 }
 
-function restoreHistory(h: HistoryEntry): void {
-  sqlText.value = h.sqlText
+/** 查看：就地展开逐语句详情；内存无捕获时按语句序 fetchResultPage(stmtIndex) 重放探测。 */
+async function toggleHistoryDetail(h: HistoryEntry): Promise<void> {
+  const key = String(h.historyId)
+  if (historyExpandedId.value === h.historyId) {
+    historyExpandedId.value = null
+    return
+  }
+  historyExpandedId.value = h.historyId
+  if (execStmtDetails.value[key]) return
+  const statements = h.sqlText.split(';').map((s) => s.trim()).filter((s) => s !== '')
+  const details: StatementDetail[] = []
+  for (let i = 0; i < statements.length; i++) {
+    try {
+      const page = await api.value.fetchResultPage(h.historyId, null, 0, 1, i)
+      details.push({ stmtIndex: i, sql: statements[i], kind: 'query', status: 'succeeded', affected: null, rowsTotal: page.rowsTotal, elapsedMs: 0, error: '' })
+    } catch {
+      details.push({ stmtIndex: i, sql: statements[i], kind: 'exec', status: h.status, affected: null, rowsTotal: null, elapsedMs: 0, error: '' })
+    }
+  }
+  execStmtDetails.value = { ...execStmtDetails.value, [key]: details }
 }
 
-async function removeHistory(historyId: string | number): Promise<void> {
+function restoreHistory(h: HistoryEntry): void {
+  sqlText.value = h.sqlText
+  status.value = '已载入历史 SQL 到编辑器（未执行）'
+}
+
+/** 再执行：仅当前数据源的历史可再执行（跨源先提示切换），confirm 后按当前模式重跑。 */
+async function rerunHistory(h: HistoryEntry): Promise<void> {
+  if (h.datasourceId !== datasourceId.value) {
+    status.value = '该历史属于其他数据源，请先切换数据源'
+    return
+  }
+  if (!confirm('按当前模式再次执行该历史 SQL？')) return
+  sqlText.value = h.sqlText
+  await runSql()
+}
+
+async function removeHistory(h: HistoryEntry): Promise<void> {
+  if (!confirm('确认删除该条执行历史？')) return
   try {
-    await api.value.deleteHistory(historyId)
+    await api.value.deleteHistory(h.historyId)
+    if (historyExpandedId.value === h.historyId) historyExpandedId.value = null
     await loadHistory()
+    historyPage.value = Math.min(historyPage.value, historyTotalPages.value)
+    status.value = '历史已删除'
   } catch (e) {
     error.value = message(e)
   }
@@ -1943,9 +2098,23 @@ onUnmounted(() => {
 [data-history-drawer]{position:fixed;z-index:80;top:58px;right:0;bottom:0;width:min(420px,92vw);margin:0;border-radius:var(--radius) 0 0 var(--radius);box-shadow:var(--shadow-lg);overflow:auto}
 .ide-history header{display:flex;align-items:center;justify-content:space-between}
 .ide-history h2{margin:0;font-size:15px}
+.ide-history-actions{display:flex;gap:6px}
+.ide-history-filter{margin-top:8px}
+.ide-history-filter input{width:100%;box-sizing:border-box;border:1px solid var(--border);border-radius:var(--radius-sm);padding:6px 9px;background:var(--card);color:var(--text)}
 .ide-history ul{list-style:none;padding:0;margin:8px 0 0;display:grid;gap:6px}
-.ide-history li{display:flex;align-items:center;gap:8px}
+.ide-history li{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
 .ide-history-item{flex:1;display:flex;flex-direction:column;gap:2px;text-align:left;border:1px solid var(--border);background:var(--card);border-radius:var(--radius-sm);padding:6px 9px;cursor:pointer}
+.ide-history-meta{display:flex;flex-wrap:wrap;gap:2px 10px;align-items:baseline}
+.ide-history-status{font-size:12px;padding:1px 6px;border-radius:var(--radius-sm);border:1px solid var(--border)}
+.ide-history-status.is-ok{color:var(--success);border-color:var(--success)}
+.ide-history-status.is-warn{color:var(--warn);border-color:var(--warn)}
+.ide-history-status.is-fail{color:var(--danger);border-color:var(--danger)}
+.ide-history-ops{display:flex;gap:4px;flex:none}
+.ide-history-detail{flex-basis:100%;margin-top:4px;border:1px dashed var(--border);border-radius:var(--radius-sm);padding:8px;background:var(--card)}
+.ide-history-stmts{margin:0;padding-left:18px;display:grid;gap:4px}
+.ide-history-stmts code{display:block;color:var(--text-2)}
+.ide-history-vars{margin:8px 0 0;color:var(--text-2);font-size:12px}
+.ide-history-pager{display:flex;align-items:center;gap:10px;margin-top:10px}
 .ide-history-del{flex:none}
 .ide-history-open,.ide-scripts-open{margin-top:16px}
 .mono,code{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12px}

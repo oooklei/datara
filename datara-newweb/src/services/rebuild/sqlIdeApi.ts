@@ -395,7 +395,8 @@ export interface SqlIdeContract {
   getExecutionStatus: (taskId: string) => Promise<{ taskId: string; status: string; createdAt?: string; updatedAt?: string }>
   /** SSE 只读流：返回 EventSource（token 沿 R3 runner 注入先例，禁止落 storage） */
   openEventStream: (taskId: string) => EventSource
-  fetchResultPage: (historyId: string | number, resultSetId: string, offset: number, limit: number) => Promise<SqlResultPage>
+  /** 结果重放分页；resultSetId 未知时可用 stmtIndex 按语句序定位快照（S8 历史详情重放） */
+  fetchResultPage: (historyId: string | number, resultSetId: string | null, offset: number, limit: number, stmtIndex?: number) => Promise<SqlResultPage>
   listHistory: (datasourceId: number) => Promise<HistoryEntry[]>
   deleteHistory: (historyId: string | number) => Promise<void>
   listScripts: () => Promise<ScriptEntry[]>
@@ -477,15 +478,16 @@ export function createSqlIdeContract(projectId = 1): SqlIdeContract {
     },
     getExecutionStatus: (taskId) => request(projectId, `/executions/${encodeURIComponent(taskId)}`),
     openEventStream: (taskId) => openAuthenticatedEventStream(projectId, taskId),
-    fetchResultPage: async (historyId, resultSetId, offset, limit) => {
-      if (!resultSetId) throw new TypeError('resultSetId is required to read a result snapshot')
+    fetchResultPage: async (historyId, resultSetId, offset, limit, stmtIndex) => {
+      if (!resultSetId && !Number.isInteger(stmtIndex)) throw new TypeError('resultSetId or stmtIndex is required to read a result snapshot')
       if (!Number.isInteger(offset) || offset < 0) throw new RangeError('offset must be a non-negative integer')
       if (!Number.isInteger(limit) || limit < 1 || limit > 500) throw new RangeError('limit must be an integer from 1 to 500')
+      const params = resultSetId ? { resultSetId, offset, limit } : { stmtIndex, offset, limit }
       const result = await request<SqlResultPage & {
         totalRows?: number
         rowCount?: number | { value?: number; kind?: string }
         page?: { offset?: number; limit?: number }
-      }>(projectId, `/results/${historyId}${query({ resultSetId, offset, limit })}`)
+      }>(projectId, `/results/${historyId}${query(params)}`)
       const rowCount = typeof result.rowCount === 'number' ? result.rowCount : result.rowCount?.value
       return { ...result, rowsTotal: result.rowsTotal ?? rowCount ?? result.totalRows ?? 0, offset: result.offset ?? result.page?.offset ?? offset, limit: result.limit ?? result.page?.limit ?? limit }
     },

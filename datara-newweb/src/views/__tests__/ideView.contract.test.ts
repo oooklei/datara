@@ -644,7 +644,8 @@ describe('/ide 数据开发 IDE（S9 树根节点化）', () => {
     await w.find('[data-history-toggle]').trigger('click')
     await flushPromises()
     expect(w.find('[data-history]').exists()).toBe(true)
-    await w.find('.ide-history-item').trigger('click')
+    // §6.7 四操作拆分：行点击=查看逐语句详情；编辑=载入 SQL 到编辑器（不执行）
+    await w.find('[data-history-edit]').trigger('click')
     expect((w.find('[data-sql-editor]').element as HTMLTextAreaElement).value).toContain('SELECT 1')
   })
 

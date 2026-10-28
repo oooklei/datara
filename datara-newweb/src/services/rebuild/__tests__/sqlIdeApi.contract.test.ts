@@ -79,11 +79,18 @@ describe('R5-A sqlIdeApi route contract', () => {
 
   it('enforces the frozen 1..500 result-page limit and requires resultSetId', async () => {
     const contract = createSqlIdeContract(23)
-    await expect(contract.fetchResultPage(81, '', 0, 50)).rejects.toThrow('resultSetId is required')
+    await expect(contract.fetchResultPage(81, '', 0, 50)).rejects.toThrow('resultSetId or stmtIndex is required')
     await expect(contract.fetchResultPage(81, 'rs-9', 0, 501)).rejects.toThrow('1 to 500')
     fetchMock.mockResolvedValueOnce({ ok: true, status: 200, json: async () => ({ code: 0, msg: 'success', data: { result_set_id: 'rs-9', row_count: { kind: 'exact', value: 1 }, rows: [[1]], page: { offset: 0, limit: 500 } } }) })
     await expect(contract.fetchResultPage(81, 'rs-9', 0, 500)).resolves.toMatchObject({ resultSetId: 'rs-9', rowsTotal: 1, limit: 500 })
     expect(fetchMock.mock.calls[0][0]).toBe('/api/v1/projects/23/sql-ide/results/81?resultSetId=rs-9&offset=0&limit=500')
+  })
+
+  it('replays a result snapshot by statement index when the resultSetId is unknown (S8)', async () => {
+    fetchMock.mockResolvedValueOnce({ ok: true, status: 200, json: async () => ({ code: 0, msg: 'success', data: { stmt_index: 2, result_set_id: 'rs-3', columns: ['id'], rows: [], row_count: { kind: 'exact', value: 7 }, page: { offset: 0, limit: 1 } } }) })
+    const contract = createSqlIdeContract(23)
+    await expect(contract.fetchResultPage(81, null, 0, 1, 2)).resolves.toMatchObject({ resultSetId: 'rs-3', rowsTotal: 7 })
+    expect(fetchMock.mock.calls[0][0]).toBe('/api/v1/projects/23/sql-ide/results/81?stmtIndex=2&offset=0&limit=1')
   })
 
   it('adapts the backend cancellation response to the readonly UI contract', async () => {
