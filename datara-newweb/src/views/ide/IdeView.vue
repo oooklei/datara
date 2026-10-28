@@ -65,6 +65,17 @@
         <Splitpanes horizontal class="ide-editor-split" @resized="onIdeResize('editor', $event)">
         <Pane :size="ideSplit.editor[0]">
         <div class="ide-editor-pane">
+        <!-- S2 多 Tab 脚本会话（对标审计-03 G16）：未命名 Tab 存 sessionStorage（上限 5），
+             命名 Tab 绑定后端 scripts API；关闭当前 Tab 切邻位；同 scriptId 复用。 -->
+        <div class="ide-script-tabs" data-script-tabs>
+          <span v-for="t in scriptTabs" :key="t.id" class="ide-script-tab" :class="{ active: t.id === activeScriptTabId }">
+            <button type="button" :data-script-tab="t.id" :title="t.name" @click="activateScriptTab(t.id)">
+              {{ t.name }}<small v-if="t.scriptId === null">未保存</small>
+            </button>
+            <button type="button" class="ide-tab-close" :data-tab-close="t.id" aria-label="关闭脚本页" @click.stop="closeScriptTab(t.id)">×</button>
+          </span>
+          <button type="button" data-script-tab-new @click="newScriptTab">＋ 新建</button>
+        </div>
         <div class="ide-editor-head">
           <span class="ide-editor-title">SQL</span>
           <button type="button" data-lint :disabled="sqlText.trim() === '' || datasourceId === null" @click="runLint">语法检查</button>
@@ -130,27 +141,60 @@
 
         <Pane :size="ideSplit.editor[1]">
         <div class="ide-results-pane" :data-result-column-count="resultColumns.length">
-        <section v-if="resultColumns.length" class="ide-result" data-result-grid>
+        <!-- S3 按语句独立结果 Tab（对标审计-03 G17）：结果 #N / DML #N / 错误；
+             title=原始 SQL，seq 每次运行重置，点击 Tab 回显该语句 SQL。 -->
+        <div v-if="resultTabs.length" class="ide-result-tabs" data-result-tabs>
+          <button v-for="t in resultTabs" :key="t.key" type="button"
+                  :data-result-tab="t.key" :title="t.sql"
+                  :class="{ active: t.key === activeResultTabKey }"
+                  @click="activateResultTab(t)">{{ t.title }}</button>
+        </div>
+        <section v-if="activeResultTab" class="ide-result" data-result-grid>
           <header class="ide-result-head">
-            <span>结果集 {{ currentResultSetIndex + 1 }} / {{ resultSetIds.length }}</span>
-            <span class="ide-muted" data-result-meta>共 {{ resultRowsTotal }} 行 · 已取 {{ resultRows.length }} 行</span>
-            <span class="ide-result-nav">
-              <button type="button" :disabled="resultPage <= 1" @click="changePage(resultPage - 1)">上一页</button>
-              <span data-result-page>第 {{ resultPage }} 页</span>
-              <button type="button" :disabled="!resultHasMore" @click="changePage(resultPage + 1)">下一页</button>
-            </span>
+            <span v-if="activeResultTab.kind === 'dml'" data-result-affected>受影响行数：{{ activeResultTab.affected ?? 0 }} · {{ activeResultTab.elapsedMs }}ms</span>
+            <template v-else>
+              <span class="ide-muted" data-result-meta>共 {{ resultRowsTotal }} 行 · 已取 {{ resultRows.length }} 行</span>
+              <span class="ide-result-nav">
+                <button type="button" :disabled="resultPage <= 1" @click="changePage(resultPage - 1)">上一页</button>
+                <span data-result-page>第 {{ resultPage }} 页</span>
+                <button type="button" :disabled="!resultHasMore" @click="changePage(resultPage + 1)">下一页</button>
+                <select v-model.number="resultPageSize" data-page-size aria-label="每页行数" @change="onPageSizeChange">
+                  <option v-for="size in RESULT_PAGE_SIZES" :key="size" :value="size">{{ size }} 行/页</option>
+                </select>
+              </span>
+            </template>
+            <button v-if="activeResultTab.kind === 'dml'" type="button" data-result-echo @click="echoTabSql(activeResultTab)">回显 SQL</button>
+            <button type="button" data-export-csv :disabled="activeResultTab.kind !== 'query'" @click="exportCsv">导出 CSV</button>
           </header>
-          <table v-if="resultRows.length">
-            <thead>
-              <tr><th v-for="c in resultColumns" :key="c">{{ c }}</th></tr>
-            </thead>
-            <tbody>
-              <tr v-for="(row, ri) in resultRows" :key="ri">
-                <td v-for="(cell, ci) in row" :key="ci">{{ formatCell(cell) }}</td>
-              </tr>
-            </tbody>
-          </table>
-          <p v-else class="ide-muted">无数据行</p>
+          <!-- G19 七操作符筛选：仅内存首屏，绝不触发后端 -->
+          <div v-if="activeResultTab.kind === 'query'" class="ide-result-filter" data-result-filter>
+            <select v-model="filterColumn" data-filter-column aria-label="筛选列">
+              <option v-for="c in activeResultTab.columns" :key="c" :value="c">{{ c }}</option>
+            </select>
+            <select v-model="filterOp" data-filter-op aria-label="筛选操作符">
+              <option value="">不筛选</option>
+              <option v-for="op in FILTER_OPS" :key="op" :value="op">{{ op }}</option>
+            </select>
+            <input v-model="filterValue" data-filter-value
+                   :disabled="filterOp === '' || filterOp === '为空' || filterOp === '非空'"
+                   placeholder="筛选值（仅已取回的内存行）" />
+            <button type="button" data-filter-clear @click="clearResultFilter">清除筛选</button>
+            <span v-if="filterOp !== ''" class="ide-muted" data-filter-meta>内存筛选命中 {{ filteredMemoryRows.length }} 行</span>
+          </div>
+          <ResultGrid v-if="activeResultTab.kind === 'query'" :columns="resultColumns" :rows="resultRows" @copied="onCellCopied" />
+          <p v-else-if="activeResultTab.kind === 'error'" class="ide-err" data-result-error>{{ activeResultTab.message || '执行出错' }}</p>
+          <section class="ide-result-logs" data-result-logs>
+            <h3>逐语句日志</h3>
+            <p v-if="resultLogs.length === 0" class="ide-muted">暂无日志</p>
+            <ul v-else class="ide-log-list">
+              <li v-for="(log, i) in resultLogs" :key="i" data-result-log-item>
+                <code>#{{ (log.stmtIndex ?? -1) + 1 }} {{ log.type ?? '-' }}/{{ log.kind ?? '-' }}</code>
+                <span v-if="log.affected !== undefined">受影响 {{ log.affected }}</span>
+                <span v-if="log.elapsedMs !== undefined">{{ log.elapsedMs }}ms</span>
+                <span v-if="log.error" class="ide-err">{{ log.error }}</span>
+              </li>
+            </ul>
+          </section>
         </section>
         <div v-else class="ide-result-empty">执行 SQL 后在此查看分页结果</div>
         </div>
@@ -228,6 +272,7 @@ import { Pane, Splitpanes, type SplitpanesResizedPayload } from 'splitpanes'
 import { format } from 'sql-formatter'
 import GlobalParamDrawer from '../../components/VariableManagementDialog.vue'
 import SqlCodeEditor from './SqlCodeEditor.vue'
+import ResultGrid from './ResultGrid.vue'
 import 'splitpanes/dist/splitpanes.css'
 import {
   createSqlIdeContract,
@@ -236,6 +281,7 @@ import {
   type ScriptEntry,
   type SqlDiagnostic,
   type SqlDoneEvent,
+  type SqlLogEvent,
   type SqlResultEvent,
   type SqlIdeContract,
 } from '../../services/rebuild/sqlIdeApi'
@@ -368,7 +414,111 @@ const keyword = ref('')
 const treeCapability = ref('')
 const treeConstraints = ref<string[]>([])
 
-const sqlText = ref('')
+/* ---------- S2 多 Tab 脚本会话（对标审计-03 G16）：未命名 Tab 存 sessionStorage（上限 5） ----------
+ * sqlText 以 computed 代理当前活动 Tab，runSql/saveScript/格式化/变量预览等既有消费方零改动；
+ * 命名 Tab 绑定后端 scripts API（scriptId+revision），Ctrl+S 命名更新、未命名转命名。 */
+interface ScriptTab {
+  id: string
+  name: string
+  sqlText: string
+  scriptId: number | null
+  revision: number | null
+}
+
+const UNNAMED_SCRIPTS_KEY = 'datara.ide.unnamedScripts'
+const UNNAMED_SCRIPT_LIMIT = 5
+let scriptTabSeq = 0
+let unnamedSeq = 1
+const nextScriptTabId = (): string => `script-tab-${++scriptTabSeq}`
+
+function makeScriptTab(name: string, sql = ''): ScriptTab {
+  return { id: nextScriptTabId(), name, sqlText: sql, scriptId: null, revision: null }
+}
+
+function maxUnnamedSeq(tabs: ScriptTab[]): number {
+  return tabs.reduce((max, t) => {
+    const m = /^未命名SQL #(\d+)$/.exec(t.name)
+    return m ? Math.max(max, Number(m[1])) : max
+  }, 0)
+}
+
+function loadUnnamedTabs(): { tabs: ScriptTab[]; nextSeq: number } {
+  try {
+    const raw = sessionStorage.getItem(UNNAMED_SCRIPTS_KEY)
+    if (!raw) return { tabs: [], nextSeq: 1 }
+    const saved = JSON.parse(raw) as Array<{ name?: string; sqlText?: string }>
+    const tabs = (Array.isArray(saved) ? saved : [])
+      .slice(-UNNAMED_SCRIPT_LIMIT)
+      .map((s) => makeScriptTab(s.name ?? '未命名SQL', s.sqlText ?? ''))
+    return { tabs, nextSeq: maxUnnamedSeq(tabs) + 1 }
+  } catch {
+    return { tabs: [], nextSeq: 1 }
+  }
+}
+
+const scriptTabs = ref<ScriptTab[]>([makeScriptTab('未命名SQL #1')])
+const activeScriptTabId = ref(scriptTabs.value[0].id)
+const activeScriptTab = computed<ScriptTab | null>(
+  () => scriptTabs.value.find((t) => t.id === activeScriptTabId.value) ?? scriptTabs.value[0] ?? null,
+)
+
+const sqlText = computed<string>({
+  get: () => activeScriptTab.value?.sqlText ?? '',
+  set: (value) => {
+    const tab = activeScriptTab.value
+    if (!tab) return
+    tab.sqlText = value
+    if (tab.scriptId === null) persistUnnamedTabs()
+  },
+})
+
+function persistUnnamedTabs(): void {
+  const unnamed = scriptTabs.value
+    .filter((t) => t.scriptId === null)
+    .map((t) => ({ name: t.name, sqlText: t.sqlText }))
+  try {
+    sessionStorage.setItem(UNNAMED_SCRIPTS_KEY, JSON.stringify(unnamed))
+  } catch {
+    /* 存储不可用时静默：Tab 会话仅是会话级便利 */
+  }
+}
+
+function activateScriptTab(id: string): void {
+  if (scriptTabs.value.some((t) => t.id === id)) activeScriptTabId.value = id
+}
+
+function newScriptTab(): void {
+  if (scriptTabs.value.filter((t) => t.scriptId === null).length >= UNNAMED_SCRIPT_LIMIT) {
+    status.value = `最多保留 ${UNNAMED_SCRIPT_LIMIT} 个未命名脚本，请保存或关闭后再新建`
+    return
+  }
+  const tab = makeScriptTab(`未命名SQL #${unnamedSeq}`)
+  unnamedSeq += 1
+  scriptTabs.value = [...scriptTabs.value, tab]
+  activeScriptTabId.value = tab.id
+  persistUnnamedTabs()
+}
+
+function closeScriptTab(id: string): void {
+  const index = scriptTabs.value.findIndex((t) => t.id === id)
+  if (index < 0) return
+  const nextTabs = scriptTabs.value.filter((t) => t.id !== id)
+  if (nextTabs.length === 0) {
+    unnamedSeq = 1
+    const fresh = makeScriptTab('未命名SQL #1')
+    scriptTabs.value = [fresh]
+    activeScriptTabId.value = fresh.id
+    persistUnnamedTabs()
+    return
+  }
+  scriptTabs.value = nextTabs
+  if (activeScriptTabId.value === id) {
+    // 关闭当前 Tab 后切邻位：优先同位次（右侧），否则左侧
+    activeScriptTabId.value = nextTabs[Math.min(index, nextTabs.length - 1)].id
+  }
+  persistUnnamedTabs()
+}
+
 const executing = ref(false)
 const currentTaskId = ref('')
 const currentEventStream = ref<EventSource | null>(null)
@@ -379,16 +529,113 @@ const contractError = ref('')
 const error = ref('')
 const status = ref('')
 
-const resultColumns = ref<string[]>([])
-const resultRows = ref<unknown[][]>([])
-const resultRowsTotal = ref(0)
-const resultSetIds = ref<string[]>([])
-const currentResultSetIndex = ref(0)
-const lastHistoryId = ref<string | number | null>(null)
-const lastResultSetId = ref<string | null>(null)
-const resultPage = ref(1)
-const resultPageSize = 50
-const resultHasMore = ref(false)
+/* ---------- S3 按语句独立结果 Tab + S4 内存筛选/双分页（对标审计-03 G17-G20） ----------
+ * ResultTab：query=结果网格；dml=受影响行数卡片；error=错误信息；seq 每次运行重置；
+ * stmtSqlCache 缓存 sql.split(';') 语句序（§5.2 执行流）。
+ * 双分页：内存页优先（SSE 首批切片）；越内存且落历史 → fetchResultPage 自内存末端续取；
+ * 未落历史提示 warning。7 操作符筛选仅作用于 memoryRows，绝不触发后端。 */
+interface ResultTab {
+  key: string
+  kind: 'query' | 'dml' | 'error'
+  title: string
+  sql: string
+  stmtIndex: number
+  resultSetId: string | null
+  historyId: string | number | null
+  columns: string[]
+  rows: unknown[][]          // 当前展示缓冲（内存切片或重放页）
+  memoryRows: unknown[][]    // SSE/同步首取批次（内存优先分页与筛选的数据面）
+  rowsTotal: number
+  elapsedMs: number
+  affected: number | null
+  message: string
+  page: number
+}
+
+const RESULT_PAGE_SIZES = [100, 200, 500, 1000]
+const FILTER_OPS = ['包含', '等于', '不等于', '为空', '非空', '大于', '小于'] as const
+
+const resultTabs = ref<ResultTab[]>([])
+const activeResultTabKey = ref('')
+const resultLogs = ref<SqlLogEvent[]>([])
+let querySeq = 0
+let dmlSeq = 0
+let errorSeq = 0
+let stmtSqlCache: string[] = []
+
+const activeResultTab = computed<ResultTab | null>(
+  () => resultTabs.value.find((t) => t.key === activeResultTabKey.value) ?? resultTabs.value[0] ?? null,
+)
+const lastHistoryId = computed<string | number | null>(() => activeResultTab.value?.historyId ?? null)
+const lastResultSetId = computed<string | null>(() => activeResultTab.value?.resultSetId ?? null)
+const resultColumns = computed<string[]>(() => activeResultTab.value?.columns ?? [])
+const resultPage = computed(() => activeResultTab.value?.page ?? 1)
+const resultPageSize = ref(200)
+
+const filterColumn = ref('')
+const filterOp = ref('')
+const filterValue = ref('')
+
+function matchResultFilter(cell: unknown, op: string, needle: string): boolean {
+  const text = cell === null || cell === undefined ? '' : typeof cell === 'object' ? JSON.stringify(cell) : String(cell)
+  switch (op) {
+    case '包含': return text.includes(needle)
+    case '等于': return text === needle || (needle !== '' && text !== '' && Number(text) === Number(needle))
+    case '不等于': return !(text === needle || (needle !== '' && text !== '' && Number(text) === Number(needle)))
+    case '为空': return text === ''
+    case '非空': return text !== ''
+    case '大于': return Number.isFinite(Number(text)) && Number.isFinite(Number(needle)) && Number(text) > Number(needle)
+    case '小于': return Number.isFinite(Number(text)) && Number.isFinite(Number(needle)) && Number(text) < Number(needle)
+    default: return true
+  }
+}
+
+const filteredMemoryRows = computed<unknown[][]>(() => {
+  const tab = activeResultTab.value
+  if (!tab || filterOp.value === '') return []
+  const index = tab.columns.indexOf(filterColumn.value || (tab.columns[0] ?? ''))
+  if (index < 0) return tab.memoryRows
+  return tab.memoryRows.filter((row) => matchResultFilter(row[index], filterOp.value, filterValue.value))
+})
+
+const resultRows = computed<unknown[][]>(() => {
+  const tab = activeResultTab.value
+  if (!tab) return []
+  if (filterOp.value !== '') {
+    const start = (tab.page - 1) * resultPageSize.value
+    return filteredMemoryRows.value.slice(start, start + resultPageSize.value)
+  }
+  return tab.rows
+})
+
+const resultRowsTotal = computed(() => {
+  const tab = activeResultTab.value
+  if (!tab) return 0
+  if (filterOp.value !== '') return filteredMemoryRows.value.length
+  return tab.rowsTotal
+})
+
+const resultHasMore = computed(() => {
+  const tab = activeResultTab.value
+  if (!tab) return false
+  const size = resultPageSize.value
+  if (filterOp.value !== '') return tab.page * size < filteredMemoryRows.value.length
+  const memLen = tab.memoryRows.length
+  if (tab.page * size <= memLen) return tab.page * size < tab.rowsTotal
+  const shownEnd = (tab.page - 1) * size + tab.rows.length
+  return Math.max(shownEnd, memLen) < tab.rowsTotal
+})
+
+function clearResultFilter(): void {
+  filterOp.value = ''
+  filterValue.value = ''
+  const tab = activeResultTab.value
+  if (tab) tab.page = 1
+}
+
+function onCellCopied(text: string): void {
+  status.value = `已复制单元格：${text.slice(0, 60)}`
+}
 
 const varRefs = ref<Array<{ scope: string; name: string }>>([])
 const varErrors = ref<string[]>([])
@@ -452,12 +699,6 @@ const projectId = computed<number | null>(() => {
 /** 执行上下文：点击根节点（source:*）切换；默认展开第一个根节点时即建立。 */
 const datasourceId = ref<number | null>(null)
 const canExecute = computed(() => datasourceId.value !== null && sqlText.value.trim() !== '' && !executing.value)
-
-const formatCell = (cell: unknown): string => {
-  if (cell === null || cell === undefined) return ''
-  if (typeof cell === 'object') return JSON.stringify(cell)
-  return String(cell)
-}
 
 async function loadProjects(): Promise<void> {
   try {
@@ -627,16 +868,110 @@ async function runLint(): Promise<void> {
   }
 }
 
+function appendQueryTab(input: {
+  stmtIndex: number
+  resultSetId: string | null
+  columns: string[]
+  rows: unknown[][]
+  memoryRows: unknown[][]
+  rowsTotal: number
+  elapsedMs: number
+}): ResultTab {
+  querySeq += 1
+  const tab: ResultTab = {
+    key: `q-${querySeq}`,
+    kind: 'query',
+    title: `结果 #${querySeq}`,
+    sql: stmtSqlCache[input.stmtIndex] ?? sqlText.value,
+    stmtIndex: input.stmtIndex,
+    resultSetId: input.resultSetId,
+    historyId: null,
+    columns: input.columns,
+    rows: input.rows,
+    memoryRows: input.memoryRows,
+    rowsTotal: input.rowsTotal,
+    elapsedMs: input.elapsedMs,
+    affected: null,
+    message: '',
+    page: 1,
+  }
+  resultTabs.value = [...resultTabs.value, tab]
+  activeResultTabKey.value = tab.key
+  return tab
+}
+
+function appendDmlTab(input: { stmtIndex: number; affected: number; elapsedMs: number; sql: string }): ResultTab {
+  dmlSeq += 1
+  const tab: ResultTab = {
+    key: `d-${dmlSeq}`,
+    kind: 'dml',
+    title: `DML #${dmlSeq}`,
+    sql: input.sql,
+    stmtIndex: input.stmtIndex,
+    resultSetId: null,
+    historyId: null,
+    columns: [],
+    rows: [],
+    memoryRows: [],
+    rowsTotal: 0,
+    elapsedMs: input.elapsedMs,
+    affected: input.affected,
+    message: '',
+    page: 1,
+  }
+  resultTabs.value = [...resultTabs.value, tab]
+  activeResultTabKey.value = tab.key
+  return tab
+}
+
+function appendErrorTab(input: { stmtIndex: number; message: string; sql: string }): ResultTab {
+  errorSeq += 1
+  const tab: ResultTab = {
+    key: `e-${errorSeq}`,
+    kind: 'error',
+    title: '错误',
+    sql: input.sql,
+    stmtIndex: input.stmtIndex,
+    resultSetId: null,
+    historyId: null,
+    columns: [],
+    rows: [],
+    memoryRows: [],
+    rowsTotal: 0,
+    elapsedMs: 0,
+    affected: null,
+    message: input.message,
+    page: 1,
+  }
+  resultTabs.value = [...resultTabs.value, tab]
+  activeResultTabKey.value = tab.key
+  return tab
+}
+
+function bindHistoryToTabs(historyId: string | number | null): void {
+  for (const tab of resultTabs.value) tab.historyId = historyId
+}
+
+/** 点击结果 Tab：激活并回显该语句 SQL（对标审计-03 G17）。 */
+function activateResultTab(tab: ResultTab): void {
+  activeResultTabKey.value = tab.key
+  if (tab.sql) sqlText.value = tab.sql
+}
+
+function echoTabSql(tab: ResultTab): void {
+  if (tab.sql) sqlText.value = tab.sql
+}
+
 function clearResult(): void {
-  resultColumns.value = []
-  resultRows.value = []
-  resultRowsTotal.value = 0
-  resultSetIds.value = []
-  currentResultSetIndex.value = 0
-  lastHistoryId.value = null
-  lastResultSetId.value = null
-  resultPage.value = 1
-  resultHasMore.value = false
+  resultTabs.value = []
+  activeResultTabKey.value = ''
+  resultLogs.value = []
+  querySeq = 0
+  dmlSeq = 0
+  errorSeq = 0
+  stmtSqlCache = sqlText.value.split(';').map((s) => s.trim())
+  filterOp.value = ''
+  filterValue.value = ''
 }
 
 /** G01 终态兜底：SSE 无心跳事件，断线期间用 status 端点轮询收敛，避免 executing 永久悬挂。 */
@@ -723,24 +1058,29 @@ async function runSql(): Promise<void> {
     const { taskId } = execution
     currentTaskId.value = taskId
     if (execution.historyId !== undefined && execution.resultSetId) {
-      const result = await api.value.fetchResultPage(execution.historyId, execution.resultSetId, 0, resultPageSize)
-      resultColumns.value = result.columns
-      resultRows.value = result.rows
-      resultRowsTotal.value = result.rowsTotal
-      lastHistoryId.value = execution.historyId
-      lastResultSetId.value = result.resultSetId
-      resultSetIds.value = [result.resultSetId]
-      resultPage.value = 1
-      resultHasMore.value = result.rows.length < result.rowsTotal
+      const result = await api.value.fetchResultPage(execution.historyId, execution.resultSetId, 0, Math.min(resultPageSize.value, 500))
+      appendQueryTab({
+        stmtIndex: result.stmtIndex ?? 0,
+        resultSetId: result.resultSetId,
+        columns: result.columns,
+        rows: result.rows,
+        memoryRows: result.rows,
+        rowsTotal: result.rowsTotal,
+        elapsedMs: 0,
+      })
+      bindHistoryToTabs(execution.historyId)
     } else if (execution.columns?.length) {
-      resultColumns.value = execution.columns
-      resultRows.value = execution.rows ?? []
-      resultRowsTotal.value = execution.totalRows ?? execution.rowCount ?? resultRows.value.length
-      lastHistoryId.value = execution.historyId ?? null
-      lastResultSetId.value = execution.resultSetId ?? null
-      resultSetIds.value = execution.resultSetId ? [execution.resultSetId] : []
-      resultPage.value = 1
-      resultHasMore.value = resultRows.value.length < resultRowsTotal.value
+      const rows = execution.rows ?? []
+      appendQueryTab({
+        stmtIndex: 0,
+        resultSetId: execution.resultSetId ?? null,
+        columns: execution.columns,
+        rows,
+        memoryRows: rows,
+        rowsTotal: execution.totalRows ?? execution.rowCount ?? rows.length,
+        elapsedMs: 0,
+      })
+      if (execution.historyId !== undefined && execution.historyId !== null) bindHistoryToTabs(execution.historyId)
     }
     openStream(taskId)
   } catch (e) {
@@ -761,15 +1101,26 @@ function openStream(taskId: string): void {
   })
   es.addEventListener('result', (ev: MessageEvent) => {
     const data = JSON.parse(ev.data) as SqlResultEvent
-    resultColumns.value = data.columns
-    resultRows.value = data.rows
-    resultRowsTotal.value = data.rowsTotal
-    resultSetIds.value = resultSetIds.value.includes(data.resultSetId)
-      ? resultSetIds.value
-      : [...resultSetIds.value, data.resultSetId]
-    lastResultSetId.value = data.resultSetId
-    resultPage.value = 1
-    resultHasMore.value = data.rows.length < data.rowsTotal
+    appendQueryTab({
+      stmtIndex: data.stmtIndex,
+      resultSetId: data.resultSetId,
+      columns: data.columns,
+      rows: data.rows,
+      memoryRows: data.rows,
+      rowsTotal: data.rowsTotal,
+      elapsedMs: data.elapsedMs,
+    })
+  })
+  es.addEventListener('log', (ev: MessageEvent) => {
+    // S3 逐语句日志：DML（affected）/错误语句各自成 Tab，其余进日志面板
+    const data = JSON.parse(ev.data) as SqlLogEvent
+    resultLogs.value = [...resultLogs.value, data]
+    const stmtSql = stmtSqlCache[data.stmtIndex ?? -1] ?? sqlText.value
+    if (data.type === 'error') {
+      appendErrorTab({ stmtIndex: data.stmtIndex ?? -1, message: data.error ?? '执行出错', sql: data.sql ?? stmtSql })
+    } else if (data.kind === 'exec' && typeof data.affected === 'number') {
+      appendDmlTab({ stmtIndex: data.stmtIndex ?? -1, affected: data.affected, elapsedMs: data.elapsedMs ?? 0, sql: data.sql ?? stmtSql })
+    }
   })
   es.addEventListener('done', async (ev: MessageEvent) => {
     es.close()
@@ -787,22 +1138,22 @@ function openStream(taskId: string): void {
       ...wire,
       historyId: wire.historyId ?? wire.history_id ?? null,
       elapsedMs: wire.elapsedMs ?? wire.elapsed_ms ?? 0,
-      stmtCount: wire.stmtCount ?? wire.stmt_count ?? wire.resultSets?.length ?? resultSetIds.value.length,
+      stmtCount: wire.stmtCount ?? wire.stmt_count ?? wire.resultSets?.length ?? resultTabs.value.filter((t) => t.kind === 'query').length,
     }
-    lastHistoryId.value = data.historyId
+    bindHistoryToTabs(data.historyId)
     const fallbackResultSetId = wire.result_set_id ?? data.resultSets?.[0]?.resultSetId ?? null
-    if (resultColumns.value.length === 0 && data.historyId !== null && fallbackResultSetId) {
+    if (resultTabs.value.every((t) => t.kind !== 'query') && data.historyId !== null && fallbackResultSetId) {
       try {
-        const result = await api.value.fetchResultPage(data.historyId, fallbackResultSetId, 0, resultPageSize)
-        resultColumns.value = result.columns
-        resultRows.value = result.rows
-        resultRowsTotal.value = result.rowsTotal
-        lastResultSetId.value = result.resultSetId
-        resultSetIds.value = resultSetIds.value.includes(result.resultSetId)
-          ? resultSetIds.value
-          : [...resultSetIds.value, result.resultSetId]
-        resultPage.value = 1
-        resultHasMore.value = result.rows.length < result.rowsTotal
+        const result = await api.value.fetchResultPage(data.historyId, fallbackResultSetId, 0, Math.min(resultPageSize.value, 500))
+        appendQueryTab({
+          stmtIndex: result.stmtIndex ?? 0,
+          resultSetId: result.resultSetId,
+          columns: result.columns,
+          rows: result.rows,
+          memoryRows: result.rows,
+          rowsTotal: result.rowsTotal,
+          elapsedMs: 0,
+        })
       } catch (e) {
         error.value = message(e)
       }
@@ -853,18 +1204,69 @@ async function cancelRun(): Promise<void> {
   }
 }
 
+/** 双分页（G18）：内存页优先切片；越内存且落历史 → fetchResultPage 自内存末端按页续取；
+ * 未落历史提示 warning；筛选激活时纯内存切片绝不触发后端。 */
 async function changePage(page: number): Promise<void> {
-  if (lastHistoryId.value === null || lastResultSetId.value === null) return
-  const offset = (page - 1) * resultPageSize
+  const tab = activeResultTab.value
+  if (!tab) return
+  const size = resultPageSize.value
+  if (filterOp.value !== '') {
+    const maxPage = Math.max(1, Math.ceil(filteredMemoryRows.value.length / size))
+    tab.page = Math.min(Math.max(1, page), maxPage)
+    return
+  }
+  const target = Math.max(1, page)
+  const memLen = tab.memoryRows.length
+  const memPages = Math.max(1, Math.ceil(memLen / size))
+  if (target <= memPages) {
+    tab.rows = tab.memoryRows.slice((target - 1) * size, target * size)
+    tab.page = target
+    return
+  }
+  if (tab.historyId === null || tab.resultSetId === null) {
+    status.value = '当前结果未落历史，仅可浏览已取回的行'
+    return
+  }
+  const replayLimit = Math.min(size, 500)
+  const offset = memLen + (target - memPages - 1) * replayLimit
   try {
-    const result = await api.value.fetchResultPage(lastHistoryId.value, lastResultSetId.value, offset, resultPageSize)
-    resultRows.value = result.rows
-    resultColumns.value = result.columns
-    resultRowsTotal.value = result.rowsTotal
-    resultPage.value = page
-    resultHasMore.value = offset + result.rows.length < result.rowsTotal
+    const result = await api.value.fetchResultPage(tab.historyId, tab.resultSetId, offset, replayLimit)
+    tab.rows = result.rows
+    tab.columns = result.columns
+    tab.rowsTotal = result.rowsTotal
+    tab.page = target
   } catch (e) {
     error.value = message(e)
+  }
+}
+
+function onPageSizeChange(): void {
+  const tab = activeResultTab.value
+  if (tab) tab.page = 1
+}
+
+/** S4 前端 CSV 导出（带 UTF-8 BOM）：导出当前 Tab 内存行（含筛选命中），不动后端契约。 */
+async function exportCsv(): Promise<void> {
+  const tab = activeResultTab.value
+  if (!tab || tab.kind !== 'query' || exportBusy.value) return
+  exportBusy.value = true
+  try {
+    const rows = filterOp.value !== '' ? filteredMemoryRows.value : tab.memoryRows
+    const escape = (value: unknown): string => {
+      const s = value === null || value === undefined ? '' : typeof value === 'object' ? JSON.stringify(value) : String(value)
+      return /[",\n\r]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s
+    }
+    const lines = [tab.columns.map(escape).join(','), ...rows.map((row) => row.map(escape).join(','))]
+    const blob = new Blob(['\uFEFF' + lines.join('\r\n')], { type: 'text/csv;charset=utf-8' })
+    const url = URL.createObjectURL(blob)
+    const anchor = document.createElement('a')
+    anchor.href = url
+    anchor.download = `result-${tab.historyId ?? 'draft'}-${tab.resultSetId ?? 'local'}.csv`
+    anchor.click()
+    URL.revokeObjectURL(url)
+    status.value = `已导出 ${rows.length} 行（CSV·UTF-8 BOM）`
+  } finally {
+    exportBusy.value = false
   }
 }
 
@@ -896,10 +1298,25 @@ async function removeHistory(historyId: string | number): Promise<void> {
   }
 }
 
+/** S2 存脚本：命名 Tab → id+revision 更新；未命名 Tab → 新建后绑定转命名。 */
 async function saveScript(): Promise<void> {
+  const tab = activeScriptTab.value
+  if (!tab || tab.sqlText.trim() === '') return
   try {
-    await api.value.saveScript({ name: `脚本-${new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-')}`, sqlText: sqlText.value })
-    status.value = '脚本已保存'
+    if (tab.scriptId !== null) {
+      const saved = await api.value.saveScript({ id: tab.scriptId, name: tab.name, sqlText: tab.sqlText, revision: tab.revision ?? undefined })
+      tab.name = saved.name
+      tab.scriptId = saved.id
+      tab.revision = saved.revision
+      status.value = `脚本已更新：${saved.name}`
+    } else {
+      const saved = await api.value.saveScript({ name: `脚本-${new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-')}`, sqlText: tab.sqlText })
+      tab.name = saved.name
+      tab.scriptId = saved.id
+      tab.revision = saved.revision
+      status.value = `脚本已保存：${saved.name}`
+      persistUnnamedTabs()
+    }
     if (scriptsOpen.value) await loadScripts()
   } catch (e) {
     error.value = message(e)
@@ -920,8 +1337,21 @@ async function openScripts(): Promise<void> {
   await loadScripts()
 }
 
+/** S2 打开命名脚本：同 scriptId 复用既有 Tab（刷新内容+revision），否则新开命名 Tab。 */
 function restoreScript(script: ScriptEntry): void {
-  sqlText.value = script.sqlText
+  const existing = scriptTabs.value.find((t) => t.scriptId === script.id)
+  if (existing) {
+    existing.name = script.name
+    existing.sqlText = script.sqlText
+    existing.revision = script.revision
+    activeScriptTabId.value = existing.id
+    return
+  }
+  const tab = makeScriptTab(script.name, script.sqlText)
+  tab.scriptId = script.id
+  tab.revision = script.revision
+  scriptTabs.value = [...scriptTabs.value, tab]
+  activeScriptTabId.value = tab.id
 }
 
 async function removeScript(script: ScriptEntry): Promise<void> {
@@ -1125,6 +1555,15 @@ function unbindIdeShortcuts(): void {
 }
 
 onMounted(async () => {
+  // S2：恢复会话内未命名脚本 Tab（上限 5，对标审计-03 G16）
+  const restored = loadUnnamedTabs()
+  if (restored.tabs.length > 0) {
+    scriptTabs.value = restored.tabs
+    activeScriptTabId.value = restored.tabs[0].id
+    unnamedSeq = restored.nextSeq
+  } else {
+    unnamedSeq = 2
+  }
   if (projectId.value !== null) selected.value = String(projectId.value)
   await loadProjects()
   await loadTree()
@@ -1151,7 +1590,29 @@ onUnmounted(() => {
 .ide-split{height:calc(100vh - 190px);min-height:520px;margin-top:16px;border:1px solid var(--border);border-radius:var(--radius);background:var(--card);overflow:hidden}
 .ide-split :deep(.splitpanes__splitter){position:relative;background:var(--border);min-width:5px;min-height:5px}.ide-split :deep(.splitpanes__splitter:hover){background:var(--primary)}
 .ide-left,.ide-right{height:100%;min-width:0;box-sizing:border-box;background:var(--card)}
-.ide-left{padding:16px;overflow:auto}.ide-right{overflow:hidden}.ide-editor-split{height:100%}.ide-editor-pane,.ide-results-pane{height:100%;box-sizing:border-box;padding:12px;overflow:auto}.ide-editor-pane{display:flex;flex-direction:column}.ide-editor-pane .sql-code-editor{flex:1;min-height:220px}
+.ide-left{padding:16px;overflow:auto}.ide-right{overflow:hidden}.ide-editor-split{height:100%}
+.ide-editor-pane{height:100%;box-sizing:border-box;padding:12px;overflow:auto;display:flex;flex-direction:column}.ide-editor-pane .sql-code-editor{flex:1;min-height:220px}
+.ide-results-pane{height:100%;box-sizing:border-box;padding:12px;overflow:hidden;display:flex;flex-direction:column;gap:8px}
+/* S2 脚本 Tab */
+.ide-script-tabs{display:flex;align-items:center;gap:4px;flex-wrap:wrap;margin-bottom:8px}
+.ide-script-tab{display:inline-flex;align-items:center;border:1px solid var(--border);border-radius:var(--radius-sm);overflow:hidden}
+.ide-script-tab.active{border-color:var(--primary);background:var(--primary-light)}
+.ide-script-tab button{border:none;background:transparent;padding:4px 8px}
+.ide-tab-close{color:var(--text-3);padding:4px 6px!important}
+.ide-tab-close:hover{color:var(--danger)}
+.ide-script-tabs small{margin-left:4px;color:var(--text-3);font-size:11px}
+/* S3 结果 Tab */
+.ide-result-tabs{display:flex;gap:4px;flex-wrap:wrap}
+.ide-result-tabs button{border:1px solid var(--border);background:var(--card);border-radius:var(--radius-sm);padding:4px 10px}
+.ide-result-tabs button.active{border-color:var(--primary);background:var(--primary-light)}
+/* S4 筛选与日志 */
+.ide-result-filter{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.ide-result-filter input{min-width:140px}
+.ide-result-logs{border-top:1px solid var(--border);padding-top:6px;max-height:160px;overflow:auto}
+.ide-result-logs h3{margin:0 0 4px;font-size:13px}
+.ide-log-list{list-style:none;margin:0;padding:0;display:grid;gap:2px;font-size:12px}
+.ide-log-list li{display:flex;gap:10px;flex-wrap:wrap}
+.ide-result{flex:1;min-height:0;display:flex;flex-direction:column;gap:8px}
 .ide-left h2{margin:0 0 8px;font-size:15px}
 .ide-left h3{margin:16px 0 8px;font-size:13px;color:var(--text)}
 .ide-search{display:flex;flex-direction:column;gap:4px;font-size:12px;color:var(--text-2)}
@@ -1185,12 +1646,9 @@ onUnmounted(() => {
 .ide-var-suggestions ul{list-style:none;margin:0;padding:0;display:flex;flex-wrap:wrap;gap:6px}
 .ide-var-suggestions li button{display:flex;align-items:center;gap:6px;border:1px solid var(--border);background:var(--card);border-radius:var(--radius-sm);padding:5px 9px}
 .ide-var-suggestions small{color:var(--text-2)}
-.ide-result{min-height:100%}
 .ide-result-empty{display:grid;place-items:center;height:100%;color:var(--text-3);font-size:13px}
-.ide-result-head{display:flex;align-items:center;gap:14px;margin-bottom:8px;flex-wrap:wrap}
+.ide-result-head{display:flex;align-items:center;gap:14px;flex-wrap:wrap}
 .ide-result-nav{display:flex;align-items:center;gap:8px;margin-left:auto}
-table{width:100%;border-collapse:collapse;background:var(--card)}
-th,td{text-align:left;padding:9px;border-bottom:1px solid var(--border);font-size:12px;vertical-align:top}
 .ide-history{border:1px solid var(--border);border-radius:var(--radius);padding:16px;background:var(--card);margin-top:16px}
 [data-history-drawer]{position:fixed;z-index:80;top:58px;right:0;bottom:0;width:min(420px,92vw);margin:0;border-radius:var(--radius) 0 0 var(--radius);box-shadow:var(--shadow-lg);overflow:auto}
 .ide-history header{display:flex;align-items:center;justify-content:space-between}

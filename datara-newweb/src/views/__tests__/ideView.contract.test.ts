@@ -10,6 +10,17 @@ const router = vi.hoisted(() => ({
 
 vi.mock('vue-router', () => ({ useRoute: () => router.route, useRouter: () => ({ push: router.push }) }))
 
+/** ResultGrid（vxe-grid 封装）在契约测试中以轻量替身渲染：单元格/表头断言走 props 文本，vxe 行为由 resultGrid.contract.test.ts 实测。 */
+vi.mock('../ide/ResultGrid.vue', () => ({
+  default: {
+    name: 'ResultGrid',
+    props: { columns: { type: Array, default: () => [] }, rows: { type: Array, default: () => [] } },
+    emits: ['copied'],
+    template:
+      '<div class="result-grid-stub"><span v-for="c in columns" :key="c" class="stub-col">{{ c }}</span><span v-for="(r, i) in rows" :key="i" class="stub-row">{{ r.join(",") }}</span></div>',
+  },
+}))
+
 /** 契约面全量 mock：createSqlIdeContract / createDatasourceContract 返回受控契约。 */
 const spies = vi.hoisted(() => ({
   listDatabases: vi.fn(),
@@ -108,6 +119,9 @@ beforeEach(() => {
   for (const spy of Object.values(spies)) spy.mockReset()
   streamClose.mockReset()
   for (const key of Object.keys(listeners)) delete listeners[key]
+  sessionStorage.clear()
+  // vxe-grid（ResultGrid 替身不触发，但 IdeView 内其他挂载路径）在 happy-dom 缺 ResizeObserver
+  vi.stubGlobal('ResizeObserver', class { observe() {} unobserve() {} disconnect() {} })
   vi.mocked(listProjects).mockResolvedValue({ total: 1, list: [{ id: 1, name: '订单库' }] })
   spies.listDatasources.mockResolvedValue({ items: [datasource] })
   spies.listDatabases.mockResolvedValue({ items: [{ name: 'orders' }], capability: 'supported', constraints: [], page: { nextCursor: null, hasMore: false } })
@@ -121,7 +135,7 @@ beforeEach(() => {
   spies.previewResolution.mockResolvedValue({ resolvedValue: '42', diagnostics: [] })
   spies.checkReference.mockResolvedValue({ expression: '', valid: true, diagnostics: [] })
   spies.completeVariables.mockResolvedValue([{ scope: 'workflow', name: 'biz_date', valueType: 'date' }])
-  spies.fetchResultPage.mockResolvedValue({ stmtIndex: 0, resultSetId: 'rs1', columns: ['id'], rows: [[1]], rowsTotal: 1, offset: 0, limit: 50 })
+  spies.fetchResultPage.mockResolvedValue({ stmtIndex: 0, resultSetId: 'rs1', columns: ['id'], rows: [[1]], rowsTotal: 1, offset: 0, limit: 200 })
   spies.executeSql.mockResolvedValue({ taskId: 'task-1' })
   spies.getExportDownloadUrl.mockReturnValue('/api/exports/export-1/download')
   spies.openEventStream.mockImplementation(() => ({
@@ -321,7 +335,7 @@ describe('/ide 数据开发 IDE（S9 树根节点化）', () => {
     })
     await flushPromises()
 
-    expect(spies.fetchResultPage).toHaveBeenCalledWith('history-1', 'rs1', 0, 50)
+    expect(spies.fetchResultPage).toHaveBeenCalledWith('history-1', 'rs1', 0, 200)
     expect((w.vm as unknown as { resultColumns?: string[] }).resultColumns).toEqual(['id'])
     expect((w.vm as unknown as { executing?: boolean }).executing).toBe(false)
   })
@@ -357,7 +371,7 @@ describe('/ide 数据开发 IDE（S9 树根节点化）', () => {
     await w.find('[data-execute]').trigger('click')
     await flushPromises()
 
-    dispatch('result', { stmtIndex: 0, resultSetId: 'rs1', columns: ['id'], rows: [[1]], rowsTotal: 51, elapsedMs: 5 })
+    dispatch('result', { stmtIndex: 0, resultSetId: 'rs1', columns: ['id'], rows: [[1]], rowsTotal: 300, elapsedMs: 5 })
     await flushPromises()
 
     const next = w.findAll('[data-result-grid] .ide-result-nav button')[1]
@@ -663,5 +677,211 @@ describe('/ide 数据开发 IDE（S9 树根节点化）', () => {
     await flushPromises()
     expect(w.find('[role=alert]').text()).toContain('metadata browse failed')
     expect(w.find('[data-sql-editor]').exists()).toBe(true)
+  })
+})
+
+describe('/ide 脚本 Tab 与结果 Tab（B4-c S2/S3/S4）', () => {
+  interface ScriptTabView { id: string; name: string; scriptId: number | null; revision: number | null; sqlText: string }
+  interface ResultTabView { key: string; kind: 'query' | 'dml' | 'error'; title: string; sql: string; historyId: string | number | null }
+
+  const tabsOf = (w: { vm: unknown }): ScriptTabView[] => (w.vm as unknown as { scriptTabs: ScriptTabView[] }).scriptTabs
+  const activeTabIdOf = (w: { vm: unknown }): string => (w.vm as unknown as { activeScriptTabId: string }).activeScriptTabId
+  const resultTabsOf = (w: { vm: unknown }): ResultTabView[] => (w.vm as unknown as { resultTabs: ResultTabView[] }).resultTabs
+
+  async function runSqlWith(w: ReturnType<typeof mount>, sql: string): Promise<void> {
+    await w.find('[data-sql-editor]').setValue(sql)
+    await w.find('[data-execute]').trigger('click')
+    await flushPromises()
+  }
+
+  it('caps unnamed script tabs at five and persists them in sessionStorage (S2)', async () => {
+    router.route.params.projectId = '1'
+    const w = mount(View)
+    await flushPromises()
+    for (let i = 0; i < 4; i += 1) await w.find('[data-script-tab-new]').trigger('click')
+    expect(tabsOf(w)).toHaveLength(5)
+    await w.find('[data-script-tab-new]').trigger('click')
+    expect(tabsOf(w)).toHaveLength(5)
+    expect(w.find('[data-status]').text()).toContain('最多保留 5 个未命名脚本')
+    const stored = JSON.parse(sessionStorage.getItem('datara.ide.unnamedScripts') ?? '[]') as unknown[]
+    expect(stored).toHaveLength(5)
+    w.unmount()
+  })
+
+  it('activates a neighbor script tab after closing the active one (S2)', async () => {
+    router.route.params.projectId = '1'
+    const w = mount(View)
+    await flushPromises()
+    await w.find('[data-script-tab-new]').trigger('click')
+    await w.find('[data-script-tab-new]').trigger('click')
+    expect(tabsOf(w)).toHaveLength(3)
+    const thirdId = tabsOf(w)[2].id
+    expect(activeTabIdOf(w)).toBe(thirdId)
+
+    // 关闭活动 Tab（第 3 个）→ 切到邻位（同位次的第 2 个）
+    await w.find(`[data-tab-close="${thirdId}"]`).trigger('click')
+    expect(tabsOf(w)).toHaveLength(2)
+    expect(activeTabIdOf(w)).toBe(tabsOf(w)[1].id)
+
+    // 关闭非活动 Tab 不改变活动位
+    const firstId = tabsOf(w)[0].id
+    await w.find(`[data-tab-close="${firstId}"]`).trigger('click')
+    expect(tabsOf(w)).toHaveLength(1)
+    expect(activeTabIdOf(w)).toBe(tabsOf(w)[0].id)
+    w.unmount()
+  })
+
+  it('reuses the tab bound to the same named script when opened twice (S2)', async () => {
+    router.route.params.projectId = '1'
+    spies.listScripts.mockResolvedValue([
+      { id: 12, name: '订单日报', sqlText: 'SELECT * FROM orders', updatedAt: '', revision: 3 },
+    ])
+    const w = mount(View)
+    await flushPromises()
+    await w.find('[data-scripts-toggle]').trigger('click')
+    await flushPromises()
+    await w.find('[data-script-open]').trigger('click')
+    await w.find('[data-script-open]').trigger('click')
+    expect(tabsOf(w)).toHaveLength(2)
+    const named = tabsOf(w).filter((t) => t.scriptId === 12)
+    expect(named).toHaveLength(1)
+    expect(named[0].name).toBe('订单日报')
+    w.unmount()
+  })
+
+  it('binds the unnamed tab to the saved script and updates in place afterwards (S2)', async () => {
+    router.route.params.projectId = '1'
+    spies.saveScript.mockResolvedValue({ id: 33, name: '脚本-2026', sqlText: 'SELECT 7', updatedAt: '', revision: 2 })
+    const w = mount(View)
+    await flushPromises()
+    await w.find('[data-sql-editor]').setValue('SELECT 7')
+    await w.find('[data-save-script]').trigger('click')
+    await flushPromises()
+    expect(spies.saveScript).toHaveBeenCalledWith(expect.objectContaining({ sqlText: 'SELECT 7' }))
+    expect(tabsOf(w)[0].scriptId).toBe(33)
+    expect(tabsOf(w)[0].name).toBe('脚本-2026')
+    expect(tabsOf(w)[0].revision).toBe(2)
+
+    // 二次保存走 id+revision 更新
+    await w.find('[data-save-script]').trigger('click')
+    await flushPromises()
+    expect(spies.saveScript).toHaveBeenLastCalledWith(expect.objectContaining({ id: 33, name: '脚本-2026', revision: 2 }))
+    w.unmount()
+  })
+
+  it('renders one result tab per statement and resets seq on each run (S3)', async () => {
+    router.route.params.projectId = '1'
+    const w = mount(View)
+    await flushPromises()
+    await runSqlWith(w, 'SELECT id FROM orders')
+    await dispatch('result', { stmtIndex: 0, resultSetId: 'rs1', columns: ['id'], rows: [[1]], rowsTotal: 1, elapsedMs: 5 })
+    await dispatch('result', { stmtIndex: 1, resultSetId: 'rs2', columns: ['cnt'], rows: [[2]], rowsTotal: 1, elapsedMs: 3 })
+    await flushPromises()
+    expect(resultTabsOf(w).map((t) => t.title)).toEqual(['结果 #1', '结果 #2'])
+    expect(w.find('[data-result-tabs] button.active').text()).toContain('结果 #2')
+
+    await dispatch('done', { status: 'succeeded', elapsedMs: 9, historyId: 55, stmtCount: 2 })
+    await flushPromises()
+    expect(resultTabsOf(w).every((t) => t.historyId === 55)).toBe(true)
+
+    // 第二次运行：seq 重置，Tab 重建
+    for (const key of Object.keys(listeners)) delete listeners[key]
+    await runSqlWith(w, 'SELECT cnt FROM orders')
+    await dispatch('result', { stmtIndex: 0, resultSetId: 'rs3', columns: ['cnt'], rows: [[9]], rowsTotal: 1, elapsedMs: 2 })
+    await flushPromises()
+    expect(resultTabsOf(w).map((t) => t.title)).toEqual(['结果 #1'])
+    w.unmount()
+  })
+
+  it('creates DML and error tabs from statement logs and records per-statement logs (S3)', async () => {
+    router.route.params.projectId = '1'
+    const w = mount(View)
+    await flushPromises()
+    await runSqlWith(w, 'SELECT 1; UPDATE t SET a=1; DELETE FROM t')
+    await dispatch('log', { stmtIndex: 0, type: 'start', kind: 'query' })
+    await dispatch('log', { stmtIndex: 1, type: 'end', kind: 'exec', affected: 3, elapsedMs: 7 })
+    await dispatch('log', { stmtIndex: 2, type: 'error', kind: 'exec', error: 'boom on delete' })
+    await flushPromises()
+    expect(resultTabsOf(w).map((t) => t.kind)).toEqual(['dml', 'error'])
+    expect(resultTabsOf(w).find((t) => t.kind === 'dml')?.sql).toBe('UPDATE t SET a=1')
+    // 错误 Tab 最后创建 → 自动激活并展示错误消息
+    expect(w.find('[data-result-error]').text()).toContain('boom on delete')
+    expect(w.find('[data-result-logs]').text()).toContain('受影响 3')
+    expect(w.findAll('[data-result-log-item]')).toHaveLength(3)
+    w.unmount()
+  })
+
+  it('echoes the statement SQL when clicking a result tab (S3)', async () => {
+    router.route.params.projectId = '1'
+    const w = mount(View)
+    await flushPromises()
+    await runSqlWith(w, 'SELECT 1; SELECT 2')
+    await dispatch('result', { stmtIndex: 0, resultSetId: 'rs1', columns: ['a'], rows: [[1]], rowsTotal: 1, elapsedMs: 1 })
+    await dispatch('result', { stmtIndex: 1, resultSetId: 'rs2', columns: ['b'], rows: [[2]], rowsTotal: 1, elapsedMs: 1 })
+    await flushPromises()
+    await w.find('[data-result-tab="q-1"]').trigger('click')
+    expect((w.find('[data-sql-editor]').element as HTMLTextAreaElement).value).toBe('SELECT 1')
+    w.unmount()
+  })
+
+  it('applies the seven-operator filter to memory rows only without backend calls (S4)', async () => {
+    router.route.params.projectId = '1'
+    const w = mount(View)
+    await flushPromises()
+    await runSqlWith(w, 'SELECT id, name FROM t')
+    await dispatch('result', {
+      stmtIndex: 0, resultSetId: 'rs1', columns: ['id', 'name'],
+      rows: [[1, 'alpha'], [2, 'beta'], [3, ''], [4, 'alphabet']], rowsTotal: 4, elapsedMs: 1,
+    })
+    await flushPromises()
+
+    await w.find('[data-filter-column]').setValue('name')
+    await w.find('[data-filter-op]').setValue('等于')
+    await w.find('[data-filter-value]').setValue('alpha')
+    await flushPromises()
+    expect((w.vm as unknown as { resultRows: unknown[][] }).resultRows).toEqual([[1, 'alpha']])
+    expect(w.find('[data-filter-meta]').text()).toContain('内存筛选命中 1 行')
+
+    await w.find('[data-filter-op]').setValue('包含')
+    await flushPromises()
+    expect((w.vm as unknown as { resultRows: unknown[][] }).resultRows.map((r) => r[0])).toEqual([1, 4])
+
+    await w.find('[data-filter-op]').setValue('为空')
+    await flushPromises()
+    expect((w.vm as unknown as { resultRows: unknown[][] }).resultRows).toEqual([[3, '']])
+
+    await w.find('[data-filter-clear]').trigger('click')
+    await flushPromises()
+    expect((w.vm as unknown as { resultRows: unknown[][] }).resultRows).toHaveLength(4)
+    // 内存筛选全程不触发后端重放
+    expect(spies.fetchResultPage).not.toHaveBeenCalled()
+    w.unmount()
+  })
+
+  it('exports the in-memory result as CSV with a UTF-8 BOM (S4)', async () => {
+    router.route.params.projectId = '1'
+    let captured: Blob | null = null
+    const createObjectURL = vi.spyOn(URL, 'createObjectURL').mockImplementation((blob: Blob | MediaSource) => {
+      captured = blob as Blob
+      return 'blob:mock'
+    })
+    const revokeObjectURL = vi.spyOn(URL, 'revokeObjectURL').mockImplementation(() => {})
+    const w = mount(View)
+    await flushPromises()
+    await runSqlWith(w, 'SELECT id, name FROM t')
+    await dispatch('result', { stmtIndex: 0, resultSetId: 'rs1', columns: ['id', 'name'], rows: [[1, 'a,b'], [2, null]], rowsTotal: 2, elapsedMs: 1 })
+    await flushPromises()
+    await w.find('[data-export-csv]').trigger('click')
+    await flushPromises()
+
+    expect(createObjectURL).toHaveBeenCalledTimes(1)
+    const text = await (captured as unknown as Blob).text()
+    expect(text.charCodeAt(0)).toBe(0xfeff)
+    expect(text).toContain('id,name')
+    expect(text).toContain('"a,b"')
+    expect(w.find('[data-status]').text()).toContain('已导出 2 行')
+    revokeObjectURL.mockRestore()
+    createObjectURL.mockRestore()
+    w.unmount()
   })
 })

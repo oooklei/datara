@@ -9,6 +9,16 @@ const router = vi.hoisted(() => ({
 
 vi.mock('vue-router', () => ({ useRoute: () => router.route, useRouter: () => ({ push: router.push }) }))
 
+/** ResultGrid（vxe-grid）与 ideView 契约测试同源替身：快捷键测试只关心编辑器桥与 window 监听。 */
+vi.mock('../ide/ResultGrid.vue', () => ({
+  default: {
+    name: 'ResultGrid',
+    props: { columns: { type: Array, default: () => [] }, rows: { type: Array, default: () => [] } },
+    emits: ['copied'],
+    template: '<div class="result-grid-stub" />',
+  },
+}))
+
 /** 契约面 mock（与 ideView.contract.test.ts 同源）：独立文件保证 window keydown 监听互不串扰。 */
 const spies = vi.hoisted(() => ({
   listDatabases: vi.fn(),
@@ -107,6 +117,8 @@ beforeEach(() => {
   for (const spy of Object.values(spies)) spy.mockReset()
   streamClose.mockReset()
   for (const key of Object.keys(listeners)) delete listeners[key]
+  sessionStorage.clear()
+  vi.stubGlobal('ResizeObserver', class { observe() {} unobserve() {} disconnect() {} })
   vi.mocked(listProjects).mockResolvedValue({ total: 1, list: [{ id: 1, name: '订单库' }] })
   spies.listDatasources.mockResolvedValue({ items: [datasource] })
   spies.listDatabases.mockResolvedValue({ items: [{ name: 'orders' }], capability: 'supported', constraints: [], page: { nextCursor: null, hasMore: false } })
