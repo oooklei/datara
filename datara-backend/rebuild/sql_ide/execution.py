@@ -23,6 +23,7 @@ from rebuild.datasource.repository import ProjectDatasourceRepository
 from rebuild.sql_ide.errors import map_connection_error, map_driver_error
 from rebuild.sql_ide.readonly_preflight import (
     ReadonlyBatchPreflightError,
+    classify_sql_batch,
     preflight_readonly_batch,
 )
 from rebuild.run_sql import (
@@ -57,21 +58,31 @@ class ProductionSqlExecutionPort:
         row_limit: int,
         timeout_ms: int,
         dialect: str | None = None,
+        allow_mutating: bool = False,
     ) -> Mapping[str, Any]:
+        dialect_name = dialect or "mysql"
         # 1. Look up datasource record
         record = self._lookup_datasource(project_id, datasource_id)
         if record is None:
             raise SqlDependencyUnavailable(
                 f"datasource {datasource_id} not found in project {project_id}"
             )
-        # Validate the full input before opening a target connection. This port
-        # still executes one statement per call, so safe multi-statement batches
-        # remain rejected until the sequential batch executor is introduced.
-        statements = preflight_readonly_batch(sql, dialect=dialect or record.kind)
-        if len(statements) != 1:
-            raise ReadonlyBatchPreflightError(
-                "multi-statement execution is not available on this port"
-            )
+
+        # 2. Preflight: if allow_mutating=False enforce strict read-only gate;
+        #    otherwise apply a lighter parse-only validation + classify the batch.
+        if not allow_mutating:
+            statements = preflight_readonly_batch(sql, dialect=dialect_name)
+            if len(statements) != 1:
+                raise ReadonlyBatchPreflightError(
+                    "multi-statement execution is not available on this port"
+                )
+        else:
+            verdict = classify_sql_batch(sql, dialect=dialect_name)
+            if verdict == "UNKNOWN":
+                # Parse failure — still permit (e.g. raw SHOW statements), but
+                # callers should be aware classification was indeterminate.
+                pass
+
         draft = DataSourceDraft(
             name=record.name,
             kind=record.kind,
@@ -82,24 +93,40 @@ class ProductionSqlExecutionPort:
             password=record.password,
         )
 
-        # 2. Get connection from registry
+        # 3. Get connection from registry
         try:
             connection = self._connection_provider(project_id, datasource_id, draft)
         except Exception as exc:
             raise map_connection_error(exc) from None
 
-        # 3. Apply layer-2 read-only + execute
-        try:
-            return self._execute_readonly(connection, record.kind, sql, row_limit)
-        finally:
+        # 4. Execute — read-only path applies SET TRANSACTION READ ONLY;
+        #    mutating path runs in normal auto-commit / explicit commit mode.
+        if not allow_mutating:
             try:
-                connection.rollback()
-            except Exception:
-                pass
+                return self._execute_readonly(connection, record.kind, sql, row_limit)
+            finally:
+                try:
+                    connection.rollback()
+                except Exception:
+                    pass
+                try:
+                    connection.close()
+                except Exception:
+                    pass
+        else:
             try:
-                connection.close()
+                return self._execute_writable(connection, record.kind, sql, row_limit)
             except Exception:
-                pass
+                try:
+                    connection.rollback()
+                except Exception:
+                    pass
+                raise
+            finally:
+                try:
+                    connection.close()
+                except Exception:
+                    pass
 
     def _lookup_datasource(self, project_id: int, datasource_id: int):
         with self._session_factory() as session:
@@ -142,6 +169,70 @@ class ProductionSqlExecutionPort:
         except SqlDependencyUnavailable:
             raise
         except Exception as exc:
+            raise map_driver_error(exc) from None
+        finally:
+            cursor.close()
+
+    def _execute_writable(
+        self,
+        connection: Any,
+        kind: str,
+        sql: str,
+        row_limit: int,
+    ) -> Mapping[str, Any]:
+        """Execute DDL / DML in a normal (non-read-only) transaction.
+
+        Unlike ``_execute_readonly`` this does NOT SET TRANSACTION READ ONLY,
+        and issues an explicit COMMIT after successful execution so side effects
+        (CREATE TABLE, INSERT, etc.) persist.  The result envelope mirrors the
+        read-only path so consumers can treat both uniformly.
+        """
+        cursor = connection.cursor()
+        try:
+            # No SET TRANSACTION READ ONLY — run in default mode.
+            # MySQL: DDL is auto-committed; DML inside explicit transaction.
+            # PostgreSQL: explicit BEGIN + COMMIT.
+            if kind.lower() == "postgresql":
+                cursor.execute("BEGIN")
+            # MySQL uses autocommit by default for DDL; DML runs in implicit tx.
+
+            cursor.execute(sql)
+
+            # Commit regardless — DDL needs it on some drivers, DML always needs it.
+            try:
+                connection.commit()
+            except Exception:
+                # Some drivers (e.g. MySQL) may auto-commit DDL; a second commit
+                # can raise "no transaction in progress" — silently ignore.
+                pass
+
+            columns = [desc[0] for desc in cursor.description] if cursor.description else []
+            if cursor.description is not None:
+                all_rows = cursor.fetchall()
+            else:
+                all_rows = []
+
+            truncated = len(all_rows) > row_limit
+            rows = all_rows[:row_limit]
+
+            return {
+                "execution_id": uuid4().hex,
+                "columns": columns,
+                "rows": [list(row) for row in rows],
+                "row_count": len(rows),
+                "total_rows": len(all_rows),
+                "truncated": truncated,
+                "allow_mutating": True,
+            }
+        except SqlDependencyUnavailable:
+            raise
+        except Exception as exc:
+            # Rollback on failure — execute() outer handler also attempts rollback
+            # but being defensive here for driver-specific commit-after-fail quirks.
+            try:
+                connection.rollback()
+            except Exception:
+                pass
             raise map_driver_error(exc) from None
         finally:
             cursor.close()

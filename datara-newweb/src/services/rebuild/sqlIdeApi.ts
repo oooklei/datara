@@ -99,6 +99,8 @@ export interface SqlExecuteRequest {
   mode?: 'auto'
   sessionId: string
   clientRequestId: string
+  /** 允许 DDL/DML 写操作（默认 false = 只读） */
+  allowMutating?: boolean
 }
 
 export interface SqlLogEvent {

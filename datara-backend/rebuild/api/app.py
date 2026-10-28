@@ -633,6 +633,7 @@ def create_app(
         if operation == "executeSql":
             datasource_id = int(payload.get("datasource_id", payload.get("datasourceId", 0)))
             sql = str(payload.get("sql", ""))
+            allow_mutating = bool(payload.get("allow_mutating", payload.get("allowMutating", False)))
             if datasource_id < 1 or not sql.strip():
                 raise SqlIdeRouteError("INVALID_REQUEST", message="datasource_id and sql are required")
             task_id = os.urandom(16).hex()
@@ -648,6 +649,7 @@ def create_app(
                     row_limit=int(payload.get("row_limit", payload.get("rowLimit", 1000))),
                     timeout_ms=int(payload.get("timeout_ms", payload.get("timeoutMs", 30000))),
                     dialect=payload.get("dialect"),
+                    allow_mutating=allow_mutating,
                 )
             except Exception as exc:
                 status_store.update_status(task_id=task_id, project_id=project_id, user_id=user_id, status="failed")

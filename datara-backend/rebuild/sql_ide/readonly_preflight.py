@@ -102,3 +102,53 @@ def preflight_readonly_batch(sql: str, *, dialect: str) -> tuple[ReadonlyStateme
         ReadonlyStatement(index=index, sql=statement.sql(dialect=dialect_name))
         for index, statement in enumerate(statements)
     )
+
+
+# ---------------------------------------------------------------------------
+# SQL batch classifier (read-only vs mutating vs unknown).
+# Unlike ``preflight_readonly_batch`` this never raises — it returns the
+# verdict so the caller can decide whether to enforce read-only or allow DDL/DML.
+
+_MUTATING_ROOT_TYPES = (
+    exp.Create,        # CREATE TABLE / CREATE VIEW / CREATE INDEX ...
+    exp.Drop,          # DROP TABLE / DROP VIEW ...
+    exp.Alter,         # ALTER TABLE / ALTER VIEW ...
+    exp.Insert,        # INSERT INTO ...
+    exp.Update,        # UPDATE ... SET ...
+    exp.Delete,         # DELETE FROM ...
+    exp.TruncateTable, # TRUNCATE TABLE ...
+    exp.Merge,         # MERGE INTO ...
+)
+
+
+def classify_sql_batch(sql: str, *, dialect: str) -> str:
+    """Classify a SQL batch as ``READ_ONLY`` / ``MUTATING`` / ``UNKNOWN``.
+
+    Returns ``UNKNOWN`` on parse failure (e.g. raw SHOW statements that sqlglot
+    cannot parse) so callers can apply lexical fallback if needed.
+    """
+    if not isinstance(sql, str) or not sql.strip():
+        return "UNKNOWN"
+    dialect_name = _DIALECT_ALIASES.get(dialect.lower(), dialect.lower())
+    try:
+        parsed = sqlglot.parse(sql, read=dialect_name)
+    except (sqlglot.errors.ParseError, ValueError):
+        return "UNKNOWN"
+
+    statements = [s for s in parsed if s is not None]
+    if not statements:
+        return "UNKNOWN"
+
+    for statement in statements:
+        # 1. DDL / DML / CALL top-level → MUTATING
+        if isinstance(statement, _MUTATING_ROOT_TYPES):
+            return "MUTATING"
+        # 2. SELECT / UNION / etc → check for side-effect constructs
+        if isinstance(statement, _READ_QUERY_TYPES):
+            if not _is_readonly_query(statement):
+                return "MUTATING"
+            continue  # next statement
+        # 3. Anything else (EXPLAIN, BEGIN, COMMIT, SHOW, SET, ...) → UNKNOWN
+        return "UNKNOWN"
+
+    return "READ_ONLY"

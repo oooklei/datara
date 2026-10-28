@@ -92,6 +92,7 @@ class SqlExecutionPort(Protocol):
         row_limit: int,
         timeout_ms: int,
         dialect: str | None = None,
+        allow_mutating: bool = False,
     ) -> Mapping[str, Any]:
         ...
 

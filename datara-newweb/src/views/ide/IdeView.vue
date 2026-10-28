@@ -14,6 +14,13 @@
       </div>
     </header>
 
+    <nav class="ide-statusbar" data-statusbar v-if="currentDatasourceLabel || activeDatabase">
+      <span v-if="currentDatasourceLabel" class="status-item" data-status-ds>DS: <b>{{ currentDatasourceLabel }}</b></span>
+      <span v-if="activeDatabase" class="status-item" data-status-db>DB: <b>{{ activeDatabase }}</b></span>
+      <span v-if="activeSchema" class="status-item" data-status-schema>Schema: <b>{{ activeSchema }}</b></span>
+      <span v-if="projectId !== null" class="status-item" data-status-project>Proj: <b>{{ currentProjectName || projectId }}</b></span>
+    </nav>
+
     <!-- 错误横幅独立于内容态：加载失败不丢上下文，执行失败保留编辑器 -->
     <p v-if="error" role="alert" data-error>{{ error }}</p>
     <p v-if="contractError" role="alert" data-contract-error>{{ contractError }}</p>
@@ -842,6 +849,19 @@ const projectId = computed<number | null>(() => {
 const datasourceId = ref<number | null>(null)
 const canExecute = computed(() => datasourceId.value !== null && sqlText.value.trim() !== '' && !executing.value)
 
+/** statusbar: 当前数据源名称（从 tree 根节点找） */
+const currentDatasourceLabel = computed(() => {
+  if (datasourceId.value === null) return ''
+  const found = tree.value.find((n) => n.meta.dsId === datasourceId.value)
+  return found?.meta.label ?? ''
+})
+/** statusbar: 当前项目名称 */
+const currentProjectName = computed(() => {
+  if (projectId.value === null) return ''
+  const found = projects.value.find((p: { id: number; name: string }) => p.id === projectId.value)
+  return found?.name ?? `项目 #${projectId.value}`
+})
+
 async function loadProjects(): Promise<void> {
   try {
     projects.value = (await listProjects()).list
@@ -1193,6 +1213,8 @@ function settleExecution(terminalStatus: string | null): void {
   executing.value = false
   if (terminalStatus === 'succeeded') {
     status.value = '执行完成（状态查询确认）；结果集请见执行历史'
+    // DDL/DML 成功后刷新对象树（CREATE/DROP/ALTER 等 schema 变更）
+    void loadTree()
   } else if (terminalStatus === 'canceled') {
     status.value = '执行已取消'
   } else if (terminalStatus !== null) {
@@ -1224,6 +1246,28 @@ function startStatusPolling(taskId: string): void {
   }, EXECUTION_POLL_MS)
 }
 
+/** 前端轻量词法分类：检测 SQL 是否为写操作（DDL/DML）。
+ *  仅取第一个非注释/非空白 token，匹配已知写关键字；
+ *  其余情况返回 false（保守：让后端只读门禁兜底）。 */
+const _MUTATING_FIRST_TOKENS = new Set([
+  'CREATE', 'DROP', 'ALTER', 'INSERT', 'UPDATE', 'DELETE', 'TRUNCATE', 'MERGE',
+  'REPLACE', 'CALL', 'RENAME',
+])
+function _isMutatingSql(sql: string): boolean {
+  const stripped = sql
+    .replace(/\/\*[\s\S]*?\*\//g, ' ')   // /* block comments */
+    .replace(/--[^\n]*\n?/g, ' ')         // -- line comments
+    .trimStart()
+  const firstToken = stripped.split(/\s+/, 1)[0]?.toUpperCase() ?? ''
+  if (_MUTATING_FIRST_TOKENS.has(firstToken)) return true
+  // SELECT ... FOR UPDATE / SELECT ... INTO 也算写
+  const upperSql = stripped.toUpperCase()
+  if (firstToken === 'SELECT' && (upperSql.includes(' FOR UPDATE') || upperSql.includes(' FOR SHARE') || upperSql.includes(' INTO '))) {
+    return true
+  }
+  return false
+}
+
 async function runSql(): Promise<void> {
   if (!canExecute.value) return
   executing.value = true
@@ -1240,6 +1284,7 @@ async function runSql(): Promise<void> {
     return value === undefined ? `\${${key}}` : `\${${key}} = ${String(value)}`
   })
   currentTaskId.value = `ide-${Date.now()}`
+  const allowMutating = _isMutatingSql(sqlText.value)
   try {
     const execution = await api.value.executeSql({
       datasourceId: datasourceId.value as number,
@@ -1248,6 +1293,7 @@ async function runSql(): Promise<void> {
       mode: 'auto',
       sessionId: currentTaskId.value,
       clientRequestId: `req-${Date.now()}`,
+      allowMutating,
     })
     const { taskId } = execution
     currentTaskId.value = taskId
@@ -2117,9 +2163,12 @@ onUnmounted(() => {
 .ide-cap{font-size:12px;color:var(--primary);margin:8px 0 0}
 .ide-muted{color:var(--text-2);font-size:12px;margin:6px 0 0}
 .ide-tree{list-style:none;padding:0;margin:0;display:grid;gap:2px;align-content:start}
-.ide-tree button{width:100%;text-align:left;border:1px solid var(--border);background:var(--card);border-radius:var(--radius-sm);padding:6px 9px;cursor:pointer;display:flex;align-items:center;gap:8px}
+.ide-tree button{width:100%;text-align:left;border:1px solid var(--border);background:var(--card);border-radius:var(--radius-sm);padding:6px 9px;cursor:pointer;display:flex;align-items:center;gap:8px;transition:background-color .12s,border-color .12s}
+.ide-tree button:hover{background:#eef5ff;border-color:#2563eb}
 .ide-tree button.active{border-color:var(--primary);background:var(--primary-light)}
 .ide-tree button.denied{color:var(--text-3);cursor:not-allowed}
+.ide-statusbar{display:flex;flex-wrap:wrap;gap:14px;padding:6px 14px;border-bottom:1px solid var(--border);background:var(--surface,#f8fafc);font-size:13px;color:var(--text-2,#6b7280)}
+.status-item b{color:var(--text,#1f2937);font-weight:600}
 .ide-tree-arrow{flex:none;width:12px;display:inline-block}
 .ide-tree-label{display:flex;align-items:center;gap:6px;min-width:0;flex:1}
 .ide-tree-label small{color:var(--text-2)}
