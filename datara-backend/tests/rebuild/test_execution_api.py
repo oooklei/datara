@@ -3,10 +3,15 @@
 Covers: execution API compatibility routes and WBS EXEC-04 canonical routes.
 """
 
+import json
 from datetime import datetime
+from types import SimpleNamespace
 
 from fastapi.testclient import TestClient
+from sqlalchemy import create_engine
 
+from common import queue
+from common.models import Base as LegacyBase
 from rebuild.api.app import create_app
 from rebuild.common.db import Base
 from rebuild.execution.models import EXECUTION_TABLES
@@ -15,7 +20,12 @@ from rebuild.identity.contracts import Role
 from rebuild.identity.repository import UserRepository
 from rebuild.project.models import ProjectRecord
 from rebuild.stream.models import StreamCheckpointRecord, StreamJobRecord
-from rebuild.workflow.models import WorkflowDefinitionRecord, WorkflowNodeRecord, WorkflowVersionRecord
+from rebuild.workflow.models import (
+    WorkflowDefinitionRecord,
+    WorkflowEdgeRecord,
+    WorkflowNodeRecord,
+    WorkflowVersionRecord,
+)
 
 
 EXEC = "/api/v1/rebuild/execution"
@@ -207,6 +217,52 @@ def _add_definition(session, project_id):
             name="Task 1",
             params_json="{}",
         )
+    )
+    session.flush()
+    return definition
+
+
+def _stream_channel(tmp_path, monkeypatch):
+    """STREAM 实例创建现走真实执行链（2026-10-28 裁决项 3，fail-closed）：
+    测试配齐 legacy 通道桩（legacy 表 + 广播 + 日志目录）。"""
+    legacy_url = f"sqlite+pysqlite:///{tmp_path / 'legacy.db'}"
+    LegacyBase.metadata.create_all(create_engine(legacy_url))
+    monkeypatch.setenv("REBUILD_LEGACY_DB_URL", legacy_url)
+    stub = SimpleNamespace(publishes=[])
+
+    def _publish(channel_name: str, payload: str) -> None:
+        stub.publishes.append((channel_name, json.loads(payload)))
+
+    stub.publish = _publish
+    monkeypatch.setattr(queue, "get_client", lambda: stub)
+    monkeypatch.setattr(
+        "api.streamjob.get_settings", lambda: SimpleNamespace(log_dir=str(tmp_path / "logs"))
+    )
+    return stub
+
+
+def _add_stream_definition(session, project_id):
+    definition = WorkflowDefinitionRecord(
+        project_id=project_id, name="execution-stream-workflow", description="", workflow_type="STREAM"
+    )
+    session.add(definition)
+    session.flush()
+    for code, node_type, params in (
+        ("si1", "stream_input", {"srcType": "simulate"}),
+        ("so1", "stream_output", {}),
+    ):
+        session.add(
+            WorkflowNodeRecord(
+                definition_id=definition.id,
+                version_id=None,
+                node_code=code,
+                node_type=node_type,
+                name=code,
+                params_json=json.dumps(params),
+            )
+        )
+    session.add(
+        WorkflowEdgeRecord(definition_id=definition.id, version_id=None, from_node="si1", to_node="so1")
     )
     session.flush()
     return definition
@@ -457,11 +513,12 @@ def test_formal_instance_requires_published_version_and_lists_attempts():
         client.__exit__(None, None, None)
 
 
-def test_stream_cannot_succeed_and_malformed_transition_is_4001():
+def test_stream_cannot_succeed_and_malformed_transition_is_4001(tmp_path, monkeypatch):
+    _stream_channel(tmp_path, monkeypatch)
     client, app, project_id, tokens = _client()
     try:
         with app.state.session_factory() as session:
-            definition = _add_definition(session, project_id)
+            definition = _add_stream_definition(session, project_id)
             workflow_id = definition.id
             session.commit()
         created = client.post(
@@ -469,6 +526,9 @@ def test_stream_cannot_succeed_and_malformed_transition_is_4001():
             headers=tokens["dev"],
             json={"project_id": project_id, "workflow_id": workflow_id, "instance_type": "STREAM"},
         )
+        assert created.status_code == 200, created.text
+        # 裁决项 3：创建即走执行链——返回面携带流任务关联信息
+        assert created.json()["data"]["stream"]["mq_topic"] == f"datara.stream.{workflow_id}"
         instance_id = created.json()["data"]["instance_id"]
         malformed = client.post(
             f"{EXEC}/workflow-instances/{instance_id}/transition",
@@ -491,11 +551,12 @@ def test_stream_cannot_succeed_and_malformed_transition_is_4001():
         client.__exit__(None, None, None)
 
 
-def test_stream_checkpoint_delegates_to_stream_domain_protocol():
+def test_stream_checkpoint_delegates_to_stream_domain_protocol(tmp_path, monkeypatch):
+    _stream_channel(tmp_path, monkeypatch)
     client, app, project_id, tokens = _client()
     try:
         with app.state.session_factory() as session:
-            definition = _add_definition(session, project_id)
+            definition = _add_stream_definition(session, project_id)
             job = StreamJobRecord(
                 name="execution-stream",
                 workflow_id=definition.id,

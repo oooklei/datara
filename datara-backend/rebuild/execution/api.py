@@ -26,6 +26,7 @@ from rebuild.identity.contracts import Permission
 from rebuild.trial.repository import TrialSnapshotRepository
 from rebuild.workflow.models import WorkflowDefinitionRecord, WorkflowNodeRecord, WorkflowVersionRecord
 from rebuild.execution.stream_adapter import record_stream_checkpoint
+from rebuild.execution.stream_executor import start_stream_execution
 from rebuild.execution.run_stats import RunStatisticsService, normalize_datetime
 
 
@@ -235,6 +236,13 @@ def build_execution_router(
                     repo.create_task_instance(workflow_instance_id=instance.id, task_id=code)
                     for code in task_codes
                 ]
+                # STREAM 实例执行链（2026-10-28 裁决项 3）：legacy 图启动 + 桥注册，
+                # 实例行与桥记录同事务落库；legacy 链失败 → 回滚不残留实例行。
+                stream_info: dict[str, Any] | None = None
+                if instance_type == "STREAM":
+                    stream_info = start_stream_execution(
+                        rebuild_session=outcome, definition=definition, project_id=project_id
+                    )
                 outcome.commit()
                 data = {
                     "instance_id": instance.id,
@@ -245,6 +253,8 @@ def build_execution_router(
                     "status": instance.status,
                     "tasks": [_task_payload(task) for task in tasks],
                 }
+                if stream_info is not None:
+                    data["stream"] = stream_info
             except MalformedRequest as exc:
                 outcome.rollback()
                 return request_error(exc)

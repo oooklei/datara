@@ -11,6 +11,8 @@ services:
       REBUILD_VALIDATION_KEY: ${REBUILD_VALIDATION_KEY:-}
       REBUILD_MYSQL_SRC_URL: ${REBUILD_MYSQL_SRC_URL:-}
       REBUILD_LEGACY_META_URL: ${REBUILD_LEGACY_META_URL:?REBUILD_LEGACY_META_URL must be set for the I18 read-only preview}
+      # STREAM 图执行链下发通道（rebuild→legacy 读写；裁决项 3）
+      REBUILD_LEGACY_DB_URL: ${REBUILD_LEGACY_DB_URL:?REBUILD_LEGACY_DB_URL must be set for STREAM execution}
       REBUILD_RESOURCE_STORAGE_DIR: /datara/resource-storage
       I2_RECONCILE_PATH: /datara/logs/datagen/reconcile.json
       I2_SAMPLES_PATH: /datara/files/samples
@@ -21,7 +23,8 @@ services:
         condition: service_healthy
     volumes:
       - ./rebuild-source/rebuild:/app/rebuild:ro
-      - datara-logs:/datara/logs:ro
+      # STREAM 执行链在共享日志卷创建实例目录（裁决项 3）——需读写
+      - datara-logs:/datara/logs
       - ./files:/datara/files:ro
       - datara-resource-storage:/datara/resource-storage
     healthcheck:

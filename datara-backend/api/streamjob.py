@@ -227,7 +227,8 @@ def register_stream_job(db: Session, definition: WfDefinition, spec: dict) -> tu
         db.commit()
 
     # 创建 WorkflowInstance 记录（run_mode='stream'），使流任务出现在运行监控
-    instance_id = f"stream-{row.id}-{int(datetime.now().timestamp())}"
+    # 毫秒精度：同秒重跑（新前端一键重跑可达）不再撞 instance_id 唯一约束
+    instance_id = f"stream-{row.id}-{int(datetime.now().timestamp() * 1000)}"
     inst = WorkflowInstance(
         instance_id=instance_id,
         wf_code=int(definition.code) if definition.code else 0,

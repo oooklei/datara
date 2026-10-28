@@ -167,9 +167,11 @@ services:
       REBUILD_TOKEN_SECRET: ${REBUILD_TOKEN_SECRET:?REBUILD_TOKEN_SECRET must be set in the runtime environment}
       REBUILD_VALIDATION_KEY: ${REBUILD_VALIDATION_KEY:-}
       REBUILD_MYSQL_SRC_URL: ${REBUILD_MYSQL_SRC_URL:-}
+      # STREAM 图执行链下发通道（rebuild→legacy 读写；裁决项 3）
+      REBUILD_LEGACY_DB_URL: mysql+pymysql://root:${MYSQL_ROOT_PASSWORD}@mysql-meta:3306/datara_meta
       REBUILD_RESOURCE_STORAGE_DIR: /datara/resource-storage
     volumes:
-      - datara-logs:/datara/logs:ro
+      - datara-logs:/datara/logs
       - ./files:/datara/files:ro
       - datara-resource-storage:/datara/resource-storage
     depends_on:
