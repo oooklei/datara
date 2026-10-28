@@ -174,6 +174,14 @@ describe('B4-d G10 表/视图悬浮菜单（S5/S6）', () => {
     expect(ideSource).toContain('generateAddIndex')
   })
 
+  it('fills the sample query from the editor empty state without executing (G11)', async () => {
+    const w = await mountWithTree()
+    await w.find('[data-sample-query]').trigger('click')
+    await flushPromises()
+    expect(editorValue(w)).toBe('SELECT 1 AS ok;')
+    expect(spies.executeSql).not.toHaveBeenCalled()
+  })
+
   it('shows 11 items for tables and 7 for views with the fixed footer hint', async () => {
     const w = await openMenu(await mountWithTree())
     const menu = w.find('[data-hover-menu]')

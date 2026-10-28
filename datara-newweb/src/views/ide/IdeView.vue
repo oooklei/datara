@@ -84,6 +84,7 @@
         </div>
         <div class="ide-editor-head">
           <span class="ide-editor-title">SQL</span>
+          <button type="button" data-sample-query title="填充示例查询（不自动执行）" @click="fillSampleQuery">示例查询</button>
           <button type="button" data-lint :disabled="sqlText.trim() === '' || datasourceId === null" @click="runLint">语法检查</button>
           <button type="button" data-format :disabled="sqlText.trim() === ''" @click="formatCurrentSql">格式化</button>
           <button type="button" data-var-check :disabled="varCheckBusy || projectId === null || sqlText.trim() === ''" @click="checkVariableReferences">
@@ -1016,6 +1017,11 @@ function fillFromSearch(item: { kind: string; name: string; parent: string | nul
   if (item.kind !== 'table' && item.kind !== 'view') return
   const parent = item.parent ?? ''
   fillEditor(parent ? `SELECT * FROM ${parent}.${item.name} LIMIT 100;` : `SELECT * FROM ${item.name} LIMIT 100;`)
+}
+
+/** G11 空态引导：一键填充示例查询（仅填充不执行）。 */
+function fillSampleQuery(): void {
+  fillEditor('SELECT 1 AS ok;')
 }
 
 async function runLint(): Promise<void> {

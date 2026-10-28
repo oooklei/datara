@@ -30,6 +30,10 @@ B4-e 执行期联动/历史导出（S8 + S7 快照回显）票尾证据
    全局参数抽屉（GlobalParamDrawer 挂载）、快照回显（本票）——六点齐。
 3. 契约扩展（sqlIdeApi.ts，唯一改动点）：fetchResultPage 增加可选 stmtIndex 参数并放宽 resultSetId 为 string|null，
    resultSetId 未知时以 ?stmtIndex=&offset=&limit= 重放（后端 fetch_page 本就支持 stmt_index fallback，零后端改动）。
+4. G11 补项（同批追加）：「示例查询」按钮（data-sample-query）落编辑器头，一键填充 `SELECT 1 AS ok;`
+   仅填充不执行；票据文案核查——views 层无面向用户「R5-A/增量 16」文案（仅代码注释），去票据文案完成；
+   空/错/加载三态既有（结果空态 ide-result-empty / 错误条 ide-err / 树空态 data-no-*）。
+   快捷键三件套核查——Ctrl+Enter/Ctrl+S/Ctrl+Shift+F 已在位（IdeView L1769 起，ideShortcuts.contract.test.ts 7 用例）。
 
 不做/裁剪（与审计偏差记录）
 ---------------------------
@@ -53,8 +57,8 @@ B4-e 执行期联动/历史导出（S8 + S7 快照回显）票尾证据
 
 验证数据
 --------
-- 前端全量门禁：npx vitest run → 123 文件 / 1061 用例全通过（新增 ideHistoryDrawer.contract.test.ts 10 用例 +
-  sqlIdeApi.contract.test.ts 1 用例 = +11）；npx vue-tsc -b → exit 0
+- 前端全量门禁：npx vitest run → 123 文件 / 1062 用例全通过（新增 ideHistoryDrawer.contract.test.ts 10 用例 +
+  sqlIdeApi.contract.test.ts 1 用例 + ideHoverMenu G11 示例查询 1 用例 = +12）；npx vue-tsc -b → exit 0
 - 本票零后端改动（fetchResultPage stmt_index 重放走既有 /results/{historyId} 路由），无 1.9 镜像重建依赖
 
 遗留
