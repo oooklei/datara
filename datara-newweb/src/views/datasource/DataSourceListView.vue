@@ -136,8 +136,8 @@
 
     <!-- §7.4 三步向导：①选择类型 → ②连接信息 → ③保存并测试；编辑直进连接步 -->
     <div v-if="wizardVisible" class="mask" @click.self="wizardVisible = false">
-      <div class="dlg" role="dialog" aria-modal="true" :aria-label="wizardTitle" data-wizard>
-        <div class="dlg-hd">
+      <div ref="wizardDlgRef" class="dlg" role="dialog" aria-modal="true" :aria-label="wizardTitle" data-wizard :style="wizardDragStyle">
+        <div ref="wizardHdRef" class="dlg-hd" @pointerdown="onWizardDragStart">
           {{ wizardTitle }}
           <button type="button" class="x" aria-label="关闭" @click="wizardVisible = false">×</button>
         </div>
@@ -253,6 +253,7 @@
  */
 import { computed, onMounted, ref } from 'vue'
 import { useRoute } from 'vue-router'
+import { useDraggable } from '../../composables/useDraggable'
 import {
   createDatasourceContract,
   type DatasourceColumn,
@@ -302,6 +303,12 @@ const TYPE_GROUPS: { group: string; cards: { kind: DatasourceKind; name: string;
 
 const wizardVisible = ref(false)
 const wizardStep = ref(0)
+
+/* G14 §2.2：弹窗默认可拖动 + 视口钳制 + 位置记忆（把手=标题栏） */
+const wizardDlgRef = ref<HTMLElement | null>(null)
+const wizardHdRef = ref<HTMLElement | null>(null)
+const { dragStyle: wizardDragStyle, onHandlePointerdown: onWizardDragStart } = useDraggable(wizardDlgRef, wizardHdRef, { storageKey: 'ds.wizard' })
+
 const editingRow = ref<DatasourceRecord | null>(null)
 const wizardKind = ref<'' | DatasourceKind>('')
 const wizardName = ref('')

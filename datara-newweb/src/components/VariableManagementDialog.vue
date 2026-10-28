@@ -13,6 +13,7 @@
 <script setup lang="ts">
 import { computed, reactive, ref, watch } from 'vue'
 import { ElMessage } from 'element-plus'
+import { useDraggable } from '../composables/useDraggable'
 import {
   VARIABLE_SCOPE_PRIORITY,
   createVariableContract,
@@ -30,6 +31,11 @@ const visible = computed({
 
 /** 契约工厂无入参（projectId 逐方法传入）；本面固定查询 global/project 可持久化域。 */
 const api = createVariableContract()
+
+/* G14 §2.2：弹窗默认可拖动 + 视口钳制 + 位置记忆（把手=标题栏） */
+const vmPanelRef = ref<HTMLElement | null>(null)
+const vmHeaderRef = ref<HTMLElement | null>(null)
+const { dragStyle: vmDragStyle, onHandlePointerdown: onVmDragStart } = useDraggable(vmPanelRef, vmHeaderRef, { storageKey: 'variables.dialog' })
 
 const VALUE_TYPES: VariableValueType[] = ['string', 'integer', 'decimal', 'boolean', 'date', 'datetime', 'json', 'array']
 
@@ -184,8 +190,8 @@ async function submit(): Promise<void> {
 <template>
   <Teleport to="body">
     <div v-if="visible" class="vm-mask" data-testid="variables-manage-mask" @click.self="close">
-      <section class="vm-panel" role="dialog" aria-modal="true" aria-label="变量管理" data-testid="variables-manage-dialog">
-        <header class="vm-header">
+      <section ref="vmPanelRef" class="vm-panel" role="dialog" aria-modal="true" aria-label="变量管理" data-testid="variables-manage-dialog" :style="vmDragStyle">
+        <header ref="vmHeaderRef" class="vm-header" @pointerdown="onVmDragStart">
           <span class="vm-title">变量管理</span>
           <button type="button" class="vm-close" aria-label="关闭" data-testid="variables-close" @click="close">×</button>
         </header>
@@ -314,6 +320,11 @@ async function submit(): Promise<void> {
   justify-content: space-between;
   padding: 14px 20px;
   border-bottom: 1px solid var(--border);
+  cursor: grab;
+  user-select: none;
+}
+.vm-header:active {
+  cursor: grabbing;
 }
 .vm-title {
   font-size: 15px;

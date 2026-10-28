@@ -1005,7 +1005,7 @@ function onSchedule() {
       </aside>
     </div>
 
-    <el-dialog v-model="versionsVisible" title="版本历史" width="640px" append-to-body>
+    <el-dialog v-model="versionsVisible" title="版本历史" width="640px" append-to-body draggable overflow>
       <el-table :data="versions" size="small">
         <el-table-column prop="version" label="版本" width="80" />
         <el-table-column prop="status" label="状态" width="110" />
@@ -1079,7 +1079,7 @@ function onSchedule() {
   min-height: 0;
   display: flex;
   flex-direction: column;
-  background: #fff;
+  background: var(--card);
   overflow: hidden;
 }
 .wf-toolbar {
@@ -1095,7 +1095,7 @@ function onSchedule() {
 }
 .wf-btn {
   border: 1px solid var(--border-color, #e2e8f0);
-  background: #fff;
+  background: var(--card);
   border-radius: var(--radius-sm, 6px);
   padding: 4px 12px;
   font-size: 12.5px;
@@ -1125,7 +1125,7 @@ function onSchedule() {
 }
 .wf-type {
   border: 1px solid var(--border-color, #e2e8f0);
-  background: #fff;
+  background: var(--card);
   border-radius: var(--radius-sm, 6px);
   padding: 2px 8px;
   font-size: 11px;
@@ -1244,7 +1244,7 @@ function onSchedule() {
 .wf-flow :deep(.vue-flow__node.wf-node-skipped) {
   outline: 2px solid #94a3b8;
 }
-.node-editor{flex-shrink:0;padding:10px 14px;border-top:1px solid var(--border-color,#e2e8f0);background:#f8fafc;display:grid;gap:6px}
+.node-editor{flex-shrink:0;padding:10px 14px;border-top:1px solid var(--border-color,#e2e8f0);background:var(--bg);display:grid;gap:6px}
 
 /* T4/G07 校验徽标与校验面板 */
 .wf-badge{display:inline-block;margin-left:4px;min-width:16px;border-radius:8px;padding:0 5px;font-size:11px;line-height:16px;text-align:center;color:#fff}
@@ -1252,7 +1252,7 @@ function onSchedule() {
 .wf-badge-warn{background:var(--el-color-warning,#e6a23c)}
 .validation-pass{color:var(--el-color-success,#67c23a);font-weight:600}
 .validation-overlay{position:fixed;inset:0;z-index:2000;background:rgba(0,0,0,.35);display:flex;align-items:center;justify-content:center}
-.validation-panel{background:#fff;border-radius:8px;box-shadow:0 8px 32px rgba(0,0,0,.18);width:min(720px,92vw);max-height:80vh;display:flex;flex-direction:column;padding:12px 16px;gap:8px}
+.validation-panel{background:var(--card);border-radius:8px;box-shadow:0 8px 32px rgba(0,0,0,.18);width:min(720px,92vw);max-height:80vh;display:flex;flex-direction:column;padding:12px 16px;gap:8px}
 .validation-head{display:flex;align-items:center;justify-content:space-between}
 .validation-list{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:6px;max-height:52vh;overflow:auto}
 .validation-issue{display:flex;align-items:baseline;gap:8px;padding:6px 10px;border-radius:6px;border:1px solid var(--el-border-color-lighter,#e4e7ed);cursor:pointer;font-size:13px}
@@ -1282,7 +1282,7 @@ function onSchedule() {
 .wf-version-note{margin:8px 0 0;font-size:12px;color:var(--el-text-color-secondary,#909399)}
 
 /* T9 弹窗 #10 连线图例浮层（D9：非模态、可拖拽；zIndex 由 overlay 栈绑定覆盖） */
-.wf-legend-panel{position:fixed;top:64px;right:16px;width:min(360px,92vw);max-height:60vh;overflow-y:auto;background:#fff;border:1px solid var(--border-color,#e2e8f0);border-radius:8px;box-shadow:0 8px 32px rgba(0,0,0,.18);padding:10px 14px;z-index:2000;display:flex;flex-direction:column;gap:8px}
+.wf-legend-panel{position:fixed;top:64px;right:16px;width:min(360px,92vw);max-height:60vh;overflow-y:auto;background:var(--card);border:1px solid var(--border-color,#e2e8f0);border-radius:8px;box-shadow:0 8px 32px rgba(0,0,0,.18);padding:10px 14px;z-index:2000;display:flex;flex-direction:column;gap:8px}
 .wf-legend-head{display:flex;align-items:center;justify-content:space-between;cursor:move;user-select:none}
 .wf-legend-list{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:6px}
 .wf-legend-list li{display:flex;align-items:flex-start;gap:8px;font-size:12px;line-height:1.6}

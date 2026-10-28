@@ -71,8 +71,8 @@
     </p>
 
     <div v-if="editing" class="mask" @click.self="closeEditor">
-      <form class="dlg" role="dialog" aria-modal="true" aria-label="新建质量规则" @submit.prevent="save">
-        <div class="dlg-hd">新建质量规则<button type="button" class="x" aria-label="关闭" @click="closeEditor">×</button></div>
+      <form ref="ruleDlgRef" class="dlg" role="dialog" aria-modal="true" aria-label="新建质量规则" :style="ruleDragStyle" @submit.prevent="save">
+        <div ref="ruleHdRef" class="dlg-hd" @pointerdown="onRuleDragStart">新建质量规则<button type="button" class="x" aria-label="关闭" @click="closeEditor">×</button></div>
         <div class="dlg-bd">
           <div class="form-grid">
             <label class="f-item"><span>名称</span><input v-model.trim="draft.name" required maxlength="128" data-name :disabled="saving"></label>
@@ -118,6 +118,7 @@
  */
 import { computed, onMounted, reactive, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
+import { useDraggable } from '../../composables/useDraggable'
 import {
   QUALITY_STRUCTURAL_ONLY,
   governanceApi,
@@ -150,6 +151,11 @@ const error = ref('')
 const runMessage = ref('')
 const running = ref<number | null>(null)
 const editing = ref(false)
+
+/* G14 §2.2：弹窗默认可拖动 + 视口钳制 + 位置记忆（把手=标题栏） */
+const ruleDlgRef = ref<HTMLFormElement | null>(null)
+const ruleHdRef = ref<HTMLElement | null>(null)
+const { dragStyle: ruleDragStyle, onHandlePointerdown: onRuleDragStart } = useDraggable(ruleDlgRef, ruleHdRef, { storageKey: 'qc.rule' })
 
 const draft = reactive<QualityRuleDraft>({
   assetId: 0,

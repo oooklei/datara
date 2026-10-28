@@ -10,6 +10,7 @@
 <script setup lang="ts">
 import { computed, reactive, ref, watch } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
+import { useDraggable } from '../composables/useDraggable'
 import {
   createScheduleCrudContract,
   type ScheduleInput,
@@ -42,6 +43,11 @@ const CONCURRENCY_LABELS: Record<ScheduleConcurrencyPolicy, string> = {
 
 /** 响应式契约工厂：projectId 变更时 previewCrontab 携带正确 projectId。 */
 const api = computed(() => createScheduleCrudContract(props.projectId))
+
+/* G14 §2.2：弹窗默认可拖动 + 视口钳制 + 位置记忆（把手=标题栏） */
+const sdPanelRef = ref<HTMLElement | null>(null)
+const sdHeaderRef = ref<HTMLElement | null>(null)
+const { dragStyle: sdDragStyle, onHandlePointerdown: onSdDragStart } = useDraggable(sdPanelRef, sdHeaderRef, { storageKey: 'schedule.dialog' })
 
 const visible = computed({
   get: () => props.modelValue,
@@ -271,8 +277,8 @@ async function onDelete(row: ScheduleRow): Promise<void> {
 <template>
   <Teleport to="body">
     <div v-if="visible" class="sd-mask" data-part="mask" @click.self="close">
-      <section class="sd-panel" role="dialog" aria-modal="true" :aria-label="`定时调度 - ${wfName ?? wf}`">
-        <header class="sd-header" data-part="header">
+      <section ref="sdPanelRef" class="sd-panel" role="dialog" aria-modal="true" :aria-label="`定时调度 - ${wfName ?? wf}`" :style="sdDragStyle">
+        <header ref="sdHeaderRef" class="sd-header" data-part="header" @pointerdown="onSdDragStart">
           <span class="sd-title">定时调度 - {{ wfName ?? wf }}</span>
           <button type="button" class="sd-close" aria-label="关闭" data-test="close-btn" @click="close">×</button>
         </header>
@@ -413,11 +419,11 @@ async function onDelete(row: ScheduleRow): Promise<void> {
   width: 780px;
   max-width: calc(100vw - 48px);
   max-height: calc(100vh - 96px);
-  background: #fff;
+  background: var(--card);
   border-radius: 8px;
   display: flex;
   flex-direction: column;
-  box-shadow: 0 12px 40px rgba(15, 23, 42, 0.2);
+  box-shadow: var(--shadow-xl);
   overflow: hidden;
 }
 .sd-header {
@@ -425,19 +431,24 @@ async function onDelete(row: ScheduleRow): Promise<void> {
   align-items: center;
   justify-content: space-between;
   padding: 14px 20px;
-  border-bottom: 1px solid #e2e8f0;
+  border-bottom: 1px solid var(--border);
+  cursor: grab;
+  user-select: none;
+}
+.sd-header:active {
+  cursor: grabbing;
 }
 .sd-title {
   font-size: 15px;
   font-weight: 600;
-  color: #0f172a;
+  color: var(--text);
 }
 .sd-close {
   border: none;
   background: none;
   font-size: 20px;
   line-height: 1;
-  color: #64748b;
+  color: var(--text-3);
   cursor: pointer;
   padding: 0 4px;
 }
@@ -456,14 +467,14 @@ async function onDelete(row: ScheduleRow): Promise<void> {
 }
 .sd-table th,
 .sd-table td {
-  border-bottom: 1px solid #e2e8f0;
+  border-bottom: 1px solid var(--border);
   padding: 8px 10px;
   text-align: left;
 }
 .sd-table th {
-  color: #475569;
+  color: var(--text-2);
   font-weight: 500;
-  background: #f8fafc;
+  background: var(--bg);
 }
 .sd-pill {
   display: inline-block;
@@ -472,12 +483,12 @@ async function onDelete(row: ScheduleRow): Promise<void> {
   font-size: 12px;
 }
 .sd-pill--online {
-  background: #dcfce7;
-  color: #166534;
+  background: var(--success-bg);
+  color: var(--success);
 }
 .sd-pill--offline {
-  background: #e2e8f0;
-  color: #475569;
+  background: var(--bg-deep);
+  color: var(--text-2);
 }
 .sd-actions {
   white-space: nowrap;
@@ -485,16 +496,16 @@ async function onDelete(row: ScheduleRow): Promise<void> {
 .sd-link {
   border: none;
   background: none;
-  color: #2563eb;
+  color: var(--primary);
   cursor: pointer;
   font-size: 13px;
   padding: 0 6px;
 }
 .sd-link--danger {
-  color: #dc2626;
+  color: var(--danger);
 }
 .sd-hint {
-  color: #94a3b8;
+  color: var(--text-3);
   text-align: center;
   padding: 24px 0;
   font-size: 13px;
@@ -515,21 +526,21 @@ async function onDelete(row: ScheduleRow): Promise<void> {
 }
 .sd-label {
   font-size: 12px;
-  color: #475569;
+  color: var(--text-2);
 }
 .sd-input {
   height: 32px;
-  border: 1px solid #cbd5e1;
+  border: 1px solid var(--border-strong);
   border-radius: 6px;
   padding: 0 10px;
   font-size: 13px;
-  color: #0f172a;
-  background: #fff;
+  color: var(--text);
+  background: var(--card);
   box-sizing: border-box;
 }
 .sd-input:focus {
   outline: none;
-  border-color: #2563eb;
+  border-color: var(--primary);
 }
 .sd-crontab-row {
   display: flex;
@@ -540,24 +551,24 @@ async function onDelete(row: ScheduleRow): Promise<void> {
   flex: 1;
 }
 .sd-preview {
-  border: 1px solid #bfdbfe;
-  background: #eff6ff;
+  border: 1px solid var(--border);
+  background: var(--info-bg);
   border-radius: 6px;
   padding: 8px 12px;
   font-size: 12px;
-  color: #1d4ed8;
+  color: var(--info);
 }
 .sd-preview ul {
   margin: 4px 0 0;
   padding-left: 18px;
 }
 .sd-preview-err {
-  border: 1px solid #fecaca;
-  background: #fef2f2;
+  border: 1px solid var(--danger);
+  background: var(--danger-bg);
   border-radius: 6px;
   padding: 8px 12px;
   font-size: 12px;
-  color: #b91c1c;
+  color: var(--danger);
   margin: 0;
 }
 .sd-footer {
@@ -565,22 +576,22 @@ async function onDelete(row: ScheduleRow): Promise<void> {
   justify-content: flex-end;
   gap: 10px;
   padding: 12px 20px;
-  border-top: 1px solid #e2e8f0;
+  border-top: 1px solid var(--border);
 }
 .sd-btn {
   height: 32px;
   padding: 0 16px;
   border-radius: 6px;
-  border: 1px solid #cbd5e1;
-  background: #fff;
-  color: #334155;
+  border: 1px solid var(--border-strong);
+  background: var(--card);
+  color: var(--text-2);
   font-size: 13px;
   cursor: pointer;
 }
 .sd-btn--primary {
-  background: #2563eb;
-  border-color: #2563eb;
-  color: #fff;
+  background: var(--primary);
+  border-color: var(--primary);
+  color: var(--card);
 }
 .sd-btn:disabled {
   opacity: 0.5;

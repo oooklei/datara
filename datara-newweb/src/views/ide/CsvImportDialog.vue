@@ -1,7 +1,7 @@
 <template>
   <div v-if="open" class="ide-dialog-mask" data-csv-dialog @click.self="close">
-    <section class="ide-dialog ide-dialog-csv" role="dialog" aria-label="导入数据（CSV）">
-      <header class="ide-dialog-head">
+    <section ref="csvPanelRef" class="ide-dialog ide-dialog-csv" role="dialog" aria-label="导入数据（CSV）" :style="csvDragStyle">
+      <header ref="csvHeadRef" class="ide-dialog-head" @pointerdown="onCsvDragStart">
         <h3>导入数据（CSV）· {{ schema }}.{{ table }}</h3>
         <button type="button" data-dialog-close @click="close">×</button>
       </header>
@@ -81,6 +81,7 @@
  * 单事务、失败整体回滚）。>10 万行前端直接拦截不发请求。
  */
 import { computed, ref, watch } from 'vue'
+import { useDraggable } from '../../composables/useDraggable'
 import type { SqlIdeContract } from '../../services/rebuild/sqlIdeApi'
 import { parseCsv } from './csvParse'
 
@@ -95,6 +96,11 @@ const props = defineProps<{
 }>()
 
 const emit = defineEmits<{ (e: 'update:open', value: boolean): void; (e: 'imported', summary: string): void }>()
+
+/* G14 §2.2：弹窗默认可拖动 + 视口钳制 + 位置记忆（把手=标题栏） */
+const csvPanelRef = ref<HTMLElement | null>(null)
+const csvHeadRef = ref<HTMLElement | null>(null)
+const { dragStyle: csvDragStyle, onHandlePointerdown: onCsvDragStart } = useDraggable(csvPanelRef, csvHeadRef, { storageKey: 'ide.csv-import' })
 
 const hasHeader = ref(true)
 const dataRows = ref<string[][]>([])
@@ -220,7 +226,8 @@ function close(): void {
 <style scoped>
 .ide-dialog-mask{position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:60;display:flex;align-items:flex-start;justify-content:center}
 .ide-dialog-csv{background:var(--card);color:var(--text);border:1px solid var(--border);border-radius:var(--radius);margin-top:6vh;width:720px;max-width:94vw;display:flex;flex-direction:column;max-height:86vh}
-.ide-dialog-head{display:flex;align-items:center;justify-content:space-between;padding:12px 16px;border-bottom:1px solid var(--border)}
+.ide-dialog-head{display:flex;align-items:center;justify-content:space-between;padding:12px 16px;border-bottom:1px solid var(--border);cursor:grab;user-select:none}
+.ide-dialog-head:active{cursor:grabbing}
 .ide-dialog-head h3{margin:0;font-size:15px}
 .ide-dialog-head button{border:none;background:transparent;color:var(--text-2);font-size:18px;cursor:pointer}
 .ide-dialog-body{padding:12px 16px;overflow:auto;flex:1;display:flex;flex-direction:column;gap:10px}

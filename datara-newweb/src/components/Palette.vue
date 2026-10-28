@@ -474,7 +474,7 @@ function onLoad() {
    wf 系 .pal-task、.pt-* 通配、.pal-bar、.pal-load 等归 FE-4）。CSS 变量沿新前端惯例
    （var(--x, fallback)，无全局 token 定义）；旧主色 #1668dc 系 rgba 按新主色
    #2563eb 换算。 */
-.wb-palette{width:232px;background:#fff;border-right:1px solid var(--border-color,#e2e8f0);display:flex;flex-direction:column;flex-shrink:0}
+.wb-palette{width:232px;background:var(--card);border-right:1px solid var(--border-color,#e2e8f0);display:flex;flex-direction:column;flex-shrink:0}
 .pal-tabs{display:flex;gap:2px;padding:6px 8px 0;border-bottom:1px solid var(--border-color,#e2e8f0);flex-shrink:0}
 .pal-tab{border:none;background:none;padding:5px 8px;font-size:12px;color:var(--text-secondary,#64748b);cursor:pointer;border-bottom:2px solid transparent;margin-bottom:-1px}
 .pal-tab:hover{color:var(--primary-color,#2563eb)}

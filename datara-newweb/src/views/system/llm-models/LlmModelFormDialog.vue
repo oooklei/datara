@@ -15,6 +15,7 @@
  *  响应方向的 `record.apiKey` 仅作列表回显，本组件不解掩码、不重构完整 key。
  */
 import { computed, reactive, ref, watch } from 'vue'
+import { useDraggable } from '../../../composables/useDraggable'
 import {
   LLM_PROVIDERS,
   llmApi,
@@ -29,6 +30,11 @@ const emit = defineEmits<{
   (e: 'update:modelValue', v: boolean): void
   (e: 'saved'): void
 }>()
+
+/* G14 §2.2：弹窗默认可拖动 + 视口钳制 + 位置记忆（把手=标题栏） */
+const lmPanelRef = ref<HTMLElement | null>(null)
+const lmHeaderRef = ref<HTMLElement | null>(null)
+const { dragStyle: lmDragStyle, onHandlePointerdown: onLmDragStart } = useDraggable(lmPanelRef, lmHeaderRef, { storageKey: 'llm.form' })
 
 const PROVIDER_LABELS: Record<LlmProvider, string> = {
   siliconflow: '硅基流动 SiliconFlow',
@@ -186,8 +192,8 @@ async function submit(): Promise<void> {
 <template>
   <Teleport to="body">
     <div v-if="visible" class="lm-mask" data-test="llm-form-mask" @click.self="close">
-      <section class="lm-panel" role="dialog" aria-modal="true" :aria-label="title" data-test="llm-form-dialog">
-        <header class="lm-header">
+      <section ref="lmPanelRef" class="lm-panel" role="dialog" aria-modal="true" :aria-label="title" data-test="llm-form-dialog" :style="lmDragStyle">
+        <header ref="lmHeaderRef" class="lm-header" @pointerdown="onLmDragStart">
           <span class="lm-title" data-test="llm-form-title">{{ title }}</span>
           <button type="button" class="lm-close" aria-label="关闭" data-test="llm-form-close" @click="close">×</button>
         </header>
@@ -294,6 +300,11 @@ async function submit(): Promise<void> {
   justify-content: space-between;
   padding: 14px 20px;
   border-bottom: 1px solid var(--border);
+  cursor: grab;
+  user-select: none;
+}
+.lm-header:active {
+  cursor: grabbing;
 }
 .lm-title {
   font-size: 15px;

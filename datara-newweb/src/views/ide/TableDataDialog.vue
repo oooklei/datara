@@ -1,7 +1,7 @@
 <template>
   <div v-if="open" class="ide-dialog-mask" data-table-dialog @click.self="close">
-    <section class="ide-dialog ide-dialog-wide" role="dialog" aria-label="编辑数据">
-      <header class="ide-dialog-head">
+    <section ref="tdPanelRef" class="ide-dialog ide-dialog-wide" role="dialog" aria-label="编辑数据" :style="tdDragStyle">
+      <header ref="tdHeadRef" class="ide-dialog-head" @pointerdown="onTdDragStart">
         <h3>编辑数据 · {{ schema }}.{{ table }}</h3>
         <button type="button" data-dialog-close @click="close">×</button>
       </header>
@@ -69,6 +69,7 @@
  * 组件不自动执行任何 SQL——全部变更经后端事务接口落库。
  */
 import { computed, ref, watch } from 'vue'
+import { useDraggable } from '../../composables/useDraggable'
 import type { SqlIdeContract } from '../../services/rebuild/sqlIdeApi'
 
 const ROWS_PER_PAGE = 200
@@ -91,6 +92,11 @@ const props = defineProps<{
 }>()
 
 const emit = defineEmits<{ (e: 'update:open', value: boolean): void; (e: 'applied', summary: string): void }>()
+
+/* G14 §2.2：弹窗默认可拖动 + 视口钳制 + 位置记忆（把手=标题栏） */
+const tdPanelRef = ref<HTMLElement | null>(null)
+const tdHeadRef = ref<HTMLElement | null>(null)
+const { dragStyle: tdDragStyle, onHandlePointerdown: onTdDragStart } = useDraggable(tdPanelRef, tdHeadRef, { storageKey: 'ide.table-data' })
 
 const rows = ref<EditableRow[]>([])
 const columns = ref<string[]>([])
@@ -240,7 +246,8 @@ function close(): void {
 <style scoped>
 .ide-dialog-mask{position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:60;display:flex;align-items:flex-start;justify-content:center}
 .ide-dialog{background:var(--card);color:var(--text);border:1px solid var(--border);border-radius:var(--radius);margin-top:5vh;width:86%;max-width:1400px;display:flex;flex-direction:column;max-height:88vh}
-.ide-dialog-head{display:flex;align-items:center;justify-content:space-between;padding:12px 16px;border-bottom:1px solid var(--border)}
+.ide-dialog-head{display:flex;align-items:center;justify-content:space-between;padding:12px 16px;border-bottom:1px solid var(--border);cursor:grab;user-select:none}
+.ide-dialog-head:active{cursor:grabbing}
 .ide-dialog-head h3{margin:0;font-size:15px}
 .ide-dialog-head button{border:none;background:transparent;color:var(--text-2);font-size:18px;cursor:pointer}
 .ide-dialog-body{padding:12px 16px;overflow:auto;flex:1;min-height:120px}

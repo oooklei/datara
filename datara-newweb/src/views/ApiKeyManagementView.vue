@@ -23,8 +23,8 @@
     </table>
 
     <div v-if="plainKey" class="mask" @click.self="closePlainKey">
-      <section class="issued" role="dialog" aria-modal="true" aria-label="一次性 API-Key" data-issued>
-        <h2>请立即保存 API-Key</h2><p>关闭后无法再次查看，系统和浏览器均不会持久化明文。</p>
+      <section ref="issuedRef" class="issued" role="dialog" aria-modal="true" aria-label="一次性 API-Key" data-issued :style="issuedDragStyle">
+        <h2 ref="issuedHdRef" @pointerdown="onIssuedDragStart">请立即保存 API-Key</h2><p>关闭后无法再次查看，系统和浏览器均不会持久化明文。</p>
         <code data-plain-key>{{ plainKey }}</code>
         <p v-if="copyStatus" class="hint" role="status">{{ copyStatus }}</p>
         <footer><button type="button" data-copy-key @click="copyPlainKey">复制</button><button type="button" class="primary" data-close-key @click="closePlainKey">已保存，关闭</button></footer>
@@ -32,8 +32,8 @@
     </div>
 
     <div v-if="editing" class="mask" @click.self="editing = false">
-      <form role="dialog" aria-modal="true" aria-label="签发 API-Key" @submit.prevent="issue">
-        <h2>签发 API-Key</h2>
+      <form ref="editFormRef" role="dialog" aria-modal="true" aria-label="签发 API-Key" :style="editDragStyle" @submit.prevent="issue">
+        <h2 ref="editHdRef" @pointerdown="onEditDragStart">签发 API-Key</h2>
         <label>名称<input v-model.trim="draft.name" required data-name></label>
         <label>权限（逗号分隔）<input v-model="permissionsText" required data-permissions placeholder="security:read,workflow:run"></label>
         <label>项目 ID（逗号分隔，留空表示全局）<input v-model="projectIdsText" data-projects inputmode="numeric"></label>
@@ -46,6 +46,7 @@
 
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref } from 'vue'
+import { useDraggable } from '../composables/useDraggable'
 import { openapiAdminKeyApi, type ApiKeyInput, type ApiKeyRecord } from '../services/rebuild/openapiAdminApi'
 
 const keys = ref<ApiKeyRecord[]>([])
@@ -63,6 +64,14 @@ const busy = ref(false)
 const error = ref('')
 const editing = ref(false)
 const plainKey = ref('')
+
+/* G14 §2.2：双弹窗默认可拖动 + 视口钳制 + 位置记忆（把手=h2 标题） */
+const issuedRef = ref<HTMLElement | null>(null)
+const issuedHdRef = ref<HTMLElement | null>(null)
+const { dragStyle: issuedDragStyle, onHandlePointerdown: onIssuedDragStart } = useDraggable(issuedRef, issuedHdRef, { storageKey: 'apikey.issued' })
+const editFormRef = ref<HTMLFormElement | null>(null)
+const editHdRef = ref<HTMLElement | null>(null)
+const { dragStyle: editDragStyle, onHandlePointerdown: onEditDragStart } = useDraggable(editFormRef, editHdRef, { storageKey: 'apikey.edit' })
 const copyStatus = ref('')
 const permissionsText = ref('')
 const projectIdsText = ref('')
@@ -118,4 +127,6 @@ onMounted(reload)
 
 <style scoped>
 .pg{max-width:1180px;margin:auto;padding:28px 24px;color:var(--text)}.pg-head,.toolbar,.actions{display:flex;align-items:center;gap:10px}.pg-head{justify-content:space-between}.pg-head h1{margin:0}.pg-head p,.hint{color:var(--text-2)}.toolbar{margin:18px 0}.spacer{flex:1}.panel,table{background:var(--card);border:1px solid var(--border);border-radius:7px}.empty{padding:36px;text-align:center;color:var(--text-2)}table{width:100%;border-collapse:collapse}th,td{text-align:left;padding:10px;border-bottom:1px solid var(--border)}button,.op-btn{padding:7px 12px;border:1px solid var(--border-strong);border-radius:5px;background:var(--card);color:inherit;cursor:pointer;text-decoration:none}.primary{background:var(--primary);color:var(--card);border-color:var(--primary)}.danger{color:var(--danger)}.pill{padding:2px 7px;border-radius:999px;background:var(--border)}.err-box{padding:9px 12px;background:var(--danger-bg);color:var(--danger)}.mask{position:fixed;inset:0;background:color-mix(in srgb, var(--text) 40%, transparent);display:grid;place-items:center;z-index:30}.mask form,.issued{width:min(560px,calc(100vw - 40px));display:grid;gap:12px;background:var(--card);padding:24px;border-radius:8px}.mask label{display:grid;gap:5px}.mask input{padding:8px}.mask footer{display:flex;justify-content:flex-end;gap:8px}.issued code{display:block;padding:12px;background:var(--bg);overflow-wrap:anywhere}
+.issued h2,.mask form h2{cursor:grab;user-select:none}
+.issued h2:active,.mask form h2:active{cursor:grabbing}
 </style>

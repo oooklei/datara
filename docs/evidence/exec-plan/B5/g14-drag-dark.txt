@@ -1,0 +1,52 @@
+B5-d-1 G14 视觉融合：弹窗拖动+位置记忆全覆盖 + 暗色硬编码 token 化
+================================================================
+
+依据：§2.2 L80「弹窗默认可拖动 + 视口钳制 + 位置记忆；AI 助手全局浮动窗参照弹窗
+同一拖拽规则」+ 勘察报告（useDraggable 全库仅 2 处消费、暗色硬编码 9 处）。
+复用既有 composable：src/composables/useDraggable.ts（storageKey 记忆、40px 视口
+钳制、pointer:coarse 移动端降级、首拖锚定当前位置），未改其契约。
+
+一、弹窗拖动接线（15 自研弹窗 + 1 el-dialog）
+----------------------------------------------------------------
+独立组件（Teleport to body）：
+- ScheduleDialog.vue（sd-panel/sd-header + 全文 token 化一并完成）
+- VariableManagementDialog.vue（vm-panel/vm-header）
+- LlmModelFormDialog.vue（lm-panel/lm-header）
+- CsvImportDialog.vue（ide-dialog-csv/ide-dialog-head）
+- TableDataDialog.vue（ide-dialog-wide/ide-dialog-head）
+- AiAssistantPanel.vue（ai-panel/ai-head；定位后撤销 right/bottom 锚点，
+  避免 top+bottom 双约束把面板拉伸为满高）
+
+页面内嵌 .mask 弹窗：
+- DataSourceListView.vue（§7.4 三步向导 data-wizard）
+- IndicatorListView.vue（新建指标，复用 dlgEl 作面板）
+- StandardManagementView.vue（新建标准，复用 dlgEl 作面板）
+- QualityRuleView.vue（新建质量规则）
+- ApiKeyManagementView.vue（一次性 Key 展示 + 签发表单双弹窗）
+- ResourceManagementView.vue（版本历史 version-dialog）
+- HomeView.vue（新建/编辑项目 project-modal）
+- IdeView.vue（创建列/创建索引双对话框）
+- WorkflowGraphWorkbench.vue：版本历史 el-dialog 启用 Element Plus 原生
+  draggable+overflow（自定义 composable 不适用于 el-dialog 内部结构；
+  画布图例/校验浮层既有 D9 拖拽保持）
+
+统一约定：把手=标题栏（.dlg-hd/ide-dialog-head/h2/header），cursor:grab/grabbing
++ user-select:none；位置记忆键 datara.drag.<storageKey>。
+
+二、暗色硬编码 token 化
+----------------------------------------------------------------
+- ScheduleDialog.vue：全文 ~30 处 #hex/rgba → 令牌（--card/--border/--text 系/
+  --success/--danger/--info/--primary/--shadow-xl 等）
+- AiAssistantPanel.vue：全文 ~25 处 → 令牌；代码回显块恒暗底取 --sidebar-2/
+  --sidebar-text（双主题一致代码块惯例）
+- WorkflowGraphWorkbench.vue：wf-workbench/wf-btn/wf-type/validation-panel/
+  wf-legend-panel/node-editor 六处 #fff/#f8fafc → var(--card)/var(--bg)
+- theme.css：.user-pop/.op-btn/.kw 三处 #fff → var(--card)（勘察清单点名 3 处）
+- FilterPanel.vue：.lfp/.lfp-opt → var(--card)；.lfp-opt.on 文字 #fff → var(--card)
+- Palette.vue：.wb-palette #fff → var(--card)
+
+三、验证
+----------------------------------------------------------------
+- npx vitest run：Test Files 123 passed，Tests 1075 passed（全绿，零回归）
+- npx vue-tsc -b：exit 0
+- designTokenClosure.contract.test.ts（14 视图禁硬编码 hex）继续通过

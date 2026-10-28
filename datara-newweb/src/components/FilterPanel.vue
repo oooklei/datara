@@ -90,14 +90,14 @@ const dirty = computed(
 </template>
 
 <style scoped>
-.lfp{width:220px;flex-shrink:0;background:#fff;border:1px solid var(--border);border-radius:var(--radius-lg);padding:14px 12px;display:flex;flex-direction:column;gap:14px;align-self:flex-start;position:sticky;top:12px}
+.lfp{width:220px;flex-shrink:0;background:var(--card);border:1px solid var(--border);border-radius:var(--radius-lg);padding:14px 12px;display:flex;flex-direction:column;gap:14px;align-self:flex-start;position:sticky;top:12px}
 .lfp-label{font-size:11px;color:var(--text-3);font-weight:600;margin-bottom:6px;letter-spacing:.5px}
 .lfp-kw{width:100%;box-sizing:border-box;border:1px solid var(--border-strong);border-radius:var(--radius-sm);padding:6px 8px;font-size:12.5px;outline:none}
 .lfp-kw:focus{border-color:var(--primary)}
 .lfp-opts{display:flex;flex-wrap:wrap;gap:5px}
-.lfp-opt{border:1px solid var(--border-strong);background:#fff;border-radius:999px;padding:2px 9px;font-size:11.5px;color:var(--text-2);cursor:pointer}
+.lfp-opt{border:1px solid var(--border-strong);background:var(--card);border-radius:999px;padding:2px 9px;font-size:11.5px;color:var(--text-2);cursor:pointer}
 .lfp-opt:hover{border-color:var(--primary);color:var(--primary)}
-.lfp-opt.on{background:var(--primary);border-color:var(--primary);color:#fff}
+.lfp-opt.on{background:var(--primary);border-color:var(--primary);color:var(--card)}
 .lfp-foot{display:flex;align-items:center;justify-content:space-between;font-size:11px;color:var(--text-3);border-top:1px dashed var(--border);padding-top:10px;margin-top:auto}
 .lfp-reset{border:none;background:none;color:var(--primary);font-size:11.5px;cursor:pointer;padding:0}
 .lfp-reset:hover{text-decoration:underline}

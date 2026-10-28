@@ -18,8 +18,8 @@
     </template>
     <p v-if="loading">加载中…</p>
     <div v-if="selectedResource" class="mask" data-version-mask @click.self="closeVersions">
-      <section class="version-dialog" role="dialog" aria-modal="true" :aria-label="`${selectedResource.name} 版本历史`">
-        <header><div><h2>{{ selectedResource.name }}</h2><p>不可变版本历史</p></div><button type="button" aria-label="关闭版本历史" @click="closeVersions">关闭</button></header>
+      <section ref="versionDlgRef" class="version-dialog" role="dialog" aria-modal="true" :aria-label="`${selectedResource.name} 版本历史`" :style="versionDragStyle">
+        <header ref="versionHdRef" @pointerdown="onVersionDragStart"><div><h2>{{ selectedResource.name }}</h2><p>不可变版本历史</p></div><button type="button" aria-label="关闭版本历史" @click="closeVersions">关闭</button></header>
         <p v-if="versionError" class="error" role="alert">{{ versionError }}</p>
         <p v-else-if="versionsLoading" role="status">正在加载版本…</p>
         <table v-else><thead><tr><th>版本</th><th>大小</th><th>摘要</th><th>上传时间</th></tr></thead>
@@ -32,6 +32,7 @@
 
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue'
+import { useDraggable } from '../../composables/useDraggable'
 import { createResourceContract, validateUploadDraft, type ResourceKind, type ResourceMeta, type ResourceVersion } from '../../services/rebuild/resourceApi'
 import { listProjects, type ProjectSummary } from '../../services/rebuild/projectApi'
 
@@ -51,6 +52,12 @@ const filteredItems = computed(() => {
 const loading = ref(false)
 const error = ref('')
 const selectedResource = ref<ResourceMeta | null>(null)
+
+/* G14 §2.2：版本弹窗默认可拖动 + 视口钳制 + 位置记忆（把手=header） */
+const versionDlgRef = ref<HTMLElement | null>(null)
+const versionHdRef = ref<HTMLElement | null>(null)
+const { dragStyle: versionDragStyle, onHandlePointerdown: onVersionDragStart } = useDraggable(versionDlgRef, versionHdRef, { storageKey: 'resource.versions' })
+
 const versions = ref<ResourceVersion[]>([])
 const versionsLoading = ref(false)
 const versionError = ref('')
@@ -143,5 +150,6 @@ onMounted(async () => {
 </script>
 
 <style scoped>
-.resource-page{padding:24px}.resource-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:18px}.resource-head h1{margin:0 0 6px}.resource-head p{margin:0;color:var(--text-2)}.resource-head select{padding:8px 12px}.list-search{width:min(320px,100%);padding:8px 12px;margin-bottom:12px;border:1px solid var(--border);border-radius:8px;background:var(--card);color:var(--text)}table{width:100%;border-collapse:collapse;background:var(--card)}th,td{padding:10px 12px;border-bottom:1px solid var(--border);text-align:left}.error{color:var(--danger)}.mask{position:fixed;inset:0;z-index:30;display:grid;place-items:center;padding:24px;background:color-mix(in srgb, var(--text) 40%, transparent)}.version-dialog{width:min(880px,100%);max-height:calc(100vh - 48px);overflow:auto;padding:22px;background:var(--card);border-radius:10px;box-shadow:0 20px 45px color-mix(in srgb, var(--text) 20%, transparent)}.version-dialog>header{display:flex;align-items:flex-start;justify-content:space-between;gap:16px;margin-bottom:16px}.version-dialog h2,.version-dialog p{margin:0}.version-dialog header p{color:var(--text-2)}.version-dialog code{overflow-wrap:anywhere}
+.resource-page{padding:24px}.resource-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:18px}.resource-head h1{margin:0 0 6px}.resource-head p{margin:0;color:var(--text-2)}.resource-head select{padding:8px 12px}.list-search{width:min(320px,100%);padding:8px 12px;margin-bottom:12px;border:1px solid var(--border);border-radius:8px;background:var(--card);color:var(--text)}table{width:100%;border-collapse:collapse;background:var(--card)}th,td{padding:10px 12px;border-bottom:1px solid var(--border);text-align:left}.error{color:var(--danger)}.mask{position:fixed;inset:0;z-index:30;display:grid;place-items:center;padding:24px;background:color-mix(in srgb, var(--text) 40%, transparent)}.version-dialog{width:min(880px,100%);max-height:calc(100vh - 48px);overflow:auto;padding:22px;background:var(--card);border-radius:10px;box-shadow:0 20px 45px color-mix(in srgb, var(--text) 20%, transparent)}.version-dialog>header{display:flex;align-items:flex-start;justify-content:space-between;gap:16px;margin-bottom:16px;cursor:grab;user-select:none}
+.version-dialog>header:active{cursor:grabbing}.version-dialog h2,.version-dialog p{margin:0}.version-dialog header p{color:var(--text-2)}.version-dialog code{overflow-wrap:anywhere}
 </style>

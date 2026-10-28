@@ -296,8 +296,8 @@
 
     <!-- §6.2 创建列（440px）：纯前端生成 ALTER，仅填充不执行 -->
     <div v-if="addColumnOpen" class="ide-dialog-mask" data-add-column-dialog @click.self="addColumnOpen = false">
-      <section class="ide-dialog ide-dialog-form" role="dialog" aria-label="创建列">
-        <header class="ide-dialog-head">
+      <section ref="addColumnRef" class="ide-dialog ide-dialog-form" role="dialog" aria-label="创建列" :style="addColumnDragStyle">
+        <header ref="addColumnHdRef" class="ide-dialog-head" @pointerdown="onAddColumnDragStart">
           <h3>创建列 · {{ relationLabel }}</h3>
           <button type="button" @click="addColumnOpen = false">×</button>
         </header>
@@ -324,8 +324,8 @@
 
     <!-- §6.3 创建索引（440px）：纯前端生成 CREATE INDEX，仅填充不执行 -->
     <div v-if="addIndexOpen" class="ide-dialog-mask" data-add-index-dialog @click.self="addIndexOpen = false">
-      <section class="ide-dialog ide-dialog-form" role="dialog" aria-label="创建索引">
-        <header class="ide-dialog-head">
+      <section ref="addIndexRef" class="ide-dialog ide-dialog-form" role="dialog" aria-label="创建索引" :style="addIndexDragStyle">
+        <header ref="addIndexHdRef" class="ide-dialog-head" @pointerdown="onAddIndexDragStart">
           <h3>创建索引 · {{ relationLabel }}</h3>
           <button type="button" @click="addIndexOpen = false">×</button>
         </header>
@@ -374,6 +374,7 @@ import { computed, getCurrentInstance, onMounted, onUnmounted, ref, watch } from
 import { useRoute, useRouter } from 'vue-router'
 import { Pane, Splitpanes, type SplitpanesResizedPayload } from 'splitpanes'
 import { format } from 'sql-formatter'
+import { useDraggable } from '../../composables/useDraggable'
 import GlobalParamDrawer from '../../components/VariableManagementDialog.vue'
 import SqlCodeEditor from './SqlCodeEditor.vue'
 import ResultGrid from './ResultGrid.vue'
@@ -1825,6 +1826,14 @@ const dialogLabel = ref('')
 const addColumnForm = ref({ name: '', type: 'VARCHAR', length: '', defaultValue: '', nullable: true })
 const addIndexForm = ref({ name: '', columns: '', unique: false })
 
+/* G14 §2.2：弹窗默认可拖动 + 视口钳制 + 位置记忆（把手=ide-dialog-head） */
+const addColumnRef = ref<HTMLElement | null>(null)
+const addColumnHdRef = ref<HTMLElement | null>(null)
+const { dragStyle: addColumnDragStyle, onHandlePointerdown: onAddColumnDragStart } = useDraggable(addColumnRef, addColumnHdRef, { storageKey: 'ide.add-column' })
+const addIndexRef = ref<HTMLElement | null>(null)
+const addIndexHdRef = ref<HTMLElement | null>(null)
+const { dragStyle: addIndexDragStyle, onHandlePointerdown: onAddIndexDragStart } = useDraggable(addIndexRef, addIndexHdRef, { storageKey: 'ide.add-index' })
+
 const lengthEnabled = computed(() => ['VARCHAR', 'CHAR', 'DECIMAL'].includes(addColumnForm.value.type))
 const relationLabel = computed(() => dialogLabel.value)
 
@@ -2137,7 +2146,8 @@ onUnmounted(() => {
 .ide-search-result .ide-loaded{color:var(--success);margin-left:4px}
 .ide-dialog-mask{position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:60;display:flex;align-items:flex-start;justify-content:center}
 .ide-dialog-form{background:var(--card);color:var(--text);border:1px solid var(--border);border-radius:var(--radius);margin-top:12vh;width:440px;max-width:92vw}
-.ide-dialog-form .ide-dialog-head{display:flex;align-items:center;justify-content:space-between;padding:12px 16px;border-bottom:1px solid var(--border)}
+.ide-dialog-form .ide-dialog-head{display:flex;align-items:center;justify-content:space-between;padding:12px 16px;border-bottom:1px solid var(--border);cursor:grab;user-select:none}
+.ide-dialog-form .ide-dialog-head:active{cursor:grabbing}
 .ide-dialog-form .ide-dialog-head h3{margin:0;font-size:15px}
 .ide-dialog-form .ide-dialog-head button{border:none;background:transparent;color:var(--text-2);font-size:18px;cursor:pointer}
 .ide-form-grid{display:flex;flex-direction:column;gap:10px;padding:14px 16px}

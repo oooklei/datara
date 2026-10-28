@@ -102,8 +102,8 @@
     </div>
 
     <div v-if="showCreate" class="mask" @click.self="closeCreate">
-      <form ref="dlgEl" class="dlg" role="dialog" aria-modal="true" aria-label="新建指标" @submit.prevent="save">
-        <div class="dlg-hd">新建指标<button type="button" class="x" aria-label="关闭" @click="closeCreate">×</button></div>
+      <form ref="dlgEl" class="dlg" role="dialog" aria-modal="true" aria-label="新建指标" :style="dlgDragStyle" @submit.prevent="save">
+        <div ref="dlgHdEl" class="dlg-hd" @pointerdown="onDlgDragStart">新建指标<button type="button" class="x" aria-label="关闭" @click="closeCreate">×</button></div>
         <div class="dlg-bd">
           <div class="form-grid">
             <label class="f-item"><span>编码</span><input v-model.trim="form.code" required :disabled="saving"></label>
@@ -131,6 +131,7 @@
 <script setup lang="ts">
 import { computed, nextTick, onMounted, reactive, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
+import { useDraggable } from '../../composables/useDraggable'
 import FilterPanel, { type Facet } from '../../components/FilterPanel.vue'
 import {
   governanceApi,
@@ -151,6 +152,9 @@ const error = ref('')
 const showCreate = ref(false)
 const detail = ref<MetricDefinition | null>(null)
 const dlgEl = ref<HTMLFormElement | null>(null)
+/* G14 §2.2：弹窗默认可拖动 + 视口钳制 + 位置记忆（把手=标题栏，复用 dlgEl 作面板） */
+const dlgHdEl = ref<HTMLElement | null>(null)
+const { dragStyle: dlgDragStyle, onHandlePointerdown: onDlgDragStart } = useDraggable(dlgEl, dlgHdEl, { storageKey: 'ind.create' })
 /** 错误框「重试」绑定操作：按错误来源设定（默认重载列表，保存失败时重试保存） */
 const retry = ref<() => void>(() => reload)
 const form = reactive({

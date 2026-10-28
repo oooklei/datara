@@ -51,7 +51,7 @@
         </article>
       </li>
     </ul>
-    <div v-if="editing" class="project-modal"><form @submit.prevent="save"><h2>{{ editingId ? '编辑项目' : '新建项目' }}</h2><label>名称<input v-model.trim="draft.name" required data-project-name></label><label>说明<textarea v-model="draft.description" data-project-description /></label><p v-if="formError" role="alert">{{ formError }}</p><footer><button type="button" @click="editing=false">取消</button><button type="submit" data-save-project>保存</button></footer></form></div>
+    <div v-if="editing" class="project-modal"><form ref="projectFormRef" :style="projectDragStyle" @submit.prevent="save"><h2 ref="projectHdRef" @pointerdown="onProjectDragStart">{{ editingId ? '编辑项目' : '新建项目' }}</h2><label>名称<input v-model.trim="draft.name" required data-project-name></label><label>说明<textarea v-model="draft.description" data-project-description /></label><p v-if="formError" role="alert">{{ formError }}</p><footer><button type="button" @click="editing=false">取消</button><button type="submit" data-save-project>保存</button></footer></form></div>
   </section>
 </template>
 
@@ -64,6 +64,7 @@
  */
 import { computed, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
+import { useDraggable } from '../composables/useDraggable'
 import { createProject, deleteProject, listProjects, updateProject, type ProjectInput } from '../services/rebuild/projectApi'
 import type { ProjectSummary } from '../services/rebuild/projectApi'
 
@@ -73,6 +74,10 @@ const error = ref('')
 const projects = ref<ProjectSummary[]>([])
 const editing = ref(false), editingId = ref<number>(), formError = ref('')
 const draft = ref<ProjectInput>({ name: '', description: '' })
+/* G14 §2.2：弹窗默认可拖动 + 视口钳制 + 位置记忆（把手=h2 标题） */
+const projectFormRef = ref<HTMLFormElement | null>(null)
+const projectHdRef = ref<HTMLElement | null>(null)
+const { dragStyle: projectDragStyle, onHandlePointerdown: onProjectDragStart } = useDraggable(projectFormRef, projectHdRef, { storageKey: 'project.edit' })
 const quickEntries = [
   { title: '数据开发 IDE', description: 'SQL 开发、资源管理与执行观测', path: '/ide' },
   { title: '任务中心', description: '工作流、同步、ETL 与流处理统一编排', path: '/dag' },
@@ -167,7 +172,8 @@ onMounted(async () => {
 .project-card:hover {
   border-color: var(--primary-color, var(--primary));
 }
-.project-actions{display:flex;gap:6px;margin-left:auto}.project-actions button{border:1px solid var(--border);border-radius:var(--radius-sm);background:var(--card);color:var(--text-2);padding:4px 8px;cursor:pointer}.project-actions button:hover{border-color:var(--primary);color:var(--primary)}.project-modal{position:fixed;inset:0;z-index:50;display:grid;place-items:center;background:rgba(15,23,42,.38);backdrop-filter:blur(2px)}.project-modal form{display:grid;gap:14px;width:min(440px,calc(100vw - 32px));padding:24px;border:1px solid var(--border);border-radius:var(--radius-xl);background:var(--card);box-shadow:var(--shadow-xl)}.project-modal h2{margin:0}.project-modal label{display:grid;gap:6px;color:var(--text-2);font-size:13px}.project-modal input,.project-modal textarea{box-sizing:border-box;width:100%;border:1px solid var(--border);border-radius:var(--radius-sm);padding:9px 10px;font:inherit}.project-modal textarea{min-height:88px;resize:vertical}.project-modal footer{display:flex;justify-content:flex-end;gap:8px}.project-modal footer button{border:1px solid var(--border);border-radius:var(--radius-sm);background:var(--card);padding:8px 14px;cursor:pointer}.project-modal footer button:last-child{border-color:var(--primary);background:var(--primary);color:var(--card)}
+.project-actions{display:flex;gap:6px;margin-left:auto}.project-actions button{border:1px solid var(--border);border-radius:var(--radius-sm);background:var(--card);color:var(--text-2);padding:4px 8px;cursor:pointer}.project-actions button:hover{border-color:var(--primary);color:var(--primary)}.project-modal{position:fixed;inset:0;z-index:50;display:grid;place-items:center;background:rgba(15,23,42,.38);backdrop-filter:blur(2px)}.project-modal form{display:grid;gap:14px;width:min(440px,calc(100vw - 32px));padding:24px;border:1px solid var(--border);border-radius:var(--radius-xl);background:var(--card);box-shadow:var(--shadow-xl)}.project-modal h2{margin:0;cursor:grab;user-select:none}
+.project-modal h2:active{cursor:grabbing}.project-modal label{display:grid;gap:6px;color:var(--text-2);font-size:13px}.project-modal input,.project-modal textarea{box-sizing:border-box;width:100%;border:1px solid var(--border);border-radius:var(--radius-sm);padding:9px 10px;font:inherit}.project-modal textarea{min-height:88px;resize:vertical}.project-modal footer{display:flex;justify-content:flex-end;gap:8px}.project-modal footer button{border:1px solid var(--border);border-radius:var(--radius-sm);background:var(--card);padding:8px 14px;cursor:pointer}.project-modal footer button:last-child{border-color:var(--primary);background:var(--primary);color:var(--card)}
 
 .project-name {
   font-weight: 600;

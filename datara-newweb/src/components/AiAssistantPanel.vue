@@ -12,11 +12,13 @@
 
     <aside
       v-if="open"
+      ref="aiPanelRef"
       data-ai-panel
       class="ai-panel"
       aria-label="AI 助手面板"
+      :style="aiPanelStyle"
     >
-      <header class="ai-head">
+      <header ref="aiHeadRef" class="ai-head" @pointerdown="onAiDragStart">
         <h2>AI 助手</h2>
         <div data-ai-context v-if="pageContext" class="ai-context">
           <span class="ai-context-label">页面</span>
@@ -129,6 +131,7 @@
  *  - 信封 ERROR → 呈现错误态，不吞。
  */
 import { computed, onMounted, ref, watch } from 'vue'
+import { useDraggable } from '../composables/useDraggable'
 import { createAiToolsContract, R8A_TOOLS, type R8ATool, type R8AToolsContract } from '../services/rebuild/aiToolsApi'
 import { createAiAgentContract, type AiAgentContract, type AiAgentMessage } from '../services/rebuild/aiAgentApi'
 
@@ -164,6 +167,16 @@ const TOOL_LABELS: Record<R8ATool, string> = {
 
 // ---------- 面板状态 ----------
 const open = ref(false)
+
+/* G14 §2.2：AI 浮动窗与弹窗同一拖拽规则（把手=头部）；定位后撤销 right/bottom
+ * 锚点，避免 top+bottom 双约束把面板拉伸为满高。 */
+const aiPanelRef = ref<HTMLElement | null>(null)
+const aiHeadRef = ref<HTMLElement | null>(null)
+const { dragStyle: aiRawDragStyle, onHandlePointerdown: onAiDragStart } = useDraggable(aiPanelRef, aiHeadRef, { storageKey: 'ai.panel' })
+const aiPanelStyle = computed(() => (aiRawDragStyle.value.position
+  ? { ...aiRawDragStyle.value, right: 'auto', bottom: 'auto' }
+  : {}))
+
 const activeTool = ref<R8ATool | null>(null)
 const busy = ref<'invoke' | null>(null)
 const result = ref<unknown>(null)
@@ -337,39 +350,42 @@ onMounted(async () => {
 
 <style scoped>
 .ai-root{position:fixed;right:20px;bottom:20px;z-index:9999;font-size:13px}
-.ai-fab{width:48px;height:48px;border-radius:50%;background:#2563eb;color:#fff;border:none;box-shadow:0 4px 12px rgba(37,99,235,.35);cursor:pointer;display:flex;align-items:center;justify-content:center;font-weight:700}
-.ai-fab:hover{background:#1d4ed8}
+.ai-fab{width:48px;height:48px;border-radius:50%;background:var(--primary);color:var(--card);border:none;box-shadow:var(--shadow-primary);cursor:pointer;display:flex;align-items:center;justify-content:center;font-weight:700}
+.ai-fab:hover{background:var(--primary-hover)}
 .ai-fab-icon{font-size:14px;letter-spacing:.5px}
-.ai-panel{position:fixed;right:20px;bottom:76px;width:380px;max-height:calc(100vh - 110px);overflow-y:auto;background:#fff;border:1px solid #e2e8f0;border-radius:12px;box-shadow:0 10px 32px rgba(15,23,42,.15);display:flex;flex-direction:column;gap:14px;padding:16px}
-.ai-head{display:flex;align-items:center;gap:8px;border-bottom:1px solid #f1f5f9;padding-bottom:10px}
+/* 375 档：min() 收口宽度，杜绝 380px 固定宽横向失控 */
+.ai-panel{position:fixed;right:20px;bottom:76px;width:min(380px,calc(100vw - 32px));max-height:calc(100vh - 110px);overflow-y:auto;background:var(--card);border:1px solid var(--border);border-radius:12px;box-shadow:var(--shadow-xl);display:flex;flex-direction:column;gap:14px;padding:16px}
+.ai-head{display:flex;align-items:center;gap:8px;border-bottom:1px solid var(--border);padding-bottom:10px;cursor:grab;user-select:none}
+.ai-head:active{cursor:grabbing}
 .ai-head h2{margin:0;font-size:15px;font-weight:600}
 .ai-chat{display:flex;flex-direction:column;gap:8px}
 .ai-chat h3{margin:0;font-size:13px}
-.ai-chat-transcript{max-height:180px;overflow:auto;border:1px solid #e2e8f0;border-radius:8px;padding:8px;background:#f8fafc}
-.ai-chat-empty{margin:0;color:#64748b}
+.ai-chat-transcript{max-height:180px;overflow:auto;border:1px solid var(--border);border-radius:8px;padding:8px;background:var(--bg)}
+.ai-chat-empty{margin:0;color:var(--text-2)}
 .ai-chat-message{display:flex;gap:8px;margin:5px 0;line-height:1.45;white-space:pre-wrap}
-.ai-chat-message strong{flex:0 0 32px;color:#475569}.ai-chat-message.is-tool{font-size:12px;color:#2563eb}
-.ai-close{margin-left:auto;background:none;border:none;font-size:20px;cursor:pointer;color:#64748b;line-height:1}
-.ai-context{display:flex;gap:6px;align-items:center;font-size:11px;color:#64748b;background:#f1f5f9;padding:3px 8px;border-radius:10px}
-.ai-context-label{color:#94a3b8}
+.ai-chat-message strong{flex:0 0 32px;color:var(--text-2)}.ai-chat-message.is-tool{font-size:12px;color:var(--primary)}
+.ai-close{margin-left:auto;background:none;border:none;font-size:20px;cursor:pointer;color:var(--text-3);line-height:1}
+.ai-context{display:flex;gap:6px;align-items:center;font-size:11px;color:var(--text-2);background:var(--bg);padding:3px 8px;border-radius:10px}
+.ai-context-label{color:var(--text-3)}
 .ai-context-value{max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.ai-tools h3,.ai-invoke h3,.ai-result h3{margin:0 0 8px;font-size:13px;font-weight:600;color:#334155}
+.ai-tools h3,.ai-invoke h3,.ai-result h3{margin:0 0 8px;font-size:13px;font-weight:600;color:var(--text)}
 .ai-tool-list{list-style:none;margin:0;padding:0;display:grid;grid-template-columns:repeat(2,1fr);gap:6px}
-.ai-tool-btn{display:flex;align-items:center;justify-content:space-between;gap:4px;width:100%;padding:7px 10px;border:1px solid #e2e8f0;border-radius:6px;background:#f8fafc;color:#334155;font-size:12.5px;cursor:pointer}
-.ai-tool-btn:hover:not(:disabled){background:#f1f5f9;border-color:#cbd5e1}
-.ai-tool-btn:disabled{color:#94a3b8;cursor:not-allowed;background:#f8fafc}
-.ai-tool-btn[data-tool-active="yes"]{border-color:#2563eb;background:#eff6ff;color:#1d4ed8}
-.ai-tool-badge{font-size:10px;color:#94a3b8;background:#f1f5f9;padding:1px 5px;border-radius:8px}
+.ai-tool-btn{display:flex;align-items:center;justify-content:space-between;gap:4px;width:100%;padding:7px 10px;border:1px solid var(--border);border-radius:6px;background:var(--bg);color:var(--text);font-size:12.5px;cursor:pointer}
+.ai-tool-btn:hover:not(:disabled){background:var(--bg-deep);border-color:var(--border-strong)}
+.ai-tool-btn:disabled{color:var(--text-3);cursor:not-allowed;background:var(--bg)}
+.ai-tool-btn[data-tool-active="yes"]{border-color:var(--primary);background:var(--primary-light);color:var(--primary)}
+.ai-tool-badge{font-size:10px;color:var(--text-3);background:var(--bg-deep);padding:1px 5px;border-radius:8px}
 .ai-invoke{display:flex;flex-direction:column;gap:8px}
 .ai-param{display:flex;flex-direction:column;gap:8px}
-.ai-field{display:flex;flex-direction:column;gap:4px;font-size:12.5px;color:#475569}
-.ai-field textarea,.ai-field input{padding:6px 8px;border:1px solid #cbd5e1;border-radius:6px;font-size:12.5px;color:#172033;background:#fff}
+.ai-field{display:flex;flex-direction:column;gap:4px;font-size:12.5px;color:var(--text-2)}
+.ai-field textarea,.ai-field input{padding:6px 8px;border:1px solid var(--border-strong);border-radius:6px;font-size:12.5px;color:var(--text);background:var(--card)}
 .ai-field textarea{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;resize:vertical;min-height:70px}
-.ai-not-wired{color:#92400e;background:#fffbeb;border:1px solid #fde68a;border-radius:6px;padding:8px 10px;font-size:12.5px;margin:0}
-.ai-run-btn{padding:8px 14px;background:#2563eb;color:#fff;border:none;border-radius:6px;font-size:13px;cursor:pointer;align-self:flex-start}
-.ai-run-btn:hover:not(:disabled){background:#1d4ed8}
-.ai-run-btn:disabled{background:#94a3b8;cursor:not-allowed}
-.ai-result{border-top:1px solid #f1f5f9;padding-top:10px}
-.ai-error{color:#b91c1c;background:#fef2f2;border:1px solid #fecaca;border-radius:6px;padding:8px 10px;font-size:12.5px;margin:0}
-.ai-result-pre{margin:0;background:#0f172a;color:#e2e8f0;padding:10px;border-radius:6px;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12px;max-height:280px;overflow:auto;white-space:pre-wrap;word-break:break-all}
+.ai-not-wired{color:var(--warn);background:var(--warn-bg);border:1px solid var(--warn);border-radius:6px;padding:8px 10px;font-size:12.5px;margin:0}
+.ai-run-btn{padding:8px 14px;background:var(--primary);color:var(--card);border:none;border-radius:6px;font-size:13px;cursor:pointer;align-self:flex-start}
+.ai-run-btn:hover:not(:disabled){background:var(--primary-hover)}
+.ai-run-btn:disabled{background:var(--text-3);cursor:not-allowed}
+.ai-result{border-top:1px solid var(--border);padding-top:10px}
+.ai-error{color:var(--danger);background:var(--danger-bg);border:1px solid var(--danger);border-radius:6px;padding:8px 10px;font-size:12.5px;margin:0}
+/* 代码回显块恒暗底（双主题一致的代码块惯例），色值取侧栏令牌 */
+.ai-result-pre{margin:0;background:var(--sidebar-2);color:var(--sidebar-text);padding:10px;border-radius:6px;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12px;max-height:280px;overflow:auto;white-space:pre-wrap;word-break:break-all}
 </style>

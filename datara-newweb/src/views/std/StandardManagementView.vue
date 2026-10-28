@@ -81,8 +81,8 @@
     </div>
 
     <div v-if="showCreate" class="mask" @click.self="closeCreate">
-      <form ref="dlgEl" class="dlg" role="dialog" aria-modal="true" aria-label="新建标准" @submit.prevent="save">
-        <div class="dlg-hd">新建标准<button type="button" class="x" aria-label="关闭" @click="closeCreate">×</button></div>
+      <form ref="dlgEl" class="dlg" role="dialog" aria-modal="true" aria-label="新建标准" :style="dlgDragStyle" @submit.prevent="save">
+        <div ref="dlgHdEl" class="dlg-hd" @pointerdown="onDlgDragStart">新建标准<button type="button" class="x" aria-label="关闭" @click="closeCreate">×</button></div>
         <div class="dlg-bd">
           <div class="form-grid">
             <label class="f-item"><span>编码</span><input v-model.trim="form.code" required :disabled="saving"></label>
@@ -113,6 +113,7 @@
 <script setup lang="ts">
 import { computed, nextTick, onMounted, reactive, ref } from 'vue'
 import { useRoute } from 'vue-router'
+import { useDraggable } from '../../composables/useDraggable'
 import FilterPanel, { type Facet } from '../../components/FilterPanel.vue'
 import {
   governanceApi,
@@ -134,6 +135,9 @@ const showCreate = ref(false)
 const checkingId = ref<number | null>(null)
 const checkResult = ref<StandardCheckResult | null>(null)
 const dlgEl = ref<HTMLFormElement | null>(null)
+/* G14 §2.2：弹窗默认可拖动 + 视口钳制 + 位置记忆（把手=标题栏，复用 dlgEl 作面板） */
+const dlgHdEl = ref<HTMLElement | null>(null)
+const { dragStyle: dlgDragStyle, onHandlePointerdown: onDlgDragStart } = useDraggable(dlgEl, dlgHdEl, { storageKey: 'std.create' })
 /** 左筛选面板：关键字 + 状态 facet（'' = 全部） */
 const keyword = ref('')
 const filters = ref<Record<string, string>>({ status: '' })
