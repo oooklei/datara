@@ -1,0 +1,83 @@
+B4-c 结果区/脚本 Tab（S2 脚本多Tab + S3 结果Tab/日志 + S4 vxe-grid 双分页续取/内存筛选/CSV）
+================================================================================
+日期：2026-10-28
+批次：exec-plan B4-c（执行计划 docs/increments/2026-10-28-前端构建执行计划-单线WSL-Docker.md L74-75）
+设计真源：docs/increments/2026-10-28-前端开发构建方案.md §7.3 S2/S3/S4（L223-225）§7.1.5（L198）P3（L153-154）
+对标审计：docs/increments/2026-10-28-旧前端对标审计-03SQLIDE.md G16-G20
+提交：2ee6212b（B4-c 实现）+ 0677f77c（测试稳定性修复，用户授权）
+
+## 方案
+
+- **S2 脚本多 Tab（G16）**：
+  - 未命名 Tab 存 sessionStorage `datara.ide.unnamedScripts`（上限 5，恢复取末 5 个，
+    序号正则 `/^未命名SQL #(\d+)$/` 续接）；命名 Tab 绑 scripts API（scriptId+revision）。
+  - `sqlText = computed<string>({get,set})` 代理活动 Tab——runSql/saveScript/格式化/
+    变量预览/canExecute 等既有消费方零改动；`watch(sqlText, refreshVarPreview)` 在
+    Tab 切换时自然触发。
+  - 新建超 5 个未命名 → status 提示不阻塞；关闭活动 Tab 切邻位（同位次优先，
+    `Math.min(index, len-1)`，全空重建 未命名SQL #1）；同 scriptId 复用 Tab 刷新；
+    Ctrl+S：命名更新（携 id+revision）/未命名转命名（默认名 脚本-<时间戳>）。
+- **S3 结果 Tab（G17）**：
+  - `ResultTab{key,kind:'query'|'dml'|'error',title,sql,stmtIndex,resultSetId,
+    historyId,columns,rows,memoryRows,rowsTotal,elapsedMs,affected,message,page}`；
+    querySeq/dmlSeq/errorSeq 每次运行重置（clearResult）。
+  - `stmtSqlCache = sql.split(';').map(trim)`（§5.2 逐语句语义）；SSE 'log' 事件 →
+    kind=exec 且 affected 为数字 → DML Tab，type=error → 错误 Tab，另入逐语句日志
+    面板；'done' 回填全部 Tab historyId；点击 Tab 回显该语句 SQL 到编辑器。
+- **S4 结果网格/续取/筛选/导出（G18/G19/G20）**：
+  - vxe-table@4.23.1 `<VxeGrid v-bind="gridOptions">`：seq 列 + 动态列（c{i} 键规避
+    重复列名，sortable/resizable/showOverflow tooltip）；formatCell null→''、对象
+    JSON.stringify；单元格点击复制（clipboard + execCommand 降级）emit copied。
+  - 双分页续取：resultPageSize ref(200)，PAGE_SIZES [100,200,500,1000]；内存页优先
+    切片；越内存且落历史 → `offset = memLen + (target-memPages-1)*replayLimit`
+    （replayLimit=min(size,500)，契约上限 500）；未落历史 → status warning；hasMore
+    分「完整内存页/尾页续页」两支。
+  - 7 操作符内存筛选（包含/等于/不等于/为空/非空/大于/小于）：仅作用于 memoryRows，
+    绝不触发 fetchResultPage；筛选激活时 resultRows/Total/hasMore 全走 filteredMemoryRows；
+    包含/等于/不等于 字符串+数值双轨，大于/小于 Number 判定。
+  - CSV 导出：`'\uFEFF' + lines.join('\r\n')`（BOM），引号/逗号/换行转义，
+    URL.createObjectURL + anchor.click。
+
+## 依赖与踩坑（本批实测）
+
+1. vxe-table 4.23.1 硬依赖 vxe-pc-ui@4.20.12（未装则 vite 无法解析 import）→
+   npm install 补装，package-lock diff 仅此一项。
+2. 样式入口：dist/style.css 引用 iconfont 字体但 dist 无字体文件 → 选用
+   lib/style.css（字体同目录可解析）。
+3. happy-dom 下 vxe 数据加载异步 → 组件测试 mount 后必须 `await flushPromises()`。
+4. vxe 列字面量类型（type:'seq'/fixed:'left'/showOverflow:'tooltip'）需 `as const`
+   才兼容 vxe 联合类型。
+5. 测试环境：sessionStorage 跨用例持久 → beforeEach clear；ResizeObserver 需
+   vi.stubGlobal；ideView 测试对 ResultGrid 用轻量 mock 替身（避免 vxe 双重挂载）。
+
+## KA3 随机失败定性（非本增量引入，用户授权修复）
+
+- 现象：全量/单文件跑 workflowGraphWorkbench.contract.test.ts 用例KA3 间歇失败，
+  带改动 5 跑 3F2P、HEAD 6 跑 0F6P，曾疑与 B4-c 改动相关。
+- 排障链：失败快照完整 JSON = n1/n2/n3 + **n4(sql, positionX:10, positionY:21)**
+  ——正是用例5c「Palette 拖入」drop 坐标 Math.round 产物 → 写入者是用例5c 残留
+  定时器；verbose 耗时累计 5c 变更点→KA3 断言点 ≈ 503ms，恰好骑 500ms 防抖线；
+  KA1+KA2+KA3 合计仅 ~106ms（KA1 自身 500ms 定时器不可能窗口内到期，排除初始假设）。
+- 根因：变更用例（4/5/5b/5c/5d/5e/6/T9b/KA1）结束不卸载组件 → 深度 watcher 遗留
+  **真实** 500ms canvas-state 防抖定时器跨用例存活，恰好在 KA3 的 ~15ms null 断言
+  窗口内到点 `persistSnap()` 落盘；文件内另有未 mock 的 dependencyApi/
+  syncComponentApi 真实请求（ECONNREFUSED localhost:3000）扰动墙钟；HEAD 6 连过
+  属掷硬币运气。B4-c 改动零因果：import 图无交集（逐一核对）、单文件跑时改动文件
+  不加载、node_modules 两态一致。
+- 修复（0677f77c，用户授权改动非 B4 测试文件）：makeWorkbench 登记 wrapper →
+  afterEach 统一卸载（容忍用例1 手动卸载），onUnmounted 同步 flushSnapDebounce
+  清定时器；卸载落盘由下一用例 beforeEach localStorage.clear() 兜底。
+
+## 验证
+
+- 单文件：ideView 38 passed / ideShortcuts 7 passed / resultGrid 3 passed（新增：
+  网格渲染+格式化+点击复制 emit）/ workflowGraphWorkbench 27 passed。
+- KA3 稳定性：修复后单文件 6 连跑全绿（修复前同条件约半数失败）。
+- 全量：`npx vitest run` **120 文件 1032 用例全绿**（0 失败）。
+- 类型：`npx vue-tsc --noEmit` exit 0。
+
+## 遗留
+
+- vxe-grid 悬浮 tooltip/复制交互的 jsdom 路径依赖真实布局，1.9 E2E（B6）补
+  浏览器验证；筛选 7 操作符仅内存语义（G19 对标一致）。
+- 部署前提（1.9 时）：rebuild-api 注入 REBUILD_LEGACY_DB_URL + 日志卷读写 + 重建镜像。
