@@ -29,7 +29,9 @@ import IndicatorBoardView from './ind/IndicatorBoardView.vue'
 import ConsistencyCheckView from './ind/ConsistencyCheckView.vue'
 import QualityRuleView from './qc/QualityRuleView.vue'
 import QualityTaskView from './qc/QualityTaskView.vue'
-import QualityReadOnlyView from './qc/QualityReadOnlyView.vue'
+import QualityExceptionView from './qc/QualityExceptionView.vue'
+import QualityReportView from './qc/QualityReportView.vue'
+import QualityAlarmView from './qc/QualityAlarmView.vue'
 
 interface SegmentEntry {
   component: Component
@@ -58,9 +60,11 @@ const segmentViews: Record<string, SegmentEntry> = {
   'ind/consistency': { component: ConsistencyCheckView },
   'qc/rule': { component: QualityRuleView },
   'qc/task': { component: QualityTaskView },
-  'qc/exception': { component: QualityReadOnlyView, props: { kind: 'exceptions' } },
-  'qc/report': { component: QualityReadOnlyView, props: { kind: 'reports' } },
-  'qc/alarm': { component: QualityReadOnlyView, props: { kind: 'alarms' } },
+  // E17/E18/E19：冻结表点名真实视图（B5-c 纠偏，同 routes.ts；三页自行从
+  // route.params.projectId 承接项目上下文，无需 kind 聚合）
+  'qc/exception': { component: QualityExceptionView },
+  'qc/report': { component: QualityReportView },
+  'qc/alarm': { component: QualityAlarmView },
 }
 
 const normalizedPath = computed(() => (props.segmentPath ?? props.seg ?? '').replace(/^\/+|\/+$/g, ''))

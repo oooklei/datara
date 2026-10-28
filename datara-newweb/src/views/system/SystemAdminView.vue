@@ -27,9 +27,11 @@
 /**
  * T4（D-05 / §5A.11 项目成员管理）：系统管理段（/p/:projectId/system）承载页。
  *
- * 七段菜单契约为冻结面（projectMenu.contract.test.ts 七段恒为 7），成员管理
- * 依设计定位「项目权限与安全配置」组合进 system 段，零破坏段序与 data-seg 锚；
- * ProjectMembersView 为 L3-04 既有组件（prop 驱动），此处只补 UI 入口。
+ * 五组 19 项菜单契约为冻结面（projectMenu.contract.test.ts 五组恒 19），成员管理
+ * 不挂项目功能段（systemAdminView.contract.test.ts 锚定 seg='system' 落 404），
+ * 由 /sys 与 /p/:projectId/system 双路由承载（后者 projectId 透传点亮成员区块，
+ * AppShell 项目切换器「成员管理」入口直达）；ProjectMembersView 为 L3-04
+ * 既有组件（prop 驱动），此处只补 UI 入口。
  */
 import { computed } from 'vue'
 import PermissionMatrixView from '../PermissionMatrixView.vue'

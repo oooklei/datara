@@ -219,6 +219,7 @@ function onSidebarResizeEnd(): void {
           <button v-for="project in projects" :key="project.id" type="button" data-project-option :class="{ active: project.id === projectId }" @click="selectProject(project.id)">
             <span>{{ project.name }}</span><small>#{{ project.id }}</small>
           </button>
+          <RouterLink v-if="projectId !== null" :to="`/p/${projectId}/system`" class="project-manage" data-project-members>成员管理 · 项目作用域</RouterLink>
           <RouterLink to="/" class="project-manage">项目管理 · 全局顶层</RouterLink>
         </div>
       </div>

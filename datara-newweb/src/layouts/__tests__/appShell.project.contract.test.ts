@@ -1,7 +1,7 @@
 /**
  * L3-03 契约测试：AppShell 项目模式分流（/p/ 前缀互斥，s251 派令）
  *
- * 锚定面：项目模式侧栏七段 RouterLink（data-project-nav / data-seg 稳定锚）、
+ * 锚定面：项目模式侧栏五组 19 项 RouterLink（data-project-nav / data-seg 稳定锚）、
  * 顶栏当前项目名（listProjects 按 id 匹配 + nameReqSeq 竞态守卫 + 回退文案）与
  * 返回链接（data-project-exit→/）；全局模式行为语义零变化（既有锚归
  * appShell.contract.test.ts 2-05 测试集，本件不重复）。
@@ -124,6 +124,20 @@ describe('L3-03：AppShell 项目模式——顶栏当前项目与返回', () =>
     expect(exit.attributes('href')).toBe('/')
     expect(w.find('[data-global-operations]').attributes('href')).toBe('/dep/runtime')
     expect(w.find('[data-global-system]').attributes('href')).toBe('/sys')
+  })
+
+  it('项目切换器弹层：成员管理入口直达 /p/:projectId/system（B5-c：ProjectMembersView 可达链，设计真源 §2.1 全局顶层）', async () => {
+    const router = makeTestRouter()
+    await router.push('/p/9')
+    const w = mount(AppShell, { global: { plugins: [router] } })
+    await flushPromises()
+    expect(w.find('[data-project-members]').exists()).toBe(false)
+
+    await w.get('[data-project-switcher]').trigger('click')
+    const members = w.find('[data-project-members]')
+    expect(members.exists()).toBe(true)
+    expect(members.text()).toContain('成员管理')
+    expect(members.attributes('href')).toBe('/p/9/system')
   })
 
   it('项目切换跟随：push /p/10 后顶栏锚与项目名同步切换', async () => {

@@ -1,0 +1,71 @@
+B5-c 按钮响应矩阵核验补缺（19 项冻结表 + 全局页按钮无死键）
+================================================================
+
+审计方式：3 路并行勘察（19 项路由菜单核验 / 全库死按钮扫描 / G14+三档+四角色勘察），
+逐项以源码绑定验证裁定；本票只实施 B5-c 范围内的实质缺口，G14/三档/四角色归 B5-d。
+
+一、审计结论
+----------------------------------------------------------------
+1. 死按钮扫描：全绿。全库 69 个 .vue、329 个 button，322 个用户可见按钮全部有响应
+   （282 @click + 16 submit 合法 + 动态交互/伪阳性逐一裁决）。零死按钮，无需动作。
+2. 19 项冻结表核验：路由注册 + 项目段映射 + 菜单挂载三者闭环；
+   旧路径兼容经 router/index.ts PROJECT_SCOPED_ALIASES 重写（19 项路径 + 4 model 路径）。
+   2 个实质缺口（本票修复，见下）。
+3. 非缺口判定：
+   - menu.ts 全局顶层标签（任务中心/数据开发IDE 等）不属冻结表约束范围
+     （§2.1 冻结面 = 项目侧栏 19 项，项目侧栏 projectMenu.ts 已用冻结表命名）；
+   - GovernanceHubView 无路由引用系 feMergeB3Assets 契约锚定的合并资产，
+     非可达性缺口，保留不动；
+   - WorkflowGraphWorkbench 两处 splitter 无键盘路径（a11y 观察，低危，不在本票）；
+   - 3 个弹窗保存按钮未写显式 type=submit（浏览器默认 submit 语义成立，低危）。
+
+二、缺口修复 ①：E17/E18/E19 接线冻结表点名真实视图
+----------------------------------------------------------------
+现象：§2.1 冻结表点名 qc/QualityExceptionView、QualityReportView、QualityAlarmView
+（IMPL-v4-08 质量五项批 A/B 真实实现页，含错误横幅/骨架屏/空态/D13 搜索铺排），
+但 routes.ts 三条 /qc/* 路由与 ProjectSegmentView 段映射均挂旧聚合页
+QualityReadOnlyView（kind props），三个真实视图成孤儿（仅测试 ?raw 引用）。
+注：全局 /qc/* 经 alias 重写后落 ProjectSegmentView，段映射才是项目上下文的
+真实挂载点，两处必须同换。
+
+修复：
+- routes.ts：三条 /qc/* 路由组件换为三个真实视图（无 kind props，项目上下文由
+  route.params.projectId 自行承接）；QualityReadOnlyView 退役出路由
+  （文件保留：GovernanceHubView 仍引用 + 契约锚定）。
+- ProjectSegmentView.vue：qc/exception、qc/report、qc/alarm 三段映射同换。
+
+三、缺口修复 ②：项目成员管理可达链
+----------------------------------------------------------------
+现象：设计真源 §2.1 全局顶层「项目切换器 → 项目列表/成员（ProjectMembersView）」，
+但 ProjectMembersView 仅 SystemAdminView 嵌入且需 projectId prop（条件渲染）；
+/p/:projectId/system 是 redirect 到 /sys（丢 projectId），/sys 不传 props——
+成员管理 UI 在所有可达路径下永不渲染。
+既有测试锚「seg='system' 落 404，不挂项目功能段」（systemAdminView.contract.test.ts）
+不与本修复冲突：承载改为独立路由，不挂 ProjectSegmentView 段映射。
+
+修复：
+- routes.ts：/p/:projectId/system 由 redirect 改为直挂 SystemAdminView
+  （name: project-system-admin，props 数字化透传 projectId），与 SystemAdminView
+  T4 注释设计意图对齐。
+- AppShell.vue：项目切换器弹层新增「成员管理 · 项目作用域」入口
+  （data-project-members → /p/:projectId/system），设计真源 L65 链路兑现。
+
+四、注释漂移清理
+----------------------------------------------------------------
+「七段」残留（对齐五组 19 项现契约）：routes.ts 头注、SystemAdminView.vue 头注、
+appShell.project.contract.test.ts 头注。GovernanceHubView 头注系孤儿资产内注释，不动。
+
+五、契约测试（+4，全量 123 文件 / 1075 用例全绿）
+----------------------------------------------------------------
+- routes.contract.test.ts：质量三页绑定冻结表点名视图（E17/E18/E19）。
+- projectRoutes.contract.test.ts：/p/33/system 解析 project-system-admin +
+  组件绑定 SystemAdminView + props 透传 { projectId: 33 }。
+- projectSegmentView.contract.test.ts：E17-E19 段挂真实视图
+  （aria-label 三页锚 + listRuns(7,1,100) 项目上下文激活 + .quality-page 不在）。
+- appShell.project.contract.test.ts：切换器弹层 data-project-members
+  href=/p/9/system（弹层关闭时不存在）。
+
+六、验证
+----------------------------------------------------------------
+- npx vitest run：Test Files 123 passed，Tests 1075 passed（1071 → 1075）。
+- npx vue-tsc -b：exit 0。

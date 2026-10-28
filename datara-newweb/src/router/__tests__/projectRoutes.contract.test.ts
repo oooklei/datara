@@ -3,6 +3,7 @@ import { createMemoryHistory, createRouter } from 'vue-router'
 import { routes } from '../routes'
 import ProjectWorkbenchView from '../../views/ProjectWorkbenchView.vue'
 import ProjectSegmentView from '../../views/ProjectSegmentView.vue'
+import SystemAdminView from '../../views/system/SystemAdminView.vue'
 import { PROJECT_MENU_ITEMS, projectItemPath } from '../../navigation/projectMenu'
 
 type PropsFn = (route: { params: Record<string, string | string[]> }) => Record<string, unknown>
@@ -38,5 +39,15 @@ describe('UX v3：项目工作区路由', () => {
     const router = createRouter({ history: createMemoryHistory(), routes })
     expect(router.resolve('/dep/runtime').name).toBe('dep-runtime')
     expect(router.resolve('/sys').name).toBe('system-admin')
+  })
+
+  it('项目作用域系统段直达 SystemAdminView 并透传 projectId（B5-c：redirect 丢参致成员管理不可达的纠偏）', () => {
+    const router = createRouter({ history: createMemoryHistory(), routes })
+    const resolved = router.resolve('/p/33/system')
+    expect(resolved.name).toBe('project-system-admin')
+    const systemRoute = routes.find((route) => route.path === '/p/:projectId/system')
+    expect(systemRoute?.component).toBe(SystemAdminView)
+    const props = systemRoute?.props as PropsFn
+    expect(props({ params: { projectId: '33' } })).toEqual({ projectId: 33 })
   })
 })

@@ -20,7 +20,7 @@ import { flushPromises, mount } from '@vue/test-utils'
 import { createPinia } from 'pinia'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-const { replaceSpy, routeQuery, routeParams, poolLoad, resourceList, wfCreate, specLoad, schedApi } = vi.hoisted(() => ({
+const { replaceSpy, routeQuery, routeParams, poolLoad, resourceList, wfCreate, specLoad, schedApi, qcRuns, projectList } = vi.hoisted(() => ({
   replaceSpy: vi.fn(() => Promise.resolve()),
   routeQuery: { value: {} as Record<string, unknown> },
   routeParams: { value: {} as Record<string, unknown> },
@@ -28,6 +28,8 @@ const { replaceSpy, routeQuery, routeParams, poolLoad, resourceList, wfCreate, s
   resourceList: vi.fn(),
   wfCreate: vi.fn(),
   specLoad: vi.fn(),
+  qcRuns: vi.fn(),
+  projectList: vi.fn(),
   schedApi: {
     listSchedules: vi.fn(),
     createSchedule: vi.fn(),
@@ -110,6 +112,17 @@ vi.mock('../../services/rebuild/resourceApi', async (load) => {
   }
 })
 
+// E17-E19 真实视图（B5-c 接驳）链：governanceApi.listRuns 与项目列表不进网络层
+vi.mock('../../services/rebuild/projectApi', async (load) => {
+  const actual = await load<typeof import('../../services/rebuild/projectApi')>()
+  return { ...actual, listProjects: projectList }
+})
+
+vi.mock('../../services/rebuild/governanceApi', async (load) => {
+  const actual = await load<typeof import('../../services/rebuild/governanceApi')>()
+  return { ...actual, governanceApi: { ...actual.governanceApi, listRuns: qcRuns } }
+})
+
 // meta 段治理枢纽桩化：8 页各自治理 API 链不进本契约（页签接入为唯一断言面）
 vi.mock('../../views/meta/MetadataCatalogView.vue', () => ({
   default: {
@@ -152,6 +165,10 @@ beforeEach(() => {
   wfCreate.mockReset()
   specLoad.mockReset()
   specLoad.mockResolvedValue({ items: [], etag: '"00"', source: 'network' })
+  qcRuns.mockReset()
+  qcRuns.mockResolvedValue({ total: 0, list: [] })
+  projectList.mockReset()
+  projectList.mockResolvedValue({ total: 0, list: [] })
   localStorage.clear()
 })
 
@@ -202,6 +219,22 @@ describe('L12-02 full 段 ProjectSegmentView dag 接驳（s326 裁定④方案 A
     expect(w.find('[data-ide-view]').exists()).toBe(true)
     expect(w.find('.segment-page').exists()).toBe(false)
     expect(w.find('[data-tc-tabs]').exists()).toBe(false)
+  })
+
+  it("E17-E19 段挂冻结表点名真实视图（B5-c 纠偏：QualityReadOnlyView 聚合旧页退役出路由，项目上下文由 route.params 承接）", async () => {
+    const exception = mountSeg('qc/exception')
+    await flushPromises()
+    expect(exception.find('main[aria-label="异常数据核查"]').exists()).toBe(true)
+    expect(qcRuns).toHaveBeenCalledWith(7, 1, 100)
+
+    const report = mountSeg('qc/report')
+    await flushPromises()
+    expect(report.find('main[aria-label="质量报告"]').exists()).toBe(true)
+
+    const alarm = mountSeg('qc/alarm')
+    await flushPromises()
+    expect(alarm.find('main[aria-label="质量告警"]').exists()).toBe(true)
+    expect(exception.find('.quality-page').exists()).toBe(false)
   })
 
   it('remounts the active feature when the workspace project changes', async () => {

@@ -22,6 +22,9 @@ import RuntimeNodeView from '../../views/depops/RuntimeNodeView.vue'
 import MonitorView from '../../views/depops/MonitorView.vue'
 import AccessAuditView from '../../views/sec/AccessAuditView.vue'
 import LlmModelsView from '../../views/system/llm-models/LlmModelsView.vue'
+import QualityExceptionView from '../../views/qc/QualityExceptionView.vue'
+import QualityReportView from '../../views/qc/QualityReportView.vue'
+import QualityAlarmView from '../../views/qc/QualityAlarmView.vue'
 import routesSource from '../routes.ts?raw'
 import routerSource from '../index.ts?raw'
 import viteSource from '/vite.config.ts?raw'
@@ -111,6 +114,12 @@ describe('1.4 routes 负断言（WBS 1.4 / 增量 1 退出标准 2）', () => {
   it('LLM 与访问审计路由绑定归一后的唯一正本', () => {
     expect(routes.find((r) => r.path === '/open/llm')?.component).toBe(LlmModelsView)
     expect(routes.find((r) => r.path === '/sec/audit')?.component).toBe(AccessAuditView)
+  })
+
+  it('质量三页绑定冻结表点名视图（E17/E18/E19，B5-c 纠偏：聚合旧页退役出路由）', () => {
+    expect(routes.find((r) => r.path === '/qc/exception')?.component).toBe(QualityExceptionView)
+    expect(routes.find((r) => r.path === '/qc/report')?.component).toBe(QualityReportView)
+    expect(routes.find((r) => r.path === '/qc/alarm')?.component).toBe(QualityAlarmView)
   })
 
   it('无任何路由携带 demo:true 标记（零 demo 路由）', () => {

@@ -13,8 +13,11 @@
  *  - /p/:projectId        → project-workbench（ProjectWorkbenchView 项目工作台页，
  *                           s251 派令 L3-03）
  *  - /p/:projectId/:seg   → project-segment（ProjectSegmentView 功能段占位页，
- *                           seg 与 PROJECT_MENU_SECTIONS 七段对齐；未知 seg 由视图层
+ *                           seg 与项目侧栏五组 19 项对齐；未知 seg 由视图层
  *                           渲染「未知功能段」，不落首页——§7.3 判据保持）
+ *  - /p/:projectId/system → project-system-admin（SystemAdminView 直挂，
+ *                           projectId 透传点亮项目成员管理区块；B5-c 补缺：
+ *                           redirect 丢 projectId 导致 ProjectMembersView 永不可达）
  *
  * 纪律（1.4 冻结决策延续）：History 模式；无 catch-all（:pathMatch 禁用）；
  * 无 /api 前缀路由；每条路由具名 + 绑定组件；项目归属校验守卫归 L3-05（router/index.ts）。
@@ -45,7 +48,9 @@ import PermissionMatrixView from '../views/PermissionMatrixView.vue'
 import AccessAuditView from '../views/sec/AccessAuditView.vue'
 import QualityRuleView from '../views/qc/QualityRuleView.vue'
 import QualityTaskView from '../views/qc/QualityTaskView.vue'
-import QualityReadOnlyView from '../views/qc/QualityReadOnlyView.vue'
+import QualityExceptionView from '../views/qc/QualityExceptionView.vue'
+import QualityReportView from '../views/qc/QualityReportView.vue'
+import QualityAlarmView from '../views/qc/QualityAlarmView.vue'
 import ResourceManagementView from '../views/resources/ResourceManagementView.vue'
 import ModelListView from '../views/dwmodel/ModelListView.vue'
 import ModelDesignView from '../views/dwmodel/ModelDesignView.vue'
@@ -87,9 +92,11 @@ export const routes: RouteRecordRaw[] = [
   { path: '/sec/audit', name: 'sec-audit', component: AccessAuditView },
   { path: '/qc/rule', name: 'qc-rule', component: QualityRuleView },
   { path: '/qc/task', name: 'qc-task', component: QualityTaskView },
-  { path: '/qc/exception', name: 'qc-exception', component: QualityReadOnlyView, props: { kind: 'exceptions' } },
-  { path: '/qc/report', name: 'qc-report', component: QualityReadOnlyView, props: { kind: 'reports' } },
-  { path: '/qc/alarm', name: 'qc-alarm', component: QualityReadOnlyView, props: { kind: 'alarms' } },
+  // E17/E18/E19（冻结表点名视图）：真实实现页（IMPL-v4-08 质量五项批 A/B），
+  // B5-c 纠偏——原挂 QualityReadOnlyView 聚合旧页导致三真实视图成孤儿
+  { path: '/qc/exception', name: 'qc-exception', component: QualityExceptionView },
+  { path: '/qc/report', name: 'qc-report', component: QualityReportView },
+  { path: '/qc/alarm', name: 'qc-alarm', component: QualityAlarmView },
   { path: '/resources', name: 'resource-mgmt', component: ResourceManagementView },
   {
     path: '/p/:projectId',
@@ -111,7 +118,9 @@ export const routes: RouteRecordRaw[] = [
   },
   {
     path: '/p/:projectId/system',
-    redirect: '/sys',
+    name: 'project-system-admin',
+    component: SystemAdminView,
+    props: (route) => ({ projectId: Number(route.params.projectId) }),
   },
   {
     path: '/p/:projectId/:pathMatch(.*)*',
