@@ -76,6 +76,7 @@ def test_role_permission_matrix_is_explicit_and_consistent():
             Permission.QUALITY_READ, Permission.QUALITY_RUN,
             Permission.STANDARD_READ,
             Permission.AUDIT_READ,
+            Permission.MONITOR_READ,
         },
         Role.VIEWER: {
             Permission.VIEW_ALL,
