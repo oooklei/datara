@@ -1,5 +1,6 @@
 import json
 import urllib.error
+from io import BytesIO
 
 import pytest
 
@@ -97,3 +98,24 @@ def test_post_is_not_replayed_after_upstream_timeout():
     with pytest.raises(DbxError):
         client.execute_sql(connection_id="conn-1", database="sales", sql="insert into audit values (1)")
     assert calls == [("POST", "http://dbx/ide/api/query/execute")]
+
+
+def test_ai_stream_uses_internal_token_and_one_post(monkeypatch):
+    calls = []
+
+    def open_url(request, timeout):
+        calls.append((request, timeout))
+        return BytesIO(b"data: [DONE]\n\n")
+
+    monkeypatch.setattr("urllib.request.urlopen", open_url)
+    client = DbxClient(base_url="http://dbx/ide", internal_token="internal-test")
+    with client.open_stream("ai/stream", {"sessionId": "s1"}) as response:
+        assert response.read() == b"data: [DONE]\n\n"
+    assert len(calls) == 1
+    request, timeout = calls[0]
+    assert request.full_url == "http://dbx/ide/api/ai/stream"
+    assert request.get_method() == "POST" and timeout == 300
+    assert request.get_header("X-datara-internal-token") == "internal-test"
+    assert json.loads(request.data) == {"sessionId": "s1"}
+    with pytest.raises(ValueError):
+        client.open_stream("connection/save", {})

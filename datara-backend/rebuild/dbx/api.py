@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 from collections.abc import Callable
-from typing import Any
 from uuid import uuid4
 
 from fastapi import APIRouter, Header, Query
@@ -299,7 +298,7 @@ def build_dbx_router(
         return {"code": 0, "msg": "success", "data": {"connection_id": connection_id, "user_id": user_id}}
 
     def object_owner(project_id: int, kind: str, object_id: str, user: dict[str, object]):
-        if kind not in {"sql-file", "sql-folder", "ai-conversation"}:
+        if kind not in {"sql-file", "sql-folder", "ai-conversation", "ai-config"}:
             return JSONResponse(status_code=404, content={"code": 4042, "msg": "object type not found", "data": None})
         with session_factory() as session:
             owner = DbxObjectAccess(session).get(kind, object_id)
@@ -316,29 +315,30 @@ def build_dbx_router(
             return user
         if user.get("role") != Role.ADMIN.value:
             return JSONResponse(status_code=403, content={"code": 1003, "msg": "admin required", "data": None})
-        if kind not in {"sql-file", "sql-folder", "ai-conversation"}:
+        if kind not in {"sql-file", "sql-folder", "ai-conversation", "ai-config"}:
             return JSONResponse(status_code=404, content={"code": 4042, "msg": "object type not found", "data": None})
         if (body.owner_id is None) == (body.username is None):
             return JSONResponse(status_code=400, content={"code": 4001, "msg": "one owner required", "data": None})
         try:
-            library = client_factory()._request("GET", "ai/conversations" if kind == "ai-conversation" else "saved-sql")
+            library = client_factory()._request("GET", "ai/configs" if kind == "ai-config" else "ai/conversations" if kind == "ai-conversation" else "saved-sql")
         except DbxError as exc:
             return upstream_error(exc)
-        group = library if kind == "ai-conversation" and isinstance(library, list) else (
+        group = library if kind in {"ai-conversation", "ai-config"} and isinstance(library, list) else (
             library.get("folders" if kind == "sql-folder" else "files", []) if isinstance(library, dict) else []
         )
         item = next((row for row in group if isinstance(row, dict) and row.get("id") == object_id), None)
-        if item is None or not isinstance(item.get("connectionId"), str):
+        if item is None or (kind != "ai-config" and not isinstance(item.get("connectionId"), str)):
             return JSONResponse(status_code=404, content={"code": 4042, "msg": "DBX object not found", "data": None})
-        connection_id = item["connectionId"]
+        connection_id = item.get("connectionId") if kind != "ai-config" else None
         with session_factory() as session:
             target = (session.get(UserRecord, body.owner_id) if body.owner_id is not None else
                       session.scalar(select(UserRecord).where(UserRecord.username == body.username)))
             if target is None:
                 return JSONResponse(status_code=404, content={"code": 4043, "msg": "owner not found", "data": None})
-            connection = session.get(DbxConnectionOwnershipRecord, connection_id)
-            if connection is None or connection.project_id != project_id:
-                return JSONResponse(status_code=409, content={"code": 4091, "msg": "claim the DBX connection first", "data": None})
+            if connection_id is not None:
+                connection = session.get(DbxConnectionOwnershipRecord, connection_id)
+                if connection is None or connection.project_id != project_id:
+                    return JSONResponse(status_code=409, content={"code": 4091, "msg": "claim the DBX connection first", "data": None})
             try:
                 DbxObjectAccess(session).claim(
                     kind=kind, object_id=object_id, project_id=project_id,

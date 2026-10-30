@@ -77,6 +77,29 @@ class DbxClient:
             self.sleep(0.2 * (2**attempt))
         raise DbxError()
 
+    def open_stream(self, path: str, payload: dict[str, Any]) -> Any:
+        """Open one authenticated DBX SSE response without replaying a POST."""
+        if not self.internal_token:
+            raise DbxError(503)
+        if path not in {"ai/stream", "ai/agent-stream"}:
+            raise ValueError("unsupported DBX stream")
+        request = urllib.request.Request(
+            f"{self.base_url}/api/{path}",
+            data=json.dumps(payload, ensure_ascii=False).encode("utf-8"),
+            headers={
+                "Accept": "text/event-stream",
+                "Content-Type": "application/json",
+                "X-Datara-Internal-Token": self.internal_token,
+            },
+            method="POST",
+        )
+        try:
+            return urllib.request.urlopen(request, timeout=300)
+        except urllib.error.HTTPError as exc:
+            raise DbxError(exc.code) from None
+        except (urllib.error.URLError, TimeoutError, OSError):
+            raise DbxError() from None
+
     def list_connections(self) -> list[dict[str, Any]]:
         result = self._request("GET", "connection/list")
         if not isinstance(result, list):

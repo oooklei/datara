@@ -56,6 +56,7 @@ def digest_token(token: str) -> str:
     return hashlib.sha256(token.encode("utf-8")).hexdigest()
 from rebuild.datasource.contracts import DataSourceDraft, probe_datasource, validate_datasource
 from rebuild.datasource.models import ProjectDatasourceRecord
+from rebuild.dbx.models import DbxAiUserStateRecord
 from rebuild.datasource.metadata import metadata_catalog_for
 from rebuild.datasource.pool import DatasourceEngineRegistry
 from rebuild.datasource.repository import ProjectDatasourceRepository
@@ -389,6 +390,7 @@ def create_app(
                 ProjectMemberRecord.__table__,
                 ActiveTokenRecord.__table__,
                 ProjectDatasourceRecord.__table__,
+                DbxAiUserStateRecord.__table__,
                 VariableDefinitionRecord.__table__,
                 TaskInstanceVariableRuntimeRecord.__table__,
                 DependencyConfigRecord.__table__,

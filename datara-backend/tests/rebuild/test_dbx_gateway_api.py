@@ -21,11 +21,14 @@ class FakeDbx:
         self.saved = []
         self.sql_library = {"folders": [], "files": [{"id": "legacy-sql", "connectionId": "owned", "name": "orders"}]}
         self.ai_conversations = [{"id": "legacy-ai", "connectionId": "owned", "messages": []}]
+        self.ai_configs = [{"id": "legacy-config", "name": "Legacy AI", "apiKey": "private"}]
 
     def _request(self, method, path, *, params=None, payload=None):
         assert method == "GET"
         if path == "ai/conversations":
             return self.ai_conversations
+        if path == "ai/configs":
+            return self.ai_configs
         assert path == "saved-sql"
         return self.sql_library
 
@@ -213,3 +216,19 @@ def test_admin_claims_legacy_ai_conversation_then_owner_shares_it():
     assert client.post(f"{base}/legacy-ai/claim", headers=admin, json={"username": "owner"}).status_code == 200
     assert client.post(f"{base}/legacy-ai/share", headers=owner, json={"username": "other"}).status_code == 200
     assert client.get(f"{base}/legacy-ai/shares", headers=owner).json()["data"]["items"] == [{"user_id": 3, "username": "other"}]
+
+
+def test_admin_claims_legacy_ai_config_and_owner_shares_without_connection():
+    client, _ = setup_gateway()
+    base = "/api/v1/rebuild/dbx/projects/7/objects/ai-config"
+    admin = {"Authorization": "Bearer admin"}
+    owner = {"Authorization": "Bearer owner"}
+    other = {"Authorization": "Bearer other"}
+    assert client.post(f"{base}/legacy-config/claim", headers=owner, json={"username": "owner"}).status_code == 403
+    assert client.post(f"{base}/missing/claim", headers=admin, json={"username": "owner"}).status_code == 404
+    claimed = client.post(f"{base}/legacy-config/claim", headers=admin, json={"username": "owner"})
+    assert claimed.status_code == 200
+    assert claimed.json()["data"]["owner_id"] == 2
+    assert client.post(f"{base}/legacy-config/share", headers=other, json={"username": "other"}).status_code == 403
+    assert client.post(f"{base}/legacy-config/share", headers=owner, json={"username": "other"}).status_code == 200
+    assert client.get(f"{base}/legacy-config/shares", headers=owner).json()["data"]["items"] == [{"user_id": 3, "username": "other"}]

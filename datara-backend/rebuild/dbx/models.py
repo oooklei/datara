@@ -2,7 +2,7 @@
 
 from datetime import datetime
 
-from sqlalchemy import DateTime, ForeignKey, Integer, String, UniqueConstraint, func
+from sqlalchemy import DateTime, ForeignKey, Integer, String, Text, UniqueConstraint, func
 from sqlalchemy.orm import Mapped, mapped_column
 
 from rebuild.common.db import Base
@@ -47,3 +47,14 @@ class DbxObjectShareRecord(Base):
     kind: Mapped[str] = mapped_column(String(32), nullable=False)
     object_id: Mapped[str] = mapped_column(String(128), nullable=False)
     user_id: Mapped[int] = mapped_column(ForeignKey("rebuild_user.id"), nullable=False, index=True)
+
+
+class DbxAiUserStateRecord(Base):
+    """Per-project AI selection; dbx's own selection is single-user global state."""
+
+    __tablename__ = "dbx_ai_user_state"
+
+    project_id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("rebuild_user.id"), primary_key=True)
+    default_config_id: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    chat_selection_json: Mapped[str | None] = mapped_column(Text, nullable=True)

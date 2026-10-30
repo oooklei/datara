@@ -3,16 +3,22 @@
 from __future__ import annotations
 
 import secrets
+import json
 import time
 from collections.abc import Callable
 from typing import Any
 
 from fastapi import APIRouter, Header, Request
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, StreamingResponse
 from sqlalchemy.orm import sessionmaker
+from starlette.concurrency import run_in_threadpool
 
 from rebuild.dbx import DbxClient, DbxError
 from rebuild.dbx.access import DbxConnectionAccess, DbxObjectAccess
+from rebuild.dbx.ai_owner import (
+    KIND as AI_CONFIG_KIND, SHARED_REF, config_rows, owned_config, resolve_config,
+    selection_from_state, user_state, valid_config_id, visible_config_ids, visible_configs,
+)
 from rebuild.dbx.ide_route_manifest import SUPPORTED_DATA_ROUTES
 from rebuild.dbx.ide_policy import (
     DbxIdeForbidden, canonical_connect_payload, classify_save, merge_connection_save_payload,
@@ -74,6 +80,12 @@ _CONNECTION_ALLOWED = frozenset({
     "connection/write-unlock/lock", "connection/write-unlock/state",
 })
 _AI_CONVERSATIONS = frozenset({"ai/conversation", "ai/conversations"})
+_AI_CONFIG_ROUTES = frozenset({
+    "ai/config", "ai/provider-configs", "ai/configs", "ai/config-item",
+    "ai/default-config", "ai/chat-selection", "ai/complete", "ai/test-connection",
+    "ai/models", "ai/model-effort", "ai/stream", "ai/agent-stream",
+    "ai/cancel-stream", "ai/tool-approval",
+})
 
 
 def is_supported_ide_route(path: str) -> bool:
@@ -94,6 +106,8 @@ def is_supported_ide_route(path: str) -> bool:
         or path in SUPPORTED_DATA_ROUTES
         or dynamic_route
         or path in _AI_CONVERSATIONS
+        or path in _AI_CONFIG_ROUTES
+        or (path.startswith("ai/config/") and len(parts) == 3 and bool(parts[2]))
         or (path.startswith("ai/conversation/") and len(path.split("/")) == 3)
     )
 
@@ -144,14 +158,14 @@ def build_dbx_ide_router(
         token, project_id = session
         if not path or path.startswith("/") or ".." in path.split("/"):
             return denied()
-        if path.startswith(_CONFIG_DOMAINS) and not (path in _AI_CONVERSATIONS or path.startswith("ai/conversation/")):
+        if path.startswith(_CONFIG_DOMAINS) and not (path in _AI_CONVERSATIONS or path in _AI_CONFIG_ROUTES or path.startswith("ai/conversation/") or path.startswith("ai/config/")):
             return denied(message="owner-scoped dbx configuration endpoint pending")
         if path in _CONNECTION_BLOCKED:
             return denied(message="connection modification requires the Datara owner API")
         if not is_supported_ide_route(path):
             return denied(message="unsupported dbx IDE endpoint")
-        permission = Permission.DATASOURCE_MANAGE if path == "connection/save" or path in _CONNECTION_OWNER_WRITES or (path.startswith("history") and request.method == "DELETE") or (path.startswith("ai/conversation") and request.method != "GET") else (
-            Permission.EXECUTE_SQL if path.startswith("query/") or (path.startswith("schema/") and request.method != "GET") or path == "history/save" else Permission.DATASOURCE_READ
+        permission = Permission.DATASOURCE_MANAGE if path == "connection/save" or path in _CONNECTION_OWNER_WRITES or (path.startswith("history") and request.method == "DELETE") or (path.startswith("ai/conversation") and request.method != "GET") or (path in {"ai/configs", "ai/config-item", "ai/default-config"} and request.method != "GET") or (path.startswith("ai/config/") and request.method == "DELETE") else (
+            Permission.EXECUTE_SQL if path.startswith("query/") or (path.startswith("schema/") and request.method != "GET") or path in {"history/save", "ai/agent-stream"} else Permission.DATASOURCE_READ
         )
         user = authorize(token, project_id, permission)
         if isinstance(user, JSONResponse):
@@ -176,6 +190,28 @@ def build_dbx_ide_router(
             if path == "connection/list" and request.method == "GET":
                 rows = dbx.list_connections()
                 return safe_connection_list(rows, visible_ids)
+
+            if path == "ai/configs" and request.method == "GET":
+                rows = config_rows(dbx._request("GET", path))
+                with session_factory() as db_session:
+                    return visible_configs(db_session, rows, project_id=project_id, user_id=user_id, admin=admin)
+            if path == "ai/chat-selection" and request.method == "GET":
+                with session_factory() as db_session:
+                    selection = selection_from_state(db_session, project_id, user_id)
+                    if selection is None:
+                        return None
+                    rows = config_rows(dbx._request("GET", "ai/configs"))
+                    allowed = visible_config_ids(db_session, project_id=project_id, user_id=user_id, admin=admin, rows=rows)
+                    selection = dict(selection)
+                    if isinstance(selection.get("active"), dict) and selection["active"].get("configId") not in allowed:
+                        selection["active"] = None
+                    preferences = selection.get("effortPreferences")
+                    if isinstance(preferences, list):
+                        selection["effortPreferences"] = [item for item in preferences if isinstance(item, dict) and item.get("configId") in allowed]
+                    return selection
+            if path in {"ai/config", "ai/provider-configs"} and request.method == "GET":
+                # Legacy single-user settings must not migrate into another user's workspace.
+                return dbx._request("GET", path) if admin else (None if path == "ai/config" else {})
 
             if path == "ai/conversations" and request.method == "GET":
                 rows = dbx._request("GET", path)
@@ -274,6 +310,120 @@ def build_dbx_ide_router(
                     return denied(message="JSON object required")
                 payload = parsed
             query = dict(request.query_params)
+            if path in {"ai/config-item", "ai/configs"} and request.method == "POST":
+                items = [payload.get("config")] if path == "ai/config-item" else payload.get("configs")
+                if not isinstance(items, list) or not items or any(not isinstance(item, dict) or not valid_config_id(item.get("id")) for item in items):
+                    return denied(message="invalid AI configuration")
+                if len({item["id"] for item in items}) != len(items):
+                    return denied(message="duplicate AI configuration")
+                rows = config_rows(dbx._request("GET", "ai/configs"))
+                stored = {row["id"]: row for row in rows}
+                with session_factory() as db_session:
+                    access = DbxObjectAccess(db_session)
+                    for item in items:
+                        config_id = item["id"]
+                        owner = access.get(AI_CONFIG_KIND, config_id)
+                        if config_id in stored:
+                            if owner is None or owner.project_id != project_id or (not admin and owner.owner_id != user_id):
+                                return denied(message="AI configuration owner required")
+                        elif owner is not None:
+                            return denied(message="AI configuration ID reserved")
+                        if isinstance(item.get("apiKey"), str) and item["apiKey"].startswith(SHARED_REF):
+                            return denied(message="shared AI configuration is read only")
+                    for item in items:
+                        clean = dict(item, isDefault=False)
+                        dbx._request("POST", "ai/config-item", payload={"config": clean})
+                        if item["id"] not in stored:
+                            access.claim(kind=AI_CONFIG_KIND, object_id=item["id"], project_id=project_id, owner_id=user_id)
+                        if item.get("isDefault"):
+                            user_state(db_session, project_id, user_id).default_config_id = item["id"]
+                        db_session.commit()
+                return None
+            if path.startswith("ai/config/") and request.method == "DELETE":
+                config_id = path.split("/", 2)[2]
+                if not valid_config_id(config_id):
+                    return denied()
+                with session_factory() as db_session:
+                    if not owned_config(db_session, config_id, project_id=project_id, user_id=user_id, admin=admin):
+                        return denied(message="AI configuration owner required")
+                    result = dbx._request("DELETE", path)
+                    db_session.query(DbxObjectShareRecord).filter_by(kind=AI_CONFIG_KIND, object_id=config_id).delete()
+                    db_session.query(DbxObjectOwnershipRecord).filter_by(kind=AI_CONFIG_KIND, object_id=config_id).delete()
+                    db_session.commit()
+                    return result
+            if path == "ai/default-config" and request.method == "POST":
+                config_id = payload.get("configId")
+                rows = config_rows(dbx._request("GET", "ai/configs"))
+                with session_factory() as db_session:
+                    if config_id not in visible_config_ids(db_session, project_id=project_id, user_id=user_id, admin=admin, rows=rows):
+                        return denied(message="AI configuration not shared")
+                    user_state(db_session, project_id, user_id).default_config_id = config_id
+                    db_session.commit()
+                return None
+            if path == "ai/chat-selection" and request.method == "POST":
+                selection = payload.get("selection")
+                if not isinstance(selection, dict):
+                    return denied(message="invalid AI selection")
+                rows = config_rows(dbx._request("GET", "ai/configs"))
+                with session_factory() as db_session:
+                    allowed = visible_config_ids(db_session, project_id=project_id, user_id=user_id, admin=admin, rows=rows)
+                    active = selection.get("active")
+                    if active is not None and (not isinstance(active, dict) or active.get("configId") not in allowed):
+                        return denied(message="AI configuration not shared")
+                    preferences = selection.get("effortPreferences", [])
+                    if not isinstance(preferences, list) or any(not isinstance(item, dict) or item.get("configId") not in allowed for item in preferences):
+                        return denied(message="invalid AI selection")
+                    user_state(db_session, project_id, user_id).chat_selection_json = json.dumps(selection, ensure_ascii=False)
+                    db_session.commit()
+                return None
+            if path in {"ai/complete", "ai/test-connection", "ai/models", "ai/model-effort", "ai/stream", "ai/agent-stream"} and request.method == "POST":
+                request_frame = payload.get("request") if path in {"ai/complete", "ai/stream", "ai/agent-stream"} else payload
+                supplied = request_frame.get("config") if isinstance(request_frame, dict) else None
+                if not isinstance(supplied, dict):
+                    return denied(message="saved AI configuration required")
+                draft_check = path in {"ai/test-connection", "ai/models", "ai/model-effort"}
+                shared_ref = str(supplied.get("apiKey", "")).startswith(SHARED_REF)
+                if draft_check and not shared_ref:
+                    resolved = supplied
+                else:
+                    rows = config_rows(dbx._request("GET", "ai/configs"))
+                    with session_factory() as db_session:
+                        resolved = resolve_config(db_session, rows, supplied, project_id=project_id, user_id=user_id, admin=admin)
+                if resolved is None:
+                    return denied(message="AI configuration not shared")
+                if path == "ai/agent-stream":
+                    connection_id = payload.get("connectionId")
+                    confirmed_id = payload.get("confirmedConnectionId")
+                    if connection_id not in visible_ids or (confirmed_id is not None and confirmed_id != connection_id):
+                        return denied(message="AI agent connection not shared")
+                payload = dict(payload)
+                request_frame = dict(request_frame, config=resolved)
+                if path in {"ai/complete", "ai/stream", "ai/agent-stream"}:
+                    payload["request"] = request_frame
+                else:
+                    payload["config"] = resolved
+                if path in {"ai/stream", "ai/agent-stream"}:
+                    session_id = payload.get("sessionId", payload.get("session_id"))
+                    if not isinstance(session_id, str) or not session_id or len(session_id) > 128:
+                        return denied(message="invalid AI stream session")
+                    payload["sessionId"] = f"{project_id}:{user_id}:{session_id}"
+                    payload.pop("session_id", None)
+                    upstream = await run_in_threadpool(dbx.open_stream, path, payload)
+
+                    def stream_chunks():
+                        with upstream:
+                            while chunk := upstream.read(8192):
+                                yield chunk
+
+                    return StreamingResponse(stream_chunks(), media_type="text/event-stream", headers={"Cache-Control": "no-store"})
+                return dbx._request("POST", path, payload=payload)
+            if path in {"ai/cancel-stream", "ai/tool-approval"} and request.method == "POST":
+                session_id = payload.get("sessionId", payload.get("session_id"))
+                if not isinstance(session_id, str) or not session_id or len(session_id) > 128:
+                    return denied(message="invalid AI stream session")
+                scoped = dict(payload, sessionId=f"{project_id}:{user_id}:{session_id}")
+                scoped.pop("session_id", None)
+                return dbx._request("POST", path, payload=scoped)
             if path == "ai/conversation" and request.method == "POST":
                 conversation = payload.get("conversation")
                 if not isinstance(conversation, dict):

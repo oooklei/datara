@@ -1,3 +1,5 @@
+from io import BytesIO
+
 from fastapi import FastAPI
 from fastapi.responses import JSONResponse
 from fastapi.testclient import TestClient
@@ -8,7 +10,7 @@ from sqlalchemy.pool import StaticPool
 from rebuild.common.db import Base
 from rebuild.dbx.access import DbxConnectionAccess, DbxObjectAccess
 from rebuild.dbx.ide_proxy import build_dbx_ide_router, is_supported_ide_route
-from rebuild.dbx.models import DbxConnectionOwnershipRecord, DbxConnectionShareRecord, DbxObjectOwnershipRecord, DbxObjectShareRecord
+from rebuild.dbx.models import DbxAiUserStateRecord, DbxConnectionOwnershipRecord, DbxConnectionShareRecord, DbxObjectOwnershipRecord, DbxObjectShareRecord
 from rebuild.identity.models import UserRecord
 
 
@@ -26,12 +28,23 @@ class FakeDbx:
             {"id": "legacy-ai", "connectionId": "mine", "messages": [{"content": "private legacy"}]},
             {"id": "foreign-ai", "connectionId": "foreign", "messages": [{"content": "private other"}]},
         ]
+        self.ai_configs = [{"id": "legacy-config", "name": "Legacy", "provider": "openai", "apiKey": "legacy-secret", "endpoint": "https://legacy.example/api", "model": "m1"}]
+        self.stream_payloads = []
 
     def list_connections(self):
         return self.rows
 
     def _request(self, method, path, *, params=None, payload=None):
         self.calls.append((method, path, payload))
+        if path == "ai/configs" and method == "GET":
+            return self.ai_configs
+        if path == "ai/config-item" and method == "POST":
+            config = payload["config"]
+            self.ai_configs = [item for item in self.ai_configs if item["id"] != config["id"]] + [config]
+            return None
+        if path.startswith("ai/config/") and method == "DELETE":
+            self.ai_configs = [item for item in self.ai_configs if item["id"] != path.split("/")[-1]]
+            return None
         if path == "ai/conversations" and method == "GET":
             return self.conversations
         if path == "ai/conversation" and method == "POST":
@@ -72,10 +85,14 @@ class FakeDbx:
                 self.rows = [item for item in self.rows if item["id"] != config["id"]] + [config]
         return {"ok": True}
 
+    def open_stream(self, path, payload):
+        self.stream_payloads.append((path, payload))
+        return BytesIO(b'data: {"delta":"hello","done":true}\n\n')
+
 
 def setup_proxy(project_gate=None, *, share_with_other=False):
     engine = create_engine("sqlite+pysqlite:///:memory:", connect_args={"check_same_thread": False}, poolclass=StaticPool)
-    Base.metadata.create_all(engine, tables=[UserRecord.__table__, DbxConnectionOwnershipRecord.__table__, DbxConnectionShareRecord.__table__, DbxObjectOwnershipRecord.__table__, DbxObjectShareRecord.__table__])
+    Base.metadata.create_all(engine, tables=[UserRecord.__table__, DbxConnectionOwnershipRecord.__table__, DbxConnectionShareRecord.__table__, DbxObjectOwnershipRecord.__table__, DbxObjectShareRecord.__table__, DbxAiUserStateRecord.__table__])
     factory = sessionmaker(bind=engine)
     with Session(engine) as session:
         session.add_all([
@@ -129,7 +146,7 @@ def test_ai_conversations_are_owned_and_shared_without_leaking_legacy_data():
     assert ide.post("ai/conversation", {"conversation": {
         "id": "foreign-ai", "connectionId": "foreign", "messages": [],
     }}).status_code == 403
-    assert ide.get("ai/configs").status_code == 403
+    assert ide.get("ai/configs").json() == []
     assert ide.delete("ai/conversation/legacy-ai").status_code == 403
 
     with client.app.state.session_factory() as session:
@@ -146,6 +163,73 @@ def test_ai_conversations_are_owned_and_shared_without_leaking_legacy_data():
     headers = {"Cookie": f"datara_dbx_ide={client.cookies.get('datara_dbx_ide')}"}
     assert ide.delete("ai/conversation/mine-ai").status_code == 200
     assert all(row["id"] != "mine-ai" for row in dbx.conversations)
+
+
+def test_ai_configs_are_owner_scoped_and_shared_stream_uses_server_secret():
+    client, dbx = setup_proxy()
+    proxy = "/api/v1/rebuild/dbx/ide-proxy"
+
+    def login(token):
+        response = client.post("/api/v1/rebuild/dbx/projects/33/ide-session", headers={"Authorization": f"Bearer {token}"})
+        assert response.status_code == 200
+        return {"Cookie": f"datara_dbx_ide={client.cookies.get('datara_dbx_ide')}"}
+
+    owner = login("owner-token")
+    config = {"id": "mine-config", "name": "Mine AI", "provider": "openai", "apiKey": "owner-ai-secret",
+              "endpoint": "https://owner.example/api?token=private", "model": "m1", "customHeaders": {"X-Private": "header-secret"}}
+    assert client.post(f"{proxy}/ai/config-item", headers=owner, json={"config": config}).status_code == 200
+    mine = client.get(f"{proxy}/ai/configs", headers=owner).json()
+    assert [item["id"] for item in mine] == ["mine-config"]
+    assert mine[0]["apiKey"] == "owner-ai-secret"
+    assert client.post(f"{proxy}/ai/configs", headers=owner, json={"configs": [
+        {"id": "second-config", "name": "Second AI", "provider": "openai", "apiKey": "second-secret", "endpoint": "https://second.example", "model": "m2"},
+    ]}).status_code == 200
+    assert {item["id"] for item in dbx.ai_configs} == {"legacy-config", "mine-config", "second-config"}
+
+    other = login("other-token")
+    assert client.get(f"{proxy}/ai/configs", headers=other).json() == []
+    assert client.post(f"{proxy}/ai/config-item", headers=other, json={"config": config}).status_code == 403
+    assert client.post(f"{proxy}/ai/stream", headers=other, json={"session_id": "x", "request": {
+        "config": config, "system_prompt": "", "messages": [],
+    }}).status_code == 403
+
+    with client.app.state.session_factory() as session:
+        DbxObjectAccess(session).share(kind="ai-config", object_id="mine-config", owner_id=1, user_id=2)
+        session.commit()
+    shared = client.get(f"{proxy}/ai/configs", headers=other).json()
+    assert len(shared) == 1 and shared[0]["id"] == "mine-config"
+    assert shared[0]["apiKey"] == "datara-shared-ai-config:mine-config"
+    assert shared[0]["endpoint"] == "https://shared-config.invalid"
+    assert "owner-ai-secret" not in str(shared) and "header-secret" not in str(shared) and "private" not in str(shared)
+    streamed = client.post(f"{proxy}/ai/stream", headers=other, json={"session_id": "s-1", "request": {
+        "config": shared[0], "system_prompt": "", "messages": [],
+    }})
+    assert streamed.status_code == 200 and "hello" in streamed.text
+    _, forwarded = dbx.stream_payloads[-1]
+    assert forwarded["sessionId"] == "33:2:s-1"
+    assert forwarded["request"]["config"]["apiKey"] == "owner-ai-secret"
+    assert forwarded["request"]["config"]["customHeaders"] == {"X-Private": "header-secret"}
+    agent_frame = {"sessionId": "agent-1", "request": {"config": shared[0], "system_prompt": "", "messages": []},
+                   "connectionId": "mine", "database": "sales", "dbType": "mysql"}
+    assert client.post(f"{proxy}/ai/agent-stream", headers=other, json=agent_frame).status_code == 403
+    with client.app.state.session_factory() as session:
+        DbxConnectionAccess(session).share(connection_id="mine", owner_id=1, user_id=2)
+        session.commit()
+    assert client.post(f"{proxy}/ai/agent-stream", headers=other, json=agent_frame).status_code == 200
+    assert dbx.stream_payloads[-1][1]["sessionId"] == "33:2:agent-1"
+    assert client.post(f"{proxy}/ai/cancel-stream", headers=other, json={"sessionId": "agent-1"}).status_code == 200
+    assert dbx.calls[-1] == ("POST", "ai/cancel-stream", {"sessionId": "33:2:agent-1"})
+    assert client.post(f"{proxy}/ai/default-config", headers=other, json={"configId": "mine-config"}).status_code == 200
+    assert client.post(f"{proxy}/ai/chat-selection", headers=other, json={"selection": {
+        "active": {"configId": "mine-config", "modelId": "m1"},
+    }}).status_code == 200
+    assert client.get(f"{proxy}/ai/chat-selection", headers=other).json()["active"]["configId"] == "mine-config"
+    assert client.get(f"{proxy}/ai/chat-selection", headers=owner).json() is None
+
+    admin = login("admin-token")
+    assert {item["id"] for item in client.get(f"{proxy}/ai/configs", headers=admin).json()} == {
+        "legacy-config", "mine-config", "second-config",
+    }
 
 
 def test_ide_cookie_is_opaque_and_connection_list_is_filtered():
