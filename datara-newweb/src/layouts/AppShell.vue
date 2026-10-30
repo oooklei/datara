@@ -110,7 +110,9 @@ onMounted(() => {
   if (getToken() && !authAccount.value) void currentSession().catch(() => undefined)
 })
 
-watch([isProjectScope, projectId], () => {
+watch([isProjectScope, projectId, authAccount], () => {
+  nameReqSeq += 1
+  projects.value = []
   projectName.value = ''
   projectPopoverOpen.value = false
   sidebarOpen.value = false

@@ -62,16 +62,18 @@
  * 卡片点击 → `/p/:projectId`（项目工作区路由落地归 L3-03；未匹配时 vue-router 返回
  * failure 不 crash，本页先于路由就绪承接交互）。
  */
-import { computed, onMounted, ref } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { useDraggable } from '../composables/useDraggable'
 import { createProject, deleteProject, listProjects, updateProject, type ProjectInput } from '../services/rebuild/projectApi'
 import type { ProjectSummary } from '../services/rebuild/projectApi'
+import { authAccount } from '../services/rebuild/authApi'
 
 const router = useRouter()
 const loading = ref(true)
 const error = ref('')
 const projects = ref<ProjectSummary[]>([])
+let projectRequestGeneration = 0
 const editing = ref(false), editingId = ref<number>(), formError = ref('')
 const draft = ref<ProjectInput>({ name: '', description: '' })
 /* G14 §2.2：弹窗默认可拖动 + 视口钳制 + 位置记忆（把手=h2 标题） */
@@ -99,17 +101,30 @@ function openEdit(p: ProjectSummary) { editingId.value = p.id; draft.value = { n
 async function save() { try { const p = editingId.value ? await updateProject(editingId.value, draft.value) : await createProject(draft.value); editing.value = false; if (editingId.value) projects.value = projects.value.map(x => x.id === p.id ? { ...x, ...p } : x); else projects.value = [...projects.value, p] } catch (err) { formError.value = err instanceof Error ? err.message : '项目保存失败' } }
 async function remove(p: ProjectSummary) { if (!globalThis.confirm(`删除项目“${p.name}”？`)) return; try { await deleteProject(p.id); projects.value = projects.value.filter(x => x.id !== p.id) } catch (err) { error.value = err instanceof Error ? err.message : '项目删除失败' } }
 
-onMounted(async () => {
+async function reloadProjects(): Promise<void> {
+  const generation = ++projectRequestGeneration
   loading.value = true
   error.value = ''
   try {
     const page = await listProjects()
+    if (generation !== projectRequestGeneration) return
     projects.value = page.list
   } catch (err) {
+    if (generation !== projectRequestGeneration) return
     error.value = err instanceof Error ? err.message : '项目列表加载失败'
   } finally {
-    loading.value = false
+    if (generation === projectRequestGeneration) loading.value = false
   }
+}
+
+onMounted(() => { void reloadProjects() })
+watch(authAccount, (account, previous) => {
+  if (account === previous) return
+  ++projectRequestGeneration
+  projects.value = []
+  error.value = ''
+  if (account !== null) void reloadProjects()
+  else loading.value = false
 })
 </script>
 
