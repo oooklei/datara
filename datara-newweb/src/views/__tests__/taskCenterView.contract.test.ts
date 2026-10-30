@@ -42,6 +42,11 @@ const {
   wfList,
   wfRelease,
   wfDelete,
+  alarmList,
+  alarmRecords,
+  alarmCreate,
+  alarmUpdate,
+  alarmDelete,
 } = vi.hoisted(() => ({
   replaceSpy: vi.fn(() => Promise.resolve()),
   routeState: {
@@ -59,6 +64,11 @@ const {
   wfList: vi.fn(),
   wfRelease: vi.fn(),
   wfDelete: vi.fn(),
+  alarmList: vi.fn(),
+  alarmRecords: vi.fn(),
+  alarmCreate: vi.fn(),
+  alarmUpdate: vi.fn(),
+  alarmDelete: vi.fn(),
 }))
 
 // 路由状态必须是真正的响应式引用：TaskCenterView 用 computed(route.params.projectId)
@@ -95,6 +105,11 @@ vi.mock('../../services/rebuild/orchestrationApi', () => ({
     listWorkflowDefinitions: wfList,
     releaseWorkflowDefinition: wfRelease,
     deleteWorkflowDefinition: wfDelete,
+    listAlarmRules: alarmList,
+    listAlarmRecords: alarmRecords,
+    createAlarmRule: alarmCreate,
+    updateAlarmRule: alarmUpdate,
+    deleteAlarmRule: alarmDelete,
   },
 }))
 
@@ -116,6 +131,7 @@ vi.mock('../../services/rebuild/executionStatsApi', () => ({
 
 import TaskCenterView from '../TaskCenterView.vue'
 import type { OrchestrationSession, WorkflowDefinitionRow } from '../../services/rebuild/orchestrationApi'
+import { authAccount } from '../../services/rebuild/authApi'
 
 function mountView() {
   // 每用例独立 pinia（store 状态隔离）；setActivePinia 供测试体种入/读取同一实例
@@ -154,6 +170,7 @@ const DEFINITION_LIST = { list: [DEFINITION], total: 1, pageNo: 1, pageSize: 10 
 const TASK_CENTER_TABS = [
   { k: 'edit', label: '任务编排', icon: '⑃' },
   { k: 'runs', label: '运行监控', icon: '▶' },
+  { k: 'schedules', label: '工作流定时', icon: '◷' },
   { k: 'alarm', label: '告警与SLA', icon: '🖂' },
 ]
 
@@ -181,10 +198,21 @@ beforeEach(() => {
   wfDelete.mockResolvedValue({})
   runStatsList.mockReset()
   runStatGet.mockReset()
+  alarmList.mockReset()
+  alarmList.mockResolvedValue([])
+  alarmRecords.mockReset()
+  alarmRecords.mockResolvedValue([])
+  alarmCreate.mockReset()
+  alarmCreate.mockResolvedValue({})
+  alarmUpdate.mockReset()
+  alarmUpdate.mockResolvedValue({})
+  alarmDelete.mockReset()
+  alarmDelete.mockResolvedValue({})
+  authAccount.value = null
 })
 
 describe('INC4-FE-1 任务中心顶部视角页签框架（/dag，s260 派令）', () => {
-  it('三个现行视角页签按顺序渲染，模板中心入口已移除', () => {
+  it('四个现行视角页签按顺序渲染（运行监控后为工作流定时），模板中心入口已移除', () => {
     const w = mountView()
     expect(w.find('[data-tc-tabs]').exists()).toBe(true)
     const els = w.findAll('[data-tc-tabs] .tc-tab')
@@ -244,7 +272,7 @@ describe('INC4-FE-1 任务中心顶部视角页签框架（/dag，s260 派令）
     expect(runStatsList).not.toHaveBeenCalled()
   })
 
-  it('?tab=templates 回落任务编排，?tab=alarm 保留说明性空态', () => {
+  it('?tab=templates 回落任务编排，?tab=alarm 无项目时提示先选项目', () => {
     routeQuery.value = { tab: 'templates' }
     const stale = mountView()
     expect(stale.find('[data-tab="edit"]').classes()).toContain('on')
@@ -255,7 +283,8 @@ describe('INC4-FE-1 任务中心顶部视角页签框架（/dag，s260 派令）
     const alarm = mountView()
     expect(alarm.find('[data-tab="alarm"]').classes()).toContain('on')
     expect(alarm.find('[data-tc-runs-slot]').exists()).toBe(false)
-    expect(alarm.find('[data-tc-body]').text()).toContain('G09')
+    expect(alarm.find('[data-tc-alarm-slot]').text()).toContain('请先选择项目')
+    expect(alarmList).not.toHaveBeenCalled()
   })
 
   it('点击页签 → switchTab → router.replace 合并既有 query（保书签，蓝本语义）', async () => {
@@ -464,5 +493,118 @@ describe('§10.4 海豚 iframe embed 宿主（单个 DAG 画布路由）', () =>
     await w.find('[data-testid="new-workflow"]').trigger('click')
     expect(msgWarning).toHaveBeenCalledWith(expect.stringContaining('请先选择项目'))
     expect(embedUrl).not.toHaveBeenCalled()
+  })
+})
+
+describe('§10.10 R6 告警桥接（任务中心 alarm 页签）', () => {
+  const RULE = {
+    id: 11,
+    projectId: 7,
+    workflowDefinitionCode: 0,
+    trigger: 'failure' as const,
+    channel: 'system' as const,
+    timeoutMinutes: null,
+    enabled: true,
+    ownerId: 1,
+    createTime: '2026-10-31T00:00:00',
+    updateTime: '2026-10-31T00:00:00',
+  }
+  const RECORD = {
+    id: 21,
+    ruleId: 11,
+    projectId: 7,
+    instanceId: 99,
+    workflowDefinitionCode: 0,
+    trigger: 'failure' as const,
+    title: '实例失败告警',
+    content: 'workflow instance 99 FAILURE',
+    channel: 'system' as const,
+    state: 'sent',
+    createTime: '2026-10-31T00:05:00',
+  }
+
+  async function mountAlarm() {
+    routeQuery.value = { tab: 'alarm' }
+    routeParams.value = { projectId: '7' }
+    const w = mountView()
+    await flushPromises()
+    return w
+  }
+
+  it('有项目：拉取规则与触发记录并渲染表格', async () => {
+    alarmList.mockResolvedValue([RULE])
+    alarmRecords.mockResolvedValue([RECORD])
+    const w = await mountAlarm()
+    expect(alarmList).toHaveBeenCalledWith(7)
+    expect(alarmRecords).toHaveBeenCalledWith(7)
+    const ruleRow = w.get('[data-alarm-rule-row="11"]')
+    expect(ruleRow.text()).toContain('全部工作流')
+    expect(ruleRow.text()).toContain('实例失败')
+    expect(w.get('[data-alarm-record-row="21"]').text()).toContain('已发送')
+  })
+
+  it('只读角色：不渲染新增表单与操作按钮', async () => {
+    authAccount.value = { id: 3, username: 'viewer', role: 'viewer' }
+    alarmList.mockResolvedValue([RULE])
+    const w = await mountAlarm()
+    expect(w.find('[data-alarm-create]').exists()).toBe(false)
+    expect(w.find('[data-alarm-readonly]').exists()).toBe(true)
+    expect(w.find('[data-alarm-toggle]').exists()).toBe(false)
+    expect(w.find('[data-alarm-delete]').exists()).toBe(false)
+  })
+
+  it('可写角色：提交失败触发规则 → createAlarmRule 带项目与范围并刷新', async () => {
+    authAccount.value = { id: 1, username: 'dev', role: 'developer' }
+    const w = await mountAlarm()
+    await w.get('[data-alarm-workflow]').setValue('123')
+    await w.get('[data-alarm-create]').trigger('submit')
+    await flushPromises()
+    expect(alarmCreate).toHaveBeenCalledWith({
+      projectId: 7,
+      workflowDefinitionCode: 123,
+      trigger: 'failure',
+      channel: 'system',
+      timeoutMinutes: null,
+      enabled: true,
+    })
+    expect(alarmList).toHaveBeenCalledTimes(2)
+  })
+
+  it('超时触发缺分钟数：前端拦截，不调网关', async () => {
+    authAccount.value = { id: 1, username: 'dev', role: 'developer' }
+    const w = await mountAlarm()
+    await w.get('[data-alarm-trigger]').setValue('timeout')
+    await w.get('[data-alarm-create]').trigger('submit')
+    await flushPromises()
+    expect(msgWarning).toHaveBeenCalled()
+    expect(alarmCreate).not.toHaveBeenCalled()
+  })
+
+  it('停用规则：调 updateAlarmRule(enabled=false) 并刷新', async () => {
+    authAccount.value = { id: 1, username: 'dev', role: 'developer' }
+    alarmList.mockResolvedValue([RULE])
+    const w = await mountAlarm()
+    await w.get('[data-alarm-toggle]').trigger('click')
+    await flushPromises()
+    expect(alarmUpdate).toHaveBeenCalledWith(11, { enabled: false })
+    expect(alarmList).toHaveBeenCalledTimes(2)
+  })
+
+  it('删除规则：二次确认后调 deleteAlarmRule 并刷新', async () => {
+    authAccount.value = { id: 1, username: 'dev', role: 'developer' }
+    alarmList.mockResolvedValue([RULE])
+    const w = await mountAlarm()
+    await w.get('[data-alarm-delete]').trigger('click')
+    await flushPromises()
+    expect(boxConfirm).toHaveBeenCalledTimes(1)
+    expect(alarmDelete).toHaveBeenCalledWith(11)
+    expect(alarmList).toHaveBeenCalledTimes(2)
+  })
+
+  it('加载失败：错误态注明原因，不渲染表格', async () => {
+    alarmList.mockRejectedValue(new Error('gateway down'))
+    const w = await mountAlarm()
+    expect(w.get('[data-alarm-error]').text()).toContain('gateway down')
+    expect(w.find('[data-alarm-rule-table]').exists()).toBe(false)
   })
 })

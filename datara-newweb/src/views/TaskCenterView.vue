@@ -17,7 +17,7 @@
  * 画布内配套元素（节点侧栏/节点表单/试运行弹窗/定时弹窗/版本下拉/日志抽屉）
  * 随画布一起在 iframe 内闭环，不拆到 datara（§10.4「画布内的配套元素留在画布内」）。
  *
- * 视角页签：任务编排 / 运行监控 / 告警与SLA，
+ * 视角页签：任务编排 / 运行监控 / 工作流定时 / 告警与SLA，
  * ?tab= query 驱动 + router.replace 保书签，默认 edit，非法 ?tab= 回落 edit。
  * 运行监控 = datara 自建页（§10.5 B，调海豚实例 API，不进 iframe）。
  */
@@ -28,6 +28,9 @@ import VariableManagerDrawer from './variables/VariableManagerDrawer.vue'
 import WorkflowRunMonitor from '../components/WorkflowRunMonitor.vue'
 // §10.5 B / §10.10 R7：海豚实例页不进 datara iframe → datara 自建实例页
 import DsRunMonitor from '../components/DsRunMonitor.vue'
+import WorkflowScheduleList from '../components/WorkflowScheduleList.vue'
+// §10.10 R6：告警桥接（datara 项目级规则 + 触发记录）
+import OrchestrationAlarmPanel from '../components/OrchestrationAlarmPanel.vue'
 import { authAccount } from '../services/rebuild/authApi'
 import { roleHasPermission } from '../services/rebuild/rolePermissions'
 import {
@@ -39,10 +42,11 @@ import {
 import { dsEmbedUrl, listenDsReady, sendSessionToDs } from '../services/rebuild/dsBridge'
 
 /* ---- 视角页签（蓝本照抄：TabKey / tabs 数组 / ?tab= 同步 / 默认 edit） ---- */
-type TabKey = 'edit' | 'runs' | 'alarm'
+type TabKey = 'edit' | 'runs' | 'schedules' | 'alarm'
 const tabs: { k: TabKey; label: string; icon: string }[] = [
   { k: 'edit', label: '任务编排', icon: '⑃' },
   { k: 'runs', label: '运行监控', icon: '▶' },
+  { k: 'schedules', label: '工作流定时', icon: '◷' },
   { k: 'alarm', label: '告警与SLA', icon: '🖂' },
 ]
 const route = useRoute()
@@ -50,6 +54,12 @@ const router = useRouter()
 const qtab = String(route.query.tab ?? '')
 const tab = ref<TabKey>(tabs.some((t) => t.k === qtab) ? (qtab as TabKey) : 'edit')
 const variablesVisible = ref(false)
+const variableWorkflowId = ref<number | undefined>()
+
+function openProjectVariables() {
+  variableWorkflowId.value = undefined
+  variablesVisible.value = true
+}
 
 /**
  * B5-d-3 四角色判定链接线：变量抽屉写操作按钮由冻结矩阵 task:write 判定
@@ -220,7 +230,7 @@ async function onDeleteWorkflow(row: WorkflowDefinitionRow) {
 /** 编辑视角两态：list（datara 自建列表）/ canvas（海豚单页画布 iframe）。 */
 const editMode = ref<'list' | 'canvas'>('list')
 /** 当前画布对应的定义行；null = 新建工作流。 */
-const activeDefinition = ref<WorkflowDefinitionRow | null>(null)
+const activeDefinition = ref<Pick<WorkflowDefinitionRow, 'code' | 'name'> | null>(null)
 
 const dsFrameEl = ref<HTMLIFrameElement | null>(null)
 /** iframe src：必须等编排会话返回 projectCode 后再设（后端 ensure_project 生成）。 */
@@ -228,6 +238,12 @@ const dsFrameUrl = ref<string | null>(null)
 const dsEmptyReason = ref('正在获取编排会话…')
 const dsSession = ref<OrchestrationSession | null>(null)
 let disposeDsReady: (() => void) | null = null
+let dsRefreshTimer: ReturnType<typeof setInterval> | null = null
+
+function stopDsRefresh() {
+  if (dsRefreshTimer !== null) clearInterval(dsRefreshTimer)
+  dsRefreshTimer = null
+}
 
 /** 会话惰性加载：只在真正要开画布时取，列表态不发无用请求。 */
 async function ensureDsSession(): Promise<OrchestrationSession | null> {
@@ -260,6 +276,7 @@ async function ensureDsSession(): Promise<OrchestrationSession | null> {
  * 因此首屏 API 不会带空凭证打 401。
  */
 async function mountCanvas(path: string) {
+  stopDsRefresh()
   disposeDsReady?.()
   disposeDsReady = null
   dsFrameUrl.value = null
@@ -269,6 +286,16 @@ async function mountCanvas(path: string) {
   await nextTick()
   disposeDsReady = listenDsReady(dsFrameEl.value, () => sendSessionToDs(dsFrameEl.value, session))
   sendSessionToDs(dsFrameEl.value, session)
+  // Embed bearer expires after 15 minutes; renew while the canvas stays open.
+  dsRefreshTimer = setInterval(() => {
+    const pid = projectId.value
+    if (pid === undefined || editMode.value !== 'canvas' || tab.value !== 'edit') return
+    void getOrchestrationSession(pid).then((fresh) => {
+      if (projectId.value !== pid || editMode.value !== 'canvas') return
+      dsSession.value = fresh
+      sendSessionToDs(dsFrameEl.value, fresh)
+    }).catch(() => ElMessage.error('编排会话续期失败，请重新打开工作流'))
+  }, 10 * 60 * 1000)
 }
 
 /** 从列表打开某个工作流 → 海豚画布路由 `/projects/:code/workflow/definitions/:code`。 */
@@ -277,6 +304,13 @@ function openWorkflow(row: WorkflowDefinitionRow) {
   activeDefinition.value = row
   editMode.value = 'canvas'
   void mountCanvas(`/projects/{code}/workflow/definitions/${row.code}`)
+}
+
+function openScheduledWorkflow(code: number, name: string) {
+  activeDefinition.value = { code, name }
+  editMode.value = 'canvas'
+  switchTab('edit')
+  void mountCanvas(`/projects/{code}/workflow/definitions/${code}`)
 }
 
 /** 宿主驱动的画布路由切换（§10.4）：新建工作流 → 海豚新建定义路由。 */
@@ -292,6 +326,7 @@ function onOpenCreateWf() {
 
 /** 卸下画布（保留列表数据，避免返回时闪空）。 */
 function resetCanvas() {
+  stopDsRefresh()
   disposeDsReady?.()
   disposeDsReady = null
   dsFrameUrl.value = null
@@ -304,7 +339,17 @@ function backToWorkflowList() {
   void loadWorkflowDefinitions()
 }
 
+function onDsOpenVariables(event: MessageEvent) {
+  if (event.origin !== window.location.origin || event.source !== dsFrameEl.value?.contentWindow) return
+  const payload = event.data as { type?: string; projectCode?: string; workflowCode?: number } | null
+  if (payload?.type !== 'datara:open-variables' || payload.projectCode !== dsSession.value?.projectCode) return
+  if (!Number.isSafeInteger(payload.workflowCode) || (payload.workflowCode ?? 0) < 1) return
+  variableWorkflowId.value = payload.workflowCode
+  variablesVisible.value = true
+}
+
 onMounted(() => {
+  window.addEventListener('message', onDsOpenVariables)
   void loadWorkflowDefinitions()
 })
 
@@ -320,6 +365,8 @@ watch(tab, (value) => {
 })
 
 onUnmounted(() => {
+  window.removeEventListener('message', onDsOpenVariables)
+  stopDsRefresh()
   disposeDsReady?.()
   disposeDsReady = null
 })
@@ -342,7 +389,7 @@ onUnmounted(() => {
         class="tc-variable-management"
         data-testid="variable-management"
         :disabled="projectId === undefined"
-        @click="variablesVisible = true"
+        @click="openProjectVariables"
       >变量管理</button>
       <button v-if="tab === 'edit'" class="tc-new-workflow" data-testid="new-workflow" @click="onOpenCreateWf">＋ 新建工作流</button>
       <span v-if="tab === 'edit'" class="tc-view">DAG 编排</span>
@@ -380,6 +427,7 @@ onUnmounted(() => {
                 <td>{{ row.userName ?? '—' }}</td>
                 <td>{{ row.updateTime ?? '—' }}</td>
                 <td class="tc-wf-ops">
+                  <button data-wf-schedule title="打开画布后使用定时操作" @click="openWorkflow(row)">配置定时</button>
                   <button data-wf-release @click="onToggleRelease(row)">{{ row.releaseState === 'ONLINE' ? '下线' : '上线' }}</button>
                   <button data-wf-delete @click="onDeleteWorkflow(row)">删除</button>
                 </td>
@@ -441,15 +489,17 @@ onUnmounted(() => {
         />
         <div v-else class="tc-slot" data-tc-runs-slot><p class="tc-slot-sub">请先选择项目以查看运行记录</p></div>
       </template>
-      <!-- 告警与 SLA 契约待后续对标，当前保留说明性空态。 -->
+      <template v-else-if="tab === 'schedules'">
+        <WorkflowScheduleList :project-id="projectId" @edit="openScheduledWorkflow" />
+      </template>
+      <!-- 告警与 SLA：§10.10 R6 告警桥接（datara 项目级规则 + 触发记录，
+           海豚告警组/实例/插件不接入；失败由编排网关轮询实例状态感知）。 -->
       <template v-else-if="tab === 'alarm'">
-        <div class="tc-slot" data-tc-alarm-slot>
-          <p class="tc-slot-title">告警与 SLA 暂未开放</p>
-          <p class="tc-slot-sub">告警/SLA 策略契约未立项（后端支撑面外），按 G09 注明原因，待契约立项后随批补齐。</p>
-        </div>
+        <OrchestrationAlarmPanel v-if="projectId !== undefined" :project-id="projectId" />
+        <div v-else class="tc-slot" data-tc-alarm-slot><p class="tc-slot-sub">请先选择项目以配置告警</p></div>
       </template>
     </div>
-    <VariableManagerDrawer v-model="variablesVisible" :project-id="projectId" :can-edit="canEditVariables" />
+    <VariableManagerDrawer v-model="variablesVisible" :project-id="projectId" :workflow-id="variableWorkflowId" :can-edit="canEditVariables" />
   </div>
 </template>
 

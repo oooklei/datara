@@ -11,24 +11,29 @@ import { useDraggable } from '../../composables/useDraggable'
 const props = withDefaults(defineProps<{
   modelValue: boolean
   projectId?: number
+  workflowId?: number
+  taskId?: string
   canEdit?: boolean
-}>(), { projectId: undefined, canEdit: true })
+}>(), { projectId: undefined, workflowId: undefined, taskId: undefined, canEdit: true })
 const emit = defineEmits<{ 'update:modelValue': [value: boolean] }>()
 const api = createVariableContract()
 const rows = ref<VariableDefinition[]>([])
 const loading = ref(false)
 const error = ref('')
 let loadSeq = 0
-const scope = ref<Extract<VariableScope, 'global' | 'project' | 'env'>>('project')
+const scope = ref<VariableScope>('project')
 const environmentGroupId = ref<number | undefined>()
 const editing = ref(false)
 const preserveExistingValue = ref(false)
 const saving = ref(false)
 const form = ref({ name: '', value: '', valueType: 'string' as VariableValueType, sensitive: false, description: '' })
 
-const owner = computed(() => scope.value === 'env' && environmentGroupId.value
-  ? { environmentGroupId: environmentGroupId.value }
-  : {})
+const owner = computed(() => {
+  if (scope.value === 'env' && environmentGroupId.value) return { environmentGroupId: environmentGroupId.value }
+  if (scope.value === 'workflow' && props.workflowId) return { workflowId: props.workflowId }
+  if (scope.value === 'task' && props.workflowId && props.taskId) return { workflowId: props.workflowId, taskId: props.taskId }
+  return {}
+})
 
 /* D9：变量管理抽屉可由标题栏拖动；CSS 为 inset:56px 0 0 auto（top/right/bottom 三锚），
    拖拽定位后解除 right/bottom 约束并按 top 反推高度，避免抽屉被压缩或溢出视口。 */
@@ -53,8 +58,11 @@ async function load() {
   try {
     const items = await api.listVariables(
       props.projectId,
-      ['global', 'project', 'env'],
-      environmentGroupId.value ? { environmentGroupId: environmentGroupId.value } : {},
+      ['global', 'project', 'env', ...(props.workflowId ? ['workflow' as const] : []),
+        ...(props.workflowId && props.taskId ? ['task' as const] : [])],
+      { ...(environmentGroupId.value ? { environmentGroupId: environmentGroupId.value } : {}),
+        ...(props.workflowId ? { workflowId: props.workflowId } : {}),
+        ...(props.workflowId && props.taskId ? { taskId: props.taskId } : {}) },
     )
     if (seq === loadSeq) rows.value = items
   } catch {
@@ -71,7 +79,7 @@ function beginCreate() {
 }
 
 function beginEdit(row: VariableDefinition) {
-  scope.value = row.scope as typeof scope.value
+  scope.value = row.scope
   form.value = {
     name: row.name,
     value: row.sensitive ? '' : (row.value ?? ''),
@@ -121,13 +129,13 @@ async function remove(row: VariableDefinition) {
   }
 }
 
-watch(() => [props.modelValue, props.projectId], load, { immediate: true })
+watch(() => [props.modelValue, props.projectId, props.workflowId, props.taskId], load, { immediate: true })
 </script>
 
 <template>
   <aside v-if="modelValue" ref="drawerRef" class="variable-drawer" aria-label="变量管理" data-variable-manager :style="drawerStyle">
     <header ref="headerRef" class="drag-handle" @pointerdown="onHandlePointerdown">
-      <div><h2>变量管理</h2><p>全局、项目与环境组变量</p></div>
+      <div><h2>变量管理</h2><p>{{ workflowId ? '全局、项目、环境组与当前工作流变量' : '全局、项目与环境组变量' }}</p></div>
       <button type="button" aria-label="关闭变量管理" @pointerdown.stop @click="emit('update:modelValue', false)">×</button>
     </header>
     <div class="toolbar">
@@ -150,7 +158,7 @@ watch(() => [props.modelValue, props.projectId], load, { immediate: true })
       </tbody>
     </table>
     <form v-if="editing" class="editor" @submit.prevent="save">
-      <label>作用域<select v-model="scope"><option value="global">全局</option><option value="project">项目</option><option value="env">环境组</option></select></label>
+      <label>作用域<select v-model="scope"><option value="global">全局</option><option value="project">项目</option><option value="env">环境组</option><option v-if="workflowId" value="workflow">工作流</option><option v-if="workflowId && taskId" value="task">任务</option></select></label>
       <label v-if="scope === 'env'">环境组 ID<input v-model.number="environmentGroupId" type="number" min="1" required /></label>
       <label>名称<input v-model="form.name" data-variable-name required /></label>
       <label>类型<select v-model="form.valueType"><option v-for="item in ['string','integer','decimal','boolean','date','datetime','json','array']" :key="item">{{ item }}</option></select></label>

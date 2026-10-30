@@ -22,9 +22,9 @@ import { camelToSnakeKey, ContractApiError } from './adapterKit'
 
 /** GET /rebuild/orchestration/session?project_id= → 宿主下发载荷 */
 export interface OrchestrationSession {
-  /** datara 内部令牌（宿主注入 DS 的 X-Datara-Internal-Token） */
+  /** 短时 embed 令牌（宿主注入 DS 的 X-Datara-Embed-Token，HMAC 签名，15 分钟有效） */
   token: string
-  /** 身份名（X-Datara-User） */
+  /** 海豚用户名（embed 令牌 claims 内的 u，DS 侧解析为 SESSION_USER） */
   user: string
   /** datara 项目 id（DS 侧任务组等 datara 项目级资源的归属键） */
   projectId: number
@@ -75,6 +75,17 @@ export interface WorkflowDefinitionListResult {
 }
 
 export type WorkflowDefinitionReleaseState = 'ONLINE' | 'OFFLINE'
+
+export interface WorkflowScheduleRow {
+  id: number
+  workflowDefinitionCode: number
+  workflowDefinitionName: string | null
+  crontab: string | null
+  timezoneId: string | null
+  startTime: string | null
+  endTime: string | null
+  releaseState: 'ONLINE' | 'OFFLINE' | null
+}
 
 /* ---------- §10.5 B 运行监控：工作流实例 / 任务实例 / 日志 ---------- */
 
@@ -287,6 +298,13 @@ export const ORCHESTRATION_ERROR_CODES = Object.freeze({
   invalidPage: 'ORCH_INVALID_PAGE',
   invalidReleaseState: 'ORCH_INVALID_RELEASE_STATE',
   workflowDefinitionInvalid: 'DS_WORKFLOW_DEFINITION_INVALID',
+  alarmTriggerInvalid: 'ORCH_ALARM_TRIGGER_INVALID',
+  alarmChannelInvalid: 'ORCH_ALARM_CHANNEL_INVALID',
+  alarmTimeoutRequired: 'ORCH_ALARM_TIMEOUT_REQUIRED',
+  alarmTimeoutInvalid: 'ORCH_ALARM_TIMEOUT_INVALID',
+  alarmRuleDuplicate: 'ORCH_ALARM_RULE_DUPLICATE',
+  alarmRuleNotFound: 'ORCH_ALARM_RULE_NOT_FOUND',
+  alarmDispatchFailed: 'ORCH_ALARM_DISPATCH_FAILED',
 } as const)
 
 /** 资源行通用归属标注（所有资源行都带这三个键）。 */
@@ -500,6 +518,65 @@ export interface OrchestrationDefineUserCount {
   userList: Record<string, unknown>[]
 }
 
+/* ---------- §10.10 R6 告警桥接（datara 项目级规则 + 触发记录） ---------- */
+
+/**
+ * 触发条件。海豚告警组/实例/插件一律不接入：失败由编排网关轮询实例状态感知；
+ * 「失败重试耗尽」在海豚侧最终仍表现为实例 `FAILURE`，归入 `failure`，不单列。
+ */
+export type AlarmTrigger = 'failure' | 'timeout'
+
+/** 告警通道：站内 / 邮件 / Webhook（短信未接供应商，契约不含）。 */
+export type AlarmChannel = 'system' | 'email' | 'webhook'
+
+/** 告警规则行；`workflowDefinitionCode = 0` 表示该项目全部工作流。 */
+export interface AlarmRuleRow {
+  id: number
+  projectId: number
+  workflowDefinitionCode: number
+  trigger: AlarmTrigger
+  channel: AlarmChannel
+  /** 仅 `timeout` 触发使用；其余为 null */
+  timeoutMinutes: number | null
+  enabled: boolean
+  ownerId: number | null
+  createTime: string
+  updateTime: string
+}
+
+/** 触发记录行：每次命中规则发送一条，`state` = `wait` / `sent` / `fail`。 */
+export interface AlarmRecordRow {
+  id: number
+  ruleId: number
+  projectId: number
+  instanceId: number
+  workflowDefinitionCode: number
+  trigger: AlarmTrigger
+  title: string
+  content: string
+  channel: AlarmChannel
+  state: string
+  createTime: string
+}
+
+export interface AlarmRuleDraft {
+  projectId: number
+  /** 0/undefined = 全部工作流 */
+  workflowDefinitionCode?: number
+  trigger: AlarmTrigger
+  channel: AlarmChannel
+  /** `trigger = 'timeout'` 时必填（正整数分钟） */
+  timeoutMinutes?: number | null
+  enabled?: boolean
+}
+
+export interface AlarmRuleUpdateDraft {
+  channel?: AlarmChannel
+  enabled?: boolean
+  timeoutMinutes?: number | null
+  workflowDefinitionCode?: number
+}
+
 /* ---------- 端点 ---------- */
 
 const BASE = '/rebuild/orchestration'
@@ -576,6 +653,32 @@ export const orchestrationApi = {
       ...PRESERVE_ERROR,
       query: { projectId },
     }),
+
+  listWorkflowSchedules: (projectId: number, pageNo = 1, pageSize = 10): Promise<OrchestrationPaged<WorkflowScheduleRow>> =>
+    getJson<OrchestrationPaged<WorkflowScheduleRow>>(
+      `${BASE}/workflow-schedules`, { projectId, pageNo, pageSize }, PRESERVE_ERROR,
+    ),
+  setWorkflowScheduleOnline: (projectId: number, scheduleId: number, online: boolean): Promise<Record<string, unknown>> =>
+    postJson<Record<string, unknown>>(
+      `${BASE}/workflow-schedules/${segment(scheduleId)}/${online ? 'online' : 'offline'}`,
+      undefined,
+      { ...PRESERVE_ERROR, query: { projectId } },
+    ),
+
+  /* ---------- §10.10 R6 告警规则与触发记录 ---------- */
+
+  /** 项目级告警规则列表（含停用规则；`workflowDefinitionCode = 0` = 全部工作流）。 */
+  listAlarmRules: (projectId: number): Promise<AlarmRuleRow[]> =>
+    getJson<AlarmRuleRow[]>(`${BASE}/alarm-rules`, { projectId }, PRESERVE_ERROR),
+  createAlarmRule: (draft: AlarmRuleDraft): Promise<AlarmRuleRow> =>
+    postJson<AlarmRuleRow>(`${BASE}/alarm-rules`, draft, PRESERVE_ERROR),
+  updateAlarmRule: (ruleId: number, draft: AlarmRuleUpdateDraft): Promise<AlarmRuleRow> =>
+    putJson<AlarmRuleRow>(`${BASE}/alarm-rules/${segment(ruleId)}`, draft, PRESERVE_ERROR),
+  deleteAlarmRule: (ruleId: number): Promise<Record<string, unknown>> =>
+    deleteJson<Record<string, unknown>>(`${BASE}/alarm-rules/${segment(ruleId)}`, PRESERVE_ERROR),
+  /** 触发记录（最近优先；`limit` 1–500，默认 100）。 */
+  listAlarmRecords: (projectId: number, limit = 100): Promise<AlarmRecordRow[]> =>
+    getJson<AlarmRecordRow[]>(`${BASE}/alarm-records`, { projectId, limit }, PRESERVE_ERROR),
 
   /* ---------- §10.5 B 运行监控 ---------- */
 
