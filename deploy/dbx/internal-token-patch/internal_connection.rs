@@ -47,10 +47,10 @@ pub(crate) async fn connection_params(
             tracing::info!(peer = %peer.ip(), connection_id, "dbx_internal_connection_not_found");
             StatusCode::NOT_FOUND
         })?;
-    let resolved = state.resolve_connection_credentials(config).await.map_err(|_| {
-        tracing::error!(peer = %peer.ip(), connection_id, "dbx_internal_connection_resolution_failed");
-        StatusCode::INTERNAL_SERVER_ERROR
-    })?;
     tracing::info!(peer = %peer.ip(), connection_id, "dbx_internal_connection_params_read");
-    Ok(([(header::CACHE_CONTROL, "no-store")], Json(resolved)))
+    // `Storage::load_connections` hydrates the password and transport-layer
+    // secrets from DBX's secret store in v0.6.29. Return that hydrated config
+    // directly; newer DBX releases expose an additional resolver method, but
+    // it is not present in the 0.6.29 WebState API.
+    Ok(([(header::CACHE_CONTROL, "no-store")], Json(config)))
 }

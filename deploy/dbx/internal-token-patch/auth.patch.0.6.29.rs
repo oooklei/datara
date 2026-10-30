@@ -10,6 +10,7 @@ use axum::response::{IntoResponse, Response};
 use axum::Json;
 use serde::{Deserialize, Serialize};
 
+use crate::internal_auth::datara_gateway_only;
 use crate::state::WebState;
 
 #[derive(Deserialize)]
@@ -315,6 +316,10 @@ pub async fn auth_middleware(
             .await;
         }
       }
+    }
+
+    if state.password_disabled && datara_gateway_only() {
+        return StatusCode::UNAUTHORIZED.into_response();
     }
 
     if state.password_disabled {
