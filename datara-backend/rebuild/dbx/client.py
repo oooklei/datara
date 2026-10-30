@@ -53,11 +53,11 @@ class DbxClient:
         self.retries = retries
         self.sleep = sleep
 
-    def _request(self, method: str, path: str, *, params: dict[str, Any] | None = None, payload: dict[str, Any] | None = None) -> Any:
+    def _request(self, method: str, path: str, *, params: dict[str, Any] | None = None, payload: dict[str, Any] | None = None, prefix: str = "api") -> Any:
         if not self.internal_token:
             raise DbxError(503)
         query = urllib.parse.urlencode({key: value for key, value in (params or {}).items() if value is not None})
-        url = f"{self.base_url}/api/{path.lstrip('/')}" + (f"?{query}" if query else "")
+        url = f"{self.base_url}/{prefix}/{path.lstrip('/')}" + (f"?{query}" if query else "")
         body = json.dumps(payload, ensure_ascii=False).encode("utf-8") if payload is not None else None
         headers = {"Accept": "application/json", "X-Datara-Internal-Token": self.internal_token}
         if body is not None:
@@ -105,6 +105,16 @@ class DbxClient:
         if not isinstance(result, list):
             raise DbxError()
         return [item for item in result if isinstance(item, dict)]
+
+    def internal_connection(self, connection_id: str) -> dict[str, Any]:
+        """Read resolved credentials through DBX's token-guarded internal endpoint."""
+        if not connection_id:
+            raise ValueError("connection_id is required")
+        encoded_id = urllib.parse.quote(connection_id, safe="")
+        result = self._request("GET", f"connection/{encoded_id}/params", prefix="internal")
+        if not isinstance(result, dict):
+            raise DbxError()
+        return result
 
     def save_connection(self, config: dict[str, Any]) -> Any:
         return self._request("POST", "connection/save", payload={"configs": [config], "removedIds": []})

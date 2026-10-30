@@ -58,6 +58,35 @@ def test_connection_test_uses_dbx_config_envelope():
     assert requests == [("http://dbx/ide/api/connection/test", {"config": {"id": "conn-1", "db_type": "mysql"}})]
 
 
+def test_internal_connection_uses_secret_endpoint_and_encodes_id():
+    calls = []
+
+    def transport(method, url, body, headers, timeout):
+        calls.append((method, url, body, headers))
+        return {"id": "conn/1", "db_type": "mysql", "password": "secret"}
+
+    client = DbxClient(base_url="http://dbx/ide", internal_token="test-token", transport=transport)
+    assert client.internal_connection("conn/1")["password"] == "secret"
+    assert calls == [(
+        "GET", "http://dbx/ide/internal/connection/conn%2F1/params", None,
+        {"Accept": "application/json", "X-Datara-Internal-Token": "test-token"},
+    )]
+
+
+def test_internal_connection_missing_id_raises_404():
+    def missing(method, url, body, headers, timeout):
+        raise urllib.error.HTTPError(url, 404, "missing", {}, None)
+
+    client = DbxClient(
+        base_url="http://dbx/ide",
+        internal_token="test-token",
+        transport=missing,
+    )
+    with pytest.raises(DbxError) as error:
+        client.internal_connection("conn-1")
+    assert error.value.status == 404
+
+
 def test_missing_internal_token_fails_before_network():
     client = DbxClient(base_url="http://dbx/ide", internal_token="", transport=lambda *_: pytest.fail("network called"))
     with pytest.raises(DbxError) as error:
