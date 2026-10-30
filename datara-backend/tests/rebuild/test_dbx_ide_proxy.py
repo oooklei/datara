@@ -29,6 +29,7 @@ class FakeDbx:
             {"id": "foreign-ai", "connectionId": "foreign", "messages": [{"content": "private other"}]},
         ]
         self.ai_configs = [{"id": "legacy-config", "name": "Legacy", "provider": "openai", "apiKey": "legacy-secret", "endpoint": "https://legacy.example/api", "model": "m1"}]
+        self.prompt_templates = [{"id": "legacy-template", "name": "Legacy", "content": "legacy private"}]
         self.stream_payloads = []
 
     def list_connections(self):
@@ -38,6 +39,14 @@ class FakeDbx:
         self.calls.append((method, path, payload))
         if path == "ai/configs" and method == "GET":
             return self.ai_configs
+        if path == "prompt-templates" and method == "GET":
+            return self.prompt_templates
+        if path == "prompt-templates" and method == "POST":
+            self.prompt_templates = [item for item in self.prompt_templates if item["id"] != payload["id"]] + [payload]
+            return payload
+        if path.startswith("prompt-templates/") and method == "DELETE":
+            self.prompt_templates = [item for item in self.prompt_templates if item["id"] != path.split("/", 1)[1]]
+            return None
         if path == "ai/config-item" and method == "POST":
             config = payload["config"]
             self.ai_configs = [item for item in self.ai_configs if item["id"] != config["id"]] + [config]
@@ -230,6 +239,54 @@ def test_ai_configs_are_owner_scoped_and_shared_stream_uses_server_secret():
     assert {item["id"] for item in client.get(f"{proxy}/ai/configs", headers=admin).json()} == {
         "legacy-config", "mine-config", "second-config",
     }
+
+
+def test_prompt_templates_and_global_instructions_are_owner_scoped():
+    client, dbx = setup_proxy()
+    proxy = "/api/v1/rebuild/dbx/ide-proxy"
+
+    def login(token):
+        client.post("/api/v1/rebuild/dbx/projects/33/ide-session", headers={"Authorization": f"Bearer {token}"})
+        return {"Cookie": f"datara_dbx_ide={client.cookies.get('datara_dbx_ide')}"}
+
+    owner = login("owner-token")
+    assert client.get(f"{proxy}/prompt-templates", headers=owner).json() == []
+    saved = client.post(f"{proxy}/prompt-templates", headers=owner, json={
+        "id": "my-template", "name": "Order review", "content": "Check order refunds",
+    })
+    assert saved.status_code == 200
+    assert [item["id"] for item in client.get(f"{proxy}/prompt-templates", headers=owner).json()] == ["my-template"]
+    assert client.put(f"{proxy}/prompt-templates/global-instructions", headers=owner,
+                      json={"content": "Use customer order policy"}).status_code == 200
+    assert client.get(f"{proxy}/prompt-templates/global-instructions", headers=owner).json() == {
+        "content": "Use customer order policy",
+    }
+    assert client.post(f"{proxy}/ai/chat-selection", headers=owner, json={"selection": {"defaultMode": "ask"}}).status_code == 200
+    assert client.get(f"{proxy}/prompt-templates/global-instructions", headers=owner).json()["content"] == "Use customer order policy"
+
+    other = login("other-token")
+    assert client.get(f"{proxy}/prompt-templates", headers=other).json() == []
+    assert client.get(f"{proxy}/prompt-templates/global-instructions", headers=other).json() == {"content": ""}
+    assert client.post(f"{proxy}/prompt-templates", headers=other, json={
+        "id": "my-template", "name": "Stolen", "content": "bad",
+    }).status_code == 403
+    assert client.delete(f"{proxy}/prompt-templates/my-template", headers=other).status_code == 403
+    assert client.put(f"{proxy}/prompt-templates/global-instructions", headers=other,
+                      json={"content": "Other instruction"}).status_code == 200
+    with client.app.state.session_factory() as session:
+        DbxObjectAccess(session).share(kind="prompt-template", object_id="my-template", owner_id=1, user_id=2)
+        session.commit()
+    assert [item["id"] for item in client.get(f"{proxy}/prompt-templates", headers=other).json()] == ["my-template"]
+    assert client.delete(f"{proxy}/prompt-templates/my-template", headers=other).status_code == 403
+    assert client.get(f"{proxy}/prompt-templates/global-instructions", headers=other).json()["content"] == "Other instruction"
+
+    admin = login("admin-token")
+    assert {item["id"] for item in client.get(f"{proxy}/prompt-templates", headers=admin).json()} == {
+        "legacy-template", "my-template",
+    }
+    owner = login("owner-token")
+    assert client.delete(f"{proxy}/prompt-templates/my-template", headers=owner).status_code == 200
+    assert all(item["id"] != "my-template" for item in dbx.prompt_templates)
 
 
 def test_ide_cookie_is_opaque_and_connection_list_is_filtered():

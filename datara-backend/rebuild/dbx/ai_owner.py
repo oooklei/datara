@@ -128,9 +128,37 @@ def selection_from_state(session: Session, project_id: int, user_id: int) -> dic
     state = session.get(DbxAiUserStateRecord, (project_id, user_id))
     if state is None or state.chat_selection_json is None:
         return None
-    return json.loads(state.chat_selection_json)
+    payload = json.loads(state.chat_selection_json)
+    return payload.get("selection") if "__dataraAiState" in payload else payload
 
 
-def owned_config(session: Session, config_id: str, *, project_id: int, user_id: int, admin: bool) -> bool:
-    owner: DbxObjectOwnershipRecord | None = DbxObjectAccess(session).get(KIND, config_id)
+def global_instructions_from_state(session: Session, project_id: int, user_id: int) -> str:
+    state = session.get(DbxAiUserStateRecord, (project_id, user_id))
+    if state is None or state.chat_selection_json is None:
+        return ""
+    payload = json.loads(state.chat_selection_json)
+    return str(payload.get("globalInstructions", "")) if "__dataraAiState" in payload else ""
+
+
+def save_ai_user_preferences(
+    session: Session, project_id: int, user_id: int, *,
+    selection: dict[str, Any] | None = None, global_instructions: str | None = None,
+) -> None:
+    state = user_state(session, project_id, user_id)
+    previous = json.loads(state.chat_selection_json) if state.chat_selection_json else {}
+    if "__dataraAiState" in previous:
+        envelope = previous
+    else:
+        envelope = {"__dataraAiState": 1, "selection": previous or None, "globalInstructions": ""}
+    if selection is not None:
+        envelope["selection"] = selection
+    if global_instructions is not None:
+        envelope["globalInstructions"] = global_instructions
+    state.chat_selection_json = json.dumps(envelope, ensure_ascii=False)
+
+
+def owned_config(
+    session: Session, config_id: str, *, project_id: int, user_id: int, admin: bool, kind: str = KIND,
+) -> bool:
+    owner: DbxObjectOwnershipRecord | None = DbxObjectAccess(session).get(kind, config_id)
     return owner is not None and owner.project_id == project_id and (admin or owner.owner_id == user_id)

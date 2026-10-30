@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import secrets
-import json
 import time
 from collections.abc import Callable
 from typing import Any
@@ -16,8 +15,9 @@ from starlette.concurrency import run_in_threadpool
 from rebuild.dbx import DbxClient, DbxError
 from rebuild.dbx.access import DbxConnectionAccess, DbxObjectAccess
 from rebuild.dbx.ai_owner import (
-    KIND as AI_CONFIG_KIND, SHARED_REF, config_rows, owned_config, resolve_config,
-    selection_from_state, user_state, valid_config_id, visible_config_ids, visible_configs,
+    KIND as AI_CONFIG_KIND, SHARED_REF, config_rows, global_instructions_from_state,
+    owned_config, resolve_config, save_ai_user_preferences, selection_from_state,
+    user_state, valid_config_id, visible_config_ids, visible_configs,
 )
 from rebuild.dbx.ide_route_manifest import SUPPORTED_DATA_ROUTES
 from rebuild.dbx.ide_policy import (
@@ -86,6 +86,7 @@ _AI_CONFIG_ROUTES = frozenset({
     "ai/models", "ai/model-effort", "ai/stream", "ai/agent-stream",
     "ai/cancel-stream", "ai/tool-approval",
 })
+_PROMPT_TEMPLATE_KIND = "prompt-template"
 
 
 def is_supported_ide_route(path: str) -> bool:
@@ -107,6 +108,8 @@ def is_supported_ide_route(path: str) -> bool:
         or dynamic_route
         or path in _AI_CONVERSATIONS
         or path in _AI_CONFIG_ROUTES
+        or path == "prompt-templates"
+        or (path.startswith("prompt-templates/") and len(parts) == 2 and bool(parts[1]))
         or (path.startswith("ai/config/") and len(parts) == 3 and bool(parts[2]))
         or (path.startswith("ai/conversation/") and len(path.split("/")) == 3)
     )
@@ -158,13 +161,17 @@ def build_dbx_ide_router(
         token, project_id = session
         if not path or path.startswith("/") or ".." in path.split("/"):
             return denied()
-        if path.startswith(_CONFIG_DOMAINS) and not (path in _AI_CONVERSATIONS or path in _AI_CONFIG_ROUTES or path.startswith("ai/conversation/") or path.startswith("ai/config/")):
+        if path.startswith(_CONFIG_DOMAINS) and not (
+            path in _AI_CONVERSATIONS or path in _AI_CONFIG_ROUTES
+            or path.startswith("ai/conversation/") or path.startswith("ai/config/")
+            or path == "prompt-templates" or path.startswith("prompt-templates/")
+        ):
             return denied(message="owner-scoped dbx configuration endpoint pending")
         if path in _CONNECTION_BLOCKED:
             return denied(message="connection modification requires the Datara owner API")
         if not is_supported_ide_route(path):
             return denied(message="unsupported dbx IDE endpoint")
-        permission = Permission.DATASOURCE_MANAGE if path == "connection/save" or path in _CONNECTION_OWNER_WRITES or (path.startswith("history") and request.method == "DELETE") or (path.startswith("ai/conversation") and request.method != "GET") or (path in {"ai/configs", "ai/config-item", "ai/default-config"} and request.method != "GET") or (path.startswith("ai/config/") and request.method == "DELETE") else (
+        permission = Permission.DATASOURCE_MANAGE if path == "connection/save" or path in _CONNECTION_OWNER_WRITES or (path.startswith("history") and request.method == "DELETE") or (path.startswith("ai/conversation") and request.method != "GET") or (path in {"ai/configs", "ai/config-item", "ai/default-config"} and request.method != "GET") or (path.startswith("ai/config/") and request.method == "DELETE") or (path.startswith("prompt-templates") and request.method != "GET") else (
             Permission.EXECUTE_SQL if path.startswith("query/") or (path.startswith("schema/") and request.method != "GET") or path in {"history/save", "ai/agent-stream"} else Permission.DATASOURCE_READ
         )
         user = authorize(token, project_id, permission)
@@ -212,6 +219,18 @@ def build_dbx_ide_router(
             if path in {"ai/config", "ai/provider-configs"} and request.method == "GET":
                 # Legacy single-user settings must not migrate into another user's workspace.
                 return dbx._request("GET", path) if admin else (None if path == "ai/config" else {})
+            if path == "prompt-templates" and request.method == "GET":
+                rows = dbx._request("GET", path)
+                if not isinstance(rows, list):
+                    return denied(message="invalid DBX prompt templates")
+                with session_factory() as db_session:
+                    visible = DbxObjectAccess(db_session).visible_ids(
+                        kind=_PROMPT_TEMPLATE_KIND, project_id=project_id, user_id=user_id, is_admin=admin,
+                    )
+                return [row for row in rows if isinstance(row, dict) and (admin or row.get("id") in visible)]
+            if path == "prompt-templates/global-instructions" and request.method == "GET":
+                with session_factory() as db_session:
+                    return {"content": global_instructions_from_state(db_session, project_id, user_id)}
 
             if path == "ai/conversations" and request.method == "GET":
                 rows = dbx._request("GET", path)
@@ -373,9 +392,51 @@ def build_dbx_ide_router(
                     preferences = selection.get("effortPreferences", [])
                     if not isinstance(preferences, list) or any(not isinstance(item, dict) or item.get("configId") not in allowed for item in preferences):
                         return denied(message="invalid AI selection")
-                    user_state(db_session, project_id, user_id).chat_selection_json = json.dumps(selection, ensure_ascii=False)
+                    save_ai_user_preferences(db_session, project_id, user_id, selection=selection)
                     db_session.commit()
                 return None
+            if path == "prompt-templates/global-instructions" and request.method == "PUT":
+                content = payload.get("content")
+                if not isinstance(content, str) or len(content.strip()) > 8000:
+                    return denied(message="invalid AI global instructions")
+                with session_factory() as db_session:
+                    save_ai_user_preferences(db_session, project_id, user_id, global_instructions=content.strip())
+                    db_session.commit()
+                return None
+            if path == "prompt-templates" and request.method == "POST":
+                template_id = payload.get("id")
+                if not valid_config_id(template_id) or not isinstance(payload.get("name"), str) or not isinstance(payload.get("content"), str):
+                    return denied(message="invalid prompt template")
+                rows = dbx._request("GET", path)
+                if not isinstance(rows, list):
+                    return denied(message="invalid DBX prompt templates")
+                stored_ids = {row.get("id") for row in rows if isinstance(row, dict)}
+                with session_factory() as db_session:
+                    access = DbxObjectAccess(db_session)
+                    owner = access.get(_PROMPT_TEMPLATE_KIND, template_id)
+                    if template_id in stored_ids:
+                        if owner is None or owner.project_id != project_id or (not admin and owner.owner_id != user_id):
+                            return denied(message="prompt template owner required")
+                    elif owner is not None:
+                        return denied(message="prompt template ID reserved")
+                    result = dbx._request("POST", path, payload=payload)
+                    if template_id not in stored_ids:
+                        access.claim(kind=_PROMPT_TEMPLATE_KIND, object_id=template_id, project_id=project_id, owner_id=user_id)
+                    db_session.commit()
+                    return result
+            if path.startswith("prompt-templates/") and request.method == "DELETE":
+                template_id = path.split("/", 1)[1]
+                if not valid_config_id(template_id):
+                    return denied()
+                with session_factory() as db_session:
+                    if not owned_config(db_session, template_id, project_id=project_id, user_id=user_id,
+                                        admin=admin, kind=_PROMPT_TEMPLATE_KIND):
+                        return denied(message="prompt template owner required")
+                    result = dbx._request("DELETE", path)
+                    db_session.query(DbxObjectShareRecord).filter_by(kind=_PROMPT_TEMPLATE_KIND, object_id=template_id).delete()
+                    db_session.query(DbxObjectOwnershipRecord).filter_by(kind=_PROMPT_TEMPLATE_KIND, object_id=template_id).delete()
+                    db_session.commit()
+                    return result
             if path in {"ai/complete", "ai/test-connection", "ai/models", "ai/model-effort", "ai/stream", "ai/agent-stream"} and request.method == "POST":
                 request_frame = payload.get("request") if path in {"ai/complete", "ai/stream", "ai/agent-stream"} else payload
                 supplied = request_frame.get("config") if isinstance(request_frame, dict) else None
