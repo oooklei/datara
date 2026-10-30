@@ -47,6 +47,8 @@ describe('DBX IDE session gate', () => {
 
   it('drops a stale iframe and ignores an old session response after account and project switch', async () => {
     let finishOld!: () => void
+    mocks.projects.mockResolvedValueOnce({ list: [{ id: 33, name: '旧项目' }] })
+      .mockResolvedValueOnce({ list: [{ id: 34, name: '新项目' }] })
     mocks.issue.mockResolvedValueOnce(undefined)
       .mockImplementationOnce(() => new Promise<void>((resolve) => { finishOld = resolve }))
       .mockResolvedValueOnce(undefined)
@@ -58,6 +60,7 @@ describe('DBX IDE session gate', () => {
     expect(wrapper.find('[data-dbx-frame]').exists()).toBe(false)
     authAccount.value = { id: 2, username: 'zhangsan', role: 'developer' }
     await flushPromises()
+    expect(wrapper.find('[data-dbx-project]').text()).toBe('新项目')
     expect(mocks.issue).toHaveBeenCalledTimes(2)
     expect(wrapper.find('[data-dbx-frame]').exists()).toBe(false)
     finishOld()

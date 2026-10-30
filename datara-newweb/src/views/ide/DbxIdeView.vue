@@ -105,6 +105,7 @@ const ideReady = ref(false)
 const sessionError = ref('')
 let sessionGeneration = 0
 let variableGeneration = 0
+let projectGeneration = 0
 let sessionQueue: Promise<void> = Promise.resolve()
 
 const routeProjectId = computed<number | null>(() => {
@@ -123,10 +124,12 @@ const projectLabel = computed(() => {
 })
 
 async function loadProjects(): Promise<void> {
+  const generation = ++projectGeneration
   try {
-    projects.value = (await listProjects()).list
+    const rows = (await listProjects()).list
+    if (generation === projectGeneration) projects.value = rows
   } catch {
-    projects.value = []
+    if (generation === projectGeneration) projects.value = []
   }
 }
 
@@ -162,6 +165,7 @@ watch([projectId, authAccount], ([id, account]) => {
   const generation = ++sessionGeneration
   ideReady.value = false
   sessionError.value = ''
+  error.value = ''
   entries.value = []
   ++variableGeneration
   loading.value = false
@@ -183,6 +187,12 @@ watch([projectId, authAccount], ([id, account]) => {
   })
 }, { immediate: true })
 
+watch(authAccount, (account) => {
+  ++projectGeneration
+  projects.value = []
+  if (account !== null) void loadProjects()
+}, { immediate: true })
+
 /** dbx 侧就绪后补发一次：覆盖 iframe 晚于宿主拉取完成的时序。 */
 function onBridgeReady(event: MessageEvent): void {
   // dbx 用 window.parent.postMessage 发的是 message 事件，而非同名 DOM Event；
@@ -190,7 +200,7 @@ function onBridgeReady(event: MessageEvent): void {
   const data = event.data as { type?: unknown } | null
   if (!data || typeof data !== 'object' || data.type !== 'datara:bridge-ready') return
   const source = frameEl.value?.contentWindow ?? null
-  if (source !== null && event.source !== null && event.source !== source) return
+  if (source === null || event.source !== source) return
   sendVariablesToDbx(entries.value)
 }
 
@@ -199,14 +209,14 @@ function onDrawerToggle(open: boolean): void {
   if (!open) void refreshVariables()
 }
 
-onMounted(async () => {
+onMounted(() => {
   window.addEventListener('message', onBridgeReady)
-  await loadProjects()
 })
 
 onUnmounted(() => {
   ++sessionGeneration
   ++variableGeneration
+  ++projectGeneration
   window.removeEventListener('message', onBridgeReady)
 })
 </script>
