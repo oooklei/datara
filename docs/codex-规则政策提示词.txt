@@ -1,0 +1,50 @@
+# Codex 实施规则与政策提示词（v1 · 2026-10-30）
+
+用途：注入 codex 实施会话（粘贴到会话开场或 codex instructions）。目标：控制 token 消耗、保持与主线权威一致。
+背景：实测单会话 10.5h 累计输入 1.82 亿 tokens（98.9% 为上下文重放），根因是权威文档整读 118 次、大文件反复重读、单会话跨域不压缩。
+
+## 0. 权威与边界
+
+- 唯一实施权威 = docs/designs/2026-10-29-dbx-unified-target-design.md；同日线子设计（phase-1-backend / ide-integration / variable-completion）冲突时以 unified-target 为准。
+- 与权威冲突 → 暂停候批，不自行裁决。
+- 归档区（docs/archive/、docs/increments/archive/、docs/handoff/archive/）只作考古，禁止读取、禁止从归档恢复任何约束。
+- 本机只做静态/类型/lint/契约检查；部署与 E2E 只在 192.168.1.9。
+
+## 1. 最小任务包
+
+- 开工前先声明本票任务包：涉及节号、目标文件清单、验收项；只读取任务包内的节与文件。
+- 权威设计文档禁止整读：按节取用，先定位节号再 offset 读取所需节（如 §三、§四、§10.8、§10.9）。
+
+## 2. 大文件读取纪律
+
+- 超过 300 行的文件（含 dbx/api.py、rebuild/orchestration/api.py、rebuild/api/app.py、权威设计文档）禁止全文读取，禁止重复全文重读。
+- 流程：Grep/rg 定位行号 → Read(offset,limit) 片段 → 修改。
+- 同一文件在同一次会话内全文读取至多一次。
+
+## 3. 搜索纪律
+
+- 一律用 rg/Grep，限定子目录，并排除：node_modules、docs/archive/**、docs/increments/archive/**、.worktrees/**、*.jsonl、__pycache__。
+- 输出必须 head_limit 截断；禁止全仓模糊扫描。
+- 禁止读取 ~/.codex/sessions、运行日志、归档证据包。
+
+## 4. 会话与上下文纪律
+
+- 单会话只做一个域：dbx / 编排网关 / 前端页面 / 测试，四选一。
+- 满足任一条件立即写交接卡并重开会话：出现上下文警告、连续工作满 2 小时、需要切换工作域。
+- 交接卡最小内容：已落地文件清单、未完事项、下次第一步、涉及节号；写入 docs/handoff/outbox/codex/。
+
+## 5. 提交纪律
+
+- 每完成一个可运行单元（代码 + 测试通过）立即按具体文件 git add 并 commit；禁止囤积大批未提交文件。
+- 禁止 git add -A / git add .；禁止提交 .env、密钥、日志。
+
+## 6. 推理与输出档位
+
+- 机械接线、重命名、收尾清理：用低 reasoning 档。
+- 设计判断、跨节冲突评估：才用高档。
+- 回复精简：结论先行；用 文件:行号 引用代替重述代码；不粘贴大段原文。
+
+## 7. 产出与证据
+
+- 每票完成在 outbox 卡登记：改动文件、验证命令与结果、遗留项。
+- 验证按环境边界执行；E2E 验收以权威 §10.7 十五项为准。
