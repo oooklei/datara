@@ -46,7 +46,15 @@ from rebuild.sql_ide.table_data import (
     import_csv_rows,
     read_table_rows,
 )
-from rebuild.identity.contracts import Permission, Role, ROLE_PERMISSIONS, TokenService, authorize
+from rebuild.identity.contracts import (
+    Permission,
+    Role,
+    ROLE_LABELS,
+    ROLE_PERMISSIONS,
+    PERMISSION_LABELS,
+    TokenService,
+    authorize,
+)
 from rebuild.identity.models import ActiveTokenRecord, ProjectMemberRecord, UserRecord
 from rebuild.identity.passwords import verify_password
 from rebuild.identity.repository import UserRepository
@@ -2011,6 +2019,10 @@ def create_app(
                             "id": r.id,
                             "username": r.username,
                             "role": r.role,
+                            "role_label": ROLE_LABELS[Role(r.role)],
+                            "permission_labels": [
+                                PERMISSION_LABELS[p] for p in ROLE_PERMISSIONS[Role(r.role)]
+                            ],
                             "status": r.status,
                             "created_at": r.created_at.isoformat() if r.created_at else None,
                         }
@@ -2018,6 +2030,34 @@ def create_app(
                     ]
                 },
             }
+
+    @app.get("/api/v1/rebuild/users/roles")
+    def list_role_catalog(authorization: str = Header(default="")):
+        try:
+            user = current_user(authorization)
+            if not authorize(user["role"], Permission.MANAGE_USER):
+                raise PermissionError("permission denied")
+        except PermissionError as exc:
+            return JSONResponse(status_code=403, content={"code": 1003, "msg": str(exc), "data": None})
+        except ValueError:
+            return JSONResponse(status_code=401, content={"code": 1001, "msg": "invalid token", "data": None})
+        return {
+            "code": 0,
+            "msg": "success",
+            "data": {
+                "roles": [
+                    {
+                        "code": role.value,
+                        "name": ROLE_LABELS[role],
+                        "permissions": [
+                            {"code": permission.value, "name": PERMISSION_LABELS[permission]}
+                            for permission in sorted(ROLE_PERMISSIONS[role], key=lambda item: item.value)
+                        ],
+                    }
+                    for role in Role
+                ]
+            },
+        }
 
     @app.post("/api/v1/rebuild/users")
     def create_user(body: UserCreateRequest, authorization: str = Header(default="")):

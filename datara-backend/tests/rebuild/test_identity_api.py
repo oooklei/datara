@@ -412,6 +412,27 @@ def test_admin_can_update_platform_user_role_and_last_admin_is_protected():
     assert protected.json()["code"] == 1005
 
 
+def test_admin_role_catalog_exposes_chinese_labels_and_permission_codes():
+    app = create_app("sqlite+pysqlite:///:memory:", token_secret="unit-test-token-secret")
+    with TestClient(app) as client:
+        with app.state.session_factory() as session:
+            UserRepository(session).create(username="catalog-admin", password="admin-password", role=Role.ADMIN)
+            session.commit()
+        login = client.post("/api/v1/rebuild/login", json={"username": "catalog-admin", "password": "admin-password"})
+        response = client.get(
+            "/api/v1/rebuild/users/roles",
+            headers={"Authorization": f"Bearer {login.json()['data']['token']}"},
+        )
+
+    roles = {item["code"]: item for item in response.json()["data"]["roles"]}
+    assert response.status_code == 200
+    assert roles["admin"]["name"] == "管理员"
+    assert {item["code"] for item in roles["viewer"]["permissions"]} == {
+        "view_all", "project:read", "workflow:read", "task:read", "datasource:read",
+        "sql:read", "schedule:read", "lineage:read", "quality:read", "standard:read",
+    }
+
+
 def test_i2_status_returns_reconcile_summary_and_samples(tmp_path, monkeypatch):
     report = {
         "generated_at": "2026-10-14 05:34:07",
