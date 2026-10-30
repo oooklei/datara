@@ -299,7 +299,7 @@ def test_quality_standards_metrics_are_real_records_and_mutations_audited():
     assert isinstance(generated, datetime)
 
 
-def test_quality_rule_run_executes_and_persists_result():
+def test_quality_rule_run_requires_a_bound_connection():
     with governance_client() as (client, app, headers):
         project_id = client.get("/api/v1/rebuild/projects", headers=headers).json()["data"]["list"][0]["id"]
         asset = client.post(
@@ -325,15 +325,10 @@ def test_quality_rule_run_executes_and_persists_result():
         runs = client.get(f"/api/v1/rebuild/governance/projects/{project_id}/quality-runs", headers=headers)
         audit = client.get(f"/api/v1/rebuild/governance/projects/{project_id}/audit", headers=headers)
 
-    assert resp.status_code == 201
-    data = resp.json()["data"]
-    assert data["rule_id"] == rule["id"]
-    assert data["status"] == "succeeded"
-    assert data["summary"]["engine"] == "structural"
-    assert data["checked_rows"] == data["success_rows"] == data["failed_rows"] == data["skipped_rows"] == 0
-    assert runs.json()["data"]["total"] == 1
-    assert runs.json()["data"]["list"][0]["status"] == "succeeded"
-    assert audit.json()["data"]["total"] == 3
+    assert resp.status_code == 409
+    assert "bound dbx connection" in resp.json()["msg"]
+    assert runs.json()["data"]["total"] == 0
+    assert audit.json()["data"]["total"] == 2
 
 
 def test_quality_rule_can_be_rebound_to_a_real_project_asset_with_audit():

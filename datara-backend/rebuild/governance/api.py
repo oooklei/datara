@@ -2017,12 +2017,7 @@ def build_governance_router(
                     message = str(exc)
                 summary = {"engine": "dbx", "message": message, "issues": [], "connection_id": connection_id}
             else:
-                status = "succeeded"
-                summary = {
-                    "engine": "structural",
-                    "message": "structural predicate validation only; row-level sampling requires a bound datasource",
-                    "issues": [],
-                }
+                return fail(409, 4091, "quality rule requires a bound dbx connection for row-level execution")
             run = QualityRunRecord(
                 project_id=project_id,
                 asset_id=rule.asset_id,
