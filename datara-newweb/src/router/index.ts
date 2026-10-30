@@ -2,6 +2,7 @@ import { createRouter, createWebHistory } from 'vue-router'
 import { getToken } from '../services/http'
 import { listProjects } from '../services/rebuild/projectApi'
 import { authAccount, currentSession } from '../services/rebuild/authApi'
+import { roleHasPermission, type Permission } from '../services/rebuild/rolePermissions'
 import { PROJECT_SCOPED_ALIASES, rememberActiveProject, selectActiveProject } from '../navigation/projectMenu'
 import { routes } from './routes'
 
@@ -37,6 +38,13 @@ router.beforeEach(async (to) => {
   }
   const authenticated = await hasAuthenticatedSession()
   if (!authenticated) return { path:'/login', query: { redirect: to.fullPath } }
+  const requiredPermission = to.meta.permission as Permission | undefined
+  if (requiredPermission && !authAccount.value && getToken()) {
+    try { await currentSession() } catch { return { path: '/login', query: { redirect: to.fullPath } } }
+  }
+  if (requiredPermission && (!authAccount.value || !roleHasPermission(authAccount.value.role, requiredPermission))) {
+    return { path: '/' }
+  }
   if (PROJECT_SCOPED_ALIASES.has(to.path)) {
     try {
       const page = await listProjects()

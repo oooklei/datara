@@ -31,14 +31,10 @@ import TaskCenterView from '../views/TaskCenterView.vue'
 import SshNodeManagementView from '../views/SshNodeManagementView.vue'
 import RuntimeNodeView from '../views/depops/RuntimeNodeView.vue'
 import MonitorView from '../views/depops/MonitorView.vue'
+import OrchestrationResourceView from '../views/depops/OrchestrationResourceView.vue'
+import OrchestrationResourceFileView from '../views/depops/OrchestrationResourceFileView.vue'
 import ApiKeyManagementView from '../views/ApiKeyManagementView.vue'
 import ApiManagementView from '../views/ApiManagementView.vue'
-import LlmModelsView from '../views/system/llm-models/LlmModelsView.vue'
-import DataSourceListView from '../views/datasource/DataSourceListView.vue'
-import IdeView from '../views/ide/IdeView.vue'
-import MetadataCatalogView from '../views/meta/MetadataCatalogView.vue'
-import AssetMapView from '../views/meta/AssetMapView.vue'
-import LineageAnalysisView from '../views/meta/LineageAnalysisView.vue'
 import TagManagementView from '../views/meta/TagManagementView.vue'
 import StandardManagementView from '../views/std/StandardManagementView.vue'
 import IndicatorListView from '../views/ind/IndicatorListView.vue'
@@ -52,11 +48,7 @@ import QualityExceptionView from '../views/qc/QualityExceptionView.vue'
 import QualityReportView from '../views/qc/QualityReportView.vue'
 import QualityAlarmView from '../views/qc/QualityAlarmView.vue'
 import ResourceManagementView from '../views/resources/ResourceManagementView.vue'
-import ModelListView from '../views/dwmodel/ModelListView.vue'
-import ModelDesignView from '../views/dwmodel/ModelDesignView.vue'
-import ModelVersionView from '../views/dwmodel/ModelVersionView.vue'
-import ModelLineageView from '../views/dwmodel/ModelLineageView.vue'
-import ErCanvasView from '../views/dwmodel/ErCanvasView.vue'
+import DbxIdeView from '../views/ide/DbxIdeView.vue'
 import SystemAdminView from '../views/system/SystemAdminView.vue'
 
 export const routes: RouteRecordRaw[] = [
@@ -67,22 +59,39 @@ export const routes: RouteRecordRaw[] = [
   // 17.4 P3 运行节点迁移（IMPL-v4-17）：运行时节点注册清单 + SFTP 目录浏览页
   // （History 直链可达；菜单可见性候批——BATCH_SWITCHES.inc17 保持 false）
   { path: '/dep/runtime', name: 'dep-runtime', component: RuntimeNodeView },
-  { path: '/dep/monitor', name: 'dep-monitor', component: MonitorView },
+  { path: '/dep/monitor', name: 'dep-monitor', component: MonitorView, meta: { permission: 'monitor:read' } },
+  // 2026-10-29 dbx 统一目标设计 §10.10 R1–R4：部署运维四类资源配置页
+  // （同一组件按 kind prop 驱动；契约经编排网关代理海豚，前端不直连海豚 API）
+  {
+    path: '/dep/worker-group',
+    name: 'dep-worker-group',
+    component: OrchestrationResourceView,
+    props: { kind: 'worker_group' },
+  },
+  {
+    path: '/dep/environment',
+    name: 'dep-environment',
+    component: OrchestrationResourceView,
+    props: { kind: 'environment' },
+  },
+  {
+    path: '/dep/queue',
+    name: 'dep-queue',
+    component: OrchestrationResourceView,
+    props: { kind: 'queue' },
+  },
+  {
+    path: '/dep/cluster',
+    name: 'dep-cluster',
+    component: OrchestrationResourceView,
+    props: { kind: 'cluster' },
+  },
+  // §10.10 R9 资源文件（全局文件树）：独立树视图组件，不走表格页
+  { path: '/dep/resource-file', name: 'dep-resource-file', component: OrchestrationResourceFileView },
   { path: '/open/key', name: 'open-key', component: ApiKeyManagementView },
   { path: '/open/api', name: 'open-api', component: ApiManagementView },
-  { path: '/open/llm', name: 'open-llm', component: LlmModelsView },
   { path: '/sys', name: 'system-admin', component: SystemAdminView },
   { path: '/proj', redirect: '/' },
-  { path: '/ds/list', name: 'ds-list', component: DataSourceListView },
-  { path: '/ide', name: 'sql-ide', component: IdeView },
-  { path: '/model/list', name: 'dwModeling', component: ModelListView },
-  { path: '/model/design', name: 'dwModelDesign', component: ModelDesignView },
-  { path: '/model/version', name: 'dwModelVersion', component: ModelVersionView },
-  { path: '/model/lineage', name: 'dwModelLineage', component: ModelLineageView },
-  { path: '/model/er', name: 'dwModelEr', component: ErCanvasView },
-  { path: '/meta/lineage', name: 'meta-lineage', component: LineageAnalysisView },
-  { path: '/meta/map', name: 'meta-map', component: AssetMapView },
-  { path: '/meta/catalog', name: 'meta-catalog', component: MetadataCatalogView },
   { path: '/meta/tag', name: 'meta-tag', component: TagManagementView },
   { path: '/std/element', name: 'std-element', component: StandardManagementView },
   { path: '/ind/list', name: 'ind-list', component: IndicatorListView },
@@ -98,19 +107,12 @@ export const routes: RouteRecordRaw[] = [
   { path: '/qc/report', name: 'qc-report', component: QualityReportView },
   { path: '/qc/alarm', name: 'qc-alarm', component: QualityAlarmView },
   { path: '/resources', name: 'resource-mgmt', component: ResourceManagementView },
+  { path: '/ide', name: 'dbx-sql-ide', component: DbxIdeView },
   {
     path: '/p/:projectId',
     name: 'project-workbench',
     component: ProjectWorkbenchView,
     props: (route) => ({ projectId: Number(route.params.projectId) }),
-  },
-  {
-    path: '/p/:projectId/datasource',
-    redirect: (route) => `/p/${route.params.projectId}/ds/list`,
-  },
-  {
-    path: '/p/:projectId/meta',
-    redirect: (route) => `/p/${route.params.projectId}/meta/catalog`,
   },
   {
     path: '/p/:projectId/dep',
@@ -120,6 +122,12 @@ export const routes: RouteRecordRaw[] = [
     path: '/p/:projectId/system',
     name: 'project-system-admin',
     component: SystemAdminView,
+    props: (route) => ({ projectId: Number(route.params.projectId) }),
+  },
+  {
+    path: '/p/:projectId/ide',
+    name: 'project-dbx-sql-ide',
+    component: DbxIdeView,
     props: (route) => ({ projectId: Number(route.params.projectId) }),
   },
   {

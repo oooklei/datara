@@ -16,9 +16,13 @@ vi.mock('../../services/rebuild/governanceApi', async () => {
     )
   return {
     ...actual,
-    governanceApi: { listRules: vi.fn(), createRule: vi.fn(), runRule: vi.fn(), listRuns: vi.fn() },
+    governanceApi: { listRules: vi.fn(), listAssets: vi.fn(), bindAssetDbxConnection: vi.fn(), createRule: vi.fn(), updateRule: vi.fn(), runRule: vi.fn(), listRuns: vi.fn() },
   }
 })
+
+vi.mock('../../services/rebuild/dbxApi', () => ({
+  createDbxContract: () => ({ listConnections: vi.fn().mockResolvedValue([]) }),
+}))
 
 vi.mock('../../services/rebuild/projectApi', async () => {
   const actual =
@@ -61,6 +65,11 @@ beforeEach(() => {
   router.route.params = {}
   router.route.query = {}
   vi.mocked(listProjects).mockResolvedValue({ total: 1, list: [{ id: 1, name: '订单库' }] })
+  vi.mocked(governanceApi.listAssets).mockResolvedValue({ total: 1, page: 1, pageSize: 200, list: [{
+    id: 9, projectId: 1, sourceSystem: 'MySQL', databaseName: 'ec_retail', schemaName: '',
+    assetName: 'dim_user', assetType: 'table', displayName: '', description: '', ownerName: '',
+    domainName: '', rowCount: null, createdAt: null, updatedAt: null,
+  }] })
 })
 
 afterEach(() => vi.clearAllMocks())
@@ -95,6 +104,7 @@ describe('/qc/rule 质量规则页（IMPL-v4-07）', () => {
     expect(w.find('[data-create]').attributes('disabled')).toBeUndefined()
 
     await w.find('[data-create]').trigger('click')
+    await flushPromises()
     await w.find('[data-name]').setValue('主键非空')
     await w.find('[data-asset-input]').setValue('9')
     await w.find('[data-expr-input]').setValue('id IS NOT NULL')
@@ -130,7 +140,21 @@ describe('/qc/rule 质量规则页（IMPL-v4-07）', () => {
     expect(text).toContain('structural')
     // structural 红线：不得出现行级四字段计数（后端恒 0，前端不得虚构）
     expect(text).not.toMatch(/ checked| success| failed| skipped/)
-    expect(w.find('[data-structural-note]').text()).toContain('行级四字段恒 0')
+    expect(w.find('[data-structural-note]').text()).toContain('未绑定 DBX 连接')
+  })
+
+  it('shows persisted row counts only for a DBX run', async () => {
+    router.route.params.projectId = '1'
+    vi.mocked(governanceApi.listRules).mockResolvedValue({ total: 1, list: [rule] })
+    vi.mocked(governanceApi.runRule).mockResolvedValue({
+      ...run, status: 'failed', checkedRows: 60002, successRows: 60000, failedRows: 2,
+      summary: { engine: 'dbx', message: 'DBX found rule violations', issues: [], connectionId: 'customer-src' },
+    })
+    const w = mount(View)
+    await flushPromises()
+    await w.find('[data-run]').trigger('click')
+    await flushPromises()
+    expect(w.find('[data-run-result]').text()).toContain('检查 60002 行，通过 60000 行，不合规则 2 行')
   })
 
   it('surfaces backend errors without dropping the list', async () => {

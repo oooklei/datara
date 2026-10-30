@@ -6,6 +6,9 @@
  * 抽屉+标题栏+关闭钮+内容区+底部操作区布局语义，不复制旧业务组件实现代码）。
  * 纪律：纯布局范式壳（受控开合 v-model），零业务逻辑；宽体内容/操作经插槽注入。
  */
+import { computed, ref, type CSSProperties } from 'vue'
+import { useDraggable } from '../composables/useDraggable'
+
 const props = defineProps<{
   /** 受控开合（v-model:modelValue） */
   modelValue: boolean
@@ -19,6 +22,18 @@ const emit = defineEmits<{
   (e: 'close'): void
 }>()
 
+/* D9：抽屉可由标题栏拖动；CSS 为 top:0/right:0/height:100%，
+   拖拽定位后解除 right 约束并把高度按 top 反推，避免抽屉溢出视口。 */
+const drawerRef = ref<HTMLElement | null>(null)
+const headerRef = ref<HTMLElement | null>(null)
+const { dragStyle: drawerDragStyle, onHandlePointerdown } = useDraggable(drawerRef, headerRef, { storageKey: 'drawer.detail' })
+const drawerStyle = computed<CSSProperties>(() => {
+  const base = drawerDragStyle.value
+  const width = props.width ?? '480px'
+  if (!base.position) return { width }
+  return { ...base, width, right: 'auto', height: `calc(100vh - ${base.top})` }
+})
+
 function onClose(): void {
   emit('update:modelValue', false)
   emit('close')
@@ -28,10 +43,10 @@ function onClose(): void {
 <template>
   <Teleport to="body">
     <div v-if="modelValue" class="detail-drawer-mask" data-part="mask" @click.self="onClose">
-      <aside class="detail-drawer" role="dialog" aria-modal="true" :style="{ width: width ?? '480px' }">
-        <header class="drawer-header" data-part="header">
+      <aside ref="drawerRef" class="detail-drawer" role="dialog" aria-modal="true" :style="drawerStyle">
+        <header ref="headerRef" class="drawer-header drag-handle" data-part="header" @pointerdown="onHandlePointerdown">
           <span class="drawer-title">{{ title }}</span>
-          <button type="button" class="drawer-close" aria-label="关闭" @click="onClose">×</button>
+          <button type="button" class="drawer-close" aria-label="关闭" @pointerdown.stop @click="onClose">×</button>
         </header>
         <div class="drawer-body" data-part="body"><slot /></div>
         <footer v-if="$slots.footer" class="drawer-footer" data-part="footer"><slot name="footer" /></footer>
@@ -47,4 +62,6 @@ function onClose(): void {
 .drawer-close{border:none;background:none;font-size:18px;cursor:pointer}
 .drawer-body{flex:1;overflow:auto;padding:16px}
 .drawer-footer{padding:12px 16px;border-top:1px solid #eee}
+.drag-handle{cursor:grab;user-select:none}
+.drag-handle:active{cursor:grabbing}
 </style>

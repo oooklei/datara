@@ -100,11 +100,9 @@ const pipelineKpis = computed(() => {
 const governanceKpis = computed(() => {
   const current = model.value!.governance
   return [
-    { key: 'datasources', label: '数据源', value: current.datasources, detail: '连接与元数据', route: 'ds/list', tone: 'primary' },
     { key: 'resources', label: '资源', value: current.resources, detail: 'SQL / Python / Shell', route: 'resources', tone: '' },
     { key: 'rules', label: '质量规则', value: current.qualityRules, detail: '项目规则总数', route: 'qc/rule', tone: '' },
     { key: 'exceptions', label: '未处置异常', value: current.openExceptions, detail: '待核查与处置', route: 'qc/exception', tone: current.openExceptions ? 'warning' : '' },
-    { key: 'assets', label: '数据资产', value: current.assets, detail: '目录收录资产', route: 'meta/catalog', tone: '' },
     { key: 'standards', label: '数据标准', value: current.standards, detail: '已定义标准', route: 'std/element', tone: '' },
     { key: 'metrics', label: '指标目录', value: current.metrics, detail: '业务指标', route: 'ind/list', tone: '' },
   ]

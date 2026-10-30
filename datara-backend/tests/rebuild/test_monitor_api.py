@@ -19,7 +19,7 @@ class ActiveTokens(set[str]):
     pass
 
 
-def _client(*, live=None, known=None, metrics=None):
+def _client(*, live=None, known=None, metrics=None, role=Role.OPERATOR):
     engine = create_engine(
         "sqlite+pysqlite:///:memory:",
         connect_args={"check_same_thread": False},
@@ -29,7 +29,7 @@ def _client(*, live=None, known=None, metrics=None):
     factory = sessionmaker(bind=engine, expire_on_commit=False)
     tokens = ActiveTokens()
     token_service = TokenService(secret="monitor-test-secret")
-    token = token_service.issue(user_id=1, username="monitor-user", role=Role.VIEWER)
+    token = token_service.issue(user_id=1, username="monitor-user", role=role)
     tokens.add(token)
     app = FastAPI()
     app.include_router(
@@ -123,12 +123,19 @@ def test_http_adapter_requires_active_token_and_returns_frozen_envelope(monkeypa
     assert response.json()["data"]["nodes"] == []
 
 
+def test_developer_without_monitor_permission_cannot_read_monitor_nodes():
+    client, _, headers = _client(role=Role.DEVELOPER)
+    response = client.get("/api/v1/rebuild/monitor/nodes", headers=headers)
+    assert response.status_code == 403
+    assert response.json()["code"] == 1003
+
+
 def test_default_rebuild_app_mounts_monitor_route_and_degrades_without_registry(monkeypatch):
     monkeypatch.setattr("rebuild.monitor.api.list_live_nodes", lambda _zk: (False, []))
     app = create_app("sqlite+pysqlite:///:memory:", token_secret="monitor-app-secret")
     with TestClient(app) as client:
         with app.state.session_factory() as session:
-            UserRepository(session).create(username="monitor-user", password="monitor-password", role=Role.VIEWER)
+            UserRepository(session).create(username="monitor-user", password="monitor-password", role=Role.OPERATOR)
             session.commit()
         token = client.post(
             "/api/v1/rebuild/login",
@@ -167,7 +174,7 @@ def test_rebuild_lifespan_wires_service_registry_into_monitor_zk_provider(monkey
     with TestClient(app) as client:
         assert isinstance(app.state.registry, FakeRegistry)
         with app.state.session_factory() as session:
-            UserRepository(session).create(username="monitor-user", password="monitor-password", role=Role.VIEWER)
+            UserRepository(session).create(username="monitor-user", password="monitor-password", role=Role.OPERATOR)
             session.commit()
         token = client.post(
             "/api/v1/rebuild/login",

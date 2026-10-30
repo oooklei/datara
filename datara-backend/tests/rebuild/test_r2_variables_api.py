@@ -89,6 +89,7 @@ def test_viewer_cannot_save_and_anonymous_is_401():
     try:
         denied = _save(client, tokens["viewer"], project_id, name="x")
         assert denied.status_code == 403 and denied.json()["code"] == 1003
+        client.cookies.clear()  # Login leaves a session cookie on this client.
         anonymous = client.get(f"/api/v1/rebuild/variables?project_id={project_id}")
         assert anonymous.status_code == 401 and anonymous.json()["code"] == 1001
         # Bearer fallback also works for internal callers.
@@ -268,6 +269,7 @@ def test_run_snapshot_project_scoping_and_auth():
             session.commit()
 
         # anonymous → 401
+        client.cookies.clear()
         anon = client.get("/api/v1/rebuild/variables/run-snapshot?instance_id=9100&project_id=1")
         assert anon.status_code == 401 and anon.json()["code"] == 1001
 

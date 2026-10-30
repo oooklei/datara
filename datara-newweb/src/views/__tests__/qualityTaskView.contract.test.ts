@@ -83,7 +83,7 @@ describe('/qc/task 检查任务页（IMPL-v4-07）', () => {
     const w = mount(View)
     await flushPromises()
     const text = w.text()
-    expect(text).toContain('行级四字段恒 0')
+    expect(text).toContain('结构校验记录的计数为 0')
     // structural 红线：页面不得出现行级四字段计数
     expect(text).not.toMatch(/检查行数|成功行|失败行|跳过行/)
     expect(w.find('[data-run-list]').text()).not.toMatch(/ checked| success| failed| skipped/)

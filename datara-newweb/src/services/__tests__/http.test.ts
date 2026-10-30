@@ -21,6 +21,7 @@ import {
   getJson,
   getToken,
   isAuthErrorCode,
+  loginRedirectTarget,
   patchJson,
   postJson,
   putJson,
@@ -239,28 +240,52 @@ describe('包络三态解包', () => {
   })
 })
 
-/* ---------- 4. 1xxx 跳登录 ---------- */
+/* ---------- 4. 会话失效跳登录，权限不足留在当前会话 ---------- */
 
-describe('1xxx 跳登录（BE 1xxx=用户/鉴权段）', () => {
-  it('1003 会话失效 → 跳转 /login 且仍抛 ContractApiError', async () => {
+describe('会话失效跳登录', () => {
+  it('1003 权限不足不跳登录，仍抛 ContractApiError', async () => {
     const redirects: string[] = []
     setLoginRedirector((target) => redirects.push(target))
     fetchStub.mockResolvedValue(envelopeResponse(200, { code: 1003, msg: '未登录或会话已过期', data: null }))
 
     const err = await request('/rebuild/x').catch((e: unknown) => e)
-    expect(redirects).toEqual([LOGIN_PATH])
+    expect(redirects).toEqual([])
     expect(err).toBeInstanceOf(ContractApiError)
     expect(err).toMatchObject({ code: 1003 })
   })
 
-  it('1xxx 全段（1001/1002/1004/1005）均跳登录', async () => {
+  it('仅 1001 会话失效码跳登录；其余 1xxx 不影响当前用户', async () => {
     for (const code of [1001, 1002, 1003, 1004, 1005]) {
       const redirects: string[] = []
       setLoginRedirector((target) => redirects.push(target))
       fetchStub.mockResolvedValue(envelopeResponse(200, { code, msg: 'auth', data: null }))
       await request('/rebuild/x').catch(() => undefined)
-      expect(redirects).toEqual([LOGIN_PATH])
+      expect(redirects).toEqual(code === 1001 ? [LOGIN_PATH] : [])
     }
+  })
+
+  it('HTTP 403 + 1003 权限不足不跳登录', async () => {
+    const redirects: string[] = []
+    setLoginRedirector((target) => redirects.push(target))
+    fetchStub.mockResolvedValue(envelopeResponse(403, { code: 1003, msg: 'permission denied', data: null }))
+    await request('/rebuild/monitor/nodes').catch(() => undefined)
+    expect(redirects).toEqual([])
+  })
+
+  it('旧账号的 401 晚于新账号登录返回时，不踢掉新会话', async () => {
+    const redirects: string[] = []
+    setLoginRedirector((target) => redirects.push(target))
+    setToken('zhangsan-token')
+    let finishOldRequest!: (response: Response) => void
+    fetchStub.mockReturnValue(new Promise<Response>((resolve) => { finishOldRequest = resolve }))
+    const pending = request('/rebuild/projects')
+    expect((fetchStub.mock.calls[0][1] as RequestInit).headers).toMatchObject({ token: 'zhangsan-token' })
+
+    setToken('admin-token')
+    finishOldRequest(envelopeResponse(401, { code: 1001, msg: 'expired', data: null }))
+    await expect(pending).rejects.toMatchObject({ httpStatus: 401 })
+    expect(getToken()).toBe('admin-token')
+    expect(redirects).toEqual([])
   })
 
   it('非 1xxx 业务错误（4xxx/5xxx）不跳登录', async () => {
@@ -275,7 +300,7 @@ describe('1xxx 跳登录（BE 1xxx=用户/鉴权段）', () => {
   it('默认跳转器调用 window.location.assign（SPA History 路由）', async () => {
     const assign = vi.fn()
     vi.stubGlobal('window', { ...window, location: { ...window.location, assign } })
-    fetchStub.mockResolvedValue(envelopeResponse(200, { code: 1003, msg: 'expired', data: null }))
+    fetchStub.mockResolvedValue(envelopeResponse(200, { code: 1001, msg: 'expired', data: null }))
 
     await request('/rebuild/x').catch(() => undefined)
     expect(assign).toHaveBeenCalledWith('/login')
@@ -290,6 +315,36 @@ describe('1xxx 跳登录（BE 1xxx=用户/鉴权段）', () => {
     expect(isAuthErrorCode(2000)).toBe(false)
     expect(isAuthErrorCode('1003')).toBe(false)
     expect(isAuthErrorCode(undefined)).toBe(false)
+  })
+})
+
+/* ---------- 4.1 登录跳转落点保留 redirect（会话失效后原地返回） ---------- */
+
+describe('登录跳转落点保留 redirect', () => {
+  it('深层路径 + 查询串 → /login?redirect=<编码后的当前站内位置>', () => {
+    expect(loginRedirectTarget(LOGIN_PATH, { pathname: '/p/33/resources', search: '?tab=sql' }))
+      .toBe('/login?redirect=%2Fp%2F33%2Fresources%3Ftab%3Dsql')
+  })
+
+  it('根路径 / 不附加 redirect（无返回价值）', () => {
+    expect(loginRedirectTarget(LOGIN_PATH, { pathname: '/', search: '' })).toBe(LOGIN_PATH)
+  })
+
+  it('已在登录页不附加 redirect（避免自我循环）', () => {
+    expect(loginRedirectTarget(LOGIN_PATH, { pathname: '/login', search: '?redirect=%2Fp%2F1' })).toBe(LOGIN_PATH)
+  })
+
+  it('非登录目标原样返回', () => {
+    expect(loginRedirectTarget('/x', { pathname: '/p/33/resources', search: '' })).toBe('/x')
+  })
+
+  it('默认跳转器把当前路径带进 assign 参数（HTTP 401 硬跳转）', async () => {
+    const assign = vi.fn()
+    vi.stubGlobal('window', { ...window, location: { pathname: '/p/33/resources', search: '', assign } })
+    fetchStub.mockResolvedValue(jsonResponse(401, 'unauthorized'))
+
+    await request('/rebuild/x').catch(() => undefined)
+    expect(assign).toHaveBeenCalledWith('/login?redirect=%2Fp%2F33%2Fresources')
   })
 })
 

@@ -13,7 +13,7 @@
     <template v-else>
       <input v-model.trim="filterKeyword" data-filter-keyword class="list-search" placeholder="搜索名称或类型">
       <table><thead><tr><th>名称</th><th>类型</th><th>版本</th><th>状态</th><th>大小</th><th>操作</th></tr></thead>
-        <tbody><tr v-for="item in filteredItems" :key="item.resourceId"><td>{{ item.name }}</td><td>{{ item.kind }}</td><td>v{{ item.latestVersion }}</td><td>active</td><td>{{ item.sizeBytes }} bytes</td><td><button type="button" data-view-versions @click="openVersions(item)">查看版本</button></td></tr><tr v-if="!loading && !filteredItems.length"><td colspan="6">{{ items.length ? '无匹配资源' : '暂无资源' }}</td></tr></tbody>
+        <tbody><tr v-for="item in filteredItems" :key="item.resourceId"><td>{{ item.name }}</td><td>{{ item.kind }}</td><td>v{{ item.latestVersion }}</td><td>active</td><td>{{ item.sizeBytes }} bytes</td><td class="row-actions"><button type="button" data-edit-resource @click="openEditor(item)">修改</button><button type="button" data-view-versions @click="openVersions(item)">查看版本</button></td></tr><tr v-if="!loading && !filteredItems.length"><td colspan="6">{{ items.length ? '无匹配资源' : '暂无资源' }}</td></tr></tbody>
       </table>
     </template>
     <p v-if="loading">加载中…</p>
@@ -27,12 +27,20 @@
         </table>
       </section>
     </div>
+    <ResourceScriptEditorDialog
+      v-if="editingResource && projectId !== null"
+      :project-id="projectId"
+      :resource="editingResource"
+      @close="closeEditor"
+      @saved="onSaved"
+    />
   </section>
 </template>
 
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue'
 import { useDraggable } from '../../composables/useDraggable'
+import ResourceScriptEditorDialog from './ResourceScriptEditorDialog.vue'
 import { createResourceContract, validateUploadDraft, type ResourceKind, type ResourceMeta, type ResourceVersion } from '../../services/rebuild/resourceApi'
 import { listProjects, type ProjectSummary } from '../../services/rebuild/projectApi'
 
@@ -128,11 +136,29 @@ function closeVersions() {
   versionsLoading.value = false
   versionError.value = ''
 }
+
+/* 修改入口：脚本编辑弹窗（校验 / 试运行 / 追加不可变版本） */
+const editingResource = ref<ResourceMeta | null>(null)
+
+function openEditor(resource: ResourceMeta) {
+  if (projectId.value === null) return
+  closeVersions()
+  editingResource.value = resource
+}
+
+function closeEditor() {
+  editingResource.value = null
+}
+
+async function onSaved() {
+  await load()
+}
 // Vue reuses the segment component when only :projectId changes.  Reload on
 // prop changes as well as the initial mount so a deep-link switch never shows
 // resources from the previous project.
 watch(() => props.projectId, () => {
   closeVersions()
+  closeEditor()
   if (hasProjectProp.value) void load()
 }, { immediate: true })
 
@@ -150,6 +176,6 @@ onMounted(async () => {
 </script>
 
 <style scoped>
-.resource-page{padding:24px}.resource-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:18px}.resource-head h1{margin:0 0 6px}.resource-head p{margin:0;color:var(--text-2)}.resource-head select{padding:8px 12px}.list-search{width:min(320px,100%);padding:8px 12px;margin-bottom:12px;border:1px solid var(--border);border-radius:8px;background:var(--card);color:var(--text)}table{width:100%;border-collapse:collapse;background:var(--card)}th,td{padding:10px 12px;border-bottom:1px solid var(--border);text-align:left}.error{color:var(--danger)}.mask{position:fixed;inset:0;z-index:30;display:grid;place-items:center;padding:24px;background:color-mix(in srgb, var(--text) 40%, transparent)}.version-dialog{width:min(880px,100%);max-height:calc(100vh - 48px);overflow:auto;padding:22px;background:var(--card);border-radius:10px;box-shadow:0 20px 45px color-mix(in srgb, var(--text) 20%, transparent)}.version-dialog>header{display:flex;align-items:flex-start;justify-content:space-between;gap:16px;margin-bottom:16px;cursor:grab;user-select:none}
+.resource-page{padding:24px}.resource-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:18px}.resource-head h1{margin:0 0 6px}.resource-head p{margin:0;color:var(--text-2)}.resource-head select{padding:8px 12px}.list-search{width:min(320px,100%);padding:8px 12px;margin-bottom:12px;border:1px solid var(--border);border-radius:8px;background:var(--card);color:var(--text)}table{width:100%;border-collapse:collapse;background:var(--card)}th,td{padding:10px 12px;border-bottom:1px solid var(--border);text-align:left}.error{color:var(--danger)}.row-actions{display:flex;gap:8px;flex-wrap:wrap}.mask{position:fixed;inset:0;z-index:30;display:grid;place-items:center;padding:24px;background:color-mix(in srgb, var(--text) 40%, transparent)}.version-dialog{width:min(880px,100%);max-height:calc(100vh - 48px);overflow:auto;padding:22px;background:var(--card);border-radius:10px;box-shadow:0 20px 45px color-mix(in srgb, var(--text) 20%, transparent)}.version-dialog>header{display:flex;align-items:flex-start;justify-content:space-between;gap:16px;margin-bottom:16px;cursor:grab;user-select:none}
 .version-dialog>header:active{cursor:grabbing}.version-dialog h2,.version-dialog p{margin:0}.version-dialog header p{color:var(--text-2)}.version-dialog code{overflow-wrap:anywhere}
 </style>

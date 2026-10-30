@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import stat
+from typing import Any
 
 from fastapi.testclient import TestClient
 
@@ -13,6 +14,7 @@ from rebuild.runtime_node.service import (
     RuntimeNodeDomainError,
     RuntimeNodeService,
 )
+from rebuild.sshnode.models import SshNodeRecord
 
 
 def _client(role: Role = Role.DEVELOPER):
@@ -211,5 +213,95 @@ def test_service_ls_resolves_default_and_explicit_paths():
             assert service.ls(node_id, "/x/")["path"] == "/x"
             assert service.ls(node_id, "/")["path"] == "/"
         assert calls == ["/tmp/datara_runtime", "/x", "/"]
+    finally:
+        client.__exit__(None, None, None)
+
+
+def _add_ssh_node(
+    app,
+    name: str,
+    host: str = "10.0.0.9",
+    port: int = 22,
+    ssh_user: str = "root",
+    cred: str = "",
+    enabled: bool = True,
+) -> None:
+    with app.state.session_factory() as session:
+        session.add(
+            SshNodeRecord(
+                name=name, host=host, port=port, ssh_user=ssh_user,
+                cred=cred, tags=[], enabled=enabled,
+            )
+        )
+        session.commit()
+
+
+def test_service_ls_falls_back_to_enabled_ssh_node_credential():
+    """空 auth 的运行时节点回落到 host+port 匹配的启用 SSH 节点凭据。"""
+    client, app, _ = _client()
+    try:
+        node_id = _add_node(app, "svc-fallback")
+        _add_ssh_node(app, "ssh-fallback", host="10.0.0.9", port=22, ssh_user="deploy", cred="pem-key")
+        seen: list[Any] = []
+
+        def fake(node, base):
+            seen.append(node)
+            return []
+
+        with app.state.session_factory() as session:
+            RuntimeNodeService(session, fake).ls(node_id, "/data")
+        assert len(seen) == 1
+        assert seen[0].auth == "pem-key"
+        assert seen[0].user == "deploy"
+        assert seen[0].host == "10.0.0.9"
+        assert seen[0].port == 22
+    finally:
+        client.__exit__(None, None, None)
+
+
+def test_service_ls_does_not_fall_back_to_disabled_or_mismatched_ssh_node():
+    """停用或 host/port 不匹配的 SSH 节点不参与回落，保持原节点（无凭据）目标。"""
+    client, app, _ = _client()
+    try:
+        node_id = _add_node(app, "svc-no-fallback")
+        _add_ssh_node(app, "ssh-off", host="10.0.0.9", port=22, cred="secret", enabled=False)
+        _add_ssh_node(app, "ssh-other", host="10.9.9.9", port=22, cred="secret")
+        _add_ssh_node(app, "ssh-other-port", host="10.0.0.9", port=2222, cred="secret")
+        seen: list[Any] = []
+
+        def fake(node, base):
+            seen.append(node)
+            return []
+
+        with app.state.session_factory() as session:
+            RuntimeNodeService(session, fake).ls(node_id, "/data")
+        assert isinstance(seen[0], RuntimeNodeRecord)
+        assert not str(getattr(seen[0], "auth", "") or "").strip()
+    finally:
+        client.__exit__(None, None, None)
+
+
+def test_service_ls_prefers_runtime_node_auth_over_ssh_node_fallback():
+    """运行时节点自带凭据时优先使用，不回落 SSH 节点。"""
+    client, app, _ = _client()
+    try:
+        with app.state.session_factory() as session:
+            session.add(
+                RuntimeNodeRecord(name="svc-own", kind="远程", host="10.0.0.9", port=22,
+                                  user="root", auth="own-password", runtime_dir="/tmp")
+            )
+            session.commit()
+            node_id = session.query(RuntimeNodeRecord).filter_by(name="svc-own").one().id
+        _add_ssh_node(app, "ssh-shadow", host="10.0.0.9", port=22, cred="shadow-password")
+        seen: list[Any] = []
+
+        def fake(node, base):
+            seen.append(node)
+            return []
+
+        with app.state.session_factory() as session:
+            RuntimeNodeService(session, fake).ls(node_id, "/data")
+        assert isinstance(seen[0], RuntimeNodeRecord)
+        assert seen[0].auth == "own-password"
     finally:
         client.__exit__(None, None, None)

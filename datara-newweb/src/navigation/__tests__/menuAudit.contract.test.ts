@@ -133,7 +133,7 @@ describe('2-03 双重负断言（8 条旧路径）', () => {
     const allIds = view.flatMap((g) => g.items.map((i) => i.id))
     expect(allIds.length).toBeGreaterThan(0)
     expect(allIds).toContain('task-center-entry')
-    expect(allIds).toContain('sql-ide')
+    expect(allIds).toContain('resource-mgmt')
   })
 })
 

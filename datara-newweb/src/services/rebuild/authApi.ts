@@ -28,6 +28,7 @@ export interface LoginResult {
 }
 
 export const authAccount = shallowRef<AuthAccount | null>(null)
+let authEpoch = 0
 
 interface LoginWire {
   token: string
@@ -39,7 +40,11 @@ interface LoginWire {
  * 匿名请求（登录端点无鉴权），故显式 `anonymous`。
  */
 export function login(username: string, password: string): Promise<LoginResult> {
+  const epoch = ++authEpoch
+  authAccount.value = null
+  clearToken()
   return postJson<LoginWire>('/rebuild/login', { username, password }, { anonymous: true }).then((d) => {
+    if (epoch !== authEpoch) throw new Error('登录会话已切换，请重试')
     setToken(d.token)
     const result = {
       token: d.token,
@@ -52,7 +57,9 @@ export function login(username: string, password: string): Promise<LoginResult> 
 
 /** Resolve injected/reloaded in-memory tokens to a real account for the shell. */
 export async function currentSession(): Promise<AuthAccount> {
+  const epoch = authEpoch
   const account = await getJson<AuthAccount>('/rebuild/session')
+  if (epoch !== authEpoch) throw new Error('会话已切换')
   authAccount.value = account
   return account
 }
@@ -62,12 +69,15 @@ export async function currentSession(): Promise<AuthAccount> {
  * 后端吊销失败（网络/已失效）不阻断本地清理——本地态必须收敛。
  */
 export async function logout(): Promise<void> {
+  const epoch = ++authEpoch
   try {
     await postJson<null>('/rebuild/logout')
   } catch {
     // 后端吊销失败（网络/已失效）不阻断本地清理
   } finally {
-    authAccount.value = null
-    clearToken()
+    if (epoch === authEpoch) {
+      authAccount.value = null
+      clearToken()
+    }
   }
 }

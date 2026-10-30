@@ -14,17 +14,15 @@ export interface ProjectMenuGroup {
   items: readonly ProjectMenuItem[]
 }
 
-const PROJECT_GROUP_ORDER = ['overview', 'task-center', 'integration', 'development', 'governance'] as const
+const PROJECT_GROUP_ORDER = ['overview', 'task-center', 'integration', 'governance'] as const
 const GROUP_LABELS: Record<(typeof PROJECT_GROUP_ORDER)[number], string> = {
   overview: '总览',
   'task-center': '任务中心',
   integration: '数据集成',
-  development: '数据开发',
   governance: '数据治理',
 }
 
 const LABEL_OVERRIDES: Record<string, string> = {
-  'sql-ide': 'SQL IDE',
   'meta-tag': '标签管理',
   'std-element': '标准管理',
 }
@@ -52,7 +50,6 @@ export const PROJECT_MENU_ITEMS: readonly ProjectMenuItem[] = PROJECT_MENU_GROUP
 export const ACTIVE_PROJECT_KEY = 'datara.active-project' as const
 export const PROJECT_SCOPED_ALIASES = new Set([
   ...PROJECT_MENU_ITEMS.map((item) => item.path).filter((path) => path !== '/'),
-  '/model/design', '/model/version', '/model/lineage', '/model/er',
 ])
 
 export function rememberActiveProject(projectId: number): void {

@@ -53,12 +53,13 @@ const BACKEND_PERMISSION_SNAPSHOT: readonly Permission[] = [
   'security:read',
   'security:manage',
   'audit:read',
+  'monitor:read',
 ]
 
 describe('15.1-C 权限矩阵冻结快照（权威源 identity/contracts.py）', () => {
-  it('PERMISSION_ORDER 与后端 Permission 枚举 32 项逐词形逐序精确一致', () => {
+  it('PERMISSION_ORDER 与后端 Permission 枚举 33 项逐词形逐序精确一致', () => {
     expect(PERMISSION_ORDER).toEqual(BACKEND_PERMISSION_SNAPSHOT)
-    expect(PERMISSION_ORDER).toHaveLength(32)
+    expect(PERMISSION_ORDER).toHaveLength(33)
   })
 
   it('ROLE_ORDER 四角色与后端 Role StrEnum 一致且 admin 居首', () => {
@@ -69,21 +70,21 @@ describe('15.1-C 权限矩阵冻结快照（权威源 identity/contracts.py）',
     expect(Object.keys(ROLE_PERMISSIONS).sort()).toEqual(['admin', 'developer', 'operator', 'viewer'])
   })
 
-  it('ADMIN = 全量 32 项（后端 frozenset(Permission) 语义）', () => {
+  it('ADMIN = 全量 33 项（后端 frozenset(Permission) 语义）', () => {
     expect([...ROLE_PERMISSIONS.admin].sort()).toEqual([...PERMISSION_ORDER].sort())
-    expect(ROLE_PERMISSIONS.admin).toHaveLength(32)
+    expect(ROLE_PERMISSIONS.admin).toHaveLength(33)
   })
 
-  it('DEVELOPER = 31 项，唯一缺 manage_user', () => {
+  it('DEVELOPER = 31 项，不含用户管理和监控权限', () => {
     expect(ROLE_PERMISSIONS.developer).toHaveLength(31)
     expect(ROLE_PERMISSIONS.developer).not.toContain('manage_user')
     const missing = PERMISSION_ORDER.filter(
       (p) => !(ROLE_PERMISSIONS.developer as readonly string[]).includes(p),
     )
-    expect(missing).toEqual(['manage_user'])
+    expect(missing).toEqual(['manage_user', 'monitor:read'])
   })
 
-  it('OPERATOR = 17 项精确快照（运行/观测面）', () => {
+  it('OPERATOR = 18 项精确快照（运行/观测面）', () => {
     expect([...ROLE_PERMISSIONS.operator].sort()).toEqual(
       [
         'run_instance',
@@ -103,6 +104,7 @@ describe('15.1-C 权限矩阵冻结快照（权威源 identity/contracts.py）',
         'quality:run',
         'standard:read',
         'audit:read',
+        'monitor:read',
       ].sort(),
     )
   })
@@ -124,9 +126,9 @@ describe('15.1-C 权限矩阵冻结快照（权威源 identity/contracts.py）',
     )
   })
 
-  it('角色基数链：admin(32) > developer(31) > operator(17) > viewer(10)', () => {
+  it('角色基数链：admin(33) > developer(31) > operator(18) > viewer(10)', () => {
     const sizes = ROLE_ORDER.map((r) => ROLE_PERMISSIONS[r].length)
-    expect(sizes).toEqual([32, 31, 17, 10])
+    expect(sizes).toEqual([33, 31, 18, 10])
   })
 
   it('写/管理类权限点零授予 operator 与 viewer（越权防线快照）', () => {

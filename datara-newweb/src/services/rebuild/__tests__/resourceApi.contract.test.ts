@@ -16,7 +16,7 @@ import {
 
 describe('R4 resourceApi contract (GREEN)', () => {
   it('contract method list is frozen to the resource version subset', () => {
-    expect(R4_RESOURCE_CONTRACT_METHODS).toHaveLength(5)
+    expect(R4_RESOURCE_CONTRACT_METHODS).toHaveLength(9)
     expect(R4_RESOURCE_CONTRACT_METHODS).toEqual(
       expect.arrayContaining([
         'uploadResource',
@@ -24,6 +24,10 @@ describe('R4 resourceApi contract (GREEN)', () => {
         'listResourceVersions',
         'getResourceVersion',
         'bindResourceVersion',
+        'getResourceVersionContent',
+        'appendResourceVersion',
+        'checkResourceScript',
+        'getScriptEnvironment',
       ]),
     )
   })
@@ -178,6 +182,71 @@ describe('R4 resourceApi contract (GREEN wired)', () => {
       resource_id: 5,
       resource_version: 2,
     })
+  })
+
+  it('getResourceVersionContent GETs the UTF-8 text of one explicit version', async () => {
+    const fetchMock = stubFetchWithEnvelope({ resource_id: 5, version: 2, name: 'etl.sql', content: 'select 1' })
+    vi.stubGlobal('fetch', fetchMock)
+    await expect(createResourceContract().getResourceVersionContent(5, 2, 1)).resolves.toEqual({
+      resourceId: 5,
+      version: 2,
+      name: 'etl.sql',
+      content: 'select 1',
+    })
+    const [url, init] = fetchMock.mock.calls[0] as unknown as [string, RequestInit]
+    expect(url).toBe('/api/v1/rebuild/resources/5/versions/2/content?project_id=1')
+    expect(init.method).toBe('GET')
+  })
+
+  it('appendResourceVersion posts multipart to /{id}/versions and maps the new version', async () => {
+    const fetchMock = stubFetchWithEnvelope({
+      resource_id: 5,
+      version: 3,
+      size_bytes: 12,
+      digest: 'ghi',
+      uploaded_at: '2026-10-29T00:00:00Z',
+    })
+    vi.stubGlobal('fetch', fetchMock)
+    await expect(
+      createResourceContract().appendResourceVersion({ projectId: 1, resourceId: 5, filename: 'etl.sql', content: 'select 1;' }),
+    ).resolves.toEqual({ resourceId: 5, version: 3, sizeBytes: 12, digest: 'ghi', uploadedAt: '2026-10-29T00:00:00Z' })
+    const [url, init] = fetchMock.mock.calls[0] as unknown as [string, RequestInit]
+    expect(url).toBe('/api/v1/rebuild/resources/5/versions')
+    expect(init.method).toBe('POST')
+    const form = init.body as FormData
+    expect(form instanceof FormData).toBe(true)
+    expect(form.get('project_id')).toBe('1')
+    const file = form.get('file') as File
+    expect(file.name).toBe('etl.sql')
+    expect(await file.text()).toBe('select 1;')
+    expect((init.headers as Record<string, string>)['Content-Type']).toBeUndefined()
+  })
+
+  it('checkResourceScript POSTs the snake body and maps syntax/references/run', async () => {
+    const fetchMock = stubFetchWithEnvelope({
+      kind: 'python',
+      syntax: {
+        status: 'error',
+        diagnostics: [{ source: 'syntax', code: 'PY_SYNTAX_ERROR', severity: 'error', line: 1, column: 1, message: 'invalid syntax' }],
+      },
+      references: [{ source: 'references', code: 'PY_IMPORT_UNRESOLVED', severity: 'warning', line: 2, column: 1, message: 'unknown module' }],
+      run: { executed: true, exit_code: 0, timed_out: false, timeout_seconds: 10, elapsed_ms: 42, stdout: 'ok\n', stderr: '' },
+    })
+    vi.stubGlobal('fetch', fetchMock)
+    const result = await createResourceContract().checkResourceScript({
+      projectId: 1,
+      resourceId: 5,
+      content: 'print(',
+      execute: true,
+      timeoutSeconds: 10,
+    })
+    expect(result.syntax.status).toBe('error')
+    expect(result.references[0]).toMatchObject({ code: 'PY_IMPORT_UNRESOLVED', severity: 'warning' })
+    expect(result.run).toMatchObject({ executed: true, exitCode: 0, elapsedMs: 42, stdout: 'ok\n' })
+    const [url, init] = fetchMock.mock.calls[0] as unknown as [string, RequestInit]
+    expect(url).toBe('/api/v1/rebuild/resources/5/script-checks')
+    expect(init.method).toBe('POST')
+    expect(JSON.parse(init.body as string)).toEqual({ project_id: 1, content: 'print(', execute: true, timeout_seconds: 10 })
   })
 
   it('RES_* business error on HTTP 400 keeps both httpStatus and the backend code', async () => {

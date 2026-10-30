@@ -184,16 +184,15 @@ describe('2-02 filterMenuGroups 组装（空组不渲染 + direct 断言 + futur
     expect(b!.items.map((i) => i.id)).toEqual(['task-center-entry'])
   })
 
-  it('decisionGate 未闭合的 formal 项（资源管理）即使批次开也不渲染空壳', () => {
+  it('脚本开发路由已注册时在数据集成组可见', () => {
     const view = filterMenuGroups(ctx({
-      registeredPaths: new Set(['/ds/list', '/res']),
+      registeredPaths: new Set(['/resources']),
       batchSwitches: { inc10: true },
       resolvedDecisionGates: new Set<string>(),
     }))
     const c = view.find((g) => g.group.id === 'integration')
     expect(c).toBeDefined()
-    expect(c!.items.map((i) => i.id)).toEqual(['ds-list'])
-    expect(c!.items.some((i) => i.id === 'resource-mgmt')).toBe(false)
+    expect(c!.items.map((i) => i.id)).toEqual(['resource-mgmt'])
   })
 
   it('future 四门未满足时「后续批次」组整组不渲染（0 项空壳禁止）', () => {
@@ -204,13 +203,13 @@ describe('2-02 filterMenuGroups 组装（空组不渲染 + direct 断言 + futur
     expect(view.find((g) => g.group.id === 'future')).toBeUndefined()
   })
 
-  it('数仓建模转正后进入数据开发组且不再进入 future 组', () => {
+  it('退役的数仓建模不再进入菜单组', () => {
     const view = filterMenuGroups(ctx({
       registeredRouteNames: new Set(['dwModeling']),
       previewAllowed: new Set(['dw-modeling']),
     }))
     expect(view.find((g) => g.group.id === 'future')).toBeUndefined()
-    expect(view.find((g) => g.group.id === 'development')?.items.map((i) => i.id)).toContain('dw-modeling')
+    expect(view.find((g) => g.group.id === 'development')).toBeUndefined()
   })
 
   it('embedded/disposition 非法项不因任何开关回流菜单（含 globalMounted 隔离）', () => {
@@ -226,8 +225,8 @@ describe('2-02 filterMenuGroups 组装（空组不渲染 + direct 断言 + futur
     expect(allIds).not.toContain('ai-assistant')
   })
 
-  it('H 全局挂载：AI 助手无未决门时可见（挂载结构归 2-05 AppShell）', () => {
+  it('退役的全局 AI 助手不再挂载', () => {
     const mounts = filterGlobalMounts(ctx({}))
-    expect(mounts.map((i) => i.id)).toEqual(['ai-assistant'])
+    expect(mounts).toEqual([])
   })
 })

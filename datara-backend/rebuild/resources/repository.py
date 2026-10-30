@@ -124,11 +124,9 @@ class ResourceRepository:
         validate_kind(kind)
         validate_filename(kind, filename)
         validate_size(len(content))
-        digest = hashlib.sha256(content).hexdigest()
         existing = self._session.scalar(
             select(ResourceRecord).where(ResourceRecord.project_id == project_id, ResourceRecord.name == filename)
         )
-        uploaded_at = datetime.now(timezone.utc)
         if existing is None:
             resource = ResourceRecord(project_id=project_id, name=filename, kind=kind, size_bytes=len(content), latest_version=1)
             self._session.add(resource)
@@ -144,6 +142,24 @@ class ResourceRepository:
             version_number = existing.latest_version + 1
             existing.latest_version = version_number
             existing.size_bytes = len(content)
+        return self._store_version(resource, version_number, content)
+
+    def append_version(self, project_id: int, resource_id: int, content: bytes) -> dict[str, Any]:
+        """Append one immutable version to an existing resource (edit flow).
+
+        Keyed by ``resource_id`` (not by filename), so an edited script can never
+        fork a duplicate resource when its name drifts from the stored one.
+        """
+        resource = self._resource(project_id, resource_id)
+        validate_size(len(content))
+        version_number = resource.latest_version + 1
+        resource.latest_version = version_number
+        resource.size_bytes = len(content)
+        return self._store_version(resource, version_number, content)
+
+    def _store_version(self, resource: ResourceRecord, version_number: int, content: bytes) -> dict[str, Any]:
+        digest = hashlib.sha256(content).hexdigest()
+        uploaded_at = datetime.now(timezone.utc)
         relative_path = version_filename(resource.id, version_number)
         absolute_path = os.path.join(storage_dir(), relative_path)
         os.makedirs(os.path.dirname(absolute_path), exist_ok=True)
@@ -166,6 +182,16 @@ class ResourceRepository:
             "size_bytes": len(content),
             "digest": digest,
             "uploaded_at": uploaded_at.isoformat().replace("+00:00", "Z"),
+        }
+
+    def get_resource_meta(self, project_id: int, resource_id: int) -> dict[str, Any]:
+        row = self._resource(project_id, resource_id)
+        return {
+            "resource_id": row.id,
+            "name": row.name,
+            "kind": row.kind,
+            "size_bytes": row.size_bytes,
+            "latest_version": row.latest_version,
         }
 
     # -- version chain ------------------------------------------------------
@@ -205,6 +231,17 @@ class ResourceRepository:
         if not os.path.isfile(path):
             raise ResourceDomainError("RES_VERSION_NOT_FOUND", f"resource {resource_id} version {version} content is missing", 404)
         return path, resource.name
+
+    def read_version_text(self, project_id: int, resource_id: int, version: int) -> dict[str, Any]:
+        """Read one immutable version as UTF-8 text (editor source of truth)."""
+        path, name = self.get_version_file(project_id, resource_id, version)
+        with open(path, "rb") as handle:
+            raw = handle.read()
+        try:
+            content = raw.decode("utf-8")
+        except UnicodeDecodeError:
+            raise ResourceDomainError("RES_CONTENT_ENCODING", "resource content is not valid UTF-8") from None
+        return {"resource_id": resource_id, "version": version, "name": name, "content": content}
 
     @staticmethod
     def _version_payload(row: ResourceVersionRecord) -> dict[str, Any]:

@@ -16,9 +16,6 @@
  */
 import { computed, ref, type Component } from 'vue'
 import TabsView from '../components/TabsView.vue'
-import LineageAnalysisView from './meta/LineageAnalysisView.vue'
-import AssetMapView from './meta/AssetMapView.vue'
-import MetadataCatalogView from './meta/MetadataCatalogView.vue'
 import TagManagementView from './meta/TagManagementView.vue'
 import StandardManagementView from './std/StandardManagementView.vue'
 import IndicatorListView from './ind/IndicatorListView.vue'
@@ -37,9 +34,6 @@ interface HubTab {
 
 /** 治理域 13 页签（顺序 = 全局菜单「数据治理」组序，0.4 §4.2） */
 const TABS: readonly HubTab[] = [
-  { id: 'lineage', label: '血缘分析', component: LineageAnalysisView },
-  { id: 'map', label: '资产地图', component: AssetMapView },
-  { id: 'catalog', label: '元数据目录', component: MetadataCatalogView },
   { id: 'tag', label: '标签管理', component: TagManagementView },
   { id: 'std', label: '标准管理', component: StandardManagementView },
   { id: 'ind-list', label: '指标目录', component: IndicatorListView },

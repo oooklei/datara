@@ -68,6 +68,27 @@ def test_login_cookie_restores_session_and_logout_clears_it():
     assert rejected.status_code == 401
 
 
+def test_switching_login_revokes_prior_browser_session_and_clears_ide_cookie():
+    with developer_client("sqlite+pysqlite:///:memory:") as client:
+        with client.app.state.session_factory() as session:
+            UserRepository(session).create(username="switch-admin", password=_TEST_PASSWORD, role=Role.ADMIN)
+            session.commit()
+        first = client.post("/api/v1/rebuild/login", json={"username": _TEST_USERNAME, "password": _TEST_PASSWORD})
+        old_token = first.json()["data"]["token"]
+        client.cookies.set("datara_dbx_ide", "old-ide-session", path="/ide/api")
+        second = client.post("/api/v1/rebuild/login", json={"username": "switch-admin", "password": _TEST_PASSWORD})
+        old = client.get("/api/v1/rebuild/session", headers={"Authorization": f"Bearer {old_token}"})
+        current = client.get("/api/v1/rebuild/session")
+        logout = client.post("/api/v1/rebuild/logout")
+    assert second.status_code == 200
+    assert old.status_code == 401
+    assert current.status_code == 200
+    assert current.json()["data"]["username"] == "switch-admin"
+    assert "datara_dbx_ide=" in second.headers.get("set-cookie", "")
+    assert "Max-Age=0" in second.headers.get("set-cookie", "")
+    assert "datara_dbx_ide=" in logout.headers.get("set-cookie", "")
+
+
 def test_active_token_storage_uses_digest_without_persisting_bearer_token():
     with developer_client("sqlite+pysqlite:///:memory:") as client:
         login = client.post("/api/v1/rebuild/login", json={"username": _TEST_USERNAME, "password": _TEST_PASSWORD})

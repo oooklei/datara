@@ -1,6 +1,7 @@
-import { flushPromises, mount } from '@vue/test-utils'
-import { afterEach, describe, expect, it, vi } from 'vitest'
+import { config, flushPromises, mount } from '@vue/test-utils'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import View from '../depops/RuntimeNodeView.vue'
+import { authAccount } from '../../services/rebuild/authApi'
 import type { RuntimeNode, RuntimeNodeDirListing } from '../../services/rebuild/runtimeNodeApi'
 
 // 契约工厂 mock：视图仅经 createRuntimeNodeContract().listRuntimeNodes()/lsRuntimeNodeDir() 取数（验收 ①）
@@ -25,7 +26,17 @@ const node = (over: Partial<RuntimeNode> = {}): RuntimeNode => ({
 
 const listing = (path: string, entries: RuntimeNodeDirListing['entries']): RuntimeNodeDirListing => ({ path, entries })
 
-afterEach(() => vi.clearAllMocks())
+afterEach(() => {
+  vi.clearAllMocks()
+  authAccount.value = null
+})
+
+// 部署运维子导航使用 RouterLink；无 router 装配时全局 stub 为普通 <a>（沿用 systemAdminView 既有范式）
+beforeEach(() => {
+  config.global.stubs = { RouterLink: { template: '<a><slot /></a>' } }
+  // DepOpsSubNav 的 monitor 入口受 monitor:read 门禁；注入 admin 登录态使七项子导航齐备
+  authAccount.value = { id: 1, username: 'admin', role: 'admin' }
+})
 
 describe('运行时节点组件段（IMPL-v4-17，无路由直挂）', () => {
   it('renders the node list with full nine-field coverage and honest — for nulls', async () => {
@@ -56,6 +67,23 @@ describe('运行时节点组件段（IMPL-v4-17，无路由直挂）', () => {
     expect(b.find('[data-node-user]').text()).toBe('—')
     expect(b.find('[data-node-dir]').text()).toBe('—')
     expect(b.find('[data-node-heartbeat]').text()).toBe('—')
+  })
+
+  it('exposes the deployment-ops sub navigation so SSH credential maintenance is reachable', () => {
+    const w = mount(View)
+    const items = w.findAll('[data-sub-nav-item]')
+    expect(items.map((i) => i.attributes('data-sub-nav-item'))).toEqual([
+      'runtime',
+      'monitor',
+      'ssh',
+      'worker-group',
+      'environment',
+      'queue',
+      'cluster',
+      'resource-file',
+      'task-group',
+    ])
+    expect(items[2]!.attributes('to')).toBe('/dep/ssh')
   })
 
   it('shows the empty state when no nodes are registered', async () => {
@@ -101,6 +129,31 @@ describe('运行时节点组件段（IMPL-v4-17，无路由直挂）', () => {
     expect(w.find('[data-node="2"]').exists()).toBe(true)
     // 红线：无定时轮询（仅挂载 1 次 + 手动 1 次）
     expect(listRuntimeNodes).toHaveBeenCalledTimes(2)
+  })
+
+  it('filters by type and status facets derived from the actual payload', async () => {
+    listRuntimeNodes.mockResolvedValue([
+      node(),
+      node({ id: 2, name: 'beta', kind: 'master', status: 'offline' }),
+      node({ id: 3, name: 'gamma', kind: '远程', status: 'online' }),
+    ])
+    const w = mount(View)
+    await flushPromises()
+    // 选项取自实际数据，不硬编码枚举
+    const kinds = w.findAll('[data-facet-kind]').map((b) => b.attributes('data-facet-kind'))
+    expect(kinds).toEqual(['', 'master', 'worker', '远程'])
+    const statuses = w.findAll('[data-facet-status]').map((b) => b.attributes('data-facet-status'))
+    expect(statuses).toEqual(['', 'offline', 'online'])
+    // 类型筛选
+    await w.find('[data-facet-kind="worker"]').trigger('click')
+    expect(w.findAll('[data-node]').map((r) => r.attributes('data-node'))).toEqual(['1'])
+    // 状态叠加筛选
+    await w.find('[data-facet-status="offline"]').trigger('click')
+    expect(w.findAll('[data-node]').length).toBe(0)
+    expect(w.text()).toContain('无匹配节点')
+    // 回到全部
+    await w.find('[data-facet-kind=""]').trigger('click')
+    expect(w.findAll('[data-node]').map((r) => r.attributes('data-node'))).toEqual(['2'])
   })
 
   it('browses a node directory over SFTP and walks into a sub-directory', async () => {

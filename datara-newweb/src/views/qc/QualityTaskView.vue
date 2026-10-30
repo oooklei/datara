@@ -2,7 +2,7 @@
   <main class="pg" aria-label="检查任务">
     <header class="pg-head">
       <h1 class="sec-head">检查任务</h1>
-      <p class="pg-desc">质量规则执行记录。structural 口径下行级四字段恒 0，本页只呈现结构与状态，不推断行级结果。</p>
+      <p class="pg-desc">质量规则执行记录。DBX 运行显示实查行数；未绑定连接的结构校验不产生行级结论。</p>
     </header>
 
     <div class="toolbar">
@@ -60,7 +60,7 @@
     </div>
 
     <p v-if="projectId !== null" class="lock-tip" role="note" data-structural-note>
-      structural 口径：执行仅做结构谓词校验，行级四字段恒 0；行级采样需绑定数据源。
+      仅 DBX 运行记录包含实查行数；结构校验记录的计数为 0。
     </p>
   </main>
 </template>
@@ -141,10 +141,13 @@ const STATUS_CLASS: Record<QualityRunStatus, string> = {
 }
 const statusClass = (s: QualityRunStatus): string => STATUS_CLASS[s] ?? 'st-gray'
 
-/** structural 摘要文案：engine + message + 命中禁用词；不含行级计数。 */
+/** 结构校验不推断行级结果；DBX 运行使用持久化计数。 */
 const summaryText = (run: QualityRunRecord): string => {
-  const issues = run.summary.issues.length ? `；命中禁用词：${run.summary.issues.join('、')}` : ''
-  return `${run.summary.engine}：${run.summary.message}${issues}`
+  const issues = run.summary.issues.length ? `；命中禁用词：${run.summary.issues.map(item => typeof item === 'string' ? item : item.code).join('、')}` : ''
+  const counts = run.summary.engine === 'dbx'
+    ? `；检查 ${run.checkedRows} 行，通过 ${run.successRows} 行，不合规则 ${run.failedRows} 行`
+    : ''
+  return `${run.summary.engine}：${run.summary.message}${issues}${counts}`
 }
 
 const message = (e: unknown): string => (e instanceof Error ? e.message : String(e))

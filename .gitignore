@@ -28,6 +28,8 @@ __pycache__/
 
 # 调试截图与临时文件
 *.png
+_tmp_*
+deploy/dbx/dist-*/
 # 验收证据截图（exec-plan 证据目录白名单；B6 视口实测存证）
 !docs/evidence/**/*.png
 p0_dump.txt

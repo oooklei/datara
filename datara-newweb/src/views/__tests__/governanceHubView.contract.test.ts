@@ -10,7 +10,7 @@ describe('project governance hub', () => {
 
     const tabs = wrapper.findAll('[role="tab"]')
     expect(tabs.map((tab) => tab.attributes('data-tab-id'))).toEqual([
-      'lineage', 'map', 'catalog', 'tag', 'std',
+      'tag', 'std',
       'ind-list', 'ind-board', 'ind-consistency',
       'qc-rule', 'qc-task', 'qc-exception', 'qc-report', 'qc-alarm',
     ])

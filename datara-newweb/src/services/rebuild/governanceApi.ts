@@ -17,10 +17,8 @@
  *   `alias_generator`（api.py L119-124 `QualityRuleInput` 为 snake_case），
  *   故 wire 词形唯一为 snake_case。
  *
- * structural 语义红线（验收 ④；后端 L1755-1757 注释 + L1785-1793 实现）：
- *   run 端点只做**结构谓词校验**，`checked_rows/success_rows/failed_rows/skipped_rows`
- *   四字段**恒 0**，`summary.engine` 恒为 `"structural"`；行级采样需绑定数据源，属后续增量。
- *   前端**不得**把四字段渲染成真实行级结果，也不得据 `summary` 推导未返回的行级语义。
+ * 未绑定 DBX 连接的资产仍只做结构校验，行级计数为 0；绑定后的运行
+ * 返回 DBX 实查计数。前端按 summary.engine 区分两种结果。
  */
 
 import { camelToSnake, snakeToCamel } from './adapterKit'
@@ -57,14 +55,15 @@ export interface QualityRuleRecord {
   updatedAt: string | null
 }
 
-/** 运行摘要（structural 引擎：`issues` 为命中的禁用词列表，恒为数组）。 */
+/** 运行摘要：结构校验或 DBX 行级检查。 */
 export interface QualityRunSummary {
-  engine: 'structural'
+  engine: 'structural' | 'dbx'
   message: string
-  issues: string[]
+  issues: Array<string | { code: string; pattern: string }>
+  connectionId?: string
 }
 
-/** 运行记录（行级四字段恒 0，见文件头 structural 红线）。 */
+/** 运行记录：只有 DBX 引擎的行级计数可作业务数据检查结果。 */
 export interface QualityRunRecord {
   id: number
   assetId: number
@@ -184,6 +183,7 @@ export interface AssetRecord {
   ownerName: string
   domainName: string
   rowCount: number | null
+  dbxConnectionId?: string | null
   createdAt: string | null
   updatedAt: string | null
   tags?: AssetTag[]
@@ -228,6 +228,13 @@ export interface GovernanceTagDefinition {
   description: string
   createdAt: string | null
   updatedAt: string | null
+}
+
+export interface GovernanceTagPage {
+  total: number
+  page: number
+  pageSize: number
+  list: GovernanceTagDefinition[]
 }
 
 export interface TagDraft {
@@ -309,6 +316,7 @@ export interface MetricPage {
 export const QUALITY_PERMISSION_MATRIX = Object.freeze({
   listRules: 'VIEW_ALL',
   createRule: 'EDIT_DEFINITION',
+  updateRule: 'EDIT_DEFINITION',
   runRule: 'EDIT_DEFINITION',
   listRuns: 'VIEW_ALL',
 } as const satisfies Record<string, QualityRulePermission>)
@@ -395,7 +403,22 @@ export const governanceApi = {
     return snakeToCamel(data) as AssetRecord
   },
 
+  async bindAssetDbxConnection(projectId: number, assetId: number, connectionId: string | null): Promise<AssetRecord> {
+    const data = await putJson<unknown>(
+      `${BASE}/projects/${projectId}/assets/${assetId}/dbx-binding`,
+      { connection_id: connectionId }, PRESERVE_ERROR,
+    )
+    return snakeToCamel(data) as AssetRecord
+  },
+
   /* ---------- 标签 ---------- */
+  async listTags(projectId: number, page = 1, pageSize = 200): Promise<GovernanceTagPage> {
+    const data = await getJson<unknown>(
+      `${BASE}/projects/${projectId}/tags`, { page, pageSize }, PRESERVE_ERROR,
+    )
+    return snakeToCamel(data) as GovernanceTagPage
+  },
+
   async createTag(projectId: number, draft: TagDraft): Promise<GovernanceTagDefinition> {
     const data = await postJson<unknown>(`${BASE}/projects/${projectId}/tags`, camelToSnake(draft), PRESERVE_ERROR)
     return snakeToCamel(data) as GovernanceTagDefinition
@@ -492,6 +515,15 @@ export const governanceApi = {
   async createRule(projectId: number, draft: QualityRuleDraft): Promise<QualityRuleRecord> {
     const data = await postJson<unknown>(
       `${BASE}/projects/${projectId}/quality-rules`,
+      camelToSnake(draft),
+      PRESERVE_ERROR,
+    )
+    return snakeToCamel(data) as QualityRuleRecord
+  },
+
+  async updateRule(projectId: number, ruleId: number, draft: QualityRuleDraft): Promise<QualityRuleRecord> {
+    const data = await putJson<unknown>(
+      `${BASE}/projects/${projectId}/quality-rules/${ruleId}`,
       camelToSnake(draft),
       PRESERVE_ERROR,
     )

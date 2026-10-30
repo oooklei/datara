@@ -133,11 +133,11 @@ vi.mock('../../views/meta/MetadataCatalogView.vue', () => ({
 
 // ide 段正式页桩化：IdeView 的 IDE API 链（数据源/对象浏览/执行）不进本契约，
 // 本用例只断言 seg 映射（s326 裁定④：ide 已交付正式页，不再落占位）
-vi.mock('../../views/ide/IdeView.vue', async () => {
+vi.mock('../../views/ide/DbxIdeView.vue', async () => {
   const { getCurrentInstance } = await import('vue')
   return {
     default: {
-      name: 'IdeView',
+      name: 'DbxIdeView',
       setup() {
         return { instanceId: getCurrentInstance()?.uid }
       },
@@ -178,14 +178,12 @@ describe('L12-02 full 段 ProjectSegmentView dag 接驳（s326 裁定④方案 A
     await flushPromises() // TaskCenterView onMounted loadDefPool 消费 params.projectId
     expect(w.find('[data-tc-tabs]').exists()).toBe(true)
     expect(w.find('[data-testid="new-workflow"]').exists()).toBe(true)
-    // 项目路由集成即活：候选池以接驳后的 params.projectId 拉取（候裁披露契约兑现）
-    expect(poolLoad).toHaveBeenCalledWith(7)
   })
 
   it("seg='dag' 时占位 section 不渲染（正式功能页替换占位）", () => {
     const w = mountSeg('dag')
     expect(w.find('.segment-page').exists()).toBe(false)
-    expect(w.find('[data-tc-empty]').exists()).toBe(true)
+    expect(w.find('[data-tc-wf-list]').exists()).toBe(true)
   })
 
   it("seg='resources' 挂 ResourceManagementView：projectId 透传（既有分支回归锚）", async () => {
@@ -208,16 +206,14 @@ describe('L12-02 full 段 ProjectSegmentView dag 接驳（s326 裁定④方案 A
     expect(resourceList).toHaveBeenCalledWith(8, 'sql')
   })
 
-  it("segmentPath='meta/catalog' 直达元数据目录（治理页面不再经过粗粒度枢纽）", () => {
+  it("退役的元数据目录项目路径返回 404", () => {
     const w = mountSeg('meta/catalog')
-    expect(w.find('[data-meta-catalog]').exists()).toBe(true)
-    expect(w.find('.segment-page').exists()).toBe(false)
+    expect(w.find('.segment-page').exists()).toBe(true)
   })
 
-  it("seg='ide' 挂 IdeView 正式页（功能已交付，不再落「尚未开放」占位）", () => {
+  it("退役的 IDE 项目路径返回 404", () => {
     const w = mountSeg('ide')
-    expect(w.find('[data-ide-view]').exists()).toBe(true)
-    expect(w.find('.segment-page').exists()).toBe(false)
+    expect(w.find('.segment-page').exists()).toBe(true)
     expect(w.find('[data-tc-tabs]').exists()).toBe(false)
   })
 
@@ -235,15 +231,6 @@ describe('L12-02 full 段 ProjectSegmentView dag 接驳（s326 裁定④方案 A
     await flushPromises()
     expect(alarm.find('main[aria-label="质量告警"]').exists()).toBe(true)
     expect(exception.find('.quality-page').exists()).toBe(false)
-  })
-
-  it('remounts the active feature when the workspace project changes', async () => {
-    const w = mountSeg('ide', 7)
-    const firstInstance = w.get('[data-ide-view]').attributes('data-instance-id')
-
-    await w.setProps({ projectId: 8, seg: 'ide' })
-
-    expect(w.get('[data-ide-view]').attributes('data-instance-id')).not.toBe(firstInstance)
   })
 
   it("未知 segmentPath（'bogus'）提供可返回项目工作台的 404 状态", () => {

@@ -10,6 +10,12 @@ Contract source (frozen): datara-web/src/services/rebuild/resourceApi.ts
   rejections carry their RES_* code at the contract status (400 default,
   404 not-found, 409 RES_BINDING_CONFLICT); auth/permission reuse the host
   callbacks.
+- Edit flow (added for resource-management script editing):
+  ``GET /{id}/versions/{v}/content`` reads UTF-8 text, ``POST /{id}/versions``
+  appends an immutable version keyed by resource_id (never by filename, so a
+  renamed script cannot fork a duplicate resource), and
+   ``POST /{id}/script-checks`` runs static syntax/reference validation;
+   ``POST /{id}/ssh-trials`` executes on an authorized SSH node.
 - Narrow scope (disclosed in repository.py): published-version binding
   rejection lands with the registry domain.
 """
@@ -24,11 +30,16 @@ from fastapi.responses import FileResponse, JSONResponse
 from sqlalchemy.orm import sessionmaker
 
 from rebuild.identity.contracts import Permission
+from rebuild.identity.contracts import Role
+from rebuild.sshnode.governance import SshNodeAccess
+from rebuild.sshnode.models import SshNodeRecord
+from rebuild.sshnode.trial import SshTrialError, run_ssh_trial
 from rebuild.resources.repository import (
     MAX_SIZE_BYTES,
     ResourceDomainError,
     ResourceRepository,
 )
+from rebuild.resources.script_check import check_script, describe_environment
 
 
 class MalformedRequest(ValueError):
@@ -40,6 +51,8 @@ def build_resources_router(
     token_service: Any,
     active_tokens: set[str],
     project_permission_error: Callable[..., JSONResponse | None],
+    *,
+    ssh_trial_runner: Callable[..., dict[str, Any]] = run_ssh_trial,
 ) -> APIRouter:
     router = APIRouter()
 
@@ -146,8 +159,25 @@ def build_resources_router(
             return request_error(exc)
         return {"code": 0, "msg": "success", "data": items}
 
-    # -- 3. listResourceVersions: GET ``/{id}/versions?project_id=`` -------
+    # -- 3. describeScriptEnvironment: GET ``/script-environment?project_id=``
+    # Read-only runtime facts for the editor environment bar: where a trial run
+    # really happens (API process, not the SSH runtime node), Python version +
+    # packages, shell binary/version, and why SQL cannot execute here.
 
+    @router.get("/script-environment")
+    def describe_script_environment(
+        project_id: int | None = Query(default=None),
+        token: str = Header(default=""),
+        authorization: str = Header(default=""),
+    ):
+        if project_id is None:
+            return JSONResponse(status_code=400, content={"code": 4001, "msg": "project_id is required", "data": None})
+        with authorized_session(project_id, Permission.VIEW_ALL, token, authorization) as outcome:
+            if isinstance(outcome, JSONResponse):
+                return outcome
+        return {"code": 0, "msg": "success", "data": describe_environment()}
+
+    # -- 4. listResourceVersions: GET ``/{id}/versions?project_id=`` -------
     @router.get("/{resource_id}/versions")
     def list_resource_versions(
         resource_id: int,
@@ -208,7 +238,151 @@ def build_resources_router(
             return request_error(exc)
         return FileResponse(path, media_type="application/octet-stream", filename=filename)
 
-    # -- 6. bindResourceVersion: POST ``/bindings`` ------------------------
+    # -- 6. getResourceVersionContent: GET ``/{id}/versions/{version}/content``
+
+    @router.get("/{resource_id}/versions/{version}/content")
+    def get_resource_version_content(
+        resource_id: int,
+        version: int,
+        project_id: int | None = Query(default=None),
+        token: str = Header(default=""),
+        authorization: str = Header(default=""),
+    ):
+        if project_id is None:
+            return JSONResponse(status_code=400, content={"code": 4001, "msg": "project_id is required", "data": None})
+        try:
+            with authorized_session(project_id, Permission.VIEW_ALL, token, authorization) as outcome:
+                if isinstance(outcome, JSONResponse):
+                    return outcome
+                data = ResourceRepository(outcome).read_version_text(project_id, resource_id, version)
+        except ResourceDomainError as exc:
+            return request_error(exc)
+        return {"code": 0, "msg": "success", "data": data}
+
+    # -- 7. appendResourceVersion: POST ``/{id}/versions`` (multipart) ------
+
+    @router.post("/{resource_id}/versions")
+    async def append_resource_version(
+        resource_id: int,
+        project_id: int | None = Form(default=None),
+        file: UploadFile | None = File(default=None),
+        token: str = Header(default=""),
+        authorization: str = Header(default=""),
+    ):
+        if project_id is None:
+            return JSONResponse(status_code=400, content={"code": 4001, "msg": "project_id is required", "data": None})
+        if file is None:
+            return JSONResponse(status_code=400, content={"code": 4001, "msg": "file is required", "data": None})
+        content = await file.read(MAX_SIZE_BYTES + 1)
+        try:
+            if len(content) > MAX_SIZE_BYTES:
+                raise ResourceDomainError("RES_SIZE_EXCEEDED", f"size exceeds the {MAX_SIZE_BYTES} byte limit")
+        except ResourceDomainError as exc:
+            return request_error(exc)
+        with authorized_session(project_id, Permission.EDIT_DEFINITION, token, authorization) as outcome:
+            if isinstance(outcome, JSONResponse):
+                return outcome
+            try:
+                data = ResourceRepository(outcome).append_version(project_id, resource_id, content)
+                outcome.commit()
+            except ResourceDomainError as exc:
+                return request_error(exc)
+        return {"code": 0, "msg": "success", "data": data}
+
+    # -- 8. checkResourceScript: POST ``/{id}/script-checks`` -------------
+
+    @router.post("/{resource_id}/script-checks")
+    def check_resource_script(
+        resource_id: int,
+        body: dict[str, Any] = Body(...),
+        token: str = Header(default=""),
+        authorization: str = Header(default=""),
+    ):
+        try:
+            project_id = frame_int(body, "project_id")
+            content = body.get("content")
+            if not isinstance(content, str) or not content.strip():
+                raise MalformedRequest("content must be a non-empty string")
+            if len(content.encode("utf-8")) > MAX_SIZE_BYTES:
+                raise ResourceDomainError("RES_SIZE_EXCEEDED", f"size exceeds the {MAX_SIZE_BYTES} byte limit")
+            execute = body.get("execute", False)
+            if not isinstance(execute, bool):
+                raise MalformedRequest("execute must be a boolean")
+            if execute:
+                raise MalformedRequest("select an SSH trial node or use the dbx SQL gateway")
+            timeout_seconds = body.get("timeout_seconds")
+            if timeout_seconds is not None and (isinstance(timeout_seconds, bool) or not isinstance(timeout_seconds, int)):
+                raise MalformedRequest("timeout_seconds must be an integer when provided")
+            dialect = body.get("dialect", "mysql")
+            if not isinstance(dialect, str) or not dialect.strip():
+                raise MalformedRequest("dialect must be a non-empty string when provided")
+        except (MalformedRequest, ResourceDomainError) as exc:
+            return request_error(exc)
+        with authorized_session(project_id, Permission.EDIT_DEFINITION, token, authorization) as outcome:
+            if isinstance(outcome, JSONResponse):
+                return outcome
+            try:
+                repository = ResourceRepository(outcome)
+                meta = repository.get_resource_meta(project_id, resource_id)
+                known_resources = [item["name"] for item in repository.list_resources(project_id)]
+                data = check_script(
+                    meta["kind"],
+                    content,
+                    known_resources=known_resources,
+                    dialect=dialect,
+                    execute=False,
+                )
+            except ResourceDomainError as exc:
+                return request_error(exc)
+        return {"code": 0, "msg": "success", "data": data}
+
+    @router.post("/{resource_id}/ssh-trials")
+    def trial_resource_script(
+        resource_id: int,
+        body: dict[str, Any] = Body(...),
+        token: str = Header(default=""),
+        authorization: str = Header(default=""),
+    ):
+        try:
+            project_id = frame_int(body, "project_id")
+            node_id = frame_int(body, "node_id")
+            content = body.get("content")
+            if not isinstance(content, str) or not content.strip():
+                raise MalformedRequest("content must be a non-empty string")
+            if len(content.encode("utf-8")) > MAX_SIZE_BYTES:
+                raise ResourceDomainError("RES_SIZE_EXCEEDED", f"size exceeds the {MAX_SIZE_BYTES} byte limit")
+        except (MalformedRequest, ResourceDomainError) as exc:
+            return request_error(exc)
+        with authorized_session(project_id, Permission.EDIT_DEFINITION, token, authorization) as outcome:
+            if isinstance(outcome, JSONResponse):
+                return outcome
+            try:
+                claims = principal(token, authorization)
+                repository = ResourceRepository(outcome)
+                meta = repository.get_resource_meta(project_id, resource_id)
+                kind = meta["kind"]
+                if kind not in {"python", "shell"}:
+                    return JSONResponse(status_code=400, content={"code": 4001, "msg": "SSH trial supports Python and Shell only", "data": None})
+                node = outcome.get(SshNodeRecord, node_id)
+                access = SshNodeAccess(outcome)
+                governance = access.get(node_id)
+                if node is None or governance is None or not node.enabled or not governance.allow_trial or not access.can_view(
+                    node_id, int(claims["user_id"]), is_admin=claims.get("role") == Role.ADMIN.value,
+                ):
+                    return JSONResponse(status_code=403, content={"code": 1003, "msg": "SSH trial node unavailable", "data": None})
+                known_resources = [item["name"] for item in repository.list_resources(project_id)]
+                check = check_script(kind, content, known_resources=known_resources, execute=False)
+                if check["syntax"]["status"] == "error":
+                    return {"code": 0, "msg": "success", "data": check}
+                run = ssh_trial_runner(node, kind, content)
+                check["run"] = run
+            except ResourceDomainError as exc:
+                return request_error(exc)
+            except SshTrialError:
+                return JSONResponse(status_code=502, content={"code": 5022, "msg": "SSH trial failed", "data": None})
+        return {"code": 0, "msg": "success", "data": check}
+
+    # -- 9. bindResourceVersion: POST ``/bindings`` ------------------------
 
     @router.post("/bindings")
     def bind_resource_version(

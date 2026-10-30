@@ -50,6 +50,12 @@ export interface MenuGroupConfig {
   foldable?: boolean
   defaultFolded?: boolean
   /**
+   * 2026-10-29 用户裁定：菜单组归属位置。
+   * - 'sidebar'（缺省）：左侧导航渲染；
+   * - 'topbar'：顶级入口，由顶栏右上角图标按钮承载（部署运维 / 系统管理），不进左侧导航。
+   */
+  placement?: 'sidebar' | 'topbar'
+  /**
    * 增2-建3 / R2 预留：项目作用域维度（0.8 L109 项目管理不入 A–G 组，进入项目后再渲染项目内菜单）。
    * 仅预留字段不实现项目逻辑，归增量 3.3 消费。
    */
@@ -80,6 +86,8 @@ export const menuGroups: readonly MenuGroupConfig[] = [
   {
     id: 'overview',
     label: '总览',
+    foldable: true,
+    defaultFolded: true,
     items: [
       {
         id: 'workbench',
@@ -107,20 +115,32 @@ export const menuGroups: readonly MenuGroupConfig[] = [
         batch: 'inc4',
         source: '§4.2 B 行；旧 routes.ts L12 已实证；工作流/运行实例/调度/变量/依赖均在任务中心内部承载',
       },
+      {
+        id: 'task-group',
+        label: '任务组管理',
+        icon: '⧗',
+        path: '/task-group',
+        disposition: 'formal',
+        batch: 'inc17',
+        source: '2026-10-29 dbx 统一目标设计 §10.10 R8（必须）；项目级任务组，节点表单「任务组名称/组内优先级」下拉来源',
+      },
     ],
   },
   {
     id: 'integration',
     label: '数据集成',
+    foldable: true,
+    defaultFolded: true,
     items: [
       {
-        id: 'ds-list',
-        label: '数据源管理',
-        icon: '⛁',
-        path: '/ds/list',
+        id: 'dbx-sql-ide',
+        label: 'SQL IDE',
+        icon: '⌘',
+        path: '/ide',
+        routeName: 'dbx-sql-ide',
         disposition: 'formal',
-        batch: 'inc10',
-        source: '§4.2 C 行；旧 routes.ts L38 已实证',
+        batch: 'inc14',
+        source: 'dbx SQL IDE 已有集成入口，按用户最新裁定保留',
       },
       {
         id: 'sync-task',
@@ -140,7 +160,7 @@ export const menuGroups: readonly MenuGroupConfig[] = [
         id: 'resource-mgmt',
         path: '/resources',
         routeName: 'resource-mgmt',
-        label: '资源管理',
+        label: '脚本开发',
         icon: '⚑',
         disposition: 'formal',
         batch: 'inc10',
@@ -149,61 +169,12 @@ export const menuGroups: readonly MenuGroupConfig[] = [
     ],
   },
   {
-    id: 'development',
-    label: '数据开发',
-    items: [
-      {
-        id: 'sql-ide',
-        label: '数据开发IDE',
-        icon: '⌨',
-        path: '/ide',
-        disposition: 'formal',
-        batch: 'inc11',
-        source: '§4.2 D 行；旧 routes.ts L52 已实证；I5 只读态可按交付批次启用（0.8 §3 L100）',
-      },
-      {
-        id: 'dw-modeling',
-        label: '数仓建模',
-        icon: '▤',
-        path: '/model/list',
-        routeName: 'dwModeling',
-        disposition: 'formal',
-        batch: 'inc17',
-        source: '§4.2 D 行；增量 17 模型 API 与新前端管理页已接线（2026-10-25）',
-      },
-    ],
-  },
-  {
     id: 'governance',
     label: '数据治理',
+    // 2026-10-29 用户裁定：数据治理组默认收拢（13 项占屏过高），点击组标题展开
+    foldable: true,
+    defaultFolded: true,
     items: [
-      {
-        id: 'meta-lineage',
-        label: '血缘分析',
-        icon: '⇶',
-        path: '/meta/lineage',
-        disposition: 'formal',
-        batch: 'inc14',
-        source: '§4.2 E 行；旧 routes.ts L21-34 已实证',
-      },
-      {
-        id: 'meta-map',
-        label: '资产地图',
-        icon: '◉',
-        path: '/meta/map',
-        disposition: 'formal',
-        batch: 'inc14',
-        source: '§4.2 E 行；旧 routes.ts L21-34 已实证',
-      },
-      {
-        id: 'meta-catalog',
-        label: '元数据目录',
-        icon: '☰',
-        path: '/meta/catalog',
-        disposition: 'formal',
-        batch: 'inc14',
-        source: '§4.2 E 行；旧 routes.ts L21-34 已实证',
-      },
       {
         id: 'meta-tag',
         label: '标签',
@@ -299,6 +270,8 @@ export const menuGroups: readonly MenuGroupConfig[] = [
   {
     id: 'operations',
     label: '部署运维',
+    // 2026-10-29 用户裁定：顶级入口，由顶栏右上角图标按钮承载，不进左侧导航
+    placement: 'topbar',
     items: [
       {
         id: 'dep-runtime',
@@ -312,12 +285,13 @@ export const menuGroups: readonly MenuGroupConfig[] = [
       },
       {
         id: 'dep-monitor',
-        label: '集群监控',
+        label: '监控中心',
         icon: '◈',
         path: '/dep/monitor',
         routeName: 'depMonitor',
         disposition: 'formal',
         batch: 'inc17',
+        permission: 'monitor:read',
         source: '§4.2 F 行；STATE S175/S179 裁定纳入增量 17（0.8 §3 L104）；routeName 为 R-29 字段预留',
       },
       {
@@ -330,11 +304,63 @@ export const menuGroups: readonly MenuGroupConfig[] = [
         batch: 'inc17',
         source: '增量 17 P4 SSH 节点迁移；页面与新后端已联调',
       },
+      {
+        id: 'dep-worker-group',
+        label: 'Worker 分组',
+        icon: '⛭',
+        path: '/dep/worker-group',
+        routeName: 'dep-worker-group',
+        disposition: 'formal',
+        batch: 'inc17',
+        source: '2026-10-29 dbx 统一目标设计 §10.10 R1（必须）；写门禁 EDIT_DEFINITION，按 owner 隔离',
+      },
+      {
+        id: 'dep-environment',
+        label: '环境管理',
+        icon: '⌸',
+        path: '/dep/environment',
+        routeName: 'dep-environment',
+        disposition: 'formal',
+        batch: 'inc17',
+        source: '2026-10-29 dbx 统一目标设计 §10.10 R2（必须）；写门禁 EDIT_DEFINITION，按 owner 隔离',
+      },
+      {
+        id: 'dep-queue',
+        label: 'Yarn 队列',
+        icon: '⧉',
+        path: '/dep/queue',
+        routeName: 'dep-queue',
+        disposition: 'formal',
+        batch: 'inc17',
+        source: '2026-10-29 dbx 统一目标设计 §10.10 R3（条件必须，保留入口）；全局资源配置，写门禁 MANAGE_USER（admin-only）',
+      },
+      {
+        id: 'dep-cluster',
+        label: '集群管理',
+        icon: '⛁',
+        path: '/dep/cluster',
+        routeName: 'dep-cluster',
+        disposition: 'formal',
+        batch: 'inc17',
+        source: '2026-10-29 dbx 统一目标设计 §10.10 R4（条件必须）；K8s 命名空间跟随集群管理（R5 不单列），写门禁 MANAGE_USER',
+      },
+      {
+        id: 'dep-resource-file',
+        label: '资源文件',
+        icon: '⌗',
+        path: '/dep/resource-file',
+        routeName: 'dep-resource-file',
+        disposition: 'formal',
+        batch: 'inc17',
+        source: '2026-10-29 dbx 统一目标设计 §10.10 R9；全局文件树，写门禁 EDIT_DEFINITION，按 owner 隔离',
+      },
     ],
   },
   {
     id: 'system',
     label: '系统管理',
+    // 2026-10-29 用户裁定：顶级入口，由顶栏右上角图标按钮承载，不进左侧导航
+    placement: 'topbar',
     items: [
       {
         id: 'sec-perm',
@@ -387,17 +413,6 @@ export const menuGroups: readonly MenuGroupConfig[] = [
         decisionGate: 'api-call-log-form',
         source: '§4.3 #14 并入 #12；独立页签/附属列未确认前禁止恢复独立菜单（0.8 §4 L128）',
       },
-      {
-        id: 'llm-config',
-        path: '/open/llm',
-        routeName: 'open-llm',
-        label: 'LLM 模型配置',
-        icon: '◍',
-        disposition: 'formal',
-        batch: 'inc15',
-        permission: 'security:manage',
-        source: '§4.2 G 行；0.8 §3 L109 已登记 G 组随增量 15 实现，本方案不为其编造路径',
-      },
     ],
   },
   {
@@ -414,12 +429,4 @@ export const menuGroups: readonly MenuGroupConfig[] = [
  * 挂载点位于认证后全局应用布局、与 <RouterView /> 同级，不增加一级菜单；
  * 挂载结构归 AppShell（票 2-05），本处仅登记配置语义行。
  */
-export const globalMountedItems: readonly MenuItemConfig[] = [
-  {
-    id: 'ai-assistant',
-    label: 'AI 助手',
-    icon: '✧',
-    disposition: 'embedded',
-    source: '§4.2 H 行 + §4.5；AppShell 全局挂载、单实例、登录页不挂载（0.8 §6 L182-189；增量 1 占位 / 增量 15 激活）',
-  },
-]
+export const globalMountedItems: readonly MenuItemConfig[] = []

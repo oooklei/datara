@@ -31,7 +31,8 @@ describe('UX v3：项目工作区路由', () => {
     for (const item of PROJECT_MENU_ITEMS) {
       const resolved = router.resolve(projectItemPath(33, item))
       expect(resolved.matched.length, item.id).toBeGreaterThan(0)
-      expect(resolved.name, item.id).toBe(item.path === '/' ? 'project-workbench' : 'project-segment')
+      const expected = item.path === '/' ? 'project-workbench' : item.path === '/ide' ? 'project-dbx-sql-ide' : 'project-segment'
+      expect(resolved.name, item.id).toBe(expected)
     }
   })
 

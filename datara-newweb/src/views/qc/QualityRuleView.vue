@@ -2,7 +2,7 @@
   <main class="pg" aria-label="质量规则">
     <header class="pg-head">
       <h1 class="sec-head">质量规则</h1>
-      <p class="pg-desc">按数据资产维护质量规则并执行结构校验；行级结果需绑定数据源，属后续批次。</p>
+      <p class="pg-desc">按数据资产维护质量规则；绑定可见的 DBX 连接后执行行级检查。</p>
     </header>
 
     <div class="toolbar">
@@ -55,6 +55,7 @@
             <td><span class="st" :class="rule.enabled ? 'st-green' : 'st-gray'"><span class="dot"></span>{{ rule.enabled ? '启用' : '停用' }}</span></td>
             <td>{{ rule.updatedAt || rule.createdAt || '—' }}</td>
             <td class="actions">
+              <button type="button" class="op-btn" data-edit :disabled="saving" @click="openEdit(rule)">编辑</button>
               <button type="button" class="op-btn" data-run :disabled="running === rule.id" @click="run(rule)">
                 {{ running === rule.id ? '执行中…' : '执行' }}
               </button>
@@ -67,16 +68,27 @@
 
     <p v-if="runMessage" class="result-line" role="status" data-run-result>{{ runMessage }}</p>
     <p v-if="projectId !== null" class="lock-tip" role="note" data-structural-note>
-      structural 口径：执行仅做结构谓词校验，行级四字段恒 0；行级采样需绑定数据源。
+      未绑定 DBX 连接的资产仅做结构校验，行级计数为 0；已绑定资产显示实际检查计数。
     </p>
 
     <div v-if="editing" class="mask" @click.self="closeEditor">
-      <form ref="ruleDlgRef" class="dlg" role="dialog" aria-modal="true" aria-label="新建质量规则" :style="ruleDragStyle" @submit.prevent="save">
-        <div ref="ruleHdRef" class="dlg-hd" @pointerdown="onRuleDragStart">新建质量规则<button type="button" class="x" aria-label="关闭" @click="closeEditor">×</button></div>
+      <form ref="ruleDlgRef" class="dlg" role="dialog" aria-modal="true" :aria-label="editingRuleId === null ? '新建质量规则' : '编辑质量规则'" :style="ruleDragStyle" @submit.prevent="save">
+        <div ref="ruleHdRef" class="dlg-hd" @pointerdown="onRuleDragStart">{{ editingRuleId === null ? '新建质量规则' : '编辑质量规则' }}<button type="button" class="x" aria-label="关闭" @click="closeEditor">×</button></div>
         <div class="dlg-bd">
           <div class="form-grid">
             <label class="f-item"><span>名称</span><input v-model.trim="draft.name" required maxlength="128" data-name :disabled="saving"></label>
-            <label class="f-item"><span>资产 ID</span><input v-model.number="draft.assetId" type="number" min="1" required data-asset-input :disabled="saving"></label>
+            <label class="f-item"><span>数据资产</span>
+              <select v-model.number="draft.assetId" required data-asset-input :disabled="saving" @change="syncAssetConnection">
+                <option :value="0" disabled>选择数据资产</option>
+                <option v-for="asset in assets" :key="asset.id" :value="asset.id">{{ asset.databaseName }}.{{ asset.assetName }} (#{{ asset.id }})</option>
+              </select>
+            </label>
+            <label class="f-item"><span>检查连接</span>
+              <select v-model="selectedConnectionId" data-dbx-connection :disabled="saving || draft.assetId < 1">
+                <option value="">仅结构校验</option>
+                <option v-for="connection in connections" :key="connection.id" :value="connection.id">{{ connection.name }}</option>
+              </select>
+            </label>
             <label class="f-item full"><span>表达式</span><textarea v-model.trim="draft.expression" required data-expr-input :disabled="saving"></textarea></label>
             <label class="f-item"><span>严重级</span>
               <select v-model="draft.severity" data-severity-select :disabled="saving">
@@ -103,14 +115,12 @@
 /**
  * 质量五项批 A · 质量规则页（IMPL-v4-07，`/qc/rule`）。
  *
- * 契约面：`governanceApi`（quality-rules 列表 / 创建 / 执行）。
+ * 契约面：`governanceApi`（quality-rules 列表 / 创建 / 编辑 / 执行）。
  * 项目上下文：`/qc/rule` 为全局模式路由（AppShell 项目模式仅覆盖 `/p/` 前缀），
  *   故项目段从 `route.params.projectId` 或 `route.query.projectId` 承接；
  *   两者皆空时呈现选择器，不渲染空壳。
  *
- * structural 红线（验收 ④）：执行结果只呈现后端 `summary` 与 `status`，
- *   **不**渲染 `checkedRows/successRows/failedRows/skippedRows` 为行级结论——
- *   该四字段在后端恒 0（api.py L1785-1793），行级采样属后续增量。
+ * 结构校验记录不表示业务数据通过；仅 DBX 引擎记录展示实查计数。
  *
  * 样式范式：复用全局设计系统（`.pg`/`.panel`/`.tbl`/`.pill`/`.op-btn`/`.tb-new`
  *   + `var(--*)` 令牌），与旧前端 datara-web QcRuleView 的
@@ -122,11 +132,13 @@ import { useDraggable } from '../../composables/useDraggable'
 import {
   QUALITY_STRUCTURAL_ONLY,
   governanceApi,
+  type AssetRecord,
   type QualityRuleDraft,
   type QualityRuleRecord,
   type QualitySeverity,
 } from '../../services/rebuild/governanceApi'
 import { listProjects, type ProjectSummary } from '../../services/rebuild/projectApi'
+import { createDbxContract, type DbxConnection } from '../../services/rebuild/dbxApi'
 
 const route = useRoute()
 const router = useRouter()
@@ -134,6 +146,9 @@ const router = useRouter()
 const projects = ref<ProjectSummary[]>([])
 const selected = ref('')
 const rules = ref<QualityRuleRecord[]>([])
+const assets = ref<AssetRecord[]>([])
+const connections = ref<DbxConnection[]>([])
+const selectedConnectionId = ref('')
 const filterKeyword = ref('')
 /** D13 列表搜索：前端过滤 name/assetId/expression，不触发后端。 */
 const filteredRules = computed(() => {
@@ -151,6 +166,7 @@ const error = ref('')
 const runMessage = ref('')
 const running = ref<number | null>(null)
 const editing = ref(false)
+const editingRuleId = ref<number | null>(null)
 
 /* G14 §2.2：弹窗默认可拖动 + 视口钳制 + 位置记忆（把手=标题栏） */
 const ruleDlgRef = ref<HTMLFormElement | null>(null)
@@ -213,10 +229,48 @@ async function reload(): Promise<void> {
   }
 }
 
+async function loadEditorOptions(): Promise<void> {
+  if (projectId.value === null) return
+  try {
+    const assetPage = await governanceApi.listAssets(projectId.value, { pageSize: 200 })
+    assets.value = assetPage.list
+    syncAssetConnection()
+  } catch (e) {
+    error.value = message(e)
+  }
+  try {
+    connections.value = await createDbxContract(projectId.value).listConnections()
+    if (selectedConnectionId.value && !connections.value.some(connection => connection.id === selectedConnectionId.value)) {
+      selectedConnectionId.value = ''
+    }
+  } catch (e) {
+    connections.value = []
+    error.value = message(e)
+  }
+}
+
+function syncAssetConnection(): void {
+  selectedConnectionId.value = assets.value.find(asset => asset.id === draft.assetId)?.dbxConnectionId ?? ''
+}
+
 function openCreate(): void {
   saving.value = false
+  editingRuleId.value = null
   Object.assign(draft, { assetId: 0, name: '', expression: '', severity: 'warning', enabled: true })
+  selectedConnectionId.value = ''
   editing.value = true
+  void loadEditorOptions()
+}
+
+function openEdit(rule: QualityRuleRecord): void {
+  saving.value = false
+  editingRuleId.value = rule.id
+  Object.assign(draft, {
+    assetId: rule.assetId, name: rule.name, expression: rule.expression,
+    severity: rule.severity, enabled: rule.enabled,
+  })
+  editing.value = true
+  void loadEditorOptions()
 }
 
 function closeEditor(): void {
@@ -228,7 +282,15 @@ async function save(): Promise<void> {
   saving.value = true
   error.value = ''
   try {
-    await governanceApi.createRule(projectId.value, { ...draft })
+    const currentConnection = assets.value.find(asset => asset.id === draft.assetId)?.dbxConnectionId ?? ''
+    if (selectedConnectionId.value !== currentConnection) {
+      await governanceApi.bindAssetDbxConnection(projectId.value, draft.assetId, selectedConnectionId.value || null)
+    }
+    if (editingRuleId.value === null) {
+      await governanceApi.createRule(projectId.value, { ...draft })
+    } else {
+      await governanceApi.updateRule(projectId.value, editingRuleId.value, { ...draft })
+    }
     editing.value = false
     await reload()
   } catch (e) {
@@ -238,7 +300,7 @@ async function save(): Promise<void> {
   }
 }
 
-/** 执行规则：只回显后端 structural 口径的 status/summary，不渲染行级结论。 */
+/** 仅对 DBX 执行结果展示真实计数；结构校验不推断行级结论。 */
 async function run(rule: QualityRuleRecord): Promise<void> {
   if (projectId.value === null) return
   running.value = rule.id
@@ -247,8 +309,11 @@ async function run(rule: QualityRuleRecord): Promise<void> {
   let failure = ''
   try {
     const result = await governanceApi.runRule(projectId.value, rule.id)
-    const issues = result.summary.issues.length ? `；命中禁用词：${result.summary.issues.join('、')}` : ''
-    runMessage.value = `规则「${rule.name}」执行完成：${result.status}；${result.summary.message}${issues}（${QUALITY_STRUCTURAL_ONLY.engine} 引擎，行级四字段恒 0）`
+    const issues = result.summary.issues.length ? `；命中禁用词：${result.summary.issues.map(item => typeof item === 'string' ? item : item.code).join('、')}` : ''
+    const counts = result.summary.engine === 'dbx'
+      ? `；检查 ${result.checkedRows} 行，通过 ${result.successRows} 行，不合规则 ${result.failedRows} 行`
+      : `（${QUALITY_STRUCTURAL_ONLY.engine} 引擎，未检查业务数据）`
+    runMessage.value = `规则「${rule.name}」执行完成：${result.status}；${result.summary.message}${issues}${counts}`
   } catch (e) {
     failure = message(e)
   } finally {

@@ -33,16 +33,16 @@ describe('15.1-C PermissionMatrixView 权限矩阵只读页', () => {
     })
   })
 
-  it('行数 = 32 权限点，行序与 data-perm 词形锚与 PERMISSION_ORDER 一致', () => {
+  it('行数 = 33 权限点，行序与 data-perm 词形锚与 PERMISSION_ORDER 一致', () => {
     const rows = w.findAll('tbody tr')
-    expect(rows).toHaveLength(32)
+    expect(rows).toHaveLength(33)
     rows.forEach((row, i) => {
       expect(row.attributes('data-perm')).toBe(PERMISSION_ORDER[i])
       expect(row.find('[data-perm-code]').text()).toBe(PERMISSION_ORDER[i])
     })
   })
 
-  it('单元格授权态与冻结矩阵逐格一致（32×4=128 格 data-granted 全校验）', () => {
+  it('单元格授权态与冻结矩阵逐格一致（33×4=132 格 data-granted 全校验）', () => {
     const rows = w.findAll('tbody tr')
     for (const p of PERMISSION_ORDER) {
       const row = rows.find((r) => r.attributes('data-perm') === p)!
@@ -76,6 +76,6 @@ describe('15.1-C PermissionMatrixView 权限矩阵只读页', () => {
   it('页面零网络依赖：渲染产物不含任何 loading/alert 网络三态（静态只读页）', () => {
     expect(w.find('[role="status"]').exists()).toBe(false)
     expect(w.find('[role="alert"]').exists()).toBe(false)
-    expect(ROLE_PERMISSIONS.admin).toHaveLength(32)
+    expect(ROLE_PERMISSIONS.admin).toHaveLength(33)
   })
 })

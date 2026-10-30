@@ -28,6 +28,14 @@ class ProjectDatasourceRepository:
             )
         )
 
+    def find_by_name(self, project_id: int, name: str) -> ProjectDatasourceRecord | None:
+        return self._session.scalar(
+            select(ProjectDatasourceRecord).where(
+                ProjectDatasourceRecord.project_id == project_id,
+                ProjectDatasourceRecord.name == name.strip(),
+            )
+        )
+
     def create(self, project_id: int, draft: DataSourceDraft) -> ProjectDatasourceRecord:
         record = ProjectDatasourceRecord(
             project_id=project_id,

@@ -21,6 +21,7 @@ function stubFetchWith(status: number, body: unknown): ReturnType<typeof vi.fn> 
 afterEach(() => {
   vi.unstubAllGlobals()
   clearToken()
+  authApi.authAccount.value = null
 })
 
 describe('I1 authApi contract (POST /api/v1/rebuild/login)', () => {
@@ -39,6 +40,28 @@ describe('I1 authApi contract (POST /api/v1/rebuild/login)', () => {
 
     expect(account).toEqual({ id: 7, username: 'analyst', role: 'operator' })
     expect(fetchMock).toHaveBeenCalledWith('/api/v1/rebuild/session', expect.objectContaining({ method: 'GET' }))
+  })
+
+  it('旧账号会话查询晚于 admin 登录返回时，不覆盖 admin 权限身份', async () => {
+    let finishOldSession!: (response: Response) => void
+    const fetchMock = vi.fn()
+      .mockImplementationOnce(() => new Promise<Response>((resolve) => { finishOldSession = resolve }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({
+        code: 0,
+        data: { token: 'admin-token', user: { id: 1, username: 'admin', role: 'admin' } },
+      }), { status: 200 }))
+    vi.stubGlobal('fetch', fetchMock)
+    setToken('zhangsan-token')
+    const staleSession = authApi.currentSession()
+    await login('admin', 'secret')
+    finishOldSession(new Response(JSON.stringify({
+      code: 0,
+      data: { id: 7, username: 'zhangsan', role: 'developer' },
+    }), { status: 200 }))
+
+    await expect(staleSession).rejects.toThrow('会话已切换')
+    expect(authApi.authAccount.value).toEqual({ id: 1, username: 'admin', role: 'admin' })
+    expect(getToken()).toBe('admin-token')
   })
 
   it('login POSTs anonymous {username,password}, keeps token in memory only, unwraps account', async () => {

@@ -84,8 +84,8 @@
     </div>
 
     <div v-if="detail" class="drawer-mask" @click.self="closeDetail">
-      <aside class="drawer" role="dialog" aria-modal="true" aria-label="指标详情">
-        <div class="drawer-hd">{{ detail.name }}<button type="button" class="x" aria-label="关闭" @click="closeDetail">×</button></div>
+      <aside ref="detailRef" class="drawer" role="dialog" aria-modal="true" aria-label="指标详情" :style="detailStyle">
+        <div class="drawer-hd drag-handle" @pointerdown="onDetailDragStart">{{ detail.name }}<button type="button" class="x" aria-label="关闭" @click="closeDetail">×</button></div>
         <div class="drawer-bd">
           <div class="kv">
             <span class="k">id</span><span class="v mono">{{ detail.id }}</span>
@@ -129,7 +129,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, nextTick, onMounted, reactive, ref } from 'vue'
+import { computed, nextTick, onMounted, reactive, ref, type CSSProperties } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useDraggable } from '../../composables/useDraggable'
 import FilterPanel, { type Facet } from '../../components/FilterPanel.vue'
@@ -155,6 +155,15 @@ const dlgEl = ref<HTMLFormElement | null>(null)
 /* G14 §2.2：弹窗默认可拖动 + 视口钳制 + 位置记忆（把手=标题栏，复用 dlgEl 作面板） */
 const dlgHdEl = ref<HTMLElement | null>(null)
 const { dragStyle: dlgDragStyle, onHandlePointerdown: onDlgDragStart } = useDraggable(dlgEl, dlgHdEl, { storageKey: 'ind.create' })
+/* D9：右侧详情抽屉同样可拖动。抽屉 CSS 为 top:0/right:0/bottom:0，拖拽定位后解除 right/bottom 约束，
+   高度按 top 反推，避免上下双锚导致抽屉被压缩或溢出视口。 */
+const detailRef = ref<HTMLElement | null>(null)
+const { dragStyle: detailDragStyle, onHandlePointerdown: onDetailDragStart } = useDraggable(detailRef, detailRef, { storageKey: 'ind.detail' })
+const detailStyle = computed<CSSProperties>(() => {
+  const base = detailDragStyle.value
+  if (!base.position) return base
+  return { ...base, right: 'auto', bottom: 'auto', height: `calc(100vh - ${base.top})` }
+})
 /** 错误框「重试」绑定操作：按错误来源设定（默认重载列表，保存失败时重试保存） */
 const retry = ref<() => void>(() => reload)
 const form = reactive({
@@ -273,4 +282,6 @@ async function save(): Promise<void> {
 
 <style scoped>
 .ind-actions{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.drag-handle{cursor:grab;user-select:none}
+.drag-handle:active{cursor:grabbing}
 </style>

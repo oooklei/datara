@@ -36,12 +36,11 @@ function flatItems(): { item: MenuItemConfig; groupId: string }[] {
 }
 
 describe('2-01 菜单配置契约（0.8 §7 测试集 1：§4.2 逐行有且唯一）', () => {
-  it('组序列 = 七组 A–G + future 机制组，顺序与 id 冻结（0.8 L47-49）', () => {
+  it('dbx 统一后菜单组顺序稳定', () => {
     expect(allGroups.map((g) => g.id)).toEqual([
       'overview',
       'task-center',
       'integration',
-      'development',
       'governance',
       'operations',
       'system',
@@ -66,21 +65,21 @@ describe('2-01 菜单配置契约（0.8 §7 测试集 1：§4.2 逐行有且唯�
     const g = allGroups.find((x) => x.id === 'task-center')!
     expect(g.label).toBe('')
     expect(g.direct).toBe(true)
-    expect(g.items.map((i) => i.id)).toEqual(['task-center-entry'])
+    expect(g.items.map((i) => i.id)).toEqual(['task-center-entry', 'task-group'])
     expect(g.items[0]).toMatchObject({ label: '任务中心', path: '/dag', disposition: 'formal', batch: 'inc4' })
   })
 
-  it('C 组 数据集成：资源管理已完成路由闭环，四项唯一落位（0.8 §3 L96-99）', () => {
+  it('C 组 数据集成：脚本开发入口', () => {
     const g = allGroups.find((x) => x.id === 'integration')!
     expect(g.label).toBe('数据集成')
     const byId = Object.fromEntries(g.items.map((i) => [i.id, i]))
-    expect(Object.keys(byId).sort()).toEqual(['ds-list', 'resource-mgmt', 'stream-process', 'sync-task'].sort())
-    expect(byId['ds-list']).toMatchObject({ label: '数据源管理', path: '/ds/list', disposition: 'formal', batch: 'inc10' })
+    expect(Object.keys(byId).sort()).toEqual(['dbx-sql-ide', 'resource-mgmt', 'stream-process', 'sync-task'].sort())
+    expect(byId['dbx-sql-ide']).toMatchObject({ label: 'SQL IDE', path: '/ide', disposition: 'formal' })
     expect(byId['sync-task']).toMatchObject({ label: '同步任务', disposition: 'embedded' })
     expect(byId['sync-task'].path).toBeUndefined()
     expect(byId['stream-process']).toMatchObject({ label: '流数据处理', disposition: 'embedded' })
     expect(byId['resource-mgmt']).toMatchObject({
-      label: '资源管理',
+      label: '脚本开发',
       path: '/resources',
       routeName: 'resource-mgmt',
       disposition: 'formal',
@@ -89,13 +88,8 @@ describe('2-01 菜单配置契约（0.8 §7 测试集 1：§4.2 逐行有且唯�
     expect(byId['resource-mgmt'].decisionGate).toBeUndefined()
   })
 
-  it('D 组 数据开发：SQL IDE 与数仓建模均正式开放', () => {
-    const g = allGroups.find((x) => x.id === 'development')!
-    const byId = Object.fromEntries(g.items.map((i) => [i.id, i]))
-    expect(Object.keys(byId).sort()).toEqual(['dw-modeling', 'sql-ide'].sort())
-    expect(byId['sql-ide']).toMatchObject({ label: '数据开发IDE', path: '/ide', disposition: 'formal', batch: 'inc11' })
-    expect(byId['dw-modeling']).toMatchObject({ label: '数仓建模', path: '/model/list', disposition: 'formal', batch: 'inc17' })
-    expect(byId['dw-modeling'].routeName).toBe('dwModeling')
+  it('旧数据开发组已退役', () => {
+    expect(allGroups.find((x) => x.id === 'development')).toBeUndefined()
   })
 
   it('E 组 数据治理：五个质量页面均正式开放', () => {
@@ -104,9 +98,6 @@ describe('2-01 菜单配置契约（0.8 §7 测试集 1：§4.2 逐行有且唯�
     const formal = g.items.filter((i) => i.disposition === 'formal')
     const future = g.items.filter((i) => i.disposition === 'future')
     expect(formal.map((i) => i.path)).toEqual([
-      '/meta/lineage',
-      '/meta/map',
-      '/meta/catalog',
       '/meta/tag',
       '/std/element',
       '/ind/list',
@@ -121,22 +112,27 @@ describe('2-01 菜单配置契约（0.8 §7 测试集 1：§4.2 逐行有且唯�
     expect(future).toEqual([])
   })
 
-  it('F 组 部署运维：运行节点、集群监控与 SSH 节点均正式开放（S175/S179；0.8 §3 L104）', () => {
+  it('F 组 部署运维：运行节点、集群监控、SSH 节点与 §10.10 四类资源配置均正式开放（S175/S179；0.8 §3 L104）', () => {
     const g = allGroups.find((x) => x.id === 'operations')!
     expect(g.label).toBe('部署运维')
     expect(g.items.map((i) => [i.id, i.path, i.disposition, i.batch])).toEqual([
       ['dep-runtime', '/dep/runtime', 'formal', 'inc17'],
       ['dep-monitor', '/dep/monitor', 'formal', 'inc17'],
       ['dep-ssh', '/dep/ssh', 'formal', 'inc17'],
+      ['dep-worker-group', '/dep/worker-group', 'formal', 'inc17'],
+      ['dep-environment', '/dep/environment', 'formal', 'inc17'],
+      ['dep-queue', '/dep/queue', 'formal', 'inc17'],
+      ['dep-cluster', '/dep/cluster', 'formal', 'inc17'],
+      ['dep-resource-file', '/dep/resource-file', 'formal', 'inc17'],
     ])
   })
 
-  it('G 组 系统管理：脱敏按裁定移除，其余 6 项唯一落位', () => {
+  it('G 组 系统管理：保留权限、审计与开放能力', () => {
     const g = allGroups.find((x) => x.id === 'system')!
     expect(g.label).toBe('系统管理')
     const byId = Object.fromEntries(g.items.map((i) => [i.id, i]))
     expect(Object.keys(byId).sort()).toEqual(
-      ['sec-perm', 'sec-audit', 'open-api', 'open-key', 'api-call-log', 'llm-config'].sort(),
+      ['sec-perm', 'sec-audit', 'open-api', 'open-key', 'api-call-log'].sort(),
     )
     expect(byId['sec-perm']).toMatchObject({ label: '权限管理', path: '/sec/perm', disposition: 'formal', batch: 'inc15' })
     expect(byId['sec-audit']).toMatchObject({ label: '访问审计', path: '/sec/audit', disposition: 'formal', batch: 'inc15' })
@@ -146,14 +142,6 @@ describe('2-01 菜单配置契约（0.8 §7 测试集 1：§4.2 逐行有且唯�
     expect(byId['api-call-log']).toMatchObject({ label: '调用日志', disposition: 'embedded' })
     expect(byId['api-call-log'].decisionGate).toBe('api-call-log-form')
     expect(byId['api-call-log'].path).toBeUndefined()
-    expect(byId['llm-config']).toMatchObject({
-      label: 'LLM 模型配置',
-      path: '/open/llm',
-      routeName: 'open-llm',
-      disposition: 'formal',
-      batch: 'inc15',
-    })
-    expect(byId['llm-config'].decisionGate).toBeUndefined()
   })
 
   it('future 机制组：固定配置 foldable/defaultFolded，静态 items 空（0.8 §5.1；机制归 2-02/2-04）', () => {
@@ -164,9 +152,8 @@ describe('2-01 菜单配置契约（0.8 §7 测试集 1：§4.2 逐行有且唯�
     expect(g.items).toEqual([])
   })
 
-  it('H 全局挂载：AI 助手 embedded 唯一登记，无菜单组（0.8 §3 L107）', () => {
-    expect(globalMountedItems).toHaveLength(1)
-    expect(globalMountedItems[0]).toMatchObject({ id: 'ai-assistant', label: 'AI 助手', disposition: 'embedded' })
+  it('全局 AI 助手已退役', () => {
+    expect(globalMountedItems).toHaveLength(0)
   })
 })
 
@@ -190,7 +177,7 @@ describe('2-01 配置纪律（0.8 L57-68 字段规则）', () => {
     expect(cjk).toEqual([])
   })
 
-  it('27 个正式菜单项均提供非空图标字形', () => {
+  it('正式菜单项均提供非空图标字形', () => {
     const formals = rows.filter((r) => r.item.disposition === 'formal')
     expect(formals).toHaveLength(27)
     expect(formals.filter((r) => !r.item.icon?.trim()).map((r) => r.item.id)).toEqual([])

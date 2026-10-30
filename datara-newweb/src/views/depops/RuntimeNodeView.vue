@@ -6,6 +6,7 @@
     </header>
 
     <div class="toolbar">
+      <DepOpsSubNav />
       <span class="spacer"></span>
       <button type="button" class="op-btn" data-refresh :disabled="listBusy" @click="reload">刷新</button>
     </div>
@@ -34,6 +35,32 @@
         <span class="pill info">{{ visibleNodes.length }}</span>
         <input v-model.trim="filterKeyword" data-filter-keyword placeholder="搜索名称、类型或主机">
         <span class="spacer"></span>
+      </div>
+      <div class="facets" data-facets>
+        <span class="facet-label">类型</span>
+        <div class="seg" role="group" aria-label="按类型筛选">
+          <button type="button" :class="{ on: kindFilter === '' }" data-facet-kind="" @click="kindFilter = ''">全部</button>
+          <button
+            v-for="kind in kindOptions"
+            :key="kind"
+            type="button"
+            :class="{ on: kindFilter === kind }"
+            :data-facet-kind="kind"
+            @click="kindFilter = kind"
+          >{{ kind }}</button>
+        </div>
+        <span class="facet-label">状态</span>
+        <div class="seg" role="group" aria-label="按状态筛选">
+          <button type="button" :class="{ on: statusFilter === '' }" data-facet-status="" @click="statusFilter = ''">全部</button>
+          <button
+            v-for="status in statusOptions"
+            :key="status"
+            type="button"
+            :class="{ on: statusFilter === status }"
+            :data-facet-status="status"
+            @click="statusFilter = status"
+          >{{ status }}</button>
+        </div>
       </div>
       <table class="tbl" data-node-list>
         <thead>
@@ -128,6 +155,7 @@
  *   + `var(--*)` 令牌），与旧前端 datara-web 节点页的 `.card.panel` + `table.tbl` 范式对齐。
  */
 import { computed, onMounted, ref } from 'vue'
+import DepOpsSubNav from '../../components/DepOpsSubNav.vue'
 import {
   createRuntimeNodeContract,
   type RuntimeNode,
@@ -139,14 +167,28 @@ const runtime = createRuntimeNodeContract()
 
 const nodes = ref<RuntimeNode[]>([])
 const filterKeyword = ref('')
+/** 类型/状态分面：选项取自实际数据，避免硬编码与后端枚举漂移。 */
+const kindFilter = ref('')
+const statusFilter = ref('')
+const kindOptions = computed(() =>
+  [...new Set(nodes.value.map((row) => row.kind ?? '').filter((v) => v !== ''))].sort(),
+)
+const statusOptions = computed(() =>
+  [...new Set(nodes.value.map((row) => row.status ?? '').filter((v) => v !== ''))].sort(),
+)
 /** D13 列表搜索：前端过滤 name/kind/host，不触发后端。 */
 const visibleNodes = computed(() => {
   const keyword = filterKeyword.value.toLowerCase()
-  if (keyword === '') return nodes.value
-  return nodes.value.filter((row) =>
-    row.name.toLowerCase().includes(keyword) ||
-    (row.kind ?? '').toLowerCase().includes(keyword) ||
-    (row.host ?? '').toLowerCase().includes(keyword))
+  return nodes.value.filter((row) => {
+    if (kindFilter.value !== '' && (row.kind ?? '') !== kindFilter.value) return false
+    if (statusFilter.value !== '' && (row.status ?? '') !== statusFilter.value) return false
+    if (keyword === '') return true
+    return (
+      row.name.toLowerCase().includes(keyword) ||
+      (row.kind ?? '').toLowerCase().includes(keyword) ||
+      (row.host ?? '').toLowerCase().includes(keyword)
+    )
+  })
 })
 const selectedId = ref<number | null>(null)
 const requestedPath = ref('')
@@ -251,4 +293,6 @@ onMounted(reload)
 /* 仅保留交互态着色；版式/令牌一律走全局设计系统（.pg/.panel/.tbl/.code-chip） */
 .tbl tbody tr { cursor: pointer; }
 .tbl tbody tr[data-selected='true'] { background: var(--primary-light); }
+.facets { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; padding: 8px 12px; border-bottom: 1px solid var(--border); }
+.facet-label { font-size: 11px; color: var(--text-3); font-weight: 600; }
 </style>

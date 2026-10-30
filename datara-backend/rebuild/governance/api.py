@@ -67,9 +67,12 @@ from rebuild.governance.legacy_i20_importer import execute_i20_legacy_import
 from rebuild.governance.legacy_i21_importer import execute_i21_legacy_import
 from rebuild.governance.legacy_i22_importer import execute_i22_legacy_import
 from rebuild.governance.check_engines import run_all_checks
+from rebuild.governance.quality_dbx import QualityPredicateError, compile_quality_count_query, parse_quality_counts
+from rebuild.dbx.access import DbxConnectionAccess
+from rebuild.dbx.client import DbxClient, DbxError
 from rebuild.governance.migration_checkpoints import CheckpointConflict
 from rebuild.governance.snapshot_repository import LegacyI18TargetSnapshotRepository
-from rebuild.identity.contracts import Permission
+from rebuild.identity.contracts import Permission, Role
 from rebuild.identity.models import UserRecord
 from rebuild.project.models import ProjectRecord
 
@@ -96,6 +99,14 @@ class AssetInput(BaseModel):
     domain_name: str = Field(default="", max_length=128)
     row_count: int | None = Field(default=None, ge=0)
     fields: list[AssetFieldInput] = Field(default_factory=list)
+
+
+class AssetDbxBindingInput(BaseModel):
+    connection_id: str | None = Field(default=None, min_length=1, max_length=128)
+
+
+class AssetFieldsInput(BaseModel):
+    fields: list[AssetFieldInput] = Field(min_length=1, max_length=1000)
 
 
 class TagInput(BaseModel):
@@ -208,6 +219,7 @@ def build_governance_router(
     legacy_i20_import_enabled: bool = False,
     legacy_i21_import_enabled: bool = False,
     legacy_i22_import_enabled: bool = False,
+    dbx_client_factory: Callable[[], DbxClient] = DbxClient,
 ) -> APIRouter:
     router = APIRouter(prefix="/api/v1/rebuild/governance", tags=["rebuild-governance"])
 
@@ -1303,6 +1315,7 @@ def build_governance_router(
             "owner_name": asset.owner_name,
             "domain_name": asset.domain_name,
             "row_count": asset.row_count,
+            "dbx_connection_id": json.loads(asset.properties_json or "{}").get("dbx_connection_id"),
             "created_at": stamp(asset.created_at),
             "updated_at": stamp(asset.updated_at),
             "tags": [tag_payload(tag) for tag in tags],
@@ -1411,6 +1424,96 @@ def build_governance_router(
             session.refresh(asset)
             return {"code": 0, "msg": "success", "data": asset_payload(session, asset, detail=True)}
 
+    @router.put("/projects/{project_id}/assets/{asset_id}/dbx-binding")
+    def bind_asset_dbx_connection(
+        project_id: int, asset_id: int, body: AssetDbxBindingInput, authorization: str = Header(default=""),
+    ):
+        user = authenticate(authorization)
+        if isinstance(user, JSONResponse):
+            return user
+        with session_factory() as session:
+            permitted = project_permission(session, project_id, user, Permission.EDIT_DEFINITION)
+            if isinstance(permitted, JSONResponse):
+                return permitted
+            asset = session.scalar(select(AssetRecord).where(
+                AssetRecord.id == asset_id, AssetRecord.project_id == project_id,
+            ))
+            if asset is None:
+                return fail(404, 4041, "asset not found in project")
+            access = DbxConnectionAccess(session)
+            visible = access.visible_ids(
+                project_id=project_id, user_id=int(user["user_id"]),
+                is_admin=user.get("role") == Role.ADMIN.value,
+            )
+            if body.connection_id and body.connection_id not in visible and user.get("role") == Role.ADMIN.value:
+                if int(user["user_id"]) < 1:
+                    return fail(403, 1003, "a persistent admin account must claim the dbx connection")
+                try:
+                    remote_ids = {str(item.get("id")) for item in dbx_client_factory().list_connections()}
+                except DbxError:
+                    return fail(503, 5031, "dbx unavailable")
+                if body.connection_id in remote_ids:
+                    try:
+                        access.claim(
+                            connection_id=body.connection_id, project_id=project_id,
+                            owner_id=int(user["user_id"]),
+                        )
+                        visible.add(body.connection_id)
+                    except PermissionError:
+                        pass
+            if body.connection_id is not None and body.connection_id not in visible:
+                return fail(403, 1003, "dbx connection is not visible in project")
+            before = json.loads(asset.properties_json or "{}").get("dbx_connection_id")
+            properties = json.loads(asset.properties_json or "{}")
+            if body.connection_id is None:
+                properties.pop("dbx_connection_id", None)
+            else:
+                properties["dbx_connection_id"] = body.connection_id
+            asset.properties_json = json.dumps(properties, ensure_ascii=False, separators=(",", ":"))
+            write_audit(
+                session, user=user, project_id=project_id, action="asset.dbx_binding.update",
+                resource_type="asset", resource_id=str(asset.id),
+                after={"before": before, "connection_id": body.connection_id},
+            )
+            session.commit()
+            session.refresh(asset)
+            return {"code": 0, "msg": "success", "data": asset_payload(session, asset, detail=True)}
+
+    @router.put("/projects/{project_id}/assets/{asset_id}/fields")
+    def replace_asset_fields(
+        project_id: int, asset_id: int, body: AssetFieldsInput, authorization: str = Header(default=""),
+    ):
+        user = authenticate(authorization)
+        if isinstance(user, JSONResponse):
+            return user
+        names = [field.field_name.lower() for field in body.fields]
+        positions = [field.ordinal_position for field in body.fields]
+        if len(names) != len(set(names)) or len(positions) != len(set(positions)):
+            return fail(400, 4001, "asset field names and positions must be unique")
+        with session_factory() as session:
+            permitted = project_permission(session, project_id, user, Permission.EDIT_DEFINITION)
+            if isinstance(permitted, JSONResponse):
+                return permitted
+            asset = session.scalar(select(AssetRecord).where(
+                AssetRecord.id == asset_id, AssetRecord.project_id == project_id,
+            ))
+            if asset is None:
+                return fail(404, 4041, "asset not found in project")
+            previous = session.scalars(select(AssetFieldRecord).where(AssetFieldRecord.asset_id == asset_id)).all()
+            for field in previous:
+                session.delete(field)
+            session.flush()
+            for field in body.fields:
+                session.add(AssetFieldRecord(asset_id=asset_id, **field.model_dump()))
+            write_audit(
+                session, user=user, project_id=project_id, action="asset.fields.replace",
+                resource_type="asset", resource_id=str(asset_id),
+                after={"previous_fields": [field.field_name for field in previous],
+                       "fields": [field.field_name for field in body.fields]},
+            )
+            session.commit()
+            return {"code": 0, "msg": "success", "data": asset_payload(session, asset, detail=True)}
+
     @router.get("/projects/{project_id}/assets")
     def list_assets(
         project_id: int,
@@ -1506,6 +1609,31 @@ def build_governance_router(
                 return fail(409, 4091, "tag identity already exists")
             session.refresh(tag)
             return {"code": 0, "msg": "success", "data": tag_payload(tag)}
+
+    @router.get("/projects/{project_id}/tags")
+    def list_tags(
+        project_id: int,
+        page: int = Query(default=1, ge=1),
+        page_size: int = Query(default=50, ge=1, le=200),
+        authorization: str = Header(default=""),
+    ):
+        user = authenticate(authorization)
+        if isinstance(user, JSONResponse):
+            return user
+        with session_factory() as session:
+            permitted = project_permission(session, project_id, user, Permission.VIEW_ALL)
+            if isinstance(permitted, JSONResponse):
+                return permitted
+            query = select(GovernanceTagRecord).where(GovernanceTagRecord.project_id == project_id)
+            total = session.scalar(select(func.count()).select_from(query.subquery())) or 0
+            rows = session.scalars(
+                query.order_by(GovernanceTagRecord.namespace, GovernanceTagRecord.tag_key)
+                .offset((page - 1) * page_size).limit(page_size)
+            ).all()
+            return {"code": 0, "msg": "success", "data": {
+                "total": total, "page": page, "page_size": page_size,
+                "list": [tag_payload(tag) for tag in rows],
+            }}
 
     @router.put("/assets/{asset_id}/tags")
     def assign_asset_tags(asset_id: int, body: TagAssignment, authorization: str = Header(default="")):
@@ -1703,6 +1831,48 @@ def build_governance_router(
                 },
             }
 
+    @router.put("/projects/{project_id}/quality-rules/{rule_id}")
+    def update_quality_rule(project_id: int, rule_id: int, body: QualityRuleInput, authorization: str = Header(default="")):
+        user = authenticate(authorization)
+        if isinstance(user, JSONResponse):
+            return user
+        with session_factory() as session:
+            permitted = project_permission(session, project_id, user, Permission.EDIT_DEFINITION)
+            if isinstance(permitted, JSONResponse):
+                return permitted
+            rule = session.scalar(select(QualityRuleRecord).where(
+                QualityRuleRecord.id == rule_id, QualityRuleRecord.project_id == project_id,
+            ))
+            if rule is None:
+                return fail(404, 4041, "quality rule not found in project")
+            asset = session.scalar(select(AssetRecord).where(
+                AssetRecord.id == body.asset_id, AssetRecord.project_id == project_id,
+            ))
+            if asset is None:
+                return fail(404, 4041, "asset not found in project")
+            before = {"name": rule.name, "asset_id": rule.asset_id, "expression": rule.expression,
+                      "severity": rule.severity, "enabled": rule.enabled}
+            for field, value in body.model_dump().items():
+                setattr(rule, field, value)
+            try:
+                session.flush()
+                write_audit(
+                    session, user=user, project_id=project_id,
+                    action="quality_rule.update", resource_type="quality_rule", resource_id=str(rule.id),
+                    after={"before": before, "name": rule.name, "asset_id": rule.asset_id, "expression": rule.expression,
+                           "severity": rule.severity, "enabled": rule.enabled},
+                )
+                session.commit()
+            except IntegrityError:
+                session.rollback()
+                return fail(409, 4091, "quality rule name already exists")
+            session.refresh(rule)
+            return {"code": 0, "msg": "success", "data": {
+                "id": rule.id, "project_id": project_id, "asset_id": rule.asset_id,
+                "name": rule.name, "expression": rule.expression, "severity": rule.severity,
+                "enabled": rule.enabled, "created_at": stamp(rule.created_at), "updated_at": stamp(rule.updated_at),
+            }}
+
     _QUALITY_EXPRESSION_FORBIDDEN_PATTERNS: tuple[tuple[str, str], ...] = (
         ("statement_separator", r";"),
         ("ddl_keyword", r"\b(drop|delete|truncate|alter|create|rename)\b"),
@@ -1718,10 +1888,8 @@ def build_governance_router(
     def quality_expression_issues(expression: str) -> list[dict[str, str]]:
         """Flag SQL fragments the quality runner must never execute.
 
-        The quality rule expression is only ever evaluated as a structural
-        predicate; it is never sent to a datasource. This gate keeps dangerous
-        fragments (statement separators, DDL/DML, privilege changes, procedure
-        calls) from ever reaching the runner and is deliberately conservative.
+        This first gate rejects dangerous fragments. DBX execution also parses
+        the expression into a restricted AST bound to declared asset fields.
         """
         return [
             {"code": code, "pattern": pattern}
@@ -1749,6 +1917,9 @@ def build_governance_router(
             if not rule.enabled:
                 return fail(409, 4091, "quality rule is disabled")
             issues = quality_expression_issues(rule.expression)
+            asset = session.get(AssetRecord, rule.asset_id)
+            connection_id = json.loads(asset.properties_json or "{}").get("dbx_connection_id") if asset else None
+            checked_rows = failed_rows = 0
             if issues:
                 status = "failed"
                 summary: dict[str, object] = {
@@ -1756,6 +1927,32 @@ def build_governance_router(
                     "message": "quality expression rejected by safety gate; no rows were checked",
                     "issues": issues,
                 }
+            elif connection_id:
+                visible = DbxConnectionAccess(session).visible_ids(
+                    project_id=project_id, user_id=int(user["user_id"]),
+                    is_admin=user.get("role") == Role.ADMIN.value,
+                )
+                if connection_id not in visible:
+                    return fail(403, 1003, "dbx connection is not visible in project")
+                fields = set(session.scalars(select(AssetFieldRecord.field_name).where(
+                    AssetFieldRecord.asset_id == rule.asset_id,
+                )).all())
+                try:
+                    sql = compile_quality_count_query(
+                        database=asset.database_name, table=asset.asset_name,
+                        expression=rule.expression, fields=fields,
+                    )
+                    result = dbx_client_factory().execute_sql(
+                        connection_id=connection_id, database=asset.database_name, sql=sql,
+                        schema=asset.schema_name or None, max_rows=1,
+                    )
+                    checked_rows, failed_rows = parse_quality_counts(result)
+                    status = "failed" if failed_rows else "succeeded"
+                    message = "DBX found rule violations" if failed_rows else "DBX checked asset rows without violations"
+                except (DbxError, QualityPredicateError) as exc:
+                    status = "failed"
+                    message = str(exc)
+                summary = {"engine": "dbx", "message": message, "issues": [], "connection_id": connection_id}
             else:
                 status = "succeeded"
                 summary = {
@@ -1768,9 +1965,9 @@ def build_governance_router(
                 asset_id=rule.asset_id,
                 rule_id=rule.id,
                 status=status,
-                checked_rows=0,
-                success_rows=0,
-                failed_rows=0,
+                checked_rows=checked_rows,
+                success_rows=checked_rows - failed_rows,
+                failed_rows=failed_rows,
                 skipped_rows=0,
                 summary_json=json.dumps(summary, ensure_ascii=False, separators=(",", ":")),
             )

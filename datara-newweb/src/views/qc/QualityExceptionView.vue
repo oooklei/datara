@@ -2,7 +2,7 @@
   <main class="pg" aria-label="异常数据核查">
     <header class="pg-head">
       <h1 class="sec-head">异常数据核查</h1>
-      <p class="pg-desc">按质量运行记录筛选未成功项（structural 引擎口径）。本页只呈现结构与状态，不推断行级结果。</p>
+      <p class="pg-desc">按质量运行记录筛选未成功项；通过引擎标识区分 DBX 检查与结构校验。</p>
     </header>
 
     <div class="toolbar">
@@ -60,7 +60,7 @@
     </div>
 
     <p v-if="projectId !== null" class="lock-tip" role="note" data-structural-note>
-      structural 口径：执行仅做结构谓词校验，行级四字段恒 0；本页不呈现行级计数。
+      结构校验不产生行级结论；已绑定 DBX 的质量运行可记录实查计数。
     </p>
   </main>
 </template>

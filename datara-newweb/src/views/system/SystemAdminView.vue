@@ -2,7 +2,7 @@
   <div class="system-admin" aria-label="系统管理">
     <section v-if="isAdmin" class="system-block system-links" aria-label="系统能力" data-system-links>
       <h1>系统管理</h1>
-      <nav><RouterLink to="/open/key">API Key</RouterLink><RouterLink to="/open/api">API 管理</RouterLink><RouterLink to="/open/llm">LLM 模型</RouterLink><RouterLink to="/sec/audit">访问审计</RouterLink></nav>
+      <nav><RouterLink to="/open/key">API Key</RouterLink><RouterLink to="/open/api">API 管理</RouterLink><RouterLink to="/sec/audit">访问审计</RouterLink></nav>
     </section>
     <section v-if="isAdmin" class="system-block" aria-label="平台用户管理">
       <h2>平台用户管理</h2>

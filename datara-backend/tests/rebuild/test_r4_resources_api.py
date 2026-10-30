@@ -246,6 +246,7 @@ def test_viewer_and_anonymous_gates(tmp_path, monkeypatch):
     monkeypatch.setenv("REBUILD_RESOURCE_STORAGE_DIR", str(tmp_path))
     client, app, owned_id, _other_id, tokens = _client()
     try:
+        client.cookies.clear()  # Login leaves a session cookie on this client.
         anonymous = _upload(client, {}, owned_id)
         assert anonymous.status_code == 401 and anonymous.json()["code"] == 1001
 
@@ -281,6 +282,7 @@ def test_version_download_is_binary_and_project_permission_protected(tmp_path, m
         assert downloaded.headers["content-type"] == "application/octet-stream"
         assert "download.sql" in downloaded.headers["content-disposition"]
 
+        client.cookies.clear()
         assert client.get(url, params={"project_id": owned_id}).status_code == 401
         foreign = client.get(url, headers=tokens["admin"], params={"project_id": other_id})
         assert foreign.status_code == 404 and foreign.json()["code"] == "RES_OBJECT_NOT_FOUND"

@@ -2,7 +2,6 @@
 import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import {
-  filterGlobalMounts,
   filterMenuGroups,
   type MenuFilterContext,
   type RenderableMenuGroup,
@@ -19,7 +18,6 @@ import { listProjects, type ProjectSummary } from '../services/rebuild/projectAp
 import { authAccount, currentSession, logout, type AuthRole } from '../services/rebuild/authApi'
 import { ROLE_PERMISSIONS } from '../services/rebuild/rolePermissions'
 import { getToken } from '../services/http'
-import AiAssistantPanel from '../components/AiAssistantPanel.vue'
 
 const props = defineProps<{ filterOverrides?: Partial<MenuFilterContext> }>()
 const route = useRoute()
@@ -134,15 +132,20 @@ function buildCtx(): MenuFilterContext {
 }
 
 const menuView = computed<readonly RenderableMenuGroup[]>(() => filterMenuGroups(buildCtx()))
-const globalMounts = computed(() => filterGlobalMounts(buildCtx()))
 const folded = reactive<Record<string, boolean>>({})
 for (const group of menuGroups) folded[group.id] = loadGroupFolded(group.id, group.defaultFolded === true)
 function onToggle(groupId: string): void {
   folded[groupId] = toggleGroupFolded(groupId, folded[groupId] ?? false)
 }
 
-const aiContext = computed(() => route.fullPath)
-defineExpose({ menuView, aiContext })
+/* ---- 左侧导航只渲染 placement='sidebar' 的组 ----
+ * 2026-10-29 用户裁定：部署运维 / 系统管理是顶栏右上角图标按钮的顶级入口，
+ * 不进左侧导航（menu.ts 中这两组标 placement:'topbar'）。 */
+const sidebarView = computed<readonly RenderableMenuGroup[]>(() =>
+  menuView.value.filter((entry) => entry.group.placement !== 'topbar'),
+)
+
+defineExpose({ menuView })
 
 /* ---- D5/G10 侧边栏拖宽（§7.1.7 超越项，用户裁定）：pointer 拖拽右缘把手 +
  * localStorage 持久化（datara.shell.sidebarWidth），钳制 200–420px；
@@ -199,7 +202,7 @@ function onSidebarResizeEnd(): void {
       </nav>
 
       <nav v-else class="global-nav" aria-label="全局功能导航">
-        <div v-for="entry in menuView" :key="entry.group.id" class="menu-group" :data-group-id="entry.group.id">
+        <div v-for="entry in sidebarView" :key="entry.group.id" class="menu-group" :data-group-id="entry.group.id">
           <div v-if="!entry.group.direct" class="group-title">
             <span>{{ entry.group.label }}</span>
             <button v-if="entry.group.foldable" type="button" :aria-expanded="!folded[entry.group.id]" @click="onToggle(entry.group.id)">{{ folded[entry.group.id] ? '▸' : '▾' }}</button>
@@ -246,7 +249,6 @@ function onSidebarResizeEnd(): void {
 
     <main class="app-content"><RouterView /></main>
     <button v-if="sidebarOpen" type="button" class="sidebar-backdrop" aria-label="关闭导航" @click="sidebarOpen = false"></button>
-    <AiAssistantPanel v-if="globalMounts.length > 0" id="ai-assistant-global-mount" aria-label="AI 助手全局挂载点" :page-context="aiContext" :project-id="projectId" />
   </div>
 </template>
 

@@ -37,6 +37,7 @@ def _body(name="node-a"):
 def test_five_routes_require_token_and_apply_read_write_permission_map():
     client, _, headers = _client(Role.VIEWER)
     try:
+        client.cookies.clear()
         assert client.get("/api/v1/rebuild/ssh-nodes").status_code == 401
         assert client.get("/api/v1/rebuild/ssh-nodes", headers=headers).status_code == 200
         denied = client.post("/api/v1/rebuild/ssh-nodes", headers=headers, json=_body())
@@ -46,12 +47,13 @@ def test_five_routes_require_token_and_apply_read_write_permission_map():
         client.__exit__(None, None, None)
 
 
-def test_create_list_and_full_update_preserve_frozen_envelope_and_credential_echo():
+def test_create_list_and_full_update_do_not_echo_credentials():
     client, _, headers = _client()
     try:
         created = client.post("/api/v1/rebuild/ssh-nodes", headers=headers, json=_body())
         assert created.status_code == 200
-        assert created.json()["data"]["cred"] == "plain-secret"
+        assert "cred" not in created.json()["data"]
+        assert created.json()["data"]["hasCredential"] is True
         assert created.json()["data"]["tags"] == ["batch"]
         node_id = created.json()["data"]["id"]
         listed = client.get("/api/v1/rebuild/ssh-nodes", headers=headers)
@@ -61,12 +63,13 @@ def test_create_list_and_full_update_preserve_frozen_envelope_and_credential_ech
         replacement.update({"host": "10.0.0.2", "sshUser": "deploy", "cred": "new-secret", "enabled": False})
         updated = client.put(f"/api/v1/rebuild/ssh-nodes/{node_id}", headers=headers, json=replacement)
         assert set(updated.json()["data"]) == {
-            "id", "name", "host", "port", "sshUser", "cred", "tags",
+            "id", "name", "host", "port", "sshUser", "hasCredential", "allowTrial", "ownerId", "tags",
             "enabled", "heartbeatState", "lastSeen", "createTime",
         }
         assert updated.json()["data"]["name"] == "node-b"
         assert updated.json()["data"]["host"] == "10.0.0.2"
-        assert updated.json()["data"]["cred"] == "new-secret"
+        assert "new-secret" not in updated.text
+        assert updated.json()["data"]["hasCredential"] is True
         assert updated.json()["data"]["enabled"] is False
     finally:
         client.__exit__(None, None, None)

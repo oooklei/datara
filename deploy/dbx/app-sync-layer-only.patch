@@ -1,0 +1,171 @@
+diff --git a/rebuild/api/app.py b/rebuild/api/app.py
+--- a/rebuild/api/app.py
++++ b/rebuild/api/app.py
+@@ -9,8 +9,9 @@ import json
+ import logging
+ import os
+ import re
++import threading
+ from pathlib import Path
+-from typing import Literal
++from typing import Any, Callable, Literal
+ 
+ from fastapi import FastAPI, Header, Query, Request
+ from starlette.datastructures import MutableHeaders
+@@ -55,6 +56,7 @@ def digest_token(token: str) -> str:
+     """Stable token digest kept local for compatibility with older identity modules."""
+     return hashlib.sha256(token.encode("utf-8")).hexdigest()
+ from rebuild.datasource.contracts import DataSourceDraft, probe_datasource, validate_datasource
++from rebuild.datasource.dbx_sync import DbxConnectionClient, poll_dbx_connections, push_datasource_to_dbx
+ from rebuild.datasource.models import ProjectDatasourceRecord
+ from rebuild.datasource.metadata import metadata_catalog_for
+ from rebuild.datasource.pool import DatasourceEngineRegistry
+@@ -131,6 +133,81 @@ from common.registry import ServiceRegistry
+ 
+ logger = logging.getLogger(__name__)
+ 
++DBX_POLL_INTERVAL_SECONDS = 300
++
++
++class _IntervalJobScheduler:
++    """最小间隔任务调度器：只实现 janitor 式 ``add_job`` 注入契约。
++
++    避免在 rebuild 模块内直接依赖 APScheduler；每个任务独立守护线程按固定
++    间隔执行，进程退出时 ``stop`` 统一回收。
++    """
++
++    def __init__(self) -> None:
++        self._jobs: dict[str, tuple[Callable[[], object], int]] = {}
++        self._threads: list[threading.Thread] = []
++        self._stop = threading.Event()
++
++    def add_job(
++        self,
++        func: Callable[[], object],
++        *,
++        trigger: str = "interval",
++        seconds: int = 60,
++        id: str | None = None,
++        replace_existing: bool = False,
++        **_: Any,
++    ) -> None:
++        if trigger != "interval":
++            raise ValueError("only interval triggers are supported")
++        if isinstance(seconds, bool) or not isinstance(seconds, int) or seconds <= 0:
++            raise ValueError("seconds must be a positive integer")
++        job_id = id or getattr(func, "__name__", "job")
++        if job_id in self._jobs and not replace_existing:
++            raise ValueError(f"job {job_id} already exists")
++        self._jobs[job_id] = (func, seconds)
++
++    def start(self) -> None:
++        if self._threads:
++            return
++        for job_id, (func, seconds) in self._jobs.items():
++            thread = threading.Thread(
++                target=self._run_job,
++                args=(job_id, func, seconds),
++                name=f"interval-job-{job_id}",
++                daemon=True,
++            )
++            thread.start()
++            self._threads.append(thread)
++
++    def _run_job(self, job_id: str, func: Callable[[], object], seconds: int) -> None:
++        while not self._stop.wait(seconds):
++            try:
++                func()
++            except Exception as exc:  # noqa: BLE001 - 后台任务失败不终止调度线程
++                logger.warning("interval_job_failed job_id=%s error=%s", job_id, type(exc).__name__)
++
++    def stop(self) -> None:
++        self._stop.set()
++        for thread in self._threads:
++            thread.join(timeout=2)
++        self._threads.clear()
++
++
++def _remove_datasource_from_dbx(project_id: int, datasource_id: int) -> bool:
++    """删除 dbx 侧对应连接；id 生成与 ``dbx_sync._record_to_connection`` 保持一致。"""
++    try:
++        DbxConnectionClient().save_connections([], [f"datara-{project_id}-{datasource_id}"])
++    except Exception as exc:  # noqa: BLE001 - 同步失败不应影响 datara 主流程
++        logger.warning(
++            "dbx_push_delete_failed project_id=%s datasource_id=%s error=%s",
++            project_id,
++            datasource_id,
++            type(exc).__name__,
++        )
++        return False
++    return True
++
+ 
+ class LoginRequest(BaseModel):
+     username: str
+@@ -234,6 +311,23 @@ def create_app(
+     token_service = TokenService(secret=token_secret)
+     validation_token_service = TokenService(secret=token_secret, ttl_seconds=900)
+     datasource_engines = DatasourceEngineRegistry()
++    interval_scheduler = _IntervalJobScheduler()
++
++    def poll_all_projects_dbx() -> int:
++        """遍历全部项目执行 dbx → datara 下行同步；单项目失败仅记日志。"""
++        try:
++            with session_factory() as session:
++                project_ids = [project.id for project in ProjectRepository(session).list_all()]
++        except Exception as exc:  # noqa: BLE001 - 后台轮询失败不应影响进程
++            logger.warning("dbx_poll_projects_failed error=%s", type(exc).__name__)
++            return 0
++        synced = 0
++        for project_id in project_ids:
++            try:
++                synced += poll_dbx_connections(project_id, session_factory=session_factory)
++            except Exception as exc:  # noqa: BLE001 - 单个项目失败不中断整体轮询
++                logger.warning("dbx_poll_failed project_id=%s error=%s", project_id, type(exc).__name__)
++        return synced
+ 
+     class ActiveTokenStore:
+         """Database-backed active token store for cross-worker revocation."""
+@@ -447,7 +541,18 @@ def create_app(
+         registry = ServiceRegistry("api", 8001)
+         registry.start()
+         app.state.registry = registry
++        # dbx 下行同步：间隔轮询全部项目，失败仅记日志（不阻塞启动）。
++        interval_scheduler.add_job(
++            poll_all_projects_dbx,
++            trigger="interval",
++            seconds=DBX_POLL_INTERVAL_SECONDS,
++            id="dbx_datasource_poll",
++            replace_existing=True,
++        )
++        interval_scheduler.start()
++        app.state.interval_scheduler = interval_scheduler
+         yield
++        interval_scheduler.stop()
+         registry.stop()
+         datasource_engines.dispose_all()
+         engine.dispose()
+@@ -1242,6 +1356,7 @@ def create_app(
+                     status_code=409,
+                     content={"code": 4091, "msg": "datasource name already exists in project", "data": None},
+                 )
++            push_datasource_to_dbx(record)
+             return JSONResponse(
+                 status_code=201, content={"code": 0, "msg": "success", "data": datasource_payload(record)}
+             )
+@@ -1295,6 +1410,7 @@ def create_app(
+                     content={"code": 4091, "msg": "datasource name already exists in project", "data": None},
+                 )
+             datasource_engines.invalidate(project_id, datasource_id)
++            push_datasource_to_dbx(record)
+             return {"code": 0, "msg": "success", "data": datasource_payload(record)}
+ 
+     @app.delete("/api/v1/rebuild/projects/{project_id}/datasources/{datasource_id}")
+@@ -1316,6 +1432,7 @@ def create_app(
+             repository.delete(record)
+             session.commit()
+             datasource_engines.invalidate(project_id, datasource_id)
++            _remove_datasource_from_dbx(project_id, datasource_id)
+             return {"code": 0, "msg": "success", "data": {"deleted": True, "id": datasource_id}}
+ 
+     @app.post("/api/v1/rebuild/projects/{project_id}/datasources/{datasource_id}/test")

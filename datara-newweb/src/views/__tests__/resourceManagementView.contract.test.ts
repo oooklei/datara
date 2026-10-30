@@ -5,9 +5,21 @@ import View from '../resources/ResourceManagementView.vue'
 const list = vi.hoisted(() => vi.fn())
 const listVersions = vi.hoisted(() => vi.fn())
 const projects = vi.hoisted(() => vi.fn())
+const readContent = vi.hoisted(() => vi.fn())
+const checkScript = vi.hoisted(() => vi.fn())
+const appendVersion = vi.hoisted(() => vi.fn())
 vi.mock('../../services/rebuild/resourceApi', async (load) => {
   const actual = await load<typeof import('../../services/rebuild/resourceApi')>()
-  return { ...actual, createResourceContract: () => ({ listResources: list, listResourceVersions: listVersions }) }
+  return {
+    ...actual,
+    createResourceContract: () => ({
+      listResources: list,
+      listResourceVersions: listVersions,
+      getResourceVersionContent: readContent,
+      checkResourceScript: checkScript,
+      appendResourceVersion: appendVersion,
+    }),
+  }
 })
 vi.mock('../../services/rebuild/projectApi', () => ({ listProjects: projects }))
 
@@ -63,6 +75,23 @@ describe('resource project scope', () => {
     expect(wrapper.get('[role="dialog"]').attributes('aria-label')).toBe('daily.sql 版本历史')
     expect(wrapper.text()).toContain('v2')
     expect(wrapper.text()).toContain('sha256:new')
+  })
+
+  it('opens the script editor from the row action and closes it when the project changes', async () => {
+    list.mockResolvedValue([{ resourceId: 8, name: 'daily.sql', kind: 'sql', sizeBytes: 12, latestVersion: 2 }])
+    readContent.mockResolvedValue({ resourceId: 8, version: 2, name: 'daily.sql', content: 'select 1' })
+
+    const wrapper = mount(View, { props: { projectId: 11 } })
+    await flushPromises()
+    await wrapper.get('[data-edit-resource]').trigger('click')
+    await flushPromises()
+
+    expect(readContent).toHaveBeenCalledWith(8, 2, 11)
+    expect(wrapper.get('[role="dialog"]').attributes('aria-label')).toBe('daily.sql 脚本编辑')
+
+    await wrapper.setProps({ projectId: 12 })
+    await flushPromises()
+    expect(wrapper.find('[data-script-editor-mask]').exists()).toBe(false)
   })
 
   it('loads the first available project for the global resources route', async () => {

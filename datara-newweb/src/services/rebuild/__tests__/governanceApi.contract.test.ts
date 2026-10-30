@@ -20,6 +20,7 @@ describe('14.4 质量域契约层（IMPL-v4-07）', () => {
     expect(QUALITY_PERMISSION_MATRIX).toEqual({
       listRules: 'VIEW_ALL',
       createRule: 'EDIT_DEFINITION',
+      updateRule: 'EDIT_DEFINITION',
       runRule: 'EDIT_DEFINITION',
       listRuns: 'VIEW_ALL',
     })

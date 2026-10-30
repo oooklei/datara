@@ -111,8 +111,14 @@
                 <option v-for="a in assets" :key="a.id" :value="String(a.id)">{{ a.databaseName }}.{{ a.assetName }}</option>
               </select>
             </label>
-            <p v-if="selectedAsset === ''" class="hint">先选择资产再填写标签 ID。</p>
-            <label v-else class="field"><span>标签 ID</span>
+            <p v-if="selectedAsset === ''" class="hint">先选择资产再选择项目标签。</p>
+            <label v-else class="field"><span>项目标签</span>
+              <select v-model="selectedCatalogTag" class="kw" data-tag-catalog :disabled="assigning || creating" @change="addCatalogTag">
+                <option value="">选择标签</option>
+                <option v-for="tag in tags" :key="tag.id" :value="String(tag.id)">{{ tag.namespace }}:{{ tag.displayName || tag.tagKey }}</option>
+              </select>
+            </label>
+            <label v-if="selectedAsset !== ''" class="field"><span>标签 ID</span>
               <input v-model.trim="tagIds" class="kw" placeholder="1,2,3" :disabled="assigning || creating">
             </label>
             <p v-if="assignHint" class="hint" data-assign-hint>{{ assignHint }}</p>
@@ -156,7 +162,9 @@ const route = useRoute()
 const projects = ref<ProjectSummary[]>([])
 const selectedProject = ref('')
 const assets = ref<AssetRecord[]>([])
+const tags = ref<GovernanceTagDefinition[]>([])
 const selectedAsset = ref('')
+const selectedCatalogTag = ref('')
 const tagIds = ref('')
 const lastResult = ref('')
 const assignHint = ref('')
@@ -187,9 +195,10 @@ const projectId = computed<number | null>(() => {
   return selectedProject.value !== '' && Number.isInteger(n) && n > 0 ? n : null
 })
 
-/** facet 由真实资产数据派生：标签键（来自资产已挂载标签）+ 资产类型（不造选项）。 */
+/** 标签选项来自项目标签目录，类型来自真实资产。 */
 const facets = computed<Facet[]>(() => {
   const tagMap = new Map<string, string>()
+  for (const tag of tags.value) tagMap.set(tag.tagKey, tag.displayName || tag.tagKey)
   for (const a of assets.value) {
     for (const t of a.tags ?? []) if (t.tagKey) tagMap.set(t.tagKey, t.displayName || t.tagKey)
   }
@@ -248,17 +257,21 @@ async function loadAssets(reset: boolean): Promise<void> {
     assets.value = []
     selectedAsset.value = ''
     tagIds.value = ''
+    selectedCatalogTag.value = ''
     assignHint.value = ''
     lastResult.value = ''
   }
-  if (pid === null) { assets.value = []; return }
+  if (pid === null) { assets.value = []; tags.value = []; return }
   const seq = ++assetSeq
   loading.value = true
   error.value = ''
   try {
-    const page = await governanceApi.listAssets(pid)
+    const [page, tagPage] = await Promise.all([
+      governanceApi.listAssets(pid), governanceApi.listTags(pid),
+    ])
     if (seq !== assetSeq) return
     assets.value = page.list
+    tags.value = tagPage.list
   } catch (e) {
     if (seq === assetSeq) {
       error.value = message(e)
@@ -268,6 +281,14 @@ async function loadAssets(reset: boolean): Promise<void> {
 }
 function reloadAssets(): Promise<void> {
   return loadAssets(true)
+}
+
+function addCatalogTag(): void {
+  if (!selectedCatalogTag.value) return
+  const ids = new Set(tagIds.value.split(',').map(item => item.trim()).filter(Boolean))
+  ids.add(selectedCatalogTag.value)
+  tagIds.value = [...ids].join(',')
+  selectedCatalogTag.value = ''
 }
 
 function resetForm(): void {
@@ -286,6 +307,7 @@ async function create(): Promise<void> {
       key: `${tag.id}-${Date.now()}`,
       time: new Date().toLocaleTimeString('zh-CN', { hour12: false }),
     })
+    tags.value.push(tag)
     resetForm()
   } catch (e) {
     error.value = message(e)

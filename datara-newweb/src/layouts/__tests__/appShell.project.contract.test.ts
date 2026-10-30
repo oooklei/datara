@@ -50,8 +50,8 @@ beforeEach(() => {
   })
 })
 
-describe('UX v3：AppShell 项目模式——侧栏五组十九项导航', () => {
-  it('项目模式侧栏：五组十九项 RouterLink，路径与 label 一致', async () => {
+describe('dbx 统一后 AppShell 项目导航', () => {
+  it('项目模式侧栏：正式项 RouterLink 路径与 label 一致', async () => {
     const router = makeTestRouter()
     await router.push('/p/9')
     const w = mount(AppShell, { global: { plugins: [router] } })
@@ -60,7 +60,7 @@ describe('UX v3：AppShell 项目模式——侧栏五组十九项导航', () =>
     expect(nav.exists()).toBe(true)
     const links = nav.findAll('a.project-nav-link')
     expect(nav.findAll('[data-project-group]')).toHaveLength(PROJECT_MENU_GROUPS.length)
-    expect(links).toHaveLength(19)
+    expect(links).toHaveLength(PROJECT_MENU_ITEMS.length)
     for (let i = 0; i < PROJECT_MENU_ITEMS.length; i++) {
       const item = PROJECT_MENU_ITEMS[i]
       expect(links[i].attributes('data-seg')).toBe(item.id)
@@ -82,12 +82,12 @@ describe('UX v3：AppShell 项目模式——侧栏五组十九项导航', () =>
     expect(w.findAll('.menu-group')).toHaveLength(0)
   })
 
-  it('AI 挂载点在项目模式保持单实例（与 RouterView 同级，不分流剔除）', async () => {
+  it('项目模式不挂载已退役的 AI 助手', async () => {
     const router = makeTestRouter()
     await router.push('/p/9')
     const w = mount(AppShell, { global: { plugins: [router] } })
     await flushPromises()
-    expect(w.findAll('#ai-assistant-global-mount')).toHaveLength(1)
+    expect(w.findAll('#ai-assistant-global-mount')).toHaveLength(0)
   })
 })
 

@@ -68,7 +68,10 @@ class SshNodeService:
         record.host = value.host
         record.port = value.port
         record.ssh_user = value.ssh_user
-        record.cred = value.cred
+        # Blank credential on edit means "keep the stored secret"; never echo
+        # that secret to a browser merely to support an edit form.
+        if value.cred:
+            record.cred = value.cred
         record.tags = value.tags
         record.enabled = value.enabled
         try:

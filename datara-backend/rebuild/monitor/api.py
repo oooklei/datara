@@ -35,7 +35,7 @@ def build_monitor_router(
             return _error(401, 1001, "invalid token")
         if claims.get("capability") is not None:
             return _error(401, 1001, "invalid token")
-        if not authorize(str(claims["role"]), Permission.VIEW_ALL):
+        if not authorize(str(claims["role"]), Permission.MONITOR_READ):
             return _error(403, 1003, "permission denied")
         return None
 

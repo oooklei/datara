@@ -1,11 +1,12 @@
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue'
+import { computed, ref, watch, type CSSProperties } from 'vue'
 import {
   createVariableContract,
   type VariableDefinition,
   type VariableScope,
   type VariableValueType,
 } from '../../services/rebuild/variableApi'
+import { useDraggable } from '../../composables/useDraggable'
 
 const props = withDefaults(defineProps<{
   modelValue: boolean
@@ -28,6 +29,17 @@ const form = ref({ name: '', value: '', valueType: 'string' as VariableValueType
 const owner = computed(() => scope.value === 'env' && environmentGroupId.value
   ? { environmentGroupId: environmentGroupId.value }
   : {})
+
+/* D9：变量管理抽屉可由标题栏拖动；CSS 为 inset:56px 0 0 auto（top/right/bottom 三锚），
+   拖拽定位后解除 right/bottom 约束并按 top 反推高度，避免抽屉被压缩或溢出视口。 */
+const drawerRef = ref<HTMLElement | null>(null)
+const headerRef = ref<HTMLElement | null>(null)
+const { dragStyle: drawerDragStyle, onHandlePointerdown } = useDraggable(drawerRef, headerRef, { storageKey: 'variables.drawer' })
+const drawerStyle = computed<CSSProperties>(() => {
+  const base = drawerDragStyle.value
+  if (!base.position) return base
+  return { ...base, right: 'auto', bottom: 'auto', height: `calc(100vh - ${base.top})` }
+})
 
 async function load() {
   const seq = ++loadSeq
@@ -113,10 +125,10 @@ watch(() => [props.modelValue, props.projectId], load, { immediate: true })
 </script>
 
 <template>
-  <aside v-if="modelValue" class="variable-drawer" aria-label="变量管理" data-variable-manager>
-    <header>
+  <aside v-if="modelValue" ref="drawerRef" class="variable-drawer" aria-label="变量管理" data-variable-manager :style="drawerStyle">
+    <header ref="headerRef" class="drag-handle" @pointerdown="onHandlePointerdown">
       <div><h2>变量管理</h2><p>全局、项目与环境组变量</p></div>
-      <button type="button" aria-label="关闭变量管理" @click="emit('update:modelValue', false)">×</button>
+      <button type="button" aria-label="关闭变量管理" @pointerdown.stop @click="emit('update:modelValue', false)">×</button>
     </header>
     <div class="toolbar">
       <button data-variable-create type="button" :disabled="!canEdit || projectId === undefined" @click="beginCreate">新建变量</button>
@@ -155,5 +167,5 @@ watch(() => [props.modelValue, props.projectId], load, { immediate: true })
 
 <style scoped>
 .variable-drawer{position:fixed;z-index:2000;inset:56px 0 0 auto;width:min(720px,94vw);background:var(--card);border-left:1px solid var(--border-strong);box-shadow:-12px 0 32px color-mix(in srgb, var(--text) 12%, transparent);padding:18px;overflow:auto}
-header,.toolbar,header>div,.editor>div{display:flex;align-items:center;justify-content:space-between;gap:12px}h2,p{margin:0}.toolbar{justify-content:flex-start;margin:16px 0}.notice{padding:8px;background:var(--bg)}.error{color:var(--danger);padding:12px;background:var(--danger-bg)}table{width:100%;border-collapse:collapse}th,td{text-align:left;padding:9px;border-bottom:1px solid var(--border)}.editor{margin-top:18px;padding:14px;background:var(--bg);display:grid;gap:10px}.editor label{display:grid;gap:4px}input,select,button{font:inherit;padding:6px 9px}
+header,.toolbar,header>div,.editor>div{display:flex;align-items:center;justify-content:space-between;gap:12px}h2,p{margin:0}.toolbar{justify-content:flex-start;margin:16px 0}.notice{padding:8px;background:var(--bg)}.error{color:var(--danger);padding:12px;background:var(--danger-bg)}table{width:100%;border-collapse:collapse}th,td{text-align:left;padding:9px;border-bottom:1px solid var(--border)}.editor{margin-top:18px;padding:14px;background:var(--bg);display:grid;gap:10px}.editor label{display:grid;gap:4px}input,select,button{font:inherit;padding:6px 9px}.drag-handle{cursor:grab;user-select:none}.drag-handle:active{cursor:grabbing}
 </style>

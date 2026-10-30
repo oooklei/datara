@@ -51,6 +51,7 @@ class Permission(StrEnum):
     SECURITY_READ = "security:read"
     SECURITY_MANAGE = "security:manage"
     AUDIT_READ = "audit:read"
+    MONITOR_READ = "monitor:read"
 
 
 ROLE_PERMISSIONS: dict[Role, frozenset[Permission]] = {
@@ -82,6 +83,7 @@ ROLE_PERMISSIONS: dict[Role, frozenset[Permission]] = {
         Permission.QUALITY_READ, Permission.QUALITY_RUN,
         Permission.STANDARD_READ,
         Permission.AUDIT_READ,
+        Permission.MONITOR_READ,
     }),
     Role.VIEWER: frozenset({
         Permission.VIEW_ALL,

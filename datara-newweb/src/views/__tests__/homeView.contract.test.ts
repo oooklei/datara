@@ -21,10 +21,12 @@ vi.mock('../../services/rebuild/projectApi', () => ({
 }))
 
 import HomeView from '../HomeView.vue'
+import { authAccount } from '../../services/rebuild/authApi'
 
 beforeEach(() => {
   pushSpy.mockClear()
   listProjectsMock.mockReset()
+  authAccount.value = null
 })
 
 describe('L3-02 HomeView 项目列表页', () => {
@@ -55,6 +57,7 @@ describe('L3-02 HomeView 项目列表页', () => {
   })
 
   it('融合旧版工作台统计卡片与快捷入口，同时保留项目空间', async () => {
+    authAccount.value = { id: 1, username: 'admin', role: 'admin' }
     listProjectsMock.mockResolvedValue({
       total: 2,
       list: [
@@ -69,8 +72,17 @@ describe('L3-02 HomeView 项目列表页', () => {
     expect(w.get('[data-stat-projects]').text()).toContain('2')
     expect(w.findAll('[data-quick-entry]')).toHaveLength(4)
     expect(w.text()).toContain('项目空间')
-    await w.get('[data-quick-entry="/ide"]').trigger('click')
-    expect(pushSpy).toHaveBeenCalledWith('/ide')
+    await w.get('[data-quick-entry="/resources"]').trigger('click')
+    expect(pushSpy).toHaveBeenCalledWith('/resources')
+  })
+
+  it('开发角色无监控权限时不显示监控快捷入口', async () => {
+    authAccount.value = { id: 2, username: 'zhangsan', role: 'developer' }
+    listProjectsMock.mockResolvedValue({ total: 0, list: [] })
+    const w = mount(HomeView)
+    await flushPromises()
+    expect(w.find('[data-quick-entry="/dep/monitor"]').exists()).toBe(false)
+    expect(w.findAll('[data-quick-entry]')).toHaveLength(3)
   })
 
   it('卡片点击 → router.push(/p/:projectId)', async () => {

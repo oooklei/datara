@@ -35,30 +35,28 @@ function makeTestRouter() {
   })
 }
 
-describe('2-05 测试集 6：AI 挂载点单实例 + 登录页不渲染', () => {
-  it('AppShell 内 AI 全局挂载点存在且唯一（与 RouterView 同级）', () => {
+describe('dbx 统一后的 AppShell 挂载', () => {
+  it('AppShell 不挂载已退役的全局 AI 助手', () => {
     const router = makeTestRouter()
     const w = mount(AppShell, { global: { plugins: [router] } })
-    expect(w.findAll('#ai-assistant-global-mount')).toHaveLength(1)
-    expect(w.find('#ai-assistant-global-mount').attributes('aria-label')).toBe('AI 助手全局挂载点')
+    expect(w.findAll('#ai-assistant-global-mount')).toHaveLength(0)
   })
 
-  it('跨两条业务路由切换：AppShell 不重建，挂载点保持单实例（跨路由保持）', async () => {
+  it('跨两条业务路由切换仍无旧 AI 挂载点', async () => {
     const router = makeTestRouter()
     await router.push('/a')
     const w = mount(AppShell, { global: { plugins: [router] } })
-    expect(w.findAll('#ai-assistant-global-mount')).toHaveLength(1)
+    expect(w.findAll('#ai-assistant-global-mount')).toHaveLength(0)
     await router.push('/b')
     await w.vm.$nextTick()
-    expect(w.findAll('#ai-assistant-global-mount')).toHaveLength(1)
-    // 上下文随路由元信息更新（0.8 §6 规则 3）
-    expect((w.vm as unknown as { aiContext: string }).aiContext).toBe('/b')
+    expect(w.findAll('#ai-assistant-global-mount')).toHaveLength(0)
+    expect(router.currentRoute.value.path).toBe('/b')
     await router.push('/a')
     await w.vm.$nextTick()
-    expect((w.vm as unknown as { aiContext: string }).aiContext).toBe('/a')
+    expect(router.currentRoute.value.path).toBe('/a')
   })
 
-  it('App 级：登录页不挂载 AppShell（无 AI 挂载点）；认证后业务路由挂载', async () => {
+  it('App 级：登录页不挂载 AppShell；认证后业务路由挂载', async () => {
     const router = makeTestRouter()
     setToken('t-shell')
     await router.push('/login')
@@ -68,7 +66,7 @@ describe('2-05 测试集 6：AI 挂载点单实例 + 登录页不渲染', () => 
     await router.push('/a')
     await w.vm.$nextTick()
     expect(w.findComponent(AppShell).exists()).toBe(true)
-    expect(w.findAll('#ai-assistant-global-mount')).toHaveLength(1)
+    expect(w.findAll('#ai-assistant-global-mount')).toHaveLength(0)
     clearToken()
   })
 })

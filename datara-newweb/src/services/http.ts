@@ -94,9 +94,28 @@ export const AUTH_ERROR_CODE_MAX = 1999
 
 export type LoginRedirector = (target: string) => void
 
+/**
+ * 计算登录跳转落点：把当前站内位置（pathname+search）带进 `?redirect=`，
+ * 使会话失效触发的硬跳转在登录成功后能原地返回。
+ * 已在登录页、或当前位置不是站内路径（`/` 或不可用）时不附加，避免无意义参数。
+ */
+export function loginRedirectTarget(
+  target: string,
+  loc?: Pick<Location, 'pathname' | 'search'>,
+): string {
+  if (target !== LOGIN_PATH) return target
+  const current = loc ?? (typeof window !== 'undefined' ? window.location : undefined)
+  const pathname = current?.pathname
+  if (typeof pathname !== 'string' || !pathname.startsWith('/')) return target
+  const search = typeof current?.search === 'string' ? current.search : ''
+  const from = `${pathname}${search}`
+  if (from === '/' || from.startsWith(LOGIN_PATH)) return target
+  return `${target}?redirect=${encodeURIComponent(from)}`
+}
+
 const defaultRedirector: LoginRedirector = (target) => {
   if (typeof window !== 'undefined' && window.location) {
-    window.location.assign(target)
+    window.location.assign(loginRedirectTarget(target))
   }
 }
 
@@ -114,6 +133,11 @@ export function setLoginRedirector(fn: LoginRedirector | null): void {
 export function isAuthErrorCode(code: number | string | undefined): boolean {
   if (typeof code !== 'number') return false
   return code >= AUTH_ERROR_CODE_MIN && code <= AUTH_ERROR_CODE_MAX
+}
+
+/** 1xxx 还包含权限不足；只有真正失效的会话才需要跳登录。 */
+function requiresLogin(httpStatus: number, code: number | string | undefined): boolean {
+  return httpStatus === 401 || code === 1001
 }
 
 /* ---------- 请求选项 ---------- */
@@ -199,13 +223,11 @@ export async function request<T = unknown>(path: string, options: RequestOptions
   const effectiveTimeout = timeoutMs === null ? null : (timeoutMs ?? HTTP_TIMEOUT_MS)
   const ctrl = new AbortController()
   const timer = effectiveTimeout === null ? null : setTimeout(() => ctrl.abort(), effectiveTimeout)
+  const requestToken = anonymous ? '' : getToken()
   try {
     const finalHeaders: Record<string, string> = { ...headers }
     if (json !== undefined) finalHeaders['Content-Type'] = 'application/json'
-    if (!anonymous) {
-      const token = getToken()
-      if (token) finalHeaders[TOKEN_HEADER] = token
-    }
+    if (requestToken) finalHeaders[TOKEN_HEADER] = requestToken
 
     const init: RequestInit = {
       ...fetchInit,
@@ -223,7 +245,7 @@ export async function request<T = unknown>(path: string, options: RequestOptions
       // （metrics/api.py L54、governance/api.py L221 全域同构），两通道任一命中即触发跳登录
       // 修前仅 2xx 包络 code 1xxx 生效，HTTP 401 永不触发——会话过期后页面静默空数据
       const parsedRaw = parseEnvelope(raw)
-      if (res.status === 401 || (parsedRaw && isAuthErrorCode(parsedRaw.code))) {
+      if (!anonymous && requestToken === getToken() && requiresLogin(res.status, parsedRaw?.code)) {
         loginRedirector(LOGIN_PATH)
       }
       // 保码透出（preserveEnvelopeCode）：非 2xx 但包络含 code 时保留后端码（A2 §2/§4 错误映射）；
@@ -245,7 +267,7 @@ export async function request<T = unknown>(path: string, options: RequestOptions
       return unwrapEnvelope<T>(envelope, res.status)
     } catch (err) {
       // 业务错误：1xxx 段触发跳登录后继续抛出（UI 仍按 ContractApiError 捕获）
-      if (err instanceof ContractApiError && isAuthErrorCode(err.code)) {
+      if (!anonymous && requestToken === getToken() && err instanceof ContractApiError && requiresLogin(res.status, err.code)) {
         loginRedirector(LOGIN_PATH)
       }
       throw err
@@ -275,13 +297,11 @@ export async function requestRaw<T = unknown>(path: string, options: RawRequestO
   const effectiveTimeout = timeoutMs === null ? null : (timeoutMs ?? HTTP_TIMEOUT_MS)
   const ctrl = new AbortController()
   const timer = effectiveTimeout === null ? null : setTimeout(() => ctrl.abort(), effectiveTimeout)
+  const requestToken = anonymous ? '' : getToken()
   try {
     const finalHeaders: Record<string, string> = { ...headers }
     if (json !== undefined) finalHeaders['Content-Type'] = 'application/json'
-    if (!anonymous) {
-      const token = getToken()
-      if (token) finalHeaders[TOKEN_HEADER] = token
-    }
+    if (requestToken) finalHeaders[TOKEN_HEADER] = requestToken
     const init: RequestInit = {
       ...fetchInit,
       method: options.method ?? 'GET',
@@ -291,7 +311,7 @@ export async function requestRaw<T = unknown>(path: string, options: RawRequestO
     }
     const res = await fetch(url, init)
     // G03 原始响应通道补全：非匿名路径 401 同样触发跳登录（与 request 通道对称）
-    if (!anonymous && res.status === 401) {
+    if (!anonymous && requestToken === getToken() && res.status === 401) {
       loginRedirector(LOGIN_PATH)
     }
     const text = await res.text()

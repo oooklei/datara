@@ -43,6 +43,17 @@ beforeEach(() => {
 })
 
 describe('L3-05：路由守卫 projectId 归属校验（越权负断言）', () => {
+  it('developer 直接输入监控地址也被拦截；切换 admin 后可进入', async () => {
+    authAccountStub.value = { id: 7, username: 'zhangsan', role: 'developer' }
+    await productRouter.push('/dep/monitor')
+    expect(productRouter.currentRoute.value.path).toBe('/')
+
+    authAccountStub.value = { id: 1, username: 'admin', role: 'admin' }
+    setToken('admin-token')
+    await productRouter.push('/dep/monitor')
+    expect(productRouter.currentRoute.value.path).toBe('/dep/monitor')
+  })
+
   it('越权项目被拦截（4041 负断言）：token 有效但 /p/99 不在可见集合 → 拦截回 /', async () => {
     await productRouter.push('/p/99')
     expect(productRouter.currentRoute.value.path).toBe('/')
@@ -104,8 +115,8 @@ describe('L3-05：路由守卫 projectId 归属校验（越权负断言）', () 
   })
 
   it('旧项目业务入口使用首个可见项目归一到项目作用域', async () => {
-    await productRouter.push('/ide')
-    expect(productRouter.currentRoute.value.path).toBe('/p/9/ide')
+    await productRouter.push('/resources')
+    expect(productRouter.currentRoute.value.path).toBe('/p/9/resources')
     expect(localStorage.getItem('datara.active-project')).toBe('9')
   })
 

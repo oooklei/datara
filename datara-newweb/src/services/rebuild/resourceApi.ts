@@ -56,6 +56,122 @@ export interface ResourceBindRequest {
   resourceVersion: number
 }
 
+/* ---------- 编辑流：读正文 / 追加版本 / 脚本校验与试运行 ---------- */
+
+/** 版本正文（UTF-8 文本）；二进制内容服务端抛 RES_CONTENT_ENCODING */
+export interface ResourceVersionContent {
+  resourceId: number
+  version: number
+  name: string
+  content: string
+}
+
+/** 追加不可变版本：按 resource_id 定位，filename 仅作展示，不会按同名新建资源 */
+export interface ResourceAppendRequest {
+  projectId: number
+  resourceId: number
+  filename: string
+  content: string
+}
+
+export type ScriptDiagnosticSeverity = 'error' | 'warning' | 'info'
+
+/** 单条诊断：source=syntax 来自语法层，references 来自跨资源引用层 */
+export interface ScriptDiagnostic {
+  source: string
+  code: string
+  severity: ScriptDiagnosticSeverity
+  line: number | null
+  column: number | null
+  message: string
+}
+
+/** ok=通过；error=存在阻断性错误；skipped=当前环境无该语言校验器（不阻断保存） */
+export interface ScriptSyntaxResult {
+  status: 'ok' | 'error' | 'skipped'
+  diagnostics: ScriptDiagnostic[]
+}
+
+/** 试运行结果：executed=false 时用 reason/message 说明未执行原因 */
+export interface ScriptRunResult {
+  executed: boolean
+  reason?: string
+  message?: string
+  exitCode?: number
+  timedOut?: boolean
+  timeoutSeconds?: number
+  elapsedMs?: number
+  stdout?: string
+  stderr?: string
+}
+
+export interface ScriptCheckResult {
+  kind: ResourceKind
+  syntax: ScriptSyntaxResult
+  references: ScriptDiagnostic[]
+  run: ScriptRunResult | null
+}
+
+export interface ResourceScriptCheckRequest {
+  projectId: number
+  resourceId: number
+  content: string
+  /** 默认 false：仅静态校验；true 才真正执行（SQL 无数据源，不会执行） */
+  execute?: boolean
+  timeoutSeconds?: number
+  /** SQL 方言，默认 mysql */
+  dialect?: string
+}
+
+export interface ResourceSshTrialRequest {
+  projectId: number
+  resourceId: number
+  nodeId: number
+  content: string
+}
+
+/* ---------- 试运行环境描述（弹窗标题下环境状态栏） ---------- */
+
+/** 试运行实际发生的位置：后端 API 服务进程（非 SSH 目标主机），containerized 标记容器内执行 */
+export interface ScriptRunLocation {
+  scope: string
+  label: string
+  hostname: string
+  platform: string
+  containerized: boolean
+  workdir: string
+}
+
+export interface ScriptPythonEnvironment {
+  available: boolean
+  version: string | null
+  executable: string | null
+  packageCount: number
+  packages: string[]
+}
+
+export interface ScriptShellEnvironment {
+  available: boolean
+  path: string | null
+  kind: string | null
+  version: string | null
+}
+
+export interface ScriptOutputTarget {
+  channel: string
+  label: string
+}
+
+/** 环境探测结果：database 恒为 null（资源未绑定数据源，SQL 不执行），由 databaseNote 说明 */
+export interface ScriptEnvironment {
+  runLocation: ScriptRunLocation
+  python: ScriptPythonEnvironment
+  shell: ScriptShellEnvironment
+  database: { label?: string; host?: string; name?: string } | null
+  databaseNote: string
+  output: ScriptOutputTarget
+}
+
 /* ---------- 前端预校验（草案常量：最终以服务端契约为权威） ---------- */
 
 /** 大小上限草案 20MB（纠偏设计 §5.3 仅要求“有大小限制”，具体值待后端契约冻结） */
@@ -100,6 +216,10 @@ export const R4_RESOURCE_CONTRACT_METHODS = [
   'listResourceVersions',
   'getResourceVersion',
   'bindResourceVersion',
+  'getResourceVersionContent',
+  'appendResourceVersion',
+  'checkResourceScript',
+  'getScriptEnvironment',
 ] as const
 
 export type R4ResourceContractMethod = (typeof R4_RESOURCE_CONTRACT_METHODS)[number]
@@ -110,6 +230,11 @@ export interface ResourceContract {
   listResourceVersions: (resourceId: number, projectId: number) => Promise<ResourceVersion[]>
   getResourceVersion: (resourceId: number, version: number, projectId: number) => Promise<ResourceVersion>
   bindResourceVersion: (request: ResourceBindRequest) => Promise<{ bound: true; bindingId: number }>
+  getResourceVersionContent: (resourceId: number, version: number, projectId: number) => Promise<ResourceVersionContent>
+  appendResourceVersion: (request: ResourceAppendRequest) => Promise<ResourceVersion>
+  checkResourceScript: (request: ResourceScriptCheckRequest) => Promise<ScriptCheckResult>
+  trialScriptOnSsh: (request: ResourceSshTrialRequest) => Promise<ScriptCheckResult>
+  getScriptEnvironment: (projectId: number) => Promise<ScriptEnvironment>
 }
 
 /* ---------- GREEN 统一原语（收编 1.2 http 单 BASE 底座，s231 裁示④） ---------- */
@@ -165,7 +290,7 @@ function base64ToFile(base64: string, filename: string): File {
 }
 
 /**
- * R4-RESOURCE 契约工厂 — GREEN：5 方法接线至 A2 v2.1 冻结契约的后端实现（Task 4 契约面表），
+ * R4-RESOURCE 契约工厂 — GREEN：8 方法接线至 A2 v2.1 冻结契约 + 编辑流（读正文/追加版本/脚本校验）后端实现，
  * 签名与返回类型不动，UI 层（ResourceUploadValidationView）不感知切换。
  * uploadResource 为真实 multipart：contentBase64 必填（缺失即 ContractApiError，不做任何静默降级）。
  */
@@ -194,5 +319,19 @@ export function createResourceContract(): ResourceContract {
     getResourceVersion: (resourceId, version, projectId) =>
       getJson<ResourceVersion>(`/${resourceId}/versions/${version}`, { project_id: String(projectId) }),
     bindResourceVersion: (request) => sendJson<{ bound: true; bindingId: number }>('/bindings', request),
+    getResourceVersionContent: (resourceId, version, projectId) =>
+      getJson<ResourceVersionContent>(`/${resourceId}/versions/${version}/content`, { project_id: String(projectId) }),
+    appendResourceVersion: (request) => {
+      const form = new FormData()
+      form.append('project_id', String(request.projectId))
+      form.append('file', new File([request.content], request.filename, { type: 'text/plain;charset=utf-8' }))
+      return requestMultipart<ResourceVersion>(`/${request.resourceId}/versions`, form)
+    },
+    checkResourceScript: (request) => {
+      const { resourceId, projectId, content, execute, timeoutSeconds, dialect } = request
+      return sendJson<ScriptCheckResult>(`/${resourceId}/script-checks`, { projectId, content, execute, timeoutSeconds, dialect })
+    },
+    trialScriptOnSsh: (request) => sendJson<ScriptCheckResult>(`/${request.resourceId}/ssh-trials`, request),
+    getScriptEnvironment: (projectId) => getJson<ScriptEnvironment>('/script-environment', { project_id: String(projectId) }),
   }
 }

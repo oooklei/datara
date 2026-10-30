@@ -14,7 +14,7 @@
 
     <section class="dashboard-card quick-panel" aria-label="快捷入口">
       <div class="section-title">快捷入口</div>
-      <p>从工作台直达数据开发、任务编排、数据源与集群监控。</p>
+      <p>从工作台直达脚本开发、任务中心、数据治理与监控中心。</p>
       <div class="entry-grid">
         <button v-for="entry in quickEntries" :key="entry.path" class="entry-card" type="button" :data-quick-entry="entry.path" @click="router.push(entry.path)">
           <span><b>{{ entry.title }}</b><small>{{ entry.description }}</small></span><i>→</i>
@@ -68,6 +68,7 @@ import { useDraggable } from '../composables/useDraggable'
 import { createProject, deleteProject, listProjects, updateProject, type ProjectInput } from '../services/rebuild/projectApi'
 import type { ProjectSummary } from '../services/rebuild/projectApi'
 import { authAccount } from '../services/rebuild/authApi'
+import { roleHasPermission } from '../services/rebuild/rolePermissions'
 
 const router = useRouter()
 const loading = ref(true)
@@ -80,17 +81,20 @@ const draft = ref<ProjectInput>({ name: '', description: '' })
 const projectFormRef = ref<HTMLFormElement | null>(null)
 const projectHdRef = ref<HTMLElement | null>(null)
 const { dragStyle: projectDragStyle, onHandlePointerdown: onProjectDragStart } = useDraggable(projectFormRef, projectHdRef, { storageKey: 'project.edit' })
-const quickEntries = [
-  { title: '数据开发 IDE', description: 'SQL 开发、资源管理与执行观测', path: '/ide' },
+const allQuickEntries = [
+  { title: '脚本开发', description: '管理 SQL、Python 与 Shell 脚本', path: '/resources' },
   { title: '任务中心', description: '工作流、同步、ETL 与流处理统一编排', path: '/dag' },
-  { title: '数据源管理', description: '管理业务库、数仓与消息连接', path: '/ds/list' },
-  { title: '集群监控', description: '查看运行时节点与集群运行状态', path: '/dep/monitor' },
+  { title: '数据治理', description: '查看标签、标准、指标与质量', path: '/meta/tag' },
+  { title: '监控中心', description: '查看运行时节点与集群运行状态', path: '/dep/monitor' },
 ]
+const quickEntries = computed(() => allQuickEntries.filter((entry) =>
+  entry.path !== '/dep/monitor' || (authAccount.value !== null && roleHasPermission(authAccount.value.role, 'monitor:read')),
+))
 const dashboardStats = computed(() => [
   { key: 'projects', label: '项目空间', value: String(projects.value.length), description: '当前账号可访问项目', icon: '▦', iconBg: 'var(--primary-light)', iconColor: 'var(--primary)' },
   { key: 'owned', label: '我拥有', value: String(projects.value.filter(item => item.ownOrJoined === 'owner').length), description: '由当前账号负责', icon: '◆', iconBg: 'var(--primary-light)', iconColor: 'var(--purple)' },
   { key: 'joined', label: '我参与', value: String(projects.value.filter(item => item.ownOrJoined === 'joined').length), description: '作为成员参与', icon: '◎', iconBg: 'var(--success-bg)', iconColor: 'var(--success)' },
-  { key: 'entries', label: '核心入口', value: String(quickEntries.length), description: '高优先级业务入口', icon: '⌘', iconBg: 'var(--warn-bg)', iconColor: 'var(--warn)' },
+  { key: 'entries', label: '核心入口', value: String(quickEntries.value.length), description: '高优先级业务入口', icon: '⌘', iconBg: 'var(--warn-bg)', iconColor: 'var(--warn)' },
 ])
 
 function enter(p: ProjectSummary): void {

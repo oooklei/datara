@@ -1,4 +1,4 @@
-import { createDatasourceContract } from './datasourceApi'
+import { createDbxContract } from './dbxApi'
 import { listWorkflowRunStats, type WorkflowRunStat } from './executionStatsApi'
 import { governanceApi } from './governanceApi'
 import { createMetricsContract, type WorkflowResultStatRow } from './metricsApi'
@@ -107,7 +107,7 @@ export async function loadProjectDashboard(projectId: number, signal?: AbortSign
 
   const failures: string[] = []
   const window = sevenDayWindow()
-  const datasource = createDatasourceContract(projectId)
+  const dbx = createDbxContract(projectId)
   const resources = createResourceContract()
   const metrics = createMetricsContract()
 
@@ -116,7 +116,7 @@ export async function loadProjectDashboard(projectId: number, signal?: AbortSign
     () => listWorkflowDefinitions(projectId).then((v) => ({ label: '工作流', ok: true, data: v })).catch(() => ({ label: '工作流', ok: false, data: [] })),
     () => metrics.queryWorkflowResultStats(projectId, window).then((v) => ({ label: '运行趋势', ok: true, data: v })).catch(() => ({ label: '运行趋势', ok: false, data: [] })),
     () => listWorkflowRunStats(projectId, { startedFrom: window.from, limit: 50 }).then((v) => ({ label: '最近运行', ok: true, data: v })).catch(() => ({ label: '最近运行', ok: false, data: { total: 0, items: [] } })),
-    () => datasource.listDatasources().then((v) => ({ label: '数据源', ok: true, data: v })).catch(() => ({ label: '数据源', ok: false, data: { items: [] } })),
+    () => dbx.listConnections().then((items) => ({ label: 'dbx 连接', ok: true, data: { items } })).catch(() => ({ label: 'dbx 连接', ok: false, data: { items: [] } })),
     () => resources.listResources(projectId).then((v) => ({ label: '资源', ok: true, data: v })).catch(() => ({ label: '资源', ok: false, data: [] })),
     () => governanceApi.listAssets(projectId, { page: 1, pageSize: 1 }).then((v) => ({ label: '资产', ok: true, data: v })).catch(() => ({ label: '资产', ok: false, data: { total: 0, page: 1, pageSize: 1, list: [] } })),
     () => governanceApi.listStandards(projectId, 1, 1).then((v) => ({ label: '标准', ok: true, data: v })).catch(() => ({ label: '标准', ok: false, data: { total: 0, list: [] } })),

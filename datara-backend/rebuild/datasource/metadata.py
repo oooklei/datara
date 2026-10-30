@@ -53,7 +53,9 @@ class MySQLMetadataCatalog:
         parameters += (bounded_limit + 1,)
         return [str(row[0]) for row in self._query(query, parameters)]
 
-    def objects(self, schema: str, *, after: str | None = None, limit: int = 100) -> list[dict[str, str]]:
+    def objects(
+        self, schema: str, *, kind: str | None = None, after: str | None = None, limit: int = 100
+    ) -> list[dict[str, str]]:
         self._ensure_mysql()
         bounded_limit = _page_size(limit)
         query = """
@@ -62,14 +64,18 @@ class MySQLMetadataCatalog:
             WHERE table_schema = %s AND table_type IN ('BASE TABLE', 'VIEW')
         """
         parameters: tuple[Any, ...] = (schema,)
+        if kind == "table":
+            query += " AND table_type = 'BASE TABLE'"
+        elif kind == "view":
+            query += " AND table_type = 'VIEW'"
         if after is not None:
             query += " AND table_name > %s"
             parameters += (after,)
         query += " ORDER BY table_name LIMIT %s"
         parameters += (bounded_limit + 1,)
         return [
-            {"schema": schema, "name": str(name), "type": "view" if kind == "VIEW" else "table"}
-            for name, kind in self._query(query, parameters)
+            {"schema": schema, "name": str(name), "type": "view" if table_type == "VIEW" else "table"}
+            for name, table_type in self._query(query, parameters)
         ]
 
     def columns(self, schema: str, object_name: str, *, limit: int = MAX_COLUMN_COUNT) -> list[dict[str, Any]]:
@@ -108,22 +114,64 @@ class MySQLMetadataCatalog:
                  "unique": not bool(non_unique), "position": int(position)}
                 for name, column, non_unique, position in rows]
 
-    def routines(self, schema: str, *, limit: int = 200) -> list[dict[str, Any]]:
+    def routines(
+        self, schema: str, *, kind: str | None = None, limit: int = 200
+    ) -> list[dict[str, Any]]:
         self._ensure_mysql()
-        rows = self._query(
+        if kind == "trigger":
+            return self.triggers(schema, limit=limit)
+        if kind == "event":
+            return self.events(schema, limit=limit)
+        query = (
             "SELECT routine_name, routine_type, data_type FROM information_schema.routines "
-            "WHERE routine_schema=%s ORDER BY routine_name LIMIT %s", (schema, _page_size(limit))
+            "WHERE routine_schema=%s"
         )
+        parameters: tuple[Any, ...] = (schema,)
+        if kind == "function":
+            query += " AND routine_type = 'FUNCTION'"
+        elif kind == "procedure":
+            query += " AND routine_type = 'PROCEDURE'"
+        query += " ORDER BY routine_name LIMIT %s"
+        parameters += (_page_size(limit),)
+        rows = self._query(query, parameters)
         return [{"schema": schema, "name": str(name), "type": str(kind).lower(), "returnType": str(data_type or "")}
                 for name, kind, data_type in rows]
 
-    def definition(self, schema: str, object_name: str) -> str:
+    def triggers(self, schema: str, *, limit: int = 200) -> list[dict[str, Any]]:
+        self._ensure_mysql()
+        rows = self._query(
+            "SELECT trigger_name, event_manipulation, event_object_table FROM information_schema.triggers "
+            "WHERE trigger_schema=%s ORDER BY trigger_name LIMIT %s", (schema, _page_size(limit))
+        )
+        return [{"schema": schema, "name": str(name), "type": "trigger",
+                 "event": str(event or ""), "table": str(table or "")}
+                for name, event, table in rows]
+
+    def events(self, schema: str, *, limit: int = 200) -> list[dict[str, Any]]:
+        self._ensure_mysql()
+        rows = self._query(
+            "SELECT event_name FROM information_schema.events "
+            "WHERE event_schema=%s ORDER BY event_name LIMIT %s", (schema, _page_size(limit))
+        )
+        return [{"schema": schema, "name": str(name), "type": "event"} for (name,) in rows]
+
+    _SHOW_CREATE = {
+        "table": "TABLE", "view": "VIEW", "function": "FUNCTION",
+        "procedure": "PROCEDURE", "trigger": "TRIGGER", "event": "EVENT",
+    }
+
+    def definition(self, schema: str, object_name: str, *, kind: str | None = None) -> str:
         self._ensure_mysql()
         _validate_identifier(schema); _validate_identifier(object_name)
-        rows = self._query(f"SHOW CREATE TABLE `{schema}`.`{object_name}`", ())
+        target = self._SHOW_CREATE.get(str(kind or "table").lower(), "TABLE")
+        rows = self._query(f"SHOW CREATE {target} `{schema}`.`{object_name}`", ())
         if not rows:
             raise ValueError("object definition not found")
-        return str(rows[0][1])
+        for value in rows[0]:
+            text = str(value or "")
+            if text.lstrip().upper().startswith("CREATE "):
+                return text
+        raise ValueError("object definition not found")
 
     def _ensure_mysql(self) -> None:
         validate_datasource(self._draft)
@@ -169,7 +217,9 @@ class PostgreSQLMetadataCatalog:
         parameters += (_page_size(limit) + 1,)
         return [str(row[0]) for row in self._query(query, parameters)]
 
-    def objects(self, schema: str, *, after: str | None = None, limit: int = 100) -> list[dict[str, str]]:
+    def objects(
+        self, schema: str, *, kind: str | None = None, after: str | None = None, limit: int = 100
+    ) -> list[dict[str, str]]:
         self._ensure_postgresql()
         query = """
             SELECT table_name, table_type
@@ -177,14 +227,18 @@ class PostgreSQLMetadataCatalog:
             WHERE table_schema = %s AND table_type IN ('BASE TABLE', 'VIEW')
         """
         parameters: tuple[Any, ...] = (schema,)
+        if kind == "table":
+            query += " AND table_type = 'BASE TABLE'"
+        elif kind == "view":
+            query += " AND table_type = 'VIEW'"
         if after is not None:
             query += " AND table_name > %s"
             parameters += (after,)
         query += " ORDER BY table_name LIMIT %s"
         parameters += (_page_size(limit) + 1,)
         return [
-            {"schema": schema, "name": str(name), "type": "view" if kind == "VIEW" else "table"}
-            for name, kind in self._query(query, parameters)
+            {"schema": schema, "name": str(name), "type": "view" if table_type == "VIEW" else "table"}
+            for name, table_type in self._query(query, parameters)
         ]
 
     def columns(self, schema: str, object_name: str, *, limit: int = MAX_COLUMN_COUNT) -> list[dict[str, Any]]:
@@ -236,18 +290,64 @@ class PostgreSQLMetadataCatalog:
         return [{"schema": schema, "object": object_name, "name": str(name), "definition": str(definition)}
                 for name, definition in rows]
 
-    def routines(self, schema: str, *, limit: int = 200) -> list[dict[str, Any]]:
+    def routines(
+        self, schema: str, *, kind: str | None = None, limit: int = 200
+    ) -> list[dict[str, Any]]:
         self._ensure_postgresql()
-        rows = self._query(
+        if kind == "trigger":
+            return self.triggers(schema, limit=limit)
+        if kind == "event":
+            return []
+        query = (
             "SELECT routine_name, routine_type, data_type FROM information_schema.routines "
-            "WHERE routine_schema=%s ORDER BY routine_name LIMIT %s", (schema, _page_size(limit))
+            "WHERE routine_schema=%s"
         )
+        parameters: tuple[Any, ...] = (schema,)
+        if kind == "function":
+            query += " AND routine_type = 'FUNCTION'"
+        elif kind == "procedure":
+            query += " AND routine_type = 'PROCEDURE'"
+        query += " ORDER BY routine_name LIMIT %s"
+        parameters += (_page_size(limit),)
+        rows = self._query(query, parameters)
         return [{"schema": schema, "name": str(name), "type": str(kind).lower(), "returnType": str(data_type or "")}
                 for name, kind, data_type in rows]
 
-    def definition(self, schema: str, object_name: str) -> str:
+    def triggers(self, schema: str, *, limit: int = 200) -> list[dict[str, Any]]:
+        self._ensure_postgresql()
+        rows = self._query(
+            "SELECT trigger_name, event_manipulation, event_object_table FROM information_schema.triggers "
+            "WHERE trigger_schema=%s ORDER BY trigger_name LIMIT %s", (schema, _page_size(limit))
+        )
+        return [{"schema": schema, "name": str(name), "type": "trigger",
+                 "event": str(event or ""), "table": str(table or "")}
+                for name, event, table in rows]
+
+    def definition(self, schema: str, object_name: str, *, kind: str | None = None) -> str:
         self._ensure_postgresql()
         _validate_identifier(schema); _validate_identifier(object_name)
+        normalized = str(kind or "").lower()
+        if normalized in {"function", "procedure"}:
+            rows = self._query(
+                "SELECT pg_get_functiondef(p.oid) FROM pg_proc p "
+                "JOIN pg_namespace n ON n.oid = p.pronamespace "
+                "WHERE n.nspname = %s AND p.proname = %s LIMIT 1",
+                (schema, object_name),
+            )
+            if rows and rows[0][0]:
+                return str(rows[0][0])
+            raise ValueError("object definition not found")
+        if normalized == "trigger":
+            rows = self._query(
+                "SELECT pg_get_triggerdef(t.oid) FROM pg_trigger t "
+                "JOIN pg_class c ON c.oid = t.tgrelid "
+                "JOIN pg_namespace n ON n.oid = c.relnamespace "
+                "WHERE n.nspname = %s AND t.tgname = %s LIMIT 1",
+                (schema, object_name),
+            )
+            if rows and rows[0][0]:
+                return str(rows[0][0])
+            raise ValueError("object definition not found")
         rows = self._query(
             "SELECT pg_get_viewdef(to_regclass(format('%I.%I', %s, %s)), true)",
             (schema, object_name),

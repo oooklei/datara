@@ -47,13 +47,12 @@ function ctxWithRole(role: Role): MenuFilterContext {
 describe('B5-d-3 判定链①：G 组权限词取自冻结矩阵', () => {
   const g = menuGroups.find((x) => x.id === 'system')!
 
-  it('五 formal 项逐项对拍（sec-perm→security:read，sec-audit→audit:read，open-api/open-key/llm-config→security:manage）', () => {
+  it('四个正式项逐项对拍权限词', () => {
     const expectPerm: Record<string, string> = {
       'sec-perm': 'security:read',
       'sec-audit': 'audit:read',
       'open-api': 'security:manage',
       'open-key': 'security:manage',
-      'llm-config': 'security:manage',
     }
     for (const [id, perm] of Object.entries(expectPerm)) {
       const item = g.items.find((i) => i.id === id)
@@ -73,11 +72,11 @@ describe('B5-d-3 判定链②：菜单四角色可见性矩阵', () => {
   const viewFor = (role: Role) => filterMenuGroups(ctxWithRole(role))
   const groupIds = (role: Role) => viewFor(role).map((v) => v.group.id)
 
-  it('admin/developer：系统管理组全量 5 个 formal 项（embedded 调用日志不进侧栏）', () => {
+  it('admin/developer：系统管理组四个正式项', () => {
     for (const role of ['admin', 'developer'] as const) {
       const system = viewFor(role).find((v) => v.group.id === 'system')
       expect(system, `${role} 应见系统管理组`).toBeDefined()
-      expect(system!.items.map((i) => i.id)).toEqual(['sec-perm', 'sec-audit', 'open-api', 'open-key', 'llm-config'])
+      expect(system!.items.map((i) => i.id)).toEqual(['sec-perm', 'sec-audit', 'open-api', 'open-key'])
     }
   })
 
@@ -97,12 +96,20 @@ describe('B5-d-3 判定链②：菜单四角色可见性矩阵', () => {
     expect(roleHasPermission('viewer', 'security:manage')).toBe(false)
   })
 
-  it('四角色其余功能组（总览/任务中心/集成/开发/治理/运维）均可见——角色差异只收敛在系统管理面', () => {
+  it('四角色其余正式功能组均可见', () => {
     for (const role of ROLE_ORDER) {
       const ids = groupIds(role)
-      for (const gid of ['overview', 'task-center', 'integration', 'development', 'governance', 'operations']) {
+      for (const gid of ['overview', 'task-center', 'integration', 'governance', 'operations']) {
         expect(ids, `${role} 应见 ${gid}`).toContain(gid)
       }
+    }
+  })
+
+  it('监控中心仅对持有 monitor:read 的管理员和运维角色可见', () => {
+    for (const role of ROLE_ORDER) {
+      const operations = viewFor(role).find((view) => view.group.id === 'operations')
+      const visible = operations?.items.some((item) => item.id === 'dep-monitor') ?? false
+      expect(visible, role).toBe(role === 'admin' || role === 'operator')
     }
   })
 })

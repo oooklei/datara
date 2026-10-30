@@ -19,7 +19,7 @@ vi.mock('../../services/rebuild/governanceApi', async () => {
     )
   return {
     ...actual,
-    governanceApi: { listAssets: vi.fn(), createTag: vi.fn(), assignAssetTags: vi.fn() },
+    governanceApi: { listAssets: vi.fn(), listTags: vi.fn(), createTag: vi.fn(), assignAssetTags: vi.fn() },
   }
 })
 
@@ -55,6 +55,7 @@ beforeEach(() => {
   router.route.params = {}
   router.route.query = {}
   vi.mocked(listProjects).mockResolvedValue({ total: 1, list: [{ id: 1, name: '订单库' }] })
+  vi.mocked(governanceApi.listTags).mockResolvedValue({ total: 1, page: 1, pageSize: 200, list: [tag] })
 })
 
 afterEach(() => vi.clearAllMocks())
@@ -112,6 +113,17 @@ describe('/meta/tag 标签管理页（增量 14）', () => {
     await flushPromises()
     expect(governanceApi.assignAssetTags).toHaveBeenCalledWith(9, [1, 2])
     expect(w.find('[data-assign-result]').text()).toContain('资产 #9 已挂载标签：1, 2')
+  })
+
+  it('offers a project tag before it is attached to any asset', async () => {
+    router.route.params.projectId = '1'
+    vi.mocked(governanceApi.listAssets).mockResolvedValue({ total: 1, page: 1, pageSize: 50, list: [asset] })
+    const w = mount(View)
+    await flushPromises()
+    await w.find('[data-asset-select]').setValue('9')
+    expect(w.find('[data-tag-catalog]').text()).toContain('负责人')
+    await w.find('[data-tag-catalog]').setValue('1')
+    expect((w.find('input[placeholder="1,2,3"]').element as HTMLInputElement).value).toBe('1')
   })
 
   it('surfaces backend errors without dropping the picker', async () => {

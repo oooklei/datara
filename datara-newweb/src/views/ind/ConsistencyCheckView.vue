@@ -111,8 +111,8 @@
     </template>
 
     <div v-if="detail" class="drawer-mask" @click.self="closeDetail">
-      <aside class="drawer" role="dialog" aria-modal="true" aria-label="检查结果详情">
-        <div class="drawer-hd">
+      <aside ref="detailRef" class="drawer" role="dialog" aria-modal="true" aria-label="检查结果详情" :style="detailStyle">
+        <div class="drawer-hd drag-handle" @pointerdown="onDetailDragStart">
           检查结果 · {{ detail.code }}
           <button type="button" class="x" aria-label="关闭" @click="closeDetail">×</button>
         </div>
@@ -141,8 +141,9 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { computed, onMounted, ref, type CSSProperties } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
+import { useDraggable } from '../../composables/useDraggable'
 import FilterPanel, { type Facet } from '../../components/FilterPanel.vue'
 import {
   governanceApi,
@@ -168,6 +169,14 @@ const retry = ref<() => void>(() => loadStandards)
 const keyword = ref('')
 const filters = ref<Record<string, string>>({})
 const detail = ref<StandardCheckResult | null>(null)
+/* D9：检查结果详情抽屉可拖动；抽屉 CSS 为 top:0/right:0/bottom:0，拖拽定位后解除 right/bottom 约束并按 top 反推高度 */
+const detailRef = ref<HTMLElement | null>(null)
+const { dragStyle: detailDragStyle, onHandlePointerdown: onDetailDragStart } = useDraggable(detailRef, detailRef, { storageKey: 'consistency.detail' })
+const detailStyle = computed<CSSProperties>(() => {
+  const base = detailDragStyle.value
+  if (!base.position) return base
+  return { ...base, right: 'auto', bottom: 'auto', height: `calc(100vh - ${base.top})` }
+})
 
 const routeProjectId = computed<number | null>(() => {
   const raw = route.params.projectId ?? route.query.projectId
@@ -293,4 +302,6 @@ async function runCheck(): Promise<void> {
 .stat-label{font-size:11.5px;color:var(--text-3)}
 .type-icon{width:34px;height:34px;border-radius:var(--radius);display:flex;align-items:center;justify-content:center;color:var(--card);font-size:14px;flex-shrink:0}
 .finding-list{margin:0;padding-left:18px;display:flex;flex-direction:column;gap:6px;font-size:12px;color:var(--text-2)}
+.drag-handle{cursor:grab;user-select:none}
+.drag-handle:active{cursor:grabbing}
 </style>

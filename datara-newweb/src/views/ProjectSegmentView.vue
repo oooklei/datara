@@ -11,17 +11,8 @@
 <script setup lang="ts">
 import { computed, type Component } from 'vue'
 import TaskCenterView from './TaskCenterView.vue'
+import ProjectTaskGroupView from './ProjectTaskGroupView.vue'
 import ResourceManagementView from './resources/ResourceManagementView.vue'
-import DataSourceListView from './datasource/DataSourceListView.vue'
-import IdeView from './ide/IdeView.vue'
-import ModelListView from './dwmodel/ModelListView.vue'
-import ModelDesignView from './dwmodel/ModelDesignView.vue'
-import ModelVersionView from './dwmodel/ModelVersionView.vue'
-import ModelLineageView from './dwmodel/ModelLineageView.vue'
-import ErCanvasView from './dwmodel/ErCanvasView.vue'
-import LineageAnalysisView from './meta/LineageAnalysisView.vue'
-import AssetMapView from './meta/AssetMapView.vue'
-import MetadataCatalogView from './meta/MetadataCatalogView.vue'
 import TagManagementView from './meta/TagManagementView.vue'
 import StandardManagementView from './std/StandardManagementView.vue'
 import IndicatorListView from './ind/IndicatorListView.vue'
@@ -42,17 +33,9 @@ const props = defineProps<{ projectId: number; segmentPath?: string; seg?: strin
 
 const segmentViews: Record<string, SegmentEntry> = {
   dag: { component: TaskCenterView },
-  'ds/list': { component: DataSourceListView },
+  // §10.10 R8：任务组管理（项目级，任务中心「任务组名称/组内优先级」下拉来源）
+  'task-group': { component: ProjectTaskGroupView },
   resources: { component: ResourceManagementView },
-  ide: { component: IdeView },
-  'model/list': { component: ModelListView },
-  'model/design': { component: ModelDesignView },
-  'model/version': { component: ModelVersionView },
-  'model/lineage': { component: ModelLineageView },
-  'model/er': { component: ErCanvasView },
-  'meta/lineage': { component: LineageAnalysisView },
-  'meta/map': { component: AssetMapView },
-  'meta/catalog': { component: MetadataCatalogView },
   'meta/tag': { component: TagManagementView },
   'std/element': { component: StandardManagementView },
   'ind/list': { component: IndicatorListView },

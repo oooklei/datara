@@ -8,9 +8,12 @@ from typing import Any, Callable
 from fastapi import APIRouter, Header
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
+from sqlalchemy import delete
 from sqlalchemy.orm import sessionmaker
 
-from rebuild.identity.contracts import Permission, authorize
+from rebuild.identity.contracts import Permission, Role, authorize
+from rebuild.identity.models import UserRecord
+from rebuild.sshnode.governance import SshNodeAccess, SshNodeGovernanceRecord, SshNodeShareRecord
 from rebuild.sshnode.models import SshNodeRecord
 from rebuild.sshnode.probe import probe
 from rebuild.sshnode.service import SshNodeDomainError, SshNodeInput, SshNodeService
@@ -24,6 +27,16 @@ class SshNodeRequest(BaseModel):
     cred: str | None = ""
     tags: list[str] = Field(default_factory=list)
     enabled: bool = True
+    allowTrial: bool = False
+
+
+class SshNodeShareRequest(BaseModel):
+    userId: int = Field(gt=0)
+
+
+class SshNodeClaimRequest(BaseModel):
+    ownerId: int = Field(gt=0)
+    allowTrial: bool = False
 
 
 PERMISSION_MAP = {
@@ -61,13 +74,37 @@ def build_sshnode_router(
     def service(session) -> SshNodeService:
         return SshNodeService(session, probe_func)
 
+    def access_denial(session, node_id: int, claims: dict[str, object], *, manage: bool = False) -> JSONResponse | None:
+        if session.get(SshNodeRecord, node_id) is None:
+            return _error(404, 4101, "SSH node not found")
+        access = SshNodeAccess(session)
+        user_id = int(claims["user_id"])
+        is_admin = claims.get("role") == Role.ADMIN.value
+        allowed = access.can_manage(node_id, user_id, is_admin=is_admin) if manage else access.can_view(node_id, user_id, is_admin=is_admin)
+        return None if allowed else _error(403, 1003, "SSH node not shared")
+
     @router.get("")
     def list_ssh_nodes(token: str = Header(default=""), authorization: str = Header(default="")):
         denial = principal(token, authorization, "list")
         if isinstance(denial, JSONResponse):
             return denial
         with session_factory() as session:
-            return _success([_payload(item) for item in service(session).list()])
+            access = SshNodeAccess(session)
+            admin = denial.get("role") == Role.ADMIN.value
+            return _success([_payload(item, access.get(item.id)) for item in service(session).list()
+                             if access.can_view(item.id, int(denial["user_id"]), is_admin=admin)])
+
+    @router.get("/trial-candidates")
+    def trial_candidates(token: str = Header(default=""), authorization: str = Header(default="")):
+        claims = principal(token, authorization, "list")
+        if isinstance(claims, JSONResponse):
+            return claims
+        with session_factory() as session:
+            access = SshNodeAccess(session)
+            admin = claims.get("role") == Role.ADMIN.value
+            return _success([_payload(item, governance) for item in service(session).list()
+                             if (governance := access.get(item.id)) is not None and item.enabled and governance.allow_trial
+                             and access.can_view(item.id, int(claims["user_id"]), is_admin=admin)])
 
     @router.post("")
     def create_ssh_node(
@@ -79,9 +116,11 @@ def build_sshnode_router(
         with session_factory() as session:
             try:
                 record = service(session).create(_input(body))
+                governance = SshNodeAccess(session).claim(record.id, int(denial["user_id"]), allow_trial=body.allowTrial)
+                session.commit()
             except SshNodeDomainError as exc:
                 return _domain_error(exc)
-            return _success(_payload(record))
+            return _success(_payload(record, governance))
 
     @router.put("/{node_id}")
     def update_ssh_node(
@@ -94,11 +133,20 @@ def build_sshnode_router(
         if isinstance(denial, JSONResponse):
             return denial
         with session_factory() as session:
+            blocked = access_denial(session, node_id, denial, manage=True)
+            if blocked is not None:
+                return blocked
             try:
                 record = service(session).update(node_id, _input(body))
+                governance = SshNodeAccess(session).get(node_id)
+                if governance is None:
+                    governance = SshNodeAccess(session).claim(node_id, int(denial["user_id"]), allow_trial=body.allowTrial)
+                else:
+                    governance.allow_trial = body.allowTrial
+                session.commit()
             except SshNodeDomainError as exc:
                 return _domain_error(exc)
-            return _success(_payload(record))
+            return _success(_payload(record, governance))
 
     @router.delete("/{node_id}")
     def delete_ssh_node(
@@ -108,7 +156,12 @@ def build_sshnode_router(
         if isinstance(denial, JSONResponse):
             return denial
         with session_factory() as session:
+            blocked = access_denial(session, node_id, denial, manage=True)
+            if blocked is not None:
+                return blocked
             try:
+                session.execute(delete(SshNodeShareRecord).where(SshNodeShareRecord.node_id == node_id))
+                session.execute(delete(SshNodeGovernanceRecord).where(SshNodeGovernanceRecord.node_id == node_id))
                 result = service(session).delete(node_id)
             except SshNodeDomainError as exc:
                 return _domain_error(exc)
@@ -122,11 +175,46 @@ def build_sshnode_router(
         if isinstance(denial, JSONResponse):
             return denial
         with session_factory() as session:
+            blocked = access_denial(session, node_id, denial)
+            if blocked is not None:
+                return blocked
             try:
                 result = service(session).probe(node_id)
             except SshNodeDomainError as exc:
                 return _domain_error(exc)
             return _success(result)
+
+    @router.post("/{node_id}/share")
+    def share_ssh_node(node_id: int, body: SshNodeShareRequest, token: str = Header(default=""), authorization: str = Header(default="")):
+        claims = principal(token, authorization, "update")
+        if isinstance(claims, JSONResponse):
+            return claims
+        with session_factory() as session:
+            blocked = access_denial(session, node_id, claims, manage=True)
+            if blocked is not None:
+                return blocked
+            if session.get(SshNodeGovernanceRecord, node_id) is None or session.get(UserRecord, body.userId) is None:
+                return _error(404, 4101, "SSH node or user not found")
+            SshNodeAccess(session).share(node_id, body.userId)
+            session.commit()
+            return _success({"nodeId": node_id, "userId": body.userId})
+
+    @router.post("/{node_id}/claim")
+    def claim_ssh_node(node_id: int, body: SshNodeClaimRequest, token: str = Header(default=""), authorization: str = Header(default="")):
+        claims = principal(token, authorization, "update")
+        if isinstance(claims, JSONResponse):
+            return claims
+        if claims.get("role") != Role.ADMIN.value:
+            return _error(403, 1003, "admin required")
+        with session_factory() as session:
+            if session.get(SshNodeRecord, node_id) is None or session.get(UserRecord, body.ownerId) is None:
+                return _error(404, 4101, "SSH node or owner not found")
+            try:
+                SshNodeAccess(session).claim(node_id, body.ownerId, allow_trial=body.allowTrial)
+            except PermissionError:
+                return _error(409, 4102, "SSH node already claimed")
+            session.commit()
+            return _success({"nodeId": node_id, "ownerId": body.ownerId})
 
     return router
 
@@ -143,15 +231,16 @@ def _input(body: SshNodeRequest) -> SshNodeInput:
     )
 
 
-def _payload(record: SshNodeRecord) -> dict[str, object]:
+def _payload(record: SshNodeRecord, governance: SshNodeGovernanceRecord | None = None) -> dict[str, object]:
     return {
         "id": record.id,
         "name": record.name,
         "host": record.host,
         "port": record.port,
         "sshUser": record.ssh_user,
-        # R-34 security debt: migration-period full credential echo is frozen.
-        "cred": record.cred,
+        "hasCredential": bool(record.cred),
+        "allowTrial": bool(governance.allow_trial) if governance is not None else False,
+        "ownerId": governance.owner_id if governance is not None else None,
         "tags": record.tags or [],
         "enabled": bool(record.enabled),
         "heartbeatState": record.heartbeat_state,

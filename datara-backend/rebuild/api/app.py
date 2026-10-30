@@ -9,8 +9,9 @@ import json
 import logging
 import os
 import re
+import threading
 from pathlib import Path
-from typing import Literal
+from typing import Any, Callable, Literal
 
 from fastapi import FastAPI, Header, Query, Request
 from starlette.datastructures import MutableHeaders
@@ -55,11 +56,18 @@ def digest_token(token: str) -> str:
     """Stable token digest kept local for compatibility with older identity modules."""
     return hashlib.sha256(token.encode("utf-8")).hexdigest()
 from rebuild.datasource.contracts import DataSourceDraft, probe_datasource, validate_datasource
+from rebuild.datasource.dbx_sync import DbxConnectionClient, poll_dbx_connections, push_datasource_to_dbx
 from rebuild.datasource.models import ProjectDatasourceRecord
-from rebuild.dbx.models import DbxAiUserStateRecord
 from rebuild.datasource.metadata import metadata_catalog_for
 from rebuild.datasource.pool import DatasourceEngineRegistry
 from rebuild.datasource.repository import ProjectDatasourceRepository
+from rebuild.dbx.models import DbxAiUserStateRecord, DbxConnectionOwnershipRecord, DbxConnectionShareRecord, DbxObjectOwnershipRecord, DbxObjectShareRecord
+from rebuild.dbx.api import build_dbx_router
+from rebuild.dbx.ide_proxy import build_dbx_ide_router
+from rebuild.dbx.client import DbxClient
+from rebuild.impact.api import build_impact_router
+from rebuild.impact.models import DailyImpactRecord, DailyImpactRunRecord
+from rebuild.impact.service import refresh_daily_impact
 from rebuild.dependency.api import build_dependency_router
 from rebuild.dependency.models import DependencyConfigRecord, DependencyObservationRecord
 from rebuild.project.repository import ProjectRepository
@@ -111,6 +119,11 @@ from rebuild.workflow.models import (
 from rebuild.trial.models import WorkflowDraftSnapshotRecord
 from rebuild.sshnode import build_sshnode_router
 from rebuild.sshnode.models import SshNodeRecord
+from rebuild.sshnode.governance import SshNodeGovernanceRecord, SshNodeShareRecord
+from rebuild.orchestration.governance import (
+    OrchestrationResourceOwnershipRecord,
+    OrchestrationResourceShareRecord,
+)
 from rebuild.runtime_node import build_runtime_node_router
 from rebuild.runtime_node.models import RuntimeNodeRecord
 from rebuild.scheduling import build_schedule_router
@@ -118,6 +131,7 @@ from rebuild.model.api import build_model_router
 from rebuild.model.dicts import seed_model_dicts
 from rebuild.model.models import MODEL_TABLES
 from rebuild.monitor import build_monitor_router
+from rebuild.orchestration import build_orchestration_router
 from rebuild.llm import LlmCredentialCipher, build_llm_router
 from rebuild.llm.migrations import apply_llm_migrations
 from rebuild.llm.resolver import DefaultLlmResolver
@@ -131,6 +145,81 @@ from rebuild.variables.migrations import apply_variable_migrations
 from common.registry import ServiceRegistry
 
 logger = logging.getLogger(__name__)
+
+DBX_POLL_INTERVAL_SECONDS = 300
+
+
+class _IntervalJobScheduler:
+    """最小间隔任务调度器：只实现 janitor 式 ``add_job`` 注入契约。
+
+    避免在 rebuild 模块内直接依赖 APScheduler；每个任务独立守护线程按固定
+    间隔执行，进程退出时 ``stop`` 统一回收。
+    """
+
+    def __init__(self) -> None:
+        self._jobs: dict[str, tuple[Callable[[], object], int]] = {}
+        self._threads: list[threading.Thread] = []
+        self._stop = threading.Event()
+
+    def add_job(
+        self,
+        func: Callable[[], object],
+        *,
+        trigger: str = "interval",
+        seconds: int = 60,
+        id: str | None = None,
+        replace_existing: bool = False,
+        **_: Any,
+    ) -> None:
+        if trigger != "interval":
+            raise ValueError("only interval triggers are supported")
+        if isinstance(seconds, bool) or not isinstance(seconds, int) or seconds <= 0:
+            raise ValueError("seconds must be a positive integer")
+        job_id = id or getattr(func, "__name__", "job")
+        if job_id in self._jobs and not replace_existing:
+            raise ValueError(f"job {job_id} already exists")
+        self._jobs[job_id] = (func, seconds)
+
+    def start(self) -> None:
+        if self._threads:
+            return
+        for job_id, (func, seconds) in self._jobs.items():
+            thread = threading.Thread(
+                target=self._run_job,
+                args=(job_id, func, seconds),
+                name=f"interval-job-{job_id}",
+                daemon=True,
+            )
+            thread.start()
+            self._threads.append(thread)
+
+    def _run_job(self, job_id: str, func: Callable[[], object], seconds: int) -> None:
+        while not self._stop.wait(seconds):
+            try:
+                func()
+            except Exception as exc:  # noqa: BLE001 - 后台任务失败不终止调度线程
+                logger.warning("interval_job_failed job_id=%s error=%s", job_id, type(exc).__name__)
+
+    def stop(self) -> None:
+        self._stop.set()
+        for thread in self._threads:
+            thread.join(timeout=2)
+        self._threads.clear()
+
+
+def _remove_datasource_from_dbx(project_id: int, datasource_id: int) -> bool:
+    """删除 dbx 侧对应连接；id 生成与 ``dbx_sync._record_to_connection`` 保持一致。"""
+    try:
+        DbxConnectionClient().save_connections([], [f"datara-{project_id}-{datasource_id}"])
+    except Exception as exc:  # noqa: BLE001 - 同步失败不应影响 datara 主流程
+        logger.warning(
+            "dbx_push_delete_failed project_id=%s datasource_id=%s error=%s",
+            project_id,
+            datasource_id,
+            type(exc).__name__,
+        )
+        return False
+    return True
 
 
 class LoginRequest(BaseModel):
@@ -195,6 +284,8 @@ def create_app(
     ai_bridge_ports: AiBridgePorts | None = None,
     model_connector=None,
     llm_cipher=None,
+    ssh_trial_runner=None,
+    quality_dbx_client_factory=None,
 ) -> FastAPI:
     database_url = database_url or os.getenv("REBUILD_DB_URL")
     if not database_url:
@@ -235,6 +326,41 @@ def create_app(
     token_service = TokenService(secret=token_secret)
     validation_token_service = TokenService(secret=token_secret, ttl_seconds=900)
     datasource_engines = DatasourceEngineRegistry()
+    interval_scheduler = _IntervalJobScheduler()
+
+    def collect_yesterday_impact() -> int:
+        from datetime import datetime, timedelta
+        from zoneinfo import ZoneInfo
+
+        day = datetime.now(ZoneInfo("Asia/Shanghai")).date() - timedelta(days=1)
+        with session_factory() as session:
+            project_ids = [project.id for project in ProjectRepository(session).list_all()]
+            completed = set(session.scalars(select(DailyImpactRunRecord.project_id).where(DailyImpactRunRecord.day == day)).all())
+        count = 0
+        for project_id in project_ids:
+            if project_id in completed:
+                continue
+            try:
+                count += refresh_daily_impact(day, project_id, session_factory, DbxClient())
+            except Exception as exc:  # one failed project must not block the others
+                logger.warning("daily_impact_failed project_id=%s error=%s", project_id, type(exc).__name__)
+        return count
+
+    def poll_all_projects_dbx() -> int:
+        """遍历全部项目执行 dbx → datara 下行同步；单项目失败仅记日志。"""
+        try:
+            with session_factory() as session:
+                project_ids = [project.id for project in ProjectRepository(session).list_all()]
+        except Exception as exc:  # noqa: BLE001 - 后台轮询失败不应影响进程
+            logger.warning("dbx_poll_projects_failed error=%s", type(exc).__name__)
+            return 0
+        synced = 0
+        for project_id in project_ids:
+            try:
+                synced += poll_dbx_connections(project_id, session_factory=session_factory)
+            except Exception as exc:  # noqa: BLE001 - 单个项目失败不中断整体轮询
+                logger.warning("dbx_poll_failed project_id=%s error=%s", project_id, type(exc).__name__)
+        return synced
 
     class ActiveTokenStore:
         """Database-backed active token store for cross-worker revocation."""
@@ -390,7 +516,13 @@ def create_app(
                 ProjectMemberRecord.__table__,
                 ActiveTokenRecord.__table__,
                 ProjectDatasourceRecord.__table__,
+                DbxConnectionOwnershipRecord.__table__,
+                DbxConnectionShareRecord.__table__,
+                DbxObjectOwnershipRecord.__table__,
+                DbxObjectShareRecord.__table__,
                 DbxAiUserStateRecord.__table__,
+                DailyImpactRecord.__table__,
+                DailyImpactRunRecord.__table__,
                 VariableDefinitionRecord.__table__,
                 TaskInstanceVariableRuntimeRecord.__table__,
                 DependencyConfigRecord.__table__,
@@ -425,6 +557,10 @@ def create_app(
                 StreamFailureEventRecord.__table__,
                 StreamRecoveryEventRecord.__table__,
                 SshNodeRecord.__table__,
+                SshNodeGovernanceRecord.__table__,
+                SshNodeShareRecord.__table__,
+                OrchestrationResourceOwnershipRecord.__table__,
+                OrchestrationResourceShareRecord.__table__,
                 RuntimeNodeRecord.__table__,
                 *MODEL_TABLES,
             ],
@@ -449,7 +585,25 @@ def create_app(
         registry = ServiceRegistry("api", 8001)
         registry.start()
         app.state.registry = registry
+        # dbx 下行同步：间隔轮询全部项目，失败仅记日志（不阻塞启动）。
+        interval_scheduler.add_job(
+            poll_all_projects_dbx,
+            trigger="interval",
+            seconds=DBX_POLL_INTERVAL_SECONDS,
+            id="dbx_datasource_poll",
+            replace_existing=True,
+        )
+        interval_scheduler.add_job(
+            collect_yesterday_impact,
+            trigger="interval",
+            seconds=3600,
+            id="daily_dbx_impact",
+            replace_existing=True,
+        )
+        interval_scheduler.start()
+        app.state.interval_scheduler = interval_scheduler
         yield
+        interval_scheduler.stop()
         registry.stop()
         datasource_engines.dispose_all()
         engine.dispose()
@@ -577,11 +731,18 @@ def create_app(
             }
         if operation == "getDefinition":
             catalog = metadata_catalog(payload)
-            schema = str(payload.get("schema", payload.get("database", "")))
-            object_name = str(payload.get("object", payload.get("table", payload.get("name", ""))))
+            object_ref = payload.get("object_ref", payload.get("objectRef")) or {}
+            if not isinstance(object_ref, Mapping):
+                object_ref = {}
+            schema = str(payload.get("schema") or payload.get("database")
+                         or object_ref.get("schema") or object_ref.get("database") or "")
+            object_name = str(payload.get("object") or payload.get("table") or payload.get("name")
+                              or object_ref.get("object") or object_ref.get("name") or object_ref.get("table") or "")
+            object_kind = str(payload.get("objectKind") or payload.get("object_kind") or payload.get("kind")
+                              or object_ref.get("kind") or "").lower() or None
             if not schema or not object_name or not hasattr(catalog, "definition"):
                 raise SqlIdeRouteError("INVALID_REQUEST", message="schema and object are required")
-            return {"definition": catalog.definition(schema, object_name), "schema": schema, "object": object_name,
+            return {"definition": catalog.definition(schema, object_name, kind=object_kind), "schema": schema, "object": object_name,
                     "capability": "supported", "constraints": ["read-only"]}
         if operation in {"listDatabases", "listSchemas", "listRelations", "listColumns", "listIndexes", "listRoutines", "searchObjects"}:
             catalog = metadata_catalog(payload)
@@ -604,7 +765,8 @@ def create_app(
                 schema = str(payload.get("schema", payload.get("database", "")))
                 if not schema:
                     raise SqlIdeRouteError("INVALID_REQUEST", message="schema is required")
-                limit = int(payload.get("limit", 100)); return metadata_page(catalog.objects(schema, after=payload.get("after"), limit=limit), limit=limit)
+                kind = str(payload.get("kind", "")).lower() or None
+                limit = int(payload.get("limit", 100)); return metadata_page(catalog.objects(schema, kind=kind, after=payload.get("after"), limit=limit), limit=limit)
             if operation == "listIndexes":
                 schema = str(payload.get("schema", "")); object_name = str(payload.get("object", payload.get("table", "")))
                 if not schema or not object_name or not hasattr(catalog, "indexes"):
@@ -614,7 +776,8 @@ def create_app(
                 schema = str(payload.get("schema", payload.get("database", "")))
                 if not schema or not hasattr(catalog, "routines"):
                     raise SqlIdeRouteError("INVALID_REQUEST", message="schema is required")
-                limit = int(payload.get("limit", 200)); return metadata_page(catalog.routines(schema, limit=limit), limit=limit)
+                kind = str(payload.get("kind", "")).lower() or None
+                limit = int(payload.get("limit", 200)); return metadata_page(catalog.routines(schema, kind=kind, limit=limit), limit=limit)
             if operation == "searchObjects":
                 query = str(payload.get("q", payload.get("query", ""))).strip().lower()
                 if not query:
@@ -847,7 +1010,7 @@ def create_app(
         return {"code": 0, "msg": "success", "data": data}
 
     @app.post("/api/v1/rebuild/login")
-    def login(body: LoginRequest):
+    def login(body: LoginRequest, request: Request):
         with session_factory() as session:
             record = session.scalar(select(UserRecord).where(UserRecord.username == body.username))
             if record is None or not verify_password(body.password, record.password_hash):
@@ -856,6 +1019,9 @@ def create_app(
                 # 停用账户凭据虽验通过，拒绝签发 token（O15-03 停用同步撤销闭环的登录侧）。
                 return JSONResponse(status_code=403, content={"code": 1006, "msg": "account disabled", "data": None})
             token = token_service.issue(user_id=record.id, username=record.username, role=Role(record.role))
+            previous_token = request.cookies.get(session_cookie_name, "")
+            if previous_token and previous_token != token:
+                active_tokens.discard(previous_token)
             active_tokens.add(token, user_id=record.id, username=record.username, role=record.role)
             response = JSONResponse(content={
                 "code": 0,
@@ -871,6 +1037,7 @@ def create_app(
                 path="/api/v1",
                 max_age=3600,
             )
+            response.delete_cookie(key="datara_dbx_ide", path="/ide/api", samesite="strict")
             return response
 
     @app.post("/api/v1/rebuild/validation-token")
@@ -1062,6 +1229,7 @@ def create_app(
             active_tokens.discard(authorization[7:])
         response = JSONResponse(content={"code": 0, "msg": "success", "data": None})
         response.delete_cookie(key=session_cookie_name, path="/api/v1", samesite="strict")
+        response.delete_cookie(key="datara_dbx_ide", path="/ide/api", samesite="strict")
         return response
 
     @app.post("/api/v1/rebuild/projects")
@@ -1244,6 +1412,7 @@ def create_app(
                     status_code=409,
                     content={"code": 4091, "msg": "datasource name already exists in project", "data": None},
                 )
+            push_datasource_to_dbx(record)
             return JSONResponse(
                 status_code=201, content={"code": 0, "msg": "success", "data": datasource_payload(record)}
             )
@@ -1297,6 +1466,7 @@ def create_app(
                     content={"code": 4091, "msg": "datasource name already exists in project", "data": None},
                 )
             datasource_engines.invalidate(project_id, datasource_id)
+            push_datasource_to_dbx(record)
             return {"code": 0, "msg": "success", "data": datasource_payload(record)}
 
     @app.delete("/api/v1/rebuild/projects/{project_id}/datasources/{datasource_id}")
@@ -1318,6 +1488,7 @@ def create_app(
             repository.delete(record)
             session.commit()
             datasource_engines.invalidate(project_id, datasource_id)
+            _remove_datasource_from_dbx(project_id, datasource_id)
             return {"code": 0, "msg": "success", "data": {"deleted": True, "id": datasource_id}}
 
     @app.post("/api/v1/rebuild/projects/{project_id}/datasources/{datasource_id}/test")
@@ -1504,8 +1675,12 @@ def create_app(
             legacy_i20_source_reader_factory=legacy_i20_source_reader_factory,
             legacy_i21_source_reader_factory=legacy_i21_source_reader_factory,
             legacy_i23_preview_user=current_i23_preview_capability,
+            dbx_client_factory=quality_dbx_client_factory or DbxClient,
         )
     )
+    app.include_router(build_dbx_router(session_factory, current_user, project_permission_error))
+    app.include_router(build_dbx_ide_router(session_factory, current_user, project_permission_error))
+    app.include_router(build_impact_router(session_factory, current_user, project_permission_error))
     app.include_router(
         build_component_spec_router(session_factory, token_service, active_tokens),
         prefix="/api/v1/rebuild/components",
@@ -1523,7 +1698,10 @@ def create_app(
         prefix="/api/v1/rebuild/dependency",
     )
     app.include_router(
-        build_resources_router(session_factory, token_service, active_tokens, project_permission_error),
+        build_resources_router(
+            session_factory, token_service, active_tokens, project_permission_error,
+            **({"ssh_trial_runner": ssh_trial_runner} if ssh_trial_runner is not None else {}),
+        ),
         prefix="/api/v1/rebuild/resources",
     )
     app.include_router(
@@ -1580,6 +1758,11 @@ def create_app(
         build_runtime_node_router(session_factory, token_service, active_tokens),
         prefix="/api/v1/rebuild/runtime-nodes",
         tags=["rebuild-runtime-nodes"],
+    )
+    # 编排网关（设计 §十）：绝对路径路由，/api/v1/rebuild/orchestration/* 与 /internal/* 同挂载点。
+    app.include_router(
+        build_orchestration_router(session_factory, token_service, active_tokens, project_permission_error),
+        tags=["rebuild-orchestration"],
     )
     # G-system access audit (admin-only, no project scoping).
     app.include_router(

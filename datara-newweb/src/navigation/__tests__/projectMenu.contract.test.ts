@@ -9,13 +9,13 @@ import {
 
 beforeEach(() => localStorage.removeItem(ACTIVE_PROJECT_KEY))
 
-describe('UX v3：项目侧栏五组十九项', () => {
-  it('冻结五组顺序与逐组数量', () => {
+describe('dbx 统一后的项目侧栏', () => {
+  it('保留四组与逐组正式项数量', () => {
     expect(PROJECT_MENU_GROUPS.map((group) => group.label)).toEqual([
-      '总览', '任务中心', '数据集成', '数据开发', '数据治理',
+      '总览', '任务中心', '数据集成', '数据治理',
     ])
-    expect(PROJECT_MENU_GROUPS.map((group) => group.items.length)).toEqual([1, 1, 2, 2, 13])
-    expect(PROJECT_MENU_ITEMS).toHaveLength(19)
+    expect(PROJECT_MENU_GROUPS.map((group) => group.items.length)).toEqual([1, 2, 2, 10])
+    expect(PROJECT_MENU_ITEMS).toHaveLength(15)
   })
 
   it('同步、流处理、部署运维和系统管理不进入项目侧栏', () => {
@@ -28,8 +28,9 @@ describe('UX v3：项目侧栏五组十九项', () => {
 
   it('项目路径由 projectId 与全局业务路径稳定映射', () => {
     expect(projectItemPath(33, PROJECT_MENU_ITEMS[0])).toBe('/p/33')
-    expect(projectItemPath(33, PROJECT_MENU_ITEMS.find((item) => item.id === 'sql-ide')!)).toBe('/p/33/ide')
-    expect(projectItemPath(33, PROJECT_MENU_ITEMS.find((item) => item.id === 'meta-lineage')!)).toBe('/p/33/meta/lineage')
+    expect(projectItemPath(33, PROJECT_MENU_ITEMS.find((item) => item.id === 'resource-mgmt')!)).toBe('/p/33/resources')
+    expect(projectItemPath(33, PROJECT_MENU_ITEMS.find((item) => item.id === 'dbx-sql-ide')!)).toBe('/p/33/ide')
+    expect(projectItemPath(33, PROJECT_MENU_ITEMS.find((item) => item.id === 'qc-rule')!)).toBe('/p/33/qc/rule')
   })
 
   it('id/path 均唯一且 label 非空', () => {

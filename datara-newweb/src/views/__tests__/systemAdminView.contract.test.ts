@@ -34,7 +34,8 @@ describe('SystemAdminView（系统管理段承载页）', () => {
     await flushPromises()
     expect(wrapper.find('[data-user-management]').exists()).toBe(true)
     expect(wrapper.find('section[aria-label="项目成员管理"]').exists()).toBe(false)
-    expect(wrapper.find('[data-system-links]').text()).toContain('LLM 模型')
+    expect(wrapper.find('[data-system-links]').text()).toContain('API 管理')
+    expect(wrapper.find('[data-system-links]').text()).not.toContain('LLM 模型')
     expect(wrapper.find('section[aria-label="平台权限矩阵"]').exists()).toBe(true)
   })
 

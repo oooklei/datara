@@ -21,10 +21,10 @@ import SshNodeManagementView from '../../views/SshNodeManagementView.vue'
 import RuntimeNodeView from '../../views/depops/RuntimeNodeView.vue'
 import MonitorView from '../../views/depops/MonitorView.vue'
 import AccessAuditView from '../../views/sec/AccessAuditView.vue'
-import LlmModelsView from '../../views/system/llm-models/LlmModelsView.vue'
 import QualityExceptionView from '../../views/qc/QualityExceptionView.vue'
 import QualityReportView from '../../views/qc/QualityReportView.vue'
 import QualityAlarmView from '../../views/qc/QualityAlarmView.vue'
+import DbxIdeView from '../../views/ide/DbxIdeView.vue'
 import routesSource from '../routes.ts?raw'
 import routerSource from '../index.ts?raw'
 import viteSource from '/vite.config.ts?raw'
@@ -51,20 +51,8 @@ describe('1.4 routes 负断言（WBS 1.4 / 增量 1 退出标准 2）', () => {
       '/dep/monitor',
       '/open/key',
       '/open/api',
-      '/open/llm',
       '/sys',
       '/proj',
-      '/ds/list',
-      '/ide',
-      '/model/list',
-      // 数仓建模增量16 前端收口（M2a）：详情/版本/血缘/ER 四页
-      '/model/design',
-      '/model/version',
-      '/model/lineage',
-      '/model/er',
-      '/meta/lineage',
-      '/meta/map',
-      '/meta/catalog',
       '/meta/tag',
       '/std/element',
       '/ind/list',
@@ -78,6 +66,8 @@ describe('1.4 routes 负断言（WBS 1.4 / 增量 1 退出标准 2）', () => {
       '/qc/report',
       '/qc/alarm',
       '/resources',
+      '/ide',
+      '/p/:projectId/ide',
       '/p/:projectId',
       '/p/:projectId/:pathMatch(.*)*',
     ]))
@@ -111,9 +101,18 @@ describe('1.4 routes 负断言（WBS 1.4 / 增量 1 退出标准 2）', () => {
     expect(monitor?.component).toBe(MonitorView)
   })
 
-  it('LLM 与访问审计路由绑定归一后的唯一正本', () => {
-    expect(routes.find((r) => r.path === '/open/llm')?.component).toBe(LlmModelsView)
+  it('访问审计路由绑定归一后的唯一正本', () => {
     expect(routes.find((r) => r.path === '/sec/audit')?.component).toBe(AccessAuditView)
+  })
+
+  it('dbx 接管的旧页面均已下线', () => {
+    const retired = ['/open/llm', '/ds/list', '/model/list', '/model/design', '/model/version', '/model/lineage', '/model/er', '/meta/lineage', '/meta/map', '/meta/catalog']
+    expect(routes.filter((r) => retired.includes(r.path))).toHaveLength(0)
+  })
+
+  it('保留已集成的 dbx SQL IDE 宿主页与项目入口', () => {
+    expect(routes.find((r) => r.path === '/ide')?.component).toBe(DbxIdeView)
+    expect(routes.find((r) => r.path === '/p/:projectId/ide')?.component).toBe(DbxIdeView)
   })
 
   it('质量三页绑定冻结表点名视图（E17/E18/E19，B5-c 纠偏：聚合旧页退役出路由）', () => {
