@@ -1,0 +1,78 @@
+import { flushPromises, mount } from '@vue/test-utils'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
+import DbxIdeView from '../DbxIdeView.vue'
+import { authAccount } from '../../../services/rebuild/authApi'
+
+const mocks = vi.hoisted(() => ({
+  issue: vi.fn(),
+  projects: vi.fn(),
+  complete: vi.fn(),
+  send: vi.fn(),
+}))
+vi.mock('vue-router', () => ({ useRoute: () => ({ params: {}, query: {} }) }))
+vi.mock('../../../services/rebuild/authApi', async () => {
+  const { shallowRef } = await import('vue')
+  return { authAccount: shallowRef(null) }
+})
+vi.mock('../../../services/rebuild/dbxIdeApi', () => ({ issueDbxIdeSession: mocks.issue }))
+vi.mock('../../../services/rebuild/projectApi', () => ({ listProjects: mocks.projects }))
+vi.mock('../../../services/rebuild/variableApi', () => ({ createVariableContract: () => ({ completeVariables: mocks.complete }) }))
+vi.mock('../../../services/rebuild/dbxVariableBridge', () => ({
+  buildVariableEntries: (items: unknown[]) => items,
+  sendVariablesToDbx: mocks.send,
+}))
+vi.mock('../../variables/VariableManagerDrawer.vue', () => ({ default: { template: '<div />' } }))
+
+describe('DBX IDE session gate', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    authAccount.value = null
+    mocks.projects.mockResolvedValue({ list: [] })
+    mocks.complete.mockResolvedValue([])
+  })
+
+  it('loads the iframe only after the current project receives an IDE session', async () => {
+    let complete!: () => void
+    mocks.issue.mockImplementationOnce(() => new Promise<void>((resolve) => { complete = resolve }))
+    authAccount.value = { id: 1, username: 'admin', role: 'admin' }
+    const wrapper = mount(DbxIdeView, { props: { projectId: 33 } })
+    await flushPromises()
+    expect(mocks.issue).toHaveBeenCalledWith(33)
+    expect(wrapper.find('[data-dbx-frame]').exists()).toBe(false)
+    complete()
+    await flushPromises()
+    expect(wrapper.find('[data-dbx-frame]').attributes('src')).toBe('/ide/')
+    wrapper.unmount()
+  })
+
+  it('drops a stale iframe and ignores an old session response after account and project switch', async () => {
+    let finishOld!: () => void
+    mocks.issue.mockResolvedValueOnce(undefined)
+      .mockImplementationOnce(() => new Promise<void>((resolve) => { finishOld = resolve }))
+      .mockResolvedValueOnce(undefined)
+    authAccount.value = { id: 1, username: 'admin', role: 'admin' }
+    const wrapper = mount(DbxIdeView, { props: { projectId: 33 } })
+    await flushPromises()
+    expect(wrapper.find('[data-dbx-frame]').exists()).toBe(true)
+    await wrapper.setProps({ projectId: 34 })
+    expect(wrapper.find('[data-dbx-frame]').exists()).toBe(false)
+    authAccount.value = { id: 2, username: 'zhangsan', role: 'developer' }
+    await flushPromises()
+    expect(mocks.issue).toHaveBeenLastCalledWith(34)
+    expect(wrapper.find('[data-dbx-frame]').exists()).toBe(true)
+    finishOld()
+    await flushPromises()
+    expect(wrapper.find('[data-dbx-frame]').exists()).toBe(true)
+    wrapper.unmount()
+  })
+
+  it('keeps the iframe closed when access is denied', async () => {
+    mocks.issue.mockRejectedValueOnce(new Error('无数据源权限'))
+    authAccount.value = { id: 2, username: 'zhangsan', role: 'developer' }
+    const wrapper = mount(DbxIdeView, { props: { projectId: 33 } })
+    await flushPromises()
+    expect(wrapper.find('[data-dbx-frame]').exists()).toBe(false)
+    expect(wrapper.find('[data-ide-session-error]').text()).toContain('无数据源权限')
+    wrapper.unmount()
+  })
+})
