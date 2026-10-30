@@ -2,7 +2,7 @@
 
 import hashlib
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from rebuild.identity.contracts import Role
@@ -41,4 +41,24 @@ class UserRepository:
         record.password_hash = hash_password(password)
         self._session.flush()
         return record
+
+    def update_role(self, user_id: int, role: Role) -> UserRecord:
+        record = self._session.get(UserRecord, user_id)
+        if record is None:
+            raise ValueError("user not found")
+        record.role = role.value
+        self._session.flush()
+        return record
+
+    def count_enabled_admins_excluding(self, user_id: int) -> int:
+        return int(
+            self._session.scalar(
+                select(func.count(UserRecord.id)).where(
+                    UserRecord.role == Role.ADMIN.value,
+                    UserRecord.status == "enabled",
+                    UserRecord.id != user_id,
+                )
+            )
+            or 0
+        )
 

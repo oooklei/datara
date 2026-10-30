@@ -384,6 +384,34 @@ def test_admin_can_list_remove_and_update_members():
     assert listed_after.json()["data"]["list"] == []
 
 
+def test_admin_can_update_platform_user_role_and_last_admin_is_protected():
+    app = create_app("sqlite+pysqlite:///:memory:", token_secret="unit-test-token-secret")
+    with TestClient(app) as client:
+        with app.state.session_factory() as session:
+            admin = UserRepository(session).create(
+                username="platform-role-admin", password="admin-password", role=Role.ADMIN
+            )
+            target = UserRepository(session).create(
+                username="platform-role-target", password="target-password", role=Role.VIEWER
+            )
+            session.commit()
+        login = client.post(
+            "/api/v1/rebuild/login", json={"username": "platform-role-admin", "password": "admin-password"}
+        )
+        headers = {"Authorization": f"Bearer {login.json()['data']['token']}"}
+        updated = client.patch(
+            f"/api/v1/rebuild/users/{target.id}/role", headers=headers, json={"role": "developer"}
+        )
+        protected = client.patch(
+            f"/api/v1/rebuild/users/{admin.id}/role", headers=headers, json={"role": "viewer"}
+        )
+
+    assert updated.status_code == 200
+    assert updated.json()["data"]["role"] == "developer"
+    assert protected.status_code == 409
+    assert protected.json()["code"] == 1005
+
+
 def test_i2_status_returns_reconcile_summary_and_samples(tmp_path, monkeypatch):
     report = {
         "generated_at": "2026-10-14 05:34:07",
