@@ -91,6 +91,7 @@ def _safe_identifier(value: str) -> bool:
 from rebuild.sync.api import build_sync_router
 from rebuild.sync.models import SyncTaskDefinitionRecord
 from rebuild.governance.api import build_governance_router
+from rebuild.governance.project_cleanup import delete_project_governance
 from rebuild.governance.migrations import MigrationRunner as GovernanceMigrationRunner, R3_GOVERNANCE_MIGRATIONS
 from rebuild.metrics.api import build_metrics_router
 from rebuild.metrics.models import (
@@ -1313,6 +1314,7 @@ def create_app(
             }
             if any(counts.values()):
                 return JSONResponse(status_code=409, content={"code": 4091, "msg": "project not empty", "data": counts})
+            delete_project_governance(session, project_id)
             session.query(ProjectMemberRecord).filter(ProjectMemberRecord.project_id == project_id).delete()
             ProjectRepository(session).delete(project)
             session.commit()

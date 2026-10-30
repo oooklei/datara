@@ -1635,6 +1635,40 @@ def build_governance_router(
                 "list": [tag_payload(tag) for tag in rows],
             }}
 
+    @router.delete("/projects/{project_id}/tags/{tag_id}")
+    def delete_tag(project_id: int, tag_id: int, authorization: str = Header(default="")):
+        user = authenticate(authorization)
+        if isinstance(user, JSONResponse):
+            return user
+        with session_factory() as session:
+            permitted = project_permission(session, project_id, user, Permission.EDIT_DEFINITION)
+            if isinstance(permitted, JSONResponse):
+                return permitted
+            tag = session.get(GovernanceTagRecord, tag_id)
+            if tag is None or tag.project_id != project_id:
+                return fail(404, 4041, "tag not found in project")
+            # Imported legacy references are evidence; require their own cleanup
+            # instead of silently destroying them through a tag deletion.
+            if session.scalar(select(LegacyTagDefinitionRecord.id).where(
+                LegacyTagDefinitionRecord.normalized_tag_id == tag_id
+            )) is not None or session.scalar(select(LegacyTagReferenceRecord.id).where(
+                LegacyTagReferenceRecord.tag_id == tag_id
+            )) is not None:
+                return fail(409, 4091, "tag has legacy references")
+            session.query(AssetTagRecord).filter(AssetTagRecord.tag_id == tag_id).delete()
+            session.delete(tag)
+            write_audit(
+                session, user=user, project_id=project_id, action="tag.delete",
+                resource_type="tag", resource_id=str(tag_id),
+                after={"namespace": tag.namespace, "tag_key": tag.tag_key, "deleted": True},
+            )
+            try:
+                session.commit()
+            except IntegrityError:
+                session.rollback()
+                return fail(409, 4091, "tag has references")
+            return {"code": 0, "msg": "success", "data": {"deleted": True, "id": tag_id}}
+
     @router.put("/assets/{asset_id}/tags")
     def assign_asset_tags(asset_id: int, body: TagAssignment, authorization: str = Header(default="")):
         user = authenticate(authorization)
@@ -1872,6 +1906,35 @@ def build_governance_router(
                 "name": rule.name, "expression": rule.expression, "severity": rule.severity,
                 "enabled": rule.enabled, "created_at": stamp(rule.created_at), "updated_at": stamp(rule.updated_at),
             }}
+
+    @router.delete("/projects/{project_id}/quality-rules/{rule_id}")
+    def delete_quality_rule(project_id: int, rule_id: int, authorization: str = Header(default="")):
+        user = authenticate(authorization)
+        if isinstance(user, JSONResponse):
+            return user
+        with session_factory() as session:
+            permitted = project_permission(session, project_id, user, Permission.EDIT_DEFINITION)
+            if isinstance(permitted, JSONResponse):
+                return permitted
+            rule = session.get(QualityRuleRecord, rule_id)
+            if rule is None or rule.project_id != project_id:
+                return fail(404, 4041, "quality rule not found in project")
+            # Runs are historical evidence. Retain them while detaching the
+            # optional rule pointer before the rule definition is removed.
+            session.query(QualityRunRecord).filter(
+                QualityRunRecord.project_id == project_id, QualityRunRecord.rule_id == rule_id,
+            ).update({QualityRunRecord.rule_id: None}, synchronize_session=False)
+            session.delete(rule)
+            write_audit(
+                session, user=user, project_id=project_id, action="quality_rule.delete",
+                resource_type="quality_rule", resource_id=str(rule_id), after={"deleted": True},
+            )
+            try:
+                session.commit()
+            except IntegrityError:
+                session.rollback()
+                return fail(409, 4091, "quality rule has legacy references")
+            return {"code": 0, "msg": "success", "data": {"deleted": True, "id": rule_id}}
 
     _QUALITY_EXPRESSION_FORBIDDEN_PATTERNS: tuple[tuple[str, str], ...] = (
         ("statement_separator", r";"),
@@ -2196,6 +2259,13 @@ def build_governance_router(
                 "period": record.period, "content": content, "created_by": record.created_by,
             }}
 
+    @router.delete("/projects/{project_id}/quality-reports/{report_id}")
+    def delete_quality_report(project_id: int, report_id: int, authorization: str = Header(default="")):
+        user = authenticate(authorization)
+        if isinstance(user, JSONResponse):
+            return user
+        return delete_simple_definition(project_id, report_id, user, QualityReportRecord, "quality_report")
+
     @router.get("/projects/{project_id}/quality-alarm-policies")
     def list_quality_alarm_policies(project_id: int, page: int = Query(default=1, ge=1), page_size: int = Query(default=50, ge=1, le=200), authorization: str = Header(default="")):
         user = authenticate(authorization)
@@ -2240,6 +2310,13 @@ def build_governance_router(
                 "threshold": record.threshold, "enabled": record.enabled,
                 "last_fired_at": stamp(record.last_fired_at),
             }}
+
+    @router.delete("/projects/{project_id}/quality-alarm-policies/{policy_id}")
+    def delete_quality_alarm_policy(project_id: int, policy_id: int, authorization: str = Header(default="")):
+        user = authenticate(authorization)
+        if isinstance(user, JSONResponse):
+            return user
+        return delete_simple_definition(project_id, policy_id, user, QualityAlarmPolicyRecord, "quality_alarm_policy")
 
     @router.patch("/projects/{project_id}/quality-alarm-policies/{policy_id}/enabled")
     def set_quality_alarm_policy_enabled(
@@ -2304,6 +2381,26 @@ def build_governance_router(
             payload["updated_at"] = stamp(record.updated_at)
             return {"code": 0, "msg": "success", "data": payload}
 
+    def delete_simple_definition(project_id: int, record_id: int, user: dict[str, object], model, resource: str):
+        with session_factory() as session:
+            permitted = project_permission(session, project_id, user, Permission.EDIT_DEFINITION)
+            if isinstance(permitted, JSONResponse):
+                return permitted
+            record = session.get(model, record_id)
+            if record is None or record.project_id != project_id:
+                return fail(404, 4041, f"{resource} not found in project")
+            session.delete(record)
+            write_audit(
+                session, user=user, project_id=project_id, action=f"{resource}.delete",
+                resource_type=resource, resource_id=str(record_id), after={"deleted": True},
+            )
+            try:
+                session.commit()
+            except IntegrityError:
+                session.rollback()
+                return fail(409, 4091, f"{resource} has references")
+            return {"code": 0, "msg": "success", "data": {"deleted": True, "id": record_id}}
+
     def list_definitions(
         project_id: int, user: dict[str, object], model, fields: tuple[str, ...], page: int, page_size: int
     ):
@@ -2363,6 +2460,13 @@ def build_governance_router(
             page_size,
         )
 
+    @router.delete("/projects/{project_id}/standards/{standard_id}")
+    def delete_standard(project_id: int, standard_id: int, authorization: str = Header(default="")):
+        user = authenticate(authorization)
+        if isinstance(user, JSONResponse):
+            return user
+        return delete_simple_definition(project_id, standard_id, user, StandardDefinitionRecord, "standard")
+
     @router.post("/projects/{project_id}/metrics", status_code=201)
     def create_metric(project_id: int, body: MetricInput, authorization: str = Header(default="")):
         user = authenticate(authorization)
@@ -2395,6 +2499,13 @@ def build_governance_router(
             page,
             page_size,
         )
+
+    @router.delete("/projects/{project_id}/metrics/{metric_id}")
+    def delete_metric(project_id: int, metric_id: int, authorization: str = Header(default="")):
+        user = authenticate(authorization)
+        if isinstance(user, JSONResponse):
+            return user
+        return delete_simple_definition(project_id, metric_id, user, SemanticMetricRecord, "metric")
 
     @router.get("/projects/{project_id}/audit")
     def list_audit(

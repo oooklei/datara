@@ -7,8 +7,15 @@ from fastapi.testclient import TestClient
 from sqlalchemy import func, select
 
 from rebuild.api.app import create_app
+from rebuild.common.db import Base
 from rebuild.governance.migrations import MigrationRunner, R3_GOVERNANCE_MIGRATIONS
-from rebuild.governance.models import AuditEventRecord
+from rebuild.governance.models import (
+    AuditEventRecord,
+    QualityExceptionRecord,
+    QualityRunLegacyDetailsRecord,
+    QualityRunRecord,
+    SemanticMetricProfileRecord,
+)
 from rebuild.project.models import ProjectRecord
 
 
@@ -480,3 +487,134 @@ def test_tag_creation_can_atomically_attach_to_asset_and_audit_both_records():
     assert tag.status_code == 201
     assert [item["tag_key"] for item in detail.json()["data"]["tags"]] == ["sales"]
     assert audit_count == 2
+
+
+def test_tag_delete_detaches_asset_and_does_not_cross_projects():
+    with governance_client() as (client, app, headers):
+        project_id = client.get("/api/v1/rebuild/projects", headers=headers).json()["data"]["list"][0]["id"]
+        base = f"/api/v1/rebuild/governance/projects/{project_id}"
+        asset = client.post(f"{base}/assets", headers=headers, json={
+            "source_system": "sim", "database_name": "sim", "asset_name": "orders", "asset_type": "table",
+        }).json()["data"]
+        tag = client.post(f"{base}/tags", headers=headers, json={
+            "namespace": "ECOM_SIM", "tag_key": "temporary", "display_name": "Temporary", "asset_id": asset["id"],
+        }).json()["data"]
+        endpoint = f"{base}/tags/{tag['id']}"
+        other_id = client.post("/api/v1/rebuild/projects", headers=headers, json={"name": "tag-other"}).json()["data"]["id"]
+        assert client.delete(endpoint.replace(f"projects/{project_id}", f"projects/{other_id}"), headers=headers).status_code == 404
+        assert client.delete(endpoint).status_code == 401
+        deleted = client.delete(endpoint, headers=headers)
+        assert deleted.status_code == 200
+        assert deleted.json()["data"] == {"deleted": True, "id": tag["id"]}
+        assert client.get(f"{base}/tags", headers=headers).json()["data"]["total"] == 0
+        detail = client.get(f"/api/v1/rebuild/governance/assets/{asset['id']}", headers=headers)
+        assert detail.json()["data"]["tags"] == []
+        assert client.delete(endpoint, headers=headers).status_code == 404
+
+
+def test_simple_governance_deletes_are_project_scoped_and_audited():
+    cases = (
+        ("standards", {"code": "SIM_STD", "name": "Sim standard", "data_type": "string"}),
+        ("metrics", {"code": "SIM_METRIC", "name": "Sim metric", "formula": "count(*)"}),
+        ("quality-reports", {"title": "Sim report"}),
+        ("quality-alarm-policies", {
+            "name": "Sim alarm", "metric": "failed_rows", "operator": ">", "threshold": 0,
+        }),
+    )
+    with governance_client() as (client, app, headers):
+        project_id = client.get("/api/v1/rebuild/projects", headers=headers).json()["data"]["list"][0]["id"]
+        base = f"/api/v1/rebuild/governance/projects/{project_id}"
+        other_id = client.post("/api/v1/rebuild/projects", headers=headers, json={"name": "definition-other"}).json()["data"]["id"]
+        for resource, payload in cases:
+            created = client.post(f"{base}/{resource}", headers=headers, json=payload)
+            assert created.status_code == 201
+            record_id = created.json()["data"]["id"]
+            endpoint = f"{base}/{resource}/{record_id}"
+            assert client.delete(endpoint.replace(f"projects/{project_id}", f"projects/{other_id}"), headers=headers).status_code == 404
+            assert client.delete(endpoint).status_code == 401
+            deleted = client.delete(endpoint, headers=headers)
+            assert deleted.status_code == 200
+            assert deleted.json()["data"] == {"deleted": True, "id": record_id}
+            assert client.get(f"{base}/{resource}", headers=headers).json()["data"]["total"] == 0
+            assert client.delete(endpoint, headers=headers).status_code == 404
+        with app.state.session_factory() as session:
+            actions = set(session.scalars(select(AuditEventRecord.action)).all())
+        assert {"standard.delete", "metric.delete", "quality_report.delete", "quality_alarm_policy.delete"} <= actions
+
+
+def test_quality_rule_delete_retains_run_history_without_dangling_rule_id():
+    with governance_client() as (client, app, headers):
+        project_id = client.get("/api/v1/rebuild/projects", headers=headers).json()["data"]["list"][0]["id"]
+        base = f"/api/v1/rebuild/governance/projects/{project_id}"
+        asset = client.post(f"{base}/assets", headers=headers, json={
+            "source_system": "sim", "database_name": "sim", "asset_name": "orders", "asset_type": "table",
+        }).json()["data"]
+        rule = client.post(f"{base}/quality-rules", headers=headers, json={
+            "asset_id": asset["id"], "name": "SIM_QC", "expression": "amount >= 0",
+        }).json()["data"]
+        with app.state.session_factory() as session:
+            session.add(QualityRunRecord(
+                project_id=project_id, asset_id=asset["id"], rule_id=rule["id"], status="succeeded",
+                checked_rows=1, success_rows=1, failed_rows=0, skipped_rows=0,
+            ))
+            session.commit()
+        endpoint = f"{base}/quality-rules/{rule['id']}"
+        assert client.delete(endpoint).status_code == 401
+        other_id = client.post("/api/v1/rebuild/projects", headers=headers, json={"name": "rule-other"}).json()["data"]["id"]
+        assert client.delete(endpoint.replace(f"projects/{project_id}", f"projects/{other_id}"), headers=headers).status_code == 404
+        assert client.delete(endpoint, headers=headers).status_code == 200
+        assert client.get(f"{base}/quality-rules", headers=headers).json()["data"]["total"] == 0
+        with app.state.session_factory() as session:
+            run = session.scalar(select(QualityRunRecord).where(QualityRunRecord.project_id == project_id))
+            assert run is not None and run.rule_id is None
+
+
+def test_project_delete_cleans_governance_graph_and_preserves_audit():
+    with governance_client() as (client, app, headers):
+        project_id = client.get("/api/v1/rebuild/projects", headers=headers).json()["data"]["list"][0]["id"]
+        base = f"/api/v1/rebuild/governance/projects/{project_id}"
+        asset = client.post(f"{base}/assets", headers=headers, json={
+            "source_system": "sim", "database_name": "sim", "asset_name": "orders", "asset_type": "table",
+        }).json()["data"]
+        assert client.post(f"{base}/tags", headers=headers, json={
+            "namespace": "ECOM_SIM", "tag_key": "temporary", "display_name": "Temporary", "asset_id": asset["id"],
+        }).status_code == 201
+        assert client.post(f"{base}/quality-rules", headers=headers, json={
+            "asset_id": asset["id"], "name": "SIM_QC", "expression": "amount >= 0",
+        }).status_code == 201
+        assert client.post(f"{base}/standards", headers=headers, json={
+            "code": "SIM_STD", "name": "Sim standard", "data_type": "string",
+        }).status_code == 201
+        metric = client.post(f"{base}/metrics", headers=headers, json={
+            "code": "SIM_METRIC", "name": "Sim metric", "formula": "count(*)",
+        })
+        assert metric.status_code == 201
+        assert client.post(f"{base}/quality-reports", headers=headers, json={"title": "Sim report"}).status_code == 201
+        assert client.post(f"{base}/quality-alarm-policies", headers=headers, json={
+            "name": "Sim alarm", "metric": "failed_rows", "operator": ">", "threshold": 0,
+        }).status_code == 201
+        with app.state.session_factory() as session:
+            session.add(SemanticMetricProfileRecord(metric_id=metric.json()["data"]["id"]))
+            run = QualityRunRecord(
+                project_id=project_id, asset_id=asset["id"], status="succeeded",
+                checked_rows=1, success_rows=1, failed_rows=0, skipped_rows=0,
+            )
+            session.add(run)
+            session.flush()
+            details = QualityRunLegacyDetailsRecord(quality_run_id=run.id)
+            session.add(details)
+            session.flush()
+            session.add(QualityExceptionRecord(project_id=project_id, run_details_id=details.id))
+            session.commit()
+        deleted = client.delete(f"/api/v1/rebuild/projects/{project_id}", headers=headers)
+        assert deleted.status_code == 200
+        with app.state.session_factory() as session:
+            assert session.get(ProjectRecord, project_id) is None
+            for table in Base.metadata.tables.values():
+                if table.name.startswith("rebuild_governance_") and "project_id" in table.c:
+                    assert session.scalar(select(func.count()).select_from(table).where(table.c.project_id == project_id)) == 0, table.name
+            assert session.scalar(select(func.count()).select_from(Base.metadata.tables["rebuild_governance_asset_tag"])) == 0
+            assert session.scalar(select(func.count()).select_from(Base.metadata.tables["rebuild_governance_semantic_metric_profile"])) == 0
+            assert session.scalar(select(func.count()).select_from(Base.metadata.tables["rebuild_governance_quality_run_legacy_details"])) == 0
+            audit = session.scalars(select(AuditEventRecord)).all()
+            assert audit and all(event.project_id is None for event in audit)
