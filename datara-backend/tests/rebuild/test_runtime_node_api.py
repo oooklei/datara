@@ -35,6 +35,8 @@ def _client(role: Role = Role.DEVELOPER):
 def test_both_endpoints_require_token():
     client, _, _ = _client()
     try:
+        # 匿名请求须先清登录 cookie（中间件会把 datara_session 回退为会话凭证）。
+        client.cookies.clear()
         anon_list = client.get("/api/v1/rebuild/runtime-nodes")
         anon_ls = client.get("/api/v1/rebuild/runtime-nodes/1/ls")
         assert anon_list.status_code == 401

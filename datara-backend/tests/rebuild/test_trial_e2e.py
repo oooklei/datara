@@ -105,10 +105,24 @@ def test_e2e_full_chain_success():
     try:
         # 1. Create definition + draft.
         definition_id = _create_definition(client, tokens["dev"], project_id).json()["data"]["definition_id"]
-        # Use executable, host-independent components: dependency mock and a
-        # shell no-op.  SQL/Python resource execution is covered by their
+        # Use executable, host-independent components: a DEPENDENCY node bound to
+        # a real dependency config (mocked SUCCEEDED via run options, c6d3e276 语义)
+        # and a shell no-op.  SQL/Python resource execution is covered by their
         # dedicated suites and would require an external datasource/resource.
-        _add_node(client, tokens["dev"], project_id, definition_id, "extract", node_type="DEPENDENCY", params={"dependency_mock": True})
+        from rebuild.dependency.models import DependencyConfigRecord
+
+        with app.state.session_factory() as session:
+            dep = DependencyConfigRecord(
+                project_id=project_id,
+                workflow_id=definition_id,
+                workflow_version=0,
+                task_id="extract",
+                groups_json="[]",
+            )
+            session.add(dep)
+            session.commit()
+            dep_id = dep.id
+        _add_node(client, tokens["dev"], project_id, definition_id, "extract", node_type="DEPENDENCY", params={"dependency_id": dep_id})
         _add_node(client, tokens["dev"], project_id, definition_id, "transform", node_type="SHELL", params={"script": "exit 0"})
         _add_edge(client, tokens["dev"], project_id, definition_id, "extract", "transform")
 
@@ -136,6 +150,8 @@ def test_e2e_full_chain_success():
                 "project_id": project_id,
                 "definition_id": definition_id,
                 "snapshot_id": snapshot_data["snapshot_id"],
+                # WF-18 mock 经运行 options 注入（{dep_id: status}），不再读节点 params。
+                "options": {"dependency_mock": {str(dep_id): "SUCCEEDED"}},
             },
         )
         assert run_resp.status_code == 200

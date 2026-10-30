@@ -225,6 +225,8 @@ def test_bridge_without_audit_writer_fails_closed():
 def test_endpoints_require_auth_before_handler():
     client, _app, _pid, _tokens, _writer = _bridge_app()
     try:
+        # 先清登录 cookie：中间件会把 datara_session 回退为会话凭证，带 cookie 非匿名。
+        client.cookies.clear()
         assert client.get(AI_TOOLS_URL).status_code == 401
         assert client.post(AI_TOOL_CALLS_URL, json={}).status_code == 401
     finally:

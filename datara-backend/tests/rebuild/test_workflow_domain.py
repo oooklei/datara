@@ -795,6 +795,9 @@ def test_auth_permission_and_frame_gates():
         definition_id = _create(client, tokens["dev"], owned_id).json()["data"]["definition_id"]
         _add_node(client, tokens["dev"], owned_id, definition_id, "task_a")
 
+        # 匿名请求须先清登录 cookie：normalize_token_header 中间件会把 datara_session
+        # cookie 回退提升为 Bearer 会话，带 cookie 的客户端不是匿名。
+        client.cookies.clear()
         anonymous = _publish(client, {}, owned_id, definition_id)
         assert anonymous.status_code == 401 and anonymous.json()["code"] == 1001
 

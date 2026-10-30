@@ -331,6 +331,8 @@ def test_sync_routes_enforce_auth_and_permission(monkeypatch):
     client, _app, project_id, src_id, _tgt_id, tokens = _client(monkeypatch)
     _install_fake_catalog(monkeypatch, {"orders": []}, {"orders_dw": []})
     # Missing token → 401 (capabilities and plans alike).
+    # 匿名请求须先清登录 cookie（中间件会把 datara_session 回退为会话凭证）。
+    client.cookies.clear()
     assert client.get(f"{SYNC}/capabilities").status_code == 401
     assert client.post(f"{SYNC}/plans", json=_plan_body(project_id, src_id, 999)).status_code == 401
     # Viewer holds VIEW_ALL only: read allowed, save denied.

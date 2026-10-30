@@ -147,7 +147,8 @@ def test_auth_and_permission_gates():
     try:
         definition_id = _create_definition(client, tokens["dev"], project_id).json()["data"]["definition_id"]
 
-        # No token → 401.
+        # No token → 401.(先清 cookie：中间件会把 datara_session 回退为会话凭证)
+        client.cookies.clear()
         anon = client.post(
             f"{TRIAL}/definitions/{definition_id}/snapshot",
             json={"project_id": project_id},

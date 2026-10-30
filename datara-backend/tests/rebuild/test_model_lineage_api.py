@@ -97,6 +97,8 @@ def _route_pairs(app):
 def test_lineage_requires_login():
     client, app, _, _ = _client()
     try:
+        # 先清 cookie：中间件会把 datara_session 回退为会话凭证，带 cookie 非匿名。
+        client.cookies.clear()
         response = client.get("/api/v1/rebuild/models/1/lineage")
         assert response.status_code == 401
         assert response.json()["code"] == 1001
@@ -130,6 +132,8 @@ def test_lineage_missing_model_is_404():
 def test_impact_requires_login():
     client, app, _, _ = _client()
     try:
+        # 先清 cookie：中间件会把 datara_session 回退为会话凭证，带 cookie 非匿名。
+        client.cookies.clear()
         response = client.get("/api/v1/rebuild/models/1/impact")
         assert response.status_code == 401
         assert response.json()["code"] == 1001

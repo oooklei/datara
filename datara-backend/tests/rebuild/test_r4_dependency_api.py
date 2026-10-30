@@ -124,6 +124,8 @@ def _seed_task_history(app, task_code, with_error):
 def test_honest_empty_lists_and_auth_envelope():
     client, app, owned_id, tokens = _client()
     try:
+        # 匿名请求须先清登录 cookie（中间件会把 datara_session 回退为会话凭证）。
+        client.cookies.clear()
         anonymous = client.get(f"{DEPENDENCY}/workflows", params={"project_id": owned_id})
         assert anonymous.status_code == 401 and anonymous.json()["code"] == 1001
 

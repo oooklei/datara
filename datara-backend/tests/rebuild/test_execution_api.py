@@ -168,7 +168,8 @@ def test_cancel_run_hides_cross_project_instance():
 def test_auth_and_permission_gates():
     client, app, project_id, tokens = _client()
     try:
-        # No token → 401.
+        # No token → 401.(先清 cookie：中间件会把 datara_session 回退为会话凭证)
+        client.cookies.clear()
         anon = client.post(
             f"{EXEC}/runs",
             json={

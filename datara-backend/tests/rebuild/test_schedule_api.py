@@ -59,6 +59,8 @@ def test_seven_endpoints_and_policy_payload():
 def test_auth_permissions_and_policy_validation():
     client, project_id, workflow_id, headers = fixture()
     try:
+        # 匿名请求须先清登录 cookie（中间件会把 datara_session 回退为会话凭证）。
+        client.cookies.clear()
         anonymous = client.get(f"/api/v1/rebuild/workflow-definitions/{workflow_id}/schedules")
         assert anonymous.status_code == 401 and anonymous.json()["code"] == 1001
         denied = client.post(f"/api/v1/rebuild/workflow-definitions/{workflow_id}/schedules", headers=headers["viewer"], json=schedule_body())

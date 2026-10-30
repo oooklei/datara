@@ -261,7 +261,7 @@ def test_wf18_dependency_mock_succeeded():
     assert result.status == "SUCCEEDED"
 
 
-def test_wf18_dependency_no_mock_skips():
+def test_wf18_dependency_no_mock_pending_fails():
     session = _session()
     definition_id, snapshot_id, dep_id = _setup_with_dependency(session)
 
@@ -273,8 +273,11 @@ def test_wf18_dependency_no_mock_skips():
     )
     session.commit()
 
-    # DEPENDENCY without mock still completes (skipped semantics via log).
-    assert result.status == "SUCCEEDED"
+    # c6d3e276 真实依赖门禁：无 mock 时走真实评估；无观察历史 → verdict=pending →
+    # 试运行 FAILED（WF_TRIAL_DEPENDENCY_PENDING），不再有「无 mock 即跳过」语义。
+    assert result.status == "FAILED"
+    dep_task = next(task for task in result.tasks if task.get("node_code") == "dep")
+    assert dep_task["status"] == "FAILED"
 
 
 # WF-19: dry run ---------------------------------------------------------------

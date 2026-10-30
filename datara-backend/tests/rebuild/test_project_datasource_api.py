@@ -162,6 +162,8 @@ def test_admin_can_manage_project_datasource_and_test_uses_saved_connection(monk
 def test_datasource_routes_reject_missing_or_invalid_token():
     client, app, owned_id, _other_id, _identities, _tokens = _client()
     try:
+        # 匿名请求须先清登录 cookie（中间件会把 datara_session 回退为会话凭证）。
+        client.cookies.clear()
         missing = client.get(f"/api/v1/rebuild/projects/{owned_id}/datasources")
         invalid = client.post(
             f"/api/v1/rebuild/projects/{owned_id}/datasources",
