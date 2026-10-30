@@ -280,7 +280,7 @@ pub async fn auth_middleware(
         return next.run(req).await;
     }
 
-    if api_suffix.is_some_and(internal_api_allowed) {
+    if datara_gateway_only() && api_suffix.is_some_and(internal_api_allowed) {
         if let (Some(expected), Some(supplied)) = (
             internal_token(),
             req.headers().get("x-datara-internal-token").and_then(|value| value.to_str().ok()),
