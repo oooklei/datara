@@ -1021,7 +1021,14 @@ def create_app(
             token = token_service.issue(user_id=record.id, username=record.username, role=Role(record.role))
             previous_token = request.cookies.get(session_cookie_name, "")
             if previous_token and previous_token != token:
-                active_tokens.discard(previous_token)
+                # 仅撤销同一账号的上一会话；同一浏览器换账号登录不得连带注销他人会话。
+                previous = session.scalar(
+                    select(ActiveTokenRecord).where(
+                        ActiveTokenRecord.token_digest == digest_token(previous_token)
+                    )
+                )
+                if previous is not None and previous.user_id == record.id:
+                    active_tokens.discard(previous_token)
             active_tokens.add(token, user_id=record.id, username=record.username, role=record.role)
             response = JSONResponse(content={
                 "code": 0,
