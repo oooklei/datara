@@ -24,6 +24,7 @@
           {{ loading ? '加载中…' : '刷新变量' }}
         </button>
         <button type="button" data-variable-manage :disabled="projectId === null" @click="drawerOpen = true">变量管理</button>
+        <button v-if="ideReady" type="button" data-ide-reload @click="retryIde">重载 DBX</button>
       </div>
     </header>
 
@@ -46,6 +47,7 @@
           data-dbx-frame
           src="/ide/"
           title="dbx 数据开发 IDE"
+          @load="onFrameLoad"
           @error="onFrameError"
         ></iframe>
         <aside class="dbx-var-panel" data-variable-panel aria-label="变量现值">
@@ -126,6 +128,11 @@ function clearFrameTimeout(): void {
 function onFrameError(): void {
   clearFrameTimeout()
   frameError.value = '页面请求失败'
+}
+
+function onFrameLoad(): void {
+  clearFrameTimeout()
+  frameLoaded.value = true
 }
 
 const routeProjectId = computed<number | null>(() => {

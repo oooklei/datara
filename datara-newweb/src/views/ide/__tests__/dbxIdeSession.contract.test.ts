@@ -92,6 +92,9 @@ describe('DBX IDE session gate', () => {
     expect(mocks.issue).toHaveBeenCalledTimes(2)
     expect(wrapper.find('[data-ide-frame-loading]').exists()).toBe(true)
     expect(wrapper.find('[data-dbx-frame]').exists()).toBe(true)
+    await wrapper.find('[data-dbx-frame]').trigger('load')
+    expect(wrapper.find('[data-ide-frame-loading]').exists()).toBe(false)
+    expect(wrapper.find('[data-ide-reload]').exists()).toBe(true)
     wrapper.unmount()
   })
 
