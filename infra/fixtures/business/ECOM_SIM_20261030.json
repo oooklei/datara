@@ -25,63 +25,139 @@
       "rule": "inventory_negative"
     }
   ],
+  "campaigns": [
+    {
+      "biz_date": "2026-10-20",
+      "ends_at": "2026-10-22T23:59:59+08:00",
+      "event_time": "2026-10-20T00:00:00+08:00",
+      "fixture_namespace": "ECOM_SIM_20261030",
+      "id": "PROMO-A",
+      "name": "Autumn launch",
+      "run_id": "SIM_RUN_20261030_01",
+      "source_system": "datara_synthetic_fixture",
+      "starts_at": "2026-10-20T00:00:00+08:00"
+    },
+    {
+      "biz_date": "2026-10-22",
+      "ends_at": "2026-10-24T23:59:59+08:00",
+      "event_time": "2026-10-22T00:00:00+08:00",
+      "fixture_namespace": "ECOM_SIM_20261030",
+      "id": "PROMO-B",
+      "name": "Member offer",
+      "run_id": "SIM_RUN_20261030_01",
+      "source_system": "datara_synthetic_fixture",
+      "starts_at": "2026-10-22T00:00:00+08:00"
+    }
+  ],
   "currency": "CNY",
   "events": [
     {
+      "biz_date": "2026-10-20",
       "buyer": "U001",
+      "event_time": "2026-10-20T08:00:00+08:00",
+      "fixture_namespace": "ECOM_SIM_20261030",
       "id": "E001",
       "name": "view_promotion",
       "order": null,
-      "promotion": "PROMO-A"
+      "promotion": "PROMO-A",
+      "run_id": "SIM_RUN_20261030_01",
+      "source_system": "datara_synthetic_fixture"
     },
     {
+      "biz_date": "2026-10-20",
       "buyer": "U001",
+      "event_time": "2026-10-20T08:10:00+08:00",
+      "fixture_namespace": "ECOM_SIM_20261030",
       "id": "E002",
       "name": "view_item",
       "order": null,
-      "promotion": "PROMO-A"
+      "promotion": "PROMO-A",
+      "run_id": "SIM_RUN_20261030_01",
+      "source_system": "datara_synthetic_fixture"
     },
     {
+      "biz_date": "2026-10-20",
       "buyer": "U001",
+      "event_time": "2026-10-20T08:20:00+08:00",
+      "fixture_namespace": "ECOM_SIM_20261030",
       "id": "E003",
       "name": "add_to_cart",
       "order": null,
-      "promotion": "PROMO-A"
+      "promotion": "PROMO-A",
+      "run_id": "SIM_RUN_20261030_01",
+      "source_system": "datara_synthetic_fixture"
     },
     {
+      "biz_date": "2026-10-20",
       "buyer": "U001",
+      "event_time": "2026-10-20T09:06:00+08:00",
+      "fixture_namespace": "ECOM_SIM_20261030",
       "id": "E004",
       "name": "purchase",
       "order": "O001",
-      "promotion": "PROMO-A"
+      "promotion": "PROMO-A",
+      "run_id": "SIM_RUN_20261030_01",
+      "source_system": "datara_synthetic_fixture"
     },
     {
+      "biz_date": "2026-10-21",
       "buyer": "U002",
+      "event_time": "2026-10-21T08:00:00+08:00",
+      "fixture_namespace": "ECOM_SIM_20261030",
       "id": "E005",
       "name": "view_promotion",
       "order": null,
-      "promotion": "PROMO-A"
+      "promotion": "PROMO-A",
+      "run_id": "SIM_RUN_20261030_01",
+      "source_system": "datara_synthetic_fixture"
     },
     {
+      "biz_date": "2026-10-21",
       "buyer": "U002",
+      "event_time": "2026-10-21T08:30:00+08:00",
+      "fixture_namespace": "ECOM_SIM_20261030",
       "id": "E006",
       "name": "begin_checkout",
       "order": "O003",
-      "promotion": "PROMO-A"
+      "promotion": "PROMO-A",
+      "run_id": "SIM_RUN_20261030_01",
+      "source_system": "datara_synthetic_fixture"
     },
     {
+      "biz_date": "2026-10-23",
       "buyer": "U003",
+      "event_time": "2026-10-23T15:00:00+08:00",
+      "fixture_namespace": "ECOM_SIM_20261030",
       "id": "E007",
       "name": "refund",
       "order": "O004",
-      "promotion": "PROMO-B"
+      "promotion": "PROMO-B",
+      "run_id": "SIM_RUN_20261030_01",
+      "source_system": "datara_synthetic_fixture"
+    },
+    {
+      "biz_date": "2026-10-21",
+      "buyer": "U002",
+      "event_time": "2026-10-21T08:05:00+08:00",
+      "fixture_namespace": "ECOM_SIM_20261030",
+      "id": "E008",
+      "name": "click_promotion",
+      "order": null,
+      "promotion": "PROMO-A",
+      "run_id": "SIM_RUN_20261030_01",
+      "source_system": "datara_synthetic_fixture"
     }
   ],
   "expected": {
+    "campaign_clicks": 1,
+    "campaign_exposures": 2,
     "gross_paid_cents": 36000,
     "net_paid_cents": 30000,
     "paid_orders": 4,
     "partial_fulfillment_orders": [
+      "O002"
+    ],
+    "payment_retry_orders": [
       "O002"
     ],
     "quality_anomaly_ids": [
@@ -93,73 +169,201 @@
     "repeat_buyers": [
       "U001"
     ],
+    "returned_qty": 2,
+    "stockout_locations": [
+      "SKU-B@WH-EAST"
+    ],
     "successful_refund_cents": 6000
   },
   "fulfillments": [
     {
+      "biz_date": "2026-10-20",
+      "event_time": "2026-10-20T16:00:00+08:00",
+      "fixture_namespace": "ECOM_SIM_20261030",
       "id": "F001",
       "order": "O001",
       "qty": 2,
+      "run_id": "SIM_RUN_20261030_01",
+      "shipment_id": "SHIP-F001",
       "sku": "SKU-A",
+      "source_system": "datara_synthetic_fixture",
       "status": "delivered",
+      "status_as_of": "2026-10-21T12:00:00+08:00",
       "warehouse": "WH-EAST"
     },
     {
+      "biz_date": "2026-10-21",
+      "event_time": "2026-10-21T16:00:00+08:00",
+      "fixture_namespace": "ECOM_SIM_20261030",
       "id": "F002",
       "order": "O002",
       "qty": 1,
+      "run_id": "SIM_RUN_20261030_01",
+      "shipment_id": "SHIP-F002",
       "sku": "SKU-B",
+      "source_system": "datara_synthetic_fixture",
       "status": "shipped",
+      "status_as_of": "2026-10-21T16:00:00+08:00",
       "warehouse": "WH-WEST"
     },
     {
+      "biz_date": "2026-10-22",
+      "event_time": "2026-10-22T16:00:00+08:00",
+      "fixture_namespace": "ECOM_SIM_20261030",
       "id": "F003",
       "order": "O004",
       "qty": 2,
+      "run_id": "SIM_RUN_20261030_01",
+      "shipment_id": "SHIP-F003",
       "sku": "SKU-C",
+      "source_system": "datara_synthetic_fixture",
       "status": "delivered",
+      "status_as_of": "2026-10-23T12:00:00+08:00",
       "warehouse": "WH-EAST"
     },
     {
+      "biz_date": "2026-10-23",
+      "event_time": "2026-10-23T16:00:00+08:00",
+      "fixture_namespace": "ECOM_SIM_20261030",
       "id": "F004",
       "order": "O006",
       "qty": 1,
+      "run_id": "SIM_RUN_20261030_01",
+      "shipment_id": "SHIP-F004",
       "sku": "SKU-D",
+      "source_system": "datara_synthetic_fixture",
       "status": "delivered",
+      "status_as_of": "2026-10-24T12:00:00+08:00",
       "warehouse": "WH-WEST"
     }
   ],
   "inventory": [
     {
       "available": 17,
+      "biz_date": "2026-10-24",
       "damaged": 1,
+      "event_time": "2026-10-24T18:00:00+08:00",
+      "fixture_namespace": "ECOM_SIM_20261030",
+      "incoming": 0,
       "on_hand": 20,
       "reserved": 2,
+      "run_id": "SIM_RUN_20261030_01",
       "sku": "SKU-A",
+      "source_system": "datara_synthetic_fixture",
       "warehouse": "WH-EAST"
     },
     {
       "available": 6,
+      "biz_date": "2026-10-24",
       "damaged": 0,
+      "event_time": "2026-10-24T18:00:00+08:00",
+      "fixture_namespace": "ECOM_SIM_20261030",
+      "incoming": 0,
       "on_hand": 8,
       "reserved": 2,
+      "run_id": "SIM_RUN_20261030_01",
       "sku": "SKU-B",
+      "source_system": "datara_synthetic_fixture",
       "warehouse": "WH-WEST"
     },
     {
       "available": 8,
+      "biz_date": "2026-10-24",
       "damaged": 0,
+      "event_time": "2026-10-24T18:00:00+08:00",
+      "fixture_namespace": "ECOM_SIM_20261030",
+      "incoming": 0,
       "on_hand": 10,
       "reserved": 2,
+      "run_id": "SIM_RUN_20261030_01",
       "sku": "SKU-C",
+      "source_system": "datara_synthetic_fixture",
       "warehouse": "WH-EAST"
     },
     {
       "available": 2,
+      "biz_date": "2026-10-24",
       "damaged": 0,
+      "event_time": "2026-10-24T18:00:00+08:00",
+      "fixture_namespace": "ECOM_SIM_20261030",
+      "incoming": 0,
       "on_hand": 3,
       "reserved": 1,
+      "run_id": "SIM_RUN_20261030_01",
       "sku": "SKU-D",
+      "source_system": "datara_synthetic_fixture",
+      "warehouse": "WH-WEST"
+    },
+    {
+      "available": 0,
+      "biz_date": "2026-10-24",
+      "damaged": 0,
+      "event_time": "2026-10-24T18:00:00+08:00",
+      "fixture_namespace": "ECOM_SIM_20261030",
+      "incoming": 0,
+      "on_hand": 0,
+      "reserved": 0,
+      "run_id": "SIM_RUN_20261030_01",
+      "sku": "SKU-B",
+      "source_system": "datara_synthetic_fixture",
+      "warehouse": "WH-EAST"
+    }
+  ],
+  "inventory_movements": [
+    {
+      "biz_date": "2026-10-20",
+      "event_time": "2026-10-20T09:01:00+08:00",
+      "fixture_namespace": "ECOM_SIM_20261030",
+      "from_status": "available",
+      "id": "IM001",
+      "kind": "reserve",
+      "qty": 2,
+      "run_id": "SIM_RUN_20261030_01",
+      "sku": "SKU-A",
+      "source_system": "datara_synthetic_fixture",
+      "to_status": "reserved",
+      "warehouse": "WH-EAST"
+    },
+    {
+      "biz_date": "2026-10-21",
+      "event_time": "2026-10-21T09:01:00+08:00",
+      "fixture_namespace": "ECOM_SIM_20261030",
+      "from_status": "available",
+      "id": "IM002",
+      "kind": "reserve",
+      "qty": 2,
+      "run_id": "SIM_RUN_20261030_01",
+      "sku": "SKU-B",
+      "source_system": "datara_synthetic_fixture",
+      "to_status": "reserved",
+      "warehouse": "WH-WEST"
+    },
+    {
+      "biz_date": "2026-10-21",
+      "event_time": "2026-10-21T16:00:00+08:00",
+      "fixture_namespace": "ECOM_SIM_20261030",
+      "from_status": "reserved",
+      "id": "IM003",
+      "kind": "ship",
+      "qty": 1,
+      "run_id": "SIM_RUN_20261030_01",
+      "sku": "SKU-B",
+      "source_system": "datara_synthetic_fixture",
+      "to_status": "shipped",
+      "warehouse": "WH-WEST"
+    },
+    {
+      "biz_date": "2026-10-23",
+      "event_time": "2026-10-23T09:01:00+08:00",
+      "fixture_namespace": "ECOM_SIM_20261030",
+      "from_status": "available",
+      "id": "IM004",
+      "kind": "reserve",
+      "qty": 1,
+      "run_id": "SIM_RUN_20261030_01",
+      "sku": "SKU-D",
+      "source_system": "datara_synthetic_fixture",
+      "to_status": "reserved",
       "warehouse": "WH-WEST"
     }
   ],
@@ -169,127 +373,444 @@
       "biz_date": "2026-10-20",
       "buyer": "U001",
       "channel": "campaign",
+      "currency": "CNY",
+      "event_time": "2026-10-20T09:00:00+08:00",
+      "fixture_namespace": "ECOM_SIM_20261030",
       "id": "O001",
       "qty": 2,
+      "run_id": "SIM_RUN_20261030_01",
       "sku": "SKU-A",
+      "source_system": "datara_synthetic_fixture",
       "unit_cents": 5000
     },
     {
       "biz_date": "2026-10-21",
       "buyer": "U001",
       "channel": "organic",
+      "currency": "CNY",
+      "event_time": "2026-10-21T09:00:00+08:00",
+      "fixture_namespace": "ECOM_SIM_20261030",
       "id": "O002",
       "qty": 2,
+      "run_id": "SIM_RUN_20261030_01",
       "sku": "SKU-B",
+      "source_system": "datara_synthetic_fixture",
       "unit_cents": 3000
     },
     {
       "biz_date": "2026-10-21",
       "buyer": "U002",
       "channel": "campaign",
+      "currency": "CNY",
+      "event_time": "2026-10-21T09:00:00+08:00",
+      "fixture_namespace": "ECOM_SIM_20261030",
       "id": "O003",
       "qty": 1,
+      "run_id": "SIM_RUN_20261030_01",
       "sku": "SKU-A",
+      "source_system": "datara_synthetic_fixture",
       "unit_cents": 5000
     },
     {
       "biz_date": "2026-10-22",
       "buyer": "U003",
       "channel": "campaign",
+      "currency": "CNY",
+      "event_time": "2026-10-22T09:00:00+08:00",
+      "fixture_namespace": "ECOM_SIM_20261030",
       "id": "O004",
       "qty": 2,
+      "run_id": "SIM_RUN_20261030_01",
       "sku": "SKU-C",
+      "source_system": "datara_synthetic_fixture",
       "unit_cents": 6000
     },
     {
       "biz_date": "2026-10-22",
       "buyer": "U004",
       "channel": "organic",
+      "currency": "CNY",
+      "event_time": "2026-10-22T09:00:00+08:00",
+      "fixture_namespace": "ECOM_SIM_20261030",
       "id": "O005",
       "qty": 1,
+      "run_id": "SIM_RUN_20261030_01",
       "sku": "SKU-B",
+      "source_system": "datara_synthetic_fixture",
       "unit_cents": 3000
     },
     {
       "biz_date": "2026-10-23",
       "buyer": "U005",
       "channel": "organic",
+      "currency": "CNY",
+      "event_time": "2026-10-23T09:00:00+08:00",
+      "fixture_namespace": "ECOM_SIM_20261030",
       "id": "O006",
       "qty": 1,
+      "run_id": "SIM_RUN_20261030_01",
       "sku": "SKU-D",
+      "source_system": "datara_synthetic_fixture",
       "unit_cents": 8000
+    }
+  ],
+  "payment_status_events": [
+    {
+      "biz_date": "2026-10-21",
+      "event_time": "2026-10-21T09:05:00+08:00",
+      "fixture_namespace": "ECOM_SIM_20261030",
+      "id": "PS001",
+      "intent_id": "PI-O002",
+      "payment": "P002",
+      "run_id": "SIM_RUN_20261030_01",
+      "source_system": "datara_synthetic_fixture",
+      "status": "failed"
+    },
+    {
+      "biz_date": "2026-10-21",
+      "event_time": "2026-10-21T09:14:00+08:00",
+      "fixture_namespace": "ECOM_SIM_20261030",
+      "id": "PS002",
+      "intent_id": "PI-O002",
+      "payment": "P003",
+      "run_id": "SIM_RUN_20261030_01",
+      "source_system": "datara_synthetic_fixture",
+      "status": "processing"
+    },
+    {
+      "biz_date": "2026-10-21",
+      "event_time": "2026-10-21T09:15:00+08:00",
+      "fixture_namespace": "ECOM_SIM_20261030",
+      "id": "PS003",
+      "intent_id": "PI-O002",
+      "payment": "P003",
+      "run_id": "SIM_RUN_20261030_01",
+      "source_system": "datara_synthetic_fixture",
+      "status": "succeeded"
+    },
+    {
+      "biz_date": "2026-10-21",
+      "event_time": "2026-10-21T09:10:00+08:00",
+      "fixture_namespace": "ECOM_SIM_20261030",
+      "id": "PS004",
+      "intent_id": "PI-O003",
+      "payment": "P004",
+      "run_id": "SIM_RUN_20261030_01",
+      "source_system": "datara_synthetic_fixture",
+      "status": "processing"
     }
   ],
   "payments": [
     {
       "amount_cents": 10000,
       "attempt": 1,
+      "biz_date": "2026-10-20",
+      "currency": "CNY",
+      "event_time": "2026-10-20T09:05:00+08:00",
+      "fixture_namespace": "ECOM_SIM_20261030",
       "id": "P001",
+      "intent_id": "PI-O001",
       "order": "O001",
+      "run_id": "SIM_RUN_20261030_01",
+      "source_system": "datara_synthetic_fixture",
       "status": "succeeded"
     },
     {
       "amount_cents": 6000,
       "attempt": 1,
+      "biz_date": "2026-10-21",
+      "currency": "CNY",
+      "event_time": "2026-10-21T09:05:00+08:00",
+      "fixture_namespace": "ECOM_SIM_20261030",
       "id": "P002",
+      "intent_id": "PI-O002",
       "order": "O002",
+      "run_id": "SIM_RUN_20261030_01",
+      "source_system": "datara_synthetic_fixture",
       "status": "failed"
     },
     {
       "amount_cents": 6000,
       "attempt": 2,
+      "biz_date": "2026-10-21",
+      "currency": "CNY",
+      "event_time": "2026-10-21T09:15:00+08:00",
+      "fixture_namespace": "ECOM_SIM_20261030",
       "id": "P003",
+      "intent_id": "PI-O002",
       "order": "O002",
+      "run_id": "SIM_RUN_20261030_01",
+      "source_system": "datara_synthetic_fixture",
       "status": "succeeded"
     },
     {
       "amount_cents": 5000,
       "attempt": 1,
+      "biz_date": "2026-10-21",
+      "currency": "CNY",
+      "event_time": "2026-10-21T09:10:00+08:00",
+      "fixture_namespace": "ECOM_SIM_20261030",
       "id": "P004",
+      "intent_id": "PI-O003",
       "order": "O003",
+      "run_id": "SIM_RUN_20261030_01",
+      "source_system": "datara_synthetic_fixture",
       "status": "processing"
     },
     {
       "amount_cents": 12000,
       "attempt": 1,
+      "biz_date": "2026-10-22",
+      "currency": "CNY",
+      "event_time": "2026-10-22T09:05:00+08:00",
+      "fixture_namespace": "ECOM_SIM_20261030",
       "id": "P005",
+      "intent_id": "PI-O004",
       "order": "O004",
+      "run_id": "SIM_RUN_20261030_01",
+      "source_system": "datara_synthetic_fixture",
       "status": "succeeded"
     },
     {
       "amount_cents": 3000,
       "attempt": 1,
+      "biz_date": "2026-10-22",
+      "currency": "CNY",
+      "event_time": "2026-10-22T09:10:00+08:00",
+      "fixture_namespace": "ECOM_SIM_20261030",
       "id": "P006",
+      "intent_id": "PI-O005",
       "order": "O005",
+      "run_id": "SIM_RUN_20261030_01",
+      "source_system": "datara_synthetic_fixture",
       "status": "canceled"
     },
     {
       "amount_cents": 8000,
       "attempt": 1,
+      "biz_date": "2026-10-23",
+      "currency": "CNY",
+      "event_time": "2026-10-23T09:05:00+08:00",
+      "fixture_namespace": "ECOM_SIM_20261030",
       "id": "P007",
+      "intent_id": "PI-O006",
       "order": "O006",
+      "run_id": "SIM_RUN_20261030_01",
+      "source_system": "datara_synthetic_fixture",
       "status": "succeeded"
+    }
+  ],
+  "products": [
+    {
+      "biz_date": "2026-10-19",
+      "event_time": "2026-10-19T08:00:00+08:00",
+      "fixture_namespace": "ECOM_SIM_20261030",
+      "name": "Cotton T-shirt",
+      "product_code": "SIM-PROD-A",
+      "run_id": "SIM_RUN_20261030_01",
+      "sku": "SKU-A",
+      "source_system": "datara_synthetic_fixture",
+      "specs": {
+        "color": "blue",
+        "size": "M"
+      }
+    },
+    {
+      "biz_date": "2026-10-19",
+      "event_time": "2026-10-19T08:00:00+08:00",
+      "fixture_namespace": "ECOM_SIM_20261030",
+      "name": "Cotton T-shirt",
+      "product_code": "SIM-PROD-B",
+      "run_id": "SIM_RUN_20261030_01",
+      "sku": "SKU-B",
+      "source_system": "datara_synthetic_fixture",
+      "specs": {
+        "color": "black",
+        "size": "L"
+      }
+    },
+    {
+      "biz_date": "2026-10-19",
+      "event_time": "2026-10-19T08:00:00+08:00",
+      "fixture_namespace": "ECOM_SIM_20261030",
+      "name": "Travel bag",
+      "product_code": "SIM-PROD-C",
+      "run_id": "SIM_RUN_20261030_01",
+      "sku": "SKU-C",
+      "source_system": "datara_synthetic_fixture",
+      "specs": {
+        "color": "gray",
+        "size": "standard"
+      }
+    },
+    {
+      "biz_date": "2026-10-19",
+      "event_time": "2026-10-19T08:00:00+08:00",
+      "fixture_namespace": "ECOM_SIM_20261030",
+      "name": "Desk lamp",
+      "product_code": "SIM-PROD-D",
+      "run_id": "SIM_RUN_20261030_01",
+      "sku": "SKU-D",
+      "source_system": "datara_synthetic_fixture",
+      "specs": {
+        "color": "white",
+        "size": "standard"
+      }
+    }
+  ],
+  "refund_status_events": [
+    {
+      "biz_date": "2026-10-23",
+      "event_time": "2026-10-23T14:00:00+08:00",
+      "fixture_namespace": "ECOM_SIM_20261030",
+      "id": "RS001",
+      "refund": "R001",
+      "run_id": "SIM_RUN_20261030_01",
+      "source_system": "datara_synthetic_fixture",
+      "status": "pending"
+    },
+    {
+      "biz_date": "2026-10-23",
+      "event_time": "2026-10-23T15:00:00+08:00",
+      "fixture_namespace": "ECOM_SIM_20261030",
+      "id": "RS002",
+      "refund": "R001",
+      "run_id": "SIM_RUN_20261030_01",
+      "source_system": "datara_synthetic_fixture",
+      "status": "succeeded"
+    },
+    {
+      "biz_date": "2026-10-24",
+      "event_time": "2026-10-24T14:00:00+08:00",
+      "fixture_namespace": "ECOM_SIM_20261030",
+      "id": "RS003",
+      "refund": "R002",
+      "run_id": "SIM_RUN_20261030_01",
+      "source_system": "datara_synthetic_fixture",
+      "status": "pending"
     }
   ],
   "refunds": [
     {
       "amount_cents": 6000,
+      "biz_date": "2026-10-23",
+      "currency": "CNY",
+      "event_time": "2026-10-23T14:00:00+08:00",
+      "fixture_namespace": "ECOM_SIM_20261030",
       "id": "R001",
       "order": "O004",
       "payment": "P005",
       "qty": 1,
+      "run_id": "SIM_RUN_20261030_01",
       "sku": "SKU-C",
+      "source_system": "datara_synthetic_fixture",
       "status": "succeeded"
     },
     {
       "amount_cents": 1000,
+      "biz_date": "2026-10-24",
+      "currency": "CNY",
+      "event_time": "2026-10-24T14:00:00+08:00",
+      "fixture_namespace": "ECOM_SIM_20261030",
       "id": "R002",
       "order": "O006",
       "payment": "P007",
       "qty": 1,
+      "run_id": "SIM_RUN_20261030_01",
       "sku": "SKU-D",
+      "source_system": "datara_synthetic_fixture",
       "status": "pending"
     }
   ],
-  "synthetic": true
+  "return_lines": [
+    {
+      "biz_date": "2026-10-23",
+      "event_time": "2026-10-23T10:00:00+08:00",
+      "fixture_namespace": "ECOM_SIM_20261030",
+      "id": "RL001",
+      "order": "O004",
+      "qty": 1,
+      "refund": "R001",
+      "run_id": "SIM_RUN_20261030_01",
+      "sku": "SKU-C",
+      "source_system": "datara_synthetic_fixture",
+      "status": "received"
+    },
+    {
+      "biz_date": "2026-10-24",
+      "event_time": "2026-10-24T10:00:00+08:00",
+      "fixture_namespace": "ECOM_SIM_20261030",
+      "id": "RL002",
+      "order": "O006",
+      "qty": 1,
+      "refund": "R002",
+      "run_id": "SIM_RUN_20261030_01",
+      "sku": "SKU-D",
+      "source_system": "datara_synthetic_fixture",
+      "status": "requested"
+    }
+  ],
+  "synthetic": true,
+  "tracking_events": [
+    {
+      "biz_date": "2026-10-20",
+      "carrier_label": "SYNTHETIC-CARRIER",
+      "event_time": "2026-10-20T16:00:00+08:00",
+      "fixture_namespace": "ECOM_SIM_20261030",
+      "fulfillment": "F001",
+      "id": "T001",
+      "run_id": "SIM_RUN_20261030_01",
+      "shipment_id": "SHIP-F001",
+      "source_system": "datara_synthetic_fixture",
+      "status": "shipped"
+    },
+    {
+      "biz_date": "2026-10-21",
+      "carrier_label": "SYNTHETIC-CARRIER",
+      "event_time": "2026-10-21T12:00:00+08:00",
+      "fixture_namespace": "ECOM_SIM_20261030",
+      "fulfillment": "F001",
+      "id": "T002",
+      "run_id": "SIM_RUN_20261030_01",
+      "shipment_id": "SHIP-F001",
+      "source_system": "datara_synthetic_fixture",
+      "status": "delivered"
+    },
+    {
+      "biz_date": "2026-10-21",
+      "carrier_label": "SYNTHETIC-CARRIER",
+      "event_time": "2026-10-21T16:00:00+08:00",
+      "fixture_namespace": "ECOM_SIM_20261030",
+      "fulfillment": "F002",
+      "id": "T003",
+      "run_id": "SIM_RUN_20261030_01",
+      "shipment_id": "SHIP-F002",
+      "source_system": "datara_synthetic_fixture",
+      "status": "shipped"
+    },
+    {
+      "biz_date": "2026-10-23",
+      "carrier_label": "SYNTHETIC-CARRIER",
+      "event_time": "2026-10-23T12:00:00+08:00",
+      "fixture_namespace": "ECOM_SIM_20261030",
+      "fulfillment": "F003",
+      "id": "T004",
+      "run_id": "SIM_RUN_20261030_01",
+      "shipment_id": "SHIP-F003",
+      "source_system": "datara_synthetic_fixture",
+      "status": "delivered"
+    },
+    {
+      "biz_date": "2026-10-24",
+      "carrier_label": "SYNTHETIC-CARRIER",
+      "event_time": "2026-10-24T12:00:00+08:00",
+      "fixture_namespace": "ECOM_SIM_20261030",
+      "fulfillment": "F004",
+      "id": "T005",
+      "run_id": "SIM_RUN_20261030_01",
+      "shipment_id": "SHIP-F004",
+      "source_system": "datara_synthetic_fixture",
+      "status": "delivered"
+    }
+  ]
 }
