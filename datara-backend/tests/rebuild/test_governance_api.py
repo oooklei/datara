@@ -14,6 +14,7 @@ from rebuild.governance.models import (
     QualityExceptionRecord,
     QualityRunLegacyDetailsRecord,
     QualityRunRecord,
+    QualityRuleRecord,
     SemanticMetricProfileRecord,
 )
 from rebuild.project.models import ProjectRecord
@@ -613,3 +614,25 @@ def test_project_delete_cleans_governance_graph_and_preserves_audit():
             assert session.scalar(select(func.count()).select_from(Base.metadata.tables["rebuild_governance_quality_run_legacy_details"])) == 0
             audit = session.scalars(select(AuditEventRecord)).all()
             assert audit and all(event.project_id is None for event in audit)
+
+
+def test_project_delete_rejects_cross_project_governance_reference():
+    with governance_client() as (client, app, headers):
+        target = client.get("/api/v1/rebuild/projects", headers=headers).json()["data"]["list"][0]["id"]
+        with app.state.session_factory() as session:
+            other = session.scalar(select(ProjectRecord.id).where(ProjectRecord.name == "other-project"))
+            assert other is not None
+        asset = client.post(f"/api/v1/rebuild/governance/projects/{target}/assets", headers=headers, json={
+            "source_system": "sim", "database_name": "sim", "asset_name": "shared_order", "asset_type": "table",
+        }).json()["data"]
+        with app.state.session_factory() as session:
+            session.add(QualityRuleRecord(
+                project_id=other, asset_id=asset["id"], name="foreign-rule",
+                expression="amount >= 0", severity="warning", enabled=True,
+            ))
+            session.commit()
+        deleted = client.delete(f"/api/v1/rebuild/projects/{target}", headers=headers)
+        assert deleted.status_code == 409
+        with app.state.session_factory() as session:
+            assert session.get(ProjectRecord, target) is not None
+            assert session.scalar(select(QualityRuleRecord).where(QualityRuleRecord.project_id == other)) is not None

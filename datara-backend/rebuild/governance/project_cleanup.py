@@ -18,6 +18,10 @@ from rebuild.governance.models import AuditEventRecord
 _OPTIONAL_OWNER_LINKS = {("rebuild_governance_quality_run_legacy_details", "quality_run_id")}
 
 
+class ProjectGovernanceConflict(ValueError):
+    """A governance row in another project still references this project."""
+
+
 def delete_project_governance(session: Session, project_id: int) -> int:
     """Remove project-owned rows and their dependants without touching global rows."""
     tables = [
@@ -26,15 +30,28 @@ def delete_project_governance(session: Session, project_id: int) -> int:
     ]
     filters = {}
     for table in tables:
-        predicates = [table.c.project_id == project_id] if "project_id" in table.c else []
-        for column in table.c:
-            for foreign_key in column.foreign_keys:
-                parent = foreign_key.column.table
-                if parent not in filters:
-                    continue
-                if column.nullable and (table.name, column.name) not in _OPTIONAL_OWNER_LINKS:
-                    continue
-                predicates.append(column.in_(select(foreign_key.column).where(filters[parent])))
+        if "project_id" in table.c:
+            # A foreign project's row must never be selected through a cross-project FK.
+            predicates = [table.c.project_id == project_id]
+            for column in table.c:
+                for foreign_key in column.foreign_keys:
+                    parent = foreign_key.column.table
+                    if parent not in filters:
+                        continue
+                    foreign_owner = or_(table.c.project_id != project_id, table.c.project_id.is_(None))
+                    linked_to_target = column.in_(select(foreign_key.column).where(filters[parent]))
+                    if session.scalar(select(1).select_from(table).where(foreign_owner, linked_to_target).limit(1)):
+                        raise ProjectGovernanceConflict(f"cross-project reference in {table.name}")
+        else:
+            predicates = []
+            for column in table.c:
+                for foreign_key in column.foreign_keys:
+                    parent = foreign_key.column.table
+                    if parent not in filters:
+                        continue
+                    if column.nullable and (table.name, column.name) not in _OPTIONAL_OWNER_LINKS:
+                        continue
+                    predicates.append(column.in_(select(foreign_key.column).where(filters[parent])))
         if predicates:
             filters[table] = or_(*predicates)
 
