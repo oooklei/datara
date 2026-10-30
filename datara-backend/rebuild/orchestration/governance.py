@@ -17,6 +17,7 @@ from sqlalchemy import ForeignKey, Integer, String, UniqueConstraint, delete, se
 from sqlalchemy.orm import Mapped, Session, mapped_column
 
 from rebuild.common.db import Base
+from rebuild.identity.models import UserRecord
 
 KIND_WORKER_GROUP = "worker_group"
 KIND_ENVIRONMENT = "environment"
@@ -69,13 +70,15 @@ class OrchestrationResourceAccess:
 
     def claim(self, kind: str, resource_key: str, owner_id: int) -> None:
         existing = self.owner_of(kind, resource_key)
-        if existing is None:
-            self.session.add(
-                OrchestrationResourceOwnershipRecord(kind=kind, resource_key=resource_key, owner_id=owner_id)
-            )
+        if existing is not None:
+            if existing != owner_id:
+                raise PermissionError("resource already owned by another user")
             return
-        if existing != owner_id:
-            raise PermissionError("resource already owned by another user")
+        if self.session.get(UserRecord, owner_id) is None:
+            raise PermissionError("resource owner does not exist")
+        self.session.add(
+            OrchestrationResourceOwnershipRecord(kind=kind, resource_key=resource_key, owner_id=owner_id)
+        )
 
     def share(self, kind: str, resource_key: str, user_id: int) -> None:
         exists = self.session.scalar(

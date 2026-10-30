@@ -3,8 +3,8 @@
 浏览器侧契约（宿主/自建页面调用，需 datara token）：
 
 1. ``GET  /api/v1/rebuild/orchestration/datasources``
-   海豚 UI 节点表单的数据源下拉真源（按项目可见性过滤，``id`` 为 datara
-   数据源全局主键）。
+   海豚 UI 节点表单的数据源下拉真源（按项目及 dbx owner 可见性过滤，
+   ``id`` 为 dbx connectionId）。
 2. ``GET  /api/v1/rebuild/orchestration/session``
    宿主页 postMessage 下发的会话载荷（内部令牌 + 海豚用户名 + 海豚项目 code）。
 3. ``/api/v1/rebuild/orchestration/scripts`` 与 ``.../scripts/{id}/content``
@@ -29,6 +29,11 @@
 6. ``GET  /api/v1/rebuild/orchestration/monitor/*``
    监控中心（§10.11）：代理海豚 ``MonitorController`` 与 ``DataAnalysisController``，
    心跳 JSON 在后端解析并附离线判定，只读。
+6b. ``/api/v1/rebuild/orchestration/alarm-rules``（GET/POST/PUT/DELETE）与
+   ``.../alarm-records``
+   告警桥接（§10.10 R6）：datara 项目级告警规则 CRUD 与触发记录查询；
+   海豚告警组/实例/插件一律不接入，失败感知由 ``dispatch_alarm_scan``
+   轮询海豚实例状态完成（``POST /internal/alarm/dispatch`` 为手动触发入口）。
 
 内部通道契约（海豚 master/worker 调用，需固定内部令牌 + 网段白名单）：
 
@@ -44,10 +49,14 @@
 from __future__ import annotations
 
 import hmac
+import base64
+import hashlib
 import ipaddress
 import json
 import logging
 import os
+import secrets
+import time
 from collections.abc import Callable
 from datetime import datetime, timedelta
 from typing import Any
@@ -57,10 +66,22 @@ from fastapi.responses import JSONResponse, Response
 from pydantic import BaseModel
 from sqlalchemy.orm import Session, sessionmaker
 
-from rebuild.datasource.models import ProjectDatasourceRecord
-from rebuild.datasource.repository import ProjectDatasourceRepository
+from rebuild.dbx.access import DbxConnectionAccess
+from rebuild.dbx.client import DbxClient, DbxError
 from rebuild.identity.contracts import Permission, Role, authorize
+from rebuild.identity.models import UserRecord
 from rebuild.identity.repository import UserRepository
+from rebuild.orchestration.alarm import (
+    CHANNELS,
+    CHANNEL_SYSTEM,
+    TRIGGERS,
+    TRIGGER_FAILURE,
+    TRIGGER_TIMEOUT,
+    OrchestrationAlarmRecord,
+    OrchestrationAlarmRepository,
+    OrchestrationAlarmRuleRecord,
+    dispatch_alarm_scan,
+)
 from rebuild.orchestration.ds_client import DsClient, DsClientError
 from rebuild.orchestration.governance import (
     KIND_CLUSTER,
@@ -92,7 +113,10 @@ DEFAULT_INTERNAL_CIDRS = (
 )
 
 # datara ``kind`` → 海豚 DbType 枚举名（§10.9 映射表；缺失即不支持，保存期报错）。
-_DS_DB_TYPE_BY_KIND = {"mysql": "MYSQL", "postgresql": "POSTGRESQL"}
+_DS_DB_TYPE_BY_KIND = {
+    "mysql": "MYSQL", "postgres": "POSTGRESQL", "postgresql": "POSTGRESQL",
+    "oracle": "ORACLE", "clickhouse": "CLICKHOUSE", "hive": "HIVE",
+}
 
 # 各 kind 的 JDBC 组装参数，对齐海豚 MySQL/PostgreSQL DataSourceProcessor。
 _JDBC_SPEC = {
@@ -105,6 +129,26 @@ _JDBC_SPEC = {
         "prefix": "jdbc:postgresql://",
         "driver": "org.postgresql.Driver",
         "validation_query": "select version()",
+    },
+    "postgres": {
+        "prefix": "jdbc:postgresql://",
+        "driver": "org.postgresql.Driver",
+        "validation_query": "select version()",
+    },
+    "oracle": {
+        "prefix": "jdbc:oracle:thin:@",
+        "driver": "oracle.jdbc.OracleDriver",
+        "validation_query": "select 1 from dual",
+    },
+    "clickhouse": {
+        "prefix": "jdbc:clickhouse://",
+        "driver": "com.clickhouse.jdbc.ClickHouseDriver",
+        "validation_query": "select 1",
+    },
+    "hive": {
+        "prefix": "jdbc:hive2://",
+        "driver": "org.apache.hive.jdbc.HiveDriver",
+        "validation_query": "select 1",
     },
 }
 
@@ -119,6 +163,18 @@ def _ok(data: Any) -> dict[str, Any]:
 
 def _internal_expected_token() -> str:
     return os.getenv("DATARA_INTERNAL_TOKEN", "").strip()
+
+
+def _issue_ds_embed_token(*, user: str, project_code: str, project_id: int) -> str:
+    secret = os.getenv("DATARA_DS_EMBED_SECRET", "")
+    if len(secret.encode("utf-8")) < 32:
+        raise ValueError("DATARA_DS_EMBED_SECRET must be at least 32 bytes")
+    claims = {"u": user, "p": project_code, "d": project_id,
+              "exp": int(time.time()) + 900, "jti": secrets.token_hex(8)}
+    raw = json.dumps(claims, separators=(",", ":"), ensure_ascii=False).encode("utf-8")
+    encoded = base64.urlsafe_b64encode(raw).rstrip(b"=")
+    signature = hmac.new(secret.encode("utf-8"), encoded, hashlib.sha256).digest()
+    return f"{encoded.decode('ascii')}.{base64.urlsafe_b64encode(signature).rstrip(b'=').decode('ascii')}"
 
 
 def _internal_networks() -> tuple[ipaddress.IPv4Network | ipaddress.IPv6Network, ...]:
@@ -177,16 +233,18 @@ def _audit(
         logger.warning("orchestration_audit_failed action=%s target=%s error=%s", action, target, type(exc).__name__)
 
 
-def _connection_params(record: ProjectDatasourceRecord, spec: dict[str, str]) -> dict[str, Any]:
+def _connection_params(config: dict[str, Any], spec: dict[str, str]) -> dict[str, Any]:
     """按海豚 ``*ConnectionParam`` 结构组装 connectionParams（JSON 字符串化前）。"""
-    address = f"{spec['prefix']}{record.host}:{record.port}"
+    address = f"{spec['prefix']}{config['host']}:{config['port']}"
+    database = str(config["database"])
+    jdbc_url = f"{address}/{database}"
     return {
-        "jdbcUrl": f"{address}/{record.database_name}",
+        "jdbcUrl": jdbc_url,
         "address": address,
-        "database": record.database_name,
-        "user": record.username,
+        "database": database,
+        "user": config.get("username", ""),
         # 海豚 ``aes-enable: false`` 时密码按明文处理（PasswordUtils.decodePassword 直返）。
-        "password": record.password,
+        "password": config.get("password", ""),
         "driverClassName": spec["driver"],
         "validationQuery": spec["validation_query"],
     }
@@ -321,6 +379,29 @@ class ControlWorkflowInstancePayload(BaseModel):
     executeType: str
 
 
+class AlarmRulePayload(BaseModel):
+    """``POST /alarm-rules`` 的请求体：项目级告警规则（§10.10 R6）。
+
+    字段名沿用 camelCase（``http.ts`` 只转查询串，JSON 体原样下发）。
+    """
+
+    projectId: int
+    workflowDefinitionCode: int = 0
+    trigger: str = TRIGGER_FAILURE
+    channel: str = CHANNEL_SYSTEM
+    timeoutMinutes: int | None = None
+    enabled: bool = True
+
+
+class AlarmRuleUpdatePayload(BaseModel):
+    """``PUT /alarm-rules/{id}`` 的请求体：全部字段可选，缺省即不改动。"""
+
+    channel: str | None = None
+    enabled: bool | None = None
+    timeoutMinutes: int | None = None
+    workflowDefinitionCode: int | None = None
+
+
 def _heartbeat_timeout_seconds() -> float:
     raw = os.getenv(HEARTBEAT_TIMEOUT_ENV, "").strip()
     if not raw:
@@ -416,18 +497,24 @@ def build_orchestration_router(
     active_tokens: set[str],
     project_permission_error: Callable[..., JSONResponse | None],
     ds_client_factory: Callable[[], DsClient] | None = None,
+    dbx_client_factory: Callable[[], DbxClient] | None = None,
 ) -> APIRouter:
     router = APIRouter()
     make_ds_client = ds_client_factory or DsClient
+    make_dbx_client = dbx_client_factory or DbxClient
 
     def principal(token: str, authorization: str) -> dict[str, Any] | None:
         raw = token or (authorization[7:] if authorization.startswith("Bearer ") else "")
         if not raw or raw not in active_tokens:
             return None
         try:
-            return token_service.verify(raw)
+            claims = token_service.verify(raw)
         except ValueError:
             return None
+        with session_factory() as session:
+            if session.get(UserRecord, claims.get("user_id")) is None:
+                return None
+        return claims
 
     def unauthorized() -> JSONResponse:
         return _error(401, "1001", "invalid token")
@@ -478,23 +565,38 @@ def build_orchestration_router(
             )
             if project_id is not None:
                 projects = [project for project in projects if project.id == project_id]
-            items: list[dict[str, Any]] = []
-            for project in projects:
-                for record in ProjectDatasourceRepository(session).list_for_project(project.id):
-                    ds_type = _DS_DB_TYPE_BY_KIND.get(record.kind)
-                    if ds_type is None:
-                        continue
-                    items.append(
-                        {
-                            "id": record.id,
-                            "name": record.name,
-                            "type": ds_type,
-                            "host": record.host,
-                            "database": record.database_name,
-                            "project_id": record.project_id,
-                        }
-                    )
-            return _ok(items)
+            visible_by_project = {
+                project.id: DbxConnectionAccess(session).visible_ids(
+                    project_id=project.id,
+                    user_id=int(claims["user_id"]),
+                    is_admin=_is_admin(claims),
+                )
+                for project in projects
+            }
+        if not visible_by_project:
+            return _ok([])
+        try:
+            connections = make_dbx_client().list_connections()
+        except DbxError:
+            return _error(503, "ORCH_DBX_UNAVAILABLE", "dbx connections unavailable")
+        items: list[dict[str, Any]] = []
+        for project_id_value, visible_ids in visible_by_project.items():
+            for connection in connections:
+                connection_id = str(connection.get("id", ""))
+                if not connection_id or (not _is_admin(claims) and connection_id not in visible_ids):
+                    continue
+                ds_type = _DS_DB_TYPE_BY_KIND.get(str(connection.get("db_type", "")).lower())
+                if ds_type is None:
+                    continue
+                items.append({
+                    "id": connection_id,
+                    "name": connection.get("name", ""),
+                    "type": ds_type,
+                    "host": connection.get("host", ""),
+                    "database": connection.get("database", ""),
+                    "project_id": project_id_value,
+                })
+        return _ok(items)
 
     # -- 1b. 脚本库下拉与正文（节点表单「从脚本库选择」） ---------------------
 
@@ -572,8 +674,14 @@ def build_orchestration_router(
                 ds_project = client.ensure_project(_ds_project_name(project), project.description or "")
             except DsClientError as exc:
                 return _error(exc.status, exc.code, exc.msg)
+            try:
+                embed_token = _issue_ds_embed_token(
+                    user=client.admin_user, project_code=str(ds_project.get("code", "")), project_id=project_id,
+                )
+            except ValueError:
+                return _error(503, "ORCH_EMBED_DISABLED", "DolphinScheduler embed signing is not configured")
             payload = {
-                "token": _internal_expected_token(),
+                "token": embed_token,
                 # §10.3「海豚用户名映射由编排网关维护」：海豚侧只认已存在且启用的账号，
                 # 未逐个开通的 datara 用户直接透传会被 LoginHandlerInterceptor 判 401。
                 # 当前统一收敛到网关自身使用的海豚服务账号（与 ensure_project/ds_call 同源），
@@ -710,6 +818,58 @@ def build_orchestration_router(
         if error is not None:
             return error
         payload, error = ds_call("DELETE", f"/projects/{project_code}/workflow-definition/{code}")
+        if error is not None:
+            return error
+        return _ok(payload)
+
+    # -- 2b-1. 项目工作流定时归集（海豚 SchedulerController） -----------------
+
+    @router.get("/api/v1/rebuild/orchestration/workflow-schedules")
+    def list_workflow_schedules(
+        project_id: int = Query(...),
+        page_no: int = Query(default=1),
+        page_size: int = Query(default=10),
+        token: str = Header(default=""),
+        authorization: str = Header(default=""),
+    ):
+        claims = principal(token, authorization)
+        if claims is None:
+            return unauthorized()
+        denial = require(claims, Permission.VIEW_ALL)
+        if denial is not None:
+            return denial
+        if page_no < 1 or page_size < 1 or page_size > 200:
+            return _error(400, "ORCH_INVALID_PAGE", "pageNo/pageSize out of range")
+        project_code, error = _ds_project_code(claims, project_id)
+        if error is not None:
+            return error
+        data, error = _paged_rows(
+            f"/projects/{project_code}/schedules", page_no, page_size, {}, (),
+        )
+        if error is not None:
+            return error
+        return _ok(data)
+
+    @router.post("/api/v1/rebuild/orchestration/workflow-schedules/{schedule_id}/{action}")
+    def set_workflow_schedule_state(
+        schedule_id: int,
+        action: str,
+        project_id: int = Query(...),
+        token: str = Header(default=""),
+        authorization: str = Header(default=""),
+    ):
+        claims = principal(token, authorization)
+        if claims is None:
+            return unauthorized()
+        denial = require(claims, Permission.TASK_WRITE)
+        if denial is not None:
+            return denial
+        if schedule_id < 1 or action not in {"online", "offline"}:
+            return _error(400, "ORCH_SCHEDULE_INVALID", "invalid schedule id or action")
+        project_code, error = _ds_project_code(claims, project_id)
+        if error is not None:
+            return error
+        payload, error = ds_call("POST", f"/projects/{project_code}/schedules/{schedule_id}/{action}")
         if error is not None:
             return error
         return _ok(payload)
@@ -1957,7 +2117,7 @@ def build_orchestration_router(
     @router.post("/api/v1/rebuild/orchestration/resources")
     async def create_resource_file(
         name: str = Form(...),
-        current_dir: str = Form(default=""),
+        current_dir: str = Form(default="/"),
         file: UploadFile | None = File(default=None),
         token: str = Header(default=""),
         authorization: str = Header(default=""),
@@ -1972,7 +2132,9 @@ def build_orchestration_router(
         resource_name = name.strip()
         if not resource_name:
             return _error(400, "ORCH_RESOURCE_FILE_NAME_REQUIRED", "resource name is required")
-        parent = current_dir.strip()
+        # 海豚 ``AbstractResourceTransformer`` 只接受 ``/``（根）或租户资源根前缀，
+        # 空串会被判为 ILLEGAL_RESOURCE_PATH，故此处收敛为根目录。
+        parent = current_dir.strip() or "/"
         if file is None:
             _, error = ds_call(
                 "POST",
@@ -2293,29 +2455,45 @@ def build_orchestration_router(
 
     @router.get("/internal/dbx/connections/{datasource_id}/params")
     def internal_connection_params(
-        datasource_id: int,
+        datasource_id: str,
         request: Request,
+        project_id: int = Query(...),
         x_datara_internal_token: str = Header(default=""),
         x_datara_user: str = Header(default=""),
     ):
         denied = _internal_guard(request, x_datara_internal_token)
         if denied is not None:
             return denied
-        target = f"datasource:{datasource_id}"
+        target = f"dbx_connection:{datasource_id}"
         with session_factory() as session:
-            record = session.get(ProjectDatasourceRecord, datasource_id)
-            if record is None:
+            project = session.get(ProjectRecord, project_id)
+            user = UserRepository(session).find_by_username(x_datara_user.strip()) if x_datara_user.strip() else None
+            visible = (
+                project is not None
+                and user is not None
+                and datasource_id in DbxConnectionAccess(session).visible_ids(
+                    project_id=project_id, user_id=user.id, is_admin=user.role == Role.ADMIN.value,
+                )
+            )
+            if not visible:
                 _audit(
                     session,
                     user_name=x_datara_user,
                     action="read_connection_params",
                     target=target,
                     allowed=False,
-                    reason="datasource_not_found",
+                    reason="connection_not_visible_to_executor",
                     request=request,
                 )
-                return _error(404, "ORCH_DATASOURCE_NOT_FOUND", f"datasource {datasource_id} not found")
-            spec = _JDBC_SPEC.get(record.kind)
+                return _error(404, "ORCH_DATASOURCE_NOT_FOUND", "connection not found in project")
+            try:
+                config = make_dbx_client().internal_connection(datasource_id)
+            except DbxError:
+                _audit(session, user_name=x_datara_user, action="read_connection_params",
+                       target=target, allowed=False, reason="dbx_unavailable", request=request)
+                return _error(503, "ORCH_DBX_UNAVAILABLE", "dbx connection unavailable")
+            kind = str(config.get("db_type", "")).lower()
+            spec = _JDBC_SPEC.get(kind)
             if spec is None:
                 _audit(
                     session,
@@ -2323,27 +2501,31 @@ def build_orchestration_router(
                     action="read_connection_params",
                     target=target,
                     allowed=False,
-                    reason="unsupported_kind",
+                    reason="unsupported_dbx_type",
                     request=request,
                 )
                 return _error(
                     400,
                     "ORCH_DATASOURCE_UNSUPPORTED",
-                    f"datasource kind {record.kind!r} has no dolphinscheduler mapping",
+                    f"dbx connection type {kind!r} has no dolphinscheduler mapping",
                 )
-            params = _connection_params(record, spec)
+            if not config.get("host") or not config.get("port") or not config.get("database"):
+                _audit(session, user_name=x_datara_user, action="read_connection_params",
+                       target=target, allowed=False, reason="dbx_connection_incomplete", request=request)
+                return _error(422, "ORCH_DATASOURCE_INCOMPLETE", "dbx connection is incomplete")
+            params = _connection_params(config, spec)
             _audit(
                 session,
                 user_name=x_datara_user,
                 action="read_connection_params",
                 target=target,
                 allowed=True,
-                reason=f"kind={record.kind}",
+                reason=f"kind={kind}",
                 request=request,
             )
             return _ok(
                 {
-                    "type": _DS_DB_TYPE_BY_KIND[record.kind],
+                    "type": _DS_DB_TYPE_BY_KIND[kind],
                     # 海豚 createConnectionParams(String connectionJson) 需要 JSON 字符串。
                     "connectionParams": json.dumps(params, ensure_ascii=False),
                 }
@@ -2400,5 +2582,218 @@ def build_orchestration_router(
                 request=request,
             )
             return _ok({**payload, "kind": row.kind, "project_id": row.project_id})
+
+    # -- 5. 告警规则与触发记录（§10.10 R6 告警桥接） --------------------------
+
+    def _alarm_rule_row(rule: OrchestrationAlarmRuleRecord) -> dict[str, Any]:
+        return {
+            "id": rule.id,
+            "projectId": rule.project_id,
+            "workflowDefinitionCode": rule.workflow_definition_code,
+            "trigger": rule.trigger,
+            "channel": rule.channel,
+            "timeoutMinutes": rule.timeout_minutes,
+            "enabled": rule.enabled,
+            "ownerId": rule.owner_id,
+            "createTime": rule.create_time.isoformat() if rule.create_time else "",
+            "updateTime": rule.update_time.isoformat() if rule.update_time else "",
+        }
+
+    def _alarm_record_row(record: OrchestrationAlarmRecord) -> dict[str, Any]:
+        return {
+            "id": record.id,
+            "ruleId": record.rule_id,
+            "projectId": record.project_id,
+            "instanceId": record.instance_id,
+            "workflowDefinitionCode": record.workflow_definition_code,
+            "trigger": record.trigger,
+            "title": record.title,
+            "content": record.content,
+            "channel": record.channel,
+            "state": record.state,
+            "createTime": record.create_time.isoformat() if record.create_time else "",
+        }
+
+    def _validate_alarm_rule(
+        *, trigger: str, channel: str, timeout_minutes: int | None
+    ) -> JSONResponse | None:
+        if trigger not in TRIGGERS:
+            return _error(400, "ORCH_ALARM_TRIGGER_INVALID", f"trigger must be one of {', '.join(TRIGGERS)}")
+        if channel not in CHANNELS:
+            return _error(400, "ORCH_ALARM_CHANNEL_INVALID", f"channel must be one of {', '.join(CHANNELS)}")
+        if trigger == TRIGGER_TIMEOUT and not timeout_minutes:
+            return _error(422, "ORCH_ALARM_TIMEOUT_REQUIRED", "timeoutMinutes is required for the timeout trigger")
+        if timeout_minutes is not None and timeout_minutes <= 0:
+            return _error(422, "ORCH_ALARM_TIMEOUT_INVALID", "timeoutMinutes must be a positive integer")
+        return None
+
+    @router.get("/api/v1/rebuild/orchestration/alarm-rules")
+    def list_alarm_rules(
+        project_id: int = Query(...),
+        token: str = Header(default=""),
+        authorization: str = Header(default=""),
+    ):
+        claims = principal(token, authorization)
+        if claims is None:
+            return unauthorized()
+        denial = require(claims, Permission.VIEW_ALL)
+        if denial is not None:
+            return denial
+        with session_factory() as session:
+            denial = project_permission_error(session, project_id, claims, Permission.VIEW_ALL)
+            if denial is not None:
+                return denial
+            rules = OrchestrationAlarmRepository(session).list_rules(project_id)
+            return _ok([_alarm_rule_row(rule) for rule in rules])
+
+    @router.post("/api/v1/rebuild/orchestration/alarm-rules")
+    def create_alarm_rule(
+        payload: AlarmRulePayload,
+        token: str = Header(default=""),
+        authorization: str = Header(default=""),
+    ):
+        claims = principal(token, authorization)
+        if claims is None:
+            return unauthorized()
+        denial = require(claims, Permission.EDIT_DEFINITION)
+        if denial is not None:
+            return denial
+        invalid = _validate_alarm_rule(
+            trigger=payload.trigger, channel=payload.channel, timeout_minutes=payload.timeoutMinutes
+        )
+        if invalid is not None:
+            return invalid
+        with session_factory() as session:
+            denial = project_permission_error(session, payload.projectId, claims, Permission.EDIT_DEFINITION)
+            if denial is not None:
+                return denial
+            repository = OrchestrationAlarmRepository(session)
+            if repository.find_rule(payload.projectId, payload.workflowDefinitionCode, payload.trigger) is not None:
+                return _error(
+                    409,
+                    "ORCH_ALARM_RULE_DUPLICATE",
+                    "a rule with the same workflow and trigger already exists",
+                )
+            rule = repository.create_rule(
+                project_id=payload.projectId,
+                workflow_definition_code=payload.workflowDefinitionCode,
+                trigger=payload.trigger,
+                channel=payload.channel,
+                timeout_minutes=payload.timeoutMinutes,
+                owner_id=int(claims["user_id"]),
+            )
+            rule.enabled = payload.enabled
+            session.commit()
+            return _ok(_alarm_rule_row(rule))
+
+    @router.put("/api/v1/rebuild/orchestration/alarm-rules/{rule_id}")
+    def update_alarm_rule(
+        rule_id: int,
+        payload: AlarmRuleUpdatePayload,
+        token: str = Header(default=""),
+        authorization: str = Header(default=""),
+    ):
+        claims = principal(token, authorization)
+        if claims is None:
+            return unauthorized()
+        denial = require(claims, Permission.EDIT_DEFINITION)
+        if denial is not None:
+            return denial
+        with session_factory() as session:
+            repository = OrchestrationAlarmRepository(session)
+            rule = repository.get_rule(rule_id)
+            if rule is None:
+                return _error(404, "ORCH_ALARM_RULE_NOT_FOUND", f"alarm rule {rule_id} not found")
+            denial = project_permission_error(session, rule.project_id, claims, Permission.EDIT_DEFINITION)
+            if denial is not None:
+                return denial
+            if payload.channel is not None and payload.channel not in CHANNELS:
+                return _error(400, "ORCH_ALARM_CHANNEL_INVALID", f"channel must be one of {', '.join(CHANNELS)}")
+            timeout_minutes = rule.timeout_minutes if payload.timeoutMinutes is None else payload.timeoutMinutes
+            invalid = _validate_alarm_rule(
+                trigger=rule.trigger, channel=payload.channel or rule.channel, timeout_minutes=timeout_minutes
+            )
+            if invalid is not None:
+                return invalid
+            repository.update_rule(
+                rule,
+                channel=payload.channel,
+                enabled=payload.enabled,
+                timeout_minutes=payload.timeoutMinutes,
+                workflow_definition_code=payload.workflowDefinitionCode,
+            )
+            session.commit()
+            return _ok(_alarm_rule_row(rule))
+
+    @router.delete("/api/v1/rebuild/orchestration/alarm-rules/{rule_id}")
+    def delete_alarm_rule(
+        rule_id: int,
+        token: str = Header(default=""),
+        authorization: str = Header(default=""),
+    ):
+        claims = principal(token, authorization)
+        if claims is None:
+            return unauthorized()
+        denial = require(claims, Permission.EDIT_DEFINITION)
+        if denial is not None:
+            return denial
+        with session_factory() as session:
+            repository = OrchestrationAlarmRepository(session)
+            rule = repository.get_rule(rule_id)
+            if rule is None:
+                return _error(404, "ORCH_ALARM_RULE_NOT_FOUND", f"alarm rule {rule_id} not found")
+            denial = project_permission_error(session, rule.project_id, claims, Permission.EDIT_DEFINITION)
+            if denial is not None:
+                return denial
+            repository.delete_rule(rule)
+            session.commit()
+            return _ok({"id": rule_id})
+
+    @router.get("/api/v1/rebuild/orchestration/alarm-records")
+    def list_alarm_records(
+        project_id: int = Query(...),
+        limit: int = Query(default=100, ge=1, le=500),
+        token: str = Header(default=""),
+        authorization: str = Header(default=""),
+    ):
+        claims = principal(token, authorization)
+        if claims is None:
+            return unauthorized()
+        denial = require(claims, Permission.VIEW_ALL)
+        if denial is not None:
+            return denial
+        with session_factory() as session:
+            denial = project_permission_error(session, project_id, claims, Permission.VIEW_ALL)
+            if denial is not None:
+                return denial
+            records = OrchestrationAlarmRepository(session).list_records(project_id, limit=limit)
+            return _ok([_alarm_record_row(record) for record in records])
+
+    @router.post("/internal/alarm/dispatch")
+    def internal_alarm_dispatch(
+        request: Request,
+        x_datara_internal_token: str = Header(default=""),
+        x_datara_user: str = Header(default=""),
+    ):
+        """手动触发一次失败感知扫描（默认由后台间隔任务调用）。"""
+        denied = _internal_guard(request, x_datara_internal_token)
+        if denied is not None:
+            return denied
+        try:
+            counts = dispatch_alarm_scan(session_factory, make_ds_client)
+        except Exception as exc:  # noqa: BLE001 - 扫描失败按内部通道错误回执
+            logger.warning("alarm_dispatch_failed error=%s", type(exc).__name__)
+            return _error(500, "ORCH_ALARM_DISPATCH_FAILED", "alarm dispatch failed")
+        with session_factory() as session:
+            _audit(
+                session,
+                user_name=x_datara_user,
+                action="alarm_dispatch",
+                target="orchestration_alarm",
+                allowed=True,
+                reason=f"rules={counts['rules']},sent={counts['sent']},failed={counts['failed']}",
+                request=request,
+            )
+        return _ok(counts)
 
     return router

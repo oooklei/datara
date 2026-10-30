@@ -6,6 +6,7 @@
 """
 
 import json
+import base64
 from datetime import datetime, timedelta
 
 from fastapi import FastAPI
@@ -15,6 +16,8 @@ from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
 from rebuild.common.db import Base
+from rebuild.dbx.access import DbxConnectionAccess
+from rebuild.dbx.models import DbxConnectionOwnershipRecord, DbxConnectionShareRecord
 from rebuild.identity.contracts import Role, TokenService
 from rebuild.identity.models import ProjectMemberRecord, UserRecord
 from rebuild.identity.repository import UserRepository
@@ -35,6 +38,8 @@ BASE = "/api/v1/rebuild/orchestration"
 
 class FakeDs:
     """按 (method, path) 分派的假海豚；未登记路由抛 DsClientError。"""
+
+    admin_user = "admin"
 
     def __init__(self, routes=None, projects=None):
         self.routes = routes or {}
@@ -82,8 +87,9 @@ def _worker_group(name, *, group_id=1, source=None, system_default=False):
 
 
 class Harness:
-    def __init__(self, fake, *, users=(), project=True):
+    def __init__(self, fake, *, users=(), project=True, dbx=None):
         self.fake = fake
+        self.dbx = dbx
         self.engine = create_engine(
             "sqlite+pysqlite:///:memory:",
             connect_args={"check_same_thread": False},
@@ -97,6 +103,8 @@ class Harness:
                 ProjectMemberRecord.__table__,
                 OrchestrationResourceOwnershipRecord.__table__,
                 OrchestrationResourceShareRecord.__table__,
+                DbxConnectionOwnershipRecord.__table__,
+                DbxConnectionShareRecord.__table__,
             ],
         )
         self.factory = sessionmaker(bind=self.engine, expire_on_commit=False)
@@ -119,7 +127,7 @@ class Harness:
         self.tokens.add(token)
         return token
 
-    def client(self):
+    def client(self, *, peer="testclient"):
         app = FastAPI()
         app.include_router(
             build_orchestration_router(
@@ -128,13 +136,135 @@ class Harness:
                 self.tokens,
                 lambda session, project_id, user, permission: None,
                 ds_client_factory=lambda: self.fake,
+                dbx_client_factory=lambda: self.dbx,
             )
         )
-        return TestClient(app)
+        return TestClient(app, client=(peer, 50000))
 
 
 def _harness(*, fake, users=(("owner", Role.DEVELOPER), ("other", Role.DEVELOPER), ("root", Role.ADMIN))):
     return Harness(fake, users=users)
+
+
+def test_orchestration_datasources_uses_owner_visible_dbx_connections_without_secrets():
+    class FakeDbx:
+        def list_connections(self):
+            return [
+                {"id": "mine", "name": "Orders", "db_type": "mysql", "host": "db",
+                 "database": "sales", "password": "secret"},
+                {"id": "other", "name": "Other", "db_type": "postgres", "host": "db2",
+                 "database": "hr", "password": "other-secret"},
+                {"id": "unsupported", "name": "Unknown", "db_type": "unknown"},
+            ]
+
+    h = Harness(FakeDs(), users=(("owner", Role.DEVELOPER), ("other", Role.DEVELOPER),
+                                 ("root", Role.ADMIN)), dbx=FakeDbx())
+    with h.factory() as session:
+        access = DbxConnectionAccess(session)
+        access.claim(connection_id="mine", project_id=1, owner_id=1)
+        access.claim(connection_id="other", project_id=1, owner_id=2)
+        session.commit()
+    owner = h.client().get(f"{BASE}/datasources?project_id=1", headers={"token": h.token("owner")})
+    assert owner.status_code == 200
+    assert owner.json()["data"] == [{
+        "id": "mine", "name": "Orders", "type": "MYSQL", "host": "db",
+        "database": "sales", "project_id": 1,
+    }]
+    assert "secret" not in owner.text
+    with h.factory() as session:
+        DbxConnectionAccess(session).share(connection_id="other", owner_id=2, user_id=1)
+        session.commit()
+    shared = h.client().get(f"{BASE}/datasources?project_id=1", headers={"token": h.token("owner")})
+    assert [item["id"] for item in shared.json()["data"]] == ["mine", "other"]
+    assert shared.json()["data"][1]["type"] == "POSTGRESQL"
+    admin = h.client().get(f"{BASE}/datasources?project_id=1", headers={"token": h.token("root")})
+    assert [item["id"] for item in admin.json()["data"]] == ["mine", "other"]
+
+
+def test_workflow_schedules_list_and_state_use_project_code_and_write_gate():
+    fake = FakeDs(routes={
+        ("GET", "/projects/123456/schedules"): lambda q, f: {
+            "total": 1, "totalList": [{
+                "id": 7, "workflowDefinitionCode": 88, "workflowDefinitionName": "orders",
+                "crontab": "0 0 * * * ?", "releaseState": "OFFLINE",
+            }],
+        },
+        ("POST", "/projects/123456/schedules/7/online"): lambda q, f: {"ok": True},
+    })
+    h = Harness(fake, users=(("owner", Role.DEVELOPER), ("viewer", Role.VIEWER)))
+    client = h.client()
+    listed = client.get(f"{BASE}/workflow-schedules?project_id=1&page_no=2&page_size=5",
+                        headers={"token": h.token("owner")})
+    assert listed.status_code == 200
+    assert listed.json()["data"]["list"][0]["workflowDefinitionCode"] == 88
+    assert fake.calls[-1]["query"] == {"pageNo": 2, "pageSize": 5}
+    denied = client.post(f"{BASE}/workflow-schedules/7/online?project_id=1",
+                         headers={"token": h.token("viewer")})
+    assert denied.status_code == 403
+    assert not any(call["method"] == "POST" for call in fake.calls)
+    updated = client.post(f"{BASE}/workflow-schedules/7/online?project_id=1",
+                          headers={"token": h.token("owner")})
+    assert updated.status_code == 200
+    assert fake.calls[-1]["path"] == "/projects/123456/schedules/7/online"
+    missing = client.get(f"{BASE}/workflow-schedules?project_id=999",
+                         headers={"token": h.token("owner")})
+    assert missing.status_code == 404
+
+
+def test_internal_connection_params_reads_only_project_claimed_dbx_connection(monkeypatch):
+    class FakeDbx:
+        def __init__(self):
+            self.reads = []
+
+        def internal_connection(self, connection_id):
+            self.reads.append(connection_id)
+            return {"id": connection_id, "db_type": "mysql", "host": "db", "port": 3306,
+                    "database": "sales", "username": "etl", "password": "secret"}
+
+    fake_dbx = FakeDbx()
+    h = Harness(FakeDs(), users=(("owner", Role.DEVELOPER), ("other", Role.DEVELOPER)), dbx=fake_dbx)
+    with h.factory() as session:
+        DbxConnectionAccess(session).claim(connection_id="dbx-uuid", project_id=1, owner_id=1)
+        session.commit()
+    monkeypatch.setenv("DATARA_INTERNAL_TOKEN", "a" * 32)
+    client = h.client(peer="127.0.0.1")
+    path = "/internal/dbx/connections/dbx-uuid/params?project_id=1"
+    assert client.get(path).status_code == 401
+    headers = {"X-Datara-Internal-Token": "a" * 32, "X-Datara-User": "owner"}
+    assert client.get(path, headers={"X-Datara-Internal-Token": "a" * 32}).status_code == 404
+    response = client.get(path, headers=headers)
+    assert response.status_code == 200
+    assert response.json()["data"]["type"] == "MYSQL"
+    assert json.loads(response.json()["data"]["connectionParams"])["password"] == "secret"
+    assert fake_dbx.reads == ["dbx-uuid"]
+    other_headers = {**headers, "X-Datara-User": "other"}
+    assert client.get(path, headers=other_headers).status_code == 404
+    with h.factory() as session:
+        DbxConnectionAccess(session).share(connection_id="dbx-uuid", owner_id=1, user_id=2)
+        session.commit()
+    assert client.get(path, headers=other_headers).status_code == 200
+    with h.factory() as session:
+        DbxConnectionAccess(session).unshare(connection_id="dbx-uuid", owner_id=1, user_id=2)
+        session.commit()
+    assert client.get(path, headers=other_headers).status_code == 404
+    denied = client.get("/internal/dbx/connections/other/params?project_id=1",
+                        headers=headers)
+    assert denied.status_code == 404
+    assert fake_dbx.reads == ["dbx-uuid", "dbx-uuid"]
+
+
+def test_embed_session_issues_short_lived_signed_token_not_internal_secret(monkeypatch):
+    monkeypatch.setenv("DATARA_DS_EMBED_SECRET", "s" * 32)
+    monkeypatch.setenv("DATARA_INTERNAL_TOKEN", "i" * 32)
+    h = Harness(FakeDs(), users=(("owner", Role.DEVELOPER),))
+    response = h.client().get(f"{BASE}/session?project_id=1", headers={"token": h.token("owner")})
+    assert response.status_code == 200
+    payload = response.json()["data"]
+    assert payload["token"] != "i" * 32
+    claims = json.loads(base64.urlsafe_b64decode(payload["token"].split(".")[0] + "=="))
+    assert claims["p"] == "123456"
+    assert claims["d"] == 1
+    assert claims["u"] == payload["user"]
 
 
 def test_worker_group_list_filters_by_owner_and_admin_sees_all():
@@ -196,6 +326,30 @@ def test_worker_group_create_claims_owner_and_config_group_is_readonly():
 
     denied = client.delete(f"{BASE}/worker-groups/alpha", headers={"token": h.token("other")})
     assert denied.status_code == 404
+
+
+def test_deleted_owner_token_cannot_create_unowned_worker_group():
+    fake = FakeDs(routes={("POST", "/worker-groups"): lambda q, f: {"id": 42, "name": f["name"]}})
+    h = _harness(fake=fake)
+    stale_token = h.token_service.issue(user_id=999, username="deleted", role=Role.DEVELOPER)
+    h.tokens.add(stale_token)
+
+    response = h.client().post(
+        f"{BASE}/worker-groups",
+        json={"name": "orphan", "addrList": "10.0.0.1:1234"},
+        headers={"token": stale_token},
+    )
+    assert response.status_code == 401
+    assert fake.calls == []
+    with h.factory() as session:
+        access = OrchestrationResourceAccess(session)
+        try:
+            access.claim(KIND_WORKER_GROUP, "orphan", 999)
+        except PermissionError:
+            pass
+        else:
+            raise AssertionError("missing owner must be rejected")
+        assert access.owner_of(KIND_WORKER_GROUP, "orphan") is None
 
 
 def test_worker_group_rename_migrates_ownership():
