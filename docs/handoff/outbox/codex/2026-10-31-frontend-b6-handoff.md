@@ -6,10 +6,12 @@
 - `datara-newweb/src/views/__tests__/authAccountSwitch.contract.test.ts`：2/2 通过。
 - `datara-newweb`：`npm run build` 通过，生成 `dist/assets/index-BT3c04ua.js`。
 - 1.9 已部署 `datara-newweb:ds-20261031`，容器 `datara-newweb-web`，`http://192.168.1.9:18091/` 返回 200。
+- 修正并同步主站 Nginx 的 `/ide/api/*` owner 网关路由；此前该路由直通 DBX，匿名请求返回 200。
 
 ## 未完事项
 
-- 测试域执行 zhangsan → admin 账号切换浏览器 E2E：未授权空态、授权资源可见、撤销即时失效、切回 admin 恢复。
+- 已在 1.9 执行现有 dev → admin Playwright 回测：退出码 0；`idePageStatus=200`、`ideI18nStatus=200`、匿名 IDE API `401`、dev 监控入口 `0`、直达监控被拒、admin 项目数 `1`、监控入口 `1`、监控可进入、token 未持久化、页面异常 `0`。
+- 仍未取得 zhangsan 私有凭据场景：未授权空态 → 授权/共享 → 撤销即时失效 → 切回 admin 全量恢复。
 - 按权威 §10.7 完成十五项前端/权限验收并回填证据。
 
 ## 下次第一步
