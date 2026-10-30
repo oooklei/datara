@@ -2,6 +2,7 @@
 <template>
   <nav class="seg dep-ops-subnav" aria-label="部署运维子导航" data-sub-nav>
     <RouterLink v-if="canReadMonitor" to="/dep/monitor" data-sub-nav-item="monitor">集群监控</RouterLink>
+    <RouterLink to="/dep/ssh" data-sub-nav-item="ssh">SSH 试运行节点</RouterLink>
     <RouterLink to="/dep/worker-group" data-sub-nav-item="worker-group">Worker 分组</RouterLink>
     <RouterLink to="/dep/environment" data-sub-nav-item="environment">环境管理</RouterLink>
     <RouterLink to="/dep/queue" data-sub-nav-item="queue">Yarn 队列</RouterLink>

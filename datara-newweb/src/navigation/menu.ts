@@ -285,6 +285,16 @@ export const menuGroups: readonly MenuGroupConfig[] = [
         source: '§4.2 F 行；STATE S175/S179 裁定纳入增量 17（0.8 §3 L104）；routeName 为 R-29 字段预留',
       },
       {
+        id: 'dep-ssh',
+        label: 'SSH 试运行节点',
+        icon: '⌁',
+        path: '/dep/ssh',
+        routeName: 'dep-ssh',
+        disposition: 'formal',
+        batch: 'inc17',
+        source: '脚本开发 Python/Shell 试运行选择 SSH 节点；上线工作流由 DolphinScheduler worker 执行',
+      },
+      {
         id: 'dep-worker-group',
         label: 'Worker 分组',
         icon: '⛭',
