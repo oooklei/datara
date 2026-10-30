@@ -25,7 +25,10 @@ from rebuild.dbx.ide_policy import (
     referenced_connection_ids, require_visible, safe_connection_list, saved_sql_descendants, scoped_history_search,
 )
 from rebuild.dbx.models import DbxConnectionOwnershipRecord, DbxConnectionShareRecord, DbxObjectOwnershipRecord, DbxObjectShareRecord
-from rebuild.dbx.tunnel_owner import KIND as TUNNEL_PROFILE_KIND, SAVE_LOCK as TUNNEL_SAVE_LOCK, profile_rows, redact_shared_profile
+from rebuild.dbx.tunnel_owner import (
+    KIND as TUNNEL_PROFILE_KIND, SAVE_LOCK as TUNNEL_SAVE_LOCK,
+    TunnelCatalogLockUnavailable, catalog_write_lock, profile_rows, redact_shared_profile,
+)
 from rebuild.identity.contracts import Permission, Role
 
 
@@ -355,52 +358,51 @@ def build_dbx_ide_router(
                 submitted = {item["id"]: item for item in incoming}
                 if len(submitted) != len(incoming):
                     return denied(message="duplicate tunnel profile")
-                with TUNNEL_SAVE_LOCK:
+                with TUNNEL_SAVE_LOCK, session_factory() as db_session, catalog_write_lock(db_session):
                     rows = profile_rows(dbx._request("GET", "tunnel-profiles/list"))
                     stored = {row["id"]: row for row in rows}
-                    with session_factory() as db_session:
-                        access = DbxObjectAccess(db_session)
-                        visible = access.visible_ids(kind=TUNNEL_PROFILE_KIND, project_id=project_id,
-                                                     user_id=user_id, is_admin=admin)
-                        for profile_id, item in submitted.items():
-                            owner = access.get(TUNNEL_PROFILE_KIND, profile_id)
-                            if profile_id not in stored:
-                                if owner is not None:
-                                    return denied(message="tunnel profile ID reserved")
-                            elif owner is None:
-                                if not admin or item != stored[profile_id]:
-                                    return denied(message="legacy tunnel profile requires admin claim")
-                            elif not admin and (owner.project_id != project_id or profile_id not in visible):
-                                return denied(message="tunnel profile not shared")
-                            elif not admin and owner.owner_id != user_id and item != redact_shared_profile(stored[profile_id]):
-                                return denied(message="shared tunnel profile is read only")
-                        next_profiles = []
-                        removed_ids = []
-                        for row in rows:
-                            profile_id = row["id"]
-                            owner = access.get(TUNNEL_PROFILE_KIND, profile_id)
-                            if owner is None or (not admin and (owner.project_id != project_id or owner.owner_id != user_id)):
-                                next_profiles.append(row)
-                            elif profile_id in submitted:
-                                next_profiles.append(submitted[profile_id])
-                            else:
-                                removed_ids.append(profile_id)
-                        new_ids = []
-                        for profile_id, item in submitted.items():
-                            if profile_id not in stored:
-                                new_ids.append(profile_id)
-                                next_profiles.append(item)
-                        result = dbx._request("POST", "tunnel-profiles/save", payload={"profiles": next_profiles})
-                        for profile_id in new_ids:
-                            access.claim(kind=TUNNEL_PROFILE_KIND, object_id=profile_id,
-                                         project_id=project_id, owner_id=user_id)
-                        for profile_id in removed_ids:
-                            db_session.query(DbxObjectShareRecord).filter_by(kind=TUNNEL_PROFILE_KIND,
+                    access = DbxObjectAccess(db_session)
+                    visible = access.visible_ids(kind=TUNNEL_PROFILE_KIND, project_id=project_id,
+                                                 user_id=user_id, is_admin=admin)
+                    for profile_id, item in submitted.items():
+                        owner = access.get(TUNNEL_PROFILE_KIND, profile_id)
+                        if profile_id not in stored:
+                            if owner is not None:
+                                return denied(message="tunnel profile ID reserved")
+                        elif owner is None:
+                            if not admin or item != stored[profile_id]:
+                                return denied(message="legacy tunnel profile requires admin claim")
+                        elif not admin and (owner.project_id != project_id or profile_id not in visible):
+                            return denied(message="tunnel profile not shared")
+                        elif not admin and owner.owner_id != user_id and item != redact_shared_profile(stored[profile_id]):
+                            return denied(message="shared tunnel profile is read only")
+                    next_profiles = []
+                    removed_ids = []
+                    for row in rows:
+                        profile_id = row["id"]
+                        owner = access.get(TUNNEL_PROFILE_KIND, profile_id)
+                        if owner is None or (not admin and (owner.project_id != project_id or owner.owner_id != user_id)):
+                            next_profiles.append(row)
+                        elif profile_id in submitted:
+                            next_profiles.append(submitted[profile_id])
+                        else:
+                            removed_ids.append(profile_id)
+                    new_ids = []
+                    for profile_id, item in submitted.items():
+                        if profile_id not in stored:
+                            new_ids.append(profile_id)
+                            next_profiles.append(item)
+                    result = dbx._request("POST", "tunnel-profiles/save", payload={"profiles": next_profiles})
+                    for profile_id in new_ids:
+                        access.claim(kind=TUNNEL_PROFILE_KIND, object_id=profile_id,
+                                     project_id=project_id, owner_id=user_id)
+                    for profile_id in removed_ids:
+                        db_session.query(DbxObjectShareRecord).filter_by(kind=TUNNEL_PROFILE_KIND,
+                                                                         object_id=profile_id).delete()
+                        db_session.query(DbxObjectOwnershipRecord).filter_by(kind=TUNNEL_PROFILE_KIND,
                                                                              object_id=profile_id).delete()
-                            db_session.query(DbxObjectOwnershipRecord).filter_by(kind=TUNNEL_PROFILE_KIND,
-                                                                                 object_id=profile_id).delete()
-                        db_session.commit()
-                        return result
+                    db_session.commit()
+                    return result
             if path == "tunnel-profiles/test" and request.method == "POST":
                 profile_id = payload.get("id")
                 if not valid_config_id(profile_id):
@@ -758,6 +760,8 @@ def build_dbx_ide_router(
             elif request.method != "GET" or path not in _BOOTSTRAP_READS:
                 return denied(message="unscoped dbx operation blocked")
             return dbx._request(request.method, path, params=query, payload=payload if body_bytes else None)
+        except TunnelCatalogLockUnavailable:
+            return JSONResponse(status_code=503, content={"code": 503, "msg": "DBX tunnel catalog busy", "data": None})
         except DbxError:
             return JSONResponse(status_code=502, content={"code": 502, "msg": "dbx unavailable", "data": None})
 
