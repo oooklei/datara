@@ -25,6 +25,7 @@ from rebuild.dbx.ide_policy import (
     referenced_connection_ids, require_visible, safe_connection_list, saved_sql_descendants, scoped_history_search,
 )
 from rebuild.dbx.models import DbxConnectionOwnershipRecord, DbxConnectionShareRecord, DbxObjectOwnershipRecord, DbxObjectShareRecord
+from rebuild.dbx.tunnel_owner import KIND as TUNNEL_PROFILE_KIND, SAVE_LOCK as TUNNEL_SAVE_LOCK, profile_rows, redact_shared_profile
 from rebuild.identity.contracts import Permission, Role
 
 
@@ -87,6 +88,7 @@ _AI_CONFIG_ROUTES = frozenset({
     "ai/cancel-stream", "ai/tool-approval",
 })
 _PROMPT_TEMPLATE_KIND = "prompt-template"
+_TUNNEL_ROUTES = frozenset({"tunnel-profiles/list", "tunnel-profiles/save", "tunnel-profiles/test"})
 
 
 def is_supported_ide_route(path: str) -> bool:
@@ -108,6 +110,7 @@ def is_supported_ide_route(path: str) -> bool:
         or dynamic_route
         or path in _AI_CONVERSATIONS
         or path in _AI_CONFIG_ROUTES
+        or path in _TUNNEL_ROUTES
         or path == "prompt-templates"
         or (path.startswith("prompt-templates/") and len(parts) == 2 and bool(parts[1]))
         or (path.startswith("ai/config/") and len(parts) == 3 and bool(parts[2]))
@@ -162,7 +165,7 @@ def build_dbx_ide_router(
         if not path or path.startswith("/") or ".." in path.split("/"):
             return denied()
         if path.startswith(_CONFIG_DOMAINS) and not (
-            path in _AI_CONVERSATIONS or path in _AI_CONFIG_ROUTES
+            path in _AI_CONVERSATIONS or path in _AI_CONFIG_ROUTES or path in _TUNNEL_ROUTES
             or path.startswith("ai/conversation/") or path.startswith("ai/config/")
             or path == "prompt-templates" or path.startswith("prompt-templates/")
         ):
@@ -171,7 +174,7 @@ def build_dbx_ide_router(
             return denied(message="connection modification requires the Datara owner API")
         if not is_supported_ide_route(path):
             return denied(message="unsupported dbx IDE endpoint")
-        permission = Permission.DATASOURCE_MANAGE if path == "connection/save" or path in _CONNECTION_OWNER_WRITES or (path.startswith("history") and request.method == "DELETE") or (path.startswith("ai/conversation") and request.method != "GET") or (path in {"ai/configs", "ai/config-item", "ai/default-config"} and request.method != "GET") or (path.startswith("ai/config/") and request.method == "DELETE") or (path.startswith("prompt-templates") and request.method != "GET") else (
+        permission = Permission.DATASOURCE_MANAGE if path in {"connection/save", "tunnel-profiles/save"} or path in _CONNECTION_OWNER_WRITES or (path.startswith("history") and request.method == "DELETE") or (path.startswith("ai/conversation") and request.method != "GET") or (path in {"ai/configs", "ai/config-item", "ai/default-config"} and request.method != "GET") or (path.startswith("ai/config/") and request.method == "DELETE") or (path.startswith("prompt-templates") and request.method != "GET") else (
             Permission.EXECUTE_SQL if path.startswith("query/") or (path.startswith("schema/") and request.method != "GET") or path in {"history/save", "ai/agent-stream"} else Permission.DATASOURCE_READ
         )
         user = authorize(token, project_id, permission)
@@ -231,6 +234,20 @@ def build_dbx_ide_router(
             if path == "prompt-templates/global-instructions" and request.method == "GET":
                 with session_factory() as db_session:
                     return {"content": global_instructions_from_state(db_session, project_id, user_id)}
+            if path == "tunnel-profiles/list" and request.method == "GET":
+                rows = profile_rows(dbx._request("GET", path))
+                with session_factory() as db_session:
+                    access = DbxObjectAccess(db_session)
+                    visible = access.visible_ids(kind=TUNNEL_PROFILE_KIND, project_id=project_id,
+                                                 user_id=user_id, is_admin=admin)
+                    result = []
+                    for row in rows:
+                        if not admin and row["id"] not in visible:
+                            continue
+                        owner = access.get(TUNNEL_PROFILE_KIND, row["id"])
+                        result.append(redact_shared_profile(row) if owner is not None and owner.owner_id != user_id
+                                      and not admin else row)
+                    return result
 
             if path == "ai/conversations" and request.method == "GET":
                 rows = dbx._request("GET", path)
@@ -329,6 +346,83 @@ def build_dbx_ide_router(
                     return denied(message="JSON object required")
                 payload = parsed
             query = dict(request.query_params)
+            if path == "tunnel-profiles/save" and request.method == "POST":
+                incoming = payload.get("profiles")
+                if not isinstance(incoming, list) or any(
+                    not isinstance(item, dict) or not valid_config_id(item.get("id")) for item in incoming
+                ):
+                    return denied(message="invalid tunnel profiles")
+                submitted = {item["id"]: item for item in incoming}
+                if len(submitted) != len(incoming):
+                    return denied(message="duplicate tunnel profile")
+                with TUNNEL_SAVE_LOCK:
+                    rows = profile_rows(dbx._request("GET", "tunnel-profiles/list"))
+                    stored = {row["id"]: row for row in rows}
+                    with session_factory() as db_session:
+                        access = DbxObjectAccess(db_session)
+                        visible = access.visible_ids(kind=TUNNEL_PROFILE_KIND, project_id=project_id,
+                                                     user_id=user_id, is_admin=admin)
+                        for profile_id, item in submitted.items():
+                            owner = access.get(TUNNEL_PROFILE_KIND, profile_id)
+                            if profile_id not in stored:
+                                if owner is not None:
+                                    return denied(message="tunnel profile ID reserved")
+                            elif owner is None:
+                                if not admin or item != stored[profile_id]:
+                                    return denied(message="legacy tunnel profile requires admin claim")
+                            elif not admin and (owner.project_id != project_id or profile_id not in visible):
+                                return denied(message="tunnel profile not shared")
+                            elif not admin and owner.owner_id != user_id and item != redact_shared_profile(stored[profile_id]):
+                                return denied(message="shared tunnel profile is read only")
+                        next_profiles = []
+                        removed_ids = []
+                        for row in rows:
+                            profile_id = row["id"]
+                            owner = access.get(TUNNEL_PROFILE_KIND, profile_id)
+                            if owner is None or (not admin and (owner.project_id != project_id or owner.owner_id != user_id)):
+                                next_profiles.append(row)
+                            elif profile_id in submitted:
+                                next_profiles.append(submitted[profile_id])
+                            else:
+                                removed_ids.append(profile_id)
+                        new_ids = []
+                        for profile_id, item in submitted.items():
+                            if profile_id not in stored:
+                                new_ids.append(profile_id)
+                                next_profiles.append(item)
+                        result = dbx._request("POST", "tunnel-profiles/save", payload={"profiles": next_profiles})
+                        for profile_id in new_ids:
+                            access.claim(kind=TUNNEL_PROFILE_KIND, object_id=profile_id,
+                                         project_id=project_id, owner_id=user_id)
+                        for profile_id in removed_ids:
+                            db_session.query(DbxObjectShareRecord).filter_by(kind=TUNNEL_PROFILE_KIND,
+                                                                             object_id=profile_id).delete()
+                            db_session.query(DbxObjectOwnershipRecord).filter_by(kind=TUNNEL_PROFILE_KIND,
+                                                                                 object_id=profile_id).delete()
+                        db_session.commit()
+                        return result
+            if path == "tunnel-profiles/test" and request.method == "POST":
+                profile_id = payload.get("id")
+                if not valid_config_id(profile_id):
+                    return denied(message="invalid tunnel profile")
+                rows = profile_rows(dbx._request("GET", "tunnel-profiles/list"))
+                stored = {row["id"]: row for row in rows}
+                with session_factory() as db_session:
+                    access = DbxObjectAccess(db_session)
+                    owner = access.get(TUNNEL_PROFILE_KIND, profile_id)
+                    if profile_id in stored:
+                        visible = access.visible_ids(kind=TUNNEL_PROFILE_KIND, project_id=project_id,
+                                                     user_id=user_id, is_admin=admin)
+                        if not admin and profile_id not in visible:
+                            return denied(message="tunnel profile not shared")
+                        if owner is None and not admin:
+                            return denied(message="legacy tunnel profile requires admin claim")
+                        test_profile = stored[profile_id] if owner is not None and owner.owner_id != user_id and not admin else payload
+                    elif owner is not None:
+                        return denied(message="tunnel profile ID reserved")
+                    else:
+                        test_profile = payload
+                return dbx._request("POST", path, payload=test_profile)
             if path in {"ai/config-item", "ai/configs"} and request.method == "POST":
                 items = [payload.get("config")] if path == "ai/config-item" else payload.get("configs")
                 if not isinstance(items, list) or not items or any(not isinstance(item, dict) or not valid_config_id(item.get("id")) for item in items):

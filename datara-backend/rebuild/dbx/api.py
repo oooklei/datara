@@ -298,7 +298,7 @@ def build_dbx_router(
         return {"code": 0, "msg": "success", "data": {"connection_id": connection_id, "user_id": user_id}}
 
     def object_owner(project_id: int, kind: str, object_id: str, user: dict[str, object]):
-        if kind not in {"sql-file", "sql-folder", "ai-conversation", "ai-config", "prompt-template"}:
+        if kind not in {"sql-file", "sql-folder", "ai-conversation", "ai-config", "prompt-template", "tunnel-profile"}:
             return JSONResponse(status_code=404, content={"code": 4042, "msg": "object type not found", "data": None})
         with session_factory() as session:
             owner = DbxObjectAccess(session).get(kind, object_id)
@@ -315,7 +315,7 @@ def build_dbx_router(
             return user
         if user.get("role") != Role.ADMIN.value:
             return JSONResponse(status_code=403, content={"code": 1003, "msg": "admin required", "data": None})
-        if kind not in {"sql-file", "sql-folder", "ai-conversation", "ai-config", "prompt-template"}:
+        if kind not in {"sql-file", "sql-folder", "ai-conversation", "ai-config", "prompt-template", "tunnel-profile"}:
             return JSONResponse(status_code=404, content={"code": 4042, "msg": "object type not found", "data": None})
         if (body.owner_id is None) == (body.username is None):
             return JSONResponse(status_code=400, content={"code": 4001, "msg": "one owner required", "data": None})
@@ -323,17 +323,18 @@ def build_dbx_router(
             library = client_factory()._request(
                 "GET", "ai/configs" if kind == "ai-config" else
                 "ai/conversations" if kind == "ai-conversation" else
-                "prompt-templates" if kind == "prompt-template" else "saved-sql",
+                "prompt-templates" if kind == "prompt-template" else
+                "tunnel-profiles/list" if kind == "tunnel-profile" else "saved-sql",
             )
         except DbxError as exc:
             return upstream_error(exc)
-        group = library if kind in {"ai-conversation", "ai-config", "prompt-template"} and isinstance(library, list) else (
+        group = library if kind in {"ai-conversation", "ai-config", "prompt-template", "tunnel-profile"} and isinstance(library, list) else (
             library.get("folders" if kind == "sql-folder" else "files", []) if isinstance(library, dict) else []
         )
         item = next((row for row in group if isinstance(row, dict) and row.get("id") == object_id), None)
-        if item is None or (kind not in {"ai-config", "prompt-template"} and not isinstance(item.get("connectionId"), str)):
+        if item is None or (kind not in {"ai-config", "prompt-template", "tunnel-profile"} and not isinstance(item.get("connectionId"), str)):
             return JSONResponse(status_code=404, content={"code": 4042, "msg": "DBX object not found", "data": None})
-        connection_id = item.get("connectionId") if kind not in {"ai-config", "prompt-template"} else None
+        connection_id = item.get("connectionId") if kind not in {"ai-config", "prompt-template", "tunnel-profile"} else None
         with session_factory() as session:
             target = (session.get(UserRecord, body.owner_id) if body.owner_id is not None else
                       session.scalar(select(UserRecord).where(UserRecord.username == body.username)))

@@ -30,6 +30,10 @@ class FakeDbx:
         ]
         self.ai_configs = [{"id": "legacy-config", "name": "Legacy", "provider": "openai", "apiKey": "legacy-secret", "endpoint": "https://legacy.example/api", "model": "m1"}]
         self.prompt_templates = [{"id": "legacy-template", "name": "Legacy", "content": "legacy private"}]
+        self.tunnel_profiles = [
+            {"type": "ssh", "id": "legacy-tunnel", "name": "Legacy", "host": "legacy.host", "password": "legacy-secret"},
+            {"type": "ssh", "id": "other-tunnel", "name": "Other", "host": "other.host", "password": "other-secret"},
+        ]
         self.stream_payloads = []
 
     def list_connections(self):
@@ -41,6 +45,13 @@ class FakeDbx:
             return self.ai_configs
         if path == "prompt-templates" and method == "GET":
             return self.prompt_templates
+        if path == "tunnel-profiles/list" and method == "GET":
+            return self.tunnel_profiles
+        if path == "tunnel-profiles/save" and method == "POST":
+            self.tunnel_profiles = payload["profiles"]
+            return None
+        if path == "tunnel-profiles/test" and method == "POST":
+            return "connected"
         if path == "prompt-templates" and method == "POST":
             self.prompt_templates = [item for item in self.prompt_templates if item["id"] != payload["id"]] + [payload]
             return payload
@@ -113,6 +124,7 @@ def setup_proxy(project_gate=None, *, share_with_other=False):
         access = DbxConnectionAccess(session)
         access.claim(connection_id="mine", project_id=33, owner_id=1)
         access.claim(connection_id="foreign", project_id=33, owner_id=2)
+        DbxObjectAccess(session).claim(kind="tunnel-profile", object_id="other-tunnel", project_id=33, owner_id=2)
         if share_with_other:
             access.share(connection_id="mine", owner_id=1, user_id=2)
         session.commit()
@@ -287,6 +299,45 @@ def test_prompt_templates_and_global_instructions_are_owner_scoped():
     owner = login("owner-token")
     assert client.delete(f"{proxy}/prompt-templates/my-template", headers=owner).status_code == 200
     assert all(item["id"] != "my-template" for item in dbx.prompt_templates)
+
+
+def test_tunnel_profile_save_preserves_foreign_rows_and_shared_profile_secrets():
+    client, dbx = setup_proxy()
+    proxy = "/api/v1/rebuild/dbx/ide-proxy"
+
+    def login(token):
+        client.post("/api/v1/rebuild/dbx/projects/33/ide-session", headers={"Authorization": f"Bearer {token}"})
+        return {"Cookie": f"datara_dbx_ide={client.cookies.get('datara_dbx_ide')}"}
+
+    owner = login("owner-token")
+    assert client.get(f"{proxy}/tunnel-profiles/list", headers=owner).json() == []
+    profile = {"type": "ssh", "id": "my-tunnel", "name": "My tunnel", "host": "my.host",
+               "password": "owner-tunnel-secret", "key_path": "/private/id_rsa"}
+    assert client.post(f"{proxy}/tunnel-profiles/save", headers=owner,
+                       json={"profiles": [profile]}).status_code == 200
+    assert {row["id"] for row in dbx.tunnel_profiles} == {"legacy-tunnel", "other-tunnel", "my-tunnel"}
+    assert [row["id"] for row in client.get(f"{proxy}/tunnel-profiles/list", headers=owner).json()] == ["my-tunnel"]
+
+    other = login("other-token")
+    assert [row["id"] for row in client.get(f"{proxy}/tunnel-profiles/list", headers=other).json()] == ["other-tunnel"]
+    assert client.post(f"{proxy}/tunnel-profiles/test", headers=other, json=profile).status_code == 403
+    with client.app.state.session_factory() as session:
+        DbxObjectAccess(session).share(kind="tunnel-profile", object_id="my-tunnel", owner_id=1, user_id=2)
+        session.commit()
+    shared = client.get(f"{proxy}/tunnel-profiles/list", headers=other).json()
+    shared_profile = next(row for row in shared if row["id"] == "my-tunnel")
+    assert shared_profile["password"] == "" and shared_profile["key_path"] == ""
+    assert "owner-tunnel-secret" not in str(shared) and "/private/id_rsa" not in str(shared)
+    assert client.post(f"{proxy}/tunnel-profiles/test", headers=other, json=shared_profile).json() == "connected"
+    assert dbx.calls[-1] == ("POST", "tunnel-profiles/test", profile)
+    changed = dict(shared_profile, host="attacker.host")
+    assert client.post(f"{proxy}/tunnel-profiles/save", headers=other,
+                       json={"profiles": [changed]}).status_code == 403
+    assert next(row for row in dbx.tunnel_profiles if row["id"] == "my-tunnel")["host"] == "my.host"
+
+    owner = login("owner-token")
+    assert client.post(f"{proxy}/tunnel-profiles/save", headers=owner, json={"profiles": []}).status_code == 200
+    assert {row["id"] for row in dbx.tunnel_profiles} == {"legacy-tunnel", "other-tunnel"}
 
 
 def test_ide_cookie_is_opaque_and_connection_list_is_filtered():

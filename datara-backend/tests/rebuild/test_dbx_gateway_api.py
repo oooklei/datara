@@ -23,6 +23,7 @@ class FakeDbx:
         self.ai_conversations = [{"id": "legacy-ai", "connectionId": "owned", "messages": []}]
         self.ai_configs = [{"id": "legacy-config", "name": "Legacy AI", "apiKey": "private"}]
         self.prompt_templates = [{"id": "legacy-template", "name": "Legacy", "content": "private"}]
+        self.tunnel_profiles = [{"type": "ssh", "id": "legacy-tunnel", "name": "Legacy", "password": "private"}]
 
     def _request(self, method, path, *, params=None, payload=None):
         assert method == "GET"
@@ -32,6 +33,8 @@ class FakeDbx:
             return self.ai_configs
         if path == "prompt-templates":
             return self.prompt_templates
+        if path == "tunnel-profiles/list":
+            return self.tunnel_profiles
         assert path == "saved-sql"
         return self.sql_library
 
@@ -245,3 +248,13 @@ def test_admin_claims_legacy_prompt_template_then_owner_shares_it():
     assert client.post(f"{base}/legacy-template/claim", headers=admin, json={"username": "owner"}).status_code == 200
     assert client.post(f"{base}/legacy-template/share", headers=owner, json={"username": "other"}).status_code == 200
     assert client.get(f"{base}/legacy-template/shares", headers=owner).json()["data"]["items"] == [{"user_id": 3, "username": "other"}]
+
+
+def test_admin_claims_legacy_tunnel_profile_then_owner_shares_it():
+    client, _ = setup_gateway()
+    base = "/api/v1/rebuild/dbx/projects/7/objects/tunnel-profile"
+    admin = {"Authorization": "Bearer admin"}
+    owner = {"Authorization": "Bearer owner"}
+    assert client.post(f"{base}/legacy-tunnel/claim", headers=admin, json={"username": "owner"}).status_code == 200
+    assert client.post(f"{base}/legacy-tunnel/share", headers=owner, json={"username": "other"}).status_code == 200
+    assert client.get(f"{base}/legacy-tunnel/shares", headers=owner).json()["data"]["items"] == [{"user_id": 3, "username": "other"}]
