@@ -198,12 +198,11 @@ describe('§10.10 状态与错误面', () => {
     expect(w.find('[data-empty]').exists()).toBe(false)
   })
 
-  it('承载九条部署运维子导航（含四类资源配置 + §10.10 R8 任务组 + R9 资源文件入口）', async () => {
+  it('承载当前部署运维子导航（含 SSH 试运行与资源配置入口）', async () => {
     setRole('admin')
     const w = mount(OrchestrationResourceView, { props: { kind: 'queue' } })
     await flushPromises()
     expect(w.findAll('[data-sub-nav-item]').map((i) => i.attributes('data-sub-nav-item'))).toEqual([
-      'runtime',
       'monitor',
       'ssh',
       'worker-group',
@@ -211,7 +210,6 @@ describe('§10.10 状态与错误面', () => {
       'queue',
       'cluster',
       'resource-file',
-      'task-group',
     ])
   })
 })
