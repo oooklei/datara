@@ -58,10 +58,11 @@ describe('DBX IDE session gate', () => {
     expect(wrapper.find('[data-dbx-frame]').exists()).toBe(false)
     authAccount.value = { id: 2, username: 'zhangsan', role: 'developer' }
     await flushPromises()
-    expect(mocks.issue).toHaveBeenLastCalledWith(34)
-    expect(wrapper.find('[data-dbx-frame]').exists()).toBe(true)
+    expect(mocks.issue).toHaveBeenCalledTimes(2)
+    expect(wrapper.find('[data-dbx-frame]').exists()).toBe(false)
     finishOld()
     await flushPromises()
+    expect(mocks.issue).toHaveBeenLastCalledWith(34)
     expect(wrapper.find('[data-dbx-frame]').exists()).toBe(true)
     wrapper.unmount()
   })

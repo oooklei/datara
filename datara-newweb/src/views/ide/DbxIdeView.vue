@@ -105,6 +105,7 @@ const ideReady = ref(false)
 const sessionError = ref('')
 let sessionGeneration = 0
 let variableGeneration = 0
+let sessionQueue: Promise<void> = Promise.resolve()
 
 const routeProjectId = computed<number | null>(() => {
   const raw = route.params.projectId ?? route.query.projectId
@@ -157,7 +158,7 @@ async function refreshVariables(): Promise<void> {
   sendVariablesToDbx(entries.value)
 }
 
-watch([projectId, authAccount], async ([id, account]) => {
+watch([projectId, authAccount], ([id, account]) => {
   const generation = ++sessionGeneration
   ideReady.value = false
   sessionError.value = ''
@@ -165,16 +166,21 @@ watch([projectId, authAccount], async ([id, account]) => {
   ++variableGeneration
   loading.value = false
   if (id === null || account === null) return
-  try {
-    await issueDbxIdeSession(id)
+  // Serialize Set-Cookie responses: an old in-flight response cannot overwrite
+  // the cookie issued for the newly selected account or project.
+  sessionQueue = sessionQueue.then(async () => {
     if (generation !== sessionGeneration) return
-    ideReady.value = true
-    void refreshVariables()
-  } catch (e) {
-    if (generation === sessionGeneration) {
-      sessionError.value = e instanceof Error ? e.message : String(e)
+    try {
+      await issueDbxIdeSession(id)
+      if (generation !== sessionGeneration) return
+      ideReady.value = true
+      void refreshVariables()
+    } catch (e) {
+      if (generation === sessionGeneration) {
+        sessionError.value = e instanceof Error ? e.message : String(e)
+      }
     }
-  }
+  })
 }, { immediate: true })
 
 /** dbx 侧就绪后补发一次：覆盖 iframe 晚于宿主拉取完成的时序。 */
