@@ -262,11 +262,10 @@ describe('集群监控组件段（IMPL-v4-16，无路由直挂）', () => {
     expect(w.find('[data-node-list] tbody').text()).toContain('无匹配节点')
   })
 
-  it('exposes the deployment-ops sub navigation so runtime/ssh entries are reachable', () => {
+  it('exposes the deployment-ops sub navigation so SSH/worker entries are reachable', () => {
     const w = mount(View)
     const items = w.findAll('[data-sub-nav-item]')
     expect(items.map((i) => i.attributes('data-sub-nav-item'))).toEqual([
-      'runtime',
       'monitor',
       'ssh',
       'worker-group',
@@ -274,9 +273,8 @@ describe('集群监控组件段（IMPL-v4-16，无路由直挂）', () => {
       'queue',
       'cluster',
       'resource-file',
-      'task-group',
     ])
-    expect(items[0]!.attributes('to')).toBe('/dep/runtime')
+    expect(items[0]!.attributes('to')).toBe('/dep/monitor')
   })
 })
 

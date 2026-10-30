@@ -73,7 +73,6 @@ describe('运行时节点组件段（IMPL-v4-17，无路由直挂）', () => {
     const w = mount(View)
     const items = w.findAll('[data-sub-nav-item]')
     expect(items.map((i) => i.attributes('data-sub-nav-item'))).toEqual([
-      'runtime',
       'monitor',
       'ssh',
       'worker-group',
@@ -81,9 +80,8 @@ describe('运行时节点组件段（IMPL-v4-17，无路由直挂）', () => {
       'queue',
       'cluster',
       'resource-file',
-      'task-group',
     ])
-    expect(items[2]!.attributes('to')).toBe('/dep/ssh')
+    expect(items[1]!.attributes('to')).toBe('/dep/ssh')
   })
 
   it('shows the empty state when no nodes are registered', async () => {
