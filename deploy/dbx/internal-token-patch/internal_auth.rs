@@ -33,6 +33,32 @@ pub(crate) fn internal_token_matches(expected: &str, supplied: &str) -> bool {
     difference == 0
 }
 
+pub(crate) fn internal_peer_allowed(peer: std::net::IpAddr, allowed_cidrs: &str) -> bool {
+    allowed_cidrs.split(',').map(str::trim).filter(|entry| !entry.is_empty()).any(|entry| {
+        let (address, prefix) = match entry.split_once('/') {
+            Some((address, prefix)) => (address, Some(prefix)),
+            None => (entry, None),
+        };
+        let Ok(network) = address.parse::<std::net::IpAddr>() else { return false };
+        let bits = match network { std::net::IpAddr::V4(_) => 32, std::net::IpAddr::V6(_) => 128 };
+        let length = match prefix { Some(raw) => match raw.parse::<u32>() {
+            Ok(value) if value <= bits => value,
+            _ => return false,
+        }, None => bits };
+        match (peer, network) {
+            (std::net::IpAddr::V4(peer), std::net::IpAddr::V4(network)) => {
+                let mask = if length == 0 { 0 } else { u32::MAX << (32 - length) };
+                (u32::from(peer) & mask) == (u32::from(network) & mask)
+            }
+            (std::net::IpAddr::V6(peer), std::net::IpAddr::V6(network)) => {
+                let mask = if length == 0 { 0 } else { u128::MAX << (128 - length) };
+                (u128::from(peer) & mask) == (u128::from(network) & mask)
+            }
+            _ => false,
+        }
+    })
+}
+
 pub(crate) fn internal_api_allowed(suffix: &str) -> bool {
     matches!(
         suffix,
@@ -51,7 +77,7 @@ pub(crate) fn internal_api_allowed(suffix: &str) -> bool {
 
 #[cfg(test)]
 mod tests {
-    use super::{gateway_only_enabled, internal_api_allowed, internal_token_matches, token_is_long_enough};
+    use super::{gateway_only_enabled, internal_api_allowed, internal_peer_allowed, internal_token_matches, token_is_long_enough};
 
     #[test]
     fn gateway_only_mode_requires_explicit_opt_in() {
@@ -73,6 +99,17 @@ mod tests {
         assert!(internal_token_matches(&expected, &expected));
         assert!(!internal_token_matches(&expected, &"b".repeat(32)));
         assert!(!internal_token_matches(&expected, &"a".repeat(31)));
+    }
+
+    #[test]
+    fn secret_endpoint_requires_explicit_peer_allowlist() {
+        let peer = "172.19.0.5".parse().unwrap();
+        assert!(!internal_peer_allowed(peer, ""));
+        assert!(internal_peer_allowed(peer, "172.19.0.0/16"));
+        assert!(!internal_peer_allowed(peer, "172.20.0.0/16"));
+        assert!(!internal_peer_allowed(peer, "172.19.0.0/33"));
+        assert!(!internal_peer_allowed(peer, "garbage"));
+        assert!(internal_peer_allowed("::1".parse().unwrap(), "::1/128"));
     }
 
     #[test]

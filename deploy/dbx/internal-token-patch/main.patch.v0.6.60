@@ -1,0 +1,29 @@
+diff --git a/crates/dbx-web/src/main.rs b/crates/dbx-web/src/main.rs
+index 0d89b49..e7ba636 100644
+--- a/crates/dbx-web/src/main.rs
++++ b/crates/dbx-web/src/main.rs
+@@ -1,4 +1,6 @@
+ mod auth;
++mod internal_auth;
++mod internal_connection;
+ mod credentials;
+ mod demo;
+ mod error;
+@@ -1580,6 +1582,8 @@ async fn serve() -> Result<(), String> {
+     // Build app
+     let mut app = Router::new()
+         .nest("/api", api)
++        .route("/internal/connection/{id}/params", get(internal_connection::connection_params))
++        .with_state(web_state.clone())
+         .layer(DefaultBodyLimit::max(web_body_limit_bytes()))
+         .layer(CompressionLayer::new().compress_when(web_compression_predicate()))
+         .layer(tower_http::trace::TraceLayer::new_for_http());
+@@ -1691,7 +1695,7 @@ async fn serve() -> Result<(), String> {
+     });
+ 
+     let shutdown_wait = server_shutdown.clone();
+-    let serve_future = axum::serve(listener, app).with_graceful_shutdown(async move {
++    let serve_future = axum::serve(listener, app.into_make_service_with_connect_info::<std::net::SocketAddr>()).with_graceful_shutdown(async move {
+         shutdown_wait.cancelled().await;
+     });
+ 

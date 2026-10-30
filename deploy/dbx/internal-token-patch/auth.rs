@@ -12,9 +12,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::state::WebState;
 
-#[path = "internal_auth.rs"]
-mod internal_auth;
-use internal_auth::{datara_gateway_only, internal_api_allowed, internal_token, internal_token_matches};
+use crate::internal_auth::{datara_gateway_only, internal_api_allowed, internal_token, internal_token_matches};
 
 #[derive(Deserialize)]
 pub struct LoginRequest {
