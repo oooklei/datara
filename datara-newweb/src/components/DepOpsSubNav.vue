@@ -13,8 +13,6 @@
     <RouterLink to="/dep/queue" data-sub-nav-item="queue">Yarn 队列</RouterLink>
     <RouterLink to="/dep/cluster" data-sub-nav-item="cluster">集群管理</RouterLink>
     <RouterLink to="/dep/resource-file" data-sub-nav-item="resource-file">资源文件</RouterLink>
-    <!-- §10.10 R8 快捷入口：任务组为项目级资源，全局别名 /task-group 经路由守卫解析到当前项目 -->
-    <RouterLink to="/task-group" data-sub-nav-item="task-group">当前项目任务组</RouterLink>
   </nav>
 </template>
 

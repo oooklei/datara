@@ -33,7 +33,6 @@ describe('DepOpsSubNav 部署运维子导航', () => {
       'queue',
       'cluster',
       'resource-file',
-      'task-group',
     ])
     // stub 下 RouterLink 的 to 由属性透传到 <a>
     expect(items[0]!.attributes('to')).toBe('/dep/runtime')
@@ -41,8 +40,6 @@ describe('DepOpsSubNav 部署运维子导航', () => {
     expect(items[2]!.attributes('to')).toBe('/dep/ssh')
     // §10.10 R9 资源文件（全局文件树）
     expect(items[7]!.attributes('to')).toBe('/dep/resource-file')
-    // §10.10 R8 快捷入口：全局别名 /task-group 解析到当前项目
-    expect(items[8]!.attributes('to')).toBe('/task-group')
   })
 
   it('carries an accessible label and no data fetching side effects', () => {
