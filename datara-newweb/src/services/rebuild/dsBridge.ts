@@ -36,7 +36,9 @@ export function sendSessionToDs(frame: HTMLIFrameElement | null, session: Orches
     projectName: session.projectName,
     projectId: session.projectId,
     apiBaseUrl: session.apiBaseUrl,
-    userToken: session.userToken
+    userToken: session.userToken,
+    ...(session.environmentGroupId !== undefined ? { environmentGroupId: session.environmentGroupId } : {}),
+    ...(session.environmentCode !== undefined ? { environmentCode: session.environmentCode } : {}),
   }
   win.postMessage({ type: DS_SESSION_MESSAGE, payload }, targetOrigin())
   return true

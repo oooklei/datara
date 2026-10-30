@@ -47,6 +47,7 @@ const {
   alarmCreate,
   alarmUpdate,
   alarmDelete,
+  environmentList,
 } = vi.hoisted(() => ({
   replaceSpy: vi.fn(() => Promise.resolve()),
   routeState: {
@@ -69,6 +70,7 @@ const {
   alarmCreate: vi.fn(),
   alarmUpdate: vi.fn(),
   alarmDelete: vi.fn(),
+  environmentList: vi.fn(),
 }))
 
 // 路由状态必须是真正的响应式引用：TaskCenterView 用 computed(route.params.projectId)
@@ -110,6 +112,7 @@ vi.mock('../../services/rebuild/orchestrationApi', () => ({
     createAlarmRule: alarmCreate,
     updateAlarmRule: alarmUpdate,
     deleteAlarmRule: alarmDelete,
+    listEnvironments: environmentList,
   },
 }))
 
@@ -196,6 +199,8 @@ beforeEach(() => {
   wfRelease.mockResolvedValue({})
   wfDelete.mockReset()
   wfDelete.mockResolvedValue({})
+  environmentList.mockReset()
+  environmentList.mockResolvedValue([])
   runStatsList.mockReset()
   runStatGet.mockReset()
   alarmList.mockReset()
@@ -386,6 +391,21 @@ describe('§10.5 B 工作流定义列表（datara 自建页，不进 iframe）',
 })
 
 describe('§10.4 海豚 iframe embed 宿主（单个 DAG 画布路由）', () => {
+  it('passes the chosen environment id and code to the embedded canvas session', async () => {
+    routeParams.value = { projectId: '7' }
+    authAccount.value = { id: 1, username: 'admin', role: 'admin' }
+    environmentList.mockResolvedValue([{ id: 2, code: '188356094854656', name: 'default-env' }])
+    const w = mountView()
+    await flushPromises()
+    await w.get('[data-tc-environment]').setValue('2')
+    await w.get('[data-wf-open]').trigger('click')
+    await flushPromises()
+    expect(sessionSend).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({
+      environmentGroupId: 2,
+      environmentCode: '188356094854656',
+    }))
+  })
+
   it('点列表行：取会话 → iframe src 指向单个 DAG 画布路由（embed=1）+ 监听 ds-ready', async () => {
     routeParams.value = { projectId: '7' }
     const w = mountView()

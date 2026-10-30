@@ -8,6 +8,7 @@ const mocks = vi.hoisted(() => ({
   projects: vi.fn(),
   complete: vi.fn(),
   send: vi.fn(),
+  environments: vi.fn(),
 }))
 vi.mock('vue-router', () => ({ useRoute: () => ({ params: {}, query: {} }) }))
 vi.mock('../../../services/rebuild/authApi', async () => {
@@ -15,6 +16,7 @@ vi.mock('../../../services/rebuild/authApi', async () => {
   return { authAccount: shallowRef(null) }
 })
 vi.mock('../../../services/rebuild/dbxIdeApi', () => ({ issueDbxIdeSession: mocks.issue }))
+vi.mock('../../../services/rebuild/orchestrationApi', () => ({ orchestrationApi: { listEnvironments: mocks.environments } }))
 vi.mock('../../../services/rebuild/projectApi', () => ({ listProjects: mocks.projects }))
 vi.mock('../../../services/rebuild/variableApi', () => ({ createVariableContract: () => ({ completeVariables: mocks.complete }) }))
 vi.mock('../../../services/rebuild/dbxVariableBridge', () => ({
@@ -29,6 +31,7 @@ describe('DBX IDE session gate', () => {
     authAccount.value = null
     mocks.projects.mockResolvedValue({ list: [] })
     mocks.complete.mockResolvedValue([])
+    mocks.environments.mockResolvedValue([])
   })
 
   it('loads the iframe only after the current project receives an IDE session', async () => {
@@ -110,6 +113,20 @@ describe('DBX IDE session gate', () => {
     await flushPromises()
     expect(mocks.issue).toHaveBeenCalledTimes(2)
     expect(wrapper.find('[data-dbx-frame]').exists()).toBe(true)
+    wrapper.unmount()
+  })
+
+  it('uses a named environment choice for DBX variable resolution', async () => {
+    mocks.issue.mockResolvedValue(undefined)
+    mocks.environments.mockResolvedValue([{ id: 2, code: '188356094854656', name: 'default-env' }])
+    authAccount.value = { id: 1, username: 'admin', role: 'admin' }
+    const wrapper = mount(DbxIdeView, { props: { projectId: 33 } })
+    await flushPromises()
+    expect(wrapper.find('[data-dbx-environment]').text()).toBe('未选择')
+    await wrapper.find('[data-environment-group]').setValue('2')
+    await flushPromises()
+    expect(wrapper.find('[data-dbx-environment]').text()).toBe('default-env')
+    expect(mocks.complete).toHaveBeenLastCalledWith('', { projectId: 33, environmentGroupId: 2 })
     wrapper.unmount()
   })
 })

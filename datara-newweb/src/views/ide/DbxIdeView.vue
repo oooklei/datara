@@ -6,20 +6,21 @@
         <p class="dbx-ide-context" data-dbx-context>
           项目：<b data-dbx-project>{{ projectLabel }}</b>
           <span class="dbx-ide-sep">·</span>
-          环境组：<b data-dbx-environment>{{ environmentGroupId ?? '未指定' }}</b>
+          环境组：<b data-dbx-environment>{{ selectedEnvironment?.name ?? '未选择' }}</b>
         </p>
       </div>
       <div class="dbx-ide-actions">
-        <label class="dbx-env-field">环境组 ID
-          <input
+        <label class="dbx-env-field">环境组
+          <select
             v-model.number="environmentGroupId"
             data-environment-group
-            type="number"
-            min="1"
-            placeholder="可选"
             @change="refreshVariables"
-          />
+          >
+            <option :value="null">未选择</option>
+            <option v-for="row in environmentOptions" :key="row.id!" :value="row.id!">{{ row.name }}</option>
+          </select>
         </label>
+        <button v-if="environmentError" type="button" data-environment-retry @click="refreshEnvironments">{{ environmentError }}；重试</button>
         <button type="button" data-variable-refresh :disabled="projectId === null || loading" @click="refreshVariables">
           {{ loading ? '加载中…' : '刷新变量' }}
         </button>
@@ -97,6 +98,7 @@ import {
 import VariableManagerDrawer from '../variables/VariableManagerDrawer.vue'
 import { authAccount } from '../../services/rebuild/authApi'
 import { issueDbxIdeSession } from '../../services/rebuild/dbxIdeApi'
+import { useEnvironmentContext } from '../../services/rebuild/environmentContext'
 
 const props = defineProps<{ projectId?: number }>()
 const route = useRoute()
@@ -108,7 +110,6 @@ const loading = ref(false)
 const error = ref('')
 const entries = ref<ExternalVariableEntry[]>([])
 const projects = ref<ProjectSummary[]>([])
-const environmentGroupId = ref<number | undefined>()
 const ideReady = ref(false)
 const sessionError = ref('')
 const frameError = ref('')
@@ -145,6 +146,13 @@ const projectId = computed<number | null>(() => {
   if (Number.isInteger(props.projectId) && props.projectId! > 0) return props.projectId!
   return routeProjectId.value
 })
+const {
+  options: environmentOptions,
+  selectedId: environmentGroupId,
+  selected: selectedEnvironment,
+  error: environmentError,
+  refresh: refreshEnvironments,
+} = useEnvironmentContext(projectId)
 const projectLabel = computed(() => {
   if (projectId.value === null) return '未选择'
   return projects.value.find((p) => p.id === projectId.value)?.name ?? `项目 #${projectId.value}`
@@ -279,6 +287,7 @@ onUnmounted(() => {
 .dbx-ide-actions{display:flex;align-items:center;gap:10px;margin-left:auto;flex-wrap:wrap}
 .dbx-env-field{display:flex;align-items:center;gap:6px;font-size:12px;color:var(--text-2)}
 .dbx-env-field input{width:96px;padding:5px 8px;border:1px solid var(--border);border-radius:var(--radius-sm);background:var(--card);color:var(--text);font:inherit}
+.dbx-env-field select{min-width:140px;padding:5px 8px;border:1px solid var(--border);border-radius:var(--radius-sm);background:var(--card);color:var(--text);font:inherit}
 .dbx-ide-actions button{padding:5px 12px;border:1px solid var(--border);border-radius:var(--radius-sm);background:var(--card);color:var(--text);font:inherit;cursor:pointer}
 .dbx-ide-actions button:hover:not(:disabled){border-color:var(--primary);color:var(--primary)}
 .dbx-ide-actions button:disabled{opacity:.5;cursor:not-allowed}

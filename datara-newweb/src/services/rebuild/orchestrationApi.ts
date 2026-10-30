@@ -35,6 +35,9 @@ export interface OrchestrationSession {
   apiBaseUrl: string
   /** datara 会话令牌（DS 取脚本正文时回传） */
   userToken: string
+  /** 当前项目选择的环境组：变量域使用 id，海豚使用 code。 */
+  environmentGroupId?: number
+  environmentCode?: string
 }
 
 /**

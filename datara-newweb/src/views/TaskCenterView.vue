@@ -40,6 +40,7 @@ import {
   type WorkflowDefinitionRow,
 } from '../services/rebuild/orchestrationApi'
 import { dsEmbedUrl, listenDsReady, sendSessionToDs } from '../services/rebuild/dsBridge'
+import { useEnvironmentContext } from '../services/rebuild/environmentContext'
 
 /* ---- 视角页签（蓝本照抄：TabKey / tabs 数组 / ?tab= 同步 / 默认 edit） ---- */
 type TabKey = 'edit' | 'runs' | 'schedules' | 'alarm'
@@ -123,6 +124,20 @@ const projectId = computed<number | undefined>(() => {
   const n = typeof raw === 'string' ? Number(raw) : NaN
   return Number.isInteger(n) && n > 0 ? n : undefined
 })
+const {
+  options: environmentOptions,
+  selectedId: environmentGroupId,
+  selected: selectedEnvironment,
+  error: environmentError,
+  refresh: refreshEnvironments,
+} = useEnvironmentContext(projectId)
+
+function sessionWithEnvironment(session: OrchestrationSession): OrchestrationSession {
+  const environment = selectedEnvironment.value
+  return environment?.id != null && environment.code
+    ? { ...session, environmentGroupId: environment.id, environmentCode: environment.code }
+    : session
+}
 
 /* ---- §10.5 B：工作流定义列表（datara 自建页；画布本体才进 iframe） ---- */
 
@@ -284,8 +299,8 @@ async function mountCanvas(path: string) {
   if (session === null) return
   dsFrameUrl.value = dsEmbedUrl(session.projectCode, path)
   await nextTick()
-  disposeDsReady = listenDsReady(dsFrameEl.value, () => sendSessionToDs(dsFrameEl.value, session))
-  sendSessionToDs(dsFrameEl.value, session)
+  disposeDsReady = listenDsReady(dsFrameEl.value, () => sendSessionToDs(dsFrameEl.value, sessionWithEnvironment(session)))
+  sendSessionToDs(dsFrameEl.value, sessionWithEnvironment(session))
   // Embed bearer expires after 15 minutes; renew while the canvas stays open.
   dsRefreshTimer = setInterval(() => {
     const pid = projectId.value
@@ -293,10 +308,16 @@ async function mountCanvas(path: string) {
     void getOrchestrationSession(pid).then((fresh) => {
       if (projectId.value !== pid || editMode.value !== 'canvas') return
       dsSession.value = fresh
-      sendSessionToDs(dsFrameEl.value, fresh)
+      sendSessionToDs(dsFrameEl.value, sessionWithEnvironment(fresh))
     }).catch(() => ElMessage.error('编排会话续期失败，请重新打开工作流'))
   }, 10 * 60 * 1000)
 }
+
+watch(environmentGroupId, () => {
+  if (dsSession.value && editMode.value === 'canvas') {
+    sendSessionToDs(dsFrameEl.value, sessionWithEnvironment(dsSession.value))
+  }
+})
 
 /** 从列表打开某个工作流 → 海豚画布路由 `/projects/:code/workflow/definitions/:code`。 */
 function openWorkflow(row: WorkflowDefinitionRow) {
@@ -384,6 +405,13 @@ onUnmounted(() => {
       ><span class="tc-ic">{{ t.icon }}</span>{{ t.label }}</button>
       <!-- edit 态右上专属操作（蓝本 L288-291 照抄） -->
       <span class="spacer" />
+      <label v-if="projectId !== undefined" class="tc-environment">环境组
+        <select v-model.number="environmentGroupId" data-tc-environment>
+          <option :value="null">未选择</option>
+          <option v-for="row in environmentOptions" :key="row.id!" :value="row.id!">{{ row.name }}</option>
+        </select>
+      </label>
+      <button v-if="environmentError" data-tc-environment-retry @click="refreshEnvironments">{{ environmentError }}；重试</button>
       <button
         v-if="tab === 'edit'"
         class="tc-variable-management"

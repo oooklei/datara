@@ -7,6 +7,7 @@ import {
   type VariableValueType,
 } from '../../services/rebuild/variableApi'
 import { useDraggable } from '../../composables/useDraggable'
+import { useEnvironmentContext } from '../../services/rebuild/environmentContext'
 
 const props = withDefaults(defineProps<{
   modelValue: boolean
@@ -22,7 +23,13 @@ const loading = ref(false)
 const error = ref('')
 let loadSeq = 0
 const scope = ref<VariableScope>('project')
-const environmentGroupId = ref<number | undefined>()
+const {
+  options: environmentOptions,
+  selectedId: environmentGroupId,
+  error: environmentError,
+  refresh: refreshEnvironments,
+} = useEnvironmentContext(computed(() => props.modelValue ? props.projectId : undefined))
+watch(environmentGroupId, () => { void load() })
 const editing = ref(false)
 const preserveExistingValue = ref(false)
 const saving = ref(false)
@@ -141,7 +148,11 @@ watch(() => [props.modelValue, props.projectId, props.workflowId, props.taskId],
     <div class="toolbar">
       <button data-variable-create type="button" :disabled="!canEdit || projectId === undefined" @click="beginCreate">新建变量</button>
       <button data-variable-retry type="button" @click="load">刷新</button>
-      <label>环境组 ID <input v-model.number="environmentGroupId" data-environment-group type="number" min="1" @change="load" /></label>
+      <label>环境组 <select v-model.number="environmentGroupId" data-environment-group>
+        <option :value="null">未选择</option>
+        <option v-for="row in environmentOptions" :key="row.id!" :value="row.id!">{{ row.name }}</option>
+      </select></label>
+      <button v-if="environmentError" type="button" @click="refreshEnvironments">{{ environmentError }}；重试</button>
     </div>
     <p v-if="!canEdit" class="notice" data-variable-permission>当前角色仅可查看变量</p>
     <p v-if="loading" data-variable-loading>正在加载变量…</p>
@@ -159,7 +170,7 @@ watch(() => [props.modelValue, props.projectId, props.workflowId, props.taskId],
     </table>
     <form v-if="editing" class="editor" @submit.prevent="save">
       <label>作用域<select v-model="scope"><option value="global">全局</option><option value="project">项目</option><option value="env">环境组</option><option v-if="workflowId" value="workflow">工作流</option><option v-if="workflowId && taskId" value="task">任务</option></select></label>
-      <label v-if="scope === 'env'">环境组 ID<input v-model.number="environmentGroupId" type="number" min="1" required /></label>
+      <p v-if="scope === 'env' && !environmentGroupId" class="notice">请先在上方选择环境组</p>
       <label>名称<input v-model="form.name" data-variable-name required /></label>
       <label>类型<select v-model="form.valueType"><option v-for="item in ['string','integer','decimal','boolean','date','datetime','json','array']" :key="item">{{ item }}</option></select></label>
       <!-- Sensitive values are write-only.  When editing an existing secret the
