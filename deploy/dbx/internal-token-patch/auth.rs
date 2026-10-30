@@ -14,7 +14,7 @@ use crate::state::WebState;
 
 #[path = "internal_auth.rs"]
 mod internal_auth;
-use internal_auth::{internal_api_allowed, internal_token, internal_token_matches};
+use internal_auth::{datara_gateway_only, internal_api_allowed, internal_token, internal_token_matches};
 
 #[derive(Deserialize)]
 pub struct LoginRequest {
@@ -274,14 +274,7 @@ pub async fn auth_middleware(
     req: Request<axum::body::Body>,
     next: Next,
 ) -> Response {
-    // Only the bootstrap auth endpoints are reachable without a session —
-    // login/setup/check. change-password and logout require one: change-password
-    // must not be an unauthenticated password oracle.
     let api_suffix = middleware_api_path_suffix(req.uri().path(), &state.public_base_path);
-    if api_suffix.is_some_and(|suffix| matches!(suffix, "auth/login" | "auth/setup" | "auth/check")) {
-        return next.run(req).await;
-    }
-
     // Non-API requests (static files) are always accessible.
     if api_suffix.is_none() {
         return next.run(req).await;
@@ -300,6 +293,17 @@ pub async fn auth_middleware(
                 .await;
             }
         }
+    }
+
+    // In the Datara deployment every data API request must come from the
+    // owner-filtering gateway. A disabled DBX password must never bypass it.
+    if datara_gateway_only() {
+        return StatusCode::UNAUTHORIZED.into_response();
+    }
+
+    // Standalone DBX keeps its original login/setup/check bootstrap behavior.
+    if api_suffix.is_some_and(|suffix| matches!(suffix, "auth/login" | "auth/setup" | "auth/check")) {
+        return next.run(req).await;
     }
 
     if state.password_disabled {
