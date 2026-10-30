@@ -117,7 +117,6 @@ from rebuild.workflow.models import (
     WorkflowScheduleRecord,
     WorkflowVersionRecord,
 )
-from rebuild.trial.models import WorkflowDraftSnapshotRecord
 from rebuild.sshnode import build_sshnode_router
 from rebuild.sshnode.models import SshNodeRecord
 from rebuild.sshnode.governance import SshNodeGovernanceRecord, SshNodeShareRecord
@@ -133,6 +132,12 @@ from rebuild.model.dicts import seed_model_dicts
 from rebuild.model.models import MODEL_TABLES
 from rebuild.monitor import build_monitor_router
 from rebuild.orchestration import build_orchestration_router
+from rebuild.orchestration.alarm import (
+    OrchestrationAlarmRecord,
+    OrchestrationAlarmRuleRecord,
+    dispatch_alarm_scan,
+)
+from rebuild.orchestration.ds_client import DsClient
 from rebuild.llm import LlmCredentialCipher, build_llm_router
 from rebuild.llm.migrations import apply_llm_migrations
 from rebuild.llm.resolver import DefaultLlmResolver
@@ -148,6 +153,8 @@ from common.registry import ServiceRegistry
 logger = logging.getLogger(__name__)
 
 DBX_POLL_INTERVAL_SECONDS = 300
+# §10.10 R6：告警扫描间隔（轮询海豚实例状态识别失败/超时）。
+ALARM_SCAN_INTERVAL_SECONDS = 120
 
 
 class _IntervalJobScheduler:
@@ -287,6 +294,7 @@ def create_app(
     llm_cipher=None,
     ssh_trial_runner=None,
     quality_dbx_client_factory=None,
+    ds_client_factory=None,
 ) -> FastAPI:
     database_url = database_url or os.getenv("REBUILD_DB_URL")
     if not database_url:
@@ -362,6 +370,14 @@ def create_app(
             except Exception as exc:  # noqa: BLE001 - 单个项目失败不中断整体轮询
                 logger.warning("dbx_poll_failed project_id=%s error=%s", project_id, type(exc).__name__)
         return synced
+
+    def dispatch_alarm_once() -> dict[str, int]:
+        """§10.10 R6：感知海豚实例 FAILURE/超时并按 datara 规则发送；失败仅记日志。"""
+        try:
+            return dispatch_alarm_scan(session_factory, ds_client_factory or DsClient)
+        except Exception as exc:  # noqa: BLE001 - 告警扫描失败不应影响进程
+            logger.warning("alarm_scan_failed error=%s", type(exc).__name__)
+            return {"rules": 0, "sent": 0, "failed": 0}
 
     class ActiveTokenStore:
         """Database-backed active token store for cross-worker revocation."""
@@ -550,7 +566,6 @@ def create_app(
                 WorkflowEdgeRecord.__table__,
                 WorkflowScheduleRecord.__table__,
                 WorkflowPublishRecord.__table__,
-                WorkflowDraftSnapshotRecord.__table__,
                 StreamJobRecord.__table__,
                 StreamJobAttemptRecord.__table__,
                 StreamCheckpointRecord.__table__,
@@ -562,6 +577,8 @@ def create_app(
                 SshNodeShareRecord.__table__,
                 OrchestrationResourceOwnershipRecord.__table__,
                 OrchestrationResourceShareRecord.__table__,
+                OrchestrationAlarmRuleRecord.__table__,
+                OrchestrationAlarmRecord.__table__,
                 RuntimeNodeRecord.__table__,
                 *MODEL_TABLES,
             ],
@@ -599,6 +616,13 @@ def create_app(
             trigger="interval",
             seconds=3600,
             id="daily_dbx_impact",
+            replace_existing=True,
+        )
+        interval_scheduler.add_job(
+            dispatch_alarm_once,
+            trigger="interval",
+            seconds=ALARM_SCAN_INTERVAL_SECONDS,
+            id="orchestration_alarm_scan",
             replace_existing=True,
         )
         interval_scheduler.start()
@@ -1319,7 +1343,7 @@ def create_app(
                 session.query(ProjectMemberRecord).filter(ProjectMemberRecord.project_id == project_id).delete()
                 ProjectRepository(session).delete(project)
                 session.commit()
-            except IntegrityError:
+            except (IntegrityError, ProjectGovernanceConflict):
                 session.rollback()
                 return JSONResponse(status_code=409, content={
                     "code": 4091, "msg": "project has referenced records", "data": None,
@@ -1728,18 +1752,6 @@ def create_app(
         prefix="/api/v1/rebuild",
         tags=["rebuild-schedule"],
     )
-    from rebuild.trial.api import build_trial_router
-
-    app.include_router(
-        build_trial_router(
-            session_factory,
-            token_service,
-            active_tokens,
-            project_permission_error,
-            pooled_connector,
-        ),
-        prefix="/api/v1/rebuild/trial",
-    )
     from rebuild.execution.api import build_execution_router
 
     app.include_router(
@@ -1776,7 +1788,13 @@ def create_app(
     )
     # 编排网关（设计 §十）：绝对路径路由，/api/v1/rebuild/orchestration/* 与 /internal/* 同挂载点。
     app.include_router(
-        build_orchestration_router(session_factory, token_service, active_tokens, project_permission_error),
+        build_orchestration_router(
+            session_factory,
+            token_service,
+            active_tokens,
+            project_permission_error,
+            ds_client_factory=ds_client_factory,
+        ),
         tags=["rebuild-orchestration"],
     )
     # G-system access audit (admin-only, no project scoping).
