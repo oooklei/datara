@@ -112,19 +112,18 @@ describe('2-01 菜单配置契约（0.8 §7 测试集 1：§4.2 逐行有且唯�
     expect(future).toEqual([])
   })
 
-  it('F 组 部署运维：运行节点、集群监控、SSH 节点与 §10.10 四类资源配置均正式开放（S175/S179；0.8 §3 L104）', () => {
+  it('F 组部署运维只保留 worker 运行模型所需入口', () => {
     const g = allGroups.find((x) => x.id === 'operations')!
     expect(g.label).toBe('部署运维')
     expect(g.items.map((i) => [i.id, i.path, i.disposition, i.batch])).toEqual([
-      ['dep-runtime', '/dep/runtime', 'formal', 'inc17'],
       ['dep-monitor', '/dep/monitor', 'formal', 'inc17'],
-      ['dep-ssh', '/dep/ssh', 'formal', 'inc17'],
       ['dep-worker-group', '/dep/worker-group', 'formal', 'inc17'],
       ['dep-environment', '/dep/environment', 'formal', 'inc17'],
       ['dep-queue', '/dep/queue', 'formal', 'inc17'],
       ['dep-cluster', '/dep/cluster', 'formal', 'inc17'],
       ['dep-resource-file', '/dep/resource-file', 'formal', 'inc17'],
     ])
+    expect(g.items.find((item) => item.id === 'dep-resource-file')?.label).toBe('运行依赖文件')
   })
 
   it('G 组 系统管理：保留权限、审计与开放能力', () => {
@@ -179,7 +178,7 @@ describe('2-01 配置纪律（0.8 L57-68 字段规则）', () => {
 
   it('正式菜单项均提供非空图标字形', () => {
     const formals = rows.filter((r) => r.item.disposition === 'formal')
-    expect(formals).toHaveLength(27)
+    expect(formals).toHaveLength(25)
     expect(formals.filter((r) => !r.item.icon?.trim()).map((r) => r.item.id)).toEqual([])
   })
 

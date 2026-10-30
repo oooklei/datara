@@ -3,11 +3,7 @@ import { beforeEach, describe, expect, it } from 'vitest'
 import DepOpsSubNav from '../DepOpsSubNav.vue'
 import { authAccount } from '../../services/rebuild/authApi'
 
-/**
- * 部署运维子导航契约（对齐 docs/increments/2026-10-28-旧前端对标审计-04其余业务域.md §2.1）：
- * 旧前端「SSH 节点管理在『运行时节点』页」，新前端 /dep/ssh 功能完备但无入口可达，
- * 故顶栏部署运维图标下的三个子页须互相可达。
- */
+/** 部署运维只展示当前 worker 运行模型所需入口。 */
 beforeEach(() => {
   config.global.stubs = { RouterLink: { template: '<a><slot /></a>' } }
   authAccount.value = { id: 1, username: 'admin', role: 'admin' }
@@ -20,14 +16,12 @@ describe('DepOpsSubNav 部署运维子导航', () => {
     expect(w.find('[data-sub-nav-item="monitor"]').exists()).toBe(false)
   })
 
-  it('renders the nine deployment-ops entries with route targets', () => {
+  it('renders deployment-ops entries without legacy node registration', () => {
     const w = mount(DepOpsSubNav)
     expect(w.find('[data-sub-nav]').exists()).toBe(true)
     const items = w.findAll('[data-sub-nav-item]')
     expect(items.map((i) => i.attributes('data-sub-nav-item'))).toEqual([
-      'runtime',
       'monitor',
-      'ssh',
       'worker-group',
       'environment',
       'queue',
@@ -35,11 +29,10 @@ describe('DepOpsSubNav 部署运维子导航', () => {
       'resource-file',
     ])
     // stub 下 RouterLink 的 to 由属性透传到 <a>
-    expect(items[0]!.attributes('to')).toBe('/dep/runtime')
-    expect(items[1]!.attributes('to')).toBe('/dep/monitor')
-    expect(items[2]!.attributes('to')).toBe('/dep/ssh')
-    // §10.10 R9 资源文件（全局文件树）
-    expect(items[7]!.attributes('to')).toBe('/dep/resource-file')
+    expect(items[0]!.attributes('to')).toBe('/dep/monitor')
+    // §10.10 R9 的运行依赖文件树
+    expect(items[5]!.attributes('to')).toBe('/dep/resource-file')
+    expect(items[5]!.text()).toBe('运行依赖文件')
   })
 
   it('carries an accessible label and no data fetching side effects', () => {

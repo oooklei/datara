@@ -274,16 +274,6 @@ export const menuGroups: readonly MenuGroupConfig[] = [
     placement: 'topbar',
     items: [
       {
-        id: 'dep-runtime',
-        label: '运行时节点',
-        icon: '⌂',
-        path: '/dep/runtime',
-        routeName: 'depRuntime',
-        disposition: 'formal',
-        batch: 'inc17',
-        source: '§4.2 F 行；STATE S175/S179 裁定纳入增量 17（0.8 §3 L104）；routeName 为 R-29 字段预留',
-      },
-      {
         id: 'dep-monitor',
         label: '监控中心',
         icon: '◈',
@@ -293,16 +283,6 @@ export const menuGroups: readonly MenuGroupConfig[] = [
         batch: 'inc17',
         permission: 'monitor:read',
         source: '§4.2 F 行；STATE S175/S179 裁定纳入增量 17（0.8 §3 L104）；routeName 为 R-29 字段预留',
-      },
-      {
-        id: 'dep-ssh',
-        label: 'SSH 节点',
-        icon: '⌁',
-        path: '/dep/ssh',
-        routeName: 'dep-ssh',
-        disposition: 'formal',
-        batch: 'inc17',
-        source: '增量 17 P4 SSH 节点迁移；页面与新后端已联调',
       },
       {
         id: 'dep-worker-group',
@@ -346,7 +326,7 @@ export const menuGroups: readonly MenuGroupConfig[] = [
       },
       {
         id: 'dep-resource-file',
-        label: '资源文件',
+        label: '运行依赖文件',
         icon: '⌗',
         path: '/dep/resource-file',
         routeName: 'dep-resource-file',

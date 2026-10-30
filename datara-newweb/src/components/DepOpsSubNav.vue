@@ -1,18 +1,12 @@
-<!-- 部署运维顶栏入口（hero 右上角 ☁）的子导航：运行时节点 / 集群监控 / SSH 节点。
-     口径来源：docs/increments/2026-10-28-旧前端对标审计-04其余业务域.md §2.1
-     「SSH 节点管理在『运行时节点』页」——旧前端把 SSH 节点注册/凭据维护挂在部署运维下，
-     新前端 SSH 节点页（/dep/ssh）功能已完备但无入口可达，本组件补齐该入口。
-     样式复用全局 `.seg` 分段控件语义（灰底容器 + 白底浮起 active），不新造视觉。 -->
+<!-- 部署运维子导航；上线运行由 DolphinScheduler worker 承担。 -->
 <template>
   <nav class="seg dep-ops-subnav" aria-label="部署运维子导航" data-sub-nav>
-    <RouterLink to="/dep/runtime" data-sub-nav-item="runtime">运行时节点</RouterLink>
     <RouterLink v-if="canReadMonitor" to="/dep/monitor" data-sub-nav-item="monitor">集群监控</RouterLink>
-    <RouterLink to="/dep/ssh" data-sub-nav-item="ssh">SSH 节点</RouterLink>
     <RouterLink to="/dep/worker-group" data-sub-nav-item="worker-group">Worker 分组</RouterLink>
     <RouterLink to="/dep/environment" data-sub-nav-item="environment">环境管理</RouterLink>
     <RouterLink to="/dep/queue" data-sub-nav-item="queue">Yarn 队列</RouterLink>
     <RouterLink to="/dep/cluster" data-sub-nav-item="cluster">集群管理</RouterLink>
-    <RouterLink to="/dep/resource-file" data-sub-nav-item="resource-file">资源文件</RouterLink>
+    <RouterLink to="/dep/resource-file" data-sub-nav-item="resource-file">运行依赖文件</RouterLink>
   </nav>
 </template>
 

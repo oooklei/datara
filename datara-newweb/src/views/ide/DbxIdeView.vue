@@ -29,18 +29,24 @@
 
     <p v-if="projectId === null" class="dbx-ide-muted" data-no-project>请先选择项目</p>
     <template v-else>
-      <p v-if="sessionError" class="dbx-ide-error" role="alert" data-ide-session-error>{{ sessionError }}</p>
+      <div v-if="sessionError || frameError" class="dbx-ide-retry" role="alert" data-ide-session-error>
+        <span>DBX 加载失败：{{ sessionError || frameError }}</span>
+        <button type="button" data-ide-retry @click="retryIde">重试加载</button>
+      </div>
       <p v-else-if="!ideReady" class="dbx-ide-muted" data-ide-session-loading>正在准备 IDE 会话…</p>
+      <p v-else-if="!frameLoaded" class="dbx-ide-muted" data-ide-frame-loading>正在加载 DBX 页面…</p>
       <p v-if="error" class="dbx-ide-error" role="alert" data-variable-error>变量加载失败：{{ error }}</p>
       <section class="dbx-ide-body">
         <iframe
-          v-if="ideReady"
+          v-if="ideReady && !frameError"
+          :key="frameGeneration"
           id="dbx-ide-frame"
           ref="frameEl"
           class="dbx-ide-frame"
           data-dbx-frame
           src="/ide/"
           title="dbx 数据开发 IDE"
+          @error="onFrameError"
         ></iframe>
         <aside class="dbx-var-panel" data-variable-panel aria-label="变量现值">
           <header class="dbx-var-head">
@@ -103,10 +109,24 @@ const projects = ref<ProjectSummary[]>([])
 const environmentGroupId = ref<number | undefined>()
 const ideReady = ref(false)
 const sessionError = ref('')
+const frameError = ref('')
+const frameLoaded = ref(false)
+const frameGeneration = ref(0)
 let sessionGeneration = 0
 let variableGeneration = 0
 let projectGeneration = 0
 let sessionQueue: Promise<void> = Promise.resolve()
+let frameTimeout: ReturnType<typeof setTimeout> | undefined
+
+function clearFrameTimeout(): void {
+  if (frameTimeout !== undefined) clearTimeout(frameTimeout)
+  frameTimeout = undefined
+}
+
+function onFrameError(): void {
+  clearFrameTimeout()
+  frameError.value = '页面请求失败'
+}
 
 const routeProjectId = computed<number | null>(() => {
   const raw = route.params.projectId ?? route.query.projectId
@@ -161,10 +181,14 @@ async function refreshVariables(): Promise<void> {
   sendVariablesToDbx(entries.value)
 }
 
-watch([projectId, authAccount], ([id, account]) => {
+function startIdeSession(id: number | null, account: typeof authAccount.value): void {
   const generation = ++sessionGeneration
+  clearFrameTimeout()
   ideReady.value = false
   sessionError.value = ''
+  frameError.value = ''
+  frameLoaded.value = false
+  frameGeneration.value += 1
   error.value = ''
   entries.value = []
   ++variableGeneration
@@ -178,6 +202,11 @@ watch([projectId, authAccount], ([id, account]) => {
       await issueDbxIdeSession(id)
       if (generation !== sessionGeneration) return
       ideReady.value = true
+      frameTimeout = setTimeout(() => {
+        if (generation === sessionGeneration && !frameLoaded.value) {
+          frameError.value = '页面响应超时，请重试'
+        }
+      }, 15000)
       void refreshVariables()
     } catch (e) {
       if (generation === sessionGeneration) {
@@ -185,6 +214,14 @@ watch([projectId, authAccount], ([id, account]) => {
       }
     }
   })
+}
+
+function retryIde(): void {
+  startIdeSession(projectId.value, authAccount.value)
+}
+
+watch([projectId, authAccount], ([id, account]) => {
+  startIdeSession(id, account)
 }, { immediate: true })
 
 watch(authAccount, (account) => {
@@ -201,6 +238,9 @@ function onBridgeReady(event: MessageEvent): void {
   if (!data || typeof data !== 'object' || data.type !== 'datara:bridge-ready') return
   const source = frameEl.value?.contentWindow ?? null
   if (source === null || event.source !== source) return
+  clearFrameTimeout()
+  frameLoaded.value = true
+  frameError.value = ''
   sendVariablesToDbx(entries.value)
 }
 
@@ -214,6 +254,7 @@ onMounted(() => {
 })
 
 onUnmounted(() => {
+  clearFrameTimeout()
   ++sessionGeneration
   ++variableGeneration
   ++projectGeneration
@@ -248,5 +289,7 @@ onUnmounted(() => {
 .dbx-var-value.is-masked{color:var(--warn);letter-spacing:1px}
 .dbx-ide-muted{margin:0;color:var(--text-2);font-size:13px}
 .dbx-ide-error{margin:0;padding:6px 10px;border-radius:var(--radius-sm);background:var(--danger-bg);color:var(--danger);font-size:12px}
+.dbx-ide-retry{display:flex;align-items:center;gap:12px;margin:0;padding:6px 10px;border-radius:var(--radius-sm);background:var(--danger-bg);color:var(--danger);font-size:12px}
+.dbx-ide-retry button{border:1px solid currentColor;border-radius:var(--radius-sm);background:transparent;color:inherit;padding:4px 10px;cursor:pointer}
 @media(max-width:1000px){.dbx-ide-body{grid-template-columns:minmax(0,1fr)}.dbx-var-panel{max-height:260px}.dbx-ide-frame{height:70vh}}
 </style>

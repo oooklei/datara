@@ -79,4 +79,34 @@ describe('DBX IDE session gate', () => {
     expect(wrapper.find('[data-ide-session-error]').text()).toContain('无数据源权限')
     wrapper.unmount()
   })
+
+  it('shows a retry action after a session failure and opens the frame after retry', async () => {
+    mocks.issue.mockRejectedValueOnce(new Error('连接暂不可用')).mockResolvedValueOnce(undefined)
+    authAccount.value = { id: 1, username: 'admin', role: 'admin' }
+    const wrapper = mount(DbxIdeView, { props: { projectId: 33 } })
+    await flushPromises()
+    expect(wrapper.find('[data-ide-session-error]').text()).toContain('连接暂不可用')
+    expect(wrapper.find('[data-dbx-frame]').exists()).toBe(false)
+    await wrapper.find('[data-ide-retry]').trigger('click')
+    await flushPromises()
+    expect(mocks.issue).toHaveBeenCalledTimes(2)
+    expect(wrapper.find('[data-ide-frame-loading]').exists()).toBe(true)
+    expect(wrapper.find('[data-dbx-frame]').exists()).toBe(true)
+    wrapper.unmount()
+  })
+
+  it('shows frame failure and restarts the session when loading is retried', async () => {
+    mocks.issue.mockResolvedValue(undefined)
+    authAccount.value = { id: 1, username: 'admin', role: 'admin' }
+    const wrapper = mount(DbxIdeView, { props: { projectId: 33 } })
+    await flushPromises()
+    await wrapper.find('[data-dbx-frame]').trigger('error')
+    expect(wrapper.find('[data-ide-session-error]').text()).toContain('页面请求失败')
+    expect(wrapper.find('[data-dbx-frame]').exists()).toBe(false)
+    await wrapper.find('[data-ide-retry]').trigger('click')
+    await flushPromises()
+    expect(mocks.issue).toHaveBeenCalledTimes(2)
+    expect(wrapper.find('[data-dbx-frame]').exists()).toBe(true)
+    wrapper.unmount()
+  })
 })
