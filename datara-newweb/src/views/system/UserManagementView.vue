@@ -10,6 +10,7 @@ import {
   type PlatformUser,
 } from '../../services/rebuild/userApi'
 import type { AuthRole } from '../../services/rebuild/authApi'
+import { ROLE_LABELS } from '../../services/rebuild/rolePermissions'
 
 const rows = ref<PlatformUser[]>([])
 const filterKeyword = ref('')
@@ -77,7 +78,7 @@ onMounted(load)
     <form class="user-create" data-user-create @submit.prevent="submit">
       <input v-model="form.username" data-new-username placeholder="用户名" autocomplete="off" />
       <input v-model="form.password" data-new-password type="password" placeholder="初始密码" autocomplete="new-password" />
-      <select v-model="form.role" aria-label="新用户角色"><option v-for="role in USER_ROLES" :key="role">{{ role }}</option></select>
+      <select v-model="form.role" aria-label="新用户角色"><option v-for="role in USER_ROLES" :key="role" :value="role">{{ ROLE_LABELS[role] }}（{{ role }}）</option></select>
       <button type="submit">创建用户</button>
     </form>
     <p v-if="feedback" role="status" class="ok">{{ feedback }}</p>
@@ -92,7 +93,7 @@ onMounted(load)
           <tbody>
             <tr v-for="row in visibleRows" :key="row.id" :data-user-row="row.id">
               <td><b>{{ row.username }}</b><small>#{{ row.id }}</small></td>
-              <td><select :value="row.role" :data-user-role="row.id" @change="changeRole(row, $event)"><option v-for="role in USER_ROLES" :key="role">{{ role }}</option></select></td>
+              <td><select :value="row.role" :data-user-role="row.id" @change="changeRole(row, $event)"><option v-for="role in USER_ROLES" :key="role" :value="role">{{ ROLE_LABELS[role] }}（{{ role }}）</option></select></td>
               <td><span :class="['status', row.status]">{{ row.status === 'enabled' ? '启用' : '停用' }}</span></td>
               <td>{{ row.createdAt || '—' }}</td>
               <td class="actions"><button type="button" :data-user-status="row.id" @click="toggleStatus(row)">{{ row.status === 'enabled' ? '停用' : '启用' }}</button><button type="button" @click="resetPassword(row)">重置密码</button></td>

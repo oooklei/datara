@@ -1,5 +1,6 @@
 import { getJson, patchJson, postJson } from '../http'
 import type { AuthRole } from './authApi'
+export { ROLE_LABELS } from './rolePermissions'
 
 export const USER_ROLES: readonly AuthRole[] = ['admin', 'developer', 'operator', 'viewer'] as const
 export type UserStatus = 'enabled' | 'disabled'

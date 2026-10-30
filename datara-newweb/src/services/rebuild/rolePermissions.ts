@@ -18,6 +18,14 @@ export type Role = 'admin' | 'developer' | 'operator' | 'viewer'
 /** 角色展示全序（矩阵列序；admin 恒居首）。 */
 export const ROLE_ORDER = ['admin', 'developer', 'operator', 'viewer'] as const
 
+/** 面向管理员的中文释义；编码保留在括号中便于审计与排障。 */
+export const ROLE_LABELS: Record<Role, string> = {
+  admin: '管理员',
+  developer: '开发者',
+  operator: '运维操作员',
+  viewer: '观察者',
+}
+
 /**
  * 权限点全序快照（与 contracts.py Permission 枚举声明序逐项一致，共 33 项）。
  * 该序即矩阵行序；增删/改词形须与后端枚举同步并过契约测试。
@@ -59,6 +67,42 @@ export const PERMISSION_ORDER = [
 ] as const
 
 export type Permission = (typeof PERMISSION_ORDER)[number]
+
+export const PERMISSION_LABELS: Record<Permission, string> = {
+  manage_user: '平台用户管理',
+  edit_definition: '编辑定义',
+  run_instance: '运行实例',
+  view_all: '全局查看',
+  execute_sql: '执行 SQL',
+  'project:read': '查看项目',
+  'project:write': '维护项目',
+  'workflow:read': '查看工作流',
+  'workflow:write': '编辑工作流',
+  'workflow:publish': '发布工作流',
+  'workflow:run': '运行工作流',
+  'workflow:delete': '删除工作流',
+  'task:read': '查看任务',
+  'task:write': '编辑任务',
+  'task:run': '运行任务',
+  'datasource:read': '查看数据源',
+  'datasource:use': '使用数据源',
+  'datasource:manage': '管理数据源',
+  'sql:read': '查看 SQL',
+  'sql:write-ddl': '执行 DDL',
+  'schedule:read': '查看调度',
+  'schedule:manage': '管理调度',
+  'lineage:read': '查看血缘',
+  'quality:read': '查看质量',
+  'quality:write': '维护质量规则',
+  'quality:run': '运行质量检查',
+  'standard:read': '查看标准',
+  'standard:write': '维护标准',
+  'standard:approve': '审批标准',
+  'security:read': '查看安全策略',
+  'security:manage': '管理安全策略',
+  'audit:read': '查看访问审计',
+  'monitor:read': '查看运行监控',
+}
 
 /** DEVELOPER：31 项（不含用户管理与监控中心）。 */
 const DEVELOPER_PERMISSIONS: readonly Permission[] = [

@@ -13,12 +13,12 @@
     <thead>
       <tr>
         <th scope="col" class="perm-col">权限点</th>
-        <th v-for="r in ROLE_ORDER" :key="r" scope="col" :data-role-head="r">{{ r }}</th>
+        <th v-for="r in ROLE_ORDER" :key="r" scope="col" :data-role-head="r" :title="`${ROLE_LABELS[r]}（${r}）`">{{ r }}</th>
       </tr>
     </thead>
     <tbody>
       <tr v-for="p in PERMISSION_ORDER" :key="p" :data-perm="p">
-        <td class="perm-col" data-perm-code>{{ p }}</td>
+        <td class="perm-col" data-perm-code :title="`${PERMISSION_LABELS[p]}（${p}）`">{{ p }}</td>
         <td
           v-for="r in ROLE_ORDER"
           :key="r"
@@ -36,7 +36,7 @@
  * 15.1-C 权限矩阵只读页：纯静态消费冻结常量 rolePermissions.ts，
  * 无网络请求、无写操作（矩阵只读渲染；授权判定以后端 authorize() 为最终裁决）。
  */
-import { PERMISSION_ORDER, ROLE_ORDER, roleHasPermission } from '../services/rebuild/rolePermissions'
+import { PERMISSION_LABELS, PERMISSION_ORDER, ROLE_LABELS, ROLE_ORDER, roleHasPermission } from '../services/rebuild/rolePermissions'
 </script>
 
 <style scoped>
