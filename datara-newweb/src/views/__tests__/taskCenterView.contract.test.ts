@@ -4,7 +4,7 @@
  * FE-1 覆盖（§5A.1 照抄语义 + 内容门控）：
  *  1. 四视角页签照抄渲染（顺序 + icon + label）；
  *  2. 默认 edit 主视角 + 非法 ?tab= 回落 edit；
- *  3. ?tab= 激活分流：runs=datara 自建运行监控（§10.5 B）、templates/alarm=G09 空态；
+ *  3. ?tab= 激活分流：runs=datara 自建运行监控（§10.5 B）、alarm=G09 空态；
  *  4. switchTab → router.replace 合并既有 query（保书签）。
  *
  * §10.5 B 工作流定义列表覆盖：
@@ -150,10 +150,9 @@ const DEFINITION: WorkflowDefinitionRow = {
 
 const DEFINITION_LIST = { list: [DEFINITION], total: 1, pageNo: 1, pageSize: 10 }
 
-/** 蓝本 tabs 数组原文（顺序 + icon + label） */
-const BLUEPRINT_TABS = [
+/** 当前任务中心页签（顺序 + icon + label） */
+const TASK_CENTER_TABS = [
   { k: 'edit', label: '任务编排', icon: '⑃' },
-  { k: 'templates', label: '模板中心', icon: '▦' },
   { k: 'runs', label: '运行监控', icon: '▶' },
   { k: 'alarm', label: '告警与SLA', icon: '🖂' },
 ]
@@ -185,15 +184,16 @@ beforeEach(() => {
 })
 
 describe('INC4-FE-1 任务中心顶部视角页签框架（/dag，s260 派令）', () => {
-  it('四视角页签照抄渲染：顺序 + icon + label 与蓝本一致，页签条单实例', () => {
+  it('三个现行视角页签按顺序渲染，模板中心入口已移除', () => {
     const w = mountView()
     expect(w.find('[data-tc-tabs]').exists()).toBe(true)
     const els = w.findAll('[data-tc-tabs] .tc-tab')
-    expect(els).toHaveLength(BLUEPRINT_TABS.length)
-    BLUEPRINT_TABS.forEach((t, i) => {
+    expect(els).toHaveLength(TASK_CENTER_TABS.length)
+    TASK_CENTER_TABS.forEach((t, i) => {
       expect(els[i].attributes('data-tab')).toBe(t.k)
       expect(els[i].text()).toBe(`${t.icon}${t.label}`)
     })
+    expect(w.find('[data-tab="templates"]').exists()).toBe(false)
   })
 
   it('默认 edit 主视角：edit 页签 .on 态 + 右上专属操作在位（变量管理/新建工作流/视角名）', () => {
@@ -244,14 +244,18 @@ describe('INC4-FE-1 任务中心顶部视角页签框架（/dag，s260 派令）
     expect(runStatsList).not.toHaveBeenCalled()
   })
 
-  it('?tab=templates / ?tab=alarm：页签激活态正确，G09 空态注明原因（无契约保留页签）', () => {
-    for (const k of ['templates', 'alarm']) {
-      routeQuery.value = { tab: k }
-      const w = mountView()
-      expect(w.find(`[data-tab="${k}"]`).classes()).toContain('on')
-      expect(w.find('[data-tc-runs-slot]').exists()).toBe(false)
-      expect(w.find('[data-tc-body]').text()).toContain('G09')
-    }
+  it('?tab=templates 回落任务编排，?tab=alarm 保留说明性空态', () => {
+    routeQuery.value = { tab: 'templates' }
+    const stale = mountView()
+    expect(stale.find('[data-tab="edit"]').classes()).toContain('on')
+    expect(stale.find('[data-tab="templates"]').exists()).toBe(false)
+    stale.unmount()
+
+    routeQuery.value = { tab: 'alarm' }
+    const alarm = mountView()
+    expect(alarm.find('[data-tab="alarm"]').classes()).toContain('on')
+    expect(alarm.find('[data-tc-runs-slot]').exists()).toBe(false)
+    expect(alarm.find('[data-tc-body]').text()).toContain('G09')
   })
 
   it('点击页签 → switchTab → router.replace 合并既有 query（保书签，蓝本语义）', async () => {
@@ -264,8 +268,8 @@ describe('INC4-FE-1 任务中心顶部视角页签框架（/dag，s260 派令）
     expect(w.find('[data-tab="runs"]').classes()).toContain('on')
   })
 
-  it('右上专属操作仅 edit 态在位（templates/runs/alarm 不渲染）', () => {
-    for (const k of ['templates', 'runs', 'alarm']) {
+  it('右上专属操作仅 edit 态在位（runs/alarm 不渲染）', () => {
+    for (const k of ['runs', 'alarm']) {
       routeQuery.value = { tab: k }
       const w = mountView()
       expect(w.find('[data-testid="variable-management"]').exists()).toBe(false)

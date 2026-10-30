@@ -17,7 +17,7 @@
  * 画布内配套元素（节点侧栏/节点表单/试运行弹窗/定时弹窗/版本下拉/日志抽屉）
  * 随画布一起在 iframe 内闭环，不拆到 datara（§10.4「画布内的配套元素留在画布内」）。
  *
- * 视角页签框架（§5A.1 照抄）：任务编排 / 模板中心 / 运行监控 / 告警与SLA，
+ * 视角页签：任务编排 / 运行监控 / 告警与SLA，
  * ?tab= query 驱动 + router.replace 保书签，默认 edit，非法 ?tab= 回落 edit。
  * 运行监控 = datara 自建页（§10.5 B，调海豚实例 API，不进 iframe）。
  */
@@ -39,10 +39,9 @@ import {
 import { dsEmbedUrl, listenDsReady, sendSessionToDs } from '../services/rebuild/dsBridge'
 
 /* ---- 视角页签（蓝本照抄：TabKey / tabs 数组 / ?tab= 同步 / 默认 edit） ---- */
-type TabKey = 'edit' | 'templates' | 'runs' | 'alarm'
+type TabKey = 'edit' | 'runs' | 'alarm'
 const tabs: { k: TabKey; label: string; icon: string }[] = [
   { k: 'edit', label: '任务编排', icon: '⑃' },
-  { k: 'templates', label: '模板中心', icon: '▦' },
   { k: 'runs', label: '运行监控', icon: '▶' },
   { k: 'alarm', label: '告警与SLA', icon: '🖂' },
 ]
@@ -442,14 +441,7 @@ onUnmounted(() => {
         />
         <div v-else class="tc-slot" data-tc-runs-slot><p class="tc-slot-sub">请先选择项目以查看运行记录</p></div>
       </template>
-      <!-- G09：模板中心 / 告警与SLA——无后端契约（模板 CRUD / SLA 策略 API 未立项），
-           保留蓝本导航页签、隐藏功能内容并注明原因（G09：无契约隐藏并注明原因） -->
-      <template v-else-if="tab === 'templates'">
-        <div class="tc-slot" data-tc-templates-slot>
-          <p class="tc-slot-title">模板中心暂未开放</p>
-          <p class="tc-slot-sub">模板 CRUD 契约未立项（后端支撑面外）：「另存为模板」入口已按 G09 隐藏，待契约立项后随批补齐。</p>
-        </div>
-      </template>
+      <!-- 告警与 SLA 契约待后续对标，当前保留说明性空态。 -->
       <template v-else-if="tab === 'alarm'">
         <div class="tc-slot" data-tc-alarm-slot>
           <p class="tc-slot-title">告警与 SLA 暂未开放</p>
@@ -517,7 +509,7 @@ onUnmounted(() => {
 /* §10.4 海豚 iframe embed：占满内容区，无边框（同源反代，与宿主同域） */
 .tc-embed{flex:1;min-height:0;display:flex;flex-direction:column}
 .tc-embed-frame{flex:1;min-height:0;width:100%;border:none;background:var(--bg-secondary, var(--bg))}
-/* 画布未就绪 / 运行监控无项目上下文空态；G09 模板中心/告警SLA 空态共用 */
+/* 画布未就绪 / 运行监控无项目上下文空态；告警 SLA 空态共用 */
 .tc-empty{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;padding:24px}
 .tc-slot{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;padding:24px}
 .tc-slot-title{margin:0;font-size:15px;font-weight:600;color:var(--text-primary, var(--text))}
