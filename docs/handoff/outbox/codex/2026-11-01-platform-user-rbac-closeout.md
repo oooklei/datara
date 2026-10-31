@@ -23,14 +23,19 @@
 - 项目层成员角色独立于平台角色，由具备 `manage_user` 的管理员维护；权限按角色矩阵聚合，不支持用户自行修改权限点。
 - 页面保留英文编码用于接口/审计，同时展示中文名称与权限中文释义。
 
+## 1.9 回验（重新合并部署后）
+
+- admin 登录 `POST http://192.168.1.9:18091/api/v1/rebuild/login`：`code=0`。
+- `GET /api/v1/rebuild/users`：用户 9 为 `zhangsan`，角色 `developer`，中文释义“开发者”，状态“启用”，权限中文摘要非空。
+- `PATCH /api/v1/rebuild/users/9/role` 请求 `{"role":"developer"}`：两次连续请求均 HTTP 200、`code=0`、`role_label=开发者`、`permission_labels` 非空、`revoked_tokens=0`；已确认不再出现 HTTP 500。
+
 ## 未完事项
 
 - 尚未使用 zhangsan 本人凭据在 1.9 `18091` 完成登录后业务回验；需凭据或管理员在页面重置密码后执行。
-- 需在 1.9 部署环境对 `PATCH /rebuild/users/9/role` 做一次实际 Network 回验，确认运行镜像已包含本提交。
 
 ## 下次第一步
 
-在 1.9 以 admin 登录平台用户管理，打开 Network，给 zhangsan 切换 `developer`，核对 HTTP 200、`role_label=开发者`、`permission_labels` 非空；再重复切回同角色验证幂等 200/`revoked_tokens=0`。
+在 1.9 以 zhangsan 登录，确认开发者权限页面可用；再由 admin 变更为 `viewer` 后确认其旧 token 失效，完成撤权回验。
 
 ## 涉及节号
 
