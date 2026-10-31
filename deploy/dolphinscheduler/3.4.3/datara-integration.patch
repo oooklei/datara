@@ -84,7 +84,7 @@ index e61d878..f654e76 100644
          // get token
          String token = request.getHeader("token");
          User user;
-@@ -95,6 +151,45 @@ public class LoginHandlerInterceptor implements HandlerInterceptor {
+@@ -95,6 +151,68 @@ public class LoginHandlerInterceptor implements HandlerInterceptor {
          return true;
      }
  
@@ -113,7 +113,15 @@ index e61d878..f654e76 100644
 +            String path = request.getRequestURI();
 +            int start = path.indexOf("/projects/");
 +            if (start < 0) {
-+                return null;
++                // Global (non project scoped) endpoints: the embedded DS canvas fetches
++                // tenant/alert-group/environment/favourite dictionaries whose URIs carry
++                // no project code, so the project code check below cannot apply. Allow
++                // them only as read-only GET against an explicit whitelist, so an embed
++                // session can never reach a global write endpoint.
++                if (!"GET".equalsIgnoreCase(request.getMethod()) || !isDataraGlobalReadEndpoint(path)) {
++                    return null;
++                }
++                return userDao.queryByUserNameAccurately(String.valueOf(claims.get("u")));
 +            }
 +            int codeStart = start + "/projects/".length();
 +            int codeEnd = path.indexOf('/', codeStart);
@@ -125,6 +133,21 @@ index e61d878..f654e76 100644
 +        } catch (Exception exception) {
 +            return null;
 +        }
++    }
++
++    /**
++     * Global (non project scoped) read-only endpoints the embedded DS canvas needs.
++     * Only exact-path suffix matches are accepted, and only for GET.
++     */
++    private boolean isDataraGlobalReadEndpoint(String path) {
++        return path.endsWith("/favourite/taskTypes")
++                || path.endsWith("/favourite/tasks")
++                || path.endsWith("/favourite/query-task-type")
++                || path.endsWith("/tenants/list")
++                || path.endsWith("/alert-groups/list")
++                || path.endsWith("/environment/query-environment-list")
++                || path.endsWith("/worker-groups/query-all")
++                || path.endsWith("/worker-groups/query-worker-group-list");
 +    }
 +
      @Override

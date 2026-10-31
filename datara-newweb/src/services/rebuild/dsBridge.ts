@@ -35,7 +35,11 @@ export function sendSessionToDs(frame: HTMLIFrameElement | null, session: Orches
     projectCode: session.projectCode,
     projectName: session.projectName,
     projectId: session.projectId,
-    apiBaseUrl: session.apiBaseUrl,
+    // 海豚帧与宿主同源（nginx 同源反代 /dolphinscheduler/），DS 侧 datara-bridge
+    // 会强制校验 apiBaseUrl 与帧 origin 一致，不一致即丢弃会话、永不 mount（画布空白）。
+    // 后端 DATARA_PUBLIC_BASE_URL 是部署级固定值（可能指向其他验证端口），
+    // 与实际访问端口不一致，故一律以本页 origin 为准。
+    apiBaseUrl: window.location.origin,
     userToken: session.userToken,
     ...(session.environmentGroupId !== undefined ? { environmentGroupId: session.environmentGroupId } : {}),
     ...(session.environmentCode !== undefined ? { environmentCode: session.environmentCode } : {}),
