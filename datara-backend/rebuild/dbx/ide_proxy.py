@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import secrets
 import time
 from collections.abc import Callable
@@ -208,6 +209,15 @@ def build_dbx_ide_router(
 
         dbx = client_factory()
         try:
+            if path == "connection/liveness-events" and request.method == "GET":
+                async def heartbeat():
+                    while True:
+                        yield b": datara-gateway-alive\n\n"
+                        await asyncio.sleep(15)
+                return StreamingResponse(
+                    heartbeat(), media_type="text/event-stream",
+                    headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+                )
             # The embedded UI posts this optional browser-font preview payload
             # during startup. It is local presentation state, not a Datara
             # backup operation; DBX gateway mode intentionally does not expose
