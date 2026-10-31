@@ -416,10 +416,16 @@ describe('§10.4 海豚 iframe embed 宿主（单个 DAG 画布路由）', () =>
     expect(embedUrl).toHaveBeenCalledWith('1234567890', '/projects/{code}/workflow/definitions/188282273576704')
     const frame = w.find('[data-tc-ds-frame]')
     expect(frame.exists()).toBe(true)
+    expect(w.find('[data-tc-embed-refresh]').exists()).toBe(true)
+    const firstSrc = frame.attributes('src')
+    expect(readyListen).toHaveBeenCalledTimes(1)
+    await w.find('[data-tc-embed-refresh]').trigger('click')
+    await flushPromises()
+    expect(w.find('[data-tc-ds-frame]').attributes('src')).toBe(firstSrc)
     expect(frame.attributes('src')).toBe(
       '/dolphinscheduler/ui/projects/1234567890/workflow/definitions/188282273576704?embed=1',
     )
-    expect(readyListen).toHaveBeenCalledTimes(1)
+    expect(readyListen).toHaveBeenCalledTimes(2)
     expect(w.find('[data-tc-wf-list]').exists()).toBe(false)
   })
 

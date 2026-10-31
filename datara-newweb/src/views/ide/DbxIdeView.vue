@@ -25,7 +25,7 @@
           {{ loading ? '加载中…' : '刷新变量' }}
         </button>
         <button type="button" data-variable-manage :disabled="projectId === null" @click="drawerOpen = true">变量管理</button>
-      <button v-if="ideReady" type="button" data-ide-reload @click="retryIde">重载数据开发工具</button>
+      <button v-if="ideReady" type="button" data-ide-reload data-ide-refresh @click="retryIde">刷新数据开发页面</button>
       </div>
     </header>
 

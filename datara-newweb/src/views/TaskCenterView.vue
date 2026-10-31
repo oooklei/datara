@@ -252,6 +252,7 @@ const dsFrameEl = ref<HTMLIFrameElement | null>(null)
 let disposeEmbeddedBranding: (() => void) | undefined
 /** iframe src：必须等编排会话返回 projectCode 后再设（后端 ensure_project 生成）。 */
 const dsFrameUrl = ref<string | null>(null)
+const activeCanvasPath = ref<string | null>(null)
 const dsEmptyReason = ref('正在获取编排会话…')
 const dsSession = ref<OrchestrationSession | null>(null)
 let disposeDsReady: (() => void) | null = null
@@ -325,15 +326,17 @@ watch(environmentGroupId, () => {
 function openWorkflow(row: WorkflowDefinitionRow) {
   if (row.code === null) return
   activeDefinition.value = row
+  activeCanvasPath.value = `/projects/{code}/workflow/definitions/${row.code}`
   editMode.value = 'canvas'
-  void mountCanvas(`/projects/{code}/workflow/definitions/${row.code}`)
+  void mountCanvas(activeCanvasPath.value)
 }
 
 function openScheduledWorkflow(code: number, name: string) {
   activeDefinition.value = { code, name }
+  activeCanvasPath.value = `/projects/{code}/workflow/definitions/${code}`
   editMode.value = 'canvas'
   switchTab('edit')
-  void mountCanvas(`/projects/{code}/workflow/definitions/${code}`)
+  void mountCanvas(activeCanvasPath.value)
 }
 
 /** 宿主驱动的画布路由切换（§10.4）：新建工作流 → 海豚新建定义路由。 */
@@ -343,8 +346,15 @@ function onOpenCreateWf() {
     return
   }
   activeDefinition.value = null
+  activeCanvasPath.value = '/projects/{code}/workflow/definitions/create'
   editMode.value = 'canvas'
-  void mountCanvas('/projects/{code}/workflow/definitions/create')
+  void mountCanvas(activeCanvasPath.value)
+}
+
+/** 顶部刷新只重载当前嵌入画布，不退出工作流或丢失项目上下文。 */
+function refreshCanvas(): void {
+  if (activeCanvasPath.value === null || editMode.value !== 'canvas') return
+  void mountCanvas(activeCanvasPath.value)
 }
 
 /** 卸下画布（保留列表数据，避免返回时闪空）。 */
@@ -354,6 +364,7 @@ function resetCanvas() {
   disposeDsReady = null
   dsFrameUrl.value = null
   activeDefinition.value = null
+  activeCanvasPath.value = null
   editMode.value = 'list'
 }
 
@@ -489,6 +500,7 @@ onUnmounted(() => {
           <div class="tc-embed-bar">
             <button class="tc-embed-back" data-tc-back-list @click="backToWorkflowList">← 返回列表</button>
             <span class="tc-embed-title">{{ activeDefinition ? (activeDefinition.name ?? `#${activeDefinition.code}`) : '新建工作流' }}</span>
+            <button type="button" class="tc-embed-refresh" data-tc-embed-refresh :disabled="!dsFrameUrl" @click="refreshCanvas">刷新画布</button>
           </div>
           <iframe
             v-if="dsFrameUrl"
