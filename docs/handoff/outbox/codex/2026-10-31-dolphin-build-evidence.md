@@ -11,6 +11,7 @@
 - 宿主机构建失败：宿主机仅有 JRE，Maven 报 `No compiler is provided in this environment`，同时缺少 JDK8 `tools.jar`。
 - JDK8 容器重试：使用 1.9 现有 `eclipse-temurin:8-jdk`，挂载 `/lei/dolphinscheduler/dolphinscheduler-3.4.3`，并使用 `-Dspotless.check.skip=true`。截至本卡生成时容器仍停在 Maven Enforcer 依赖解析，尚无退出码。
 - 目标模块编译复验：`./mvnw -s /root/.m2/settings.xml -T 1C -DskipTests -Dmaven.javadoc.skip=true -Dcheckstyle.skip=true -Dspotless.check.skip=true -pl dolphinscheduler-api,dolphinscheduler-master,dolphinscheduler-worker,dolphinscheduler-task-plugin -am compile`，JDK8 容器退出码 `0`；API、Master、Worker、Task Plugin 的 `target/classes` 已生成，补丁类已出现在 API/Master 编译产物中。
+- 服务包组装尝试：API/Master/Worker `package` 任务仍在解析完整 Task Plugin 依赖，未产生终态；未替换线上服务。
 - `tt` 回归脚本已启动，但工作流列表阶段发生 Playwright 导航上下文销毁，未捕获保存请求，不能判定通过。
 
 ## 当前结论
