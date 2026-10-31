@@ -4,7 +4,7 @@
 - **状态**：待批（只读审计结论 + 修复方案；未获用户明确指令前不实施）
 - **权威序**：用户最新裁定 > `docs/designs/2026-10-29-dbx-unified-target-design.md` > 本方案 > 其余文档
 - **审计性质**：review-only（实测事实与审美判断分离，证据均落到文件行号）
-- **验证入口**：`http://192.168.1.9:18091/`（禁 8090；18090 被并行验证栈占用）
+- **验证入口**：`http://192.168.1.9:8090/`（唯一前端入口；18090 被并行验证栈占用）
 
 ---
 
@@ -90,7 +90,7 @@
 
 1. **定规则**：每屏唯一主 CTA = 实心（建议将 `.op-btn.primary` 升级为实心、视觉对齐 `.tb-new`，一处改动全局生效；`.tb-new` 保留为工具栏「新建」快捷别名或逐步合并）；次级 = `.op-btn` 描边；危险 = `.op-btn.danger`。
 2. **theme.css 新增 `--mask-bg`**（建议 `rgba(15,23,42,.45)`，深色主题另给值），替换 §2.4 所列 4 处遮罩 + ResourceManagementView 的 `color-mix`。
-3. **版本差异核对**：比对 192.168.1.9:18091 部署包的 theme.css 与工作区（截图实心 vs 代码描边），确认部署线构建来源后统一。
+3. **版本差异核对**：比对 192.168.1.9:8090 部署包的 theme.css 与工作区（截图实心 vs 代码描边），确认部署线构建来源后统一。
 
 ### §3.4 P1/P2：令牌闭合收尾（上轮遗留）
 
@@ -106,7 +106,7 @@
 |----|------|----------|
 | 静态 | `cd datara-newweb && npx vue-tsc --noEmit` | 无类型错误 |
 | 契约 | `npx vitest run src/views/__tests__/designTokenClosure.contract.test.ts`、`src/styles/__tests__/themeResponsive.contract.test.ts` 及受影响页面的 contract 测试 | 全绿 |
-| 视觉 | 18091 部署入口 + browser_use 逐页复验（任务组管理、SSH 节点、API、APIKey、用户管理、质检规则、编排资源、/resources） | 同屏按钮仅两种形态（实心主 CTA + 描边次级）；无英文残留；浅色/深色双主题一致 |
+| 视觉 | 8090 部署入口 + browser_use 逐页复验（任务组管理、SSH 节点、API、APIKey、用户管理、质检规则、编排资源、/resources） | 同屏按钮仅两种形态（实心主 CTA + 描边次级）；无英文残留；浅色/深色双主题一致 |
 | 回归 | 上轮 PASS 页面抽查（/、/dag、/dep/*） | 不因新基线类产生新漂移 |
 
 ---
