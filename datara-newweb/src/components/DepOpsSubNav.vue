@@ -7,7 +7,6 @@
     <RouterLink to="/dep/environment" data-sub-nav-item="environment">环境管理</RouterLink>
     <RouterLink to="/dep/queue" data-sub-nav-item="queue">Yarn 队列</RouterLink>
     <RouterLink to="/dep/cluster" data-sub-nav-item="cluster">集群管理</RouterLink>
-    <RouterLink to="/dep/resource-file" data-sub-nav-item="resource-file">运行依赖文件</RouterLink>
   </nav>
 </template>
 

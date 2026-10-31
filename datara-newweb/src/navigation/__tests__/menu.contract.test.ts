@@ -122,9 +122,7 @@ describe('2-01 菜单配置契约（0.8 §7 测试集 1：§4.2 逐行有且唯�
       ['dep-environment', '/dep/environment', 'formal', 'inc17'],
       ['dep-queue', '/dep/queue', 'formal', 'inc17'],
       ['dep-cluster', '/dep/cluster', 'formal', 'inc17'],
-      ['dep-resource-file', '/dep/resource-file', 'formal', 'inc17'],
     ])
-    expect(g.items.find((item) => item.id === 'dep-resource-file')?.label).toBe('运行依赖文件')
   })
 
   it('G 组 系统管理：保留权限、审计与开放能力', () => {
@@ -179,7 +177,7 @@ describe('2-01 配置纪律（0.8 L57-68 字段规则）', () => {
 
   it('正式菜单项均提供非空图标字形', () => {
     const formals = rows.filter((r) => r.item.disposition === 'formal')
-    expect(formals).toHaveLength(26)
+    expect(formals).toHaveLength(25)
     expect(formals.filter((r) => !r.item.icon?.trim()).map((r) => r.item.id)).toEqual([])
   })
 

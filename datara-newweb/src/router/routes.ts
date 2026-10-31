@@ -32,7 +32,6 @@ import SshNodeManagementView from '../views/SshNodeManagementView.vue'
 import RuntimeNodeView from '../views/depops/RuntimeNodeView.vue'
 import MonitorView from '../views/depops/MonitorView.vue'
 import OrchestrationResourceView from '../views/depops/OrchestrationResourceView.vue'
-import OrchestrationResourceFileView from '../views/depops/OrchestrationResourceFileView.vue'
 import ApiKeyManagementView from '../views/ApiKeyManagementView.vue'
 import ApiManagementView from '../views/ApiManagementView.vue'
 import TagManagementView from '../views/meta/TagManagementView.vue'
@@ -86,8 +85,6 @@ export const routes: RouteRecordRaw[] = [
     component: OrchestrationResourceView,
     props: { kind: 'cluster' },
   },
-  // §10.10 R9 资源文件（全局文件树）：独立树视图组件，不走表格页
-  { path: '/dep/resource-file', name: 'dep-resource-file', component: OrchestrationResourceFileView },
   { path: '/open/key', name: 'open-key', component: ApiKeyManagementView },
   { path: '/open/api', name: 'open-api', component: ApiManagementView },
   { path: '/sys', name: 'system-admin', component: SystemAdminView },

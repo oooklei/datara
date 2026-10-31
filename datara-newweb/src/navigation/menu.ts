@@ -334,16 +334,6 @@ export const menuGroups: readonly MenuGroupConfig[] = [
         batch: 'inc17',
         source: '2026-10-29 dbx 统一目标设计 §10.10 R4（条件必须）；K8s 命名空间跟随集群管理（R5 不单列），写门禁 MANAGE_USER',
       },
-      {
-        id: 'dep-resource-file',
-        label: '运行依赖文件',
-        icon: '⌗',
-        path: '/dep/resource-file',
-        routeName: 'dep-resource-file',
-        disposition: 'formal',
-        batch: 'inc17',
-        source: '2026-10-29 dbx 统一目标设计 §10.10 R9；全局文件树，写门禁 EDIT_DEFINITION，按 owner 隔离',
-      },
     ],
   },
   {

@@ -209,7 +209,6 @@ describe('§10.10 状态与错误面', () => {
       'environment',
       'queue',
       'cluster',
-      'resource-file',
     ])
   })
 })

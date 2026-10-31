@@ -27,15 +27,11 @@ describe('DepOpsSubNav 部署运维子导航', () => {
       'environment',
       'queue',
       'cluster',
-      'resource-file',
     ])
     // stub 下 RouterLink 的 to 由属性透传到 <a>
     expect(items[0]!.attributes('to')).toBe('/dep/monitor')
-    // §10.10 R9 的运行依赖文件树
     expect(items[1]!.attributes('to')).toBe('/dep/ssh')
     expect(items[1]!.text()).toBe('SSH 试运行节点')
-    expect(items[6]!.attributes('to')).toBe('/dep/resource-file')
-    expect(items[6]!.text()).toBe('运行依赖文件')
   })
 
   it('carries an accessible label and no data fetching side effects', () => {

@@ -79,7 +79,6 @@ describe('运行时节点组件段（IMPL-v4-17，无路由直挂）', () => {
       'environment',
       'queue',
       'cluster',
-      'resource-file',
     ])
     expect(items[1]!.attributes('to')).toBe('/dep/ssh')
   })

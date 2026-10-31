@@ -272,7 +272,6 @@ describe('集群监控组件段（IMPL-v4-16，无路由直挂）', () => {
       'environment',
       'queue',
       'cluster',
-      'resource-file',
     ])
     expect(items[0]!.attributes('to')).toBe('/dep/monitor')
   })
