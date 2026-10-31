@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import asyncio
 import secrets
 import time
 from collections.abc import Callable
@@ -211,9 +210,10 @@ def build_dbx_ide_router(
         try:
             if path == "connection/liveness-events" and request.method == "GET":
                 async def heartbeat():
-                    while True:
-                        yield b": datara-gateway-alive\n\n"
-                        await asyncio.sleep(15)
+                    # Send one event and close. EventSource reconnects on its
+                    # own; keeping an infinite response here starves the
+                    # browser connection pool during a hard refresh.
+                    yield b": datara-gateway-alive\n\n"
                 return StreamingResponse(
                     heartbeat(), media_type="text/event-stream",
                     headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
