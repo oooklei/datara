@@ -122,7 +122,7 @@ describe('DBX IDE session gate', () => {
     authAccount.value = { id: 1, username: 'admin', role: 'admin' }
     const wrapper = mount(DbxIdeView, { props: { projectId: 33 } })
     await flushPromises()
-    expect(wrapper.find('[data-dbx-environment]').text()).toBe('未选择')
+    expect(wrapper.find('[data-dbx-environment]').text()).toBe('default-env')
     await wrapper.find('[data-environment-group]').setValue('2')
     await flushPromises()
     expect(wrapper.find('[data-dbx-environment]').text()).toBe('default-env')

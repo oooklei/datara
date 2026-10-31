@@ -145,16 +145,20 @@ def build_dbx_ide_router(
         return refusal if refusal is not None else user
 
     @router.post("/projects/{project_id}/ide-session")
-    def issue_ide_session(project_id: int, authorization: str = Header(default="")):
-        if not authorization.startswith("Bearer "):
+    def issue_ide_session(project_id: int, request: Request, authorization: str = Header(default="")):
+        # Production login is an HttpOnly `datara_session` cookie; the browser
+        # cannot read it to manufacture an Authorization header for this
+        # bootstrap call. Keep explicit Bearer support for validation clients,
+        # but fall back to the same-site session cookie for normal users.
+        raw_token = authorization[7:] if authorization.startswith("Bearer ") else request.cookies.get("datara_session", "")
+        if not raw_token:
             return denied(401, "invalid token")
-        token = authorization[7:]
-        user = authorize(token, project_id, Permission.DATASOURCE_READ)
+        user = authorize(raw_token, project_id, Permission.DATASOURCE_READ)
         if isinstance(user, JSONResponse):
             return user
         response = JSONResponse(content={"code": 0, "msg": "success", "data": {"expires_in": registry.ttl_seconds}})
         response.set_cookie(
-            "datara_dbx_ide", registry.issue(token, project_id), max_age=registry.ttl_seconds,
+            "datara_dbx_ide", registry.issue(raw_token, project_id), max_age=registry.ttl_seconds,
             path="/ide/api", httponly=True, samesite="strict",
         )
         return response

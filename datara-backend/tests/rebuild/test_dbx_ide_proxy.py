@@ -143,6 +143,16 @@ def setup_proxy(project_gate=None, *, share_with_other=False):
     return TestClient(app), dbx
 
 
+def test_ide_session_bootstrap_accepts_datara_http_only_session_cookie():
+    client, _ = setup_proxy()
+    client.cookies.set("datara_session", "owner-token", path="/api/v1")
+
+    response = client.post("/api/v1/rebuild/dbx/projects/33/ide-session")
+
+    assert response.status_code == 200
+    assert "datara_dbx_ide=" in response.headers.get("set-cookie", "")
+
+
 def test_ai_conversations_are_owned_and_shared_without_leaking_legacy_data():
     client, dbx = setup_proxy(share_with_other=True)
     proxy = "/api/v1/rebuild/dbx/ide-proxy"
