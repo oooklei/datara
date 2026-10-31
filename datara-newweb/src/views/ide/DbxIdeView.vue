@@ -35,8 +35,6 @@
         <span>数据开发工具加载失败：{{ sessionError || frameError }}</span>
         <button type="button" data-ide-retry @click="retryIde">重试加载</button>
       </div>
-      <p v-else-if="!ideReady" class="dbx-ide-muted" data-ide-session-loading>正在准备 IDE 会话…</p>
-      <p v-else-if="!frameLoaded" class="dbx-ide-muted" data-ide-frame-loading>正在加载数据开发页面…</p>
       <p v-if="error" class="dbx-ide-error" role="alert" data-variable-error>变量加载失败：{{ error }}</p>
       <section class="dbx-ide-body">
         <iframe
@@ -66,6 +64,17 @@
             </li>
           </ul>
         </aside>
+        <div
+          v-if="maskVisible"
+          class="dbx-ide-mask"
+          role="status"
+          aria-live="polite"
+          :data-ide-session-loading="!ideReady || undefined"
+          :data-ide-frame-loading="ideReady && !frameLoaded || undefined"
+        >
+          <div class="dbx-ide-spinner" aria-hidden="true"></div>
+          <p class="dbx-ide-mask-text">{{ maskText }}</p>
+        </div>
       </section>
     </template>
 
@@ -103,6 +112,10 @@ import { useEnvironmentContext } from '../../services/rebuild/environmentContext
 
 const props = defineProps<{ projectId?: number }>()
 const route = useRoute()
+
+// KeepAlive caches this view so a second entry reuses the already-issued IDE
+// session and the loaded iframe instead of re-fetching the connection catalog.
+defineOptions({ name: 'DbxIdeView' })
 
 const varApi = createVariableContract()
 const frameEl = ref<HTMLIFrameElement | null>(null)
@@ -166,6 +179,18 @@ const projectLabel = computed(() => {
   if (projectId.value === null) return '未选择'
   return projects.value.find((p) => p.id === projectId.value)?.name ?? `项目 #${projectId.value}`
 })
+
+/**
+ * 加载遮罩：覆盖会话准备与 iframe 加载两个阶段。
+ * dbx 的 bridge-ready 早于连接树渲染完成，没有遮罩时用户会看到空连接列表
+ * 而误以为数据源连接消失，因此这里用旋转图标给出明确「仍在加载」提示。
+ */
+const maskVisible = computed(() => (
+  !sessionError.value && !frameError.value && (!ideReady.value || !frameLoaded.value)
+))
+const maskText = computed(() => (
+  !ideReady.value ? '正在准备 IDE 会话…' : '正在加载数据开发页面，数据源连接同步中…'
+))
 
 async function loadProjects(): Promise<void> {
   const generation = ++projectGeneration
@@ -302,7 +327,7 @@ onUnmounted(() => {
 .dbx-ide-actions button{padding:5px 12px;border:1px solid var(--border);border-radius:var(--radius-sm);background:var(--card);color:var(--text);font:inherit;cursor:pointer}
 .dbx-ide-actions button:hover:not(:disabled){border-color:var(--primary);color:var(--primary)}
 .dbx-ide-actions button:disabled{opacity:.5;cursor:not-allowed}
-.dbx-ide-body{flex:1;min-height:0;display:grid;grid-template-columns:minmax(0,1fr) 280px;gap:12px}
+.dbx-ide-body{position:relative;flex:1;min-height:0;display:grid;grid-template-columns:minmax(0,1fr) 280px;gap:12px}
 .dbx-ide-frame{width:100%;height:calc(100vh - 200px);min-height:480px;border:1px solid var(--border);border-radius:var(--radius);background:var(--card)}
 .dbx-var-panel{display:flex;flex-direction:column;gap:8px;padding:12px;border:1px solid var(--border);border-radius:var(--radius);background:var(--card);overflow:auto;max-height:calc(100vh - 200px)}
 .dbx-var-head{display:flex;align-items:baseline;justify-content:space-between}
@@ -318,5 +343,9 @@ onUnmounted(() => {
 .dbx-ide-error{margin:0;padding:6px 10px;border-radius:var(--radius-sm);background:var(--danger-bg);color:var(--danger);font-size:12px}
 .dbx-ide-retry{display:flex;align-items:center;gap:12px;margin:0;padding:6px 10px;border-radius:var(--radius-sm);background:var(--danger-bg);color:var(--danger);font-size:12px}
 .dbx-ide-retry button{border:1px solid currentColor;border-radius:var(--radius-sm);background:transparent;color:inherit;padding:4px 10px;cursor:pointer}
+.dbx-ide-mask{position:absolute;inset:0;z-index:5;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;border-radius:var(--radius);background:var(--bg);color:var(--text)}
+.dbx-ide-spinner{width:38px;height:38px;border:3px solid var(--border);border-top-color:var(--primary);border-radius:50%;animation:dbx-ide-spin .8s linear infinite}
+.dbx-ide-mask-text{margin:0;color:var(--text-2);font-size:13px}
+@keyframes dbx-ide-spin{to{transform:rotate(360deg)}}
 @media(max-width:1000px){.dbx-ide-body{grid-template-columns:minmax(0,1fr)}.dbx-var-panel{max-height:260px}.dbx-ide-frame{height:70vh}}
 </style>
