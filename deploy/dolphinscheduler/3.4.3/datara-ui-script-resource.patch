@@ -1,0 +1,217 @@
+--- a/dolphinscheduler-ui/src/utils/datara-bridge.ts
++++ b/dolphinscheduler-ui/src/utils/datara-bridge.ts
+@@ -48,3 +48,14 @@
+   if (envelope.code !== 0) throw new Error('Datara options unavailable')
+   return envelope.data
+ }
++
++/** 拉取编排网关的原始文本（如资源脚本正文）；鉴权与 dataraOptions 一致。 */
++export async function dataraText(path: string, query: Record<string, string | number> = {}): Promise<string> {
++  const current = await dataraSession()
++  const url = new URL(`${current.apiBaseUrl || window.location.origin}/api/v1/rebuild/orchestration/${path}`, window.location.origin)
++  url.searchParams.set('project_id', String(current.projectId))
++  Object.entries(query).forEach(([key, value]) => url.searchParams.set(key, String(value)))
++  const response = await fetch(url, { headers: { token: current.userToken }, credentials: 'omit' })
++  if (!response.ok) throw new Error(`Datara resource unavailable: ${response.status}`)
++  return response.text()
++}
+--- a/dolphinscheduler-ui/src/views/projects/task/components/node/fields/use-resources.ts
++++ b/dolphinscheduler-ui/src/views/projects/task/components/node/fields/use-resources.ts
+@@ -15,10 +15,10 @@
+  * limitations under the License.
+  */
+ 
+-import { ref, onMounted, Ref, isRef, h } from 'vue'
++import { ref, onMounted, Ref, isRef, h, watch } from 'vue'
+ import { useI18n } from 'vue-i18n'
+-import { queryResourceList } from '@/service/modules/resources'
+-import { dataraEmbed, dataraOptions } from '@/utils/datara-bridge'
++import { queryResourceList, viewResource } from '@/service/modules/resources'
++import { dataraEmbed, dataraOptions, dataraText } from '@/utils/datara-bridge'
+ import { useTaskNodeStore } from '@/store/project/task-node'
+ import utils from '@/utils'
+ import type { IJsonItem, IResource } from '../types'
+@@ -26,10 +26,22 @@
+ import { CopyOutlined } from '@vicons/antd'
+ import { useClipboard } from '@vueuse/core'
+ 
++/**
++ * 脚本类节点（PYTHON/SHELL）的资源收敛配置：
++ * - extensions：资源下拉只允许选择的扩展名（大小写不敏感）；缺省不过滤。
++ * - model/onFileSelected：选中脚本文件后把资源正文回填到表单（如 rawScript）。
++ */
++export interface ResourcesFieldOptions {
++  extensions?: string[]
++  model?: { [field: string]: any }
++  onFileSelected?: (content: string, fullName: string) => void
++}
++
+ export function useResources(
+   span: number | Ref<number> = 24,
+   required: boolean | Ref<boolean> = false,
+-  limit: number | Ref<number> = -1
++  limit: number | Ref<number> = -1,
++  options: ResourcesFieldOptions = {}
+ ): IJsonItem {
+   const { t } = useI18n()
+ 
+@@ -51,7 +63,9 @@
+ 
+   const getResources = async () => {
+     if (!dataraEmbed() && taskStore.resources.length) {
+-      resourcesOptions.value = taskStore.resources
++      resourcesOptions.value = applyExtensionPolicy(
++        taskStore.resources as unknown as ResourceOption[]
++      )
+       return
+     }
+     if (resourcesLoading.value) return
+@@ -60,11 +74,96 @@
+       ? await dataraOptions<IResource[]>('resources')
+       : await queryResourceList({ type: 'FILE', fullName: '' })
+     utils.removeUselessChildren(res)
+-    resourcesOptions.value = res || []
++    resourcesOptions.value = applyExtensionPolicy(
++      (res || []) as unknown as ResourceOption[]
++    )
+     resourcesLoading.value = false
+     if (!dataraEmbed()) taskStore.updateResource(res)
+   }
+ 
++  // -- 脚本节点资源收敛：扩展名过滤 + 选中回填脚本正文 -----------------------
++
++  const extensions = (options.extensions || []).map((ext) =>
++    String(ext).toLowerCase()
++  )
++
++  const matchesExtension = (fullName: string): boolean => {
++    const lower = String(fullName || '').toLowerCase()
++    return extensions.some((ext) => lower.endsWith(ext))
++  }
++
++  /**
++   * 非目标扩展名的文件置灰而非剔除：既阻止新选，又保留在树中，
++   * 避免存量工作流已挂资源被校验判定为失效资源而无法保存。
++   */
++  const applyExtensionPolicy = (
++    nodes: ResourceOption[]
++  ): ResourceOption[] | IResource[] => {
++    if (!extensions.length) return nodes
++    const walk = (list: ResourceOption[]): ResourceOption[] => {
++      const result: ResourceOption[] = []
++      list.forEach((node) => {
++        const children = Array.isArray(node.children)
++          ? walk(node.children)
++          : node.children
++        if (!node.dirctory && !matchesExtension(node.fullName)) {
++          result.push({ ...node, children, disable: true })
++        } else {
++          result.push({ ...node, children })
++        }
++      })
++      return result
++    }
++    return walk(nodes)
++  }
++
++  const loadResourceContent = async (fullName: string): Promise<string> => {
++    if (dataraEmbed()) {
++      return await dataraText('resources/download', { fullName })
++    }
++    const res = await viewResource({
++      skipLineNum: 0,
++      limit: -1,
++      fullName: fullName,
++      tenantCode: ''
++    })
++    return String(res?.rawScript ?? '')
++  }
++
++  if (options.model && options.onFileSelected) {
++    const model = options.model
++    const findNode = (fullName: string): ResourceOption | undefined => {
++      const stack = [...(resourcesOptions.value as ResourceOption[])]
++      while (stack.length) {
++        const node = stack.shift() as ResourceOption
++        if (node.fullName === fullName) return node
++        if (Array.isArray(node.children)) stack.push(...node.children)
++      }
++      return undefined
++    }
++    let lastLoaded = ''
++    watch(
++      () => model.resourceList as string[] | undefined,
++      (next, prev) => {
++        const added = (next || []).filter(
++          (item) => !(prev || []).includes(item)
++        )
++        const target = added.length > 0 ? added[added.length - 1] : ''
++        if (!target || findNode(target)?.dirctory) return
++        loadResourceContent(target)
++          .then((content) => {
++            // 编辑已有节点打开回填或用户手改过脚本时不覆盖，避免丢内容
++            if (model.rawScript && model.rawScript !== lastLoaded) return
++            options.onFileSelected!(content, target)
++            lastLoaded = content
++          })
++          .catch(() =>
++            window.$message.error(t('project.node.script_load_failed'))
++          )
++      }
++    )
++  }
++
+   const validateResourceExist = (
+     fullName: string,
+     parentDir: string[],
+--- a/dolphinscheduler-ui/src/views/projects/task/components/node/fields/use-shell.ts
++++ b/dolphinscheduler-ui/src/views/projects/task/components/node/fields/use-shell.ts
+@@ -18,6 +18,13 @@
+ import { useCustomParams, useResources } from '.'
+ import type { IJsonItem } from '../types'
+ 
++// 脚本类节点：资源下拉按扩展名收敛，且选中脚本后把内容带入 rawScript 编辑器
++// （PYTHON 只允许 .py，SHELL 只允许 .sh；其余 taskType 不经过本字段）。
++const SCRIPT_EXTENSIONS: Record<string, string[]> = {
++  PYTHON: ['.py'],
++  SHELL: ['.sh']
++}
++
+ export function useShell(model: { [field: string]: any }): IJsonItem[] {
+   const { t } = useI18n()
+ 
+@@ -32,7 +39,13 @@
+         message: t('project.node.script_tips')
+       }
+     },
+-    useResources(),
++    useResources(24, false, -1, {
++      extensions: SCRIPT_EXTENSIONS[model.taskType] || [],
++      model,
++      onFileSelected: (content: string) => {
++        model.rawScript = content
++      }
++    }),
+     ...useCustomParams({
+       model,
+       field: 'localParams',
+--- a/dolphinscheduler-ui/src/locales/zh_CN/project.ts
++++ b/dolphinscheduler-ui/src/locales/zh_CN/project.ts
+@@ -431,6 +431,7 @@
+     timeout_period_tips: '超时时长必须为正整数',
+     script: '脚本',
+     script_tips: '请输入脚本（必填）',
++    script_load_failed: '脚本内容加载失败',
+     master: 'Master',
+     master_tips: '请输入master url（选填）',
+     init_script: '初始化脚本',
+--- a/dolphinscheduler-ui/src/locales/en_US/project.ts
++++ b/dolphinscheduler-ui/src/locales/en_US/project.ts
+@@ -444,6 +444,7 @@
+     timeout_period_tips: 'Timeout must be a positive integer',
+     script: 'Script',
+     script_tips: 'Please enter script(required)',
++    script_load_failed: 'Failed to load script content',
+     master: 'Master',
+     master_tips: 'Please enter master url(optional)',
+     init_script: 'Initialization script',
