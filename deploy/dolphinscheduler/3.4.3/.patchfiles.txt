@@ -27,6 +27,9 @@ dolphinscheduler-ui/src/views/projects/task/components/node/fields/use-datasourc
 dolphinscheduler-ui/src/views/projects/task/components/node/fields/use-environment-name.ts
 dolphinscheduler-ui/src/views/projects/task/components/node/fields/use-queue.ts
 dolphinscheduler-ui/src/views/projects/task/components/node/fields/use-resources.ts
+dolphinscheduler-ui/src/views/projects/task/components/node/fields/use-shell.ts
 dolphinscheduler-ui/src/views/projects/task/components/node/fields/use-task-group.ts
 dolphinscheduler-ui/src/views/projects/task/components/node/fields/use-worker-group.ts
 dolphinscheduler-ui/src/views/projects/workflow/components/dag/dag-toolbar.tsx
+dolphinscheduler-ui/src/locales/en_US/project.ts
+dolphinscheduler-ui/src/locales/zh_CN/project.ts
