@@ -18,6 +18,7 @@ import { listProjects, type ProjectSummary } from '../services/rebuild/projectAp
 import { authAccount, currentSession, logout, type AuthRole } from '../services/rebuild/authApi'
 import { ROLE_PERMISSIONS } from '../services/rebuild/rolePermissions'
 import { getToken } from '../services/http'
+import { listAlertNotifications, type AlertNotification } from '../services/rebuild/alertApi'
 
 const props = defineProps<{ filterOverrides?: Partial<MenuFilterContext> }>()
 const route = useRoute()
@@ -132,6 +133,27 @@ function buildCtx(): MenuFilterContext {
 }
 
 const menuView = computed<readonly RenderableMenuGroup[]>(() => filterMenuGroups(buildCtx()))
+
+const alertOpen = ref(false)
+const alerts = ref<AlertNotification[]>([])
+const readAlertIds = ref<Set<number>>(new Set())
+const unreadAlertCount = computed(() => alerts.value.filter((item) => !readAlertIds.value.has(item.id)).length)
+const alertError = ref('')
+async function loadAlerts(): Promise<void> {
+  try {
+    alerts.value = await listAlertNotifications()
+    alertError.value = ''
+  } catch {
+    alerts.value = []
+    alertError.value = '预警消息暂时无法加载'
+  }
+}
+function openAlert(item: AlertNotification): void {
+  readAlertIds.value = new Set(readAlertIds.value).add(item.id)
+  alertOpen.value = false
+  if (item.target) void router.push(item.target)
+}
+onMounted(() => { if (getToken()) void loadAlerts() })
 const folded = reactive<Record<string, boolean>>({})
 for (const group of menuGroups) folded[group.id] = loadGroupFolded(group.id, group.defaultFolded === true)
 function onToggle(groupId: string): void {
@@ -237,6 +259,19 @@ function onSidebarResizeEnd(): void {
 
       <div class="breadcrumb"><b>{{ projectName || 'Datara' }}</b><span>/</span><span>{{ breadcrumb }}</span></div>
       <div class="topbar-actions">
+        <div class="alert-center">
+          <button type="button" class="icon-button alert-button" data-alert-center :aria-expanded="alertOpen" aria-label="预警消息" title="预警消息" @click="alertOpen = !alertOpen">
+            <span aria-hidden="true">♢</span><span v-if="unreadAlertCount" class="alert-badge">{{ unreadAlertCount > 99 ? '99+' : unreadAlertCount }}</span>
+          </button>
+          <div v-if="alertOpen" class="alert-popover" role="dialog" aria-label="预警消息列表" data-alert-popover>
+            <div class="alert-popover-head"><strong>预警消息</strong><span>未读 {{ unreadAlertCount }}</span><button type="button" @click="loadAlerts">刷新</button></div>
+            <p v-if="alertError" class="alert-empty">{{ alertError }} <button type="button" @click="loadAlerts">重试</button></p>
+            <button v-for="item in alerts" :key="item.id" type="button" class="alert-item" :class="{ unread: !readAlertIds.has(item.id) }" @click="openAlert(item)">
+              <span class="alert-dot" :class="item.state"></span><span class="alert-body"><b>{{ item.title }}</b><small>{{ item.content }}</small><time>{{ item.createTime }}</time></span>
+            </button>
+            <p v-if="!alertError && !alerts.length" class="alert-empty">暂无预警消息</p>
+          </div>
+        </div>
         <RouterLink to="/dep/runtime" class="icon-button" data-global-operations title="部署运维" aria-label="部署运维">☁</RouterLink>
         <RouterLink to="/sys" class="icon-button" data-global-system title="系统管理" aria-label="系统管理">⚙</RouterLink>
         <button type="button" class="icon-button" data-theme-toggle :title="theme === 'dark' ? '切换浅色主题' : '切换深色主题'" @click="toggleTheme">{{ theme === 'dark' ? '☀' : '☾' }}</button>
@@ -247,7 +282,13 @@ function onSidebarResizeEnd(): void {
       </div>
     </header>
 
-    <main class="app-content"><RouterView /></main>
+    <main class="app-content">
+      <RouterView v-slot="{ Component }">
+        <KeepAlive :include="['DbxIdeView']">
+          <component :is="Component" />
+        </KeepAlive>
+      </RouterView>
+    </main>
     <button v-if="sidebarOpen" type="button" class="sidebar-backdrop" aria-label="关闭导航" @click="sidebarOpen = false"></button>
   </div>
 </template>
@@ -255,6 +296,7 @@ function onSidebarResizeEnd(): void {
 <style scoped>
 .app-shell{display:grid;grid-template:"aside header" 48px "aside main" minmax(0,1fr)/var(--sidebar-w,228px) minmax(0,1fr);height:100vh;overflow:hidden;background:var(--bg);color:var(--text)}
 .app-sidebar{grid-area:aside;position:relative;display:flex;flex-direction:column;min-height:0;background:linear-gradient(180deg,#0b1c33,#08182c 64%,#0c2135);color:var(--sidebar-text);z-index:30}
+.alert-center{position:relative}.alert-badge{position:absolute;top:-4px;right:-4px;min-width:15px;height:15px;padding:0 3px;border-radius:9px;background:#e5484d;color:#fff;font-size:9px;line-height:15px;text-align:center}.alert-popover{position:absolute;top:38px;right:0;width:340px;max-height:430px;overflow:auto;padding:8px;background:var(--card);border:1px solid var(--border);border-radius:10px;box-shadow:var(--shadow-xl);z-index:60}.alert-popover-head{display:flex;align-items:center;gap:10px;padding:6px 8px 10px;border-bottom:1px solid var(--border);font-size:12px}.alert-popover-head span{margin-left:auto;color:var(--text-2)}.alert-popover-head button,.alert-empty button{border:0;background:none;color:var(--primary);cursor:pointer}.alert-item{display:flex;width:100%;gap:8px;padding:10px 8px;border:0;border-bottom:1px solid var(--border);background:transparent;text-align:left;color:var(--text);cursor:pointer}.alert-item:hover{background:var(--bg)}.alert-item.unread b{font-weight:700}.alert-dot{width:7px;height:7px;margin-top:5px;border-radius:50%;background:#9aa7b8;flex:0 0 auto}.alert-dot.fail,.alert-dot.error{background:#e5484d}.alert-dot.warn{background:#e6a23c}.alert-body{display:grid;gap:3px;min-width:0}.alert-body b,.alert-body small{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.alert-body small,.alert-body time{font-size:11px;color:var(--text-2)}.alert-empty{padding:18px 8px;text-align:center;color:var(--text-2);font-size:12px}
 .sidebar-resize{position:absolute;top:0;right:-3px;width:6px;height:100%;cursor:col-resize;touch-action:none;z-index:40}
 .sidebar-resize:hover{background:rgba(255,255,255,.14)}
 .brand{height:56px;display:flex;align-items:center;gap:10px;padding:0 18px;color:#fff;font-size:15px;font-weight:700;letter-spacing:.3px;border-bottom:1px solid rgba(255,255,255,.07)}
