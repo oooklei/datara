@@ -258,10 +258,13 @@ const dsEmptyReason = ref('正在获取编排会话…')
 const dsSession = ref<OrchestrationSession | null>(null)
 let disposeDsReady: (() => void) | null = null
 let dsRefreshTimer: ReturnType<typeof setInterval> | null = null
+let dsRouteTimer: ReturnType<typeof setInterval> | null = null
 
 function stopDsRefresh() {
   if (dsRefreshTimer !== null) clearInterval(dsRefreshTimer)
   dsRefreshTimer = null
+  if (dsRouteTimer !== null) clearInterval(dsRouteTimer)
+  dsRouteTimer = null
 }
 
 /** 会话惰性加载：只在真正要开画布时取，列表态不发无用请求。 */
@@ -318,6 +321,33 @@ async function mountCanvas(path: string) {
       sendSessionToDs(dsFrameEl.value, sessionWithEnvironment(fresh))
     }).catch(() => ElMessage.error('编排会话续期失败，请重新打开工作流'))
   }, 10 * 60 * 1000)
+  // §10.4 embed 路由契约巡检（见 enforceCanvasRouteContract）。
+  dsRouteTimer = setInterval(enforceCanvasRouteContract, 700)
+}
+
+/**
+ * §10.4 embed 路由契约：帧内只允许单个 DAG 画布路由
+ * `/dolphinscheduler/ui/projects/{code}/workflow/definitions/{code|create}`。
+ *
+ * DS 画布「关闭」会把帧内导航到它原生的 workflow-definition 列表页（URL 同时
+ * 丢掉 ?embed=1）；该列表的工作流名称链接是 `window.open(href, '_blank')` 裸跳
+ * DS 路由 —— 新标签没有 embed 会话，API 401 即被 DS 重定向到海豚登录页
+ * （2026-11-01 实测复现）。故宿主巡检帧内路由（同源可读）：凡逃出画布契约
+ * 即收回 datara 自建列表——画布路由切换由宿主驱动，DS 列表页不进 iframe。
+ */
+function enforceCanvasRouteContract(): void {
+  const frame = dsFrameEl.value
+  if (!frame) return
+  let href = ''
+  try {
+    href = frame.contentWindow?.location.href ?? ''
+  } catch {
+    return
+  }
+  if (!href || !href.startsWith(window.location.origin)) return
+  const path = new URL(href).pathname
+  if (/^\/dolphinscheduler\/ui\/projects\/[^/]+\/workflow\/definitions\/[^/]+\/?$/.test(path)) return
+  backToWorkflowList()
 }
 
 watch(environmentGroupId, () => {
