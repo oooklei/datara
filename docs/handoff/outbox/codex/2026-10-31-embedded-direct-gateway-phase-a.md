@@ -13,8 +13,8 @@
 - DBX IDE 宿主契约测试：6 passed。
 - 1.9 未登录访问统一接口：401。
 - 1.9 当前 DBX 直连候选基础镜像 `dbx:datara-gateway-closeout` 回验：`/ide/` 返回 200，匿名 `/ide/api/connection/list` 返回 401，携带 `X-Datara-Internal-Token` 的内部连接列表返回 200；证明容器侧内部通道鉴权已生效。
-- 1.9 候选重构构建已切换无 LTO；构建机首次编译仍因 Cargo Git 依赖 `tokio-postgres-gaussdb` 的外部 SSL 超时失败，正式 DBX 容器未切换。
+- 1.9 候选重构构建已切换无 LTO；四组 Git 依赖源码已按 lock revision 预置到候选上下文并改为本地 path。离线编译进一步暴露 builder 未缓存完整 crates.io registry（`axum` 缺失），因此候选镜像仍未生成；正式 DBX 容器未切换。
 
 ## 未完成
 
-- nginx 默认业务 API 尚未切换为容器直连；仍需完成服务端令牌注入、容器端令牌验证和旁路 E2E 后再切换。DBX 容器侧鉴权已回验，候选重构构建仍受外部 Cargo Git 依赖阻塞。
+- nginx 默认业务 API 尚未切换为容器直连；仍需完成服务端令牌注入、容器端令牌验证和旁路 E2E 后再切换。DBX 容器侧鉴权已回验，候选重构构建还需补齐 builder 的 crates.io 离线缓存。
