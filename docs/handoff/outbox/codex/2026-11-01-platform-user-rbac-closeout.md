@@ -40,3 +40,10 @@
 ## 涉及节号
 
 收口计划 §三 B5；权威设计 §六、§10.4、§10.8。
+
+## DBX B4 运行证据（1.9 重新部署后）
+
+- 直连 `GET http://192.168.1.9:4224/ide/api/connection/list`（无授权）：HTTP `401`。
+- admin 通过 Datara `POST /api/v1/rebuild/dbx/projects/33/ide-session`：HTTP `200`；带短时 IDE cookie 访问 owner 网关 `GET /api/v1/rebuild/dbx/ide-proxy/connection/list`：HTTP `200`。
+- dev 通过 Datara 连接网关初始可见列表为空；临时由 admin 将 `datara-mysql-src` claim 并显式 share 给 dev 后，dev 仅看到该连接；删除 share 后 dev 列表恢复为空，owner 过滤与撤销即时生效。
+- DBX 后端专项回归：`36 passed`（2 个既有 FastAPI Operation ID warning）。
