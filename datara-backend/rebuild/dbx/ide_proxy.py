@@ -19,6 +19,7 @@ from rebuild.dbx.ai_owner import (
     owned_config, resolve_config, save_ai_user_preferences, selection_from_state,
     user_state, valid_config_id, visible_config_ids, visible_configs,
 )
+from rebuild.dbx.connection_catalog import ConnectionCatalogCache
 from rebuild.dbx.ide_route_manifest import SUPPORTED_DATA_ROUTES
 from rebuild.dbx.ide_policy import (
     DbxIdeForbidden, canonical_connect_payload, classify_save, merge_connection_save_payload,
@@ -131,9 +132,13 @@ def build_dbx_ide_router(
     *,
     client_factory: Callable[[], DbxClient] = DbxClient,
     registry: IdeSessionRegistry | None = None,
+    catalog_cache: ConnectionCatalogCache | None = None,
 ) -> APIRouter:
     router = APIRouter(prefix="/api/v1/rebuild/dbx", tags=["rebuild-dbx-ide"])
     registry = registry or IdeSessionRegistry()
+    # Per-router cache: a fresh app/test gets an isolated catalog instead of
+    # sharing one across routers.
+    catalog_cache = catalog_cache or ConnectionCatalogCache()
 
     def denied(status: int = 403, message: str = "dbx IDE access denied") -> JSONResponse:
         return JSONResponse(status_code=status, content={"code": 1001 if status == 401 else 1003, "msg": message, "data": None})
@@ -167,6 +172,10 @@ def build_dbx_ide_router(
             "datara_dbx_ide", registry.issue(raw_token, project_id), max_age=registry.ttl_seconds,
             path="/ide/api", httponly=True, samesite="strict",
         )
+        # Preload the connection catalog off the request path so the iframe's
+        # first `connection/list` read is served from memory instead of waiting
+        # on a slow DBX round trip.
+        catalog_cache.warm(client_factory().list_connections)
         return response
 
     @router.api_route("/ide-proxy/{path:path}", methods=["GET", "POST", "PUT", "DELETE", "PATCH"])
@@ -219,10 +228,14 @@ def build_dbx_ide_router(
             # its backup/restore API. A successful no-op keeps startup healthy.
             if path == "database-backups" and request.method == "POST":
                 return {}
+            catalog_rows: list[dict[str, Any]] | None = None
             if admin:
-                visible_ids = {str(row.get("id")) for row in dbx.list_connections()}
+                # One cached read feeds both the admin visibility filter and the
+                # connection tree; the pre-cache avoids a second slow DBX call.
+                catalog_rows = await run_in_threadpool(catalog_cache.get, dbx.list_connections)
+                visible_ids = {str(row.get("id")) for row in catalog_rows}
             if path == "connection/list" and request.method == "GET":
-                rows = dbx.list_connections()
+                rows = catalog_rows if catalog_rows is not None else await run_in_threadpool(catalog_cache.get, dbx.list_connections)
                 return safe_connection_list(rows, visible_ids)
 
             if path == "ai/configs" and request.method == "GET":
@@ -763,6 +776,9 @@ def build_dbx_ide_router(
                         db_session.query(DbxConnectionShareRecord).filter(DbxConnectionShareRecord.connection_id.in_(removed_ids)).delete(synchronize_session=False)
                         db_session.query(DbxConnectionOwnershipRecord).filter(DbxConnectionOwnershipRecord.connection_id.in_(removed_ids)).delete(synchronize_session=False)
                     db_session.commit()
+                # The upstream catalog changed; drop the cached rows so the
+                # next connection/list read reflects the new connections.
+                catalog_cache.invalidate()
                 return result
 
             if path in {"connection/connect", "connection/test", "connection/test-info", "connection/test-ssh-tunnel"} and request.method == "POST":
