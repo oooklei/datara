@@ -696,6 +696,34 @@ def build_orchestration_router(
             }
             return _ok(payload)
 
+    @router.get("/api/v1/rebuild/embed/session")
+    def unified_embed_session(
+        project_id: int = Query(...),
+        token: str = Header(default=""),
+        authorization: str = Header(default=""),
+    ):
+        """Return same-origin child-session entry points without exposing secrets.
+
+        The browser receives paths only; each child service issues its own
+        HttpOnly/short-lived session. This is the migration seam for direct
+        container proxying and deliberately performs no upstream call.
+        """
+        claims = principal(token, authorization)
+        if claims is None:
+            return unauthorized()
+        with session_factory() as session:
+            denial = project_permission_error(session, project_id, claims, Permission.VIEW_ALL)
+            if denial is not None:
+                return denial
+            if session.get(ProjectRecord, project_id) is None:
+                return _error(404, "EMBED_PROJECT_NOT_FOUND", f"project {project_id} not found")
+        return _ok({
+            "projectId": project_id,
+            "expiresIn": 900,
+            "dbx": {"sessionPath": f"/api/v1/rebuild/dbx/projects/{project_id}/ide-session", "basePath": "/ide/"},
+            "orchestration": {"sessionPath": "/api/v1/rebuild/orchestration/session", "basePath": "/dolphinscheduler/"},
+        })
+
     # -- 2b. 工作流定义列表（§10.5 B：datara 自建页，不进 iframe） -------------
     #
     # 列表/上下线/删除由 datara 页面承载（只调海豚 ``WorkflowDefinitionController``）；
