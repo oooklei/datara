@@ -42,8 +42,10 @@ class DbxClient:
         base_url: str | None = None,
         internal_token: str | None = None,
         transport: Transport | None = None,
-        timeout: float = 15.0,
-        retries: int = 2,
+        # Embedded gateway calls must fail fast; a slow DBX must not stall
+        # the Datara shell and its other embedded applications.
+        timeout: float = 5.0,
+        retries: int = 0,
         sleep: Callable[[float], None] = time.sleep,
     ) -> None:
         self.base_url = (base_url or os.getenv("DBX_BASE_URL", "http://192.168.1.9:4224/ide")).rstrip("/")
