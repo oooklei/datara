@@ -16,6 +16,7 @@
 - 1.9 候选重构构建已切换无 LTO；四组 Git 依赖源码已按 lock revision 预置到候选上下文并改为本地 path。离线编译进一步暴露 builder 未缓存完整 crates.io registry（`axum` 缺失），因此候选镜像仍未生成；正式 DBX 容器未切换。
 - 统一会话接口补齐 POST 入口（保留 GET 兼容）；`python -m compileall -q datara-backend/rebuild/orchestration/api.py` 通过。
 - POST 统一会话契约测试：`1 passed, 25 deselected`（`test_orchestration_governance_api.py -k embed_session`）。
+- 1.9 运行实例已直接应用同一 POST 装饰器补丁，提交为镜像 `datara-backend:embed-session-post` 并重启 `datara-rebuild-api`；真实入口回验 GET/POST 未登录均为 401，`/health` 为 200，DBX/Dolphin/前端容器保持运行。
 
 ## 未完成
 
