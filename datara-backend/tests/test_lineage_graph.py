@@ -267,6 +267,49 @@ def test_graph_field_level_transform(client):
     assert _fqs(d) == {"orders.amount", "t.amt"}
 
 
+def test_graph_field_level_repeated_runtime_instance_keeps_latest(client, db_session):
+    """同一节点重跑会产生重复字段边；字段图应去重而不是因 tuple 比较返回 500。"""
+    wf = _mk_wf(client, "字段级重复实例")
+    _rt_edge(
+        db_session,
+        wf["code"],
+        "ods.orders",
+        "dw.t",
+        node_id="r1",
+        instance="inst-1",
+        fields=(("ods.orders", "amount", "amt", "amount"),),
+    )
+    _rt_edge(
+        db_session,
+        wf["code"],
+        "ods.orders",
+        "dw.t",
+        node_id="r1",
+        instance="inst-2",
+        fields=(("ods.orders", "amount", "amt", "amount * 0.9"),),
+    )
+
+    d = _graph(client, level="field")
+    assert len(d["edges"]) == 1
+    assert len(d["edges"][0]["refs"]) == 1
+    assert d["edges"][0]["refs"][0]["transform"] == "amount * 0.9"
+
+
+def test_graph_field_level_skips_empty_constant_source_node(client, db_session):
+    wf = _mk_wf(client, "字段级常量")
+    _rt_edge(
+        db_session,
+        wf["code"],
+        "",
+        "dw.t",
+        fields=(("", "", "flag", "1"),),
+    )
+
+    d = _graph(client, level="field")
+    assert "" not in _fqs(d)
+    assert all(edge["from"] and edge["to"] for edge in d["edges"])
+
+
 # ---------------- file: 边 _bare 特判 ----------------
 
 
