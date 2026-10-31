@@ -415,6 +415,7 @@ def test_forged_visible_connection_id_cannot_authorize_unmapped_admin_api():
 
 def test_dbx_06060_route_manifest_preserves_known_ide_paths():
     for path in (
+        "database-backups",
         "schema/databases", "schema/cache", "schema/ddl", "query/execute",
         "query/execute-batch", "query/large-value/download/item-1",
         "mq/topics/list", "history/search", "history/item-1",

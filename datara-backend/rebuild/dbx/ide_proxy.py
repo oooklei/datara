@@ -57,6 +57,8 @@ _BOOTSTRAP_READS = frozenset({
     "auth/check", "migration/status", "plugins", "version",
     "app-settings/sql-file-upload-max-bytes", "layout/sidebar",
     "layout/table-vgroups", "ssh/prompts", "ssh/prompts/pending",
+    # DBX calls this during startup to persist the UI font preview state.
+    "database-backups",
 })
 _CONFIG_DOMAINS = ("ai/", "tunnel-profiles/", "prompt-templates")
 _CONNECTION_OWNER_WRITES = frozenset({
