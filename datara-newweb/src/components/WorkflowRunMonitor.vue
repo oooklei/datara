@@ -361,5 +361,5 @@ table { width: 100%; border-collapse: collapse; font-size: 13px; } th, td { padd
 .run-logs { margin-top: 10px; }
 .run-logs-header { display: flex; align-items: center; gap: 10px; margin-bottom: 6px; font-size: 12px; color: var(--text-2); }
 .run-logs-live { color: var(--primary); }
-.run-logs-body { margin: 0; padding: 8px 10px; background: #0f172a; color: #e2e8f0; border-radius: 5px; font-size: 12px; line-height: 1.6; max-height: 240px; overflow: auto; white-space: pre-wrap; }
+.run-logs-body { margin: 0; padding: 8px 10px; background: var(--log-bg); color: var(--log-fg); border-radius: 5px; font-size: 12px; line-height: 1.6; max-height: 240px; overflow: auto; white-space: pre-wrap; }
 </style>

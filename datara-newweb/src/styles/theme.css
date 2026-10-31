@@ -21,6 +21,8 @@
   --purple:#7c3aed; --cyan:#0891b2;
   /* 遮罩（弹窗/抽屉统一蒙层真源；深色主题另给值） */
   --mask-bg:rgba(15,23,42,.45);
+  /* 日志/控制台面板（运行监控日志体），随主题切换 */
+  --log-bg:#0f172a; --log-fg:#e2e8f0;
   /* 阴影阶梯 */
   --shadow:0 1px 2px rgba(16,24,40,.05),0 1px 3px rgba(16,24,40,.08);
   --shadow-md:0 2px 6px rgba(16,24,40,.06),0 4px 12px rgba(16,24,40,.08);
@@ -81,6 +83,7 @@
   --success:#4ade80; --success-bg:#153c2a; --danger:#fb7185; --danger-bg:#48202a;
   --warn:#fbbf24; --warn-bg:#473716; --info:#60a5fa; --info-bg:#193859;
   --mask-bg:rgba(0,0,0,.55);
+  --log-bg:#0b111b; --log-fg:#cdd7e6;
   --shadow:0 1px 3px rgba(0,0,0,.35); --shadow-md:0 6px 18px rgba(0,0,0,.32); --shadow-lg:0 12px 32px rgba(0,0,0,.42);
   --el-color-primary:#5b9cff; --el-bg-color:#172131; --el-bg-color-overlay:#1b2739;
   --el-fill-color-light:#1d2a3d; --el-fill-color-lighter:#1a2637;
