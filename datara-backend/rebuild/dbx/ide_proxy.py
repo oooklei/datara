@@ -8,7 +8,7 @@ from collections.abc import Callable
 from typing import Any
 
 from fastapi import APIRouter, Header, Request
-from fastapi.responses import JSONResponse, StreamingResponse
+from fastapi.responses import JSONResponse, Response, StreamingResponse
 from sqlalchemy.orm import sessionmaker
 from starlette.concurrency import run_in_threadpool
 
@@ -209,15 +209,10 @@ def build_dbx_ide_router(
         dbx = client_factory()
         try:
             if path == "connection/liveness-events" and request.method == "GET":
-                async def heartbeat():
-                    # Send one event and close. EventSource reconnects on its
-                    # own; keeping an infinite response here starves the
-                    # browser connection pool during a hard refresh.
-                    yield b": datara-gateway-alive\n\n"
-                return StreamingResponse(
-                    heartbeat(), media_type="text/event-stream",
-                    headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
-                )
+                # DBX treats this optional stream as a liveness hint. Do not
+                # proxy or synthesize an SSE stream in the owner gateway: a
+                # half-closed stream can abort the embedded app bootstrap.
+                return Response(status_code=204, headers={"Cache-Control": "no-store"})
             # The embedded UI posts this optional browser-font preview payload
             # during startup. It is local presentation state, not a Datara
             # backup operation; DBX gateway mode intentionally does not expose
