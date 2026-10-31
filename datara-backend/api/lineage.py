@@ -324,9 +324,15 @@ def lineage_graph(
         for (ft, ff, tt, tf), grp in groups.items():
             best: dict = {}  # 同 (wf,node,stmt) 多实例保留最新（edge.id 最大）
             fq_from, fq_to = _field_fq(ft, ff), _field_fq(tt, tf)  # 表部已归一的裸表名
+            # 常量表达式可能落一条空来源字段记录。图模型不能生成空 id
+            # 节点/边；常量变换仍可从 /fields 明细查看，因此字段图跳过该无效端点。
+            if not fq_from or not fq_to:
+                continue
             for f, e in grp:
                 key = (e.wf_code, e.node_id, e.stmt_no)
-                if key not in best or e.id > best[key].id:
+                # 同 (wf,node,stmt) 重跑会产生重复实例；best 存 (field, 父边) 二元组，
+                # 比较必须取元组内的父边 id，直接取 .id 会在第二个实例出现时抛 HTTP 500
+                if key not in best or e.id > best[key][1].id:
                     best[key] = (f, e)
                 # 节点 ds/表部取首个出现原形态（raw），键用归一 fq 与边端点一致
                 for raw, fq in (
