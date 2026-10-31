@@ -18,6 +18,12 @@
 
 ## Agent skills
 
+## 源码真源与发布前合并（2026-11-01 用户裁定）
+
+Datara、DBX、海豚的源码真源、双向同步位置及发版门禁见 `docs/agents/source-truth.md`。所有修改先落在对应真源；其他分支或工作区的发布内容必须先合并回真源。远程构建前运行 `python scripts/release_source.py preflight`，并把本机 Datara 源码快照同步到 192.168.1.9 隔离发布目录；发布后把 1.9 的 DBX 与海豚源码快照同步回本机。镜像、容器、构建产物及 `.source-mirrors/` 均不是源码真源。
+
+本系统运行容器名称最多 12 个字符；名称映射、DNS 兼容别名及远端核验记录见 `docs/agents/container-names.md`。改名须同步修改 Compose/发布配置并验证服务间访问，不能只改 Docker 当前显示名。
+
 ### Issue tracker
 
 Issues 存放在 GitHub Issues（oooklei/datara），所有操作通过 gh CLI 完成。See `docs/agents/issue-tracker.md`.

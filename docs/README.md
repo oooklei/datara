@@ -4,6 +4,8 @@
 
 ## 1. 权威顺序
 
+源码真源与发布同步的 2026-11-01 用户裁定见 [`docs/agents/source-truth.md`](agents/source-truth.md)；它约束源码位置与发版流程，不替代下述业务实施设计。
+
 发生冲突时，按以下顺序解释和实施：
 
 1. 用户最新明确裁定与 `docs/handoff/STATE.md` 裁定记录；

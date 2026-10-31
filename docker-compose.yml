@@ -46,7 +46,7 @@ services:
   # ---------- 注册中心 ----------
   zookeeper:
     image: zookeeper:3.9
-    container_name: datara-zookeeper
+    container_name: dt-zk
     restart: unless-stopped
     environment:
       TZ: Asia/Shanghai
@@ -64,8 +64,12 @@ services:
   # ---------- 流数据总线（I11/I12 Kafka 源、窗口与落仓用例的正式依赖） ----------
   kafka:
     image: bitnami/kafka:3.7
-    container_name: datara-kafka
+    container_name: dt-kafka
     restart: unless-stopped
+    networks:
+      default:
+        aliases:
+          - datara-kafka
     environment:
       KAFKA_CFG_NODE_ID: "1"
       KAFKA_CFG_PROCESS_ROLES: broker,controller
@@ -91,7 +95,7 @@ services:
   # ---------- 任务队列 / 会话（I3 精化 Stream） ----------
   redis:
     image: redis:7
-    container_name: datara-redis
+    container_name: dt-redis
     restart: unless-stopped
     command: ["redis-server", "--appendonly", "yes"]
     environment:
@@ -109,7 +113,7 @@ services:
   # ---------- 平台 meta 库（datara_meta，13 张表 init SQL 幂等建表） ----------
   mysql-meta:
     image: mysql:8.0
-    container_name: datara-mysql-meta
+    container_name: dt-db-meta
     restart: unless-stopped
     environment:
       TZ: Asia/Shanghai
@@ -134,7 +138,7 @@ services:
   datara-api:
     build: ./datara-backend
     image: datara-backend:latest
-    container_name: datara-api
+    container_name: dt-api
     restart: unless-stopped
     command: ["uvicorn", "api.main:app", "--host", "0.0.0.0", "--port", "8000"]
     environment: *backend-env
@@ -158,7 +162,7 @@ services:
   datara-rebuild-api:
     build: ./datara-backend
     image: datara-backend:latest
-    container_name: datara-rebuild-api
+    container_name: dt-rebuild
     restart: unless-stopped
     command: ["uvicorn", "rebuild.api.app:create_app", "--factory", "--host", "0.0.0.0", "--port", "8001"]
     environment:
@@ -189,7 +193,7 @@ services:
   datara-master:
     build: ./datara-backend
     image: datara-backend:latest
-    container_name: datara-master
+    container_name: dt-master
     restart: unless-stopped
     command: ["python", "-m", "master.main"]
     environment: *backend-env
@@ -207,7 +211,7 @@ services:
   datara-worker:
     build: ./datara-backend
     image: datara-backend:latest
-    container_name: datara-worker
+    container_name: dt-worker
     restart: unless-stopped
     command: ["python", "-m", "worker.main"]
     environment: *backend-env
@@ -228,7 +232,7 @@ services:
   datara-alert:
     build: ./datara-backend
     image: datara-backend:latest
-    container_name: datara-alert
+    container_name: dt-alert
     restart: unless-stopped
     command: ["python", "-m", "alert.main"]
     environment: *backend-env
@@ -243,7 +247,7 @@ services:
   datara-logger:
     build: ./datara-backend
     image: datara-backend:latest
-    container_name: datara-logger
+    container_name: dt-logger
     restart: unless-stopped
     command: ["python", "-m", "logger.main"]
     environment: *backend-env
@@ -260,7 +264,7 @@ services:
   # ---------- 前端（静态 dist + /api 反代到 datara-api） ----------
   datara-web:
     image: nginx:1.27-alpine
-    container_name: datara-web
+    container_name: dt-oldweb
     restart: unless-stopped
     ports:
       # 重建验证专用端口；旧 8090 仅保留为历史/既有服务参考，不作为新验证入口
@@ -274,7 +278,7 @@ services:
   # ---------- 业务源库（I2 测试数据集 ec_retail，4 域 14 表 + 3 机密表） ----------
   datara-mysql-src:
     image: mysql:8.0
-    container_name: datara-mysql-src
+    container_name: dt-db-src
     restart: unless-stopped
     environment:
       TZ: Asia/Shanghai
@@ -298,7 +302,7 @@ services:
   # ---------- 目标数仓（派生态 datara_dw：dwd_order_detail 派生种子表） ----------
   datara-mysql-dw:
     image: mysql:8.0
-    container_name: datara-mysql-dw
+    container_name: dt-db-dw
     restart: unless-stopped
     environment:
       TZ: Asia/Shanghai
