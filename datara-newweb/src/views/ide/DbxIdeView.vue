@@ -107,7 +107,7 @@ import {
 import VariableManagerDrawer from '../variables/VariableManagerDrawer.vue'
 import { authAccount } from '../../services/rebuild/authApi'
 import { issueDbxIdeSession } from '../../services/rebuild/dbxIdeApi'
-import { sanitizeEmbeddedBranding } from '../../services/rebuild/embeddedBranding'
+import { hideEmbeddedMcpPromoCard, sanitizeEmbeddedBranding } from '../../services/rebuild/embeddedBranding'
 import { useEnvironmentContext } from '../../services/rebuild/environmentContext'
 
 const props = defineProps<{ projectId?: number }>()
@@ -135,6 +135,7 @@ let projectGeneration = 0
 let sessionQueue: Promise<void> = Promise.resolve()
 let frameTimeout: ReturnType<typeof setTimeout> | undefined
 let disposeEmbeddedBranding: (() => void) | undefined
+let disposeMcpPromoHider: (() => void) | undefined
 
 function clearFrameTimeout(): void {
   if (frameTimeout !== undefined) clearTimeout(frameTimeout)
@@ -150,11 +151,14 @@ function onFrameLoad(): void {
   clearFrameTimeout()
   frameLoaded.value = true
   disposeEmbeddedBranding?.()
+  disposeMcpPromoHider?.()
   try {
     const document = frameEl.value?.contentDocument
     disposeEmbeddedBranding = document ? sanitizeEmbeddedBranding(document) : undefined
+    disposeMcpPromoHider = document ? hideEmbeddedMcpPromoCard(document) : undefined
   } catch {
     disposeEmbeddedBranding = undefined
+    disposeMcpPromoHider = undefined
   }
 }
 
@@ -310,6 +314,8 @@ onUnmounted(() => {
   window.removeEventListener('message', onBridgeReady)
   disposeEmbeddedBranding?.()
   disposeEmbeddedBranding = undefined
+  disposeMcpPromoHider?.()
+  disposeMcpPromoHider = undefined
 })
 </script>
 

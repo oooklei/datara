@@ -22,12 +22,15 @@ Contract source (frozen): datara-web/src/services/rebuild/resourceApi.ts
 
 from __future__ import annotations
 
+import logging
 from contextlib import contextmanager
 from typing import Any, Callable, Iterator
 
 from fastapi import APIRouter, Body, File, Form, Header, Query, UploadFile
 from fastapi.responses import FileResponse, JSONResponse
 from sqlalchemy.orm import sessionmaker
+
+from rebuild.resources.models import ResourceRecord
 
 from rebuild.identity.contracts import Permission
 from rebuild.identity.contracts import Role
@@ -46,6 +49,9 @@ class MalformedRequest(ValueError):
     """Request-frame malformation → 400 {code: 4001} (numeric, ruling in handoff #75)."""
 
 
+logger = logging.getLogger(__name__)
+
+
 def build_resources_router(
     session_factory: sessionmaker,
     token_service: Any,
@@ -53,8 +59,22 @@ def build_resources_router(
     project_permission_error: Callable[..., JSONResponse | None],
     *,
     ssh_trial_runner: Callable[..., dict[str, Any]] = run_ssh_trial,
+    script_syncer: Callable[[int, str, bytes], Any] | None = None,
 ) -> APIRouter:
     router = APIRouter()
+
+    def best_effort_script_sync(project_id: int, name: str, content: bytes) -> None:
+        """尽力同步脚本到海豚资源中心（编排「资源文件」下拉的数据源）。
+
+        同步失败只告警不阻断保存；存量/漏同步脚本可经编排回填接口重放。
+        """
+        trimmed = (name or "").strip()
+        if not trimmed:
+            return
+        try:
+            script_syncer(project_id, trimmed, content)
+        except Exception:  # noqa: BLE001 - 海豚不可用不能拖垮脚本保存主流程
+            logger.warning("script sync to dolphinscheduler failed resource=%s", trimmed, exc_info=True)
 
     def principal(token: str, authorization: str) -> dict[str, object]:
         """Authenticate via the FE ``token`` header first, then Bearer fallback."""
@@ -137,6 +157,8 @@ def build_resources_router(
                 outcome.commit()
             except ResourceDomainError as exc:
                 return request_error(exc)
+        if script_syncer is not None:
+            best_effort_script_sync(project_id, file.filename or "", content)
         return {"code": 0, "msg": "success", "data": data}
 
     # -- 2. listResources: GET ``?project_id=&kind=`` ----------------------
@@ -284,9 +306,12 @@ def build_resources_router(
                 return outcome
             try:
                 data = ResourceRepository(outcome).append_version(project_id, resource_id, content)
+                resource_name = outcome.get(ResourceRecord, resource_id).name
                 outcome.commit()
             except ResourceDomainError as exc:
                 return request_error(exc)
+        if script_syncer is not None:
+            best_effort_script_sync(project_id, resource_name, content)
         return {"code": 0, "msg": "success", "data": data}
 
     # -- 8. checkResourceScript: POST ``/{id}/script-checks`` -------------

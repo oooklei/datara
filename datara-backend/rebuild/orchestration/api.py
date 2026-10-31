@@ -97,6 +97,7 @@ from rebuild.project.models import ProjectRecord
 from rebuild.project.repository import ProjectRepository
 from rebuild.resources.models import ResourceRecord
 from rebuild.resources.repository import ResourceDomainError, ResourceRepository
+from rebuild.orchestration.script_sync import sync_project_scripts
 from rebuild.sec.service import SecService
 
 logger = logging.getLogger(__name__)
@@ -342,6 +343,12 @@ class ResourceFileRenamePayload(BaseModel):
 
     fullName: str = ""
     name: str = ""
+
+
+class ScriptSyncPayload(BaseModel):
+    """``POST /script-resources/sync`` 的请求体：缺省回填全部项目的脚本资源。"""
+
+    projectId: int | None = None
 
 
 class StartWorkflowInstancePayload(BaseModel):
@@ -2319,6 +2326,32 @@ def build_orchestration_router(
             media_type=content_type or "application/octet-stream",
             headers={"Content-Disposition": f'attachment; filename="{filename}"'},
         )
+
+    # -- 3b. 脚本开发资源 → 海豚资源中心回填 ----------------------------------
+    #
+    # DAG 画布（海豚原生 UI）SQL/Python/Shell 节点的「资源文件」下拉读海豚
+    # 资源中心；脚本保存时已按尽力而为语义同步（resources 路由 script_syncer），
+    # 此端点供 admin 幂等回填存量脚本与漏同步项。
+
+    @router.post("/api/v1/rebuild/orchestration/script-resources/sync")
+    def sync_script_resources(
+        payload: ScriptSyncPayload | None = None,
+        token: str = Header(default=""),
+        authorization: str = Header(default=""),
+    ):
+        claims = principal(token, authorization)
+        if claims is None:
+            return unauthorized()
+        if claims.get("role") != Role.ADMIN.value:
+            return _error(403, "ORCH_SCRIPT_SYNC_FORBIDDEN", "only admin can backfill script resources")
+        project_id = payload.projectId if payload is not None else None
+        results = sync_project_scripts(make_ds_client(), session_factory, project_id=project_id)
+        failures = [item for item in results if "error" in item]
+        return _ok({
+            "synced": len(results) - len(failures),
+            "failed": len(failures),
+            "items": results,
+        })
 
     # -- 3c. 监控中心（§10.11） ----------------------------------------------
     #

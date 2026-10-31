@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { sanitizeEmbeddedBranding } from '../rebuild/embeddedBranding'
+import { hideEmbeddedMcpPromoCard, sanitizeEmbeddedBranding } from '../rebuild/embeddedBranding'
 
 /**
  * 契约测试：客户观摩模式下嵌入页不得暴露底层产品名。
@@ -33,6 +33,52 @@ describe('embeddedBranding 禁词收口', () => {
     document.body.innerHTML = '<span>普通业务文案</span>'
     const dispose = sanitizeEmbeddedBranding(document)
     expect(document.body.textContent).toBe('普通业务文案')
+    dispose()
+  })
+})
+
+describe('嵌入页 MCP 推广卡隐藏', () => {
+  function mountWelcomeCard(): HTMLElement {
+    document.body.innerHTML = `
+      <div class="min-w-0 overflow-hidden rounded-lg border bg-muted/10 px-5 py-4" data-card>
+        <div class="flex min-w-0 items-start gap-3">
+          <div class="min-w-0 flex-1">
+            <div class="text-sm font-medium">AI 编程助手集成</div>
+            <p class="mt-1 text-xs leading-5 text-muted-foreground">通过 MCP 使用数据库连接。</p>
+            <div class="mt-2 flex flex-wrap items-center gap-2">
+              <code class="max-w-full break-all rounded bg-muted px-2 py-0.5 text-[11px] select-all">npx @dbx-app/mcp-server</code>
+              <a href="#" class="text-xs text-primary hover:underline">了解更多</a>
+            </div>
+          </div>
+        </div>
+      </div>`
+    return document.querySelector('[data-card]')!
+  }
+
+  it('以 npx 命令为锚点隐藏欢迎页 MCP 推广卡容器', () => {
+    const card = mountWelcomeCard()
+    const dispose = hideEmbeddedMcpPromoCard(document)
+    expect(card.style.display).toBe('none')
+    dispose()
+  })
+
+  it('后续渲染的同款卡片也会被隐藏', async () => {
+    mountWelcomeCard()
+    const dispose = hideEmbeddedMcpPromoCard(document)
+    const late = document.createElement('div')
+    late.className = 'rounded-lg border px-5 py-4'
+    late.innerHTML = '<code>npx @dbx-app/mcp-server</code>'
+    document.body.appendChild(late)
+    await new Promise((resolve) => setTimeout(resolve, 0))
+    expect(late.style.display).toBe('none')
+    dispose()
+  })
+
+  it('普通 code 元素不受影响', () => {
+    document.body.innerHTML = '<div class="rounded-lg border p-4"><code>select 1</code></div>'
+    const box = document.querySelector('div')!
+    const dispose = hideEmbeddedMcpPromoCard(document)
+    expect(box.style.display).toBe('')
     dispose()
   })
 })

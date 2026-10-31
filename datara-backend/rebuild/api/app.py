@@ -146,6 +146,7 @@ from rebuild.orchestration.alarm import (
     dispatch_alarm_scan,
 )
 from rebuild.orchestration.ds_client import DsClient
+from rebuild.orchestration.script_sync import sync_script_resource
 from rebuild.llm import LlmCredentialCipher, build_llm_router
 from rebuild.llm.migrations import apply_llm_migrations
 from rebuild.llm.resolver import DefaultLlmResolver
@@ -1746,9 +1747,15 @@ def create_app(
         build_dependency_router(session_factory, token_service, active_tokens, project_permission_error),
         prefix="/api/v1/rebuild/dependency",
     )
+    def default_script_syncer(project_id: int, name: str, content: bytes) -> None:
+        """脚本保存后的海豚资源中心同步（尽力而为，见 script_sync 模块说明）。"""
+        client = ds_client_factory() if ds_client_factory is not None else DsClient()
+        sync_script_resource(client, project_id=project_id, name=name, content=content)
+
     app.include_router(
         build_resources_router(
             session_factory, token_service, active_tokens, project_permission_error,
+            script_syncer=default_script_syncer,
             **({"ssh_trial_runner": ssh_trial_runner} if ssh_trial_runner is not None else {}),
         ),
         prefix="/api/v1/rebuild/resources",

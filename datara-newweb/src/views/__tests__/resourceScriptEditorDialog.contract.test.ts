@@ -13,9 +13,14 @@ const { listConnections, listDatabases, listSchemas, listObjects, listColumns, e
   listConnections: vi.fn(), listDatabases: vi.fn(), listSchemas: vi.fn(),
   listObjects: vi.fn(), listColumns: vi.fn(), executeSql: vi.fn(),
 }))
+const { trialCandidates } = vi.hoisted(() => ({ trialCandidates: vi.fn() }))
 
 vi.mock('../../services/rebuild/dbxApi', () => ({
   createDbxContract: () => ({ listConnections, listDatabases, listSchemas, listObjects, listColumns, executeSql }),
+}))
+
+vi.mock('../../services/rebuild/sshNodeApi', () => ({
+  sshNodeApi: { trialCandidates },
 }))
 
 vi.mock('../../services/rebuild/resourceApi', async (original) => {
@@ -81,6 +86,7 @@ describe('资源脚本编辑弹窗', () => {
     listObjects.mockResolvedValue([{ name: 'orders', object_type: 'TABLE' }])
     listColumns.mockResolvedValue([])
     executeSql.mockResolvedValue({ columns: ['value'], rows: [[1]] })
+    trialCandidates.mockResolvedValue([])
   })
 
   it('标题下环境状态栏展示运行位置、语言环境与输出位置', async () => {
@@ -178,6 +184,32 @@ describe('资源脚本编辑弹窗', () => {
     const wrapper = mountDialog()
     await flushPromises()
     expect(wrapper.find('[data-editor-error]').text()).toContain('资源版本不存在')
+    wrapper.unmount()
+  })
+
+  it('Python 脚本无可用试运行节点时提示到部署运维开启允许试运行', async () => {
+    const wrapper = mount(ResourceScriptEditorDialog, {
+      props: { projectId: 7, resource: { resourceId: 9, name: 'job.py', kind: 'python', sizeBytes: 24, latestVersion: 1 } },
+    })
+    await flushPromises()
+    expect(trialCandidates).toHaveBeenCalled()
+    expect(wrapper.find('[data-trial-ssh-node]').findAll('option')).toHaveLength(1)
+    expect(wrapper.find('[data-trial-empty-hint]').text()).toContain('允许脚本试运行')
+    wrapper.unmount()
+  })
+
+  it('Python 脚本自动选中首个可试运行节点且不展示空态提示', async () => {
+    trialCandidates.mockResolvedValue([
+      { id: 5, name: 'node-1.9', host: '192.168.1.9', port: 22, sshUser: 'root', tags: [], enabled: true, allowTrial: true, hasCredential: true, ownerId: 3, heartbeatState: null, lastSeen: null, createTime: null },
+    ])
+    const wrapper = mount(ResourceScriptEditorDialog, {
+      props: { projectId: 7, resource: { resourceId: 9, name: 'job.py', kind: 'python', sizeBytes: 24, latestVersion: 1 } },
+    })
+    await flushPromises()
+    const select = wrapper.find('[data-trial-ssh-node]')
+    expect(select.findAll('option')).toHaveLength(2)
+    expect((select.element as HTMLSelectElement).value).toBe('5')
+    expect(wrapper.find('[data-trial-empty-hint]').exists()).toBe(false)
     wrapper.unmount()
   })
 })

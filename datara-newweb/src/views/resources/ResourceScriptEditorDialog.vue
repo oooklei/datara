@@ -483,6 +483,7 @@ onMounted(() => {
             <option v-for="node in trialNodes" :key="node.id" :value="node.id">{{ node.name }} ({{ node.host }})</option>
           </select>
         </label>
+        <span v-if="!isSql && trialNodes.length === 0" class="ds-error" data-trial-empty-hint>暂无可试运行节点：请在「部署运维 → SSH 试运行节点」编辑节点并勾选「允许脚本试运行」。</span>
         <span v-if="!isSql" class="ds-select">试运行节点不决定正式运行的 Worker 分组。</span>
         <span v-if="datasourceError" class="ds-error" data-datasource-error>{{ datasourceError }}</span>
         <span v-if="statusText" class="status" role="status" data-editor-status>{{ statusText }}</span>

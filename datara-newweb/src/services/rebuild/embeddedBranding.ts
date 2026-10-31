@@ -41,3 +41,32 @@ export function sanitizeEmbeddedBranding(document: Document): () => void {
   return () => observer.disconnect()
 }
 
+/**
+ * 观摩态隐藏 dbx 欢迎页「AI 编程助手集成」推广卡：dbx 属外链独立产品，
+ * 嵌入态不重复推广其 MCP 外部集成入口。以卡片内唯一的 `npx @dbx-app/mcp-server`
+ * 命令文本为锚点（不随界面语言与 Tailwind 类名变化），隐藏其 `rounded-lg border` 卡片容器。
+ */
+export function hideEmbeddedMcpPromoCard(document: Document): () => void {
+  const hide = (root: Document | Element): void => {
+    for (const code of root.querySelectorAll('code')) {
+      if (!(code.textContent ?? '').includes('@dbx-app/mcp-server')) continue
+      let el: HTMLElement | null = code.parentElement
+      while (el !== null && el !== document.body) {
+        if (el.classList.contains('rounded-lg') && el.classList.contains('border')) {
+          el.style.display = 'none'
+          break
+        }
+        el = el.parentElement
+      }
+    }
+  }
+  hide(document.documentElement)
+  const observer = new MutationObserver((records) => {
+    records.forEach((record) => record.addedNodes.forEach((node) => {
+      if (node.nodeType === Node.ELEMENT_NODE) hide(node as Element)
+    }))
+  })
+  observer.observe(document.documentElement, { childList: true, subtree: true })
+  return () => observer.disconnect()
+}
+
