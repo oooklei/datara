@@ -100,6 +100,10 @@ class ServiceRegistry:
             except Exception:  # noqa: BLE001 退出清理尽力而为
                 pass
             self._zk = None
+        thread = self._thread
+        if thread is not None and thread.ident is not None and thread is not threading.current_thread():
+            # start(timeout=6) must be interrupted/joined before app logging is torn down.
+            thread.join(timeout=7)
 
     # ---- 内部实现 ----
 
@@ -109,8 +113,13 @@ class ServiceRegistry:
             zk: Optional[KazooClient] = None
             try:
                 zk = KazooClient(hosts=get_settings().zk_hosts, timeout=6)
-                zk.start(timeout=6)
                 self._zk = zk
+                # Publish the client before blocking so stop() can close it during connect.
+                if self._stop.is_set():
+                    zk.stop()
+                    zk.close()
+                    break
+                zk.start(timeout=6)
                 self._register(zk)
                 logger.info("ZK 注册成功: %s", self._node_path)
                 # 会话保活 + 兜底续期（10s 周期；会话由 ZK 自动维持，此处防节点意外丢失）
@@ -120,7 +129,8 @@ class ServiceRegistry:
                     if zk.connected:
                         self._renew(zk)
             except Exception as exc:  # noqa: BLE001 降级运行：不崩溃
-                logger.warning("ZK 不可用，降级运行（10s 后自动重连）: %s", exc)
+                if not self._stop.is_set():
+                    logger.warning("ZK 不可用，降级运行（10s 后自动重连）: %s", exc)
             finally:
                 if self._zk is zk and zk is not None:
                     self._zk = None
