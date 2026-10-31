@@ -20,7 +20,7 @@ intent: >-
 constraints:
   - 不破坏 dbx 现有能力（连接/查询/schema/MQ/ER/血缘/AI/history）
   - 已发版组件不可变（componentRef 固定），组件声明纯 JSON 禁函数
-  - 前端验证入口固定 http://192.168.1.9:18091/（禁 8090）
+  - 前端验证入口固定 http://192.168.1.9:8090/（唯一前端入口，禁 18091；2026-11-01 用户裁定）
   - 编排独立（codex 已在做），不依赖 dbx 插件机制
   - 多用户/多项目隔离必须保留（dbx 为单用户，无法替代）
   - 治理链条砍掉：不做变更前策略校验/影响预览/二次确认/台账，
@@ -32,7 +32,7 @@ success_criteria:
   - 操作日志由 dbx /history 承载，可追溯每次执行的 SQL
   - 定期影响分析作为编排定时 DAG 读 dbx /history 执行，不阻塞主流程
   - 多用户/多项目隔离可用
-  - 前端 http://192.168.1.9:18091/ 全功能可用
+  - 前端 http://192.168.1.9:8090/ 全功能可用
 risk_level: high   # 架构级替换：执行路径、密码托管、身份模型同时变动
 ```
 
@@ -44,7 +44,7 @@ verify_steps:
   - check: datara 后端 grep 无 pymysql/psycopg/SQLAlchemy create_engine 直连调用（白名单：薄身份服务自身库）
   - check: 同步/即席查询结果与迁移前抽样比对一致
   - check: dbx /history 对每次经 dbx 的执行有留痕
-  - confirm: 前端 http://192.168.1.9:18091/ 全功能可用；多用户/多项目隔离生效
+  - confirm: 前端 http://192.168.1.9:8090/ 全功能可用；多用户/多项目隔离生效
 ```
 
 ## Governance Contract
