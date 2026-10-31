@@ -697,6 +697,7 @@ def build_orchestration_router(
             return _ok(payload)
 
     @router.get("/api/v1/rebuild/embed/session")
+    @router.post("/api/v1/rebuild/embed/session")
     def unified_embed_session(
         project_id: int = Query(...),
         token: str = Header(default=""),
