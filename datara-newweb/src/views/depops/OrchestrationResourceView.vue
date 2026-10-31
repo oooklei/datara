@@ -176,8 +176,7 @@ const props = defineProps<{ kind: DeployOpsResourceKind }>()
 
 /**
  * 本组件承载部署运维的全局/项目环境类资源；任务组属项目级资源
- * （§10.10 R8），由 ProjectTaskGroupView 承载；资源文件为全局文件树
- * （§10.10 R9），由 OrchestrationResourceFileView 承载 —— 三者均不进入本组件。
+ * （§10.10 R8），由 ProjectTaskGroupView 承载 —— 二者均不进入本组件。
  */
 type DeployOpsResourceKind = Exclude<OrchestrationResourceKind, 'task_group' | 'resource_file'>
 

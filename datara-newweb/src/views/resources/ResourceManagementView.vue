@@ -128,7 +128,7 @@ let listRequest = 0
 /** 上传类型跟随列表类型筛选；「全部类型」时默认 SQL。 */
 const uploadKind = computed<ResourceKind>(() => (kind.value === '' ? 'sql' : kind.value))
 const acceptFor = (value: ResourceKind) => ({ sql: '.sql', python: '.py', shell: '.sh' })[value]
-/** 上传入口：.op-btn 触发隐藏 file input（对齐 OrchestrationResourceFileView 模式）。 */
+/** 上传入口：.op-btn 触发隐藏 file input。 */
 const fileInput = ref<HTMLInputElement | null>(null)
 function pickFile(): void {
   fileInput.value?.click()
