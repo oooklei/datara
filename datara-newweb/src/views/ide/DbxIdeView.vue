@@ -25,18 +25,18 @@
           {{ loading ? '加载中…' : '刷新变量' }}
         </button>
         <button type="button" data-variable-manage :disabled="projectId === null" @click="drawerOpen = true">变量管理</button>
-        <button v-if="ideReady" type="button" data-ide-reload @click="retryIde">重载 DBX</button>
+      <button v-if="ideReady" type="button" data-ide-reload @click="retryIde">重载数据开发工具</button>
       </div>
     </header>
 
     <p v-if="projectId === null" class="dbx-ide-muted" data-no-project>请先选择项目</p>
     <template v-else>
       <div v-if="sessionError || frameError" class="dbx-ide-retry" role="alert" data-ide-session-error>
-        <span>DBX 加载失败：{{ sessionError || frameError }}</span>
+        <span>数据开发工具加载失败：{{ sessionError || frameError }}</span>
         <button type="button" data-ide-retry @click="retryIde">重试加载</button>
       </div>
       <p v-else-if="!ideReady" class="dbx-ide-muted" data-ide-session-loading>正在准备 IDE 会话…</p>
-      <p v-else-if="!frameLoaded" class="dbx-ide-muted" data-ide-frame-loading>正在加载 DBX 页面…</p>
+      <p v-else-if="!frameLoaded" class="dbx-ide-muted" data-ide-frame-loading>正在加载数据开发页面…</p>
       <p v-if="error" class="dbx-ide-error" role="alert" data-variable-error>变量加载失败：{{ error }}</p>
       <section class="dbx-ide-body">
         <iframe
@@ -47,7 +47,7 @@
           class="dbx-ide-frame"
           data-dbx-frame
           src="/ide/"
-          title="dbx 数据开发 IDE"
+          title="数据开发 IDE"
           @load="onFrameLoad"
           @error="onFrameError"
         ></iframe>
@@ -98,6 +98,7 @@ import {
 import VariableManagerDrawer from '../variables/VariableManagerDrawer.vue'
 import { authAccount } from '../../services/rebuild/authApi'
 import { issueDbxIdeSession } from '../../services/rebuild/dbxIdeApi'
+import { sanitizeEmbeddedBranding } from '../../services/rebuild/embeddedBranding'
 import { useEnvironmentContext } from '../../services/rebuild/environmentContext'
 
 const props = defineProps<{ projectId?: number }>()
@@ -120,6 +121,7 @@ let variableGeneration = 0
 let projectGeneration = 0
 let sessionQueue: Promise<void> = Promise.resolve()
 let frameTimeout: ReturnType<typeof setTimeout> | undefined
+let disposeEmbeddedBranding: (() => void) | undefined
 
 function clearFrameTimeout(): void {
   if (frameTimeout !== undefined) clearTimeout(frameTimeout)
@@ -134,6 +136,13 @@ function onFrameError(): void {
 function onFrameLoad(): void {
   clearFrameTimeout()
   frameLoaded.value = true
+  disposeEmbeddedBranding?.()
+  try {
+    const document = frameEl.value?.contentDocument
+    disposeEmbeddedBranding = document ? sanitizeEmbeddedBranding(document) : undefined
+  } catch {
+    disposeEmbeddedBranding = undefined
+  }
 }
 
 const routeProjectId = computed<number | null>(() => {
@@ -274,6 +283,8 @@ onUnmounted(() => {
   ++variableGeneration
   ++projectGeneration
   window.removeEventListener('message', onBridgeReady)
+  disposeEmbeddedBranding?.()
+  disposeEmbeddedBranding = undefined
 })
 </script>
 

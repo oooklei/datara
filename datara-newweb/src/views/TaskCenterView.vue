@@ -41,6 +41,7 @@ import {
 } from '../services/rebuild/orchestrationApi'
 import { dsEmbedUrl, listenDsReady, sendSessionToDs } from '../services/rebuild/dsBridge'
 import { useEnvironmentContext } from '../services/rebuild/environmentContext'
+import { sanitizeEmbeddedBranding } from '../services/rebuild/embeddedBranding'
 
 /* ---- 视角页签（蓝本照抄：TabKey / tabs 数组 / ?tab= 同步 / 默认 edit） ---- */
 type TabKey = 'edit' | 'runs' | 'schedules' | 'alarm'
@@ -248,6 +249,7 @@ const editMode = ref<'list' | 'canvas'>('list')
 const activeDefinition = ref<Pick<WorkflowDefinitionRow, 'code' | 'name'> | null>(null)
 
 const dsFrameEl = ref<HTMLIFrameElement | null>(null)
+let disposeEmbeddedBranding: (() => void) | undefined
 /** iframe src：必须等编排会话返回 projectCode 后再设（后端 ensure_project 生成）。 */
 const dsFrameUrl = ref<string | null>(null)
 const dsEmptyReason = ref('正在获取编排会话…')
@@ -369,6 +371,16 @@ function onDsOpenVariables(event: MessageEvent) {
   variablesVisible.value = true
 }
 
+function onDsFrameLoad(): void {
+  disposeEmbeddedBranding?.()
+  try {
+    const document = dsFrameEl.value?.contentDocument
+    disposeEmbeddedBranding = document ? sanitizeEmbeddedBranding(document) : undefined
+  } catch {
+    disposeEmbeddedBranding = undefined
+  }
+}
+
 onMounted(() => {
   window.addEventListener('message', onDsOpenVariables)
   void loadWorkflowDefinitions()
@@ -383,6 +395,11 @@ watch(projectId, () => {
 // 离开编辑视角时卸下 iframe：避免监听挂在已销毁的 frame 上
 watch(tab, (value) => {
   if (value !== 'edit') resetCanvas()
+})
+
+onUnmounted(() => {
+  disposeEmbeddedBranding?.()
+  disposeEmbeddedBranding = undefined
 })
 
 onUnmounted(() => {
@@ -431,7 +448,7 @@ onUnmounted(() => {
           <header class="tc-wf-head">
             <div>
               <h3 class="tc-wf-title">工作流定义</h3>
-              <p class="tc-wf-sub">列表与筛选由 datara 承载；打开后进入海豚 DAG 画布</p>
+              <p class="tc-wf-sub">列表与筛选由平台承载；打开后进入任务编排画布</p>
             </div>
             <div class="tc-wf-filters">
               <input v-model.trim="wfKeyword" data-wf-keyword placeholder="按名称搜索" @keyup.enter="onSearchWorkflows" />
@@ -480,6 +497,7 @@ onUnmounted(() => {
             class="tc-embed-frame"
             data-tc-ds-frame
             allow="clipboard-write"
+            @load="onDsFrameLoad"
           />
           <div v-else class="tc-empty" data-tc-empty>
             <p class="tc-slot-title">编排画布未就绪</p>
@@ -499,7 +517,7 @@ onUnmounted(() => {
               :class="{ on: runsView === 'dolphin' }"
               data-tc-runs-view-dolphin
               @click="runsView = 'dolphin'"
-            >海豚实例监控</button>
+            >工作流实例监控</button>
             <button
               class="tc-runs-switch-btn"
               :class="{ on: runsView === 'native' }"

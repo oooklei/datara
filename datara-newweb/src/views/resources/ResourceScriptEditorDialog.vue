@@ -460,8 +460,8 @@ onMounted(() => {
         <button type="button" class="mini-btn" data-run-script :disabled="busy || !content.trim()" @click="runCheck(true)">试运行</button>
         <button type="button" class="mini-btn primary" data-save-version :disabled="busy || !content.trim()" @click="save">保存新版本</button>
         <button type="button" class="mini-btn" data-reset-content :disabled="busy || !dirty" @click="resetContent">还原</button>
-        <label v-if="isSql" class="ds-select" title="选择 dbx 连接，SQL 试运行也使用此连接">
-          dbx 连接
+        <label v-if="isSql" class="ds-select" title="选择数据连接，SQL 试运行也使用此连接">
+          数据连接
           <select v-model="selectedDatasourceId" data-completion-datasource @change="onDatasourceChange()">
             <option :value="null">不启用</option>
             <option v-for="ds in datasources" :key="ds.id" :value="ds.id">{{ ds.name }}</option>
@@ -493,9 +493,9 @@ onMounted(() => {
       <div class="body">
         <div v-if="loading" class="loading" role="status">正在读取 v{{ resource.latestVersion }} 内容…</div>
         <div v-show="!loading" class="editor-workspace">
-          <aside v-if="isSql" class="object-tree" aria-label="dbx 对象树" data-dbx-object-tree>
+          <aside v-if="isSql" class="object-tree" aria-label="数据对象树" data-dbx-object-tree>
             <strong>{{ selectedDatabase ?? '请选择数据库' }}<template v-if="activeSchema"> / {{ activeSchema }}</template></strong>
-            <p v-if="!selectedDatasource">选择 dbx 连接后浏览对象</p>
+            <p v-if="!selectedDatasource">选择数据连接后浏览对象</p>
             <p v-else-if="!relations.length">当前 schema 暂无对象</p>
             <ul v-else><li v-for="relation in relations" :key="relation.name" :title="relation.object_type ?? relation.type ?? ''">{{ relation.name }}</li></ul>
           </aside>

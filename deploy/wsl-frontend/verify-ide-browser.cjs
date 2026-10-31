@@ -3,7 +3,7 @@ const { chromium, request } = require('../../datara-newweb/node_modules/@playwri
 async function main() {
   const token = process.env.DATARA_IDE_VERIFY_TOKEN
   if (!token) throw new Error('short-lived token unavailable')
-  const base = process.env.DATARA_IDE_VERIFY_BASE || 'http://192.168.1.9:18091'
+  const base = process.env.DATARA_IDE_VERIFY_BASE || 'http://192.168.1.9:8090'
   const api = await request.newContext({ baseURL: base, extraHTTPHeaders: { token } })
   const projectsResponse = await api.get('/api/v1/rebuild/projects')
   if (!projectsResponse.ok()) throw new Error(`project list ${projectsResponse.status()}`)

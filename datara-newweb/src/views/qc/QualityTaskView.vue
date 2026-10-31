@@ -2,7 +2,7 @@
   <main class="pg" aria-label="检查任务">
     <header class="pg-head">
       <h1 class="sec-head">检查任务</h1>
-      <p class="pg-desc">质量规则执行记录。DBX 运行显示实查行数；未绑定连接的结构校验不产生行级结论。</p>
+      <p class="pg-desc">质量规则执行记录。数据检查运行显示实查行数；未绑定连接的结构校验不产生行级结论。</p>
     </header>
 
     <div class="toolbar">

@@ -4,7 +4,7 @@
 # Token/key stay in process env only; never written to disk or URL.
 set -uo pipefail
 DIR=/lei/datara/deployments/F-DS-EMBED-20261030/e2e
-BASE=http://192.168.1.9:18091
+BASE=http://192.168.1.9:8090
 SCRIPT="${1:?script name required}"
 shift || true
 

@@ -3,7 +3,7 @@
 # token/key 仅进程环境传递，不落盘、不入 URL、不入静态产物。
 set -euo pipefail
 DIR=/lei/datara/deployments/F-DS-EMBED-20261030/e2e
-BASE=http://192.168.1.9:18091
+BASE=http://192.168.1.9:8090
 PROJECT_ID="${1:-33}"
 NEW_NODE_NAME="${2:-}"
 

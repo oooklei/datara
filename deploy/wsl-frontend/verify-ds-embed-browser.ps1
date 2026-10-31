@@ -1,7 +1,7 @@
 # §10.7 海豚集成验收入口：取短时验证 token 后调用 verify-ds-embed-browser.cjs。
-# 入口固定 192.168.1.9:18091（AGENTS.md 规定）；token 仅内存传递，不落盘、不入 URL。
+# 客户观摩入口固定 192.168.1.9:8090；token 仅内存传递，不落盘、不入 URL。
 $ErrorActionPreference = 'Stop'
-$base = 'http://192.168.1.9:18091'
+$base = 'http://192.168.1.9:8090'
 $projectId = if ($args.Count -ge 1) { $args[0] } else { 33 }
 
 $remoteKey = (& ssh -o BatchMode=yes -o ConnectTimeout=5 192.168.1.9 'docker exec datara-rebuild-api printenv REBUILD_VALIDATION_KEY').Trim()

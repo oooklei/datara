@@ -2,7 +2,7 @@
   <main class="pg" aria-label="异常数据核查">
     <header class="pg-head">
       <h1 class="sec-head">异常数据核查</h1>
-      <p class="pg-desc">按质量运行记录筛选未成功项；通过引擎标识区分 DBX 检查与结构校验。</p>
+      <p class="pg-desc">按质量运行记录筛选未成功项；通过执行引擎标识区分数据检查与结构校验。</p>
     </header>
 
     <div class="toolbar">

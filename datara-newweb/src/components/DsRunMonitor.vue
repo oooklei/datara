@@ -284,8 +284,8 @@ onBeforeUnmount(closeLogs)
   <section class="ds-run" data-ds-run-monitor>
     <header class="ds-run-head">
       <div>
-        <h3 class="ds-run-title">海豚工作流实例</h3>
-        <p class="ds-run-sub">datara 承载实例列表与详情（§10.5 B）；数据源为海豚运行底座</p>
+        <h3 class="ds-run-title">工作流运行实例</h3>
+        <p class="ds-run-sub">平台承载实例列表与详情；数据源为任务运行底座</p>
       </div>
       <button class="ds-btn" :disabled="loading" data-ds-run-refresh @click="load">刷新</button>
     </header>
@@ -307,7 +307,7 @@ onBeforeUnmount(closeLogs)
 
     <p v-if="loading" class="ds-hint" data-ds-run-loading>加载中…</p>
     <p v-else-if="error" class="ds-hint" data-ds-run-error>{{ error }} <button class="ds-btn" @click="load">重试</button></p>
-    <p v-else-if="!rows.length" class="ds-hint" data-ds-run-empty>暂无海豚工作流实例（可先在画布点「启动」或「试运行」生成）</p>
+    <p v-else-if="!rows.length" class="ds-hint" data-ds-run-empty>暂无工作流运行实例（可先在画布点「启动」或「试运行」生成）</p>
 
     <table v-else class="ds-table" data-ds-run-table>
       <thead>

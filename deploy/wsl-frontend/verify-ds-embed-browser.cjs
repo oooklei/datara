@@ -1,7 +1,7 @@
 /**
  * §10.7 海豚集成验收（D1/D4/A1/A3/A4 + 宿主握手）浏览器验证。
  *
- * 前提：192.168.1.9 隔离栈已起（18091 前端 + /dolphinscheduler 同源反代 + DS 内部令牌通道）。
+ * 前提：192.168.1.9 隔离栈已起（8090 前端 + /dolphinscheduler 同源反代 + 任务运行底座通道）。
  * token 由调用方经环境变量 DATARA_DS_VERIFY_TOKEN 注入（短时验证 token，仅内存，不落盘）。
  *
  * 用法：
@@ -17,7 +17,7 @@ try {
 }
 const { chromium, request } = playwright
 
-const BASE = process.argv[2] || 'http://192.168.1.9:18091'
+const BASE = process.argv[2] || 'http://192.168.1.9:8090'
 const PROJECT_ID = Number(process.argv[3] || 33)
 
 async function main() {

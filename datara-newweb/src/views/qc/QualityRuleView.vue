@@ -2,7 +2,7 @@
   <main class="pg" aria-label="质量规则">
     <header class="pg-head">
       <h1 class="sec-head">质量规则</h1>
-      <p class="pg-desc">按数据资产维护质量规则；绑定可见的 DBX 连接后执行行级检查。</p>
+      <p class="pg-desc">按数据资产维护质量规则；绑定可见的数据连接后执行行级检查。</p>
     </header>
 
     <div class="toolbar">

@@ -21,7 +21,7 @@ try {
 }
 const { chromium, request } = playwright
 
-const BASE = process.argv[2] || 'http://192.168.1.9:18091'
+const BASE = process.argv[2] || 'http://192.168.1.9:8090'
 const PROJECT_ID = Number(process.argv[3] || 33)
 // 画布节点标题经 utils.truncateText(name, 18) 截断，故名称必须 <= 18 字符
 let NEW_NODE_NAME = process.argv[4] || `a1_shell_${String(Date.now()).slice(-6)}`

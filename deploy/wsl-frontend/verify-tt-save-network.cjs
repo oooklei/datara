@@ -3,7 +3,7 @@ let playwright
 try { playwright = require('../../datara-newweb/node_modules/@playwright/test') } catch { playwright = require('playwright-core') }
 const { chromium, request } = playwright
 
-const BASE = process.argv[2] || 'http://192.168.1.9:18091'
+const BASE = process.argv[2] || 'http://192.168.1.9:8090'
 const PROJECT_ID = Number(process.argv[3] || 33)
 
 async function main() {

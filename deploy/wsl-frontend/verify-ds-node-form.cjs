@@ -16,7 +16,7 @@
  *   隐藏项仍渲染进 DOM（`components/form/index.tsx` span 缺省 24，0 会退化为极窄列），
  *   故以宽度阈值区分可见/隐藏。
  *
- * 前提：192.168.1.9 隔离栈已起（18091 前端 + /dolphinscheduler 同源反代）。
+ * 前提：192.168.1.9 隔离栈已起（8090 前端 + /dolphinscheduler 同源反代）。
  * token 由 DATARA_DS_VERIFY_TOKEN 注入（短时验证 token，仅内存，不落盘）。
  *
  * 用法：node deploy/wsl-frontend/verify-ds-node-form.cjs [baseUrl] [projectId]
@@ -30,7 +30,7 @@ try {
 }
 const { chromium, request } = playwright
 
-const BASE = process.argv[2] || 'http://192.168.1.9:18091'
+const BASE = process.argv[2] || 'http://192.168.1.9:8090'
 const PROJECT_ID = Number(process.argv[3] || 33)
 
 // A3：含数据源字段的节点（共享字段 Fields.useDatasource 覆盖 + SQOOP 独立字段）

@@ -26,7 +26,7 @@
     <section class="panel" data-analysis-section>
       <div class="panel-hd">
         <span class="sec-head">任务运行监控</span>
-        <span class="pill info">海豚首页 /home</span>
+        <span class="pill info">任务运行总览</span>
         <span class="spacer"></span>
         <span class="hint">只读统计；时间区间留空时默认当天 0 点至当前</span>
       </div>
@@ -283,9 +283,9 @@
     <section class="panel" data-db-section>
       <div class="panel-hd">
         <span class="sec-head">数据库连接池</span>
-        <span class="pill info">海豚元数据库</span>
+        <span class="pill info">任务元数据库</span>
         <span class="spacer"></span>
-        <span class="hint">展示海豚元数据库（t_ds_ 所在库）连接池状态，不含 dbx 业务库</span>
+        <span class="hint">展示任务元数据库（t_ds_ 所在库）连接池状态，不含业务数据连接</span>
       </div>
       <div v-if="dbError" class="err-box" role="alert" data-db-error>
         <span>{{ dbError }}</span>
@@ -316,7 +316,7 @@
         <span class="sec-head">告警服务</span>
         <span class="pill info">可选</span>
         <span class="spacer"></span>
-        <span class="hint">仅展示海豚 alert server 存活状态；告警规则与发送走 datara</span>
+        <span class="hint">仅展示告警服务存活状态；告警规则与发送由平台统一承载</span>
       </div>
       <div v-if="serverErrors.ALERT_SERVER" class="err-box" role="alert" data-alert-error>
         <span>{{ serverErrors.ALERT_SERVER }}</span>
