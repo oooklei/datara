@@ -48,6 +48,18 @@ export function getOrchestrationSession(projectId: number): Promise<Orchestratio
   return getJson<OrchestrationSession>('/rebuild/orchestration/session', { projectId })
 }
 
+export interface UnifiedEmbedSession {
+  projectId: number
+  expiresIn: number
+  dbx: { sessionPath: string; basePath: string }
+  orchestration: { sessionPath: string; basePath: string }
+}
+
+/** Shared project gate used before either embedded application is mounted. */
+export function getUnifiedEmbedSession(projectId: number): Promise<UnifiedEmbedSession> {
+  return getJson<UnifiedEmbedSession>('/rebuild/embed/session', { projectId })
+}
+
 /* ---------- §10.5 B 工作流定义列表（datara 自建页，不进 iframe） ---------- */
 
 /**

@@ -35,6 +35,7 @@ import { authAccount } from '../services/rebuild/authApi'
 import { roleHasPermission } from '../services/rebuild/rolePermissions'
 import {
   getOrchestrationSession,
+  getUnifiedEmbedSession,
   orchestrationApi,
   type OrchestrationSession,
   type WorkflowDefinitionRow,
@@ -273,6 +274,9 @@ async function ensureDsSession(): Promise<OrchestrationSession | null> {
   if (dsSession.value) return dsSession.value
   dsEmptyReason.value = '正在获取编排会话…'
   try {
+    // Migration seam is advisory during rollout; retain the existing
+    // orchestration session fallback until every deployed frontend has it.
+    try { await getUnifiedEmbedSession(pid) } catch { /* legacy session below */ }
     const session = await getOrchestrationSession(pid)
     if (!session.projectCode) {
       dsEmptyReason.value = '编排会话缺少海豚项目编码'
