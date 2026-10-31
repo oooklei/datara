@@ -59,6 +59,7 @@ _BOOTSTRAP_READS = frozenset({
     "layout/table-vgroups", "ssh/prompts", "ssh/prompts/pending",
     # DBX calls this during startup to persist the UI font preview state.
     "database-backups",
+    "connection/liveness-events",
 })
 _CONFIG_DOMAINS = ("ai/", "tunnel-profiles/", "prompt-templates")
 _CONNECTION_OWNER_WRITES = frozenset({
@@ -766,7 +767,9 @@ def build_dbx_ide_router(
                     require_visible(query, visible_ids)
                 except DbxIdeForbidden:
                     return denied()
-            elif request.method != "GET" or path not in _BOOTSTRAP_READS:
+            elif request.method != "GET" and path != "database-backups":
+                return denied(message="unscoped dbx operation blocked")
+            elif request.method == "GET" and path not in _BOOTSTRAP_READS:
                 return denied(message="unscoped dbx operation blocked")
             return dbx._request(request.method, path, params=query, payload=payload if body_bytes else None)
         except TunnelCatalogLockUnavailable:
