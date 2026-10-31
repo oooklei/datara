@@ -1,0 +1,5 @@
+1.dbx页面修改:
+a.访问时加载中dbx显示文字要改成:datara;
+b.datara的变量如何可以在dbx的编辑器里得到引用,如输入$符号则带出datara变量,需要修改dbx的配置;
+c.dbx的AI配置里增加longcat的配置;
+e.dbx右上角图标栏,去掉:检查更新图标,github图标按钮,设置图标按钮.

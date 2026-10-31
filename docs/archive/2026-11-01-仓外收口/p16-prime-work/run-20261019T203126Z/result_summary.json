@@ -1,0 +1,36 @@
+{
+  "stamp": "20261019T203126Z",
+  "steps": {
+    "generate_sql": {
+      "question": "订单表里总共有多少个订单？金额合计是多少？",
+      "sql": "SELECT COUNT(*) AS order_count, COALESCE(SUM(amount), 0) AS total_amount FROM orders",
+      "seconds": 5.1
+    },
+    "run_sql": {
+      "tool_call_id": "tc-6fb57eb8-e3d6-4ea3-a4d7-669040a9dfe3",
+      "status": "SUCCESS",
+      "result": {
+        "execution_id": "poc-exec-47d313a580e3",
+        "row_count": 1,
+        "truncated": false,
+        "duration_ms": 0
+      },
+      "seconds": 0.12
+    },
+    "interpretation": {
+      "text": "查询结果显示：\n\n- **订单总数：5 个**\n- **金额合计：7561.5**（金额单位以数据库中 amount 字段的定义为准）\n\n也就是说，orders 表中共有 5 笔订单，这些订单的金额加总为 7561.5。",
+      "seconds": 1.0
+    },
+    "isolation": {
+      "cross_project_denied": true,
+      "viewer_denied": true,
+      "write_rejected_before_port": true,
+      "vanna_run_sql_refused": true
+    },
+    "audit": {
+      "records": 4,
+      "persisted": 4
+    },
+    "adapter_audit_events": 8
+  }
+}
