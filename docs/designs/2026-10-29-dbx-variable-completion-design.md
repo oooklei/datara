@@ -43,8 +43,8 @@ verify_steps:
   - check: dbx 执行编排层（tryExecute/tryExplain/prepareMultiExecute）对命中已注册 datara 外部变量的 `${...}` 优先替换、不弹参数对话框
   - check: dbx 原生占位符语法开关行为未变（`?`/`:name`/`#{name}`/`@set`/sqlserver `@name`）
   - check: 1.9 原地 `pnpm build` 成功，dist 产物含补丁代码（grep 关键字段）
-  - check: 部署后 18091/ide 与本地 dist 的 index.html 与 chunk 清单一致
-  - check: browser-use E2E 在 192.168.1.9:18091/p/<project>/ide 输入 `$` 弹出补全、接受后文本为 `${scope.name}`、无参数对话框
+  - check: 部署后 8090/ide 与本地 dist 的 index.html 与 chunk 清单一致
+  - check: browser-use E2E 在 192.168.1.9:8090/p/<project>/ide 输入 `$` 弹出补全、接受后文本为 `${scope.name}`、无参数对话框
   - check: E2E 敏感变量现值显示为 `***`，普通变量显示现值与类型
   - check: E2E 书写 MySQL `@@global.max_connections` 不触发 datara 变量补全、不弹参数对话框
   - check: 宿主变量下发链路（`datara:variables` → `datara:variables-ack`）在实测中确有数据到达编辑器
