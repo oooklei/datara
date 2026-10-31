@@ -77,6 +77,7 @@ def test_real_r3_revisions_are_additive_and_create_all_normalized_legacy_tables(
         "r3_0002_legacy_governance_carryforward",
         "r3_0003_metadata_metric_carry_forward",
         "r3_0004_token_digest_hardening",
+        "r3_0005_governance_project_fk_cascade",
     )
     assert expected_v1 | expected_v2 | expected_v3 <= table_names
     assert R3_GOVERNANCE_MIGRATIONS[0].checksum == v0001_governance_catalog.checksum
