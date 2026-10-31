@@ -265,6 +265,12 @@ def test_embed_session_issues_short_lived_signed_token_not_internal_secret(monke
     assert claims["p"] == "123456"
     assert claims["d"] == 1
     assert claims["u"] == payload["user"]
+    post_response = h.client().post(
+        "/api/v1/rebuild/embed/session?project_id=1",
+        headers={"token": h.token("owner")},
+    )
+    assert post_response.status_code == 200
+    assert post_response.json()["data"]["projectId"] == 1
 
 
 def test_worker_group_list_filters_by_owner_and_admin_sees_all():
