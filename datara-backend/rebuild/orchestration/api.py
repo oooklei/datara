@@ -511,9 +511,14 @@ def build_orchestration_router(
             claims = token_service.verify(raw)
         except ValueError:
             return None
-        with session_factory() as session:
-            if session.get(UserRecord, claims.get("user_id")) is None:
-                return None
+        # Validation/bootstrap principals are issued with the user_id=0 sentinel and
+        # are kept in the in-process token store instead of rebuild_user (see
+        # ActiveTokenStore), so the "account still exists" gate only applies to
+        # persisted accounts.
+        if int(claims["user_id"]) != 0:
+            with session_factory() as session:
+                if session.get(UserRecord, int(claims["user_id"])) is None:
+                    return None
         return claims
 
     def unauthorized() -> JSONResponse:
@@ -703,11 +708,12 @@ def build_orchestration_router(
         token: str = Header(default=""),
         authorization: str = Header(default=""),
     ):
-        """Return same-origin child-session entry points without exposing secrets.
+        """签发同源子会话入口（不暴露内部令牌）。
 
-        The browser receives paths only; each child service issues its own
-        HttpOnly/short-lived session. This is the migration seam for direct
-        container proxying and deliberately performs no upstream call.
+        浏览器仅拿到路径；DBX 直连所需的短时嵌入令牌以 HttpOnly cookie
+        （datara_dbx_embed，path=/ide，TTL 900s）下发，由 nginx 在同反问代理时注入
+        X-Datara-Embed-Token 头 —— 令牌不进入 JS/localStorage/URL（方案规则 1/2）。
+        本端点刻意不做任何上游调用（迁移接缝）。
         """
         claims = principal(token, authorization)
         if claims is None:
@@ -716,14 +722,30 @@ def build_orchestration_router(
             denial = project_permission_error(session, project_id, claims, Permission.VIEW_ALL)
             if denial is not None:
                 return denial
-            if session.get(ProjectRecord, project_id) is None:
+            project = session.get(ProjectRecord, project_id)
+            if project is None:
                 return _error(404, "EMBED_PROJECT_NOT_FOUND", f"project {project_id} not found")
-        return _ok({
+            try:
+                dbx_token = _issue_ds_embed_token(
+                    user=str(claims.get("username") or claims.get("sub") or ""),
+                    project_code=str(getattr(project, "code", "") or ""),
+                    project_id=project_id,
+                )
+            except ValueError:
+                # 未配置 DATARA_DS_EMBED_SECRET：降级为仅返回路径（旧 owner 网关仍可回退）
+                dbx_token = None
+        resp = JSONResponse(content=_ok({
             "projectId": project_id,
             "expiresIn": 900,
             "dbx": {"sessionPath": f"/api/v1/rebuild/dbx/projects/{project_id}/ide-session", "basePath": "/ide/"},
             "orchestration": {"sessionPath": "/api/v1/rebuild/orchestration/session", "basePath": "/dolphinscheduler/"},
-        })
+        }))
+        if dbx_token is not None:
+            resp.set_cookie(
+                "datara_dbx_embed", dbx_token,
+                max_age=900, path="/ide", httponly=True, samesite="strict", secure=False,
+            )
+        return resp
 
     # -- 2b. 工作流定义列表（§10.5 B：datara 自建页，不进 iframe） -------------
     #

@@ -7,7 +7,9 @@
 
 import json
 import base64
+import time
 from datetime import datetime, timedelta
+from http.cookies import SimpleCookie
 
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
@@ -273,6 +275,42 @@ def test_embed_session_issues_short_lived_signed_token_not_internal_secret(monke
     assert post_response.json()["data"]["projectId"] == 1
 
 
+def test_unified_embed_session_sets_dbx_embed_cookie(monkeypatch):
+    """阶段 A：DBX 直连令牌以 HttpOnly cookie 下发，令牌不进 JS/localStorage/URL。"""
+    monkeypatch.setenv("DATARA_DS_EMBED_SECRET", "s" * 32)
+    monkeypatch.setenv("DATARA_INTERNAL_TOKEN", "i" * 32)
+    h = Harness(FakeDs(), users=(("owner", Role.DEVELOPER),))
+    resp = h.client().get("/api/v1/rebuild/embed/session?project_id=1", headers={"token": h.token("owner")})
+    assert resp.status_code == 200
+    assert resp.json()["data"]["dbx"]["basePath"] == "/ide/"
+    sc = resp.headers.get("set-cookie", "")
+    assert "datara_dbx_embed=" in sc
+    cookie = SimpleCookie(sc)
+    token = cookie["datara_dbx_embed"].value
+    claims = json.loads(base64.urlsafe_b64decode(token.split(".")[0] + "=="))
+    assert claims["d"] == 1
+    # p=project_code / u=username：生产环境由 ProjectRecord 填充；测试夹具 code 可能为空，仅校验类型
+    assert isinstance(claims.get("p"), str)
+    assert isinstance(claims.get("u"), str)
+    assert claims["exp"] > int(time.time())
+    # POST 同样下发，且 cookie 为 HttpOnly、作用域 /ide
+    post = h.client().post("/api/v1/rebuild/embed/session?project_id=1", headers={"token": h.token("owner")})
+    assert post.status_code == 200
+    assert "datara_dbx_embed=" in post.headers.get("set-cookie", "")
+    assert "HttpOnly" in post.headers.get("set-cookie", "")
+    assert "Path=/ide" in post.headers.get("set-cookie", "")
+
+
+def test_unified_embed_session_degrades_without_signing_secret(monkeypatch):
+    """未配置签名密钥时降级为仅返回路径（旧 owner 网关仍可回退），不抛错。"""
+    monkeypatch.delenv("DATARA_DS_EMBED_SECRET", raising=False)
+    monkeypatch.setenv("DATARA_INTERNAL_TOKEN", "i" * 32)
+    h = Harness(FakeDs(), users=(("owner", Role.DEVELOPER),))
+    resp = h.client().get("/api/v1/rebuild/embed/session?project_id=1", headers={"token": h.token("owner")})
+    assert resp.status_code == 200
+    assert "datara_dbx_embed=" not in resp.headers.get("set-cookie", "")
+
+
 def test_worker_group_list_filters_by_owner_and_admin_sees_all():
     fake = FakeDs(
         routes={
@@ -471,6 +509,33 @@ def test_share_grants_visibility_and_only_owner_can_share():
         headers={"token": h.token("owner")},
     )
     assert bad_kind.status_code == 400
+
+
+def test_session_accepts_validation_principal_without_user_row(monkeypatch):
+    """validation token 的 user_id=0 是合成主体，无 rebuild_user 行也必须放行。"""
+    monkeypatch.setenv("DATARA_DS_EMBED_SECRET", "s" * 32)
+    h = _harness(fake=FakeDs())
+    validation = h.token_service.issue(user_id=0, username="validation-e2e-runner", role=Role.ADMIN)
+    h.tokens.add(validation)
+
+    response = h.client().get(f"{BASE}/session?project_id=1", headers={"token": validation})
+
+    assert response.status_code == 200, response.text
+    data = response.json()["data"]
+    assert data["projectId"] == 1
+    assert data["user"] == "admin"
+    assert data["token"].count(".") == 1
+
+
+def test_session_still_rejects_principal_without_user_row():
+    """真实 user_id 若已无对应账号，撤销语义不变，仍返回 401。"""
+    h = _harness(fake=FakeDs())
+    ghost = h.token_service.issue(user_id=999, username="ghost", role=Role.ADMIN)
+    h.tokens.add(ghost)
+
+    response = h.client().get(f"{BASE}/session?project_id=1", headers={"token": ghost})
+
+    assert response.status_code == 401
 
 
 def test_ds_business_error_is_passthrough():
