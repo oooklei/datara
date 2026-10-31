@@ -5,6 +5,7 @@
 - DBX 代码当前已在 `621aab97`；本票新增证据卡提交 `51daa1d4`。
 - 1.9 直连 DBX 无授权 401；Datara owner 网关 admin 200；dev 显式 share/撤销 share 可见性正确。
 - `tests/rebuild/test_dbx_gateway_api.py test_dbx_ide_proxy.py test_dbx_ide_policy.py test_dbx_connection_access.py`：36 passed。
+- 共享回验后 `datara-mysql-src` 的 owner 记录保留为 admin，dev 的 share 已删除；如需恢复“未 claim”初始状态，需由管理员在资源管理页执行明确的 owner 变更。
 
 ## 未完事项
 
