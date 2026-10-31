@@ -89,7 +89,9 @@ def seed_kafka(brokers, eps, duration):
     while _running and time.time() < deadline:
         topic, data = gen_ecommerce(time.time())
         p.send(topic, data)
-        p.poll(0)
+        # kafka-python 的 KafkaProducer 无 poll() 公开方法；按批发冲刷，兼顾背压与错误暴露
+        if n % 100 == 0:
+            p.flush(10)
         n += 1
         time.sleep(1.0 / eps)
         if n % 100 == 0:
