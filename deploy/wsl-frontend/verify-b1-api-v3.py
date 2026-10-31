@@ -2,7 +2,7 @@
 """B1 dry-run 闭环验收脚本 v3"""
 import os, sys, json, time, urllib.request, urllib.parse
 
-HOST = "http://192.168.1.9:18091"
+HOST = "http://192.168.1.9:8090"
 KEY_PATH = ".vk"
 SCOPE = "high-priority-e2e"
 PROJECT_ID = 33
