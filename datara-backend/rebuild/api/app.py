@@ -1198,7 +1198,9 @@ def create_app(
         project = session.get(ProjectRecord, project_id)
         if project is None:
             return JSONResponse(status_code=404, content={"code": 4041, "msg": "project not found", "data": None})
-        if user.get("role") == Role.ADMIN.value:
+        # Tokens issued by older deployments may carry a differently cased
+        # role claim; admin must never be blocked by project membership rows.
+        if str(user.get("role", "")).strip().lower() == Role.ADMIN.value:
             return None
         if not authorize(user.get("role", ""), permission):
             return JSONResponse(status_code=403, content={"code": 1003, "msg": "permission denied", "data": None})

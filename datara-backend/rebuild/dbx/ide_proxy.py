@@ -153,7 +153,10 @@ def build_dbx_ide_router(
         raw_token = authorization[7:] if authorization.startswith("Bearer ") else request.cookies.get("datara_session", "")
         if not raw_token:
             return denied(401, "invalid token")
-        user = authorize(raw_token, project_id, Permission.DATASOURCE_READ)
+        # Opening the IDE is a project-read operation.  Data-source visibility
+        # is filtered below per user; requiring datasource:read here made the
+        # whole iframe spin/blank for otherwise valid project members.
+        user = authorize(raw_token, project_id, Permission.PROJECT_READ)
         if isinstance(user, JSONResponse):
             return user
         response = JSONResponse(content={"code": 0, "msg": "success", "data": {"expires_in": registry.ttl_seconds}})
