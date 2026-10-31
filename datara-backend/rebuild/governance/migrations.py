@@ -17,6 +17,7 @@ from rebuild.governance.revisions import (
     v0002_legacy_governance_carryforward,
     v0003_metadata_metric_carry_forward,
     v0004_token_digest_hardening,
+    v0005_governance_project_fk_cascade,
 )
 
 
@@ -44,5 +45,10 @@ R3_GOVERNANCE_MIGRATIONS = (
         checksum=v0004_token_digest_hardening.checksum,
         upgrade=v0004_token_digest_hardening.upgrade,
         postflight=v0004_token_digest_hardening.postflight,
+    ),
+    GovernanceMigration(
+        revision=v0005_governance_project_fk_cascade.revision,
+        checksum=v0005_governance_project_fk_cascade.checksum,
+        upgrade=v0005_governance_project_fk_cascade.upgrade,
     ),
 )

@@ -57,7 +57,7 @@ class AssetRecord(GovernanceTimestampMixin, Base):
     )
 
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
-    project_id: Mapped[int] = mapped_column(ForeignKey("rebuild_project.id"), nullable=False, index=True)
+    project_id: Mapped[int] = mapped_column(ForeignKey("rebuild_project.id", ondelete="CASCADE"), nullable=False, index=True)
     source_system: Mapped[str] = mapped_column(String(64), nullable=False)
     database_name: Mapped[str] = mapped_column(String(128), nullable=False)
     schema_name: Mapped[str] = mapped_column(String(128), nullable=False, default="")
@@ -93,7 +93,7 @@ class GovernanceTagRecord(GovernanceTimestampMixin, Base):
     __table_args__ = (UniqueConstraint("project_id", "namespace", "tag_key", name="uq_gov_tag_identity"),)
 
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
-    project_id: Mapped[int] = mapped_column(ForeignKey("rebuild_project.id"), nullable=False, index=True)
+    project_id: Mapped[int] = mapped_column(ForeignKey("rebuild_project.id", ondelete="CASCADE"), nullable=False, index=True)
     namespace: Mapped[str] = mapped_column(String(64), nullable=False, default="business")
     tag_key: Mapped[str] = mapped_column(String(128), nullable=False)
     display_name: Mapped[str] = mapped_column(String(128), nullable=False)
@@ -114,7 +114,7 @@ class LineageEdgeRecord(GovernanceTimestampMixin, Base):
     __table_args__ = (UniqueConstraint("project_id", "external_id", name="uq_gov_lineage_external_id"),)
 
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
-    project_id: Mapped[int] = mapped_column(ForeignKey("rebuild_project.id"), nullable=False, index=True)
+    project_id: Mapped[int] = mapped_column(ForeignKey("rebuild_project.id", ondelete="CASCADE"), nullable=False, index=True)
     external_id: Mapped[str] = mapped_column(String(256), nullable=False)
     source_asset_id: Mapped[int] = mapped_column(ForeignKey("rebuild_governance_asset.id"), nullable=False)
     target_asset_id: Mapped[int] = mapped_column(ForeignKey("rebuild_governance_asset.id"), nullable=False)
@@ -132,7 +132,7 @@ class QualityRuleRecord(GovernanceTimestampMixin, Base):
     )
 
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
-    project_id: Mapped[int] = mapped_column(ForeignKey("rebuild_project.id"), nullable=False, index=True)
+    project_id: Mapped[int] = mapped_column(ForeignKey("rebuild_project.id", ondelete="CASCADE"), nullable=False, index=True)
     asset_id: Mapped[int] = mapped_column(ForeignKey("rebuild_governance_asset.id"), nullable=False, index=True)
     name: Mapped[str] = mapped_column(String(128), nullable=False)
     expression: Mapped[str] = mapped_column(Text, nullable=False)
@@ -156,7 +156,7 @@ class QualityRunRecord(RuntimeTimestampMixin, Base):
     )
 
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
-    project_id: Mapped[int] = mapped_column(ForeignKey("rebuild_project.id"), nullable=False, index=True)
+    project_id: Mapped[int] = mapped_column(ForeignKey("rebuild_project.id", ondelete="CASCADE"), nullable=False, index=True)
     asset_id: Mapped[int] = mapped_column(ForeignKey("rebuild_governance_asset.id"), nullable=False, index=True)
     rule_id: Mapped[int | None] = mapped_column(ForeignKey("rebuild_governance_quality_rule.id"), nullable=True)
     status: Mapped[str] = mapped_column(String(16), nullable=False)
@@ -175,7 +175,7 @@ class StandardDefinitionRecord(GovernanceTimestampMixin, Base):
     )
 
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
-    project_id: Mapped[int] = mapped_column(ForeignKey("rebuild_project.id"), nullable=False, index=True)
+    project_id: Mapped[int] = mapped_column(ForeignKey("rebuild_project.id", ondelete="CASCADE"), nullable=False, index=True)
     code: Mapped[str] = mapped_column(String(128), nullable=False)
     name: Mapped[str] = mapped_column(String(256), nullable=False)
     data_type: Mapped[str] = mapped_column(String(128), nullable=False)
@@ -192,7 +192,7 @@ class SemanticMetricRecord(GovernanceTimestampMixin, Base):
     )
 
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
-    project_id: Mapped[int] = mapped_column(ForeignKey("rebuild_project.id"), nullable=False, index=True)
+    project_id: Mapped[int] = mapped_column(ForeignKey("rebuild_project.id", ondelete="CASCADE"), nullable=False, index=True)
     code: Mapped[str] = mapped_column(String(128), nullable=False)
     name: Mapped[str] = mapped_column(String(256), nullable=False)
     formula: Mapped[str] = mapped_column(Text, nullable=False)
@@ -261,7 +261,7 @@ class AuditEventRecord(RuntimeTimestampMixin, Base):
 
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
     actor_id: Mapped[int] = mapped_column(nullable=False, index=True)
-    project_id: Mapped[int | None] = mapped_column(ForeignKey("rebuild_project.id"), nullable=True)
+    project_id: Mapped[int | None] = mapped_column(ForeignKey("rebuild_project.id", ondelete="CASCADE"), nullable=True)
     action: Mapped[str] = mapped_column(String(128), nullable=False)
     resource_type: Mapped[str] = mapped_column(String(64), nullable=False)
     resource_id: Mapped[str] = mapped_column(String(128), nullable=False)
@@ -275,7 +275,7 @@ class GovernanceDomainRecord(LegacySourceMixin, Base):
     __table_args__ = (UniqueConstraint("project_id", "name", name="uq_gov_domain_project_name"),)
 
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
-    project_id: Mapped[int | None] = mapped_column(ForeignKey("rebuild_project.id"), nullable=True, index=True)
+    project_id: Mapped[int | None] = mapped_column(ForeignKey("rebuild_project.id", ondelete="CASCADE"), nullable=True, index=True)
     name: Mapped[str] = mapped_column(String(64), nullable=False)
     description: Mapped[str] = mapped_column(String(255), nullable=False, default="")
 
@@ -285,7 +285,7 @@ class WarehouseLayerRecord(LegacySourceMixin, Base):
     __table_args__ = (UniqueConstraint("project_id", "code", name="uq_gov_warehouse_layer_code"),)
 
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
-    project_id: Mapped[int | None] = mapped_column(ForeignKey("rebuild_project.id"), nullable=True, index=True)
+    project_id: Mapped[int | None] = mapped_column(ForeignKey("rebuild_project.id", ondelete="CASCADE"), nullable=True, index=True)
     code: Mapped[str] = mapped_column(String(16), nullable=False)
     name: Mapped[str] = mapped_column(String(64), nullable=False)
     naming_rule: Mapped[str] = mapped_column(String(255), nullable=False, default="")
@@ -298,7 +298,7 @@ class ModelEngineRecord(LegacySourceMixin, Base):
     __table_args__ = (UniqueConstraint("project_id", "name", name="uq_gov_model_engine_project_name"),)
 
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
-    project_id: Mapped[int | None] = mapped_column(ForeignKey("rebuild_project.id"), nullable=True, index=True)
+    project_id: Mapped[int | None] = mapped_column(ForeignKey("rebuild_project.id", ondelete="CASCADE"), nullable=True, index=True)
     name: Mapped[str] = mapped_column(String(64), nullable=False)
     ddl_dialect: Mapped[str] = mapped_column(String(32), nullable=False)
     vendor_flag: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
@@ -312,7 +312,7 @@ class WarehouseModelRecord(LegacySourceMixin, Base):
     )
 
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
-    project_id: Mapped[int] = mapped_column(ForeignKey("rebuild_project.id"), nullable=False, index=True)
+    project_id: Mapped[int] = mapped_column(ForeignKey("rebuild_project.id", ondelete="CASCADE"), nullable=False, index=True)
     code: Mapped[str] = mapped_column(String(64), nullable=False)
     name: Mapped[str] = mapped_column(String(255), nullable=False)
     layer_id: Mapped[int | None] = mapped_column(ForeignKey("rebuild_governance_warehouse_layer.id"), nullable=True)
@@ -360,7 +360,7 @@ class WarehouseModelRelationRecord(LegacySourceMixin, Base):
     __tablename__ = "rebuild_governance_warehouse_model_relation"
 
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
-    project_id: Mapped[int] = mapped_column(ForeignKey("rebuild_project.id"), nullable=False, index=True)
+    project_id: Mapped[int] = mapped_column(ForeignKey("rebuild_project.id", ondelete="CASCADE"), nullable=False, index=True)
     source_model_id: Mapped[int] = mapped_column(
         ForeignKey("rebuild_governance_warehouse_model.id", ondelete="RESTRICT"), nullable=False
     )
@@ -438,7 +438,7 @@ class LegacyTagReferenceRecord(LegacySourceMixin, Base):
     tag_id: Mapped[int] = mapped_column(
         ForeignKey("rebuild_governance_tag.id", ondelete="RESTRICT"), nullable=False, index=True
     )
-    project_id: Mapped[int] = mapped_column(ForeignKey("rebuild_project.id"), nullable=False, index=True)
+    project_id: Mapped[int] = mapped_column(ForeignKey("rebuild_project.id", ondelete="CASCADE"), nullable=False, index=True)
     legacy_tag_definition_id: Mapped[int | None] = mapped_column(
         ForeignKey("rebuild_governance_legacy_tag_definition.id", ondelete="RESTRICT"), nullable=True
     )
@@ -461,7 +461,7 @@ class AssetTagUnresolvedRecord(LegacySourceMixin, Base):
     )
 
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
-    project_id: Mapped[int] = mapped_column(ForeignKey("rebuild_project.id"), nullable=False, index=True)
+    project_id: Mapped[int] = mapped_column(ForeignKey("rebuild_project.id", ondelete="CASCADE"), nullable=False, index=True)
     tag_id: Mapped[int] = mapped_column(
         ForeignKey("rebuild_governance_tag.id", ondelete="RESTRICT"), nullable=False, index=True
     )
@@ -554,7 +554,7 @@ class QualityTaskRecord(LegacySourceMixin, Base):
     __tablename__ = "rebuild_governance_quality_task"
 
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
-    project_id: Mapped[int] = mapped_column(ForeignKey("rebuild_project.id"), nullable=False, index=True)
+    project_id: Mapped[int] = mapped_column(ForeignKey("rebuild_project.id", ondelete="CASCADE"), nullable=False, index=True)
     name: Mapped[str] = mapped_column(String(128), nullable=False)
     cron_expression: Mapped[str] = mapped_column(String(64), nullable=False, default="0 0 * * * *")
     enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
@@ -569,7 +569,7 @@ class QualityRuleDefinitionRecord(LegacySourceMixin, Base):
     __tablename__ = "rebuild_governance_quality_rule_definition"
 
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
-    project_id: Mapped[int] = mapped_column(ForeignKey("rebuild_project.id"), nullable=False, index=True)
+    project_id: Mapped[int] = mapped_column(ForeignKey("rebuild_project.id", ondelete="CASCADE"), nullable=False, index=True)
     quality_rule_id: Mapped[int | None] = mapped_column(
         ForeignKey("rebuild_governance_quality_rule.id", ondelete="RESTRICT"), nullable=True, unique=True
     )
@@ -622,7 +622,7 @@ class QualityExceptionRecord(LegacySourceMixin, Base):
     __tablename__ = "rebuild_governance_quality_exception"
 
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
-    project_id: Mapped[int] = mapped_column(ForeignKey("rebuild_project.id"), nullable=False, index=True)
+    project_id: Mapped[int] = mapped_column(ForeignKey("rebuild_project.id", ondelete="CASCADE"), nullable=False, index=True)
     run_details_id: Mapped[int | None] = mapped_column(
         ForeignKey("rebuild_governance_quality_run_legacy_details.id", ondelete="RESTRICT"), nullable=True
     )
@@ -643,7 +643,7 @@ class QualityReportRecord(LegacySourceMixin, Base):
     __tablename__ = "rebuild_governance_quality_report"
 
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
-    project_id: Mapped[int] = mapped_column(ForeignKey("rebuild_project.id"), nullable=False, index=True)
+    project_id: Mapped[int] = mapped_column(ForeignKey("rebuild_project.id", ondelete="CASCADE"), nullable=False, index=True)
     title: Mapped[str] = mapped_column(String(128), nullable=False)
     scope: Mapped[str] = mapped_column(String(128), nullable=False, default="")
     period: Mapped[str] = mapped_column(String(64), nullable=False, default="")
@@ -655,7 +655,7 @@ class QualityAlarmPolicyRecord(LegacySourceMixin, Base):
     __tablename__ = "rebuild_governance_quality_alarm_policy"
 
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
-    project_id: Mapped[int] = mapped_column(ForeignKey("rebuild_project.id"), nullable=False, index=True)
+    project_id: Mapped[int] = mapped_column(ForeignKey("rebuild_project.id", ondelete="CASCADE"), nullable=False, index=True)
     name: Mapped[str] = mapped_column(String(128), nullable=False)
     scope: Mapped[str] = mapped_column(String(128), nullable=False, default="")
     metric: Mapped[str] = mapped_column(String(32), nullable=False, default="score")
@@ -670,7 +670,7 @@ class StandardElementRecord(LegacySourceMixin, Base):
     __table_args__ = (UniqueConstraint("project_id", "code", name="uq_gov_standard_element_project_code"),)
 
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
-    project_id: Mapped[int] = mapped_column(ForeignKey("rebuild_project.id"), nullable=False, index=True)
+    project_id: Mapped[int] = mapped_column(ForeignKey("rebuild_project.id", ondelete="CASCADE"), nullable=False, index=True)
     code: Mapped[str] = mapped_column(String(64), nullable=False)
     chinese_name: Mapped[str] = mapped_column(String(128), nullable=False)
     english_name: Mapped[str] = mapped_column(String(128), nullable=False)
@@ -687,7 +687,7 @@ class StandardCodeSetRecord(LegacySourceMixin, Base):
     __table_args__ = (UniqueConstraint("project_id", "code", name="uq_gov_standard_codeset_project_code"),)
 
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
-    project_id: Mapped[int] = mapped_column(ForeignKey("rebuild_project.id"), nullable=False, index=True)
+    project_id: Mapped[int] = mapped_column(ForeignKey("rebuild_project.id", ondelete="CASCADE"), nullable=False, index=True)
     code: Mapped[str] = mapped_column(String(64), nullable=False)
     name: Mapped[str] = mapped_column(String(128), nullable=False)
     remark: Mapped[str] = mapped_column(String(255), nullable=False, default="")
@@ -713,7 +713,7 @@ class StandardNamingRuleRecord(LegacySourceMixin, Base):
     __tablename__ = "rebuild_governance_standard_naming_rule"
 
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
-    project_id: Mapped[int] = mapped_column(ForeignKey("rebuild_project.id"), nullable=False, index=True)
+    project_id: Mapped[int] = mapped_column(ForeignKey("rebuild_project.id", ondelete="CASCADE"), nullable=False, index=True)
     name: Mapped[str] = mapped_column(String(128), nullable=False)
     rule_type: Mapped[str] = mapped_column(String(16), nullable=False)
     pattern: Mapped[str] = mapped_column(String(255), nullable=False)
@@ -725,7 +725,7 @@ class StandardMappingRecord(LegacySourceMixin, Base):
     __tablename__ = "rebuild_governance_standard_mapping"
 
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
-    project_id: Mapped[int] = mapped_column(ForeignKey("rebuild_project.id"), nullable=False, index=True)
+    project_id: Mapped[int] = mapped_column(ForeignKey("rebuild_project.id", ondelete="CASCADE"), nullable=False, index=True)
     name: Mapped[str] = mapped_column(String(128), nullable=False)
     target: Mapped[str] = mapped_column(String(255), nullable=False)
     element_id: Mapped[int | None] = mapped_column(
@@ -742,7 +742,7 @@ class StandardApprovalRecord(LegacySourceMixin, Base):
     __tablename__ = "rebuild_governance_standard_approval"
 
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
-    project_id: Mapped[int] = mapped_column(ForeignKey("rebuild_project.id"), nullable=False, index=True)
+    project_id: Mapped[int] = mapped_column(ForeignKey("rebuild_project.id", ondelete="CASCADE"), nullable=False, index=True)
     standard_id: Mapped[int | None] = mapped_column(
         ForeignKey("rebuild_governance_standard.id", ondelete="RESTRICT"), nullable=True
     )
@@ -758,7 +758,7 @@ class StandardCheckReportRecord(LegacySourceMixin, Base):
     __tablename__ = "rebuild_governance_standard_check_report"
 
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
-    project_id: Mapped[int] = mapped_column(ForeignKey("rebuild_project.id"), nullable=False, index=True)
+    project_id: Mapped[int] = mapped_column(ForeignKey("rebuild_project.id", ondelete="CASCADE"), nullable=False, index=True)
     scope: Mapped[str] = mapped_column(String(16), nullable=False)
     summary_json: Mapped[str] = mapped_column(Text, nullable=False, default="{}")
     issues_json: Mapped[str] = mapped_column(Text, nullable=False, default="[]")
