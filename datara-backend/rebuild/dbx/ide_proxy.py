@@ -208,6 +208,12 @@ def build_dbx_ide_router(
 
         dbx = client_factory()
         try:
+            # The embedded UI posts this optional browser-font preview payload
+            # during startup. It is local presentation state, not a Datara
+            # backup operation; DBX gateway mode intentionally does not expose
+            # its backup/restore API. A successful no-op keeps startup healthy.
+            if path == "database-backups" and request.method == "POST":
+                return {}
             if admin:
                 visible_ids = {str(row.get("id")) for row in dbx.list_connections()}
             if path == "connection/list" and request.method == "GET":
