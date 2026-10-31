@@ -66,7 +66,7 @@
        return
      }
      if (resourcesLoading.value) return
-@@ -60,11 +74,96 @@
+@@ -60,11 +74,97 @@
        ? await dataraOptions<IResource[]>('resources')
        : await queryResourceList({ type: 'FILE', fullName: '' })
      utils.removeUselessChildren(res)
@@ -116,7 +116,8 @@
 +
 +  const loadResourceContent = async (fullName: string): Promise<string> => {
 +    if (dataraEmbed()) {
-+      return await dataraText('resources/download', { fullName })
++      // 编排网关下载代理的查询键为 ``full_name``（FastAPI 原生参数名，无 camelCase 别名）
++      return await dataraText('resources/download', { full_name: fullName })
 +    }
 +    const res = await viewResource({
 +      skipLineNum: 0,
