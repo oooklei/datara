@@ -1,5 +1,7 @@
+import threading
 from io import BytesIO
 
+import pytest
 from fastapi import FastAPI
 from fastapi.responses import JSONResponse
 from fastapi.testclient import TestClient
@@ -9,6 +11,7 @@ from sqlalchemy.pool import StaticPool
 
 from rebuild.common.db import Base
 from rebuild.dbx.access import DbxConnectionAccess, DbxObjectAccess
+from rebuild.dbx.connection_catalog import ConnectionCatalogCache
 from rebuild.dbx.ide_proxy import build_dbx_ide_router, is_supported_ide_route
 from rebuild.dbx.models import DbxAiUserStateRecord, DbxConnectionOwnershipRecord, DbxConnectionShareRecord, DbxObjectOwnershipRecord, DbxObjectShareRecord
 from rebuild.identity.models import UserRecord
@@ -632,6 +635,96 @@ def test_ide_proxy_save_claims_new_connection_and_preserves_password():
     rows = client.get(f"{proxy}/connection/list", headers=headers).json()
     assert {item["id"] for item in rows} == {"mine", "new"}
     assert "new-secret" not in str(rows)
+
+
+def test_connection_catalog_cache_dedupes_repeated_reads():
+    calls = []
+
+    def load():
+        calls.append(1)
+        return [{"id": "mine"}]
+
+    cache = ConnectionCatalogCache(ttl_seconds=60)
+    assert cache.get(load) == [{"id": "mine"}]
+    assert cache.get(load) == [{"id": "mine"}]
+    assert len(calls) == 1
+
+
+def test_connection_catalog_cache_invalidate_forces_reload():
+    state = {"rows": [{"id": "mine"}]}
+    cache = ConnectionCatalogCache(ttl_seconds=60)
+    assert cache.get(lambda: state["rows"]) == [{"id": "mine"}]
+    state["rows"] = [{"id": "mine"}, {"id": "new"}]
+    cache.invalidate()
+    assert cache.get(lambda: state["rows"]) == [{"id": "mine"}, {"id": "new"}]
+
+
+def test_connection_catalog_cache_does_not_cache_a_failed_load():
+    cache = ConnectionCatalogCache(ttl_seconds=60)
+
+    def down():
+        raise RuntimeError("dbx unreachable")
+
+    with pytest.raises(RuntimeError):
+        cache.get(down)
+    # The failure must not poison the cache; the next read retries upstream.
+    assert cache.get(lambda: [{"id": "mine"}]) == [{"id": "mine"}]
+
+
+def test_connection_catalog_cache_single_flight_reuses_in_flight_load():
+    started = threading.Event()
+    release = threading.Event()
+    calls = []
+
+    def load():
+        calls.append(1)
+        started.set()
+        assert release.wait(2)
+        return [{"id": "mine"}]
+
+    cache = ConnectionCatalogCache(ttl_seconds=60)
+    results = {}
+
+    def first():
+        results["first"] = cache.get(load)
+
+    def second():
+        results["second"] = cache.get(load)
+
+    thread = threading.Thread(target=first)
+    thread.start()
+    assert started.wait(2)
+    # A second caller joins the in-flight load instead of hitting dbx again.
+    joiner = threading.Thread(target=second)
+    joiner.start()
+    release.set()
+    thread.join(2)
+    joiner.join(2)
+
+    assert results["first"] == [{"id": "mine"}]
+    assert results["second"] == [{"id": "mine"}]
+    assert len(calls) == 1
+
+
+def test_connection_catalog_cache_ignores_stale_load_after_invalidate():
+    started = threading.Event()
+    release = threading.Event()
+
+    def load():
+        started.set()
+        assert release.wait(2)
+        return [{"id": "stale"}]
+
+    cache = ConnectionCatalogCache(ttl_seconds=60)
+    thread = threading.Thread(target=lambda: cache.get(load))
+    thread.start()
+    assert started.wait(2)
+    # A write lands while the load is still in flight.
+    cache.invalidate()
+    release.set()
+    thread.join(2)
+    # The stale rows must not be republished; the next read re-fetches.
+    assert cache.get(lambda: [{"id": "fresh"}]) == [{"id": "fresh"}]
 
 
 def test_rebuild_app_registers_ide_session_and_proxy_routes():
