@@ -57,6 +57,7 @@ const kw = ref('')
 const folded = ref<Record<string, boolean>>({})
 const rows = ref<PalRow[]>([])
 const loaded = ref(false)
+const loadError = ref('')
 let specLoadSeq = 0
 let specAbort: AbortController | undefined
 
@@ -101,6 +102,7 @@ async function loadRows() {
   specAbort = new AbortController()
   rows.value = []
   loaded.value = false
+  loadError.value = ''
   try {
     const snap = await loadComponentSpecs(props.workflowType ?? 'NORMAL', specAbort.signal)
     if (seq !== specLoadSeq) return
@@ -110,10 +112,15 @@ async function loadRows() {
   } catch (e) {
     if (seq !== specLoadSeq || (e instanceof DOMException && e.name === 'AbortError')) return
     rows.value = []
+    loadError.value = '组件清单加载失败，请重试'
     console.warn('[Palette] component specs load failed:', e)
   } finally {
     if (seq === specLoadSeq) loaded.value = true
   }
+}
+
+function retryRows() {
+  void loadRows()
 }
 
 onMounted(() => {
@@ -352,6 +359,10 @@ function onLoad() {
         <input v-model="kw" placeholder="搜索组件" style="width:100%;border:1px solid var(--border-strong);border-radius:var(--radius-sm,6px);padding:6px 9px;font-size:12.5px;outline:none" />
       </div>
       <div class="pal-list">
+        <div v-if="loadError" class="pal-load-error" role="alert" data-testid="palette-load-error">
+          <span>{{ loadError }}</span>
+          <button type="button" data-testid="palette-retry" @click="retryRows">重试</button>
+        </div>
         <div v-for="g in groups" :key="g.key" class="pal-cat" :class="{ fold: folded[g.key] }">
           <div class="pal-cat-head" @click="folded[g.key] = !folded[g.key]">
             <span class="arrow">▼</span>{{ g.label }}
@@ -378,7 +389,7 @@ function onLoad() {
           </div>
         </div>
         <!-- 空态（蓝本原文「无匹配组件」；规格未加载完成前不闪空态） -->
-        <div v-if="loaded && groups.length === 0" style="padding:20px;text-align:center;color:var(--text-3);font-size:12px">无匹配组件</div>
+        <div v-if="loaded && !loadError && groups.length === 0" style="padding:20px;text-align:center;color:var(--text-3);font-size:12px">无匹配组件</div>
       </div>
     </template>
 

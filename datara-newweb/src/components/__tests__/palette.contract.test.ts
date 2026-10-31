@@ -362,13 +362,13 @@ describe('INC4-FE-3 Palette 双 Tab（组件库 / 工作流）', () => {
     expect(w.emitted('add-component')).toEqual([[{ type: 'sql' }]])
   })
 
-  it('规格加载失败：console.warn + 空态「无匹配组件」（首载 fail-closed 不阻断宿主）', async () => {
+  it('规格加载失败：console.warn + 可见错误与重试入口（首载 fail-closed 不阻断宿主）', async () => {
     const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
     specLoad.mockRejectedValue(new Error('spec endpoint unreachable'))
     const w = mountPalette()
     await flushPromises()
     expect(warnSpy).toHaveBeenCalled()
-    expect(w.find('.pal-list').text()).toContain('无匹配组件')
+    expect(w.find('[data-testid="palette-load-error"]').text()).toContain('组件清单加载失败')
     warnSpy.mockRestore()
   })
 
@@ -395,6 +395,20 @@ describe('INC4-FE-3 Palette 双 Tab（组件库 / 工作流）', () => {
     // 不 flushPromises：同步断言挂载瞬间状态
     expect(w.find('.pal-list').text()).not.toContain('无匹配组件')
     expect(w.findAll('.pal-item')).toHaveLength(0)
+  })
+
+  it('首载失败显示可见错误并支持重试，重试成功后恢复组件栏', async () => {
+    specLoad.mockRejectedValueOnce(new Error('offline')).mockResolvedValueOnce({
+      items: [item({ type: 'sql', identity: { displayName: 'SQL' } })],
+      etag: '"retry"', source: 'network',
+    })
+    const w = mountPalette()
+    await flushPromises()
+    expect(w.find('[data-testid="palette-load-error"]').text()).toContain('组件清单加载失败')
+    await w.find('[data-testid="palette-retry"]').trigger('click')
+    await flushPromises()
+    expect(w.find('[data-testid="palette-load-error"]').exists()).toBe(false)
+    expect(w.find('[data-testid="pal-item-sql"]').exists()).toBe(true)
   })
 
   it('workflowType 切换清空旧行，旧请求迟到不得覆盖新目录', async () => {

@@ -4,7 +4,7 @@
  * 锚定 BE datara-backend/rebuild/api/app.py members 四端点（L1009/L1046/L1074/L1100，冻结实证）：
  *   - URL 形态 / method / token header / 请求体（含 PATCH username 占位）
  *   - snake wire 归一（user_id/project_id → userId/projectId）
- *   - 非 2xx 默认冻结行为（ContractApiError{httpStatus}，不透业务码）
+ *   - 非 2xx 保留成员业务码，并映射中文错误消息
  */
 
 import { afterEach, describe, expect, it, vi } from 'vitest'
@@ -88,14 +88,14 @@ describe('memberApi 契约（members 四端点承接）', () => {
     expect(JSON.parse(init.body as string)).toEqual({ username: '', role: 'admin' })
   })
 
-  it('非 2xx：默认冻结行为抛 ContractApiError{httpStatus}（403 权限 / 409 重复），不透业务码', async () => {
+  it('非 2xx：403 保持 HTTP 码；成员业务码保留并映射中文消息', async () => {
     vi.stubGlobal(
       'fetch',
       vi.fn().mockResolvedValue(
         new Response(JSON.stringify({ code: 1003, msg: 'permission denied', data: null }), { status: 403 }),
       ),
     )
-    await expect(listMembers(3)).rejects.toMatchObject({ httpStatus: 403, code: 403 })
+    await expect(listMembers(3)).rejects.toMatchObject({ httpStatus: 403, code: 1003 })
 
     vi.stubGlobal(
       'fetch',
@@ -105,6 +105,17 @@ describe('memberApi 契约（members 四端点承接）', () => {
     )
     const err = await addMember(3, { username: 'bob', role: 'viewer' }).catch((e: unknown) => e)
     expect(err).toBeInstanceOf(ContractApiError)
-    expect(err).toMatchObject({ httpStatus: 409, code: 409 })
+    expect(err).toMatchObject({ httpStatus: 409, code: 4091, msg: '该用户已经是项目成员' })
+  })
+
+  it.each([
+    [4041, '项目成员不存在或用户名无效'],
+    [4042, '项目不存在'],
+  ])('成员错误码 %s 保留并显示中文释义', async (code, msg) => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({ code, msg: 'backend message', data: null }), { status: 404 }),
+    ))
+    const err = await addMember(3, { username: 'bob', role: 'viewer' }).catch((e: unknown) => e)
+    expect(err).toMatchObject({ httpStatus: 404, code, msg })
   })
 })
