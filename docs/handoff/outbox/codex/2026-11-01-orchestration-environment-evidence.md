@@ -5,6 +5,7 @@
 - `GET /api/v1/rebuild/orchestration/environments` 经 Datara 网关返回预置环境组 `default-env`（id `2`、code `188356094854656`）及 `e2e-env-2`（id `3`、code `188356866898880`）。
 - admin 与 dev 均从同一编排网关读取环境组；admin `canManage=true`，dev `canManage=false`，资源列表与 owner 语义一致。
 - `TaskCenterView.vue` 仅在项目上下文下加载环境组，并将同一选择同时下发为 `environmentGroupId`（Datara 变量/治理上下文）与 `environmentCode`（海豚画布会话），避免 dbx/海豚各自维护选择。
+- 编排治理专项回归：`python -m pytest -q tests/rebuild/test_orchestration_governance_api.py tests/rebuild/test_orchestration_alarm_api.py`：`32 passed`。
 
 ## 当前判定
 
