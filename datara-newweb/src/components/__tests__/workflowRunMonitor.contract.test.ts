@@ -75,11 +75,11 @@ describe('workflow run monitor project scope', () => {
     expect(wrapper.find('tbody').text()).toContain('2')
   })
 
-  it('filters the monitor by the required TRIAL, FORMAL and STREAM instance types', async () => {
+  it('filters the monitor by the FORMAL and STREAM instance types', async () => {
     const wrapper = mount(WorkflowRunMonitor, { props: { projectId: 7 } })
     await flushPromises()
     const filter = wrapper.get('[data-run-instance-type]')
-    expect(filter.findAll('option').map((option) => option.attributes('value'))).toEqual(['', 'TRIAL', 'FORMAL', 'STREAM'])
+    expect(filter.findAll('option').map((option) => option.attributes('value'))).toEqual(['', 'FORMAL', 'STREAM'])
     await filter.setValue('STREAM')
     await flushPromises()
     expect(listWorkflowRunStats).toHaveBeenLastCalledWith(7, { instanceType: 'STREAM' })
@@ -238,9 +238,9 @@ describe('workflow run monitor project scope', () => {
     expect(listWorkflowRunStats).toHaveBeenCalledTimes(1)
   })
 
-  it('offers rerun only for finished TRIAL or STREAM runs and posts the rerun request', async () => {
+  it('offers rerun for finished FORMAL or STREAM runs and posts the rerun request', async () => {
     listWorkflowRunStats.mockResolvedValueOnce({ items: [
-      rowOf({ id: 1, workflow_id: 3, workflow_instance_id: 9, instance_type: 'TRIAL', status: 'FAILED' }),
+      rowOf({ id: 1, workflow_id: 3, workflow_instance_id: 9, instance_type: 'FORMAL', workflow_version_id: 12, status: 'FAILED' }),
       rowOf({ id: 2, workflow_id: 4, workflow_instance_id: 10, instance_type: 'FORMAL', status: 'SUCCEEDED' }),
       rowOf({ id: 3, workflow_id: 5, workflow_instance_id: 11, instance_type: 'STREAM', status: 'RUNNING' }),
     ] })
@@ -248,12 +248,12 @@ describe('workflow run monitor project scope', () => {
     const wrapper = mount(WorkflowRunMonitor, { props: { projectId: 7 } })
     await flushPromises()
     const rerunButtons = wrapper.findAll('[data-run-rerun]')
-    // TRIAL FAILED 可重跑；FORMAL 终态不提供重跑（无 published version_id 可还原）；STREAM RUNNING 仅停止
+    // FORMAL 携已发布 version_id 可重跑；FORMAL 无 version_id 不提供入口；STREAM RUNNING 仅停止
     expect(rerunButtons).toHaveLength(1)
     expect(wrapper.findAll('[data-run-stop]')).toHaveLength(1)
     await rerunButtons[0]!.trigger('click')
     await flushPromises()
-    expect(rerunWorkflowInstance).toHaveBeenCalledWith(7, 3, 'TRIAL')
+    expect(rerunWorkflowInstance).toHaveBeenCalledWith(7, 3, 'FORMAL', 12)
     expect(messageSuccess).toHaveBeenCalledTimes(1)
   })
 

@@ -1,6 +1,6 @@
 /**
  * W1 画布校验器（T4/G07）契约测试：11 validators 逐项覆盖。
- * 口径双源：后端 rebuild/trial/validator.py（START/END 兼备、组件图连通、成环、断链）
+ * 口径来源：画布保存闸门语义（START/END 兼备、组件图连通、成环、断链）
  * + 旧前端 dag.ts validators（重复边 warn、必填 warn、end 禁出边、流子图）。
  */
 import { describe, expect, it } from 'vitest'
@@ -104,7 +104,7 @@ describe('workflowGraphValidators 11 validators', () => {
       [node('a', 'src_base_orch', { component: 'src_base_orch', srcDs: 'd' }), node('b', 'tgt_base_orch', { component: 'tgt_base_orch', tgtDs: 'd' }), node('c', 'tgt_base_orch', { component: 'tgt_base_orch', tgtDs: 'd' })],
       [edge('a', 'b')],
     )
-    // 组件图：全无连接的孤立节点按旧前端语义报 warn（后端 trial 视其为 root 放行）
+    // 组件图：全无连接的孤立节点按旧前端语义报 warn（后端视为 root 放行）
     const isolated = disconnected.filter((i) => i.code === 'ORPHAN' && i.nodeCode === 'c')
     expect(isolated).toHaveLength(1)
     expect(isolated[0].level).toBe('warn')

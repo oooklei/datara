@@ -2184,10 +2184,33 @@ def create_app(
                 # 最后 admin 保护：降级唯一 admin 前校验剩余启用 admin 数不少于 1。
                 if repo.count_enabled_admins_excluding(user_id) == 0:
                     return JSONResponse(status_code=409, content={"code": 1005, "msg": "last admin protection", "data": None})
-            updated = repo.update_role(user_id, body.role)
-            # O15-03：角色变更即撤销 token，同一 DB 事务（session 注入，不自行 commit）。
-            revoked = active_tokens.revoke_user(user_id, session=session)
-            session.commit()
+            if record.role == body.role.value:
+                # 幂等更新：不重复撤销会话，避免旧部署/并发点击造成无意义的事务冲突。
+                return {
+                    "code": 0,
+                    "msg": "success",
+                    "data": {
+                        "id": record.id,
+                        "username": record.username,
+                        "role": record.role,
+                        "role_label": ROLE_LABELS[body.role],
+                        "permission_labels": [PERMISSION_LABELS[p] for p in ROLE_PERMISSIONS[body.role]],
+                        "status": record.status,
+                        "revoked_tokens": 0,
+                    },
+                }
+            try:
+                updated = repo.update_role(user_id, body.role)
+                # O15-03：角色变更即撤销 token，同一 DB 事务（session 注入，不自行 commit）。
+                revoked = active_tokens.revoke_user(user_id, session=session)
+                session.commit()
+            except IntegrityError:
+                # 角色变更与 token 撤销必须同事务；数据库约束异常不得冒泡成 HTTP 500。
+                session.rollback()
+                return JSONResponse(
+                    status_code=409,
+                    content={"code": 1006, "msg": "角色变更冲突，请刷新用户列表后重试", "data": None},
+                )
             return {
                 "code": 0,
                 "msg": "success",
@@ -2195,11 +2218,12 @@ def create_app(
                     "id": updated.id,
                     "username": updated.username,
                     "role": updated.role,
+                    "role_label": ROLE_LABELS[body.role],
+                    "permission_labels": [PERMISSION_LABELS[p] for p in ROLE_PERMISSIONS[body.role]],
                     "status": updated.status,
                     "revoked_tokens": revoked,
                 },
             }
-
     # ---- 15.1-B 项目层权限矩阵只读查询（O15-02）----
 
     @app.get("/api/v1/rebuild/projects/{project_id}/permissions")

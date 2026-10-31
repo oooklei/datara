@@ -25,6 +25,7 @@ def _client():
         ProjectRepository(session).create(name="metrics-test", description="", owner_id=user.id)
         session.commit()
     response = client.post("/api/v1/rebuild/login", json={"username": "dev", "password": "dev-pass"})
+    client.cookies.clear()
     headers = {"token": response.json()["data"]["token"]}
     return client, app, headers
 

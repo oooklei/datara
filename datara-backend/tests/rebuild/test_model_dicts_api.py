@@ -21,6 +21,7 @@ def _client():
         session.commit()
     login = client.post("/api/v1/rebuild/login", json={"username": "admin", "password": "admin-pass"})
     assert login.status_code == 200, login.text
+    client.cookies.clear()
     return client, app, {"Authorization": f"Bearer {login.json()['data']['token']}"}
 
 

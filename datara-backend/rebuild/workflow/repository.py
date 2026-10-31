@@ -626,6 +626,7 @@ class WorkflowRepository:
         cls, row: WorkflowVersionRecord, node_count: int | None = None, edge_count: int | None = None
     ) -> dict[str, Any]:
         payload: dict[str, Any] = {
+            "id": row.id,  # workflow_version_id — FORMAL instances bind this (§4.2)
             "definition_id": row.definition_id,
             "version": row.version,
             "status": row.status,

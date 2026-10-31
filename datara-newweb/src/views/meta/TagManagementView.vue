@@ -69,7 +69,7 @@
                   <span v-else class="hint">未打标</span>
                 </td>
                 <td>
-                  <button type="button" class="op-btn primary" :disabled="loading || assigning" @click="focusAssign(a)">打标</button>
+                  <button type="button" class="op-btn" :disabled="loading || assigning" @click="focusAssign(a)">打标</button>
                   <button
                     type="button"
                     class="op-btn danger"
@@ -123,7 +123,7 @@
             </label>
             <p v-if="assignHint" class="hint" data-assign-hint>{{ assignHint }}</p>
             <div class="dlg-ft">
-              <button type="button" class="tb-new" :disabled="loading || selectedAsset === '' || tagIds === '' || assigning || creating" @click="assign">
+              <button type="button" class="op-btn" :disabled="loading || selectedAsset === '' || tagIds === '' || assigning || creating" @click="assign">
                 {{ assigning ? '挂载中…' : '挂载' }}
               </button>
             </div>

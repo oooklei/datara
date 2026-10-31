@@ -11,6 +11,8 @@ export interface PlatformUser {
   role: AuthRole
   status: UserStatus
   createdAt: string | null
+  roleLabel?: string
+  permissionLabels?: string[]
 }
 
 interface UserWire extends Omit<PlatformUser, 'createdAt'> { created_at?: string | null; createdAt?: string | null }
@@ -22,7 +24,19 @@ const normalize = (user: UserWire): PlatformUser => ({
   role: user.role,
   status: user.status,
   createdAt: user.createdAt ?? user.created_at ?? null,
+  roleLabel: (user as UserWire & { role_label?: string }).role_label,
+  permissionLabels: (user as UserWire & { permission_labels?: string[] }).permission_labels,
 })
+
+export interface RoleCatalogItem {
+  code: AuthRole
+  name: string
+  permissions: Array<{ code: string; name: string }>
+}
+
+export async function listRoleCatalog(): Promise<{ roles: RoleCatalogItem[] }> {
+  return getJson<{ roles: RoleCatalogItem[] }>('/rebuild/users/roles')
+}
 
 export async function listUsers(): Promise<{ list: PlatformUser[] }> {
   const data = await getJson<UserListWire>('/rebuild/users')

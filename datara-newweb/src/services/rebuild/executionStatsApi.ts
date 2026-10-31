@@ -3,6 +3,7 @@ import { request } from '../http'
 export interface WorkflowRunStat {
   id: number
   workflow_id: number
+  workflow_version_id?: number
   workflow_instance_id: number
   instance_type: string
   status: string
@@ -38,7 +39,7 @@ export interface WorkflowRunStatDetail extends WorkflowRunStat {
 
 export interface WorkflowRunStatPage { total: number; items: WorkflowRunStat[] }
 
-export type WorkflowInstanceType = 'TRIAL' | 'FORMAL' | 'STREAM'
+export type WorkflowInstanceType = 'FORMAL' | 'STREAM'
 
 export interface WorkflowRunStatQuery {
   workflowId?: number
@@ -71,9 +72,8 @@ export function getWorkflowRunStat(projectId: number, statId: number) {
  * 后端契约（rebuild/execution/api.py 实测）：
  *  - GET  /runs/{instance_id}            → 实例详情 + logs（后端 LIMIT 200 条）；
  *  - POST /runs/{instance_id}/cancel     → 终态 CANCELLED（带项目归属校验）；
- *  - POST /workflow-instances            → 重跑入口（TRIAL 自动草稿快照 / STREAM version=0；
- *                                          FORMAL 必须给 published version_id，run-stats 行无此
- *                                          字段不可还原 → FORMAL 重跑不提供此入口）。
+ *  - POST /workflow-instances            → 重跑入口（FORMAL 携已发布 version_id / STREAM version=0）。
+ *                                         试运行(空跑)由海豚画布 dryRun 承担，datara 不设 TRIAL 实例类型。
  * 通道形态：日志走 3s 轮询（RUNNING/PENDING 持续、终态单拉即停）；SSE 待后端端点立项后切换。
  */
 
@@ -110,11 +110,22 @@ export function cancelWorkflowRun(projectId: number, instanceId: number) {
   })
 }
 
-/** 重跑（TRIAL 自动以当前草稿快照发起 / STREAM version=0；FORMAL 不提供此入口） */
-export function rerunWorkflowInstance(projectId: number, workflowId: number, instanceType: 'TRIAL' | 'STREAM') {
+/** 重跑（FORMAL 携已发布 version_id；STREAM 不传 version 由后端置 0。试运行由海豚 dryRun 承担） */
+export function rerunWorkflowInstance(
+  projectId: number,
+  workflowId: number,
+  instanceType: WorkflowInstanceType,
+  publishVersion?: number,
+) {
   return request<{ instance_id: number; status: string }>('/rebuild/execution/workflow-instances', {
     method: 'POST',
-    json: { project_id: projectId, workflow_id: workflowId, instance_type: instanceType, trigger_type: 'RERUN' },
+    json: {
+      project_id: projectId,
+      workflow_id: workflowId,
+      instance_type: instanceType,
+      trigger_type: 'MANUAL',
+      ...(instanceType === 'FORMAL' ? { publish_version: publishVersion } : {}),
+    },
   })
 }
 

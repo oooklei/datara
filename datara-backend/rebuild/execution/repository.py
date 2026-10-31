@@ -321,9 +321,8 @@ class ExecutionRepository:
             receipt.payload_json = json.dumps(event_payload, ensure_ascii=False, sort_keys=True)
         self._session.flush()
         after = self.result_totals(workflow_instance_id)
-        if instance.instance_type != "TRIAL":
-            deltas = tuple(current - previous for current, previous in zip(after, before, strict=True))
-            self._apply_metrics_delta(instance, deltas)
+        deltas = tuple(current - previous for current, previous in zip(after, before, strict=True))
+        self._apply_metrics_delta(instance, deltas)
         # Definitions are mandatory in API/runtime flows. A conditional keeps
         # the lower-level historical repository tests (which use detached IDs)
         # backwards compatible while all real workflow reports are persisted.
@@ -351,7 +350,6 @@ class ExecutionRepository:
         return {
             "recorded": True,
             "duplicate": False,
-            "isolated": instance.instance_type == "TRIAL",
             "workflow_id": instance.workflow_id,
             "run_date": instance.created_at.date().isoformat(),
             "attempt_no": attempt_no,

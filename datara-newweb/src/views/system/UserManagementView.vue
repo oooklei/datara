@@ -2,17 +2,20 @@
 import { computed, onMounted, reactive, ref } from 'vue'
 import {
   createUser,
+  listRoleCatalog,
   listUsers,
   updateUserPassword,
   updateUserRole,
   updateUserStatus,
   USER_ROLES,
   type PlatformUser,
+  type RoleCatalogItem,
 } from '../../services/rebuild/userApi'
 import type { AuthRole } from '../../services/rebuild/authApi'
 import { ROLE_LABELS } from '../../services/rebuild/rolePermissions'
 
 const rows = ref<PlatformUser[]>([])
+const roleCatalog = ref<RoleCatalogItem[]>([])
 const filterKeyword = ref('')
 /** D13 列表搜索：前端过滤 username/role/status，不触发后端。 */
 const visibleRows = computed(() => {
@@ -33,7 +36,11 @@ const message = (cause: unknown) => cause instanceof Error ? cause.message : Str
 async function load(): Promise<void> {
   loading.value = true
   error.value = ''
-  try { rows.value = (await listUsers()).list }
+  try {
+    const [users, catalog] = await Promise.all([listUsers(), listRoleCatalog()])
+    rows.value = users.list
+    roleCatalog.value = catalog.roles
+  }
   catch (cause) { error.value = message(cause) }
   finally { loading.value = false }
 }
@@ -75,14 +82,15 @@ onMounted(load)
 
 <template>
   <div class="users" data-user-management>
+    <p class="policy-note">平台角色采用最小权限：每个用户保留一个全局有效角色；项目内成员角色单独管理。角色编码仅用于接口传输，页面同时显示中文释义。</p>
     <form class="user-create" data-user-create @submit.prevent="submit">
       <input v-model="form.username" data-new-username placeholder="用户名" autocomplete="off" />
       <input v-model="form.password" data-new-password type="password" placeholder="初始密码" autocomplete="new-password" />
       <select v-model="form.role" aria-label="新用户角色"><option v-for="role in USER_ROLES" :key="role" :value="role">{{ ROLE_LABELS[role] }}（{{ role }}）</option></select>
-      <button type="submit">创建用户</button>
+      <button type="submit" class="tb-new">创建用户</button>
     </form>
     <p v-if="feedback" role="status" class="ok">{{ feedback }}</p>
-    <div v-if="error" role="alert" class="error"><span>{{ error }}</span><button type="button" @click="load">重试</button></div>
+    <div v-if="error" role="alert" class="error"><span>{{ error }}</span><button type="button" class="op-btn" @click="load">重试</button></div>
     <p v-if="loading">用户加载中…</p>
     <template v-else-if="!error && rows.length === 0"><p class="empty">暂无平台用户</p></template>
     <template v-else>
@@ -93,10 +101,10 @@ onMounted(load)
           <tbody>
             <tr v-for="row in visibleRows" :key="row.id" :data-user-row="row.id">
               <td><b>{{ row.username }}</b><small>#{{ row.id }}</small></td>
-              <td><select :value="row.role" :data-user-role="row.id" @change="changeRole(row, $event)"><option v-for="role in USER_ROLES" :key="role" :value="role">{{ ROLE_LABELS[role] }}（{{ role }}）</option></select></td>
+              <td><select :value="row.role" :data-user-role="row.id" @change="changeRole(row, $event)"><option v-for="role in USER_ROLES" :key="role" :value="role">{{ ROLE_LABELS[role] }}（{{ role }}）</option></select><small class="role-permissions">{{ row.permissionLabels?.slice(0, 3).join('、') || roleCatalog.find((item) => item.code === row.role)?.permissions.slice(0, 3).map((item) => item.name).join('、') || '权限按角色矩阵生效' }}</small></td>
               <td><span :class="['status', row.status]">{{ row.status === 'enabled' ? '启用' : '停用' }}</span></td>
               <td>{{ row.createdAt || '—' }}</td>
-              <td class="actions"><button type="button" :data-user-status="row.id" @click="toggleStatus(row)">{{ row.status === 'enabled' ? '停用' : '启用' }}</button><button type="button" @click="resetPassword(row)">重置密码</button></td>
+              <td class="actions"><button type="button" class="mini-btn" :data-user-status="row.id" @click="toggleStatus(row)">{{ row.status === 'enabled' ? '停用' : '启用' }}</button><button type="button" class="mini-btn" @click="resetPassword(row)">重置密码</button></td>
             </tr>
             <tr v-if="visibleRows.length === 0"><td colspan="5">无匹配用户</td></tr>
           </tbody>
@@ -107,6 +115,6 @@ onMounted(load)
 </template>
 
 <style scoped>
-.users{display:grid;gap:12px}.user-create{display:grid;grid-template-columns:1fr 1fr 150px auto;gap:8px}.user-create input,.user-create select,td select{border:1px solid var(--border);border-radius:6px;background:var(--card);color:var(--text);padding:8px}.users button{border:1px solid var(--border);border-radius:6px;background:var(--card);color:var(--primary);padding:7px 10px;cursor:pointer}.user-create button{border-color:var(--primary);background:var(--primary);color:var(--on-primary,#fff)}.table-wrap{overflow:auto}table{width:100%;border-collapse:collapse}th,td{padding:9px;border-bottom:1px solid var(--border);text-align:left;font-size:12px}td:first-child{display:grid}td small{color:var(--text-3)}.actions{display:flex;gap:5px}.status{padding:2px 7px;border-radius:10px}.status.enabled,.ok{color:var(--success)}.status.disabled,.error{color:var(--danger)}.error{display:flex;justify-content:space-between}.empty{color:var(--text-3)}
+.users{display:grid;gap:12px}.policy-note{margin:0;color:var(--text-3);font-size:12px}.user-create{display:grid;grid-template-columns:1fr 1fr 150px auto;gap:8px}.user-create input,.user-create select,td select{border:1px solid var(--border);border-radius:6px;background:var(--card);color:var(--text);padding:8px}.table-wrap{overflow:auto}table{width:100%;border-collapse:collapse}th,td{padding:9px;border-bottom:1px solid var(--border);text-align:left;font-size:12px}td:first-child{display:grid}td small{color:var(--text-3)}.role-permissions{display:block;max-width:260px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.actions{display:flex;gap:5px}.status{padding:2px 7px;border-radius:10px}.status.enabled,.ok{color:var(--success)}.status.disabled,.error{color:var(--danger)}.error{display:flex;justify-content:space-between}.empty{color:var(--text-3)}
 @media(max-width:760px){.user-create{grid-template-columns:1fr 1fr}.table-wrap{max-width:100%}}
 </style>

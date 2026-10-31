@@ -409,7 +409,7 @@ async function onDelete(row: ScheduleRow): Promise<void> {
 .sd-mask {
   position: fixed;
   inset: 0;
-  background: rgba(15, 23, 42, 0.45);
+  background: var(--mask-bg);
   display: flex;
   align-items: center;
   justify-content: center;

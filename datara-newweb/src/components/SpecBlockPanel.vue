@@ -165,7 +165,7 @@ function whenText(when: SpecWhen | undefined): string {
   gap: 8px;
 }
 .spec-block {
-  border: 1px solid var(--el-border-color-lighter, #e4e7ed);
+  border: 1px solid var(--border);
   border-radius: 6px;
   padding: 6px 8px;
 }
@@ -176,11 +176,11 @@ function whenText(when: SpecWhen | undefined): string {
   margin-bottom: 4px;
 }
 .spec-block-index {
-  color: var(--el-text-color-secondary, #909399);
+  color: var(--text-3);
   font-size: 12px;
 }
 .spec-block-head small {
-  color: var(--el-text-color-secondary, #909399);
+  color: var(--text-3);
   margin-left: auto;
 }
 .spec-rows,
@@ -202,28 +202,28 @@ function whenText(when: SpecWhen | undefined): string {
 }
 .spec-row code,
 .spec-input-refs code {
-  color: var(--el-color-primary, #409eff);
-  background: var(--el-fill-color-light, #f5f7fa);
+  color: var(--primary);
+  background: var(--bg);
   border-radius: 3px;
   padding: 0 4px;
 }
 .spec-row-label {
-  color: var(--el-text-color-regular, #606266);
+  color: var(--text-2);
 }
 .spec-req {
-  color: var(--el-color-danger, #f56c6c);
+  color: var(--danger);
   font-style: normal;
   font-size: 11px;
 }
 .spec-ui {
-  color: var(--el-text-color-secondary, #909399);
+  color: var(--text-3);
 }
 .spec-empty {
-  color: var(--el-text-color-secondary, #909399);
+  color: var(--text-3);
   font-size: 12px;
   margin: 0;
 }
 .spec-input-refs span {
-  color: var(--el-text-color-secondary, #909399);
+  color: var(--text-3);
 }
 </style>

@@ -8,7 +8,7 @@
 - 唯一实施权威 = docs/designs/2026-10-29-dbx-unified-target-design.md；同日线子设计（phase-1-backend / ide-integration / variable-completion）冲突时以 unified-target 为准。
 - 与权威冲突 → 暂停候批，不自行裁决。
 - 归档区（docs/archive/、docs/increments/archive/、docs/handoff/archive/）只作考古，禁止读取、禁止从归档恢复任何约束。
-- 本机只做静态/类型/lint/契约检查；部署与 E2E 只在 192.168.1.9。
+- 本机只做静态/类型/lint/契约检查；部署与 E2E 只在本机WSL。
 
 ## 1. 最小任务包
 

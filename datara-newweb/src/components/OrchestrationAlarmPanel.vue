@@ -167,7 +167,7 @@ onMounted(() => void load())
   <section class="tc-alarm" data-tc-alarm>
     <header>
       <h3>告警规则</h3>
-      <button :disabled="loading || projectId === undefined" data-alarm-refresh @click="load">刷新</button>
+      <button class="mini-btn" :disabled="loading || projectId === undefined" data-alarm-refresh @click="load">刷新</button>
     </header>
     <p v-if="projectId === undefined">请先选择项目以配置告警</p>
     <p v-else-if="loading">加载中…</p>
@@ -198,7 +198,7 @@ onMounted(() => void load())
           </select>
         </label>
         <label class="tc-alarm-enabled"><input v-model="draft.enabled" type="checkbox" data-alarm-enabled /> 启用</label>
-        <button type="submit" :disabled="saving" data-alarm-submit>新增规则</button>
+        <button type="submit" class="tb-new" :disabled="saving" data-alarm-submit>新增规则</button>
       </form>
       <p v-else class="tc-alarm-readonly" data-alarm-readonly>当前角色仅可查看告警配置</p>
 
@@ -215,8 +215,8 @@ onMounted(() => void load())
             <td>{{ channelLabel(row.channel) }}</td>
             <td>{{ row.enabled ? '已启用' : '已停用' }}</td>
             <td v-if="canManage">
-              <button data-alarm-toggle @click="toggleEnabled(row)">{{ row.enabled ? '停用' : '启用' }}</button>
-              <button data-alarm-delete @click="remove(row)">删除</button>
+              <button class="mini-btn" data-alarm-toggle @click="toggleEnabled(row)">{{ row.enabled ? '停用' : '启用' }}</button>
+              <button class="mini-btn danger" data-alarm-delete @click="remove(row)">删除</button>
             </td>
             <td v-else>—</td>
           </tr>
@@ -255,7 +255,7 @@ h3 { margin: 0 0 12px; }
 .tc-alarm-form input[type='number'] { width: 96px; }
 .tc-alarm-readonly { font-size: 13px; color: var(--text-secondary, var(--text-2)); }
 table { width: 100%; border-collapse: collapse; }
-th, td { padding: 9px; border-bottom: 1px solid #dce3eb; text-align: left; }
+th, td { padding: 9px; border-bottom: 1px solid var(--border); text-align: left; }
 td:last-child { white-space: nowrap; }
-button { margin-right: 8px; cursor: pointer; }
+td:last-child button + button { margin-left: 6px; }
 </style>

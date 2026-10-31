@@ -320,9 +320,9 @@ onMounted(async () => {
 </template>
 
 <style scoped>
-.script-resource-editor{display:grid;gap:8px}.mode-field,.resource-fields label,.execution-fields label{display:grid;gap:3px;font-size:11px;color:var(--text-secondary,#64748b)}
+.script-resource-editor{display:grid;gap:8px}.mode-field,.resource-fields label,.execution-fields label{display:grid;gap:3px;font-size:11px;color:var(--text-2)}
 .mode-field{max-width:220px}.resource-fields{display:grid;grid-template-columns:repeat(2,minmax(180px,1fr));gap:8px;align-items:end}
-.resource-fields select,.mode-field select,.execution-fields select,.execution-fields textarea{border:1px solid var(--border-color,#cbd5e1);border-radius:4px;padding:5px 7px;background:#fff;font-size:12px}
+.resource-fields select,.mode-field select,.execution-fields select,.execution-fields textarea{border:1px solid var(--border-strong);border-radius:4px;padding:5px 7px;background:var(--card);font-size:12px}
 .execution-fields{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:8px}.execution-fields textarea{resize:vertical;font-family:ui-monospace,SFMono-Regular,Consolas,monospace}
-.upload-field{grid-column:1/2}.resource-error,.resource-status{margin:0;font-size:12px}.resource-error{color:#b91c1c}.resource-status{color:#15803d}
+.upload-field{grid-column:1/2}.resource-error,.resource-status{margin:0;font-size:12px}.resource-error{color:var(--danger)}.resource-status{color:var(--success)}
 </style>

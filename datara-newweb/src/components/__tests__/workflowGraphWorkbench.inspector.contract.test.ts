@@ -8,25 +8,7 @@ import WorkflowGraphWorkbench from '../WorkflowGraphWorkbench.vue'
 import type { DagTab } from '../../stores/dagTabs'
 
 const fixtures = vi.hoisted(() => ({
-  panelMounts: { variables: 0, trial: 0 },
-  trial: {
-    projectId: null as number | null,
-    definitionId: null as number | null,
-    snapshot: null,
-    options: { nodeCodes: [] as string[], startNode: '', dryRun: true, sqlPrecheck: true },
-    runResult: null,
-    output: null,
-    promoteResult: null,
-    running: false,
-    lastError: null,
-  },
-  trialActions: {
-    open: vi.fn(),
-    createSnapshot: vi.fn(),
-    run: vi.fn(),
-    refreshOutput: vi.fn(),
-    promote: vi.fn(),
-  },
+  panelMounts: { variables: 0 },
 }))
 
 vi.mock('../../services/rebuild/workflowApi', () => ({
@@ -57,9 +39,6 @@ vi.mock('../../services/rebuild/workflowApi', () => ({
 vi.mock('../../services/rebuild/componentSpecApi', () => ({
   loadComponentSpecs: vi.fn(async () => ({ items: [], etag: 'x', source: 'network' })),
   isDesignComponent: vi.fn(() => true),
-}))
-vi.mock('../../stores/trialRun', () => ({
-  useTrialRunStore: () => ({ ...fixtures.trial, ...fixtures.trialActions }),
 }))
 vi.mock('element-plus', () => ({
   ElMessage: { success: vi.fn(), warning: vi.fn(), error: vi.fn() },
@@ -94,13 +73,6 @@ function mountWorkbench() {
       return () => h('div', { 'data-testid': 'variables-panel-stub' })
     },
   })
-  const TrialStub = defineComponent({
-    name: 'TrialRunPanel',
-    setup() {
-      fixtures.panelMounts.trial += 1
-      return () => h('div', { 'data-testid': 'trial-panel-stub' })
-    },
-  })
   const wrapper = mount(KeepAlive, {
     attachTo: document.body,
     slots: { default: () => h(WorkflowGraphWorkbench, { tab, projectId: 7 }) },
@@ -109,7 +81,6 @@ function mountWorkbench() {
       stubs: {
         Palette: true,
         WorkflowVariablePanel: VariableStub,
-        TrialRunPanel: TrialStub,
         NodeConfigPanel: true,
         ScriptResourceEditor: true,
         SyncMappingEditor: true,
@@ -133,7 +104,7 @@ function inspectorTabs(wrapper: ReturnType<typeof mountWorkbench>) {
 
 function expectActiveTab(wrapper: ReturnType<typeof mountWorkbench>, label: string) {
   const tabs = inspectorTabs(wrapper)
-  expect(tabs).toHaveLength(4)
+  expect(tabs).toHaveLength(3)
   for (const item of tabs) {
     expect(item.attributes('aria-selected')).toBe(item.text() === label ? 'true' : 'false')
   }
@@ -143,7 +114,6 @@ beforeEach(() => {
   localStorage.clear()
   vi.clearAllMocks()
   fixtures.panelMounts.variables = 0
-  fixtures.panelMounts.trial = 0
 })
 
 afterEach(() => {
@@ -153,18 +123,18 @@ afterEach(() => {
   document.body.replaceChildren()
 })
 
-describe('WorkflowGraphWorkbench four-tab inspector contract', () => {
+describe('WorkflowGraphWorkbench three-tab inspector contract', () => {
   it('clicking each tab updates the active and aria-selected state', async () => {
     const wrapper = mountWorkbench()
     await flushPromises()
 
-    for (const label of ['属性', '变量', '依赖', '试运行']) {
+    for (const label of ['属性', '变量', '依赖']) {
       await inspectorTabs(wrapper).find((item) => item.text() === label)!.trigger('click')
       expectActiveTab(wrapper, label)
     }
 
     const panels = wrapper.findAll('[role="tabpanel"]')
-    expect(panels).toHaveLength(4)
+    expect(panels).toHaveLength(3)
     for (const panel of panels) expect(panel.attributes('tabindex')).toBe('0')
     await inspectorTabs(wrapper)[0].trigger('click')
     const propertiesPanel = panels[0].element
@@ -186,13 +156,13 @@ describe('WorkflowGraphWorkbench four-tab inspector contract', () => {
 
     await inspectorTabs(wrapper)[1].trigger('keydown', { key: 'End' })
     await nextTick()
-    expectActiveTab(wrapper, '试运行')
-    expect(document.activeElement).toBe(inspectorTabs(wrapper)[3].element)
-
-    await inspectorTabs(wrapper)[3].trigger('keydown', { key: 'ArrowLeft' })
-    await nextTick()
     expectActiveTab(wrapper, '依赖')
     expect(document.activeElement).toBe(inspectorTabs(wrapper)[2].element)
+
+    await inspectorTabs(wrapper)[2].trigger('keydown', { key: 'ArrowLeft' })
+    await nextTick()
+    expectActiveTab(wrapper, '变量')
+    expect(document.activeElement).toBe(inspectorTabs(wrapper)[1].element)
 
     await inspectorTabs(wrapper)[2].trigger('keydown', { key: 'Home' })
     await nextTick()
@@ -200,7 +170,7 @@ describe('WorkflowGraphWorkbench four-tab inspector contract', () => {
     expect(document.activeElement).toBe(inspectorTabs(wrapper)[0].element)
   })
 
-  it('toolbar variable and trial actions only activate their matching tabs', async () => {
+  it('toolbar variable action activates the variables tab and mounts the panel once', async () => {
     const wrapper = mountWorkbench()
     await flushPromises()
     await inspectorTabs(wrapper)[2].trigger('click')
@@ -208,15 +178,9 @@ describe('WorkflowGraphWorkbench four-tab inspector contract', () => {
     await wrapper.find('[data-workflow-variables]').trigger('click')
     expectActiveTab(wrapper, '变量')
     expect(fixtures.panelMounts.variables).toBe(1)
-    expect(fixtures.panelMounts.trial).toBe(0)
-
-    await wrapper.find('[data-testid="wf-trial"]').trigger('click')
-    expectActiveTab(wrapper, '试运行')
-    expect(fixtures.panelMounts.variables).toBe(1)
-    expect(fixtures.panelMounts.trial).toBe(1)
   })
 
-  it('keeps variable and trial instances mounted across tab switches', async () => {
+  it('keeps the variables instance mounted across tab switches', async () => {
     const wrapper = mountWorkbench()
     await flushPromises()
 
@@ -224,11 +188,6 @@ describe('WorkflowGraphWorkbench four-tab inspector contract', () => {
     await inspectorTabs(wrapper)[0].trigger('click')
     await inspectorTabs(wrapper)[1].trigger('click')
     expect(fixtures.panelMounts.variables).toBe(1)
-
-    await inspectorTabs(wrapper)[3].trigger('click')
-    await inspectorTabs(wrapper)[0].trigger('click')
-    await inspectorTabs(wrapper)[3].trigger('click')
-    expect(fixtures.panelMounts.trial).toBe(1)
   })
 
   it('shows an explicit dependency empty state until a dependent node is selected', async () => {

@@ -7,8 +7,8 @@
     <div class="toolbar">
       <input v-model.trim="filterKeyword" data-filter-keyword placeholder="搜索名称、前缀或状态">
       <span class="hint" data-apikey-count>Key {{ visibleKeys.length }} 条</span><span class="spacer"></span>
-      <button type="button" data-refresh :disabled="busy" @click="reload">刷新</button>
-      <button type="button" class="primary" data-create data-issue @click="openIssue">+ 签发 API-Key</button>
+      <button type="button" class="op-btn" data-refresh :disabled="busy" @click="reload">刷新</button>
+      <button type="button" class="op-btn primary" data-create data-issue @click="openIssue">+ 签发 API-Key</button>
     </div>
     <p v-if="error" class="err-box" role="alert" data-error>{{ error }}</p>
     <p v-if="busy" role="status">正在加载…</p>
@@ -18,7 +18,7 @@
       <tbody><tr v-for="key in visibleKeys" :key="key.id" :data-key-id="key.id">
         <td>{{ key.name }}</td><td><code data-key-prefix>{{ key.keyPrefix }}</code></td><td>{{ key.scopes.permissions.join(', ') || '—' }}</td>
         <td>{{ key.scopes.projectIds.join(', ') || '全局' }}</td><td><span class="pill">{{ key.status }}</span></td><td>{{ key.expiresAt || '永不过期' }}</td>
-        <td class="actions"><button type="button" data-rotate :disabled="key.status !== 'active' || busy" @click="rotate(key)">轮换</button><button type="button" class="danger" data-revoke :disabled="key.status !== 'active' || busy" @click="revoke(key)">撤销</button></td>
+        <td class="actions"><button type="button" class="mini-btn" data-rotate :disabled="key.status !== 'active' || busy" @click="rotate(key)">轮换</button><button type="button" class="mini-btn danger" data-revoke :disabled="key.status !== 'active' || busy" @click="revoke(key)">撤销</button></td>
       </tr><tr v-if="visibleKeys.length === 0"><td colspan="7">无匹配 Key</td></tr></tbody>
     </table>
 
@@ -27,7 +27,7 @@
         <h2 ref="issuedHdRef" @pointerdown="onIssuedDragStart">请立即保存 API-Key</h2><p>关闭后无法再次查看，系统和浏览器均不会持久化明文。</p>
         <code data-plain-key>{{ plainKey }}</code>
         <p v-if="copyStatus" class="hint" role="status">{{ copyStatus }}</p>
-        <footer><button type="button" data-copy-key @click="copyPlainKey">复制</button><button type="button" class="primary" data-close-key @click="closePlainKey">已保存，关闭</button></footer>
+        <footer><button type="button" class="mini-btn" data-copy-key @click="copyPlainKey">复制</button><button type="button" class="mini-btn primary" data-close-key @click="closePlainKey">已保存，关闭</button></footer>
       </section>
     </div>
 
@@ -38,7 +38,7 @@
         <label>权限（逗号分隔）<input v-model="permissionsText" required data-permissions placeholder="security:read,workflow:run"></label>
         <label>项目 ID（逗号分隔，留空表示全局）<input v-model="projectIdsText" data-projects inputmode="numeric"></label>
         <label>过期时间<input v-model="expiresText" data-expires type="datetime-local"></label>
-        <footer><button type="button" @click="editing = false">取消</button><button class="primary" data-save :disabled="busy">签发</button></footer>
+        <footer><button type="button" class="mini-btn" @click="editing = false">取消</button><button class="mini-btn primary" data-save :disabled="busy">签发</button></footer>
       </form>
     </div>
   </main>
@@ -126,7 +126,7 @@ onMounted(reload)
 </script>
 
 <style scoped>
-.pg{max-width:1180px;margin:auto;padding:28px 24px;color:var(--text)}.pg-head,.toolbar,.actions{display:flex;align-items:center;gap:10px}.pg-head{justify-content:space-between}.pg-head h1{margin:0}.pg-head p,.hint{color:var(--text-2)}.toolbar{margin:18px 0}.spacer{flex:1}.panel,table{background:var(--card);border:1px solid var(--border);border-radius:7px}.empty{padding:36px;text-align:center;color:var(--text-2)}table{width:100%;border-collapse:collapse}th,td{text-align:left;padding:10px;border-bottom:1px solid var(--border)}button,.op-btn{padding:7px 12px;border:1px solid var(--border-strong);border-radius:5px;background:var(--card);color:inherit;cursor:pointer;text-decoration:none}.primary{background:var(--primary);color:var(--card);border-color:var(--primary)}.danger{color:var(--danger)}.pill{padding:2px 7px;border-radius:999px;background:var(--border)}.err-box{padding:9px 12px;background:var(--danger-bg);color:var(--danger)}.mask{position:fixed;inset:0;background:color-mix(in srgb, var(--text) 40%, transparent);display:grid;place-items:center;z-index:30}.mask form,.issued{width:min(560px,calc(100vw - 40px));display:grid;gap:12px;background:var(--card);padding:24px;border-radius:8px}.mask label{display:grid;gap:5px}.mask input{padding:8px}.mask footer{display:flex;justify-content:flex-end;gap:8px}.issued code{display:block;padding:12px;background:var(--bg);overflow-wrap:anywhere}
+.pg{max-width:1180px;margin:auto;padding:28px 24px;color:var(--text)}.pg-head,.toolbar,.actions{display:flex;align-items:center;gap:10px}.pg-head{justify-content:space-between}.pg-head h1{margin:0}.pg-head p,.hint{color:var(--text-2)}.toolbar{margin:18px 0}.spacer{flex:1}.panel,table{background:var(--card);border:1px solid var(--border);border-radius:7px}.empty{padding:36px;text-align:center;color:var(--text-2)}table{width:100%;border-collapse:collapse}th,td{text-align:left;padding:10px;border-bottom:1px solid var(--border)}.pill{padding:2px 7px;border-radius:999px;background:var(--border)}.err-box{padding:9px 12px;background:var(--danger-bg);color:var(--danger)}.mask{position:fixed;inset:0;background:var(--mask-bg);display:grid;place-items:center;z-index:30}.mask form,.issued{width:min(560px,calc(100vw - 40px));display:grid;gap:12px;background:var(--card);padding:24px;border-radius:8px}.mask label{display:grid;gap:5px}.mask input{padding:8px}.mask footer{display:flex;justify-content:flex-end;gap:8px}.issued code{display:block;padding:12px;background:var(--bg);overflow-wrap:anywhere}
 .issued h2,.mask form h2{cursor:grab;user-select:none}
 .issued h2:active,.mask form h2:active{cursor:grabbing}
 </style>

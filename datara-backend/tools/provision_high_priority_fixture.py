@@ -118,12 +118,12 @@ def main() -> int:
             method="POST",
             body={"project_id": project_id, "from_node": source, "to_node": target},
         )
-    snapshot = call(
+    published = call(
         args.base,
-        f"/api/v1/rebuild/trial/definitions/{definition_id}/snapshot",
+        f"/api/v1/rebuild/workflows/{definition_id}/publish",
         token=token,
         method="POST",
-        body={"project_id": project_id},
+        body={"project_id": project_id, "remark": "high-priority fixture publish"},
     )
     stream = call(
         args.base,
@@ -140,9 +140,8 @@ def main() -> int:
     print(json.dumps({
         "project_id": project_id,
         "definition_id": definition_id,
-        "snapshot_id": int(snapshot["data"]["snapshot_id"]),
+        "version_id": int(published["data"]["id"]),
         "stream_job_id": int(stream["data"]["id"]),
-        "dependency_id": dependency_id,
     }, separators=(",", ":")))
     return 0
 

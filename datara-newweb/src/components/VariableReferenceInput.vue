@@ -90,11 +90,11 @@ async function check() {
 
 <style scoped>
 .variable-reference-input{display:grid;gap:6px}.input-row{display:flex;gap:6px}.input-row input,.input-row textarea{flex:1}
-.suggestions{display:grid;border:1px solid var(--border,#dbe3ef);background:var(--card,#fff);border-radius:4px;max-height:320px;overflow:auto}
-.suggestions button{text-align:left;border:0;border-bottom:1px solid var(--border,#eef2f7);background:transparent;padding:8px 10px;cursor:pointer}
+.suggestions{display:grid;border:1px solid var(--border);background:var(--card);border-radius:4px;max-height:320px;overflow:auto}
+.suggestions button{text-align:left;border:0;border-bottom:1px solid var(--border);background:transparent;padding:8px 10px;cursor:pointer}
 .suggestions button:last-child{border-bottom:0}
-.suggestions button:hover{background:var(--surface-hover,#f5f9ff)}
-.var-row{display:flex;gap:6px;align-items:baseline}.var-token{font-family:ui-monospace,monospace;color:var(--text,#1f2937)}.var-type{color:var(--text-2,#6b7280)}.var-unavailable{color:#dc2626}
-.var-hint{display:flex;gap:12px;margin-top:4px;font-size:12px;color:var(--text-2,#6b7280)}.var-desc{flex:1}.var-current code{background:var(--surface,#f3f4f6);padding:1px 4px;border-radius:3px;color:var(--text,#374151);max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;display:inline-block;vertical-align:bottom}
-.diagnostics{margin:0;padding-left:20px;color:#b45309}.error{color:#b91c1c;margin:0}
+.suggestions button:hover{background:var(--primary-light)}
+.var-row{display:flex;gap:6px;align-items:baseline}.var-token{font-family:ui-monospace,monospace;color:var(--text)}.var-type{color:var(--text-2)}.var-unavailable{color:var(--danger)}
+.var-hint{display:flex;gap:12px;margin-top:4px;font-size:12px;color:var(--text-2)}.var-desc{flex:1}.var-current code{background:var(--bg);padding:1px 4px;border-radius:3px;color:var(--text);max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;display:inline-block;vertical-align:bottom}
+.diagnostics{margin:0;padding-left:20px;color:var(--warn)}.error{color:var(--danger);margin:0}
 </style>

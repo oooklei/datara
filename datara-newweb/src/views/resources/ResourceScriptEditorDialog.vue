@@ -456,10 +456,10 @@ onMounted(() => {
       </div>
 
       <div class="toolbar">
-        <button type="button" class="wf-btn" data-check-script :disabled="busy || !content.trim()" @click="runCheck(false)">校验</button>
-        <button type="button" class="wf-btn" data-run-script :disabled="busy || !content.trim()" @click="runCheck(true)">试运行</button>
-        <button type="button" class="wf-btn primary" data-save-version :disabled="busy || !content.trim()" @click="save">保存新版本</button>
-        <button type="button" class="wf-btn" data-reset-content :disabled="busy || !dirty" @click="resetContent">还原</button>
+        <button type="button" class="mini-btn" data-check-script :disabled="busy || !content.trim()" @click="runCheck(false)">校验</button>
+        <button type="button" class="mini-btn" data-run-script :disabled="busy || !content.trim()" @click="runCheck(true)">试运行</button>
+        <button type="button" class="mini-btn primary" data-save-version :disabled="busy || !content.trim()" @click="save">保存新版本</button>
+        <button type="button" class="mini-btn" data-reset-content :disabled="busy || !dirty" @click="resetContent">还原</button>
         <label v-if="isSql" class="ds-select" title="选择 dbx 连接，SQL 试运行也使用此连接">
           dbx 连接
           <select v-model="selectedDatasourceId" data-completion-datasource @change="onDatasourceChange()">
@@ -552,7 +552,7 @@ onMounted(() => {
 
 <style scoped>
 /* 超宽档：86% 宽 + top 5vh，编辑器弹窗统一档位（对齐前端构建方案 §弹窗宽度档位纪律） */
-.mask{position:fixed;inset:0;z-index:30;display:flex;align-items:flex-start;justify-content:center;padding:5vh 24px 24px;background:color-mix(in srgb, var(--text) 40%, transparent)}
+.mask{position:fixed;inset:0;z-index:30;display:flex;align-items:flex-start;justify-content:center;padding:5vh 24px 24px;background:var(--mask-bg)}
 .script-dialog{display:flex;flex-direction:column;width:86%;max-width:1440px;height:90vh;padding:22px;background:var(--card);border-radius:10px;box-shadow:0 20px 45px color-mix(in srgb, var(--text) 20%, transparent)}
 .script-dialog>header{display:flex;align-items:flex-start;justify-content:space-between;gap:16px;margin-bottom:10px;cursor:grab;user-select:none}
 .script-dialog>header:active{cursor:grabbing}
@@ -560,7 +560,7 @@ onMounted(() => {
 .script-dialog header p{color:var(--text-2);font-size:12px}
 .env-bar{display:flex;flex-wrap:wrap;gap:6px 16px;margin-bottom:10px;padding:8px 10px;border:1px solid var(--border);border-radius:var(--radius-sm);background:color-mix(in srgb, var(--text) 3%, transparent);font-size:12px;color:var(--text-2)}
 .env-item{display:inline-flex;gap:6px;align-items:baseline;overflow-wrap:anywhere}
-.env-item em{font-style:normal;color:var(--text-3, var(--text-2));opacity:.8}
+.env-item em{font-style:normal;color:var(--text-3);opacity:.8}
 .env-item.error{color:var(--danger)}
 .toolbar{display:flex;align-items:center;gap:8px;margin-bottom:10px;flex-wrap:wrap}
 .ds-select{display:inline-flex;align-items:center;gap:6px;font-size:12px;color:var(--text-2)}
@@ -579,15 +579,15 @@ onMounted(() => {
 .result,.run{margin-top:14px}
 .result h3,.run h3{display:flex;align-items:center;gap:8px;margin:0 0 8px;font-size:13px}
 .badge{padding:1px 8px;border-radius:999px;font-size:11px;font-weight:400;border:1px solid currentColor}
-.badge.ok{color:#15803d}.badge.error{color:#b91c1c}.badge.skipped{color:#b45309}
+.badge.ok{color:var(--success)}.badge.error{color:var(--danger)}.badge.skipped{color:var(--warn)}
 .result table{width:100%;border-collapse:collapse;font-size:12px}
 .result th,.result td{padding:6px 8px;border-bottom:1px solid var(--border);text-align:left;vertical-align:top}
-.result tr.error td:first-child{color:#b91c1c}
-.result tr.warning td:first-child{color:#b45309}
+.result tr.error td:first-child{color:var(--danger)}
+.result tr.warning td:first-child{color:var(--warn)}
 .result code{overflow-wrap:anywhere}
-.result .ok{color:#15803d;font-size:12px}
+.result .ok{color:var(--success);font-size:12px}
 .run .meta{font-size:12px;color:var(--text-2)}
-.run .warn{font-size:12px;color:#b45309}
+.run .warn{font-size:12px;color:var(--warn)}
 .run pre{margin:6px 0 0;padding:10px;max-height:200px;overflow:auto;background:color-mix(in srgb, var(--text) 6%, transparent);border-radius:6px;font-size:12px;white-space:pre-wrap;overflow-wrap:anywhere}
-.run .stderr{color:#b91c1c}
+.run .stderr{color:var(--danger)}
 </style>

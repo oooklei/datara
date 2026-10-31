@@ -97,7 +97,7 @@ const dirty = computed(
 .lfp-opts{display:flex;flex-wrap:wrap;gap:5px}
 .lfp-opt{border:1px solid var(--border-strong);background:var(--card);border-radius:999px;padding:2px 9px;font-size:11.5px;color:var(--text-2);cursor:pointer}
 .lfp-opt:hover{border-color:var(--primary);color:var(--primary)}
-.lfp-opt.on{background:var(--primary);border-color:var(--primary);color:var(--card)}
+.lfp-opt.on{background:var(--primary);border-color:var(--primary);color:var(--on-primary)}
 .lfp-foot{display:flex;align-items:center;justify-content:space-between;font-size:11px;color:var(--text-3);border-top:1px dashed var(--border);padding-top:10px;margin-top:auto}
 .lfp-reset{border:none;background:none;color:var(--primary);font-size:11.5px;cursor:pointer;padding:0}
 .lfp-reset:hover{text-decoration:underline}

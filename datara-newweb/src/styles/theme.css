@@ -7,6 +7,7 @@
 :root{
   /* 主色阶 */
   --primary:#1668dc; --primary-hover:#3c86f7; --primary-light:#e8f1ff; --primary-dark:#0e4bb0; --primary-active:#0f5ec4;
+  --on-primary:#fff; /* 主色底之上的前景（恒定白；scoped 页面禁用 hex，故以令牌提供） */
   /* 中性色阶 */
   --bg:#f5f6f8; --bg-deep:#eef0f4; --card:#ffffff; --border:#e7eaf0; --border-strong:#d3d9e3;
   --text:#1f2430; --text-2:#5b6478; --text-3:#8c94a6;
@@ -18,6 +19,8 @@
   --warn:#d97706; --warn-bg:#fdf3e0;
   --info:#1668dc; --info-bg:#e8f1ff;
   --purple:#7c3aed; --cyan:#0891b2;
+  /* 遮罩（弹窗/抽屉统一蒙层真源；深色主题另给值） */
+  --mask-bg:rgba(15,23,42,.45);
   /* 阴影阶梯 */
   --shadow:0 1px 2px rgba(16,24,40,.05),0 1px 3px rgba(16,24,40,.08);
   --shadow-md:0 2px 6px rgba(16,24,40,.06),0 4px 12px rgba(16,24,40,.08);
@@ -77,6 +80,7 @@
   --sidebar:#071422; --sidebar-2:#081a2d; --sidebar-text:#b9c8dc;
   --success:#4ade80; --success-bg:#153c2a; --danger:#fb7185; --danger-bg:#48202a;
   --warn:#fbbf24; --warn-bg:#473716; --info:#60a5fa; --info-bg:#193859;
+  --mask-bg:rgba(0,0,0,.55);
   --shadow:0 1px 3px rgba(0,0,0,.35); --shadow-md:0 6px 18px rgba(0,0,0,.32); --shadow-lg:0 12px 32px rgba(0,0,0,.42);
   --el-color-primary:#5b9cff; --el-bg-color:#172131; --el-bg-color-overlay:#1b2739;
   --el-fill-color-light:#1d2a3d; --el-fill-color-lighter:#1a2637;
@@ -188,15 +192,25 @@ button,.btn,.el-button,a,.menu-item,.card,.stat{transition:all var(--dur-base) v
 .card:hover{box-shadow:var(--shadow-md)}
 .op-btn{border:1px solid var(--border-strong);background:var(--card);border-radius:var(--radius-sm);padding:4px 9px;font-size:11.5px;cursor:pointer;color:var(--text-2);transition:all var(--dur-fast) var(--ease)}
 .op-btn:hover{border-color:var(--primary);color:var(--primary);background:var(--primary-light)}
-.op-btn.primary{color:var(--primary);border-color:rgba(22,104,220,.4);font-weight:600}
+.op-btn.primary{background:var(--primary);border-color:var(--primary);color:var(--on-primary);font-weight:500}
+.op-btn.primary:hover{background:var(--primary-hover);border-color:var(--primary-hover);color:var(--on-primary);box-shadow:var(--shadow-primary)}
 .op-btn:disabled{opacity:.45;cursor:not-allowed}
-.tb-new{border:none;background:var(--primary);color:#fff;border-radius:var(--radius-sm);padding:7px 14px;font-size:12.5px;font-weight:500;cursor:pointer;transition:all var(--dur-base) var(--ease)}
+/* 行内小按钮基线（表格 actions / 弹窗 footer / 面板行内裸 button 的统一兜底，视觉对齐 .op-btn） */
+.mini-btn,.tbl .actions button{border:1px solid var(--border-strong);background:var(--card);border-radius:var(--radius-sm);padding:4px 9px;font-size:11.5px;cursor:pointer;color:var(--text-2);transition:all var(--dur-fast) var(--ease)}
+.mini-btn:hover,.tbl .actions button:hover{border-color:var(--primary);color:var(--primary);background:var(--primary-light)}
+.mini-btn:disabled,.tbl .actions button:disabled{opacity:.45;cursor:not-allowed}
+/* 主 CTA 语义：实心（对齐 .tb-new）；危险语义：danger 色。每屏唯一实心主按钮。 */
+.mini-btn.primary,.tbl .actions button.primary{background:var(--primary);border-color:var(--primary);color:var(--on-primary);font-weight:500}
+.mini-btn.primary:hover,.tbl .actions button.primary:hover{background:var(--primary-hover);border-color:var(--primary-hover);color:var(--on-primary);box-shadow:var(--shadow-primary)}
+.mini-btn.danger,.tbl .actions button.danger{color:var(--danger);border-color:rgba(229,72,77,.35)}
+.mini-btn.danger:hover,.tbl .actions button.danger:hover{border-color:var(--danger);color:var(--danger);background:var(--danger-bg)}
+.tb-new{border:none;background:var(--primary);color:var(--on-primary);border-radius:var(--radius-sm);padding:7px 14px;font-size:12.5px;font-weight:500;cursor:pointer;transition:all var(--dur-base) var(--ease)}
 .tb-new:hover{background:var(--primary-hover);box-shadow:var(--shadow-primary)}
 .tb-new:disabled{opacity:.5;cursor:not-allowed;box-shadow:none}
 .kw{border:1px solid var(--border-strong);border-radius:6px;padding:6px 10px;font-size:12.5px;outline:none;color:var(--text);font-family:inherit;box-sizing:border-box;background:var(--card)}
 .kw:focus{border-color:var(--primary)}
 /* D13 列表搜索框：各列表页统一 keyword 输入锚（data-filter-keyword），全局兜底，替代逐页 scoped 重复 */
-[data-filter-keyword]{width:min(280px,100%);border:1px solid var(--border-strong);border-radius:6px;padding:6px 10px;font-size:12.5px;outline:none;color:var(--text);font-family:inherit;box-sizing:border-box;background:#fff}
+[data-filter-keyword]{width:min(280px,100%);border:1px solid var(--border-strong);border-radius:6px;padding:6px 10px;font-size:12.5px;outline:none;color:var(--text);font-family:inherit;box-sizing:border-box;background:var(--card)}
 [data-filter-keyword]:focus{border-color:var(--primary)}
 .sec-head{display:inline-flex;align-items:center;gap:8px;font-weight:700;font-size:14px}
 .sec-head::before{content:'';width:3px;height:14px;border-radius:2px;background:linear-gradient(180deg,var(--primary),var(--purple));flex-shrink:0}
@@ -305,6 +319,7 @@ button,.btn,.el-button,a,.menu-item,.card,.stat{transition:all var(--dur-base) v
 /* 分区标题 / 删除按钮 / 标签 */
 .sec-title{font-weight:700;font-size:13px;margin:14px 0 8px;color:var(--text)}
 .op-btn.danger{color:var(--danger);border-color:rgba(229,72,77,.35)}
+.op-btn.danger:hover{border-color:var(--danger);color:var(--danger);background:var(--danger-bg)}
 .tag{display:inline-block;border-radius:4px;padding:1px 8px;font-size:11.5px;font-weight:600;margin-right:4px}
 .tag-check{display:flex;gap:8px;align-items:center;padding:6px 10px;border:1px solid var(--border);border-radius:7px;margin-bottom:7px;cursor:pointer;font-size:12.5px}
 .tag-edit{display:grid;gap:6px}
@@ -375,7 +390,7 @@ button,.btn,.el-button,a,.menu-item,.card,.stat{transition:all var(--dur-base) v
 .box-code-name{font-size:11.5px;font-weight:600}
 
 /* 弹层（原生模态，契约测试锚 form[role=dialog]） */
-.mask{position:fixed;inset:0;background:rgba(15,23,42,.45);display:flex;align-items:center;justify-content:center;z-index:900}
+.mask{position:fixed;inset:0;background:var(--mask-bg);display:flex;align-items:center;justify-content:center;z-index:900}
 .dlg{background:var(--card);border-radius:var(--radius-lg);box-shadow:var(--shadow-xl);width:560px;max-width:calc(100vw - 48px);max-height:calc(100vh - 80px);display:flex;flex-direction:column;overflow:hidden}
 .dlg-hd{padding:14px 16px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:8px;font-weight:600;font-size:14px;cursor:grab;user-select:none}
 .dlg-hd:active{cursor:grabbing}
@@ -391,7 +406,7 @@ button,.btn,.el-button,a,.menu-item,.card,.stat{transition:all var(--dur-base) v
 .f-item textarea{min-height:64px;resize:vertical}
 
 /* 抽屉 */
-.drawer-mask{position:fixed;inset:0;background:rgba(15,23,42,.35);z-index:800}
+.drawer-mask{position:fixed;inset:0;background:var(--mask-bg);z-index:800}
 .drawer{position:fixed;top:0;right:0;bottom:0;width:520px;max-width:92vw;background:var(--card);box-shadow:var(--shadow-xl);z-index:801;display:flex;flex-direction:column}
 .drawer-hd{height:52px;padding:0 16px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:8px;font-weight:600;flex-shrink:0}
 .drawer-hd .x{margin-left:auto;border:none;background:transparent;cursor:pointer;color:var(--text-3);font-size:16px}

@@ -550,7 +550,7 @@ onUnmounted(() => {
 .tc-tab.on .tc-ic{opacity:1}
 /* 右上专属操作（蓝本 .spacer/.tc-new-workflow/.tc-save-template/.tc-view 照抄） */
 .spacer{flex:1}
-.tc-new-workflow{background:var(--primary-color, var(--primary));color:var(--card);border:none;border-radius:var(--radius-sm, 6px);padding:5px 12px;font-size:12.5px;cursor:pointer}
+.tc-new-workflow{background:var(--primary-color, var(--primary));color:var(--on-primary);border:none;border-radius:var(--radius-sm, 6px);padding:5px 12px;font-size:12.5px;cursor:pointer}
 .tc-new-workflow:hover{opacity:.9}
 .tc-variable-management{border:1px solid var(--border-color, var(--border));color:var(--primary-color, var(--primary));background:var(--card);border-radius:var(--radius-sm, 6px);padding:4px 12px;font-size:12.5px;cursor:pointer}
 .tc-variable-management:hover:not(:disabled){border-color:var(--primary-color, var(--primary))}

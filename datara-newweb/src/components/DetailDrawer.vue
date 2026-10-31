@@ -56,12 +56,12 @@ function onClose(): void {
 </template>
 
 <style scoped>
-.detail-drawer-mask{position:fixed;inset:0;background:rgba(0,0,0,.35);z-index:1000}
-.detail-drawer{position:absolute;top:0;right:0;height:100%;background:var(--app-bg,#fff);box-shadow:-4px 0 16px rgba(0,0,0,.15);display:flex;flex-direction:column}
-.drawer-header{display:flex;align-items:center;justify-content:space-between;padding:12px 16px;border-bottom:1px solid #eee}
+.detail-drawer-mask{position:fixed;inset:0;background:var(--mask-bg);z-index:1000}
+.detail-drawer{position:absolute;top:0;right:0;height:100%;background:var(--app-bg);box-shadow:-4px 0 16px rgba(0,0,0,.15);display:flex;flex-direction:column}
+.drawer-header{display:flex;align-items:center;justify-content:space-between;padding:12px 16px;border-bottom:1px solid var(--border)}
 .drawer-close{border:none;background:none;font-size:18px;cursor:pointer}
 .drawer-body{flex:1;overflow:auto;padding:16px}
-.drawer-footer{padding:12px 16px;border-top:1px solid #eee}
+.drawer-footer{padding:12px 16px;border-top:1px solid var(--border)}
 .drag-handle{cursor:grab;user-select:none}
 .drag-handle:active{cursor:grabbing}
 </style>

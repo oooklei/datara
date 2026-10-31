@@ -2,9 +2,10 @@ import { flushPromises, mount } from '@vue/test-utils'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import UserManagementView from '../system/UserManagementView.vue'
 
-const api = vi.hoisted(() => ({ list: vi.fn(), create: vi.fn(), role: vi.fn(), status: vi.fn(), password: vi.fn() }))
+const api = vi.hoisted(() => ({ list: vi.fn(), catalog: vi.fn(), create: vi.fn(), role: vi.fn(), status: vi.fn(), password: vi.fn() }))
 vi.mock('../../services/rebuild/userApi', () => ({
   listUsers: api.list,
+  listRoleCatalog: api.catalog,
   createUser: api.create,
   updateUserRole: api.role,
   updateUserStatus: api.status,
@@ -15,6 +16,7 @@ vi.mock('../../services/rebuild/userApi', () => ({
 beforeEach(() => {
   Object.values(api).forEach((spy) => spy.mockReset())
   api.list.mockResolvedValue({ list: [{ id: 1, username: 'admin', role: 'admin', status: 'enabled', createdAt: null }] })
+  api.catalog.mockResolvedValue({ roles: [] })
 })
 
 describe('UserManagementView', () => {

@@ -239,7 +239,7 @@ async function save() {
 <style scoped>
 .dependency-editor { display: grid; grid-template-columns: repeat(3, minmax(130px, 1fr)); align-items: center; gap: 8px; }
 .dependency-editor strong { grid-column: 1 / -1; }
-.dependency-editor label { display: grid; gap: 4px; font-size: 12px; color: var(--text-secondary, #64748b); }
-.dependency-editor input, .dependency-editor select { min-width: 0; min-height: 30px; border: 1px solid var(--border-color, #dbe3ef); border-radius: 4px; padding: 0 8px; color: #1e293b; background: #fff; }
+.dependency-editor label { display: grid; gap: 4px; font-size: 12px; color: var(--text-2); }
+.dependency-editor input, .dependency-editor select { min-width: 0; min-height: 30px; border: 1px solid var(--border); border-radius: 4px; padding: 0 8px; color: var(--text); background: var(--card); }
 .dependency-save { justify-self: start; }
 </style>

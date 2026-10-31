@@ -1,9 +1,8 @@
 /**
- * WorkflowGraphWorkbench 契约测试（L12-02 同步工作流闭环：建→配→试运行→状态可见）。
+ * WorkflowGraphWorkbench 契约测试（L12-02 同步工作流闭环：建→配→发布→状态可见）。
  *
  * mock 策略：
  *  - workflowGraph store 用真实 pinia store（addNode/updateNode 状态转换是断言对象）；
- *  - trialRun store 用桩（mount 前设置 runResult——桩非 reactive，computed 首次求值即读取）；
  *  - @vue-flow/core 用工厂内 VueFlowStub 替换 VueFlow 导出（绕开 ResizeObserver/d3-zoom），
  *    useVueFlow().project 恒等映射（drop 坐标断言直取 clientX/Y 的 Math.round）；
  *  - KeepAlive 首挂载触发 onActivated（ensureLoaded + loadSyncSpecs 的唯一入口）。
@@ -101,36 +100,6 @@ const dsMock = vi.hoisted(() => ({
     listDatasources: vi.fn(async () => ({ items: [{ name: 'mysql-main' }, { name: 'pg-warehouse' }] })),
   })),
 }))
-const trialMock = vi.hoisted(() => {
-  const state = {
-    projectId: null as number | null,
-    definitionId: null as number | null,
-    snapshot: null,
-    /** TrialRunPanel 渲染即读 options.nodeCodes/startNode/dryRun/sqlPrecheck */
-    options: {
-      nodeCodes: [] as string[],
-      startNode: '',
-      testVariables: '',
-      dependencyMock: '',
-      dryRun: true,
-      sqlPrecheck: true,
-    },
-    runResult: null as { status: string; tasks: { nodeCode: string; status: string }[] } | null,
-    output: null,
-    promoteResult: null,
-    running: false,
-    loadSeq: 0,
-    lastError: null,
-  }
-  const actions = {
-    open: vi.fn(),
-    createSnapshot: vi.fn(),
-    run: vi.fn(),
-    refreshOutput: vi.fn(),
-    promote: vi.fn(),
-  }
-  return { state, actions }
-})
 
 vi.mock('../../services/rebuild/workflowApi', () => ({
   WF_NODE_TYPES: WF_NODE_TYPES_MOCK,
@@ -152,9 +121,6 @@ vi.mock('../../services/rebuild/workflowApi', () => ({
 
 vi.mock('../../services/rebuild/componentSpecApi', () => specMock)
 vi.mock('../../services/rebuild/datasourceApi', () => dsMock)
-vi.mock('../../stores/trialRun', () => ({
-  useTrialRunStore: () => ({ ...trialMock.state, ...trialMock.actions }),
-}))
 
 vi.mock('element-plus', () => ({
   ElMessage: { success: vi.fn(), warning: vi.fn(), error: vi.fn(), info: vi.fn() },
@@ -226,7 +192,6 @@ beforeEach(() => {
   localStorage.clear()
   vi.clearAllMocks()
   specMock.loadComponentSpecs.mockResolvedValue({ items: SPECS, etag: '"00"', source: 'network' })
-  trialMock.state.runResult = null
 })
 
 afterEach(() => {
@@ -604,17 +569,6 @@ describe('WorkflowGraphWorkbench L12-02 同步工作流契约', () => {
     expect(graph.isDirty).toBe(true)
   })
 
-  it('用例7 试运行入口：wf-trial → TrialRunPanel 挂载并 open(7, 42)', async () => {
-    const { wrapper } = makeWorkbench('sync')
-    await flushPromises()
-
-    await wrapper.find('[data-testid="wf-trial"]').trigger('click')
-    await nextTick()
-
-    expect(wrapper.findComponent({ name: 'TrialRunPanel' }).exists()).toBe(true)
-    expect(trialMock.actions.open).toHaveBeenCalledWith(7, 42)
-  })
-
   it('流工作流把当前定义绑定到实时观摩面板', async () => {
     const { wrapper } = makeWorkbench('stream')
     await flushPromises()
@@ -624,31 +578,6 @@ describe('WorkflowGraphWorkbench L12-02 同步工作流契约', () => {
     expect(panel.props('projectId')).toBe(7)
     expect(panel.props('workflowId')).toBe(42)
     expect(panel.props('workflowName')).toBe('同步工作流A')
-  })
-
-  it('用例8 状态标注：runResult.tasks → flowNodes label [STATUS] + wf-node-{status} class', async () => {
-    trialMock.state.runResult = {
-      status: 'SUCCEEDED',
-      tasks: [
-        { nodeCode: 'n1', status: 'SUCCEEDED' },
-        { nodeCode: 'n3', status: 'FAILED' },
-      ],
-    }
-    const { wrapper } = makeWorkbench('wf')
-    await flushPromises()
-
-    const nodes = wrapper.findComponent({ name: 'VueFlow' }).props('nodes') as Array<{
-      id: string
-      label: string
-      class?: string
-    }>
-    expect(nodes[0].label).toBe('n1 START [SUCCEEDED]')
-    expect(nodes[0].class).toBe('wf-node-succeeded')
-    // 无状态节点不标注
-    expect(nodes[1].label).toBe('n2 SYNC')
-    expect(nodes[1].class).toBeUndefined()
-    expect(nodes[2].label).toBe('n3 END [FAILED]')
-    expect(nodes[2].class).toBe('wf-node-failed')
   })
 
   it('用例KA1 画布快捷键 Del/Backspace：选中节点 → confirm 确认链删除；无选中不触发（§7.1.4 护栏1b）', async () => {

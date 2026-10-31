@@ -19,6 +19,7 @@ def _client():
         UserRepository(session).create(username="admin", password="admin-pass", role=Role.ADMIN)
         session.commit()
     login = client.post("/api/v1/rebuild/login", json={"username": "admin", "password": "admin-pass"})
+    client.cookies.clear()
     return client, app, {"Authorization": f"Bearer {login.json()['data']['token']}"}
 
 

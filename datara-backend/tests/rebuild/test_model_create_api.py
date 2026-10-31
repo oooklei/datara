@@ -36,6 +36,7 @@ def _client(*roles: Role):
         "/api/v1/rebuild/login", json={"username": username, "password": "pw-123456"}
     )
     token = login.json()["data"]["token"]
+    client.cookies.clear()
     return client, app, {"token": token}
 
 

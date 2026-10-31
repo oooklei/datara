@@ -6,7 +6,7 @@
  *
  * FE-08 补登（2026-10-19）：Alert 记录面板（listAlerts）落位 alarm 页签（/dag/alarm），
  * 与「调度弹窗（ScheduleDialog）+ 实例页（InstanceRunsView）」两处职责边界：
- * - 弹窗/实例页：调度配置与运行时状态（TRIAL/FORMAL/STREAM 三态）；
+ * - 弹窗/实例页：调度配置与运行时状态（FORMAL/STREAM 两态）；
  * - alarm 页签：告警记录只读列表（级别/通道/时间），不承载调度配置编辑。
  *
  * 更正（2026-10-25）：旧 RED 注释已过时——createScheduleContract() 五方法经 request()
@@ -14,9 +14,9 @@
  * 不再是活哨兵（原 L6/L109 RED 约定注释与实现体不一致已修正）。
  */
 
-/* ---------- 触发注册（MANUAL/CRON/DEPENDENCY/EVENT/TRIAL，plan I7 Step） ---------- */
+/* ---------- 触发注册（MANUAL/CRON/DEPENDENCY/EVENT，plan I7 Step） ---------- */
 
-export type TriggerKind = 'MANUAL' | 'CRON' | 'DEPENDENCY' | 'EVENT' | 'TRIAL'
+export type TriggerKind = 'MANUAL' | 'CRON' | 'DEPENDENCY' | 'EVENT'
 
 export interface TriggerRegistration {
   id: number

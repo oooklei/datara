@@ -143,16 +143,16 @@ watch(() => [props.modelValue, props.projectId, props.workflowId, props.taskId],
   <aside v-if="modelValue" ref="drawerRef" class="variable-drawer" aria-label="变量管理" data-variable-manager :style="drawerStyle">
     <header ref="headerRef" class="drag-handle" @pointerdown="onHandlePointerdown">
       <div><h2>变量管理</h2><p>{{ workflowId ? '全局、项目、环境组与当前工作流变量' : '全局、项目与环境组变量' }}</p></div>
-      <button type="button" aria-label="关闭变量管理" @pointerdown.stop @click="emit('update:modelValue', false)">×</button>
+      <button type="button" class="x" aria-label="关闭变量管理" @pointerdown.stop @click="emit('update:modelValue', false)">×</button>
     </header>
     <div class="toolbar">
-      <button data-variable-create type="button" :disabled="!canEdit || projectId === undefined" @click="beginCreate">新建变量</button>
-      <button data-variable-retry type="button" @click="load">刷新</button>
+      <button data-variable-create type="button" class="op-btn primary" :disabled="!canEdit || projectId === undefined" @click="beginCreate">新建变量</button>
+      <button data-variable-retry type="button" class="op-btn" @click="load">刷新</button>
       <label>环境组 <select v-model.number="environmentGroupId" data-environment-group>
         <option :value="null">未选择</option>
         <option v-for="row in environmentOptions" :key="row.id!" :value="row.id!">{{ row.name }}</option>
       </select></label>
-      <button v-if="environmentError" type="button" @click="refreshEnvironments">{{ environmentError }}；重试</button>
+      <button v-if="environmentError" type="button" class="op-btn" @click="refreshEnvironments">{{ environmentError }}；重试</button>
     </div>
     <p v-if="!canEdit" class="notice" data-variable-permission>当前角色仅可查看变量</p>
     <p v-if="loading" data-variable-loading>正在加载变量…</p>
@@ -164,7 +164,7 @@ watch(() => [props.modelValue, props.projectId, props.workflowId, props.taskId],
         <tr v-for="row in rows" :key="`${row.scope}:${row.name}`">
           <td>{{ row.scope }}</td><td>{{ row.name }}</td><td>{{ row.valueType }}</td>
           <td>{{ row.sensitive ? '******' : row.value }}</td>
-          <td><button :disabled="!canEdit" @click="beginEdit(row)">编辑</button><button :disabled="!canEdit" @click="remove(row)">删除</button></td>
+          <td><button class="mini-btn" :disabled="!canEdit" @click="beginEdit(row)">编辑</button><button class="mini-btn danger" :disabled="!canEdit" @click="remove(row)">删除</button></td>
         </tr>
       </tbody>
     </table>
@@ -179,7 +179,7 @@ watch(() => [props.modelValue, props.projectId, props.workflowId, props.taskId],
       <label>值<input v-model="form.value" data-variable-value :type="form.sensitive ? 'password' : 'text'" :required="!form.sensitive || !editing" :placeholder="form.sensitive && editing ? '留空表示保持原值' : ''" /></label>
       <label><input v-model="form.sensitive" type="checkbox" />敏感值</label>
       <label>描述<input v-model="form.description" /></label>
-      <div><button data-variable-save type="submit" :disabled="saving">保存</button><button type="button" @click="editing = false">取消</button></div>
+      <div><button data-variable-save type="submit" class="mini-btn primary" :disabled="saving">保存</button><button type="button" class="mini-btn" @click="editing = false">取消</button></div>
     </form>
   </aside>
 </template>
@@ -187,4 +187,5 @@ watch(() => [props.modelValue, props.projectId, props.workflowId, props.taskId],
 <style scoped>
 .variable-drawer{position:fixed;z-index:2000;inset:56px 0 0 auto;width:min(720px,94vw);background:var(--card);border-left:1px solid var(--border-strong);box-shadow:-12px 0 32px color-mix(in srgb, var(--text) 12%, transparent);padding:18px;overflow:auto}
 header,.toolbar,header>div,.editor>div{display:flex;align-items:center;justify-content:space-between;gap:12px}h2,p{margin:0}.toolbar{justify-content:flex-start;margin:16px 0}.notice{padding:8px;background:var(--bg)}.error{color:var(--danger);padding:12px;background:var(--danger-bg)}table{width:100%;border-collapse:collapse}th,td{text-align:left;padding:9px;border-bottom:1px solid var(--border)}.editor{margin-top:18px;padding:14px;background:var(--bg);display:grid;gap:10px}.editor label{display:grid;gap:4px}input,select,button{font:inherit;padding:6px 9px}.drag-handle{cursor:grab;user-select:none}.drag-handle:active{cursor:grabbing}
+.x{border:1px solid var(--border);border-radius:7px;background:var(--card);color:var(--text-3);font-size:14px;line-height:1;padding:7px 9px;cursor:pointer}.x:hover{border-color:var(--primary);color:var(--primary)}
 </style>

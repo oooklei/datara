@@ -1,11 +1,10 @@
 /**
  * W1 画布校验器（T4/G07）：11 个 validators 纯函数集，保存闸门与校验面板共用语义。
  *
- * 口径对齐：
- *  - 后端 rebuild/trial/validator.py（试运行前置，权威）：
- *    组件图（无 START/END）免 root/leaf 检查但要求全图连通；legacy 图（含任一 START/END）
+ * 口径对齐（datara 自研试运行域已废弃，画布保存闸门语义由本模块单一承载）：
+ *  - 组件图（无 START/END）免 root/leaf 检查但要求全图连通；legacy 图（含任一 START/END）
  *    要求 START/END 兼备、非 START 必有入边、非 END 必有出边；成环、断链边一律 error；
- *    DEPENDENT 缺 dependency_id 为设计态占位放行（后端 trial 同口径）。
+ *    DEPENDENT 缺 dependency_id 为设计态占位放行。
  *  - 旧前端 dag.ts validators（交互语义补充）：重复边 warn、必填缺失 warn、end 禁出边 error。
  *  - 组件级约束与上游依赖合法性消费 1.9 活体 spec（specForm.ts）：constraints.requiredIf、
  *    form.inputs cap.mode=upstreamOutputs（required→入边≥1；max→入边≤max）。
@@ -148,8 +147,8 @@ export function orphanIssues(nodes: readonly ValidatorNode[], edges: readonly Va
       return issues
     })
   }
-  // 组件图：root BFS 全图连通（对齐后端 disconnected 口径）；全无连接的孤立节点 warn
-  // （对齐旧前端孤立节点告警语义；后端 trial 将其视为 root 放行，故不升 error）
+  // 组件图：root BFS 全图连通（后端 disconnected 口径）；全无连接的孤立节点 warn
+  // （对齐旧前端孤立节点告警语义；后端将其视为 root 放行，故不升 error）
   const adjacency = new Map<string, string[]>()
   for (const node of nodes) adjacency.set(node.nodeCode, [])
   for (const edge of edges) adjacency.get(edge.fromNode)?.push(edge.toNode)

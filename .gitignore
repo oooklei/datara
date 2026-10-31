@@ -21,6 +21,7 @@ __pycache__/
 .ruff_cache/
 
 # 工具/Agent 缓存
+.codex/
 .codegraph/
 .gstack/
 .omo/
@@ -63,3 +64,8 @@ package-lock.json
 datara-backend/_debug_routes.py
 datara-backend/_test_out.txt
 datara-backend/*.db
+# 构建/测试输出与浏览器取证产物（本地中间物，不入库）
+_fe_build.txt
+_pytest_rebuild*.txt
+datara-backend/_pytest_rebuild*.txt
+datara-newweb/.evidence/

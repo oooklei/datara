@@ -70,7 +70,7 @@
                 <td class="mono">{{ m.createdAt || '—' }}</td>
                 <td class="mono">{{ m.updatedAt || '—' }}</td>
                 <td>
-                  <button type="button" class="op-btn primary" @click="detail = m">详情</button>
+                  <button type="button" class="op-btn" @click="detail = m">详情</button>
                   <button type="button" class="op-btn" @click="gotoBoard">趋势</button>
                 </td>
               </tr>

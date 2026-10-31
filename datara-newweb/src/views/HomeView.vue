@@ -152,7 +152,7 @@ watch(authAccount, (account, previous) => {
   margin: 0;
   color: var(--text-secondary, var(--text-2));
 }
-.primary-action{border:0;border-radius:var(--radius);background:var(--primary);color:var(--card);padding:10px 16px;font-weight:700;cursor:pointer;box-shadow:var(--shadow-primary)}
+.primary-action{border:0;border-radius:var(--radius);background:var(--primary);color:var(--on-primary);padding:10px 16px;font-weight:700;cursor:pointer;box-shadow:var(--shadow-primary)}
 .stat-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:14px;margin-bottom:16px}.dashboard-card{background:var(--card);border:1px solid var(--border);border-radius:var(--radius-lg);box-shadow:var(--shadow)}.stat{padding:16px}.stat-top{display:flex;align-items:center;gap:8px;color:var(--text-2);font-size:12.5px;margin-bottom:10px}.stat-icon{width:28px;height:28px;border-radius:var(--radius);display:grid;place-items:center}.stat strong{display:block;font-size:24px;line-height:1.2}.stat small{display:block;color:var(--text-3);font-size:11.5px;margin-top:3px}.quick-panel{padding:16px;margin-bottom:24px}.section-title{font-size:14px;font-weight:700}.section-title::before{content:'';display:inline-block;width:3px;height:14px;margin-right:8px;vertical-align:-2px;border-radius:2px;background:linear-gradient(180deg,var(--primary),var(--purple))}.quick-panel>p{margin:5px 0 12px;color:var(--text-3);font-size:12px}.entry-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px}.entry-card{display:flex;align-items:center;justify-content:space-between;text-align:left;border:1px solid var(--border);border-radius:var(--radius);padding:13px;background:var(--card);cursor:pointer;transition:var(--dur-base) var(--ease)}.entry-card:hover{border-color:var(--primary);box-shadow:var(--shadow-primary);transform:translateY(-1px)}.entry-card span,.entry-card small{display:block}.entry-card b{font-size:13px}.entry-card small{margin-top:5px;color:var(--text-2);line-height:1.4}.entry-card i{font-style:normal;color:var(--primary);font-size:18px}.project-section-title{display:flex;align-items:end;justify-content:space-between;margin:0 0 14px}.project-section-title h2{font-size:18px;margin:0}.project-section-title p{font-size:12px;color:var(--text-3);margin:4px 0 0}
 
 .state {
@@ -191,8 +191,8 @@ watch(authAccount, (account, previous) => {
 .project-card:hover {
   border-color: var(--primary-color, var(--primary));
 }
-.project-actions{display:flex;gap:6px;margin-left:auto}.project-actions button{border:1px solid var(--border);border-radius:var(--radius-sm);background:var(--card);color:var(--text-2);padding:4px 8px;cursor:pointer}.project-actions button:hover{border-color:var(--primary);color:var(--primary)}.project-modal{position:fixed;inset:0;z-index:50;display:grid;place-items:center;background:rgba(15,23,42,.38);backdrop-filter:blur(2px)}.project-modal form{display:grid;gap:14px;width:min(440px,calc(100vw - 32px));padding:24px;border:1px solid var(--border);border-radius:var(--radius-xl);background:var(--card);box-shadow:var(--shadow-xl)}.project-modal h2{margin:0;cursor:grab;user-select:none}
-.project-modal h2:active{cursor:grabbing}.project-modal label{display:grid;gap:6px;color:var(--text-2);font-size:13px}.project-modal input,.project-modal textarea{box-sizing:border-box;width:100%;border:1px solid var(--border);border-radius:var(--radius-sm);padding:9px 10px;font:inherit}.project-modal textarea{min-height:88px;resize:vertical}.project-modal footer{display:flex;justify-content:flex-end;gap:8px}.project-modal footer button{border:1px solid var(--border);border-radius:var(--radius-sm);background:var(--card);padding:8px 14px;cursor:pointer}.project-modal footer button:last-child{border-color:var(--primary);background:var(--primary);color:var(--card)}
+.project-actions{display:flex;gap:6px;margin-left:auto}.project-actions button{border:1px solid var(--border);border-radius:var(--radius-sm);background:var(--card);color:var(--text-2);padding:4px 8px;cursor:pointer}.project-actions button:hover{border-color:var(--primary);color:var(--primary)}.project-modal{position:fixed;inset:0;z-index:50;display:grid;place-items:center;background:var(--mask-bg);backdrop-filter:blur(2px)}.project-modal form{display:grid;gap:14px;width:min(440px,calc(100vw - 32px));padding:24px;border:1px solid var(--border);border-radius:var(--radius-xl);background:var(--card);box-shadow:var(--shadow-xl)}.project-modal h2{margin:0;cursor:grab;user-select:none}
+.project-modal h2:active{cursor:grabbing}.project-modal label{display:grid;gap:6px;color:var(--text-2);font-size:13px}.project-modal input,.project-modal textarea{box-sizing:border-box;width:100%;border:1px solid var(--border);border-radius:var(--radius-sm);padding:9px 10px;font:inherit}.project-modal textarea{min-height:88px;resize:vertical}.project-modal footer{display:flex;justify-content:flex-end;gap:8px}.project-modal footer button{border:1px solid var(--border);border-radius:var(--radius-sm);background:var(--card);padding:8px 14px;cursor:pointer}.project-modal footer button:last-child{border-color:var(--primary);background:var(--primary);color:var(--on-primary)}
 
 .project-name {
   font-weight: 600;
@@ -204,7 +204,7 @@ watch(authAccount, (account, previous) => {
   border-radius: 999px;
   font-size: 12px;
   background: var(--primary-color, var(--primary));
-  color: var(--card);
+  color: var(--on-primary);
 }
 
 .project-badge.joined {

@@ -1,0 +1,1139 @@
+diff --git a/dolphinscheduler-api/src/main/java/org/apache/dolphinscheduler/api/interceptor/LoginHandlerInterceptor.java b/dolphinscheduler-api/src/main/java/org/apache/dolphinscheduler/api/interceptor/LoginHandlerInterceptor.java
+index e61d878..f654e76 100644
+--- a/dolphinscheduler-api/src/main/java/org/apache/dolphinscheduler/api/interceptor/LoginHandlerInterceptor.java
++++ b/dolphinscheduler-api/src/main/java/org/apache/dolphinscheduler/api/interceptor/LoginHandlerInterceptor.java
+@@ -25,11 +25,18 @@ import org.apache.dolphinscheduler.common.enums.Flag;
+ import org.apache.dolphinscheduler.common.thread.ThreadLocalContext;
+ import org.apache.dolphinscheduler.dao.entity.User;
+ import org.apache.dolphinscheduler.dao.repository.UserDao;
++import org.apache.dolphinscheduler.common.utils.JSONUtils;
+ 
+ import org.apache.commons.lang3.StringUtils;
+ import org.apache.http.HttpStatus;
+ 
+ import java.util.Date;
++import java.util.Base64;
++import java.util.Map;
++import java.nio.charset.StandardCharsets;
++import java.security.MessageDigest;
++import javax.crypto.Mac;
++import javax.crypto.spec.SecretKeySpec;
+ 
+ import javax.servlet.http.HttpServletRequest;
+ import javax.servlet.http.HttpServletResponse;
+@@ -46,6 +53,12 @@ import org.springframework.web.servlet.ModelAndView;
+ @Slf4j
+ public class LoginHandlerInterceptor implements HandlerInterceptor {
+ 
++    /** Header carrying the pre-shared secret of the datara orchestration gateway. */
++    public static final String INTERNAL_TOKEN_HEADER = "X-Datara-Internal-Token";
++
++    /** Header carrying the dolphinscheduler user name the gateway acts on behalf of. */
++    public static final String INTERNAL_USER_HEADER = "X-Datara-User";
++
+     @Autowired
+     private UserDao userDao;
+ 
+@@ -64,6 +77,49 @@ public class LoginHandlerInterceptor implements HandlerInterceptor {
+     public boolean preHandle(HttpServletRequest request, HttpServletResponse response, Object handler) {
+         ApiServerMetrics.incApiRequestCount();
+ 
++        // Datara internal trust channel: the datara orchestration gateway calls DS on
++        // behalf of a datara user with a pre-shared secret. This branch never falls
++        // back to the native token/session logic, so a bad secret cannot bypass auth.
++        String internalToken = request.getHeader(INTERNAL_TOKEN_HEADER);
++        if (StringUtils.isNotEmpty(internalToken)) {
++            String expected = System.getenv("DATARA_INTERNAL_TOKEN");
++            if (StringUtils.isEmpty(expected)
++                    || !MessageDigest.isEqual(
++                            internalToken.getBytes(StandardCharsets.UTF_8),
++                            expected.getBytes(StandardCharsets.UTF_8))) {
++                response.setStatus(HttpStatus.SC_UNAUTHORIZED);
++                log.warn("datara internal token rejected, uri={}", request.getRequestURI());
++                return false;
++            }
++            String internalUser = request.getHeader(INTERNAL_USER_HEADER);
++            if (StringUtils.isEmpty(internalUser)) {
++                response.setStatus(HttpStatus.SC_UNAUTHORIZED);
++                log.warn("datara internal user header missing, uri={}", request.getRequestURI());
++                return false;
++            }
++            User trustedUser = userDao.queryByUserNameAccurately(internalUser);
++            if (trustedUser == null || trustedUser.getState() == Flag.NO.ordinal()) {
++                response.setStatus(HttpStatus.SC_UNAUTHORIZED);
++                log.warn("datara internal user not found or disabled: {}", internalUser);
++                return false;
++            }
++            request.setAttribute(Constants.SESSION_USER, trustedUser);
++            ThreadLocalContext.setTimezone(trustedUser.getTimeZone());
++            return true;
++        }
++
++        String embedToken = request.getHeader("X-Datara-Embed-Token");
++        if (StringUtils.isNotEmpty(embedToken)) {
++            User embedUser = verifyDataraEmbedToken(embedToken, request);
++            if (embedUser == null || embedUser.getState() == Flag.NO.ordinal()) {
++                response.setStatus(HttpStatus.SC_UNAUTHORIZED);
++                return false;
++            }
++            request.setAttribute(Constants.SESSION_USER, embedUser);
++            ThreadLocalContext.setTimezone(embedUser.getTimeZone());
++            return true;
++        }
++
+         // get token
+         String token = request.getHeader("token");
+         User user;
+@@ -95,6 +151,45 @@ public class LoginHandlerInterceptor implements HandlerInterceptor {
+         return true;
+     }
+ 
++    private User verifyDataraEmbedToken(String token, HttpServletRequest request) {
++        String secret = System.getenv("DATARA_DS_EMBED_SECRET");
++        if (secret == null || secret.getBytes(StandardCharsets.UTF_8).length < 32) {
++            return null;
++        }
++        String[] parts = token.split("\\.", -1);
++        if (parts.length != 2) {
++            return null;
++        }
++        try {
++            Mac mac = Mac.getInstance("HmacSHA256");
++            mac.init(new SecretKeySpec(secret.getBytes(StandardCharsets.UTF_8), "HmacSHA256"));
++            byte[] expected = mac.doFinal(parts[0].getBytes(StandardCharsets.US_ASCII));
++            if (!MessageDigest.isEqual(expected, Base64.getUrlDecoder().decode(parts[1]))) {
++                return null;
++            }
++            Map<?, ?> claims = JSONUtils.parseObject(
++                    new String(Base64.getUrlDecoder().decode(parts[0]), StandardCharsets.UTF_8), Map.class);
++            if (claims == null || !(claims.get("exp") instanceof Number)
++                    || ((Number) claims.get("exp")).longValue() < System.currentTimeMillis() / 1000) {
++                return null;
++            }
++            String path = request.getRequestURI();
++            int start = path.indexOf("/projects/");
++            if (start < 0) {
++                return null;
++            }
++            int codeStart = start + "/projects/".length();
++            int codeEnd = path.indexOf('/', codeStart);
++            String projectCode = path.substring(codeStart, codeEnd < 0 ? path.length() : codeEnd);
++            if (!projectCode.equals(String.valueOf(claims.get("p")))) {
++                return null;
++            }
++            return userDao.queryByUserNameAccurately(String.valueOf(claims.get("u")));
++        } catch (Exception exception) {
++            return null;
++        }
++    }
++
+     @Override
+     public void postHandle(HttpServletRequest request,
+                            HttpServletResponse response,
+diff --git a/dolphinscheduler-master/src/main/java/org/apache/dolphinscheduler/server/master/runner/TaskExecutionContextFactory.java b/dolphinscheduler-master/src/main/java/org/apache/dolphinscheduler/server/master/runner/TaskExecutionContextFactory.java
+index 6530889..114eb74 100644
+--- a/dolphinscheduler-master/src/main/java/org/apache/dolphinscheduler/server/master/runner/TaskExecutionContextFactory.java
++++ b/dolphinscheduler-master/src/main/java/org/apache/dolphinscheduler/server/master/runner/TaskExecutionContextFactory.java
+@@ -21,7 +21,6 @@ import static org.apache.dolphinscheduler.plugin.task.api.TaskConstants.CLUSTER;
+ import static org.apache.dolphinscheduler.plugin.task.api.TaskConstants.NAMESPACE_NAME;
+ 
+ import org.apache.dolphinscheduler.common.utils.JSONUtils;
+-import org.apache.dolphinscheduler.dao.entity.DataSource;
+ import org.apache.dolphinscheduler.dao.entity.Environment;
+ import org.apache.dolphinscheduler.dao.entity.Project;
+ import org.apache.dolphinscheduler.dao.entity.TaskDefinition;
+@@ -36,10 +35,9 @@ import org.apache.dolphinscheduler.plugin.task.api.TaskPluginManager;
+ import org.apache.dolphinscheduler.plugin.task.api.model.Property;
+ import org.apache.dolphinscheduler.plugin.task.api.parameters.AbstractParameters;
+ import org.apache.dolphinscheduler.plugin.task.api.parameters.K8sTaskParameters;
+-import org.apache.dolphinscheduler.plugin.task.api.parameters.resource.AbstractResourceParameters;
+ import org.apache.dolphinscheduler.plugin.task.api.parameters.resource.DataSourceParameters;
+ import org.apache.dolphinscheduler.plugin.task.api.parameters.resource.ResourceParametersHelper;
+-import org.apache.dolphinscheduler.plugin.task.api.utils.MapUtils;
++import org.apache.dolphinscheduler.spi.enums.DbType;
+ import org.apache.dolphinscheduler.plugin.task.api.utils.VarPoolUtils;
+ import org.apache.dolphinscheduler.server.master.config.MasterConfig;
+ import org.apache.dolphinscheduler.server.master.engine.graph.IWorkflowExecutionGraph;
+@@ -52,6 +50,14 @@ import org.apache.dolphinscheduler.service.process.ProcessService;
+ import org.apache.commons.lang3.StringUtils;
+ 
+ import java.util.Comparator;
++import java.io.ByteArrayOutputStream;
++import java.io.IOException;
++import java.io.InputStream;
++import java.io.UnsupportedEncodingException;
++import java.net.HttpURLConnection;
++import java.net.URL;
++import java.net.URLEncoder;
++import java.nio.charset.StandardCharsets;
+ import java.util.List;
+ import java.util.Map;
+ import java.util.Objects;
+@@ -96,47 +102,89 @@ public class TaskExecutionContextFactory {
+                 .buildEnvironmentConfig(getEnvironmentConfigFromDB(taskInstance).orElse(null))
+                 .buildTaskDefinitionRelatedInfo(request.getTaskDefinition())
+                 .buildProcessInstanceRelatedInfo(request.getWorkflowInstance())
+-                .buildResourceParameters(getResourceParameters(taskInstance))
++                .buildResourceParameters(getResourceParameters(taskInstance, project, workflowInstance))
+                 // todo: use TaskRuntimeParameters to replace Map<String, Property> in TaskExecutionContext
+                 .buildPrepareParams(getPrepareParams(taskInstance, workflowInstance, workflowDefinition, project))
+                 .buildK8sTaskRelatedInfo(getK8sTaskExecutionContext(taskInstance))
+                 .create();
+     }
+ 
+-    private ResourceParametersHelper getResourceParameters(final TaskInstance taskInstance) {
++    private ResourceParametersHelper getResourceParameters(final TaskInstance taskInstance, final Project project,
++                                                           final WorkflowInstance workflowInstance) {
+         final ResourceParametersHelper resourceParameters = TaskPluginManager.getTaskChannel(taskInstance.getTaskType())
+                 .parseParameters(taskInstance.getTaskParams())
+                 .getResources();
+         if (resourceParameters != null) {
+-            // todo: add DataSourceParametersAssembler to assemble DataSourceParameters
+-            resourceParameters.getResourceMap().forEach((type, map) -> {
+-                switch (type) {
+-                    case DATASOURCE:
+-                        assembleDataSourceParameters(map);
+-                        break;
+-                    default:
+-                        break;
+-                }
+-            });
++            if (resourceParameters.getDbxDataSourceMap() != null
++                    && !resourceParameters.getDbxDataSourceMap().isEmpty()) {
++                long dataraProjectId = dataraProjectId(project);
++                resourceParameters.getDbxDataSourceMap().entrySet().forEach(entry ->
++                        entry.setValue(fetchDbxDataSourceParameters(entry.getKey(), dataraProjectId,
++                                workflowInstance.getExecutorName())));
++            }
+         }
+         return resourceParameters;
+     }
+ 
+-    private void assembleDataSourceParameters(Map<Integer, AbstractResourceParameters> map) {
+-        if (MapUtils.isEmpty(map)) {
+-            return;
++    private long dataraProjectId(Project project) {
++        String name = project.getName();
++        if (name == null || !name.matches("datara-[1-9][0-9]*-.+")) {
++            throw new IllegalStateException("DolphinScheduler project is not bound to a Datara project");
+         }
++        return Long.parseLong(name.substring(7, name.indexOf('-', 7)));
++    }
+ 
+-        map.forEach((code, parameters) -> {
+-            DataSource datasource = processService.findDataSourceById(code);
+-            if (Objects.isNull(datasource)) {
+-                return;
++    private DataSourceParameters fetchDbxDataSourceParameters(String connectionId, long projectId, String executorName) {
++        String baseUrl = System.getenv("DATARA_ORCHESTRATION_INTERNAL_URL");
++        String token = System.getenv("DATARA_INTERNAL_TOKEN");
++        if (StringUtils.isBlank(baseUrl) || StringUtils.isBlank(token)) {
++            throw new IllegalStateException("Datara internal datasource channel is not configured");
++        }
++        if (StringUtils.isBlank(executorName)) {
++            throw new IllegalStateException("Datara executor identity is missing");
++        }
++        HttpURLConnection connection = null;
++        try {
++            String encoded = URLEncoder.encode(connectionId, "UTF-8");
++            URL url = new URL(baseUrl.replaceAll("/+$", "") + "/internal/dbx/connections/" + encoded
++                    + "/params?project_id=" + projectId);
++            connection = (HttpURLConnection) url.openConnection();
++            connection.setConnectTimeout(10000);
++            connection.setReadTimeout(10000);
++            connection.setRequestProperty("X-Datara-Internal-Token", token);
++            connection.setRequestProperty("X-Datara-User", executorName);
++            int status = connection.getResponseCode();
++            if (status != HttpURLConnection.HTTP_OK) {
++                throw new IllegalStateException("Datara datasource resolution failed: HTTP " + status);
+             }
+-            DataSourceParameters dataSourceParameters = new DataSourceParameters();
+-            dataSourceParameters.setType(datasource.getType());
+-            dataSourceParameters.setConnectionParams(datasource.getConnectionParams());
+-            map.put(code, dataSourceParameters);
+-        });
++            ByteArrayOutputStream buffer = new ByteArrayOutputStream();
++            byte[] chunk = new byte[4096];
++            try (InputStream stream = connection.getInputStream()) {
++                int read;
++                while ((read = stream.read(chunk)) != -1) {
++                    buffer.write(chunk, 0, read);
++                }
++            }
++            Map<?, ?> envelope = JSONUtils.parseObject(
++                    new String(buffer.toByteArray(), StandardCharsets.UTF_8), Map.class);
++            if (envelope == null || !Integer.valueOf(0).equals(envelope.get("code"))
++                    || !(envelope.get("data") instanceof Map)) {
++                throw new IllegalStateException("Datara datasource response is invalid");
++            }
++            Map<?, ?> data = (Map<?, ?>) envelope.get("data");
++            DataSourceParameters parameters = new DataSourceParameters();
++            parameters.setType(DbType.valueOf(String.valueOf(data.get("type"))));
++            parameters.setConnectionParams(String.valueOf(data.get("connectionParams")));
++            return parameters;
++        } catch (UnsupportedEncodingException exception) {
++            throw new IllegalStateException("Datara datasource resolution encoding is unavailable", exception);
++        } catch (IOException exception) {
++            throw new IllegalStateException("Datara datasource resolution unavailable", exception);
++        } finally {
++            if (connection != null) {
++                connection.disconnect();
++            }
++        }
+     }
+ 
+     private K8sTaskExecutionContext getK8sTaskExecutionContext(final TaskInstance taskInstance) {
+diff --git a/dolphinscheduler-task-plugin/dolphinscheduler-task-aliyunserverlessspark/src/main/java/org/apache/dolphinscheduler/plugin/task/aliyunserverlessspark/AliyunServerlessSparkParameters.java b/dolphinscheduler-task-plugin/dolphinscheduler-task-aliyunserverlessspark/src/main/java/org/apache/dolphinscheduler/plugin/task/aliyunserverlessspark/AliyunServerlessSparkParameters.java
+index 395d725..26b8523 100644
+--- a/dolphinscheduler-task-plugin/dolphinscheduler-task-aliyunserverlessspark/src/main/java/org/apache/dolphinscheduler/plugin/task/aliyunserverlessspark/AliyunServerlessSparkParameters.java
++++ b/dolphinscheduler-task-plugin/dolphinscheduler-task-aliyunserverlessspark/src/main/java/org/apache/dolphinscheduler/plugin/task/aliyunserverlessspark/AliyunServerlessSparkParameters.java
+@@ -52,7 +52,7 @@ public class AliyunServerlessSparkParameters extends AbstractParameters {
+     @JsonProperty("isProduction")
+     boolean isProduction;
+ 
+-    private int datasource;
++    private String datasource;
+ 
+     private String type;
+ 
+diff --git a/dolphinscheduler-task-plugin/dolphinscheduler-task-api/src/main/java/org/apache/dolphinscheduler/plugin/task/api/parameters/K8sTaskParameters.java b/dolphinscheduler-task-plugin/dolphinscheduler-task-api/src/main/java/org/apache/dolphinscheduler/plugin/task/api/parameters/K8sTaskParameters.java
+index d750893..a035b4d 100644
+--- a/dolphinscheduler-task-plugin/dolphinscheduler-task-api/src/main/java/org/apache/dolphinscheduler/plugin/task/api/parameters/K8sTaskParameters.java
++++ b/dolphinscheduler-task-plugin/dolphinscheduler-task-api/src/main/java/org/apache/dolphinscheduler/plugin/task/api/parameters/K8sTaskParameters.java
+@@ -51,7 +51,7 @@ public class K8sTaskParameters extends AbstractParameters {
+     private List<Label> customizedLabels;
+     private List<NodeSelectorExpression> nodeSelectors;
+     private String kubeConfig;
+-    private int datasource;
++    private String datasource;
+     private String type;
+     @Override
+     public boolean checkParameters() {
+@@ -72,7 +72,7 @@ public class K8sTaskParameters extends AbstractParameters {
+ 
+     public K8sTaskExecutionContext generateK8sTaskExecutionContext(
+                                                                    ResourceParametersHelper parametersHelper,
+-                                                                   int datasource) {
++                                                                   String datasource) {
+         DataSourceParameters dataSourceParameters =
+                 (DataSourceParameters) parametersHelper
+                         .getResourceParameters(ResourceType.DATASOURCE, datasource);
+diff --git a/dolphinscheduler-task-plugin/dolphinscheduler-task-api/src/main/java/org/apache/dolphinscheduler/plugin/task/api/parameters/SqlParameters.java b/dolphinscheduler-task-plugin/dolphinscheduler-task-api/src/main/java/org/apache/dolphinscheduler/plugin/task/api/parameters/SqlParameters.java
+index 32b1102..5ddd835 100644
+--- a/dolphinscheduler-task-plugin/dolphinscheduler-task-api/src/main/java/org/apache/dolphinscheduler/plugin/task/api/parameters/SqlParameters.java
++++ b/dolphinscheduler-task-plugin/dolphinscheduler-task-api/src/main/java/org/apache/dolphinscheduler/plugin/task/api/parameters/SqlParameters.java
+@@ -55,7 +55,7 @@ public class SqlParameters extends AbstractParameters {
+     /**
+      * datasource id
+      */
+-    private int datasource;
++    private String datasource;
+ 
+     private String sql;
+ 
+@@ -99,7 +99,7 @@ public class SqlParameters extends AbstractParameters {
+ 
+     @Override
+     public boolean checkParameters() {
+-        if (datasource == 0 || StringUtils.isEmpty(type)) {
++        if (StringUtils.isEmpty(datasource) || StringUtils.isEmpty(type)) {
+             return false;
+         }
+         if (StringUtils.isNotEmpty(sql)) {
+diff --git a/dolphinscheduler-task-plugin/dolphinscheduler-task-api/src/main/java/org/apache/dolphinscheduler/plugin/task/api/parameters/resource/ResourceParametersHelper.java b/dolphinscheduler-task-plugin/dolphinscheduler-task-api/src/main/java/org/apache/dolphinscheduler/plugin/task/api/parameters/resource/ResourceParametersHelper.java
+index 14628c0..acf78dc 100644
+--- a/dolphinscheduler-task-plugin/dolphinscheduler-task-api/src/main/java/org/apache/dolphinscheduler/plugin/task/api/parameters/resource/ResourceParametersHelper.java
++++ b/dolphinscheduler-task-plugin/dolphinscheduler-task-api/src/main/java/org/apache/dolphinscheduler/plugin/task/api/parameters/resource/ResourceParametersHelper.java
+@@ -26,6 +26,7 @@ import java.util.Objects;
+ public class ResourceParametersHelper {
+ 
+     private Map<ResourceType, Map<Integer, AbstractResourceParameters>> resourceMap = new HashMap<>();
++    private Map<String, AbstractResourceParameters> dbxDataSourceMap = new HashMap<>();
+ 
+     public void put(ResourceType resourceType, Integer id) {
+         put(resourceType, id, null);
+@@ -40,6 +41,28 @@ public class ResourceParametersHelper {
+         resourceParametersMap.put(id, parameters);
+     }
+ 
++    public void put(ResourceType resourceType, String id) {
++        if (resourceType != ResourceType.DATASOURCE || id == null || id.isEmpty()) {
++            throw new IllegalArgumentException("DBX connection ID is required for datasource resources");
++        }
++        dbxDataSourceMap.put(id, null);
++    }
++
++    public Map<String, AbstractResourceParameters> getDbxDataSourceMap() {
++        return dbxDataSourceMap;
++    }
++
++    public void setDbxDataSourceMap(Map<String, AbstractResourceParameters> dbxDataSourceMap) {
++        this.dbxDataSourceMap = dbxDataSourceMap;
++    }
++
++    public AbstractResourceParameters getResourceParameters(ResourceType resourceType, String id) {
++        if (resourceType != ResourceType.DATASOURCE) {
++            throw new IllegalArgumentException("String resource IDs are only valid for datasource resources");
++        }
++        return dbxDataSourceMap.get(id);
++    }
++
+     public void setResourceMap(Map<ResourceType, Map<Integer, AbstractResourceParameters>> resourceMap) {
+         this.resourceMap = resourceMap;
+     }
+diff --git a/dolphinscheduler-task-plugin/dolphinscheduler-task-chunjun/src/main/java/org/apache/dolphinscheduler/plugin/task/chunjun/ChunJunParameters.java b/dolphinscheduler-task-plugin/dolphinscheduler-task-chunjun/src/main/java/org/apache/dolphinscheduler/plugin/task/chunjun/ChunJunParameters.java
+index 7550a8a..c2f84d5 100644
+--- a/dolphinscheduler-task-plugin/dolphinscheduler-task-chunjun/src/main/java/org/apache/dolphinscheduler/plugin/task/chunjun/ChunJunParameters.java
++++ b/dolphinscheduler-task-plugin/dolphinscheduler-task-chunjun/src/main/java/org/apache/dolphinscheduler/plugin/task/chunjun/ChunJunParameters.java
+@@ -61,9 +61,9 @@ public class ChunJunParameters extends AbstractParameters {
+     private String dsType;
+ 
+     /**
+-     * customConfig value is 0, datasource id int
++     * customConfig value is 0, DBX connection ID
+      */
+-    private int dataSource;
++    private String dataSource;
+ 
+     /**
+      * customConfig value is 0, datasource targetType，eg  MYSQL, POSTGRES
+@@ -73,7 +73,7 @@ public class ChunJunParameters extends AbstractParameters {
+     /**
+      * customConfig value is 0, data target id
+      */
+-    private int dataTarget;
++    private String dataTarget;
+ 
+     /**
+      * customConfig value is 0, sql
+@@ -102,7 +102,7 @@ public class ChunJunParameters extends AbstractParameters {
+     @Override
+     public boolean checkParameters() {
+         if (customConfig == Flag.NO.ordinal()) {
+-            return dataSource != 0 && dataTarget != 0
++            return StringUtils.isNotEmpty(dataSource) && StringUtils.isNotEmpty(dataTarget)
+                     && StringUtils.isNotEmpty(sql)
+                     && StringUtils.isNotEmpty(targetTable);
+         } else {
+diff --git a/dolphinscheduler-task-plugin/dolphinscheduler-task-datax/src/main/java/org/apache/dolphinscheduler/plugin/task/datax/DataxParameters.java b/dolphinscheduler-task-plugin/dolphinscheduler-task-datax/src/main/java/org/apache/dolphinscheduler/plugin/task/datax/DataxParameters.java
+index b7e51d4..b79ea27 100644
+--- a/dolphinscheduler-task-plugin/dolphinscheduler-task-datax/src/main/java/org/apache/dolphinscheduler/plugin/task/datax/DataxParameters.java
++++ b/dolphinscheduler-task-plugin/dolphinscheduler-task-datax/src/main/java/org/apache/dolphinscheduler/plugin/task/datax/DataxParameters.java
+@@ -60,7 +60,7 @@ public class DataxParameters extends AbstractParameters {
+     /**
+      * datasource id
+      */
+-    private int dataSource;
++    private String dataSource;
+ 
+     /**
+      * data target type，eg  MYSQL, POSTGRES ...
+@@ -70,7 +70,7 @@ public class DataxParameters extends AbstractParameters {
+     /**
+      * datatarget id
+      */
+-    private int dataTarget;
++    private String dataTarget;
+ 
+     private String sql;
+ 
+@@ -115,8 +115,8 @@ public class DataxParameters extends AbstractParameters {
+     @Override
+     public boolean checkParameters() {
+         if (customConfig == Flag.NO.ordinal()) {
+-            return dataSource != 0
+-                    && dataTarget != 0
++            return StringUtils.isNotEmpty(dataSource)
++                    && StringUtils.isNotEmpty(dataTarget)
+                     && StringUtils.isNotEmpty(sql)
+                     && StringUtils.isNotEmpty(targetTable);
+         } else {
+diff --git a/dolphinscheduler-task-plugin/dolphinscheduler-task-datax/src/main/java/org/apache/dolphinscheduler/plugin/task/datax/DataxTaskExecutionContext.java b/dolphinscheduler-task-plugin/dolphinscheduler-task-datax/src/main/java/org/apache/dolphinscheduler/plugin/task/datax/DataxTaskExecutionContext.java
+index 247e726..7120973 100644
+--- a/dolphinscheduler-task-plugin/dolphinscheduler-task-datax/src/main/java/org/apache/dolphinscheduler/plugin/task/datax/DataxTaskExecutionContext.java
++++ b/dolphinscheduler-task-plugin/dolphinscheduler-task-datax/src/main/java/org/apache/dolphinscheduler/plugin/task/datax/DataxTaskExecutionContext.java
+@@ -29,13 +29,13 @@ import lombok.Data;
+ @Data
+ public class DataxTaskExecutionContext implements Serializable {
+ 
+-    private int dataSourceId;
++    private String dataSourceId;
+ 
+     private DbType sourcetype;
+ 
+     private String sourceConnectionParams;
+ 
+-    private int dataTargetId;
++    private String dataTargetId;
+ 
+     private DbType targetType;
+ 
+diff --git a/dolphinscheduler-task-plugin/dolphinscheduler-task-procedure/src/main/java/org/apache/dolphinscheduler/plugin/task/procedure/ProcedureParameters.java b/dolphinscheduler-task-plugin/dolphinscheduler-task-procedure/src/main/java/org/apache/dolphinscheduler/plugin/task/procedure/ProcedureParameters.java
+index 03d04dd..b95cbe8 100644
+--- a/dolphinscheduler-task-plugin/dolphinscheduler-task-procedure/src/main/java/org/apache/dolphinscheduler/plugin/task/procedure/ProcedureParameters.java
++++ b/dolphinscheduler-task-plugin/dolphinscheduler-task-procedure/src/main/java/org/apache/dolphinscheduler/plugin/task/procedure/ProcedureParameters.java
+@@ -39,7 +39,7 @@ public class ProcedureParameters extends AbstractParameters {
+     /**
+      * data source id
+      */
+-    private int datasource;
++    private String datasource;
+ 
+     /**
+      * procedure name
+@@ -48,7 +48,7 @@ public class ProcedureParameters extends AbstractParameters {
+ 
+     @Override
+     public boolean checkParameters() {
+-        return datasource != 0 && StringUtils.isNotEmpty(type) && StringUtils.isNotEmpty(method);
++        return StringUtils.isNotEmpty(datasource) && StringUtils.isNotEmpty(type) && StringUtils.isNotEmpty(method);
+     }
+ 
+     @Override
+diff --git a/dolphinscheduler-task-plugin/dolphinscheduler-task-sagemaker/src/main/java/org/apache/dolphinscheduler/plugin/task/sagemaker/SagemakerParameters.java b/dolphinscheduler-task-plugin/dolphinscheduler-task-sagemaker/src/main/java/org/apache/dolphinscheduler/plugin/task/sagemaker/SagemakerParameters.java
+index c14502d..d2cc925 100644
+--- a/dolphinscheduler-task-plugin/dolphinscheduler-task-sagemaker/src/main/java/org/apache/dolphinscheduler/plugin/task/sagemaker/SagemakerParameters.java
++++ b/dolphinscheduler-task-plugin/dolphinscheduler-task-sagemaker/src/main/java/org/apache/dolphinscheduler/plugin/task/sagemaker/SagemakerParameters.java
+@@ -42,7 +42,7 @@ public class SagemakerParameters extends AbstractParameters {
+     private String username;
+     private String password;
+     private String awsRegion;
+-    private int datasource;
++    private String datasource;
+     private String type;
+ 
+     @Override
+diff --git a/dolphinscheduler-task-plugin/dolphinscheduler-task-sql/src/main/java/org/apache/dolphinscheduler/plugin/task/sql/SqlTask.java b/dolphinscheduler-task-plugin/dolphinscheduler-task-sql/src/main/java/org/apache/dolphinscheduler/plugin/task/sql/SqlTask.java
+index 113dfbc..3c77f3c 100644
+--- a/dolphinscheduler-task-plugin/dolphinscheduler-task-sql/src/main/java/org/apache/dolphinscheduler/plugin/task/sql/SqlTask.java
++++ b/dolphinscheduler-task-plugin/dolphinscheduler-task-sql/src/main/java/org/apache/dolphinscheduler/plugin/task/sql/SqlTask.java
+@@ -105,7 +105,7 @@ public class SqlTask extends AbstractTask {
+         if (sqlParameters == null || !sqlParameters.checkParameters()) {
+             throw new TaskException("sql task params is not valid");
+         }
+-        if (this.sqlParameters.getDatasource() == 0) {
++        if (StringUtils.isEmpty(this.sqlParameters.getDatasource())) {
+             throw new TaskException("unbound test data source");
+         }
+ 
+diff --git a/dolphinscheduler-task-plugin/dolphinscheduler-task-sqoop/src/main/java/org/apache/dolphinscheduler/plugin/task/sqoop/SqoopTaskExecutionContext.java b/dolphinscheduler-task-plugin/dolphinscheduler-task-sqoop/src/main/java/org/apache/dolphinscheduler/plugin/task/sqoop/SqoopTaskExecutionContext.java
+index 8c58aa5..d2cabb5 100644
+--- a/dolphinscheduler-task-plugin/dolphinscheduler-task-sqoop/src/main/java/org/apache/dolphinscheduler/plugin/task/sqoop/SqoopTaskExecutionContext.java
++++ b/dolphinscheduler-task-plugin/dolphinscheduler-task-sqoop/src/main/java/org/apache/dolphinscheduler/plugin/task/sqoop/SqoopTaskExecutionContext.java
+@@ -28,7 +28,7 @@ import lombok.Data;
+ public class SqoopTaskExecutionContext implements Serializable {
+ 
+     /** dataSourceId */
+-    private int dataSourceId;
++    private String dataSourceId;
+ 
+     /** sourcetype */
+     private DbType sourcetype;
+@@ -37,7 +37,7 @@ public class SqoopTaskExecutionContext implements Serializable {
+     private String sourceConnectionParams;
+ 
+     /** dataTargetId */
+-    private int dataTargetId;
++    private String dataTargetId;
+ 
+     /** targetType */
+     private DbType targetType;
+diff --git a/dolphinscheduler-task-plugin/dolphinscheduler-task-sqoop/src/main/java/org/apache/dolphinscheduler/plugin/task/sqoop/generator/targets/HanaTargetGenerator.java b/dolphinscheduler-task-plugin/dolphinscheduler-task-sqoop/src/main/java/org/apache/dolphinscheduler/plugin/task/sqoop/generator/targets/HanaTargetGenerator.java
+index 30cddd6..20a4842 100644
+--- a/dolphinscheduler-task-plugin/dolphinscheduler-task-sqoop/src/main/java/org/apache/dolphinscheduler/plugin/task/sqoop/generator/targets/HanaTargetGenerator.java
++++ b/dolphinscheduler-task-plugin/dolphinscheduler-task-sqoop/src/main/java/org/apache/dolphinscheduler/plugin/task/sqoop/generator/targets/HanaTargetGenerator.java
+@@ -58,7 +58,7 @@ public class HanaTargetGenerator implements ITargetGenerator {
+         try {
+             TargetHanaParameter targetHanaParameter =
+                     JSONUtils.parseObject(sqoopParameters.getTargetParams(), TargetHanaParameter.class);
+-            if (null == targetHanaParameter || targetHanaParameter.getTargetDatasource() == 0)
++            if (null == targetHanaParameter || StringUtils.isEmpty(targetHanaParameter.getTargetDatasource()))
+                 return hanaTargetSb.toString();
+             // get datasource
+             BaseConnectionParam baseDataSource = (BaseConnectionParam) DataSourceUtils.buildConnectionParams(
+diff --git a/dolphinscheduler-task-plugin/dolphinscheduler-task-sqoop/src/main/java/org/apache/dolphinscheduler/plugin/task/sqoop/generator/targets/MySQLTargetGenerator.java b/dolphinscheduler-task-plugin/dolphinscheduler-task-sqoop/src/main/java/org/apache/dolphinscheduler/plugin/task/sqoop/generator/targets/MySQLTargetGenerator.java
+index 46881d9..2e29381 100644
+--- a/dolphinscheduler-task-plugin/dolphinscheduler-task-sqoop/src/main/java/org/apache/dolphinscheduler/plugin/task/sqoop/generator/targets/MySQLTargetGenerator.java
++++ b/dolphinscheduler-task-plugin/dolphinscheduler-task-sqoop/src/main/java/org/apache/dolphinscheduler/plugin/task/sqoop/generator/targets/MySQLTargetGenerator.java
+@@ -56,7 +56,7 @@ public class MySQLTargetGenerator implements ITargetGenerator {
+             TargetMysqlParameter targetMysqlParameter =
+                     JSONUtils.parseObject(sqoopParameters.getTargetParams(), TargetMysqlParameter.class);
+ 
+-            if (null != targetMysqlParameter && targetMysqlParameter.getTargetDatasource() != 0) {
++            if (null != targetMysqlParameter && StringUtils.isNotEmpty(targetMysqlParameter.getTargetDatasource())) {
+ 
+                 // get datasource
+                 BaseConnectionParam baseDataSource = (BaseConnectionParam) DataSourceUtils.buildConnectionParams(
+diff --git a/dolphinscheduler-task-plugin/dolphinscheduler-task-sqoop/src/main/java/org/apache/dolphinscheduler/plugin/task/sqoop/generator/targets/OracleTargetGenerator.java b/dolphinscheduler-task-plugin/dolphinscheduler-task-sqoop/src/main/java/org/apache/dolphinscheduler/plugin/task/sqoop/generator/targets/OracleTargetGenerator.java
+index fb394c4..533b8ac 100644
+--- a/dolphinscheduler-task-plugin/dolphinscheduler-task-sqoop/src/main/java/org/apache/dolphinscheduler/plugin/task/sqoop/generator/targets/OracleTargetGenerator.java
++++ b/dolphinscheduler-task-plugin/dolphinscheduler-task-sqoop/src/main/java/org/apache/dolphinscheduler/plugin/task/sqoop/generator/targets/OracleTargetGenerator.java
+@@ -58,7 +58,7 @@ public class OracleTargetGenerator implements ITargetGenerator {
+             TargetOracleParameter targetOracleParameter =
+                     JSONUtils.parseObject(sqoopParameters.getTargetParams(), TargetOracleParameter.class);
+ 
+-            if (null == targetOracleParameter || targetOracleParameter.getTargetDatasource() == 0)
++            if (null == targetOracleParameter || StringUtils.isEmpty(targetOracleParameter.getTargetDatasource()))
+                 return oracleTargetSb.toString();
+ 
+             // get datasource
+diff --git a/dolphinscheduler-task-plugin/dolphinscheduler-task-sqoop/src/main/java/org/apache/dolphinscheduler/plugin/task/sqoop/generator/targets/SqlServerTargetGenerator.java b/dolphinscheduler-task-plugin/dolphinscheduler-task-sqoop/src/main/java/org/apache/dolphinscheduler/plugin/task/sqoop/generator/targets/SqlServerTargetGenerator.java
+index 3c5742a..9ef1ff8 100644
+--- a/dolphinscheduler-task-plugin/dolphinscheduler-task-sqoop/src/main/java/org/apache/dolphinscheduler/plugin/task/sqoop/generator/targets/SqlServerTargetGenerator.java
++++ b/dolphinscheduler-task-plugin/dolphinscheduler-task-sqoop/src/main/java/org/apache/dolphinscheduler/plugin/task/sqoop/generator/targets/SqlServerTargetGenerator.java
+@@ -58,7 +58,7 @@ public class SqlServerTargetGenerator implements ITargetGenerator {
+             TargetSqlServerParameter targetSqlServerParameter =
+                     JSONUtils.parseObject(sqoopParameters.getTargetParams(), TargetSqlServerParameter.class);
+ 
+-            if (null == targetSqlServerParameter || targetSqlServerParameter.getTargetDatasource() == 0)
++            if (null == targetSqlServerParameter || StringUtils.isEmpty(targetSqlServerParameter.getTargetDatasource()))
+                 return oracleTargetSb.toString();
+ 
+             // get datasource
+diff --git a/dolphinscheduler-task-plugin/dolphinscheduler-task-sqoop/src/main/java/org/apache/dolphinscheduler/plugin/task/sqoop/parameter/SourceCommonParameter.java b/dolphinscheduler-task-plugin/dolphinscheduler-task-sqoop/src/main/java/org/apache/dolphinscheduler/plugin/task/sqoop/parameter/SourceCommonParameter.java
+index 237710b..3573083 100644
+--- a/dolphinscheduler-task-plugin/dolphinscheduler-task-sqoop/src/main/java/org/apache/dolphinscheduler/plugin/task/sqoop/parameter/SourceCommonParameter.java
++++ b/dolphinscheduler-task-plugin/dolphinscheduler-task-sqoop/src/main/java/org/apache/dolphinscheduler/plugin/task/sqoop/parameter/SourceCommonParameter.java
+@@ -22,6 +22,6 @@ import lombok.Data;
+ @Data
+ public class SourceCommonParameter {
+ 
+-    protected int srcDatasource;
++    protected String srcDatasource;
+ 
+ }
+diff --git a/dolphinscheduler-task-plugin/dolphinscheduler-task-sqoop/src/main/java/org/apache/dolphinscheduler/plugin/task/sqoop/parameter/SqoopParameters.java b/dolphinscheduler-task-plugin/dolphinscheduler-task-sqoop/src/main/java/org/apache/dolphinscheduler/plugin/task/sqoop/parameter/SqoopParameters.java
+index 33f1468..12026a5 100644
+--- a/dolphinscheduler-task-plugin/dolphinscheduler-task-sqoop/src/main/java/org/apache/dolphinscheduler/plugin/task/sqoop/parameter/SqoopParameters.java
++++ b/dolphinscheduler-task-plugin/dolphinscheduler-task-sqoop/src/main/java/org/apache/dolphinscheduler/plugin/task/sqoop/parameter/SqoopParameters.java
+@@ -125,13 +125,13 @@ public class SqoopParameters extends AbstractParameters {
+ 
+         SourceCommonParameter sourceParameter = (SourceCommonParameter) JSONUtils.parseObject(this.getSourceParams(),
+                 getSourceParameter(this.getSourceType()));
+-        if (sourceParameter.getSrcDatasource() != 0) {
++        if (StringUtils.isNotEmpty(sourceParameter.getSrcDatasource())) {
+             resources.put(ResourceType.DATASOURCE, sourceParameter.getSrcDatasource());
+         }
+ 
+         TargetCommonParameter targetParameter = (TargetCommonParameter) JSONUtils.parseObject(this.getTargetParams(),
+                 getTargetParameter(this.getTargetType()));
+-        if (targetParameter.getTargetDatasource() != 0) {
++        if (StringUtils.isNotEmpty(targetParameter.getTargetDatasource())) {
+             resources.put(ResourceType.DATASOURCE, targetParameter.getTargetDatasource());
+         }
+ 
+diff --git a/dolphinscheduler-task-plugin/dolphinscheduler-task-sqoop/src/main/java/org/apache/dolphinscheduler/plugin/task/sqoop/parameter/TargetCommonParameter.java b/dolphinscheduler-task-plugin/dolphinscheduler-task-sqoop/src/main/java/org/apache/dolphinscheduler/plugin/task/sqoop/parameter/TargetCommonParameter.java
+index 3894882..cb3d0b6 100644
+--- a/dolphinscheduler-task-plugin/dolphinscheduler-task-sqoop/src/main/java/org/apache/dolphinscheduler/plugin/task/sqoop/parameter/TargetCommonParameter.java
++++ b/dolphinscheduler-task-plugin/dolphinscheduler-task-sqoop/src/main/java/org/apache/dolphinscheduler/plugin/task/sqoop/parameter/TargetCommonParameter.java
+@@ -22,6 +22,6 @@ import lombok.Data;
+ @Data
+ public class TargetCommonParameter {
+ 
+-    protected int targetDatasource;
++    protected String targetDatasource;
+ 
+ }
+diff --git a/dolphinscheduler-task-plugin/dolphinscheduler-task-zeppelin/src/main/java/org/apache/dolphinscheduler/plugin/task/zeppelin/ZeppelinParameters.java b/dolphinscheduler-task-plugin/dolphinscheduler-task-zeppelin/src/main/java/org/apache/dolphinscheduler/plugin/task/zeppelin/ZeppelinParameters.java
+index 6e50980..0f186c3 100644
+--- a/dolphinscheduler-task-plugin/dolphinscheduler-task-zeppelin/src/main/java/org/apache/dolphinscheduler/plugin/task/zeppelin/ZeppelinParameters.java
++++ b/dolphinscheduler-task-plugin/dolphinscheduler-task-zeppelin/src/main/java/org/apache/dolphinscheduler/plugin/task/zeppelin/ZeppelinParameters.java
+@@ -49,7 +49,7 @@ public class ZeppelinParameters extends AbstractParameters {
+     private String parameters;
+     private String username;
+     private String password;
+-    private int datasource;
++    private String datasource;
+     private String type;
+ 
+     @Override
+diff --git a/dolphinscheduler-ui/src/layouts/content/index.tsx b/dolphinscheduler-ui/src/layouts/content/index.tsx
+index 1d4d811..d3e0c20 100644
+--- a/dolphinscheduler-ui/src/layouts/content/index.tsx
++++ b/dolphinscheduler-ui/src/layouts/content/index.tsx
+@@ -24,6 +24,7 @@ import { useLocalesStore } from '@/store/locales/locales'
+ import { useRouteStore } from '@/store/route/route'
+ import { useI18n } from 'vue-i18n'
+ import { useRoute } from 'vue-router'
++import { dataraEmbed } from '@/utils/datara-bridge'
+ 
+ const Content = defineComponent({
+   name: 'DSContent',
+@@ -103,7 +104,7 @@ const Content = defineComponent({
+   render() {
+     return (
+       <NLayout style='height: 100%'>
+-        <NLayoutHeader style='height: 65px'>
++        {!dataraEmbed() && <NLayoutHeader style='height: 65px'>
+           <NavBar
+             class='tab-horizontal'
+             headerMenuOptions={this.headerMenuOptions}
+@@ -111,9 +112,9 @@ const Content = defineComponent({
+             timezoneOptions={this.timezoneOptions}
+             userDropdownOptions={this.userDropdownOptions}
+           />
+-        </NLayoutHeader>
+-        <NLayout has-sider position='absolute' style='top: 65px'>
+-          {this.isShowSide && (
++        </NLayoutHeader>}
++        <NLayout has-sider position='absolute' style={dataraEmbed() ? 'top: 0' : 'top: 65px'}>
++          {!dataraEmbed() && this.isShowSide && (
+             <SideBar
+               sideMenuOptions={this.sideMenuOptions}
+               sideKey={this.sideKeyRef}
+@@ -121,7 +122,7 @@ const Content = defineComponent({
+           )}
+           <NLayoutContent
+             native-scrollbar={false}
+-            style='padding: 16px 22px'
++            style={dataraEmbed() ? 'padding: 0' : 'padding: 16px 22px'}
+             contentStyle={'height: 100%'}
+           >
+             <router-view key={this.currentRoute.fullPath} />
+diff --git a/dolphinscheduler-ui/src/main.ts b/dolphinscheduler-ui/src/main.ts
+index 5d3b31e..9826ec7 100644
+--- a/dolphinscheduler-ui/src/main.ts
++++ b/dolphinscheduler-ui/src/main.ts
+@@ -26,6 +26,9 @@ import 'echarts/theme/macarons'
+ import 'echarts/theme/dark-bold'
+ import './assets/styles/default.scss'
+ import trim from './utils/trim'
++import { dataraEmbed, dataraSession, initDataraBridge } from './utils/datara-bridge'
++
++initDataraBridge()
+ 
+ const app = createApp(App)
+ const pinia = createPinia()
+@@ -38,4 +41,8 @@ app.config.globalProperties.trim = trim
+ app.use(router)
+ app.use(pinia)
+ app.use(i18n)
+-app.mount('#app')
++if (dataraEmbed()) {
++  void dataraSession().then(() => app.mount('#app'))
++} else {
++  app.mount('#app')
++}
+diff --git a/dolphinscheduler-ui/src/service/service.ts b/dolphinscheduler-ui/src/service/service.ts
+index 25d01ec..694026a 100644
+--- a/dolphinscheduler-ui/src/service/service.ts
++++ b/dolphinscheduler-ui/src/service/service.ts
+@@ -28,6 +28,7 @@ import _ from 'lodash'
+ import cookies from 'js-cookie'
+ import router from '@/router'
+ import utils from '@/utils'
++import { dataraEmbed, dataraSession } from '@/utils/datara-bridge'
+ 
+ const userStore = useUserStore()
+ const uiSettingStore = useUISettingStore()
+@@ -68,10 +69,10 @@ const service = axios.create(baseRequestConfig)
+ const err = (error: unknown): Promise<never> => {
+   const axiosError = error as AxiosError
+ 
+-  if (
++  if (!dataraEmbed() && (
+     axiosError.response?.status === 401 ||
+     axiosError.response?.status === 504
+-  ) {
++  )) {
+     userStore.setSessionId('')
+     userStore.setSecurityConfigType('')
+     userStore.setUserInfo({})
+@@ -82,8 +83,13 @@ const err = (error: unknown): Promise<never> => {
+   return Promise.reject(error)
+ }
+ 
+-service.interceptors.request.use((config: InternalAxiosRequestConfig) => {
+-  config.headers.set('sessionId', userStore.getSessionId)
++service.interceptors.request.use(async (config: InternalAxiosRequestConfig) => {
++  if (dataraEmbed()) {
++    const session = await dataraSession()
++    config.headers.set('X-Datara-Embed-Token', session.token)
++  } else {
++    config.headers.set('sessionId', userStore.getSessionId)
++  }
+   const language = cookies.get('language')
+   if (language) config.headers.set('language', language)
+ 
+diff --git a/dolphinscheduler-ui/src/utils/datara-bridge.ts b/dolphinscheduler-ui/src/utils/datara-bridge.ts
+new file mode 100644
+index 0000000..c126c75
+--- /dev/null
++++ b/dolphinscheduler-ui/src/utils/datara-bridge.ts
+@@ -0,0 +1,50 @@
++export interface DataraSession {
++  token: string
++  user: string
++  userToken: string
++  projectId: number
++  projectCode: string
++  apiBaseUrl: string
++  environmentGroupId?: number
++  environmentCode?: string
++}
++
++let session: DataraSession | null = null
++const waiters: Array<(value: DataraSession) => void> = []
++
++const embedded = new URLSearchParams(window.location.search).get('embed') === '1'
++export const dataraEmbed = (): boolean => embedded
++
++export function initDataraBridge(): void {
++  if (!dataraEmbed()) return
++  window.addEventListener('message', (event: MessageEvent) => {
++    if (event.source !== window.parent || event.origin !== window.location.origin) return
++    const message = event.data as { type?: string; payload?: Partial<DataraSession> } | null
++    if (message?.type !== 'datara:ds-session') return
++    const payload = message.payload
++    if (!payload || !payload.token || !payload.userToken || !payload.user ||
++        !Number.isInteger(payload.projectId) || !payload.projectCode) return
++    if (payload.apiBaseUrl && new URL(payload.apiBaseUrl, window.location.origin).origin !== window.location.origin) return
++    session = payload as DataraSession
++    waiters.splice(0).forEach((resolve) => resolve(session!))
++    window.parent.postMessage({ type: 'datara:ds-ready' }, window.location.origin)
++  })
++  window.parent.postMessage({ type: 'datara:ds-ready' }, window.location.origin)
++}
++
++export function dataraSession(): Promise<DataraSession> {
++  if (session) return Promise.resolve(session)
++  return new Promise((resolve) => waiters.push(resolve))
++}
++
++export async function dataraOptions<T>(path: string, query: Record<string, string | number> = {}): Promise<T> {
++  const current = await dataraSession()
++  const url = new URL(`${current.apiBaseUrl || window.location.origin}/api/v1/rebuild/orchestration/${path}`, window.location.origin)
++  url.searchParams.set('project_id', String(current.projectId))
++  Object.entries(query).forEach(([key, value]) => url.searchParams.set(key, String(value)))
++  const response = await fetch(url, { headers: { token: current.userToken }, credentials: 'omit' })
++  if (!response.ok) throw new Error(`Datara options unavailable: ${response.status}`)
++  const envelope = await response.json() as { code: number; data: T }
++  if (envelope.code !== 0) throw new Error('Datara options unavailable')
++  return envelope.data
++}
+diff --git a/dolphinscheduler-ui/src/views/projects/task/components/node/fields/use-datasource.ts b/dolphinscheduler-ui/src/views/projects/task/components/node/fields/use-datasource.ts
+index 950c741..302fb06 100644
+--- a/dolphinscheduler-ui/src/views/projects/task/components/node/fields/use-datasource.ts
++++ b/dolphinscheduler-ui/src/views/projects/task/components/node/fields/use-datasource.ts
+@@ -18,6 +18,7 @@
+ import { ref, onMounted, nextTick, Ref } from 'vue'
+ import { useI18n } from 'vue-i18n'
+ import { queryDataSourceList } from '@/service/modules/data-source'
++import { dataraEmbed, dataraOptions } from '@/utils/datara-bridge'
+ import { indexOf, find } from 'lodash'
+ import type { IJsonItem } from '../types'
+ import type { TypeReq } from '@/service/modules/data-source/types'
+@@ -34,7 +35,8 @@ export function useDatasource(
+   const { t } = useI18n()
+ 
+   const options = ref([] as { label: string; value: string }[])
+-  const datasourceOptions = ref([] as { label: string; value: number }[])
++  const datasourceOptions = ref([] as { label: string; value: number | string }[])
++  const dbxConnections = ref([] as { id: string; name: string; type: string }[])
+ 
+   const datasourceTypes = [
+     {
+@@ -184,6 +186,19 @@ export function useDatasource(
+   }
+ 
+   const refreshOptions = async () => {
++    if (dataraEmbed()) {
++      const connections = await dataraOptions<{ id: string; name: string; type: string }[]>('datasources')
++      dbxConnections.value = connections.filter((item) =>
++        !params.supportedDatasourceType || params.supportedDatasourceType.includes(item.type)
++      )
++      datasourceOptions.value = dbxConnections.value.map((item) => ({ label: item.name, value: item.id }))
++      options.value = Array.from(new Set(dbxConnections.value.map((item) => item.type)))
++        .map((type) => ({ label: type, value: type }))
++      const selected = dbxConnections.value.find((item) => item.id === model[params.sourceField || 'datasource'])
++      if (selected) model[params.typeField || 'type'] = selected.type
++      else if (model[params.sourceField || 'datasource']) model[params.sourceField || 'datasource'] = null
++      return
++    }
+     const parameters = {
+       type: model[params.typeField || 'type']
+     } as TypeReq
+@@ -203,11 +218,16 @@ export function useDatasource(
+   }
+ 
+   const onChange = () => {
+-    refreshOptions()
++    if (!dataraEmbed()) refreshOptions()
++  }
++
++  const onDatasourceChange = (connectionId: string) => {
++    const selected = dbxConnections.value.find((item) => item.id === connectionId)
++    if (selected) model[params.typeField || 'type'] = selected.type
+   }
+ 
+   onMounted(async () => {
+-    getDatasourceTypes()
++    if (!dataraEmbed()) getDatasourceTypes()
+     await nextTick()
+     refreshOptions()
+   })
+@@ -218,7 +238,8 @@ export function useDatasource(
+       span: params.span || 12,
+       name: t('project.node.datasource_type'),
+       props: {
+-        'on-update:value': onChange
++        'on-update:value': onChange,
++        disabled: dataraEmbed()
+       },
+       options: options,
+       validate: {
+@@ -231,6 +252,8 @@ export function useDatasource(
+       field: params.sourceField || 'datasource',
+       span: params.span || 12,
+       name: t('project.node.datasource_instances'),
++      props: dataraEmbed() ? { 'on-update:value': onDatasourceChange,
++        placeholder: '从 DBX 连接管理创建或共享连接后选择' } : {},
+       options: datasourceOptions,
+       validate: {
+         trigger: ['input', 'blur'],
+diff --git a/dolphinscheduler-ui/src/views/projects/task/components/node/fields/use-environment-name.ts b/dolphinscheduler-ui/src/views/projects/task/components/node/fields/use-environment-name.ts
+index 111310a..ebcf49e 100644
+--- a/dolphinscheduler-ui/src/views/projects/task/components/node/fields/use-environment-name.ts
++++ b/dolphinscheduler-ui/src/views/projects/task/components/node/fields/use-environment-name.ts
+@@ -18,6 +18,7 @@
+ import { ref, onMounted, watch } from 'vue'
+ import { useI18n } from 'vue-i18n'
+ import { queryAllEnvironmentList } from '@/service/modules/environment'
++import { dataraEmbed, dataraOptions, dataraSession } from '@/utils/datara-bridge'
+ import type { IEnvironmentNameOption, IJsonItem } from '../types'
+ 
+ export function useEnvironmentName(
+@@ -27,4 +28,5 @@ export function useEnvironmentName(
+   let environmentList = [] as IEnvironmentNameOption[]
+   const options = ref([] as IEnvironmentNameOption[])
+   const loading = ref(false)
++  let preferredEnvironmentCode: string | undefined
+   let mounted = false
+@@ -31,7 +33,10 @@ export function useEnvironmentName(
+   const getEnvironmentList = async () => {
+     if (loading.value) return
+     loading.value = true
++    preferredEnvironmentCode = dataraEmbed() ? (await dataraSession()).environmentCode : undefined
+-    const res = await queryAllEnvironmentList()
++    const res = dataraEmbed()
++      ? await dataraOptions<{ code: string; name: string; workerGroups: string[] }[]>('environments')
++      : await queryAllEnvironmentList()
+     environmentList = res.map(
+       (item: { code: string; name: string; workerGroups: string[] }) => ({
+         label: item.name,
+@@ -46,8 +51,10 @@ export function useEnvironmentName(
+     if (options.value.length === 0) {
+       model.environmentCode = null
+     } else {
+       isCreate &&
+         !model.environmentCode &&
+-        (model.environmentCode = options.value[0].value)
++        (model.environmentCode =
++          options.value.find((option) => option.value === preferredEnvironmentCode)?.value ??
++          options.value[0].value)
+     }
+   }
+@@ -76,6 +83,8 @@ export function useEnvironmentName(
+       } else {
+         model.environmentCode =
+-          options.value.length === 0 ? null : options.value[0].value
++          options.value.length === 0 ? null :
++          options.value.find((option) => option.value === preferredEnvironmentCode)?.value ??
++          options.value[0].value
+       }
+     }
+   )
+diff --git a/dolphinscheduler-ui/src/views/projects/task/components/node/fields/use-queue.ts b/dolphinscheduler-ui/src/views/projects/task/components/node/fields/use-queue.ts
+index 034aba1..5480c2d 100644
+--- a/dolphinscheduler-ui/src/views/projects/task/components/node/fields/use-queue.ts
++++ b/dolphinscheduler-ui/src/views/projects/task/components/node/fields/use-queue.ts
+@@ -15,18 +15,28 @@
+  * limitations under the License.
+  */
+ import { useI18n } from 'vue-i18n'
++import { dataraEmbed, dataraOptions } from '@/utils/datara-bridge'
++import { ref, onMounted } from 'vue'
+ import type { IJsonItem } from '../types'
+ 
+ export function useYarnQueue(): IJsonItem {
+   const { t } = useI18n()
++  const options = ref([] as { label: string; value: string }[])
++  if (dataraEmbed()) {
++    onMounted(async () => {
++      const queues = await dataraOptions<{ queue: string; queueName: string }[]>('queues')
++      options.value = queues.map((item) => ({ label: item.queueName || item.queue, value: item.queue }))
++    })
++  }
+ 
+   return {
+-    type: 'input',
++    type: dataraEmbed() ? 'select' : 'input',
+     field: 'yarnQueue',
+     name: t('project.node.yarn_queue'),
+     span: 12,
+     props: {
+-      placeholder: t('project.node.yarn_queue_tips')
+-    }
++      placeholder: dataraEmbed() ? '请先在 Datara 部署运维配置 Yarn 队列' : t('project.node.yarn_queue_tips')
++    },
++    options
+   }
+ }
+diff --git a/dolphinscheduler-ui/src/views/projects/task/components/node/fields/use-resources.ts b/dolphinscheduler-ui/src/views/projects/task/components/node/fields/use-resources.ts
+index ae90205..c3f7a08 100644
+--- a/dolphinscheduler-ui/src/views/projects/task/components/node/fields/use-resources.ts
++++ b/dolphinscheduler-ui/src/views/projects/task/components/node/fields/use-resources.ts
+@@ -18,6 +18,7 @@
+ import { ref, onMounted, Ref, isRef, h } from 'vue'
+ import { useI18n } from 'vue-i18n'
+ import { queryResourceList } from '@/service/modules/resources'
++import { dataraEmbed, dataraOptions } from '@/utils/datara-bridge'
+ import { useTaskNodeStore } from '@/store/project/task-node'
+ import utils from '@/utils'
+ import type { IJsonItem, IResource } from '../types'
+@@ -49,17 +50,19 @@ export function useResources(
+   const { copy, isSupported } = useClipboard({ source })
+ 
+   const getResources = async () => {
+-    if (taskStore.resources.length) {
++    if (!dataraEmbed() && taskStore.resources.length) {
+       resourcesOptions.value = taskStore.resources
+       return
+     }
+     if (resourcesLoading.value) return
+     resourcesLoading.value = true
+-    const res = await queryResourceList({ type: 'FILE', fullName: '' })
++    const res = dataraEmbed()
++      ? await dataraOptions<IResource[]>('resources')
++      : await queryResourceList({ type: 'FILE', fullName: '' })
+     utils.removeUselessChildren(res)
+     resourcesOptions.value = res || []
+     resourcesLoading.value = false
+-    taskStore.updateResource(res)
++    if (!dataraEmbed()) taskStore.updateResource(res)
+   }
+ 
+   const validateResourceExist = (
+diff --git a/dolphinscheduler-ui/src/views/projects/task/components/node/fields/use-task-group.ts b/dolphinscheduler-ui/src/views/projects/task/components/node/fields/use-task-group.ts
+index 6966e42..bf07786 100644
+--- a/dolphinscheduler-ui/src/views/projects/task/components/node/fields/use-task-group.ts
++++ b/dolphinscheduler-ui/src/views/projects/task/components/node/fields/use-task-group.ts
+@@ -18,6 +18,7 @@
+ import { ref, watch, computed, onMounted } from 'vue'
+ import { useI18n } from 'vue-i18n'
+ import { queryTaskGroupListPagingByProjectCode } from '@/service/modules/task-group'
++import { dataraEmbed, dataraOptions } from '@/utils/datara-bridge'
+ import type { IJsonItem } from '../types'
+ 
+ export function useTaskGroup(
+@@ -33,12 +34,14 @@ export function useTaskGroup(
+   const getTaskGroupList = async () => {
+     if (loading.value) return
+     loading.value = true
+-    const { totalList = [] } = await queryTaskGroupListPagingByProjectCode({
+-      pageNo: 1,
+-      pageSize: 2147483647,
+-      projectCode
+-    })
+-    options.value = totalList.map((item: { id: string; name: string }) => ({
++    const totalList = dataraEmbed()
++      ? await dataraOptions<{ id: number; name: string }[]>('task-groups')
++      : (await queryTaskGroupListPagingByProjectCode({
++          pageNo: 1,
++          pageSize: 2147483647,
++          projectCode
++        })).totalList || []
++    options.value = totalList.map((item: { id: number | string; name: string }) => ({
+       label: item.name,
+       value: item.id
+     }))
+@@ -67,7 +70,8 @@ export function useTaskGroup(
+       name: t('project.node.task_group_name'),
+       props: {
+         loading,
+-        clearable: true
++        clearable: true,
++        placeholder: dataraEmbed() ? '请先在当前项目的任务组管理中创建或共享任务组' : undefined
+       },
+       options
+     },
+diff --git a/dolphinscheduler-ui/src/views/projects/task/components/node/fields/use-worker-group.ts b/dolphinscheduler-ui/src/views/projects/task/components/node/fields/use-worker-group.ts
+index 4016844..954705a 100644
+--- a/dolphinscheduler-ui/src/views/projects/task/components/node/fields/use-worker-group.ts
++++ b/dolphinscheduler-ui/src/views/projects/task/components/node/fields/use-worker-group.ts
+@@ -18,6 +18,7 @@
+ import { ref, onMounted } from 'vue'
+ import { useI18n } from 'vue-i18n'
+ import { queryWorkerGroupsByProjectCode } from '@/service/modules/projects-worker-group'
++import { dataraEmbed, dataraOptions } from '@/utils/datara-bridge'
+ import type { IJsonItem } from '../types'
+ 
+ export function useWorkerGroup(projectCode: number): IJsonItem {
+@@ -29,6 +30,15 @@ export function useWorkerGroup(projectCode: number): IJsonItem {
+   const getWorkerGroups = async () => {
+     if (loading.value) return
+     loading.value = true
++    if (dataraEmbed()) {
++      try {
++        const groups = await dataraOptions<{ name: string }[]>('worker-groups')
++        options.value = groups.map((item) => ({ label: item.name, value: item.name }))
++      } finally {
++        loading.value = false
++      }
++      return
++    }
+     await queryWorkerGroupsByProjectCode(projectCode).then((res: any) => {
+       options.value = res.data.map((item: any) => ({
+         label: item.workerGroup,
+@@ -47,7 +57,8 @@ export function useWorkerGroup(projectCode: number): IJsonItem {
+     span: 12,
+     name: t('project.node.worker_group'),
+     props: {
+-      loading: loading
++      loading: loading,
++      placeholder: dataraEmbed() ? '请先在 Datara 部署运维配置或共享 Worker 分组' : undefined
+     },
+     options: options,
+     validate: {
+diff --git a/dolphinscheduler-ui/src/views/projects/workflow/components/dag/dag-toolbar.tsx b/dolphinscheduler-ui/src/views/projects/workflow/components/dag/dag-toolbar.tsx
+index 42182ab..88bf0f7 100644
+--- a/dolphinscheduler-ui/src/views/projects/workflow/components/dag/dag-toolbar.tsx
++++ b/dolphinscheduler-ui/src/views/projects/workflow/components/dag/dag-toolbar.tsx
+@@ -48,6 +48,7 @@ import { useThemeStore } from '@/store/theme/theme'
+ import type { Graph } from '@antv/x6'
+ import StartupParam from './dag-startup-param'
+ import VariablesView from '@/views/projects/workflow/instance/components/variables-view'
++import { dataraEmbed } from '@/utils/datara-bridge'
+ import { WorkflowDefinition, WorkflowInstance } from './types'
+ import { useDependencies } from '@/views/projects/components/dependencies/use-dependencies'
+ 
+@@ -240,7 +241,18 @@ export default defineComponent({
+             }}
+           ></NTooltip>
+         )}
+-        {props.definition?.workflowDefinition?.name && (
++        {props.definition?.workflowDefinition?.name && (dataraEmbed() ? (
++          <NTooltip v-slots={{
++            trigger: () => <NButton quaternary circle class={Styles['toolbar-btn']} onClick={() => {
++              window.parent.postMessage({
++                type: 'datara:open-variables',
++                projectCode: String(projectCode),
++                workflowCode: props.definition?.workflowDefinition?.code
++              }, window.location.origin)
++            }}><NIcon><FundViewOutlined /></NIcon></NButton>,
++            default: () => t('project.dag.view_variables')
++          }} />
++        ) : (
+           <NTooltip
+             v-slots={{
+               trigger: () => (
+@@ -270,7 +282,7 @@ export default defineComponent({
+               default: () => t('project.dag.view_variables')
+             }}
+           ></NTooltip>
+-        )}
++        ))}
+         <div class={Styles['toolbar-left-part']}>
+           {route.name !== 'workflow-instance-detail' &&
+             props.definition?.workflowDefinition?.releaseState === 'ONLINE' && (
+

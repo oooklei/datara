@@ -73,7 +73,7 @@ function snapshot(): Record<string, unknown> {
     target_properties: JSON.parse(JSON.stringify(targetProperties)),
     // The rebuild SYNC API stores the rich plan above, while the existing
     // worker contract consumes these flat keys from the saved DAG node.
-    // Keep both projections in one serializable node payload so trial/save
+    // Keep both projections in one serializable node payload so save
     // and runtime materialization execute the exact mapping the user edited.
     srcDs: source.datasource_id,
     srcTable: source.object,
@@ -145,17 +145,20 @@ async function save() {
 </template>
 
 <style scoped>
-.sync-editor { display: grid; gap: 10px; padding: 12px; border: 1px solid #d9e2ef; border-radius: 8px; background: #fff; }
+.sync-editor { display: grid; gap: 10px; padding: 12px; border: 1px solid var(--border); border-radius: 8px; background: var(--card); }
 .sync-ref-grid { display: grid; grid-template-columns: repeat(3, minmax(120px, 1fr)); gap: 8px; }
-.sync-ref-grid label { display: grid; gap: 4px; font-size: 12px; color: #526173; }
-input { min-width: 0; padding: 5px 7px; border: 1px solid #c8d3e0; border-radius: 4px; }
+.sync-ref-grid label { display: grid; gap: 4px; font-size: 12px; color: var(--text-2); }
+input { min-width: 0; padding: 5px 7px; border: 1px solid var(--border-strong); border-radius: 4px; background: var(--card); color: var(--text); }
 .sync-actions { display: flex; gap: 8px; }
 .sync-options { display: grid; grid-template-columns: repeat(3, minmax(140px, 1fr)); gap: 8px; }
-.sync-options label { display: grid; gap: 4px; font-size: 12px; color: #526173; }
-select { min-width: 0; padding: 5px 7px; border: 1px solid #c8d3e0; border-radius: 4px; background: #fff; }
-button { padding: 6px 10px; border: 0; border-radius: 4px; background: #2463eb; color: #fff; cursor: pointer; }
+.sync-options label { display: grid; gap: 4px; font-size: 12px; color: var(--text-2); }
+select { min-width: 0; padding: 5px 7px; border: 1px solid var(--border-strong); border-radius: 4px; background: var(--card); color: var(--text); }
+button { padding: 6px 10px; border: 1px solid var(--border-strong); border-radius: 4px; background: var(--card); color: var(--text-2); cursor: pointer; }
+button:hover:not(:disabled) { border-color: var(--primary); color: var(--primary); background: var(--primary-light); }
+button[data-test='sync-save'] { background: var(--primary); border-color: var(--primary); color: var(--on-primary); font-weight: 500; }
+button[data-test='sync-save']:hover:not(:disabled) { background: var(--primary-hover); border-color: var(--primary-hover); color: var(--on-primary); }
 button:disabled { opacity: .5; cursor: default; }
 table { width: 100%; border-collapse: collapse; font-size: 12px; }
-th, td { padding: 5px; border-bottom: 1px solid #e7edf5; text-align: left; }
-.sync-meta { margin: 0; color: #64748b; font-size: 12px; }
+th, td { padding: 5px; border-bottom: 1px solid var(--border); text-align: left; }
+.sync-meta { margin: 0; color: var(--text-3); font-size: 12px; }
 </style>

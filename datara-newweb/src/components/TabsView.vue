@@ -66,9 +66,9 @@ function onClose(id: string): void {
 
 <style scoped>
 .tabs-view{display:flex;flex-direction:column;min-height:0}
-.tabs-bar{display:flex;gap:2px;border-bottom:1px solid #e5e5e5}
+.tabs-bar{display:flex;gap:2px;border-bottom:1px solid var(--border)}
 .tab{display:inline-flex;align-items:center;gap:6px;padding:6px 14px;border:none;background:none;cursor:pointer;border-bottom:2px solid transparent}
-.tab.active{border-bottom-color:var(--app-primary,#2f6fed);font-weight:600}
+.tab.active{border-bottom-color:var(--primary);font-weight:600}
 .tab-close{cursor:pointer;font-size:14px;line-height:1}
 .tabs-content{flex:1;min-height:0}
 </style>

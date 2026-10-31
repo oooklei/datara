@@ -233,28 +233,31 @@ def prime_stream_observation(api: HttpApi, result: dict[str, Any]) -> None:
     })
 
 
-def run_normal_sample(api: Any, *, project_id: int, workflow_id: int, dependency_id: int) -> dict[str, Any]:
-    """Execute SQL/Python/Shell/dependency in the seeded NORMAL graph and expose persisted counts."""
-    snapshot = api.post(f"/api/v1/rebuild/trial/definitions/{workflow_id}/snapshot", {
+def run_formal_sample(api: Any, *, project_id: int, workflow_id: int) -> dict[str, Any]:
+    """Publish the seeded NORMAL graph and start one FORMAL instance.
+
+    试运行(trial) 域已废弃：datara 不再自研草稿快照试运行。正式运行必须绑定已发布
+    版本（§4.2 workflow_version_id），节点任务由海豚 worker 执行（§八 / §10.7 B1）。
+    """
+    published = api.post(f"/api/v1/rebuild/workflows/{workflow_id}/publish", {
         "project_id": project_id,
+        "remark": "seeded demo publish",
     })
-    run = api.post("/api/v1/rebuild/trial/runs", {
+    run = api.post("/api/v1/rebuild/execution/workflow-instances", {
         "project_id": project_id,
-        "definition_id": workflow_id,
-        "snapshot_id": int(snapshot["snapshot_id"]),
-        "options": {
-            "dependency_mock": {str(dependency_id): "SUCCEEDED"},
-            "sql_execute": True,
-            "sql_precheck": True,
-        },
+        "workflow_id": workflow_id,
+        "instance_type": "FORMAL",
+        "trigger_type": "MANUAL",
+        "publish_version": int(published["id"]),
     })
-    output = api.get(f"/api/v1/rebuild/trial/runs/{int(run['instance_id'])}", {"project_id": project_id})
+    tasks = run.get("tasks") or []
     return {
         "instance_id": int(run["instance_id"]),
+        "instance_type": str(run["instance_type"]),
+        "workflow_version_id": int(run["workflow_version_id"]),
         "status": str(run["status"]),
-        "task_count": int(run["task_count"]),
-        "tasks": run.get("tasks") or [],
-        "stats": output.get("stats") or {},
+        "task_count": len(tasks),
+        "tasks": tasks,
     }
 
 
@@ -285,11 +288,10 @@ def main() -> int:
         result["workflow_node_types"][row["name"]] = sorted(
             str(node.get("node_type") or node.get("type")) for node in nodes
         )
-    result["normal_trial"] = run_normal_sample(
+    result["normal_run"] = run_formal_sample(
         api,
         project_id=result["project_id"],
         workflow_id=result["workflow_ids"]["NORMAL"],
-        dependency_id=result["normal_dependency_id"],
     )
     stream_job = api.get(f"/api/v1/rebuild/stream/jobs/{result['stream_job_id']}")
     result["stream_job_state"] = stream_job["state"]
@@ -306,11 +308,9 @@ def main() -> int:
         and all(result["workflow_node_types"].get(name) == types for name, types in expected.items())
         and result["stream_job_state"] == "RUNNING"
         and int(observation.get("success_count") or 0) > 0
-        and result["normal_trial"]["status"] == "SUCCEEDED"
-        and result["normal_trial"]["task_count"] == 4
-        and all(task.get("status") == "SUCCEEDED" for task in result["normal_trial"]["tasks"])
-        and int(result["normal_trial"]["stats"].get("success_count") or 0) == 4
-        and int(result["normal_trial"]["stats"].get("failed_count") or 0) == 0
+        and result["normal_run"]["instance_type"] == "FORMAL"
+        and result["normal_run"]["task_count"] == 4
+        and all(task.get("status") == "PENDING" for task in result["normal_run"]["tasks"])
     ) else "FAIL"
     args.output.parent.mkdir(parents=True, exist_ok=True)
     args.output.write_text(json.dumps(result, ensure_ascii=False, indent=2), encoding="utf-8")

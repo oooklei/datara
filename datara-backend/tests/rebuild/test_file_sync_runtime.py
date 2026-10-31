@@ -16,7 +16,7 @@ from sqlalchemy.orm import Session
 from rebuild.common.db import Base
 from common import dsconn
 from rebuild.sync.executor import SyncExecutionSpec, prepare_sync_execution
-from rebuild.trial.sync_runtime import FileSyncRuntimeAdapter, build_sync_driver_factory
+from rebuild.sync.file_runtime import FileSyncRuntimeAdapter, build_sync_driver_factory
 
 # ProjectDatasourceRecord.project_id 的 FK 指向 rebuild_project：
 # import 项目模型把表注册进 Base.metadata，否则 create_all 报 NoReferencedTableError

@@ -349,7 +349,7 @@ function onLoad() {
     <!-- 组件库：拖拽（数据一源 loadComponentSpecs，§5A.3 零私设） -->
     <template v-if="tab === 'palette'">
       <div class="pal-search">
-        <input v-model="kw" placeholder="搜索组件" style="width:100%;border:1px solid var(--border-color,#d3d9e3);border-radius:var(--radius-sm,6px);padding:6px 9px;font-size:12.5px;outline:none" />
+        <input v-model="kw" placeholder="搜索组件" style="width:100%;border:1px solid var(--border-strong);border-radius:var(--radius-sm,6px);padding:6px 9px;font-size:12.5px;outline:none" />
       </div>
       <div class="pal-list">
         <div v-for="g in groups" :key="g.key" class="pal-cat" :class="{ fold: folded[g.key] }">
@@ -378,7 +378,7 @@ function onLoad() {
           </div>
         </div>
         <!-- 空态（蓝本原文「无匹配组件」；规格未加载完成前不闪空态） -->
-        <div v-if="loaded && groups.length === 0" style="padding:20px;text-align:center;color:var(--text-3,#94a3b8);font-size:12px">无匹配组件</div>
+        <div v-if="loaded && groups.length === 0" style="padding:20px;text-align:center;color:var(--text-3);font-size:12px">无匹配组件</div>
       </div>
     </template>
 
@@ -392,7 +392,7 @@ function onLoad() {
         </button>
       </div>
       <div class="pal-search">
-        <input v-model="kw" placeholder="搜索工作任务" style="width:100%;border:1px solid var(--border-color,#d3d9e3);border-radius:var(--radius-sm,6px);padding:6px 9px;font-size:12.5px;outline:none" />
+        <input v-model="kw" placeholder="搜索工作任务" style="width:100%;border:1px solid var(--border-strong);border-radius:var(--radius-sm,6px);padding:6px 9px;font-size:12.5px;outline:none" />
       </div>
       <div class="pal-list pal-tasks">
         <!-- 分类目录：默认收起，点击表头展开 -->
@@ -474,60 +474,60 @@ function onLoad() {
    wf 系 .pal-task、.pt-* 通配、.pal-bar、.pal-load 等归 FE-4）。CSS 变量沿新前端惯例
    （var(--x, fallback)，无全局 token 定义）；旧主色 #1668dc 系 rgba 按新主色
    #2563eb 换算。 */
-.wb-palette{width:232px;background:var(--card);border-right:1px solid var(--border-color,#e2e8f0);display:flex;flex-direction:column;flex-shrink:0}
-.pal-tabs{display:flex;gap:2px;padding:6px 8px 0;border-bottom:1px solid var(--border-color,#e2e8f0);flex-shrink:0}
-.pal-tab{border:none;background:none;padding:5px 8px;font-size:12px;color:var(--text-secondary,#64748b);cursor:pointer;border-bottom:2px solid transparent;margin-bottom:-1px}
-.pal-tab:hover{color:var(--primary-color,#2563eb)}
-.pal-tab.on{color:var(--primary-color,#2563eb);border-bottom-color:var(--primary-color,#2563eb);font-weight:600}
-.pal-search{padding:6px 8px;border-bottom:1px solid var(--border-color,#e2e8f0);flex-shrink:0}
+.wb-palette{width:232px;background:var(--card);border-right:1px solid var(--border);display:flex;flex-direction:column;flex-shrink:0}
+.pal-tabs{display:flex;gap:2px;padding:6px 8px 0;border-bottom:1px solid var(--border);flex-shrink:0}
+.pal-tab{border:none;background:none;padding:5px 8px;font-size:12px;color:var(--text-2);cursor:pointer;border-bottom:2px solid transparent;margin-bottom:-1px}
+.pal-tab:hover{color:var(--primary)}
+.pal-tab.on{color:var(--primary);border-bottom-color:var(--primary);font-weight:600}
+.pal-search{padding:6px 8px;border-bottom:1px solid var(--border);flex-shrink:0}
 .pal-list{flex:1;overflow-y:auto;padding:6px}
 .pal-cat{margin-bottom:2px}
-.pal-cat-head{display:flex;align-items:center;gap:6px;padding:7px 8px;cursor:pointer;color:var(--text-secondary,#64748b);font-size:12.5px;font-weight:600;border-radius:var(--radius-sm,6px);user-select:none}
-.pal-cat-head:hover{background:var(--bg-secondary,#f8fafc)}
-.pal-cat-head .cnt{margin-left:auto;font-size:10.5px;color:var(--text-3,#94a3b8);background:var(--bg-secondary,#f8fafc);border-radius:8px;padding:0 7px}
+.pal-cat-head{display:flex;align-items:center;gap:6px;padding:7px 8px;cursor:pointer;color:var(--text-2);font-size:12.5px;font-weight:600;border-radius:var(--radius-sm,6px);user-select:none}
+.pal-cat-head:hover{background:var(--bg)}
+.pal-cat-head .cnt{margin-left:auto;font-size:10.5px;color:var(--text-3);background:var(--bg);border-radius:8px;padding:0 7px}
 .pal-cat-head .arrow{transition:transform .15s;font-size:10px}
 .pal-cat.fold .pal-cat-head .arrow{transform:rotate(-90deg)}
 .pal-cat.fold .pal-items{display:none}
 .pal-item{display:flex;align-items:center;gap:9px;padding:5px 8px;border-radius:var(--radius-sm,6px);cursor:grab;border:1px solid transparent;user-select:none}
-.pal-item:hover{background:var(--primary-light,#eff6ff);border-color:rgba(37,99,235,.25)}
+.pal-item:hover{background:var(--primary-light);border-color:color-mix(in srgb, var(--primary) 25%, transparent)}
 .pal-item .p-ico{width:26px;height:26px;border-radius:var(--radius-sm,6px);display:flex;align-items:center;justify-content:center;color:#fff;font-size:13px;flex-shrink:0}
 .pal-item .p-name{font-size:12.5px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.pal-item .p-code{font-size:9.5px;font-weight:700;color:var(--text-3,#94a3b8);background:var(--bg-secondary,#f8fafc);border-radius:4px;padding:0 4px;margin-left:2px}
-.pal-empty{padding:20px;text-align:center;color:var(--text-3,#94a3b8);font-size:12px}
+.pal-item .p-code{font-size:9.5px;font-weight:700;color:var(--text-3);background:var(--bg);border-radius:4px;padding:0 4px;margin-left:2px}
+.pal-empty{padding:20px;text-align:center;color:var(--text-3);font-size:12px}
 
 /* ---------- 工作流目录树（INC4-FE-4，蓝本 L392-429 照抄、CSS 变量 fallback 化） ---------- */
 /* .pal-empty、.pal-search、.pal-cat-head 本体、.pal-cat.fold 折叠规则已由组件库分支定义（两分支共用），不重复 */
 .pal-tasks{flex:1}
 .pal-task{display:flex;align-items:center;gap:6px;padding:6px 8px;cursor:pointer;border-radius:var(--radius-sm,6px);font-size:12.5px}
-.pal-task:hover{background:var(--primary-light,#eff6ff)}
-.pal-task.on{background:var(--primary-light,#eff6ff);color:var(--primary-color,#2563eb)}
-.pal-task input{accent-color:var(--primary-color,#2563eb);cursor:pointer;flex-shrink:0}
+.pal-task:hover{background:var(--primary-light)}
+.pal-task.on{background:var(--primary-light);color:var(--primary)}
+.pal-task input{accent-color:var(--primary);cursor:pointer;flex-shrink:0}
 .pt-name{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1;min-width:0}
-.p-code{font-size:11px;background:var(--primary-light,#eff6ff);color:var(--primary-color,#2563eb);border-radius:4px;padding:0 4px;margin-right:5px}
+.p-code{font-size:11px;background:var(--primary-light);color:var(--primary);border-radius:4px;padding:0 4px;margin-right:5px}
 /* 旧前端全局 .mono 类不在新前端基建，就地补（蓝本 #编号 等宽通道） */
 .p-code.mono{font-family:ui-monospace,SFMono-Regular,Consolas,monospace}
-.pt-move{border:1px solid var(--border-color,#e2e8f0);border-radius:var(--radius-sm,6px);font-size:11px;color:var(--text-secondary,#64748b);background:#fff;padding:1px 3px;cursor:pointer;flex-shrink:0;max-width:74px}
-.pt-move:hover{border-color:var(--primary-color,#2563eb);color:var(--primary-color,#2563eb)}
+.pt-move{border:1px solid var(--border);border-radius:var(--radius-sm,6px);font-size:11px;color:var(--text-2);background:var(--card);padding:1px 3px;cursor:pointer;flex-shrink:0;max-width:74px}
+.pt-move:hover{border-color:var(--primary);color:var(--primary)}
 /* 9-04 行内「定时」入口（emit schedule → 宿主 TC 单实例 ScheduleDialog） */
-.pt-cron{color:var(--text-4,#cbd5e1);font-size:11px;line-height:1;padding:1px 3px;border-radius:3px;flex-shrink:0;cursor:pointer}
-.pt-cron:hover{color:var(--primary-color,#2563eb);background:var(--primary-light,#eff6ff)}
-.pt-del{color:var(--text-4,#cbd5e1);font-size:12px;line-height:1;padding:1px 3px;border-radius:3px;flex-shrink:0;cursor:pointer}
-.pt-del:hover{color:var(--danger,#dc2626);background:var(--danger-bg,#fef2f2)}
+.pt-cron{color:var(--text-3);font-size:11px;line-height:1;padding:1px 3px;border-radius:3px;flex-shrink:0;cursor:pointer}
+.pt-cron:hover{color:var(--primary);background:var(--primary-light)}
+.pt-del{color:var(--text-3);font-size:12px;line-height:1;padding:1px 3px;border-radius:3px;flex-shrink:0;cursor:pointer}
+.pt-del:hover{color:var(--danger);background:var(--danger-bg)}
 /* 根目录（普通工作流）平铺项 */
 .wf-root-item{border-radius:0}
-.wf-root-item:hover{background:var(--primary-light,#eff6ff)}
+.wf-root-item:hover{background:var(--primary-light)}
 /* 根目录与分类目录分段线 */
-.wf-root-sep{border-top:1px dashed var(--border-color,#e2e8f0);margin:4px 8px}
+.wf-root-sep{border-top:1px dashed var(--border);margin:4px 8px}
 /* 目录头内「全选」标签（wf 分支专用；目录头本体沿用组件库版定义） */
-.pal-cat-head .pal-all{margin-left:auto;display:inline-flex;align-items:center;gap:3px;font-size:11.5px;color:var(--text-3,#94a3b8);cursor:pointer;font-weight:400}
-.pal-cat-head .pal-all input{accent-color:var(--primary-color,#2563eb);cursor:pointer;margin:0}
-.pal-root-head{margin-top:2px;color:var(--text-secondary,#64748b)}
+.pal-cat-head .pal-all{margin-left:auto;display:inline-flex;align-items:center;gap:3px;font-size:11.5px;color:var(--text-3);cursor:pointer;font-weight:400}
+.pal-cat-head .pal-all input{accent-color:var(--primary);cursor:pointer;margin:0}
+.pal-root-head{margin-top:2px;color:var(--text-2)}
 /* 列表操作条（置顶：新建分类、已选计数、载入选中） */
-.pal-bar{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:6px 8px;border-bottom:1px solid var(--border-color,#e2e8f0);flex-shrink:0}
-.pal-hint{font-size:11.5px;color:var(--text-3,#94a3b8)}
-.pal-hint b{color:var(--primary-color,#2563eb)}
-.pal-mini{border:1px solid var(--border-color,#e2e8f0);background:#fff;border-radius:var(--radius-sm,6px);padding:3px 8px;font-size:11.5px;color:var(--text-secondary,#64748b);cursor:pointer;white-space:nowrap}
-.pal-mini:hover{border-color:var(--primary-color,#2563eb);color:var(--primary-color,#2563eb)}
-.pal-load{border:1px solid var(--primary-color,#2563eb);background:var(--primary-color,#2563eb);color:#fff;border-radius:var(--radius-sm,6px);padding:4px 10px;font-size:12px;cursor:pointer;white-space:nowrap}
-.pal-load:disabled{border-color:var(--border-color,#e2e8f0);background:var(--bg-2,#f1f5f9);color:var(--text-3,#94a3b8);cursor:not-allowed}
+.pal-bar{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:6px 8px;border-bottom:1px solid var(--border);flex-shrink:0}
+.pal-hint{font-size:11.5px;color:var(--text-3)}
+.pal-hint b{color:var(--primary)}
+.pal-mini{border:1px solid var(--border);background:var(--card);border-radius:var(--radius-sm,6px);padding:3px 8px;font-size:11.5px;color:var(--text-2);cursor:pointer;white-space:nowrap}
+.pal-mini:hover{border-color:var(--primary);color:var(--primary)}
+.pal-load{border:1px solid var(--primary);background:var(--primary);color:#fff;border-radius:var(--radius-sm,6px);padding:4px 10px;font-size:12px;cursor:pointer;white-space:nowrap}
+.pal-load:disabled{border-color:var(--border);background:var(--bg-deep);color:var(--text-3);cursor:not-allowed}
 </style>

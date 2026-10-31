@@ -406,7 +406,7 @@ function onSave(): void {
   flex-direction: column;
   gap: 8px;
   font-size: 12.5px;
-  color: var(--text-primary, #1e293b);
+  color: var(--text);
 }
 .ncp-head {
   display: flex;
@@ -422,7 +422,7 @@ function onSave(): void {
   background: transparent;
   cursor: pointer;
   font-size: 13px;
-  color: var(--text-secondary, #64748b);
+  color: var(--text-2);
   padding: 2px 6px;
 }
 .ncp-field {
@@ -432,20 +432,20 @@ function onSave(): void {
 }
 .ncp-label {
   font-size: 11.5px;
-  color: var(--text-secondary, #64748b);
+  color: var(--text-2);
 }
 .ncp-input {
-  border: 1px solid var(--border-color, #e2e8f0);
+  border: 1px solid var(--border);
   border-radius: 6px;
   padding: 5px 8px;
   font-size: 12px;
   outline: none;
-  background: #fff;
-  color: var(--text-primary, #1e293b);
+  background: var(--card);
+  color: var(--text);
   font-family: inherit;
 }
 .ncp-input:focus {
-  border-color: var(--primary-color, #2563eb);
+  border-color: var(--primary);
 }
 .ncp-check {
   display: flex;
@@ -453,35 +453,35 @@ function onSave(): void {
   gap: 6px;
   font-size: 11.5px;
   cursor: pointer;
-  color: var(--text-primary, #1e293b);
+  color: var(--text);
 }
 .ncp-hint {
   font-size: 11.5px;
-  color: var(--text-3, #94a3b8);
+  color: var(--text-3);
   margin: 0;
   line-height: 1.6;
 }
 .ncp-warn {
-  color: var(--warning, #d97706);
+  color: var(--warn);
 }
 .ncp-foot {
   display: flex;
   justify-content: flex-end;
   padding-top: 4px;
-  border-top: 1px solid var(--border-color, #e2e8f0);
+  border-top: 1px solid var(--border);
 }
 .ncp-btn {
-  border: 1px solid var(--border-color, #e2e8f0);
-  background: #fff;
+  border: 1px solid var(--border);
+  background: var(--card);
   border-radius: 6px;
   padding: 4px 14px;
   font-size: 12px;
   cursor: pointer;
-  color: var(--text-primary, #1e293b);
+  color: var(--text);
 }
 .ncp-btn.primary {
-  border-color: var(--primary-color, #2563eb);
-  background: var(--primary-color, #2563eb);
+  border-color: var(--primary);
+  background: var(--primary);
   color: #fff;
 }
 </style>

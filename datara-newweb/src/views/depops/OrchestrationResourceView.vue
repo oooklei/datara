@@ -59,9 +59,9 @@
             <td data-owner>{{ row.ownerId === null ? '公共' : `#${row.ownerId}` }}</td>
             <td data-writable>{{ row.canManage ? '可写' : '只读' }}</td>
             <td class="actions">
-              <button type="button" data-share :disabled="!row.canManage" @click="openShare(row)">共享</button>
-              <button type="button" data-edit :disabled="!row.canManage || isReadonly(row)" @click="openEdit(row)">编辑</button>
-              <button type="button" data-delete :disabled="!row.canManage || isReadonly(row)" @click="remove(row)">删除</button>
+              <button type="button" class="mini-btn" data-share :disabled="!row.canManage" @click="openShare(row)">共享</button>
+              <button type="button" class="mini-btn" data-edit :disabled="!row.canManage || isReadonly(row)" @click="openEdit(row)">编辑</button>
+              <button type="button" class="mini-btn danger" data-delete :disabled="!row.canManage || isReadonly(row)" @click="remove(row)">删除</button>
             </td>
           </tr>
           <tr v-if="visibleRows.length === 0">
@@ -117,8 +117,8 @@
 
         <p v-if="saveError" class="form-err" role="alert" data-save-error>{{ saveError }}</p>
         <footer>
-          <button type="button" @click="closeEditor">取消</button>
-          <button type="submit" data-save :disabled="saveBusy">保存</button>
+          <button type="button" class="mini-btn" @click="closeEditor">取消</button>
+          <button type="submit" class="mini-btn primary" data-save :disabled="saveBusy">保存</button>
         </footer>
       </form>
     </div>
@@ -130,9 +130,9 @@
         <label>用户名<input v-model.trim="shareUsername" required data-share-username /></label>
         <p v-if="shareError" class="form-err" role="alert" data-share-error>{{ shareError }}</p>
         <footer>
-          <button type="button" data-unshare :disabled="shareBusy || !shareUsername" @click="submitUnshare">取消共享</button>
-          <button type="button" @click="closeShare">关闭</button>
-          <button type="submit" data-share-save :disabled="shareBusy">共享</button>
+          <button type="button" class="mini-btn" data-unshare :disabled="shareBusy || !shareUsername" @click="submitUnshare">取消共享</button>
+          <button type="button" class="mini-btn" @click="closeShare">关闭</button>
+          <button type="submit" class="mini-btn primary" data-share-save :disabled="shareBusy">共享</button>
         </footer>
       </form>
     </div>
@@ -596,7 +596,7 @@ watch(
 .mask .checks { border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 8px 12px; }
 .mask .check { display: flex; align-items: center; gap: 6px; }
 .mask footer { display: flex; justify-content: flex-end; gap: 8px; }
-.form-err { color: var(--danger, #d92d20); margin: 0; font-size: 12.5px; }
+.form-err { color: var(--danger); margin: 0; font-size: 12.5px; }
 .hint { color: var(--text-3); font-size: 12px; margin: 0; }
 .drag-handle { cursor: grab; user-select: none; margin: 0; }
 .drag-handle:active { cursor: grabbing; }

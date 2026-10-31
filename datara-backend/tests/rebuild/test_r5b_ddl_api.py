@@ -40,6 +40,7 @@ def _client():
         ))
         session.commit()
     response = client.post("/api/v1/rebuild/login", json={"username": "dev", "password": "dev-pass"})
+    client.cookies.clear()
     return client, {"token": response.json()["data"]["token"]}
 
 

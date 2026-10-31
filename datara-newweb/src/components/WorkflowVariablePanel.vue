@@ -93,7 +93,7 @@ watch(() => [props.modelValue, props.projectId, props.workflowId], load, { immed
 
 <template>
   <section v-if="modelValue" class="workflow-variable-panel" data-workflow-variable-panel>
-    <header><strong>工作流变量</strong><button @click="emit('update:modelValue', false)">关闭</button></header>
+    <header><strong>工作流变量</strong><button class="mini-btn" @click="emit('update:modelValue', false)">关闭</button></header>
     <div class="chain" data-variable-chain aria-label="变量解析优先级链">
       <template v-for="(scope, index) in chainScopes" :key="scope">
         <span v-if="index > 0" class="chain-arrow">&gt;</span>
@@ -103,7 +103,7 @@ watch(() => [props.modelValue, props.projectId, props.workflowId], load, { immed
     <p class="hint">引用语法 <code>${scope.name}</code>；解析取链上首个命中域。工作流级在此维护，其余域由任务中心「变量管理」或运行实例提供。</p>
     <div class="preview" data-variable-preview>
       <input v-model="previewExpression" data-variable-preview-input placeholder="输入表达式，如 ${workflow.rate}" @keyup.enter="runPreview" />
-      <button data-variable-preview-run type="button" :disabled="previewing" @click="runPreview">解析预览</button>
+      <button class="mini-btn" data-variable-preview-run type="button" :disabled="previewing" @click="runPreview">解析预览</button>
       <p v-if="previewError" class="error" data-variable-preview-error>{{ previewError }}</p>
       <p v-else-if="previewResult" data-variable-preview-result>{{ previewResult }}</p>
     </div>
@@ -112,7 +112,7 @@ watch(() => [props.modelValue, props.projectId, props.workflowId], load, { immed
       <p v-if="!scopeGroups.length" data-variable-empty>暂无变量</p>
       <section v-for="group in scopeGroups" :key="group.scope" class="scope-group" :data-scope-group="group.scope">
         <h4>{{ group.label }}（{{ group.scope }}）<small v-if="!group.editable">只读 · 去任务中心「变量管理」维护</small></h4>
-        <ul><li v-for="row in group.items" :key="`${row.scope}:${row.name}`"><code>{{ row.name }}</code><span>{{ row.sensitive ? '******' : row.value }}</span><button v-if="group.editable" :disabled="canEdit === false" type="button" :data-variable-remove="row.name" @click="remove(row)">删除</button></li></ul>
+        <ul><li v-for="row in group.items" :key="`${row.scope}:${row.name}`"><code>{{ row.name }}</code><span>{{ row.sensitive ? '******' : row.value }}</span><button v-if="group.editable" class="mini-btn danger" :disabled="canEdit === false" type="button" :data-variable-remove="row.name" @click="remove(row)">删除</button></li></ul>
       </section>
     </template>
     <form @submit.prevent="save">
@@ -120,24 +120,24 @@ watch(() => [props.modelValue, props.projectId, props.workflowId], load, { immed
       <select v-model="form.valueType"><option v-for="item in ['string','integer','decimal','boolean','date','datetime','json','array']" :key="item">{{ item }}</option></select>
       <input v-model="form.value" data-variable-value placeholder="变量值" required />
       <label><input v-model="form.sensitive" type="checkbox" />敏感</label>
-      <button data-variable-save type="submit" :disabled="canEdit === false">保存（工作流域）</button>
+      <button class="tb-new" data-variable-save type="submit" :disabled="canEdit === false">保存（工作流域）</button>
     </form>
   </section>
 </template>
 
 <style scoped>
-.workflow-variable-panel{position:absolute;z-index:20;right:10px;top:54px;width:380px;max-height:calc(100% - 70px);overflow:auto;background:#fff;border:1px solid #dbe3ef;border-radius:8px;box-shadow:0 10px 28px #0f172a20;padding:12px}
-header,li,form{display:flex;align-items:center;gap:8px}header{justify-content:space-between}ul{padding:0;list-style:none;margin:4px 0 0}li{padding:6px 0;border-bottom:1px solid #e2e8f0}li span{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.workflow-variable-panel{position:absolute;z-index:20;right:10px;top:54px;width:380px;max-height:calc(100% - 70px);overflow:auto;background:var(--card);border:1px solid var(--border);border-radius:8px;box-shadow:0 10px 28px color-mix(in srgb, var(--text) 12%, transparent);padding:12px}
+header,li,form{display:flex;align-items:center;gap:8px}header{justify-content:space-between}ul{padding:0;list-style:none;margin:4px 0 0}li{padding:6px 0;border-bottom:1px solid var(--border)}li span{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .chain{display:flex;align-items:center;flex-wrap:wrap;gap:4px;margin:8px 0 4px;font-size:12px}
-.chain-scope{padding:2px 7px;border:1px solid #cbd5e1;border-radius:999px;background:#f8fafc;color:#334155}
-.chain-scope[data-chain-scope="workflow"]{border-color:#2563eb;background:#eff6ff;color:#1d4ed8}
-.chain-arrow{color:#94a3b8}
-.hint{margin:6px 0;color:#64748b;font-size:12px}
-.preview{display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin:8px 0 10px;padding:8px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:6px}
+.chain-scope{padding:2px 7px;border:1px solid var(--border-strong);border-radius:999px;background:var(--bg);color:var(--text-2)}
+.chain-scope[data-chain-scope="workflow"]{border-color:var(--primary);background:var(--primary-light);color:var(--primary-dark)}
+.chain-arrow{color:var(--text-3)}
+.hint{margin:6px 0;color:var(--text-3);font-size:12px}
+.preview{display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin:8px 0 10px;padding:8px;background:var(--bg);border:1px solid var(--border);border-radius:6px}
 .preview input{flex:1;min-width:160px}
-.preview p{width:100%;margin:0;font-size:12px;color:#334155}
-.scope-group h4{margin:8px 0 0;font-size:12px;color:#475569}
-.scope-group h4 small{margin-left:6px;font-weight:400;color:#94a3b8}
-.error{color:#b91c1c}
-input,select,button{font:inherit;padding:5px 7px}
+.preview p{width:100%;margin:0;font-size:12px;color:var(--text-2)}
+.scope-group h4{margin:8px 0 0;font-size:12px;color:var(--text-2)}
+.scope-group h4 small{margin-left:6px;font-weight:400;color:var(--text-3)}
+.error{color:var(--danger)}
+input,select{font:inherit;padding:5px 7px}
 </style>

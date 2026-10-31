@@ -66,15 +66,15 @@ def test_create_run_success():
                 "project_id": project_id,
                 "workflow_id": 1,
                 "workflow_version_id": 1,
-                "instance_type": "TRIAL",
-                "trigger_type": "TRIAL",
+                "instance_type": "FORMAL",
+                "trigger_type": "MANUAL",
             },
         )
         assert resp.status_code == 200
         data = resp.json()["data"]
-        assert data["instance_type"] == "TRIAL"
+        assert data["instance_type"] == "FORMAL"
         assert data["status"] == "PENDING"
-        assert data["trigger_type"] == "TRIAL"
+        assert data["trigger_type"] == "MANUAL"
     finally:
         client.__exit__(None, None, None)
 
@@ -120,7 +120,7 @@ def test_cancel_run():
                 "project_id": project_id,
                 "workflow_id": workflow_id,
                 "workflow_version_id": 1,
-                "instance_type": "TRIAL",
+                "instance_type": "FORMAL",
             },
         ).json()["data"]
 
@@ -176,7 +176,7 @@ def test_auth_and_permission_gates():
                 "project_id": project_id,
                 "workflow_id": 1,
                 "workflow_version_id": 1,
-                "instance_type": "TRIAL",
+                "instance_type": "FORMAL",
             },
         )
         assert anon.status_code == 401 and anon.json()["code"] == 1001
@@ -189,7 +189,7 @@ def test_auth_and_permission_gates():
                 "project_id": project_id,
                 "workflow_id": 1,
                 "workflow_version_id": 1,
-                "instance_type": "TRIAL",
+                "instance_type": "FORMAL",
             },
         )
         assert viewer.status_code == 403 and viewer.json()["code"] == 1003
@@ -198,7 +198,7 @@ def test_auth_and_permission_gates():
         missing = client.post(
             f"{EXEC}/runs",
             headers=tokens["dev"],
-            json={"workflow_id": 1, "workflow_version_id": 1, "instance_type": "TRIAL"},
+            json={"workflow_id": 1, "workflow_version_id": 1, "instance_type": "FORMAL"},
         )
         assert missing.status_code == 400 and missing.json()["code"] == 4001
     finally:
@@ -388,7 +388,8 @@ def test_terminal_stat_failure_is_observable_and_repair_is_scoped_and_idempotent
         client.__exit__(None, None, None)
 
 
-def test_trial_instance_creation_binds_draft_snapshot_and_tasks():
+def test_trial_instance_type_is_rejected():
+    """试运行(TRIAL) domain retired: 海豚 has no 试运行 — its canvas 空跑 is dryRun."""
     client, app, project_id, tokens = _client()
     try:
         with app.state.session_factory() as session:
@@ -401,13 +402,7 @@ def test_trial_instance_creation_binds_draft_snapshot_and_tasks():
             headers=tokens["dev"],
             json={"project_id": project_id, "workflow_id": workflow_id, "instance_type": "TRIAL"},
         )
-        assert response.status_code == 200
-        data = response.json()["data"]
-        assert data["instance_type"] == "TRIAL"
-        assert data["trial_snapshot_id"] > 0
-        assert data["workflow_version_id"] == 0
-        assert [task["task_id"] for task in data["tasks"]] == ["task-1"]
-        assert data["tasks"][0]["current_attempt_no"] == 0
+        assert response.status_code == 400 and response.json()["code"] == 4001
     finally:
         client.__exit__(None, None, None)
 

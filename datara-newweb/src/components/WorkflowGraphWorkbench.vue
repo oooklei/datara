@@ -48,14 +48,12 @@ import {
 } from '../services/rebuild/workflowApi'
 import { loadComponentSpecs, type ComponentSpecItem, type WorkflowType } from '../services/rebuild/componentSpecApi'
 import { ContractApiError } from '../services/http'
-import { useTrialRunStore } from '../stores/trialRun'
 import { useWorkflowGraphStore } from '../stores/workflowGraph'
 import { validateWorkflowDraft, isNodeUnconfigured, type ValidationIssue } from '../stores/workflowGraphValidators'
 import { useDraggable } from '../composables/useDraggable'
 import { useOverlayStack } from '../composables/useOverlayStack'
 import NodeConfigPanel from './NodeConfigPanel.vue'
 import SpecBlockPanel from './SpecBlockPanel.vue'
-import TrialRunPanel from './TrialRunPanel.vue'
 import WorkflowVariablePanel from './WorkflowVariablePanel.vue'
 import ScriptResourceEditor from './ScriptResourceEditor.vue'
 import StreamObservationPanel from './StreamObservationPanel.vue'
@@ -77,17 +75,14 @@ const INSPECTOR_TABS = [
   { id: 'properties', label: '属性' },
   { id: 'variables', label: '变量' },
   { id: 'dependencies', label: '依赖' },
-  { id: 'trial', label: '试运行' },
 ] as const
 type InspectorTabId = (typeof INSPECTOR_TABS)[number]['id']
 const activeInspectorTab = ref<InspectorTabId>('properties')
 const variablesPanelMounted = ref(false)
-const trialPanelMounted = ref(false)
 
 function activateInspectorTab(tab: InspectorTabId) {
   activeInspectorTab.value = tab
   if (tab === 'variables') variablesPanelMounted.value = true
-  if (tab === 'trial') trialPanelMounted.value = true
 }
 
 function onInspectorKeydown(event: KeyboardEvent, index: number) {
@@ -164,23 +159,6 @@ const isStreamTab = computed(() => props.tab.type === 'stream')
 
 /* ---------- store → vue-flow 单向映射 ---------- */
 
-const trialStore = useTrialRunStore()
-const taskStatusMap = computed(() => {
-  const statuses = new Map<string, string>()
-  // Production invariant: runResult can only be written by run(), whose guard
-  // requires IDs bound by open(); open() also clears runResult and the store is
-  // not persisted.  null/null + runResult is therefore test-fixture-only legacy
-  // state, retained for the frozen L12-02 contract.  Every reachable bound state
-  // must match both project and definition before its statuses can be rendered.
-  const isUnreachableLegacyFixture = trialStore.projectId === null && trialStore.definitionId === null
-  if (!isUnreachableLegacyFixture
-    && (trialStore.projectId !== props.projectId || trialStore.definitionId !== numDocId.value)) {
-    return statuses
-  }
-  for (const task of trialStore.runResult?.tasks ?? []) statuses.set(task.nodeCode, task.status)
-  return statuses
-})
-
 type CanvasNode = {
   id: string
   type: string
@@ -213,14 +191,13 @@ function layoutFlowNodes(nodes: CanvasNode[], edges: WorkflowDraftEdge[]): Canva
 
 const flowNodes = computed(() =>
   layoutFlowNodes(graphStore.nodes.map((n: WorkflowDraftNode) => {
-    const status = taskStatusMap.value.get(n.nodeCode)
     const unconfigured = !isNodeConfigured(n)
     return {
       id: n.nodeCode,
       type: 'default',
       position: { x: n.positionX ?? 0, y: n.positionY ?? 0 },
-      label: `${n.nodeCode} ${n.nodeType}${n.name ? ` ${n.name}` : ''}${unconfigured ? ' ⚠未配置' : ''}${status ? ` [${status}]` : ''}`,
-      class: [status ? `wf-node-${status.toLowerCase()}` : '', unconfigured ? 'wf-node-unconfigured' : ''].filter(Boolean).join(' ') || undefined,
+      label: `${n.nodeCode} ${n.nodeType}${n.name ? ` ${n.name}` : ''}${unconfigured ? ' ⚠未配置' : ''}`,
+      class: unconfigured ? 'wf-node-unconfigured' : undefined,
     }
   }), graphStore.edges),
 )
@@ -562,13 +539,6 @@ function locateIssue(issue: ValidationIssue) {
   closeValidation()
 }
 
-function rebindTrialContext() {
-  if (activeInspectorTab.value !== 'trial' || props.projectId === undefined) return
-  if (!Number.isSafeInteger(props.projectId) || props.projectId <= 0) return
-  if (!Number.isSafeInteger(numDocId.value) || numDocId.value <= 0) return
-  trialStore.open(props.projectId, numDocId.value)
-}
-
 /* ---------- 快照（localStorage，键与 TaskCenterView hasSnapDraft 约定一致） ---------- */
 
 function snapKey(): string {
@@ -679,7 +649,6 @@ async function ensureLoaded() {
 
 onActivated(() => {
   void ensureLoaded()
-  rebindTrialContext()
   bindPageShortcuts()
 })
 onDeactivated(() => {
@@ -823,7 +792,6 @@ function onSchedule() {
         <button class="wf-btn" :disabled="degraded || !loaded" @click="onPublish">发布</button>
         <button class="wf-btn" :disabled="degraded || !loaded" @click="onShowVersions">版本</button>
         <button class="wf-btn" data-testid="wf-schedule" :disabled="degraded || !loaded" @click="onSchedule">定时</button>
-        <button class="wf-btn" data-testid="wf-trial" :disabled="degraded || !loaded" @click="activateInspectorTab('trial')">试运行</button>
         <button class="wf-btn" data-workflow-variables :disabled="degraded || !loaded" @click="activateInspectorTab('variables')">工作流变量</button>
         <button
           class="wf-btn"
@@ -998,10 +966,6 @@ function onSchedule() {
             <span>◇</span><strong>当前节点不支持依赖配置</strong><small>请选择 dependent 类型节点</small>
           </div>
         </section>
-
-        <section id="workflow-inspector-panel-trial" v-show="activeInspectorTab === 'trial'" class="inspector-panel" role="tabpanel" tabindex="0" aria-labelledby="workflow-inspector-tab-trial">
-          <TrialRunPanel v-if="trialPanelMounted" :project-id="projectId" :definition-id="numDocId" />
-        </section>
       </aside>
     </div>
 
@@ -1084,8 +1048,8 @@ function onSchedule() {
 }
 .wf-toolbar {
   flex-shrink: 0;
-  border-bottom: 1px solid var(--border-color, #e2e8f0);
-  background: var(--bg-secondary, #f8fafc);
+  border-bottom: 1px solid var(--border);
+  background: var(--bg);
 }
 .wf-actions {
   display: flex;
@@ -1094,26 +1058,26 @@ function onSchedule() {
   padding: 6px 10px;
 }
 .wf-btn {
-  border: 1px solid var(--border-color, #e2e8f0);
+  border: 1px solid var(--border);
   background: var(--card);
   border-radius: var(--radius-sm, 6px);
   padding: 4px 12px;
   font-size: 12.5px;
-  color: var(--text-primary, #1e293b);
+  color: var(--text);
   cursor: pointer;
 }
 .wf-btn:hover:not(:disabled) {
-  border-color: var(--primary-color, #2563eb);
-  color: var(--primary-color, #2563eb);
+  border-color: var(--primary);
+  color: var(--primary);
 }
 .wf-btn:disabled {
-  color: var(--text-4, #cbd5e1);
+  color: var(--text-3);
   cursor: not-allowed;
 }
 .wf-dirty {
   font-size: 11.5px;
-  color: var(--warning, #d97706);
-  background: var(--warning-bg, #fef3c7);
+  color: var(--warn);
+  background: var(--warn-bg);
   border-radius: 8px;
   padding: 1px 8px;
 }
@@ -1124,21 +1088,21 @@ function onSchedule() {
   padding: 4px 10px 8px;
 }
 .wf-type {
-  border: 1px solid var(--border-color, #e2e8f0);
+  border: 1px solid var(--border);
   background: var(--card);
   border-radius: var(--radius-sm, 6px);
   padding: 2px 8px;
   font-size: 11px;
-  color: var(--text-secondary, #64748b);
+  color: var(--text-2);
   cursor: pointer;
 }
 .wf-type:hover:not(:disabled) {
-  border-color: var(--primary-color, #2563eb);
-  color: var(--primary-color, #2563eb);
-  background: var(--primary-light, #eff6ff);
+  border-color: var(--primary);
+  color: var(--primary);
+  background: var(--primary-light);
 }
 .wf-type:disabled {
-  color: var(--text-4, #cbd5e1);
+  color: var(--text-3);
   cursor: not-allowed;
 }
 .wf-specs {
@@ -1150,46 +1114,46 @@ function onSchedule() {
 }
 .wf-specs-label {
   font-size: 11px;
-  color: var(--text-3, #94a3b8);
+  color: var(--text-3);
 }
 .wf-spec {
-  border: 1px solid var(--border-color, #e2e8f0);
-  background: #fff;
+  border: 1px solid var(--border);
+  background: var(--card);
   border-radius: var(--radius-sm, 6px);
   padding: 2px 8px;
   font-size: 11px;
-  color: var(--text-secondary, #64748b);
+  color: var(--text-2);
   cursor: grab;
 }
 .wf-spec:hover {
-  border-color: var(--primary-color, #2563eb);
-  color: var(--primary-color, #2563eb);
-  background: var(--primary-light, #eff6ff);
+  border-color: var(--primary);
+  color: var(--primary);
+  background: var(--primary-light);
 }
 .wf-specs-failed {
   font-size: 11px;
-  color: var(--danger, #dc2626);
+  color: var(--danger);
 }
 .wf-degraded {
   flex: 1;
   display: flex;
   align-items: center;
   justify-content: center;
-  color: var(--text-3, #94a3b8);
+  color: var(--text-3);
   font-size: 13px;
 }
 .wf-body {
   flex: 1;
   min-height: 0;
   display: flex;
-  background: var(--bg, #f5f7fb);
+  background: var(--bg);
 }
 .wf-palette-pane {
   width: var(--dag-left);
   min-width: 0;
   flex: 0 0 var(--dag-left);
   overflow: hidden;
-  border-right: 1px solid var(--border-color, #e2e8f0);
+  border-right: 1px solid var(--border);
 }
 .wf-palette-pane :deep(.wb-palette) {
   width: 100%;
@@ -1210,8 +1174,8 @@ function onSchedule() {
 }
 .wf-splitter:hover,
 .wf-splitter:focus-visible {
-  border-color: var(--primary, #2563eb);
-  background: color-mix(in srgb, var(--primary, #2563eb) 12%, transparent);
+  border-color: var(--primary);
+  background: color-mix(in srgb, var(--primary) 12%, transparent);
   outline: 0;
 }
 .wf-flow {
@@ -1222,16 +1186,16 @@ function onSchedule() {
 .wf-aside {
   width: var(--dag-right);
   flex: 0 0 var(--dag-right);
-  border-left: 1px solid var(--border-color, #e2e8f0);
-  background: var(--card, #fff);
+  border-left: 1px solid var(--border);
+  background: var(--card);
   overflow-y: auto;
 }
-.inspector-head{position:sticky;top:0;z-index:2;display:flex;justify-content:space-between;align-items:center;height:42px;padding:0 14px;border-bottom:1px solid var(--border-color,#e2e8f0);background:var(--card,#fff)}
-.inspector-head strong{font-size:13px;color:var(--text,#172033)}.inspector-head small{font-family:var(--font-mono,monospace);color:var(--text-3,#94a3b8)}
-.inspector-tabs{position:sticky;top:42px;z-index:2;display:grid;grid-template-columns:repeat(4,minmax(0,1fr));border-bottom:1px solid var(--border-color,#e2e8f0);background:var(--card,#fff)}
-.inspector-tab{padding:9px 4px;border:0;border-bottom:2px solid transparent;background:transparent;color:var(--text-2,#64748b);font:inherit;font-size:12px;cursor:pointer}.inspector-tab.active{border-bottom-color:var(--primary,#2563eb);color:var(--primary,#2563eb);font-weight:600}.inspector-tab:focus-visible{outline:2px solid var(--primary,#2563eb);outline-offset:-2px}
+.inspector-head{position:sticky;top:0;z-index:2;display:flex;justify-content:space-between;align-items:center;height:42px;padding:0 14px;border-bottom:1px solid var(--border);background:var(--card)}
+.inspector-head strong{font-size:13px;color:var(--text)}.inspector-head small{font-family:var(--font-mono,monospace);color:var(--text-3)}
+.inspector-tabs{position:sticky;top:42px;z-index:2;display:grid;grid-template-columns:repeat(4,minmax(0,1fr));border-bottom:1px solid var(--border);background:var(--card)}
+.inspector-tab{padding:9px 4px;border:0;border-bottom:2px solid transparent;background:transparent;color:var(--text-2);font:inherit;font-size:12px;cursor:pointer}.inspector-tab.active{border-bottom-color:var(--primary);color:var(--primary);font-weight:600}.inspector-tab:focus-visible{outline:2px solid var(--primary);outline-offset:-2px}
 .inspector-panel{min-height:0}.inspector-panel :deep(.workflow-variable-panel){position:static;width:auto;border:0;border-radius:0;box-shadow:none}
-.inspector-empty{display:grid;place-items:center;gap:7px;padding:72px 20px;text-align:center;color:var(--text-3,#94a3b8)}.inspector-empty span{font-size:28px;color:var(--primary,#2563eb)}.inspector-empty strong{font-size:13px;color:var(--text-2,#64748b)}.inspector-empty small{font-size:11px}
+.inspector-empty{display:grid;place-items:center;gap:7px;padding:72px 20px;text-align:center;color:var(--text-3)}.inspector-empty span{font-size:28px;color:var(--primary)}.inspector-empty strong{font-size:13px;color:var(--text-2)}.inspector-empty small{font-size:11px}
 .wf-flow :deep(.vue-flow) {
   height: 100%;
 }
@@ -1244,24 +1208,24 @@ function onSchedule() {
 .wf-flow :deep(.vue-flow__node.wf-node-skipped) {
   outline: 2px solid #94a3b8;
 }
-.node-editor{flex-shrink:0;padding:10px 14px;border-top:1px solid var(--border-color,#e2e8f0);background:var(--bg);display:grid;gap:6px}
+.node-editor{flex-shrink:0;padding:10px 14px;border-top:1px solid var(--border);background:var(--bg);display:grid;gap:6px}
 
 /* T4/G07 校验徽标与校验面板 */
 .wf-badge{display:inline-block;margin-left:4px;min-width:16px;border-radius:8px;padding:0 5px;font-size:11px;line-height:16px;text-align:center;color:#fff}
-.wf-badge-error{background:var(--el-color-danger,#f56c6c)}
-.wf-badge-warn{background:var(--el-color-warning,#e6a23c)}
-.validation-pass{color:var(--el-color-success,#67c23a);font-weight:600}
+.wf-badge-error{background:var(--danger)}
+.wf-badge-warn{background:var(--warn)}
+.validation-pass{color:var(--success);font-weight:600}
 .validation-overlay{position:fixed;inset:0;z-index:2000;background:rgba(0,0,0,.35);display:flex;align-items:center;justify-content:center}
 .validation-panel{background:var(--card);border-radius:8px;box-shadow:0 8px 32px rgba(0,0,0,.18);width:min(720px,92vw);max-height:80vh;display:flex;flex-direction:column;padding:12px 16px;gap:8px}
 .validation-head{display:flex;align-items:center;justify-content:space-between}
 .validation-list{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:6px;max-height:52vh;overflow:auto}
-.validation-issue{display:flex;align-items:baseline;gap:8px;padding:6px 10px;border-radius:6px;border:1px solid var(--el-border-color-lighter,#e4e7ed);cursor:pointer;font-size:13px}
-.validation-issue-error{border-left:3px solid var(--el-color-danger,#f56c6c)}
-.validation-issue-warn{border-left:3px solid var(--el-color-warning,#e6a23c)}
+.validation-issue{display:flex;align-items:baseline;gap:8px;padding:6px 10px;border-radius:6px;border:1px solid var(--border);cursor:pointer;font-size:13px}
+.validation-issue-error{border-left:3px solid var(--danger)}
+.validation-issue-warn{border-left:3px solid var(--warn)}
 .validation-issue em{font-style:normal;font-size:11px;flex-shrink:0}
-.validation-issue-error em{color:var(--el-color-danger,#f56c6c)}
-.validation-issue-warn em{color:var(--el-color-warning,#e6a23c)}
-.validation-issue code{background:var(--el-fill-color-light,#f5f7fa);border-radius:3px;padding:0 4px;font-size:12px;color:var(--el-text-color-regular,#606266);flex-shrink:0}
+.validation-issue-error em{color:var(--danger)}
+.validation-issue-warn em{color:var(--warn)}
+.validation-issue code{background:var(--bg);border-radius:3px;padding:0 4px;font-size:12px;color:var(--text-2);flex-shrink:0}
 
 @media (min-width: 768px) and (max-width: 1024px) {
   .wf-palette-pane{width:clamp(176px,var(--dag-left),220px);flex-basis:clamp(176px,var(--dag-left),220px)}
@@ -1272,25 +1236,25 @@ function onSchedule() {
   .wf-workbench{min-height:760px;overflow:auto}
   .wf-actions{align-items:flex-start;overflow-x:auto}
   .wf-body{display:grid;grid-template-columns:minmax(0,1fr);grid-template-rows:minmax(150px,28vh) minmax(360px,52vh) minmax(260px,42vh);overflow:visible}
-  .wf-palette-pane{width:auto;max-height:28vh;flex:none;border-right:0;border-bottom:1px solid var(--border-color,#e2e8f0);overflow:auto}
+  .wf-palette-pane{width:auto;max-height:28vh;flex:none;border-right:0;border-bottom:1px solid var(--border);overflow:auto}
   .wf-flow{min-height:360px;width:100%}
-  .wf-aside{width:auto;min-height:260px;max-height:42vh;flex:none;border-left:0;border-top:1px solid var(--border-color,#e2e8f0)}
+  .wf-aside{width:auto;min-height:260px;max-height:42vh;flex:none;border-left:0;border-top:1px solid var(--border)}
   .wf-splitter{display:none}
 }
 
 /* T9 弹窗 #8 版本历史只读说明 */
-.wf-version-note{margin:8px 0 0;font-size:12px;color:var(--el-text-color-secondary,#909399)}
+.wf-version-note{margin:8px 0 0;font-size:12px;color:var(--text-3)}
 
 /* T9 弹窗 #10 连线图例浮层（D9：非模态、可拖拽；zIndex 由 overlay 栈绑定覆盖） */
-.wf-legend-panel{position:fixed;top:64px;right:16px;width:min(360px,92vw);max-height:60vh;overflow-y:auto;background:var(--card);border:1px solid var(--border-color,#e2e8f0);border-radius:8px;box-shadow:0 8px 32px rgba(0,0,0,.18);padding:10px 14px;z-index:2000;display:flex;flex-direction:column;gap:8px}
+.wf-legend-panel{position:fixed;top:64px;right:16px;width:min(360px,92vw);max-height:60vh;overflow-y:auto;background:var(--card);border:1px solid var(--border);border-radius:8px;box-shadow:0 8px 32px rgba(0,0,0,.18);padding:10px 14px;z-index:2000;display:flex;flex-direction:column;gap:8px}
 .wf-legend-head{display:flex;align-items:center;justify-content:space-between;cursor:move;user-select:none}
 .wf-legend-list{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:6px}
 .wf-legend-list li{display:flex;align-items:flex-start;gap:8px;font-size:12px;line-height:1.6}
 .wf-legend-list code{flex:none;font-weight:700;font-size:12px}
 .wf-legend-list b{font-weight:600}
-.lg-flow{color:var(--el-color-primary,#409eff)}
-.lg-branch{color:var(--el-color-warning,#e6a23c)}
-.lg-branch-true{color:var(--el-color-success,#67c23a)}
-.lg-branch-false{color:var(--el-color-danger,#f56c6c)}
-.lg-dep{color:var(--el-text-color-secondary,#909399)}
+.lg-flow{color:var(--primary)}
+.lg-branch{color:var(--warn)}
+.lg-branch-true{color:var(--success)}
+.lg-branch-false{color:var(--danger)}
+.lg-dep{color:var(--text-3)}
 </style>

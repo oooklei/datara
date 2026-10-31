@@ -1,10 +1,11 @@
 """Persistence records for the R9 execution domain (run instances / attempts / logs / events).
 
-Contract source (frozen): docs/increments/2026-10-14-datara-platform-rebuild-design.md
+Contract source (frozen): docs/designs/2026-10-29-dbx-unified-target-design.md
 §9 (run-table roster + DB-generated timestamp contract + attempt_no isolation) +
-§4.1/§4.2 (instance_type TRIAL/FORMAL/STREAM) + §13.3 (batch vs stream lifecycle
-split) + 纠偏方案 §5.4 (result-stat idempotency; counts reported by the executor
-result contract, never derived from logs).
+§4.1/§4.2 (instance_type FORMAL/STREAM; the legacy TRIAL 试运行 domain was
+retired — 海豚 has no 试运行, its canvas 空跑 is DS dryRun=1) + §13.3 (batch vs
+stream lifecycle split) + 纠偏方案 §5.4 (result-stat idempotency; counts reported
+by the executor result contract, never derived from logs).
 
 - Six original run tables plus the execution-owned workflow_run_stat and
   workflow_run_reconcile_detail result records. Historical aggregates
@@ -21,7 +22,7 @@ result contract, never derived from logs).
   task_instance.current_attempt_no.
 - workflow_version_id is a plain integer column reference — no import from the
   workflow domain (cross-domain decoupling).
-- State machines: batch instances (TRIAL/FORMAL) have a finite lifecycle;
+- State machines: batch instances (FORMAL) have a finite lifecycle;
   STREAM instances are long-running and do not share batch completion semantics
   (no SUCCEEDED — §13.3). Task instances and attempts keep the batch lifecycle;
   stream job runtime state (heartbeat/checkpoint/offset) is the I8 stream-table
@@ -46,8 +47,8 @@ from sqlalchemy.orm import Mapped, mapped_column
 
 from rebuild.common.db import Base
 
-INSTANCE_TYPES = ("TRIAL", "FORMAL", "STREAM")
-TRIGGER_TYPES = ("MANUAL", "CRON", "DEPENDENCY", "EVENT", "TRIAL")
+INSTANCE_TYPES = ("FORMAL", "STREAM")
+TRIGGER_TYPES = ("MANUAL", "CRON", "DEPENDENCY", "EVENT")
 
 # Batch: finite lifecycle instance (design §13.3). PENDING may fail outright
 # (submission/validation failure) or be canceled before it starts.
@@ -78,7 +79,7 @@ class RunTimestampsMixin:
 
 
 class WorkflowInstanceRecord(RunTimestampsMixin, Base):
-    """workflow_instance — one workflow run (TRIAL / FORMAL / STREAM)."""
+    """workflow_instance — one workflow run (FORMAL / STREAM)."""
 
     __tablename__ = "workflow_instance"
     __table_args__ = (Index("x_wi_workflow_type", "workflow_id", "instance_type"),)
@@ -87,13 +88,12 @@ class WorkflowInstanceRecord(RunTimestampsMixin, Base):
     workflow_id: Mapped[int] = mapped_column(Integer, nullable=False, index=True)
     # Plain integer reference to the immutable workflow version — no workflow-domain import.
     workflow_version_id: Mapped[int] = mapped_column(Integer, nullable=False)
-    # Trial runs bind the immutable draft snapshot produced by the trial domain;
-    # formal runs bind workflow_version_id instead. Kept as a plain integer to
-    # preserve the execution domain's dependency boundary.
+    # Legacy column retained for pre-retirement rows only; the 试运行(trial)
+    # domain is retired and no execution writes this value any more.
     trial_snapshot_id: Mapped[int | None] = mapped_column(Integer, nullable=True, index=True)
-    instance_type: Mapped[str] = mapped_column(String(16), nullable=False)  # TRIAL | FORMAL | STREAM
+    instance_type: Mapped[str] = mapped_column(String(16), nullable=False)  # FORMAL | STREAM
     status: Mapped[str] = mapped_column(String(16), nullable=False)
-    # §13.3 trigger kinds (MANUAL/CRON/DEPENDENCY/EVENT/TRIAL), when known at creation.
+    # §13.3 trigger kinds (MANUAL/CRON/DEPENDENCY/EVENT), when known at creation.
     trigger_type: Mapped[str | None] = mapped_column(String(16), nullable=True)
     started_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     finished_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)

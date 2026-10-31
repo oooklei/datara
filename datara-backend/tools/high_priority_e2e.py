@@ -5,8 +5,10 @@ Usage::
     python -m tools.high_priority_e2e --base http://192.168.1.9:18098 \
       --username codex-smoke --password '...'
 
-The script intentionally creates no definitions and only runs the seeded Trial
-snapshot; it is safe for the isolated validation database.
+The script intentionally creates no definitions and only starts a FORMAL
+instance of the published fixture version; it is safe for the isolated
+validation database. 试运行(trial) 域已废弃 — datara 不再自研快照试运行，
+正式运行绑定已发布版本（§4.2），节点任务由海豚 worker 执行（§八 / §10.7 B1）。
 """
 
 from __future__ import annotations
@@ -61,14 +63,13 @@ def main() -> int:
     parser.add_argument("--token-file", type=Path, help="pre-issued short-lived bearer token")
     parser.add_argument("--project-id", type=int, default=1)
     parser.add_argument("--definition-id", type=int, default=1)
-    parser.add_argument("--snapshot-id", type=int, default=2)
+    parser.add_argument("--version-id", type=int, default=2)
     parser.add_argument("--stream-job-id", type=int, default=1)
-    parser.add_argument("--dependency-id", type=int)
     parser.add_argument("--fixture-file", type=Path, help="JSON output from provision_high_priority_fixture")
     args = parser.parse_args()
     if args.fixture_file is not None:
         fixture = json.loads(args.fixture_file.read_text(encoding="utf-8"))
-        for key in ("project_id", "definition_id", "snapshot_id", "stream_job_id", "dependency_id"):
+        for key in ("project_id", "definition_id", "version_id", "stream_job_id"):
             if key in fixture:
                 setattr(args, key, int(fixture[key]))
     token = (
@@ -185,24 +186,22 @@ def main() -> int:
         preview_data = preview.get("data") or {}
         if preview_data.get("resolved_value") != "isolated-ok":
             raise RuntimeError("variable preview contract failed")
-        trial = call(
+        run = call(
             args.base,
-            f"/api/v1/rebuild/trial/definitions/{args.definition_id}/run",
+            "/api/v1/rebuild/execution/workflow-instances",
             token=token,
             method="POST",
             body={
                 "project_id": args.project_id,
-                "snapshot_id": args.snapshot_id,
-                "options": {
-                    "dependency_mock": (
-                        {str(args.dependency_id): "SUCCEEDED"} if args.dependency_id is not None else {}
-                    )
-                },
+                "workflow_id": args.definition_id,
+                "instance_type": "FORMAL",
+                "trigger_type": "MANUAL",
+                "publish_version": args.version_id,
             },
         )
-        trial_data = trial["data"]
-        if trial_data.get("status") != "SUCCEEDED" or len(trial_data.get("tasks", [])) < 6:
-            raise RuntimeError(f"trial did not succeed: {trial_data}")
+        run_data = run["data"]
+        if run_data.get("instance_type") != "FORMAL" or len(run_data.get("tasks", [])) < 6:
+            raise RuntimeError(f"formal instance was not created: {run_data}")
         stats = call(args.base, f"/api/v1/rebuild/execution/run-stats?project_id={args.project_id}&limit=50", token=token)
         # The stream requirement is a live producer/observer chain, not merely
         # a read of pre-seeded metric rows.  Generate a bounded deterministic
@@ -335,7 +334,7 @@ def main() -> int:
         if key_logs.get("code") != 0:
             raise RuntimeError("scoped API-Key call-log read failed")
         stat_rows = stats.get("data", {}).get("items") if isinstance(stats.get("data"), dict) else stats.get("data")
-        print(json.dumps({"health": "ok", "component_count": spec_count, "variables": "ok", "trial": "SUCCEEDED", "task_count": len(trial_data["tasks"]), "run_stats": len(stat_rows or []), "stream_produced": produced_data.get("produced"), "stream_fused": fused_data.get("fused"), "stream_metrics": len(metric_rows), "llm_models": len(llm_rows or []), "api_definitions": len(api_rows or []), "api_key_call_logs": "ok"}, ensure_ascii=False))
+        print(json.dumps({"health": "ok", "component_count": spec_count, "variables": "ok", "formal": "CREATED", "task_count": len(run_data["tasks"]), "run_stats": len(stat_rows or []), "stream_produced": produced_data.get("produced"), "stream_fused": fused_data.get("fused"), "stream_metrics": len(metric_rows), "llm_models": len(llm_rows or []), "api_definitions": len(api_rows or []), "api_key_call_logs": "ok"}, ensure_ascii=False))
         return 0
     except (HTTPError, URLError, KeyError, RuntimeError, ValueError) as exc:
         print(f"high_priority_e2e failed: {exc}")

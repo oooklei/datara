@@ -1,7 +1,7 @@
 """Execution domain API — run instance endpoints (WF-23).
 
 - Base path ``/api/v1/rebuild/execution``; envelope ``{code, msg, data}``.
-- POST /runs: create a workflow instance (TRIAL/FORMAL/STREAM).
+- POST /runs: create a workflow instance (FORMAL/STREAM).
 - GET /runs/{id}: instance detail + logs.
 - POST /runs/{id}/cancel: cancel a running instance.
 - Auth/permission: reuses RUN_INSTANCE (write) and VIEW_ALL (read) gates
@@ -23,7 +23,6 @@ from sqlalchemy.orm import Session, sessionmaker
 from rebuild.execution.repository import ExecutionDomainError, ExecutionRepository
 from rebuild.execution.models import TaskAttemptRecord, TaskInstanceRecord
 from rebuild.identity.contracts import Permission
-from rebuild.trial.repository import TrialSnapshotRepository
 from rebuild.workflow.models import WorkflowDefinitionRecord, WorkflowNodeRecord, WorkflowVersionRecord
 from rebuild.execution.stream_adapter import record_stream_checkpoint
 from rebuild.execution.stream_executor import start_stream_execution
@@ -177,8 +176,10 @@ def build_execution_router(
             workflow_id = frame_int(body, "workflow_id")
             instance_type = frame_str(body, "instance_type")
             trigger_type = frame_optional_str(body, "trigger_type")
-            if instance_type not in {"TRIAL", "FORMAL", "STREAM"}:
-                raise MalformedRequest("instance_type must be TRIAL, FORMAL, or STREAM")
+            if instance_type not in {"FORMAL", "STREAM"}:
+                raise MalformedRequest(
+                    "instance_type must be FORMAL or STREAM; 试运行(空跑)由海豚 dryRun 承担"
+                )
         except MalformedRequest as exc:
             return request_error(exc)
         with authorized_session(project_id, Permission.RUN_INSTANCE, token, authorization) as outcome:
@@ -188,17 +189,8 @@ def build_execution_router(
                 definition = outcome.get(WorkflowDefinitionRecord, workflow_id)
                 if definition is None or definition.project_id != project_id:
                     raise ExecutionDomainError(4404, f"workflow definition {workflow_id} not found")
-                snapshot_id = None
                 task_codes: list[str] = []
-                if instance_type == "TRIAL":
-                    user = principal(token, authorization)
-                    snapshot = TrialSnapshotRepository(outcome).create_from_draft(
-                        workflow_id, created_by=int(user["user_id"])
-                    )
-                    snapshot_id = int(snapshot["snapshot_id"])
-                    task_codes = [str(node["node_code"]) for node in snapshot["node_snapshot_json"]]
-                    workflow_version_id = 0  # Draft snapshot is the binding for a trial run.
-                elif instance_type == "FORMAL":
+                if instance_type == "FORMAL":
                     workflow_version_id = body.get("workflow_version_id", body.get("publish_version"))
                     if isinstance(workflow_version_id, bool) or not isinstance(workflow_version_id, int):
                         raise MalformedRequest("publish_version must be an integer workflow_version_id")
@@ -230,7 +222,6 @@ def build_execution_router(
                     workflow_version_id=workflow_version_id,
                     instance_type=instance_type,
                     trigger_type=trigger_type,
-                    trial_snapshot_id=snapshot_id,
                 )
                 tasks = [
                     repo.create_task_instance(workflow_instance_id=instance.id, task_id=code)
@@ -248,7 +239,6 @@ def build_execution_router(
                     "instance_id": instance.id,
                     "workflow_id": workflow_id,
                     "workflow_version_id": instance.workflow_version_id,
-                    "trial_snapshot_id": snapshot_id,
                     "instance_type": instance_type,
                     "status": instance.status,
                     "tasks": [_task_payload(task) for task in tasks],

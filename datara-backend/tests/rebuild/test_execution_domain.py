@@ -1,10 +1,11 @@
 """R9 execution-domain tests — design §9 run tables + 纠偏方案 §5.4 stat idempotency.
 
-Covered: three-state instance creation (TRIAL/FORMAL/STREAM), legal/illegal
-state transitions (batch vs stream machines), DB-generated timestamps (no
-application-side writes), attempt_no isolated increment, attempt-scoped
-log/output isolation, execution_event append, and the idempotent
-record_result_stat write-back into the metrics workflow_result_stat aggregate.
+Covered: two-state instance creation (FORMAL/STREAM; the retired 试运行 TRIAL
+is rejected), legal/illegal state transitions (batch vs stream machines),
+DB-generated timestamps (no application-side writes), attempt_no isolated
+increment, attempt-scoped log/output isolation, execution_event append, and
+the idempotent record_result_stat write-back into the metrics
+workflow_result_stat aggregate.
 """
 
 import pytest
@@ -39,13 +40,21 @@ def _scalars(session, model):
 # ---- instance creation -------------------------------------------------------
 
 
-def test_create_workflow_instance_accepts_three_types():
+def test_create_workflow_instance_accepts_two_types():
     repo, session = _repo()
-    for expected in ("TRIAL", "FORMAL", "STREAM"):
+    for expected in ("FORMAL", "STREAM"):
         record = repo.create_workflow_instance(workflow_id=7, workflow_version_id=3, instance_type=expected)
         assert record.id is not None
         assert record.instance_type == expected and record.status == "PENDING"
-    assert {row.instance_type for row in _scalars(session, WorkflowInstanceRecord)} == {"TRIAL", "FORMAL", "STREAM"}
+    assert {row.instance_type for row in _scalars(session, WorkflowInstanceRecord)} == {"FORMAL", "STREAM"}
+
+
+def test_create_workflow_instance_rejects_retired_trial_type():
+    """海豚 has no 试运行 — the trial instance type was retired with the trial domain."""
+    repo, _session = _repo()
+    with pytest.raises(ExecutionDomainError) as err:
+        repo.create_workflow_instance(workflow_id=1, workflow_version_id=1, instance_type="TRIAL")
+    assert err.value.code == 4101
 
 
 def test_create_workflow_instance_rejects_unknown_type_and_trigger():
@@ -61,7 +70,7 @@ def test_create_workflow_instance_rejects_unknown_type_and_trigger():
 
 def test_workflow_version_id_is_plain_integer_column():
     repo, session = _repo()
-    record = repo.create_workflow_instance(workflow_id=7, workflow_version_id=42, instance_type="TRIAL")
+    record = repo.create_workflow_instance(workflow_id=7, workflow_version_id=42, instance_type="FORMAL")
     assert record.workflow_version_id == 42
     column = WorkflowInstanceRecord.__table__.columns["workflow_version_id"]
     assert len(column.foreign_keys) == 0  # no cross-domain FK coupling
@@ -105,7 +114,7 @@ def test_batch_instance_legal_transitions_stamp_execution_times():
 
 def test_batch_instance_rejects_illegal_transitions():
     repo, _session = _repo()
-    instance = repo.create_workflow_instance(workflow_id=7, workflow_version_id=3, instance_type="TRIAL")
+    instance = repo.create_workflow_instance(workflow_id=7, workflow_version_id=3, instance_type="FORMAL")
     with pytest.raises(ExecutionDomainError) as err:
         repo.transition_workflow_instance(instance.id, "SUCCEEDED")
     assert err.value.code == 4103  # PENDING -> SUCCEEDED is not a legal batch move
@@ -177,7 +186,7 @@ def test_attempt_append_rejects_stale_pointer_instead_of_overwriting_it():
 
 def test_run_logs_and_outputs_are_attempt_scoped():
     repo, session = _repo()
-    instance = repo.create_workflow_instance(workflow_id=7, workflow_version_id=3, instance_type="TRIAL")
+    instance = repo.create_workflow_instance(workflow_id=7, workflow_version_id=3, instance_type="FORMAL")
     task = repo.create_task_instance(workflow_instance_id=instance.id, task_id="python_1")
     attempt_one = repo.append_attempt(task.id)
     attempt_two = repo.append_attempt(task.id)
@@ -252,29 +261,19 @@ def test_record_result_stat_accumulates_into_metrics_aggregate():
     assert (aggregate.success_count, aggregate.failure_count, aggregate.skipped_count) == (10, 2, 1)
 
 
-def test_trial_result_stat_is_recorded_without_polluting_formal_aggregate():
+def test_result_stat_write_back_is_idempotent_per_receipt():
     repo, session = _repo()
-    formal = repo.create_workflow_instance(workflow_id=7, workflow_version_id=3, instance_type="FORMAL")
-    trial = repo.create_workflow_instance(workflow_id=7, workflow_version_id=3, instance_type="TRIAL")
+    instance = repo.create_workflow_instance(workflow_id=7, workflow_version_id=3, instance_type="FORMAL")
 
-    formal_result = repo.record_result_stat(
-        workflow_instance_id=formal.id, attempt_no=0,
+    first = repo.record_result_stat(
+        workflow_instance_id=instance.id, attempt_no=0,
         success_count=5, failed_count=1, skipped_count=0,
     )
-    trial_result = repo.record_result_stat(
-        workflow_instance_id=trial.id, attempt_no=0,
-        success_count=100, failed_count=20, skipped_count=10,
-    )
-
-    assert formal_result["recorded"] and not formal_result.get("isolated", False)
-    assert trial_result["recorded"] and trial_result["isolated"]
-    (aggregate,) = _scalars(session, WorkflowResultStatRecord)
-    assert (aggregate.success_count, aggregate.failure_count, aggregate.skipped_count) == (5, 1, 0)
-    assert len(_scalars(session, ExecutionEventRecord)) == 2
+    assert first["recorded"] and not first["duplicate"]
 
     replay = repo.record_result_stat(
-        workflow_instance_id=trial.id, attempt_no=0,
-        success_count=100, failed_count=20, skipped_count=10,
+        workflow_instance_id=instance.id, attempt_no=0,
+        success_count=5, failed_count=1, skipped_count=0,
     )
     assert replay["duplicate"] and len(_scalars(session, WorkflowResultStatRecord)) == 1
 

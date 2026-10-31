@@ -374,7 +374,7 @@ rewritten_at: 2026-10-30
 | M6 | worker 侧 Python/shell 任务执行 | 海豚 worker 直接执行脚本文本 | 执行前若节点带 `scriptId`，经 datara 编排网关取脚本正文/版本（内部令牌），再在当前 worker 执行；取不到则任务失败并给出明确诊断码 |
 | M7 | 节点运行位置 | 海豚已有 worker 组，无需新增 | **不改**：复用海豚原生 worker 组字段（一个组多台机器，组内分派）；不引入「工作站」新概念 |
 | M8 | 画布 embed 模式 | 无 | 路由 `?embed=1` 时隐藏左侧导航与顶部栏（10.4） |
-| M9 | `TaskExecutionContextFactory#assembleDataSourceParameters` L125-140（master） | 唯一数据源解析点：`processService.findDataSourceById(code)` → `DataSourceParameters{type, connectionParams}` | 改为调 datara 编排网关内部接口按 `connectionId` 取 `{type, connectionParams}`；**改这一处，所有任务类型统一走 dbx**，无需逐个任务插件改造（详见 10.9） |
+| M9 | `TaskExecutionContextFactory`（master）及数据源任务插件 | 原实现用 `Integer` 数据源 ID 和 `findDataSourceById(code)` | `datasource` 直接存 dbx 字符串 `connectionId`；各任务插件参数、资源收集和运行上下文统一改为字符串，master 按字符串调用 datara 内部接口解析，不建立整数映射（详见 10.9） |
 | M10 | 运行位置类节点：`SHELL`（`tasks/use-shell.ts` L59）、`PYTHON`（`use-python.ts` L60）、`REMOTESHELL`（`use-remote-shell.ts` L58） | 三者**原生都已挂** `Fields.useWorkerGroup(projectCode)`（一个组多台机器，海豚在组内分派）；其中 `REMOTESHELL` 额外挂了 SSH 数据源（L65-67） | **统一挂 worker 分组**：`SHELL`/`PYTHON` **无需改造**（原生 worker 组字段即正式运行位置，与 §八 执行分流一致）；`REMOTESHELL` **去掉 SSH 数据源字段**，只保留 worker 分组，worker 侧 `RemoteShellTask` 不再按 `datasource` 建 SSH 连接，改为在被分派的 worker 机器上本地执行（与 SHELL 节点同路径）。**REMOTESHELL 不参与 10.9 的 dbx 数据源改造** |
 | M11 | `fields/use-queue.ts`（F6） | 原生 `type: 'input'`（L24），让用户手填 yarnQueue 字符串 | 改为 `type: 'select'`，`onMounted` 调 datara 编排网关 `GET /orchestration/queues`（已实现 Queue CRUD）填充 options；Yarn 节点表单的 yarnQueue 字段从手填改为下拉选（详见 §10.10 F6） |
 
@@ -388,17 +388,18 @@ rewritten_at: 2026-10-30
 
 **PROCEDURE 的特别说明**：它有两个字段——`type`（数据源类型，`tasks/use-procedure.ts` L47 默认 `MYSQL`）与 `datasource`（实例，L48），两者都由共享字段 `Fields.useDatasource(model)`（L66）产出。改造后由「所选 dbx 连接」一次性带出 `type`（只读）并回写 `datasource = connectionId`，无需为 PROCEDURE 单独写表单逻辑。
 
-**为什么能「一处改、全类型覆盖」**（已核实源码）
+**源码接线点**（已核实 3.4.3 源码；2026-10-30 用户裁定直接存字符串 ID）
 
 | 层 | 位置 | 事实 |
 |---|---|---|
 | 前端 | `node/fields/use-datasource.ts` L195 | 所有含数据源的任务类型共用该字段（`params.sourceField \|\| 'datasource'`），只有 L190 一处调 `/datasource` |
-| master | `TaskExecutionContextFactory#assembleDataSourceParameters` L125-140 | 唯一解析点：`findDataSourceById(code)` → `DataSourceParameters{type, connectionParams}` |
+| master | `TaskExecutionContextFactory` | 按字符串 `connectionId` 从 datara 内部接口取得 `DataSourceParameters`，不再查 `t_ds_datasource` |
+| 任务插件 | SQL、PROCEDURE、DATAX、CHUNJUN、SQOOP 等含数据源字段的参数与执行上下文 | 原字段/资源键为 `Integer`；统一改为 `String`，保存、序列化、资源收集、worker 执行均保留原始 `connectionId` |
 
 **改造**
 
 1. **前端（M3）**：L190 改调 datara 编排网关 `GET /api/v1/rebuild/orchestration/datasources`（返回当前用户可见的 dbx 连接：`{id, name, type, host, database}`）；`value` 用 dbx `connectionId`；「数据源类型」由所选连接带出并置为只读。节点表单不再提供「新建数据源」入口。
-2. **master（M9）**：`assembleDataSourceParameters` 内把 `processService.findDataSourceById(code)` 换成编排网关内部调用 `GET /internal/dbx/connections/{id}/params`，返回 `{type, connectionParams}` 组装 `DataSourceParameters`。**各任务插件（SQL/DataX/Sqoop…）一行不改**。
+2. **master 与任务插件（M9）**：任务参数中的 `datasource`、Sqoop 源/目标和所有相关执行上下文字段直接保存 dbx 字符串 `connectionId`；扩展 `ResourceParametersHelper` 的字符串键通道，master 调用编排网关 `GET /internal/dbx/connections/{id}/params`，返回 `{type, connectionParams}` 并组装 `DataSourceParameters`。SQL、PROCEDURE、DATAX、CHUNJUN、SQOOP 等相关插件必须同步改造和编译验证；禁止引入整数代理 ID。
 3. **类型映射**：dbx 连接类型 → 海豚 `DbType` 枚举需一张映射表（如 `mysql→MYSQL`、`postgresql→POSTGRESQL`、`oracle→ORACLE`、`clickhouse→CLICKHOUSE`、`hive→HIVE`）；映射缺失时任务在**保存期**即报错，不留到运行期。
 
 **密码传递方案（唯一决策）**

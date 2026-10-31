@@ -402,12 +402,19 @@ def test_admin_can_update_platform_user_role_and_last_admin_is_protected():
         updated = client.patch(
             f"/api/v1/rebuild/users/{target.id}/role", headers=headers, json={"role": "developer"}
         )
+        idempotent = client.patch(
+            f"/api/v1/rebuild/users/{target.id}/role", headers=headers, json={"role": "developer"}
+        )
         protected = client.patch(
             f"/api/v1/rebuild/users/{admin.id}/role", headers=headers, json={"role": "viewer"}
         )
 
     assert updated.status_code == 200
     assert updated.json()["data"]["role"] == "developer"
+    assert updated.json()["data"]["role_label"] == "开发者"
+    assert updated.json()["data"]["permission_labels"]
+    assert idempotent.status_code == 200
+    assert idempotent.json()["data"]["revoked_tokens"] == 0
     assert protected.status_code == 409
     assert protected.json()["code"] == 1005
 

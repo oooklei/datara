@@ -1,5 +1,5 @@
 /**
- * 9-03 ScheduleDialog 契约测试（范式沿 trialRunPanel.contract.test.ts：vi.hoisted+vi.mock+mount+flushPromises+data-test 锚点）。
+ * 9-03 ScheduleDialog 契约测试（范式：vi.hoisted+vi.mock+mount+flushPromises+data-test 锚点）。
  * 验收锚（拆票登记 9-03 票面）：①misfire/concurrency 枚举白名单 ②maxRunning≥1 校验（<1 拒绝不钳位）
  * ③预览未通过禁提交（含空 crontab 阻断）④初始 offline 回显（创建成功提示含「初始下线」）。
  * T55 边界：SKIP 语义断言已按 R-05（2026-10-21 裁定，B SCAN_SECONDS 宽限）于 9-05 describe 落实；融合宣告核验归 9-06（已 PASS 收口）。

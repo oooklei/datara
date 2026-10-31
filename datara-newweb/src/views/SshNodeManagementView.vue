@@ -36,7 +36,7 @@
             <td data-cred>{{ node.hasCredential ? '已配置' : '未配置' }}</td>
             <td>{{ node.allowTrial ? '允许' : '关闭' }}</td><td>{{ node.tags.join(', ') || '—' }}</td>
             <td>{{ node.enabled ? '启用' : '停用' }} / {{ node.heartbeatState || '未知' }}</td>
-            <td class="actions"><button type="button" data-probe @click="runProbe(node)">探测</button><button type="button" data-edit @click="openEdit(node)">编辑</button><button type="button" data-delete @click="remove(node)">删除</button></td>
+            <td class="actions"><button type="button" class="mini-btn" data-probe @click="runProbe(node)">探测</button><button type="button" class="mini-btn" data-edit @click="openEdit(node)">编辑</button><button type="button" class="mini-btn danger" data-delete @click="remove(node)">删除</button></td>
           </tr>
           <tr v-if="filteredNodes.length === 0"><td colspan="8">无匹配节点</td></tr>
         </tbody>
@@ -55,7 +55,7 @@
         <label>标签<input v-model="tagsText" placeholder="逗号分隔" data-tags></label>
         <label class="check"><input v-model="draft.enabled" type="checkbox" data-enabled>启用</label>
         <label class="check"><input v-model="draft.allowTrial" type="checkbox" data-allow-trial>允许脚本试运行</label>
-        <footer><button type="button" @click="closeEditor">取消</button><button type="submit" data-save>保存</button></footer>
+        <footer><button type="button" class="mini-btn" @click="closeEditor">取消</button><button type="submit" class="mini-btn primary" data-save>保存</button></footer>
       </form>
     </div>
   </main>

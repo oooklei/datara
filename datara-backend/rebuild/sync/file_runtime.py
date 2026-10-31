@@ -1,4 +1,4 @@
-"""Production datasource adapter used by API-triggered SYNC trial runs."""
+"""Production datasource adapter used by API-triggered SYNC executions."""
 
 from __future__ import annotations
 

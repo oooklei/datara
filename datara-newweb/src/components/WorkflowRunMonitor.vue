@@ -131,8 +131,9 @@ function isStoppable(row: WorkflowRunStat) {
 }
 
 function isRerunnable(row: WorkflowRunStat) {
-  // FORMAL 重跑需要 published version_id（run-stats 行不含该字段，无法还原）→ 不提供入口
-  return (row.instance_type === 'TRIAL' || row.instance_type === 'STREAM') && !RUN_ACTIVE_STATUSES.has(row.status)
+  // FORMAL 携 run-stats 行的 workflow_version_id（已发布版本）重跑；STREAM version=0 由后端处理
+  if (row.instance_type === 'FORMAL' && !row.workflow_version_id) return false
+  return !RUN_ACTIVE_STATUSES.has(row.status)
 }
 
 async function onStopRun(row: WorkflowRunStat) {
@@ -151,14 +152,20 @@ async function onStopRun(row: WorkflowRunStat) {
 }
 
 async function onRerunRun(row: WorkflowRunStat) {
-  const rerunType: 'TRIAL' | 'STREAM' = row.instance_type === 'STREAM' ? 'STREAM' : 'TRIAL'
+  const rerunType = row.instance_type === 'STREAM' ? 'STREAM' : 'FORMAL'
+  const label = rerunType === 'STREAM' ? '流处理' : '正式运行'
   try {
-    await ElMessageBox.confirm(`重跑${rerunType === 'STREAM' ? '流处理' : '试运行'}（工作流 #${row.workflow_id}）？`, '重跑', { type: 'info' })
+    await ElMessageBox.confirm(`重跑${label}（工作流 #${row.workflow_id}）？`, '重跑', { type: 'info' })
   } catch {
     return
   }
   try {
-    await rerunWorkflowInstance(props.projectId, row.workflow_id, rerunType)
+    await rerunWorkflowInstance(
+      props.projectId,
+      row.workflow_id,
+      rerunType,
+      rerunType === 'FORMAL' ? row.workflow_version_id ?? undefined : undefined,
+    )
     ElMessage.success('已发起新一轮运行')
     await load()
   } catch (reason) {
@@ -286,7 +293,6 @@ watch(() => [props.initialStatus, props.initialRunId] as const, ([nextStatus, ne
       <label>实例类型
         <select v-model="instanceType" data-run-instance-type @change="applyFilters">
           <option value="">全部</option>
-          <option value="TRIAL">试运行</option>
           <option value="FORMAL">正式运行</option>
           <option value="STREAM">流处理</option>
         </select>
@@ -340,20 +346,20 @@ watch(() => [props.initialStatus, props.initialRunId] as const, ([nextStatus, ne
 </template>
 
 <style scoped>
-.run-monitor { padding: 20px; background: #fff; color: #172033; }
+.run-monitor { padding: 20px; background: var(--card); color: var(--text); }
 header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; }
-h3, p { margin: 0; } header p { margin-top: 4px; color: #64748b; font-size: 12px; }
-button { border: 1px solid #cbd5e1; background: #fff; border-radius: 5px; padding: 5px 12px; cursor: pointer; }
+h3, p { margin: 0; } header p { margin-top: 4px; color: var(--text-3); font-size: 12px; }
+button { border: 1px solid var(--border-strong); background: var(--card); border-radius: 5px; padding: 5px 12px; cursor: pointer; }
 .run-monitor-filters { display: flex; align-items: center; gap: 12px; margin-bottom: 12px; }
-.run-monitor-filters label { display: flex; align-items: center; gap: 6px; color: #475569; font-size: 12px; }
-.run-monitor-filters select { min-width: 128px; padding: 5px 8px; border: 1px solid #cbd5e1; border-radius: 5px; background: #fff; }
-.run-monitor-pagination { display: flex; justify-content: flex-end; align-items: center; gap: 10px; margin-top: 12px; color: #64748b; font-size: 12px; }
-table { width: 100%; border-collapse: collapse; font-size: 13px; } th, td { padding: 8px; text-align: left; border-bottom: 1px solid #e5e7eb; }
-.detail-row > td { padding: 12px 16px; background: #f8fafc; }
+.run-monitor-filters label { display: flex; align-items: center; gap: 6px; color: var(--text-2); font-size: 12px; }
+.run-monitor-filters select { min-width: 128px; padding: 5px 8px; border: 1px solid var(--border-strong); border-radius: 5px; background: var(--card); }
+.run-monitor-pagination { display: flex; justify-content: flex-end; align-items: center; gap: 10px; margin-top: 12px; color: var(--text-3); font-size: 12px; }
+table { width: 100%; border-collapse: collapse; font-size: 13px; } th, td { padding: 8px; text-align: left; border-bottom: 1px solid var(--border); }
+.detail-row > td { padding: 12px 16px; background: var(--bg); }
 .detail-table th, .detail-table td { padding: 6px 8px; }
 .run-actions { white-space: nowrap; }
 .run-logs { margin-top: 10px; }
-.run-logs-header { display: flex; align-items: center; gap: 10px; margin-bottom: 6px; font-size: 12px; color: #475569; }
-.run-logs-live { color: #2563eb; }
+.run-logs-header { display: flex; align-items: center; gap: 10px; margin-bottom: 6px; font-size: 12px; color: var(--text-2); }
+.run-logs-live { color: var(--primary); }
 .run-logs-body { margin: 0; padding: 8px 10px; background: #0f172a; color: #e2e8f0; border-radius: 5px; font-size: 12px; line-height: 1.6; max-height: 240px; overflow: auto; white-space: pre-wrap; }
 </style>

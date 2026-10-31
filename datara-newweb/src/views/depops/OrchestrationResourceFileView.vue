@@ -123,8 +123,8 @@
         <label>{{ dialogFieldLabel }}<input v-model.trim="dialogValue" required data-dialog-input /></label>
         <p v-if="dialogError" class="form-err" role="alert" data-dialog-error>{{ dialogError }}</p>
         <footer>
-          <button type="button" @click="closeDialog">取消</button>
-          <button type="submit" data-dialog-save :disabled="dialogBusy">{{ dialogSubmitLabel }}</button>
+          <button type="button" class="mini-btn" @click="closeDialog">取消</button>
+          <button type="submit" class="mini-btn primary" data-dialog-save :disabled="dialogBusy">{{ dialogSubmitLabel }}</button>
         </footer>
       </form>
     </div>
@@ -491,7 +491,7 @@ onMounted(reload)
 .mask label { display: grid; gap: 5px; }
 .mask input { padding: 8px; font: inherit; }
 .mask footer { display: flex; justify-content: flex-end; gap: 8px; }
-.form-err { color: var(--danger, #d92d20); margin: 0; font-size: 12.5px; }
+.form-err { color: var(--danger); margin: 0; font-size: 12.5px; }
 .drag-handle { cursor: grab; user-select: none; margin: 0; }
 .drag-handle:active { cursor: grabbing; }
 </style>
