@@ -30,12 +30,17 @@ async function main() {
     await page.addInitScript((shortLivedToken) => {
       if (window.top === window) window.__DATARA_TEST_TOKEN__ = shortLivedToken
     }, token)
+    const connectionListReady = page.waitForResponse(
+      (response) => new URL(response.url()).pathname === '/ide/api/connection/list' && response.status() === 200,
+      { timeout: 30000 },
+    )
     await page.goto(`${base}/p/${projectId}/ide`)
     await page.locator('[data-dbx-frame]').waitFor({ timeout: 15000 })
     const frame = page.frameLocator('[data-dbx-frame]')
     await frame.locator('body').waitFor({ timeout: 15000 })
     await frame.locator('body').filter({ hasNotText: 'Loading…' }).waitFor({ timeout: 15000 })
     await frame.getByRole('button', { name: '新建连接' }).first().waitFor({ timeout: 20000 })
+    await connectionListReady
     const ideWorkbenchReady = dbxApiStatuses.includes('200 /ide/api/connection/list')
     const state = await page.evaluate(() => ({
       pathname: location.pathname,
