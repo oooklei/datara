@@ -19,6 +19,10 @@ async function main() {
     const dbxApiPaths = new Set()
     const dbxApiStatuses = []
     page.on('pageerror', (error) => pageErrors.push(error.name))
+    let documentNavigations = 0
+    page.on('request', (request) => {
+      if (request.isNavigationRequest() && request.frame() === page.mainFrame()) documentNavigations += 1
+    })
     page.on('request', (request) => {
       const path = new URL(request.url()).pathname
       if (path.startsWith('/ide/api/')) dbxApiPaths.add(`${request.method()} ${path}`)
@@ -94,8 +98,8 @@ async function main() {
     const developerMonitorDenied = new URL(developerPage.url()).pathname === '/'
     await developerPage.close()
 
-    console.log(JSON.stringify({ ...state, ideWorkbenchReady, spinnerDuringConnectionLoad, menuAfterIdeWorks, otherMenuWorks, adminMonitorVisible, developerMonitorDenied, dbxApiPaths: [...dbxApiPaths].sort(), dbxApiStatuses, pageErrors }))
-    if (!state.projectVisible || !state.variablePanel || !ideWorkbenchReady || !spinnerDuringConnectionLoad || !menuAfterIdeWorks || !otherMenuWorks || !adminMonitorVisible || !developerMonitorDenied || state.persistedToken || pageErrors.length) {
+    console.log(JSON.stringify({ ...state, ideWorkbenchReady, spinnerDuringConnectionLoad, menuAfterIdeWorks, otherMenuWorks, documentNavigations, adminMonitorVisible, developerMonitorDenied, dbxApiPaths: [...dbxApiPaths].sort(), dbxApiStatuses, pageErrors }))
+    if (!state.projectVisible || !state.variablePanel || !ideWorkbenchReady || !spinnerDuringConnectionLoad || !menuAfterIdeWorks || !otherMenuWorks || documentNavigations !== 1 || !adminMonitorVisible || !developerMonitorDenied || state.persistedToken || pageErrors.length) {
       process.exitCode = 1
     }
   } finally {
