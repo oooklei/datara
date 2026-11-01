@@ -44,15 +44,26 @@ def load_image_policy() -> dict:
     for name in policy["containers"]:
         if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_.-]*", name):
             raise RuntimeError(f"镜像策略容器名非法：{name!r}")
+    for name, image in policy["containers"].items():
+        if not re.fullmatch(r"[A-Za-z0-9._/-]+:[A-Za-z0-9._-]+", str(image)):
+            raise RuntimeError(f"镜像策略镜像名非法：{name}={image!r}")
     for path in policy["compose_files"]:
         if not re.fullmatch(r"/[A-Za-z0-9._/-]+", path):
             raise RuntimeError(f"镜像策略 compose 路径非法：{path!r}")
+    digests = policy.get("image_digests", {})
+    if not isinstance(digests, dict):
+        raise RuntimeError(f"镜像策略 image_digests 必须是对象：{IMAGE_POLICY}")
+    for name, digest in digests.items():
+        if name not in policy["containers"]:
+            raise RuntimeError(f"image_digests 含未知容器 {name!r}：{IMAGE_POLICY}")
+        if not re.fullmatch(r"sha256:[0-9a-f]{64}", str(digest)):
+            raise RuntimeError(f"image_digests[{name}] 非法：{digest!r}")
     return policy
 
 
 def image_tag(image: str) -> str:
     """Return the tag of an image reference (empty string when untagged)."""
-    ref = image.rsplit("/", 1)[-1]
+    ref = image.rsplit("/", 1)[-1].split("@", 1)[0]
     return ref.rsplit(":", 1)[-1] if ":" in ref else ""
 
 
@@ -82,13 +93,17 @@ def compose_services(text: str) -> dict[str, dict[str, str]]:
     return services
 
 
-def probe_image_state(policy: dict) -> tuple[dict[str, str], dict[str, str]]:
-    """Ask the deploy host for live container images and the controlled compose files."""
+def probe_image_state(policy: dict) -> tuple[dict[str, str], dict[str, str], dict[str, str]]:
+    """Ask the deploy host for running images, local tags, and controlled compose files."""
     script = ["set -u", "echo '@@CONTAINERS@@'"]
     for name in sorted(policy["containers"]):
         script.append(
-            f'echo "{name}=$(docker inspect -f \'{{{{.Config.Image}}}}\' {name} 2>/dev/null || true)"'
+            f'echo "{name}=$(docker inspect -f \'{{{{.Config.Image}}}}\' {name} 2>/dev/null || true)'
+            f'|$(docker inspect -f \'{{{{.Image}}}}\' {name} 2>/dev/null || true)"'
         )
+    script.append("echo '@@IMAGES@@'")
+    for name, image in sorted(policy["containers"].items()):
+        script.append(f'echo "{name}=$(docker image inspect -f \'{{{{.Id}}}}\' {image} 2>/dev/null || true)"')
     for path in policy["compose_files"]:
         script.append(f"echo '@@COMPOSE {path}@@'")
         script.append(f"cat {path} 2>/dev/null || echo '@@MISSING@@'")
@@ -100,6 +115,7 @@ def probe_image_state(policy: dict) -> tuple[dict[str, str], dict[str, str]]:
     if result.returncode:
         raise RuntimeError(result.stderr.strip() or f"ssh 退出码 {result.returncode}")
     live: dict[str, str] = {}
+    local_images: dict[str, str] = {}
     compose_text: dict[str, str] = {}
     mode: str | None = None
     current: str | None = None
@@ -107,6 +123,9 @@ def probe_image_state(policy: dict) -> tuple[dict[str, str], dict[str, str]]:
     for line in result.stdout.splitlines():
         if line == "@@CONTAINERS@@":
             mode = "containers"
+            continue
+        if line == "@@IMAGES@@":
+            mode = "images"
             continue
         if line.startswith("@@COMPOSE ") and line.endswith("@@"):
             if current is not None:
@@ -118,17 +137,21 @@ def probe_image_state(policy: dict) -> tuple[dict[str, str], dict[str, str]]:
         if mode == "containers":
             name, _, image = line.partition("=")
             live[name.strip()] = image.strip()
+        elif mode == "images":
+            name, _, image_id = line.partition("=")
+            local_images[name.strip()] = image_id.strip()
         elif mode == "compose":
             buffer.append(line)
     if current is not None:
         compose_text[current] = "\n".join(buffer)
-    return live, compose_text
+    return live, local_images, compose_text
 
 
 def image_gate() -> None:
     """Fail when DBX / dolphinscheduler images drift from the approved allow-list."""
     policy = load_image_policy()
     expected: dict[str, str] = dict(policy["containers"])
+    digests: dict[str, str] = dict(policy.get("image_digests", {}))
     forbidden = [str(tag) for tag in policy["forbid_tag_patterns"]]
     problems: list[str] = []
 
@@ -137,7 +160,7 @@ def image_gate() -> None:
             problems.append(f"镜像策略自身违规：{name} 指向 {image}（禁用 tag）")
 
     try:
-        live, compose_text = probe_image_state(policy)
+        live, local_images, compose_text = probe_image_state(policy)
     except (RuntimeError, subprocess.TimeoutExpired, OSError) as exc:
         print(f"WARN 镜像闸门跳过：无法从 {policy['host']} 取证（{exc}）")
         if problems:
@@ -145,11 +168,18 @@ def image_gate() -> None:
         return
 
     for name, image in sorted(expected.items()):
-        actual = live.get(name, "")
-        if not actual:
+        raw = live.get(name, "")
+        if not raw or raw == "|":
             problems.append(f"{name} 未运行或不可见，白名单镜像 {image}")
-        elif actual != image:
-            problems.append(f"{name} 镜像漂移：运行中 {actual}，白名单 {image}")
+            continue
+        running_tag, _, running_id = raw.partition("|")
+        if running_tag != image:
+            problems.append(f"{name} 镜像漂移：运行中 {running_tag}，白名单 {image}")
+        digest = digests.get(name)
+        if digest and running_id and not running_id.startswith(digest):
+            problems.append(f"{name} 镜像 ID 漂移：运行中 {running_id}，白名单 {digest}")
+        if digest and local_images.get(name) != digest:
+            problems.append(f"{name} 本地镜像 tag 指向 {local_images.get(name) or '缺失'}，白名单 {digest}")
 
     declared: set[str] = set()
     for path in policy["compose_files"]:
@@ -158,16 +188,18 @@ def image_gate() -> None:
             problems.append(f"受控 compose 不可读：{path}")
             continue
         for service, spec in compose_services(text).items():
-            image = spec.get("image", "")
-            if image in expected.values():
-                declared.add(image)
-                if spec.get("pull_policy") != "never":
-                    problems.append(f"{path} 服务 {service} 使用锁定镜像 {image} 但未声明 pull_policy: never")
-            elif image_tag(image) in forbidden:
-                problems.append(f"{path} 服务 {service} 使用禁用 tag：{image}")
+            ref = spec.get("image", "")
+            matched = next((n for n, wl in expected.items() if ref == wl), None)
+            if matched is None:
+                if image_tag(ref) in forbidden:
+                    problems.append(f"{path} 服务 {service} 使用禁用 tag：{ref}")
+                continue
+            declared.add(matched)
+            if spec.get("pull_policy") != "never":
+                problems.append(f"{path} 服务 {service} 使用锁定镜像 {ref} 但未声明 pull_policy: never")
 
     for name, image in sorted(expected.items()):
-        if image not in declared:
+        if name not in declared:
             problems.append(f"白名单镜像 {image}（{name}）未在受控 compose 中声明")
 
     if problems:
@@ -235,6 +267,7 @@ def snapshot(release_id: str, record_existing_release: bool) -> None:
         "gate": "record_existing_release_only" if record_existing_release else "preflight_passed",
         "image_policy_sha256": hashlib.sha256(IMAGE_POLICY.read_bytes()).hexdigest(),
         "image_tags": dict(policy["containers"]),
+        "image_digests": dict(policy.get("image_digests", {})),
         "image_compose_files": list(policy["compose_files"]),
         "archive_sha256": hashlib.sha256(archive.read_bytes()).hexdigest(),
         "files": files,

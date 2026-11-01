@@ -2,7 +2,7 @@
   "version": 2,
   "host": "root@192.168.1.9",
   "updated_at_utc": "2026-11-01",
-  "note": "DBX 与海豚（dolphinscheduler）自建镜像的唯一白名单。image_digests 是强制锁定：受控 compose 必须写 image: <tag>@<digest> 且 digest 与本文件一致，运行中容器的镜像 ID 也必须一致，否则 release_source.py 的 preflight / image-gate 拦截。任何升级必须先改本文件并留下裁定记录，再改 compose。2026-11-01 dbx 被未留痕就地重建（/tmp/_build_final.sh 挂载源码容器内编译 + sed 改 compose + up -d）导致 IDE 超时事故后建立并加强。",
+  "note": "DBX 与海豚自建镜像白名单。受控 Compose 使用固定 tag 和 pull_policy: never；image-gate 同时核对运行容器镜像 ID、本地 tag 指向的镜像 ID 与 image_digests。Docker 不接受本地镜像 ID 写成 tag@sha256 的 registry digest。升级须先改白名单并记录，再改 Compose。",
   "forbid_tag_patterns": [
     "latest"
   ],
