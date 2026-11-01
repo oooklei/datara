@@ -59,6 +59,8 @@ async function main() {
     await frame.locator('body').filter({ hasNotText: 'Loading…' }).waitFor({ timeout: 15000 })
     await frame.getByRole('button', { name: '新建连接' }).first().waitFor({ timeout: 20000 })
     await connectionListReady
+    await page.locator('.dbx-ide-mask').waitFor({ state: 'hidden', timeout: 5000 })
+    const spinnerClearedAfterConnectionLoad = !(await page.locator('.dbx-ide-mask').isVisible())
     const ideWorkbenchReady = dbxApiStatuses.includes('200 /ide/api/connection/list')
     const state = await page.evaluate(() => ({
       pathname: location.pathname,
@@ -98,8 +100,8 @@ async function main() {
     const developerMonitorDenied = new URL(developerPage.url()).pathname === '/'
     await developerPage.close()
 
-    console.log(JSON.stringify({ ...state, ideWorkbenchReady, spinnerDuringConnectionLoad, menuAfterIdeWorks, otherMenuWorks, documentNavigations, adminMonitorVisible, developerMonitorDenied, dbxApiPaths: [...dbxApiPaths].sort(), dbxApiStatuses, pageErrors }))
-    if (!state.projectVisible || !state.variablePanel || !ideWorkbenchReady || !spinnerDuringConnectionLoad || !menuAfterIdeWorks || !otherMenuWorks || documentNavigations !== 1 || !adminMonitorVisible || !developerMonitorDenied || state.persistedToken || pageErrors.length) {
+    console.log(JSON.stringify({ ...state, ideWorkbenchReady, spinnerDuringConnectionLoad, spinnerClearedAfterConnectionLoad, menuAfterIdeWorks, otherMenuWorks, documentNavigations, adminMonitorVisible, developerMonitorDenied, dbxApiPaths: [...dbxApiPaths].sort(), dbxApiStatuses, pageErrors }))
+    if (!state.projectVisible || !state.variablePanel || !ideWorkbenchReady || !spinnerDuringConnectionLoad || !spinnerClearedAfterConnectionLoad || !menuAfterIdeWorks || !otherMenuWorks || documentNavigations !== 1 || !adminMonitorVisible || !developerMonitorDenied || state.persistedToken || pageErrors.length) {
       process.exitCode = 1
     }
   } finally {

@@ -134,7 +134,6 @@ let variableGeneration = 0
 let projectGeneration = 0
 let sessionQueue: Promise<void> = Promise.resolve()
 let frameTimeout: ReturnType<typeof setTimeout> | undefined
-let frameReadyPoll: ReturnType<typeof setInterval> | undefined
 let disposeEmbeddedBranding: (() => void) | undefined
 let disposeMcpPromoHider: (() => void) | undefined
 
@@ -143,36 +142,14 @@ function clearFrameTimeout(): void {
   frameTimeout = undefined
 }
 
-function clearFrameReadyPoll(): void {
-  if (frameReadyPoll !== undefined) clearInterval(frameReadyPoll)
-  frameReadyPoll = undefined
-}
-
-function completeFrameWhenConnectionsReady(): void {
-  try {
-    const resources = frameEl.value?.contentWindow?.performance.getEntriesByType('resource') ?? []
-    if (!resources.some((entry) =>
-      new URL(entry.name).pathname === '/ide/api/connection/list' && (entry as PerformanceResourceTiming).responseEnd > 0
-    )) return
-  } catch { return }
-  clearFrameReadyPoll()
-  clearFrameTimeout()
-  frameLoaded.value = true
-  frameError.value = ''
-}
-
 function onFrameError(): void {
-  clearFrameReadyPoll()
   clearFrameTimeout()
   frameError.value = '页面请求失败'
 }
 
 function onFrameLoad(): void {
-  // The document load and bridge-ready events both precede the connection
-  // catalog response. Keep the loading mask until that same-origin fetch ends.
-  clearFrameReadyPoll()
-  frameReadyPoll = setInterval(completeFrameWhenConnectionsReady, 150)
-  completeFrameWhenConnectionsReady()
+  // Document load is earlier than the connection tree. The DBX store sends
+  // datara:connections-ready after its initial catalog has been rendered.
   disposeEmbeddedBranding?.()
   disposeMcpPromoHider?.()
   try {
@@ -259,7 +236,6 @@ async function refreshVariables(): Promise<void> {
 
 function startIdeSession(id: number | null, account: typeof authAccount.value): void {
   const generation = ++sessionGeneration
-  clearFrameReadyPoll()
   clearFrameTimeout()
   ideReady.value = false
   sessionError.value = ''
@@ -318,6 +294,16 @@ function onBridgeReady(event: MessageEvent): void {
   sendVariablesToDbx(entries.value)
 }
 
+function onConnectionsReady(event: MessageEvent): void {
+  const data = event.data as { type?: unknown } | null
+  if (!data || typeof data !== 'object' || data.type !== 'datara:connections-ready') return
+  const source = frameEl.value?.contentWindow ?? null
+  if (source === null || event.source !== source || event.origin !== window.location.origin) return
+  clearFrameTimeout()
+  frameLoaded.value = true
+  frameError.value = ''
+}
+
 function onDrawerToggle(open: boolean): void {
   drawerOpen.value = open
   if (!open) void refreshVariables()
@@ -325,15 +311,16 @@ function onDrawerToggle(open: boolean): void {
 
 onMounted(() => {
   window.addEventListener('message', onBridgeReady)
+  window.addEventListener('message', onConnectionsReady)
 })
 
 onUnmounted(() => {
-  clearFrameReadyPoll()
   clearFrameTimeout()
   ++sessionGeneration
   ++variableGeneration
   ++projectGeneration
   window.removeEventListener('message', onBridgeReady)
+  window.removeEventListener('message', onConnectionsReady)
   disposeEmbeddedBranding?.()
   disposeEmbeddedBranding = undefined
   disposeMcpPromoHider?.()
