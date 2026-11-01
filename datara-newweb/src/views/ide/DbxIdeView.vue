@@ -95,7 +95,7 @@
  * 项目上下文沿用既有口径：路由注入的 prop 优先，其次 route 参数/query（工作区壳负责项目选择，
  * 本页不含项目选择器）。
  */
-import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
+import { computed, onActivated, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import { createVariableContract } from '../../services/rebuild/variableApi'
 import { listProjects, type ProjectSummary } from '../../services/rebuild/projectApi'
@@ -134,12 +134,59 @@ let variableGeneration = 0
 let projectGeneration = 0
 let sessionQueue: Promise<void> = Promise.resolve()
 let frameTimeout: ReturnType<typeof setTimeout> | undefined
+let sessionRenewTimer: ReturnType<typeof setTimeout> | undefined
+let sessionIssuedAt = 0
+let frameRecoveryAttempts = 0
+const SESSION_RENEW_MS = 10 * 60 * 1000
+const SESSION_EXPIRES_MS = 15 * 60 * 1000
 let disposeEmbeddedBranding: (() => void) | undefined
 let disposeMcpPromoHider: (() => void) | undefined
 
 function clearFrameTimeout(): void {
   if (frameTimeout !== undefined) clearTimeout(frameTimeout)
   frameTimeout = undefined
+}
+
+function clearSessionRenewTimer(): void {
+  if (sessionRenewTimer !== undefined) clearTimeout(sessionRenewTimer)
+  sessionRenewTimer = undefined
+}
+
+function renewIdeSession(generation: number, id: number): void {
+  clearSessionRenewTimer()
+  sessionQueue = sessionQueue.then(async () => {
+    if (generation !== sessionGeneration || projectId.value !== id || authAccount.value === null) return
+    try {
+      await issueDbxIdeSession(id)
+      if (generation !== sessionGeneration) return
+      sessionIssuedAt = Date.now()
+      scheduleSessionRenewal(generation, id)
+    } catch {
+      if (generation === sessionGeneration) {
+        sessionRenewTimer = setTimeout(() => renewIdeSession(generation, id), 30_000)
+      }
+    }
+  })
+}
+
+function scheduleSessionRenewal(generation: number, id: number): void {
+  clearSessionRenewTimer()
+  sessionRenewTimer = setTimeout(() => renewIdeSession(generation, id), SESSION_RENEW_MS)
+}
+
+/**
+ * iframe 始终等不到连接树就绪，最常见原因是 IDE 会话在 dt-rebuild 重启或
+ * 过期后失效，此时 `/ide/api/*` 全部 401，dbx 永远不会发 `datara:connections-ready`。
+ * 先自动重签会话并重载 iframe，避免用户只剩「整页刷新」一条路；仍失败才报错。
+ */
+function recoverStalledFrame(generation: number, id: number): void {
+  if (generation !== sessionGeneration) return
+  if (frameRecoveryAttempts > 0) {
+    frameError.value = '页面响应超时，请重试'
+    return
+  }
+  frameRecoveryAttempts += 1
+  startIdeSession(id, authAccount.value)
 }
 
 function onFrameError(): void {
@@ -154,8 +201,10 @@ function onFrameLoad(): void {
   disposeMcpPromoHider?.()
   try {
     const document = frameEl.value?.contentDocument
-    disposeEmbeddedBranding = document ? sanitizeEmbeddedBranding(document) : undefined
+    // 先隐藏推广卡、再做品牌文案收口：隐藏锚点基于原始命令文本，
+    // 若先收口会把命令里的 dbx 替换成「数据开发工具」，导致锚点失配。
     disposeMcpPromoHider = document ? hideEmbeddedMcpPromoCard(document) : undefined
+    disposeEmbeddedBranding = document ? sanitizeEmbeddedBranding(document) : undefined
   } catch {
     disposeEmbeddedBranding = undefined
     disposeMcpPromoHider = undefined
@@ -236,6 +285,8 @@ async function refreshVariables(): Promise<void> {
 
 function startIdeSession(id: number | null, account: typeof authAccount.value): void {
   const generation = ++sessionGeneration
+  clearSessionRenewTimer()
+  sessionIssuedAt = 0
   clearFrameTimeout()
   ideReady.value = false
   sessionError.value = ''
@@ -254,10 +305,12 @@ function startIdeSession(id: number | null, account: typeof authAccount.value): 
     try {
       await issueDbxIdeSession(id)
       if (generation !== sessionGeneration) return
+      sessionIssuedAt = Date.now()
+      scheduleSessionRenewal(generation, id)
       ideReady.value = true
       frameTimeout = setTimeout(() => {
         if (generation === sessionGeneration && !frameLoaded.value) {
-          frameError.value = '页面响应超时，请重试'
+          recoverStalledFrame(generation, id)
         }
       }, 30000)
       void refreshVariables()
@@ -270,10 +323,12 @@ function startIdeSession(id: number | null, account: typeof authAccount.value): 
 }
 
 function retryIde(): void {
+  frameRecoveryAttempts = 0
   startIdeSession(projectId.value, authAccount.value)
 }
 
 watch([projectId, authAccount], ([id, account]) => {
+  frameRecoveryAttempts = 0
   startIdeSession(id, account)
 }, { immediate: true })
 
@@ -300,8 +355,17 @@ function onConnectionsReady(event: MessageEvent): void {
   const source = frameEl.value?.contentWindow ?? null
   if (source === null || event.source !== source || event.origin !== window.location.origin) return
   clearFrameTimeout()
+  frameRecoveryAttempts = 0
   frameLoaded.value = true
   frameError.value = ''
+}
+
+function onSessionExpired(event: MessageEvent): void {
+  const data = event.data as { type?: unknown } | null
+  if (!data || typeof data !== 'object' || data.type !== 'datara:ide-session-expired') return
+  const source = frameEl.value?.contentWindow ?? null
+  if (!ideReady.value || source === null || event.source !== source || event.origin !== window.location.origin) return
+  startIdeSession(projectId.value, authAccount.value)
 }
 
 function onDrawerToggle(open: boolean): void {
@@ -312,15 +376,25 @@ function onDrawerToggle(open: boolean): void {
 onMounted(() => {
   window.addEventListener('message', onBridgeReady)
   window.addEventListener('message', onConnectionsReady)
+  window.addEventListener('message', onSessionExpired)
+})
+
+onActivated(() => {
+  if (!ideReady.value || projectId.value === null || sessionIssuedAt === 0) return
+  const age = Date.now() - sessionIssuedAt
+  if (age >= SESSION_EXPIRES_MS) startIdeSession(projectId.value, authAccount.value)
+  else if (age >= SESSION_RENEW_MS) renewIdeSession(sessionGeneration, projectId.value)
 })
 
 onUnmounted(() => {
+  clearSessionRenewTimer()
   clearFrameTimeout()
   ++sessionGeneration
   ++variableGeneration
   ++projectGeneration
   window.removeEventListener('message', onBridgeReady)
   window.removeEventListener('message', onConnectionsReady)
+  window.removeEventListener('message', onSessionExpired)
   disposeEmbeddedBranding?.()
   disposeEmbeddedBranding = undefined
   disposeMcpPromoHider?.()
