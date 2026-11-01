@@ -1,17 +1,27 @@
 -- [ECOM-SIM-20261030] Customer core flow: order to payment reconciliation.
--- Snapshot date corresponds to project variable ${project.biz_date} (2026-10-14).
--- Read-only SQL for the ec_retail DBX connection.
-WITH paid AS (
-  SELECT order_id, SUM(pay_amount) AS paid_amount
-  FROM ec_retail.ods_payment
-  GROUP BY order_id
+-- Isolated fixture schema ecom_sim_20261030 is written literally: DolphinScheduler binds
+-- ${...} as a JDBC value placeholder, so a variable can never be a schema/table qualifier.
+-- Cutoff date is the value of project variable ${project.ecom_sim_20261030_biz_date}.
+WITH succeeded_payments AS (
+  SELECT `order`, SUM(amount_cents) AS paid_cents
+  FROM ecom_sim_20261030.payments
+  WHERE status = 'succeeded'
+  GROUP BY `order`
+), order_lines AS (
+  SELECT o.id AS order_id, o.biz_date, o.qty * o.unit_cents AS expected_cents
+  FROM ecom_sim_20261030.orders AS o
+  WHERE o.biz_date <= '${project.ecom_sim_20261030_biz_date}'
 )
-SELECT o.order_date,
-       COUNT(*) AS order_count,
-       SUM(o.amount) AS order_amount,
-       SUM(COALESCE(p.paid_amount, 0)) AS paid_amount,
-       SUM(CASE WHEN p.paid_amount IS NULL THEN 1 ELSE 0 END) AS orders_without_payment
-FROM ec_retail.ods_order AS o
-LEFT JOIN paid AS p ON p.order_id = o.id
-WHERE o.order_date = '2026-10-14'
-GROUP BY o.order_date;
+SELECT l.order_id,
+       l.biz_date,
+       l.expected_cents,
+       COALESCE(p.paid_cents, 0) AS paid_cents,
+       COALESCE(p.paid_cents, 0) - l.expected_cents AS variance_cents,
+       CASE
+         WHEN p.paid_cents IS NULL THEN 'UNPAID'
+         WHEN p.paid_cents = l.expected_cents THEN 'MATCH'
+         ELSE 'MISMATCH'
+       END AS verdict
+FROM order_lines AS l
+LEFT JOIN succeeded_payments AS p ON p.`order` = l.order_id
+ORDER BY l.order_id;

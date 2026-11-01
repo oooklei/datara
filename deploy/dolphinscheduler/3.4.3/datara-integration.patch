@@ -84,7 +84,7 @@ index e61d878..f654e76 100644
          // get token
          String token = request.getHeader("token");
          User user;
-@@ -95,6 +151,68 @@ public class LoginHandlerInterceptor implements HandlerInterceptor {
+@@ -95,6 +151,75 @@ public class LoginHandlerInterceptor implements HandlerInterceptor {
          return true;
      }
  
@@ -127,6 +127,13 @@ index e61d878..f654e76 100644
 +            int codeEnd = path.indexOf('/', codeStart);
 +            String projectCode = path.substring(codeStart, codeEnd < 0 ? path.length() : codeEnd);
 +            if (!projectCode.equals(String.valueOf(claims.get("p")))) {
++                return null;
++            }
++            // A Datara viewer may load the canvas but may not mutate it through
++            // the embedded service account. Old tokens without this claim are read only.
++            if (!Boolean.TRUE.equals(claims.get("w"))
++                    && (!"GET".equalsIgnoreCase(request.getMethod())
++                            || path.matches(".*/(workflow|task)-definition/[^/]+/versions/[^/]+/?"))) {
 +                return null;
 +            }
 +            return userDao.queryByUserNameAccurately(String.valueOf(claims.get("u")));

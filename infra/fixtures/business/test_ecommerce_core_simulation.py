@@ -28,8 +28,8 @@ def test_dirty_cases_are_separate_and_fixture_is_reproducible():
     two = sim.build_fixture()
     assert one == two
     assert one["namespace"] == sim.NAMESPACE
-    assert [row["id"] for row in one["anomalies_not_loaded_into_valid_facts"]] == [
-        "X001", "X002", "X003", "X004"
+    assert [row["id"] for row in one["quality_anomalies"]] == [
+        "X001", "X002", "X003", "X004", "X005", "X006", "X007", "X008"
     ]
     assert all(row["id"].startswith("O") for row in one["orders"])
 
@@ -49,7 +49,7 @@ def test_each_fact_has_cleanup_namespace_and_independent_event_time():
     fixture = sim.build_fixture()
     for kind in ("products", "campaigns", "orders", "payments", "payment_status_events", "fulfillments",
                  "tracking_events", "refunds", "return_lines", "refund_status_events", "inventory",
-                 "inventory_movements", "events"):
+                 "inventory_movements", "events", "quality_anomalies"):
         assert all(row["fixture_namespace"] == sim.NAMESPACE for row in fixture[kind])
         assert all(row["biz_date"] == row["event_time"][:10] for row in fixture[kind])
     order_times = {row["id"]: row["event_time"] for row in fixture["orders"]}

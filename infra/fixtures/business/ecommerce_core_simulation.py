@@ -101,10 +101,14 @@ def build_fixture() -> dict:
         {"id": "E008", "name": "click_promotion", "buyer": "U002", "promotion": "PROMO-A", "order": None},
     ]
     anomalies = [
-        {"id": "X001", "rule": "order_duplicate", "reference": "O001", "expected": "duplicate business key"},
-        {"id": "X002", "rule": "orphan_order_item", "reference": "O999", "expected": "missing order"},
-        {"id": "X003", "rule": "refund_exceeds_paid", "reference": "O004", "expected": "refund > succeeded payment"},
-        {"id": "X004", "rule": "inventory_negative", "reference": "SKU-B@WH-WEST", "expected": "available < 0"},
+        {"id": "X001", "rule": "order_duplicate", "reference": "O001", "observed_value": "O001", "expected": "duplicate business key"},
+        {"id": "X002", "rule": "orphan_order_item", "reference": "O999", "observed_value": "missing_order", "expected": "missing order"},
+        {"id": "X003", "rule": "refund_exceeds_paid", "reference": "O004", "observed_value": "6000", "expected": "refund > succeeded payment"},
+        {"id": "X004", "rule": "inventory_negative", "reference": "SKU-B@WH-WEST", "observed_value": "-1", "expected": "available < 0"},
+        {"id": "X005", "rule": "enum_out_of_range", "reference": "P006", "observed_value": "expired", "expected": "status not in accepted enum"},
+        {"id": "X006", "rule": "amount_imbalance", "reference": "O001", "observed_value": "10000 != 2*5000", "expected": "order amount mismatch"},
+        {"id": "X007", "rule": "time_inversion", "reference": "O002", "observed_value": "2026-10-20T09:05 < order 2026-10-21T09:00", "expected": "payment before order"},
+        {"id": "X008", "rule": "unauthorized_access", "reference": "U005", "observed_value": "viewer->admin_report", "expected": "access denied"},
     ]
     fixture = {
         "namespace": NAMESPACE,
@@ -123,7 +127,7 @@ def build_fixture() -> dict:
         "inventory": inventory,
         "inventory_movements": inventory_movements,
         "events": events,
-        "anomalies_not_loaded_into_valid_facts": anomalies,
+        "quality_anomalies": anomalies,
     }
     add_provenance(fixture)
     fixture["expected"] = summarize(fixture)
@@ -173,6 +177,7 @@ def add_provenance(fixture: dict) -> None:
             "2026-10-21T08:00:00+08:00", "2026-10-21T08:30:00+08:00",
             "2026-10-23T15:00:00+08:00", "2026-10-21T08:05:00+08:00",
         ],
+        "quality_anomalies": ["2026-10-25T10:00:00+08:00"] * 8,
     }
     for kind, timestamps in times.items():
         rows = fixture[kind]
@@ -214,7 +219,7 @@ def summarize(fixture: dict) -> dict:
         "stockout_locations": sorted(f"{row['sku']}@{row['warehouse']}" for row in fixture["inventory"] if row["available"] == 0),
         "campaign_exposures": sum(event["name"] == "view_promotion" for event in fixture["events"]),
         "campaign_clicks": sum(event["name"] == "click_promotion" for event in fixture["events"]),
-        "quality_anomaly_ids": [row["id"] for row in fixture["anomalies_not_loaded_into_valid_facts"]],
+        "quality_anomaly_ids": [row["id"] for row in fixture["quality_anomalies"]],
     }
 
 
@@ -230,7 +235,7 @@ def validate(fixture: dict) -> None:
     assert len(products) == len(fixture["products"])
     for kind in ("products", "campaigns", "orders", "payments", "payment_status_events", "fulfillments",
                  "tracking_events", "refunds", "return_lines", "refund_status_events", "inventory",
-                 "inventory_movements", "events"):
+                 "inventory_movements", "events", "quality_anomalies"):
         for row in fixture[kind]:
             assert row["fixture_namespace"] == NAMESPACE
             assert row["source_system"] == SOURCE_SYSTEM and row["run_id"] == RUN_ID

@@ -48,7 +48,10 @@ export function sanitizeEmbeddedBranding(document: Document): () => void {
  */
 export function hideEmbeddedMcpPromoCard(document: Document): () => void {
   const hide = (root: Document | Element): void => {
-    for (const code of root.querySelectorAll('code')) {
+    const codes = root instanceof Element && root.matches('code')
+      ? [root, ...root.querySelectorAll('code')]
+      : root.querySelectorAll('code')
+    for (const code of codes) {
       if (!(code.textContent ?? '').includes('@dbx-app/mcp-server')) continue
       let el: HTMLElement | null = code.parentElement
       while (el !== null && el !== document.body) {
@@ -62,11 +65,19 @@ export function hideEmbeddedMcpPromoCard(document: Document): () => void {
   }
   hide(document.documentElement)
   const observer = new MutationObserver((records) => {
-    records.forEach((record) => record.addedNodes.forEach((node) => {
-      if (node.nodeType === Node.ELEMENT_NODE) hide(node as Element)
-    }))
+    records.forEach((record) => {
+      if (record.type === 'characterData') {
+        const parent = record.target.parentElement
+        if (parent) hide(parent)
+        return
+      }
+      record.addedNodes.forEach((node) => {
+        if (node.nodeType === Node.ELEMENT_NODE) hide(node as Element)
+        else if (node.nodeType === Node.TEXT_NODE && node.parentElement) hide(node.parentElement)
+      })
+    })
   })
-  observer.observe(document.documentElement, { childList: true, subtree: true })
+  observer.observe(document.documentElement, { childList: true, characterData: true, subtree: true })
   return () => observer.disconnect()
 }
 

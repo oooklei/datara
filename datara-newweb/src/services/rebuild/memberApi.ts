@@ -1,31 +1,38 @@
 /**
- * 项目成员管理契约层（L3-04）。
+ * 项目成员管理契约层（L3-04 / P1-P2 对齐）。
  *
- * wire 锚（BE datara-backend/rebuild/api/app.py L1009-L1128，冻结实证）：
- *   - GET    /api/v1/rebuild/projects/{id}/members        → data.list: [{user_id, role}]
- *   - POST   /api/v1/rebuild/projects/{id}/members        → body {username, role}；data {project_id, username, role}
+ * wire 锚（BE datara-backend/rebuild/api/app.py）：
+ *   - GET    /api/v1/rebuild/projects/{id}/members  → data.list: [{user_id, username, role, project_role, status, joined_at}]
+ *   - POST   /api/v1/rebuild/projects/{id}/members  → body {username, role}；data {project_id, user_id, username, role, project_role}
  *   - DELETE /api/v1/rebuild/projects/{id}/members/{uid}  → data null
- *   - PATCH  /api/v1/rebuild/projects/{id}/members/{uid}  → body MemberRequest{username, role}；data {project_id, user_id, role}
+ *   - PATCH  /api/v1/rebuild/projects/{id}/members/{uid}  → body {username, role}；data {project_id, user_id, role, project_role}
+ *   - GET    /api/v1/rebuild/project-roles           → data.list: [{value, label, inherits_platform, permissions}]
  *
- * 已知 wire 约束（披露，候 3.2）：
- *   - PATCH 复用 MemberRequest（username: str 必填，Pydantic 校验），后端仅消费 body.role；
- *     GET 列表不含 username，故契约层以空串占位（后端忽略该字段）。
- *   - role wire 词形 = BE identity Role(StrEnum)：admin / developer / operator / viewer。
- *   - 非 2xx 保留成员域业务码，页面按码显示中文（4041/4042/4091）。
+ * 项目角色（BE identity.contracts.ProjectRole）：inherit / viewer / operator。
+ * 存量成员 role 可能是平台角色词形（admin/developer/operator/viewer），后端通过 resolve_project_role 自动映射。
+ * 前端角色下拉只展示项目角色（inherit/viewer/operator），POST/PATCH 传项目角色词形。
  */
 
 import { ContractApiError, deleteJson, getJson, patchJson, postJson } from '../http'
 
-/** 成员角色（wire 词形 = BE `rebuild.identity.contracts.Role` StrEnum）。 */
-export type MemberRole = 'admin' | 'developer' | 'operator' | 'viewer'
+/** 项目角色（BE ProjectRole StrEnum）。 */
+export type MemberRole = 'inherit' | 'viewer' | 'operator'
 
-/** 全量角色选项（与 BE Role 枚举一一对应；POST/patch 下拉与 PATCH 变更共用）。 */
-export const MEMBER_ROLES: readonly MemberRole[] = ['admin', 'developer', 'operator', 'viewer'] as const
+/** 项目角色下拉选项（由后端 /project-roles 端点驱动，此处为降级常量）。 */
+export const PROJECT_ROLES: readonly MemberRole[] = ['inherit', 'viewer', 'operator'] as const
 
-/** 成员域业务错误中文释义；保留 code 供诊断与重试策略使用。 */
+export const PROJECT_ROLE_LABELS: Readonly<Record<MemberRole, string>> = {
+  inherit: '继承平台角色',
+  viewer: '项目观察者（只读）',
+  operator: '项目操作员（运维）',
+}
+
+/** 成员域业务错误中文释义。 */
 export const MEMBER_ERROR_MESSAGES: Readonly<Record<number, string>> = {
+  4002: '不支持的项目角色',
   4041: '项目成员不存在或用户名无效',
   4042: '项目不存在',
+  4043: '用户不存在',
   4091: '该用户已经是项目成员',
 }
 
@@ -43,46 +50,76 @@ async function memberRequest<T>(request: () => Promise<T>): Promise<T> {
   try { return await request() } catch (error) { return memberError(error) }
 }
 
-/** 成员列表项（GET data.list 项，user_id→userId 归一）。 */
+/** 成员列表项（P1 扩展：username / status / joined_at / project_role）。 */
 export interface MemberEntry {
   userId: number
-  role: MemberRole
+  username: string
+  role: string          // 存量词形（可能是平台角色词形）
+  projectRole: MemberRole | null
+  status: string | null // enabled / disabled
+  joinedAt: string | null
 }
 
-/** 添加成员入参（POST body，wire 直传无大小写差）。 */
+/** 添加成员入参（role 传项目角色词形）。 */
 export interface AddMemberInput {
   username: string
   role: MemberRole
 }
 
-/** POST 响应 data（project_id→projectId 归一）。 */
+/** POST 响应。 */
 export interface AddMemberResult {
   projectId: number
+  userId: number
   username: string
-  role: MemberRole
+  role: string
+  projectRole: MemberRole | null
 }
 
-/** PATCH 响应 data（project_id/user_id→projectId/userId 归一）。 */
+/** PATCH 响应。 */
 export interface UpdateMemberResult {
   projectId: number
   userId: number
-  role: MemberRole
+  role: string
+  projectRole: MemberRole | null
+}
+
+/** 项目角色目录项（GET /project-roles）。 */
+export interface ProjectRoleCatalogEntry {
+  value: MemberRole
+  label: string
+  inheritsPlatform: boolean
+  permissions: string[] | null
 }
 
 /** 成员列表：GET /api/v1/rebuild/projects/{projectId}/members。 */
 export function listMembers(projectId: number): Promise<{ list: MemberEntry[] }> {
-  return memberRequest(() => getJson<{ list: Array<{ user_id: number; role: MemberRole }> }>(
+  return memberRequest(() => getJson<{ list: Array<{
+    user_id: number; username: string; role: string; project_role: string | null;
+    status: string | null; joined_at: string | null;
+  }> }>(
     `/rebuild/projects/${projectId}/members`, undefined, MEMBER_REQUEST_OPTIONS,
-  )).then((page) => ({ list: page.list.map((m) => ({ userId: m.user_id, role: m.role })) }))
+  )).then((page) => ({
+    list: page.list.map((m) => ({
+      userId: m.user_id,
+      username: m.username,
+      role: m.role,
+      projectRole: (m.project_role as MemberRole | null) ?? null,
+      status: m.status,
+      joinedAt: m.joined_at,
+    })),
+  }))
 }
 
 /** 添加成员：POST /api/v1/rebuild/projects/{projectId}/members。 */
 export function addMember(projectId: number, input: AddMemberInput): Promise<AddMemberResult> {
-  return memberRequest(() => postJson<{ project_id: number; username: string; role: MemberRole }>(
-    `/rebuild/projects/${projectId}/members`,
-    input,
-    MEMBER_REQUEST_OPTIONS,
-  )).then((d) => ({ projectId: d.project_id, username: d.username, role: d.role }))
+  return memberRequest(() => postJson<{
+    project_id: number; user_id: number; username: string; role: string; project_role: string | null;
+  }>(
+    `/rebuild/projects/${projectId}/members`, input, MEMBER_REQUEST_OPTIONS,
+  )).then((d) => ({
+    projectId: d.project_id, userId: d.user_id, username: d.username,
+    role: d.role, projectRole: (d.project_role as MemberRole | null) ?? null,
+  }))
 }
 
 /** 移除成员：DELETE /api/v1/rebuild/projects/{projectId}/members/{userId}。 */
@@ -92,12 +129,27 @@ export function removeMember(projectId: number, userId: number): Promise<void> {
 
 /**
  * 变更成员角色：PATCH /api/v1/rebuild/projects/{projectId}/members/{userId}。
- * `username` 占位空串：wire 必填但后端不消费，GET 列表亦不含该字段（见文件头披露）。
+ * role 传项目角色词形；username 占位空串（wire 必填但后端不消费）。
  */
 export function updateMemberRole(projectId: number, userId: number, role: MemberRole): Promise<UpdateMemberResult> {
-  return memberRequest(() => patchJson<{ project_id: number; user_id: number; role: MemberRole }>(
+  return memberRequest(() => patchJson<{ project_id: number; user_id: number; role: string; project_role: string | null }>(
     `/rebuild/projects/${projectId}/members/${userId}`,
     { username: '', role },
     MEMBER_REQUEST_OPTIONS,
-  )).then((d) => ({ projectId: d.project_id, userId: d.user_id, role: d.role }))
+  )).then((d) => ({
+    projectId: d.project_id, userId: d.user_id, role: d.role,
+    projectRole: (d.project_role as MemberRole | null) ?? null,
+  }))
+}
+
+/** 项目角色目录：GET /api/v1/rebuild/project-roles。 */
+export function listProjectRoles(): Promise<ProjectRoleCatalogEntry[]> {
+  return getJson<{ list: Array<{ value: string; label: string; inherits_platform: boolean; permissions: string[] | null }> }>(
+    '/rebuild/project-roles', undefined, MEMBER_REQUEST_OPTIONS,
+  ).then((d) => d.list.map((r) => ({
+    value: r.value as MemberRole,
+    label: r.label,
+    inheritsPlatform: r.inherits_platform,
+    permissions: r.permissions,
+  })))
 }

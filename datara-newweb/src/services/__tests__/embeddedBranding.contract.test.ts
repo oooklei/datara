@@ -74,6 +74,18 @@ describe('嵌入页 MCP 推广卡隐藏', () => {
     dispose()
   })
 
+  it('卡片先出现、命令节点或文本稍后插入时仍隐藏', async () => {
+    document.body.innerHTML = '<div class="rounded-lg border" data-card></div>'
+    const card = document.querySelector<HTMLElement>('[data-card]')!
+    const dispose = hideEmbeddedMcpPromoCard(document)
+    const code = document.createElement('code')
+    card.appendChild(code)
+    code.textContent = 'npx @dbx-app/mcp-server'
+    await new Promise((resolve) => setTimeout(resolve, 0))
+    expect(card.style.display).toBe('none')
+    dispose()
+  })
+
   it('普通 code 元素不受影响', () => {
     document.body.innerHTML = '<div class="rounded-lg border p-4"><code>select 1</code></div>'
     const box = document.querySelector('div')!

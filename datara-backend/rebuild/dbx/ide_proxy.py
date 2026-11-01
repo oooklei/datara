@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import secrets
+import threading
 import time
 from collections.abc import Callable
 from typing import Any
@@ -34,24 +35,63 @@ from rebuild.identity.contracts import Permission, Role
 
 
 class IdeSessionRegistry:
-    def __init__(self, *, ttl_seconds: int = 900) -> None:
+    def __init__(self, *, ttl_seconds: int = 900,
+                 timer_factory: Callable[[float, Callable[[], None]], threading.Timer] = threading.Timer) -> None:
         self.ttl_seconds = ttl_seconds
         self._sessions: dict[str, tuple[str, int, float]] = {}
+        self._lock = threading.Lock()
+        self._timer_factory = timer_factory
+        self._timer: threading.Timer | None = None
+        self._timer_generation = 0
+
+    def _reap_expired_locked(self, now: float) -> None:
+        for session_id, entry in list(self._sessions.items()):
+            if entry[2] <= now:
+                self._sessions.pop(session_id, None)
+
+    def _schedule_expiry_locked(self, now: float) -> None:
+        self._timer_generation += 1
+        generation = self._timer_generation
+        if self._timer is not None:
+            self._timer.cancel()
+            self._timer = None
+        if not self._sessions:
+            return
+        delay = max(0.0, min(entry[2] for entry in self._sessions.values()) - now)
+        timer = self._timer_factory(delay, lambda: self._expire(generation))
+        timer.daemon = True
+        self._timer = timer
+        timer.start()
+
+    def _expire(self, generation: int) -> None:
+        with self._lock:
+            if generation != self._timer_generation:
+                return
+            now = time.monotonic()
+            self._reap_expired_locked(now)
+            self._schedule_expiry_locked(now)
 
     def issue(self, token: str, project_id: int) -> str:
-        opaque_id = secrets.token_urlsafe(32)
-        self._sessions[opaque_id] = (token, project_id, time.monotonic() + self.ttl_seconds)
+        now = time.monotonic()
+        # A timer also reaps tokens after the last IDE tab has closed.
+        with self._lock:
+            self._reap_expired_locked(now)
+            opaque_id = secrets.token_urlsafe(32)
+            self._sessions[opaque_id] = (token, project_id, now + self.ttl_seconds)
+            self._schedule_expiry_locked(now)
         return opaque_id
 
     def resolve(self, opaque_id: str) -> tuple[str, int] | None:
-        entry = self._sessions.get(opaque_id)
-        if entry is None:
-            return None
-        token, project_id, expires_at = entry
-        if time.monotonic() >= expires_at:
-            self._sessions.pop(opaque_id, None)
-            return None
-        return token, project_id
+        with self._lock:
+            entry = self._sessions.get(opaque_id)
+            if entry is None:
+                return None
+            token, project_id, expires_at = entry
+            if time.monotonic() >= expires_at:
+                self._sessions.pop(opaque_id, None)
+                self._schedule_expiry_locked(time.monotonic())
+                return None
+            return token, project_id
 
 
 _BOOTSTRAP_READS = frozenset({

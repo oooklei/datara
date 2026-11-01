@@ -1,6 +1,6 @@
 """I1 身份持久化模型。"""
 
-from sqlalchemy import CHAR, DateTime, ForeignKey, String
+from sqlalchemy import CHAR, DateTime, ForeignKey, String, UniqueConstraint
 from datetime import datetime
 from zoneinfo import ZoneInfo
 from sqlalchemy.orm import Mapped, mapped_column
@@ -24,6 +24,10 @@ class UserRecord(Base):
 
 class ProjectMemberRecord(Base):
     __tablename__ = "rebuild_project_member"
+    __table_args__ = (
+        # 同一项目内一个用户只能有一行成员记录；缺约束时并发请求可产生重复行。
+        UniqueConstraint("project_id", "user_id", name="uq_rebuild_project_member_project_user"),
+    )
 
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
     project_id: Mapped[int] = mapped_column(ForeignKey("rebuild_project.id"), index=True)

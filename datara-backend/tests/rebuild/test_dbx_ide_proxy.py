@@ -1,5 +1,6 @@
 import threading
 from io import BytesIO
+from types import SimpleNamespace
 
 import pytest
 from fastapi import FastAPI
@@ -12,9 +13,42 @@ from sqlalchemy.pool import StaticPool
 from rebuild.common.db import Base
 from rebuild.dbx.access import DbxConnectionAccess, DbxObjectAccess
 from rebuild.dbx.connection_catalog import ConnectionCatalogCache
-from rebuild.dbx.ide_proxy import build_dbx_ide_router, is_supported_ide_route
+from rebuild.dbx.ide_proxy import IdeSessionRegistry, build_dbx_ide_router, is_supported_ide_route
 from rebuild.dbx.models import DbxAiUserStateRecord, DbxConnectionOwnershipRecord, DbxConnectionShareRecord, DbxObjectOwnershipRecord, DbxObjectShareRecord
 from rebuild.identity.models import UserRecord
+
+
+def test_new_ide_session_reaps_expired_bearer_tokens(monkeypatch):
+    clock = SimpleNamespace(now=100.0)
+    monkeypatch.setattr("rebuild.dbx.ide_proxy.time", SimpleNamespace(monotonic=lambda: clock.now))
+
+    class FakeTimer:
+        def __init__(self, delay, callback):
+            self.delay = delay
+            self.callback = callback
+            self.daemon = False
+            self.cancelled = False
+
+        def start(self):
+            pass
+
+        def cancel(self):
+            self.cancelled = True
+
+    registry = IdeSessionRegistry(ttl_seconds=10, timer_factory=FakeTimer)
+    expired = registry.issue("old-bearer", 33)
+
+    clock.now = 110.0
+    current = registry.issue("current-bearer", 33)
+
+    assert expired not in registry._sessions
+    assert registry.resolve(current) == ("current-bearer", 33)
+    assert len(registry._sessions) == 1
+
+    clock.now = 120.0
+    registry._timer.callback()
+    assert registry._sessions == {}
+    assert registry._timer is None
 
 
 class FakeDbx:
@@ -426,6 +460,32 @@ def test_dbx_06060_route_manifest_preserves_known_ide_paths():
     ):
         assert is_supported_ide_route(path), path
     for path in ("schema/secret-dump", "query/secret-dump", "mq/secret-dump", "saved-sql/item-1/extra"):
+        assert not is_supported_ide_route(path), path
+
+
+@pytest.mark.parametrize("path", [
+    "redis/list-databases", "redis/scan-keys-batch",
+    "document-store/list-databases", "document-store/list-collections",
+    "etcd/list-prefix", "zookeeper/list-prefix", "consul/list-prefix",
+])
+def test_object_tree_metadata_is_scoped_to_visible_connection(path):
+    client, dbx = setup_proxy()
+    client.post("/api/v1/rebuild/dbx/projects/33/ide-session", headers={"Authorization": "Bearer owner-token"})
+    headers = {"Cookie": f"datara_dbx_ide={client.cookies.get('datara_dbx_ide')}"}
+    endpoint = f"/api/v1/rebuild/dbx/ide-proxy/{path}"
+
+    own = client.post(endpoint, headers=headers, json={"connectionId": "mine"})
+    assert own.status_code == 200
+    assert dbx.calls[-1] == ("POST", path, {"connectionId": "mine"})
+
+    foreign = client.post(endpoint, headers=headers, json={"connectionId": "foreign"})
+    assert foreign.status_code == 403
+    assert dbx.calls[-1] == ("POST", path, {"connectionId": "mine"})
+
+
+def test_object_tree_route_manifest_does_not_expose_database_mutations():
+    for path in ("redis/flush-db", "redis/execute-command", "mongo/drop-database",
+                 "etcd/put", "zookeeper/delete", "consul/delete"):
         assert not is_supported_ide_route(path), path
 
 

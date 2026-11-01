@@ -26,6 +26,62 @@ ROLE_LABELS: dict[Role, str] = {
 }
 
 
+class ProjectRole(StrEnum):
+    """项目角色：只做项目内降权/裁剪，不提供任何提权路径。
+
+    - inherit：完全继承平台角色（等价于历史「无项目级额外限制」）；
+    - viewer：在本项目内把权限裁剪到 viewer 权限集；
+    - operator：在本项目内把权限裁剪到 operator 权限集。
+    """
+
+    INHERIT = "inherit"
+    VIEWER = "viewer"
+    OPERATOR = "operator"
+
+
+PROJECT_ROLE_LABELS: dict[ProjectRole, str] = {
+    ProjectRole.INHERIT: "继承平台角色",
+    ProjectRole.VIEWER: "项目观察者",
+    ProjectRole.OPERATOR: "项目操作员",
+}
+
+# 存量成员行曾直接借用平台角色词形；迁移到项目角色时保持判定结果不变。
+# 说明：operator 映射到 operator 而非 inherit——映射到 inherit 会放宽该成员
+# 在项目内的权限，违反「不得放宽」约束。
+LEGACY_MEMBER_ROLE_TO_PROJECT_ROLE: dict[str, ProjectRole] = {
+    Role.ADMIN.value: ProjectRole.INHERIT,
+    Role.DEVELOPER.value: ProjectRole.INHERIT,
+    Role.OPERATOR.value: ProjectRole.OPERATOR,
+    Role.VIEWER.value: ProjectRole.VIEWER,
+}
+
+
+def resolve_project_role(value: str | ProjectRole | None) -> ProjectRole | None:
+    """把成员行里存储的角色词形解析为项目角色；未知值返回 None（fail-closed）。"""
+    if value is None:
+        return None
+    text = str(value).strip().lower()
+    if not text:
+        return None
+    if text in {role.value for role in ProjectRole}:
+        return ProjectRole(text)
+    return LEGACY_MEMBER_ROLE_TO_PROJECT_ROLE.get(text)
+
+
+def project_role_allows(project_role: ProjectRole | str | None, permission: Permission | str) -> bool:
+    """项目角色上限判定：inherit 放行（交由平台角色决定），其余按对应权限集裁剪。"""
+    resolved = project_role if isinstance(project_role, ProjectRole) else resolve_project_role(project_role)
+    if resolved is None:
+        return False
+    if resolved is ProjectRole.INHERIT:
+        return True
+    if resolved is ProjectRole.VIEWER:
+        return authorize(Role.VIEWER, permission)
+    if resolved is ProjectRole.OPERATOR:
+        return authorize(Role.OPERATOR, permission)
+    return False
+
+
 class Permission(StrEnum):
     MANAGE_USER = "manage_user"
     EDIT_DEFINITION = "edit_definition"

@@ -1,5 +1,5 @@
 import { flushPromises, mount } from '@vue/test-utils'
-import { describe, expect, it, vi } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 import View from '../resources/ResourceManagementView.vue'
 
 const list = vi.hoisted(() => vi.fn())
@@ -8,6 +8,9 @@ const projects = vi.hoisted(() => vi.fn())
 const readContent = vi.hoisted(() => vi.fn())
 const checkScript = vi.hoisted(() => vi.fn())
 const appendVersion = vi.hoisted(() => vi.fn())
+const listIde = vi.hoisted(() => vi.fn())
+const readIde = vi.hoisted(() => vi.fn())
+const saveIde = vi.hoisted(() => vi.fn())
 vi.mock('../../services/rebuild/resourceApi', async (load) => {
   const actual = await load<typeof import('../../services/rebuild/resourceApi')>()
   return {
@@ -18,10 +21,19 @@ vi.mock('../../services/rebuild/resourceApi', async (load) => {
       getResourceVersionContent: readContent,
       checkResourceScript: checkScript,
       appendResourceVersion: appendVersion,
+      listIdeScripts: listIde,
+      getIdeScriptContent: readIde,
+      saveIdeScript: saveIde,
     }),
   }
 })
 vi.mock('../../services/rebuild/projectApi', () => ({ listProjects: projects }))
+
+beforeEach(() => {
+  listIde.mockReset().mockResolvedValue([])
+  readIde.mockReset()
+  saveIde.mockReset()
+})
 
 describe('resource project scope', () => {
   it('ignores a stale resource response after the project changes', async () => {
@@ -104,5 +116,56 @@ describe('resource project scope', () => {
     expect(wrapper.find('[data-project-select]').exists()).toBe(false)
     expect(list).toHaveBeenCalledWith(7, 'sql')
     expect(wrapper.text()).toContain('job.sh')
+  })
+})
+
+describe('ide script projection (same truth source as dbx IDE)', () => {
+  const ideMeta = { ideFileId: 'f1', name: 'query_1.sql', connectionId: 'conn-1', database: 'ec_retail', schema: null, updatedAt: null }
+
+  it('merges IDE query scripts into the SQL list and degrades to empty when dbx is down', async () => {
+    list.mockResolvedValue([{ resourceId: 1, name: 'etl.sql', kind: 'sql', sizeBytes: 4, latestVersion: 1 }])
+    listIde.mockResolvedValue([ideMeta])
+
+    const wrapper = mount(View, { props: { projectId: 11 } })
+    await flushPromises()
+
+    expect(listIde).toHaveBeenCalledWith(11)
+    expect(wrapper.text()).toContain('query_1.sql')
+    expect(wrapper.find('[data-ide-open]').exists()).toBe(true)
+    // IDE 行无版本/大小 → 占位符 '—'。
+    expect(wrapper.text()).toContain('—')
+
+    // dbx 不可用：IDE 投影降级为空，主列表不报错不阻断。
+    listIde.mockRejectedValueOnce(new Error('dbx unavailable'))
+    await wrapper.setProps({ projectId: 12 })
+    await flushPromises()
+    expect(wrapper.text()).toContain('etl.sql')
+    expect(wrapper.find('[data-error]').exists()).toBe(false)
+  })
+
+  it('opens the IDE script viewer/editor, saves back to dbx and reloads the list', async () => {
+    list.mockResolvedValue([{ resourceId: 1, name: 'etl.sql', kind: 'sql', sizeBytes: 4, latestVersion: 1 }])
+    listIde.mockResolvedValue([ideMeta])
+    readIde.mockResolvedValue({ ...ideMeta, content: 'select 1;' })
+    saveIde.mockResolvedValue({ saved: true, ideFileId: 'f1', name: 'query_1.sql' })
+
+    const wrapper = mount(View, { props: { projectId: 11 } })
+    await flushPromises()
+
+    await wrapper.get('[data-ide-open]').trigger('click')
+    await flushPromises()
+    expect(readIde).toHaveBeenCalledWith(11, 'f1')
+    const editor = wrapper.get('[data-ide-editor]')
+    expect((editor.element as HTMLTextAreaElement).value).toBe('select 1;')
+
+    await editor.setValue('select 42;')
+    await wrapper.get('[data-ide-save]').trigger('click')
+    await flushPromises()
+
+    expect(saveIde).toHaveBeenCalledWith(11, 'f1', 'select 42;')
+    expect(wrapper.find('[data-ide-mask]').exists()).toBe(false)
+    // 保存成功后刷新主列表与 IDE 投影。
+    expect(list).toHaveBeenCalledTimes(2)
+    expect(listIde).toHaveBeenCalledTimes(2)
   })
 })

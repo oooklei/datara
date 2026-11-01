@@ -14,9 +14,12 @@ import { authAccount } from '../../services/rebuild/authApi'
 const { listSpy } = vi.hoisted(() => ({ listSpy: vi.fn() }))
 
 vi.mock('../../services/rebuild/memberApi', () => ({
-  MEMBER_ROLES: ['admin', 'developer', 'operator', 'viewer'],
+  PROJECT_ROLES: ['inherit', 'viewer', 'operator'],
+  PROJECT_ROLE_LABELS: { inherit: '继承平台角色', viewer: '项目观察者（只读）', operator: '项目操作员（运维）' },
+  MEMBER_ERROR_MESSAGES: { 4002: '不支持的项目角色', 4041: '项目成员不存在或用户名无效', 4042: '项目不存在', 4043: '用户不存在', 4091: '该用户已经是项目成员' },
   addMember: vi.fn(),
   listMembers: listSpy,
+  listProjectRoles: vi.fn().mockResolvedValue([]),
   removeMember: vi.fn(),
   updateMemberRole: vi.fn(),
 }))

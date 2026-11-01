@@ -130,6 +130,23 @@ export interface ResourceSshTrialRequest {
   content: string
 }
 
+/* ---------- IDE 查询脚本投影（脚本开发第二入口，同一真源：dbx saved-sql） ---------- */
+
+/** IDE 查询脚本元数据：真源在 dbx saved-sql，仅投影可见项（owner/连接可见性与 IDE 一致） */
+export interface IdeScriptMeta {
+  ideFileId: string
+  name: string
+  connectionId: string | null
+  database: string | null
+  schema: string | null
+  updatedAt: string | null
+}
+
+/** IDE 脚本正文（读取单文件时返回；保存写回 dbx） */
+export interface IdeScriptContent extends IdeScriptMeta {
+  content: string
+}
+
 /* ---------- 试运行环境描述（弹窗标题下环境状态栏） ---------- */
 
 /** 试运行实际发生的位置：后端 API 服务进程（非 SSH 目标主机），containerized 标记容器内执行 */
@@ -235,6 +252,10 @@ export interface ResourceContract {
   checkResourceScript: (request: ResourceScriptCheckRequest) => Promise<ScriptCheckResult>
   trialScriptOnSsh: (request: ResourceSshTrialRequest) => Promise<ScriptCheckResult>
   getScriptEnvironment: (projectId: number) => Promise<ScriptEnvironment>
+  /* IDE 查询脚本投影（第二入口；不在冻结契约方法清单内，dbx 不可用由调用方降级） */
+  listIdeScripts: (projectId: number) => Promise<IdeScriptMeta[]>
+  getIdeScriptContent: (projectId: number, ideFileId: string) => Promise<IdeScriptContent>
+  saveIdeScript: (projectId: number, ideFileId: string, content: string) => Promise<{ saved: true; ideFileId: string; name: string }>
 }
 
 /* ---------- GREEN 统一原语（收编 1.2 http 单 BASE 底座，s231 裁示④） ---------- */
@@ -333,5 +354,10 @@ export function createResourceContract(): ResourceContract {
     },
     trialScriptOnSsh: (request) => sendJson<ScriptCheckResult>(`/${request.resourceId}/ssh-trials`, request),
     getScriptEnvironment: (projectId) => getJson<ScriptEnvironment>('/script-environment', { project_id: String(projectId) }),
+    listIdeScripts: (projectId) => getJson<IdeScriptMeta[]>('/ide-scripts', { project_id: String(projectId) }),
+    getIdeScriptContent: (projectId, ideFileId) =>
+      getJson<IdeScriptContent>(`/ide-scripts/${encodeURIComponent(ideFileId)}/content`, { project_id: String(projectId) }),
+    saveIdeScript: (projectId, ideFileId, content) =>
+      sendJson<{ saved: true; ideFileId: string; name: string }>(`/ide-scripts/${encodeURIComponent(ideFileId)}`, { projectId, content }),
   }
 }

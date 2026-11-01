@@ -1,164 +1,142 @@
+import json
+
 import infra.seed_ecommerce_demo as seed
-from infra.seed_ecommerce_demo import (
-    PROJECT_NAME,
-    build_blueprints,
-    prime_stream_observation,
-    reconcile_demo,
-    run_formal_sample,
-)
-
-
-def test_demo_project_name_matches_the_product_navigation_default():
-    assert PROJECT_NAME == "电商全域数据治理项目"
 
 
 class FakeApi:
     def __init__(self):
-        self.projects = []
         self.workflows = []
-        self.details = {}
-        self.jobs = []
-        self.next_project = 33
-        self.next_workflow = 100
-        self.next_job = 200
-        self.next_version = 900
-        self.next_instance = 500
         self.calls = []
+        self.hide_workflows = False
 
     def get(self, path, params=None):
+        self.calls.append(("GET", path, params))
         if path == "/api/v1/rebuild/projects":
-            return {"list": self.projects}
-        if path == "/api/v1/rebuild/workflows":
-            return [row for row in self.workflows if row["project_id"] == params["project_id"]]
-        if path.startswith("/api/v1/rebuild/workflows/"):
-            return self.details[int(path.rsplit("/", 1)[1])]
-        if path == "/api/v1/rebuild/components/spec":
-            types = {node["type"] for flow in build_blueprints() if flow["workflow_type"] == params["workflow_type"] for node in flow["nodes"]}
-            return {"items": [{"type": item, "publishedVersion": 1} for item in types]}
-        if path == "/api/v1/rebuild/stream/jobs":
-            return [row for row in self.jobs if row["project_id"] == params["project_id"]]
-        if path.endswith("/datasources"):
-            return {"items": [
-                {"datasource_id": 11, "name": "内置源库-ec_retail"},
-                {"datasource_id": 12, "name": "内置数仓-datara_dw"},
-            ]}
+            return {"list": [{"id": 33, "name": seed.PROJECT_NAME}]}
+        if path == "/api/v1/rebuild/orchestration/datasources":
+            return [{"id": "source-id", "type": "MYSQL", "project_id": 33}]
+        if path == "/api/v1/rebuild/orchestration/session":
+            return {"projectCode": "98765", "token": "short-lived-embed"}
+        if path == "/api/v1/rebuild/orchestration/workflow-definitions":
+            if self.hide_workflows:
+                return {"list": []}
+            return {"list": [row for row in self.workflows if params["search_val"] in row["name"]]}
         raise AssertionError((path, params))
 
-    def post(self, path, body):
-        self.calls.append((path, body))
-        if path == "/api/v1/rebuild/projects":
-            row = {"id": self.next_project, **body}
-            self.projects.append(row)
-            return row
-        if path == "/api/v1/rebuild/workflows":
-            row = {"definition_id": self.next_workflow, **body}
-            self.next_workflow += 1
-            self.workflows.append(row)
-            self.details[row["definition_id"]] = {**row, "draft": {"nodes": [], "edges": []}}
-            return row
-        if path.endswith("/nodes"):
-            workflow_id = int(path.split("/")[-2])
-            rows = self.details[workflow_id]["draft"]["nodes"]
-            rows[:] = [row for row in rows if row["node_code"] != body["node_code"]]
-            rows.append(body)
-            return body
-        if path == "/api/v1/rebuild/dependency/saves":
-            return {"saved": True, "version": 1, "config_id": 301}
-        if path.endswith("/edges"):
-            workflow_id = int(path.split("/")[-2])
-            rows = self.details[workflow_id]["draft"]["edges"]
-            key = (body["from_node"], body["to_node"])
-            rows[:] = [row for row in rows if (row["from_node"], row["to_node"]) != key]
-            rows.append(body)
-            return body
-        if path == "/api/v1/rebuild/stream/jobs":
-            row = {"id": self.next_job, "state": "CREATED", **body}
-            self.next_job += 1
-            self.jobs.append(row)
-            return row
-        if path.startswith("/api/v1/rebuild/stream/jobs/"):
-            return {"ok": True}
-        if path.endswith("/publish"):
-            definition_id = int(path.split("/")[-2])
-            row = {"id": self.next_version, "definition_id": definition_id, "version": 1, "status": "PUBLISHED"}
-            self.next_version += 1
-            return row
-        if path == "/api/v1/rebuild/execution/workflow-instances":
-            codes = [node["code"] for node in build_blueprints()[0]["nodes"]]
-            row = {
-                "instance_id": self.next_instance,
-                "workflow_id": body["workflow_id"],
-                "workflow_version_id": body["publish_version"],
-                "instance_type": "FORMAL",
-                "status": "PENDING",
-                "tasks": [
-                    {"task_instance_id": 700 + index, "task_id": code, "status": "PENDING", "current_attempt_no": 0}
-                    for index, code in enumerate(codes)
-                ],
-            }
-            self.next_instance += 1
-            return row
-        raise AssertionError((path, body))
+    def create_ds_workflow(self, project_code, embed_token, form):
+        self.calls.append(("POST", project_code, embed_token, form))
+        row = {"code": len(self.workflows) + 100, "name": form["name"]}
+        self.workflows.append(row)
+        return row
+
+    def post(self, path, body=None, params=None):
+        self.calls.append(("POST_GATEWAY", path, body, params))
+        return {"id": 456} if path.endswith("/start") else {}
 
 
-def test_blueprints_cover_the_user_visible_normal_sync_and_stream_samples():
-    flows = build_blueprints()
-    assert [flow["workflow_type"] for flow in flows] == ["NORMAL", "SYNC", "STREAM"]
-    assert {node["type"] for node in flows[0]["nodes"]} == {"sql", "python", "shell", "dependent"}
-    sql_node = next(node for node in flows[0]["nodes"] if node["type"] == "sql")
-    dependency = next(node for node in flows[0]["nodes"] if node["type"] == "dependent")
-    assert sql_node["params"]["execute"] is True
-    assert dependency["params"]["dependency_id"] == "configured-at-seed"
-    assert {node["type"] for node in flows[1]["nodes"]} == {
-        "src_base_orch", "tgt_base_orch", "file_sync_orch", "endpoint_select",
-        "field_map", "field_map_union", "condition_set",
-    }
-    assert {node["type"] for node in flows[2]["nodes"]} == {"stream_input", "stream_fuse", "stream_output", "page_board"}
+def test_sql_workflow_form_uses_native_ds_sql_task_and_dbx_connection():
+    form = seed.sql_workflow_form("订单对账", "SELECT 1", "dbx-source", "MYSQL")
+    task = json.loads(form["taskDefinitionJson"])[0]
+    params = json.loads(task["taskParams"])
+    relation = json.loads(form["taskRelationJson"])[0]
+    assert task["taskType"] == "SQL"
+    assert params["datasource"] == "dbx-source"
+    assert params["type"] == "MYSQL"
+    assert params["sql"] == "SELECT 1"
+    assert relation["preTaskCode"] == 0
+    assert relation["postTaskCode"] == task["code"]
+    assert json.loads(form["locations"])[0]["taskCode"] == task["code"]
+    assert json.loads(form["globalParams"]) == []
 
 
-def test_reconcile_is_idempotent_and_keeps_one_product_project_and_three_workflows():
+def test_reconcile_injects_fixture_variables_into_workflow_global_params():
     api = FakeApi()
-    first = reconcile_demo(api)
-    second = reconcile_demo(api)
+    seed.reconcile_demo(api, connection_id="source-id")
 
-    assert first["project_name"] == PROJECT_NAME
-    assert second["project_id"] == first["project_id"]
-    assert len(api.projects) == 1
-    assert len(api.workflows) == 3
-    assert len(api.jobs) == 1
-    assert all(api.details[row["definition_id"]]["draft"]["nodes"] for row in api.workflows)
+    created = [call[3] for call in api.calls if call[0] == "POST"]
+    assert len(created) == 3
+    for form in created:
+        props = {row["prop"]: row["value"] for row in json.loads(form["globalParams"])}
+        assert props["project.ecom_sim_20261030_biz_date"] == "2026-10-23"
+        assert props["project.ecom_sim_20261030_safety_stock"] == "10"
+        assert props["project.ecom_sim_20261030_source_schema"] == "ecom_sim_20261030"
+        assert all(row["direct"] == "IN" for row in json.loads(form["globalParams"]))
 
 
-def test_prime_stream_observation_uses_the_runtime_produce_and_fuse_contracts():
+def test_reconcile_creates_three_current_dags_once_without_legacy_workflow_calls():
     api = FakeApi()
+    first = seed.reconcile_demo(api, connection_id="source-id")
+    second = seed.reconcile_demo(api, connection_id="source-id")
 
-    prime_stream_observation(api, {"stream_job_created": True, "stream_job_id": 200})
+    assert first["project_id"] == 33
+    assert first["project_code"] == "98765"
+    assert len(first["workflows"]) == len(seed.WORKFLOWS) == 3
+    assert all(row["created"] for row in first["workflows"])
+    assert all(not row["created"] for row in second["workflows"])
+    assert [row["name"] for row in api.workflows] == [name for name, _ in seed.WORKFLOWS]
+    assert all(call[1] == "98765" and call[2] == "short-lived-embed"
+               for call in api.calls if call[0] == "POST")
+    assert not any("/rebuild/workflows" in call[1] or "/rebuild/execution" in call[1]
+                   for call in api.calls if call[0] == "GET")
 
-    produce = next(body for path, body in api.calls if path.endswith("/produce"))
-    fuse = next(body for path, body in api.calls if path.endswith("/fuse"))
-    assert produce["count"] == 12
-    assert produce["payload"]["business"] == "ecommerce-order"
-    assert set(fuse["streams"]) == {"orders", "payments"}
-    assert fuse["key_field"] == "order_id"
 
-
-def test_normal_sample_publishes_the_graph_and_starts_one_formal_instance():
-    runner = getattr(seed, "run_formal_sample", None)
-    assert callable(runner)
-    assert getattr(seed, "run_normal_sample", None) is None  # 试运行(trial) 域已废弃
+def test_reconcile_rejects_connection_outside_project():
     api = FakeApi()
-    result = runner(api, project_id=33, workflow_id=100)
-    assert result["instance_type"] == "FORMAL"
-    assert result["status"] == "PENDING"
-    assert result["task_count"] == 4
-    assert all(task["status"] == "PENDING" for task in result["tasks"])
-    published = next(body for path, body in api.calls if path.endswith("/publish"))
-    assert published == {"project_id": 33, "remark": "seeded demo publish"}
-    run_body = next(body for path, body in api.calls if path == "/api/v1/rebuild/execution/workflow-instances")
-    assert run_body == {
-        "project_id": 33,
-        "workflow_id": 100,
-        "instance_type": "FORMAL",
-        "trigger_type": "MANUAL",
-        "publish_version": 900,
-    }
+    try:
+        seed.reconcile_demo(api, connection_id="foreign")
+    except RuntimeError as exc:
+        assert "not visible" in str(exc)
+    else:
+        raise AssertionError("foreign connection was accepted")
+    assert not any(call[0] == "POST" for call in api.calls)
+
+
+def test_reconcile_fails_when_created_dag_is_missing_from_task_center():
+    api = FakeApi()
+    api.hide_workflows = True
+    try:
+        seed.reconcile_demo(api, connection_id="source-id")
+    except RuntimeError as exc:
+        assert "not visible in Datara task center" in str(exc)
+    else:
+        raise AssertionError("missing workflow was reported as successful")
+
+
+def test_ds_save_sends_only_the_scoped_embed_token(monkeypatch):
+    requests_seen = []
+
+    class Response:
+        def raise_for_status(self):
+            pass
+
+        def json(self):
+            return {"code": 0, "data": {"code": 12345}}
+
+    def post(url, *, data, headers, timeout):
+        requests_seen.append((url, data, headers, timeout))
+        return Response()
+
+    monkeypatch.setattr(seed.requests, "post", post)
+    api = seed.HttpApi("http://localhost:8090", "datara-bearer")
+    result = api.create_ds_workflow("98765", "embed-token", {"name": "sample"})
+
+    assert result["code"] == 12345
+    url, data, headers, _ = requests_seen[0]
+    assert url.endswith("/dolphinscheduler/projects/98765/workflow-definition")
+    assert data == {"name": "sample"}
+    assert headers == {"X-Datara-Embed-Token": "embed-token"}
+    assert "datara-bearer" not in str(requests_seen)
+
+
+def test_formal_sample_uses_current_release_and_start_routes():
+    api = FakeApi()
+    result = seed.reconcile_demo(api, connection_id="source-id")
+    run = seed.run_formal_sample(api, result)
+
+    assert run == {"id": 456}
+    assert api.calls[-2:] == [
+        ("POST_GATEWAY", "/api/v1/rebuild/orchestration/workflow-definitions/100/release", None,
+         {"project_id": 33, "release_state": "ONLINE"}),
+        ("POST_GATEWAY", "/api/v1/rebuild/orchestration/workflow-instances/start",
+         {"projectId": 33, "workflowDefinitionCode": 100, "dryRun": False}, None),
+    ]

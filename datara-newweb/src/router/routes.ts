@@ -49,18 +49,19 @@ import QualityAlarmView from '../views/qc/QualityAlarmView.vue'
 import ResourceManagementView from '../views/resources/ResourceManagementView.vue'
 import DbxIdeView from '../views/ide/DbxIdeView.vue'
 import SystemAdminView from '../views/system/SystemAdminView.vue'
+import ProjectTaskGroupView from '../views/ProjectTaskGroupView.vue'
 
 export const routes: RouteRecordRaw[] = [
   { path: '/login', name: 'login', component: LoginView },
   { path: '/', name: 'home', component: HomeView },
   { path: '/dag', name: 'dag-entry', component: TaskCenterView },
+  { path: '/task-group', name: 'task-group', component: ProjectTaskGroupView, props: (route) => ({ projectId: Number(route.query.projectId) || 0 }) },
   { path: '/dep/ssh', name: 'dep-ssh', component: SshNodeManagementView },
   // 17.4 P3 运行节点迁移（IMPL-v4-17）：运行时节点注册清单 + SFTP 目录浏览页
   // （History 直链可达；菜单可见性候批——BATCH_SWITCHES.inc17 保持 false）
   { path: '/dep/runtime', name: 'dep-runtime', component: RuntimeNodeView },
   { path: '/dep/monitor', name: 'dep-monitor', component: MonitorView, meta: { permission: 'monitor:read' } },
-  // 2026-10-29 dbx 统一目标设计 §10.10 R1–R4：部署运维四类资源配置页
-  // （同一组件按 kind prop 驱动；契约经编排网关代理海豚，前端不直连海豚 API）
+  // 现时权威设计 §五：部署运维四类自建资源页，由同一组件按 kind 驱动。
   {
     path: '/dep/worker-group',
     name: 'dep-worker-group',

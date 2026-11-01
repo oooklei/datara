@@ -34,6 +34,8 @@ from rebuild.resources.models import ResourceRecord
 
 from rebuild.identity.contracts import Permission
 from rebuild.identity.contracts import Role
+from rebuild.dbx.access import DbxConnectionAccess, DbxObjectAccess
+from rebuild.dbx.client import DbxClient, DbxError
 from rebuild.sshnode.governance import SshNodeAccess
 from rebuild.sshnode.models import SshNodeRecord
 from rebuild.sshnode.trial import SshTrialError, run_ssh_trial
@@ -60,8 +62,10 @@ def build_resources_router(
     *,
     ssh_trial_runner: Callable[..., dict[str, Any]] = run_ssh_trial,
     script_syncer: Callable[[int, str, bytes], Any] | None = None,
+    dbx_client_factory: Callable[[], Any] | None = None,
 ) -> APIRouter:
     router = APIRouter()
+    dbx_factory = dbx_client_factory or DbxClient
 
     def best_effort_script_sync(project_id: int, name: str, content: bytes) -> None:
         """尽力同步脚本到海豚资源中心（编排「资源文件」下拉的数据源）。
@@ -104,6 +108,98 @@ def build_resources_router(
                 yield denial
                 return
             yield session
+
+    @contextmanager
+    def authorized_identity(
+        project_id: int, permission: Permission, token: str, authorization: str
+    ) -> Iterator[tuple[Any, dict[str, object] | None]]:
+        """Yield (session, user) after auth+permission, or (None, denial JSONResponse).
+
+        Used by endpoints that need the caller identity (dbx IDE script owner
+        checks) beyond the plain permission gate.
+        """
+        with session_factory() as session:
+            try:
+                user = principal(token, authorization)
+            except ValueError:
+                yield None, unauthorized()
+                return
+            denial = project_permission_error(session, project_id, user, permission)
+            if denial is not None:
+                yield None, denial
+                return
+            yield session, user
+
+    def dbx_denial() -> JSONResponse:
+        return JSONResponse(status_code=502, content={"code": 502, "msg": "dbx unavailable", "data": None})
+
+    def ide_denied(message: str = "dbx IDE access denied") -> JSONResponse:
+        return JSONResponse(status_code=403, content={"code": 1003, "msg": message, "data": None})
+
+    def visible_ide_scripts(session: Any, project_id: int, user_id: int, is_admin: bool) -> list[dict[str, Any]]:
+        """Project the dbx saved-SQL library into the caller's visible scope.
+
+        Mirrors the dbx IDE proxy rules exactly: the file's connection must be
+        visible, and non-admin callers only see files they own or that were
+        explicitly shared with them (unclaimed legacy files are admin-only).
+        """
+        library = dbx_factory().list_saved_sql_library()
+        files = [item for item in library.get("files", []) if isinstance(item, dict)]
+        connection_ids = DbxConnectionAccess(session).visible_ids(project_id=project_id, user_id=user_id, is_admin=is_admin)
+        owned_files = DbxObjectAccess(session).visible_ids(
+            kind="sql-file", project_id=project_id, user_id=user_id, is_admin=is_admin,
+        )
+        items: list[dict[str, Any]] = []
+        for file in files:
+            file_id = file.get("id")
+            connection_id = file.get("connectionId")
+            if not isinstance(file_id, str) or not file_id or connection_id not in connection_ids:
+                continue
+            if not is_admin and file_id not in owned_files:
+                continue
+            items.append({
+                "ide_file_id": file_id,
+                "name": file.get("name") or f"{file_id}.sql",
+                "connection_id": connection_id,
+                "database": file.get("database"),
+                "schema": file.get("schema"),
+                "updated_at": file.get("updated_at"),
+            })
+        items.sort(key=lambda row: (row["name"], row["ide_file_id"]))
+        return items
+
+    def ide_file_allowed(
+        session: Any, project_id: int, user_id: int, is_admin: bool, ide_file_id: str, *, require_owner: bool
+    ) -> bool:
+        """Single-file scope check: visible connection + explicit owner rules.
+
+        ``require_owner`` mirrors the dbx IDE save flow: shared files are
+        read-only for non-owners, and unclaimed legacy files stay admin-only.
+        """
+        access = DbxObjectAccess(session)
+        owner = access.get("sql-file", ide_file_id)
+        if owner is None:
+            return is_admin
+        if owner.project_id != project_id:
+            return False
+        connection_ids = DbxConnectionAccess(session).visible_ids(project_id=project_id, user_id=user_id, is_admin=is_admin)
+        if owner.connection_id not in connection_ids:
+            return False
+        if is_admin:
+            return True
+        if require_owner:
+            return owner.owner_id == user_id
+        visible_files = access.visible_ids(kind="sql-file", project_id=project_id, user_id=user_id, is_admin=False)
+        return ide_file_id in visible_files
+
+    def require_visible_ide_file(
+        session: Any, project_id: int, user_id: int, is_admin: bool, ide_file_id: str, *, require_owner: bool
+    ) -> JSONResponse | None:
+        if not ide_file_id or ".." in ide_file_id.split("/"):
+            return ide_denied()
+        if not ide_file_allowed(session, project_id, user_id, is_admin, ide_file_id, require_owner=require_owner):
+            return ide_denied()
+        return None
 
     def request_error(exc: Exception) -> JSONResponse:
         if isinstance(exc, MalformedRequest):
@@ -435,5 +531,129 @@ def build_resources_router(
             except ResourceDomainError as exc:
                 return request_error(exc)
         return {"code": 0, "msg": "success", "data": {"bound": True, "binding_id": binding_id}}
+
+    # -- 10. IDE scripts (dbx saved-SQL projection) ------------------------
+
+    @router.get("/ide-scripts")
+    def list_ide_scripts(
+        project_id: int = Query(default=None),
+        token: str = Header(default=""),
+        authorization: str = Header(default=""),
+    ):
+        if project_id is None:
+            return JSONResponse(status_code=400, content={"code": 4001, "msg": "project_id is required", "data": None})
+        with authorized_identity(project_id, Permission.VIEW_ALL, token, authorization) as outcome:
+            if outcome[0] is None:
+                return outcome[1]
+            session, user = outcome
+            is_admin = str(user.get("role", "")).strip().lower() == Role.ADMIN.value
+            try:
+                rows = visible_ide_scripts(session, project_id, int(user["user_id"]), is_admin)
+            except DbxError:
+                return dbx_denial()
+        return {"code": 0, "msg": "success", "data": rows}
+
+    @router.get("/ide-scripts/{ide_file_id}")
+    def get_ide_script_meta(
+        ide_file_id: str,
+        project_id: int = Query(default=None),
+        token: str = Header(default=""),
+        authorization: str = Header(default=""),
+    ):
+        if project_id is None:
+            return JSONResponse(status_code=400, content={"code": 4001, "msg": "project_id is required", "data": None})
+        with authorized_identity(project_id, Permission.VIEW_ALL, token, authorization) as outcome:
+            if outcome[0] is None:
+                return outcome[1]
+            session, user = outcome
+            is_admin = str(user.get("role", "")).strip().lower() == Role.ADMIN.value
+            denial = require_visible_ide_file(
+                session, project_id, int(user["user_id"]), is_admin, ide_file_id, require_owner=False
+            )
+            if denial is not None:
+                return denial
+            try:
+                file = dbx_factory().load_saved_sql_file(ide_file_id)
+            except DbxError:
+                return dbx_denial()
+            if file is None:
+                return JSONResponse(status_code=404, content={"code": "RES_OBJECT_NOT_FOUND", "msg": "ide script not found", "data": None})
+        return {"code": 0, "msg": "success", "data": {
+            "ide_file_id": ide_file_id,
+            "name": file.get("name"),
+            "connection_id": file.get("connectionId"),
+            "database": file.get("database"),
+            "schema": file.get("schema"),
+            "updated_at": file.get("updatedAt"),
+        }}
+
+    @router.get("/ide-scripts/{ide_file_id}/content")
+    def read_ide_script_content(
+        ide_file_id: str,
+        project_id: int = Query(default=None),
+        token: str = Header(default=""),
+        authorization: str = Header(default=""),
+    ):
+        if project_id is None:
+            return JSONResponse(status_code=400, content={"code": 4001, "msg": "project_id is required", "data": None})
+        with authorized_identity(project_id, Permission.VIEW_ALL, token, authorization) as outcome:
+            if outcome[0] is None:
+                return outcome[1]
+            session, user = outcome
+            is_admin = str(user.get("role", "")).strip().lower() == Role.ADMIN.value
+            denial = require_visible_ide_file(
+                session, project_id, int(user["user_id"]), is_admin, ide_file_id, require_owner=False
+            )
+            if denial is not None:
+                return denial
+            try:
+                file = dbx_factory().load_saved_sql_file(ide_file_id)
+            except DbxError:
+                return dbx_denial()
+            if file is None:
+                return JSONResponse(status_code=404, content={"code": "RES_OBJECT_NOT_FOUND", "msg": "ide script not found", "data": None})
+        return {"code": 0, "msg": "success", "data": {
+            "ide_file_id": ide_file_id,
+            "name": file.get("name"),
+            "content": file.get("sql"),
+        }}
+
+    @router.post("/ide-scripts/{ide_file_id}")
+    def save_ide_script_content(
+        ide_file_id: str,
+        body: dict[str, Any] = Body(...),
+        token: str = Header(default=""),
+        authorization: str = Header(default=""),
+    ):
+        try:
+            project_id = frame_int(body, "project_id")
+            content = body.get("content")
+            if not isinstance(content, str) or not content.strip():
+                raise MalformedRequest("content must be a non-empty string")
+        except MalformedRequest as exc:
+            return request_error(exc)
+        with authorized_identity(project_id, Permission.EDIT_DEFINITION, token, authorization) as outcome:
+            if outcome[0] is None:
+                return outcome[1]
+            session, user = outcome
+            is_admin = str(user.get("role", "")).strip().lower() == Role.ADMIN.value
+            denial = require_visible_ide_file(
+                session, project_id, int(user["user_id"]), is_admin, ide_file_id, require_owner=True
+            )
+            if denial is not None:
+                return denial
+            try:
+                file = dbx_factory().load_saved_sql_file(ide_file_id)
+            except DbxError:
+                return dbx_denial()
+            if file is None:
+                return JSONResponse(status_code=404, content={"code": "RES_OBJECT_NOT_FOUND", "msg": "ide script not found", "data": None})
+            file["sql"] = content
+            file["sql_loaded"] = True
+            try:
+                dbx_factory().save_saved_sql_file(file)
+            except DbxError:
+                return dbx_denial()
+        return {"code": 0, "msg": "success", "data": {"saved": True, "ide_file_id": ide_file_id}}
 
     return router

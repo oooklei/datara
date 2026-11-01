@@ -12,6 +12,7 @@ from datetime import datetime, timedelta
 from http.cookies import SimpleCookie
 
 from fastapi import FastAPI
+from fastapi.responses import JSONResponse
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
@@ -20,7 +21,7 @@ from sqlalchemy.pool import StaticPool
 from rebuild.common.db import Base
 from rebuild.dbx.access import DbxConnectionAccess
 from rebuild.dbx.models import DbxConnectionOwnershipRecord, DbxConnectionShareRecord
-from rebuild.identity.contracts import Role, TokenService
+from rebuild.identity.contracts import Permission, Role, TokenService, authorize
 from rebuild.identity.models import ProjectMemberRecord, UserRecord
 from rebuild.identity.repository import UserRepository
 from rebuild.orchestration.api import build_orchestration_router
@@ -89,9 +90,10 @@ def _worker_group(name, *, group_id=1, source=None, system_default=False):
 
 
 class Harness:
-    def __init__(self, fake, *, users=(), project=True, dbx=None):
+    def __init__(self, fake, *, users=(), project=True, dbx=None, project_gate=None):
         self.fake = fake
         self.dbx = dbx
+        self.project_gate = project_gate or (lambda session, project_id, user, permission: None)
         self.engine = create_engine(
             "sqlite+pysqlite:///:memory:",
             connect_args={"check_same_thread": False},
@@ -136,7 +138,7 @@ class Harness:
                 self.factory,
                 self.token_service,
                 self.tokens,
-                lambda session, project_id, user, permission: None,
+                self.project_gate,
                 ds_client_factory=lambda: self.fake,
                 dbx_client_factory=lambda: self.dbx,
             )
@@ -267,12 +269,63 @@ def test_embed_session_issues_short_lived_signed_token_not_internal_secret(monke
     assert claims["p"] == "123456"
     assert claims["d"] == 1
     assert claims["u"] == payload["user"]
+    assert claims["w"] is True
     post_response = h.client().post(
         "/api/v1/rebuild/embed/session?project_id=1",
         headers={"token": h.token("owner")},
     )
     assert post_response.status_code == 200
     assert post_response.json()["data"]["projectId"] == 1
+
+
+def test_viewer_embed_is_read_only_and_cannot_release_or_delete_workflow(monkeypatch):
+    monkeypatch.setenv("DATARA_DS_EMBED_SECRET", "s" * 32)
+    fake = FakeDs(routes={
+        ("POST", "/projects/123456/workflow-definition/88/release"): lambda q, f: {},
+        ("DELETE", "/projects/123456/workflow-definition/88"): lambda q, f: {},
+    })
+    def gate(session, project_id, user, permission):
+        if authorize(user["role"], permission):
+            return None
+        return JSONResponse(status_code=403, content={"code": 1003, "msg": "permission denied"})
+
+    h = Harness(fake, users=(("owner", Role.DEVELOPER), ("viewer", Role.VIEWER)), project_gate=gate)
+    client = h.client()
+    headers = {"token": h.token("viewer")}
+    session = client.get(f"{BASE}/session?project_id=1", headers=headers)
+    assert session.status_code == 200
+    claims = json.loads(base64.urlsafe_b64decode(session.json()["data"]["token"].split(".")[0] + "=="))
+    assert claims["w"] is False
+
+    release = client.post(f"{BASE}/workflow-definitions/88/release?project_id=1&release_state=ONLINE", headers=headers)
+    delete = client.delete(f"{BASE}/workflow-definitions/88?project_id=1", headers=headers)
+    assert release.status_code == 403
+    assert delete.status_code == 403
+    assert fake.calls == []
+
+    owner_headers = {"token": h.token("owner")}
+    assert client.post(f"{BASE}/workflow-definitions/88/release?project_id=1&release_state=ONLINE", headers=owner_headers).status_code == 200
+    assert client.delete(f"{BASE}/workflow-definitions/88?project_id=1", headers=owner_headers).status_code == 200
+
+
+def test_project_read_only_membership_cannot_use_global_developer_write_permission(monkeypatch):
+    monkeypatch.setenv("DATARA_DS_EMBED_SECRET", "s" * 32)
+
+    def gate(session, project_id, user, permission):
+        if int(user["user_id"]) == 2 and permission != Permission.VIEW_ALL:
+            return JSONResponse(status_code=403, content={"code": 1003, "msg": "permission denied"})
+        return None
+
+    fake = FakeDs()
+    h = Harness(fake, users=(("owner", Role.DEVELOPER), ("readonly", Role.DEVELOPER)), project_gate=gate)
+    client = h.client()
+    headers = {"token": h.token("readonly")}
+    session = client.get(f"{BASE}/session?project_id=1", headers=headers)
+    claims = json.loads(base64.urlsafe_b64decode(session.json()["data"]["token"].split(".")[0] + "=="))
+    assert claims["w"] is False
+    assert client.post(f"{BASE}/workflow-definitions/88/release?project_id=1&release_state=ONLINE", headers=headers).status_code == 403
+    assert client.delete(f"{BASE}/workflow-definitions/88?project_id=1", headers=headers).status_code == 403
+    assert fake.calls == []
 
 
 def test_unified_embed_session_sets_dbx_embed_cookie(monkeypatch):

@@ -9,15 +9,22 @@
 - 未登记归属的既有资源（如海豚自带 ``default`` 分组与队列）对所有登录用户
   只读可见：它们是节点表单的必备下拉项，隐藏会导致「未建分组时下拉为空」。
 - 用户新建的资源自动归属创建者；``admin`` 全见，其他角色仅自己 + 显式共享。
+
+P2 双写：claim / share / release 操作同时写 rebuild_resource_acl（若表存在）。
 """
 
 from __future__ import annotations
 
-from sqlalchemy import ForeignKey, Integer, String, UniqueConstraint, delete, select
+import logging
+
+from sqlalchemy import ForeignKey, Integer, String, UniqueConstraint, delete, inspect, select
 from sqlalchemy.orm import Mapped, Session, mapped_column
 
 from rebuild.common.db import Base
 from rebuild.identity.models import UserRecord
+
+logger = logging.getLogger(__name__)
+
 
 KIND_WORKER_GROUP = "worker_group"
 KIND_ENVIRONMENT = "environment"
@@ -56,6 +63,43 @@ class OrchestrationResourceShareRecord(Base):
     user_id: Mapped[int] = mapped_column(ForeignKey("rebuild_user.id"), nullable=False, index=True)
 
 
+def _orch_resource_id(kind: str, resource_key: str) -> str:
+    return f"{kind}:{resource_key}"
+
+
+def _acl_service(session: Session):
+    """返回 AclService 实例；ACL 表不存在则返回 None。"""
+    try:
+        from rebuild.acl.service import AclService  # noqa: PLC0415
+    except Exception:  # pragma: no cover
+        return None
+    try:
+        if "rebuild_resource_acl" not in inspect(session.connection()).get_table_names():
+            return None
+    except Exception:  # pragma: no cover
+        return None
+    return AclService(session)
+
+
+def _orch_policy(session, user_id: int, role: str, resource_id: str, required: str) -> bool | None:
+    try:
+        from rebuild.acl.policy import PolicyService, Subject  # noqa: PLC0415
+        policy = PolicyService(session)
+        decision = policy.decide_resource(
+            Subject(user_id=user_id, platform_role=role),
+            resource_kind="orchestration_resource",
+            resource_id=resource_id,
+            required_permission=required,
+        )
+        if decision.allowed:
+            return True
+        if decision.reason in {"deny:acl_insufficient", "deny:acl_expired"}:
+            return False
+        return None
+    except Exception:  # noqa: BLE001
+        return None
+
+
 class OrchestrationResourceAccess:
     def __init__(self, session: Session) -> None:
         self.session = session
@@ -79,6 +123,18 @@ class OrchestrationResourceAccess:
         self.session.add(
             OrchestrationResourceOwnershipRecord(kind=kind, resource_key=resource_key, owner_id=owner_id)
         )
+        # --- P2 ACL 双写 ---
+        acl = _acl_service(self.session)
+        if acl is not None:
+            try:
+                acl.claim_owner(
+                    resource_kind="orchestration_resource",
+                    resource_id=_orch_resource_id(kind, resource_key),
+                    owner_id=owner_id,
+                )
+                self.session.flush()
+            except Exception:  # noqa: BLE001
+                logger.exception("acl_claim failed for orch %s:%s", kind, resource_key)
 
     def share(self, kind: str, resource_key: str, user_id: int) -> None:
         exists = self.session.scalar(
@@ -88,10 +144,27 @@ class OrchestrationResourceAccess:
                 OrchestrationResourceShareRecord.user_id == user_id,
             )
         )
+        owner_id = self.owner_of(kind, resource_key)
         if exists is None:
             self.session.add(
                 OrchestrationResourceShareRecord(kind=kind, resource_key=resource_key, user_id=user_id)
             )
+        # --- P2 ACL 双写 ---
+        acl = _acl_service(self.session)
+        if acl is not None:
+            try:
+                acl.grant(
+                    resource_kind="orchestration_resource",
+                    resource_id=_orch_resource_id(kind, resource_key),
+                    grantee_type="user",
+                    grantee_id=str(user_id),
+                    permission="view",
+                    owner_id=owner_id,
+                    granted_by=owner_id,
+                )
+                self.session.flush()
+            except Exception:  # noqa: BLE001
+                logger.exception("acl_grant failed for orch %s:%s → user %d", kind, resource_key, user_id)
 
     def unshare(self, kind: str, resource_key: str, user_id: int) -> None:
         self.session.execute(
@@ -101,6 +174,18 @@ class OrchestrationResourceAccess:
                 OrchestrationResourceShareRecord.user_id == user_id,
             )
         )
+        self.session.flush()
+        # --- P2 ACL 双写 ---
+        acl = _acl_service(self.session)
+        if acl is not None:
+            try:
+                rid = _orch_resource_id(kind, resource_key)
+                for r in acl.rows_for_resource("orchestration_resource", rid):
+                    if r.grantee_type == "user" and r.grantee_id == str(user_id) and r.granted_by is not None:
+                        acl.revoke(r.id)
+                self.session.flush()
+            except Exception:  # noqa: BLE001
+                logger.exception("acl_revoke failed for orch %s:%s → user %d", kind, resource_key, user_id)
 
     def release(self, kind: str, resource_key: str) -> None:
         """资源在海豚侧删除后清掉归属与共享，避免 key 复用串权。"""
@@ -116,6 +201,17 @@ class OrchestrationResourceAccess:
                 OrchestrationResourceShareRecord.resource_key == resource_key,
             )
         )
+        self.session.flush()
+        # --- P2 ACL 清理 ---
+        acl = _acl_service(self.session)
+        if acl is not None:
+            try:
+                rid = _orch_resource_id(kind, resource_key)
+                for r in acl.rows_for_resource("orchestration_resource", rid):
+                    acl.revoke(r.id)
+                self.session.flush()
+            except Exception:  # noqa: BLE001
+                logger.exception("acl_release failed for orch %s:%s", kind, resource_key)
 
     def release_prefix(self, kind: str, prefix: str) -> None:
         """删除目录时连带释放其下所有子资源归属（海豚目录删除是递归的）。"""
@@ -125,12 +221,25 @@ class OrchestrationResourceAccess:
             self.session.execute(
                 delete(model).where(model.kind == kind, model.resource_key.like(pattern))
             )
+        self.session.flush()
 
     def can_view(self, kind: str, resource_key: str, user_id: int, *, is_admin: bool = False) -> bool:
-        return resource_key in self.visible_keys(kind, [resource_key], user_id, is_admin=is_admin)
+        if is_admin:
+            return True
+        resource_id = _orch_resource_id(kind, resource_key)
+        policy = _orch_policy(self.session, user_id, "viewer", resource_id, "view")
+        if policy is not None:
+            return policy
+        return resource_key in self.visible_keys(kind, [resource_key], user_id, is_admin=False)
 
     def can_manage(self, kind: str, resource_key: str, user_id: int, *, is_admin: bool = False) -> bool:
-        return is_admin or self.owner_of(kind, resource_key) == user_id
+        if is_admin:
+            return True
+        resource_id = _orch_resource_id(kind, resource_key)
+        policy = _orch_policy(self.session, user_id, "developer", resource_id, "manage")
+        if policy is not None:
+            return policy
+        return self.owner_of(kind, resource_key) == user_id
 
     def owners_of(self, kind: str, resource_keys: list[str]) -> dict[str, int]:
         """批量取归属，避免列表接口逐条查询。"""

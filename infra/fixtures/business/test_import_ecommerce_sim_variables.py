@@ -35,16 +35,17 @@ def test_apply_is_repeatable_and_cleanup_removes_only_namespaced_rows():
     client = FakeClient()
     expected = definitions()
     client.rows["business_currency"] = {"scope": "project", "name": "business_currency", "description": "real configuration"}
-    assert len(importer.apply_variables(client, 33, expected)) == 4
+    assert len(importer.apply_variables(client, 33, expected)) == 8
     assert all(action.startswith("unchanged") for action in importer.apply_variables(client, 33, expected))
-    assert len(importer.cleanup_variables(client, 33, expected)) == 4
+    assert len(importer.cleanup_variables(client, 33, expected)) == 8
     assert client.rows == {"business_currency": {"scope": "project", "name": "business_currency", "description": "real configuration"}}
+    assert {row["scope"] for row in expected} == {"global", "project"}
 
 
 def test_non_fixture_collision_is_never_overwritten_or_deleted():
     client = FakeClient()
     expected = definitions()
-    client.rows[expected[0]["name"]] = {"scope": "project", "name": expected[0]["name"], "description": "real configuration"}
+    client.rows[expected[0]["name"]] = {"scope": "global", "name": expected[0]["name"], "description": "real configuration"}
     with pytest.raises(RuntimeError, match="refusing to overwrite"):
         importer.apply_variables(client, 33, expected)
     with pytest.raises(RuntimeError, match="refusing to delete"):
@@ -59,5 +60,13 @@ def test_plan_rejects_another_fixture_namespace():
 
 def test_variable_types_follow_current_backend_contract():
     assert {row["name"].removeprefix(importer.PREFIX): row["value_type"] for row in definitions()} == {
-        "biz_date": "date", "currency": "string", "paid_orders": "integer", "net_paid_cents": "integer"
+        "quality_threshold": "decimal",
+        "biz_date": "date",
+        "currency": "string",
+        "source_schema": "string",
+        "batch_size": "integer",
+        "safety_stock": "integer",
+        "paid_orders": "integer",
+        "net_paid_cents": "integer",
     }
+    assert all(row["value_type"] in {"string", "integer", "decimal", "boolean", "date", "datetime", "json", "array"} for row in definitions())

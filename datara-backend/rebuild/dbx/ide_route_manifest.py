@@ -1,9 +1,20 @@
-"""Exact data route paths from dbx-web v0.6.60 main.rs.
+"""Exact DBX data routes accepted by the embedded owner gateway.
 
-Owner checks still apply after route matching. Update when upgrading dbx.
+Tree metadata routes include the deployed DBX v0.6.29 endpoints. Owner checks
+still apply after route matching; compare this list with the deployed DBX source
+when upgrading either side.
 """
 
 SUPPORTED_DATA_ROUTES = frozenset("""
+consul/capabilities
+consul/get
+consul/list-prefix
+document-store/list-collections
+document-store/list-databases
+etcd/get
+etcd/list-prefix
+etcd/status
+etcd/supports-ttl
 history
 history/options
 history/save
@@ -162,6 +173,21 @@ query/review-oracle-view-rename-source
 query/rewrite-oracle-routine-references
 query/rewrite-oracle-table-references
 query/supports-database-structure-search
+redis/check-json-module
+redis/cluster-master-nodes
+redis/get-raw-value
+redis/get-stream-consumers
+redis/get-stream-entries
+redis/get-stream-groups
+redis/get-stream-pending
+redis/get-ttl
+redis/get-value
+redis/list-databases
+redis/load-more
+redis/scan-keys
+redis/scan-keys-batch
+redis/scan-values
+redis/slowlog-get
 saved-sql
 saved-sql/folders
 saved-sql/folders/{id}
@@ -236,4 +262,6 @@ schema/table-partitioning
 schema/tables
 schema/triggers
 schema/xugu/tablespaces
+zookeeper/get
+zookeeper/list-prefix
 """.split())

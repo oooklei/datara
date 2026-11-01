@@ -1,9 +1,10 @@
 """Plan, import, or clean up isolated ecommerce simulation variables.
 
 Dry-run is the default and does not contact Datara. Mutations require a WSL
-runtime, an explicit project ID, a target URL, and DATARA_SIM_TOKEN in memory.
-Only variables carrying this fixture's exact namespace marker can be updated
-or deleted. No governance object or project is created by this tool.
+runtime (or an explicit opt-in to the isolated validation host), an explicit
+project ID, a target URL, and DATARA_SIM_TOKEN in memory. Only variables
+carrying this fixture's exact namespace marker can be updated or deleted. No
+governance object or project is created by this tool.
 """
 
 from __future__ import annotations
@@ -11,6 +12,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import subprocess
 import sys
 import urllib.error
 import urllib.parse
@@ -23,6 +25,7 @@ FIXTURE = Path(__file__).with_name("ECOM_SIM_20261030.json")
 NAMESPACE = "ECOM_SIM_20261030"
 PREFIX = "ecom_sim_20261030_"
 MARKER = f"simulation-fixture:{NAMESPACE}"
+VALIDATION_HOST = "192.168.1.9"
 
 
 def variable_definitions(fixture: dict[str, Any]) -> list[dict[str, Any]]:
@@ -30,8 +33,12 @@ def variable_definitions(fixture: dict[str, Any]) -> list[dict[str, Any]]:
         raise ValueError("unexpected fixture namespace")
     summary = fixture["expected"]
     return [
+        {"scope": "global", "name": PREFIX + "quality_threshold", "value_type": "decimal", "value": "0.01", "description": MARKER + " acceptable quality failure rate"},
         {"scope": "project", "name": PREFIX + "biz_date", "value_type": "date", "value": "2026-10-23", "description": MARKER + " order partition"},
         {"scope": "project", "name": PREFIX + "currency", "value_type": "string", "value": fixture["currency"], "description": MARKER + " settlement currency"},
+        {"scope": "project", "name": PREFIX + "source_schema", "value_type": "string", "value": "ecom_sim_20261030", "description": MARKER + " isolated fact schema"},
+        {"scope": "project", "name": PREFIX + "batch_size", "value_type": "integer", "value": "2000", "description": MARKER + " nightly batch size"},
+        {"scope": "project", "name": PREFIX + "safety_stock", "value_type": "integer", "value": "10", "description": MARKER + " inventory safety stock threshold"},
         {"scope": "project", "name": PREFIX + "paid_orders", "value_type": "integer", "value": str(summary["paid_orders"]), "description": MARKER + " expected paid orders"},
         {"scope": "project", "name": PREFIX + "net_paid_cents", "value_type": "integer", "value": str(summary["net_paid_cents"]), "description": MARKER + " expected net paid cents"},
     ]
@@ -40,6 +47,16 @@ def variable_definitions(fixture: dict[str, Any]) -> list[dict[str, Any]]:
 def is_wsl() -> bool:
     release = Path("/proc/sys/kernel/osrelease")
     return sys.platform == "linux" and release.exists() and "microsoft" in release.read_text(encoding="utf-8").lower()
+
+
+def mutation_allowed() -> bool:
+    """WSL by default; the isolated validation host needs an explicit opt-in."""
+    if is_wsl():
+        return True
+    if os.environ.get("DATARA_SIM_ALLOW_HOST", "").strip() != VALIDATION_HOST:
+        return False
+    addresses = subprocess.run(["hostname", "-I"], capture_output=True, text=True, check=False).stdout
+    return VALIDATION_HOST in addresses.split()
 
 
 class DataraClient:
@@ -70,20 +87,29 @@ class DataraClient:
         return envelope.get("data")
 
 
-def project_variables(client: DataraClient, project_id: int) -> dict[str, dict[str, Any]]:
-    query = urllib.parse.urlencode({"project_id": project_id, "scopes": "project"})
+def existing_variables(client: DataraClient, project_id: int, definitions: list[dict[str, Any]]) -> dict[str, dict[str, Any]]:
+    """Fetch the fixture's own scopes (project + global) in one list call.
+
+    ``project_id`` stays required by the platform contract even for ``global``
+    rows; the platform resolves ``global`` to its ownerless key internally.
+    """
+    scopes = ",".join(sorted({row["scope"] for row in definitions}))
+    query = urllib.parse.urlencode({"project_id": project_id, "scopes": scopes})
     rows = client.request("GET", "/variables?" + query)
     if not isinstance(rows, list):
         raise RuntimeError("variable list has unexpected shape")
-    return {row["name"]: row for row in rows if isinstance(row, dict) and row.get("scope") == "project"}
+    wanted = {(row["scope"], row["name"]) for row in definitions}
+    return {row["name"]: row for row in rows if isinstance(row, dict) and (row.get("scope"), row.get("name")) in wanted}
 
 
 def apply_variables(client: DataraClient, project_id: int, definitions: list[dict[str, Any]]) -> list[str]:
-    existing = project_variables(client, project_id)
+    existing = existing_variables(client, project_id, definitions)
     actions = []
     for definition in definitions:
         name = definition["name"]
         current = existing.get(name)
+        if current is not None and current.get("scope") != definition["scope"]:
+            raise RuntimeError(f"refusing to overwrite {name} in a different scope")
         if current is not None and not str(current.get("description", "")).startswith(MARKER):
             raise RuntimeError(f"refusing to overwrite non-fixture variable {name}")
         if current is not None and all(current.get(field) == definition[field] for field in ("value", "value_type", "description")):
@@ -96,7 +122,7 @@ def apply_variables(client: DataraClient, project_id: int, definitions: list[dic
 
 
 def cleanup_variables(client: DataraClient, project_id: int, definitions: list[dict[str, Any]]) -> list[str]:
-    existing = project_variables(client, project_id)
+    existing = existing_variables(client, project_id, definitions)
     actions = []
     for definition in definitions:
         name = definition["name"]
@@ -106,7 +132,7 @@ def cleanup_variables(client: DataraClient, project_id: int, definitions: list[d
             continue
         if not str(current.get("description", "")).startswith(MARKER):
             raise RuntimeError(f"refusing to delete non-fixture variable {name}")
-        query = urllib.parse.urlencode({"project_id": project_id, "scope": "project"})
+        query = urllib.parse.urlencode({"project_id": project_id, "scope": definition["scope"]})
         client.request("DELETE", "/variables/" + urllib.parse.quote(name, safe="") + "?" + query)
         actions.append(f"deleted {name}")
     return actions
@@ -125,8 +151,8 @@ def main() -> None:
     if not args.apply_variables and not args.cleanup_variables:
         print(json.dumps({"mode": "dry-run", "namespace": NAMESPACE, "variables": definitions, "governance_objects": "not imported: no matching delete API"}, ensure_ascii=False, indent=2))
         return
-    if not is_wsl():
-        parser.error("mutations are allowed only from local WSL")
+    if not mutation_allowed():
+        parser.error("mutations are allowed only from local WSL, or with DATARA_SIM_ALLOW_HOST on the isolated validation host")
     if args.project_id is None or args.project_id <= 0 or not args.target:
         parser.error("--project-id and --target are required for network actions")
     client = DataraClient(args.target, os.environ.get("DATARA_SIM_TOKEN", ""))

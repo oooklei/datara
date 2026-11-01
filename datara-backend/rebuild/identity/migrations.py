@@ -8,6 +8,7 @@ governance catalogue migrations.
 
 from rebuild.common.migrations import GovernanceMigration, MigrationResult, MigrationRunner
 from rebuild.governance.revisions import v0004_token_digest_hardening
+from rebuild.identity.revisions import v0005_project_member_unique
 
 
 IDENTITY_MIGRATIONS = (
@@ -16,6 +17,12 @@ IDENTITY_MIGRATIONS = (
         checksum=v0004_token_digest_hardening.checksum,
         upgrade=v0004_token_digest_hardening.upgrade,
         postflight=v0004_token_digest_hardening.postflight,
+    ),
+    GovernanceMigration(
+        revision=v0005_project_member_unique.revision,
+        checksum=v0005_project_member_unique.checksum,
+        upgrade=v0005_project_member_unique.upgrade,
+        postflight=v0005_project_member_unique.postflight,
     ),
 )
 

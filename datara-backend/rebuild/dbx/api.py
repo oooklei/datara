@@ -5,7 +5,7 @@ from __future__ import annotations
 from collections.abc import Callable
 from uuid import uuid4
 
-from fastapi import APIRouter, Header, Query
+from fastapi import APIRouter, Header, Query, Request
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 from sqlalchemy import delete, select
@@ -16,6 +16,38 @@ from rebuild.dbx.access import DbxConnectionAccess, DbxObjectAccess
 from rebuild.dbx.models import DbxConnectionOwnershipRecord, DbxConnectionShareRecord, DbxObjectShareRecord
 from rebuild.identity.contracts import Permission, Role
 from rebuild.identity.models import UserRecord
+
+from rebuild.acl.policy import PolicyService, Subject
+from rebuild.acl.service import AuditWriter
+
+
+def _subject(user: dict[str, object]) -> Subject:
+    return Subject(
+        user_id=int(user["user_id"]),
+        platform_role=str(user.get("role", "")),
+        username=str(user.get("username", "")),
+    )
+
+
+def _client_meta(request: Request) -> tuple[str, str]:
+    ip = ""
+    if request.client is not None:
+        ip = request.client.host or ""
+    forwarded = request.headers.get("x-forwarded-for", "")
+    if forwarded:
+        ip = forwarded.split(",")[0].strip()
+    return ip, request.headers.get("user-agent", "")
+
+
+def _write_acl_audit(session, **kwargs) -> None:
+    """写 acl_audit 表；表不存在（单元测试场景）时静默跳过。"""
+    try:
+        from sqlalchemy import inspect as _inspect
+        if "rebuild_acl_audit" not in _inspect(session.connection()).get_table_names():
+            return
+    except Exception:
+        return
+    AuditWriter(session).acl(**kwargs)
 
 
 class ClaimRequest(BaseModel):
@@ -80,8 +112,17 @@ def build_dbx_router(
             )
 
     def require_connection(project_id: int, connection_id: str, user: dict[str, object]) -> JSONResponse | None:
-        if connection_id in visible_ids(project_id, user):
-            return None
+        """PolicyService.decide_resource 判定资源可见性（resource_kind=dbx_connection, required=view）。"""
+        with session_factory() as session:
+            decision = PolicyService(session).decide_resource(
+                _subject(user),
+                resource_kind="dbx_connection",
+                resource_id=connection_id,
+                required_permission="view",
+            )
+            if decision.allowed:
+                return None
+        # admin 穿透：ACL 表无 owner 行时 fallback 到 dbx 全量列表（保留原行为）
         if user.get("role") == Role.ADMIN.value:
             try:
                 if any(str(item.get("id")) == connection_id for item in client_factory().list_connections()):
@@ -170,9 +211,15 @@ def build_dbx_router(
         return {"code": 0, "msg": "success", "data": {"connection_id": connection_id}}
 
     def require_manager(project_id: int, connection_id: str, user: dict[str, object]) -> JSONResponse | None:
+        """PolicyService.decide_resource 判定 manage 权限（resource_kind=dbx_connection）。"""
         with session_factory() as session:
-            owner = session.get(DbxConnectionOwnershipRecord, connection_id)
-            if owner is not None and owner.project_id == project_id and (owner.owner_id == int(user["user_id"]) or user.get("role") == Role.ADMIN.value):
+            decision = PolicyService(session).decide_resource(
+                _subject(user),
+                resource_kind="dbx_connection",
+                resource_id=connection_id,
+                required_permission="manage",
+            )
+            if decision.allowed:
                 return None
         return JSONResponse(status_code=403, content={"code": 1003, "msg": "connection owner required", "data": None})
 
@@ -237,10 +284,11 @@ def build_dbx_router(
         return {"code": 0, "msg": "success", "data": {"connection_id": connection_id}}
 
     @router.post("/connections/{connection_id}/share")
-    def share_connection(project_id: int, connection_id: str, body: ShareRequest, authorization: str = Header(default="")):
+    def share_connection(project_id: int, connection_id: str, body: ShareRequest, request: Request, authorization: str = Header(default="")):
         user = context(project_id, authorization, Permission.DATASOURCE_MANAGE)
         if isinstance(user, JSONResponse):
             return user
+        ip, ua = _client_meta(request)
         with session_factory() as session:
             if (body.user_id is None) == (body.username is None):
                 return JSONResponse(status_code=400, content={"code": 4001, "msg": "one recipient required", "data": None})
@@ -257,6 +305,16 @@ def build_dbx_router(
                 return JSONResponse(status_code=403, content={"code": 1003, "msg": "owner required", "data": None})
             target_id = target.id
             access.share(connection_id=connection_id, owner_id=owner.owner_id, user_id=target_id)
+            _write_acl_audit(session,
+                actor_id=int(user["user_id"]),
+                actor_name=str(user.get("username", "")),
+                object_kind="dbx_connection",
+                object_id=connection_id,
+                action="grant",
+                after={"grantee_type": "user", "grantee_id": str(target_id), "permission": "view"},
+                ip=ip,
+                user_agent=ua,
+            )
             session.commit()
         return {"code": 0, "msg": "success", "data": {"connection_id": connection_id, "user_id": target_id}}
 
@@ -280,13 +338,14 @@ def build_dbx_router(
         ]}}
 
     @router.delete("/connections/{connection_id}/shares/{user_id}")
-    def unshare_connection(project_id: int, connection_id: str, user_id: int, authorization: str = Header(default="")):
+    def unshare_connection(project_id: int, connection_id: str, user_id: int, request: Request, authorization: str = Header(default="")):
         user = context(project_id, authorization, Permission.DATASOURCE_MANAGE)
         if isinstance(user, JSONResponse):
             return user
         denial = require_manager(project_id, connection_id, user)
         if denial is not None:
             return denial
+        ip, ua = _client_meta(request)
         with session_factory() as session:
             owner = session.get(DbxConnectionOwnershipRecord, connection_id)
             if owner is None:
@@ -294,19 +353,38 @@ def build_dbx_router(
             DbxConnectionAccess(session).unshare(
                 connection_id=connection_id, owner_id=owner.owner_id, user_id=user_id,
             )
+            _write_acl_audit(session,
+                actor_id=int(user["user_id"]),
+                actor_name=str(user.get("username", "")),
+                object_kind="dbx_connection",
+                object_id=connection_id,
+                action="revoke",
+                before={"grantee_type": "user", "grantee_id": str(user_id)},
+                ip=ip,
+                user_agent=ua,
+            )
             session.commit()
         return {"code": 0, "msg": "success", "data": {"connection_id": connection_id, "user_id": user_id}}
 
     def object_owner(project_id: int, kind: str, object_id: str, user: dict[str, object]):
         if kind not in {"sql-file", "sql-folder", "ai-conversation", "ai-config", "prompt-template", "tunnel-profile"}:
             return JSONResponse(status_code=404, content={"code": 4042, "msg": "object type not found", "data": None})
+        resource_id = f"{kind}:{object_id}"
         with session_factory() as session:
             owner = DbxObjectAccess(session).get(kind, object_id)
             if owner is None or owner.project_id != project_id:
                 return JSONResponse(status_code=404, content={"code": 4042, "msg": "object not found", "data": None})
-            if owner.owner_id != int(user["user_id"]) and user.get("role") != Role.ADMIN.value:
+            decision = PolicyService(session).decide_resource(
+                _subject(user),
+                resource_kind="dbx_object",
+                resource_id=resource_id,
+                required_permission="manage",
+            )
+            if not decision.allowed:
                 return JSONResponse(status_code=403, content={"code": 1003, "msg": "object owner required", "data": None})
-            return owner.owner_id
+            # 返回 owner_id 供后续 share/unshare 的 access 层使用
+            acl_owner = PolicyService(session).acl.owner_of("dbx_object", resource_id)
+            return acl_owner if acl_owner is not None else owner.owner_id
 
     @router.post("/objects/{kind}/{object_id}/claim")
     def claim_object(project_id: int, kind: str, object_id: str, body: ClaimRequest, authorization: str = Header(default="")):
@@ -357,7 +435,7 @@ def build_dbx_router(
         return {"code": 0, "msg": "success", "data": {"kind": kind, "object_id": object_id, "owner_id": target_id}}
 
     @router.post("/objects/{kind}/{object_id}/share")
-    def share_object(project_id: int, kind: str, object_id: str, body: ShareRequest, authorization: str = Header(default="")):
+    def share_object(project_id: int, kind: str, object_id: str, body: ShareRequest, request: Request, authorization: str = Header(default="")):
         user = context(project_id, authorization, Permission.DATASOURCE_MANAGE)
         if isinstance(user, JSONResponse):
             return user
@@ -366,12 +444,23 @@ def build_dbx_router(
             return owner_id
         if (body.user_id is None) == (body.username is None):
             return JSONResponse(status_code=400, content={"code": 4001, "msg": "one recipient required", "data": None})
+        ip, ua = _client_meta(request)
         with session_factory() as session:
             target = (session.get(UserRecord, body.user_id) if body.user_id is not None else
                       session.scalar(select(UserRecord).where(UserRecord.username == body.username)))
             if target is None:
                 return JSONResponse(status_code=404, content={"code": 4043, "msg": "user not found", "data": None})
             DbxObjectAccess(session).share(kind=kind, object_id=object_id, owner_id=owner_id, user_id=target.id)
+            _write_acl_audit(session,
+                actor_id=int(user["user_id"]),
+                actor_name=str(user.get("username", "")),
+                object_kind="dbx_object",
+                object_id=f"{kind}:{object_id}",
+                action="grant",
+                after={"grantee_type": "user", "grantee_id": str(target.id), "permission": "view"},
+                ip=ip,
+                user_agent=ua,
+            )
             session.commit()
             target_id = target.id
         return {"code": 0, "msg": "success", "data": {"kind": kind, "object_id": object_id, "user_id": target_id}}
@@ -396,15 +485,26 @@ def build_dbx_router(
         ]}}
 
     @router.delete("/objects/{kind}/{object_id}/shares/{user_id}")
-    def unshare_object(project_id: int, kind: str, object_id: str, user_id: int, authorization: str = Header(default="")):
+    def unshare_object(project_id: int, kind: str, object_id: str, user_id: int, request: Request, authorization: str = Header(default="")):
         user = context(project_id, authorization, Permission.DATASOURCE_MANAGE)
         if isinstance(user, JSONResponse):
             return user
         owner_id = object_owner(project_id, kind, object_id, user)
         if isinstance(owner_id, JSONResponse):
             return owner_id
+        ip, ua = _client_meta(request)
         with session_factory() as session:
             DbxObjectAccess(session).unshare(kind=kind, object_id=object_id, owner_id=owner_id, user_id=user_id)
+            _write_acl_audit(session,
+                actor_id=int(user["user_id"]),
+                actor_name=str(user.get("username", "")),
+                object_kind="dbx_object",
+                object_id=f"{kind}:{object_id}",
+                action="revoke",
+                before={"grantee_type": "user", "grantee_id": str(user_id)},
+                ip=ip,
+                user_agent=ua,
+            )
             session.commit()
         return {"code": 0, "msg": "success", "data": {"kind": kind, "object_id": object_id, "user_id": user_id}}
 

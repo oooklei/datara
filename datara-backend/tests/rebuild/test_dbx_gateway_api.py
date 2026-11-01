@@ -1,6 +1,6 @@
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, select
 from sqlalchemy.orm import Session, sessionmaker
 from sqlalchemy.pool import StaticPool
 
@@ -8,7 +8,9 @@ from rebuild.common.db import Base
 from rebuild.dbx.access import DbxConnectionAccess, DbxObjectAccess
 from rebuild.dbx.api import build_dbx_router
 from rebuild.dbx.models import DbxConnectionOwnershipRecord, DbxConnectionShareRecord, DbxObjectOwnershipRecord, DbxObjectShareRecord
-from rebuild.identity.models import UserRecord
+from rebuild.identity.models import ProjectMemberRecord, UserRecord
+from rebuild.project.models import ProjectRecord
+from rebuild.acl.models import ACL_TABLES, AclAuditRecord
 
 
 class FakeDbx:
@@ -73,13 +75,21 @@ class FakeDbx:
 
 def setup_gateway():
     engine = create_engine("sqlite+pysqlite:///:memory:", connect_args={"check_same_thread": False}, poolclass=StaticPool)
-    Base.metadata.create_all(engine, tables=[UserRecord.__table__, DbxConnectionOwnershipRecord.__table__, DbxConnectionShareRecord.__table__, DbxObjectOwnershipRecord.__table__, DbxObjectShareRecord.__table__])
+    Base.metadata.create_all(engine, tables=[
+        UserRecord.__table__, ProjectRecord.__table__, ProjectMemberRecord.__table__,
+        DbxConnectionOwnershipRecord.__table__, DbxConnectionShareRecord.__table__,
+        DbxObjectOwnershipRecord.__table__, DbxObjectShareRecord.__table__,
+        *ACL_TABLES,
+    ])
     factory = sessionmaker(bind=engine)
     with Session(engine) as session:
         session.add_all([
             UserRecord(id=1, username="admin", password_hash="x", role="admin"),
             UserRecord(id=2, username="owner", password_hash="x", role="developer"),
             UserRecord(id=3, username="other", password_hash="x", role="developer"),
+            ProjectRecord(id=7, name="demo", owner_id=2),
+            ProjectMemberRecord(project_id=7, user_id=2, role="inherit"),
+            ProjectMemberRecord(project_id=7, user_id=3, role="inherit"),
         ])
         session.flush()
         DbxConnectionAccess(session).claim(connection_id="owned", project_id=7, owner_id=2)
@@ -150,6 +160,9 @@ def test_unshared_connection_cannot_be_browsed_or_executed():
     assert client.delete(f"{base}/connections/owned/shares/3", headers=headers).status_code == 403
     revoked = client.delete(f"{base}/connections/owned/shares/3", headers={"Authorization": "Bearer owner"})
     assert revoked.status_code == 200
+    with client.app.state.session_factory() as session:
+        audit = session.scalars(select(AclAuditRecord).order_by(AclAuditRecord.id)).all()
+        assert [(row.object_id, row.action) for row in audit] == [("owned", "grant"), ("owned", "revoke")]
     assert client.get(f"{base}/connections/owned/shares", headers={"Authorization": "Bearer owner"}).json()["data"]["items"] == []
     assert client.get(f"{base}/connections/owned/schemas?database=sales", headers=headers).status_code == 403
 

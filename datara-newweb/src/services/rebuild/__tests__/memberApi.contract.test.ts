@@ -38,32 +38,32 @@ describe('memberApi 契约（members 四端点承接）', () => {
     expect((init.headers as Record<string, string>).token).toBe('tok-1')
   })
 
-  it('listMembers：wire snake 归一 user_id→userId', async () => {
+  it('listMembers：wire snake 归一 user_id→userId + project_role→projectRole（BE 真实返回）', async () => {
     stubFetchWithEnvelope({
       list: [
-        { user_id: 7, role: 'developer' },
-        { user_id: 9, role: 'viewer' },
+        { user_id: 7, username: 'alice', role: 'developer', project_role: 'inherit', status: 'enabled', joined_at: null },
+        { user_id: 9, username: 'bob', role: 'viewer', project_role: 'viewer', status: 'enabled', joined_at: null },
       ],
     })
 
     const page = await listMembers(3)
 
     expect(page.list).toEqual([
-      { userId: 7, role: 'developer' },
-      { userId: 9, role: 'viewer' },
+      { userId: 7, username: 'alice', role: 'developer', projectRole: 'inherit', status: 'enabled', joinedAt: null },
+      { userId: 9, username: 'bob', role: 'viewer', projectRole: 'viewer', status: 'enabled', joinedAt: null },
     ])
   })
 
-  it('addMember：POST 请求体 {username, role} 直传，响应 project_id→projectId', async () => {
-    const fetchMock = stubFetchWithEnvelope({ project_id: 3, username: 'bob', role: 'developer' })
+  it('addMember：POST 请求体 {username, role} 直传，响应 project_id→projectId + projectRole 字段', async () => {
+    const fetchMock = stubFetchWithEnvelope({ project_id: 3, user_id: 5, username: 'bob', role: 'inherit', project_role: 'inherit' })
 
-    const result = await addMember(3, { username: 'bob', role: 'developer' })
+    const result = await addMember(3, { username: 'bob', role: 'inherit' })
 
-    expect(result).toEqual({ projectId: 3, username: 'bob', role: 'developer' })
+    expect(result).toEqual({ projectId: 3, userId: 5, username: 'bob', role: 'inherit', projectRole: 'inherit' })
     const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit]
     expect(url).toBe('/api/v1/rebuild/projects/3/members')
     expect(init.method).toBe('POST')
-    expect(JSON.parse(init.body as string)).toEqual({ username: 'bob', role: 'developer' })
+    expect(JSON.parse(init.body as string)).toEqual({ username: 'bob', role: 'inherit' })
   })
 
   it('removeMember：DELETE /api/v1/rebuild/projects/{id}/members/{uid}', async () => {
@@ -76,16 +76,16 @@ describe('memberApi 契约（members 四端点承接）', () => {
     expect(init.method).toBe('DELETE')
   })
 
-  it('updateMemberRole：PATCH 请求体含 username 占位空串 + {role}，响应归一', async () => {
-    const fetchMock = stubFetchWithEnvelope({ project_id: 3, user_id: 7, role: 'admin' })
+  it('updateMemberRole：PATCH 请求体含 username 占位空串 + {role}，响应 projectRole 字段存在', async () => {
+    const fetchMock = stubFetchWithEnvelope({ project_id: 3, user_id: 7, role: 'viewer', project_role: 'viewer' })
 
-    const result = await updateMemberRole(3, 7, 'admin')
+    const result = await updateMemberRole(3, 7, 'viewer')
 
-    expect(result).toEqual({ projectId: 3, userId: 7, role: 'admin' })
+    expect(result).toEqual({ projectId: 3, userId: 7, role: 'viewer', projectRole: 'viewer' })
     const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit]
     expect(url).toBe('/api/v1/rebuild/projects/3/members/7')
     expect(init.method).toBe('PATCH')
-    expect(JSON.parse(init.body as string)).toEqual({ username: '', role: 'admin' })
+    expect(JSON.parse(init.body as string)).toEqual({ username: '', role: 'viewer' })
   })
 
   it('非 2xx：403 保持 HTTP 码；成员业务码保留并映射中文消息', async () => {

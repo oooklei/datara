@@ -166,11 +166,12 @@ def _internal_expected_token() -> str:
     return os.getenv("DATARA_INTERNAL_TOKEN", "").strip()
 
 
-def _issue_ds_embed_token(*, user: str, project_code: str, project_id: int) -> str:
+def _issue_ds_embed_token(*, user: str, project_code: str, project_id: int,
+                          can_write: bool = False) -> str:
     secret = os.getenv("DATARA_DS_EMBED_SECRET", "")
     if len(secret.encode("utf-8")) < 32:
         raise ValueError("DATARA_DS_EMBED_SECRET must be at least 32 bytes")
-    claims = {"u": user, "p": project_code, "d": project_id,
+    claims = {"u": user, "p": project_code, "d": project_id, "w": can_write,
               "exp": int(time.time()) + 900, "jti": secrets.token_hex(8)}
     raw = json.dumps(claims, separators=(",", ":"), ensure_ascii=False).encode("utf-8")
     encoded = base64.urlsafe_b64encode(raw).rstrip(b"=")
@@ -681,6 +682,7 @@ def build_orchestration_router(
             project = session.get(ProjectRecord, project_id)
             if project is None:
                 return _error(404, "ORCH_PROJECT_NOT_FOUND", f"project {project_id} not found")
+            can_write = project_permission_error(session, project_id, claims, Permission.WORKFLOW_WRITE) is None
             try:
                 client = make_ds_client()
                 ds_project = client.ensure_project(_ds_project_name(project), project.description or "")
@@ -689,6 +691,7 @@ def build_orchestration_router(
             try:
                 embed_token = _issue_ds_embed_token(
                     user=client.admin_user, project_code=str(ds_project.get("code", "")), project_id=project_id,
+                    can_write=can_write,
                 )
             except ValueError:
                 return _error(503, "ORCH_EMBED_DISABLED", "DolphinScheduler embed signing is not configured")
@@ -842,9 +845,13 @@ def build_orchestration_router(
         claims = principal(token, authorization)
         if claims is None:
             return unauthorized()
-        denial = require(claims, Permission.VIEW_ALL)
+        denial = require(claims, Permission.WORKFLOW_PUBLISH)
         if denial is not None:
             return denial
+        with session_factory() as session:
+            denial = project_permission_error(session, project_id, claims, Permission.WORKFLOW_PUBLISH)
+            if denial is not None:
+                return denial
         if release_state not in ("ONLINE", "OFFLINE"):
             return _error(400, "ORCH_INVALID_RELEASE_STATE", "releaseState must be ONLINE or OFFLINE")
         project_code, error = _ds_project_code(claims, project_id)
@@ -869,9 +876,13 @@ def build_orchestration_router(
         claims = principal(token, authorization)
         if claims is None:
             return unauthorized()
-        denial = require(claims, Permission.VIEW_ALL)
+        denial = require(claims, Permission.WORKFLOW_DELETE)
         if denial is not None:
             return denial
+        with session_factory() as session:
+            denial = project_permission_error(session, project_id, claims, Permission.WORKFLOW_DELETE)
+            if denial is not None:
+                return denial
         project_code, error = _ds_project_code(claims, project_id)
         if error is not None:
             return error

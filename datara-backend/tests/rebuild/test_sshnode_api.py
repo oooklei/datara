@@ -5,12 +5,17 @@ from sqlalchemy.exc import IntegrityError
 from rebuild.api.app import create_app
 from rebuild.identity.contracts import Role
 from rebuild.identity.repository import UserRepository
+from rebuild.sshnode.governance import SshNodeGovernanceRecord
 from rebuild.sshnode.models import SshNodeRecord
 from rebuild.sshnode.service import SshNodeDomainError, SshNodeInput, SshNodeService
 
 
 def _client(role: Role = Role.DEVELOPER):
-    app = create_app("sqlite+pysqlite:///:memory:", token_secret="ssh-node-test-secret")
+    app = create_app(
+        "sqlite+pysqlite:///:memory:",
+        token_secret="ssh-node-test-secret",
+        validation_key="ssh-node-test-vk",
+    )
     client = TestClient(app)
     client.__enter__()
     with app.state.session_factory() as session:
@@ -20,6 +25,16 @@ def _client(role: Role = Role.DEVELOPER):
         "/api/v1/rebuild/login", json={"username": "ssh-user", "password": "ssh-password"}
     ).json()["data"]["token"]
     return client, app, {"Authorization": f"Bearer {token}"}
+
+
+def _validation_headers(client) -> dict[str, str]:
+    """哨兵验证 token：user_id=0 + admin 角色（与 1.9 E2E 注入通道一致）。"""
+    data = client.post(
+        "/api/v1/rebuild/validation-token",
+        json={},
+        headers={"X-Backend-Validation-Key": "ssh-node-test-vk", "X-Backend-Validation-Scope": "high-priority-e2e"},
+    ).json()["data"]
+    return {"Authorization": f"Bearer {data['token']}"}
 
 
 def _body(name="node-a"):
@@ -114,6 +129,55 @@ def test_database_unique_race_is_stably_mapped_to_409_4102(monkeypatch):
                 assert (exc.status, exc.code) == (409, 4102)
             else:
                 raise AssertionError("unique constraint race must map to the frozen domain error")
+    finally:
+        client.__exit__(None, None, None)
+
+
+def test_validation_sentinel_cannot_own_nodes_but_updates_claimed_ones():
+    client, app, headers = _client()
+    try:
+        sentinel = _validation_headers(client)
+        # 创建：哨兵无真实身份可归属 owner，干净 400 而非 500，且不产生节点
+        denied = client.post("/api/v1/rebuild/ssh-nodes", headers=sentinel, json=_body("sentinel-node"))
+        assert denied.status_code == 400
+        assert denied.json()["code"] == 4104
+        assert client.get("/api/v1/rebuild/ssh-nodes", headers=sentinel).json()["data"] == []
+
+        # 未认领节点：哨兵 PUT 拒绝认领（4104），不写 governance
+        with app.state.session_factory() as session:
+            unclaimed = SshNodeService(session, lambda *_: (True, "ok")).create(
+                SshNodeInput("unclaimed", "10.0.0.9", 22, "root", "", [], True)
+            )
+            session.commit()
+            unclaimed_id = unclaimed.id
+        put = client.put(f"/api/v1/rebuild/ssh-nodes/{unclaimed_id}", headers=sentinel, json=_body("unclaimed"))
+        assert put.status_code == 400
+        assert put.json()["code"] == 4104
+        with app.state.session_factory() as session:
+            assert session.get(SshNodeGovernanceRecord, unclaimed_id) is None
+
+        # 已认领节点：哨兵仍可更新（不触碰 owner），与任务 1 的试运行授权链路兼容
+        owned_id = client.post("/api/v1/rebuild/ssh-nodes", headers=headers, json=_body()).json()["data"]["id"]
+        toggled = client.put(
+            f"/api/v1/rebuild/ssh-nodes/{owned_id}", headers=sentinel, json={**_body(), "allowTrial": True}
+        )
+        assert toggled.status_code == 200
+        assert toggled.json()["data"]["allowTrial"] is True
+
+        # 真实 admin 不受影响：可认领未认领节点
+        with app.state.session_factory() as session:
+            UserRepository(session).create(username="ssh-admin", password="ssh-admin-pw", role=Role.ADMIN)
+            session.commit()
+        admin_token = client.post(
+            "/api/v1/rebuild/login", json={"username": "ssh-admin", "password": "ssh-admin-pw"}
+        ).json()["data"]["token"]
+        claimed = client.put(
+            f"/api/v1/rebuild/ssh-nodes/{unclaimed_id}",
+            headers={"Authorization": f"Bearer {admin_token}"},
+            json=_body("unclaimed"),
+        )
+        assert claimed.status_code == 200
+        assert claimed.json()["data"]["ownerId"] is not None
     finally:
         client.__exit__(None, None, None)
 

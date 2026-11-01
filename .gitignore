@@ -70,3 +70,5 @@ _fe_build.txt
 _pytest_rebuild*.txt
 datara-backend/_pytest_rebuild*.txt
 datara-newweb/.evidence/
+# 本地补丁备份，仅供对照，不进入发布快照
+deploy/dolphinscheduler/3.4.3/*.patch.bak-*

@@ -1,19 +1,24 @@
 -- [ECOM-SIM-20261030] Customer core flow: refund must not exceed captured payment.
--- Returns offending business keys only; no personal fields.
-WITH paid AS (
-  SELECT order_id, SUM(pay_amount) AS paid_amount
-  FROM ec_retail.ods_payment
-  GROUP BY order_id
-), refunded AS (
-  SELECT order_id, SUM(refund_amount) AS refund_amount
-  FROM ec_retail.ods_refund
-  GROUP BY order_id
+-- Isolated fixture schema ecom_sim_20261030 is written literally; ${...} variables would be
+-- bound as JDBC values by DolphinScheduler and cannot qualify a table. Returns offending
+-- business keys only; no personal fields.
+WITH succeeded_payments AS (
+  SELECT `order`, SUM(amount_cents) AS paid_cents
+  FROM ecom_sim_20261030.payments
+  WHERE status = 'succeeded'
+  GROUP BY `order`
+), succeeded_refunds AS (
+  SELECT `order`, SUM(amount_cents) AS refund_cents
+  FROM ecom_sim_20261030.refunds
+  WHERE status = 'succeeded'
+  GROUP BY `order`
 )
-SELECT o.order_no, COALESCE(p.paid_amount, 0) AS paid_amount,
-       r.refund_amount, r.refund_amount - COALESCE(p.paid_amount, 0) AS excess_amount
-FROM refunded AS r
-JOIN ec_retail.ods_order AS o ON o.id = r.order_id
-LEFT JOIN paid AS p ON p.order_id = r.order_id
-WHERE r.refund_amount > COALESCE(p.paid_amount, 0)
-ORDER BY excess_amount DESC, o.order_no
+SELECT r.`order` AS order_id,
+       COALESCE(p.paid_cents, 0) AS paid_cents,
+       r.refund_cents,
+       r.refund_cents - COALESCE(p.paid_cents, 0) AS excess_cents
+FROM succeeded_refunds AS r
+LEFT JOIN succeeded_payments AS p ON p.`order` = r.`order`
+WHERE r.refund_cents > COALESCE(p.paid_cents, 0)
+ORDER BY excess_cents DESC, order_id
 LIMIT 100;

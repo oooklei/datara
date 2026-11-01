@@ -1,6 +1,6 @@
 # Datara / DBX / DolphinScheduler 源码真源与发布同步
 
-> 2026-11-01 用户裁定。此文件记录源码位置与发布流程；业务实现仍以 `docs/designs/2026-10-29-dbx-unified-target-design.md` 为准。运行镜像、容器、编译输出、部署目录中的临时改动不得反向定义源码。
+> 2026-11-01 用户裁定。此文件记录源码位置与发布流程；业务实现仍以 `docs/designs/2026-11-01-datara-current-authority.md` 为准。运行镜像、容器、编译输出、部署目录中的临时改动不得反向定义源码。
 
 | 系统 | 唯一可修改真源 | 发布/本机镜像 |
 | --- | --- | --- |
@@ -12,7 +12,7 @@ DBX 目前缺少提交号，海豚基线也不是 Git 工作树；发布记录�
 
 ## 发版门禁
 
-1. 在 Datara `main` 运行 `python scripts/release_source.py preflight`：拉取 `origin/main`，检查当前分支、工作树、冲突索引、未合并本地分支及远端领先提交。其他分支或工作区中的待发布内容先合并；有冲突就在原分支或隔离工作区解决，再回到真源。
+1. 在 Datara `main` 运行 `python scripts/release_source.py preflight`：拉取 `origin/main`，检查当前分支、工作树、冲突索引、未合并本地分支及远端领先提交；随后执行镜像闸门，比对 `deploy/image-policy.json` 白名单与 1.9 上运行中容器镜像、受控 compose（`/lei/apps/dbx/deploy-1.9/docker-compose.yml`、`/lei/apps/ds-3.4.3-deploy-20261029/docker-compose.yml`）三方一致，并强制锁定镜像声明 `pull_policy: never`，漂移即失败（可单独运行 `python scripts/release_source.py image-gate`；1.9 不可达时降级为 WARN）。其他分支或工作区中的待发布内容先合并；有冲突就在原分支或隔离工作区解决，再回到真源。
 2. 核对 DBX 真源与上一次本机镜像、海豚基线与补丁。发现两端都有改动时先合并并复核，不得用覆盖同步处理冲突。
 3. 运行 `python scripts/release_source.py snapshot --release-id <release>`，将生成的 `datara-source.tar.gz` 和 `datara-source.json` 同步至 1.9 对应隔离发布目录，比较两端 SHA-256 后从该快照构建。部署证据留在 1.9 隔离目录。唯一前端入口仍为 `http://192.168.1.9:8090/`。
 4. DBX、海豚发布后，从本次实际构建源码制作排除运行数据与密钥的快照，核对 SHA-256 并同步到本机 `.source-mirrors/<release>/`。记录镜像 ID、源码包与补丁 hash；之后的工作先比对这些记录。

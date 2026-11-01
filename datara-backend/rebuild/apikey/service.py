@@ -32,6 +32,7 @@ class ApiKeyPrincipal:
     created_by: str
     permissions: frozenset[str]
     project_ids: frozenset[int]
+    created_by_user_id: int | None = None
 
     def allows(self, permission: str | None = None, project_id: int | None = None) -> bool:
         """Return whether this key's scopes allow an operation.
@@ -84,6 +85,7 @@ class ApiKeyVerifier:
                 created_by=row.created_by,
                 permissions=frozenset(str(item) for item in scopes.get("permissions", [])),
                 project_ids=frozenset(int(item) for item in scopes.get("projectIds", [])),
+                created_by_user_id=row.created_by_user_id,
             )
             if not principal.allows(permission, project_id):
                 raise ApiKeyAuthError("API key scope denied")

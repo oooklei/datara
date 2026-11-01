@@ -1,0 +1,19 @@
+{
+  "version": 1,
+  "host": "root@192.168.1.9",
+  "updated_at_utc": "2026-11-01",
+  "note": "DBX 与海豚（dolphinscheduler）自建镜像的唯一白名单。任何镜像升级必须先改本文件并留下裁定记录，再改 compose；release_source.py 的 preflight / image-gate 会同时校验运行中容器与受控 compose，漂移即拦截。2026-11-01 dbx 未留痕重建导致 IDE 超时事故后建立。",
+  "forbid_tag_patterns": [
+    "latest"
+  ],
+  "containers": {
+    "dbx": "dbx:codex-main-20261101",
+    "ds-api": "datara-ds-api:codex-main-20261101",
+    "ds-master": "datara-ds-master:codex-main-20261101",
+    "ds-worker": "datara-ds-worker:codex-main-20261101"
+  },
+  "compose_files": [
+    "/lei/apps/dbx/deploy-1.9/docker-compose.yml",
+    "/lei/apps/ds-3.4.3-deploy-20261029/docker-compose.yml"
+  ]
+}

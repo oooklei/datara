@@ -1,30 +1,4 @@
 {
-  "anomalies_not_loaded_into_valid_facts": [
-    {
-      "expected": "duplicate business key",
-      "id": "X001",
-      "reference": "O001",
-      "rule": "order_duplicate"
-    },
-    {
-      "expected": "missing order",
-      "id": "X002",
-      "reference": "O999",
-      "rule": "orphan_order_item"
-    },
-    {
-      "expected": "refund > succeeded payment",
-      "id": "X003",
-      "reference": "O004",
-      "rule": "refund_exceeds_paid"
-    },
-    {
-      "expected": "available < 0",
-      "id": "X004",
-      "reference": "SKU-B@WH-WEST",
-      "rule": "inventory_negative"
-    }
-  ],
   "campaigns": [
     {
       "biz_date": "2026-10-20",
@@ -164,7 +138,11 @@
       "X001",
       "X002",
       "X003",
-      "X004"
+      "X004",
+      "X005",
+      "X006",
+      "X007",
+      "X008"
     ],
     "repeat_buyers": [
       "U001"
@@ -656,6 +634,104 @@
         "color": "white",
         "size": "standard"
       }
+    }
+  ],
+  "quality_anomalies": [
+    {
+      "biz_date": "2026-10-25",
+      "event_time": "2026-10-25T10:00:00+08:00",
+      "expected": "duplicate business key",
+      "fixture_namespace": "ECOM_SIM_20261030",
+      "id": "X001",
+      "observed_value": "O001",
+      "reference": "O001",
+      "rule": "order_duplicate",
+      "run_id": "SIM_RUN_20261030_01",
+      "source_system": "datara_synthetic_fixture"
+    },
+    {
+      "biz_date": "2026-10-25",
+      "event_time": "2026-10-25T10:00:00+08:00",
+      "expected": "missing order",
+      "fixture_namespace": "ECOM_SIM_20261030",
+      "id": "X002",
+      "observed_value": "missing_order",
+      "reference": "O999",
+      "rule": "orphan_order_item",
+      "run_id": "SIM_RUN_20261030_01",
+      "source_system": "datara_synthetic_fixture"
+    },
+    {
+      "biz_date": "2026-10-25",
+      "event_time": "2026-10-25T10:00:00+08:00",
+      "expected": "refund > succeeded payment",
+      "fixture_namespace": "ECOM_SIM_20261030",
+      "id": "X003",
+      "observed_value": "6000",
+      "reference": "O004",
+      "rule": "refund_exceeds_paid",
+      "run_id": "SIM_RUN_20261030_01",
+      "source_system": "datara_synthetic_fixture"
+    },
+    {
+      "biz_date": "2026-10-25",
+      "event_time": "2026-10-25T10:00:00+08:00",
+      "expected": "available < 0",
+      "fixture_namespace": "ECOM_SIM_20261030",
+      "id": "X004",
+      "observed_value": "-1",
+      "reference": "SKU-B@WH-WEST",
+      "rule": "inventory_negative",
+      "run_id": "SIM_RUN_20261030_01",
+      "source_system": "datara_synthetic_fixture"
+    },
+    {
+      "biz_date": "2026-10-25",
+      "event_time": "2026-10-25T10:00:00+08:00",
+      "expected": "status not in accepted enum",
+      "fixture_namespace": "ECOM_SIM_20261030",
+      "id": "X005",
+      "observed_value": "expired",
+      "reference": "P006",
+      "rule": "enum_out_of_range",
+      "run_id": "SIM_RUN_20261030_01",
+      "source_system": "datara_synthetic_fixture"
+    },
+    {
+      "biz_date": "2026-10-25",
+      "event_time": "2026-10-25T10:00:00+08:00",
+      "expected": "order amount mismatch",
+      "fixture_namespace": "ECOM_SIM_20261030",
+      "id": "X006",
+      "observed_value": "10000 != 2*5000",
+      "reference": "O001",
+      "rule": "amount_imbalance",
+      "run_id": "SIM_RUN_20261030_01",
+      "source_system": "datara_synthetic_fixture"
+    },
+    {
+      "biz_date": "2026-10-25",
+      "event_time": "2026-10-25T10:00:00+08:00",
+      "expected": "payment before order",
+      "fixture_namespace": "ECOM_SIM_20261030",
+      "id": "X007",
+      "observed_value": "2026-10-20T09:05 < order 2026-10-21T09:00",
+      "reference": "O002",
+      "rule": "time_inversion",
+      "run_id": "SIM_RUN_20261030_01",
+      "source_system": "datara_synthetic_fixture"
+    },
+    {
+      "biz_date": "2026-10-25",
+      "event_time": "2026-10-25T10:00:00+08:00",
+      "expected": "access denied",
+      "fixture_namespace": "ECOM_SIM_20261030",
+      "id": "X008",
+      "observed_value": "viewer->admin_report",
+      "reference": "U005",
+      "rule": "unauthorized_access",
+      "run_id": "SIM_RUN_20261030_01",
+      "source_system": "datara_synthetic_fixture"
     }
   ],
   "refund_status_events": [

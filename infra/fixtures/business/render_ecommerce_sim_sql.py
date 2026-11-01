@@ -18,7 +18,7 @@ SCHEMA = "ecom_sim_20261030"
 FACT_TYPES = (
     "products", "campaigns", "orders", "payments", "payment_status_events",
     "fulfillments", "tracking_events", "refunds", "return_lines",
-    "refund_status_events", "inventory", "inventory_movements", "events",
+    "refund_status_events", "inventory", "inventory_movements", "events", "quality_anomalies",
 )
 FIXTURE = Path(__file__).with_name(f"{NAMESPACE}.json")
 

@@ -6,7 +6,7 @@
 
 ## 域规范（仍生效约束；原设计文档已归档 docs/archive/2026-10-20/，实现冲突时以本节为准）
 
-> 2026-10-29 用户裁定：原「组件声明」「同步编排」两节约束随 datara 自研编排画布下线而失效，已删除。海豚只取其**编排可视化（DAG 画布）+ 运行后台底座**，门户外壳/身份/数据源/审计由 datara 与 dbx 承担（见 `docs/designs/2026-10-29-dbx-unified-target-design.md` §十）。
+> 2026-10-29 用户裁定：原「组件声明」「同步编排」两节约束随 datara 自研编排画布下线而失效，已删除。海豚只取其**编排可视化（DAG 画布）+ 运行后台底座**，门户外壳/身份/数据源/审计由 datara 与 dbx 承担。2026-11-01 进一步裁定编排网关取消，画布改为 iframe 同源直连海豚（见 `docs/designs/2026-11-01-datara-current-authority.md` §二、§三）。
 
 - **重建验证环境**：本机=代码检测/静态/类型/逻辑稽核，192.168.1.9=部署/容器/中间件/联调/browser-use E2E；前端验证入口固定 `http://192.168.1.9:8090/`（唯一前端入口，禁止多套并行部署；Web 容器内监听 80、API 代理契约不变）；部署/E2E 验收证据必须出自 1.9 隔离工作目录；页面不设登录表单，验证 key 换短时 token 注入且 key 禁入静态产物/URL/浏览器持久存储；与权威设计冲突→暂停候批刷新契约；Agent worktree 仅代码隔离，不作文档/状态权威。
 
@@ -14,7 +14,7 @@
 
 活跃运行控制只读 `D:\super-develop\runtime\datara-live\control\authority-carrier-registry.json` 中标为 `ACTIVE` 的载体；入口为 `governance-state.json`、`role-contracts.json` 与 `queues/snapshot.json`。当前为 `RUNNING / epoch 3`（2026-10-22 12:28 用户授权重启）。lifecycle 切换、纪元创建与派单开放仅由流程依用户明确指令执行；未持用户明确指令时，所有角色不得派单、实施、测试、验收、裁定或写共享状态。只有流程可按水位增量写入 `docs/handoff/STATE.md`、`mailbox.jsonl` 和队列投影；其他角色使用本角色最小队列卡，禁止用完整台账或归档冷启动。旧运行材料已移入 `docs/handoff/archive/2026-10-22-v2-final`，只作追溯。
 
-**权威序（2026-10-30 用户裁定收敛）**：用户最新裁定 > `docs/designs/2026-10-29-dbx-unified-target-design.md`（**唯一实施权威**；冲突时同日线子设计 phase-1-backend / ide-integration / variable-completion 以 unified-target 为准）> `docs/agents/协作规程.md` > 其余文档。旧权威序三件（2026-10-19 v3 真源 / 2026-10-17 验收 v4 / 2026-10-20 WBS）及 increments 旧线全量、docs 根部旧设计已于 2026-10-30 归档至 `docs/increments/archive/2026-10-30-authority-consolidation/` 与 `docs/archive/2026-10-30-authority-consolidation/`，只作考古，不得作为现行依据恢复约束。归档区（docs/archive/、docs/increments/archive/、docs/handoff/archive/）只作考古。细目见 `docs/README.md` §1。
+**权威序（2026-11-01 用户裁定刷新）**：用户最新裁定 > `docs/designs/2026-11-01-datara-current-authority.md`（**现时唯一实施权威**）> `docs/agents/协作规程.md` > 其余文档。2026-10-29 dbx 统一设计线（unified-target 及 phase-1-backend / ide-integration / variable-completion 子设计）、旧 ADR 与旧计划已于 2026-11-01 整体归档至 `docs/archive/2026-11-01-authority-refresh/`；更早的旧权威序三件（2026-10-19 v3 真源 / 2026-10-17 验收 v4 / 2026-10-20 WBS）及 increments 旧线已于 2026-10-30 归档至 `docs/increments/archive/2026-10-30-authority-consolidation/` 与 `docs/archive/2026-10-30-authority-consolidation/`。归档区只作考古，不得作为现行依据恢复约束。细目见 `docs/README.md` §1。
 
 ## Agent skills
 

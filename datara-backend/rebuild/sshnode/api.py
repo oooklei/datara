@@ -113,6 +113,10 @@ def build_sshnode_router(
         denial = principal(token, authorization, "create")
         if isinstance(denial, JSONResponse):
             return denial
+        # 2026-11-01 用户裁定：验证 token（user_id=0 哨兵）无真实身份，
+        # 不能作为 governance.owner_id 落库（rebuild_user 外键），须显式拒绝而非 500。
+        if int(denial["user_id"]) == 0:
+            return _error(400, 4104, "validation token cannot own SSH nodes")
         with session_factory() as session:
             try:
                 record = service(session).create(_input(body))
@@ -140,6 +144,9 @@ def build_sshnode_router(
                 record = service(session).update(node_id, _input(body))
                 governance = SshNodeAccess(session).get(node_id)
                 if governance is None:
+                    # 未认领节点需要写入 owner；哨兵身份无真实用户可归属，显式拒绝。
+                    if int(denial["user_id"]) == 0:
+                        return _error(400, 4104, "SSH node not claimed; validation token cannot claim it")
                     governance = SshNodeAccess(session).claim(node_id, int(denial["user_id"]), allow_trial=body.allowTrial)
                 else:
                     governance.allow_trial = body.allowTrial

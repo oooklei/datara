@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 from contextlib import asynccontextmanager
+from collections.abc import Mapping
+from datetime import datetime
 import hmac
 import hashlib
 import json
@@ -48,13 +50,21 @@ from rebuild.sql_ide.table_data import (
 )
 from rebuild.identity.contracts import (
     Permission,
+    ProjectRole,
+    PROJECT_ROLE_LABELS,
     Role,
     ROLE_LABELS,
     ROLE_PERMISSIONS,
     PERMISSION_LABELS,
     TokenService,
     authorize,
+    project_role_allows,
+    resolve_project_role,
 )
+from rebuild.acl import apply_acl_backfill, build_acl_router
+from rebuild.acl.models import ACL_TABLES
+from rebuild.acl.policy import DENY_PROJECT_NOT_FOUND, PolicyService, Subject
+from rebuild.acl.service import AclService, AuditWriter
 from rebuild.identity.models import ActiveTokenRecord, ProjectMemberRecord, UserRecord
 from rebuild.identity.passwords import verify_password
 from rebuild.identity.repository import UserRepository
@@ -166,6 +176,17 @@ DBX_POLL_INTERVAL_SECONDS = 300
 ALARM_SCAN_INTERVAL_SECONDS = 120
 
 
+def _client_meta(request: Request) -> tuple[str, str]:
+    """提取审计用的客户端 IP 与 User-Agent（与 ACL 路由取数口径一致）。"""
+    ip = ""
+    if request.client is not None:
+        ip = request.client.host or ""
+    forwarded = request.headers.get("x-forwarded-for", "")
+    if forwarded:
+        ip = forwarded.split(",")[0].strip()
+    return ip, request.headers.get("user-agent", "")
+
+
 class _IntervalJobScheduler:
     """最小间隔任务调度器：只实现 janitor 式 ``add_job`` 注入契约。
 
@@ -261,8 +282,16 @@ class DataSourceRequest(BaseModel):
 
 
 class MemberRequest(BaseModel):
-    username: str
-    role: Role = Role.VIEWER
+    """成员请求：role 接受项目角色词形，并兼容存量平台角色词形（由 resolve_project_role 映射）。"""
+
+    username: str = ""
+    role: str = Role.VIEWER.value
+
+
+def _member_role_value(raw: str) -> str | None:
+    """校验并返回可落库的成员角色词形；未知值返回 None（fail-closed）。"""
+    text = str(raw).strip().lower()
+    return text if resolve_project_role(text) is not None else None
 
 
 class UserCreateRequest(BaseModel):
@@ -590,8 +619,10 @@ def create_app(
                 OrchestrationAlarmRecord.__table__,
                 RuntimeNodeRecord.__table__,
                 *MODEL_TABLES,
+                *ACL_TABLES,
             ],
         )
+        # --- 同步 migration（必须在 lifespan 内完成，否则路由可能读到旧 schema）---
         apply_component_spec_migrations(engine)
         apply_identity_migrations(engine)
         SqlIdeMigrationRunner(engine, SQL_IDE_ALL_MIGRATIONS).apply()
@@ -603,10 +634,23 @@ def create_app(
         apply_variable_migrations(engine)
         GovernanceMigrationRunner(engine, R3_GOVERNANCE_MIGRATIONS).apply()
         SecMigrationRunner(engine, S1_SEC_MIGRATIONS).apply()
-        ensure_i1_schema()
-        ensure_schedule_schema()
-        ensure_model_schema()
-        ensure_runtime_node_schema()
+        # --- 种子数据（加保护不让其崩溃 lifespan）---
+        for _fn in (ensure_i1_schema, ensure_schedule_schema, ensure_model_schema, ensure_runtime_node_schema):
+            try:
+                _fn()
+            except Exception as _exc:  # noqa: BLE001 降级：种子数据失败不阻断启动
+                logger.warning("种子数据 %s 跳过：%s", _fn.__name__, _exc)
+        # --- 后台线程任务（不阻塞 lifespan，避免前端 15s 超时）---
+        def _startup_bg_tasks() -> None:
+            # ACL backfill：幂等、慢则后台跑，旧表结构不匹配时静默跳过
+            try:
+                counts = apply_acl_backfill(engine, session_factory)
+                if counts:
+                    logger.info("ACL backfill done: %s", counts)
+            except Exception as _exc:  # noqa: BLE001 降级：backfill 失败不阻断启动
+                logger.warning("ACL backfill 跳过：%s", _exc)
+
+        threading.Thread(target=_startup_bg_tasks, name="startup-bg-acl", daemon=True).start()
         # ZK 注册：monitor 路由经 app.state.registry 复用本连接列举 /datara/live live 节点
         # （对齐旧侧 api/main.py 装配；ZK 连不上仅降级，后台线程重连，不阻塞启动）。
         registry = ServiceRegistry("api", 8001)
@@ -1045,12 +1089,38 @@ def create_app(
 
     @app.post("/api/v1/rebuild/login")
     def login(body: LoginRequest, request: Request):
+        ip, user_agent = _client_meta(request)
         with session_factory() as session:
             record = session.scalar(select(UserRecord).where(UserRecord.username == body.username))
             if record is None or not verify_password(body.password, record.password_hash):
+                # P0-4：登录失败也留业务审计；不因审计写入改变响应码。
+                AuditWriter(session).identity(
+                    actor_id=None,
+                    actor_name=body.username,
+                    action="user_login",
+                    target_user_id=record.id if record is not None else None,
+                    target_username=body.username,
+                    result="deny",
+                    after={"reason": "invalid_credentials"},
+                    ip=ip,
+                    user_agent=user_agent,
+                )
+                session.commit()
                 return JSONResponse(status_code=401, content={"code": 1001, "msg": "invalid credentials", "data": None})
             if record.status != "enabled":
                 # 停用账户凭据虽验通过，拒绝签发 token（O15-03 停用同步撤销闭环的登录侧）。
+                AuditWriter(session).identity(
+                    actor_id=record.id,
+                    actor_name=record.username,
+                    action="user_login",
+                    target_user_id=record.id,
+                    target_username=record.username,
+                    result="deny",
+                    after={"reason": "account_disabled", "status": record.status},
+                    ip=ip,
+                    user_agent=user_agent,
+                )
+                session.commit()
                 return JSONResponse(status_code=403, content={"code": 1006, "msg": "account disabled", "data": None})
             token = token_service.issue(user_id=record.id, username=record.username, role=Role(record.role))
             previous_token = request.cookies.get(session_cookie_name, "")
@@ -1079,6 +1149,18 @@ def create_app(
                 max_age=3600,
             )
             response.delete_cookie(key="datara_dbx_ide", path="/ide/api", samesite="strict")
+            AuditWriter(session).identity(
+                actor_id=record.id,
+                actor_name=record.username,
+                action="user_login",
+                target_user_id=record.id,
+                target_username=record.username,
+                result="allow",
+                after={"role": record.role},
+                ip=ip,
+                user_agent=user_agent,
+            )
+            session.commit()
             return response
 
     @app.post("/api/v1/rebuild/validation-token")
@@ -1196,27 +1278,21 @@ def create_app(
     )
 
     def project_permission_error(session, project_id: int, user: dict[str, object], permission: Permission):
-        project = session.get(ProjectRecord, project_id)
-        if project is None:
-            return JSONResponse(status_code=404, content={"code": 4041, "msg": "project not found", "data": None})
-        # Tokens issued by older deployments may carry a differently cased
-        # role claim; admin must never be blocked by project membership rows.
-        if str(user.get("role", "")).strip().lower() == Role.ADMIN.value:
-            return None
-        if not authorize(user.get("role", ""), permission):
-            return JSONResponse(status_code=403, content={"code": 1003, "msg": "permission denied", "data": None})
-        user_id = int(user["user_id"])
-        if project.owner_id == user_id:
-            return None
-        member = session.scalar(
-            select(ProjectMemberRecord).where(
-                ProjectMemberRecord.project_id == project_id,
-                ProjectMemberRecord.user_id == user_id,
-            )
+        """委托 PolicyService 单点判定；判定顺序与响应码保持不变。"""
+        decision = PolicyService(session).decide_project(
+            Subject(
+                user_id=int(user["user_id"]),
+                platform_role=str(user.get("role", "")),
+                username=str(user.get("username", "")),
+            ),
+            project_id,
+            permission,
         )
-        if member is None or not authorize(member.role, permission):
-            return JSONResponse(status_code=403, content={"code": 1003, "msg": "permission denied", "data": None})
-        return None
+        if decision.allowed:
+            return None
+        if decision.reason == DENY_PROJECT_NOT_FOUND:
+            return JSONResponse(status_code=404, content={"code": 4041, "msg": "project not found", "data": None})
+        return JSONResponse(status_code=403, content={"code": 1003, "msg": "permission denied", "data": None})
 
     def rb_project_authorize(datasource_id: int, user: dict[str, object]):
         """Resolve the RB API's datasource selector to its owning project before authorization."""
@@ -1883,6 +1959,8 @@ def create_app(
         )
         if default_ports is not None:
             app.include_router(build_ai_router(session_factory, token_service, active_tokens, default_ports))
+    # P2 统一资源 ACL：分享 / 撤销 / 矩阵 / 本人可见 / 我授出的 / 业务审计查询。
+    app.include_router(build_acl_router(session_factory, current_user))
 
     @app.post("/api/v1/rebuild/projects/{project_id}/members")
     def add_member(project_id: int, body: MemberRequest, authorization: str = Header(default="")):
@@ -1894,6 +1972,9 @@ def create_app(
             return JSONResponse(status_code=403, content={"code": 1003, "msg": str(exc), "data": None})
         except ValueError:
             return JSONResponse(status_code=401, content={"code": 1001, "msg": "invalid token", "data": None})
+        role_value = _member_role_value(body.role)
+        if role_value is None:
+            return JSONResponse(status_code=422, content={"code": 4002, "msg": "unsupported role", "data": None})
         with session_factory() as session:
             project = session.get(ProjectRecord, project_id)
             if project is None:
@@ -1912,13 +1993,18 @@ def create_app(
                     status_code=409,
                     content={"code": 4091, "msg": "member already exists", "data": None},
                 )
-            member = ProjectMemberRecord(project_id=project_id, user_id=target.id, role=body.role.value)
+            member = ProjectMemberRecord(project_id=project_id, user_id=target.id, role=role_value)
             session.add(member)
             session.commit()
             return {
                 "code": 0,
                 "msg": "success",
-                "data": {"project_id": project_id, "username": body.username, "role": body.role.value},
+                "data": {
+                    "project_id": project_id,
+                    "username": body.username,
+                    "role": role_value,
+                    "project_role": resolve_project_role(role_value).value,
+                },
             }
 
     @app.get("/api/v1/rebuild/projects/{project_id}/members")
@@ -1938,12 +2024,29 @@ def create_app(
             members = session.scalars(
                 select(ProjectMemberRecord).where(ProjectMemberRecord.project_id == project_id)
             ).all()
+            users: dict[int, UserRecord] = {}
+            if members:
+                users = {
+                    record.id: record
+                    for record in session.scalars(
+                        select(UserRecord).where(UserRecord.id.in_([m.user_id for m in members]))
+                    )
+                }
             return {
                 "code": 0,
                 "msg": "success",
                 "data": {
                     "list": [
-                        {"user_id": m.user_id, "role": m.role}
+                        {
+                            "user_id": m.user_id,
+                            "username": users[m.user_id].username if m.user_id in users else "",
+                            "role": m.role,
+                            "project_role": resolve_project_role(m.role).value
+                            if resolve_project_role(m.role) is not None
+                            else None,
+                            "status": users[m.user_id].status if m.user_id in users else None,
+                            "joined_at": m.created_at.isoformat() if m.created_at else None,
+                        }
                         for m in members
                     ]
                 },
@@ -1985,6 +2088,9 @@ def create_app(
             return JSONResponse(status_code=403, content={"code": 1003, "msg": str(exc), "data": None})
         except ValueError:
             return JSONResponse(status_code=401, content={"code": 1001, "msg": "invalid token", "data": None})
+        role_value = _member_role_value(body.role)
+        if role_value is None:
+            return JSONResponse(status_code=422, content={"code": 4002, "msg": "unsupported role", "data": None})
         with session_factory() as session:
             project = session.get(ProjectRecord, project_id)
             if project is None:
@@ -1997,12 +2103,17 @@ def create_app(
             )
             if member is None:
                 return JSONResponse(status_code=404, content={"code": 4043, "msg": "member not found", "data": None})
-            member.role = body.role.value
+            member.role = role_value
             session.commit()
             return {
                 "code": 0,
                 "msg": "success",
-                "data": {"project_id": project_id, "user_id": user_id, "role": body.role.value},
+                "data": {
+                    "project_id": project_id,
+                    "user_id": user_id,
+                    "role": role_value,
+                    "project_role": resolve_project_role(role_value).value,
+                },
             }
 
     # ---- 15.1-A identity 管理面：平台层用户生命周期（O15-01/02/03）----
@@ -2069,7 +2180,7 @@ def create_app(
         }
 
     @app.post("/api/v1/rebuild/users")
-    def create_user(body: UserCreateRequest, authorization: str = Header(default="")):
+    def create_user(body: UserCreateRequest, request: Request, authorization: str = Header(default="")):
         try:
             user = current_user(authorization)
             if not authorize(user["role"], Permission.MANAGE_USER):
@@ -2078,11 +2189,22 @@ def create_app(
             return JSONResponse(status_code=403, content={"code": 1003, "msg": str(exc), "data": None})
         except ValueError:
             return JSONResponse(status_code=401, content={"code": 1001, "msg": "invalid token", "data": None})
+        ip, user_agent = _client_meta(request)
         with session_factory() as session:
             repo = UserRepository(session)
             if repo.find_by_username(body.username) is not None:
                 return JSONResponse(status_code=409, content={"code": 4092, "msg": "username already exists", "data": None})
             record = repo.create(username=body.username, password=body.password, role=body.role)
+            AuditWriter(session).identity(
+                actor_id=int(user["user_id"]),
+                actor_name=str(user.get("username", "")),
+                action="user_create",
+                target_user_id=record.id,
+                target_username=record.username,
+                after={"username": record.username, "role": record.role, "status": record.status},
+                ip=ip,
+                user_agent=user_agent,
+            )
             session.commit()
             return {
                 "code": 0,
@@ -2091,7 +2213,7 @@ def create_app(
             }
 
     @app.patch("/api/v1/rebuild/users/{user_id}/status")
-    def update_user_status(user_id: int, body: UserStatusRequest, authorization: str = Header(default="")):
+    def update_user_status(user_id: int, body: UserStatusRequest, request: Request, authorization: str = Header(default="")):
         try:
             user = current_user(authorization)
             if not authorize(user["role"], Permission.MANAGE_USER):
@@ -2100,6 +2222,7 @@ def create_app(
             return JSONResponse(status_code=403, content={"code": 1003, "msg": str(exc), "data": None})
         except ValueError:
             return JSONResponse(status_code=401, content={"code": 1001, "msg": "invalid token", "data": None})
+        ip, user_agent = _client_meta(request)
         with session_factory() as session:
             repo = UserRepository(session)
             record = repo.find_by_id(user_id)
@@ -2122,9 +2245,28 @@ def create_app(
                 # 最后 admin 保护：停用唯一启用 admin 前校验剩余启用 admin 数不少于 1。
                 if repo.count_enabled_admins_excluding(user_id) == 0:
                     return JSONResponse(status_code=409, content={"code": 1005, "msg": "last admin protection", "data": None})
+            before = {"status": record.status}
             updated = repo.update_status(user_id, body.status)
             # O15-03：停用与撤销 token 同一 DB 事务（session 注入，不自行 commit）。
             revoked = active_tokens.revoke_user(user_id, session=session)
+            # P0-4：停用/启用时级联回收或恢复其作为 grantee 的资源分享（保留 grantor 审计）。
+            revoked_shares = (
+                AclService(session).revoke_grantee_user(user_id)
+                if body.status == "disabled"
+                else 0
+            )
+            AuditWriter(session).identity(
+                actor_id=int(user["user_id"]),
+                actor_name=str(user.get("username", "")),
+                action=f"user_status_{body.status}",
+                target_user_id=user_id,
+                target_username=record.username,
+                before=before,
+                after={"status": body.status},
+                result="allow",
+                ip=ip,
+                user_agent=user_agent,
+            )
             session.commit()
             return {
                 "code": 0,
@@ -2135,12 +2277,13 @@ def create_app(
                     "role": updated.role,
                     "status": updated.status,
                     "revoked_tokens": revoked,
+                    "revoked_shares": revoked_shares,
                 },
             }
 
     @app.patch("/api/v1/rebuild/users/{user_id}/password")
     def update_user_password(
-        user_id: int, body: UserPasswordRequest, authorization: str = Header(default="")
+        user_id: int, body: UserPasswordRequest, request: Request, authorization: str = Header(default="")
     ):
         try:
             user = current_user(authorization)
@@ -2155,6 +2298,7 @@ def create_app(
                 status_code=422,
                 content={"code": 1002, "msg": "password is required", "data": None},
             )
+        ip, user_agent = _client_meta(request)
         with session_factory() as session:
             repo = UserRepository(session)
             record = repo.find_by_id(user_id)
@@ -2162,6 +2306,15 @@ def create_app(
                 return JSONResponse(status_code=404, content={"code": 4041, "msg": "user not found", "data": None})
             updated = repo.update_password(user_id, body.password)
             revoked = active_tokens.revoke_user(user_id, session=session)
+            AuditWriter(session).identity(
+                actor_id=int(user["user_id"]),
+                actor_name=str(user.get("username", "")),
+                action="user_password_reset",
+                target_user_id=user_id,
+                target_username=record.username,
+                ip=ip,
+                user_agent=user_agent,
+            )
             session.commit()
             return {
                 "code": 0,
@@ -2175,7 +2328,7 @@ def create_app(
             }
 
     @app.patch("/api/v1/rebuild/users/{user_id}/role")
-    def update_user_role(user_id: int, body: UserRoleRequest, authorization: str = Header(default="")):
+    def update_user_role(user_id: int, body: UserRoleRequest, request: Request, authorization: str = Header(default="")):
         try:
             user = current_user(authorization)
             if not authorize(user["role"], Permission.MANAGE_USER):
@@ -2184,6 +2337,7 @@ def create_app(
             return JSONResponse(status_code=403, content={"code": 1003, "msg": str(exc), "data": None})
         except ValueError:
             return JSONResponse(status_code=401, content={"code": 1001, "msg": "invalid token", "data": None})
+        ip, user_agent = _client_meta(request)
         with session_factory() as session:
             repo = UserRepository(session)
             record = repo.find_by_id(user_id)
@@ -2208,10 +2362,22 @@ def create_app(
                         "revoked_tokens": 0,
                     },
                 }
+            before = {"role": record.role}
             try:
                 updated = repo.update_role(user_id, body.role)
                 # O15-03：角色变更即撤销 token，同一 DB 事务（session 注入，不自行 commit）。
                 revoked = active_tokens.revoke_user(user_id, session=session)
+                AuditWriter(session).identity(
+                    actor_id=int(user["user_id"]),
+                    actor_name=str(user.get("username", "")),
+                    action="user_role_change",
+                    target_user_id=user_id,
+                    target_username=record.username,
+                    before=before,
+                    after={"role": updated.role},
+                    ip=ip,
+                    user_agent=user_agent,
+                )
                 session.commit()
             except IntegrityError:
                 # 角色变更与 token 撤销必须同事务；数据库约束异常不得冒泡成 HTTP 500。
@@ -2235,6 +2401,26 @@ def create_app(
             }
     # ---- 15.1-B 项目层权限矩阵只读查询（O15-02）----
 
+    @app.get("/api/v1/rebuild/project-roles")
+    def project_role_catalog(authorization: str = Header(default="")):
+        """项目角色目录：项目角色只做项目内裁剪，不提供提权路径。"""
+        try:
+            current_user(authorization)
+        except ValueError:
+            return JSONResponse(status_code=401, content={"code": 1001, "msg": "invalid token", "data": None})
+        catalog = [
+            {
+                "value": role.value,
+                "label": PROJECT_ROLE_LABELS[role],
+                "inherits_platform": role is ProjectRole.INHERIT,
+                "permissions": None
+                if role is ProjectRole.INHERIT
+                else sorted(p.value for p in Permission if project_role_allows(role, p)),
+            }
+            for role in ProjectRole
+        ]
+        return {"code": 0, "msg": "success", "data": {"list": catalog}}
+
     @app.get("/api/v1/rebuild/projects/{project_id}/permissions")
     def project_permissions(project_id: int, authorization: str = Header(default="")):
         try:
@@ -2249,23 +2435,49 @@ def create_app(
             project = session.get(ProjectRecord, project_id)
             if project is None:
                 return JSONResponse(status_code=404, content={"code": 4042, "msg": "project not found", "data": None})
-            permissions_by_role = {r.value: sorted(p.value for p in ROLE_PERMISSIONS.get(r, ())) for r in Role}
             members = session.scalars(
                 select(ProjectMemberRecord).where(ProjectMemberRecord.project_id == project_id)
             ).all()
+            platform_roles: dict[int, str] = {}
+            if members:
+                platform_roles = {
+                    record.id: record.role
+                    for record in session.scalars(
+                        select(UserRecord).where(UserRecord.id.in_([m.user_id for m in members]))
+                    )
+                }
+            rows: list[dict[str, object]] = []
+            for member in members:
+                project_role = resolve_project_role(member.role)
+                platform_role = platform_roles.get(member.user_id)
+                platform_permissions = (
+                    ROLE_PERMISSIONS.get(Role(platform_role))
+                    if platform_role in {role.value for role in Role}
+                    else None
+                )
+                if project_role is None or platform_permissions is None:
+                    effective: list[str] = []
+                else:
+                    effective = sorted(
+                        permission.value
+                        for permission in platform_permissions
+                        if project_role_allows(project_role, permission)
+                    )
+                rows.append(
+                    {
+                        "user_id": member.user_id,
+                        "role": member.role,
+                        "project_role": project_role.value if project_role is not None else None,
+                        "platform_role": platform_role,
+                        "permissions": effective,
+                    }
+                )
             return {
                 "code": 0,
                 "msg": "success",
                 "data": {
                     "project_id": project_id,
-                    "members": [
-                        {
-                            "user_id": m.user_id,
-                            "role": m.role,
-                            "permissions": permissions_by_role.get(m.role, []),
-                        }
-                        for m in members
-                    ],
+                    "members": rows,
                 },
             }
 

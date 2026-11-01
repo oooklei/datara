@@ -1,7 +1,7 @@
 import json
 from datetime import datetime
 
-from sqlalchemy import DateTime, Integer, String, Text, func
+from sqlalchemy import DateTime, ForeignKey, Integer, String, Text, func
 from sqlalchemy.orm import Mapped, mapped_column
 
 from rebuild.common.db import Base
@@ -18,7 +18,11 @@ class ApiKeyRecord(Base):
     status: Mapped[str] = mapped_column(String(16), nullable=False, default="active")
     expires_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     last_used_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
-    created_by: Mapped[str] = mapped_column(String(128), nullable=False)
+    # 用户名快照：保留用于展示与历史兼容；归属判定只认 created_by_user_id。
+    created_by: Mapped[str] = mapped_column(String(128), nullable=False, default="")
+    created_by_user_id: Mapped[int | None] = mapped_column(
+        ForeignKey("rebuild_user.id"), index=True, nullable=True
+    )
     revoked_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, server_default=func.current_timestamp())
     updated_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, server_default=func.current_timestamp())

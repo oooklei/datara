@@ -36,7 +36,7 @@
             <td data-cred>{{ node.hasCredential ? '已配置' : '未配置' }}</td>
             <td>{{ node.allowTrial ? '允许' : '关闭' }}</td><td>{{ node.tags.join(', ') || '—' }}</td>
             <td>{{ node.enabled ? '启用' : '停用' }} / {{ node.heartbeatState || '未知' }}</td>
-            <td class="actions"><button type="button" class="mini-btn" data-probe @click="runProbe(node)">探测</button><button type="button" class="mini-btn" data-edit @click="openEdit(node)">编辑</button><button type="button" class="mini-btn danger" data-delete @click="remove(node)">删除</button></td>
+            <td class="actions"><button type="button" class="mini-btn" data-probe @click="runProbe(node)">探测</button><button type="button" class="mini-btn" data-edit @click="openEdit(node)">编辑</button><button type="button" class="mini-btn" data-share @click="openShare(node)">共享</button><button type="button" class="mini-btn danger" data-delete @click="remove(node)">删除</button></td>
           </tr>
           <tr v-if="filteredNodes.length === 0"><td colspan="8">无匹配节点</td></tr>
         </tbody>
@@ -58,10 +58,22 @@
         <footer><button type="button" class="mini-btn" @click="closeEditor">取消</button><button type="submit" class="mini-btn primary" data-save>保存</button></footer>
       </form>
     </div>
+    <div v-if="sharing" class="mask" @click.self="closeShare">
+      <form role="dialog" aria-modal="true" aria-label="共享 SSH 节点" @submit.prevent="confirmShare">
+        <h2>共享 SSH 节点</h2>
+        <p class="share-hint">将「{{ sharing.name }}」共享给指定用户；被共享用户可在脚本开发中选择该节点试运行。</p>
+        <label>用户<select v-model.number="shareUserId" required data-share-user>
+          <option v-if="shareUsers.length === 0" disabled value="">无可选用户</option>
+          <option v-for="u in shareUsers" :key="u.id" :value="u.id">{{ u.username }}（{{ u.roleLabel || u.role }}）</option>
+        </select></label>
+        <p v-if="shareError" class="share-err" role="alert" data-share-error>{{ shareError }}</p>
+        <footer><button type="button" class="mini-btn" @click="closeShare">取消</button><button type="submit" class="mini-btn primary" data-share-confirm>共享</button></footer>
+      </form>
+    </div>
   </main>
 </template>
 <script setup lang="ts">
-import {computed,onMounted,reactive,ref} from 'vue'; import DepOpsSubNav from '../components/DepOpsSubNav.vue'; import {sshNodeApi,type SshNodeDraft,type SshNodeRecord} from '../services/rebuild/sshNodeApi'; import {useDraggable} from '../composables/useDraggable'
+import {computed,onMounted,reactive,ref} from 'vue'; import DepOpsSubNav from '../components/DepOpsSubNav.vue'; import {sshNodeApi,type SshNodeDraft,type SshNodeRecord} from '../services/rebuild/sshNodeApi'; import {listUsers,type PlatformUser} from '../services/rebuild/userApi'; import {useDraggable} from '../composables/useDraggable'
 const nodes=ref<SshNodeRecord[]>([]),busy=ref(false),error=ref(''),probeMessage=ref(''),editing=ref(false),editingId=ref<number>(),tagsText=ref(''),credVisible=ref(false)
 /** D9：弹窗可由标题栏拖动；.mask 走 flex 居中（无 transform），拖拽定位后直接切换为 fixed 落位 */
 const editorRef=ref<HTMLElement|null>(null); const {dragStyle:editorStyle,onHandlePointerdown:onEditorPointerdown}=useDraggable(editorRef,editorRef,{storageKey:'sshnode.edit'})
@@ -74,7 +86,13 @@ function assign(v?:SshNodeRecord){Object.assign(draft,v?{name:v.name,host:v.host
 function openCreate(){credVisible.value=false;editingId.value=undefined;assign();editing.value=true} function openEdit(n:SshNodeRecord){credVisible.value=false;editingId.value=n.id;assign(n);editing.value=true} function closeEditor(){credVisible.value=false;editing.value=false}
 async function save(){error.value='';draft.tags=tagsText.value.split(',').map(x=>x.trim()).filter(Boolean);try{editingId.value?await sshNodeApi.update(editingId.value,{...draft}):await sshNodeApi.create({...draft});closeEditor();await reload()}catch(r){error.value=message(r)}}
 async function remove(n:SshNodeRecord){if(!globalThis.confirm(`删除 SSH 节点“${n.name}”？`))return;try{await sshNodeApi.delete(n.id);await reload()}catch(r){error.value=message(r)}}
-async function runProbe(n:SshNodeRecord){probeMessage.value='';try{const x=await sshNodeApi.probe(n.id);probeMessage.value=`${n.name}：${x.ok?'连接成功':'连接失败'}（${x.message}）`}catch(r){error.value=message(r)}} onMounted(reload)
+async function runProbe(n:SshNodeRecord){probeMessage.value='';try{const x=await sshNodeApi.probe(n.id);probeMessage.value=`${n.name}：${x.ok?'连接成功':'连接失败'}（${x.message}）`}catch(r){error.value=message(r)}}
+/** 共享：仅 owner/admin 可管理（后端 can_manage 门禁）；用户清单来自 identity 管理面（需 MANAGE_USER）。 */
+const sharing=ref<SshNodeRecord|null>(null),shareUsers=ref<PlatformUser[]>([]),shareUserId=ref<number>(),shareError=ref('')
+async function openShare(n:SshNodeRecord){sharing.value=n;shareUserId.value=undefined;shareError.value='';shareUsers.value=[];try{shareUsers.value=(await listUsers()).list.filter(u=>u.status==='enabled')}catch(r){shareError.value=`用户清单加载失败：${message(r)}`}}
+function closeShare(){sharing.value=null}
+async function confirmShare(){if(!sharing.value||!shareUserId.value)return;try{await sshNodeApi.share(sharing.value.id,shareUserId.value);probeMessage.value=`已共享「${sharing.value.name}」；被共享用户刷新脚本开发即可选用`;closeShare()}catch(r){shareError.value=message(r)}}
+onMounted(reload)
 </script>
 <style scoped>
 /* 页面骨架沿用部署运维资源页的 .pg/.panel/.tbl/.err-box 设计系统。 */
@@ -84,6 +102,8 @@ async function runProbe(n:SshNodeRecord){probeMessage.value='';try{const x=await
 .mask input{padding:8px}
 .mask .check{display:flex}
 .mask footer{display:flex;justify-content:flex-end;gap:8px}
+.share-hint{color:var(--muted,var(--text-secondary,#666));font-size:13px;line-height:1.5}
+.share-err{color:var(--danger,#c0392b);font-size:13px}
 .drag-handle{cursor:grab;user-select:none}
 .drag-handle:active{cursor:grabbing}
 </style>

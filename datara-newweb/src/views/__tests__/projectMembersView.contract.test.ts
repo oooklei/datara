@@ -17,12 +17,30 @@ const { addSpy, listSpy, patchSpy, removeSpy } = vi.hoisted(() => ({
 }))
 
 vi.mock('../../services/rebuild/memberApi', () => ({
-  MEMBER_ROLES: ['admin', 'developer', 'operator', 'viewer'],
+  PROJECT_ROLES: ['inherit', 'viewer', 'operator'],
+  PROJECT_ROLE_LABELS: { inherit: '继承平台角色', viewer: '项目观察者（只读）', operator: '项目操作员（运维）' },
+  MEMBER_ERROR_MESSAGES: { 4002: '不支持的项目角色', 4041: '项目成员不存在或用户名无效', 4042: '项目不存在', 4043: '用户不存在', 4091: '该用户已经是项目成员' },
   addMember: addSpy,
   listMembers: listSpy,
+  listProjectRoles: vi.fn().mockResolvedValue([
+    { value: 'inherit', label: '继承平台角色', inheritsPlatform: true, permissions: null },
+    { value: 'viewer', label: '项目观察者（只读）', inheritsPlatform: false, permissions: null },
+    { value: 'operator', label: '项目操作员（运维）', inheritsPlatform: false, permissions: null },
+  ]),
   removeMember: removeSpy,
   updateMemberRole: patchSpy,
 }))
+
+function _member(userId: number, role: string, opts: Partial<{ username: string; projectRole: string | null; status: string; joinedAt: string }> = {}) {
+  return {
+    userId,
+    username: opts.username ?? `user${userId}`,
+    role,
+    projectRole: (opts.projectRole as 'inherit' | 'viewer' | 'operator' | null) ?? null,
+    status: opts.status ?? 'enabled',
+    joinedAt: opts.joinedAt ?? null,
+  }
+}
 
 function mountView(props: { projectId: number } = { projectId: 1 }) {
   return mount(ProjectMembersView, { props })
@@ -49,8 +67,8 @@ describe('ProjectMembersView（项目成员管理页）', () => {
   it('列表渲染：成员行锚点 data-member-id + 角色 select 当前值', async () => {
     listSpy.mockResolvedValue({
       list: [
-        { userId: 7, role: 'developer' },
-        { userId: 9, role: 'viewer' },
+        _member(7, 'developer', { projectRole: 'inherit' }),
+        _member(9, 'viewer', { projectRole: 'viewer' }),
       ],
     })
 
@@ -61,14 +79,14 @@ describe('ProjectMembersView（项目成员管理页）', () => {
     const row9 = wrapper.find('[data-member-id="9"]')
     expect(row7.exists()).toBe(true)
     expect(row7.find('[data-member-user-id]').text()).toBe('7')
-    expect((row7.find('[data-role-select]').element as HTMLSelectElement).value).toBe('developer')
+    expect((row7.find('[data-role-select]').element as HTMLSelectElement).value).toBe('inherit')
     expect((row9.find('[data-role-select]').element as HTMLSelectElement).value).toBe('viewer')
   })
 
   it('项目路由切换后重新加载新项目成员且不保留旧项目列表', async () => {
-    let resolveSecond!: (value: { list: Array<{ userId: number; role: string }> }) => void
+    let resolveSecond!: (value: { list: ReturnType<typeof _member>[] }) => void
     listSpy
-      .mockResolvedValueOnce({ list: [{ userId: 7, role: 'developer' }] })
+      .mockResolvedValueOnce({ list: [_member(7, 'developer', { projectRole: 'inherit' })] })
       .mockReturnValueOnce(new Promise((resolve) => { resolveSecond = resolve }))
 
     const wrapper = mountView({ projectId: 1 })
@@ -81,14 +99,14 @@ describe('ProjectMembersView（项目成员管理页）', () => {
     expect(wrapper.find('[data-loading]').exists()).toBe(true)
     expect(wrapper.find('[data-member-id="7"]').exists()).toBe(false)
 
-    resolveSecond({ list: [{ userId: 8, role: 'viewer' }] })
+    resolveSecond({ list: [_member(8, 'viewer', { projectRole: 'viewer' })] })
     await flushPromises()
     expect(wrapper.find('[data-member-id="8"]').exists()).toBe(true)
   })
 
   it('快速切换项目时丢弃旧项目迟到的成员响应', async () => {
-    let resolveFirst!: (value: { list: Array<{ userId: number; role: string }> }) => void
-    let resolveSecond!: (value: { list: Array<{ userId: number; role: string }> }) => void
+    let resolveFirst!: (value: { list: ReturnType<typeof _member>[] }) => void
+    let resolveSecond!: (value: { list: ReturnType<typeof _member>[] }) => void
     listSpy
       .mockReturnValueOnce(new Promise((resolve) => { resolveFirst = resolve }))
       .mockReturnValueOnce(new Promise((resolve) => { resolveSecond = resolve }))
@@ -97,9 +115,9 @@ describe('ProjectMembersView（项目成员管理页）', () => {
     await wrapper.setProps({ projectId: 2 })
     await wrapper.vm.$nextTick()
 
-    resolveSecond({ list: [{ userId: 8, role: 'viewer' }] })
+    resolveSecond({ list: [_member(8, 'viewer', { projectRole: 'viewer' })] })
     await flushPromises()
-    resolveFirst({ list: [{ userId: 7, role: 'admin' }] })
+    resolveFirst({ list: [_member(7, 'admin', { projectRole: 'inherit' })] })
     await flushPromises()
 
     expect(wrapper.find('[data-member-id="8"]').exists()).toBe(true)
@@ -108,24 +126,24 @@ describe('ProjectMembersView（项目成员管理页）', () => {
 
   it('添加成员：提交 → addMember(projectId, {username, role})，成功后重载并清空输入', async () => {
     listSpy.mockResolvedValue({ list: [] })
-    addSpy.mockResolvedValue({ projectId: 1, username: 'bob', role: 'developer' })
+    addSpy.mockResolvedValue({ projectId: 1, userId: 5, username: 'bob', role: 'inherit', projectRole: 'inherit' })
 
     const wrapper = mountView()
     await flushPromises()
 
     await wrapper.find('[data-username-input]').setValue('bob')
-    await wrapper.find('[data-role-input]').setValue('developer')
+    await wrapper.find('[data-role-input]').setValue('inherit')
     await wrapper.find('[data-add-btn]').trigger('submit')
     await flushPromises()
 
     expect(addSpy).toHaveBeenCalledTimes(1)
-    expect(addSpy).toHaveBeenCalledWith(1, { username: 'bob', role: 'developer' })
+    expect(addSpy).toHaveBeenCalledWith(1, { username: 'bob', role: 'inherit' })
     expect(listSpy).toHaveBeenCalledTimes(2)
     expect((wrapper.find('[data-username-input]').element as HTMLInputElement).value).toBe('')
   })
 
   it('移除成员：点击移除 → removeMember(projectId, userId)，成功后重载', async () => {
-    listSpy.mockResolvedValue({ list: [{ userId: 7, role: 'developer' }] })
+    listSpy.mockResolvedValue({ list: [_member(7, 'developer', { projectRole: 'inherit' })] })
     removeSpy.mockResolvedValue(undefined)
 
     const wrapper = mountView()
@@ -140,18 +158,18 @@ describe('ProjectMembersView（项目成员管理页）', () => {
   })
 
   it('变更角色：select 变更 → updateMemberRole(projectId, userId, role)，成功后就地更新', async () => {
-    listSpy.mockResolvedValue({ list: [{ userId: 7, role: 'developer' }] })
-    patchSpy.mockResolvedValue({ projectId: 1, userId: 7, role: 'admin' })
+    listSpy.mockResolvedValue({ list: [_member(7, 'developer', { projectRole: 'inherit' })] })
+    patchSpy.mockResolvedValue({ projectId: 1, userId: 7, role: 'viewer', projectRole: 'viewer' })
 
     const wrapper = mountView()
     await flushPromises()
 
-    await wrapper.find('[data-member-id="7"] [data-role-select]').setValue('admin')
+    await wrapper.find('[data-member-id="7"] [data-role-select]').setValue('viewer')
     await flushPromises()
 
     expect(patchSpy).toHaveBeenCalledTimes(1)
-    expect(patchSpy).toHaveBeenCalledWith(1, 7, 'admin')
-    expect((wrapper.find('[data-member-id="7"] [data-role-select]').element as HTMLSelectElement).value).toBe('admin')
+    expect(patchSpy).toHaveBeenCalledWith(1, 7, 'viewer')
+    expect((wrapper.find('[data-member-id="7"] [data-role-select]').element as HTMLSelectElement).value).toBe('viewer')
   })
 
   it('列表错误态：listMembers 拒绝 → role=alert 呈现错误消息', async () => {
@@ -187,8 +205,8 @@ describe('ProjectMembersView（项目成员管理页）', () => {
   it('D13 列表搜索：关键字前端过滤成员，不触发后端', async () => {
     listSpy.mockResolvedValue({
       list: [
-        { userId: 7, role: 'developer' },
-        { userId: 9, role: 'viewer' },
+        _member(7, 'developer', { projectRole: 'inherit' }),
+        _member(9, 'viewer', { projectRole: 'viewer' }),
       ],
     })
 

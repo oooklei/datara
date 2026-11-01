@@ -148,6 +148,23 @@ class DbxClient:
             "cursor": cursor, "limit": limit,
         })
 
+    def list_saved_sql_library(self) -> dict[str, Any]:
+        """Read the dbx saved-SQL library summary (file records carry no sql text)."""
+        result = self._request("GET", "saved-sql")
+        return result if isinstance(result, dict) else {"folders": [], "files": []}
+
+    def load_saved_sql_file(self, file_id: str) -> dict[str, Any] | None:
+        """Read one saved-SQL file record including its sql text."""
+        if not file_id:
+            raise ValueError("file_id is required")
+        encoded = urllib.parse.quote(file_id, safe="")
+        result = self._request("GET", f"saved-sql/{encoded}")
+        return result if isinstance(result, dict) else None
+
+    def save_saved_sql_file(self, file: dict[str, Any]) -> dict[str, Any]:
+        """Upsert one saved-SQL file record (dbx replaces by id)."""
+        return self._request("POST", "saved-sql", payload=file)
+
     def execute_sql(self, *, connection_id: str, database: str, sql: str, schema: str | None = None, max_rows: int | None = None) -> dict[str, Any]:
         if not connection_id or not database or not sql.strip():
             raise ValueError("connection_id, database and sql are required")
