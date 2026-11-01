@@ -32,7 +32,7 @@ async function hasAuthenticatedSession(): Promise<boolean> {
   }
 }
 
-router.beforeEach(async (to) => {
+router.beforeEach(async (to, from) => {
   if (to.path === '/login') {
     return getToken() || authAccount.value ? { path:'/' } : true
   }
@@ -60,6 +60,13 @@ router.beforeEach(async (to) => {
   const raw = to.params.projectId
   const id = Number(Array.isArray(raw) ? raw[0] : raw)
   if (!Number.isInteger(id)) return { path:'/' }
+  // A successful entry into this project's route already checked ownership.
+  // Rechecking on every segment click can time out while the embedded IDE has
+  // outstanding same-origin requests; the catch below then wrongly resets the
+  // whole workspace to /. Cross-project and direct entries still check the API.
+  const fromRaw = from.params.projectId
+  const fromId = Number(Array.isArray(fromRaw) ? fromRaw[0] : fromRaw)
+  if (from.path.startsWith('/p/') && fromId === id) return true
   try {
     const page = await listProjects()
     if (!page.list.some((p) => p.id === id)) return { path:'/' }

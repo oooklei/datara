@@ -67,6 +67,19 @@ describe('L3-05：路由守卫 projectId 归属校验（越权负断言）', () 
     expect(productRouter.currentRoute.value.name).toBe('project-workbench')
   })
 
+  it('IDE 离开时同一已校验项目的菜单切换不再等待项目列表，切换项目仍需校验', async () => {
+    await productRouter.push('/')
+    await productRouter.push('/p/9/ide')
+    listProjectsSpy.mockReset().mockRejectedValue(new Error('projects timeout'))
+    await productRouter.push('/p/9')
+    expect(productRouter.currentRoute.value.path).toBe('/p/9')
+    expect(listProjectsSpy).not.toHaveBeenCalled()
+
+    await productRouter.push('/p/10')
+    expect(productRouter.currentRoute.value.path).toBe('/')
+    expect(listProjectsSpy).toHaveBeenCalledTimes(1)
+  })
+
   it('非整数 projectId 拦截（4041 形态）：/p/abc 不触发归属请求直接回 /', async () => {
     await productRouter.push('/p/abc')
     expect(productRouter.currentRoute.value.path).toBe('/')

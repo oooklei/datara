@@ -48,6 +48,14 @@ async function main() {
       variablePanel: !!document.querySelector('[data-variable-panel]'),
       persistedToken: !!localStorage.getItem('datara_token') || !!sessionStorage.getItem('datara_token'),
     }))
+    await page.locator('[data-seg="workbench"]').click({ timeout: 5000 })
+    await page.waitForURL(`${base}/p/${projectId}`, { timeout: 5000 })
+    const menuAfterIdeWorks = new URL(page.url()).pathname === `/p/${projectId}`
+    await page.locator('[data-seg="dbx-sql-ide"]').click({ timeout: 5000 })
+    await page.waitForURL(`${base}/p/${projectId}/ide`, { timeout: 5000 })
+    await page.locator('[data-seg="task-center-entry"]').click({ timeout: 5000 })
+    await page.waitForURL(`${base}/p/${projectId}/dag`, { timeout: 5000 })
+    const otherMenuWorks = new URL(page.url()).pathname === `/p/${projectId}/dag`
     await page.close()
     const adminPage = await browser.newPage()
     await adminPage.addInitScript((shortLivedToken) => {
@@ -72,8 +80,8 @@ async function main() {
     const developerMonitorDenied = new URL(developerPage.url()).pathname === '/'
     await developerPage.close()
 
-    console.log(JSON.stringify({ ...state, ideWorkbenchReady, adminMonitorVisible, developerMonitorDenied, dbxApiPaths: [...dbxApiPaths].sort(), dbxApiStatuses, pageErrors }))
-    if (!state.projectVisible || !state.variablePanel || !ideWorkbenchReady || !adminMonitorVisible || !developerMonitorDenied || state.persistedToken || pageErrors.length) {
+    console.log(JSON.stringify({ ...state, ideWorkbenchReady, menuAfterIdeWorks, otherMenuWorks, adminMonitorVisible, developerMonitorDenied, dbxApiPaths: [...dbxApiPaths].sort(), dbxApiStatuses, pageErrors }))
+    if (!state.projectVisible || !state.variablePanel || !ideWorkbenchReady || !menuAfterIdeWorks || !otherMenuWorks || !adminMonitorVisible || !developerMonitorDenied || state.persistedToken || pageErrors.length) {
       process.exitCode = 1
     }
   } finally {
