@@ -134,6 +134,7 @@ let variableGeneration = 0
 let projectGeneration = 0
 let sessionQueue: Promise<void> = Promise.resolve()
 let frameTimeout: ReturnType<typeof setTimeout> | undefined
+let frameReadyPoll: ReturnType<typeof setInterval> | undefined
 let disposeEmbeddedBranding: (() => void) | undefined
 let disposeMcpPromoHider: (() => void) | undefined
 
@@ -142,14 +143,36 @@ function clearFrameTimeout(): void {
   frameTimeout = undefined
 }
 
+function clearFrameReadyPoll(): void {
+  if (frameReadyPoll !== undefined) clearInterval(frameReadyPoll)
+  frameReadyPoll = undefined
+}
+
+function completeFrameWhenConnectionsReady(): void {
+  try {
+    const resources = frameEl.value?.contentWindow?.performance.getEntriesByType('resource') ?? []
+    if (!resources.some((entry) =>
+      new URL(entry.name).pathname === '/ide/api/connection/list' && (entry as PerformanceResourceTiming).responseEnd > 0
+    )) return
+  } catch { return }
+  clearFrameReadyPoll()
+  clearFrameTimeout()
+  frameLoaded.value = true
+  frameError.value = ''
+}
+
 function onFrameError(): void {
+  clearFrameReadyPoll()
   clearFrameTimeout()
   frameError.value = '页面请求失败'
 }
 
 function onFrameLoad(): void {
-  clearFrameTimeout()
-  frameLoaded.value = true
+  // The document load and bridge-ready events both precede the connection
+  // catalog response. Keep the loading mask until that same-origin fetch ends.
+  clearFrameReadyPoll()
+  frameReadyPoll = setInterval(completeFrameWhenConnectionsReady, 150)
+  completeFrameWhenConnectionsReady()
   disposeEmbeddedBranding?.()
   disposeMcpPromoHider?.()
   try {
@@ -236,6 +259,7 @@ async function refreshVariables(): Promise<void> {
 
 function startIdeSession(id: number | null, account: typeof authAccount.value): void {
   const generation = ++sessionGeneration
+  clearFrameReadyPoll()
   clearFrameTimeout()
   ideReady.value = false
   sessionError.value = ''
@@ -259,7 +283,7 @@ function startIdeSession(id: number | null, account: typeof authAccount.value): 
         if (generation === sessionGeneration && !frameLoaded.value) {
           frameError.value = '页面响应超时，请重试'
         }
-      }, 15000)
+      }, 30000)
       void refreshVariables()
     } catch (e) {
       if (generation === sessionGeneration) {
@@ -291,9 +315,6 @@ function onBridgeReady(event: MessageEvent): void {
   if (!data || typeof data !== 'object' || data.type !== 'datara:bridge-ready') return
   const source = frameEl.value?.contentWindow ?? null
   if (source === null || event.source !== source) return
-  clearFrameTimeout()
-  frameLoaded.value = true
-  frameError.value = ''
   sendVariablesToDbx(entries.value)
 }
 
@@ -307,6 +328,7 @@ onMounted(() => {
 })
 
 onUnmounted(() => {
+  clearFrameReadyPoll()
   clearFrameTimeout()
   ++sessionGeneration
   ++variableGeneration

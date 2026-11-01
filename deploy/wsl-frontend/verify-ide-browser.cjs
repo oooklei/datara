@@ -30,13 +30,27 @@ async function main() {
     await page.addInitScript((shortLivedToken) => {
       if (window.top === window) window.__DATARA_TEST_TOKEN__ = shortLivedToken
     }, token)
+    let releaseConnections
+    const connectionGate = new Promise((resolve) => { releaseConnections = resolve })
+    await page.route('**/ide/api/connection/list', async (route) => {
+      await connectionGate
+      await route.continue()
+    })
+    const connectionRequest = page.waitForRequest(
+      (request) => new URL(request.url()).pathname === '/ide/api/connection/list',
+      { timeout: 30000 },
+    )
     const connectionListReady = page.waitForResponse(
       (response) => new URL(response.url()).pathname === '/ide/api/connection/list' && response.status() === 200,
       { timeout: 30000 },
     )
-    await page.goto(`${base}/p/${projectId}/ide`)
+    await page.goto(`${base}/p/${projectId}/ide`, { waitUntil: 'domcontentloaded' })
     await page.locator('[data-dbx-frame]').waitFor({ timeout: 15000 })
     const frame = page.frameLocator('[data-dbx-frame]')
+    await connectionRequest
+    await page.waitForFunction(() => document.querySelector('[data-dbx-frame]')?.contentDocument?.readyState === 'complete', undefined, { timeout: 15000 })
+    const spinnerDuringConnectionLoad = await page.locator('.dbx-ide-mask').isVisible()
+    releaseConnections()
     await frame.locator('body').waitFor({ timeout: 15000 })
     await frame.locator('body').filter({ hasNotText: 'Loading…' }).waitFor({ timeout: 15000 })
     await frame.getByRole('button', { name: '新建连接' }).first().waitFor({ timeout: 20000 })
@@ -80,8 +94,8 @@ async function main() {
     const developerMonitorDenied = new URL(developerPage.url()).pathname === '/'
     await developerPage.close()
 
-    console.log(JSON.stringify({ ...state, ideWorkbenchReady, menuAfterIdeWorks, otherMenuWorks, adminMonitorVisible, developerMonitorDenied, dbxApiPaths: [...dbxApiPaths].sort(), dbxApiStatuses, pageErrors }))
-    if (!state.projectVisible || !state.variablePanel || !ideWorkbenchReady || !menuAfterIdeWorks || !otherMenuWorks || !adminMonitorVisible || !developerMonitorDenied || state.persistedToken || pageErrors.length) {
+    console.log(JSON.stringify({ ...state, ideWorkbenchReady, spinnerDuringConnectionLoad, menuAfterIdeWorks, otherMenuWorks, adminMonitorVisible, developerMonitorDenied, dbxApiPaths: [...dbxApiPaths].sort(), dbxApiStatuses, pageErrors }))
+    if (!state.projectVisible || !state.variablePanel || !ideWorkbenchReady || !spinnerDuringConnectionLoad || !menuAfterIdeWorks || !otherMenuWorks || !adminMonitorVisible || !developerMonitorDenied || state.persistedToken || pageErrors.length) {
       process.exitCode = 1
     }
   } finally {

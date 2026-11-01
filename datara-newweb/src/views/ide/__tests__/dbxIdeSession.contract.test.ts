@@ -96,6 +96,16 @@ describe('DBX IDE session gate', () => {
     expect(wrapper.find('[data-ide-frame-loading]').exists()).toBe(true)
     expect(wrapper.find('[data-dbx-frame]').exists()).toBe(true)
     await wrapper.find('[data-dbx-frame]').trigger('load')
+    expect(wrapper.find('[data-ide-frame-loading]').exists()).toBe(true)
+    const frameElement = wrapper.find('[data-dbx-frame]').element as HTMLIFrameElement
+    Object.defineProperty(frameElement, 'contentWindow', {
+      configurable: true,
+      value: { performance: { getEntriesByType: () => [
+        { name: 'http://localhost/ide/api/connection/list', responseEnd: 1 },
+      ] } },
+    })
+    await new Promise((resolve) => setTimeout(resolve, 180))
+    await flushPromises()
     expect(wrapper.find('[data-ide-frame-loading]').exists()).toBe(false)
     expect(wrapper.find('[data-ide-reload]').exists()).toBe(true)
     wrapper.unmount()
