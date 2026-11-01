@@ -48,9 +48,15 @@ async function main() {
       variablePanel: !!document.querySelector('[data-variable-panel]'),
       persistedToken: !!localStorage.getItem('datara_token') || !!sessionStorage.getItem('datara_token'),
     }))
-    await page.goto(`${base}/dep/monitor`)
-    await page.locator('main[aria-label="监控中心"]').waitFor({ timeout: 15000 })
-    const adminMonitorVisible = new URL(page.url()).pathname === '/dep/monitor'
+    await page.close()
+    const adminPage = await browser.newPage()
+    await adminPage.addInitScript((shortLivedToken) => {
+      if (window.top === window) window.__DATARA_TEST_TOKEN__ = shortLivedToken
+    }, token)
+    await adminPage.goto(`${base}/dep/monitor`)
+    await adminPage.locator('main[aria-label="监控中心"]').waitFor({ timeout: 15000 })
+    const adminMonitorVisible = new URL(adminPage.url()).pathname === '/dep/monitor'
+    await adminPage.close()
 
     const developerPage = await browser.newPage()
     await developerPage.addInitScript((shortLivedToken) => {
