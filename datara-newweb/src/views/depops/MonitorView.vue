@@ -283,9 +283,9 @@
     <section class="panel" data-db-section>
       <div class="panel-hd">
         <span class="sec-head">数据库连接池</span>
-        <span class="pill info">任务元数据库</span>
+        <span class="pill info">海豚元数据库</span>
         <span class="spacer"></span>
-        <span class="hint">展示任务元数据库（t_ds_ 所在库）连接池状态，不含业务数据连接</span>
+        <span class="hint">展示海豚元数据库（t_ds_ 所在库）连接池状态，不含业务数据连接</span>
       </div>
       <div v-if="dbError" class="err-box" role="alert" data-db-error>
         <span>{{ dbError }}</span>

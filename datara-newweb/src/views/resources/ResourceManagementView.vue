@@ -382,10 +382,10 @@ onMounted(async () => {
   font-size: 12.5px;
   line-height: 1.55;
   padding: 10px;
-  border: 1px solid var(--border, #d0d3dc);
+  border: 1px solid var(--border);
   border-radius: 6px;
-  background: var(--bg-1, #fff);
-  color: var(--text-1, #1f2430);
+  background: var(--bg-1);
+  color: var(--text-1);
   box-sizing: border-box;
 }
 .dlg-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 12px; }
