@@ -3,7 +3,7 @@
  *
  * 消息词形与 DS 侧 utils/datara-bridge.ts 严格对齐：
  *  - datara:ds-session  宿主 → DS：下发内部令牌/身份/项目编码（DS 据此切内部信任头）
- *  - datara:ds-ready    DS → 宿主：帧已挂载监听（首帧即发）+ 会话已生效（再发一次）
+ *  - datara:ds-ready    DS → 宿主：帧已挂载监听（只发一次；会话收到后不回发，避免握手循环）
  *
  * 安全约束：双向都校验 origin（必须等于本页 origin，DS 经同源反代嵌入）与
  * message.source（必须是目标 iframe 的 contentWindow），拒绝跨源/跨帧注入。

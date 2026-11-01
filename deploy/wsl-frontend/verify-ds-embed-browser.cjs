@@ -61,9 +61,13 @@ async function main() {
         window.__DATARA_TEST_TOKEN__ = shortLivedToken
       }
       window.__dsMsgLog = []
+      window.__dsMsgCounts = {}
       window.addEventListener('message', (event) => {
         const data = event.data && typeof event.data === 'object' ? event.data : {}
         const payload = data.payload && typeof data.payload === 'object' ? data.payload : null
+        const type = data.type || 'unknown'
+        window.__dsMsgCounts[type] = (window.__dsMsgCounts[type] || 0) + 1
+        if (window.__dsMsgLog.length >= 20) return
         window.__dsMsgLog.push({
           type: data.type || null,
           origin: event.origin,
@@ -119,7 +123,9 @@ async function main() {
     // 会话落地后 DS 会走一次列表拉取；等网络静默再取 DOM 快照，避免抓到空壳。
     await page.waitForTimeout(4000)
     result.frameRoute = await frame.evaluate(() => location.pathname + location.search)
-    const shotPath = require('path').join(require('os').tmpdir(), 'datara-ds-embed.png')
+    const shotDir = process.env.DATARA_DS_EVIDENCE_DIR || require('os').tmpdir()
+    require('fs').mkdirSync(shotDir, { recursive: true })
+    const shotPath = require('path').join(shotDir, 'datara-ds-embed.png')
     await page.locator('[data-tc-ds-frame]').screenshot({ path: shotPath }).catch(() => {})
     result.screenshot = shotPath
 
@@ -171,7 +177,10 @@ async function main() {
     result.hostUrlHasToken = state.urlHasToken
     result.hostPathname = state.pathname
     result.hostMsgLog = await page.evaluate(() => window.__dsMsgLog || [])
+    result.hostMessageCounts = await page.evaluate(() => window.__dsMsgCounts || {})
+    result.dsReadyCount = result.hostMessageCounts['datara:ds-ready'] || 0
     const frameMsgLog = await frame.evaluate(() => window.__dsMsgLog || [])
+    result.frameMessageCounts = await frame.evaluate(() => window.__dsMsgCounts || {})
     result.frameMsgLog = frameMsgLog
     result.dsReadyReceived = result.hostMsgLog.some((entry) => entry.type === 'datara:ds-ready')
     result.dsSessionSent = frameMsgLog.some((entry) => entry.type === 'datara:ds-session')
@@ -187,6 +196,7 @@ async function main() {
       !result.dsNavHidden,
       !result.dsHeaderHidden,
       !result.dsReadyReceived,
+      result.dsReadyCount > 10,
       result.dsLoginFormVisible,
       result.hostPersistedToken,
       result.hostUrlHasToken,

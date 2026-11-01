@@ -790,7 +790,7 @@ new file mode 100644
 index 0000000..c126c75
 --- /dev/null
 +++ b/dolphinscheduler-ui/src/utils/datara-bridge.ts
-@@ -0,0 +1,50 @@
+@@ -0,0 +1,49 @@
 +export interface DataraSession {
 +  token: string
 +  user: string
@@ -820,7 +820,6 @@ index 0000000..c126c75
 +    if (payload.apiBaseUrl && new URL(payload.apiBaseUrl, window.location.origin).origin !== window.location.origin) return
 +    session = payload as DataraSession
 +    waiters.splice(0).forEach((resolve) => resolve(session!))
-+    window.parent.postMessage({ type: 'datara:ds-ready' }, window.location.origin)
 +  })
 +  window.parent.postMessage({ type: 'datara:ds-ready' }, window.location.origin)
 +}
