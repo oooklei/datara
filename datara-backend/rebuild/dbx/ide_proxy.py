@@ -247,6 +247,21 @@ def build_dbx_ide_router(
             # this check to dbx would ask for dbx's single-user cookie and send
             # the user to a second login screen once its direct API is locked.
             return {"authenticated": True, "required": False, "setup_required": False}
+        # DBX exposes this path as an endless SSE stream. Reading it through
+        # DbxClient._request() waits for JSON EOF, retries, and blocks the ASGI
+        # event loop for ~17 seconds. The UI already polls ssh/prompts/pending.
+        if path in {"ssh/prompts", "connection/liveness-events"} and request.method == "GET":
+            return Response(status_code=204, headers={"Cache-Control": "no-store"})
+        if path == "database-backups" and request.method == "POST":
+            return {}
+        # These allowlisted shell reads do not depend on connection ownership.
+        # Offload synchronous DBX I/O so one slow optional endpoint cannot hold
+        # the connection tree and every other IDE request on the event loop.
+        if path in _BOOTSTRAP_READS and request.method == "GET":
+            try:
+                return await run_in_threadpool(client_factory()._request, "GET", path)
+            except DbxError:
+                return JSONResponse(status_code=502, content={"code": 502, "msg": "dbx unavailable", "data": None})
         admin = user.get("role") == Role.ADMIN.value
         user_id = int(user["user_id"])
         with session_factory() as db_session:
@@ -257,17 +272,6 @@ def build_dbx_ide_router(
 
         dbx = client_factory()
         try:
-            if path == "connection/liveness-events" and request.method == "GET":
-                # DBX treats this optional stream as a liveness hint. Do not
-                # proxy or synthesize an SSE stream in the owner gateway: a
-                # half-closed stream can abort the embedded app bootstrap.
-                return Response(status_code=204, headers={"Cache-Control": "no-store"})
-            # The embedded UI posts this optional browser-font preview payload
-            # during startup. It is local presentation state, not a Datara
-            # backup operation; DBX gateway mode intentionally does not expose
-            # its backup/restore API. A successful no-op keeps startup healthy.
-            if path == "database-backups" and request.method == "POST":
-                return {}
             catalog_rows: list[dict[str, Any]] | None = None
             if admin:
                 # One cached read feeds both the admin visibility filter and the

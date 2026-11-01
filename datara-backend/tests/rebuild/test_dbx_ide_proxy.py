@@ -190,6 +190,21 @@ def test_ide_session_bootstrap_accepts_datara_http_only_session_cookie():
     assert "datara_dbx_ide=" in response.headers.get("set-cookie", "")
 
 
+def test_ssh_prompt_event_stream_does_not_block_ide_bootstrap():
+    client, dbx = setup_proxy()
+    client.post("/api/v1/rebuild/dbx/projects/33/ide-session", headers={"Authorization": "Bearer admin-token"})
+    path = "/api/v1/rebuild/dbx/ide-proxy"
+    headers = {"Cookie": f"datara_dbx_ide={client.cookies.get('datara_dbx_ide')}"}
+
+    prompts = client.get(f"{path}/ssh/prompts", headers=headers)
+    sidebar = client.get(f"{path}/layout/sidebar", headers=headers)
+
+    assert prompts.status_code == 204
+    assert sidebar.status_code == 200
+    assert ("GET", "ssh/prompts", None) not in dbx.calls
+    assert ("GET", "layout/sidebar", None) in dbx.calls
+
+
 def test_ai_conversations_are_owned_and_shared_without_leaking_legacy_data():
     client, dbx = setup_proxy(share_with_other=True)
     proxy = "/api/v1/rebuild/dbx/ide-proxy"
