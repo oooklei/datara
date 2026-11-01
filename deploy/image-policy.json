@@ -1,16 +1,22 @@
 {
-  "version": 1,
+  "version": 2,
   "host": "root@192.168.1.9",
   "updated_at_utc": "2026-11-01",
-  "note": "DBX 与海豚（dolphinscheduler）自建镜像的唯一白名单。任何镜像升级必须先改本文件并留下裁定记录，再改 compose；release_source.py 的 preflight / image-gate 会同时校验运行中容器与受控 compose，漂移即拦截。2026-11-01 dbx 未留痕重建导致 IDE 超时事故后建立。",
+  "note": "DBX 与海豚（dolphinscheduler）自建镜像的唯一白名单。image_digests 是强制锁定：受控 compose 必须写 image: <tag>@<digest> 且 digest 与本文件一致，运行中容器的镜像 ID 也必须一致，否则 release_source.py 的 preflight / image-gate 拦截。任何升级必须先改本文件并留下裁定记录，再改 compose。2026-11-01 dbx 被未留痕就地重建（/tmp/_build_final.sh 挂载源码容器内编译 + sed 改 compose + up -d）导致 IDE 超时事故后建立并加强。",
   "forbid_tag_patterns": [
     "latest"
   ],
   "containers": {
-    "dbx": "dbx:codex-main-20261101",
+    "dbx": "dbx:codex-main-20261101-1240",
     "ds-api": "datara-ds-api:codex-main-20261101",
     "ds-master": "datara-ds-master:codex-main-20261101",
     "ds-worker": "datara-ds-worker:codex-main-20261101"
+  },
+  "image_digests": {
+    "dbx": "sha256:759a334135b469a9d4a3b49ee89997b476fd31d4b25de26f438dedcb892a8d1c",
+    "ds-api": "sha256:8f7e4a2fb4e847249052756b4c3366b7ebcbdd82dcc4572dd5d6b99316af9ac3",
+    "ds-master": "sha256:6a4d6cc9d4a93e357923811325659bc5ad67fabde0d85e2f03f7957ec15bc3c1",
+    "ds-worker": "sha256:12bc5ec566c4d9e2b1ac52b4e7db29befd2ca4df3d272dfbde37e2e05a83a404"
   },
   "compose_files": [
     "/lei/apps/dbx/deploy-1.9/docker-compose.yml",
